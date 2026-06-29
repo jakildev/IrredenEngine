@@ -1333,6 +1333,17 @@ Walk through every pane (`C-a` then arrow, or click) and confirm
 each one printed its standing-by line. If any pane shows an error
 instead, that's the first thing to fix.
 
+> **Dispatcher + dry-run.** Transient panes (worker / reviewer / merger /
+> queue-mgr) start idle and are filled by `fleet-dispatcher`. In dry-run the
+> dispatcher hands each role **one** `/role-<x> dry-run` standby iteration —
+> so you get the line above once per pane — and then **idles that role**
+> instead of re-dispatching every tick. It runs the role's dry-run path
+> (startup + stand by, no claims or PRs) and skips the merger's mechanical
+> rebase pass, so a dry-run boot takes no destructive action and doesn't burn
+> the model window while you inspect. (`fleet-up` records the boot mode in
+> `~/.fleet/state/dispatch-mode` for the dispatcher to read.) The architect
+> panes are interactive `--resume` sessions and stand by directly, unaffected.
+
 ### Step 2 — drive one author task through the full cycle
 
 First, create a bounded test task in the issue queue so the agent has

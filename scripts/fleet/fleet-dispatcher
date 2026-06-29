@@ -71,6 +71,11 @@ LOG_FILE="$HOME/.fleet/logs/dispatcher.log"
 PID_FILE="$STATE_DIR/dispatcher.pid"
 LOCK_DIR="$STATE_DIR/dispatcher.lock.d"
 SHUTDOWN_FLAG="$HOME/.fleet/shutdown-in-progress"
+# Boot-mode sentinel written by fleet-up (dry-run | live | review-only). Read
+# each tick so the dispatcher honors dry-run instead of cycling real (live)
+# iterations every tick (#2022). Absent → live (backward-compatible: a fleet
+# brought up by an older fleet-up that doesn't write it keeps today's behavior).
+DISPATCH_MODE_FILE="$STATE_DIR/dispatch-mode"
 
 # Directory of this script (symlink-resolved), so the per-task class
 # resolver (fleet_task_class.py) imports regardless of cwd — same idiom
@@ -226,6 +231,35 @@ DISPATCH_MIN_GAP_SECONDS="${FLEET_DISPATCH_MIN_GAP_SECONDS:-8}"
 # Process-global on purpose: the gap must hold across roles within a tick and
 # across ticks, so it must NOT be declared `local` anywhere.
 LAST_DISPATCH_EPOCH=0
+
+# --- Boot-mode gate (dry-run) ---------------------------------------------
+#
+# DISPATCH_MODE is refreshed each tick from $DISPATCH_MODE_FILE (read_dispatch_
+# mode). In live / review-only it is inert — dispatch proceeds exactly as before
+# and the dispatched role command carries that mode. In dry-run the dispatcher
+# hands each role ONE standby iteration (`/role-<role> dry-run` — startup +
+# "standing by (dry-run)", no claims/PRs), then idles instead of re-dispatching
+# every tick (#2022). DRY_RUN_DISPATCHED tracks which roles already got their one
+# standby this dispatcher lifetime; LAST_ROLE_DISPATCH_COUNT carries dispatch_
+# role's per-call pane count back to the main loop so a role is marked only after
+# it actually dispatched (a capped/deferred tick leaves it unmarked to retry).
+DISPATCH_MODE="live"
+declare -A DRY_RUN_DISPATCHED=()
+LAST_ROLE_DISPATCH_COUNT=0
+
+# Resolve the boot mode from the sentinel fleet-up writes. Absent or unrecognized
+# → live, so an older fleet-up (no sentinel) keeps today's behavior.
+read_dispatch_mode() {
+    local mode=""
+    if [[ -f "$DISPATCH_MODE_FILE" ]]; then
+        mode="$(<"$DISPATCH_MODE_FILE")"
+        mode="${mode//[$'\n\r\t ']/}"
+    fi
+    case "$mode" in
+        dry-run|live|review-only) printf '%s' "$mode" ;;
+        *) printf 'live' ;;
+    esac
+}
 
 # --- Usage gate (per-rate-limit-type thresholds) --------------------------
 #
@@ -1161,7 +1195,12 @@ build_dispatch_command() {
     if [[ "$model" == "$FABLE_MODEL" ]]; then
         fallback="$FABLE_FALLBACK"
     fi
-    printf ' fleet-dispatch-wrap %q %q %q %q %q\n' "$pane_key" "$model" "$effort" "$role" "$fallback"
+    # Trailing $DISPATCH_MODE (refreshed each tick) tells fleet-dispatch-wrap
+    # which role mode to run — `/role-<role> <mode>` — so a dry-run boot runs the
+    # standby path, not a live task-pickup iteration. Live → "live", identical to
+    # the prior hard-coded behavior.
+    printf ' fleet-dispatch-wrap %q %q %q %q %q %q\n' \
+        "$pane_key" "$model" "$effort" "$role" "$fallback" "${DISPATCH_MODE:-live}"
 }
 
 # Resolve the model class for a worker-lane dispatch from the lane's
@@ -1206,6 +1245,9 @@ resolve_worker_class() {
 dispatch_role() {
     local role="$1"
     local trigger_file="$TRIGGERS_DIR/$role"
+    # Per-call pane count, read by the dry-run gate in main(). Reset here so the
+    # early-return paths below (no trigger, cap, defer) all report 0 dispatched.
+    LAST_ROLE_DISPATCH_COUNT=0
 
     if [[ ! -f "$trigger_file" ]]; then
         return
@@ -1218,7 +1260,12 @@ dispatch_role() {
     # this trigger with content "llm" when conflicted PRs remain.
     # Content "llm" falls through to the normal (sonnet) merger dispatch.
     # No fleet-rebase on PATH -> straight to the LLM pass as before.
-    if [[ "$role" == "merger" ]] && command -v fleet-rebase >/dev/null 2>&1; then
+    #
+    # Skipped in dry-run: fleet-rebase force-pushes resolved rebases (a
+    # destructive action dry-run must not take). Falling through runs the
+    # merger's dry-run LLM standby instead, which mutates nothing (#2022).
+    if [[ "$role" == "merger" ]] && [[ "$DISPATCH_MODE" != "dry-run" ]] \
+        && command -v fleet-rebase >/dev/null 2>&1; then
         if [[ "$(cat "$trigger_file" 2>/dev/null)" != "llm" ]]; then
             rm -f "$trigger_file"
             mkdir -p "$HOME/.fleet/logs"
@@ -1404,6 +1451,10 @@ dispatch_role() {
         LAST_DISPATCH_EPOCH=$now_epoch
         dispatched=$((dispatched + 1))
     done <<< "$idle_panes"
+
+    # Publish this call's pane count for the dry-run gate in main(). `dispatched`
+    # is final here; every post-loop return path below carries this value.
+    LAST_ROLE_DISPATCH_COUNT=$dispatched
 
     # Empty-exit backoff. If this role's recent dispatches kept returning to a
     # shell within EMPTY_EXIT_SECONDS (no task claimed) EMPTY_STREAK_CAP times
@@ -1725,13 +1776,32 @@ main() {
             rearm_periodic_meta_triggers
         fi
 
+        # Refresh the boot mode each tick (cheap file read, same cadence as the
+        # shutdown sentinel + usage gate). Inert in live / review-only; gates the
+        # dispatch pass below in dry-run.
+        DISPATCH_MODE="$(read_dispatch_mode)"
+
         # Fleet-wide usage gate. Closed → skip the dispatch_role pass
         # entirely; triggers stay in place for next tick. The
         # rearm_periodic_meta_triggers above still runs so the trigger
         # set stays accurate for when the gate re-opens.
         if session_exists && usage_gate_open; then
             for role in "${DISPATCHED_ROLES[@]}"; do
+                # Dry-run: each role gets ONE standby iteration, then idles.
+                # Skip roles already given their one dry-run dispatch; mark a
+                # role only after it actually dispatched (a capped/deferred tick
+                # leaves it unmarked so the standby still fires on a later tick).
+                # No-op in live / review-only (DISPATCH_MODE guards both arms).
+                if [[ "$DISPATCH_MODE" == "dry-run" \
+                    && -n "${DRY_RUN_DISPATCHED[$role]:-}" ]]; then
+                    continue
+                fi
                 dispatch_role "$role"
+                if [[ "$DISPATCH_MODE" == "dry-run" \
+                    && "$LAST_ROLE_DISPATCH_COUNT" -gt 0 ]]; then
+                    DRY_RUN_DISPATCHED["$role"]=1
+                    log "dry-run: $role got its one standby iteration ($LAST_ROLE_DISPATCH_COUNT pane(s)); idling this role"
+                fi
             done
         fi
 
@@ -1789,6 +1859,26 @@ case "${1:-}" in
             exit 2
         fi
         echo "${ROLE_EFFORT[$2]:-high}"
+        exit 0
+        ;;
+    --print-mode)
+        # Print the boot mode resolved from $DISPATCH_MODE_FILE (dry-run | live |
+        # review-only; absent/garbage → live). Used by tests and operators.
+        read_dispatch_mode
+        echo
+        exit 0
+        ;;
+    --print-dispatch-command)
+        # Print the command fleet-dispatcher would send into a pane for <role>,
+        # resolving the boot mode from the sentinel first so the trailing mode
+        # arg is visible. Used by tests to confirm dry-run threads through.
+        # Usage: --print-dispatch-command <role> <pane_key>
+        if [[ -z "${2:-}" || -z "${3:-}" ]]; then
+            echo "usage: fleet-dispatcher --print-dispatch-command <role> <pane_key>" >&2
+            exit 2
+        fi
+        DISPATCH_MODE="$(read_dispatch_mode)"
+        build_dispatch_command "$2" "$3"
         exit 0
         ;;
     --resolve-class)

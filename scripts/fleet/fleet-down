@@ -173,6 +173,11 @@ if [[ -f "$DISPATCHER_PID_FILE" ]]; then
     rm -f "$DISPATCHER_PID_FILE"
 fi
 
+# Clear the boot-mode sentinel the dispatcher reads (fleet-up rewrites it on the
+# next boot). Removing it on shutdown keeps a stale dry-run sentinel from gating
+# a later live boot whose fleet-up predates the sentinel write (#2022).
+rm -f "$HOME/.fleet/state/dispatch-mode"
+
 # ----------------------------------------------------------------------
 # Ctrl-C trap: per-phase abort, doesn't cascade
 # ----------------------------------------------------------------------
