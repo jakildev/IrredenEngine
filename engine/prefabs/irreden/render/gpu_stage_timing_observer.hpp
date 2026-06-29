@@ -2,6 +2,7 @@
 #define GPU_STAGE_TIMING_OBSERVER_H
 
 #include <irreden/ir_system.hpp>
+#include <irreden/ir_profile.hpp>
 #include <irreden/render/render_device.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/profile/scope_timer.hpp>
@@ -207,7 +208,8 @@ inline GpuStageTimingObserver *installAndGetObserver() {
 // Tag a system with a stage name from `gpuStageRegistry()`. The registry
 // is the single source of truth for the field pointer + budget share;
 // callers pass only the name. An unknown name is a silent no-op so a
-// future stage rename can't crash the engine at startup.
+// future stage rename can't crash the engine at startup, but it emits a
+// debug warning so registry/tag name drift is caught at tag time.
 inline void tagGpuStage(IRSystem::SystemId system, std::string_view stageName) {
     for (const auto &info : gpuStageRegistry()) {
         if (info.name_ == stageName) {
@@ -215,6 +217,11 @@ inline void tagGpuStage(IRSystem::SystemId system, std::string_view stageName) {
             return;
         }
     }
+    IRE_LOG_WARN(
+        "tagGpuStage: unknown stage name \"{}\" — stage will not be timed. "
+        "Check gpuStageRegistry() for the registered name.",
+        stageName
+    );
 }
 
 } // namespace IRRender
