@@ -1634,6 +1634,12 @@ for pr in prs:
     # like a no-PR abandon (#1488 Fix B). Only an active (non-parked) matching
     # WIP PR (head-branch claude/<N>-*) keeps the claim.
     local claim_issue_stale_secs="${FLEET_CLAIM_STALE_SECS_ISSUES:-7200}"
+    # This host's key, for the confirmed-orphan fast path below. A claim label
+    # names the owning host (fleet:claim-<host>-<agent>); only THIS host can
+    # vouch for its own local claim locks, so the fast path applies to our own
+    # claims and cross-host claims stay on the TTL.
+    local this_host
+    this_host=$(derive_host)
     for repo in "${repos[@]}"; do
         local open_claim_plan open_pr_branches_json
         open_claim_plan=$(gh issue list --repo "$repo" --state open \
@@ -1661,23 +1667,48 @@ for issue in issues:
         while IFS=$'\t' read -r issue_num label_name; do
             [[ -z "$issue_num" || -z "$label_name" ]] && continue
 
+            # Confirmed-orphan fast path. A claim names the owning host
+            # (fleet:claim-<host>-<agent>); fleet-claim writes the local lock
+            # dir ($CLAIMS_DIR/<slug>) BEFORE adding the GitHub label and removes
+            # it on release, so a label naming THIS host with no local lock is a
+            # claim the owning host has no record of — the iteration died (swept,
+            # crashed, restarted) without releasing the issue-side labels. Such
+            # an orphan strands a claimable task as in_progress for the whole
+            # cross-host TTL (the #2102 / #1969 incident: ~2h each). Sweep it now
+            # instead of waiting the TTL out. Cross-host claims have no local lock
+            # here by definition, so they're left on the TTL + PR-state path —
+            # only the owning host can distinguish "dead" from "live elsewhere".
+            local claim_host="${label_name#fleet:claim-}"
+            claim_host="${claim_host%%-*}"
+            local same_host_orphan=0
+            if [[ "$claim_host" == "$this_host" \
+                  && ! -d "$CLAIMS_DIR/$(slugify "$issue_num")" ]]; then
+                same_host_orphan=1
+            fi
+
             local added_epoch
             added_epoch=$(label_added_epoch "$repo" "$issue_num" "$label_name")
             [[ "$added_epoch" -eq 0 ]] && continue
 
             local age=$(( now - added_epoch ))
-            [[ $age -lt $claim_issue_stale_secs ]] && continue
+            # Orphans skip the age TTL; cross-host / lock-present claims wait it out.
+            if (( same_host_orphan == 0 )) && (( age < claim_issue_stale_secs )); then
+                continue
+            fi
 
             local pr_state
             pr_state=$(_issue_pr_state_from "$open_pr_branches_json" "$issue_num" "$repo")
 
             # Keep the claim only while a matching PR is *active* work; a
             # parked (design-blocked/-unblocked) or absent matching PR falls
-            # through to the sweep below (#1488 Fix B).
+            # through to the sweep below (#1488 Fix B). Applies to orphans too —
+            # if a dead worker left an active open PR, the PR carries the work
+            # and re-claiming the issue would race it.
             [[ "$pr_state" == "active" ]] && continue
 
             local sweep_reason="no open PR"
             [[ "$pr_state" == "parked" ]] && sweep_reason="parked PR (design-blocked/unblocked)"
+            (( same_host_orphan == 1 )) && sweep_reason="orphaned claim (no local lock on $this_host), ${sweep_reason}"
 
             if gh issue edit "$issue_num" --repo "$repo" \
                     --remove-label "$label_name" >/dev/null 2>&1; then
