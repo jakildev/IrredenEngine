@@ -363,6 +363,40 @@ for issue in pending:
               f'for re-plan (kept human:approved + any human:review-plan)', file=sys.stderr)
         continue
 
+    # Opt-out detection (computed here so the late-opt-out reconcile below and
+    # the planning gate further down share one source of truth): an explicit
+    # investigation spike, the `[no-plan]` body/title tag, or the human:no-plan
+    # label all mean "skip planning, queue directly".
+    opted_out = bool(
+        SPIKE_RE.search(title) or SPIKE_RE.search(body)
+        or NO_PLAN_RE.search(title) or NO_PLAN_RE.search(body)
+        or 'human:no-plan' in labels
+    )
+
+    # Late opt-out reconcile. human:no-plan / [no-plan] / spike means "queue
+    # directly, skip planning". But if that opt-out lands AFTER the issue already
+    # carries fleet:needs-plan (a human fast-tracking a backlog item that was
+    # earlier bounced to planning), the issue is stranded forever: the needs-plan
+    # skip guard just below drops it from ingest, while the opt-out means no
+    # planner will ever pick it up either — so it never reaches fleet:queued and
+    # no worker can claim it (the 9-issue limbo behind a "worker found no work"
+    # idle fleet). Strip the now-stale needs-plan so the issue falls through to
+    # the planning gate, which queues opted-out issues directly.
+    if opted_out and 'fleet:needs-plan' in labels:
+        er = subprocess.run(
+            ['gh', 'issue', 'edit', str(n), '--repo', repo,
+             '--remove-label', 'fleet:needs-plan'],
+            capture_output=True, text=True, timeout=15,
+        )
+        if er.returncode != 0:
+            failed += 1
+            print(f'WARN issue {repo}#{n}: strip stale fleet:needs-plan for opt-out '
+                  f'failed: {er.stderr.strip()}', file=sys.stderr)
+            continue
+        labels.discard('fleet:needs-plan')
+        print(f'INFO issue {repo}#{n}: opted out (human:no-plan / [no-plan] / spike) but '
+              f'still carried fleet:needs-plan — stripped it; queuing directly', file=sys.stderr)
+
     if ('fleet:queued' in labels or 'fleet:scope-shipped' in labels
             or 'fleet:needs-human' in labels or 'fleet:needs-plan' in labels
             or 'fleet:plan-review' in labels or 'human:review-plan' in labels):
@@ -390,18 +424,13 @@ for issue in pending:
     # Planning gate (#1456, re-keyed by #1932): refuse to queue an issue that
     # never passed through planning. The canonical plan is now a `## Plan`
     # issue comment (#1932); a committed/staged plan file still counts
-    # (backward compat for pre-redesign issues). Opt-outs: an explicit
-    # investigation spike, the `[no-plan]` tag, or the human:no-plan label.
-    # Without a plan or an opt-out the claiming worker is the first to open the
-    # code and design-blocks, so bounce to fleet:needs-plan (routes through
-    # PLANNING-PROTOCOL.md; the label also drops the issue out of the ingest
-    # pending set via the live-label skip guard). Sits before the blocker probes
-    # so a bounced issue costs no per-blocker API calls.
-    opted_out = bool(
-        SPIKE_RE.search(title) or SPIKE_RE.search(body)
-        or NO_PLAN_RE.search(title) or NO_PLAN_RE.search(body)
-        or 'human:no-plan' in labels
-    )
+    # (backward compat for pre-redesign issues). `opted_out` (computed above —
+    # investigation spike, the `[no-plan]` tag, or the human:no-plan label)
+    # skips the gate. Without a plan or an opt-out the claiming worker is the
+    # first to open the code and design-blocks, so bounce to fleet:needs-plan
+    # (routes through PLANNING-PROTOCOL.md; the label also drops the issue out of
+    # the ingest pending set via the live-label skip guard). Sits before the
+    # blocker probes so a bounced issue costs no per-blocker API calls.
     has_plan = (_has_plan_comment(view.get('comments', []))
                 or _plan_exists(repo, n, plan_cache))
     if not opted_out and not has_plan:
