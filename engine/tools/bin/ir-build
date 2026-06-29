@@ -62,7 +62,7 @@ source "$HELPERS"
 # mingw64\bin precedes MSYS2's, so gcc spawns cc1plus.exe against Git's older
 # runtime DLLs and it dies *silently* on the ABI mismatch (zero output, exit 1).
 # See docs/agents/BUILD.md "cc1plus silent-crash root cause". The only reliable
-# fix is to run cmake inside `cmd.exe /c "set PATH=<msys2 mingw64>;%PATH% && ..."`
+# fix is to run cmake inside `cmd.exe //c "set PATH=<msys2 mingw64>;%PATH% && ..."`
 # so the Win32 DLL loader sees MSYS2's mingw64 first — a bash-side PATH export is
 # undone by MSYS path translation when the child Win32 process is spawned.
 # IR_MSYS2_MINGW overrides the prefix for non-default MSYS2 installs.
@@ -76,9 +76,15 @@ esac
 # the configure (cmake --preset) step, which also spawns cc1plus for its
 # compiler-ID checks. Args are joined for cmd.exe; the paths this repo passes
 # (build dir, source dir, -D defines) contain no spaces.
+#
+# `//c` (not `/c`): in an interactive MSYS2/Git-Bash terminal, POSIX path
+# conversion rewrites a bare `/c` arg into `C:/`, so `cmd.exe /c "..."` becomes
+# `cmd.exe C:/ "..."` — which opens cmd *interactively* instead of running the
+# command. The `//c` idiom collapses to `/c` for cmd.exe and is excluded from
+# conversion, so it works both in a real terminal and under Claude's Bash tool.
 ir_cmake() {
     if (( IR_IS_WINDOWS )); then
-        cmd.exe /c "set PATH=$IR_MSYS2_MINGW;%PATH% && cmake $*"
+        cmd.exe //c "set PATH=$IR_MSYS2_MINGW;%PATH% && cmake $*"
     else
         cmake "$@"
     fi
@@ -181,9 +187,12 @@ if (( IR_IS_WINDOWS )); then
     # The cc1plus PATH fix must wrap the actual compile, so the whole
     # `cmake --build` runs inside cmd.exe. ir-acquire still holds the CPU
     # slots for the duration. Target names and the build dir contain no
-    # spaces; the build dir is quoted defensively for cmd.exe.
-    exec "$IR_ACQUIRE" cpu "$JOBS" -- cmd.exe /c \
-        "set PATH=$IR_MSYS2_MINGW;%PATH% && cmake --build \"$BUILD_DIR\" -j$JOBS ${forward_args[*]}"
+    # spaces, so $BUILD_DIR is passed unquoted: embedding \"...\" inside the
+    # cmd.exe //c string leaks the literal quote characters into cmake's
+    # --build argument (cmake then treats the quoted path as relative and
+    # prepends the CWD). Unquoted is both correct and space-free here.
+    exec "$IR_ACQUIRE" cpu "$JOBS" -- cmd.exe //c \
+        "set PATH=$IR_MSYS2_MINGW;%PATH% && cmake --build $BUILD_DIR -j$JOBS ${forward_args[*]}"
 else
     exec "$IR_ACQUIRE" cpu "$JOBS" -- cmake --build "$BUILD_DIR" -j"$JOBS" "${forward_args[@]}"
 fi
