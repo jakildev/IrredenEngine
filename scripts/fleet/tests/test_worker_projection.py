@@ -244,6 +244,59 @@ class SliceWorkerSkipLabelsDropPR(unittest.TestCase):
         self.assertEqual(result[0]["number"], 101)
 
 
+class SliceWorkerSkipsGatedNeedsPlan(unittest.TestCase):
+    """slice_worker drops human-gated needs-plan issues so the dispatcher's
+    class resolver doesn't count them as plannable and spin a no-op worker
+    (the needs-plan/no-plan limbo behind an idle 'worker found no work' fleet).
+    A merely fleet:blocked needs-plan issue is still plannable and stays."""
+
+    def _np(self, needs_plan):
+        return [i["number"] for i in
+                slice_worker(_state([], needs_plan=needs_plan))["needs_plan"]]
+
+    def test_human_no_plan_dropped(self):
+        self.assertEqual(
+            self._np([{"number": 222,
+                       "labels": ["fleet:needs-plan", "human:no-plan"]}]),
+            [],
+        )
+
+    def test_human_owned_and_wip_dropped(self):
+        self.assertEqual(
+            self._np([
+                {"number": 301, "labels": ["fleet:needs-plan", "human:owned"]},
+                {"number": 302, "labels": ["fleet:needs-plan", "human:wip"]},
+            ]),
+            [],
+        )
+
+    def test_plain_needs_plan_surfaces(self):
+        # Regression: a genuinely plannable issue must still reach the worker.
+        self.assertEqual(
+            self._np([{"number": 222, "labels": ["fleet:needs-plan"]}]),
+            [222],
+        )
+
+    def test_blocked_needs_plan_still_plannable(self):
+        # fleet:blocked is NOT a human gate — planning is independent of the
+        # blocker, so a blocked needs-plan issue stays in the slice.
+        self.assertEqual(
+            self._np([{"number": 222,
+                       "labels": ["fleet:needs-plan", "fleet:blocked"]}]),
+            [222],
+        )
+
+    def test_mixed_set_keeps_only_plannable(self):
+        self.assertEqual(
+            self._np([
+                {"number": 401, "labels": ["fleet:needs-plan", "human:no-plan"]},
+                {"number": 402, "labels": ["fleet:needs-plan"]},
+                {"number": 403, "labels": ["fleet:needs-plan", "human:owned"]},
+            ]),
+            [402],
+        )
+
+
 class OpusReviewerStableAcrossIrrelevantLabels(unittest.TestCase):
     """Opus-reviewer keys on fleet:has-nits / fleet:needs-fix (flag_labels).
     Other labels are either gating (REVIEW_SKIP_LABELS, removed from the
