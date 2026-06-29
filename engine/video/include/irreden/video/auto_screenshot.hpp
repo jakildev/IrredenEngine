@@ -101,18 +101,6 @@ struct AutoScreenshotConfig {
     void (*onCaptureFrame_)(int shotIndex) = nullptr;
 };
 
-/// Parse @c --auto-screenshot<space>[frames] from argv. Returns @c true if
-/// the flag is present. When present and followed by a positive integer,
-/// @c *warmupFramesOut is set to that value; otherwise the default of 10 is
-/// written. @c warmupFramesOut may be @c nullptr.
-///
-/// This helper peeks at the token after @c --auto-screenshot but does not
-/// tell the caller whether it consumed one or two argv slots. Callers with
-/// subsequent argv loops must be aware that a bare positive integer may
-/// appear at the slot immediately after @c --auto-screenshot — if their
-/// own loop could interpret that token, skip past it explicitly.
-bool parseAutoScreenshotArgv(int argc, char **argv, int *warmupFramesOut);
-
 /// True once @c createAutoScreenshotSystem has been called this run — i.e. the
 /// process is doing a headless auto-screenshot capture. @c World reads this to
 /// switch the UPDATE loop to a deterministic fixed step (one tick per render

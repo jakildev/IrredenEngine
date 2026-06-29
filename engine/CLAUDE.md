@@ -50,9 +50,7 @@ count prints an error + usage and `exit(2)`. `creations/demos/fog_demo/main.cpp`
 is the reference adoption.
 
 Do **not** add a new `for (i…) std::strcmp(argv[i], "--foo")` parse loop to a
-target. The one remaining legacy helper (`IRVideo::parseAutoScreenshotArgv`)
-and the demos' hand-rolled loops are being migrated onto `IRArgs` and retired
-(epic #2057).
+target — every engine arg goes through `IRArgs`.
 
 ## `SystemName` enum is authoritative
 

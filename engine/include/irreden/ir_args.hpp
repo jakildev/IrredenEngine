@@ -27,8 +27,7 @@
 namespace IRArgs {
 
 // The engine-common --auto-screenshot warmup default when the flag is given
-// without a trailing frame count. Mirrors the long-standing default in
-// IRVideo::parseAutoScreenshotArgv.
+// without a trailing frame count.
 inline constexpr int kDefaultAutoScreenshotWarmup = 10;
 
 // Kind of a registered argument. Drives both the parse rule and the value

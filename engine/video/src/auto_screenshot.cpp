@@ -9,8 +9,6 @@
 #include <irreden/render/camera.hpp>
 #include <irreden/render/cull_viewport_state.hpp>
 
-#include <cstdlib>
-#include <cstring>
 #include <memory>
 
 namespace IRVideo {
@@ -64,23 +62,6 @@ struct CyclingState {
 bool g_autoCaptureActive = false;
 
 } // namespace
-
-bool parseAutoScreenshotArgv(int argc, char **argv, int *warmupFramesOut) {
-    for (int i = 1; i < argc; ++i) {
-        if (std::strcmp(argv[i], "--auto-screenshot") != 0)
-            continue;
-        int warmup = 10;
-        if (i + 1 < argc) {
-            int parsed = std::atoi(argv[i + 1]);
-            if (parsed > 0)
-                warmup = parsed;
-        }
-        if (warmupFramesOut != nullptr)
-            *warmupFramesOut = warmup;
-        return true;
-    }
-    return false;
-}
 
 bool isAutoCaptureActive() {
     return g_autoCaptureActive;
