@@ -91,6 +91,54 @@ struct Voxel {
 // exposed-face test (visible-triplet × exposed-mask, #1278) is centralized
 // in `faceIsExposed(flagsByte, faceId)` from ir_iso_common.metal.
 
+// Per-voxel analytic fog clip inputs (#2102), mirroring c_voxel_visibility_compact
+// + c_fog_to_trixel. The world fog canvas binds its 256² grid texture at
+// [[texture(0)]] and the live vision circles at [[buffer(27)]]; every non-fog /
+// detached canvas binds a 1×1 all-visible placeholder + a count-0 observer
+// buffer, so fogVoxelColumnHidden short-circuits to "never hidden" and those
+// scenes stay byte-identical.
+constant int kFogOfWarHalfExtent = 128;
+constant float kFogExploredThreshold = 0.25f;
+constant int kMaxFogVisionCircles = 8; // mirror of component_canvas_fog_of_war.hpp kMaxFogVisionCircles
+struct FogObserverData {
+    float4 visionCircles[kMaxFogVisionCircles]; // (centerX, centerY, radius, edgeSoftness)
+    int visionCircleCount;
+    int _fogObsPad0;
+    int _fogObsPad1;
+    int _fogObsPad2;
+};
+
+// True iff this voxel's RAW world column is fully hidden by fog (grid unexplored
+// AND column center outside every live vision disc). See the GLSL twin
+// (c_voxel_to_trixel_stage_1.glsl::fogVoxelColumnHidden) for the full rationale:
+// the compact keeps a permissive margin for the smooth per-pixel floor edge,
+// and STAGE_1 tightens that margin to the precise radius for the voxel object so
+// FOG_TO_TRIXEL can't hard-black its kept-but-outside faces. The 1×1 placeholder
+// + OOB columns read as visible (never hidden) → non-fog canvases byte-identical.
+static bool fogVoxelColumnHidden(
+    texture2d<float, access::read> fog, constant FogObserverData& obs, int3 voxelPosRaw
+) {
+    const int2 fogSize = int2(int(fog.get_width()), int(fog.get_height()));
+    if (fogSize.x <= 1) {
+        return false; // 1×1 all-visible placeholder (non-fog / detached canvas)
+    }
+    const int2 cell = voxelPosRaw.xy + int2(kFogOfWarHalfExtent);
+    if (cell.x < 0 || cell.x >= fogSize.x || cell.y < 0 || cell.y >= fogSize.y) {
+        return false; // out-of-range column reads as visible
+    }
+    if (fog.read(uint2(cell)).r >= kFogExploredThreshold) {
+        return false; // explored / visible grid memory — keep
+    }
+    // Unexplored grid: keep only if a live vision circle's disc covers the column
+    // center. aa = 0 → reveal >= 0.5 is exactly "center inside radius".
+    for (int i = 0; i < obs.visionCircleCount; ++i) {
+        if (fogVisionCircleReveal(float2(voxelPosRaw.xy), obs.visionCircles[i], 0.0f) >= 0.5f) {
+            return false;
+        }
+    }
+    return true;
+}
+
 kernel void c_voxel_to_trixel_stage_1(
     constant FrameDataVoxelToTrixel& frameData [[buffer(7)]],
     device const float4* positions [[buffer(5)]],
@@ -98,6 +146,8 @@ kernel void c_voxel_to_trixel_stage_1(
     device const uint* compactedVoxelIndices [[buffer(25)]],
     device const IndirectDispatchParamsRO& indirectParams [[buffer(26)]],
     device atomic_int* distanceScratch [[buffer(16)]],
+    texture2d<float, access::read> canvasFogOfWar [[texture(0)]],
+    constant FogObserverData& fogObservers [[buffer(27)]],
     uint3 groupId [[threadgroup_position_in_grid]],
     uint3 localId3 [[thread_position_in_threadgroup]]
 ) {
@@ -134,6 +184,15 @@ kernel void c_voxel_to_trixel_stage_1(
     // faceIsExposed too (no all-3-face bypass → no slot-tie AO hatching). The
     // reVoxelize flag still drives the ±1px dilation in emitDeformedFace.
     if (!faceIsExposed(flagsByte, faceId)) return;
+
+    // Per-voxel analytic fog clip (#2102) — see the GLSL twin. Drop a fully
+    // fog-hidden voxel on the single-canvas world route so FOG_TO_TRIXEL can't
+    // hard-black its faces; STAGE_2 inherits the drop via its depth re-test.
+    // count 0 / the placeholder keep non-fog scenes byte-identical.
+    if (fogObservers.visionCircleCount > 0 && frameData.perAxisRoute == 0 &&
+        fogVoxelColumnHidden(canvasFogOfWar, fogObservers, int3(round(voxelPosition.xyz)))) {
+        return;
+    }
 
     // Per-slot deformation matrix — see stage 1 GLSL for the contract.
     const float2x2 D = float2x2(

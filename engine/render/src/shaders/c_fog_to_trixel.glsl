@@ -145,12 +145,11 @@ void main() {
             voxelRenderOptions, rasterYaw
         );
         const float worldPerPixel = length(pos3DNeighborX.xy - pos3D.xy);
+        // Shared with VOXEL_TO_TRIXEL_STAGE_1's per-voxel clip so the floor's
+        // per-pixel reveal here and the voxel-object edge there trace the same
+        // analytic curve (#2102). worldPerPixel floors the rim at ~1 canvas px.
         for (int i = 0; i < visionCircleCount; ++i) {
-            const vec4 circle = visionCircles[i];
-            const float dist = length(pos3D.xy - circle.xy);
-            const float aa = max(circle.w, worldPerPixel);
-            const float vis = 1.0 - smoothstep(circle.z - aa, circle.z + aa, dist);
-            state = max(state, vis);
+            state = max(state, fogVisionCircleReveal(pos3D.xy, visionCircles[i], worldPerPixel));
         }
     }
 

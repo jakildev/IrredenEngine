@@ -535,6 +535,13 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             );
 
             stage1Program_->use();
+            // STAGE_1 now declares the fog grid (slot 0) + observer (binding 27)
+            // inputs for its per-voxel fog clip (#2102). The per-axis route never
+            // clips (perAxisRoute != 0 short-circuits it), but the Metal kernel
+            // still declares those args, so bind the 1×1 all-visible placeholder
+            // + the observer buffer to satisfy the per-encoder argument table.
+            fogCullPlaceholder_->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+            fogObserverBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FogObservers);
             distances->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
             IRRender::device()->dispatchComputeIndirect(perAxisIndirectBuf_, indirectOffsetBytes);
             IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
@@ -1059,6 +1066,15 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
 
         if (!skipSingleCanvasVoxels) {
             stage1Program_->use();
+            // Per-voxel analytic fog clip (#2102): re-bind the fog grid (slot 0)
+            // + live vision circles (binding 27) for STAGE_1. The compact bound
+            // these above and GL state persists across the program switch, but
+            // Metal's per-encoder argument table needs them set on this dispatch
+            // too. Real fog texture on the world fog canvas, else the 1×1
+            // all-visible placeholder (the clip no-ops, byte-identical).
+            (fog != nullptr ? fog->getTexture() : fogCullPlaceholder_)
+                ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+            fogObserverBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FogObservers);
             triangleCanvasTextures.getTextureDistances()
                 ->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
             IRRender::device()->dispatchComputeIndirect(indirectBuf_, 0);

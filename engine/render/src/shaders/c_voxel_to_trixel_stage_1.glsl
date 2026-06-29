@@ -105,6 +105,23 @@ layout(std430, binding = 26) readonly buffer IndirectDispatchParams {
 
 layout(r32i, binding = 1) uniform iimage2D triangleCanvasDistances;
 
+// Per-voxel analytic fog clip inputs (#2102), mirroring c_voxel_visibility_compact
+// + c_fog_to_trixel. The world fog canvas binds its 256² grid texture on image
+// slot 0 and uploads the live vision circles at binding 27; every non-fog /
+// detached canvas binds the shared 1×1 all-visible placeholder + a count-0
+// observer buffer, so `fogVoxelColumnHidden` short-circuits to "never hidden"
+// and those scenes stay byte-identical. Slot 0 is free in STAGE_1 (it writes
+// only the distance image on slot 1); STAGE_2 rebinds slot 0 to the colour
+// image afterward.
+const int kFogOfWarHalfExtent = 128;
+const float kFogExploredThreshold = 0.25;
+const int kMaxFogVisionCircles = 8; // mirror of component_canvas_fog_of_war.hpp kMaxFogVisionCircles
+layout(rgba8, binding = 0) readonly uniform image2D canvasFogOfWar;
+layout(std140, binding = 27) uniform FogObserverData {
+    vec4 visionCircles[kMaxFogVisionCircles]; // (centerX, centerY, radius, edgeSoftness)
+    int visionCircleCount;
+};
+
 void writeDistanceTap(const ivec2 canvasPixel, const int voxelDistance) {
     if (!isInsideCanvas(canvasPixel, imageSize(triangleCanvasDistances))) return;
     imageAtomicMin(triangleCanvasDistances, canvasPixel, voxelDistance);
@@ -151,6 +168,43 @@ void emitDeformedFace(
     }
 }
 
+// True iff this voxel's RAW world column is fully hidden by fog: the grid cell
+// is unexplored AND the column center lies OUTSIDE every live vision circle's
+// disc. Such a column has fog reveal ~0, so rendering its voxel only lets
+// FOG_TO_TRIXEL hard-black the faces — the #2102 black z-faces / top-face gaps
+// / per-column pop. Dropping the voxel here (STAGE_2 inherits the drop via its
+// depth re-test) shows the revealed floor / background behind instead, so the
+// voxel object clips on the SAME analytic curve the floor edge uses.
+//
+// This is c_voxel_visibility_compact's drop test taken to the PRECISE radius:
+// the compact keeps a permissive +edgeSoftness+1-cell margin so the per-pixel
+// floor reveal stays smooth (no grid-aligned notches, #2068); STAGE_1 tightens
+// that margin away for the voxel object so its kept-but-outside boundary faces
+// no longer rasterize. Explored grid memory and in-disc columns are kept; the
+// 1×1 placeholder + OOB columns read as visible (never hidden), matching the
+// OOB-as-visible invariant — so non-fog / detached canvases are byte-identical.
+bool fogVoxelColumnHidden(ivec3 voxelPosRaw) {
+    const ivec2 fogSize = imageSize(canvasFogOfWar);
+    if (fogSize.x <= 1) {
+        return false; // 1×1 all-visible placeholder (non-fog / detached canvas)
+    }
+    const ivec2 cell = voxelPosRaw.xy + ivec2(kFogOfWarHalfExtent);
+    if (cell.x < 0 || cell.x >= fogSize.x || cell.y < 0 || cell.y >= fogSize.y) {
+        return false; // out-of-range column reads as visible
+    }
+    if (imageLoad(canvasFogOfWar, cell).r >= kFogExploredThreshold) {
+        return false; // explored / visible grid memory — keep (FOG_TO_TRIXEL fades it)
+    }
+    // Unexplored grid: keep only if a live vision circle's disc covers the
+    // column center. aa = 0 → reveal >= 0.5 is exactly "center inside radius".
+    for (int i = 0; i < visionCircleCount; ++i) {
+        if (fogVisionCircleReveal(vec2(voxelPosRaw.xy), visionCircles[i], 0.0) >= 0.5) {
+            return false;
+        }
+    }
+    return true;
+}
+
 void main() {
     uint compactedIdx = gl_WorkGroupID.x + gl_WorkGroupID.y * numGroupsX;
     if (compactedIdx >= visibleCount) return;
@@ -191,6 +245,17 @@ void main() {
     // the emit dilation below.
     const uint flagsByte = (voxels[voxelIndex].materialFlagBone >> 8u) & 0xFFu;
     if (!faceIsExposed(flagsByte, faceId)) return;
+
+    // Per-voxel analytic fog clip (#2102). On the single-canvas world fog route,
+    // drop a voxel whose column is fully hidden so FOG_TO_TRIXEL can't hard-black
+    // its faces (the revealed floor / background behind shows through instead).
+    // Gated to perAxisRoute==0: the per-axis rotation + detached routes carry no
+    // fog observers, and count 0 / the placeholder keep non-fog scenes
+    // byte-identical (the cheap count test short-circuits before the grid read).
+    if (visionCircleCount > 0 && perAxisRoute == 0 &&
+        fogVoxelColumnHidden(ivec3(round(voxelPosition.xyz)))) {
+        return;
+    }
 
     // At cardinalIndex==0 the rotation is the identity; gating it behind a
     // branch keeps the GLSL/MSL compilers from reshuffling instructions or
