@@ -116,6 +116,26 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
             return;
         auto *canvasTextures = texOpt.value();
 
+        // Density compensation (#2043, Option A). The detached canvas rastered its
+        // pool at `renderedSubdivisions_` (cubeSub) — possibly ABOVE the global
+        // effSub when the #1570-D2 footprint cap left room on a generously-sized
+        // canvas. The composite must mirror what the main world canvas does with
+        // effSub (`canvasZoomLevel_ = cameraZoom / effSub`,
+        // system_trixel_to_framebuffer.hpp): divide cubeSub out of the quad
+        // scale + the de-tile gather density so apparent on-screen size and gather
+        // sampling are functions of camera zoom × world extent ONLY, never of the
+        // internal raster resolution. Without it the on-screen extent is
+        // `footprint × cubeSub × fbRes × zoom / mainCanvasSize` — the cubeSub factor
+        // oversizes the solid (the main canvas divides it back out; this path never
+        // got the mirror) — and the gather minifies the cubeSub-density tiles
+        // against a NEAREST 1:1-assuming parity reconstruction (see-through gaps).
+        // cubeSub == 0 (no voxel raster this frame: a pure SDF/text overlay canvas)
+        // or 1 ⇒ densityZoom == cameraZoom and every divide/scale below is identity,
+        // so the existing tight-canvas / cardinal / overlay cases stay byte-identical.
+        const float cubeSubDensity =
+            static_cast<float>(IRMath::max(canvasTextures->renderedSubdivisions_, 1));
+        const vec2 densityZoom = cameraZoom_ / vec2(cubeSubDensity);
+
         // The detached canvas texture is rasterized camera-yaw-zeroed in
         // the entity's own model space (buildVoxelFrameData's detached
         // branch), so its de-tile gather phase is keyed to the entity's
@@ -140,20 +160,25 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
 
         vec2 entityAPos = vec2(normalizedPos.x - 0.5f, 0.5f - normalizedPos.y);
         // Camera sub-pixel offset, SNAPPED to the detached canvas's texel grid
-        // (#1883). The detached canvas is an upscaled pixel-art texture — one of
-        // its texels spans `texelFb` framebuffer px (= one main-canvas trixel,
-        // `fbRes × zoom / mainCanvasSize`). `isoPixelOffset_` is an integer
-        // GAME-px offset, which is texel-aligned for the native-resolution main
-        // canvas (TRIXEL_TO_FRAMEBUFFER) but SUB-texel for this upscaled canvas:
-        // applying it raw shifts the gather's sample point a fraction of a texel,
-        // so the silhouette re-rasterizes every frame and the solid shimmers /
-        // jitters under a smooth camera pan (the world content stays put because
-        // it is texel-aligned). Snapping the offset to whole texels makes the
-        // detached move in clean texel steps — no sub-texel resample, so no
-        // shimmer — while still tracking the world to within half a texel. At an
-        // integer camera offset isoPixelOffset_ is 0, so the snap is a no-op and
-        // static / cardinal frames stay byte-identical.
-        const vec2 texelFb = fbRes_ * cameraZoom_ / mainCanvasSize_;
+        // (#1883), re-expressed for the #2043 density divide. The detached canvas
+        // is an upscaled pixel-art texture — one of its texels spans `texelFb`
+        // framebuffer px: one main-canvas trixel (`fbRes × zoom / mainCanvasSize`)
+        // at cubeSub == 1, and 1/cubeSub of that once the quad scale below divides
+        // cubeSub out (the canvas rasters cubeSub texels per base unit, so each
+        // texel is correspondingly finer). The snap target is the actual canvas
+        // texel, not the base trixel, so it carries the `/cubeSubDensity` divide.
+        // `isoPixelOffset_` is an integer GAME-px offset, which is texel-aligned
+        // for the native-resolution main canvas (TRIXEL_TO_FRAMEBUFFER) but
+        // SUB-texel for this upscaled canvas: applying it raw shifts the gather's
+        // sample point a fraction of a texel, so the silhouette re-rasterizes every
+        // frame and the solid shimmers / jitters under a smooth camera pan (the
+        // world content stays put because it is texel-aligned). Snapping the offset
+        // to whole texels makes the detached move in clean texel steps — no
+        // sub-texel resample, so no shimmer — while still tracking the world to
+        // within half a texel. At an integer camera offset isoPixelOffset_ is 0, so
+        // the snap is a no-op and static / cardinal frames stay byte-identical (as
+        // does the whole expression at cubeSub == 1).
+        const vec2 texelFb = fbRes_ * cameraZoom_ / mainCanvasSize_ / vec2(cubeSubDensity);
         const vec2 texelSteps = isoPixelOffset_ / texelFb;
         const vec2 snappedCamOffset =
             vec2(IRMath::roundHalfUp(texelSteps.x), IRMath::roundHalfUp(texelSteps.y)) * texelFb;
@@ -189,20 +214,36 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         // position, byte-identical to the pre-#1624 default (the epic #1553
         // decision-1 / #1582 Option B contract, superseded as the default by
         // #1624 — see docs/design/detached-canvas-depth-default.md).
+        // The quad SCALE divides cubeSub out via `densityZoom` (= cameraZoom /
+        // cubeSub) so the on-screen extent is `footprint × fbRes × zoom /
+        // mainCanvasSize` — independent of the internal raster resolution and equal
+        // to the GRID twin's apparent size (#2043, Option A). Only the scale carries
+        // the divide; `entityFbCenter` (the placement / translate) keeps full
+        // cameraZoom so the canvas CENTER still tracks the entity's world iso
+        // position. The cube sits at the canvas center (the pool is centered), so
+        // shrinking the quad about entityFbCenter reduces the apparent size without
+        // moving the solid. At cubeSub == 1 densityZoom == cameraZoom (byte-identical).
         mat4 model = translate(mat4(1.0f), vec3(entityFbCenter, 0.0f));
         model = scale(
             model,
             vec3(
-                fbRes_.x * cameraZoom_.x * entityScale.x,
-                fbRes_.y * cameraZoom_.y * entityScale.y,
+                fbRes_.x * densityZoom.x * entityScale.x,
+                fbRes_.y * densityZoom.y * entityScale.y,
                 1.0f
             )
         );
 
         FrameDataTrixelToFramebuffer fd{};
         fd.mpMatrix_ = calcProjectionMatrix(fbRes_) * model;
-        fd.canvasZoomLevel_ = cameraZoom_;
-        fd.cameraTrixelOffset_ = -entityIso;
+        fd.canvasZoomLevel_ = densityZoom;
+        // The de-tile gather parity anchor scales with the raster density, the
+        // direct mirror of the main canvas's `cameraTrixelOffset_ *= effSub`
+        // (system_trixel_to_framebuffer.hpp). `-entityIso` is in base world
+        // units; the canvas rasters cubeSub texels per base unit, so the
+        // `trixelOriginModifier` parity bit (computed from `floor(canvasOffset)` in
+        // the gather) must see the offset in canvas-texel units. At cubeSub == 1
+        // this is unchanged (byte-identical).
+        fd.cameraTrixelOffset_ = -entityIso * vec2(cubeSubDensity);
         fd.textureOffset_ = vec2(0.0f);
         // Composite depth (#1576 P4b-1 mechanics, default since #1624). By
         // default, add the entity's WORLD iso depth so `model rawDist +
@@ -278,7 +319,9 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
                 // pos3DtoDistance(cell) exactly, so the cardinal fast path stays
                 // byte-identical.
                 const int worldDepth = pos3DtoDistanceYawed(
-                    vec3(roundVec3HalfUp(worldTransform.translation_)), visualYaw_);
+                    vec3(roundVec3HalfUp(worldTransform.translation_)),
+                    visualYaw_
+                );
                 compositeDistanceOffset =
                     (cubeSub >= 1) ? worldDepth * effectiveSub_ * kDepthEncodeShift : worldDepth;
             }

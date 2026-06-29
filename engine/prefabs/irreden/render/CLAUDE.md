@@ -551,6 +551,24 @@ GRID cell composite to the same depth (the `detached_world_depth_test`
 equivalence), and keep the `screenLocked_` overlay path byte-identical to the
 pre-#1624 default.
 
+**Density compensation (#2043).** The composite must mirror the main world
+canvas's density compensation: **apparent on-screen size and the de-tile gather
+sampling are functions of camera zoom × world extent only — never of the
+internal raster resolution** (`cubeSub` / `renderedSubdivisions_`). The main
+canvas enforces this with `canvasZoomLevel_ = cameraZoom / effSub`
+(`system_trixel_to_framebuffer.hpp`);
+`ENTITY_CANVAS_TO_FRAMEBUFFER` divides `cubeSub` out of the quad scale (via
+`densityZoom = cameraZoom / cubeSub`) and scales the gather parity anchor up by
+`cubeSub` the same way (`cameraTrixelOffset_ *= cubeSub`). Without it, a
+generously-sized world-placed detached solid that the #1570-D2 footprint cap
+admits at `cubeSub > 1` renders oversized (the `cubeSub` factor leaks into
+on-screen extent) and gappy (the minified `cubeSub`-density tiles alias against
+the NEAREST 1:1-assuming parity reconstruction). Every term is `× cubeSub` /
+`/ cubeSub`, so `cubeSub ≤ 1` (tight canvas, cardinal, overlay) is byte-identical.
+**Depth is independent** — it derives from `rawDist × depthScale`, not the quad
+scale. Full invariant + verify steps:
+[`docs/design/detached-canvas-density-compensation.md`](../../../../docs/design/detached-canvas-density-compensation.md).
+
 ## Gotchas
 
 - **SQT transition complete (T-299/T-300/T-301a/T-302).** All render-side, update-side, and voxel-side readers/writers use `C_LocalTransform` + `C_WorldTransform`. The voxel pool's per-voxel SoA arrays are a dedicated 16-byte `IRRender::VoxelGpuPosition` POD (std430 stride contract). The legacy `C_Position3D` / `C_PositionGlobal3D` / `C_Rotation` components and `SYSTEM_GLOBAL_POSITION_3D` were deleted in T-302; consumers read `C_WorldTransform.translation_` and the SQT quat directly.
