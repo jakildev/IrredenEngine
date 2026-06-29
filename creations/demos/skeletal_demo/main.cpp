@@ -131,7 +131,13 @@ void initSystems() {
     );
 
     if (g_autoWarmupFrames > 0) {
-        constexpr IRVideo::AutoScreenshotShot kShots[] = {
+        // `static`: createAutoScreenshotSystem copies this config into a
+        // process-lifetime CyclingState that keeps the `shots_` POINTER, so the
+        // table must outlive the game loop (auto_screenshot.hpp contract). A
+        // plain function-local `constexpr` array dies at scope exit, leaving
+        // `shots_` dangling → garbage `shot.label_` (null) → fmt crash on the
+        // first capture frame. Static storage duration matches the other demos.
+        static constexpr IRVideo::AutoScreenshotShot kShots[] = {
             {1.0f, vec2(0, 0), 0.0f, "zoom1"},
             {2.0f, vec2(0, 0), 0.0f, "zoom2"},
             {4.0f, vec2(0, 0), 0.0f, "zoom4"},
