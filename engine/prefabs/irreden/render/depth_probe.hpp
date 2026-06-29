@@ -10,40 +10,35 @@
 #include <irreden/render/components/component_trixel_framebuffer.hpp>
 #include <irreden/render/ir_render_types.hpp>
 
-// GPU→CPU composite-depth probe (#1910). A debug-only readback that, for a
-// requested screen pixel, reads the REAL depth-test value stored in the main
-// framebuffer's depth attachment and decodes it to shared trixel-distance
-// units. Because every render path — the cardinal gather
-// (f_trixel_to_framebuffer), the per-axis forward scatter (f_per_axis_scatter),
-// and the detached-canvas composite (ENTITY_CANVAS_TO_FRAMEBUFFER) — writes its
-// winning fragment's `gl_FragDepth` into this one attachment under the GL_LESS
-// depth test, a single readback captures the true composite winner regardless of
-// which path produced the pixel. The detached composite writes depth on BOTH
-// backends — #1957 verified the depth-write state is default-ENABLED when the
-// composite runs (Metal `depthWriteEnabled_`, OpenGL `glDepthMask(GL_TRUE)`) and
-// made that write explicit so it can't silently regress — so the probe reads the
-// detached solid's stored depth on both backends, not just the floor/world
-// behind it. (The earlier "Metal composite is depth-blind — #1884/#1950 Finding
-// 1" reading was a misdiagnosis: the composite participates in depth; where its
-// iso-depth ranks behind the floor it LOSES the test, the #1958 wrong-winner
-// problem, rather than never writing.) That is the reconciled, comparable depth
-// the #1884 "behind-face wins" crossings need diagnosed in real units, and the
-// reason this reads the attachment rather than approximating depth as a shader
-// color output (which loses precision and can't be decoded per-path).
+// GPU→CPU composite-depth probe. A debug-only readback that, for a requested
+// screen pixel, reads the REAL depth-test value stored in the main framebuffer's
+// depth attachment and decodes it to shared trixel-distance units. Because every
+// render path — the cardinal gather (f_trixel_to_framebuffer), the per-axis
+// forward scatter (f_per_axis_scatter), and the detached-canvas composite
+// (ENTITY_CANVAS_TO_FRAMEBUFFER) — writes its winning fragment's `gl_FragDepth`
+// into this one attachment under the GL_LESS depth test, a single readback
+// captures the true composite winner regardless of which path produced the
+// pixel. The detached composite writes depth on BOTH backends (Metal
+// `depthWriteEnabled_`, OpenGL `glDepthMask(GL_TRUE)`), made explicit so it can't
+// silently regress — so the probe reads the detached solid's stored depth, not
+// just the floor/world behind it. Reading the attachment (rather than
+// approximating depth as a shader color output) keeps full precision and lets
+// each path decode its own range.
 //
-// `assertCompositeWritesDepth` is the #1957 regression guard: it turns one
-// readback into a machine-readable PASS/FAIL so a future pass that disables the
-// composite depth-write is caught headlessly (canvas_stress --depth-probe-assert).
+// `assertCompositeWritesDepth` turns one readback into a machine-readable
+// PASS/FAIL so a future pass that disables the composite depth-write is caught
+// headlessly (canvas_stress --depth-probe-assert).
 //
 // Pure readback: it touches no shader and no render state, so a scene with the
 // probe off — or even on — is byte-identical at the pixel level. The cost is a
-// full GPU flush per probed frame (device()->finish(): Metal commit+wait per
-// #1436, GL glFinish), so keep it strictly debug-gated and single-pixel.
+// full GPU flush per probed frame (device()->finish(): Metal commit+wait, GL
+// glFinish), so keep it strictly debug-gated and single-pixel.
 //
 // Lives in the prefab layer (not IRRender::) because it resolves the
 // "mainFramebuffer" prefab entity — engine/render/ owns graphics primitives, not
 // scene entities. The generic depth-texture readback primitive it builds on is
 // `Texture2D::getSubImage2D(..., PixelDataFormat::DEPTH_COMPONENT, FLOAT32, ...)`.
+// See #1910 (design), #1957 (depth-write guard).
 namespace IRPrefab::DepthProbe {
 
 /// Result of a single-pixel composite-depth readback.

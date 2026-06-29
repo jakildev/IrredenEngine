@@ -421,7 +421,13 @@ Remove:
   for the new API`, `// Removed old approach (was X, now Y)`.
   These narrate the diff (which git already shows in the commit
   history) and age into noise once the change is the new normal.
-  Delete; let the commit message carry the change story.
+  Delete; let the commit message carry the change story. **This
+  applies at paragraph / block scale too**, not just one-liners: a
+  multi-line block that traces issue-by-issue history (`#1957
+  verified…`, `was a misdiagnosis`, `Before #X / now Y`, `retired
+  (T-323)`) is the same smell wearing rationale's clothing — most
+  common in render code. Cut the forensic prose, keep the durable
+  invariant, and leave at most a `// see #N` backref.
 - Location-reference narration that points at other code instead of
   explaining why — `// ... (set above)`, `// see below`, `// called
   from X`. Mechanically caught by §2b Check 4; delete the
@@ -431,8 +437,13 @@ Remove:
 - "Old code" markers next to deleted lines.
 
 Keep:
-- Comments that explain non-obvious **why** — rationale, gotchas,
-  cross-references to docs/papers/prior-art decisions.
+- Comments that explain non-obvious **why** — but only *durable*
+  rationale, gotchas, and cross-references that stay true of the code
+  *as it stands*. The test that separates kept rationale from the
+  change-history smell above: would you still write this sentence if
+  the code had always existed in its current form? If yes it's a
+  durable why (keep it); if it only makes sense as a record of how the
+  code changed, it's history (cut to a `// see #N` backref).
 - Doc comments on public surface where the function name alone
   doesn't capture the contract (preconditions, side effects, ranges).
 

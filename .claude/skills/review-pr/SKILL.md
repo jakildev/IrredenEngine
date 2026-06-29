@@ -107,6 +107,13 @@ any `c_compute_*shadow*.glsl` / `.metal`)
   is the single most common slip. A private member that already carries `m_`
   is correct; do **not** flag it (this inversion produced a false-positive nit
   on PR #1706).
+- Block comments that narrate change / investigation history — issue-by-issue
+  forensics, `Before #X / now Y`, `was a misdiagnosis`, `retired (T-323)` —
+  instead of stating a durable invariant. Durable *why* stays; history moves
+  to the commit / PR / a `docs/design/` doc with at most a one-line `// see #N`
+  backref. Single-sourced in
+  [`CLAUDE-BASELINE.md`](../../../docs/agents/CLAUDE-BASELINE.md) §Style; most
+  common in render-pipeline diffs.
 
 **Tests / build**
 - Code change with no corresponding test change where a test existed.

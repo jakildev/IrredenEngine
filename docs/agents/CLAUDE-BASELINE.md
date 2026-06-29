@@ -124,6 +124,21 @@ path, or the API keeps signalling "experimental" when it's the production code
   at the referenced site, not cross-referenced from here. Delete them; if
   the comment carried a genuine WHY, move it to the site it points at.
   (The `simplify` skill's Check 4 greps for these mechanically on new diffs.)
+- **Comments capture durable *why*, not change history.** A comment states
+  what is true of the code *as it stands* — invariants, contracts,
+  conventions, and gotchas a reader needs regardless of how the code got
+  here. It does not narrate the investigation or the diff. Keep *"this is
+  the ONE place the threshold lives, so every consumer derives the same
+  predicate and can't disagree"*; cut *"Before #1882 the gate used
+  `|residual| > deadband`… now Y"*, *"#1957 verified… was a misdiagnosis"*,
+  *"retired (T-323)"*. The test: if the code had always existed in its
+  current form, would you still write this sentence? If no, it's history —
+  it belongs in the commit message, the PR body, or a design doc under
+  `docs/design/` (or `.fleet/plans/T-*.md`), not the source; leave at most a
+  one-token backref (`// see #1910`). This holds at paragraph scale — a
+  30-line block tracing a bug's forensic history is the same smell as a
+  one-line `// now uses the deferred variant`, and is most common in render
+  code.
 - **These style and comment rules apply to the fleet Python surface
   (`scripts/fleet/`) too, not just C++.** PEP8 spacing, import-order, unused
   imports, and bare-`assert`-as-guard are enforced mechanically by **ruff**

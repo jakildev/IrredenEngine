@@ -28,12 +28,9 @@ namespace IRPrefab::Camera {
 // exactly 0 inside it, so every "rotating?" consumer (the per-axis allocation
 // gate in per_axis_canvas.hpp, the render path-select gate in
 // system_voxel_to_trixel.hpp, the FrameDataVoxelToCanvas UBO, the sun-shadow
-// bake's frame patch) derives the same predicate from the same value and
-// cannot disagree. Before #1882 the allocation gate used `|residual| > deadband`
-// while path-select used `residual != 0`; a cardinal whose quat round-trip
-// landed in (0, deadband] freed the per-axis textures yet still routed to the
-// per-axis path, reading freed textures → see-through coverage holes at
-// 90°/180°. Deadbanding at the source closes that gap.
+// bake's frame patch) derives the same predicate from the same value and cannot
+// disagree. A split predicate freed the per-axis textures while the per-axis
+// path still read them, causing see-through coverage holes at 90°/180° (#1882).
 inline constexpr float kResidualYawDeadband = 1e-4f;
 
 /// Decompose a continuous Z-yaw value into (rasterYaw, residualYaw):
