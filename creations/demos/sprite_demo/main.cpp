@@ -39,11 +39,10 @@ void initSystems();
 void initCommands();
 
 int main(int argc, char **argv) {
-    IRVideo::parseAutoScreenshotArgv(argc, argv, &g_autoWarmupFrames);
-
     IR_LOG_INFO("Starting creation: sprite_demo");
     IRSpriteDemoCreation::registerLuaBindings();
-    IREngine::init(argv[0]);
+    IREngine::init(argc, argv);
+    g_autoWarmupFrames = IREngine::args().autoScreenshotWarmupFrames();
     initSystems();
     initCommands();
     IREngine::runScript("main.lua");

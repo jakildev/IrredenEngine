@@ -56,10 +56,9 @@ void initEntities();
 void initSystems();
 
 int main(int argc, char **argv) {
-    IRVideo::parseAutoScreenshotArgv(argc, argv, &g_autoWarmupFrames);
-
     IR_LOG_INFO("Starting creation: lowres_pan");
-    IREngine::init(argv[0]);
+    IREngine::init(argc, argv);
+    g_autoWarmupFrames = IREngine::args().autoScreenshotWarmupFrames();
     initSystems();
     initEntities();
     IRPrefab::Camera::registerStandardKeyboardCommands();

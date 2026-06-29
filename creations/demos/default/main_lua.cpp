@@ -47,7 +47,7 @@ int main(int argc, char **argv) {
     IR_LOG_INFO("Starting creation: default");
 
     IRDefaultCreation::registerLuaBindings();
-    IREngine::init(argv[0]);
+    IREngine::init(argc, argv);
     initSystems();
     IREngine::runScript("commands.lua");
     IREngine::gameLoop();

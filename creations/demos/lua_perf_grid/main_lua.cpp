@@ -132,7 +132,6 @@ void applyCliOverrides() {
 }
 
 void parseArgs(int argc, char **argv) {
-    IRVideo::parseAutoScreenshotArgv(argc, argv, &g_autoWarmupFrames);
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--auto-profile") == 0) {
             g_autoProfileFrames = 300;
@@ -336,9 +335,11 @@ IRSystem::SystemId resolveLuaWaveTickId(IRScript::LuaScript &script) {
     } else {
         const sol::object obj = script.lua()["LuaWaveTickSysId"];
         if (!obj.valid() || !obj.is<lua_Integer>()) {
-            IR_LOG_ERROR("lua_perf_grid: LuaWaveTickSysId missing after main.lua "
-                         "(EVAL build expects IRSystem.registerSystem to return a "
-                         "non-zero SystemId and main.lua to assign it to the global).");
+            IR_LOG_ERROR(
+                "lua_perf_grid: LuaWaveTickSysId missing after main.lua "
+                "(EVAL build expects IRSystem.registerSystem to return a "
+                "non-zero SystemId and main.lua to assign it to the global)."
+            );
             return IRSystem::SystemId{0};
         }
         return static_cast<IRSystem::SystemId>(obj.as<lua_Integer>());
@@ -399,9 +400,7 @@ void registerLuaBindings() {
         const IRSystem::SystemId luaWaveOffsetId =
             IRSystem::createSystem<C_LuaWaveState, C_Modifiers>(
                 "LuaWaveStateToOffset",
-                [](IREntity::EntityId entity,
-                   C_LuaWaveState &wave,
-                   C_Modifiers &mods) {
+                [](IREntity::EntityId entity, C_LuaWaveState &wave, C_Modifiers &mods) {
                     IRPrefab::Modifier::upsertBySourceInPlace(
                         mods,
                         IRPrefab::TransformModifier::translationField(),
@@ -498,7 +497,8 @@ int main(int argc, char **argv) {
                                                                                  : "EVAL"
     );
     registerLuaBindings();
-    IREngine::init(argv[0]);
+    IREngine::init(argc, argv);
+    g_autoWarmupFrames = IREngine::args().autoScreenshotWarmupFrames();
     if (g_autoProfileFrames > 0) {
         IREngine::enableFrameTiming(true);
     }

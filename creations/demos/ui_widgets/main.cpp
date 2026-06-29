@@ -101,9 +101,9 @@ void initCommands();
 void initEntities();
 
 int main(int argc, char **argv) {
-    IRVideo::parseAutoScreenshotArgv(argc, argv, &IRWidgetsDemo::g_autoWarmupFrames);
     IR_LOG_INFO("Starting creation: ui_widgets");
-    IREngine::init(argv[0]);
+    IREngine::init(argc, argv);
+    IRWidgetsDemo::g_autoWarmupFrames = IREngine::args().autoScreenshotWarmupFrames();
     initSystems();
     initCommands();
     initEntities();

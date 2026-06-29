@@ -68,9 +68,9 @@ void initCommands();
 void initEntities();
 
 int main(int argc, char **argv) {
-    IRVideo::parseAutoScreenshotArgv(argc, argv, &IRDockspaceDemo::g_autoWarmupFrames);
     IR_LOG_INFO("Starting creation: ui_dockspace");
-    IREngine::init(argv[0]);
+    IREngine::init(argc, argv);
+    IRDockspaceDemo::g_autoWarmupFrames = IREngine::args().autoScreenshotWarmupFrames();
     initSystems();
     initCommands();
     initEntities();

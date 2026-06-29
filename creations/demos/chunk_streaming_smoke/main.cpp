@@ -73,10 +73,9 @@ void initEntities();
 void runChunkSmokeTest();
 
 int main(int argc, char **argv) {
-    IRVideo::parseAutoScreenshotArgv(argc, argv, &g_autoWarmupFrames);
-
     IR_LOG_INFO("Starting creation: chunk_streaming_smoke");
-    IREngine::init(argv[0]);
+    IREngine::init(argc, argv);
+    g_autoWarmupFrames = IREngine::args().autoScreenshotWarmupFrames();
     initSystems();
     initCommands();
     // Run smoke test before initEntities so the 32768-voxel allocation is
@@ -215,7 +214,8 @@ void runChunkSmokeTest() {
             }
             if (ok) {
                 IR_LOG_INFO(
-                    "[chunk_smoke] PASS: color round-trip verified for {} voxels", kVolumeSize
+                    "[chunk_smoke] PASS: color round-trip verified for {} voxels",
+                    kVolumeSize
                 );
             }
         }
@@ -224,7 +224,10 @@ void runChunkSmokeTest() {
 
     // --- Test 2: clean (non-dirty) chunk must not produce a file ---
     auto cleanKey = IRPrefab::Chunk::pack(IRMath::ivec3{99, 99, 99});
-    IR_ASSERT(!persistence.chunkExists(cleanKey), "Pre-condition: clean chunk coord should have no file");
+    IR_ASSERT(
+        !persistence.chunkExists(cleanKey),
+        "Pre-condition: clean chunk coord should have no file"
+    );
     mgr.requestResident(cleanKey, IRWorld::RequestPriority::FORCED);
     // Intentionally omit markChunkDirty — eviction must skip the save.
     mgr.requestEvict(cleanKey);

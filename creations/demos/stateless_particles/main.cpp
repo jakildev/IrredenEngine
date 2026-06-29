@@ -59,10 +59,6 @@ constexpr IRVideo::AutoScreenshotShot kShots[] = {
 
 int g_autoWarmupFrames = 0;
 
-void parseArgs(int argc, char **argv) {
-    IRVideo::parseAutoScreenshotArgv(argc, argv, &g_autoWarmupFrames);
-}
-
 void configureCanvas() {
     const IREntity::EntityId mainCanvas = IRRender::getActiveCanvasEntity();
     const ivec2 canvasSize = IREntity::getComponent<C_TriangleCanvasTextures>(mainCanvas).size_;
@@ -125,10 +121,9 @@ void initCommands();
 void initEntities();
 
 int main(int argc, char **argv) {
-    parseArgs(argc, argv);
-
     IR_LOG_INFO("Starting creation: stateless_particles");
-    IREngine::init(argv[0]);
+    IREngine::init(argc, argv);
+    g_autoWarmupFrames = IREngine::args().autoScreenshotWarmupFrames();
 
     initSystems();
     initCommands();
