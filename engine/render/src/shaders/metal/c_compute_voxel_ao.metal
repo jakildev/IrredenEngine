@@ -161,13 +161,46 @@ kernel void c_compute_voxel_ao(
             );
         }
 
-        // Only a DIFFERENT visible face counts as an occluder — see the GLSL
-        // twin: a SAME-face neighbour at d ~ 1 is the round-to-cell stair-step
-        // of a rotated voxel surface (the "missing sections" speckle), not a
-        // crease. Flat cardinal faces (d ~ 0) and a single-face per-axis canvas
-        // drop out cleanly.
+        // A DIFFERENT visible face ~1 voxel in front is the classic crease /
+        // contact occluder; a SAME-face neighbour at d ~ 1 is the round-to-cell
+        // stair-step of a rotated voxel surface and is excluded by the slot test.
+        // Flat cardinal faces (d ~ 0, below kAOMinHeight) never reach this gate.
+        // Mirrors the GLSL twin.
         float d = dot(neighbourPos3D - pos3D, worldOutward);
-        if ((neighbourEncoded & 3) != slot && d > kAOMinHeight && d < kAOMaxHeight) occl++;
+        if ((neighbourEncoded & 3) == slot || d <= kAOMinHeight || d >= kAOMaxHeight) continue;
+
+        // Tilt-aware same-face resample (#1718). A re-voxelized / REBUILD_GRID
+        // rotating solid turns a tilted-flat surface into a true voxel staircase
+        // whose tread and riser ARE different faces, so every 1-cell step reads
+        // as a different-face crease at d ~ 1 — the venetian banding. The riser of
+        // a quantized flat and a genuine concave crease (the L-prism notch) are
+        // locally identical here, so the only screen-space signal is whether the
+        // surface RETURNS to the receiver's own face one cell beyond the step: a
+        // monotone staircase continues as the next tread (same slot, still in
+        // front), a real crease meets a multi-cell perpendicular wall that does
+        // not. Single-canvas path only (per-axis holds one face; GRID solids
+        // raster cardinal). Mirrors the GLSL twin.
+        if (!perAxis) {
+            int2 beyondPixel = pixel + 2 * delta;
+            if (beyondPixel.x >= 0 && beyondPixel.x < size.x &&
+                beyondPixel.y >= 0 && beyondPixel.y < size.y) {
+                int beyondEncoded = trixelDistances.read(uint2(beyondPixel)).x;
+                if (beyondEncoded < kEmpty && (beyondEncoded & 3) == slot) {
+                    float3 beyondPos3D = trixelCanvasPixelToWorld3D(
+                        beyondPixel,
+                        beyondEncoded >> 2,
+                        frameData.trixelCanvasOffsetZ1,
+                        frameData.frameCanvasOffset,
+                        frameData.voxelRenderOptions,
+                        cardinalIndex
+                    );
+                    // Next tread steps ~1 voxel further out along the receiver
+                    // normal; a coplanar same-face blip (d ~ 0) keeps its AO.
+                    if (dot(beyondPos3D - pos3D, worldOutward) > kAOMinHeight) continue;
+                }
+            }
+        }
+        occl++;
     }
 
     // Each occluding edge-neighbour darkens by 10%; all four caps at 60%

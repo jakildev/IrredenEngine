@@ -205,17 +205,46 @@ void main() {
             );
         }
 
-        // Only a DIFFERENT visible face counts as an occluder. A real crease or
-        // contact shadow is always two distinct faces meeting; a SAME-face
-        // neighbour at d ~ 1 voxel is the round-to-cell stair-step of a rotated
-        // (tilted-flat) voxel surface, not a crease — counting it darkened every
-        // step edge, the alternating-band speckle that reads as "missing
-        // sections" on rotating solids. Flat cardinal faces are coplanar
-        // (d ~ 0, already rejected by kAOMinHeight) so they are unchanged; a
-        // per-axis canvas holds a single face, so its stair-step-only AO (no
-        // real cross-face crease is visible within one axis canvas) drops out.
+        // A DIFFERENT visible face ~1 voxel in front is the classic crease /
+        // contact occluder; a SAME-face neighbour at d ~ 1 is the round-to-cell
+        // stair-step of a rotated (tilted-flat) surface (the "missing sections"
+        // speckle) and is excluded by the slot test. Flat cardinal faces are
+        // coplanar (d ~ 0, below kAOMinHeight) so they never reach this gate and
+        // the cardinal fast path stays byte-identical.
         float d = dot(neighbourPos3D - pos3D, worldOutward);
-        if ((neighbourEncoded & 3) != slot && d > kAOMinHeight && d < kAOMaxHeight) occl++;
+        if ((neighbourEncoded & 3) == slot || d <= kAOMinHeight || d >= kAOMaxHeight) continue;
+
+        // Tilt-aware same-face resample (#1718). A re-voxelized / REBUILD_GRID
+        // rotating solid turns a tilted-flat surface into a true voxel staircase
+        // whose tread (+Z) and riser (±X/±Y) ARE different faces, so every 1-cell
+        // step reads as a different-face crease at d ~ 1 — the venetian banding.
+        // The riser of a quantized flat and a genuine concave crease (the L-prism
+        // notch) are locally identical here — same face normals, same relative
+        // position — so the only screen-space signal is whether the surface
+        // RETURNS to the receiver's own face one cell beyond the step: a monotone
+        // staircase continues as the next tread (same slot, still in front),
+        // whereas a real crease meets a multi-cell perpendicular wall that does
+        // not. Single-canvas path only — a per-axis canvas holds a single face so
+        // its stair-step AO already drops out, and the GRID solids this targets
+        // raster cardinal (perAxisRoute == 0).
+        if (!perAxis) {
+            ivec2 beyondPixel = pixel + 2 * delta;
+            if (beyondPixel.x >= 0 && beyondPixel.x < size.x &&
+                beyondPixel.y >= 0 && beyondPixel.y < size.y) {
+                int beyondEncoded = imageLoad(trixelDistances, beyondPixel).x;
+                if (beyondEncoded < kEmpty && (beyondEncoded & 3) == slot) {
+                    vec3 beyondPos3D = trixelCanvasPixelToWorld3D(
+                        beyondPixel, beyondEncoded >> 2, trixelCanvasOffsetZ1,
+                        frameCanvasOffset, voxelRenderOptions, cardinalIndex
+                    );
+                    // The next tread steps ~1 voxel further out along the
+                    // receiver normal; a coplanar same-face blip (d ~ 0) is not a
+                    // staircase and must keep its AO.
+                    if (dot(beyondPos3D - pos3D, worldOutward) > kAOMinHeight) continue;
+                }
+            }
+        }
+        occl++;
     }
 
     // Each occluding edge-neighbour darkens by 10%; all four caps at 60%
