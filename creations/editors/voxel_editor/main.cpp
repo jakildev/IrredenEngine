@@ -364,8 +364,6 @@ void onGuiAssertFrame(int shotIndex, bool isCaptureFrame) {
     );
 }
 
-int g_autoWarmupFrames = 0;
-
 // Named-layer state for new placements. Commands below let the user create,
 // select, rename, and hide layers. Set g_sceneVoxelSetEntity after
 // allocating the scene's C_VoxelSetNew so visibility toggles can iterate
@@ -1099,7 +1097,6 @@ void initCommands();
 void initEntities();
 
 int main(int argc, char **argv) {
-    IRVideo::parseAutoScreenshotArgv(argc, argv, &IRVoxelEditor::g_autoWarmupFrames);
     IR_LOG_INFO("Starting creation: voxel_editor");
     IR_LOG_INFO("  Left-drag: AABB box-fill between drag-start and drag-end");
     IR_LOG_INFO("  Shift + left-drag: line-fill along dominant axis");
@@ -1121,7 +1118,7 @@ int main(int argc, char **argv) {
     IR_LOG_INFO("  N: toggle bone-paint mode (click swatch in BONE panel to pick bone)");
     IR_LOG_INFO("  Joint arrows place (re-binds at release); rings FK-pose (live deform)");
     IR_LOG_INFO("  T: set current pose as bind (joint mode)");
-    IREngine::init(argv[0]);
+    IREngine::init(argc, argv);
     initSystems();
     initCommands();
     initEntities();
@@ -2089,9 +2086,9 @@ void initSystems() {
         }
     );
 
-    if (IRVoxelEditor::g_autoWarmupFrames > 0) {
+    if (IREngine::args().autoScreenshotWarmupFrames() > 0) {
         IRVideo::GuiTestConfig cfg{};
-        cfg.warmupFrames_ = IRVoxelEditor::g_autoWarmupFrames;
+        cfg.warmupFrames_ = IREngine::args().autoScreenshotWarmupFrames();
         cfg.settleFrames_ = 3;
         cfg.shots_ = IRVoxelEditor::kGuiTestShots;
         cfg.numShots_ =

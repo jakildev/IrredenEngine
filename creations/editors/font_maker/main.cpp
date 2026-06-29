@@ -41,9 +41,9 @@ void initEntities();
 void initCommands();
 
 int main(int argc, char **argv) {
-    IR_LOG_INFO("Starting creation: YOUR_CREATION_NAME_HERE");
+    IR_LOG_INFO("Starting creation: font_maker");
 
-    IREngine::init(argv[0], IREngine::kTestLuaConfig);
+    IREngine::init(argc, argv, IREngine::kTestLuaConfig);
     initSystems();
     initCommands();
     initEntities();
