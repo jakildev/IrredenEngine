@@ -689,11 +689,19 @@ def main(argv: list[str] | None = None) -> int:
         # Each extra pass must run even when its references don't exist yet —
         # this is exactly how those references get blessed for the first time.
         for extra in extra_runs:
-            _run_capture(
+            crash = _run_capture(
                 worktree=worktree, target=args.target, shots_dir=shots_dir,
                 warmup=extra["warmup"] if extra["warmup"] is not None else warmup,
                 timeout=args.timeout, demo_args=extra["demo_args"],
                 pass_label=extra["name"])
+            if crash is not None:
+                print(
+                    f"[render-verify] --update-references: extra run "
+                    f"'{extra['name']}' crashed (exit {crash[0]}); "
+                    f"references not updated for this pass.",
+                    file=sys.stderr,
+                )
+                return 1
             all_caps = _collect_all_shots(shots_dir)
             sliced = _slice_capture(all_caps, extra["capture_offset"],
                                     len(extra["shots"]), extra["name"])
