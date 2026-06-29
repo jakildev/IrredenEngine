@@ -78,9 +78,6 @@ GHSTUB
 chmod +x "$STUB_DIR/gh"
 export PATH="$STUB_DIR:$PATH"
 
-# Does the edit log have a `gh issue edit <N> ... <pattern>` line?
-edit_has() { grep -qE "(^| )edit ${1}( .*)? ${2}( |$)|(^| )edit ${1} .*${2}" "$EDIT_LOG"; }
-
 echo "=== run fleet-queue-ingest ==="
 bash "$INGEST" >/dev/null 2>&1 || true
 
