@@ -19,9 +19,8 @@ import sys
 import unittest
 from pathlib import Path
 
-# fleet_validate_stack now imports fleet_blocked_by at module level; add
-# scripts/fleet/ to sys.path so exec_module resolves it (the importlib loader
-# does not inherit the CLI wrapper's sys.path.insert).
+# exec_module doesn't inherit the CLI wrapper's sys.path; add scripts/fleet/
+# so fleet_blocked_by resolves when the loader runs.
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 _MODULE = Path(__file__).parent.parent / "fleet_validate_stack.py"
