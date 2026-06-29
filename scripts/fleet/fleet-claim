@@ -1686,14 +1686,18 @@ for issue in issues:
                 same_host_orphan=1
             fi
 
-            local added_epoch
-            added_epoch=$(label_added_epoch "$repo" "$issue_num" "$label_name")
-            [[ "$added_epoch" -eq 0 ]] && continue
-
-            local age=$(( now - added_epoch ))
-            # Orphans skip the age TTL; cross-host / lock-present claims wait it out.
-            if (( same_host_orphan == 0 )) && (( age < claim_issue_stale_secs )); then
-                continue
+            local added_epoch=0
+            local age=0
+            # Orphans skip the age TTL — skip the API call entirely for confirmed
+            # same-host orphans (label_added_epoch is irrelevant to the decision).
+            # Cross-host / lock-present claims wait out the TTL and do need it.
+            if (( same_host_orphan == 0 )); then
+                added_epoch=$(label_added_epoch "$repo" "$issue_num" "$label_name")
+                [[ "$added_epoch" -eq 0 ]] && continue
+                age=$(( now - added_epoch ))
+                if (( age < claim_issue_stale_secs )); then
+                    continue
+                fi
             fi
 
             local pr_state
