@@ -71,7 +71,7 @@ resolve() {
 echo "T1: fable task resolves to fable model"
 write_slice worker '{"tasks_open":[{"issue":"#10","model":"fable","effort":null,"owner":"free","blocked":false}],"feedback_prs":[],"needs_plan":[]}'
 assert_eq "$(resolve worker)" \
-    "class=fable model=claude-fable-5[1m] effort=xhigh more=0 defer=0" \
+    "class=fable model=claude-fable-5[1m] effort=xhigh more=0 defer=0 count=1" \
     "uncapped fable task dispatches on fable at xhigh"
 
 # --- T2: fable cap reached -> next non-fable task ---------------------------
@@ -80,14 +80,14 @@ write_slice worker '{"tasks_open":[{"issue":"#10","model":"fable","effort":null,
 printf '{"role":"worker","pane":"%%9","class":"fable","dispatched_at":"x"}\n' \
     > "$FLEET_STATE_DIR/dispatch/pane-9.json"
 assert_eq "$(resolve worker)" \
-    "class=opus model=claude-opus-4-8[1m] effort=xhigh more=0 defer=0" \
+    "class=opus model=claude-opus-4-8[1m] effort=xhigh more=0 defer=0 count=1" \
     "capped fable skipped; opus task served; cap-blocked fable does NOT hold the trigger (more=0)"
 
 # --- T3: only capped fable work -> defer -------------------------------------
 echo "T3: only cap-blocked fable work defers"
 write_slice worker '{"tasks_open":[{"issue":"#10","model":"fable","effort":null,"owner":"free","blocked":false}],"feedback_prs":[],"needs_plan":[]}'
 out=$(resolve worker)
-assert_eq "$out" "class= model= effort= more=0 defer=1" \
+assert_eq "$out" "class= model= effort= more=0 defer=1 count=" \
     "cap-blocked fable-only slice -> defer (no lane-default burn)"
 rm -f "$FLEET_STATE_DIR/dispatch/pane-9.json"
 
@@ -95,25 +95,25 @@ rm -f "$FLEET_STATE_DIR/dispatch/pane-9.json"
 echo "T4: Effort: override threads through"
 write_slice worker '{"tasks_open":[{"issue":"#10","model":"opus","effort":"medium","owner":"free","blocked":false}],"feedback_prs":[],"needs_plan":[]}'
 assert_eq "$(resolve worker)" \
-    "class=opus model=claude-opus-4-8[1m] effort=medium more=0 defer=0" \
+    "class=opus model=claude-opus-4-8[1m] effort=medium more=0 defer=0 count=1" \
     "task-level Effort: medium beats the class default"
 
 # --- T5: feedback severity routing -------------------------------------------
 echo "T5: nits-only feedback routes sonnet ahead of queued tasks"
 write_slice worker '{"tasks_open":[{"issue":"#10","model":"opus","effort":null,"owner":"free","blocked":false}],"feedback_prs":[{"number":50,"labels":["fleet:approved","fleet:has-nits"]}],"needs_plan":[]}'
 assert_eq "$(resolve worker)" \
-    "class=sonnet model=sonnet effort=high more=1 defer=0" \
+    "class=sonnet model=sonnet effort=high more=1 defer=0 count=1" \
     "has-nits feedback dispatches sonnet; opus task keeps the trigger"
 
 # --- T6: empty slice -> lane default fallthrough ------------------------------
 echo "T6: empty slice falls through to lane default"
 write_slice worker '{"tasks_open":[],"feedback_prs":[],"needs_plan":[]}'
-assert_eq "$(resolve worker)" "class= model= effort= more=0 defer=0" \
+assert_eq "$(resolve worker)" "class= model= effort= more=0 defer=0 count=" \
     "empty slice -> lane-default dispatch (reservation-resume path)"
 
 # --- T7: non-worker role is a no-op ------------------------------------------
 echo "T7: non-worker roles skip class resolution"
-assert_eq "$(resolve merger)" "class= model= effort= more=0 defer=0" \
+assert_eq "$(resolve merger)" "class= model= effort= more=0 defer=0 count=" \
     "merger has no lane class; resolution is a no-op"
 
 echo
