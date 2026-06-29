@@ -65,23 +65,10 @@ vec2 getEffectiveCameraIso() {
     // isoPixelToPos3D(canvasCenterIso - cameraIso, 0)`). `cameraYawPivotOffset`
     // then drift-cancels so screen(F) is yaw-independent. At visualYaw == 0 it
     // returns cameraIso, byte-identical to ORIGIN mode (the cardinal fast path).
-    //
-    // This is the #1942 "exact screen center" pivot. #1944 reverted it to the
-    // legacy #1352 point `isoPixelToPos3D(cameraIso, 0)`, which is the point
-    // MIRRORED across the true screen center (#1942's "~1 trixel off, mirrored"):
-    // the bare-yawed form #1944 paired with it swings the panned scene in an arc
-    // during yaw — the rotation "vibration" reported on shape_debug, which pans
-    // off-origin before yawing (canvas_stress never caught it: it is un-panned, so
-    // every form collapses to cameraIso == 0).
-    //
-    // #1944 reverted because the viewCenter focus is ~1 trixel off origin even
-    // UN-panned, so effective != raw, and the DETACHED entity-canvas composite
-    // (system_entity_canvas_to_framebuffer) placed entities with the RAW
-    // getCameraPosition2DIso() — so detached drifted vs the effective-offset GRID.
-    // That follow-up is now done: the composite consumes getEffectiveCameraIso()
-    // for placement (see system_entity_canvas_to_framebuffer.hpp), so detached and
-    // GRID pivot together and canvas_stress stays aligned through rotation. See
-    // docs/design/camera-yaw-pivot.md.
+    // The DETACHED entity-canvas composite must place entities with
+    // getEffectiveCameraIso() (not the raw camera pos) so detached and GRID pivot
+    // together — see system_entity_canvas_to_framebuffer.hpp. See
+    // docs/design/camera-yaw-pivot.md (#1352, #1942, #1944).
     const ivec2 canvasSize = getRenderManager().getMainCanvasSizeTriangles();
     const vec2 viewCenterIso = vec2(canvasSize) * 0.5f -
                                vec2(IRMath::trixelOriginOffsetZ1(canvasSize)) - cameraIso;
@@ -123,12 +110,11 @@ vec2 getMainCanvasSizeTrixels() {
 
 namespace {
 
-// Residual yaw is folded into faceDeform[] in the trixel emit shaders (T-293);
-// the screen-space residual-rotate stage has been fully retired (T-323). The
-// picking chain therefore needs no residualYaw inverse step. Iso-space picking
-// accuracy at non-cardinal yaws is bounded by the geometric trixel deformation,
-// which is a small per-face offset the picking math doesn't reverse-compose today
-// (follow-up).
+// The picking chain needs no residualYaw inverse step: residual yaw lives in the
+// trixel emit shaders' faceDeform[], not in a screen-space stage. Iso-space
+// picking accuracy at non-cardinal yaws is bounded by the geometric trixel
+// deformation — a small per-face offset the picking math doesn't reverse-compose
+// today (follow-up). See T-293, T-323.
 vec2 mouseCanvasIso() {
     return IRMath::pos2DScreenToPos2DIso(
                IRRender::getMousePositionOutputView(),
@@ -149,9 +135,7 @@ vec2 mousePosition2DIsoWorldRender() {
 
 vec3 mouseWorldPos3DAtIsoDepth(float canvasIsoDepth) {
     // Screen→world picking inverse per `.fleet/plans/T-054.md` (epic #310).
-    // After T-293 the screen-space residual bilinear is gone and residual
-    // yaw lives in the trixel emit shaders' faceDeform[] — the inverse
-    // chain therefore collapses to the rasterYaw half only:
+    // The inverse chain is the rasterYaw half only:
     //   world = R_z(-rasterYaw) · isoPixelToPos3D · screen
     // `mouseCanvasIso()` provides the canvas-frame iso pixel; isoPixelToPos3D
     // recovers the unique 3D point at the requested depth (= rotated.x +
