@@ -535,7 +535,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             );
 
             stage1Program_->use();
-            // STAGE_1 now declares the fog grid (slot 0) + observer (binding 27)
+            // STAGE_1 declares the fog grid (slot 0) + observer (binding 27)
             // inputs for its per-voxel fog clip (#2102). The per-axis route never
             // clips (perAxisRoute != 0 short-circuits it), but the Metal kernel
             // still declares those args, so bind the 1×1 all-visible placeholder

@@ -171,10 +171,10 @@ void emitDeformedFace(
 // True iff this voxel's RAW world column is fully hidden by fog: the grid cell
 // is unexplored AND the column center lies OUTSIDE every live vision circle's
 // disc. Such a column has fog reveal ~0, so rendering its voxel only lets
-// FOG_TO_TRIXEL hard-black the faces — the #2102 black z-faces / top-face gaps
-// / per-column pop. Dropping the voxel here (STAGE_2 inherits the drop via its
-// depth re-test) shows the revealed floor / background behind instead, so the
-// voxel object clips on the SAME analytic curve the floor edge uses.
+// FOG_TO_TRIXEL hard-black the faces. Dropping the voxel here (STAGE_2 inherits
+// the drop via its depth re-test) shows the revealed floor / background behind
+// instead, so the voxel object clips on the SAME analytic curve the floor edge
+// uses. // see #2102
 //
 // This is c_voxel_visibility_compact's drop test taken to the PRECISE radius:
 // the compact keeps a permissive +edgeSoftness+1-cell margin so the per-pixel

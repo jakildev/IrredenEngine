@@ -201,13 +201,11 @@ void drivePlayerWalk() {
 
 // --edge-zoom (#2102 cross-section canary): a STATIC analytic vision circle at
 // the origin with VOXEL objects straddling its boundary, zoomed in so the clip
-// edge fills the frame. The pre-#2102 bug renders the straddling pillar's
-// outside columns as hard BLACK rectangular faces (FOG_TO_TRIXEL blackens the
-// kept-but-outside voxel faces) and the low slab's outside top as a black hole;
-// the fix drops those voxels in VOXEL_TO_TRIXEL_STAGE_1 so the object clips on
-// the SAME smooth analytic arc the SDF floor reveals on. The grid stays
-// all-unexplored, so only the disc reveals — the cleanest read of the
-// voxel-object edge against the floor edge.
+// edge fills the frame. Validates that voxels straddling the disc boundary clip
+// on the SAME smooth analytic arc the SDF floor reveals on — columns outside
+// the disc are dropped in VOXEL_TO_TRIXEL_STAGE_1 so no hard black faces appear
+// at the boundary. The grid stays all-unexplored, so only the disc reveals —
+// the cleanest read of the voxel-object edge against the floor edge.
 bool g_edgeZoom = false; // --edge-zoom
 constexpr float kEdgeVisionRadius = 9.0f;
 
@@ -511,11 +509,10 @@ void initEntities() {
     // --edge-zoom (#2102 cross-section canary): a STATIC analytic vision circle
     // at the origin with VOXEL objects straddling its boundary. Set once here —
     // nothing re-clears it, so it persists across warmup/settle/capture — and
-    // leave the grid all-unexplored so ONLY the disc reveals. The pre-fix bug
-    // rendered the straddling voxels' outside columns as hard black rectangular
-    // faces / top-face holes; the fix drops those columns in STAGE_1 so each
-    // object clips on the SAME disc arc the SDF floor reveals on, with the black
-    // unexplored fog / revealed floor showing through smoothly past the edge.
+    // leave the grid all-unexplored so ONLY the disc reveals. Validates that
+    // straddling columns clip on the SAME disc arc the SDF floor reveals on,
+    // with the unexplored fog / revealed floor showing through smoothly past
+    // the object edge (columns outside the disc are dropped in STAGE_1).
     if (g_edgeZoom) {
         IRPrefab::Fog::setVisionCircle(0.0f, 0.0f, kEdgeVisionRadius);
 
