@@ -29,21 +29,30 @@ The fable concurrency cap is enforced here by *skipping* fable items when
 the cap is reached — the lane then serves its next non-fable item instead
 of idling. When the only work left is non-actionable — cap-blocked fable,
 tasks already covered by an open implementation PR (``inflight_pr``, #1726),
-or backend-specific tasks this host can't run (``needs_gl_host`` on a
-Metal-only host, #1998) — the verdict is ``defer`` (keep the trigger,
-dispatch nothing) rather than an empty result, so the dispatcher doesn't
-burn an iteration on a lane whose only work a fresh worker would refuse.
+a ``blocked`` task with no valid stackable base (the scout left off
+``stackable_blocker_pr`` because the blocker has no open PR or only a
+parked/conflicting one), or backend-specific tasks this host can't run
+(``needs_gl_host`` on a Metal-only host, #1998) — the verdict is ``defer``
+(keep the trigger, dispatch nothing) rather than an empty result, so the
+dispatcher doesn't burn an iteration on a lane whose only work a fresh
+worker would refuse.
 
 Output protocol (one line on stdout, consumed by fleet-dispatcher):
 
-  ``<class> <effort> <more>``  — dispatch this class; ``more`` is 1 when
+  ``<class> <effort> <more> <count>``
+                                  — dispatch this class; ``more`` is 1 when
                                   claimable items of a *different* class
                                   remain (keep the trigger so the next tick
-                                  serves them), else 0.
+                                  serves them), else 0; ``count`` is the number
+                                  of claimable items OF THIS CLASS right now, so
+                                  the dispatcher can cap its fan-out at one
+                                  worker per claimable item instead of one per
+                                  idle pane.
   ``defer``                     — queue isn't empty but nothing is claimable
                                   right now (only cap-blocked fable, tasks with
-                                  an open implementation PR, or GL-only tasks on
-                                  a non-GL host). Keep the trigger; dispatch
+                                  an open implementation PR, a `blocked` task
+                                  with no valid stackable base, or GL-only tasks
+                                  on a non-GL host). Keep the trigger; dispatch
                                   nothing.
   (empty)                       — nothing class-routable in the slice; the
                                   dispatcher falls back to the lane default
@@ -105,29 +114,55 @@ def _task_claimable(task, host):
     # which was starving lower-class work queued behind it (#1726, the #1640 /
     # design-blocked PR #1700 incident). The `needs_gl_host` clause does the
     # same for backend-specific tasks a Metal-only host can't run (#1998).
-    return (
-        task.get("owner") in (None, "", "free")
-        and not task.get("blocked")
-        and not task.get("inflight_pr")
-        and not _host_incompatible(task, host)
+    #
+    # A `blocked` task is claimable ONLY as a stack on its blocker's PR. The
+    # scout sets `stackable_blocker_pr` exactly when that blocker has a single
+    # open, non-parked, non-conflicting PR to base on — the same gate the
+    # worker's stackable tier would otherwise re-run live. So a blocked task
+    # WITH the field is claimable (stack it) and a blocked task WITHOUT it has
+    # no valid base: a fresh worker refuses it on sight, so it's terminally
+    # unclaimable like an inflight task. Electing it here (rather than dropping
+    # to the '' lane-default fallthrough on any blocked task) is what stops the
+    # dispatcher firing no-op iterations whose only "work" is re-deriving the
+    # not-stackable verdict the scout already reached.
+    if task.get("owner") not in (None, "", "free"):
+        return False
+    if task.get("inflight_pr") or _host_incompatible(task, host):
+        return False
+    if task.get("blocked"):
+        return bool(task.get("stackable_blocker_pr"))
+    return True
+
+
+def _terminally_unclaimable(task, host):
+    """True when no dispatch can ever let a fresh worker claim this task as it
+    stands: an open PR already implements it (`inflight_pr`), this host can't
+    build/run/verify it (`needs_gl_host` on a non-GL host, #1998), or it's
+    `blocked` with no valid stackable base (the scout omits
+    `stackable_blocker_pr` when the blocker has no open PR or only a
+    parked/conflicting one). Each clears only via a merge, a host change, or a
+    design answer — never via dispatching a worker — so a queue of only these is
+    a no-op to dispatch into."""
+    return bool(
+        task.get("inflight_pr")
+        or _host_incompatible(task, host)
+        or (task.get("blocked") and not task.get("stackable_blocker_pr"))
     )
 
 
 def _only_unclaimable_tasks(slice_data, host):
-    """True when tasks_open is non-empty and EVERY item is non-actionable for a
-    *terminal* reason — an open PR already implements it (`inflight_pr`) or this
-    host can't build/run/verify it (`needs_gl_host` on a non-GL host, #1998).
+    """True when tasks_open is non-empty and EVERY item is terminally
+    unclaimable (see `_terminally_unclaimable`).
 
     Used to pick 'go quiet' (defer) over the lane-default dispatch fallthrough:
     in this shape a fresh worker can claim nothing, so a dispatch is a no-op.
-    Requiring *all* items to be terminally-unclaimable keeps a mixed slice (a
-    terminal head plus a stackable `blocked` but host-compatible task behind it)
-    on the '' fallthrough so the worker's stackable tier still gets its dispatch.
-    """
+    Requiring *all* items to be terminal keeps a mixed slice — a terminal head
+    plus an owner-held or otherwise non-terminal task — on the '' fallthrough so
+    reservation resumes and the like still get their dispatch. A genuinely
+    stackable `blocked` task is NOT terminal (it carries `stackable_blocker_pr`)
+    and is elected as a candidate above, so it never reaches this gate."""
     tasks = slice_data.get("tasks_open") or []
-    return bool(tasks) and all(
-        t.get("inflight_pr") or _host_incompatible(t, host) for t in tasks
-    )
+    return bool(tasks) and all(_terminally_unclaimable(t, host) for t in tasks)
 
 
 def feedback_pr_class(labels):
@@ -156,32 +191,47 @@ def feedback_pr_class(labels):
 def _candidates(slice_data, lane_default, host):
     """Yield (class, effort) for each actionable item, pickup-priority order.
 
-    Feedback PRs come first regardless of count — mirrors the worker role
-    docs, which fix review feedback before claiming new queue work.
+    Feedback PRs come first (the worker fixes review feedback before new work),
+    then unblocked open tasks, then stackable `blocked` tasks (a fallback tier,
+    claimable only as a stack on the blocker's PR), then needs_plan. This
+    mirrors the worker role docs so the *elected* class matches what the worker
+    actually picks up, and one yield per item lets the caller count claimable
+    work per class for the dispatcher's fan-out cap.
+
+    needs_plan yields once regardless of how many issues await planning:
+    planning has no claim lock (sibling panes would re-plan the same issue), so
+    the lane plans one at a time — the next planner fires after the first opens
+    its plan-doc PR.
     """
-    for pr in slice_data.get("feedback_prs", []) or []:
-        cls = feedback_pr_class(pr.get("labels", []))
-        yield cls, CLASS_DEFAULT_EFFORT[cls]
-    for task in slice_data.get("tasks_open", []) or []:
-        if not _task_claimable(task, host):
-            continue
+    def _class_effort(task):
         cls = (task.get("model") or lane_default).lower()
         if cls not in CLASS_DEFAULT_EFFORT:
             cls = lane_default
-        effort = task.get("effort") or CLASS_DEFAULT_EFFORT[cls]
-        yield cls, effort
+        return cls, task.get("effort") or CLASS_DEFAULT_EFFORT[cls]
+
+    for pr in slice_data.get("feedback_prs", []) or []:
+        cls = feedback_pr_class(pr.get("labels", []))
+        yield cls, CLASS_DEFAULT_EFFORT[cls]
+    tasks = slice_data.get("tasks_open", []) or []
+    for task in tasks:
+        if _task_claimable(task, host) and not task.get("blocked"):
+            yield _class_effort(task)
+    for task in tasks:
+        if _task_claimable(task, host) and task.get("blocked"):
+            yield _class_effort(task)
     if slice_data.get("needs_plan"):
         yield "opus", CLASS_DEFAULT_EFFORT["opus"]
 
 
 def resolve(slice_data, lane_default, fable_blocked):
-    """Return 'cls effort more', 'defer', or '' per the output protocol."""
+    """Return 'cls effort more count', 'defer', or '' per the output protocol."""
     if lane_default not in CLASS_DEFAULT_EFFORT:
         lane_default = "opus"
     host = _current_host()
     chosen = None
     skipped_fable = False
     servable_classes = set()
+    class_counts = {}
     for cls, effort in _candidates(slice_data, lane_default, host):
         if cls == "fable" and fable_blocked:
             # Cap-blocked fable is not currently servable: don't let it
@@ -193,11 +243,18 @@ def resolve(slice_data, lane_default, fable_blocked):
             skipped_fable = True
             continue
         servable_classes.add(cls)
+        class_counts[cls] = class_counts.get(cls, 0) + 1
         if chosen is None:
             chosen = (cls, effort)
     if chosen is not None:
         more = 1 if servable_classes - {chosen[0]} else 0
-        return f"{chosen[0]} {chosen[1]} {more}"
+        # `count` = claimable items of the elected class right now. The
+        # dispatcher caps its idle-pane fan-out to this so it never spins up
+        # more workers of a class than there is work for them to claim (the
+        # surplus would only iterate-and-exit, a no-op opus iteration is not
+        # free). `more` still drives the *other-class* follow-up dispatch.
+        count = class_counts[chosen[0]]
+        return f"{chosen[0]} {chosen[1]} {more} {count}"
     if skipped_fable:
         return "defer"
     # Nothing servable AND no cap-blocked fable. If the queue's only content is

@@ -203,6 +203,16 @@
 # disable (single-pane / test setups).
 # FLEET_DISPATCH_MIN_GAP_SECONDS=8
 #
+# FLEET_DISPATCHER_CLAIM_SETTLE_SECONDS bounds the claimable-count fan-out cap:
+# the worker lane launches at most one worker per claimable item of the elected
+# class, and a just-dispatched worker counts against that cap only until its
+# dispatch record is this many seconds old (after which it has settled onto
+# claimed work and stops competing for the remaining items). Sized to cover a
+# claude cold start + state read + claim. Raise it if workers routinely take
+# longer to claim (the fleet briefly under-dispatches to remaining slots);
+# lower it if you want freed slots refilled faster. Default 90.
+# FLEET_DISPATCHER_CLAIM_SETTLE_SECONDS=90
+#
 # FLEET_DISPATCHER_RATE429_DELAY is the per-pane cooldown applied after a
 # short-window 429 *failure* (claude exhausted its internal retries). It is
 # deliberately much shorter than FLEET_DISPATCHER_LIMIT_DELAY (the usage /
