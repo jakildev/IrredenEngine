@@ -247,9 +247,8 @@ void Parser::parse(int argc, char **argv) {
         case Type::OPTIONAL_INT:
             // An inline value is taken verbatim; otherwise consume the next
             // token only when it reads as a positive integer, leaving it for the
-            // loop otherwise. Mirrors the historical parseAutoScreenshotArgv peek
-            // so existing command lines are byte-identical (the bare default
-            // stays in intValue_).
+            // loop otherwise (existing command lines are byte-identical; the bare
+            // default stays in intValue_).
             if (hasInline) {
                 e->intValue_ = std::atoi(inlineValue.c_str());
             } else if (i + 1 < argc) {
