@@ -38,6 +38,7 @@ enum class Type {
     FLOAT,        // takes a float value                (--zoom 4.0)
     STRING,       // takes a string value               (--config-preset path.lua)
     OPTIONAL_INT, // switch with an optional trailing int (--auto-screenshot [frames])
+    FLOAT_LIST,   // takes a fixed count of float values  (--sweep-yaw 0 360 8)
 };
 
 // Which built-in args the constructor pre-registers. ENGINE (the default) adds
@@ -81,6 +82,14 @@ class Parser {
     Parser &optionalInt(
         const char *name, const char *help, int defaultIfBare, const char *shortAlias = nullptr
     );
+    // A flag that consumes exactly `count` float values, given space-separated
+    // ("--sweep-yaw 0 360 8") or as one comma-separated inline token
+    // ("--sweep-yaw=0,360,8"). `count` must be positive; too few values (or a
+    // wrong inline count) is a parse error. Read back with getFloats(); each
+    // value defaults to 0 until provided. Integer-valued slots are recovered by
+    // the caller via static_cast<int> on the float.
+    Parser &
+    numbers(const char *name, const char *help, int count, const char *shortAlias = nullptr);
 
     // Positional arguments (ordered, no leading dash). Register one fixed
     // positional with `positional`; declare a trailing variable-count tail with
@@ -103,6 +112,10 @@ class Parser {
     int getInt(const char *name) const;
     float getFloat(const char *name) const;
     std::string getString(const char *name) const;
+    // The `count` floats bound to a FLOAT_LIST arg (registered via numbers()),
+    // in command-line order. Returns the registered all-zero defaults when the
+    // arg was not supplied.
+    const std::vector<float> &getFloats(const char *name) const;
 
     // True when the arg appeared on the command line (vs. resolved to its
     // default). The honest "present?" signal for OPTIONAL_INT switches such as
@@ -137,6 +150,8 @@ class Parser {
         int intValue_ = 0;
         float floatValue_ = 0.0f;
         std::string stringValue_;
+        std::vector<float> floatValues_; // FLOAT_LIST values (sized to listCount_)
+        int listCount_ = 0;              // FLOAT_LIST arity
         bool provided_ = false;
     };
 

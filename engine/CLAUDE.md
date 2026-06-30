@@ -31,10 +31,11 @@ GL / Metal init, so `--help` is instant and headless-safe.
   code at all, read back via `IREngine::args().autoScreenshotWarmupFrames()` /
   `IREngine::args().configPreset()`.
 - **Custom flags?** Register them on `IREngine::args()` (`.flag` / `.integer` /
-  `.number` / `.string` / `.optionalInt`) **before** `IREngine::init(argc,
-  argv)`, then read them back via `IREngine::args().getFlag(...)` etc. The
-  single engine parse covers common + custom flags, so `--help` aggregates
-  everything.
+  `.number` / `.string` / `.optionalInt` / `.numbers` for a fixed-count float
+  list like `--sweep-yaw <from> <to> <n>`) **before** `IREngine::init(argc,
+  argv)`, then read them back via `IREngine::args().getFlag(...)` /
+  `.getFloats(...)` etc. The single engine parse covers common + custom flags,
+  so `--help` aggregates everything.
 - **Standalone tool (no engine loop)?** Construct your own
   `IRArgs::Parser(desc, IRArgs::Common::NONE)` — that drops the engine-common
   args (so `--help` advertises only the tool's flags) and lets you declare

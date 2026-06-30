@@ -36,8 +36,6 @@
 
 #include <array>
 #include <cstdio>
-#include <cstring>
-#include <cstdlib>
 #include <vector>
 
 // COMPONENTS
@@ -154,31 +152,40 @@ void initCommands();
 void initEntities();
 
 int main(int argc, char **argv) {
-    for (int i = 1; i < argc; ++i) {
-        if (std::strcmp(argv[i], "--spin-yaw") == 0) {
-            g_spinYawDegPerSec = 30.0f;
-            if (i + 1 < argc) {
-                float v = static_cast<float>(std::atof(argv[i + 1]));
-                if (v > 0.0f) {
-                    g_spinYawDegPerSec = v;
-                    ++i;
-                }
-            }
-        } else if (std::strcmp(argv[i], "--zoom") == 0) {
-            if (i + 1 < argc) {
-                float z = static_cast<float>(std::atof(argv[i + 1]));
-                if (z > 0.0f) {
-                    g_initialZoom = z;
-                    ++i;
-                }
-            }
-        } else if (std::strcmp(argv[i], "--yaw") == 0) {
-            if (i + 1 < argc) {
-                g_initialYawRadians = static_cast<float>(std::atof(argv[i + 1]));
-                g_initialYawSet = true;
-                ++i;
-            }
+    // Register custom flags on the engine-owned parser before init, which runs
+    // the single strict parse of engine-common + these flags (see
+    // engine/CLAUDE.md "CLI args go through IRArgs"). --spin-yaw mirrors
+    // shape_debug: an optional-int rate, default 30 when bare. Values read back
+    // AFTER init so the warmup-reinterpret sees the parsed --auto-screenshot
+    // count.
+    IRArgs::Parser &args = IREngine::args();
+    args.optionalInt(
+        "--spin-yaw",
+        "Drive camera Z-yaw (deg/sec live, default 30; shot-count across one rotation when "
+        "combined with --auto-screenshot)",
+        30
+    );
+    args.number("--zoom", "Override the initial camera zoom (> 0)", 0.0f);
+    args.number("--yaw", "Park the camera at a fixed Z-yaw, radians", 0.0f);
+
+    IR_LOG_INFO("Starting creation: ir_voxel_yaw");
+    IREngine::init(argc, argv);
+
+    g_autoWarmupFrames = args.autoScreenshotWarmupFrames();
+    // --spin-yaw: 0 (disabled) when absent, else the rate (30 if bare); the
+    // optional value reads as an int, so fractional deg/sec is truncated.
+    if (args.wasProvided("--spin-yaw")) {
+        g_spinYawDegPerSec = static_cast<float>(args.getInt("--spin-yaw"));
+    }
+    if (args.wasProvided("--zoom")) {
+        const float zoom = args.getFloat("--zoom");
+        if (zoom > 0.0f) {
+            g_initialZoom = zoom;
         }
+    }
+    if (args.wasProvided("--yaw")) {
+        g_initialYawRadians = args.getFloat("--yaw");
+        g_initialYawSet = true;
     }
 
     // --spin-yaw + --auto-screenshot: reinterpret the screenshot value as
@@ -192,10 +199,6 @@ int main(int argc, char **argv) {
             g_spinYawShotCount
         );
     }
-
-    IR_LOG_INFO("Starting creation: ir_voxel_yaw");
-    IREngine::init(argc, argv);
-    g_autoWarmupFrames = IREngine::args().autoScreenshotWarmupFrames();
     initSystems();
     initCommands();
     initEntities();

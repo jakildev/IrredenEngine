@@ -22,8 +22,6 @@
 #include <irreden/common/command_suite_capture.hpp>
 
 #include <cstdint>
-#include <cstdlib>
-#include <cstring>
 #include <list>
 
 using namespace IRComponents;
@@ -44,16 +42,6 @@ constexpr IRVideo::AutoScreenshotShot kShots[] = {
 
 int g_autoWarmupFrames = 0;
 int g_spawnsPerFrame = 0; // T-159 continuous-emitter verification knob
-
-void parseArgs(int argc, char **argv) {
-    for (int i = 1; i < argc; ++i) {
-        if (std::strcmp(argv[i], "--spawns-per-frame") == 0 && i + 1 < argc) {
-            const int n = std::atoi(argv[i + 1]);
-            g_spawnsPerFrame = n < 0 ? 0 : n;
-            ++i;
-        }
-    }
-}
 
 void seedParticles() {
     for (int i = 0; i < kInitialParticleCount; ++i) {
@@ -103,11 +91,20 @@ void initCommands();
 void initEntities();
 
 int main(int argc, char **argv) {
-    parseArgs(argc, argv);
+    // Register the custom flag on the engine-owned parser before init, which
+    // runs the single strict parse (engine-common + this) — see engine/CLAUDE.md
+    // "CLI args go through IRArgs".
+    IREngine::args().integer(
+        "--spawns-per-frame",
+        "Continuous emitter: particles spawned per frame (T-159)",
+        0
+    );
 
     IR_LOG_INFO("Starting creation: gpu_particles");
     IREngine::init(argc, argv);
     g_autoWarmupFrames = IREngine::args().autoScreenshotWarmupFrames();
+    const int spawnsPerFrame = IREngine::args().getInt("--spawns-per-frame");
+    g_spawnsPerFrame = spawnsPerFrame < 0 ? 0 : spawnsPerFrame;
 
     initSystems();
     initCommands();
