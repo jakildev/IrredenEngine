@@ -45,7 +45,10 @@ std::string placeholderFor(Type type, int listCount) {
 }
 
 // Parse exactly `count` comma-separated floats from an inline "--name=a,b,c"
-// value into `out`. Returns false when the token count doesn't match.
+// value into `out`. Returns false when the token count doesn't match. A
+// trailing comma (e.g. "8,") parses its empty tail as 0.0 rather than being
+// rejected — count still matches, so this is accepted as malformed input
+// (mirrors the equivalent pre-existing ambiguity in the space-separated form).
 bool splitInlineFloatList(const std::string &value, int count, std::vector<float> &out) {
     out.clear();
     std::size_t start = 0;
