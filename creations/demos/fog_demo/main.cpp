@@ -255,6 +255,25 @@ constexpr IRVideo::AutoScreenshotShot kDetachedEdgeShots[] = {
     {9.0f, vec2(0, 0), 0.0f, "fog_detached_edge_zoom9"},
 };
 
+// --edge-smooth (#2126 Mode B): the SAME boundary-straddling voxel scene as
+// --edge-zoom, but the vision circle carries a wide edge softness so the reveal
+// has a SMOOTH analytic band, not a hard column-quantized edge. P1's per-voxel
+// own-column drop (#2102) culls any column with reveal < 0.5, which pins the
+// object silhouette to the binary radius while the floor fades past it on the
+// soft band; P2 drops only FULLY-hidden columns (reveal <= 0) so the partially-
+// revealed boundary columns rasterize and FOG_TO_TRIXEL fades the object's
+// silhouette + cut wall on the same curve as the floor. This is the before/after
+// surface for the P2 fix; same geometry + camera as --edge-zoom so a side-by-side
+// reads the smooth silhouette directly.
+bool g_edgeSmooth = false;              // --edge-smooth
+constexpr float kEdgeSmoothEdge = 3.0f; // world-unit soft-band half-width (≫ the 1-cell lattice)
+
+constexpr IRVideo::AutoScreenshotShot kEdgeSmoothShots[] = {
+    {5.0f, vec2(0, 0), 0.0f, "fog_edge_smooth5"},
+    {9.0f, vec2(0, 0), 0.0f, "fog_edge_smooth9"},
+    {14.0f, vec2(0, 0), 0.0f, "fog_edge_smooth14"},
+};
+
 } // namespace
 
 void initSystems();
@@ -288,27 +307,45 @@ int main(int argc, char **argv) {
         "DETACHED_REVOXELIZE solid (#2127 detached cross-section); skips the "
         "static grid reveal"
     );
+    IREngine::args().flag(
+        "--edge-smooth",
+        "Like --edge-zoom but with a wide soft vision-circle band (#2126 Mode B "
+        "smooth cross-section) so the cut wall follows the analytic disc edge"
+    );
     IREngine::init(argc, argv);
     g_autoWarmupFrames = IREngine::args().autoScreenshotWarmupFrames();
     g_movingObserver = IREngine::args().getFlag("--moving-observer");
     g_playerWalk = IREngine::args().getFlag("--player-walk");
     g_edgeZoom = IREngine::args().getFlag("--edge-zoom");
     g_detachedEdge = IREngine::args().getFlag("--detached-edge");
-    // The reveal modes are mutually exclusive; --detached-edge wins, then
-    // --edge-zoom, then --player-walk, then --moving-observer (each owns its own
-    // scene + shots).
-    if (g_detachedEdge && (g_edgeZoom || g_playerWalk || g_movingObserver)) {
-        IR_LOG_INFO("--detached-edge overrides --edge-zoom / --player-walk / --moving-observer");
+    g_edgeSmooth = IREngine::args().getFlag("--edge-smooth");
+    // The reveal modes are mutually exclusive; precedence: --detached-edge, then
+    // --edge-zoom, then --edge-smooth, then --player-walk, then --moving-observer
+    // (each owns its own scene + shots).
+    if (g_detachedEdge) {
+        if (g_edgeZoom || g_edgeSmooth || g_playerWalk || g_movingObserver) {
+            IR_LOG_INFO(
+                "--detached-edge overrides --edge-zoom / --edge-smooth / --player-walk / --moving-observer"
+            );
+        }
         g_edgeZoom = false;
+        g_edgeSmooth = false;
         g_playerWalk = false;
         g_movingObserver = false;
-    }
-    if (g_edgeZoom && (g_playerWalk || g_movingObserver)) {
-        IR_LOG_INFO("--edge-zoom overrides --player-walk / --moving-observer");
+    } else if (g_edgeZoom) {
+        if (g_edgeSmooth || g_playerWalk || g_movingObserver) {
+            IR_LOG_INFO("--edge-zoom overrides --edge-smooth / --player-walk / --moving-observer");
+        }
+        g_edgeSmooth = false;
         g_playerWalk = false;
         g_movingObserver = false;
-    }
-    if (g_playerWalk && g_movingObserver) {
+    } else if (g_edgeSmooth) {
+        if (g_playerWalk || g_movingObserver) {
+            IR_LOG_INFO("--edge-smooth overrides --player-walk / --moving-observer");
+        }
+        g_playerWalk = false;
+        g_movingObserver = false;
+    } else if (g_playerWalk && g_movingObserver) {
         IR_LOG_INFO(
             "--player-walk and --moving-observer are mutually exclusive; ignoring --moving-observer"
         );
@@ -411,15 +448,19 @@ void initSystems() {
         IRVideo::AutoScreenshotConfig cfg{};
         cfg.warmupFrames_ = g_autoWarmupFrames;
         cfg.settleFrames_ = 3;
-        // --detached-edge zooms on a detached-canvas cross-section; --edge-zoom
-        // on the GRID cross-section clip edge; --player-walk captures the walking
-        // reveal sequence; the default captures the three static fog-boundary shots.
+        // --detached-edge zooms on a detached-canvas cross-section; --edge-zoom /
+        // --edge-smooth on the GRID cross-section clip edge (hard vs smooth disc);
+        // --player-walk captures the walking reveal sequence; the default captures
+        // the three static fog-boundary shots.
         if (g_detachedEdge) {
             cfg.shots_ = kDetachedEdgeShots;
             cfg.numShots_ = sizeof(kDetachedEdgeShots) / sizeof(kDetachedEdgeShots[0]);
         } else if (g_edgeZoom) {
             cfg.shots_ = kEdgeShots;
             cfg.numShots_ = sizeof(kEdgeShots) / sizeof(kEdgeShots[0]);
+        } else if (g_edgeSmooth) {
+            cfg.shots_ = kEdgeSmoothShots;
+            cfg.numShots_ = sizeof(kEdgeSmoothShots) / sizeof(kEdgeSmoothShots[0]);
         } else if (g_playerWalk) {
             cfg.shots_ = kWalkShots;
             cfg.numShots_ = sizeof(kWalkShots) / sizeof(kWalkShots[0]);
@@ -457,11 +498,12 @@ void initEntities() {
     );
 
     // The default + --moving-observer scenes dress the floor with SDF primitives
-    // and the #2008 column-cull pillar canary. --player-walk, --edge-zoom, and
-    // --detached-edge skip ALL of them: each wants a clean floor so its own content
-    // (the gliding disc + marker / the boundary-straddling voxel objects) reads
-    // clearly without the tall shapes' iso-projected tops poking through the disc.
-    if (!g_playerWalk && !g_edgeZoom && !g_detachedEdge) {
+    // and the #2008 column-cull pillar canary. --player-walk / --edge-zoom /
+    // --edge-smooth / --detached-edge skip ALL of them: each wants a clean floor so
+    // its own content (the gliding disc + marker / the boundary-straddling voxel
+    // objects) reads clearly without the tall shapes' iso-projected tops poking
+    // through the disc.
+    if (!g_playerWalk && !g_edgeZoom && !g_edgeSmooth && !g_detachedEdge) {
         // A few simple SDF primitives sitting on the floor inside the visible
         // circle, so the bright (visible) region has recognizable content.
         createShape(
@@ -577,19 +619,24 @@ void initEntities() {
         return;
     }
 
-    // --edge-zoom (#2125 filled cross-section; #2124 P1): a STATIC analytic vision
-    // circle at the origin with VOXEL objects straddling its boundary. Set once
-    // here — nothing re-clears it, so it persists across warmup/settle/capture —
-    // and leave the grid all-unexplored so ONLY the disc reveals. Validates the
-    // cut-face cross-section: the hidden half of each object is dropped (#2102
-    // own-column clip) and the revealed half caps with a FILLED interior wall
-    // (#2125 cut face) wherever a revealed boundary voxel faces a fog-hidden
-    // neighbor column — no see-through hole, no black wedge. Cut faces appear only
-    // on CAMERA-VISIBLE cut surfaces (cardinal yaw 0 sees -X/-Y/-Z), so the green
-    // slab's -X cut shows its wall while the pillars' +X/+Y cuts fall on back
-    // faces and read as a clean end.
-    if (g_edgeZoom) {
-        IRPrefab::Fog::setVisionCircle(0.0f, 0.0f, kEdgeVisionRadius);
+    // --edge-zoom (#2125 filled cross-section; #2124 P1) and --edge-smooth (#2126
+    // P2 Mode B): a STATIC analytic vision circle at the origin with VOXEL objects
+    // straddling its boundary. Set once here — nothing re-clears it, so it persists
+    // across warmup/settle/capture — and leave the grid all-unexplored so ONLY the
+    // disc reveals. Validates the cut-face cross-section: the hidden half of each
+    // object is dropped (#2102 own-column clip) and the revealed half caps with a
+    // FILLED interior wall (#2125 cut face) wherever a revealed boundary voxel faces
+    // a fog-hidden neighbor column — no see-through hole, no black wedge. Cut faces
+    // appear only on CAMERA-VISIBLE cut surfaces (cardinal yaw 0 sees -X/-Y/-Z), so
+    // the green slab's -X cut shows its wall while the pillars' +X/+Y cuts fall on
+    // back faces and read as a clean end.
+    if (g_edgeZoom || g_edgeSmooth) {
+        // --edge-zoom is the hard-disc binary cut (Mode A, edgeSoftness 0);
+        // --edge-smooth uses a wide soft band (Mode B, #2126) over the IDENTICAL
+        // geometry so the cut wall follows the analytic disc instead of stair-
+        // stepping at the column boundary. The soft band is the only difference.
+        const float edge = g_edgeSmooth ? kEdgeSmoothEdge : kFogVisionEdgeDefault;
+        IRPrefab::Fog::setVisionCircle(0.0f, 0.0f, kEdgeVisionRadius, edge);
 
         // Tall voxel pillar straddling the +X boundary: columns x∈[7,11] cross
         // the radius-9 disc, so its near half renders and its far half is dropped.
