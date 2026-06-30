@@ -167,24 +167,26 @@ your branch has modified (committed vs `@{upstream}` plus working
 tree). The bare `format` target rewrites every formattable file in the
 repo and should only run on intentional cleanup PRs.
 
-### Python (fleet scripts)
+### Python (scripts)
 
-The fleet automation under `scripts/fleet/` is linted by **ruff** — the
-Python analogue of `clang-format`/`clang-tidy`. After touching any fleet
-script, run the canonical check before committing (the CI `Python lint`
-step in `.github/workflows/quality.yml` gates it on every PR):
+Everything under `scripts/` — the fleet automation plus the render / perf /
+gui harnesses — is linted by **ruff**, the Python analogue of
+`clang-format`/`clang-tidy`. After touching any Python script, run the
+canonical check before committing (the CI `Python lint` step in
+`.github/workflows/quality.yml` gates it on every PR):
 
 ```bash
-ruff check scripts/fleet/          # PEP8 + import-order + unused + bare-assert
-ruff check --fix scripts/fleet/    # autofix import-order / unused imports
+ruff check scripts/          # PEP8 + import-order + unused + bare-assert
+ruff check --fix scripts/    # autofix import-order / unused imports
 ```
 
 `ruff.toml` at the repo root pins the rules and the file set (it enumerates
 the extension-less Python executables explicitly, since the largest fleet
 scripts — `fleet-claim`, `fleet-dispatcher`, `fleet-up`, … — are bash, not
-Python). ruff is installed by the bootstrap scripts (`brew install ruff` on
-macOS, `pipx install ruff` on Linux, `pacman -S mingw-w64-x86_64-ruff` on
-Windows/MSYS2).
+Python; the non-fleet harnesses all carry a `.py` extension and are
+auto-discovered). ruff is installed by the bootstrap scripts (`brew install
+ruff` on macOS, `pipx install ruff` on Linux, `pacman -S
+mingw-w64-x86_64-ruff` on Windows/MSYS2).
 
 ---
 

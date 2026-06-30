@@ -12,10 +12,9 @@ Usage:
 
 import re
 import subprocess
-import sys
-from pathlib import Path
 
-# Pattern: GUI-ASSERT shot=<N> label=<lbl> kind=<K> target=<eid> name=<tag> result=PASS|FAIL actual=<val>
+# Pattern: GUI-ASSERT shot=<N> label=<lbl> kind=<K> target=<eid> name=<tag>
+#          result=PASS|FAIL actual=<val>
 _GUI_ASSERT_RE = re.compile(
     r"GUI-ASSERT\s+"
     r"shot=(\S+)\s+"

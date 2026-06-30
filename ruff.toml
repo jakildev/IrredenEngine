@@ -1,15 +1,17 @@
-# Ruff lint config for the fleet Python surface (scripts/fleet/).
+# Ruff lint config for the repo's Python surface (all of scripts/).
 #
-# The fleet automation is a large, growing body of Python that the C++-only
-# quality surface (clang-format + the simplify-* subagents) never covered, so
-# PEP8 / import-order nits slipped through to review. Ruff is the Python
-# analogue: one fast single-binary pass over scripts/fleet/, gated in CI
-# (.github/workflows/quality.yml) and run author-side before commit.
+# The fleet automation plus the render / perf / gui harnesses are a large,
+# growing body of Python that the C++-only quality surface (clang-format + the
+# simplify-* subagents) never covered, so PEP8 / import-order nits slipped
+# through to review. Ruff is the Python analogue: one fast single-binary pass
+# over scripts/, gated in CI (.github/workflows/quality.yml) and run
+# author-side before commit.
 #
-# Canonical invocation: `ruff check scripts/fleet/` (this file pins the rules
-# and the file set; the path argument pins the v1 scope). v1 scope is
-# scripts/fleet/ only; extending to the rest of scripts/ (render / perf / gui
-# harnesses) is a tracked follow-up.
+# Canonical invocation: `ruff check scripts/` (this file pins the rules and the
+# file set; the path argument pins the scope). The scope grew from the
+# scripts/fleet/ v1 (#2047) to the whole scripts/ tree in #2054 — the render /
+# perf / gui harnesses (render-verify.py, gui-verify.py, render_metric_util.py,
+# scripts/perf/compare_perf_runs.py, …) now lint under the same rule set.
 
 # 100, not ruff's default 88: the existing fleet Python was written to a ~100-col
 # soft limit (96 of 106 pre-existing E501s were 89–99 chars), and PEP8 itself
@@ -26,7 +28,10 @@ line-length = 100
 # explicitly — NOT via a `fleet-*` glob — because the largest fleet scripts
 # (fleet-claim, fleet-dispatcher, fleet-up, fleet-babysit, fleet-rebase) are
 # bash, and feeding bash to ruff yields thousands of false positives. Add a new
-# Python executable here when one is introduced.
+# Python executable here when one is introduced. (The render / perf / gui
+# harnesses outside scripts/fleet/ all carry a .py extension, so ruff's
+# directory scan discovers them automatically — only extension-less Python
+# executables need listing here, and those all live under scripts/fleet/.)
 extend-include = [
     "scripts/fleet/fleet-claude-stream",
     "scripts/fleet/fleet-epic-status",
@@ -56,5 +61,8 @@ extend-exclude = [
 select = ["E", "W", "F", "I", "S101"]
 
 [lint.per-file-ignores]
-# pytest-style test modules use `assert` as their assertion primitive.
+# Test modules use `assert` as their assertion primitive (pytest-style under
+# scripts/fleet/tests/; the scripts/tests/ render-metric suite is unittest-based
+# today but carved out uniformly so a future bare-assert test isn't blocked).
 "scripts/fleet/tests/**" = ["S101"]
+"scripts/tests/**" = ["S101"]

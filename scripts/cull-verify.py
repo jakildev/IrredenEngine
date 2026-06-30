@@ -39,7 +39,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent
 RENDER_COMPARE = SCRIPT_DIR / "render-compare.py"
@@ -236,7 +235,14 @@ def main(argv: list[str] | None = None) -> int:
     all_shots = _collect_shots(shots_dir)
     live_shots = all_shots[LIVE_START:LIVE_END]
     frozen_shots = all_shots[FROZEN_START:FROZEN_END]
-    assert len(live_shots) == len(frozen_shots) == POSES_PER_PHASE
+    if not (len(live_shots) == len(frozen_shots) == POSES_PER_PHASE):
+        print(
+            f"[cull-verify] expected {POSES_PER_PHASE} live and {POSES_PER_PHASE} frozen shots, "
+            f"got {len(live_shots)} live / {len(frozen_shots)} frozen "
+            f"(captured {len(all_shots)} total) — run did not produce the full pose set.",
+            file=sys.stderr,
+        )
+        return 1
 
     if args.update_baselines:
         baseline_dir = demo_dir / "test" / "references" / backend / "cull-verify"

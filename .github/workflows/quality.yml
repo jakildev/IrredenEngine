@@ -33,14 +33,15 @@ jobs:
       - name: Lint
         run: cmake --build --preset windows-lint
 
-      # Python analogue of clang-format/clang-tidy for the fleet automation
-      # (scripts/fleet/). Pinned so the gate is stable across ruff releases;
-      # ruff.toml at the repo root pins the rules + the extension-less file set.
+      # Python analogue of clang-format/clang-tidy for the repo's Python
+      # surface (all of scripts/: fleet automation + render/perf/gui harnesses).
+      # Pinned so the gate is stable across ruff releases; ruff.toml at the repo
+      # root pins the rules + the extension-less file set.
       - name: Python lint (ruff)
         uses: astral-sh/ruff-action@v3
         with:
           version: "0.15.20"
-          args: "check scripts/fleet/"
+          args: "check scripts/"
 
       - name: Build tests
         run: cmake --build --preset windows-tests

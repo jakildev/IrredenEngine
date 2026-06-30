@@ -42,7 +42,10 @@ def main() -> int:
     print(f"location: `{run_dir}`")
     print(f"cells: {len(cells)}")
     print()
-    print("| cell | frame avg | p99 | entities | cull (vis/total) | top UPDATE system | top GPU stage |")
+    print(
+        "| cell | frame avg | p99 | entities | cull (vis/total) "
+        "| top UPDATE system | top GPU stage |"
+    )
     print("|------|-----------|-----|----------|------------------|-------------------|---------------|")
     for cell_id in sorted(cells):
         c = cells[cell_id]

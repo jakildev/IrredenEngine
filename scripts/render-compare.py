@@ -31,7 +31,6 @@ import zlib
 from array import array
 from typing import Tuple
 
-
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 
 
