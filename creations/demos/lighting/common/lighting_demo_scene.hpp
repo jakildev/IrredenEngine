@@ -41,6 +41,7 @@
 #include <irreden/update/systems/system_propagate_transform.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
+#include <irreden/voxel/face_occupancy.hpp>
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
 
 #include <cstdint>
@@ -166,6 +167,14 @@ inline EntityId createVoxelPoolShape(
             voxelSet.voxels_[i].deactivate();
         }
     }
+    // The SDF-carving loop writes alpha directly through `voxels_[i].deactivate()`
+    // rather than a C_VoxelSetNew mutator, so both the exposed-face mask and the
+    // per-slot active mask stay pinned to the ctor's all-active grid. Recompute
+    // face occupancy first (newly-exposed surface faces otherwise stay wrongly
+    // occluded, rendering the carved shape black under the lit path), then sync
+    // the active mask so the compact shader skips carved-away interior slots.
+    // Mirrors shape_debug's createVoxelPoolShape (#2117).
+    IRPrefab::Voxel::recomputeFaceOccupancy(voxelSet.voxels_, voxelSet.size_);
     voxelSet.syncActiveMask();
     return entity;
 }
