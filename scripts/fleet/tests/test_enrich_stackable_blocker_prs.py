@@ -318,17 +318,26 @@ class TestEnrichStackableBlockerPrs(unittest.TestCase):
         self.assertEqual(task["stackable_blocker_pr"]["number"], 536)
 
     def test_closes_n_body_match_offered(self):
-        """A blocker PR on a non-standard branch (no claude/<N>-*) that Closes
-        the blocker issue in its body is matched and offered — the scout offer
-        now mirrors find-stackable-blockers' branch-OR-Closes union."""
-        tasks = [_task("#1112", "#1111")]
-        prs = [_pr(540, "feature/manual-fix", body="Implements the thing.\nCloses #1111")]
-        self._write_pr_cache("engine", 540, ["engine/render/x.cpp"])
-        state = _state(engine_tasks=tasks, engine_prs=prs)
-        enrich_stackable_blocker_prs(state)
-        task = state["repos"]["engine"]["tasks"]["open"][0]
-        self.assertIn("stackable_blocker_pr", task)
-        self.assertEqual(task["stackable_blocker_pr"]["number"], 540)
+        """A blocker PR on a non-standard branch (no claude/<N>-*) that Closes,
+        Fixes, or Resolves the blocker issue in its body is matched and offered —
+        the scout offer now mirrors find-stackable-blockers' branch-OR-Closes
+        union.  One subTest per keyword family."""
+        keywords = [
+            ("Closes", "Closes #1111"),
+            ("Fixes",   "Fixes #1111"),
+            ("Resolves","Resolves #1111"),
+        ]
+        for family, body_line in keywords:
+            with self.subTest(keyword_family=family):
+                tasks = [_task("#1112", "#1111")]
+                prs = [_pr(540, "feature/manual-fix",
+                           body=f"Implements the thing.\n{body_line}")]
+                self._write_pr_cache("engine", 540, ["engine/render/x.cpp"])
+                state = _state(engine_tasks=tasks, engine_prs=prs)
+                enrich_stackable_blocker_prs(state)
+                task = state["repos"]["engine"]["tasks"]["open"][0]
+                self.assertIn("stackable_blocker_pr", task)
+                self.assertEqual(task["stackable_blocker_pr"]["number"], 540)
 
     def test_closes_n_unrelated_issue_not_matched(self):
         """A PR that Closes a DIFFERENT issue (#999) is not matched for #1111 —
