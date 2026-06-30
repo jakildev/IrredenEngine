@@ -906,7 +906,9 @@ struct FrameDataVoxelToTrixel {
     // c_lighting_to_trixel recovers world pos as modelPos + .xyz and samples the
     // shared world sun-shadow map + light volume there; .w == 0 keeps the default
     // screen-locked path byte-identical. Mirrors
-    // FrameDataVoxelToCanvas::detachedWorldReceive_. Other kernels never read it.
+    // FrameDataVoxelToCanvas::detachedWorldReceive_. Also read by
+    // c_voxel_to_trixel_stage_{1,2} (#2127) to recover the world column for the fog
+    // cut-face cross-section on a world-placed detached re-voxelize canvas.
     float4 detachedWorldReceive;
     // Un-widened (no shadow-feeder sweep) iso cull viewport for the depth-only
     // shadow-feeder path (#1740). .xy = floor(min), .zw = ceil(max). A voxel

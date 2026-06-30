@@ -214,18 +214,28 @@ kernel void c_voxel_to_trixel_stage_2(
     // winner among the emitted faces.
     const uint flagsByte = (voxels[voxelIndex].materialFlagBone >> 8u) & 0xFFu;
 
-    // Exposed-face gate + fog CUT-FACE widening (#2125) — MUST mirror stage 1's
-    // predicate EXACTLY so the colour tap lands on the same face set stage 1 wrote
-    // distances for (a cut face is non-exposed; without this it'd read as cleared
-    // background). The own-column drop (#2102) is NOT repeated here — stage 1
-    // already dropped those voxels' distances, so writeColorTap's depth re-test
-    // rejects their colour taps. See c_voxel_to_trixel_stage_1.glsl.
+    // Exposed-face gate + fog CUT-FACE widening (#2125/#2127) — MUST mirror stage
+    // 1's predicate EXACTLY so the colour tap lands on the same face set stage 1
+    // wrote distances for (a cut face is non-exposed; without this it'd read as
+    // cleared background). The world-column recovery handles a world-placed
+    // detached re-voxelize canvas (model + detachedWorldReceive.xy); see the GLSL
+    // twin. The own-column drop (#2102/#2127) is NOT repeated here — stage 1 already
+    // dropped those voxels' distances, so writeColorTap's depth re-test rejects
+    // their colour taps. See c_voxel_to_trixel_stage_1.glsl.
+    const bool fogActive = fogObservers.visionCircleCount > 0 &&
+        frameData.perAxisRoute == 0 &&
+        (frameData.isDetachedCanvas < 0.5f || frameData.detachedWorldReceive.w != 0.0f);
+    int2 worldColumn = int2(0);
+    if (fogActive) {
+        worldColumn = int3(round(voxelPosition.xyz)).xy +
+            (frameData.isDetachedCanvas > 0.5f
+                 ? int2(round(frameData.detachedWorldReceive.xy))
+                 : int2(0));
+    }
     bool keepFace = faceIsExposed(flagsByte, faceId);
-    if (!keepFace && faceId < kFaceZNeg && fogObservers.visionCircleCount > 0 &&
-        frameData.perAxisRoute == 0 && frameData.isDetachedCanvas < 0.5f) {
-        const int2 neighborColumn =
-            int3(round(voxelPosition.xyz)).xy + faceOutwardNormal6I(faceId).xy;
-        keepFace = fogColumnHiddenAt(canvasFogOfWar, fogObservers, neighborColumn);
+    if (!keepFace && faceId < kFaceZNeg && fogActive) {
+        keepFace = fogColumnHiddenAt(
+            canvasFogOfWar, fogObservers, worldColumn + faceOutwardNormal6I(faceId).xy);
     }
     if (!keepFace) return;
 
