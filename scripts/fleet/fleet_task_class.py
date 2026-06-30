@@ -223,16 +223,32 @@ def _candidates(slice_data, lane_default, host):
         yield "opus", CLASS_DEFAULT_EFFORT["opus"]
 
 
-def resolve(slice_data, lane_default, fable_blocked):
-    """Return 'cls effort more count', 'defer', or '' per the output protocol."""
+def resolve(slice_data, lane_default, fable_blocked, exclude=()):
+    """Return 'cls effort more count', 'defer', or '' per the output protocol.
+
+    `exclude` is a set of classes the caller has already served-and-saturated
+    this tick (the dispatcher's cross-class fan-out: when the elected class is
+    fully cap-covered but another class is claimable, it re-resolves excluding
+    the covered class to serve the next one instead of deferring the whole tick).
+    An excluded class is dropped from consideration entirely — not chosen, not
+    counted toward `more`. If excluding leaves nothing electable but a claimable
+    (excluded) class existed, the verdict is `defer`, NOT '' — there is real work,
+    just none the caller can serve right now, so it must not fall through to a
+    lane-default dispatch.
+    """
     if lane_default not in CLASS_DEFAULT_EFFORT:
         lane_default = "opus"
+    exclude = set(exclude or ())
     host = _current_host()
     chosen = None
     skipped_fable = False
+    excluded_any = False
     servable_classes = set()
     class_counts = {}
     for cls, effort in _candidates(slice_data, lane_default, host):
+        if cls in exclude:
+            excluded_any = True
+            continue
         if cls == "fable" and fable_blocked:
             # Cap-blocked fable is not currently servable: don't let it
             # hold the trigger open via `more` (that would re-dispatch
@@ -255,7 +271,7 @@ def resolve(slice_data, lane_default, fable_blocked):
         # free). `more` still drives the *other-class* follow-up dispatch.
         count = class_counts[chosen[0]]
         return f"{chosen[0]} {chosen[1]} {more} {count}"
-    if skipped_fable:
+    if skipped_fable or excluded_any:
         return "defer"
     # Nothing servable AND no cap-blocked fable. If the queue's only content is
     # tasks already implemented by an open PR (every tasks_open item carries
@@ -272,17 +288,20 @@ def resolve(slice_data, lane_default, fable_blocked):
 
 
 def main(argv):
-    if len(argv) != 4:
-        print("usage: fleet_task_class.py <slice.json> <lane-default> <fable-blocked 0|1>",
-              file=sys.stderr)
+    # Optional 4th arg: comma-separated classes to exclude (the dispatcher's
+    # cross-class fan-out re-resolve). Absent -> exclude nothing.
+    if len(argv) not in (4, 5):
+        print("usage: fleet_task_class.py <slice.json> <lane-default> "
+              "<fable-blocked 0|1> [exclude-classes]", file=sys.stderr)
         return 2
     slice_path, lane_default, fable_blocked = argv[1], argv[2], argv[3] == "1"
+    exclude = [c for c in (argv[4].split(",") if len(argv) == 5 else []) if c]
     try:
         with open(slice_path) as f:
             slice_data = json.load(f)
     except (OSError, json.JSONDecodeError):
         return 0  # empty output -> lane default
-    out = resolve(slice_data, lane_default, fable_blocked)
+    out = resolve(slice_data, lane_default, fable_blocked, exclude)
     if out:
         print(out)
     return 0
