@@ -165,7 +165,11 @@ this piece is a no-op at shutdown.
 
 Then exit cleanly. `fleet-dispatcher` launches a fresh `claude` for the
 role when the scout's projection sees new actionable state — no
-carry-over between iterations.
+carry-over between iterations, except when `fleet-dispatch-wrap`'s
+session-id sidecar resumes a worker/sonnet-reviewer/opus-reviewer
+session after a hard kill (the resumed session keeps its full prior
+context; see `fleet-dispatch-wrap`'s "Session-id persistence" comment
+block).
 
 ---
 
