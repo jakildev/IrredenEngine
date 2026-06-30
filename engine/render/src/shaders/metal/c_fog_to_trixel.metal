@@ -115,12 +115,11 @@ kernel void c_fog_to_trixel(
             frameData.rasterYaw
         );
         const float worldPerPixel = length(pos3DNeighborX.xy - pos3D.xy);
+        // Shared with c_voxel_to_trixel_stage_1's per-voxel clip so the floor's
+        // per-pixel reveal here and the voxel-object edge there trace the same
+        // analytic curve (#2102). worldPerPixel floors the rim at ~1 canvas px.
         for (int i = 0; i < fogObservers.visionCircleCount; ++i) {
-            const float4 circle = fogObservers.visionCircles[i];
-            const float dist = length(pos3D.xy - circle.xy);
-            const float aa = max(circle.w, worldPerPixel);
-            const float vis = 1.0f - smoothstep(circle.z - aa, circle.z + aa, dist);
-            state = max(state, vis);
+            state = max(state, fogVisionCircleReveal(pos3D.xy, fogObservers.visionCircles[i], worldPerPixel));
         }
     }
 

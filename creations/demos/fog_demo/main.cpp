@@ -199,6 +199,25 @@ void drivePlayerWalk() {
     ++g_walkFrame;
 }
 
+// --edge-zoom (#2102 cross-section canary): a STATIC analytic vision circle at
+// the origin with VOXEL objects straddling its boundary, zoomed in so the clip
+// edge fills the frame. Validates that voxels straddling the disc boundary clip
+// on the SAME smooth analytic arc the SDF floor reveals on — columns outside
+// the disc are dropped in VOXEL_TO_TRIXEL_STAGE_1 so no hard black faces appear
+// at the boundary. The grid stays all-unexplored, so only the disc reveals —
+// the cleanest read of the voxel-object edge against the floor edge.
+bool g_edgeZoom = false; // --edge-zoom
+constexpr float kEdgeVisionRadius = 9.0f;
+
+// Origin-centered shots at climbing magnification so the disc boundary (and the
+// voxel objects straddling it) is sampled at multiple pixel scales — the
+// before/after surface for the cross-section fix.
+constexpr IRVideo::AutoScreenshotShot kEdgeShots[] = {
+    {5.0f, vec2(0, 0), 0.0f, "fog_edge_zoom5"},
+    {9.0f, vec2(0, 0), 0.0f, "fog_edge_zoom9"},
+    {14.0f, vec2(0, 0), 0.0f, "fog_edge_zoom14"},
+};
+
 } // namespace
 
 void initSystems();
@@ -220,10 +239,24 @@ int main(int argc, char **argv) {
         "Walking detached-player marker with a tracking analytic vision circle "
         "(sub-voxel crescent reveal proof); skips the static grid reveal"
     );
+    IREngine::args().flag(
+        "--edge-zoom",
+        "Static analytic vision circle with VOXEL objects straddling its "
+        "boundary, zoomed on the clip edge (#2102 cross-section canary); "
+        "skips the static grid reveal"
+    );
     IREngine::init(argc, argv);
     g_autoWarmupFrames = IREngine::args().autoScreenshotWarmupFrames();
     g_movingObserver = IREngine::args().getFlag("--moving-observer");
     g_playerWalk = IREngine::args().getFlag("--player-walk");
+    g_edgeZoom = IREngine::args().getFlag("--edge-zoom");
+    // The three reveal modes are mutually exclusive; --edge-zoom wins, then
+    // --player-walk, then --moving-observer (each owns its own scene + shots).
+    if (g_edgeZoom && (g_playerWalk || g_movingObserver)) {
+        IR_LOG_INFO("--edge-zoom overrides --player-walk / --moving-observer");
+        g_playerWalk = false;
+        g_movingObserver = false;
+    }
     if (g_playerWalk && g_movingObserver) {
         IR_LOG_INFO(
             "--player-walk and --moving-observer are mutually exclusive; ignoring --moving-observer"
@@ -310,9 +343,13 @@ void initSystems() {
         IRVideo::AutoScreenshotConfig cfg{};
         cfg.warmupFrames_ = g_autoWarmupFrames;
         cfg.settleFrames_ = 3;
-        // --player-walk captures a fixed-camera sequence (the walking reveal);
-        // the default captures the three static fog-boundary shots.
-        if (g_playerWalk) {
+        // --edge-zoom zooms on the cross-section clip edge; --player-walk
+        // captures the walking reveal sequence; the default captures the three
+        // static fog-boundary shots.
+        if (g_edgeZoom) {
+            cfg.shots_ = kEdgeShots;
+            cfg.numShots_ = sizeof(kEdgeShots) / sizeof(kEdgeShots[0]);
+        } else if (g_playerWalk) {
             cfg.shots_ = kWalkShots;
             cfg.numShots_ = sizeof(kWalkShots) / sizeof(kWalkShots[0]);
         } else {
@@ -349,11 +386,11 @@ void initEntities() {
     );
 
     // The default + --moving-observer scenes dress the floor with SDF primitives
-    // and the #2008 column-cull pillar canary. --player-walk skips ALL of them:
-    // it wants a clean floor so the gliding disc + marker read clearly, and the
-    // tall shapes' iso-projected tops poke through the disc edge in confusing
-    // ways. The walk supplies its own low landmarks below.
-    if (!g_playerWalk) {
+    // and the #2008 column-cull pillar canary. --player-walk and --edge-zoom skip
+    // ALL of them: each wants a clean floor so its own content (the gliding disc +
+    // marker / the boundary-straddling voxel objects) reads clearly without the
+    // tall shapes' iso-projected tops poking through the disc edge.
+    if (!g_playerWalk && !g_edgeZoom) {
         // A few simple SDF primitives sitting on the floor inside the visible
         // circle, so the bright (visible) region has recognizable content.
         createShape(
@@ -465,6 +502,41 @@ void initEntities() {
                 vec4(1.5f, 1.5f, 5.0f, 0.0f),
                 Color{240, 80, 80, 255}
             }
+        );
+        return;
+    }
+
+    // --edge-zoom (#2102 cross-section canary): a STATIC analytic vision circle
+    // at the origin with VOXEL objects straddling its boundary. Set once here —
+    // nothing re-clears it, so it persists across warmup/settle/capture — and
+    // leave the grid all-unexplored so ONLY the disc reveals. Validates that
+    // straddling columns clip on the SAME disc arc the SDF floor reveals on,
+    // with the unexplored fog / revealed floor showing through smoothly past
+    // the object edge (columns outside the disc are dropped in STAGE_1).
+    if (g_edgeZoom) {
+        IRPrefab::Fog::setVisionCircle(0.0f, 0.0f, kEdgeVisionRadius);
+
+        // Tall voxel pillar straddling the +X boundary: columns x∈[7,11] cross
+        // the radius-9 disc, so its near half renders and its far half must clip
+        // — the symptom-1 vertical-face test. Iso +Z is downward, so center it
+        // below the floor surface to stand it up on the floor (base near z≈4,
+        // top up-screen). centerAroundOrigin places the set around the transform.
+        IREntity::createEntity(
+            C_LocalTransform{vec3(9.0f, 0.0f, -6.0f)},
+            C_VoxelSetNew{IRMath::ivec3{4, 4, 20}, Color{120, 200, 240, 255}, true}
+        );
+        // A second pillar straddling the +Y boundary (up-screen side), a clip
+        // angle the iso projection lays out differently from the +X pillar.
+        IREntity::createEntity(
+            C_LocalTransform{vec3(0.0f, 9.0f, -6.0f)},
+            C_VoxelSetNew{IRMath::ivec3{4, 4, 20}, Color{240, 160, 90, 255}, true}
+        );
+        // Low wide voxel slab straddling the -X boundary: columns x∈[-16,-2],
+        // so its TOP (xy) face crosses the arc and the outside portion must clip
+        // without leaving a black hole — the symptom-2 top-face test.
+        IREntity::createEntity(
+            C_LocalTransform{vec3(-9.0f, 0.0f, 2.0f)},
+            C_VoxelSetNew{IRMath::ivec3{14, 6, 3}, Color{130, 230, 150, 255}, true}
         );
         return;
     }
