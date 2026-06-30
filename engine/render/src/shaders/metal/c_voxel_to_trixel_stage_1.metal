@@ -116,7 +116,8 @@ struct FogObserverData {
 // FOG_TO_TRIXEL can't hard-black its kept-but-outside faces. Two callers share it
 // via the explicit column — the #2102 own-column drop and the #2125 neighbor
 // cut-face test. The 1×1 placeholder + OOB columns read as visible (never hidden)
-// → non-fog canvases byte-identical.
+// → non-fog canvases byte-identical. Duplicated byte-identically in
+// c_voxel_to_trixel_stage_2.metal (fog grid on [[texture(3)]] there); keep in sync.
 static bool fogColumnHiddenAt(
     texture2d<float, access::read> fog, constant FogObserverData& obs, int2 col
 ) {

@@ -186,6 +186,9 @@ void emitDeformedFace(
 // no longer rasterize. Explored grid memory and in-disc columns are kept; the
 // 1×1 placeholder + OOB columns read as visible (never hidden), matching the
 // OOB-as-visible invariant — so non-fog / detached canvases are byte-identical.
+// Duplicated byte-identically in c_voxel_to_trixel_stage_2.{glsl,metal} (fog
+// grid binds on slot 3 there instead of slot 0 — slot-parameterized images are
+// not possible in GLSL/MSL, hence the duplication). Keep them in sync.
 bool fogColumnHiddenAt(ivec2 col) {
     const ivec2 fogSize = imageSize(canvasFogOfWar);
     if (fogSize.x <= 1) {
