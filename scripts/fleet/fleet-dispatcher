@@ -1242,6 +1242,18 @@ resolve_worker_class() {
     [[ "$count" =~ ^[0-9]+$ ]] && DISPATCH_COUNT="$count"
 }
 
+# Returns 0 (should re-arm) iff the resolver would dispatch a CONCRETE class for
+# this worker lane — i.e. there is genuinely claimable work under the full
+# claimability gate (host capability, stackability, inflight_pr, owner, blocked).
+# The periodic safety re-arm uses this so it can never diverge from the actual
+# dispatch decision: a `defer` verdict (nothing claimable) or the '' lane-default
+# fallthrough (reservation resume / missing slice) does NOT re-arm; only a routed
+# class does. Sets DISPATCH_* as a side effect (resolve_worker_class).
+worker_rearm_should_fire() {
+    resolve_worker_class "$1"
+    (( DISPATCH_DEFER == 0 )) && [[ -n "$DISPATCH_CLASS" ]]
+}
+
 dispatch_role() {
     local role="$1"
     local trigger_file="$TRIGGERS_DIR/$role"
@@ -1671,61 +1683,17 @@ PY
         if [[ "$_active" -gt 0 ]]; then
             continue
         fi
-        # Read the role's projection and check the predicate.
-        TRIGGERS_DIR="$TRIGGERS_DIR" \
-        STATE_DIR="$STATE_DIR" \
-        ROLE="$_role" \
-        python3 - <<'PY' || true
-import json
-import os
-import pathlib
-
-trig_dir = pathlib.Path(os.environ["TRIGGERS_DIR"])
-state_dir = pathlib.Path(os.environ["STATE_DIR"])
-role = os.environ["ROLE"]
-
-# Classes the lane serves — the unified worker lane covers every class
-# (a fable-only or sonnet-only backlog must still re-arm it; keep in sync
-# with the scout's slice filters and WORKER_LANE_DEFAULT_CLASS).
-ROLE_MODELS = {"worker": {"opus", "fable", "sonnet"}}
-models = ROLE_MODELS.get(role)
-if not models:
-    raise SystemExit(0)
-
-proj_path = state_dir / "projections" / f"{role}.json"
-if not proj_path.is_file():
-    raise SystemExit(0)
-try:
-    proj = json.loads(proj_path.read_text())
-except (OSError, json.JSONDecodeError):
-    raise SystemExit(0)
-
-# Predicate: at least one task that is unowned, unblocked, NOT already covered
-# by an open implementation PR, and matches a class this lane serves. The
-# projection's `blocked_by` is rendered as "(none)" (literal) when there are no
-# blockers. The `inflight_pr` guard mirrors the dispatch-time claimability gate
-# (fleet_task_class._task_claimable): a queued task whose own issue already has
-# an open PR — typically a parked design-blocked one that released its issue
-# claim — looks owner-free + unblocked here but a fresh worker would refuse it
-# on sight. Without this guard the safety re-arm fires every interval on such a
-# task, fanning no-op iterations into every idle pane (the #1726 shape, surfaced
-# again by an inflight-only queue), which is exactly what this re-arm must not do.
-def is_actionable(task):
-    if task.get("owner") != "free":
-        return False
-    if task.get("inflight_pr"):
-        return False
-    blocked = (task.get("blocked_by") or "").strip()
-    if blocked and blocked != "(none)":
-        return False
-    return task.get("model") in models
-
-if any(is_actionable(t) for t in (proj.get("tasks_open") or [])):
-    trig = trig_dir / role
-    if not trig.exists():
-        trig.touch()
-        print(f"worker-rearm: re-armed {role} (projection has actionable free work, no active iteration)")
-PY
+        # Re-arm iff the resolver would dispatch a concrete class — genuinely
+        # claimable work under the FULL claimability gate. Delegating to
+        # resolve_worker_class keeps this safety re-arm in lock-step with the
+        # dispatch decision; the previous inline predicate had drifted (it
+        # excluded inflight_pr but not needs_gl_host, so it re-armed every
+        # interval on GL-host tasks a Metal pane can never claim — the #1969
+        # idle-churn shape).
+        if worker_rearm_should_fire "$_role"; then
+            touch "$TRIGGERS_DIR/$_role"
+            log "worker-rearm: re-armed $_role (class=$DISPATCH_CLASS claimable, no active iteration)"
+        fi
     done
 }
 
@@ -1893,6 +1861,22 @@ case "${1:-}" in
         fi
         resolve_worker_class "$2"
         echo "class=$DISPATCH_CLASS model=$DISPATCH_MODEL effort=$DISPATCH_EFFORT more=$DISPATCH_MORE defer=$DISPATCH_DEFER count=$DISPATCH_COUNT"
+        exit 0
+        ;;
+    --rearm-check)
+        # Test/debug: would the periodic safety re-arm fire for <role> against
+        # the current projection? Prints "rearm class=<c>" when the resolver
+        # would dispatch a concrete class, else "skip (defer=<0|1> class=<c>)".
+        # Does NOT touch the trigger. Mirrors the live re-arm condition exactly.
+        if [[ -z "${2:-}" ]]; then
+            echo "usage: fleet-dispatcher --rearm-check <role>" >&2
+            exit 2
+        fi
+        if worker_rearm_should_fire "$2"; then
+            echo "rearm class=$DISPATCH_CLASS"
+        else
+            echo "skip (defer=$DISPATCH_DEFER class=$DISPATCH_CLASS)"
+        fi
         exit 0
         ;;
     --gate-status)
