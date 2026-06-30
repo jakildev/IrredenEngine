@@ -1212,6 +1212,9 @@ build_dispatch_command() {
 # fleet_task_class.py for the resolution rules and output protocol.
 resolve_worker_class() {
     local role="$1"
+    # $2 = optional comma-separated classes to exclude (the cross-class fan-out
+    # re-resolve in dispatch_role, after a class is found cap-saturated).
+    local exclude="${2:-}"
     DISPATCH_CLASS="" DISPATCH_MODEL="" DISPATCH_EFFORT=""
     DISPATCH_MORE=0 DISPATCH_DEFER=0 DISPATCH_COUNT=""
     local lane_default="${WORKER_LANE_DEFAULT_CLASS[$role]:-}"
@@ -1224,7 +1227,7 @@ resolve_worker_class() {
     fi
     local out
     out=$(python3 "$FLEET_LIB_DIR/fleet_task_class.py" \
-        "$slice" "$lane_default" "$fable_blocked" 2>/dev/null) || out=""
+        "$slice" "$lane_default" "$fable_blocked" "$exclude" 2>/dev/null) || out=""
     if [[ "$out" == "defer" ]]; then
         DISPATCH_DEFER=1
         return 0
@@ -1331,53 +1334,62 @@ dispatch_role() {
     # Per-task model class for worker lanes (no-op for other roles).
     # Resolved once per tick, not per pane — same slice, same answer;
     # multiple panes dispatched this tick race-claim within the class.
-    resolve_worker_class "$role"
-    if (( DISPATCH_DEFER )); then
-        # Nothing a fresh worker can claim right now: either the only
-        # actionable work is cap-blocked fable, or the queue's only items
-        # already have open implementation PRs (inflight_pr, #1726).
-        # Dispatching the lane default would burn an iteration on
-        # gate-refused claims; keep the trigger and wait (a freed fable
-        # slot or a resolved/merged PR re-fires the scout projection).
-        if [[ -z "${CAP_DEFER_LOGGED[$role-noclaim]+x}" ]]; then
-            log "$role: no claimable work (cap-blocked fable or in-flight PRs only); deferring trigger"
-            CAP_DEFER_LOGGED["$role-noclaim"]=1
-        fi
-        return
-    fi
-    unset "CAP_DEFER_LOGGED[$role-noclaim]"
-
-    # Claimable-count fan-out cap. The resolver reports how many items of the
-    # elected class are claimable right now (DISPATCH_COUNT — set only for a
-    # worker lane that routed a class). Launch at most that many workers, minus
-    # the ones already dispatched recently enough to still be racing for the
-    # same items (count_recent_active_for_class within the settle window). This
-    # is what stops the lane firing a worker into every idle pane when only one
-    # or two tasks are actually claimable — the surplus panes would iterate and
-    # exit on no-op claims, and a no-op opus iteration is not free. An empty
-    # DISPATCH_COUNT (older slice, the '' lane-default fallthrough, or a
-    # non-worker role) means uncapped: preserve the legacy fan-out-to-all-panes.
+    #
+    # Cross-class fan-out: the claimable-count cap (below) caps each class to one
+    # worker per claimable item. When the elected class is fully covered by
+    # racing workers but ANOTHER class is claimable (DISPATCH_MORE), re-resolve
+    # excluding the covered class and serve the next one — otherwise a slow or
+    # churning head of one class would defer the whole tick and starve the
+    # others. Bounded: each pass excludes one more class, and there are at most
+    # three (opus|fable|sonnet), so the loop runs a handful of times then either
+    # finds a class with headroom, hits the uncapped path, or defers.
     local claim_headroom=-1   # -1 = uncapped
-    if [[ -n "$DISPATCH_CLASS" && -n "$DISPATCH_COUNT" ]]; then
-        local class_racing
-        class_racing=$(count_recent_active_for_class "$DISPATCH_CLASS" "$CLAIM_SETTLE_SECONDS")
-        claim_headroom=$(( DISPATCH_COUNT - class_racing ))
-        if (( claim_headroom < 0 )); then
-            claim_headroom=0
-        fi
-        if (( claim_headroom == 0 )); then
-            # Every claimable item of this class already has a still-settling
-            # worker racing for it. Keep the trigger so a later tick re-evaluates
-            # once those workers claim (the tasks leave tasks_open and the count
-            # drops) or settle out of the race window; dispatch nothing now.
-            if [[ -z "${CAP_DEFER_LOGGED[$role-claimcap]+x}" ]]; then
-                log "$role: class=$DISPATCH_CLASS claimable=$DISPATCH_COUNT already covered by $class_racing in-flight; deferring trigger"
-                CAP_DEFER_LOGGED["$role-claimcap"]=1
+    local _excluded="" _passes=0
+    while : ; do
+        resolve_worker_class "$role" "$_excluded"
+        if (( DISPATCH_DEFER )); then
+            # Nothing a fresh worker can claim right now: cap-blocked fable only,
+            # the queue's only items already have open PRs (inflight_pr, #1726),
+            # or every claimable class is already saturated (excluded above).
+            # Dispatching the lane default would burn no-op claims; keep the
+            # trigger and wait (a freed slot / resolved PR re-fires the scout).
+            if [[ -z "${CAP_DEFER_LOGGED[$role-noclaim]+x}" ]]; then
+                log "$role: no claimable work (cap-blocked fable, in-flight PRs, or all classes covered); deferring trigger"
+                CAP_DEFER_LOGGED["$role-noclaim"]=1
             fi
             return
         fi
-        unset "CAP_DEFER_LOGGED[$role-claimcap]"
-    fi
+        # Uncapped (older slice / '' lane-default fallthrough / non-worker role):
+        # no per-class headroom gate — preserve the legacy fan-out-to-all-panes.
+        if [[ -z "$DISPATCH_CLASS" || -z "$DISPATCH_COUNT" ]]; then
+            claim_headroom=-1
+            break
+        fi
+        # Claimable-count cap: at most DISPATCH_COUNT workers of this class, minus
+        # the ones dispatched recently enough to still be racing for the same
+        # items (count_recent_active_for_class within the settle window).
+        local class_racing
+        class_racing=$(count_recent_active_for_class "$DISPATCH_CLASS" "$CLAIM_SETTLE_SECONDS")
+        claim_headroom=$(( DISPATCH_COUNT - class_racing ))
+        (( claim_headroom < 0 )) && claim_headroom=0
+        if (( claim_headroom > 0 )); then
+            break   # this class has room — dispatch it below
+        fi
+        # This class is saturated. Serve another claimable class if one exists.
+        if (( DISPATCH_MORE )) && (( _passes++ < 3 )); then
+            _excluded="${_excluded:+$_excluded,}$DISPATCH_CLASS"
+            log "$role: class=$DISPATCH_CLASS covered ($class_racing in-flight >= $DISPATCH_COUNT claimable); serving next class"
+            continue
+        fi
+        # Saturated with no other claimable class — keep the trigger; a later
+        # tick re-evaluates once the racing workers claim or settle out.
+        if [[ -z "${CAP_DEFER_LOGGED[$role-claimcap]+x}" ]]; then
+            log "$role: class=$DISPATCH_CLASS claimable=$DISPATCH_COUNT already covered by $class_racing in-flight; deferring trigger"
+            CAP_DEFER_LOGGED["$role-claimcap"]=1
+        fi
+        return
+    done
+    unset "CAP_DEFER_LOGGED[$role-noclaim]" "CAP_DEFER_LOGGED[$role-claimcap]"
 
     local dispatched=0
     local gap_blocked=""
@@ -1855,11 +1867,14 @@ case "${1:-}" in
         #   "class=<c> model=<m> effort=<e> more=<0|1> defer=<0|1> count=<n>"
         # Empty class means the lane-default fallthrough; count is the number of
         # claimable items of the elected class (empty when class is empty).
+        # Optional $3 = comma-separated classes to exclude (the cross-class
+        # fan-out re-resolve — serve another class when the elected one is
+        # cap-saturated).
         if [[ -z "${2:-}" ]]; then
-            echo "usage: fleet-dispatcher --resolve-class <role>" >&2
+            echo "usage: fleet-dispatcher --resolve-class <role> [exclude-classes]" >&2
             exit 2
         fi
-        resolve_worker_class "$2"
+        resolve_worker_class "$2" "${3:-}"
         echo "class=$DISPATCH_CLASS model=$DISPATCH_MODEL effort=$DISPATCH_EFFORT more=$DISPATCH_MORE defer=$DISPATCH_DEFER count=$DISPATCH_COUNT"
         exit 0
         ;;

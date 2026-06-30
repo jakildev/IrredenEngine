@@ -331,5 +331,39 @@ class GlHostGate(unittest.TestCase):
         self.assertEqual(out, "defer")
 
 
+class ExcludeClasses(unittest.TestCase):
+    """The dispatcher's cross-class fan-out: when an elected class is fully
+    cap-covered but another class is claimable, it re-resolves with the covered
+    class excluded to serve the next one instead of deferring the whole tick."""
+
+    def test_exclude_elects_the_next_class(self):
+        slice_data = {"tasks_open": [_task("#10", "opus"), _task("#11", "sonnet")]}
+        # No exclude: opus is the elected (oldest) class, sonnet is `more`.
+        self.assertEqual(resolve(slice_data, "opus", False), "opus xhigh 1 1")
+        # Exclude opus -> sonnet is elected, nothing else servable -> more=0.
+        self.assertEqual(resolve(slice_data, "opus", False, exclude=["opus"]),
+                         "sonnet high 0 1")
+
+    def test_exclude_all_claimable_defers_not_empty(self):
+        # Excluding every claimable class must DEFER (there is real work, just
+        # none the caller can serve now), never '' — '' would wrongly fall the
+        # dispatcher through to a lane-default no-op dispatch.
+        slice_data = {"tasks_open": [_task("#10", "opus"), _task("#11", "sonnet")]}
+        self.assertEqual(resolve(slice_data, "opus", False,
+                                 exclude=["opus", "sonnet"]), "defer")
+
+    def test_exclude_irrelevant_class_is_noop(self):
+        # Excluding a class with no claimable work changes nothing.
+        slice_data = {"tasks_open": [_task("#10", "opus")]}
+        self.assertEqual(resolve(slice_data, "opus", False, exclude=["fable"]),
+                         "opus xhigh 0 1")
+
+    def test_exclude_on_empty_slice_stays_empty(self):
+        # No claimable work at all + an exclude -> '' (lane-default), not defer:
+        # nothing was excluded, so the reservation-resume fallthrough stands.
+        self.assertEqual(resolve({"tasks_open": []}, "opus", False,
+                                 exclude=["opus"]), "")
+
+
 if __name__ == "__main__":
     unittest.main()

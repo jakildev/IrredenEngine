@@ -116,6 +116,20 @@ echo "T7: non-worker roles skip class resolution"
 assert_eq "$(resolve merger)" "class= model= effort= more=0 defer=0 count=" \
     "merger has no lane class; resolution is a no-op"
 
+# --- T8: cross-class exclude threads through resolve_worker_class -------------
+# The dispatcher's cross-class fan-out re-resolves excluding a cap-covered class.
+echo "T8: --resolve-class <role> <exclude> serves the next class"
+write_slice worker '{"tasks_open":[{"issue":"#10","model":"opus","effort":null,"owner":"free","blocked":false},{"issue":"#11","model":"sonnet","effort":null,"owner":"free","blocked":false}],"feedback_prs":[],"needs_plan":[]}'
+assert_eq "$("$DISPATCHER" --resolve-class worker)" \
+    "class=opus model=claude-opus-4-8[1m] effort=xhigh more=1 defer=0 count=1" \
+    "no exclude -> opus elected, sonnet is 'more'"
+assert_eq "$("$DISPATCHER" --resolve-class worker opus)" \
+    "class=sonnet model=sonnet effort=high more=0 defer=0 count=1" \
+    "exclude opus -> sonnet served (the cross-class fan-out)"
+assert_eq "$("$DISPATCHER" --resolve-class worker opus,sonnet)" \
+    "class= model= effort= more=0 defer=1 count=" \
+    "exclude both claimable classes -> defer (not lane-default)"
+
 echo
 echo "PASS: $PASS  FAIL: $FAIL"
 [[ "$FAIL" -eq 0 ]]
