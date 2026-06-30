@@ -334,6 +334,10 @@ static EntityId createHollowShell(vec3 position, ivec3 halfExtent, Color color) 
         if (!onSurface)
             vs.voxels_[i].deactivate();
     }
+    // Raw-span carve bypasses the C_VoxelSetNew helpers, so the exposed-face
+    // mask is stale: recompute it before syncing the active mask, or the
+    // shell's newly-interior-exposed faces stay occluded and render black.
+    IRPrefab::Voxel::recomputeFaceOccupancy(vs.voxels_, size);
     vs.syncActiveMask();
     return e;
 }
