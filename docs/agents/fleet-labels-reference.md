@@ -328,6 +328,11 @@ Specifically, **never pass these via `--label` when filing**:
   holder (#1384), so two same-prefix holders never coexist.
   The scout's `fleet-claim cleanup --gh` pass sweeps labels older
   than 30 min and replays orphan sentinels from failed removals.
+  For the common same-host case, a local marker file lets the sweep
+  confirm the claim is orphaned (no local lock, marker missing or
+  mismatched) and clear it after a short grace period (120s default)
+  instead of waiting the full 30-min TTL; cross-host labels still need
+  the full TTL since a marker can only vouch for its own host.
   Don't add manually; don't add to issues.
 - `fleet:amending-<host>-<agent>` — owned by the **`fleet-claim`
   script** (atomic feedback-claim primitive; same sole-holder claim as

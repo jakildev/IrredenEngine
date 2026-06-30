@@ -1394,6 +1394,20 @@ _cmd_pr_label_claim() {
         return 1
     fi
 
+    # Same-host liveness marker for reviewing/resolving claims: lets the cleanup
+    # sweep distinguish a live claim from one orphaned by a dead/restarted
+    # session (whose GitHub label outlived the fleet-down wipe of ~/.fleet/claims).
+    # A file (not a dir) so it can't collide with the dir-based task-claim
+    # iteration. amending carries its own heartbeat liveness; steward/planning
+    # are out of scope.
+    case "$prefix" in
+        fleet:reviewing-|fleet:resolving-)
+            mkdir -p "$CLAIMS_DIR"
+            local _tag="${prefix#fleet:}"; _tag="${_tag%-}"
+            printf '%s\n' "$pr" > "$CLAIMS_DIR/_prlabel-${_tag}-${agent}" 2>/dev/null || true
+            ;;
+    esac
+
     echo "${cmd_name} acquired: $repo ${target_word}#$pr ($agent)"
     return 0
 }
@@ -1411,6 +1425,14 @@ _cmd_pr_label_release() {
     host=$(derive_host)
     label="${prefix}${host}-${agent}"
     repo=$(repo_from_ns)
+
+    # Drop the same-host liveness marker (paired with the claim-side write).
+    case "$prefix" in
+        fleet:reviewing-|fleet:resolving-)
+            local _tag="${prefix#fleet:}"; _tag="${_tag%-}"
+            rm -f "$CLAIMS_DIR/_prlabel-${_tag}-${agent}" 2>/dev/null || true
+            ;;
+    esac
 
     if [[ -z "$repo" ]] || ! command -v gh >/dev/null 2>&1; then
         echo "${cmd_name}: no gh / unknown namespace; nothing to do" >&2
@@ -1676,6 +1698,12 @@ cmd_cleanup_gh() {
     local now
     now=$(date +%s)
     local total_removed=0
+    # This host's key, for the confirmed-orphan fast paths below (PR-label sweep
+    # and the issue-claim sweep). A claim label names its owning host; only THIS
+    # host can vouch for its own local claim markers, so the fast path applies to
+    # our own claims and cross-host claims stay on the TTL.
+    local this_host
+    this_host=$(derive_host)
 
     for repo in "${repos[@]}"; do
         local prs_json pr_review_plan
@@ -1705,7 +1733,40 @@ for pr in prs:
             [[ "$added_epoch" -eq 0 ]] && continue
 
             local age=$(( now - added_epoch ))
-            if [[ $age -lt $stale_secs ]]; then
+
+            # Confirmed-orphan fast path for reviewing/resolving claims (the
+            # reviewer-side analog of the issue-claim fast path, #2111). These
+            # PR-label claims now drop a local marker ($CLAIMS_DIR/_prlabel-<tag>-
+            # <agent>, content = the PR number) on acquire and remove it on
+            # release; fleet-down wipes ~/.fleet/claims, so a same-host label with
+            # NO matching marker is a claim whose owning session died/restarted
+            # while the GitHub label survived (the #2137/#2138 stuck-reviewer
+            # shape). Sweep it after a short grace instead of the full TTL — the
+            # grace only spares the microsecond race between label-add and the
+            # marker write, and pre-fix claims during the one-time transition.
+            # amending keeps its own heartbeat liveness (below); cross-host labels
+            # can't be vouched for locally and stay on the full TTL.
+            local prlabel_orphan=0
+            case "$label_name" in
+                fleet:reviewing-*|fleet:resolving-*)
+                    local _rest="${label_name#fleet:}"        # <tag>-<host>-<agent>
+                    local _tag="${_rest%%-*}"                 # <tag>
+                    local _ha="${_rest#*-}"                   # <host>-<agent>
+                    local _chost="${_ha%%-*}"                 # <host>
+                    local _cagent="${_ha#*-}"                 # <agent>
+                    if [[ "$_chost" == "$this_host" ]]; then
+                        local _marker="$CLAIMS_DIR/_prlabel-${_tag}-${_cagent}"
+                        if [[ ! -f "$_marker" || "$(cat "$_marker" 2>/dev/null)" != "$pr_num" ]]; then
+                            prlabel_orphan=1
+                        fi
+                    fi
+                    ;;
+            esac
+
+            local _orphan_grace="${FLEET_CLAIM_PRLABEL_ORPHAN_GRACE_SECS:-120}"
+            if (( prlabel_orphan )); then
+                [[ $age -lt $_orphan_grace ]] && continue
+            elif [[ $age -lt $stale_secs ]]; then
                 continue
             fi
 
@@ -1722,9 +1783,11 @@ for pr in prs:
                 continue
             fi
 
+            local _sweep_note="age: $((age / 60))m"
+            (( prlabel_orphan )) && _sweep_note="orphaned: no local marker on $this_host, ${_sweep_note}"
             if gh issue edit "$pr_num" --repo "$repo" \
                     --remove-label "$label_name" >/dev/null 2>&1; then
-                echo "cleanup --gh: removed stale '$label_name' on $repo PR#$pr_num (age: $((age / 60))m)"
+                echo "cleanup --gh: removed stale '$label_name' on $repo PR#$pr_num ($_sweep_note)"
                 total_removed=$((total_removed + 1))
             else
                 write_orphan_sentinel "$repo" "$pr_num" "$label_name" \
@@ -1745,12 +1808,8 @@ for pr in prs:
     # like a no-PR abandon (#1488 Fix B). Only an active (non-parked) matching
     # WIP PR (head-branch claude/<N>-*) keeps the claim.
     local claim_issue_stale_secs="${FLEET_CLAIM_STALE_SECS_ISSUES:-7200}"
-    # This host's key, for the confirmed-orphan fast path below. A claim label
-    # names the owning host (fleet:claim-<host>-<agent>); only THIS host can
-    # vouch for its own local claim locks, so the fast path applies to our own
-    # claims and cross-host claims stay on the TTL.
-    local this_host
-    this_host=$(derive_host)
+    # this_host computed once at the top of cmd_cleanup_gh (shared with the
+    # PR-label orphan fast path).
     for repo in "${repos[@]}"; do
         local open_claim_plan open_pr_branches_json
         open_claim_plan=$(gh issue list --repo "$repo" --state open \
