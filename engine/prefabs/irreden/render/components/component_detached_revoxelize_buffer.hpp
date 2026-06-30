@@ -51,9 +51,10 @@ struct C_DetachedRevoxelizeBuffer {
     int capacity_ = 0;
 
     // Source occupancy+color grid for the INVERSE-resample fill (#1619). Dense
-    // 3D grid keyed by integer source-local cell, two uints per cell
-    // ({colorPacked, materialFlagBone}); occupied iff the alpha byte of
-    // colorPacked != 0. Seeded with residentLocals_ (rigid). {0, nullptr} while
+    // 3D grid keyed by integer source-local cell, three uints per cell
+    // ({colorPacked, materialFlagBone, reserved}); occupied iff the alpha byte of
+    // colorPacked != 0. The reserved lane carries per-trixel priority through a
+    // rotating fill (#2023). Seeded with residentLocals_ (rigid). {0, nullptr} while
     // unallocated. The grid is the position→color/occupancy structure the
     // dest-cell inverse lookup needs (forward-scatter's source-indexed locals
     // can't answer "is there a source voxel at p?" in O(1)).
