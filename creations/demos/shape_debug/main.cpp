@@ -877,11 +877,17 @@ EntityId createVoxelPoolShape(
     auto sdfType = static_cast<IRMath::SDF::ShapeType>(type);
     vec4 sdfParams = IRMath::SDF::effectiveParams(sdfType, shapeParams);
 
+    // Batch-evaluate the SDF over the whole grid via the shared helper rather
+    // than calling evaluate() per cell. evaluateGrid samples each cell at
+    // vec3(x,y,z) - size*0.5 + 0.5 in index3DtoIndex1D order — bit-identical to
+    // the centered positions C_VoxelSetNew laid out for centerAroundOrigin — so
+    // distances[i] lines up one-for-one with voxel i.
+    std::vector<float> distances(static_cast<std::size_t>(vs.numVoxels_));
+    IRMath::SDF::evaluateGrid(vs.size_, sdfType, sdfParams, distances);
+
     int activeCount = 0;
     for (int i = 0; i < vs.numVoxels_; ++i) {
-        vec3 localPos = vs.positions_[i].pos_;
-        float sdf = IRMath::SDF::evaluate(localPos, sdfType, sdfParams);
-        if (sdf > IRMath::SDF::kSurfaceThreshold) {
+        if (distances[i] > IRMath::SDF::kSurfaceThreshold) {
             vs.voxels_[i].deactivate();
         } else {
             ++activeCount;
