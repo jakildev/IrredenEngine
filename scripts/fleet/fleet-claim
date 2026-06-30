@@ -1097,12 +1097,17 @@ PYEOF
 import json, os, re, subprocess, sys
 sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
 from fleet_branch_match import branch_matches_issue
+# Same reject-state predicate the scout's offer and the claim gate use (#1751),
+# so the finder doesn't advertise a base the gate would then refuse — a worker
+# would otherwise burn an iteration claiming a WIP/design-unblocked base only to
+# have --stackable-on bounce it.
+from fleet_stack_base import unsafe_base_reason
 blocker = os.environ["BLOCKER"]
 repo = os.environ["REPO"]
 try:
     r = subprocess.run(
         ["gh", "pr", "list", "--repo", repo, "--state", "open",
-         "--json", "url,headRefName,author,number,body",
+         "--json", "url,headRefName,author,number,body,labels",
          "--limit", "200"],
         capture_output=True, text=True, timeout=15,
     )
@@ -1126,6 +1131,12 @@ for pr in prs:
 if len(matches) != 1:
     sys.exit(0)
 pr = matches[0]
+# Reject a base whose head diff is in flux (WIP / amending / design-unblocked /
+# semantic-conflict / …). changed_files is unknown here (labels-only, like the
+# scout's cache-miss path); the claim gate re-checks live, including the diff.
+labels = [l.get("name", "") for l in (pr.get("labels") or []) if isinstance(l, dict)]
+if unsafe_base_reason(labels):
+    sys.exit(0)
 url = pr.get("url", "")
 head = pr.get("headRefName", "")
 author = (pr.get("author") or {}).get("login", "")
