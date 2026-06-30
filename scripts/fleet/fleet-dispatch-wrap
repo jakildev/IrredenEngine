@@ -88,16 +88,91 @@ mkdir -p "$RATE_LIMIT_DIR"
 export FLEET_THROTTLE_FLAG="$RATE_LIMIT_DIR/$PANE_KEY.throttle-seen"
 rm -f "$FLEET_THROTTLE_FLAG"
 
-# --fallback-model only exists in print mode, which is exactly this path.
-# When the dispatcher hands us a chain, claude retries the iteration on
-# the fallback model(s) if $MODEL is overloaded or no longer available.
-CLAUDE_ARGS=(--model "$MODEL" --effort "$EFFORT" --print
-    --output-format stream-json --include-partial-messages --verbose)
-if [[ -n "$FALLBACK_MODEL" ]]; then
-    CLAUDE_ARGS+=(--fallback-model "$FALLBACK_MODEL")
+# --- Session-id persistence + interrupted-session resume (workers + reviewers) ---
+#
+# Each iteration normally launches a FRESH `claude --session-id <uuid>` running
+# `/role-<role>`. On an interruption (fleet-down/up, crash, a killed pane) the
+# next dispatch can instead `claude --resume <uuid>` to reload the exact prior
+# session — its in-context understanding of the task, the diff, the plan — rather
+# than re-deriving all of it from the claim/reservation (expensive + lossy). The
+# resume is gated by a per-worktree sidecar that is written at launch and cleared
+# on a clean, work-finished exit; a hard kill skips this script's post-claude
+# cleanup, so the sidecar survives and the next dispatch resumes. Verified
+# feasible on CLI 2.1.196 (the #1320 thinking-block 400 no longer reproduces).
+SESSIONS_DIR="${FLEET_SESSIONS_DIR:-$HOME/.fleet/sessions}"
+mkdir -p "$SESSIONS_DIR"
+worktree_name=$(basename "$PWD")
+SIDECAR="$SESSIONS_DIR/$worktree_name.session.json"
+# Roles worth resuming: workers (multi-step authoring; lost scratch is costly)
+# and reviewers (re-read a full diff). Short mechanical roles are not.
+_resume_role=0
+case "$ROLE" in worker|sonnet-reviewer|opus-reviewer) _resume_role=1 ;; esac
+
+# Is there genuine unfinished work in this worktree that a resumed session should
+# continue? A reservation (feedback-amend) OR a claude/<N>-* branch carrying
+# uncommitted or unpushed-vs-master commits (a normal task mid-flow). Reviewers
+# hold no branch/reservation work, so they're never "in flight" — they clear on
+# a clean exit and only persist a sidecar across a hard kill.
+worktree_in_flight() {
+    [[ "$ROLE" == worker ]] || return 1
+    local _resv; _resv=$(fleet-claim reservation-of "$worktree_name" 2>/dev/null || true)
+    [[ -n "$_resv" ]] && return 0
+    local _br; _br=$(git -C "$PWD" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+    [[ "$_br" == claude/* ]] || return 1
+    [[ -n "$(git -C "$PWD" status --porcelain 2>/dev/null)" ]] && return 0
+    local _ahead; _ahead=$(git -C "$PWD" rev-list --count origin/master..HEAD 2>/dev/null || echo 0)
+    [[ "$_ahead" =~ ^[0-9]+$ && "$_ahead" -gt 0 ]] && return 0
+    return 1
+}
+
+_read_sidecar() { python3 -c "import json;print(json.load(open('$SIDECAR')).get('$1',''))" 2>/dev/null || true; }
+
+RESUMED=0
+RESUME_ID=""
+if (( _resume_role )) && [[ -f "$SIDECAR" ]]; then
+    RESUME_ID=$(_read_sidecar session_id)
+    if [[ -n "$RESUME_ID" ]]; then
+        RESUMED=1
+        # Resume with the ORIGINAL session's model/effort (stored at launch),
+        # never the dispatcher's freshly-resolved class — a thinking session must
+        # keep its launch config, and the resumed task's class is fixed.
+        _smodel=$(_read_sidecar model); _seffort=$(_read_sidecar effort)
+        [[ -n "$_smodel" ]] && MODEL="$_smodel"
+        [[ -n "$_seffort" ]] && EFFORT="$_seffort"
+    fi
 fi
 
-claude "${CLAUDE_ARGS[@]}" "/role-$ROLE $ROLE_MODE" | fleet-claude-stream
+# --fallback-model only exists in print mode, which is exactly this path. When
+# the dispatcher hands us a chain (fresh fable dispatch), claude retries on the
+# fallback model(s) if $MODEL is overloaded. Resume targets one specific session,
+# so it carries no fallback — a failed resume falls back to fresh (cleanup below).
+if (( RESUMED )); then
+    CLAUDE_ARGS=(--resume "$RESUME_ID" --model "$MODEL" --effort "$EFFORT" --print
+        --output-format stream-json --include-partial-messages --verbose)
+    PROMPT="Resume the task you were working on before the interruption; continue from where you left off."
+    echo "fleet-dispatch-wrap: resuming session $RESUME_ID for $worktree_name ($ROLE, $MODEL/$EFFORT)" >&2
+else
+    SESSION_ID=$(python3 -c 'import uuid;print(uuid.uuid4())')
+    CLAUDE_ARGS=(--session-id "$SESSION_ID" --model "$MODEL" --effort "$EFFORT" --print
+        --output-format stream-json --include-partial-messages --verbose)
+    if [[ -n "$FALLBACK_MODEL" ]]; then
+        CLAUDE_ARGS+=(--fallback-model "$FALLBACK_MODEL")
+    fi
+    PROMPT="/role-$ROLE $ROLE_MODE"
+    if (( _resume_role )); then
+        printf '{"session_id":"%s","role":"%s","model":"%s","effort":"%s","created_epoch":%s}\n' \
+            "$SESSION_ID" "$ROLE" "$MODEL" "$EFFORT" "$(date +%s)" > "$SIDECAR"
+    fi
+fi
+
+# Test hook: print the resolved launch decision + argv and exit before spawning
+# claude (mirrors fleet-babysit's FLEET_BABYSIT_PRINT_LAUNCH).
+if [[ -n "${FLEET_DISPATCH_PRINT_LAUNCH:-}" ]]; then
+    printf 'resumed=%s prompt=%s argv=claude %s\n' "$RESUMED" "$PROMPT" "${CLAUDE_ARGS[*]}"
+    exit 0
+fi
+
+claude "${CLAUDE_ARGS[@]}" "$PROMPT" | fleet-claude-stream
 
 rc="${PIPESTATUS[0]}"
 TRIGGERS_DIR="${FLEET_STATE_DIR:-$HOME/.fleet/state}/triggers"
@@ -124,7 +199,6 @@ rm -f "$FLEET_THROTTLE_FLAG"
 # trigger so the dispatcher re-fires the worker on the next tick; the
 # reservation gate at step 0.5 will resume the same task.
 if [[ "$rc" == "0" && "$ROLE" == "worker" ]]; then
-    worktree_name=$(basename "$PWD")
     reservation_issue=$(fleet-claim reservation-of "$worktree_name" 2>/dev/null || true)
     if [[ -n "$reservation_issue" ]]; then
         dirty=$(git -C "$PWD" status --porcelain 2>/dev/null || true)
@@ -134,5 +208,21 @@ if [[ "$rc" == "0" && "$ROLE" == "worker" ]]; then
             touch "$trigger_dir/$ROLE"
             echo "fleet-dispatch-wrap: dirty worktree '$worktree_name' + reservation #$reservation_issue after clean exit — wrote retrigger for $ROLE" >&2
         fi
+    fi
+fi
+
+# Session sidecar lifecycle. This runs only when claude EXITED (a hard kill skips
+# it, leaving the sidecar so the next dispatch resumes — the desired behavior):
+#   - a resume that itself failed (rc!=0) -> clear, so the next dispatch goes
+#     fresh and recovers via the claim/reservation path (breaks any resume loop);
+#   - genuine in-flight work remaining -> keep, so the next dispatch resumes;
+#   - otherwise (task finished + worktree reset, or a no-op iteration) -> clear.
+if (( _resume_role )); then
+    if (( RESUMED )) && [[ "$rc" != "0" ]]; then
+        rm -f "$SIDECAR"
+    elif worktree_in_flight; then
+        :   # keep the sidecar — resume on the next dispatch
+    else
+        rm -f "$SIDECAR"
     fi
 fi
