@@ -156,6 +156,22 @@ template <> struct System<UPDATE_JOINT_MATRICES> {
         return static_cast<int>(absoluteSlot) - kJointTransformSlotBase;
     }
 
+    // Voxels of `voxelSet` safe to address in its live pool: the stable
+    // `numVoxels_` scalar clamped to the pool's writable tail. Reads the LIVE
+    // pool size, never the captured `voxelSet.voxels_` span — a between-frame
+    // canvas archetype migration deep-copies C_VoxelPool and frees that span's
+    // backing while `voxelStartIdx_` / `numVoxels_` stay valid (the #2032
+    // dangling-read hazard; mirrors C_VoxelSetNew::updateAsChild). The clamp
+    // guarantees `[voxelStartIdx_, voxelStartIdx_ + count)` never runs past
+    // live storage even if a migration shrank the pool.
+    static std::size_t
+    liveWritableVoxelCount(const C_VoxelSetNew &voxelSet, const C_VoxelPool &pool) {
+        const std::size_t poolSize = pool.getColors().size();
+        const std::size_t startIdx = voxelSet.voxelStartIdx_;
+        const std::size_t writableTail = poolSize > startIdx ? poolSize - startIdx : 0u;
+        return IRMath::min(static_cast<std::size_t>(voxelSet.numVoxels_), writableTail);
+    }
+
     // Reused scratch for seedVoxelBoneSlots' per-voxel slot array (rare calls,
     // but the capacity persists so repeated re-rigs don't churn).
     std::vector<std::uint32_t> boneSlotStaging_;
@@ -194,14 +210,23 @@ template <> struct System<UPDATE_JOINT_MATRICES> {
             }
         }
         const SlotBlock &block = blockIt->second;
-        boneSlotStaging_.resize(voxelSet.voxels_.size());
-        for (std::size_t i = 0; i < voxelSet.voxels_.size(); ++i) {
-            const std::uint32_t boneId = voxelSet.voxels_[i].bone_id_;
+        // Read bone ids from the live pool, never the captured `voxelSet.voxels_`
+        // span (see liveWritableVoxelCount — derefing the stale span here is the
+        // #2032 first-frame segfault).
+        C_VoxelPool &pool = IREntity::getComponent<C_VoxelPool>(voxelSet.canvasEntity_);
+        const std::size_t startIdx = voxelSet.voxelStartIdx_;
+        const std::size_t count = liveWritableVoxelCount(voxelSet, pool);
+        if (count == 0) {
+            return; // pool storage shrank below this set's range — nothing safe to seed
+        }
+        const std::vector<C_Voxel> &poolVoxels = pool.getColors();
+        boneSlotStaging_.resize(count);
+        for (std::size_t i = 0; i < count; ++i) {
+            const std::uint32_t boneId = poolVoxels[startIdx + i].bone_id_;
             boneSlotStaging_[i] =
                 (boneId < block.count_) ? block.base_ + boneId : voxelSet.gpuTransformSlot_;
         }
-        IREntity::getComponent<C_VoxelPool>(voxelSet.canvasEntity_)
-            .setTransformIndicesForRange(voxelSet.voxelStartIdx_, boneSlotStaging_);
+        pool.setTransformIndicesForRange(startIdx, boneSlotStaging_);
     }
 
     // Re-stamp a rig root's voxel set to rigid follow (entity slot) when the
@@ -220,12 +245,15 @@ template <> struct System<UPDATE_JOINT_MATRICES> {
             voxelSet.gpuTransformSlot_ == kVoxelTransformStatic) {
             return; // never seeded — nothing to reset
         }
-        IREntity::getComponent<C_VoxelPool>(voxelSet.canvasEntity_)
-            .setTransformIndexForRange(
-                voxelSet.voxelStartIdx_,
-                voxelSet.voxels_.size(),
-                voxelSet.gpuTransformSlot_
-            );
+        // Stable `numVoxels_` clamped to the live pool, not `voxelSet.voxels_.size()`
+        // — the captured span is invalidated by a canvas archetype migration (see
+        // liveWritableVoxelCount, #2032).
+        C_VoxelPool &pool = IREntity::getComponent<C_VoxelPool>(voxelSet.canvasEntity_);
+        const std::size_t count = liveWritableVoxelCount(voxelSet, pool);
+        if (count == 0) {
+            return;
+        }
+        pool.setTransformIndexForRange(voxelSet.voxelStartIdx_, count, voxelSet.gpuTransformSlot_);
     }
 
     void beginTick() {
