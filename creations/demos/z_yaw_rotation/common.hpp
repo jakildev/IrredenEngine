@@ -13,5 +13,9 @@ static void carveSphere(IRComponents::C_VoxelSetNew &vs, float radius) {
             vs.voxels_[i].deactivate();
         }
     }
+    // Raw-span carve bypasses the C_VoxelSetNew helpers, so the exposed-face
+    // mask is stale: recompute it before syncing the active mask, or the
+    // carved surface faces stay occluded and render black under the lit path.
+    IRPrefab::Voxel::recomputeFaceOccupancy(vs.voxels_, vs.size_);
     vs.syncActiveMask();
 }
