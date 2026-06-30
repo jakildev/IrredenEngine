@@ -417,9 +417,18 @@ _EPIC_CHECKLIST_RE = re.compile(
 # precision; the explicit label remains the primary, recommended signal. macOS
 # host declarations don't match (the OS alternation is linux/windows/opengl), so
 # a mac-only task is never self-gated off its own host.
+#
+# Two requirement shapes are matched (both deliberate declarations, both
+# precision-safe): a verb form ("must run on a Linux host", "only builds on an
+# OpenGL host") and the very common "<GL|OpenGL|Linux|Windows>-host only" /
+# "GL host only" adjective form (#2107: "It is GL-host only and cannot be
+# authored/validated on a macOS/Metal host" — missed by the verb form alone).
 _GL_HOST_REQUIRED_RE = re.compile(
-    r"\b(?:must\s+(?:be\s+)?run\s+on|only\s+(?:runs?|builds?)\s+on)\s+"
-    r"(?:an?\s+|the\s+)?(?:linux|windows|opengl)[\w/+-]*\s+host\b",
+    r"\b(?:"
+    r"(?:must\s+(?:be\s+)?run\s+on|only\s+(?:runs?|builds?)\s+on)\s+"
+    r"(?:an?\s+|the\s+)?(?:linux|windows|opengl)[\w/+-]*\s+host"
+    r"|(?:gl|opengl|linux|windows)[\s-]?host[\s-]?only"
+    r")\b",
     re.IGNORECASE,
 )
 

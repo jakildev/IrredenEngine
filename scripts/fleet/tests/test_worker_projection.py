@@ -593,6 +593,11 @@ class NeedsGlHostAnnotation(unittest.TestCase):
             "must be run on a Windows host to refresh windows-debug refs.",
             "Only runs on an OpenGL host.",
             "must run on a Linux/Windows host",
+            # #2107: the "<GL|...>-host only" adjective form the verb pattern missed.
+            "It is GL-host only and cannot be authored/validated on a macOS host.",
+            "This is GL host only.",
+            "OpenGL-host-only GTEST harness.",
+            "Windows-host only — needs the native MSYS2 toolchain.",
         ):
             with self.subTest(phrase=phrase):
                 result = self._fetch([self._issue_body(1969, f"**Model:** sonnet\n{phrase}")])
@@ -607,6 +612,8 @@ class NeedsGlHostAnnotation(unittest.TestCase):
             "The Linux build is faster than macOS.",
             "must run on a macOS host",        # mac task — not a GL gate
             "compare against the linux-debug references",
+            "the host only accepts one connection",   # "host only" without a GL prefix
+            "macOS-host only",                         # mac adjective form — not a GL gate
         ):
             with self.subTest(phrase=phrase):
                 result = self._fetch([self._issue_body(2000, f"**Model:** opus\n{phrase}")])
