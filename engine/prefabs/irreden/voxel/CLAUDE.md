@@ -122,7 +122,12 @@ for single voxels and particles.
   through the per-canvas TRS composite (`ENTITY_CANVAS_TO_FRAMEBUFFER`)
   and never touch the world voxel pool's globals. Round-to-cell aliasing
   (which source voxel a contested dest cell shows) resolves first-wins in
-  authored order — deterministic per pose. Math helpers:
+  authored order — deterministic per pose. Each rotated cell it authors is
+  stamped with `VoxelReserved::kRotatedEmit` (`reserved_` bit 2) so the
+  voxel→trixel raster runs its silhouette-riser face selection on rotated
+  staircases (emit the exposed opposite-polarity face the convex visible-triplet
+  drops); non-rotated sets never carry the bit and keep the strict triplet. See
+  `engine/render/CLAUDE.md` §"Voxel face rasterization". Math helpers:
   `IRPrefab::GridRotation::worldCellForGridVoxel` (forward; identity arm +
   creation-facing) and `sourceCellForWorldCell` (inverse) in
   `grid_rotation.hpp` — call directly from creations that need the same

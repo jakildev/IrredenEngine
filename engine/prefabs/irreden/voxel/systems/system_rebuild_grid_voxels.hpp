@@ -308,6 +308,15 @@ template <> struct System<REBUILD_GRID_VOXELS> {
         pool.markChunkWorldBoundsDirty();
         pool.queuePositionRange(baseIdx, static_cast<size_t>(safeCount));
 
+        // Same rotated re-voxelize marker the inverse arm sets — this is the
+        // forward-map fallback for a ROTATED set, so its cells need the
+        // silhouette-riser emit too (component_voxel.hpp VoxelReserved).
+        for (int i = 0; i < safeCount; ++i) {
+            if (poolColors[baseIdx + i].color_.alpha_ != 0) {
+                poolColors[baseIdx + i].reserved_ |= VoxelReserved::kRotatedEmit;
+            }
+        }
+
         recomputeMaskFromGlobals(pool, baseIdx, safeCount);
     }
 
@@ -495,6 +504,12 @@ template <> struct System<REBUILD_GRID_VOXELS> {
                 face |= VoxelFlags::kFaceOccludedPosZ;
             out.flags_ =
                 static_cast<std::uint8_t>(out.flags_ & ~VoxelFlags::kFaceOccludedMask) | face;
+            // Mark this as a rotated re-voxelize cell so the voxel→trixel raster
+            // emits the silhouette riser the convex visible-triplet drops on the
+            // staircase's grazing edge (the gap fix). Non-rotated sets never reach
+            // this arm, so their reserved_ bit stays 0 and the strict-triplet fast
+            // path is byte-identical.
+            out.reserved_ |= VoxelReserved::kRotatedEmit;
             poolColors[slot] = out;
             ++written;
         };
