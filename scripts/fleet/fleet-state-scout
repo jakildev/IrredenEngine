@@ -159,7 +159,7 @@ def fetch_prs(repo):
         "gh", "pr", "list", "--repo", repo, "--state", "open",
         "--json",
         "number,title,headRefName,baseRefName,author,labels,mergeable,"
-        "isDraft,reviews,updatedAt",
+        "isDraft,reviews,updatedAt,body",
     ])
     if out is None:
         return None
@@ -1246,21 +1246,30 @@ def resolve_epic_children(state):
 
 def enrich_stackable_blocker_prs(state):
     # Per T-110 PR 2: for each task whose blocked_by is exactly one issue
-    # number (`#NNN`) with exactly one matching open PR (head ref
-    # `claude/<NNN>-…`) in the same repo, attach a `stackable_blocker_pr`
-    # field carrying {number, headRefName, author}. Workers (T-114) read
-    # this to decide whether to fall through to a stackable claim when no
-    # unblocked tasks are free.
+    # number (`#NNN`) with exactly one matching open PR in the same repo,
+    # attach a `stackable_blocker_pr` field carrying {number, headRefName,
+    # author}. Workers (T-114) read this to decide whether to fall through to a
+    # stackable claim when no unblocked tasks are free. A multi-blocker task
+    # whose other blockers have all closed is already collapsed to a single
+    # `#NNN` by resolve_blocked_by() (runs first), so it reaches here eligible.
+    #
+    # A PR "matches" the blocker when its head branch is `claude/<NNN>-…` OR its
+    # body Closes/Fixes/Resolves #NNN — the same union fleet-claim's
+    # find-stackable-blockers uses, so the scout offers every base the live
+    # finder would (the Closes-#N form catches blocker PRs on non-standard /
+    # human branches).
     #
     # The field is always omitted when:
     #   - blocked_by doesn't reference exactly one issue (multi-blocker,
     #     free-text, URL, none) — see _single_blocker_issue; a single #NNN
     #     followed by explanatory prose still qualifies
-    #   - zero open PRs match the expected branch prefix (blocker not
-    #     yet started, or already merged and dropped from open list)
+    #   - zero open PRs match (blocker not yet started, or already merged and
+    #     dropped from the open list)
     #   - more than one open PR matches (rare but possible if a stale
     #     branch lingers — caller can't pick one safely)
-    #   - blocker PR has fleet:design-blocked or fleet:design-escalated (filter b)
+    #   - the blocker PR is in a non-stackable base state — unsafe_base_reason,
+    #     filter (b): WIP / amending / design-unblocked / etc. (frozen-design
+    #     bases ARE accepted; see fleet_stack_base)
     #   - downstream task's area files appear in the blocker PR diff (filter a)
     #
     # Engine and game tasks are both enriched; worker pickup only honors
@@ -1273,8 +1282,16 @@ def enrich_stackable_blocker_prs(state):
             issue_num = _single_blocker_issue(blocked_by)
             if not issue_num:
                 continue
-            matches = [pr for pr in prs
-                       if branch_matches_issue(pr.get("headRefName", ""), issue_num, repo_key)]
+            closes_re = re.compile(
+                r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#"
+                + re.escape(issue_num) + r"\b",
+                re.IGNORECASE,
+            )
+            matches = [
+                pr for pr in prs
+                if branch_matches_issue(pr.get("headRefName", ""), issue_num, repo_key)
+                or closes_re.search(pr.get("body", "") or "")
+            ]
             if len(matches) != 1:
                 continue
             pr = matches[0]
@@ -2251,6 +2268,13 @@ def tick_once():
     resolve_human_approved_blockers(state)
     resolve_epic_children(state)
     enrich_stackable_blocker_prs(state)
+    # Drop PR bodies now the only consumer (the Closes-#N stack-base match above)
+    # has run, so they don't bloat state.json or the per-role slices — mirrors
+    # resolve_human_approved_blockers popping issue bodies. No projector or slice
+    # needs pr body.
+    for _repo_state in state["repos"].values():
+        for _pr in _repo_state.get("prs", []):
+            _pr.pop("body", None)
     enrich_inflight_pr_tasks(state)
     write_atomic(STATE_FILE, json.dumps(state, indent=2, sort_keys=True) + "\n")
 
