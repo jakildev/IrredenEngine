@@ -121,8 +121,8 @@ struct Voxel {
 // Fog cut-face inputs (#2125). STAGE_1 binds the fog grid at [[texture(0)]] (free
 // there), but [[texture(0)]] is the colour output here, so the fog grid binds at
 // [[texture(3)]] instead. Every non-fog / detached canvas binds a 1×1 all-visible
-// placeholder + count-0 observers, so fogColumnHiddenAt short-circuits to "never
-// hidden" and those scenes stay byte-identical.
+// placeholder + count-0 observers, so fogColumnReveal short-circuits to "fully
+// visible" and those scenes stay byte-identical.
 constant int kFogOfWarHalfExtent = 128;
 constant float kFogExploredThreshold = 0.25f;
 constant int kMaxFogVisionCircles = 8; // mirror of component_canvas_fog_of_war.hpp kMaxFogVisionCircles
@@ -134,30 +134,30 @@ struct FogObserverData {
     int _fogObsPad2;
 };
 
-// Whether world grid COLUMN `col` is fully fog-hidden. MUST stay byte-identical to
-// c_voxel_to_trixel_stage_1.metal::fogColumnHiddenAt (and the GLSL twin) — stage 1
-// emits the cut face's DISTANCE on this exact predicate, and stage 2 must paint
-// colour on the same set of faces or the cut wall reads as cleared background.
-static bool fogColumnHiddenAt(
+// Fog reveal of world grid COLUMN `col` in [0,1]. MUST stay byte-identical to
+// c_voxel_to_trixel_stage_1.metal::fogColumnReveal (and the GLSL twin) — stage 1
+// emits the cut face's DISTANCE for `reveal < 1.0` (#2126 P2), and stage 2 must
+// paint colour on the same set of faces or the cut wall reads as cleared
+// background.
+static float fogColumnReveal(
     texture2d<float, access::read> fog, constant FogObserverData& obs, int2 col
 ) {
     const int2 fogSize = int2(int(fog.get_width()), int(fog.get_height()));
     if (fogSize.x <= 1) {
-        return false; // 1×1 all-visible placeholder (non-fog / detached canvas)
+        return 1.0f; // 1×1 all-visible placeholder (non-fog / detached canvas)
     }
     const int2 cell = col + int2(kFogOfWarHalfExtent);
     if (cell.x < 0 || cell.x >= fogSize.x || cell.y < 0 || cell.y >= fogSize.y) {
-        return false; // out-of-range column reads as visible
+        return 1.0f; // out-of-range column reads as visible
     }
     if (fog.read(uint2(cell)).r >= kFogExploredThreshold) {
-        return false; // explored / visible grid memory — keep
+        return 1.0f; // explored / visible grid memory — keep
     }
+    float reveal = 0.0f;
     for (int i = 0; i < obs.visionCircleCount; ++i) {
-        if (fogVisionCircleReveal(float2(col), obs.visionCircles[i], 0.0f) >= 0.5f) {
-            return false;
-        }
+        reveal = max(reveal, fogVisionCircleReveal(float2(col), obs.visionCircles[i], 0.0f));
     }
-    return true;
+    return reveal;
 }
 
 kernel void c_voxel_to_trixel_stage_2(
@@ -234,8 +234,12 @@ kernel void c_voxel_to_trixel_stage_2(
     }
     bool keepFace = faceIsExposed(flagsByte, faceId);
     if (!keepFace && faceId < kFaceZNeg && fogActive) {
-        keepFace = fogColumnHiddenAt(
-            canvasFogOfWar, fogObservers, worldColumn + faceOutwardNormal6I(faceId).xy);
+        // P2 (#2126): cut iff the neighbor column is not fully revealed (reveal <
+        // 1.0) — mirrors stage 1 exactly. Mode A (edgeSoftness 0) reveal is binary so
+        // this collapses to the #2125/#2127 boolean boundary (byte-identical).
+        keepFace = fogColumnReveal(
+            canvasFogOfWar, fogObservers,
+            worldColumn + faceOutwardNormal6I(faceId).xy) < 1.0f;
     }
     if (!keepFace) return;
 

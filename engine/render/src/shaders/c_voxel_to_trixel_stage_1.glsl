@@ -120,7 +120,7 @@ layout(r32i, binding = 1) uniform iimage2D triangleCanvasDistances;
 // + c_fog_to_trixel. The world fog canvas binds its 256² grid texture on image
 // slot 0 and uploads the live vision circles at binding 27; every non-fog /
 // detached canvas binds the shared 1×1 all-visible placeholder + a count-0
-// observer buffer, so `fogColumnHiddenAt` short-circuits to "never hidden"
+// observer buffer, so `fogColumnReveal` short-circuits to "fully visible"
 // and those scenes stay byte-identical. Slot 0 is free in STAGE_1 (it writes
 // only the distance image on slot 1); STAGE_2 rebinds slot 0 to the colour
 // image and reads the fog grid on slot 3 instead.
@@ -179,47 +179,53 @@ void emitDeformedFace(
     }
 }
 
-// True iff world grid COLUMN `col` (xy world units) is fully hidden by fog: the
-// grid cell is unexplored AND the column center lies OUTSIDE every live vision
-// circle's disc. Two callers (#2102 own-column drop + #2125 neighbor cut-face
-// test) share this by passing an explicit column, so both decide "hidden" on the
-// identical analytic curve. Such a column has fog reveal ~0, so rendering its
-// voxel only lets FOG_TO_TRIXEL hard-black the faces. Dropping the voxel (own
-// column; STAGE_2 inherits the drop via its depth re-test) shows the revealed
-// floor / background behind instead; emitting an interior cut face toward such a
-// column (#2125) caps the revealed half with a real wall. Either way the object
-// clips on the SAME analytic curve the floor edge uses.
+// Fog reveal of world grid COLUMN `col` (xy world units) in [0,1]: the strongest
+// live vision-circle reveal at the column center (aa = 0), or 1.0 ("fully visible")
+// for explored grid memory, OOB columns, and the 1×1 placeholder. Two callers
+// threshold this on the SAME analytic curve, each with the comparison its job
+// needs:
+//   - #2102 own-column drop: drop iff `reveal <= 0.0` (FULLY hidden — past the
+//     disc's outer soft edge). Such a column's voxel would only let FOG_TO_TRIXEL
+//     hard-black its faces; dropping it (STAGE_2 inherits the drop via its depth
+//     re-test) shows the revealed floor / background behind instead. A PARTIALLY
+//     revealed boundary column (0 < reveal < 1) is KEPT and rasterizes, so the
+//     per-pixel FOG_TO_TRIXEL mask fades the object's silhouette on the SAME
+//     smooth curve it fades the floor (#2126 Mode B — "reveal whole voxels then
+//     smooth like the floor").
+//   - #2125/#2126 neighbor cut-face test: emit a cut face iff `reveal < 1.0`
+//     ("neighbor not fully revealed") so a cut face exists across the whole soft
+//     boundary band for the per-pixel mask to trim.
+// With a hard disc (edgeSoftness == 0, Mode A / the default) reveal is binary
+// {0,1}, so `reveal <= 0.0`, `reveal < 0.5`, and `reveal < 1.0` all coincide at
+// "center outside radius" — Mode A and non-fog scenes stay byte-identical.
 //
 // This is c_voxel_visibility_compact's drop test taken to the PRECISE radius:
 // the compact keeps a permissive +edgeSoftness+1-cell margin so the per-pixel
 // floor reveal stays smooth (no grid-aligned notches, #2068); STAGE_1 tightens
-// that margin away for the voxel object so its kept-but-outside boundary faces
-// no longer rasterize. Explored grid memory and in-disc columns are kept; the
-// 1×1 placeholder + OOB columns read as visible (never hidden), matching the
-// OOB-as-visible invariant — so non-fog / detached canvases are byte-identical.
+// that margin away for the voxel object so its fully-hidden faces no longer
+// rasterize. Explored grid memory and in/at-disc columns are kept; the 1×1
+// placeholder + OOB columns read as fully visible, matching the OOB-as-visible
+// invariant — so non-fog / detached canvases are byte-identical.
 // Duplicated byte-identically in c_voxel_to_trixel_stage_2.{glsl,metal} (fog
 // grid binds on slot 3 there instead of slot 0 — slot-parameterized images are
 // not possible in GLSL/MSL, hence the duplication). Keep them in sync.
-bool fogColumnHiddenAt(ivec2 col) {
+float fogColumnReveal(ivec2 col) {
     const ivec2 fogSize = imageSize(canvasFogOfWar);
     if (fogSize.x <= 1) {
-        return false; // 1×1 all-visible placeholder (non-fog / detached canvas)
+        return 1.0; // 1×1 all-visible placeholder (non-fog / detached canvas)
     }
     const ivec2 cell = col + ivec2(kFogOfWarHalfExtent);
     if (cell.x < 0 || cell.x >= fogSize.x || cell.y < 0 || cell.y >= fogSize.y) {
-        return false; // out-of-range column reads as visible
+        return 1.0; // out-of-range column reads as visible
     }
     if (imageLoad(canvasFogOfWar, cell).r >= kFogExploredThreshold) {
-        return false; // explored / visible grid memory — keep (FOG_TO_TRIXEL fades it)
+        return 1.0; // explored / visible grid memory — keep (FOG_TO_TRIXEL fades it)
     }
-    // Unexplored grid: keep only if a live vision circle's disc covers the
-    // column center. aa = 0 → reveal >= 0.5 is exactly "center inside radius".
+    float reveal = 0.0;
     for (int i = 0; i < visionCircleCount; ++i) {
-        if (fogVisionCircleReveal(vec2(col), visionCircles[i], 0.0) >= 0.5) {
-            return false;
-        }
+        reveal = max(reveal, fogVisionCircleReveal(vec2(col), visionCircles[i], 0.0));
     }
-    return true;
+    return reveal;
 }
 
 void main() {
@@ -291,23 +297,39 @@ void main() {
     // camera-visible face normally emits only when exposed (neighbor cell empty).
     // At the fog boundary a non-exposed VERTICAL face (faceId 0..3 = ±X/±Y; ±Z
     // never cut — the vision region is a vertical cylinder) becomes the object's
-    // interior cross-section wall when the solid neighbor COLUMN it faces is
-    // fog-hidden — so a boundary-cut object caps with a real interior face instead
-    // of a see-through hole. faceOutwardNormal6I(faceId).xy is the neighbor column
-    // offset (±1 along X/Y; 0 for ±Z, never reached here). Distance (here) and
-    // colour (stage 2) MUST apply the identical predicate or the cut wall's depth
-    // and colour desync — keep this block byte-identical to stage 2's.
+    // interior cross-section wall when the solid neighbor COLUMN it faces is NOT
+    // fully revealed — so a boundary-cut object caps with a real interior face
+    // instead of a see-through hole. faceOutwardNormal6I(faceId).xy is the neighbor
+    // column offset (±1 along X/Y; 0 for ±Z, never reached here). The `fogActive`
+    // gate (#2127) extends the cut to a world-placed re-voxelize DETACHED canvas via
+    // the `worldColumn` recovery above; non-fog / per-axis / plain-DETACHED scenes
+    // short-circuit on it and stay byte-identical. Distance (here) and colour
+    // (stage 2) MUST apply the identical predicate or the cut wall's depth and
+    // colour desync — keep this block byte-identical to stage 2's.
+    //
+    // P2 (#2126): the cut fires when the neighbor is "not fully revealed"
+    // (reveal < 1.0), so a cut face is emitted across the WHOLE soft boundary band
+    // and the per-pixel FOG_TO_TRIXEL mask owns the smooth silhouette (Mode B).
+    // With a hard disc (edgeSoftness == 0, Mode A / the default) reveal is binary
+    // so < 1.0 collapses to the binary boundary — Mode A is byte-identical, so the
+    // re-voxelize detached fog cut (#2127) keeps its merged behaviour at the default.
     bool keepFace = faceIsExposed(flagsByte, faceId);
     if (!keepFace && faceId < kFaceZNeg && fogActive) {
-        keepFace = fogColumnHiddenAt(worldColumn + faceOutwardNormal6I(faceId).xy);
+        keepFace = fogColumnReveal(worldColumn + faceOutwardNormal6I(faceId).xy) < 1.0;
     }
     if (!keepFace) return;
 
-    // Per-voxel analytic fog clip (#2102/#2127). On the world fog route, drop a
-    // voxel whose OWN world column is fully hidden so FOG_TO_TRIXEL can't
-    // hard-black its faces (the revealed floor / background behind shows through
-    // instead); the cut faces above cap the revealed half.
-    if (fogActive && fogColumnHiddenAt(worldColumn)) {
+    // Per-voxel analytic fog clip (#2102 + #2126 P2 + #2127). On the world fog route,
+    // drop a voxel whose OWN world column is FULLY hidden (reveal <= 0, past the
+    // disc's outer soft edge) so FOG_TO_TRIXEL can't hard-black its faces (the
+    // revealed floor / background behind shows through instead); the cut faces above
+    // cap the revealed half. A PARTIALLY revealed boundary column (0 < reveal < 1)
+    // is KEPT so it rasterizes and FOG_TO_TRIXEL fades the object's silhouette on the
+    // same smooth curve as the floor (Mode B). At edgeSoftness 0 (Mode A / default)
+    // reveal is binary, so this is exactly the #2125 "drop outside radius". `fogActive`
+    // gates the world GRID canvas + world-placed re-voxelize detached canvas (#2127)
+    // and short-circuits every other route, keeping non-fog scenes byte-identical.
+    if (fogActive && fogColumnReveal(worldColumn) <= 0.0) {
         return;
     }
 
