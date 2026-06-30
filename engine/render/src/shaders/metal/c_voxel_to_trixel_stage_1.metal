@@ -95,7 +95,7 @@ struct Voxel {
 // + c_fog_to_trixel. The world fog canvas binds its 256² grid texture at
 // [[texture(0)]] and the live vision circles at [[buffer(27)]]; every non-fog /
 // detached canvas binds a 1×1 all-visible placeholder + a count-0 observer
-// buffer, so fogVoxelColumnHidden short-circuits to "never hidden" and those
+// buffer, so fogColumnHiddenAt short-circuits to "never hidden" and those
 // scenes stay byte-identical.
 constant int kFogOfWarHalfExtent = 128;
 constant float kFogExploredThreshold = 0.25f;
@@ -108,21 +108,24 @@ struct FogObserverData {
     int _fogObsPad2;
 };
 
-// True iff this voxel's RAW world column is fully hidden by fog (grid unexplored
-// AND column center outside every live vision disc). See the GLSL twin
-// (c_voxel_to_trixel_stage_1.glsl::fogVoxelColumnHidden) for the full rationale:
-// the compact keeps a permissive margin for the smooth per-pixel floor edge,
-// and STAGE_1 tightens that margin to the precise radius for the voxel object so
-// FOG_TO_TRIXEL can't hard-black its kept-but-outside faces. The 1×1 placeholder
-// + OOB columns read as visible (never hidden) → non-fog canvases byte-identical.
-static bool fogVoxelColumnHidden(
-    texture2d<float, access::read> fog, constant FogObserverData& obs, int3 voxelPosRaw
+// True iff world grid COLUMN `col` (xy world units) is fully hidden by fog (grid
+// unexplored AND column center outside every live vision disc). See the GLSL twin
+// (c_voxel_to_trixel_stage_1.glsl::fogColumnHiddenAt) for the full rationale: the
+// compact keeps a permissive margin for the smooth per-pixel floor edge, and
+// STAGE_1 tightens that margin to the precise radius for the voxel object so
+// FOG_TO_TRIXEL can't hard-black its kept-but-outside faces. Two callers share it
+// via the explicit column — the #2102 own-column drop and the #2125 neighbor
+// cut-face test. The 1×1 placeholder + OOB columns read as visible (never hidden)
+// → non-fog canvases byte-identical. Duplicated byte-identically in
+// c_voxel_to_trixel_stage_2.metal (fog grid on [[texture(3)]] there); keep in sync.
+static bool fogColumnHiddenAt(
+    texture2d<float, access::read> fog, constant FogObserverData& obs, int2 col
 ) {
     const int2 fogSize = int2(int(fog.get_width()), int(fog.get_height()));
     if (fogSize.x <= 1) {
         return false; // 1×1 all-visible placeholder (non-fog / detached canvas)
     }
-    const int2 cell = voxelPosRaw.xy + int2(kFogOfWarHalfExtent);
+    const int2 cell = col + int2(kFogOfWarHalfExtent);
     if (cell.x < 0 || cell.x >= fogSize.x || cell.y < 0 || cell.y >= fogSize.y) {
         return false; // out-of-range column reads as visible
     }
@@ -132,7 +135,7 @@ static bool fogVoxelColumnHidden(
     // Unexplored grid: keep only if a live vision circle's disc covers the column
     // center. aa = 0 → reveal >= 0.5 is exactly "center inside radius".
     for (int i = 0; i < obs.visionCircleCount; ++i) {
-        if (fogVisionCircleReveal(float2(voxelPosRaw.xy), obs.visionCircles[i], 0.0f) >= 0.5f) {
+        if (fogVisionCircleReveal(float2(col), obs.visionCircles[i], 0.0f) >= 0.5f) {
             return false;
         }
     }
@@ -183,14 +186,27 @@ kernel void c_voxel_to_trixel_stage_1(
     // (c_revoxelize_detached) like the GRID path's #1720, so it gates on
     // faceIsExposed too (no all-3-face bypass → no slot-tie AO hatching). The
     // reVoxelize flag still drives the ±1px dilation in emitDeformedFace.
-    if (!faceIsExposed(flagsByte, faceId)) return;
+    //
+    // Exposed-face gate widened with the fog CUT-FACE rule (#2125) — see the GLSL
+    // twin. A non-exposed VERTICAL face (faceId 0..3 = ±X/±Y) becomes the object's
+    // interior cross-section wall when its solid neighbor COLUMN is fog-hidden;
+    // GRID world fog route only (perAxisRoute==0, not detached, live circles).
+    // Keep byte-identical to stage 2's gate so distance + colour agree.
+    bool keepFace = faceIsExposed(flagsByte, faceId);
+    if (!keepFace && faceId < kFaceZNeg && fogObservers.visionCircleCount > 0 &&
+        frameData.perAxisRoute == 0 && frameData.isDetachedCanvas < 0.5f) {
+        const int2 neighborColumn =
+            int3(round(voxelPosition.xyz)).xy + faceOutwardNormal6I(faceId).xy;
+        keepFace = fogColumnHiddenAt(canvasFogOfWar, fogObservers, neighborColumn);
+    }
+    if (!keepFace) return;
 
-    // Per-voxel analytic fog clip (#2102) — see the GLSL twin. Drop a fully
-    // fog-hidden voxel on the single-canvas world route so FOG_TO_TRIXEL can't
-    // hard-black its faces; STAGE_2 inherits the drop via its depth re-test.
-    // count 0 / the placeholder keep non-fog scenes byte-identical.
+    // Per-voxel analytic fog clip (#2102) — see the GLSL twin. Drop a voxel whose
+    // OWN column is fully fog-hidden on the single-canvas world route so
+    // FOG_TO_TRIXEL can't hard-black its faces; STAGE_2 inherits the drop via its
+    // depth re-test. count 0 / the placeholder keep non-fog scenes byte-identical.
     if (fogObservers.visionCircleCount > 0 && frameData.perAxisRoute == 0 &&
-        fogVoxelColumnHidden(canvasFogOfWar, fogObservers, int3(round(voxelPosition.xyz)))) {
+        fogColumnHiddenAt(canvasFogOfWar, fogObservers, int3(round(voxelPosition.xyz)).xy)) {
         return;
     }
 

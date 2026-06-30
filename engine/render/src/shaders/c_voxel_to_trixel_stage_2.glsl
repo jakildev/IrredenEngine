@@ -82,6 +82,48 @@ layout(rgba8, binding = 0) writeonly uniform image2D triangleCanvasColors;
 layout(r32i, binding = 1) uniform iimage2D triangleCanvasDistances;
 layout(rg32ui, binding = 2) writeonly uniform uimage2D triangleCanvasEntityIds;
 
+// Fog cut-face inputs (#2125). STAGE_1 binds the fog grid on image slot 0 (free
+// there), but slot 0 is the colour output here, so the fog grid binds on slot 3
+// instead (slots 1/2 are the distance + entity-id outputs). The world fog canvas
+// binds its 256² grid; every non-fog / detached canvas binds the shared 1×1
+// all-visible placeholder + a count-0 observer buffer, so fogColumnHiddenAt
+// short-circuits to "never hidden" and those scenes stay byte-identical.
+const int kFogOfWarHalfExtent = 128;
+const float kFogExploredThreshold = 0.25;
+const int kMaxFogVisionCircles = 8; // mirror of component_canvas_fog_of_war.hpp kMaxFogVisionCircles
+layout(rgba8, binding = 3) readonly uniform image2D canvasFogOfWar;
+layout(std140, binding = 27) uniform FogObserverData {
+    vec4 visionCircles[kMaxFogVisionCircles]; // (centerX, centerY, radius, edgeSoftness)
+    int visionCircleCount;
+};
+
+// Whether world grid COLUMN `col` is fully fog-hidden. MUST stay byte-identical
+// to c_voxel_to_trixel_stage_1.glsl::fogColumnHiddenAt — stage 1 emits the cut
+// face's DISTANCE on this exact predicate, and stage 2 must paint colour on the
+// same set of faces or the cut wall reads as cleared background. Kept inline (not
+// in ir_iso_common) because the fog grid binds on a DIFFERENT slot in each stage
+// (0 vs 3), and adding a symbol to ir_iso_common risks the cardinal fast path's
+// byte-identity (see the #1944 NOTE there).
+bool fogColumnHiddenAt(ivec2 col) {
+    const ivec2 fogSize = imageSize(canvasFogOfWar);
+    if (fogSize.x <= 1) {
+        return false; // 1×1 all-visible placeholder (non-fog / detached canvas)
+    }
+    const ivec2 cell = col + ivec2(kFogOfWarHalfExtent);
+    if (cell.x < 0 || cell.x >= fogSize.x || cell.y < 0 || cell.y >= fogSize.y) {
+        return false; // out-of-range column reads as visible
+    }
+    if (imageLoad(canvasFogOfWar, cell).r >= kFogExploredThreshold) {
+        return false; // explored / visible grid memory — keep (FOG_TO_TRIXEL fades it)
+    }
+    for (int i = 0; i < visionCircleCount; ++i) {
+        if (fogVisionCircleReveal(vec2(col), visionCircles[i], 0.0) >= 0.5) {
+            return false;
+        }
+    }
+    return true;
+}
+
 void writeColorTap(
     const ivec2 canvasPixel,
     const int voxelDistance,
@@ -163,7 +205,23 @@ void main() {
     // mask (see c_voxel_to_trixel_stage_1.glsl) — same face set as stage 1, so
     // the colour tap matches the distance tap.
     const uint flagsByte = (voxels[voxelIndex].materialFlagBone >> 8u) & 0xFFu;
-    if (!faceIsExposed(flagsByte, faceId)) return;
+
+    // Exposed-face gate + fog CUT-FACE widening (#2125) — MUST mirror stage 1's
+    // predicate EXACTLY so the colour tap lands on the same face set stage 1 wrote
+    // distances for. A cut face is non-exposed, so without this widening stage 2
+    // would skip it and the cut wall would read as the cleared background colour
+    // (distance set by stage 1, colour unset). See c_voxel_to_trixel_stage_1.glsl
+    // for the rationale. The own-column drop (#2102) is NOT repeated here — stage 1
+    // already dropped those voxels' distances, so the depth re-test in
+    // writeColorTap rejects their colour taps.
+    bool keepFace = faceIsExposed(flagsByte, faceId);
+    if (!keepFace && faceId < kFaceZNeg && visionCircleCount > 0 && perAxisRoute == 0 &&
+        isDetachedCanvas < 0.5) {
+        const ivec2 neighborColumn =
+            ivec3(round(voxelPosition.xyz)).xy + faceOutwardNormal6I(faceId).xy;
+        keepFace = fogColumnHiddenAt(neighborColumn);
+    }
+    if (!keepFace) return;
 
     // Per-slot deformation matrix — see stage 1 for the contract.
     const mat2 D = mat2(faceDeform[slot].xy, faceDeform[slot].zw);

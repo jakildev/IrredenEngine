@@ -1,0 +1,26 @@
+{
+  "demo": "fog_demo",
+  "target": "IRFogDemo",
+  "screenshot_subdir": "save_files/screenshots",
+  "warmup": 10,
+  "shots": [
+    "fog_zoom2_origin",
+    "fog_zoom4_origin",
+    "fog_zoom8_origin"
+  ],
+  "thresholds": {
+    "per_pixel_tol": 8,
+    "match_pct": 99.9,
+    "max_delta": 64,
+    "psnr_db": 35.0
+  },
+  "extra_runs": [
+    {
+      "name": "edge",
+      "demo_args": ["--edge-zoom"],
+      "shots": ["fog_edge_zoom5", "fog_edge_zoom9", "fog_edge_zoom14"],
+      "capture_offset": 0
+    }
+  ],
+  "notes": "Fog-of-war regression suite. The DEFAULT pass captures the static grid-reveal scene (fog_zoom2/4/8_origin): a visible reveal circle, an explored memory band, and unexplored black, plus the #2008 column-cull pillar canary — the general FOG_TO_TRIXEL + per-voxel-column-clip guard. The 'edge' EXTRA RUN re-runs with --edge-zoom (a static analytic vision circle at the origin with VOXEL objects straddling its boundary) and gates the fog CUT-FACE cross-section (#2125, epic #2124 P1): a boundary-cut voxel object caps with a filled interior wall instead of a see-through hole. --edge-zoom emits exactly its 3 kEdgeShots (fog_edge_zoom5/9/14), so capture_offset 0 maps them 1:1. Both scenes are static + cardinal-yaw-0, verified bit-deterministic run-to-run on macOS (0 drift). The demo's other modes (--moving-observer orbit, --player-walk) are intentionally NOT gated here — they advance a per-frame float center, so they are non-deterministic by construction (manual / attach-screenshots inspection aids). Reference PNGs live in sibling subdirs per CMake preset (macos-debug/, linux-debug/) since Metal and OpenGL produce pixel-different output; linux-debug/ is captured on a Linux/OpenGL host (fleet:needs-linux-smoke) — a backend without committed references SKIPS rather than fails, so bless it there with render-verify --update-references. Shot order mirrors kShots[] / kEdgeShots[] in main.cpp."
+}

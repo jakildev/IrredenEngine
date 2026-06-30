@@ -199,13 +199,19 @@ void drivePlayerWalk() {
     ++g_walkFrame;
 }
 
-// --edge-zoom (#2102 cross-section canary): a STATIC analytic vision circle at
-// the origin with VOXEL objects straddling its boundary, zoomed in so the clip
-// edge fills the frame. Validates that voxels straddling the disc boundary clip
-// on the SAME smooth analytic arc the SDF floor reveals on — columns outside
-// the disc are dropped in VOXEL_TO_TRIXEL_STAGE_1 so no hard black faces appear
-// at the boundary. The grid stays all-unexplored, so only the disc reveals —
-// the cleanest read of the voxel-object edge against the floor edge.
+// --edge-zoom (#2125 filled cross-section; #2124 P1): a STATIC analytic vision
+// circle at the origin with VOXEL objects straddling its boundary, zoomed in so
+// the cut edge fills the frame. Validates the cut-face cross-section: a
+// boundary-cut voxel object caps with a FILLED interior wall (not a see-through
+// hole or black wedge). Two mechanisms compose in VOXEL_TO_TRIXEL_STAGE_1/2:
+// columns fully outside the disc are dropped (#2102 own-column clip — the hidden
+// half), and a revealed boundary voxel emits the interior VERTICAL face toward a
+// fog-hidden neighbor column (#2125 cut face — caps the revealed half). Cut faces
+// show only on CAMERA-VISIBLE cut surfaces, so at cardinal yaw 0 the -X-facing
+// cut (the green slab) shows its filled wall while the +X/+Y-facing cuts (the
+// pillars) cut on back faces and read as a clean object end. The grid stays
+// all-unexplored, so only the disc reveals — the cleanest read of the cut wall
+// against the floor edge.
 bool g_edgeZoom = false; // --edge-zoom
 constexpr float kEdgeVisionRadius = 9.0f;
 
@@ -242,7 +248,7 @@ int main(int argc, char **argv) {
     IREngine::args().flag(
         "--edge-zoom",
         "Static analytic vision circle with VOXEL objects straddling its "
-        "boundary, zoomed on the clip edge (#2102 cross-section canary); "
+        "boundary, zoomed on the cut edge (#2125 filled cross-section); "
         "skips the static grid reveal"
     );
     IREngine::init(argc, argv);
@@ -506,34 +512,42 @@ void initEntities() {
         return;
     }
 
-    // --edge-zoom (#2102 cross-section canary): a STATIC analytic vision circle
-    // at the origin with VOXEL objects straddling its boundary. Set once here —
-    // nothing re-clears it, so it persists across warmup/settle/capture — and
-    // leave the grid all-unexplored so ONLY the disc reveals. Validates that
-    // straddling columns clip on the SAME disc arc the SDF floor reveals on,
-    // with the unexplored fog / revealed floor showing through smoothly past
-    // the object edge (columns outside the disc are dropped in STAGE_1).
+    // --edge-zoom (#2125 filled cross-section; #2124 P1): a STATIC analytic vision
+    // circle at the origin with VOXEL objects straddling its boundary. Set once
+    // here — nothing re-clears it, so it persists across warmup/settle/capture —
+    // and leave the grid all-unexplored so ONLY the disc reveals. Validates the
+    // cut-face cross-section: the hidden half of each object is dropped (#2102
+    // own-column clip) and the revealed half caps with a FILLED interior wall
+    // (#2125 cut face) wherever a revealed boundary voxel faces a fog-hidden
+    // neighbor column — no see-through hole, no black wedge. Cut faces appear only
+    // on CAMERA-VISIBLE cut surfaces (cardinal yaw 0 sees -X/-Y/-Z), so the green
+    // slab's -X cut shows its wall while the pillars' +X/+Y cuts fall on back
+    // faces and read as a clean end.
     if (g_edgeZoom) {
         IRPrefab::Fog::setVisionCircle(0.0f, 0.0f, kEdgeVisionRadius);
 
         // Tall voxel pillar straddling the +X boundary: columns x∈[7,11] cross
-        // the radius-9 disc, so its near half renders and its far half must clip
-        // — the symptom-1 vertical-face test. Iso +Z is downward, so center it
-        // below the floor surface to stand it up on the floor (base near z≈4,
-        // top up-screen). centerAroundOrigin places the set around the transform.
+        // the radius-9 disc, so its near half renders and its far half is dropped.
+        // The cut is on the +X face (toward the hidden far columns), which is a
+        // BACK face at cardinal yaw 0 — so the revealed half reads as a clean end
+        // (no hole), and the cut wall itself would show after a +90°/180° yaw.
+        // Iso +Z is downward, so center it below the floor surface to stand it up
+        // on the floor (base near z≈4, top up-screen).
         IREntity::createEntity(
             C_LocalTransform{vec3(9.0f, 0.0f, -6.0f)},
             C_VoxelSetNew{IRMath::ivec3{4, 4, 20}, Color{120, 200, 240, 255}, true}
         );
-        // A second pillar straddling the +Y boundary (up-screen side), a clip
-        // angle the iso projection lays out differently from the +X pillar.
+        // A second pillar straddling the +Y boundary (up-screen side), a cut
+        // angle the iso projection lays out differently from the +X pillar (also
+        // a back-face cut at yaw 0).
         IREntity::createEntity(
             C_LocalTransform{vec3(0.0f, 9.0f, -6.0f)},
             C_VoxelSetNew{IRMath::ivec3{4, 4, 20}, Color{240, 160, 90, 255}, true}
         );
-        // Low wide voxel slab straddling the -X boundary: columns x∈[-16,-2],
-        // so its TOP (xy) face crosses the arc and the outside portion must clip
-        // without leaving a black hole — the symptom-2 top-face test.
+        // Low wide voxel slab straddling the -X boundary: columns x∈[-16,-2], so
+        // the revealed boundary voxels face hidden columns across their -X face —
+        // which IS camera-visible at yaw 0. This is the headline cut-face test:
+        // its -X interior wall fills the cut instead of leaving a see-through hole.
         IREntity::createEntity(
             C_LocalTransform{vec3(-9.0f, 0.0f, 2.0f)},
             C_VoxelSetNew{IRMath::ivec3{14, 6, 3}, Color{130, 230, 150, 255}, true}

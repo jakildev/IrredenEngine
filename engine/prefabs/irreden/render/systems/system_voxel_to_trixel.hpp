@@ -550,6 +550,13 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             colors->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
             distances->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::R32I);
             entityIds->bindAsImage(2, TextureAccess::WRITE_ONLY, TextureFormat::RG32UI);
+            // STAGE_2 now declares the fog cut-face inputs (#2125) too. The per-axis
+            // route never cuts (perAxisRoute != 0 short-circuits cutFaceActive), but
+            // the Metal kernel still declares the args, so bind the 1×1 all-visible
+            // placeholder (slot 3) + observer buffer to satisfy the per-encoder
+            // argument table — mirror of the STAGE_1 per-axis bind above.
+            fogCullPlaceholder_->bindAsImage(3, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+            fogObserverBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FogObservers);
             IRRender::device()->dispatchComputeIndirect(perAxisIndirectBuf_, indirectOffsetBytes);
             IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
         }
@@ -1097,6 +1104,16 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 ->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::R32I);
             triangleCanvasTextures.getTextureEntityIds()
                 ->bindAsImage(2, TextureAccess::WRITE_ONLY, TextureFormat::RG32UI);
+            // Fog cut-face inputs (#2125): STAGE_2 re-evaluates STAGE_1's cut-face
+            // predicate so its colour tap lands on the same faces, so it needs the
+            // fog grid + observers too. Slot 0 holds the colour output here, so the
+            // fog grid binds on slot 3 (slots 1/2 = distance + entity-id outputs).
+            // Real fog texture on the world fog canvas, else the 1×1 placeholder
+            // (the cut-face test no-ops, byte-identical). Metal needs both bound on
+            // this dispatch since the kernel declares them.
+            (fog != nullptr ? fog->getTexture() : fogCullPlaceholder_)
+                ->bindAsImage(3, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+            fogObserverBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FogObservers);
             IRRender::device()->dispatchComputeIndirect(indirectBuf_, 0);
             IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
         }
