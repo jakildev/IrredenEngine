@@ -172,17 +172,31 @@ struct CanvasStressSettings {
     // floating canary cube clips behind the SDF floor at high zoom).
     bool depthProbeSet_ = false;
     ivec2 depthProbePixel_{0, 0};
-    // `--depth-probe-assert X,Y` (#1957): the depth-write regression guard. Like
-    // --depth-probe but emits a `[depth-probe-assert] … result=PASS|FAIL` verdict
-    // line — PASS iff the composite stored a non-background depth at (X,Y), i.e.
-    // the detached-canvas composite WROTE the depth attachment there. Aim it at a
-    // texel inside a world-placed detached solid (canonical:
-    // `--only canary --no-spin --no-auto-rotate --depth-probe-assert 321,210`,
-    // which the canary covers on both backends). FAILs if a future pass disables
-    // the composite depth-write. Off by default; registers no system when unset,
-    // so a flagless run is byte-identical.
+    // `--depth-probe-assert X,Y[,tier=N]` (#1957 / #1960): the composite
+    // regression guard. Two forms, both emitting a single
+    // `[depth-probe-assert] … result=PASS|FAIL` verdict line:
+    //   - `X,Y` (#1957) — DEPTH-WRITE guard: PASS iff the composite stored a
+    //     non-background depth at (X,Y), i.e. the detached-canvas composite WROTE
+    //     the depth attachment there. Aim it at a texel inside a world-placed
+    //     detached solid (canonical:
+    //     `--only canary --no-spin --no-auto-rotate --depth-probe-assert 321,210`,
+    //     which the canary covers on both backends). FAILs if a future pass
+    //     disables the composite depth-write.
+    //   - `X,Y,tier=N` (#1960) — per-trixel-priority TIER guard: PASS iff the
+    //     composite winner at (X,Y) decodes to the #1960 tier N. This is the
+    //     positive ENABLED-path gate the per-trixel carrier needs (the #2122
+    //     deterministic headless tier gate — byte-identity at default priority 0
+    //     cannot prove the carrier works). Canonical:
+    //     `--only interpenetrate --no-spin --no-auto-rotate --depth-probe-assert <overlap>,tier=2`,
+    //     where the far priority unit holds a fixed non-cardinal pose (MODE 1) so
+    //     the overlap reads a deterministic `tier=2`; without the #2023 carrier it
+    //     decodes `tier=0` and FAILs.
+    // `depthProbeAssertTier_` is -1 for the depth-write form, >= 0 for the tier
+    // form. Off by default; registers no system when unset, so a flagless run is
+    // byte-identical.
     bool depthProbeAssertSet_ = false;
     ivec2 depthProbeAssertPixel_{0, 0};
+    int depthProbeAssertTier_ = -1;
     // readConfig() runs AFTER parseArgs() (it needs IREngine::init), so a
     // config `auto_rotate` would otherwise clobber an explicit
     // --auto-rotate / --no-auto-rotate flag. Latch CLI intent so config only
@@ -930,6 +944,30 @@ void applyDepthProbe(const std::string &value, bool &set, ivec2 &pixel, const ch
     }
 }
 
+// Parse "--depth-probe-assert X,Y" (depth-write guard, tier -1) or
+// "X,Y,tier=N" (per-trixel-priority tier guard, tier >= 0). The 3-field form is
+// tried first; a bad value leaves the assert off so the run stays byte-identical.
+void applyDepthProbeAssert(const std::string &value) {
+    int px = 0;
+    int py = 0;
+    int tier = -1;
+    if (std::sscanf(value.c_str(), "%d,%d,tier=%d", &px, &py, &tier) == 3) {
+        g_settings.depthProbeAssertSet_ = true;
+        g_settings.depthProbeAssertPixel_ = ivec2(px, py);
+        g_settings.depthProbeAssertTier_ = tier;
+    } else if (std::sscanf(value.c_str(), "%d,%d", &px, &py) == 2) {
+        g_settings.depthProbeAssertSet_ = true;
+        g_settings.depthProbeAssertPixel_ = ivec2(px, py);
+        g_settings.depthProbeAssertTier_ = -1;
+    } else {
+        IR_LOG_WARN(
+            "--depth-probe-assert: expected X,Y or X,Y,tier=N (e.g. 321,210 or "
+            "321,210,tier=2); ignoring '{}'",
+            value
+        );
+    }
+}
+
 // Declare canvas_stress's custom flags on the engine-owned parser. Must run
 // before IREngine::init(argc, argv), which performs the single strict parse of
 // engine-common + these flags (see engine/CLAUDE.md "CLI args go through
@@ -996,7 +1034,8 @@ void registerArgs() {
     );
     args.string(
         "--depth-probe-assert",
-        "Depth-write regression guard at framebuffer pixel X,Y; emits PASS|FAIL (#1957)",
+        "Composite regression guard at framebuffer pixel: X,Y = depth-write guard "
+        "(#1957); X,Y,tier=N = per-trixel-priority tier guard (#1960). Emits PASS|FAIL",
         ""
     );
 }
@@ -1052,12 +1091,7 @@ void applyArgs() {
         );
     }
     if (args.wasProvided("--depth-probe-assert")) {
-        applyDepthProbe(
-            args.getString("--depth-probe-assert"),
-            g_settings.depthProbeAssertSet_,
-            g_settings.depthProbeAssertPixel_,
-            "--depth-probe-assert"
-        );
+        applyDepthProbeAssert(args.getString("--depth-probe-assert"));
     }
     if (args.wasProvided("--sweep-yaw")) {
         const std::vector<float> &v = args.getFloats("--sweep-yaw");
@@ -1267,17 +1301,26 @@ void initSystems() {
         );
     }
 
-    // #1957 depth-write regression guard — registered only with
+    // #1957 / #1960 composite regression guard — registered only with
     // --depth-probe-assert. Runs after the framebuffer composite and emits a
-    // PASS/FAIL verdict line so a headless run catches a future pass that
-    // disables the detached-canvas composite depth-write.
+    // PASS/FAIL verdict line. tier < 0 is the #1957 depth-write guard (catches a
+    // future pass that disables the detached-canvas composite depth-write);
+    // tier >= 0 is the #1960 per-trixel-priority tier guard (catches a future pass
+    // that drops the carrier so the priority solid loses the depth contest).
     if (g_settings.depthProbeAssertSet_) {
         const ivec2 assertPixel = g_settings.depthProbeAssertPixel_;
+        const int assertTier = g_settings.depthProbeAssertTier_;
         renderPipeline.push_back(
             IRSystem::createSystem<C_Camera>(
                 "DepthProbeAssert",
                 [](C_Camera &) {},
-                [assertPixel]() { IRPrefab::DepthProbe::assertCompositeWritesDepth(assertPixel); }
+                [assertPixel, assertTier]() {
+                    if (assertTier >= 0) {
+                        IRPrefab::DepthProbe::assertCompositeDepthTier(assertPixel, assertTier);
+                    } else {
+                        IRPrefab::DepthProbe::assertCompositeWritesDepth(assertPixel);
+                    }
+                }
             )
         );
     }
