@@ -1429,6 +1429,19 @@ def project_worker(state):
                 items.append({"kind": "task", "repo": repo, "id": task["id"],
                               "blocked_by": task["blocked_by"]})
         for issue in repo_state.get("needs_plan", []):
+            # Mirror slice_worker's human-gate skip (#2114): a needs-plan issue
+            # carrying human:no-plan / owned / wip is not worker-plannable, so it
+            # must not flip the dispatch hash either. Without this, the late-opt-out
+            # window — human:no-plan added onto a still-needs-plan issue, before the
+            # edge-triggered ingest run strips the stale label — flips this hash and
+            # wakes a phantom worker dispatch that slice_worker then filters to a
+            # no-op (#2110 criterion 4). The slice fix alone stopped the woken worker
+            # from *claiming* the issue but not the wake itself, since the dispatcher
+            # diffs *this* projection to decide whether to fire. A merely fleet:blocked
+            # needs-plan issue is still plannable (planning is independent of the
+            # blocker), so it is NOT gated.
+            if set(issue.get("labels", [])) & _HUMAN_GATE_LABELS:
+                continue
             items.append({"kind": "needs_plan", "repo": repo,
                           "issue": issue["number"]})
         for pr in repo_state.get("prs", []):

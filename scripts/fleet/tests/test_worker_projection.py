@@ -297,6 +297,72 @@ class SliceWorkerSkipsGatedNeedsPlan(unittest.TestCase):
         )
 
 
+class ProjectWorkerSkipsGatedNeedsPlan(unittest.TestCase):
+    """project_worker is the hash-input that decides *whether* to wake the
+    dispatcher (distinct from slice_worker, the slice a woken worker reads).
+    It must mirror slice_worker's human-gate skip (#2110 criterion 4): a
+    needs-plan issue carrying human:no-plan / owned / wip must NOT flip the
+    projection hash, or the late-opt-out window (human:no-plan added onto a
+    still-needs-plan issue, before ingest strips the stale label) edge-triggers
+    a phantom worker dispatch that slice_worker then filters to a no-op. The
+    #2114 slice fix alone stopped the woken worker from claiming the issue but
+    not the wake itself, since the dispatcher diffs this projection."""
+
+    def _np(self, needs_plan):
+        items = project_worker(_state([], needs_plan=needs_plan))
+        return sorted(i["issue"] for i in items if i.get("kind") == "needs_plan")
+
+    def test_human_no_plan_does_not_surface(self):
+        self.assertEqual(
+            self._np([{"number": 222,
+                       "labels": ["fleet:needs-plan", "human:no-plan"]}]),
+            [],
+        )
+
+    def test_human_owned_and_wip_do_not_surface(self):
+        self.assertEqual(
+            self._np([
+                {"number": 301, "labels": ["fleet:needs-plan", "human:owned"]},
+                {"number": 302, "labels": ["fleet:needs-plan", "human:wip"]},
+            ]),
+            [],
+        )
+
+    def test_plain_needs_plan_still_surfaces(self):
+        self.assertEqual(
+            self._np([{"number": 222, "labels": ["fleet:needs-plan"]}]),
+            [222],
+        )
+
+    def test_blocked_needs_plan_still_surfaces(self):
+        # fleet:blocked is NOT a human gate — planning is independent of the
+        # blocker, so a blocked needs-plan issue still wakes the worker.
+        self.assertEqual(
+            self._np([{"number": 222,
+                       "labels": ["fleet:needs-plan", "fleet:blocked"]}]),
+            [222],
+        )
+
+    def test_gated_needs_plan_does_not_flip_hash(self):
+        # The dispatch consequence: a gated needs-plan issue appearing must
+        # leave the projection hash unchanged (no phantom wake), while a plain
+        # one flips it (existing test_needs_plan_issue_appears_flips_hash).
+        empty = stable_hash(project_worker(_state([])))
+        gated = stable_hash(project_worker(_state([], needs_plan=[
+            {"number": 222, "labels": ["fleet:needs-plan", "human:no-plan"]}])))
+        self.assertEqual(empty, gated)
+
+    def test_mixed_set_keeps_only_plannable(self):
+        self.assertEqual(
+            self._np([
+                {"number": 401, "labels": ["fleet:needs-plan", "human:no-plan"]},
+                {"number": 402, "labels": ["fleet:needs-plan"]},
+                {"number": 403, "labels": ["fleet:needs-plan", "human:owned"]},
+            ]),
+            [402],
+        )
+
+
 class OpusReviewerStableAcrossIrrelevantLabels(unittest.TestCase):
     """Opus-reviewer keys on fleet:has-nits / fleet:needs-fix (flag_labels).
     Other labels are either gating (REVIEW_SKIP_LABELS, removed from the
