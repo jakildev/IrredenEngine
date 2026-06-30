@@ -318,6 +318,109 @@ except Exception:
 ' 2>/dev/null || echo 0
 }
 
+# _amending_heartbeat_fresh <label-name>
+#   True (exit 0) iff <label-name> is a fleet:amending-<host>-<agent> label
+#   whose <host> is THIS machine AND the owning agent's host-local heartbeat
+#   (~/.fleet/heartbeats/<agent>) is fresh (< FLEET_CLAIM_STALE_SECS). Used by
+#   the cleanup amending-sweep and the _acquire_label_on force-sweep as the
+#   "the owner is still alive, don't sweep its claim" guard.
+#
+#   Heartbeats are HOST-LOCAL: only the owning host's worker touches its own
+#   ~/.fleet/heartbeats/<agent>. A cross-host amending label's owner
+#   heartbeats on its OWN host, which the sweeping/claiming host cannot
+#   observe. Keying the freshness check by bare basename let a same-basename
+#   local worker (e.g. mac-worker-1) spoof freshness for a dead cross-host
+#   claim (windows-worker-1) and skip its sweep forever — the #2099 deadlock.
+#   So this returns false (exit 1) for cross-host amending labels, for
+#   non-amending labels (reviewing/resolving/claim carry no heartbeat
+#   semantics), and when the same-host heartbeat is missing or stale. Callers
+#   treat a false result as "fall through to label-age TTL".
+_amending_heartbeat_fresh() {
+    local label_name="$1"
+    [[ "$label_name" == fleet:amending-* ]] || return 1
+    local after="${label_name#fleet:amending-}"
+    local claim_host="" claim_agent="" hp
+    for hp in mac linux windows; do
+        if [[ "$after" == "${hp}-"* ]]; then
+            claim_host="$hp"
+            claim_agent="${after#${hp}-}"
+            break
+        fi
+    done
+    [[ -n "$claim_agent" ]] || return 1
+    # Cross-host: the owner's heartbeat lives on its host, not ours — we
+    # cannot vouch for it, so fall through to pure label-age TTL.
+    [[ "$claim_host" == "$(derive_host)" ]] || return 1
+    local hb_file="$HOME/.fleet/heartbeats/$claim_agent"
+    [[ -f "$hb_file" ]] || return 1
+    local hb_mtime
+    hb_mtime=$(python3 -c \
+        "import os,sys; print(int(os.path.getmtime(sys.argv[1])))" \
+        "$hb_file" 2>/dev/null || echo 0)
+    [[ "$hb_mtime" -gt 0 ]] || return 1
+    local stale_secs="${FLEET_CLAIM_STALE_SECS:-1800}"
+    local now
+    now=$(date +%s)
+    (( now - hb_mtime < stale_secs ))
+}
+
+# _sweep_stale_prefix_holders <repo> <target> <prefix> <mine>
+#   Defense-in-depth for _acquire_label_on: when the lex-min retry loop
+#   exhausts against a persistent <prefix>* holder that never yields — a dead
+#   or abandoned claimant, classically a cross-host one whose host can't sweep
+#   it and whose lex-larger name a live lex-smaller claimant keeps losing to
+#   (#2099) — force-remove any holder whose label is past TTL so the live
+#   claimant can take over instead of yielding forever. Returns 0 iff it
+#   removed >=1 holder (caller should re-attempt the claim), 1 otherwise.
+#
+#   Scoped to the transient PR-label claims (reviewing/resolving/amending).
+#   Issue `fleet:claim-*` locks have their own longer-TTL + PR-existence sweep
+#   in cmd_cleanup_gh and must not be second-guessed from the claim hot path.
+#   Reuses the cleanup sweep's host-qualified staleness predicate: a same-host
+#   amending label with a fresh heartbeat is never force-swept.
+_sweep_stale_prefix_holders() {
+    local repo="$1" target="$2" prefix="$3" mine="$4"
+    case "$prefix" in
+        fleet:reviewing-|fleet:resolving-|fleet:amending-) ;;
+        *) return 1 ;;
+    esac
+    command -v gh >/dev/null 2>&1 || return 1
+    local labels_json
+    labels_json=$(gh api "repos/${repo}/issues/${target}/labels" 2>/dev/null) || return 1
+    local holders
+    holders=$(echo "$labels_json" | python3 -c '
+import json, sys
+try:
+    labels = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+prefix = sys.argv[1]
+for name in sorted(
+        l["name"] for l in labels
+        if isinstance(l, dict) and l.get("name", "").startswith(prefix)):
+    print(name)
+' "$prefix" 2>/dev/null || echo "")
+    [[ -z "$holders" ]] && return 1
+    local stale_secs="${FLEET_CLAIM_STALE_SECS:-1800}"
+    local now
+    now=$(date +%s)
+    local swept=1   # 1 = nothing swept (false)
+    local h added
+    while IFS= read -r h; do
+        [[ -z "$h" || "$h" == "$mine" ]] && continue
+        added=$(label_added_epoch "$repo" "$target" "$h")
+        [[ "$added" -gt 0 ]] || continue            # unknown age — leave it
+        (( now - added < stale_secs )) && continue  # within TTL — legit holder
+        _amending_heartbeat_fresh "$h" && continue  # same-host live owner
+        if gh issue edit "$target" --repo "$repo" --remove-label "$h" >/dev/null 2>&1; then
+            echo "fleet-claim: force-swept TTL-stale '$h' on $repo#$target" \
+                 "(age $(( (now - added) / 60 ))m); re-acquiring" >&2
+            swept=0
+        fi
+    done <<< "$holders"
+    return "$swept"
+}
+
 # _claim_decision <mine> <matching-label>...
 #   PURE decision helper (no I/O) — the table-testable seam for the claim
 #   mutex. Given my just-POSTed label and the full set of <prefix>* labels
@@ -378,7 +481,9 @@ _acquire_jitter_sleep() {
 _acquire_label_on() {
     local repo="$1" target="$2" label="$3" prefix="$4"
     local retries="${FLEET_CLAIM_ACQUIRE_RETRIES:-3}"
+    local force_swept=0
     local attempt
+    while :; do
     for (( attempt = 1; attempt <= retries; attempt++ )); do
         local labels_json
         if ! labels_json=$(gh api "repos/${repo}/issues/${target}/labels" \
@@ -436,10 +541,20 @@ for name in sorted(
     done
 
     # Exhausted the retry budget while always lex-min: an earlier holder
-    # persists and never yielded (the non-simultaneous #1384 case). Our
-    # label was already removed by the final retry's release. Yield.
+    # persists and never yielded — the non-simultaneous #1384 case, or a
+    # dead/abandoned (classically cross-host) claimant that will never yield
+    # (#2099). Our label was already removed by the final retry's release.
+    # Before giving up, try ONCE to force-sweep any TTL-stale holder so a live
+    # claimant can take over; if that frees a slot, re-run the acquire loop.
+    if [[ "$force_swept" -eq 0 ]] \
+            && _sweep_stale_prefix_holders "$repo" "$target" "$prefix" "$label"; then
+        force_swept=1
+        continue
+    fi
+
     echo "fleet-claim: gave up after ${retries} attempt(s); an earlier ${prefix}* holder persists on $repo#$target" >&2
     return 1
+    done
 }
 
 # --- issue lookup ---------------------------------------------------------
@@ -1586,29 +1701,14 @@ for pr in prs:
             # For amending claims: skip the sweep when the claiming agent's
             # heartbeat is still fresh — an active heartbeat means the worker
             # is alive and TTL-sweeping its claim would cause duplicate dispatch
-            # by triggering the R7 heal (#1650).
-            if [[ "$label_name" == fleet:amending-* ]]; then
-                local _after_pfx="${label_name#fleet:amending-}"
-                local _claim_agent=""
-                for _host_pfx in "mac-" "linux-" "windows-"; do
-                    if [[ "$_after_pfx" == "${_host_pfx}"* ]]; then
-                        _claim_agent="${_after_pfx#${_host_pfx}}"
-                        break
-                    fi
-                done
-                if [[ -n "$_claim_agent" ]]; then
-                    local _hb_file="$HOME/.fleet/heartbeats/$_claim_agent"
-                    if [[ -f "$_hb_file" ]]; then
-                        local _hb_mtime
-                        _hb_mtime=$(python3 -c \
-                            "import os,sys; print(int(os.path.getmtime(sys.argv[1])))" \
-                            "$_hb_file" 2>/dev/null || echo 0)
-                        if [[ "$_hb_mtime" -gt 0 && $(( now - _hb_mtime )) -lt $stale_secs ]]; then
-                            echo "cleanup --gh: skipping '$label_name' on $repo PR#$pr_num — agent '$_claim_agent' heartbeat fresh ($(( now - _hb_mtime ))s ago)"
-                            continue
-                        fi
-                    fi
-                fi
+            # by triggering the R7 heal (#1650). The freshness check is
+            # host-qualified (#2099): heartbeats are host-local, so only a
+            # SAME-HOST amending label's heartbeat is observable here. A
+            # cross-host stale label ages out on pure TTL — never honor a
+            # same-basename local worker's heartbeat for it.
+            if _amending_heartbeat_fresh "$label_name"; then
+                echo "cleanup --gh: skipping '$label_name' on $repo PR#$pr_num — same-host owner heartbeat fresh"
+                continue
             fi
 
             if gh issue edit "$pr_num" --repo "$repo" \
@@ -4197,8 +4297,10 @@ commands:
                                 (1) stale fleet:reviewing-*,
                                     fleet:resolving-*, and
                                     fleet:amending-* labels off open
-                                    PRs (>30 min age; amending labels
-                                    skipped if agent heartbeat fresh),
+                                    PRs (>30 min age; a same-host
+                                    amending label is skipped if its
+                                    agent heartbeat is fresh — cross-
+                                    host ones age out on pure TTL),
                                 (2) fleet:claim-* labels off open
                                     issues where the claim is
                                     abandoned — age > TTL (default

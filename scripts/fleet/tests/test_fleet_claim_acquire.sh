@@ -169,6 +169,98 @@ rc=0
 _acquire_label_on "owner/repo" 1 "$LARGE" "$P" >/dev/null 2>&1 || rc=$?
 assert_exit "$rc" 1 "earlier/lex-smaller holder remains → exit 1"
 
+echo "== _acquire_label_on force-sweep of a dead persistent holder (#2099) =="
+
+# When the lex-min retry loop exhausts against a holder that never yields — a
+# dead/abandoned (classically cross-host) claimant — a live lex-smaller
+# claimant would lose the tie-break forever. The exhaustion path now force-
+# sweeps any TTL-stale holder once, then re-acquires. Stateful gh stub: POST
+# echoes holders + posted; GET (labels, no --method POST) echoes holders;
+# events → STUB_EVENTS_TS for label_added_epoch; remove-label mutates holders.
+STUB_EVENTS_TS="2020-01-01T00:00:00Z"   # long past any TTL → holder is sweepable
+gh() {
+    case "${1:-}" in
+        api)
+            local a posted="" is_events=0
+            for a in "$@"; do
+                case "$a" in
+                    labels\[\]=*) posted="${a#labels[]=}" ;;
+                    *events*) is_events=1 ;;
+                esac
+            done
+            if [[ "$is_events" -eq 1 ]]; then
+                printf '%s\n' "$STUB_EVENTS_TS"
+                return 0
+            fi
+            local out='[' first=1 h
+            for h in $STUB_HOLDERS $posted; do
+                [[ $first -eq 1 ]] || out+=','
+                out+="{\"name\":\"$h\"}"
+                first=0
+            done
+            out+=']'
+            printf '%s\n' "$out"
+            return 0
+            ;;
+        issue|pr)
+            local args=("$@") i rl=""
+            for (( i = 0; i < ${#args[@]}; i++ )); do
+                [[ "${args[i]}" == "--remove-label" ]] && rl="${args[i+1]}"
+            done
+            if [[ -n "$rl" ]]; then
+                local newh="" h
+                for h in $STUB_HOLDERS; do
+                    [[ "$h" == "$rl" ]] || newh+=" $h"
+                done
+                STUB_HOLDERS="${newh# }"
+            fi
+            return 0
+            ;;
+        *) return 0 ;;
+    esac
+}
+
+export FLEET_TEST_HOST="mac"
+HBROOT=$(mktemp -d)
+export HOME="$HBROOT"
+mkdir -p "$HOME/.fleet/heartbeats"
+trap 'rm -rf "$HBROOT"' EXIT
+
+# T9: dead persistent reviewing holder, past TTL → force-swept, I re-acquire.
+# The acquire prefix is the canonical host-agnostic "fleet:reviewing-" (the
+# <host> is part of the label, not the prefix) — that's what the real
+# review-claim path passes, and what the force-sweep's prefix gate matches.
+RP="fleet:reviewing-"
+echo "T9: lex-min claimant vs TTL-stale persistent holder → force-sweep + win"
+STUB_HOLDERS="$LARGE"
+rc=0
+_acquire_label_on "owner/repo" 1 "$SMALL" "$RP" >/dev/null 2>&1 || rc=$?
+assert_exit "$rc" 0 "TTL-stale reviewing holder force-swept → exit 0 (took the lock)"
+
+# T10: dead cross-host amending holder, basename collides with a live local
+# worker — the exact #2099 geometry. Host-qualified heartbeat check does NOT
+# vouch for the cross-host owner, so the stale label is force-swept.
+echo "T10: cross-host dead amending holder (basename collision) → force-sweep + win"
+AP="fleet:amending-"
+AMINE="${AP}mac-worker-2"          # lex-smaller than windows-worker-1
+ADEAD="${AP}windows-worker-1"
+touch "$HOME/.fleet/heartbeats/worker-1"   # live LOCAL worker-1 (spoof bait)
+STUB_HOLDERS="$ADEAD"
+rc=0
+_acquire_label_on "owner/repo" 1 "$AMINE" "$AP" >/dev/null 2>&1 || rc=$?
+assert_exit "$rc" 0 "cross-host amending holder force-swept despite local same-basename heartbeat → exit 0"
+
+# T11: live SAME-HOST amending holder with a fresh heartbeat → NOT swept; the
+# lex-min claimant correctly yields rather than stealing an active amend.
+echo "T11: live same-host amending holder (fresh heartbeat) → not swept, yield"
+ALIVE="${AP}mac-worker-3"
+AMINE2="${AP}mac-worker-1"          # lex-smaller than mac-worker-3
+touch "$HOME/.fleet/heartbeats/worker-3"   # owner of the held label is alive
+STUB_HOLDERS="$ALIVE"
+rc=0
+_acquire_label_on "owner/repo" 1 "$AMINE2" "$AP" >/dev/null 2>&1 || rc=$?
+assert_exit "$rc" 1 "live same-host amending owner kept → exit 1 (yield, no theft)"
+
 echo
 echo "fleet-claim acquire tests: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]
