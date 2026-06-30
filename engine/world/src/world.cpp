@@ -94,6 +94,14 @@ World::World(const char *configFileName)
 }
 
 World::~World() {
+    // No-op after `end()` (which ran during `gameLoop()` while the GL context
+    // was still live and already cleared the observers). `g_world` is a global
+    // `unique_ptr`, so this dtor runs at process-exit static destruction — past
+    // that point the GL driver/context may already be torn down (MSYS2 unloads
+    // it first), and the GpuStageTimingObserver dtor's `glDeleteQueries` would
+    // crash against dead driver state (#2031). The live-context release in
+    // `end()` is the real cleanup; this stays idempotent as a safety net for any
+    // path that never ran the loop.
     m_systemManager.clearTickObservers();
     IRE_LOG_INFO("Clean shutdown complete.");
 }
@@ -279,6 +287,12 @@ void World::start() {
 
 void World::end() {
     buildAndWriteProfileReport();
+    // Release the GPU stage-timing observer's GL timestamp queries here, while
+    // the render context is guaranteed live. The observer is program-bound and
+    // only ~World() would otherwise destroy it — but that runs at static
+    // destruction, after the GL driver/context may already be gone (#2031).
+    // `clearTickObservers()` is idempotent, so the dtor's later call no-ops.
+    m_systemManager.clearTickObservers();
     m_videoManager.shutdown();
     // Ensure component onDestroy hooks run while managers are still valid
     // (e.g. MIDI cleanup that sends NOTE_OFF on shutdown).

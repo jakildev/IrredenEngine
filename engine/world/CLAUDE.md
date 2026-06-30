@@ -235,4 +235,12 @@ same `config = { ... }` table — there is one source of truth per file.
   video recording until the first input arrives — used to keep capture
   clips from starting mid-loading-screen. If video recording is not
   starting, check these flags first.
+- **Release GPU/GL resources in `end()`, never in `~World()`.** `g_world`
+  is a global `unique_ptr`, so `~World()` runs at process-exit static
+  destruction — past that point the GL driver/context may already be torn
+  down (MSYS2 unloads it first), and any `glDelete*` issued from a
+  member/observer dtor crashes against dead driver state (#2031). `end()`
+  runs during `gameLoop()` while the context is live and is the canonical
+  spot for device-resource teardown (it already drives `destroyAllEntities()`
+  for `onDestroy` GPU frees). The dtor stays a no-op safety net.
 
