@@ -21,13 +21,11 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Tuple
-
+from typing import Dict, Iterable, List, Optional
 
 # --- Parser --------------------------------------------------------------
 
@@ -297,10 +295,12 @@ def format_frame_row(
     p99_b, p99_h = base.frame.p99, head.frame.p99
     avg_delta = pct_delta(avg_b, avg_h)
     p99_delta = pct_delta(p99_b, p99_h)
+    avg_mark = mark(avg_delta, regress_pct, improve_pct)
+    p99_mark = mark(p99_delta, regress_pct, improve_pct)
     return (
         f"| `{cell_id}` "
-        f"| {avg_b:.2f} → {avg_h:.2f} ({avg_delta:+.1f}%){mark(avg_delta, regress_pct, improve_pct)} "
-        f"| {p99_b:.2f} → {p99_h:.2f} ({p99_delta:+.1f}%){mark(p99_delta, regress_pct, improve_pct)} |"
+        f"| {avg_b:.2f} → {avg_h:.2f} ({avg_delta:+.1f}%){avg_mark} "
+        f"| {p99_b:.2f} → {p99_h:.2f} ({p99_delta:+.1f}%){p99_mark} |"
     )
 
 
@@ -369,7 +369,9 @@ def render_markdown(
         out.append("| cell | avg | p99 |")
         out.append("|------|-----|-----|")
         for cell_id in matched:
-            out.append(format_frame_row(cell_id, base[cell_id], head[cell_id], regress_pct, improve_pct))
+            out.append(
+                format_frame_row(cell_id, base[cell_id], head[cell_id], regress_pct, improve_pct)
+            )
         out.append("")
 
     if not cpu_only:
@@ -413,9 +415,10 @@ def render_markdown(
                 sb = base_cell.system_by_name(s.name)
                 bv = sb.avg_ms if sb else 0.0
                 delta = pct_delta(bv, s.avg_ms)
+                row_mark = mark(delta, regress_pct, improve_pct)
                 out.append(
                     f"| {s.pipeline} | `{s.name}` "
-                    f"| {bv:.3f} → {s.avg_ms:.3f} ({delta:+.1f}%){mark(delta, regress_pct, improve_pct)} |"
+                    f"| {bv:.3f} → {s.avg_ms:.3f} ({delta:+.1f}%){row_mark} |"
                 )
             out.append("")
 

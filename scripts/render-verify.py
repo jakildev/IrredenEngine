@@ -68,7 +68,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent
 RENDER_COMPARE = SCRIPT_DIR / "render-compare.py"
@@ -634,7 +633,10 @@ def main(argv: list[str] | None = None) -> int:
     # CLI --warmup wins; manifest["warmup"] overrides the hardcoded default of 10.
     warmup: int = args.warmup if args.warmup is not None else manifest.get("warmup", 10)
 
-    print(f"[render-verify] target={args.target} demo={demo_name} backend={backend} warmup={warmup}")
+    print(
+        f"[render-verify] target={args.target} demo={demo_name} "
+        f"backend={backend} warmup={warmup}"
+    )
     print(f"[render-verify] {len(shot_labels)} shots: {', '.join(shot_labels)}")
 
     if extra_runs:

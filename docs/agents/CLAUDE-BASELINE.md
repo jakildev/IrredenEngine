@@ -139,13 +139,13 @@ path, or the API keeps signalling "experimental" when it's the production code
   30-line block tracing a bug's forensic history is the same smell as a
   one-line `// now uses the deferred variant`, and is most common in render
   code.
-- **These style and comment rules apply to the fleet Python surface
-  (`scripts/fleet/`) too, not just C++.** PEP8 spacing, import-order, unused
-  imports, and bare-`assert`-as-guard are enforced mechanically by **ruff**
-  (`ruff check scripts/fleet/`, gated in CI — see BUILD.md § "Python (fleet
-  scripts)"). The one-line-comment / WHY-not-narration policy has no mechanical
-  ruff rule, so it stays **reviewer-enforced**: write comments that explain
-  intent, not code narration, in Python the same as in C++.
+- **These style and comment rules apply to the Python under `scripts/`
+  (fleet automation + render / perf / gui harnesses) too, not just C++.** PEP8
+  spacing, import-order, unused imports, and bare-`assert`-as-guard are enforced
+  mechanically by **ruff** (`ruff check scripts/`, gated in CI — see BUILD.md §
+  "Python (scripts)"). The one-line-comment / WHY-not-narration policy has no
+  mechanical ruff rule, so it stays **reviewer-enforced**: write comments that
+  explain intent, not code narration, in Python the same as in C++.
 
 ---
 
