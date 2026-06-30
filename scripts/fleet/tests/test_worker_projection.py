@@ -514,6 +514,39 @@ class NeedsGlHostAnnotation(unittest.TestCase):
         self.assertEqual(len(result["open"]), 1)
         self.assertFalse(result["open"][0]["needs_gl_host"])
 
+    def _issue_body(self, number, body):
+        iss = self._issue(number)
+        iss["body"] = body
+        return iss
+
+    def test_needs_gl_host_inferred_from_body_declaration(self):
+        # #1969: body explicitly requires a Linux host but the label was
+        # forgotten — inferred so a Metal pane skips it instead of churning.
+        for phrase in (
+            "This must run on a Linux host — references are per-backend.",
+            "must be run on a Windows host to refresh windows-debug refs.",
+            "Only runs on an OpenGL host.",
+            "must run on a Linux/Windows host",
+        ):
+            with self.subTest(phrase=phrase):
+                result = self._fetch([self._issue_body(1969, f"**Model:** sonnet\n{phrase}")])
+                self.assertTrue(result["open"][0]["needs_gl_host"],
+                                f"expected inferred gl-host for: {phrase}")
+
+    def test_needs_gl_host_not_inferred_from_passing_mention(self):
+        # Precision guard: a passing mention or a macOS requirement must NOT
+        # self-gate (over-gating would strand a mac-runnable task).
+        for phrase in (
+            "Tested on a Linux host previously.",
+            "The Linux build is faster than macOS.",
+            "must run on a macOS host",        # mac task — not a GL gate
+            "compare against the linux-debug references",
+        ):
+            with self.subTest(phrase=phrase):
+                result = self._fetch([self._issue_body(2000, f"**Model:** opus\n{phrase}")])
+                self.assertFalse(result["open"][0]["needs_gl_host"],
+                                 f"unexpected gl-host inference for: {phrase}")
+
 
 if __name__ == "__main__":
     unittest.main()
