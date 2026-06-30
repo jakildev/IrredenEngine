@@ -19,8 +19,9 @@ namespace IRArgs {
 
 namespace {
 
-// Per-type value placeholder shown after the arg name in --help.
-const char *placeholderFor(Type type) {
+// Per-type value placeholder shown after the arg name in --help. FLOAT_LIST
+// repeats " <float>" once per declared value so the arity is visible.
+std::string placeholderFor(Type type, int listCount) {
     switch (type) {
     case Type::FLAG:
         return "";
@@ -32,8 +33,32 @@ const char *placeholderFor(Type type) {
         return " <value>";
     case Type::OPTIONAL_INT:
         return " [int]";
+    case Type::FLOAT_LIST: {
+        std::string placeholder;
+        for (int k = 0; k < listCount; ++k) {
+            placeholder += " <float>";
+        }
+        return placeholder;
+    }
     }
     return "";
+}
+
+// Parse exactly `count` comma-separated floats from an inline "--name=a,b,c"
+// value into `out`. Returns false when the token count doesn't match.
+bool splitInlineFloatList(const std::string &value, int count, std::vector<float> &out) {
+    out.clear();
+    std::size_t start = 0;
+    while (start <= value.size()) {
+        const std::size_t comma = value.find(',', start);
+        const std::size_t end = comma == std::string::npos ? value.size() : comma;
+        out.push_back(static_cast<float>(std::atof(value.substr(start, end - start).c_str())));
+        if (comma == std::string::npos) {
+            break;
+        }
+        start = comma + 1;
+    }
+    return static_cast<int>(out.size()) == count;
 }
 
 // Split a "--name=value" long option into its name (before the first '=') and
@@ -128,6 +153,14 @@ Parser &
 Parser::optionalInt(const char *name, const char *help, int defaultIfBare, const char *shortAlias) {
     Entry &e = add(name, help, Type::OPTIONAL_INT, shortAlias);
     e.intValue_ = defaultIfBare;
+    return *this;
+}
+
+Parser &Parser::numbers(const char *name, const char *help, int count, const char *shortAlias) {
+    IR_ASSERT(count > 0, "IRArgs: numbers() requires a positive value count");
+    Entry &e = add(name, help, Type::FLOAT_LIST, shortAlias);
+    e.listCount_ = count;
+    e.floatValues_.assign(static_cast<std::size_t>(count), 0.0f);
     return *this;
 }
 
@@ -259,6 +292,37 @@ void Parser::parse(int argc, char **argv) {
                 }
             }
             break;
+        case Type::FLOAT_LIST:
+            // An inline value is one comma-separated token ("--name=a,b,c");
+            // otherwise consume the next listCount_ tokens space-separated. Too
+            // few tokens (or a wrong inline count) is a hard parse error so a
+            // malformed sweep can't silently run with zeroed values.
+            if (hasInline) {
+                if (!splitInlineFloatList(inlineValue, e->listCount_, e->floatValues_)) {
+                    std::fprintf(
+                        stderr,
+                        "Argument %s expects %d comma-separated float values\n\n",
+                        name.c_str(),
+                        e->listCount_
+                    );
+                    exitWithUsage(2);
+                }
+            } else {
+                for (int k = 0; k < e->listCount_; ++k) {
+                    if (i + 1 >= argc) {
+                        std::fprintf(
+                            stderr,
+                            "Argument %s expects %d float values\n\n",
+                            name.c_str(),
+                            e->listCount_
+                        );
+                        exitWithUsage(2);
+                    }
+                    e->floatValues_[static_cast<std::size_t>(k)] =
+                        static_cast<float>(std::atof(argv[++i]));
+                }
+            }
+            break;
         }
     }
 
@@ -328,6 +392,16 @@ std::string Parser::getString(const char *name) const {
     return e != nullptr ? e->stringValue_ : std::string{};
 }
 
+const std::vector<float> &Parser::getFloats(const char *name) const {
+    static const std::vector<float> empty;
+    const Entry *e = findByName(name);
+    IR_ASSERT(
+        e != nullptr && e->type_ == Type::FLOAT_LIST,
+        "IRArgs: getFloats on unregistered/non-float-list arg"
+    );
+    return e != nullptr ? e->floatValues_ : empty;
+}
+
 bool Parser::wasProvided(const char *name) const {
     const Entry *e = findByName(name);
     IR_ASSERT(e != nullptr, "IRArgs: wasProvided on unregistered arg");
@@ -382,7 +456,7 @@ std::string Parser::usage() const {
         if (!e->shortAlias_.empty()) {
             left += ", " + e->shortAlias_;
         }
-        left += placeholderFor(e->type_);
+        left += placeholderFor(e->type_, e->listCount_);
         if (left.size() > widest) {
             widest = left.size();
         }

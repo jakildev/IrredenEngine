@@ -62,8 +62,6 @@
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
 
 #include <algorithm>
-#include <cstring>
-#include <cstdlib>
 #include <numbers>
 #include <string>
 
@@ -131,56 +129,75 @@ void applyCliOverrides() {
     }
 }
 
-void parseArgs(int argc, char **argv) {
-    for (int i = 1; i < argc; ++i) {
-        if (std::strcmp(argv[i], "--auto-profile") == 0) {
-            g_autoProfileFrames = 300;
-            if (i + 1 < argc) {
-                int frames = std::atoi(argv[i + 1]);
-                if (frames > 0) {
-                    g_autoProfileFrames = frames;
-                    ++i;
-                }
-            }
-        } else if (std::strcmp(argv[i], "--grid-size") == 0 && i + 1 < argc) {
-            int gridSize = std::atoi(argv[i + 1]);
-            if (gridSize > 0) {
-                g_cliOverrides.gridSize_ = gridSize;
-                g_cliOverrides.gridSizeSet_ = true;
-            }
-            ++i;
-        } else if (std::strcmp(argv[i], "--zoom") == 0 && i + 1 < argc) {
-            float zoom = static_cast<float>(std::atof(argv[i + 1]));
-            if (zoom > 0.0f) {
-                g_cliOverrides.zoom_ = zoom;
-                g_cliOverrides.zoomSet_ = true;
-            }
-            ++i;
-        } else if (std::strcmp(argv[i], "--subdivision-mode") == 0 && i + 1 < argc) {
-            std::string mode = argv[i + 1];
-            if (mode == "none") {
-                g_cliOverrides.subdivisionMode_ = IRRender::SubdivisionMode::NONE;
-                g_cliOverrides.subdivisionModeSet_ = true;
-            } else if (mode == "position_only") {
-                g_cliOverrides.subdivisionMode_ = IRRender::SubdivisionMode::POSITION_ONLY;
-                g_cliOverrides.subdivisionModeSet_ = true;
-            } else if (mode == "full") {
-                g_cliOverrides.subdivisionMode_ = IRRender::SubdivisionMode::FULL;
-                g_cliOverrides.subdivisionModeSet_ = true;
-            } else {
-                IR_LOG_WARN(
-                    "Unknown --subdivision-mode '{}'; expected none|position_only|full",
-                    mode
-                );
-            }
-            ++i;
-        } else if (std::strcmp(argv[i], "--base-subdivisions") == 0 && i + 1 < argc) {
-            int sub = std::atoi(argv[i + 1]);
-            if (sub > 0) {
-                g_cliOverrides.baseSubdivisions_ = sub;
-                g_cliOverrides.baseSubdivisionsSet_ = true;
-            }
-            ++i;
+// Declare lua_perf_grid's custom flags on the engine-owned parser. Must run
+// before IREngine::init(argc, argv), which performs the single strict parse of
+// engine-common + these flags (see engine/CLAUDE.md "CLI args go through
+// IRArgs").
+void registerArgs() {
+    IRArgs::Parser &args = IREngine::args();
+    args.optionalInt(
+        "--auto-profile",
+        "Per-system frame timing for N frames (default 300 when bare); writes the profile report "
+        "on exit",
+        300
+    );
+    args.integer("--grid-size", "Override the grid edge in cells (> 0)", 0);
+    args.number("--zoom", "Override the initial camera zoom (> 0)", 0.0f);
+    args.string(
+        "--subdivision-mode",
+        "Voxel subdivision mode override (none|position_only|full)",
+        ""
+    );
+    args.integer(
+        "--base-subdivisions",
+        "Override the base voxel-render subdivision factor (> 0)",
+        0
+    );
+}
+
+// Read the parsed flags into g_autoProfileFrames + g_cliOverrides. Runs inside
+// the lua-bindings callback (which fires during init, after the parse) so
+// g_cliOverrides is populated before applyCliOverrides() consumes it. Replaces
+// the retired hand-rolled parseArgs.
+void applyArgs() {
+    const IRArgs::Parser &args = IREngine::args();
+    if (args.wasProvided("--auto-profile")) {
+        g_autoProfileFrames = args.getInt("--auto-profile");
+    }
+    if (args.wasProvided("--grid-size")) {
+        const int gridSize = args.getInt("--grid-size");
+        if (gridSize > 0) {
+            g_cliOverrides.gridSize_ = gridSize;
+            g_cliOverrides.gridSizeSet_ = true;
+        }
+    }
+    if (args.wasProvided("--zoom")) {
+        const float zoom = args.getFloat("--zoom");
+        if (zoom > 0.0f) {
+            g_cliOverrides.zoom_ = zoom;
+            g_cliOverrides.zoomSet_ = true;
+        }
+    }
+    if (args.wasProvided("--subdivision-mode")) {
+        const std::string mode = args.getString("--subdivision-mode");
+        if (mode == "none") {
+            g_cliOverrides.subdivisionMode_ = IRRender::SubdivisionMode::NONE;
+            g_cliOverrides.subdivisionModeSet_ = true;
+        } else if (mode == "position_only") {
+            g_cliOverrides.subdivisionMode_ = IRRender::SubdivisionMode::POSITION_ONLY;
+            g_cliOverrides.subdivisionModeSet_ = true;
+        } else if (mode == "full") {
+            g_cliOverrides.subdivisionMode_ = IRRender::SubdivisionMode::FULL;
+            g_cliOverrides.subdivisionModeSet_ = true;
+        } else {
+            IR_LOG_WARN("Unknown --subdivision-mode '{}'; expected none|position_only|full", mode);
+        }
+    }
+    if (args.wasProvided("--base-subdivisions")) {
+        const int sub = args.getInt("--base-subdivisions");
+        if (sub > 0) {
+            g_cliOverrides.baseSubdivisions_ = sub;
+            g_cliOverrides.baseSubdivisionsSet_ = true;
         }
     }
 }
@@ -377,6 +394,10 @@ void registerLuaBindings() {
         // the engine's WorldConfig-style table loader, separate Lua state).
         IRScript::LuaScript demoConfig{IREngine::resolveScriptPath("config.lua").c_str()};
         applyConfigTable(demoConfig);
+        // Read CLI flags into g_cliOverrides here — this callback fires during
+        // IREngine::init AFTER the parse, so the values are available and land
+        // before applyCliOverrides() (CLI wins over config.lua).
+        applyArgs();
         applyCliOverrides();
         validateSettings();
 
@@ -490,7 +511,7 @@ void registerLuaBindings() {
 } // namespace
 
 int main(int argc, char **argv) {
-    parseArgs(argc, argv);
+    registerArgs();
     IR_LOG_INFO(
         "Starting creation: lua_perf_grid (default mode={})",
         IRScript::CodegenRegistry::kDefaultEcsMode == IRScript::EcsMode::CODEGEN ? "CODEGEN"

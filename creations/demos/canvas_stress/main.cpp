@@ -61,8 +61,6 @@
 
 #include <cstdint>
 #include <cstdio>
-#include <cstring>
-#include <cstdlib>
 #include <string>
 #include <vector>
 
@@ -918,95 +916,164 @@ void readConfig() {
         g_settings.autoRotate_ = autoRotate.as<bool>();
 }
 
-void parseArgs(int argc, char **argv) {
-    for (int i = 1; i < argc; ++i) {
-        if (std::strcmp(argv[i], "--yaw") == 0 && i + 1 < argc) {
-            g_settings.cameraYaw_ = static_cast<float>(std::atof(argv[i + 1]));
-            ++i;
-        } else if (std::strcmp(argv[i], "--subdivisions") == 0 && i + 1 < argc) {
-            // Debug toggle (#2043 repro): force the base voxel-render subdivision
-            // factor so the detached small/low-zoom gap reproduces (needs > 1).
-            g_settings.subdivisions_ = std::atoi(argv[i + 1]);
-            ++i;
-        } else if (std::strcmp(argv[i], "--zoom") == 0 && i + 1 < argc) {
-            // Debug toggle (#2043 repro): override the interactive initial zoom.
-            // Auto-screenshot shots still drive their own per-shot zoom (the
-            // orbit shot table already includes orbit_overview @ 0.32).
-            g_settings.initialZoom_ = static_cast<float>(std::atof(argv[i + 1]));
-            ++i;
-        } else if (std::strcmp(argv[i], "--auto-rotate") == 0) {
-            g_settings.autoRotate_ = true;
-            g_settings.autoRotateSetByCli_ = true;
-        } else if (std::strcmp(argv[i], "--no-auto-rotate") == 0) {
-            g_settings.autoRotate_ = false;
-            g_settings.autoRotateSetByCli_ = true;
-        } else if (std::strcmp(argv[i], "--full-rotate") == 0) {
-            g_settings.fullRotate_ = true;
-        } else if (std::strcmp(argv[i], "--no-spin") == 0) {
-            g_settings.noSpin_ = true;
-        } else if (std::strcmp(argv[i], "--no-lighting") == 0) {
-            g_settings.noLighting_ = true;
-        } else if (
-            std::strcmp(argv[i], "--screen-lock-detached") == 0 ||
-            std::strcmp(argv[i], "--screen-lock-revox") == 0
-        ) {
-            g_settings.screenLockDetached_ = true;
-        } else if (std::strcmp(argv[i], "--solo-revox") == 0) {
-            g_settings.soloRevox_ = true;
-            // The solo harness spawns no floor to depth-sort against, and the
-            // #1619 step-0 GL evidence (committed crops) was captured on the
-            // screen-locked overlay path — keep the lone L-prism screen-locked
-            // rather than inheriting the world-place default.
-            g_settings.screenLockDetached_ = true;
-        } else if (std::strcmp(argv[i], "--only") == 0 && i + 1 < argc) {
-            g_settings.onlyGroups_ |= parseSpawnGroups(argv[i + 1]);
-            ++i;
-        } else if (std::strcmp(argv[i], "--sweep-yaw") == 0 && i + 3 < argc) {
-            g_settings.sweepYawFrom_ = static_cast<float>(std::atof(argv[i + 1]));
-            g_settings.sweepYawTo_ = static_cast<float>(std::atof(argv[i + 2]));
-            g_settings.sweepYawCount_ = std::atoi(argv[i + 3]);
-            i += 3;
-        } else if (std::strcmp(argv[i], "--sweep-frames") == 0 && i + 2 < argc) {
-            g_settings.sweepFramesCount_ = std::atoi(argv[i + 1]);
-            g_settings.sweepFramesSettle_ = std::atoi(argv[i + 2]);
-            i += 2;
-        } else if (std::strcmp(argv[i], "--auto-profile") == 0) {
-            g_settings.autoProfile_ = true;
-        } else if (std::strcmp(argv[i], "--debug-overlay") == 0 && i + 1 < argc) {
-            g_settings.debugOverlay_ = IRRender::debugOverlayModeFromString(argv[i + 1]);
-            ++i;
-        } else if (std::strcmp(argv[i], "--depth-probe") == 0 && i + 1 < argc) {
-            int px = 0;
-            int py = 0;
-            if (std::sscanf(argv[i + 1], "%d,%d", &px, &py) == 2) {
-                g_settings.depthProbeSet_ = true;
-                g_settings.depthProbePixel_ = ivec2(px, py);
-            } else {
-                IR_LOG_WARN(
-                    "--depth-probe: expected X,Y (e.g. 960,540); ignoring '{}'",
-                    argv[i + 1]
-                );
-            }
-            ++i;
-        } else if (std::strcmp(argv[i], "--depth-probe-assert") == 0 && i + 1 < argc) {
-            int px = 0;
-            int py = 0;
-            if (std::sscanf(argv[i + 1], "%d,%d", &px, &py) == 2) {
-                g_settings.depthProbeAssertSet_ = true;
-                g_settings.depthProbeAssertPixel_ = ivec2(px, py);
-            } else {
-                IR_LOG_WARN(
-                    "--depth-probe-assert: expected X,Y (e.g. 321,210); ignoring '{}'",
-                    argv[i + 1]
-                );
-            }
-            ++i;
-        }
+// Parse a "--depth-probe[-assert] X,Y" value into (set, pixel), mirroring the
+// warn-on-malformed behaviour the hand-rolled parser had — a bad value leaves
+// `set` false so the probe stays off rather than reading a garbage pixel.
+void applyDepthProbe(const std::string &value, bool &set, ivec2 &pixel, const char *flag) {
+    int px = 0;
+    int py = 0;
+    if (std::sscanf(value.c_str(), "%d,%d", &px, &py) == 2) {
+        set = true;
+        pixel = ivec2(px, py);
+    } else {
+        IR_LOG_WARN("{}: expected X,Y (e.g. 960,540); ignoring '{}'", flag, value);
+    }
+}
+
+// Declare canvas_stress's custom flags on the engine-owned parser. Must run
+// before IREngine::init(argc, argv), which performs the single strict parse of
+// engine-common + these flags (see engine/CLAUDE.md "CLI args go through
+// IRArgs"). The registered defaults mirror g_settings's struct defaults so a
+// flagless run is byte-identical. Multi-value flags use the FLOAT_LIST type so
+// the established space-separated spellings (--sweep-yaw <from> <to> <n>) keep
+// working.
+void registerArgs() {
+    IRArgs::Parser &args = IREngine::args();
+    args.number("--yaw", "Initial camera yaw, radians", g_settings.cameraYaw_);
+    args.integer(
+        "--subdivisions",
+        "Force base voxel-render subdivision factor (#2043 repro; needs > 1)",
+        g_settings.subdivisions_
+    );
+    args.number("--zoom", "Override the interactive initial zoom", g_settings.initialZoom_);
+    args.flag("--auto-rotate", "Force camera auto-yaw on (overrides config.lua)");
+    args.flag("--no-auto-rotate", "Force camera auto-yaw off (overrides config.lua)");
+    args.flag(
+        "--full-rotate",
+        "Drive the camera with the full SO(3) X/Y/Z spin path, not Z-yaw only"
+    );
+    args.flag("--no-spin", "Freeze per-entity self-spin at quaternion identity");
+    args.flag("--no-lighting", "Disable world lighting");
+    args.flag(
+        "--screen-lock-detached",
+        "Opt every detached canvas into the screen-locked overlay placement (pre-#1624 scene)"
+    );
+    args.flag("--screen-lock-revox", "Legacy alias for --screen-lock-detached");
+    args.flag(
+        "--solo-revox",
+        "#1619 isolation: spawn exactly one rotated DETACHED_REVOXELIZE solid, screen-locked"
+    );
+    args.string(
+        "--only",
+        "Spawn only the named entity groups (comma-separated: maingrid,gridspin,canary,revox,"
+        "orbit,floor,compare,interpenetrate)",
+        ""
+    );
+    args.numbers(
+        "--sweep-yaw",
+        "Focused capture: interpolate camera yaw (radians) <from> <to> across <n> shots",
+        3
+    );
+    args.numbers(
+        "--sweep-frames",
+        "Focused capture: <n> identical-camera shots <settle> frames apart (self-spin phase sweep)",
+        2
+    );
+    args.flag(
+        "--auto-profile",
+        "Per-system frame timing; write save_files/profile_report.txt on the auto-screenshot exit"
+    );
+    args.string(
+        "--debug-overlay",
+        "Force a render debug overlay for the run "
+        "(none|ao|light_level|shadow|peraxis_id|peraxis_origin|unlit)",
+        ""
+    );
+    args.string(
+        "--depth-probe",
+        "Log composite depth each frame at framebuffer pixel X,Y (#1910)",
+        ""
+    );
+    args.string(
+        "--depth-probe-assert",
+        "Depth-write regression guard at framebuffer pixel X,Y; emits PASS|FAIL (#1957)",
+        ""
+    );
+}
+
+// Read the parsed flags back into g_settings after IREngine::init. Replaces the
+// retired hand-rolled parseArgs; the trailing sweep latch (disable auto-yaw)
+// must run before readConfig() so config.lua can't re-enable it.
+void applyArgs() {
+    IRArgs::Parser &args = IREngine::args();
+    g_settings.cameraYaw_ = args.getFloat("--yaw");
+    // #2043 repro: force base subdivisions when requested. 0 leaves the engine
+    // default (1) untouched, so a flagless run stays byte-identical.
+    g_settings.subdivisions_ = args.getInt("--subdivisions");
+    g_settings.initialZoom_ = args.getFloat("--zoom");
+    if (args.wasProvided("--auto-rotate")) {
+        g_settings.autoRotate_ = true;
+        g_settings.autoRotateSetByCli_ = true;
+    }
+    if (args.wasProvided("--no-auto-rotate")) {
+        g_settings.autoRotate_ = false;
+        g_settings.autoRotateSetByCli_ = true;
+    }
+    g_settings.fullRotate_ = args.getFlag("--full-rotate");
+    g_settings.noSpin_ = args.getFlag("--no-spin");
+    g_settings.noLighting_ = args.getFlag("--no-lighting");
+    if (args.getFlag("--screen-lock-detached") || args.getFlag("--screen-lock-revox")) {
+        g_settings.screenLockDetached_ = true;
+    }
+    if (args.getFlag("--solo-revox")) {
+        g_settings.soloRevox_ = true;
+        // The solo harness spawns no floor to depth-sort against, and the #1619
+        // step-0 GL evidence (committed crops) was captured on the screen-locked
+        // overlay path — keep the lone L-prism screen-locked rather than
+        // inheriting the world-place default.
+        g_settings.screenLockDetached_ = true;
+    }
+    // --only accepts the comma-separated group list in one token; the legacy
+    // repeated-flag form collapses to the last value under the single parse.
+    if (args.wasProvided("--only")) {
+        g_settings.onlyGroups_ |= parseSpawnGroups(args.getString("--only").c_str());
+    }
+    g_settings.autoProfile_ = args.getFlag("--auto-profile");
+    if (args.wasProvided("--debug-overlay")) {
+        g_settings.debugOverlay_ =
+            IRRender::debugOverlayModeFromString(args.getString("--debug-overlay").c_str());
+    }
+    if (args.wasProvided("--depth-probe")) {
+        applyDepthProbe(
+            args.getString("--depth-probe"),
+            g_settings.depthProbeSet_,
+            g_settings.depthProbePixel_,
+            "--depth-probe"
+        );
+    }
+    if (args.wasProvided("--depth-probe-assert")) {
+        applyDepthProbe(
+            args.getString("--depth-probe-assert"),
+            g_settings.depthProbeAssertSet_,
+            g_settings.depthProbeAssertPixel_,
+            "--depth-probe-assert"
+        );
+    }
+    if (args.wasProvided("--sweep-yaw")) {
+        const std::vector<float> &v = args.getFloats("--sweep-yaw");
+        g_settings.sweepYawFrom_ = v[0];
+        g_settings.sweepYawTo_ = v[1];
+        g_settings.sweepYawCount_ = static_cast<int>(v[2]);
+    }
+    if (args.wasProvided("--sweep-frames")) {
+        const std::vector<float> &v = args.getFloats("--sweep-frames");
+        g_settings.sweepFramesCount_ = static_cast<int>(v[0]);
+        g_settings.sweepFramesSettle_ = static_cast<int>(v[1]);
     }
     if (g_settings.sweepYawCount_ > 0 || g_settings.sweepFramesCount_ > 0) {
-        // Sweep captures isolate one moving variable; continuous camera
-        // auto-yaw would otherwise drift the pose during the settle frames and
-        // confound both sweep kinds.
+        // Sweep captures isolate one moving variable; continuous camera auto-yaw
+        // would otherwise drift the pose during the settle frames and confound
+        // both sweep kinds.
         g_settings.autoRotate_ = false;
         g_settings.autoRotateSetByCli_ = true;
     }
@@ -1019,9 +1086,10 @@ void initCommands();
 void initEntities();
 
 int main(int argc, char **argv) {
-    parseArgs(argc, argv);
+    registerArgs();
     IR_LOG_INFO("Starting creation: canvas_stress");
     IREngine::init(argc, argv);
+    applyArgs();
     g_autoWarmupFrames = IREngine::args().autoScreenshotWarmupFrames();
     readConfig();
     if (g_settings.autoProfile_) {
