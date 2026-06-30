@@ -14,6 +14,8 @@
 #     (not the dispatcher-passed class)
 #   - cleanup: failed resume clears the sidecar (no loop)
 #   - cleanup: in-flight work (claude/* branch + dirty) keeps the sidecar
+#   - cleanup: in-flight work (reservation present, branch otherwise clean) keeps the sidecar
+#   - cleanup: in-flight work (claude/* branch, clean but ahead of master) keeps the sidecar
 #   - cleanup: finished/no-op (clean master) clears the sidecar
 
 set -uo pipefail
@@ -117,6 +119,16 @@ echo "T6: cleanup — in-flight (claude/* branch + dirty) keeps the sidecar"
 rm -f "$SIDECAR"
 STUB_BRANCH="claude/123-foo" STUB_DIRTY=1 STUB_CLAUDE_RC=0 run_wrap "claude-opus-4-8[1m]" xhigh worker
 [[ -f "$SIDECAR" ]] && ok "in-flight worker kept the sidecar (resumes next dispatch)" || bad "in-flight: sidecar wrongly cleared"
+
+echo "T6b: cleanup — in-flight (reservation present, branch otherwise clean) keeps the sidecar"
+rm -f "$SIDECAR"
+STUB_RESERVATION="163" STUB_BRANCH="master" STUB_DIRTY="" STUB_AHEAD=0 STUB_CLAUDE_RC=0 run_wrap "claude-opus-4-8[1m]" xhigh worker
+[[ -f "$SIDECAR" ]] && ok "reservation-only in-flight kept the sidecar" || bad "reservation-only: sidecar wrongly cleared"
+
+echo "T6c: cleanup — in-flight (claude/* branch, clean but ahead of master) keeps the sidecar"
+rm -f "$SIDECAR"
+STUB_BRANCH="claude/123-foo" STUB_DIRTY="" STUB_AHEAD=2 STUB_CLAUDE_RC=0 run_wrap "claude-opus-4-8[1m]" xhigh worker
+[[ -f "$SIDECAR" ]] && ok "ahead-only in-flight kept the sidecar" || bad "ahead-only: sidecar wrongly cleared"
 
 echo "T7: cleanup — finished/no-op (clean master) clears the sidecar"
 rm -f "$SIDECAR"
