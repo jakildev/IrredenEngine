@@ -513,8 +513,13 @@ def _run_capture(*, worktree: Path, target: str, shots_dir: Path, warmup: int,
                "--auto-screenshot", str(warmup)]
     run_cmd.extend(demo_args)
     print("+ " + " ".join(run_cmd), flush=True)
+    # The demo logs arbitrary OS-provided strings at startup — audio/MIDI
+    # device names enumerate through here, and on some hosts those carry
+    # non-UTF-8 bytes (e.g. a Mac-Roman curly apostrophe in "Robert's iPhone").
+    # The captured output is only used for the crash tail below, never parsed,
+    # so decode tolerantly instead of letting a stray byte abort the whole run.
     proc = subprocess.run(run_cmd, cwd=str(worktree), capture_output=True,
-                          text=True)
+                          text=True, errors="replace")
     if proc.returncode != 0:
         print(f"[render-verify] ({pass_label}) fleet-run exited "
               f"{proc.returncode}; tail of output follows (screenshot count "
