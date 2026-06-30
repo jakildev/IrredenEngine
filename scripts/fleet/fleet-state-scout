@@ -401,6 +401,35 @@ _EPIC_CHECKLIST_RE = re.compile(
     r'^[ \t]*-[ \t]*\[( |x|X)\][ \t].*?#(\d+)', re.MULTILINE)
 
 
+# #1969: a task whose body explicitly declares it must run on a Linux / Windows
+# / OpenGL host, but is missing the fleet:needs-gl-host label, is invisible to
+# the label-based host gate (fetch_task_queue below). On a Metal-only (mac) host
+# the dispatcher then keeps electing it (oldest claimable) and a worker
+# claims -> can't build -> releases, churning the lane and starving other
+# classes (the #1969 incident: a "refresh linux-debug render-verify references"
+# task that can only run on Linux). Infer the gate from the body as a backstop so
+# the projection treats such a task as host-incompatible even when the label was
+# forgotten at filing. Deliberately PRECISION-first — only a strong requirement
+# phrasing ("must run on" / "must be run on" / "only runs/builds on" a
+# linux/windows/opengl host) matches, never a passing mention ("tested on a
+# Linux host"). A false positive would wrongly skip a mac-runnable task, which is
+# worse than a miss (a miss just churns like before), so recall is sacrificed for
+# precision; the explicit label remains the primary, recommended signal. macOS
+# host declarations don't match (the OS alternation is linux/windows/opengl), so
+# a mac-only task is never self-gated off its own host.
+_GL_HOST_REQUIRED_RE = re.compile(
+    r"\b(?:must\s+(?:be\s+)?run\s+on|only\s+(?:runs?|builds?)\s+on)\s+"
+    r"(?:an?\s+|the\s+)?(?:linux|windows|opengl)[\w/+-]*\s+host\b",
+    re.IGNORECASE,
+)
+
+
+def _body_requires_gl_host(body):
+    """True when the task body explicitly declares a Linux/Windows/OpenGL host
+    requirement — a backstop for a missing fleet:needs-gl-host label (#1969)."""
+    return bool(_GL_HOST_REQUIRED_RE.search(body or ""))
+
+
 def _parse_epic_checklist(body):
     """[{number, checked}] for every `- [ ] #N` / `- [x] #N` row in an
     umbrella body, in document order. Indented sub-bullets count; lines
@@ -530,8 +559,11 @@ def fetch_task_queue(repo_slug):
             # needs an OpenGL-4.5 host (linux/windows); macOS/Metal panes can't
             # build/run/verify it. Surfaced here so the dispatcher's claimability
             # filter (fleet_task_class.py) skips it on a Metal host instead of
-            # churning claim->refuse->release no-ops.
-            "needs_gl_host": "fleet:needs-gl-host" in labels,
+            # churning claim->refuse->release no-ops. #1969: also inferred from an
+            # explicit host-requirement declaration in the body, as a backstop
+            # for a label the filer forgot (see _GL_HOST_REQUIRED_RE).
+            "needs_gl_host": ("fleet:needs-gl-host" in labels
+                              or _body_requires_gl_host(body)),
             "issue": task_id,
             # `**Part of epic:** #U` back-ref (raw field value, e.g. "#1661").
             # The epic-steward adoption projection joins this against open
