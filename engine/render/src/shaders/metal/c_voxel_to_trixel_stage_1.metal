@@ -187,26 +187,44 @@ kernel void c_voxel_to_trixel_stage_1(
     // faceIsExposed too (no all-3-face bypass → no slot-tie AO hatching). The
     // reVoxelize flag still drives the ±1px dilation in emitDeformedFace.
     //
-    // Exposed-face gate widened with the fog CUT-FACE rule (#2125) — see the GLSL
-    // twin. A non-exposed VERTICAL face (faceId 0..3 = ±X/±Y) becomes the object's
-    // interior cross-section wall when its solid neighbor COLUMN is fog-hidden;
-    // GRID world fog route only (perAxisRoute==0, not detached, live circles).
-    // Keep byte-identical to stage 2's gate so distance + colour agree.
+    // World fog route + world-column recovery (#2125 GRID, #2127 detached) — see
+    // the GLSL twin. `fogActive` is the single cheap (uniform-only) gate that keeps
+    // every non-fog / per-axis / plain-DETACHED voxel byte-identical to master AND
+    // free of the world-column round() below. The GRID world canvas rasters in
+    // world space (offset 0); a world-placed detached re-voxelize canvas rasters in
+    // the pool-centered MODEL frame, so recover its world column as model + the
+    // published cell origin (the SAME model+offset recovery c_lighting_to_trixel
+    // uses; the re-voxelize bake is a pure translation off world, so the model-frame
+    // face normal equals the world-frame one).
+    const bool fogActive = fogObservers.visionCircleCount > 0 &&
+        frameData.perAxisRoute == 0 &&
+        (frameData.isDetachedCanvas < 0.5f || frameData.detachedWorldReceive.w != 0.0f);
+    int2 worldColumn = int2(0);
+    if (fogActive) {
+        worldColumn = int3(round(voxelPosition.xyz)).xy +
+            (frameData.isDetachedCanvas > 0.5f
+                 ? int2(round(frameData.detachedWorldReceive.xy))
+                 : int2(0));
+    }
+
+    // Exposed-face gate widened with the fog CUT-FACE rule (#2125/#2127) — see the
+    // GLSL twin. A non-exposed VERTICAL face (faceId 0..3 = ±X/±Y) becomes the
+    // object's interior cross-section wall when its solid neighbor world COLUMN is
+    // fog-hidden; world fog route only (perAxisRoute==0, GRID or world-placed
+    // re-voxelize detached). Keep byte-identical to stage 2's gate so distance +
+    // colour agree.
     bool keepFace = faceIsExposed(flagsByte, faceId);
-    if (!keepFace && faceId < kFaceZNeg && fogObservers.visionCircleCount > 0 &&
-        frameData.perAxisRoute == 0 && frameData.isDetachedCanvas < 0.5f) {
-        const int2 neighborColumn =
-            int3(round(voxelPosition.xyz)).xy + faceOutwardNormal6I(faceId).xy;
-        keepFace = fogColumnHiddenAt(canvasFogOfWar, fogObservers, neighborColumn);
+    if (!keepFace && faceId < kFaceZNeg && fogActive) {
+        keepFace = fogColumnHiddenAt(
+            canvasFogOfWar, fogObservers, worldColumn + faceOutwardNormal6I(faceId).xy);
     }
     if (!keepFace) return;
 
-    // Per-voxel analytic fog clip (#2102) — see the GLSL twin. Drop a voxel whose
-    // OWN column is fully fog-hidden on the single-canvas world route so
+    // Per-voxel analytic fog clip (#2102/#2127) — see the GLSL twin. Drop a voxel
+    // whose OWN world column is fully fog-hidden on the world route so
     // FOG_TO_TRIXEL can't hard-black its faces; STAGE_2 inherits the drop via its
-    // depth re-test. count 0 / the placeholder keep non-fog scenes byte-identical.
-    if (fogObservers.visionCircleCount > 0 && frameData.perAxisRoute == 0 &&
-        fogColumnHiddenAt(canvasFogOfWar, fogObservers, int3(round(voxelPosition.xyz)).xy)) {
+    // depth re-test.
+    if (fogActive && fogColumnHiddenAt(canvasFogOfWar, fogObservers, worldColumn)) {
         return;
     }
 

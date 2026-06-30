@@ -323,6 +323,14 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // per-dirty-frame upload allocation-free across however many fog canvases
     // exist; the value-init resize zeros the GBA bytes the loop never writes.
     std::vector<std::uint8_t> fogUploadScratch_;
+    // The MAIN canvas's fog component, resolved + uploaded once per frame in
+    // beginTick (#2127). A detached re-voxelize canvas carries no C_CanvasFogOfWar
+    // of its own, but a WORLD-PLACED one cross-sections against the world vision
+    // boundary, so its STAGE_1/STAGE_2 dispatch binds THIS world fog grid +
+    // observers (recovering each voxel's world column from detachedWorldReceive).
+    // Re-resolved every frame; never held across frames. Null unless the main
+    // canvas has fog.
+    C_CanvasFogOfWar *worldFog_ = nullptr;
 
     // Every DETACHED_REVOXELIZE canvas's resident locals buffer, resolved once
     // per frame in beginTick by IRPrefab::DetachedRevoxelize::syncResidentBuffers
@@ -1034,22 +1042,41 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             frameDataBuf_->subData(0, sizeof(FrameDataVoxelToCanvas), &frameData_);
         }
 
+        // World fog source for the cut-section dispatch (#2125 / #2127). A canvas
+        // with its OWN fog (the main world canvas) cross-sections against it
+        // directly; a WORLD-PLACED detached re-voxelize canvas has no fog of its
+        // own, so it cross-sections against the MAIN canvas's world fog (resolved +
+        // uploaded in beginTick). STAGE_1/STAGE_2 recover each detached voxel's
+        // world column from detachedWorldReceive; the compact below keeps the
+        // placeholder because its cull keys on the un-offset model column. Plain
+        // octahedral DETACHED / per-axis / non-fog → null → the no-fog placeholder.
+        const bool worldPlacedRevoxel = canvasLocalRotation.isDetached() &&
+                                        canvasLocalRotation.reVoxelize_ &&
+                                        canvasLocalRotation.worldPlaced_;
+        C_CanvasFogOfWar *cutSectionFog =
+            (fog != nullptr) ? fog : (worldPlacedRevoxel ? worldFog_ : nullptr);
+
         compactProgram_->use();
         // Fog cull input (#2008): the real 256² fog texture for the world fog
         // canvas, else the shared 1×1 all-visible placeholder (compact shader
         // short-circuits on imageSize<=1 → no cull, byte-identical to master).
         // Bound right before the dispatch so an intervening chunk-occlusion
-        // pre-pass can't leave a stale texture on image slot 0.
+        // pre-pass can't leave a stale texture on image slot 0. The detached
+        // cut-section path deliberately keeps the placeholder here (cutSectionFog
+        // is only consumed by STAGE_1/STAGE_2, which apply the world-column offset
+        // the compact's model-column cull cannot).
         (fog != nullptr ? fog->getTexture() : fogCullPlaceholder_)
             ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
         // Analytic vision-circle cull input: upload the CURRENT frame's circles
         // (FOG_TO_TRIXEL runs later, so its copy would be a frame stale) and bind
         // at slot 27. A column a live circle covers is kept even when its grid
         // cell is unexplored, so a voxel-floor scene driven purely by
-        // setVisionCircle keeps its floor. Non-fog canvases keep the seeded
-        // count-0 buffer (the shader short-circuits on the placeholder anyway).
-        if (fog != nullptr) {
-            fogObserverBuf_->subData(0, sizeof(FrameDataFogObservers), &fog->observers_);
+        // setVisionCircle keeps its floor. The world-placed detached canvas uploads
+        // the MAIN canvas's circles here (via cutSectionFog) so STAGE_1/STAGE_2 see
+        // a non-zero count; non-fog canvases keep the seeded count-0 buffer (the
+        // shader short-circuits on the placeholder anyway).
+        if (cutSectionFog != nullptr) {
+            fogObserverBuf_->subData(0, sizeof(FrameDataFogObservers), &cutSectionFog->observers_);
         }
         fogObserverBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FogObservers);
         constexpr int kCompactLocalSize = 64;
@@ -1073,13 +1100,15 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
 
         if (!skipSingleCanvasVoxels) {
             stage1Program_->use();
-            // Per-voxel analytic fog clip (#2102): re-bind the fog grid (slot 0)
-            // + live vision circles (binding 27) for STAGE_1. The compact bound
-            // these above and GL state persists across the program switch, but
-            // Metal's per-encoder argument table needs them set on this dispatch
-            // too. Real fog texture on the world fog canvas, else the 1×1
-            // all-visible placeholder (the clip no-ops, byte-identical).
-            (fog != nullptr ? fog->getTexture() : fogCullPlaceholder_)
+            // Per-voxel analytic fog clip (#2102) + cut faces (#2125/#2127):
+            // re-bind the fog grid (slot 0) + live vision circles (binding 27) for
+            // STAGE_1. The compact bound these above and GL state persists across
+            // the program switch, but Metal's per-encoder argument table needs them
+            // set on this dispatch too. Real fog on the world fog canvas OR the main
+            // canvas's world fog for a world-placed detached re-voxelize canvas
+            // (cutSectionFog), else the 1×1 all-visible placeholder (the clip
+            // no-ops, byte-identical).
+            (cutSectionFog != nullptr ? cutSectionFog->getTexture() : fogCullPlaceholder_)
                 ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
             fogObserverBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FogObservers);
             triangleCanvasTextures.getTextureDistances()
@@ -1104,14 +1133,16 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 ->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::R32I);
             triangleCanvasTextures.getTextureEntityIds()
                 ->bindAsImage(2, TextureAccess::WRITE_ONLY, TextureFormat::RG32UI);
-            // Fog cut-face inputs (#2125): STAGE_2 re-evaluates STAGE_1's cut-face
-            // predicate so its colour tap lands on the same faces, so it needs the
-            // fog grid + observers too. Slot 0 holds the colour output here, so the
-            // fog grid binds on slot 3 (slots 1/2 = distance + entity-id outputs).
-            // Real fog texture on the world fog canvas, else the 1×1 placeholder
-            // (the cut-face test no-ops, byte-identical). Metal needs both bound on
-            // this dispatch since the kernel declares them.
-            (fog != nullptr ? fog->getTexture() : fogCullPlaceholder_)
+            // Fog cut-face inputs (#2125/#2127): STAGE_2 re-evaluates STAGE_1's
+            // cut-face predicate so its colour tap lands on the same faces, so it
+            // needs the fog grid + observers too. Slot 0 holds the colour output
+            // here, so the fog grid binds on slot 3 (slots 1/2 = distance +
+            // entity-id outputs). Real fog on the world fog canvas OR the main
+            // canvas's world fog for a world-placed detached re-voxelize canvas
+            // (cutSectionFog), else the 1×1 placeholder (the cut-face test no-ops,
+            // byte-identical). Metal needs both bound on this dispatch since the
+            // kernel declares them.
+            (cutSectionFog != nullptr ? cutSectionFog->getTexture() : fogCullPlaceholder_)
                 ->bindAsImage(3, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
             fogObserverBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FogObservers);
             IRRender::device()->dispatchComputeIndirect(indirectBuf_, 0);
@@ -1171,6 +1202,22 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 IREntity::getComponentOptional<C_PerAxisTrixelCanvases>(perAxisCanvasEntity_);
             if (perAxis.has_value()) {
                 perAxisCanvases_ = perAxis.value();
+            }
+        }
+
+        // Resolve the MAIN canvas's fog once per frame for a world-placed detached
+        // re-voxelize canvas to cross-section against (#2127). Upload it current
+        // HERE so the world fog grid is fresh regardless of canvas tick order — a
+        // detached canvas may tick before the main canvas, whose own
+        // uploadFogIfDirty then no-ops (dirty already cleared). Null on a scene with
+        // no fog → the detached path falls back to the no-fog placeholder.
+        worldFog_ = nullptr;
+        if (perAxisCanvasEntity_ != IREntity::kNullEntity) {
+            auto worldFogOpt =
+                IREntity::getComponentOptional<C_CanvasFogOfWar>(perAxisCanvasEntity_);
+            if (worldFogOpt.has_value()) {
+                worldFog_ = worldFogOpt.value();
+                uploadFogIfDirty(*worldFog_);
             }
         }
 

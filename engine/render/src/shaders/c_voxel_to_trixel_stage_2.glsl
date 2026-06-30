@@ -35,10 +35,13 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     // so the GRID path stays byte-identical. Appended after visibleFaceIds
     // (offset 144) to match the CPU struct + stage 1's binding-7 layout.
     uniform vec4 voxelDepthAxis;
-    // detachedWorldReceive_ (offset 160) — declared as padding so the field
-    // below lands at its std140 offset; stage 2 doesn't read it (only
-    // c_lighting_to_trixel does).
-    uniform vec4 _detachedWorldReceivePad;
+    // detachedWorldReceive_ (offset 160): `.xyz` = the world cell origin of a
+    // world-placed detached re-voxelize solid (`roundVec3HalfUp(translation)`),
+    // `.w` = 1.0 when world-placed (#1576 P4b-2 / #2127), else 0.0. Stage 2 reads
+    // it to recover each detached voxel's WORLD column for the fog cut-face
+    // predicate, mirroring stage 1 + the c_lighting_to_trixel recovery. All-zero
+    // on the world / per-axis / screen-locked canvas.
+    uniform vec4 detachedWorldReceive;
     // Un-widened iso cull viewport for the depth-only feeder path (#1740):
     // .xy = floor(min), .zw = ceil(max). A voxel inside [cullIsoMin, cullIsoMax]
     // but OUTSIDE this box is an off-screen shadow feeder — stage 2 skips its
@@ -206,20 +209,26 @@ void main() {
     // the colour tap matches the distance tap.
     const uint flagsByte = (voxels[voxelIndex].materialFlagBone >> 8u) & 0xFFu;
 
-    // Exposed-face gate + fog CUT-FACE widening (#2125) — MUST mirror stage 1's
-    // predicate EXACTLY so the colour tap lands on the same face set stage 1 wrote
-    // distances for. A cut face is non-exposed, so without this widening stage 2
-    // would skip it and the cut wall would read as the cleared background colour
-    // (distance set by stage 1, colour unset). See c_voxel_to_trixel_stage_1.glsl
-    // for the rationale. The own-column drop (#2102) is NOT repeated here — stage 1
-    // already dropped those voxels' distances, so the depth re-test in
-    // writeColorTap rejects their colour taps.
+    // Exposed-face gate + fog CUT-FACE widening (#2125/#2127) — MUST mirror stage
+    // 1's predicate EXACTLY so the colour tap lands on the same face set stage 1
+    // wrote distances for. A cut face is non-exposed, so without this widening
+    // stage 2 would skip it and the cut wall would read as the cleared background
+    // colour (distance set by stage 1, colour unset). See
+    // c_voxel_to_trixel_stage_1.glsl for the rationale + the world-column recovery
+    // (a world-placed detached re-voxelize canvas rasters in the MODEL frame, so
+    // its world column is model + detachedWorldReceive.xy). The own-column drop
+    // (#2102/#2127) is NOT repeated here — stage 1 already dropped those voxels'
+    // distances, so the depth re-test in writeColorTap rejects their colour taps.
+    const bool fogActive = visionCircleCount > 0 && perAxisRoute == 0 &&
+        (isDetachedCanvas < 0.5 || detachedWorldReceive.w != 0.0);
+    ivec2 worldColumn = ivec2(0);
+    if (fogActive) {
+        worldColumn = ivec3(round(voxelPosition.xyz)).xy +
+            (isDetachedCanvas > 0.5 ? ivec2(round(detachedWorldReceive.xy)) : ivec2(0));
+    }
     bool keepFace = faceIsExposed(flagsByte, faceId);
-    if (!keepFace && faceId < kFaceZNeg && visionCircleCount > 0 && perAxisRoute == 0 &&
-        isDetachedCanvas < 0.5) {
-        const ivec2 neighborColumn =
-            ivec3(round(voxelPosition.xyz)).xy + faceOutwardNormal6I(faceId).xy;
-        keepFace = fogColumnHiddenAt(neighborColumn);
+    if (!keepFace && faceId < kFaceZNeg && fogActive) {
+        keepFace = fogColumnHiddenAt(worldColumn + faceOutwardNormal6I(faceId).xy);
     }
     if (!keepFace) return;
 

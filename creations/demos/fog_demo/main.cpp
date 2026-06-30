@@ -53,12 +53,15 @@
 
 #include <irreden/render/camera.hpp>
 #include <irreden/render/camera_controls.hpp>
+#include <irreden/render/entity_canvas.hpp>
 
 // Scene components.
 #include <irreden/common/command_suite_capture.hpp>
 #include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/common/components/component_name.hpp>
+#include <irreden/common/components/component_rotation_mode.hpp>
 #include <irreden/render/components/component_canvas_ao_texture.hpp>
+#include <irreden/render/components/component_entity_canvas.hpp>
 #include <irreden/render/components/component_canvas_fog_of_war.hpp>
 #include <irreden/render/components/component_canvas_light_volume.hpp>
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
@@ -73,6 +76,8 @@
 // Scene systems.
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 #include <irreden/render/systems/system_bake_sun_shadow_map.hpp>
+#include <irreden/render/systems/system_entity_canvas_to_framebuffer.hpp>
+#include <irreden/render/systems/system_propagate_canvas_rotation.hpp>
 #include <irreden/render/systems/system_build_light_occlusion_grid.hpp>
 #include <irreden/render/systems/system_compute_light_volume.hpp>
 #include <irreden/render/systems/system_compute_sun_shadow.hpp>
@@ -86,6 +91,7 @@
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
 #include <irreden/update/systems/system_propagate_transform.hpp>
+#include <irreden/voxel/systems/system_rebuild_detached_voxels.hpp>
 #include <irreden/voxel/systems/system_rebuild_grid_voxels.hpp>
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
 
@@ -224,6 +230,31 @@ constexpr IRVideo::AutoScreenshotShot kEdgeShots[] = {
     {14.0f, vec2(0, 0), 0.0f, "fog_edge_zoom14"},
 };
 
+// --detached-edge (#2127 filled cross-section on a DETACHED canvas; #2124 P3):
+// the SAME static origin vision circle as --edge-zoom, but the boundary-
+// straddling object is a WORLD-PLACED DETACHED_REVOXELIZE solid (its own canvas +
+// pool, composited by ENTITY_CANVAS_TO_FRAMEBUFFER) instead of a GRID voxel set. A
+// detached canvas carries no fog of its own, so this validates that the WORLD fog
+// + observers thread into its STAGE_1/STAGE_2 dispatch and each voxel's WORLD
+// column is recovered from worldCellOffset (detachedWorldReceive) — the solid
+// cross-sections against the world boundary exactly like the GRID twin, instead of
+// rendering whole (no fog) or fully black. Identity rotation keeps the re-voxelize
+// raster on its deterministic SOURCE path (a spinning solid round-to-cell
+// speckles, #1557); the cut-face code is rotation-agnostic, so the static pose
+// proves the mechanism deterministically.
+bool g_detachedEdge = false; // --detached-edge
+constexpr float kDetachedVisionRadius = 9.0f;
+constexpr IRMath::ivec2 kDetachedCanvasSize{200, 200};
+constexpr IRMath::ivec3 kDetachedPoolSize{24, 24, 24};
+constexpr IRMath::ivec3 kDetachedSolidSize{16, 8, 4};
+
+// Origin-centered, matching the --edge-zoom framing so the detached cut wall reads
+// against the same floor edge as the GRID twin.
+constexpr IRVideo::AutoScreenshotShot kDetachedEdgeShots[] = {
+    {5.0f, vec2(0, 0), 0.0f, "fog_detached_edge_zoom5"},
+    {9.0f, vec2(0, 0), 0.0f, "fog_detached_edge_zoom9"},
+};
+
 } // namespace
 
 void initSystems();
@@ -251,13 +282,27 @@ int main(int argc, char **argv) {
         "boundary, zoomed on the cut edge (#2125 filled cross-section); "
         "skips the static grid reveal"
     );
+    IREngine::args().flag(
+        "--detached-edge",
+        "Like --edge-zoom but the boundary-straddling object is a world-placed "
+        "DETACHED_REVOXELIZE solid (#2127 detached cross-section); skips the "
+        "static grid reveal"
+    );
     IREngine::init(argc, argv);
     g_autoWarmupFrames = IREngine::args().autoScreenshotWarmupFrames();
     g_movingObserver = IREngine::args().getFlag("--moving-observer");
     g_playerWalk = IREngine::args().getFlag("--player-walk");
     g_edgeZoom = IREngine::args().getFlag("--edge-zoom");
-    // The three reveal modes are mutually exclusive; --edge-zoom wins, then
-    // --player-walk, then --moving-observer (each owns its own scene + shots).
+    g_detachedEdge = IREngine::args().getFlag("--detached-edge");
+    // The reveal modes are mutually exclusive; --detached-edge wins, then
+    // --edge-zoom, then --player-walk, then --moving-observer (each owns its own
+    // scene + shots).
+    if (g_detachedEdge && (g_edgeZoom || g_playerWalk || g_movingObserver)) {
+        IR_LOG_INFO("--detached-edge overrides --edge-zoom / --player-walk / --moving-observer");
+        g_edgeZoom = false;
+        g_playerWalk = false;
+        g_movingObserver = false;
+    }
     if (g_edgeZoom && (g_playerWalk || g_movingObserver)) {
         IR_LOG_INFO("--edge-zoom overrides --player-walk / --moving-observer");
         g_playerWalk = false;
@@ -279,13 +324,23 @@ int main(int argc, char **argv) {
 }
 
 void initSystems() {
-    IRSystem::registerPipeline(
-        IRTime::Events::UPDATE,
-        {IRSystem::createSystem<IRSystem::LOD_UPDATE>(),
-         IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
-         IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>(),
-         IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS>()}
-    );
+    std::list<IRSystem::SystemId> updatePipeline = {
+        IRSystem::createSystem<IRSystem::LOD_UPDATE>(),
+        IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
+        IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>(),
+        IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS>(),
+    };
+    // --detached-edge adds the world-placed DETACHED_REVOXELIZE path (#2127):
+    // PROPAGATE_CANVAS_ROTATION publishes worldPlaced_ + worldCellOffset_ onto the
+    // canvas (so STAGE_1/2 recover each detached voxel's world column), and
+    // REBUILD_DETACHED_VOXELS fills the private pool. Must run AFTER
+    // UPDATE_VOXEL_SET_CHILDREN. Added only for that scene so the other reveal
+    // modes keep their committed render-verify refs byte-identical.
+    if (g_detachedEdge) {
+        updatePipeline.push_back(IRSystem::createSystem<IRSystem::PROPAGATE_CANVAS_ROTATION>());
+        updatePipeline.push_back(IRSystem::createSystem<IRSystem::REBUILD_DETACHED_VOXELS>());
+    }
+    IRSystem::registerPipeline(IRTime::Events::UPDATE, updatePipeline);
 
     IRSystem::registerPipeline(
         IRTime::Events::INPUT,
@@ -311,9 +366,16 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>(),
             IRSystem::createSystem<IRSystem::FOG_TO_TRIXEL>(),
             IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
-            IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
         }
     );
+    // --detached-edge composites the world-placed detached canvas (with its
+    // cross-sectioned voxels from STAGE_1/2) onto the main framebuffer between
+    // TRIXEL_TO_FRAMEBUFFER and FRAMEBUFFER_TO_SCREEN (#2127). Added only for that
+    // scene so the other reveal modes keep their committed refs byte-identical.
+    if (g_detachedEdge) {
+        renderPipeline.push_back(IRSystem::createSystem<IRSystem::ENTITY_CANVAS_TO_FRAMEBUFFER>());
+    }
+    renderPipeline.push_back(IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>());
 
     // --moving-observer: a once-per-frame beginTick hook (same idiom as the
     // day_cycle sun hook) that re-points the analytic vision circle at the
@@ -349,10 +411,13 @@ void initSystems() {
         IRVideo::AutoScreenshotConfig cfg{};
         cfg.warmupFrames_ = g_autoWarmupFrames;
         cfg.settleFrames_ = 3;
-        // --edge-zoom zooms on the cross-section clip edge; --player-walk
-        // captures the walking reveal sequence; the default captures the three
-        // static fog-boundary shots.
-        if (g_edgeZoom) {
+        // --detached-edge zooms on a detached-canvas cross-section; --edge-zoom
+        // on the GRID cross-section clip edge; --player-walk captures the walking
+        // reveal sequence; the default captures the three static fog-boundary shots.
+        if (g_detachedEdge) {
+            cfg.shots_ = kDetachedEdgeShots;
+            cfg.numShots_ = sizeof(kDetachedEdgeShots) / sizeof(kDetachedEdgeShots[0]);
+        } else if (g_edgeZoom) {
             cfg.shots_ = kEdgeShots;
             cfg.numShots_ = sizeof(kEdgeShots) / sizeof(kEdgeShots[0]);
         } else if (g_playerWalk) {
@@ -392,11 +457,11 @@ void initEntities() {
     );
 
     // The default + --moving-observer scenes dress the floor with SDF primitives
-    // and the #2008 column-cull pillar canary. --player-walk and --edge-zoom skip
-    // ALL of them: each wants a clean floor so its own content (the gliding disc +
-    // marker / the boundary-straddling voxel objects) reads clearly without the
-    // tall shapes' iso-projected tops poking through the disc edge.
-    if (!g_playerWalk && !g_edgeZoom) {
+    // and the #2008 column-cull pillar canary. --player-walk, --edge-zoom, and
+    // --detached-edge skip ALL of them: each wants a clean floor so its own content
+    // (the gliding disc + marker / the boundary-straddling voxel objects) reads
+    // clearly without the tall shapes' iso-projected tops poking through the disc.
+    if (!g_playerWalk && !g_edgeZoom && !g_detachedEdge) {
         // A few simple SDF primitives sitting on the floor inside the visible
         // circle, so the bright (visible) region has recognizable content.
         createShape(
@@ -551,6 +616,46 @@ void initEntities() {
         IREntity::createEntity(
             C_LocalTransform{vec3(-9.0f, 0.0f, 2.0f)},
             C_VoxelSetNew{IRMath::ivec3{14, 6, 3}, Color{130, 230, 150, 255}, true}
+        );
+        return;
+    }
+
+    // --detached-edge (#2127 / #2124 P3): the SAME static origin vision circle, but
+    // the boundary-straddling object is a WORLD-PLACED DETACHED_REVOXELIZE solid on
+    // its OWN canvas + pool — a canvas that carries no fog of its own. The
+    // cross-section it shows is proof the WORLD fog + observers thread into the
+    // detached STAGE_1/2 dispatch and each voxel's world column is recovered from
+    // worldCellOffset. Mirrors the GRID green slab's headline -X cut (camera-visible
+    // at yaw 0) so the two scenes read against the same floor edge.
+    if (g_detachedEdge) {
+        IRPrefab::Fog::setVisionCircle(0.0f, 0.0f, kDetachedVisionRadius);
+
+        // The solid lives in MODEL space centered on its pool (origin); the
+        // entity's world position is its CENTER (-9 on X), shifting its world
+        // columns to x∈[-17,-1]. With the radius-9 disc the x<-9 half is fog-hidden
+        // (own-column drop) and the revealed boundary voxels face hidden columns
+        // across their -X face (camera-visible at yaw 0) → a FILLED interior cut
+        // wall, exactly like the GRID twin (no see-through hole, no black wedge).
+        C_EntityCanvas canvas = IRPrefab::EntityCanvas::createWithVoxelPool(
+            "fog_detached_solid",
+            kDetachedCanvasSize,
+            kDetachedPoolSize
+        );
+        // World-placed (the engine default since #1624) — NOT screen-locked — so
+        // PROPAGATE_CANVAS_ROTATION publishes worldCellOffset/worldPlaced and the
+        // detached STAGE_1/2 dispatch world-receives the fog.
+        canvas.screenLocked_ = false;
+        IREntity::createEntity(
+            C_LocalTransform{vec3(0.0f)},
+            C_VoxelSetNew{kDetachedSolidSize, Color{130, 230, 150, 255}, true, canvas.canvasEntity_}
+        );
+        // Identity rotation keeps the re-voxelize raster on its deterministic SOURCE
+        // path (a spinning solid round-to-cell speckles, #1557); the cut-face code
+        // is rotation-agnostic, so this static pose proves the world-column recovery.
+        IREntity::createEntity(
+            C_LocalTransform{vec3(-9.0f, 0.0f, 2.0f)},
+            C_RotationMode{RotationMode::DETACHED_REVOXELIZE},
+            canvas
         );
         return;
     }

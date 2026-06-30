@@ -444,8 +444,10 @@ struct FrameDataVoxelToCanvas {
     // byte-identical (no shadow received, light volume disabled). Default
     // (0,0,0,0) so the world canvas + any screen-locked canvas is unchanged.
     // std140-appended after voxelDepthAxis_ (offset 160), so every prior field
-    // offset is unchanged and shaders that read only the prefix need no update;
-    // only c_lighting_to_trixel declares it.
+    // offset is unchanged and shaders that read only the prefix need no update.
+    // Declared by c_lighting_to_trixel (world-space receive) and by
+    // c_voxel_to_trixel_stage_{1,2} (#2127 — recovering a world-placed detached
+    // re-voxelize voxel's world column for the fog cut-face cross-section).
     vec4 detachedWorldReceive_ = vec4(0.0f, 0.0f, 0.0f, 0.0f);
     // Un-widened (no shadow-feeder sweep) iso cull viewport for the depth-only
     // shadow-feeder path (#1740). `.xy` = floor(min), `.zw` = ceil(max) of the
