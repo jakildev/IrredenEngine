@@ -178,6 +178,13 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         if (lightVolume != nullptr) {
             lightVolume->getReadTexture()->bind(5);
         }
+        // Entity-id image (unit 6, R/O): the lighting shader reads it ONLY to
+        // recover the fog cut-face flag (bit 29) and force those faces fully lit
+        // (#2124 lit-cross-section follow-up). Bound every tick so Metal's slot
+        // table is populated; the per-axis dispatch below leaves it resident and
+        // its perAxisRoute != 0 skips the read.
+        canvasTextures.getTextureEntityIds()
+            ->bindAsImage(6, TextureAccess::READ_ONLY, TextureFormat::RG32UI);
         frameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataLightingToTrixel);
         voxelFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataVoxelToCanvas);
         sunFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataSun);

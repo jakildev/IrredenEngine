@@ -77,6 +77,12 @@ layout(binding = 3) uniform sampler2D paletteLUT;
 // 5 — keep the unit numbers in lockstep across GLSL and MSL.
 layout(rgba8, binding = 4) readonly uniform image2D canvasSunShadow;
 layout(binding = 5) uniform sampler3D lightVolume;
+// Entity-id channel (#2124 lit-cross-section follow-up): read ONLY to recover the
+// fog cut-face flag (bit 29, set by c_voxel_to_trixel_stage_2 via decodeCutFace).
+// Bound at image unit 6 on the single-canvas + detached routes; the per-axis
+// rotation route leaves it unbound and the `perAxisRoute == 0` guard below skips
+// the read. Non-fog scenes never set the flag ⇒ byte-identical.
+layout(rg32ui, binding = 6) readonly uniform uimage2D trixelEntityIds;
 
 // Phase 1c (#360): the light volume is camera-anchored. The CPU
 // uploads `lightVolumeWorldOrigin` (the world voxel that maps to the
@@ -160,7 +166,7 @@ void main() {
     }
 
     // Alpha is preserved so text/overlay antialiasing composites unchanged.
-    const float ao     = imageLoad(canvasAO, pixel).r;
+    float ao           = imageLoad(canvasAO, pixel).r;
     // Shadow factor: the world canvas reads its per-pixel COMPUTE_SUN_SHADOW
     // result; an opt-in world-placed detached solid re-runs that same cascade
     // lookup at its recovered world pos (receive — world iso depth = model
@@ -194,6 +200,20 @@ void main() {
         }
         imageStore(trixelColors, pixel, vec4(debugColor, src.a));
         return;
+    }
+
+    // Fog cross-section CUT face (#2124 lit-cross-section follow-up): the interior
+    // wall exposed at the vision boundary is geometrically buried, so the sun-shadow
+    // map (baked from the full solid) reports it self-shadowed and the AO pass reads
+    // it as a deep interior crease — together they render the cut wall as a dark
+    // smear instead of a clean cross-section. Force it fully lit (shadow + AO = 1)
+    // so it shades as a normal exposed face: Lambert + ambient + light-volume only.
+    // The flag rides bit 29 of the stored id (stage 2); the `perAxisRoute == 0`
+    // guard skips the read on the rotation route (id image unbound there), and
+    // non-fog scenes never set the flag ⇒ byte-identical.
+    if (perAxisRoute == 0 && decodeCutFace(imageLoad(trixelEntityIds, pixel).xy)) {
+        ao = 1.0;
+        shadow = 1.0;
     }
 
     // Sun direction lives in the world frame; the six-face `faceOutwardNormal6`

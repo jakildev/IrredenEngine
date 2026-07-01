@@ -66,6 +66,11 @@ kernel void c_lighting_to_trixel(
     // space; cannot collide with paletteLUT(3) or lightVolume(5).
     texture2d<float, access::read> canvasSunShadow [[texture(4)]],
     texture3d<float, access::sample> lightVolume [[texture(5)]],
+    // Entity-id channel (#2124 lit-cross-section follow-up): read ONLY for the fog
+    // cut-face flag (bit 29, set by stage 2 / decodeCutFace). Bound at unit 6 on the
+    // single-canvas + detached routes; the `perAxisRoute == 0` guard skips the read
+    // on the rotation route. GLSL twin's binding 6.
+    texture2d<uint, access::read> trixelEntityIds [[texture(6)]],
     uint3 globalId [[thread_position_in_grid]]
 ) {
     if (frameData.lightingEnabled == 0) {
@@ -116,7 +121,7 @@ kernel void c_lighting_to_trixel(
         ) + voxelFrameData.detachedWorldReceive.xyz;
     }
 
-    const float  ao     = canvasAO.read(uint2(pixel)).r;
+    float        ao     = canvasAO.read(uint2(pixel)).r;
     // Shadow factor: the world canvas reads its COMPUTE_SUN_SHADOW result; an
     // opt-in world-placed detached solid re-runs that cascade lookup at its world
     // pos (world iso depth = model rawDepth + the offset's iso depth picks the
@@ -149,6 +154,18 @@ kernel void c_lighting_to_trixel(
         }
         trixelColors.write(float4(debugColor, src.a), uint2(pixel));
         return;
+    }
+
+    // Fog cross-section CUT face (#2124 lit-cross-section follow-up) — see GLSL
+    // twin. The interior wall exposed at the vision boundary is geometrically
+    // buried, so the sun-shadow map reports it self-shadowed and AO reads it as a
+    // deep crease; force it fully lit (shadow + AO = 1) so it shades as a clean
+    // exposed face. Flag rides bit 29 of the stored id; the `perAxisRoute == 0`
+    // guard skips the read on the rotation route (id image unbound there).
+    if (voxelFrameData.perAxisRoute == 0 &&
+        decodeCutFace(trixelEntityIds.read(uint2(pixel)).xy)) {
+        ao = 1.0f;
+        shadow = 1.0f;
     }
 
     // Sun direction is world frame; worldNormal (decoded above) is the matching

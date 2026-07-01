@@ -316,7 +316,15 @@ constexpr int kEntityIdPriorityBits = 2;
 constexpr int kEntityIdPriorityShiftInHighWord = 30;
 constexpr std::uint32_t kEntityIdPriorityMaskInHighWord = ((1u << kEntityIdPriorityBits) - 1u)
                                                           << kEntityIdPriorityShiftInHighWord;
-constexpr std::uint32_t kEntityIdHighWordMask = ~kEntityIdPriorityMaskInHighWord;
+// Fog cut-face carrier (#2124 lit-cross-section follow-up): bit 29 of the high
+// word, just below the priority tier. Set by c_voxel_to_trixel_stage_2 on a fog
+// cross-section CUT face; read by c_lighting_to_trixel to force it fully lit.
+// Folded into kEntityIdHighWordMask so the SAME decode chokepoint that strips the
+// priority tier also strips this — picking never sees it. Mirror of the
+// .glsl/.metal kEntityIdCutFaceMaskInHighWord.
+constexpr std::uint32_t kEntityIdCutFaceMaskInHighWord = 1u << 29;
+constexpr std::uint32_t kEntityIdHighWordMask =
+    ~(kEntityIdPriorityMaskInHighWord | kEntityIdCutFaceMaskInHighWord);
 // Full-64-bit shift of the carrier — the invariant a live id must satisfy
 // (`id >> kEntityIdPriorityShift == 0`), guarded at the voxel-pool upload boundary.
 constexpr int kEntityIdPriorityShift = 32 + kEntityIdPriorityShiftInHighWord;
