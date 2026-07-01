@@ -93,6 +93,52 @@ Worked example (#1288): `SYSTEM_REBUILD_GRID_VOXELS` cached `lastRebuildWorld{Ro
 
 - `engine/prefabs/irreden/render/components/component_canvas_fog_of_war.hpp` — `C_CanvasFogOfWar::dirty_` and `allUnexplored_` gate the per-frame `subImage2D` upload of the 256² fog texture. The upload is performed by `VOXEL_TO_TRIXEL_STAGE_1` (#2008), which both reads the fog to cull unexplored-column voxels and runs earlier in the pipeline; `FOG_TO_TRIXEL` is now a read-only consumer of the already-uploaded texture. Documented exception (CPU-authored, GPU-read-only, full-texture upload). T-161 evaluated migration to per-region `subImage2D` and deferred; see [`docs/design/fog-of-war-upload-strategy.md`](../../docs/design/fog-of-war-upload-strategy.md) for the analysis, the trigger conditions for revisiting, and the mechanical Strategy C migration sketch.
 
+## System-owned invariants: encapsulate, don't delegate to callers
+
+> When using a subsystem requires follow-up bookkeeping to keep its derived
+> state consistent, that bookkeeping is the subsystem's job — never a manual
+> step each creation replicates.
+
+This generalizes the "push at mutation" pattern above: the *subsystem*, not
+its callers, owns the invariant. Two routes, chosen by whether the derived
+state changes at mutation time or every frame (the same "no dirty flags"
+question decides which applies):
+
+1. **A component mutator that resyncs at mutation time.** When derived state
+   only needs to change in response to an explicit edit, expose a method that
+   performs the edit **and** the resync in one call, so there is no window
+   where a caller can apply the edit and forget the bookkeeping. Worked
+   example: `C_VoxelSetNew::editVoxels(fn)` / `::carve(shouldDeactivate)`
+   (#2165) — a custom carve applies `fn` across the voxel span, then the
+   method itself restores every derived invariant (rotation-source mirror →
+   pool active-mask → face occupancy) through a single private
+   `resyncDerivedState()`. Before this API, a raw `voxels_[i]` carve loop
+   required the caller to remember `syncActiveMask()` **and**
+   `IRPrefab::Voxel::recomputeFaceOccupancy(...)`, in that order — dropping
+   either silently rendered the carved set black under the lit/rotated path.
+   Centralizing the ordering in the mutator makes that class of bug
+   unrepresentable: there is no call shape that applies the edit without also
+   running the resync. `resyncAfterRawEdits()` remains the deliberate escape
+   hatch for a multi-pass raw edit that cannot route through `editVoxels`;
+   the low-level primitives (`syncActiveMask()`) stay public for pre-existing
+   raw-loop sites, but new code uses the mutator.
+2. **`beginTick`/`endTick` + pipeline ordering.** When the derived state must
+   track a live input every frame (not just at explicit edit points), a
+   system recomputes it unconditionally each tick rather than exposing a
+   caller-invoked resync. Worked example: `REBUILD_GRID_VOXELS` re-rasterizes
+   a GRID-mode entity's voxels from its live `C_WorldTransform` every frame
+   it's on-screen — no creation calls a "resync my rotation" method, because
+   the system already owns re-deriving that state on the pipeline's schedule.
+   The no-dirty-flags rule (above) is what rules out the alternative of a
+   cached "did the transform change" snapshot deciding whether to skip the
+   resync.
+
+Route 1 applies when the state only needs to change in reaction to a
+specific caller-driven edit; route 2 applies when the state must track a
+continuously-changing input regardless of whether any caller acted. Whichever
+route fits, the bookkeeping lives in exactly one place — the subsystem — not
+duplicated at every call site that needs it.
+
 ## Allocations in hot tick paths
 
 Allocating memory inside a per-entity tick (`new`, `std::vector::push_back`, `std::string` concatenation, `std::map::operator[]` insertion, `std::make_unique`) is a frame-time landmine. Reserve once at `beginTick`; reuse capacity across frames; clear without releasing.
