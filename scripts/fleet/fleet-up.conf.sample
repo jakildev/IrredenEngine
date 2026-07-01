@@ -35,10 +35,14 @@
 # claude call per rung (a few cents, ~5-15 s). When the plan loses Fable
 # access, re-running fleet-up lands the class on the Opus floor.
 #
+# The sonnet class stays the bare `sonnet` alias by default, so it always
+# tracks the latest Sonnet (currently Sonnet 5). Opus/fable are pinned to
+# full versions so a bare alias can't silently upgrade them.
+#
 # Pin a class verbatim (pinning fable skips the probe):
 # FLEET_MODEL_FABLE="claude-fable-5[1m]"
 # FLEET_MODEL_OPUS="claude-opus-4-8[1m]"
-# FLEET_MODEL_SONNET="sonnet"
+# FLEET_MODEL_SONNET="claude-sonnet-5"   # freeze sonnet; omit to track latest
 #
 # Per-role dispatch models for the bounded fixed-model roles:
 # FLEET_MODEL_MERGER="sonnet"

@@ -79,7 +79,10 @@ unset _FLEET_CLONE_FRESHNESS_SH
 # fine. (If you ever want sonnet[1m], enable usage credits at
 # claude.ai/settings/usage and re-add the suffix.) fable/opus strings are
 # pinned to full versions (a bare "fable"/"opus" alias would silently
-# upgrade); sonnet stays an alias since its budget is cheap.
+# upgrade); sonnet stays the bare "sonnet" alias ON PURPOSE, so it always
+# tracks the latest Sonnet with no per-release edit here — currently
+# Sonnet 5 (claude-sonnet-5) on the 2.x CLI. Pin an explicit version via
+# FLEET_MODEL_SONNET only if you need to freeze it.
 FABLE_MODEL_CANDIDATES=(
     "claude-fable-5[1m]"
     "claude-fable-5"
@@ -394,7 +397,7 @@ model_tag() {
     local tag="$1"
     tag="${tag/claude-fable-5/fable}"
     tag="${tag/claude-opus-4-8/opus 4.8}"
-    tag="${tag/claude-sonnet-4-6/sonnet 4.6}"
+    tag="${tag/claude-sonnet-5/sonnet 5}"
     tag="${tag/\[1m\]/ 1m}"
     printf '%s' "$tag"
 }
