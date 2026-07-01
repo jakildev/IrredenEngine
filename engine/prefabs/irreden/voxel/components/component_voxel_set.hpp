@@ -437,6 +437,40 @@ struct C_VoxelSetNew {
         IRPrefab::Voxel::recomputeFaceOccupancy(voxels_, size_);
     }
 
+    // ---- Encapsulated raw-edit API (#2165) ------------------------------
+    // Supported entry points for custom carves/edits the bulk mutators above
+    // don't cover. Each restores every derived invariant this set maintains
+    // (rotation-source mirror -> pool active-mask -> face occupancy) once at
+    // the end, so callers must NOT hand-roll syncActiveMask() /
+    // recomputeFaceOccupancy() — dropping the recompute renders a carved set
+    // black under the lit/rotated path (the #2018/#2117/#2146 footgun).
+
+    // Apply `fn(index, voxel, localPos)` to every voxel, then resync once.
+    // `localPos` is the voxel's local coordinate (`positions_[i].pos_`), so
+    // SDF / surface / bone carves can classify by position.
+    template <typename Fn> void editVoxels(Fn &&fn) {
+        for (int i = 0; i < numVoxels_; ++i) {
+            fn(i, voxels_[i], positions_[i].pos_);
+        }
+        resyncDerivedState();
+    }
+
+    // Sugar over editVoxels for the common "deactivate voxels failing a
+    // predicate" carve. `shouldDeactivate(localPos)` returns true to clear.
+    template <typename Fn> void carve(Fn &&shouldDeactivate) {
+        editVoxels([&](int, C_Voxel &voxel, vec3 localPos) {
+            if (shouldDeactivate(localPos)) {
+                voxel.deactivate();
+            }
+        });
+    }
+
+    // Escape hatch for a multi-pass edit that writes the raw `voxels_` span
+    // across several loops: do all the raw writes, then call this once.
+    void resyncAfterRawEdits() {
+        resyncDerivedState();
+    }
+
     // TODO each individual voxel should be treated like this
     // and a set should only contain local positions...
     //
@@ -495,6 +529,10 @@ struct C_VoxelSetNew {
     // deactivated slots (mask still set from the ctor) and stage 2
     // would overwrite surface pixels with the transparent inactive
     // ones at the same iso depth.
+    //
+    // Prefer `editVoxels` / `carve` for new custom edits — they run this AND
+    // the face-occupancy recompute for you. This stays public as the
+    // low-level pool primitive (and for the pre-existing raw-loop sites).
     void syncActiveMask() {
         if (numVoxels_ <= 0) {
             return;
@@ -507,6 +545,20 @@ struct C_VoxelSetNew {
     }
 
     // int addVoxelSceneNode
+
+  private:
+    // Single home for the resync order the bulk mutators run inline after a
+    // raw `voxels_` edit: per-voxel rotation-source mirror -> pool
+    // active-mask -> face occupancy. All three encapsulated entry points
+    // (`editVoxels`, `carve`, `resyncAfterRawEdits`) route through here so the
+    // invariant ordering lives in exactly one spot.
+    void resyncDerivedState() {
+        for (int i = 0; i < numVoxels_; ++i) {
+            mirrorToRotationSource(i);
+        }
+        IRPrefab::VoxelPool::resyncRangeFromColors(voxelStartIdx_, numVoxels_, canvasEntity_);
+        IRPrefab::Voxel::recomputeFaceOccupancy(voxels_, size_);
+    }
 };
 
 } // namespace IRComponents
