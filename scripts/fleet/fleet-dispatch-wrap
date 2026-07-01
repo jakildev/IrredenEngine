@@ -73,7 +73,7 @@ fi
 _tag="$MODEL"
 _tag="${_tag/claude-fable-5/fable}"
 _tag="${_tag/claude-opus-4-8/opus 4.8}"
-_tag="${_tag/claude-sonnet-4-6/sonnet 4.6}"
+_tag="${_tag/claude-sonnet-5/sonnet 5}"
 _tag="${_tag/\[1m\]/ 1m}"
 tmux set-option -t "%${PANE_KEY#pane-}" -p @role "$ROLE [$_tag]" 2>/dev/null || true
 unset _tag

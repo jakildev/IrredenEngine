@@ -373,8 +373,11 @@ class resolves at boot from a probed ladder (Fable 5 [1m] → Fable 5 →
 Opus 4.8 [1m]), so when the plan stops covering Fable, `fleet:fable`
 tasks degrade to the Opus floor automatically; dispatched fable
 iterations also carry `--fallback-model` for mid-session resilience.
-Pin classes with `FLEET_MODEL_FABLE` / `FLEET_MODEL_OPUS` /
-`FLEET_MODEL_SONNET` in `~/.fleet/fleet-up.conf`.
+The opus class is pinned to a full version (`claude-opus-4-8[1m]`) so a
+bare alias can't silently upgrade it, while the sonnet class is the bare
+`sonnet` alias on purpose — it always tracks the latest Sonnet (currently
+Sonnet 5) without a per-release edit. Pin classes with `FLEET_MODEL_FABLE`
+/ `FLEET_MODEL_OPUS` / `FLEET_MODEL_SONNET` in `~/.fleet/fleet-up.conf`.
 
 **fable — opt-in, for the genuinely hard work.** Budget is the scarce
 resource; `FLEET_CONCURRENCY_MODEL_FABLE` (default 1) caps concurrent
