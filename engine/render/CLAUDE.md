@@ -265,14 +265,26 @@ Pattern-B namespace over the `Texture2D` /
 no shader or pipeline change, so a flagless run is byte-identical. Use
 it when a screenshot can't disambiguate which surface won a pixel.
 
-The sibling `--depth-probe-assert X,Y` flag (#1957; `canvas_stress`) is
-the composite depth-write **regression guard**: it turns one readback
-into a machine-readable `[depth-probe-assert] … result=PASS|FAIL` line
-— PASS iff the composite stored a non-background depth at (X,Y). Aim it
-at a texel inside a world-placed detached solid (canonical:
-`--only canary --no-spin --no-auto-rotate --depth-probe-assert 321,210`)
-so a future pass that disables the detached-canvas composite depth-write
-fails the run headlessly on either backend.
+The sibling `--depth-probe-assert` flag (`canvas_stress`) turns one
+readback into a machine-readable `[depth-probe-assert] … result=PASS|FAIL`
+line. Two forms:
+
+- `X,Y` (#1957) — composite **depth-write** guard: PASS iff the composite
+  stored a non-background depth at (X,Y). Aim it at a texel inside a
+  world-placed detached solid (canonical:
+  `--only canary --no-spin --no-auto-rotate --depth-probe-assert 321,210`)
+  so a future pass that disables the detached-canvas composite depth-write
+  fails the run headlessly on either backend.
+- `X,Y,tier=N` (#1960; #2122) — per-trixel-priority **tier** guard: PASS
+  iff the composite winner at (X,Y) decodes to the #1960 tier N. The
+  positive ENABLED-path gate the per-trixel carrier needs (byte-identity at
+  default priority 0 can't prove the carrier survives the rotating
+  re-voxelize MODE 1 fill). The `scripts/depth-tier-verify.py` harness wraps
+  the canonical run
+  (`--only interpenetrate --no-spin --no-auto-rotate --depth-probe-assert 639,362,tier=2`)
+  into a build → run → parse gate, exiting non-zero if the far priority unit
+  decodes `tier=0` (carrier dropped). Both forms are pure readback — a
+  flagless run is byte-identical.
 
 **Default-off features need a positive enabled-path test, not just
 byte-identity at default.** Render features routinely default OFF (priority

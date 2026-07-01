@@ -108,6 +108,44 @@ inline CompositeDepthSample readbackCompositeDepth(IRMath::ivec2 px) {
     return sample;
 }
 
+namespace detail {
+
+/// The @c [depth-probe] integer-encode decode, factored so the diagnostic probe
+/// and the tier-assert guard partition @c enc the same way (one source of truth
+/// for the #1960 N-tier layout). @c enc > kDepthForegroundCeil is WORLD content
+/// (tier 0), encoded as @c iso*4 + face; @c enc inside the reserved band is a
+/// FOREGROUND fragment whose disjoint sub-range names its priority tier (1..N-1).
+/// iso/face is the @c encodeDepthWithFace inverse, taken tier-center-relative for
+/// a foreground fragment so @c iso reads as the unit's local model-frame iso depth.
+struct DecodedComposite {
+    int enc_ = 0;
+    int tier_ = 0;
+    int iso_ = 0;
+    int face_ = 0;
+};
+
+inline DecodedComposite decodeComposite(const CompositeDepthSample &sample) {
+    DecodedComposite decoded;
+    decoded.enc_ = static_cast<int>(IRMath::roundHalfUp(sample.rawDist_));
+    if (decoded.enc_ <= IRRender::kDepthForegroundCeil) {
+        const int slot = (decoded.enc_ - IRConstants::kTrixelDistanceMinDistance) /
+                         IRRender::kDepthForegroundTierWidth;
+        decoded.tier_ = IRMath::clamp(
+            IRRender::kDepthForegroundTierCount - 1 - slot,
+            1,
+            IRRender::kDepthForegroundTierCount - 1
+        );
+    }
+    const int encRel = decoded.tier_ == 0
+                           ? decoded.enc_
+                           : decoded.enc_ - IRRender::depthForegroundTierCenter(decoded.tier_);
+    decoded.face_ = ((encRel % 4) + 4) % 4;
+    decoded.iso_ = (encRel - decoded.face_) / 4;
+    return decoded;
+}
+
+} // namespace detail
+
 /// Convenience wrapper: read @p px and emit one machine-readable
 /// @c IR_LOG_INFO line a human or script can read the depth ordering directly
 /// from. Format: @c [depth-probe] pixel=(x,y) normDepth=… rawDist=…
@@ -117,30 +155,12 @@ inline void logCompositeDepth(IRMath::ivec2 px) {
         IR_LOG_INFO("[depth-probe] pixel=({},{}) out-of-range (no framebuffer pixel)", px.x, px.y);
         return;
     }
-    // Decode the integer composite enc into the #1960 N-tier partition so a
-    // debugger reads the depth ordering directly. enc > kDepthForegroundCeil is
-    // WORLD content (tier 0), encoded as iso*4 + face; enc inside the reserved band
-    // is a FOREGROUND fragment whose disjoint sub-range names its priority tier
-    // (1..N-1). Without this split the partitioned enc reads as an opaque rawDist
-    // (the Finding-1-style mis-read the plan flagged). Reporting the numeric tier
-    // makes Demo 2's per-trixel `tier = max(entity, trixel)` headlessly
-    // ground-truthable at an interpenetration pixel (#1960 acceptance G). iso/face
-    // is the encodeDepthWithFace inverse, taken tier-center-relative for a
-    // foreground fragment so `iso` reads as the unit's local model-frame iso depth.
-    const int enc = static_cast<int>(IRMath::roundHalfUp(sample.rawDist_));
-    int tier = 0;
-    if (enc <= IRRender::kDepthForegroundCeil) {
-        const int slot =
-            (enc - IRConstants::kTrixelDistanceMinDistance) / IRRender::kDepthForegroundTierWidth;
-        tier = IRMath::clamp(
-            IRRender::kDepthForegroundTierCount - 1 - slot,
-            1,
-            IRRender::kDepthForegroundTierCount - 1
-        );
-    }
-    const int encRel = tier == 0 ? enc : enc - IRRender::depthForegroundTierCenter(tier);
-    const int face = ((encRel % 4) + 4) % 4;
-    const int iso = (encRel - face) / 4;
+    // Decode the partitioned enc so a debugger reads the depth ordering directly;
+    // without it the partitioned enc reads as an opaque rawDist (the Finding-1-style
+    // mis-read the plan flagged). Reporting the numeric tier makes the per-trixel
+    // `tier = max(entity, trixel)` headlessly ground-truthable at an interpenetration
+    // pixel (#1960 acceptance G).
+    const detail::DecodedComposite decoded = detail::decodeComposite(sample);
     IR_LOG_INFO(
         "[depth-probe] pixel=({},{}) normDepth={:.6f} rawDist={:.1f} enc={} tier={} ({}) iso={} "
         "face={}",
@@ -148,11 +168,11 @@ inline void logCompositeDepth(IRMath::ivec2 px) {
         sample.pixel_.y,
         sample.normDepth_,
         sample.rawDist_,
-        enc,
-        tier,
-        tier == 0 ? "world" : "foreground",
-        iso,
-        face
+        decoded.enc_,
+        decoded.tier_,
+        decoded.tier_ == 0 ? "world" : "foreground",
+        decoded.iso_,
+        decoded.face_
     );
 }
 
@@ -184,6 +204,38 @@ inline bool assertCompositeWritesDepth(IRMath::ivec2 px) {
         wroteDepth ? "PASS" : "FAIL"
     );
     return wroteDepth;
+}
+
+/// #1960 per-trixel-priority tier regression guard. Reads @p px (expected to fall
+/// on an interpenetration overlap where a priority-tagged solid must win) and
+/// emits one machine-readable verdict line:
+/// @c [depth-probe-assert] pixel=(x,y) normDepth=… rawDist=… enc=… tier=N
+/// expected=M result=PASS|FAIL. PASS iff the composite winner at @p px decodes to
+/// the @p expectedTier (the #1960 N-tier partition; @c detail::decodeComposite).
+/// This is the positive ENABLED-path guard the per-trixel carrier needs (a
+/// default-off feature that byte-identity at default cannot prove works) — it
+/// catches a future pass that drops the carrier so the priority solid falls back
+/// to tier 0 and loses the depth contest. A failed readback (pixel out of range)
+/// decodes to tier 0 with @c valid_ == false, so an out-of-range probe reports
+/// FAIL for any non-default @p expectedTier rather than masquerading as a pass.
+/// Backend-agnostic, pure readback (byte-identical), like @c assertCompositeWritesDepth.
+inline bool assertCompositeDepthTier(IRMath::ivec2 px, int expectedTier) {
+    const CompositeDepthSample sample = readbackCompositeDepth(px);
+    const detail::DecodedComposite decoded = detail::decodeComposite(sample);
+    const bool match = sample.valid_ && decoded.tier_ == expectedTier;
+    IR_LOG_INFO(
+        "[depth-probe-assert] pixel=({},{}) normDepth={:.6f} rawDist={:.1f} enc={} tier={} "
+        "expected={} result={}",
+        px.x,
+        px.y,
+        sample.normDepth_,
+        sample.rawDist_,
+        decoded.enc_,
+        decoded.tier_,
+        expectedTier,
+        match ? "PASS" : "FAIL"
+    );
+    return match;
 }
 
 } // namespace IRPrefab::DepthProbe
