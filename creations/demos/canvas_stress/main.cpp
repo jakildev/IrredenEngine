@@ -112,6 +112,15 @@ struct CanvasStressSettings {
     bool autoRotate_ = true;
     bool fullRotate_ = false;
     bool noSpin_ = false;
+    // Diagnostic (gridspin gap isolation): freeze the GRID spin cubes at a fixed
+    // rotation (frozenPoseRad_ about each cube's own kGridSpinAxes axis) with zero
+    // self-spin, so a camera-yaw sweep varies ONLY the camera direction against a
+    // constant cube pose — the clean isolation for "which camera directions gap
+    // worst" (round-to-cell-pit vs per-axis-scatter). Off unless --frozen-pose is
+    // given (frozenPose_ stays false, frozenPoseRad_ unused); a flagless run is
+    // byte-identical.
+    bool frozenPose_ = false;
+    float frozenPoseRad_ = 0.0f;
     bool noLighting_ = false;
     // #1619 step-0 isolation harness (architect-mandated). Spawns exactly ONE
     // rotated DETACHED_REVOXELIZE solid — the multi-color L-prism at its
@@ -953,6 +962,12 @@ void registerArgs() {
         "Drive the camera with the full SO(3) X/Y/Z spin path, not Z-yaw only"
     );
     args.flag("--no-spin", "Freeze per-entity self-spin at quaternion identity");
+    args.number(
+        "--frozen-pose",
+        "Freeze the GRID spin cubes at this fixed angle (radians) about each cube's own axis, "
+        "zero self-spin — isolates camera direction for the gap sweep",
+        g_settings.frozenPoseRad_
+    );
     args.flag("--no-lighting", "Disable world lighting");
     args.flag(
         "--screen-lock-detached",
@@ -983,11 +998,12 @@ void registerArgs() {
         "--auto-profile",
         "Per-system frame timing; write save_files/profile_report.txt on the auto-screenshot exit"
     );
-    args.string(
+    args.enumValue(
         "--debug-overlay",
         "Force a render debug overlay for the run "
         "(none|ao|light_level|shadow|peraxis_id|peraxis_origin|unlit)",
-        ""
+        {"none", "ao", "light_level", "shadow", "peraxis_id", "peraxis_origin", "unlit"},
+        "none"
     );
     args.string(
         "--depth-probe",
@@ -1021,6 +1037,10 @@ void applyArgs() {
     }
     g_settings.fullRotate_ = args.getFlag("--full-rotate");
     g_settings.noSpin_ = args.getFlag("--no-spin");
+    if (args.wasProvided("--frozen-pose")) {
+        g_settings.frozenPose_ = true;
+        g_settings.frozenPoseRad_ = args.getFloat("--frozen-pose");
+    }
     g_settings.noLighting_ = args.getFlag("--no-lighting");
     if (args.getFlag("--screen-lock-detached") || args.getFlag("--screen-lock-revox")) {
         g_settings.screenLockDetached_ = true;
@@ -1041,7 +1061,7 @@ void applyArgs() {
     g_settings.autoProfile_ = args.getFlag("--auto-profile");
     if (args.wasProvided("--debug-overlay")) {
         g_settings.debugOverlay_ =
-            IRRender::debugOverlayModeFromString(args.getString("--debug-overlay").c_str());
+            IRRender::debugOverlayModeFromString(args.getEnum("--debug-overlay").c_str());
     }
     if (args.wasProvided("--depth-probe")) {
         applyDepthProbe(
@@ -1502,10 +1522,21 @@ void initEntities() {
             gridSpinY,
             -static_cast<float>(kGridSpinCubeSize.z) * 0.5f
         };
+        // --frozen-pose: hold a fixed off-cardinal pose (frozenPoseRad_ about the
+        // cube's own axis) with zero self-spin, so a camera sweep isolates
+        // direction. Absent the flag this is the identity quat + normal spin rate,
+        // byte-identical to the default path.
+        const vec4 gridSpinRot = g_settings.frozenPose_ ? IRMath::quatAxisAngle(
+                                                              IRMath::normalize(kGridSpinAxes[i]),
+                                                              g_settings.frozenPoseRad_
+                                                          )
+                                                        : vec4(0.0f, 0.0f, 0.0f, 1.0f);
+        const float gridSpinRate =
+            (g_settings.noSpin_ || g_settings.frozenPose_) ? 0.0f : kGridSpinRadPerFrame;
         IREntity::createEntity(
-            C_LocalTransform{pos},
+            C_LocalTransform{pos, gridSpinRot},
             C_RotationMode{RotationMode::GRID},
-            C_AutoSpin{kGridSpinAxes[i], g_settings.noSpin_ ? 0.0f : kGridSpinRadPerFrame},
+            C_AutoSpin{kGridSpinAxes[i], gridSpinRate},
             C_VoxelSetNew{kGridSpinCubeSize, kGridSpinColors[i], true}
         );
     }

@@ -15,6 +15,7 @@ add_executable(IrredenEngineTest
   audio/audio_playback_test.cpp
   audio/midi_multiport_test.cpp
   audio/music_theory_test.cpp
+  common/ir_args_test.cpp
   common/ir_platform_test.cpp
   ecs/entity_manager_test.cpp
   ecs/grid_rotation_test.cpp
