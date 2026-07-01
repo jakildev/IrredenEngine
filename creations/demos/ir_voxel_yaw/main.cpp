@@ -322,23 +322,13 @@ static EntityId createHollowShell(vec3 position, ivec3 halfExtent, Color color) 
     EntityId e =
         IREntity::createEntity(C_LocalTransform{position}, C_VoxelSetNew{size, color, true});
     auto &vs = IREntity::getComponent<C_VoxelSetNew>(e);
-    for (int i = 0; i < vs.numVoxels_; ++i) {
+    vs.carve([&](vec3 pos) {
         // Positions are stored as exact integer-valued floats relative to the center.
-        ivec3 p(
-            static_cast<int>(vs.positions_[i].pos_.x),
-            static_cast<int>(vs.positions_[i].pos_.y),
-            static_cast<int>(vs.positions_[i].pos_.z)
-        );
+        ivec3 p(static_cast<int>(pos.x), static_cast<int>(pos.y), static_cast<int>(pos.z));
         bool onSurface = IRMath::abs(p.x) >= halfExtent.x || IRMath::abs(p.y) >= halfExtent.y ||
                          IRMath::abs(p.z) >= halfExtent.z;
-        if (!onSurface)
-            vs.voxels_[i].deactivate();
-    }
-    // Raw-span carve bypasses the C_VoxelSetNew helpers, so the exposed-face
-    // mask is stale: recompute it before syncing the active mask, or the
-    // shell's newly-interior-exposed faces stay occluded and render black.
-    IRPrefab::Voxel::recomputeFaceOccupancy(vs.voxels_, size);
-    vs.syncActiveMask();
+        return !onSurface;
+    });
     return e;
 }
 
