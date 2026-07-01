@@ -59,8 +59,9 @@ class VoxelSetEditApiTest : public ::testing::Test {
 // must expose the face that pointed at a now-carved neighbor.
 TEST_F(VoxelSetEditApiTest, CarveDeactivatesSliceAndUpdatesMaskAndFaces) {
     const IREntity::EntityId canvas = IREntity::createEntity(C_VoxelPool{ivec3(8, 8, 8)});
-    const IREntity::EntityId object =
-        IREntity::createEntity(C_VoxelSetNew{ivec3(3, 3, 3), Color{200, 100, 50, 255}, false, canvas});
+    const IREntity::EntityId object = IREntity::createEntity(
+        C_VoxelSetNew{ivec3(3, 3, 3), Color{200, 100, 50, 255}, false, canvas}
+    );
 
     auto &set = IREntity::getComponent<C_VoxelSetNew>(object);
     ASSERT_EQ(set.numVoxels_, 27);
@@ -95,6 +96,95 @@ TEST_F(VoxelSetEditApiTest, CarveDeactivatesSliceAndUpdatesMaskAndFaces) {
     // voxels to all-zero on the face-bit mask).
     const std::uint8_t carved = set.voxels_[flatIndex(set, ivec3(0, 1, 1))].flags_;
     EXPECT_EQ(carved & VoxelFlags::kFaceOccludedMask, 0u);
+}
+
+// C_VoxelPool::adjustPerTrixelPriorityVoxelCount (#2155) is maintained
+// push-at-mutation by changeVoxelPriority / changeVoxelPriorityAll / onDestroy,
+// never a per-voxel scan. These cover the arithmetic in isolation: repeated
+// same-voxel toggling (must not double-count a same-state no-op write),
+// changeVoxelPriorityAll followed by per-voxel changeVoxelPriority (must not
+// drift when the two mutators interleave), and the onDestroy release path.
+TEST_F(VoxelSetEditApiTest, ChangeVoxelPriorityTogglesPoolAggregateOnStateTransitionOnly) {
+    const IREntity::EntityId canvas = IREntity::createEntity(C_VoxelPool{ivec3(8, 8, 8)});
+    const IREntity::EntityId object = IREntity::createEntity(
+        C_VoxelSetNew{ivec3(3, 3, 3), Color{200, 100, 50, 255}, false, canvas}
+    );
+
+    auto &set = IREntity::getComponent<C_VoxelSetNew>(object);
+    const auto &pool = IREntity::getComponent<C_VoxelPool>(canvas);
+    ASSERT_FALSE(pool.hasPerTrixelPriority());
+
+    // Rising edge: 0 -> nonzero sets the aggregate.
+    set.changeVoxelPriority(ivec3(0, 0, 0), 1);
+    EXPECT_TRUE(pool.hasPerTrixelPriority());
+
+    // Same-state rewrite (nonzero -> different nonzero) must not double-count:
+    // a second decrement below would go negative if it had.
+    set.changeVoxelPriority(ivec3(0, 0, 0), 2);
+    EXPECT_TRUE(pool.hasPerTrixelPriority());
+
+    // Falling edge on the only priority voxel clears the aggregate.
+    set.changeVoxelPriority(ivec3(0, 0, 0), 0);
+    EXPECT_FALSE(pool.hasPerTrixelPriority());
+
+    // Redundant falling edge (already 0 -> 0) must stay a no-op, not underflow
+    // the pool's clamped-at-0 count.
+    set.changeVoxelPriority(ivec3(0, 0, 0), 0);
+    EXPECT_FALSE(pool.hasPerTrixelPriority());
+}
+
+TEST_F(VoxelSetEditApiTest, ChangeVoxelPriorityAllInterleavedWithPerVoxelStaysConsistent) {
+    const IREntity::EntityId canvas = IREntity::createEntity(C_VoxelPool{ivec3(8, 8, 8)});
+    const IREntity::EntityId object = IREntity::createEntity(
+        C_VoxelSetNew{ivec3(3, 3, 3), Color{200, 100, 50, 255}, false, canvas}
+    );
+
+    auto &set = IREntity::getComponent<C_VoxelSetNew>(object);
+    const auto &pool = IREntity::getComponent<C_VoxelPool>(canvas);
+    ASSERT_EQ(set.numVoxels_, 27);
+
+    // changeVoxelPriorityAll(nonzero) marks every one of the 27 slots.
+    set.changeVoxelPriorityAll(1);
+    EXPECT_TRUE(pool.hasPerTrixelPriority());
+
+    // Clear every voxel but (2,2,2) individually via the per-voxel mutator;
+    // the aggregate must stay set until the final voxel drops to 0.
+    for (int x = 0; x < 3; ++x) {
+        for (int y = 0; y < 3; ++y) {
+            for (int z = 0; z < 3; ++z) {
+                if (x == 2 && y == 2 && z == 2) {
+                    continue;
+                }
+                set.changeVoxelPriority(ivec3(x, y, z), 0);
+            }
+        }
+    }
+    EXPECT_TRUE(pool.hasPerTrixelPriority());
+
+    set.changeVoxelPriority(ivec3(2, 2, 2), 0);
+    EXPECT_FALSE(pool.hasPerTrixelPriority());
+}
+
+TEST_F(VoxelSetEditApiTest, OnDestroyReleasesPoolAggregateContribution) {
+    const IREntity::EntityId canvas = IREntity::createEntity(C_VoxelPool{ivec3(8, 8, 8)});
+    const IREntity::EntityId keep = IREntity::createEntity(
+        C_VoxelSetNew{ivec3(2, 2, 2), Color{50, 50, 50, 255}, false, canvas}
+    );
+    const IREntity::EntityId doomed = IREntity::createEntity(
+        C_VoxelSetNew{ivec3(2, 2, 2), Color{50, 50, 50, 255}, false, canvas}
+    );
+
+    auto &doomedSet = IREntity::getComponent<C_VoxelSetNew>(doomed);
+    doomedSet.changeVoxelPriorityAll(1);
+
+    const auto &pool = IREntity::getComponent<C_VoxelPool>(canvas);
+    ASSERT_TRUE(pool.hasPerTrixelPriority());
+
+    // keep's voxels never carried priority, so destroying `doomed` (the sole
+    // contributor) must drop the pool's aggregate back to false.
+    (void)keep;
+    m_entityManager.destroyEntity(doomed);
+    EXPECT_FALSE(pool.hasPerTrixelPriority());
 }
 
 // editVoxels() activates a slice of an initially all-inactive set (the
@@ -144,8 +234,9 @@ TEST_F(VoxelSetEditApiTest, EditVoxelsActivatesSliceAndUpdatesMaskAndFaces) {
 // resync once, and confirm both derived halves land the same as the sugar paths.
 TEST_F(VoxelSetEditApiTest, ResyncAfterRawEditsMatchesEncapsulatedPaths) {
     const IREntity::EntityId canvas = IREntity::createEntity(C_VoxelPool{ivec3(8, 8, 8)});
-    const IREntity::EntityId object =
-        IREntity::createEntity(C_VoxelSetNew{ivec3(3, 3, 3), Color{120, 120, 200, 255}, false, canvas});
+    const IREntity::EntityId object = IREntity::createEntity(
+        C_VoxelSetNew{ivec3(3, 3, 3), Color{120, 120, 200, 255}, false, canvas}
+    );
 
     auto &set = IREntity::getComponent<C_VoxelSetNew>(object);
     ASSERT_EQ(set.numVoxels_, 27);
