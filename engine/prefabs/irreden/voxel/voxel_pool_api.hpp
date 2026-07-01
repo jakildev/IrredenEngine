@@ -162,6 +162,20 @@ resyncRangeFromColors(std::size_t startIndex, std::size_t count, IREntity::Entit
     }
 }
 
+// Push-at-mutation route for the per-trixel-priority aggregate (#2155). The
+// C_VoxelSetNew priority mutators call this with the delta of priority-carrying
+// voxels they just added (+) or removed (-) so the pool's count — read once per
+// frame by VOXEL_TO_TRIXEL_STAGE_1 to gate the finalization shader's entity-id
+// decode read — stays current without a per-voxel scan.
+inline void adjustPerTrixelPriorityVoxelCount(int delta, IREntity::EntityId canvasEntity) {
+    if (delta == 0) {
+        return;
+    }
+    if (auto *pool = detail::poolForCanvas(canvasEntity)) {
+        pool->adjustPerTrixelPriorityVoxelCount(delta);
+    }
+}
+
 // Performs a single canvas-entity lookup and calls fn(C_VoxelPool&).
 // Prefer this over calling markVoxelActive N times to avoid N RenderManager
 // lookups; fillPlane-style loops that activate many individual slots benefit

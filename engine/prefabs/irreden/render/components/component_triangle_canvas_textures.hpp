@@ -111,6 +111,17 @@ struct C_TriangleCanvasTextures {
     // overlay) — the composite then keeps the pre-#1624 raw offset.
     int renderedSubdivisions_ = 0;
 
+    // No-priority perf fast-path signal (#2155). Stamped each frame by
+    // VOXEL_TO_TRIXEL_STAGE_1 from the canvas pool's per-trixel-priority
+    // aggregate: 1 iff some voxel drawn into this canvas carries a non-zero
+    // per-trixel priority (#1960), else 0. Published into the finalization UBO
+    // (FrameDataTrixelToFramebuffer::anyPerTrixelPriority_) by both the main
+    // gather (TRIXEL_TO_FRAMEBUFFER) and the detached composite
+    // (ENTITY_CANVAS_TO_FRAMEBUFFER), gating the shader's entity-id decode read.
+    // 0 = fast path (skip the read on non-hovered fragments). Same per-frame
+    // stamp lifecycle as renderedSubdivisions_ (0 when no voxel pool rastered).
+    int anyPerTrixelPriority_ = 0;
+
     C_TriangleCanvasTextures(ivec2 size)
         : size_{size}
         , textureTriangleColors_{detail::makeCanvasColorTexture(size)}

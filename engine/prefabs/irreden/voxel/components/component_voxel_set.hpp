@@ -34,6 +34,14 @@ struct C_VoxelSetNew {
     // pointer made the diff resolve to a wild index).
     size_t voxelStartIdx_ = 0;
 
+    // Number of this set's voxels currently carrying a non-zero per-trixel
+    // priority (#2155). Maintained by changeVoxelPriority / changeVoxelPriorityAll;
+    // each change also pushes its delta to the owning pool's aggregate
+    // (IRPrefab::VoxelPool::adjustPerTrixelPriorityVoxelCount) so the pool can
+    // report — once per frame, no per-voxel scan — whether the finalization shader
+    // must decode the entity-id carrier. Released back to the pool in onDestroy().
+    std::uint32_t perTrixelPriorityVoxelCount_ = 0;
+
     // GPU transform-indirection slot for this set (#1396). `kVoxelTransformStatic`
     // (the default) keeps the set on the CPU-direct world-position path:
     // UPDATE_VOXEL_SET_CHILDREN folds the parent translation in and uploads
@@ -290,6 +298,16 @@ struct C_VoxelSetNew {
         // never touches the pool — so this guard skips exactly the cases
         // that have nothing to release.
         if (numVoxels_ > 0) {
+            // Release this set's per-trixel-priority contribution (#2155) before
+            // the span goes back to the pool, so a canvas whose only priority
+            // voxels lived in a destroyed set drops back to the fast path.
+            if (perTrixelPriorityVoxelCount_ > 0) {
+                IRPrefab::VoxelPool::adjustPerTrixelPriorityVoxelCount(
+                    -static_cast<int>(perTrixelPriorityVoxelCount_),
+                    canvasEntity_
+                );
+                perTrixelPriorityVoxelCount_ = 0;
+            }
             IRPrefab::VoxelPool::deallocate(
                 voxelStartIdx_,
                 static_cast<size_t>(numVoxels_),
@@ -335,7 +353,15 @@ struct C_VoxelSetNew {
     // tier = max(perEntityTier, perTrixelTier). Default 0 ⇒ byte-identical.
     void changeVoxelPriority(ivec3 index, std::uint8_t priority) {
         const int idx = index3DtoIndex1D(index, size_);
+        const bool wasSet = (voxels_[idx].reserved_ & 0x3u) != 0u;
         voxels_[idx].reserved_ = (voxels_[idx].reserved_ & ~0x3u) | (priority & 0x3u);
+        const bool nowSet = (priority & 0x3u) != 0u;
+        if (nowSet != wasSet) {
+            const int delta = nowSet ? 1 : -1;
+            perTrixelPriorityVoxelCount_ =
+                static_cast<std::uint32_t>(static_cast<int>(perTrixelPriorityVoxelCount_) + delta);
+            IRPrefab::VoxelPool::adjustPerTrixelPriorityVoxelCount(delta, canvasEntity_);
+        }
         mirrorToRotationSource(idx);
     }
 
@@ -344,6 +370,14 @@ struct C_VoxelSetNew {
             voxels_[i].reserved_ = (voxels_[i].reserved_ & ~0x3u) | (priority & 0x3u);
             mirrorToRotationSource(i);
         }
+        // Conservative-TRUE: counts every slot (active or not) — an inactive
+        // priority voxel can't render, so an over-count only costs the fast path.
+        const std::uint32_t newCount =
+            (priority & 0x3u) != 0u ? static_cast<std::uint32_t>(numVoxels_) : 0u;
+        const int delta =
+            static_cast<int>(newCount) - static_cast<int>(perTrixelPriorityVoxelCount_);
+        IRPrefab::VoxelPool::adjustPerTrixelPriorityVoxelCount(delta, canvasEntity_);
+        perTrixelPriorityVoxelCount_ = newCount;
     }
 
     void deactivateAll() {

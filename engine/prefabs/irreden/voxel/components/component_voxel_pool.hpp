@@ -240,6 +240,21 @@ struct C_VoxelPool {
         return m_voxelPoolSize3D;
     }
 
+    // Per-trixel-priority aggregate (#2155). Maintained push-at-mutation by the
+    // C_VoxelSetNew priority mutators (changeVoxelPriority / changeVoxelPriorityAll
+    // adjust by their delta; onDestroy releases the set's contribution) — never a
+    // per-voxel scan. Read once per frame by VOXEL_TO_TRIXEL_STAGE_1 to stamp the
+    // canvas's C_TriangleCanvasTextures::anyPerTrixelPriority_, which gates the
+    // finalization shader's entity-id decode read. Clamped at 0 so a stray
+    // over-decrement can't wrap negative (conservative-TRUE keeps correctness
+    // regardless; the clamp just protects the FALSE fast-path signal).
+    void adjustPerTrixelPriorityVoxelCount(int delta) {
+        m_perTrixelPriorityVoxelCount = IRMath::max(0, m_perTrixelPriorityVoxelCount + delta);
+    }
+    bool hasPerTrixelPriority() const {
+        return m_perTrixelPriorityVoxelCount > 0;
+    }
+
     void setEntityIdForRange(size_t startIdx, size_t count, EntityId entityId) {
         IR_ASSERT(
             startIdx + count <= m_voxelEntities.size(),
@@ -703,6 +718,12 @@ struct C_VoxelPool {
     std::vector<std::pair<size_t, size_t>> m_pendingTransformIndexRanges;
 
     int m_voxelPoolIndex = 0;
+
+    // Count of voxels in this pool carrying a non-zero per-trixel priority (#2155).
+    // Maintained push-at-mutation via adjustPerTrixelPriorityVoxelCount (called by
+    // the C_VoxelSetNew priority mutators + set teardown). hasPerTrixelPriority()
+    // reads it once per frame in VOXEL_TO_TRIXEL_STAGE_1 to stamp the canvas.
+    int m_perTrixelPriorityVoxelCount = 0;
 
     void updateFreeSpanLookup(size_t startIndex, size_t size) {
         m_freeSpanLookup[size].insert({startIndex, size});

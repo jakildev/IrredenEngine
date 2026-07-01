@@ -115,6 +115,11 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         // Explicit so the persistent mainFramebuffer frame-data (shared with the
         // per-axis scatter path) never carries a stale foreground flag.
         frameData.frameData_.depthPriorityMode_ = 0;
+        // No-priority perf fast-path (#2155): forward this canvas's stamp so the
+        // finalization shader skips the per-fragment entity-id decode read when no
+        // voxel in the canvas carries a per-trixel priority (still read for hovered
+        // fragments; byte-identical output either way).
+        frameData.frameData_.anyPerTrixelPriority_ = triangleCanvasTextures.anyPerTrixelPriority_;
         frameData.frameData_.mpMatrix_ = calcProjectionMatrix(framebufferResolution) *
                                          calcModelMatrix(
                                              framebufferResolution,
