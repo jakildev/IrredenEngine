@@ -603,6 +603,8 @@ scale. Full invariant + verify steps:
   World content (`depthPriority_ == 0`) is clamped OUT of the band — a no-op for
   in-budget content, so the cardinal fast path stays byte-identical. Source of
   truth: `docs/design/depth-unification-1884-investigation.md` §Resolution.
+  Demo: `canvas_stress --only orbitswap` (far unit at entity-fg tier 1;
+  `scripts/depth-tier-verify.py --only orbitswap --tier 1`, #2154).
 - **Per-trixel priority tiers generalize the partition (#1960).** #1958's
   two-way split is now N disjoint foreground tiers (`kDepthForegroundTierCount`
   = 3: world / entity-fg / per-trixel-override) in `ir_render_types.hpp`;
