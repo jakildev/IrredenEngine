@@ -192,7 +192,7 @@ proposal-pending: none
 | #2167 | open | — | plan | 2026-06-30 |
 
 ### Decisions
-- 2026-06-30: API shape = editVoxels(fn) + carve(predicate) + resyncAfterRawEdits(); one cohesive delivery split into 3 phased children; codify convention (no broad cross-system audit this round).
+- D1 (2026-06-30): API shape = editVoxels(fn) + carve(predicate) + resyncAfterRawEdits(); one cohesive delivery split into 3 phased children; codify convention (no broad cross-system audit this round) — source: umbrella plan §Decisions (confirmed with user)
 
 ### Events
 - 2026-06-30: filed via file-epic
