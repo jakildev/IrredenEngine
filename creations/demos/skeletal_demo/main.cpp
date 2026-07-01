@@ -217,14 +217,14 @@ static void createSnake(vec3 worldPos) {
         IREntity::createEntity(C_LocalTransform{worldPos}, C_VoxelSetNew{size, baseColor, false});
     auto &vs = IREntity::getComponent<C_VoxelSetNew>(rigRoot);
 
-    for (int i = 0; i < vs.numVoxels_; ++i) {
-        int seg = static_cast<int>(vs.positions_[i].pos_.z) / kSegLen;
-        vs.voxels_[i].bone_id_ = static_cast<std::uint8_t>(seg);
+    vs.editVoxels([&](int, C_Voxel &voxel, vec3 localPos) {
+        int seg = static_cast<int>(localPos.z) / kSegLen;
+        voxel.bone_id_ = static_cast<std::uint8_t>(seg);
         // Alternate shading per segment so joint boundaries are visible.
         if (seg & 1) {
-            vs.voxels_[i].color_ = Color{40, 160, 70, 255};
+            voxel.color_ = Color{40, 160, 70, 255};
         }
-    }
+    });
 
     constexpr vec4 kIdentity{0.0f, 0.0f, 0.0f, 1.0f};
     const vec4 kBendPose = IRMath::quatAxisAngle(vec3(1.0f, 0.0f, 0.0f), IRMath::kPi / 7.2f);
@@ -304,19 +304,19 @@ static void createLamp(vec3 worldPos) {
         IREntity::createEntity(C_LocalTransform{worldPos}, C_VoxelSetNew{size, baseColor, false});
     auto &vs = IREntity::getComponent<C_VoxelSetNew>(rigRoot);
 
-    for (int i = 0; i < vs.numVoxels_; ++i) {
-        int seg = static_cast<int>(vs.positions_[i].pos_.y) / kSegLen;
-        vs.voxels_[i].bone_id_ = static_cast<std::uint8_t>(seg);
+    vs.editVoxels([&](int, C_Voxel &voxel, vec3 localPos) {
+        int seg = static_cast<int>(localPos.y) / kSegLen;
+        voxel.bone_id_ = static_cast<std::uint8_t>(seg);
         // Lighten toward the top to simulate a warm glow gradient.
         const float t = static_cast<float>(seg) / static_cast<float>(kNumJoints - 1);
         const auto r = static_cast<std::uint8_t>(220u + static_cast<std::uint8_t>(35u * t));
-        vs.voxels_[i].color_ = Color{
+        voxel.color_ = Color{
             r,
             static_cast<std::uint8_t>(185u - static_cast<std::uint8_t>(40u * t)),
             50u,
             255u
         };
-    }
+    });
 
     constexpr vec4 kIdentity{0.0f, 0.0f, 0.0f, 1.0f};
     const vec4 kHeadPose = IRMath::quatAxisAngle(vec3(0.0f, 0.0f, 1.0f), IRMath::kPi / 3.0f);
@@ -372,10 +372,13 @@ static void createCross(vec3 worldPos) {
     auto &vs = IREntity::getComponent<C_VoxelSetNew>(rigRoot);
 
     // Classify each voxel into a body region and assign bone_id.
-    // Voxels outside the cross footprint are deactivated.
-    for (int i = 0; i < vs.numVoxels_; ++i) {
-        const int x = static_cast<int>(vs.positions_[i].pos_.x);
-        const int z = static_cast<int>(vs.positions_[i].pos_.z);
+    // Voxels outside the cross footprint are deactivated. editVoxels resyncs
+    // the active mask AND face occupancy — the deactivated interior would
+    // otherwise render black under the lit path (the recompute a bare
+    // syncActiveMask() misses).
+    vs.editVoxels([&](int, C_Voxel &voxel, vec3 localPos) {
+        const int x = static_cast<int>(localPos.x);
+        const int z = static_cast<int>(localPos.z);
         const bool inCenter = (x >= 3 && x <= 6 && z >= 3 && z <= 6);
         const bool inLeft = (x >= 0 && x <= 2 && z >= 3 && z <= 6);
         const bool inRight = (x >= 7 && x <= 9 && z >= 3 && z <= 6);
@@ -383,26 +386,25 @@ static void createCross(vec3 worldPos) {
         const bool inBack = (x >= 3 && x <= 6 && z >= 7 && z <= 9);
 
         if (inCenter) {
-            vs.voxels_[i].bone_id_ = 0;
-            vs.voxels_[i].color_ = Color{100, 160, 240, 255};
+            voxel.bone_id_ = 0;
+            voxel.color_ = Color{100, 160, 240, 255};
         } else if (inLeft) {
             // x=2 → shoulder (bone 1), x=0..1 → wrist (bone 2)
-            vs.voxels_[i].bone_id_ = (x == 2) ? 1u : 2u;
-            vs.voxels_[i].color_ = (x == 2) ? Color{80, 140, 220, 255} : Color{60, 110, 190, 255};
+            voxel.bone_id_ = (x == 2) ? 1u : 2u;
+            voxel.color_ = (x == 2) ? Color{80, 140, 220, 255} : Color{60, 110, 190, 255};
         } else if (inRight) {
-            vs.voxels_[i].bone_id_ = (x == 7) ? 3u : 4u;
-            vs.voxels_[i].color_ = (x == 7) ? Color{80, 140, 220, 255} : Color{60, 110, 190, 255};
+            voxel.bone_id_ = (x == 7) ? 3u : 4u;
+            voxel.color_ = (x == 7) ? Color{80, 140, 220, 255} : Color{60, 110, 190, 255};
         } else if (inFront) {
-            vs.voxels_[i].bone_id_ = (z == 2) ? 5u : 6u;
-            vs.voxels_[i].color_ = (z == 2) ? Color{80, 140, 220, 255} : Color{60, 110, 190, 255};
+            voxel.bone_id_ = (z == 2) ? 5u : 6u;
+            voxel.color_ = (z == 2) ? Color{80, 140, 220, 255} : Color{60, 110, 190, 255};
         } else if (inBack) {
-            vs.voxels_[i].bone_id_ = (z == 7) ? 7u : 8u;
-            vs.voxels_[i].color_ = (z == 7) ? Color{80, 140, 220, 255} : Color{60, 110, 190, 255};
+            voxel.bone_id_ = (z == 7) ? 7u : 8u;
+            voxel.color_ = (z == 7) ? Color{80, 140, 220, 255} : Color{60, 110, 190, 255};
         } else {
-            vs.voxels_[i].deactivate();
+            voxel.deactivate();
         }
-    }
-    vs.syncActiveMask();
+    });
 
     constexpr vec4 kIdentity{0.0f, 0.0f, 0.0f, 1.0f};
     // Wrist-bend poses: left/right bend around Z; front/back bend around X.
