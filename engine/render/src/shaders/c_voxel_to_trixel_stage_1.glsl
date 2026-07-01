@@ -268,44 +268,53 @@ void main() {
     // the emit dilation below.
     const uint flagsByte = (voxels[voxelIndex].materialFlagBone >> 8u) & 0xFFu;
 
-    // World fog route + world-column recovery (#2125 GRID, #2127 detached). The
-    // fog grid is world-space, so the cut-face + own-column tests below decide
-    // "hidden" on this voxel's WORLD column. `fogActive` is the single cheap
-    // (uniform-only) gate that keeps every non-fog / per-axis / plain-DETACHED
-    // voxel byte-identical to master AND free of the world-column round() below.
-    // Cut faces fire ONLY on the world fog route (perAxisRoute==0; the GRID world
-    // canvas or a world-placed re-voxelize detached canvas): the per-axis rotation
-    // route (#2128) and plain octahedral DETACHED have no faithful world-pos
-    // recovery and stay on the no-fog placeholder.
-    const bool fogActive = visionCircleCount > 0 && perAxisRoute == 0 &&
-        (isDetachedCanvas < 0.5 || detachedWorldReceive.w != 0.0);
-    // The GRID world canvas already rasters in world space (offset 0); a
-    // world-placed detached re-voxelize canvas rasters its pool in the
-    // pool-centered MODEL frame, so recover its world column as model + the
-    // published cell origin — the SAME (model + offset) recovery
-    // c_lighting_to_trixel uses to world-sample shadow + light. The re-voxelize
-    // bake is a pure translation off world (the rotation is baked into the integer
-    // cells), so the model-frame face normal equals the world-frame one and the
-    // neighbor column below is correct.
+    // World fog route + world-column recovery (#2125 GRID, #2127 detached;
+    // per-axis #2128). The fog grid is world-space, so the cut-face + own-column
+    // tests below decide "hidden" on this voxel's WORLD column. `fogActive` is the
+    // single cheap (uniform-only) gate that keeps every non-fog / plain-DETACHED /
+    // Z-route voxel byte-identical to master AND free of the world-column round()
+    // below. It fires on the world fog route (perAxisRoute==0: the GRID world canvas
+    // or a world-placed re-voxelize detached canvas, #2127) AND the X/Y per-axis
+    // rotation routes (1/2, #2128 — a cut face is a vertical X/Y face that rides the
+    // matching axis canvas under continuous yaw). Plain octahedral DETACHED and the
+    // Z route (3, which carries no cut faces) stay on the no-fog placeholder.
+    const bool fogActive = visionCircleCount > 0 && perAxisRoute <= 2 &&
+        (isDetachedCanvas < 0.5 ||
+         (perAxisRoute == 0 && detachedWorldReceive.w != 0.0));
+    // The GRID world canvas already rasters in world space (offset 0) and the X/Y
+    // per-axis canvases are non-detached (offset 0); a world-placed detached
+    // re-voxelize canvas rasters its pool in the pool-centered MODEL frame, so
+    // recover its world column as model + the published cell origin — the SAME
+    // (model + offset) recovery c_lighting_to_trixel uses to world-sample shadow +
+    // light. The re-voxelize bake is a pure translation off world (the rotation is
+    // baked into the integer cells), so the model-frame face normal equals the
+    // world-frame one and the neighbor column below is correct.
     ivec2 worldColumn = ivec2(0);
     if (fogActive) {
         worldColumn = ivec3(round(voxelPosition.xyz)).xy +
             (isDetachedCanvas > 0.5 ? ivec2(round(detachedWorldReceive.xy)) : ivec2(0));
     }
 
-    // Exposed-face gate (#1278) widened with the fog CUT-FACE rule (#2125/#2127). A
-    // camera-visible face normally emits only when exposed (neighbor cell empty).
-    // At the fog boundary a non-exposed VERTICAL face (faceId 0..3 = ±X/±Y; ±Z
-    // never cut — the vision region is a vertical cylinder) becomes the object's
-    // interior cross-section wall when the solid neighbor COLUMN it faces is NOT
-    // fully revealed — so a boundary-cut object caps with a real interior face
-    // instead of a see-through hole. faceOutwardNormal6I(faceId).xy is the neighbor
-    // column offset (±1 along X/Y; 0 for ±Z, never reached here). The `fogActive`
-    // gate (#2127) extends the cut to a world-placed re-voxelize DETACHED canvas via
-    // the `worldColumn` recovery above; non-fog / per-axis / plain-DETACHED scenes
-    // short-circuit on it and stay byte-identical. Distance (here) and colour
-    // (stage 2) MUST apply the identical predicate or the cut wall's depth and
-    // colour desync — keep this block byte-identical to stage 2's.
+    // Exposed-face gate (#1278) widened with the fog CUT-FACE rule (#2125/#2127;
+    // per-axis #2128). A camera-visible face normally emits only when exposed
+    // (neighbor cell empty). At the fog boundary a non-exposed VERTICAL face
+    // (faceId 0..3 = ±X/±Y; ±Z never cut — the vision region is a vertical cylinder)
+    // becomes the object's interior cross-section wall when the solid neighbor
+    // COLUMN it faces is NOT fully revealed — so a boundary-cut object caps with a
+    // real interior face instead of a see-through hole. faceOutwardNormal6I(faceId).xy
+    // is the neighbor column offset (±1 along X/Y; 0 for ±Z, never reached here). The
+    // `fogActive` gate (#2127) extends the cut to a world-placed re-voxelize DETACHED
+    // canvas via the `worldColumn` recovery above; it also carries the per-axis route
+    // selection (routes 0/1/2, #2128 — under continuous yaw the cut face rides the
+    // matching X (route 1) or Y (route 2) axis canvas via the `(faceId>>1)!=axis`
+    // store filter below; the Z route (3) is excluded). Keeping a `perAxisRoute`
+    // comparison term in `fogActive` (rather than dropping it) makes the GLSL/MSL
+    // compiler schedule the non-fog per-axis store identically to the pre-#2128
+    // `== 0` gate, so non-fog rotating scenes stay byte-identical (a bare-removed
+    // term reshuffled the Metal per-axis tie-winner resolution). Non-fog /
+    // plain-DETACHED scenes short-circuit on `fogActive` and stay byte-identical.
+    // Distance (here) and colour (stage 2) MUST apply the identical predicate or the
+    // cut wall's depth and colour desync — keep this block byte-identical to stage 2's.
     //
     // P2 (#2126): the cut fires when the neighbor is "not fully revealed"
     // (reveal < 1.0), so a cut face is emitted across the WHOLE soft boundary band
@@ -319,17 +328,23 @@ void main() {
     }
     if (!keepFace) return;
 
-    // Per-voxel analytic fog clip (#2102 + #2126 P2 + #2127). On the world fog route,
-    // drop a voxel whose OWN world column is FULLY hidden (reveal <= 0, past the
-    // disc's outer soft edge) so FOG_TO_TRIXEL can't hard-black its faces (the
-    // revealed floor / background behind shows through instead); the cut faces above
-    // cap the revealed half. A PARTIALLY revealed boundary column (0 < reveal < 1)
-    // is KEPT so it rasterizes and FOG_TO_TRIXEL fades the object's silhouette on the
-    // same smooth curve as the floor (Mode B). At edgeSoftness 0 (Mode A / default)
-    // reveal is binary, so this is exactly the #2125 "drop outside radius". `fogActive`
-    // gates the world GRID canvas + world-placed re-voxelize detached canvas (#2127)
-    // and short-circuits every other route, keeping non-fog scenes byte-identical.
-    if (fogActive && fogColumnReveal(worldColumn) <= 0.0) {
+    // Per-voxel analytic fog clip (#2102 + #2126 P2 + #2127; per-axis split #2128).
+    // On the single-canvas world fog route (perAxisRoute==0), drop a voxel whose OWN
+    // world column is FULLY hidden (reveal <= 0, past the disc's outer soft edge) so
+    // FOG_TO_TRIXEL can't hard-black its faces (the revealed floor / background behind
+    // shows through instead); the cut faces above cap the revealed half. A PARTIALLY
+    // revealed boundary column (0 < reveal < 1) is KEPT so it rasterizes and
+    // FOG_TO_TRIXEL fades the object's silhouette on the same smooth curve as the
+    // floor (Mode B). At edgeSoftness 0 (Mode A / default) reveal is binary, so this
+    // is exactly the #2125 "drop outside radius". The per-axis rotation routes run the
+    // SAME reveal<=0 clip inside the per-axis branch below (#2128) rather than here,
+    // so the shared pre-split code stays byte-identical to the pre-#2128 per-axis
+    // store (a perAxisRoute!=0 early-return here reshuffles the compiler's per-axis
+    // tie-winner resolution); the explicit perAxisRoute==0 term keeps this an
+    // unconditional no-op on routes 1/2/3. `fogActive` gates the world GRID canvas +
+    // world-placed re-voxelize detached canvas (#2127) and short-circuits every other
+    // route, keeping non-fog scenes byte-identical.
+    if (fogActive && perAxisRoute == 0 && fogColumnReveal(worldColumn) <= 0.0) {
         return;
     }
 
@@ -368,6 +383,18 @@ void main() {
     // SHAPE is reconstructed at scatter time, so the per-slot deform D is no
     // longer applied here.
     if (perAxisRoute != 0) {
+        // Per-axis own-column fog clip (#2128): the same #2102 + #2126 P2 drop as
+        // the single-canvas route above (reveal <= 0 — FULLY hidden), applied on
+        // EVERY axis route (1/2/3) so a rotating boundary object clips its hidden
+        // half identically (a hidden column's Z face would otherwise float on route
+        // 3). Lives inside the per-axis branch so the shared pre-split code is
+        // byte-identical to the pre-#2128 per-axis store; visionCircleCount==0 /
+        // the 1×1 placeholder short-circuit, so non-fog rotating scenes stay
+        // byte-identical.
+        if (visionCircleCount > 0 &&
+            fogColumnReveal(ivec3(round(voxelPosition.xyz)).xy) <= 0.0) {
+            return;
+        }
         const int axis = perAxisRoute - 1;
         if ((faceId >> 1) != axis) return;
         // Un-yawed (cardinal) iso store: key each face by its cardinal iso pixel

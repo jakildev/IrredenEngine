@@ -95,7 +95,10 @@
 #include <irreden/voxel/systems/system_rebuild_grid_voxels.hpp>
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
 
+#include <array>
+#include <cstdio>
 #include <list>
+#include <vector>
 
 using namespace IRComponents;
 using IRMath::Color;
@@ -274,6 +277,21 @@ constexpr IRVideo::AutoScreenshotShot kEdgeSmoothShots[] = {
     {14.0f, vec2(0, 0), 0.0f, "fog_edge_smooth14"},
 };
 
+// --edge-yaw-sweep (#2128 P4): the edge-zoom cross-section under CONTINUOUS
+// camera yaw. Reuses the static --edge-zoom scene (same boundary voxel objects +
+// origin vision circle) but steps the camera Z-yaw in fine increments inside one
+// cardinal quadrant (residual yaw 0.05..0.70 rad < π/4, constant visible-face
+// triplet) so the per-axis rotation route (perAxisRoute 1/2/3) drives the raster.
+// The headline P4 check: a boundary-cut object must keep its FILLED interior
+// cross-section through the whole sweep — no holes opening/closing, no flicker —
+// the same wall the cardinal --edge-zoom shots show at yaw 0. Built dynamically
+// (one shot per step) because the auto-screenshot harness applies shot.yawRadians_
+// via Camera::setYaw per shot. jitter_probe the sequence to score temporal
+// stability. Implies --edge-zoom (it owns the scene).
+bool g_edgeYawSweep = false; // --edge-yaw-sweep
+std::vector<IRVideo::AutoScreenshotShot> g_edgeYawSweepShots;
+std::vector<std::array<char, 40>> g_edgeYawSweepShotLabels;
+
 } // namespace
 
 void initSystems();
@@ -312,6 +330,11 @@ int main(int argc, char **argv) {
         "Like --edge-zoom but with a wide soft vision-circle band (#2126 Mode B "
         "smooth cross-section) so the cut wall follows the analytic disc edge"
     );
+    IREngine::args().flag(
+        "--edge-yaw-sweep",
+        "The --edge-zoom cross-section under a continuous camera-yaw sweep "
+        "(per-axis rotation route, #2128 P4); implies --edge-zoom"
+    );
     IREngine::init(argc, argv);
     g_autoWarmupFrames = IREngine::args().autoScreenshotWarmupFrames();
     g_movingObserver = IREngine::args().getFlag("--moving-observer");
@@ -319,16 +342,24 @@ int main(int argc, char **argv) {
     g_edgeZoom = IREngine::args().getFlag("--edge-zoom");
     g_detachedEdge = IREngine::args().getFlag("--detached-edge");
     g_edgeSmooth = IREngine::args().getFlag("--edge-smooth");
+    g_edgeYawSweep = IREngine::args().getFlag("--edge-yaw-sweep");
+    // --edge-yaw-sweep owns the same scene as --edge-zoom (boundary objects +
+    // origin vision circle); it only swaps the static climbing-zoom shots for a
+    // yaw sweep, so turn the edge scene on.
+    if (g_edgeYawSweep) {
+        g_edgeZoom = true;
+    }
     // The reveal modes are mutually exclusive; precedence: --detached-edge, then
-    // --edge-zoom, then --edge-smooth, then --player-walk, then --moving-observer
-    // (each owns its own scene + shots).
+    // --edge-zoom / --edge-yaw-sweep, then --edge-smooth, then --player-walk, then
+    // --moving-observer (each owns its own scene + shots).
     if (g_detachedEdge) {
-        if (g_edgeZoom || g_edgeSmooth || g_playerWalk || g_movingObserver) {
+        if (g_edgeZoom || g_edgeYawSweep || g_edgeSmooth || g_playerWalk || g_movingObserver) {
             IR_LOG_INFO(
-                "--detached-edge overrides --edge-zoom / --edge-smooth / --player-walk / --moving-observer"
+                "--detached-edge overrides --edge-zoom / --edge-yaw-sweep / --edge-smooth / --player-walk / --moving-observer"
             );
         }
         g_edgeZoom = false;
+        g_edgeYawSweep = false;
         g_edgeSmooth = false;
         g_playerWalk = false;
         g_movingObserver = false;
@@ -448,13 +479,51 @@ void initSystems() {
         IRVideo::AutoScreenshotConfig cfg{};
         cfg.warmupFrames_ = g_autoWarmupFrames;
         cfg.settleFrames_ = 3;
-        // --detached-edge zooms on a detached-canvas cross-section; --edge-zoom /
-        // --edge-smooth on the GRID cross-section clip edge (hard vs smooth disc);
-        // --player-walk captures the walking reveal sequence; the default captures
-        // the three static fog-boundary shots.
+        // --detached-edge zooms on a detached-canvas cross-section; --edge-yaw-sweep
+        // sweeps the GRID cross-section through the per-axis rotation route;
+        // --edge-zoom / --edge-smooth zoom on the GRID cross-section clip edge (hard
+        // vs smooth disc); --player-walk captures the walking reveal sequence; the
+        // default captures the three static fog-boundary shots.
         if (g_detachedEdge) {
             cfg.shots_ = kDetachedEdgeShots;
             cfg.numShots_ = sizeof(kDetachedEdgeShots) / sizeof(kDetachedEdgeShots[0]);
+        } else if (g_edgeYawSweep) {
+            // Fixed zoom + origin, step yaw across [0.05, 0.70] rad — one cardinal
+            // quadrant (< π/4), constant visible-face triplet — so the cut-face
+            // cross-section is exercised purely through the per-axis rotation route
+            // (#2128). Mirror of shape_debug's --yaw-sweep shot construction.
+            constexpr float kEdgeSweepZoom = 9.0f;
+            constexpr int kEdgeSweepShots = 24;
+            constexpr float kYawLo = 0.05f;
+            constexpr float kYawHi = 0.70f;
+            g_edgeYawSweepShotLabels.reserve(kEdgeSweepShots);
+            g_edgeYawSweepShots.reserve(kEdgeSweepShots);
+            for (int i = 0; i < kEdgeSweepShots; ++i) {
+                const float t = static_cast<float>(i) / static_cast<float>(kEdgeSweepShots - 1);
+                auto &label = g_edgeYawSweepShotLabels.emplace_back();
+                std::snprintf(
+                    label.data(),
+                    label.size(),
+                    "fog_edge_yaw_%03d_of_%03d",
+                    i,
+                    kEdgeSweepShots
+                );
+                IRVideo::AutoScreenshotShot shot{};
+                shot.zoom_ = kEdgeSweepZoom;
+                shot.cameraIso_ = vec2(0.0f, 0.0f);
+                shot.yawRadians_ = kYawLo + (kYawHi - kYawLo) * t;
+                shot.label_ = label.data();
+                g_edgeYawSweepShots.push_back(shot);
+            }
+            cfg.shots_ = g_edgeYawSweepShots.data();
+            cfg.numShots_ = static_cast<int>(g_edgeYawSweepShots.size());
+            IR_LOG_INFO(
+                "Edge yaw-sweep: {} shots, yaw {}->{} rad at origin zoom={}",
+                cfg.numShots_,
+                kYawLo,
+                kYawHi,
+                kEdgeSweepZoom
+            );
         } else if (g_edgeZoom) {
             cfg.shots_ = kEdgeShots;
             cfg.numShots_ = sizeof(kEdgeShots) / sizeof(kEdgeShots[0]);

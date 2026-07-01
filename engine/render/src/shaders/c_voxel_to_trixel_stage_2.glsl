@@ -208,18 +208,22 @@ void main() {
     // the colour tap matches the distance tap.
     const uint flagsByte = (voxels[voxelIndex].materialFlagBone >> 8u) & 0xFFu;
 
-    // Exposed-face gate + fog CUT-FACE widening (#2125/#2127) — MUST mirror stage
-    // 1's predicate EXACTLY so the colour tap lands on the same face set stage 1
-    // wrote distances for. A cut face is non-exposed, so without this widening
-    // stage 2 would skip it and the cut wall would read as the cleared background
-    // colour (distance set by stage 1, colour unset). See
+    // Exposed-face gate + fog CUT-FACE widening (#2125/#2127; per-axis #2128) —
+    // MUST mirror stage 1's predicate EXACTLY so the colour tap lands on the same
+    // face set stage 1 wrote distances for, on the single-canvas (0) and X/Y
+    // per-axis routes (1/2) alike. A cut face is non-exposed, so without this
+    // widening stage 2 would skip it and the cut wall would read as the cleared
+    // background colour (distance set by stage 1, colour unset). See
     // c_voxel_to_trixel_stage_1.glsl for the rationale + the world-column recovery
-    // (a world-placed detached re-voxelize canvas rasters in the MODEL frame, so
-    // its world column is model + detachedWorldReceive.xy). The own-column drop
-    // (#2102/#2127) is NOT repeated here — stage 1 already dropped those voxels'
-    // distances, so the depth re-test in writeColorTap rejects their colour taps.
-    const bool fogActive = visionCircleCount > 0 && perAxisRoute == 0 &&
-        (isDetachedCanvas < 0.5 || detachedWorldReceive.w != 0.0);
+    // (a world-placed detached re-voxelize canvas rasters in the MODEL frame, so its
+    // world column is model + detachedWorldReceive.xy) and why a `perAxisRoute`
+    // comparison term is kept in `fogActive` for non-fog byte-identity. The
+    // own-column drop (#2102/#2127) is NOT repeated here — stage 1 already dropped
+    // those voxels' distances on every route, so the depth re-test in writeColorTap
+    // rejects their colour taps.
+    const bool fogActive = visionCircleCount > 0 && perAxisRoute <= 2 &&
+        (isDetachedCanvas < 0.5 ||
+         (perAxisRoute == 0 && detachedWorldReceive.w != 0.0));
     ivec2 worldColumn = ivec2(0);
     if (fogActive) {
         worldColumn = ivec3(round(voxelPosition.xyz)).xy +

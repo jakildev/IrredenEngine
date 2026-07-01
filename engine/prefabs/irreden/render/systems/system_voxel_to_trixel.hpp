@@ -453,8 +453,16 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // (#1310) composites these canvases. Restores the UBO to the main-canvas
     // frame data on exit so downstream stages (AO, lighting, fog) are
     // unaffected.
-    void dispatchPerAxisCanvases(C_PerAxisTrixelCanvases &axes) {
+    void dispatchPerAxisCanvases(C_PerAxisTrixelCanvases &axes, C_CanvasFogOfWar *fog) {
         IR_PROFILE_SCOPE("vs1_per_axis");
+        // Fog cut-face / own-column-clip input for the per-axis rotation route
+        // (#2128): the real 256² fog grid on the main world canvas, else the 1×1
+        // all-visible placeholder so a rotating non-fog scene short-circuits the
+        // shader test and stays byte-identical. The live vision circles were
+        // uploaded into fogObserverBuf_ by the compact pass earlier in this same
+        // per-canvas tick (the per-axis canvas is always the main canvas), so we
+        // only bind it here — mirror of the single-canvas STAGE_1/2 binds.
+        Texture2D *fogTex = (fog != nullptr) ? fog->getTexture() : fogCullPlaceholder_;
         // Per-axis canvas uses the fractional-offset encoding (#1458); valid
         // values exceed kTrixelDistanceMaxDistance, so INT_MAX is the sentinel.
         static constexpr std::int32_t kDistanceClear =
@@ -543,12 +551,14 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             );
 
             stage1Program_->use();
-            // STAGE_1 declares the fog grid (slot 0) + observer (binding 27)
-            // inputs for its per-voxel fog clip (#2102). The per-axis route never
-            // clips (perAxisRoute != 0 short-circuits it), but the Metal kernel
-            // still declares those args, so bind the 1×1 all-visible placeholder
-            // + the observer buffer to satisfy the per-encoder argument table.
-            fogCullPlaceholder_->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+            // STAGE_1 reads the fog grid (slot 0) + observers (binding 27) for its
+            // per-voxel fog clip (#2102) + cut-face test (#2125). The per-axis
+            // rotation route now runs that clip/cut too (#2128), so bind the REAL
+            // fog grid (or the placeholder on a non-fog canvas — short-circuits,
+            // byte-identical) + the live observer buffer here, not a no-op
+            // placeholder. Without the live grid a rotating boundary object would
+            // render its hidden half as black hard-fog instead of clipping + cut.
+            fogTex->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
             fogObserverBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FogObservers);
             distances->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
             IRRender::device()->dispatchComputeIndirect(perAxisIndirectBuf_, indirectOffsetBytes);
@@ -558,12 +568,11 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             colors->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
             distances->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::R32I);
             entityIds->bindAsImage(2, TextureAccess::WRITE_ONLY, TextureFormat::RG32UI);
-            // STAGE_2 now declares the fog cut-face inputs (#2125) too. The per-axis
-            // route never cuts (perAxisRoute != 0 short-circuits cutFaceActive), but
-            // the Metal kernel still declares the args, so bind the 1×1 all-visible
-            // placeholder (slot 3) + observer buffer to satisfy the per-encoder
-            // argument table — mirror of the STAGE_1 per-axis bind above.
-            fogCullPlaceholder_->bindAsImage(3, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+            // STAGE_2 re-evaluates STAGE_1's cut-face predicate (#2125/#2128) so its
+            // colour tap lands on the same faces. Slot 0 is the colour output here,
+            // so the fog grid binds on slot 3 (slots 1/2 = distance + entity-id).
+            // Same real-grid-or-placeholder choice as STAGE_1 above.
+            fogTex->bindAsImage(3, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
             fogObserverBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FogObservers);
             IRRender::device()->dispatchComputeIndirect(perAxisIndirectBuf_, indirectOffsetBytes);
             IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
@@ -1157,7 +1166,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // stays byte-identical to master.
         if (entity == perAxisCanvasEntity_ && perAxisCanvases_ != nullptr &&
             perAxisCanvases_->isAllocated()) {
-            dispatchPerAxisCanvases(*perAxisCanvases_);
+            dispatchPerAxisCanvases(*perAxisCanvases_, fog);
         }
     }
 

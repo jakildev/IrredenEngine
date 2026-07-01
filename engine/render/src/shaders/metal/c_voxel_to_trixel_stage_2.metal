@@ -214,17 +214,20 @@ kernel void c_voxel_to_trixel_stage_2(
     // winner among the emitted faces.
     const uint flagsByte = (voxels[voxelIndex].materialFlagBone >> 8u) & 0xFFu;
 
-    // Exposed-face gate + fog CUT-FACE widening (#2125/#2127) — MUST mirror stage
-    // 1's predicate EXACTLY so the colour tap lands on the same face set stage 1
-    // wrote distances for (a cut face is non-exposed; without this it'd read as
-    // cleared background). The world-column recovery handles a world-placed
+    // Exposed-face gate + fog CUT-FACE widening (#2125/#2127; per-axis #2128) —
+    // MUST mirror stage 1's predicate EXACTLY so the colour tap lands on the same
+    // face set stage 1 wrote distances for, on the single-canvas (0) and X/Y
+    // per-axis routes (1/2) alike (a cut face is non-exposed; without this it'd read
+    // as cleared background). The world-column recovery handles a world-placed
     // detached re-voxelize canvas (model + detachedWorldReceive.xy); see the GLSL
-    // twin. The own-column drop (#2102/#2127) is NOT repeated here — stage 1 already
-    // dropped those voxels' distances, so writeColorTap's depth re-test rejects
-    // their colour taps. See c_voxel_to_trixel_stage_1.glsl.
+    // twin (incl. why a `perAxisRoute` comparison term is kept in `fogActive` for
+    // non-fog byte-identity). The own-column drop (#2102/#2127) is NOT repeated here
+    // — stage 1 already dropped those voxels' distances on every route, so
+    // writeColorTap's depth re-test rejects their colour taps.
     const bool fogActive = fogObservers.visionCircleCount > 0 &&
-        frameData.perAxisRoute == 0 &&
-        (frameData.isDetachedCanvas < 0.5f || frameData.detachedWorldReceive.w != 0.0f);
+        frameData.perAxisRoute <= 2 &&
+        (frameData.isDetachedCanvas < 0.5f ||
+         (frameData.perAxisRoute == 0 && frameData.detachedWorldReceive.w != 0.0f));
     int2 worldColumn = int2(0);
     if (fogActive) {
         worldColumn = int3(round(voxelPosition.xyz)).xy +
