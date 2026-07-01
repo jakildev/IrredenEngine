@@ -32,24 +32,26 @@ for single voxels and particles.
   `activateAll()`, `changeVoxelColor(ivec3, Color)`, `changeVoxelColorAll(Color)`,
   `fillPlane(int axis, int planeIndex, Color)` (activates a single face slice),
   `reshape(Shape3D)` (box or sphere fill). All of these keep the pool's
-  active-mask in sync. **Custom carves/edits that these bulk mutators don't
+  active-mask in sync. Custom carves/edits that these bulk mutators don't
   cover go through the encapsulated raw-edit API (#2165), never a hand-rolled
-  `voxels_[i]` loop:** `editVoxels(fn)` applies `fn(index, voxel, localPos)`
+  `voxels_[i]` loop. `editVoxels(fn)` applies `fn(index, voxel, localPos)`
   to every voxel then resyncs once; `carve(shouldDeactivate)` is sugar over
   `editVoxels` for the common "deactivate voxels failing a predicate" case;
   `resyncAfterRawEdits()` is the escape hatch for a multi-pass edit that must
   still write the raw `voxels_` span directly across several loops — do all
   the writes, then call it once. Each entry point resyncs every derived
   invariant this set maintains (rotation-source mirror → pool active-mask →
-  face occupancy) internally, so callers must **not** hand-roll
-  `syncActiveMask()` + `IRPrefab::Voxel::recomputeFaceOccupancy(...)`
-  themselves — dropping that pairing renders the carved set black under the
-  lit/rotated path while the active-mask half looks done (the #2018/#2117/
-  #2146 footgun the API exists to close). `syncActiveMask()` stays public as
-  the low-level pool primitive for pre-existing raw-loop sites; prefer
-  `editVoxels`/`carve` for new code. `simplify-check-ecs` flags a hand-rolled
-  `voxels_[i].activate()/.deactivate()` carve loop followed by
-  `syncActiveMask()`/`recomputeFaceOccupancy()` and steers toward the API.
+  face occupancy) internally.
+
+  Callers must **not** hand-roll `syncActiveMask()` +
+  `IRPrefab::Voxel::recomputeFaceOccupancy(...)` themselves — dropping that
+  pairing renders the carved set black under the lit/rotated path while the
+  active-mask half looks done (the #2018/#2117/#2146 footgun the API exists
+  to close). `syncActiveMask()` stays public as the low-level pool primitive
+  for pre-existing raw-loop sites; prefer `editVoxels`/`carve` for new code.
+  `simplify-check-ecs` flags a hand-rolled `voxels_[i].activate()/.deactivate()`
+  carve loop followed by `syncActiveMask()`/`recomputeFaceOccupancy()` and
+  steers toward the API.
 - `C_ShapeDescriptor` — SDF shape type + params + color + flags (visible,
   hollow, mirror). Rendered directly by the GPU; **does not allocate voxels**.
 - `C_Skeleton` — rig-root component holding an ordered vector of joint
