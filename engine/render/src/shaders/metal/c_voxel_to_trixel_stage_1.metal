@@ -141,6 +141,45 @@ static float fogColumnReveal(
     return reveal;
 }
 
+// Own-column DROP reveal, evaluated at the cell point NEAREST each vision-circle
+// center rather than the cell center (#2124 screen-space cross-section). The drop
+// keeps a column iff this is > 0, so a column the disc merely CLIPS (center
+// outside R, but the unit cell still overlaps the reveal region) is KEPT and
+// rasters its full footprint — FOG_TO_TRIXEL then trims it per pixel at the exact
+// analytic edge (a game-resolution silhouette) instead of the geometry ending on
+// the voxel lattice (the #2102 voxel-jagged edge). Evaluating at the nearest cell
+// point keeps ONLY the one-cell ring the disc crosses (tight, not a blanket
+// margin); kFogColumnKeepAa is a small rim so the hard-disc smoothstep is
+// non-degenerate and the AA rim / reconstruction skew never notches the edge.
+// Grid-memory / OOB / placeholder short-circuits match fogColumnReveal.
+constant float kFogColumnCellHalf = 0.5f;
+constant float kFogColumnKeepAa = 0.5f;
+static float fogColumnRevealNearest(
+    texture2d<float, access::read> fog, constant FogObserverData& obs, int2 col
+) {
+    const int2 fogSize = int2(int(fog.get_width()), int(fog.get_height()));
+    if (fogSize.x <= 1) {
+        return 1.0f;
+    }
+    const int2 cell = col + int2(kFogOfWarHalfExtent);
+    if (cell.x < 0 || cell.x >= fogSize.x || cell.y < 0 || cell.y >= fogSize.y) {
+        return 1.0f;
+    }
+    if (fog.read(uint2(cell)).r >= kFogExploredThreshold) {
+        return 1.0f;
+    }
+    float reveal = 0.0f;
+    for (int i = 0; i < obs.visionCircleCount; ++i) {
+        const float2 nearest = clamp(
+            obs.visionCircles[i].xy,
+            float2(col) - kFogColumnCellHalf,
+            float2(col) + kFogColumnCellHalf
+        );
+        reveal = max(reveal, fogVisionCircleReveal(nearest, obs.visionCircles[i], kFogColumnKeepAa));
+    }
+    return reveal;
+}
+
 kernel void c_voxel_to_trixel_stage_1(
     constant FrameDataVoxelToTrixel& frameData [[buffer(7)]],
     device const float4* positions [[buffer(5)]],
@@ -246,7 +285,7 @@ kernel void c_voxel_to_trixel_stage_1(
     // re-voxelize detached canvas and short-circuits every other route, keeping
     // non-fog scenes byte-identical.
     if (fogActive && frameData.perAxisRoute == 0 &&
-        fogColumnReveal(canvasFogOfWar, fogObservers, worldColumn) <= 0.0f) {
+        fogColumnRevealNearest(canvasFogOfWar, fogObservers, worldColumn) <= 0.0f) {
         return;
     }
 

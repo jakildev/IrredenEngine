@@ -722,6 +722,18 @@ void initEntities() {
         const float edge = g_edgeSmooth ? kEdgeSmoothEdge : kFogVisionEdgeDefault;
         IRPrefab::Fog::setVisionCircle(0.0f, 0.0f, kEdgeVisionRadius, edge);
 
+        // A thick voxel ground slab spanning the whole disc (#2124 screen-space
+        // cross-section): its cut EDGE — the vertical rim where the disc crosses it,
+        // camera-visible all around the near side — is the headline test for the
+        // per-pixel silhouette. Before the nearest-cell keep, the own-column drop
+        // ended this rim on the voxel lattice (a stair-stepped ring); now the
+        // boundary cells are kept and FOG_TO_TRIXEL trims the rim to the smooth
+        // analytic disc, matching the slab's top face at game resolution.
+        IREntity::createEntity(
+            C_LocalTransform{vec3(-30.0f, -30.0f, 5.0f)},
+            C_VoxelSetNew{IRMath::ivec3{60, 60, 3}, Color{90, 100, 120, 255}, true}
+        );
+
         // Tall voxel pillar straddling the +X boundary: columns x∈[7,11] cross
         // the radius-9 disc, so its near half renders and its far half is dropped.
         // The cut is on the +X face (toward the hidden far columns), which is a

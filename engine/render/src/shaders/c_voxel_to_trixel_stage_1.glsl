@@ -228,6 +228,40 @@ float fogColumnReveal(ivec2 col) {
     return reveal;
 }
 
+// Own-column DROP reveal, evaluated at the cell point NEAREST each vision-circle
+// center rather than the cell center (#2124 screen-space cross-section) — see the
+// Metal twin. The drop keeps a column iff this is > 0, so a column the disc merely
+// CLIPS (center outside R, unit cell still overlaps the reveal region) is KEPT and
+// rasters its full footprint; FOG_TO_TRIXEL then trims it per pixel at the exact
+// analytic edge (a game-resolution silhouette) instead of the geometry ending on
+// the voxel lattice (the #2102 voxel-jagged edge). Evaluating at the nearest cell
+// point keeps ONLY the one-cell ring the disc crosses (tight, not a blanket
+// margin); kFogColumnKeepAa is a small rim so the hard-disc smoothstep is
+// non-degenerate and the AA rim / reconstruction skew never notches the edge.
+const float kFogColumnCellHalf = 0.5;
+const float kFogColumnKeepAa = 0.5;
+float fogColumnRevealNearest(ivec2 col) {
+    const ivec2 fogSize = imageSize(canvasFogOfWar);
+    if (fogSize.x <= 1) {
+        return 1.0;
+    }
+    const ivec2 cell = col + ivec2(kFogOfWarHalfExtent);
+    if (cell.x < 0 || cell.x >= fogSize.x || cell.y < 0 || cell.y >= fogSize.y) {
+        return 1.0;
+    }
+    if (imageLoad(canvasFogOfWar, cell).r >= kFogExploredThreshold) {
+        return 1.0;
+    }
+    float reveal = 0.0;
+    for (int i = 0; i < visionCircleCount; ++i) {
+        const vec2 nearest = clamp(
+            visionCircles[i].xy, vec2(col) - kFogColumnCellHalf, vec2(col) + kFogColumnCellHalf
+        );
+        reveal = max(reveal, fogVisionCircleReveal(nearest, visionCircles[i], kFogColumnKeepAa));
+    }
+    return reveal;
+}
+
 void main() {
     uint compactedIdx = gl_WorkGroupID.x + gl_WorkGroupID.y * numGroupsX;
     if (compactedIdx >= visibleCount) return;
@@ -344,7 +378,7 @@ void main() {
     // unconditional no-op on routes 1/2/3. `fogActive` gates the world GRID canvas +
     // world-placed re-voxelize detached canvas (#2127) and short-circuits every other
     // route, keeping non-fog scenes byte-identical.
-    if (fogActive && perAxisRoute == 0 && fogColumnReveal(worldColumn) <= 0.0) {
+    if (fogActive && perAxisRoute == 0 && fogColumnRevealNearest(worldColumn) <= 0.0) {
         return;
     }
 
