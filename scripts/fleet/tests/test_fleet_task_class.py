@@ -181,33 +181,48 @@ class TaskResolution(unittest.TestCase):
                       "opus", fable_blocked=False)
         self.assertEqual(out, "sonnet high 1 1")
 
-    def test_needs_plan_runs_opus(self):
+    def test_needs_plan_prefers_fable(self):
+        # Planning is architect-tier design work: it elects fable while the
+        # fable cap has headroom (the same reasoning that puts the architect
+        # panes on the fable class).
         out = resolve({"needs_plan": [{"number": 99}]},
                       "opus", fable_blocked=False)
+        self.assertEqual(out, "fable xhigh 0 1")
+
+    def test_needs_plan_falls_back_to_opus_when_fable_capped(self):
+        # A saturated fable cap must DOWNGRADE planning to opus, not defer it —
+        # the downgrade happens at election time so planning never stalls
+        # behind a long fable implementation iteration.
+        out = resolve({"needs_plan": [{"number": 99}]},
+                      "opus", fable_blocked=True)
         self.assertEqual(out, "opus xhigh 0 1")
 
     def test_needs_plan_counts_once_regardless_of_backlog(self):
-        # Planning has no claim lock, so the lane plans one issue at a time:
-        # multiple needs_plan issues still yield a single opus candidate ->
+        # The lane plans one issue at a time (planning-claim lock + the
+        # comment-presence early-out make same-tick siblings a no-op):
+        # multiple needs_plan issues still yield a single candidate ->
         # count=1 (no fan-out of colliding planners).
         out = resolve({"needs_plan": [{"number": 99}, {"number": 100},
                                       {"number": 101}]},
                       "opus", fable_blocked=False)
-        self.assertEqual(out, "opus xhigh 0 1")
+        self.assertEqual(out, "fable xhigh 0 1")
 
     def test_design_unblocked_feedback_resolves_opus(self):
         # The engine #1885 shape: a design-unblocked PR is the top feedback
         # item, every open task is parked/blocked, and opus needs_plan sits
         # behind it. The lane must dispatch opus (and clear it for tier 4),
         # not sonnet — pre-fix this resolved "sonnet ... 1" and starved both.
-        # count=2: the feedback fix plus the plannable issue are both opus work.
+        # count=1: the feedback fix is the only opus item; the plannable
+        # issue now elects fable (planning prefers fable), so it rides the
+        # `more` flag — the kept trigger serves the planning dispatch on a
+        # following tick.
         out = resolve({
             "feedback_prs": [{"labels": ["fleet:design-unblocked", "fleet:wip"]}],
             "tasks_open": [_task("#1882", "opus",
                                  inflight_pr={"number": 1885, "parked": True})],
             "needs_plan": [{"number": 1887}],
         }, "opus", fable_blocked=False)
-        self.assertEqual(out, "opus xhigh 0 2")
+        self.assertEqual(out, "opus xhigh 1 1")
 
 
 class FableCap(unittest.TestCase):

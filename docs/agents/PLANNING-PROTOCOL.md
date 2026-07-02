@@ -85,7 +85,9 @@ For each `fleet:needs-plan` issue:
      recorded conclusion (e.g. #1440 prescribed the approach #1420 had
      already proved wrong) wastes a full worker round.
    - Whether it should be **one task or broken into subtasks**
-   - Suggested model tag (`[opus]` or `[sonnet]`) for each piece
+   - Suggested model tag (`[fable]`, `[opus]`, or `[sonnet]`) for each
+     piece — same criteria as the plan's `**Model:**` line (FLEET.md
+     §"Model split")
    - Acceptance criteria
    - Known gotchas or pitfalls
    - **Cross-system audit (when planning a deletion or migration of a
@@ -103,7 +105,10 @@ For each `fleet:needs-plan` issue:
    ## Plan: <issue title>
 
    - **Issue:** #N
-   - **Model:** opus | sonnet
+   - **Model:** fable | opus | sonnet — pick deliberately per
+     FLEET.md §"Model split": fable for novel algorithm/stage design
+     (especially render-pipeline), sonnet when the plan above is concrete
+     enough that implementation is bounded, opus for the middle
    - **Date:** YYYY-MM-DD
 
    ### Scope

@@ -20,7 +20,11 @@ Resolution order mirrors the worker role docs' pickup priority:
   2. open tasks     — the oldest claimable task's class (slices are sorted
                       by issue number; ``model`` comes from the
                       fleet:fable/opus/sonnet labels via the scout).
-  3. needs_plan     — planning runs the opus class.
+  3. needs_plan     — planning prefers the fable class (planning IS the
+                      architect-tier design work — the same reason the
+                      architect panes run fable), falling back to opus when
+                      the fable cap is saturated so planning never stalls
+                      behind a long fable implementation iteration.
 
 Effort: the task's ``**Effort:**`` field when present (scout validates it),
 else the class default below.
@@ -188,7 +192,7 @@ def feedback_pr_class(labels):
     return "sonnet"
 
 
-def _candidates(slice_data, lane_default, host):
+def _candidates(slice_data, lane_default, host, fable_blocked=False):
     """Yield (class, effort) for each actionable item, pickup-priority order.
 
     Feedback PRs come first (the worker fixes review feedback before new work),
@@ -198,10 +202,14 @@ def _candidates(slice_data, lane_default, host):
     actually picks up, and one yield per item lets the caller count claimable
     work per class for the dispatcher's fan-out cap.
 
-    needs_plan yields once regardless of how many issues await planning:
-    planning has no claim lock (sibling panes would re-plan the same issue), so
-    the lane plans one at a time — the next planner fires after the first opens
-    its plan-doc PR.
+    needs_plan yields once regardless of how many issues await planning: the
+    lane plans one at a time — the next planner fires after the first posts its
+    `## Plan` comment (the planning-claim label lock plus the comment-presence
+    early-out make a same-tick sibling a cheap no-op, not a duplicate plan).
+    Planning is architect-tier design work, so it prefers fable and degrades
+    to opus when the fable cap is already saturated (`fable_blocked`) — the
+    downgrade is resolved here, at election time, so a capped fable never
+    leaves planning stuck behind the `skipped_fable` defer path.
     """
     def _class_effort(task):
         cls = (task.get("model") or lane_default).lower()
@@ -220,7 +228,8 @@ def _candidates(slice_data, lane_default, host):
         if _task_claimable(task, host) and task.get("blocked"):
             yield _class_effort(task)
     if slice_data.get("needs_plan"):
-        yield "opus", CLASS_DEFAULT_EFFORT["opus"]
+        cls = "opus" if fable_blocked else "fable"
+        yield cls, CLASS_DEFAULT_EFFORT[cls]
 
 
 def resolve(slice_data, lane_default, fable_blocked, exclude=()):
@@ -245,7 +254,7 @@ def resolve(slice_data, lane_default, fable_blocked, exclude=()):
     excluded_any = False
     servable_classes = set()
     class_counts = {}
-    for cls, effort in _candidates(slice_data, lane_default, host):
+    for cls, effort in _candidates(slice_data, lane_default, host, fable_blocked):
         if cls in exclude:
             excluded_any = True
             continue

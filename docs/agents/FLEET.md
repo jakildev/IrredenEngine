@@ -379,20 +379,33 @@ bare alias can't silently upgrade it, while the sonnet class is the bare
 Sonnet 5) without a per-release edit. Pin classes with `FLEET_MODEL_FABLE`
 / `FLEET_MODEL_OPUS` / `FLEET_MODEL_SONNET` in `~/.fleet/fleet-up.conf`.
 
-**fable — opt-in, for the genuinely hard work.** Budget is the scarce
-resource; `FLEET_CONCURRENCY_MODEL_FABLE` (default 1) caps concurrent
-fable iterations fleet-wide. Tag `Model: fable` only for:
+**fable — design-tier work.** Budget is the scarce resource;
+`FLEET_CONCURRENCY_MODEL_FABLE` (default 1) caps concurrent fable
+iterations fleet-wide. Fable is the *default* for the fleet's design
+surfaces — the architect panes launch on it, and `fleet:needs-plan`
+planning elects it (falling back to opus while the cap is saturated) —
+and *opt-in* per task via `Model: fable` for:
 
-- Hard rendering/algorithmic problems — the kind that have burned
-  multiple opus/sonnet attempts or need novel algorithm design.
-- Epic decomposition and design-blocked resolutions (architect panes run
-  fable for the same reason).
+- Novel render-pipeline algorithm/stage design — a new compositing or
+  lighting stage, a coordinate-space change, cross-backend (GL↔Metal)
+  algorithm work. Tag these fable **at planning time**, not only after
+  they've burned multiple opus/sonnet attempts; render-algorithm rework
+  is the historically highest-re-attempt category in this repo.
+- Hard algorithmic problems elsewhere with the same shape — multiple
+  failed attempts, or the solution space is genuinely open.
+- Epic decomposition and design-blocked resolutions.
 - Gnarly cross-cutting refactors where long-range invariant reasoning is
   the whole job.
 - Feedback fixes where review found the *approach* wrong — the reviewer
   adds `fleet:fable` to the PR (or escalates `fleet:design-blocked`).
 
+Rendering is not automatically fable: implementing a render change
+against a vetted plan is opus (or sonnet when mechanical) — it's the
+*algorithm design* that goes fable.
+
 **opus — the default class.** Tasks with no `Model:` field land here.
+When planning a task, don't leave it here by omission — pick the class
+deliberately (the planner's `**Model:**` line is the routing signal).
 
 - Core engine implementation against an existing plan: ECS, ownership
   and lifetime rules, render pipeline work, `engine/render/`,
@@ -404,10 +417,22 @@ fable iterations fleet-wide. Tag `Model: fable` only for:
   the diff, so fable buys nothing there.
 - Blocking-feedback fixes (`fleet:needs-fix` / `human:needs-fix`).
 
-**sonnet — bounded work.**
+**sonnet — bounded work, and the default for well-planned
+implementation.** The bare `sonnet` alias tracks the latest Sonnet
+(currently Sonnet 5), which handles substantially more than the class
+did when these lists were first drawn — when a task has a vetted plan
+with concrete file-level steps and clear acceptance criteria, prefer
+`Model: sonnet` unless it touches the core-invariant surfaces in the
+opus list.
 
+- Implementation against a vetted `## Plan` whose steps are concrete
+  (files named, approach decided, acceptance runnable) and that stays
+  off core-invariant surfaces (ECS ownership/lifetime, GPU-buffer
+  lifetime, concurrency).
 - Unit tests against a clear spec, documentation passes, mechanical
   refactors (rename-across-codebase, extract-header, add-logging).
+- Backend parity ports with an existing recipe (the leading side landed
+  and the port is transliteration), render-verify reference refreshes.
 - **First-pass code review.** Style, obvious bugs, missing null checks.
 - Clearly-scoped queue tasks already thought through upstream.
 - Gameplay / creation-level work where mistakes are cheap to catch.

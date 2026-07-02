@@ -97,7 +97,17 @@ def extract_protocol_keys(protocol_path):
 
 
 def find_wrappers(repo_root, protocol_filename):
-    """Return .claude/commands/role-*.md files that reference protocol_filename."""
+    """Return .claude/commands/role-*.md files that WRAP protocol_filename.
+
+    A wrapper both references the protocol filename and carries a ``## Deltas``
+    section — the second condition is what separates a wrapper from a role doc
+    that merely *cites* the protocol in prose (e.g. role-opus-reviewer.md points
+    at architect-protocol.md §"plan reviewer"; validating it against the
+    architect's 10 delta keys produced 10 false errors). A citing-only file is
+    ignored here; a protocol with no true wrapper in the repo still surfaces via
+    the caller's no-wrapper WARN, which also covers the half-written-wrapper
+    case (referenced the protocol, never added its Deltas table).
+    """
     cmds_dir = Path(repo_root) / ".claude" / "commands"
     if not cmds_dir.is_dir():
         return []
@@ -105,10 +115,10 @@ def find_wrappers(repo_root, protocol_filename):
     results = []
     for f in sorted(cmds_dir.glob("role-*.md")):
         try:
-            text = f.read_text(encoding="utf-8", errors="replace")
+            text = _norm(f.read_text(encoding="utf-8", errors="replace"))
         except OSError:
             continue
-        if basename in text:
+        if basename in text and _WRAPPER_DELTAS_HDR_RE.search(text):
             results.append(f)
     return results
 

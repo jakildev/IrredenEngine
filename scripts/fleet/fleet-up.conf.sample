@@ -57,7 +57,10 @@
 # FLEET_MODEL_FABLE_FALLBACK="claude-opus-4-8[1m]"
 #
 # Fleet-wide cap on concurrent fable-class iterations (the budget
-# throttle; counted across all panes, 0 disables fable dispatch):
+# throttle; counted across all panes, 0 disables fable dispatch).
+# needs-plan planning elects fable while this cap has headroom and
+# degrades to opus once it's saturated, so a cap of 0 also routes all
+# planning to opus:
 # FLEET_CONCURRENCY_MODEL_FABLE=1
 #
 # FLEET_MODEL_PROBE=0 skips the availability probe (offline / tests);
