@@ -262,6 +262,82 @@ float fogColumnRevealNearest(ivec2 col) {
     return reveal;
 }
 
+// Neighbor-cell FULL-reveal test for the cut-face gate (#2124 analytic
+// cross-section band) — the farthest-corner dual of fogColumnRevealNearest.
+// Returns < 1.0 when ANY part of the cell at `col` pokes outside every vision
+// circle, so the caller emits a cut face on EVERY lattice plane the disc's
+// boundary band crosses — not just the plane whose neighbor CENTER is outside
+// (the pre-band gate). Those interior band walls are what a view ray lands on
+// after the per-micro clip below removes the outside-the-disc part of the
+// nearer wall: each wall is clipped at the analytic disc in ITS OWN plane, so
+// the composited silhouette is the disc's smooth screen silhouette and the
+// stepped-plane sawtooth (#2180's known residual) cannot form. Extra walls
+// between two fully-revealed-side cells are interior surfaces that lose the
+// depth contest to the nearer exposed face — invisible, cost-only. Explored
+// grid memory / OOB / the 1×1 placeholder read fully revealed (1.0), matching
+// the OOB-as-visible invariant, so grid-only and non-fog scenes are unchanged.
+float fogColumnRevealFarthest(ivec2 col) {
+    const ivec2 fogSize = imageSize(canvasFogOfWar);
+    if (fogSize.x <= 1) {
+        return 1.0;
+    }
+    const ivec2 cell = col + ivec2(kFogOfWarHalfExtent);
+    if (cell.x < 0 || cell.x >= fogSize.x || cell.y < 0 || cell.y >= fogSize.y) {
+        return 1.0;
+    }
+    if (imageLoad(canvasFogOfWar, cell).r >= kFogExploredThreshold) {
+        return 1.0;
+    }
+    float reveal = 0.0;
+    for (int i = 0; i < visionCircleCount; ++i) {
+        const vec2 delta = vec2(col) - visionCircles[i].xy;
+        const vec2 farthest = vec2(col) + vec2(
+            delta.x >= 0.0 ? kFogColumnCellHalf : -kFogColumnCellHalf,
+            delta.y >= 0.0 ? kFogColumnCellHalf : -kFogColumnCellHalf
+        );
+        reveal = max(reveal, fogVisionCircleReveal(farthest, visionCircles[i], 0.0));
+    }
+    return reveal;
+}
+
+// Minimum raster density for the analytic band projection: the band sits
+// 2 micros inside the disc (so lattice rounding of the projected tap can
+// never cross the mask's AA rim), which at coarse subdivisions becomes a
+// visible cell-scale retraction of the cut. Below this density the cut
+// keeps its #2180 lattice-wall behaviour (mask-trimmed) — the band engages
+// exactly when zoom (effective subdivisions) makes it visible.
+const int kFogBandMinSubdivisions = 4;
+
+// Continuous-point analytic fog reveal for the per-micro clip (#2124 analytic
+// cross-section band). Same guards as fogColumnReveal (placeholder / OOB /
+// explored grid memory at the OWNING column read fully revealed), but the
+// vision-circle curve is evaluated at the micro-face's CONTINUOUS world (x,y)
+// rather than a cell-quantized point — the raster-side twin of the recovery
+// FOG_TO_TRIXEL runs per pixel, so the geometry clip and the per-pixel mask
+// trace the SAME analytic curve. `aa` is a half-micro conservative rim: a
+// micro whose center is a hair outside but whose tile still touches the disc
+// stays rasterized, and the mask owns the final sub-pixel edge.
+// Duplicated byte-identically in c_voxel_to_trixel_stage_2.{glsl,metal} (fog
+// grid slot differs per stage — see fogColumnReveal above). Keep in sync.
+float fogPointReveal(vec2 worldXY, ivec2 col, float aa) {
+    const ivec2 fogSize = imageSize(canvasFogOfWar);
+    if (fogSize.x <= 1) {
+        return 1.0;
+    }
+    const ivec2 cell = col + ivec2(kFogOfWarHalfExtent);
+    if (cell.x < 0 || cell.x >= fogSize.x || cell.y < 0 || cell.y >= fogSize.y) {
+        return 1.0;
+    }
+    if (imageLoad(canvasFogOfWar, cell).r >= kFogExploredThreshold) {
+        return 1.0;
+    }
+    float reveal = 0.0;
+    for (int i = 0; i < visionCircleCount; ++i) {
+        reveal = max(reveal, fogVisionCircleReveal(worldXY, visionCircles[i], aa));
+    }
+    return reveal;
+}
+
 void main() {
     uint compactedIdx = gl_WorkGroupID.x + gl_WorkGroupID.y * numGroupsX;
     if (compactedIdx >= visibleCount) return;
@@ -357,8 +433,21 @@ void main() {
     // so < 1.0 collapses to the binary boundary — Mode A is byte-identical, so the
     // re-voxelize detached fog cut (#2127) keeps its merged behaviour at the default.
     bool keepFace = faceIsExposed(flagsByte, faceId);
+    bool isCutFace = false;
     if (!keepFace && faceId < kFaceZNeg && fogActive) {
-        keepFace = fogColumnReveal(worldColumn + faceOutwardNormal6I(faceId).xy) < 1.0;
+        // Analytic-band widening (#2124): on the single-canvas world route the
+        // neighbor test is the farthest-corner variant, so a cut face exists on
+        // EVERY lattice plane inside the disc's boundary band (the per-micro
+        // clip below trims each to the disc; a ray that enters the disc always
+        // lands on the next band wall — the smooth screen-silhouette contract
+        // in fogColumnRevealFarthest's comment). The per-axis rotation routes
+        // (#2128) keep the center-based gate — their store path has no
+        // per-micro clip, so wider emission would only add un-trimmed walls.
+        const ivec2 neighborColumn = worldColumn + faceOutwardNormal6I(faceId).xy;
+        keepFace = (perAxisRoute == 0 && isDetachedCanvas < 0.5
+                        ? fogColumnRevealFarthest(neighborColumn)
+                        : fogColumnReveal(neighborColumn)) < 1.0;
+        isCutFace = keepFace;
     }
     if (!keepFace) return;
 
@@ -515,6 +604,110 @@ void main() {
     // path bit-for-bit at cardinal 0).
     ivec3 microPositionFixed =
         faceMicroPositionFixed6(faceId, voxelPositionFixed, u, v, subdivisions);
+    // Per-micro analytic fog clip (#2124 analytic cross-section band; WORLD
+    // canvas only). Skip a face micro whose CONTINUOUS world column is past
+    // the disc's outer edge — evaluated at the micro-face center on the
+    // PRE-rotation fixed lattice (the raster geometry FOG_TO_TRIXEL's
+    // per-pixel recovery inverts). Clipping at raster (not the post-mask)
+    // lets the ray reveal the NEXT band wall behind (imageAtomicMin), so the
+    // cross-section composites the disc's smooth screen silhouette at micro
+    // (1/sub world) depth quantization instead of hard-blacking whole-face
+    // overhangs — the vertical dual of the top-face mask arc. Half-micro `aa`
+    // keeps boundary micros conservatively; the mask owns the final sub-pixel
+    // edge. The in-plane +0.5 recenters onto the micro-tile center per faceId
+    // axis (u/v span the two non-face axes — see faceMicroPositionFixed6).
+    // A world-placed detached re-voxelize canvas is EXCLUDED (its tight
+    // model-frame canvas clips displaced band taps at its bounds and its
+    // capped subdivision coarsens the micro test) — it keeps the merged
+    // #2127 keep-and-mask behaviour; extending the band there needs
+    // canvas-margin awareness (follow-up).
+    // MUST stay byte-identical to stage 2's twin block or the cut wall's
+    // depth and colour desync.
+    if (fogActive && isDetachedCanvas < 0.5) {
+        const int faceAxis = faceId >> 1;
+        vec2 microCenterFixed = vec2(microPositionFixed.xy);
+        if (faceAxis != 0) microCenterFixed.x += 0.5;
+        if (faceAxis != 1) microCenterFixed.y += 0.5;
+        const vec2 microWorldXY = microCenterFixed / float(subdivisions);
+        if (fogPointReveal(microWorldXY, worldColumn, 0.5 / float(subdivisions)) <= 0.0) {
+            return;
+        }
+        // Analytic band projection (#2124): slide a cut-face micro radially
+        // OUTWARD onto the disc surface (radius − two micros, so lattice
+        // rounding of the projected tap can never cross the per-pixel mask's
+        // AA rim and re-darken alternate taps). The lattice cut walls stand up
+        // to a cell behind the true cylindrical cut, so their bottoms/corners
+        // step at cell pitch; re-homing every band micro onto the disc collapses
+        // the steps into ONE smooth surface. Outward travel stays inside the
+        // solid fog-hidden neighbor the cut faces (≤ 1.5 cells, clamped) — a
+        // longer projection means this wall is not the boundary wall and keeps
+        // its lattice position, as do walls cut by explored-grid memory or a
+        // soft-edged disc (Mode B keeps its faded lattice cross-section).
+        if (isCutFace && subdivisions >= kFogBandMinSubdivisions) {
+            const float microHalf = 1.0 / float(subdivisions);
+            float bestMargin = 1e9;
+            int bestCircle = -1;
+            for (int i = 0; i < visionCircleCount; ++i) {
+                if (visionCircles[i].w != 0.0) continue; // hard discs only (Mode A)
+                const float margin =
+                    visionCircles[i].z - length(microWorldXY - visionCircles[i].xy);
+                if (margin > 0.0 && margin < bestMargin) {
+                    bestMargin = margin;
+                    bestCircle = i;
+                }
+            }
+            if (bestCircle >= 0 && bestMargin > 2.0 * microHalf &&
+                bestMargin <= 1.5 + 2.0 * microHalf) {
+                // Band shading slot: the band's true normal is the radial
+                // outward direction, so shade EVERY band pixel with the
+                // visible vertical face whose outward normal is nearest to it
+                // (per 45° sector). Without this, band pixels inherit the slot
+                // of whichever source wall (−X vs −Y family) won the pixel and
+                // the two Lambert families interleave as stripes.
+                const vec2 radial = microWorldXY - visionCircles[bestCircle].xy;
+                const int xSlot = (visibleFaceIds[0] >> 1) == 0
+                    ? 0 : (((visibleFaceIds[1] >> 1) == 0) ? 1 : 2);
+                const int ySlot = (visibleFaceIds[0] >> 1) == 1
+                    ? 0 : (((visibleFaceIds[1] >> 1) == 1) ? 1 : 2);
+                const int bandSlot = abs(radial.x) >= abs(radial.y) ? xSlot : ySlot;
+                // Coverage backstop: also emit the UN-projected lattice tap.
+                // The projected band is seen near edge-on at the silhouette
+                // wrap-around, where a forward map inevitably leaves pixel
+                // gaps (the scatter-dropout class); the lattice wall sits ≤ 1
+                // cell BEHIND the band with the same colour + band shading
+                // slot, so band gaps resolve to it invisibly.
+                ivec3 latticeTap = microPositionFixed;
+                if (cardinalIndex != 0) {
+                    latticeTap = rotateCardinalZ(latticeTap, cardinalIndex);
+                    latticeTap += cardinalLowerCornerShift(cardinalIndex) * subdivisions;
+                }
+                // World canvas only here (block gate), so depth is the plain
+                // (x+y+z) iso sum — no detached depth-axis branch.
+                const int latticeDepth = latticeTap.x + latticeTap.y + latticeTap.z;
+                emitDeformedFace(
+                    frameOffsetFixed + pos3DtoPos2DIso(latticeTap), D,
+                    encodeDepthWithFace(latticeDepth, bandSlot), faceId, reVoxelize
+                );
+                // The band tap itself, radially re-homed onto the disc.
+                const float target = visionCircles[bestCircle].z - 2.0 * microHalf;
+                const vec2 surfFixedXY =
+                    (visionCircles[bestCircle].xy +
+                     radial * (target / length(radial))) *
+                    float(subdivisions);
+                ivec3 bandTap = ivec3(roundHalfUp(surfFixedXY), microPositionFixed.z);
+                if (cardinalIndex != 0) {
+                    bandTap = rotateCardinalZ(bandTap, cardinalIndex);
+                    bandTap += cardinalLowerCornerShift(cardinalIndex) * subdivisions;
+                }
+                const int bandDepth = bandTap.x + bandTap.y + bandTap.z;
+                emitDeformedFace(
+                    frameOffsetFixed + pos3DtoPos2DIso(bandTap), D,
+                    encodeDepthWithFace(bandDepth, bandSlot), faceId, reVoxelize
+                );
+                return;
+            }
+        }
+    }
     if (cardinalIndex != 0) {
         microPositionFixed = rotateCardinalZ(microPositionFixed, cardinalIndex);
         // Shift is per-world-unit; scale to subdivision units to match

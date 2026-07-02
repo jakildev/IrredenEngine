@@ -126,6 +126,70 @@ float fogColumnReveal(ivec2 col) {
     return reveal;
 }
 
+// Neighbor-cell FULL-reveal test for the cut-face gate (#2124 analytic
+// cross-section band) — MUST stay byte-identical to
+// c_voxel_to_trixel_stage_1.glsl::fogColumnRevealFarthest (see there for the
+// band-wall rationale): stage 1 emits a cut face's distance wherever ANY part
+// of the facing neighbor cell pokes outside every vision circle, and this
+// stage must paint colour on the same face set or the band wall reads as
+// cleared background.
+const float kFogColumnCellHalf = 0.5;
+float fogColumnRevealFarthest(ivec2 col) {
+    const ivec2 fogSize = imageSize(canvasFogOfWar);
+    if (fogSize.x <= 1) {
+        return 1.0;
+    }
+    const ivec2 cell = col + ivec2(kFogOfWarHalfExtent);
+    if (cell.x < 0 || cell.x >= fogSize.x || cell.y < 0 || cell.y >= fogSize.y) {
+        return 1.0;
+    }
+    if (imageLoad(canvasFogOfWar, cell).r >= kFogExploredThreshold) {
+        return 1.0;
+    }
+    float reveal = 0.0;
+    for (int i = 0; i < visionCircleCount; ++i) {
+        const vec2 delta = vec2(col) - visionCircles[i].xy;
+        const vec2 farthest = vec2(col) + vec2(
+            delta.x >= 0.0 ? kFogColumnCellHalf : -kFogColumnCellHalf,
+            delta.y >= 0.0 ? kFogColumnCellHalf : -kFogColumnCellHalf
+        );
+        reveal = max(reveal, fogVisionCircleReveal(farthest, visionCircles[i], 0.0));
+    }
+    return reveal;
+}
+
+// Minimum raster density for the analytic band projection: the band sits
+// 2 micros inside the disc (so lattice rounding of the projected tap can
+// never cross the mask's AA rim), which at coarse subdivisions becomes a
+// visible cell-scale retraction of the cut. Below this density the cut
+// keeps its #2180 lattice-wall behaviour (mask-trimmed) — the band engages
+// exactly when zoom (effective subdivisions) makes it visible.
+const int kFogBandMinSubdivisions = 4;
+
+// Continuous-point analytic fog reveal for the per-micro clip — MUST stay
+// byte-identical to c_voxel_to_trixel_stage_1.glsl::fogPointReveal (see there
+// for the smooth-silhouette rationale): stage 1 skips a clipped micro's
+// distance tap, and this stage must skip the same micro's colour tap so the
+// two never desync on a depth tie.
+float fogPointReveal(vec2 worldXY, ivec2 col, float aa) {
+    const ivec2 fogSize = imageSize(canvasFogOfWar);
+    if (fogSize.x <= 1) {
+        return 1.0;
+    }
+    const ivec2 cell = col + ivec2(kFogOfWarHalfExtent);
+    if (cell.x < 0 || cell.x >= fogSize.x || cell.y < 0 || cell.y >= fogSize.y) {
+        return 1.0;
+    }
+    if (imageLoad(canvasFogOfWar, cell).r >= kFogExploredThreshold) {
+        return 1.0;
+    }
+    float reveal = 0.0;
+    for (int i = 0; i < visionCircleCount; ++i) {
+        reveal = max(reveal, fogVisionCircleReveal(worldXY, visionCircles[i], aa));
+    }
+    return reveal;
+}
+
 void writeColorTap(
     const ivec2 canvasPixel,
     const int voxelDistance,
@@ -232,10 +296,15 @@ void main() {
     bool keepFace = faceIsExposed(flagsByte, faceId);
     bool isCutFace = false;
     if (!keepFace && faceId < kFaceZNeg && fogActive) {
-        // P2 (#2126): cut iff the neighbor column is not fully revealed (reveal <
-        // 1.0) — mirrors stage 1 exactly. Mode A (edgeSoftness 0) reveal is binary
-        // so this collapses to the #2125/#2127 boolean boundary (byte-identical).
-        keepFace = fogColumnReveal(worldColumn + faceOutwardNormal6I(faceId).xy) < 1.0;
+        // P2 (#2126) widened by the analytic band (#2124): on the single-canvas
+        // world route the neighbor test is the farthest-corner variant —
+        // mirrors stage 1's gate EXACTLY (see fogColumnRevealFarthest there for
+        // the band-wall rationale). The per-axis routes keep the center-based
+        // gate (#2128).
+        const ivec2 neighborColumn = worldColumn + faceOutwardNormal6I(faceId).xy;
+        keepFace = (perAxisRoute == 0 && isDetachedCanvas < 0.5
+                        ? fogColumnRevealFarthest(neighborColumn)
+                        : fogColumnReveal(neighborColumn)) < 1.0;
         // A non-exposed VERTICAL face kept ONLY by the fog cut rule is the object's
         // interior cross-section wall — flag it (bit 29 of the stored id) so
         // LIGHTING_TO_TRIXEL force-lights it as a clean exposed face rather than
@@ -352,6 +421,80 @@ void main() {
 
     ivec3 microPositionFixed =
         faceMicroPositionFixed6(faceId, voxelPositionFixed, u, v, subdivisions);
+    // Per-micro analytic fog clip — MUST stay byte-identical to stage 1's twin
+    // block (see there for the smooth-silhouette rationale): stage 1 skipped
+    // the clipped micro's distance tap, so painting its colour here could land
+    // on a coincidentally-equal depth from another face.
+    if (fogActive && isDetachedCanvas < 0.5) {
+        const int faceAxis = faceId >> 1;
+        vec2 microCenterFixed = vec2(microPositionFixed.xy);
+        if (faceAxis != 0) microCenterFixed.x += 0.5;
+        if (faceAxis != 1) microCenterFixed.y += 0.5;
+        const vec2 microWorldXY = microCenterFixed / float(subdivisions);
+        if (fogPointReveal(microWorldXY, worldColumn, 0.5 / float(subdivisions)) <= 0.0) {
+            return;
+        }
+        // Analytic band projection — MUST stay byte-identical to stage 1's twin
+        // block (see there for the radial-map rationale) so the colour tap lands
+        // on the same projected cell + depth the distance tap did.
+        if (isCutFace && subdivisions >= kFogBandMinSubdivisions) {
+            const float microHalf = 1.0 / float(subdivisions);
+            float bestMargin = 1e9;
+            int bestCircle = -1;
+            for (int i = 0; i < visionCircleCount; ++i) {
+                if (visionCircles[i].w != 0.0) continue; // hard discs only (Mode A)
+                const float margin =
+                    visionCircles[i].z - length(microWorldXY - visionCircles[i].xy);
+                if (margin > 0.0 && margin < bestMargin) {
+                    bestMargin = margin;
+                    bestCircle = i;
+                }
+            }
+            if (bestCircle >= 0 && bestMargin > 2.0 * microHalf &&
+                bestMargin <= 1.5 + 2.0 * microHalf) {
+                // Band shading slot + dual emit — MUST mirror stage 1's twin
+                // block exactly (same positions, depths, and slot bits) so the
+                // colour taps land wherever the distance taps won. See stage 1
+                // for the radial-map + backstop + shading-slot rationale.
+                const vec2 radial = microWorldXY - visionCircles[bestCircle].xy;
+                const int xSlot = (visibleFaceIds[0] >> 1) == 0
+                    ? 0 : (((visibleFaceIds[1] >> 1) == 0) ? 1 : 2);
+                const int ySlot = (visibleFaceIds[0] >> 1) == 1
+                    ? 0 : (((visibleFaceIds[1] >> 1) == 1) ? 1 : 2);
+                const int bandSlot = abs(radial.x) >= abs(radial.y) ? xSlot : ySlot;
+                ivec3 latticeTap = microPositionFixed;
+                if (cardinalIndex != 0) {
+                    latticeTap = rotateCardinalZ(latticeTap, cardinalIndex);
+                    latticeTap += cardinalLowerCornerShift(cardinalIndex) * subdivisions;
+                }
+                // World canvas only here (block gate), so depth is the plain
+                // (x+y+z) iso sum — no detached depth-axis branch.
+                const int latticeDepth = latticeTap.x + latticeTap.y + latticeTap.z;
+                emitDeformedFace(
+                    frameOffsetFixed + pos3DtoPos2DIso(latticeTap), D,
+                    encodeDepthWithFace(latticeDepth, bandSlot), voxelColor,
+                    packedEntityId, faceId, reVoxelize
+                );
+                const float target = visionCircles[bestCircle].z - 2.0 * microHalf;
+                const vec2 surfFixedXY =
+                    (visionCircles[bestCircle].xy +
+                     radial * (target / length(radial))) *
+                    float(subdivisions);
+                ivec3 bandTap = ivec3(roundHalfUp(surfFixedXY), microPositionFixed.z);
+                if (cardinalIndex != 0) {
+                    bandTap = rotateCardinalZ(bandTap, cardinalIndex);
+                    bandTap += cardinalLowerCornerShift(cardinalIndex) * subdivisions;
+                }
+                const int bandDepth = bandTap.x + bandTap.y + bandTap.z;
+                emitDeformedFace(
+                    frameOffsetFixed + pos3DtoPos2DIso(bandTap), D,
+                    encodeDepthWithFace(bandDepth, bandSlot), voxelColor,
+                    packedEntityId, faceId, reVoxelize
+                );
+                return;
+            }
+        }
+    }
     if (cardinalIndex != 0) {
         microPositionFixed = rotateCardinalZ(microPositionFixed, cardinalIndex);
         // Shift is per-world-unit; scale to subdivision units to match
