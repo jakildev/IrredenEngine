@@ -512,6 +512,15 @@ overlay → any `DETACHED` mode with `screenLocked_ = true`.
 **World-integration mechanics (P4b / #1576; default since #1624).** How a
 world-placed re-voxelize solid integrates:
 
+- **Prerequisite — lighting-archetype membership.** A detached re-voxelize
+  canvas only participates in world lighting (AO + sun + sky + the RECEIVE
+  path below) if it carries `C_CanvasAOTexture` **and**
+  `C_TrixelCanvasRenderBehavior` — these put it in the `COMPUTE_VOXEL_AO` +
+  `LIGHTING_TO_TRIXEL` archetypes. Attach them **per spawn site** (not in the
+  shared `kVoxelPoolCanvas` builder, which also builds the main canvas). A
+  detached solid missing them matches neither pass and silently composites
+  **raw albedo** ("pasted-on"), regardless of `worldPlaced_` /
+  `detachedWorldReceive_` being set correctly.
 - **Depth (P4b-1):** the composite sets `distanceOffset_` to the entity's world
   iso depth, so the solid depth-sorts against world geometry on the shared GRID
   `trixelDistances` convention. The shared framebuffer depth runs at

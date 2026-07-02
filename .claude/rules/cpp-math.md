@@ -56,6 +56,7 @@ The math library may itself wrap `glm::*` / `std::*` internally — that is the 
 - Anything in `engine/math/**` itself.
 - The graphics-backend interop layer at `engine/render/include/irreden/render/backend/**` — when wiring an actual `glm` value into a `glDrawElements`-shaped API, raw glm types are the surface.
 - Shader source: `*.glsl`, `*.metal`. These have their own native math; the rule is about C++ files.
+- Standalone tools under `tools/**` that do not link the engine library (`jitter_probe`, `img_diff`): IRMath lives in `engine/math/` and is genuinely unavailable there, so `std::`/`<cmath>` math is correct. (Also outside this rule's `paths:` scope — don't raise the nit from prose alone.)
 
 ## Live deviations (queue-manager-owned)
 
