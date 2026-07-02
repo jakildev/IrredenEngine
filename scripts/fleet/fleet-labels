@@ -285,6 +285,9 @@ slug_from_remote() {
 # the two and fails on any difference so a forgotten edit to one side is
 # caught in CI / pre-commit rather than at runtime. Names only — color and
 # description are intentionally not compared (humans re-skin labels).
+# The JSON `description` fields are long-form documentation with NO length
+# cap and never sync to GitHub; only the catalog entries below sync, so the
+# ≤100-char GitHub limit is enforced on the catalog side alone.
 if [[ "$CHECK" -eq 1 ]]; then
     if ! command -v jq >/dev/null 2>&1; then
         echo "fleet-labels --check: jq not found." >&2

@@ -259,6 +259,61 @@ Fix: replace the block with `irreden_bundle_assets(<target> SCRIPTS <files>)`
 (+ `irreden_package_target` if a bundle is wanted). Report, don't auto-fix —
 the SCRIPTS / asset list needs a human eye.
 
+**Check 7: PR/issue-reference comments and motivation-prose blocks.**
+
+`CLAUDE-BASELINE.md` §Style bans comments that reference the current task or
+fix ("Reference adoption for #2044", "added for the #NNN flow") and
+block-level motivation prose explaining why a module was created ("Before
+this, every demo hand-rolled…") — both belong in the PR description and rot
+in source. §7's judgment pass missed this twice (PR #2045 C++, PR #2087
+GLSL), so grep the diff mechanically — **shaders included**:
+
+```
+Grep tool with:
+  pattern: '(//|/\*|\*).*#[0-9]{3,}\b'
+  glob:    '**/*.{hpp,cpp,h,cc,glsl,metal}'
+  output_mode: 'content'
+  -n: true
+```
+
+Cross-reference hits against added (`+`) lines only. A bare durable backref
+(`// see #N`, the §7-sanctioned form) is fine; anything narrating the task
+("for #N", "adoption for #N", "fix for #N", "added in #N") is the smell.
+For motivation prose, eyeball each added comment block of 3+ lines in the
+diff: if it explains the module's origin story or pre-change state rather
+than a durable invariant, cut it (keep at most a one-line WHY + `// see #N`).
+
+**Check 8: unreplaced scaffold placeholder sentinels.**
+
+`create-creation` templates require hand-replacing `YourCreation` /
+`YOUR_CREATION`, and older scaffolds emitted a `YOUR_CREATION_NAME_HERE` log
+string — a forgotten replacement compiles and runs silently (#2078's
+`font_maker` shipped one):
+
+```
+Grep tool with:
+  pattern: 'YOUR_CREATION_NAME_HERE|\bYourCreation\b|\bYOUR_CREATION\b'
+  glob:    '{engine,creations,test}/**'
+  output_mode: 'content'
+  -n: true
+```
+
+Any hit in real source is a leftover (the tokens only belong inside the
+`create-creation` skill's own template files). Auto-fix: substitute the real
+creation name.
+
+**Check 9: template functions added with no instantiation.**
+
+C++ only type-checks a template body at instantiation — an uninstantiated
+template member/free function is *parsed*, never semantically checked, so a
+wrong member access or stale API call in its body ships on a green build
+(PR #2170's `carve()`). For each `template <...>` function or member
+**added** in the diff, grep `engine/`, `creations/`, and `test/` for a call
+site (`<name><`, `<name>(`) outside the definition itself. No hit → flag:
+"uninstantiated template body — not type-checked; add a call site or
+headless test in this PR." Report, don't auto-fix — where the instantiation
+belongs is a design call.
+
 ### 2c. Serialized-struct version-bump check
 
 See `engine/asset/CLAUDE.md` §"Automated version-bump detection" for the full
@@ -427,7 +482,8 @@ Remove:
   verified…`, `was a misdiagnosis`, `Before #X / now Y`, `retired
   (T-323)`) is the same smell wearing rationale's clothing — most
   common in render code. Cut the forensic prose, keep the durable
-  invariant, and leave at most a `// see #N` backref.
+  invariant, and leave at most a `// see #N` backref. Task-reference
+  comments (`#NNN`) are mechanically caught by §2b Check 7.
 - Location-reference narration that points at other code instead of
   explaining why — `// ... (set above)`, `// see below`, `// called
   from X`. Mechanically caught by §2b Check 4; delete the

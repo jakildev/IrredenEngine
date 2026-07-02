@@ -68,6 +68,19 @@ list(APPEND _changed_files ${_committed})
 # working-tree edits in a single call.
 _collect_git_diff("HEAD" _working)
 list(APPEND _changed_files ${_working})
+# Neither diff form reports brand-new untracked files, so without this a
+# never-`git add`-ed source file silently skips formatting ("no diff").
+execute_process(
+    COMMAND git -C "${PROJECT_ROOT}" ls-files --others --exclude-standard
+    OUTPUT_VARIABLE _untracked_out
+    RESULT_VARIABLE _untracked_rc
+    ERROR_QUIET
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+if(_untracked_rc EQUAL 0 AND NOT _untracked_out STREQUAL "")
+    string(REPLACE "\n" ";" _untracked "${_untracked_out}")
+    list(APPEND _changed_files ${_untracked})
+endif()
 
 if(NOT _changed_files)
     message(STATUS "clang-format (changed): no diff vs ${_diff_base}; nothing to format.")
