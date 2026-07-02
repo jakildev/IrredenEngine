@@ -1,6 +1,7 @@
 #ifndef IR_ARGS_H
 #define IR_ARGS_H
 
+#include <initializer_list>
 #include <string>
 #include <vector>
 
@@ -39,6 +40,7 @@ enum class Type {
     STRING,       // takes a string value               (--config-preset path.lua)
     OPTIONAL_INT, // switch with an optional trailing int (--auto-screenshot [frames])
     FLOAT_LIST,   // takes a fixed count of float values  (--sweep-yaw 0 360 8)
+    ENUM,         // one value from a fixed set           (--debug-overlay shadow)
 };
 
 // Which built-in args the constructor pre-registers. ENGINE (the default) adds
@@ -90,6 +92,21 @@ class Parser {
     // the caller via static_cast<int> on the float.
     Parser &
     numbers(const char *name, const char *help, int count, const char *shortAlias = nullptr);
+    // A value restricted to one of `allowed` (the accepted set). A value outside
+    // the set is a hard parse error (exit 2) whose diagnostic lists the allowed
+    // names. `defaultValue` must be one of `allowed` (asserted in debug) and is
+    // what getEnum() returns when the arg is omitted. Read back with getEnum()
+    // and map the string to your C++ enum at the call site — the CLI stays
+    // string-named while the C++ side stays a typed enum (the cpp-lua-enums.md
+    // "enum, not string-match" rule applied at the CLI edge). The allowed set
+    // belongs in the help text too, since --help shows only a generic <value>.
+    Parser &enumValue(
+        const char *name,
+        const char *help,
+        std::initializer_list<const char *> allowed,
+        const char *defaultValue,
+        const char *shortAlias = nullptr
+    );
 
     // Positional arguments (ordered, no leading dash). Register one fixed
     // positional with `positional`; declare a trailing variable-count tail with
@@ -116,6 +133,9 @@ class Parser {
     // in command-line order. Returns the registered all-zero defaults when the
     // arg was not supplied.
     const std::vector<float> &getFloats(const char *name) const;
+    // The chosen value of an ENUM arg (one of its registered `allowed` set), or
+    // the registered default when the arg was omitted.
+    std::string getEnum(const char *name) const;
 
     // True when the arg appeared on the command line (vs. resolved to its
     // default). The honest "present?" signal for OPTIONAL_INT switches such as
@@ -150,8 +170,9 @@ class Parser {
         int intValue_ = 0;
         float floatValue_ = 0.0f;
         std::string stringValue_;
-        std::vector<float> floatValues_; // FLOAT_LIST values (sized to listCount_)
-        int listCount_ = 0;              // FLOAT_LIST arity
+        std::vector<float> floatValues_;      // FLOAT_LIST values (sized to listCount_)
+        int listCount_ = 0;                   // FLOAT_LIST arity
+        std::vector<std::string> enumValues_; // ENUM: the accepted set
         bool provided_ = false;
     };
 

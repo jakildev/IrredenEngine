@@ -32,9 +32,10 @@ GL / Metal init, so `--help` is instant and headless-safe.
   `IREngine::args().configPreset()`.
 - **Custom flags?** Register them on `IREngine::args()` (`.flag` / `.integer` /
   `.number` / `.string` / `.optionalInt` / `.numbers` for a fixed-count float
-  list like `--sweep-yaw <from> <to> <n>`) **before** `IREngine::init(argc,
-  argv)`, then read them back via `IREngine::args().getFlag(...)` /
-  `.getFloats(...)` etc. The single engine parse covers common + custom flags,
+  list like `--sweep-yaw <from> <to> <n>` / `.enumValue` for a value validated
+  against a fixed allowed set like `--debug-overlay <none|ao|shadow>`) **before**
+  `IREngine::init(argc, argv)`, then read them back via
+  `IREngine::args().getFlag(...)` / `.getFloats(...)` / `.getEnum(...)` etc. The single engine parse covers common + custom flags,
   so `--help` aggregates everything.
 - **Standalone tool (no engine loop)?** Construct your own
   `IRArgs::Parser(desc, IRArgs::Common::NONE)` — that drops the engine-common

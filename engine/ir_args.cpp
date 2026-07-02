@@ -40,6 +40,10 @@ std::string placeholderFor(Type type, int listCount) {
         }
         return placeholder;
     }
+    case Type::ENUM:
+        // A generic placeholder keeps the --help left column narrow; the allowed
+        // set lives in the arg's help text (and the parse-error diagnostic).
+        return " <value>";
     }
     return "";
 }
@@ -164,6 +168,27 @@ Parser &Parser::numbers(const char *name, const char *help, int count, const cha
     Entry &e = add(name, help, Type::FLOAT_LIST, shortAlias);
     e.listCount_ = count;
     e.floatValues_.assign(static_cast<std::size_t>(count), 0.0f);
+    return *this;
+}
+
+Parser &Parser::enumValue(
+    const char *name,
+    const char *help,
+    std::initializer_list<const char *> allowed,
+    const char *defaultValue,
+    const char *shortAlias
+) {
+    IR_ASSERT(allowed.size() > 0, "IRArgs: enumValue() needs at least one allowed value");
+    Entry &e = add(name, help, Type::ENUM, shortAlias);
+    for (const char *a : allowed) {
+        e.enumValues_.push_back(a != nullptr ? a : "");
+    }
+    e.stringValue_ = defaultValue != nullptr ? defaultValue : "";
+    IR_ASSERT(
+        std::find(e.enumValues_.begin(), e.enumValues_.end(), e.stringValue_) !=
+            e.enumValues_.end(),
+        "IRArgs: enumValue() default must be one of the allowed values"
+    );
     return *this;
 }
 
@@ -326,6 +351,29 @@ void Parser::parse(int argc, char **argv) {
                 }
             }
             break;
+        case Type::ENUM: {
+            // Accepts inline ("--name=value") or the next token; a value outside
+            // the registered set is a hard parse error whose diagnostic lists the
+            // allowed names, so a typo can't silently fall through to the default.
+            const std::string chosen = valueFor("one of the allowed values");
+            if (std::find(e->enumValues_.begin(), e->enumValues_.end(), chosen) ==
+                e->enumValues_.end()) {
+                std::string allowedList;
+                for (std::size_t k = 0; k < e->enumValues_.size(); ++k) {
+                    allowedList += (k != 0 ? "|" : "") + e->enumValues_[k];
+                }
+                std::fprintf(
+                    stderr,
+                    "Argument %s expects one of {%s}, got '%s'\n\n",
+                    name.c_str(),
+                    allowedList.c_str(),
+                    chosen.c_str()
+                );
+                exitWithUsage(2);
+            }
+            e->stringValue_ = chosen;
+            break;
+        }
         }
     }
 
@@ -403,6 +451,15 @@ const std::vector<float> &Parser::getFloats(const char *name) const {
         "IRArgs: getFloats on unregistered/non-float-list arg"
     );
     return e != nullptr ? e->floatValues_ : empty;
+}
+
+std::string Parser::getEnum(const char *name) const {
+    const Entry *e = findByName(name);
+    IR_ASSERT(
+        e != nullptr && e->type_ == Type::ENUM,
+        "IRArgs: getEnum on unregistered/non-enum arg"
+    );
+    return e != nullptr ? e->stringValue_ : std::string{};
 }
 
 bool Parser::wasProvided(const char *name) const {
