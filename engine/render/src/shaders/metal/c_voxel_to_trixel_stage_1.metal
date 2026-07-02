@@ -202,7 +202,7 @@ kernel void c_voxel_to_trixel_stage_1(
     const uint2 localId = localId3.xy;
     // See c_voxel_to_trixel_stage_1.glsl for the slot/faceId contract (#1278).
     const int slot = localIDToFace_2x3(localId);
-    const int faceId = frameData.visibleFaceIds[slot];
+    int faceId = frameData.visibleFaceIds[slot];
     const int cardinalIndex = rasterYawCardinalIndex(frameData.rasterYaw);
 
     const int2 canvasSize = frameData.canvasSizePixels;
@@ -220,6 +220,20 @@ kernel void c_voxel_to_trixel_stage_1(
     // lets the depth re-test keep the front-most surface — see the GLSL twin for
     // the full rationale.
     const uint flagsByte = (voxels[voxelIndex].materialFlagBone >> 8u) & 0xFFu;
+
+    // Silhouette-riser face selection (rotated-footprint gap fix) — see the GLSL
+    // twin for the full rationale. A rotated voxel staircase's camera-side grazing
+    // edge presents the OPPOSITE polarity of an axis from the convex-cardinal
+    // triplet; emit it when the triplet face is occluded but the opposite is
+    // exposed. GATED to rotated content (detached re-voxelize uniform OR the
+    // per-voxel kRotatedEmit marker, reserved bit 2) so static / axis-aligned
+    // content keeps the strict triplet and stays byte-identical. Stage 2 mirrors
+    // this flip + gate exactly.
+    const bool rotatedEmit = reVoxelize || (voxels[voxelIndex].reserved & 4u) != 0u;
+    if (rotatedEmit && !faceIsExposed(flagsByte, faceId) &&
+        faceIsExposed(flagsByte, faceId ^ 1)) {
+        faceId = faceId ^ 1;
+    }
     // Re-voxelize now authors the ROTATED-frame exposed mask on the GPU
     // (c_revoxelize_detached) like the GRID path's #1720, so it gates on
     // faceIsExposed too (no all-3-face bypass → no slot-tie AO hatching). The

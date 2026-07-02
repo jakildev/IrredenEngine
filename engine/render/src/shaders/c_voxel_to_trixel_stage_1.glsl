@@ -275,7 +275,7 @@ void main() {
     // FaceId (0..5) the camera sees at this slot, resolved by the CPU per
     // cardinal via `IRMath::visibleFaceTripletCardinal` (#1278).
     const int slot = localIDToFace_2x3(gl_LocalInvocationID.xy);
-    const int faceId = visibleFaceIds[slot];
+    int faceId = visibleFaceIds[slot];
     const int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
 
     // Re-voxelize marker: detached canvases (visibleFaceIds.w != 0, #1557) bake
@@ -301,6 +301,33 @@ void main() {
     // `IRComponents::VoxelFlags::kFaceOccluded(faceId)`. `reVoxelize` still drives
     // the emit dilation below.
     const uint flagsByte = (voxels[voxelIndex].materialFlagBone >> 8u) & 0xFFu;
+
+    // Silhouette-riser face selection (rotated-footprint gap fix). The visible
+    // triplet (#1278) picks ONE polarity per axis — the camera-facing one for a
+    // convex, axis-aligned solid. A ROTATED voxel footprint (GRID re-voxelize cells
+    // / detached re-voxelize) round-to-cells into a STAIRCASE whose camera-side
+    // grazing edge presents the OPPOSITE polarity of an axis (e.g. +X where the
+    // cardinal triplet carries X_NEG): that face is exposed and on the silhouette
+    // yet absent from the triplet, so it was never emitted — the see-through
+    // "venetian-blind" gaps that appear only at the camera directions where the
+    // yaw chirality turns that edge toward the camera (worst at 90/270 here).
+    // Fix: if this slot's triplet face is occluded but the opposite same-axis face
+    // is exposed, emit that opposite face — it is the missing silhouette riser.
+    // GATED to ROTATED content only — the detached re-voxelize uniform
+    // (visibleFaceIds.w) OR the per-voxel kRotatedEmit marker (reserved bit 2, set
+    // by REBUILD_GRID_VOXELS on rotated GRID cells; see component_voxel.hpp). Static
+    // / axis-aligned content never flips, so BOTH the single-canvas and the
+    // per-axis camera-yaw fast paths stay byte-identical (the convex back face the
+    // flip would emit loses the depth atomicMin everywhere it is occluded, but
+    // gating avoids even that wasted emit + the per-axis store's sub-pixel drift).
+    // On a concave/rotated staircase the riser's pixel has NO nearer front face, so
+    // the flip correctly fills the gap. Stage 2 MUST apply the identical flip or the
+    // colour tap desyncs from the distance.
+    const bool rotatedEmit = reVoxelize || (voxels[voxelIndex].reserved & 4u) != 0u;
+    if (rotatedEmit && !faceIsExposed(flagsByte, faceId) &&
+        faceIsExposed(flagsByte, faceId ^ 1)) {
+        faceId = faceId ^ 1;
+    }
 
     // World fog route + world-column recovery (#2125 GRID, #2127 detached;
     // per-axis #2128). The fog grid is world-space, so the cut-face + own-column
