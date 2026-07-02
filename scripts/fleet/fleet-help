@@ -245,7 +245,7 @@ Parallel-agent fleet (tmux + Claude)
                                  as one unskippable step (loser exits ~1s
                                  touching nothing; releases the claim if the
                                  checkout fails so no fleet:amending-* dangles)
-  fleet-pr-checkout-detached <N> [--repo engine|game]
+  fleet-pr-checkout-detached <N> [--repo <slug>]
                                  fetch a PR's head ref and check it out
                                  detached-HEAD, so the same branch can be
                                  checked out in multiple worktrees at once
