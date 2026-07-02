@@ -371,8 +371,11 @@ class ResolveEpicChildren(unittest.TestCase):
 
 
 class DesignProposedSkipSets(unittest.TestCase):
-    """fleet:design-proposed parks a PR off the review/merger/stacking
-    surfaces until the proposal resolves (#1664 acceptance criterion)."""
+    """fleet:design-proposed parks a PR off the review/merger surfaces
+    until the proposal resolves (#1664 acceptance criterion). Note: as of
+    #2130 a frozen design-proposed diff IS a valid stack base — the
+    stacking surface is no longer skipped (see
+    test_design_proposed_blocker_is_stackable below)."""
 
     def test_absent_from_sonnet_reviewer_projection(self):
         state = _state(prs=[_pr(101, labels=["fleet:design-proposed"])])
@@ -388,9 +391,13 @@ class DesignProposedSkipSets(unittest.TestCase):
                                              "fleet:approved"])])
         self.assertEqual(project_merger(state), [])
 
-    def test_blocker_pr_not_stackable(self):
-        # enrich filter (b): a design-proposed blocker PR has the same
-        # stacking hazard as a design-blocked one.
+    def test_design_proposed_blocker_is_stackable(self):
+        # Post-#2130 (7fb58c6d): frozen-design labels were deliberately
+        # dropped from NOT_STACKABLE_BASE_LABELS, so a design-proposed
+        # blocker PR with a parked, stable diff IS offered as a stack
+        # base. This case writes no PR cache, so it covers the cache-miss
+        # (blocker_files=None) branch of unsafe_base_reason; the cache-hit
+        # branch is covered by test_frozen_design_base_offered.
         state = _state(
             prs=[_pr(101, labels=["fleet:design-proposed"],
                      head="claude/11-base")],
@@ -398,7 +405,8 @@ class DesignProposedSkipSets(unittest.TestCase):
         )
         enrich_stackable_blocker_prs(state)
         task = state["repos"]["engine"]["tasks"]["open"][0]
-        self.assertNotIn("stackable_blocker_pr", task)
+        self.assertIn("stackable_blocker_pr", task)
+        self.assertEqual(task["stackable_blocker_pr"]["number"], 101)
 
 
 class Slice(unittest.TestCase):
