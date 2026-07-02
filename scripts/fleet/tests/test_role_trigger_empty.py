@@ -12,6 +12,11 @@ iteration "no actionable candidates". The invariants:
   - empty -> non-empty change: fires normally (the recorded empty hash
     guarantees the flip back is seen as a change);
   - unchanged projection: no hash write, no trigger (pre-existing).
+
+An `<role>.empty-suppressed` marker in SEEN_DIR records whether the most
+recent hash write was such a suppression, so `fleet-debug triggers` (#2185)
+can report it — the on-disk state can't otherwise tell "suppressed" from
+"dispatched then consumed". The marker invariants are exercised below too.
 """
 import importlib.machinery
 import importlib.util
@@ -48,6 +53,9 @@ class UpdateRoleTriggerEmpty(unittest.TestCase):
     def _seen(self, role):
         return (_mod.SEEN_DIR / role).read_text().strip()
 
+    def _suppressed_marker(self, role):
+        return _mod.SEEN_DIR / f"{role}.empty-suppressed"
+
     def test_non_empty_change_fires(self):
         self.assertTrue(_mod.update_role_trigger("r", [{"pr": 1}]))
         self.assertTrue(self._trigger_exists("r"))
@@ -80,6 +88,39 @@ class UpdateRoleTriggerEmpty(unittest.TestCase):
         (_mod.TRIGGERS_DIR / "r").unlink()
         self.assertFalse(_mod.update_role_trigger("r", [{"pr": 1}]))
         self.assertFalse(self._trigger_exists("r"))
+
+    # --- empty-suppression marker (fleet-debug triggers reads it) ------------
+    # Invariant: the marker is present iff the most recent hash *write* for the
+    # role was an empty-projection suppression.
+
+    def test_non_empty_fire_leaves_no_marker(self):
+        _mod.update_role_trigger("r", [{"pr": 1}])
+        self.assertFalse(self._suppressed_marker("r").exists())
+
+    def test_transition_to_empty_writes_marker(self):
+        _mod.update_role_trigger("r", [{"pr": 1}])
+        (_mod.TRIGGERS_DIR / "r").unlink()  # dispatcher consumed it
+        _mod.update_role_trigger("r", [])
+        marker = self._suppressed_marker("r")
+        self.assertTrue(marker.exists())
+        self.assertEqual(marker.read_text().strip(), _mod.stable_hash([]))
+
+    def test_subsequent_non_empty_fire_clears_marker(self):
+        _mod.update_role_trigger("r", [{"pr": 1}])
+        (_mod.TRIGGERS_DIR / "r").unlink()
+        _mod.update_role_trigger("r", [])
+        self.assertTrue(self._suppressed_marker("r").exists())
+        _mod.update_role_trigger("r", [{"pr": 2}])
+        self.assertFalse(self._suppressed_marker("r").exists())
+
+    def test_unchanged_projection_leaves_marker_intact(self):
+        # The hash-unchanged early return writes no hash, so it must not touch
+        # the marker either — "last hash write" semantics would otherwise drift.
+        _mod.update_role_trigger("r", [{"pr": 1}])
+        (_mod.TRIGGERS_DIR / "r").unlink()
+        _mod.update_role_trigger("r", [])
+        self.assertFalse(_mod.update_role_trigger("r", []))  # unchanged empty
+        self.assertTrue(self._suppressed_marker("r").exists())
 
 
 if __name__ == "__main__":

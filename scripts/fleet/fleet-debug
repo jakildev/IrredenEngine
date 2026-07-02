@@ -22,10 +22,18 @@ BATCH=false
 usage() {
     cat <<'USAGE'
 usage: fleet-debug [options] <target-or-executable> [--] [program-args...]
+       fleet-debug triggers
 
 Builds <target-or-executable> with the current worktree's debug build tree,
 finds the built executable under build/, cd's beside it, and starts a debugger
 from that runtime directory.
+
+Subcommands
+  triggers            Read-only dump of per-role fleet dispatch state: pending
+                      trigger (+ mtime/content), last seen projection hash,
+                      projection slice size + generated_at, and whether the last
+                      hash write was an empty-projection suppression (#2181).
+                      Never mutates any ~/.fleet/state file.
 
 Options
   --batch             Non-interactive crash triage: run immediately, then print
@@ -47,12 +55,152 @@ Examples
   fleet-debug IRShapeDebug
   fleet-debug --batch IRLightingCombined
   fleet-debug --no-build --debugger lldb IRShapeDebug -- --auto-screenshot
+  fleet-debug triggers
 
 Notes
   The repo's fleet presets are already debug builds (CMAKE_BUILD_TYPE=Debug).
   This command builds via fleet-build unless --no-build is passed.
 USAGE
 }
+
+# `fleet-debug triggers` — read-only dump of per-role dispatch state
+# (pending trigger, last seen projection hash, projection slice size, and
+# whether the last hash write was an empty-projection suppression, #2181).
+# A subcommand, not a build target: every build target is IR*-named, so
+# `triggers` can't collide with one. Anything else falls through to the
+# debugger-launcher path below. State dir resolves from $HOME so tests can
+# point it at a fixture tree; the dump never writes.
+if [[ "${1:-}" == "triggers" ]]; then
+    exec python3 - <<'PYEOF'
+import json
+import time
+from pathlib import Path
+
+STATE = Path.home() / ".fleet" / "state"
+TRIGGERS_DIR = STATE / "triggers"
+SEEN_DIR = STATE / "seen-hashes"
+PROJECTIONS_DIR = STATE / "projections"
+
+# Canonical dispatch roles. Sync sources: fleet-state-scout PROJECTORS and
+# fleet-dispatcher DISPATCHED_ROLES. queue-manager / queue-manager-ingest
+# spawn inline non-LLM subprocesses and never get a trigger file or an
+# empty-suppression marker, so those two columns read n/a for them.
+CANONICAL = [
+    "worker",
+    "sonnet-reviewer",
+    "opus-reviewer",
+    "merger",
+    "smoke-worker",
+    "epic-steward",
+    "queue-manager",
+    "queue-manager-ingest",
+]
+NO_TRIGGER = {"queue-manager", "queue-manager-ingest"}
+
+SUPPRESS_SUFFIX = ".empty-suppressed"
+
+
+def _mtime(path):
+    try:
+        return time.strftime("%m-%d %H:%M:%S", time.localtime(path.stat().st_mtime))
+    except OSError:
+        return "?"
+
+
+def _discover_extra_roles():
+    # Union any basename the state dirs know about but the canonical list
+    # doesn't, so a future role shows up unlisted rather than hidden. Skip
+    # write_atomic temp files, dotfiles, and the suppression markers.
+    found = set()
+    for d in (TRIGGERS_DIR, SEEN_DIR):
+        try:
+            entries = list(d.iterdir())
+        except OSError:
+            continue
+        for entry in entries:
+            name = entry.name
+            if name.startswith(".") or name.endswith(".tmp"):
+                continue
+            if name.endswith(SUPPRESS_SUFFIX):
+                continue
+            found.add(name)
+    try:
+        proj_entries = list(PROJECTIONS_DIR.iterdir())
+    except OSError:
+        proj_entries = []
+    for entry in proj_entries:
+        name = entry.name
+        if name.startswith(".") or not name.endswith(".json"):
+            continue
+        found.add(name[: -len(".json")])
+    return sorted(found - set(CANONICAL))
+
+
+def _trigger_col(role):
+    path = TRIGGERS_DIR / role
+    try:
+        content = path.read_text().strip()
+    except FileNotFoundError:
+        return "-"
+    except OSError:
+        return "unreadable"
+    stamp = _mtime(path)
+    if content:
+        return f'pending({stamp},"{content}")'
+    return f"pending({stamp})"
+
+
+def _seen_col(role):
+    path = SEEN_DIR / role
+    try:
+        h = path.read_text().strip()
+    except FileNotFoundError:
+        return "-"
+    except OSError:
+        return "unreadable"
+    return f"{h[:12]}({_mtime(path)})"
+
+
+def _projection_col(role):
+    path = PROJECTIONS_DIR / f"{role}.json"
+    try:
+        data = json.loads(path.read_text())
+    except FileNotFoundError:
+        return "-"
+    except (OSError, json.JSONDecodeError):
+        return "unreadable"
+    if isinstance(data, list):
+        return f"{len(data)} items @ ?"
+    if isinstance(data, dict):
+        generated = data.get("generated_at", "?")
+        count = sum(len(v) for v in data.values() if isinstance(v, list))
+        return f"{count} items @ {generated}"
+    return "unreadable"
+
+
+def _suppressed_col(role):
+    if role in NO_TRIGGER:
+        return "n/a"
+    marker = SEEN_DIR / f"{role}{SUPPRESS_SUFFIX}"
+    try:
+        exists = marker.exists()
+    except OSError:
+        return "unreadable"
+    return "yes" if exists else "no"
+
+
+roles = CANONICAL + _discover_extra_roles()
+width = max((len(r) for r in roles), default=0)
+for role in roles:
+    print(
+        f"{role:<{width}}  "
+        f"trigger={_trigger_col(role)}  "
+        f"seen={_seen_col(role)}  "
+        f"proj={_projection_col(role)}  "
+        f"empty-suppressed={_suppressed_col(role)}"
+    )
+PYEOF
+fi
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
