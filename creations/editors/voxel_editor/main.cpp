@@ -434,16 +434,14 @@ void applyLayerVisibility(std::uint8_t layerId, bool visible) {
     if (g_sceneVoxelSetEntity == IREntity::kNullEntity)
         return;
     auto &set = IREntity::getComponent<C_VoxelSetNew>(g_sceneVoxelSetEntity);
-    for (auto &v : set.voxels_) {
+    set.editVoxels([&](int, C_Voxel &v, vec3) {
         if (v.layer_id_ != layerId)
-            continue;
+            return;
         if (visible)
             v.activate();
         else
             v.deactivate();
-    }
-    set.syncActiveMask();
-    IRPrefab::Voxel::recomputeFaceOccupancy(set.voxels_, set.size_);
+    });
 }
 
 // Apply a single placement / erasure edit to the voxel set, appending
@@ -451,7 +449,10 @@ void applyLayerVisibility(std::uint8_t layerId, bool visible) {
 // the target index is out of bounds for the set. `flat` is the linear
 // pool index so the per-voxel mutation reuses the precomputed offset.
 // `boneId` defaults to 0 (identity) for normal color-paint; pass the
-// active bone index when in bone-paint mode (#1608).
+// active bone index when in bone-paint mode (#1608). Writes the raw
+// `voxels_` span directly — callers always finish a batch of these
+// (single edit, line, AABB, face-fill, or SDF bake) with one
+// `commitStroke()`, which resyncs derived state once for the whole batch.
 void applyEdit(
     IREntity::EntityId voxelSetEntity,
     C_VoxelSetNew &set,
@@ -476,7 +477,6 @@ void applyEdit(
         set.voxels_[flat].deactivate();
         set.voxels_[flat].layer_id_ = 0;
     }
-    set.syncActiveMask();
 }
 
 void commitStroke() {
@@ -497,7 +497,7 @@ void commitStroke() {
     }
     if (g_sceneVoxelSetEntity != IREntity::kNullEntity) {
         auto &set = IREntity::getComponent<C_VoxelSetNew>(g_sceneVoxelSetEntity);
-        IRPrefab::Voxel::recomputeFaceOccupancy(set.voxels_, set.size_);
+        set.resyncAfterRawEdits();
     }
 }
 
@@ -530,8 +530,7 @@ void undoOne() {
     }
     for (auto id : touchedSets) {
         auto &set = IREntity::getComponent<C_VoxelSetNew>(id);
-        set.syncActiveMask();
-        IRPrefab::Voxel::recomputeFaceOccupancy(set.voxels_, set.size_);
+        set.resyncAfterRawEdits();
     }
 }
 
@@ -1742,17 +1741,15 @@ void initSystems() {
                 if (delId != 0 && g_sceneVoxelSetEntity != IREntity::kNullEntity) {
                     const bool defaultVisible = g_layerManager.isVisible(0);
                     auto &set = IREntity::getComponent<C_VoxelSetNew>(g_sceneVoxelSetEntity);
-                    for (auto &v : set.voxels_) {
+                    set.editVoxels([&](int, C_Voxel &v, vec3) {
                         if (v.layer_id_ != delId)
-                            continue;
+                            return;
                         v.layer_id_ = 0;
                         if (defaultVisible)
                             v.activate();
                         else
                             v.deactivate();
-                    }
-                    set.syncActiveMask();
-                    IRPrefab::Voxel::recomputeFaceOccupancy(set.voxels_, set.size_);
+                    });
                     g_layerManager.deleteLayer(delId);
                 }
             }

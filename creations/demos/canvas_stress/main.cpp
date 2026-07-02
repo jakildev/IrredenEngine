@@ -22,7 +22,6 @@
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
-#include <irreden/voxel/face_occupancy.hpp>
 
 // Systems
 #include <irreden/input/systems/system_input_key_mouse.hpp>
@@ -612,20 +611,7 @@ void spawnDetachedReVoxelizeSolid(
 
     if (carveAsymmetric) {
         C_VoxelSetNew &voxelSet = IREntity::getComponent<C_VoxelSetNew>(solid);
-        for (int i = 0; i < voxelSet.numVoxels_; ++i) {
-            const vec3 pos = voxelSet.positions_[i].pos_;
-            if (pos.x > 0.0f && pos.y > 0.0f) {
-                voxelSet.voxels_[i].deactivate();
-            }
-        }
-        voxelSet.syncActiveMask();
-        // Seed the model-space face-occlusion bits for the carved shape. The
-        // re-voxelize raster no longer consults this mask: it is in the unrotated
-        // authoring frame, so gating the rotated cells against it dropped /
-        // mis-coloured faces, and `c_voxel_to_trixel_stage_{1,2}` now bypass it
-        // for re-voxelize (#1570). The seed is vestigial today, kept as the
-        // correct initial state for a future GPU rotated-cell mask recompute.
-        IRPrefab::Voxel::recomputeFaceOccupancy(voxelSet.voxels_, voxelSet.size_);
+        voxelSet.carve([](vec3 pos) { return pos.x > 0.0f && pos.y > 0.0f; });
     }
 
     if (multiColor) {
@@ -663,8 +649,7 @@ enum class OrbitShape { CUBE, SPHERE, OCTAHEDRON, PYRAMID, CROSS, FRAME };
 void carveOrbitShape(C_VoxelSetNew &vs, OrbitShape shape) {
     const vec3 half = vec3(vs.size_) * 0.5f;
     const float r = IRMath::min(half.x, IRMath::min(half.y, half.z));
-    for (int i = 0; i < vs.numVoxels_; ++i) {
-        const vec3 p = vs.positions_[i].pos_;
+    vs.carve([&](vec3 p) {
         const float ax = IRMath::abs(p.x);
         const float ay = IRMath::abs(p.y);
         const float az = IRMath::abs(p.z);
@@ -703,12 +688,8 @@ void carveOrbitShape(C_VoxelSetNew &vs, OrbitShape shape) {
             keep = true;
             break;
         }
-        if (!keep) {
-            vs.voxels_[i].deactivate();
-        }
-    }
-    vs.syncActiveMask();
-    IRPrefab::Voxel::recomputeFaceOccupancy(vs.voxels_, vs.size_);
+        return !keep;
+    });
 }
 
 // Spawn one orbit-ring shape at `worldPos`, carved to `shape`, spinning about

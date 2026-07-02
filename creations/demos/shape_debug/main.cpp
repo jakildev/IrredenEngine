@@ -23,7 +23,6 @@
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 #include <irreden/voxel/components/component_joint.hpp>
 #include <irreden/voxel/components/component_skeleton.hpp>
-#include <irreden/voxel/face_occupancy.hpp>
 #include <irreden/render/components/component_canvas_ao_texture.hpp>
 #include <irreden/render/components/component_canvas_light_volume.hpp>
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
@@ -886,13 +885,13 @@ EntityId createVoxelPoolShape(
     IRMath::SDF::evaluateGrid(vs.size_, sdfType, sdfParams, distances);
 
     int activeCount = 0;
-    for (int i = 0; i < vs.numVoxels_; ++i) {
+    vs.editVoxels([&](int i, C_Voxel &voxel, vec3) {
         if (distances[i] > IRMath::SDF::kSurfaceThreshold) {
-            vs.voxels_[i].deactivate();
+            voxel.deactivate();
         } else {
             ++activeCount;
         }
-    }
+    });
     // Debug tint is opt-in: --depth-color visualizes z-bands; --checkerboard
     // distinguishes adjacent same-color voxels. Default is plain shape color
     // — the checkerboard path was flickering frame-to-frame and breaking
@@ -906,15 +905,6 @@ EntityId createVoxelPoolShape(
     } else if (g_checkerboard) {
         applyCheckerboard(vs, color);
     }
-    // The SDF-carving loop above writes alpha directly through
-    // `vs.voxels_[i].deactivate()` rather than going through a
-    // `C_VoxelSetNew` mutator method, so both the exposed-face mask and the
-    // per-slot active mask stay pinned to the ctor's all-active grid.
-    // Recompute face occupancy first (newly-exposed surface faces otherwise
-    // stay wrongly occluded), then sync the active mask so the compact shader
-    // skips carved-away interior slots. Mirrors createCustomVoxelFigure.
-    IRPrefab::Voxel::recomputeFaceOccupancy(vs.voxels_, size);
-    vs.syncActiveMask();
 
     IR_LOG_INFO(
         "VoxelPool shape entity={} canvas={} total={} active={}",
@@ -965,22 +955,13 @@ EntityId createCustomVoxelFigure(vec3 position, Color color) {
     };
 
     int activeCount = 0;
-    for (int i = 0; i < vs.numVoxels_; ++i) {
-        const vec3 p = vs.positions_[i].pos_;
+    vs.editVoxels([&](int, C_Voxel &voxel, vec3 p) {
         if (!solid(IRMath::round(p.x), IRMath::round(p.y), IRMath::round(p.z))) {
-            vs.voxels_[i].deactivate();
+            voxel.deactivate();
         } else {
             ++activeCount;
         }
-    }
-    // Per-voxel deactivate() does NOT update the exposed-face mask (it is keyed
-    // to the ctor's all-active grid), so the carved figure's true surface faces
-    // stay wrongly occluded and never emit — only static GRID/rotating sets get
-    // a per-frame mask rebuild. Recompute it from in-grid neighbour occupancy so
-    // every newly-exposed surface face renders. (face_occupancy.hpp §"callers
-    // invoke this from any set-level mutator that toggles voxel occupancy".)
-    IRPrefab::Voxel::recomputeFaceOccupancy(vs.voxels_, size);
-    vs.syncActiveMask();
+    });
     IR_LOG_INFO(
         "Custom voxel figure entity={} canvas={} size=({},{},{}) active={}",
         entity,
