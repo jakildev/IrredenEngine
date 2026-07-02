@@ -176,6 +176,9 @@ Engine build / run (everyday dev)
   fleet-debug [--batch] <target-or-exe> [-- program-args...]
       Builds with fleet-build, cd's beside data/shaders/scripts, then starts
       lldb/gdb. Use --batch to run once and print all thread backtraces.
+  fleet-debug triggers
+      Read-only per-role dispatch-state dump (trigger / seen-hash / projection
+      slice / empty-suppression #2181). See "Parallel-agent fleet" below.
 
   fleet-run [--build-dir <dir>] [--timeout N] <exe-name> [args...]
       Finds the built binary under build/, cd's beside data/shaders/scripts.
@@ -212,6 +215,13 @@ Parallel-agent fleet (tmux + Claude)
                                  labels onto existing fleet:queued issues from
                                  their **Model:** body field
   fleet-state-scout              background GitHub/git poll → ~/.fleet/state/
+  fleet-debug triggers           read-only per-role dispatch-state dump: pending
+                                 trigger + mtime/content, last seen projection
+                                 hash, projection slice size + generated_at, and
+                                 whether the last hash write was an empty-
+                                 projection suppression (#2181). Diagnoses why a
+                                 role woke / didn't wake without hand-reading
+                                 ~/.fleet/state/{triggers,seen-hashes,projections}
   fleet-dispatcher               transient-claude dispatcher (worker panes)
   fleet-dispatch-wrap <pane> <model> <effort> <role> [fallback] [mode]
                                  runs one transient-role claude iteration;

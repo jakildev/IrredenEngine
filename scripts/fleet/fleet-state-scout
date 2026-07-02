@@ -2160,6 +2160,15 @@ def read_json_retry(path, attempts=3, backoff=0.05):
 def update_role_trigger(role: str, projection) -> bool:
     new_hash = stable_hash(projection)
     seen_file = SEEN_DIR / role
+    # Marker invariant: present iff the most recent hash *write* for this role
+    # was an empty-projection suppression. The on-disk state can't otherwise
+    # distinguish "suppressed" (hash advanced, trigger deliberately skipped)
+    # from "dispatched then consumed" (trigger touched, dispatcher rm'd it),
+    # so `fleet-debug triggers` reads this marker for its suppression column.
+    # Kept in SEEN_DIR beside the bare seen file; the ".empty-suppressed"
+    # suffix never collides with a role name, and nothing globs SEEN_DIR
+    # (roles are read by exact name).
+    suppressed_marker = SEEN_DIR / f"{role}.empty-suppressed"
     try:
         old_hash = seen_file.read_text().strip()
     except FileNotFoundError:
@@ -2183,8 +2192,14 @@ def update_role_trigger(role: str, projection) -> bool:
     # transition-to-empty edge (a post-drain cleanup sweep; ingest's
     # edge-triggered no-rearm contract).
     if not projection:
+        # This hash write was a suppression — record the marker. Never clear
+        # it on the hash-unchanged early return above (no hash was written
+        # there), or the "last hash write" semantics silently drift.
+        write_atomic(suppressed_marker, new_hash + "\n")
         return False
     (TRIGGERS_DIR / role).touch()
+    # A real (non-empty) fire supersedes any prior suppression.
+    suppressed_marker.unlink(missing_ok=True)
     return True
 
 
