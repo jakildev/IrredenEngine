@@ -203,8 +203,23 @@ Parallel-agent fleet (tmux + Claude)
   fleet-claim …                  task claims under ~/.fleet/claims/
   fleet-queue-list [--repo …] [--json]
                                  human-readable task queue from GitHub Issues
+  fleet-queue-ingest             stamp fleet:queued + model-affinity label on
+                                 human:approved issues (+ fleet:blocked while a
+                                 **Blocked by:** predecessor is open); invoked
+                                 by fleet-state-scout on queue-projection changes
+  fleet-queue-backfill-model-labels [--repo engine|game] [--dry-run]
+                                 one-time backfill of fleet:opus/fleet:sonnet
+                                 labels onto existing fleet:queued issues from
+                                 their **Model:** body field
   fleet-state-scout              background GitHub/git poll → ~/.fleet/state/
   fleet-dispatcher               transient-claude dispatcher (worker panes)
+  fleet-dispatch-wrap <pane> <model> <effort> <role> [fallback] [mode]
+                                 runs one transient-role claude iteration;
+                                 records rate-limit exits for fleet-dispatcher's
+                                 per-pane cooldown (issue #520)
+  fleet-reconcile-amendments     boot-time reconciler for fleet:human-amending
+                                 PRs vs worktree/reservation state; invoked by
+                                 fleet-up at start
   fleet-rebase --auto [--dry-run]
                                  tier-0 merger: mechanical rebases of approved
                                  stacked/conflicting PRs for zero tokens;
@@ -230,11 +245,25 @@ Parallel-agent fleet (tmux + Claude)
                                  as one unskippable step (loser exits ~1s
                                  touching nothing; releases the claim if the
                                  checkout fails so no fleet:amending-* dangles)
+  fleet-pr-checkout-detached <N> [--repo <slug>]
+                                 fetch a PR's head ref and check it out
+                                 detached-HEAD, so the same branch can be
+                                 checked out in multiple worktrees at once
+  fleet-pr-amend-push            push a detached-HEAD amendment (from
+                                 fleet-pr-checkout-detached) back to the PR's
+                                 head ref via --force-with-lease; reads the
+                                 head ref from .git/fleet-amend-ref
   fleet-nit-close-for-pr [--dry-run] [--repo <owner/repo>]
                                  close open fleet:nit-of-pr issues whose
                                  addressing PR has merged (merger step 1.5)
   fleet-issue view <N> [--repo engine|game]
                                  read scout's per-issue cache + gh fallback
+  fleet-plan-lint <issue-number> [--repo engine|game]
+                                 structural lint for a `## Plan` comment; hard-
+                                 fails on missing plan / deferred-approach
+                                 phrasing / missing core sections — the cheap
+                                 pre-pass before the Opus plan-review
+                                 soundness judgment
   fleet-validate-stack <umbrella> [--repo engine|game] [--children N…] [--strict]
                                  [--check-checklist]
                                  pre-approval check that an epic's child issues
@@ -259,6 +288,14 @@ Parallel-agent fleet (tmux + Claude)
                                  clone (cwd must be a .claude/worktrees/* tree);
                                  wired into commit-and-push, start-next-task,
                                  fleet-pr-checkout-detached
+  fleet-guard-worktree-edit      PreToolUse hook (Edit|Write|MultiEdit) —
+                                 denies an absolute file_path that escapes the
+                                 session's fleet worktree (silent main-clone
+                                 misroute guard, reads JSON on stdin)
+  fleet-worktree-busy-branches [--exclude <path>] [--repo <path>]...
+                                 list branches held by other worktrees (union
+                                 across engine+game), for pre-checkout
+                                 collision checks
 
   fleet-help fleet-up            short summary (fleet-up has no --help)
 
@@ -274,6 +311,10 @@ File editing
 Meta / housekeeping
 ----------------------------------------------------------------------
   fleet-labels [--repo …] [--dry-run]    ensure GitHub fleet labels exist
+  fleet-transition <name> <number> [--repo <slug>] [--dry-run]
+                                 apply a named label transition atomically/
+                                 idempotently, from the edge table in
+                                 docs/agents/fleet-state-machine.json
   fleet-feedback [--since …] …           digest ~/.fleet/feedback/*.md
   review-fleet-feedback {digest|apply|bump}
                                  closed-loop reviewer over fleet-feedback;
