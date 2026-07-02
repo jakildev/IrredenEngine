@@ -238,8 +238,20 @@ float fogColumnReveal(ivec2 col) {
 // point keeps ONLY the one-cell ring the disc crosses (tight, not a blanket
 // margin); kFogColumnKeepAa is a small rim so the hard-disc smoothstep is
 // non-degenerate and the AA rim / reconstruction skew never notches the edge.
+//
+// kFogHiddenKeepCells widens that keep into a RING of fog-hidden columns
+// around the disc (#2124 analytic cross-section): FOG_TO_TRIXEL's image-space
+// cut repaints a hidden pixel as the cylinder's cut surface, so hidden matter
+// near the rim must still RENDER (lit, normally shaded) for the cut to have
+// colour to work from — the scene renders as if unfogged in the ring and the
+// fog pass owns the reveal per pixel. The ring bounds how deep a cut face can
+// be recovered (≈ keep/√2 cells of height); columns past it drop as before
+// (their pixels could only ever read black). Ring voxels also resume casting
+// sun shadows / AO near the rim — the pre-cull (#2040) behaviour. Mirrored in
+// c_voxel_visibility_compact.{glsl,metal}'s kCullSafetyCells (keep superset).
 const float kFogColumnCellHalf = 0.5;
 const float kFogColumnKeepAa = 0.5;
+const float kFogHiddenKeepCells = 8.0;
 float fogColumnRevealNearest(ivec2 col) {
     const ivec2 fogSize = imageSize(canvasFogOfWar);
     if (fogSize.x <= 1) {
@@ -257,7 +269,12 @@ float fogColumnRevealNearest(ivec2 col) {
         const vec2 nearest = clamp(
             visionCircles[i].xy, vec2(col) - kFogColumnCellHalf, vec2(col) + kFogColumnCellHalf
         );
-        reveal = max(reveal, fogVisionCircleReveal(nearest, visionCircles[i], kFogColumnKeepAa));
+        reveal = max(
+            reveal,
+            fogVisionCircleReveal(
+                nearest, visionCircles[i], kFogColumnKeepAa + kFogHiddenKeepCells
+            )
+        );
     }
     return reveal;
 }

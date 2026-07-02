@@ -154,6 +154,13 @@ static float fogColumnReveal(
 // Grid-memory / OOB / placeholder short-circuits match fogColumnReveal.
 constant float kFogColumnCellHalf = 0.5f;
 constant float kFogColumnKeepAa = 0.5f;
+// kFogHiddenKeepCells widens the keep into a RING of fog-hidden columns
+// around the disc (#2124 analytic cross-section): FOG_TO_TRIXEL's image-space
+// cut repaints a hidden pixel as the cylinder's cut surface, so hidden matter
+// near the rim must still RENDER for the cut to have colour to work from.
+// See the GLSL twin for the full rationale; mirrored in the compact's
+// kCullSafetyCells (keep superset).
+constant float kFogHiddenKeepCells = 8.0f;
 static float fogColumnRevealNearest(
     texture2d<float, access::read> fog, constant FogObserverData& obs, int2 col
 ) {
@@ -175,7 +182,12 @@ static float fogColumnRevealNearest(
             float2(col) - kFogColumnCellHalf,
             float2(col) + kFogColumnCellHalf
         );
-        reveal = max(reveal, fogVisionCircleReveal(nearest, obs.visionCircles[i], kFogColumnKeepAa));
+        reveal = max(
+            reveal,
+            fogVisionCircleReveal(
+                nearest, obs.visionCircles[i], kFogColumnKeepAa + kFogHiddenKeepCells
+            )
+        );
     }
     return reveal;
 }

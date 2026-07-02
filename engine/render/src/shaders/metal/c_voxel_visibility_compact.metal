@@ -121,7 +121,9 @@ struct FogObserverData {
 
 // Safety margin (cells) — mirrors kCullSafetyCells in the GLSL: covers the
 // per-pixel worldPerPixel AA in c_fog_to_trixel that this shader can't compute.
-constant float kCullSafetyCells = 1.0f;
+// Must stay a superset of stage 1's fog-hidden keep ring
+// (kFogHiddenKeepCells + aa) — see the GLSL twin.
+constant float kCullSafetyCells = 9.0f;
 
 // True iff this column lies under any live analytic vision circle, so its voxels
 // survive the grid cull and FOG_TO_TRIXEL can reveal them smoothly per pixel.
