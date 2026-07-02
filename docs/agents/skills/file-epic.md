@@ -111,6 +111,7 @@ proposal-pending: none
 |---|---|---|---|---|
 
 ### Decisions
+<!-- entries: D<n> (<YYYY-MM-DD>): <decision> — source: <link>  (numbered scheme per epic-steward-protocol.md §Decisions; escalation rules reference decisions by D-id) -->
 
 ### Events
 - <YYYY-MM-DD>: filed via file-epic
