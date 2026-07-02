@@ -137,12 +137,15 @@ struct CanvasStressSettings {
     bool screenLockDetached_ = false;
     // #1721 diagnosis harness. `--only <group>[,<group>...]` spawns only the
     // named entity groups (maingrid, gridspin, canary, revox, orbit, floor);
-    // 0 means no filter (default run, byte-identical). Two OPT-IN groups never
+    // 0 means no filter (default run, byte-identical). Several OPT-IN groups never
     // appear in the default run: "compare" (the #1374 unified-rotation labeled
-    // side-by-side) and "interpenetrate" (the #1960 per-trixel-priority depth
+    // side-by-side); "interpenetrate" (the #1960 per-trixel-priority depth
     // override — `--only interpenetrate` isolates two detached units, the far one
     // ROTATED and tagged a per-trixel tier so it renders in front of the near one,
-    // proving the carrier survives the re-voxelize MODE 1 fill, #2023).
+    // proving the carrier survives the re-voxelize MODE 1 fill, #2023);
+    // "smallzoom" (the #2043 small/low-zoom gap repro); and "orbitswap" (the #2154
+    // per-ENTITY priority-swap companion — the far unit's C_EntityCanvas::
+    // depthPriority_ lifts it in front at tier 1, #2122 item 2).
     //
     // The sweep flags replace the base auto-screenshot suite with a focused capture run and force
     // --no-auto-rotate so the swept variable is the only one moving:
@@ -226,6 +229,7 @@ enum SpawnGroup : std::uint32_t {
     kGroupCompare = 1u << 6,
     kGroupInterpenetrate = 1u << 7,
     kGroupSmallZoom = 1u << 8,
+    kGroupOrbitSwap = 1u << 9,
 };
 
 // 0.5 degrees per frame → full revolution in ~720 frames (~12 s at 60 fps)
@@ -391,6 +395,18 @@ bool smallZoomGroupRequested() {
     return (g_settings.onlyGroups_ & kGroupSmallZoom) != 0u;
 }
 
+// The per-ENTITY priority-swap orbit demo (#2154, #2122 item 2) is OPT-IN only —
+// like `interpenetrate`, it never spawns in the default scene, so every existing
+// manifest shot stays byte-identical. `--only orbitswap` also gates every other
+// group off (groupEnabled() is false for the unselected bits), isolating the
+// two-unit swap scene. This is the per-ENTITY carrier (C_EntityCanvas::
+// depthPriority_, #1958) companion to `interpenetrate`'s per-trixel carrier
+// (#1960): the priority unit wins the composite depth contest at tier 1 (entity
+// foreground), interpenetrate's rotated unit at tier 2 (per-trixel override).
+bool orbitSwapGroupRequested() {
+    return (g_settings.onlyGroups_ & kGroupOrbitSwap) != 0u;
+}
+
 std::uint32_t parseSpawnGroups(const char *arg) {
     struct GroupName {
         const char *name_;
@@ -406,6 +422,7 @@ std::uint32_t parseSpawnGroups(const char *arg) {
         {"compare", kGroupCompare},
         {"interpenetrate", kGroupInterpenetrate},
         {"smallzoom", kGroupSmallZoom},
+        {"orbitswap", kGroupOrbitSwap},
     };
     std::uint32_t bits = 0u;
     const std::string list{arg};
@@ -890,6 +907,87 @@ void spawnPerTrixelInterpenetration() {
     );
 }
 
+// One world-placed DETACHED unit for the per-ENTITY priority-swap demo (#2154).
+// Mirrors spawnPerTrixelDetachedUnit but exercises the per-ENTITY foreground
+// carrier C_EntityCanvas::depthPriority_ (#1958) instead of the per-trixel
+// carrier (#1960): a non-zero depthPriority_ pins the WHOLE canvas into the
+// entity-foreground near band (depthPriorityMode_ = 1), so f_trixel_to_framebuffer
+// resolves tier = max(perEntityTier = 1, perTrixelTier = 0) = 1 — the single
+// entity-fg tier. Deliberately does NOT call changeVoxelPriorityAll (that is the
+// per-trixel carrier → tier 2). SEPARATE canvas per unit: per-entity priority
+// arbitrates ACROSS canvases at finalization, so two units on one canvas would
+// resolve at the canvas raster (atomicMin), upstream of the partition.
+//
+// `rotate` gives the unit a FIXED non-cardinal initial pose (+ continuous AutoSpin
+// when spin is enabled), mirroring the interpenetrate far unit. The pose is
+// load-bearing for the GATE, not the carrier: a rotated 10³ cube's silhouette
+// spans its larger ≈10√3 AABB, so the probe pixel stays inside it across the whole
+// auto-screenshot camera-yaw suite (an axis-aligned cube shrinks off the pixel at
+// off-cardinal shots, and the nearer world-tier unit would then win → tier 0).
+// The per-ENTITY carrier itself is pose-independent (it lives on the canvas, read
+// by the composite each frame regardless of the re-voxelize fill mode).
+void spawnPerEntityPriorityUnit(
+    int index, vec3 worldPos, Color color, int depthPriority, bool rotate
+) {
+    constexpr ivec2 kCanvasSize{128, 128};
+    constexpr ivec3 kPoolSize{20, 20, 20};
+    constexpr ivec3 kCubeSize{10, 10, 10};
+    C_EntityCanvas canvas = IRPrefab::EntityCanvas::createWithVoxelPool(
+        "orbitswap_canvas_" + std::to_string(index),
+        kCanvasSize,
+        kPoolSize
+    );
+    canvas.screenLocked_ = false;          // world-placed ⇒ shared depth contest
+    canvas.depthPriority_ = depthPriority; // per-ENTITY foreground carrier (#1958)
+    IREntity::createEntity(
+        C_LocalTransform{vec3(0.0f)},
+        C_VoxelSetNew{kCubeSize, color, true, canvas.canvasEntity_}
+    );
+    if (rotate) {
+        // Non-cardinal axis + fixed initial angle so the silhouette is the wider
+        // rotated AABB even under --no-spin; AutoSpin then tumbles it for the
+        // visual (mirrors spawnPerTrixelDetachedUnit's rotated far unit).
+        constexpr vec3 kSpinAxis{0.4f, 1.0f, 0.2f};
+        const vec4 fixedPose = IRMath::quatAxisAngle(kSpinAxis, 0.6f);
+        IREntity::createEntity(
+            C_LocalTransform{worldPos, fixedPose},
+            C_RotationMode{RotationMode::DETACHED_REVOXELIZE},
+            C_AutoSpin{kSpinAxis, g_settings.noSpin_ ? 0.0f : kDetachedSpinBaseRadPerFrame},
+            canvas
+        );
+        return;
+    }
+    IREntity::createEntity(
+        C_LocalTransform{worldPos},
+        C_RotationMode{RotationMode::DETACHED_REVOXELIZE},
+        canvas
+    );
+}
+
+// #2154 / #2122 item 2 — per-ENTITY priority-swap orbit demo (`--only orbitswap`).
+// Two world-placed DETACHED units (SEPARATE canvases) at the SAME screen position
+// but different world depth: the FAR unit sits +6 along each axis, i.e. ≈6·(1,1,1)
+// — pure iso DEPTH with negligible screen-space shift. By world depth the NEAR unit
+// (priority 0) occludes the FAR one, so priority is load-bearing: the FAR unit
+// carries C_EntityCanvas::depthPriority_ = 1 (entity-foreground → tier 1), lifting
+// its whole canvas into the reserved near band so it renders IN FRONT of the near
+// unit regardless of true depth — a clean tier decision, not a z-fight flicker.
+// Under the default camera yaw-ramp (--auto-rotate) the pair rotates about the
+// world-origin focus while the FAR unit stays authoritatively in front across all
+// yaws (swap-not-flicker). Gate deterministically with
+// `--only orbitswap --no-spin --no-auto-rotate --depth-probe-assert <overlap>,tier=1`
+// (scripts/depth-tier-verify.py --only orbitswap --tier 1): the composite winner at
+// the overlap decodes tier 1; a dropped carrier would decode tier 0 and FAIL.
+void spawnPerEntityPrioritySwap() {
+    // Near unit — ordinary world-tier voxels (priority 0), static (identity),
+    // occludes by true depth.
+    spawnPerEntityPriorityUnit(0, vec3(0.0f, 0.0f, 0.0f), Color{80, 110, 235, 255}, 0, false);
+    // Far unit — +6 along each axis (behind, ~same screen position), entity-fg
+    // priority so it wins the composite contest at tier 1. ROTATED so its wider
+    // silhouette keeps the probe pixel on it across the whole camera-yaw suite.
+    spawnPerEntityPriorityUnit(1, vec3(6.0f, 6.0f, 6.0f), Color{235, 80, 80, 255}, 1, true);
+}
+
 Color gridColor(int x, int y, int gridSize) {
     const float denom = static_cast<float>(IRMath::max(gridSize - 1, 1));
     return Color{
@@ -1000,7 +1098,7 @@ void registerArgs() {
     args.string(
         "--only",
         "Spawn only the named entity groups (comma-separated: maingrid,gridspin,canary,revox,"
-        "orbit,floor,compare,interpenetrate)",
+        "orbit,floor,compare,interpenetrate,smallzoom,orbitswap)",
         ""
     );
     args.numbers(
@@ -1490,6 +1588,18 @@ void initEntities() {
     // #2043 small/low-zoom gap + size repro (opt-in via `--only smallzoom`).
     if (smallZoomGroupRequested()) {
         spawnSmallZoomRepro();
+    }
+
+    // #2154 / #2122 item 2 per-ENTITY priority-swap orbit demo — OPT-IN only
+    // (`--only orbitswap`), so the default scene (and every manifest shot) is
+    // untouched. The FAR unit carries C_EntityCanvas::depthPriority_ = 1
+    // (entity-foreground) so it wins the composite depth contest against the
+    // nearer world-tier unit at every camera yaw — the per-entity companion to
+    // `--only interpenetrate`'s per-trixel demo. Run with
+    // --no-spin --no-auto-rotate --depth-probe-assert <overlap>,tier=1 to gate
+    // the swap headlessly (scripts/depth-tier-verify.py --only orbitswap --tier 1).
+    if (orbitSwapGroupRequested()) {
+        spawnPerEntityPrioritySwap();
     }
 
     // Main-canvas GRID grid: a flat lattice of small voxel cubes. Exercises
