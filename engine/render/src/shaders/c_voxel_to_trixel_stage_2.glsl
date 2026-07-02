@@ -190,7 +190,7 @@ void main() {
     // the top 2 bits of the stored entity id via the shared carrier chokepoint.
     // Default reserved == 0 ⇒ id unchanged. f_trixel_to_framebuffer reads it as the
     // per-trixel tier; every id reader masks it off (decodeEntityId).
-    const uvec2 packedEntityId =
+    uvec2 packedEntityId =
         encodeEntityIdWithPriority(entityIds[voxelIndex], voxels[voxelIndex].reserved & 0x3u);
     // See c_voxel_to_trixel_stage_1.glsl for the slot/faceId contract (#1278).
     const int slot = localIDToFace_2x3(gl_LocalInvocationID.xy);
@@ -230,13 +230,24 @@ void main() {
             (isDetachedCanvas > 0.5 ? ivec2(round(detachedWorldReceive.xy)) : ivec2(0));
     }
     bool keepFace = faceIsExposed(flagsByte, faceId);
+    bool isCutFace = false;
     if (!keepFace && faceId < kFaceZNeg && fogActive) {
         // P2 (#2126): cut iff the neighbor column is not fully revealed (reveal <
         // 1.0) — mirrors stage 1 exactly. Mode A (edgeSoftness 0) reveal is binary
         // so this collapses to the #2125/#2127 boolean boundary (byte-identical).
         keepFace = fogColumnReveal(worldColumn + faceOutwardNormal6I(faceId).xy) < 1.0;
+        // A non-exposed VERTICAL face kept ONLY by the fog cut rule is the object's
+        // interior cross-section wall — flag it (bit 29 of the stored id) so
+        // LIGHTING_TO_TRIXEL force-lights it as a clean exposed face rather than
+        // self-shadowing it with the fog-hidden neighbors (#2124 lit-cross-section
+        // follow-up). Exposed faces (keepFace true above) are NOT flagged.
+        isCutFace = keepFace;
     }
     if (!keepFace) return;
+    // Fold the cut-face flag into the id AFTER the priority encode (which strips
+    // this bit via kEntityIdHighWordMask). Non-cut ⇒ id unchanged, so non-fog
+    // scenes stay byte-identical.
+    packedEntityId = encodeEntityIdCutFace(packedEntityId, isCutFace);
 
     // Per-slot deformation matrix — see stage 1 for the contract.
     const mat2 D = mat2(faceDeform[slot].xy, faceDeform[slot].zw);

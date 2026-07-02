@@ -224,12 +224,26 @@ void drivePlayerWalk() {
 bool g_edgeZoom = false; // --edge-zoom
 constexpr float kEdgeVisionRadius = 9.0f;
 
+// ROI crop over the green slab's cut face at zoom9 (engine/render/CLAUDE.md
+// "Verifying render changes" asks for an ROI-crop pair alongside full-frame
+// shots on render PRs touching the trixel pipeline). Bounds are a per-host
+// iteration point (see the shape_debug kCrops* note); tuned against this
+// host's HiDPI 2560x1440 framebuffer.
+constexpr IRVideo::RoiCrop kCropsEdgeZoom9[] = {
+    {1200, 700, 480, 350, "cutface_slab"},
+};
+
 // Origin-centered shots at climbing magnification so the disc boundary (and the
 // voxel objects straddling it) is sampled at multiple pixel scales — the
 // before/after surface for the cross-section fix.
 constexpr IRVideo::AutoScreenshotShot kEdgeShots[] = {
     {5.0f, vec2(0, 0), 0.0f, "fog_edge_zoom5"},
-    {9.0f, vec2(0, 0), 0.0f, "fog_edge_zoom9"},
+    {9.0f,
+     vec2(0, 0),
+     0.0f,
+     "fog_edge_zoom9",
+     kCropsEdgeZoom9,
+     sizeof(kCropsEdgeZoom9) / sizeof(kCropsEdgeZoom9[0])},
     {14.0f, vec2(0, 0), 0.0f, "fog_edge_zoom14"},
 };
 
@@ -355,7 +369,8 @@ int main(int argc, char **argv) {
     if (g_detachedEdge) {
         if (g_edgeZoom || g_edgeYawSweep || g_edgeSmooth || g_playerWalk || g_movingObserver) {
             IR_LOG_INFO(
-                "--detached-edge overrides --edge-zoom / --edge-yaw-sweep / --edge-smooth / --player-walk / --moving-observer"
+                "--detached-edge overrides --edge-zoom / --edge-yaw-sweep / --edge-smooth / "
+                "--player-walk / --moving-observer"
             );
         }
         g_edgeZoom = false;

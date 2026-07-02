@@ -147,9 +147,18 @@ inline int depthForegroundTierCenter(int kMin, int tier) {
 // via encodeEntityIdWithPriority. Priority 0 ⇒ id unchanged.
 constant uint kEntityIdPriorityShiftInHighWord = 30u;
 constant uint kEntityIdPriorityMaskInHighWord = 0x3u << kEntityIdPriorityShiftInHighWord;
-constant uint kEntityIdHighWordMask = ~kEntityIdPriorityMaskInHighWord;
+// Fog cut-face carrier (#2124 lit-cross-section follow-up) — GLSL twin's
+// kEntityIdCutFaceMaskInHighWord. Bit 29 flags a fog cross-section CUT face so
+// LIGHTING_TO_TRIXEL forces it fully lit (no self-shadow / crease AO). Rides the
+// same masking chokepoint; default (non-cut) ⇒ id unchanged (byte-identical).
+constant uint kEntityIdCutFaceMaskInHighWord = 0x1u << 29u;
+constant uint kEntityIdHighWordMask =
+    ~(kEntityIdPriorityMaskInHighWord | kEntityIdCutFaceMaskInHighWord);
 inline uint decodePriority(uint2 rawId) {
     return (rawId.y >> kEntityIdPriorityShiftInHighWord) & 0x3u;
+}
+inline bool decodeCutFace(uint2 rawId) {
+    return (rawId.y & kEntityIdCutFaceMaskInHighWord) != 0u;
 }
 inline uint2 decodeEntityId(uint2 rawId) {
     return uint2(rawId.x, rawId.y & kEntityIdHighWordMask);
@@ -157,6 +166,11 @@ inline uint2 decodeEntityId(uint2 rawId) {
 inline uint2 encodeEntityIdWithPriority(uint2 id, uint priority) {
     return uint2(id.x, (id.y & kEntityIdHighWordMask) |
                            ((priority & 0x3u) << kEntityIdPriorityShiftInHighWord));
+}
+// Set the fog cut-face flag on an ALREADY priority-encoded id — GLSL twin.
+inline uint2 encodeEntityIdCutFace(uint2 packed, bool isCutFace) {
+    return isCutFace ? uint2(packed.x, packed.y | kEntityIdCutFaceMaskInHighWord)
+                     : packed;
 }
 
 // Per-axis fractional encoding (#1458): (depth << 10) | (uFrac4 << 6) | (vFrac4 << 2) | slot

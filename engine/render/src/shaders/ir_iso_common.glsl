@@ -161,9 +161,23 @@ int depthForegroundTierCenter(int kMin, int tier) {
 // unchanged. Mirror IRRender::kEntityIdPriority* (ir_render_types.hpp) + .metal.
 const uint kEntityIdPriorityShiftInHighWord = 30u;
 const uint kEntityIdPriorityMaskInHighWord = 0x3u << kEntityIdPriorityShiftInHighWord;
-const uint kEntityIdHighWordMask = ~kEntityIdPriorityMaskInHighWord;
+// Fog cut-face carrier (#2124 lit-cross-section follow-up): the bit just below
+// the priority tier (bit 29 of the high word) flags a fog cross-section CUT face
+// so LIGHTING_TO_TRIXEL can force it fully lit — no self-shadow from the fog-
+// hidden neighbor voxels, no interior-crease AO — the "lit as a clean exposed
+// face" cross-section spec (supersedes the epic's option-1 full-AO/shadow
+// default). Rides the SAME masking chokepoint as the priority tier:
+// kEntityIdHighWordMask strips it, so every id READER (picking) ignores it.
+// Default (non-cut) ⇒ the stored id is unchanged, so non-fog scenes stay
+// byte-identical.
+const uint kEntityIdCutFaceMaskInHighWord = 0x1u << 29u;
+const uint kEntityIdHighWordMask =
+    ~(kEntityIdPriorityMaskInHighWord | kEntityIdCutFaceMaskInHighWord);
 uint decodePriority(uvec2 rawId) {
     return (rawId.y >> kEntityIdPriorityShiftInHighWord) & 0x3u;
+}
+bool decodeCutFace(uvec2 rawId) {
+    return (rawId.y & kEntityIdCutFaceMaskInHighWord) != 0u;
 }
 uvec2 decodeEntityId(uvec2 rawId) {
     return uvec2(rawId.x, rawId.y & kEntityIdHighWordMask);
@@ -171,6 +185,12 @@ uvec2 decodeEntityId(uvec2 rawId) {
 uvec2 encodeEntityIdWithPriority(uvec2 id, uint priority) {
     return uvec2(id.x, (id.y & kEntityIdHighWordMask) |
                            ((priority & 0x3u) << kEntityIdPriorityShiftInHighWord));
+}
+// Set the fog cut-face flag on an ALREADY priority-encoded id. Call after
+// encodeEntityIdWithPriority (which strips this bit via kEntityIdHighWordMask).
+uvec2 encodeEntityIdCutFace(uvec2 packed, bool isCutFace) {
+    return isCutFace ? uvec2(packed.x, packed.y | kEntityIdCutFaceMaskInHighWord)
+                     : packed;
 }
 
 // Per-axis fractional encoding (#1458): (depth << 10) | (uFrac4 << 6) | (vFrac4 << 2) | slot

@@ -198,7 +198,7 @@ kernel void c_voxel_to_trixel_stage_2(
     // the top 2 bits of the stored entity id via the shared carrier chokepoint.
     // Default reserved == 0 ⇒ id unchanged. Read by f_trixel_to_framebuffer as the
     // per-trixel tier; masked off by every id reader (decodeEntityId).
-    const uint2 packedEntityId =
+    uint2 packedEntityId =
         encodeEntityIdWithPriority(entityIds[voxelIndex], voxels[voxelIndex].reserved & 0x3u);
 
     // Re-voxelize marker — mirror of stage 1.
@@ -236,6 +236,7 @@ kernel void c_voxel_to_trixel_stage_2(
                  : int2(0));
     }
     bool keepFace = faceIsExposed(flagsByte, faceId);
+    bool isCutFace = false;
     if (!keepFace && faceId < kFaceZNeg && fogActive) {
         // P2 (#2126): cut iff the neighbor column is not fully revealed (reveal <
         // 1.0) — mirrors stage 1 exactly. Mode A (edgeSoftness 0) reveal is binary so
@@ -243,8 +244,15 @@ kernel void c_voxel_to_trixel_stage_2(
         keepFace = fogColumnReveal(
             canvasFogOfWar, fogObservers,
             worldColumn + faceOutwardNormal6I(faceId).xy) < 1.0f;
+        // A non-exposed VERTICAL face kept ONLY by the fog cut rule is the interior
+        // cross-section wall — flag it so LIGHTING_TO_TRIXEL force-lights it as a
+        // clean exposed face (#2124 lit-cross-section follow-up). GLSL twin.
+        isCutFace = keepFace;
     }
     if (!keepFace) return;
+    // Fold the cut-face flag into the id AFTER the priority encode (which strips it
+    // via kEntityIdHighWordMask). Non-cut ⇒ id unchanged (byte-identical).
+    packedEntityId = encodeEntityIdCutFace(packedEntityId, isCutFace);
 
     // Per-slot deformation matrix — see stage 1 GLSL for the contract.
     const float2x2 D = float2x2(
