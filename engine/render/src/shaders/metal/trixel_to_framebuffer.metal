@@ -33,7 +33,11 @@ struct FrameDataIsoTriangles {
     float4 scatterFbResolution;
     int depthColorMode;
     float depthColorExtent;
-    float _depthColorPad0;
+    // No-priority perf fast-path (#2155): 0 = no per-trixel-priority voxel in this
+    // canvas, so the tier-decode triangleEntityIds read is skipped; != 0 = read +
+    // decode as before. Repurposes the former _depthColorPad0 slot at offset 200
+    // (4-byte scalar, layout-identical). Twin of f_trixel_to_framebuffer.glsl.
+    int anyPerTrixelPriority;
     // Two-tier composite depth partition (#1958): 0 = world content (clamped out
     // of the reserved near band), != 0 = foreground priority (pinned into it).
     int depthPriorityMode;
@@ -119,13 +123,19 @@ fragment FragmentOut f_trixel_to_framebuffer(
     if (depthScale <= 0.0f) depthScale = 1.0f;
     int base = int(round(float(rawDist) * depthScale));
     // Per-trixel priority tiers (#1960) — twin of f_trixel_to_framebuffer.glsl.
-    // Read this fragment's entity id at the SAME texel its color/depth came from
-    // (sampleCoord, the raw position — the hover read below uses the shifted
-    // hoverCoord and is left untouched). The id's top 2 bits carry the per-trixel
-    // priority.
-    const uint2 sampleEntityId = triangleEntityIds.read(sampleCoord).rg;
-    const int tier =
-        max(frameData.depthPriorityMode, int(decodePriority(sampleEntityId)));
+    // No-priority perf fast-path (#2155): read this fragment's entity id (at the
+    // SAME texel its color/depth came from — sampleCoord, the raw position) only
+    // when the canvas carries a per-trixel priority. When it doesn't,
+    // decodePriority of an unread id would be 0, so tier == depthPriorityMode and
+    // the output is byte-identical. Unlike the GLSL twin this read never feeds
+    // picking (the hover read below uses the shifted hoverCoord and is left
+    // untouched + already gated on isMouseHovered), so no `|| isMouseHovered`
+    // disjunct is needed here.
+    int tier = frameData.depthPriorityMode;
+    if (frameData.anyPerTrixelPriority != 0) {
+        const uint2 sampleEntityId = triangleEntityIds.read(sampleCoord).rg;
+        tier = max(frameData.depthPriorityMode, int(decodePriority(sampleEntityId)));
+    }
     const int foregroundCeil = globals.kMinTriangleDistance + kDepthForegroundBandWidth;
     int enc;
     if (tier == 0) {

@@ -147,7 +147,19 @@ struct FrameDataTrixelToFramebuffer {
     /// gather fast path stays byte-identical.
     int depthColorMode_ = 0;
     float depthColorExtent_ = 0.0f;
-    float _depthColorPad0_ = 0.0f;
+    /// No-priority perf fast-path (#2155). 0 = no voxel drawn into this canvas
+    /// carries a non-zero per-trixel priority (#1960), so f_trixel_to_framebuffer
+    /// skips the per-fragment `triangleEntityIds` decode read on the default path
+    /// (still read for hovered fragments so picking is unaffected). != 0 = at
+    /// least one priority voxel may be present, so the read runs and the tier is
+    /// decoded as before. Conservative-TRUE: a false positive only costs the fast
+    /// path, never correctness (a skipped read would decode tier 0 anyway, so the
+    /// flag-off output is byte-identical). Stamped per canvas from the pool's
+    /// priority-voxel count (C_TriangleCanvasTextures::anyPerTrixelPriority_).
+    /// Repurposes the former `_depthColorPad0_` std140 slot (offset 200) — a
+    /// 4-byte scalar, so no size/offset change and the scatter UBO asserts below
+    /// stay valid.
+    int anyPerTrixelPriority_ = 0;
     /// Two-tier composite depth partition (#1958). 0 = WORLD content: the gather
     /// (f_trixel_to_framebuffer) clamps `enc` OUT of the reserved near band
     /// (`enc = max(enc, kDepthForegroundCeil + 1)`) — a no-op for every in-budget

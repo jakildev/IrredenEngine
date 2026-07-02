@@ -44,7 +44,11 @@ layout (std140, binding = 3) uniform FrameDataIsoTriangles {
     vec4 scatterFbResolution;
     int depthColorMode;
     float depthColorExtent;
-    float _depthColorPad0;
+    // No-priority perf fast-path flag (#2155); repurposes the former _depthColorPad0
+    // slot at offset 200. This vertex stage doesn't read it — declared only to keep
+    // FrameDataIsoTriangles member-identical to the fragment stage (see the lockstep
+    // note above) and to the C++ FrameDataTrixelToFramebuffer.
+    int anyPerTrixelPriority;
     int depthPriorityMode;
 };
 

@@ -333,6 +333,13 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         // the per-trixel-override tier (2) is authored per voxel, never here. tier 0
         // (world) is clamped OUT of the reserved band, byte-identical to #1958.
         fd.depthPriorityMode_ = foregroundPriority ? 1 : 0;
+        // No-priority perf fast-path (#2155): forward the child canvas's stamp so
+        // a rotating/static detached solid that carries per-trixel priority (via
+        // the re-voxelize source set, #2023) still decodes its tier, while a
+        // no-priority detached solid takes the fast path. This composite never
+        // hover-picks (mouseHoveredTriangleIndex below is off-screen), so the flag
+        // is the sole gate here.
+        fd.anyPerTrixelPriority_ = canvasTextures->anyPerTrixelPriority_;
         fd.mouseHoveredTriangleIndex_ = vec2(-1000000.0f);
         fd.effectiveSubdivisionsForHover_ = vec2(1.0f, depthScale);
         fd.showHoverHighlight_ = 0.0f;

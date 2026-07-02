@@ -802,6 +802,16 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // composite).
         triangleCanvasTextures.renderedSubdivisions_ = frameData_.voxelRenderOptions_.y;
 
+        // No-priority perf fast-path (#2155). Publish whether any voxel in this
+        // canvas's pool carries a non-zero per-trixel priority (#1960), maintained
+        // push-at-mutation on the pool (O(1) read, no per-voxel scan). The
+        // finalization gather (TRIXEL_TO_FRAMEBUFFER) and the detached composite
+        // (ENTITY_CANVAS_TO_FRAMEBUFFER) forward it into the shader's UBO to gate
+        // the per-fragment entity-id decode read. Covers the re-voxelize path too:
+        // the private pool inherits its source set's priority via
+        // changeVoxelPriority*, so a rotating priority solid still stamps 1.
+        triangleCanvasTextures.anyPerTrixelPriority_ = voxelPool.hasPerTrixelPriority() ? 1 : 0;
+
         // Detached re-voxelize fill mode (#1556 / #1619). The INVERSE path (#1619,
         // rotating) dispatches over the dest-cell cube and the GPU authors
         // position + color + active for those slots, so the shared compact + frame
