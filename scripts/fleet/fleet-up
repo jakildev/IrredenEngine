@@ -1566,7 +1566,7 @@ attach with:  tmux attach -t ${SESSION}
 model classes (resolved this run — tasks route by class via the
 fleet:fable / fleet:opus / fleet:sonnet labels and Model:/Effort: fields;
 the dispatcher launches each worker iteration with its task's class):
-  fable  — ${FLEET_MODEL_FABLE}  (architects; fleet:fable tasks — opt-in hard work)
+  fable  — ${FLEET_MODEL_FABLE}  (architects; needs-plan planning; fleet:fable tasks)
            dispatched-iteration fallback: ${FLEET_FABLE_FALLBACK:-none}
   opus   — ${FLEET_MODEL_OPUS}  (default task class; final reviewer)
   sonnet — ${FLEET_MODEL_SONNET}  (sonnet tasks, first-pass review, smoke, merger)

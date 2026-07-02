@@ -1511,9 +1511,10 @@ def project_opus_reviewer(state):
         # Plan-review issues (#1932): a posted `## Plan` awaiting a verdict.
         # Nothing else wakes the reviewer on issue (vs PR) state, so project them
         # here. Skip human-held ones. The reviewer's verdict removes
-        # fleet:plan-review, so the issue leaves this set — a terminal change
-        # (one trailing empty wake, exactly like a PR verdict label-swap), NOT a
-        # self-toggled label, so it can't self-trigger a loop.
+        # fleet:plan-review, so the issue leaves this set — a terminal change,
+        # NOT a self-toggled label, so it can't self-trigger a loop. (When the
+        # departure empties the whole projection, update_role_trigger
+        # swallows even the single trailing wake.)
         for issue in repo_state.get("plan_review", []):
             labels = set(issue.get("labels", []))
             if labels & _HUMAN_GATE_LABELS:
@@ -2166,6 +2167,23 @@ def update_role_trigger(role: str, projection) -> bool:
     if new_hash == old_hash:
         return False
     write_atomic(seen_file, new_hash + "\n")
+    # A hash change whose NEW projection is empty is a transition to
+    # nothing-to-do — the item left the set because someone handled it (a
+    # verdict label-swap, an amend claim, a merge). Waking the role to
+    # discover an empty slice is a guaranteed no-op iteration, and label
+    # churn across several PRs produces trains of them (observed
+    # 2026-07-01: opus-reviewer dispatched 4x in 5 min, every iteration
+    # "no actionable candidates"). Record the hash (so the next
+    # empty->non-empty flip still fires) but leave the trigger untouched.
+    # An already-pending trigger stays pending: a non-empty->non-empty
+    # change armed it and the remaining work may still need serving.
+    # The queue-manager / queue-manager-ingest branches in collect_state
+    # inline this same hash-compare WITHOUT the empty suppression on
+    # purpose: they spawn cheap non-LLM subprocesses, and both want the
+    # transition-to-empty edge (a post-drain cleanup sweep; ingest's
+    # edge-triggered no-rearm contract).
+    if not projection:
+        return False
     (TRIGGERS_DIR / role).touch()
     return True
 

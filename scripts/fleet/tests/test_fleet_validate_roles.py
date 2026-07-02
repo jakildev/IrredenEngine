@@ -218,6 +218,34 @@ class TestMissingDeltaKey(unittest.TestCase):
         self.assertEqual(result["n_errors"], 0)
         self.assertEqual(result["n_warnings"], 1)
 
+    def test_citing_role_doc_without_deltas_is_not_a_wrapper(self):
+        # role-opus-reviewer.md cites architect-protocol.md in prose (the
+        # plan-review pass points at §"plan reviewer") without wrapping it.
+        # A protocol mention alone must NOT drag the file into delta
+        # validation — pre-fix this produced one false error per delta key.
+        keys = ["repo-slug", "role-name"]
+        _make_protocol(self.root, "test-protocol.md", keys)
+        _make_wrapper(self.root, "role-test.md", "test-protocol.md", keys)
+        _write(Path(self.root) / ".claude" / "commands" / "role-citer.md",
+               "---\nname: role-citer\n---\n\nSee test-protocol.md "
+               "\u00a7\"some section\" for the shared flow.\n")
+        result = validate_roles([(self.root, "engine")])
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(result["n_errors"], 0)
+        self.assertEqual(result["n_warnings"], 0)
+
+    def test_citing_only_repo_still_warns_no_wrapper(self):
+        # If the ONLY file mentioning the protocol lacks a ## Deltas section
+        # (citation, or a half-written wrapper), the repo has no wrapper —
+        # the no-wrapper WARN must fire rather than validating the citer.
+        _make_protocol(self.root, "test-protocol.md", ["repo-slug"])
+        _write(Path(self.root) / ".claude" / "commands" / "role-citer.md",
+               "---\nname: role-citer\n---\n\nSee test-protocol.md.\n")
+        result = validate_roles([(self.root, "engine")])
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["n_errors"], 0)
+        self.assertEqual(result["n_warnings"], 1)
+
 
 # ---------------------------------------------------------------------------
 # Group 3: checklist drift
