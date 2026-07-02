@@ -166,6 +166,12 @@ float fogColumnRevealFarthest(ivec2 col) {
 // exactly when zoom (effective subdivisions) makes it visible.
 const int kFogBandMinSubdivisions = 4;
 
+// Guards the radial-re-homing divide-by-length below: a vision circle whose
+// center coincides with the cut-face micro's world position (radial ~= 0)
+// would divide by zero. Unreachable in practice (vision sources aren't
+// placed inside solid geometry), but cheap insurance for determinism.
+const float kFogBandRadialEpsilon = 1e-4;
+
 // Continuous-point analytic fog reveal for the per-micro clip — MUST stay
 // byte-identical to c_voxel_to_trixel_stage_1.glsl::fogPointReveal (see there
 // for the smooth-silhouette rationale): stage 1 skips a clipped micro's
@@ -475,22 +481,28 @@ void main() {
                     encodeDepthWithFace(latticeDepth, bandSlot), voxelColor,
                     packedEntityId, faceId, reVoxelize
                 );
-                const float target = visionCircles[bestCircle].z - 2.0 * microHalf;
-                const vec2 surfFixedXY =
-                    (visionCircles[bestCircle].xy +
-                     radial * (target / length(radial))) *
-                    float(subdivisions);
-                ivec3 bandTap = ivec3(roundHalfUp(surfFixedXY), microPositionFixed.z);
-                if (cardinalIndex != 0) {
-                    bandTap = rotateCardinalZ(bandTap, cardinalIndex);
-                    bandTap += cardinalLowerCornerShift(cardinalIndex) * subdivisions;
+                // If the vision circle center coincides with the micro's
+                // position, skip the re-homing divide and rely on the
+                // lattice tap above.
+                const float radialLen = length(radial);
+                if (radialLen >= kFogBandRadialEpsilon) {
+                    const float target = visionCircles[bestCircle].z - 2.0 * microHalf;
+                    const vec2 surfFixedXY =
+                        (visionCircles[bestCircle].xy +
+                         radial * (target / radialLen)) *
+                        float(subdivisions);
+                    ivec3 bandTap = ivec3(roundHalfUp(surfFixedXY), microPositionFixed.z);
+                    if (cardinalIndex != 0) {
+                        bandTap = rotateCardinalZ(bandTap, cardinalIndex);
+                        bandTap += cardinalLowerCornerShift(cardinalIndex) * subdivisions;
+                    }
+                    const int bandDepth = bandTap.x + bandTap.y + bandTap.z;
+                    emitDeformedFace(
+                        frameOffsetFixed + pos3DtoPos2DIso(bandTap), D,
+                        encodeDepthWithFace(bandDepth, bandSlot), voxelColor,
+                        packedEntityId, faceId, reVoxelize
+                    );
                 }
-                const int bandDepth = bandTap.x + bandTap.y + bandTap.z;
-                emitDeformedFace(
-                    frameOffsetFixed + pos3DtoPos2DIso(bandTap), D,
-                    encodeDepthWithFace(bandDepth, bandSlot), voxelColor,
-                    packedEntityId, faceId, reVoxelize
-                );
                 return;
             }
         }
