@@ -24,27 +24,34 @@ for single voxels and particles.
   The mask is uploaded to slot `kBufferIndex_VoxelActiveMask` each frame
   and read by `c_voxel_visibility_compact.{glsl,metal}` in place of the
   per-voxel alpha test (T-287). Push-at-mutation: mutations through
-  `C_VoxelSetNew`'s helpers sync the mask automatically; raw `voxels_[i]`
-  span writes must follow with `vs.syncActiveMask()` **and**
-  `IRPrefab::Voxel::recomputeFaceOccupancy(vs.voxels_, size)` (see the
-  `C_VoxelSetNew` note below). **One pool per canvas entity.**
+  `C_VoxelSetNew`'s helpers sync the mask automatically. **One pool per
+  canvas entity.**
 - `C_VoxelSetNew` — owns a span of voxels from a pool; pushes local → global
   position updates; supports reshape (box/sphere SDF). Use the provided
   helpers instead of iterating voxels individually: `deactivateAll()`,
   `activateAll()`, `changeVoxelColor(ivec3, Color)`, `changeVoxelColorAll(Color)`,
   `fillPlane(int axis, int planeIndex, Color)` (activates a single face slice),
   `reshape(Shape3D)` (box or sphere fill). All of these keep the pool's
-  active-mask in sync. If a caller bypasses them and writes alpha through
-  the raw `voxels_` span (e.g. an SDF-carving loop calling
-  `voxels_[i].deactivate()` per slot), it must follow up with **both**
-  `syncActiveMask()` (so the GPU compaction stage sees the new active set)
-  **and** `IRPrefab::Voxel::recomputeFaceOccupancy(vs.voxels_, size)` (so
-  the carve's newly-exposed surface faces aren't left occluded). Dropping
-  the recompute renders the carved set black under the lit/rotated path
-  while the active-mask half looks done — an easy footgun because the
-  active-mask requirement is the loud one. `simplify-check-ecs` flags a
-  `.deactivate()` carve loop + `syncActiveMask()` with no
-  `recomputeFaceOccupancy` in the same function.
+  active-mask in sync. Custom carves/edits that these bulk mutators don't
+  cover go through the encapsulated raw-edit API (#2165), never a hand-rolled
+  `voxels_[i]` loop. `editVoxels(fn)` applies `fn(index, voxel, localPos)`
+  to every voxel then resyncs once; `carve(shouldDeactivate)` is sugar over
+  `editVoxels` for the common "deactivate voxels failing a predicate" case;
+  `resyncAfterRawEdits()` is the escape hatch for a multi-pass edit that must
+  still write the raw `voxels_` span directly across several loops — do all
+  the writes, then call it once. Each entry point resyncs every derived
+  invariant this set maintains (rotation-source mirror → pool active-mask →
+  face occupancy) internally.
+
+  Callers must **not** hand-roll `syncActiveMask()` +
+  `IRPrefab::Voxel::recomputeFaceOccupancy(...)` themselves — dropping that
+  pairing renders the carved set black under the lit/rotated path while the
+  active-mask half looks done (the #2018/#2117/#2146 footgun the API exists
+  to close). `syncActiveMask()` stays public as the low-level pool primitive
+  for pre-existing raw-loop sites; prefer `editVoxels`/`carve` for new code.
+  `simplify-check-ecs` flags a hand-rolled `voxels_[i].activate()/.deactivate()`
+  carve loop followed by `syncActiveMask()`/`recomputeFaceOccupancy()` and
+  steers toward the API.
 - `C_ShapeDescriptor` — SDF shape type + params + color + flags (visible,
   hollow, mirror). Rendered directly by the GPU; **does not allocate voxels**.
 - `C_Skeleton` — rig-root component holding an ordered vector of joint
