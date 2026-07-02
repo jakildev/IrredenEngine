@@ -190,7 +190,7 @@ kernel void c_voxel_to_trixel_stage_2(
     const uint2 localId = localId3.xy;
     // See c_voxel_to_trixel_stage_1.glsl for the slot/faceId contract (#1278).
     const int slot = localIDToFace_2x3(localId);
-    const int faceId = frameData.visibleFaceIds[slot];
+    int faceId = frameData.visibleFaceIds[slot];
 
     const int cardinalIndex = rasterYawCardinalIndex(frameData.rasterYaw);
     const int2 canvasSize = frameData.canvasSizePixels;
@@ -213,6 +213,15 @@ kernel void c_voxel_to_trixel_stage_2(
     // distance tap. writeColorTap's depth re-test still keeps the occlusion
     // winner among the emitted faces.
     const uint flagsByte = (voxels[voxelIndex].materialFlagBone >> 8u) & 0xFFu;
+
+    // Silhouette-riser face selection — MUST mirror stage 1's flip + rotated-content
+    // gate exactly so the colour tap lands on the same (possibly opposite-polarity)
+    // face stage 1 wrote the distance for. See c_voxel_to_trixel_stage_1.glsl.
+    const bool rotatedEmit = reVoxelize || (voxels[voxelIndex].reserved & 4u) != 0u;
+    if (rotatedEmit && !faceIsExposed(flagsByte, faceId) &&
+        faceIsExposed(flagsByte, faceId ^ 1)) {
+        faceId = faceId ^ 1;
+    }
 
     // Exposed-face gate + fog CUT-FACE widening (#2125/#2127; per-axis #2128) —
     // MUST mirror stage 1's predicate EXACTLY so the colour tap lands on the same

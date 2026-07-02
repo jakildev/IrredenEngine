@@ -576,6 +576,24 @@ recomputed per frame) intersected with the voxel's exposed faces (the
 camera-independent `exposedFaces` mask set at pool build/mutate time). A
 voxel emits a face iff it is both camera-visible and exposed.
 
+**Silhouette-riser exception for ROTATED content.** The triplet carries one
+polarity per axis — correct for a convex, axis-aligned solid, which only ever
+shows one polarity per axis. A *rotated* voxel footprint (GRID re-voxelize cells,
+detached re-voxelize) round-to-cells into a STAIRCASE whose camera-side grazing
+edge presents the OPPOSITE polarity of an axis (e.g. a +X riser where the
+cardinal triplet carries X_NEG): that face is exposed and on the silhouette yet
+absent from the triplet, so the strict model never emits it → see-through
+"venetian-blind" gaps that appear only at the camera directions where the yaw
+chirality turns that edge toward the camera. `c_voxel_to_trixel_stage_{1,2}`
+therefore flip a slot's face to the opposite same-axis polarity when the triplet
+face is occluded but the opposite is exposed — **gated to rotated content** (the
+`visibleFaceIds.w` re-voxelize uniform OR the per-voxel `VoxelReserved::kRotatedEmit`
+marker, reserved bit 2, set by `REBUILD_GRID_VOXELS`). Non-rotated content keeps
+the strict triplet, so the single-canvas and per-axis fast paths stay
+byte-identical. The flipped face is a back face on convex content (it would lose
+the depth `atomicMin` anyway, iso (pixel,depth) being a bijection of (x,y,z)) —
+the gate just avoids the wasted emit + the per-axis store's sub-pixel drift.
+
 This supersedes the historical "always emit the three lower-coordinate
 faces (−X, −Y, −Z)" model, which was correct only at cardinal yaw 0 and
 caused the stripe/checkerboard artifact (#1256) at every other cardinal.

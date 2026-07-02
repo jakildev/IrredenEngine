@@ -194,7 +194,7 @@ void main() {
         encodeEntityIdWithPriority(entityIds[voxelIndex], voxels[voxelIndex].reserved & 0x3u);
     // See c_voxel_to_trixel_stage_1.glsl for the slot/faceId contract (#1278).
     const int slot = localIDToFace_2x3(gl_LocalInvocationID.xy);
-    const int faceId = visibleFaceIds[slot];
+    int faceId = visibleFaceIds[slot];
 
     const int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
 
@@ -207,6 +207,16 @@ void main() {
     // mask (see c_voxel_to_trixel_stage_1.glsl) — same face set as stage 1, so
     // the colour tap matches the distance tap.
     const uint flagsByte = (voxels[voxelIndex].materialFlagBone >> 8u) & 0xFFu;
+
+    // Silhouette-riser face selection — MUST mirror stage 1's flip (and its
+    // rotated-content gate) EXACTLY so the colour tap lands on the same (possibly
+    // opposite-polarity) face stage 1 wrote the distance for. See
+    // c_voxel_to_trixel_stage_1.glsl for the full rationale.
+    const bool rotatedEmit = reVoxelize || (voxels[voxelIndex].reserved & 4u) != 0u;
+    if (rotatedEmit && !faceIsExposed(flagsByte, faceId) &&
+        faceIsExposed(flagsByte, faceId ^ 1)) {
+        faceId = faceId ^ 1;
+    }
 
     // Exposed-face gate + fog CUT-FACE widening (#2125/#2127; per-axis #2128) —
     // MUST mirror stage 1's predicate EXACTLY so the colour tap lands on the same
