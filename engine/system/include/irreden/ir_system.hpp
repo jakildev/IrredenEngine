@@ -1,14 +1,17 @@
 #ifndef IR_SYSTEM_H
 #define IR_SYSTEM_H
 
+#include <irreden/ir_entity.hpp>
 #include <irreden/ir_time.hpp>
 
+#include <irreden/system/ir_assert_main_thread.hpp>
 #include <irreden/system/ir_system_types.hpp>
 #include <irreden/system/system_access.hpp>
 #include <irreden/system/system_manager.hpp>
 
 #include <functional>
 #include <optional>
+#include <tuple>
 #include <type_traits>
 
 namespace IRSystem {
@@ -403,6 +406,100 @@ inline SystemId createSystemDynamic(
         std::move(excludeArchetype),
         std::move(body),
         concurrency
+    );
+}
+
+// One-shot query execution — the run-now counterpart to `createSystemDynamic`
+// (#17). Runs `body` once per archetype node matching `(includeArchetype,
+// excludeArchetype)`, then returns. Nothing is registered: no `SystemId`, no
+// pipeline slot, no timing / concurrency state. The traversal shares
+// `IREntity::queryArchetypeNodesSimple` with `executeSystem`, so the node-match
+// semantics are identical, but the SystemManager never sees the call — this is
+// "run a system tick function one time" without the persistent machinery.
+//
+// Serial, main-thread-only (same rationale as `createSystemDynamic`'s
+// `PARALLEL_FOR` assert — `getComponentData`'s manager hash lookups aren't
+// worker-safe). Structural changes inside `body` must use the `IREntity::
+// deferred*` API; this primitive does NOT flush (the pipeline's group boundary
+// owns that). Zero matches is a silent no-op — correct for a command.
+template <typename PerNodeFn>
+void executeQueryDynamic(
+    const IREntity::Archetype &includeArchetype,
+    const IREntity::Archetype &excludeArchetype,
+    PerNodeFn &&body
+) {
+    IR_ASSERT_MAIN_THREAD();
+    auto nodes = IREntity::queryArchetypeNodesSimple(includeArchetype, excludeArchetype);
+    for (auto *node : nodes) {
+        body(node);
+    }
+}
+
+namespace detail {
+
+// Per-row dispatch for `executeQuery<Cs...>`. Resolves each component column
+// ONCE per node (`getComponentData` is a per-call manager lookup — hoisting it
+// out of the row loop is the same "no getComponent in a tick" discipline the
+// scheduler follows), then invokes the tick per row. Two forms, mirroring
+// `createSystem`'s per-component and per-entity-id signatures; whole-node batch
+// consumers call `executeQueryDynamic` directly.
+template <typename L> struct RunQueryRows;
+template <typename... Cs> struct RunQueryRows<TypeList<Cs...>> {
+    template <typename FunctionTick>
+    static void
+    run(const IREntity::Archetype &includeArchetype,
+        const IREntity::Archetype &excludeArchetype,
+        FunctionTick &&tick) {
+        executeQueryDynamic(
+            includeArchetype,
+            excludeArchetype,
+            [&tick](IREntity::ArchetypeNode *node) {
+                auto columns = std::tie(IREntity::getComponentData<Cs>(node)...);
+                if constexpr (InvocableWithComponents<FunctionTick, Cs...>) {
+                    for (int i = 0; i < node->length_; ++i) {
+                        std::apply([&](auto &...cols) { tick(cols[i]...); }, columns);
+                    }
+                } else if constexpr (InvocableWithEntityId<FunctionTick, Cs...>) {
+                    auto &entities = node->entities_;
+                    for (int i = 0; i < node->length_; ++i) {
+                        std::apply([&](auto &...cols) { tick(entities[i], cols[i]...); }, columns);
+                    }
+                } else {
+                    static_assert(
+                        false,
+                        "executeQuery<Cs...>: the tick must match tick(Cs&...) or "
+                        "tick(EntityId, Cs&...). For whole-archetype batch access, "
+                        "call executeQueryDynamic directly."
+                    );
+                }
+            }
+        );
+    }
+};
+
+} // namespace detail
+
+// Compile-time-typed one-shot query — the run-now counterpart to
+// `createSystem<Cs...>` (#17). `QueryComponents...` may include `Exclude<...>`
+// markers, partitioned out at compile time exactly like `createSystem` (so
+// tagged entities skip the query with no per-entity branching). Resolves the
+// include / exclude archetypes, then dispatches the tick per matched row via
+// `executeQueryDynamic`. See `executeQueryDynamic` for the threading +
+// deferred-ops contract.
+//
+//     IRSystem::executeQuery<C_VoxelSetNew, IRSystem::Exclude<C_Locked>>(
+//         [](C_VoxelSetNew &set) { set.editVoxels(...); });
+template <typename... QueryComponents, typename FunctionTick>
+void executeQuery(FunctionTick &&tick) {
+    using Partition = detail::PartitionExcludes<QueryComponents...>;
+    IREntity::Archetype excludeArchetype =
+        detail::ArchetypeFromList<typename Partition::Excluded>::value();
+    using IncludedList = detail::FilterTags_t<QueryComponents...>;
+    IREntity::Archetype includeArchetype = detail::ArchetypeFromList<IncludedList>::value();
+    detail::RunQueryRows<IncludedList>::run(
+        includeArchetype,
+        excludeArchetype,
+        std::forward<FunctionTick>(tick)
     );
 }
 

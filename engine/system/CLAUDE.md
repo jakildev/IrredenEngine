@@ -29,6 +29,35 @@ resolves component vectors on the main thread and returns a
 the batch form and dynamic systems; row-iterating forms leave
 `functionTick_` empty.
 
+## One-shot queries (`executeQuery`)
+
+`executeQuery<Components...>(tick)` runs a tick body once over every entity
+matching the component set, **without registering a system** — the run-now
+counterpart to `createSystem` (the issue's "running a system tick function one
+time", #17). Same archetype-node traversal as `executeSystem`
+(`IREntity::queryArchetypeNodesSimple`, `Exclude<...>` filtering), same three
+tick shapes detected via `std::is_invocable_v`, but no `SystemId`, no pipeline
+slot, no timing / concurrency state — nothing persists.
+
+```cpp
+IRSystem::executeQuery<C_VoxelSetNew, IRSystem::Exclude<C_Locked>>(
+    [](C_VoxelSetNew& set) { set.editVoxels(...); });
+```
+
+`executeQueryDynamic(includeArchetype, excludeArchetype, body)` is the
+runtime-typed core (resolved `IREntity::Archetype` sets + a
+`void(ArchetypeNode*)` body, one call per matched node) — use it for
+whole-node / batch access. `executeQuery<Cs...>` composes on top, resolving
+columns once per node and dispatching per row.
+
+**Serial, main-thread-only** (`IR_ASSERT_MAIN_THREAD()`), same rationale as
+`createSystemDynamic`'s `PARALLEL_FOR` assert — never call from a worker body.
+It does **not** flush structural changes: bodies making structural edits must
+use the `IREntity::deferred*` API, and the pipeline's group boundary flushes.
+Zero matches is a silent no-op. The canonical consumer is
+`Command<RANDOMIZE_VOXELS>` (`engine/prefabs/irreden/voxel/commands/`), a
+query-driven command with no persistent system behind it.
+
 ## `replaceSystemBody` for hot-reload
 
 `replaceSystemBody(systemId, body)` swaps the per-archetype tick body of

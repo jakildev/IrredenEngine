@@ -29,14 +29,14 @@ enum CommandNames {
     MOVE_CAMERA_DOWN_END,
     SCREENSHOT,        // captures the full screen output (debug overlay, HUD, etc.)
     SCREENSHOT_CANVAS, // captures the main canvas framebuffer only (no overlay)
-    RECORD_START, // todo
-    RECORD_STOP,  // todo
+    RECORD_START,      // todo
+    RECORD_STOP,       // todo
     RECORD_TOGGLE,
     STOP_VELOCITY,
     RESHAPE_SPHERE,
     RESHAPE_RECTANGULAR_PRISM,
-    RANDOMIZE_VOXELS, // TODO, should operate like a system with
-    // a query and stuff, and should exclude "locked entities"
+    RANDOMIZE_VOXELS, // one-shot IRSystem::executeQuery over C_VoxelSetNew,
+    // excluding C_Locked entities (#17) — see command_randomize_voxels.hpp
     LOCK_VOXEL_SCALE, // TODO: This will zoom in the rendered framebuffer,
     // and not change the on the canvas to framebuffer...
     UNLOCK_VOXEL_SCALE, // TODO: see above
