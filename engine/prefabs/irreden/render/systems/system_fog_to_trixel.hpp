@@ -44,6 +44,12 @@ template <> struct System<FOG_TO_TRIXEL> {
     // every frame (a few vec4 + a count) — small and unconditional, so unlike
     // the fog texture it needs no dirty flag.
     Buffer *observerBuf_ = nullptr;
+    // Camera-anchored light-occlusion bitfield (owned by
+    // BUILD_LIGHT_OCCLUSION_GRID) — the world-occupancy source for the
+    // shader's analytic cross-section band. Resolved lazily so registration
+    // order doesn't matter; stays null (band off via `cutSolidsAvailable_`)
+    // in creations that never register the grid system.
+    Buffer *occlusionGridSsbo_ = nullptr;
 
     void tick(
         const C_TriangleCanvasTextures &canvasTextures,
@@ -55,12 +61,20 @@ template <> struct System<FOG_TO_TRIXEL> {
             return;
         }
 
+        if (occlusionGridSsbo_ == nullptr) {
+            occlusionGridSsbo_ = IRRender::getNamedResource<Buffer>("LightOcclusionGridBuffer");
+        }
+
         // Live analytic vision circles. Small, GPU-read-only, re-authored by
         // gameplay each frame — uploaded unconditionally (no dirty flag). The
         // shader max-combines these with the grid memory above. (The grid fog
         // texture itself is uploaded earlier in VOXEL_TO_TRIXEL_STAGE_1 (#2008);
-        // this pass only reads it — hence the const fog param.)
-        observerBuf_->subData(0, sizeof(FrameDataFogObservers), &fog.observers_);
+        // this pass only reads it — hence the const fog param.) The upload
+        // stamps `cutSolidsAvailable_` — a pipeline fact (is the occlusion
+        // grid live?), not client state.
+        FrameDataFogObservers observers = fog.observers_;
+        observers.cutSolidsAvailable_ = occlusionGridSsbo_ != nullptr ? 1 : 0;
+        observerBuf_->subData(0, sizeof(FrameDataFogObservers), &observers);
 
         canvasTextures.getTextureColors()
             ->bindAsImage(0, TextureAccess::READ_WRITE, TextureFormat::RGBA8);
@@ -74,6 +88,13 @@ template <> struct System<FOG_TO_TRIXEL> {
         // any intervening dispatch may have rebound binding 7.
         voxelFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataVoxelToCanvas);
         observerBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FogObservers);
+        // Slot 28 is the shared alias index (sun-shadow depth map / per-axis
+        // resolve scratch also ride it), so re-bind the occupancy source for
+        // this dispatch. With no grid system registered, the observer UBO
+        // stands in as a placeholder so the slot is never dangling —
+        // `cutSolidsAvailable_ == 0` gates every read of it in the shader.
+        (occlusionGridSsbo_ != nullptr ? occlusionGridSsbo_ : observerBuf_)
+            ->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_LightOcclusionGrid);
 
         const int groupsX = IRMath::divCeil(canvasTextures.size_.x, kFogToTrixelGroupSize);
         const int groupsY = IRMath::divCeil(canvasTextures.size_.y, kFogToTrixelGroupSize);

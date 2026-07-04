@@ -103,14 +103,19 @@ constexpr float kFogVisionEdgeDefault = 0.0f;
 
 // GPU UBO payload for the analytic vision circles (binding
 // `kBufferIndex_FogObservers`). Held directly on the component as the upload
-// source of truth — the system `subData`s it verbatim each frame, so the
-// std140 / Metal layout must match `FogObserverData` in both shaders exactly.
+// source of truth — the system uploads it each frame (stamping
+// `cutSolidsAvailable_` on the way out), so the std140 / Metal layout must
+// match `FogObserverData` in the consuming shaders exactly.
 // `visionCircles_[i]` = (centerX, centerY, radius, edgeSoftness) in world
 // units; only the first `visionCircleCount_` entries are read.
 struct FrameDataFogObservers {
     IRMath::vec4 visionCircles_[kMaxFogVisionCircles] = {};
     std::int32_t visionCircleCount_ = 0;
-    std::int32_t pad0_ = 0;
+    /// System-stamped on upload, NOT client state: 1 when the camera-anchored
+    /// light-occlusion bitfield exists (`BUILD_LIGHT_OCCLUSION_GRID`
+    /// registered), enabling `c_fog_to_trixel`'s analytic cross-section band.
+    /// Occupies the struct's first std140 padding lane.
+    std::int32_t cutSolidsAvailable_ = 0;
     std::int32_t pad1_ = 0;
     std::int32_t pad2_ = 0;
 };

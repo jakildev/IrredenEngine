@@ -131,9 +131,13 @@ bool fogColumnUnexplored(ivec3 voxelPosRaw) {
 }
 
 // Safety margin (cells): covers the per-pixel worldPerPixel AA that
-// c_fog_to_trixel adds at low zoom — this shader can't compute zoom.
-// >=1 so every column any pixel could reveal survives the cull.
-const float kCullSafetyCells = 1.0;
+// c_fog_to_trixel adds at low zoom — this shader can't compute zoom —
+// PLUS the fog-hidden keep ring (kFogHiddenKeepCells in
+// c_voxel_to_trixel_stage_1.{glsl,metal}) that the image-space
+// cross-section cut renders from; this margin must stay a superset of
+// stage 1's keep (8 + ~0.5 aa) or ring voxels are culled before stage 1
+// can keep them.
+const float kCullSafetyCells = 9.0;
 
 // True iff this column lies under any live analytic vision circle, so its
 // voxels survive the grid cull and FOG_TO_TRIXEL can reveal them smoothly per

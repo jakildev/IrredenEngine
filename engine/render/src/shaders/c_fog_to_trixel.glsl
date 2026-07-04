@@ -60,7 +60,58 @@ const int kMaxFogVisionCircles = 8;
 layout(std140, binding = 27) uniform FogObserverData {
     vec4 visionCircles[kMaxFogVisionCircles];
     int visionCircleCount;
+    // 1 when the camera-anchored light-occlusion bitfield is live at binding
+    // 28 (BUILD_LIGHT_OCCLUSION_GRID registered this frame) — enables the
+    // analytic cross-section band below. 0 = fall through to the plain dark
+    // mask. Stamped by SYSTEM FOG_TO_TRIXEL on upload; rides the struct's
+    // first padding lane, so the CPU layout is unchanged.
+    int fogCutSolidsAvailable;
 };
+
+// World-occupancy source for the analytic cross-section band: the
+// camera-anchored light-occlusion voxel bitfield built each frame by
+// BUILD_LIGHT_OCCLUSION_GRID (full pool, world-space — invariant 1 in
+// engine/render/CLAUDE.md). Header + indexing mirror
+// c_propagate_light_volume.glsl::voxelOcclusionGetBit — keep in sync.
+// Binding 28 is the shared alias slot (sun-shadow depth map / per-axis
+// resolve scratch also ride it), so SYSTEM FOG_TO_TRIXEL re-binds the grid
+// buffer for this dispatch; when the grid system never registered,
+// fogCutSolidsAvailable is 0 and this buffer is never read.
+const int kLightOcclusionGridSize = 256;
+const int kLightOcclusionGridHalfExtent = 128;
+layout(std430, binding = 28) readonly buffer LightOcclusionGrid {
+    ivec4 occlusionWorldOrigin;
+    uint occlusionBits[];
+};
+
+bool fogCutVoxelSolid(ivec3 w) {
+    const int he = kLightOcclusionGridHalfExtent;
+    const int lx = w.x - occlusionWorldOrigin.x;
+    const int ly = w.y - occlusionWorldOrigin.y;
+    const int lz = w.z - occlusionWorldOrigin.z;
+    if (lx < -he || lx >= he || ly < -he || ly >= he || lz < -he || lz >= he) {
+        return false;
+    }
+    const uint flatIndex =
+        (uint(lz + he) * uint(kLightOcclusionGridSize) + uint(ly + he)) *
+            uint(kLightOcclusionGridSize) +
+        uint(lx + he);
+    return ((occlusionBits[flatIndex >> 5u] >> (flatIndex & 31u)) & 1u) == 1u;
+}
+
+// Analytic cross-section band tuning. The ray probe is the finite-difference
+// span (raw-depth units) used to recover this pixel's view-ray direction from
+// the same inverse projection the mask uses — wide enough to dodge fp
+// cancellation, tiny against the 16-bit depth range. The tone is the factor
+// applied to the hidden surface's lit colour where the cut repaints it, so
+// the cross-section reads as the object's inside rather than its surface;
+// the lift is a small constant floor added on top so a cut through DARK
+// matter (a near-black floor) still reads against the fog black instead of
+// vanishing — hue-preserving for bright materials, a subtle gray-up for
+// dark ones.
+const int kFogCutRayProbeDepth = 8;
+const float kFogCutTone = 0.85;
+const float kFogCutLift = 0.06;
 
 // Mirrors FrameDataVoxelToTrixel; we only need frameCanvasOffset,
 // trixelCanvasOffsetZ1, and voxelRenderOptions for the pixel→pos3D
@@ -128,7 +179,14 @@ void main() {
     const ivec3 surfaceVoxel = roundHalfUp(pos3D);
     const ivec2 fogCell = surfaceVoxel.xy + ivec2(kFogOfWarHalfExtent);
     const ivec2 fogSize = imageSize(canvasFogOfWar);
-    float state = fogTap(fogCell, fogSize);
+    // Kept separate from the circle-combined `state`: the cross-section band
+    // below applies only to UNEXPLORED surfaces (explored memory keeps its
+    // desaturated tone).
+    const float gridState = fogTap(fogCell, fogSize);
+    float state = gridState;
+    // Hard-disc-only reveal, tracked separately so the cross-section band's
+    // rim shortcut can't fire off a soft (Mode B) disc's wide falloff.
+    float hardState = 0.0;
 
     // Live analytic vision circles: max-combine each disc's smooth visibility,
     // evaluated against the CONTINUOUS world column so the edge is crisp at
@@ -149,7 +207,12 @@ void main() {
         // per-pixel reveal here and the voxel-object edge there trace the same
         // analytic curve (#2102). worldPerPixel floors the rim at ~1 canvas px.
         for (int i = 0; i < visionCircleCount; ++i) {
-            state = max(state, fogVisionCircleReveal(pos3D.xy, visionCircles[i], worldPerPixel));
+            const float reveal =
+                fogVisionCircleReveal(pos3D.xy, visionCircles[i], worldPerPixel);
+            state = max(state, reveal);
+            if (visionCircles[i].w == 0.0) {
+                hardState = max(hardState, reveal);
+            }
         }
     }
 
@@ -159,6 +222,91 @@ void main() {
     }
 
     const vec4 src = imageLoad(trixelColors, pixel);
+
+    // Analytic cross-section band (#2124). A pixel that would fog-dark shows
+    // fog-hidden matter; removing that matter exposes the vision cylinder's
+    // cut surface wherever the pixel's view ray crosses a disc INSIDE solid
+    // voxels. Recover the ray from the SAME inverse projection the mask uses
+    // (finite difference over depth — exact and yaw-correct), intersect it
+    // with each hard disc analytically, and ask the light-occlusion bitfield
+    // whether the entry point is solid. Solid ⇒ repaint this pixel as the
+    // toned lit colour of the hidden surface — the cut. Runs after lighting
+    // and writes COLOUR ONLY: the cut never touches trixelDistances, so AO,
+    // the sun-shadow bake, and lighting are structurally unaffected (a
+    // raster-injected band creased AO and cast phantom shadows around the
+    // junction), and the silhouette is per-pixel analytic — no lattice steps.
+    // Hard discs only (a soft-edged Mode B disc keeps its faded look); air at
+    // the entry (thin hidden wall in front of the disc) falls through to the
+    // plain dark mask.
+    if (fogCutSolidsAvailable != 0 && gridState < kFogExploredValue &&
+        visionCircleCount > 0) {
+        bool cutSolid = false;
+        if (hardState > 0.0) {
+            // Rim pixel (inside the disc's AA band): the rasterized surface
+            // itself straddles the cut, so it IS the solid matter being cut —
+            // no ray test. Deciding these pixels by the ray instead dashes
+            // both the arc junction and the cylinder-tangent locus (t ≈ 0 and
+            // the discriminant degenerate exactly there).
+            cutSolid = true;
+        } else {
+            // World step per raw-depth unit along this pixel's view ray.
+            const vec3 posDeeper = trixelCanvasPixelToWorld3D(
+                pixel, rawDepth + kFogCutRayProbeDepth, trixelCanvasOffsetZ1,
+                frameCanvasOffset, voxelRenderOptions, rasterYaw
+            );
+            const vec3 rayStep = (posDeeper - pos3D) / float(kFogCutRayProbeDepth);
+            const float a = dot(rayStep.xy, rayStep.xy);
+            float bestT = -1.0;
+            if (a > 0.0) {
+                for (int i = 0; i < visionCircleCount; ++i) {
+                    if (visionCircles[i].w != 0.0) {
+                        continue; // hard discs only (Mode A)
+                    }
+                    const vec2 d0 = pos3D.xy - visionCircles[i].xy;
+                    const float b = 2.0 * dot(d0, rayStep.xy);
+                    const float c =
+                        dot(d0, d0) - visionCircles[i].z * visionCircles[i].z;
+                    const float det = b * b - 4.0 * a * c;
+                    if (det <= 0.0) {
+                        continue; // ray misses this disc
+                    }
+                    // First crossing at-or-behind the hidden surface. A
+                    // negative entry root means the ray is already past this
+                    // disc (a far-side surface) — no cut there by construction.
+                    const float t = (-b - sqrt(det)) / (2.0 * a);
+                    if (t >= 0.0 && (bestT < 0.0 || t < bestT)) {
+                        bestT = t;
+                    }
+                }
+            }
+            if (bestT >= 0.0) {
+                const float worldPerDepthUnit = length(rayStep);
+                if (bestT * worldPerDepthUnit <= 1.0) {
+                    // Entry within one cell of the hit surface — still inside
+                    // the surface voxel's own matter: solid by construction,
+                    // immune to bitfield rounding right at the rim.
+                    cutSolid = true;
+                } else {
+                    // Sample occupancy half a world cell INSIDE the rim so the
+                    // rounded cell is unambiguously interior; a second sample
+                    // one cell deeper rides over rim-cell quantization misses.
+                    const float tHalfCell = 0.5 / worldPerDepthUnit;
+                    const ivec3 cellA =
+                        roundHalfUp(pos3D + (bestT + tHalfCell) * rayStep);
+                    const ivec3 cellB =
+                        roundHalfUp(pos3D + (bestT + 3.0 * tHalfCell) * rayStep);
+                    cutSolid = fogCutVoxelSolid(cellA) || fogCutVoxelSolid(cellB);
+                }
+            }
+        }
+        if (cutSolid) {
+            // `state` carries the disc's ~1px AA rim, so the junction with
+            // visible matter stays antialiased.
+            const vec3 cutColor = src.rgb * kFogCutTone + vec3(kFogCutLift);
+            imageStore(trixelColors, pixel, vec4(mix(cutColor, src.rgb, state), src.a));
+            return;
+        }
+    }
     // Desaturate to luminance, then darken — the explored "memory" tone. Keeps
     // shape silhouettes visible so the player remembers what was there without
     // confusing it with what is *currently* there.
