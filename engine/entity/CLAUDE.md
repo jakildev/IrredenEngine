@@ -269,11 +269,40 @@ the specific row.
 
 ### Save/load implications
 
-Per-component save/load (#199) treats singleton entities like any other:
-the entity id round-trips and the cache rebuilds on first access against
-the loaded entity. Workers retrofitting #199 into the singleton API should
-verify the cache invalidates on load (typically a `destroyAllEntities`
-precedes the load, which already clears the cache).
+The world snapshot (`engine/world/world_snapshot.hpp`, persist P2 #2213)
+does **not** ride a singleton through the archetype chunk — it excludes
+singleton entities from the `ARCH` walk and persists each by value in the
+`SNGL` chunk instead, restoring it onto the live singleton via
+`getOrCreateSingleton<C>()` and overwriting the row. So on load the cache
+rebuilds against the (possibly freshly lazy-created) live entity, and the
+snapshot's `LoadResult.singletonAliases_` maps each saved singleton id to
+its live id (identity in the same-session `destroyAllEntities`-then-load
+case; a fresh id cross-session). The standard load contract still runs a
+teardown first, which clears the cache.
+
+## World-snapshot restore surface (persist P2, #2213)
+
+`EntityManager` exposes a small surface the snapshot **loader** needs and
+the normal ECS flow doesn't:
+
+- `findCreateArchetypeNode(type)` — public wrapper over the archetype
+  graph's node creation (the loader must materialize a restored archetype
+  no live entity currently occupies; `findArchetypeNode` only *finds*).
+- `restoreEntitiesBatch(node, span<EntityId>)` — insert a batch of entities
+  with their **exact saved ids** into `node` (records + `entities_` +
+  `length_` + live count). Columns are filled afterward by the caller's
+  per-column readers, in the same entity order — the caller asserts the
+  end-of-node column/`length_` sync, mirroring the eager insert path.
+- `singletonEntityCache()` / `isComponentBackingEntity(id)` — the two
+  read-only predicates the **save** walker uses to mirror
+  `destroyAllExceptPreserved`'s exclusion set.
+- `entityIdWatermark()` / `advanceEntityIdWatermark(w)` — read/advance the
+  monotonic allocator watermark. Load restores exact ids (ids never
+  recycle) then advances the watermark past every restored id; new
+  allocations can't collide. `advance` never moves the watermark backward.
+
+These are frame-boundary, main-thread-only (asserted), like the rest of the
+eager mutation API.
 
 ## Scene-transition reset (`resetGameplay`)
 

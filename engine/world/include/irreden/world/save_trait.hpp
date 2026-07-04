@@ -20,6 +20,10 @@ template <typename C> struct SaveTrait {
     static constexpr bool kExplicit = false;
     static constexpr bool kSave = false;
     static constexpr std::uint32_t kSaveVersion = 0;
+    // Stable on-disk identity (P2). The compile-time completeness gate
+    // makes the primary template unreachable for any real save decision,
+    // so `nullptr` here only ever surfaces if the macros are bypassed.
+    static constexpr const char *kSaveName = nullptr;
 };
 
 template <typename C> constexpr bool shouldSave() {
@@ -28,6 +32,15 @@ template <typename C> constexpr bool shouldSave() {
 
 template <typename C> constexpr std::uint32_t saveVersion() {
     return SaveTrait<C>::kSaveVersion;
+}
+
+// Stable, compiler-independent on-disk name for component C: the source
+// spelling captured by the IR_SAVE_OPT_IN/OPT_OUT macro at decision time.
+// The world snapshot's CMPN name table keys columns by this string (Save
+// Format Rule #2) so a file stays readable across sessions/compilers,
+// where `typeid(C).name()` and the numeric ComponentId are not.
+template <typename C> constexpr const char *saveName() {
+    return SaveTrait<C>::kSaveName;
 }
 
 namespace detail {
@@ -57,6 +70,7 @@ template <typename Tuple> constexpr bool allExplicit() {
         static constexpr bool kExplicit = true;                                                    \
         static constexpr bool kSave = true;                                                        \
         static constexpr std::uint32_t kSaveVersion = (Version);                                   \
+        static constexpr const char *kSaveName = #Type;                                            \
         static_assert(kSaveVersion >= 1, #Type " IR_SAVE_OPT_IN version must be >= 1");            \
     };                                                                                             \
     }
@@ -67,6 +81,7 @@ template <typename Tuple> constexpr bool allExplicit() {
         static constexpr bool kExplicit = true;                                                    \
         static constexpr bool kSave = false;                                                       \
         static constexpr std::uint32_t kSaveVersion = 0;                                           \
+        static constexpr const char *kSaveName = #Type;                                            \
     };                                                                                             \
     }
 

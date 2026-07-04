@@ -176,6 +176,68 @@ descriptor` runtime bridge, migration registry, GPU-handle regeneration
 pass) consumes `shouldSave<C>()` / `saveVersion<C>()` / `AllEngineComponents`
 on top of this layer.
 
+P2 (#2213) added `SaveTrait<C>::kSaveName` (via the `IR_SAVE_OPT_IN/OPT_OUT`
+macros — the source spelling of the type, a compiler-stable on-disk key)
+and the `saveName<C>()` accessor. It's the CMPN name-table identity; nothing
+in P1's decision logic reads it.
+
+## World snapshot — the `IRWS` container (persist P2, #2213, epic #667)
+
+`engine/world/include/irreden/world/world_snapshot.hpp` declares
+`IRWorld::saveWorld(registry, path)` / `IRWorld::loadWorld(registry, path)`
+— the **entity-level** save path, distinct from `chunk_persistence.hpp`'s
+per-chunk `.vxs` **voxel-pool** save (that persists a streaming chunk's
+voxel slice, not entities/components; no code overlap). The file is a
+standard `engine/asset/` container (magic `IRWS`, `chunk_header.hpp`) with
+four chunks — `CMPN` (component name table, the local-index key space),
+`ARCH` (archetypes + entity ids + per-column data, each column carrying a
+`(saveVersion, byteLength)` header — the P5 migration seam), `SNGL`
+(singletons restored by value), `META` (nextEntityId watermark). A
+write-only `.json` sidecar (Rule #6) rides alongside.
+
+Three collaborating headers:
+
+- `save_serialize.hpp` — `IRWorld::SaveSerialize<C>`, the per-component
+  bytes customization point. The primary template is a trivially-copyable
+  raw-image fast path (`static_assert`s trivial-copyability); a component
+  owning heap storage (`std::string`/`std::vector`/handles) must specialize
+  it. P1 decides *whether*; this decides *how*.
+- `save_registry.hpp` — `IRWorld::SaveRegistry`, the type-erased bridge.
+  `registerComponent<C>()` is `if constexpr`-gated on `shouldSave<C>()`
+  (opted-out → no-op, and no `SaveSerialize<C>` instantiation), capturing
+  the save-name, version, session-local `ComponentId`, and the erased
+  row/singleton read-write hooks. The walker/loader compile once regardless
+  of how many components opt in.
+- `world_snapshot.hpp/.cpp` — the deterministic projection-merge walker,
+  chunk writers, and the two-phase loader.
+
+**Projection-merge + exclusion.** Only registered opt-in components are
+written; an entity's saved archetype is the projection of its live
+archetype onto them (two live archetypes differing only by a dropped
+component merge into one saved archetype). The walker excludes exactly what
+`resetGameplay`/`destroyAllExceptPreserved` preserves — singleton entities
+(they ride `SNGL`), `C_Persistent`-tagged entities, component-backing
+entities — so the load contract
+
+```
+IREntity::resetGameplay();          // frame boundary
+IRWorld::loadWorld(registry, path); // restores exact original EntityIds
+```
+
+is collision-free by construction. Entity IDs are restored **exact**
+(never remapped — they never recycle). Same-world double-save is
+byte-identical; every read is a recoverable `IRAsset::BinaryStatus` and a
+bad magic / truncation / version-too-new / live-id collision aborts with
+**zero** world mutation (Rule #5); unknown chunk tags and unresolvable
+component names skip with counts.
+
+**P2 scope is the mechanism.** It ships one headless gtest
+(`test/world/world_snapshot_test.cpp`) proving the round-trip with
+trivially-copyable *test* components. Registering every engine component in
+`AllEngineComponents` — each needs a `SaveSerialize<C>` specialization for
+its non-POD fields, and a `(path)`-only convenience wrapper over a
+process-default registry for the P7 Lua binding — is downstream work.
+
 ## Responsibilities
 
 `World(const char* configFileName)`:
