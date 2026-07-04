@@ -1,0 +1,177 @@
+#!/usr/bin/env bash
+# fleet-gh-token — mint/cache a GitHub App installation token for GH_TOKEN.
+#
+# Every fleet gh/curl call authenticates as a personal account by default.
+# When the operator configures a GitHub App (FLEET_GH_APP_* in
+# ~/.fleet/fleet-up.conf), this helper mints installation tokens so fleet
+# traffic bills against the App's separate rate-limit pool instead of the
+# personal account's (see #1394 Q4). SSH-based git commits/pushes are
+# unaffected — GH_TOKEN only changes which identity `gh`'s REST/GraphQL
+# calls authenticate as.
+#
+# Unconfigured (any of the three knobs unset) — prints nothing, exits 0.
+# Every call site guards `[[ -n "$token" ]]` before exporting GH_TOKEN, so
+# this is the byte-for-byte-unchanged fallback path.
+#
+# Configured — caches the minted token at $CACHE_FILE with its real GitHub
+# expiry. A token is served from cache until fewer than
+# STALE_MARGIN_SECONDS remain (~55 effective minutes out of the 1h
+# installation-token lifetime), so repeat callers within that window pay a
+# single JSON read, not a mint. On a cache miss, mints under a mkdir lock
+# (shared across every fleet process on this host) with a post-lock cache
+# re-check, so concurrent panes near expiry mint once, not once each.
+#
+# The mint call MUST use curl, not `gh api` — an inherited GH_TOKEN would
+# make gh send the (expired or wrong-pool) installation token to the mint
+# endpoint instead of the App JWT, which the endpoint rejects (401).
+#
+# Usage:
+#   token="$(fleet-gh-token)"
+#   [[ -n "$token" ]] && export GH_TOKEN="$token"
+#
+# Source of truth: scripts/fleet/fleet-gh-token in the engine repo.
+# Installed to ~/bin/fleet-gh-token by scripts/fleet/install.sh.
+
+set -euo pipefail
+
+CONF="${FLEET_UP_CONF:-$HOME/.fleet/fleet-up.conf}"
+if [[ -f "$CONF" ]]; then
+    # shellcheck source=/dev/null
+    source "$CONF"
+fi
+
+APP_ID="${FLEET_GH_APP_ID:-}"
+INSTALLATION_ID="${FLEET_GH_APP_INSTALLATION_ID:-}"
+KEY_PATH="${FLEET_GH_APP_KEY_PATH:-}"
+
+if [[ -z "$APP_ID" || -z "$INSTALLATION_ID" || -z "$KEY_PATH" ]]; then
+    exit 0
+fi
+
+if [[ ! -r "$KEY_PATH" ]]; then
+    echo "fleet-gh-token: FLEET_GH_APP_KEY_PATH ($KEY_PATH) not readable" >&2
+    exit 1
+fi
+
+# Private signing key — warn (never fail) if it is group- or other-readable, so
+# a key checked out with loose perms surfaces in the logs without blocking the
+# mint. stat's perm-bit flag differs by platform: GNU/Linux `-c %a`, BSD/macOS
+# `-f %Lp`; try both and skip silently if neither is available. The last two
+# octal digits are the group/other bits; read is set in 4-7.
+key_perms=$(stat -c '%a' "$KEY_PATH" 2>/dev/null || stat -f '%Lp' "$KEY_PATH" 2>/dev/null || true)
+if [[ "${key_perms: -2:1}" =~ [4567] || "${key_perms: -1}" =~ [4567] ]]; then
+    echo "fleet-gh-token: warning: private key $KEY_PATH is group/other-readable (perms $key_perms); chmod 600 recommended" >&2
+fi
+
+STATE_DIR="${FLEET_STATE_DIR:-$HOME/.fleet/state}"
+CACHE_FILE="$STATE_DIR/gh-app-token.json"
+LOCK_DIR="$STATE_DIR/gh-app-token.lock"
+mkdir -p "$STATE_DIR"
+
+STALE_MARGIN_SECONDS=300
+
+_cached_token() {
+    # Prints the cached token and exits 0 iff it has more than the given margin
+    # (default STALE_MARGIN_SECONDS) of real validity left; exits 1 (nothing
+    # printed) on a missing, corrupt, or too-close-to-expiry cache — every
+    # caller treats that as "mint a fresh one." The don't-block fallback passes
+    # margin 0 to accept any token that hasn't truly expired yet.
+    local margin="${1:-$STALE_MARGIN_SECONDS}"
+    python3 -c "
+import json, sys, time
+try:
+    with open('$CACHE_FILE') as f:
+        data = json.load(f)
+    if time.time() < data['expires_at'] - $margin:
+        print(data['token'])
+    else:
+        sys.exit(1)
+except Exception:
+    sys.exit(1)
+" 2>/dev/null
+}
+
+if _cached_token; then
+    exit 0
+fi
+
+# Stale or missing — mint under a lock. mkdir is atomic on every POSIX
+# filesystem (same idiom as fleet-dispatcher's acquire_dispatcher_lock), with
+# a bounded retry so concurrent panes near expiry queue behind the minter
+# instead of each racing their own curl call. The retry count is
+# env-overridable (default 50 × 0.2s ≈ 10s) so the contention path is
+# testable without a real ten-second wait.
+lock_acquired=0
+lock_max_tries="${FLEET_GH_TOKEN_LOCK_TRIES:-50}"
+for _ in $(seq 1 "$lock_max_tries"); do
+    if mkdir "$LOCK_DIR" 2>/dev/null; then
+        lock_acquired=1
+        break
+    fi
+    owner_pid=$(cat "$LOCK_DIR/pid" 2>/dev/null || true)
+    if [[ -n "$owner_pid" ]] && ! kill -0 "$owner_pid" 2>/dev/null; then
+        rm -rf "$LOCK_DIR"
+        continue
+    fi
+    sleep 0.2
+done
+
+if (( ! lock_acquired )); then
+    # Another process is minting and hasn't released in ~10s — fall back to
+    # whatever's cached (any token still within its real 1h validity, even if
+    # inside the stale margin) rather than blocking the caller indefinitely.
+    _cached_token 0 || true
+    exit 0
+fi
+printf '%d\n' "$$" >"$LOCK_DIR/pid"
+trap 'rm -rf "$LOCK_DIR"' EXIT
+
+# Post-lock re-check: another pane may have refreshed while we waited.
+if _cached_token; then
+    exit 0
+fi
+
+now=$(date +%s)
+iat=$((now - 60))
+exp=$((now + 540))
+
+_b64url() {
+    python3 -c "import sys, base64; sys.stdout.write(base64.urlsafe_b64encode(sys.stdin.buffer.read()).decode().rstrip('='))"
+}
+
+header_b64=$(printf '{"alg":"RS256","typ":"JWT"}' | _b64url)
+payload_b64=$(printf '{"iat":%s,"exp":%s,"iss":"%s"}' "$iat" "$exp" "$APP_ID" | _b64url)
+signing_input="${header_b64}.${payload_b64}"
+signature_b64=$(printf '%s' "$signing_input" | openssl dgst -sha256 -sign "$KEY_PATH" -binary | _b64url)
+jwt="${signing_input}.${signature_b64}"
+
+if ! response=$(curl -sS -w '\n%{http_code}' -X POST \
+    -H "Authorization: Bearer $jwt" \
+    -H "Accept: application/vnd.github+json" \
+    "https://api.github.com/app/installations/${INSTALLATION_ID}/access_tokens"); then
+    echo "fleet-gh-token: curl request to mint an installation token failed" >&2
+    exit 1
+fi
+http_code="${response##*$'\n'}"
+body="${response%$'\n'*}"
+
+if [[ "$http_code" != "201" ]]; then
+    echo "fleet-gh-token: mint failed (HTTP $http_code): $body" >&2
+    exit 1
+fi
+
+parsed=$(printf '%s' "$body" | python3 -c "
+import json, sys, calendar, time
+data = json.load(sys.stdin)
+expires_epoch = calendar.timegm(time.strptime(data['expires_at'], '%Y-%m-%dT%H:%M:%SZ'))
+print(data['token'])
+print(expires_epoch)
+")
+token=$(printf '%s\n' "$parsed" | sed -n '1p')
+expires_epoch=$(printf '%s\n' "$parsed" | sed -n '2p')
+
+tmp=$(mktemp "$STATE_DIR/.gh-app-token.XXXXXX")
+printf '{"token":"%s","expires_at":%s}\n' "$token" "$expires_epoch" >"$tmp"
+mv "$tmp" "$CACHE_FILE"
+
+printf '%s\n' "$token"

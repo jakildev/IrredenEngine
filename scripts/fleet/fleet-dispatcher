@@ -1770,6 +1770,15 @@ main() {
             break
         fi
 
+        # GitHub App token (#1394 Q4): guarded per-tick refresh so this
+        # long-lived daemon's gh calls stay authenticated past the
+        # installation token's 1h expiry. Cache makes this a cheap file read
+        # on all but the ~once-per-hour re-mint tick. Never export
+        # GH_TOKEN="" — that would defeat gh's keychain fallback on the
+        # unconfigured path.
+        _gh_app_token="$(fleet-gh-token 2>/dev/null || true)"
+        [[ -n "$_gh_app_token" ]] && export GH_TOKEN="$_gh_app_token"
+
         cleanup_stale_dispatches
 
         # Keep the main clone current so a fleet-script fix that merges

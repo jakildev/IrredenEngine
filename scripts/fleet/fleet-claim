@@ -142,6 +142,13 @@ else
     assert_clone_fresh() { :; }  # helper not installed yet — no-op (fail open)
 fi
 
+# GitHub App token (#1394 Q4): guarded export so this invocation's 48 gh
+# call sites draw from the App pool. Never export GH_TOKEN="" — that would
+# defeat gh's keychain fallback on the unconfigured path.
+_gh_app_token="$(fleet-gh-token 2>/dev/null || true)"
+[[ -n "$_gh_app_token" ]] && export GH_TOKEN="$_gh_app_token"
+unset _gh_app_token
+
 # --- input validation -----------------------------------------------------
 
 # require_issue_number <input>
