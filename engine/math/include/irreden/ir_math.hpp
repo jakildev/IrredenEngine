@@ -648,37 +648,6 @@ constexpr vec2 pos3DtoPos2DIsoYawed(const vec3 worldPos, float visualYaw) {
     return vec2(-vx + vy, -vx - vy + 2.0f * worldPos.z);
 }
 
-/// Iso projection of a detached entity's model-space point under an arbitrary
-/// SO(3) rotation: `iso(R · modelPos)`. The full-rotation companion to the
-/// Z-yaw-only @ref pos3DtoPos2DIsoYawed — where camera yaw is a 1-DOF rotation
-/// about world Z, a detached entity rotates by any axis, so the continuous
-/// reposition rotates the model point by the entity quaternion before
-/// projecting. Feed the octahedral-snap *residual* (@ref octahedralSnapResidual)
-/// as @p rotation: the snap plays the cardinal-snap role and the residual is
-/// the continuous 3D reposition, the SO(3) generalization of the cardinal/
-/// residual yaw split. At identity rotation this is exactly
-/// @ref pos3DtoPos2DIso(modelPos), and for a pure-Z quaternion `qZ(θ)` it
-/// equals `pos3DtoPos2DIsoYawed(modelPos, -θ)` (the entity-rotation sign is
-/// opposite the camera-residual yaw sign, matching @ref faceDeformationMatrixSO3).
-///
-/// Caller rounds the continuous result with @ref roundHalfUp at the canvas-cell
-/// write, exactly as the yaw path does. GPU mirror: `pos3DtoPos2DIsoRotated` in
-/// `shaders/ir_iso_common.glsl` / `.metal` — `rotateByQuat` then the same iso
-/// columns, so CPU and GPU agree bit-for-bit. Originally the reposition for the
-/// detached SO(3) forward-scatter composite (#1463 P2 → #1464 P3); that consumer
-/// was **retired in #1560** when re-voxelize became the sole detached SO(3) path,
-/// so this helper currently has no production caller (math tests only). Retained
-/// as the SO(3) iso-projection primitive (the full-rotation companion to
-/// @ref pos3DtoPos2DIsoYawed).
-///
-/// The iso columns `(-x + y, -x - y + 2z)` are inlined (matching the sibling
-/// @ref pos3DtoPos2DIsoYawed and the GPU mirror) rather than calling
-/// @ref pos3DtoPos2DIso, which is defined later in this header.
-inline vec2 pos3DtoPos2DIsoRotated(const vec3 &modelPos, const vec4 &rotation) {
-    const vec3 r = rotateVectorByQuat(modelPos, rotation);
-    return vec2(-r.x + r.y, -r.x - r.y + 2.0f * r.z);
-}
-
 /// Conservative XY growth of an axis-aligned half-extent swept under a Z-yaw of
 /// `(cosYaw, sinYaw)`: each in-plane axis grows to `|c|·hX + |s|·hY` (the
 /// footprint the rotated box covers, up to the √2 extent at ±45°); Z is

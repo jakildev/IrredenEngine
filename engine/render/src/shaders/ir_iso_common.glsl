@@ -740,18 +740,6 @@ vec3 rotateByInverseQuat(vec3 v, vec4 q) {
     return rotateByQuat(v, vec4(-q.xyz, q.w));
 }
 
-// Iso projection of a detached entity's model point under SO(3) rotation:
-// iso(R * modelPos). Full-rotation companion to pos3DtoPos2DIsoYawed (Z-yaw
-// only). Feed the octahedral-snap residual as `rotation`; at identity this is
-// pos3DtoPos2DIso(modelPos). CPU mirror: IRMath::pos3DtoPos2DIsoRotated —
-// rotateByQuat then the same iso columns keep CPU/GPU bit-identical (#1463).
-// No shader caller since #1560 retired the detached forward-scatter; retained
-// primitive (re-voxelize is the sole detached SO(3) path).
-vec2 pos3DtoPos2DIsoRotated(vec3 modelPos, vec4 rotation) {
-    vec3 r = rotateByQuat(modelPos, rotation);
-    return vec2(-r.x + r.y, -r.x - r.y + 2.0 * r.z);
-}
-
 // The two in-plane unit model axes (e_u, e_v) a face's scatter quad spans, by
 // axis = faceId >> 1 (0=X spans y,z; 1=Y spans x,z; 2=Z spans x,y) — matching
 // faceSpanCorner's cornerSel.x -> e_u, cornerSel.y -> e_v ordering. Returned in
