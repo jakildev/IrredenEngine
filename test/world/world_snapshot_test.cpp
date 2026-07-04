@@ -8,6 +8,8 @@
 #include <irreden/asset/chunk_header.hpp>
 #include <irreden/ir_entity.hpp>
 
+#include <algorithm>
+#include <array>
 #include <cstdint>
 #include <fstream>
 #include <string>
@@ -39,6 +41,14 @@ struct C_WsSingletonState {
     std::int32_t counter_ = 0;
     float weight_ = 0.0f;
 };
+// A component with a *fallible* serializer: `read` rejects a wrong sentinel,
+// so a length-valid-but-content-corrupt column fails to *decode* — unlike a
+// trivially-copyable raw image, which accepts any byte pattern. This is what
+// lets CorruptColumnAbortsWithZeroMutation exercise a decode failure the
+// loader's phase-2 gate must catch before it mutates the live world.
+struct C_WsChecked {
+    std::int32_t payload_ = 0;
+};
 } // namespace WsSnap
 
 IR_SAVE_OPT_IN(WsSnap::C_WsPos, 1)
@@ -46,6 +56,49 @@ IR_SAVE_OPT_IN(WsSnap::C_WsVel, 1)
 IR_SAVE_OPT_IN(WsSnap::C_WsTag, 1)
 IR_SAVE_OPT_OUT(WsSnap::C_WsTransient)
 IR_SAVE_OPT_IN(WsSnap::C_WsSingletonState, 2)
+IR_SAVE_OPT_IN(WsSnap::C_WsChecked, 1)
+
+namespace IRWorld {
+// Explicit specialization overriding the trivially-copyable raw-image default
+// with a sentinel-guarded encoding whose `read` can fail on bad content.
+template <> struct SaveSerialize<WsSnap::C_WsChecked> {
+    // A distinctive little-endian pattern (EF BE AD DE) the corruption test
+    // can locate and flip in the on-disk bytes without colliding with the
+    // small varuint headers / low component values elsewhere in the file.
+    static constexpr std::uint32_t kSentinel = 0xDEADBEEFu;
+
+    static void write(IRAsset::BinaryWriter &w, const WsSnap::C_WsChecked &value) {
+        w.writeU32(kSentinel);
+        w.writeU32(static_cast<std::uint32_t>(value.payload_));
+    }
+
+    static IRAsset::Result<WsSnap::C_WsChecked> read(IRAsset::BinaryReader &r) {
+        IRAsset::Result<std::uint32_t> tag = r.readU32();
+        if (!tag.ok()) {
+            return IRAsset::Result<WsSnap::C_WsChecked>::error(
+                tag.status_.code_,
+                tag.status_.message_
+            );
+        }
+        if (tag.value_ != kSentinel) {
+            return IRAsset::Result<WsSnap::C_WsChecked>::error(
+                IRAsset::BinaryIOError::UnknownTag,
+                "C_WsChecked: bad sentinel"
+            );
+        }
+        IRAsset::Result<std::uint32_t> payload = r.readU32();
+        if (!payload.ok()) {
+            return IRAsset::Result<WsSnap::C_WsChecked>::error(
+                payload.status_.code_,
+                payload.status_.message_
+            );
+        }
+        return IRAsset::Result<WsSnap::C_WsChecked>::success(
+            WsSnap::C_WsChecked{static_cast<std::int32_t>(payload.value_)}
+        );
+    }
+};
+} // namespace IRWorld
 
 namespace {
 
@@ -369,6 +422,122 @@ TEST_F(WorldSnapshotTest, EmptyWorldRoundTrips) {
     ASSERT_TRUE(result.ok());
     EXPECT_EQ(result.entitiesRestored_, 0u);
     EXPECT_EQ(result.singletonsRestored_, 0u);
+}
+
+// A length-valid-but-content-corrupt column must be caught by the load's
+// phase-2 decode gate and abort with ZERO world mutation (Rule #5) — not
+// surface mid-apply, after restoreEntitiesBatch has already spliced entities
+// into the live graph. Uses the fallible C_WsChecked serializer so a corrupt
+// row genuinely fails to decode (a trivially-copyable raw image accepts any
+// bytes and can't reproduce this). See #2213.
+TEST_F(WorldSnapshotTest, CorruptColumnAbortsWithZeroMutation) {
+    IRWorld::SaveRegistry reg;
+    reg.registerComponent<C_WsPos>();
+    reg.registerComponent<C_WsChecked>();
+    // A pure-{C_WsPos} archetype plus a {C_WsPos, C_WsChecked} one, so a
+    // decode failure in the checked column would (pre-fix) land after at least
+    // one archetype is already spliced — the partial mutation under test.
+    for (int i = 0; i < 5; ++i) {
+        m_em.createEntity(C_WsPos{i, i, i});
+    }
+    for (int i = 0; i < 5; ++i) {
+        m_em.createEntity(C_WsPos{i, i, i}, C_WsChecked{100 + i});
+    }
+    const std::string path = tempPath("corruptcol");
+    ASSERT_TRUE(IRWorld::saveWorld(reg, path).ok());
+
+    // Corrupt one C_WsChecked sentinel in place: same file length, valid
+    // per-column byteLength headers, but the row no longer decodes.
+    std::vector<std::uint8_t> bytes = readFileBytes(path);
+    const std::array<std::uint8_t, 4> needle{0xEF, 0xBE, 0xAD, 0xDE}; // 0xDEADBEEF LE
+    auto at = std::search(bytes.begin(), bytes.end(), needle.begin(), needle.end());
+    ASSERT_NE(at, bytes.end()) << "C_WsChecked sentinel not found in file";
+    *at ^= 0xFFu; // flip the low byte -> sentinel mismatch on decode
+    {
+        std::ofstream out(path, std::ios::binary | std::ios::trunc);
+        out.write(
+            reinterpret_cast<const char *>(bytes.data()),
+            static_cast<std::streamsize>(bytes.size())
+        );
+    }
+
+    m_em.destroyAllEntities();
+    const EntityId before = m_em.getLiveEntityCount();
+    IRWorld::LoadResult result = IRWorld::loadWorld(reg, path);
+    EXPECT_FALSE(result.ok());                    // corrupt column rejected
+    EXPECT_EQ(result.entitiesRestored_, 0u);      // Rule #5: no partial counts
+    EXPECT_EQ(m_em.getLiveEntityCount(), before); // zero world mutation
+}
+
+} // namespace
+
+namespace {
+
+using namespace WsSnap;
+using IREntity::EntityId;
+
+// The allocator watermark must advance past every restored id BEFORE the
+// singleton loop, or a fresh-session singleton lazy-create draws a
+// just-restored gameplay id and cross-wires onto it. A same-manager reload
+// can't reproduce this (after a save the watermark already sits past the
+// saved ids), so this drives a genuine second session with a fresh
+// EntityManager whose watermark is back at the reserved base. See #2213.
+TEST(WorldSnapshotFreshSession, WatermarkAdvancesBeforeSingletonLazyCreate) {
+    const std::string path = testing::TempDir() + "/ir_ws_fresh_watermark.irws";
+    std::vector<EntityId> gameplayIds;
+    const C_WsSingletonState savedSingleton{1234, 5.5f};
+    {
+        IREntity::EntityManager em1; // ctor sets g_entityManager -> em1
+        IRWorld::SaveRegistry reg;
+        reg.registerComponent<C_WsPos>();
+        reg.registerComponent<C_WsSingletonState>();
+        // Gameplay entities first, so the lowest post-registration id belongs
+        // to a gameplay entity — exactly the id a fresh-session singleton
+        // lazy-create would otherwise draw.
+        for (int i = 0; i < 8; ++i) {
+            gameplayIds.push_back(
+                em1.createEntity(C_WsPos{i, i + 1, i + 2}) & IREntity::IR_ENTITY_ID_BITS
+            );
+        }
+        em1.getComponent<C_WsSingletonState>(em1.getOrCreateSingleton<C_WsSingletonState>()) =
+            savedSingleton;
+        ASSERT_TRUE(IRWorld::saveWorld(reg, path).ok());
+    } // em1 destructs, clearing the global
+
+    // A brand-new session: watermark back at the reserved base, the same two
+    // components registered in the same order (same backing-entity count), so
+    // without the pre-mutation advance the singleton lazy-create would draw
+    // exactly gameplayIds[0].
+    IREntity::EntityManager em2; // ctor sets g_entityManager -> em2
+    IRWorld::SaveRegistry reg;
+    reg.registerComponent<C_WsPos>();
+    reg.registerComponent<C_WsSingletonState>();
+    IRWorld::LoadResult result = IRWorld::loadWorld(reg, path);
+    ASSERT_TRUE(result.ok()) << result.status_.message_;
+
+    // The singleton restored by value...
+    const C_WsSingletonState &restored = IREntity::singleton<C_WsSingletonState>();
+    EXPECT_EQ(restored.counter_, savedSingleton.counter_);
+    EXPECT_FLOAT_EQ(restored.weight_, savedSingleton.weight_);
+
+    // ...onto a fresh id strictly above every restored gameplay id. This is
+    // the fix's invariant: without the pre-mutation watermark advance the
+    // lazy-create draws a low, already-restored id and this fails.
+    const EntityId liveSingleton =
+        IREntity::singletonEntityOrNull<C_WsSingletonState>() & IREntity::IR_ENTITY_ID_BITS;
+    const EntityId maxGameplay = *std::max_element(gameplayIds.begin(), gameplayIds.end());
+    EXPECT_GT(liveSingleton, maxGameplay);
+
+    // Every restored gameplay entity keeps its exact C_WsPos — the singleton
+    // value never cross-wired onto a gameplay record.
+    for (int i = 0; i < 8; ++i) {
+        ASSERT_TRUE(em2.entityExists(gameplayIds[i])) << "missing id " << gameplayIds[i];
+        auto pos = em2.getComponentOptional<C_WsPos>(gameplayIds[i]);
+        ASSERT_TRUE(pos.has_value());
+        EXPECT_EQ((*pos)->x_, i);
+        EXPECT_EQ((*pos)->y_, i + 1);
+        EXPECT_EQ((*pos)->z_, i + 2);
+    }
 }
 
 } // namespace

@@ -60,6 +60,13 @@ struct SaveComponentEntry {
     // Deserialize one instance and append it to a live column.
     std::function<IRAsset::BinaryStatus(IRAsset::BinaryReader &, IREntity::IComponentData *)>
         appendRow_;
+    // Decode one serialized instance and discard it, reporting only the
+    // status. The zero-mutation dry run the load's phase-2 gate runs over
+    // every column before phase 3 touches the live graph: it exercises the
+    // exact `SaveSerialize<C>::read` path `appendRow_` / `readIntoEntity_`
+    // take, so a length-valid-but-corrupt column fails validation rather than
+    // aborting mid-apply after entities are already spliced in.
+    std::function<IRAsset::BinaryStatus(IRAsset::BinaryReader &)> decodeRow_;
 
     // Lazily get-or-create the singleton entity owning this component.
     std::function<IREntity::EntityId()> getOrCreateSingletonEntity_;
@@ -102,6 +109,9 @@ class SaveRegistry {
                     std::move(res.value_)
                 );
                 return IRAsset::BinaryStatus::success();
+            };
+            entry.decodeRow_ = [](IRAsset::BinaryReader &r) -> IRAsset::BinaryStatus {
+                return SaveSerialize<C>::read(r).status_;
             };
             entry.getOrCreateSingletonEntity_ = []() -> IREntity::EntityId {
                 return IREntity::singletonEntity<C>();

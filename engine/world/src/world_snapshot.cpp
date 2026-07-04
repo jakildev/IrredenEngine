@@ -417,6 +417,16 @@ LoadResult loadWorld(const SaveRegistry &registry, const std::string &path) {
                 if (!id.ok()) {
                     return loadFail(id.status_);
                 }
+                // Saved ids are written masked (`& IR_ENTITY_ID_BITS`). A value
+                // above that mask is corruption — reject it here rather than
+                // let the phase-2 `& IR_ENTITY_ID_BITS` silently alias it onto
+                // a low, possibly-live id.
+                if (id.value_ > IREntity::IR_ENTITY_ID_BITS) {
+                    return loadError(
+                        IRAsset::BinaryIOError::Truncated,
+                        "world snapshot: ARCH entity id out of range"
+                    );
+                }
                 staged.entityIds_.push_back(static_cast<EntityId>(id.value_));
             }
             staged.columns_.reserve(compCount.value_);
@@ -467,6 +477,12 @@ LoadResult loadWorld(const SaveRegistry &registry, const std::string &path) {
             IRAsset::Result<std::uint64_t> savedId = r.readVarUInt();
             if (!savedId.ok()) {
                 return loadFail(savedId.status_);
+            }
+            if (savedId.value_ > IREntity::IR_ENTITY_ID_BITS) {
+                return loadError(
+                    IRAsset::BinaryIOError::Truncated,
+                    "world snapshot: SNGL entity id out of range"
+                );
             }
             staged.savedId_ = static_cast<EntityId>(savedId.value_);
             IRAsset::Result<std::uint32_t> version = r.readU32();
@@ -523,6 +539,67 @@ LoadResult loadWorld(const SaveRegistry &registry, const std::string &path) {
             }
         }
     }
+
+    // --- Phase 2b: decode-validate every resolved column (still zero
+    // mutation) --- Phase 1 only recorded each column's byte span; a
+    // length-valid-but-corrupt column (disk corruption, a half-written file,
+    // hand-edited bytes) would otherwise not surface until phase 3's
+    // `appendRow_`, by which point `restoreEntitiesBatch` has already spliced
+    // this archetype's entities — and every earlier one — into the live
+    // graph, leaving a column short of `length_` with no way to unwind. That
+    // is the partial mutation the header's "zero world mutation on error"
+    // contract (Rule #5) forbids. Dry-run the exact `SaveSerialize<C>::read`
+    // decode here, discarding the values, so any failure aborts before the
+    // first live write. Unresolvable columns (`entry == nullptr`) are skipped
+    // by byte length in phase 3, so they are skipped here too.
+    for (const StagedArchetype &staged : stagedArchetypes) {
+        for (std::size_t c = 0; c < staged.localIndices_.size(); ++c) {
+            const SaveComponentEntry *entry = localEntries[staged.localIndices_[c]];
+            if (entry == nullptr) {
+                continue;
+            }
+            const StagedColumn &column = staged.columns_[c];
+            IRAsset::MemoryBinaryReader r(arch->data_.data(), arch->data_.size(), "ARCH");
+            IRAsset::BinaryStatus seek = r.seek(column.dataOffset_);
+            if (!seek.ok()) {
+                return loadFail(seek);
+            }
+            for (std::size_t e = 0; e < staged.entityIds_.size(); ++e) {
+                IRAsset::BinaryStatus rowStatus = entry->decodeRow_(r);
+                if (!rowStatus.ok()) {
+                    return loadFail(rowStatus);
+                }
+            }
+        }
+    }
+    for (const StagedSingleton &staged : stagedSingletons) {
+        const SaveComponentEntry *entry = localEntries[staged.localIndex_];
+        if (entry == nullptr) {
+            continue;
+        }
+        IRAsset::MemoryBinaryReader r(sngl->data_.data(), sngl->data_.size(), "SNGL");
+        IRAsset::BinaryStatus seek = r.seek(staged.column_.dataOffset_);
+        if (!seek.ok()) {
+            return loadFail(seek);
+        }
+        IRAsset::BinaryStatus valueStatus = entry->decodeRow_(r);
+        if (!valueStatus.ok()) {
+            return loadFail(valueStatus);
+        }
+    }
+
+    // Every id- and decode-validation has passed, so phase 3 is now
+    // guaranteed to complete — advance the allocator watermark HERE, before
+    // any mutation. It must precede the singleton loop: a fresh-session
+    // singleton lazy-create (`getOrCreateSingletonEntity_` -> `createEntity`)
+    // draws its id off `m_nextEntityId`, and if the watermark still sat at its
+    // stale pre-load value that draw would collide with a just-restored
+    // gameplay id (`allocateEntity`'s `m_entityIndex.emplace` silently no-ops
+    // on a dup, and the singleton value then cross-wires onto that gameplay
+    // entity's record — no error, no assert). The archetype loop plants
+    // explicit ids via `restoreEntitiesBatch` and never allocates, so
+    // advancing ahead of it is safe too.
+    em.advanceEntityIdWatermark(watermark);
 
     // --- Phase 3: apply ---
     LoadResult result;
@@ -588,7 +665,9 @@ LoadResult loadWorld(const SaveRegistry &registry, const std::string &path) {
         ++result.singletonsRestored_;
     }
 
-    em.advanceEntityIdWatermark(watermark);
+    // Watermark was advanced after phase-2 validation, before any phase-3
+    // mutation — advancing it here (after the singleton loop) would let a
+    // fresh-session singleton lazy-create draw a just-restored id. See #2213.
     return result;
 }
 

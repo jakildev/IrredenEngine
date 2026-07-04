@@ -56,6 +56,19 @@
 /// remapped) — they never recycle, so a component's embedded EntityId
 /// fields stay valid and P3 relation triples resolve.
 ///
+/// **Singleton save restriction (single-component only).** A singleton
+/// entity is persisted *only* by its singleton component type (the one keyed
+/// in `EntityManager::singletonEntityCache`): the walker excludes singleton
+/// entities from the `ARCH` walk wholesale, and `SNGL` writes just that one
+/// keyed component by value. So if a singleton entity ever carries an
+/// *additional* opted-in component beyond its singleton type, that extra
+/// component's data is silently dropped on save — it lands neither in `ARCH`
+/// (the entity is excluded) nor in `SNGL` (which serializes only the keyed
+/// type). Nothing in-tree does this today (see `engine/entity/CLAUDE.md`
+/// "Singleton components"); this documents it as an intentional restriction,
+/// not a latent bug. Keep singleton entities single-component, or promote the
+/// extra state onto a normal (non-singleton) gameplay entity.
+///
 /// ## Determinism, errors
 ///
 /// Same-world double-save is byte-identical (criterion W-8 subset): the
