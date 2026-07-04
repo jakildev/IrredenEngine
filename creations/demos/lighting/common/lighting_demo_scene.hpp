@@ -384,7 +384,7 @@ inline void initSystems(const DemoConfig &config) {
     // --auto-screenshot capture would pollute a render-verify baseline and flake
     // its pixel-diff run-to-run. Suppress it only while capturing; interactive
     // and --auto-profile runs (g_autoWarmupFrames == 0) still get it. Mirrors
-    // fog_demo / shape_debug, which omit the overlay from their gated scenes.
+    // fog_demo, which omits the overlay entirely.
     if (g_autoWarmupFrames == 0) {
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::PERF_STATS_OVERLAY>());
     }
