@@ -38,6 +38,7 @@
 #include <irreden/entity/i_component_data.hpp>
 #include <irreden/entity/ir_entity_types.hpp>
 #include <irreden/ir_entity.hpp>
+#include <irreden/ir_profile.hpp>
 
 #include <cstdint>
 #include <functional>
@@ -176,9 +177,15 @@ class SaveRegistry {
             // never changed; SaveMigration<C> is instantiated only inside this
             // shouldSave<C>() branch, so an opted-out C never needs one.
             for (auto &versioned : SaveMigration<C>::migrators()) {
-                entry.migratorReaders_.emplace(
-                    versioned.first,
-                    buildReader<C>(std::move(versioned.second))
+                const bool inserted =
+                    entry.migratorReaders_
+                        .emplace(versioned.first, buildReader<C>(std::move(versioned.second)))
+                        .second;
+                IR_ASSERT(
+                    inserted,
+                    "SaveMigration<{}>::migrators() lists fromVersion {} more than once",
+                    name,
+                    versioned.first
                 );
             }
             entry.getOrCreateSingletonEntity_ = []() -> IREntity::EntityId {
