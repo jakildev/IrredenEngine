@@ -85,7 +85,18 @@ while [[ $# -gt 0 ]]; do
             fi
             agent="$2"; shift 2 ;;
         --agent=*)
-            agent="${1#--agent=}"; shift ;;
+            agent="${1#--agent=}"
+            # An empty --agent= must be rejected exactly like the space-form's
+            # missing value. Otherwise agent="" flows to the guard's
+            # `[[ -n "$agent" ]]` check, which reads an empty string as --agent
+            # OMITTED and silently takes the interactive-human carve-out —
+            # applying the verdict with NO claim check. That defeats the
+            # misroute guard on a plausible failure (an unset --agent=$VAR at a
+            # templated call site), not just an adversarial one.
+            if [[ -z "$agent" ]]; then
+                echo "$PROG: --agent requires a value" >&2; exit 2
+            fi
+            shift ;;
         --repo)
             if [[ -z "${2:-}" || "${2:-}" == --* ]]; then
                 echo "$PROG: --repo requires a value (e.g. owner/repo)" >&2; exit 2

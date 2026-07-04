@@ -22,6 +22,11 @@
 #   T6: --repo + --dry-run threaded through to fleet-transition
 #   T7: fleet-transition non-zero exit propagates (exec)
 #   T8: PR not found (gh view fails) under --agent → exit 1, no delegation
+#   T9:  --agent=<name> equals-form + claim present → delegates, exit 0
+#   T10: --agent=<name> equals-form + claim ABSENT → guard fires, exit 4
+#   T11: --agent= (empty equals-form) → exit 2, no delegation (guard-bypass
+#        regression: empty value must reject like the space-form, not skip
+#        the claim check via the interactive-human carve-out)
 
 set -euo pipefail
 
@@ -184,6 +189,34 @@ echo "T8: PR not found (gh view fails) under --agent → exit 1"
 reset_logs                                              # no store file for 999
 assert_eq "$(run verdict-approve 999 --agent worker-2)" "1" "T8 exits 1 on unreadable PR"
 assert_eq "$(ft_calls)" "0" "T8 did not delegate when labels unreadable"
+
+# === T9: --agent=<name> equals-form + claim present → delegate, exit 0 ====
+echo "T9: --agent=<name> equals-form + reviewing claim present → delegates, exit 0"
+reset_logs
+set_labels 106 fleet:reviewing-mac-worker-2 fleet:wip
+assert_eq "$(run verdict-needs-fix 106 --agent=worker-2)" "0" "T9 equals-form exits 0"
+assert_eq "$(ft_calls)" "1" "T9 delegated to fleet-transition exactly once"
+
+# === T10: --agent=<name> equals-form + claim ABSENT → guard fires, exit 4 ==
+# Proves the equals-form flows through the guard (not just the parser) — an
+# equals-form claim mismatch must reject exactly like the space-form (T2).
+echo "T10: --agent=<name> equals-form + reviewing claim absent → exit 4, no delegation"
+reset_logs
+set_labels 107 fleet:reviewing-mac-worker-9 fleet:wip   # claim is a DIFFERENT agent
+assert_eq "$(run verdict-needs-fix 107 --agent=worker-2)" "4" "T10 equals-form guard exits 4"
+assert_eq "$(ft_calls)" "0" "T10 did NOT delegate (no verdict applied)"
+
+# === T11: --agent= (empty equals-form) → exit 2, no delegation ============
+# Regression for the guard-bypass fix: an empty --agent= must reject like the
+# space-form's missing value (T5), NOT fall through to agent="" and silently
+# take the interactive-human carve-out (which skips the claim check entirely).
+echo "T11: --agent= (empty equals-form) → exit 2, no delegation (guard-bypass regression)"
+reset_logs
+set_labels 108 fleet:wip                                # no reviewing claim at all
+assert_eq "$(run verdict-approve 108 --agent=)" "2" "T11 empty --agent= exits 2"
+assert_eq "$(ft_calls)" "0" "T11 did NOT delegate on empty --agent="
+assert_eq "$(grep -c 'pr view' "$GH_LOG" 2>/dev/null || true)" "0" \
+    "T11 did NOT read labels (rejected before the guard, not carved out)"
 
 echo ""
 echo "PASS: $PASS  FAIL: $FAIL"
