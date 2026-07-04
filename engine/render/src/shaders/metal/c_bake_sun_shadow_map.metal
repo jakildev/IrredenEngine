@@ -11,6 +11,13 @@ constant int kCascadeTexelCount = kSunShadowMapDim * kSunShadowMapDim;
 constant float kSunDepthScale = 1024.0;
 constant float kSunDepthOffset = 512.0;
 
+// Cap on the per-source-pixel footprint splat radius (#1784), in sun-map
+// texels per side. A backstop only: the splat radius is derived from the
+// screen pixel's true sun-space footprint (see the kernel body), so this bounds
+// pathological cases where the sun map is far finer than the screen and keeps
+// the shadow from bloating past the silhouette by more than a few texels.
+constant int kSunBakeSplatMaxRadius = 3;
+
 inline uint packSunDepth(float sunZ) {
     float biased = clamp(sunZ + kSunDepthOffset, 0.0, kSunDepthOffset * 2.0);
     return uint(biased * kSunDepthScale);
@@ -36,21 +43,32 @@ struct FrameDataSun {
     float _cascadePad1;
 };
 
+// Splat `sunZ` across the sun-map texels this source pixel's footprint covers.
+// `footprintUV` is the HALF-extent (sun-UV world units) of one screen pixel's
+// projection onto the sun plane; dividing by this cascade's texel size gives the
+// per-side radius in texels. footprintUV == 0 (every non-cardinal caller) yields
+// radius 0 -> a single-texel atomic_min at the floored center, byte-identical to
+// the pre-#1784 one-texel scatter. Mirrors shaders/c_bake_sun_shadow_map.glsl.
 inline void bakeCascade(
-    float2 sunUV, float sunZ, float2 origin, float2 texelSz,
+    float2 sunUV, float sunZ, float2 footprintUV, float2 origin, float2 texelSz,
     int cascadeOffset, device atomic_uint *sunDepthBuf
 ) {
-    int2 sunPx = int2(floor((sunUV - origin) / texelSz));
-    if (sunPx.x < 0 || sunPx.x >= kSunShadowMapDim ||
-        sunPx.y < 0 || sunPx.y >= kSunShadowMapDim) {
-        return;
-    }
+    int2 center = int2(floor((sunUV - origin) / texelSz));
+    int2 radius = clamp(int2(ceil(footprintUV / texelSz)), int2(0), int2(kSunBakeSplatMaxRadius));
     uint packedDepth = packSunDepth(sunZ);
-    atomic_fetch_min_explicit(
-        &sunDepthBuf[cascadeOffset + sunPx.y * kSunShadowMapDim + sunPx.x],
-        packedDepth,
-        memory_order_relaxed
-    );
+    for (int dy = -radius.y; dy <= radius.y; ++dy) {
+        int py = center.y + dy;
+        if (py < 0 || py >= kSunShadowMapDim) continue;
+        for (int dx = -radius.x; dx <= radius.x; ++dx) {
+            int px = center.x + dx;
+            if (px < 0 || px >= kSunShadowMapDim) continue;
+            atomic_fetch_min_explicit(
+                &sunDepthBuf[cascadeOffset + py * kSunShadowMapDim + px],
+                packedDepth,
+                memory_order_relaxed
+            );
+        }
+    }
 }
 
 kernel void c_bake_sun_shadow_map(
@@ -120,8 +138,43 @@ kernel void c_bake_sun_shadow_map(
     float2 sunUV = float2(dot(pos3D, uHat), dot(pos3D, vHat));
     float sunZ = -dot(pos3D, sunDir);
 
-    bakeCascade(sunUV, sunZ, sunFrameData.cascadeOriginUV_0,
+    // Cardinal single-canvas footprint splat (#1784). At cardinal camera yaw the
+    // GRID spin cubes route VOXEL_TO_TRIXEL -> here with no resolve stage between,
+    // so this is the one caster path still scattering a single sun texel per
+    // source pixel. The screen->sun projection lands consecutive source pixels
+    // more than one texel apart, so the floor's 2x2 PCF gather (ir_sun_shadow_
+    // sample.glsl) falls between them and reads no occluder -> ~87% lit holes /
+    // dithered speckle. Recover the sun-space footprint of one screen pixel (the
+    // reconstruction is affine in `pixel` at constant depth, so this is a frame-
+    // constant tangent-plane footprint, independent of surface angle) and splat
+    // across it so the gather always lands on a written occluder inside the
+    // silhouette. The per-axis / smooth-yaw / world-placed inputs were already
+    // footprint-densified upstream (#1734/#1596), so their footprint stays zero
+    // -> single-texel, keeping continuous-yaw + resolved output byte-identical.
+    // Mirrors shaders/c_bake_sun_shadow_map.glsl.
+    float2 footprintUV = float2(0.0);
+    if (frameData.perAxisRoute == 0 && frameData.residualYaw == 0.0) {
+        float3 posDx = trixelCanvasPixelToWorld3D(
+            pixel + int2(1, 0), rawDepth, frameData.trixelCanvasOffsetZ1,
+            frameData.frameCanvasOffset, frameData.voxelRenderOptions, frameData.rasterYaw
+        );
+        float3 posDy = trixelCanvasPixelToWorld3D(
+            pixel + int2(0, 1), rawDepth, frameData.trixelCanvasOffsetZ1,
+            frameData.frameCanvasOffset, frameData.voxelRenderOptions, frameData.rasterYaw
+        );
+        float2 duvX = float2(dot(posDx - pos3D, uHat), dot(posDx - pos3D, vHat));
+        float2 duvY = float2(dot(posDy - pos3D, uHat), dot(posDy - pos3D, vHat));
+        // Half-extent covers the source pixel's OWN cell in each sun axis. The
+        // written distances live on the even-parity iso sublattice (VOXEL_TO_
+        // TRIXEL writes only (isoRel.x+isoRel.y) even), so a written pixel owns
+        // the diamond out to its diagonal neighbours ~1 screen pixel away on each
+        // axis; |duvX|+|duvY| is that ±1px box projected to the sun plane (no 0.5
+        // halving — the sublattice spacing is 2px, so half of it is one full px).
+        footprintUV = abs(duvX) + abs(duvY);
+    }
+
+    bakeCascade(sunUV, sunZ, footprintUV, sunFrameData.cascadeOriginUV_0,
                 sunFrameData.cascadeTexelSize_0, 0, sunDepthBuf);
-    bakeCascade(sunUV, sunZ, sunFrameData.cascadeOriginUV_1,
+    bakeCascade(sunUV, sunZ, footprintUV, sunFrameData.cascadeOriginUV_1,
                 sunFrameData.cascadeTexelSize_1, kCascadeTexelCount, sunDepthBuf);
 }
