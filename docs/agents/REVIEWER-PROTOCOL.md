@@ -153,8 +153,15 @@ re-evaluation cleans them up:
   special case below, which sets no verdict and bypasses this swap.
 
 **One named edge per verdict.** Apply the verdict label-swap with
-`fleet-transition` (`scripts/fleet/fleet-transition`), which reads the
-edge from [`fleet-state-machine.json`](fleet-state-machine.json),
+`fleet-review-verdict` (`scripts/fleet/fleet-review-verdict`), passing
+`--agent <your-worktree-name>` — the same worktree basename you gave
+`fleet-claim review-claim <N> <your-worktree-name>`. It is a thin **guard** in front of
+`fleet-transition`: with `--agent` it refuses to stamp the verdict unless
+this agent holds `fleet:reviewing-<host>-<agent>` on that PR, so a verdict
+can only ever land on the PR you actually claimed for review — closing the
+misroute class where an Opus recheck verdict landed on an unrelated PR
+(#2153, PR #2141/#2138). It then delegates to `fleet-transition`, which
+reads the edge from [`fleet-state-machine.json`](fleet-state-machine.json),
 computes the delta against the PR's **live** label set, and writes it in
 a single idempotent `gh pr edit` call. This supersedes the old
 remove-then-add-then-verify split — that split existed only because
@@ -163,25 +170,26 @@ remove-then-add-then-verify split — that split existed only because
 split (and the `|| true`) is unnecessary. It still verifies after the
 write and retries once, so the `label-absent-after-verdict` guard
 (fix-002 in the fleet fix-log) is preserved. For game PRs, add
-`--repo <game-repo>` (the `gh` slug, e.g. `--repo jakildev/irreden`).
+`--repo <game-repo>` (the `gh` slug, e.g. `--repo jakildev/irreden`) — it
+threads through to both the claim-label read and `fleet-transition`.
 
 ```
 # Verdict approve, no Nits section:
-fleet-transition verdict-approve <N>
+fleet-review-verdict verdict-approve <N> --agent <your-worktree-name>
 
 # Verdict approve WITH a non-empty `### Nits` section (also sets fleet:has-nits):
-fleet-transition verdict-approve-nits <N>
+fleet-review-verdict verdict-approve-nits <N> --agent <your-worktree-name>
 
 # Verdict needs-fix:
-fleet-transition verdict-needs-fix <N>
+fleet-review-verdict verdict-needs-fix <N> --agent <your-worktree-name>
 
 # Verdict blocker:
-fleet-transition verdict-blocker <N>
+fleet-review-verdict verdict-blocker <N> --agent <your-worktree-name>
 
 # Re-review of a previously fleet:has-nits PR that's now clean (drop
 # has-nits, keep fleet:approved): verdict-approve subsumes this — it
 # removes has-nits and leaves the already-present fleet:approved as-is.
-fleet-transition verdict-approve <N>
+fleet-review-verdict verdict-approve <N> --agent <your-worktree-name>
 ```
 
 The exact remove/add set behind each edge lives in `fleet-state-machine.json`
@@ -196,7 +204,7 @@ pane only fires coincidentally on another PR's has-nits/needs-fix
 transition (PR #1473 sat un-rechecked for exactly this reason):
 
 ```
-fleet-transition verdict-needs-opus-recheck <N>
+fleet-review-verdict verdict-needs-opus-recheck <N> --agent <your-worktree-name>
 ```
 
 (You still set `fleet:has-nits` here if there are nits, even without a
@@ -206,9 +214,9 @@ as part of its own verdict label-swap, whatever verdict it reaches.
 The `review-pr` skill (invoked for engine single-task PRs by
 sonnet-reviewer) prescribes its own label-swap in step 5b — if you
 find a PR you reviewed without a label after the skill returns, run
-`fleet-transition verdict-<verdict> <N>` yourself immediately. Don't
-assume the skill did it; verify with `gh pr view <N> --json labels
---jq '.labels[].name'` if unsure.
+`fleet-review-verdict verdict-<verdict> <N> --agent <your-worktree-name>`
+yourself immediately. Don't assume the skill did it; verify with
+`gh pr view <N> --json labels --jq '.labels[].name'` if unsure.
 
 ---
 

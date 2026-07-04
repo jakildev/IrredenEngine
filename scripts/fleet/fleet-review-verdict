@@ -1,0 +1,175 @@
+#!/usr/bin/env bash
+# fleet-review-verdict — apply a reviewer VERDICT transition to a PR, but
+# only if this agent actually holds the reviewing claim on that PR.
+#
+# This is a thin guard in FRONT of fleet-transition. fleet-transition is
+# the sole state-machine mechanism (it computes the effective label delta
+# and applies it idempotently); this wrapper adds ONE precondition to the
+# reviewer-verdict lane: refuse to stamp a verdict onto a PR the agent
+# never claimed for review.
+#
+# Why this exists:
+#   The reviewer already takes an atomic fleet:reviewing-<host>-<agent>
+#   claim on the PR it reviews, then applies its verdict with a raw
+#   `fleet-transition verdict-*`. Nothing tied the verdict to the claim, so
+#   an Opus recheck verdict for one PR could (and did — #2141/#2138) land
+#   on a DIFFERENT PR when the reviewer crossed PR numbers mid-iteration.
+#   The result is internally contradictory (approve body + needs-fix label)
+#   and elects the wrong PR into the worker lane, burning a no-op
+#   iteration. Routing the verdict through this wrapper surfaces the
+#   misroute AT THE SOURCE (the wrapper rejects a verdict on an unclaimed
+#   PR) instead of after a wasted dispatch.
+#
+# Scope: the FIVE reviewer verdict edges only —
+#   verdict-approve, verdict-approve-nits, verdict-needs-fix,
+#   verdict-blocker, verdict-needs-opus-recheck.
+#   Any other transition name is rejected ("use fleet-transition"): this
+#   wrapper guards the review-verdict lane, not the whole state machine.
+#
+# Usage:
+#   fleet-review-verdict <verdict-transition> <pr-number> \
+#       [--agent <name>] [--repo <slug>] [--dry-run]
+#
+# Options:
+#   --agent <name>  The reviewing agent (worktree basename passed to
+#                   `fleet-claim review-claim <N> <agent>`). When present,
+#                   the wrapper REQUIRES fleet:reviewing-<host>-<name> on
+#                   the PR before applying the verdict — this is the guard.
+#                   When OMITTED, the claim check is skipped and the verdict
+#                   applies directly: the dual-use carve-out for a human
+#                   running review-pr interactively (who holds no claim).
+#                   The fleet reviewer/smoke loops ALWAYS pass --agent, so an
+#                   agent following its role doc always gets the guard. The
+#                   carve-out is the ABSENCE of --agent, deliberately not a
+#                   --force flag an agent could add to defeat the guard.
+#   --repo <slug>   Target repo (e.g. jakildev/IrredenEngine or
+#                   jakildev/irreden). Threaded through to fleet-transition
+#                   and the claim-label read. Default: the current git remote.
+#   --dry-run       Print what would happen; make no changes. Passed through
+#                   to fleet-transition. The claim check still runs.
+#   -h, --help      Show this help.
+#
+# Exit status:
+#   0  verdict applied, or already satisfied (fleet-transition no-op)
+#   1  a gh call failed, or fleet-transition did not converge
+#   2  usage / validation error (unknown/non-verdict transition, bad number,
+#      missing --agent value) — no writes performed
+#   4  MISROUTE GUARD: --agent given but this agent does not hold the
+#      reviewing claim on the PR — no writes performed
+#
+# Source of truth: scripts/fleet/fleet-review-verdict in the engine repo.
+# Installed to ~/bin/ by scripts/fleet/install.sh.
+
+set -euo pipefail
+
+PROG="fleet-review-verdict"
+
+# The reviewer verdict edges this wrapper guards. Anything else belongs to
+# fleet-transition directly.
+VERDICT_TRANSITIONS="verdict-approve verdict-approve-nits verdict-needs-fix verdict-blocker verdict-needs-opus-recheck"
+
+# ----------------------------------------------------------------------
+# Parse args (same positional order as fleet-transition: <edge> <number>)
+# ----------------------------------------------------------------------
+transition=""
+number=""
+agent=""
+repo_slug=""
+dry_run=0
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --agent)
+            if [[ -z "${2:-}" || "${2:-}" == --* ]]; then
+                echo "$PROG: --agent requires a value" >&2; exit 2
+            fi
+            agent="$2"; shift 2 ;;
+        --agent=*)
+            agent="${1#--agent=}"; shift ;;
+        --repo)
+            if [[ -z "${2:-}" || "${2:-}" == --* ]]; then
+                echo "$PROG: --repo requires a value (e.g. owner/repo)" >&2; exit 2
+            fi
+            repo_slug="$2"; shift 2 ;;
+        --repo=*)
+            repo_slug="${1#--repo=}"; shift ;;
+        --dry-run) dry_run=1; shift ;;
+        -h|--help)
+            sed -n '2,61p' "$0" | sed 's/^# \{0,1\}//'
+            exit 0 ;;
+        --) shift; break ;;
+        -*)
+            echo "$PROG: unknown option '$1'" >&2; exit 2 ;;
+        *)
+            if [[ -z "$transition" ]]; then transition="$1"
+            elif [[ -z "$number" ]]; then number="$1"
+            else echo "$PROG: unexpected arg '$1'" >&2; exit 2
+            fi
+            shift ;;
+    esac
+done
+
+if [[ -z "$transition" || -z "$number" ]]; then
+    echo "$PROG: usage: $PROG <verdict-transition> <pr-number> [--agent <name>] [--repo <slug>] [--dry-run]" >&2
+    exit 2
+fi
+if ! [[ "$number" =~ ^[0-9]+$ ]]; then
+    echo "$PROG: <pr-number> must be a PR number, got '$number'" >&2
+    exit 2
+fi
+
+# Guard the lane: only the reviewer verdict edges pass through here.
+if [[ " $VERDICT_TRANSITIONS " != *" $transition "* ]]; then
+    echo "$PROG: '$transition' is not a verdict transition — use fleet-transition." >&2
+    echo "$PROG: verdict transitions: $VERDICT_TRANSITIONS" >&2
+    exit 2
+fi
+
+for dep in gh fleet-transition; do
+    if ! command -v "$dep" >/dev/null 2>&1; then
+        echo "$PROG: $dep not found." >&2; exit 1
+    fi
+done
+
+repo_args=()
+[[ -n "$repo_slug" ]] && repo_args=(--repo "$repo_slug")
+
+# ----------------------------------------------------------------------
+# The guard: with --agent, require this agent's reviewing claim on the PR.
+# Omitting --agent is the interactive-human carve-out (no claim to hold).
+# ----------------------------------------------------------------------
+if [[ -n "$agent" ]]; then
+    if ! command -v fleet-claim >/dev/null 2>&1; then
+        echo "$PROG: fleet-claim not found (needed to derive the host key)." >&2
+        exit 1
+    fi
+    # Reuse the canonical host key (mac|linux|windows) — the exact token
+    # behind every fleet:reviewing-* label. Do NOT re-derive the uname map.
+    host="$(fleet-claim host)"
+    if [[ -z "$host" ]]; then
+        echo "$PROG: could not derive host key from fleet-claim host." >&2
+        exit 1
+    fi
+    claim_label="fleet:reviewing-${host}-${agent}"
+
+    if ! live_labels="$(gh pr view "$number" "${repo_args[@]}" --json labels --jq '.labels[].name' 2>/dev/null)"; then
+        echo "$PROG: could not read labels for PR #$number (not found, or gh/auth error)." >&2
+        exit 1
+    fi
+    if ! printf '%s\n' "$live_labels" | grep -Fxq -- "$claim_label"; then
+        echo "$PROG: refusing verdict '$transition' on #$number: this agent does not hold '$claim_label'." >&2
+        echo "$PROG: (misroute guard) apply the verdict only to the PR you took the reviewing claim on." >&2
+        exit 4
+    fi
+fi
+
+# ----------------------------------------------------------------------
+# Guard passed (or carved out): delegate to the state-machine mechanism.
+# fleet-transition owns idempotency + verify + the effective delta.
+# exec propagates its exit code unchanged.
+# ----------------------------------------------------------------------
+delegate_args=("$transition" "$number")
+[[ -n "$repo_slug" ]] && delegate_args+=(--repo "$repo_slug")
+[[ "$dry_run" -eq 1 ]] && delegate_args+=(--dry-run)
+
+exec fleet-transition "${delegate_args[@]}"

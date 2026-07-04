@@ -223,8 +223,16 @@ verdict to `needs-fix`:
 
 ```
 gh pr comment <N> --repo jakildev/IrredenEngine --body "Cross-host smoke FAILED on <host>: <one-line symptom>. Details: <attach log excerpt>"
-gh pr edit <N> --repo jakildev/IrredenEngine --remove-label "fleet:approved" --remove-label "fleet:has-nits" --add-label "fleet:needs-fix"
+fleet-review-verdict verdict-needs-fix <N> --agent <your-worktree-basename> --repo jakildev/IrredenEngine
 ```
+
+`fleet-review-verdict` guards the verdict against your reviewing claim
+(`fleet:reviewing-<host>-<your-worktree-basename>`, still held here — the
+verdict runs BEFORE the release below), so a smoke failure can only ever
+drop the PR *you* claimed to `needs-fix`, never a same-numbered PR from a
+batch swap. `verdict-needs-fix` removes `fleet:approved`/`fleet:has-nits`
+(and any other stale verdict label) and adds `fleet:needs-fix` in one
+idempotent call.
 
 ### Release + reset
 
