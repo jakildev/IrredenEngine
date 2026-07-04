@@ -222,6 +222,11 @@ kernel void c_voxel_to_trixel_stage_2(
         faceIsExposed(flagsByte, faceId ^ 1)) {
         faceId = faceId ^ 1;
     }
+    // Both-exposed silhouette-riser dual emit (#2157) — MUST mirror stage 1's
+    // predicate + emit site so the colour taps land on the dual-emitted
+    // distance taps. See the GLSL twin for the full rationale.
+    const bool bothPolaritiesExposed = rotatedEmit && faceIsExposed(flagsByte, faceId) &&
+        faceIsExposed(flagsByte, faceId ^ 1);
 
     // Exposed-face gate + fog CUT-FACE widening (#2125/#2127; per-axis #2128) —
     // MUST mirror stage 1's predicate EXACTLY so the colour tap lands on the same
@@ -418,4 +423,38 @@ kernel void c_voxel_to_trixel_stage_2(
         triangleCanvasDistances,
         triangleCanvasEntityIds
     );
+
+    // Both-exposed dual emit (#2157) — mirror of stage 1's opposite-face emit
+    // so the colour tap lands on the riser plane's pixels too. GLSL twin has
+    // the full rationale.
+    if (bothPolaritiesExposed) {
+        const int oppositeFaceId = faceId ^ 1;
+        int3 microOpposite =
+            faceMicroPositionFixed6(oppositeFaceId, voxelPositionFixed, u, v, subdivisions);
+        if (cardinalIndex != 0) {
+            microOpposite = rotateCardinalZ(microOpposite, cardinalIndex);
+            microOpposite += cardinalLowerCornerShift(cardinalIndex) * subdivisions;
+        }
+        const int depthOpposite = frameData.isDetachedCanvas > 0.5f
+            ? isoDepthAlongAxis(microOpposite, frameData.voxelDepthAxis.xyz)
+            : (microOpposite.x + microOpposite.y + microOpposite.z);
+        const int distanceOpposite = encodeDepthWithFace(depthOpposite, slot);
+        const int2 baseOpposite = frameOffsetFixed + pos3DtoPos2DIso(microOpposite);
+        emitDeformedFace(
+            baseOpposite,
+            D,
+            distanceOpposite,
+            voxelColor,
+            packedEntityId,
+            localId,
+            frameData.isDetachedCanvas > 0.5f,
+            oppositeFaceId,
+            reVoxelize,
+            canvasSize,
+            distanceScratch,
+            triangleCanvasColors,
+            triangleCanvasDistances,
+            triangleCanvasEntityIds
+        );
+    }
 }

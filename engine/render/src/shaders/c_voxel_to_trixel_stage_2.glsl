@@ -218,6 +218,12 @@ void main() {
         faceId = faceId ^ 1;
     }
 
+    // Both-exposed silhouette-riser dual emit (#2157) — MUST mirror stage 1's
+    // predicate + emit site so the colour taps land on the dual-emitted
+    // distance taps. See c_voxel_to_trixel_stage_1.glsl for the full rationale.
+    const bool bothPolaritiesExposed = rotatedEmit && faceIsExposed(flagsByte, faceId) &&
+        faceIsExposed(flagsByte, faceId ^ 1);
+
     // Exposed-face gate + fog CUT-FACE widening (#2125/#2127; per-axis #2128) —
     // MUST mirror stage 1's predicate EXACTLY so the colour tap lands on the same
     // face set stage 1 wrote distances for, on the single-canvas (0) and X/Y
@@ -377,4 +383,25 @@ void main() {
     const ivec2 base = frameOffsetFixed + pos3DtoPos2DIso(microPositionFixed);
     // packedEntityId, not voxelIndex — emitDeformedFace's 5th param is uvec2 (#1960 carrier).
     emitDeformedFace(base, D, voxelDistance, voxelColor, packedEntityId, faceId, reVoxelize);
+
+    // Both-exposed dual emit (#2157) — mirror of stage 1's opposite-face emit
+    // so the colour tap lands on the riser plane's pixels too. See
+    // c_voxel_to_trixel_stage_1.glsl for the full rationale.
+    if (bothPolaritiesExposed) {
+        const int oppositeFaceId = faceId ^ 1;
+        ivec3 microOpposite =
+            faceMicroPositionFixed6(oppositeFaceId, voxelPositionFixed, u, v, subdivisions);
+        if (cardinalIndex != 0) {
+            microOpposite = rotateCardinalZ(microOpposite, cardinalIndex);
+            microOpposite += cardinalLowerCornerShift(cardinalIndex) * subdivisions;
+        }
+        const int depthOpposite = isDetachedCanvas > 0.5
+            ? isoDepthAlongAxis(microOpposite, voxelDepthAxis.xyz)
+            : (microOpposite.x + microOpposite.y + microOpposite.z);
+        const int distanceOpposite = encodeDepthWithFace(depthOpposite, slot);
+        const ivec2 baseOpposite = frameOffsetFixed + pos3DtoPos2DIso(microOpposite);
+        emitDeformedFace(
+            baseOpposite, D, distanceOpposite, voxelColor, packedEntityId, oppositeFaceId, reVoxelize
+        );
+    }
 }
