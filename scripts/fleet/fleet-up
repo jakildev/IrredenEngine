@@ -1100,6 +1100,23 @@ else
     disown
     echo "fleet-up: launched fleet-state-scout (pid $!, log $scout_log)"
 
+    # Surface the Q2 cross-device poll topology (#1394): leader polls GitHub +
+    # serves its state bundle on the LAN; follower consumes a leader's bundle
+    # (zero GitHub reads while reachable). The scout logs the authoritative
+    # value to $scout_log; this is the operator banner.
+    _host_toml="$HOME/.config/irreden/host.toml"
+    _poll_role="leader"
+    if [[ -f "$_host_toml" ]]; then
+        _r=$(sed -n "s/^[[:space:]]*poll_role[[:space:]]*=[[:space:]]*[\"']\{0,1\}\([a-zA-Z]*\).*/\1/p" "$_host_toml" | head -1)
+        [[ -n "$_r" ]] && _poll_role="$_r"
+    fi
+    if [[ "$_poll_role" == "follower" ]]; then
+        echo "fleet-up: scout poll role: follower (consumes a leader's LAN bundle; zero GitHub reads while the leader is reachable)"
+    else
+        echo "fleet-up: scout poll role: leader (polls GitHub; serves the state bundle to LAN followers on its poll_port)"
+    fi
+    unset _host_toml _r _poll_role
+
     # Wait for scout's first tick so panes find a populated state.json
     # on startup. Without this wait, every pane's "scout cache stale
     # or missing" diagnostic fires until the first tick lands.

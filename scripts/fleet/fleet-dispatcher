@@ -1632,6 +1632,8 @@ rearm_periodic_meta_triggers() {
     # stops. Re-fire merger as a one-shot so a scout crash doesn't
     # strand the merge queue indefinitely.
     python3 - <<'PY' || true
+import calendar
+import json
 import pathlib
 import time
 
@@ -1643,11 +1645,32 @@ TRIG.mkdir(parents=True, exist_ok=True)
 SCOUT_STALENESS_SECONDS = 120
 
 
+def _state_age_seconds():
+    # Age from the in-file `generated_at` (the true snapshot time), NOT file
+    # mtime. Under Q2 centralized polling (#1394) a follower re-writes
+    # state.json every tick with the LEADER's `generated_at` preserved — so a
+    # dead leader keeps the follower's mtime fresh while `generated_at` freezes,
+    # and mtime would report a healthy-but-lying scout. Fall back to mtime only
+    # when `generated_at` is missing/unparseable (a malformed snapshot), which
+    # preserves the pre-Q2 behavior for that case.
+    try:
+        gen = json.loads(STATE_FILE.read_text()).get("generated_at")
+    except (OSError, ValueError, AttributeError):
+        gen = None
+    if isinstance(gen, str):
+        try:
+            epoch = calendar.timegm(time.strptime(gen, "%Y-%m-%dT%H:%M:%SZ"))
+            return time.time() - epoch
+        except (ValueError, TypeError):
+            pass
+    return time.time() - STATE_FILE.stat().st_mtime
+
+
 def scout_unhealthy():
     if not STATE_FILE.is_file():
         return True
     try:
-        age = time.time() - STATE_FILE.stat().st_mtime
+        age = _state_age_seconds()
     except OSError:
         return True
     return age > SCOUT_STALENESS_SECONDS

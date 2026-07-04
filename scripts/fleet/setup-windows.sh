@@ -117,6 +117,18 @@ budget = $FLEET_CPU_BUDGET
 [concurrency]
 workers = $FLEET_BUILD_WORKERS
 queue_timeout_seconds = 600
+
+[fleet]
+# Centralized cross-device polling (#1394 Q2). "leader" polls GitHub and serves
+# its ~/.fleet/state bundle to followers on the LAN; "follower" consumes the
+# leader's bundle over the LAN instead of calling gh (set leader_host to the
+# leader's LAN address/hostname). Exactly ONE host per GitHub account should be
+# the leader; a single-host fleet is a leader. The leader opens one inbound TCP
+# port (poll_port) on the LAN.
+poll_role = "leader"
+poll_port = 8477
+# poll_role = "follower"
+# leader_host = "192.168.1.10"   # required on a follower
 EOF
 if [[ "$FLEET_CPU_BUDGET" == "auto" ]]; then
     echo "  cpu budget=auto (nproc=$(nproc))  workers=$FLEET_BUILD_WORKERS  (per_build_max=$(( $(nproc) / FLEET_BUILD_WORKERS )))"
