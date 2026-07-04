@@ -150,6 +150,13 @@ def _ref_is_deferred(text, n):
     trusted even in a title. The deferral word must sit directly on one side of
     the ref (bounded gap) — a far-away deferral of some other ``#m`` does not
     suppress ``#n``.
+
+    Trade-off (deliberate — matches layers 3-5's bias toward under-stamping):
+    the gap is purely positional, so a deferral word aimed at a *different*
+    issue that happens to land adjacent to ``#n`` — "close #1640 (deferred from
+    #1600)" — also reads as deferring #1640. That under-stamps (the title ref
+    falls through to the body, which still ships on a genuine ``Closes #n``)
+    rather than risk a false ship.
     """
     if not n:
         return False
