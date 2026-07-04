@@ -416,6 +416,23 @@ int trixelOriginModifier(ivec2 trixelCanvasOffsetZ1, vec2 frameCanvasOffset) {
             int(canvasOffsetFloored.x) + int(canvasOffsetFloored.y)) & 1;
 }
 
+// --- Trixel-cell diagonal split: which of the two triangles does this cover? ---
+// The trixel->framebuffer gather (f_trixel_to_framebuffer) samples the canvas
+// at `origin = TexCoords * textureSize`. Each iso texel-cell holds two triangles
+// split along a diagonal; this resolves which half a fragment covers by
+// conditionally decrementing `origin.y` one row (parity bit + a sub-pixel
+// `fract` test). It only ever adjusts `.y`, and is byte-identical to CPU
+// `pos2DIsoToTriangleIndex` (ir_math.cpp) — the picking/hover path reuses it so
+// GPU and CPU agree on which trixel the mouse is over.
+//
+// GL applies this shift to the color/depth/id reads; Metal reads color/depth
+// from the raw origin, because its negated clip-Y (top-left target vs GL's
+// bottom-left framebuffer) already lands the raw sample on the correct row.
+// Both backends read the CORRECT trixel for their own raster convention.
+// Picking is the shared exception: BOTH backends shift the hover coordinate,
+// because it must match CPU `pos2DIsoToTriangleIndex` (raster-Y-independent),
+// even though only GL shifts the color/depth gather. See #442;
+// docs/design/trixel-parity-shift-442-investigation.md.
 vec2 trixelFramebufferSamplePosition(vec2 origin, int originModifier) {
     vec2 originFlooredComp = floor(origin);
     vec2 fractComp = fract(origin);

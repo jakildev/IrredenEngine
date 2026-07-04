@@ -116,6 +116,47 @@ header when you add or rename a shader.
 `RenderDevice` interfaces. `RenderManager` holds one via `unique_ptr`.
 Platform selection is compile-time (`IR_GRAPHICS_OPENGL` / `_METAL`).
 
+### Metal negates clip `position.y`; GL does not
+
+Every Metal `*_to_*` vertex stage (`trixel_to_framebuffer`,
+`framebuffer_to_screen`, `sprites_to_screen`, `debug_overlay`) computes
+`out.position = mpMatrix * aPos` and then `out.position.y = -out.position.y`.
+The GLSL twins emit `mpMatrix * aPos` unflipped. This is not a per-shader
+quirk — it is the single adapter that lets **one GL-authored projection
+matrix** render right-side-up on both backends despite their opposite
+framebuffer-Y origins: OpenGL's default framebuffer is **bottom-left** origin
+(`gl_FragCoord.y` increases upward), Metal's render target is **top-left**
+(`position.y` increases downward). When you add or port a full-screen /
+quad pass, mirror this negate on the Metal side or the image renders
+upside-down.
+
+### Trixel→framebuffer parity shift (GL-only)
+
+The `TRIXEL_TO_FRAMEBUFFER` gather samples the canvas at
+`origin = TexCoords * textureSize`. Each iso texel-cell holds two triangles
+split along a diagonal; `trixelFramebufferSamplePosition`
+(`ir_iso_common.{glsl,metal}`) resolves which half a fragment covers by
+conditionally decrementing **`origin.y`** by one row (parity bit + a sub-pixel
+`fract` test, byte-identical to CPU `IRMath::pos2DIsoToTriangleIndex`).
+
+**GL applies that shift to the color/depth/id reads; Metal reads color/depth
+from the raw origin.** Both backends build identical per-vertex `TexCoords`, but
+per the "Metal negates clip `position.y`" note above they rasterize that quad
+under **opposite framebuffer-Y origins**: GL's raw sample lands on the row that
+needs the shift, while Metal's flipped raster already lands the raw sample on the
+correct row (the equivalent one-row correction, applied implicitly). Both read
+the *correct* trixel for their own raster convention — not a latent bug, so the
+asymmetry is kept, not reconciled. **Picking is the one shared exception:** both
+backends apply the shift to the *hover* coordinate, because it must match CPU
+`mouseTrixelPositionWorld()` → `pos2DIsoToTriangleIndex` (computed independently
+of GPU raster-Y), even though only GL applies it to the color/depth gather.
+
+Before editing either `f_trixel_to_framebuffer` shader or
+`trixelFramebufferSamplePosition`, read
+[`docs/design/trixel-parity-shift-442-investigation.md`](../../docs/design/trixel-parity-shift-442-investigation.md)
+— it carries the #394/#438/#442 timeline, the ruled-out X-axis/rounding
+candidates, and the keep-and-document decision.
+
 ## What belongs in engine/render/ vs engine/prefabs/irreden/render/
 
 `engine/render/` is a graphics primitive library. It owns what the pipeline
