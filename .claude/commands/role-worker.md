@@ -342,11 +342,25 @@ Do the work, then exit cleanly:
        branch. This prevents a parallel worker on any host from
        starting the same rebase simultaneously:
        `fleet-claim resolving-claim <N> <your-worktree-basename>`
-       - Exit 0 — you own the lock. Proceed to step c.
+       - Exit 0 — you own the lock. Proceed to step b''.
        - Exit 1 — another agent already holds `fleet:resolving-*` on
          this PR. Skip it: go to step 2 (pick another conflict PR or
          new task) without touching the branch. No cleanup needed
          (the label was never added — the tie-break loser self-removes).
+    b''. **Re-check mergeable before spending on the rebase.** A
+       worker on another host may have resolved this conflict *after* the
+       scout cached the label, leaving `fleet:semantic-conflict` stale.
+       Confirm the conflict is still real before you checkout and rebase:
+       `gh pr view <N> --json mergeable --jq '.mergeable'`
+       (add `--repo jakildev/irreden` for game PRs).
+       - `MERGEABLE` — already resolved; the label is stale. Do **NOT**
+         rebase — re-rebasing an already-resolved PR near-clobbers the
+         resolver's work. Just clear the stale label and release, then go to
+         step 2: `gh pr edit <N> --remove-label "fleet:semantic-conflict"`
+         and `fleet-claim resolving-release <N> <your-worktree-basename>`.
+       - `CONFLICTING` — the conflict is real; proceed to step c.
+       - `UNKNOWN` — GitHub is still computing mergeability; proceed to
+         step c (the rebase in step d is authoritative either way).
     c. Check out the PR in detached HEAD (fetches head ref + writes
        the `.git/fleet-amend-ref` sentinel for the step h push):
        `fleet-pr-checkout-detached <N> --repo jakildev/IrredenEngine`
