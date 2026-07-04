@@ -1018,20 +1018,6 @@ void readConfig() {
         g_settings.autoRotate_ = autoRotate.as<bool>();
 }
 
-// Parse a "--depth-probe[-assert] X,Y" value into (set, pixel), mirroring the
-// warn-on-malformed behaviour the hand-rolled parser had — a bad value leaves
-// `set` false so the probe stays off rather than reading a garbage pixel.
-void applyDepthProbe(const std::string &value, bool &set, ivec2 &pixel, const char *flag) {
-    int px = 0;
-    int py = 0;
-    if (std::sscanf(value.c_str(), "%d,%d", &px, &py) == 2) {
-        set = true;
-        pixel = ivec2(px, py);
-    } else {
-        IR_LOG_WARN("{}: expected X,Y (e.g. 960,540); ignoring '{}'", flag, value);
-    }
-}
-
 // Parse "--depth-probe-assert X,Y" (depth-write guard, tier -1) or
 // "X,Y,tier=N" (per-trixel-priority tier guard, tier >= 0). The 3-field form is
 // tried first; a bad value leaves the assert off so the run stays byte-identical.
@@ -1182,12 +1168,15 @@ void applyArgs() {
             IRRender::debugOverlayModeFromString(args.getEnum("--debug-overlay").c_str());
     }
     if (args.wasProvided("--depth-probe")) {
-        applyDepthProbe(
-            args.getString("--depth-probe"),
-            g_settings.depthProbeSet_,
-            g_settings.depthProbePixel_,
-            "--depth-probe"
-        );
+        ivec2 pixel;
+        if (IRPrefab::DepthProbe::parsePixelArg(
+                args.getString("--depth-probe"),
+                pixel,
+                "--depth-probe"
+            )) {
+            g_settings.depthProbeSet_ = true;
+            g_settings.depthProbePixel_ = pixel;
+        }
     }
     if (args.wasProvided("--depth-probe-assert")) {
         applyDepthProbeAssert(args.getString("--depth-probe-assert"));

@@ -55,8 +55,9 @@
 //  - `numVoxels_ <= 0` — headless / pre-canvas staging.
 //  - The voxel set's pool chunks are all outside the cull viewport.
 
-#include <algorithm>
 #include <cstdint>
+#include <span>
+#include <unordered_set>
 #include <vector>
 
 #include <irreden/common/components/component_rotation_mode.hpp>
@@ -71,6 +72,7 @@
 #include <irreden/voxel/components/component_voxel.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
+#include <irreden/voxel/face_occupancy.hpp>
 #include <irreden/voxel/grid_rotation.hpp>
 
 using namespace IRComponents;
@@ -93,13 +95,14 @@ template <> struct System<REBUILD_GRID_VOXELS> {
     IsoBounds2D chunkVp_{};
     bool cullValid_ = false;
 
-    // Identity-arm / fallback mask scratch: occupancy of the rotated world
-    // cells (sorted packed keys) for the exposed-mask recompute. Members so
-    // capacity persists across frames (no per-tick allocation, per
-    // cpp-ecs.md "Allocations in hot paths").
-    std::vector<std::int64_t> cellKeys_;
-    std::vector<ivec3> cellRoundedPositions_; // per-slot rounded positions, built with cellKeys_ to
-                                              // skip double-rounding
+    // Identity-arm / fallback exposed-mask scratch, shared with the detached
+    // path via IRPrefab::Voxel::recomputeFaceOccupancyOnCells. `cellsScratch_`
+    // holds this frame's rounded world destination cells (parallel to the pool
+    // sub-span); `occupancyScratch_` is the cell-occupancy set the neighbour
+    // probe reads. Members so capacity persists across frames (no per-tick
+    // allocation, per cpp-ecs.md "Allocations in hot paths").
+    std::vector<ivec3> cellsScratch_;
+    std::unordered_set<std::int64_t> occupancyScratch_;
 
     // Inverse-resample scratch (capacity reused across sets and frames).
     std::vector<std::int32_t> sourceSlotGrid_; // source cell → set-local slot, -1 empty
@@ -117,20 +120,6 @@ template <> struct System<REBUILD_GRID_VOXELS> {
     // volume. Past this many cells the set falls back to the forward map
     // for the frame (holes over a multi-ms CPU walk + a huge scratch grid).
     static constexpr std::int64_t kMaxDestWalkCells = 2'000'000;
-
-    // Pack an integer world cell into one sortable key. The ±2^20 bias keeps
-    // coordinates positive across the engine's working volume; a voxel further
-    // than 2^20 cells from origin would alias (far outside any real scene).
-    static std::int64_t packCell(const ivec3 &c) {
-        constexpr std::int64_t kBias = 1 << 20;
-        constexpr std::int64_t kSpan = 1 << 21;
-        return (static_cast<std::int64_t>(c.x) + kBias) +
-               (static_cast<std::int64_t>(c.y) + kBias) * kSpan +
-               (static_cast<std::int64_t>(c.z) + kBias) * kSpan * kSpan;
-    }
-    bool cellOccupied(const ivec3 &c) const {
-        return std::binary_search(cellKeys_.begin(), cellKeys_.end(), packCell(c));
-    }
 
     void beginTick() {
         lastCanvas_ = IREntity::kNullEntity;
@@ -567,38 +556,23 @@ template <> struct System<REBUILD_GRID_VOXELS> {
             poolGlobals.size() < baseIdx + static_cast<size_t>(safeCount)) {
             return;
         }
-        cellKeys_.clear();
-        cellRoundedPositions_.resize(static_cast<size_t>(safeCount));
+        // Round each slot's world global into its integer destination cell, then
+        // let the shared occupancy pass derive the six exposed-face bits — the
+        // same helper (and cell packing) system_rebuild_detached_voxels uses, so
+        // the GRID identity-arm and the detached re-voxelize path can't drift.
+        // Every slot is rounded so cellsScratch_ stays parallel to the pool
+        // sub-span [baseIdx, baseIdx + safeCount); inactive voxels contribute no
+        // occupancy and are skipped inside recomputeFaceOccupancyOnCells.
+        cellsScratch_.resize(static_cast<size_t>(safeCount));
         for (int i = 0; i < safeCount; ++i) {
-            if (poolColors[baseIdx + i].color_.alpha_ == 0) {
-                continue; // inactive voxel — not part of the rotated solid
-            }
-            const ivec3 rounded = IRMath::roundVec3HalfUp(poolGlobals[baseIdx + i].pos_);
-            cellRoundedPositions_[i] = rounded;
-            cellKeys_.push_back(packCell(rounded));
+            cellsScratch_[i] = IRMath::roundVec3HalfUp(poolGlobals[baseIdx + i].pos_);
         }
-        std::sort(cellKeys_.begin(), cellKeys_.end());
-        for (int i = 0; i < safeCount; ++i) {
-            C_Voxel &voxel = poolColors[baseIdx + i];
-            std::uint8_t face = 0u;
-            if (voxel.color_.alpha_ > 0) {
-                const ivec3 &cell = cellRoundedPositions_[i];
-                if (cellOccupied(cell + ivec3(-1, 0, 0)))
-                    face |= VoxelFlags::kFaceOccludedNegX;
-                if (cellOccupied(cell + ivec3(1, 0, 0)))
-                    face |= VoxelFlags::kFaceOccludedPosX;
-                if (cellOccupied(cell + ivec3(0, -1, 0)))
-                    face |= VoxelFlags::kFaceOccludedNegY;
-                if (cellOccupied(cell + ivec3(0, 1, 0)))
-                    face |= VoxelFlags::kFaceOccludedPosY;
-                if (cellOccupied(cell + ivec3(0, 0, -1)))
-                    face |= VoxelFlags::kFaceOccludedNegZ;
-                if (cellOccupied(cell + ivec3(0, 0, 1)))
-                    face |= VoxelFlags::kFaceOccludedPosZ;
-            }
-            voxel.flags_ =
-                static_cast<std::uint8_t>(voxel.flags_ & ~VoxelFlags::kFaceOccludedMask) | face;
-        }
+        IRPrefab::Voxel::recomputeFaceOccupancyOnCells(
+            std::span<const ivec3>(cellsScratch_.data(), static_cast<size_t>(safeCount)),
+            std::span<C_Voxel>(poolColors.data() + baseIdx, static_cast<size_t>(safeCount)),
+            safeCount,
+            occupancyScratch_
+        );
     }
 
     static SystemId create() {

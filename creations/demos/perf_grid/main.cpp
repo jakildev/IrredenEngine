@@ -59,7 +59,6 @@
 #include <irreden/common/command_suite_capture.hpp>
 
 #include <algorithm>
-#include <cstdio>
 #include <numbers>
 #include <string>
 #include <string_view>
@@ -553,16 +552,16 @@ void readCliArgs() {
         }
     }
     if (args.wasProvided("--depth-probe")) {
-        // `--depth-probe X,Y` (#1910): IRArgs has no pair type, so register as a
-        // string and keep the demo-side comma split.
-        const std::string probe = args.getString("--depth-probe");
-        int px = 0;
-        int py = 0;
-        if (std::sscanf(probe.c_str(), "%d,%d", &px, &py) == 2) {
+        // `--depth-probe X,Y` (#1910): IRArgs has no pair type, so the comma
+        // split lives demo-side (shared IRPrefab::DepthProbe::parsePixelArg).
+        ivec2 pixel;
+        if (IRPrefab::DepthProbe::parsePixelArg(
+                args.getString("--depth-probe"),
+                pixel,
+                "--depth-probe"
+            )) {
             g_cliOverrides.depthProbeSet_ = true;
-            g_cliOverrides.depthProbePixel_ = ivec2(px, py);
-        } else {
-            IR_LOG_WARN("--depth-probe: expected X,Y (e.g. 960,540); ignoring '{}'", probe);
+            g_cliOverrides.depthProbePixel_ = pixel;
         }
     }
 }
