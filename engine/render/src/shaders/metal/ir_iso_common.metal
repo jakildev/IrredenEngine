@@ -393,17 +393,27 @@ inline int trixelOriginModifier(int2 trixelCanvasOffsetZ1, float2 frameCanvasOff
 
 // Clamp a float canvas-pixel position into a valid `texture.read()` index.
 // Metal's `texture.read()` has no built-in edge handling, unlike GLSL's
-// `textureLod()` (implicit `clamp_to_edge` via sampler). See #442 for the
-// broader GLSL/Metal coord-shift reconciliation.
+// `textureLod()` (implicit `clamp_to_edge` via sampler). (This edge clamp is
+// separate from the #442 parity-shift asymmetry — that's answered on
+// `trixelFramebufferSamplePosition` below.)
 inline uint2 trixelCanvasReadCoord(float2 origin, float2 textureSize) {
     return uint2(clamp(origin, float2(0.0f), textureSize - float2(1.0f)));
 }
 
-// Mirror of `trixelFramebufferSamplePosition` in `ir_iso_common.glsl`. The
-// parity bit + fract sub-pixel test pick which row of the iso quad cell's
-// two trixels this fragment maps to. Identical math to GLSL/CPU
-// `pos2DIsoToTriangleIndex` so the same canvas data reads back the same
-// way on both backends.
+// Mirror of `trixelFramebufferSamplePosition` in `ir_iso_common.glsl` — the
+// parity bit + fract sub-pixel test pick which of the iso cell's two trixels
+// this fragment maps to, byte-identical to GLSL/CPU `pos2DIsoToTriangleIndex`.
+//
+// #442: unlike GLSL, the Metal gather (trixel_to_framebuffer.metal) reads
+// color/depth from the RAW (unshifted) origin; only the hover/pick coord is
+// shifted. Metal's vertex stage negates clip `position.y` (top-left
+// render-target origin) where GL does not (bottom-left framebuffer origin), so
+// Metal's raster already lands the raw sample on the correct trixel row — the
+// equivalent of GL's one-row shift, applied implicitly by the flipped raster.
+// Shifting again here re-introduces #394's 1px iso-diagonal sawtooth (#438
+// reverted it). Full canonical explanation lives on the GLSL twin of this
+// function in `ir_iso_common.glsl` + engine/render/CLAUDE.md
+// "Trixel->framebuffer parity shift (GL-only)".
 inline float2 trixelFramebufferSamplePosition(float2 origin, int originModifier) {
     const float2 originFloored = floor(origin);
     const float2 fractComp = fract(origin);

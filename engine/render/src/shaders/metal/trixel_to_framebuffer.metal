@@ -104,7 +104,10 @@ fragment FragmentOut f_trixel_to_framebuffer(
     // shift sign or parity-branch swap. The shifted index is still computed
     // and used for hover entity-id readback so it stays in lockstep with
     // CPU-side `mouseTrixelPositionWorld()` (which routes through the same
-    // `pos2DIsoToTriangleIndex` formula).
+    // `pos2DIsoToTriangleIndex` formula). #442 canonical why the raw read is
+    // correct here (Metal's negated clip-Y / top-left target lands the raw
+    // sample on the right row): trixelFramebufferSamplePosition in
+    // ir_iso_common.metal + engine/render/CLAUDE.md.
     const float2 originRaw = in.texCoords * textureSize;
     const int originModifier = trixelOriginModifier(z1, frameData.canvasOffset);
     const float2 originShifted =

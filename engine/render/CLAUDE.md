@@ -116,6 +116,55 @@ header when you add or rename a shader.
 `RenderDevice` interfaces. `RenderManager` holds one via `unique_ptr`.
 Platform selection is compile-time (`IR_GRAPHICS_OPENGL` / `_METAL`).
 
+### Metal negates clip `position.y`; GL does not
+
+Every Metal `*_to_*` vertex stage (`trixel_to_framebuffer`,
+`framebuffer_to_screen`, `sprites_to_screen`, `debug_overlay`) computes
+`out.position = mpMatrix * aPos` and then `out.position.y = -out.position.y`.
+The GLSL twins emit `mpMatrix * aPos` unflipped. This is not a per-shader
+quirk — it is the single adapter that lets **one GL-authored projection
+matrix** render right-side-up on both backends despite their opposite
+framebuffer-Y origins: OpenGL's default framebuffer is **bottom-left** origin
+(`gl_FragCoord.y` increases upward), Metal's render target is **top-left**
+(`position.y` increases downward). When you add or port a full-screen /
+quad pass, mirror this negate on the Metal side or the image renders
+upside-down.
+
+## Trixel->framebuffer parity shift (GL-only)
+
+The `TRIXEL_TO_FRAMEBUFFER` gather samples the canvas at
+`origin = TexCoords * textureSize`. Each iso texel-cell holds two triangles
+split along a diagonal; `trixelFramebufferSamplePosition`
+(`ir_iso_common.{glsl,metal}`) resolves which half a fragment covers by
+conditionally decrementing **`origin.y`** by one row (parity bit + a sub-pixel
+`fract` test, byte-identical to CPU `IRMath::pos2DIsoToTriangleIndex`).
+
+**GL applies that shift to the color/depth/id reads; Metal reads color/depth
+from the raw origin (#442).** Both backends build identical per-vertex
+`TexCoords`, but per the "Metal negates clip `position.y`" note above they
+rasterize that quad under **opposite framebuffer-Y origins**. Under those
+opposite conventions the same on-screen pixel interpolates a `TexCoords.y`
+that floors to the *opposite* side of the cell's diagonal split — a one-row
+difference exactly at that boundary. GL's raw sample lands on the row that
+needs the `-1` correction (so GL shifts); Metal's flipped raster already lands
+the raw sample on the correct row (it supplies the equivalent one-row
+correction implicitly), so Metal reads raw — applying the GL shift on Metal
+over-corrects by one row, the 1px iso-diagonal sawtooth **#394** introduced and
+**#438** reverted. The shift touching only `.y` (never `.x`) is the tell that
+the cause is the raster-Y origin, not X or float-rounding.
+
+**Decision (spike #442): keep-and-document, not reconcile.** Both backends read
+the *correct* trixel for their own raster convention; neither samples the wrong
+one, so this is not a latent bug. Aligning both to one indexing convention
+would mean fighting one backend's native framebuffer-Y origin (re-opening the
+#394/#438 regression surface) for zero correctness gain. **Picking is the one
+shared exception:** both backends apply the shift to the *hover* coordinate,
+because it must match CPU `mouseTrixelPositionWorld()` -> `pos2DIsoToTriangleIndex`
+(computed independently of GPU raster-Y), even though only GL applies it to the
+color/depth gather. Before editing either `f_trixel_to_framebuffer` shader or
+`trixelFramebufferSamplePosition`, read the canonical note on the GLSL twin of
+that function.
+
 ## What belongs in engine/render/ vs engine/prefabs/irreden/render/
 
 `engine/render/` is a graphics primitive library. It owns what the pipeline

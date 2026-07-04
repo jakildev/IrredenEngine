@@ -71,6 +71,10 @@ void main() {
     ivec2 z1 = trixelOriginOffsetZ1(textureSize);
     vec2 origin = TexCoords * vec2(textureSize);
     int originModifier = trixelOriginModifier(z1, canvasOffset);
+    // Parity-row shift applied to ALL reads on GL (color/depth/id). #442: this is
+    // GL-only — Metal reads color/depth from the raw origin because its flipped
+    // raster (top-left target vs GL's bottom-left) already lands on the right
+    // row. Canonical why: trixelFramebufferSamplePosition in ir_iso_common.glsl.
     origin = trixelFramebufferSamplePosition(origin, originModifier);
 
     vec4 color = textureLod(triangleColors, origin / textureSize, 0);
