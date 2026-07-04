@@ -2,12 +2,20 @@
 
 The shared procedure for turning a `fleet:needs-plan` issue into a
 queue-ready task with a plan. Used by `role-worker.md` (which plans
-these autonomously as a scout-triggered step, at opus class or higher)
-and `role-opus-architect.md` (which plans them on request during a
+these autonomously as a scout-triggered step) and
+`role-opus-architect.md` (which plans them on request during a
 design conversation). Both point here rather than restating the flow.
 
-Sonnet-class iterations do not plan — planning runs at opus class or
-higher (`FLEET_ROLE_MODEL` is the signal).
+**Which class plans depends on the issue.** By default planning is
+architect-tier design work and runs at **opus class or higher**
+(`FLEET_ROLE_MODEL` is the signal) — that is the flow described below. The
+exception is a **mechanical** task the human/architect has tagged
+`fleet:sonnet`: the sonnet lane authors a *lightweight* plan for it and
+self-queues, skipping both the opus/fable planning pass and the opus
+plan-review pass. See [§ Lightweight plan for mechanical (`fleet:sonnet`)
+tasks](#lightweight-plan-for-mechanical-fleetsonnet-tasks). Everything in
+"The flow" below is the default (opus+) path unless that section says
+otherwise.
 
 **The plan is a comment, not a PR.** The canonical plan artifact is a
 structured `## Plan` **comment on the issue** — host-independent, so a
@@ -337,6 +345,59 @@ approved issue unless a `## Plan` comment exists OR the issue is opted out
 (`human:no-plan` / `[no-plan]` / `investigation spike`), and otherwise bounces
 it to `fleet:needs-plan`. Labeling an unplanned build task `human:approved` no
 longer queues it.
+
+---
+
+## Lightweight plan for mechanical (`fleet:sonnet`) tasks
+
+Most planning is architect-tier design work and runs at opus class or higher.
+But a **mechanical** task — one whose plan "basically is the issue itself" (a
+localized rename, a well-scoped doc/test change, a mechanical refactor with no
+design choice to make) — does not need a fable/opus planning pass *or* an opus
+plan-review pass. For those, the **sonnet lane light-plans and self-queues**.
+
+**Eligibility is a human/architect signal, not a heuristic.** The issue must
+carry the `fleet:sonnet` label on top of `fleet:needs-plan`. Applying
+`fleet:sonnet` to a needs-plan issue is the human's (or architect's) judgment
+that the task is mechanical and bounded — the same judgment `human:review-plan`
+inverts for high-stakes work. Do **not** self-tag an issue `fleet:sonnet` to
+take this path; if it isn't already tagged, it plans on the default (opus+)
+flow. The dispatcher routes a `fleet:sonnet`-tagged needs-plan issue to the
+sonnet lane automatically (`fleet_task_class._plan_class`).
+
+**[worker, sonnet class]** For the oldest `fleet:sonnet`-tagged needs-plan
+issue:
+
+1. **Claim it** — `fleet-claim planning-claim <N> <your-agent-name>` (same lock
+   as the opus path; skip if a `## Plan` comment already exists or exit 3).
+2. **Read the thread** (`fleet-issue view <N>`). A mechanical task needs the
+   issue read, not a deep code investigation — if you find yourself needing a
+   cross-system audit or a repro spike to write the plan, it is **not**
+   mechanical: fall through to the lint-fail branch below.
+3. **Post a lightweight `## Plan` comment.** Same `## Plan:` heading the gate
+   keys on, but thin — `**Model:** sonnet`, a one-line **Scope**, an
+   **Approach** that is essentially "implement as the issue describes" plus the
+   concrete file(s)/edit, an **Affected files** list, and **Acceptance
+   criteria**. Skip the cross-system audit and the deep premise/repro section
+   unless the mechanical change obviously needs one.
+4. **Run `fleet-plan-lint <N>`** (deterministic; `--repo game` for game issues):
+   - **exit 0** → the plan is structurally sound. **Remove `fleet:needs-plan`**
+     (do **not** add `fleet:plan-review`) and release the claim. The scout's
+     ingest queues it on the next tick — the `## Plan` comment is present,
+     `human:approved` persists, and no gate label remains. The impl PR still
+     gets a normal **code** review; only the **plan** review is skipped.
+   - **exit 1** → the task wasn't mechanical enough to light-plan (a deferred
+     approach, missing core sections). Swap `fleet:needs-plan →
+     fleet:plan-review` and release the claim, handing it to the opus
+     plan-review safety net (step 4 of "The flow"), which either blesses the
+     thin plan or bounces it back to `fleet:needs-plan` with gaps for a proper
+     opus re-plan.
+
+This path never touches the fable or opus class: a genuinely mechanical task is
+planned and implemented entirely on the sonnet lane. If a `fleet:sonnet` task
+turns out to need design judgment, the lint-fail branch (or the implementing
+worker's own escalation, `fleet:design-blocked`) routes it back to opus+ — the
+tag is a starting hypothesis, not a one-way door.
 
 ---
 

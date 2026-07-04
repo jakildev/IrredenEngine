@@ -207,6 +207,38 @@ class TaskResolution(unittest.TestCase):
                       "opus", fable_blocked=False)
         self.assertEqual(out, "fable xhigh 0 1")
 
+    def test_needs_plan_sonnet_tagged_routes_sonnet(self):
+        # A `fleet:sonnet`-tagged needs-plan issue is MECHANICAL: the sonnet
+        # lane light-plans it (PLANNING-PROTOCOL.md §"Lightweight plan") instead
+        # of burning fable/opus. Sonnet default effort (high), count=1.
+        out = resolve({"needs_plan": [{"number": 99, "labels": ["fleet:sonnet"]}]},
+                      "opus", fable_blocked=False)
+        self.assertEqual(out, "sonnet high 0 1")
+
+    def test_needs_plan_untagged_still_prefers_fable(self):
+        # No fleet:sonnet tag -> architect-tier design planning, unchanged.
+        out = resolve({"needs_plan": [{"number": 99, "labels": ["render"]}]},
+                      "opus", fable_blocked=False)
+        self.assertEqual(out, "fable xhigh 0 1")
+
+    def test_needs_plan_mixed_classes_elects_oldest_and_flags_more(self):
+        # Oldest plannable issue is the sonnet-tagged mechanical one, so the
+        # lane elects sonnet; the untagged (design-tier) issue keeps a fable
+        # candidate alive -> more=1 so the dispatcher's cross-class fan-out
+        # serves it on the fable/opus lane the same tick.
+        out = resolve({"needs_plan": [
+            {"number": 99, "labels": ["fleet:sonnet"]},
+            {"number": 100, "labels": ["render"]},
+        ]}, "opus", fable_blocked=False)
+        self.assertEqual(out, "sonnet high 1 1")
+
+    def test_needs_plan_sonnet_tagged_unaffected_by_fable_cap(self):
+        # A saturated fable cap downgrades DESIGN-tier planning to opus, but a
+        # mechanical sonnet light-plan is a sonnet-lane job regardless.
+        out = resolve({"needs_plan": [{"number": 99, "labels": ["fleet:sonnet"]}]},
+                      "opus", fable_blocked=True)
+        self.assertEqual(out, "sonnet high 0 1")
+
     def test_design_unblocked_feedback_resolves_opus(self):
         # The engine #1885 shape: a design-unblocked PR is the top feedback
         # item, every open task is parked/blocked, and opus needs_plan sits
