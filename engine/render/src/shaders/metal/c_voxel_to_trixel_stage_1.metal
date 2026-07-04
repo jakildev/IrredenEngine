@@ -234,6 +234,10 @@ kernel void c_voxel_to_trixel_stage_1(
         faceIsExposed(flagsByte, faceId ^ 1)) {
         faceId = faceId ^ 1;
     }
+    // Both-exposed silhouette-riser dual emit (#2157) — see the GLSL twin for
+    // the full rationale. Stage 2 mirrors this predicate + the emit site.
+    const bool bothPolaritiesExposed = rotatedEmit && faceIsExposed(flagsByte, faceId) &&
+        faceIsExposed(flagsByte, faceId ^ 1);
     // Re-voxelize now authors the ROTATED-frame exposed mask on the GPU
     // (c_revoxelize_detached) like the GRID path's #1720, so it gates on
     // faceIsExposed too (no all-3-face bypass → no slot-tie AO hatching). The
@@ -427,4 +431,23 @@ kernel void c_voxel_to_trixel_stage_1(
     const int voxelDistance = encodeDepthWithFace(depthBase, slot);
     const int2 base = frameOffsetFixed + pos3DtoPos2DIso(microPositionFixed);
     emitDeformedFace(base, D, voxelDistance, localId, frameData.isDetachedCanvas > 0.5f, faceId, reVoxelize, distanceScratch, canvasSize);
+
+    // Both-exposed dual emit (#2157): the opposite face plane rasters its own
+    // pixels here (faceMicroPositionFixed6 is polarity-dependent), so the riser
+    // needs its own deformed-face emit. See the GLSL twin.
+    if (bothPolaritiesExposed) {
+        const int oppositeFaceId = faceId ^ 1;
+        int3 microOpposite =
+            faceMicroPositionFixed6(oppositeFaceId, voxelPositionFixed, u, v, subdivisions);
+        if (cardinalIndex != 0) {
+            microOpposite = rotateCardinalZ(microOpposite, cardinalIndex);
+            microOpposite += cardinalLowerCornerShift(cardinalIndex) * subdivisions;
+        }
+        const int depthOpposite = frameData.isDetachedCanvas > 0.5f
+            ? isoDepthAlongAxis(microOpposite, frameData.voxelDepthAxis.xyz)
+            : (microOpposite.x + microOpposite.y + microOpposite.z);
+        const int distanceOpposite = encodeDepthWithFace(depthOpposite, slot);
+        const int2 baseOpposite = frameOffsetFixed + pos3DtoPos2DIso(microOpposite);
+        emitDeformedFace(baseOpposite, D, distanceOpposite, localId, frameData.isDetachedCanvas > 0.5f, oppositeFaceId, reVoxelize, distanceScratch, canvasSize);
+    }
 }

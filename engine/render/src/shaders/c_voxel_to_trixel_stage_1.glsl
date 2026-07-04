@@ -329,6 +329,27 @@ void main() {
         faceId = faceId ^ 1;
     }
 
+    // Both-exposed silhouette-riser dual emit (#2157). The flip above covers a
+    // riser cell whose triplet face is OCCLUDED — but a rotated staircase EDGE
+    // cell can have BOTH polarities of a slot's axis exposed (no solid neighbour
+    // on either side). The flip never fires there, and the face-plane position
+    // (`faceMicroPositionFixed6`) is polarity-dependent on the subdivided
+    // cardinal path, so the opposite plane — the silhouette riser — rasters
+    // different pixels than the triplet face and stayed background. Emit BOTH
+    // planes for such cells on the CARDINAL subdivided path (the tail below).
+    // The base (`voxelRenderOptions.x == 0`) cardinal path is polarity-agnostic
+    // (whole-voxel footprint emit), so it needs no second emit. The PER-AXIS
+    // store shares the dropout but cannot take a second tap: its encoding
+    // carries only the 2-bit slot, so the forward scatter reconstructs every
+    // cell as the triplet polarity and a dual tap mis-places the riser quad
+    // (measured net-worse at non-cardinal yaw) — deferred with the
+    // polarity-carrier design (#2207). Gated to rotated content via
+    // `rotatedEmit`, so axis-aligned fast paths remain byte-identical; the
+    // extra emit costs only rotated staircase edge cells. Stage 2 mirrors the
+    // predicate + the emit site.
+    const bool bothPolaritiesExposed = rotatedEmit && faceIsExposed(flagsByte, faceId) &&
+        faceIsExposed(flagsByte, faceId ^ 1);
+
     // World fog route + world-column recovery (#2125 GRID, #2127 detached;
     // per-axis #2128). The fog grid is world-space, so the cut-face + own-column
     // tests below decide "hidden" on this voxel's WORLD column. `fogActive` is the
@@ -557,4 +578,23 @@ void main() {
     const int voxelDistance = encodeDepthWithFace(depthBase, slot);
     const ivec2 base = frameOffsetFixed + pos3DtoPos2DIso(microPositionFixed);
     emitDeformedFace(base, D, voxelDistance, faceId, reVoxelize);
+
+    // Both-exposed dual emit (#2157): the opposite face plane rasters its own
+    // pixels here (faceMicroPositionFixed6 is polarity-dependent), so the riser
+    // needs its own deformed-face emit.
+    if (bothPolaritiesExposed) {
+        const int oppositeFaceId = faceId ^ 1;
+        ivec3 microOpposite =
+            faceMicroPositionFixed6(oppositeFaceId, voxelPositionFixed, u, v, subdivisions);
+        if (cardinalIndex != 0) {
+            microOpposite = rotateCardinalZ(microOpposite, cardinalIndex);
+            microOpposite += cardinalLowerCornerShift(cardinalIndex) * subdivisions;
+        }
+        const int depthOpposite = isDetachedCanvas > 0.5
+            ? isoDepthAlongAxis(microOpposite, voxelDepthAxis.xyz)
+            : (microOpposite.x + microOpposite.y + microOpposite.z);
+        const int distanceOpposite = encodeDepthWithFace(depthOpposite, slot);
+        const ivec2 baseOpposite = frameOffsetFixed + pos3DtoPos2DIso(microOpposite);
+        emitDeformedFace(baseOpposite, D, distanceOpposite, oppositeFaceId, reVoxelize);
+    }
 }
