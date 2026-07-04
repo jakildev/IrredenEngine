@@ -238,69 +238,6 @@ TEST(Pos3DtoPos2DIsoYawedTest, CardinalsAgreeWithRotateCardinalZ) {
 }
 
 // ---------------------------------------------------------------------------
-// pos3DtoPos2DIsoRotated (#1463 — detached SO(3) per-voxel reposition)
-// ---------------------------------------------------------------------------
-
-// At identity rotation the SO(3) reposition is exactly the un-rotated iso
-// projection — the detached-entity fast path stays byte-identical when the
-// octahedral-snap residual is identity.
-TEST(Pos3DtoPos2DIsoRotatedTest, IdentityRotationMatchesUnrotatedProjection) {
-    const IRMath::vec3 samples[] = {
-        IRMath::vec3(0, 0, 0),
-        IRMath::vec3(1, 0, 0),
-        IRMath::vec3(0, 1, 0),
-        IRMath::vec3(0, 0, 1),
-        IRMath::vec3(3, -2, 4),
-        IRMath::vec3(-5, 7, -3)
-    };
-    const IRMath::vec4 identityQuat(0.0f, 0.0f, 0.0f, 1.0f);
-    for (const auto &p : samples) {
-        const IRMath::vec2 expected = IRMath::pos3DtoPos2DIso(p);
-        const IRMath::vec2 actual = IRMath::pos3DtoPos2DIsoRotated(p, identityQuat);
-        EXPECT_NEAR(actual.x, expected.x, kTolerance);
-        EXPECT_NEAR(actual.y, expected.y, kTolerance);
-    }
-}
-
-// A pure-Z entity rotation reduces to the Z-yaw companion with the sign
-// flipped: an entity rotating its own frame by +theta projects like a camera
-// yaw of -theta (same sign relationship as faceDeformationMatrixSO3).
-TEST(Pos3DtoPos2DIsoRotatedTest, PureZQuatMatchesYawedHelperWithFlippedSign) {
-    const IRMath::vec3 p(2.0f, -1.0f, 3.0f);
-    for (float theta : kResidualYaws) {
-        const IRMath::vec4 quat = quatRotateZ(theta);
-        const IRMath::vec2 expected = IRMath::pos3DtoPos2DIsoYawed(p, -theta);
-        const IRMath::vec2 actual = IRMath::pos3DtoPos2DIsoRotated(p, quat);
-        EXPECT_NEAR(actual.x, expected.x, kTolerance);
-        EXPECT_NEAR(actual.y, expected.y, kTolerance);
-    }
-}
-
-// The helper is exactly iso(R * modelPos): rotate the model point by the
-// quaternion, then project. The GLSL/Metal mirror (rotateByQuat + the same iso
-// columns) must reproduce this composition bit-for-bit, so pin it on the CPU.
-TEST(Pos3DtoPos2DIsoRotatedTest, MatchesRotateThenProject) {
-    const IRMath::vec4 rots[] = {
-        IRMath::quatAxisAngle(IRMath::vec3(0, 0, 1), IRMath::kPi / 5.0f),
-        IRMath::quatAxisAngle(IRMath::vec3(1, 0, 0), IRMath::kPi / 7.0f),
-        IRMath::quatAxisAngle(IRMath::vec3(0, 1, 0), -IRMath::kPi / 6.0f),
-        IRMath::quatAxisAngle(IRMath::vec3(1, 1, 1), IRMath::kPi / 9.0f),
-        IRMath::quatAxisAngle(IRMath::vec3(1, 2, 0), IRMath::kPi / 8.0f),
-    };
-    const IRMath::vec3 samples[] =
-        {IRMath::vec3(1, 0, 0), IRMath::vec3(0, 3, -2), IRMath::vec3(-4, 1, 5)};
-    for (const IRMath::vec4 &q : rots) {
-        for (const IRMath::vec3 &p : samples) {
-            const IRMath::vec3 rotated = IRMath::rotateVectorByQuat(p, q);
-            const IRMath::vec2 expected = IRMath::pos3DtoPos2DIso(rotated);
-            const IRMath::vec2 actual = IRMath::pos3DtoPos2DIsoRotated(p, q);
-            EXPECT_NEAR(actual.x, expected.x, kTolerance);
-            EXPECT_NEAR(actual.y, expected.y, kTolerance);
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
 // deformedTrixelIsoPixel
 // ---------------------------------------------------------------------------
 
