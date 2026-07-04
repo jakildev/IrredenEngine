@@ -5,6 +5,8 @@
 
 using IRMath::ivec3;
 
+namespace IRComponents {
+
 struct C_PositionInt3D {
     ivec3 pos_;
 
@@ -17,5 +19,7 @@ struct C_PositionInt3D {
     C_PositionInt3D()
         : C_PositionInt3D{ivec3(0, 0, 0)} {}
 };
+
+} // namespace IRComponents
 
 #endif /* COMPONENT_POSITION_INT_3D_H */

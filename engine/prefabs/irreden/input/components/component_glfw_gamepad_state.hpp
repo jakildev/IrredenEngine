@@ -6,6 +6,8 @@
 #include <cstring>
 
 using IRInput::ButtonStatuses;
+using IRInput::GamepadAxes;
+using IRInput::GamepadButtons;
 
 namespace IRComponents {
 
@@ -56,9 +58,12 @@ struct C_GLFWGamepadState {
     }
 
     bool checkButton(GamepadButtons button, ButtonStatuses status) const {
-        if (status == ButtonStatuses::PRESSED)  return checkButtonPressed(button);
-        if (status == ButtonStatuses::HELD)     return checkButtonDown(button);
-        if (status == ButtonStatuses::RELEASED) return checkButtonReleased(button);
+        if (status == ButtonStatuses::PRESSED)
+            return checkButtonPressed(button);
+        if (status == ButtonStatuses::HELD)
+            return checkButtonDown(button);
+        if (status == ButtonStatuses::RELEASED)
+            return checkButtonReleased(button);
         return false;
     }
 
