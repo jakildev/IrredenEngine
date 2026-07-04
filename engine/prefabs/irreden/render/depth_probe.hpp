@@ -10,6 +10,9 @@
 #include <irreden/render/components/component_trixel_framebuffer.hpp>
 #include <irreden/render/ir_render_types.hpp>
 
+#include <cstdio>
+#include <string>
+
 // GPU→CPU composite-depth probe. A debug-only readback that, for a requested
 // screen pixel, reads the REAL depth-test value stored in the main framebuffer's
 // depth attachment and decodes it to shared trixel-distance units. Because every
@@ -236,6 +239,26 @@ inline bool assertCompositeDepthTier(IRMath::ivec2 px, int expectedTier) {
         match ? "PASS" : "FAIL"
     );
     return match;
+}
+
+/// Parse a `--depth-probe`-style `"X,Y"` framebuffer-pixel flag value into
+/// @p pixelOut. Returns true and writes @p pixelOut on a well-formed pair; on a
+/// malformed value returns false, logs one warn line naming @p flag, and leaves
+/// @p pixelOut untouched — so a caller gates its probe off the return value and a
+/// bad value keeps the run byte-identical rather than probing a garbage pixel.
+/// Shared by the demos' `--depth-probe` handling (canvas_stress, perf_grid):
+/// IRArgs has no pair type, so the comma split lives demo-side against the string
+/// value. (The `--depth-probe-assert X,Y,tier=N` superset parse stays in
+/// canvas_stress — this covers only the plain X,Y form the two demos share.)
+inline bool parsePixelArg(const std::string &value, IRMath::ivec2 &pixelOut, const char *flag) {
+    int px = 0;
+    int py = 0;
+    if (std::sscanf(value.c_str(), "%d,%d", &px, &py) == 2) {
+        pixelOut = IRMath::ivec2(px, py);
+        return true;
+    }
+    IR_LOG_WARN("{}: expected X,Y (e.g. 960,540); ignoring '{}'", flag, value);
+    return false;
 }
 
 } // namespace IRPrefab::DepthProbe
