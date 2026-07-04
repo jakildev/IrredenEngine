@@ -260,7 +260,12 @@ the id watermark has advanced, so `setParent`'s regenerated relation entities
 mint above every restored id. Endpoints resolve through
 `LoadResult::singletonAliases_` (identity for a regular restored entity, the
 alias for a singleton); an unknown relation name or missing endpoint skips with
-a diagnostic (`LoadResult::relationsSkipped_`), never fatal.
+a diagnostic (`LoadResult::relationsSkipped_`), never fatal. Replay is itself
+two-phase: every triple is decoded into a staged buffer in a mutation-free pass
+*before* any `setParent` runs, so a structurally malformed chunk (truncated /
+over-stated triple count) aborts with **zero** relation edges applied — the same
+"no partial world mutation on error" contract (Rule #5) the ARCH/SNGL column
+path upholds via its Phase 2b decode-validate.
 
 ## Responsibilities
 

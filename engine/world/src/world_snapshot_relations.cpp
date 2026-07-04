@@ -115,9 +115,13 @@ IRAsset::ChunkPayload makeRelationChunk(
     const std::vector<IRAsset::NameTableEntry> relationNames = buildCurrentRelationNameTable();
     const IRAsset::BinaryStatus nameStatus = IRAsset::writeNameTable(w, relationNames);
     if (!nameStatus.ok()) {
-        // A MemoryBinaryWriter over a fixed 3-entry table never fails; this is
-        // defensive so a future writer change surfaces rather than shipping a
-        // half-written chunk.
+        // A MemoryBinaryWriter over a fixed 3-entry table never fails, so this
+        // path is unreachable today; it's defensive so a future writer change
+        // surfaces rather than shipping a half-written chunk. Copy-paste caveat
+        // for a future variable-size table: an empty-body RELN chunk is NOT
+        // load-safe — applyRelationChunk's readNameTable fails on zero bytes and
+        // aborts the whole load. A writer that can genuinely fail here must
+        // signal "emit no RELN chunk" to saveWorld, not return an empty body.
         IRE_LOG_ERROR("makeRelationChunk: writeNameTable failed: {}", nameStatus.message_);
         return IRAsset::ChunkPayload{kTagReln, {}};
     }
@@ -158,13 +162,24 @@ IRAsset::BinaryStatus applyRelationChunk(
         return tripleCount.status_;
     }
 
-    // Identity for a regular restored entity (ids restore exact); the alias
-    // lookup for a singleton (restored by value onto the live singleton).
-    auto resolve = [&](EntityId diskId) -> EntityId {
-        const auto it = singletonAliases.find(diskId);
-        return it != singletonAliases.end() ? it->second : diskId;
+    // Phase 1 (decode, zero world mutation): fully parse every triple's bytes
+    // into a staged buffer *before* touching the live graph. A RELN chunk that
+    // is well-formed for its first N triples but truncated/corrupt afterward
+    // (disk corruption, a half-written file, hand-edited bytes — the same
+    // threat model the ARCH/SNGL column path decode-validates against in
+    // world_snapshot.cpp Phase 2b) must abort with ZERO setParent calls, not
+    // leave a subset of edges applied while loadWorld reports failure (Rule #5,
+    // "no partial world mutation on error"). setParent is a live EntityManager
+    // mutation, so it cannot share a pass with the reads: the decode and the
+    // replay are deliberately separated, exactly like ARCH's decode-then-apply.
+    struct StagedTriple {
+        std::uint64_t relationTypeId_ = 0;
+        EntityId child_ = 0;  // disk id; resolved in the apply pass
+        EntityId parent_ = 0; // disk id; resolved in the apply pass
     };
-
+    std::vector<StagedTriple> staged;
+    // No reserve on the disk-controlled count: a corrupt oversized tripleCount
+    // must fail on the first read past the chunk body, not preallocate.
     for (std::uint64_t i = 0; i < tripleCount.value_; ++i) {
         IRAsset::Result<std::uint64_t> relationTypeId = r.readVarUInt();
         if (!relationTypeId.ok()) {
@@ -178,24 +193,46 @@ IRAsset::BinaryStatus applyRelationChunk(
         if (!parentRaw.ok()) {
             return parentRaw.status_;
         }
+        staged.push_back(
+            StagedTriple{
+                relationTypeId.value_,
+                static_cast<EntityId>(childRaw.value_),
+                static_cast<EntityId>(parentRaw.value_),
+            }
+        );
+    }
+
+    // Identity for a regular restored entity (ids restore exact); the alias
+    // lookup for a singleton (restored by value onto the live singleton).
+    auto resolve = [&](EntityId diskId) -> EntityId {
+        const auto it = singletonAliases.find(diskId);
+        return it != singletonAliases.end() ? it->second : diskId;
+    };
+
+    // Phase 2 (apply): every triple decoded cleanly in Phase 1, so replaying is
+    // guaranteed to reach the end — no mid-loop read can fail and strand a
+    // partial edge set. The name-resolution / missing-endpoint skips remain
+    // per-triple diagnostics (Rule #2), never fatal.
+    for (std::size_t i = 0; i < staged.size(); ++i) {
+        const StagedTriple &triple = staged[i];
 
         // Rule #2: disk id -> disk name -> current enum. Only CHILD_OF is
         // replayable (setParent handles nothing else); an unknown name or a
         // forward-compat PARENT_TO/SIBLING_OF triple is skipped, not fatal.
         const std::optional<std::string_view> diskName =
-            diskTable.nameById(static_cast<std::uint32_t>(relationTypeId.value_));
+            diskTable.nameById(static_cast<std::uint32_t>(triple.relationTypeId_));
         if (!diskName.has_value() || relationForName(*diskName) != IREntity::CHILD_OF) {
             ++relationsSkipped;
             IRE_LOG_WARN(
                 "world snapshot: RELN triple {} has unknown/unsupported relation id {} — skipped",
                 i,
-                relationTypeId.value_
+                triple.relationTypeId_
             );
             continue;
         }
 
-        const EntityId child = resolve(static_cast<EntityId>(childRaw.value_));
-        const EntityId parent = resolve(static_cast<EntityId>(parentRaw.value_));
+        const EntityId child = resolve(triple.child_);
+        const EntityId parent = resolve(triple.parent_);
         if (!entityManager.entityExists(child) || !entityManager.entityExists(parent)) {
             ++relationsSkipped;
             IRE_LOG_WARN(

@@ -39,10 +39,13 @@ IRAsset::ChunkPayload makeRelationChunk(
 /// restored id). Absent chunk (a pre-P3 file) is a clean no-op. Each triple's
 /// relation id is translated disk-name → current `Relation` enum (Rule #2);
 /// an unknown/unsupported name or a missing endpoint is skipped with a
-/// diagnostic and counted in @p relationsSkipped, not fatal. A structurally
-/// malformed chunk (bad name table / count / truncated triple) returns a
-/// recoverable error status. Endpoints resolve through @p singletonAliases
-/// (identity for a regular restored entity; the alias for a singleton).
+/// diagnostic and counted in @p relationsSkipped, not fatal. Every triple is
+/// decoded into a staged buffer in a mutation-free pass first, so a
+/// structurally malformed chunk (bad name table / count / truncated triple)
+/// returns a recoverable error status with **zero** `setParent` replayed
+/// (Rule #5 — no partial world mutation on error), never a subset of edges
+/// applied. Endpoints resolve through @p singletonAliases (identity for a
+/// regular restored entity; the alias for a singleton).
 IRAsset::BinaryStatus applyRelationChunk(
     IREntity::EntityManager &entityManager,
     std::span<const IRAsset::LoadedChunk> chunks,

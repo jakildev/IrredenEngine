@@ -9,9 +9,11 @@
 #include <irreden/asset/name_table.hpp>
 #include <irreden/ir_entity.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <fstream>
+#include <iterator>
 #include <optional>
 #include <string>
 #include <vector>
@@ -244,6 +246,82 @@ TEST_F(WorldSnapshotRelationsTest, UnknownRelationNameSkipped) {
     EXPECT_EQ(result.relationsRestored_, 0u);
     EXPECT_EQ(result.relationsSkipped_, 1u); // the renamed edge is dropped
     EXPECT_EQ(parentOf(child), IREntity::kNullEntity);
+}
+
+// Criterion (regression): a RELN chunk whose triple count claims more triples
+// than the body actually holds — a truncated / half-written /
+// hand-edited chunk — must abort the load with ZERO relation edges applied, not
+// replay the valid leading triples and *then* fail. The pre-fix loop parsed and
+// setParent'd in the same pass, so it committed every valid edge before hitting
+// the truncation, leaving the live world partially mutated while loadWorld
+// reported failure (Rule #5 violation). The staged decode-then-apply pass fixes
+// it: all triples decode in a mutation-free pass first, so the phantom read
+// fails before any setParent runs.
+TEST_F(WorldSnapshotRelationsTest, TruncatedTripleCountAppliesZeroRelations) {
+    const EntityId parent = makeEntity(1);
+    std::vector<EntityId> children;
+    for (int i = 0; i < 3; ++i) {
+        const EntityId c = makeEntity(10 + i);
+        IREntity::setParent(c, parent);
+        children.push_back(c);
+    }
+
+    IRWorld::SaveRegistry reg = registry();
+    const std::string path = tempPath("truncated_count");
+    ASSERT_TRUE(IRWorld::saveWorld(reg, path).ok());
+
+    // Locate the tripleCount varuint inside the RELN chunk body (it sits right
+    // after the name table), then over-state it so the loader tries to read
+    // more triples than the body holds. Keeping it a single-byte varuint leaves
+    // the body length — and thus every chunk-table offset/size in the header —
+    // unchanged, so the corruption surfaces only mid-decode, when the reader
+    // runs off the chunk body parsing the phantom triple.
+    IRAsset::FileBinaryReader fr(path);
+    ASSERT_TRUE(fr.ok());
+    auto chunksRes =
+        IRAsset::readChunks(fr, IRWorld::kWorldSnapshotMagic, IRWorld::kWorldSnapshotVersion);
+    ASSERT_TRUE(chunksRes.ok());
+    const IRAsset::LoadedChunk *reln =
+        IRAsset::findChunk(chunksRes.value_, IRAsset::makeTag("RELN"));
+    ASSERT_NE(reln, nullptr);
+
+    IRAsset::MemoryBinaryReader r(reln->data_.data(), reln->data_.size(), "RELN");
+    auto names = IRAsset::readNameTable(r);
+    ASSERT_TRUE(names.ok());
+    const std::uint64_t countOffsetInBody = r.tell();
+    auto count = r.readVarUInt();
+    ASSERT_TRUE(count.ok());
+    ASSERT_EQ(count.value_, 3u); // three CHILD_OF edges -> single-byte varuint 0x03
+
+    // Find the chunk body verbatim in the file, then patch the count byte.
+    std::vector<std::uint8_t> fileBytes = readFileBytes(path);
+    const auto bodyIt =
+        std::search(fileBytes.begin(), fileBytes.end(), reln->data_.begin(), reln->data_.end());
+    ASSERT_NE(bodyIt, fileBytes.end());
+    const std::size_t absCountOffset =
+        static_cast<std::size_t>(std::distance(fileBytes.begin(), bodyIt)) + countOffsetInBody;
+    ASSERT_EQ(fileBytes[absCountOffset], static_cast<std::uint8_t>(count.value_));
+    fileBytes[absCountOffset] = 0x7F; // claim 127 triples; only 3 are present
+    {
+        std::ofstream out(path, std::ios::binary | std::ios::trunc);
+        out.write(
+            reinterpret_cast<const char *>(fileBytes.data()),
+            static_cast<std::streamsize>(fileBytes.size())
+        );
+    }
+
+    m_em.destroyAllEntities();
+    IRWorld::LoadResult result = IRWorld::loadWorld(reg, path);
+    // The phantom triple read runs off the chunk body -> the load fails...
+    EXPECT_FALSE(result.ok());
+    EXPECT_EQ(result.relationsRestored_, 0u); // Rule #5: no partial counts on failure
+    // ...and the real proof of "zero relations applied" is the live world: not
+    // one child kept a parent, even though three valid CHILD_OF triples preceded
+    // the truncation (the pre-fix loop would have setParent'd all three first).
+    for (const EntityId c : children) {
+        EXPECT_EQ(parentOf(c), IREntity::kNullEntity)
+            << "child " << c << " was partially re-parented before the decode failure";
+    }
 }
 
 // A relation-free world still writes a well-formed (empty) RELN chunk and
