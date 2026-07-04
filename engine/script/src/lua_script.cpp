@@ -69,6 +69,10 @@ LuaFieldType inferTypeFromDefault(const sol::object &value) {
         return LuaFieldType::IVEC3;
     if (value.is<IRMath::vec3>())
         return LuaFieldType::VEC3;
+    // Only fires when the creation registered an IRMath::vec4 sol usertype; a
+    // bare { x, y, z, w } table still needs the explicit tag, as vec3 does.
+    if (value.is<IRMath::vec4>())
+        return LuaFieldType::VEC4;
     if (value.is<sol::function>())
         return LuaFieldType::FUNCTION;
     // Numeric values with a fractional part: under LuaJIT (Lua 5.1
@@ -102,6 +106,8 @@ LuaFieldType parseExplicitTypeTag(const std::string &tag, bool &ok) {
         return LuaFieldType::VEC3;
     if (tag == "ivec3")
         return LuaFieldType::IVEC3;
+    if (tag == "vec4" || tag == "quat" || tag == "quaternion")
+        return LuaFieldType::VEC4;
     ok = false;
     return LuaFieldType::TABLE;
 }
@@ -129,7 +135,7 @@ LuaFieldSchema buildFieldSchema(
                 throw sol::error{
                     "IRComponent.register: " + componentName + "." + fieldName +
                     " has unknown type tag '" + *tag +
-                    "' (expected one of int|float|bool|string|function|table|vec3|ivec3)"
+                    "' (expected one of int|float|bool|string|function|table|vec3|ivec3|vec4)"
                 };
             }
             s.type_ = inferred;

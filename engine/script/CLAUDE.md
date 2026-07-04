@@ -145,9 +145,10 @@ IREntity.setLuaField(rules, C_Hp, C_Hp.fields.current.index, 100)
   rejected. Use the explicit `{ type = "...", default = ... }` form to
   disambiguate (`current = { type = "float", default = 100 }`), to opt
   in to opaque table storage (`payload = { type = "table", default = {} }`),
-  or to declare a packed `vec3` / `ivec3` field (`pos = { type = "vec3",
-  default = { x = 0, y = 0, z = 0 } }` — see "Packed vec3 / ivec3 fields"
-  below).
+  or to declare a packed `vec3` / `ivec3` / `vec4` field (`pos = { type =
+  "vec3", default = { x = 0, y = 0, z = 0 } }` — see "Packed vec3 / ivec3 /
+  vec4 fields" below; `quat` / `quaternion` are register-time aliases for a
+  `vec4` column, EVAL-only for now).
 - **Identity rule:** registering the same `name` twice raises a Lua error.
   C++ and Lua share one `ComponentId` space (`EntityManager::registerComponentDynamic`
   goes through the same component-id allocator).
@@ -165,11 +166,11 @@ IREntity.setLuaField(rules, C_Hp, C_Hp.fields.current.index, 100)
   etc., per field type). Reading or writing a field is a typed vector index —
   never a per-frame `sol::table` lookup.
 
-### Packed vec3 / ivec3 fields (#1368, design G1a)
+### Packed vec3 / ivec3 / vec4 fields (#1368, design G1a; #2163 vec4/quat)
 
-A field can declare a packed `vec3` / `ivec3` kind instead of hand-flattening
-to `_x/_y/_z` scalars. Declared via the explicit-tag form with an `{ x, y, z }`
-(or positional `{ 1, 2, 3 }`) default:
+A field can declare a packed `vec3` / `ivec3` / `vec4` kind instead of
+hand-flattening to `_x/_y/_z` scalars. Declared via the explicit-tag form with
+an `{ x, y, z }` (or positional `{ 1, 2, 3 }`) default:
 
 ```lua
 local C_Body = IRComponent.register("Body", {
@@ -185,6 +186,19 @@ local C_Body = IRComponent.register("Body", {
   `{ x, y, z }` table **or** an `IRMath::vec3` userdata. The friendly read
   allocates a 3-key table per call — fine for setup/inspection, not a per-tick
   hot path; a zero-alloc hot path uses three scalar fields instead.
+- **`vec4` / `quat` / `quaternion` (EVAL, #2163).** All three tags declare one
+  `std::vector<IRMath::vec4>` column — a quaternion is a `vec4`
+  engine-wide (`IRMath::vec4 = glm::vec4(qx,qy,qz,qw)`, `.w` the scalar), so
+  `quat` / `quaternion` are register-time aliases of `vec4`, not a second
+  storage type. Reads surface as an `{ x, y, z, w }` table; writes accept an
+  `{ x, y, z, w }` / `{ 1, 2, 3, 4 }` table **or** an `IRMath::vec4` userdata.
+  An omitted or partial default resolves to the identity quat `(0, 0, 0, 1)`
+  via `quatFromLua` (not the zero-vec that `vec3` defaults to) — the correct
+  default for the primary rotation consumer; a plain-`vec4` author passes an
+  explicit 4-element default. **EVAL-only:** the CODEGEN tool does not yet emit
+  a `vec4` struct member, so a `vec4` / `quat` field in a CODEGEN `.lua` still
+  errors as an unknown tag (same status as `vec2`); keep such a component in
+  `mode = "eval"`.
 - **CODEGEN** emits a real `IRMath::vec3` / `ivec3` struct member. Inside a
   CODEGEN tick body, read a packed field's components with `.x` / `.y` / `.z`
   and build a fresh value with the `vec3.new(x, y, z)` / `ivec3.new(x, y, z)`
@@ -200,10 +214,10 @@ local C_Body = IRComponent.register("Body", {
   scalar `int32` / `float` / `bool` fields auto-register a modifier binding.
   For modifier-driven vec3 offsets use the modifier framework's typed vec3
   fields (`IRModifier.registerFieldVec3`), not a component field binding.
-- **Out of scope:** `vec2` / `quat` (same mechanism, deferred until needed)
-  and variable-length array fields (G1b: a bounded `"float[K]"` inline-array,
-  or engine-owned data for genuinely ragged lists — see
-  `docs/design/lua-driven-ecs.md`).
+- **Out of scope:** `vec2` (same mechanism, deferred until needed), CODEGEN
+  emission for `vec4` / `quat` (EVAL-only above), and variable-length array
+  fields (G1b: a bounded `"float[K]"` inline-array, or engine-owned data for
+  genuinely ragged lists — see `docs/design/lua-driven-ecs.md`).
 
 ### Two-tier accessor contract
 
@@ -302,7 +316,7 @@ field types and both the short form (`current = 100`) and the explicit-type
 form (`current = { type = "float", default = 100 }`). Packed `vec3` / `ivec3`
 fields require the explicit-tag form with an `{ x, y, z }` default (the codegen
 tool has no `vec3` usertype to infer from a short-form value) and lower to real
-`IRMath::vec3` / `ivec3` struct members — see "Packed vec3 / ivec3 fields"
+`IRMath::vec3` / `ivec3` struct members — see "Packed vec3 / ivec3 / vec4 fields"
 above for the tick-body `.x/.y/.z` + `vec3.new` DSL surface.
 
 **EVAL-only (codegen-time error if used in CODEGEN):** `table` and

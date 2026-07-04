@@ -132,7 +132,7 @@ TEST_F(LuaComponentTest, UnknownExplicitTypeTagFailsWithFieldName) {
     auto &lua = m_lua.lua();
     auto result = lua.safe_script(
         "local C = IRComponent.register('Bad', {\n"
-        "    weirdField = { type = 'quaternion', default = 0 }\n"
+        "    weirdField = { type = 'mat4', default = 0 }\n"
         "})",
         sol::script_pass_on_error
     );
@@ -140,7 +140,9 @@ TEST_F(LuaComponentTest, UnknownExplicitTypeTagFailsWithFieldName) {
     sol::error err = result;
     const std::string msg = err.what();
     EXPECT_NE(msg.find("weirdField"), std::string::npos);
-    EXPECT_NE(msg.find("quaternion"), std::string::npos);
+    // 'quat'/'quaternion'/'vec4' are now valid tags — 'mat4' keeps this
+    // exercising the unknown-tag error path.
+    EXPECT_NE(msg.find("mat4"), std::string::npos);
 }
 
 // ---- Identity rule ---------------------------------------------------------
@@ -330,6 +332,74 @@ TEST_F(LuaComponentTest, Vec3AndIvec3FieldsStoreAsNativeColumnsAndRoundTrip) {
     EXPECT_FLOAT_EQ(t["x"].get<float>(), 10.0f);
     EXPECT_FLOAT_EQ(t["y"].get<float>(), 20.0f);
     EXPECT_FLOAT_EQ(t["z"].get<float>(), 30.0f);
+}
+
+TEST_F(LuaComponentTest, Vec4AndQuatFieldsStoreAsNativeColumnAndRoundTrip) {
+    auto &lua = m_lua.lua();
+    ASSERT_TRUE(lua.safe_script(
+                       "C_Q = IRComponent.register('QuatBody', {\n"
+                       "    rot = { type = 'quat', default = { 0, 0, 0, 1 } },\n"
+                       "    dir = { type = 'vec4', default = { 1, 2, 3, 4 } },\n"
+                       "    spin = { type = 'quaternion' },\n" // omitted default -> identity
+                       "})"
+    )
+                    .valid());
+    const IREntity::ComponentId componentId = m_entity_manager.getComponentTypeByName("QuatBody");
+
+    IREntity::EntityId e = IREntity::createEntity();
+    m_entity_manager.addComponentDynamic(e, componentId);
+
+    auto [data, row] = m_entity_manager.getComponentDataAndRow(e, componentId);
+    ASSERT_NE(data, nullptr);
+    auto *typed = static_cast<IRScript::IComponentDataLuaTyped *>(data);
+
+    // quat / vec4 both materialise as one IRMath::vec4 column — a quat is a
+    // vec4, so the tag alias shares storage (no redundant QUAT variant).
+    const auto &rotCol = typed->columnAt(typed->findFieldIndex("rot"));
+    const auto *vec4Col = std::get_if<std::vector<IRMath::vec4>>(&rotCol);
+    ASSERT_NE(vec4Col, nullptr);
+    EXPECT_EQ((*vec4Col)[row], IRMath::vec4(0.0f, 0.0f, 0.0f, 1.0f));
+
+    const auto &dirCol = typed->columnAt(typed->findFieldIndex("dir"));
+    const auto *dirVec4 = std::get_if<std::vector<IRMath::vec4>>(&dirCol);
+    ASSERT_NE(dirVec4, nullptr);
+    EXPECT_EQ((*dirVec4)[row], IRMath::vec4(1.0f, 2.0f, 3.0f, 4.0f)); // positional default
+
+    // Omitted default resolves to identity (0,0,0,1) via quatFromLua, NOT the
+    // zero-vec that vec3 fields default to.
+    const auto &spinCol = typed->columnAt(typed->findFieldIndex("spin"));
+    const auto *spinVec4 = std::get_if<std::vector<IRMath::vec4>>(&spinCol);
+    ASSERT_NE(spinVec4, nullptr);
+    EXPECT_EQ((*spinVec4)[row], IRMath::vec4(0.0f, 0.0f, 0.0f, 1.0f));
+
+    // write→read round-trip: writeFieldAt accepts an { x, y, z, w } table,
+    // readFieldAt returns one (with .w the scalar).
+    typed->writeFieldAt(
+        row,
+        typed->findFieldIndex("rot"),
+        sol::make_object(lua, lua.create_table_with("x", 0.1, "y", 0.2, "z", 0.3, "w", 0.4))
+    );
+    EXPECT_FLOAT_EQ((*vec4Col)[row].w, 0.4f);
+
+    sol::object readBack = typed->readFieldAt(row, typed->findFieldIndex("rot"), lua);
+    ASSERT_TRUE(readBack.is<sol::table>());
+    sol::table t = readBack.as<sol::table>();
+    EXPECT_FLOAT_EQ(t["x"].get<float>(), 0.1f);
+    EXPECT_FLOAT_EQ(t["y"].get<float>(), 0.2f);
+    EXPECT_FLOAT_EQ(t["z"].get<float>(), 0.3f);
+    EXPECT_FLOAT_EQ(t["w"].get<float>(), 0.4f);
+}
+
+TEST_F(LuaComponentTest, Vec4FieldsAreNotModifierTargetable) {
+    auto &lua = m_lua.lua();
+    auto result = lua.safe_script(
+        "local C = IRComponent.register('QuatModTarget', {\n"
+        "    rot = { type = 'quat', default = { 0, 0, 0, 1 } },\n"
+        "})\n"
+        "return C.fields.rot.bindingId"
+    );
+    ASSERT_TRUE(result.valid());
+    EXPECT_EQ(result.get<lua_Integer>(), static_cast<lua_Integer>(IRComponents::kInvalidFieldId));
 }
 
 TEST_F(LuaComponentTest, Vec3FieldsAreNotModifierTargetable) {
