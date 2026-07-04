@@ -378,7 +378,16 @@ inline void initSystems(const DemoConfig &config) {
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::FOG_TO_TRIXEL>());
     }
 
-    renderPipeline.push_back(IRSystem::createSystem<IRSystem::PERF_STATS_OVERLAY>());
+    // The perf-stats overlay burns live wall-clock FPS / GPU-stage timings
+    // into the frame. Those digits are non-deterministic (RENDER deltaTime and
+    // the GPU timer queries are wall-clock), so leaving the overlay on during an
+    // --auto-screenshot capture would pollute a render-verify baseline and flake
+    // its pixel-diff run-to-run. Suppress it only while capturing; interactive
+    // and --auto-profile runs (g_autoWarmupFrames == 0) still get it. Mirrors
+    // fog_demo, which omits the overlay entirely.
+    if (g_autoWarmupFrames == 0) {
+        renderPipeline.push_back(IRSystem::createSystem<IRSystem::PERF_STATS_OVERLAY>());
+    }
     renderPipeline.push_back(IRSystem::createSystem<IRSystem::TEXT_TO_TRIXEL>());
     renderPipeline.push_back(IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>());
     renderPipeline.push_back(IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>());
