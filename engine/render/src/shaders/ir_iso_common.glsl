@@ -425,32 +425,14 @@ int trixelOriginModifier(ivec2 trixelCanvasOffsetZ1, vec2 frameCanvasOffset) {
 // `pos2DIsoToTriangleIndex` (ir_math.cpp) — the picking/hover path reuses it so
 // GPU and CPU agree on which trixel the mouse is over.
 //
-// #442 — canonical reason GL applies this to the color/depth read while Metal
-// does not (the pre-#438 asymmetry). Both backends build IDENTICAL per-vertex
-// TexCoords, but the vertex clip position differs: GLSL emits `mpMatrix*aPos`
-// unflipped, while every Metal `*_to_*` pass negates `position.y`. That negate
-// is the standard adapter for the opposite framebuffer-Y origins — OpenGL's
-// default framebuffer is bottom-left (`gl_FragCoord.y` increases up), Metal's
-// render target is top-left (`position.y` increases down) — letting one
-// GL-authored `mpMatrix` render right-side-up on both. Under those opposite
-// conventions the SAME screen pixel interpolates a TexCoords.y whose floor/fract
-// land it on OPPOSITE sides of the diagonal split — a one-row difference exactly
-// at this boundary. GL's raw sample falls on the row that needs the -1
-// correction, so GL applies the shift to all reads; Metal's flipped raster
-// already lands the raw sample on the correct row (its raster supplies the
-// equivalent one-row correction implicitly), so Metal reads color/depth from the
-// RAW origin — applying this shift there over-corrects by one row (the 1px
-// iso-diagonal sawtooth #394 introduced, #438 reverted). The `.y`-only
-// adjustment is consistent with a pure raster-Y-origin cause and rules out any
-// X-axis or float-rounding explanation.
-//
-// Both backends therefore read the CORRECT trixel for their own raster; neither
-// samples the wrong one, so the asymmetry is convention-consistent and kept
-// (not reconciled to a shared convention) — see engine/render/CLAUDE.md
-// "Trixel->framebuffer parity shift (GL-only)". Picking is the shared exception:
-// BOTH backends apply the shift to the hover coordinate, because it must match
-// CPU `pos2DIsoToTriangleIndex` (raster-Y-independent), even though only GL
-// applies it to the color/depth gather.
+// GL applies this shift to the color/depth/id reads; Metal reads color/depth
+// from the raw origin, because its negated clip-Y (top-left target vs GL's
+// bottom-left framebuffer) already lands the raw sample on the correct row.
+// Both backends read the CORRECT trixel for their own raster convention.
+// Picking is the shared exception: BOTH backends shift the hover coordinate,
+// because it must match CPU `pos2DIsoToTriangleIndex` (raster-Y-independent),
+// even though only GL shifts the color/depth gather. See #442;
+// docs/design/trixel-parity-shift-442-investigation.md.
 vec2 trixelFramebufferSamplePosition(vec2 origin, int originModifier) {
     vec2 originFlooredComp = floor(origin);
     vec2 fractComp = fract(origin);

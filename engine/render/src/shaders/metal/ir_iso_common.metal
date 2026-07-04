@@ -404,16 +404,14 @@ inline uint2 trixelCanvasReadCoord(float2 origin, float2 textureSize) {
 // parity bit + fract sub-pixel test pick which of the iso cell's two trixels
 // this fragment maps to, byte-identical to GLSL/CPU `pos2DIsoToTriangleIndex`.
 //
-// #442: unlike GLSL, the Metal gather (trixel_to_framebuffer.metal) reads
-// color/depth from the RAW (unshifted) origin; only the hover/pick coord is
-// shifted. Metal's vertex stage negates clip `position.y` (top-left
-// render-target origin) where GL does not (bottom-left framebuffer origin), so
-// Metal's raster already lands the raw sample on the correct trixel row — the
-// equivalent of GL's one-row shift, applied implicitly by the flipped raster.
-// Shifting again here re-introduces #394's 1px iso-diagonal sawtooth (#438
-// reverted it). Full canonical explanation lives on the GLSL twin of this
-// function in `ir_iso_common.glsl` + engine/render/CLAUDE.md
-// "Trixel->framebuffer parity shift (GL-only)".
+// Unlike GLSL, the Metal gather (trixel_to_framebuffer.metal) reads color/depth
+// from the RAW (unshifted) origin; only the hover/pick coord is shifted. Metal's
+// vertex stage negates clip `position.y` (top-left render-target origin) where
+// GL does not (bottom-left framebuffer origin), so its raster already lands the
+// raw sample on the correct trixel row — the equivalent of GL's one-row shift,
+// applied implicitly by the flipped raster. Both read the correct trixel for
+// their own raster convention. See #442;
+// docs/design/trixel-parity-shift-442-investigation.md.
 inline float2 trixelFramebufferSamplePosition(float2 origin, int originModifier) {
     const float2 originFloored = floor(origin);
     const float2 fractComp = fract(origin);

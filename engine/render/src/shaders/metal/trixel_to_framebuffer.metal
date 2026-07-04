@@ -97,17 +97,14 @@ fragment FragmentOut f_trixel_to_framebuffer(
     const float2 textureSize = float2(triangleColors.get_width(), triangleColors.get_height());
     const int2 z1 = trixelOriginOffsetZ1(int2(textureSize));
 
-    // Color / depth read at the RAW interpolated canvas position — pre-#394
-    // Metal did this and rendered cleanly. Applying the GLSL-style
-    // `trixelFramebufferSamplePosition` row shift here introduced 1-pixel
-    // sawtooth notches along every iso diagonal under Metal regardless of
-    // shift sign or parity-branch swap. The shifted index is still computed
-    // and used for hover entity-id readback so it stays in lockstep with
-    // CPU-side `mouseTrixelPositionWorld()` (which routes through the same
-    // `pos2DIsoToTriangleIndex` formula). #442 canonical why the raw read is
-    // correct here (Metal's negated clip-Y / top-left target lands the raw
-    // sample on the right row): trixelFramebufferSamplePosition in
-    // ir_iso_common.metal + engine/render/CLAUDE.md.
+    // Color / depth read at the RAW interpolated canvas position: Metal's negated
+    // clip-Y (top-left target vs GL's bottom-left) already lands the raw sample on
+    // the correct trixel row, so — unlike GL — no parity-row shift is applied here.
+    // The shifted index IS still computed (`originShifted` below) and used for
+    // hover entity-id readback, so it stays in lockstep with CPU-side
+    // `mouseTrixelPositionWorld()` (same `pos2DIsoToTriangleIndex` formula). See
+    // trixelFramebufferSamplePosition in ir_iso_common.metal; #442,
+    // docs/design/trixel-parity-shift-442-investigation.md.
     const float2 originRaw = in.texCoords * textureSize;
     const int originModifier = trixelOriginModifier(z1, frameData.canvasOffset);
     const float2 originShifted =
