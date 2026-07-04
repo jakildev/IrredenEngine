@@ -119,7 +119,7 @@ IRAsset::ChunkPayload makeRelationChunk(
         // path is unreachable today; it's defensive so a future writer change
         // surfaces rather than shipping a half-written chunk. Copy-paste caveat
         // for a future variable-size table: an empty-body RELN chunk is NOT
-        // load-safe — applyRelationChunk's readNameTable fails on zero bytes and
+        // load-safe — decodeRelationChunk's readNameTable fails on zero bytes and
         // aborts the whole load. A writer that can genuinely fail here must
         // signal "emit no RELN chunk" to saveWorld, not return an empty body.
         IRE_LOG_ERROR("makeRelationChunk: writeNameTable failed: {}", nameStatus.message_);
@@ -138,13 +138,11 @@ IRAsset::ChunkPayload makeRelationChunk(
     return out;
 }
 
-IRAsset::BinaryStatus applyRelationChunk(
-    IREntity::EntityManager &entityManager,
-    std::span<const IRAsset::LoadedChunk> chunks,
-    const std::unordered_map<EntityId, EntityId> &singletonAliases,
-    std::uint64_t &relationsRestored,
-    std::uint64_t &relationsSkipped
-) {
+IRAsset::BinaryStatus
+decodeRelationChunk(std::span<const IRAsset::LoadedChunk> chunks, StagedRelations &out) {
+    out.present_ = false;
+    out.triples_.clear();
+
     const IRAsset::LoadedChunk *reln = IRAsset::findChunk(chunks, kTagReln);
     if (reln == nullptr) {
         return IRAsset::BinaryStatus::success(); // no relations, or a pre-P3 file
@@ -155,31 +153,25 @@ IRAsset::BinaryStatus applyRelationChunk(
     if (!nameEntries.ok()) {
         return nameEntries.status_;
     }
-    const IRAsset::NameTable diskTable(std::move(nameEntries.value_));
+    out.diskTable_ = IRAsset::NameTable(std::move(nameEntries.value_));
 
     IRAsset::Result<std::uint64_t> tripleCount = r.readVarUInt();
     if (!tripleCount.ok()) {
         return tripleCount.status_;
     }
 
-    // Phase 1 (decode, zero world mutation): fully parse every triple's bytes
-    // into a staged buffer *before* touching the live graph. A RELN chunk that
-    // is well-formed for its first N triples but truncated/corrupt afterward
-    // (disk corruption, a half-written file, hand-edited bytes — the same
-    // threat model the ARCH/SNGL column path decode-validates against in
-    // world_snapshot.cpp Phase 2b) must abort with ZERO setParent calls, not
-    // leave a subset of edges applied while loadWorld reports failure (Rule #5,
-    // "no partial world mutation on error"). setParent is a live EntityManager
-    // mutation, so it cannot share a pass with the reads: the decode and the
-    // replay are deliberately separated, exactly like ARCH's decode-then-apply.
-    struct StagedTriple {
-        std::uint64_t relationTypeId_ = 0;
-        EntityId child_ = 0;  // disk id; resolved in the apply pass
-        EntityId parent_ = 0; // disk id; resolved in the apply pass
-    };
-    std::vector<StagedTriple> staged;
-    // No reserve on the disk-controlled count: a corrupt oversized tripleCount
-    // must fail on the first read past the chunk body, not preallocate.
+    // Decode (zero world mutation): fully parse every triple's bytes into the
+    // staged buffer here, during load Phase 2b — before the id watermark
+    // advances and before any Phase-3 entity write. A RELN chunk that is
+    // well-formed for its first N triples but truncated/corrupt afterward — or
+    // one whose very name table / count is malformed (disk corruption, a
+    // half-written file, hand-edited bytes) — must abort the whole load with a
+    // pristine world, not just zero setParent calls: because this parse lives
+    // in Phase 2b alongside the ARCH/SNGL decode-validate, a failure here
+    // returns before restoreEntitiesBatch has committed a single entity (Rule
+    // #5, "no partial world mutation on error"). The live mutation (setParent)
+    // is deferred to applyStagedRelations, run after Phase 3 — so no fallible
+    // read remains past the first live write.
     for (std::uint64_t i = 0; i < tripleCount.value_; ++i) {
         IRAsset::Result<std::uint64_t> relationTypeId = r.readVarUInt();
         if (!relationTypeId.ok()) {
@@ -193,13 +185,28 @@ IRAsset::BinaryStatus applyRelationChunk(
         if (!parentRaw.ok()) {
             return parentRaw.status_;
         }
-        staged.push_back(
-            StagedTriple{
+        out.triples_.push_back(
+            StagedRelationTriple{
                 relationTypeId.value_,
                 static_cast<EntityId>(childRaw.value_),
                 static_cast<EntityId>(parentRaw.value_),
             }
         );
+    }
+
+    out.present_ = true;
+    return IRAsset::BinaryStatus::success();
+}
+
+void applyStagedRelations(
+    IREntity::EntityManager &entityManager,
+    const StagedRelations &staged,
+    const std::unordered_map<EntityId, EntityId> &singletonAliases,
+    std::uint64_t &relationsRestored,
+    std::uint64_t &relationsSkipped
+) {
+    if (!staged.present_) {
+        return; // no RELN chunk (a pre-P3 file) — nothing to replay
     }
 
     // Identity for a regular restored entity (ids restore exact); the alias
@@ -209,18 +216,18 @@ IRAsset::BinaryStatus applyRelationChunk(
         return it != singletonAliases.end() ? it->second : diskId;
     };
 
-    // Phase 2 (apply): every triple decoded cleanly in Phase 1, so replaying is
-    // guaranteed to reach the end — no mid-loop read can fail and strand a
-    // partial edge set. The name-resolution / missing-endpoint skips remain
-    // per-triple diagnostics (Rule #2), never fatal.
-    for (std::size_t i = 0; i < staged.size(); ++i) {
-        const StagedTriple &triple = staged[i];
+    // Apply: every triple decoded cleanly in decodeRelationChunk (Phase 2b), so
+    // replaying is guaranteed to reach the end — no mid-loop read can fail and
+    // strand a partial edge set. The name-resolution / missing-endpoint skips
+    // remain per-triple diagnostics (Rule #2), never fatal.
+    for (std::size_t i = 0; i < staged.triples_.size(); ++i) {
+        const StagedRelationTriple &triple = staged.triples_[i];
 
         // Rule #2: disk id -> disk name -> current enum. Only CHILD_OF is
         // replayable (setParent handles nothing else); an unknown name or a
         // forward-compat PARENT_TO/SIBLING_OF triple is skipped, not fatal.
         const std::optional<std::string_view> diskName =
-            diskTable.nameById(static_cast<std::uint32_t>(triple.relationTypeId_));
+            staged.diskTable_.nameById(static_cast<std::uint32_t>(triple.relationTypeId_));
         if (!diskName.has_value() || relationForName(*diskName) != IREntity::CHILD_OF) {
             ++relationsSkipped;
             IRE_LOG_WARN(
@@ -248,8 +255,6 @@ IRAsset::BinaryStatus applyRelationChunk(
         IREntity::setParent(child, parent);
         ++relationsRestored;
     }
-
-    return IRAsset::BinaryStatus::success();
 }
 
 } // namespace IRWorld::detail

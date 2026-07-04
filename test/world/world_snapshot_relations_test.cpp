@@ -249,21 +249,24 @@ TEST_F(WorldSnapshotRelationsTest, UnknownRelationNameSkipped) {
 }
 
 // Criterion (regression): a RELN chunk whose triple count claims more triples
-// than the body actually holds — a truncated / half-written /
-// hand-edited chunk — must abort the load with ZERO relation edges applied, not
-// replay the valid leading triples and *then* fail. The pre-fix loop parsed and
-// setParent'd in the same pass, so it committed every valid edge before hitting
-// the truncation, leaving the live world partially mutated while loadWorld
-// reported failure (Rule #5 violation). The staged decode-then-apply pass fixes
-// it: all triples decode in a mutation-free pass first, so the phantom read
-// fails before any setParent runs.
-TEST_F(WorldSnapshotRelationsTest, TruncatedTripleCountAppliesZeroRelations) {
+// than the body actually holds — a truncated / half-written / hand-edited chunk
+// — must abort the load with the live world entirely UNCHANGED: zero entities,
+// zero edges. Not a subset of edges, and not a full entity set with no edges.
+// The RELN parse is fallible, so it is decoded in load Phase 2b alongside the
+// ARCH/SNGL decode-validate — before the watermark advance and any phase-3
+// entity write. A truncation therefore aborts before restoreEntitiesBatch
+// commits a single entity (Rule #5).
+//
+// This is the load-bearing assertion of the structural fix: an earlier revision
+// that only staged the triples *inside* the replay (which still ran after
+// phase 3) would abort with zero edges but leave the whole restored entity set
+// live — this test's `getLiveEntityCount() == 0` fails on that revision and
+// passes only once the decode moves into the pre-mutation phase.
+TEST_F(WorldSnapshotRelationsTest, TruncatedRelnChunkLeavesWorldPristine) {
     const EntityId parent = makeEntity(1);
-    std::vector<EntityId> children;
     for (int i = 0; i < 3; ++i) {
         const EntityId c = makeEntity(10 + i);
         IREntity::setParent(c, parent);
-        children.push_back(c);
     }
 
     IRWorld::SaveRegistry reg = registry();
@@ -315,13 +318,13 @@ TEST_F(WorldSnapshotRelationsTest, TruncatedTripleCountAppliesZeroRelations) {
     // The phantom triple read runs off the chunk body -> the load fails...
     EXPECT_FALSE(result.ok());
     EXPECT_EQ(result.relationsRestored_, 0u); // Rule #5: no partial counts on failure
-    // ...and the real proof of "zero relations applied" is the live world: not
-    // one child kept a parent, even though three valid CHILD_OF triples preceded
-    // the truncation (the pre-fix loop would have setParent'd all three first).
-    for (const EntityId c : children) {
-        EXPECT_EQ(parentOf(c), IREntity::kNullEntity)
-            << "child " << c << " was partially re-parented before the decode failure";
-    }
+    // ...and the real proof is the live world: because the RELN parse fails in
+    // the pre-mutation phase, phase 3 never ran, so NOT ONE of the four entities
+    // (parent + three children) was restored — the world is exactly as
+    // destroyAllEntities() left it. A revision that decoded RELN after phase 3
+    // would leave all four live here.
+    EXPECT_EQ(m_em.getLiveEntityCount(), 0u)
+        << "a failed RELN decode left the restored entity set live (mutation before abort)";
 }
 
 // A relation-free world still writes a well-formed (empty) RELN chunk and

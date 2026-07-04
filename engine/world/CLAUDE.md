@@ -254,18 +254,25 @@ dropped rather than dangling. Triples are sorted by `(child, parent)` — a chil
 has one `CHILD_OF` parent — so the double-save stays byte-identical. The writer/
 reader live in `src/world_snapshot_relations.cpp` behind the src-private
 `src/world_snapshot_internal.hpp` seam (`IRWorld::detail::makeRelationChunk` /
-`applyRelationChunk`), keeping the chunk logic off the public header. Replay is
-the **final** load phase — after every entity, column, and singleton exists and
-the id watermark has advanced, so `setParent`'s regenerated relation entities
-mint above every restored id. Endpoints resolve through
-`LoadResult::singletonAliases_` (identity for a regular restored entity, the
-alias for a singleton); an unknown relation name or missing endpoint skips with
-a diagnostic (`LoadResult::relationsSkipped_`), never fatal. Replay is itself
-two-phase: every triple is decoded into a staged buffer in a mutation-free pass
-*before* any `setParent` runs, so a structurally malformed chunk (truncated /
-over-stated triple count) aborts with **zero** relation edges applied — the same
-"no partial world mutation on error" contract (Rule #5) the ARCH/SNGL column
-path upholds via its Phase 2b decode-validate.
+`decodeRelationChunk` / `applyStagedRelations`), keeping the chunk logic off the
+public header. Load splits the RELN chunk across two phases to honor Rule #5.
+The **fallible parse** — name table, triple count, every triple's bytes into a
+staged buffer — runs in **Phase 2b** (`decodeRelationChunk`), alongside the
+ARCH/SNGL decode-validate and *before* the id-watermark advance and any phase-3
+entity write, so a structurally malformed chunk (bad name table, truncated /
+over-stated triple count) aborts the load with the world entirely pristine —
+zero entities, zero edges — exactly like a malformed column does. The
+**infallible replay** (`applyStagedRelations`) is the **final** load phase —
+after every entity, column, and singleton exists and the watermark has advanced,
+so `setParent`'s regenerated relation entities mint above every restored id; it
+makes no fallible read, so it cannot fail partway and strand a partial edge set.
+Endpoints resolve through `LoadResult::singletonAliases_` (identity for a regular
+restored entity, the alias for a singleton); an unknown relation name or missing
+endpoint skips with a diagnostic (`LoadResult::relationsSkipped_`), never fatal.
+Deferring the *parse* to the final phase (which must run after phase 3, since
+`setParent` needs the live entities) would leave the whole restored entity set
+live on a failed load — the "no partial world mutation on error" contract
+(Rule #5) is why only the mutation, not the parse, waits for phase 3.
 
 ## Responsibilities
 
