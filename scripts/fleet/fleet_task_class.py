@@ -233,11 +233,16 @@ def _candidates(slice_data, lane_default, host, fable_blocked=False):
     but a `fleet:sonnet`-tagged (mechanical) needs-plan issue is a light plan
     the sonnet lane authors, while everything else is architect-tier design
     planning (fable, or opus when the fable cap is saturated). Yielding one
-    per class, oldest-first, lets the dispatcher's cross-class fan-out serve a
-    mechanical light-plan on the sonnet lane at the same time the fable/opus
-    lane plans the heavy ones, without ever fanning out colliding planners of
-    the same class. See `_plan_class` and PLANNING-PROTOCOL.md §"Lightweight
-    plan for mechanical (fleet:sonnet) tasks".
+    per class lets the dispatcher's cross-class fan-out serve a mechanical
+    light-plan on the sonnet lane at the same time the fable/opus lane plans
+    the heavy ones, without ever fanning out colliding planners of the same
+    class. Iteration order is oldest-within-each-repo, engine-repo-first —
+    not a true global sort by issue number — because `slice_worker()` in
+    `fleet-state-scout` appends all of `repos.engine.needs_plan[]` before any
+    of `repos.game.needs_plan[]` (same pre-existing composition order
+    `tasks_open`/`feedback_prs` already inherit above). See `_plan_class` and
+    PLANNING-PROTOCOL.md §"Lightweight plan for mechanical (fleet:sonnet)
+    tasks".
     """
     def _class_effort(task):
         cls = (task.get("model") or lane_default).lower()

@@ -386,12 +386,23 @@ issue:
      ingest queues it on the next tick — the `## Plan` comment is present,
      `human:approved` persists, and no gate label remains. The impl PR still
      gets a normal **code** review; only the **plan** review is skipped.
+     ```
+     gh issue edit <N> --repo <owner/repo> --remove-label "fleet:needs-plan"
+     fleet-claim planning-release <N> <your-agent-name>
+     ```
    - **exit 1** → the task wasn't mechanical enough to light-plan (a deferred
      approach, missing core sections). Swap `fleet:needs-plan →
      fleet:plan-review` and release the claim, handing it to the opus
      plan-review safety net (step 4 of "The flow"), which either blesses the
      thin plan or bounces it back to `fleet:needs-plan` with gaps for a proper
      opus re-plan.
+     ```
+     gh issue edit <N> --repo <owner/repo> \
+       --remove-label "fleet:needs-plan" --add-label "fleet:plan-review"
+     fleet-claim planning-release <N> <your-agent-name>
+     ```
+     (`<owner/repo>` and the `--repo game` variant for `fleet-claim` follow the
+     same convention as step 3 above.)
 
 This path never touches the fable or opus class: a genuinely mechanical task is
 planned and implemented entirely on the sonnet lane. If a `fleet:sonnet` task
