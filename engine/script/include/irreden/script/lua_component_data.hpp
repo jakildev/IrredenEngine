@@ -43,6 +43,7 @@ enum class LuaFieldType : std::uint8_t {
     TABLE,    // explicit opt-in only; pays per-access sol::table cost
     VEC3,     // IRMath::vec3 — packed 3-float field (G1a, docs/design/lua-driven-ecs.md)
     IVEC3,    // IRMath::ivec3 — packed 3-int field
+    VEC4,     // IRMath::vec4 — packed 4-float field; also the quat/quaternion tag alias
 };
 
 inline const char *toString(LuaFieldType t) {
@@ -63,6 +64,8 @@ inline const char *toString(LuaFieldType t) {
         return "vec3";
     case LuaFieldType::IVEC3:
         return "ivec3";
+    case LuaFieldType::VEC4:
+        return "vec4";
     }
     return "?";
 }
@@ -84,7 +87,8 @@ using LuaFieldColumn = std::variant<
     std::vector<sol::function>,
     std::vector<sol::table>,
     std::vector<IRMath::vec3>,
-    std::vector<IRMath::ivec3>>;
+    std::vector<IRMath::ivec3>,
+    std::vector<IRMath::vec4>>;
 
 namespace detail {
 
@@ -106,6 +110,8 @@ inline LuaFieldColumn makeEmptyColumn(LuaFieldType t) {
         return std::vector<IRMath::vec3>{};
     case LuaFieldType::IVEC3:
         return std::vector<IRMath::ivec3>{};
+    case LuaFieldType::VEC4:
+        return std::vector<IRMath::vec4>{};
     }
     return std::vector<std::int32_t>{};
 }
@@ -142,6 +148,11 @@ inline void columnAppendDefault(LuaFieldColumn &c, const sol::object &defaultVal
                 v.push_back(vec3FromLua(defaultValue));
             } else if constexpr (std::is_same_v<Elem, IRMath::ivec3>) {
                 v.push_back(ivec3FromLua(defaultValue));
+            } else if constexpr (std::is_same_v<Elem, IRMath::vec4>) {
+                // quatFromLua identity-defaults nil/partial to (0,0,0,1) — the
+                // correct default for the primary rotation consumer; a plain
+                // vec4 author passes an explicit 4-element default.
+                v.push_back(quatFromLua(defaultValue));
             }
         },
         c
@@ -315,6 +326,9 @@ class IComponentDataLuaTyped : public IREntity::IComponentData {
                 } else if constexpr (std::is_same_v<Elem, IRMath::ivec3>) {
                     if (value.is<sol::table>() || value.is<IRMath::ivec3>())
                         v[row] = ivec3FromLua(value);
+                } else if constexpr (std::is_same_v<Elem, IRMath::vec4>) {
+                    if (value.is<sol::table>() || value.is<IRMath::vec4>())
+                        v[row] = quatFromLua(value);
                 }
             },
             m_columns[fieldIdx]
@@ -338,6 +352,12 @@ class IComponentDataLuaTyped : public IREntity::IComponentData {
                     // zero-alloc per-component reads use three scalar fields.
                     const Elem &val = v[row];
                     return lua.create_table_with("x", val.x, "y", val.y, "z", val.z);
+                } else if constexpr (std::is_same_v<Elem, IRMath::vec4>) {
+                    // vec4 / quat surfaces as an { x, y, z, w } table — same
+                    // round-trip contract as vec3 (writeFieldAt's quatFromLua
+                    // accepts the same shape), with .w the quaternion scalar.
+                    const IRMath::vec4 &val = v[row];
+                    return lua.create_table_with("x", val.x, "y", val.y, "z", val.z, "w", val.w);
                 } else {
                     return sol::make_object(lua, v[row]);
                 }
