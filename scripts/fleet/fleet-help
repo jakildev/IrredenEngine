@@ -325,6 +325,13 @@ Meta / housekeeping
                                  apply a named label transition atomically/
                                  idempotently, from the edge table in
                                  docs/agents/fleet-state-machine.json
+  fleet-review-verdict <verdict-transition> <pr> [--agent <name>] [--repo …] [--dry-run]
+                                 guard in front of fleet-transition for the
+                                 reviewer verdict lane: with --agent, refuses
+                                 to apply a verdict unless this agent holds the
+                                 fleet:reviewing-<host>-<agent> claim on the PR
+                                 (misroute guard); omit --agent for interactive
+                                 human review
   fleet-feedback [--since …] …           digest ~/.fleet/feedback/*.md
   review-fleet-feedback {digest|apply|bump}
                                  closed-loop reviewer over fleet-feedback;
