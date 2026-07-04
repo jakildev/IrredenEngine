@@ -27,6 +27,15 @@ struct IRCommand::Command<IRCommand::CommandNames::ZOOM_IN> {
 - `create()` returns a callable (often a lambda). No `SystemId`-like
   handle exists — the enum value *is* the identifier.
 
+A command body can run a one-shot ECS query rather than a plain side effect —
+the "act on every matching entity, once" shape. `Command<RANDOMIZE_VOXELS>`
+(`engine/prefabs/irreden/voxel/commands/`) uses
+`IRSystem::executeQuery<C_VoxelSetNew, Exclude<C_Locked>>(...)` to recolor
+every unlocked voxel set with no persistent system behind it — see
+`engine/system/CLAUDE.md` "One-shot queries (`executeQuery`)". A query-command
+header includes `ir_system.hpp`, so `engine/command` PRIVATE-links
+`IrredenEngineSystem`.
+
 A creation binds it to a trigger:
 
 ```cpp

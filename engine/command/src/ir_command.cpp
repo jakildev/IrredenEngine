@@ -26,6 +26,7 @@
 #include <irreden/video/commands/command_take_screenshot.hpp>
 #include <irreden/video/commands/command_take_screenshot_canvas.hpp>
 #include <irreden/video/commands/command_toggle_recording.hpp>
+#include <irreden/voxel/commands/command_randomize_voxels.hpp>
 #include <irreden/voxel/commands/command_spawn_particle_mouse_position.hpp>
 
 namespace IRCommand {
@@ -225,6 +226,14 @@ CommandId bindPrefabCommand(
             requiredModifiers,
             blockedModifiers
         );
+    case RANDOMIZE_VOXELS:
+        return createCommand<RANDOMIZE_VOXELS>(
+            inputType,
+            triggerStatus,
+            button,
+            requiredModifiers,
+            blockedModifiers
+        );
     case NULL_COMMAND:
     case EXAMPLE:
     case RECORD_START:
@@ -232,7 +241,6 @@ CommandId bindPrefabCommand(
     case STOP_VELOCITY:
     case RESHAPE_SPHERE:
     case RESHAPE_RECTANGULAR_PRISM:
-    case RANDOMIZE_VOXELS:
     case LOCK_VOXEL_SCALE:
     case UNLOCK_VOXEL_SCALE:
     case SET_TRIXEL_COLOR:
@@ -315,6 +323,9 @@ void fireByName(CommandNames name) {
     case TOGGLE_CULLING_FREEZE:
         Command<TOGGLE_CULLING_FREEZE>::create()();
         return;
+    case RANDOMIZE_VOXELS:
+        Command<RANDOMIZE_VOXELS>::create()();
+        return;
     // The remaining CommandNames values are declared in the enum but have
     // no Command<NAME>::create() specialization. They exist as forward
     // declarations for systems that may someday land them; firing them
@@ -327,7 +338,6 @@ void fireByName(CommandNames name) {
     case STOP_VELOCITY:
     case RESHAPE_SPHERE:
     case RESHAPE_RECTANGULAR_PRISM:
-    case RANDOMIZE_VOXELS:
     case LOCK_VOXEL_SCALE:
     case UNLOCK_VOXEL_SCALE:
     case SET_TRIXEL_COLOR:

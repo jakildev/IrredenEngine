@@ -17,7 +17,9 @@ add_executable(IrredenEngineTest
   audio/music_theory_test.cpp
   common/ir_args_test.cpp
   common/ir_platform_test.cpp
+  ecs/command_randomize_voxels_test.cpp
   ecs/entity_manager_test.cpp
+  ecs/execute_query_test.cpp
   ecs/grid_rotation_test.cpp
   ecs/hitbox_2d_gui_test.cpp
   ecs/joint_matrix_upload_test.cpp
