@@ -576,13 +576,22 @@ LoadResult loadWorld(const SaveRegistry &registry, const std::string &path) {
                 continue;
             }
             const StagedColumn &column = staged.columns_[c];
+            // P5 migration dispatch: resolve the reader for the column's
+            // on-disk version (current, migrator, or a VersionTooNew /
+            // MigratorMissing error). Runs in the zero-mutation phase, so an
+            // unmigratable version aborts before phase 3 touches the world.
+            IRAsset::BinaryStatus versionStatus;
+            const ColumnReadHooks *reader = entry->readerForVersion(column.version_, versionStatus);
+            if (reader == nullptr) {
+                return loadFail(versionStatus);
+            }
             IRAsset::MemoryBinaryReader r(arch->data_.data(), arch->data_.size(), "ARCH");
             IRAsset::BinaryStatus seek = r.seek(column.dataOffset_);
             if (!seek.ok()) {
                 return loadFail(seek);
             }
             for (std::size_t e = 0; e < staged.entityIds_.size(); ++e) {
-                IRAsset::BinaryStatus rowStatus = entry->decodeRow_(r);
+                IRAsset::BinaryStatus rowStatus = reader->decodeRow_(r);
                 if (!rowStatus.ok()) {
                     return loadFail(rowStatus);
                 }
@@ -594,12 +603,18 @@ LoadResult loadWorld(const SaveRegistry &registry, const std::string &path) {
         if (entry == nullptr) {
             continue;
         }
+        IRAsset::BinaryStatus versionStatus;
+        const ColumnReadHooks *reader =
+            entry->readerForVersion(staged.column_.version_, versionStatus);
+        if (reader == nullptr) {
+            return loadFail(versionStatus);
+        }
         IRAsset::MemoryBinaryReader r(sngl->data_.data(), sngl->data_.size(), "SNGL");
         IRAsset::BinaryStatus seek = r.seek(staged.column_.dataOffset_);
         if (!seek.ok()) {
             return loadFail(seek);
         }
-        IRAsset::BinaryStatus valueStatus = entry->decodeRow_(r);
+        IRAsset::BinaryStatus valueStatus = reader->decodeRow_(r);
         if (!valueStatus.ok()) {
             return loadFail(valueStatus);
         }
@@ -658,6 +673,14 @@ LoadResult loadWorld(const SaveRegistry &registry, const std::string &path) {
                 ++result.columnsSkipped_; // unresolvable component — skipped by byte length
                 continue;
             }
+            // Same P5 version dispatch phase 2b already validated; re-resolve
+            // for the append hooks (a version error here would be a phase-2b
+            // bug, but the null-check keeps the apply path honest).
+            IRAsset::BinaryStatus versionStatus;
+            const ColumnReadHooks *reader = entry->readerForVersion(column.version_, versionStatus);
+            if (reader == nullptr) {
+                return loadFail(versionStatus);
+            }
             IRAsset::MemoryBinaryReader r(arch->data_.data(), arch->data_.size(), "ARCH");
             IRAsset::BinaryStatus seek = r.seek(column.dataOffset_);
             if (!seek.ok()) {
@@ -665,7 +688,7 @@ LoadResult loadWorld(const SaveRegistry &registry, const std::string &path) {
             }
             IREntity::IComponentData *col = node->components_.at(entry->componentId_).get();
             for (std::size_t e = 0; e < staged.entityIds_.size(); ++e) {
-                IRAsset::BinaryStatus rowStatus = entry->appendRow_(r, col);
+                IRAsset::BinaryStatus rowStatus = reader->appendRow_(r, col);
                 if (!rowStatus.ok()) {
                     return loadFail(rowStatus);
                 }
@@ -684,13 +707,22 @@ LoadResult loadWorld(const SaveRegistry &registry, const std::string &path) {
             ++result.singletonsSkipped_;
             continue;
         }
+        // Resolve the versioned reader before the lazy singleton get-or-create,
+        // so a (phase-2b-validated) version can't strand a freshly-minted
+        // singleton entity on an error path.
+        IRAsset::BinaryStatus versionStatus;
+        const ColumnReadHooks *reader =
+            entry->readerForVersion(staged.column_.version_, versionStatus);
+        if (reader == nullptr) {
+            return loadFail(versionStatus);
+        }
         const EntityId liveEntity = entry->getOrCreateSingletonEntity_();
         IRAsset::MemoryBinaryReader r(sngl->data_.data(), sngl->data_.size(), "SNGL");
         IRAsset::BinaryStatus seek = r.seek(staged.column_.dataOffset_);
         if (!seek.ok()) {
             return loadFail(seek);
         }
-        IRAsset::BinaryStatus valueStatus = entry->readIntoEntity_(r, liveEntity);
+        IRAsset::BinaryStatus valueStatus = reader->readIntoEntity_(r, liveEntity);
         if (!valueStatus.ok()) {
             return loadFail(valueStatus);
         }
