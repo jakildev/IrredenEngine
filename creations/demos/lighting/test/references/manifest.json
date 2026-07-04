@@ -1,0 +1,19 @@
+{
+  "demo": "lighting",
+  "target": "IRLightingSdfBlocker",
+  "warmup": 10,
+  "shots": [
+    "zoom1_origin",
+    "zoom2_origin",
+    "zoom4_origin",
+    "zoom4_offset_3_5",
+    "zoom8_origin"
+  ],
+  "thresholds": {
+    "per_pixel_tol": 8,
+    "match_pct": 99.9,
+    "max_delta": 64,
+    "psnr_db": 35.0
+  },
+  "notes": "GPU light-volume regression gate (#481). Target IRLightingSdfBlocker is the static single-point-light scene (point at (34,-7,-1)) with a C_LightBlocker(blocksLOS_=true) SDF wall between the light and the shape row — it exercises the whole COMPUTE_LIGHT_VOLUME seed + propagate (distance falloff) + LOS-occlusion path in one deterministic frame. Canaries: the warm point-light gradient on the floor to the light-side of the wall, and the cold shadow band the wall casts across the floor behind it; an off-by-one in the propagate stencil, a wrong falloff constant, or a swapped light-volume texture binding moves those pixels enough to fail. The scene is static + cardinal-yaw-0 (single light, so propagate seed texels can't collide — the 'later-thread-wins shared-origin' gotcha does not apply), verified bit-deterministic run-to-run on macOS (0 drift). The shots are the demo kShots[] prefix through zoom8_origin (positional index->reference mapping in render-verify.py — the demo captures all 6 kShots and the first N map to these labels in order); zoom16_origin is intentionally excluded as over-magnified (hypersensitive to benign sub-pixel changes) even though it is bit-deterministic here. The perf-stats overlay is suppressed during --auto-screenshot capture (lighting_demo_scene.hpp) so live wall-clock timing text does not pollute the reference. Reference PNGs live in sibling subdirs per CMake preset (macos-debug/, linux-debug/) since Metal and OpenGL produce pixel-different output; linux-debug/ is captured on a Linux/OpenGL host (fleet:needs-linux-smoke) — a backend without committed references SKIPS rather than fails, so bless it there with render-verify --update-references. The other lighting targets share this scene header + kShots[] but are not gated here (single-target coverage for the light-volume path)."
+}
