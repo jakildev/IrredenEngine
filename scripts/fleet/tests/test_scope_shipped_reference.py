@@ -16,6 +16,9 @@ Covers the false-positive classes:
 * #1807 / #1802 / #1354 (layer 4) — a plan/design-doc title ("docs: plan …",
   "docs/design: …") names the issue it plans/designs, not one it ships, so its
   title ref is not trusted; only a body closing-verb ships it.
+* #1640 ← #1700 (layer 6) — a doc-and-defer PR marks the issue deferred in a
+  trusted (non-plan) title ("render: doc the invariant (#1640 deferred)"); a
+  deferral-marked ref escalates the issue rather than shipping it.
 
 The module is a real .py, but it is loaded via importlib (mirroring
 test_enrich_stackable_blocker_prs.py) so the test runs regardless of cwd.
@@ -239,6 +242,53 @@ class PrReferencesIssue(unittest.TestCase):
         # become "closes #1300".
         self.assertFalse(pr_references_issue("title", "clo`x`ses #1300", 1300))
 
+    # --- deferral markers (#1640 <- #1700 — layer 6) ---
+
+    _DEFER_TITLE_1700 = (
+        "render: doc the Metal foreign-canvas R32I second-dispatch "
+        "read-gap invariant (#1640 deferred)")
+
+    def test_deferral_marked_title_ref_rejected(self):
+        # #1640 <- #1700: a render:-scoped doc PR marks the issue deferred in its
+        # title ("(#1640 deferred)") and only "Refs #1640" (no closing verb) in
+        # the body. Layer 4 doesn't fire (title is render:, not docs:), so
+        # title-trust would ship it without layer 6.
+        self.assertFalse(pr_references_issue(
+            self._DEFER_TITLE_1700, "Refs #1640.\n\n## Status: design-blocked", 1640))
+
+    def test_deferral_leading_verb_rejected(self):
+        # "defers #N": deferral word directly before the ref.
+        self.assertFalse(pr_references_issue("render: defers #1640 to follow-up", "", 1640))
+
+    def test_deferral_deferring_variant_rejected(self):
+        self.assertFalse(pr_references_issue("render: doc gap, deferring #1640", "", 1640))
+
+    def test_deferral_em_dash_marker_rejected(self):
+        # "#N — deferred": em-dash gap between the ref and the deferral word.
+        self.assertFalse(pr_references_issue("render: doc invariant #1640 — deferred", "", 1640))
+
+    def test_deferral_of_other_issue_does_not_suppress_shipped(self):
+        # "fix #1234 and defer #1235": #1234 genuinely ships (title-trust); the
+        # far-away "defer" binds only to the adjacent #1235, not across to #1234.
+        title = "render: fix #1234 and defer #1235"
+        self.assertTrue(pr_references_issue(title, "", 1234))
+        self.assertFalse(pr_references_issue(title, "", 1235))
+
+    def test_deferral_title_still_ships_via_body_closing_verb(self):
+        # A deferral title marker suppresses title-trust, but an explicit body
+        # close still ships (consistent with layer 4: a genuine landing wins).
+        self.assertTrue(pr_references_issue(self._DEFER_TITLE_1700, "Closes #1640", 1640))
+
+    def test_plain_title_ref_unaffected_by_deferral_guard(self):
+        # Regression: a normal "#N: <desc>" title with no deferral word still ships.
+        self.assertTrue(pr_references_issue("#1640: render fix the R32I read", "", 1640))
+
+    def test_defer_prefix_word_does_not_suppress(self):
+        # \b-anchored: "deferential" carries "defer" as a prefix but is not a
+        # deferral word, so a ref beside it still ships (the trailing \b fails to
+        # close on "defer" inside "deferential").
+        self.assertTrue(pr_references_issue("#1640 deferential render fix", "", 1640))
+
 
 class SelectShippedPr(unittest.TestCase):
     def test_empty_candidates(self):
@@ -302,6 +352,16 @@ class SelectShippedPr(unittest.TestCase):
                  "Adds `.fleet/plans/issue-1824.md`: the structured plan for "
                  "#1824 (impl PR will carry the code + `Closes #1824`).")
         self.assertIsNone(select_shipped_pr([pr], 1824))
+
+    def test_real_world_1640_deferred_by_1700(self):
+        # #1640 <- #1700 (layer 6): a render:-scoped doc-and-defer PR marks the
+        # issue deferred in its title and only "Refs #1640" (no closing verb) in
+        # the body — it ships nothing, so ingest must not re-stamp scope-shipped.
+        pr = _pr(1700,
+                 "render: doc the Metal foreign-canvas R32I second-dispatch "
+                 "read-gap invariant (#1640 deferred)",
+                 "Refs #1640.\n\n## Status: design-blocked (see NEEDS-DESIGN comment)")
+        self.assertIsNone(select_shipped_pr([pr], 1640))
 
 
 if __name__ == "__main__":

@@ -49,13 +49,27 @@ incidental match have to be rejected:
    ``Closes #N`` as prose, never in backticks, so the strip costs no true
    positive.
 
+6. Deferral marker (#1640 ← #1700). A PR may name ``#N`` in a trusted (non-plan)
+   title only to mark it *deferred*: "render: doc the ... invariant
+   (#1640 deferred)" is a doc-only, design-blocked PR that documents the gap and
+   escalates the fix — it does NOT land #1640's scope. Because it is titled
+   ``render:`` (not ``docs:``) the layer-4 plan-doc guard does not fire, and the
+   bare ``#1640`` in the title satisfies title-trust, so ingest false-stamped
+   ``fleet:scope-shipped`` on #1640 — and re-stamped it every pass after the
+   architect removed the label, an un-winnable label fight. A ``#N`` carrying an
+   adjacent deferral word ("(#N deferred)", "#N — deferred", "defers #N") is an
+   explicit non-ship signal, so a deferral-marked title ref is NOT trusted (the
+   deferral word must sit directly on one side of the ref, within a bounded gap
+   like the range/verb guards, so "fix #1234 and defer #1235" still ships #1234).
+
 So a body ``#N`` counts only when a closing-action verb sits directly before it
 in prose (``Closes #N``, ``fixes (#N)``, ``supersedes #N``) — code spans are
 stripped first (layer 5), so a verb quoted in backticks does not count. A
 ``#N`` in the *title* is trusted as-is — PRs in this repo are named
 ``#N: <desc>`` after the issue they implement — EXCEPT (layer 3) when it is a
-range endpoint, or (layer 4) when the title is a plan/design-doc title: both
-shapes name issues they enumerate or plan without implementing.
+range endpoint, (layer 4) when the title is a plan/design-doc title, or (layer 6)
+when the ref is marked deferred: all three shapes name issues they enumerate,
+plan, or defer without implementing.
 """
 import re
 
@@ -119,14 +133,54 @@ def _ref_pattern(n):
     )
 
 
+# Deferral words (layer 6) — the vocabulary a doc-and-defer PR uses to mark that
+# it escalates rather than ships ``#N``: "deferred", "defers", "deferring".
+_DEFER_WORD = r'defer(?:s|red|ring)?'
+# Bounded gap between the ref and the deferral word — whitespace plus the light
+# punctuation that brackets a parenthetical marker ("(#N deferred)", "#N —
+# deferred"). Kept small (like _VERB_TO_REF_GAP) so a deferral word only binds to
+# an *adjacent* ref: "fix #1234 and defer #1235" leaves #1234 shippable.
+_DEFER_GAP = r'[\s():.,;—–-]{0,3}'
+
+
+def _ref_is_deferred(text, n):
+    """True iff a ``#n`` reference in ``text`` carries an adjacent deferral
+    marker (layer 6): "(#n deferred)", "#n — deferred", or "defers #n". Such a
+    ref is an explicit "this PR does NOT ship #n" signal, so it must not be
+    trusted even in a title. The deferral word must sit directly on one side of
+    the ref (bounded gap) — a far-away deferral of some other ``#m`` does not
+    suppress ``#n``.
+
+    Trade-off (deliberate — matches layers 3-5's bias toward under-stamping):
+    the gap is purely positional, so a deferral word aimed at a *different*
+    issue that happens to land adjacent to ``#n`` — "close #1640 (deferred from
+    #1600)" — also reads as deferring #1640. That under-stamps (the title ref
+    falls through to the body, which still ships on a genuine ``Closes #n``)
+    rather than risk a false ship.
+    """
+    if not n:
+        return False
+    try:
+        ref = _ref_pattern(n)
+    except (ValueError, TypeError):
+        return False
+    text = text or ''
+    trailing = ref + _DEFER_GAP + r'\b' + _DEFER_WORD + r'\b'
+    leading = r'\b' + _DEFER_WORD + r'\b' + _DEFER_GAP + ref
+    return bool(re.search(trailing, text, re.IGNORECASE)
+                or re.search(leading, text, re.IGNORECASE))
+
+
 def pr_references_issue(title, body, n):
     """True iff the PR genuinely ships issue ``n`` (see module docstring).
 
     Title: any word-boundary ``#n`` counts (the ``#N: <desc>`` PR-naming
     convention) UNLESS it is a range endpoint (``#1602-#1612`` — a planning PR
-    naming filed children) OR the whole title is a plan/design-doc title
+    naming filed children), the whole title is a plan/design-doc title
     (``docs: plan …`` / ``docs/design: …`` / ``docs: design …`` — a PR that plans/designs ``n``,
-    never ships it). Body: ``#n`` counts only when immediately preceded by a
+    never ships it), OR the ref is marked deferred ("(#n deferred)" / "defers #n"
+    — layer 6, a doc-and-defer PR that escalates ``n`` rather than shipping it).
+    Body: ``#n`` counts only when immediately preceded by a
     closing-action verb, and likewise never as a range endpoint. A bare body
     mention ("downstream #n", "pre-existing #n", "Refs #n") is rejected, as is
     a closing verb quoted inside a markdown code span (layer 5): code spans are
@@ -144,7 +198,11 @@ def pr_references_issue(title, body, n):
     # is a plan/design-doc title (layer 4): a plan/design PR names the issue it
     # plans, not one it ships, so its title ref falls through to the body
     # closing-verb check below (where a genuine doc-ship still says ``Closes #N``).
-    if not _PLAN_DOC_TITLE.search(title) and re.search(ref, title):
+    # Layer 6: a title ref marked deferred ("(#N deferred)") is an explicit
+    # non-ship, so it is likewise not trusted and falls through to the body.
+    if (not _PLAN_DOC_TITLE.search(title)
+            and re.search(ref, title)
+            and not _ref_is_deferred(title, n)):
         return True
     body_re = re.compile(
         r'\b(?:' + _CLOSING_VERB + r')\b' + _VERB_TO_REF_GAP + ref,
