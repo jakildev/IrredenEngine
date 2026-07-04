@@ -26,6 +26,7 @@ Source: scripts/fleet/fleet-epic-status
 Installed to ~/bin/fleet-epic-status by scripts/fleet/install.sh.
 """
 import argparse
+import calendar
 import json
 import os
 import pathlib
@@ -94,13 +95,31 @@ def read_json_retry(path, attempts=3, backoff=0.05):
     raise last
 
 
+def _cache_age_seconds(data, mtime):
+    # Age from the in-file `generated_at` (the true snapshot time), NOT file
+    # mtime. Under Q2 centralized polling (#1394) a follower re-writes
+    # state.json every tick with the LEADER's `generated_at` preserved — so a
+    # dead leader keeps a follower's mtime fresh while `generated_at` freezes.
+    # Fall back to mtime only when `generated_at` is missing/unparseable (a
+    # malformed snapshot), which preserves the pre-Q2 behavior for that case.
+    # Mirrors fleet-dispatcher's `_state_age_seconds` (#2220 review nit).
+    gen = (data or {}).get("generated_at")
+    if isinstance(gen, str):
+        try:
+            epoch = calendar.timegm(time.strptime(gen, "%Y-%m-%dT%H:%M:%SZ"))
+            return time.time() - epoch
+        except (ValueError, TypeError):
+            pass
+    return time.time() - mtime
+
+
 def load_state_cache():
-    """Return (data, is_fresh). is_fresh=True when mtime < CACHE_MAX_AGE_S."""
+    """Return (data, is_fresh). is_fresh=True when cache age < CACHE_MAX_AGE_S."""
     try:
         p = pathlib.Path(STATE_JSON)
         mtime = p.stat().st_mtime
         data = read_json_retry(STATE_JSON)
-        return data, (time.time() - mtime) < CACHE_MAX_AGE_S
+        return data, (_cache_age_seconds(data, mtime) < CACHE_MAX_AGE_S)
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         return None, False
 
