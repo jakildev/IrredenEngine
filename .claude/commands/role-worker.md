@@ -360,18 +360,16 @@ Do the work, then exit cleanly:
        `git rebase origin/<baseRefName>`
     d'. **Inherited-prefix shortcut — check before resolving by hand.** If
        every conflicted file is one your branch *inherited* from a parent PR
-       that has since merged (the conflict is your stale inherited copy vs
-       master's now-merged copy), do NOT resolve file-by-file. Drop the
-       inherited prefix instead:
+       that has since merged (stale inherited copy vs master's now-merged
+       copy), do NOT resolve file-by-file — drop the inherited prefix:
        `git rebase --onto origin/master <child-fork-point>`
-       where `<child-fork-point>` is the inherited commit on your branch —
-       `git merge-base HEAD origin/<parent-branch>` (the parent's *pre-merge*
-       head). That replays only your genuine commits; the inherited files
-       resolve to master automatically and the diff shrinks to your own
-       changes. `fleet-rebase`'s auto-drop normally does this for you; this
-       is the manual fallback for when it silently doesn't fire — e.g. the
-       parent branch was amended during review *after* you forked, so its
-       recorded `headRefOid` is no longer an ancestor of your head (#1791).
+       where `<child-fork-point>` = `git merge-base HEAD origin/<parent-branch>`
+       (the parent's *pre-merge* head). That replays only your genuine commits;
+       inherited files resolve to master and the diff shrinks to your own
+       changes. `fleet-rebase` auto-drops this normally; do it by hand when it
+       silently doesn't fire — e.g. the parent was amended during review after
+       you forked, so its recorded `headRefOid` is no longer an ancestor of
+       your head (#1791).
     d''. **Gated-conflict guard — check before resolving.** List the
        conflicted files (`git diff --name-only --diff-filter=U`). If **every**
        one is a gated self-config file (`.claude/commands/role-*.md`,
