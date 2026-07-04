@@ -953,43 +953,31 @@ See [`docs/agents/CLAUDE-BASELINE.md §"Hard rules for autonomous fleet roles"`]
 The merger has TWO tiers of "don't touch this PR again":
 
 1. **Durable handoff labels** — `fleet:semantic-conflict`,
-   `fleet:awaiting-base`, `fleet:needs-info`,
-   `fleet:needs-base-update`. Once the merger sets one of these,
-   the PR is no longer the merger's responsibility. Only the role
-   that owns the next step (worker for semantic-conflict; the
-   merger itself for awaiting-base when the base merges/closes
-   and for needs-base-update on the same transition; the human or
-   author for needs-base-update via manual rebase; the human for
-   needs-info) removes the label. These are in step 3's skip list,
-   so the merger never re-runs rebase on a PR in this state — no
-   comment spam.
+   `fleet:awaiting-base`, `fleet:needs-info`, `fleet:needs-base-update`.
+   Once set, the PR is no longer the merger's responsibility; only the role
+   that owns the next step removes it (worker for semantic-conflict; the
+   merger itself for awaiting-base / needs-base-update when the base
+   merges/closes; human or author for a manual needs-base-update rebase;
+   human for needs-info). These are in step 3's skip list, so the merger
+   never re-runs rebase on a PR in this state — no comment spam.
 
-2. **`fleet:merger-cooldown`** — short-lived, self-managed.
-   The merger adds it after a *non-durable* outcome (clean
-   rebase, whitespace-only, or merged-base re-target with clean
-   rebase — all of which already pushed and don't need a handoff
-   label). Step 1 of the next
-   iteration clears all such labels unconditionally, so the
-   10-minute loop interval IS the cooldown — one iteration of
-   "skip this PR" is enough breathing room before re-checking.
-   (An earlier draft tried to gate on `updatedAt`, but reviewer
-   comments refresh that timestamp and prevented cooldowns from
-   clearing predictably.)
+2. **`fleet:merger-cooldown`** — short-lived, self-managed. Added after a
+   *non-durable* outcome (clean rebase, whitespace-only, or merged-base
+   re-target with clean rebase — all already pushed, no handoff needed).
+   Step 1 of the next iteration clears it unconditionally, so the 10-minute
+   loop interval IS the cooldown. Do NOT gate cooldown on `updatedAt`:
+   reviewer comments refresh that timestamp and prevent predictable clearing.
 
-The cooldown label is intentionally NOT used as the only stop
-sign for semantic conflicts — without a durable label, every
-iteration would re-classify and re-comment. The durable label
-is what holds the PR steady; the cooldown is a one-iteration
-nudge for the cases that already resolved.
+Semantic conflicts always need a **durable** label, never cooldown alone —
+without it every iteration re-classifies and re-comments.
 
 ## Observability
 
 Every action lands in TWO places:
 
-1. `~/.fleet/logs/merger-audit.log` — append-only audit trail.
-   One line per action with timestamp, PR number, branch, action,
-   outcome. Append-only so the audit history survives across iterations; pane output is ephemeral.
-2. The PR comment thread — human-visible. Always end with
-   `— fleet merger` so a human (or another agent) scanning the
-   thread can identify merger comments without parsing the
-   author field.
+1. `~/.fleet/logs/merger-audit.log` — append-only audit trail, one line per
+   action (timestamp, PR number, branch, action, outcome). Survives across
+   iterations; pane output is ephemeral.
+2. The PR comment thread — human-visible. Always end with `— fleet merger` so
+   a human or agent scanning the thread can identify merger comments without
+   parsing the author field.
