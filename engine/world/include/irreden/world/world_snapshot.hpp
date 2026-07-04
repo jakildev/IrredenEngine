@@ -104,11 +104,17 @@ struct LoadResult {
     IRAsset::BinaryStatus status_;
     std::uint64_t entitiesRestored_ = 0;
     std::uint64_t singletonsRestored_ = 0;
+    // CHILD_OF relation edges replayed via setParent in the final load phase
+    // (persist P3, #2214).
+    std::uint64_t relationsRestored_ = 0;
     // Columns / singletons whose save-name did not resolve in the registry
     // (skipped by byte length, not an error — the file may predate a
     // component's registration, or postdate its removal).
     std::uint64_t columnsSkipped_ = 0;
     std::uint64_t singletonsSkipped_ = 0;
+    // Relation triples skipped because their relation name did not resolve to
+    // a current CHILD_OF, or an endpoint was missing (Rule #2, not an error).
+    std::uint64_t relationsSkipped_ = 0;
     // saved raw EntityId -> live EntityId for every restored singleton.
     // Identity in the same-session contract; the hand-off P3 needs to
     // translate relation triples that reference a singleton entity.

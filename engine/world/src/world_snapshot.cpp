@@ -1,5 +1,7 @@
 #include <irreden/world/world_snapshot.hpp>
 
+#include "world_snapshot_internal.hpp"
+
 #include <irreden/ir_profile.hpp>
 
 #include <irreden/asset/chunk_header.hpp>
@@ -258,10 +260,25 @@ IRAsset::BinaryStatus saveWorld(const SaveRegistry &registry, const std::string 
     metaW.writeVarUInt(em.entityIdWatermark());
     metaW.writeVarUInt(totalEntities);
 
+    // RELN (persist P3, #2214) — CHILD_OF edges whose both endpoints P2 wrote
+    // (ARCH gameplay entities + SNGL singletons). The set is the projection/
+    // exclusion decision already made above, so the relation walk reuses it
+    // rather than re-deriving the exclusions.
+    std::unordered_set<EntityId> servedIds;
+    for (const SavedArchetype &group : groups) {
+        for (const SavedEntityRef &ref : group.entities_) {
+            servedIds.insert(ref.maskedId_);
+        }
+    }
+    for (const SavedSingleton &singleton : singletons) {
+        servedIds.insert(singleton.savedId_);
+    }
+
     std::vector<IRAsset::ChunkPayload> chunks;
     chunks.push_back({kTagCmpn, cmpnW.takeBuffer()});
     chunks.push_back({kTagArch, archW.takeBuffer()});
     chunks.push_back({kTagSngl, snglW.takeBuffer()});
+    chunks.push_back(detail::makeRelationChunk(em, servedIds));
     chunks.push_back({kTagMeta, metaW.takeBuffer()});
 
     IRAsset::FileBinaryWriter fileW(path);
@@ -668,6 +685,22 @@ LoadResult loadWorld(const SaveRegistry &registry, const std::string &path) {
     // Watermark was advanced after phase-2 validation, before any phase-3
     // mutation — advancing it here (after the singleton loop) would let a
     // fresh-session singleton lazy-create draw a just-restored id. See #2213.
+
+    // Final phase: replay CHILD_OF relation edges (persist P3, #2214). Runs
+    // after every entity, column, and singleton is in place and the watermark
+    // has advanced (before phase 3, see above), so setParent's synthetic
+    // relation entities mint above every restored id and moving a child's
+    // archetype node corrupts nothing.
+    const IRAsset::BinaryStatus relationStatus = detail::applyRelationChunk(
+        em,
+        chunks,
+        result.singletonAliases_,
+        result.relationsRestored_,
+        result.relationsSkipped_
+    );
+    if (!relationStatus.ok()) {
+        return loadFail(relationStatus);
+    }
     return result;
 }
 
