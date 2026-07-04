@@ -187,9 +187,14 @@ resolve_scope() {
     fi
 
     local root build scope rel
-    root=$(realpath_portable "$WORKTREE_ROOT")
-    build=$(realpath_portable "$BUILD_DIR")
-    scope=$(realpath_portable "$SCOPE_DIR")
+    # Canonicalize drive-path spelling before the containment test: on native
+    # Windows the root (git-style C:/…) and the scope (MSYS2 $PWD /c/…) name the
+    # same tree but differ byte-for-byte, which would otherwise trip the
+    # "outside" branch and fall back to a whole-tree scan (#2036). No-op on
+    # macOS/Linux.
+    root=$(canonicalize_path_spelling "$(realpath_portable "$WORKTREE_ROOT")")
+    build=$(canonicalize_path_spelling "$(realpath_portable "$BUILD_DIR")")
+    scope=$(canonicalize_path_spelling "$(realpath_portable "$SCOPE_DIR")")
 
     case "$scope" in
         "$build"/*)
