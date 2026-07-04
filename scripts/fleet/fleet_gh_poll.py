@@ -34,6 +34,7 @@ import json
 import os
 import subprocess
 import tempfile
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -56,27 +57,37 @@ DEFAULT_CACHE_DIR = Path.home() / ".fleet" / "state" / "etag"
 # Auth token is fetched from `gh` once and memoized — a long-running scout
 # calls conditional_get many times per tick, and re-shelling `gh auth token`
 # each call is pure overhead. Cleared on a 401 so a rotated/expired token is
-# picked up on the next request (the daemon-token-staleness gotcha).
+# picked up on the next request (the daemon-token-staleness gotcha). The lock
+# serializes the check-then-shell so the several collect_state() worker threads
+# that race past the memo check on a cold start shell `gh auth token` once
+# between them, not once per thread.
 _token_cache = {"value": None}
+_token_lock = threading.Lock()
 
 
 def auth_token(refresh=False):
     """Return the gh auth token (memoized). refresh=True re-shells gh first."""
-    if refresh:
-        _token_cache["value"] = None
-    if _token_cache["value"]:
+    # Fast path: an already-memoized token needs no lock (dict read is atomic
+    # under the GIL). Only a cold-start / refresh miss takes the lock and
+    # double-checks, so concurrent threads collapse onto a single shell-out.
+    if not refresh and _token_cache["value"]:
         return _token_cache["value"]
-    try:
-        proc = subprocess.run(
-            ["gh", "auth", "token"],
-            capture_output=True, text=True, timeout=DEFAULT_TIMEOUT_SECONDS,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-    if proc.returncode != 0:
-        return None
-    _token_cache["value"] = proc.stdout.strip() or None
-    return _token_cache["value"]
+    with _token_lock:
+        if refresh:
+            _token_cache["value"] = None
+        if _token_cache["value"]:
+            return _token_cache["value"]
+        try:
+            proc = subprocess.run(
+                ["gh", "auth", "token"],
+                capture_output=True, text=True, timeout=DEFAULT_TIMEOUT_SECONDS,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        if proc.returncode != 0:
+            return None
+        _token_cache["value"] = proc.stdout.strip() or None
+        return _token_cache["value"]
 
 
 def _cache_key(url):
