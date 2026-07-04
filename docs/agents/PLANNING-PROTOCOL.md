@@ -30,18 +30,18 @@ reviewed artifact.
 
 For each `fleet:needs-plan` issue:
 
-0. **Claim the issue before planning.** Acquire a `fleet-claim`-style lock on
-   the `fleet:needs-plan` issue, and **skip it if a `## Plan` comment already
-   exists on it** (someone planned it on a prior tick) or if an open PR already
-   names it. Without an atomic claim, two opus panes that select the same oldest
+0. **Claim the issue before planning.** Take the planning lock —
+   `fleet-claim planning-claim <N> <your-agent-name>` — and **skip the issue if
+   it exits non-zero**: exit 3 means a `## Plan` comment already exists (someone
+   planned it on a prior tick), and exit 1 means another pane holds the lock.
+   Without an atomic claim, two opus panes that select the same oldest
    needs-plan issue on one scout tick both see no plan yet and both plan it
    (#1810 produced **three** duplicate plans for one issue — three wasted plan
    rounds). A comment cross-check alone doesn't close the same-tick race (both
    planners pass it before either posts a comment); the atomic claim does. (The
-   claim/dedup enforcement is fleet tooling — `fleet-claim planning-claim`,
-   landing with the re-scoped #1889; until it ships, honor this contract
-   manually.) **Re-planning an already-planned task** that went stale has its
-   own guarded flow — see [§ Re-planning a stale queued plan](#re-planning-a-stale-queued-plan).
+   claim/dedup lock shipped in #1978/#2035 — the re-scope of #1889; use it, do
+   not hand-roll the check.) **Re-planning an already-planned task** that went
+   stale has its own guarded flow — see [§ Re-planning a stale queued plan](#re-planning-a-stale-queued-plan).
 
 1. **Read the full issue thread** — title, body, and every comment.
    The plan is often seeded in a comment, and the human may have left
@@ -157,7 +157,7 @@ For each `fleet:needs-plan` issue:
    ```
    gh issue edit <N> --repo <owner/repo> \
      --remove-label "fleet:needs-plan" --add-label "fleet:plan-review"
-   fleet-claim planning-release <N> <your-agent-name>   # once re-scoped #1889 lands
+   fleet-claim planning-release <N> <your-agent-name>
    ```
    (`<owner/repo>` is `jakildev/IrredenEngine` for engine issues or
    `jakildev/irreden` for game issues — the repo where the issue lives, not your
