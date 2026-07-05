@@ -70,10 +70,15 @@ static bool fogCutVoxelSolid(device const FogLightOcclusionData *occlusion, int3
 }
 
 // Analytic cross-section band tuning — mirrors the GLSL twin (see there for
-// the rationale).
+// the rationale, including the air-pocket march).
 constant int kFogCutRayProbeDepth = 8;
 constant float kFogCutTone = 0.85f;
 constant float kFogCutLift = 0.06f;
+constant int kFogCutMarchSteps = 8;
+// Rim fade — mirrors the GLSL twin (see there for the full rationale and the
+// kFogHiddenKeepCells width coupling).
+constant float kFogRimFadeCells = 8.0f;
+constant float kFogRimFadeLevel = 0.75f;
 
 // Read the fog grid at a cell. Out-of-range cells read as visible (1.0):
 // texture reads have no sampler wrap mode, so this bounds check is load-bearing
@@ -142,6 +147,10 @@ kernel void c_fog_to_trixel(
     // Hard-disc-only reveal, tracked separately so the cross-section band's
     // rim shortcut can't fire off a soft (Mode B) disc's wide falloff.
     float hardState = 0.0f;
+    // This column's world distance PAST the nearest hard disc's radius —
+    // drives the rim fade below. Initialized to the full fade width so
+    // no-hard-disc scenes resolve to fade 0 (legacy path).
+    float hardDistPastRim = kFogRimFadeCells;
 
     // Live analytic vision circles: max-combine each disc's smooth visibility,
     // evaluated against the CONTINUOUS world column so the edge is crisp at
@@ -171,6 +180,11 @@ kernel void c_fog_to_trixel(
             state = max(state, reveal);
             if (fogObservers.visionCircles[i].w == 0.0f) {
                 hardState = max(hardState, reveal);
+                hardDistPastRim = min(
+                    hardDistPastRim,
+                    length(pos3D.xy - fogObservers.visionCircles[i].xy) -
+                        fogObservers.visionCircles[i].z
+                );
             }
         }
     }
@@ -240,16 +254,20 @@ kernel void c_fog_to_trixel(
                     // immune to bitfield rounding right at the rim.
                     cutSolid = true;
                 } else {
-                    // Sample occupancy half a world cell INSIDE the rim so the
-                    // rounded cell is unambiguously interior; a second sample
-                    // one cell deeper rides over rim-cell quantization misses.
+                    // March half-cell occupancy samples along the ray from
+                    // just inside the rim (the first sample's half-cell inset
+                    // keeps the rounded cell unambiguously interior). The
+                    // march rides over rim-cell quantization misses AND small
+                    // air pockets at an object's cut corner (solid floor a
+                    // couple of cells behind the entry); a void entry finds
+                    // only descending air and stays on the dark mask.
                     const float tHalfCell = 0.5f / worldPerDepthUnit;
-                    const int3 cellA =
-                        roundHalfUp(pos3D + (bestT + tHalfCell) * rayStep);
-                    const int3 cellB =
-                        roundHalfUp(pos3D + (bestT + 3.0f * tHalfCell) * rayStep);
-                    cutSolid = fogCutVoxelSolid(occlusionGrid, cellA) ||
-                               fogCutVoxelSolid(occlusionGrid, cellB);
+                    for (int s = 1; s <= kFogCutMarchSteps && !cutSolid; ++s) {
+                        cutSolid = fogCutVoxelSolid(
+                            occlusionGrid,
+                            roundHalfUp(pos3D + (bestT + float(s) * tHalfCell) * rayStep)
+                        );
+                    }
                 }
             }
         }
@@ -275,6 +293,16 @@ kernel void c_fog_to_trixel(
     } else {
         const float t = state / kFogExploredValue;
         outColor = mix(float3(0.0f), exploredColor, t);
+    }
+    // Rim fade (see the const block): lift UNEXPLORED pixels toward their lit
+    // colour near the hard-disc rim. Explored memory keeps its tone. The
+    // squared ease-out crushes the fade tail to black well before the
+    // keep-ring drop, so the outermost kept columns' wall faces (whose
+    // constant-depth recovery reads a column slightly INSIDE their true one)
+    // can't catch a visible lift against the void behind them.
+    if (gridState < kFogExploredValue) {
+        const float u = 1.0f - smoothstep(0.0f, kFogRimFadeCells, hardDistPastRim);
+        outColor = mix(outColor, src.rgb, kFogRimFadeLevel * u * u);
     }
     trixelColors.write(float4(outColor, src.a), uint2(pixel));
 }

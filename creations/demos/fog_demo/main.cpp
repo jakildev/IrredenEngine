@@ -570,16 +570,36 @@ void createShape(vec3 position, IRRender::ShapeType type, vec4 params, Color col
     IREntity::createEntity(C_LocalTransform{position}, C_ShapeDescriptor{type, params, color});
 }
 
+// The cross-section scenes' shared VOXEL ground slab. centerAroundOrigin
+// places the 60×60×3 cells at [-29,30]²×[4,6], so the radius-9 vision disc is
+// fully interior and the whole cut arc runs through pool voxels the occlusion
+// bitfield knows — an off-origin slab covers only part of the arc and the
+// uncovered segments cut to black.
+void createEdgeGroundSlab() {
+    IREntity::createEntity(
+        C_LocalTransform{vec3(0.0f, 0.0f, 5.0f)},
+        C_VoxelSetNew{IRMath::ivec3{60, 60, 3}, Color{90, 100, 120, 255}, true}
+    );
+}
+
 void initEntities() {
     // A wide thin floor so the fog mask has a continuous surface that fades
     // visible → explored → unexplored across the screen. Centered on origin.
+    // The cross-section scenes (--edge-zoom / --edge-smooth / --detached-edge)
+    // skip it and bring their own VOXEL ground slab instead: the analytic fog
+    // cut (#2124) decides solid-vs-air from the light-occlusion VOXEL bitfield,
+    // which SDF geometry never enters, so an SDF surface straddling the disc
+    // renders the cut band BLACK along whatever arc segments cross it (the
+    // two-black-bands artifact) instead of capping with the toned cut colour.
     constexpr float kFloorZ = 5.0f;
-    createShape(
-        vec3(0.0f, 0.0f, kFloorZ),
-        IRRender::ShapeType::BOX,
-        vec4(96.0f, 96.0f, 2.0f, 0.0f),
-        Color{150, 150, 160, 255}
-    );
+    if (!g_edgeZoom && !g_edgeSmooth && !g_detachedEdge) {
+        createShape(
+            vec3(0.0f, 0.0f, kFloorZ),
+            IRRender::ShapeType::BOX,
+            vec4(96.0f, 96.0f, 2.0f, 0.0f),
+            Color{150, 150, 160, 255}
+        );
+    }
 
     // The default + --moving-observer scenes dress the floor with SDF primitives
     // and the #2008 column-cull pillar canary. --player-walk / --edge-zoom /
@@ -722,17 +742,14 @@ void initEntities() {
         const float edge = g_edgeSmooth ? kEdgeSmoothEdge : kFogVisionEdgeDefault;
         IRPrefab::Fog::setVisionCircle(0.0f, 0.0f, kEdgeVisionRadius, edge);
 
-        // A thick voxel ground slab spanning the whole disc (#2124 screen-space
-        // cross-section): its cut EDGE — the vertical rim where the disc crosses it,
-        // camera-visible all around the near side — is the headline test for the
-        // per-pixel silhouette. Before the nearest-cell keep, the own-column drop
-        // ended this rim on the voxel lattice (a stair-stepped ring); now the
-        // boundary cells are kept and FOG_TO_TRIXEL trims the rim to the smooth
-        // analytic disc, matching the slab's top face at game resolution.
-        IREntity::createEntity(
-            C_LocalTransform{vec3(-30.0f, -30.0f, 5.0f)},
-            C_VoxelSetNew{IRMath::ivec3{60, 60, 3}, Color{90, 100, 120, 255}, true}
-        );
+        // The ground slab's cut EDGE — the vertical rim where the disc crosses
+        // it, camera-visible all around the near side — is the headline test
+        // for the per-pixel silhouette. Before the nearest-cell keep, the
+        // own-column drop ended this rim on the voxel lattice (a stair-stepped
+        // ring); now the boundary cells are kept and FOG_TO_TRIXEL trims the
+        // rim to the smooth analytic disc, matching the slab's top face at
+        // game resolution.
+        createEdgeGroundSlab();
 
         // Tall voxel pillar straddling the +X boundary: columns x∈[7,11] cross
         // the radius-9 disc, so its near half renders and its far half is dropped.
@@ -772,6 +789,10 @@ void initEntities() {
     // at yaw 0) so the two scenes read against the same floor edge.
     if (g_detachedEdge) {
         IRPrefab::Fog::setVisionCircle(0.0f, 0.0f, kDetachedVisionRadius);
+
+        // The same ground slab as the GRID twin, created before the detached
+        // canvas so it allocates from the MAIN canvas pool.
+        createEdgeGroundSlab();
 
         // The solid lives in MODEL space centered on its pool (origin); the
         // entity's world position is its CENTER (-9 on X), shifting its world
