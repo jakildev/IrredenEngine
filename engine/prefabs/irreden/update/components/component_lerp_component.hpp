@@ -2,8 +2,10 @@
 #define COMPONENT_LERP_COMPONENT_H
 
 #include <irreden/ir_math.hpp>
-#include <irreden/ir_ecs.hpp>
+#include <irreden/entity/ir_entity_types.hpp>
 #include <irreden/ir_constants.hpp>
+
+#include <functional>
 
 // LEFT OFF HERE, all this needs work.
 // do i need to also take in a min and max value,
@@ -16,16 +18,15 @@ using namespace IRMath;
 namespace IRComponents {
 
 struct C_LerpEntity {
-    EntityId boundEntity_;
-    std::function<void(EntityId)> func_;
+    IREntity::EntityId boundEntity_;
+    std::function<void(IREntity::EntityId)> func_;
 
     template <typename Function>
-    C_LerpComponent(EntityId entity, Function func)
-        : func_(func) {}
+    C_LerpEntity(IREntity::EntityId entity, Function func)
+        : boundEntity_(entity)
+        , func_(func) {}
 
-    // Default
-    C_LerpComponent()
-        : {}
+    C_LerpEntity() = default;
 
     void tick() {
         func_(boundEntity_);

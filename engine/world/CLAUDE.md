@@ -130,6 +130,52 @@ Most code never touches `World` directly. It accesses managers via the
 header, which reach through the global pointers `World` sets up at
 construction time.
 
+## Save-trait policy layer (persist P1, #2212, epic #667)
+
+`engine/world/include/irreden/world/save_trait.hpp` declares
+`IRWorld::SaveTrait<C>` — a compile-time trait deciding whether component
+type `C` participates in a world snapshot, and if so, its schema
+`kSaveVersion` (`uint32_t`, lives on the trait, not the component struct —
+the snapshot serializes a *schema*, defined by the P2 per-component
+serialize function, not the struct's in-memory layout). The primary
+template means "no decision yet" (`kExplicit = false`), deliberately NOT
+"opt-out" — an engine component that never specializes the trait fails a
+compile-time completeness gate instead of silently being skipped by
+persistence. Two macros make the decision explicit:
+`IR_SAVE_OPT_IN(Type, Version)` and `IR_SAVE_OPT_OUT(Type)`.
+
+`engine/world/include/irreden/world/save_component_inventory.hpp` is the
+audited decision table — one `IR_SAVE_OPT_IN`/`IR_SAVE_OPT_OUT` line per
+engine component, plus `AllEngineComponents` (a `std::tuple` listing every
+one of them) and a `static_assert` that fails the build if any listed
+component lacks an explicit decision. It's a heavy include (pulls every
+component header) — only world-snapshot TUs and `test/world/save_trait_test.cpp`
+should include it, never a widely-included header.
+
+**Opt-out-by-omission is forbidden.** A component with no decision doesn't
+silently default to "don't save" — it breaks the build. This is enforced
+structurally: the primary `SaveTrait` template has `kExplicit = false`,
+and `save_component_inventory.hpp`'s `static_assert` walks
+`AllEngineComponents` checking every entry's `kExplicit`.
+
+**New-component contract.** Adding a new engine component requires adding
+a matching `IR_SAVE_OPT_IN`/`IR_SAVE_OPT_OUT` line (with its own include)
+and an `AllEngineComponents` tuple entry — both the compile-time gate and
+`test/world/save_trait_test.cpp`'s `InventoryIsComplete` count backstop
+depend on the tuple size matching the audited total. A templated
+component with more than one concrete instantiation (e.g.
+`C_SystemEvent<SystemEvent>`) gets ONE representative instantiation in
+the inventory, not one per specialization — see the inline comment beside
+`C_SystemEvent<IRSystem::TICK>` in `save_component_inventory.hpp` for the
+rationale (the archetype walk excludes those entities entirely, so the
+other specializations are never queried).
+
+P1 is pure metadata — no archetype walk, no IRWS writer, no serialize/
+deserialize functions, no Lua surface. P2+ (the `ComponentId → serialize
+descriptor` runtime bridge, migration registry, GPU-handle regeneration
+pass) consumes `shouldSave<C>()` / `saveVersion<C>()` / `AllEngineComponents`
+on top of this layer.
+
 ## Responsibilities
 
 `World(const char* configFileName)`:
