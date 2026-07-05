@@ -581,12 +581,23 @@ struct C_VoxelSetNew {
         if (!IRPrefab::VoxelPool::hasPool(target)) {
             return; // no live pool to seed into — leave the set staged
         }
-        // Seed from pendingVoxels_ in place — only clear it on success, so a
-        // pool-exhaustion mismatch (seedIntoPool zeroes numVoxels_) leaves the
-        // set staged and retryable on a later frame instead of losing the data.
-        seedIntoPool(pendingBoundsMin_, pendingVoxels_, target);
+        // Move the staged records out and seed from the local copy, clearing
+        // pendingVoxels_ up front so the "is this set staged" gate stays honest
+        // (a moved-from vector's state is unspecified). Do NOT try to keep an
+        // exhausted seed retryable by leaving pendingVoxels_ in place: on a
+        // pool-allocation mismatch seedIntoPool zeroes *both* numVoxels_ and
+        // size_, so a later-frame retry would read extent == (0,0,0), seed zero
+        // voxels into a correctly-sized allocation, and leave the set resident
+        // over uninitialized slots — a silent render of garbage. A mismatch here
+        // means genuine pool exhaustion (already IRE_LOG_ERROR'd), and a world
+        // load frees no pool space between frames, so the retry never recovers
+        // anyway — it only churns SEED_STAGED_VOXELS every frame. Drop the set
+        // to a clean non-resident no-render instead; a clean no-render beats a
+        // corrupt render.
+        std::vector<C_Voxel> staged = std::move(pendingVoxels_);
+        pendingVoxels_.clear();
+        seedIntoPool(pendingBoundsMin_, staged, target);
         if (numVoxels_ > 0) {
-            pendingVoxels_.clear();
             IRPrefab::VoxelPool::queuePositionRange(
                 voxelStartIdx_,
                 static_cast<std::size_t>(numVoxels_),
