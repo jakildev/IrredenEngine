@@ -119,6 +119,101 @@ TEST(VoxelSetSerialize, WriteIsDeterministic) {
     EXPECT_EQ(0, std::memcmp(a.buffer().data(), b.buffer().data(), a.buffer().size()));
 }
 
+// Build a synthetic *non-staged* (pool-resident) set from public fields backed
+// by caller-owned storage — no voxel pool required. `voxels_` / `positions_`
+// point at the passed vectors; `rotationSourceVoxels_` (when non-empty) marks
+// the set as GRID-rotating. Mirrors the state REBUILD_GRID_VOXELS leaves a set
+// in without needing a render context.
+C_VoxelSetNew makePoolResidentSet(
+    const IRMath::ivec3 &size,
+    const IRMath::ivec3 &boundsMin,
+    IREntity::EntityId canvas,
+    std::vector<C_Voxel> &spanBacking,
+    std::vector<IRRender::VoxelGpuPosition> &positionsBacking,
+    std::vector<C_Voxel> rotationSource
+) {
+    C_VoxelSetNew set; // pool-free default ctor
+    set.numVoxels_ = static_cast<int>(spanBacking.size());
+    set.size_ = size;
+    set.canvasEntity_ = canvas;
+    set.voxels_ = std::span<C_Voxel>(spanBacking);
+    // Non-staged boundsMin is recovered from positions_[0].pos_.
+    positionsBacking[0].pos_ = IRMath::vec3(boundsMin);
+    set.positions_ = std::span<IRRender::VoxelGpuPosition>(positionsBacking);
+    set.rotationSourceVoxels_ = std::move(rotationSource);
+    return set;
+}
+
+// A GRID-mode set captured mid-rotation persists its AUTHORED voxel records
+// (rotationSourceVoxels_), not the derived dest-cell arrangement sitting in
+// the pool span. Reloading a mid-spin save must render the source, not the
+// resampled frame. boundsMin is still recovered from positions_[0].
+TEST(VoxelSetSerialize, GridMidRotationPersistsAuthoredNotDerived) {
+    const IRMath::ivec3 size{2, 1, 3}; // 6 voxels
+    const IRMath::ivec3 boundsMin{-4, 7, 2};
+    const IREntity::EntityId canvas = 12345;
+
+    const std::vector<C_Voxel> authored = makeVoxels(6);
+    // The pool span mid-spin: a deliberately different (derived) arrangement so
+    // a byte-compare distinguishes which source the serializer read from.
+    std::vector<C_Voxel> derived = makeVoxels(6);
+    for (C_Voxel &v : derived) {
+        v.color_.red_ = 200;
+        v.color_.green_ = 1;
+    }
+    std::vector<IRRender::VoxelGpuPosition> positions(6);
+
+    C_VoxelSetNew set = makePoolResidentSet(size, boundsMin, canvas, derived, positions, authored);
+    ASSERT_TRUE(set.pendingVoxels_.empty()); // non-staged
+    ASSERT_EQ(set.recordCount(), 6u);
+
+    IRAsset::Result<C_VoxelSetNew> res;
+    const C_VoxelSetNew out = serializeThenRead(set, res);
+    ASSERT_TRUE(res.ok());
+
+    EXPECT_EQ(out.pendingBoundsMin_.x, boundsMin.x);
+    EXPECT_EQ(out.pendingBoundsMin_.y, boundsMin.y);
+    EXPECT_EQ(out.pendingBoundsMin_.z, boundsMin.z);
+    EXPECT_EQ(out.canvasEntity_, canvas);
+    ASSERT_EQ(out.pendingVoxels_.size(), 6u);
+    for (std::size_t i = 0; i < authored.size(); ++i) {
+        EXPECT_EQ(0, std::memcmp(&out.pendingVoxels_[i], &authored[i], sizeof(C_Voxel)))
+            << "record " << i << " must match the authored source snapshot";
+        EXPECT_NE(0, std::memcmp(&out.pendingVoxels_[i], &derived[i], sizeof(C_Voxel)))
+            << "record " << i << " must NOT persist the derived mid-rotation span";
+    }
+}
+
+// A non-rotated pool-resident set (no rotationSourceVoxels_ snapshot) persists
+// straight from its `voxels_` span — the fast path the mid-rotation guard falls
+// back to.
+TEST(VoxelSetSerialize, PoolResidentNonRotatedPersistsSpan) {
+    const IRMath::ivec3 size{2, 2, 2}; // 8 voxels
+    const IRMath::ivec3 boundsMin{3, -1, 5};
+    const IREntity::EntityId canvas = 777;
+
+    std::vector<C_Voxel> span = makeVoxels(8);
+    std::vector<IRRender::VoxelGpuPosition> positions(8);
+
+    C_VoxelSetNew set =
+        makePoolResidentSet(size, boundsMin, canvas, span, positions, /*rotationSource=*/{});
+    ASSERT_TRUE(set.rotationSourceVoxels_.empty());
+    ASSERT_EQ(set.recordCount(), 8u);
+
+    IRAsset::Result<C_VoxelSetNew> res;
+    const C_VoxelSetNew out = serializeThenRead(set, res);
+    ASSERT_TRUE(res.ok());
+
+    EXPECT_EQ(out.pendingBoundsMin_.x, boundsMin.x);
+    EXPECT_EQ(out.pendingBoundsMin_.y, boundsMin.y);
+    EXPECT_EQ(out.pendingBoundsMin_.z, boundsMin.z);
+    ASSERT_EQ(out.pendingVoxels_.size(), 8u);
+    for (std::size_t i = 0; i < span.size(); ++i) {
+        EXPECT_EQ(0, std::memcmp(&out.pendingVoxels_[i], &span[i], sizeof(C_Voxel)))
+            << "record " << i << " must round-trip the pool span";
+    }
+}
+
 // A truncated buffer surfaces a read error instead of over-reading.
 TEST(VoxelSetSerialize, TruncatedReadFails) {
     const std::vector<C_Voxel> voxels = makeVoxels(8);

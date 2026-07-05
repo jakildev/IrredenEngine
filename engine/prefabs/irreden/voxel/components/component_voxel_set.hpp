@@ -582,8 +582,7 @@ struct C_VoxelSetNew {
             return; // no live pool to seed into — leave the set staged
         }
         std::vector<C_Voxel> staged = std::move(pendingVoxels_);
-        pendingVoxels_.clear();
-        pendingVoxels_.shrink_to_fit();
+        pendingVoxels_.clear(); // moved-from state is unspecified; make "staged" gate honest
         seedIntoPool(pendingBoundsMin_, staged, target);
         if (numVoxels_ > 0) {
             IRPrefab::VoxelPool::queuePositionRange(

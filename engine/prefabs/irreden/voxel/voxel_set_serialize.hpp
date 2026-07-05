@@ -77,8 +77,25 @@ template <> struct SaveSerialize<IRComponents::C_VoxelSetNew> {
                 w.writeBytes(&voxel, sizeof(IRComponents::C_Voxel));
             }
         } else {
+            // A GRID-mode set saved mid-rotation has a DERIVED pool span:
+            // REBUILD_GRID_VOXELS rearranges `voxels_` into dest-cell order with
+            // colors duplicated wherever one source voxel covers several dest
+            // cells, and stashes the authored per-voxel records in
+            // `rotationSourceVoxels_` (see that system + the component header's
+            // `rotationSourceVoxels_` contract). The authored snapshot — not the
+            // resampled span — is the pool-independent truth, so a `saveWorld()`
+            // that lands while an entity is spinning round-trips the source
+            // arrangement instead of the frame's derived colors. Both are
+            // dense-box-index ordered, so `read()` (which rebuilds geometry from
+            // `boundsMin + index`) restores identically either way. The snapshot
+            // is non-empty only while rotating and holds `numVoxels_` records
+            // then; fall back to the span if the sizes ever diverge (a rare
+            // span-clamp) rather than risk a mixed/short read.
+            const bool rotated = set.rotationSourceVoxels_.size() == count;
             for (std::size_t i = 0; i < count; ++i) {
-                w.writeBytes(&set.voxels_[i], sizeof(IRComponents::C_Voxel));
+                const IRComponents::C_Voxel &voxel =
+                    rotated ? set.rotationSourceVoxels_[i] : set.voxels_[i];
+                w.writeBytes(&voxel, sizeof(IRComponents::C_Voxel));
             }
         }
     }
