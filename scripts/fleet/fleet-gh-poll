@@ -1,0 +1,70 @@
+#!/usr/bin/env python3
+"""fleet-gh-poll — conditional GitHub REST GET with per-endpoint ETag caching.
+
+A thin CLI seam over fleet_gh_poll.conditional_get so non-Python callers (and
+the Q2 centralized poller) can make quota-free 304-conditional reads.
+
+Usage:
+  fleet-gh-poll <repo-slug> <path> [--param k=v]... [--accept MIME]
+
+  <repo-slug>   owner/repo, e.g. jakildev/IrredenEngine
+  <path>        repo-relative REST path, e.g. issues, pulls, issues/42
+  --param k=v   repeatable query parameter (e.g. --param state=open)
+
+Output: the response body on stdout (fresh on 200, cached on 304).
+Exit:   0 = changed (HTTP 200)
+        3 = unchanged (HTTP 304, cached body served)
+        1 = error (network / HTTP failure / no auth token)
+
+Source of truth: scripts/fleet/fleet-gh-poll in the engine repo.
+Installed to ~/bin/fleet-gh-poll by scripts/fleet/install.sh.
+"""
+import argparse
+import os
+import sys
+from pathlib import Path
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from fleet_gh_poll import conditional_get
+
+
+def _parse_params(pairs):
+    params = {}
+    for pair in pairs or []:
+        if "=" not in pair:
+            sys.stderr.write(f"fleet-gh-poll: bad --param '{pair}' (want k=v)\n")
+            sys.exit(2)
+        key, value = pair.split("=", 1)
+        params[key] = value
+    return params
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Conditional GitHub REST GET with ETag caching.")
+    parser.add_argument("repo_slug", help="owner/repo, e.g. jakildev/IrredenEngine")
+    parser.add_argument("path", help="repo-relative REST path, e.g. issues")
+    parser.add_argument("--param", action="append", metavar="k=v",
+                        help="query parameter (repeatable)")
+    parser.add_argument("--accept", help="override the Accept header")
+    parser.add_argument("--cache-dir", help="override the ETag cache directory")
+    args = parser.parse_args()
+
+    params = _parse_params(args.param)
+    cache_dir = Path(args.cache_dir) if args.cache_dir else None
+    changed, body = conditional_get(
+        args.repo_slug, args.path, params=params or None,
+        accept=args.accept, cache_dir=cache_dir,
+    )
+
+    if body is None:
+        sys.stderr.write("fleet-gh-poll: request failed (network/auth/HTTP error)\n")
+        return 1
+    sys.stdout.write(body)
+    if body and not body.endswith("\n"):
+        sys.stdout.write("\n")
+    return 0 if changed else 3
+
+
+if __name__ == "__main__":
+    sys.exit(main())

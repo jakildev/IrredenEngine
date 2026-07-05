@@ -268,6 +268,11 @@ Parallel-agent fleet (tmux + Claude)
                                  addressing PR has merged (merger step 1.5)
   fleet-issue view <N> [--repo engine|game]
                                  read scout's per-issue cache + gh fallback
+  fleet-gh-poll <owner/repo> <path> [--param k=v]… [--accept MIME]
+                                 conditional GitHub REST GET (If-None-Match +
+                                 ETag cache); prints the body, exits 0=changed
+                                 200 / 3=unchanged 304 / 1=error. The scout's
+                                 quota-free polling seam (#1394 Q1)
   fleet-plan-lint <issue-number> [--repo engine|game]
                                  structural lint for a `## Plan` comment; hard-
                                  fails on missing plan / deferred-approach

@@ -514,7 +514,10 @@ class PlanReviewExcludedFromTasksOpen(unittest.TestCase):
 
     def _fetch(self, issues_list):
         payload = json.dumps(issues_list)
-        with patch.object(_mod, "run_capture", return_value=payload):
+        # Patch the REST seam (conditional_get), not run_capture: fetch_task_queue
+        # migrated to _rest_list -> conditional_get, and a mock miss must not reach
+        # the live API or the shared ~/.fleet ETag cache the scout uses (#2227).
+        with patch.object(_mod, "conditional_get", return_value=(True, payload)):
             return _mod.fetch_task_queue("jakildev/IrredenEngine")
 
     def _issue(self, number, extra_labels=()):
@@ -555,7 +558,10 @@ class NeedsGlHostAnnotation(unittest.TestCase):
 
     def _fetch(self, issues_list):
         payload = json.dumps(issues_list)
-        with patch.object(_mod, "run_capture", return_value=payload):
+        # Patch the REST seam (conditional_get), not run_capture: fetch_task_queue
+        # migrated to _rest_list -> conditional_get, and a mock miss must not reach
+        # the live API or the shared ~/.fleet ETag cache the scout uses (#2227).
+        with patch.object(_mod, "conditional_get", return_value=(True, payload)):
             return _mod.fetch_task_queue("jakildev/IrredenEngine")
 
     def _issue(self, number, extra_labels=()):

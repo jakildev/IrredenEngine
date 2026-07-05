@@ -36,6 +36,18 @@ _SAMPLE_TASK_QUEUE = {
 
 class TestScoutDegradedFetch(unittest.TestCase):
 
+    def setUp(self):
+        # collect_state also fetches engine plan_review, which these tests don't
+        # otherwise stub. fetch_plan_review now goes through conditional_get
+        # (REST + ETag cache), so leaving it live would hit the real GitHub API
+        # and write the shared ~/.fleet ETag cache on every run — the same
+        # hermeticity hazard the #2227 review flagged for fetch_task_queue.
+        # Stub it to a clean empty result so the degraded assertions below key
+        # only on the fetcher each test deliberately fails.
+        patcher = patch.object(_mod, "fetch_plan_review", return_value=[])
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def _write_prev_state(self, tmp_dir, prs=None, tasks=None):
         """Write a minimal previous state.json for fallback tests."""
         state = {

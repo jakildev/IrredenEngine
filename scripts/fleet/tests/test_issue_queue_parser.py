@@ -7,6 +7,7 @@ in_progress, area, blocked_by, task identity).
 """
 import importlib.machinery
 import importlib.util
+import json
 import unittest
 from pathlib import Path
 
@@ -113,22 +114,20 @@ class ParseBlockedBy(unittest.TestCase):
 class FetchTaskQueueDispatch(unittest.TestCase):
     """Exercise the per-issue loop with synthetic gh output.
 
-    Stubs run_capture so the test doesn't shell out to gh.
+    Stubs conditional_get so the test doesn't hit the GitHub REST API.
     """
     def _run(self, issues):
-        captured = []
-        def fake_run_capture(cmd, **kwargs):
-            captured.append(cmd)
-            if cmd[0] == "gh":
-                import json
-                return json.dumps(issues)
-            return ""
-        original = _mod.run_capture
-        _mod.run_capture = fake_run_capture
+        # fetch_task_queue now reads the queue via _rest_list -> conditional_get
+        # (REST + ETag cache), not run_capture. Patch that seam so the test stays
+        # hermetic: a mock miss must never fall through to the live GitHub API or
+        # mutate the shared ~/.fleet ETag cache the production scout uses (#2227).
+        payload = json.dumps(issues)
+        original = _mod.conditional_get
+        _mod.conditional_get = lambda *a, **k: (True, payload)
         try:
             return _mod.fetch_task_queue("jakildev/IrredenEngine")
         finally:
-            _mod.run_capture = original
+            _mod.conditional_get = original
 
     def test_label_beats_body_for_model(self):
         out = self._run([{

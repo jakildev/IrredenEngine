@@ -53,6 +53,12 @@ if sys.platform == "win32" and not os.environ.get("PYTHONUTF8"):
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from fleet_blocked_by import is_no_blocker_value, parse_blocked_by
 from fleet_branch_match import PARKED_PR_LABELS, branch_matches_issue
+
+# Conditional-REST polling core (#1394 Q1) — see the fetcher section below.
+# ETAG_DIR aliases the module's shared etag-cache default so the two never
+# drift; it's mkdir'd in main() and the fetchers rely on that default cache_dir.
+from fleet_gh_poll import DEFAULT_CACHE_DIR as ETAG_DIR
+from fleet_gh_poll import conditional_get
 from fleet_stack_base import unsafe_base_reason
 
 
@@ -154,7 +160,76 @@ def _truncate_review_body(body):
     return body[:REVIEW_BODY_HEAD] + "\n…[truncated]…\n" + body[-REVIEW_BODY_TAIL:]
 
 
-def fetch_prs(repo):
+# --- Conditional-REST list fetching (#1394 Q1) -----------------------------
+#
+# The 7 pure list reads below go through conditional_get: If-None-Match + a
+# per-endpoint ETag cache, so an unchanged endpoint answers 304 for zero
+# rate-limit quota (both the core/REST and graphql pools). A 304 serves the
+# cached body, so we always get a list to parse — the fetchers re-normalize it
+# each tick (cheap CPU; the quota, not the parse, was the cost). A hard failure
+# (network/HTTP/parse) returns None so collect_state's last-known-good fallback
+# engages; a poll failure must never masquerade as a clean empty.
+#
+# REST is snake_case (updated_at, head.ref) vs the GraphQL camelCase the rest of
+# the scout consumes, and REST /issues returns pull requests too — the mapping
+# helpers normalize both back to the exact field set the previous gh-list output
+# carried, so downstream projections stay field-equivalent across the cutover.
+
+
+def _rest_list(repo_slug, path, params, per_page=100, max_pages=1):
+    """Conditional-GET one or more pages of a REST list endpoint.
+
+    Returns the concatenated parsed list, or None on any hard error. Pages after
+    the first are fetched only while the previous page was full (standard REST
+    pagination); each page carries its own ETag, so an unchanged multi-page set
+    still costs zero quota.
+    """
+    items = []
+    for page in range(1, max_pages + 1):
+        page_params = dict(params)
+        page_params["per_page"] = str(per_page)
+        if max_pages > 1:
+            page_params["page"] = str(page)
+        _changed, body = conditional_get(repo_slug, path, params=page_params)
+        if body is None:
+            return None
+        try:
+            page_items = json.loads(body)
+        except json.JSONDecodeError as e:
+            log(f"rest {repo_slug}/{path} page {page}: bad JSON: {e}")
+            return None
+        if not isinstance(page_items, list):
+            log(f"rest {repo_slug}/{path} page {page}: expected a JSON list")
+            return None
+        items.extend(page_items)
+        if len(page_items) < per_page:
+            break
+    return items
+
+
+def _rest_issue_summary(issue, with_body=False):
+    # Mirror the exact field set fetch_issues_by_label produced from gh's
+    # --json number,title,labels,updatedAt(,body): explicit keys only, so no
+    # extra REST fields (id, node_id, …) leak into the projection.
+    summary = {
+        "number": issue.get("number", 0),
+        "title": issue.get("title", "") or "",
+        "labels": sorted(lbl["name"] for lbl in issue.get("labels", [])),
+        "updatedAt": issue.get("updated_at", "") or "",
+    }
+    if with_body:
+        summary["body"] = issue.get("body", "") or ""
+    return summary
+
+
+def _is_pull_request(issue):
+    # REST GET /issues returns PRs too (they carry a `pull_request` key); the
+    # GraphQL issue list did not, so drop them or PRs leak into
+    # needs_plan/tasks/epics/human_approved.
+    return "pull_request" in issue
+
+
+def _fetch_prs_graphql(repo):
     out = run_capture([
         "gh", "pr", "list", "--repo", repo, "--state", "open",
         "--json",
@@ -184,6 +259,31 @@ def fetch_prs(repo):
     # projection hash stays quiescent when nothing has actually changed.
     prs.sort(key=lambda pr: pr.get("number", 0))
     return prs
+
+
+def fetch_prs(repo, prev=None):
+    # The open-PR list is the one read that STAYS on GraphQL — it needs reviews
+    # + mergeable, which the REST list omits. So gate it: a cheap conditional
+    # REST GET /pulls?state=open is the change-detector. 304 (unchanged) → reuse
+    # the prior parsed list, spending zero quota and skipping the GraphQL query
+    # entirely. 200 (changed) → fire the GraphQL list for the full fields.
+    #
+    # The detector's ETag flips on every list-level change we care about: a new
+    # review or a label edit bumps a PR's updated_at (→ new body → new ETag), and
+    # a merge/close removes the PR from the open set (→ new ETag). mergeable can
+    # go stale only if master advances without the PR moving — but master only
+    # advances by merging a PR, which itself changes the open set → refetch. On a
+    # detector error conditional_get returns (True, None) → changed=True → we
+    # fall through to GraphQL, so a failed detector degrades to today's behavior.
+    # per_page=100 so the detector's single page covers every open PR (REST
+    # defaults to 30); sort=updated keeps the freshest PRs on page 1 if the set
+    # ever nears the cap.
+    changed, _body = conditional_get(repo, "pulls", params={
+        "state": "open", "sort": "updated", "direction": "desc", "per_page": "100",
+    })
+    if not changed and prev is not None:
+        return prev
+    return _fetch_prs_graphql(repo)
 
 
 _ALREADY_QUEUED_LABELS = frozenset({"fleet:queued", "fleet:scope-shipped", "fleet:needs-human"})
@@ -242,26 +342,28 @@ def _ingest_skipped(labels):
     return bool(lbls & _INGEST_SKIP_LABELS)
 
 
-def fetch_issues_by_label(repo, filter_label, exclude_labels=None, with_body=False):
+def fetch_issues_by_label(repo, filter_label, exclude_labels=None,
+                          with_body=False, per_page=100):
     # with_body pulls the issue body too — the queue-manager-ingest projection
     # needs it to resolve each human:approved issue's `**Blocked by:**` chain
-    # (resolve_human_approved_blockers); the cheaper label-only fetch is the
-    # default for callers that never inspect blockers (needs-plan).
-    fields = "number,title,labels,updatedAt" + (",body" if with_body else "")
-    out = run_capture([
-        "gh", "issue", "list", "--repo", repo,
-        "--label", filter_label, "--state", "open",
-        "--json", fields,
-    ])
-    if out is None:
+    # (resolve_human_approved_blockers); the cheaper label-only mapping is the
+    # default for callers that never inspect blockers (needs-plan). The body
+    # rides along on the REST response regardless; with_body only controls
+    # whether it's kept in the summary.
+    #
+    # per_page caps the window (REST /issues defaults to created&desc, matching
+    # gh's ordering). The default 100 fully captures the small label sets
+    # (needs-plan / plan-review / epics); human_approved passes 30 to reproduce
+    # gh's default --limit exactly (its raw set exceeds 30 before the
+    # exclude-labels filter), keeping the queue-ingest window unchanged.
+    raw = _rest_list(repo, "issues", {"labels": filter_label, "state": "open"},
+                     per_page=per_page)
+    if raw is None:
         return None
-    try:
-        issues = json.loads(out)
-    except json.JSONDecodeError as e:
-        log(f"gh issue list {repo} --label {filter_label}: bad JSON: {e}")
-        return None
-    for issue in issues:
-        issue["labels"] = sorted(lbl["name"] for lbl in issue.get("labels", []))
+    issues = [
+        _rest_issue_summary(i, with_body=with_body)
+        for i in raw if not _is_pull_request(i)
+    ]
     if exclude_labels:
         issues = [i for i in issues if not (set(i["labels"]) & exclude_labels)]
     issues.sort(key=lambda issue: issue.get("number", 0))
@@ -301,8 +403,11 @@ def fetch_human_approved(repo):
     # Exclude already-ingested issues to avoid re-triggering queue-manager.
     # with_body=True so resolve_human_approved_blockers can parse the
     # `**Blocked by:**` chain and keep blocked children out of the ingest set.
+    # per_page=30 mirrors gh's default --limit (the prior fetch had no explicit
+    # limit) so the queue-ingest set stays byte-for-byte the same across the
+    # REST cutover.
     return fetch_issues_by_label(repo, "human:approved", _ALREADY_QUEUED_LABELS,
-                                 with_body=True)
+                                 with_body=True, per_page=30)
 
 
 def fetch_closed_fleet_queued(repo, limit=100):
@@ -312,21 +417,21 @@ def fetch_closed_fleet_queued(repo, limit=100):
     # realistic backlog window (observed 2026-05-19 that the original 20-item
     # cap missed older strands when ~40 fleet:queued issues closed after one
     # another in a tight window).
-    out = run_capture([
-        "gh", "issue", "list", "--repo", repo,
-        "--label", "fleet:queued", "--state", "closed",
-        "--limit", str(limit),
-        "--json", "number,title,labels,updatedAt",
-    ])
-    if out is None:
+    #
+    # sort=created&direction=desc is both the REST /issues default and gh's
+    # default ordering (issue number is created-monotonic), so the per_page cap
+    # keeps the same newest-N window gh's --limit did — verified field- and
+    # number-equivalent against the live snapshot. (REST has no gh-style --limit;
+    # per_page is the cap, 100 matches the prior --limit 100.)
+    raw = _rest_list(repo, "issues", {
+        "labels": "fleet:queued", "state": "closed",
+        "sort": "created", "direction": "desc",
+    }, per_page=min(limit, 100))
+    if raw is None:
         return None
-    try:
-        issues = json.loads(out)
-    except json.JSONDecodeError as e:
-        log(f"gh issue list {repo} --label fleet:queued --state closed: bad JSON: {e}")
-        return None
-    for issue in issues:
-        issue["labels"] = sorted(lbl["name"] for lbl in issue.get("labels", []))
+    issues = [
+        _rest_issue_summary(i) for i in raw if not _is_pull_request(i)
+    ]
     issues.sort(key=lambda issue: issue.get("number", 0))
     return issues
 
@@ -349,22 +454,34 @@ def fetch_recent_merged_prs(repo, limit=30):
     # renderer) can detect merged-to-non-master PRs (the PR #543 stranded
     # branch pattern from 2026-05-08), where mergedAt is set but the
     # commit isn't reachable from origin/master.
-    out = run_capture([
-        "gh", "pr", "list", "--repo", repo, "--state", "merged",
-        "--limit", str(limit),
-        # headRefName feeds the downstream Done-section renderer's
-        # Owner field — the queue-manager projection itself doesn't
-        # diff on it, but the slicer passes the full record through
-        # to ~/.fleet/state/projections/queue-manager.json.
-        "--json", "number,title,headRefName,baseRefName,mergedAt",
-    ])
-    if out is None:
+    # headRefName feeds the downstream Done-section renderer's Owner field — the
+    # queue-manager projection itself doesn't diff on it, but the slicer passes
+    # the full record through to ~/.fleet/state/projections/queue-manager.json.
+    #
+    # REST /pulls has no `state=merged` filter (only open/closed/all), so pull
+    # the newest closed PRs (sort=created&direction=desc — gh's default ordering,
+    # PR number being created-monotonic) and keep the merged ones. per_page is
+    # padded above `limit` because closed-unmerged PRs (rare in this fleet, which
+    # forbids direct-to-master) dilute the window; take the `limit` newest merged,
+    # then sort by number. gh's `--state merged --limit N` returns the N
+    # newest-created merged PRs, which are all within this newest-closed window,
+    # so the resulting set matches (verified against the live snapshot).
+    raw = _rest_list(repo, "pulls", {
+        "state": "closed", "sort": "created", "direction": "desc",
+    }, per_page=100)
+    if raw is None:
         return None
-    try:
-        prs = json.loads(out)
-    except json.JSONDecodeError as e:
-        log(f"gh pr list {repo} --state merged: bad JSON: {e}")
-        return None
+    merged = [pr for pr in raw if pr.get("merged_at")][:limit]
+    prs = [
+        {
+            "number": pr.get("number", 0),
+            "title": pr.get("title", "") or "",
+            "headRefName": (pr.get("head") or {}).get("ref", ""),
+            "baseRefName": (pr.get("base") or {}).get("ref", ""),
+            "mergedAt": pr.get("merged_at", ""),
+        }
+        for pr in merged
+    ]
     prs.sort(key=lambda pr: pr.get("number", 0))
     return prs
 
@@ -463,23 +580,15 @@ _is_no_blocker_value = is_no_blocker_value
 
 def fetch_task_queue(repo_slug):
     """Fetch open task queue from GitHub Issues with the fleet:queued label."""
-    issues_out = run_capture([
-        "gh", "issue", "list",
-        "--repo", repo_slug,
-        "--label", "fleet:queued",
-        "--state", "open",
-        "--json", "number,title,labels,body",
-        "--limit", "200",
-    ])
-
-    if not issues_out:
+    # up to 200 open fleet:queued issues (the original --limit 200) → 2 REST
+    # pages of 100, each with its own ETag; an unchanged queue costs zero quota.
+    issues = _rest_list(repo_slug, "issues", {
+        "labels": "fleet:queued", "state": "open",
+    }, per_page=100, max_pages=2)
+    if issues is None:
         return None
-
-    try:
-        issues = json.loads(issues_out)
-    except json.JSONDecodeError as e:
-        log(f"fetch_task_queue {repo_slug}: bad JSON: {e}")
-        return None
+    # REST /issues returns PRs too — drop them (the GraphQL issue list did not).
+    issues = [i for i in issues if not _is_pull_request(i)]
 
     sections = {"open": [], "in_progress": [], "done": []}
 
@@ -2257,10 +2366,17 @@ def collect_state():
     if (GAME / ".git").exists():
         repos["game"] = {"path": str(GAME)}
 
+    def _prev(repo_key, field):
+        # Prior parsed value for fetch_prs's 304-reuse fast path (skip the
+        # GraphQL query when the open-PR list is unchanged). None on first run /
+        # ETag-cache desync → fetch_prs falls through to a live GraphQL fetch.
+        return _prev_repos.get(repo_key, {}).get(field)
+
     fetch_specs = []
     if "engine" in repos:
         fetch_specs += [
-            ("engine", "prs", lambda: fetch_prs("jakildev/IrredenEngine")),
+            ("engine", "prs",
+             lambda: fetch_prs("jakildev/IrredenEngine", prev=_prev("engine", "prs"))),
             ("engine", "needs_plan", lambda: fetch_needs_plan("jakildev/IrredenEngine")),
             ("engine", "plan_review", lambda: fetch_plan_review("jakildev/IrredenEngine")),
             ("engine", "human_approved", lambda: fetch_human_approved("jakildev/IrredenEngine")),
@@ -2273,7 +2389,8 @@ def collect_state():
         ]
     if "game" in repos:
         fetch_specs += [
-            ("game", "prs", lambda: fetch_prs("jakildev/irreden")),
+            ("game", "prs",
+             lambda: fetch_prs("jakildev/irreden", prev=_prev("game", "prs"))),
             ("game", "needs_plan", lambda: fetch_needs_plan("jakildev/irreden")),
             ("game", "plan_review", lambda: fetch_plan_review("jakildev/irreden")),
             ("game", "human_approved", lambda: fetch_human_approved("jakildev/irreden")),
@@ -2508,6 +2625,7 @@ def main():
     PRS_DIR.mkdir(parents=True, exist_ok=True)
     DIFFS_DIR.mkdir(parents=True, exist_ok=True)
     ISSUES_DIR.mkdir(parents=True, exist_ok=True)
+    ETAG_DIR.mkdir(parents=True, exist_ok=True)
 
     if not ENGINE.exists():
         log(f"engine repo not found at {ENGINE}; aborting")
