@@ -139,6 +139,36 @@ IRAsset::BinaryStatus saveWorld(const SaveRegistry &registry, const std::string 
 /// then apply. Call after `IREntity::resetGameplay()` at a frame boundary.
 LoadResult loadWorld(const SaveRegistry &registry, const std::string &path);
 
+/// Build the process-default `SaveRegistry` — the curated subset of engine
+/// components that currently have a working `SaveSerialize<C>`: `C_VoxelSetNew`
+/// (explicit serializer, persist P6) plus trivially-copyable plain-data
+/// components (`C_LocalTransform`, `C_PositionInt3D`, `C_SizeInt3D`). This is
+/// the registry the no-registry-argument `saveWorld/loadWorld` overloads (and
+/// the P7 `IRPersist` Lua binding) forward to.
+///
+/// It is deliberately a **subset** of `AllEngineComponents`
+/// (`save_component_inventory.hpp`): registering the full inventory does not
+/// compile today because most opted-in heap-owning components
+/// (`C_Name`, `C_Skeleton`, `C_MidiSequence`, ...) still lack a
+/// `SaveSerialize<C>` specialization and would hit the primary template's
+/// `static_assert`. Growing this to the full inventory (a per-component
+/// serializer pass + a `HasExplicitSaveSerialize<C>` filter over
+/// `AllEngineComponents`) is tracked as downstream work; add each component
+/// here as its serializer lands.
+///
+/// Built fresh per call (a handful of allocations — never a per-frame path, and
+/// save/load are one-shot load-time ops), so the entries' session-local
+/// `ComponentId` resolution always matches the live `EntityManager` rather than
+/// caching a stale id from an earlier world.
+SaveRegistry makeDefaultSaveRegistry();
+
+/// `(path)`-only convenience over `makeDefaultSaveRegistry()`, for callers that
+/// don't build their own registry (the `IRPersist` Lua binding, tools).
+/// `loadWorld` carries the same frame-boundary contract as the
+/// `(registry, path)` form — call after `IREntity::resetGameplay()`.
+IRAsset::BinaryStatus saveWorld(const std::string &path);
+LoadResult loadWorld(const std::string &path);
+
 } // namespace IRWorld
 
 #endif /* WORLD_SNAPSHOT_H */

@@ -18,6 +18,7 @@
 #include <irreden/script/lua_sim_bindings.hpp>
 #include <irreden/script/lua_spatial_bindings.hpp>
 #include <irreden/script/lua_widget_bindings.hpp>
+#include <irreden/script/lua_world_snapshot_bindings.hpp>
 #include <irreden/script/prefab_api.hpp>
 #include <irreden/voxel/components/component_bind_points.hpp>
 #include <irreden/voxel/components/component_joint_hierarchy.hpp>
@@ -663,6 +664,7 @@ void LuaScript::bindLuaDrivenEcs() {
     detail::bindSimApi(*this);
     detail::bindAudioApi(*this);
     detail::bindPersistenceApi(*this);
+    detail::bindWorldSnapshotApi(*this);
 }
 
 void LuaScript::bindLuaCommands() {

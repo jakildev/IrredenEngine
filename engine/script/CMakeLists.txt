@@ -53,6 +53,15 @@ target_include_directories(
     IrredenEngineScripting PRIVATE
     $<TARGET_PROPERTY:IrredenEngineAudio,INTERFACE_INCLUDE_DIRECTORIES>
 )
+# lua_world_snapshot_bindings.hpp includes <irreden/world/world_snapshot.hpp>
+# (IRPersist world save/load, persist P7 #2218). Same include-only generator-
+# expression pattern — IRWorld:: symbols resolve at final exe link through
+# IrredenEngineWorld. NO library link: World links Scripting, so a link back
+# would form a cycle.
+target_include_directories(
+    IrredenEngineScripting PRIVATE
+    $<TARGET_PROPERTY:IrredenEngineWorld,INTERFACE_INCLUDE_DIRECTORIES>
+)
 # Force sol2 to use its try/catch trampoline rather than letting C++
 # exceptions propagate through the LuaJIT VM. With LuaJIT 2.1 sol2's
 # default is exception propagation; in practice the exception message

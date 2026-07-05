@@ -19,9 +19,21 @@
 #include <span>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace IRWorld::detail {
+
+/// Collect the live world's saved `CHILD_OF` edges as sorted `(child, parent)`
+/// masked-id pairs. Only edges whose **both** endpoints are in @p servedIds —
+/// the exact set of masked ids P2 wrote to `ARCH` + `SNGL` — are kept, so every
+/// edge round-trips. Sorted by `(child, parent)` for a deterministic order
+/// (each `CHILD_OF` child has exactly one parent, a total order). Shared by
+/// `makeRelationChunk` (binary `RELN` body) and the `IR_PERSIST_DUMP`
+/// `.json.txt` writer, so both describe the identical edge set.
+std::vector<std::pair<IREntity::EntityId, IREntity::EntityId>> collectChildParentEdges(
+    IREntity::EntityManager &entityManager, const std::unordered_set<IREntity::EntityId> &servedIds
+);
 
 /// Serialize the live world's `CHILD_OF` edge set into a self-describing
 /// `RELN` chunk (name table at the head + `(relationTypeId, child, parent)`

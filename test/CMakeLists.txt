@@ -70,6 +70,7 @@ add_executable(IrredenEngineTest
   script/lua_component_register_test.cpp
   script/lua_enum_register_test.cpp
   script/lua_persistence_test.cpp
+  script/lua_world_snapshot_test.cpp
   script/lua_pipeline_register_test.cpp
   script/lua_render_bindings_test.cpp
   script/lua_rotation_target_lua_test.cpp
