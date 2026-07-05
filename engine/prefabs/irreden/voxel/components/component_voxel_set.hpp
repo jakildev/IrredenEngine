@@ -581,10 +581,12 @@ struct C_VoxelSetNew {
         if (!IRPrefab::VoxelPool::hasPool(target)) {
             return; // no live pool to seed into — leave the set staged
         }
-        std::vector<C_Voxel> staged = std::move(pendingVoxels_);
-        pendingVoxels_.clear(); // moved-from state is unspecified; make "staged" gate honest
-        seedIntoPool(pendingBoundsMin_, staged, target);
+        // Seed from pendingVoxels_ in place — only clear it on success, so a
+        // pool-exhaustion mismatch (seedIntoPool zeroes numVoxels_) leaves the
+        // set staged and retryable on a later frame instead of losing the data.
+        seedIntoPool(pendingBoundsMin_, pendingVoxels_, target);
         if (numVoxels_ > 0) {
+            pendingVoxels_.clear();
             IRPrefab::VoxelPool::queuePositionRange(
                 voxelStartIdx_,
                 static_cast<std::size_t>(numVoxels_),
