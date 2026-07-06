@@ -181,7 +181,9 @@ kernel void c_voxel_visibility_compact(
         if (chunkVisible[chunkIdx] != 0u) {
             const uint maskWord = activeMask[idx >> 5u];
             if (((maskWord >> (idx & 31u)) & 1u) != 0u) {
-                const int3 voxelPosRaw = int3(round(positions[idx].xyz));
+                // roundHalfUp keeps tie cells consistent with the stage-1/2
+                // raster (hardware round() ties are implementation-defined).
+                const int3 voxelPosRaw = roundHalfUp(positions[idx].xyz);
                 int2 isoPos;
                 int cullMargin = 0;
                 // Smooth camera Z-yaw (T3 / #1310) — see the GLSL mirror for the

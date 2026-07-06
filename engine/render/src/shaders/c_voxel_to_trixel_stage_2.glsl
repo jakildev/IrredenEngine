@@ -242,8 +242,8 @@ void main() {
          (perAxisRoute == 0 && detachedWorldReceive.w != 0.0));
     ivec2 worldColumn = ivec2(0);
     if (fogActive) {
-        worldColumn = ivec3(round(voxelPosition.xyz)).xy +
-            (isDetachedCanvas > 0.5 ? ivec2(round(detachedWorldReceive.xy)) : ivec2(0));
+        worldColumn = roundHalfUp(voxelPosition.xyz).xy +
+            (isDetachedCanvas > 0.5 ? roundHalfUp(detachedWorldReceive.xy) : ivec2(0));
     }
     bool keepFace = faceIsExposed(flagsByte, faceId);
     bool isCutFace = false;
@@ -283,7 +283,7 @@ void main() {
         // exactly, or color/id taps land on a different cell than the distance.
         const ivec2 perAxisBase = trixelOriginOffsetZ1(canvasSizePixels) + ivec2(floor(frameCanvasOffset));
         if (voxelRenderOptions.x == 0) {
-            const ivec3 worldPos = ivec3(round(voxelPosition.xyz));
+            const ivec3 worldPos = roundHalfUp(voxelPosition.xyz);
             const ivec3 facePos = faceMicroPositionFixed6(faceId, worldPos, 0, 0, 1);
             // No sub-cell offset at base resolution; encode centre fracs (8,8).
             const int voxelDistance =
@@ -297,7 +297,7 @@ void main() {
         // #1458: mirror stage 1's base-resolution store (z=0 only).
         if (gl_WorkGroupID.z != 0) return;
         const vec3 worldAligned_s2 = snapNearIntegerVoxelPosition(voxelPosition.xyz);
-        const ivec3 worldPos_s2 = ivec3(round(worldAligned_s2));
+        const ivec3 worldPos_s2 = roundHalfUp(worldAligned_s2);
         const ivec3 facePos_s2 = faceMicroPositionFixed6(faceId, worldPos_s2, 0, 0, 1);
         const vec3 fracInCell_s2 = worldAligned_s2 - vec3(worldPos_s2);
         const int voxelDistance_s2 =
@@ -324,7 +324,7 @@ void main() {
     // skipped — byte-identical. Matches the compact cull's cardinal projection
     // (c_voxel_visibility_compact.glsl) so the classification agrees.
     if (residualYaw == 0.0 && isDetachedCanvas < 0.5) {
-        ivec3 feederPos = ivec3(round(voxelPosition.xyz));
+        ivec3 feederPos = roundHalfUp(voxelPosition.xyz);
         if (cardinalIndex != 0) {
             feederPos = rotateCardinalZ(feederPos, cardinalIndex);
             feederPos += cardinalLowerCornerShift(cardinalIndex);
@@ -337,7 +337,10 @@ void main() {
     }
 
     if (voxelRenderOptions.x == 0) {
-        ivec3 voxelPositionInt = ivec3(round(voxelPosition.xyz));
+        // roundHalfUp mirrors stage 1's cell resolution exactly — hardware
+        // round() ties are implementation-defined, and a mismatch here makes
+        // writeColorTap's depth re-test reject the tap at tie positions.
+        ivec3 voxelPositionInt = roundHalfUp(voxelPosition.xyz);
         if (cardinalIndex != 0) {
             voxelPositionInt = rotateCardinalZ(voxelPositionInt, cardinalIndex);
             voxelPositionInt += cardinalLowerCornerShift(cardinalIndex);
@@ -362,7 +365,7 @@ void main() {
     int v = int(gl_WorkGroupID.z) % subdivisions;
 
     const vec3 voxelPositionAligned = snapNearIntegerVoxelPosition(voxelPosition.xyz);
-    const ivec3 voxelPositionFixed = ivec3(round(voxelPositionAligned * float(subdivisions)));
+    const ivec3 voxelPositionFixed = roundHalfUp(voxelPositionAligned * float(subdivisions));
     const ivec2 frameOffsetFixed =
         trixelFrameOffset(trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions);
 

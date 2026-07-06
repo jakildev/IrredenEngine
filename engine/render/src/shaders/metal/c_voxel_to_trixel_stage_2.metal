@@ -244,9 +244,9 @@ kernel void c_voxel_to_trixel_stage_2(
          (frameData.perAxisRoute == 0 && frameData.detachedWorldReceive.w != 0.0f));
     int2 worldColumn = int2(0);
     if (fogActive) {
-        worldColumn = int3(round(voxelPosition.xyz)).xy +
+        worldColumn = roundHalfUp(voxelPosition.xyz).xy +
             (frameData.isDetachedCanvas > 0.5f
-                 ? int2(round(frameData.detachedWorldReceive.xy))
+                 ? roundHalfUp(frameData.detachedWorldReceive.xy)
                  : int2(0));
     }
     bool keepFace = faceIsExposed(flagsByte, faceId);
@@ -289,7 +289,7 @@ kernel void c_voxel_to_trixel_stage_2(
         const int2 perAxisBase = trixelOriginOffsetZ1(frameData.canvasSizePixels) +
                                  int2(floor(frameData.frameCanvasOffset));
         if (frameData.voxelRenderOptions.x == 0) {
-            const int3 worldPos = int3(round(voxelPosition.xyz));
+            const int3 worldPos = roundHalfUp(voxelPosition.xyz);
             const int3 facePos = faceMicroPositionFixed6(faceId, worldPos, 0, 0, 1);
             // No sub-cell offset at base resolution; encode centre fracs (8,8).
             const int voxelDistance =
@@ -304,7 +304,7 @@ kernel void c_voxel_to_trixel_stage_2(
         // #1458: mirror stage 1's base-resolution store (z=0 only).
         if (groupId.z != 0) return;
         const float3 worldAligned_s2 = snapNearIntegerVoxelPosition(voxelPosition.xyz);
-        const int3 worldPos_s2 = int3(round(worldAligned_s2));
+        const int3 worldPos_s2 = roundHalfUp(worldAligned_s2);
         const int3 facePos_s2 = faceMicroPositionFixed6(faceId, worldPos_s2, 0, 0, 1);
         const float3 fracInCell_s2 = worldAligned_s2 - float3(worldPos_s2);
         const int voxelDistance_s2 =
@@ -328,7 +328,7 @@ kernel void c_voxel_to_trixel_stage_2(
     // the face footprint; with sun shadows off it equals cullIsoMin/Max so
     // nothing is skipped.
     if (frameData.residualYaw == 0.0f && frameData.isDetachedCanvas < 0.5f) {
-        int3 feederPos = int3(round(voxelPosition.xyz));
+        int3 feederPos = roundHalfUp(voxelPosition.xyz);
         if (cardinalIndex != 0) {
             feederPos = rotateCardinalZ(feederPos, cardinalIndex);
             feederPos += cardinalLowerCornerShift(cardinalIndex);
@@ -343,7 +343,10 @@ kernel void c_voxel_to_trixel_stage_2(
     }
 
     if (frameData.voxelRenderOptions.x == 0) {
-        int3 voxelPositionInt = int3(round(voxelPosition.xyz));
+        // roundHalfUp mirrors stage 1's cell resolution exactly — hardware
+        // round() ties are implementation-defined, and a mismatch here makes
+        // writeColorTap's depth re-test reject the tap at tie positions.
+        int3 voxelPositionInt = roundHalfUp(voxelPosition.xyz);
         if (cardinalIndex != 0) {
             voxelPositionInt = rotateCardinalZ(voxelPositionInt, cardinalIndex);
             voxelPositionInt += cardinalLowerCornerShift(cardinalIndex);
@@ -387,7 +390,7 @@ kernel void c_voxel_to_trixel_stage_2(
     const int v = int(groupId.z) % subdivisions;
 
     const float3 voxelPositionAligned = snapNearIntegerVoxelPosition(voxelPosition.xyz);
-    const int3 voxelPositionFixed = int3(round(voxelPositionAligned * float(subdivisions)));
+    const int3 voxelPositionFixed = roundHalfUp(voxelPositionAligned * float(subdivisions));
     const int2 frameOffsetFixed = trixelFrameOffset(
         frameData.trixelCanvasOffsetZ1,
         frameData.frameCanvasOffset,
