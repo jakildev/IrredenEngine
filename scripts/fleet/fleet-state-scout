@@ -51,6 +51,7 @@ if sys.platform == "win32" and not os.environ.get("PYTHONUTF8"):
 # python. Insert this script's own dir so the import resolves whether the
 # scout is run directly or loaded by-path in the unit tests (#1425).
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import fleet_poll_topology
 from fleet_blocked_by import is_no_blocker_value, parse_blocked_by
 from fleet_branch_match import PARKED_PR_LABELS, branch_matches_issue
 
@@ -2462,30 +2463,122 @@ def _populate_review_plan(state):
         ]
 
 
+# --- Poll topology (#1394 Q2) — leader / follower state acquisition --------
+#
+# POLL_CFG is resolved once in main() from host.toml. A leader polls GitHub and
+# additionally serves its state bundle (LEADER_SERVER); a follower consumes the
+# leader's already-fetched bundle over the LAN instead of calling gh. Both live
+# here as module globals because tick_once (below) and main (bottom) are far
+# apart; Python binds them at call time so the definition site is immaterial.
+POLL_CFG = None
+LEADER_SERVER = None
+_FOLLOWER_ETAG = {"value": None}
+
+
+def build_state():
+    """Assemble this tick's fully-resolved state; return (state, served).
+
+    `served` is True only when a follower successfully consumed the leader's
+    bundle — in that case the state is ALREADY resolved (the leader ran the
+    resolve/enrich pipeline before serving) and the caller skips both that
+    pipeline and refresh_all_details. A leader — or a follower falling back to
+    self-poll because the leader is unreachable/stale — returns raw GitHub
+    state (served=False) that still needs the resolve pipeline.
+    """
+    cfg = POLL_CFG
+    if cfg is None or cfg.is_leader:
+        return collect_state(), False
+    follower_state = _fetch_follower_state(cfg)
+    if follower_state is not None:
+        return follower_state, True
+    log("poll: follower self-polling GitHub this tick (leader unreachable/stale)")
+    return collect_state(), False
+
+
+def _fetch_follower_state(cfg):
+    """Consume the leader's bundle → its resolved state overlaid with THIS
+    host's local fields, or None to signal the caller should self-poll (leader
+    unreachable, its generated_at stale, a malformed bundle, or no prior state
+    to reuse on a 304)."""
+    now = fleet_poll_topology.now_epoch()
+    status, etag, files = fleet_poll_topology.fetch_from_leader(
+        cfg, _FOLLOWER_ETAG["value"])
+    game_path = GAME if (GAME / ".git").exists() else None
+
+    if status == 200:
+        leader_text = files.get("state.json")
+        if leader_text is None:
+            return None
+        try:
+            leader_state = json.loads(leader_text)
+        except json.JSONDecodeError:
+            return None
+        # A leader that serves a stale snapshot (alive but wedged) is not
+        # trustworthy — self-poll rather than propagate a frozen timestamp.
+        if fleet_poll_topology.is_stale(
+                leader_state.get("generated_at"), now, cfg.leader_stale_seconds):
+            log("poll: leader bundle generated_at is stale — self-polling")
+            return None
+        # Mirror the leader's prs/ diffs/ issues/ caches so follower fleet-pr /
+        # fleet-issue drill-ins hit the cache, never a live gh call.
+        fleet_poll_topology.apply_bundle_detail_caches(STATE_DIR, files)
+        _FOLLOWER_ETAG["value"] = etag
+        # Preserve generated_at + all GitHub-derived data; re-derive only the
+        # host-local clone path + freshness (the leader's are wrong here).
+        return fleet_poll_topology.overlay_host_local(
+            leader_state, engine_path=ENGINE, game_path=game_path,
+            clone_freshness=clone_freshness(ENGINE))
+
+    if status == 304:
+        # Unchanged since our last consume — reuse the on-disk (already
+        # resolved + overlaid) state.json, but re-verify freshness so a wedged
+        # leader answering 304 with a frozen generated_at forces a self-poll.
+        try:
+            on_disk = read_json_retry(STATE_FILE)
+        except (FileNotFoundError, json.JSONDecodeError):
+            return None
+        if fleet_poll_topology.is_stale(
+                on_disk.get("generated_at"), now, cfg.leader_stale_seconds):
+            log("poll: leader frozen (304 + stale generated_at) — self-polling")
+            return None
+        # Only clone_freshness can drift between 304s (local git may advance).
+        on_disk["clone_freshness"] = clone_freshness(ENGINE)
+        return on_disk
+
+    return None  # unreachable / error → caller self-polls
+
+
 def tick_once():
-    state = collect_state()
-    if state.get("degraded"):
-        log(f"state degraded: {state['degraded']} — reconcile disabled this tick")
-    _populate_done_tasks(state)
-    _populate_review_plan(state)
-    resolve_blocked_by(state)
-    resolve_human_approved_blockers(state)
-    resolve_epic_children(state)
-    enrich_stackable_blocker_prs(state)
-    # Drop PR bodies now the only consumer (the Closes-#N stack-base match above)
-    # has run, so they don't bloat state.json or the per-role slices — mirrors
-    # resolve_human_approved_blockers popping issue bodies. No projector or slice
-    # needs pr body.
-    for _repo_state in state["repos"].values():
-        for _pr in _repo_state.get("prs", []):
-            _pr.pop("body", None)
-    enrich_inflight_pr_tasks(state)
+    state, served = build_state()
+    # A follower's bundle is already fully resolved (the leader ran the pipeline
+    # before serving); re-running it would double-process body-stripped data.
+    authoritative = not served
+    if authoritative:
+        if state.get("degraded"):
+            log(f"state degraded: {state['degraded']} — reconcile disabled this tick")
+        _populate_done_tasks(state)
+        _populate_review_plan(state)
+        resolve_blocked_by(state)
+        resolve_human_approved_blockers(state)
+        resolve_epic_children(state)
+        enrich_stackable_blocker_prs(state)
+        # Drop PR bodies now the only consumer (the Closes-#N stack-base match
+        # above) has run, so they don't bloat state.json or the per-role slices
+        # — mirrors resolve_human_approved_blockers popping issue bodies. No
+        # projector or slice needs pr body.
+        for _repo_state in state["repos"].values():
+            for _pr in _repo_state.get("prs", []):
+                _pr.pop("body", None)
+        enrich_inflight_pr_tasks(state)
     write_atomic(STATE_FILE, json.dumps(state, indent=2, sort_keys=True) + "\n")
 
-    try:
-        refresh_all_details(state)
-    except Exception as e:
-        log(f"refresh_all_details failed: {e}")
+    if authoritative:
+        # Detail caches (prs/ diffs/ issues/) come from GitHub only on the
+        # authoritative poller; a follower already mirrored the leader's caches.
+        try:
+            refresh_all_details(state)
+        except Exception as e:
+            log(f"refresh_all_details failed: {e}")
 
     triggers_fired = []
     for role, projector in PROJECTORS.items():
@@ -2512,23 +2605,27 @@ def tick_once():
                     log("queue-manager: skipping reconcile+cleanup (state degraded)")
                     triggers_fired.append("queue-manager(skipped-degraded)")
                     continue
-                sweep_cmds = [
-                    ["fleet-claim", "cleanup", "--gh",
-                     "--repo", "jakildev/IrredenEngine"],
-                ]
-                # Cross-surface reconcile is a SINGLE multi-repo pass (one
-                # drift report + one deduped tracker), so unlike per-repo
-                # cleanup it gets exactly one command with the reachable repos
-                # as --repo flags. --apply runs the conservative host-local +
-                # TTL-gated auto-fixes; backgrounded like cleanup so its gh
-                # calls never stall the 30s tick or race a live pane.
+                # cleanup --gh is GLOBAL stale-label reaping — run it only on
+                # the authoritative poller (leader, or a follower currently
+                # self-polling), else every follower re-multiplies the very
+                # mutation calls Q2 exists to collapse (#1394). reconcile
+                # --apply is conservative host-local + TTL-gated claim hygiene
+                # and runs on EVERY host (one multi-repo pass — one drift report
+                # + one deduped tracker — with the reachable repos as --repo
+                # flags). All backgrounded so their gh calls never stall the 30s
+                # tick or race a live pane.
+                sweep_cmds = []
+                if authoritative:
+                    sweep_cmds.append(
+                        ["fleet-claim", "cleanup", "--gh",
+                         "--repo", "jakildev/IrredenEngine"])
                 reconcile_cmd = ["fleet-claim", "reconcile", "--apply",
                                  "--repo", "jakildev/IrredenEngine"]
                 if (GAME / ".git").exists():
-                    sweep_cmds.append(
-                        ["fleet-claim", "--repo", "game", "cleanup",
-                         "--gh", "--repo", "jakildev/irreden"]
-                    )
+                    if authoritative:
+                        sweep_cmds.append(
+                            ["fleet-claim", "--repo", "game", "cleanup",
+                             "--gh", "--repo", "jakildev/irreden"])
                     reconcile_cmd += ["--repo", "jakildev/irreden"]
                 sweep_cmds.append(reconcile_cmd)
                 for sweep_cmd in sweep_cmds:
@@ -2541,9 +2638,17 @@ def tick_once():
                         )
                     except Exception as e:
                         log(f"queue-manager: sweep failed to spawn {sweep_cmd[0]}: {e}")
-                log("queue-manager: spawned claim cleanup + reconcile (projection changed)")
+                _swept = "cleanup + reconcile" if authoritative else "reconcile"
+                log(f"queue-manager: spawned {_swept} (projection changed)")
                 triggers_fired.append("queue-manager(claim-cleanup)")
         elif role == "queue-manager-ingest":
+            # ingest (human:approved → fleet:queued) is a GLOBAL label mutation
+            # — authoritative-poller-only, like cleanup above. A follower
+            # consuming the leader's bundle skips it entirely so N hosts don't
+            # race the same ingest (#1394 Q2); the leader (or a self-polling
+            # follower) owns it.
+            if not authoritative:
+                continue
             # Auto-fire ingestion when the human:approved-and-not-yet-queued
             # set changes. Same backgrounded-subprocess pattern as the
             # queue-manager claim-cleanup spawn above. Lockfile inside
@@ -2586,6 +2691,15 @@ def tick_once():
             json.dumps(sliced, indent=2, sort_keys=True) + "\n",
         )
 
+    # Refresh the served bundle (leader only) so followers see this tick's
+    # snapshot. Rebuilt from disk — state.json + the detail caches just written
+    # — so a follower always receives the last COMPLETE tick, never a mid-write
+    # splice. build_bundle returns (None, b"") until the first tick lands.
+    if LEADER_SERVER is not None:
+        _etag, _payload = fleet_poll_topology.build_bundle(STATE_DIR)
+        if _etag is not None:
+            LEADER_SERVER.update_bundle(_etag, _payload)
+
     if triggers_fired:
         log(f"triggered: {', '.join(triggers_fired)}")
     else:
@@ -2610,6 +2724,7 @@ def signal_handler(signum, _frame):
 
 
 def main():
+    global POLL_CFG, LEADER_SERVER
     parser = argparse.ArgumentParser(
         description="poll GitHub + git, write shared fleet state cache")
     parser.add_argument("--once", action="store_true",
@@ -2631,7 +2746,15 @@ def main():
         log(f"engine repo not found at {ENGINE}; aborting")
         sys.exit(1)
 
+    # Resolve leader/follower topology once from host.toml (#1394 Q2). Missing
+    # config → leader, so a single-host box is an unchanged solo poller.
+    POLL_CFG = fleet_poll_topology.read_poll_config()
+    log(f"poll topology: {POLL_CFG.describe()}")
+
     if args.once:
+        # One-shot (tests / manual): tick without standing up the HTTP server.
+        # A leader ticks + writes; a follower fetches the leader's bundle once
+        # (or self-polls if unreachable). No serving, no daemon loop.
         tick_once()
         return
 
@@ -2640,6 +2763,17 @@ def main():
 
     write_pid_file()
     log(f"started (pid={os.getpid()}, interval={args.interval}s)")
+
+    if POLL_CFG.is_leader:
+        # Serve the state bundle to followers on the LAN. A bind failure is a
+        # safe degradation: the leader still polls + writes locally; followers
+        # just can't reach it and self-poll. Never crash the scout for it.
+        LEADER_SERVER = fleet_poll_topology.start_leader_server(POLL_CFG, STATE_DIR)
+        if LEADER_SERVER is not None:
+            log(f"leader HTTP server listening on {POLL_CFG.bind_host}:{POLL_CFG.port}")
+        else:
+            log(f"leader HTTP server could not bind :{POLL_CFG.port} — "
+                "followers will self-poll (scout continues)")
 
     try:
         while not TERMINATE.is_set():
@@ -2655,6 +2789,8 @@ def main():
                     break
                 time.sleep(1)
     finally:
+        if LEADER_SERVER is not None:
+            LEADER_SERVER.stop()
         cleanup_pid_file()
         log("stopped")
 

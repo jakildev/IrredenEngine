@@ -231,3 +231,43 @@ def _request(url, cache_path, cached_etag, cached_body, accept, token,
         return (True, None)
     except (urllib.error.URLError, TimeoutError, OSError):
         return (True, None)
+
+
+def conditional_get_url(url, *, etag=None, timeout=DEFAULT_TIMEOUT_SECONDS,
+                        headers=None):
+    """Plain If-None-Match GET against an arbitrary URL (no GitHub auth).
+
+    The Q2 centralized poller (#1394 phase 2) uses this for the intra-fleet LAN
+    hop: a follower conditional-GETs the leader's served state bundle, passing
+    the last-seen `generated_at` as the ETag. It reuses conditional_get's
+    machinery — If-None-Match, "an error is never 304" — but drops the two
+    GitHub-specific pieces (`gh auth token`, the api.github.com URL builder) and
+    the on-disk etag cache: the follower already tracks the last `generated_at`
+    in its own state.json, so a second cache would just duplicate it.
+
+    Returns (status, body, new_etag):
+      * (200, body_str, etag) — changed: fresh body + its response ETag.
+      * (304, None, sent_etag) — unchanged: caller keeps its cached copy (the
+                                 ETag it sent is echoed back for convenience).
+      * (None, None, None)     — network / HTTP error / unreachable: caller
+                                 degrades (self-poll). An error is never a 304.
+    """
+    req = urllib.request.Request(url, method="GET")
+    req.add_header("User-Agent", USER_AGENT)
+    if headers:
+        for key, value in headers.items():
+            req.add_header(key, value)
+    if etag:
+        req.add_header("If-None-Match", etag)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            body = resp.read().decode("utf-8")
+            return (resp.status, body, resp.headers.get("ETag"))
+    except urllib.error.HTTPError as e:
+        code = e.code
+        e.close()
+        if code == 304:
+            return (304, None, etag)
+        return (None, None, None)
+    except (urllib.error.URLError, TimeoutError, OSError):
+        return (None, None, None)

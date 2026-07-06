@@ -22,6 +22,30 @@
 # /etc/nsswitch.conf, or `export HOME=/c/Users/you`). See docs/agents/FLEET.md
 # "Cross-platform parity".
 
+# --- Cross-device polling (host.toml, NOT this file) -------------------------
+#
+# Multi-host fleets (e.g. a home desktop + a laptop on the same GitHub account)
+# share one GitHub poller instead of N (#1394 Q2), so idle-fleet API quota drain
+# stays at 1×. This is configured in ~/.config/irreden/host.toml (per-host, read
+# by fleet-state-scout at startup), NOT here — documented here as the operator's
+# one config surface. Add a [fleet] section:
+#
+#   [fleet]
+#   poll_role = "leader"     # polls GitHub + serves its state bundle on the LAN
+#   poll_port = 8477         # the leader's one inbound TCP port
+#
+#   # on every OTHER host on the same account:
+#   [fleet]
+#   poll_role  = "follower"  # consumes the leader's bundle over the LAN, zero gh
+#   poll_port  = 8477        # must match the leader's
+#   leader_host = "192.168.1.10"   # the leader's LAN address/hostname (required)
+#
+# Exactly ONE host per account is the leader. Missing [fleet] / missing file =>
+# leader (a single-host fleet is unchanged). A follower that can't reach the
+# leader (off-LAN, or the leader is down) transparently self-polls GitHub for
+# that tick, so it always keeps working. See docs/agents/FLEET-CACHE.md
+# "Centralized cross-device polling".
+
 # --- Model classes -----------------------------------------------------------
 #
 # Work routes by model class — fable | opus | sonnet — carried on each task

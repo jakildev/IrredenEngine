@@ -31,6 +31,14 @@ that's the cost the cache exists to avoid (see
 [`FLEET-CACHE.md`](FLEET-CACHE.md)). The role file names the specific
 arrays it reads from the cache.
 
+Judge staleness by the in-file `generated_at`, **not** the file's mtime.
+Under multi-host centralized polling (#1394 Q2) a follower re-writes
+`state.json` every tick with the leader's `generated_at` preserved, so
+an mtime check would call a dead leader healthy. The dispatcher's
+`scout_unhealthy` watchdog keys off `generated_at` for the same reason
+(see [`FLEET-CACHE.md`](FLEET-CACHE.md) "Centralized cross-device
+polling").
+
 ---
 
 ## Heartbeat — step 0

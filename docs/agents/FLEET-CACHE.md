@@ -112,6 +112,57 @@ missing or older than 5 minutes:
 the scout is genuinely down, the human can `fleet-up` to restart
 it.
 
+## Centralized cross-device polling (leader / follower)
+
+When more than one host runs the fleet on the **same GitHub account**
+(e.g. a home desktop + a laptop), each host's scout would otherwise
+poll GitHub independently, multiplying the per-account API quota drain
+by N (#1394). Q2 collapses that to **one authoritative poller** plus
+followers that consume its already-fetched cache over the LAN.
+
+Set the topology per host in `~/.config/irreden/host.toml`:
+
+```toml
+[fleet]
+poll_role  = "leader"    # polls GitHub; serves its ~/.fleet/state bundle on the LAN
+poll_port  = 8477        # the leader's one inbound TCP port
+# on every OTHER host on the same account:
+# poll_role   = "follower"
+# poll_port   = 8477              # must match the leader
+# leader_host = "192.168.1.10"    # the leader's LAN address (required on a follower)
+```
+
+Missing `[fleet]` / missing file ⇒ **leader**, so a single-host fleet
+is unchanged. Exactly one host per account should be the leader.
+
+- **Leader** — polls GitHub exactly as before and additionally serves
+  a read-only bundle (`state.json` + the `prs/` `diffs/` `issues/`
+  detail caches) at `http://0.0.0.0:<poll_port>/state`, with the
+  snapshot's `generated_at` as the ETag.
+- **Follower** — replaces its GitHub fan-out with a conditional GET of
+  the leader's bundle (reusing the Q1 If-None-Match machinery), writes
+  the caches to its own `~/.fleet/state/`, and **preserves the leader's
+  `generated_at` verbatim** — re-deriving only the host-local
+  `clone_freshness` and `repos.<key>.path`. It recomputes its own
+  projections + triggers, so every consumer (roles, dispatcher,
+  `fleet-pr`/`fleet-issue`) runs identically with no leader/follower
+  awareness. Followers make **zero GitHub read calls** while the leader
+  is reachable.
+- **Leader down / off-LAN** — a follower that can't reach the leader,
+  or that sees the leader's `generated_at` gone stale, transparently
+  **self-polls GitHub for that tick** (a temporary solo poller — the
+  pre-Q2 behavior). No election, no new failure mode.
+
+**Staleness is judged by the in-file `generated_at`, never file
+mtime.** A follower re-writes `state.json` every tick (bumping mtime)
+while copying the leader's `generated_at`, so a dead leader keeps mtime
+fresh while `generated_at` freezes; the dispatcher watchdog
+(`scout_unhealthy`) and every role's 5-minute guard key off
+`generated_at` so the death still surfaces. **Global mutations** —
+`fleet-claim cleanup --gh` and `fleet-queue-ingest` — run only on the
+authoritative poller (leader, or a self-polling follower); host-local
+`fleet-claim reconcile --apply` keeps running on every host.
+
 ## Degraded fetches — `degraded` field in state.json
 
 When a `gh` fetch fails (network error, auth failure, rate-limit exhaustion),
