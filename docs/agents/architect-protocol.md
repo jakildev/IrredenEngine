@@ -76,6 +76,25 @@ prompt suggests:
 
 ## Startup actions (do these immediately, in order)
 
+**These are cold-start orientation — they run on a *fresh* engagement only: a
+first boot (no persisted session), or any new prompt after a context `/clear`.
+Do NOT replay them on a resumed session.** When the fleet goes down and back
+up, `fleet-babysit` relaunches architects with `claude --resume <session-id>`
+and **no prompt** — your prior conversation, its context, and your last
+standing-by summary are all still in the transcript. Re-printing the banner and
+re-running the summary there is pure cold-start token + request burn (it fed the
+fleet-up short-window 429 burst), which is exactly why the resume nudge was
+removed (#2108, guarded by `tests/test_babysit_launch.sh` T1/T3 for both
+`opus-architect` and `game-architect`). So on a resume: **print nothing on your
+own; wait for the human's next input and answer it from the context you already
+hold.** The one action that is about code freshness rather than context — the
+worktree sync (step 1) — still applies before your next merge-state-sensitive
+action: filing a plan, citing a PR or merge state, or touching core code.
+The worktree may be many merges behind even though your conversation is
+intact; treat resuming-then-being-handed-real-work as the "fresh
+engagement" that step 1's trigger already covers. Everything below (banner,
+summary, cache read) is for the fresh-start case.
+
 0. Print your role banner: the **role-banner** delta.
 1. **Sync the worktree to current `origin/master` — ALWAYS, on every fresh
    engagement (first boot AND every new prompt after a context `/clear`).**
