@@ -4,10 +4,13 @@
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_render.hpp>
 
+#include <irreden/render/buffer.hpp>
+#include <irreden/render/ir_render_types.hpp>
 #include <irreden/render/texture.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 
 #include <array>
+#include <cstdint>
 #include <utility>
 
 using namespace IRMath;
@@ -77,6 +80,21 @@ struct C_PerAxisTrixelCanvases {
     // worst-case sized) — this is a single screen-space resolve.
     std::pair<ResourceId, Texture2D *> resolveDepth_{0, nullptr};
 
+    // #2256: per-axis occupied-cell compaction outputs. VOXEL_TO_TRIXEL_STAGE_1's
+    // endTick scans each axis distance canvas and writes them; the per-axis
+    // COMPUTE stages (AO / sun-shadow / lighting / resolve) dispatchComputeIndirect
+    // over them, and the framebuffer scatter draws them — so every stage processes
+    // only occupied cells instead of the full worst-case (2W)(W+H) grid. Owned
+    // here (not by a single system) so all consumers reach them via the per-axis
+    // component they already resolve; same rotation-only lifecycle as the textures.
+    //   cellCompacted_ — per-axis regions of occupied linear cell indices (slot 25).
+    //   cellIndirect_  — per-axis 256 B blocks carrying BOTH the draw-indirect
+    //                    command (bytes 0..31) and the compute-indirect dispatch
+    //                    params (byte 32; see ir_render_types.hpp).
+    std::pair<ResourceId, Buffer *> cellCompacted_{0, nullptr};
+    std::pair<ResourceId, Buffer *> cellIndirect_{0, nullptr};
+    int cellRegionStride_ = 0; // uints per axis in cellCompacted_ (>= axis cells, 64-aligned)
+
     // Allocation state is the texture handles themselves — no separate bool to
     // drift out of sync (cf. the no-dirty-flags rule in .claude/rules/cpp-ecs.md).
     bool isAllocated() const {
@@ -104,6 +122,27 @@ struct C_PerAxisTrixelCanvases {
             axis.sunShadow_ = detail::makeCanvasColorTexture(size);
         }
         resolveDepth_ = detail::makeCanvasDistanceTexture(mainSize);
+        // #2256: per-axis compaction buffers, sized to the per-axis canvas. The
+        // occupied-cell region stride is 64-uint (256 B) aligned so each axis's
+        // bindRange offset is SSBO-alignment-safe (mirrors the #1961 sizing that
+        // previously lived in TRIXEL_TO_FRAMEBUFFER::ensurePerAxisCellBuffers).
+        cellRegionStride_ = IRMath::divCeil(size.x * size.y, 64) * 64;
+        cellCompacted_ = IRRender::createResource<Buffer>(
+            nullptr,
+            static_cast<std::size_t>(cellRegionStride_) * static_cast<std::size_t>(kAxisCount) *
+                sizeof(std::uint32_t),
+            BUFFER_STORAGE_DYNAMIC,
+            BufferTarget::SHADER_STORAGE,
+            kBufferIndex_PerAxisCellCompacted
+        );
+        cellIndirect_ = IRRender::createResource<Buffer>(
+            nullptr,
+            static_cast<std::size_t>(kAxisCount) *
+                static_cast<std::size_t>(kPerAxisCellIndirectStrideBytes),
+            BUFFER_STORAGE_DYNAMIC,
+            BufferTarget::SHADER_STORAGE,
+            kBufferIndex_PerAxisCellIndirect
+        );
         // Clear to the empty sentinel so a creation that allocates per-axis
         // canvases but does NOT register RESOLVE_PER_AXIS_SCREEN_DEPTH still
         // reads "no per-axis caster" from BAKE rather than garbage — the
@@ -132,6 +171,15 @@ struct C_PerAxisTrixelCanvases {
         }
         IRRender::destroyResource<Texture2D>(resolveDepth_.first);
         resolveDepth_ = {0, nullptr};
+        if (cellCompacted_.second != nullptr) {
+            IRRender::destroyResource<Buffer>(cellCompacted_.first);
+            cellCompacted_ = {0, nullptr};
+        }
+        if (cellIndirect_.second != nullptr) {
+            IRRender::destroyResource<Buffer>(cellIndirect_.first);
+            cellIndirect_ = {0, nullptr};
+        }
+        cellRegionStride_ = 0;
         size_ = ivec2{0, 0};
     }
 

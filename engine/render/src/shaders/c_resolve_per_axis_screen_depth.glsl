@@ -19,7 +19,11 @@
 // canvases are only allocated at non-zero residual yaw, so this stage never
 // runs at a cardinal.
 
-layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+// #2256: 1-D over the compacted occupied-cell list (one invocation per occupied
+// cell), not a 2-D sweep of the whole per-axis grid. local_size_x must equal
+// kPerAxisCellComputeGroupSize so the compaction's numGroupsX = divCeil(count, 64)
+// covers exactly the occupied cells.
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
 #include "ir_iso_common.glsl"
 
@@ -47,6 +51,20 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
 // Input: ONE per-axis voxel canvas (face-local in-plane store, R32I).
 layout(r32i, binding = 0) readonly uniform iimage2D perAxisDistances;
 
+// #2256: this axis's occupied-cell list + dispatch params, built by
+// VOXEL_TO_TRIXEL_STAGE_1's per-axis compaction (bindRange'd per axis, so index 0
+// is this axis's base). The list holds each occupied cell's linear index in the
+// SAME convention the compaction wrote (cell.y * size.x + cell.x); the indirect
+// block's compute record carries visibleCount at uint index
+// kPerAxisCellComputeDispatchOffsetUints + 3 (numGroups precede it).
+layout(std430, binding = 25) readonly buffer PerAxisCellCompacted {
+    uint compactedCells[];
+};
+layout(std430, binding = 26) readonly buffer PerAxisCellIndirect {
+    uint cellIndirectArgs[];
+};
+const uint kVisibleCountIdx = 11u; // kPerAxisCellComputeDispatchOffsetUints(8) + 3
+
 // Output scratch: main-canvas-sized, front-most iso-depth via atomicMin.
 // Aliases kBufferIndex_SunShadowDepthMap (slot 28) — the whole resolve stage
 // runs strictly before BAKE rebinds slot 28 to the sun depth map.
@@ -55,15 +73,19 @@ layout(std430, binding = 28) restrict buffer PerAxisResolveScratch {
 };
 
 void main() {
-    const ivec2 cell = ivec2(gl_GlobalInvocationID.xy);
-    const ivec2 perAxisSize = imageSize(perAxisDistances);
-    if (cell.x >= perAxisSize.x || cell.y >= perAxisSize.y) {
+    // #2256: one invocation per occupied cell. Past the occupied count this
+    // axis's list holds stale entries, so the visibleCount guard is required.
+    const uint idx = gl_GlobalInvocationID.x;
+    if (idx >= cellIndirectArgs[kVisibleCountIdx]) {
         return;
     }
+    const ivec2 perAxisSize = imageSize(perAxisDistances);
+    const uint cellLinear = compactedCells[idx];
+    const ivec2 cell = ivec2(int(cellLinear) % perAxisSize.x, int(cellLinear) / perAxisSize.x);
 
     const int rawDist = imageLoad(perAxisDistances, cell).x;
     if (rawDist >= kEmptyDistanceEncoded) {
-        return; // empty per-axis cell
+        return; // empty per-axis cell (compaction is an exact superset — defensive)
     }
     // Per-axis encoding (#1458): rawDepth in world units at bits [31:10].
     const int rawDepth = rawDist >> 10;

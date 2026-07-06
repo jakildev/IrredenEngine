@@ -73,8 +73,12 @@ MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
         functionName == "c_clear_sun_shadow_map") {
         return MTL::Size(16, 16, 1);
     }
-    if (functionName == "c_resolve_per_axis_screen_depth" ||
-        functionName == "c_resolve_per_axis_blit" ||
+    // #2256: the resolve scatter now dispatches 1-D over the per-axis compacted
+    // occupied-cell list (local_size_x = 64), not a 2-D sweep of the axis grid.
+    if (functionName == "c_resolve_per_axis_screen_depth") {
+        return MTL::Size(64, 1, 1);
+    }
+    if (functionName == "c_resolve_per_axis_blit" ||
         functionName == "c_resolve_world_placed_depth") {
         return MTL::Size(16, 16, 1);
     }

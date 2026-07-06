@@ -1219,6 +1219,25 @@ struct PerAxisCellDrawCommand {
 };
 constexpr std::ptrdiff_t kPerAxisCellIndirectStrideBytes = 256;
 
+// #2256: the same per-axis compaction that feeds the scatter draw-indirect also
+// feeds the per-axis COMPUTE stages (AO / sun-shadow / lighting / resolve) via
+// dispatchComputeIndirect, so each processes only occupied cells instead of the
+// full worst-case (2W)(W+H) per-axis grid. Each 256 B PerAxisCellIndirect block
+// carries the DrawElementsIndirectCommand at bytes [0,32); a
+// VoxelIndirectDispatchParams (numGroupsX/Y/Z + visibleCount + completedGroups)
+// lives at this sub-offset. The compaction's last-workgroup finalize writes it
+// (numGroupsX = divCeil(occupiedCount, kPerAxisCellComputeGroupSize), Y=Z=1);
+// each compute stage dispatches at `axis*kPerAxisCellIndirectStrideBytes + this`.
+// The two indirect records share the block because a draw-indirect (5 uints) and
+// a compute-indirect (3 uints) can't overlay the same bytes.
+constexpr std::ptrdiff_t kPerAxisCellComputeDispatchOffsetBytes = 32;
+// uint index of the same sub-offset, for the compaction shader's flat SSBO view.
+constexpr std::uint32_t kPerAxisCellComputeDispatchOffsetUints = 8;
+// 1-D workgroup size the per-axis compute stages iterate the compacted list with.
+// The compaction finalize derives numGroupsX from it, so all converted per-axis
+// compute kernels must declare local_size_x == this.
+constexpr int kPerAxisCellComputeGroupSize = 64;
+
 // TODO: Future culling optimization constants
 // Chunk-level frustum culling: voxel pool is partitioned into chunks of
 // this size. A CPU-side visibility pass writes a per-chunk mask that the

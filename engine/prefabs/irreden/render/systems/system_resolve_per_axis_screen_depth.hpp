@@ -137,14 +137,36 @@ template <> struct System<RESOLVE_PER_AXIS_SCREEN_DEPTH> {
         // scratch (front-most per screen pixel via atomicMin).
         scatterProgram_->use();
         scratch_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_PerAxisResolveScratch);
-        const ivec2 axisSize = perAxisCanvases_->size_;
-        const int axisGroupsX = IRMath::divCeil(axisSize.x, kResolvePerAxisGroupSize);
-        const int axisGroupsY = IRMath::divCeil(axisSize.y, kResolvePerAxisGroupSize);
+        // #2256: dispatch each axis over ONLY its occupied cells via the per-axis
+        // compaction list (built in VOXEL_TO_TRIXEL_STAGE_1::endTick) instead of
+        // the full worst-case per-axis grid. Byte-identical — the compacted set is
+        // exactly the occupied cells the old full sweep processed (empties
+        // early-returned) and the atomicMin scatter is order-independent.
         for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
             perAxisCanvases_->axes_[axis].distances_.second->bindAsImage(
                 0, TextureAccess::READ_ONLY, TextureFormat::R32I
             );
-            IRRender::device()->dispatchCompute(axisGroupsX, axisGroupsY, 1);
+            perAxisCanvases_->cellCompacted_.second->bindRange(
+                BufferTarget::SHADER_STORAGE,
+                kBufferIndex_PerAxisCellCompacted,
+                static_cast<std::ptrdiff_t>(axis) * perAxisCanvases_->cellRegionStride_ *
+                    static_cast<int>(sizeof(std::uint32_t)),
+                static_cast<size_t>(perAxisCanvases_->cellRegionStride_) * sizeof(std::uint32_t)
+            );
+            // Bind the whole 256 B block (256-aligned) so the shader reads
+            // visibleCount at uint index 11; dispatch-indirect reads numGroups at
+            // the compute record's byte offset within the same block.
+            perAxisCanvases_->cellIndirect_.second->bindRange(
+                BufferTarget::SHADER_STORAGE,
+                kBufferIndex_PerAxisCellIndirect,
+                static_cast<std::ptrdiff_t>(axis) * kPerAxisCellIndirectStrideBytes,
+                static_cast<size_t>(kPerAxisCellIndirectStrideBytes)
+            );
+            IRRender::device()->dispatchComputeIndirect(
+                perAxisCanvases_->cellIndirect_.second,
+                static_cast<std::ptrdiff_t>(axis) * kPerAxisCellIndirectStrideBytes +
+                    kPerAxisCellComputeDispatchOffsetBytes
+            );
         }
         IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
 

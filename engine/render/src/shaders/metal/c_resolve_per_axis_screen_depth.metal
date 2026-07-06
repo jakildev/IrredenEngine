@@ -12,22 +12,33 @@
 // Per-axis-only shader; canvas clears to INT_MAX per #1458 encoding.
 constant int kEmptyDistanceEncoded = 0x7FFFFFFF;
 
+// #2256: visibleCount index in this axis's PerAxisCellIndirect block (compute
+// record — numGroups precede it). Mirror of the GLSL kVisibleCountIdx.
+constant uint kVisibleCountIdx = 11u;
+
 kernel void c_resolve_per_axis_screen_depth(
     constant FrameDataVoxelToTrixel& frameData [[buffer(7)]],
     texture2d<int, access::read> perAxisDistances [[texture(0)]],
+    device const uint* compactedCells [[buffer(25)]],
+    device const uint* cellIndirectArgs [[buffer(26)]],
     device atomic_int* resolveScratch [[buffer(28)]],
     uint3 globalId [[thread_position_in_grid]]
 ) {
-    const int2 cell = int2(globalId.xy);
-    const int2 perAxisSize =
-        int2(int(perAxisDistances.get_width()), int(perAxisDistances.get_height()));
-    if (cell.x >= perAxisSize.x || cell.y >= perAxisSize.y) {
+    // #2256: one invocation per occupied cell from the per-axis compaction list.
+    // Past the occupied count the list holds stale entries → visibleCount guard.
+    const uint listIndex = globalId.x;
+    if (listIndex >= cellIndirectArgs[kVisibleCountIdx]) {
         return;
     }
+    const int2 perAxisSize =
+        int2(int(perAxisDistances.get_width()), int(perAxisDistances.get_height()));
+    const uint cellLinear = compactedCells[listIndex];
+    const int2 cell =
+        int2(int(cellLinear) % perAxisSize.x, int(cellLinear) / perAxisSize.x);
 
     const int rawDist = perAxisDistances.read(uint2(cell)).x;
     if (rawDist >= kEmptyDistanceEncoded) {
-        return; // empty per-axis cell
+        return; // empty per-axis cell (compaction is an exact superset — defensive)
     }
     // Per-axis encoding (#1458): rawDepth in world units at bits [31:10].
     const int rawDepth = rawDist >> 10;
