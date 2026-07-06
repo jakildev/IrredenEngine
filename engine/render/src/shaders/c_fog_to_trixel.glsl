@@ -108,10 +108,34 @@ bool fogCutVoxelSolid(ivec3 w) {
 // the lift is a small constant floor added on top so a cut through DARK
 // matter (a near-black floor) still reads against the fog black instead of
 // vanishing — hue-preserving for bright materials, a subtle gray-up for
-// dark ones.
+// dark ones. The march steps are half-cell occupancy samples taken along the
+// ray from the disc entry inward: an entry in a small AIR POCKET (the cut
+// crossing an object's corner, with solid floor a couple of cells behind)
+// still caps with the toned cut instead of a black notch, while a genuinely
+// void entry (past the underside of all matter) stays dark — the iso ray
+// only ever descends, so the march can never climb back into solid that
+// isn't really behind the cut.
 const int kFogCutRayProbeDepth = 8;
 const float kFogCutTone = 0.85;
 const float kFogCutLift = 0.06;
+const int kFogCutMarchSteps = 8;
+
+// Rim fade — the fallback for hidden RASTERIZED matter the cut does not
+// repaint. Instead of dropping straight to the unexplored black, an
+// unexplored pixel's dark tone is lifted toward its lit colour by a factor
+// that starts at kFogRimFadeLevel at the disc rim and decays to zero over
+// kFogRimFadeCells of column distance past the radius. Matter the occupancy
+// test misses — air pockets at an object's cut corner, sub-cell-thin floors,
+// hollow interiors — lands in this smooth gradient instead of a black band,
+// so the boundary stays artifact-free for ANY content the raster kept.
+// kFogRimFadeCells MUST equal stage-1's kFogHiddenKeepCells: the fade
+// reaches black exactly where hidden columns stop rasterizing, so the
+// keep-ring's outer drop edge never shows as a visible step. The level sits
+// just under kFogCutTone so the solid-backed cut band still reads brighter
+// than the fade around it (the cross-section face keeps its identity).
+// Hard discs only — a soft (Mode B) disc's wide falloff IS its fade.
+const float kFogRimFadeCells = 8.0;
+const float kFogRimFadeLevel = 0.75;
 
 // Mirrors FrameDataVoxelToTrixel; we only need frameCanvasOffset,
 // trixelCanvasOffsetZ1, and voxelRenderOptions for the pixel→pos3D
@@ -187,6 +211,10 @@ void main() {
     // Hard-disc-only reveal, tracked separately so the cross-section band's
     // rim shortcut can't fire off a soft (Mode B) disc's wide falloff.
     float hardState = 0.0;
+    // This column's world distance PAST the nearest hard disc's radius —
+    // drives the rim fade below. Initialized to the full fade width so
+    // no-hard-disc scenes resolve to fade 0 (legacy path).
+    float hardDistPastRim = kFogRimFadeCells;
 
     // Live analytic vision circles: max-combine each disc's smooth visibility,
     // evaluated against the CONTINUOUS world column so the edge is crisp at
@@ -212,6 +240,10 @@ void main() {
             state = max(state, reveal);
             if (visionCircles[i].w == 0.0) {
                 hardState = max(hardState, reveal);
+                hardDistPastRim = min(
+                    hardDistPastRim,
+                    length(pos3D.xy - visionCircles[i].xy) - visionCircles[i].z
+                );
             }
         }
     }
@@ -287,15 +319,19 @@ void main() {
                     // immune to bitfield rounding right at the rim.
                     cutSolid = true;
                 } else {
-                    // Sample occupancy half a world cell INSIDE the rim so the
-                    // rounded cell is unambiguously interior; a second sample
-                    // one cell deeper rides over rim-cell quantization misses.
+                    // March half-cell occupancy samples along the ray from
+                    // just inside the rim (the first sample's half-cell inset
+                    // keeps the rounded cell unambiguously interior). The
+                    // march rides over rim-cell quantization misses AND small
+                    // air pockets at an object's cut corner (solid floor a
+                    // couple of cells behind the entry); a void entry finds
+                    // only descending air and stays on the dark mask.
                     const float tHalfCell = 0.5 / worldPerDepthUnit;
-                    const ivec3 cellA =
-                        roundHalfUp(pos3D + (bestT + tHalfCell) * rayStep);
-                    const ivec3 cellB =
-                        roundHalfUp(pos3D + (bestT + 3.0 * tHalfCell) * rayStep);
-                    cutSolid = fogCutVoxelSolid(cellA) || fogCutVoxelSolid(cellB);
+                    for (int s = 1; s <= kFogCutMarchSteps && !cutSolid; ++s) {
+                        cutSolid = fogCutVoxelSolid(
+                            roundHalfUp(pos3D + (bestT + float(s) * tHalfCell) * rayStep)
+                        );
+                    }
                 }
             }
         }
@@ -323,6 +359,16 @@ void main() {
     } else {
         const float t = state / kFogExploredValue;
         outColor = mix(vec3(0.0), exploredColor, t);
+    }
+    // Rim fade (see the const block): lift UNEXPLORED pixels toward their lit
+    // colour near the hard-disc rim. Explored memory keeps its tone. The
+    // squared ease-out crushes the fade tail to black well before the
+    // keep-ring drop, so the outermost kept columns' wall faces (whose
+    // constant-depth recovery reads a column slightly INSIDE their true one)
+    // can't catch a visible lift against the void behind them.
+    if (gridState < kFogExploredValue) {
+        const float u = 1.0 - smoothstep(0.0, kFogRimFadeCells, hardDistPastRim);
+        outColor = mix(outColor, src.rgb, kFogRimFadeLevel * u * u);
     }
     imageStore(trixelColors, pixel, vec4(outColor, src.a));
 }
