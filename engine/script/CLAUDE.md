@@ -995,6 +995,39 @@ IRSave.has("highscores", "top1"); IRSave.remove("highscores", "top1"); IRSave.cl
 - Coverage: `test/script/lua_persistence_test.cpp` (in-memory surface) +
   `test/asset/key_value_store_test.cpp` (format round-trip + corruption).
 
+## World snapshot (`IRPersist.*`)
+
+`bindLuaDrivenEcs()` also exposes the ECS **world snapshot** (persist P7, #2218,
+epic #667) as the `IRPersist` table — whole-world binary save/load, distinct
+from `IRSave` (the flat KV store above). `lua_world_snapshot_bindings.hpp` is
+**include-only glue** (`bindWorldSnapshotApi`): a thin forward to
+`IRWorld::saveWorld/loadWorld(path)` over `makeDefaultSaveRegistry()`, wired via
+the same generator-expression include of `IrredenEngineWorld` as the render/
+audio glue — no link edge (World links Scripting; a link back would cycle).
+
+```lua
+IRPersist.saveWorld("scene.irws")   -- serialize the live world (+ .json sidecar).
+                                    -- returns ok? (false on I/O failure, logged)
+IRWorld.resetGameplay()             -- clear the world at a frame boundary FIRST
+IRPersist.loadWorld("scene.irws")   -- restore into the cleared world. returns ok?
+```
+
+- **`path` is a raw filesystem path** (world snapshots are dev/tool artifacts),
+  NOT routed through `userDataDir` like `IRSave`.
+- **Frame-boundary contract (documented, not enforced — mirrors
+  `IRWorld.resetGameplay`).** Both calls touch the whole archetype graph, so
+  call them from a startup script / command handler / scene-transition step,
+  **never** from a Lua system tick or `DISPATCH_LUA_*` callback. `loadWorld`
+  does NOT reset first — call `IRWorld.resetGameplay()` immediately before it,
+  or the restore aborts on an id collision and returns `false`.
+- **Coverage subset.** The default registry persists only components with a
+  landed `SaveSerialize<C>` (`C_VoxelSetNew` + a few PODs today); see
+  `engine/world/CLAUDE.md` "Process-default registry". A `.json.txt` debug dump
+  is available behind the `IR_PERSIST_DUMP` env flag.
+- **Errors:** an I/O failure returns `false` (logged); a non-string argument
+  raises a Lua error via sol coercion (the same split `IRSave` uses).
+- Coverage: `test/script/lua_world_snapshot_test.cpp`.
+
 ## Prefab format (`Prefab.register`, `Prefab.spawn`)
 
 `bindLuaDrivenEcs()` also exposes the `Prefab` Lua table — the runtime

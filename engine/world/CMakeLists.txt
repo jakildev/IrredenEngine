@@ -4,6 +4,7 @@ add_library(IrredenEngineWorld STATIC
     src/chunk_persistence.cpp
     src/world_snapshot.cpp
     src/world_snapshot_relations.cpp
+    src/world_default_registry.cpp
 )
 
 target_link_libraries(IrredenEngineWorld PUBLIC

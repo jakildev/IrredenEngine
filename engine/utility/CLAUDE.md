@@ -26,6 +26,10 @@ functions for reading files and composing paths. Used by `asset/`,
   for save files that must survive a clean reinstall. Like `joinPath`, it
   composes the path only — it does **not** create the directory. Used by
   the `.irkv` key/value store (`engine/asset/`).
+- `IRUtility::envFlagSet(name)` — true iff env var `name` is set and
+  non-empty (both "unset" and "present but empty" read as false). The one
+  place a boolean env toggle is read; e.g. `IR_PERSIST_DUMP` gates the world
+  snapshot's `.json.txt` debug dump (`engine/world/`).
 
 ## Gotchas
 

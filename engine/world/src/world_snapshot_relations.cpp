@@ -67,7 +67,7 @@ IREntity::Relation relationForName(std::string_view name) {
 
 } // namespace
 
-IRAsset::ChunkPayload makeRelationChunk(
+std::vector<std::pair<EntityId, EntityId>> collectChildParentEdges(
     IREntity::EntityManager &entityManager, const std::unordered_set<EntityId> &servedIds
 ) {
     // Every entity sharing an archetype node shares that node's CHILD_OF
@@ -79,9 +79,9 @@ IRAsset::ChunkPayload makeRelationChunk(
     // saved ids and are skipped rather than dangling.
     // Only CHILD_OF is a materialized edge set, so the collection holds bare
     // (child, parent) pairs and CHILD_OF is written as the constant relation
-    // id below — the on-disk triple stays generic (a future OWNS relation
-    // would append its own (relationId, A, B) triples) without this pass
-    // carrying a column of one repeated value.
+    // id at the call site — the on-disk triple stays generic (a future OWNS
+    // relation would append its own (relationId, A, B) triples) without this
+    // pass carrying a column of one repeated value.
     std::vector<std::pair<EntityId, EntityId>> childParentEdges;
     for (const auto &nodePtr : entityManager.getArchetypeNodes()) {
         IREntity::ArchetypeNode *node = nodePtr.get();
@@ -106,10 +106,18 @@ IRAsset::ChunkPayload makeRelationChunk(
         }
     }
 
-    // Deterministic write order: a CHILD_OF child has exactly one parent, so
+    // Deterministic order: a CHILD_OF child has exactly one parent, so
     // ordering by (child, parent) is a total order and the double-save is
     // byte-identical.
     std::sort(childParentEdges.begin(), childParentEdges.end());
+    return childParentEdges;
+}
+
+IRAsset::ChunkPayload makeRelationChunk(
+    IREntity::EntityManager &entityManager, const std::unordered_set<EntityId> &servedIds
+) {
+    const std::vector<std::pair<EntityId, EntityId>> childParentEdges =
+        collectChildParentEdges(entityManager, servedIds);
 
     IRAsset::MemoryBinaryWriter w;
     const std::vector<IRAsset::NameTableEntry> relationNames = buildCurrentRelationNameTable();

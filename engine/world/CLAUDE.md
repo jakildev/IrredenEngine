@@ -234,10 +234,12 @@ component names skip with counts.
 
 **P2 scope is the mechanism.** It ships one headless gtest
 (`test/world/world_snapshot_test.cpp`) proving the round-trip with
-trivially-copyable *test* components. Registering every engine component in
-`AllEngineComponents` — each needs a `SaveSerialize<C>` specialization for
-its non-POD fields, and a `(path)`-only convenience wrapper over a
-process-default registry for the P7 Lua binding — is downstream work.
+trivially-copyable *test* components. The `(path)`-only convenience wrapper
+over a process-default registry (for the P7 Lua binding) has since landed —
+see "Process-default registry" below — but only over a **curated subset**;
+registering every engine component in `AllEngineComponents` (each needs a
+`SaveSerialize<C>` specialization for its non-POD fields) is still downstream
+work.
 
 **Relation chunk `RELN` (persist P3, #2214).** `CHILD_OF` entity relations
 round-trip through one self-describing chunk: a `Relation`-enum name table at
@@ -353,6 +355,33 @@ Because `engine/world` must not depend on the voxel/render prefabs (layering),
 the seed pass is driven by the **caller**, not baked into `loadWorld`: a
 creation that loads a snapshot registers `SEED_STAGED_VOXELS` in its UPDATE
 pipeline (see `creations/demos/persist_roundtrip`).
+
+## Process-default registry + `(path)` overloads (persist P7, #2218, epic #667)
+
+`makeDefaultSaveRegistry()` (`src/world_default_registry.cpp`) builds the
+process-default `SaveRegistry` the no-registry-argument overloads
+`saveWorld(path)` / `loadWorld(path)` forward to — the surface the `IRPersist`
+Lua binding (`engine/script`) needs, since Lua passes no registry. It is
+**deliberately a curated subset** of `AllEngineComponents`: only components
+with a working `SaveSerialize<C>` today — `C_VoxelSetNew` (P6's explicit
+serializer, so `voxel_set_serialize.hpp` must be included there) plus
+trivially-copyable plain-data components (`C_LocalTransform`,
+`C_PositionInt3D`, `C_SizeInt3D`). Registering the **full** inventory does not
+compile: the heap-owning opted-in components (`C_Name`, `C_Skeleton`,
+`C_MidiSequence`, `C_TextSegment`, ...) still lack a serializer and hit the
+primary-template `static_assert`. Add each component to the curated list as its
+serializer lands; the full-inventory path (a per-component serializer pass + a
+`HasExplicitSaveSerialize<C>` filter over `AllEngineComponents`) is tracked
+downstream. The registry is built **fresh per call** — cheap (a few
+allocations, never a per-frame path) and, unlike a process-static, its
+session-local `ComponentId`s always match the live `EntityManager`.
+
+The `.json.txt` **debug dump** (W-11) is a second, richer writer over the same
+save walk (archetype members + `CHILD_OF` edges), gated by the
+`IR_PERSIST_DUMP` env flag (`IRUtility::envFlagSet`) and emitted *after* the
+binary — a pure side-output, so the binary is byte-identical flag-on or
+flag-off (W-8 parity holds). It is distinct from the always-on lightweight
+`.json` sidecar (a magic/version/count summary).
 
 ## Responsibilities
 

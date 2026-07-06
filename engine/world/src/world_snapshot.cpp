@@ -14,11 +14,15 @@
 
 #include <irreden/common/components/component_persistent.hpp>
 
+#include <irreden/utility/path_utils.hpp>
+
 #include <algorithm>
 #include <map>
 #include <span>
 #include <typeinfo>
+#include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace IRWorld {
@@ -55,6 +59,123 @@ struct SavedSingleton {
     const SaveComponentEntry *entry_;
     EntityId savedId_;
 };
+
+// A saved archetype projection's component local indices, ascending — the
+// order the ARCH chunk writes columns. Shared by the deterministic archetype
+// sort, the ARCH writer, and the debug dump so all three agree.
+std::vector<std::uint32_t> sortedLocalIndices(
+    const IREntity::Archetype &projection,
+    const std::unordered_map<ComponentId, std::uint32_t> &localIndexByComponentId
+) {
+    std::vector<std::uint32_t> indices;
+    indices.reserve(projection.size());
+    for (const ComponentId componentId : projection) {
+        indices.push_back(localIndexByComponentId.at(componentId));
+    }
+    std::sort(indices.begin(), indices.end());
+    return indices;
+}
+
+// Emit the component save-name array (CMPN name-table order) under the current
+// JSON key. Shared by the `.json` sidecar and the `.json.txt` debug dump.
+void writeComponentsArray(
+    IRAsset::JsonSidecarWriter &json, const std::vector<const SaveComponentEntry *> &orderedEntries
+) {
+    json.beginArray();
+    for (const SaveComponentEntry *entry : orderedEntries) {
+        json.valueString(entry->saveName_);
+    }
+    json.endArray();
+}
+
+// Human-readable `.json.txt` debug dump (persist W-11, #2218), gated by
+// IR_PERSIST_DUMP. A *second writer over the same walk* — it reads the data
+// already collected for the binary write (archetype groups, component name
+// order, singletons, CHILD_OF edges) rather than re-parsing the binary bytes,
+// so it stays a pure side-output: the binary at `path` is byte-identical
+// whether the flag is set or not (the epic's W-8 byte-parity is unaffected).
+// Best-effort — a write failure never fails the save. This is a richer view
+// than the always-on `.json` sidecar (a magic/version/count summary): it lists
+// each archetype's members and every parent→child edge, for eyeballing a save.
+void writeWorldDump(
+    const std::string &path,
+    IREntity::EntityManager &em,
+    const std::unordered_set<EntityId> &servedIds,
+    const std::vector<SavedArchetype> &groups,
+    const std::vector<const SaveComponentEntry *> &orderedEntries,
+    const std::vector<SavedSingleton> &singletons,
+    const std::unordered_map<ComponentId, std::uint32_t> &localIndexByComponentId,
+    std::uint64_t totalEntities
+) {
+    IRAsset::JsonSidecarWriter json;
+    json.beginObject();
+    json.key("format");
+    json.valueString("IRWS-dump");
+    json.key("version");
+    json.valueUInt(kWorldSnapshotVersion);
+    json.key("entities");
+    json.valueUInt(totalEntities);
+
+    json.key("components");
+    writeComponentsArray(json, orderedEntries);
+
+    json.key("archetypes");
+    json.beginArray();
+    for (const SavedArchetype &group : groups) {
+        // Component save-names for this projection, in ascending local index —
+        // the same order the binary writes the columns.
+        const std::vector<std::uint32_t> indices =
+            sortedLocalIndices(group.projection_, localIndexByComponentId);
+
+        json.beginObject();
+        json.key("components");
+        json.beginArray();
+        for (const std::uint32_t li : indices) {
+            json.valueString(orderedEntries[li]->saveName_);
+        }
+        json.endArray();
+        json.key("entities");
+        json.beginArray();
+        for (const SavedEntityRef &ref : group.entities_) {
+            json.valueUInt(ref.maskedId_);
+        }
+        json.endArray();
+        json.endObject();
+    }
+    json.endArray();
+
+    json.key("singletons");
+    json.beginArray();
+    for (const SavedSingleton &singleton : singletons) {
+        json.beginObject();
+        json.key("component");
+        json.valueString(singleton.entry_->saveName_);
+        json.key("id");
+        json.valueUInt(singleton.savedId_);
+        json.endObject();
+    }
+    json.endArray();
+
+    // Relations: only CHILD_OF materializes edges today (mirrors the RELN
+    // chunk writer, which writes CHILD_OF as the constant relation id), so the
+    // literal type name is emitted per edge.
+    json.key("relations");
+    json.beginArray();
+    for (const auto &[child, parent] : detail::collectChildParentEdges(em, servedIds)) {
+        json.beginObject();
+        json.key("type");
+        json.valueString("CHILD_OF");
+        json.key("child");
+        json.valueUInt(child);
+        json.key("parent");
+        json.valueUInt(parent);
+        json.endObject();
+    }
+    json.endArray();
+    json.endObject();
+
+    IRAsset::writeJsonSidecarToFile(path + ".json.txt", json.str());
+}
 
 } // namespace
 
@@ -178,13 +299,7 @@ IRAsset::BinaryStatus saveWorld(const SaveRegistry &registry, const std::string 
 
     // Deterministic archetype order: by ascending local-index list.
     auto localIndexList = [&](const SavedArchetype &g) {
-        std::vector<std::uint32_t> out;
-        out.reserve(g.projection_.size());
-        for (const ComponentId componentId : g.projection_) {
-            out.push_back(localIndexByComponentId.at(componentId));
-        }
-        std::sort(out.begin(), out.end());
-        return out;
+        return sortedLocalIndices(g.projection_, localIndexByComponentId);
     };
     std::sort(groups.begin(), groups.end(), [&](const SavedArchetype &a, const SavedArchetype &b) {
         return localIndexList(a) < localIndexList(b);
@@ -309,13 +424,26 @@ IRAsset::BinaryStatus saveWorld(const SaveRegistry &registry, const std::string 
     json.key("singletons");
     json.valueUInt(singletons.size());
     json.key("components");
-    json.beginArray();
-    for (const SaveComponentEntry *entry : orderedEntries) {
-        json.valueString(entry->saveName_);
-    }
-    json.endArray();
+    writeComponentsArray(json, orderedEntries);
     json.endObject();
     IRAsset::writeJsonSidecarToFile(path + ".json", json.str());
+
+    // Optional detailed human-readable dump (W-11), gated by IR_PERSIST_DUMP.
+    // A pure side-output over the same collected data — never alters the binary
+    // (flag-off byte-parity holds), so it sits after the binary write like the
+    // sidecar above.
+    if (IRUtility::envFlagSet("IR_PERSIST_DUMP")) {
+        writeWorldDump(
+            path,
+            em,
+            servedIds,
+            groups,
+            orderedEntries,
+            singletons,
+            localIndexByComponentId,
+            totalEntities
+        );
+    }
 
     return IRAsset::BinaryStatus::success();
 }

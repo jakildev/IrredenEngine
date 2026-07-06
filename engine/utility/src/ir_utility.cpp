@@ -36,11 +36,8 @@ std::string readFileAsString(const std::string &filepath) {
     return {};
 }
 
-std::string joinPath(
-    const std::string &directory,
-    const std::string &filename,
-    const std::string &extension
-) {
+std::string
+joinPath(const std::string &directory, const std::string &filename, const std::string &extension) {
     std::filesystem::path path = std::filesystem::path(directory) / filename;
     path += normalizedExtension(extension);
     return path.string();
@@ -87,11 +84,12 @@ std::string userDataDir(const std::string &appName) {
     return appName;
 }
 
+bool envFlagSet(const char *name) {
+    return nonEmptyEnv(name) != nullptr;
+}
+
 std::string formatNumberedFilename(
-    const std::string &prefix,
-    int index,
-    int width,
-    const std::string &extension
+    const std::string &prefix, int index, int width, const std::string &extension
 ) {
     std::ostringstream filename;
     filename << prefix;
