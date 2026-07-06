@@ -34,7 +34,12 @@ config = {
 perf_grid = {
     mode = "voxel_set",
     grid_size = 64,
-    spacing = 2.0,
+    -- 1.0 = contiguous voxels (solid grid_size³ block). Spacing 2.0 turns the
+    -- scene into a 1/8-density lattice (see configs/perf/sparse_lattice.lua).
+    spacing = 1.0,
+    -- rigid = whole block glides screen-right in phase; per_cell = legacy
+    -- diagonal wave that shears the lattice open (scatter stress).
+    wave_mode = "rigid",
     wave_amplitude = 6.0,
     wave_period_seconds = 4.0,
     wave_offscreen = false,
