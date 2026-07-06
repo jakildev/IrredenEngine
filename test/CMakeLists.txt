@@ -96,6 +96,7 @@ add_executable(IrredenEngineTest
   world/save_trait_test.cpp
   world/world_snapshot_test.cpp
   world/world_snapshot_relations_test.cpp
+  world/persist_round_trip_test.cpp
 )
 
 FetchContent_Declare(
