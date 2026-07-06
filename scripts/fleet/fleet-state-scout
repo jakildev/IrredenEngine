@@ -2548,7 +2548,24 @@ def _fetch_follower_state(cfg):
     return None  # unreachable / error → caller self-polls
 
 
+def _refresh_gh_token():
+    # GitHub App token (#1394 Q4): guarded per-tick refresh so this
+    # long-lived daemon's gh calls stay authenticated past the installation
+    # token's 1h expiry. The helper's own cache makes this a cheap read on
+    # all but the ~once-per-hour re-mint tick. Never set GH_TOKEN to an
+    # empty string — that would defeat gh's keychain fallback on the
+    # unconfigured path (an empty stdout on the unconfigured path is
+    # already falsy, so the `if token` guard below is sufficient).
+    token = run_capture(_fleet_script_argv(["fleet-gh-token"]))
+    if token:
+        os.environ["GH_TOKEN"] = token.strip()
+
+
 def tick_once():
+    # Refresh before build_state so the token is current on every gh-calling
+    # path: a leader's collect_state poll, or a follower falling back to
+    # self-poll when the leader is unreachable (both route through gh).
+    _refresh_gh_token()
     state, served = build_state()
     # A follower's bundle is already fully resolved (the leader ran the pipeline
     # before serving); re-running it would double-process body-stripped data.

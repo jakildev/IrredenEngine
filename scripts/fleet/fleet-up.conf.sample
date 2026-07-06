@@ -21,6 +21,17 @@
 # Claude's Git Bash share ~/.fleet (set `db_home: windows` in
 # /etc/nsswitch.conf, or `export HOME=/c/Users/you`). See docs/agents/FLEET.md
 # "Cross-platform parity".
+#
+# GitHub App identity (#1394 Q4). When all three are set, fleet-gh-token
+# mints installation tokens so fleet gh/curl traffic bills against the
+# App's own rate-limit pool instead of the personal account's — SSH-based
+# git commits/pushes are unaffected, only the gh REST/GraphQL identity
+# changes (PR/comment/label edits show up as the App's bot identity).
+# Leave unset to keep today's behavior (byte-for-byte unchanged; gh keeps
+# using keychain auth).
+# FLEET_GH_APP_ID="123456"
+# FLEET_GH_APP_INSTALLATION_ID="78901234"
+# FLEET_GH_APP_KEY_PATH="$HOME/.fleet/secrets/irreden-fleet.pem"
 
 # --- Cross-device polling (host.toml, NOT this file) -------------------------
 #
