@@ -789,7 +789,8 @@ void createGridEntities() {
                     // actually touch (spacing 1.0) and stay touching (rigid
                     // wave moves the whole block in phase; the per-cell wave
                     // shears gaps open, where a stale mask would carve holes).
-                    if (g_settings.waveMode_ == WaveMode::Rigid && g_settings.spacing_ == 1.0f) {
+                    if (g_settings.waveMode_ == WaveMode::Rigid &&
+                        IRMath::abs(g_settings.spacing_ - 1.0f) < 1e-4f) {
                         std::uint8_t occluded = 0;
                         if (x > 0)
                             occluded |= VoxelFlags::kFaceOccludedNegX;
