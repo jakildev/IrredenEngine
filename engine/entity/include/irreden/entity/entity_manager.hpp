@@ -13,6 +13,7 @@
 #include <functional>
 #include <initializer_list>
 #include <set>
+#include <span>
 
 // TODO: a component should be registered with a size so it
 // can be copied around generically just as data.
@@ -88,6 +89,54 @@ class EntityManager {
     [[nodiscard]] bool entityExists(EntityId entity) const {
         return m_entityIndex.contains(entity & IR_ENTITY_ID_BITS);
     }
+
+    // --- World-snapshot restore surface (persist P2, #2213) ---
+    // Public wrapper over the archetype graph's node creation. The loader
+    // must materialize the target node for a restored archetype that no
+    // live entity currently occupies — findArchetypeNode alone can only
+    // find an existing one.
+    inline ArchetypeNode *findCreateArchetypeNode(const Archetype &type) {
+        return m_archetypeGraph.findCreateArchetypeNode(type);
+    }
+
+    // Insert a batch of entities carrying their exact saved EntityIds into
+    // `node`, appending to its entity list and advancing length_ / the live
+    // count. Component columns are filled separately by the caller (the save
+    // registry's per-column readers) in the SAME entity order, so on return
+    // each column is one batch short of length_ until the caller appends —
+    // the caller mirrors the eager path's end-of-node sync assert. Ids go in
+    // masked (no flags): the snapshot walker excludes relation/system
+    // entities, so a restored gameplay id never carries flag bits.
+    // Main-thread only (load is a frame-boundary op).
+    void restoreEntitiesBatch(ArchetypeNode *node, std::span<const EntityId> entityIds);
+
+    // Read-only view of the singleton cache (ComponentId -> owning entity).
+    // The snapshot walker excludes these entities from the ARCH chunk (they
+    // ride the SNGL chunk by value) — one arm of the resetGameplay-mirroring
+    // save-exclusion set.
+    inline const std::unordered_map<ComponentId, EntityId> &singletonEntityCache() const {
+        return m_singletonEntityByComponent;
+    }
+
+    // True if `entity` is a component-TYPE backing entity (each registered
+    // component is itself an entity id). Another arm of the save-exclusion
+    // set mirroring destroyAllExceptPreserved.
+    inline bool isComponentBackingEntity(EntityId entity) const {
+        return m_pureComponentVectors.contains(entity & IR_ENTITY_ID_BITS);
+    }
+
+    // The next-EntityId watermark (the id a subsequent createEntity would
+    // allocate). Written to the snapshot META chunk; a load pushes the
+    // allocator past every restored id via advanceEntityIdWatermark. Ids
+    // never recycle, so this is the whole of restore collision safety.
+    inline EntityId entityIdWatermark() const {
+        return m_nextEntityId.load(std::memory_order_relaxed);
+    }
+
+    // Advance the allocator watermark to at least `watermark` — never
+    // backwards, since this session's infrastructure entities may already
+    // sit above a cross-session saved watermark. Main-thread only.
+    void advanceEntityIdWatermark(EntityId watermark);
     EntityRecord &getRecord(EntityId entity);
     EntityId setFlags(EntityId entity, EntityId flags);
     bool isPureComponent(ComponentId component);

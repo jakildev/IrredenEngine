@@ -94,6 +94,7 @@ add_executable(IrredenEngineTest
   world/chunk_persistence_test.cpp
   world/chunk_residency_manager_test.cpp
   world/save_trait_test.cpp
+  world/world_snapshot_test.cpp
 )
 
 FetchContent_Declare(

@@ -64,6 +64,31 @@ EntityId EntityManager::allocateEntityIdAtomic() {
     return id;
 }
 
+void EntityManager::restoreEntitiesBatch(ArchetypeNode *node, std::span<const EntityId> entityIds) {
+    IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
+    IR_ASSERT(
+        isMainThreadForDeferred(),
+        "restoreEntitiesBatch is a frame-boundary op — must run on the main thread"
+    );
+    for (const EntityId entity : entityIds) {
+        const EntityId masked = entity & IR_ENTITY_ID_BITS;
+        m_entityIndex.emplace(masked, EntityRecord{node, node->length_});
+        node->entities_.push_back(masked);
+        node->length_++;
+        ++m_liveEntityCount;
+    }
+}
+
+void EntityManager::advanceEntityIdWatermark(EntityId watermark) {
+    IR_ASSERT(
+        isMainThreadForDeferred(),
+        "advanceEntityIdWatermark is a frame-boundary op — must run on the main thread"
+    );
+    if (watermark > m_nextEntityId.load(std::memory_order_relaxed)) {
+        m_nextEntityId.store(watermark, std::memory_order_relaxed);
+    }
+}
+
 bool EntityManager::isMainThreadForDeferred() const {
     // No JobManager → unit tests + pre-`World` startup → always main.
     if (g_jobManager == nullptr) {
