@@ -88,9 +88,10 @@ removed (#2108, guarded by `tests/test_babysit_launch.sh` T1/T3 for both
 `opus-architect` and `game-architect`). So on a resume: **print nothing on your
 own; wait for the human's next input and answer it from the context you already
 hold.** The one action that is about code freshness rather than context — the
-worktree sync (step 1) — still applies before your next piece of merge-sensitive
-work, because the worktree may be many merges behind even though your
-conversation is intact; treat resuming-then-being-handed-real-work as the "fresh
+worktree sync (step 1) — still applies before your next merge-state-sensitive
+action: filing a plan, citing a PR or merge state, or touching core code.
+The worktree may be many merges behind even though your conversation is
+intact; treat resuming-then-being-handed-real-work as the "fresh
 engagement" that step 1's trigger already covers. Everything below (banner,
 summary, cache read) is for the fresh-start case.
 
