@@ -1,5 +1,7 @@
 #include <irreden/world/world_snapshot.hpp>
 
+#include "world_snapshot_internal.hpp"
+
 #include <irreden/ir_profile.hpp>
 
 #include <irreden/asset/chunk_header.hpp>
@@ -258,10 +260,25 @@ IRAsset::BinaryStatus saveWorld(const SaveRegistry &registry, const std::string 
     metaW.writeVarUInt(em.entityIdWatermark());
     metaW.writeVarUInt(totalEntities);
 
+    // RELN (persist P3, #2214) — CHILD_OF edges whose both endpoints P2 wrote
+    // (ARCH gameplay entities + SNGL singletons). The set is the projection/
+    // exclusion decision already made above, so the relation walk reuses it
+    // rather than re-deriving the exclusions.
+    std::unordered_set<EntityId> servedIds;
+    for (const SavedArchetype &group : groups) {
+        for (const SavedEntityRef &ref : group.entities_) {
+            servedIds.insert(ref.maskedId_);
+        }
+    }
+    for (const SavedSingleton &singleton : singletons) {
+        servedIds.insert(singleton.savedId_);
+    }
+
     std::vector<IRAsset::ChunkPayload> chunks;
     chunks.push_back({kTagCmpn, cmpnW.takeBuffer()});
     chunks.push_back({kTagArch, archW.takeBuffer()});
     chunks.push_back({kTagSngl, snglW.takeBuffer()});
+    chunks.push_back(detail::makeRelationChunk(em, servedIds));
     chunks.push_back({kTagMeta, metaW.takeBuffer()});
 
     IRAsset::FileBinaryWriter fileW(path);
@@ -588,6 +605,22 @@ LoadResult loadWorld(const SaveRegistry &registry, const std::string &path) {
         }
     }
 
+    // Decode the RELN relation chunk here too, in the mutation-free pass —
+    // before the watermark advance and any phase-3 write. The parse is fallible
+    // (bad name table / triple count / a truncated triple), so it must run
+    // alongside the ARCH/SNGL decode-validate above: a malformed RELN chunk has
+    // to abort with a pristine world exactly like a malformed column does.
+    // Deferring the parse to the replay below (which runs after phase 3, since
+    // setParent needs the live entities and singleton aliases) would leave the
+    // entire restored entity set live on a failed load — the Rule #5 violation
+    // this split closes. Only the infallible replay stays in the final phase.
+    detail::StagedRelations stagedRelations;
+    const IRAsset::BinaryStatus relationDecodeStatus =
+        detail::decodeRelationChunk(chunks, stagedRelations);
+    if (!relationDecodeStatus.ok()) {
+        return loadFail(relationDecodeStatus);
+    }
+
     // Every id- and decode-validation has passed, so phase 3 is now
     // guaranteed to complete — advance the allocator watermark HERE, before
     // any mutation. It must precede the singleton loop: a fresh-session
@@ -668,6 +701,21 @@ LoadResult loadWorld(const SaveRegistry &registry, const std::string &path) {
     // Watermark was advanced after phase-2 validation, before any phase-3
     // mutation — advancing it here (after the singleton loop) would let a
     // fresh-session singleton lazy-create draw a just-restored id. See #2213.
+
+    // Final phase: replay CHILD_OF relation edges (persist P3, #2214) from the
+    // buffer decoded in phase 2b. Runs after every entity, column, and
+    // singleton is in place and the watermark has advanced (in phase 2b, before
+    // any phase-3 write), so setParent's synthetic relation entities mint above
+    // every restored id and moving a child's archetype node corrupts nothing.
+    // The parse already happened and passed — this replay makes no fallible
+    // read, so it cannot fail partway and strand a partial edge set.
+    detail::applyStagedRelations(
+        em,
+        stagedRelations,
+        result.singletonAliases_,
+        result.relationsRestored_,
+        result.relationsSkipped_
+    );
     return result;
 }
 

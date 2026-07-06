@@ -3,6 +3,7 @@ add_library(IrredenEngineWorld STATIC
     src/chunk_residency.cpp
     src/chunk_persistence.cpp
     src/world_snapshot.cpp
+    src/world_snapshot_relations.cpp
 )
 
 target_link_libraries(IrredenEngineWorld PUBLIC
