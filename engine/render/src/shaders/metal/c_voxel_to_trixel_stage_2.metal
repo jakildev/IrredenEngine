@@ -74,19 +74,15 @@ inline void writeColorTapPerAxis(
     }
     const uint linearIndex =
         uint(canvasPixel.y) * uint(canvasSize.x) + uint(canvasPixel.x);
-    const int canvasDistance =
-        atomic_load_explicit(&distanceScratch[linearIndex], memory_order_relaxed);
-    if (voxelDistance != canvasDistance) {
-        return;
-    }
     if (atomic_load_explicit(&perAxisWinnerIds[linearIndex], memory_order_relaxed) !=
         voxelIndex) {
         return;
     }
-    const uint2 pixel = uint2(canvasPixel);
-    triangleCanvasColors.write(voxelColor, pixel);
-    triangleCanvasDistances.write(int4(voxelDistance, 0, 0, 0), pixel);
-    triangleCanvasEntityIds.write(uint4(packedEntityId, 0u, 0u), pixel);
+    writeColorTap(
+        canvasPixel, voxelDistance, voxelColor, packedEntityId, canvasSize,
+        distanceScratch, triangleCanvasColors, triangleCanvasDistances,
+        triangleCanvasEntityIds
+    );
 }
 
 // Emit a face's 2x3 trixel block through the deformation matrix D.

@@ -173,11 +173,9 @@ void writeColorTapPerAxis(
 ) {
     const ivec2 canvasSize = imageSize(triangleCanvasDistances);
     if (!isInsideCanvas(canvasPixel, canvasSize)) return;
-    if (imageLoad(triangleCanvasDistances, canvasPixel).x != voxelDistance) return;
     const uint cell = uint(canvasPixel.y) * uint(canvasSize.x) + uint(canvasPixel.x);
     if (perAxisWinnerIds[cell] != voxelIndex) return;
-    imageStore(triangleCanvasColors, canvasPixel, voxelColor);
-    imageStore(triangleCanvasEntityIds, canvasPixel, uvec4(packedEntityId, 0u, 0u));
+    writeColorTap(canvasPixel, voxelDistance, voxelColor, packedEntityId);
 }
 
 // Emit a face's 2x3 trixel block through the deformation matrix D.
