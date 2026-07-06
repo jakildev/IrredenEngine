@@ -143,10 +143,12 @@ void main() {
     const ivec2 size = imageSize(trixelColors);
     ivec2 pixel;
     if (perAxisRoute != 0) {
-        // #2256: 1-D indirect dispatch over the compacted occupied-cell list —
-        // idx = workgroup * tile + local flat index, guarded by the axis's
+        // #2256: indirect dispatch over the compacted occupied-cell list, folded
+        // into a capped 2-D workgroup grid by c_per_axis_cell_finalize —
+        // idx = flat group index * tile + local flat index, guarded by the axis's
         // visibleCount, then decode the pixel from its linear cell.
-        const uint idx = gl_WorkGroupID.x * kPerAxisCellComputeTile + gl_LocalInvocationIndex;
+        const uint groupIndex = gl_WorkGroupID.x + gl_WorkGroupID.y * gl_NumWorkGroups.x;
+        const uint idx = groupIndex * kPerAxisCellComputeTile + gl_LocalInvocationIndex;
         if (idx >= cellDrawArgs[kDispatchArgsBaseUint + 3u]) {
             return;
         }

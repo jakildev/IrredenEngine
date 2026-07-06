@@ -25,11 +25,14 @@ kernel void c_resolve_per_axis_screen_depth(
     const device uint* compactedCells [[buffer(25)]],
     const device uint* cellDrawArgs [[buffer(26)]],
     uint3 groupId [[threadgroup_position_in_grid]],
-    uint localIndex [[thread_index_in_threadgroup]]
+    uint localIndex [[thread_index_in_threadgroup]],
+    uint3 numGroups [[threadgroups_per_grid]]
 ) {
-    // Recover the flat list index (one 1-D workgroup per kPerAxisCellComputeTile
-    // occupied cells) and decode the cell from the compacted list.
-    const uint idx = groupId.x * kPerAxisCellComputeTile + localIndex;
+    // Recover the flat list index — the capped 2-D threadgroup grid
+    // c_per_axis_cell_finalize wrote (kPerAxisCellComputeTile occupied cells per
+    // group) — and decode the cell from the compacted list.
+    const uint groupIndex = groupId.x + groupId.y * numGroups.x;
+    const uint idx = groupIndex * kPerAxisCellComputeTile + localIndex;
     if (idx >= cellDrawArgs[kDispatchArgsBaseUint + 3u]) {
         return;
     }

@@ -134,7 +134,10 @@ void main() {
     const ivec2 size = imageSize(trixelDistances);
     ivec2 pixel;
     if (perAxisRoute != 0) {
-        const uint idx = gl_WorkGroupID.x * kPerAxisCellComputeTile + gl_LocalInvocationIndex;
+        // #2256: 2-D-folded indirect dispatch — recover the flat group index
+        // (matches c_per_axis_cell_finalize's capped grid + c_voxel_visibility_compact).
+        const uint groupIndex = gl_WorkGroupID.x + gl_WorkGroupID.y * gl_NumWorkGroups.x;
+        const uint idx = groupIndex * kPerAxisCellComputeTile + gl_LocalInvocationIndex;
         if (idx >= cellDrawArgs[kDispatchArgsBaseUint + 3u]) {
             return;
         }

@@ -14,6 +14,12 @@ using namespace metal;
 constant uint kStrideUints = 64u;             // kPerAxisCellIndirectStrideBytes / 4
 constant uint kDispatchArgsBaseUint = 8u;     // kPerAxisCellDispatchArgsOffsetBytes / 4
 constant uint kPerAxisCellComputeTile = 256u; // kPerAxisCellComputeTile (16×16 threads)
+// Cap numGroupsX and spill the remainder into numGroupsY (mirror of the GLSL
+// twin) — matching CPU voxelDispatchGridForCount() and GPU writeDispatchDims().
+// Uncapped, >kPerAxisCellComputeTile × 65535 occupied cells overflows the X
+// dimension. Consumers recover the flat group index as
+// groupId.x + groupId.y * threadgroups_per_grid.x.
+constant uint kMaxDispatchGroupsX = 1024u;
 
 kernel void c_per_axis_cell_finalize(
     device uint* drawArgs [[buffer(26)]],
@@ -25,9 +31,12 @@ kernel void c_per_axis_cell_finalize(
     }
     const uint base = axis * kStrideUints;
     const uint count = drawArgs[base + 1u]; // instanceCount
-    drawArgs[base + kDispatchArgsBaseUint + 0u] =
-        (count + kPerAxisCellComputeTile - 1u) / kPerAxisCellComputeTile;
-    drawArgs[base + kDispatchArgsBaseUint + 1u] = 1u;
+    // divCeil(count, tile) workgroups, folded into a capped 2-D grid. An empty
+    // axis (count 0 → groups 0) yields groupsX 1, numGroupsY 0 → a no-op dispatch.
+    const uint groups = (count + kPerAxisCellComputeTile - 1u) / kPerAxisCellComputeTile;
+    const uint groupsX = max(min(groups, kMaxDispatchGroupsX), 1u);
+    drawArgs[base + kDispatchArgsBaseUint + 0u] = groupsX;
+    drawArgs[base + kDispatchArgsBaseUint + 1u] = (groups + groupsX - 1u) / groupsX;
     drawArgs[base + kDispatchArgsBaseUint + 2u] = 1u;
     drawArgs[base + kDispatchArgsBaseUint + 3u] = count; // visibleCount
 }

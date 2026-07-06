@@ -90,7 +90,8 @@ kernel void c_compute_sun_shadow(
     const device uint* cellDrawArgs [[buffer(26)]],
     uint3 globalId [[thread_position_in_grid]],
     uint3 groupId [[threadgroup_position_in_grid]],
-    uint localIndex [[thread_index_in_threadgroup]]
+    uint localIndex [[thread_index_in_threadgroup]],
+    uint3 numGroups [[threadgroups_per_grid]]
 ) {
     int2 size = int2(
         int(trixelDistances.get_width()),
@@ -101,7 +102,10 @@ kernel void c_compute_sun_shadow(
     // keeps its full-grid xy invocation guard (byte-identical). Mirrors GLSL.
     int2 pixel;
     if (frameData.perAxisRoute != 0) {
-        const uint idx = groupId.x * kPerAxisCellComputeTile + localIndex;
+        // #2256: 2-D-folded indirect dispatch — recover the flat group index
+        // (matches c_per_axis_cell_finalize's capped grid + c_voxel_visibility_compact).
+        const uint groupIndex = groupId.x + groupId.y * numGroups.x;
+        const uint idx = groupIndex * kPerAxisCellComputeTile + localIndex;
         if (idx >= cellDrawArgs[kDispatchArgsBaseUint + 3u]) {
             return;
         }

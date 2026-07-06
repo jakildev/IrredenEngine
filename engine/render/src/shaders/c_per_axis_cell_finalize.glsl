@@ -23,6 +23,16 @@ layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
 const uint kStrideUints = 64u;             // kPerAxisCellIndirectStrideBytes / 4
 const uint kDispatchArgsBaseUint = 8u;     // kPerAxisCellDispatchArgsOffsetBytes / 4
 const uint kPerAxisCellComputeTile = 256u; // kPerAxisCellComputeTile (16×16 threads)
+// Cap numGroupsX and spill the remainder into numGroupsY — matching the CPU
+// voxelDispatchGridForCount() (voxel_dispatch_grid.hpp) and the GPU-authored
+// writeDispatchDims() in c_voxel_visibility_compact.glsl, which solve the same
+// derive-an-indirect-grid-from-a-count problem. Left uncapped, a per-axis canvas
+// with more than kPerAxisCellComputeTile × 65535 (≈16.7M) occupied cells — reachable
+// at a large Lua-configured voxel-pool edge — drives numGroupsX past the
+// GL_MAX_COMPUTE_WORK_GROUP_COUNT[0] guaranteed minimum of 65535, silently
+// dropping/corrupting cells. The four consumer kernels recover the flat group
+// index as gl_WorkGroupID.x + gl_WorkGroupID.y * gl_NumWorkGroups.x.
+const uint kMaxDispatchGroupsX = 1024u;
 
 layout(std430, binding = 26) buffer PerAxisCellIndirect {
     uint drawArgs[];
@@ -35,11 +45,13 @@ void main() {
     }
     const uint base = axis * kStrideUints;
     const uint count = drawArgs[base + 1u]; // instanceCount
-    // numGroupsX = divCeil(count, tile); 0 for an empty axis → the per-axis
+    // divCeil(count, tile) workgroups, folded into a capped 2-D grid. An empty
+    // axis (count 0 → groups 0) yields groupsX 1, numGroupsY 0 → the per-axis
     // compute stages issue a clean no-op indirect dispatch.
-    drawArgs[base + kDispatchArgsBaseUint + 0u] =
-        (count + kPerAxisCellComputeTile - 1u) / kPerAxisCellComputeTile;
-    drawArgs[base + kDispatchArgsBaseUint + 1u] = 1u;
+    const uint groups = (count + kPerAxisCellComputeTile - 1u) / kPerAxisCellComputeTile;
+    const uint groupsX = max(min(groups, kMaxDispatchGroupsX), 1u);
+    drawArgs[base + kDispatchArgsBaseUint + 0u] = groupsX;
+    drawArgs[base + kDispatchArgsBaseUint + 1u] = (groups + groupsX - 1u) / groupsX;
     drawArgs[base + kDispatchArgsBaseUint + 2u] = 1u;
     drawArgs[base + kDispatchArgsBaseUint + 3u] = count; // visibleCount
 }

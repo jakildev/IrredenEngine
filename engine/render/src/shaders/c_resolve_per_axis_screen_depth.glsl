@@ -68,9 +68,11 @@ const uint kDispatchArgsBaseUint = 8u;      // kPerAxisCellDispatchArgsOffsetByt
 const uint kPerAxisCellComputeTile = 256u;  // kPerAxisCellComputeTile (16×16 threads)
 
 void main() {
-    // Recover the flat list index (one 1-D workgroup per kPerAxisCellComputeTile
-    // occupied cells) and decode the cell from the compacted list.
-    const uint idx = gl_WorkGroupID.x * kPerAxisCellComputeTile + gl_LocalInvocationIndex;
+    // Recover the flat list index — the capped 2-D workgroup grid
+    // c_per_axis_cell_finalize wrote (kPerAxisCellComputeTile occupied cells per
+    // group) — and decode the cell from the compacted list.
+    const uint groupIndex = gl_WorkGroupID.x + gl_WorkGroupID.y * gl_NumWorkGroups.x;
+    const uint idx = groupIndex * kPerAxisCellComputeTile + gl_LocalInvocationIndex;
     if (idx >= cellDrawArgs[kDispatchArgsBaseUint + 3u]) {
         return;
     }

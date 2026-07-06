@@ -61,13 +61,17 @@ kernel void c_compute_voxel_ao(
     const device uint* cellDrawArgs [[buffer(26)]],
     uint3 globalId [[thread_position_in_grid]],
     uint3 groupId [[threadgroup_position_in_grid]],
-    uint localIndex [[thread_index_in_threadgroup]]
+    uint localIndex [[thread_index_in_threadgroup]],
+    uint3 numGroups [[threadgroups_per_grid]]
 ) {
     int2 size = int2(int(trixelDistances.get_width()), int(trixelDistances.get_height()));
     int2 pixel;
     if (frameData.perAxisRoute != 0) {
-        // #2256: 1-D dispatch over the compacted occupied-cell list.
-        const uint idx = groupId.x * kPerAxisCellComputeTile + localIndex;
+        // #2256: indirect dispatch over the compacted occupied-cell list, folded
+        // into a capped 2-D threadgroup grid by c_per_axis_cell_finalize; recover
+        // the flat group index the same way c_voxel_visibility_compact does.
+        const uint groupIndex = groupId.x + groupId.y * numGroups.x;
+        const uint idx = groupIndex * kPerAxisCellComputeTile + localIndex;
         if (idx >= cellDrawArgs[kDispatchArgsBaseUint + 3u]) {
             return;
         }

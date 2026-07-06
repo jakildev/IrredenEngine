@@ -122,8 +122,11 @@ void main() {
     const ivec2 size = imageSize(trixelDistances);
     ivec2 pixel;
     if (perAxisRoute != 0) {
-        // #2256: 1-D dispatch over the compacted occupied-cell list.
-        const uint idx = gl_WorkGroupID.x * kPerAxisCellComputeTile + gl_LocalInvocationIndex;
+        // #2256: indirect dispatch over the compacted occupied-cell list, folded
+        // into a capped 2-D workgroup grid by c_per_axis_cell_finalize; recover
+        // the flat group index the same way c_voxel_visibility_compact does.
+        const uint groupIndex = gl_WorkGroupID.x + gl_WorkGroupID.y * gl_NumWorkGroups.x;
+        const uint idx = groupIndex * kPerAxisCellComputeTile + gl_LocalInvocationIndex;
         if (idx >= cellDrawArgs[kDispatchArgsBaseUint + 3u]) {
             return;
         }

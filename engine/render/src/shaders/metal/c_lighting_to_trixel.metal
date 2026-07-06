@@ -84,7 +84,8 @@ kernel void c_lighting_to_trixel(
     const device uint* cellDrawArgs [[buffer(26)]],
     uint3 globalId [[thread_position_in_grid]],
     uint3 groupId [[threadgroup_position_in_grid]],
-    uint localIndex [[thread_index_in_threadgroup]]
+    uint localIndex [[thread_index_in_threadgroup]],
+    uint3 numGroups [[threadgroups_per_grid]]
 ) {
     if (frameData.lightingEnabled == 0) {
         return;
@@ -96,10 +97,12 @@ kernel void c_lighting_to_trixel(
     );
     int2 pixel;
     if (voxelFrameData.perAxisRoute != 0) {
-        // #2256: 1-D indirect dispatch over the compacted occupied-cell list —
-        // idx = threadgroup * tile + local flat index, guarded by the axis's
+        // #2256: indirect dispatch over the compacted occupied-cell list, folded
+        // into a capped 2-D threadgroup grid by c_per_axis_cell_finalize —
+        // idx = flat group index * tile + local flat index, guarded by the axis's
         // visibleCount, then decode the pixel from its linear cell.
-        const uint idx = groupId.x * kPerAxisCellComputeTile + localIndex;
+        const uint groupIndex = groupId.x + groupId.y * numGroups.x;
+        const uint idx = groupIndex * kPerAxisCellComputeTile + localIndex;
         if (idx >= cellDrawArgs[kDispatchArgsBaseUint + 3u]) {
             return;
         }
