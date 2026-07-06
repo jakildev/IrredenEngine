@@ -119,6 +119,15 @@ const int kFogCutRayProbeDepth = 8;
 const float kFogCutTone = 0.85;
 const float kFogCutLift = 0.06;
 const int kFogCutMarchSteps = 8;
+// The cut is a boundary CAP, not a reveal: only surfaces within this many
+// world units of the cylinder wall (measured along the view ray to the disc
+// entry) are repainted. Beyond it the rim fade owns the falloff. Without the
+// limit, VERTICAL surfaces (an arena slab's side, border rails) catch disc
+// entries across their whole height and repaint "revealed" far past the
+// disc's true XY radius — the reveal then reads screen-space-ish, and the
+// bright repaint sitting beyond the darker fade band sandwiches the fade
+// into a phantom shadow stripe.
+const float kFogCutMaxEntryCells = 2.0;
 
 // Rim fade — the fallback for hidden RASTERIZED matter the cut does not
 // repaint. Instead of dropping straight to the unexplored black, an
@@ -313,12 +322,13 @@ void main() {
             }
             if (bestT >= 0.0) {
                 const float worldPerDepthUnit = length(rayStep);
-                if (bestT * worldPerDepthUnit <= 1.0) {
+                const float entryDistance = bestT * worldPerDepthUnit;
+                if (entryDistance <= 1.0) {
                     // Entry within one cell of the hit surface — still inside
                     // the surface voxel's own matter: solid by construction,
                     // immune to bitfield rounding right at the rim.
                     cutSolid = true;
-                } else {
+                } else if (entryDistance <= kFogCutMaxEntryCells) {
                     // March half-cell occupancy samples along the ray from
                     // just inside the rim (the first sample's half-cell inset
                     // keeps the rounded cell unambiguously interior). The

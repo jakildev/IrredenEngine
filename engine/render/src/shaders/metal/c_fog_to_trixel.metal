@@ -75,6 +75,7 @@ constant int kFogCutRayProbeDepth = 8;
 constant float kFogCutTone = 0.85f;
 constant float kFogCutLift = 0.06f;
 constant int kFogCutMarchSteps = 8;
+constant float kFogCutMaxEntryCells = 2.0f;
 // Rim fade — mirrors the GLSL twin (see there for the full rationale and the
 // kFogHiddenKeepCells width coupling).
 constant float kFogRimFadeCells = 8.0f;
@@ -248,12 +249,13 @@ kernel void c_fog_to_trixel(
             }
             if (bestT >= 0.0f) {
                 const float worldPerDepthUnit = length(rayStep);
-                if (bestT * worldPerDepthUnit <= 1.0f) {
+                const float entryDistance = bestT * worldPerDepthUnit;
+                if (entryDistance <= 1.0f) {
                     // Entry within one cell of the hit surface — still inside
                     // the surface voxel's own matter: solid by construction,
                     // immune to bitfield rounding right at the rim.
                     cutSolid = true;
-                } else {
+                } else if (entryDistance <= kFogCutMaxEntryCells) {
                     // March half-cell occupancy samples along the ray from
                     // just inside the rim (the first sample's half-cell inset
                     // keeps the rounded cell unambiguously interior). The
