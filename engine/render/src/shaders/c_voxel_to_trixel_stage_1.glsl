@@ -444,7 +444,16 @@ void main() {
     // unconditional no-op on routes 1/2/3. `fogActive` gates the world GRID canvas +
     // world-placed re-voxelize detached canvas (#2127) and short-circuits every other
     // route, keeping non-fog scenes byte-identical.
-    if (fogActive && perAxisRoute == 0 && fogColumnRevealNearest(worldColumn) <= 0.0) {
+    // The GRID canvas keeps a disc-adjacent RING of hidden columns
+    // (fogColumnRevealNearest's kFogHiddenKeepCells) so FOG_TO_TRIXEL's image-space
+    // cut (#2124) has hidden matter to repaint per pixel. A world-placed DETACHED
+    // canvas carries no fog pass, so nothing reclaims those kept columns — it clips
+    // tight at the voxel lattice (fogColumnReveal <= 0), the #2137-era behaviour the
+    // per-axis routes also apply. See #2248.
+    bool ownColumnHidden = isDetachedCanvas > 0.5
+        ? fogColumnReveal(worldColumn) <= 0.0
+        : fogColumnRevealNearest(worldColumn) <= 0.0;
+    if (fogActive && perAxisRoute == 0 && ownColumnHidden) {
         return;
     }
 
