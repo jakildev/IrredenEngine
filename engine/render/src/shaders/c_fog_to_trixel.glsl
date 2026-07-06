@@ -119,6 +119,22 @@ const int kFogCutRayProbeDepth = 8;
 const float kFogCutTone = 0.85;
 const float kFogCutLift = 0.06;
 const int kFogCutMarchSteps = 8;
+// The cut is a boundary CAP, not a reveal: only surfaces whose OWN world
+// column sits within this many world units PAST the disc radius are
+// repainted; beyond it the rim fade owns the falloff. The cap metric is
+// RADIAL surface-XY distance past the rim — the same metric the reveal and
+// the rim fade key on — so every fog boundary is a circle concentric with
+// the disc at every face height. Capping by ray-entry distance instead
+// sweeps the disc along the view ray's world-(1,1) XY, which is a pure
+// screen-vertical displacement in iso: the band's outer edge rendered as
+// the reveal arc shifted up-screen plus straight screen-vertical tangent
+// flats, so the reveal read screen-space-ish on elevated faces (top of a
+// slab, crate tops). The radial cap also keeps the original exclusions:
+// VERTICAL surfaces far past the radius (an arena slab's side, border
+// rails) fail the same test and stay on the fade. The ray intersection +
+// march below remain solely as SOLIDITY evidence (is there really cut
+// matter at this boundary), never as the region bound.
+const float kFogCutMaxRimCells = 2.0;
 
 // Rim fade — the fallback for hidden RASTERIZED matter the cut does not
 // repaint. Instead of dropping straight to the unexplored black, an
@@ -311,9 +327,14 @@ void main() {
                     }
                 }
             }
-            if (bestT >= 0.0) {
+            // Region bound is RADIAL (the surface's own column distance past
+            // the rim — see kFogCutMaxRimCells): the ray hit below is only the
+            // solidity evidence, so the band's outer edge stays concentric
+            // with the disc instead of screen-shifting with the ray sweep.
+            if (bestT >= 0.0 && hardDistPastRim <= kFogCutMaxRimCells) {
                 const float worldPerDepthUnit = length(rayStep);
-                if (bestT * worldPerDepthUnit <= 1.0) {
+                const float entryDistance = bestT * worldPerDepthUnit;
+                if (entryDistance <= 1.0) {
                     // Entry within one cell of the hit surface — still inside
                     // the surface voxel's own matter: solid by construction,
                     // immune to bitfield rounding right at the rim.
