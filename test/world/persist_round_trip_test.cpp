@@ -218,7 +218,10 @@ TEST_F(PersistRoundTrip, ParityAcrossFreshWorld) {
         ASSERT_TRUE(m_em.entityExists(expected.archetype3_[i]));
         EXPECT_EQ(m_em.getComponent<C_PA>(expected.archetype3_[i]).a_, 200 + i);
         EXPECT_EQ(m_em.getComponent<C_PB>(expected.archetype3_[i]).b_, i * 3);
-        EXPECT_EQ(m_em.getComponent<C_PC>(expected.archetype3_[i]).c_, static_cast<std::uint32_t>(i));
+        EXPECT_EQ(
+            m_em.getComponent<C_PC>(expected.archetype3_[i]).c_,
+            static_cast<std::uint32_t>(i)
+        );
 
         ASSERT_TRUE(m_em.entityExists(expected.archetype4_[i]));
         EXPECT_EQ(m_em.getComponent<C_PMark>(expected.archetype4_[i]).marker_, i);

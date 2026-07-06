@@ -48,6 +48,13 @@ namespace IRScript::detail {
 // routed through userDataDir like IRSave. A non-string argument raises a Lua
 // error via sol coercion — the same I/O-fails->bool / misuse->error split the
 // sibling IRSave persistence bindings use.
+//
+// A reloaded C_VoxelSetNew lands in staged mode (pendingVoxels_ populated,
+// numVoxels_ == 0) — this binding does not attach it to a live pool. The
+// caller's UPDATE pipeline must run SEED_STAGED_VOXELS (see
+// system_seed_staged_voxels.hpp / engine/prefabs/irreden/voxel/CLAUDE.md
+// "C_VoxelSetNew headless / staged mode") for the set to seed a pool span and
+// render on a later frame; without it a loaded voxel set stays invisible.
 inline void bindWorldSnapshotApi(LuaScript &script) {
     sol::state &lua = script.lua();
     if (!lua["IRPersist"].valid()) {

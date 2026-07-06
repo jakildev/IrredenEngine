@@ -8,10 +8,12 @@
 #include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/common/components/component_position_int_3d.hpp>
 #include <irreden/common/components/component_size_int_3d.hpp>
+#include <irreden/voxel/components/component_voxel_set.hpp>
 
 #include <sol/sol.hpp>
 
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <string>
 #include <vector>
@@ -21,14 +23,16 @@
 // (`m_lua.bindLuaDrivenEcs()`) against a live EntityManager built like
 // world_snapshot_test, so a Lua `saveWorld`/`loadWorld` round-trips real engine
 // components through the process-default registry (C_LocalTransform,
-// C_PositionInt3D, C_SizeInt3D — the trivially-copyable members of
-// makeDefaultSaveRegistry).
+// C_PositionInt3D, C_SizeInt3D — the trivially-copyable POD members, plus
+// C_VoxelSetNew, the one component with an explicit SaveSerialize<C>).
 
 namespace {
 
 using IRComponents::C_LocalTransform;
 using IRComponents::C_PositionInt3D;
 using IRComponents::C_SizeInt3D;
+using IRComponents::C_Voxel;
+using IRComponents::C_VoxelSetNew;
 using IREntity::EntityId;
 
 std::vector<std::uint8_t> readFileBytes(const std::string &path) {
@@ -172,6 +176,55 @@ TEST_F(LuaWorldSnapshotTest, RoundTripThroughLua) {
 
     // CHILD_OF edge restored.
     EXPECT_EQ(parentOf(child), parent) << "CHILD_OF edge lost on reload";
+}
+
+// `makeDefaultSaveRegistry()` registers C_VoxelSetNew (world_default_registry.cpp)
+// alongside the trivially-copyable PODs above — the one component with an
+// explicit SaveSerialize<C> (persist P6, #2217) rather than the default
+// byte-copy path. Round-trips a headless, pool-free set (StagedInit — no
+// VoxelPool/canvas needed) through the Lua binding; reload always
+// reconstructs in staged mode (numVoxels_ == 0, pendingVoxels_ populated) —
+// attaching it to a live pool is a separate step the caller's UPDATE
+// pipeline performs via SEED_STAGED_VOXELS (lua_world_snapshot_bindings.hpp).
+TEST_F(LuaWorldSnapshotTest, RoundTripsVoxelSetNew) {
+    const IRMath::ivec3 size{2, 1, 2};
+    const IRMath::ivec3 boundsMin{3, -1, 5};
+    const IREntity::EntityId canvas = 777;
+    std::vector<C_Voxel> voxels(4);
+    for (std::size_t i = 0; i < voxels.size(); ++i) {
+        voxels[i].color_ = IRMath::Color{
+            static_cast<std::uint8_t>(i * 10 + 1),
+            static_cast<std::uint8_t>(i * 20 + 2),
+            static_cast<std::uint8_t>(i * 30 + 3),
+            255
+        };
+    }
+
+    const EntityId entity = m_entity_manager.createEntity(
+        C_VoxelSetNew{C_VoxelSetNew::StagedInit{}, size, boundsMin, voxels, canvas}
+    );
+
+    const std::string path = tempPath("voxelset");
+    ASSERT_TRUE(runOk("assert(IRPersist.saveWorld('" + path + "'))"));
+
+    m_entity_manager.destroyAllEntities();
+    ASSERT_TRUE(runOk("assert(IRPersist.loadWorld('" + path + "'))"));
+
+    ASSERT_TRUE(m_entity_manager.entityExists(entity));
+    const C_VoxelSetNew &reloaded = m_entity_manager.getComponent<C_VoxelSetNew>(entity);
+    EXPECT_EQ(reloaded.size_.x, size.x);
+    EXPECT_EQ(reloaded.size_.y, size.y);
+    EXPECT_EQ(reloaded.size_.z, size.z);
+    EXPECT_EQ(reloaded.pendingBoundsMin_.x, boundsMin.x);
+    EXPECT_EQ(reloaded.pendingBoundsMin_.y, boundsMin.y);
+    EXPECT_EQ(reloaded.pendingBoundsMin_.z, boundsMin.z);
+    EXPECT_EQ(reloaded.canvasEntity_, canvas);
+    EXPECT_EQ(reloaded.numVoxels_, 0) << "reload must stay staged — never touches a pool";
+    ASSERT_EQ(reloaded.pendingVoxels_.size(), voxels.size());
+    for (std::size_t i = 0; i < voxels.size(); ++i) {
+        EXPECT_EQ(0, std::memcmp(&reloaded.pendingVoxels_[i], &voxels[i], sizeof(C_Voxel)))
+            << "voxel record " << i << " differs after round-trip";
+    }
 }
 
 // Missing/corrupt path -> false with no Lua error (I/O failure is a bool, not
