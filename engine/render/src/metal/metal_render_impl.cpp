@@ -780,8 +780,14 @@ metalCurrentDepthPixelFormat(),
             markMetalBufferEncoded(mtlBuffer);
         } else {
             // No command buffer (e.g. during startup init) — the GPU can't be
-            // reading the buffer yet, so a direct CPU fill is safe.
-            std::memset(mtlBuffer->contents(), byteValue, clamped);
+            // reading the buffer yet, so a direct CPU fill is safe. contents()
+            // is null for a private-storage-mode buffer (no CPU-visible
+            // mapping); this PR's call sites are all shared-storage mid-frame,
+            // but guard the pointer so a future private-buffer caller no-ops
+            // here instead of memset'ing null.
+            if (void *mapped = mtlBuffer->contents()) {
+                std::memset(mapped, byteValue, clamped);
+            }
         }
     }
 

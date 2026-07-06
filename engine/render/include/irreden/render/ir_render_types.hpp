@@ -932,6 +932,14 @@ constexpr std::uint32_t kBufferIndex_SunShadowDepthMap = kBufferIndex_LightOcclu
 // rationale as the LightOcclusionGrid/SunShadowDepthMap alias above. The
 // scratch lives on a buffer because Metal has no portable image-atomic
 // syntax (see c_voxel_to_trixel_stage_1.metal's distance scratch).
+// VOXEL_TO_TRIXEL_STAGE_1's per-axis winner election (#2255) is a THIRD
+// transient consumer: it binds its winner-election scratch (winnerIds_) here
+// for the deterministic color-winner atomicMin, then reads the settled winner
+// back. Both the write and the read complete inside that one system's per-axis
+// loop, which registers strictly before every slot-28 lighting/occlusion/
+// resolve/bake consumer rebinds — same non-overlapping-stage safety, but a
+// narrower borrow than the resolve above: it never hands the resource across a
+// stage boundary.
 constexpr std::uint32_t kBufferIndex_PerAxisResolveScratch = kBufferIndex_LightOcclusionGrid;
 // Per-axis empty-cell compaction (#1961). The TRIXEL_TO_FRAMEBUFFER composite
 // compacts each per-axis canvas's occupied cells into an indirect instanced
