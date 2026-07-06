@@ -47,6 +47,19 @@ else
 fi
 unset _FLEET_CLONE_FRESHNESS_SH
 
+# Install-symlink freshness helper (#2262): re-links ~/bin when a merged
+# fleet tool / role-cmd / ir-* is newer than the last install.sh pass, so a
+# freshly-added tool is not `command not found` on first use. Sourced by-dir,
+# same as fleet-clone-freshness.sh above (both are symlinked into ~/bin).
+_FLEET_COMMON_SH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/fleet-common.sh"
+if [[ -f "$_FLEET_COMMON_SH" ]]; then
+    # shellcheck source=/dev/null
+    source "$_FLEET_COMMON_SH"
+else
+    fleet_install_maybe_refresh() { :; }  # helper not installed yet — no-op
+fi
+unset _FLEET_COMMON_SH
+
 # Model classes — change these when bumping the fleet to a new release.
 #
 # The queue routes work by model CLASS: fable | opus | sonnet. Tasks carry
@@ -537,6 +550,13 @@ warn_legacy_worktree() {
 }
 warn_legacy_worktree "$ENGINE/.claude/worktrees/opus-worker"
 warn_legacy_worktree "$GAME/.claude/worktrees/game-sonnet"
+
+# Refresh ~/bin symlinks now that both main clones are advanced, so every pane
+# this session launches starts with links for every merged tool / role-cmd /
+# ir-*. One install.sh run covers engine + game role files (install.sh reaches
+# into $GAME for them). Guarded: a no-op sub-ms stat walk when nothing is newer
+# than the last install pass. (#2262)
+fleet_install_maybe_refresh "$ENGINE" || true
 
 # ----------------------------------------------------------------------
 # Step 1.5: reconcile reservations against world state

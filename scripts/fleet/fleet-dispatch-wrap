@@ -46,6 +46,21 @@ unset _mode_arg
 STATE_DIR="${FLEET_STATE_DIR:-$HOME/.fleet/state}"
 RATE_LIMIT_DIR="$STATE_DIR/rate-limit"
 
+# Install-symlink freshness (#2262): a tool/role-cmd merged WHILE the fleet is
+# running only reaches ~/bin when install.sh re-links — otherwise it's
+# `command not found` on first use. Source the shared helper (symlinked into
+# ~/bin next to this script); the per-pane refresh runs just before the claude
+# launch below, guarded so it's a sub-ms no-op unless a source is newer than
+# the last install pass.
+_FLEET_COMMON_SH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/fleet-common.sh"
+if [[ -f "$_FLEET_COMMON_SH" ]]; then
+    # shellcheck source=/dev/null
+    source "$_FLEET_COMMON_SH"
+else
+    fleet_install_maybe_refresh() { :; }  # helper not installed yet — no-op
+fi
+unset _FLEET_COMMON_SH
+
 # Expose the iteration's model class so fleet-claim can enforce the
 # model-tag gate. Classes are literal — fable | opus | sonnet — and the
 # gate exact-matches against the task's fleet:<class> label / Model:
@@ -179,6 +194,12 @@ if [[ -n "${FLEET_DISPATCH_PRINT_LAUNCH:-}" ]]; then
     printf 'resumed=%s prompt=%s argv=claude %s\n' "$RESUMED" "$PROMPT" "${CLAUDE_ARGS[*]}"
     exit 0
 fi
+
+# Re-link ~/bin if a fleet source merged since the last install pass, so this
+# iteration's claude sees every tool/role-cmd (the mid-run stranding fix, #2262).
+# Runs after the FLEET_DISPATCH_PRINT_LAUNCH test hook so launch-decision tests
+# never trigger a real install.sh. Best-effort: never block the dispatch.
+fleet_install_maybe_refresh || true
 
 claude "${CLAUDE_ARGS[@]}" "$PROMPT" | fleet-claude-stream
 

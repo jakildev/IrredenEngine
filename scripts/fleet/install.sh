@@ -655,5 +655,13 @@ if [[ -f "$FLEET_ZSH_COMP_SRC" ]]; then
     echo "  Then \`fleet-run IR<Tab>\` lists built executables, not cwd files."
 fi
 
+# Stamp this successful symlink pass so fleet-up / fleet-dispatch-wrap can skip
+# re-linking until a fleet source (tool / role-cmd / ir-*) is newer than the
+# stamp — see fleet_install_stale in fleet-common.sh (#2262). Overridable for
+# tests via FLEET_INSTALL_STAMP.
+_install_stamp="${FLEET_INSTALL_STAMP:-$HOME/.fleet/state/.install-stamp}"
+mkdir -p "$(dirname "$_install_stamp")" 2>/dev/null || true
+touch "$_install_stamp" 2>/dev/null || true
+
 echo
 echo "install.sh: done."
