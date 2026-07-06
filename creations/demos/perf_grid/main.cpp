@@ -662,9 +662,11 @@ C_PeriodicIdle makeWaveIdle(int x, int y, int z) {
     const float amplitude =
         g_settings.waveOffscreen_ ? g_settings.waveAmplitude_ * 6.0f : g_settings.waveAmplitude_;
 
-    // Rigid: whole block glides along the screen-right iso axis (world
-    // (1,-1,0) keeps screen-Y flat at cardinal yaw), every cell in phase.
-    // PerCell: legacy z-axis wave with a per-cell phase gradient.
+    // Rigid: whole block glides along the screen-right iso axis, every
+    // cell in phase. World (1,-1,0) -> iso.x=-2, iso.y=0 (screen-Y flat
+    // at cardinal yaw); pos3DtoPos2DScreen negates iso.x via its
+    // vec2(-1, screenY) factor, so iso.x=-2 lands at +screen-x -- right,
+    // not left. PerCell: legacy z-axis wave with a per-cell phase gradient.
     vec3 amplitudeVec;
     float phase = 0.0f;
     if (g_settings.waveMode_ == WaveMode::Rigid) {
