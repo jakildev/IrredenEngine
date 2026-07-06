@@ -774,12 +774,41 @@ void createGridEntities() {
                 C_PeriodicIdle idle = makeWaveIdle(x, y, z);
 
                 if (g_settings.mode_ == PerfGridMode::VoxelSet) {
-                    IREntity::createEntity(
+                    EntityId cellEntity = IREntity::createEntity(
                         C_LocalTransform{pos},
                         C_VoxelSetNew{ivec3(1, 1, 1), color, false},
                         idle,
                         C_Modifiers{}
                     );
+                    // Cross-set face occupancy: single-voxel sets can't see
+                    // their grid neighbors, so without this every interior
+                    // voxel reports all six faces exposed and the compact
+                    // pass rasters the full n³ volume instead of the ~6n²
+                    // shell. The lattice is known analytically here, so stamp
+                    // the occluded bits directly. Valid only while the cells
+                    // actually touch (spacing 1.0) and stay touching (rigid
+                    // wave moves the whole block in phase; the per-cell wave
+                    // shears gaps open, where a stale mask would carve holes).
+                    if (g_settings.waveMode_ == WaveMode::Rigid &&
+                        IRMath::abs(g_settings.spacing_ - 1.0f) < 1e-4f) {
+                        std::uint8_t occluded = 0;
+                        if (x > 0)
+                            occluded |= VoxelFlags::kFaceOccludedNegX;
+                        if (x + 1 < n)
+                            occluded |= VoxelFlags::kFaceOccludedPosX;
+                        if (y > 0)
+                            occluded |= VoxelFlags::kFaceOccludedNegY;
+                        if (y + 1 < n)
+                            occluded |= VoxelFlags::kFaceOccludedPosY;
+                        if (z > 0)
+                            occluded |= VoxelFlags::kFaceOccludedNegZ;
+                        if (z + 1 < n)
+                            occluded |= VoxelFlags::kFaceOccludedPosZ;
+                        auto cellSet = IREntity::getComponentOptional<C_VoxelSetNew>(cellEntity);
+                        if (cellSet.has_value()) {
+                            cellSet.value()->voxels_[0].flags_ |= occluded;
+                        }
+                    }
                 } else {
                     IREntity::createEntity(
                         C_LocalTransform{pos},
