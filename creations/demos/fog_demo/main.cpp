@@ -674,6 +674,19 @@ void initEntities() {
     // High, slightly off-axis sun so each shape casts a visible shadow.
     IRRender::setSunDirection(vec3(0.35f, 0.85f, -0.4f));
 
+    // The BOUNDARY scenes (--edge-zoom / --edge-smooth / --detached-edge)
+    // override to a STRAIGHT-DOWN sun. Their render-verify refs exist to
+    // inspect the fog reveal boundary, and an angled sun drives shadow
+    // TERMINATORS across the exact band under test — the pillar's terminator
+    // crossing the slab-top fog arc composites into a kinked dark curve that
+    // reads as a fog artifact (it was reported as one: the "sharp turn" that
+    // appears to connect the elevated face's fade to the floor rim at the
+    // wrong height). Fog x shadow composition stays covered by the default
+    // grid scene's refs, which keep the angled sun.
+    if (g_edgeZoom || g_edgeSmooth || g_detachedEdge) {
+        IRRender::setSunDirection(vec3(0.0f, 0.0f, -1.0f));
+    }
+
     // --player-walk: spawn the moving "player" marker — a bright vertical pillar
     // that reads clearly above the floor as it walks. The per-frame walk hook
     // repositions it + re-points its analytic vision circle each tick. The grid
