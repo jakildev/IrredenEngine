@@ -130,6 +130,11 @@ bool fogColumnUnexplored(ivec3 voxelPosRaw) {
     return imageLoad(canvasFogOfWar, fogCell).r < kFogExploredThreshold;
 }
 
+// All six face-occlusion bits of the voxel flags byte (bits [2..7], the
+// shader-side mirror of IRComponents::VoxelFlags::kFaceOccludedMask). A
+// flags byte matching the full mask marks a fully-interior voxel.
+const uint kFaceOccludedMaskBits = 0xFCu;
+
 // Safety margin (cells): covers the per-pixel worldPerPixel AA that
 // c_fog_to_trixel adds at low zoom — this shader can't compute zoom —
 // PLUS the fog-hidden keep ring (kFogHiddenKeepCells in
@@ -184,7 +189,9 @@ void main() {
             // 32-bit word stride matches `kVoxelActiveMaskBits` on the CPU side.
             uint maskWord = activeMask[idx >> 5u];
             if (((maskWord >> (idx & 31u)) & 1u) != 0u) {
-                ivec3 voxelPosRaw = ivec3(round(positions[idx].xyz));
+                // roundHalfUp keeps tie cells consistent with the stage-1/2
+                // raster (hardware round() ties are implementation-defined).
+                ivec3 voxelPosRaw = roundHalfUp(positions[idx].xyz);
                 ivec2 isoPos;
                 int cullMargin = 0;
                 // Smooth camera Z-yaw (T3 / #1310): while the per-axis canvases
@@ -215,9 +222,23 @@ void main() {
                     (!fogColumnUnexplored(voxelPosRaw) ||
                      fogColumnInVisionCircle(voxelPosRaw))) {
                     if (perAxisSplitStride == 0) {
-                        // Single full list (byte-identical to master).
-                        uint slot = atomicAdd(params[3], 1u);
-                        compactedVoxelIndices[slot] = idx;
+                        // Fully-interior drop: a voxel with all six face-occlusion
+                        // bits set can emit nothing downstream — stage 1/2 fail
+                        // faceIsExposed on every slot, and the opposite-polarity
+                        // rotated emit needs an exposed opposite face — so
+                        // skipping its append is output-identical and saves its
+                        // sub²-slice stage-1 dispatch. Exception: an active fog
+                        // vision circle can revive an occluded vertical face as
+                        // a cross-section cut wall (#2125), so the drop is gated
+                        // off while any circle is live. (No early return — the
+                        // cross-group completion barrier below must stay
+                        // uniformly reached.)
+                        uint flagsByte = (voxels[idx].materialFlagBone >> 8u) & 0xFFu;
+                        if (visionCircleCount != 0 ||
+                            (flagsByte & kFaceOccludedMaskBits) != kFaceOccludedMaskBits) {
+                            uint slot = atomicAdd(params[3], 1u);
+                            compactedVoxelIndices[slot] = idx;
+                        }
                     } else {
                         // Per-axis split (#1739): append this voxel into each axis
                         // region whose axis it has an exposed face on. The store

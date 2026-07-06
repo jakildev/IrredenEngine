@@ -270,19 +270,27 @@ read_dispatch_mode() {
 #
 # Observations are written by fleet-claude-stream (one file per
 # rateLimitType under $USAGE_DIR), so the gate piggybacks on every
-# transient worker's stream — no separate poller needed.
+# transient worker's stream — no separate poller needed. GitHub API
+# pools flow through the same glob-and-evaluate loop: fleet-state-scout's
+# sample_github_rate_limit() latches github-{core,graphql,search}.json
+# into the same $USAGE_DIR every tick (#2221), so a near-exhausted
+# GitHub pool defers dispatch exactly like a near-exhausted Anthropic
+# window — no separate code path.
 #
 # Per-type thresholds let the operator distinguish a short-window
 # limit (5-hour, baked default 80% — leaves 20% headroom for
 # in-flight iterations to finish) from a long-window limit (7-day
 # all-models, baked default 95% — pre-emption only when very close
 # to the wall, so typical operation isn't gated by mid-week burn).
+# github_core/github_graphql gate at 90% (dispatched agents burn REST
+# calls too); github_search is surfaced but never gates (threshold 1.01).
 #
 # Threshold lookup order (per observation type, e.g. "seven_day"):
 #   1. FLEET_DISPATCHER_USAGE_GATE_<TYPE_UPPERCASE>  (per-type override)
 #   2. FLEET_DISPATCHER_USAGE_GATE                   (global override)
 #   3. BUILTIN_PER_TYPE_DEFAULTS in the Python below (seven_day=0.95,
-#      five_hour=0.80; everything else falls to the global default)
+#      five_hour=0.80, github_core=0.90, github_graphql=0.90,
+#      github_search=1.01; everything else falls to the global default)
 #   4. Final fallback 0.80
 #
 # Conservative against staleness, but resetsAt is authoritative: an
@@ -917,6 +925,9 @@ reset_grace_s = int(os.environ.get("RESET_GRACE_SECONDS", "600"))
 BUILTIN_PER_TYPE_DEFAULTS = {
     "seven_day": 0.95,   # all-models weekly window — pre-empt close to wall
     "five_hour": 0.80,   # short-window — leave 20% headroom for in-flight work
+    "github_core": 0.90,     # dispatched agents burn REST calls too — gate before the wall
+    "github_graphql": 0.90,  # same pool the #1394 exhaustion incident hit
+    "github_search": 1.01,   # surface-only — fleet usage of /search is negligible, never gate
 }
 # Final fallback for unknown types when the operator hasn't set a
 # global override either.
@@ -1769,6 +1780,15 @@ main() {
             log "shutdown sentinel detected; exiting"
             break
         fi
+
+        # GitHub App token (#1394 Q4): guarded per-tick refresh so this
+        # long-lived daemon's gh calls stay authenticated past the
+        # installation token's 1h expiry. Cache makes this a cheap file read
+        # on all but the ~once-per-hour re-mint tick. Never export
+        # GH_TOKEN="" — that would defeat gh's keychain fallback on the
+        # unconfigured path.
+        _gh_app_token="$(fleet-gh-token 2>/dev/null || true)"
+        [[ -n "$_gh_app_token" ]] && export GH_TOKEN="$_gh_app_token"
 
         cleanup_stale_dispatches
 

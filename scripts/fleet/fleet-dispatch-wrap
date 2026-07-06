@@ -58,6 +58,14 @@ else
     export FLEET_ROLE_MODEL=sonnet
 fi
 
+# GitHub App token (#1394 Q4): guarded per-iteration refresh so every claude
+# iteration starts with a fresh token (cache makes this a cheap file read
+# most calls). Never export GH_TOKEN="" — that would defeat gh's keychain
+# fallback on the unconfigured path.
+_gh_app_token="$(fleet-gh-token 2>/dev/null || true)"
+[[ -n "$_gh_app_token" ]] && export GH_TOKEN="$_gh_app_token"
+unset _gh_app_token
+
 # Re-tag the pane border label with the model this iteration actually
 # runs (the worker lane flexes per task), e.g. "worker [fable 1m]".
 # Best-effort: a failure here must never block the dispatch.

@@ -235,7 +235,8 @@ Parallel-agent fleet (tmux + Claude)
                                  stacked/conflicting PRs for zero tokens;
                                  conflicts or unhandled merger states re-arm
                                  the LLM merger pass
-  fleet-gate-status [--json]     show usage gate + per-pane cooldown state
+  fleet-gate-status [--json]     show usage gate (Anthropic + GitHub API
+                                 pools) + per-pane cooldown state
   fleet-claude-stream            format claude stream-json for tmux
   fleet-heartbeat <agent>        bump heartbeat mtime
   fleet-iteration-summary <agent> "<text>"

@@ -59,7 +59,6 @@
 #include <irreden/common/command_suite_capture.hpp>
 
 #include <algorithm>
-#include <numbers>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -91,11 +90,39 @@ enum class PerfGridMode {
     HollowSet,
 };
 
+// Wave motion shape for the per-entity modes (voxel_set / sdf).
+//   PerCell — the default: phase advances with (x+y+z), so a z-axis
+//             oscillation travels through the volume as a visible wave.
+//             Neighboring cells shear apart by up to 2·a·sin(π/λ) ≈
+//             0.196·a (λ = 32 at grid_size 64), so amplitudes at or below
+//             λ/(2π) ≈ 5.09 keep every adjacent rounded-cell step ≤ 1 and
+//             the block stays watertight — the wave reads on the surface
+//             without opening see-through slits. Larger amplitudes tear
+//             transient gaps open (a deliberate scatter stress, not a bug).
+//   Rigid   — every cell shares phase 0, so the grid glides as one block
+//             along the screen-right iso axis (world (1,-1,0)). The
+//             always-touching lattice is the solidity / occupancy-cull
+//             reference. Per-entity update cost matches PerCell exactly
+//             (each entity still ticks its own C_PeriodicIdle and
+//             re-uploads its position every frame).
+enum class WaveMode {
+    Rigid,
+    PerCell,
+};
+
 struct PerfGridSettings {
     PerfGridMode mode_ = PerfGridMode::VoxelSet;
     int gridSize_ = 64;
-    float spacing_ = 2.0f;
-    float waveAmplitude_ = 6.0f;
+    // 1.0 = contiguous 1³ voxels → a solid grid_size³ block. Values > 1
+    // open (spacing - 1) units of air between cells: at 2.0 the scene is a
+    // 1/8-density lattice that reads as hollow under yaw and striped at
+    // cardinals (configs/perf/sparse_lattice.lua keeps that scene).
+    float spacing_ = 1.0f;
+    WaveMode waveMode_ = WaveMode::PerCell;
+    // 5.0 sits just under the per-cell tear threshold λ/(2π) ≈ 5.09 (see the
+    // WaveMode note): the traveling wave stays fully visible while every
+    // voxel remains on screen at every frame.
+    float waveAmplitude_ = 5.0f;
     float wavePeriodSeconds_ = 4.0f;
     bool waveOffscreen_ = false;
     float initialZoom_ = 0.5f;
@@ -122,6 +149,8 @@ struct CliOverrides {
     bool yawRampCrops_ = false;
     bool waveAmplitudeSet_ = false;
     float waveAmplitude_ = 0.0f;
+    bool waveModeSet_ = false;
+    WaveMode waveMode_ = WaveMode::PerCell;
     bool subdivisionModeSet_ = false;
     IRRender::SubdivisionMode subdivisionMode_ = IRRender::SubdivisionMode::FULL;
     bool baseSubdivisionsSet_ = false;
@@ -349,6 +378,27 @@ const char *modeName(PerfGridMode mode) {
     return "voxel_set";
 }
 
+WaveMode parseWaveMode(const std::string &value) {
+    if (value == "rigid") {
+        return WaveMode::Rigid;
+    }
+    if (value == "per_cell") {
+        return WaveMode::PerCell;
+    }
+    IR_LOG_WARN("Unknown perf_grid wave_mode '{}'; using per_cell", value);
+    return WaveMode::PerCell;
+}
+
+const char *waveModeName(WaveMode mode) {
+    switch (mode) {
+    case WaveMode::Rigid:
+        return "rigid";
+    case WaveMode::PerCell:
+        return "per_cell";
+    }
+    return "rigid";
+}
+
 template <typename T> void readLuaValue(sol::table table, const char *key, T &out) {
     sol::object value = table[key];
     if (value.valid() && value.is<T>()) {
@@ -362,6 +412,9 @@ void applyPerfGridTable(sol::table perfGrid) {
     g_settings.mode_ = parseMode(mode);
     readLuaValue(perfGrid, "grid_size", g_settings.gridSize_);
     readLuaValue(perfGrid, "spacing", g_settings.spacing_);
+    std::string waveMode = waveModeName(g_settings.waveMode_);
+    readLuaValue(perfGrid, "wave_mode", waveMode);
+    g_settings.waveMode_ = parseWaveMode(waveMode);
     readLuaValue(perfGrid, "wave_amplitude", g_settings.waveAmplitude_);
     readLuaValue(perfGrid, "wave_period_seconds", g_settings.wavePeriodSeconds_);
     readLuaValue(perfGrid, "wave_offscreen", g_settings.waveOffscreen_);
@@ -430,6 +483,9 @@ void applyCliOverrides() {
     if (g_cliOverrides.waveAmplitudeSet_) {
         g_settings.waveAmplitude_ = g_cliOverrides.waveAmplitude_;
     }
+    if (g_cliOverrides.waveModeSet_) {
+        g_settings.waveMode_ = g_cliOverrides.waveMode_;
+    }
     // CLI subdivision flags supersede config/preset values.
     if (g_cliOverrides.subdivisionModeSet_) {
         g_settings.subdivisionMode_ = g_cliOverrides.subdivisionMode_;
@@ -467,6 +523,11 @@ void registerCliArgs() {
         "Attach a center ROI crop to each near-cardinal residual --yaw-ramp pose"
     );
     args.number("--wave-amplitude", "Per-frame idle wave amplitude (0 = static scene)", 0.0f);
+    args.string(
+        "--wave-mode",
+        "Wave motion: per_cell (traveling wave) | rigid (block glides right)",
+        "per_cell"
+    );
     args.string("--subdivision-mode", "Trixel subdivision: none | position_only | full", "full");
     args.integer("--base-subdivisions", "Base trixel subdivision count", 1);
     args.integer("--worker-threads", "Recorded for manifest/cell-ID; thread wiring is T-221", 0);
@@ -521,6 +582,10 @@ void readCliArgs() {
         g_cliOverrides.waveAmplitude_ = args.getFloat("--wave-amplitude");
         g_cliOverrides.waveAmplitudeSet_ = true;
     }
+    if (args.wasProvided("--wave-mode")) {
+        g_cliOverrides.waveMode_ = parseWaveMode(args.getString("--wave-mode"));
+        g_cliOverrides.waveModeSet_ = true;
+    }
     if (args.wasProvided("--subdivision-mode")) {
         const std::string mode = args.getString("--subdivision-mode");
         if (mode == "none") {
@@ -567,9 +632,9 @@ void readCliArgs() {
 }
 
 void validateSettings() {
-    g_settings.gridSize_ = std::max(1, g_settings.gridSize_);
-    g_settings.spacing_ = std::max(0.25f, g_settings.spacing_);
-    g_settings.wavePeriodSeconds_ = std::max(0.1f, g_settings.wavePeriodSeconds_);
+    g_settings.gridSize_ = IRMath::max(1, g_settings.gridSize_);
+    g_settings.spacing_ = IRMath::max(0.25f, g_settings.spacing_);
+    g_settings.wavePeriodSeconds_ = IRMath::max(0.1f, g_settings.wavePeriodSeconds_);
 
     const int poolEdge = IRRender::VoxelPoolConfig::getEdge();
     if (g_settings.mode_ == PerfGridMode::VoxelSet && g_settings.gridSize_ > poolEdge) {
@@ -595,7 +660,7 @@ void validateSettings() {
 }
 
 Color colorForCell(int x, int y, int z, int gridSize) {
-    const float denom = static_cast<float>(std::max(gridSize - 1, 1));
+    const float denom = static_cast<float>(IRMath::max(gridSize - 1, 1));
     return Color{
         static_cast<std::uint8_t>(80 + 120.0f * (static_cast<float>(x) / denom)),
         static_cast<std::uint8_t>(120 + 100.0f * (static_cast<float>(y) / denom)),
@@ -605,13 +670,26 @@ Color colorForCell(int x, int y, int z, int gridSize) {
 }
 
 C_PeriodicIdle makeWaveIdle(int x, int y, int z) {
-    const float tau = 2.0f * std::numbers::pi_v<float>;
-    const float wavelength = std::max(8.0f, static_cast<float>(g_settings.gridSize_) * 0.5f);
-    const float phase = tau * static_cast<float>(x + y + z) / wavelength;
     const float amplitude =
         g_settings.waveOffscreen_ ? g_settings.waveAmplitude_ * 6.0f : g_settings.waveAmplitude_;
 
-    C_PeriodicIdle idle{vec3(0.0f, 0.0f, amplitude), g_settings.wavePeriodSeconds_, phase};
+    // Rigid: whole block glides along the screen-right iso axis, every
+    // cell in phase. World (1,-1,0) -> iso.x=-2, iso.y=0 (screen-Y flat
+    // at cardinal yaw); pos3DtoPos2DScreen negates iso.x via its
+    // vec2(-1, screenY) factor, so iso.x=-2 lands at +screen-x -- right,
+    // not left. PerCell: the default; a per-cell phase gradient makes a
+    // z-axis wave travel through the volume.
+    vec3 amplitudeVec;
+    float phase = 0.0f;
+    if (g_settings.waveMode_ == WaveMode::Rigid) {
+        amplitudeVec = IRMath::normalize(vec3(1.0f, -1.0f, 0.0f)) * amplitude;
+    } else {
+        const float wavelength = IRMath::max(8.0f, static_cast<float>(g_settings.gridSize_) * 0.5f);
+        phase = IRMath::kTwoPi * static_cast<float>(x + y + z) / wavelength;
+        amplitudeVec = vec3(0.0f, 0.0f, amplitude);
+    }
+
+    C_PeriodicIdle idle{amplitudeVec, g_settings.wavePeriodSeconds_, phase};
     idle.addStageDurationSeconds(
         0.0f,
         g_settings.wavePeriodSeconds_ * 0.5f,
@@ -638,12 +716,13 @@ void createGridEntities() {
     const int n = g_settings.gridSize_;
     const int expectedEntities = n * n * n;
     IR_LOG_INFO(
-        "Creating perf_grid mode={} grid_size={} entity_count={} spacing={} wave_amplitude={} "
-        "wave_period={}",
+        "Creating perf_grid mode={} grid_size={} entity_count={} spacing={} wave_mode={} "
+        "wave_amplitude={} wave_period={}",
         modeName(g_settings.mode_),
         n,
         expectedEntities,
         g_settings.spacing_,
+        waveModeName(g_settings.waveMode_),
         g_settings.waveAmplitude_,
         g_settings.wavePeriodSeconds_
     );
@@ -695,12 +774,41 @@ void createGridEntities() {
                 C_PeriodicIdle idle = makeWaveIdle(x, y, z);
 
                 if (g_settings.mode_ == PerfGridMode::VoxelSet) {
-                    IREntity::createEntity(
+                    EntityId cellEntity = IREntity::createEntity(
                         C_LocalTransform{pos},
                         C_VoxelSetNew{ivec3(1, 1, 1), color, false},
                         idle,
                         C_Modifiers{}
                     );
+                    // Cross-set face occupancy: single-voxel sets can't see
+                    // their grid neighbors, so without this every interior
+                    // voxel reports all six faces exposed and the compact
+                    // pass rasters the full n³ volume instead of the ~6n²
+                    // shell. The lattice is known analytically here, so stamp
+                    // the occluded bits directly. Valid only while the cells
+                    // actually touch (spacing 1.0) and stay touching (rigid
+                    // wave moves the whole block in phase; the per-cell wave
+                    // shears gaps open, where a stale mask would carve holes).
+                    if (g_settings.waveMode_ == WaveMode::Rigid &&
+                        IRMath::abs(g_settings.spacing_ - 1.0f) < 1e-4f) {
+                        std::uint8_t occluded = 0;
+                        if (x > 0)
+                            occluded |= VoxelFlags::kFaceOccludedNegX;
+                        if (x + 1 < n)
+                            occluded |= VoxelFlags::kFaceOccludedPosX;
+                        if (y > 0)
+                            occluded |= VoxelFlags::kFaceOccludedNegY;
+                        if (y + 1 < n)
+                            occluded |= VoxelFlags::kFaceOccludedPosY;
+                        if (z > 0)
+                            occluded |= VoxelFlags::kFaceOccludedNegZ;
+                        if (z + 1 < n)
+                            occluded |= VoxelFlags::kFaceOccludedPosZ;
+                        auto cellSet = IREntity::getComponentOptional<C_VoxelSetNew>(cellEntity);
+                        if (cellSet.has_value()) {
+                            cellSet.value()->voxels_[0].flags_ |= occluded;
+                        }
+                    }
                 } else {
                     IREntity::createEntity(
                         C_LocalTransform{pos},

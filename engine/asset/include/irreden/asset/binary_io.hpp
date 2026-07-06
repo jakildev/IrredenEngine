@@ -39,6 +39,8 @@ enum class BinaryIOError {
     ChunkOutOfBounds, ///< chunk-table entry points outside the file
     WriteFailed,      ///< fwrite returned fewer bytes than requested
     UnknownTag,       ///< unrecognized value/record discriminant byte (likely a newer writer)
+    MigratorMissing,  ///< a known component's on-disk version has no registered reader/migrator
+                      ///< (world snapshot P5)
 };
 
 /// Status payload returned by void-typed binary operations.

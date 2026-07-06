@@ -91,6 +91,14 @@ PID_FILE = STATE_DIR / "scout.pid"
 STATE_FILE = STATE_DIR / "state.json"
 SHUTDOWN_FLAG = Path.home() / ".fleet" / "shutdown-in-progress"
 
+# Where GitHub API rate-limit observations are latched for the dispatcher's
+# usage gate — same directory + payload shape as fleet-claude-stream's
+# Anthropic-side USAGE_DIR (one file per rateLimitType, overwritten each
+# sample). fleet-dispatcher globs this whole dir with zero per-source
+# special-casing, so dropping github-<pool>.json files here is enough to
+# make GitHub quota gate dispatch the same way Anthropic quota does.
+USAGE_DIR = STATE_DIR / "usage"
+
 # Canonical short keys used in the cache layout. The keys match the
 # `repos.<key>` slots in state.json so consumers can read the per-PR
 # / per-issue files using the same name they already use for the
@@ -285,6 +293,58 @@ def fetch_prs(repo, prev=None):
     if not changed and prev is not None:
         return prev
     return _fetch_prs_graphql(repo)
+
+
+def sample_github_rate_limit():
+    """Latch `gh api /rate_limit` pool utilization into USAGE_DIR.
+
+    Writes one github-<pool>.json per pool (core, graphql, search). The
+    base {rateLimitType, utilization, resetsAt, observed_at} fields match
+    the shape fleet-claude-stream's latch_usage_observation writes for
+    Anthropic types, so fleet-dispatcher's usage-gate evaluator globs the
+    whole dir and gates on these with zero per-source special-casing.
+    `limit`/`remaining` are extra fields the evaluator ignores but
+    fleet-gate-status's GitHub display section reads (a bare utilization
+    fraction can't reconstruct "remaining=3527/5000"). Called at the top
+    of tick_once, before build_state, so quota stays fresh every tick
+    (leader or follower) even on a degraded tick. `/rate_limit` is a free
+    read-only REST GET — it does
+    not consume the primary limit it reports on.
+
+    Best-effort: a failed sample (gh error, bad JSON, unwritable state
+    dir) is logged and swallowed, leaving the prior file (if any) in
+    place — a wedged sampler must never crash the scout tick.
+    """
+    out = run_capture(["gh", "api", "/rate_limit"])
+    if out is None:
+        return
+    try:
+        resources = json.loads(out).get("resources", {})
+    except json.JSONDecodeError as e:
+        log(f"gh api /rate_limit: bad JSON: {e}")
+        return
+    now = int(time.time())
+    for pool in ("core", "graphql", "search"):
+        info = resources.get(pool)
+        if not info:
+            continue
+        limit = info.get("limit")
+        used = info.get("used")
+        if not limit:
+            continue
+        payload = {
+            "rateLimitType": f"github_{pool}",
+            "utilization": used / limit,
+            "resetsAt": info.get("reset"),
+            "observed_at": now,
+            "limit": limit,
+            "remaining": info.get("remaining", limit - used),
+        }
+        try:
+            USAGE_DIR.mkdir(parents=True, exist_ok=True)
+            write_atomic(USAGE_DIR / f"github-{pool}.json", json.dumps(payload))
+        except OSError as e:
+            log(f"github rate-limit latch failed for {pool}: {e}")
 
 
 _ALREADY_QUEUED_LABELS = frozenset({"fleet:queued", "fleet:scope-shipped", "fleet:needs-human"})
@@ -2548,7 +2608,31 @@ def _fetch_follower_state(cfg):
     return None  # unreachable / error → caller self-polls
 
 
+def _refresh_gh_token():
+    # GitHub App token (#1394 Q4): guarded per-tick refresh so this
+    # long-lived daemon's gh calls stay authenticated past the installation
+    # token's 1h expiry. The helper's own cache makes this a cheap read on
+    # all but the ~once-per-hour re-mint tick. Never set GH_TOKEN to an
+    # empty string — that would defeat gh's keychain fallback on the
+    # unconfigured path (an empty stdout on the unconfigured path is
+    # already falsy, so the `if token` guard below is sufficient).
+    token = run_capture(_fleet_script_argv(["fleet-gh-token"]))
+    if token:
+        os.environ["GH_TOKEN"] = token.strip()
+
+
 def tick_once():
+    # Refresh before build_state so the token is current on every gh-calling
+    # path: a leader's collect_state poll, or a follower falling back to
+    # self-poll when the leader is unreachable (both route through gh). Must
+    # precede the quota sample below — that sample makes its own gh
+    # /rate_limit call, so the token has to be minted first.
+    _refresh_gh_token()
+    # Runs before build_state so GitHub quota is captured every scout tick —
+    # leader or follower, and even when state collection degrades. Best-effort
+    # itself (see sample_github_rate_limit docstring); each host's dispatcher
+    # gate reads its own host-local quota sample, so followers sample too.
+    sample_github_rate_limit()
     state, served = build_state()
     # A follower's bundle is already fully resolved (the leader ran the pipeline
     # before serving); re-running it would double-process body-stripped data.

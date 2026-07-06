@@ -67,6 +67,15 @@ ENTRY_HEAD_FILE = re.compile(
 # Pattern bank — order matters; first match wins. Widen aggressively;
 # uncategorized noise drowns the signal otherwise.
 SIGNATURES: list[tuple[str, re.Pattern]] = [
+    # A fleet script merged to master but the host's ~/bin symlink pass never
+    # re-ran, so the tool is "command not found" / missing on PATH. Must sit
+    # before label-absent-after-verdict: these entries often name the verdict
+    # wrapper and would otherwise be swallowed by that signature.
+    ("install-symlink-lag", re.compile(
+        r"(?=.*(~?/bin|symlink|install\.sh|\bPATH\b))"
+        r"(?=.*(not\s+(on\s+PATH|symlinked|linked|present|installed)"
+        r"|missing|doesn.t\s+exist|command\s+not\s+found|stale[- ]symlink"
+        r"|install[- ]lag|un-?symlinked))", re.I | re.S)),
     ("label-absent-after-verdict", re.compile(
         r"(label\s+(absent|missing|never\s+set|stripped|cleared|left\s+stale)"
         r"|verdict\s+labels?\s+(absent|missing|never|stripped)"
