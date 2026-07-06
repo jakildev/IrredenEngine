@@ -22,8 +22,12 @@ depth (vec3 → int):
 Helpers:
 
 - `IRMath::pos3DtoPos2DIso(pos3D)` — the projection above.
-- `IRMath::pos3DtoPos2DScreen(pos3D)` — scales + sign-flips the iso result
-  for screen coordinates (backend-dependent Y direction).
+- `IRMath::pos3DtoPos2DScreen(pos3D)` — scales the iso result and maps it to
+  screen coordinates: it **unconditionally negates iso X** (`screen.x =
+  -iso.x`, so increasing `iso.x` is screen-*left*; world `+x` → screen-right,
+  world `+y` → screen-left) and applies the backend-dependent Y sign. The X
+  negation is invisible in the equations above — never derive on-screen X
+  direction from `pos3DtoPos2DIso` alone.
 - `IRMath::pos3DtoDistance(pos3D)` — the depth scalar.
 - `IRMath::isoDepthShift(pos, d)` — returns `pos + (d, d, d)`, which shifts
   depth without affecting the 2D projection. Used for stacked depth layers

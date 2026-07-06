@@ -89,6 +89,10 @@ It carries every cost the boolean does — it bloats the component (hurting arch
 
 Worked example (#1288): `SYSTEM_REBUILD_GRID_VOXELS` cached `lastRebuildWorld{Rotation,Scale,Translation}_` on `C_VoxelSetNew` and early-returned when the live `C_WorldTransform` matched. That snapshot was a dirty flag wearing component-field clothing. The fix dropped the snapshot entirely: on-screen voxel sets re-rasterize every frame, and the system instead skips sets whose pool chunks are outside the cull viewport (`C_VoxelPool::isRangeVisible`). The cull gate answers "is this work observable?" — the honest question — instead of "did the inputs change?".
 
+### Multi-field honest gates must stay consistent across failure paths
+
+When an honest state gate is composed of **multiple coupled fields** (e.g. `C_VoxelSetNew`'s staged gate: `numVoxels_ == 0` **and** `pendingVoxels_` non-empty), every failure / early-return path must leave those fields mutually consistent — a shared mutator that zeroes one gate field on failure must zero (or preserve) **all** of them together. A partial state satisfies neither the "staged" nor the "resident" invariant, and the per-frame driver that re-reads the gate silently mis-processes it (#2240: a retry path preserved the payload but not the extent, producing a silent zero-voxel seed over a right-sized allocation).
+
 ### Live deviations
 
 - `engine/prefabs/irreden/render/components/component_canvas_fog_of_war.hpp` — `C_CanvasFogOfWar::dirty_` and `allUnexplored_` gate the per-frame `subImage2D` upload of the 256² fog texture. The upload is performed by `VOXEL_TO_TRIXEL_STAGE_1` (#2008), which both reads the fog to cull unexplored-column voxels and runs earlier in the pipeline; `FOG_TO_TRIXEL` is now a read-only consumer of the already-uploaded texture. Documented exception (CPU-authored, GPU-read-only, full-texture upload). T-161 evaluated migration to per-region `subImage2D` and deferred; see [`docs/design/fog-of-war-upload-strategy.md`](../../docs/design/fog-of-war-upload-strategy.md) for the analysis, the trigger conditions for revisiting, and the mechanical Strategy C migration sketch.
