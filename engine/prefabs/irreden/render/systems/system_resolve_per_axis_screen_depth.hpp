@@ -70,6 +70,12 @@ template <> struct System<RESOLVE_PER_AXIS_SCREEN_DEPTH> {
     IREntity::EntityId perAxisCanvasEntity_ = IREntity::kNullEntity;
     C_PerAxisTrixelCanvases *perAxisCanvases_ = nullptr;
 
+    // Lazily-resolved voxel-compaction buffers (#1961/#2256), restored onto
+    // slots 25/26 after the scatter pass borrows them for its own per-axis
+    // cell list. See IRPrefab::PerAxisCanvas::restoreVoxelCompactionSlots.
+    Buffer *voxelCompactedBuf_ = nullptr;
+    Buffer *voxelIndirectBuf_ = nullptr;
+
     // (Re)allocate the scratch SSBO to @p mainSize and seed it to the empty
     // sentinel. Runs only on a size change (window/canvas resize), not per
     // frame — the blit keeps the scratch reset thereafter.
@@ -187,6 +193,10 @@ template <> struct System<RESOLVE_PER_AXIS_SCREEN_DEPTH> {
             voxelFrameDataBuf_,
             IRRender::getVoxelRenderEffectiveSubdivisions()
         );
+        // Restore slots 25/26 to the voxel-compaction buffers (#1961/#2256) the
+        // scatter pass above borrowed via bindRange — see the restore-slots note
+        // in system_compute_voxel_ao.hpp for the corruption mode this avoids.
+        IRPrefab::PerAxisCanvas::restoreVoxelCompactionSlots(voxelCompactedBuf_, voxelIndirectBuf_);
     }
 
     void beginTick() {

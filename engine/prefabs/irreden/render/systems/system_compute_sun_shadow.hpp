@@ -51,6 +51,12 @@ template <> struct System<COMPUTE_SUN_SHADOW> {
     IREntity::EntityId perAxisCanvasEntity_ = IREntity::kNullEntity;
     C_PerAxisTrixelCanvases *perAxisCanvases_ = nullptr;
 
+    // Lazily-resolved voxel-compaction buffers (#1961/#2256), restored onto
+    // slots 25/26 after dispatchPerAxisSunShadow borrows them for its own
+    // per-axis cell list. See IRPrefab::PerAxisCanvas::restoreVoxelCompactionSlots.
+    Buffer *voxelCompactedBuf_ = nullptr;
+    Buffer *voxelIndirectBuf_ = nullptr;
+
     void tick(
         IREntity::EntityId entity,
         const C_TriangleCanvasTextures &canvasTextures,
@@ -147,6 +153,10 @@ template <> struct System<COMPUTE_SUN_SHADOW> {
             voxelFrameDataBuf_,
             IRRender::getVoxelRenderEffectiveSubdivisions()
         );
+        // Restore slots 25/26 to the voxel-compaction buffers (#1961/#2256) the
+        // per-axis loop above borrowed via bindRange — see the restore-slots
+        // note in system_compute_voxel_ao.hpp for the corruption mode this avoids.
+        IRPrefab::PerAxisCanvas::restoreVoxelCompactionSlots(voxelCompactedBuf_, voxelIndirectBuf_);
         // Restore the main-canvas image bindings (see the #1311 note in
         // system_compute_voxel_ao.hpp — the persistent Metal image-binding table
         // would otherwise dangle when release() frees the per-axis textures).

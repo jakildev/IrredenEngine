@@ -366,22 +366,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     // cell compaction borrowed them (#1961). Looked up lazily by name (see the
     // voxel*Buf_ field comment); a no-op if the voxel system isn't registered.
     void restoreVoxelCompactionSlots() {
-        if (voxelCompactedBuf_ == nullptr) {
-            voxelCompactedBuf_ = IRRender::getNamedResource<Buffer>("CompactedVoxelIndices");
-            voxelIndirectBuf_ = IRRender::getNamedResource<Buffer>("IndirectDispatchParams");
-        }
-        if (voxelCompactedBuf_ != nullptr) {
-            voxelCompactedBuf_->bindBase(
-                BufferTarget::SHADER_STORAGE,
-                kBufferIndex_PerAxisCellCompacted
-            );
-        }
-        if (voxelIndirectBuf_ != nullptr) {
-            voxelIndirectBuf_->bindBase(
-                BufferTarget::SHADER_STORAGE,
-                kBufferIndex_PerAxisCellIndirect
-            );
-        }
+        IRPrefab::PerAxisCanvas::restoreVoxelCompactionSlots(voxelCompactedBuf_, voxelIndirectBuf_);
     }
 
     void beginTick() {

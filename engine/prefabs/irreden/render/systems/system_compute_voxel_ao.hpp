@@ -54,6 +54,12 @@ template <> struct System<COMPUTE_VOXEL_AO> {
     IREntity::EntityId perAxisCanvasEntity_ = IREntity::kNullEntity;
     C_PerAxisTrixelCanvases *perAxisCanvases_ = nullptr;
 
+    // Lazily-resolved voxel-compaction buffers (#1961/#2256), restored onto
+    // slots 25/26 after dispatchPerAxisAO borrows them for its own per-axis
+    // cell list. See IRPrefab::PerAxisCanvas::restoreVoxelCompactionSlots.
+    Buffer *voxelCompactedBuf_ = nullptr;
+    Buffer *voxelIndirectBuf_ = nullptr;
+
     // Per-pass voxel-frame author/restore for multi-lit-canvas scenes
     // (re-voxelize P4 / #1558). The shared voxel UBO (binding 7) is authored
     // per canvas by VOXEL_TO_TRIXEL_STAGE_1, but only the LAST canvas it
@@ -180,6 +186,12 @@ template <> struct System<COMPUTE_VOXEL_AO> {
             voxelFrameDataBuf_,
             IRRender::getVoxelRenderEffectiveSubdivisions()
         );
+        // Restore slots 25/26 to the voxel-compaction buffers (#1961/#2256) the
+        // per-axis loop above borrowed via bindRange — VOXEL_TO_TRIXEL_STAGE_1's
+        // single-canvas compact binds them once at create() and trusts sticky
+        // global state thereafter, so a leaked borrow re-reads the cell list as
+        // the voxel index list next frame and corrupts world voxels.
+        IRPrefab::PerAxisCanvas::restoreVoxelCompactionSlots(voxelCompactedBuf_, voxelIndirectBuf_);
         // Restore the main-canvas image bindings the loop overwrote. The Metal
         // backend's image-binding table persists across frames and is read on
         // every dispatch; leaving the per-axis textures bound here would dangle

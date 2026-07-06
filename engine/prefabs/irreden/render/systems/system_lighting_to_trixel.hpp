@@ -99,6 +99,12 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
     IREntity::EntityId perAxisCanvasEntity_ = IREntity::kNullEntity;
     C_PerAxisTrixelCanvases *perAxisCanvases_ = nullptr;
 
+    // Lazily-resolved voxel-compaction buffers (#1961/#2256), restored onto
+    // slots 25/26 after dispatchPerAxisLighting borrows them for its own
+    // per-axis cell list. See IRPrefab::PerAxisCanvas::restoreVoxelCompactionSlots.
+    Buffer *voxelCompactedBuf_ = nullptr;
+    Buffer *voxelIndirectBuf_ = nullptr;
+
     // Per-pass voxel-frame author/restore + main-canvas placeholders for the
     // relaxed multi-lit-canvas archetype (re-voxelize P4 / #1558). Resolved
     // once per frame in beginTick; never held across frames.
@@ -289,6 +295,10 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
             voxelFrameDataBuf_,
             IRRender::getVoxelRenderEffectiveSubdivisions()
         );
+        // Restore slots 25/26 to the voxel-compaction buffers (#1961/#2256) the
+        // per-axis loop above borrowed via bindRange — see the restore-slots
+        // note in system_compute_voxel_ao.hpp for the corruption mode this avoids.
+        IRPrefab::PerAxisCanvas::restoreVoxelCompactionSlots(voxelCompactedBuf_, voxelIndirectBuf_);
         // Restore the main-canvas image bindings the loop overwrote. This is the
         // critical one: LIGHTING_TO_TRIXEL is the last image-binding compute stage,
         // so without this the freed per-axis textures linger in the persistent

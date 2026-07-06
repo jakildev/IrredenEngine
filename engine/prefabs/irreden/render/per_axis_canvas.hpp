@@ -135,6 +135,43 @@ inline void setUboSubdivisionDensity(IRRender::Buffer *frameDataUbo, int density
     );
 }
 
+// Rebind SSBO slots 25/26 (kBufferIndex_PerAxisCellCompacted/Indirect) to
+// VOXEL_TO_TRIXEL_STAGE_1's single-canvas voxel-compaction buffers after a
+// per-axis compute dispatch has borrowed them for its own cell list (#1961,
+// #2256). Every per-axis consumer (AO, sun shadow, lighting, screen-depth
+// resolve, the framebuffer scatter) binds these slots to its
+// C_PerAxisTrixelCanvases-owned buffers via bindRange; leaving them bound
+// past the dispatch means the next frame's STAGE_1 compact — which binds
+// its own buffers once at create() and trusts sticky global state
+// thereafter — silently re-reads the cell list as the voxel index list and
+// corrupts world voxels (the #1961 center-cube regression). Callers own
+// the lazy-resolved pointer pair as members (mirrors the member-on-System
+// caching pattern) and pass them by reference so the named-resource lookup
+// only runs once per system.
+inline void restoreVoxelCompactionSlots(
+    IRRender::Buffer *&voxelCompactedBuf,
+    IRRender::Buffer *&voxelIndirectBuf
+) {
+    if (voxelCompactedBuf == nullptr) {
+        voxelCompactedBuf = IRRender::getNamedResource<IRRender::Buffer>("CompactedVoxelIndices");
+    }
+    if (voxelIndirectBuf == nullptr) {
+        voxelIndirectBuf = IRRender::getNamedResource<IRRender::Buffer>("IndirectDispatchParams");
+    }
+    if (voxelCompactedBuf != nullptr) {
+        voxelCompactedBuf->bindBase(
+            IRRender::BufferTarget::SHADER_STORAGE,
+            IRRender::kBufferIndex_PerAxisCellCompacted
+        );
+    }
+    if (voxelIndirectBuf != nullptr) {
+        voxelIndirectBuf->bindBase(
+            IRRender::BufferTarget::SHADER_STORAGE,
+            IRRender::kBufferIndex_PerAxisCellIndirect
+        );
+    }
+}
+
 } // namespace IRPrefab::PerAxisCanvas
 
 #endif /* IR_PREFAB_PER_AXIS_CANVAS_H */
