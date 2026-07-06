@@ -888,12 +888,38 @@ pane from dispatch for `FLEET_DISPATCHER_LIMIT_DELAY` seconds (default
 `900` = 15 min). Other panes for the same role keep running. The
 marker file is removed automatically once the cooldown expires.
 
+**GitHub API quota** — same gate, a second sampler. Dispatched agents
+burn GitHub API quota too (every `gh pr/issue view`, `git push`, etc.),
+so a near-exhausted pool walks workers straight into the wall — the
+failure mode #1394 filed. `fleet-state-scout` samples the free,
+read-only `gh api /rate_limit` endpoint every tick (it does **not**
+consume the primary limit it reports on) and latches
+`~/.fleet/state/usage/github-{core,graphql,search}.json` in the same
+`{rateLimitType, utilization, resetsAt, observed_at}` shape the
+Anthropic-side sampler uses — the dispatcher's glob-and-evaluate loop
+picks these up with zero per-source special-casing. `github_core` and
+`github_graphql` gate at `≥ 90%` (override with
+`FLEET_DISPATCHER_USAGE_GATE_GITHUB_CORE` /
+`FLEET_DISPATCHER_USAGE_GATE_GITHUB_GRAPHQL`); `github_search` is
+surfaced but never gates (threshold `1.01`,
+`FLEET_DISPATCHER_USAGE_GATE_GITHUB_SEARCH` to change). GitHub pools
+refill fully at `resetsAt` (hourly for core/graphql, per-minute for
+search) rather than rolling like Anthropic's window, so a closed
+GitHub gate reopens within `≤ 1h + grace`. Once the fleet moves to a
+GitHub App token (tracked separately), `gh api /rate_limit` reports
+the App installation's larger pool automatically — no sampler change
+needed.
+
 **Visibility:** `fleet-gate-status` (read-only) prints the current
 gate state, breaching observation, ETA to reset, and active per-pane
-cooldowns. `fleet-gate-status --json` for scripting. The transition
+cooldowns, plus a separate "GitHub API quota" section listing each
+pool's `remaining/limit`, threshold, and ETA-to-reset. `fleet-gate-status
+--json` for scripting (the `github` key groups just the GitHub-pool
+observations; `observations` still carries all of them). The transition
 log lines `usage gate closed:…` / `usage gate re-opened (…); resuming
 dispatch` are also emitted to the dispatcher log on each transition
-(once per transition — not per tick).
+(once per transition — not per tick); a GitHub-pool breach logs the
+same way (`rateLimitType` is `github_core` / `github_graphql`).
 
 The canonical implementation lives in
 [`scripts/fleet/fleet-dispatcher`](../../scripts/fleet/fleet-dispatcher)

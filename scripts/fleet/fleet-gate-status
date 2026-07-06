@@ -46,8 +46,10 @@ fleet-gate-status — read-only view of fleet-dispatcher gating.
   fleet-gate-status --json     machine-readable JSON
   fleet-gate-status -h|--help  this help
 
-Reports both:
+Reports:
   • fleet-wide usage gate (5h / 7d / etc. rate-limit thresholds)
+  • GitHub API quota (core / graphql / search pools, gated at 90%; search is
+    surface-only and never gates)
   • per-pane cooldowns (15-min default after a pane exits with code 2)
 
 Auto-resume is automatic: the dispatcher re-opens the gate on its next
@@ -56,7 +58,8 @@ passed (default grace is 600s, so by default ~10 min after the actual
 reset). This command only visualises state — it does NOT trigger resume.
 
 State sources (read-only):
-  ~/.fleet/state/usage/*.json         (written by fleet-claude-stream)
+  ~/.fleet/state/usage/*.json         (Anthropic: fleet-claude-stream;
+                                        GitHub: fleet-state-scout)
   ~/.fleet/state/rate-limit/*.ts      (written by fleet-dispatch-wrap)
 
 Tunables (env, shared with fleet-dispatcher):
@@ -113,6 +116,9 @@ emit_json = os.environ.get("JSON") == "1"
 BUILTIN_PER_TYPE_DEFAULTS = {
     "seven_day": 0.95,
     "five_hour": 0.80,
+    "github_core": 0.90,
+    "github_graphql": 0.90,
+    "github_search": 1.01,
 }
 BUILTIN_FALLBACK = 0.80
 
@@ -226,12 +232,24 @@ if usage_dir.is_dir():
             # when the grace pad was introduced.
             "past_reset": is_past,
             "breaching": breaching,
+            # GitHub pools only (fleet-state-scout's sample_github_rate_limit);
+            # Anthropic observations never carry these. None lets the display
+            # code fall back to a percent-only rendering if they're absent.
+            "limit": data.get("limit"),
+            "remaining": data.get("remaining"),
         }
         observations.append(obs)
         if breaching:
             breaches.append(obs)
 
 gate_state = "closed" if breaches else "open"
+
+# GitHub pools are surfaced in their own section (below) rather than mixed
+# into the Anthropic "Fleet-wide usage gate" list — different unit (request
+# pools vs model-usage windows), different operator audience. A github
+# breach still flips gate_state above; it's the same shared dispatcher gate.
+github_obs = [o for o in observations if o["rateLimitType"].startswith("github_")]
+anthropic_obs = [o for o in observations if not o["rateLimitType"].startswith("github_")]
 
 # --- Per-pane cooldowns ---------------------------------------------------
 
@@ -260,10 +278,14 @@ if emit_json:
         "gate": gate_state,
         "breaching": breaches,
         "observations": observations,
+        "github": github_obs,
         "cooldowns": cooldowns,
         "thresholds_in_effect": {
             "five_hour": threshold_for("five_hour"),
             "seven_day": threshold_for("seven_day"),
+            "github_core": threshold_for("github_core"),
+            "github_graphql": threshold_for("github_graphql"),
+            "github_search": threshold_for("github_search"),
         },
         "limit_delay_seconds": limit_delay,
         "usage_stale_seconds": stale_s,
@@ -277,12 +299,11 @@ if emit_json:
 print("fleet-gate-status — read-only view of dispatcher gating")
 print()
 
-if not observations:
-    print("Fleet-wide usage gate: OPEN")
-    print("  no observations yet (no claude rate_limit_event seen since fleet started)")
+label = "CLOSED" if gate_state == "closed" else "OPEN"
+print(f"Fleet-wide usage gate: {label}")
+if not anthropic_obs:
+    print("  no claude observations yet (no rate_limit_event seen since fleet started)")
 else:
-    label = "CLOSED" if gate_state == "closed" else "OPEN"
-    print(f"Fleet-wide usage gate: {label}")
 
     def fmt_obs(o, prefix, threshold_text, suffix=""):
         pct = int(round(o["utilization"] * 100))
@@ -297,15 +318,16 @@ else:
             f"util={pct}% {threshold_text}{suffix}{resets_part}{eta}"
         )
 
-    for o in sorted(breaches, key=lambda x: x["utilization"], reverse=True):
+    anthropic_breaches = [o for o in anthropic_obs if o["breaching"]]
+    for o in sorted(anthropic_breaches, key=lambda x: x["utilization"], reverse=True):
         thr_pct = int(round(o["threshold"] * 100))
         print(fmt_obs(o, "breaching:", f"(>= {thr_pct}%)"))
-    for o in observations:
+    for o in anthropic_obs:
         if o["breaching"] or o["stale"] or o["past_reset"]:
             continue
         thr_pct = int(round(o["threshold"] * 100))
         print(fmt_obs(o, "other:", f"(< {thr_pct}%)"))
-    for o in observations:
+    for o in anthropic_obs:
         if not (o["stale"] or o["past_reset"]):
             continue
         past_label = "past-reset" if reset_grace_s == 0 else "past-reset+grace"
@@ -313,6 +335,44 @@ else:
             r for r, on in (("stale", o["stale"]), (past_label, o["past_reset"])) if on
         )
         print(fmt_obs(o, "pruned:", f"[{reasons}]"))
+
+print()
+
+# --- GitHub API quota -------------------------------------------------------
+# Separate section: different unit (request pools, not model-usage windows)
+# and a different operator question ("how close is the fleet to a GitHub
+# rate-limit wall" vs "is the Anthropic usage gate open"). A github breach
+# still flips the shared `gate_state` above to CLOSED — same dispatcher gate,
+# just displayed apart from the Anthropic observations.
+if not github_obs:
+    print("GitHub API quota: no observations yet (scout hasn't sampled /rate_limit)")
+else:
+    def fmt_github_obs(o):
+        pct = int(round(o["utilization"] * 100))
+        thr_pct = int(round(o["threshold"] * 100))
+        cmp_text = f"(>= {thr_pct}%)" if o["breaching"] else f"(< {thr_pct}%)"
+        prefix = "breaching:" if o["breaching"] else "other:"
+        pool = o["rateLimitType"].removeprefix("github_")
+        remaining, limit = o.get("remaining"), o.get("limit")
+        quota_text = f"remaining={remaining}/{limit}" if limit else f"util={pct}%"
+        eta = (
+            f" (in {fmt_duration(o['etaSeconds'])})"
+            if o["etaSeconds"] is not None and o["etaSeconds"] > 0
+            else ""
+        )
+        resets_part = f" resets={o['resetsAt']}" if o.get("resetsAt") else ""
+        stale_part = ""
+        if o["stale"] or o["past_reset"]:
+            past_label = "past-reset" if reset_grace_s == 0 else "past-reset+grace"
+            reasons = "/".join(
+                r for r, on in (("stale", o["stale"]), (past_label, o["past_reset"])) if on
+            )
+            stale_part = f" [{reasons}]"
+        return f"  {prefix:<10} {pool:<8} {quota_text} {cmp_text}{resets_part}{eta}{stale_part}"
+
+    print("GitHub API quota:")
+    for o in sorted(github_obs, key=lambda x: x["rateLimitType"]):
+        print(fmt_github_obs(o))
 
 print()
 if active_cooldowns:

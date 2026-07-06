@@ -197,7 +197,15 @@
 # Built-in defaults (apply with no override):
 #   five_hour:  0.80
 #   seven_day:  0.95
+#   github_core:    0.90  # GitHub REST pool — dispatched agents burn this too
+#   github_graphql: 0.90  # same pool the #1394 exhaustion incident hit
+#   github_search:  1.01  # surface-only — fleet usage is negligible, never gates
 #   (any other type): 0.80
+#
+# GitHub pools are sampled by fleet-state-scout (a free `gh api /rate_limit`
+# read each tick, latched into the same usage dir Anthropic types use) —
+# no separate poller or config needed to enable them; see FLEET.md
+# "GitHub API quota" under "Rate-limit handling".
 #
 # Threshold lookup order:
 #   1. FLEET_DISPATCHER_USAGE_GATE_<TYPE_UPPER>  (per-type override)
@@ -227,6 +235,9 @@
 # thresholds than the built-in defaults.
 # FLEET_DISPATCHER_USAGE_GATE_FIVE_HOUR=0.80
 # FLEET_DISPATCHER_USAGE_GATE_SEVEN_DAY=0.95
+# FLEET_DISPATCHER_USAGE_GATE_GITHUB_CORE=0.90
+# FLEET_DISPATCHER_USAGE_GATE_GITHUB_GRAPHQL=0.90
+# FLEET_DISPATCHER_USAGE_GATE_GITHUB_SEARCH=1.01
 
 # FLEET_DISPATCHER_USAGE_STALE_SECONDS=3600
 # FLEET_DISPATCHER_RESET_GRACE_SECONDS=600
