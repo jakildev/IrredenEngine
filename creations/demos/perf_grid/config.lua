@@ -37,10 +37,13 @@ perf_grid = {
     -- 1.0 = contiguous voxels (solid grid_size³ block). Spacing 2.0 turns the
     -- scene into a 1/8-density lattice (see configs/perf/sparse_lattice.lua).
     spacing = 1.0,
-    -- rigid = whole block glides screen-right in phase; per_cell = legacy
-    -- diagonal wave that shears the lattice open (scatter stress).
-    wave_mode = "rigid",
-    wave_amplitude = 6.0,
+    -- per_cell = traveling wave through the volume (the default look);
+    -- rigid = whole block glides screen-right in phase (solidity reference).
+    wave_mode = "per_cell",
+    -- 5.0 sits just under the per-cell tear threshold (wavelength/2π ≈ 5.09
+    -- at grid_size 64): full wave motion with every voxel visible every
+    -- frame. Push higher to deliberately shear transient gaps open.
+    wave_amplitude = 5.0,
     wave_period_seconds = 4.0,
     wave_offscreen = false,
 }

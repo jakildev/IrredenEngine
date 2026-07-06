@@ -91,16 +91,20 @@ enum class PerfGridMode {
 };
 
 // Wave motion shape for the per-entity modes (voxel_set / sdf).
-//   Rigid   — every cell shares phase 0, so the grid glides as one solid
-//             block along the screen-right iso axis (world (1,-1,0)). The
-//             per-entity update cost matches PerCell exactly (each entity
-//             still ticks its own C_PeriodicIdle and re-uploads its position
-//             every frame); only the phase/direction pattern differs.
-//   PerCell — legacy diagonal wave: phase advances with (x+y+z), which shears
-//             neighboring cells up to ~1.2 units apart at the default
-//             amplitude and tears the lattice open (reads as hollow bands).
-//             Kept as a non-coherent-motion stress via wave_mode="per_cell";
-//             the solidity-reference default is Rigid.
+//   PerCell — the default: phase advances with (x+y+z), so a z-axis
+//             oscillation travels through the volume as a visible wave.
+//             Neighboring cells shear apart by up to 2·a·sin(π/λ) ≈
+//             0.196·a (λ = 32 at grid_size 64), so amplitudes at or below
+//             λ/(2π) ≈ 5.09 keep every adjacent rounded-cell step ≤ 1 and
+//             the block stays watertight — the wave reads on the surface
+//             without opening see-through slits. Larger amplitudes tear
+//             transient gaps open (a deliberate scatter stress, not a bug).
+//   Rigid   — every cell shares phase 0, so the grid glides as one block
+//             along the screen-right iso axis (world (1,-1,0)). The
+//             always-touching lattice is the solidity / occupancy-cull
+//             reference. Per-entity update cost matches PerCell exactly
+//             (each entity still ticks its own C_PeriodicIdle and
+//             re-uploads its position every frame).
 enum class WaveMode {
     Rigid,
     PerCell,
@@ -114,8 +118,11 @@ struct PerfGridSettings {
     // 1/8-density lattice that reads as hollow under yaw and striped at
     // cardinals (configs/perf/sparse_lattice.lua keeps that scene).
     float spacing_ = 1.0f;
-    WaveMode waveMode_ = WaveMode::Rigid;
-    float waveAmplitude_ = 6.0f;
+    WaveMode waveMode_ = WaveMode::PerCell;
+    // 5.0 sits just under the per-cell tear threshold λ/(2π) ≈ 5.09 (see the
+    // WaveMode note): the traveling wave stays fully visible while every
+    // voxel remains on screen at every frame.
+    float waveAmplitude_ = 5.0f;
     float wavePeriodSeconds_ = 4.0f;
     bool waveOffscreen_ = false;
     float initialZoom_ = 0.5f;
@@ -143,7 +150,7 @@ struct CliOverrides {
     bool waveAmplitudeSet_ = false;
     float waveAmplitude_ = 0.0f;
     bool waveModeSet_ = false;
-    WaveMode waveMode_ = WaveMode::Rigid;
+    WaveMode waveMode_ = WaveMode::PerCell;
     bool subdivisionModeSet_ = false;
     IRRender::SubdivisionMode subdivisionMode_ = IRRender::SubdivisionMode::FULL;
     bool baseSubdivisionsSet_ = false;
@@ -378,8 +385,8 @@ WaveMode parseWaveMode(const std::string &value) {
     if (value == "per_cell") {
         return WaveMode::PerCell;
     }
-    IR_LOG_WARN("Unknown perf_grid wave_mode '{}'; using rigid", value);
-    return WaveMode::Rigid;
+    IR_LOG_WARN("Unknown perf_grid wave_mode '{}'; using per_cell", value);
+    return WaveMode::PerCell;
 }
 
 const char *waveModeName(WaveMode mode) {
@@ -516,7 +523,11 @@ void registerCliArgs() {
         "Attach a center ROI crop to each near-cardinal residual --yaw-ramp pose"
     );
     args.number("--wave-amplitude", "Per-frame idle wave amplitude (0 = static scene)", 0.0f);
-    args.string("--wave-mode", "Wave motion: rigid (solid block glides right) | per_cell", "rigid");
+    args.string(
+        "--wave-mode",
+        "Wave motion: per_cell (traveling wave) | rigid (block glides right)",
+        "per_cell"
+    );
     args.string("--subdivision-mode", "Trixel subdivision: none | position_only | full", "full");
     args.integer("--base-subdivisions", "Base trixel subdivision count", 1);
     args.integer("--worker-threads", "Recorded for manifest/cell-ID; thread wiring is T-221", 0);
