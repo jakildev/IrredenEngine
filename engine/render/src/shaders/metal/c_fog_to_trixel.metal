@@ -75,7 +75,7 @@ constant int kFogCutRayProbeDepth = 8;
 constant float kFogCutTone = 0.85f;
 constant float kFogCutLift = 0.06f;
 constant int kFogCutMarchSteps = 8;
-constant float kFogCutMaxEntryCells = 2.0f;
+constant float kFogCutMaxRimCells = 2.0f;
 // Rim fade — mirrors the GLSL twin (see there for the full rationale and the
 // kFogHiddenKeepCells width coupling).
 constant float kFogRimFadeCells = 8.0f;
@@ -247,7 +247,12 @@ kernel void c_fog_to_trixel(
                     }
                 }
             }
-            if (bestT >= 0.0f) {
+            // Region bound is RADIAL (the surface's own column distance past
+            // the rim — see the GLSL kFogCutMaxRimCells rationale): the ray
+            // hit below is only the solidity evidence, so the band's outer
+            // edge stays concentric with the disc instead of screen-shifting
+            // with the ray sweep.
+            if (bestT >= 0.0f && hardDistPastRim <= kFogCutMaxRimCells) {
                 const float worldPerDepthUnit = length(rayStep);
                 const float entryDistance = bestT * worldPerDepthUnit;
                 if (entryDistance <= 1.0f) {
@@ -255,7 +260,7 @@ kernel void c_fog_to_trixel(
                     // the surface voxel's own matter: solid by construction,
                     // immune to bitfield rounding right at the rim.
                     cutSolid = true;
-                } else if (entryDistance <= kFogCutMaxEntryCells) {
+                } else {
                     // March half-cell occupancy samples along the ray from
                     // just inside the rim (the first sample's half-cell inset
                     // keeps the rounded cell unambiguously interior). The
