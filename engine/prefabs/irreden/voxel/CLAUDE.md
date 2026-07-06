@@ -253,10 +253,19 @@ canvas via `getActiveCanvasEntityOrNull()` and branches:
   kNullEntity` is the sentinel.
 
 `recordCount()` returns the data count in either mode (test-friendly
-and order-independent of pool availability). A future task will add
-the canvas-attach pass that moves `pendingVoxels_` into a pool
-allocation once a canvas activates; until then the staged data
-participates in serialization round-trips but does not render.
+and order-independent of pool availability). The **canvas-attach pass**
+that moves `pendingVoxels_` into a pool allocation once a canvas
+activates is `C_VoxelSetNew::attachToCanvas(canvas)` (persist P6 / W-10,
+#2217): it allocates a span on the resolved canvas, seeds it from the
+staged records (the same `seedIntoPool` body the dense ctor runs),
+clears `pendingVoxels_`, and queues the range for GPU upload — a no-op
+once the set is already pool-resident (`numVoxels_ > 0`). The
+`SEED_STAGED_VOXELS` UPDATE system (`systems/system_seed_staged_voxels.hpp`)
+drives it over every staged set each tick; register it before
+`UPDATE_VOXEL_SET_CHILDREN` in a creation that loads a world snapshot so
+freshly-deserialized sets attach and render on the first post-load frame.
+Its no-op-once-seeded shape means the "is this set staged" gate is the
+set's own honest state (`pendingVoxels_` non-empty), never a dirty flag.
 
 `system_update_voxel_set_children` gates on `numVoxels_ > 0`, so a
 staged headless set sitting in a canvas-active world contributes

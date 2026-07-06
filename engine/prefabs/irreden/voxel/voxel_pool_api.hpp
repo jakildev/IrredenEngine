@@ -162,6 +162,18 @@ resyncRangeFromColors(std::size_t startIndex, std::size_t count, IREntity::Entit
     }
 }
 
+// Queue a voxel range for GPU position upload on the next
+// VOXEL_TO_TRIXEL_STAGE_1 flush (mirrors the pending-range flush the per-frame
+// UPDATE_VOXEL_SET_CHILDREN uses). Used by the post-load canvas-attach seed
+// pass (`C_VoxelSetNew::attachToCanvas`, #2217) so a just-seeded set's local
+// positions reach binding 5 on the first post-load frame.
+inline void
+queuePositionRange(std::size_t startIndex, std::size_t count, IREntity::EntityId canvasEntity) {
+    if (auto *pool = detail::poolForCanvas(canvasEntity)) {
+        pool->queuePositionRange(startIndex, count);
+    }
+}
+
 // Push-at-mutation route for the per-trixel-priority aggregate (#2155). The
 // C_VoxelSetNew priority mutators call this with the delta of priority-carrying
 // voxels they just added (+) or removed (-) so the pool's count — read once per
@@ -174,6 +186,14 @@ inline void adjustPerTrixelPriorityVoxelCount(int delta, IREntity::EntityId canv
     if (auto *pool = detail::poolForCanvas(canvasEntity)) {
         pool->adjustPerTrixelPriorityVoxelCount(delta);
     }
+}
+
+// True when @p canvasEntity owns a live C_VoxelPool (exists, not destroyed,
+// carries the component). The post-load canvas-attach seed pass
+// (`C_VoxelSetNew::attachToCanvas`) uses this to resolve a seedable target
+// before it moves its staged data — seeding into a null pool would discard it.
+inline bool hasPool(IREntity::EntityId canvasEntity) {
+    return detail::poolForCanvas(canvasEntity) != nullptr;
 }
 
 // Performs a single canvas-entity lookup and calls fn(C_VoxelPool&).
