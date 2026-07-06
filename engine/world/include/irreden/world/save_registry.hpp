@@ -30,6 +30,7 @@
 /// needs a `SaveSerialize<C>` specialization for its non-POD fields — is
 /// downstream work, not this slice.
 
+#include <irreden/world/save_migration.hpp>
 #include <irreden/world/save_serialize.hpp>
 #include <irreden/world/save_trait.hpp>
 
@@ -37,6 +38,7 @@
 #include <irreden/entity/i_component_data.hpp>
 #include <irreden/entity/ir_entity_types.hpp>
 #include <irreden/ir_entity.hpp>
+#include <irreden/ir_profile.hpp>
 
 #include <cstdint>
 #include <functional>
@@ -45,6 +47,25 @@
 #include <vector>
 
 namespace IRWorld {
+
+/// The three type-erased read hooks for one on-disk *version* of a component
+/// — how its bytes turn back into a live value. The current version and each
+/// retired version (a P5 migrator) share this shape, so the load-time version
+/// dispatch (`SaveComponentEntry::readerForVersion`) can hand back whichever
+/// applies as one uniform handle. The zero-mutation `decodeRow_` dry run the
+/// load's phase-2 gate runs over every column exercises the exact same read
+/// path as `appendRow_` / `readIntoEntity_`, so a length-valid-but-corrupt
+/// column fails validation rather than aborting mid-apply.
+struct ColumnReadHooks {
+    // Deserialize one instance and append it to a live column.
+    std::function<IRAsset::BinaryStatus(IRAsset::BinaryReader &, IREntity::IComponentData *)>
+        appendRow_;
+    // Decode one serialized instance and discard it, reporting only the status.
+    std::function<IRAsset::BinaryStatus(IRAsset::BinaryReader &)> decodeRow_;
+    // Deserialize one instance and overwrite it onto a live entity (SNGL read).
+    std::function<IRAsset::BinaryStatus(IRAsset::BinaryReader &, IREntity::EntityId)>
+        readIntoEntity_;
+};
 
 /// One opted-in component's type-erased save/load hooks. Function objects
 /// are stateless (they close over the compile-time type only), so building
@@ -57,24 +78,73 @@ struct SaveComponentEntry {
 
     // Serialize the component at `row` of a live column.
     std::function<void(IRAsset::BinaryWriter &, IREntity::IComponentData *, int)> writeRow_;
-    // Deserialize one instance and append it to a live column.
-    std::function<IRAsset::BinaryStatus(IRAsset::BinaryReader &, IREntity::IComponentData *)>
-        appendRow_;
-    // Decode one serialized instance and discard it, reporting only the
-    // status. The zero-mutation dry run the load's phase-2 gate runs over
-    // every column before phase 3 touches the live graph: it exercises the
-    // exact `SaveSerialize<C>::read` path `appendRow_` / `readIntoEntity_`
-    // take, so a length-valid-but-corrupt column fails validation rather than
-    // aborting mid-apply after entities are already spliced in.
-    std::function<IRAsset::BinaryStatus(IRAsset::BinaryReader &)> decodeRow_;
+
+    // Read hooks for the *current* schema version (`saveVersion_`) — the
+    // `SaveSerialize<C>::read` fast path.
+    ColumnReadHooks reader_;
+    // Read hooks for each retired on-disk version, keyed by that version
+    // (persist P5, #2216). Populated from `SaveMigration<C>::migrators()`; a
+    // component that never changed its schema leaves this empty. The current
+    // version is NOT keyed here — `reader_` owns it.
+    std::unordered_map<std::uint32_t, ColumnReadHooks> migratorReaders_;
 
     // Lazily get-or-create the singleton entity owning this component.
     std::function<IREntity::EntityId()> getOrCreateSingletonEntity_;
     // Serialize the component value held by a live entity (SNGL write).
     std::function<void(IRAsset::BinaryWriter &, IREntity::EntityId)> writeSingleton_;
-    // Deserialize one instance and overwrite it onto a live entity (SNGL read).
-    std::function<IRAsset::BinaryStatus(IRAsset::BinaryReader &, IREntity::EntityId)>
-        readIntoEntity_;
+
+    /// Resolve the read hooks for a column/singleton written at @p diskVersion,
+    /// the P5 migration dispatch. Four cases (the unknown-component name case —
+    /// no entry at all — is handled by the loader before this is reached):
+    ///   - `diskVersion == saveVersion_` — current fast path (`reader_`).
+    ///   - `diskVersion <  saveVersion_` — a registered migrator, or (miss) a
+    ///     hard `MigratorMissing` error: reading old bytes at the current
+    ///     layout silently corrupts, so this is the one case that must fail.
+    ///   - `diskVersion >  saveVersion_` — `VersionTooNew` (a future writer).
+    /// On success returns non-null and leaves @p status untouched; on failure
+    /// returns nullptr and sets @p status to the diagnostic.
+    const ColumnReadHooks *
+    readerForVersion(std::uint32_t diskVersion, IRAsset::BinaryStatus &status) const {
+        if (diskVersion == saveVersion_) {
+            return &reader_;
+        }
+        if (diskVersion > saveVersion_) {
+            status = IRAsset::BinaryStatus::error(
+                IRAsset::BinaryIOError::VersionTooNew,
+                saveName_ + ": on-disk version " + std::to_string(diskVersion) +
+                    " is newer than this build reads (v" + std::to_string(saveVersion_) + ")"
+            );
+            return nullptr;
+        }
+        const auto it = migratorReaders_.find(diskVersion);
+        if (it != migratorReaders_.end()) {
+            return &it->second;
+        }
+        status = IRAsset::BinaryStatus::error(
+            IRAsset::BinaryIOError::MigratorMissing,
+            missingMsg(diskVersion)
+        );
+        return nullptr;
+    }
+
+  private:
+    // Diagnostic for a known component at an older version with no migrator.
+    std::string missingMsg(std::uint32_t diskVersion) const {
+        std::string msg = saveName_ + ": no migrator for on-disk version " +
+                          std::to_string(diskVersion) + " (this build reads v" +
+                          std::to_string(saveVersion_) +
+                          "; register a SaveMigration<C> reader for it)";
+        if (!migratorReaders_.empty()) {
+            std::uint32_t lowest = diskVersion;
+            for (const auto &kv : migratorReaders_) {
+                if (kv.first < lowest) {
+                    lowest = kv.first;
+                }
+            }
+            msg += " — registered migrators start at v" + std::to_string(lowest);
+        }
+        return msg;
+    }
 };
 
 class SaveRegistry {
@@ -99,34 +169,30 @@ class SaveRegistry {
                     IREntity::castComponentDataPointer<C>(col)->dataVector[row]
                 );
             };
-            entry.appendRow_ = [](IRAsset::BinaryReader &r,
-                                  IREntity::IComponentData *col) -> IRAsset::BinaryStatus {
-                IRAsset::Result<C> res = SaveSerialize<C>::read(r);
-                if (!res.ok()) {
-                    return res.status_;
-                }
-                IREntity::castComponentDataPointer<C>(col)->dataVector.push_back(
-                    std::move(res.value_)
+            // Current-version reader: the SaveSerialize<C>::read fast path.
+            entry.reader_ =
+                buildReader<C>([](IRAsset::BinaryReader &r) { return SaveSerialize<C>::read(r); });
+            // Retired-version readers (persist P5, #2216) — one erased reader
+            // per SaveMigration<C> entry. Empty for a component whose schema
+            // never changed; SaveMigration<C> is instantiated only inside this
+            // shouldSave<C>() branch, so an opted-out C never needs one.
+            for (auto &versioned : SaveMigration<C>::migrators()) {
+                const bool inserted =
+                    entry.migratorReaders_
+                        .emplace(versioned.first, buildReader<C>(std::move(versioned.second)))
+                        .second;
+                IR_ASSERT(
+                    inserted,
+                    "SaveMigration<{}>::migrators() lists fromVersion {} more than once",
+                    name,
+                    versioned.first
                 );
-                return IRAsset::BinaryStatus::success();
-            };
-            entry.decodeRow_ = [](IRAsset::BinaryReader &r) -> IRAsset::BinaryStatus {
-                return SaveSerialize<C>::read(r).status_;
-            };
+            }
             entry.getOrCreateSingletonEntity_ = []() -> IREntity::EntityId {
                 return IREntity::singletonEntity<C>();
             };
             entry.writeSingleton_ = [](IRAsset::BinaryWriter &w, IREntity::EntityId entity) {
                 SaveSerialize<C>::write(w, IREntity::getComponent<C>(entity));
-            };
-            entry.readIntoEntity_ = [](IRAsset::BinaryReader &r,
-                                       IREntity::EntityId entity) -> IRAsset::BinaryStatus {
-                IRAsset::Result<C> res = SaveSerialize<C>::read(r);
-                if (!res.ok()) {
-                    return res.status_;
-                }
-                IREntity::setComponent<C>(entity, std::move(res.value_));
-                return IRAsset::BinaryStatus::success();
             };
 
             const std::size_t index = m_entries.size();
@@ -161,6 +227,37 @@ class SaveRegistry {
     }
 
   private:
+    // Erase a per-version read function (the SaveSerialize<C>::read current
+    // fast path, or a SaveMigration<C> retired-version reader) into the three
+    // generic column-read hooks. Shared so the current reader and every
+    // migrator are built identically — the only difference is which `readFn`
+    // decodes the bytes.
+    template <typename C> static ColumnReadHooks buildReader(ColumnMigratorFn<C> readFn) {
+        ColumnReadHooks hooks;
+        hooks.appendRow_ = [readFn](IRAsset::BinaryReader &r, IREntity::IComponentData *col)
+            -> IRAsset::BinaryStatus {
+            IRAsset::Result<C> res = readFn(r);
+            if (!res.ok()) {
+                return res.status_;
+            }
+            IREntity::castComponentDataPointer<C>(col)->dataVector.push_back(std::move(res.value_));
+            return IRAsset::BinaryStatus::success();
+        };
+        hooks.decodeRow_ = [readFn](IRAsset::BinaryReader &r) -> IRAsset::BinaryStatus {
+            return readFn(r).status_;
+        };
+        hooks.readIntoEntity_ =
+            [readFn](IRAsset::BinaryReader &r, IREntity::EntityId entity) -> IRAsset::BinaryStatus {
+            IRAsset::Result<C> res = readFn(r);
+            if (!res.ok()) {
+                return res.status_;
+            }
+            IREntity::setComponent<C>(entity, std::move(res.value_));
+            return IRAsset::BinaryStatus::success();
+        };
+        return hooks;
+    }
+
     std::vector<SaveComponentEntry> m_entries;
     std::unordered_map<std::string, std::size_t> m_byName;
     std::unordered_map<IREntity::ComponentId, std::size_t> m_byComponentId;

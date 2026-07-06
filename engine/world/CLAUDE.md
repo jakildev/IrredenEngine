@@ -274,6 +274,47 @@ Deferring the *parse* to the final phase (which must run after phase 3, since
 live on a failed load — the "no partial world mutation on error" contract
 (Rule #5) is why only the mutation, not the parse, waits for phase 3.
 
+## Component migration registry (persist P5, #2216, epic #667)
+
+`engine/world/include/irreden/world/save_migration.hpp` declares
+`IRWorld::SaveMigration<C>` — the `(component, oldVersion) → reader`
+customization point that lets an old `IRWS` snapshot load into a newer build
+whose component has since bumped `SaveTrait<C>::kSaveVersion` (Save Format
+Extensibility Rule #3). It fills the seam P2 already stamped: every `ARCH`/`SNGL`
+column carries a `u32 saveVersion` header, and before P5 the loader **ignored
+it** — always reading at the current layout, which silently corrupts an old
+column. Now `SaveComponentEntry::readerForVersion(diskVersion)` dispatches four
+cases at load, in the mutation-free phase-2 gate (so any failure aborts with a
+pristine world, Rule #5):
+
+- **disk == current `kSaveVersion`** — the `SaveSerialize<C>::read` fast path
+  (`SaveComponentEntry::reader_`); no migrator lookup. Regresses nothing.
+- **disk < current** — the registered `SaveMigration<C>` reader for that
+  version, or (miss) a hard `BinaryIOError::MigratorMissing`. This is the **one
+  non-recoverable case**: reading old bytes at the current layout can't be
+  recovered from, so a known component at an unmigrated older version errors
+  out rather than degrading. Every other mismatch degrades gracefully.
+- **disk > current** — `BinaryIOError::VersionTooNew` (a future writer),
+  reusing the existing shape, naming the component + both versions.
+- **unknown component name** — resolves to no registry entry; the column skips
+  by byte length (`columnsSkipped_`), never reaching the version dispatch
+  (Rule #1 forward-compat, P2 behavior).
+
+**Direct per-version readers, never chained.** Each `SaveMigration<C>` entry
+decodes exactly its era's bytes straight to a current-build `C` (fields added
+since defaulted, renamed fields remapped); a v3 bump leaves the v1/v2 readers
+untouched. The current version is **not** listed in `SaveMigration<C>` —
+`SaveSerialize<C>::read` owns it; list only the retired `[1 .. kSaveVersion-1]`.
+The registry keys migrators on the current session-local `ComponentId` and the
+disk column key stays `SaveTrait<C>::kSaveName` (Rule #2) — never
+`typeid(C).name()`, which is compiler-mangled and would make a macOS save
+unreadable on Windows. Registration is `if constexpr`-gated on `shouldSave<C>()`
+(like `SaveSerialize<C>`), so an opted-out component never needs a migrator.
+The `SaveMigration<C>` header block has the worked specialization example; the
+generic loader path is proven end-to-end (v1→v2, `VersionTooNew`,
+`MigratorMissing`, unknown-skip compose, current fast path) in
+`test/world/component_migration_test.cpp`.
+
 ## Responsibilities
 
 `World(const char* configFileName)`:

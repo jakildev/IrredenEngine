@@ -25,7 +25,11 @@
 ///     IDs (ascending raw ids), then one column per component
 ///     (`u32 saveVersion` + `varuint byteLength` + rows in entity order).
 ///     The per-column `(version, byteLength)` header is the P5 migration
-///     seam: an unresolvable column is skipped by byte length, not fatal.
+///     seam: the load dispatches the `saveVersion` through
+///     `SaveComponentEntry::readerForVersion` (`save_migration.hpp`) —
+///     current fast path, a registered migrator, or a `MigratorMissing` /
+///     `VersionTooNew` error — and an unresolvable component name is skipped
+///     by byte length, not fatal.
 ///   - **`SNGL`** — singleton components, restored *by value* onto the
 ///     live (post-reset preserved) singleton entity, not by re-inserting
 ///     an archetype row. Per entry: local index + saved raw entity id +
