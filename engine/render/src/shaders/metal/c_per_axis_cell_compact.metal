@@ -15,6 +15,12 @@ using namespace metal;
 // Per-axis canvas empty sentinel (#1458) — mirror of the GLSL.
 constant int kEmptyDistanceEncoded = 0x7FFFFFFF;
 
+// #2256: the compacted cell list also feeds the per-axis compute stages; the
+// compute-indirect dims at [8..11] are derived from the final instanceCount by
+// the cheap c_per_axis_cell_finalize pass (a 3-thread dispatch after this scan).
+// Keeping the dims OUT of this kernel is deliberate: this kernel sweeps the FULL
+// per-axis grid, so a cross-workgroup completion barrier here would stall every
+// workgroup on the hot scan — the finalize computes the dims off-band instead.
 kernel void c_per_axis_cell_compact(
     texture2d<int, access::read> perAxisDistances [[texture(0)]],
     device uint* compactedCells [[buffer(25)]],
@@ -30,7 +36,7 @@ kernel void c_per_axis_cell_compact(
 
     const int rawDist = perAxisDistances.read(uint2(cell)).x;
     if (rawDist >= kEmptyDistanceEncoded) {
-        return; // empty cell — not drawn
+        return; // empty cell — not drawn / not lit
     }
 
     // drawArgs layout matches PerAxisCellDrawCommand: [1] = instanceCount. The

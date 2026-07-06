@@ -94,7 +94,8 @@ template <> struct System<RESOLVE_PER_AXIS_SCREEN_DEPTH> {
         scratch_ = created.second;
         scratchSize_ = mainSize;
         std::vector<std::int32_t> seed(
-            count, static_cast<std::int32_t>(IRConstants::kTrixelDistanceMaxDistance)
+            count,
+            static_cast<std::int32_t>(IRConstants::kTrixelDistanceMaxDistance)
         );
         scratch_->subData(0, count * sizeof(std::int32_t), seed.data());
     }
@@ -125,7 +126,9 @@ template <> struct System<RESOLVE_PER_AXIS_SCREEN_DEPTH> {
         // through effectiveTrixelSubdivisionScale(voxelRenderOptions.y), so it
         // must use the same capped density the store wrote. Restored below.
         voxelFrameDataBuf_->subData(
-            offsetof(FrameDataVoxelToCanvas, canvasSizePixels_), sizeof(ivec2), &mainSize
+            offsetof(FrameDataVoxelToCanvas, canvasSizePixels_),
+            sizeof(ivec2),
+            &mainSize
         );
         IRPrefab::PerAxisCanvas::setUboSubdivisionDensity(
             voxelFrameDataBuf_,
@@ -134,17 +137,35 @@ template <> struct System<RESOLVE_PER_AXIS_SCREEN_DEPTH> {
         voxelFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataVoxelToCanvas);
 
         // Pass 1 — scatter the three face-local per-axis canvases into the
-        // scratch (front-most per screen pixel via atomicMin).
+        // scratch (front-most per screen pixel via atomicMin). #2256: dispatch
+        // indirectly over only each axis's compacted occupied cells (filled by the
+        // STAGE_1 per-axis compaction) instead of sweeping the full worst-case grid.
         scatterProgram_->use();
         scratch_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_PerAxisResolveScratch);
-        const ivec2 axisSize = perAxisCanvases_->size_;
-        const int axisGroupsX = IRMath::divCeil(axisSize.x, kResolvePerAxisGroupSize);
-        const int axisGroupsY = IRMath::divCeil(axisSize.y, kResolvePerAxisGroupSize);
+        Buffer *cellCompacted = perAxisCanvases_->cellCompacted_.second;
+        Buffer *cellIndirect = perAxisCanvases_->cellIndirect_.second;
+        const int regionStride = perAxisCanvases_->cellRegionStride_;
         for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
-            perAxisCanvases_->axes_[axis].distances_.second->bindAsImage(
-                0, TextureAccess::READ_ONLY, TextureFormat::R32I
+            perAxisCanvases_->axes_[axis]
+                .distances_.second->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
+            cellCompacted->bindRange(
+                BufferTarget::SHADER_STORAGE,
+                kBufferIndex_PerAxisCellCompacted,
+                static_cast<std::ptrdiff_t>(axis) * regionStride *
+                    static_cast<int>(sizeof(std::uint32_t)),
+                static_cast<size_t>(regionStride) * sizeof(std::uint32_t)
             );
-            IRRender::device()->dispatchCompute(axisGroupsX, axisGroupsY, 1);
+            cellIndirect->bindRange(
+                BufferTarget::SHADER_STORAGE,
+                kBufferIndex_PerAxisCellIndirect,
+                static_cast<std::ptrdiff_t>(axis) * kPerAxisCellIndirectStrideBytes,
+                kPerAxisCellIndirectStrideBytes
+            );
+            IRRender::device()->dispatchComputeIndirect(
+                cellIndirect,
+                static_cast<std::ptrdiff_t>(axis) * kPerAxisCellIndirectStrideBytes +
+                    kPerAxisCellDispatchArgsOffsetBytes
+            );
         }
         IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
 
@@ -152,9 +173,8 @@ template <> struct System<RESOLVE_PER_AXIS_SCREEN_DEPTH> {
         // reset the scratch to the empty sentinel for next frame.
         blitProgram_->use();
         scratch_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_PerAxisResolveScratch);
-        perAxisCanvases_->resolveDepth_.second->bindAsImage(
-            1, TextureAccess::WRITE_ONLY, TextureFormat::R32I
-        );
+        perAxisCanvases_->resolveDepth_.second
+            ->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::R32I);
         const int mainGroupsX = IRMath::divCeil(mainSize.x, kResolvePerAxisGroupSize);
         const int mainGroupsY = IRMath::divCeil(mainSize.y, kResolvePerAxisGroupSize);
         IRRender::device()->dispatchCompute(mainGroupsX, mainGroupsY, 1);
@@ -185,7 +205,8 @@ template <> struct System<RESOLVE_PER_AXIS_SCREEN_DEPTH> {
         IRRender::createNamedResource<ShaderProgram>(
             "ResolvePerAxisScreenDepthProgram",
             std::vector{
-                ShaderStage{IRRender::kFileCompResolvePerAxisScreenDepth, ShaderType::COMPUTE}}
+                ShaderStage{IRRender::kFileCompResolvePerAxisScreenDepth, ShaderType::COMPUTE}
+            }
         );
         IRRender::createNamedResource<ShaderProgram>(
             "ResolvePerAxisBlitProgram",

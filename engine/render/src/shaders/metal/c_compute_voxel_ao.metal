@@ -23,6 +23,12 @@ constant float kAOSubVoxelTolerance = 0.375;
 constant float kAOMinHeight = kAOOccluderHeight - kAOBandHalfWidth - kAOSubVoxelTolerance;
 constant float kAOMaxHeight = kAOOccluderHeight + kAOBandHalfWidth;
 
+// Per-axis compacted occupied-cell dispatch (#2256). On the per-axis path the
+// dispatch is 1-D over the compacted cells; the kernel recovers each cell's
+// canvas pixel from the linear index. Mirrors the GLSL twin.
+constant uint kDispatchArgsBaseUint = 8u;      // kPerAxisCellDispatchArgsOffsetBytes / 4
+constant uint kPerAxisCellComputeTile = 256u;  // kPerAxisCellComputeTile (16×16 threads)
+
 // Mirrors `FrameDataSun` from ir_render_types.hpp. Only `aoEnabled` is
 // consumed here; the layout must match so the shared UBO at binding 29
 // can be read by every consumer (BAKE_SUN_SHADOW_MAP owns the upload).
@@ -51,14 +57,28 @@ kernel void c_compute_voxel_ao(
     constant FrameDataSun &sunFrameData [[buffer(29)]],
     texture2d<int, access::read> trixelDistances [[texture(0)]],
     texture2d<float, access::write> canvasAO [[texture(1)]],
-    uint3 globalId [[thread_position_in_grid]]
+    const device uint* compactedCells [[buffer(25)]],
+    const device uint* cellDrawArgs [[buffer(26)]],
+    uint3 globalId [[thread_position_in_grid]],
+    uint3 groupId [[threadgroup_position_in_grid]],
+    uint localIndex [[thread_index_in_threadgroup]]
 ) {
-    int2 pixel = int2(globalId.xy);
-    int2 size = int2(
-        int(trixelDistances.get_width()),
-        int(trixelDistances.get_height())
-    );
-    if (pixel.x >= size.x || pixel.y >= size.y) return;
+    int2 size = int2(int(trixelDistances.get_width()), int(trixelDistances.get_height()));
+    int2 pixel;
+    if (frameData.perAxisRoute != 0) {
+        // #2256: 1-D dispatch over the compacted occupied-cell list.
+        const uint idx = groupId.x * kPerAxisCellComputeTile + localIndex;
+        if (idx >= cellDrawArgs[kDispatchArgsBaseUint + 3u]) {
+            return;
+        }
+        const uint linearCell = compactedCells[idx];
+        pixel = int2(int(linearCell) % size.x, int(linearCell) / size.x);
+    } else {
+        pixel = int2(globalId.xy);
+        if (pixel.x >= size.x || pixel.y >= size.y) {
+            return;
+        }
+    }
 
     int encoded = trixelDistances.read(uint2(pixel)).x;
     // Per-axis canvas uses INT_MAX as empty sentinel (#1458); single-canvas keeps 65535.

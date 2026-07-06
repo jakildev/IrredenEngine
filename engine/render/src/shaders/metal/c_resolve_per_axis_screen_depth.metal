@@ -12,22 +12,35 @@
 // Per-axis-only shader; canvas clears to INT_MAX per #1458 encoding.
 constant int kEmptyDistanceEncoded = 0x7FFFFFFF;
 
+// #2256: dispatched indirectly over only this axis's OCCUPIED cells (compacted
+// by the STAGE_1 per-axis pre-pass). compactedCells holds the occupied linear
+// cell indices; cellDrawArgs carries visibleCount at [kDispatchArgsBaseUint + 3].
+constant uint kDispatchArgsBaseUint = 8u;      // kPerAxisCellDispatchArgsOffsetBytes / 4
+constant uint kPerAxisCellComputeTile = 256u;  // kPerAxisCellComputeTile (16×16 threads)
+
 kernel void c_resolve_per_axis_screen_depth(
     constant FrameDataVoxelToTrixel& frameData [[buffer(7)]],
     texture2d<int, access::read> perAxisDistances [[texture(0)]],
     device atomic_int* resolveScratch [[buffer(28)]],
-    uint3 globalId [[thread_position_in_grid]]
+    const device uint* compactedCells [[buffer(25)]],
+    const device uint* cellDrawArgs [[buffer(26)]],
+    uint3 groupId [[threadgroup_position_in_grid]],
+    uint localIndex [[thread_index_in_threadgroup]]
 ) {
-    const int2 cell = int2(globalId.xy);
-    const int2 perAxisSize =
-        int2(int(perAxisDistances.get_width()), int(perAxisDistances.get_height()));
-    if (cell.x >= perAxisSize.x || cell.y >= perAxisSize.y) {
+    // Recover the flat list index (one 1-D workgroup per kPerAxisCellComputeTile
+    // occupied cells) and decode the cell from the compacted list.
+    const uint idx = groupId.x * kPerAxisCellComputeTile + localIndex;
+    if (idx >= cellDrawArgs[kDispatchArgsBaseUint + 3u]) {
         return;
     }
+    const int2 perAxisSize =
+        int2(int(perAxisDistances.get_width()), int(perAxisDistances.get_height()));
+    const uint linearCell = compactedCells[idx];
+    const int2 cell = int2(int(linearCell) % perAxisSize.x, int(linearCell) / perAxisSize.x);
 
     const int rawDist = perAxisDistances.read(uint2(cell)).x;
     if (rawDist >= kEmptyDistanceEncoded) {
-        return; // empty per-axis cell
+        return; // occupied per the compaction; guard anyway
     }
     // Per-axis encoding (#1458): rawDepth in world units at bits [31:10].
     const int rawDepth = rawDist >> 10;

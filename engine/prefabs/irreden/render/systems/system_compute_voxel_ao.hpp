@@ -27,6 +27,7 @@
 #include <irreden/render/gpu_stage_timing_observer.hpp>
 
 #include <cstddef>
+#include <cstdint>
 
 using namespace IRComponents;
 using namespace IRMath;
@@ -134,13 +135,34 @@ template <> struct System<COMPUTE_VOXEL_AO> {
             voxelFrameDataBuf_,
             IRPrefab::PerAxisCanvas::subdivisionDensity()
         );
-        const int groupsX = IRMath::divCeil(axes.size_.x, kComputeVoxelAOGroupSize);
-        const int groupsY = IRMath::divCeil(axes.size_.y, kComputeVoxelAOGroupSize);
+        // #2256: dispatch indirectly over only each axis's compacted occupied
+        // cells (filled by the STAGE_1 per-axis compaction into these
+        // component-owned buffers) instead of sweeping the full worst-case grid.
+        Buffer *cellCompacted = axes.cellCompacted_.second;
+        Buffer *cellIndirect = axes.cellIndirect_.second;
+        const int regionStride = axes.cellRegionStride_;
         for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
             auto &tex = axes.axes_[axis];
             tex.distances_.second->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
             tex.ao_.second->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
-            IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
+            cellCompacted->bindRange(
+                BufferTarget::SHADER_STORAGE,
+                kBufferIndex_PerAxisCellCompacted,
+                static_cast<std::ptrdiff_t>(axis) * regionStride *
+                    static_cast<int>(sizeof(std::uint32_t)),
+                static_cast<size_t>(regionStride) * sizeof(std::uint32_t)
+            );
+            cellIndirect->bindRange(
+                BufferTarget::SHADER_STORAGE,
+                kBufferIndex_PerAxisCellIndirect,
+                static_cast<std::ptrdiff_t>(axis) * kPerAxisCellIndirectStrideBytes,
+                kPerAxisCellIndirectStrideBytes
+            );
+            IRRender::device()->dispatchComputeIndirect(
+                cellIndirect,
+                static_cast<std::ptrdiff_t>(axis) * kPerAxisCellIndirectStrideBytes +
+                    kPerAxisCellDispatchArgsOffsetBytes
+            );
         }
         // One barrier after the 3 independent per-axis dispatches (each axis
         // writes its own AO image texture — disjoint outputs, so dispatch order

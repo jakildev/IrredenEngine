@@ -50,30 +50,19 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     IREntity::EntityId perAxisCanvasEntity_ = IREntity::kNullEntity;
     const C_PerAxisTrixelCanvases *perAxisCanvases_ = nullptr;
 
-    // Per-axis empty-cell compaction (#1961). A compute pre-pass in beginTick
-    // appends each per-axis canvas's occupied cells into per-axis SSBO regions
-    // and sets the indirect instanced-draw arg counts, so drawPerAxisScatter
-    // rasterizes only occupied cells instead of sweeping the whole worst-case
-    // grid. Buffers alias slots 25/26 (free at this stage) and are lazily sized
-    // to the per-axis canvas (cellCompactedBuf_ reallocates on size change; the
-    // fixed-size indirect-args buffer is created once). All inert at a cardinal
-    // (per-axis canvases unallocated → compaction skipped → byte-identical).
-    ShaderProgram *cellCompactProgram_ = nullptr;
-    ResourceId cellCompactedId_ = 0;
-    Buffer *cellCompactedBuf_ = nullptr;
-    ResourceId cellIndirectId_ = 0;
-    Buffer *cellIndirectBuf_ = nullptr;
-    ivec2 cellBufAxisSize_ = ivec2(0, 0);
-    int perAxisCellRegionStride_ = 0; // uints per axis region (>= axis cells, 64-aligned)
-    static constexpr int kPerAxisCellCompactGroupSize = 16;
+    // Per-axis empty-cell compaction (#1961 / #2256) is run in
+    // VOXEL_TO_TRIXEL_STAGE_1 (right after the per-axis stores) into the
+    // component-owned cell buffers, so both the per-axis compute stages and this
+    // system's scatter draw over only occupied cells. This system just consumes
+    // those buffers off C_PerAxisTrixelCanvases in drawPerAxisScatter.
+    //
     // Voxel-compaction buffers (VOXEL_TO_TRIXEL_STAGE_1's named resources) that
     // own slots 25/26. STAGE_1's single-canvas compact relies on those slots
-    // staying bound to these across frames; since the cell compaction transiently
-    // rebinds 25/26, it must restore them afterward — the same discipline STAGE_1's
-    // own per-axis path follows. Looked up lazily (STAGE_1's create() runs first,
-    // but deferring to the first rotating frame avoids a creation-order dependency);
-    // null only if no voxel system is registered, in which case no per-axis path
-    // runs either, so the restore never fires.
+    // staying bound to these across frames; since the scatter transiently rebinds
+    // 25/26 (the cell list), it must restore them afterward — the same discipline
+    // STAGE_1's own per-axis path follows. Looked up lazily; null only if no voxel
+    // system is registered, in which case no per-axis path runs either, so the
+    // restore never fires.
     Buffer *voxelCompactedBuf_ = nullptr;
     Buffer *voxelIndirectBuf_ = nullptr;
 
@@ -334,21 +323,29 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         // count is the GPU-written occupied-cell count — instead of the full
         // worst-case grid (axes.size_.x * axes.size_.y, mostly empty). Each axis
         // binds its own compacted-list region + indirect-args struct.
+        // #1961 / #2256: the per-axis compaction (now run in VOXEL_TO_TRIXEL_STAGE_1
+        // right after the per-axis stores) filled the component-owned cell buffers
+        // this frame. Instance over only the occupied cells via the per-axis
+        // indirect draw; recompute the region stride from the axis size the same
+        // way the compaction sized the buffer.
+        Buffer *cellCompacted = axes.cellCompacted_.second;
+        Buffer *cellIndirect = axes.cellIndirect_.second;
+        const int regionStride = axes.cellRegionStride_;
         for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
             const C_PerAxisTrixelCanvases::AxisTextures &tex = axes.axes_[axis];
             tex.colors_.second->bind(0);
             tex.distances_.second->bind(1);
-            cellCompactedBuf_->bindRange(
+            cellCompacted->bindRange(
                 BufferTarget::SHADER_STORAGE,
                 kBufferIndex_PerAxisCellCompacted,
-                static_cast<std::ptrdiff_t>(axis) * perAxisCellRegionStride_ *
+                static_cast<std::ptrdiff_t>(axis) * regionStride *
                     static_cast<int>(sizeof(std::uint32_t)),
-                static_cast<size_t>(perAxisCellRegionStride_) * sizeof(std::uint32_t)
+                static_cast<size_t>(regionStride) * sizeof(std::uint32_t)
             );
             IRRender::device()->drawElementsInstancedIndirect(
                 DrawMode::TRIANGLES,
                 IndexType::UNSIGNED_SHORT,
-                cellIndirectBuf_,
+                cellIndirect,
                 static_cast<std::ptrdiff_t>(axis) * kPerAxisCellIndirectStrideBytes
             );
         }
@@ -387,98 +384,6 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         }
     }
 
-    // Per-axis empty-cell compaction (#1961). (Re)allocate the compacted-cell
-    // SSBO to @p axisSize (one region per axis, sized to the per-axis canvas)
-    // and create the fixed-size indirect-args buffer once. The compacted region
-    // is rounded up to a 64-uint (256 B) multiple so each axis's bindRange offset
-    // is SSBO-alignment-safe. Reallocates only on a size change (window/canvas
-    // resize), never per frame.
-    void ensurePerAxisCellBuffers(ivec2 axisSize) {
-        if (cellIndirectBuf_ == nullptr) {
-            auto created = IRRender::createResource<Buffer>(
-                nullptr,
-                static_cast<size_t>(C_PerAxisTrixelCanvases::kAxisCount) *
-                    static_cast<size_t>(kPerAxisCellIndirectStrideBytes),
-                BUFFER_STORAGE_DYNAMIC,
-                BufferTarget::SHADER_STORAGE,
-                kBufferIndex_PerAxisCellIndirect
-            );
-            cellIndirectId_ = created.first;
-            cellIndirectBuf_ = created.second;
-        }
-        if (cellCompactedBuf_ != nullptr && cellBufAxisSize_ == axisSize) {
-            return;
-        }
-        if (cellCompactedBuf_ != nullptr) {
-            IRRender::destroyResource<Buffer>(cellCompactedId_);
-            cellCompactedBuf_ = nullptr;
-        }
-        const int axisCells = axisSize.x * axisSize.y;
-        perAxisCellRegionStride_ = IRMath::divCeil(axisCells, 64) * 64;
-        const size_t totalUints = static_cast<size_t>(perAxisCellRegionStride_) *
-                                  static_cast<size_t>(C_PerAxisTrixelCanvases::kAxisCount);
-        auto created = IRRender::createResource<Buffer>(
-            nullptr,
-            totalUints * sizeof(std::uint32_t),
-            BUFFER_STORAGE_DYNAMIC,
-            BufferTarget::SHADER_STORAGE,
-            kBufferIndex_PerAxisCellCompacted
-        );
-        cellCompactedId_ = created.first;
-        cellCompactedBuf_ = created.second;
-        cellBufAxisSize_ = axisSize;
-    }
-
-    // Per-axis empty-cell compaction (#1961). Scan each per-axis distance canvas
-    // and append its occupied cells into that axis's compacted-list region,
-    // setting the indirect instanced-draw arg count drawPerAxisScatter issues
-    // from. Runs in beginTick BEFORE the framebuffer render pass (a pure compute
-    // prelude) — slots 25/26 are free here (the voxel compaction finished stages
-    // ago). Caller guarantees perAxisCanvases_ is non-null + allocated.
-    void compactPerAxisCells() {
-        const ivec2 axisSize = perAxisCanvases_->size_;
-        ensurePerAxisCellBuffers(axisSize);
-
-        // Reset each axis's draw-args struct: indexCount = quad index count,
-        // instanceCount = 0 (the compaction atomic-appends), firstIndex /
-        // baseVertex / baseInstance = 0.
-        PerAxisCellDrawCommand resetCmd{};
-        resetCmd.indexCount = static_cast<std::uint32_t>(IRShapes2D::kQuadIndicesLength);
-        for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
-            cellIndirectBuf_->subData(
-                static_cast<std::ptrdiff_t>(axis) * kPerAxisCellIndirectStrideBytes,
-                sizeof(PerAxisCellDrawCommand),
-                &resetCmd
-            );
-        }
-
-        cellCompactProgram_->use();
-        const int groupsX = IRMath::divCeil(axisSize.x, kPerAxisCellCompactGroupSize);
-        const int groupsY = IRMath::divCeil(axisSize.y, kPerAxisCellCompactGroupSize);
-        for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
-            cellCompactedBuf_->bindRange(
-                BufferTarget::SHADER_STORAGE,
-                kBufferIndex_PerAxisCellCompacted,
-                static_cast<std::ptrdiff_t>(axis) * perAxisCellRegionStride_ *
-                    static_cast<int>(sizeof(std::uint32_t)),
-                static_cast<size_t>(perAxisCellRegionStride_) * sizeof(std::uint32_t)
-            );
-            cellIndirectBuf_->bindRange(
-                BufferTarget::SHADER_STORAGE,
-                kBufferIndex_PerAxisCellIndirect,
-                static_cast<std::ptrdiff_t>(axis) * kPerAxisCellIndirectStrideBytes,
-                sizeof(PerAxisCellDrawCommand)
-            );
-            perAxisCanvases_->axes_[axis]
-                .distances_.second->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
-            IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
-        }
-        // The scatter vertex shader reads the compacted list (SHADER_STORAGE) and
-        // the indirect instanced draw reads the args buffer (COMMAND).
-        IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
-        IRRender::device()->memoryBarrier(BarrierType::COMMAND);
-    }
-
     void beginTick() {
         HoveredEntityIdLayout resetData;
         hoveredIdBuf_->subData(0, sizeof(resetData), &resetData);
@@ -499,14 +404,6 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             if (perAxis.has_value() && (*perAxis.value()).isAllocated()) {
                 perAxisCanvases_ = perAxis.value();
             }
-        }
-
-        // #1961: compact each per-axis canvas's occupied cells into an indirect
-        // draw BEFORE binding the framebuffer (a pure compute prelude; slots
-        // 25/26 are free here). cellCompactProgram_ is restored to the gather
-        // program just below.
-        if (perAxisCanvases_ != nullptr) {
-            compactPerAxisCells();
         }
 
         program_->use();
@@ -532,11 +429,6 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
                 ShaderStage{IRRender::kFileVertPerAxisScatter, ShaderType::VERTEX},
                 ShaderStage{IRRender::kFileFragPerAxisScatter, ShaderType::FRAGMENT}
             }
-        );
-        // Per-axis empty-cell compaction pre-pass (#1961) — see compactPerAxisCells.
-        IRRender::createNamedResource<ShaderProgram>(
-            "PerAxisCellCompactProgram",
-            std::vector{ShaderStage{IRRender::kFileCompPerAxisCellCompact, ShaderType::COMPUTE}}
         );
         IRRender::createNamedResource<Buffer>(
             "TrixelToFramebufferFrameData",
@@ -571,8 +463,6 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         sys->hoveredIdBuf_ = IRRender::getNamedResource<Buffer>("HoveredEntityIdBuffer");
         sys->program_ = IRRender::getNamedResource<ShaderProgram>("CanvasToFramebufferProgram");
         sys->scatterProgram_ = IRRender::getNamedResource<ShaderProgram>("PerAxisScatterProgram");
-        sys->cellCompactProgram_ =
-            IRRender::getNamedResource<ShaderProgram>("PerAxisCellCompactProgram");
         sys->quadVao_ = IRRender::getNamedResource<VAO>("QuadVAO");
         IRRender::tagGpuStage(id, "trixelToFb");
         return id;

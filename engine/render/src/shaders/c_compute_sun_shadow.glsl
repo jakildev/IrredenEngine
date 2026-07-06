@@ -42,6 +42,20 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
 layout(r32i, binding = 0) readonly uniform iimage2D trixelDistances;
 layout(rgba8, binding = 1) writeonly uniform image2D canvasSunShadow;
 
+// #2256: on the per-axis path this stage is dispatched indirectly over only each
+// axis's OCCUPIED cells (compacted by the STAGE_1 per-axis pre-pass) instead of
+// sweeping the full grid. compactedCells holds the occupied linear cell indices;
+// cellDrawArgs carries the visibleCount at [kDispatchArgsBaseUint + 3]. Unused on
+// the single-canvas 2D path (perAxisRoute == 0), which stays byte-identical.
+layout(std430, binding = 25) readonly buffer PerAxisCellCompacted {
+    uint compactedCells[];
+};
+layout(std430, binding = 26) readonly buffer PerAxisCellIndirect {
+    uint cellDrawArgs[];
+};
+const uint kDispatchArgsBaseUint = 8u;      // kPerAxisCellDispatchArgsOffsetBytes / 4
+const uint kPerAxisCellComputeTile = 256u;  // kPerAxisCellComputeTile (16×16 threads)
+
 // Round-to-cell staircase same-face step band (#2010). A tilted-flat surface
 // quantized into a voxel staircase has a SAME-face in-plane neighbour offset
 // ~1 cell along the receiver's outward normal (the round-to-cell step). A flat
@@ -114,9 +128,24 @@ bool detectSelfStepStaircase(ivec2 pixel, ivec2 size, int slot, int rawDepth, in
 }
 
 void main() {
-    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
-    ivec2 size = imageSize(trixelDistances);
-    if (pixel.x >= size.x || pixel.y >= size.y) return;
+    // Per-axis path (#2256): decode the receiver pixel from this axis's compacted
+    // occupied-cell list under a 1-D indirect dispatch; the single-canvas 2D path
+    // keeps its full-grid xy invocation guard (byte-identical).
+    const ivec2 size = imageSize(trixelDistances);
+    ivec2 pixel;
+    if (perAxisRoute != 0) {
+        const uint idx = gl_WorkGroupID.x * kPerAxisCellComputeTile + gl_LocalInvocationIndex;
+        if (idx >= cellDrawArgs[kDispatchArgsBaseUint + 3u]) {
+            return;
+        }
+        const uint linearCell = compactedCells[idx];
+        pixel = ivec2(int(linearCell) % size.x, int(linearCell) / size.x);
+    } else {
+        pixel = ivec2(gl_GlobalInvocationID.xy);
+        if (pixel.x >= size.x || pixel.y >= size.y) {
+            return;
+        }
+    }
 
     int encoded = imageLoad(trixelDistances, pixel).x;
     // Per-axis canvas uses INT_MAX as empty sentinel (#1458); single-canvas keeps 65535.
