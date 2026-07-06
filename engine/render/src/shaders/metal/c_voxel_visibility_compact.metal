@@ -125,6 +125,11 @@ struct FogObserverData {
 // (kFogHiddenKeepCells + aa) — see the GLSL twin.
 constant float kCullSafetyCells = 9.0f;
 
+// All six face-occlusion bits of the voxel flags byte (bits [2..7], the
+// shader-side mirror of IRComponents::VoxelFlags::kFaceOccludedMask). A
+// flags byte matching the full mask marks a fully-interior voxel.
+constant uint kFaceOccludedMaskBits = 0xFCu;
+
 // True iff this column lies under any live analytic vision circle, so its voxels
 // survive the grid cull and FOG_TO_TRIXEL can reveal them smoothly per pixel.
 // Uses a cell nearest-point (AABB) test (mirrors the GLSL): the voxel cell at
@@ -211,13 +216,26 @@ kernel void c_voxel_visibility_compact(
                     (!fogColumnUnexplored(canvasFogOfWar, voxelPosRaw) ||
                      fogColumnInVisionCircle(fogObservers, voxelPosRaw))) {
                     if (frameData.perAxisRoute == 0) {
-                        // Single full list (byte-identical to master).
-                        const uint slot = atomic_fetch_add_explicit(
-                            &indirectParams[kSlotVisibleCount],
-                            1u,
-                            memory_order_relaxed
-                        );
-                        compactedVoxelIndices[slot] = idx;
+                        // Fully-interior drop — mirrors the GLSL twin: all six
+                        // face-occlusion bits set means stage 1/2 fail
+                        // faceIsExposed on every slot and the rotated
+                        // opposite-polarity emit has no exposed opposite, so
+                        // skipping the append is output-identical and saves the
+                        // voxel's sub²-slice stage-1 dispatch. Gated off while
+                        // any fog vision circle is live (a circle can revive an
+                        // occluded vertical face as a cut wall, #2125). No early
+                        // return — the completion barrier below must stay
+                        // uniformly reached.
+                        const uint flagsByte = (voxels[idx].materialFlagBone >> 8u) & 0xFFu;
+                        if (fogObservers.visionCircleCount != 0 ||
+                            (flagsByte & kFaceOccludedMaskBits) != kFaceOccludedMaskBits) {
+                            const uint slot = atomic_fetch_add_explicit(
+                                &indirectParams[kSlotVisibleCount],
+                                1u,
+                                memory_order_relaxed
+                            );
+                            compactedVoxelIndices[slot] = idx;
+                        }
                     } else {
                         // Per-axis split (#1739): append into each axis region the
                         // voxel has an exposed face on. The store shader re-checks
