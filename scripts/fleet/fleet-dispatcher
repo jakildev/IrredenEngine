@@ -1653,6 +1653,14 @@ def _state_age_seconds():
     # and mtime would report a healthy-but-lying scout. Fall back to mtime only
     # when `generated_at` is missing/unparseable (a malformed snapshot), which
     # preserves the pre-Q2 behavior for that case.
+    #
+    # This is an intentional stdlib-only inline mirror of
+    # fleet_poll_topology.state_age_seconds (the canonical, unit-tested copy).
+    # It is NOT imported here because this heredoc is the scout-dead watchdog:
+    # it must fire precisely when the fleet is unhealthy, so it stays free of
+    # any dependency on the fleet module tree resolving (the #1578 ~/bin
+    # symlink hazard) and of pulling the poll-topology HTTP-server module into
+    # a hot dispatcher path. Keep the two in sync if the parse logic changes.
     try:
         gen = json.loads(STATE_FILE.read_text()).get("generated_at")
     except (OSError, ValueError, AttributeError):

@@ -105,6 +105,24 @@ class TestStaleness(unittest.TestCase):
         self.assertIsNone(T.parse_generated_at("garbage"))
         self.assertIsInstance(T.parse_generated_at("2026-07-04T16:00:00Z"), int)
 
+    def test_state_age_prefers_generated_at_over_mtime(self):
+        # generated_at is 100s old; mtime claims 5s old (a follower that just
+        # rewrote a frozen leader snapshot). Age must follow generated_at.
+        now = T.now_epoch()
+        age = T.state_age_seconds(_stamp(100), now - 5, now=now)
+        self.assertAlmostEqual(age, 100, delta=1)
+
+    def test_state_age_falls_back_to_mtime_when_missing(self):
+        now = T.now_epoch()
+        self.assertAlmostEqual(
+            T.state_age_seconds(None, now - 42, now=now), 42, delta=1)
+        self.assertAlmostEqual(
+            T.state_age_seconds("not-a-date", now - 42, now=now), 42, delta=1)
+
+    def test_state_age_default_now_is_wall_clock(self):
+        # Omitting `now` uses time.time(); a fresh stamp reads as ~0s old.
+        self.assertLess(abs(T.state_age_seconds(_stamp(0), 0.0)), 5)
+
 
 class TestBundle(unittest.TestCase):
 

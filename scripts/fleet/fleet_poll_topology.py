@@ -219,6 +219,25 @@ def now_epoch():
     return calendar.timegm(time.gmtime())
 
 
+def state_age_seconds(generated_at, mtime, now=None):
+    """Seconds since a state.json snapshot was produced.
+
+    Prefer the in-file `generated_at` (the true snapshot time) over file
+    mtime. Under #1394 Q2 centralized polling a follower rewrites state.json
+    every tick while preserving the LEADER's `generated_at`, so a dead leader
+    keeps a follower's mtime fresh while `generated_at` freezes — judging by
+    mtime alone would report a healthy-but-lying scout. Fall back to `mtime`
+    only when `generated_at` is missing/unparseable (a malformed snapshot),
+    preserving the pre-Q2 behavior for that case. `now` is injectable for
+    tests (defaults to wall-clock epoch).
+    """
+    ref = now if now is not None else time.time()
+    epoch = parse_generated_at(generated_at)
+    if epoch is not None:
+        return ref - epoch
+    return ref - mtime
+
+
 # --- Bundle build / parse / apply ------------------------------------------
 
 
