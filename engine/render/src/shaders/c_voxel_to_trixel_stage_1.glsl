@@ -69,7 +69,8 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     // to world-sample shadow + light); `.w` = 1.0 when world-placed (the default
     // since #1624), else 0.0. The detached re-voxelize canvas rasters its pool in
     // the pool-centered MODEL frame, so the fog cut-face + own-column tests below
-    // recover each voxel's WORLD column as `round(voxelPosition.xy) + round(.xy)`
+    // recover each voxel's WORLD column as
+    // `roundHalfUp(voxelPosition.xy) + roundHalfUp(.xy)`
     // and decide "hidden" against the shared world fog grid. std140-appended after
     // voxelDepthAxis (offset 160) to match FrameDataVoxelToCanvas; the all-zero
     // default keeps the world / per-axis / screen-locked canvases unchanged.
@@ -371,7 +372,7 @@ void main() {
     // per-axis #2128). The fog grid is world-space, so the cut-face + own-column
     // tests below decide "hidden" on this voxel's WORLD column. `fogActive` is the
     // single cheap (uniform-only) gate that keeps every non-fog / plain-DETACHED /
-    // Z-route voxel byte-identical to master AND free of the world-column round()
+    // Z-route voxel byte-identical to master AND free of the world-column rounding
     // below. It fires on the world fog route (perAxisRoute==0: the GRID world canvas
     // or a world-placed re-voxelize detached canvas, #2127) AND the X/Y per-axis
     // rotation routes (1/2, #2128 — a cut face is a vertical X/Y face that rides the
@@ -390,8 +391,8 @@ void main() {
     // world-frame one and the neighbor column below is correct.
     ivec2 worldColumn = ivec2(0);
     if (fogActive) {
-        worldColumn = ivec3(round(voxelPosition.xyz)).xy +
-            (isDetachedCanvas > 0.5 ? ivec2(round(detachedWorldReceive.xy)) : ivec2(0));
+        worldColumn = roundHalfUp(voxelPosition.xyz).xy +
+            (isDetachedCanvas > 0.5 ? roundHalfUp(detachedWorldReceive.xy) : ivec2(0));
     }
 
     // Exposed-face gate (#1278) widened with the fog CUT-FACE rule (#2125/#2127;
@@ -491,7 +492,7 @@ void main() {
         // the 1×1 placeholder short-circuit, so non-fog rotating scenes stay
         // byte-identical.
         if (visionCircleCount > 0 &&
-            fogColumnReveal(ivec3(round(voxelPosition.xyz)).xy) <= 0.0) {
+            fogColumnReveal(roundHalfUp(voxelPosition.xyz).xy) <= 0.0) {
             return;
         }
         const int axis = perAxisRoute - 1;
@@ -516,7 +517,7 @@ void main() {
         // trixelFrameOffset (their content IS subdivided).
         const ivec2 perAxisBase = trixelOriginOffsetZ1(canvasSizePixels) + ivec2(floor(frameCanvasOffset));
         if (voxelRenderOptions.x == 0) {
-            const ivec3 worldPos = ivec3(round(voxelPosition.xyz));
+            const ivec3 worldPos = roundHalfUp(voxelPosition.xyz);
             const ivec3 facePos = faceMicroPositionFixed6(faceId, worldPos, 0, 0, 1);
             // No sub-cell offset at base resolution; encode centre fracs (8,8).
             const int voxelDistance =
@@ -530,7 +531,7 @@ void main() {
         // of the encoding so scatter can sub-pixel-shift the face quad.
         if (gl_WorkGroupID.z != 0) return;
         const vec3 worldAligned = snapNearIntegerVoxelPosition(voxelPosition.xyz);
-        const ivec3 worldPos_sub = ivec3(round(worldAligned));
+        const ivec3 worldPos_sub = roundHalfUp(worldAligned);
         const ivec3 facePos_sub = faceMicroPositionFixed6(faceId, worldPos_sub, 0, 0, 1);
         const vec3 fracInCell = worldAligned - vec3(worldPos_sub);
         const int voxelDistance =
@@ -540,7 +541,11 @@ void main() {
     }
 
     if (voxelRenderOptions.x == 0) {
-        ivec3 voxelPositionInt = ivec3(round(voxelPosition.xyz));
+        // roundHalfUp, not hardware round(): half-integer voxel positions must
+        // resolve to the same cell here, in stage 2's re-derivation, and in the
+        // CPU-side IRMath::roundHalfUp consumers — hardware round() ties are
+        // implementation-defined and leave a one-cell seam along tie planes.
+        ivec3 voxelPositionInt = roundHalfUp(voxelPosition.xyz);
         if (cardinalIndex != 0) {
             voxelPositionInt = rotateCardinalZ(voxelPositionInt, cardinalIndex);
             voxelPositionInt += cardinalLowerCornerShift(cardinalIndex);
@@ -570,7 +575,7 @@ void main() {
     int v = int(gl_WorkGroupID.z) % subdivisions;
 
     const vec3 voxelPositionAligned = snapNearIntegerVoxelPosition(voxelPosition.xyz);
-    const ivec3 voxelPositionFixed = ivec3(round(voxelPositionAligned * float(subdivisions)));
+    const ivec3 voxelPositionFixed = roundHalfUp(voxelPositionAligned * float(subdivisions));
     const ivec2 frameOffsetFixed =
         trixelFrameOffset(trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions);
 

@@ -258,7 +258,7 @@ kernel void c_voxel_to_trixel_stage_1(
     // World fog route + world-column recovery (#2125 GRID, #2127 detached; per-axis
     // #2128) — see the GLSL twin. `fogActive` is the single cheap (uniform-only)
     // gate that keeps every non-fog / plain-DETACHED / Z-route voxel byte-identical
-    // to master AND free of the world-column round() below. It fires on the world
+    // to master AND free of the world-column rounding below. It fires on the world
     // fog route (perAxisRoute==0, GRID or world-placed re-voxelize detached, #2127)
     // AND the X/Y per-axis rotation routes (1/2, #2128). The GRID world canvas + the
     // X/Y per-axis canvases raster in world space (offset 0); a world-placed detached
@@ -272,9 +272,9 @@ kernel void c_voxel_to_trixel_stage_1(
          (frameData.perAxisRoute == 0 && frameData.detachedWorldReceive.w != 0.0f));
     int2 worldColumn = int2(0);
     if (fogActive) {
-        worldColumn = int3(round(voxelPosition.xyz)).xy +
+        worldColumn = roundHalfUp(voxelPosition.xyz).xy +
             (frameData.isDetachedCanvas > 0.5f
-                 ? int2(round(frameData.detachedWorldReceive.xy))
+                 ? roundHalfUp(frameData.detachedWorldReceive.xy)
                  : int2(0));
     }
 
@@ -340,7 +340,7 @@ kernel void c_voxel_to_trixel_stage_1(
         // identical to the pre-#2128 per-axis store; visionCircleCount==0 / the 1×1
         // placeholder short-circuit, so non-fog rotating scenes stay byte-identical.
         if (fogObservers.visionCircleCount > 0 &&
-            fogColumnReveal(canvasFogOfWar, fogObservers, int3(round(voxelPosition.xyz)).xy) <= 0.0f) {
+            fogColumnReveal(canvasFogOfWar, fogObservers, roundHalfUp(voxelPosition.xyz).xy) <= 0.0f) {
             return;
         }
         const int axis = frameData.perAxisRoute - 1;
@@ -363,7 +363,7 @@ kernel void c_voxel_to_trixel_stage_1(
         const int2 perAxisBase = trixelOriginOffsetZ1(frameData.canvasSizePixels) +
                                  int2(floor(frameData.frameCanvasOffset));
         if (frameData.voxelRenderOptions.x == 0) {
-            const int3 worldPos = int3(round(voxelPosition.xyz));
+            const int3 worldPos = roundHalfUp(voxelPosition.xyz);
             const int3 facePos = faceMicroPositionFixed6(faceId, worldPos, 0, 0, 1);
             // No sub-cell offset at base resolution; encode centre fracs (8,8).
             const int voxelDistance =
@@ -378,7 +378,7 @@ kernel void c_voxel_to_trixel_stage_1(
         // Only the z=0 invocation writes; higher z-slices return early.
         if (groupId.z != 0) return;
         const float3 worldAligned = snapNearIntegerVoxelPosition(voxelPosition.xyz);
-        const int3 worldPos_sub = int3(round(worldAligned));
+        const int3 worldPos_sub = roundHalfUp(worldAligned);
         const int3 facePos_sub = faceMicroPositionFixed6(faceId, worldPos_sub, 0, 0, 1);
         const float3 fracInCell = worldAligned - float3(worldPos_sub);
         const int voxelDistance =
@@ -391,7 +391,11 @@ kernel void c_voxel_to_trixel_stage_1(
     }
 
     if (frameData.voxelRenderOptions.x == 0) {
-        int3 voxelPositionInt = int3(round(voxelPosition.xyz));
+        // roundHalfUp, not hardware round(): half-integer voxel positions must
+        // resolve to the same cell here, in stage 2's re-derivation, and in the
+        // CPU-side IRMath::roundHalfUp consumers — hardware round() ties are
+        // implementation-defined and leave a one-cell seam along tie planes.
+        int3 voxelPositionInt = roundHalfUp(voxelPosition.xyz);
         if (cardinalIndex != 0) {
             voxelPositionInt = rotateCardinalZ(voxelPositionInt, cardinalIndex);
             voxelPositionInt += cardinalLowerCornerShift(cardinalIndex);
@@ -419,7 +423,7 @@ kernel void c_voxel_to_trixel_stage_1(
     const int v = int(groupId.z) % subdivisions;
 
     const float3 voxelPositionAligned = snapNearIntegerVoxelPosition(voxelPosition.xyz);
-    const int3 voxelPositionFixed = int3(round(voxelPositionAligned * float(subdivisions)));
+    const int3 voxelPositionFixed = roundHalfUp(voxelPositionAligned * float(subdivisions));
     const int2 frameOffsetFixed = trixelFrameOffset(
         frameData.trixelCanvasOffsetZ1,
         frameData.frameCanvasOffset,

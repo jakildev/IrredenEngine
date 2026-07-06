@@ -184,7 +184,9 @@ void main() {
             // 32-bit word stride matches `kVoxelActiveMaskBits` on the CPU side.
             uint maskWord = activeMask[idx >> 5u];
             if (((maskWord >> (idx & 31u)) & 1u) != 0u) {
-                ivec3 voxelPosRaw = ivec3(round(positions[idx].xyz));
+                // roundHalfUp keeps tie cells consistent with the stage-1/2
+                // raster (hardware round() ties are implementation-defined).
+                ivec3 voxelPosRaw = roundHalfUp(positions[idx].xyz);
                 ivec2 isoPos;
                 int cullMargin = 0;
                 // Smooth camera Z-yaw (T3 / #1310): while the per-axis canvases
