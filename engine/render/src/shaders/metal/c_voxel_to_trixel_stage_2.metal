@@ -45,6 +45,50 @@ inline void writeColorTap(
     triangleCanvasEntityIds.write(uint4(packedEntityId, 0u, 0u), pixel);
 }
 
+// Per-axis color tap with the deterministic-winner guard (#2255) — GLSL twin
+// in c_voxel_to_trixel_stage_2.glsl. The depth re-test alone admits every
+// face whose encoded key ties the settled winner (equal keys arise from the
+// 4-bit frac quantization on the per-axis store), and the non-atomic texture
+// write then makes the color/entity-id planes last-writer-wins —
+// GPU-scheduling-dependent, drifting run-to-run at a fixed pose (#2255).
+// The winner scratch (resolved between the
+// stages by stage 1's resolveMode dispatch) holds the minimum run-stable
+// voxel pool index among the tied faces; requiring `voxelIndex == winner`
+// admits exactly one writer. The cardinal paths keep the plain writeColorTap
+// above (integer iso key — no tie possible; byte-identity contract).
+inline void writeColorTapPerAxis(
+    int2 canvasPixel,
+    int voxelDistance,
+    float4 voxelColor,
+    uint2 packedEntityId,
+    uint voxelIndex,
+    int2 canvasSize,
+    device const atomic_int* distanceScratch,
+    device const atomic_uint* perAxisWinnerIds,
+    texture2d<float, access::write> triangleCanvasColors,
+    texture2d<int, access::write> triangleCanvasDistances,
+    texture2d<uint, access::write> triangleCanvasEntityIds
+) {
+    if (!isInsideCanvas(canvasPixel, canvasSize)) {
+        return;
+    }
+    const uint linearIndex =
+        uint(canvasPixel.y) * uint(canvasSize.x) + uint(canvasPixel.x);
+    const int canvasDistance =
+        atomic_load_explicit(&distanceScratch[linearIndex], memory_order_relaxed);
+    if (voxelDistance != canvasDistance) {
+        return;
+    }
+    if (atomic_load_explicit(&perAxisWinnerIds[linearIndex], memory_order_relaxed) !=
+        voxelIndex) {
+        return;
+    }
+    const uint2 pixel = uint2(canvasPixel);
+    triangleCanvasColors.write(voxelColor, pixel);
+    triangleCanvasDistances.write(int4(voxelDistance, 0, 0, 0), pixel);
+    triangleCanvasEntityIds.write(uint4(packedEntityId, 0u, 0u), pixel);
+}
+
 // Emit a face's 2x3 trixel block through the deformation matrix D.
 // Super-sampling gated by isDetached — see c_voxel_to_trixel_stage_1.glsl
 // for the full super-sampling contract.
@@ -173,6 +217,7 @@ kernel void c_voxel_to_trixel_stage_2(
     texture2d<uint, access::write> triangleCanvasEntityIds [[texture(2)]],
     texture2d<float, access::read> canvasFogOfWar [[texture(3)]],
     constant FogObserverData& fogObservers [[buffer(27)]],
+    device const atomic_uint* perAxisWinnerIds [[buffer(28)]],
     uint3 groupId [[threadgroup_position_in_grid]],
     uint3 localId3 [[thread_position_in_threadgroup]]
 ) {
@@ -294,9 +339,9 @@ kernel void c_voxel_to_trixel_stage_2(
             // No sub-cell offset at base resolution; encode centre fracs (8,8).
             const int voxelDistance =
                 encodeDepthWithFaceFrac(pos3DtoDistance(facePos), slot, 8, 8);
-            writeColorTap(
+            writeColorTapPerAxis(
                 perAxisBase + pos3DtoPos2DIso(facePos), voxelDistance, voxelColor,
-                packedEntityId, canvasSize, distanceScratch,
+                packedEntityId, voxelIndex, canvasSize, distanceScratch, perAxisWinnerIds,
                 triangleCanvasColors, triangleCanvasDistances, triangleCanvasEntityIds
             );
             return;
@@ -309,9 +354,9 @@ kernel void c_voxel_to_trixel_stage_2(
         const float3 fracInCell_s2 = worldAligned_s2 - float3(worldPos_s2);
         const int voxelDistance_s2 =
             encodeDepthWithFaceFrac(pos3DtoDistance(facePos_s2), slot, axis, fracInCell_s2);
-        writeColorTap(
+        writeColorTapPerAxis(
             perAxisBase + pos3DtoPos2DIso(facePos_s2), voxelDistance_s2, voxelColor,
-            packedEntityId, canvasSize, distanceScratch,
+            packedEntityId, voxelIndex, canvasSize, distanceScratch, perAxisWinnerIds,
             triangleCanvasColors, triangleCanvasDistances, triangleCanvasEntityIds
         );
         return;

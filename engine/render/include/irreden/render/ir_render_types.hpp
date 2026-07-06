@@ -484,6 +484,25 @@ struct FrameDataVoxelToCanvas {
     // after detachedWorldReceive_ (offset 176) so every prior offset is
     // unchanged and the gather shaders that read only the prefix need no update.
     ivec4 visibleIsoBounds_ = ivec4(0, 0, 0, 0);
+    // Per-axis deterministic-winner resolve mode (#2255). 0 = the normal
+    // distance store (the only value any non-per-axis dispatch uploads). 1 =
+    // the winner-resolve dispatch dispatchPerAxisCanvases inserts between
+    // stage 1 and stage 2 on each axis canvas: stage 1 re-runs the identical
+    // per-axis geometry and, for each face whose encoded distance ties the
+    // settled per-cell atomicMin winner, atomicMins the face's run-stable
+    // voxel pool index into the per-cell winner scratch
+    // (kBufferIndex_PerAxisResolveScratch). Stage 2's per-axis color tap then
+    // admits exactly one of the tied faces (the minimum index), so the
+    // color/entity-id planes are byte-identical run-to-run at a fixed pose —
+    // matching the distance plane, whose atomicMin was always
+    // order-independent. Read only by c_voxel_to_trixel_stage_1;
+    // std140-appended after visibleIsoBounds_ (offset 192) so every prior
+    // offset is unchanged. Trailing pads keep sizeof at the 16-byte std140
+    // stride for the full-struct subData uploads.
+    int resolveMode_ = 0;
+    int resolveModePad0_ = 0;
+    int resolveModePad1_ = 0;
+    int resolveModePad2_ = 0;
 };
 
 struct FrameDataTrixelToTrixel {
@@ -738,9 +757,15 @@ static_assert(
     "unchanged"
 );
 static_assert(
-    sizeof(FrameDataVoxelToCanvas) == 192,
+    offsetof(FrameDataVoxelToCanvas, resolveMode_) == 192,
+    "FrameDataVoxelToCanvas::resolveMode_ must land at offset 192 "
+    "(visibleIsoBounds_ at 176 + 16 B). Appended after the prior last field so "
+    "every existing offset — and the resolveMode==0 store path — stays unchanged"
+);
+static_assert(
+    sizeof(FrameDataVoxelToCanvas) == 208,
     "FrameDataVoxelToCanvas size must mirror its std140 GLSL block "
-    "(visibleIsoBounds_ ivec4 append: 176 + 16 = 192)"
+    "(resolveMode_ int append padded to the 16-byte stride: 192 + 16 = 208)"
 );
 
 struct FrameDataSun {

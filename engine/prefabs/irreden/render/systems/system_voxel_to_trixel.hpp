@@ -34,6 +34,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <utility>
@@ -514,6 +515,17 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         }
 
         const ivec2 perAxisOffsetZ1 = IRMath::trixelOriginOffsetZ1(axes.size_);
+        // #2255: the winner scratch is one uint per per-axis texel; bound once
+        // here for the per-axis winner-resolve + stage-2 guard (transient reuse
+        // of kBufferIndex_PerAxisResolveScratch — free during the per-axis
+        // store; the #1435 resolve + BAKE consumers re-bind it themselves).
+        const std::size_t winnerScratchBytes = static_cast<std::size_t>(axes.size_.x) *
+                                               static_cast<std::size_t>(axes.size_.y) *
+                                               sizeof(std::uint32_t);
+        axes.winnerIds_.second->bindBase(
+            BufferTarget::SHADER_STORAGE,
+            kBufferIndex_PerAxisResolveScratch
+        );
         for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
             auto &tex = axes.axes_[axis];
             Texture2D *colors = tex.colors_.second;
@@ -529,6 +541,10 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             IRRender::device()->clearTexImage(distances, 0, &kDistanceClear);
             colors->clear(PixelDataFormat::RGBA, PixelDataType::UNSIGNED_BYTE, &kColorClear[0]);
             entityIds->clear(PixelDataFormat::RG_INTEGER, PixelDataType::UINT32, &kEntityIdClear);
+            // #2255: reset the winner scratch to the no-winner sentinel
+            // (0xFFFFFFFF — a repeating byte, so both backends fill GPU-side)
+            // before this axis's winner-resolve dispatch below.
+            IRRender::device()->fillBuffer(axes.winnerIds_.second, winnerScratchBytes, 0xFFu);
 
             frameData_.perAxisRoute_ = axis + 1;
             frameData_.trixelCanvasOffsetZ1_ = perAxisOffsetZ1;
@@ -576,6 +592,32 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             distances->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
             IRRender::device()->dispatchComputeIndirect(perAxisIndirectBuf_, indirectOffsetBytes);
             IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+
+            // #2255 winner-resolve dispatch: re-run stage 1 over this axis's
+            // region with resolveMode=1 — among the faces whose encoded
+            // distance ties the now-settled per-cell atomicMin winner, elect
+            // the minimum run-stable voxel pool index into the winner
+            // scratch. Stage 2's per-axis tap then admits exactly one tied
+            // face, so the color/entity-id planes are byte-identical
+            // run-to-run at a fixed pose (the distance plane always was).
+            // stage1Program_ is still the active program and every bind
+            // persists; only the mode field changes. One extra dispatch per
+            // axis (plan-accepted).
+            frameData_.resolveMode_ = 1;
+            frameDataBuf_->subData(
+                offsetof(FrameDataVoxelToCanvas, resolveMode_),
+                sizeof(int),
+                &frameData_.resolveMode_
+            );
+            IRRender::device()->dispatchComputeIndirect(perAxisIndirectBuf_, indirectOffsetBytes);
+            // The winner SSBO writes must land before stage 2's guard reads.
+            IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+            frameData_.resolveMode_ = 0;
+            frameDataBuf_->subData(
+                offsetof(FrameDataVoxelToCanvas, resolveMode_),
+                sizeof(int),
+                &frameData_.resolveMode_
+            );
 
             stage2Program_->use();
             colors->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
@@ -1413,6 +1455,21 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             BUFFER_STORAGE_DYNAMIC,
             BufferTarget::UNIFORM,
             kBufferIndex_FrameDataVoxelToCanvas
+        );
+        // #2255: the stage-1/2 kernels declare the per-axis winner scratch at
+        // kBufferIndex_PerAxisResolveScratch (28). The real scratch is
+        // allocated lazily with the per-axis canvases; this placeholder
+        // guarantees index 28 is never unbound for the single-canvas /
+        // detached dispatches, which gate every access behind
+        // resolveMode / perAxisRoute but can run before any lighting system
+        // has bound 28 (Metal re-binds the shadow table per encoder).
+        IRRender::createNamedResource<Buffer>(
+            "PerAxisWinnerPlaceholder",
+            nullptr,
+            sizeof(std::uint32_t),
+            BUFFER_STORAGE_DYNAMIC,
+            BufferTarget::SHADER_STORAGE,
+            kBufferIndex_PerAxisResolveScratch
         );
         const int maxSingleVoxels = IRRender::VoxelPoolConfig::getTotalSize();
         IRRender::createNamedResource<Buffer>(

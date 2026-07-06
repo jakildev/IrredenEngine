@@ -35,6 +35,34 @@ inline void writeDistanceTap(
     );
 }
 
+// Winner-resolve tap (#2255, resolveMode == 1) — GLSL twin in
+// c_voxel_to_trixel_stage_1.glsl. Among the faces whose encoded distance
+// equals the settled atomic-min winner at this cell, elect the smallest
+// run-stable voxel pool index into the winner scratch (a manually-managed
+// atomic buffer at kBufferIndex_PerAxisResolveScratch — Metal's single
+// image-atomic scratch slot is held by the distance store, so the winner
+// cannot be a second scratch image). Stage 2's matching guard then admits
+// exactly one writer per cell.
+inline void resolveWinnerTap(
+    int2 canvasPixel,
+    int voxelDistance,
+    uint voxelIndex,
+    device const atomic_int* distanceScratch,
+    device atomic_uint* perAxisWinnerIds,
+    int2 canvasSize
+) {
+    if (!isInsideCanvas(canvasPixel, canvasSize)) {
+        return;
+    }
+    const uint linearIndex =
+        uint(canvasPixel.y) * uint(canvasSize.x) + uint(canvasPixel.x);
+    if (atomic_load_explicit(&distanceScratch[linearIndex], memory_order_relaxed) !=
+        voxelDistance) {
+        return;
+    }
+    atomic_fetch_min_explicit(&perAxisWinnerIds[linearIndex], voxelIndex, memory_order_relaxed);
+}
+
 // Emit a face's 2x3 trixel block through the deformation matrix D.
 // World canvas: maxN=2 (Z-yaw residual ≤ π/4, column lengths ≤ √3).
 // Detached canvas: maxN=6 (full SO(3)).
@@ -201,6 +229,7 @@ kernel void c_voxel_to_trixel_stage_1(
     device atomic_int* distanceScratch [[buffer(16)]],
     texture2d<float, access::read> canvasFogOfWar [[texture(0)]],
     constant FogObserverData& fogObservers [[buffer(27)]],
+    device atomic_uint* perAxisWinnerIds [[buffer(28)]],
     uint3 groupId [[threadgroup_position_in_grid]],
     uint3 localId3 [[thread_position_in_threadgroup]]
 ) {
@@ -376,6 +405,13 @@ kernel void c_voxel_to_trixel_stage_1(
             // No sub-cell offset at base resolution; encode centre fracs (8,8).
             const int voxelDistance =
                 encodeDepthWithFaceFrac(pos3DtoDistance(facePos), slot, 8, 8);
+            if (frameData.resolveMode != 0) {
+                resolveWinnerTap(
+                    perAxisBase + pos3DtoPos2DIso(facePos), voxelDistance, voxelIndex,
+                    distanceScratch, perAxisWinnerIds, canvasSize
+                );
+                return;
+            }
             writeDistanceTap(
                 perAxisBase + pos3DtoPos2DIso(facePos), voxelDistance,
                 distanceScratch, canvasSize
@@ -391,6 +427,16 @@ kernel void c_voxel_to_trixel_stage_1(
         const float3 fracInCell = worldAligned - float3(worldPos_sub);
         const int voxelDistance =
             encodeDepthWithFaceFrac(pos3DtoDistance(facePos_sub), slot, axis, fracInCell);
+        // #2255: the 4-bit frac quantization above is where equal keys arise —
+        // see the GLSL twin. The winner election keeps stage 2's color tap
+        // deterministic among the tied faces.
+        if (frameData.resolveMode != 0) {
+            resolveWinnerTap(
+                perAxisBase + pos3DtoPos2DIso(facePos_sub), voxelDistance, voxelIndex,
+                distanceScratch, perAxisWinnerIds, canvasSize
+            );
+            return;
+        }
         writeDistanceTap(
             perAxisBase + pos3DtoPos2DIso(facePos_sub), voxelDistance,
             distanceScratch, canvasSize

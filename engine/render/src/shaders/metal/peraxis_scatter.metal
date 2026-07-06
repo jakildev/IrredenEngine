@@ -76,6 +76,13 @@ struct VertexOut {
     float isoDepth [[flat]];
     int depthColorMode [[flat]];
     float depthColorExtent [[flat]];
+    // Deterministic cell tiebreak (#2255) — mirror of v_peraxis_scatter.glsl's
+    // vCellTieOffset: the fragment stage quantizes its final depth to
+    // kScatterCellTieBand and injects this 8-level cell code (pre-scaled to
+    // kScatterCellTieStep units) into the sub-band bits, so tie-band
+    // fragments resolve by cell identity instead of the #1961 compaction's
+    // run-variant atomic-append draw order.
+    float cellTieOffset [[flat]];
     // Per-edge interior/boundary classification for analytic coverage (#1937) —
     // .x = u-low, .y = u-high, .z = v-low, .w = v-high (in the face's eu/ev basis);
     // 1 = interior (fill solid / close seam), 0 = true silhouette (crisp trim). An
@@ -183,6 +190,7 @@ vertex VertexOut v_peraxis_scatter(
         out.marginBias = 0.0;
         out.marginYieldGradU = 0.0;
         out.marginYieldGradV = 0.0;
+        out.cellTieOffset = 0.0;
         out.edgeInterior = float4(0.0);
         return out;
     }
@@ -328,6 +336,10 @@ vertex VertexOut v_peraxis_scatter(
     out.depth =
         (cornerKey + float(frameData.distanceOffset - globals.kMinTriangleDistance)) / depthRange;
     out.marginBias = kScatterMarginDepthBiasKey * subScale / depthRange;
+    // Deterministic cell tiebreak (#2255) — mirror of v_peraxis_scatter.glsl:
+    // 8 levels, distinct for every same-plane / parallel-plane neighbor pair.
+    out.cellTieOffset =
+        float((ij.x & 1u) | ((ij.y & 3u) << 1u)) * kScatterCellTieStep;
     // Per-axis margin-yield slope (#1883) — mirror of v_peraxis_scatter.glsl.
     // kU/kV are the per-unit-axis composite depth gradients; scaled to vDepth units
     // and pre-absed (penetration is always outward) and folded with
@@ -384,6 +396,10 @@ fragment FragmentOut f_peraxis_scatter(VertexOut in [[stage_in]]) {
     const float2 outside = max(max(-in.quadParam, in.quadParam - float2(1.0)), float2(0.0));
     const float yieldBias =
         in.marginBias + outside.x * in.marginYieldGradU + outside.y * in.marginYieldGradV;
-    out.depth = in.depth + (inMargin ? yieldBias : 0.0f);
+    // #2255: band-quantize + cell-code injection — mirror of
+    // f_peraxis_scatter.glsl (exact power-of-two float ops on both backends).
+    const float scatterDepth = in.depth + (inMargin ? yieldBias : 0.0f);
+    out.depth =
+        floor(scatterDepth / kScatterCellTieBand) * kScatterCellTieBand + in.cellTieOffset;
     return out;
 }

@@ -75,6 +75,19 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     // voxelDepthAxis (offset 160) to match FrameDataVoxelToCanvas; the all-zero
     // default keeps the world / per-axis / screen-locked canvases unchanged.
     uniform vec4 detachedWorldReceive;
+    // Un-widened iso cull viewport for the depth-only shadow-feeder path
+    // (#1740). Read by stage 2 only; declared here so resolveMode below lands
+    // at the same std140 offset (192) as FrameDataVoxelToCanvas::resolveMode_.
+    uniform ivec4 visibleIsoBounds;
+    // Per-axis deterministic-winner resolve mode (#2255). 0 = the normal
+    // distance store. 1 = the winner-resolve dispatch between the stage-1
+    // store and stage 2: re-run the identical per-axis geometry and, for each
+    // face whose encoded distance MATCHES the settled per-cell atomicMin
+    // winner, atomicMin the face's run-stable voxel pool index into the
+    // per-cell winner scratch — so stage 2's color/entity-id tap admits
+    // exactly one of the equal-key faces (the minimum index). Only ever
+    // non-zero during the per-axis dispatches (perAxisRoute != 0).
+    uniform int resolveMode;
 };
 
 layout(std430, binding = 5) readonly buffer PositionBuffer {
@@ -117,6 +130,19 @@ layout(std430, binding = 26) readonly buffer IndirectDispatchParams {
 
 layout(r32i, binding = 1) uniform iimage2D triangleCanvasDistances;
 
+// Per-cell deterministic-winner scratch for the per-axis store (#2255): the
+// resolveMode dispatch atomicMins the depth-winning faces' run-stable voxel
+// pool indices here (reset to 0xFFFFFFFF per axis by the CPU), and stage 2's
+// per-axis tap writes color/entity-id only for the winning index. A buffer
+// (not a texture image) because Metal has no second image-atomic slot — the
+// same rationale as the #1435 resolve scratch, whose binding this transiently
+// reuses (kBufferIndex_PerAxisResolveScratch; free during the per-axis
+// dispatches). Untouched at resolveMode == 0, so the store dispatch — and
+// every cardinal / single-canvas / detached path — never reads or writes it.
+layout(std430, binding = 28) buffer PerAxisWinnerScratch {
+    uint perAxisWinnerIds[];
+};
+
 // Per-voxel analytic fog clip inputs (#2102), mirroring c_voxel_visibility_compact
 // + c_fog_to_trixel. The world fog canvas binds its 256² grid texture on image
 // slot 0 and uploads the live vision circles at binding 27; every non-fog /
@@ -137,6 +163,21 @@ layout(std140, binding = 27) uniform FogObserverData {
 void writeDistanceTap(const ivec2 canvasPixel, const int voxelDistance) {
     if (!isInsideCanvas(canvasPixel, imageSize(triangleCanvasDistances))) return;
     imageAtomicMin(triangleCanvasDistances, canvasPixel, voxelDistance);
+}
+
+// Winner-resolve tap (#2255, resolveMode == 1): among the faces whose encoded
+// distance equals the settled atomicMin winner at this cell, elect the
+// smallest run-stable voxel pool index. Exactly one face per voxel emits per
+// axis route (the `(faceId>>1) != axis` filter), so voxelIndex is unique per
+// per-axis tap and the election is a total order — stage 2's matching guard
+// then admits exactly one writer, making the color/entity-id planes
+// order-independent (the distance plane's atomicMin always was).
+void resolveWinnerTap(const ivec2 canvasPixel, const int voxelDistance, const uint voxelIndex) {
+    const ivec2 canvasSize = imageSize(triangleCanvasDistances);
+    if (!isInsideCanvas(canvasPixel, canvasSize)) return;
+    if (imageLoad(triangleCanvasDistances, canvasPixel).x != voxelDistance) return;
+    const uint cell = uint(canvasPixel.y) * uint(canvasSize.x) + uint(canvasPixel.x);
+    atomicMin(perAxisWinnerIds[cell], voxelIndex);
 }
 
 // Emit a face's 2x3 trixel block through the deformation matrix D.
@@ -531,6 +572,10 @@ void main() {
             // No sub-cell offset at base resolution; encode centre fracs (8,8).
             const int voxelDistance =
                 encodeDepthWithFaceFrac(pos3DtoDistance(facePos), slot, 8, 8);
+            if (resolveMode != 0) {
+                resolveWinnerTap(perAxisBase + pos3DtoPos2DIso(facePos), voxelDistance, voxelIndex);
+                return;
+            }
             writeDistanceTap(perAxisBase + pos3DtoPos2DIso(facePos), voxelDistance);
             return;
         }
@@ -545,6 +590,14 @@ void main() {
         const vec3 fracInCell = worldAligned - vec3(worldPos_sub);
         const int voxelDistance =
             encodeDepthWithFaceFrac(pos3DtoDistance(facePos_sub), slot, axis, fracInCell);
+        // #2255: the 4-bit frac quantization above is where equal keys arise —
+        // two sub-cell offsets in one 1/16 bucket (or both clamp-saturated)
+        // encode byte-identically, so the winner election below is what keeps
+        // the stage-2 color tap deterministic among them.
+        if (resolveMode != 0) {
+            resolveWinnerTap(perAxisBase + pos3DtoPos2DIso(facePos_sub), voxelDistance, voxelIndex);
+            return;
+        }
         writeDistanceTap(perAxisBase + pos3DtoPos2DIso(facePos_sub), voxelDistance);
         return;
     }

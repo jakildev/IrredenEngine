@@ -716,6 +716,15 @@ constant float kScatterDilateMarginPx = 0.85;
 // fill pixels no exact footprint claims; never beat a same-plane owner).
 constant float kScatterMarginDepthBiasKey = 0.25;
 
+// Deterministic cell tiebreak (#2255) — mirror of kScatterCellTieStep /
+// kScatterCellTieBand in ir_iso_common.glsl; see that file for the full
+// rationale (margin-yield crossover pixels tie bit-exactly between parallel
+// neighbor faces and previously fell to the #1961 compaction's run-variant
+// draw order; quantize the final fragment depth to the band and inject the
+// 8-level cell code into the sub-band bits so ties resolve by cell identity).
+constant float kScatterCellTieStep = 1.0f / 8388608.0f;
+constant float kScatterCellTieBand = 8.0f / 8388608.0f;
+
 // Margin-yield gradient scale (#1883) — mirror of ir_iso_common.glsl. Scales the
 // margin yield by the fragment's own plane-extrapolation excursion (penetration
 // past the exact footprint x per-axis depth gradient) so a cell-deep per-axis
@@ -927,6 +936,20 @@ struct FrameDataVoxelToTrixel {
     // (stage 1 still wrote its full-res depth, all the bake + AO read). Mirrors
     // FrameDataVoxelToCanvas::visibleIsoBounds_. Other kernels never read it.
     int4 visibleIsoBounds;
+    // Per-axis deterministic-winner resolve mode (#2255). 0 = the normal
+    // distance store. 1 = the winner-resolve dispatch between the stage-1
+    // store and stage 2: re-run the identical per-axis geometry and, for each
+    // face whose encoded distance matches the settled per-cell atomic-min
+    // winner, atomic-min the face's run-stable voxel pool index into the
+    // per-cell winner scratch (buffer 28 = kBufferIndex_PerAxisResolveScratch,
+    // transiently reused) — so stage 2's color/entity-id tap admits exactly
+    // one of the equal-key faces. Mirrors FrameDataVoxelToCanvas::resolveMode_
+    // (offset 192); pads mirror the CPU struct's 16-byte-stride tail. Read
+    // only by c_voxel_to_trixel_stage_1.
+    int resolveMode;
+    int _resolveModePad0;
+    int _resolveModePad1;
+    int _resolveModePad2;
 };
 
 // Smooth analytic vision-circle reveal for one fog disc, shared by

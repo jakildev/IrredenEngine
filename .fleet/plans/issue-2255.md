@@ -54,10 +54,56 @@ Make the per-axis stage-2 color/entity-id tap select a **single deterministic wi
 - **Metal foreign-canvas R32I read caveat (#1640)** and the Metal `threadgroupSizeForFunctionName` requirement apply to any new per-axis kernel/buffer — mirror the existing per-axis wiring.
 - The stage-1/2 source comments document 3 prior incidents where a subtle change reshuffled the Metal per-axis tie-winner and broke byte-identity — cardinal byte-identity A/B is mandatory before push.
 
+## Second mechanism found during acceptance (implementer addendum, 2026-07-06)
+
+The winner election above fixes the stage-2 tap race — but the ≥10-run
+protocol still drifted (~40 px, max_delta=1, single game-pixel clusters), and
+a staged-shader A/B showed the SAME drift class and sites with master shaders:
+in this repro the observable drift is dominated by a **second race the issue
+body predicted** ("order-dependent tie in the per-axis store **or forward
+scatter**"): the #1961 per-axis cell compaction atomic-appends occupied cells,
+so the scatter's instanced draw order is run-variant, and same-plane
+same-class exact depth ties (canonically the symmetric margin-vs-margin
+overlap at a shared cell corner) resolve by draw order. Adjacent faces on a
+color gradient differ by ±1 LSB in one channel → the observed clusters.
+
+A cell-identity overlay probe (staged-shader debug) pinned the exact tie
+class: the two competing quads are **same axis canvas, same column, 2 rows
+apart, rawDepth ±1** — the iso projection maps a face's vertical in-plane
+world step to Δiso = (0, ±2). Their depth fields are parallel (4·subScale key
+units apart), and the tie is the **margin-yield crossover**: the nearer
+face's margin ramp (0.25 bias + penetration × yield-slope, #1883) crosses the
+farther face's exact plane, and the crossover pixel ties bit-exactly in
+float. A plain additive micro-bias is numerically fragile (float depth ULP at
+d→1 exceeds any sub-margin step) and was measured to only relocate the tie
+population.
+
+Fix (same PR): **band-quantize + cell-code injection** in the scatter
+fragment stages (v_/f_peraxis_scatter.glsl + peraxis_scatter.metal):
+
+    depth = floor(depth / kScatterCellTieBand) * kScatterCellTieBand
+          + cellCode * kScatterCellTieStep
+
+with `cellCode = (ij.x & 1) | ((ij.y & 3) << 1)` — 8 levels, distinct for
+every same-plane / parallel-plane neighbor pair (in-plane steps only project
+to iso-diagonal or (0,±2); (±2,0) cannot occur). `kScatterCellTieStep =
+2^-23` ≥ 1 float32-depth ULP for depth < 1 AND 2 quanta of a 24-bit fixed
+depth buffer, so the code survives quantization on both backends; the
+power-of-two floor arithmetic is exact in float32. Band = 8 steps = 2^-20 ≈
+0.125 key units — half the margin bias (margin-vs-exact ordering survives)
+and far below slot (1.0) / plane (≥4) separations, so no genuine occlusion is
+reordered; only tie-band pixels — the ones that flickered run-to-run — gain a
+deterministic, cell-keyed winner. The scatter only runs at non-cardinal
+residual yaw → cardinal byte-identity is untouched.
+
 ## Sibling / in-flight reconciliation
 
 - **#2254 merged** (master `5b2079b3`) — the acceptance repro observes the drift on master directly; no stacking needed.
 - No open PR modifies `writeColorTap` or `encodeDepthWithFaceFrac` — the fix surface is uncontended.
+- **PR #2271** (`claude/2256-yaw-peraxis-indirect`, #2256, fleet:wip) touches the per-axis
+  scatter/compaction surface — flagged for the reviewer: if it lands first, the scatter
+  tiebreak here rebases mechanically (the depth-key addition is orthogonal to dispatch
+  shape).
 
 ## One task or subtasks
 
