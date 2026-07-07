@@ -653,14 +653,15 @@ void createEdgeGroundSlab() {
 void initEntities() {
     // A wide thin floor so the fog mask has a continuous surface that fades
     // visible → explored → unexplored across the screen. Centered on origin.
-    // The cross-section scenes (--edge-zoom / --edge-smooth / --detached-edge)
-    // skip it and bring their own VOXEL ground slab instead: the analytic fog
-    // cut (#2124) decides solid-vs-air from the light-occlusion VOXEL bitfield,
-    // which SDF geometry never enters, so an SDF surface straddling the disc
-    // renders the cut band BLACK along whatever arc segments cross it (the
-    // two-black-bands artifact) instead of capping with the toned cut colour.
+    // The cross-section scenes (--edge-zoom / --edge-smooth / --edge-sdf-blocker
+    // / --detached-edge) skip it and bring their own VOXEL ground slab instead:
+    // the analytic fog cut (#2124) decides solid-vs-air from the light-occlusion
+    // VOXEL bitfield, which SDF geometry never enters, so an SDF surface
+    // straddling the disc renders the cut band BLACK along whatever arc segments
+    // cross it (the two-black-bands artifact) instead of capping with the toned
+    // cut colour.
     constexpr float kFloorZ = 5.0f;
-    if (!g_edgeZoom && !g_edgeSmooth && !g_detachedEdge) {
+    if (!g_edgeZoom && !g_edgeSmooth && !g_edgeSdfBlocker && !g_detachedEdge) {
         createShape(
             vec3(0.0f, 0.0f, kFloorZ),
             IRRender::ShapeType::BOX,
