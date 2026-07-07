@@ -911,12 +911,15 @@ baseline = [
 # they corrupt JSON when bash tries to re-embed them as string literals.
 # The catch-all "Bash(python3:*)" baseline entry covers all python3 use.
 existing_extra = []
+existing_hooks = {}
 if os.path.isfile(settings_file):
     try:
         d = json.load(open(settings_file))
         for a in d.get("permissions", {}).get("allow", []):
             if a not in baseline and 'python3 -c' not in a:
                 existing_extra.append(a)
+        if isinstance(d.get("hooks"), dict):
+            existing_hooks = d["hooks"]
     except Exception:
         pass  # malformed file — start fresh with baseline only
 
@@ -961,17 +964,36 @@ session_track_cmd = (
     " && fleet-session-track || true"
 )
 
+# Hand-added hooks survive regeneration the same way user-granted allow
+# entries do: keep every hook group from the previous file except the
+# fleet's own (matched on the fleet-session-track marker, so a stale
+# variant of the fleet hook is replaced rather than duplicated).
+hooks_out = {
+    "SessionStart": [
+        {"hooks": [{"type": "command", "command": session_track_cmd}]}
+    ]
+}
+for event, groups in existing_hooks.items():
+    if not isinstance(groups, list):
+        continue
+    for group in groups:
+        if not isinstance(group, dict):
+            continue
+        cmds = group.get("hooks")
+        if isinstance(cmds, list) and any(
+            isinstance(h, dict) and "fleet-session-track" in str(h.get("command", ""))
+            for h in cmds
+        ):
+            continue
+        hooks_out.setdefault(event, []).append(group)
+
 out = {
     "permissions": {
         "additionalDirectories": [repo_root, f"{home}/.fleet", "/tmp", "/private/tmp"],
         "allow": all_allows,
         "defaultMode": "auto",
     },
-    "hooks": {
-        "SessionStart": [
-            {"hooks": [{"type": "command", "command": session_track_cmd}]}
-        ]
-    },
+    "hooks": hooks_out,
 }
 
 with open(settings_file, "w") as f:
