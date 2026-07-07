@@ -40,7 +40,6 @@
 
 #include <utility>
 
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <vector>
@@ -59,7 +58,6 @@ constexpr int kSunShadowMapDim = 1024;
 // both producers stay in lockstep.
 using IRPrefab::SunShadow::kSunShadowMaxDistance;
 constexpr int kBakeSunShadowGroupSize = 16;
-constexpr int kIsoFrustumCornerCount = 8;
 constexpr int kSunShadowCascadeCount = 2;
 constexpr float kCascadeSplitRatio = 0.4f;
 
@@ -549,35 +547,23 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         const float dimF = static_cast<float>(kSunShadowMapDim);
 
         // isoPixelToPos3D returns corners in the rasterYaw-rotated canvas
-        // frame. The sun-direction sweep below is in world frame. Lift corners
-        // into world frame once, before the per-cascade AABB sweep, so both
-        // sides share the same coordinate frame. No-op at rasterYaw == 0.
+        // frame; sunBakeFrustumUVBounds lifts them into world frame
+        // (rotateCardinalZInv) before the per-cascade AABB sweep, so both sides
+        // share the same coordinate frame. No-op at rasterYaw == 0.
         const auto cardinalIndex = IRMath::rasterYawCardinalIndex(IRPrefab::Camera::getRasterYaw());
 
         for (int ci = 0; ci < kSunShadowCascadeCount; ++ci) {
-            std::array<vec3, kIsoFrustumCornerCount> corners{};
-            int idx = 0;
-            for (float depth : {cascadeRanges[ci].min_, cascadeRanges[ci].max_}) {
-                for (int y : {isoBounds.min_.y, isoBounds.max_.y}) {
-                    for (int x : {isoBounds.min_.x, isoBounds.max_.x}) {
-                        corners[idx++] = IRMath::isoPixelToPos3D(x, y, depth);
-                    }
-                }
-            }
-            for (auto &c : corners) {
-                c = IRMath::rotateCardinalZInv(c, cardinalIndex);
-            }
-
-            vec2 sunUVMin = vec2(std::numeric_limits<float>::max());
-            vec2 sunUVMax = vec2(std::numeric_limits<float>::lowest());
-            for (const vec3 &c : corners) {
-                for (const vec3 &offset : {vec3(0.0f), sweep}) {
-                    const vec3 p3 = c + offset;
-                    const vec2 sunUV = vec2(IRMath::dot(p3, uHat), IRMath::dot(p3, vHat));
-                    sunUVMin = IRMath::min(sunUVMin, sunUV);
-                    sunUVMax = IRMath::max(sunUVMax, sunUV);
-                }
-            }
+            const IsoBounds2D sunUV = IRPrefab::SunShadow::sunBakeFrustumUVBounds(
+                isoBounds,
+                cascadeRanges[ci].min_,
+                cascadeRanges[ci].max_,
+                uHat,
+                vHat,
+                cardinalIndex,
+                sweep
+            );
+            vec2 sunUVMin = sunUV.min_;
+            vec2 sunUVMax = sunUV.max_;
 
             sunUVMin -= vec2(kAABBPad);
             sunUVMax += vec2(kAABBPad);

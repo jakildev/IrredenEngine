@@ -8,6 +8,8 @@
 #include <irreden/render/components/component_light_source.hpp>
 #include <irreden/render/cull_viewport_state.hpp>
 
+#include <limits>
+
 namespace IRPrefab::SunShadow {
 
 // Maximum shadow throw distance in voxels. Drives both the sun-depth-map
@@ -85,15 +87,52 @@ inline IRMath::IsoBounds2D shadowFeederCullViewport(int margin, const ShadowFeed
 }
 
 inline IRMath::IsoBounds2D shadowFeederCullViewport(
-    int margin,
-    const ShadowFeederParams &params,
-    const IRRender::CullViewportState &cull
+    int margin, const ShadowFeederParams &params, const IRRender::CullViewportState &cull
 ) {
     return IRMath::shadowFeederIsoBounds(
         cull.isoViewport(margin),
         params.sunDir_,
         params.sweepDistance_
     );
+}
+
+// Sun-UV bounding box of the iso-frustum depth slab [@p depthMin, @p depthMax]
+// over @p isoBounds, with every corner ALSO offset by @p sweep (world-frame,
+// = -sunDir * sweepDistance) so off-screen casters within shadow range are
+// enclosed — the box BAKE_SUN_SHADOW_MAP fits its depth map to before the
+// texel-grid snap. Each corner is lifted from the rasterYaw-rotated canvas frame
+// into world frame (rotateCardinalZInv) before projecting onto the sun basis, so
+// the sweep (a world-frame vector) shares the corners' frame; no-op at
+// rasterYaw == 0. @p uHat / @p vHat are the sun-perpendicular basis from
+// buildOrthonormalBasis; @p cardinalIndex is the rasterYaw cardinal snap. Lives
+// in the shared sun-shadow header so a sun-space feeder-density consumer can
+// reuse the bake's exact derivation rather than re-deriving it.
+inline IRMath::IsoBounds2D sunBakeFrustumUVBounds(
+    const IRMath::IsoBounds2D &isoBounds,
+    float depthMin,
+    float depthMax,
+    const IRMath::vec3 &uHat,
+    const IRMath::vec3 &vHat,
+    IRMath::CardinalIndex cardinalIndex,
+    const IRMath::vec3 &sweep
+) {
+    IRMath::vec2 uvMin(std::numeric_limits<float>::max());
+    IRMath::vec2 uvMax(std::numeric_limits<float>::lowest());
+    for (float depth : {depthMin, depthMax}) {
+        for (int y : {isoBounds.min_.y, isoBounds.max_.y}) {
+            for (int x : {isoBounds.min_.x, isoBounds.max_.x}) {
+                const IRMath::vec3 corner =
+                    IRMath::rotateCardinalZInv(IRMath::isoPixelToPos3D(x, y, depth), cardinalIndex);
+                for (const IRMath::vec3 &offset : {IRMath::vec3(0.0f), sweep}) {
+                    const IRMath::vec3 p = corner + offset;
+                    const IRMath::vec2 uv(IRMath::dot(p, uHat), IRMath::dot(p, vHat));
+                    uvMin = IRMath::min(uvMin, uv);
+                    uvMax = IRMath::max(uvMax, uv);
+                }
+            }
+        }
+    }
+    return IRMath::IsoBounds2D{uvMin, uvMax};
 }
 
 } // namespace IRPrefab::SunShadow
