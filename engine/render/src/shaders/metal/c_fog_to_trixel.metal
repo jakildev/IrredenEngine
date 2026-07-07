@@ -164,26 +164,14 @@ kernel void c_fog_to_trixel(
     const float4 src = trixelColors.read(uint2(pixel));
 
     // Cross-section cap (#2124) — mirrors the GLSL twin exactly (see there
-    // for the full rationale): a fog-hidden pixel within the radial cap band
-    // tints its VERTICAL faces as the cut surface. Pure per-pixel geometry —
-    // the rasterized face's axis (the depth encoding's slot bits resolved
-    // through visibleFaceIds) and the surface column's radial distance past
-    // the rim. TOP (Z) faces are never capped (flat ground fades on the
-    // plain radial curve); the retired ray+occupancy variant painted a
-    // view-dependent bright ring on flat ground and content-dependent
-    // horizontal bands with voxel-stepped teeth on walls. Colour-only,
-    // after lighting — never touches trixelDistances.
-    if (gridState < kFogExploredValue && fogObservers.visionCircleCount > 0 &&
-        hardDistPastRim <= kFogCutMaxRimCells) {
-        const int faceAxis = frameData.visibleFaceIds[encoded & 3] >> 1;
-        if (faceAxis != 2) {
-            // `state` carries the disc's ~1px AA rim, so the junction with
-            // visible matter stays antialiased.
-            const float3 cutColor = src.rgb * kFogCutTone + float3(kFogCutLift);
-            trixelColors.write(float4(mix(cutColor, src.rgb, state), src.a), uint2(pixel));
-            return;
-        }
-    }
+    // for the full rationale): VERTICAL faces (the depth encoding's slot bits
+    // resolved through visibleFaceIds) blend the cut tint over the fade with
+    // a weight that is 1 at the rim and 0 at kFogCutMaxRimCells, so the wall
+    // is one continuous curve converging to the top face's exact fade tone at
+    // the band's end — no hard band-edge line, no voxel-stepped teeth. TOP
+    // (Z) faces never cap (flat ground fades on the plain radial curve).
+    // Colour-only, after lighting — never touches trixelDistances.
+
     // Desaturate to luminance, then darken — the explored "memory" tone.
     const float luminance = dot(src.rgb, float3(0.299f, 0.587f, 0.114f));
     const float3 exploredColor = float3(luminance) * 0.4f;
@@ -199,15 +187,26 @@ kernel void c_fog_to_trixel(
         const float t = state / kFogExploredValue;
         outColor = mix(float3(0.0f), exploredColor, t);
     }
-    // Rim fade (see the const block): lift UNEXPLORED pixels toward their lit
-    // colour near the hard-disc rim. Explored memory keeps its tone. The
-    // squared ease-out crushes the fade tail to black well before the
-    // keep-ring drop, so the outermost kept columns' wall faces (whose
-    // constant-depth recovery reads a column slightly INSIDE their true one)
-    // can't catch a visible lift against the void behind them.
     if (gridState < kFogExploredValue) {
+        // Rim fade (see the const block): lift UNEXPLORED pixels toward their
+        // lit colour near the hard-disc rim. Explored memory keeps its tone.
+        // The squared ease-out crushes the fade tail to black well before the
+        // keep-ring drop, so the outermost kept columns' wall faces (whose
+        // constant-depth recovery reads a column slightly INSIDE their true
+        // one) can't catch a visible lift against the void behind them.
         const float u = 1.0f - smoothstep(0.0f, kFogRimFadeCells, hardDistPastRim);
         outColor = mix(outColor, src.rgb, kFogRimFadeLevel * u * u);
+        // Feathered cross-section cap on vertical faces (see the block
+        // comment above). `state` carries the disc's ~1px AA rim, so the
+        // junction with visible matter stays antialiased.
+        const int faceAxis = frameData.visibleFaceIds[encoded & 3] >> 1;
+        if (fogObservers.visionCircleCount > 0 && faceAxis != 2) {
+            const float capBlend =
+                1.0f - smoothstep(0.0f, kFogCutMaxRimCells, max(hardDistPastRim, 0.0f));
+            const float3 capColor =
+                mix(src.rgb * kFogCutTone + float3(kFogCutLift), src.rgb, state);
+            outColor = mix(outColor, capColor, capBlend);
+        }
     }
     trixelColors.write(float4(outColor, src.a), uint2(pixel));
 }

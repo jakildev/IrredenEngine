@@ -238,28 +238,23 @@ void main() {
     //     floor's own interior underground and the march found it solid,
     //     painting a bright ring hugging the rim on the ray-facing (down-
     //     screen) side only: view-dependent and asymmetric.
-    //   * VERTICAL (X/Y) faces within kFogCutMaxRimCells of the rim cap
-    //     uniformly. The retired march decided solidity from voxel-quantized
-    //     occupancy samples along the view ray, so a wall's cap flipped with
-    //     the content BEHIND it (solid floor behind the wall's low half →
-    //     capped; air behind the high half → dark): a horizontal band across
-    //     the wall with a toothy voxel-stepped boundary. The geometric test
-    //     has no content dependence — no bands, no teeth, and no
-    //     light-occlusion-bitfield read (the cap needs no external wiring).
+    //   * VERTICAL (X/Y) faces blend the cut tint over the fade with a
+    //     weight that is 1 at the rim and reaches 0 exactly at
+    //     kFogCutMaxRimCells, so the wall is ONE continuous curve that
+    //     CONVERGES to the plain fade — the top face's exact tone — at the
+    //     band's end. (A binary in-band cap stepped from the cut tint
+    //     straight to the fade at the band edge: a harsh line down the wall,
+    //     dithered into voxel-stepped teeth by the per-voxel-quantized depth
+    //     recovery, while the capless top face faded smoothly past it. The
+    //     earlier ray+occupancy march had worse content-dependent bands.)
+    //     The geometric test has no content dependence — no bands, no teeth,
+    //     and no light-occlusion-bitfield read (no external wiring).
     // Colour-only, after lighting: AO, the sun bake, and lighting see no new
     // geometry. Hard discs only — a soft Mode B disc's wide falloff IS its
-    // fade, and hardDistPastRim keeps its no-hard-disc init there, failing
-    // the band test. `state` carries the disc's ~1px AA rim, so the junction
+    // fade, and hardDistPastRim keeps its no-hard-disc init there, zeroing
+    // the cap blend. `state` carries the disc's ~1px AA rim, so the junction
     // with visible matter stays antialiased.
-    if (gridState < kFogExploredValue && visionCircleCount > 0 &&
-        hardDistPastRim <= kFogCutMaxRimCells) {
-        const int faceAxis = visibleFaceIds[encoded & 3] >> 1;
-        if (faceAxis != 2) {
-            const vec3 cutColor = src.rgb * kFogCutTone + vec3(kFogCutLift);
-            imageStore(trixelColors, pixel, vec4(mix(cutColor, src.rgb, state), src.a));
-            return;
-        }
-    }
+
     // Desaturate to luminance, then darken — the explored "memory" tone. Keeps
     // shape silhouettes visible so the player remembers what was there without
     // confusing it with what is *currently* there.
@@ -277,15 +272,25 @@ void main() {
         const float t = state / kFogExploredValue;
         outColor = mix(vec3(0.0), exploredColor, t);
     }
-    // Rim fade (see the const block): lift UNEXPLORED pixels toward their lit
-    // colour near the hard-disc rim. Explored memory keeps its tone. The
-    // squared ease-out crushes the fade tail to black well before the
-    // keep-ring drop, so the outermost kept columns' wall faces (whose
-    // constant-depth recovery reads a column slightly INSIDE their true one)
-    // can't catch a visible lift against the void behind them.
     if (gridState < kFogExploredValue) {
+        // Rim fade (see the const block): lift UNEXPLORED pixels toward their
+        // lit colour near the hard-disc rim. Explored memory keeps its tone.
+        // The squared ease-out crushes the fade tail to black well before the
+        // keep-ring drop, so the outermost kept columns' wall faces (whose
+        // constant-depth recovery reads a column slightly INSIDE their true
+        // one) can't catch a visible lift against the void behind them.
         const float u = 1.0 - smoothstep(0.0, kFogRimFadeCells, hardDistPastRim);
         outColor = mix(outColor, src.rgb, kFogRimFadeLevel * u * u);
+        // Feathered cross-section cap on vertical faces (see the block
+        // comment above the fade).
+        const int faceAxis = visibleFaceIds[encoded & 3] >> 1;
+        if (visionCircleCount > 0 && faceAxis != 2) {
+            const float capBlend =
+                1.0 - smoothstep(0.0, kFogCutMaxRimCells, max(hardDistPastRim, 0.0));
+            const vec3 capColor =
+                mix(src.rgb * kFogCutTone + vec3(kFogCutLift), src.rgb, state);
+            outColor = mix(outColor, capColor, capBlend);
+        }
     }
     imageStore(trixelColors, pixel, vec4(outColor, src.a));
 }
