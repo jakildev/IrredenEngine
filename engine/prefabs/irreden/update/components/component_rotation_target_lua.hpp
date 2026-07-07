@@ -14,8 +14,11 @@ template <> inline void bindLuaType<IRComponents::C_RotationTarget>(LuaScript &l
     // — `arch.C_RotationTarget:at(i).input = cc` writes straight through the
     // column (`:at` hands Lua a std::ref to the row). The axis + easing curve
     // are construction-time config, set through the constructors below; `axis_`
-    // (a vec3) follows the C_LocalTransform / C_Velocity3D precedent of staying
-    // constructor-only rather than a directly-mutable usertype member.
+    // (a vec3) stays constructor-only — it's fixed config, not a per-frame Lua
+    // write (the C_Velocity3D precedent). A math-typed field that DOES need
+    // per-frame Lua writes uses the `sol::property` {x,y,z[,w]}-table convention
+    // now on C_LocalTransform (rotation/translation/scale) — see
+    // engine/script/CLAUDE.md "C++-component per-field writes from Lua".
     luaScript.registerType<
         C_RotationTarget,
         C_RotationTarget(),
