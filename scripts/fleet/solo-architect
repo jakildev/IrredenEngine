@@ -105,6 +105,17 @@ SESSION_DIR="$HOME/.fleet/solo"
 mkdir -p "$SESSION_DIR"
 SESSION_FILE="$SESSION_DIR/$ROLE.session"
 
+# Gate vars for the fleet-session-track SessionStart hook (wired into the
+# worktree's settings by fleet-up): it rewrites SESSION_FILE with the live
+# session id on every session start, so an interactive /clear repoints the
+# sidecar and the next solo-architect run resumes the post-/clear
+# conversation instead of the one this launch started. Same contract as
+# fleet-babysit's architect path — but with the solo sidecar, so solo and
+# fleet resumes never clobber each other's file.
+export FLEET_SESSION_FILE="$SESSION_FILE"
+export FLEET_SESSION_ROLE="$ROLE"
+export FLEET_SESSION_MODE="$MODE"
+
 if [[ -s "$SESSION_FILE" && "$FRESH" -eq 0 ]]; then
   SID="$(cat "$SESSION_FILE")"
   echo "solo-architect: resuming $ROLE session $SID (cwd $WORKTREE)" >&2

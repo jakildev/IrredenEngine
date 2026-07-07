@@ -945,12 +945,33 @@ all_allows = baseline + existing_extra
 #     cross-platform fix (Linux ignores the /private/tmp entry since
 #     no such path exists there).
 home = os.path.expanduser("~")
+
+# SessionStart hook: keep the architect session sidecar
+# (~/.fleet/sessions/<role>.session-id) pointing at the pane's LIVE
+# conversation — an interactive /clear starts a NEW session id, and
+# without the hook the next fleet-up would --resume the pre-/clear
+# conversation, abandoning everything the human did after clearing.
+# Written into EVERY fleet worktree's settings: the hook itself is
+# gated on FLEET_SESSION_FILE, which only fleet-babysit's architect
+# path and solo-architect export, so worker/reviewer sessions no-op.
+# The `command -v` guard keeps session starts quiet on a host whose
+# ~/bin symlinks predate this tool (install.sh not yet re-run).
+session_track_cmd = (
+    "command -v fleet-session-track >/dev/null 2>&1"
+    " && fleet-session-track || true"
+)
+
 out = {
     "permissions": {
         "additionalDirectories": [repo_root, f"{home}/.fleet", "/tmp", "/private/tmp"],
         "allow": all_allows,
         "defaultMode": "auto",
-    }
+    },
+    "hooks": {
+        "SessionStart": [
+            {"hooks": [{"type": "command", "command": session_track_cmd}]}
+        ]
+    },
 }
 
 with open(settings_file, "w") as f:
@@ -1731,9 +1752,12 @@ graceful shutdown:
 
 architect session resume:
   ~/.fleet/sessions/<role>.session-id is preserved across fleet-down/up
-  cycles. opus-architect and game-architect will resume their previous
-  conversation on the next fleet-up. To force a fresh architect session
-  next time, delete the corresponding .session-id file.
+  cycles and always names the pane's LIVE conversation — a SessionStart
+  hook (fleet-session-track) rewrites it on every session start,
+  including the new session an interactive /clear creates. fleet-up
+  therefore resumes exactly where the pane left off, post-/clear
+  sessions included. To force a fresh architect session next time,
+  delete the corresponding .session-id file.
 EOF
 
 # In live or review-only mode, attach to tmux so the user lands in
