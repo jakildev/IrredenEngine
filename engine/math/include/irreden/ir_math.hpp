@@ -1327,6 +1327,20 @@ constexpr Distance pos3DtoDistanceYawed(const vec3 worldPos, float visualYaw) {
     return roundHalfUp(worldPos.x * (c - s) + worldPos.y * (s + c) + worldPos.z);
 }
 
+/// Sun-space projection of a world point (#2083): `.xy` = UV along the
+/// (@p uHat, @p vHat) orthonormal basis perpendicular to the sun ray,
+/// `.z` = depth along the sun ray (`-sunDir`; larger = farther from the sun).
+/// The sun-axis companion to @ref pos3DtoDistance — same dot-product basis,
+/// only the projection axis parameterizes. The single source for the sun
+/// shadow pipeline: the bake driver's cascade-AABB corners (CPU), the caster
+/// bake, and the receiver lookup all project through this one definition so
+/// caster depth and receiver lookup cannot drift. GPU mirrors:
+/// `sunSpaceProject` in shaders/ir_sun_projection.glsl / .metal.
+constexpr vec3
+sunSpaceProject(const vec3 pos3D, const vec3 uHat, const vec3 vHat, const vec3 sunDir) {
+    return vec3(glm::dot(pos3D, uHat), glm::dot(pos3D, vHat), -glm::dot(pos3D, sunDir));
+}
+
 /// Determines which isometric face (X, Y, Z, or NONE) a canvas triangle
 /// index belongs to for a rectangular prism of @p size dimensions.
 template <ivec3 size> constexpr FaceType calcFaceTypeFromTriangleIndexAndSize(const ivec2 index) {

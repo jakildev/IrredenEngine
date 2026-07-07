@@ -155,3 +155,63 @@ entity pose is the subject. Under the default auto-rotate + self-spin the
 metric swings 0.17↔0.99 `largest_frac` run-to-run (#2204), so fixed
 thresholds are meaningless without the pinned pose. With it, captures are
 byte-identical across runs.
+
+## Unified sun-space projection + cascade coverage contract (#2083)
+
+The sun-space projection — UV along the `(uHat, vHat)` orthonormal basis,
+depth along the sun ray — has exactly **one definition per dialect**, and a
+CPU mirror:
+
+- `sunSpaceProject` in `ir_sun_projection.glsl` / `.metal` — consumed by the
+  caster bake (`c_bake_sun_shadow_map`) and the receiver lookup
+  (`ir_sun_shadow_sample::worldSunShadowFactor`).
+- `IRMath::sunSpaceProject` — consumed by the bake driver's cascade-AABB
+  corner sweep via the shared `IRPrefab::SunShadow::sunBakeFrustumUVBounds`
+  helper (`sun_shadow_constants.hpp`, called from
+  `system_bake_sun_shadow_map.hpp::beginTick`).
+
+This extends the shared-distance-basis rule (#1923's `pos3DtoDistance`
+de-inline) to the sun axis: same dot-product basis everywhere, only the
+projection axis parameterizes. The depth pack/unpack pair
+(`packSunDepth`/`unpackSunDepth`) is co-located in the same include — before
+#2083 the pack lived in the bake and the unpack in the sample include,
+synced only by hand (a caster-vs-receiver drift channel). GLSL caveat: the
+include resolver is non-recursive, so top-level shaders include
+`ir_sun_projection.glsl` **before** `ir_sun_shadow_sample.glsl`.
+
+### Cascade coverage contract
+
+Each cascade's UV AABB is built from a **depth-capped** corner set (cascade 0
+caps at the split, cascade 1 at the full ±256 range), so a receiver near the
+map edge — screen corners, or the split blend band past cascade 0's cap —
+can land where its 2×2 PCF kernel straddles out of the map and the matching
+casters were bounds-dropped by the bake. Both sides of that used to fail
+silently as "lit" (partial face dropout at cascade / viewport boundaries).
+The contract that replaces it:
+
+- **Receiver side selects the covering cascade.**
+  `sunCascadeKernelInterior` gates the near-cascade choice: a receiver may
+  sample cascade 0 only where its PCF kernel sits interior to the map by a
+  2-texel margin; otherwise it falls back to cascade 1 (full-range AABB),
+  trading texel resolution for a complete kernel. The gate is
+  per-receiver-UV — uniform across a voxel's faces, so a straddling voxel's
+  faces select consistently. Interior receivers take the exact pre-#2083
+  branches (byte-identical).
+- **Caster side is a buffer-bounds guard, not culling.** `bakeCascade`'s
+  early-out only skips writes the accepted-receiver set can never read:
+  every caster is projected into both cascades, and the interior margin is
+  sized so an accepted receiver's caster (same sun ray; UV offset only by
+  the `kNormalBiasVoxels` shift + half-cell rounding) is always in-map.
+
+### Known residual: subdivided-mode unit mixing (deferred, #1923 territory)
+
+At `SubdivisionMode` ≠ NONE with `sub > 1`, the CPU corner sweep feeds
+sub-scaled canvas iso coordinates and the world-unit ±256 depth caps into
+`isoPixelToPos3D` without the `/scale` normalization the GPU recovery
+(`trixelCanvasPixelToWorld3D`) applies, and the receiver's cascade-select
+`isoDepth` (`rawDepth`) is sub-scaled while `cascadeSplitDepth` derives from
+world units. Both mismatches are latent at the common
+`SubdivisionMode::NONE` path (scale 1 ⇒ units agree exactly). Reconciling
+them belongs with the CPU↔GPU iso-math consolidation (#1923, human-owned) —
+not silently patched here, because the corner sweep's unit model touches the
+same helpers #1923 is rewriting.

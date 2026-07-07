@@ -16,6 +16,9 @@ layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
 #include "ir_iso_common.glsl"
 #include "ir_per_axis_lighting.glsl"
+// Shared caster/receiver sun-space projection (#2083); must precede
+// ir_sun_shadow_sample.glsl (the include resolver is non-recursive).
+#include "ir_sun_projection.glsl"
 // FrameDataSun UBO (29), sun-depth SSBO (28), and worldSunShadowFactor() — for
 // the opt-in detached re-voxelize world-receive path (#1576 P4b-2). Shared with
 // c_compute_sun_shadow; replaces this pass's former local FrameDataSun block.
