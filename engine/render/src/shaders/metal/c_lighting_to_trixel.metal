@@ -50,6 +50,14 @@ float3 ACESFilm(float3 x) {
     return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0f, 1.0f);
 }
 
+// Per-axis empty-cell compaction (#2256): on the per-axis route
+// (perAxisRoute != 0) this kernel is dispatched indirectly over only each axis's
+// OCCUPIED cells (compacted by the STAGE_1 per-axis pre-pass). compactedCells
+// holds the occupied linear cell indices; cellDrawArgs carries visibleCount at
+// [kDispatchArgsBaseUint + 3] for the 1-D bound guard. GLSL twin's bindings 25/26.
+constant uint kDispatchArgsBaseUint = 8u;
+constant uint kPerAxisCellComputeTile = 256u;
+
 kernel void c_lighting_to_trixel(
     constant FrameDataLightingToTrixel& frameData [[buffer(27)]],
     constant FrameDataVoxelToTrixel& voxelFrameData [[buffer(7)]],
@@ -71,19 +79,40 @@ kernel void c_lighting_to_trixel(
     // single-canvas + detached routes; the `perAxisRoute == 0` guard skips the read
     // on the rotation route. GLSL twin's binding 6.
     texture2d<uint, access::read> trixelEntityIds [[texture(6)]],
-    uint3 globalId [[thread_position_in_grid]]
+    // Per-axis empty-cell compaction (#2256) — GLSL twin's bindings 25/26.
+    const device uint* compactedCells [[buffer(25)]],
+    const device uint* cellDrawArgs [[buffer(26)]],
+    uint3 globalId [[thread_position_in_grid]],
+    uint3 groupId [[threadgroup_position_in_grid]],
+    uint localIndex [[thread_index_in_threadgroup]],
+    uint3 numGroups [[threadgroups_per_grid]]
 ) {
     if (frameData.lightingEnabled == 0) {
         return;
     }
 
-    const int2 pixel = int2(globalId.xy);
     const int2 size = int2(
         int(trixelColors.get_width()),
         int(trixelColors.get_height())
     );
-    if (pixel.x >= size.x || pixel.y >= size.y) {
-        return;
+    int2 pixel;
+    if (voxelFrameData.perAxisRoute != 0) {
+        // #2256: indirect dispatch over the compacted occupied-cell list, folded
+        // into a capped 2-D threadgroup grid by c_per_axis_cell_finalize —
+        // idx = flat group index * tile + local flat index, guarded by the axis's
+        // visibleCount, then decode the pixel from its linear cell.
+        const uint groupIndex = groupId.x + groupId.y * numGroups.x;
+        const uint idx = groupIndex * kPerAxisCellComputeTile + localIndex;
+        if (idx >= cellDrawArgs[kDispatchArgsBaseUint + 3u]) {
+            return;
+        }
+        const uint linearCell = compactedCells[idx];
+        pixel = int2(int(linearCell) % size.x, int(linearCell) / size.x);
+    } else {
+        pixel = int2(globalId.xy);
+        if (pixel.x >= size.x || pixel.y >= size.y) {
+            return;
+        }
     }
 
     const int encoded = trixelDistances.read(uint2(pixel)).x;

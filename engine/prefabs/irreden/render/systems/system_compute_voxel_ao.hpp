@@ -27,6 +27,7 @@
 #include <irreden/render/gpu_stage_timing_observer.hpp>
 
 #include <cstddef>
+#include <cstdint>
 
 using namespace IRComponents;
 using namespace IRMath;
@@ -52,6 +53,12 @@ template <> struct System<COMPUTE_VOXEL_AO> {
     // component AND it is currently allocated (camera at a non-cardinal yaw).
     IREntity::EntityId perAxisCanvasEntity_ = IREntity::kNullEntity;
     C_PerAxisTrixelCanvases *perAxisCanvases_ = nullptr;
+
+    // Lazily-resolved voxel-compaction buffers (#1961/#2256), restored onto
+    // slots 25/26 after dispatchPerAxisAO borrows them for its own per-axis
+    // cell list. See IRPrefab::PerAxisCanvas::restoreVoxelCompactionSlots.
+    Buffer *voxelCompactedBuf_ = nullptr;
+    Buffer *voxelIndirectBuf_ = nullptr;
 
     // Per-pass voxel-frame author/restore for multi-lit-canvas scenes
     // (re-voxelize P4 / #1558). The shared voxel UBO (binding 7) is authored
@@ -134,13 +141,34 @@ template <> struct System<COMPUTE_VOXEL_AO> {
             voxelFrameDataBuf_,
             IRPrefab::PerAxisCanvas::subdivisionDensity()
         );
-        const int groupsX = IRMath::divCeil(axes.size_.x, kComputeVoxelAOGroupSize);
-        const int groupsY = IRMath::divCeil(axes.size_.y, kComputeVoxelAOGroupSize);
+        // #2256: dispatch indirectly over only each axis's compacted occupied
+        // cells (filled by the STAGE_1 per-axis compaction into these
+        // component-owned buffers) instead of sweeping the full worst-case grid.
+        Buffer *cellCompacted = axes.cellCompacted_.second;
+        Buffer *cellIndirect = axes.cellIndirect_.second;
+        const int regionStride = axes.cellRegionStride_;
         for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
             auto &tex = axes.axes_[axis];
             tex.distances_.second->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
             tex.ao_.second->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
-            IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
+            cellCompacted->bindRange(
+                BufferTarget::SHADER_STORAGE,
+                kBufferIndex_PerAxisCellCompacted,
+                static_cast<std::ptrdiff_t>(axis) * regionStride *
+                    static_cast<int>(sizeof(std::uint32_t)),
+                static_cast<size_t>(regionStride) * sizeof(std::uint32_t)
+            );
+            cellIndirect->bindRange(
+                BufferTarget::SHADER_STORAGE,
+                kBufferIndex_PerAxisCellIndirect,
+                static_cast<std::ptrdiff_t>(axis) * kPerAxisCellIndirectStrideBytes,
+                kPerAxisCellIndirectStrideBytes
+            );
+            IRRender::device()->dispatchComputeIndirect(
+                cellIndirect,
+                static_cast<std::ptrdiff_t>(axis) * kPerAxisCellIndirectStrideBytes +
+                    kPerAxisCellDispatchArgsOffsetBytes
+            );
         }
         // One barrier after the 3 independent per-axis dispatches (each axis
         // writes its own AO image texture — disjoint outputs, so dispatch order
@@ -158,6 +186,12 @@ template <> struct System<COMPUTE_VOXEL_AO> {
             voxelFrameDataBuf_,
             IRRender::getVoxelRenderEffectiveSubdivisions()
         );
+        // Restore slots 25/26 to the voxel-compaction buffers (#1961/#2256) the
+        // per-axis loop above borrowed via bindRange — VOXEL_TO_TRIXEL_STAGE_1's
+        // single-canvas compact binds them once at create() and trusts sticky
+        // global state thereafter, so a leaked borrow re-reads the cell list as
+        // the voxel index list next frame and corrupts world voxels.
+        IRPrefab::PerAxisCanvas::restoreVoxelCompactionSlots(voxelCompactedBuf_, voxelIndirectBuf_);
         // Restore the main-canvas image bindings the loop overwrote. The Metal
         // backend's image-binding table persists across frames and is read on
         // every dispatch; leaving the per-axis textures bound here would dangle

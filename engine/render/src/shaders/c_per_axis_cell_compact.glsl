@@ -36,12 +36,18 @@ layout(std430, binding = 25) writeonly buffer PerAxisCellCompacted {
     uint compactedCells[];
 };
 
-// This axis's indirect instanced-draw args (bindRange'd per axis). Flat layout
-// matches PerAxisCellDrawCommand / DrawElementsIndirectCommand:
+// This axis's indirect args (bindRange'd per axis). Flat layout matches
+// PerAxisCellDrawCommand / DrawElementsIndirectCommand:
 //   [0] = indexCount (quad index count, CPU-reset each frame)
 //   [1] = instanceCount (atomic append counter — number of occupied cells)
 //   [2..4] = firstIndex / baseVertex / baseInstance = 0
-// The CPU resets the struct each frame; this kernel only bumps instanceCount.
+// #2256 also feeds the per-axis COMPUTE stages from this same compacted cell
+// list; the compute-indirect dims at [8..11] are derived from the final
+// instanceCount by the cheap c_per_axis_cell_finalize pass (a 3-thread dispatch
+// after this scan). Keeping the dims OUT of this kernel is deliberate: this
+// kernel sweeps the FULL per-axis grid, so a cross-workgroup completion barrier
+// here would stall every workgroup on the hot scan — the finalize computes the
+// dims off-band instead.
 layout(std430, binding = 26) buffer PerAxisCellIndirect {
     uint drawArgs[];
 };
@@ -55,12 +61,12 @@ void main() {
 
     const int rawDist = imageLoad(perAxisDistances, cell).x;
     if (rawDist >= kEmptyDistanceEncoded) {
-        return; // empty cell — not drawn
+        return; // empty cell — not drawn / not lit
     }
 
-    // Append the cell's linear index in the SAME convention the scatter recovers
-    // it (ij = cell % size.x, cell / size.x), and bump the instance count. The
-    // append slot is this cell's instance id in the indirect draw.
+    // Append the cell's linear index in the SAME convention the scatter + the
+    // compute stages recover it (ij = cell % size.x, cell / size.x), and bump the
+    // instance count. The append slot is this cell's instance id.
     const uint slot = atomicAdd(drawArgs[1], 1u);
     compactedCells[slot] = uint(cell.y * size.x + cell.x);
 }

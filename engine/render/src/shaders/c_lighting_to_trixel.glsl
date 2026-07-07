@@ -84,6 +84,22 @@ layout(binding = 5) uniform sampler3D lightVolume;
 // the read. Non-fog scenes never set the flag ⇒ byte-identical.
 layout(rg32ui, binding = 6) readonly uniform uimage2D trixelEntityIds;
 
+// Per-axis empty-cell compaction (#2256): on the per-axis route (perAxisRoute !=
+// 0) this kernel is dispatched indirectly over only each axis's OCCUPIED cells
+// (compacted by the STAGE_1 per-axis pre-pass) instead of sweeping the full
+// worst-case grid. compactedCells holds the occupied linear cell indices;
+// cellDrawArgs carries visibleCount at [kDispatchArgsBaseUint + 3] for the
+// in-shader 1-D bound guard. Unused on the single-canvas / detached route
+// (perAxisRoute == 0), which keeps the 2-D gl_GlobalInvocationID path.
+layout(std430, binding = 25) readonly buffer PerAxisCellCompacted {
+    uint compactedCells[];
+};
+layout(std430, binding = 26) readonly buffer PerAxisCellIndirect {
+    uint cellDrawArgs[];
+};
+const uint kDispatchArgsBaseUint = 8u;      // kPerAxisCellDispatchArgsOffsetBytes / 4
+const uint kPerAxisCellComputeTile = 256u;  // kPerAxisCellComputeTile (16×16 threads)
+
 // Phase 1c (#360): the light volume is camera-anchored. The CPU
 // uploads `lightVolumeWorldOrigin` (the world voxel that maps to the
 // volume's center texel) each frame; subtract it from `pos3D` before
@@ -124,10 +140,25 @@ void main() {
         return;
     }
 
-    const ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
     const ivec2 size = imageSize(trixelColors);
-    if (pixel.x >= size.x || pixel.y >= size.y) {
-        return;
+    ivec2 pixel;
+    if (perAxisRoute != 0) {
+        // #2256: indirect dispatch over the compacted occupied-cell list, folded
+        // into a capped 2-D workgroup grid by c_per_axis_cell_finalize —
+        // idx = flat group index * tile + local flat index, guarded by the axis's
+        // visibleCount, then decode the pixel from its linear cell.
+        const uint groupIndex = gl_WorkGroupID.x + gl_WorkGroupID.y * gl_NumWorkGroups.x;
+        const uint idx = groupIndex * kPerAxisCellComputeTile + gl_LocalInvocationIndex;
+        if (idx >= cellDrawArgs[kDispatchArgsBaseUint + 3u]) {
+            return;
+        }
+        const uint linearCell = compactedCells[idx];
+        pixel = ivec2(int(linearCell) % size.x, int(linearCell) / size.x);
+    } else {
+        pixel = ivec2(gl_GlobalInvocationID.xy);
+        if (pixel.x >= size.x || pixel.y >= size.y) {
+            return;
+        }
     }
 
     // Empty/background pixels: single-canvas uses 65535; per-axis uses INT_MAX (#1458).

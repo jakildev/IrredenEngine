@@ -25,6 +25,11 @@ const char *const kFileFragPerAxisScatter = "shaders/f_peraxis_scatter.glsl";
 // grid. Metal mirror in metal/c_per_axis_cell_compact.metal (add to
 // threadgroupSizeForFunctionName).
 const char *const kFileCompPerAxisCellCompact = "shaders/c_per_axis_cell_compact.glsl";
+// #2256: derives the per-axis compute-indirect dispatch dims from each axis's
+// final occupied count (a cheap 3-thread pass), so the AO / sun-shadow /
+// lighting / resolve stages indirect-dispatch over only occupied cells. Split
+// out of the compaction kernel to keep that hot full-grid scan barrier-free.
+const char *const kFileCompPerAxisCellFinalize = "shaders/c_per_axis_cell_finalize.glsl";
 
 const char *const kFileCompVoxelToTrixelStage1 = "shaders/c_voxel_to_trixel_stage_1.glsl";
 const char *const kFileCompVoxelToTrixelStage2 = "shaders/c_voxel_to_trixel_stage_2.glsl";

@@ -26,6 +26,9 @@
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/gpu_stage_timing_observer.hpp>
 
+#include <cstddef>
+#include <cstdint>
+
 using namespace IRComponents;
 using namespace IRMath;
 using namespace IRRender;
@@ -47,6 +50,12 @@ template <> struct System<COMPUTE_SUN_SHADOW> {
     // re-resolved every frame in beginTick. Null unless allocated (rotating).
     IREntity::EntityId perAxisCanvasEntity_ = IREntity::kNullEntity;
     C_PerAxisTrixelCanvases *perAxisCanvases_ = nullptr;
+
+    // Lazily-resolved voxel-compaction buffers (#1961/#2256), restored onto
+    // slots 25/26 after dispatchPerAxisSunShadow borrows them for its own
+    // per-axis cell list. See IRPrefab::PerAxisCanvas::restoreVoxelCompactionSlots.
+    Buffer *voxelCompactedBuf_ = nullptr;
+    Buffer *voxelIndirectBuf_ = nullptr;
 
     void tick(
         IREntity::EntityId entity,
@@ -99,13 +108,34 @@ template <> struct System<COMPUTE_SUN_SHADOW> {
             voxelFrameDataBuf_,
             IRPrefab::PerAxisCanvas::subdivisionDensity()
         );
-        const int groupsX = IRMath::divCeil(axes.size_.x, kComputeSunShadowGroupSize);
-        const int groupsY = IRMath::divCeil(axes.size_.y, kComputeSunShadowGroupSize);
+        // #2256: dispatch indirectly over only each axis's compacted OCCUPIED
+        // cells (filled by the STAGE_1 per-axis compaction) instead of sweeping
+        // the full worst-case grid — mirrors RESOLVE_PER_AXIS_SCREEN_DEPTH.
+        Buffer *cellCompacted = axes.cellCompacted_.second;
+        Buffer *cellIndirect = axes.cellIndirect_.second;
+        const int regionStride = axes.cellRegionStride_;
         for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
             auto &tex = axes.axes_[axis];
             tex.distances_.second->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
             tex.sunShadow_.second->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
-            IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
+            cellCompacted->bindRange(
+                BufferTarget::SHADER_STORAGE,
+                kBufferIndex_PerAxisCellCompacted,
+                static_cast<std::ptrdiff_t>(axis) * regionStride *
+                    static_cast<int>(sizeof(std::uint32_t)),
+                static_cast<size_t>(regionStride) * sizeof(std::uint32_t)
+            );
+            cellIndirect->bindRange(
+                BufferTarget::SHADER_STORAGE,
+                kBufferIndex_PerAxisCellIndirect,
+                static_cast<std::ptrdiff_t>(axis) * kPerAxisCellIndirectStrideBytes,
+                kPerAxisCellIndirectStrideBytes
+            );
+            IRRender::device()->dispatchComputeIndirect(
+                cellIndirect,
+                static_cast<std::ptrdiff_t>(axis) * kPerAxisCellIndirectStrideBytes +
+                    kPerAxisCellDispatchArgsOffsetBytes
+            );
         }
         // One barrier after the 3 independent per-axis dispatches (each axis
         // writes its own sun-shadow image texture — disjoint outputs, so dispatch
@@ -123,6 +153,10 @@ template <> struct System<COMPUTE_SUN_SHADOW> {
             voxelFrameDataBuf_,
             IRRender::getVoxelRenderEffectiveSubdivisions()
         );
+        // Restore slots 25/26 to the voxel-compaction buffers (#1961/#2256) the
+        // per-axis loop above borrowed via bindRange — see the restore-slots
+        // note in system_compute_voxel_ao.hpp for the corruption mode this avoids.
+        IRPrefab::PerAxisCanvas::restoreVoxelCompactionSlots(voxelCompactedBuf_, voxelIndirectBuf_);
         // Restore the main-canvas image bindings (see the #1311 note in
         // system_compute_voxel_ao.hpp — the persistent Metal image-binding table
         // would otherwise dangle when release() frees the per-axis textures).

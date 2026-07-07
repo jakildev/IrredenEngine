@@ -54,16 +54,35 @@ layout(std430, binding = 28) restrict buffer PerAxisResolveScratch {
     int resolveScratch[];
 };
 
+// #2256: this stage is dispatched indirectly over only this axis's OCCUPIED
+// cells (compacted by the STAGE_1 per-axis pre-pass) instead of sweeping the
+// full worst-case grid. compactedCells holds the occupied linear cell indices;
+// cellDrawArgs carries the visibleCount at [kDispatchArgsBaseUint + 3].
+layout(std430, binding = 25) readonly buffer PerAxisCellCompacted {
+    uint compactedCells[];
+};
+layout(std430, binding = 26) readonly buffer PerAxisCellIndirect {
+    uint cellDrawArgs[];
+};
+const uint kDispatchArgsBaseUint = 8u;      // kPerAxisCellDispatchArgsOffsetBytes / 4
+const uint kPerAxisCellComputeTile = 256u;  // kPerAxisCellComputeTile (16×16 threads)
+
 void main() {
-    const ivec2 cell = ivec2(gl_GlobalInvocationID.xy);
-    const ivec2 perAxisSize = imageSize(perAxisDistances);
-    if (cell.x >= perAxisSize.x || cell.y >= perAxisSize.y) {
+    // Recover the flat list index — the capped 2-D workgroup grid
+    // c_per_axis_cell_finalize wrote (kPerAxisCellComputeTile occupied cells per
+    // group) — and decode the cell from the compacted list.
+    const uint groupIndex = gl_WorkGroupID.x + gl_WorkGroupID.y * gl_NumWorkGroups.x;
+    const uint idx = groupIndex * kPerAxisCellComputeTile + gl_LocalInvocationIndex;
+    if (idx >= cellDrawArgs[kDispatchArgsBaseUint + 3u]) {
         return;
     }
+    const ivec2 perAxisSize = imageSize(perAxisDistances);
+    const uint linearCell = compactedCells[idx];
+    const ivec2 cell = ivec2(int(linearCell) % perAxisSize.x, int(linearCell) / perAxisSize.x);
 
     const int rawDist = imageLoad(perAxisDistances, cell).x;
     if (rawDist >= kEmptyDistanceEncoded) {
-        return; // empty per-axis cell
+        return; // occupied per the compaction; guard anyway
     }
     // Per-axis encoding (#1458): rawDepth in world units at bits [31:10].
     const int rawDepth = rawDist >> 10;

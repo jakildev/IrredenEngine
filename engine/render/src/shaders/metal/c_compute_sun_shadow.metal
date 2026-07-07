@@ -17,6 +17,13 @@ constant float kSelfStepMinHeight = 0.5;
 constant float kSelfStepMaxHeight = 1.5;
 constant float kSelfStepDepthRange = 3.0;
 
+// #2256: on the per-axis path this stage is dispatched indirectly over only each
+// axis's OCCUPIED cells (compacted by the STAGE_1 per-axis pre-pass). compactedCells
+// holds the occupied linear cell indices; cellDrawArgs carries visibleCount at
+// [kDispatchArgsBaseUint + 3]. Unused on the single-canvas 2D path (byte-identical).
+constant uint kDispatchArgsBaseUint = 8u;      // kPerAxisCellDispatchArgsOffsetBytes / 4
+constant uint kPerAxisCellComputeTile = 256u;  // kPerAxisCellComputeTile (16×16 threads)
+
 // Is this single-canvas receiver on a round-to-cell staircase — the case where
 // its near sun-shadow blocker is its OWN in-cell step (venetian banding) rather
 // than a separate caster? Detected geometrically (#2010, the marker-free intent
@@ -79,14 +86,37 @@ kernel void c_compute_sun_shadow(
     device const uint *sunDepthBuf [[buffer(28)]],
     texture2d<int, access::read> trixelDistances [[texture(0)]],
     texture2d<float, access::write> canvasSunShadow [[texture(1)]],
-    uint3 globalId [[thread_position_in_grid]]
+    const device uint* compactedCells [[buffer(25)]],
+    const device uint* cellDrawArgs [[buffer(26)]],
+    uint3 globalId [[thread_position_in_grid]],
+    uint3 groupId [[threadgroup_position_in_grid]],
+    uint localIndex [[thread_index_in_threadgroup]],
+    uint3 numGroups [[threadgroups_per_grid]]
 ) {
-    int2 pixel = int2(globalId.xy);
     int2 size = int2(
         int(trixelDistances.get_width()),
         int(trixelDistances.get_height())
     );
-    if (pixel.x >= size.x || pixel.y >= size.y) return;
+    // Per-axis path (#2256): decode the receiver pixel from this axis's compacted
+    // occupied-cell list under a 1-D indirect dispatch; the single-canvas 2D path
+    // keeps its full-grid xy invocation guard (byte-identical). Mirrors GLSL.
+    int2 pixel;
+    if (frameData.perAxisRoute != 0) {
+        // #2256: 2-D-folded indirect dispatch — recover the flat group index
+        // (matches c_per_axis_cell_finalize's capped grid + c_voxel_visibility_compact).
+        const uint groupIndex = groupId.x + groupId.y * numGroups.x;
+        const uint idx = groupIndex * kPerAxisCellComputeTile + localIndex;
+        if (idx >= cellDrawArgs[kDispatchArgsBaseUint + 3u]) {
+            return;
+        }
+        const uint linearCell = compactedCells[idx];
+        pixel = int2(int(linearCell) % size.x, int(linearCell) / size.x);
+    } else {
+        pixel = int2(globalId.xy);
+        if (pixel.x >= size.x || pixel.y >= size.y) {
+            return;
+        }
+    }
 
     int encoded = trixelDistances.read(uint2(pixel)).x;
     // Per-axis canvas uses INT_MAX as empty sentinel (#1458); single-canvas keeps 65535.

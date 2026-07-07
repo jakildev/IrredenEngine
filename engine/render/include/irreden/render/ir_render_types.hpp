@@ -1219,6 +1219,34 @@ struct PerAxisCellDrawCommand {
 };
 constexpr std::ptrdiff_t kPerAxisCellIndirectStrideBytes = 256;
 
+// Per-axis empty-cell compaction (#1961) additionally feeds the per-axis GPU
+// compute stages (AO / sun-shadow / lighting / resolve-scatter) via indirect
+// COMPUTE dispatch over the same compacted cell list (#2256), so those stages
+// process only occupied cells instead of the full worst-case (2W)(W+H) grid.
+// A VoxelIndirectDispatchParams block (numGroupsX/Y/Z, visibleCount) sits in each
+// axis's 256 B slot-26 region at a fixed offset ABOVE the 32 B
+// PerAxisCellDrawCommand so the draw-indirect args and the compute-indirect args
+// coexist in one region. The compaction (c_per_axis_cell_compact) only
+// atomic-appends into instanceCount; a separate cheap c_per_axis_cell_finalize
+// pass then derives numGroupsX/Y/Z + visibleCount from that final count (split
+// out to keep the compaction's hot full-grid scan barrier-free).
+// `dispatchComputeIndirect` reads numGroupsX/Y/Z from that offset; the compute
+// kernels read `visibleCount` from the same SSBO region for the in-shader bound
+// guard.
+constexpr std::ptrdiff_t kPerAxisCellDispatchArgsOffsetBytes = 32;
+// Threads per per-axis compute workgroup. c_per_axis_cell_finalize sets numGroups
+// to a capped 2-D grid of divCeil(occupiedCount, kPerAxisCellComputeTile)
+// workgroups; each consumer kernel recovers its flat list index as
+// (groupId.x + groupId.y*numGroupsX)*tile + localInvocationIndex. This value has
+// no compile-time tie to the shaders — it must stay 16*16 to match the
+// local_size_x/y = 16 declared independently in each of the four consumer
+// kernels' GLSL + Metal twins (c_compute_voxel_ao, c_compute_sun_shadow,
+// c_lighting_to_trixel, c_resolve_per_axis_screen_depth). Changing any one
+// kernel's group size without updating this constant AND the other seven files
+// silently misaligns the cell recovery (skipped or duplicated cells, no
+// compiler/runtime diagnostic).
+constexpr std::uint32_t kPerAxisCellComputeTile = 256;
+
 // TODO: Future culling optimization constants
 // Chunk-level frustum culling: voxel pool is partitioned into chunks of
 // this size. A CPU-side visibility pass writes a per-chunk mask that the

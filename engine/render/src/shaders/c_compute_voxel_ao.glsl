@@ -105,10 +105,39 @@ layout(std140, binding = 29) uniform FrameDataSun {
 layout(r32i, binding = 0) readonly uniform iimage2D trixelDistances;
 layout(rgba8, binding = 1) writeonly uniform image2D canvasAO;
 
+// Per-axis compacted occupied-cell list + per-axis indirect-args region (#2256).
+// On the per-axis path the dispatch is 1-D over the compacted cells; the shader
+// recovers each cell's canvas pixel from the linear index below. Bound per axis
+// via bindRange (offsets into the three axis regions).
+layout(std430, binding = 25) readonly buffer PerAxisCellCompacted {
+    uint compactedCells[];
+};
+layout(std430, binding = 26) readonly buffer PerAxisCellIndirect {
+    uint cellDrawArgs[];
+};
+const uint kDispatchArgsBaseUint = 8u;      // kPerAxisCellDispatchArgsOffsetBytes / 4
+const uint kPerAxisCellComputeTile = 256u;  // kPerAxisCellComputeTile (16×16 threads)
+
 void main() {
-    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
-    ivec2 size = imageSize(trixelDistances);
-    if (pixel.x >= size.x || pixel.y >= size.y) return;
+    const ivec2 size = imageSize(trixelDistances);
+    ivec2 pixel;
+    if (perAxisRoute != 0) {
+        // #2256: indirect dispatch over the compacted occupied-cell list, folded
+        // into a capped 2-D workgroup grid by c_per_axis_cell_finalize; recover
+        // the flat group index the same way c_voxel_visibility_compact does.
+        const uint groupIndex = gl_WorkGroupID.x + gl_WorkGroupID.y * gl_NumWorkGroups.x;
+        const uint idx = groupIndex * kPerAxisCellComputeTile + gl_LocalInvocationIndex;
+        if (idx >= cellDrawArgs[kDispatchArgsBaseUint + 3u]) {
+            return;
+        }
+        const uint linearCell = compactedCells[idx];
+        pixel = ivec2(int(linearCell) % size.x, int(linearCell) / size.x);
+    } else {
+        pixel = ivec2(gl_GlobalInvocationID.xy);
+        if (pixel.x >= size.x || pixel.y >= size.y) {
+            return;
+        }
+    }
 
     int encoded = imageLoad(trixelDistances, pixel).x;
     // Per-axis canvas uses INT_MAX as empty sentinel (#1458); single-canvas keeps 65535.
