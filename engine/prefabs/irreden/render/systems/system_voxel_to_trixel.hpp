@@ -1044,20 +1044,28 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         const IsoBounds2D visibleVp = IRRender::getCullViewport().isoViewport(kGpuMargin);
         frameData_.visibleIsoBounds_ =
             ivec4(ivec2(IRMath::floor(visibleVp.min_)), ivec2(IRMath::ceil(visibleVp.max_)));
+
+        // Occlusion cull gate (#1294 chunk pre-pass + #1812 per-voxel refine, off
+        // by default). Enabled only on the states whose distance encoding +
+        // shadow-feeder semantics are verified: enabled, NOT stale (no
+        // discontinuous camera move this frame — #1294 child 3/3, resolved in
+        // beginTick), NONE render mode (encodeDepthWithFace = rawDepth*4), cardinal
+        // yaw (!rotating → per-axis canvases inactive, so no split-list
+        // interaction), a non-re-voxelize pool (the frustum mask is the real
+        // per-chunk mask, not the all-visible dest-cell scratch), AND a built Hi-Z
+        // chain. Any other state keeps every voxel (conservative). The chunk
+        // pre-pass ANDs occluded chunks out of ChunkVisibility (24); the compact
+        // then runs the per-voxel Hi-Z test on the survivors (occlusionCullMipCount_
+        // uploaded here, Hi-Z bound at the compact dispatch below).
+        const int occlusionMipCount = triangleCanvasTextures.hiZMipCount();
+        const bool occlusionCullActive =
+            IRRender::getVoxelOcclusionCullEnabled() && !occlusionLagSourceStale_ &&
+            frameData_.voxelRenderOptions_.x == 0 && !rotating && revoxBuffer == nullptr &&
+            occlusionMipCount > 0;
+        frameData_.occlusionCullMipCount_ = occlusionCullActive ? occlusionMipCount : 0;
         frameDataBuf_->subData(0, sizeof(FrameDataVoxelToCanvas), &frameData_);
 
-        // Chunk-occlusion HZB pre-pass (#1294 child 2/3, off by default). Gated to
-        // the configuration whose distance encoding + shadow-feeder semantics are
-        // verified: enabled, NOT stale (no discontinuous camera move this frame —
-        // #1294 child 3/3, resolved in beginTick), NONE render mode
-        // (encodeDepthWithFace = rawDepth*4), cardinal yaw (!rotating → per-axis
-        // canvases are also inactive, so no split-list interaction), and a
-        // non-re-voxelize pool (the frustum mask is the real per-chunk mask, not
-        // the all-visible dest-cell scratch). Any other state keeps every chunk
-        // (conservative). The pass ANDs occluded chunks out of ChunkVisibility
-        // (24) before the compact pass reads it.
-        if (IRRender::getVoxelOcclusionCullEnabled() && !occlusionLagSourceStale_ &&
-            frameData_.voxelRenderOptions_.x == 0 && !rotating && revoxBuffer == nullptr) {
+        if (occlusionCullActive) {
             dispatchChunkOcclusion(voxelPool, triangleCanvasTextures, visibleVp);
         }
 
@@ -1243,6 +1251,19 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             fogObserverBuf_->subData(0, sizeof(FrameDataFogObservers), &cutSectionFog->observers_);
         }
         fogObserverBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FogObservers);
+        // Per-voxel occlusion cull Hi-Z input (#1812). Bind the finest Hi-Z level
+        // at a texture unit distinct from the fog IMAGE at 0 (GL image/texture
+        // unit 0 alias; Metal's shared argument table needs the distinct index).
+        // The compact samples it only when frameData_.occlusionCullMipCount_ > 0;
+        // a canvas with no Hi-Z chain (≤1px) binds the R32I distance texture as a
+        // never-sampled sentinel so Metal's argument table stays satisfied. Bound
+        // every frame (one texture bind) — the shader gate keeps the default
+        // (cull-off) output byte-identical.
+        constexpr int kHiZLevel0CompactTextureUnit = 1;
+        const Texture2D *hiZLevel0 = (triangleCanvasTextures.hiZMipCount() > 0)
+                                         ? triangleCanvasTextures.getHiZMip(0)
+                                         : triangleCanvasTextures.getTextureDistances();
+        hiZLevel0->bind(kHiZLevel0CompactTextureUnit);
         constexpr int kCompactLocalSize = 64;
         // Inverse-resample walks the D dest slots; the source path walks the live
         // source count. frameData_.voxelCount_ (the compact's per-slot guard) was

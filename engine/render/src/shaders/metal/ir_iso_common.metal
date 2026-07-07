@@ -986,7 +986,14 @@ struct FrameDataVoxelToTrixel {
     // (offset 192); pads mirror the CPU struct's 16-byte-stride tail. Read
     // only by c_voxel_to_trixel_stage_1.
     int resolveMode;
-    int _resolveModePad0;
+    // Per-voxel Hi-Z occlusion-cull gate (#1812). 0 = the compact's per-voxel
+    // test is skipped (default pipeline byte-identical); non-zero = the Hi-Z
+    // chain level count, so c_voxel_visibility_compact samples level 0 at each
+    // surviving voxel and drops globally-occluded ones. Mirrors
+    // FrameDataVoxelToCanvas::occlusionCullMipCount_ (offset 196); reuses the
+    // first resolveMode pad so the layout stays unchanged. Read only by
+    // c_voxel_visibility_compact.
+    int occlusionCullMipCount;
     int _resolveModePad1;
     int _resolveModePad2;
 };

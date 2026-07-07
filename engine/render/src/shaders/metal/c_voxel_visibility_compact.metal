@@ -135,6 +135,46 @@ constant float kCullSafetyCells = 9.0f;
 // flags byte matching the full mask marks a fully-interior voxel.
 constant uint kFaceOccludedMaskBits = 0xFCu;
 
+// Strict-behind margin (encoded units) so FMA / round noise on the boundary
+// never culls a voxel only coplanar with the occluder. Must match
+// kOcclusionDepthMargin in c_chunk_occlusion_cull.metal.
+constant int kOcclusionDepthMargin = 4;
+
+// Per-voxel Hi-Z occlusion refine (#1812) — see the GLSL twin
+// (c_voxel_visibility_compact.glsl) for the full rationale: conservative,
+// off by default (occlusionCullMipCount == 0 -> no-op), shadow-feeder-safe
+// (only voxels inside the un-widened visibleIsoBounds are tested), background
+// sentinel keeps a voxel that still sees background, and the encoding
+// (pos3DtoDistance(voxelPos) * 4) matches dispatchChunkOcclusion's cb.minDepth_
+// exactly. hiZLevel0 is the finest downsampled level (source px >> 1); a voxel's
+// ~1 iso px footprint always lands there.
+static bool voxelOccludedByHiZ(
+    texture2d<int, access::read> hiZLevel0,
+    constant FrameDataVoxelToTrixel& fd,
+    int3 voxelPos,
+    int2 isoPos
+) {
+    if (fd.occlusionCullMipCount <= 0) {
+        return false;
+    }
+    if (isoPos.x < fd.visibleIsoBounds.x || isoPos.y < fd.visibleIsoBounds.y ||
+        isoPos.x > fd.visibleIsoBounds.z || isoPos.y > fd.visibleIsoBounds.w) {
+        return false;
+    }
+    const int2 canvasPixel =
+        fd.trixelCanvasOffsetZ1 + int2(floor(fd.frameCanvasOffset)) + isoPos;
+    const int2 texel = canvasPixel >> 1;
+    const int2 sz = int2(int(hiZLevel0.get_width()), int(hiZLevel0.get_height()));
+    int hiZMax = -2147483648;
+    for (int ty = texel.y - 1; ty <= texel.y + 1; ++ty) {
+        for (int tx = texel.x - 1; tx <= texel.x + 1; ++tx) {
+            const int2 c = clamp(int2(tx, ty), int2(0), sz - int2(1));
+            hiZMax = max(hiZMax, hiZLevel0.read(uint2(c)).x);
+        }
+    }
+    return pos3DtoDistance(voxelPos) * 4 > hiZMax + kOcclusionDepthMargin;
+}
+
 // True iff this column lies under any live analytic vision circle, so its voxels
 // survive the grid cull and FOG_TO_TRIXEL can reveal them smoothly per pixel.
 // Uses a cell nearest-point (AABB) test (mirrors the GLSL): the voxel cell at
@@ -176,6 +216,11 @@ kernel void c_voxel_visibility_compact(
     device uint* compactedVoxelIndices [[buffer(25)]],
     device atomic_uint* indirectParams [[buffer(26)]],
     texture2d<float, access::read> canvasFogOfWar [[texture(0)]],
+    // Finest Hi-Z level for the per-voxel occlusion cull (#1812). At texture(1)
+    // so it never aliases the fog image at texture(0) in Metal's shared argument
+    // table. Sampled only when frameData.occlusionCullMipCount > 0; otherwise a
+    // never-sampled sentinel is bound so the argument table stays satisfied.
+    texture2d<int, access::read> hiZLevel0 [[texture(1)]],
     constant FogObserverData& fogObservers [[buffer(27)]],
     uint3 groupId [[threadgroup_position_in_grid]],
     uint3 groupCount [[threadgroups_per_grid]],
@@ -196,6 +241,10 @@ kernel void c_voxel_visibility_compact(
                 const int3 voxelPosRaw = roundHalfUp(positions[idx].xyz);
                 int2 isoPos;
                 int cullMargin = 0;
+                // Cardinal-rotated position, hoisted for the per-voxel occlusion
+                // test (only rotated on the residual==0 path — the only path
+                // where occlusionCullMipCount can be non-zero).
+                int3 voxelPos = voxelPosRaw;
                 // Smooth camera Z-yaw (T3 / #1310) — see the GLSL mirror for the
                 // rationale: while rotating, project the cull with the same
                 // continuous yaw the per-axis scatter raster uses (cardinal snap
@@ -207,7 +256,6 @@ kernel void c_voxel_visibility_compact(
                     );
                     cullMargin = 2;
                 } else {
-                    int3 voxelPos = voxelPosRaw;
                     if (cardinalIndex != 0) {
                         voxelPos = rotateCardinalZ(voxelPos, cardinalIndex);
                         voxelPos += cardinalLowerCornerShift(cardinalIndex);
@@ -231,9 +279,15 @@ kernel void c_voxel_visibility_compact(
                         // occluded vertical face as a cut wall, #2125). No early
                         // return — the completion barrier below must stay
                         // uniformly reached.
+                        // Per-voxel Hi-Z occlusion refine (#1812): drop a voxel
+                        // globally occluded by closer geometry. Off by default;
+                        // never re-adds a fully-interior voxel already dropped
+                        // above. No early return — the completion barrier below
+                        // must stay uniformly reached.
                         const uint flagsByte = (voxels[idx].materialFlagBone >> 8u) & 0xFFu;
-                        if (fogObservers.visionCircleCount != 0 ||
-                            (flagsByte & kFaceOccludedMaskBits) != kFaceOccludedMaskBits) {
+                        if ((fogObservers.visionCircleCount != 0 ||
+                             (flagsByte & kFaceOccludedMaskBits) != kFaceOccludedMaskBits) &&
+                            !voxelOccludedByHiZ(hiZLevel0, frameData, voxelPos, isoPos)) {
                             const uint slot = atomic_fetch_add_explicit(
                                 &indirectParams[kSlotVisibleCount],
                                 1u,

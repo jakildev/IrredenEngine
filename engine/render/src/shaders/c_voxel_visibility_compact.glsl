@@ -23,8 +23,41 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform float visualYaw;
     uniform float rasterYaw;
     uniform float residualYaw;
-    uniform float _yawPadding;
+    // Prefix through residualYaw is the shared binding-7 head. The fields below
+    // (matching FrameDataVoxelToCanvas / the stage-1 UBO offsets) are declared so
+    // the per-voxel occlusion cull (#1812) can read visibleIsoBounds (offset 176)
+    // and occlusionCullMipCount (offset 196); the rest are layout placeholders
+    // this pass does not consume.
+    uniform float isDetachedCanvas;     // offset 76 (was _yawPadding)
+    uniform vec4 faceDeform[3];         // offset 80
+    uniform ivec4 visibleFaceIds;       // offset 128
+    uniform vec4 voxelDepthAxis;        // offset 144
+    uniform vec4 detachedWorldReceive;  // offset 160
+    // Un-widened (no shadow-feeder sweep) visible iso viewport. The per-voxel
+    // occlusion test only culls voxels fully inside this box — a caster in the
+    // shadow-feeder swept ring (inside cullIsoMin/Max but outside here) must keep
+    // its sun shadow (mirrors dispatchChunkOcclusion's fully-visible eligibility).
+    uniform ivec4 visibleIsoBounds;     // offset 176
+    uniform int resolveMode;            // offset 192
+    // Per-voxel Hi-Z occlusion-cull gate (#1812): 0 = off (byte-identical),
+    // non-zero = Hi-Z chain level count → run the per-voxel test.
+    uniform int occlusionCullMipCount;  // offset 196
+    uniform int _occlusionPad0;         // offset 200
+    uniform int _occlusionPad1;         // offset 204
 };
+
+// Finest Hi-Z downsampled level (conceptual mip 1) over last frame's canvas
+// distances (#1798), R32I. Bound at texture unit 1 by VOXEL_TO_TRIXEL_STAGE_1
+// when this compact runs — kept off unit 0 so it never aliases the fog IMAGE at
+// binding 0 on Metal's shared argument table (GL image/texture unit 0 are
+// separate namespaces, but the compact must stay backend-parity-clean). Sampled
+// only when occlusionCullMipCount > 0.
+layout(binding = 1) uniform isampler2D hiZLevel0;
+
+// Strict-behind margin (encoded units) so FMA / round noise on the boundary
+// never culls a voxel only coplanar with the occluder. Must match
+// kOcclusionDepthMargin in c_chunk_occlusion_cull.glsl.
+const int kOcclusionDepthMargin = 4;
 
 layout(std430, binding = 5) readonly buffer PositionBuffer {
     vec4 positions[];
@@ -186,6 +219,50 @@ void writeDispatchDims(uint base) {
         uint(kStageMicroSlicesPerGroup);
 }
 
+// Per-voxel Hi-Z occlusion refine (#1812), layered on top of the per-chunk
+// pre-pass (coarse -> fine hierarchical occlusion). Drops a voxel that is
+// locally-exposed + in-frustum but globally occluded by closer geometry —
+// capturing the per-voxel occludedExposedFraction the all-or-nothing 256-voxel
+// chunk test leaves on the table. Conservative + off by default:
+//   * occlusionCullMipCount == 0 (the default; any non-cardinal / rotating /
+//     re-voxelize / no-Hi-Z frame) -> no test, byte-identical to master.
+//   * Only voxels inside the UN-WIDENED visible viewport are tested. A caster in
+//     the shadow-feeder swept ring (inside cullIsoMin/Max but outside
+//     visibleIsoBounds) is never culled — the Hi-Z covers only the visible
+//     viewport, so dropping it would lose its sun shadow. Mirrors
+//     dispatchChunkOcclusion's fully-inside-visible eligibility.
+//   * A footprint that still sees background keeps the voxel (empty texels carry
+//     the 65535 sentinel -> hiZMax stays large -> never occlude). A false
+//     positive is a visible hole; a false negative is only lost savings.
+// Encoding matches the Hi-Z exactly: encoded = pos3DtoDistance(voxelPos) * 4,
+// the same cardinal-rotated iso depth dispatchChunkOcclusion writes as
+// cb.minDepth_ * 4 (encodeDepthWithFace spacing, face slot 0).
+bool voxelOccludedByHiZ(ivec3 voxelPos, ivec2 isoPos) {
+    if (occlusionCullMipCount <= 0) {
+        return false;
+    }
+    if (isoPos.x < visibleIsoBounds.x || isoPos.y < visibleIsoBounds.y ||
+        isoPos.x > visibleIsoBounds.z || isoPos.y > visibleIsoBounds.w) {
+        return false;
+    }
+    // iso -> canvas pixel, exactly as dispatchChunkOcclusion / stage 1 at NONE
+    // mode (effectiveTrixelSubdivisionScale == 1).
+    ivec2 canvasPixel = trixelCanvasOffsetZ1 + ivec2(floor(frameCanvasOffset)) + isoPos;
+    // A voxel projects to ~1 iso px, so the finest downsampled level (source
+    // px >> 1) always covers the footprint. Expand by one texel and take the max.
+    ivec2 texel = canvasPixel >> 1;
+    ivec2 sz = textureSize(hiZLevel0, 0);
+    int hiZMax = -2147483648;
+    for (int ty = texel.y - 1; ty <= texel.y + 1; ++ty) {
+        for (int tx = texel.x - 1; tx <= texel.x + 1; ++tx) {
+            hiZMax = max(
+                hiZMax, texelFetch(hiZLevel0, clamp(ivec2(tx, ty), ivec2(0), sz - ivec2(1)), 0).x
+            );
+        }
+    }
+    return pos3DtoDistance(voxelPos) * 4 > hiZMax + kOcclusionDepthMargin;
+}
+
 void main() {
     const int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
     uint workGroupIndex = gl_WorkGroupID.x + gl_WorkGroupID.y * gl_NumWorkGroups.x;
@@ -202,6 +279,11 @@ void main() {
                 ivec3 voxelPosRaw = roundHalfUp(positions[idx].xyz);
                 ivec2 isoPos;
                 int cullMargin = 0;
+                // Cardinal-rotated position, hoisted so the per-voxel occlusion
+                // test can reuse it. Only rotated in the residual==0 branch below
+                // (the only path where occlusionCullMipCount can be non-zero);
+                // stays raw on the rotating path, which never runs the test.
+                ivec3 voxelPos = voxelPosRaw;
                 // Smooth camera Z-yaw (T3 / #1310): while the per-axis canvases
                 // are active (residual yaw != 0) the framebuffer scatter
                 // rasterizes each voxel at its CONTINUOUS yawed iso position, so
@@ -216,7 +298,6 @@ void main() {
                     isoPos = roundHalfUp(pos3DtoPos2DIsoYawed(vec3(voxelPosRaw), visualYaw));
                     cullMargin = 2;
                 } else {
-                    ivec3 voxelPos = voxelPosRaw;
                     if (cardinalIndex != 0) {
                         voxelPos = rotateCardinalZ(voxelPos, cardinalIndex);
                         voxelPos += cardinalLowerCornerShift(cardinalIndex);
@@ -241,9 +322,16 @@ void main() {
                         // off while any circle is live. (No early return — the
                         // cross-group completion barrier below must stay
                         // uniformly reached.)
+                        // Per-voxel Hi-Z occlusion refine (#1812): drop a voxel
+                        // globally occluded by closer geometry. Off by default
+                        // (occlusionCullMipCount == 0 -> no-op), and skipped for a
+                        // fully-interior voxel that was already dropped above, so
+                        // it never re-adds one. No early return — the completion
+                        // barrier below must stay uniformly reached.
                         uint flagsByte = (voxels[idx].materialFlagBone >> 8u) & 0xFFu;
-                        if (visionCircleCount != 0 ||
-                            (flagsByte & kFaceOccludedMaskBits) != kFaceOccludedMaskBits) {
+                        if ((visionCircleCount != 0 ||
+                             (flagsByte & kFaceOccludedMaskBits) != kFaceOccludedMaskBits) &&
+                            !voxelOccludedByHiZ(voxelPos, isoPos)) {
                             uint slot = atomicAdd(params[3], 1u);
                             compactedVoxelIndices[slot] = idx;
                         }
