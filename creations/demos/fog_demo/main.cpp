@@ -65,6 +65,7 @@
 #include <irreden/render/components/component_canvas_fog_of_war.hpp>
 #include <irreden/render/components/component_canvas_light_volume.hpp>
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
+#include <irreden/render/components/component_light_blocker.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
@@ -247,6 +248,49 @@ constexpr IRVideo::AutoScreenshotShot kEdgeShots[] = {
     {14.0f, vec2(0, 0), 0.0f, "fog_edge_zoom14"},
 };
 
+// --edge-sdf-blocker (#2247): the SAME --edge-zoom scene (hard-disc vision
+// circle + boundary VOXEL objects) PLUS one SDF BOX carrying
+// C_LightBlocker{blocksLOS_=true}, standing on the floor and straddling the -Y
+// disc arc (an arc the voxel objects leave clear). #2247's reported symptom was
+// an SDF blocker's fog-hidden half BLACK-BANDING the cut arc instead of capping.
+// Master's fog cut is now the geometric cap (#2274): it is content-independent —
+// any surface that rasterizes caps at the disc boundary, so the box's fog-hidden
+// -Y half fills with the toned cut wall exactly like the voxel green slab on -X,
+// with no light-occlusion-bitfield read. This scene is the permanent enabled-path
+// regression gate that a blocksLOS_ SDF straddling the disc still caps (the
+// geometric cap does not special-case or exclude blockers). -Y is camera-visible
+// at cardinal yaw 0, so the cut face shows directly. The committed zoom5 + zoom9
+// refs are the gate.
+bool g_edgeSdfBlocker = false; // --edge-sdf-blocker
+// The blocker BOX: centered on the -Y disc arc (y == -kEdgeVisionRadius at x=0)
+// and standing up off the floor (iso +Z is downward; base ≈ floor top z=5, top
+// up-screen). Its near (+Y) half falls inside the disc and renders; its far
+// (-Y) half is fog-hidden and is where the cut wall must fill.
+constexpr vec3 kSdfBlockerCenter{0.0f, -kEdgeVisionRadius, -1.0f};
+constexpr vec4 kSdfBlockerHalfExtents{4.0f, 5.0f, 6.0f, 0.0f};
+constexpr Color kSdfBlockerColor{200, 120, 220, 255};
+
+// ROI crop over the SDF blocker's -Y cut face at zoom9 (per engine/render/
+// CLAUDE.md's ROI-crop request). -Y projects DOWN-screen in this iso, so the
+// crop sits below the frame center. Bounds are a per-host iteration point
+// (see the shape_debug kCrops* note); tuned against this host's 2560x1440
+// framebuffer.
+constexpr IRVideo::RoiCrop kCropsEdgeSdfBlocker9[] = {
+    {800, 640, 440, 380, "cutface_sdf_blocker"},
+};
+
+// Origin-centered shots matching the --edge-zoom framing so the SDF blocker's
+// cut wall reads against the same floor edge as the voxel twins.
+constexpr IRVideo::AutoScreenshotShot kEdgeSdfBlockerShots[] = {
+    {5.0f, vec2(0, 0), 0.0f, "fog_edge_sdf_blocker_zoom5"},
+    {9.0f,
+     vec2(0, 0),
+     0.0f,
+     "fog_edge_sdf_blocker_zoom9",
+     kCropsEdgeSdfBlocker9,
+     sizeof(kCropsEdgeSdfBlocker9) / sizeof(kCropsEdgeSdfBlocker9[0])},
+};
+
 // --detached-edge (#2127 filled cross-section on a DETACHED canvas; #2124 P3):
 // the SAME static origin vision circle as --edge-zoom, but the boundary-
 // straddling object is a WORLD-PLACED DETACHED_REVOXELIZE solid (its own canvas +
@@ -334,6 +378,12 @@ int main(int argc, char **argv) {
         "skips the static grid reveal"
     );
     IREngine::args().flag(
+        "--edge-sdf-blocker",
+        "Like --edge-zoom but adds an SDF box with C_LightBlocker{blocksLOS_} "
+        "straddling the -Y disc arc — its fog-hidden half must cap with the cut "
+        "wall, not a black band (#2247 SDF-blocker cut parity)"
+    );
+    IREngine::args().flag(
         "--detached-edge",
         "Like --edge-zoom but the boundary-straddling object is a world-placed "
         "DETACHED_REVOXELIZE solid (#2127 detached cross-section); skips the "
@@ -354,6 +404,7 @@ int main(int argc, char **argv) {
     g_movingObserver = IREngine::args().getFlag("--moving-observer");
     g_playerWalk = IREngine::args().getFlag("--player-walk");
     g_edgeZoom = IREngine::args().getFlag("--edge-zoom");
+    g_edgeSdfBlocker = IREngine::args().getFlag("--edge-sdf-blocker");
     g_detachedEdge = IREngine::args().getFlag("--detached-edge");
     g_edgeSmooth = IREngine::args().getFlag("--edge-smooth");
     g_edgeYawSweep = IREngine::args().getFlag("--edge-yaw-sweep");
@@ -364,12 +415,26 @@ int main(int argc, char **argv) {
         g_edgeZoom = true;
     }
     // The reveal modes are mutually exclusive; precedence: --detached-edge, then
-    // --edge-zoom / --edge-yaw-sweep, then --edge-smooth, then --player-walk, then
-    // --moving-observer (each owns its own scene + shots).
+    // --edge-sdf-blocker, then --edge-zoom / --edge-yaw-sweep, then --edge-smooth,
+    // then --player-walk, then --moving-observer (each owns its own scene + shots).
     if (g_detachedEdge) {
+        if (g_edgeSdfBlocker || g_edgeZoom || g_edgeYawSweep || g_edgeSmooth || g_playerWalk ||
+            g_movingObserver) {
+            IR_LOG_INFO(
+                "--detached-edge overrides --edge-sdf-blocker / --edge-zoom / --edge-yaw-sweep / "
+                "--edge-smooth / --player-walk / --moving-observer"
+            );
+        }
+        g_edgeSdfBlocker = false;
+        g_edgeZoom = false;
+        g_edgeYawSweep = false;
+        g_edgeSmooth = false;
+        g_playerWalk = false;
+        g_movingObserver = false;
+    } else if (g_edgeSdfBlocker) {
         if (g_edgeZoom || g_edgeYawSweep || g_edgeSmooth || g_playerWalk || g_movingObserver) {
             IR_LOG_INFO(
-                "--detached-edge overrides --edge-zoom / --edge-yaw-sweep / --edge-smooth / "
+                "--edge-sdf-blocker overrides --edge-zoom / --edge-yaw-sweep / --edge-smooth / "
                 "--player-walk / --moving-observer"
             );
         }
@@ -539,6 +604,9 @@ void initSystems() {
                 kYawHi,
                 kEdgeSweepZoom
             );
+        } else if (g_edgeSdfBlocker) {
+            cfg.shots_ = kEdgeSdfBlockerShots;
+            cfg.numShots_ = sizeof(kEdgeSdfBlockerShots) / sizeof(kEdgeSdfBlockerShots[0]);
         } else if (g_edgeZoom) {
             cfg.shots_ = kEdgeShots;
             cfg.numShots_ = sizeof(kEdgeShots) / sizeof(kEdgeShots[0]);
@@ -607,7 +675,7 @@ void initEntities() {
     // its own content (the gliding disc + marker / the boundary-straddling voxel
     // objects) reads clearly without the tall shapes' iso-projected tops poking
     // through the disc.
-    if (!g_playerWalk && !g_edgeZoom && !g_edgeSmooth && !g_detachedEdge) {
+    if (!g_playerWalk && !g_edgeZoom && !g_edgeSmooth && !g_edgeSdfBlocker && !g_detachedEdge) {
         // A few simple SDF primitives sitting on the floor inside the visible
         // circle, so the bright (visible) region has recognizable content.
         createShape(
@@ -674,16 +742,18 @@ void initEntities() {
     // High, slightly off-axis sun so each shape casts a visible shadow.
     IRRender::setSunDirection(vec3(0.35f, 0.85f, -0.4f));
 
-    // The BOUNDARY scenes (--edge-zoom / --edge-smooth / --detached-edge)
-    // override to a STRAIGHT-DOWN sun. Their render-verify refs exist to
-    // inspect the fog reveal boundary, and an angled sun drives shadow
+    // The BOUNDARY scenes (--edge-zoom / --edge-smooth / --edge-sdf-blocker /
+    // --detached-edge) override to a STRAIGHT-DOWN sun. Their render-verify refs
+    // exist to inspect the fog reveal boundary, and an angled sun drives shadow
     // TERMINATORS across the exact band under test — the pillar's terminator
     // crossing the slab-top fog arc composites into a kinked dark curve that
     // reads as a fog artifact (it was reported as one: the "sharp turn" that
     // appears to connect the elevated face's fade to the floor rim at the
-    // wrong height). Fog x shadow composition stays covered by the default
-    // grid scene's refs, which keep the angled sun.
-    if (g_edgeZoom || g_edgeSmooth || g_detachedEdge) {
+    // wrong height). --edge-sdf-blocker especially: the blocker box's -Y cut
+    // face IS the band under test, so an angled sun's terminator across it would
+    // masquerade as a cut defect. Fog x shadow composition stays covered by the
+    // default grid scene's refs, which keep the angled sun.
+    if (g_edgeZoom || g_edgeSmooth || g_edgeSdfBlocker || g_detachedEdge) {
         IRRender::setSunDirection(vec3(0.0f, 0.0f, -1.0f));
     }
 
@@ -747,11 +817,12 @@ void initEntities() {
     // appear only on CAMERA-VISIBLE cut surfaces (cardinal yaw 0 sees -X/-Y/-Z), so
     // the green slab's -X cut shows its wall while the pillars' +X/+Y cuts fall on
     // back faces and read as a clean end.
-    if (g_edgeZoom || g_edgeSmooth) {
-        // --edge-zoom is the hard-disc binary cut (Mode A, edgeSoftness 0);
-        // --edge-smooth uses a wide soft band (Mode B, #2126) over the IDENTICAL
-        // geometry so the cut wall follows the analytic disc instead of stair-
-        // stepping at the column boundary. The soft band is the only difference.
+    if (g_edgeZoom || g_edgeSmooth || g_edgeSdfBlocker) {
+        // --edge-zoom / --edge-sdf-blocker are the hard-disc binary cut (Mode A,
+        // edgeSoftness 0); --edge-smooth uses a wide soft band (Mode B, #2126)
+        // over the IDENTICAL geometry so the cut wall follows the analytic disc
+        // instead of stair-stepping at the column boundary. The soft band is the
+        // only difference among the voxel objects.
         const float edge = g_edgeSmooth ? kEdgeSmoothEdge : kFogVisionEdgeDefault;
         IRPrefab::Fog::setVisionCircle(0.0f, 0.0f, kEdgeVisionRadius, edge);
 
@@ -790,6 +861,32 @@ void initEntities() {
             C_LocalTransform{vec3(-9.0f, 0.0f, 2.0f)},
             C_VoxelSetNew{IRMath::ivec3{14, 6, 3}, Color{130, 230, 150, 255}, true}
         );
+
+        // --edge-sdf-blocker (#2247): one SDF BOX (C_ShapeDescriptor, NOT a voxel
+        // set) carrying C_LightBlocker{blocksLOS_=true}, standing on the floor and
+        // straddling the -Y disc arc — an arc the voxel objects above leave clear.
+        // It is an SDF, so its matter lives only in the light-occlusion blocker
+        // bitfield, never the voxel-existence bitfield — the exact case #2247
+        // reported black-banding in the fog cut. Master's geometric cut cap
+        // (#2274) is content-independent: the box's rendered surface caps at the
+        // disc boundary regardless of any bitfield, so its fog-hidden -Y half fills
+        // with the toned cut wall like the -X voxel slab. The C_LightBlocker is
+        // retained so this stays the enabled-path proof that a blocksLOS_ SDF is
+        // not special-cased out of the cut. castsShadow_=false keeps the test to
+        // the cut (no floor shadow competing with the ROI crop). Gated to
+        // --edge-sdf-blocker ONLY so the --edge-zoom / --edge-smooth refs stay
+        // byte-identical (no new geometry in those scenes).
+        if (g_edgeSdfBlocker) {
+            const IREntity::EntityId blocker = IREntity::createEntity(
+                C_LocalTransform{kSdfBlockerCenter},
+                C_ShapeDescriptor{
+                    IRRender::ShapeType::BOX,
+                    kSdfBlockerHalfExtents,
+                    kSdfBlockerColor
+                }
+            );
+            IREntity::setComponent(blocker, C_LightBlocker{true, false, 1.0f});
+        }
         return;
     }
 
