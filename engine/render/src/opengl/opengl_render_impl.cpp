@@ -191,6 +191,21 @@ class OpenGLRenderDevice final : public RenderDevice {
         ENG_API->glClearTexImage(texture->getHandle(), level, GL_RED_INTEGER, GL_INT, data);
     }
 
+    void fillBuffer(const Buffer *buffer, std::size_t sizeBytes, std::uint8_t byteValue) override {
+        if (buffer == nullptr || sizeBytes == 0) {
+            return;
+        }
+        ENG_API->glClearNamedBufferSubData(
+            buffer->getHandle(),
+            GL_R8UI,
+            0,
+            static_cast<GLsizeiptr>(sizeBytes),
+            GL_RED_INTEGER,
+            GL_UNSIGNED_BYTE,
+            &byteValue
+        );
+    }
+
     void finish() override {
         ENG_API->glFinish();
     }

@@ -101,6 +101,14 @@ flat out float vMarginYieldGradV;
 flat out float vIsoDepth;
 flat out int vDepthColorMode;
 flat out float vDepthColorExtent;
+// Deterministic cell tiebreak (#2255): the fragment stage quantizes its
+// final depth to kScatterCellTieBand and injects this 8-level cell code
+// (pre-scaled to kScatterCellTieStep units) into the sub-band bits, so
+// tie-band fragments — canonically the margin-yield crossover between
+// parallel neighbor faces — resolve by cell identity instead of draw order
+// (the #1961 compaction's atomic-append instance order is run-variant). See
+// kScatterCellTieStep in ir_iso_common.glsl.
+flat out float vCellTieOffset;
 
 // Composite-instrumentation overlay modes (#1457) — raw DebugOverlayMode
 // values (ir_render_enums.hpp). Both modes recolor the scattered quad and
@@ -159,6 +167,7 @@ void main() {
         vDepthColorExtent = 0.0;
         vQuadParam = vec2(0.5);
         vMarginDepthBias = 0.0;
+        vCellTieOffset = 0.0;
         return;
     }
 
@@ -294,6 +303,10 @@ void main() {
     const float depthRange = float(kMaxTriangleDistance - kMinTriangleDistance);
     vDepth = (cornerKey + float(distanceOffset - kMinTriangleDistance)) / depthRange;
     vMarginDepthBias = kScatterMarginDepthBiasKey * subScale / depthRange;
+    // Deterministic cell tiebreak (#2255): 8 levels, distinct for every
+    // same-plane / parallel-plane neighbor pair (in-plane world steps project
+    // to iso-diagonal or (0,+/-2) only) — see kScatterCellTieStep.
+    vCellTieOffset = float((ij.x & 1) | ((ij.y & 3) << 1)) * kScatterCellTieStep;
     // Per-axis margin-yield slope (#1883). kU/kV are the per-unit-axis composite
     // depth gradients; scaled to vDepth units and pre-absed (penetration is always
     // outward) so the fragment stage adds penetration*slope as the over-grown

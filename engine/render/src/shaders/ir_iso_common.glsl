@@ -799,6 +799,31 @@ const float kScatterDilateMarginPx = 0.85;
 // (>= 4*|cos-sin| key units), so genuine occlusion is never reordered.
 const float kScatterMarginDepthBiasKey = 0.25;
 
+// Deterministic cell tiebreak (#2255). Wherever two scattered quads' final
+// depths land within one float ULP of each other, GL_LESS keeps the
+// first-drawn fragment — and draw order is instance order, which is the
+// #1961 cell-compaction's atomic-append order: run-variant. The realized tie
+// class is the margin-yield crossover: a near face's margin ramp
+// (bias + penetration * yield-slope) crosses its parallel neighbor's exact
+// plane (same axis, one in-plane world step = iso-diagonal or 2-rows-down —
+// rawDepth +/-1), and the crossover pixel ties bit-exactly. Fix: quantize the
+// final fragment depth to a coarse band and inject a per-cell code into the
+// sub-band bits, so same-band fragments order by CELL IDENTITY instead of
+// draw order:
+//   depth = floor(depth / band) * band + cellCode * kScatterCellTieStep
+// with cellCode = (ij.x & 1) | ((ij.y & 3) << 1) — 8 levels, distinct for
+// every same-plane / parallel-plane neighbor pair (in-plane steps only
+// project to iso-diagonal (+/-1,+/-1) or (0,+/-2); (+/-2,0) cannot occur).
+// kScatterCellTieStep = 2^-23: >= 1 float32-depth ULP for depth < 1 AND 2
+// quanta of a 24-bit fixed depth buffer, so the code survives quantization on
+// both backends. Band = 8 steps = 2^-20 ~= 0.125 key units at the default
+// range — half the 0.25 margin bias (margin-vs-exact ordering survives) and
+// far below the slot (1.0) / plane (>= 4) separations, so no genuine
+// occlusion is reordered; only tie-band pixels — the ones that previously
+// flickered run-to-run — gain a deterministic winner.
+const float kScatterCellTieStep = 1.0 / 8388608.0;
+const float kScatterCellTieBand = 8.0 / 8388608.0;
+
 // Margin-yield gradient scale (#1883). The flat bias above only breaks SUB-PIXEL
 // same-plane ties. Once the per-axis margin grows large on a foreshortened face
 // (iter-1's 0.5*|n| reaches a cell-deep fraction), the margin EXTRAPOLATES the

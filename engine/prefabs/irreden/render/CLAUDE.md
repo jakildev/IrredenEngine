@@ -637,8 +637,11 @@ scale. Full invariant + verify steps:
   the `reserved` lane verbatim (stage 2 still masks `& 0x3u` at decode). Demo:
   `canvas_stress --only interpenetrate` (far unit rotated to exercise MODE 1).
 - **Seed GPU-buffer sentinels GPU-side, never via a resource-sized CPU
-  staging vector + `subData`.** Metal's `fillBuffer` writes a repeating
-  single byte, so multi-byte sentinels like `kTrixelDistanceMaxDistance`
+  staging vector + `subData`.** For a repeating-single-byte sentinel (0x00,
+  0xFFFFFFFF) use `IRRender::device()->fillBuffer(buffer, bytes, byteValue)`
+  — GL `glClearNamedBufferSubData` / Metal blit `fillBuffer` under one
+  primitive (the per-axis winner scratch in `dispatchPerAxisCanvases` is the
+  reference use). Multi-byte sentinels like `kTrixelDistanceMaxDistance`
   (`0x0000FFFF`) have no driver-side clear — reuse an already-owned
   self-resetting kernel (e.g. one dispatch of the resolve blit) or a clear
   dispatch instead of a multi-MB cold-path staging alloc + upload.

@@ -93,6 +93,20 @@ struct C_PerAxisTrixelCanvases {
     std::pair<ResourceId, Buffer *> cellIndirect_{0, nullptr};
     int cellRegionStride_ = 0; // uints per axis region (>= axis cells, 64-aligned)
 
+    // Per-cell deterministic-winner scratch for the per-axis store (#2255):
+    // one uint per per-axis canvas texel (shared across the three axes — each
+    // axis's store/resolve/tap sequence completes before the next begins),
+    // holding the minimum run-stable voxel pool index among the faces that tie
+    // the settled per-cell distance key. Stage 2's per-axis color tap admits
+    // only that index, so the color/entity-id planes are byte-identical
+    // run-to-run at a fixed pose. A Buffer (not a fourth texture) because
+    // Metal has only one image-atomic scratch slot (held by distances_) — the
+    // same rationale as the #1435 resolve scratch, whose binding
+    // (kBufferIndex_PerAxisResolveScratch) this transiently reuses during the
+    // per-axis dispatches only. Reset to 0xFFFFFFFF ("no winner") per axis by
+    // dispatchPerAxisCanvases.
+    std::pair<ResourceId, Buffer *> winnerIds_{0, nullptr};
+
     // Allocation state is the texture handles themselves — no separate bool to
     // drift out of sync (cf. the no-dirty-flags rule in .claude/rules/cpp-ecs.md).
     bool isAllocated() const {
@@ -154,6 +168,14 @@ struct C_PerAxisTrixelCanvases {
         static constexpr std::int32_t kDistanceClear =
             static_cast<std::int32_t>(IRConstants::kTrixelDistanceMaxDistance);
         IRRender::device()->clearTexImage(resolveDepth_.second, 0, &kDistanceClear);
+        winnerIds_ = IRRender::createResource<Buffer>(
+            nullptr,
+            static_cast<std::size_t>(size.x) * static_cast<std::size_t>(size.y) *
+                sizeof(std::uint32_t),
+            BUFFER_STORAGE_DYNAMIC,
+            BufferTarget::SHADER_STORAGE,
+            kBufferIndex_PerAxisResolveScratch
+        );
     }
 
     // Release all three axis texture sets + the resolve texture and reset to the
@@ -178,6 +200,8 @@ struct C_PerAxisTrixelCanvases {
         IRRender::destroyResource<Buffer>(cellIndirect_.first);
         cellIndirect_ = {0, nullptr};
         cellRegionStride_ = 0;
+        IRRender::destroyResource<Buffer>(winnerIds_.first);
+        winnerIds_ = {0, nullptr};
         size_ = ivec2{0, 0};
     }
 

@@ -70,6 +70,14 @@ class RenderDevice {
     virtual void setDepthTest(bool enabled) = 0;
     virtual void setDepthWrite(bool enabled) = 0;
     virtual void clearTexImage(const Texture2D *texture, int level, const void *data) = 0;
+    // GPU-side repeating-single-byte fill of a buffer's first @p sizeBytes —
+    // the semantics Metal's blit fillBuffer offers natively, matched on GL by
+    // glClearNamedBufferSubData with an R8UI pattern. Suited to sentinels whose
+    // every byte is identical (0x00, 0xFF); a multi-byte pattern like
+    // 0x0000FFFF needs a clear dispatch instead (see the GPU-buffer-sentinel
+    // gotcha in engine/prefabs/CLAUDE.md).
+    virtual void
+    fillBuffer(const Buffer *buffer, std::size_t sizeBytes, std::uint8_t byteValue) = 0;
     virtual void finish() = 0;
 
     virtual GpuTimestampHandle createTimestampPair() {

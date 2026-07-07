@@ -85,6 +85,17 @@ layout(rgba8, binding = 0) writeonly uniform image2D triangleCanvasColors;
 layout(r32i, binding = 1) uniform iimage2D triangleCanvasDistances;
 layout(rg32ui, binding = 2) writeonly uniform uimage2D triangleCanvasEntityIds;
 
+// Per-cell deterministic-winner scratch for the per-axis store (#2255),
+// resolved between the stages by stage 1's winner-resolve dispatch: the
+// minimum run-stable voxel pool index among the faces that tie the settled
+// per-cell distance key. Read only by the per-axis taps below; the cardinal /
+// single-canvas / detached paths never touch it. Transiently reuses the
+// #1435 resolve-scratch binding (kBufferIndex_PerAxisResolveScratch), free
+// during the per-axis dispatches.
+layout(std430, binding = 28) readonly buffer PerAxisWinnerScratch {
+    uint perAxisWinnerIds[];
+};
+
 // Fog cut-face inputs (#2125). STAGE_1 binds the fog grid on image slot 0 (free
 // there), but slot 0 is the colour output here, so the fog grid binds on slot 3
 // instead (slots 1/2 are the distance + entity-id outputs). The world fog canvas
@@ -139,6 +150,32 @@ void writeColorTap(
         imageStore(triangleCanvasEntityIds, canvasPixel,
                    uvec4(packedEntityId, 0u, 0u));
     }
+}
+
+// Per-axis color tap with the deterministic-winner guard (#2255). The depth
+// re-test alone admits EVERY face whose encoded key ties the settled winner
+// (equal keys arise from the 4-bit frac quantization on the per-axis store),
+// and the non-atomic imageStore then makes the color/entity-id planes
+// last-writer-wins — GPU-scheduling-dependent, so they drifted run-to-run at
+// a fixed non-cardinal pose while the distance plane stayed identical. The
+// winner scratch (resolved between the stages by stage 1's resolveMode
+// dispatch) holds the minimum run-stable voxel pool index among the tied
+// faces; requiring `voxelIndex == winner` admits exactly one writer. The
+// cardinal paths keep the plain writeColorTap above — their integer iso key
+// is a bijection of the cell, no tie is possible, and adding a dead guard
+// there would risk the cardinal byte-identity contract.
+void writeColorTapPerAxis(
+    const ivec2 canvasPixel,
+    const int voxelDistance,
+    const vec4 voxelColor,
+    const uvec2 packedEntityId,
+    const uint voxelIndex
+) {
+    const ivec2 canvasSize = imageSize(triangleCanvasDistances);
+    if (!isInsideCanvas(canvasPixel, canvasSize)) return;
+    const uint cell = uint(canvasPixel.y) * uint(canvasSize.x) + uint(canvasPixel.x);
+    if (perAxisWinnerIds[cell] != voxelIndex) return;
+    writeColorTap(canvasPixel, voxelDistance, voxelColor, packedEntityId);
 }
 
 // Emit a face's 2x3 trixel block through the deformation matrix D.
@@ -288,9 +325,9 @@ void main() {
             // No sub-cell offset at base resolution; encode centre fracs (8,8).
             const int voxelDistance =
                 encodeDepthWithFaceFrac(pos3DtoDistance(facePos), slot, 8, 8);
-            writeColorTap(
+            writeColorTapPerAxis(
                 perAxisBase + pos3DtoPos2DIso(facePos), voxelDistance,
-                voxelColor, packedEntityId
+                voxelColor, packedEntityId, voxelIndex
             );
             return;
         }
@@ -302,9 +339,9 @@ void main() {
         const vec3 fracInCell_s2 = worldAligned_s2 - vec3(worldPos_s2);
         const int voxelDistance_s2 =
             encodeDepthWithFaceFrac(pos3DtoDistance(facePos_s2), slot, axis, fracInCell_s2);
-        writeColorTap(
+        writeColorTapPerAxis(
             perAxisBase + pos3DtoPos2DIso(facePos_s2), voxelDistance_s2,
-            voxelColor, packedEntityId
+            voxelColor, packedEntityId, voxelIndex
         );
         return;
     }

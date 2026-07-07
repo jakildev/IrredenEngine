@@ -760,6 +760,37 @@ metalCurrentDepthPixelFormat(),
         }
     }
 
+    void fillBuffer(const Buffer *buffer, std::size_t sizeBytes, std::uint8_t byteValue) override {
+        if (buffer == nullptr || sizeBytes == 0) {
+            return;
+        }
+        auto *mtlBuffer = static_cast<MTL::Buffer *>(buffer->getNativeBuffer());
+        if (mtlBuffer == nullptr) {
+            return;
+        }
+        const std::size_t clamped =
+            sizeBytes < mtlBuffer->length() ? sizeBytes : mtlBuffer->length();
+        auto *commandBuffer = metalCommandBuffer();
+        if (commandBuffer != nullptr) {
+            auto *blit = commandBuffer->blitCommandEncoder();
+            blit->fillBuffer(
+                mtlBuffer, NS::Range::Make(0, static_cast<NS::UInteger>(clamped)), byteValue
+            );
+            blit->endEncoding();
+            markMetalBufferEncoded(mtlBuffer);
+        } else {
+            // No command buffer (e.g. during startup init) — the GPU can't be
+            // reading the buffer yet, so a direct CPU fill is safe. contents()
+            // is null for a private-storage-mode buffer (no CPU-visible
+            // mapping); this PR's call sites are all shared-storage mid-frame,
+            // but guard the pointer so a future private-buffer caller no-ops
+            // here instead of memset'ing null.
+            if (void *mapped = mtlBuffer->contents()) {
+                std::memset(mapped, byteValue, clamped);
+            }
+        }
+    }
+
     void finish() override {
         // Block until prior GPU work completes, then start a fresh command
         // buffer for subsequent encoders. Mirrors OpenGL glFinish(). The
