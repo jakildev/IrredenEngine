@@ -44,7 +44,6 @@ struct FogObserverData {
 // Cross-section cap tuning — mirrors the GLSL twin (see there for the full
 // rationale: vertical faces only, radial band, no ray / occupancy reads).
 constant float kFogCutTone = 0.85f;
-constant float kFogCutLift = 0.06f;
 constant float kFogCutMaxRimCells = 2.0f;
 // Rim fade — mirrors the GLSL twin (see there for the full rationale and the
 // kFogHiddenKeepCells width coupling).
@@ -203,8 +202,7 @@ kernel void c_fog_to_trixel(
         if (fogObservers.visionCircleCount > 0 && faceAxis != 2) {
             const float capBlend =
                 1.0f - smoothstep(0.0f, kFogCutMaxRimCells, max(hardDistPastRim, 0.0f));
-            const float3 capColor =
-                mix(src.rgb * kFogCutTone + float3(kFogCutLift), src.rgb, state);
+            const float3 capColor = mix(src.rgb * kFogCutTone, src.rgb, state);
             outColor = mix(outColor, capColor, capBlend);
         }
     }

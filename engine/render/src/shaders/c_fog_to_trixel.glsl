@@ -69,12 +69,15 @@ layout(std140, binding = 27) uniform FogObserverData {
 
 // Cross-section cap tuning. The tone is the factor applied to the hidden
 // surface's lit colour where the cap tints it, so the cross-section reads as
-// the object's inside rather than its surface; the lift is a small constant
-// floor added on top so a cut through DARK matter (a near-black floor) still
-// reads against the fog black instead of vanishing — hue-preserving for
-// bright materials, a subtle gray-up for dark ones.
+// the object's inside rather than its surface. A pure multiply — NO constant
+// lift: hidden matter must always be at-or-darker than its lit self, and the
+// cap sits between the lit surface and the fade start (kFogRimFadeLevel <
+// tone < 1), so brightness is monotone across the rim on every material.
+// (An earlier +0.06 constant lift, meant to keep near-black cuts readable
+// against fog black, made any surface darker than ~40% brightness GLOW past
+// the rim — brighter hidden than lit; the feathered blend into the rim fade
+// below is what keeps dark cuts from vanishing now.)
 const float kFogCutTone = 0.85;
-const float kFogCutLift = 0.06;
 // The cap is a boundary CAP, not a reveal: only VERTICAL faces whose OWN
 // world column sits within this many world units PAST the disc radius are
 // tinted; beyond it the rim fade owns the falloff. The cap metric is RADIAL
@@ -287,8 +290,7 @@ void main() {
         if (visionCircleCount > 0 && faceAxis != 2) {
             const float capBlend =
                 1.0 - smoothstep(0.0, kFogCutMaxRimCells, max(hardDistPastRim, 0.0));
-            const vec3 capColor =
-                mix(src.rgb * kFogCutTone + vec3(kFogCutLift), src.rgb, state);
+            const vec3 capColor = mix(src.rgb * kFogCutTone, src.rgb, state);
             outColor = mix(outColor, capColor, capBlend);
         }
     }
