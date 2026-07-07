@@ -602,6 +602,30 @@ local sysId = IRSystem.registerSystem({
     `setAt` exists because most existing `*_lua.hpp` bindings expose
     fields as getter lambdas rather than `sol::property` pairs, so a
     full-row replacement is the universal write path.
+- **C++-component per-field writes from Lua.** When a `*_lua.hpp`
+  binding wants `:at(i).field = v` to write a single field through the
+  column ref (not a whole-row `setAt`), how the field binds depends on
+  its type:
+  - **Scalar** (`float`/`int`/`bool`) — bind as a read-write **member
+    pointer** (`"input", &C_RotationTarget::input_`); sol2 makes it a
+    directly-mutable property and the write lands in the referenced row.
+  - **Math-typed** (`IRMath::vec3`/`vec4`/`Color`) — bind as
+    `sol::property(getter, setter)` where the setter routes a Lua
+    `{ x, y, z, w }` table (or an IRMath userdata) through the matching
+    `IRScript::*FromLua` converter (`ir_script_utils.hpp`) and the getter
+    returns a fresh `{ x, y, z[, w] }` table. A bare
+    `&C_Foo::vecField_` member pointer compiles but is **unusable** from
+    Lua: `IRMath::vec3`/`vec4` are not registered Lua usertypes, so Lua
+    can neither construct a value to assign nor read the returned
+    userdata. The table convention mirrors the Lua-defined packed-vec
+    read/write shape (see "Packed vec3 / ivec3 / vec4 fields" above), so
+    C++-component and Lua-defined math fields round-trip through Lua
+    identically. `C_LocalTransform` (`rotation`/`translation`/`scale`)
+    is the reference binding. The getter allocates a small table per read
+    — keep any zero-alloc scalar convenience getters (e.g.
+    `translation_x/y/z`) as the hot read path.
+  - **Whole-object `setAt(i, T.new(...))`** remains the fallback for a
+    binding that hasn't exposed per-field properties.
   - `arch.<name>` for a Lua-defined component is a
     `LuaTypedColumnView`: `:getField(i, "name")` /
     `:setField(i, "name", v)` for typed per-field access, or
