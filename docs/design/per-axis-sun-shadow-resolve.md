@@ -105,3 +105,53 @@ lighting planning family (#1375 / #1376).
 `IRVoxelYaw` (#1344) — voxel-set-only Z-yaw scene — registers the resolve stage
 and shows voxel cubes casting directional sun shadows under continuous yaw.
 `shape_debug` also registers it (cardinal byte-identity + build coverage).
+
+## Bake coverage: the resolve fill IS the mechanism (#2082 close-out)
+
+The resolve stage's footprint fill is the sun-shadow **coverage** mechanism,
+not just a routing step. The per-axis scatter emits the full `scale²`
+cardinal-layout footprint per face (#1724) and the world-placed resolve
+(#1596) is footprint-dense the same way, so every resolve-fed caster path
+already writes a dense sun map. There is **no per-pixel bake-side footprint
+splat, and none is needed on these paths**: #2204's deterministic A/B
+implemented one and proved it byte-identical on the acceptance scene (even at
+a forced 12-texel radius) — the resolve-fed input was already saturated. The
+scatter fragment path's analytic edge coverage (`scatterAnalyticEdgeCoverage`,
+#1933/#2013, Metal) has no compute-domain call site; the bake cannot "call"
+it — a per-fragment helper keyed on `fwidth` and footprint params has no
+meaning in the bake's per-pixel sun-space projection (#2082 findings F1/F2).
+
+Two bounded exceptions, both tracked elsewhere:
+
+- **Cardinal direct-bake sparsity is host-conditional (#2270).** The cardinal
+  main-bake path (one `atomicMin` per canvas pixel, no resolve between)
+  saturates the sun map on some hosts but under-covers on macOS/Metal at 2×
+  framebuffer scale — the same splat A/B that was inert in #2204 is strongly
+  non-inert there (forced radius 12: 82 → 4 metric components). Deterministic
+  captures live on PR #2140's branch; diagnosis + fix belong to #2270, not to
+  the resolve architecture.
+- **Receiver-side ground-contact stipple** (bias / self-step lane) is
+  #2092/#2010; no bake-side coverage change can remove it.
+
+### Accepted residual: ~1-cell per-axis cast-silhouette looseness
+
+The resolve deliberately emits the **cardinal (un-deformed)** face footprint
+so `BAKE`'s recovery stays the exact inverse (cast == receive, #1380-safe).
+The store packs a sub-cell fractional offset (`encodeDepthWithFaceFrac` bits
+[9:2]) that the bake quantizes away, so at residual yaw the cast silhouette
+can read up to ~1 cell looser than the visible (deformed) silhouette.
+Threading the frac through resolve→bake was considered and **rejected**
+(#2082 ruling): it is in direct tension with the exact-inverse cardinal-layout
+invariant above. This is accepted drift, mirroring the #1883 precedent —
+revisit only if a deterministic capture shows it objectionable in a real
+scene.
+
+### Shadow-metric acceptance gates require a deterministic pose
+
+Any acceptance criterion gating on `render-shadow-metric.py` (canvas_stress
+`shadow_overlay_floor` or similar) **must pin the pose**:
+`--no-auto-rotate --no-spin`, plus `--frozen-pose <rad>` when a rotated
+entity pose is the subject. Under the default auto-rotate + self-spin the
+metric swings 0.17↔0.99 `largest_frac` run-to-run (#2204), so fixed
+thresholds are meaningless without the pinned pose. With it, captures are
+byte-identical across runs.
