@@ -60,80 +60,35 @@ const int kMaxFogVisionCircles = 8;
 layout(std140, binding = 27) uniform FogObserverData {
     vec4 visionCircles[kMaxFogVisionCircles];
     int visionCircleCount;
-    // 1 when the camera-anchored light-occlusion bitfield is live at binding
-    // 28 (BUILD_LIGHT_OCCLUSION_GRID registered this frame) — enables the
-    // analytic cross-section band below. 0 = fall through to the plain dark
-    // mask. Stamped by SYSTEM FOG_TO_TRIXEL on upload; rides the struct's
-    // first padding lane, so the CPU layout is unchanged.
-    int fogCutSolidsAvailable;
+    // Reserved padding lane. Previously carried the light-occlusion-grid
+    // availability flag for the retired ray+occupancy cut variant; the
+    // geometric cross-section cap below needs no external occupancy source,
+    // so the lane is unread (kept for the std140/Metal layout).
+    int _fogObserverPad0;
 };
 
-// World-occupancy source for the analytic cross-section band: the
-// camera-anchored light-occlusion voxel bitfield built each frame by
-// BUILD_LIGHT_OCCLUSION_GRID (full pool, world-space — invariant 1 in
-// engine/render/CLAUDE.md). Header + indexing mirror
-// c_propagate_light_volume.glsl::voxelOcclusionGetBit — keep in sync.
-// Binding 28 is the shared alias slot (sun-shadow depth map / per-axis
-// resolve scratch also ride it), so SYSTEM FOG_TO_TRIXEL re-binds the grid
-// buffer for this dispatch; when the grid system never registered,
-// fogCutSolidsAvailable is 0 and this buffer is never read.
-const int kLightOcclusionGridSize = 256;
-const int kLightOcclusionGridHalfExtent = 128;
-layout(std430, binding = 28) readonly buffer LightOcclusionGrid {
-    ivec4 occlusionWorldOrigin;
-    uint occlusionBits[];
-};
-
-bool fogCutVoxelSolid(ivec3 w) {
-    const int he = kLightOcclusionGridHalfExtent;
-    const int lx = w.x - occlusionWorldOrigin.x;
-    const int ly = w.y - occlusionWorldOrigin.y;
-    const int lz = w.z - occlusionWorldOrigin.z;
-    if (lx < -he || lx >= he || ly < -he || ly >= he || lz < -he || lz >= he) {
-        return false;
-    }
-    const uint flatIndex =
-        (uint(lz + he) * uint(kLightOcclusionGridSize) + uint(ly + he)) *
-            uint(kLightOcclusionGridSize) +
-        uint(lx + he);
-    return ((occlusionBits[flatIndex >> 5u] >> (flatIndex & 31u)) & 1u) == 1u;
-}
-
-// Analytic cross-section band tuning. The ray probe is the finite-difference
-// span (raw-depth units) used to recover this pixel's view-ray direction from
-// the same inverse projection the mask uses — wide enough to dodge fp
-// cancellation, tiny against the 16-bit depth range. The tone is the factor
-// applied to the hidden surface's lit colour where the cut repaints it, so
-// the cross-section reads as the object's inside rather than its surface;
-// the lift is a small constant floor added on top so a cut through DARK
-// matter (a near-black floor) still reads against the fog black instead of
-// vanishing — hue-preserving for bright materials, a subtle gray-up for
-// dark ones. The march steps are half-cell occupancy samples taken along the
-// ray from the disc entry inward: an entry in a small AIR POCKET (the cut
-// crossing an object's corner, with solid floor a couple of cells behind)
-// still caps with the toned cut instead of a black notch, while a genuinely
-// void entry (past the underside of all matter) stays dark — the iso ray
-// only ever descends, so the march can never climb back into solid that
-// isn't really behind the cut.
-const int kFogCutRayProbeDepth = 8;
+// Cross-section cap tuning. The tone is the factor applied to the hidden
+// surface's lit colour where the cap tints it, so the cross-section reads as
+// the object's inside rather than its surface. A pure multiply — NO constant
+// lift: hidden matter must always be at-or-darker than its lit self, and the
+// cap sits between the lit surface and the fade start (kFogRimFadeLevel <
+// tone < 1), so brightness is monotone across the rim on every material.
+// (An earlier +0.06 constant lift, meant to keep near-black cuts readable
+// against fog black, made any surface darker than ~40% brightness GLOW past
+// the rim — brighter hidden than lit; the feathered blend into the rim fade
+// below is what keeps dark cuts from vanishing now.)
 const float kFogCutTone = 0.85;
-const float kFogCutLift = 0.06;
-const int kFogCutMarchSteps = 8;
-// The cut is a boundary CAP, not a reveal: only surfaces whose OWN world
-// column sits within this many world units PAST the disc radius are
-// repainted; beyond it the rim fade owns the falloff. The cap metric is
-// RADIAL surface-XY distance past the rim — the same metric the reveal and
-// the rim fade key on — so every fog boundary is a circle concentric with
-// the disc at every face height. Capping by ray-entry distance instead
-// sweeps the disc along the view ray's world-(1,1) XY, which is a pure
-// screen-vertical displacement in iso: the band's outer edge rendered as
-// the reveal arc shifted up-screen plus straight screen-vertical tangent
-// flats, so the reveal read screen-space-ish on elevated faces (top of a
-// slab, crate tops). The radial cap also keeps the original exclusions:
-// VERTICAL surfaces far past the radius (an arena slab's side, border
-// rails) fail the same test and stay on the fade. The ray intersection +
-// march below remain solely as SOLIDITY evidence (is there really cut
-// matter at this boundary), never as the region bound.
+// The cap is a boundary CAP, not a reveal: only VERTICAL faces whose OWN
+// world column sits within this many world units PAST the disc radius are
+// tinted; beyond it the rim fade owns the falloff. The cap metric is RADIAL
+// surface-XY distance past the rim — the same metric the reveal and the rim
+// fade key on — so every fog boundary is a circle concentric with the disc
+// at every face height. (Capping by ray-entry distance instead sweeps the
+// disc along the view ray's world-(1,1) XY — a pure screen-vertical
+// displacement in iso — so that variant's band edge read screen-space-ish
+// on elevated faces.) VERTICAL surfaces far past the radius (an arena
+// slab's side, border rails) fail the same radial test and stay on the
+// fade; TOP faces are excluded entirely at the cap site below.
 const float kFogCutMaxRimCells = 2.0;
 
 // Rim fade — the fallback for hidden RASTERIZED matter the cut does not
@@ -153,9 +108,12 @@ const float kFogCutMaxRimCells = 2.0;
 const float kFogRimFadeCells = 8.0;
 const float kFogRimFadeLevel = 0.75;
 
-// Mirrors FrameDataVoxelToTrixel; we only need frameCanvasOffset,
+// Mirrors FrameDataVoxelToTrixel; we need frameCanvasOffset,
 // trixelCanvasOffsetZ1, and voxelRenderOptions for the pixel→pos3D
-// reconstruction, but std140 layout requires the full block.
+// reconstruction, plus visibleFaceIds so the cross-section cap below can
+// resolve each pixel's rasterized face axis from the depth encoding's slot
+// bits (the same slot→faceId mapping AO and lighting use). std140 layout
+// must match the producer declaration in c_voxel_to_trixel_stage_1.glsl.
 layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform vec2 frameCanvasOffset;
     uniform ivec2 trixelCanvasOffsetZ1;
@@ -170,6 +128,8 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform float rasterYaw;
     uniform float residualYaw;
     uniform float _yawPadding;
+    uniform vec4 faceDeform[3];
+    uniform ivec4 visibleFaceIds;
 };
 
 layout(rgba8, binding = 0) uniform image2D trixelColors;
@@ -224,12 +184,10 @@ void main() {
     // desaturated tone).
     const float gridState = fogTap(fogCell, fogSize);
     float state = gridState;
-    // Hard-disc-only reveal, tracked separately so the cross-section band's
-    // rim shortcut can't fire off a soft (Mode B) disc's wide falloff.
-    float hardState = 0.0;
     // This column's world distance PAST the nearest hard disc's radius —
-    // drives the rim fade below. Initialized to the full fade width so
-    // no-hard-disc scenes resolve to fade 0 (legacy path).
+    // drives the cross-section cap band and the rim fade below. Initialized
+    // to the full fade width so no-hard-disc scenes (including soft Mode B
+    // discs) resolve to cap-off + fade 0 (legacy path).
     float hardDistPastRim = kFogRimFadeCells;
 
     // Live analytic vision circles: max-combine each disc's smooth visibility,
@@ -255,7 +213,6 @@ void main() {
                 fogVisionCircleReveal(pos3D.xy, visionCircles[i], worldPerPixel);
             state = max(state, reveal);
             if (visionCircles[i].w == 0.0) {
-                hardState = max(hardState, reveal);
                 hardDistPastRim = min(
                     hardDistPastRim,
                     length(pos3D.xy - visionCircles[i].xy) - visionCircles[i].z
@@ -271,99 +228,36 @@ void main() {
 
     const vec4 src = imageLoad(trixelColors, pixel);
 
-    // Analytic cross-section band (#2124). A pixel that would fog-dark shows
-    // fog-hidden matter; removing that matter exposes the vision cylinder's
-    // cut surface wherever the pixel's view ray crosses a disc INSIDE solid
-    // voxels. Recover the ray from the SAME inverse projection the mask uses
-    // (finite difference over depth — exact and yaw-correct), intersect it
-    // with each hard disc analytically, and ask the light-occlusion bitfield
-    // whether the entry point is solid. Solid ⇒ repaint this pixel as the
-    // toned lit colour of the hidden surface — the cut. Runs after lighting
-    // and writes COLOUR ONLY: the cut never touches trixelDistances, so AO,
-    // the sun-shadow bake, and lighting are structurally unaffected (a
-    // raster-injected band creased AO and cast phantom shadows around the
-    // junction), and the silhouette is per-pixel analytic — no lattice steps.
-    // Hard discs only (a soft-edged Mode B disc keeps its faded look); air at
-    // the entry (thin hidden wall in front of the disc) falls through to the
-    // plain dark mask.
-    if (fogCutSolidsAvailable != 0 && gridState < kFogExploredValue &&
-        visionCircleCount > 0) {
-        bool cutSolid = false;
-        if (hardState > 0.0) {
-            // Rim pixel (inside the disc's AA band): the rasterized surface
-            // itself straddles the cut, so it IS the solid matter being cut —
-            // no ray test. Deciding these pixels by the ray instead dashes
-            // both the arc junction and the cylinder-tangent locus (t ≈ 0 and
-            // the discriminant degenerate exactly there).
-            cutSolid = true;
-        } else {
-            // World step per raw-depth unit along this pixel's view ray.
-            const vec3 posDeeper = trixelCanvasPixelToWorld3D(
-                pixel, rawDepth + kFogCutRayProbeDepth, trixelCanvasOffsetZ1,
-                frameCanvasOffset, voxelRenderOptions, rasterYaw
-            );
-            const vec3 rayStep = (posDeeper - pos3D) / float(kFogCutRayProbeDepth);
-            const float a = dot(rayStep.xy, rayStep.xy);
-            float bestT = -1.0;
-            if (a > 0.0) {
-                for (int i = 0; i < visionCircleCount; ++i) {
-                    if (visionCircles[i].w != 0.0) {
-                        continue; // hard discs only (Mode A)
-                    }
-                    const vec2 d0 = pos3D.xy - visionCircles[i].xy;
-                    const float b = 2.0 * dot(d0, rayStep.xy);
-                    const float c =
-                        dot(d0, d0) - visionCircles[i].z * visionCircles[i].z;
-                    const float det = b * b - 4.0 * a * c;
-                    if (det <= 0.0) {
-                        continue; // ray misses this disc
-                    }
-                    // First crossing at-or-behind the hidden surface. A
-                    // negative entry root means the ray is already past this
-                    // disc (a far-side surface) — no cut there by construction.
-                    const float t = (-b - sqrt(det)) / (2.0 * a);
-                    if (t >= 0.0 && (bestT < 0.0 || t < bestT)) {
-                        bestT = t;
-                    }
-                }
-            }
-            // Region bound is RADIAL (the surface's own column distance past
-            // the rim — see kFogCutMaxRimCells): the ray hit below is only the
-            // solidity evidence, so the band's outer edge stays concentric
-            // with the disc instead of screen-shifting with the ray sweep.
-            if (bestT >= 0.0 && hardDistPastRim <= kFogCutMaxRimCells) {
-                const float worldPerDepthUnit = length(rayStep);
-                const float entryDistance = bestT * worldPerDepthUnit;
-                if (entryDistance <= 1.0) {
-                    // Entry within one cell of the hit surface — still inside
-                    // the surface voxel's own matter: solid by construction,
-                    // immune to bitfield rounding right at the rim.
-                    cutSolid = true;
-                } else {
-                    // March half-cell occupancy samples along the ray from
-                    // just inside the rim (the first sample's half-cell inset
-                    // keeps the rounded cell unambiguously interior). The
-                    // march rides over rim-cell quantization misses AND small
-                    // air pockets at an object's cut corner (solid floor a
-                    // couple of cells behind the entry); a void entry finds
-                    // only descending air and stays on the dark mask.
-                    const float tHalfCell = 0.5 / worldPerDepthUnit;
-                    for (int s = 1; s <= kFogCutMarchSteps && !cutSolid; ++s) {
-                        cutSolid = fogCutVoxelSolid(
-                            roundHalfUp(pos3D + (bestT + float(s) * tHalfCell) * rayStep)
-                        );
-                    }
-                }
-            }
-        }
-        if (cutSolid) {
-            // `state` carries the disc's ~1px AA rim, so the junction with
-            // visible matter stays antialiased.
-            const vec3 cutColor = src.rgb * kFogCutTone + vec3(kFogCutLift);
-            imageStore(trixelColors, pixel, vec4(mix(cutColor, src.rgb, state), src.a));
-            return;
-        }
-    }
+    // Cross-section cap (#2124). A fog-hidden pixel within the cap band shows
+    // matter the vision cylinder slices; tint its VERTICAL faces as the cut
+    // surface so a sliced object reads as capped rather than hollow. The test
+    // is pure per-pixel geometry — the rasterized face's axis (the depth
+    // encoding's slot bits resolved through visibleFaceIds, the same mapping
+    // AO and lighting use) and the surface column's radial distance past the
+    // rim (hardDistPastRim — the metric the reveal and the rim fade key on):
+    //   * TOP (Z) faces are never capped: flat ground and object tops fade on
+    //     the plain radial curve. The retired ray+occupancy variant capped any
+    //     solid-backed surface — on flat ground its view ray entered the
+    //     floor's own interior underground and the march found it solid,
+    //     painting a bright ring hugging the rim on the ray-facing (down-
+    //     screen) side only: view-dependent and asymmetric.
+    //   * VERTICAL (X/Y) faces blend the cut tint over the fade with a
+    //     weight that is 1 at the rim and reaches 0 exactly at
+    //     kFogCutMaxRimCells, so the wall is ONE continuous curve that
+    //     CONVERGES to the plain fade — the top face's exact tone — at the
+    //     band's end. (A binary in-band cap stepped from the cut tint
+    //     straight to the fade at the band edge: a harsh line down the wall,
+    //     dithered into voxel-stepped teeth by the per-voxel-quantized depth
+    //     recovery, while the capless top face faded smoothly past it. The
+    //     earlier ray+occupancy march had worse content-dependent bands.)
+    //     The geometric test has no content dependence — no bands, no teeth,
+    //     and no light-occlusion-bitfield read (no external wiring).
+    // Colour-only, after lighting: AO, the sun bake, and lighting see no new
+    // geometry. Hard discs only — a soft Mode B disc's wide falloff IS its
+    // fade, and hardDistPastRim keeps its no-hard-disc init there, zeroing
+    // the cap blend. `state` carries the disc's ~1px AA rim, so the junction
+    // with visible matter stays antialiased.
+
     // Desaturate to luminance, then darken — the explored "memory" tone. Keeps
     // shape silhouettes visible so the player remembers what was there without
     // confusing it with what is *currently* there.
@@ -381,15 +275,24 @@ void main() {
         const float t = state / kFogExploredValue;
         outColor = mix(vec3(0.0), exploredColor, t);
     }
-    // Rim fade (see the const block): lift UNEXPLORED pixels toward their lit
-    // colour near the hard-disc rim. Explored memory keeps its tone. The
-    // squared ease-out crushes the fade tail to black well before the
-    // keep-ring drop, so the outermost kept columns' wall faces (whose
-    // constant-depth recovery reads a column slightly INSIDE their true one)
-    // can't catch a visible lift against the void behind them.
     if (gridState < kFogExploredValue) {
+        // Rim fade (see the const block): lift UNEXPLORED pixels toward their
+        // lit colour near the hard-disc rim. Explored memory keeps its tone.
+        // The squared ease-out crushes the fade tail to black well before the
+        // keep-ring drop, so the outermost kept columns' wall faces (whose
+        // constant-depth recovery reads a column slightly INSIDE their true
+        // one) can't catch a visible lift against the void behind them.
         const float u = 1.0 - smoothstep(0.0, kFogRimFadeCells, hardDistPastRim);
         outColor = mix(outColor, src.rgb, kFogRimFadeLevel * u * u);
+        // Feathered cross-section cap on vertical faces (see the block
+        // comment above the fade).
+        const int faceAxis = visibleFaceIds[encoded & 3] >> 1;
+        if (visionCircleCount > 0 && faceAxis != 2) {
+            const float capBlend =
+                1.0 - smoothstep(0.0, kFogCutMaxRimCells, max(hardDistPastRim, 0.0));
+            const vec3 capColor = mix(src.rgb * kFogCutTone, src.rgb, state);
+            outColor = mix(outColor, capColor, capBlend);
+        }
     }
     imageStore(trixelColors, pixel, vec4(outColor, src.a));
 }
