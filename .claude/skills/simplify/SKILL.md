@@ -314,6 +314,18 @@ site (`<name><`, `<name>(`) outside the definition itself. No hit → flag:
 headless test in this PR." Report, don't auto-fix — where the instantiation
 belongs is a design call.
 
+**Check 10: new `scripts/fleet/` executable with no test.**
+
+The review checklist's "new feature with no new test" rule applies to fleet
+tooling, where it's mechanically checkable at authoring time (PR #2232's
+`fleet-gh-token` burned a review round-trip on it). For each newly-added
+executable file under `scripts/fleet/` (not under `tests/`), look for a
+matching `scripts/fleet/tests/test_<name>.{sh,py}` (hyphens → underscores)
+or any test file exercising the tool by name. No hit → flag: "new fleet
+tool with no test_*; add one against a stubbed environment (see
+`scripts/fleet/CLAUDE.md` §Authoring rules for the hermeticity bar)."
+Report, don't auto-fix.
+
 ### 2c. Serialized-struct version-bump check
 
 See `engine/asset/CLAUDE.md` §"Automated version-bump detection" for the full
@@ -484,6 +496,12 @@ Remove:
   common in render code. Cut the forensic prose, keep the durable
   invariant, and leave at most a `// see #N` backref. Task-reference
   comments (`#NNN`) are mechanically caught by §2b Check 7.
+  The per-block judgment call turns **mechanical** when the same
+  multi-line comment/prose block appears near-verbatim at ≥3 sites in
+  the diff (PR #2211 retyped one ~35-line narrative at five) — that is
+  always the hoist case: consolidate into a `docs/design/<topic>.md`
+  and trim every site to the present-tense invariant + a one-line
+  backref, never N near-copies.
 - Location-reference narration that points at other code instead of
   explaining why — `// ... (set above)`, `// see below`, `// called
   from X`. Mechanically caught by §2b Check 4; delete the

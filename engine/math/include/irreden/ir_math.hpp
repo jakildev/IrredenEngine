@@ -1017,9 +1017,12 @@ constexpr ivec2 size3DtoOriginOffset2DZ1(const uvec3 size) {
 ///   canvasPixel = canvasOriginOffset + floor(cameraIso) + pos3DtoPos2DIso(world)
 /// @endcode
 ///
-/// Iso Y increases upward; the backend's canvas-to-screen flip is applied
-/// outside these helpers.  **Never inline these equations** — always use
-/// this helper so there is one place to fix coordinate-system bugs.
+/// Iso Y increases upward, and the canvas-to-screen mapping NEGATES iso X
+/// (`screen.x = -iso.x`, see pos3DtoPos2DScreen) — increasing iso.x is
+/// screen-LEFT, so never derive on-screen X direction from these equations
+/// alone.  Both screen adjustments are applied outside this helper.
+/// **Never inline these equations** — always use this helper so there is
+/// one place to fix coordinate-system bugs.
 constexpr ivec2 pos3DtoPos2DIso(const ivec3 position) {
     return ivec2(-position.x + position.y, -position.x - position.y + (2 * position.z));
 }
@@ -1095,7 +1098,9 @@ constexpr vec2 cameraMoveRelativeToYaw(const vec2 isoDelta, const float visualYa
 }
 
 /// Projects @p position to screen space by scaling the iso result by
-/// @p triangleStepSizeScreen and applying the backend-specific Y sign from
+/// @p triangleStepSizeScreen, negating X (`screen.x = -iso.x`: increasing
+/// iso.x is screen-left, so world +x is screen-right and world +y
+/// screen-left), and applying the backend-specific Y sign from
 /// IRPlatform::kGfx.
 constexpr vec2 pos3DtoPos2DScreen(const vec3 position, const vec2 triangleStepSizeScreen) {
     return pos3DtoPos2DIso(position) * triangleStepSizeScreen *

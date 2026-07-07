@@ -476,6 +476,16 @@ exit cleanly:
          - `gh pr edit <N> --remove-label "fleet:awaiting-base"`
          - `gh pr edit <N> --remove-label "fleet:stacked"`
          - `gh pr edit <N> --remove-label "fleet:needs-base-update"`
+         - **Strip the now-stale `Stacked on:` line from the PR body** in
+           the same step. review-pr's stacked-PR detection *reads* that
+           marker; a `base == master` PR still carrying it is a
+           contradiction that can misroute a now-standalone PR into
+           stacked review handling (#2231):
+           `gh pr view <N> --json body -q .body | sed '/^Stacked on:/d' > .merger-body-edit.md`
+           `gh pr edit <N> --body-file .merger-body-edit.md`
+           `rm -f .merger-body-edit.md`
+           (A `## Stack context` heading left with only a `Full chain:`
+           line is history and may stay.)
          - `git rebase origin/master`
          - Branch on the rebase result:
 

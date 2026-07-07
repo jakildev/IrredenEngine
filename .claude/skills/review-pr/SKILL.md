@@ -100,6 +100,17 @@ any `c_compute_*shadow*.glsl` / `.metal`)
 - A new serialized record type with no `// IRAsset: serialized` annotation —
   the simplify and review-pr checks cannot guard it without the annotation.
   Add the annotation and set `kSaveVersion = 1` on the struct.
+- A loader that mutates live state (entity splice, `setParent`, id-watermark
+  advance) with a fallible decode positioned **after** its first mutation —
+  a mid-apply decode failure leaves the world partially mutated. All decoding
+  must complete (into staged buffers) before the first live mutation; see
+  `engine/asset/CLAUDE.md` Extensibility Rule #5 (recurred #2228 → #2230).
+- `SaveSerialize<C>::write` reading a per-frame-**derived** field instead of
+  the authored source-of-truth. When a system re-derives the component's live
+  representation each frame (rotation re-voxelize, GPU-owned state), the
+  primary field holds a derived arrangement and the authored data sits in a
+  companion field (`*Source*` / `*Snapshot*` / `pending*`, e.g.
+  `rotationSourceVoxels_`) — verify the write reads the companion (PR #2240).
 
 **Naming / style** — follow the table in [`docs/agents/CLAUDE-BASELINE.md`](../../../docs/agents/CLAUDE-BASELINE.md) §Naming.
 - Private members take `m_`; public members take a trailing `_`. The reversed
@@ -150,11 +161,17 @@ verdict footer if any of these surfaces are touched)
   creation's `CLAUDE.md` is the delta. Apply both. If the subdirectory has a
   dedicated `REVIEW.md`, prefer it for review-specific rules.
 
-**Fleet scripts** (if the diff renames pane IDs, role names, or other
-identifiers in `scripts/fleet/`)
+**Fleet scripts** (if the diff touches `scripts/fleet/`)
 - Inline comments — layout diagrams, role-list blocks, `--help` banners —
-  still naming the old identifiers. `grep` the renamed-from names across the
-  touched scripts; comment blocks drift silently because nothing compiles them.
+  still naming the old identifiers after a rename. `grep` the renamed-from
+  names across the touched scripts; comment blocks drift silently because
+  nothing compiles them.
+- A `~/.fleet/state/state.json` consumer judging cache freshness from file
+  mtime instead of the in-file `generated_at` (UTC epoch; `st_mtime` fallback
+  only when `generated_at` is missing/unparseable) — followers rewrite the
+  file each tick with the leader's `generated_at` preserved, so mtime lies.
+  Shared helper: `fleet_poll_topology.state_age_seconds`; rule + rationale in
+  `docs/agents/FLEET-RUNTIME.md` (recurred: fleet-dispatcher, #2231).
 
 ## Verdict-label swap commands (shared-flow step 5b)
 

@@ -370,6 +370,12 @@ Do the work, then exit cleanly:
        silently doesn't fire — e.g. the parent was amended during review after
        you forked, so its recorded `headRefOid` is no longer an ancestor of
        your head (#1791).
+       After the drop lands the branch on master, check the PR body: a
+       leftover `Stacked on:` line is now stale (review-pr's stacked
+       detection reads it; base==master + `Stacked on:` is a contradiction,
+       #2231). Strip it in the same iteration:
+       `gh pr view <N> --json body -q .body | sed '/^Stacked on:/d' > /tmp/pr-body-<N>.md`
+       `gh pr edit <N> --body-file /tmp/pr-body-<N>.md`
     d''. **Gated-conflict guard — check before resolving.** List the
        conflicted files (`git diff --name-only --diff-filter=U`). If **every**
        one is a gated self-config file (`.claude/commands/role-*.md`,

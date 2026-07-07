@@ -200,7 +200,12 @@ fleet feedback — **except when the entire fix surface is gated self-config**
 If a `fleet:needs-fix` PR's **entire** changed-file set matches the
 auto-mode self-edit gate (`.claude/commands/role-*.md`, `.claude/agents/*`,
 `.claude/skills/**/SKILL.md`), no worker class can amend it — the gate
-is deterministic and escalating class does not help. This is the PR-feedback
+is deterministic and escalating class does not help. The gate is also
+**content-based**, not only path-based: an edit that grants a fleet role a
+new oversight/review bypass (e.g. a `fleet-state-machine.json` transition
+letting a class self-approve its own plan, #2192) can be blocked on a path
+*outside* that list — treat such a block exactly like a path gate hit
+(comment the precise fix for a human; don't retry via another tool). This is the PR-feedback
 analogue of role-worker.md step 8b. Take the DEFER path, **not** AMEND:
 
 1. Comment the **precise** human fix — exact file(s) and the change needed:

@@ -412,8 +412,15 @@ worked examples live in `docs/design/entity-editor-epic.md`. The summary:
 5. **Unknown is recoverable, never fatal.** Bad magic, truncated
    file, version newer than the loader knows about → clear diagnostic
    with file path + offset, return an empty/default value, never
-   crash. Test fixtures: corrupt-magic, truncated-mid-chunk,
-   version-too-new, unknown-chunk-tag, unknown-enum-value.
+   crash. A loader that mutates live engine state must fully
+   decode-validate the entire payload **before its first mutation**
+   (or stage-and-splice, applying to the live structures only on full
+   success) so a decode error leaves zero mutation behind —
+   length/id/header checks alone do not satisfy this; a
+   content-corrupt column or chunk must fail before the first entity
+   splice or `setParent` (#2228, #2230). Test fixtures: corrupt-magic,
+   truncated-mid-chunk, version-too-new, unknown-chunk-tag,
+   unknown-enum-value, content-corrupt-but-length-valid.
 6. **JSON sidecar is regenerated from the binary, never the source
    of truth.** Emit on save, ignore on load.
 7. **Save/load surface is documented in one place per format.** Each
