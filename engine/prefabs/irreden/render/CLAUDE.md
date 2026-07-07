@@ -578,6 +578,18 @@ the NEAREST 1:1-assuming parity reconstruction). Every term is `× cubeSub` /
 scale. Full invariant + verify steps:
 [`docs/design/detached-canvas-density-compensation.md`](../../../../docs/design/detached-canvas-density-compensation.md).
 
+## GPU stage timing (`gpu_stage_timing.hpp` / `gpu_stage_timing_observer.hpp`)
+
+One GPU measurement per tagged `SystemId`, bracketing the whole tick via
+device timestamp pairs (encoder-boundary counter samples on Metal). Several
+registry rows are unwired and always read 0.000, and `voxelStage1` /
+`shapePass1` are whole-tick bundles — before quoting the overlay in a perf
+plan or attributing cost to a sub-dispatch, read
+[`docs/design/gpu-stage-timing-cost-model.md`](../../../../docs/design/gpu-stage-timing-cost-model.md)
+(the reading contract + the measured dispatch cost model: empty early-return
+sweeps are effectively free; shader-side early-return cannot reclaim
+CPU-fixed dispatch-grid cost).
+
 ## Gotchas
 
 - **SQT transition complete (T-299/T-300/T-301a/T-302).** All render-side, update-side, and voxel-side readers/writers use `C_LocalTransform` + `C_WorldTransform`. The voxel pool's per-voxel SoA arrays are a dedicated 16-byte `IRRender::VoxelGpuPosition` POD (std430 stride contract). The legacy `C_Position3D` / `C_PositionGlobal3D` / `C_Rotation` components and `SYSTEM_GLOBAL_POSITION_3D` were deleted in T-302; consumers read `C_WorldTransform.translation_` and the SQT quat directly.
