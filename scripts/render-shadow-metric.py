@@ -181,6 +181,12 @@ def _main(argv: list[str]) -> int:
                     help="x,y,w,h region of interest (default: whole image).")
     ap.add_argument("--max-hole-ratio", type=float, default=None,
                     help="fail if hole_ratio exceeds this.")
+    ap.add_argument("--min-hole-ratio", type=float, default=None,
+                    help="fail if hole_ratio falls below this. Inverts the "
+                         "swiss-cheese upper bound for the zero-caster floor "
+                         "self-shadow guard (#2092): a fully-lit floor reads "
+                         "hole_ratio ~1.0, and self-shadow acne (shadow where "
+                         "there should be none) drives it down.")
     ap.add_argument("--max-components", type=int, default=None,
                     help="fail if the shadow shatters into more than this many "
                          "4-connected components.")
@@ -205,6 +211,8 @@ def _main(argv: list[str]) -> int:
     failed = []
     if args.max_hole_ratio is not None and m["hole_ratio"] > args.max_hole_ratio:
         failed.append(f"hole_ratio {m['hole_ratio']} > {args.max_hole_ratio}")
+    if args.min_hole_ratio is not None and m["hole_ratio"] < args.min_hole_ratio:
+        failed.append(f"hole_ratio {m['hole_ratio']} < {args.min_hole_ratio}")
     if args.max_components is not None:
         if m.get("components") is None:
             print(
