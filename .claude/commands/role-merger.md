@@ -298,30 +298,8 @@ exit cleanly:
         back to a known starting state for the next candidate:
         `git switch claude/merger-scratch`
       - Run `rm -f .merger-body.md`, then write `.merger-body.md`
-        with the **Write** tool:
-        ```
-        Merger: cannot cascade-rebase onto updated base PR
-        #<base-pr-number>. Its head ref `<baseRefName>` was force-
-        pushed and the new tip conflicts with this PR's own
-        commits.
-
-        Resolution: the author of this PR (or the upstream author)
-        rebases manually onto the new upstream tip:
-
-          git fetch origin
-          git rebase origin/<baseRefName>
-          # resolve conflicts, then:
-          git push --force-with-lease
-
-        Labeled `fleet:needs-base-update` — the merger and the
-        cascade-rebase pass skip this PR until the label clears.
-        It clears automatically when the upstream merges (step
-        2.5 re-targets to master and removes the label) or
-        closes; otherwise the human or an opus+-class worker clears it
-        after a manual rebase.
-
-        — fleet merger
-        ```
+        with the **Write** tool using the **§ cascade-rebase-conflict**
+        template from [merger-templates.md](../../docs/agents/merger-templates.md).
       - `gh pr comment <N> --body-file .merger-body.md`
       - `gh pr edit <N> --add-label "fleet:needs-base-update" --add-label "fleet:merger-cooldown"`
       - Log: `[YYYY-MM-DD HH:MM:SS] PR #<N> <headRefName>: cascade-rebase conflict onto #<base-pr-number>, labeled fleet:needs-base-update`
@@ -589,29 +567,11 @@ exit cleanly:
       Each fetch + check is a separate Bash call (single-command rule).
 
       If any check exits 0 for an "upstream PR" (`<upstream-N>`):
-      - Resolve the upstream tip SHA (needed for the rebase recipe below):
-        `git rev-parse origin/<upstream-headRefName>`
+      - Resolve the upstream tip SHA (needed for the template's rebase
+        recipe): `git rev-parse origin/<upstream-headRefName>`
         Store this output as `<upstream-tip-sha>`.
-      - Write `.merger-body.md` with:
-        ```
-        Merger: this PR's branch was forked from open PR #<upstream-N>
-        (`<upstream-headRefName>`). Its diff carries inherited commits
-        from that PR and cannot be cleanly rebased onto master until
-        #<upstream-N> merges.
-
-        Resolution after #<upstream-N> merges:
-          git fetch origin
-          git rebase --onto origin/master <upstream-tip-sha> <this-headRefName>
-          git push --force-with-lease
-
-        This drops #<upstream-N>'s inherited commits and leaves only
-        this PR's own changes on top of master.
-
-        Labeled `fleet:fork-of-other-pr` — the merger and worker
-        skip this PR in their conflict-resolution sweeps.
-
-        — fleet merger
-        ```
+      - Write `.merger-body.md` using the **§ fork-of-other-pr** template
+        from [merger-templates.md](../../docs/agents/merger-templates.md).
       - `gh pr comment <N> --body-file .merger-body.md`
       - `gh pr edit <N> --add-label "fleet:fork-of-other-pr"`
       - `gh pr edit <N> --add-label "fleet:merger-cooldown"`
@@ -735,8 +695,8 @@ exit cleanly:
               (ref already fetched in step a)
            3. Fetch the most recent merger comment body (single command):
               `gh pr view <N> --json comments --jq '[.comments[] | select(.body | test("— fleet merger"))] | last | .body'`
-           4. Scan the returned body for a `SHA pair:` line (added to
-              the comment template below). Extract the two SHAs. (If the
+           4. Scan the returned body for a `SHA pair:` line (part of the
+              semantic-conflict template). Extract the two SHAs. (If the
               returned body is null or empty — jq `| last` on an empty
               array — treat as "no prior merger comment found" and
               proceed to step 6.)
@@ -747,13 +707,12 @@ exit cleanly:
               - Log: `[<timestamp>] PR #<N> <headRefName>: recurring semantic-conflict — sha pair unchanged, comment skipped`
               - Jump to step f.
            6. If the sha pair differs, or no prior merger comment is
-              found: proceed with the full comment below, embedding
-              the current sha pair in the `SHA pair:` line.
+              found: proceed with the full comment, embedding the
+              current sha pair in the `SHA pair:` line.
            If `fleet:semantic-conflict` is NOT in the cached labels,
            skip this check and proceed with the full comment.
-         - Build a description of the conflict. Cap the file list at
-           5; if more files conflict, append `… and N more` so the
-           comment stays readable. For each listed file, run
+         - Build a description of the conflict. For each conflicted
+           file, run
            `git log -1 --format="%h %s" origin/master -- <file>` to
            identify what touched it on master, and
            `git log -1 --format="%h %s" origin/<headRefName> -- <file>`
@@ -761,29 +720,10 @@ exit cleanly:
            because `git switch claude/merger-scratch` left HEAD on
            master (and the prior detached HEAD is gone) — a bare
            `git log -- <file>` would log master twice.
-           Write to `.merger-body.md`:
-           ```
-           Merger: cannot auto-resolve mechanically. The PR has
-           semantic conflicts with current master that need
-           judgement-level resolution.
-
-           Conflicted files:
-           - `<file1>` — master: `<sha> <subj>`; PR: `<sha> <subj>`
-           - `<file2>` — ...
-
-           Labeled `fleet:semantic-conflict` — a worker will
-           attempt resolution on its next iteration (rebase,
-           manually resolve, build, push). If the worker also
-           can't resolve (truly ambiguous, design decision needed),
-           it will escalate to `human:needs-fix`.
-
-           The `fleet:approved` label has been removed if it was set
-           — the PR no longer represents a reviewed state.
-
-           SHA pair: master=<master-tip-sha> × PR=<pr-head-sha>
-
-           — fleet merger
-           ```
+           Write `.merger-body.md` using the **§ semantic-conflict**
+           template from [merger-templates.md](../../docs/agents/merger-templates.md)
+           — it carries the file-list cap and the `SHA pair:` line the
+           dedup check above parses.
          - `gh pr comment <N> --body-file .merger-body.md`
          - Remove stale verdict labels (not fleet:has-nits — nits remain valid
            regardless of merge conflicts and should be addressed once the
