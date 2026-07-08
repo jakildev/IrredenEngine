@@ -43,9 +43,12 @@
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
 
+#include <array>
 #include <cstdint>
+#include <cstdio>
 #include <functional>
 #include <list>
+#include <vector>
 
 namespace IRLightingDemo {
 
@@ -118,6 +121,15 @@ inline int g_autoWarmupFrames = 0;
 inline int g_autoProfileFrames = 0;
 inline int g_autoProfileCount = 0;
 inline float g_initialZoom = 0.0f;
+// `--light-boundary-sweep` (see #2310): replaces kShots with a
+// runtime-computed series that pans the camera anchor away from the emissive
+// light in world-X steps, walking the light through the light-volume window
+// boundary. Exercises the boundary-seeding path: contribution must fade
+// continuously across the shots (in-window → clamped edge seed → out of
+// reach), never pop or band.
+inline bool g_lightBoundarySweep = false;
+inline std::vector<IRVideo::AutoScreenshotShot> g_boundarySweepShots;
+inline std::vector<std::array<char, 48>> g_boundarySweepLabels;
 inline IRRender::DebugOverlayMode g_cliOverlay = IRRender::DebugOverlayMode::NONE;
 // CLI flag for `--no-ao` (or `--ao-off`). Applied after the demo's own
 // DemoConfig.aoEnabled_ so the flag wins. Lets validation runs flip AO
@@ -134,6 +146,11 @@ inline void registerArgs() {
     );
     IREngine::args().flag("--no-ao", "Disable ambient-occlusion crease darkening");
     IREngine::args().flag("--ao-off", "Alias for --no-ao");
+    IREngine::args().flag(
+        "--light-boundary-sweep",
+        "Auto-screenshot series panning the camera anchor away from the "
+        "emissive light through the light-volume window boundary"
+    );
 }
 
 inline void readArgs() {
@@ -147,6 +164,7 @@ inline void readArgs() {
     if (!overlayStr.empty())
         g_cliOverlay = IRRender::debugOverlayModeFromString(overlayStr.c_str());
     g_cliDisableAO = IREngine::args().getFlag("--no-ao") || IREngine::args().getFlag("--ao-off");
+    g_lightBoundarySweep = IREngine::args().getFlag("--light-boundary-sweep");
 }
 
 inline EntityId createVoxelPoolShape(
@@ -246,6 +264,10 @@ inline void createGeometry() {
     IREntity::setComponent(floor, C_LightBlocker{false, false, 0.0f});
 }
 
+// Shared by createLights and the --light-boundary-sweep shot builder so the
+// sweep pans relative to where the emissive light actually is.
+inline constexpr vec3 kEmissiveLightPos{24.0f, 6.0f, -2.0f};
+
 inline void createLights(const DemoConfig &config) {
     IRRender::setSunDirection(config.sunDirection_);
     IRRender::setSunIntensity(config.sunIntensity_);
@@ -270,7 +292,7 @@ inline void createLights(const DemoConfig &config) {
 
     if (config.addEmissive_) {
         IREntity::createEntity(
-            C_LocalTransform{vec3(24.0f, 6.0f, -2.0f)},
+            C_LocalTransform{kEmissiveLightPos},
             C_LightSource{
                 LightType::EMISSIVE,
                 Color{80, 210, 255, 255},
@@ -410,8 +432,36 @@ inline void initSystems(const DemoConfig &config) {
         IRVideo::AutoScreenshotConfig screenshotConfig{};
         screenshotConfig.warmupFrames_ = g_autoWarmupFrames;
         screenshotConfig.settleFrames_ = 3;
-        screenshotConfig.shots_ = kShots;
-        screenshotConfig.numShots_ = sizeof(kShots) / sizeof(kShots[0]);
+        if (g_lightBoundarySweep) {
+            // World-X distances from the emissive light to the camera anchor.
+            // With the light's radius r and the volume half-extent 64:
+            // 0/40 stay in-window (identical full-strength field), 70 seeds
+            // the clamped edge at residual 1 − 6·step, 88 at 1 − 24·step,
+            // and 110 is out of residual reach (correctly dark).
+            constexpr float kSweepDistances[] = {0.0f, 40.0f, 70.0f, 88.0f, 110.0f};
+            const std::size_t n = sizeof(kSweepDistances) / sizeof(kSweepDistances[0]);
+            g_boundarySweepShots.reserve(n);
+            g_boundarySweepLabels.reserve(n);
+            for (std::size_t i = 0; i < n; ++i) {
+                const vec3 anchorTarget =
+                    vec3(kEmissiveLightPos.x + kSweepDistances[i], kEmissiveLightPos.y, 0.0f);
+                auto &label = g_boundarySweepLabels.emplace_back();
+                std::snprintf(
+                    label.data(),
+                    label.size(),
+                    "light_boundary_d%03d",
+                    static_cast<int>(kSweepDistances[i])
+                );
+                IRVideo::AutoScreenshotShot
+                    shot{2.0f, -IRMath::pos3DtoPos2DIso(anchorTarget), 0.0f, label.data()};
+                g_boundarySweepShots.push_back(shot);
+            }
+            screenshotConfig.shots_ = g_boundarySweepShots.data();
+            screenshotConfig.numShots_ = static_cast<int>(g_boundarySweepShots.size());
+        } else {
+            screenshotConfig.shots_ = kShots;
+            screenshotConfig.numShots_ = sizeof(kShots) / sizeof(kShots[0]);
+        }
         renderPipeline.push_back(IRVideo::createAutoScreenshotSystem(screenshotConfig));
     }
 

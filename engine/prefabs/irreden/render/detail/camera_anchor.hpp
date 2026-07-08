@@ -21,10 +21,16 @@
 namespace IRRender::detail {
 
 /// Derive the world voxel the iso camera is currently centered on.
-/// Inverse of `IRMath::pos3DtoPos2DIso` evaluated at `z = 0`:
-///   `iso.x = -x + y, iso.y = -x - y` ⇒
-///   `x = -(iso.x + iso.y) / 2, y = (iso.x - iso.y) / 2`
-/// Result is rounded to the nearest integer voxel.
+/// The pan that centers world point `P` on screen is `pan = -iso(P)`
+/// (panning moves the world opposite the view; see the shot-offset
+/// convention in `shape_debug`), so the anchor inverts the projection
+/// of the NEGATED pan. With `iso.x = -x + y, iso.y = -x - y` at
+/// `z = 0` and `iso(P) = -pan`:
+///   `x = (pan.x + pan.y) / 2, y = (pan.y - pan.x) / 2`
+/// Result is rounded to the nearest integer voxel. The negation is
+/// load-bearing: inverting the un-negated pan anchors the volume at the
+/// MIRROR of the viewed position, sliding the light window away from the
+/// view at twice the pan rate (see #2310).
 ///
 /// Coherence contract: both `BUILD_LIGHT_OCCLUSION_GRID` and
 /// `COMPUTE_LIGHT_VOLUME` must call this once per frame from the same
@@ -36,9 +42,9 @@ namespace IRRender::detail {
 /// `lightVolumeWorldOrigin` vs `occlusionWorldOrigin`) rather than
 /// misindexing.
 inline IRMath::ivec3 cameraAnchorVoxel() {
-    const IRMath::vec2 iso = IRRender::getCameraPosition2DIso();
-    const float worldX = -(iso.x + iso.y) * 0.5f;
-    const float worldY = (iso.x - iso.y) * 0.5f;
+    const IRMath::vec2 pan = IRRender::getCameraPosition2DIso();
+    const float worldX = (pan.x + pan.y) * 0.5f;
+    const float worldY = (pan.y - pan.x) * 0.5f;
     return IRMath::ivec3(IRMath::round(worldX), IRMath::round(worldY), 0);
 }
 

@@ -3,14 +3,17 @@ using namespace metal;
 
 // Mirrors shaders/c_seed_light_volume.glsl. One thread per active
 // light source writes its emissive RGB into the volume texel at the
-// light's world voxel origin, with alpha=1.0 (full residual strength,
-// decremented by `stepFalloff` per step in the propagate pass).
+// light's world voxel origin, with alpha = the CPU-computed seed
+// residual (`coneAndSeedAlpha.y`): 1.0 for in-window lights,
+// distance-discounted for out-of-window lights seeded at the clamped
+// window edge (see `gatherLightSources`). The propagate pass decrements
+// alpha by `stepFalloff` per step.
 
 struct GPULightSource {
     float4 originAndType;
     float4 colorAndIntensity;
     float4 directionAndRadius;
-    float4 coneAndPad;
+    float4 coneAndSeedAlpha;
 };
 
 struct LightVolumeParams {
@@ -49,5 +52,6 @@ kernel void c_seed_light_volume(
         float3(0.0),
         float3(1.0)
     );
-    lightVolume.write(float4(emit, 1.0), uint3(cell));
+    const float seedAlpha = clamp(light.coneAndSeedAlpha.y, 0.0, 1.0);
+    lightVolume.write(float4(emit, seedAlpha), uint3(cell));
 }

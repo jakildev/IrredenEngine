@@ -22,11 +22,13 @@
 //
 // Sized smaller than the light-occlusion SSBO grid (256³) on purpose: the
 // 128³ × RGBA8 footprint (8 MiB per buffer) keeps GPU storage bounded
-// and the dilation chain's per-iteration cost low. Light sources
-// placed outside the camera-anchored extent are still skipped on the
-// CPU before the SSBO upload (Phase 1b / issue #362), with a one-shot
-// warning per unique offending origin in `system_compute_light_volume`
-// so silent clamping never recurs.
+// and the dilation chain's per-iteration cost low. Light sources placed
+// outside the camera-anchored extent seed the clamped window boundary at
+// a distance-discounted residual (exact under the propagate pass's
+// Manhattan metric — see `gatherLightSources`), so their in-window
+// contribution is correct and fades continuously; only lights whose
+// residual budget cannot reach the window are skipped. The perf HUD's
+// CULL block reports seeded/eligible counts.
 //
 // Two textures (`textureRead_` / `textureWrite_`) form a ping-pong pair
 // for the GPU jump-flood propagation passes (Phase 1a / issue #359).
@@ -55,6 +57,11 @@ struct C_CanvasLightVolume {
     std::pair<ResourceId, Texture3D *> textureRead_;
     std::pair<ResourceId, Texture3D *> textureWrite_;
 
+    // LINEAR so the lighting consumer's sampler3D read interpolates
+    // between volume cells — softens the integer Manhattan falloff
+    // shells into a smooth gradient. The propagate/seed passes bind the
+    // textures as images (imageLoad/imageStore), which bypass filtering,
+    // so the dilation math itself is unaffected.
     C_CanvasLightVolume()
         : textureRead_{IRRender::createResource<IRRender::Texture3D>(
               TextureKind::TEXTURE_3D,
@@ -63,7 +70,7 @@ struct C_CanvasLightVolume {
               kLightVolumeSize,
               TextureFormat::RGBA8,
               TextureWrap::CLAMP_TO_EDGE,
-              TextureFilter::NEAREST
+              TextureFilter::LINEAR
           )}
         , textureWrite_{IRRender::createResource<IRRender::Texture3D>(
               TextureKind::TEXTURE_3D,
@@ -72,7 +79,7 @@ struct C_CanvasLightVolume {
               kLightVolumeSize,
               TextureFormat::RGBA8,
               TextureWrap::CLAMP_TO_EDGE,
-              TextureFilter::NEAREST
+              TextureFilter::LINEAR
           )} {}
 
     void onDestroy() {

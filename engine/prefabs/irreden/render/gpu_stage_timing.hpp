@@ -47,6 +47,13 @@ struct GpuStageTiming {
     // VoxelCullAccumulator below.
     std::uint32_t visibleVoxelCount_ = 0;
     std::uint32_t totalVoxelCount_ = 0;
+    // Light-gather diagnostic. Populated by COMPUTE_LIGHT_VOLUME each
+    // frame: `lightsSeeded_` = sources written to the seed SSBO (in-window
+    // plus boundary-discounted), `lightsEligible_` = non-directional
+    // canvas-scoped sources considered. eligible − seeded = sources whose
+    // influence cannot reach the camera-anchored volume window.
+    std::uint32_t lightsSeeded_ = 0;
+    std::uint32_t lightsEligible_ = 0;
     // Only flipped between frames by Lua on the main thread (Lua runs in
     // INPUT/UPDATE, never RENDER). Stable across the RENDER pipeline, so
     // probes can read `enabled_` twice and rely on both values matching.
