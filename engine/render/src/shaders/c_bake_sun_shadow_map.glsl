@@ -9,18 +9,10 @@ layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
 #include "ir_iso_common.glsl"
 #include "ir_per_axis_lighting.glsl"
+// Shared caster/receiver sun-space projection + depth pack (#2083).
+#include "ir_sun_projection.glsl"
 
 const int kEmptyDistanceEncoded = 65535;
-const int kSunShadowMapDim = 1024;
-const int kCascadeTexelCount = kSunShadowMapDim * kSunShadowMapDim;
-
-const float kSunDepthScale = 1024.0;
-const float kSunDepthOffset = 512.0;
-
-uint packSunDepth(float sunZ) {
-    float biased = clamp(sunZ + kSunDepthOffset, 0.0, kSunDepthOffset * 2.0);
-    return uint(biased * kSunDepthScale);
-}
 
 layout(std430, binding = 28) restrict buffer SunShadowDepthMap {
     uint sunDepthBuf[];
@@ -72,6 +64,12 @@ layout(r32i, binding = 0) readonly uniform iimage2D trixelDistances;
 
 void bakeCascade(vec2 sunUV, float sunZ, vec2 origin, vec2 texelSz, int cascadeOffset) {
     ivec2 sunPx = ivec2(floor((sunUV - origin) / texelSz));
+    // Buffer-bounds guard, not a culling decision (#2083): a caster outside
+    // THIS cascade's UV range is unreadable here by any receiver the sample
+    // side accepts — sunCascadeKernelInterior (ir_sun_projection.glsl) routes
+    // receivers near the map edge to the covering cascade, whose wider AABB
+    // holds this caster's write. Every caster is projected into BOTH cascades
+    // below, so this early-out never drops a caster from the pipeline.
     if (sunPx.x < 0 || sunPx.x >= kSunShadowMapDim ||
         sunPx.y < 0 || sunPx.y >= kSunShadowMapDim) {
         return;
@@ -122,12 +120,13 @@ void main() {
         );
     }
 
-    vec3 sunDir = sunDirection.xyz;
-    vec3 uHat = sunBasisU.xyz;
-    vec3 vHat = sunBasisV.xyz;
-    vec2 sunUV = vec2(dot(pos3D, uHat), dot(pos3D, vHat));
-    float sunZ = -dot(pos3D, sunDir);
+    // Shared caster/receiver projection (#2083) — the receiver lookup
+    // (ir_sun_shadow_sample.glsl worldSunShadowFactor) derives its sun UV +
+    // depth from this same function, so cast and receive cannot drift.
+    vec3 sunProj = sunSpaceProject(
+        pos3D, sunBasisU.xyz, sunBasisV.xyz, sunDirection.xyz
+    );
 
-    bakeCascade(sunUV, sunZ, cascadeOriginUV_0, cascadeTexelSize_0, 0);
-    bakeCascade(sunUV, sunZ, cascadeOriginUV_1, cascadeTexelSize_1, kCascadeTexelCount);
+    bakeCascade(sunProj.xy, sunProj.z, cascadeOriginUV_0, cascadeTexelSize_0, 0);
+    bakeCascade(sunProj.xy, sunProj.z, cascadeOriginUV_1, cascadeTexelSize_1, kCascadeTexelCount);
 }

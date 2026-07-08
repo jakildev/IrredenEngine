@@ -10,6 +10,9 @@ layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
 #include "ir_iso_common.glsl"
 #include "ir_per_axis_lighting.glsl"
+// Shared caster/receiver sun-space projection (#2083); must precede
+// ir_sun_shadow_sample.glsl (the include resolver is non-recursive).
+#include "ir_sun_projection.glsl"
 // FrameDataSun UBO (29), sun-depth SSBO (28), the cascade PCF sampler, and the
 // world-space worldSunShadowFactor() lookup — shared with c_lighting_to_trixel's
 // detached world-receive path (#1576 P4b-2).

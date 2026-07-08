@@ -6,11 +6,13 @@
 // pos). Kept in a dedicated include — NOT in ir_iso_common.glsl — so only the
 // sun-shadow consumers recompile and the SDF / voxel / scatter shaders keep
 // their cardinal-yaw byte-identity (same rationale as ir_per_axis_lighting.glsl).
+//
+// Requires ir_sun_projection.glsl included FIRST by the top-level shader (the
+// GLSL include resolver is non-recursive): the map-dim constants, the shared
+// sunSpaceProject basis, unpackSunDepth, and sunCascadeKernelInterior all
+// live there so the caster bake and this receiver lookup share one source
+// (#2083).
 
-const int kSunShadowMapDim = 1024;
-const int kCascadeTexelCount = kSunShadowMapDim * kSunShadowMapDim;
-const float kSunDepthScale = 1024.0;
-const float kSunDepthOffset = 512.0;
 const float kShadowDarken = 0.45;
 const float kNormalBiasVoxels = 0.5;
 const float kShadowBiasTexelScale = 2.0;
@@ -45,10 +47,6 @@ layout(std140, binding = 29) uniform FrameDataSun {
 layout(std430, binding = 28) readonly buffer SunShadowDepthMap {
     uint sunDepthBuf[];
 };
-
-float unpackSunDepth(uint packedDepth) {
-    return float(packedDepth) / kSunDepthScale - kSunDepthOffset;
-}
 
 float sampleCascadeShadow(
     vec2 sunUV, float sunZ, vec3 normal, vec3 sunDir,
@@ -104,9 +102,14 @@ float worldSunShadowFactor(vec3 pos3D, vec3 normal, float isoDepth, float selfSt
     vec3 sunDir = sunDirection.xyz;
     vec3 uHat = sunBasisU.xyz;
     vec3 vHat = sunBasisV.xyz;
-    vec3 biasedPos3D = pos3D + normal * kNormalBiasVoxels;
-    vec2 sunUV = vec2(dot(biasedPos3D, uHat), dot(biasedPos3D, vHat));
-    float sunZ = -dot(biasedPos3D, sunDir);
+    // Shared caster/receiver projection (#2083) — the bake derives every
+    // caster's sun UV + depth from this same function, so cast and receive
+    // cannot drift.
+    vec3 sunProj = sunSpaceProject(
+        pos3D + normal * kNormalBiasVoxels, uHat, vHat, sunDir
+    );
+    vec2 sunUV = sunProj.xy;
+    float sunZ = sunProj.z;
 
     float shadowAccum;
     if (cascadeCount <= 1) {
@@ -116,12 +119,25 @@ float worldSunShadowFactor(vec3 pos3D, vec3 normal, float isoDepth, float selfSt
         );
     } else {
         float distToSplit = isoDepth - cascadeSplitDepth;
-        if (distToSplit < -kCascadeBlendRange) {
+        // Covering-cascade fallback (#2083): the near cascade is valid for
+        // this receiver only where its PCF kernel sits interior to the map —
+        // its AABB was built from a depth-capped corner set, so a receiver
+        // near the map edge (screen corners, the split blend band past the
+        // cap) can straddle a region where taps fall out of bounds and the
+        // matching casters were bounds-dropped by the bake. Selecting the
+        // covering far cascade there trades texel resolution for a complete
+        // kernel instead of silently reading the missing region as "lit"
+        // (partial face dropout). The gate is per-receiver-UV, uniform across
+        // a voxel's faces, so a straddling voxel's faces select consistently.
+        // Interior receivers take exactly the pre-#2083 branches.
+        bool nearInterior =
+            sunCascadeKernelInterior(sunUV, cascadeOriginUV_0, cascadeTexelSize_0);
+        if (nearInterior && distToSplit < -kCascadeBlendRange) {
             shadowAccum = sampleCascadeShadow(
                 sunUV, sunZ, normal, sunDir,
                 cascadeOriginUV_0, cascadeTexelSize_0, 0, selfStepDepthRange
             );
-        } else if (distToSplit > kCascadeBlendRange) {
+        } else if (!nearInterior || distToSplit > kCascadeBlendRange) {
             shadowAccum = sampleCascadeShadow(
                 sunUV, sunZ, normal, sunDir,
                 cascadeOriginUV_1, cascadeTexelSize_1, kCascadeTexelCount, selfStepDepthRange

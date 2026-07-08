@@ -1,20 +1,13 @@
 #include "ir_iso_common.metal"
 #include "ir_per_axis_lighting.metal"
+// Shared caster/receiver sun-space projection + depth pack (#2083).
+#include "ir_sun_projection.metal"
 #include <metal_atomic>
 
 // Mirrors shaders/c_bake_sun_shadow_map.glsl. Projects each rasterized
 // iso pixel into both cascade regions of the sun shadow depth buffer.
 
 constant int kEmptyDistanceEncoded = 65535;
-constant int kSunShadowMapDim = 1024;
-constant int kCascadeTexelCount = kSunShadowMapDim * kSunShadowMapDim;
-constant float kSunDepthScale = 1024.0;
-constant float kSunDepthOffset = 512.0;
-
-inline uint packSunDepth(float sunZ) {
-    float biased = clamp(sunZ + kSunDepthOffset, 0.0, kSunDepthOffset * 2.0);
-    return uint(biased * kSunDepthScale);
-}
 
 struct FrameDataSun {
     float4 sunDirection;
@@ -41,6 +34,12 @@ inline void bakeCascade(
     int cascadeOffset, device atomic_uint *sunDepthBuf
 ) {
     int2 sunPx = int2(floor((sunUV - origin) / texelSz));
+    // Buffer-bounds guard, not a culling decision (#2083): a caster outside
+    // THIS cascade's UV range is unreadable here by any receiver the sample
+    // side accepts — sunCascadeKernelInterior (ir_sun_projection.metal) routes
+    // receivers near the map edge to the covering cascade, whose wider AABB
+    // holds this caster's write. Every caster is projected into BOTH cascades,
+    // so this early-out never drops a caster from the pipeline.
     if (sunPx.x < 0 || sunPx.x >= kSunShadowMapDim ||
         sunPx.y < 0 || sunPx.y >= kSunShadowMapDim) {
         return;
@@ -114,14 +113,18 @@ kernel void c_bake_sun_shadow_map(
         );
     }
 
-    float3 sunDir = sunFrameData.sunDirection.xyz;
-    float3 uHat = sunFrameData.sunBasisU.xyz;
-    float3 vHat = sunFrameData.sunBasisV.xyz;
-    float2 sunUV = float2(dot(pos3D, uHat), dot(pos3D, vHat));
-    float sunZ = -dot(pos3D, sunDir);
+    // Shared caster/receiver projection (#2083) — the receiver lookup
+    // (ir_sun_shadow_sample.metal worldSunShadowFactor) derives its sun UV +
+    // depth from this same function, so cast and receive cannot drift.
+    float3 sunProj = sunSpaceProject(
+        pos3D,
+        sunFrameData.sunBasisU.xyz,
+        sunFrameData.sunBasisV.xyz,
+        sunFrameData.sunDirection.xyz
+    );
 
-    bakeCascade(sunUV, sunZ, sunFrameData.cascadeOriginUV_0,
+    bakeCascade(sunProj.xy, sunProj.z, sunFrameData.cascadeOriginUV_0,
                 sunFrameData.cascadeTexelSize_0, 0, sunDepthBuf);
-    bakeCascade(sunUV, sunZ, sunFrameData.cascadeOriginUV_1,
+    bakeCascade(sunProj.xy, sunProj.z, sunFrameData.cascadeOriginUV_1,
                 sunFrameData.cascadeTexelSize_1, kCascadeTexelCount, sunDepthBuf);
 }

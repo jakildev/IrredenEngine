@@ -9,10 +9,10 @@
 // sun-depth map (buffer 28) is a kernel argument, so it threads through as a
 // `device const uint *` parameter rather than a global SSBO.
 
-constant int kSunShadowMapDim = 1024;
-constant int kCascadeTexelCount = kSunShadowMapDim * kSunShadowMapDim;
-constant float kSunDepthScale = 1024.0;
-constant float kSunDepthOffset = 512.0;
+// Map-dim constants, the shared sunSpaceProject basis, unpackSunDepth, and
+// sunCascadeKernelInterior — one source with the caster bake (#2083).
+#include "ir_sun_projection.metal"
+
 constant float kShadowDarken = 0.45;
 constant float kNormalBiasVoxels = 0.5;
 constant float kShadowBiasTexelScale = 2.0;
@@ -43,10 +43,6 @@ struct FrameDataSun {
     float _cascadePad0;
     float _cascadePad1;
 };
-
-inline float unpackSunDepth(uint packedDepth) {
-    return float(packedDepth) / kSunDepthScale - kSunDepthOffset;
-}
 
 inline float sampleCascadeShadow(
     float2 sunUV, float sunZ, float3 normal, float3 sunDir,
@@ -97,9 +93,14 @@ inline float worldSunShadowFactor(
     float3 sunDir = sun.sunDirection.xyz;
     float3 uHat = sun.sunBasisU.xyz;
     float3 vHat = sun.sunBasisV.xyz;
-    float3 biasedPos3D = pos3D + normal * kNormalBiasVoxels;
-    float2 sunUV = float2(dot(biasedPos3D, uHat), dot(biasedPos3D, vHat));
-    float sunZ = -dot(biasedPos3D, sunDir);
+    // Shared caster/receiver projection (#2083) — the bake derives every
+    // caster's sun UV + depth from this same function, so cast and receive
+    // cannot drift.
+    float3 sunProj = sunSpaceProject(
+        pos3D + normal * kNormalBiasVoxels, uHat, vHat, sunDir
+    );
+    float2 sunUV = sunProj.xy;
+    float sunZ = sunProj.z;
 
     // #2010: selfStepDepthRange (0 = pre-#2010) threaded to every cascade sample
     // so the staircase self-step carve applies in whichever cascade the receiver
@@ -113,12 +114,25 @@ inline float worldSunShadowFactor(
         );
     } else {
         float distToSplit = isoDepth - sun.cascadeSplitDepth;
-        if (distToSplit < -kCascadeBlendRange) {
+        // Covering-cascade fallback (#2083): the near cascade is valid for
+        // this receiver only where its PCF kernel sits interior to the map —
+        // its AABB was built from a depth-capped corner set, so a receiver
+        // near the map edge (screen corners, the split blend band past the
+        // cap) can straddle a region where taps fall out of bounds and the
+        // matching casters were bounds-dropped by the bake. Selecting the
+        // covering far cascade there trades texel resolution for a complete
+        // kernel instead of silently reading the missing region as "lit"
+        // (partial face dropout). The gate is per-receiver-UV, uniform across
+        // a voxel's faces, so a straddling voxel's faces select consistently.
+        // Interior receivers take exactly the pre-#2083 branches.
+        bool nearInterior =
+            sunCascadeKernelInterior(sunUV, sun.cascadeOriginUV_0, sun.cascadeTexelSize_0);
+        if (nearInterior && distToSplit < -kCascadeBlendRange) {
             shadowAccum = sampleCascadeShadow(
                 sunUV, sunZ, normal, sunDir,
                 sun.cascadeOriginUV_0, sun.cascadeTexelSize_0, 0, sunDepthBuf, selfStepDepthRange
             );
-        } else if (distToSplit > kCascadeBlendRange) {
+        } else if (!nearInterior || distToSplit > kCascadeBlendRange) {
             shadowAccum = sampleCascadeShadow(
                 sunUV, sunZ, normal, sunDir,
                 sun.cascadeOriginUV_1, sun.cascadeTexelSize_1, kCascadeTexelCount, sunDepthBuf, selfStepDepthRange

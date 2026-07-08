@@ -50,8 +50,8 @@ using namespace IRRender;
 
 namespace IRSystem {
 
-// Must match `kSunShadowMapDim` in c_clear_sun_shadow_map.glsl /
-// c_bake_sun_shadow_map.glsl (and Metal counterparts).
+// Must match `kSunShadowMapDim` in ir_sun_projection.glsl /
+// c_clear_sun_shadow_map.glsl (and Metal counterparts).
 constexpr int kSunShadowMapDim = 1024;
 // `kSunShadowMaxDistance` (the AABB-sweep length, also consumed by the iso
 // rasterizers' shadow-feeder cull) lives in `sun_shadow_constants.hpp` so
@@ -559,6 +559,7 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
                 cascadeRanges[ci].max_,
                 uHat,
                 vHat,
+                sunDir,
                 cardinalIndex,
                 sweep
             );

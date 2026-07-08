@@ -103,16 +103,19 @@ inline IRMath::IsoBounds2D shadowFeederCullViewport(
 // texel-grid snap. Each corner is lifted from the rasterYaw-rotated canvas frame
 // into world frame (rotateCardinalZInv) before projecting onto the sun basis, so
 // the sweep (a world-frame vector) shares the corners' frame; no-op at
-// rasterYaw == 0. @p uHat / @p vHat are the sun-perpendicular basis from
-// buildOrthonormalBasis; @p cardinalIndex is the rasterYaw cardinal snap. Lives
-// in the shared sun-shadow header so a sun-space feeder-density consumer can
-// reuse the bake's exact derivation rather than re-deriving it.
+// rasterYaw == 0. @p uHat / @p vHat / @p sunDir are the sun basis from
+// buildOrthonormalBasis; @p cardinalIndex is the rasterYaw cardinal snap.
+// Projects via IRMath::sunSpaceProject — the same projection the bake +
+// receiver shaders use (#2083) — so the AABB brackets exactly what they will
+// project. Lives in the shared sun-shadow header so a sun-space feeder-density
+// consumer can reuse the bake's exact derivation rather than re-deriving it.
 inline IRMath::IsoBounds2D sunBakeFrustumUVBounds(
     const IRMath::IsoBounds2D &isoBounds,
     float depthMin,
     float depthMax,
     const IRMath::vec3 &uHat,
     const IRMath::vec3 &vHat,
+    const IRMath::vec3 &sunDir,
     IRMath::CardinalIndex cardinalIndex,
     const IRMath::vec3 &sweep
 ) {
@@ -125,7 +128,7 @@ inline IRMath::IsoBounds2D sunBakeFrustumUVBounds(
                     IRMath::rotateCardinalZInv(IRMath::isoPixelToPos3D(x, y, depth), cardinalIndex);
                 for (const IRMath::vec3 &offset : {IRMath::vec3(0.0f), sweep}) {
                     const IRMath::vec3 p = corner + offset;
-                    const IRMath::vec2 uv(IRMath::dot(p, uHat), IRMath::dot(p, vHat));
+                    const IRMath::vec2 uv(IRMath::sunSpaceProject(p, uHat, vHat, sunDir));
                     uvMin = IRMath::min(uvMin, uv);
                     uvMax = IRMath::max(uvMax, uv);
                 }
