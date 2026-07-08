@@ -24,15 +24,19 @@ name: Auto re-review on push to approved PR
 #   on a `fleet:stacked-rebase` label guard because the merger applies
 #   that label *after* it pushes — the synchronize event payload
 #   captures labels at push time and races ahead of it. Instead we
-#   compare the PR's net-diff patch-id (git diff base...head, reduced by
-#   `git patch-id --stable`, which is invariant across rebases/SHAs)
-#   before vs after the push. Identical patch-id => mechanical rebase =>
+#   compare the PR's net-diff patch-id (reduced by `git patch-id --stable`,
+#   which is invariant across rebases/SHAs) before vs after the push, each
+#   tip against its *own* base. Identical patch-id => mechanical rebase =>
 #   skip. A rebase where master actually altered the effective diff (a
-#   *semantic* rebase) changes the patch-id and still triggers review.
+#   *semantic* rebase) changes the patch-id and still triggers review. The
+#   classify logic lives in `scripts/fleet/classify-auto-rereview.sh` (with a
+#   test suite at `scripts/fleet/tests/test_classify_auto_rereview.sh`) so it
+#   is unit-testable against a git sandbox rather than buried in a `run:` block.
 #
-# This file is kept byte-identical between the engine repo
-# (jakildev/IrredenEngine) and the game repo (jakildev/irreden) so both
-# repos share one re-review flow. Edit both when changing it.
+# This file and `scripts/fleet/classify-auto-rereview.sh` are kept
+# byte-identical between the engine repo (jakildev/IrredenEngine) and the game
+# repo (jakildev/irreden) so both repos share one re-review flow. Edit both
+# repos (and both files) when changing it.
 
 on:
   pull_request:
@@ -60,41 +64,9 @@ jobs:
           AFTER: ${{ github.event.after }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          set -uo pipefail
-
-          # Make sure the three commits we reason about are present locally.
-          # `after` and the base tip come with the PR checkout; `before` is
-          # orphaned by a force-push and may or may not be fetchable.
-          git fetch --no-tags --quiet origin "$AFTER" "$BASE_SHA" 2>/dev/null || true
-          git cat-file -e "${BEFORE}^{commit}" 2>/dev/null \
-            || git fetch --no-tags --quiet origin "$BEFORE" 2>/dev/null || true
-
-          # Net content of a tip = diff from its merge-base with the current
-          # base branch, hashed by patch-id (stable across rebase/SHA churn).
-          net_patch_id() {
-            local tip="$1" mb
-            mb=$(git merge-base "$BASE_SHA" "$tip" 2>/dev/null) || return 1
-            git diff "$mb" "$tip" | git patch-id --stable | awk '{print $1}'
-          }
-
-          if ! git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
-            echo "before commit $BEFORE unavailable — cannot prove a rebase; re-reviewing."
-            echo "rebase_only=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          OLD_ID=$(net_patch_id "$BEFORE") || OLD_ID=""
-          NEW_ID=$(net_patch_id "$AFTER") || NEW_ID=""
-          echo "old net patch-id: '${OLD_ID:-<empty>}'"
-          echo "new net patch-id: '${NEW_ID:-<empty>}'"
-
-          if [ -n "$OLD_ID" ] && [ "$OLD_ID" = "$NEW_ID" ]; then
-            echo "Net content diff unchanged — mechanical rebase. Skipping re-review."
-            echo "rebase_only=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "Net content diff changed — real update. Re-reviewing."
-            echo "rebase_only=false" >> "$GITHUB_OUTPUT"
-          fi
+          # The script prints exactly `rebase_only=true|false` on stdout (routed
+          # to $GITHUB_OUTPUT); its diagnostics go to stderr (the Actions log).
+          bash scripts/fleet/classify-auto-rereview.sh >> "$GITHUB_OUTPUT"
 
       - name: Swap fleet:approved → human:re-review
         if: steps.classify.outputs.rebase_only != 'true'
