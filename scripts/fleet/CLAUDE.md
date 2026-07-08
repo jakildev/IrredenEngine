@@ -23,7 +23,10 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
 - **`state.json` staleness comes from the in-file `generated_at`, never file
   mtime.** Canonical rule + rationale: `docs/agents/FLEET-RUNTIME.md`.
   Shared helper: `fleet_poll_topology.state_age_seconds` (a heredoc consumer
-  that can't import mirrors it inline, commented as such).
+  that can't import mirrors it inline, commented as such). A best-effort CI
+  ratchet (`lint_state_mtime.py`) flags a new `.st_mtime` read that co-occurs
+  with a `state.json` reference; opt a justified read out with an inline
+  `# lint: state-mtime-ok <reason>` comment.
 - **A new executable ships with a `tests/test_<name>.{sh,py}`** in the same
   PR — the fleet-tooling form of the review checklist's "new feature with no
   new test"; the `simplify` pre-commit pass flags the omission.

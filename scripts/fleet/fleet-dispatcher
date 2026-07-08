@@ -1682,6 +1682,7 @@ def _state_age_seconds():
             return time.time() - epoch
         except (ValueError, TypeError):
             pass
+    # lint: state-mtime-ok generated_at-first; mtime is the malformed-snapshot fallback (#2267)
     return time.time() - STATE_FILE.stat().st_mtime
 
 

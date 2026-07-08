@@ -43,6 +43,13 @@ jobs:
           version: "0.15.20"
           args: "check scripts/"
 
+      # Cross-line pattern ruff has no native rule for: an st_mtime freshness
+      # read on the scout cache (must derive from generated_at instead; #2231/
+      # #2267). Best-effort ratchet — legit reads opt out with an inline
+      # `# lint: state-mtime-ok` comment. Pure-Python, runs on the Windows runner.
+      - name: State-mtime freshness lint (best-effort ratchet)
+        run: python scripts/fleet/lint_state_mtime.py scripts/fleet/
+
       - name: Build tests
         run: cmake --build --preset windows-tests
 
