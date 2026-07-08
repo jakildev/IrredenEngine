@@ -776,19 +776,17 @@ Do the work, then exit cleanly:
    re-queues it — or the human closes the issue.
 
    **(c) Design escalation via `fleet:design-blocked`.** When the
-   blocker is specifically architectural — the assigned task can't
-   proceed without a design call you don't have authority to make —
-   escalate via the label-driven flow ([`docs/agents/FLEET.md`](../../docs/agents/FLEET.md)
-   "Design-escalation flow") so the architect can pick it up from
-   the trigger surface and any worker can resume cleanly. (At sonnet
-   class, weigh (a) first: if the task needs design input, it usually
-   needs the heavier class for execution too.)
+   blocker is specifically architectural — a design call you don't have
+   authority to make — escalate via the label-driven flow. (At sonnet
+   class, weigh (a) first: a task that needs design input usually needs
+   the heavier class for execution too.) Full cycle + the
+   handoff-is-the-PR / #1310 claim-release rationale:
+   [FLEET.md § Design-escalation flow](../../docs/agents/FLEET.md#design-escalation-flow).
 
-   a. **Commit and push whatever in-progress work you have on the
-      branch.** Even if half-done — the next worker iteration will
-      need it as the starting point when `fleet:design-unblocked`
-      appears. Use `commit-and-push` (the WIP PR already exists).
-   b. Post a `## NEEDS-DESIGN` escalation comment on the PR:
+   a. **Commit and push your in-progress work** — even half-done; the
+      resuming worker starts from it. Use `commit-and-push` (the WIP
+      PR already exists).
+   b. Post the escalation comment on the PR:
       `gh pr comment <N> --body "## NEEDS-DESIGN
 
       <what you've learned about the existing code / framework that
@@ -799,36 +797,24 @@ Do the work, then exit cleanly:
 
       <suggested options if you have a view; the architect picks,
       you don't have to know the right answer>"`
-   c. Move the PR into the `fleet:design-blocked` state. If you reached
-      this PR via the `fleet:design-unblocked` feedback tier — i.e.
-      you're **re-escalating** after the architect already responded
-      once — the PR still carries `fleet:design-unblocked`. Clear it in
-      the same step, otherwise the PR keeps both labels and gets
-      re-picked as unblocked next iteration (step 1 priority 4). The
-      helper only removes labels that are present, so it's a safe no-op
-      on a first-time escalation straight from the queue:
+   c. Swap into the `fleet:design-blocked` state. If you're
+      **re-escalating** after an architect reply, the PR still carries
+      `fleet:design-unblocked` — clear it in the same step, otherwise
+      the PR keeps both labels and gets re-picked as unblocked next
+      iteration (step 1 priority 4). The helper only removes labels
+      that are present, so it's a safe no-op on a first-time escalation:
       `fleet-pr-clear-feedback-labels <N> --labels "fleet:design-unblocked"`
       `gh pr edit <N> --add-label "fleet:design-blocked"`
-      Keep `fleet:wip` — design-blocked is a state qualifier on top
-      of WIP. But **release your `fleet-claim` and worktree
-      reservation** — a design-blocked task is NOT yours to hold.
-      Resolution can take the architect a while, and when it returns as
-      `fleet:design-unblocked` ANY worker should resume it cleanly
-      (step d frees the branch; step 1 priority 4 re-picks it). The
-      handoff is the PR, not your claim: the pushed WIP commit (a), the
-      `## NEEDS-DESIGN` comment + the architect's reply, the plan file
-      (`~/.fleet/plans/issue-<N>.md`), and the `fleet:design-blocked`
-      label carry everything the next worker needs. Holding the claim
-      through the block is what let two workers race the #1310 resume
-      and force-push over each other — release it:
+      Keep `fleet:wip` — design-blocked is a state qualifier on top of
+      WIP. But **release your `fleet-claim` and worktree reservation** —
+      a design-blocked task is NOT yours to hold (see the FLEET.md
+      rationale linked above):
       `fleet-claim release <N>` (add `--repo game` for game tasks)
    d. Reset the worktree via `start-next-task` so the branch is free
-      for the architect (or anyone else) to `gh pr checkout`. Then
-      pick a different unblocked task from the issue queue as your
-      next iteration's work — do NOT re-claim the same task. Once
-      the architect responds, the PR will be re-armed via
-      `fleet:design-unblocked` and any worker can pick it up via
-      step 1 priority 4 above.
+      for anyone to `gh pr checkout`, then pick a **different** task —
+      do NOT re-claim this one. The architect's reply re-arms it as
+      `fleet:design-unblocked`; any worker resumes it via step 1
+      priority 4.
 
    For non-architectural escalations (scope grew beyond one PR's worth
    of work, build break is structural, public-API surface spans
