@@ -25,31 +25,55 @@ struct FrameDataSun {
     float2 cascadeTexelSize_1;
     float cascadeSplitDepth;
     int cascadeCount;
-    float _cascadePad0;
+    // #2270 coverage-splat radius (sun texels), doubling as the kill switch —
+    // 0 => the exact single-write path (saturated hosts byte-identical). See
+    // FrameDataSun in ir_render_types.hpp.
+    float sunSplatMaxTexels;
     float _cascadePad1;
 };
 
-inline void bakeCascade(
-    float2 sunUV, float sunZ, float2 origin, float2 texelSz,
-    int cascadeOffset, device atomic_uint *sunDepthBuf
+// atomic_fetch_min the packed sun depth into one texel of a cascade, if in
+// bounds. The bounds check is a buffer-bounds guard, not a culling decision
+// (#2083): sunCascadeKernelInterior (ir_sun_projection.metal) routes receivers
+// near the map edge to the covering cascade whose wider AABB holds this
+// caster's write, and every caster is projected into BOTH cascades, so this
+// never drops a caster. Mirrors GLSL.
+inline void writeSunTexel(
+    device atomic_uint *sunDepthBuf, int cascadeOffset, int2 px, uint packedDepth
 ) {
-    int2 sunPx = int2(floor((sunUV - origin) / texelSz));
-    // Buffer-bounds guard, not a culling decision (#2083): a caster outside
-    // THIS cascade's UV range is unreadable here by any receiver the sample
-    // side accepts — sunCascadeKernelInterior (ir_sun_projection.metal) routes
-    // receivers near the map edge to the covering cascade, whose wider AABB
-    // holds this caster's write. Every caster is projected into BOTH cascades,
-    // so this early-out never drops a caster from the pipeline.
-    if (sunPx.x < 0 || sunPx.x >= kSunShadowMapDim ||
-        sunPx.y < 0 || sunPx.y >= kSunShadowMapDim) {
+    if (px.x < 0 || px.x >= kSunShadowMapDim ||
+        px.y < 0 || px.y >= kSunShadowMapDim) {
         return;
     }
-    uint packedDepth = packSunDepth(sunZ);
     atomic_fetch_min_explicit(
-        &sunDepthBuf[cascadeOffset + sunPx.y * kSunShadowMapDim + sunPx.x],
+        &sunDepthBuf[cascadeOffset + px.y * kSunShadowMapDim + px.x],
         packedDepth,
         memory_order_relaxed
     );
+}
+
+// #2270 coverage splat. Writes the caster's own texel (the exact single write,
+// byte-identical when radius == 0), then atomic_fetch_min's the SAME depth into
+// a (2·radius+1)^2 box around it, filling the sun texels a grazing / point-
+// scattered caster footprint leaves empty (the moth-eaten cast-shadow holes).
+// atomic_fetch_min preserves saturated-host byte-identity: where nearer real
+// geometry already covers a box texel, the farther splat is a no-op, so a
+// dense-bake host sees no change and the fill concentrates on genuinely-empty
+// hole texels. The uniform box (rather than a per-pixel oriented walk) is
+// deliberate: the holes are 2D point-scatter, not a 1D silhouette line, so a
+// directional walk under-covers (measured — see
+// docs/design/sun-shadow-bake-coverage.md). Mirrors GLSL.
+inline void bakeCascadeBox(
+    device atomic_uint *sunDepthBuf, float3 sp,
+    float2 origin, float2 texelSz, int cascadeOffset, int radius
+) {
+    int2 base = int2(floor((sp.xy - origin) / texelSz));
+    uint packed = packSunDepth(sp.z);
+    for (int dy = -radius; dy <= radius; ++dy) {
+        for (int dx = -radius; dx <= radius; ++dx) {
+            writeSunTexel(sunDepthBuf, cascadeOffset, base + int2(dx, dy), packed);
+        }
+    }
 }
 
 kernel void c_bake_sun_shadow_map(
@@ -123,8 +147,23 @@ kernel void c_bake_sun_shadow_map(
         sunFrameData.sunDirection.xyz
     );
 
-    bakeCascade(sunProj.xy, sunProj.z, sunFrameData.cascadeOriginUV_0,
-                sunFrameData.cascadeTexelSize_0, 0, sunDepthBuf);
-    bakeCascade(sunProj.xy, sunProj.z, sunFrameData.cascadeOriginUV_1,
-                sunFrameData.cascadeTexelSize_1, kCascadeTexelCount, sunDepthBuf);
+    // #2270 coverage splat — cardinal single-canvas branch only. The per-axis /
+    // smooth-yaw inputs are footprint-dense (#1724/#1596), so they keep the
+    // exact single write and stay byte-identical. The atomic_fetch_min box
+    // preserves saturated-host byte-identity (farther splats no-op where
+    // geometry is dense). Mirrors GLSL.
+    int radius = 0;
+    if (frameData.perAxisRoute == 0 && frameData.residualYaw == 0.0 &&
+        sunFrameData.sunSplatMaxTexels > 0.0) {
+        radius = int(sunFrameData.sunSplatMaxTexels);
+    }
+
+    bakeCascadeBox(
+        sunDepthBuf, sunProj,
+        sunFrameData.cascadeOriginUV_0, sunFrameData.cascadeTexelSize_0, 0, radius
+    );
+    bakeCascadeBox(
+        sunDepthBuf, sunProj,
+        sunFrameData.cascadeOriginUV_1, sunFrameData.cascadeTexelSize_1, kCascadeTexelCount, radius
+    );
 }

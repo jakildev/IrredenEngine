@@ -56,26 +56,49 @@ layout(std140, binding = 29) uniform FrameDataSun {
     uniform vec2 cascadeTexelSize_1;
     uniform float cascadeSplitDepth;
     uniform int cascadeCount;
-    uniform float _cascadePad0;
+    // #2270 coverage-splat radius (sun texels), doubling as the kill switch —
+    // 0 ⇒ the exact single-write path (saturated hosts byte-identical). See
+    // FrameDataSun in ir_render_types.hpp and docs/design/sun-shadow-bake-coverage.md.
+    uniform float sunSplatMaxTexels;
     uniform float _cascadePad1;
 };
 
 layout(r32i, binding = 0) readonly uniform iimage2D trixelDistances;
 
-void bakeCascade(vec2 sunUV, float sunZ, vec2 origin, vec2 texelSz, int cascadeOffset) {
-    ivec2 sunPx = ivec2(floor((sunUV - origin) / texelSz));
-    // Buffer-bounds guard, not a culling decision (#2083): a caster outside
-    // THIS cascade's UV range is unreadable here by any receiver the sample
-    // side accepts — sunCascadeKernelInterior (ir_sun_projection.glsl) routes
-    // receivers near the map edge to the covering cascade, whose wider AABB
-    // holds this caster's write. Every caster is projected into BOTH cascades
-    // below, so this early-out never drops a caster from the pipeline.
-    if (sunPx.x < 0 || sunPx.x >= kSunShadowMapDim ||
-        sunPx.y < 0 || sunPx.y >= kSunShadowMapDim) {
+// atomicMin the packed sun depth into one texel of a cascade, if in bounds.
+// The bounds check is a buffer-bounds guard, not a culling decision (#2083): a
+// caster outside THIS cascade's UV range is unreadable here by any receiver the
+// sample side accepts — sunCascadeKernelInterior (ir_sun_projection.glsl) routes
+// receivers near the map edge to the covering cascade, whose wider AABB holds
+// this caster's write. Every caster is projected into BOTH cascades below, so
+// this early-out never drops a caster from the pipeline.
+void writeSunTexel(int cascadeOffset, ivec2 px, uint packedDepth) {
+    if (px.x < 0 || px.x >= kSunShadowMapDim ||
+        px.y < 0 || px.y >= kSunShadowMapDim) {
         return;
     }
-    uint packedDepth = packSunDepth(sunZ);
-    atomicMin(sunDepthBuf[cascadeOffset + sunPx.y * kSunShadowMapDim + sunPx.x], packedDepth);
+    atomicMin(sunDepthBuf[cascadeOffset + px.y * kSunShadowMapDim + px.x], packedDepth);
+}
+
+// #2270 coverage splat. Writes the caster's own texel (the exact single write,
+// byte-identical when radius == 0), then atomicMin's the SAME depth into a
+// (2·radius+1)² box around it, filling the sun texels a grazing / point-
+// scattered caster footprint leaves empty (the moth-eaten cast-shadow holes).
+// atomicMin is what preserves saturated-host byte-identity: where nearer real
+// geometry already covers a box texel, the farther splat is a no-op — so a host
+// whose bake is already dense sees no change, and the fill concentrates on the
+// genuinely-empty hole texels. The uniform box (rather than a per-pixel
+// oriented walk) is deliberate: the holes are 2D point-scatter, not a 1D
+// silhouette line, so a directional walk under-covers (measured — see
+// docs/design/sun-shadow-bake-coverage.md).
+void bakeCascadeBox(vec3 sp, vec2 origin, vec2 texelSz, int cascadeOffset, int radius) {
+    ivec2 base = ivec2(floor((sp.xy - origin) / texelSz));
+    uint packed = packSunDepth(sp.z);
+    for (int dy = -radius; dy <= radius; ++dy) {
+        for (int dx = -radius; dx <= radius; ++dx) {
+            writeSunTexel(cascadeOffset, base + ivec2(dx, dy), packed);
+        }
+    }
 }
 
 void main() {
@@ -127,6 +150,16 @@ void main() {
         pos3D, sunBasisU.xyz, sunBasisV.xyz, sunDirection.xyz
     );
 
-    bakeCascade(sunProj.xy, sunProj.z, cascadeOriginUV_0, cascadeTexelSize_0, 0);
-    bakeCascade(sunProj.xy, sunProj.z, cascadeOriginUV_1, cascadeTexelSize_1, kCascadeTexelCount);
+    // #2270 coverage splat — cardinal single-canvas branch only. The per-axis
+    // (perAxisRoute != 0) and smooth-yaw (residualYaw != 0) inputs are already
+    // footprint-dense (#1724/#1596), so they keep the exact single write below
+    // and stay byte-identical. The atomicMin box preserves saturated-host
+    // byte-identity (farther splats no-op where geometry is dense).
+    int radius = 0;
+    if (perAxisRoute == 0 && residualYaw == 0.0 && sunSplatMaxTexels > 0.0) {
+        radius = int(sunSplatMaxTexels);
+    }
+
+    bakeCascadeBox(sunProj, cascadeOriginUV_0, cascadeTexelSize_0, 0, radius);
+    bakeCascadeBox(sunProj, cascadeOriginUV_1, cascadeTexelSize_1, kCascadeTexelCount, radius);
 }

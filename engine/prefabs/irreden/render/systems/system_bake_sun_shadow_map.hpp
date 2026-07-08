@@ -60,6 +60,16 @@ using IRPrefab::SunShadow::kSunShadowMaxDistance;
 constexpr int kBakeSunShadowGroupSize = 16;
 constexpr int kSunShadowCascadeCount = 2;
 constexpr float kCascadeSplitRatio = 0.4f;
+// #2270 coverage-splat radius (sun texels): c_bake_sun_shadow_map atomicMin's
+// each caster's depth into a (2·r+1)² box, filling the sun texels a grazing /
+// point-scattered caster footprint leaves empty (the moth-eaten cast-shadow
+// holes). Doubles as the shader kill switch — 0 forces the exact single-write
+// path. r=6 is the measured minimum that reaches a single-component coherent
+// cast shadow on the affected host (shadow_overlay_floor: r6 -> 1 comp /
+// largest_frac 1.0; r4 is the pass floor, r3 shatters to 119 comp) while
+// staying well under the architect-waived r8 atomic cost (#2204). See
+// docs/design/sun-shadow-bake-coverage.md.
+constexpr int kSunSplatMaxTexels = 6;
 
 namespace detail {
 
@@ -593,6 +603,15 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         }
         frameData_.cascadeSplitDepth_ = splitDepth;
         frameData_.cascadeCount_ = kSunShadowCascadeCount;
+
+        // #2270 coverage-splat radius / kill switch. c_bake_sun_shadow_map
+        // atomicMin's each caster's depth into a (2·r+1)² box (gated to the
+        // cardinal single-canvas branch) to fill the point-scattered cast-shadow
+        // holes; the atomicMin makes it a no-op where geometry is already dense
+        // (saturated-host byte-identity). Set 0 here to force the exact
+        // single-write path (the byte-identity backstop). See
+        // docs/design/sun-shadow-bake-coverage.md.
+        frameData_.sunSplatMaxTexels_ = static_cast<float>(kSunSplatMaxTexels);
     }
 
     static SystemId create() {
