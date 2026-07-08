@@ -175,6 +175,24 @@ class TestShadowMetric(unittest.TestCase):
         self.assertEqual(rc, 1)
         self.assertIn("warning", err)
 
+    def test_min_hole_ratio_lit_floor_passes(self):
+        # The #2092 floor self-shadow guard: a fully-lit floor (no self-shadow)
+        # reads hole_ratio == 1.0, so the lower bound passes.
+        p = str(self.dir / "lit_floor.png")
+        _write(p, 32, 32, lambda x, y: BLACK)
+        rc, out, _ = self._run_cli([p, "--min-hole-ratio", "0.98"])
+        self.assertEqual(rc, 0)
+        self.assertIn('"hole_ratio": 1.0', out)
+
+    def test_min_hole_ratio_self_shadow_fails(self):
+        # Self-shadow acne where the floor should be fully lit drops hole_ratio
+        # below the bound (a fully self-occluded floor reads 0.0) -> fail.
+        p = str(self.dir / "acne_floor.png")
+        _write(p, 32, 32, lambda x, y: MAGENTA)
+        rc, out, _ = self._run_cli([p, "--min-hole-ratio", "0.98"])
+        self.assertEqual(rc, 1)
+        self.assertIn("hole_ratio 0.0 < 0.98", out)
+
     def test_max_components_cli_fails_when_roi_too_large(self):
         """--max-components with an oversized ROI must warn to stderr + exit 1."""
         import io
