@@ -346,6 +346,16 @@ bool g_occlusionCull = false;
 // scene. The --auto-profile path enables frame timing explicitly, so timing
 // still works under --no-overlay.
 bool g_noOverlay = false;
+// --no-sun-shadows (#1812): disable sun shadows globally so the render cull
+// collapses from the shadow-feeder-widened extent back to the visible viewport
+// (`IRMath::shadowFeederIsoBounds` only widens when `getSunShadowsEnabled()`;
+// render/CLAUDE.md "Lighting culling invariants"). Pairs with --occlusion-cull
+// --auto-profile to measure the per-voxel cull's capture in the regime where the
+// WHOLE frustum is legally cullable — with shadows on, visibleVoxelCount is
+// dominated by off-screen shadow feeders the cull must not drop, so the ratio
+// understates the mechanism. This is the baseline number the widened-domain
+// feeder-occlusion follow-on needs.
+bool g_noSunShadows = false;
 
 PerfGridMode parseMode(const std::string &value) {
     if (value == "voxel_set" || value == "voxel") {
@@ -513,6 +523,10 @@ void registerCliArgs() {
         "Force the voxel-pool chunk-occlusion HZB pre-pass ON (off by default)"
     );
     args.flag("--no-overlay", "Drop PERF_STATS_OVERLAY so a captured frame is deterministic");
+    args.flag(
+        "--no-sun-shadows",
+        "Disable sun shadows so the cull collapses to the visible viewport (occlusion-cull measurement baseline)"
+    );
     args.string("--mode", "Scene mode: voxel_set | sdf | dense_set | hollow_set", "voxel_set");
     args.integer("--grid-size", "Grid edge in cells", 64);
     args.number("--zoom", "Initial camera zoom", 0.5f);
@@ -551,6 +565,7 @@ void readCliArgs() {
     }
     g_occlusionCull = args.getFlag("--occlusion-cull");
     g_noOverlay = args.getFlag("--no-overlay");
+    g_noSunShadows = args.getFlag("--no-sun-shadows");
 
     if (args.wasProvided("--mode")) {
         g_cliOverrides.mode_ = parseMode(args.getString("--mode"));
@@ -831,7 +846,17 @@ void configureLightingAndCanvas() {
     const ivec2 canvasSize = IREntity::getComponent<C_TriangleCanvasTextures>(mainCanvas).size_;
 
     IREntity::setComponent(mainCanvas, C_CanvasAOTexture{canvasSize});
+    // Keep C_CanvasSunShadow attached unconditionally — Metal's LIGHTING_TO_TRIXEL
+    // asserts the main canvas carries it (slot 4 must be bound). --no-sun-shadows
+    // instead flips the global gate below: the bake self-disables
+    // (system_bake_sun_shadow_map reads getSunShadowsEnabled()) and the render
+    // cull collapses from the shadow-feeder-widened extent to the visible viewport
+    // (shadowFeederIsoBounds only widens when enabled), isolating the occlusion
+    // cull's capture in the fully-cullable regime (see g_noSunShadows).
     IREntity::setComponent(mainCanvas, C_CanvasSunShadow{canvasSize});
+    if (g_noSunShadows) {
+        IRRender::setSunShadowsEnabled(false);
+    }
     IREntity::setComponent(mainCanvas, C_CanvasLightVolume{});
     IREntity::setComponent(mainCanvas, C_TrixelCanvasRenderBehavior{});
     IREntity::setComponent(mainCanvas, C_CanvasFogOfWar{});
