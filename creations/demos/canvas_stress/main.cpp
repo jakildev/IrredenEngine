@@ -485,27 +485,6 @@ constexpr IRVideo::AutoScreenshotShot kShots[] = {
     {0.65f, vec2(0, 0), IRMath::kPi / 6.0f, "so3_offsnap_wide"},
 };
 
-// Light a detached re-voxelize canvas (#1558; receive facet #2080): AO +
-// directional sun + sky, and — when world-placed (the #1624 default) — world
-// sun-shadow + 128³ light-volume RECEIVE at the solid's recovered world pos
-// (#1576 P4b-2). Attaching C_CanvasAOTexture + the default
-// C_TrixelCanvasRenderBehavior (useCameraPositionIso_ == true) is what puts the
-// canvas in the COMPUTE_VOXEL_AO + LIGHTING_TO_TRIXEL archetypes; without them a
-// detached solid matches neither pass and renders raw albedo ("pasted-on", the
-// #2080 symptom). Attached HERE — on the detached canvas only — not on the shared
-// kVoxelPoolCanvas builder, which also builds the main canvas (double-allocating
-// its AO and lighting the forward-scatter cubes, breaking byte-identity). No
-// C_CanvasSunShadow / C_CanvasLightVolume even on the world path: a world-placed
-// solid RECEIVES the SHARED world sun-shadow map + light volume directly in
-// LIGHTING_TO_TRIXEL at its recovered world pos, not via a per-canvas texture.
-void lightDetachedCanvas(EntityId canvasEntity, ivec2 canvasSize) {
-    if (g_settings.noLighting_) {
-        return;
-    }
-    IREntity::setComponent(canvasEntity, C_TrixelCanvasRenderBehavior{});
-    IREntity::setComponent(canvasEntity, C_CanvasAOTexture{canvasSize});
-}
-
 // One detached SO(3) CANARY cube (#1259 / #1589): a per-entity canvas (textures
 // + voxel pool), a voxel cube allocated into that pool, and a world entity
 // carrying C_EntityCanvas + RotationMode::DETACHED_REVOXELIZE that
@@ -526,12 +505,16 @@ void spawnDetachedVoxelObject(
     constexpr ivec3 kPoolSize{20, 20, 20};
     constexpr ivec3 kCubeSize{10, 10, 10};
 
+    // World lighting (AO + directional sun + sky, and — when world-placed —
+    // world sun-shadow + light-volume RECEIVE, #2080) is attached by
+    // createWithVoxelPool by default (#2322 D1) whenever the canvas isn't
+    // screen-locked.
     C_EntityCanvas canvas = IRPrefab::EntityCanvas::createWithVoxelPool(
         "detached_canvas_" + std::to_string(index),
         kCanvasSize,
-        kPoolSize
+        kPoolSize,
+        g_settings.screenLockDetached_
     );
-    canvas.screenLocked_ = g_settings.screenLockDetached_;
     // #1958 Bug-A acceptance: the floating canary cubes carry FOREGROUND depth
     // priority so they render fully in front of the SDF floor at every zoom and
     // yaw (the `--only canary,floor` case) instead of clipping behind it as world
@@ -540,12 +523,6 @@ void spawnDetachedVoxelObject(
     // unchanged. The canary still writes depth, so --depth-probe-assert 321,210
     // (now reading inside the foreground near band) still PASSes.
     canvas.depthPriority_ = 1;
-
-    // Light the canvas so the floater participates in AO + directional sun + sky
-    // and (world-placed) world sun-shadow + light-volume RECEIVE (#2080) — without
-    // this it matches neither lighting pass and renders raw albedo (the
-    // "pasted-on" symptom). Mirrors spawnDetachedReVoxelizeSolid.
-    lightDetachedCanvas(canvas.canvasEntity_, kCanvasSize);
 
     // The voxel cube lives centered in the detached canvas's pool so
     // SYSTEM_REBUILD_DETACHED_VOXELS rotates its cells about the pool origin
@@ -604,19 +581,16 @@ void spawnDetachedReVoxelizeSolid(
     bool multiColor = false,
     bool screenLocked = false
 ) {
+    // World-depth compositing is the engine default (#1624); `screenLocked`
+    // (--screen-lock-detached / --solo-revox) reverts this solid to the
+    // fixed-depth overlay regression path — createWithVoxelPool skips the
+    // lighting-archetype pair for a screen-locked canvas (#2322 D1).
     C_EntityCanvas canvas = IRPrefab::EntityCanvas::createWithVoxelPool(
         "revox_canvas_" + std::to_string(index),
         kReVoxCanvasSize,
-        kReVoxPoolSize
+        kReVoxPoolSize,
+        screenLocked
     );
-    // World-depth compositing is the engine default (#1624); `screenLocked`
-    // (--screen-lock-detached / --solo-revox) reverts this solid to the
-    // fixed-depth overlay regression path.
-    canvas.screenLocked_ = screenLocked;
-
-    // Light the re-voxelize solid (#1558): AO + directional sun + sky + (world-
-    // placed) world sun-shadow + light-volume RECEIVE — see lightDetachedCanvas.
-    lightDetachedCanvas(canvas.canvasEntity_, kReVoxCanvasSize);
 
     // Centered around origin so SYSTEM_REBUILD_DETACHED_VOXELS can rotate the
     // cells about the pool origin (translation-free) and keep the solid centered
@@ -745,9 +719,9 @@ void spawnOrbitShape(
     C_EntityCanvas canvas = IRPrefab::EntityCanvas::createWithVoxelPool(
         "orbit_canvas_" + std::to_string(index),
         canvasSize,
-        poolSize
+        poolSize,
+        g_settings.screenLockDetached_
     );
-    canvas.screenLocked_ = g_settings.screenLockDetached_;
     const EntityId solid = IREntity::createEntity(
         C_LocalTransform{vec3(0.0f)},
         C_VoxelSetNew{shapeSize, color, true, canvas.canvasEntity_}
@@ -790,9 +764,8 @@ void spawnPerTrixelDetachedUnit(
         "interpenetrate_canvas_" + std::to_string(index),
         kCanvasSize,
         kPoolSize
-    );
-    canvas.screenLocked_ = false; // world-placed ⇒ participates in shared depth
-    canvas.depthPriority_ = 0;    // NO per-entity priority — isolate the per-trixel carrier
+    ); // world-placed (screenLocked=false default) ⇒ participates in shared depth
+    canvas.depthPriority_ = 0; // NO per-entity priority — isolate the per-trixel carrier
     const EntityId voxelSet = IREntity::createEntity(
         C_LocalTransform{vec3(0.0f)},
         C_VoxelSetNew{kCubeSize, color, true, canvas.canvasEntity_}
@@ -847,9 +820,12 @@ void spawnSmallZoomRepro() {
     constexpr vec3 kGridPos{-14.0f, -14.0f, 0.0f};
     constexpr Color kColor{90, 210, 235, 255};
 
-    C_EntityCanvas canvas =
-        IRPrefab::EntityCanvas::createWithVoxelPool("smallzoom_canvas", kCanvasSize, kPoolSize);
-    canvas.screenLocked_ = g_settings.screenLockDetached_;
+    C_EntityCanvas canvas = IRPrefab::EntityCanvas::createWithVoxelPool(
+        "smallzoom_canvas",
+        kCanvasSize,
+        kPoolSize,
+        g_settings.screenLockDetached_
+    );
     IREntity::createEntity(
         C_LocalTransform{vec3(0.0f)},
         C_VoxelSetNew{kCubeSize, kColor, true, canvas.canvasEntity_}
@@ -936,8 +912,7 @@ void spawnPerEntityPriorityUnit(
         "orbitswap_canvas_" + std::to_string(index),
         kCanvasSize,
         kPoolSize
-    );
-    canvas.screenLocked_ = false;          // world-placed ⇒ shared depth contest
+    ); // world-placed (screenLocked=false default) ⇒ shared depth contest
     canvas.depthPriority_ = depthPriority; // per-ENTITY foreground carrier (#1958)
     IREntity::createEntity(
         C_LocalTransform{vec3(0.0f)},

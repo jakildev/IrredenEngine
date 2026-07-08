@@ -18,10 +18,12 @@
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
 
+#include <irreden/render/components/component_canvas_ao_texture.hpp>
 #include <irreden/render/components/component_canvas_local_rotation.hpp>
 #include <irreden/render/components/component_detached_canvas.hpp>
 #include <irreden/render/components/component_entity_canvas.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
+#include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/render/entities/entity_trixel_canvas.hpp>
 #include <irreden/render/entities/entity_voxel_pool_canvas.hpp>
 #include <irreden/common/components/component_size_triangles.hpp>
@@ -50,15 +52,32 @@ inline IRComponents::C_EntityCanvas create(std::string canvasName, IRMath::ivec2
 /// geometry: the pool is present at construction so `C_VoxelSetNew`
 /// targeting this canvas allocates cleanly with no post-hoc archetype
 /// migration.
-inline IRComponents::C_EntityCanvas
-createWithVoxelPool(std::string canvasName, IRMath::ivec2 canvasSize, IRMath::ivec3 voxelPoolSize) {
+///
+/// World-placed by default (`screenLocked = false`, the #1624 convention):
+/// the canvas also gets `C_TrixelCanvasRenderBehavior` + `C_CanvasAOTexture`
+/// attached here, putting it in the `COMPUTE_VOXEL_AO` + `LIGHTING_TO_TRIXEL`
+/// archetypes so it participates in world lighting without every call site
+/// having to remember the pair (#2322 D1 — a spawn site that forgot them
+/// silently composited raw albedo). Pass `screenLocked = true` for a genuine
+/// overlay (HUD prop, billboard, floating showcase); it skips both
+/// components entirely, matching the fixed-depth overlay contract.
+inline IRComponents::C_EntityCanvas createWithVoxelPool(
+    std::string canvasName,
+    IRMath::ivec2 canvasSize,
+    IRMath::ivec3 voxelPoolSize,
+    bool screenLocked = false
+) {
     IREntity::EntityId canvas = IREntity::Prefab<IREntity::PrefabTypes::kVoxelPoolCanvas>::create(
         canvasName,
         voxelPoolSize,
         canvasSize
     );
     IREntity::setComponent(canvas, IRComponents::C_DetachedCanvas{});
-    return IRComponents::C_EntityCanvas{canvas, canvasSize};
+    if (!screenLocked) {
+        IREntity::setComponent(canvas, IRComponents::C_TrixelCanvasRenderBehavior{});
+        IREntity::setComponent(canvas, IRComponents::C_CanvasAOTexture{canvasSize});
+    }
+    return IRComponents::C_EntityCanvas{canvas, canvasSize, /*visible*/ true, screenLocked};
 }
 
 /// Attach a `C_VoxelPool` to the child canvas entity, upgrading it for
