@@ -14,6 +14,12 @@
 #                 runs the standby path, not a live task-pickup iteration
 #                 (#2022). Absent/unrecognized → live (an older dispatcher
 #                 that passes only 5 args keeps today's behavior).
+#   $7  plan      optional pre-claimed planning assignment from the
+#                 dispatcher, `plan=<repo>:<N>` (#2197). Exported as
+#                 FLEET_PLAN_ISSUE so the role iteration plans exactly that
+#                 issue (already claimed under this pane's worktree basename)
+#                 and releases the claim when done. Absent → unset — the
+#                 iteration does no planning work.
 #
 # On usage-limit exit (exit code 2), writes a Unix-epoch timestamp to
 # ~/.fleet/state/rate-limit/<pane_key>.ts. fleet-dispatcher checks that
@@ -41,6 +47,16 @@ case "$_mode_arg" in
     *) ROLE_MODE="live" ;;
 esac
 unset _mode_arg
+# Optional 7th arg (#2197): the dispatcher's pre-claimed planning assignment,
+# `plan=<repo>:<N>`. Require the full `plan=`-prefixed non-empty form — a bare
+# `plan=` (or garbage) must NOT export an empty FLEET_PLAN_ISSUE that
+# downstream `[[ -n ]]` guards would misread (the dual-spelling lesson,
+# scripts/fleet/CLAUDE.md).
+_plan_arg="${7:-}"
+if [[ "$_plan_arg" == plan=?* ]]; then
+    export FLEET_PLAN_ISSUE="${_plan_arg#plan=}"
+fi
+unset _plan_arg
 # Track fleet-dispatcher's STATE_DIR via the same env-var override so a
 # config change in one place propagates to both scripts.
 STATE_DIR="${FLEET_STATE_DIR:-$HOME/.fleet/state}"
@@ -57,7 +73,10 @@ if [[ -f "$_FLEET_COMMON_SH" ]]; then
     # shellcheck source=/dev/null
     source "$_FLEET_COMMON_SH"
 else
-    fleet_install_maybe_refresh() { :; }  # helper not installed yet — no-op
+    fleet_install_maybe_refresh() { :; }  # helpers not installed yet — no-op
+    # No-op release degrades a discarded planning assignment (#2197) to the
+    # 1-hour TTL reaper — the same failure budget as the dispatcher's copy.
+    fleet_planning_release_assignment() { :; }
 fi
 unset _FLEET_COMMON_SH
 
@@ -165,6 +184,17 @@ if (( _resume_role )) && [[ -f "$SIDECAR" ]]; then
     fi
 fi
 
+# A resume reloads the prior session and discards this dispatch's fresh config
+# — including any planning assignment (#2197). Release the pre-claim now,
+# under the same worktree basename the dispatcher claimed with, rather than
+# stranding the label for the 1-hour TTL reaper; the issue re-enters
+# assignment on a later tick once this resumed iteration finishes.
+if (( RESUMED )) && [[ -n "${FLEET_PLAN_ISSUE:-}" ]]; then
+    fleet_planning_release_assignment "$FLEET_PLAN_ISSUE" "$worktree_name"
+    echo "fleet-dispatch-wrap: resume discards planning assignment $FLEET_PLAN_ISSUE — released" >&2
+    unset FLEET_PLAN_ISSUE
+fi
+
 # --fallback-model only exists in print mode, which is exactly this path. When
 # the dispatcher hands us a chain (fresh fable dispatch), claude retries on the
 # fallback model(s) if $MODEL is overloaded. Resume targets one specific session,
@@ -189,9 +219,11 @@ else
 fi
 
 # Test hook: print the resolved launch decision + argv and exit before spawning
-# claude (mirrors fleet-babysit's FLEET_BABYSIT_PRINT_LAUNCH).
+# claude (mirrors fleet-babysit's FLEET_BABYSIT_PRINT_LAUNCH). `plan=` mirrors
+# the FLEET_PLAN_ISSUE export (empty when no assignment / discarded by resume).
 if [[ -n "${FLEET_DISPATCH_PRINT_LAUNCH:-}" ]]; then
-    printf 'resumed=%s prompt=%s argv=claude %s\n' "$RESUMED" "$PROMPT" "${CLAUDE_ARGS[*]}"
+    printf 'resumed=%s plan=%s prompt=%s argv=claude %s\n' \
+        "$RESUMED" "${FLEET_PLAN_ISSUE:-}" "$PROMPT" "${CLAUDE_ARGS[*]}"
     exit 0
 fi
 

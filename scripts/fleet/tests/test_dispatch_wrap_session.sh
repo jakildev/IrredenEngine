@@ -17,6 +17,8 @@
 #   - cleanup: in-flight work (reservation present, branch otherwise clean) keeps the sidecar
 #   - cleanup: in-flight work (claude/* branch, clean but ahead of master) keeps the sidecar
 #   - cleanup: finished/no-op (clean master) clears the sidecar
+#   - planning assignment (#2197): 7th plan= arg -> FLEET_PLAN_ISSUE export;
+#     absent/bare arg stays unset; a resume releases the pre-claim instead
 
 set -uo pipefail
 SCRIPT_DIR=$(cd "$(dirname "$0")/.." && pwd)
@@ -48,6 +50,7 @@ cat >/dev/null 2>&1 || true
 EOF
 cat > "$BIN/fleet-claim" <<'EOF'
 #!/usr/bin/env bash
+[[ -n "${FLEET_CLAIM_LOG:-}" ]] && printf '%s\n' "$*" >> "$FLEET_CLAIM_LOG"
 [[ "$1" == "reservation-of" ]] && { [[ -n "${STUB_RESERVATION:-}" ]] && echo "$STUB_RESERVATION"; }
 exit 0
 EOF
@@ -134,6 +137,33 @@ echo "T7: cleanup — finished/no-op (clean master) clears the sidecar"
 rm -f "$SIDECAR"
 STUB_BRANCH="master" STUB_DIRTY="" STUB_CLAUDE_RC=0 run_wrap "claude-opus-4-8[1m]" xhigh worker
 [[ ! -f "$SIDECAR" ]] && ok "done/no-op worker cleared the sidecar (fresh next)" || bad "done: sidecar wrongly kept"
+
+# --- planning assignment (#2197): 7th arg -> FLEET_PLAN_ISSUE ---------------
+echo "T8: plan=<repo>:<N> 7th arg exports FLEET_PLAN_ISSUE on a fresh dispatch"
+rm -f "$SIDECAR"
+out=$(cd "$WT" && FLEET_DISPATCH_PRINT_LAUNCH=1 "$WRAP" pane-3 "claude-fable-5[1m]" xhigh worker "" live "plan=engine:2197" 2>/dev/null)
+[[ "$out" == *" plan=engine:2197 "* ]] && ok "fresh: FLEET_PLAN_ISSUE=engine:2197" || bad "fresh plan export: $out"
+rm -f "$SIDECAR"
+
+echo "T9: absent or bare 'plan=' 7th arg -> FLEET_PLAN_ISSUE stays unset"
+rm -f "$SIDECAR"
+out=$(cd "$WT" && FLEET_DISPATCH_PRINT_LAUNCH=1 "$WRAP" pane-3 sonnet high worker "" live 2>/dev/null)
+[[ "$out" == *" plan= prompt="* ]] && ok "absent arg: no FLEET_PLAN_ISSUE" || bad "absent-arg plan leak: $out"
+rm -f "$SIDECAR"
+out=$(cd "$WT" && FLEET_DISPATCH_PRINT_LAUNCH=1 "$WRAP" pane-3 sonnet high worker "" live "plan=" 2>/dev/null)
+[[ "$out" == *" plan= prompt="* ]] && ok "bare plan=: not exported (dual-spelling guard)" || bad "bare plan= leaked: $out"
+rm -f "$SIDECAR"
+
+echo "T10: resume discards the assignment — released, not exported"
+printf '{"session_id":"SID-77","role":"worker","model":"sonnet","effort":"high","created_epoch":1}\n' > "$SIDECAR"
+export FLEET_CLAIM_LOG="$TMPROOT/wrap-claim.log"; : > "$FLEET_CLAIM_LOG"
+out=$(cd "$WT" && FLEET_DISPATCH_PRINT_LAUNCH=1 "$WRAP" pane-3 sonnet high worker "" live "plan=game:7" 2>/dev/null)
+[[ "$out" == resumed=1* && "$out" == *" plan= prompt="* ]] && ok "resume: assignment dropped from env" || bad "resume plan handling: $out"
+grep -q -- '^--repo game planning-release 7 worker-1$' "$FLEET_CLAIM_LOG" \
+  && ok "resume: pre-claim released under the worktree basename (--repo game form)" \
+  || bad "resume: no planning-release call: $(cat "$FLEET_CLAIM_LOG")"
+unset FLEET_CLAIM_LOG
+rm -f "$SIDECAR"
 
 echo
 echo "PASS: $PASS  FAIL: $FAIL"

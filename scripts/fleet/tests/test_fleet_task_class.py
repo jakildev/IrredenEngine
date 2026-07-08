@@ -23,8 +23,12 @@ that matter:
     terminal like `inflight_pr`, and the lane defers when it's the only
     work (#1998, the GL-vs-Metal host-capability gate);
   - per-task **Effort:** overrides beat class defaults;
-  - the output carries a trailing ``count`` = claimable items of the elected
-    class, which the dispatcher uses to cap its idle-pane fan-out;
+  - the output carries ``count`` = claimable items of the elected class,
+    which the dispatcher uses to cap its idle-pane fan-out, and ``plan`` = 1
+    when that count includes the class's needs-plan yield (the dispatcher's
+    cue to pre-claim a specific issue via ``--plan-pick``, #2197);
+  - ``plan_pick`` lists the class's planning candidates as ordered
+    ``repo:number`` lines in slice order (engine-first, oldest-first);
   - an empty/unroutable slice falls through to the lane default (covers
     reservation resumes and missing slices).
 """
@@ -34,7 +38,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from fleet_task_class import feedback_pr_class, resolve  # noqa: E402
+from fleet_task_class import feedback_pr_class, plan_pick, resolve  # noqa: E402
 
 
 def _task(issue, model=None, effort=None, owner="free", blocked=False,
@@ -79,17 +83,17 @@ class TaskResolution(unittest.TestCase):
                                       _task("#11", "fable")]},
                       "opus", fable_blocked=False)
         # fable still queued -> more=1; one claimable sonnet item -> count=1.
-        self.assertEqual(out, "sonnet high 1 1")
+        self.assertEqual(out, "sonnet high 1 1 0")
 
     def test_effort_override_beats_class_default(self):
         out = resolve({"tasks_open": [_task("#10", "opus", effort="medium")]},
                       "opus", fable_blocked=False)
-        self.assertEqual(out, "opus medium 0 1")
+        self.assertEqual(out, "opus medium 0 1 0")
 
     def test_untagged_task_uses_lane_default(self):
         out = resolve({"tasks_open": [_task("#10", None)]},
                       "sonnet", fable_blocked=False)
-        self.assertEqual(out, "sonnet high 0 1")
+        self.assertEqual(out, "sonnet high 0 1 0")
 
     def test_count_reflects_claimable_items_of_class(self):
         # Three unblocked opus tasks + one sonnet: the elected opus class
@@ -98,7 +102,7 @@ class TaskResolution(unittest.TestCase):
         out = resolve({"tasks_open": [_task("#10", "opus"), _task("#11", "opus"),
                                       _task("#12", "opus"), _task("#13", "sonnet")]},
                       "opus", fable_blocked=False)
-        self.assertEqual(out, "opus xhigh 1 3")
+        self.assertEqual(out, "opus xhigh 1 3 0")
 
     def test_owned_and_blocked_tasks_skipped(self):
         # Owned/blocked tasks are invisible: they don't dispatch AND they
@@ -108,7 +112,7 @@ class TaskResolution(unittest.TestCase):
                                       _task("#11", "opus", blocked=True),
                                       _task("#12", "opus")]},
                       "opus", fable_blocked=False)
-        self.assertEqual(out, "opus xhigh 0 1")
+        self.assertEqual(out, "opus xhigh 0 1 0")
 
     def test_inflight_pr_task_skipped_fable_behind_dispatches(self):
         # #1726 / the #1640 incident: a head-of-queue opus task whose own issue
@@ -120,7 +124,7 @@ class TaskResolution(unittest.TestCase):
             _task("#1640", "opus", inflight_pr={"number": 1700, "parked": True}),
             _task("#1695", "fable"),
         ]}, "opus", fable_blocked=False)
-        self.assertEqual(out, "fable xhigh 0 1")
+        self.assertEqual(out, "fable xhigh 0 1 0")
 
     def test_inflight_pr_only_candidate_defers(self):
         # The parked task is the ONLY queue item: nothing a fresh worker can
@@ -153,7 +157,7 @@ class TaskResolution(unittest.TestCase):
             _task("#1641", "opus", blocked=True,
                   stackable_blocker_pr={"number": 1638}),
         ]}, "opus", fable_blocked=False)
-        self.assertEqual(out, "opus xhigh 0 1")
+        self.assertEqual(out, "opus xhigh 0 1 0")
 
     def test_unblocked_elected_before_stackable(self):
         # Pickup priority: an unblocked task outranks a stackable `blocked` one
@@ -163,7 +167,7 @@ class TaskResolution(unittest.TestCase):
             _task("#10", "opus", blocked=True, stackable_blocker_pr={"number": 9}),
             _task("#11", "opus"),
         ]}, "opus", fable_blocked=False)
-        self.assertEqual(out, "opus xhigh 0 2")
+        self.assertEqual(out, "opus xhigh 0 2 0")
 
     def test_inflight_pr_head_with_capped_fable_defers(self):
         # Head parked (skipped), only remaining work is cap-blocked fable ->
@@ -179,7 +183,7 @@ class TaskResolution(unittest.TestCase):
         out = resolve({"feedback_prs": [{"labels": ["fleet:has-nits"]}],
                        "tasks_open": [_task("#10", "opus")]},
                       "opus", fable_blocked=False)
-        self.assertEqual(out, "sonnet high 1 1")
+        self.assertEqual(out, "sonnet high 1 1 0")
 
     def test_needs_plan_prefers_fable(self):
         # Planning is architect-tier design work: it elects fable while the
@@ -187,7 +191,7 @@ class TaskResolution(unittest.TestCase):
         # panes on the fable class).
         out = resolve({"needs_plan": [{"number": 99}]},
                       "opus", fable_blocked=False)
-        self.assertEqual(out, "fable xhigh 0 1")
+        self.assertEqual(out, "fable xhigh 0 1 1")
 
     def test_needs_plan_falls_back_to_opus_when_fable_capped(self):
         # A saturated fable cap must DOWNGRADE planning to opus, not defer it —
@@ -195,7 +199,7 @@ class TaskResolution(unittest.TestCase):
         # behind a long fable implementation iteration.
         out = resolve({"needs_plan": [{"number": 99}]},
                       "opus", fable_blocked=True)
-        self.assertEqual(out, "opus xhigh 0 1")
+        self.assertEqual(out, "opus xhigh 0 1 1")
 
     def test_needs_plan_counts_once_regardless_of_backlog(self):
         # The lane plans one issue at a time (planning-claim lock + the
@@ -205,7 +209,7 @@ class TaskResolution(unittest.TestCase):
         out = resolve({"needs_plan": [{"number": 99}, {"number": 100},
                                       {"number": 101}]},
                       "opus", fable_blocked=False)
-        self.assertEqual(out, "fable xhigh 0 1")
+        self.assertEqual(out, "fable xhigh 0 1 1")
 
     def test_needs_plan_sonnet_tagged_routes_sonnet(self):
         # A `fleet:sonnet`-tagged needs-plan issue is MECHANICAL: the sonnet
@@ -213,13 +217,13 @@ class TaskResolution(unittest.TestCase):
         # of burning fable/opus. Sonnet default effort (high), count=1.
         out = resolve({"needs_plan": [{"number": 99, "labels": ["fleet:sonnet"]}]},
                       "opus", fable_blocked=False)
-        self.assertEqual(out, "sonnet high 0 1")
+        self.assertEqual(out, "sonnet high 0 1 1")
 
     def test_needs_plan_untagged_still_prefers_fable(self):
         # No fleet:sonnet tag -> architect-tier design planning, unchanged.
         out = resolve({"needs_plan": [{"number": 99, "labels": ["render"]}]},
                       "opus", fable_blocked=False)
-        self.assertEqual(out, "fable xhigh 0 1")
+        self.assertEqual(out, "fable xhigh 0 1 1")
 
     def test_needs_plan_mixed_classes_elects_oldest_and_flags_more(self):
         # Oldest plannable issue is the sonnet-tagged mechanical one, so the
@@ -230,14 +234,14 @@ class TaskResolution(unittest.TestCase):
             {"number": 99, "labels": ["fleet:sonnet"]},
             {"number": 100, "labels": ["render"]},
         ]}, "opus", fable_blocked=False)
-        self.assertEqual(out, "sonnet high 1 1")
+        self.assertEqual(out, "sonnet high 1 1 1")
 
     def test_needs_plan_sonnet_tagged_unaffected_by_fable_cap(self):
         # A saturated fable cap downgrades DESIGN-tier planning to opus, but a
         # mechanical sonnet light-plan is a sonnet-lane job regardless.
         out = resolve({"needs_plan": [{"number": 99, "labels": ["fleet:sonnet"]}]},
                       "opus", fable_blocked=True)
-        self.assertEqual(out, "sonnet high 0 1")
+        self.assertEqual(out, "sonnet high 0 1 1")
 
     def test_design_unblocked_feedback_resolves_opus(self):
         # The engine #1885 shape: a design-unblocked PR is the top feedback
@@ -254,7 +258,7 @@ class TaskResolution(unittest.TestCase):
                                  inflight_pr={"number": 1885, "parked": True})],
             "needs_plan": [{"number": 1887}],
         }, "opus", fable_blocked=False)
-        self.assertEqual(out, "opus xhigh 1 1")
+        self.assertEqual(out, "opus xhigh 1 1 0")
 
 
 class FableCap(unittest.TestCase):
@@ -265,7 +269,7 @@ class FableCap(unittest.TestCase):
         out = resolve({"tasks_open": [_task("#10", "fable"),
                                       _task("#11", "opus")]},
                       "opus", fable_blocked=True)
-        self.assertEqual(out, "opus xhigh 0 1")
+        self.assertEqual(out, "opus xhigh 0 1 0")
 
     def test_only_capped_fable_defers(self):
         out = resolve({"tasks_open": [_task("#10", "fable")]},
@@ -275,7 +279,7 @@ class FableCap(unittest.TestCase):
     def test_uncapped_fable_dispatches_xhigh(self):
         out = resolve({"tasks_open": [_task("#10", "fable")]},
                       "opus", fable_blocked=False)
-        self.assertEqual(out, "fable xhigh 0 1")
+        self.assertEqual(out, "fable xhigh 0 1 0")
 
 
 class EmptySlice(unittest.TestCase):
@@ -324,12 +328,12 @@ class GlHostGate(unittest.TestCase):
     def test_gl_only_task_claimable_on_linux(self):
         out = self._resolve_on(
             "linux", {"tasks_open": [_task("#1937", "opus", needs_gl_host=True)]})
-        self.assertEqual(out, "opus xhigh 0 1")
+        self.assertEqual(out, "opus xhigh 0 1 0")
 
     def test_gl_only_task_claimable_on_windows(self):
         out = self._resolve_on(
             "windows", {"tasks_open": [_task("#1937", "opus", needs_gl_host=True)]})
-        self.assertEqual(out, "opus xhigh 0 1")
+        self.assertEqual(out, "opus xhigh 0 1 0")
 
     def test_mixed_mac_slice_dispatches_claimable_no_churn(self):
         # GL-only #1937-shaped head + a claimable opus task: the mac pane skips
@@ -339,7 +343,7 @@ class GlHostGate(unittest.TestCase):
             _task("#1937", "opus", needs_gl_host=True),
             _task("#1998", "opus"),
         ]})
-        self.assertEqual(out, "opus xhigh 0 1")
+        self.assertEqual(out, "opus xhigh 0 1 0")
 
     def test_gl_only_plus_inflight_only_on_mac_defers(self):
         # All-terminal mix on a mac pane: one GL-only (host-terminal) + one
@@ -368,7 +372,7 @@ class GlHostGate(unittest.TestCase):
             _task("#1941", "opus", blocked=True,
                   stackable_blocker_pr={"number": 1900}),
         ]})
-        self.assertEqual(out, "opus xhigh 0 1")
+        self.assertEqual(out, "opus xhigh 0 1 0")
 
     def test_unknown_host_is_fail_closed(self):
         # Fail-closed: an unrecognized host is treated as not GL-capable, so a
@@ -386,10 +390,10 @@ class ExcludeClasses(unittest.TestCase):
     def test_exclude_elects_the_next_class(self):
         slice_data = {"tasks_open": [_task("#10", "opus"), _task("#11", "sonnet")]}
         # No exclude: opus is the elected (oldest) class, sonnet is `more`.
-        self.assertEqual(resolve(slice_data, "opus", False), "opus xhigh 1 1")
+        self.assertEqual(resolve(slice_data, "opus", False), "opus xhigh 1 1 0")
         # Exclude opus -> sonnet is elected, nothing else servable -> more=0.
         self.assertEqual(resolve(slice_data, "opus", False, exclude=["opus"]),
-                         "sonnet high 0 1")
+                         "sonnet high 0 1 0")
 
     def test_exclude_all_claimable_defers_not_empty(self):
         # Excluding every claimable class must DEFER (there is real work, just
@@ -403,13 +407,71 @@ class ExcludeClasses(unittest.TestCase):
         # Excluding a class with no claimable work changes nothing.
         slice_data = {"tasks_open": [_task("#10", "opus")]}
         self.assertEqual(resolve(slice_data, "opus", False, exclude=["fable"]),
-                         "opus xhigh 0 1")
+                         "opus xhigh 0 1 0")
 
     def test_exclude_on_empty_slice_stays_empty(self):
         # No claimable work at all + an exclude -> '' (lane-default), not defer:
         # nothing was excluded, so the reservation-resume fallthrough stands.
         self.assertEqual(resolve({"tasks_open": []}, "opus", False,
                                  exclude=["opus"]), "")
+
+
+class PlanFlag(unittest.TestCase):
+    """The trailing ``plan`` token: 1 iff the ELECTED class's claimable count
+    includes its needs-plan yield — the dispatcher then pre-claims a specific
+    issue and hands the assignment to the dispatch (#2197)."""
+
+    def test_task_plus_same_class_plan_sets_flag_and_counts_both(self):
+        # An opus task + an opus-degraded plan (fable capped): opus elected,
+        # count=2 (task + the planning slot), plan=1.
+        out = resolve({"tasks_open": [_task("#10", "opus")],
+                       "needs_plan": [{"number": 99}]},
+                      "opus", fable_blocked=True)
+        self.assertEqual(out, "opus xhigh 0 2 1")
+
+    def test_other_class_plan_does_not_set_flag(self):
+        # The plan candidate routes to fable; the elected class is opus (the
+        # task) -> plan=0, fable plan rides `more` for a later tick.
+        out = resolve({"tasks_open": [_task("#10", "opus")],
+                       "needs_plan": [{"number": 99}]},
+                      "opus", fable_blocked=False)
+        self.assertEqual(out, "opus xhigh 1 1 0")
+
+
+class PlanPick(unittest.TestCase):
+    """`plan_pick` — the ordered repo:number candidate lines the dispatcher
+    walks with `fleet-claim planning-claim` until one is granted (#2197)."""
+
+    SLICE = {"needs_plan": [
+        {"number": 90, "repo": "engine", "labels": ["fleet:sonnet"]},
+        {"number": 99, "repo": "engine", "labels": []},
+        {"number": 120, "repo": "engine", "labels": ["render"]},
+        {"number": 7, "repo": "game", "labels": []},
+    ]}
+
+    def test_fable_class_picks_design_tier_in_slice_order(self):
+        # Engine-first / oldest-first is the slice composition order —
+        # plan_pick preserves it; the sonnet-tagged mechanical issue is not a
+        # fable candidate.
+        self.assertEqual(plan_pick(self.SLICE, "fable", False),
+                         ["engine:99", "engine:120", "game:7"])
+
+    def test_sonnet_class_picks_only_mechanical(self):
+        self.assertEqual(plan_pick(self.SLICE, "sonnet", False), ["engine:90"])
+
+    def test_fable_cap_degrades_design_tier_to_opus(self):
+        # fable_blocked routes design-tier planning to opus (same `_plan_class`
+        # degrade `resolve` applies), so the opus pick set is the fable set.
+        self.assertEqual(plan_pick(self.SLICE, "opus", True),
+                         ["engine:99", "engine:120", "game:7"])
+        self.assertEqual(plan_pick(self.SLICE, "opus", False), [])
+
+    def test_missing_repo_defaults_engine_and_missing_number_skipped(self):
+        s = {"needs_plan": [{"number": 5}, {"labels": []}]}
+        self.assertEqual(plan_pick(s, "fable", False), ["engine:5"])
+
+    def test_empty_slice_yields_no_picks(self):
+        self.assertEqual(plan_pick({}, "fable", False), [])
 
 
 if __name__ == "__main__":

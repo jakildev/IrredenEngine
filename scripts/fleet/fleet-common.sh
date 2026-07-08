@@ -147,6 +147,23 @@ fleet_install_refresh() {
     touch "$stamp" 2>/dev/null || true
 }
 
+# fleet_planning_release_assignment "<repo>:<N>" <agent> — release a
+# planning-claim label taken under <agent> for a dispatcher planning
+# assignment (#2197). Shared by fleet-dispatcher (launch failed after a
+# successful pre-claim) and fleet-dispatch-wrap (a session-resume discards
+# the fresh assignment). Best-effort by design: both callers sit on discard
+# paths where a failed release only means the claim waits for the 1-hour
+# TTL reaper instead.
+fleet_planning_release_assignment() {
+    local line="$1" agent="$2"
+    local repo="${line%%:*}" num="${line##*:}"
+    if [[ "$repo" == "game" ]]; then
+        fleet-claim --repo game planning-release "$num" "$agent" >/dev/null 2>&1 || true
+    else
+        fleet-claim planning-release "$num" "$agent" >/dev/null 2>&1 || true
+    fi
+}
+
 # fleet_install_maybe_refresh [main-clone-root] — the guarded entry point both
 # hooks call. Stale-check first (sub-ms common path); if stale, take an atomic
 # mkdir-lock (same primitive fleet-claim uses; NOT flock, absent on macOS) so

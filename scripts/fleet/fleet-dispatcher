@@ -100,6 +100,15 @@ if [[ -f "$FLEET_LIB_DIR/fleet-clone-freshness.sh" ]]; then
 else
     advance_main_clone() { :; }  # helper not installed yet — no-op
 fi
+# Shared fleet-claim helpers (fleet_planning_release_assignment). A missing
+# file degrades the error-path release to a no-op — the 1-hour planning TTL
+# reaper covers the leaked claim, same failure budget as the wrap's copy.
+if [[ -f "$FLEET_LIB_DIR/fleet-common.sh" ]]; then
+    # shellcheck source=/dev/null
+    source "$FLEET_LIB_DIR/fleet-common.sh"
+else
+    fleet_planning_release_assignment() { :; }
+fi
 
 # --- Per-role concurrency cap config ---------------------------------------
 #
@@ -714,6 +723,19 @@ pane_id_to_key() {
     printf 'pane-%s\n' "${1#%}"
 }
 
+# Basename of a pane's current working directory — the worktree name
+# (`worker-1` … `worker-4`) fleet panes sit in, which is also the agent
+# name fleet-claim locks are held under. The planning pre-claim (#2197)
+# must claim under EXACTLY this name: the dispatched worker releases
+# with its own worktree basename, so any other claim name would make
+# that release a no-op and leak a 1-hour orphan to the TTL reaper.
+pane_worktree_basename() {
+    local wt_path
+    wt_path=$(tmux display-message -t "$1" -p '#{pane_current_path}' 2>/dev/null || true)
+    [[ -n "$wt_path" ]] || return 1
+    basename "$wt_path"
+}
+
 dispatch_record() {
     # $1 = pane_id (e.g. `%3`)
     printf '%s\n' "$DISPATCH_DIR/$(pane_id_to_key "$1").json"
@@ -722,13 +744,16 @@ dispatch_record() {
 write_dispatch_record() {
     # $3 = model class of the dispatch (fable|opus|sonnet) — counted by
     # count_active_for_class for the fable concurrency cap.
-    local role="$1" pane_id="$2" class="${3:-}"
-    local ts epoch
+    # $4 = optional pre-claimed planning assignment ("<repo>:<N>", #2197),
+    # stamped as `plan_issue` for fleet-debug observability.
+    local role="$1" pane_id="$2" class="${3:-}" plan_issue="${4:-}"
+    local ts epoch extra=""
     ts=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
     epoch=$(date +%s)   # read back by cleanup_stale_dispatches for the empty-exit streak
+    [[ -n "$plan_issue" ]] && extra=$(printf ',"plan_issue":"%s"' "$plan_issue")
     mkdir -p "$DISPATCH_DIR"
-    printf '{"role":"%s","pane":"%s","class":"%s","dispatched_at":"%s","dispatched_epoch":%s}\n' \
-        "$role" "$pane_id" "$class" "$ts" "$epoch" >"$(dispatch_record "$pane_id")"
+    printf '{"role":"%s","pane":"%s","class":"%s","dispatched_at":"%s","dispatched_epoch":%s%s}\n' \
+        "$role" "$pane_id" "$class" "$ts" "$epoch" "$extra" >"$(dispatch_record "$pane_id")"
 }
 
 # Map a concrete model string back to its class name, for stamping
@@ -1195,9 +1220,13 @@ build_dispatch_command() {
     # on command lines, so the eaten space is harmless.
     # $3/$4 = optional model/effort overrides from per-task class
     # resolution (resolve_worker_class); empty -> the role defaults.
+    # $5 = optional pre-claimed planning assignment ("<repo>:<N>", #2197);
+    # non-empty appends a 7th `plan=<repo>:<N>` arg that fleet-dispatch-wrap
+    # exports as FLEET_PLAN_ISSUE.
     local role="$1" pane_key="$2"
     local model="${3:-${ROLE_MODEL[$role]:-sonnet}}"
     local effort="${4:-${ROLE_EFFORT[$role]:-high}}"
+    local plan="${5:-}"
     # Fable-class dispatches carry the fallback chain so claude degrades
     # per-iteration (--fallback-model, print-mode only) if Fable stops
     # being available mid-session. Other classes get no fallback:
@@ -1210,8 +1239,14 @@ build_dispatch_command() {
     # which role mode to run — `/role-<role> <mode>` — so a dry-run boot runs the
     # standby path, not a live task-pickup iteration. Live → "live", identical to
     # the prior hard-coded behavior.
-    printf ' fleet-dispatch-wrap %q %q %q %q %q %q\n' \
-        "$pane_key" "$model" "$effort" "$role" "$fallback" "${DISPATCH_MODE:-live}"
+    if [[ -n "$plan" ]]; then
+        printf ' fleet-dispatch-wrap %q %q %q %q %q %q %q\n' \
+            "$pane_key" "$model" "$effort" "$role" "$fallback" \
+            "${DISPATCH_MODE:-live}" "plan=$plan"
+    else
+        printf ' fleet-dispatch-wrap %q %q %q %q %q %q\n' \
+            "$pane_key" "$model" "$effort" "$role" "$fallback" "${DISPATCH_MODE:-live}"
+    fi
 }
 
 # Resolve the model class for a worker-lane dispatch from the lane's
@@ -1227,7 +1262,7 @@ resolve_worker_class() {
     # re-resolve in dispatch_role, after a class is found cap-saturated).
     local exclude="${2:-}"
     DISPATCH_CLASS="" DISPATCH_MODEL="" DISPATCH_EFFORT=""
-    DISPATCH_MORE=0 DISPATCH_DEFER=0 DISPATCH_COUNT=""
+    DISPATCH_MORE=0 DISPATCH_DEFER=0 DISPATCH_COUNT="" DISPATCH_PLAN=0
     local lane_default="${WORKER_LANE_DEFAULT_CLASS[$role]:-}"
     [[ -n "$lane_default" ]] || return 0
     local slice="$STATE_DIR/projections/$role.json"
@@ -1244,8 +1279,8 @@ resolve_worker_class() {
         return 0
     fi
     [[ -n "$out" ]] || return 0
-    local cls effort more count
-    read -r cls effort more count <<< "$out"
+    local cls effort more count plan
+    read -r cls effort more count plan <<< "$out"
     DISPATCH_CLASS="$cls"
     DISPATCH_MODEL="${CLASS_MODEL[$cls]:-}"
     DISPATCH_EFFORT="$effort"
@@ -1254,6 +1289,90 @@ resolve_worker_class() {
     # Older slices / the '' fallthrough leave it empty (uncapped). Validate so a
     # malformed value can't corrupt the cap arithmetic under `set -u`.
     [[ "$count" =~ ^[0-9]+$ ]] && DISPATCH_COUNT="$count"
+    # The elected class's count includes its needs-plan yield: dispatch_role
+    # pre-claims a specific issue (plan_assign_for_pane) and hands the
+    # assignment to the dispatch (#2197). Validated like `count`. Explicit
+    # `if` — a `[[ ]] &&` here would fail the function on plan=0 and, as its
+    # last command, abort the whole daemon under `set -e`.
+    if [[ "$plan" == "1" ]]; then
+        DISPATCH_PLAN=1
+    fi
+}
+
+# --- Planning pre-claim (#2197) --------------------------------------------
+#
+# Assignment IS the claim: when the elected class's claimable count includes a
+# needs-plan yield (DISPATCH_PLAN=1), the dispatcher takes the existing
+# planning-claim label lock itself — under the target pane's worktree
+# basename — BEFORE dispatching, and hands the assignment into the iteration
+# as `plan=<repo>:<N>` (FLEET_PLAN_ISSUE). A planning dispatch therefore only
+# exists after a successful sole-holder claim, so two concurrent planning
+# dispatches can never target the same issue; contenders drop from N panes x
+# M hosts to the M dispatchers plus the interactive architect, and a lost
+# cross-host race just assigns the NEXT candidate line instead of burning a
+# worker iteration on post-hoc arbitration.
+
+# Result of the most recent plan_assign_for_pane call: "<repo>:<N>" when a
+# claim was granted, empty otherwise.
+PLAN_ASSIGNMENT=""
+
+# Attempt to pre-claim one needs-plan issue of the elected class for the pane
+# about to be dispatched. $1 = role, $2 = the pane's worktree basename (the
+# claim agent name — see pane_worktree_basename). Never pre-claims outside
+# live mode: dry-run/review-only iterations skip planning, so a claim there
+# would only strand a label for the TTL reaper.
+plan_assign_for_pane() {
+    local role="$1" agent="$2"
+    PLAN_ASSIGNMENT=""
+    [[ "$DISPATCH_MODE" == "live" ]] || return 0
+    [[ -n "$DISPATCH_CLASS" ]] || return 0
+    local slice="$STATE_DIR/projections/$role.json"
+    [[ -f "$slice" ]] || return 0
+    local fable_blocked=0
+    if (( $(count_active_for_class fable) >= FABLE_CONCURRENCY_CAP )); then
+        fable_blocked=1
+    fi
+    local picks
+    picks=$(python3 "$FLEET_LIB_DIR/fleet_task_class.py" --plan-pick \
+        "$slice" "$DISPATCH_CLASS" "$fable_blocked" 2>/dev/null) || picks=""
+    [[ -n "$picks" ]] || return 0
+    local line repo num rc
+    while IFS= read -r line; do
+        [[ -n "$line" ]] || continue
+        repo="${line%%:*}"
+        num="${line##*:}"
+        [[ "$num" =~ ^[0-9]+$ ]] || continue
+        # exit 0 = sole holder (assigned); 1 = a cross-host dispatcher or the
+        # architect holds it (next line); 3 = a `## Plan` comment already
+        # exists — either a stale slice (already planned + queued) or the
+        # re-plan state (plan-review bounce / stale-queued flip re-entered it
+        # into needs_plan). Disambiguate with --replan, which gates on a LIVE
+        # fleet:needs-plan label: exit 0 = assigned as a re-plan, exit 2 = the
+        # label is gone, genuinely done — next line.
+        rc=0
+        if [[ "$repo" == "game" ]]; then
+            fleet-claim --repo game planning-claim "$num" "$agent" >/dev/null 2>&1 || rc=$?
+        else
+            fleet-claim planning-claim "$num" "$agent" >/dev/null 2>&1 || rc=$?
+        fi
+        if (( rc == 0 )); then
+            PLAN_ASSIGNMENT="$line"
+            return 0
+        fi
+        if (( rc == 3 )); then
+            rc=0
+            if [[ "$repo" == "game" ]]; then
+                fleet-claim --repo game planning-claim "$num" "$agent" --replan >/dev/null 2>&1 || rc=$?
+            else
+                fleet-claim planning-claim "$num" "$agent" --replan >/dev/null 2>&1 || rc=$?
+            fi
+            if (( rc == 0 )); then
+                PLAN_ASSIGNMENT="$line"
+                return 0
+            fi
+        fi
+    done <<< "$picks"
+    return 0
 }
 
 # Returns 0 (should re-arm) iff the resolver would dispatch a CONCRETE class for
@@ -1327,12 +1446,15 @@ dispatch_role() {
     # single-flighted the role because the dispatch record was keyed
     # by role name and only the first idle pane was ever picked.
     #
-    # No coordination needed at dispatch time: each iteration runs the
-    # same role command, and the role-doc logic uses fleet-claim to
+    # TASK coordination stays claim-side: each iteration runs the same
+    # role command, and the role-doc logic uses fleet-claim to
     # atomically claim work — only one pane can claim a given task,
     # the others find nothing actionable and exit. If there are fewer
     # actionable items than idle panes, the surplus panes simply
-    # iterate-and-exit cheaply.
+    # iterate-and-exit cheaply. PLANNING is the exception: the
+    # dispatcher pre-claims a specific needs-plan issue and hands the
+    # assignment to exactly one pane (#2197, see plan_assign_for_pane),
+    # so planning dispatches never contend for the same issue.
     local idle_panes
     idle_panes=$(find_idle_panes_for_role "$role")
     if [[ -z "$idle_panes" ]]; then
@@ -1404,6 +1526,7 @@ dispatch_role() {
 
     local dispatched=0
     local gap_blocked=""
+    local plan_attempted=""
     while IFS= read -r pane_id; do
         [[ -n "$pane_id" ]] || continue
         # Claimable-count cap: stop once this tick's launches have filled the
@@ -1445,10 +1568,46 @@ dispatch_role() {
             gap_blocked=1
             break
         fi
+        # Planning pre-claim (#2197): the first pane launched on a live-mode
+        # planning tick carries a pre-claimed needs-plan assignment. Attempted
+        # here — after every skip/stagger gate above — so a claim is never
+        # taken for a pane that then doesn't launch this tick.
+        local plan_arg=""
+        if (( DISPATCH_PLAN )) && [[ -z "$plan_attempted" && "$DISPATCH_MODE" == "live" ]]; then
+            local pane_basename
+            if pane_basename=$(pane_worktree_basename "$pane_id"); then
+                plan_attempted=1
+                plan_assign_for_pane "$role" "$pane_basename"
+                if [[ -n "$PLAN_ASSIGNMENT" ]]; then
+                    plan_arg="$PLAN_ASSIGNMENT"
+                    unset "CAP_DEFER_LOGGED[$role-planheld]"
+                else
+                    # Every candidate is held by another dispatcher/architect
+                    # or already planned: the planning slot in DISPATCH_COUNT
+                    # is not claimable this tick. Shrink the headroom by that
+                    # slot; when planning was the only remaining claimable
+                    # item, skip the dispatch entirely — a worker without an
+                    # assignment does no planning, so it would only
+                    # iterate-and-exit. The trigger stays: a posted plan or a
+                    # released claim re-fires the projection.
+                    (( claim_headroom > 0 )) && claim_headroom=$((claim_headroom - 1))
+                    if (( claim_headroom >= 0 && dispatched >= claim_headroom )); then
+                        if (( dispatched == 0 )); then
+                            if [[ -z "${CAP_DEFER_LOGGED[$role-planheld]+x}" ]]; then
+                                log "$role: class=$DISPATCH_CLASS planning candidates all held elsewhere or already planned; nothing else claimable — trigger kept"
+                                CAP_DEFER_LOGGED["$role-planheld"]=1
+                            fi
+                            return
+                        fi
+                        break
+                    fi
+                fi
+            fi
+        fi
         local cmd
-        cmd=$(build_dispatch_command "$role" "$pane_key" "$DISPATCH_MODEL" "$DISPATCH_EFFORT")
+        cmd=$(build_dispatch_command "$role" "$pane_key" "$DISPATCH_MODEL" "$DISPATCH_EFFORT" "$plan_arg")
         if [[ -n "$DISPATCH_CLASS" ]]; then
-            log "dispatching $role -> $pane_id [class=$DISPATCH_CLASS effort=$DISPATCH_EFFORT]"
+            log "dispatching $role -> $pane_id [class=$DISPATCH_CLASS effort=$DISPATCH_EFFORT${plan_arg:+ plan=$plan_arg}]"
         else
             log "dispatching $role -> $pane_id"
         fi
@@ -1479,10 +1638,17 @@ dispatch_role() {
         # remains as defense-in-depth.
         if ! dispatch_send_keys -t "$pane_id" C-u "$cmd" C-m; then
             log "send-keys timeout/failed for $role -> $pane_id; trying next idle pane"
+            # Error-path release: the launch failed AFTER a successful
+            # planning pre-claim. Release under the same basename (any other
+            # name would no-op) and let the next pane re-attempt the claim.
+            if [[ -n "$plan_arg" ]]; then
+                fleet_planning_release_assignment "$plan_arg" "$pane_basename"
+                plan_attempted=""
+            fi
             continue
         fi
         write_dispatch_record "$role" "$pane_id" \
-            "${DISPATCH_CLASS:-$(class_of_model "${ROLE_MODEL[$role]:-sonnet}")}"
+            "${DISPATCH_CLASS:-$(class_of_model "${ROLE_MODEL[$role]:-sonnet}")}" "$plan_arg"
         LAST_DISPATCH_EPOCH=$now_epoch
         dispatched=$((dispatched + 1))
     done <<< "$idle_panes"
@@ -1916,9 +2082,11 @@ case "${1:-}" in
     --resolve-class)
         # Test/debug: run the per-task class resolution for a worker lane
         # against the current projection slice and print the verdict:
-        #   "class=<c> model=<m> effort=<e> more=<0|1> defer=<0|1> count=<n>"
+        #   "class=<c> model=<m> effort=<e> more=<0|1> defer=<0|1> count=<n> plan=<0|1>"
         # Empty class means the lane-default fallthrough; count is the number of
-        # claimable items of the elected class (empty when class is empty).
+        # claimable items of the elected class (empty when class is empty);
+        # plan=1 means that count includes the class's needs-plan yield (the
+        # dispatch would carry a pre-claimed assignment, #2197).
         # Optional $3 = comma-separated classes to exclude (the cross-class
         # fan-out re-resolve — serve another class when the elected one is
         # cap-saturated).
@@ -1927,7 +2095,27 @@ case "${1:-}" in
             exit 2
         fi
         resolve_worker_class "$2" "${3:-}"
-        echo "class=$DISPATCH_CLASS model=$DISPATCH_MODEL effort=$DISPATCH_EFFORT more=$DISPATCH_MORE defer=$DISPATCH_DEFER count=$DISPATCH_COUNT"
+        echo "class=$DISPATCH_CLASS model=$DISPATCH_MODEL effort=$DISPATCH_EFFORT more=$DISPATCH_MORE defer=$DISPATCH_DEFER count=$DISPATCH_COUNT plan=$DISPATCH_PLAN"
+        exit 0
+        ;;
+    --plan-assign)
+        # Test/debug: run the class resolution + planning pre-claim exactly as
+        # a live dispatch tick would for <role>, claiming under <agent>.
+        # Resolves DISPATCH_MODE from the boot sentinel first (the same gate
+        # dispatch_role applies — dry-run/review-only never pre-claim). Prints
+        # "plan=<repo>:<N>" when a claim was granted, "plan=" otherwise.
+        # Invokes `fleet-claim` from PATH — tests stub it (hermetic, per
+        # scripts/fleet/CLAUDE.md).
+        if [[ -z "${2:-}" || -z "${3:-}" ]]; then
+            echo "usage: fleet-dispatcher --plan-assign <role> <agent>" >&2
+            exit 2
+        fi
+        DISPATCH_MODE="$(read_dispatch_mode)"
+        resolve_worker_class "$2"
+        if (( DISPATCH_PLAN )); then
+            plan_assign_for_pane "$2" "$3"
+        fi
+        echo "plan=$PLAN_ASSIGNMENT"
         exit 0
         ;;
     --rearm-check)

@@ -45,7 +45,7 @@ worker would refuse.
 
 Output protocol (one line on stdout, consumed by fleet-dispatcher):
 
-  ``<class> <effort> <more> <count>``
+  ``<class> <effort> <more> <count> <plan>``
                                   — dispatch this class; ``more`` is 1 when
                                   claimable items of a *different* class
                                   remain (keep the trigger so the next tick
@@ -53,7 +53,13 @@ Output protocol (one line on stdout, consumed by fleet-dispatcher):
                                   of claimable items OF THIS CLASS right now, so
                                   the dispatcher can cap its fan-out at one
                                   worker per claimable item instead of one per
-                                  idle pane.
+                                  idle pane; ``plan`` is 1 when that count
+                                  includes the class's needs-plan yield — the
+                                  dispatcher then pre-claims a specific issue
+                                  (via ``--plan-pick`` + ``fleet-claim
+                                  planning-claim``) and hands the assignment to
+                                  the dispatch, so planning dispatches never
+                                  contend for the same issue (#2197).
   ``defer``                     — queue isn't empty but nothing is claimable
                                   right now (only cap-blocked fable, tasks with
                                   an open implementation PR, a `blocked` task
@@ -64,6 +70,13 @@ Output protocol (one line on stdout, consumed by fleet-dispatcher):
                                   dispatcher falls back to the lane default
                                   (this path covers reservation resumes and
                                   a missing/stale slice).
+
+A second CLI mode, ``--plan-pick <slice.json> <class> <fable-blocked 0|1>``,
+prints ordered ``repo:number`` lines — the slice's ``needs_plan[]`` entries
+(already human-gate-filtered by the scout, engine-first / oldest-first) whose
+`_plan_class` matches ``<class>``. The dispatcher walks these attempting
+``fleet-claim planning-claim`` until one is granted; that issue becomes the
+dispatch's pre-claimed planning assignment (#2197).
 """
 
 import json
@@ -217,32 +230,34 @@ def _plan_class(issue, fable_blocked):
 
 
 def _candidates(slice_data, lane_default, host, fable_blocked=False):
-    """Yield (class, effort) for each actionable item, pickup-priority order.
+    """Yield (class, effort, kind) per actionable item, pickup-priority order.
 
     Feedback PRs come first (the worker fixes review feedback before new work),
     then unblocked open tasks, then stackable `blocked` tasks (a fallback tier,
     claimable only as a stack on the blocker's PR), then needs_plan. This
     mirrors the worker role docs so the *elected* class matches what the worker
     actually picks up, and one yield per item lets the caller count claimable
-    work per class for the dispatcher's fan-out cap.
+    work per class for the dispatcher's fan-out cap. ``kind`` is "plan" for a
+    needs_plan yield and "work" for everything else — `resolve` uses it to flag
+    the elected class's planning candidate so the dispatcher pre-claims a
+    specific issue for the dispatch (#2197).
 
-    needs_plan yields once PER PLANNING CLASS, not once per issue: the lane
-    plans one at a time — the next planner fires after the first posts its
-    `## Plan` comment (the planning-claim label lock plus the comment-presence
-    early-out make a same-tick sibling a cheap no-op, not a duplicate plan) —
-    but a `fleet:sonnet`-tagged (mechanical) needs-plan issue is a light plan
-    the sonnet lane authors, while everything else is architect-tier design
-    planning (fable, or opus when the fable cap is saturated). Yielding one
-    per class lets the dispatcher's cross-class fan-out serve a mechanical
-    light-plan on the sonnet lane at the same time the fable/opus lane plans
-    the heavy ones, without ever fanning out colliding planners of the same
-    class. Iteration order is oldest-within-each-repo, engine-repo-first —
-    not a true global sort by issue number — because `slice_worker()` in
-    `fleet-state-scout` appends all of `repos.engine.needs_plan[]` before any
-    of `repos.game.needs_plan[]` (same pre-existing composition order
-    `tasks_open`/`feedback_prs` already inherit above). See `_plan_class` and
-    PLANNING-PROTOCOL.md §"Lightweight plan for mechanical (fleet:sonnet)
-    tasks".
+    needs_plan yields once PER PLANNING CLASS, not once per issue: one planning
+    assignment per class per tick is a deliberate serialization — planning is
+    not the throughput bottleneck — while parallelism across classes (a sonnet
+    light-plan alongside a fable/opus heavy plan) is preserved. A
+    `fleet:sonnet`-tagged (mechanical) needs-plan issue is a light plan the
+    sonnet lane authors; everything else is architect-tier design planning
+    (fable, or opus when the fable cap is saturated). The dispatcher turns the
+    per-class yield into a single pre-claimed assignment (`--plan-pick` +
+    `fleet-claim planning-claim` before launch), so same-class planning
+    dispatches never contend for one issue. Iteration order is
+    oldest-within-each-repo, engine-repo-first — not a true global sort by
+    issue number — because `slice_worker()` in `fleet-state-scout` appends all
+    of `repos.engine.needs_plan[]` before any of `repos.game.needs_plan[]`
+    (same pre-existing composition order `tasks_open`/`feedback_prs` already
+    inherit above). See `_plan_class` and PLANNING-PROTOCOL.md §"Lightweight
+    plan for mechanical (fleet:sonnet) tasks".
     """
     def _class_effort(task):
         cls = (task.get("model") or lane_default).lower()
@@ -252,25 +267,47 @@ def _candidates(slice_data, lane_default, host, fable_blocked=False):
 
     for pr in slice_data.get("feedback_prs", []) or []:
         cls = feedback_pr_class(pr.get("labels", []))
-        yield cls, CLASS_DEFAULT_EFFORT[cls]
+        yield cls, CLASS_DEFAULT_EFFORT[cls], "work"
     tasks = slice_data.get("tasks_open", []) or []
     for task in tasks:
         if _task_claimable(task, host) and not task.get("blocked"):
-            yield _class_effort(task)
+            yield (*_class_effort(task), "work")
     for task in tasks:
         if _task_claimable(task, host) and task.get("blocked"):
-            yield _class_effort(task)
+            yield (*_class_effort(task), "work")
     seen_plan_classes = set()
     for issue in slice_data.get("needs_plan") or []:
         pcls = _plan_class(issue, fable_blocked)
         if pcls in seen_plan_classes:
             continue
         seen_plan_classes.add(pcls)
-        yield pcls, CLASS_DEFAULT_EFFORT[pcls]
+        yield pcls, CLASS_DEFAULT_EFFORT[pcls], "plan"
+
+
+def plan_pick(slice_data, cls, fable_blocked):
+    """Ordered ``repo:number`` planning candidates for one class.
+
+    The slice's ``needs_plan[]`` entries whose `_plan_class` routes to ``cls``,
+    in slice order (engine-first, oldest-first within repo — the priority the
+    per-class yield in `_candidates` elects from). The dispatcher iterates
+    these attempting ``fleet-claim planning-claim`` until one is granted; a
+    line held by a cross-host dispatcher or the architect just falls through
+    to the next, so a lost race assigns the *next* issue instead of burning
+    the dispatch (#2197).
+    """
+    picks = []
+    for issue in slice_data.get("needs_plan") or []:
+        if _plan_class(issue, fable_blocked) != cls:
+            continue
+        number = issue.get("number")
+        if number is None:
+            continue
+        picks.append(f"{issue.get('repo') or 'engine'}:{number}")
+    return picks
 
 
 def resolve(slice_data, lane_default, fable_blocked, exclude=()):
-    """Return 'cls effort more count', 'defer', or '' per the output protocol.
+    """Return 'cls effort more count plan', 'defer', or '' per the protocol.
 
     `exclude` is a set of classes the caller has already served-and-saturated
     this tick (the dispatcher's cross-class fan-out: when the elected class is
@@ -291,7 +328,9 @@ def resolve(slice_data, lane_default, fable_blocked, exclude=()):
     excluded_any = False
     servable_classes = set()
     class_counts = {}
-    for cls, effort in _candidates(slice_data, lane_default, host, fable_blocked):
+    plan_classes = set()
+    for cls, effort, kind in _candidates(slice_data, lane_default, host,
+                                         fable_blocked):
         if cls in exclude:
             excluded_any = True
             continue
@@ -306,6 +345,8 @@ def resolve(slice_data, lane_default, fable_blocked, exclude=()):
             continue
         servable_classes.add(cls)
         class_counts[cls] = class_counts.get(cls, 0) + 1
+        if kind == "plan":
+            plan_classes.add(cls)
         if chosen is None:
             chosen = (cls, effort)
     if chosen is not None:
@@ -315,8 +356,11 @@ def resolve(slice_data, lane_default, fable_blocked, exclude=()):
         # more workers of a class than there is work for them to claim (the
         # surplus would only iterate-and-exit, a no-op opus iteration is not
         # free). `more` still drives the *other-class* follow-up dispatch.
+        # `plan` = that count includes the class's (single, per-class-deduped)
+        # needs-plan yield — the dispatcher's cue to pre-claim an assignment.
         count = class_counts[chosen[0]]
-        return f"{chosen[0]} {chosen[1]} {more} {count}"
+        plan = 1 if chosen[0] in plan_classes else 0
+        return f"{chosen[0]} {chosen[1]} {more} {count} {plan}"
     if skipped_fable or excluded_any:
         return "defer"
     # Nothing servable AND no cap-blocked fable. If the queue's only content is
@@ -333,7 +377,28 @@ def resolve(slice_data, lane_default, fable_blocked, exclude=()):
     return ""
 
 
+def _load_slice(slice_path):
+    try:
+        with open(slice_path) as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
 def main(argv):
+    if argv[1:2] == ["--plan-pick"]:
+        # --plan-pick <slice.json> <class> <fable-blocked 0|1>: print the
+        # ordered repo:number planning candidates for <class> (see plan_pick).
+        if len(argv) != 5:
+            print("usage: fleet_task_class.py --plan-pick <slice.json> "
+                  "<class> <fable-blocked 0|1>", file=sys.stderr)
+            return 2
+        slice_data = _load_slice(argv[2])
+        if slice_data is None:
+            return 0  # empty output -> nothing to assign
+        for line in plan_pick(slice_data, argv[3], argv[4] == "1"):
+            print(line)
+        return 0
     # Optional 4th arg: comma-separated classes to exclude (the dispatcher's
     # cross-class fan-out re-resolve). Absent -> exclude nothing.
     if len(argv) not in (4, 5):
@@ -342,10 +407,8 @@ def main(argv):
         return 2
     slice_path, lane_default, fable_blocked = argv[1], argv[2], argv[3] == "1"
     exclude = [c for c in (argv[4].split(",") if len(argv) == 5 else []) if c]
-    try:
-        with open(slice_path) as f:
-            slice_data = json.load(f)
-    except (OSError, json.JSONDecodeError):
+    slice_data = _load_slice(slice_path)
+    if slice_data is None:
         return 0  # empty output -> lane default
     out = resolve(slice_data, lane_default, fable_blocked, exclude)
     if out:
