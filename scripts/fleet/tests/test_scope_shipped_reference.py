@@ -19,6 +19,10 @@ Covers the false-positive classes:
 * #1640 ← #1700 (layer 6) — a doc-and-defer PR marks the issue deferred in a
   trusted (non-plan) title ("render: doc the invariant (#1640 deferred)"); a
   deferral-marked ref escalates the issue rather than shipping it.
+* #2258 ← #2266 (layer 7) — a narrowed refactor marks the issue prep in a
+  trusted (non-plan) title ("render: extract … helper (#2258 prep)", linked
+  `Part of` not `Closes`); a prep-marked ref prepares the issue rather than
+  shipping it.
 
 The module is a real .py, but it is loaded via importlib (mirroring
 test_enrich_stackable_blocker_prs.py) so the test runs regardless of cwd.
@@ -289,6 +293,45 @@ class PrReferencesIssue(unittest.TestCase):
         # close on "defer" inside "deferential").
         self.assertTrue(pr_references_issue("#1640 deferential render fix", "", 1640))
 
+    # --- prep / partial markers (#2258 <- #2266 — layer 7) ---
+
+    _PREP_TITLE_2266 = (
+        "render: extract sunBakeFrustumUVBounds shared helper (#2258 prep)")
+
+    def test_prep_marked_title_ref_rejected(self):
+        # #2258 <- #2266: a render:-scoped narrowed refactor marks the issue prep
+        # in its title ("(#2258 prep)") and only "Part of #2258" (no closing verb)
+        # in the body. Layer 4 doesn't fire (title is render:, not docs:), so
+        # title-trust would ship it without layer 7.
+        self.assertFalse(pr_references_issue(
+            self._PREP_TITLE_2266, "Part of #2258. Byte-identical extraction.", 2258))
+
+    def test_prep_leading_word_rejected(self):
+        # "prep for #N": prep word directly before the ref.
+        self.assertFalse(pr_references_issue("render: prep for #2258 feeder cap", "", 2258))
+
+    def test_prep_preparatory_variant_rejected(self):
+        self.assertFalse(pr_references_issue("render: preparatory #2258 refactor", "", 2258))
+
+    def test_prep_of_other_issue_does_not_suppress_shipped(self):
+        # "land #1234 and prep #1235": #1234 genuinely ships (title-trust); the
+        # "prep" binds only to the adjacent #1235 — the "and" breaks the
+        # bounded-gap adjacency to #1234 (mirrors the layer-6 deferral case).
+        title = "render: land #1234 and prep #1235"
+        self.assertTrue(pr_references_issue(title, "", 1234))
+        self.assertFalse(pr_references_issue(title, "", 1235))
+
+    def test_prep_title_still_ships_via_body_closing_verb(self):
+        # A prep title marker suppresses title-trust, but an explicit body close
+        # still ships (consistent with layers 4/6: a genuine landing wins).
+        self.assertTrue(pr_references_issue(self._PREP_TITLE_2266, "Closes #2258", 2258))
+
+    def test_prep_prefix_word_does_not_suppress(self):
+        # \b-anchored: "prepend" carries "prep" as a prefix but is not a prep
+        # word, so a ref beside it still ships (the trailing \b fails to close on
+        # "prep" inside "prepend").
+        self.assertTrue(pr_references_issue("#2258 prepend the sun-bake header", "", 2258))
+
 
 class SelectShippedPr(unittest.TestCase):
     def test_empty_candidates(self):
@@ -362,6 +405,18 @@ class SelectShippedPr(unittest.TestCase):
                  "read-gap invariant (#1640 deferred)",
                  "Refs #1640.\n\n## Status: design-blocked (see NEEDS-DESIGN comment)")
         self.assertIsNone(select_shipped_pr([pr], 1640))
+
+    def test_real_world_2258_prepped_by_2266(self):
+        # #2258 <- #2266 (layer 7): a render:-scoped narrowed refactor marks the
+        # issue prep in its title and only "Part of #2258" (no closing verb) in
+        # the body — it ships only a shared helper, not the issue's perf scope, so
+        # ingest must not stamp scope-shipped and clobber the issue's re-queue.
+        pr = _pr(2266,
+                 "render: extract sunBakeFrustumUVBounds shared helper (#2258 prep)",
+                 "Part of #2258. Keeps only the independently-correct refactor and "
+                 "drops the dead plumbing (the `feederSubCap` derivation, the "
+                 "stage-1 feeder early-return).")
+        self.assertIsNone(select_shipped_pr([pr], 2258))
 
 
 if __name__ == "__main__":

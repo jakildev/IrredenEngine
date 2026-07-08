@@ -62,14 +62,30 @@ incidental match have to be rejected:
    deferral word must sit directly on one side of the ref, within a bounded gap
    like the range/verb guards, so "fix #1234 and defer #1235" still ships #1234).
 
+7. Prep / partial marker (#2258 ← #2266). A PR may name ``#N`` in a trusted
+   (non-plan) title only to mark it *preparatory* — a narrowed refactor that
+   lands groundwork for #N without shipping its scope: "render: extract
+   sunBakeFrustumUVBounds shared helper (#2258 prep)" is linked ``Part of``,
+   not ``Closes``, and its body states it "keeps only the independently-correct
+   refactor and drops the dead plumbing". Because it is titled ``render:`` (not
+   ``docs:``) the layer-4 plan-doc guard does not fire, and the bare ``#2258``
+   in the title satisfies title-trust, so ingest false-stamped
+   ``fleet:scope-shipped`` on #2258 — clobbering the issue's re-queue the instant
+   its plan cleared review. A ``#N`` carrying an adjacent prep word ("(#N prep)",
+   "prep for #N", "preparatory #N") is an explicit not-yet-shipped signal, so a
+   prep-marked title ref is NOT trusted — same bounded-gap rule as layer 6's
+   deferral marker (the prep word must sit directly on one side of the ref, so
+   "ship #1234, prep #1235" still ships #1234).
+
 So a body ``#N`` counts only when a closing-action verb sits directly before it
 in prose (``Closes #N``, ``fixes (#N)``, ``supersedes #N``) — code spans are
 stripped first (layer 5), so a verb quoted in backticks does not count. A
 ``#N`` in the *title* is trusted as-is — PRs in this repo are named
 ``#N: <desc>`` after the issue they implement — EXCEPT (layer 3) when it is a
-range endpoint, (layer 4) when the title is a plan/design-doc title, or (layer 6)
-when the ref is marked deferred: all three shapes name issues they enumerate,
-plan, or defer without implementing.
+range endpoint, (layer 4) when the title is a plan/design-doc title, (layer 6)
+when the ref is marked deferred, or (layer 7) when the ref is marked prep: all
+four shapes name issues they enumerate, plan, defer, or prepare without
+implementing.
 """
 import re
 
@@ -133,28 +149,35 @@ def _ref_pattern(n):
     )
 
 
-# Deferral words (layer 6) — the vocabulary a doc-and-defer PR uses to mark that
-# it escalates rather than ships ``#N``: "deferred", "defers", "deferring".
-_DEFER_WORD = r'defer(?:s|red|ring)?'
-# Bounded gap between the ref and the deferral word — whitespace plus the light
-# punctuation that brackets a parenthetical marker ("(#N deferred)", "#N —
-# deferred"). Kept small (like _VERB_TO_REF_GAP) so a deferral word only binds to
-# an *adjacent* ref: "fix #1234 and defer #1235" leaves #1234 shippable.
-_DEFER_GAP = r'[\s():.,;—–-]{0,3}'
+# Non-ship marker words (layers 6-7) — the vocabulary a PR uses beside a trusted
+# title ref to mark that it does NOT land ``#N``'s scope:
+#   layer 6 — deferral: "deferred", "defers", "deferring" (a doc-and-defer PR
+#     that escalates the fix).
+#   layer 7 — prep/partial: "prep", "preps", "prepping", "preparatory" (a
+#     narrowed refactor that lands groundwork for #N without shipping it).
+# ``prep`` is bounded by ``\b`` on both sides at the call site, so a legitimate
+# ship whose title merely *starts* with the letters ("#N prepend the header")
+# does not match — mirrors layer 6's "deferential" guard.
+_NONSHIP_MARKER = r'defer(?:s|red|ring)?|prep(?:s|ping|aratory)?'
+# Bounded gap between the ref and the marker word — whitespace plus the light
+# punctuation that brackets a parenthetical marker ("(#N deferred)", "(#N prep)",
+# "#N — deferred"). Kept small (like _VERB_TO_REF_GAP) so a marker word only binds
+# to an *adjacent* ref: "fix #1234 and defer #1235" leaves #1234 shippable.
+_MARKER_GAP = r'[\s():.,;—–-]{0,3}'
 
 
-def _ref_is_deferred(text, n):
-    """True iff a ``#n`` reference in ``text`` carries an adjacent deferral
-    marker (layer 6): "(#n deferred)", "#n — deferred", or "defers #n". Such a
-    ref is an explicit "this PR does NOT ship #n" signal, so it must not be
-    trusted even in a title. The deferral word must sit directly on one side of
-    the ref (bounded gap) — a far-away deferral of some other ``#m`` does not
-    suppress ``#n``.
+def _ref_is_nonship_marked(text, n):
+    """True iff a ``#n`` reference in ``text`` carries an adjacent non-ship
+    marker — a deferral (layer 6: "(#n deferred)", "defers #n") or a prep/partial
+    marker (layer 7: "(#n prep)", "prep for #n", "preparatory #n"). Such a ref is
+    an explicit "this PR does NOT ship #n" signal, so it must not be trusted even
+    in a title. The marker word must sit directly on one side of the ref (bounded
+    gap) — a far-away marker aimed at some other ``#m`` does not suppress ``#n``.
 
     Trade-off (deliberate — matches layers 3-5's bias toward under-stamping):
-    the gap is purely positional, so a deferral word aimed at a *different*
-    issue that happens to land adjacent to ``#n`` — "close #1640 (deferred from
-    #1600)" — also reads as deferring #1640. That under-stamps (the title ref
+    the gap is purely positional, so a marker word aimed at a *different* issue
+    that happens to land adjacent to ``#n`` — "close #1640 (deferred from
+    #1600)" — also reads as marking #1640. That under-stamps (the title ref
     falls through to the body, which still ships on a genuine ``Closes #n``)
     rather than risk a false ship.
     """
@@ -165,8 +188,12 @@ def _ref_is_deferred(text, n):
     except (ValueError, TypeError):
         return False
     text = text or ''
-    trailing = ref + _DEFER_GAP + r'\b' + _DEFER_WORD + r'\b'
-    leading = r'\b' + _DEFER_WORD + r'\b' + _DEFER_GAP + ref
+    # The leading form allows an optional ``for`` connector ("prep for #n") on top
+    # of the bare adjacency ("defers #n", "prep #n"); the connector is the only
+    # word permitted in the gap, so "prep the sun bake, then land #n" never binds.
+    trailing = ref + _MARKER_GAP + r'\b(?:' + _NONSHIP_MARKER + r')\b'
+    leading = (r'\b(?:' + _NONSHIP_MARKER + r')\b(?:\s+for)?'
+               + _MARKER_GAP + ref)
     return bool(re.search(trailing, text, re.IGNORECASE)
                 or re.search(leading, text, re.IGNORECASE))
 
@@ -178,8 +205,10 @@ def pr_references_issue(title, body, n):
     convention) UNLESS it is a range endpoint (``#1602-#1612`` — a planning PR
     naming filed children), the whole title is a plan/design-doc title
     (``docs: plan …`` / ``docs/design: …`` / ``docs: design …`` — a PR that plans/designs ``n``,
-    never ships it), OR the ref is marked deferred ("(#n deferred)" / "defers #n"
-    — layer 6, a doc-and-defer PR that escalates ``n`` rather than shipping it).
+    never ships it), the ref is marked deferred ("(#n deferred)" / "defers #n"
+    — layer 6, a doc-and-defer PR that escalates ``n`` rather than shipping it),
+    OR the ref is marked prep ("(#n prep)" / "prep for #n" — layer 7, a narrowed
+    refactor that prepares ``n`` rather than shipping it).
     Body: ``#n`` counts only when immediately preceded by a
     closing-action verb, and likewise never as a range endpoint. A bare body
     mention ("downstream #n", "pre-existing #n", "Refs #n") is rejected, as is
@@ -198,11 +227,12 @@ def pr_references_issue(title, body, n):
     # is a plan/design-doc title (layer 4): a plan/design PR names the issue it
     # plans, not one it ships, so its title ref falls through to the body
     # closing-verb check below (where a genuine doc-ship still says ``Closes #N``).
-    # Layer 6: a title ref marked deferred ("(#N deferred)") is an explicit
-    # non-ship, so it is likewise not trusted and falls through to the body.
+    # Layers 6-7: a title ref marked deferred ("(#N deferred)") or prep
+    # ("(#N prep)") is an explicit non-ship, so it is likewise not trusted and
+    # falls through to the body.
     if (not _PLAN_DOC_TITLE.search(title)
             and re.search(ref, title)
-            and not _ref_is_deferred(title, n)):
+            and not _ref_is_nonship_marked(title, n)):
         return True
     body_re = re.compile(
         r'\b(?:' + _CLOSING_VERB + r')\b' + _VERB_TO_REF_GAP + ref,
