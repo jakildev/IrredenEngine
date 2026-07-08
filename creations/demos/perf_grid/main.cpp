@@ -1058,12 +1058,16 @@ void initSystems() {
                             IR_LOG_INFO("Auto-profile CPU-scope — {}: {:.3f}ms", name, ms);
                         }
                     }
+                    // #2280 sub-stage attribution: canvasClear + voxelCompact +
+                    // voxelStage1 (the stage-1 dispatch only now) + voxelStage2
+                    // sum to the old bundled voxelStage1 measurement.
                     IR_LOG_INFO(
-                        "Auto-profile GPU — voxelStage1:{:.3f} voxelStage2:{:.3f} "
-                        "voxelCompact:{:.3f}",
+                        "Auto-profile GPU — canvasClear:{:.3f} voxelCompact:{:.3f} "
+                        "voxelStage1:{:.3f} voxelStage2:{:.3f}",
+                        gpu.canvasClearMs_,
+                        gpu.voxelCompactMs_,
                         gpu.voxelStage1Ms_,
-                        gpu.voxelStage2Ms_,
-                        gpu.voxelCompactMs_
+                        gpu.voxelStage2Ms_
                     );
                     IRWindow::closeWindow();
                 }

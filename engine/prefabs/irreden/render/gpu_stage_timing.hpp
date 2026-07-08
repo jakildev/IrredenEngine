@@ -188,25 +188,48 @@ inline void resetGpuStageAccumulators() {
     }
 }
 
+// Commit one resolved GPU-timing sample for a registry stage: overwrite the
+// live last-sample field the perf overlay reads, and feed the running
+// accumulator the shutdown profile report drains. Shared by the per-system
+// `GpuStageTimingObserver` and the intra-tick `GpuSubStageScope` so both write
+// samples through one code path. `registryIndex` is the stage's slot in
+// `gpuStageRegistry()` order (== its `gpuStageAccumulators()` index).
+inline void commitGpuStageSample(const GpuStageInfo &info, int registryIndex, float ms) {
+    gpuStageTiming().*(info.field_) = ms;
+    if (registryIndex >= 0 &&
+        static_cast<std::size_t>(registryIndex) < gpuStageAccumulators().size()) {
+        gpuStageAccumulators()[registryIndex].record(ms);
+    }
+}
+
 // Authoritative mapping name → field → budget. `gpu_stage_timing_observer`
 // resolves a system's tag against this table; pass the same name to
 // `IRRender::tagGpuStage(system, "<name>")` and the observer fills the
 // matching `GpuStageTiming::*Ms_` field at end-of-tick.
 //
-// Per-system mapping post-T-066 (one observer fire per `SystemId`):
-//   `voxelStage1`  ← VOXEL_TO_TRIXEL_STAGE_1 (covers former canvasClear +
-//                    voxelCompact + voxelStage1 + voxelStage2 sub-stages —
-//                    the stage-2 dispatch was merged into STAGE_1)
+// Per-system mapping (one `GpuStageTimingObserver` fire per `SystemId`):
 //   `shapePass1`   ← SHAPES_TO_TRIXEL (covers former shapePass0 + shapePass1)
-//   The remaining 8 names map 1:1 to single-stage systems.
+//   Most remaining names map 1:1 to single-stage systems.
 //
-// Four rows have no current writer: `canvasClear`, `voxelCompact`,
-// `voxelStage2`, `shapePass0` (folded into the per-system measurement
-// above — `voxelStage2`'s dispatch now runs inside VOXEL_TO_TRIXEL_STAGE_1),
-// and `shapeCompact` (no system has ever written it; reserved for a
-// future shape-compaction pass). They stay in the registry to keep
-// the Lua API and perf overlay stable — the overlay still shows them at
-// 0.0f; the shutdown profile report omits them (sampleCount_ == 0).
+// Intra-tick sub-stage rows (#2280): VOXEL_TO_TRIXEL_STAGE_1 is NOT tagged for
+// the per-system observer. Instead its per-canvas tick brackets each of its
+// four dispatch groups with a `GpuSubStageScope` (gpu_substage_timing.hpp),
+// so these rows are attributed individually rather than bundled:
+//   `canvasClear`  ← the per-frame distance-texture clear (blit)
+//   `voxelCompact` ← the visibility-compaction dispatch
+//   `voxelStage1`  ← the stage-1 raster dispatch ONLY (was the whole-tick
+//                    bundle before #2280 wired the sub-rows)
+//   `voxelStage2`  ← the stage-2 dispatch (runs inside STAGE_1's tick)
+// The old bundled `voxelStage1` value is reconstructed as the sum of these
+// four rows. Sub-scopes are single-canvas-exact and record the last canvas's
+// sample on multi-canvas scenes (like every `*Ms_` field's last-sample
+// semantics); the rotating-only per-axis voxel dispatch is not sub-scoped.
+//
+// Two rows still have no current writer: `shapePass0` (folded into the
+// SHAPES_TO_TRIXEL per-system measurement) and `shapeCompact` (no system has
+// ever written it; reserved for a future shape-compaction pass). They stay in
+// the registry to keep the Lua API and perf overlay stable — the overlay still
+// shows them at 0.0f; the shutdown profile report omits them (sampleCount_ == 0).
 inline const std::array<GpuStageInfo, kGpuStageCount> &gpuStageRegistry() {
     static const std::array<GpuStageInfo, kGpuStageCount> registry{{
         {"canvasClear", &GpuStageTiming::canvasClearMs_, 0.05f},

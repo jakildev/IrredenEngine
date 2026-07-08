@@ -144,6 +144,37 @@ MTL::ComputeCommandEncoder *createComputeEncoder(MTL::CommandBuffer *commandBuff
     return encoder;
 }
 
+// Blit twin of createComputeEncoder: when a timestamp attachment is active
+// (a per-system observer pair or an intra-tick GpuSubStageScope), attach the
+// sticky sample buffer to the blit pass so a blit-only stage — the per-frame
+// distance-texture clear that backs the `canvasClear` sub-row (#2280) — still
+// resolves a non-zero pair. Same first-encoder-claims-start / last-encoder-wins-
+// end semantics as the compute path (#1746). Returns a plain blit encoder when
+// no attachment is active.
+MTL::BlitCommandEncoder *createBlitEncoder(MTL::CommandBuffer *commandBuffer) {
+    if (commandBuffer == nullptr) {
+        return nullptr;
+    }
+    if (g_nextComputeTimestampAttachment.sampleBuffer_ == nullptr) {
+        return commandBuffer->blitCommandEncoder();
+    }
+
+    auto *descriptor = MTL::BlitPassDescriptor::alloc()->init();
+    auto *attachment = descriptor->sampleBufferAttachments()->object(kTimestampAttachmentIndex);
+    attachment->setSampleBuffer(g_nextComputeTimestampAttachment.sampleBuffer_);
+    attachment->setStartOfEncoderSampleIndex(
+        g_nextComputeTimestampAttachment.firstEncoder_
+            ? g_nextComputeTimestampAttachment.startSampleIndex_
+            : MTL::CounterDontSample
+    );
+    attachment->setEndOfEncoderSampleIndex(g_nextComputeTimestampAttachment.endSampleIndex_);
+    auto *encoder = commandBuffer->blitCommandEncoder(descriptor);
+    descriptor->release();
+
+    g_nextComputeTimestampAttachment.firstEncoder_ = false;
+    return encoder;
+}
+
 void attachTimestampSamples(MTL::RenderPassDescriptor *descriptor) {
     if (descriptor == nullptr || g_nextComputeTimestampAttachment.sampleBuffer_ == nullptr) {
         return;
@@ -719,7 +750,9 @@ metalCurrentDepthPixelFormat(),
         auto *commandBuffer = metalCommandBuffer();
         if (commandBuffer != nullptr) {
             // GPU-side blit: no per-frame allocation, no replaceRegion stall.
-            auto *blit = commandBuffer->blitCommandEncoder();
+            // Routed through createBlitEncoder so an active GpuSubStageScope
+            // (the `canvasClear` sub-row, #2280) samples this clear.
+            auto *blit = createBlitEncoder(commandBuffer);
             blit->copyFromBuffer(
                 clearBuf,
                 0,
@@ -738,7 +771,7 @@ metalCurrentDepthPixelFormat(),
             if (pixelFormat == MTL::PixelFormatR32Sint) {
                 if (MTL::Buffer *scratch = lookupImageAtomicScratchBuffer(texture);
                     scratch != nullptr) {
-                    auto *blit2 = commandBuffer->blitCommandEncoder();
+                    auto *blit2 = createBlitEncoder(commandBuffer);
                     blit2->copyFromBuffer(clearBuf, 0, scratch, 0, totalBytes);
                     blit2->endEncoding();
                 }
