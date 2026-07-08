@@ -182,6 +182,23 @@ class MetalGpuComputeDispatchTest : public ::testing::Test {
         }
     }
 
+    // Mirrors the GL fixture's per-test cleanup: without this, each SetUp's
+    // initializeMetalRuntime reassigns the command queue + depth-stencil
+    // states without releasing the previous test's, leaking them (and the
+    // raw MTL::Device, which shutdownMetalRuntime does not own) every test
+    // after the first.
+    void TearDown() override {
+        if (device_ == nullptr) {
+            return;
+        }
+        MTL::Device *rawDevice = IRRender::metalDevice();
+        IRRender::shutdownMetalRuntime();
+        if (rawDevice != nullptr) {
+            rawDevice->release();
+        }
+        device_ = nullptr;
+    }
+
     IRRender::RenderDevice *device_ = nullptr;
 };
 

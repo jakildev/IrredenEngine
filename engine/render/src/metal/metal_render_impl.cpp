@@ -1026,7 +1026,6 @@ RenderDevice *bootstrapHeadlessRenderDevice() {
     if (device == nullptr) {
         return nullptr;
     }
-    setMetalBootstrapDevice(device);
     metalRenderDevice().init(device, nullptr);
     setDevice(&metalRenderDevice());
     setMetalCommandBuffer(metalCommandQueue()->commandBuffer());
