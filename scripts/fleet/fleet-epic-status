@@ -105,6 +105,7 @@ def load_state_cache():
     """
     try:
         p = pathlib.Path(STATE_JSON)
+        # lint: state-mtime-ok generated_at-first; mtime is the fallback (#2267)
         mtime = p.stat().st_mtime
         data = read_json_retry(STATE_JSON)
         gen = (data or {}).get("generated_at")
