@@ -32,13 +32,17 @@ changes (occupied-only lists, indirect dispatch, subdivision caps).
   accumulators build the shutdown avg/min/max (#1738). A `finish()`-bracket
   legacy path exists for devices without timestamp support
   (`legacyFinishTiming_`).
-- **Several registry rows have NO writer and always read 0.000:**
-  `canvasClear`, `voxelCompact`, `voxelStage2`, `shapePass0` (folded into
-  their per-system bundles), and `shapeCompact` (reserved). They stay in
-  the registry for overlay/Lua stability. Two rows are **bundles**:
-  `voxelStage1` covers the entire `VOXEL_TO_TRIXEL_STAGE_1` tick —
-  visibility compact + canvas clear + stage-1 + stage-2 dispatches — and
-  `shapePass1` covers all of `SHAPES_TO_TRIXEL`.
+- **Two registry rows have NO writer and always read 0.000:** `shapePass0`
+  (folded into the `SHAPES_TO_TRIXEL` per-system bundle) and `shapeCompact`
+  (reserved). They stay in the registry for overlay/Lua stability.
+- **`canvasClear` / `voxelCompact` / `voxelStage1` / `voxelStage2` are
+  intra-tick sub-rows (#2280).** `VOXEL_TO_TRIXEL_STAGE_1` is no longer tagged
+  for the per-system observer; its per-canvas tick brackets each dispatch group
+  with a `GpuSubStageScope`, so `voxelStage1` now measures the stage-1 dispatch
+  ONLY and the other three rows carry the clear / compact / stage-2 costs. The
+  old whole-tick number = the sum of the four. (CPU `voxelStage1` stays the
+  whole tick — an `IR_PROFILE_SCOPE` replaces the observer's CPU bracket.)
+- **`shapePass1` is still a bundle** — it covers all of `SHAPES_TO_TRIXEL`.
 
 ### Reading rules
 
@@ -48,10 +52,11 @@ changes (occupied-only lists, indirect dispatch, subdivision caps).
    have now been made in opposite directions (#2266 initially read unwired
    rows as measurements; verifying #2271 required confirming
    `resolvePerAxisScreenDepth` was NOT unwired).
-2. A **bundle row** (`voxelStage1`, `shapePass1`) cannot attribute cost to a
-   sub-dispatch. Until #2280 lands intra-tick sub-stage scopes, no
-   conclusion of the form "stage-1's raster is the cost" can be drawn from
-   `voxelStage1` alone.
+2. A **bundle row** (`shapePass1`) cannot attribute cost to a sub-dispatch.
+   The voxel path is no longer a bundle: since #2280, `voxelStage1` /
+   `voxelCompact` / `canvasClear` / `voxelStage2` are per-dispatch GPU rows,
+   so "stage-1's raster is the cost" IS answerable from `voxelStage1` alone
+   (it measured ~65 ms of the ~140 ms at zoom 16 — see §2).
 3. Per-system rows for single-purpose systems (`computeVoxelAO`,
    `computeSunShadow`, `lightingToTrixel`, `resolvePerAxisScreenDepth`,
    `trixelToFb`, …) are trustworthy per-stage measurements on both
@@ -77,13 +82,17 @@ a measurement says otherwise on a specific path:
   grid is fixed CPU-side at `dispatchCompute` time; an invocation that
   returns immediately still launched. PR #2266 capped shadow-feeder
   micro-grids via early-return and measured no change in `voxelStage1`.
-- **The stage-1 raster body is not where `voxelStage1`'s high-zoom cost
-  lives.** Forcing *every* voxel to a single 1×1 micro-tap (a 256×
-  per-invocation body reduction at zoom 16) left `voxelStage1` unchanged
-  within run-to-run noise (~140–150 ms, IRPerfGrid wave scene, shadows on).
-  The true hotspot inside the bundle (compact walk / canvas clear / launch
-  overhead / stage-2) is **unattributed** until #2280's sub-stage scopes
-  produce the table on #2258.
+- **The stage-1 raster body is not where the high-zoom cost lives — but the
+  stage-1 *dispatch* still carries ~half of it.** Forcing *every* voxel to a
+  single 1×1 micro-tap (a 256× per-invocation body reduction at zoom 16) left
+  the whole-tick number unchanged within noise (~140–150 ms, IRPerfGrid wave
+  scene, shadows on) — the raster BODY is not the cost. The #2280 sub-scopes
+  then attributed the bundle (Metal, IRPerfGrid wave, shadows on): at zoom 16
+  `voxelStage1` ~65 ms + `voxelStage2` ~76 ms carry essentially all of it,
+  with `voxelCompact` ~0.06 ms and `canvasClear` ~0.01 ms negligible; at
+  zoom 8, ~24 / ~28 / ~0.7 / ~0.1 ms. So the high-zoom cost is the stage-1 +
+  stage-2 *dispatch-grid* cost (fixed CPU-side, body-independent), split
+  roughly evenly — NOT compact, clear, or launch overhead.
 - The per-axis yaw GPU delta (#2256) is therefore **occupied-cell-bound**,
   not invocation-count-bound. #2256 closed via #2273 with the delta
   unrecovered; its per-stage attribution uses the existing per-system
@@ -109,12 +118,15 @@ a measurement says otherwise on a specific path:
 
 ## 4. Migration status / open items
 
-- **#2280** — intra-tick sub-stage GPU scopes wiring the reserved
-  `voxelCompact` / `canvasClear` / `voxelStage2` rows on both backends.
-  When it lands, `voxelStage1` narrows to stage-1-only; update the registry
-  comment and §1 of this doc in the same PR.
-- **#2258** — parked `fleet:needs-plan`, blocked by #2280; the lever must
-  key on the attribution table posted there.
+- **#2280** — LANDED: intra-tick sub-stage GPU scopes (`GpuSubStageScope`,
+  `gpu_substage_timing.hpp`) wire the `voxelCompact` / `canvasClear` /
+  `voxelStage2` rows and narrow `voxelStage1` to stage-1-only, on both
+  backends. `VOXEL_TO_TRIXEL_STAGE_1` is untagged from the per-system observer
+  (the sub-scopes reuse the freed attachment slot; Metal's clear blit is timed
+  via a timestamp-aware `createBlitEncoder`). Coverage delta: the rotating-only
+  per-axis voxel dispatch is not sub-scoped.
+- **#2258** — unblocked by #2280; the lever keys on the attribution table
+  (stage-1 + stage-2 dispatch-grid cost, ~evenly split) posted there.
 - **#2281** — per-stage cardinal-vs-yaw delta table with existing timers
   (successor to #2256, which closed via the perf-neutral #2273); the lever
   decision is a design gate after the table exists.

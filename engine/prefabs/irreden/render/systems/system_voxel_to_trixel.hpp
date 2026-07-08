@@ -31,6 +31,7 @@
 
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/gpu_stage_timing_observer.hpp>
+#include <irreden/render/gpu_substage_timing.hpp>
 
 #include <algorithm>
 #include <array>
@@ -846,6 +847,15 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         C_TriangleCanvasTextures &triangleCanvasTextures,
         const C_CanvasLocalRotation &canvasLocalRotation
     ) {
+        // CPU whole-tick timing (#2280): this system is no longer tagged for the
+        // per-system GpuStageTimingObserver (which used to supply both the CPU
+        // and GPU `voxelStage1` samples), so record the CPU side here to keep
+        // the HUD's / auto-profile's `voxelStage1` CPU number. Note the
+        // intentional asymmetry the sub-attribution introduces: CPU `voxelStage1`
+        // stays the WHOLE per-canvas tick, while GPU `voxelStage1` now measures
+        // only the stage-1 dispatch (the compact / clear / stage-2 GPU costs
+        // moved to their own sub-rows).
+        IR_PROFILE_SCOPE("voxelStage1");
         const int liveVoxelCount = voxelPool.getLiveVoxelCount();
 
         // Per-frame canvas clear runs unconditionally — every downstream
@@ -859,6 +869,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // longer dictates whether the canvas refreshes.
         {
             IR_PROFILE_SCOPE("vs1_clear");
+            IRRender::GpuSubStageScope gpuScope("canvasClear");
             clearCanvasAndDistances(entity, triangleCanvasTextures);
         }
 
@@ -1237,9 +1248,12 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // set to the same effectiveVoxelCount above.
         const int compactGroups = IRMath::divCeil(effectiveVoxelCount, kCompactLocalSize);
         const ivec2 compactGrid = voxelDispatchGridForCount(compactGroups);
-        IRRender::device()->dispatchCompute(compactGrid.x, compactGrid.y, 1);
-        IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
-        IRRender::device()->memoryBarrier(BarrierType::COMMAND);
+        {
+            IRRender::GpuSubStageScope gpuScope("voxelCompact");
+            IRRender::device()->dispatchCompute(compactGrid.x, compactGrid.y, 1);
+            IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+            IRRender::device()->memoryBarrier(BarrierType::COMMAND);
+        }
 
         if (perAxisSplit) {
             // Reset perAxisRoute_ for any downstream UBO read; the per-axis pass
@@ -1265,8 +1279,11 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             fogObserverBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FogObservers);
             triangleCanvasTextures.getTextureDistances()
                 ->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
-            IRRender::device()->dispatchComputeIndirect(indirectBuf_, 0);
-            IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+            {
+                IRRender::GpuSubStageScope gpuScope("voxelStage1");
+                IRRender::device()->dispatchComputeIndirect(indirectBuf_, 0);
+                IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+            }
 
             // Stage 2 runs in the SAME per-canvas tick rather than as a separate
             // system. The compact + position/color SSBOs (`voxelPosBuf_`,
@@ -1297,8 +1314,11 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             (cutSectionFog != nullptr ? cutSectionFog->getTexture() : fogCullPlaceholder_)
                 ->bindAsImage(3, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
             fogObserverBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FogObservers);
-            IRRender::device()->dispatchComputeIndirect(indirectBuf_, 0);
-            IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+            {
+                IRRender::GpuSubStageScope gpuScope("voxelStage2");
+                IRRender::device()->dispatchComputeIndirect(indirectBuf_, 0);
+                IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+            }
         }
 
         // Smooth camera Z-yaw (T2 / #1309): once the single-canvas pass above
@@ -1669,11 +1689,15 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             BufferTarget::SHADER_STORAGE,
             kBufferIndex_IndirectDispatchParams
         );
-        // The observer-based timing brackets the entire system tick. The
-        // formerly-separate canvasClear and voxelCompact sub-stages now
-        // collapse into voxelStage1's measurement; their registry slots
-        // remain at 0.0f for API-compatibility.
-        IRRender::tagGpuStage(systemId, "voxelStage1");
+        // Intra-tick sub-stage timing (#2280): this system is deliberately NOT
+        // tagged for the per-system GpuStageTimingObserver. A single per-tick
+        // bracket bundles compact + clear + stage-1 + stage-2 into one opaque
+        // `voxelStage1` value (the ~140 ms #2258 could not attribute). Instead
+        // the per-canvas tick brackets each of its four dispatch groups with a
+        // GpuSubStageScope, filling the `canvasClear` / `voxelCompact` /
+        // `voxelStage1` / `voxelStage2` rows individually. Not tagging here
+        // leaves the device timestamp attachment slot free for the sub-scopes
+        // to reuse during this tick.
         return systemId;
     }
 };

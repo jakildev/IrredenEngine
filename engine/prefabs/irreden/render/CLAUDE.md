@@ -578,17 +578,32 @@ the NEAREST 1:1-assuming parity reconstruction). Every term is `× cubeSub` /
 scale. Full invariant + verify steps:
 [`docs/design/detached-canvas-density-compensation.md`](../../../../docs/design/detached-canvas-density-compensation.md).
 
-## GPU stage timing (`gpu_stage_timing.hpp` / `gpu_stage_timing_observer.hpp`)
+## GPU stage timing (`gpu_stage_timing.hpp` / `gpu_stage_timing_observer.hpp` / `gpu_substage_timing.hpp`)
 
 One GPU measurement per tagged `SystemId`, bracketing the whole tick via
-device timestamp pairs (encoder-boundary counter samples on Metal). Several
-registry rows are unwired and always read 0.000, and `voxelStage1` /
-`shapePass1` are whole-tick bundles — before quoting the overlay in a perf
-plan or attributing cost to a sub-dispatch, read
+device timestamp pairs (encoder-boundary counter samples on Metal). Some
+registry rows are unwired and always read 0.000, and `shapePass1` is still a
+whole-tick bundle — before quoting the overlay in a perf plan or attributing
+cost to a sub-dispatch, read
 [`docs/design/gpu-stage-timing-cost-model.md`](../../../../docs/design/gpu-stage-timing-cost-model.md)
 (the reading contract + the measured dispatch cost model: empty early-return
 sweeps are effectively free; shader-side early-return cannot reclaim
 CPU-fixed dispatch-grid cost).
+
+**Intra-tick sub-stage rows (#2280).** `VOXEL_TO_TRIXEL_STAGE_1` is NOT tagged
+for the per-system observer. Its per-canvas tick brackets each dispatch group
+with a `GpuSubStageScope` (`gpu_substage_timing.hpp`), so the `canvasClear` /
+`voxelCompact` / `voxelStage1` / `voxelStage2` **GPU** rows are attributed
+individually rather than bundled — `voxelStage1` now measures the stage-1
+dispatch only, and the old whole-tick number is the sum of the four rows. A
+sub-scope reuses the device timestamp machinery at the same attachment slot the
+observer would have used (free because the system is untagged); on Metal the
+distance-clear blit is captured via a timestamp-aware `createBlitEncoder`. The
+**CPU** `voxelStage1` row stays the whole per-canvas tick (an
+`IR_PROFILE_SCOPE` in the tick replaces the observer's CPU bracket) — GPU
+sub-attribution is per-dispatch, CPU stays coarse. Sub-scopes are
+single-canvas-exact (last-sample on multi-canvas) and do not cover the
+rotating-only per-axis voxel dispatch.
 
 ## Gotchas
 
