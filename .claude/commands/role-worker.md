@@ -394,11 +394,11 @@ Do the work, then exit cleanly:
        conflicted files (`git diff --name-only --diff-filter=U`). If **every**
        one is a gated self-config file (`.claude/commands/role-*.md`,
        `.claude/agents/*`, `.claude/skills/**/SKILL.md`), you physically
-       cannot push the resolution — the commit gate blocks the role-doc/agent/
-       SKILL edit regardless of how cleanly you resolve it. Do **not** resolve
-       and do **not** escalate to `human:needs-fix` (that re-triggers step-1
-       worker pickup, and the next worker re-hits the same wall — this is the
-       #1990 thrash). Park it `fleet:gated`, which every picker skips:
+       cannot push the resolution — the commit gate blocks the edit regardless
+       of how cleanly you resolve it. Do **not** resolve and do **not**
+       escalate to `human:needs-fix` — park it `fleet:gated` instead
+       (rationale + the #1990 thrash this prevents:
+       [fleet-labels-reference.md § `fleet:gated`](../../docs/agents/fleet-labels-reference.md)):
        - `git rebase --abort`
        - `gh pr edit <N> --repo jakildev/IrredenEngine --remove-label "fleet:semantic-conflict" --add-label "fleet:gated"`
        - `gh pr comment <N> --repo jakildev/IrredenEngine --body "Conflict surface is entirely gated self-config; no worker class can push the resolution. Parking \`fleet:gated\` for human-only resolution (or the architect, who can push gated edits with a human in the loop). Conflicted: <file list>. — worker"`
