@@ -138,3 +138,47 @@ Also weigh **whether to pursue at all**: the delta only appears at non-cardinal
 residual yaw (a transient during rotation, the per-axis canvases free at the
 cardinal), and #2255 (per-axis nondeterminism) is still open on the same
 surface. Cardinal / static scenes are byte-identical and unaffected.
+
+## Phase 2 direction (architect)
+
+Ruling on the Phase-1 escalation above. Both blockers the recommendation cited
+have cleared since the escalation, so Phase 2 proceeds — **neither pick a lever
+from the band nor defer** — and its first step is the finer attribution that is
+now possible.
+
+**What changed after the escalation:**
+
+- **#2280 closed** (merged as PR #2288): the `voxelStage1` sub-stage rows
+  (compact / clear / stage-1 / stage-2) are live. Lever (c)'s stated blocker is
+  gone, and lever (a)'s prerequisite ("sub-stage scopes on the burst first") is
+  satisfied.
+- **#2255 closed** (merged as PR #2272 — deterministic per-axis color winner +
+  scatter tie band): rotated-pose byte-identity verification is now available,
+  which any Phase-2 lever needs for its A/B evidence. The "defer while #2255 is
+  open on the same surface" option is moot.
+
+**Decision:**
+
+1. **This PR merges as-is** — docs-only; the Phase-1 measurement is valid and
+   the band-not-line-item caveat is honestly documented.
+2. **Phase 2 continues on #2281** (issue stays open, as planned) in a follow-up
+   PR, and it is **measurement-first**:
+   - Re-run the attribution matrix (both scenes, cardinal vs `--yaw 0.35`, 3
+     repeats) **with the #2288 sub-stage rows** so the `voxelStage1` bundle
+     splits into compact / clear / stage-1 / stage-2.
+   - Run the **#2266-method uniform body-reduction A/B on the per-axis AO
+     kernel** to separate dispatch/fan-out cost from AO body cost.
+   - That data picks the lever mechanically:
+     - fan-out/dispatch-dominated → lever (a): collapse the 3 per-axis passes
+       toward union coverage;
+     - AO-body-dominated → lever (b): reduce per-axis AO body cost;
+     - stage-1-raster-dominated → lever (c), now measurable per sub-row.
+3. **No lever implementation before that split is recorded on the issue.** The
+   [cost-model §3 rule 1](gpu-stage-timing-cost-model.md) attribute-before-re-
+   architecting rule stands: a whole-tick / mostly-empty read has been refuted
+   twice (#2266, #2271), and picking (a)/(b)/(c) from an overlapping ~65 ms band
+   would be a third.
+
+**Not deferring on the merits:** the delta is user-visible (~3.5× frame time at
+zoom 3 during any rotation transient = dropped frames on every rotation), and
+the measurement step Phase 2 needs is cheap now that the #2288 tooling merged.
