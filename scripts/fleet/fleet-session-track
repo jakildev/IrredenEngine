@@ -1,0 +1,117 @@
+#!/usr/bin/env python3
+"""fleet-session-track — SessionStart hook that keeps an architect's
+session sidecar pointing at the pane's LIVE conversation.
+
+fleet-babysit (architects) and solo-architect persist a session id to a
+sidecar file and `claude --resume` it on every relaunch. Before this hook,
+the sidecar was written once at first-ever launch and never updated — an
+interactive /clear moves the pane onto a NEW session id, so the next
+fleet-up resumed the pre-/clear conversation and silently abandoned
+everything the human did after clearing (observed 2026-07-06: both
+architect sidecars still pinned their April 20 first-launch UUIDs while
+the panes had accumulated ~75 orphaned post-/clear sessions).
+
+Wired into each fleet worktree's .claude/settings.local.json by fleet-up
+(write_worktree_settings). Claude Code invokes it on every session start
+(sources: startup, resume, clear, compact) with a JSON payload on stdin;
+it rewrites the sidecar with the payload's session_id so the sidecar
+always names the conversation the pane is actually in.
+
+Gated by FLEET_SESSION_FILE: only launchers that export it (fleet-babysit
+architect path, solo-architect) are tracked. Manual `claude` runs in the
+same worktree, worker panes, and subagents carry no FLEET_SESSION_FILE and
+no-op — they must never repoint an architect's sidecar.
+
+On source=clear, additionally emits hook additionalContext re-injecting
+the role instructions (FLEET_SESSION_ROLE/FLEET_SESSION_MODE, also
+launcher-exported) — /clear drops the /role-<role> command from context
+and nothing else re-fires it. The context embeds the role command file's
+full contents with $ARGUMENTS substituted (what the slash command would
+have injected), so the fresh session carries the role without depending
+on a follow-up Read; if the file can't be read, it falls back to a
+directive to re-read it.
+
+Exit code is always 0: a hook failure must never degrade a session start.
+"""
+
+import json
+import os
+import sys
+
+# Role command files are small wrappers (~2 KB — the shared protocol lives
+# in docs they point at). Anything larger than this is not a role wrapper;
+# fall back to the re-read directive rather than flooding the context.
+ROLE_FILE_EMBED_CAP_BYTES = 262_144
+
+
+def role_context(payload: dict, role: str, mode: str) -> str:
+    """Context re-injecting the role after /clear — embedded file contents
+    when readable, a re-read directive otherwise."""
+    preamble = (
+        f"This is the fleet '{role}' pane. The /clear that started this "
+        f"session dropped the role instructions from context, but the "
+        f"pane's role is unchanged."
+    )
+    role_rel = f".claude/commands/role-{role}.md"
+    role_path = os.path.join(payload.get("cwd") or os.getcwd(), role_rel)
+    try:
+        if os.path.getsize(role_path) <= ROLE_FILE_EMBED_CAP_BYTES:
+            with open(role_path) as f:
+                body = f.read().replace("$ARGUMENTS", mode)
+            return (
+                f"{preamble} They are re-injected below (from {role_rel}, "
+                f"mode: {mode}); resume operating as this role.\n\n---\n\n"
+                f"{body}"
+            )
+    except OSError:
+        pass
+    return (
+        f"{preamble} Before acting on the next request, re-read "
+        f"{role_rel} (mode: {mode}) and resume operating as that role."
+    )
+
+
+def main() -> int:
+    session_file = os.environ.get("FLEET_SESSION_FILE")
+    if not session_file:
+        return 0
+    try:
+        payload = json.load(sys.stdin)
+    except Exception:
+        return 0
+    session_id = payload.get("session_id")
+    if not isinstance(session_id, str) or not session_id:
+        return 0
+
+    try:
+        sidecar_dir = os.path.dirname(session_file)
+        if sidecar_dir:
+            os.makedirs(sidecar_dir, exist_ok=True)
+        # Atomic replace — babysit's relaunch loop cats this file at
+        # arbitrary times; it must never observe a partial write.
+        tmp = f"{session_file}.tmp.{os.getpid()}"
+        with open(tmp, "w") as f:
+            f.write(session_id + "\n")
+        os.replace(tmp, session_file)
+    except OSError:
+        return 0
+
+    if payload.get("source") == "clear":
+        role = os.environ.get("FLEET_SESSION_ROLE")
+        mode = os.environ.get("FLEET_SESSION_MODE", "live")
+        if role:
+            print(
+                json.dumps(
+                    {
+                        "hookSpecificOutput": {
+                            "hookEventName": "SessionStart",
+                            "additionalContext": role_context(payload, role, mode),
+                        }
+                    }
+                )
+            )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

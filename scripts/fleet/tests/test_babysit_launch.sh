@@ -16,6 +16,8 @@
 #   - resume launch does NOT carry the old nudge text
 #   - first-ever launch carries --session-id and the /role-<role> command
 #   - first-ever launch persists the session-id file
+#   - architect launches export the fleet-session-track hook gate vars
+#     (FLEET_SESSION_FILE/ROLE/MODE) so /clear repoints the sidecar
 
 set -euo pipefail
 
@@ -115,6 +117,19 @@ echo "$GSID" > "$H3/.fleet/sessions/game-architect.session-id"
 out=$(launch_for "$H3" 'claude-opus-4-8[1m]' game-architect)
 assert_eq "$out" "claude --model claude-opus-4-8[1m] --effort xhigh --resume $GSID" \
     "game-architect resume argv carries no prompt"
+
+# --- T4: architect launch exports the session-track hook gate ----------------
+# The fleet-session-track SessionStart hook only acts in sessions whose env
+# carries FLEET_SESSION_FILE — that's how a /clear repoints the sidecar so
+# the next fleet-up resumes the post-/clear session. Assert the architect
+# launch exports the gate (surfaced via the PRINT_LAUNCH inspection line).
+echo "T4: architect launch exports fleet-session-track gate vars"
+track=$(env HOME="$H1" PATH="$TMPROOT/bin:$PATH" FLEET_BABYSIT_PRINT_LAUNCH=1 \
+    "$BABYSIT" 'claude-opus-4-8[1m]' opus-architect live 2>/dev/null \
+    | grep '^session-track: ')
+assert_eq "$track" \
+    "session-track: file=$H1/.fleet/sessions/opus-architect.session-id role=opus-architect mode=live" \
+    "architect exports sidecar path, role, and mode for the hook"
 
 echo
 echo "passed: $PASS  failed: $FAIL"

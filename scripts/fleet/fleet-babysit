@@ -241,10 +241,20 @@ log "starting ($MODEL effort=$EFFORT) mode=$MODE loop=${LOOP_INTERVAL:-none} in 
 # are loop-based and benefit from a fresh start each iteration.
 #
 # To preserve architect context across `fleet-down` -> `fleet-up`
-# cycles, we save a stable session UUID per architect role to
+# cycles, we save the pane's session UUID to
 # ~/.fleet/sessions/<role>.session-id. On first launch, generate the
 # UUID and pass --session-id; on subsequent launches, use --resume
 # instead of re-firing the role slash command.
+#
+# The sidecar tracks the pane's LIVE conversation, not the first-launch
+# UUID: the fleet-session-track SessionStart hook (wired into the
+# worktree's .claude/settings.local.json by fleet-up) rewrites it on
+# every session start — including the NEW session an interactive /clear
+# creates. Without that, the sidecar pins the first-ever UUID forever
+# and every fleet-up resumes the pre-/clear conversation, abandoning
+# whatever the human did after clearing. The hook is gated on the
+# FLEET_SESSION_* exports below, so sessions this script didn't launch
+# (manual `claude` runs in the same worktree) never repoint the sidecar.
 #
 # fleet-down does NOT delete these files — that's how resume survives
 # restarts. To reset an architect's context (start fresh next time),
@@ -260,6 +270,12 @@ ARCHITECT_RESUME=0
 case "$ROLE" in
     *architect*) ARCHITECT_RESUME=1 ;;
 esac
+
+if [[ "$ARCHITECT_RESUME" -eq 1 ]]; then
+    export FLEET_SESSION_FILE="$SESSION_FILE"
+    export FLEET_SESSION_ROLE="$ROLE"
+    export FLEET_SESSION_MODE="$MODE"
+fi
 
 # Heartbeat file (workers/reviewers only — architects aren't witness-
 # tracked). The convention every role file uses is
@@ -421,7 +437,10 @@ run_with_heartbeat() {
 #   Architects (opus-architect, game-architect) — one long conversation,
 #     preserved across crashes AND across fleet-down/fleet-up cycles via
 #     a persisted session-id. Always use --resume on relaunch so the
-#     interactive design conversation never resets.
+#     interactive design conversation never resets. The session-id file
+#     is re-read on every launch (never cached across loop iterations):
+#     the fleet-session-track hook repoints it when the human /clears,
+#     and the next relaunch must resume the post-/clear session.
 #
 #   Workers (everyone else: worker, sonnet-reviewer,
 #     opus-reviewer, queue-manager) — one fresh `claude` invocation per
@@ -451,8 +470,9 @@ launch_architect_first() {
         # input.
         cmd=(claude --model "$MODEL" --effort "$EFFORT" --resume "$SESSION_ID")
     else
-        # Generate and persist a stable session ID so subsequent
-        # fleet-ups can resume this conversation. Persist BEFORE
+        # Generate and persist the initial session ID so subsequent
+        # fleet-ups can resume this conversation (the SessionStart hook
+        # keeps the file current from here on). Persist BEFORE
         # launching claude — if claude crashes during startup, we
         # still want the next fleet-up to try resuming.
         SESSION_ID=$(python3 -c 'import uuid; print(uuid.uuid4())')
@@ -465,8 +485,12 @@ launch_architect_first() {
         # Inspection hook (mirrors FLEET_BABYSIT_PRINT_EFFORT): print the
         # resolved launch command and exit before spawning claude. Lets
         # test_babysit_launch.sh assert the resume path carries no prompt.
+        # The session-track line exposes the exports the fleet-session-track
+        # hook is gated on, so the test can assert they reach claude's env.
         # Safe to exit here — architects start no heartbeat keeper (see
         # HEARTBEAT_FILE), so there's no background process to leak.
+        printf 'session-track: file=%s role=%s mode=%s\n' \
+            "${FLEET_SESSION_FILE:-}" "${FLEET_SESSION_ROLE:-}" "${FLEET_SESSION_MODE:-}"
         printf '%s\n' "${cmd[*]}"
         exit 0
     fi
