@@ -983,19 +983,31 @@ struct FrameDataVoxelToTrixel {
     // per-cell winner scratch (buffer 28 = kBufferIndex_PerAxisResolveScratch,
     // transiently reused) — so stage 2's color/entity-id tap admits exactly
     // one of the equal-key faces. Mirrors FrameDataVoxelToCanvas::resolveMode_
-    // (offset 192); pads mirror the CPU struct's 16-byte-stride tail. Read
-    // only by c_voxel_to_trixel_stage_1.
+    // (offset 192). Read only by c_voxel_to_trixel_stage_1.
     int resolveMode;
     // Per-voxel Hi-Z occlusion-cull gate (#1812). 0 = the compact's per-voxel
     // test is skipped (default pipeline byte-identical); non-zero = the Hi-Z
     // chain level count, so c_voxel_visibility_compact samples level 0 at each
     // surviving voxel and drops globally-occluded ones. Mirrors
-    // FrameDataVoxelToCanvas::occlusionCullMipCount_ (offset 196); reuses the
-    // first resolveMode pad so the layout stays unchanged. Read only by
+    // FrameDataVoxelToCanvas::occlusionCullMipCount_, which keeps the first
+    // resolveMode tail pad slot (offset 196) it shipped on. Read only by
     // c_voxel_visibility_compact.
     int occlusionCullMipCount;
-    int _resolveModePad1;
-    int _resolveModePad2;
+    // Shadow-feeder dispatch partition (#2258 Step B), mirroring
+    // FrameDataVoxelToCanvas::feederSubCap_ / feederPassTailBase_ / feederPass_
+    // (offsets 200/204/208 — shifted one slot down by the #1812 gate). The
+    // compact tail-appends off-screen shadow feeders into a second indirect
+    // struct; stage 1 rasters them in a second dispatch at a strided micro-grid
+    // capped to feederSubCap per face edge. == effSub (or zero feeders) is
+    // byte-identical. Read by the compact + stage 1.
+    int feederSubCap;
+    int feederPassTailBase;
+    int feederPass;
+    // feederPass at 208 opens the 208..224 std140 row; pads fill it, mirroring
+    // FrameDataVoxelToCanvas::feederPad0_..2_.
+    int _feederPad0;
+    int _feederPad1;
+    int _feederPad2;
 };
 
 // Smooth analytic vision-circle reveal for one fog disc, shared by
