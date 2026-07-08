@@ -222,6 +222,18 @@ kernel void c_voxel_to_trixel_stage_2(
         return;
     }
 
+    // #2258 micro-slice packing — MUST mirror stage 1's zIdx recovery + guard so
+    // the color/entity-id tap runs on exactly the micro-slices stage 1 wrote
+    // distances for. See c_voxel_to_trixel_stage_1.glsl.
+    const int zIdx =
+        int(groupId.z) * kStageMicroSlicesPerGroup + int(localId3.z);
+    const int microSliceCount = (frameData.voxelRenderOptions.x != 0)
+        ? (max(frameData.voxelRenderOptions.y, 1) * max(frameData.voxelRenderOptions.y, 1))
+        : 1;
+    if (zIdx >= microSliceCount) {
+        return;
+    }
+
     const uint voxelIndex = compactedVoxelIndices[compactedIdx];
     const float4 voxelPosition = positions[voxelIndex];
     float4 voxelColor = unpackColor(voxels[voxelIndex].colorPacked);
@@ -343,7 +355,7 @@ kernel void c_voxel_to_trixel_stage_2(
             return;
         }
         // #1458: mirror stage 1's base-resolution store (z=0 only).
-        if (groupId.z != 0) return;
+        if (zIdx != 0) return;
         const float3 worldAligned_s2 = snapNearIntegerVoxelPosition(voxelPosition.xyz);
         const int3 worldPos_s2 = roundHalfUp(worldAligned_s2);
         const int3 facePos_s2 = faceMicroPositionFixed6(faceId, worldPos_s2, 0, 0, 1);
@@ -427,8 +439,8 @@ kernel void c_voxel_to_trixel_stage_2(
     }
 
     const int subdivisions = max(frameData.voxelRenderOptions.y, 1);
-    const int u = int(groupId.z) / subdivisions;
-    const int v = int(groupId.z) % subdivisions;
+    const int u = zIdx / subdivisions;
+    const int v = zIdx % subdivisions;
 
     const float3 voxelPositionAligned = snapNearIntegerVoxelPosition(voxelPosition.xyz);
     const int3 voxelPositionFixed = roundHalfUp(voxelPositionAligned * float(subdivisions));

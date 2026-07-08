@@ -68,7 +68,12 @@ static void writeDispatchDims(
         memory_order_relaxed
     );
     const int subdivisions = max(subdivisionsY, 1);
-    const uint gz = (renderModeX != 0) ? uint(subdivisions * subdivisions) : 1u;
+    // #2258: pack kStageMicroSlicesPerGroup micro-cells per z-workgroup (the
+    // stage kernels' threadgroup z-size), so the launched z-workgroup count is
+    // the ceil-divided micro-slice count. Mirrors c_voxel_visibility_compact.glsl.
+    const uint microSliceCount = (renderModeX != 0) ? uint(subdivisions * subdivisions) : 1u;
+    const uint gz = (microSliceCount + uint(kStageMicroSlicesPerGroup) - 1u) /
+        uint(kStageMicroSlicesPerGroup);
     atomic_store_explicit(&indirectParams[base + kSlotNumGroupsZ], gz, memory_order_relaxed);
 }
 

@@ -175,7 +175,15 @@ void writeDispatchDims(uint base) {
     params[base + 0u] = gx;
     params[base + 1u] = max((count + gx - 1u) / gx, 1u);
     int subdivisions = max(voxelRenderOptions.y, 1);
-    params[base + 2u] = (voxelRenderOptions.x != 0) ? uint(subdivisions * subdivisions) : 1u;
+    // #2258: the stage kernels raster `microSliceCount` micro-cells per voxel
+    // face. Packing kStageMicroSlicesPerGroup of them into each z-workgroup
+    // (local_size_z in the stage kernels) means the launched z-workgroup count
+    // is the ceil-divided slice count; the stage re-derives its micro-slice as
+    // gl_WorkGroupID.z * kStageMicroSlicesPerGroup + gl_LocalInvocationID.z and
+    // early-returns the tail past microSliceCount, so output is byte-identical.
+    uint microSliceCount = (voxelRenderOptions.x != 0) ? uint(subdivisions * subdivisions) : 1u;
+    params[base + 2u] = (microSliceCount + uint(kStageMicroSlicesPerGroup) - 1u) /
+        uint(kStageMicroSlicesPerGroup);
 }
 
 void main() {

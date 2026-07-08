@@ -32,7 +32,11 @@ std::string metalFunctionNameForStage(const ShaderStage &stage) {
 MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
     if (functionName == "c_voxel_to_trixel_stage_1" ||
         functionName == "c_voxel_to_trixel_stage_2") {
-        return MTL::Size(2, 3, 1);
+        // z-size = kStageMicroSlicesPerGroup (#2258): both stage kernels pack that
+        // many micro-cell z-slices per threadgroup and re-derive their slice as
+        // groupId.z * kStageMicroSlicesPerGroup + localId.z. MUST match the GLSL
+        // local_size_z literal + shaders/ir_constants.{glsl,metal}.
+        return MTL::Size(2, 3, 8);
     }
     if (functionName == "c_text_to_trixel") {
         return MTL::Size(7, 11, 1);

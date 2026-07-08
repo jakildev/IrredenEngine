@@ -1,8 +1,13 @@
 #version 450 core
 
-layout(local_size_x = 2, local_size_y = 3, local_size_z = 1) in;
+// local_size_z MUST equal kStageMicroSlicesPerGroup (ir_constants.glsl) — the
+// #2258 micro-slice packing that cuts launched workgroups. Kept a literal here
+// because a compute-shader layout qualifier needs a literal on every GL driver;
+// the shared constant below drives the slice math + guard so the two can't drift.
+layout(local_size_x = 2, local_size_y = 3, local_size_z = 8) in;
 
 #include "ir_iso_common.glsl"
+#include "ir_constants.glsl"
 
 layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform vec2 frameCanvasOffset;
@@ -220,6 +225,14 @@ void main() {
     uint compactedIdx = gl_WorkGroupID.x + gl_WorkGroupID.y * numGroupsX;
     if (compactedIdx >= visibleCount) return;
 
+    // #2258 micro-slice packing — MUST mirror stage 1's zIdx recovery + guard so
+    // the color/entity-id tap runs on exactly the micro-slices stage 1 wrote
+    // distances for. See c_voxel_to_trixel_stage_1.glsl for the full rationale.
+    const int zIdx = int(gl_WorkGroupID.z) * kStageMicroSlicesPerGroup + int(gl_LocalInvocationID.z);
+    const int microSliceCount =
+        (voxelRenderOptions.x != 0) ? (max(voxelRenderOptions.y, 1) * max(voxelRenderOptions.y, 1)) : 1;
+    if (zIdx >= microSliceCount) return;
+
     uint voxelIndex = compactedVoxelIndices[compactedIdx];
     const vec4 voxelPosition = positions[voxelIndex];
     vec4 voxelColor = unpackColor(voxels[voxelIndex].colorPacked);
@@ -332,7 +345,7 @@ void main() {
             return;
         }
         // #1458: mirror stage 1's base-resolution store (z=0 only).
-        if (gl_WorkGroupID.z != 0) return;
+        if (zIdx != 0) return;
         const vec3 worldAligned_s2 = snapNearIntegerVoxelPosition(voxelPosition.xyz);
         const ivec3 worldPos_s2 = roundHalfUp(worldAligned_s2);
         const ivec3 facePos_s2 = faceMicroPositionFixed6(faceId, worldPos_s2, 0, 0, 1);
@@ -398,8 +411,8 @@ void main() {
     }
 
     const int subdivisions = max(voxelRenderOptions.y, 1);
-    int u = int(gl_WorkGroupID.z) / subdivisions;
-    int v = int(gl_WorkGroupID.z) % subdivisions;
+    int u = zIdx / subdivisions;
+    int v = zIdx % subdivisions;
 
     const vec3 voxelPositionAligned = snapNearIntegerVoxelPosition(voxelPosition.xyz);
     const ivec3 voxelPositionFixed = roundHalfUp(voxelPositionAligned * float(subdivisions));
