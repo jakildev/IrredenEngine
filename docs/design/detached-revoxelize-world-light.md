@@ -140,8 +140,16 @@ How do model-frame detached voxels enter the world sun-shadow bake?
 > that; otherwise ONE shared resolve accumulating all opt-in casters
 > (min-depth) + ONE extra bake — N casters must not mean N bakes. This also
 > moots backend divergence (even if GL tolerates the foreign read, split
-> cast paths are rejected). The Metal scratch-delivery gap is tracked as its
-> own backend issue; the feature does not block on it. The screen-space
+> cast paths are rejected). **There is no Metal backend bug to track** (#1640,
+> investigated-no-defect): the headless vehicle-A harness
+> (`test/render/gpu_compute_dispatch_test.cpp`) proves cross-encoder R32I texture
+> write→read visibility is sound, and the per-axis screen-depth resolve exercises
+> the exact second-in-tick foreign-canvas R32I read every non-cardinal frame on
+> Metal in production. The #1626-era "scratch-delivery gap" symptom was
+> multi-canvas shared-state (stage-2 clobbering shared voxel SSBOs + foreign
+> frame-data leaking into the bake), not backend visibility — which is why
+> resolve-then-bake is the permanent design independent of any backend concern.
+> The screen-space
 > caveat (casts only from camera-visible surfaces) is the engine's existing
 > sun-bake model, inherited consistently.
 
@@ -248,7 +256,8 @@ Each phase is its own PR, stacks on the previous, and is independently verifiabl
    ONE extra bake dispatch through the unchanged cardinal recovery. The resolve texture is
    imageStore-written (real texture memory), which is exactly why the bake's read works on
    Metal where the rejected foreign-texture read (image-atomic-scratch-resident) returned
-   empty (backend gap tracked as #1640). Reuse check: P4b-1's depth composite
+   empty (a #1626-era multi-canvas shared-state artifact, not a Metal backend gap —
+   #1640 investigated-no-defect). Reuse check: P4b-1's depth composite
    (`ENTITY_CANVAS_TO_FRAMEBUFFER`) writes framebuffer `gl_FragDepth` AFTER the bake stage,
    so no main-layout detached depth texture exists at BAKE time — the dedicated resolve is
    required. Cast keys on the cardinal raster (like the main bake); the cast and the P4b-2
