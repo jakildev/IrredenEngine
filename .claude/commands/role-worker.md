@@ -423,25 +423,10 @@ Do the work, then exit cleanly:
 
        **Engine PR:** `fleet-build --target IRShapeDebug`.
 
-       **Game PR:** the game can't build standalone — it compiles via
-       the engine with your game worktree added as a user project. Use a
-       **dedicated** game build dir (so it doesn't clobber your engine
-       worktree's preset build) and point `ir-build` at it with the
-       `IRREDEN_BUILD_DIR` env var (that's the override knob — there is
-       no `--build-dir` flag). `ir-build` only auto-configures with the
-       bare preset, which omits `IRREDEN_USER_PROJECTS`, so you must
-       configure this dir yourself **once** (idempotent; reuse across
-       iterations) with the game worktree as the user project, then
-       build the **affected project's** target:
-       ```
-       ENG=<your-engine-worktree-abs-path>
-       GAME_WT=~/src/IrredenEngine/creations/game/.claude/worktrees/<your-worktree-name>
-       # one-time configure (skip if $ENG/build-game/CMakeCache.txt exists):
-       cmake --preset <host>-debug -B "$ENG/build-game" -DIRREDEN_USER_PROJECTS="$GAME_WT"
-       # build the affected project target via ir-build, pointed at that dir:
-       IRREDEN_BUILD_DIR="$ENG/build-game" fleet-build --target IRIrredenAll
-       ```
-       `<host>-debug` is your host preset (`macos-debug` / `linux-debug`).
+       **Game PR:** the game can't build standalone — build it in a
+       **dedicated** `build-game` dir pointed at YOUR engine worktree
+       via `IRREDEN_BUILD_DIR`. One-time-configure recipe + rationale:
+       [BUILD.md § Dedicated game build dir](../../docs/agents/BUILD.md#dedicated-game-build-dir-against-a-specific-engine-worktree-build-game).
        Pick the target that matches what the PR touches — `IRIrredenAll`
        (or `IRGame` for the demo) for `irreden/`, the corresponding
        `IR<Project>All` otherwise. **Never build `IRGameAll`** — it
