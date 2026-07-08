@@ -432,7 +432,10 @@ def fetch_issues_by_label(repo, filter_label, exclude_labels=None,
 
 
 def fetch_needs_plan(repo):
-    return fetch_issues_by_label(repo, "fleet:needs-plan")
+    # with_body=True: resolve_needs_plan_blocked_by (#2287) needs the body to
+    # parse a standalone `**Blocked by:**` line; it pops the field after
+    # parsing so state.json never carries it.
+    return fetch_issues_by_label(repo, "fleet:needs-plan", with_body=True)
 
 
 def fetch_plan_review(repo):
@@ -1391,6 +1394,51 @@ def resolve_human_approved_blockers(state):
                 break
 
 
+def resolve_needs_plan_blocked_by(state):
+    """Annotate each fleet:needs-plan issue with `blocked` — True when its
+    `**Blocked by:**` predecessor is still open (#2287).
+
+    Mirrors resolve_human_approved_blockers(): in-memory only
+    (closed_fleet_queued + merged `claude/<N>-*` heads), no live gh, so the
+    per-tick projection stays fast. `body` is popped after parsing so it
+    never bloats state.json or the per-role slices. Without this, a
+    needs-plan issue explicitly parked behind an open blocker (e.g. #2258
+    held for #2280) kept projecting as plannable, firing a planner dispatch
+    every tick that found nothing to do on arrival.
+    """
+    for repo_key, repo_state in state["repos"].items():
+        closed_nums = _closed_issue_numbers(repo_state)
+        merged_heads = [
+            pr.get("headRefName", "") or ""
+            for pr in repo_state.get("recent_merged_prs", [])
+        ]
+
+        for issue in repo_state.get("needs_plan", []):
+            body = issue.pop("body", "") or ""
+            issue["blocked"] = False
+            raw = _parse_blocked_by(body)
+            if not raw:
+                continue
+            refs = _parse_blocker_refs(raw, repo_key)
+            if not refs:
+                # Blocker named only as prose with no resolvable #N — hold
+                # the issue out of the plannable set, matching
+                # resolve_human_approved_blockers.
+                issue["blocked"] = True
+                continue
+            for ref_key, ref in refs:
+                if ref_key != repo_key:
+                    # Cross-repo blocker — unresolvable from this repo's
+                    # window; don't hold the issue back on it.
+                    continue
+                if ref in closed_nums:
+                    continue
+                if any(branch_matches_issue(h, ref, repo_key) for h in merged_heads):
+                    continue
+                issue["blocked"] = True
+                break
+
+
 def resolve_epic_children(state):
     """Annotate each epic for the steward projection (#1664). Mutates state
     in place before the state write, mirroring resolve_blocked_by, so both
@@ -1618,8 +1666,14 @@ def project_worker(state):
             # from *claiming* the issue but not the wake itself, since the dispatcher
             # diffs *this* projection to decide whether to fire. A merely fleet:blocked
             # needs-plan issue is still plannable (planning is independent of the
-            # blocker), so it is NOT gated.
+            # blocker), so it is NOT gated on that label.
             if set(issue.get("labels", [])) & _HUMAN_GATE_LABELS:
+                continue
+            # #2287: an issue whose body declares a still-open `**Blocked by:**`
+            # predecessor (resolve_needs_plan_blocked_by) is explicitly parked —
+            # e.g. "do not plan until #N posts" — and must not wake a planner
+            # dispatch either, mirroring the human-gate skip just above.
+            if issue.get("blocked"):
                 continue
             items.append({"kind": "needs_plan", "repo": repo,
                           "issue": issue["number"]})
@@ -2100,8 +2154,13 @@ def slice_worker(state):
             # count them as plannable and spin a no-op opus worker that finds
             # nothing — the idle-fleet churn behind the needs-plan/no-plan limbo.
             # A merely fleet:blocked needs-plan issue is still plannable, so it
-            # is NOT gated here.
+            # is NOT gated here on that label.
             if set(issue.get("labels", [])) & _HUMAN_GATE_LABELS:
+                continue
+            # #2287: mirror project_worker's Blocked-by gate so a woken worker
+            # never even surfaces an explicitly-parked needs-plan issue as a
+            # planning candidate.
+            if issue.get("blocked"):
                 continue
             out["needs_plan"].append(_slice_issue_with_repo(repo_key, issue))
         for pr in repo_state.get("prs", []):
@@ -2644,6 +2703,7 @@ def tick_once():
         _populate_review_plan(state)
         resolve_blocked_by(state)
         resolve_human_approved_blockers(state)
+        resolve_needs_plan_blocked_by(state)
         resolve_epic_children(state)
         enrich_stackable_blocker_prs(state)
         # Drop PR bodies now the only consumer (the Closes-#N stack-base match
