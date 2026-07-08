@@ -26,24 +26,35 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     // Prefix through residualYaw is the shared binding-7 head. The fields below
     // (matching FrameDataVoxelToCanvas / the stage-1 UBO offsets) are declared so
     // the per-voxel occlusion cull (#1812) can read visibleIsoBounds (offset 176)
-    // and occlusionCullMipCount (offset 196); the rest are layout placeholders
-    // this pass does not consume.
+    // and occlusionCullMipCount (offset 196), and the #2258 Step-B feeder
+    // classify (with isDetachedCanvas + residualYaw) can read the feeder lanes
+    // (offsets 200/204/208); the rest are layout placeholders this pass does
+    // not consume.
     uniform float isDetachedCanvas;     // offset 76 (was _yawPadding)
     uniform vec4 faceDeform[3];         // offset 80
     uniform ivec4 visibleFaceIds;       // offset 128
     uniform vec4 voxelDepthAxis;        // offset 144
     uniform vec4 detachedWorldReceive;  // offset 160
-    // Un-widened (no shadow-feeder sweep) visible iso viewport. The per-voxel
-    // occlusion test only culls voxels fully inside this box — a caster in the
-    // shadow-feeder swept ring (inside cullIsoMin/Max but outside here) must keep
-    // its sun shadow (mirrors dispatchChunkOcclusion's fully-visible eligibility).
+    // Un-widened (no shadow-feeder sweep) visible iso viewport (#1740). Two
+    // consumers here: the per-voxel occlusion test only culls voxels fully
+    // inside this box — a caster in the shadow-feeder swept ring (inside
+    // cullIsoMin/Max but outside here) must keep its sun shadow (mirrors
+    // dispatchChunkOcclusion's fully-visible eligibility) — and the #2258
+    // Step-B classify routes a survivor OUTSIDE this box (an off-screen
+    // feeder, the exact stage-2 #1740 skip convention) to the feeder dispatch
+    // struct instead of the full-density visible list.
     uniform ivec4 visibleIsoBounds;     // offset 176
     uniform int resolveMode;            // offset 192
     // Per-voxel Hi-Z occlusion-cull gate (#1812): 0 = off (byte-identical),
     // non-zero = Hi-Z chain level count → run the per-voxel test.
     uniform int occlusionCullMipCount;  // offset 196
-    uniform int _occlusionPad0;         // offset 200
-    uniform int _occlusionPad1;         // offset 204
+    // Offsets 200/204/208 — #2258 Step-B feeder partition (shifted one slot
+    // down by the #1812 gate). feederSubCap = the per-face-edge micro-grid cap
+    // for the feeder dispatch (struct 1's zTotal = feederSubCap²);
+    // feederPassTailBase / feederPass are read by stage 1.
+    uniform int feederSubCap;           // offset 200
+    uniform int feederPassTailBase;     // offset 204
+    uniform int feederPass;             // offset 208
 };
 
 // Finest Hi-Z downsampled level (conceptual mip 1) over last frame's canvas
@@ -210,19 +221,18 @@ bool fogColumnInVisionCircle(ivec3 voxelPosRaw) {
 // Compute the indirect dispatch grid for the struct at `base` from its
 // visibleCount slot (matches the single-canvas numGroups math exactly). The
 // count is read atomically so the last group sees every other group's appends.
-void writeDispatchDims(uint base) {
+void writeDispatchDims(uint base, uint microSliceCount) {
     uint count = atomicAdd(params[base + 3u], 0u);
     uint gx = max(min(count, 1024u), 1u);
     params[base + 0u] = gx;
     params[base + 1u] = max((count + gx - 1u) / gx, 1u);
-    int subdivisions = max(voxelRenderOptions.y, 1);
     // #2258: the stage kernels raster `microSliceCount` micro-cells per voxel
     // face. Packing kStageMicroSlicesPerGroup of them into each z-workgroup
     // (local_size_z in the stage kernels) means the launched z-workgroup count
     // is the ceil-divided slice count; the stage re-derives its micro-slice as
     // gl_WorkGroupID.z * kStageMicroSlicesPerGroup + gl_LocalInvocationID.z and
     // early-returns the tail past microSliceCount, so output is byte-identical.
-    uint microSliceCount = (voxelRenderOptions.x != 0) ? uint(subdivisions * subdivisions) : 1u;
+    // Step B's feeder struct passes feederSubCap² here instead of effSub².
     params[base + 2u] = (microSliceCount + uint(kStageMicroSlicesPerGroup) - 1u) /
         uint(kStageMicroSlicesPerGroup);
 }
@@ -374,8 +384,39 @@ void main() {
                         if ((visionCircleCount != 0 ||
                              (flagsByte & kFaceOccludedMaskBits) != kFaceOccludedMaskBits) &&
                             !voxelOccludedByHiZ(voxelPos, isoPos)) {
-                            uint slot = atomicAdd(params[3], 1u);
-                            compactedVoxelIndices[slot] = idx;
+                            // #2258 Step B: split this survivor into the visible
+                            // list (struct 0, full effSub² density) or the
+                            // off-screen shadow-feeder list (struct 1, strided
+                            // feederSubCap² density). The feeder test is the EXACT
+                            // stage-2 #1740 skip: a cardinal (residualYaw == 0)
+                            // world (isDetachedCanvas < 0.5) survivor whose iso is
+                            // outside the un-widened visible viewport. `isoPos` is
+                            // already the cardinal-snapped iso in that branch
+                            // (residualYaw != 0 short-circuits isFeeder to false),
+                            // so a voxel this shader calls feeder is exactly one
+                            // stage 2 skips — over-classifying VISIBLE is the only
+                            // failure mode and never corrupts on-screen output.
+                            // Feeders are off-screen by construction, so their
+                            // coarser trixel depth reaches only the sun-shadow
+                            // bake, never a visible pixel.
+                            bool isFeeder =
+                                residualYaw == 0.0 && isDetachedCanvas < 0.5 &&
+                                (isoPos.x < visibleIsoBounds.x || isoPos.x > visibleIsoBounds.z ||
+                                 isoPos.y < visibleIsoBounds.y || isoPos.y > visibleIsoBounds.w);
+                            if (isFeeder) {
+                                // Tail-append: feeder slot i lands at
+                                // voxelCount-1-i, growing down from the top of the
+                                // compacted buffer so it never collides with the
+                                // visible forward append (nVisible + nFeeder ≤
+                                // survivors ≤ voxelCount). Struct 1's count slot is
+                                // dead in single-list mode (per-axis owns it in
+                                // split mode; the two are mutually exclusive here).
+                                uint slot = atomicAdd(params[kPerAxisIndirectStrideUints + 3u], 1u);
+                                compactedVoxelIndices[uint(voxelCount) - 1u - slot] = idx;
+                            } else {
+                                uint slot = atomicAdd(params[3], 1u);
+                                compactedVoxelIndices[slot] = idx;
+                            }
                         }
                     } else {
                         // Per-axis split (#1739): append this voxel into each axis
@@ -409,11 +450,21 @@ void main() {
         uint finished = atomicAdd(params[4], 1u) + 1u;
         uint totalGroups = gl_NumWorkGroups.x * gl_NumWorkGroups.y;
         if (finished == totalGroups) {
+            int subdivisions = max(voxelRenderOptions.y, 1);
+            uint visibleSlices =
+                (voxelRenderOptions.x != 0) ? uint(subdivisions * subdivisions) : 1u;
             if (perAxisSplitStride == 0) {
-                writeDispatchDims(0u);
+                writeDispatchDims(0u, visibleSlices);
+                // #2258 Step B: struct 1 = the feeder dispatch, strided to
+                // feederSubCap² micro-cells per face (vs effSub² for visible).
+                // Empty when no survivor was classified feeder (shadows off / all
+                // on-screen) ⇒ its stage-1 dispatch early-returns every workgroup.
+                int cap = max(feederSubCap, 1);
+                uint feederSlices = (voxelRenderOptions.x != 0) ? uint(cap * cap) : 1u;
+                writeDispatchDims(kPerAxisIndirectStrideUints, feederSlices);
             } else {
                 for (int axis = 0; axis < 3; ++axis) {
-                    writeDispatchDims(uint(axis) * kPerAxisIndirectStrideUints);
+                    writeDispatchDims(uint(axis) * kPerAxisIndirectStrideUints, visibleSlices);
                 }
             }
         }

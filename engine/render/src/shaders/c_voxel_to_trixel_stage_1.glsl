@@ -93,6 +93,18 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     // exactly one of the equal-key faces (the minimum index). Only ever
     // non-zero during the per-axis dispatches (perAxisRoute != 0).
     uniform int resolveMode;
+    // #2258 Step-B shadow-feeder dispatch partition. feederPass = 0 = the
+    // visible stage-1 dispatch (struct 0; this compacted list read forward at
+    // full effSub² density). feederPass = 1 = the second, feeder dispatch
+    // (struct 1): read from the TAIL of the compacted buffer at
+    // feederPassTailBase-1-compactedIdx, and raster a STRIDED micro-grid capped
+    // to feederSubCap per face edge (feederSubCap² cells vs effSub²). Feeders
+    // are off-screen shadow casters — their coarser trixel depth feeds only the
+    // sun-shadow bake, never an on-screen pixel. feederSubCap == effSub (or zero
+    // feeders) makes this path byte-identical to the pre-Step-B single dispatch.
+    uniform int feederSubCap;
+    uniform int feederPassTailBase;
+    uniform int feederPass;
 };
 
 layout(std430, binding = 5) readonly buffer PositionBuffer {
@@ -346,11 +358,23 @@ void main() {
     // explicit `zIdx != 0` return). Same invocation set as the pre-#2258 one
     // z-group-per-slice dispatch → byte-identical.
     const int zIdx = int(gl_WorkGroupID.z) * kStageMicroSlicesPerGroup + int(gl_LocalInvocationID.z);
+    // #2258 Step B: the feeder dispatch (struct 1) rasters feederSubCap²
+    // micro-cells per face instead of effSub²; its guard must match the
+    // compact's writeDispatchDims z-count for this pass exactly.
+    const int feederCap = max(feederSubCap, 1);
     const int microSliceCount =
-        (voxelRenderOptions.x != 0) ? (max(voxelRenderOptions.y, 1) * max(voxelRenderOptions.y, 1)) : 1;
+        (voxelRenderOptions.x != 0)
+            ? (feederPass != 0 ? (feederCap * feederCap)
+                               : (max(voxelRenderOptions.y, 1) * max(voxelRenderOptions.y, 1)))
+            : 1;
     if (zIdx >= microSliceCount) return;
 
-    uint voxelIndex = compactedVoxelIndices[compactedIdx];
+    // Feeders were tail-appended by the compact (slot i at feederPassTailBase-1-i);
+    // the visible list is read forward. binding 26 is bound to struct 1 for the
+    // feeder dispatch, so `visibleCount`/`numGroupsX` above are the feeder count.
+    uint voxelIndex = (feederPass != 0)
+        ? compactedVoxelIndices[uint(feederPassTailBase) - 1u - compactedIdx]
+        : compactedVoxelIndices[compactedIdx];
     const vec4 voxelPosition = positions[voxelIndex];
 
     // `slot` is the per-voxel visible-triplet index (0/1/2) — a workgroup
@@ -665,8 +689,21 @@ void main() {
     }
 
     const int subdivisions = max(voxelRenderOptions.y, 1);
-    int u = zIdx / subdivisions;
-    int v = zIdx % subdivisions;
+    int u;
+    int v;
+    if (feederPass != 0) {
+        // #2258 Step B: strided feeder micro-grid — a coarser STRIDED SUBSET of
+        // the full [0,subdivisions)² face cells (NOT a corner block, so a bake
+        // sample lands across the whole face). Integer (i*subdivisions)/cap is
+        // monotone + full-span; cap == subdivisions degenerates to the visible
+        // identity mapping below (byte-identical). Geometry stays in
+        // `subdivisions` units — only the sampling density drops.
+        u = ((zIdx / feederCap) * subdivisions) / feederCap;
+        v = ((zIdx % feederCap) * subdivisions) / feederCap;
+    } else {
+        u = zIdx / subdivisions;
+        v = zIdx % subdivisions;
+    }
 
     const vec3 voxelPositionAligned = snapNearIntegerVoxelPosition(voxelPosition.xyz);
     const ivec3 voxelPositionFixed = roundHalfUp(voxelPositionAligned * float(subdivisions));

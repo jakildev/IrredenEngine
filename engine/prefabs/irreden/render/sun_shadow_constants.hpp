@@ -138,6 +138,79 @@ inline IRMath::IsoBounds2D sunBakeFrustumUVBounds(
     return IRMath::IsoBounds2D{uvMin, uvMax};
 }
 
+// Sun-bake density constants for the #2258 Step-B shadow-feeder dispatch cap.
+// These MUST match system_bake_sun_shadow_map.hpp (kSunShadowMapDim /
+// kSunShadowCascadeCount / kCascadeSplitRatio) and the bake's local iso-depth
+// clip range — the cap is only meaningful if it reproduces the bake's texel
+// density. Kept here (not in the bake header) so the feeder-density consumer
+// in VOXEL_TO_TRIXEL_STAGE_1 can reuse the exact derivation without pulling the
+// bake system header; a drift here shows as shadow holes in the render-debug
+// loop, which is the acceptance gate.
+constexpr int kFeederSunShadowMapDim = 1024;       // == kSunShadowMapDim
+constexpr int kFeederSunShadowCascadeCount = 2;    // == kSunShadowCascadeCount
+constexpr float kFeederCascadeSplitRatio = 0.4f;   // == kCascadeSplitRatio
+constexpr float kFeederIsoDepthMin = -256.0f;      // == the bake's local kIsoDepthMin
+constexpr float kFeederIsoDepthMax = 256.0f;       // == the bake's local kIsoDepthMax
+// The ONE render-debug-loop-tunable knob (#2258 Step B): the per-face-edge
+// feeder sample count as a multiple of the bake's texel density. Widen above
+// 1.0 only if validation shows shadow holes at an off-screen-caster boundary.
+constexpr float kFeederSubSafetyFactor = 1.0f;
+
+// Per-face-edge micro-grid cap for the #2258 Step-B shadow-feeder dispatch. An
+// off-screen shadow caster only feeds the sun-shadow bake, so its stage-1
+// trixel depth can raster a coarser strided micro-grid than the on-screen
+// effSub² — as long as it still lands ≥ 1 sample per sun-map texel it covers
+// (else the bake sees gaps ⇒ shadow holes). The cap reproduces the bake's
+// per-cascade sun-space UV extent (sunBakeFrustumUVBounds) and returns the
+// FINEST cascade's texels-per-world-unit, clamped to [1, effSub]. Because the
+// bake frustum is dominated by the fixed ±256 iso-depth range + sweep (not the
+// zoom-dependent viewport), the cap is ~zoom-independent: at high zoom
+// effSub ≫ cap (the reduction Step B captures), at low zoom cap == effSub
+// (byte-identical). @p sunDir is the cached frame sun direction (zero when
+// shadows are off ⇒ no feeders are appended, so the returned effSub is moot but
+// safe). Call once per canvas in VOXEL_TO_TRIXEL_STAGE_1's per-canvas tick.
+inline int feederSubCap(
+    const IRMath::vec3 &sunDir, IRMath::CardinalIndex cardinalIndex, int effSub
+) {
+    const int cappedEffSub = IRMath::max(effSub, 1);
+    const float sunLen = IRMath::length(sunDir);
+    if (sunLen <= 0.0f) {
+        return cappedEffSub;  // shadows off — feeder pass is empty, cap is moot
+    }
+    const IRMath::vec3 dir = sunDir / sunLen;
+    IRMath::vec3 uHat, vHat;
+    IRMath::buildOrthonormalBasis(dir, uHat, vHat);
+
+    // Same iso viewport + sweep the bake fits its depth map to (margin 0).
+    const auto &cull = IRRender::getCullViewport();
+    const IRMath::IsoBounds2D isoBounds = cull.isoViewportForCanvas(cull.canvasSize_, 0);
+    const IRMath::vec3 sweep = -dir * kSunShadowMaxDistance;
+
+    const float splitDepth =
+        kFeederIsoDepthMin +
+        (kFeederIsoDepthMax - kFeederIsoDepthMin) * kFeederCascadeSplitRatio;
+    const float cascadeMaxDepth[kFeederSunShadowCascadeCount] = {
+        splitDepth, kFeederIsoDepthMax
+    };
+
+    int cap = 1;
+    for (int ci = 0; ci < kFeederSunShadowCascadeCount; ++ci) {
+        const IRMath::IsoBounds2D uv = sunBakeFrustumUVBounds(
+            isoBounds, kFeederIsoDepthMin, cascadeMaxDepth[ci],
+            uHat, vHat, dir, cardinalIndex, sweep
+        );
+        const float extent = IRMath::max(uv.max_.x - uv.min_.x, uv.max_.y - uv.min_.y);
+        if (extent > 0.0f) {
+            const float texelsPerWorldUnit =
+                static_cast<float>(kFeederSunShadowMapDim) / extent;
+            cap = IRMath::max(
+                cap, static_cast<int>(IRMath::ceil(texelsPerWorldUnit * kFeederSubSafetyFactor))
+            );
+        }
+    }
+    return IRMath::clamp(cap, 1, cappedEffSub);
+}
+
 } // namespace IRPrefab::SunShadow
 
 #endif /* IRREDEN_RENDER_SUN_SHADOW_CONSTANTS_H */

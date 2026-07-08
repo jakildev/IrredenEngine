@@ -251,14 +251,26 @@ kernel void c_voxel_to_trixel_stage_1(
     // dispatch. See c_voxel_to_trixel_stage_1.glsl.
     const int zIdx =
         int(groupId.z) * kStageMicroSlicesPerGroup + int(localId3.z);
+    // #2258 Step B: the feeder dispatch (struct 1) rasters feederSubCap²
+    // micro-cells per face instead of effSub²; the guard must match the
+    // compact's writeDispatchDims z-count for this pass. See the GLSL twin.
+    const int feederCap = max(frameData.feederSubCap, 1);
     const int microSliceCount = (frameData.voxelRenderOptions.x != 0)
-        ? (max(frameData.voxelRenderOptions.y, 1) * max(frameData.voxelRenderOptions.y, 1))
+        ? (frameData.feederPass != 0
+               ? (feederCap * feederCap)
+               : (max(frameData.voxelRenderOptions.y, 1) * max(frameData.voxelRenderOptions.y, 1)))
         : 1;
     if (zIdx >= microSliceCount) {
         return;
     }
 
-    const uint voxelIndex = compactedVoxelIndices[compactedIdx];
+    // Feeders were tail-appended by the compact (slot i at
+    // feederPassTailBase-1-i); the visible list is read forward. binding 26 is
+    // bound to struct 1 for the feeder dispatch, so numGroupsX/visibleCount
+    // above are the feeder struct's.
+    const uint voxelIndex = (frameData.feederPass != 0)
+        ? compactedVoxelIndices[uint(frameData.feederPassTailBase) - 1u - compactedIdx]
+        : compactedVoxelIndices[compactedIdx];
     const float4 voxelPosition = positions[voxelIndex];
     const uint2 localId = localId3.xy;
     // See c_voxel_to_trixel_stage_1.glsl for the slot/faceId contract (#1278).
@@ -497,8 +509,16 @@ kernel void c_voxel_to_trixel_stage_1(
     }
 
     const int subdivisions = max(frameData.voxelRenderOptions.y, 1);
-    const int u = zIdx / subdivisions;
-    const int v = zIdx % subdivisions;
+    // #2258 Step B: strided feeder micro-grid — a coarser STRIDED SUBSET of the
+    // full [0,subdivisions)² face cells (integer (i*subdivisions)/cap, monotone
+    // + full-span; cap == subdivisions degenerates to the visible identity).
+    // Geometry stays in `subdivisions` units — only sampling density drops.
+    const int u = (frameData.feederPass != 0)
+        ? ((zIdx / feederCap) * subdivisions) / feederCap
+        : (zIdx / subdivisions);
+    const int v = (frameData.feederPass != 0)
+        ? ((zIdx % feederCap) * subdivisions) / feederCap
+        : (zIdx % subdivisions);
 
     const float3 voxelPositionAligned = snapNearIntegerVoxelPosition(voxelPosition.xyz);
     const int3 voxelPositionFixed = roundHalfUp(voxelPositionAligned * float(subdivisions));

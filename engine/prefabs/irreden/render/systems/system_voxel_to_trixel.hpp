@@ -1072,6 +1072,22 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             (occlusionCullActive && IRRender::getVoxelPerVoxelOcclusionEnabled())
                 ? occlusionMipCount
                 : 0;
+        // #2258 Step B: cap the shadow-feeder dispatch's strided micro-grid to
+        // the sun-bake texel density so an off-screen caster's coarse trixel
+        // depth still lands ≥1 sample per sun-map texel (no shadow holes).
+        // feederPassTailBase_ is the effectiveVoxelCount the compact was
+        // dispatched with (the top of the buffer feeders tail-grow down from).
+        // Sun shadows off ⇒ sunDir_ is zero ⇒ cap == effSub AND the compact
+        // classifies zero feeders, so the whole partition is inert
+        // (byte-identical). feederPass_ starts at the visible dispatch (0); the
+        // per-canvas tick flips it to 1 for the second, feeder dispatch.
+        frameData_.feederSubCap_ = IRPrefab::SunShadow::feederSubCap(
+            shadowFeederParams_.sunDir_,
+            IRMath::rasterYawCardinalIndex(frameData_.rasterYaw_),
+            frameData_.voxelRenderOptions_.y
+        );
+        frameData_.feederPassTailBase_ = effectiveVoxelCount;
+        frameData_.feederPass_ = 0;
         frameDataBuf_->subData(0, sizeof(FrameDataVoxelToCanvas), &frameData_);
 
         if (occlusionCullActive) {
@@ -1195,6 +1211,16 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
 
         const VoxelIndirectDispatchParams zeroed{};
         indirectBuf_->subData(0, sizeof(VoxelIndirectDispatchParams), &zeroed);
+        // #2258 Step B: struct 1 (the shadow-feeder dispatch) shares indirectBuf_
+        // at kPerAxisSsboAlignBytes; its count slot must start zeroed before the
+        // compact tail-appends feeders into it. Single-canvas mode only — the
+        // per-axis split routes through PerAxisIndirectDispatchParams and never
+        // reads this struct, so zeroing it there is a harmless no-op.
+        indirectBuf_->subData(
+            static_cast<std::ptrdiff_t>(kPerAxisSsboAlignBytes),
+            sizeof(VoxelIndirectDispatchParams),
+            &zeroed
+        );
 
         // Per-axis store list-walk split (#1739). For exactly the main-canvas-
         // rotating compact (whose voxels the per-axis dispatch consumes, and
@@ -1324,6 +1350,44 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             {
                 IRRender::GpuSubStageScope gpuScope("voxelStage1");
                 IRRender::device()->dispatchComputeIndirect(indirectBuf_, 0);
+                // #2258 Step B: second, shadow-feeder dispatch (struct 1) — the
+                // off-screen casters the compact tail-appended, rastered at the
+                // strided feederSubCap² micro-grid instead of the visible effSub².
+                // Flip feederPass_ (the resolveMode_ partial-reupload precedent
+                // above) and bindRange binding 26 onto struct 1 so the stage-1
+                // shader reads its count/numGroupsX — and dispatchComputeIndirect
+                // reads its grid — from that struct. Empty (every workgroup
+                // early-returns) when the compact classified zero feeders (shadows
+                // off / all on-screen). stage1Program_ + every image/SSBO bind
+                // from the visible dispatch persist; only feederPass_ + the
+                // binding-26 range change. One image barrier covers both stage-1
+                // dispatches before stage 2 reads the distances.
+                frameData_.feederPass_ = 1;
+                frameDataBuf_->subData(
+                    offsetof(FrameDataVoxelToCanvas, feederPass_),
+                    sizeof(int),
+                    &frameData_.feederPass_
+                );
+                indirectBuf_->bindRange(
+                    BufferTarget::SHADER_STORAGE,
+                    kBufferIndex_IndirectDispatchParams,
+                    static_cast<std::ptrdiff_t>(kPerAxisSsboAlignBytes),
+                    sizeof(VoxelIndirectDispatchParams)
+                );
+                IRRender::device()->dispatchComputeIndirect(
+                    indirectBuf_, static_cast<std::ptrdiff_t>(kPerAxisSsboAlignBytes)
+                );
+                // Restore struct 0 on binding 26 + feederPass_ = 0 for stage 2's
+                // dispatchComputeIndirect(indirectBuf_, 0) below and the next canvas.
+                frameData_.feederPass_ = 0;
+                frameDataBuf_->subData(
+                    offsetof(FrameDataVoxelToCanvas, feederPass_),
+                    sizeof(int),
+                    &frameData_.feederPass_
+                );
+                indirectBuf_->bindBase(
+                    BufferTarget::SHADER_STORAGE, kBufferIndex_IndirectDispatchParams
+                );
                 IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
             }
 
@@ -1585,10 +1649,16 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             BufferTarget::SHADER_STORAGE,
             kBufferIndex_CompactedVoxelIndices
         );
+        // Two 256 B-aligned structs: struct 0 = the visible dispatch, struct 1
+        // (offset kPerAxisSsboAlignBytes) = the #2258 Step-B shadow-feeder
+        // dispatch. The compact writes struct 1's count/dims and the CPU
+        // bindRanges it onto binding 26 for the second stage-1 dispatch, so the
+        // buffer must reach that slot (single-canvas mode only; the per-axis
+        // split routes through PerAxisIndirectDispatchParams instead).
         IRRender::createNamedResource<Buffer>(
             "IndirectDispatchParams",
             nullptr,
-            sizeof(VoxelIndirectDispatchParams),
+            static_cast<size_t>(2) * kPerAxisSsboAlignBytes,
             BUFFER_STORAGE_DYNAMIC,
             BufferTarget::SHADER_STORAGE,
             kBufferIndex_IndirectDispatchParams
