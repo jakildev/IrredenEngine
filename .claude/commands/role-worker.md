@@ -760,20 +760,18 @@ Do the work, then exit cleanly:
    dispatched `--print` one-shot; no human is attached to your pane, so
    `AskUserQuestion` (or "let me confirm with you first…") has nowhere to
    land — it stalls or burns the iteration. Resolve from the plan/issue,
-   or escalate **asynchronously** on the issue/PR (the artifact a human
-   reviews on their own schedule), then move to a different task:
-   comment on the issue naming exactly what a human must apply, then
-   park it out of autonomous pickup so you stop re-claiming it —
+   or escalate **asynchronously**, then move to a different task:
+   comment on the issue naming exactly what a human must apply, park it
+   out of autonomous pickup —
    `gh issue edit <N> --remove-label fleet:queued --add-label fleet:needs-human` —
    and release your `fleet-claim`. **Keep `human:approved`** — it's the
-   human's durable approval signal, not yours to strip; removing it was
-   the old workaround for the ingest re-stamping `fleet:queued` (it
-   re-queues any `human:approved` issue lacking it), which is exactly
-   what `fleet:needs-human` now suppresses (it's in the ingest skip set,
-   like `fleet:scope-shipped`). Do NOT re-claim it next iteration: the
-   gate is deterministic, so retrying only burns iterations on a wall.
-   The label clears when the human applies the change — then the ingest
-   re-queues it — or the human closes the issue.
+   human's durable approval signal, not yours to strip (why the park
+   suppresses ingest re-queue while keeping it:
+   [fleet-labels-reference.md § `fleet:needs-human`](../../docs/agents/fleet-labels-reference.md)).
+   Do NOT re-claim it next iteration — the gate is deterministic, so
+   retrying only burns iterations on a wall. The label clears when the
+   human applies the change (the ingest then re-queues) or closes the
+   issue.
 
    **(c) Design escalation via `fleet:design-blocked`.** When the
    blocker is specifically architectural — a design call you don't have
