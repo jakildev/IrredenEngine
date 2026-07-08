@@ -116,29 +116,18 @@ exit cleanly:
    `gh pr list --state open --json number,title,mergeable,labels,headRefName,baseRefName,updatedAt`.)
 
 2.5. **Reconcile stacked PRs whose base has merged or closed —
-   retarget proactively, label-independent.** Two failure modes
-   this step has to cover:
+   retarget proactively, label-independent.** Two failure modes this
+   step covers: (1) **labeled stacked PRs** — `fleet:awaiting-base`
+   (step 5a.5 i) or `fleet:needs-base-update` (step 2.6) are in step
+   3's skip set, so those PRs never advance after their base
+   transitions without this pass; (2) **unlabeled stacked PRs whose
+   base just merged** — a still-`MERGEABLE` child keeps its stale
+   `baseRefName`, gets no label, and a human merge would land on the
+   stale base instead of master (the PR-#558 incident:
+   [fleet-queue-stacking.md § Label-independent stacked reconcile](../../docs/design/fleet-queue-stacking.md#label-independent-stacked-reconcile-pr-558)).
 
-   1. **Labeled stacked PRs.** The merger sometimes sets
-      `fleet:awaiting-base` (step 5a.5 sub-case i — child
-      CONFLICTING because base merged) or `fleet:needs-base-update`
-      (step 2.6 — child stale vs upstream tip and cascade-rebase
-      failed). Step 3's filter skips PRs carrying either label, so
-      without this pass they never advance after their base
-      transitions.
-   2. **Unlabeled stacked PRs whose base just merged
-      (PR-#558 case).** A child that stays `MERGEABLE` against its
-      OLD base after the base merges keeps `baseRefName` pointing
-      at the stale `claude/<parent>` branch. If a human clicks
-      merge, GitHub merges to the stale base, NOT master — content
-      ends up on a branch that's unreachable from `origin/master`.
-      The merger normally sets `fleet:awaiting-base` only when the
-      child becomes CONFLICTING; a still-mergeable child gets no
-      label and slips past every guard.
-
-   This step covers both: scan every stacked PR (any
-   `baseRefName != "master"`) regardless of label state, and
-   retarget the moment the base lands.
+   So: scan every stacked PR (any `baseRefName != "master"`)
+   regardless of label state, and retarget the moment the base lands.
 
    From `repos.engine.prs[]`, collect every PR where:
    - `baseRefName != "master"` (stacked PR), AND
@@ -195,14 +184,11 @@ exit cleanly:
    and we don't want to flood the API or the reviewer queue.
 
 2.6. **Cascade rebase stacked children whose upstream tip moved.**
-   Step 2.5 reconciles stacked PRs when their base merges or closes
-   (re-target + rebase in the MERGED case); this step handles the
-   orthogonal case where the base PR is still OPEN but its head ref
-   was force-pushed (typically because the upstream author addressed
-   reviewer feedback). Without this pass, the child PR's branch
-   stays anchored to the upstream's old tip until the base actually
-   merges — and any intervening reviews would see a stale diff that
-   doesn't reflect the upstream's latest fixes.
+   The orthogonal case to step 2.5: the base PR is still OPEN but its
+   head ref was force-pushed (upstream author addressed feedback).
+   Without this pass the child stays anchored to the upstream's old
+   tip until the base merges, and intervening reviews see a stale
+   diff missing the upstream's latest fixes.
 
    From `repos.engine.prs[]`, collect every PR where:
    - `baseRefName != "master"` (stacked PR), AND

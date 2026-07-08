@@ -153,6 +153,18 @@ to a plain rebase that replays the whole inherited prefix as conflicts
 (#1791). That is why role-worker step 1c d' instructs the manual `--onto`
 drop whenever every conflicted file is inherited.
 
+### Label-independent stacked reconcile (PR #558)
+
+A stacked child that stays `MERGEABLE` against its OLD base after that
+base merges keeps `baseRefName` pointing at the stale `claude/<parent>`
+branch. If a human clicks merge, GitHub merges into the stale base, NOT
+master — the content lands on a branch unreachable from `origin/master`.
+The merger normally sets `fleet:awaiting-base` only when the child turns
+CONFLICTING, so a still-mergeable child gets no label and slips past
+every label-keyed guard. That is why role-merger step 2.5 scans every
+`baseRefName != master` PR **regardless of label state** and re-targets
+the moment the base lands.
+
 ### Re-target + label cleanup BEFORE the rebase (#1149)
 
 When a stacked child's base PR merges, the merger (step 5a.5 sub-case ii)
