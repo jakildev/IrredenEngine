@@ -635,21 +635,11 @@ Do the work, then exit cleanly:
    (e.g. `cd ~/src/IrredenEngine/creations/game/.claude/worktrees/worker-1`).
    For an engine task, stay in your engine worktree (no cd needed).
 
-   Then acquire the local filesystem lock. **Always pass the issue
+   Then acquire the local filesystem lock — exact per-repo command
+   forms: see § Cross-repo model above. **Always pass the issue
    number**, and pass your worktree basename (`worker-1` … `worker-4`)
-   as the agent name so it's visible in `fleet-claim list`:
-
-   ```
-   # engine task (issue #1234)
-   fleet-claim claim 1234 <your-worktree-name>
-
-   # game task (issue #45) — note --repo game BEFORE the subcommand
-   fleet-claim --repo game claim 45 <your-worktree-name>
-   ```
-
-   The `--repo game` namespace prefixes the slug with `game-` so it
-   doesn't collide with engine issue numbers. Mirror it in
-   `release` / `release-stack` calls later.
+   as the agent name so it's visible in `fleet-claim list`. Mirror
+   `--repo game` in `release` / `release-stack` calls later.
 
    - **Exit 0** — you own it. Proceed.
    - **Exit 1 (already taken)** — go back to step 3, pick another.
