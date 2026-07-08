@@ -128,6 +128,31 @@ marker.
 - Reconcile/cleanup never sweeps a `fleet:queued` + `fleet:blocked` no-claim
   issue.
 
+## Maintenance gotchas (worker ↔ merger contract)
+
+Incident rationale behind the stacked-PR maintenance steps in
+`role-worker.md` (step 1c) and `role-merger.md` (step 5a.5). The role docs
+keep the commands; this section keeps the *why*.
+
+### Inherited-prefix drop after the parent merges (#1791)
+
+When a stacked child conflicts against master purely because it still
+carries a stale *inherited* copy of files from a parent PR that has since
+merged, the resolution is topological, not textual: replay only the
+child's own commits with `git rebase --onto origin/master
+<child-fork-point>`, where the fork point is `git merge-base HEAD
+origin/<parent-branch>` (the parent's *pre-merge* head). Inherited files
+then resolve to master and the diff shrinks to the child's own changes.
+
+`fleet-rebase` normally performs this drop automatically by checking the
+parent PR's recorded `headRefOid` against the child's ancestry. It
+silently doesn't fire when the parent was **amended during review after
+the child forked** — the recorded `headRefOid` is no longer an ancestor
+of the child's head, so the ancestor check fails and the tool falls back
+to a plain rebase that replays the whole inherited prefix as conflicts
+(#1791). That is why role-worker step 1c d' instructs the manual `--onto`
+drop whenever every conflicted file is inherited.
+
 ## References
 
 - #1527 (this mechanism), #1526 (umbrella epic), #1476 (the queue-one-at-a-time

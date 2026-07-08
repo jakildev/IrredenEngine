@@ -378,12 +378,10 @@ Do the work, then exit cleanly:
        copy), do NOT resolve file-by-file — drop the inherited prefix:
        `git rebase --onto origin/master <child-fork-point>`
        where `<child-fork-point>` = `git merge-base HEAD origin/<parent-branch>`
-       (the parent's *pre-merge* head). That replays only your genuine commits;
-       inherited files resolve to master and the diff shrinks to your own
-       changes. `fleet-rebase` auto-drops this normally; do it by hand when it
-       silently doesn't fire — e.g. the parent was amended during review after
-       you forked, so its recorded `headRefOid` is no longer an ancestor of
-       your head (#1791).
+       (the parent's *pre-merge* head). That replays only your genuine
+       commits. `fleet-rebase` auto-drops this normally; do it by hand when it
+       silently doesn't fire (parent amended during review — why + mechanism:
+       [fleet-queue-stacking.md § Inherited-prefix drop (#1791)](../../docs/design/fleet-queue-stacking.md#inherited-prefix-drop-after-the-parent-merges-1791)).
        After the drop lands the branch on master, check the PR body: a
        leftover `Stacked on:` line is now stale (review-pr's stacked
        detection reads it; base==master + `Stacked on:` is a contradiction,
