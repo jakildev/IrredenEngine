@@ -9,9 +9,14 @@
 
 #version 450 core
 
-layout(local_size_x = 2, local_size_y = 3, local_size_z = 1) in;
+// local_size_z packs kStageMicroSlicesPerGroup (#2258) micro-slices per
+// workgroup — keep this literal in lockstep with kStageMicroSlicesPerGroup in
+// ir_constants.glsl (the layout qualifier must be a literal; the include lands
+// below it, so it can't reference the constant here).
+layout(local_size_x = 2, local_size_y = 3, local_size_z = 8) in;
 
 #include "ir_iso_common.glsl"
+#include "ir_constants.glsl"
 
 // Coordinate chain: World 3D -> Iso 2D -> Canvas pixel
 //   canvasPixel = trixelCanvasOffsetZ1 + floor(cameraIso) + pos3DtoPos2DIso(world)
@@ -325,6 +330,18 @@ void main() {
     uint compactedIdx = gl_WorkGroupID.x + gl_WorkGroupID.y * numGroupsX;
     if (compactedIdx >= visibleCount) return;
 
+    // #2258 micro-slice packing: the compact now dispatches
+    // divCeil(zTotal, kStageMicroSlicesPerGroup) z-workgroups instead of one per
+    // micro-slice. Re-derive this invocation's absolute micro-slice index and
+    // early-return the trailing slices of the last workgroup. zTotal is sub² for
+    // the subdivided/per-axis routes and 1 for the base-resolution routes, so a
+    // base-res voxel still does exactly one store (zIdx 0) rather than 8.
+    const int subdivisions = max(voxelRenderOptions.y, 1);
+    const int zIdx =
+        int(gl_WorkGroupID.z) * kStageMicroSlicesPerGroup + int(gl_LocalInvocationID.z);
+    const int zTotal = (voxelRenderOptions.x != 0) ? (subdivisions * subdivisions) : 1;
+    if (zIdx >= zTotal) return;
+
     uint voxelIndex = compactedVoxelIndices[compactedIdx];
     const vec4 voxelPosition = positions[voxelIndex];
 
@@ -583,7 +600,7 @@ void main() {
         // Only the z=0 invocation writes; higher z-slices return early.
         // The voxel's continuous sub-cell offset is packed into the lower bits
         // of the encoding so scatter can sub-pixel-shift the face quad.
-        if (gl_WorkGroupID.z != 0) return;
+        if (zIdx != 0) return;
         const vec3 worldAligned = snapNearIntegerVoxelPosition(voxelPosition.xyz);
         const ivec3 worldPos_sub = roundHalfUp(worldAligned);
         const ivec3 facePos_sub = faceMicroPositionFixed6(faceId, worldPos_sub, 0, 0, 1);
@@ -632,9 +649,10 @@ void main() {
         return;
     }
 
-    const int subdivisions = max(voxelRenderOptions.y, 1);
-    int u = int(gl_WorkGroupID.z) / subdivisions;
-    int v = int(gl_WorkGroupID.z) % subdivisions;
+    // subdivisions hoisted to top-of-main (#2258); u/v index the micro-grid via
+    // the packed zIdx (== gl_WorkGroupID.z at the old local_size_z == 1).
+    int u = zIdx / subdivisions;
+    int v = zIdx % subdivisions;
 
     const vec3 voxelPositionAligned = snapNearIntegerVoxelPosition(voxelPosition.xyz);
     const ivec3 voxelPositionFixed = roundHalfUp(voxelPositionAligned * float(subdivisions));

@@ -175,7 +175,14 @@ void writeDispatchDims(uint base) {
     params[base + 0u] = gx;
     params[base + 1u] = max((count + gx - 1u) / gx, 1u);
     int subdivisions = max(voxelRenderOptions.y, 1);
-    params[base + 2u] = (voxelRenderOptions.x != 0) ? uint(subdivisions * subdivisions) : 1u;
+    // #2258 micro-slice packing: dispatch divCeil(zTotal, kStageMicroSlicesPerGroup)
+    // z-workgroups; each stage workgroup covers kStageMicroSlicesPerGroup micro-slices
+    // (its local_size_z). The stage kernels re-derive zIdx and early-return the
+    // trailing zIdx >= zTotal slices, so the launch count drops ~Nx with identical
+    // output.
+    uint zTotal = (voxelRenderOptions.x != 0) ? uint(subdivisions * subdivisions) : 1u;
+    uint microSlices = uint(kStageMicroSlicesPerGroup);
+    params[base + 2u] = (zTotal + microSlices - 1u) / microSlices;
 }
 
 void main() {

@@ -238,6 +238,19 @@ kernel void c_voxel_to_trixel_stage_1(
         return;
     }
 
+    // #2258 micro-slice packing (mirrors the GLSL): the compact dispatches
+    // divCeil(zTotal, kStageMicroSlicesPerGroup) z-threadgroups; re-derive the
+    // absolute micro-slice index and early-return the trailing slices of the last
+    // threadgroup. zTotal is sub² for the subdivided/per-axis routes and 1 for
+    // the base-resolution routes.
+    const int subdivisions = max(frameData.voxelRenderOptions.y, 1);
+    const int zIdx =
+        int(groupId.z) * kStageMicroSlicesPerGroup + int(localId3.z);
+    const int zTotal = (frameData.voxelRenderOptions.x != 0) ? (subdivisions * subdivisions) : 1;
+    if (zIdx >= zTotal) {
+        return;
+    }
+
     const uint voxelIndex = compactedVoxelIndices[compactedIdx];
     const float4 voxelPosition = positions[voxelIndex];
     const uint2 localId = localId3.xy;
@@ -420,7 +433,7 @@ kernel void c_voxel_to_trixel_stage_1(
         }
         // #1458: store at BASE (world-unit) resolution regardless of effSub.
         // Only the z=0 invocation writes; higher z-slices return early.
-        if (groupId.z != 0) return;
+        if (zIdx != 0) return;
         const float3 worldAligned = snapNearIntegerVoxelPosition(voxelPosition.xyz);
         const int3 worldPos_sub = roundHalfUp(worldAligned);
         const int3 facePos_sub = faceMicroPositionFixed6(faceId, worldPos_sub, 0, 0, 1);
@@ -472,9 +485,10 @@ kernel void c_voxel_to_trixel_stage_1(
         return;
     }
 
-    const int subdivisions = max(frameData.voxelRenderOptions.y, 1);
-    const int u = int(groupId.z) / subdivisions;
-    const int v = int(groupId.z) % subdivisions;
+    // subdivisions hoisted to top-of-kernel (#2258); u/v index the micro-grid via
+    // the packed zIdx (== groupId.z at the old threadgroup local_size_z == 1).
+    const int u = zIdx / subdivisions;
+    const int v = zIdx % subdivisions;
 
     const float3 voxelPositionAligned = snapNearIntegerVoxelPosition(voxelPosition.xyz);
     const int3 voxelPositionFixed = roundHalfUp(voxelPositionAligned * float(subdivisions));

@@ -29,10 +29,19 @@ std::string metalFunctionNameForStage(const ShaderStage &stage) {
     return std::filesystem::path(stage.getFilepath()).stem().string();
 }
 
+// #2258 micro-slice packing: each stage threadgroup runs
+// kStageMicroSlicesPerGroup z-slices (its local_size_z). MUST match the shader
+// constant kStageMicroSlicesPerGroup (shaders/ir_constants.glsl +
+// metal/ir_constants.metal) and the compact's divCeil(zTotal, N) numGroupsZ — a
+// stale entry here silently reverts the stage kernels to 1×1×1 threadgroups
+// (Metal defaults unmapped functions to 1×1×1), dropping every micro-slice past
+// the first.
+constexpr int kStageMicroSlicesPerGroup = 8;
+
 MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
     if (functionName == "c_voxel_to_trixel_stage_1" ||
         functionName == "c_voxel_to_trixel_stage_2") {
-        return MTL::Size(2, 3, 1);
+        return MTL::Size(2, 3, kStageMicroSlicesPerGroup);
     }
     if (functionName == "c_text_to_trixel") {
         return MTL::Size(7, 11, 1);

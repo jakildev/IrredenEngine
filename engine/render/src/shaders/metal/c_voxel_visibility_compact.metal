@@ -68,7 +68,12 @@ static void writeDispatchDims(
         memory_order_relaxed
     );
     const int subdivisions = max(subdivisionsY, 1);
-    const uint gz = (renderModeX != 0) ? uint(subdivisions * subdivisions) : 1u;
+    // #2258 micro-slice packing: dispatch divCeil(zTotal, kStageMicroSlicesPerGroup)
+    // z-threadgroups; each stage threadgroup covers kStageMicroSlicesPerGroup
+    // micro-slices (its local_size_z). Mirrors the GLSL writeDispatchDims.
+    const uint zTotal = (renderModeX != 0) ? uint(subdivisions * subdivisions) : 1u;
+    const uint microSlices = uint(kStageMicroSlicesPerGroup);
+    const uint gz = (zTotal + microSlices - 1u) / microSlices;
     atomic_store_explicit(&indirectParams[base + kSlotNumGroupsZ], gz, memory_order_relaxed);
 }
 
