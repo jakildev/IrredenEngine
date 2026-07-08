@@ -83,6 +83,12 @@ deferred API:
 
 - `removeComponentDeferred(id, C)` — queue a removal.
 - `setComponentDeferred(id, C{...})` — queue an add/set.
+- `createEntityDeferred()` — reserve an id now, queue a bare-entity insert;
+  the id is returned immediately (like the worker-thread `createEntity`),
+  usable to attach components / destroy the entity before the insert runs.
+- `stageStructuralChange(fn)` — queue an arbitrary `void()` mutation (the
+  non-templated staging entry point the Lua `IREntity.deferredCreate` binding
+  uses to marshal runtime-typed component attachment).
 - `flushStructuralChanges()` — apply queued changes at a safe point (the
   frame boundary in most pipelines).
 

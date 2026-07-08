@@ -168,6 +168,26 @@ LuaFieldSchema buildFieldSchema(
     return s;
 }
 
+// Add a dynamic (Lua-registered / codegen'd) component to `entity` by
+// ComponentId and, when `overrides` is present, write its fields from the
+// table. Shared by the eager `IREntity.addLuaComponent` binding and the
+// deferred `IREntity.deferredCreate` attach path.
+void attachDynamicComponent(
+    IREntity::EntityManager &em,
+    IREntity::EntityId entity,
+    IREntity::ComponentId componentId,
+    const sol::optional<sol::table> &overrides
+) {
+    em.addComponentDynamic(entity, componentId);
+    if (!overrides) {
+        return;
+    }
+    auto [data, row] = em.getComponentDataAndRow(entity, componentId);
+    IR_ASSERT(data != nullptr, "attachDynamicComponent: post-add lookup failed");
+    auto *typed = static_cast<IComponentDataLuaTyped *>(data);
+    typed->writeRowFromTable(row, *overrides);
+}
+
 } // namespace
 
 // lua_dofile runs a lua script. Global functions and variables
@@ -525,14 +545,7 @@ void LuaScript::bindLuaDrivenEcs() {
                                                sol::optional<sol::table> overrides
                                            ) {
         const IREntity::ComponentId componentId = componentDef.get<lua_Integer>("componentId");
-        auto &em = IREntity::getEntityManager();
-        em.addComponentDynamic(entity.entity, componentId);
-        if (overrides) {
-            auto [data, row] = em.getComponentDataAndRow(entity.entity, componentId);
-            IR_ASSERT(data != nullptr, "addLuaComponent: post-add lookup failed");
-            auto *typed = static_cast<IComponentDataLuaTyped *>(data);
-            typed->writeRowFromTable(row, *overrides);
-        }
+        attachDynamicComponent(IREntity::getEntityManager(), entity.entity, componentId, overrides);
     };
 
     m_lua["IREntity"]["getLuaComponent"] =
@@ -555,6 +568,58 @@ void LuaScript::bindLuaDrivenEcs() {
     m_lua["IREntity"]["hasLuaComponent"] = [](IRScript::LuaEntity entity, sol::table componentDef) {
         const IREntity::ComponentId componentId = componentDef.get<lua_Integer>("componentId");
         return IREntity::getEntityManager().hasComponent(entity.entity, componentId);
+    };
+
+    // #2286: deferred entity create/destroy for EVAL Lua systems. A structural
+    // change (create, destroy) issued from inside a per-entity tick would
+    // invalidate the archetype iteration in progress, so these route through
+    // the same deferred machinery C++ systems use: the create's archetype
+    // insert drains at the next `flushStructuralChanges` (a group boundary),
+    // the destroy at `destroyMarkedEntities` (pipeline end) — never mid-tick.
+    // See `docs/design/lua-driven-ecs.md` §G4.
+    //
+    // `deferredCreate` returns the reserved EntityId immediately so a tick can
+    // hold it (e.g. to `deferredDestroy` it later, or stash it in a component)
+    // before the entity actually materializes at flush. `componentList` is an
+    // optional array of `{ componentDef, overridesTableOrNil }` entries:
+    // `componentDef` is the table from `IRComponent.register` / a codegen'd
+    // component binding (it carries `componentId`), and the optional overrides
+    // are applied exactly like `addLuaComponent`. Both Lua-registered and
+    // codegen'd components share the ComponentId space, so either attaches.
+    m_lua["IREntity"]["deferredCreate"] =
+        [this](sol::optional<sol::table> componentList) -> IREntity::EntityId {
+        auto &em = IREntity::getEntityManager();
+        // Marshal the sol values on the calling (tick) thread; the deferred
+        // lambda then attaches without re-entering Lua at flush time. Each
+        // pending entry is (componentId, optional field-overrides table).
+        using PendingComponent = std::pair<IREntity::ComponentId, sol::optional<sol::table>>;
+        std::vector<PendingComponent> pending;
+        if (componentList) {
+            const std::size_t count = componentList->size();
+            pending.reserve(count);
+            for (std::size_t i = 1; i <= count; ++i) {
+                sol::table entry = componentList->get<sol::table>(i);
+                sol::table componentDef = entry.get<sol::table>(1);
+                pending.emplace_back(
+                    componentDef.get<lua_Integer>("componentId"),
+                    entry.get<sol::optional<sol::table>>(2)
+                );
+            }
+        }
+        const IREntity::EntityId entity = em.createEntityDeferred();
+        em.stageStructuralChange([entity, pending = std::move(pending)]() {
+            auto &mgr = IREntity::getEntityManager();
+            for (const auto &[componentId, overrides] : pending) {
+                attachDynamicComponent(mgr, entity, componentId, overrides);
+            }
+        });
+        return entity;
+    };
+
+    m_lua["IREntity"]["deferredDestroy"] = [](IREntity::EntityId entity) {
+        // markEntityForDeletion mutates the flag bit on its arg ref; the local
+        // copy absorbs it. Drained by destroyMarkedEntities at pipeline end.
+        IREntity::getEntityManager().markEntityForDeletion(entity);
     };
 
     m_lua["IREntity"]["bindPoint"] = [](IRScript::LuaEntity self,
