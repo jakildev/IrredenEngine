@@ -211,6 +211,22 @@ class EntityManager {
         updateRecord(entity, archetypeNode, index);
     }
 
+    // #2286: deferred dynamic entity create for the Lua EVAL binding. Reserve
+    // an id now (so a tick can reference / attach to the entity immediately)
+    // and stage the bare-entity insert for the next `flushStructuralChanges`,
+    // mirroring the worker-thread `createEntity` path. The archetype starts
+    // empty; components are attached by follow-up `addComponentDynamic` calls
+    // staged via `stageStructuralChange` — those drain after this insert
+    // because a slot's structural changes replay in push order. Runtime
+    // (Lua-registered) ComponentIds are the intended payload, so the create
+    // stays out of the templated `createEntity<...>` path.
+    EntityId createEntityDeferred() {
+        IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
+        EntityId entity = allocateEntityIdAtomic();
+        stageStructuralChange([this, entity]() { insertReservedEntity(entity); });
+        return entity;
+    }
+
     template <typename Component, typename... Args> ComponentId registerComponent(Args &&...args) {
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
         std::string typeName = typeid(Component).name();
@@ -384,6 +400,17 @@ class EntityManager {
                 setComponent<Component>(entity, component);
             }
         });
+    }
+
+    // #2286: stage an arbitrary structural mutation to run at the next
+    // `flushStructuralChanges`, in the current thread's staging slot (slot 0
+    // == main thread). The templated `setComponentDeferred` /
+    // `removeComponentDeferred` cover C++-typed ops; this generic entry point
+    // exists for the Lua deferred-create binding, which must marshal
+    // `sol::table` override values in a lambda the entity module cannot depend
+    // on the type of. Ops replay in push order within a slot.
+    void stageStructuralChange(std::function<void()> op) {
+        m_workerStaging[workerSlotForCurrentThread()].structuralChanges_.push_back(std::move(op));
     }
 
     void flushStructuralChanges();

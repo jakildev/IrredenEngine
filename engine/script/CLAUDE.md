@@ -138,6 +138,27 @@ local rules = IREntity.singleton(C_Hp)                    -- LuaEntity
 IREntity.setLuaField(rules, C_Hp, C_Hp.fields.current.index, 100)
 ```
 
+**Deferred entity create/destroy (mid-tick, #2286).** A structural change
+issued from inside a system tick must be deferred, exactly like a C++ system
+(archetype iteration is live). `IREntity.deferredCreate` / `deferredDestroy`
+queue the op through the engine's deferred machinery — the create's insert
+drains at the next `flushStructuralChanges` (group boundary), the destroy at
+`destroyMarkedEntities` (pipeline end):
+
+```lua
+-- Optional component list: { componentDef, overridesTableOrNil } entries.
+-- componentDef is any IRComponent.register / codegen'd handle (carries
+-- componentId); overrides apply exactly like addLuaComponent.
+local eid = IREntity.deferredCreate({ { C_Hp, { current = 30 } } })  -- → EntityId
+IREntity.deferredDestroy(eid)   -- eid is a raw EntityId (e.g. arch.entityAt(i))
+```
+
+The returned EntityId is reserved immediately (usable to destroy or stash the
+entity), but the entity does not materialize until the flush. Attaches any
+component addressable from Lua by `componentId`; a native C++-only component
+(no Lua-typed default-row support) still uses the templated C++
+`createEntity`. See `docs/design/lua-driven-ecs.md` §G4.
+
 - **Type inference:** integer literal → `int32`; float literal → `float`;
   string → `std::string`; bool → `bool`; function → `sol::function`. The
   short form fails registration with a Lua error if a default value isn't
