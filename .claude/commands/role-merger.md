@@ -448,29 +448,11 @@ exit cleanly:
          The detached HEAD at `origin/<headRefName>` from step a is
          already set up — `git rebase` operates on it directly.
 
-         **Order rationale (re-target + label cleanup BEFORE rebase).**
-         On the rebase-conflict branch below, the re-target and label
-         cleanup are intentionally NOT rolled back — and they intentionally
-         run FIRST, before the rebase attempt. Two coupled reasons:
-         (1) worker's `fleet:semantic-conflict` filter at step 1c
-         excludes `fleet:awaiting-base` / `fleet:awaiting-upstream-review`
-         / `fleet:fork-of-other-pr` (PRs not yet rebaseable against
-         master), so those labels MUST be cleared for worker to
-         pick the PR up.
-         (2) worker's step 1c rebases against the PR's current
-         `baseRefName` (`git rebase origin/<baseRefName>`), so
-         `baseRefName` MUST point at master for worker to rebase
-         against the master tip rather than the merged-but-still-extant
-         base branch — which would replay the stacked-merge conflict
-         against the pre-merge base tip without actually resolving it
-         (master may have moved further).
-         Inverting (rebase first, re-target + label cleanup only on
-         clean exit) would silently strand conflict-path PRs: either
-         the labels survive and worker skips the PR indefinitely,
-         or the labels are cleared but `baseRefName` still points at
-         the stale base and worker's rebase target is wrong. The
-         current order keeps the merger ↔ worker contract
-         coherent. See issue #1149 for the full trade-off analysis.
+         The re-target + label cleanup below run FIRST, before the
+         rebase attempt, and are intentionally NOT rolled back on the
+         rebase-conflict branch — the worker ↔ merger contract depends
+         on that order (see
+         [fleet-queue-stacking.md § Re-target + label cleanup BEFORE the rebase (#1149)](../../docs/design/fleet-queue-stacking.md#re-target--label-cleanup-before-the-rebase-1149)).
 
          - `gh pr edit <N> --base master`
          - `gh pr edit <N> --remove-label "fleet:awaiting-base"`

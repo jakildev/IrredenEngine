@@ -153,6 +153,32 @@ to a plain rebase that replays the whole inherited prefix as conflicts
 (#1791). That is why role-worker step 1c d' instructs the manual `--onto`
 drop whenever every conflicted file is inherited.
 
+### Re-target + label cleanup BEFORE the rebase (#1149)
+
+When a stacked child's base PR merges, the merger (step 5a.5 sub-case ii)
+re-targets the child to `master` and clears `fleet:awaiting-base` /
+`fleet:stacked` / `fleet:needs-base-update` **before** attempting the
+rebase — and on the rebase-conflict branch those actions are deliberately
+NOT rolled back. Two coupled reasons:
+
+1. The worker's `fleet:semantic-conflict` filter (role-worker step 1c)
+   excludes `fleet:awaiting-base` / `fleet:awaiting-upstream-review` /
+   `fleet:fork-of-other-pr` — PRs not yet rebaseable against master — so
+   those labels MUST already be cleared for a worker to pick the
+   conflicted child up.
+2. The worker's step 1c rebases against the PR's current `baseRefName`
+   (`git rebase origin/<baseRefName>`), so `baseRefName` MUST point at
+   master — otherwise the worker replays the stacked-merge conflict
+   against the merged-but-still-extant base tip without actually
+   resolving it (master may have moved further).
+
+Inverting the order (rebase first, re-target + cleanup only on clean
+exit) would silently strand conflict-path PRs: either the labels survive
+and the worker skips the PR indefinitely, or the labels are cleared but
+`baseRefName` still points at the stale base and the worker's rebase
+target is wrong. The current order keeps the merger ↔ worker contract
+coherent. Full trade-off analysis: #1149.
+
 ## References
 
 - #1527 (this mechanism), #1526 (umbrella epic), #1476 (the queue-one-at-a-time
