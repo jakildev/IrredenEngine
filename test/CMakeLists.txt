@@ -119,8 +119,15 @@ target_link_libraries(IrredenEngineTest PUBLIC
 # real engine compute shader by absolute path so it resolves regardless of cwd
 # (the engine itself chdir's to the exe dir at boot; the test never does). The
 # shader source tree is engine/render/src/shaders/.
+#
+# IR_TEST_GPU_SHADER_DIR points at the test-local shader tree
+# (test/render/shaders/) holding the tiny purpose-built repro kernels the Metal
+# half of that test dispatches — the Metal pipeline resolves the `metal/`
+# subdir + `.metal` sibling from a `.glsl`-shaped path, exactly like the engine
+# shader dir, so no `.glsl` twin is needed for a Metal-only kernel.
 target_compile_definitions(IrredenEngineTest PRIVATE
     IR_TEST_RENDER_SHADER_DIR="${CMAKE_SOURCE_DIR}/engine/render/src/shaders"
+    IR_TEST_GPU_SHADER_DIR="${CMAKE_SOURCE_DIR}/test/render/shaders"
 )
 
 # Build lua_component_codegen_fixtures.hpp from the sibling .lua

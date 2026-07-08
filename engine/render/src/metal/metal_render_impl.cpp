@@ -1012,6 +1012,27 @@ std::unique_ptr<RenderImpl> createRenderer() {
     return std::make_unique<MetalRenderImpl>();
 }
 
+// Headless render-device bring-up for GPU unit tests (vehicle A, #1640). Wires
+// IRRender::device() to a windowless Metal device + command buffer so a test can
+// drive the real ShaderProgram / Texture2D / dispatchCompute path without a
+// swapchain. Mirrors MetalRenderImpl::init() minus the CAMetalLayer, which is
+// only needed for presentation: initializeMetalRuntime stores the layer but
+// never dereferences it (only beginFrame's nextDrawable does, and a headless
+// test never calls beginFrame). Returns nullptr when no Metal device is
+// available (headless CI with no GPU) so the caller can GTEST_SKIP cleanly. Not
+// for production frame rendering — there is no drawable and nothing to present.
+RenderDevice *bootstrapHeadlessRenderDevice() {
+    MTL::Device *device = MTL::CreateSystemDefaultDevice();
+    if (device == nullptr) {
+        return nullptr;
+    }
+    setMetalBootstrapDevice(device);
+    metalRenderDevice().init(device, nullptr);
+    setDevice(&metalRenderDevice());
+    setMetalCommandBuffer(metalCommandQueue()->commandBuffer());
+    return &metalRenderDevice();
+}
+
 MetalRenderImpl::MetalRenderImpl()
     : m_device{MTL::CreateSystemDefaultDevice()} {
     IRE_LOG_INFO("Initializing Metal render implementation.");
