@@ -22,10 +22,14 @@ architect path, solo-architect) are tracked. Manual `claude` runs in the
 same worktree, worker panes, and subagents carry no FLEET_SESSION_FILE and
 no-op — they must never repoint an architect's sidecar.
 
-On source=clear, additionally emits hook additionalContext telling the
-fresh session which role pane it is (FLEET_SESSION_ROLE/FLEET_SESSION_MODE,
-also launcher-exported) — /clear drops the /role-<role> command from
-context and nothing else re-fires it.
+On source=clear, additionally emits hook additionalContext re-injecting
+the role instructions (FLEET_SESSION_ROLE/FLEET_SESSION_MODE, also
+launcher-exported) — /clear drops the /role-<role> command from context
+and nothing else re-fires it. The context embeds the role command file's
+full contents with $ARGUMENTS substituted (what the slash command would
+have injected), so the fresh session carries the role without depending
+on a follow-up Read; if the file can't be read, it falls back to a
+directive to re-read it.
 
 Exit code is always 0: a hook failure must never degrade a session start.
 """
@@ -33,6 +37,38 @@ Exit code is always 0: a hook failure must never degrade a session start.
 import json
 import os
 import sys
+
+# Role command files are small wrappers (~2 KB — the shared protocol lives
+# in docs they point at). Anything larger than this is not a role wrapper;
+# fall back to the re-read directive rather than flooding the context.
+ROLE_FILE_EMBED_CAP_BYTES = 262_144
+
+
+def role_context(payload: dict, role: str, mode: str) -> str:
+    """Context re-injecting the role after /clear — embedded file contents
+    when readable, a re-read directive otherwise."""
+    preamble = (
+        f"This is the fleet '{role}' pane. The /clear that started this "
+        f"session dropped the role instructions from context, but the "
+        f"pane's role is unchanged."
+    )
+    role_rel = f".claude/commands/role-{role}.md"
+    role_path = os.path.join(payload.get("cwd") or os.getcwd(), role_rel)
+    try:
+        if os.path.getsize(role_path) <= ROLE_FILE_EMBED_CAP_BYTES:
+            with open(role_path) as f:
+                body = f.read().replace("$ARGUMENTS", mode)
+            return (
+                f"{preamble} They are re-injected below (from {role_rel}, "
+                f"mode: {mode}); resume operating as this role.\n\n---\n\n"
+                f"{body}"
+            )
+    except OSError:
+        pass
+    return (
+        f"{preamble} Before acting on the next request, re-read "
+        f"{role_rel} (mode: {mode}) and resume operating as that role."
+    )
 
 
 def main() -> int:
@@ -64,19 +100,12 @@ def main() -> int:
         role = os.environ.get("FLEET_SESSION_ROLE")
         mode = os.environ.get("FLEET_SESSION_MODE", "live")
         if role:
-            context = (
-                f"This is the fleet '{role}' pane. The /clear that started this "
-                f"session dropped the role instructions from context, but the "
-                f"pane's role is unchanged. Before acting on the next request, "
-                f"re-read .claude/commands/role-{role}.md (mode: {mode}) and "
-                f"resume operating as that role."
-            )
             print(
                 json.dumps(
                     {
                         "hookSpecificOutput": {
                             "hookEventName": "SessionStart",
-                            "additionalContext": context,
+                            "additionalContext": role_context(payload, role, mode),
                         }
                     }
                 )

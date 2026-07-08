@@ -13,8 +13,11 @@
 # Covers:
 #   - no FLEET_SESSION_FILE            -> no-op (exit 0, nothing written)
 #   - source=startup                   -> sidecar written with session_id
-#   - source=clear                     -> sidecar REwritten + role-reminder
-#                                         additionalContext emitted
+#   - source=clear                     -> sidecar REwritten + role-file
+#                                         contents embedded in the emitted
+#                                         additionalContext ($ARGUMENTS
+#                                         substituted with the mode)
+#   - source=clear, role file missing  -> falls back to a re-read directive
 #   - source=resume/compact            -> sidecar written, NO context output
 #   - clear without FLEET_SESSION_ROLE -> sidecar written, NO context output
 #   - malformed / empty payload        -> exit 0, sidecar untouched
@@ -66,8 +69,14 @@ assert_contains() {
 TMPROOT=$(mktemp -d -t fleet-session-track-test)
 
 payload() {
-    # $1 = source, $2 = session_id
-    printf '{"hook_event_name":"SessionStart","source":"%s","session_id":"%s"}' "$1" "$2"
+    # $1 = source, $2 = session_id, $3 = cwd (optional — where the hook
+    # resolves .claude/commands/role-<role>.md for the clear re-inject)
+    if [[ -n "${3:-}" ]]; then
+        printf '{"hook_event_name":"SessionStart","source":"%s","session_id":"%s","cwd":"%s"}' \
+            "$1" "$2" "$3"
+    else
+        printf '{"hook_event_name":"SessionStart","source":"%s","session_id":"%s"}' "$1" "$2"
+    fi
 }
 
 # --- T1: no FLEET_SESSION_FILE -> silent no-op -------------------------------
@@ -84,14 +93,27 @@ out=$(payload startup bbbb-2222 | env FLEET_SESSION_FILE="$F2" "$TRACK")
 assert_eq "$(cat "$F2")" "bbbb-2222" "sidecar holds the new session id"
 assert_eq "$out" "" "no context output on startup"
 
-# --- T3: clear repoints the sidecar and re-injects the role ------------------
-echo "T3: source=clear repoints the sidecar + emits role reminder"
-out=$(payload clear cccc-3333 | env FLEET_SESSION_FILE="$F2" \
+# --- T3: clear repoints the sidecar and embeds the role file -----------------
+echo "T3: source=clear repoints the sidecar + embeds the role file contents"
+WT="$TMPROOT/worktree"; mkdir -p "$WT/.claude/commands"
+printf 'You are the TEST ARCHITECT sentinel.\nMode: $ARGUMENTS\n' \
+    > "$WT/.claude/commands/role-opus-architect.md"
+out=$(payload clear cccc-3333 "$WT" | env FLEET_SESSION_FILE="$F2" \
     FLEET_SESSION_ROLE=opus-architect FLEET_SESSION_MODE=live "$TRACK")
 assert_eq "$(cat "$F2")" "cccc-3333" "sidecar repointed to the post-/clear session"
 assert_contains "$out" '"hookEventName": "SessionStart"' "context is SessionStart hook output"
-assert_contains "$out" "role-opus-architect.md" "context names the role command file"
-assert_contains "$out" "mode: live" "context carries the launch mode"
+assert_contains "$out" "TEST ARCHITECT sentinel" "role file contents embedded in the context"
+assert_contains "$out" "Mode: live" "\$ARGUMENTS substituted with the launch mode"
+assert_contains "$out" "role-opus-architect.md" "context names the source role file"
+
+# --- T3b: clear with no readable role file falls back to a directive ---------
+echo "T3b: source=clear without a role file falls back to a re-read directive"
+out=$(payload clear cccc-3344 "$TMPROOT/nowhere" | env FLEET_SESSION_FILE="$F2" \
+    FLEET_SESSION_ROLE=opus-architect FLEET_SESSION_MODE=live "$TRACK")
+assert_eq "$(cat "$F2")" "cccc-3344" "sidecar still repointed"
+assert_contains "$out" "re-read .claude/commands/role-opus-architect.md" \
+    "fallback directive names the role command file"
+assert_contains "$out" "mode: live" "fallback carries the launch mode"
 
 # --- T4: resume/compact write silently ---------------------------------------
 echo "T4: source=resume and source=compact update silently"
