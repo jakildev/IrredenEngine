@@ -138,7 +138,9 @@ exit cleanly:
    `fleet:awaiting-base` and `fleet:needs-base-update` are NOT in
    the skip set — those PRs are exactly the labeled-population
    case from (1). `fleet:stacked` is also fine here for the same
-   reason. For each such PR, look up its base PR's state:
+   reason. For each such PR, look up its base PR's state with the
+   **base-lookup query** (steps 2.6 and 5a.5 reference this same
+   command):
 
    `gh pr list --search "head:<baseRefName>" --state all --json number,state --jq '.[] | "#\(.number) \(.state)"'`
 
@@ -203,12 +205,8 @@ exit cleanly:
    want to keep tracking. (`fleet:stacked` is also fine here; it
    marks the same population from a different angle.)
 
-   For each candidate, look up the base PR's state — same query as
-   step 2.5 and step 5a.5:
-
-   `gh pr list --search "head:<baseRefName>" --state all --json number,state --jq '.[] | "#\(.number) \(.state)"'`
-
-   If state is not OPEN, skip — step 2.5 owns the merged/closed
+   For each candidate, look up the base PR's state with the step-2.5
+   base-lookup query. If state is not OPEN, skip — step 2.5 owns the merged/closed
    transitions. If OPEN, fetch both refs (separate Bash calls,
    single-command rule):
 
@@ -363,9 +361,8 @@ exit cleanly:
       value is `master`, proceed to step b (normal flow).
 
       Otherwise (stacked PR — base is a feature branch), look up the
-      base PR by its head ref. The base might be OPEN, MERGED, or
-      CLOSED without merging:
-      `gh pr list --search "head:<baseRefName>" --state all --json number,state --jq '.[] | "#\(.number) \(.state)"'`
+      base PR by its head ref with the step-2.5 base-lookup query. The
+      base might be OPEN, MERGED, or CLOSED without merging.
 
       Three sub-cases. Sub-cases i and iii skip the normal rebase
       (step b–d) and jump directly to step f (reset to scratch). Sub-
