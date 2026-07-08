@@ -426,9 +426,9 @@ child for them (adds `fleet:needs-plan`, strips stale stage labels, keeps
 
 > **Stale child before it's worked?** If a filed child's plan goes stale
 > (a predecessor shipped a different design than its `## Plan` assumed) before
-> the child is claimed, it re-plans through the guarded re-plan flow — flip
-> `fleet:queued → fleet:needs-plan` and take `planning-claim --replan` before
-> re-investigating. See
+> the child is claimed, it re-plans through the flip-and-move-on flow — flip
+> `fleet:queued → fleet:needs-plan`, comment why, and move on; the dispatcher
+> assigns the re-plan to a fresh planning dispatch (#2197). See
 > [`PLANNING-PROTOCOL.md § Re-planning a stale queued plan`](../PLANNING-PROTOCOL.md#re-planning-a-stale-queued-plan)
 > (#1999). `file-epic` does not re-file the child.
 

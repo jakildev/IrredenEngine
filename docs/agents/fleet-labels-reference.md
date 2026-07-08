@@ -90,10 +90,13 @@ Specifically, **never pass these via `--label` when filing**:
 - `fleet:needs-plan` — owned by **`fleet-queue-ingest`** as a triage state.
   Set (in place of `fleet:queued`) when an `human:approved` issue has no
   `## Plan` comment and is not opted out — the issue must be planned before it
-  can queue. An opus+ planner (worker or opus-architect, via
-  [`PLANNING-PROTOCOL.md`](PLANNING-PROTOCOL.md) / the `file-epic` skill) posts
-  the `## Plan` comment and swaps this label for `fleet:plan-review`. Workers
-  skip issues carrying this label. Don't add manually.
+  can queue. A planner — a **dispatcher-assigned** worker iteration
+  (`FLEET_PLAN_ISSUE`, pre-claimed via `fleet:planning-*`, #2197) or the
+  opus-architect on request, via
+  [`PLANNING-PROTOCOL.md`](PLANNING-PROTOCOL.md) / the `file-epic` skill —
+  posts the `## Plan` comment and swaps this label for `fleet:plan-review`.
+  Workers skip issues carrying this label and never self-select one to plan.
+  Don't add manually.
 - `fleet:plan-review` — owned by the **planner** (sets it, swapping out
   `fleet:needs-plan`, once the `## Plan` comment is posted) and the **plan
   reviewer** (the architect, or the opus-reviewer loop — clears it). While
@@ -136,8 +139,8 @@ Specifically, **never pass these via `--label` when filing**:
   into the ingest set via `_ingest_skipped` even though its stage labels would
   otherwise exclude it, so adding the label both fires ingest and surfaces it in
   `pending_issues`. Pre-queue stages only — an already-queued stale plan uses the
-  race-guarded re-plan flow (PLANNING-PROTOCOL.md §"Re-planning a stale queued
-  plan"). A fleet agent never applies it (`human:*` by convention).
+  flip-and-move-on re-plan flow (PLANNING-PROTOCOL.md §"Re-planning a stale
+  queued plan"). A fleet agent never applies it (`human:*` by convention).
 - `human:no-plan` — owned by the **human**, applied at filing to a simple,
   self-contained issue to skip planning entirely. `fleet-queue-ingest` then
   stamps `fleet:queued` directly — no `## Plan` comment required — and the
@@ -356,6 +359,22 @@ Specifically, **never pass these via `--label` when filing**:
   reviewer touches an in-flight diff. The scout's `fleet-claim cleanup
   --gh` pass sweeps labels older than 30 min and replays orphan
   sentinels. Don't add manually; don't add to issues.
+- `fleet:planning-<host>-<agent>` — owned by the **`fleet-claim`
+  script** (atomic planning-claim primitive; same sole-holder lex-min
+  claim as `fleet:reviewing-`), applied to the **issue** being planned.
+  Under assignment-based planning (#2197) it is taken by the
+  **dispatcher** *before* a planning dispatch launches — under the
+  target pane's worktree basename — and handed to the iteration as
+  `FLEET_PLAN_ISSUE=<repo>:<N>`; the worker never calls
+  `fleet-claim planning-claim` itself and releases with
+  `fleet-claim planning-release` after the `fleet:plan-review` swap.
+  The interactive **architect** is the other legitimate taker (it plans
+  on human request and calls `planning-claim` directly); the shared
+  mutex arbitrates dispatcher-vs-architect collisions. Orphans (a died
+  iteration, a hard-killed pane) are swept by `fleet-claim cleanup
+  --gh` on a 1-hour TTL (`FLEET_CLAIM_STALE_SECS_PLANNING`), and
+  fleet-dispatch-wrap releases the label itself when a session-resume
+  discards the fresh assignment. Don't add manually.
 - `fleet:human-amending` / `fleet:human-deferred` — owned by the
   **author worker** (any class) when picking up
   `human:needs-fix`. The two labels express which disposition the

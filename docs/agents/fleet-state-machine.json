@@ -481,7 +481,7 @@
       "add": [
         "fleet:plan-review"
       ],
-      "note": "Planner posted the ## Plan comment and hands it to review. PLANNING-PROTOCOL.md step 3. Release the planning-claim lock after."
+      "note": "Planner posted the ## Plan comment and hands it to review. PLANNING-PROTOCOL.md step 3. Release the planning-claim lock after — the lock was pre-taken by the dispatcher under this pane's worktree basename (assignment-based planning, #2197), so the planner only ever releases, never claims."
     },
     {
       "name": "plan-propose-high-stakes",

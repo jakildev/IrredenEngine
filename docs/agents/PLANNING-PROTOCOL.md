@@ -38,18 +38,41 @@ reviewed artifact.
 
 For each `fleet:needs-plan` issue:
 
-0. **Claim the issue before planning.** Take the planning lock —
-   `fleet-claim planning-claim <N> <your-agent-name>` — and **skip the issue if
-   it exits non-zero**: exit 3 means a `## Plan` comment already exists (someone
-   planned it on a prior tick), and exit 1 means another pane holds the lock.
-   Without an atomic claim, two opus panes that select the same oldest
-   needs-plan issue on one scout tick both see no plan yet and both plan it
-   (#1810 produced **three** duplicate plans for one issue — three wasted plan
-   rounds). A comment cross-check alone doesn't close the same-tick race (both
-   planners pass it before either posts a comment); the atomic claim does. (The
-   claim/dedup lock shipped in #1978/#2035 — the re-scope of #1889; use it, do
-   not hand-roll the check.) **Re-planning an already-planned task** that went
-   stale has its own guarded flow — see [§ Re-planning a stale queued plan](#re-planning-a-stale-queued-plan).
+0. **The claim arrives with the dispatch — do not take it yourself.**
+   Planning dispatches are **assignment-based** (#2197): the dispatcher
+   pre-claims one specific needs-plan issue (`fleet-claim planning-claim`,
+   under the target pane's worktree basename) *before* launching the
+   iteration, and hands it over as `FLEET_PLAN_ISSUE=<repo>:<N>` in the
+   environment.
+   - **`FLEET_PLAN_ISSUE` set** — that issue is yours, already locked. It can
+     have gone stale between claim and read (the human closed it, the
+     architect planned it out-of-band), so first verify `fleet:needs-plan` is
+     still live on the issue; if it is gone, release
+     (`fleet-claim planning-release <N> <your-agent-name>`, `--repo game`
+     for a `game:` assignment) and skip planning. Otherwise plan exactly that
+     issue (steps 1–3 below). Do **not** call `planning-claim` — the lock is
+     already held under your own worktree basename, so the step-3 release
+     Just Works.
+   - **`FLEET_PLAN_ISSUE` unset** — skip planning entirely and move on to
+     task pickup. Do not self-select a needs-plan issue from the cache; an
+     unassigned iteration has no claim and would only re-create the
+     contention this design retires.
+
+   The `fleet:planning-<host>-<agent>` label lock itself is unchanged — the
+   dispatcher and the interactive architect still take it through
+   `fleet-claim planning-claim`, and the same lex-min mutex arbitrates
+   dispatcher-vs-architect collisions (plus the 1-hour TTL reaper for
+   orphans). What #2197 retires is the *worker-side contention protocol*:
+   N panes racing per tick for the same oldest issue and arbitrating after
+   the fact (#1810's three duplicate plans; #1999's triple re-derive). A
+   planning dispatch now exists only after a successful sole-holder claim,
+   so two dispatches can never target the same issue by construction.
+   (Transition note: an old-protocol worker that still self-selects and calls
+   `planning-claim` under its own name re-claims its assignment idempotently
+   — same host+agent exits 0 — so the window between the scripts landing and
+   the gated role-doc edit is safe, just one redundant call.)
+   **Re-planning an already-planned task** that went stale is now
+   flip-and-move-on — see [§ Re-planning a stale queued plan](#re-planning-a-stale-queued-plan).
 
 1. **Read the full issue thread** — title, body, and every comment.
    The plan is often seeded in a comment, and the human may have left
@@ -266,59 +289,49 @@ the human only ever *adds* a label — the fleet manages every other transition.
 (The scout pulls a `human:revise-plan` issue back into the ingest set even though
 its stage labels would otherwise exclude it; see `_ingest_skipped`.) This affords
 the **pre-queue** stages only; an already-queued plan that has gone stale uses
-the race-guarded flow below.
+the flip-and-move-on flow below.
 
 ---
 
 ## Re-planning a stale queued plan
 
-A first plan and its claim are guarded by step 0. **A re-plan is not** — and that
-gap is its own race. A `fleet:queued` task whose already-committed plan goes
-**stale post-approval** (its blocker shipped a *different* design during review,
-so the committed `.fleet/plans/issue-<N>.md` / `## Plan` comment now cites a
-renamed/removed symbol or a superseded decision) needs a fresh plan. The trigger
-to re-plan lives **outside** the first-plan lock, so without a guard two opus
-panes can both judge the same queued task stale and both deep-investigate the
-refresh — #1999: #1960 was re-derived by three panes after #1958/PR #1974 shipped
-a different encoding (no clobber, ~1 opus iteration wasted each).
+A `fleet:queued` task whose already-committed plan goes **stale post-approval**
+(its blocker shipped a *different* design during review, so the committed
+`.fleet/plans/issue-<N>.md` / `## Plan` comment now cites a renamed/removed
+symbol or a superseded decision) needs a fresh plan. Historically the re-plan
+trigger lived outside the first-plan lock, so multiple panes could judge the
+same queued task stale and each deep-investigate the refresh (#1999: #1960
+re-derived by three panes). Under assignment-based planning (#2197) the
+contract is simpler:
 
-**The contract — re-flag and lock BEFORE any deep re-investigation.** The moment
-you judge a queued task's committed plan stale, and *before* spending an
-iteration re-deriving it:
+**Flip and move on.** The moment you judge a queued task's committed plan
+stale, and *without* spending the iteration re-deriving it:
 
-1. Flip the labels `fleet:queued → fleet:needs-plan`:
+1. Flip the labels `fleet:queued → fleet:needs-plan` and say why:
    ```
    gh issue edit <N> --repo <owner/repo> \
      --remove-label "fleet:queued" --add-label "fleet:needs-plan"
+   gh issue comment <N> --repo <owner/repo> \
+     --body "Plan stale: <what shipped differently and where> — flagging for re-plan."
    ```
-2. Take the re-plan lock with the trailing `--replan` flag:
-   ```
-   fleet-claim planning-claim <N> <your-agent-name> --replan
-   ```
-   - **Exit 0** — you own the re-plan. Re-investigate, then post a **fresh**
-     `## Plan` comment that notes it supersedes the prior plan (the prior comment
-     stays as audit trail; the implementer reads the most-recent `## Plan`
-     comment as authoritative). Then proceed as a normal plan: swap
-     `fleet:needs-plan → fleet:plan-review` and `planning-release`.
-   - **Exit 1** — another pane already owns the re-plan. Back off immediately, do
-     **not** investigate, pick a different task (the losing label self-removes;
-     nothing to clean up).
-   - **Exit 2** — misuse: `fleet:needs-plan` isn't currently on the issue.
-     `--replan` requires it (step 1 sets it) so a re-plan can't grab a
-     freshly-planned or never-re-flagged issue. Re-check the label state.
+2. **Move on to other work.** No lock, no inline re-derivation. The flip
+   re-enters the issue into `needs_plan[]`; the dispatcher routes the re-plan
+   like any first plan — its claim walk hits the `## Plan`-comment dedup
+   (exit 3), retries with `--replan` (which gates on the live
+   `fleet:needs-plan` you just set), and hands the assignment to a fresh
+   planning dispatch. Workers never invoke `--replan` themselves.
 
-`--replan` exists because plain `planning-claim` would refuse a re-plan: a stale
-queued plan *has* a `## Plan` comment by definition, so the step-0 dedup early-out
-returns exit 3 to *every* planner — leaving the re-plan both unguarded **and**
-stranded until someone hand-deletes the old comment. `--replan` skips that
-comment-presence early-out (a re-plan expects a prior plan) and instead gates on
-the `fleet:needs-plan` label you set in step 1, so the lex-min lock arms for
-re-plans and guarantees a sole holder — exactly like a first plan.
+The re-planner (the assigned dispatch) posts a **fresh** `## Plan` comment that
+notes it supersedes the prior plan (the prior comment stays as audit trail; the
+implementer reads the most-recent `## Plan` comment as authoritative), then
+proceeds as a normal plan: swap `fleet:needs-plan → fleet:plan-review` and
+`planning-release`.
 
-> The `role-worker.md` echo of this contract ("judge a queued plan stale → flip
-> `fleet:queued → fleet:needs-plan` + `planning-claim --replan` before
-> investigating") is **gated self-config** and is a human follow-up — this doc is
-> the worker-applicable half.
+`--replan` survives as a **dispatcher/architect primitive** because plain
+`planning-claim` refuses an issue with an existing `## Plan` comment (the dedup
+early-out, exit 3) — a re-plan *expects* a prior plan, so the flag skips that
+early-out and instead gates on the live `fleet:needs-plan` label, keeping the
+lex-min lock armed for re-plans exactly like first plans.
 
 ---
 
@@ -365,11 +378,14 @@ take this path; if it isn't already tagged, it plans on the default (opus+)
 flow. The dispatcher routes a `fleet:sonnet`-tagged needs-plan issue to the
 sonnet lane automatically (`fleet_task_class._plan_class`).
 
-**[worker, sonnet class]** For the oldest `fleet:sonnet`-tagged needs-plan
-issue:
+**[worker, sonnet class]** For the `fleet:sonnet`-tagged needs-plan issue the
+dispatch names:
 
-1. **Claim it** — `fleet-claim planning-claim <N> <your-agent-name>` (same lock
-   as the opus path; skip if a `## Plan` comment already exists or exit 3).
+1. **The claim arrives with the dispatch** (`FLEET_PLAN_ISSUE=<repo>:<N>` —
+   step 0 of "The flow", same assignment mechanics as the opus path; the
+   dispatcher routes a `fleet:sonnet`-tagged issue to a sonnet dispatch). No
+   `planning-claim` call: verify `fleet:needs-plan` is still live, release and
+   skip if not; with `FLEET_PLAN_ISSUE` unset, do no planning at all.
 2. **Read the thread** (`fleet-issue view <N>`). A mechanical task needs the
    issue read, not a deep code investigation — if you find yourself needing a
    cross-system audit or a repro spike to write the plan, it is **not**
@@ -414,12 +430,11 @@ tag is a starting hypothesis, not a one-way door.
 
 ## Role-specific notes
 
-**[worker, opus+ classes]** The cached `repos.engine.needs_plan[]` and
-`repos.game.needs_plan[]` arrays hold the open needs-plan issues; pick
-the oldest unprocessed entry (smallest `number`) across both repos.
-This runs as a scout-triggered loop step — see the worker role file
-for where it sits in the iteration. Cross-repo: add `--repo game` to
-`fleet-issue` / `gh issue edit` for game-side issues. You post the
+**[worker, opus+ classes]** The dispatch names your issue:
+`FLEET_PLAN_ISSUE=<repo>:<N>`, pre-claimed by the dispatcher (step 0). You do
+not pick from the cached `needs_plan[]` arrays — an iteration without an
+assignment does no planning. Cross-repo: a `game:` assignment takes
+`--repo game` on `fleet-issue` / `gh issue edit` / `fleet-claim`. You post the
 `## Plan` comment and swap to `fleet:plan-review`; for **high-stakes** issues
 (step 3 checklist) also add `human:review-plan` in the same edit. The
 implementation step (later, possibly a cheaper-class worker on another host)
