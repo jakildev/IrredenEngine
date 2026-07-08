@@ -302,14 +302,11 @@ Do the work, then exit cleanly:
 
     **Atomic claim before checkout.** Before starting the checkout,
     take a `fleet:resolving-<host>-<agent>` label on the PR (step b'
-    below). The lex-min tie-break — the same pattern used by
-    `fleet:reviewing-*` and `fleet:claim-*` — lets one winner proceed
-    while the other backs off immediately, before either has spent time
-    on the rebase + build. This eliminates the expensive
-    `--force-with-lease` loser path that previously wasted a full
-    iteration when two workers raced. The detached HEAD checkout
-    (step c) and `--force-with-lease` push (step h) remain in place as
-    safety nets; the resolving label is the first-line prevention.
+    below) — the same lex-min tie-break pattern as `fleet:reviewing-*`
+    / `fleet:claim-*`. The detached HEAD checkout (step c) and
+    `--force-with-lease` push (step h) remain the safety nets; the
+    resolving label is first-line prevention against two workers each
+    spending a full rebase + build on the same PR.
 
     **Repo routing.** Each candidate carries its source repo (the
     `repo` field on the cached PR record: `engine` or `game`). Resolve

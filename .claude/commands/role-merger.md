@@ -313,13 +313,11 @@ exit cleanly:
      Durable human-handoff signal; only the human clears it by
      re-targeting or closing.
    - `fleet:gated` — the PR's conflict surface is a gated self-config file
-     (`role-*.md` / `.claude/agents/*` / `SKILL.md`) no agent can push. A
-     worker hit the gate and parked it human-only. **Do not re-flag it
-     `fleet:semantic-conflict`** — that is the exact loop fleet:gated
-     exists to break (a worker would re-claim, re-hit the gate, re-park;
-     #1990 thrashed 11× before this label existed). Only the human (or the
-     architect, who can push gated edits with a human in the loop) clears it
-     by resolving the conflict and dropping the label.
+     no agent class can push; a worker parked it human-only. **Do not
+     re-flag it `fleet:semantic-conflict`** — that restarts the exact
+     thrash the label exists to break (#1990; full semantics:
+     [fleet-labels-reference.md § `fleet:gated`](../../docs/agents/fleet-labels-reference.md)).
+     Only the human (or the architect, human-in-loop) clears it.
    - `fleet:fork-of-other-pr` — PR's branch forked from another open PR; skip until the human clears this label after the upstream PR merges
    - `fleet:needs-base-update` — set in step 2.6 when a stacked child's
      upstream tip moved and the cascade-rebase conflicted. Durable
@@ -644,10 +642,9 @@ exit cleanly:
            If **every** conflicted file is a gated self-config file —
            `.claude/commands/role-*.md`, `.claude/agents/*`, or
            `.claude/skills/**/SKILL.md` — then **no worker class can push a
-           resolution**, so labeling `fleet:semantic-conflict` only starts the
-           worker↔merger thrash (the worker re-claims, re-hits the commit
-           gate, re-parks — #1990 looped 11× this way). Skip the
-           semantic-conflict path entirely:
+           resolution**, so labeling `fleet:semantic-conflict` only starts
+           the worker↔merger thrash (#1990 — see the `fleet:gated` skip
+           entry in step 3). Skip the semantic-conflict path entirely:
              - `git switch claude/merger-scratch`
              - `gh pr edit <N> --add-label "fleet:gated"`
              - `gh pr edit <N> --remove-label "fleet:approved"` (best-effort;
