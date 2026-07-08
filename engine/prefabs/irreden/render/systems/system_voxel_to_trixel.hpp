@@ -776,8 +776,9 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 q.pixelMin_ = frameOffset + ivec2(IRMath::floor(cb.isoMin_));
                 q.pixelMax_ = frameOffset + ivec2(IRMath::ceil(cb.isoMax_));
                 // Encode the chunk's nearest depth like trixelDistances at NONE
-                // mode (encodeDepthWithFace: rawDepth * 4, face slot 0).
-                q.encodedNearest_ = static_cast<std::int32_t>(cb.minDepth_) * 4;
+                // mode (encodeDepthWithFace: rawDepth * kDepthEncodeShift,
+                // flip 0, face slot 0).
+                q.encodedNearest_ = static_cast<std::int32_t>(cb.minDepth_) * kDepthEncodeShift;
                 q.eligible_ = 1;
             }
         }

@@ -67,7 +67,7 @@ the ECS surface.
   `IRPrefab::PerAxisCanvas::subdivisionDensity()` for how many work-groups
   to launch, but z-slices ≥ 1 return early — only the z=0 invocation writes.
   AO, sun-shadow, lighting, and scatter all decode `rawDepth` directly as
-  world units (`rawDist >> 10` for the per-axis path).
+  world units (`decodeDepthPerAxis` — `rawDist >> 11`, flip carrier #2207 at bit 10 — for the per-axis path).
 - `C_TrixelCanvasRenderBehavior` — toggles: use camera pan/zoom, run
   subdivisions, hover detection, pixel offset, etc.
 - `C_TrixelFramebuffer` — wraps a `Framebuffer` (color + depth). Also
@@ -524,15 +524,15 @@ world-placed re-voxelize solid integrates:
 - **Depth (P4b-1):** the composite sets `distanceOffset_` to the entity's world
   iso depth, so the solid depth-sorts against world geometry on the shared GRID
   `trixelDistances` convention. The shared framebuffer depth runs at
-  `worldDepth × effSub × 4` (the `encodeDepthWithFace` ×4 face-bit shift over
+  `worldDepth × effSub × 8` (the `encodeDepthWithFace` ×8 flip+face-bit shift over
   the ×subdivision-scaled depth), and a detached canvas rasters its pool at its
   OWN possibly-capped sub (`subdivisionCap`, #1570 D2), so the composite must
   (a) scale the offset to those units —
-  `pos3DtoDistance(roundVec3HalfUp(translation)) × effSub × 4` — and (b) rescale
+  `pos3DtoDistance(roundVec3HalfUp(translation)) × effSub × 8` — and (b) rescale
   the canvas's model-frame `rawDist` by `effSub / renderedSubdivisions_`
   (carried in `effectiveSubdivisionsForHover_.y`, applied in
   `f_trixel_to_framebuffer`). Leaving the offset in raw world units (the #1624
-  default) under-scaled it by `effSub × 4`, sinking world-placed solids behind
+  default) under-scaled it by `effSub × 8`, sinking world-placed solids behind
   the floor as zoom grew. `screenLocked_` keeps the offset at 0 + scale 1
   (overlay, byte-identical).
 - **Receive (P4b-2):** the entity world cell origin is propagated

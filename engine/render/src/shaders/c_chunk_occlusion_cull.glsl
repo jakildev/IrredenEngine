@@ -45,7 +45,7 @@ layout(binding = 0) uniform isampler2D hiZLevels[kMaxHiZMipLevels];
 struct ChunkQuery {
     ivec2 pixelMin_;     // chunk iso AABB projected to canvas pixels (inclusive)
     ivec2 pixelMax_;
-    int encodedNearest_; // chunk nearest depth, encoded like trixelDistances (rawDepth*4)
+    int encodedNearest_; // chunk nearest depth, encoded like trixelDistances (rawDepth*8)
     int eligible_;       // 1 = testable this frame; 0 = always keep
     int pad0_;
     int pad1_;
@@ -69,9 +69,10 @@ layout(std430, binding = 24) buffer ChunkVisibility {
     uint chunkVisible[];
 };
 
-// Strict-behind margin (in encoded units) so FMA / round noise on the boundary
+// Strict-behind margin (in encoded units — one full depth step at the
+// kDepthEncodeShift = 8 encode scale) so FMA / round noise on the boundary
 // never culls a chunk that is only coplanar with the occluder.
-const int kOcclusionDepthMargin = 4;
+const int kOcclusionDepthMargin = 8;
 
 // Fetch one Hi-Z texel at `level` (clamped in-bounds). A constant-index ladder
 // keeps the sampler-array access dynamically-uniform-safe in portable GLSL —

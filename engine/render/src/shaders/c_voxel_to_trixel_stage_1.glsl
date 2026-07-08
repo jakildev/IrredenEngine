@@ -383,9 +383,16 @@ void main() {
     // the flip correctly fills the gap. Stage 2 MUST apply the identical flip or the
     // colour tap desyncs from the distance.
     const bool rotatedEmit = reVoxelize || (voxels[voxelIndex].reserved & 4u) != 0u;
+    // Polarity carrier (#2207): riserFlip = 1 marks every emit below as the
+    // OPPOSITE polarity of this slot's triplet face, so the distance encoding
+    // carries the true outward normal to lighting/AO/shadow and the per-axis
+    // store/scatter can represent the flipped plane. Non-rotated content never
+    // flips, so the fast paths encode flip = 0 (byte-identical).
+    int riserFlip = 0;
     if (rotatedEmit && !faceIsExposed(flagsByte, faceId) &&
         faceIsExposed(flagsByte, faceId ^ 1)) {
         faceId = faceId ^ 1;
+        riserFlip = 1;
     }
 
     // Both-exposed silhouette-riser dual emit (#2157). The flip above covers a
@@ -398,11 +405,11 @@ void main() {
     // planes for such cells on the CARDINAL subdivided path (the tail below).
     // The base (`voxelRenderOptions.x == 0`) cardinal path is polarity-agnostic
     // (whole-voxel footprint emit), so it needs no second emit. The PER-AXIS
-    // store shares the dropout but cannot take a second tap: its encoding
-    // carries only the 2-bit slot, so the forward scatter reconstructs every
-    // cell as the triplet polarity and a dual tap mis-places the riser quad
-    // (measured net-worse at non-cardinal yaw) — deferred with the
-    // polarity-carrier design (#2207). Gated to rotated content via
+    // store shares the dropout but takes NO second tap — measured net-worse
+    // at non-cardinal yaw even with the #2207 polarity carrier (which fixes
+    // the flipped tap's lighting decode): the opposite plane's cell key
+    // collides with neighbour cells and the atomicMin winner swap uncovers
+    // more pixels than the riser fills. See #2207. Gated to rotated content via
     // `rotatedEmit`, so axis-aligned fast paths remain byte-identical; the
     // extra emit costs only rotated staircase edge cells. Stage 2 mirrors the
     // predicate + the emit site.
@@ -528,7 +535,7 @@ void main() {
     // so every non-empty cell is exactly one occlusion-winning face. The
     // framebuffer scatter (system_trixel_to_framebuffer) then forward-projects
     // each non-empty cell as its true deformed face quad — recovering the
-    // world origin from (cell - perAxisBase, depth>>2, visualYaw) — with no
+    // world origin from (cell - perAxisBase, decodeDepthPerAxis, visualYaw) — with no
     // gather/parity inverse, so the #1256 stripe class cannot occur. The face
     // SHAPE is reconstructed at scatter time, so the per-slot deform D is no
     // longer applied here.
@@ -571,7 +578,7 @@ void main() {
             const ivec3 facePos = faceMicroPositionFixed6(faceId, worldPos, 0, 0, 1);
             // No sub-cell offset at base resolution; encode centre fracs (8,8).
             const int voxelDistance =
-                encodeDepthWithFaceFrac(pos3DtoDistance(facePos), slot, 8, 8);
+                encodeDepthWithFaceFrac(pos3DtoDistance(facePos), slot, 8, 8, riserFlip);
             if (resolveMode != 0) {
                 resolveWinnerTap(perAxisBase + pos3DtoPos2DIso(facePos), voxelDistance, voxelIndex);
                 return;
@@ -589,7 +596,7 @@ void main() {
         const ivec3 facePos_sub = faceMicroPositionFixed6(faceId, worldPos_sub, 0, 0, 1);
         const vec3 fracInCell = worldAligned - vec3(worldPos_sub);
         const int voxelDistance =
-            encodeDepthWithFaceFrac(pos3DtoDistance(facePos_sub), slot, axis, fracInCell);
+            encodeDepthWithFaceFrac(pos3DtoDistance(facePos_sub), slot, axis, fracInCell, riserFlip);
         // #2255: the 4-bit frac quantization above is where equal keys arise —
         // two sub-cell offsets in one 1/16 bucket (or both clamp-saturated)
         // encode byte-identically, so the winner election below is what keeps
@@ -624,7 +631,7 @@ void main() {
         const int rawDepth = isDetachedCanvas > 0.5
             ? isoDepthAlongAxis(voxelPositionInt, voxelDepthAxis.xyz)
             : pos3DtoDistance(voxelPositionInt);
-        const int voxelDistance = encodeDepthWithFace(rawDepth, slot);
+        const int voxelDistance = encodeDepthWithFace(rawDepth, slot, riserFlip);
         const ivec2 base =
             trixelFrameOffset(trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions) +
             pos3DtoPos2DIso(voxelPositionInt);
@@ -659,7 +666,7 @@ void main() {
     const int depthBase = isDetachedCanvas > 0.5
         ? isoDepthAlongAxis(microPositionFixed, voxelDepthAxis.xyz)
         : (microPositionFixed.x + microPositionFixed.y + microPositionFixed.z);
-    const int voxelDistance = encodeDepthWithFace(depthBase, slot);
+    const int voxelDistance = encodeDepthWithFace(depthBase, slot, riserFlip);
     const ivec2 base = frameOffsetFixed + pos3DtoPos2DIso(microPositionFixed);
     emitDeformedFace(base, D, voxelDistance, faceId, reVoxelize);
 
@@ -677,7 +684,9 @@ void main() {
         const int depthOpposite = isDetachedCanvas > 0.5
             ? isoDepthAlongAxis(microOpposite, voxelDepthAxis.xyz)
             : (microOpposite.x + microOpposite.y + microOpposite.z);
-        const int distanceOpposite = encodeDepthWithFace(depthOpposite, slot);
+        // The opposite plane is by construction the non-triplet polarity of
+        // this slot (riserFlip is always 0 when both polarities are exposed).
+        const int distanceOpposite = encodeDepthWithFace(depthOpposite, slot, riserFlip ^ 1);
         const ivec2 baseOpposite = frameOffsetFixed + pos3DtoPos2DIso(microOpposite);
         emitDeformedFace(baseOpposite, D, distanceOpposite, oppositeFaceId, reVoxelize);
     }

@@ -89,7 +89,7 @@ kernel void c_fog_to_trixel(
     // R(-rasterYaw) recovers world coords from the cardinal-rotated raster
     // frame; the fog grid is world-space (X-Y plane). At cardinalIndex==0
     // the path collapses to master so yaw=0 stays byte-identical.
-    const int rawDepth = encoded >> 2;
+    const int rawDepth = decodeDepthSingle(encoded);
     float3 pos3D = trixelCanvasPixelToWorld3D(
         pixel,
         rawDepth,
@@ -197,8 +197,9 @@ kernel void c_fog_to_trixel(
         outColor = mix(outColor, src.rgb, kFogRimFadeLevel * u * u);
         // Feathered cross-section cap on vertical faces (see the block
         // comment above). `state` carries the disc's ~1px AA rim, so the
-        // junction with visible matter stays antialiased.
-        const int faceAxis = frameData.visibleFaceIds[encoded & 3] >> 1;
+        // junction with visible matter stays antialiased. Axis only — the
+        // riser-polarity flip (#2207) never changes a face's axis.
+        const int faceAxis = frameData.visibleFaceIds[decodeSlot(encoded)] >> 1;
         if (fogObservers.visionCircleCount > 0 && faceAxis != 2) {
             const float capBlend =
                 1.0f - smoothstep(0.0f, kFogCutMaxRimCells, max(hardDistPastRim, 0.0f));

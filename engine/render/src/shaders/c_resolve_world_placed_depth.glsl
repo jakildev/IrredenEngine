@@ -74,8 +74,11 @@ void main() {
     if (rawDist >= kEmptyDistanceEncoded) {
         return; // empty detached cell
     }
-    const int rawDepth = rawDist >> 2;
-    const int slot = rawDist & 3;
+    // Single-canvas encoding (flip carrier #2207): the flip is re-emitted into
+    // the re-projected encode below so polarity survives the resolve bridge.
+    const int rawDepth = decodeDepthSingle(rawDist);
+    const int slot = decodeSlot(rawDist);
+    const int flip = decodeFlipSingle(rawDist);
 
     // Recover the pool-centered MODEL position in subdivision units. The
     // re-voxelize canvas rasters cardinal (rasterYaw == 0, perAxisRoute == 0),
@@ -108,7 +111,7 @@ void main() {
         viewPos = rotateCardinalZ(worldPos, cardinalIndex);
         viewPos += cardinalLowerCornerShift(cardinalIndex) * scale;
     }
-    const int encoded = encodeDepthWithFace(pos3DtoDistance(viewPos), slot);
+    const int encoded = encodeDepthWithFace(pos3DtoDistance(viewPos), slot, flip);
 
     const ivec2 mainBase = trixelFrameOffset(
         trixelOriginOffsetZ1(canvasSizePixels), frameCanvasOffset, voxelRenderOptions

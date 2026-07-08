@@ -17,9 +17,9 @@
 // positive is a visible hole; a false negative is only lost savings).
 //
 // The raw R32I encoded distance is max'd directly: the main-canvas encoding
-// packs depth in bits [31:2] (face slot in [1:0]), so larger encoded value
+// packs depth in bits [31:3] (flip at [2], face slot in [1:0], #2207), so larger encoded value
 // <=> farther, and an integer max over encoded values is a faithful max-depth
-// pyramid. Child 2 decodes (>> 2) consistently on both sides of its compare.
+// pyramid. Child 2 compares raw encoded values consistently on both sides.
 //
 // Ceil-division destination sizing (CPU side, makeHiZMipChain) guarantees every
 // source texel maps into exactly one destination texel's 2x2 block, so the

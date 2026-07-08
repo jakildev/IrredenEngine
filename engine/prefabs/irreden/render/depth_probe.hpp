@@ -116,15 +116,17 @@ namespace detail {
 /// The @c [depth-probe] integer-encode decode, factored so the diagnostic probe
 /// and the tier-assert guard partition @c enc the same way (one source of truth
 /// for the #1960 N-tier layout). @c enc > kDepthForegroundCeil is WORLD content
-/// (tier 0), encoded as @c iso*4 + face; @c enc inside the reserved band is a
-/// FOREGROUND fragment whose disjoint sub-range names its priority tier (1..N-1).
-/// iso/face is the @c encodeDepthWithFace inverse, taken tier-center-relative for
-/// a foreground fragment so @c iso reads as the unit's local model-frame iso depth.
+/// (tier 0), encoded as @c iso*8 + flip*4 + face (#2207 riser-polarity carrier
+/// at bit 2); @c enc inside the reserved band is a FOREGROUND fragment whose
+/// disjoint sub-range names its priority tier (1..N-1). iso/face is the
+/// @c encodeDepthWithFace inverse, taken tier-center-relative for a foreground
+/// fragment so @c iso reads as the unit's local model-frame iso depth.
 struct DecodedComposite {
     int enc_ = 0;
     int tier_ = 0;
     int iso_ = 0;
     int face_ = 0;
+    int flip_ = 0;
 };
 
 inline DecodedComposite decodeComposite(const CompositeDepthSample &sample) {
@@ -142,8 +144,11 @@ inline DecodedComposite decodeComposite(const CompositeDepthSample &sample) {
     const int encRel = decoded.tier_ == 0
                            ? decoded.enc_
                            : decoded.enc_ - IRRender::depthForegroundTierCenter(decoded.tier_);
-    decoded.face_ = ((encRel % 4) + 4) % 4;
-    decoded.iso_ = (encRel - decoded.face_) / 4;
+    const int shift = IRRender::kDepthEncodeShift;
+    const int lowBits = ((encRel % shift) + shift) % shift;
+    decoded.face_ = lowBits & 3;
+    decoded.flip_ = lowBits >> 2;
+    decoded.iso_ = (encRel - lowBits) / shift;
     return decoded;
 }
 

@@ -10,7 +10,8 @@ using namespace metal;
 // pass is gated off by default.
 
 constant constexpr int kMaxHiZMipLevels = 12;
-constant constexpr int kOcclusionDepthMargin = 4;
+// One full depth step at the kDepthEncodeShift = 8 encode scale (GLSL twin).
+constant constexpr int kOcclusionDepthMargin = 8;
 
 // Matches the std430 ChunkQuery (32 B). Record 0 of the buffer is the header:
 // header.pixelMin_.x = chunkCount, header.pixelMin_.y = mipCount.

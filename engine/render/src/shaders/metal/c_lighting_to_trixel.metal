@@ -129,13 +129,18 @@ kernel void c_lighting_to_trixel(
     const bool detachedCanvas = voxelFrameData.isDetachedCanvas != 0.0f;
     const bool worldReceive = detachedCanvas && voxelFrameData.detachedWorldReceive.w != 0.0f;
 
-    // Per-axis encoding (#1458): rawDepth in bits [31:10]; single-canvas: bits [31:2].
-    const int rawDepth = (voxelFrameData.perAxisRoute != 0) ? (encoded >> 10) : (encoded >> 2);
+    // Shared decode helpers (ir_iso_common) own both encodings' bit layouts
+    // (#1458 per-axis / single-canvas, flip carrier #2207).
+    const int rawDepth = decodeDepthRoute(encoded, voxelFrameData.perAxisRoute);
     // Decode the visible-triplet slot (#1278) → world FaceId → world-frame
     // six-face outward normal. Used by Lambert, the sky-term, and the
     // world-receive sun-shadow normal — hoisted above the shadow read.
-    const int slot = encoded & 3;
-    const int faceId = voxelFrameData.visibleFaceIds[slot];
+    // The riser-polarity flip (#2207) selects the OPPOSITE same-axis face, so
+    // a flipped silhouette riser shades with its true outward normal instead
+    // of the inverted triplet one (the venetian near-black rows at 180°).
+    const int slot = decodeSlot(encoded);
+    const int faceId =
+        voxelFrameData.visibleFaceIds[slot] ^ decodeFlipRoute(encoded, voxelFrameData.perAxisRoute);
     float3 worldNormal = faceOutwardNormal6(faceId);
 
     // Recover this voxel's WORLD position once for an opt-in world-placed

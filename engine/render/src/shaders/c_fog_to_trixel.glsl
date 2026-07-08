@@ -168,7 +168,7 @@ void main() {
     // world coords from the cardinal-rotated raster frame; at
     // cardinalIndex==0 the path collapses to master so yaw=0 stays
     // byte-identical.
-    const int rawDepth = encoded >> 2;
+    const int rawDepth = decodeDepthSingle(encoded);
     vec3 pos3D = trixelCanvasPixelToWorld3D(
         pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, rasterYaw
     );
@@ -285,8 +285,9 @@ void main() {
         const float u = 1.0 - smoothstep(0.0, kFogRimFadeCells, hardDistPastRim);
         outColor = mix(outColor, src.rgb, kFogRimFadeLevel * u * u);
         // Feathered cross-section cap on vertical faces (see the block
-        // comment above the fade).
-        const int faceAxis = visibleFaceIds[encoded & 3] >> 1;
+        // comment above the fade). Axis only — the riser-polarity flip
+        // (#2207) never changes a face's axis, so it is not decoded here.
+        const int faceAxis = visibleFaceIds[decodeSlot(encoded)] >> 1;
         if (visionCircleCount > 0 && faceAxis != 2) {
             const float capBlend =
                 1.0 - smoothstep(0.0, kFogCutMaxRimCells, max(hardDistPastRim, 0.0));
