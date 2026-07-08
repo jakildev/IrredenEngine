@@ -259,6 +259,29 @@ repo_from_ns() {
     esac
 }
 
+# _refuse_if_closed <issue-number> <repo-slug> <context>
+#   CLOSED-issue gate (#2201). A stale scout cache can surface a closed issue
+#   in tasks.open[] / needs_plan[]; granting a lock on it strands a
+#   fleet:claim-* label (release also retains it, per feedback_fleet_claim_
+#   closed_issue). Refuse an explicit CLOSED state; return 1 ONLY on a
+#   confirmed CLOSED so the caller can refuse. Degrade OPEN on any lookup miss
+#   (gh absent, unknown namespace, network/rate-limit error) — the same
+#   soft-degrade philosophy check_blockers uses, so a flaky gh call never
+#   turns every claim into a hard outage.
+_refuse_if_closed() {
+    local issue="$1" repo="$2" context="$3"
+    [[ "$issue" =~ ^[0-9]+$ ]] || return 0
+    command -v gh >/dev/null 2>&1 || return 0
+    [[ -n "$repo" ]] || return 0
+    local state
+    state=$(gh issue view "$issue" --repo "$repo" --json state --jq .state 2>/dev/null || echo "")
+    if [[ "$state" == "CLOSED" ]]; then
+        echo "fleet-claim ${context}: #${issue} is CLOSED — refusing (stale queue entry?)" >&2
+        return 1
+    fi
+    return 0
+}
+
 # write_orphan_sentinel <repo> <issue-or-pr> <label> <reason>
 #   Drops a JSON sentinel under ~/.fleet/orphans/ so the cleanup pass
 #   retries the failed --remove-label later.
@@ -866,6 +889,13 @@ cmd_claim() {
                 ;;
         esac
     done
+
+    # CLOSED-issue gate (#2201): a stale scout cache can list a closed issue
+    # in tasks.open[]; claiming it strands the fleet:claim-* label. Refuse an
+    # explicit CLOSED (soft-degrades on lookup failure — see _refuse_if_closed).
+    if ! _refuse_if_closed "$issue_num" "$(repo_from_ns)" "claim"; then
+        return 1
+    fi
 
     # Freshness gate (#1810): refuse the claim if the main clone — whose
     # blocked_by parser + stack-base resolver this script imports — is behind
@@ -1516,6 +1546,14 @@ cmd_planning_claim() {
 
     local repo
     repo=$(repo_from_ns)
+
+    # CLOSED-issue gate (#2201): a stale needs_plan[] entry can name a closed
+    # issue; refuse rather than acquire a planning lock on it. CLOSED and
+    # fleet:needs-plan are mutually exclusive in practice, so ordering relative
+    # to the --replan branch below is not load-bearing.
+    if ! _refuse_if_closed "$issue" "$repo" "planning-claim"; then
+        return 1
+    fi
 
     if [[ "$replan" -eq 1 ]]; then
         # A deliberate RE-plan of a stale committed plan. SKIP the
@@ -4026,6 +4064,23 @@ for line in body.splitlines():
 # running the dispatch below. See tests/test_fleet_claim_acquire.sh.
 if [[ "${FLEET_CLAIM_LIB:-}" == "1" ]]; then
     return 0 2>/dev/null || exit 0
+fi
+
+# Guard 2 (#2201): `--repo <ns>` is a GLOBAL flag parsed BEFORE the subcommand
+# (the REPO_NS loop near the top). Placed AFTER the subcommand it is silently
+# ignored, so `fleet-claim release 45 --repo game` releases the ENGINE #45
+# claim instead of game-45. Hard-error on a trailing --repo token for every
+# subcommand except cleanup/reconcile, which take their own
+# `--repo <owner/repo>` scoped after their name. Exact/prefix token match (not
+# substring) so a --stackable-on <url> value containing "repo" isn't misflagged.
+_subcmd="${1:-}"
+if [[ "$_subcmd" != "cleanup" && "$_subcmd" != "reconcile" ]]; then
+    for _arg in "$@"; do
+        if [[ "$_arg" == "--repo" || "$_arg" == --repo=* ]]; then
+            echo "fleet-claim: --repo is a global flag and must precede the subcommand '${_subcmd}', not follow it — e.g. 'fleet-claim --repo game ${_subcmd} ...'" >&2
+            exit 2
+        fi
+    done
 fi
 
 case "${1:-}" in
