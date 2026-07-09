@@ -31,6 +31,7 @@ Do **not** invoke proactively — only when the user explicitly asks.
 | **scope vocabulary** | Commit-title scope prefixes. | `render:`, `engine/voxel:`, `game/nav:`, `build:`, `docs:` |
 | **visual-file globs** | Paths whose change requires screenshots. | `engine/render/`, `engine/prefabs/irreden/render/`, `*.glsl`, `*.metal`, `creations/demos/*/src/**`, `creations/demos/*/main*.cpp` |
 | **screenshot skill** | The repo's screenshot-capture skill. | `attach-screenshots` |
+| **sha-pin token** | The literal placeholder the **screenshot skill** emits in place of a deletable branch ref; this flow substitutes it with the real commit SHA once one exists (see step 8). | `@COMMIT_SHA@` |
 | **info-isolation check** | The cross-repo leakage scan. | `docs/agents/CLAUDE-BASELINE.md` §"Cross-repo information isolation" |
 | **co-author trailer** | The commit trailer. | `Co-Authored-By: Claude <noreply@anthropic.com>` (exact form per the harness system prompt) |
 | **procedures** | Repo-specific step expansions. | the engine wrapper's `procedures/*.md` |
@@ -241,6 +242,22 @@ Use `gh pr create`. Body template: **procedures** `pr-body.md`.
 
 > Before calling `gh pr create`, complete step 8a (Closes-crosscheck) if the
 > drafted body contains a `Closes #N` line.
+
+**Substitute the sha-pin token.** If the **screenshot skill** ran earlier in
+this pass, its markdown snippet embeds the **sha-pin token** in place of a
+commit SHA (the screenshots were staged before a commit existed to pin to).
+Immediately before calling `gh pr create`, replace every occurrence of the
+**sha-pin token** in the drafted PR body with the just-pushed commit:
+
+```bash
+pr_body="${pr_body//<sha-pin token>/$(git rev-parse HEAD)}"
+```
+
+`HEAD` at this point is the commit created in step 6 and pushed in step 7,
+so the substituted SHA is the one whose tree actually contains the
+screenshots under the **screenshot skill**'s output path. Skip this
+substitution when the body has no **sha-pin token** occurrence (no
+screenshots were attached this pass).
 
 For the **single-task flow** (default), resolve the base via `<claim-tool>
 claim-base` — the **default branch** for a normal claim or plain human PR
