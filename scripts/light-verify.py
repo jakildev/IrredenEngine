@@ -49,6 +49,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import platform
 import re
 import shutil
@@ -145,8 +146,11 @@ def _find_exe(build_dir: Path, target: str) -> Path:
     search_root = build_dir / "creations" / "demos" / DEMO_NAME
     names = (target, f"{target}.exe")
     for root in (search_root, build_dir):
+        if not root.exists():
+            continue
         for name in names:
-            candidates = [p for p in root.rglob(name) if p.is_file()]
+            candidates = [p for p in root.rglob(name)
+                          if p.is_file() and os.access(p, os.X_OK)]
             if candidates:
                 candidates.sort(key=lambda p: len(p.parts))
                 return candidates[0]
@@ -310,6 +314,15 @@ def main(argv: list[str] | None = None) -> int:
 
     exe = _find_exe(build_dir, args.target)
     shots_dir = exe.parent / SCREENSHOT_SUBDIR
+    # Each pass rmtrees shots_dir on entry (_run_pass), so per-pass diff PNGs
+    # must live in a sibling dir that outlives every pass — nested under
+    # shots_dir they'd be wiped by the next pass before a human inspects them
+    # (render-verify.py hit the identical multi-pass bug; see its diff_dir
+    # routing in scripts/render-verify.py). Clear it once up front so stale
+    # diffs from a prior run don't linger.
+    diff_root = shots_dir.parent / "light_verify_diffs"
+    if diff_root.exists():
+        shutil.rmtree(diff_root)
 
     all_assertion_failures: list[str] = []
     all_image_results: list[tuple[str, str, dict[str, Any]]] = []  # (pass, label, result)
@@ -364,7 +377,7 @@ def main(argv: list[str] | None = None) -> int:
             any_baselines_missing = True
             continue
 
-        diff_dir = shots_dir / "light_verify_diffs" / flag
+        diff_dir = diff_root / flag
         diff_dir.mkdir(parents=True, exist_ok=True)
         for image, label in zip(images, labels):
             reference = baseline_dir / f"{label}.png"
