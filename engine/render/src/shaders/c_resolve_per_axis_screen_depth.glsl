@@ -4,8 +4,8 @@
 //
 // Re-projects one face-local per-axis voxel canvas into a SCREEN-SPACE
 // front-most iso-depth scratch buffer laid out exactly like the main canvas
-// distance texture (cardinal-snapped iso pixel, value = pos3DtoDistance<<2 |
-// slot). Dispatched once per axis canvas; imageAtomicMin across the three
+// distance texture (cardinal-snapped iso pixel, value = pos3DtoDistance<<3 |
+// flip<<2 | slot). Dispatched once per axis canvas; imageAtomicMin across the three
 // resolves the front-most surface per screen pixel — the same per-screen-pixel
 // flattening the main (SDF/text) canvas has, which the raw face-local store
 // lacks. BAKE_SUN_SHADOW_MAP then reads the blitted texture through its
@@ -84,10 +84,14 @@ void main() {
     if (rawDist >= kEmptyDistanceEncoded) {
         return; // occupied per the compaction; guard anyway
     }
-    // Per-axis encoding (#1458): rawDepth in world units at bits [31:10].
-    const int rawDepth = rawDist >> 10;
-    const int slot = rawDist & 3;
-    const int faceId = visibleFaceIds[slot];
+    // Per-axis encoding (#1458, flip carrier #2207): rawDepth in world units at
+    // bits [31:11]; flip at [10]. The flip is re-emitted into the single-canvas
+    // encode below so polarity survives the resolve bridge. Both polarities
+    // share the axis + in-plane sweep, so recovery/footprint are unchanged.
+    const int rawDepth = decodeDepthPerAxis(rawDist);
+    const int slot = decodeSlot(rawDist);
+    const int flip = decodeFlipPerAxis(rawDist);
+    const int faceId = visibleFaceIds[slot] ^ flip;
     const int axis = faceId >> 1;
 
     // Recover the face-plane origin — the exact iso inverse perAxisCellToWorld3D
@@ -144,7 +148,7 @@ void main() {
             // Per-micro-cell depth, shared by the region's two pixels — the
             // exact encode a real cardinal store would hold here, so BAKE's
             // pixel+depth inverse recovers points on the face plane.
-            const int encoded = encodeDepthWithFace(pos3DtoDistance(microView), slot);
+            const int encoded = encodeDepthWithFace(pos3DtoDistance(microView), slot, flip);
             const ivec2 cellBase = mainBase + pos3DtoPos2DIso(microView);
             for (int k = 0; k < 2; ++k) {
                 const ivec2 mainPixel = cellBase + faceOffset_2x3(slot, k);
@@ -152,8 +156,8 @@ void main() {
                     continue;
                 }
                 // Front-most per screen pixel: smallest encoded distance wins
-                // (depth dominates the 2 slot bits), exactly like the main
-                // canvas atomicMin store.
+                // (depth dominates the 3 low bits — flip+slot), exactly like
+                // the main canvas atomicMin store.
                 atomicMin(
                     resolveScratch[mainPixel.y * canvasSizePixels.x + mainPixel.x],
                     encoded

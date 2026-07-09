@@ -118,10 +118,50 @@ ivec2 faceOffset_2x3(int face, int subPixel) {
     return ivec2(0, 1 + subPixel);
 }
 
+// Single-canvas distance-encoding scale: one depth unit spans 8 codes —
+// [31:3] depth | [2] flip | [1:0] slot. Mirrors IRRender::kDepthEncodeShift
+// (ir_render_types.hpp) and the .metal twin; every composite writer that
+// lifts a world/model iso depth into shared framebuffer depth-key units
+// multiplies by this.
+const int kDepthEncodeShift = 8;
+
 // Encode depth with face priority for deterministic depth-test resolution.
-// The *4 spacing ensures face indices never cross depth boundaries.
+// The *8 spacing keeps flip + slot below every depth boundary, so raw-int
+// atomicMin still orders by depth first (a flipped-but-farther cell can
+// never win the min) and the Hi-Z max stays a faithful max-depth pyramid.
+// `flip` (#2207) marks a silhouette-riser face emitted with the OPPOSITE
+// polarity of its slot's triplet face (faceId = visibleFaceIds[slot] ^ 1,
+// the #2162 flip): lighting/AO/shadow decode it to negate the slot-derived
+// outward normal instead of shading the riser with an inverted Lambert.
+int encodeDepthWithFace(int rawDepth, int face, int flip) {
+    return rawDepth * kDepthEncodeShift + (flip << 2) + face;
+}
+
+// Unflipped overload — the common case (SDF shapes, particles, resolve
+// re-emits of unflipped cells, non-riser voxel faces).
 int encodeDepthWithFace(int rawDepth, int face) {
-    return rawDepth * 4 + face;
+    return encodeDepthWithFace(rawDepth, face, 0);
+}
+
+// Shared decode helpers — the ONLY places the two distance-encoding bit
+// layouts live (#2207). Single-canvas: [31:3] depth | [2] flip | [1:0] slot.
+// Per-axis (#1458): [31:11] depth | [10] flip | [9:6] uFrac4 | [5:2] vFrac4
+// | [1:0] slot. Depth decodes by arithmetic right shift (floor), so negative
+// depths recover exactly; slot/flip are pure low-bit masks. Route every
+// consumer through these — an open-coded shift is how a carrier migration
+// silently mis-decodes.
+int decodeSlot(int encoded) { return encoded & 3; }
+int decodeFlipSingle(int encoded) { return (encoded >> 2) & 1; }
+int decodeDepthSingle(int encoded) { return encoded >> 3; }
+int decodeFlipPerAxis(int encoded) { return (encoded >> 10) & 1; }
+int decodeDepthPerAxis(int encoded) { return encoded >> 11; }
+// Route-aware forms for the shared lighting/AO/shadow/bake consumers that
+// read either encoding behind the perAxisRoute selector.
+int decodeDepthRoute(int encoded, int perAxisRoute) {
+    return perAxisRoute != 0 ? decodeDepthPerAxis(encoded) : decodeDepthSingle(encoded);
+}
+int decodeFlipRoute(int encoded, int perAxisRoute) {
+    return perAxisRoute != 0 ? decodeFlipPerAxis(encoded) : decodeFlipSingle(encoded);
 }
 
 // Two-tier composite depth partition (#1958). The most-negative
@@ -193,12 +233,15 @@ uvec2 encodeEntityIdCutFace(uvec2 packed, bool isCutFace) {
                      : packed;
 }
 
-// Per-axis fractional encoding (#1458): (depth << 10) | (uFrac4 << 6) | (vFrac4 << 2) | slot
-// uFrac4/vFrac4 in 0..15 where 8 = cell centre (fracInCell=0). atomicMin orders by depth first.
-// Per-axis canvases clear to INT_MAX (0x7FFFFFFF) so any valid encoding overwrites the sentinel.
-// rawDepth must be in world units; depth field is 22 bits so rawDepth must stay < 2^21.
-int encodeDepthWithFaceFrac(int rawDepth, int slot, int uFrac4, int vFrac4) {
-    return (rawDepth << 10) | (uFrac4 << 6) | (vFrac4 << 2) | slot;
+// Per-axis fractional encoding (#1458, flip carrier #2207):
+// (depth << 11) | (flip << 10) | (uFrac4 << 6) | (vFrac4 << 2) | slot.
+// uFrac4/vFrac4 in 0..15 where 8 = cell centre (fracInCell=0). atomicMin orders
+// by depth first (flip sits below depth, above frac — same invariant as the
+// single-canvas encode). Per-axis canvases clear to INT_MAX (0x7FFFFFFF) so any
+// valid encoding overwrites the sentinel. rawDepth must be in world units;
+// depth field is 21 bits so rawDepth must stay < 2^20.
+int encodeDepthWithFaceFrac(int rawDepth, int slot, int uFrac4, int vFrac4, int flip) {
+    return (rawDepth << 11) | (flip << 10) | (uFrac4 << 6) | (vFrac4 << 2) | slot;
 }
 
 // Maps fracInCell to 4-bit sub-cell offsets (0..15, 8 = cell centre) for the
@@ -217,10 +260,10 @@ void fracToFrac4(int axis, vec3 fracInCell, out int uFrac4, out int vFrac4) {
 }
 
 // Convenience overload: compute uFrac4/vFrac4 from fracInCell and encode in one call.
-int encodeDepthWithFaceFrac(int rawDepth, int slot, int axis, vec3 fracInCell) {
+int encodeDepthWithFaceFrac(int rawDepth, int slot, int axis, vec3 fracInCell, int flip) {
     int uFrac4, vFrac4;
     fracToFrac4(axis, fracInCell, uFrac4, vFrac4);
-    return encodeDepthWithFaceFrac(rawDepth, slot, uFrac4, vFrac4);
+    return encodeDepthWithFaceFrac(rawDepth, slot, uFrac4, vFrac4, flip);
 }
 
 // Outward unit normal for the visible side of each iso-rendered face. The
@@ -656,7 +699,7 @@ vec2 pos3DtoPos2DIsoYawed(vec3 worldPos, float visualYaw) {
 
 // Exact (unquantized) composite depth key for a forward-scattered face: the
 // true yawed camera-space iso depth of the recovered face origin, kept in the
-// cardinal encodeDepthWithFace scale (x4 + slot) so it stays comparable with
+// cardinal encodeDepthWithFace scale (xkDepthEncodeShift + slot) so it stays comparable with
 // the quantized integer keys other composite writers (the SDF smooth-yaw path)
 // emit. The quantization this replaces (roundHalfUp of the yawed sum) made
 // adjacent micro-cells along a foreshortened in-plane axis TIE on integer
@@ -687,7 +730,7 @@ float yawedIsoDistance(vec3 worldPos, float visualYaw) {
 }
 
 float scatterCompositeDepthKey(vec3 origin, float visualYaw, int slot) {
-    return yawedIsoDistance(origin, visualYaw) * 4.0 + float(slot);
+    return yawedIsoDistance(origin, visualYaw) * float(kDepthEncodeShift) + float(slot);
 }
 
 // Conservative XY growth of an axis-aligned half-extent swept under a Z-yaw of
@@ -794,9 +837,9 @@ const float kScatterDilateMarginPx = 0.85;
 // footprint claims (#1457). Two cells of the same face plane carry identical
 // per-fragment planar depth, so without the bias their margin-vs-interior
 // overlap is an exact tie decided by draw order — wrong-voxel-color bands on
-// the sign-flip side of a bracket. 0.25 key units = 1/16 world unit: beats
+// the sign-flip side of a bracket. 0.25 key units = 1/32 world unit: beats
 // exact ties, far below any off-knife-edge separation between distinct planes
-// (>= 4*|cos-sin| key units), so genuine occlusion is never reordered.
+// (>= 8*|cos-sin| key units), so genuine occlusion is never reordered.
 const float kScatterMarginDepthBiasKey = 0.25;
 
 // Deterministic cell tiebreak (#2255). Wherever two scattered quads' final
@@ -818,7 +861,7 @@ const float kScatterMarginDepthBiasKey = 0.25;
 // quanta of a 24-bit fixed depth buffer, so the code survives quantization on
 // both backends. Band = 8 steps = 2^-20 ~= 0.125 key units at the default
 // range — half the 0.25 margin bias (margin-vs-exact ordering survives) and
-// far below the slot (1.0) / plane (>= 4) separations, so no genuine
+// far below the slot (1.0) / plane (>= 8) separations, so no genuine
 // occlusion is reordered; only tie-band pixels — the ones that previously
 // flickered run-to-run — gain a deterministic winner.
 const float kScatterCellTieStep = 1.0 / 8388608.0;

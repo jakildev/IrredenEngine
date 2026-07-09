@@ -88,7 +88,7 @@ const float kSelfStepDepthRange = 3.0;
 // receiver is the riser/tread of the staircase itself, for which the same-face
 // round-to-cell step is the reliable signal. Cardinal flats (offset ~0) never
 // match, so a static cardinal scene is byte-identical.
-bool detectSelfStepStaircase(ivec2 pixel, ivec2 size, int slot, int rawDepth, int cardinalIndex, vec3 centerPos3D) {
+bool detectSelfStepStaircase(ivec2 pixel, ivec2 size, int slot, int flip, int rawDepth, int cardinalIndex, vec3 centerPos3D) {
     int faceId = visibleFaceIds[slot];
     vec3 worldOutward = vec3(faceOutwardNormal6I(faceId));
     // In-plane tangent pair for the receiver's face axis.
@@ -119,9 +119,12 @@ bool detectSelfStepStaircase(ivec2 pixel, ivec2 size, int slot, int rawDepth, in
             samplePixel.y < 0 || samplePixel.y >= size.y) continue;
         int neighbourEncoded = imageLoad(trixelDistances, samplePixel).x;
         if (neighbourEncoded >= kEmptyDistanceEncoded) continue;
-        if ((neighbourEncoded & 3) != slot) continue;   // SAME-face only
+        // SAME-face only — a flipped neighbour (#2207) is the opposite-polarity
+        // face, a DIFFERENT surface, so the gate compares (slot, flip).
+        if (decodeSlot(neighbourEncoded) != slot ||
+            decodeFlipSingle(neighbourEncoded) != flip) continue;
         vec3 neighbourPos3D = trixelCanvasPixelToWorld3D(
-            samplePixel, neighbourEncoded >> 2, trixelCanvasOffsetZ1,
+            samplePixel, decodeDepthSingle(neighbourEncoded), trixelCanvasOffsetZ1,
             frameCanvasOffset, voxelRenderOptions, cardinalIndex
         );
         float step = abs(dot(neighbourPos3D - centerPos3D, worldOutward));
@@ -164,9 +167,11 @@ void main() {
         return;
     }
 
-    // Per-axis encoding (#1458): rawDepth in bits [31:10]; single-canvas: bits [31:2].
-    int rawDepth = (perAxisRoute != 0) ? (encoded >> 10) : (encoded >> 2);
-    int face = encoded & 3;
+    // Shared decode helpers (ir_iso_common) own both encodings' bit layouts
+    // (#1458 per-axis / single-canvas, flip carrier #2207).
+    int rawDepth = decodeDepthRoute(encoded, perAxisRoute);
+    int face = decodeSlot(encoded);
+    int flip = decodeFlipRoute(encoded, perAxisRoute);
     int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
 
     // Smooth camera Z-yaw (#1311): a per-axis canvas stores the world frame
@@ -205,6 +210,14 @@ void main() {
         // yaw. No-op at yaw=0 (cardinalIndex=0). Matches the AO shader pattern.
         normal = rotateCardinalZInv(faceOutwardNormal(face), cardinalIndex);
     }
+    // Riser-polarity flip (#2207): a flipped face's true outward normal is the
+    // NEGATION of the slot-derived one — without it the normal bias pushes the
+    // shadow sample INTO the caster and the riser reads fully sun-shadowed.
+    // Negation commutes with the frame rotations above, so one flip covers all
+    // three recovery branches; flip == 0 everywhere on non-rotated content.
+    if (flip != 0) {
+        normal = -normal;
+    }
 
     // World iso depth picks the cascade; rawDepth IS the world iso depth for the
     // world canvas this pass runs on. The cascade PCF lookup is shared with the
@@ -220,7 +233,7 @@ void main() {
     // upstream); the recompute reuses the same pos/normal with the near self-step
     // rejection lifted, so genuine far contact shadows are untouched.
     if (!perAxis && residualYaw == 0.0 && factor < 1.0 &&
-        detectSelfStepStaircase(pixel, size, face, rawDepth, cardinalIndex, pos3D)) {
+        detectSelfStepStaircase(pixel, size, face, flip, rawDepth, cardinalIndex, pos3D)) {
         factor = worldSunShadowFactor(pos3D, normal, float(rawDepth), kSelfStepDepthRange);
     }
     imageStore(canvasSunShadow, pixel, vec4(factor, 0.0, 0.0, 0.0));

@@ -15,8 +15,11 @@ pixels (zoom-independent — zoom only scales `FRAMEBUFFER_TO_SCREEN`).
 All paths target the same encoding: `gl_FragDepth = normalizeDistance(enc)` where
 `normalizeDistance(d) = (d − kMin)/(kMax − kMin)`, `kMin = −65535`, `kMax = 65535`
 (`ir_constants.hpp:47,51`). The probe decodes `gl_FragDepth` back to `enc` (it
-calls this `rawDist`). `encodeDepthWithFace(isoDepth, face) = isoDepth*4 + face`
-(`ir_iso_common.glsl:123-125`; `kDepthEncodeShift = 4`, `ir_render_types.hpp:187`).
+calls this `rawDist`). At the time of this investigation
+`encodeDepthWithFace(isoDepth, face) = isoDepth*4 + face` (`kDepthEncodeShift =
+4`); #2207 widened it to `isoDepth*8 + flip*4 + face` (`kDepthEncodeShift = 8`,
+riser-polarity flip at bit 2) — the `*4` factors in the tables below read as
+`*kDepthEncodeShift`, and every conclusion is scale-invariant.
 
 | Render type | Stored `enc` (the probe's rawDist) | Writes depth attachment? | Source |
 |---|---|---|---|

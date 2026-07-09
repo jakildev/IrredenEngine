@@ -172,12 +172,20 @@ void main() {
     }
 
     const int rawDist = texelFetch(triangleDistances, ij, 0).r;
-    // Per-axis fractional encoding (#1458): (depth << 10) | (uFrac4 << 6) | (vFrac4 << 2) | slot
-    const int slot = rawDist & 3;
+    // Per-axis fractional encoding (#1458, flip carrier #2207) — decode via the
+    // shared ir_iso_common helpers. The frac fields keep their positions.
+    const int slot = decodeSlot(rawDist);
     const int vFrac4 = (rawDist >> 2) & 15;
     const int uFrac4 = (rawDist >> 6) & 15;
-    const int rawDepth = rawDist >> 10;      // pos3DtoDistance of the face origin (world units)
-    const int faceId = visibleFaceIds[slot];
+    const int flip = decodeFlipPerAxis(rawDist);
+    const int rawDepth = decodeDepthPerAxis(rawDist); // pos3DtoDistance of the face origin (world units)
+    // A flipped cell (#2207) is the opposite-polarity face of its slot's axis.
+    // The stored plane origin already sits on the flipped plane (the store
+    // bakes polarity via faceMicroPositionFixed6 and (pixel, depth) inverts
+    // exactly), and the two polarities share their in-plane span axes — so
+    // recovery below is unchanged; only faceId itself flips (slot-key + the
+    // debug overlays stay exact).
+    const int faceId = visibleFaceIds[slot] ^ flip;
     const int axis = faceId >> 1;
 
     // Recover the exact face origin from the un-yawed (cardinal) iso store. The
@@ -275,7 +283,7 @@ void main() {
     // face-local origin-recovery KEY and must not change. Each corner emits
     // the continuous yawed camera-space depth of its own (dilated) corner
     // point via the shared scatterCompositeDepthKey helper
-    // (ir_iso_common.glsl) — *4 + slot scale, so it co-sorts with the SDF
+    // (ir_iso_common.glsl) — *kDepthEncodeShift + slot scale, so it co-sorts with the SDF
     // (c_shapes_to_trixel smoothYaw). Linear interpolation then reproduces
     // the face plane's affine depth field at every fragment. The flat
     // per-quad ROUNDED key this replaces had two failure modes at off-snap
@@ -286,20 +294,23 @@ void main() {
     // #1457 wrong-voxel-color bands. Per-axis is residual-only, so the
     // cardinal fast path is untouched (byte-identical).
     // Subdivided composite-depth scale (#1884 high-zoom fix). The SDF floor +
-    // cardinal voxel gather encode iso-depth SUBDIVIDED (worldDepth × effSub × 4);
+    // cardinal voxel gather encode iso-depth SUBDIVIDED (worldDepth × effSub × 8);
     // the per-axis store is BASE-resolution (#1458), so its recovered worldCorner
     // is in world units and scatterCompositeDepthKey is ×1. Lift it to the same
     // subdivided magnitude (effSub, carried in effectiveSubdivisionsForHover.x) so
     // SDF + scattered voxels co-sort at every zoom — otherwise the floor out-scaled
     // the voxels ~effSub× at high zoom and clipped them into the floor. Scale only
-    // the iso-depth (×4) term, NOT the slot tiebreak, so slot stays a unit-scale
+    // the iso-depth (×kDepthEncodeShift) term, NOT the slot tiebreak, so slot stays a unit-scale
     // tiebreak comparable to the SDF's face bits. worldCorner carries the #1458
     // sub-cell offset, so this scale-up keeps sub-cell depth precision (no z-fight).
     const float subScale = max(effectiveSubdivisionsForHover.x, 1.0);
-    const float kU = yawedIsoDistance(eu, visualYaw) * (4.0 * subScale);  // gradient (no slot)
-    const float kV = yawedIsoDistance(ev, visualYaw) * (4.0 * subScale);  // gradient (no slot)
-    const float cornerKey = yawedIsoDistance(worldCorner, visualYaw) * (4.0 * subScale) +
-                            float(slot) + dilParam.x * kU + dilParam.y * kV;
+    const float encScale = float(kDepthEncodeShift) * subScale;
+    const float kU = yawedIsoDistance(eu, visualYaw) * encScale;  // gradient (no slot)
+    const float kV = yawedIsoDistance(ev, visualYaw) * encScale;  // gradient (no slot)
+    // Tiebreak mirrors the integer encode's low bits ((flip << 2) | slot) so a
+    // flipped cell co-sorts exactly where a real cardinal store would land it.
+    const float cornerKey = yawedIsoDistance(worldCorner, visualYaw) * encScale +
+                            float((flip << 2) | slot) + dilParam.x * kU + dilParam.y * kV;
     const float depthRange = float(kMaxTriangleDistance - kMinTriangleDistance);
     vDepth = (cornerKey + float(distanceOffset - kMinTriangleDistance)) / depthRange;
     vMarginDepthBias = kScatterMarginDepthBiasKey * subScale / depthRange;

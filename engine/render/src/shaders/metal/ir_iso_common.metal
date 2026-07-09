@@ -108,10 +108,46 @@ inline int2 faceOffset_2x3(int face, int subPixel) {
     return int2(0, 1 + subPixel);
 }
 
+// Single-canvas distance-encoding scale: one depth unit spans 8 codes —
+// [31:3] depth | [2] flip | [1:0] slot. Mirrors IRRender::kDepthEncodeShift
+// (ir_render_types.hpp) and the GLSL twin (ir_iso_common.glsl).
+constant int kDepthEncodeShift = 8;
+
 // Encode depth with face priority for deterministic depth-test resolution.
-// The *4 spacing ensures face indices never cross depth boundaries.
+// The *8 spacing keeps flip + slot below every depth boundary, so raw-int
+// atomicMin still orders by depth first (a flipped-but-farther cell can
+// never win the min) and the Hi-Z max stays a faithful max-depth pyramid.
+// `flip` (#2207) marks a silhouette-riser face emitted with the OPPOSITE
+// polarity of its slot's triplet face (faceId = visibleFaceIds[slot] ^ 1,
+// the #2162 flip): lighting/AO/shadow decode it to negate the slot-derived
+// outward normal instead of shading the riser with an inverted Lambert.
+inline int encodeDepthWithFace(int rawDepth, int face, int flip) {
+    return rawDepth * kDepthEncodeShift + (flip << 2) + face;
+}
+
+// Unflipped overload — the common case (SDF shapes, particles, resolve
+// re-emits of unflipped cells, non-riser voxel faces).
 inline int encodeDepthWithFace(int rawDepth, int face) {
-    return rawDepth * 4 + face;
+    return encodeDepthWithFace(rawDepth, face, 0);
+}
+
+// Shared decode helpers — the ONLY places the two distance-encoding bit
+// layouts live (#2207); twin of ir_iso_common.glsl. Single-canvas:
+// [31:3] depth | [2] flip | [1:0] slot. Per-axis (#1458): [31:11] depth |
+// [10] flip | [9:6] uFrac4 | [5:2] vFrac4 | [1:0] slot. Depth decodes by
+// arithmetic right shift (floor), so negative depths recover exactly.
+inline int decodeSlot(int encoded) { return encoded & 3; }
+inline int decodeFlipSingle(int encoded) { return (encoded >> 2) & 1; }
+inline int decodeDepthSingle(int encoded) { return encoded >> 3; }
+inline int decodeFlipPerAxis(int encoded) { return (encoded >> 10) & 1; }
+inline int decodeDepthPerAxis(int encoded) { return encoded >> 11; }
+// Route-aware forms for the shared lighting/AO/shadow/bake consumers that
+// read either encoding behind the perAxisRoute selector.
+inline int decodeDepthRoute(int encoded, int perAxisRoute) {
+    return perAxisRoute != 0 ? decodeDepthPerAxis(encoded) : decodeDepthSingle(encoded);
+}
+inline int decodeFlipRoute(int encoded, int perAxisRoute) {
+    return perAxisRoute != 0 ? decodeFlipPerAxis(encoded) : decodeFlipSingle(encoded);
 }
 
 // Two-tier composite depth partition (#1958). The most-negative
@@ -173,12 +209,15 @@ inline uint2 encodeEntityIdCutFace(uint2 packed, bool isCutFace) {
                      : packed;
 }
 
-// Per-axis fractional encoding (#1458): (depth << 10) | (uFrac4 << 6) | (vFrac4 << 2) | slot
-// uFrac4/vFrac4 in 0..15 where 8 = cell centre (fracInCell=0). atomicMin orders by depth first.
-// Per-axis canvases clear to INT_MAX (0x7FFFFFFF) so any valid encoding overwrites the sentinel.
-// rawDepth must be in world units; depth field is 22 bits so rawDepth must stay < 2^21.
-inline int encodeDepthWithFaceFrac(int rawDepth, int slot, int uFrac4, int vFrac4) {
-    return (rawDepth << 10) | (uFrac4 << 6) | (vFrac4 << 2) | slot;
+// Per-axis fractional encoding (#1458, flip carrier #2207):
+// (depth << 11) | (flip << 10) | (uFrac4 << 6) | (vFrac4 << 2) | slot.
+// uFrac4/vFrac4 in 0..15 where 8 = cell centre (fracInCell=0). atomicMin orders
+// by depth first (flip sits below depth, above frac — same invariant as the
+// single-canvas encode). Per-axis canvases clear to INT_MAX (0x7FFFFFFF) so any
+// valid encoding overwrites the sentinel. rawDepth must be in world units;
+// depth field is 21 bits so rawDepth must stay < 2^20.
+inline int encodeDepthWithFaceFrac(int rawDepth, int slot, int uFrac4, int vFrac4, int flip) {
+    return (rawDepth << 11) | (flip << 10) | (uFrac4 << 6) | (vFrac4 << 2) | slot;
 }
 
 // Maps fracInCell to 4-bit sub-cell offsets (0..15, 8 = cell centre) for the
@@ -197,10 +236,10 @@ inline void fracToFrac4(int axis, float3 fracInCell, thread int& uFrac4, thread 
 }
 
 // Convenience overload: compute uFrac4/vFrac4 from fracInCell and encode in one call.
-inline int encodeDepthWithFaceFrac(int rawDepth, int slot, int axis, float3 fracInCell) {
+inline int encodeDepthWithFaceFrac(int rawDepth, int slot, int axis, float3 fracInCell, int flip) {
     int uFrac4, vFrac4;
     fracToFrac4(axis, fracInCell, uFrac4, vFrac4);
-    return encodeDepthWithFaceFrac(rawDepth, slot, uFrac4, vFrac4);
+    return encodeDepthWithFaceFrac(rawDepth, slot, uFrac4, vFrac4, flip);
 }
 
 // Outward unit normal for the visible side of each iso-rendered face. The
@@ -608,7 +647,7 @@ inline float2 pos3DtoPos2DIsoYawed(float3 worldPos, float visualYaw) {
 // the full rationale (the rounded key it replaces tied adjacent micro-cells on
 // a foreshortened axis and let draw order pick the farther quad on the
 // sign-flip side of a bracket — the #1457 wrong-voxel-color bands). Keeps the
-// cardinal encodeDepthWithFace scale (x4 + slot) so it co-sorts with the SDF
+// cardinal encodeDepthWithFace scale (xkDepthEncodeShift + slot) so it co-sorts with the SDF
 // smooth-yaw path. Shared by every forward-scatter composite writer.
 //
 // Continuous-yaw iso depth — mirror of yawedIsoDistance in ir_iso_common.glsl.
@@ -623,7 +662,7 @@ inline float yawedIsoDistance(float3 worldPos, float visualYaw) {
 }
 
 inline float scatterCompositeDepthKey(float3 origin, float visualYaw, int slot) {
-    return yawedIsoDistance(origin, visualYaw) * 4.0f + float(slot);
+    return yawedIsoDistance(origin, visualYaw) * float(kDepthEncodeShift) + float(slot);
 }
 
 // Conservative XY growth of an axis-aligned half-extent swept under a Z-yaw of
@@ -710,7 +749,7 @@ inline void faceInPlaneIsoSteps(int faceId, thread int2& su, thread int2& sv) {
 // #1938.
 constant float kScatterDilateMarginPx = 0.85;
 
-// Depth penalty (x4+slot key scale) a scatter fragment in the conservative-
+// Depth penalty (xkDepthEncodeShift+slot key scale) a scatter fragment in the conservative-
 // dilation MARGIN adds — mirror of kScatterMarginDepthBiasKey in
 // ir_iso_common.glsl; see that file for the #1457 rationale (margins only
 // fill pixels no exact footprint claims; never beat a same-plane owner).

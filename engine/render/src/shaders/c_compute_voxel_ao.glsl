@@ -157,10 +157,16 @@ void main() {
     // surface" arithmetic uses the actually-visible face's outward normal
     // and tangents at every cardinal (not the cardinal-0 lower-coord
     // assumption the pre-#1278 path baked in).
-    int slot = encoded & 3;
-    int faceId = visibleFaceIds[slot];
-    // Per-axis encoding (#1458): rawDepth in bits [31:10]; single-canvas: bits [31:2].
-    int rawDepth = (perAxisRoute != 0) ? (encoded >> 10) : (encoded >> 2);
+    int slot = decodeSlot(encoded);
+    // The riser-polarity flip (#2207) selects the OPPOSITE same-axis face, so
+    // the outward-normal step below walks out of the true surface instead of
+    // into the solid. The tangent pair is polarity-invariant (both branches
+    // cover NEG and POS of each axis).
+    int flip = decodeFlipRoute(encoded, perAxisRoute);
+    int faceId = visibleFaceIds[slot] ^ flip;
+    // Shared decode helpers (ir_iso_common) own both encodings' bit layouts
+    // (#1458 per-axis / single-canvas, flip carrier #2207).
+    int rawDepth = decodeDepthRoute(encoded, perAxisRoute);
     int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
     // Smooth camera Z-yaw (#1311): a per-axis canvas stores the world frame
     // face-locally (perAxisRoute != 0), so recover world-pos via
@@ -229,10 +235,11 @@ void main() {
         int neighbourEncoded = imageLoad(trixelDistances, samplePixel).x;
         if (neighbourEncoded >= kEmpty) continue;
 
-        int neighbourRawDepth = (perAxisRoute != 0) ? (neighbourEncoded >> 10) : (neighbourEncoded >> 2);
+        int neighbourRawDepth = decodeDepthRoute(neighbourEncoded, perAxisRoute);
         vec3 neighbourPos3D;
         if (perAxis) {
-            int neighbourFaceId = visibleFaceIds[neighbourEncoded & 3];
+            int neighbourFaceId =
+                visibleFaceIds[decodeSlot(neighbourEncoded)] ^ decodeFlipPerAxis(neighbourEncoded);
             neighbourPos3D = perAxisCellToWorld3D(
                 samplePixel, neighbourRawDepth, neighbourFaceId, size,
                 frameCanvasOffset, voxelRenderOptions
@@ -251,7 +258,12 @@ void main() {
         // coplanar (d ~ 0, below kAOMinHeight) so they never reach this gate and
         // the cardinal fast path stays byte-identical.
         float d = dot(neighbourPos3D - pos3D, worldOutward);
-        if ((neighbourEncoded & 3) == slot || d <= kAOMinHeight || d >= kAOMaxHeight) continue;
+        // Same-surface exclusion compares (slot, flip) — a flipped neighbour
+        // (#2207) is the opposite-polarity face, a genuinely different surface,
+        // so it stays eligible as a crease occluder.
+        bool sameSurface = decodeSlot(neighbourEncoded) == slot &&
+            decodeFlipRoute(neighbourEncoded, perAxisRoute) == flip;
+        if (sameSurface || d <= kAOMinHeight || d >= kAOMaxHeight) continue;
 
         // Tilt-aware same-face resample (#1718). A re-voxelized / REBUILD_GRID
         // rotating solid turns a tilted-flat surface into a true voxel staircase
@@ -271,9 +283,12 @@ void main() {
             if (beyondPixel.x >= 0 && beyondPixel.x < size.x &&
                 beyondPixel.y >= 0 && beyondPixel.y < size.y) {
                 int beyondEncoded = imageLoad(trixelDistances, beyondPixel).x;
-                if (beyondEncoded < kEmpty && (beyondEncoded & 3) == slot) {
+                // "Returns to the receiver's own face" compares (slot, flip) —
+                // a flipped cell one step beyond is not the receiver's surface.
+                if (beyondEncoded < kEmpty && decodeSlot(beyondEncoded) == slot &&
+                    decodeFlipSingle(beyondEncoded) == flip) {
                     vec3 beyondPos3D = trixelCanvasPixelToWorld3D(
-                        beyondPixel, beyondEncoded >> 2, trixelCanvasOffsetZ1,
+                        beyondPixel, decodeDepthSingle(beyondEncoded), trixelCanvasOffsetZ1,
                         frameCanvasOffset, voxelRenderOptions, cardinalIndex
                     );
                     // The next tread steps ~1 voxel further out along the

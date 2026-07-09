@@ -98,7 +98,7 @@ struct FrameDataTrixelToFramebuffer {
     /// Added to (rescaled) raw canvas distance before depth normalization. 0 for
     /// world/overlay canvases; for a world-placed per-entity canvas it is the
     /// entity world iso depth in encoded framebuffer units
-    /// (pos3DtoDistance(entityPos) * effSub * 4 — the encodeDepthWithFace ×4 over
+    /// (pos3DtoDistance(entityPos) * effSub * 8 — the encodeDepthWithFace ×8 over
     /// the ×subdivision depth scale).
     int distanceOffset_ = 0;
     /// Smooth camera Z-yaw forward-scatter composite (T3 / #1310). Consumed
@@ -206,10 +206,13 @@ static_assert(
     "or resize would corrupt the scatter UBO with no compile diagnostic"
 );
 
-/// Multiplier in the @c encodeDepthWithFace convention (d·4 + face), shared by
-/// the world-placed detached-canvas composite and any producer that converts world
-/// iso depth or model-frame rawDist into shared framebuffer depth units (×effSub × 4).
-constexpr int kDepthEncodeShift = 4;
+/// Multiplier in the @c encodeDepthWithFace convention (d·8 + flip·4 + face,
+/// #2207 silhouette-riser polarity carrier at bit 2), shared by the
+/// world-placed detached-canvas composite and any producer that converts world
+/// iso depth or model-frame rawDist into shared framebuffer depth units
+/// (×effSub × 8). Mirror of @c kDepthEncodeShift in
+/// `ir_iso_common.glsl` / `metal/ir_iso_common.metal`.
+constexpr int kDepthEncodeShift = 8;
 
 /// Two-tier composite depth partition (#1958; the #1884 sub-epic's Bug-A fix).
 /// The most-negative @c kDepthForegroundBandWidth codes of the shared
@@ -223,7 +226,7 @@ constexpr int kDepthEncodeShift = 4;
 /// could dominate unbounded world placement — the radius-200 GRID orbit proved
 /// it). World content is clamped to stay OUT of the band; the clamp is a no-op
 /// for every current demo at the effSub-16 cap (it fires only when
-/// `cardinalIsoDepth·4 < kDepthForegroundCeil` ≈ world extent far past
+/// `cardinalIsoDepth·8 < kDepthForegroundCeil` ≈ world extent far past
 /// canvas_stress's r=200 orbit), so the cardinal fast path and all in-budget
 /// content stay byte-identical. Mirror in `ir_iso_common.glsl` /
 /// `metal/ir_iso_common.metal`. Full model:

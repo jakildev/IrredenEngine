@@ -45,10 +45,14 @@ kernel void c_resolve_per_axis_screen_depth(
     if (rawDist >= kEmptyDistanceEncoded) {
         return; // occupied per the compaction; guard anyway
     }
-    // Per-axis encoding (#1458): rawDepth in world units at bits [31:10].
-    const int rawDepth = rawDist >> 10;
-    const int slot = rawDist & 3;
-    const int faceId = frameData.visibleFaceIds[slot];
+    // Per-axis encoding (#1458, flip carrier #2207): rawDepth in world units at
+    // bits [31:11]; flip at [10]. The flip is re-emitted into the single-canvas
+    // encode below so polarity survives the resolve bridge. Both polarities
+    // share the axis + in-plane sweep, so recovery/footprint are unchanged.
+    const int rawDepth = decodeDepthPerAxis(rawDist);
+    const int slot = decodeSlot(rawDist);
+    const int flip = decodeFlipPerAxis(rawDist);
+    const int faceId = frameData.visibleFaceIds[slot] ^ flip;
     const int axis = faceId >> 1;
 
     // Recover the face-plane origin (canvas-native units) — exact integer
@@ -105,7 +109,7 @@ kernel void c_resolve_per_axis_screen_depth(
             // Per-micro-cell depth, shared by the region's two pixels — the
             // exact encode a real cardinal store would hold here, so BAKE's
             // pixel+depth inverse recovers points on the face plane.
-            const int encoded = encodeDepthWithFace(pos3DtoDistance(microView), slot);
+            const int encoded = encodeDepthWithFace(pos3DtoDistance(microView), slot, flip);
             const int2 cellBase = mainBase + pos3DtoPos2DIso(microView);
             for (int k = 0; k < 2; ++k) {
                 const int2 mainPixel = cellBase + faceOffset_2x3(slot, k);

@@ -114,8 +114,10 @@ Concretely:
    reads the cell's stored distance; degenerates (off-screen) if it is the clear
    value; otherwise recovers the **world origin** from the cell by the exact iso
    inverse — `isoPixelToPos3D(cell − perAxisBase, rawDepth)` (with
-   `rawDepth = dist >> 10 = x+y+z`). `slot = dist & 3` recovers the visible-triplet
-   slot → `faceId = visibleFaceIds[slot]`. This recovery is **exact at every
+   `rawDepth = decodeDepthPerAxis(dist) = x+y+z`; the #2207 riser-polarity flip
+   rides bit 10, below the depth field). `slot = dist & 3` recovers the
+   visible-triplet slot → `faceId = visibleFaceIds[slot] ^ flip`. This recovery
+   is **exact at every
    yaw** because the stored index is un-yawed: the singular full-`visualYaw`
    inverse `z = (rawDepth + P(c+s) − Q(c−s)) / (2cosθ+1)` is gone — the live yaw
    is applied only forward, at scatter, by `pos3DtoPos2DIsoYawed`. `perAxisBase`

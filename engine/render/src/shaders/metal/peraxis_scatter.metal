@@ -196,12 +196,18 @@ vertex VertexOut v_peraxis_scatter(
     }
 
     const int rawDist = triangleDistances.read(ij).r;
-    // Per-axis fractional encoding (#1458): (depth << 10) | (uFrac4 << 6) | (vFrac4 << 2) | slot
-    const int slot = rawDist & 3;
+    // Per-axis fractional encoding (#1458, flip carrier #2207) — decode via the
+    // shared ir_iso_common helpers. The frac fields keep their positions.
+    const int slot = decodeSlot(rawDist);
     const int vFrac4 = (rawDist >> 2) & 15;
     const int uFrac4 = (rawDist >> 6) & 15;
-    const int rawDepth = rawDist >> 10;      // pos3DtoDistance of the face origin (world units)
-    const int faceId = frameData.visibleFaceIds[slot];
+    const int flip = decodeFlipPerAxis(rawDist);
+    const int rawDepth = decodeDepthPerAxis(rawDist); // pos3DtoDistance of the face origin (world units)
+    // A flipped cell (#2207) is the opposite-polarity face of its slot's axis.
+    // The stored plane origin already sits on the flipped plane and the two
+    // polarities share their in-plane span axes — recovery is unchanged; only
+    // faceId itself flips. See the GLSL twin.
+    const int faceId = frameData.visibleFaceIds[slot] ^ flip;
     const int axis = faceId >> 1;
 
     // Hoist in-plane axes before origin so fractional offset and dilation block share them.
@@ -324,13 +330,16 @@ vertex VertexOut v_peraxis_scatter(
     // per-axis store is BASE-resolution (#1458), so lift the scatter iso-depth to
     // the same subdivided magnitude (effSub via effectiveSubdivisionsForHover.x) or
     // the floor out-scales the voxels ~effSub× at high zoom and clips them. Scale
-    // only the iso-depth (×4) term, not the slot tiebreak; worldCorner keeps its
-    // #1458 sub-cell offset so precision is preserved.
+    // only the iso-depth (×kDepthEncodeShift) term, not the slot tiebreak;
+    // worldCorner keeps its #1458 sub-cell offset so precision is preserved.
     const float subScale = max(frameData.effectiveSubdivisionsForHover.x, 1.0f);
-    const float kU = yawedIsoDistance(eu, frameData.visualYaw) * (4.0f * subScale);  // gradient (no slot)
-    const float kV = yawedIsoDistance(ev, frameData.visualYaw) * (4.0f * subScale);  // gradient (no slot)
-    const float cornerKey = yawedIsoDistance(worldCorner, frameData.visualYaw) * (4.0f * subScale) +
-                            float(slot) + dilParam.x * kU + dilParam.y * kV;
+    const float encScale = float(kDepthEncodeShift) * subScale;
+    const float kU = yawedIsoDistance(eu, frameData.visualYaw) * encScale;  // gradient (no slot)
+    const float kV = yawedIsoDistance(ev, frameData.visualYaw) * encScale;  // gradient (no slot)
+    // Tiebreak mirrors the integer encode's low bits ((flip << 2) | slot) so a
+    // flipped cell co-sorts exactly where a real cardinal store would land it.
+    const float cornerKey = yawedIsoDistance(worldCorner, frameData.visualYaw) * encScale +
+                            float((flip << 2) | slot) + dilParam.x * kU + dilParam.y * kV;
     const float depthRange =
         float(globals.kMaxTriangleDistance - globals.kMinTriangleDistance);
     out.depth =

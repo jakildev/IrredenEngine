@@ -99,10 +99,15 @@ kernel void c_compute_voxel_ao(
     // Decode the visible-triplet slot (0/1/2) the rasterizer wrote, then
     // resolve the world FaceId via `visibleFaceIds[slot]` (#1278). Single
     // source of face metadata shared with the raster.
-    int slot = encoded & 3;
-    int faceId = frameData.visibleFaceIds[slot];
-    // Per-axis encoding (#1458): rawDepth in bits [31:10]; single-canvas: bits [31:2].
-    int rawDepth = (frameData.perAxisRoute != 0) ? (encoded >> 10) : (encoded >> 2);
+    int slot = decodeSlot(encoded);
+    // The riser-polarity flip (#2207) selects the OPPOSITE same-axis face, so
+    // the outward-normal step below walks out of the true surface instead of
+    // into the solid. The tangent pair is polarity-invariant.
+    int flip = decodeFlipRoute(encoded, frameData.perAxisRoute);
+    int faceId = frameData.visibleFaceIds[slot] ^ flip;
+    // Shared decode helpers (ir_iso_common) own both encodings' bit layouts
+    // (#1458 per-axis / single-canvas, flip carrier #2207).
+    int rawDepth = decodeDepthRoute(encoded, frameData.perAxisRoute);
     int cardinalIndex = rasterYawCardinalIndex(frameData.rasterYaw);
     // Smooth camera Z-yaw (#1311): a per-axis canvas stores the world frame
     // face-locally (perAxisRoute != 0), recovered via isoPixelToPos3D; the
@@ -170,10 +175,11 @@ kernel void c_compute_voxel_ao(
         int neighbourEncoded = trixelDistances.read(uint2(samplePixel)).x;
         if (neighbourEncoded >= kEmpty) continue;
 
-        int neighbourRawDepth = (frameData.perAxisRoute != 0) ? (neighbourEncoded >> 10) : (neighbourEncoded >> 2);
+        int neighbourRawDepth = decodeDepthRoute(neighbourEncoded, frameData.perAxisRoute);
         float3 neighbourPos3D;
         if (perAxis) {
-            int neighbourFaceId = frameData.visibleFaceIds[neighbourEncoded & 3];
+            int neighbourFaceId =
+                frameData.visibleFaceIds[decodeSlot(neighbourEncoded)] ^ decodeFlipPerAxis(neighbourEncoded);
             neighbourPos3D = perAxisCellToWorld3D(
                 samplePixel, neighbourRawDepth, neighbourFaceId, size,
                 frameData.frameCanvasOffset, frameData.voxelRenderOptions
@@ -195,7 +201,12 @@ kernel void c_compute_voxel_ao(
         // Flat cardinal faces (d ~ 0, below kAOMinHeight) never reach this gate.
         // Mirrors the GLSL twin.
         float d = dot(neighbourPos3D - pos3D, worldOutward);
-        if ((neighbourEncoded & 3) == slot || d <= kAOMinHeight || d >= kAOMaxHeight) continue;
+        // Same-surface exclusion compares (slot, flip) — a flipped neighbour
+        // (#2207) is the opposite-polarity face, a genuinely different surface,
+        // so it stays eligible as a crease occluder.
+        bool sameSurface = decodeSlot(neighbourEncoded) == slot &&
+            decodeFlipRoute(neighbourEncoded, frameData.perAxisRoute) == flip;
+        if (sameSurface || d <= kAOMinHeight || d >= kAOMaxHeight) continue;
 
         // Tilt-aware same-face resample (#1718). A re-voxelized / REBUILD_GRID
         // rotating solid turns a tilted-flat surface into a true voxel staircase
@@ -213,10 +224,13 @@ kernel void c_compute_voxel_ao(
             if (beyondPixel.x >= 0 && beyondPixel.x < size.x &&
                 beyondPixel.y >= 0 && beyondPixel.y < size.y) {
                 int beyondEncoded = trixelDistances.read(uint2(beyondPixel)).x;
-                if (beyondEncoded < kEmpty && (beyondEncoded & 3) == slot) {
+                // "Returns to the receiver's own face" compares (slot, flip) —
+                // a flipped cell one step beyond is not the receiver's surface.
+                if (beyondEncoded < kEmpty && decodeSlot(beyondEncoded) == slot &&
+                    decodeFlipSingle(beyondEncoded) == flip) {
                     float3 beyondPos3D = trixelCanvasPixelToWorld3D(
                         beyondPixel,
-                        beyondEncoded >> 2,
+                        decodeDepthSingle(beyondEncoded),
                         frameData.trixelCanvasOffsetZ1,
                         frameData.frameCanvasOffset,
                         frameData.voxelRenderOptions,

@@ -84,7 +84,7 @@ void main() {
     // (effSub / cubeSub) for world-placed DETACHED canvases: their model-frame
     // rawDist was written at the canvas's own (possibly #1570-D2-capped)
     // subdivision, so it must be lifted into the shared framebuffer depth units
-    // (worldDepth × effSub × 4) before the world iso-depth offset is added — the
+    // (worldDepth × effSub × 8) before the world iso-depth offset is added — the
     // #1624 world-placed depth fix. 0 (world/overlay canvases, zero-init) → 1.0,
     // i.e. the byte-identical fast path.
     float depthScale = effectiveSubdivisionsForHover.y;

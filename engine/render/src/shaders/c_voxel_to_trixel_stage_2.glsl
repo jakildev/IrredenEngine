@@ -263,9 +263,14 @@ void main() {
     // opposite-polarity) face stage 1 wrote the distance for. See
     // c_voxel_to_trixel_stage_1.glsl for the full rationale.
     const bool rotatedEmit = reVoxelize || (voxels[voxelIndex].reserved & 4u) != 0u;
+    // Polarity carrier (#2207) — mirror of stage 1's riserFlip: the colour tap
+    // must re-derive the identical encoding (flip bit included) or the depth
+    // re-test in writeColorTap rejects every flipped-face tap.
+    int riserFlip = 0;
     if (rotatedEmit && !faceIsExposed(flagsByte, faceId) &&
         faceIsExposed(flagsByte, faceId ^ 1)) {
         faceId = faceId ^ 1;
+        riserFlip = 1;
     }
 
     // Both-exposed silhouette-riser dual emit (#2157) — MUST mirror stage 1's
@@ -337,7 +342,7 @@ void main() {
             const ivec3 facePos = faceMicroPositionFixed6(faceId, worldPos, 0, 0, 1);
             // No sub-cell offset at base resolution; encode centre fracs (8,8).
             const int voxelDistance =
-                encodeDepthWithFaceFrac(pos3DtoDistance(facePos), slot, 8, 8);
+                encodeDepthWithFaceFrac(pos3DtoDistance(facePos), slot, 8, 8, riserFlip);
             writeColorTapPerAxis(
                 perAxisBase + pos3DtoPos2DIso(facePos), voxelDistance,
                 voxelColor, packedEntityId, voxelIndex
@@ -351,7 +356,7 @@ void main() {
         const ivec3 facePos_s2 = faceMicroPositionFixed6(faceId, worldPos_s2, 0, 0, 1);
         const vec3 fracInCell_s2 = worldAligned_s2 - vec3(worldPos_s2);
         const int voxelDistance_s2 =
-            encodeDepthWithFaceFrac(pos3DtoDistance(facePos_s2), slot, axis, fracInCell_s2);
+            encodeDepthWithFaceFrac(pos3DtoDistance(facePos_s2), slot, axis, fracInCell_s2, riserFlip);
         writeColorTapPerAxis(
             perAxisBase + pos3DtoPos2DIso(facePos_s2), voxelDistance_s2,
             voxelColor, packedEntityId, voxelIndex
@@ -402,7 +407,7 @@ void main() {
         const int rawDepth = isDetachedCanvas > 0.5
             ? isoDepthAlongAxis(voxelPositionInt, voxelDepthAxis.xyz)
             : pos3DtoDistance(voxelPositionInt);
-        const int voxelDistance = encodeDepthWithFace(rawDepth, slot);
+        const int voxelDistance = encodeDepthWithFace(rawDepth, slot, riserFlip);
         const ivec2 base =
             trixelFrameOffset(trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions) +
             pos3DtoPos2DIso(voxelPositionInt);
@@ -432,7 +437,7 @@ void main() {
     const int depthBase = isDetachedCanvas > 0.5
         ? isoDepthAlongAxis(microPositionFixed, voxelDepthAxis.xyz)
         : (microPositionFixed.x + microPositionFixed.y + microPositionFixed.z);
-    const int voxelDistance = encodeDepthWithFace(depthBase, slot);
+    const int voxelDistance = encodeDepthWithFace(depthBase, slot, riserFlip);
     const ivec2 base = frameOffsetFixed + pos3DtoPos2DIso(microPositionFixed);
     // packedEntityId, not voxelIndex — emitDeformedFace's 5th param is uvec2 (#1960 carrier).
     emitDeformedFace(base, D, voxelDistance, voxelColor, packedEntityId, faceId, reVoxelize);
@@ -451,7 +456,8 @@ void main() {
         const int depthOpposite = isDetachedCanvas > 0.5
             ? isoDepthAlongAxis(microOpposite, voxelDepthAxis.xyz)
             : (microOpposite.x + microOpposite.y + microOpposite.z);
-        const int distanceOpposite = encodeDepthWithFace(depthOpposite, slot);
+        // Mirror of stage 1: the opposite plane is the non-triplet polarity.
+        const int distanceOpposite = encodeDepthWithFace(depthOpposite, slot, riserFlip ^ 1);
         const ivec2 baseOpposite = frameOffsetFixed + pos3DtoPos2DIso(microOpposite);
         emitDeformedFace(
             baseOpposite, D, distanceOpposite, voxelColor, packedEntityId, oppositeFaceId, reVoxelize
