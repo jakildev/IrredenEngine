@@ -28,7 +28,7 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     // the per-voxel occlusion cull (#1812) can read visibleIsoBounds (offset 176)
     // and occlusionCullMipCount (offset 196), and the #2258 Step-B feeder
     // classify (with isDetachedCanvas + residualYaw) can read the feeder lanes
-    // (offsets 200/204/208); the rest are layout placeholders this pass does
+    // (offsets 200/204); the rest are layout placeholders this pass does
     // not consume.
     uniform float isDetachedCanvas;     // offset 76 (was _yawPadding)
     uniform vec4 faceDeform[3];         // offset 80
@@ -48,13 +48,14 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     // Per-voxel Hi-Z occlusion-cull gate (#1812): 0 = off (byte-identical),
     // non-zero = Hi-Z chain level count → run the per-voxel test.
     uniform int occlusionCullMipCount;  // offset 196
-    // Offsets 200/204/208 — #2258 Step-B feeder partition (shifted one slot
-    // down by the #1812 gate). feederSubCap = the per-face-edge micro-grid cap
-    // for the feeder dispatch (struct 1's zTotal = feederSubCap²);
-    // feederPassTailBase / feederPass are read by stage 1.
+    // Offsets 200/204 — #2258 Step-B feeder partition (shifted one slot down
+    // by the #1812 gate). feederSubCap = the per-face-edge micro-grid cap for
+    // the feeder dispatch (struct 1's zTotal = feederSubCap²);
+    // feederPassTailBase is read by stage 1. The former feederPass flag at 208
+    // is a compile-time IR_FEEDER_PASS specialization now (architect a′), so
+    // it's a reserved pad — not declared here.
     uniform int feederSubCap;           // offset 200
     uniform int feederPassTailBase;     // offset 204
-    uniform int feederPass;             // offset 208
 };
 
 // Finest Hi-Z downsampled level (conceptual mip 1) over last frame's canvas

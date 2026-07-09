@@ -32,6 +32,11 @@ const char *const kFileCompPerAxisCellCompact = "shaders/c_per_axis_cell_compact
 const char *const kFileCompPerAxisCellFinalize = "shaders/c_per_axis_cell_finalize.glsl";
 
 const char *const kFileCompVoxelToTrixelStage1 = "shaders/c_voxel_to_trixel_stage_1.glsl";
+// #2258 Step B: the feeder-pass compile-time specialization of stage 1
+// (IR_FEEDER_PASS 1) — a second program built from the same shared body, so the
+// visible stage-1 kernel carries none of the feeder branches (architect a′).
+const char *const kFileCompVoxelToTrixelStage1Feeder =
+    "shaders/c_voxel_to_trixel_stage_1_feeder.glsl";
 const char *const kFileCompVoxelToTrixelStage2 = "shaders/c_voxel_to_trixel_stage_2.glsl";
 const char *const kFileCompTrixelToTrixel = "shaders/c_trixel_to_trixel.glsl";
 const char *const kFileCompTextToTrixel = "shaders/c_text_to_trixel.glsl";

@@ -501,10 +501,10 @@ struct FrameDataVoxelToCanvas {
     // order-independent. Read only by c_voxel_to_trixel_stage_1;
     // std140-appended after visibleIsoBounds_ (offset 192) so every prior
     // offset is unchanged. Tail lanes: offset 196 is the #1812 per-voxel
-    // occlusion-cull gate; 200/204/208 are the #2258 Step-B shadow-feeder
+    // occlusion-cull gate; 200/204 are the #2258 Step-B shadow-feeder
     // dispatch partition (repurposed from the former resolveMode pads, shifted
-    // one slot down by the #1812 gate); trailing pads keep sizeof at the
-    // 16-byte std140 stride for the full-struct subData uploads.
+    // one slot down by the #1812 gate), packing the 192..208 16-byte std140
+    // stride exactly for the full-struct subData uploads.
     int resolveMode_ = 0;
     // Per-voxel Hi-Z occlusion-cull gate (#1812), refining the per-chunk cull
     // (#1294 child 2/3). 0 = the compact's per-voxel test is skipped, so the
@@ -529,16 +529,13 @@ struct FrameDataVoxelToCanvas {
     int feederSubCap_ = 0;
     // effectiveVoxelCount the compact was dispatched with — the tail base the
     // feeder pass reads from (feeder slot i lives at feederPassTailBase_-1-i).
+    // Lands at offset 204, packing the 192..208 std140 row exactly (no tail
+    // pad): the runtime feederPass_ flag that once followed moved to a
+    // COMPILE-TIME shader specialization (IR_FEEDER_PASS; architect option
+    // a′) — the two stage-1 programs are distinct compiled kernels, so no
+    // per-dispatch flag upload is needed and the hottest kernel carries none
+    // of the feeder branches.
     int feederPassTailBase_ = 0;
-    // 0 = the visible stage-1 dispatch (struct 0); 1 = the feeder stage-1
-    // dispatch (struct 1). Flipped per-dispatch by the CPU (the resolveMode_
-    // partial-reupload precedent).
-    int feederPass_ = 0;
-    // feederPass_ at 208 opens the 208..224 std140 row; pads fill it so the
-    // full-struct subData uploads stay 16-byte-stride sized.
-    int feederPad0_ = 0;
-    int feederPad1_ = 0;
-    int feederPad2_ = 0;
 };
 
 struct FrameDataTrixelToTrixel {
@@ -806,18 +803,18 @@ static_assert(
 );
 static_assert(
     offsetof(FrameDataVoxelToCanvas, feederSubCap_) == 200 &&
-        offsetof(FrameDataVoxelToCanvas, feederPassTailBase_) == 204 &&
-        offsetof(FrameDataVoxelToCanvas, feederPass_) == 208,
-    "FrameDataVoxelToCanvas feeder lanes (#2258 Step B) must occupy the three "
-    "int slots after occlusionCullMipCount_ (offsets 200/204/208, shifted one "
+        offsetof(FrameDataVoxelToCanvas, feederPassTailBase_) == 204,
+    "FrameDataVoxelToCanvas feeder lanes (#2258 Step B) must occupy the two "
+    "int slots after occlusionCullMipCount_ (offsets 200/204, shifted one "
     "slot down by the #1812 gate) — the compact + stage-1 GLSL/Metal blocks "
-    "read them at those std140 offsets"
+    "read them at those std140 offsets; no pad follows now the visible/feeder "
+    "split is compile-time (IR_FEEDER_PASS)"
 );
 static_assert(
-    sizeof(FrameDataVoxelToCanvas) == 224,
+    sizeof(FrameDataVoxelToCanvas) == 208,
     "FrameDataVoxelToCanvas size must mirror its std140 GLSL block "
-    "(feederPass_ at 208 opens the 208..224 16-byte-stride row; "
-    "feederPad0_..2_ fill it for the full-struct subData uploads)"
+    "(resolveMode_ + the #1812 gate + the two feeder lanes pack the 192..208 "
+    "16-byte-stride tail exactly)"
 );
 
 struct FrameDataSun {

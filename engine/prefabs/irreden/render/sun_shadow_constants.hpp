@@ -146,11 +146,11 @@ inline IRMath::IsoBounds2D sunBakeFrustumUVBounds(
 // in VOXEL_TO_TRIXEL_STAGE_1 can reuse the exact derivation without pulling the
 // bake system header; a drift here shows as shadow holes in the render-debug
 // loop, which is the acceptance gate.
-constexpr int kFeederSunShadowMapDim = 1024;       // == kSunShadowMapDim
-constexpr int kFeederSunShadowCascadeCount = 2;    // == kSunShadowCascadeCount
-constexpr float kFeederCascadeSplitRatio = 0.4f;   // == kCascadeSplitRatio
-constexpr float kFeederIsoDepthMin = -256.0f;      // == the bake's local kIsoDepthMin
-constexpr float kFeederIsoDepthMax = 256.0f;       // == the bake's local kIsoDepthMax
+constexpr int kFeederSunShadowMapDim = 1024;     // == kSunShadowMapDim
+constexpr int kFeederSunShadowCascadeCount = 2;  // == kSunShadowCascadeCount
+constexpr float kFeederCascadeSplitRatio = 0.4f; // == kCascadeSplitRatio
+constexpr float kFeederIsoDepthMin = -256.0f;    // == the bake's local kIsoDepthMin
+constexpr float kFeederIsoDepthMax = 256.0f;     // == the bake's local kIsoDepthMax
 // The ONE render-debug-loop-tunable knob (#2258 Step B): the per-face-edge
 // feeder sample count as a multiple of the bake's texel density. Widen above
 // 1.0 only if validation shows shadow holes at an off-screen-caster boundary.
@@ -169,13 +169,12 @@ constexpr float kFeederSubSafetyFactor = 1.0f;
 // (byte-identical). @p sunDir is the cached frame sun direction (zero when
 // shadows are off ⇒ no feeders are appended, so the returned effSub is moot but
 // safe). Call once per canvas in VOXEL_TO_TRIXEL_STAGE_1's per-canvas tick.
-inline int feederSubCap(
-    const IRMath::vec3 &sunDir, IRMath::CardinalIndex cardinalIndex, int effSub
-) {
+inline int
+feederSubCap(const IRMath::vec3 &sunDir, IRMath::CardinalIndex cardinalIndex, int effSub) {
     const int cappedEffSub = IRMath::max(effSub, 1);
     const float sunLen = IRMath::length(sunDir);
     if (sunLen <= 0.0f) {
-        return cappedEffSub;  // shadows off — feeder pass is empty, cap is moot
+        return cappedEffSub; // shadows off — feeder pass is empty, cap is moot
     }
     const IRMath::vec3 dir = sunDir / sunLen;
     IRMath::vec3 uHat, vHat;
@@ -187,24 +186,27 @@ inline int feederSubCap(
     const IRMath::vec3 sweep = -dir * kSunShadowMaxDistance;
 
     const float splitDepth =
-        kFeederIsoDepthMin +
-        (kFeederIsoDepthMax - kFeederIsoDepthMin) * kFeederCascadeSplitRatio;
-    const float cascadeMaxDepth[kFeederSunShadowCascadeCount] = {
-        splitDepth, kFeederIsoDepthMax
-    };
+        kFeederIsoDepthMin + (kFeederIsoDepthMax - kFeederIsoDepthMin) * kFeederCascadeSplitRatio;
+    const float cascadeMaxDepth[kFeederSunShadowCascadeCount] = {splitDepth, kFeederIsoDepthMax};
 
     int cap = 1;
     for (int ci = 0; ci < kFeederSunShadowCascadeCount; ++ci) {
         const IRMath::IsoBounds2D uv = sunBakeFrustumUVBounds(
-            isoBounds, kFeederIsoDepthMin, cascadeMaxDepth[ci],
-            uHat, vHat, dir, cardinalIndex, sweep
+            isoBounds,
+            kFeederIsoDepthMin,
+            cascadeMaxDepth[ci],
+            uHat,
+            vHat,
+            dir,
+            cardinalIndex,
+            sweep
         );
         const float extent = IRMath::max(uv.max_.x - uv.min_.x, uv.max_.y - uv.min_.y);
         if (extent > 0.0f) {
-            const float texelsPerWorldUnit =
-                static_cast<float>(kFeederSunShadowMapDim) / extent;
+            const float texelsPerWorldUnit = static_cast<float>(kFeederSunShadowMapDim) / extent;
             cap = IRMath::max(
-                cap, static_cast<int>(IRMath::ceil(texelsPerWorldUnit * kFeederSubSafetyFactor))
+                cap,
+                static_cast<int>(IRMath::ceil(texelsPerWorldUnit * kFeederSubSafetyFactor))
             );
         }
     }

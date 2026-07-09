@@ -994,20 +994,17 @@ struct FrameDataVoxelToTrixel {
     // c_voxel_visibility_compact.
     int occlusionCullMipCount;
     // Shadow-feeder dispatch partition (#2258 Step B), mirroring
-    // FrameDataVoxelToCanvas::feederSubCap_ / feederPassTailBase_ / feederPass_
-    // (offsets 200/204/208 — shifted one slot down by the #1812 gate). The
-    // compact tail-appends off-screen shadow feeders into a second indirect
-    // struct; stage 1 rasters them in a second dispatch at a strided micro-grid
-    // capped to feederSubCap per face edge. == effSub (or zero feeders) is
-    // byte-identical. Read by the compact + stage 1.
+    // FrameDataVoxelToCanvas::feederSubCap_ / feederPassTailBase_ (offsets
+    // 200/204 — shifted one slot down by the #1812 gate). The compact
+    // tail-appends off-screen shadow feeders into a second indirect struct;
+    // stage 1 rasters them in a second dispatch at a strided micro-grid capped
+    // to feederSubCap per face edge. == effSub (or zero feeders) is
+    // byte-identical. Read by the compact + stage 1. WHICH pass a stage-1
+    // kernel is (visible vs feeder) is a COMPILE-TIME IR_FEEDER_PASS
+    // specialization now (architect a′), so no runtime flag lane follows —
+    // the two lanes pack the 192..208 std140 row exactly.
     int feederSubCap;
     int feederPassTailBase;
-    int feederPass;
-    // feederPass at 208 opens the 208..224 std140 row; pads fill it, mirroring
-    // FrameDataVoxelToCanvas::feederPad0_..2_.
-    int _feederPad0;
-    int _feederPad1;
-    int _feederPad2;
 };
 
 // Smooth analytic vision-circle reveal for one fog disc, shared by
