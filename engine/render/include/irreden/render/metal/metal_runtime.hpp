@@ -8,6 +8,15 @@
 
 namespace IRRender {
 
+class RenderDevice;
+
+// Headless render-device bring-up for GPU unit tests (vehicle A, #1640).
+// Creates a windowless Metal device, initializes the runtime with a null layer,
+// wires IRRender::device(), and opens an initial command buffer — everything a
+// compute test needs to drive dispatchCompute + readback without a swapchain.
+// Returns nullptr when no Metal device is available so the caller can skip.
+RenderDevice *bootstrapHeadlessRenderDevice();
+
 class MetalPipelineStateProvider {
   public:
     virtual ~MetalPipelineStateProvider() = default;
