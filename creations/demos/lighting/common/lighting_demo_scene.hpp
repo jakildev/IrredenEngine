@@ -92,6 +92,15 @@ struct DemoConfig {
     float skyIntensity_ = 0.0f;
     vec3 skyColor_ = vec3(0.5f, 0.7f, 1.0f);
 
+    // Optional per-demo auto-screenshot shot table. When `shots_` is non-null
+    // it replaces the shared `kShots` (still overridden by
+    // `--light-boundary-sweep`) — used by the spot demo to add yaw shots that
+    // prove the winning-light-ID cone stays world-oriented across camera yaw
+    // (#2318). Points at a static array; the config is copied by value but the
+    // pointee outlives it.
+    const IRVideo::AutoScreenshotShot *shots_ = nullptr;
+    int numShots_ = 0;
+
     // Optional override hooks. When `geometryFn_` is set, the demo's scene
     // geometry comes from the callback instead of the default voxel-pool /
     // SDF row layout — useful for SDF-only or animated-sun demos that need
@@ -315,15 +324,22 @@ inline void createLights(const DemoConfig &config) {
     }
 
     if (config.addSpot_) {
+        // Mounted just above the shapes (up is -z here; floor top ≈ z 3, shape
+        // tops ≈ z -3) and aimed straight down, so the winning-light-ID cone
+        // (#2318) casts a clean circular pool with a soft rim onto the floor —
+        // the unambiguous "cone, not a sphere" demonstration. Mounted close
+        // (~14 voxels up) so the Manhattan-falloff residual is still strong at
+        // the floor (alpha ≈ 0.55) instead of decaying to near-dark over the
+        // 32-step propagate budget.
         IREntity::createEntity(
-            C_LocalTransform{vec3(10.0f, -10.0f, -2.0f)},
+            C_LocalTransform{vec3(24.0f, 6.0f, -11.0f)},
             C_LightSource{
                 LightType::SPOT,
-                Color{170, 120, 255, 255},
-                2.4f,
-                static_cast<std::uint8_t>(42),
-                vec3(0.75f, 0.85f, 0.25f),
-                42.0f
+                Color{210, 90, 255, 255},
+                1.6f,
+                static_cast<std::uint8_t>(32),
+                vec3(0.0f, 0.0f, 1.0f),
+                44.0f
             }
         );
     }
@@ -458,6 +474,10 @@ inline void initSystems(const DemoConfig &config) {
             }
             screenshotConfig.shots_ = g_boundarySweepShots.data();
             screenshotConfig.numShots_ = static_cast<int>(g_boundarySweepShots.size());
+        } else if (config.shots_ != nullptr) {
+            // Per-demo shot table (e.g. the spot demo's yaw sweep, #2318).
+            screenshotConfig.shots_ = config.shots_;
+            screenshotConfig.numShots_ = config.numShots_;
         } else {
             screenshotConfig.shots_ = kShots;
             screenshotConfig.numShots_ = sizeof(kShots) / sizeof(kShots[0]);

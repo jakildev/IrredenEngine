@@ -31,7 +31,8 @@ constant float kLightVolumeSize = 128.0;
 constant float kLightVolumeHalfExtent = 64.0;
 
 // Layout must match the propagate/seed UBO layout so the shared buffer
-// binding works. Lighting only reads `worldOriginVoxel`.
+// binding works. Lighting reads `worldOriginVoxel.xyz` (volume origin) and
+// `.w` (has-SPOT flag, #2318).
 struct LightVolumeParams {
     int   _gridSize;
     int   _halfExtent;
@@ -39,6 +40,38 @@ struct LightVolumeParams {
     float _stepFalloff;
     int4  worldOriginVoxel;
 };
+
+// SPOT cone shaping (#2318). Mirrors GPULightSource / LightType::SPOT.
+struct GPULightSource {
+    float4 originAndType;
+    float4 colorAndIntensity;
+    float4 directionAndRadius;
+    float4 coneAndSeedAlpha;
+    float4 trueOriginVoxel;
+};
+constant int kLightTypeSpot = 3;
+constant float kConeEdgeSoftness = 1.15f;
+// Metal has no radians() builtin (GLSL does); convert degrees inline.
+constant float kDegToRad = 3.14159265358979323846f / 180.0f;
+
+// Analytic SPOT falloff at world position `pos3D` for the 0-based light
+// `lightIdx`. 1.0 inside the cone, smoothstep to 0.0 across the soft edge
+// band, 0.0 outside. Apex is the light's TRUE (unclamped) origin. Mirrors
+// the GLSL twin.
+float spotConeFactor(device const GPULightSource* lights, int lightIdx, float3 pos3D) {
+    const GPULightSource L = lights[lightIdx];
+    const float3 axis = normalize(L.directionAndRadius.xyz);
+    const float3 toCell = pos3D - L.trueOriginVoxel.xyz;
+    const float toCellLen = length(toCell);
+    if (toCellLen < 1e-4f) {
+        return 1.0f;   // at the apex — fully lit, avoid a 0/0 direction.
+    }
+    const float cosToCell = dot(toCell / toCellLen, axis);
+    const float halfAngle = L.coneAndSeedAlpha.x * 0.5f * kDegToRad;
+    const float cosInner = cos(halfAngle);
+    const float cosOuter = cos(min(halfAngle * kConeEdgeSoftness, 90.0f * kDegToRad));
+    return smoothstep(cosOuter, cosInner, cosToCell);
+}
 
 // ACES Filmic tone mapping (Stephen Hill's fitted curve).
 float3 ACESFilm(float3 x) {
@@ -66,6 +99,10 @@ kernel void c_lighting_to_trixel(
     // Baked sun-aligned depth map — read by the detached world-receive path
     // (#1576 P4b-2) to re-run the cascade lookup at a world-placed voxel's pos.
     device const uint* sunDepthBuf [[buffer(28)]],
+    // Light list for SPOT cone shaping (#2318): the winning-light ID indexes
+    // this to recover cone axis/aperture/apex. Bound transiently at slot 4 by
+    // LIGHTING_TO_TRIXEL; only read on the spot path.
+    device const GPULightSource* lights [[buffer(4)]],
     texture2d<float, access::read_write> trixelColors [[texture(0)]],
     texture2d<int, access::read> trixelDistances [[texture(1)]],
     texture2d<float, access::read> canvasAO [[texture(2)]],
@@ -79,6 +116,10 @@ kernel void c_lighting_to_trixel(
     // single-canvas + detached routes; the `perAxisRoute == 0` guard skips the read
     // on the rotation route. GLSL twin's binding 6.
     texture2d<uint, access::read> trixelEntityIds [[texture(6)]],
+    // Winning-light ID volume (#2318), unit 7. `.r` = light index+1 (÷255) of
+    // the flood winner per cell. Read only on the spot path; bound every tick
+    // so Metal's slot table is populated. GLSL twin's binding 7.
+    texture3d<float, access::read> lightVolumeId [[texture(7)]],
     // Per-axis empty-cell compaction (#2256) — GLSL twin's bindings 25/26.
     const device uint* compactedCells [[buffer(25)]],
     const device uint* cellDrawArgs [[buffer(26)]],
@@ -271,7 +312,22 @@ kernel void c_lighting_to_trixel(
             (localPos + float3(kLightVolumeHalfExtent) + float3(0.5)) /
             float3(kLightVolumeSize);
         const float4 lightSample = lightVolume.sample(volumeSampler, sampleCoord);
-        const float3 light = lightSample.rgb * lightSample.a;
+        float3 light = lightSample.rgb * lightSample.a;
+
+        // SPOT cone shaping (#2318). Gated on the has-SPOT flag
+        // (worldOriginVoxel.w) so no-spot scenes skip the ID fetch + light-list
+        // read entirely and stay byte-identical. Fetch the winning light's ID at
+        // the surface voxel's own cell (NEAREST — not interpolated); if it is a
+        // SPOT, attenuate its volume contribution by the analytic cone factor.
+        if (lightVolumeParams.worldOriginVoxel.w != 0) {
+            const int3 idCell = int3(floor(localPos + float3(kLightVolumeHalfExtent) + float3(0.5)));
+            if (all(idCell >= int3(0)) && all(idCell < int3(int(kLightVolumeSize)))) {
+                const int winId = int(round(lightVolumeId.read(uint3(idCell)).r * 255.0f));
+                if (winId > 0 && int(lights[winId - 1].originAndType.w) == kLightTypeSpot) {
+                    light *= spotConeFactor(lights, winId - 1, pos3D);
+                }
+            }
+        }
         baseRgb = baseRgb + src.rgb * light;
     }
 

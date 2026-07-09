@@ -83,6 +83,12 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
     // know the volume's world origin to map a pixel's world voxel
     // back into the volume texel.
     Buffer *lightVolumeParamsBuf_ = nullptr;
+    // Light list SSBO (#2318): bound transiently at slot 4 during this pass so
+    // the spot-cone factor can look up the winning light's axis / aperture /
+    // apex. Owned + uploaded by COMPUTE_LIGHT_VOLUME (which binds it at slot 4
+    // for its own seed pass); nothing downstream in the frame reads slot 4, so
+    // no restore is needed. Only read on the has-SPOT path.
+    Buffer *lightSourceBuf_ = nullptr;
     // Baked sun-aligned depth map (slot 28), created by BAKE_SUN_SHADOW_MAP.
     // The opt-in detached world-receive path (#1576 P4b-2) re-runs the cascade
     // lookup against it at a world-placed voxel's pos. Resolved lazily (it exists
@@ -184,6 +190,12 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         // sampler always sees the latest dilation result.
         if (lightVolume != nullptr) {
             lightVolume->getReadTexture()->bind(5);
+            // Winning-light ID volume (image unit 7, #2318). Bound every tick so
+            // Metal's slot table is populated; only fetched on the has-SPOT
+            // path. Stays resident across the per-axis dispatches below (they
+            // never rebind unit 7), so per-axis canvases get spot cones too.
+            lightVolume->getIdReadTexture()
+                ->bindAsImage(7, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
         }
         // Entity-id image (unit 6, R/O): the lighting shader reads it ONLY to
         // recover the fog cut-face flag (bit 29) and force those faces fully lit
@@ -196,6 +208,11 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         voxelFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataVoxelToCanvas);
         sunFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataSun);
         lightVolumeParamsBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_LightVolumeParams);
+        // Light list (SSBO slot 4) for the spot-cone factor (#2318). SSBO and
+        // image bindings are independent namespaces on both backends, so slot 4
+        // here does not collide with the image-unit-4 sun-shadow texture. Stays
+        // resident across the per-axis dispatches (they never rebind slot 4).
+        lightSourceBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_LightSourceBuffer);
         // Sun-depth map (slot 28) for the opt-in detached world-receive path
         // (#1576 P4b-2). Bound every tick — the shader declares the SSBO
         // unconditionally (Metal kernel arg); only a world-placed detached solid
@@ -477,6 +494,9 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         // which is registered ahead of LIGHTING_TO_TRIXEL in the render
         // pipeline; safe to look up at init time.
         p->lightVolumeParamsBuf_ = IRRender::getNamedResource<Buffer>("LightVolumeParamsBuffer");
+        // LightSourceBuffer is also created by COMPUTE_LIGHT_VOLUME (registered
+        // ahead of LIGHTING_TO_TRIXEL); safe to resolve here (#2318).
+        p->lightSourceBuf_ = IRRender::getNamedResource<Buffer>("LightSourceBuffer");
         p->paletteLUT_ = IRRender::getNamedResource<Texture2D>("PaletteLUT_Nearest");
         IRRender::tagGpuStage(systemId, "lightingToTrixel");
         return systemId;

@@ -57,6 +57,22 @@ makeLightWithRadius(IRMath::vec3 position, IRMath::Color color, std::uint8_t rad
     );
 }
 
+IREntity::EntityId makeSpotLight(
+    IRMath::vec3 position, IRMath::vec3 direction, std::uint8_t radius, float coneAngleDeg
+) {
+    return IREntity::createEntity(
+        IRComponents::C_WorldTransform{position, vec4(0.0f, 0.0f, 0.0f, 1.0f), vec3(1.0f)},
+        C_LightSource{
+            LightType::SPOT,
+            Color{255, 255, 255, 255},
+            1.0f,
+            radius,
+            direction,
+            coneAngleDeg
+        }
+    );
+}
+
 } // namespace
 
 TEST_F(PerCanvasLightScopeTest, WorldScopeLightAppearsInEveryCanvasGather) {
@@ -70,13 +86,26 @@ TEST_F(PerCanvasLightScopeTest, WorldScopeLightAppearsInEveryCanvasGather) {
     out.reserve(IRRender::kLightVolumeMaxSources);
     std::uint32_t eligible = 0;
     int maxRadius = 0;
+    bool hasSpot = false;
 
-    const std::uint32_t countA =
-        IRSystem::detail::gatherLightSources(out, canvasA, ivec3{0, 0, 0}, maxRadius, eligible);
+    const std::uint32_t countA = IRSystem::detail::gatherLightSources(
+        out,
+        canvasA,
+        ivec3{0, 0, 0},
+        maxRadius,
+        eligible,
+        hasSpot
+    );
     EXPECT_EQ(countA, 1u);
 
-    const std::uint32_t countB =
-        IRSystem::detail::gatherLightSources(out, canvasB, ivec3{0, 0, 0}, maxRadius, eligible);
+    const std::uint32_t countB = IRSystem::detail::gatherLightSources(
+        out,
+        canvasB,
+        ivec3{0, 0, 0},
+        maxRadius,
+        eligible,
+        hasSpot
+    );
     EXPECT_EQ(countB, 1u);
 }
 
@@ -94,13 +123,26 @@ TEST_F(PerCanvasLightScopeTest, ChildOfCanvasLightOnlyAppearsForOwnCanvas) {
     out.reserve(IRRender::kLightVolumeMaxSources);
     std::uint32_t eligible = 0;
     int maxRadius = 0;
+    bool hasSpot = false;
 
-    const std::uint32_t countA =
-        IRSystem::detail::gatherLightSources(out, canvasA, ivec3{0, 0, 0}, maxRadius, eligible);
+    const std::uint32_t countA = IRSystem::detail::gatherLightSources(
+        out,
+        canvasA,
+        ivec3{0, 0, 0},
+        maxRadius,
+        eligible,
+        hasSpot
+    );
     EXPECT_EQ(countA, 1u);
 
-    const std::uint32_t countB =
-        IRSystem::detail::gatherLightSources(out, canvasB, ivec3{0, 0, 0}, maxRadius, eligible);
+    const std::uint32_t countB = IRSystem::detail::gatherLightSources(
+        out,
+        canvasB,
+        ivec3{0, 0, 0},
+        maxRadius,
+        eligible,
+        hasSpot
+    );
     EXPECT_EQ(countB, 1u);
 }
 
@@ -120,15 +162,28 @@ TEST_F(PerCanvasLightScopeTest, MixedScopesEachCanvasSeesOwnPlusWorldScope) {
     out.reserve(IRRender::kLightVolumeMaxSources);
     std::uint32_t eligible = 0;
     int maxRadius = 0;
+    bool hasSpot = false;
 
     // Canvas A: own light + world-scope light = 2.
-    const std::uint32_t countA =
-        IRSystem::detail::gatherLightSources(out, canvasA, ivec3{0, 0, 0}, maxRadius, eligible);
+    const std::uint32_t countA = IRSystem::detail::gatherLightSources(
+        out,
+        canvasA,
+        ivec3{0, 0, 0},
+        maxRadius,
+        eligible,
+        hasSpot
+    );
     EXPECT_EQ(countA, 2u);
 
     // Canvas B: own light + world-scope light = 2.
-    const std::uint32_t countB =
-        IRSystem::detail::gatherLightSources(out, canvasB, ivec3{0, 0, 0}, maxRadius, eligible);
+    const std::uint32_t countB = IRSystem::detail::gatherLightSources(
+        out,
+        canvasB,
+        ivec3{0, 0, 0},
+        maxRadius,
+        eligible,
+        hasSpot
+    );
     EXPECT_EQ(countB, 2u);
 }
 
@@ -155,9 +210,16 @@ TEST_F(PerCanvasLightScopeTest, DirectionalLightStillSkippedRegardlessOfParent) 
     out.reserve(IRRender::kLightVolumeMaxSources);
     std::uint32_t eligible = 0;
     int maxRadius = 0;
+    bool hasSpot = false;
 
-    const std::uint32_t countA =
-        IRSystem::detail::gatherLightSources(out, canvasA, ivec3{0, 0, 0}, maxRadius, eligible);
+    const std::uint32_t countA = IRSystem::detail::gatherLightSources(
+        out,
+        canvasA,
+        ivec3{0, 0, 0},
+        maxRadius,
+        eligible,
+        hasSpot
+    );
     EXPECT_EQ(countA, 0u);
     // No gathered lights → max-radius stays at the gather's zero-init default.
     EXPECT_EQ(maxRadius, 0);
@@ -171,8 +233,9 @@ TEST_F(PerCanvasLightScopeTest, GatherMaxRadiusUncappedForSmallRadius) {
     out.reserve(IRRender::kLightVolumeMaxSources);
     std::uint32_t eligible = 0;
     int maxRadius = 0;
+    bool hasSpot = false;
 
-    IRSystem::detail::gatherLightSources(out, canvas, ivec3{0, 0, 0}, maxRadius, eligible);
+    IRSystem::detail::gatherLightSources(out, canvas, ivec3{0, 0, 0}, maxRadius, eligible, hasSpot);
     // radius=8 is below kLightVolumePropagateIterations (32) — no cap applied.
     EXPECT_EQ(maxRadius, 8);
 }
@@ -186,9 +249,74 @@ TEST_F(PerCanvasLightScopeTest, GatherMaxRadiusCappedAtPropagateIterations) {
     out.reserve(IRRender::kLightVolumeMaxSources);
     std::uint32_t eligible = 0;
     int maxRadius = 0;
+    bool hasSpot = false;
 
-    IRSystem::detail::gatherLightSources(out, canvas, ivec3{0, 0, 0}, maxRadius, eligible);
+    IRSystem::detail::gatherLightSources(out, canvas, ivec3{0, 0, 0}, maxRadius, eligible, hasSpot);
     // radius=255 must be capped to kLightVolumePropagateIterations to prevent
     // the propagate loop from dispatching more iterations than the budget allows.
     EXPECT_EQ(maxRadius, IRRender::kLightVolumePropagateIterations);
+}
+
+// #2318: hasSpot gates the consumer's winning-light-ID read. It must stay
+// false for a scene with only non-SPOT lights so those scenes render exactly
+// as before (byte-identical).
+TEST_F(PerCanvasLightScopeTest, GatherHasSpotFalseWithoutSpotLights) {
+    const IREntity::EntityId canvas = makeCanvasSentinel();
+    makeLight(vec3(0.0f), Color{255, 0, 0, 255}); // EMISSIVE, in-window
+
+    std::vector<IRRender::GPULightSource> out;
+    out.reserve(IRRender::kLightVolumeMaxSources);
+    std::uint32_t eligible = 0;
+    int maxRadius = 0;
+    bool hasSpot = false;
+
+    const std::uint32_t count = IRSystem::detail::gatherLightSources(
+        out,
+        canvas,
+        ivec3{0, 0, 0},
+        maxRadius,
+        eligible,
+        hasSpot
+    );
+    EXPECT_EQ(count, 1u);
+    EXPECT_FALSE(hasSpot);
+}
+
+// #2318: a seeded SPOT light flags hasSpot and carries its TRUE (unclamped)
+// origin separately from the seed cell. An out-of-window spot seeds the
+// clamped window-boundary cell, but the cone consumer must orient from the
+// real apex — so trueOriginVoxel_ keeps the true position while
+// originAndType_.xyz is the clamped seed cell.
+TEST_F(PerCanvasLightScopeTest, GatherSpotFlagsHasSpotAndCarriesTrueOrigin) {
+    const IREntity::EntityId canvas = makeCanvasSentinel();
+    // Origin at world (70,0,0) with the ±64 window centered on (0,0,0): the
+    // x axis clamps to halfExtent-1 = 63. radius 32 keeps the boundary-
+    // discounted seed alpha positive so the spot is actually seeded.
+    makeSpotLight(vec3(70.0f, 0.0f, 0.0f), vec3(-1.0f, 0.0f, 0.0f), 32, 40.0f);
+
+    std::vector<IRRender::GPULightSource> out;
+    out.reserve(IRRender::kLightVolumeMaxSources);
+    std::uint32_t eligible = 0;
+    int maxRadius = 0;
+    bool hasSpot = false;
+
+    const std::uint32_t count = IRSystem::detail::gatherLightSources(
+        out,
+        canvas,
+        ivec3{0, 0, 0},
+        maxRadius,
+        eligible,
+        hasSpot
+    );
+    ASSERT_EQ(count, 1u);
+    EXPECT_TRUE(hasSpot);
+    // Seed cell clamped to the window edge on x, true on y/z.
+    EXPECT_EQ(static_cast<int>(out[0].originAndType_.x), IRComponents::kLightVolumeHalfExtent - 1);
+    EXPECT_EQ(static_cast<int>(out[0].originAndType_.y), 0);
+    // True apex preserved unclamped for the cone factor.
+    EXPECT_EQ(static_cast<int>(out[0].trueOriginVoxel_.x), 70);
+    EXPECT_EQ(static_cast<int>(out[0].trueOriginVoxel_.y), 0);
+    EXPECT_EQ(static_cast<int>(out[0].trueOriginVoxel_.z), 0);
+    // Type lane still encodes SPOT for the consumer's branch.
+    EXPECT_EQ(static_cast<int>(out[0].originAndType_.w), static_cast<int>(LightType::SPOT));
 }

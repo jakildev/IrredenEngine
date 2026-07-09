@@ -30,6 +30,9 @@ struct GPULightSource {
     vec4 colorAndIntensity;
     vec4 directionAndRadius;
     vec4 coneAndSeedAlpha;
+    // #2318: true (unclamped) world voxel apex — read by the spot-cone
+    // consumer, not here; declared for std430 stride parity (80 bytes).
+    vec4 trueOriginVoxel;
 };
 
 layout(std430, binding = 4) readonly buffer LightSourceBuffer {
@@ -43,10 +46,16 @@ layout(std140, binding = 23) uniform LightVolumeParams {
     float stepFalloff;
     // Phase 1c (#360): camera-anchored window. Subtract this world voxel
     // before mapping the light's world origin into a local texel index.
+    // `.w` carries the has-SPOT flag (#2318), unused by the seed.
     ivec4 lightVolumeWorldOrigin;
 };
 
 layout(rgba8, binding = 0) writeonly uniform image3D lightVolume;
+// Winning-light ID read texture (#2318): seed writes `lightIndex/255` into
+// `.r` (index+1 so 0 stays reserved for "no light"). The propagate pass
+// carries the winning ID inward; the consumer maps it back to a light for
+// the SPOT cone factor.
+layout(rgba8, binding = 1) writeonly uniform image3D lightVolumeId;
 
 void main() {
     const uint lightIndex = gl_GlobalInvocationID.x;
@@ -70,4 +79,16 @@ void main() {
     );
     const float seedAlpha = clamp(light.coneAndSeedAlpha.y, 0.0, 1.0);
     imageStore(lightVolume, cell, vec4(emit, seedAlpha));
+
+    // Winning-light ID: index+1 so 0 stays "no light". RGBA8 `.r` holds only
+    // 0–255, so the 256th light (index 255 → id 256) cannot carry an ID —
+    // it seeds as a plain omni sphere (id 0, no cone). A non-issue for the
+    // "few dozen lights" workload; documented on C_CanvasLightVolume.
+    // Skipped when no SPOT was seeded (worldOriginVoxel.w == 0): the cleared
+    // id volume stays 0 and the consumer never reads it (byte-identical).
+    if (lightVolumeWorldOrigin.w != 0) {
+        const uint idPlusOne = lightIndex + 1u;
+        const float idNorm = (idPlusOne <= 255u) ? float(idPlusOne) / 255.0 : 0.0;
+        imageStore(lightVolumeId, cell, vec4(idNorm, 0.0, 0.0, 0.0));
+    }
 }
