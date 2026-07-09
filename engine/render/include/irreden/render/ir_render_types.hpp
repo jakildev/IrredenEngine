@@ -804,7 +804,19 @@ struct FrameDataSun {
     vec2 cascadeTexelSize_1_ = vec2(1.0f);
     float cascadeSplitDepth_ = 0.0f;
     int cascadeCount_ = 1;
-    float _cascadePad0_ = 0.0f;
+    // #2270 coverage-splat radius (sun texels): c_bake_sun_shadow_map atomicMin's
+    // each caster's depth into a (2·r+1)² box, filling the sun texels a grazing /
+    // point-scattered caster footprint leaves empty (the moth-eaten cast-shadow
+    // holes). atomicMin makes the box a no-op where nearer geometry already
+    // covers a texel, so a saturated-bake host is byte-identical and the fill
+    // concentrates on genuinely-empty hole texels; doubles as the kill switch —
+    // 0 ⇒ the exact single-write path. Engaged for the cardinal main-canvas bake
+    // and the world-placed cast resolve; the C++ driver zeros it for the per-axis
+    // resolve dispatch (structural per-axis / smooth-yaw byte-identity — see
+    // system_bake_sun_shadow_map.hpp patchSunSplatRadius). See
+    // docs/design/sun-shadow-bake-coverage.md. Occupies the trailing std140 pad
+    // floats so the 128-byte layout is unchanged.
+    float sunSplatMaxTexels_ = 6.0f;
     float _cascadePad1_ = 0.0f;
 };
 static_assert(sizeof(FrameDataSun) == 128, "FrameDataSun must match std140 layout");

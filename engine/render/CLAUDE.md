@@ -584,6 +584,18 @@ old occupancy march. Bumping `kSunShadowMaxDistance` is the lever for
 longer shadows; expect proportionally larger sun-space texels (the
 1024² depth map is fixed) and softer shadow boundaries.
 
+The AABB sweep governs which off-screen casters *reach* the map; a
+separate concern is **in-map coverage** — a screen-space bake projects a
+sparse camera-rastered caster set into sun-UV, so a near-overhead sun's
+cast shadow shatters into a moth-eaten point scatter (#1717 / #2270). The
+settled coverage model (the density-ratio + per-pixel-neighbour + down-ray
+extrusion refutations, and the bounded `atomicMin` uniform-box splat that
+fixes it, with its two byte-identity regimes + kill switch) is an
+engine-level invariant future bake work must not re-derive:
+[`docs/design/sun-shadow-bake-coverage.md`](../../docs/design/sun-shadow-bake-coverage.md).
+Read it before touching `c_bake_sun_shadow_map.{glsl,metal}` or
+`FrameDataSun.sunSplatMaxTexels_`.
+
 ## Lighting debug overlay
 
 `IRRender::setDebugOverlay(DebugOverlayMode)` swaps the artistic

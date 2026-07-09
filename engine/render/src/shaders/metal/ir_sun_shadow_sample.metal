@@ -40,7 +40,7 @@ struct FrameDataSun {
     float2 cascadeTexelSize_1;
     float cascadeSplitDepth;
     int cascadeCount;
-    float _cascadePad0;
+    float sunSplatMaxTexels;  // #2270; unused here (sun-map bake only)
     float _cascadePad1;
 };
 

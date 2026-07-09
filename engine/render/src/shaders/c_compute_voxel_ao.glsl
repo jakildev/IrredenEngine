@@ -98,7 +98,7 @@ layout(std140, binding = 29) uniform FrameDataSun {
     uniform vec2 cascadeTexelSize_1;
     uniform float cascadeSplitDepth;
     uniform int cascadeCount;
-    uniform float _cascadePad0;
+    uniform float sunSplatMaxTexels;  // #2270; unused here (sun-map bake only)
     uniform float _cascadePad1;
 };
 
