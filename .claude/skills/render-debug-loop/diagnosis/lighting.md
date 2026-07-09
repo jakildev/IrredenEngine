@@ -26,3 +26,23 @@ The lighting stack is mostly built out. The `LIGHTING_TO_TRIXEL` pipeline stage 
 ## Baseline-diff screenshots
 
 For each lighting phase, a "lighting on vs. off" pair is worth keeping in `docs/render-baselines/` as a reference. When a regression appears, diff new screenshots against the baseline rather than eyeballing.
+
+## Automated light/shadow-domain harness (V3, #2317)
+
+`scripts/light-verify.py` drives the lighting demo family's
+`--light-domain-matrix` (zoom x yaw x pan-distance), `--light-boundary-sweep`
+(#2310), and `--hover-sweep` auto-screenshot series, parses each shot's
+`DOMAIN-STATE` log line (#2315 V1's `logDomainState` hook), and asserts the
+light-gather boundary contract (never `SKIPPED` while in-window/band, always
+`SKIPPED` once out of residual reach; monotone residual fade along the
+boundary sweep; anchor invariant to zoom/yaw) plus a per-shot image compare
+against committed baselines. Run it the same way as `cull-verify.py`:
+
+```
+python3 scripts/light-verify.py                    # verify
+python3 scripts/light-verify.py --update-baselines  # bless new references
+```
+
+Use this instead of the manual "Evaluation pattern" above when checking for
+a light-gather / boundary-clamp regression specifically — the symptom table
+above is for diagnosing a failure this harness (or a human) already found.

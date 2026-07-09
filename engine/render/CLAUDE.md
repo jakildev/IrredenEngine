@@ -564,6 +564,12 @@ drops the overflow case.
 
 **Check:** the flood-fill seed-gather tick does not filter by
 `visibleIsoViewport` without expanding by `C_LightSource::radius_`.
+Automated: `scripts/light-verify.py` (#2317, V3) drives the lighting demo
+family's zoom×yaw×pan-distance shot matrix, parses each shot's
+`DOMAIN-STATE` line, and asserts the boundary-clamp state machine
+(never `SKIPPED` in-window/band, monotone residual fade out to the
+window edge) — see `.claude/skills/render-debug-loop/diagnosis/lighting.md`
+§"Automated light/shadow-domain harness".
 
 ### 4. AO and shadow neighbor-lookup guard band
 
