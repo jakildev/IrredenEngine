@@ -51,13 +51,11 @@ inline float sampleCascadeShadow(
 ) {
     float slope = max(kShadowBiasSlopeMin, dot(normal, sunDir));
     float texelSize = max(texelSz.x, texelSz.y);
+    // Base receiver bias — the trustworthy near-rejection for a DIRECT sun-map
+    // write (splatDist 0). The far window (kMaxShadowDepthRange) always uses
+    // this base `bias`; the NEAR rejection is recomputed per tap below.
+    // Mirrors the GLSL twin.
     float bias = texelSize * kShadowBiasTexelScale / slope + kShadowBiasQuantNoise;
-    // Round-to-cell staircase self-step rejection (#2010) — mirrors the GLSL
-    // twin: selfStepDepthRange lifts the near rejection so a riser's own in-cell
-    // tread (~1 cell closer in sun-Z) is skipped. 0 for every caller except a
-    // detected staircase riser, so detached world-receive + flats stay
-    // byte-identical; the kMaxShadowDepthRange window keeps using `bias`.
-    float nearReject = max(bias, selfStepDepthRange);
 
     float2 sunPxF = (sunUV - origin) / texelSz;
     int2 base = int2(floor(sunPxF));
@@ -71,6 +69,20 @@ inline float sampleCascadeShadow(
             uint stored = sunDepthBuf[bufferOffset + px.y * kSunShadowMapDim + px.x];
             if (stored == 0xFFFFFFFFu) continue;
             float nearestZ = unpackSunDepth(stored);
+            // Per-tap near-rejection (#2319 splat provenance + #2010 staircase
+            // carve) — mirrors the GLSL twin. The #2270 coverage splat may have
+            // written this texel from a caster up to `splatDist` sun texels
+            // away, so its stored depth is trustworthy only to within that
+            // displacement — widen the near reject by splatDist texel-scales. A
+            // SAME-face self-occluder is a nearby splat neighbour (small gap →
+            // skipped); a genuine DIFFERENT-face cast occluder has a large depth
+            // gap → still shadows. A direct write (splatDist 0) keeps the base
+            // scale, so non-splatted paths stay byte-identical. selfStepDepthRange
+            // lifts the near reject as before; the far window keeps base `bias`.
+            float splatDist = float(unpackSunSplatDist(stored));
+            float tapBias = texelSize * (kShadowBiasTexelScale + splatDist) / slope
+                          + kShadowBiasQuantNoise;
+            float nearReject = max(tapBias, selfStepDepthRange);
             float weight = mix(1.0f - frac.x, frac.x, float(dx))
                          * mix(1.0f - frac.y, frac.y, float(dy));
             float depthDiff = sunZ - nearestZ;

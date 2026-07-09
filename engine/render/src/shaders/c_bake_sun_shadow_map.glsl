@@ -93,10 +93,17 @@ void writeSunTexel(int cascadeOffset, ivec2 px, uint packedDepth) {
 // docs/design/sun-shadow-bake-coverage.md).
 void bakeCascadeBox(vec3 sp, vec2 origin, vec2 texelSz, int cascadeOffset, int radius) {
     ivec2 base = ivec2(floor((sp.xy - origin) / texelSz));
-    uint packed = packSunDepth(sp.z);
     for (int dy = -radius; dy <= radius; ++dy) {
         for (int dx = -radius; dx <= radius; ++dx) {
-            writeSunTexel(cascadeOffset, base + ivec2(dx, dy), packed);
+            // Splat provenance (#2319): the Chebyshev displacement of this box
+            // texel from the caster's own (dx=dy=0) texel, clamped to the 3-bit
+            // pack field, so the receiver widens its near-rejection only as far
+            // as this texel was displaced (a direct write stays at the base
+            // bias). Free — the box loop already carries (dx, dy). radius 0 ⇒
+            // only (0,0) ⇒ splatDist 0 ⇒ byte-identical to the single write.
+            uint splatDist = uint(min(max(abs(dx), abs(dy)), 7));
+            writeSunTexel(cascadeOffset, base + ivec2(dx, dy),
+                          packSunDepth(sp.z, splatDist));
         }
     }
 }

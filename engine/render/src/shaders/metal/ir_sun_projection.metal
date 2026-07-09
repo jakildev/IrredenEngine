@@ -34,13 +34,34 @@ inline float3 sunSpaceProject(float3 pos3D, float3 uHat, float3 vHat, float3 sun
 
 // Caster pack / receiver unpack — one co-located inverse pair, so what
 // casters store and what receivers compare cannot drift (see #2083).
-inline uint packSunDepth(float sunZ) {
+//
+// Bit layout (#2319 splat provenance): quantized depth in the high bits, the
+// low 3 bits carry `splatDist` — the Chebyshev displacement (sun texels,
+// clamped 0..7) of THIS write from its caster's own texel under the #2270
+// coverage splat. `splatDist == 0` is a direct write; a splat-filled neighbour
+// records how far it was displaced, so the receiver can trust a direct write at
+// the base bias but widen its near-rejection for a displaced one
+// (ir_sun_shadow_sample). The depth quantum maxes at kSunShadowMapDim^2 = 2^20,
+// so shifting up by 3 stays at 2^23 << the 0xFFFFFFFF empty sentinel, and the
+// recovered float depth is bit-exact vs the pre-#2319 single-write pack (pure
+// shift) — the radius-0 per-axis / smooth-yaw / detached paths stay
+// byte-identical. atomic_fetch_min over the packed word is depth-major and, at
+// equal quantized depth, minimizes splatDist, so a direct write always beats a
+// splat of the same depth into the same texel (strengthens the saturated-host
+// invariant — docs/design/sun-shadow-bake-coverage.md). Mirrors GLSL.
+inline uint packSunDepth(float sunZ, uint splatDist) {
     float biased = clamp(sunZ + kSunDepthOffset, 0.0, kSunDepthOffset * 2.0);
-    return uint(biased * kSunDepthScale);
+    return (uint(biased * kSunDepthScale) << 3) | (splatDist & 7u);
 }
 
 inline float unpackSunDepth(uint packedDepth) {
-    return float(packedDepth) / kSunDepthScale - kSunDepthOffset;
+    return float(packedDepth >> 3) / kSunDepthScale - kSunDepthOffset;
+}
+
+// Splat provenance (#2319): the Chebyshev displacement (0..7 texels) this
+// sun-map write was splatted from its caster's own texel. 0 = direct write.
+inline uint unpackSunSplatDist(uint packedDepth) {
+    return packedDepth & 7u;
 }
 
 // May this receiver sample the cascade at (origin, texelSz)? True only where

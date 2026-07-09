@@ -54,18 +54,10 @@ float sampleCascadeShadow(
 ) {
     float slope = max(kShadowBiasSlopeMin, dot(normal, sunDir));
     float texelSize = max(texelSz.x, texelSz.y);
+    // Base receiver bias — the trustworthy near-rejection for a DIRECT sun-map
+    // write (splatDist 0). The far window (kMaxShadowDepthRange) always uses
+    // this base `bias`; the NEAR rejection is recomputed per tap below.
     float bias = texelSize * kShadowBiasTexelScale / slope + kShadowBiasQuantNoise;
-    // Round-to-cell staircase self-step rejection (#2010). On a rebuilt-rotating
-    // GRID solid the round-to-cell quantization turns a tilted-flat surface into
-    // a voxel staircase whose riser is self-occluded by its own in-cell tread —
-    // a blocker ~1 cell closer in sun-Z than the receiver — reading as venetian
-    // banding. selfStepDepthRange lifts the NEAR rejection so that own-step
-    // blocker is skipped; it is 0 for every caller except a geometrically-
-    // detected staircase riser (c_compute_sun_shadow's detectSelfStepStaircase),
-    // so the detached world-receive path and all flat/cardinal geometry stay
-    // byte-identical. The kMaxShadowDepthRange window below keeps using `bias`,
-    // so genuine contact shadows farther than the self-step still register.
-    float nearReject = max(bias, selfStepDepthRange);
 
     vec2 sunPxF = (sunUV - origin) / texelSz;
     ivec2 base = ivec2(floor(sunPxF));
@@ -79,6 +71,23 @@ float sampleCascadeShadow(
             uint stored = sunDepthBuf[bufferOffset + px.y * kSunShadowMapDim + px.x];
             if (stored == 0xFFFFFFFFu) continue;
             float nearestZ = unpackSunDepth(stored);
+            // Per-tap near-rejection (#2319 splat provenance + #2010 staircase
+            // carve). The #2270 coverage splat may have written this texel from
+            // a caster up to `splatDist` sun texels away, so its stored depth is
+            // trustworthy only to within that displacement — widen the near
+            // reject by splatDist texel-scales. A tilted sun-facing face's
+            // SAME-face self-occluder is a nearby splat neighbour (small depth
+            // gap → skipped); a genuine DIFFERENT-face cast occluder has a large
+            // caster-to-receiver depth gap → still shadows. A direct write
+            // (splatDist 0) keeps the base scale, so every non-splatted receiver
+            // path is byte-identical. selfStepDepthRange (#2010, 0 except on a
+            // detected round-to-cell staircase riser) lifts the near reject as
+            // before. The kMaxShadowDepthRange window below keeps the base
+            // `bias`, so genuine far contact shadows still register.
+            float splatDist = float(unpackSunSplatDist(stored));
+            float tapBias = texelSize * (kShadowBiasTexelScale + splatDist) / slope
+                          + kShadowBiasQuantNoise;
+            float nearReject = max(tapBias, selfStepDepthRange);
             float weight = mix(1.0 - frac.x, frac.x, float(dx))
                          * mix(1.0 - frac.y, frac.y, float(dy));
             float depthDiff = sunZ - nearestZ;
