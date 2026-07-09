@@ -81,6 +81,19 @@ inline void buildVoxelFrameData(
     // per-face deformation for the entity's rotation (T-295).
     const bool detachedCanvas = canvasRotation.isDetached();
     frameData.isDetachedCanvas_ = detachedCanvas ? 1.0f : 0.0f;
+    if (detachedCanvas) {
+        // A detached canvas rasters its pool in MODEL space: the camera pan
+        // must not shift the content inside the canvas (the composite places
+        // the canvas at the entity's camera-relative screen position — a
+        // camera term here would apply the pan twice AND walk the content off
+        // the canvas edge under any integer camera offset). The world canvas
+        // set above keeps the camera term. At camera (0,0) this zero is
+        // byte-identical, which is why the pan desync survived every
+        // camera-at-origin reference capture (#1555's cull face of the same
+        // model-vs-camera-space confusion is fixed at the cull sites in
+        // SYSTEM_VOXEL_TO_TRIXEL_STAGE_1).
+        frameData.cameraTrixelOffset_ = vec2(0.0f);
+    }
     if (detachedCanvas && canvasRotation.reVoxelize_) {
         // Re-voxelize detached canvas (#1553): the entity's full rotation is
         // baked into the private pool's CELL positions by

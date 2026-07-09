@@ -1008,12 +1008,16 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // exactly — a near-cardinal residual can't free the textures while still
         // routing here (the old gap that read freed textures as coverage holes).
         const bool rotating = frameData_.residualYaw_ != 0.0f;
-        if (revoxInverse) {
-            // Dest-cell domain (#1619): the rotated solid rasters in its own
-            // model-space canvas (camera pan/yaw zeroed), so the whole solid is
-            // on-canvas — mark every dest-slot chunk visible. rebuildChunkBounds
-            // keys chunks by SOURCE slot, which no longer matches the dest-slot
-            // domain the compact walks.
+        if (revoxInverse || canvasLocalRotation.isDetached()) {
+            // Model-space canvas domain: EVERY detached canvas (forward-scatter
+            // and re-voxelize alike, at any rotation) rasters its pool in its
+            // own model-space canvas (camera pan/yaw zeroed), so the
+            // camera-space chunk viewport does not apply — panning the camera
+            // must not cull a detached solid out of its own canvas (#1555).
+            // Mark every chunk visible; a detached pool is at most a handful of
+            // chunks. The revoxInverse dest-cell domain (#1619) additionally
+            // needs this because rebuildChunkBounds keys chunks by SOURCE slot,
+            // which no longer matches the dest-slot domain the compact walks.
             const int chunkWords = IRMath::divCeil(effectiveVoxelCount, IRRender::kVoxelChunkSize);
             if (static_cast<int>(allVisibleChunkScratch_.size()) < chunkWords) {
                 allVisibleChunkScratch_.resize(chunkWords, 1u);
@@ -1035,20 +1039,37 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         }
 
         constexpr int kGpuMargin = 4;
-        const IsoBounds2D gpuVp =
-            IRPrefab::SunShadow::shadowFeederCullViewport(kGpuMargin, shadowFeederParams_);
-        frameData_.cullIsoMin_ = ivec2(IRMath::floor(gpuVp.min_));
-        frameData_.cullIsoMax_ = ivec2(IRMath::ceil(gpuVp.max_));
-        // Depth-only shadow-feeder path (#1740): the SAME viewport at the same
-        // margin BEFORE shadowFeederCullViewport widened it toward the sun. A
-        // voxel inside gpuVp (it passed the compact cull) but outside this is an
-        // off-screen shadow feeder — stage 2 skips its colour/entity-id taps.
-        // When sun shadows are off the sweep is zero, so gpuVp == this and stage
-        // 2 skips nothing (byte-identical). Same getCullViewport() the widened
-        // form reads above, so the two boxes are derived consistently.
+        // Read once up front: the world path uploads it as visibleIsoBounds_
+        // and the (world-only) occlusion pre-pass below reuses it.
         const IsoBounds2D visibleVp = IRRender::getCullViewport().isoViewport(kGpuMargin);
-        frameData_.visibleIsoBounds_ =
-            ivec4(ivec2(IRMath::floor(visibleVp.min_)), ivec2(IRMath::ceil(visibleVp.max_)));
+        if (canvasLocalRotation.isDetached()) {
+            // Model-space canvas domain (same rationale as the chunk mask
+            // above): the camera-space per-voxel cull viewport does not apply
+            // to a detached canvas — its content coordinates are model-local
+            // and everything the canvas can hold is "visible" (writes past the
+            // canvas edge already clip at isInsideCanvas). Cover the full
+            // canvas span so no pan/zoom camera state can cull the solid
+            // (#1555); the visible bounds match so stage 2's depth-only
+            // feeder skip (#1740) stays inert for detached content.
+            const ivec2 canvasSpan = triangleCanvasTextures.size_;
+            frameData_.cullIsoMin_ = -canvasSpan;
+            frameData_.cullIsoMax_ = canvasSpan;
+            frameData_.visibleIsoBounds_ = ivec4(-canvasSpan, canvasSpan);
+        } else {
+            const IsoBounds2D gpuVp =
+                IRPrefab::SunShadow::shadowFeederCullViewport(kGpuMargin, shadowFeederParams_);
+            frameData_.cullIsoMin_ = ivec2(IRMath::floor(gpuVp.min_));
+            frameData_.cullIsoMax_ = ivec2(IRMath::ceil(gpuVp.max_));
+            // Depth-only shadow-feeder path (#1740): the SAME viewport at the same
+            // margin BEFORE shadowFeederCullViewport widened it toward the sun. A
+            // voxel inside gpuVp (it passed the compact cull) but outside this is an
+            // off-screen shadow feeder — stage 2 skips its colour/entity-id taps.
+            // When sun shadows are off the sweep is zero, so gpuVp == this and stage
+            // 2 skips nothing (byte-identical). Same getCullViewport() the widened
+            // form reads above, so the two boxes are derived consistently.
+            frameData_.visibleIsoBounds_ =
+                ivec4(ivec2(IRMath::floor(visibleVp.min_)), ivec2(IRMath::ceil(visibleVp.max_)));
+        }
 
         // Occlusion cull gate (#1294 chunk pre-pass + #1812 per-voxel refine, off
         // by default). Enabled only on the states whose distance encoding +
@@ -1057,7 +1078,9 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // beginTick), NONE render mode (encodeDepthWithFace = rawDepth*kDepthEncodeShift), cardinal
         // yaw (!rotating → per-axis canvases inactive, so no split-list
         // interaction), a non-re-voxelize pool (the frustum mask is the real
-        // per-chunk mask, not the all-visible dest-cell scratch), AND a built Hi-Z
+        // per-chunk mask, not the all-visible dest-cell scratch), a NON-detached
+        // canvas (detached content rasters in model space; the camera-space
+        // last-frame Hi-Z has no meaning for it — #1555/#2348), AND a built Hi-Z
         // chain. Any other state keeps every voxel (conservative). The chunk
         // pre-pass ANDs occluded chunks out of ChunkVisibility (24); the compact
         // then runs the per-voxel Hi-Z test on the survivors (occlusionCullMipCount_
@@ -1066,7 +1089,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         const bool occlusionCullActive = IRRender::getVoxelOcclusionCullEnabled() &&
                                          !occlusionLagSourceStale_ &&
                                          frameData_.voxelRenderOptions_.x == 0 && !rotating &&
-                                         revoxBuffer == nullptr && occlusionMipCount > 0;
+                                         revoxBuffer == nullptr &&
+                                         !canvasLocalRotation.isDetached() && occlusionMipCount > 0;
         // The chunk pre-pass (dispatched below on occlusionCullActive) and the
         // per-voxel Hi-Z refine are separately toggleable so the #1812 marginal
         // acceptance gate can A/B the per-voxel test in isolation while the chunk

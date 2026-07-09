@@ -653,7 +653,12 @@ void carveOrbitShape(C_VoxelSetNew &vs, OrbitShape shape) {
             keep = (ax + ay + az) <= r * 1.35f;
             break;
         case OrbitShape::PYRAMID: {
-            const float t = (p.z + half.z) / IRMath::max(2.0f * half.z, 1.0f); // 0 base, 1 apex
+            // 0 base .. 1 apex. World +z points DOWN on screen (see
+            // engine/math/CLAUDE.md), so the apex must sit at -z to read
+            // apex-up: this shape is the orbit ring's z-asymmetry canary —
+            // authored apex-at-+z it rendered upside-down and masqueraded as a
+            // detached-canvas inversion bug.
+            const float t = (half.z - p.z) / IRMath::max(2.0f * half.z, 1.0f);
             const float span = r * (1.0f - IRMath::clamp(t, 0.0f, 1.0f));
             keep = ax <= span && ay <= span;
             break;

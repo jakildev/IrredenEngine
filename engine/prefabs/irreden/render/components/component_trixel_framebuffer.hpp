@@ -50,6 +50,12 @@ struct C_TrixelCanvasFramebuffer {
         return framebuffer_.second->getTextureDepth();
     }
 
+    // The composite color attachment, for CPU readback (the detached_probe
+    // placement-parity harness); mirrors getTextureDepth.
+    const Texture2D &getTextureColor() const {
+        return framebuffer_.second->getTextureColor();
+    }
+
     const ivec2 getResolution() const {
         return framebuffer_.second->getResolution();
     }

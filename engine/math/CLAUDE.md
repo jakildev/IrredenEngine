@@ -19,6 +19,13 @@ depth (vec3 → int):
     distance = x + y + z          (higher = further from camera)
 ```
 
+**World +z points DOWN on screen.** Increasing `z` increases `iso.y`, which
+renders lower; "up" is `-z` (compare canvas_stress: its floor sits at a
+LARGER z than the solids standing on it). Author voxel models accordingly —
+a "head at +z" humanoid or an "apex at +z" pyramid renders upside-down.
+Three independent demos have made exactly this mistake; check here first
+when a model reads vertically inverted.
+
 Helpers:
 
 - `IRMath::pos3DtoPos2DIso(pos3D)` — the projection above.
