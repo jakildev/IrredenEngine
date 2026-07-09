@@ -487,9 +487,7 @@ void initEntities() {
     IREntity::setComponent(mainCanvas, C_CanvasAOTexture{canvasSize});
     IREntity::setComponent(mainCanvas, C_CanvasSunShadow{canvasSize});
     IREntity::setComponent(mainCanvas, C_CanvasLightVolume{});
-    IREntity::setComponent(mainCanvas, C_TrixelCanvasRenderBehavior{});
-    IREntity::setComponent(mainCanvas, C_CanvasFogOfWar{});
+    IRPrefab::Fog::attachToCanvas(mainCanvas, 80);
 
     IRRender::setSunDirection(vec3(0.35f, 0.85f, -0.4f));
-    IRPrefab::Fog::revealRadius(0, 0, 80);
 }

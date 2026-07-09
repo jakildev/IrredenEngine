@@ -11,6 +11,7 @@
 #include <irreden/ir_render.hpp>
 
 #include <irreden/render/components/component_canvas_fog_of_war.hpp>
+#include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 
 #include <cstdint>
 
@@ -98,6 +99,24 @@ inline void clearVisionCircles() {
 inline void clear() {
     if (auto *fog = detail::activeFogComponent()) {
         fog->clearAll();
+    }
+}
+
+/// Attach both components FOG_TO_TRIXEL's archetype requires to @p canvas:
+/// C_TrixelCanvasRenderBehavior (added only if absent, preserving any prior
+/// customized behavior component) and a fresh C_CanvasFogOfWar. FOG_TO_TRIXEL
+/// silently no-ops on a canvas missing either, so co-attaching here removes
+/// that footgun from call sites. @p revealRadius > 0 also reveals an
+/// origin-centered disc of that radius on @p canvas (pass kFogOfWarSize for a
+/// full reveal); 0 (default) attaches only, leaving the grid unexplored.
+inline void attachToCanvas(IREntity::EntityId canvas, int revealRadius = 0) {
+    if (!IREntity::getComponentOptional<IRComponents::C_TrixelCanvasRenderBehavior>(canvas)
+             .has_value())
+        IREntity::setComponent(canvas, IRComponents::C_TrixelCanvasRenderBehavior{});
+    IREntity::setComponent(canvas, IRComponents::C_CanvasFogOfWar{});
+    if (revealRadius > 0) {
+        if (auto opt = IREntity::getComponentOptional<IRComponents::C_CanvasFogOfWar>(canvas))
+            (*opt)->revealRadius(0, 0, revealRadius);
     }
 }
 

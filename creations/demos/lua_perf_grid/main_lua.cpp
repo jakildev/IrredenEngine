@@ -309,8 +309,7 @@ void configureLightingAndCanvas() {
     IREntity::setComponent(mainCanvas, C_CanvasAOTexture{canvasSize});
     IREntity::setComponent(mainCanvas, C_CanvasSunShadow{canvasSize});
     IREntity::setComponent(mainCanvas, C_CanvasLightVolume{});
-    IREntity::setComponent(mainCanvas, C_TrixelCanvasRenderBehavior{});
-    IREntity::setComponent(mainCanvas, C_CanvasFogOfWar{});
+    IRPrefab::Fog::attachToCanvas(mainCanvas, 128);
 
     IRRender::setSunDirection(vec3(0.35f, 0.85f, -0.4f));
     IREntity::createEntity(
@@ -326,7 +325,6 @@ void configureLightingAndCanvas() {
             static_cast<uint8_t>(24)
         }
     );
-    IRPrefab::Fog::revealRadius(0, 0, 128);
 }
 
 // Template helper used only in the CODEGEN branch below — passes ids by

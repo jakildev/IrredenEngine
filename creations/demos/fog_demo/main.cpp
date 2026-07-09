@@ -737,8 +737,7 @@ void initEntities() {
     IREntity::setComponent(mainCanvas, C_CanvasAOTexture{canvasSize});
     IREntity::setComponent(mainCanvas, C_CanvasSunShadow{canvasSize});
     IREntity::setComponent(mainCanvas, C_CanvasLightVolume{});
-    IREntity::setComponent(mainCanvas, C_TrixelCanvasRenderBehavior{});
-    IREntity::setComponent(mainCanvas, C_CanvasFogOfWar{});
+    IRPrefab::Fog::attachToCanvas(mainCanvas);
 
     // High, slightly off-axis sun so each shape casts a visible shadow.
     IRRender::setSunDirection(vec3(0.35f, 0.85f, -0.4f));

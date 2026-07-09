@@ -207,7 +207,7 @@ inline void configureCanvases(bool enableFog) {
     IREntity::setComponent(mainCanvas, C_CanvasLightVolume{});
     IREntity::setComponent(mainCanvas, C_TrixelCanvasRenderBehavior{});
     if (enableFog) {
-        IREntity::setComponent(mainCanvas, C_CanvasFogOfWar{});
+        IRPrefab::Fog::attachToCanvas(mainCanvas);
     }
 
     EntityId guiCanvas = IRRender::getCanvas("gui");
