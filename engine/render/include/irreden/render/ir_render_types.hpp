@@ -98,7 +98,7 @@ struct FrameDataTrixelToFramebuffer {
     /// Added to (rescaled) raw canvas distance before depth normalization. 0 for
     /// world/overlay canvases; for a world-placed per-entity canvas it is the
     /// entity world iso depth in encoded framebuffer units
-    /// (pos3DtoDistance(entityPos) * effSub * 4 — the encodeDepthWithFace ×4 over
+    /// (pos3DtoDistance(entityPos) * effSub * 8 — the encodeDepthWithFace ×8 over
     /// the ×subdivision depth scale).
     int distanceOffset_ = 0;
     /// Smooth camera Z-yaw forward-scatter composite (T3 / #1310). Consumed

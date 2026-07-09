@@ -156,8 +156,8 @@ void main() {
                     continue;
                 }
                 // Front-most per screen pixel: smallest encoded distance wins
-                // (depth dominates the 2 slot bits), exactly like the main
-                // canvas atomicMin store.
+                // (depth dominates the 3 low bits — flip+slot), exactly like
+                // the main canvas atomicMin store.
                 atomicMin(
                     resolveScratch[mainPixel.y * canvasSizePixels.x + mainPixel.x],
                     encoded
