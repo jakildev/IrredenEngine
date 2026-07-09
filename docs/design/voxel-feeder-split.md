@@ -318,7 +318,9 @@ this needs zero engine infra:
    reserved std140 pad (`feederLanesPad_`, offset 204) — the flag is compile-time
    now.
 4. **C++** builds the feeder program as a second `ShaderProgram` and dispatches
-   it from the existing `if (frameData_.feederSubCap_ > 0)` block, `bindRange`-ing
+   it unconditionally after the visible dispatch — empty (every workgroup
+   early-returns) when the compact classified zero feeders, and `feederSubCap()`
+   floors at `cappedEffSub` so a `> 0` guard would be vacuous — `bindRange`-ing
    binding 26 onto struct 1; the visible dispatch keeps the original program.
    Metal bookkeeping: the feeder function name must be added to BOTH
    `threadgroupSizeForFunctionName` (2,3,8) **and** `functionUsesImageAtomicScratch`
