@@ -128,7 +128,8 @@ const uint kPerAxisCellComputeTile = 256u;  // kPerAxisCellComputeTile (16×16 t
 // uploads `lightVolumeWorldOrigin` (the world voxel that maps to the
 // volume's center texel) each frame; subtract it from `pos3D` before
 // converting to a sample coordinate. Mirrors LightVolumeParams in
-// ir_render_types.hpp — only `.xyz` is meaningful, `.w` is reserved.
+// ir_render_types.hpp — `.xyz` is the volume origin, `.w` is the
+// has-SPOT flag (#2318).
 // Layout tombstones — must match the propagate/seed UBO layout
 // (c_seed_light_volume.glsl, c_propagate_light_volume.glsl). Lighting
 // only reads the origin; leading-underscore names mark the unused slots.

@@ -1083,8 +1083,7 @@ struct LightVolumeParams {
     /// Phase 1c (#360): camera-anchored origin. The 128³ light volume
     /// is centered on this world voxel each frame so a panned camera
     /// keeps lights in-range. Stored as `ivec4` for std140 alignment;
-    /// only `.xyz` is meaningful. `.w` is reserved for a future "snap
-    /// quantum changed" or "force re-clear" flag.
+    /// `.xyz` is the volume origin, `.w` is the has-SPOT flag (#2318).
     ivec4 worldOriginVoxel_ = ivec4(0);
 };
 static_assert(sizeof(LightVolumeParams) == 32, "LightVolumeParams must match std140 layout");
