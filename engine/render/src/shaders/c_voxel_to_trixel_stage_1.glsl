@@ -191,6 +191,14 @@ void resolveWinnerTap(const ivec2 canvasPixel, const int voxelDistance, const ui
 // column lengths ≤ √3, since |col0|² = 3 - 2(c±s) ≤ 3 for X/Y faces);
 // detached canvases cap at n=6 for full SO(3).
 // At residualYaw==0 on any canvas the identity D collapses n to 1.
+// KEEP IN SYNC with c_voxel_visibility_compact.{glsl,metal} voxelOccludedByHiZ:
+// the per-voxel Hi-Z occlusion cull's sampled window MUST be a conservative
+// superset of this function's write set (`base + roundHalfUp(D * src)` for src
+// across the [0,2)x[0,3) invocation lattice), so a visible voxel's own last-frame
+// depth write always lands in the window it is tested against. Widening this
+// emission hull (a larger super-sample lattice, a new dilation, a bigger D)
+// without widening the compact's window re-introduces the #1812 static-scene
+// silhouette holes (it false-culls voxels whose write escapes the stale window).
 void emitDeformedFace(
     const ivec2 base, const mat2 D, const int voxelDistance, const int faceId,
     const bool reVoxelize

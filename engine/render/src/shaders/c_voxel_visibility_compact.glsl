@@ -246,15 +246,43 @@ bool voxelOccludedByHiZ(ivec3 voxelPos, ivec2 isoPos) {
         return false;
     }
     // iso -> canvas pixel, exactly as dispatchChunkOcclusion / stage 1 at NONE
-    // mode (effectiveTrixelSubdivisionScale == 1).
-    ivec2 canvasPixel = trixelCanvasOffsetZ1 + ivec2(floor(frameCanvasOffset)) + isoPos;
-    // A voxel projects to ~1 iso px, so the finest downsampled level (source
-    // px >> 1) always covers the footprint. Expand by one texel and take the max.
-    ivec2 texel = canvasPixel >> 1;
+    // mode (effectiveTrixelSubdivisionScale == 1). This is stage 1's emit `base`.
+    ivec2 base = trixelCanvasOffsetZ1 + ivec2(floor(frameCanvasOffset)) + isoPos;
+    // Sample the Hi-Z over the EMISSION HULL — the conservative superset of every
+    // pixel stage 1 can write for this voxel — NOT a fixed ±1 window. stage 1's
+    // emitDeformedFace writes each face at `base + roundHalfUp(D_s * src)` for src
+    // across the [0,2)x[0,3) invocation lattice (local_size 2x3), per visible-
+    // triplet slot s, with D_s = mat2(faceDeform[s].xy, faceDeform[s].zw). The
+    // fixed ±1 window missed the +iso extreme of that hull at silhouette / upper
+    // edges (the near Z face is unexposed so it never writes at `base`, and the
+    // exposed X/Y faces land past the window), false-culling a VISIBLE voxel whose
+    // own last-frame depth write fell outside the sampled window — the #1812
+    // static-scene hole. The window MUST stay a superset of emitDeformedFace's
+    // write set (the self-referential Hi-Z then re-anchors every surviving voxel):
+    // KEEP IN SYNC with c_voxel_to_trixel_stage_1.{glsl,metal} emitDeformedFace.
+    // faceDeform is identity at residualYaw==0 (the only path the cull runs on), so
+    // this reduces to a fixed ~3x4-texel box on the cardinal path; deriving it from
+    // faceDeform keeps it correct by construction if the emit deform ever changes.
+    const vec2 hullCorners[4] =
+        vec2[4](vec2(0.0, 0.0), vec2(2.0, 0.0), vec2(0.0, 3.0), vec2(2.0, 3.0));
+    vec2 loF = vec2(1.0e30);
+    vec2 hiF = vec2(-1.0e30);
+    for (int s = 0; s < 3; ++s) {
+        mat2 D = mat2(faceDeform[s].xy, faceDeform[s].zw);
+        for (int c = 0; c < 4; ++c) {
+            vec2 p = D * hullCorners[c];
+            loF = min(loF, p);
+            hiF = max(hiF, p);
+        }
+    }
+    // ±1 px pad absorbs roundHalfUp of the intra-hull super-sample taps; >>1 maps
+    // canvas px to the finest half-res Hi-Z level.
+    ivec2 loTexel = (base + ivec2(floor(loF)) - ivec2(1)) >> 1;
+    ivec2 hiTexel = (base + ivec2(ceil(hiF)) + ivec2(1)) >> 1;
     ivec2 sz = textureSize(hiZLevel0, 0);
     int hiZMax = -2147483648;
-    for (int ty = texel.y - 1; ty <= texel.y + 1; ++ty) {
-        for (int tx = texel.x - 1; tx <= texel.x + 1; ++tx) {
+    for (int ty = loTexel.y; ty <= hiTexel.y; ++ty) {
+        for (int tx = loTexel.x; tx <= hiTexel.x; ++tx) {
             hiZMax = max(
                 hiZMax, texelFetch(hiZLevel0, clamp(ivec2(tx, ty), ivec2(0), sz - ivec2(1)), 0).x
             );
