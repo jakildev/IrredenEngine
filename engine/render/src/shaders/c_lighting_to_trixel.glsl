@@ -86,6 +86,29 @@ layout(binding = 5) uniform sampler3D lightVolume;
 // rotation route leaves it unbound and the `perAxisRoute == 0` guard below skips
 // the read. Non-fog scenes never set the flag ⇒ byte-identical.
 layout(rg32ui, binding = 6) readonly uniform uimage2D trixelEntityIds;
+// Winning-light ID volume (#2318): NEAREST integer read (r16ui image at unit
+// 7) recovers which light lit a cell so a SPOT winner's cone factor can be
+// applied. The light list rides SSBO buffer slot 4 — a FREE buffer binding in
+// this pass, in a separate namespace from the image unit-4 canvasSunShadow, so
+// there is no collision on either backend. Both are gated on
+// LightVolumeParams.w (hasSpot): a spot-free scene never reads them, so the
+// existing lighting output stays byte-identical.
+layout(r16ui, binding = 7) readonly uniform uimage3D lightVolumeId;
+struct GPULightSource {
+    vec4 originAndType;
+    vec4 colorAndIntensity;
+    vec4 directionAndRadius;
+    vec4 coneAndSeedAlpha;
+    vec4 spotWorldOrigin;
+};
+layout(std430, binding = 4) readonly buffer LightSourceBuffer {
+    GPULightSource lights[];
+};
+// LightType::SPOT (ir_render / component_light_source.hpp). Winner cones only.
+const int kLightTypeSpot = 3;
+// Fraction of the cone half-angle that stays fully lit; the outer
+// (1 - kConeEdgeSoftness) band is a smoothstep falloff to a crisp edge.
+const float kConeEdgeSoftness = 0.85;
 
 // Per-axis empty-cell compaction (#2256): on the per-axis route (perAxisRoute !=
 // 0) this kernel is dispatched indirectly over only each axis's OCCUPIED cells
@@ -332,7 +355,37 @@ void main() {
             (localPos + vec3(kLightVolumeHalfExtent) + vec3(0.5)) /
             vec3(kLightVolumeSize);
         const vec4 lightSample = texture(lightVolume, sampleCoord);
-        const vec3 light = lightSample.rgb * lightSample.a;
+        vec3 light = lightSample.rgb * lightSample.a;
+
+        // SPOT cone shaping (#2318, L2): when the scene has a spot
+        // (`lightVolumeWorldOrigin.w`, the hasSpot flag) and the winning
+        // light at this cell is a SPOT, attenuate the volume contribution by
+        // the analytic cone factor. The ID volume is NEAREST (integer
+        // texelFetch); `idCell` is the same cell the seed/propagate wrote,
+        // recovered from `localPos`. Byte-identical when no spot exists or
+        // the winner is a non-spot light (cone == 1). The cone apex is the
+        // light's TRUE origin (`spotWorldOrigin`), not the clamped seed cell,
+        // so an out-of-window spot's cone stays correctly oriented.
+        if (lightVolumeWorldOrigin.w != 0) {
+            const ivec3 idCell =
+                ivec3(round(localPos)) + ivec3(int(kLightVolumeHalfExtent));
+            if (all(greaterThanEqual(idCell, ivec3(0))) &&
+                all(lessThan(idCell, ivec3(int(kLightVolumeSize))))) {
+                const uint winId = imageLoad(lightVolumeId, idCell).r;
+                if (winId > 0u) {
+                    const GPULightSource win = lights[winId - 1u];
+                    if (int(win.originAndType.w) == kLightTypeSpot) {
+                        const vec3 toSurface =
+                            normalize(pos3D - win.spotWorldOrigin.xyz);
+                        const vec3 spotDir = normalize(win.directionAndRadius.xyz);
+                        const float halfAngle = radians(win.coneAndSeedAlpha.x * 0.5);
+                        const float outerCos = cos(halfAngle);
+                        const float innerCos = cos(halfAngle * kConeEdgeSoftness);
+                        light *= smoothstep(outerCos, innerCos, dot(toSurface, spotDir));
+                    }
+                }
+            }
+        }
         baseRgb = baseRgb + src.rgb * light;
     }
 

@@ -121,6 +121,7 @@ inline int g_autoWarmupFrames = 0;
 inline int g_autoProfileFrames = 0;
 inline int g_autoProfileCount = 0;
 inline float g_initialZoom = 0.0f;
+inline float g_initialYaw = 0.0f;
 // `--light-boundary-sweep` (see #2310): replaces kShots with a
 // runtime-computed series that pans the camera anchor away from the emissive
 // light in world-X steps, walking the light through the light-volume window
@@ -139,6 +140,11 @@ inline bool g_cliDisableAO = false;
 inline void registerArgs() {
     IREngine::args().optionalInt("--auto-profile", "Run for N frames then exit (default 300)", 300);
     IREngine::args().number("--zoom", "Initial camera zoom", 0.0f);
+    IREngine::args().number(
+        "--yaw",
+        "Initial camera Z-yaw in radians (drives the per-axis path off-cardinal)",
+        0.0f
+    );
     IREngine::args().string(
         "--debug-overlay",
         "Debug overlay mode (none, ao, light_level, shadow, peraxis_id, peraxis_origin, unlit)",
@@ -160,6 +166,7 @@ inline void readArgs() {
     float zoom = IREngine::args().getFloat("--zoom");
     if (zoom > 0.0f)
         g_initialZoom = zoom;
+    g_initialYaw = IREngine::args().getFloat("--yaw");
     std::string overlayStr = IREngine::args().getString("--debug-overlay");
     if (!overlayStr.empty())
         g_cliOverlay = IRRender::debugOverlayModeFromString(overlayStr.c_str());
@@ -481,6 +488,9 @@ inline int run(int argc, char **argv, const DemoConfig &config) {
     detail::initEntities(config);
     if (detail::g_initialZoom > 0.0f) {
         IRRender::setCameraZoom(detail::g_initialZoom);
+    }
+    if (detail::g_initialYaw != 0.0f) {
+        IRPrefab::Camera::setYaw(detail::g_initialYaw);
     }
     IREngine::gameLoop();
     return 0;

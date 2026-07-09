@@ -30,6 +30,10 @@ kernel void c_seed_light_volume(
     device const GPULightSource *lights [[buffer(4)]],
     constant LightVolumeParams &params [[buffer(23)]],
     texture3d<float, access::write> lightVolume [[texture(0)]],
+    // Winning-light ID channel (#2318): writes `lightIndex + 1` (0 = no
+    // light) so the propagate pass and lighting consumer can recover the
+    // winning light and apply its SPOT cone.
+    texture3d<uint, access::write> lightVolumeId [[texture(1)]],
     uint3 globalId [[thread_position_in_grid]]
 ) {
     const uint lightIndex = globalId.x;
@@ -54,4 +58,8 @@ kernel void c_seed_light_volume(
     );
     const float seedAlpha = clamp(light.coneAndSeedAlpha.y, 0.0, 1.0);
     lightVolume.write(float4(emit, seedAlpha), uint3(cell));
+    // Last-writer-wins on a shared origin texel (same race as the color
+    // write above); the propagate pass keeps the higher-residual candidate,
+    // so the closest light's ID dominates overlaps.
+    lightVolumeId.write(uint4(lightIndex + 1u, 0, 0, 0), uint3(cell));
 }

@@ -98,6 +98,10 @@ inline bool lightBlockerGetBit(
 kernel void c_propagate_light_volume(
     texture3d<float, access::read> lightVolumeRead [[texture(0)]],
     texture3d<float, access::write> lightVolumeWrite [[texture(1)]],
+    // Winning-light ID channel (#2318): rides units 2/3 in lockstep with the
+    // color pair — the winning candidate's ID travels with its color/alpha.
+    texture3d<uint, access::read> lightVolumeIdRead [[texture(2)]],
+    texture3d<uint, access::write> lightVolumeIdWrite [[texture(3)]],
     device const LightOcclusionData *occlusion [[buffer(28)]],
     constant LightVolumeParams &params [[buffer(23)]],
     uint3 globalId [[thread_position_in_grid]]
@@ -110,6 +114,9 @@ kernel void c_propagate_light_volume(
     }
 
     float4 best = lightVolumeRead.read(uint3(cell));
+    // Winning-light ID travels with `best`: start with this cell's own ID,
+    // adopt a winning neighbor's whenever it takes over.
+    uint bestId = lightVolumeIdRead.read(uint3(cell)).r;
     // Phase 1c (#360): map the local volume cell back to world coords
     // through the camera-anchored origin so the per-neighbor light-
     // occlusion lookup queries the right cell of the (independently
@@ -141,8 +148,10 @@ kernel void c_propagate_light_volume(
         }
         if (candidateAlpha > best.a) {
             best = float4(nv.rgb, candidateAlpha);
+            bestId = lightVolumeIdRead.read(uint3(nCell)).r;
         }
     }
 
     lightVolumeWrite.write(best, uint3(cell));
+    lightVolumeIdWrite.write(uint4(bestId, 0, 0, 0), uint3(cell));
 }

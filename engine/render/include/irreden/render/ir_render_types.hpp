@@ -1041,8 +1041,16 @@ struct GPULightSource {
     /// boundary-distance-discounted for lights seeded at the clamped
     /// window edge (see `gatherLightSources`); zw = std430 padding.
     vec4 coneAndSeedAlpha_ = vec4(0.0f);
+    /// xyz = the light's TRUE (unclamped) world voxel origin; w = std430
+    /// padding. Distinct from `originAndType_.xyz`, which is the *seed*
+    /// cell — clamped to the camera-anchored window edge for out-of-window
+    /// lights (#360). The SPOT cone factor in `c_lighting_to_trixel` uses
+    /// this true origin as the cone apex so an out-of-window spot's cone
+    /// stays correctly oriented (#2318, L2); equal to `originAndType_.xyz`
+    /// for the common in-window case. Unused for non-SPOT lights.
+    vec4 spotWorldOrigin_ = vec4(0.0f);
 };
-static_assert(sizeof(GPULightSource) == 64, "GPULightSource must match std430 layout");
+static_assert(sizeof(GPULightSource) == 80, "GPULightSource must match std430 layout");
 
 /// CPU mirror of the propagate pass UBO. Uploaded each frame by
 /// `system_compute_light_volume`. Read by `c_seed_light_volume.glsl`,
@@ -1071,8 +1079,12 @@ struct LightVolumeParams {
     /// Phase 1c (#360): camera-anchored origin. The 128³ light volume
     /// is centered on this world voxel each frame so a panned camera
     /// keeps lights in-range. Stored as `ivec4` for std140 alignment;
-    /// only `.xyz` is meaningful. `.w` is reserved for a future "snap
-    /// quantum changed" or "force re-clear" flag.
+    /// `.xyz` is the world voxel that maps to the volume center texel.
+    /// `.w` is the SPOT-present flag (#2318): 1 when any gathered light
+    /// this frame is a SPOT, else 0. `c_lighting_to_trixel` gates the
+    /// winning-light-ID texelFetch + cone factor on it, so a scene with
+    /// no spot lights never samples the ID channel and stays
+    /// byte-identical (the seed/propagate passes read only `.xyz`).
     ivec4 worldOriginVoxel_ = ivec4(0);
 };
 static_assert(sizeof(LightVolumeParams) == 32, "LightVolumeParams must match std140 layout");

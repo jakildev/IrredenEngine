@@ -31,7 +31,8 @@ constant float kLightVolumeSize = 128.0;
 constant float kLightVolumeHalfExtent = 64.0;
 
 // Layout must match the propagate/seed UBO layout so the shared buffer
-// binding works. Lighting only reads `worldOriginVoxel`.
+// binding works. Lighting reads `worldOriginVoxel.xyz` (volume anchor) and
+// `.w` (hasSpot flag, #2318).
 struct LightVolumeParams {
     int   _gridSize;
     int   _halfExtent;
@@ -39,6 +40,24 @@ struct LightVolumeParams {
     float _stepFalloff;
     int4  worldOriginVoxel;
 };
+
+// Mirror of GPULightSource (ir_render_types.hpp / c_seed_light_volume). The
+// lighting consumer reads it to apply the winning SPOT's cone (#2318).
+struct GPULightSource {
+    float4 originAndType;
+    float4 colorAndIntensity;
+    float4 directionAndRadius;
+    float4 coneAndSeedAlpha;
+    float4 spotWorldOrigin;
+};
+
+// LightType::SPOT (component_light_source.hpp). Winner cones only.
+constant int kLightTypeSpot = 3;
+// Fraction of the cone half-angle that stays fully lit; the outer
+// (1 - kConeEdgeSoftness) band smoothsteps to a crisp edge.
+constant float kConeEdgeSoftness = 0.85f;
+// Degrees → radians (GLSL twin uses the built-in radians()).
+constant float kDegToRad = 0.01745329251994329577f;
 
 // ACES Filmic tone mapping (Stephen Hill's fitted curve).
 float3 ACESFilm(float3 x) {
@@ -79,6 +98,13 @@ kernel void c_lighting_to_trixel(
     // single-canvas + detached routes; the `perAxisRoute == 0` guard skips the read
     // on the rotation route. GLSL twin's binding 6.
     texture2d<uint, access::read> trixelEntityIds [[texture(6)]],
+    // Winning-light ID volume (#2318): NEAREST integer read at unit 7 recovers
+    // which light lit a cell so a SPOT winner's cone can be applied; the light
+    // list rides buffer slot 4 (a free buffer slot in this pass, distinct from
+    // texture unit 4). Both gated on lightVolumeParams.worldOriginVoxel.w
+    // (hasSpot) so spot-free scenes stay byte-identical.
+    texture3d<uint, access::read> lightVolumeId [[texture(7)]],
+    device const GPULightSource* lights [[buffer(4)]],
     // Per-axis empty-cell compaction (#2256) — GLSL twin's bindings 25/26.
     const device uint* compactedCells [[buffer(25)]],
     const device uint* cellDrawArgs [[buffer(26)]],
@@ -271,7 +297,35 @@ kernel void c_lighting_to_trixel(
             (localPos + float3(kLightVolumeHalfExtent) + float3(0.5)) /
             float3(kLightVolumeSize);
         const float4 lightSample = lightVolume.sample(volumeSampler, sampleCoord);
-        const float3 light = lightSample.rgb * lightSample.a;
+        float3 light = lightSample.rgb * lightSample.a;
+
+        // SPOT cone shaping (#2318, L2) — mirrors the GLSL twin. When the
+        // scene has a spot (`worldOriginVoxel.w`) and the winning light at
+        // this cell is a SPOT, attenuate the volume contribution by the
+        // analytic cone factor. `idCell` is the same integer cell the
+        // seed/propagate wrote (NEAREST). Byte-identical when no spot exists
+        // or the winner is non-spot (cone == 1). Cone apex is the light's
+        // TRUE origin (`spotWorldOrigin`), so an out-of-window spot stays
+        // correctly oriented.
+        if (lightVolumeParams.worldOriginVoxel.w != 0) {
+            const int3 idCell =
+                int3(round(localPos)) + int3(int(kLightVolumeHalfExtent));
+            if (all(idCell >= int3(0)) && all(idCell < int3(int(kLightVolumeSize)))) {
+                const uint winId = lightVolumeId.read(uint3(idCell)).r;
+                if (winId > 0u) {
+                    const GPULightSource win = lights[winId - 1u];
+                    if (int(win.originAndType.w) == kLightTypeSpot) {
+                        const float3 toSurface =
+                            normalize(pos3D - win.spotWorldOrigin.xyz);
+                        const float3 spotDir = normalize(win.directionAndRadius.xyz);
+                        const float halfAngle = win.coneAndSeedAlpha.x * 0.5f * kDegToRad;
+                        const float outerCos = cos(halfAngle);
+                        const float innerCos = cos(halfAngle * kConeEdgeSoftness);
+                        light *= smoothstep(outerCos, innerCos, dot(toSurface, spotDir));
+                    }
+                }
+            }
+        }
         baseRgb = baseRgb + src.rgb * light;
     }
 

@@ -57,6 +57,18 @@ struct C_CanvasLightVolume {
     std::pair<ResourceId, Texture3D *> textureRead_;
     std::pair<ResourceId, Texture3D *> textureWrite_;
 
+    // Winning-light ID ping-pong pair (#2318, L2). Parallel to the color
+    // pair: the seed pass writes `lightIndex + 1` (0 = no light) and the
+    // propagate pass carries the winning candidate's ID alongside its
+    // color/alpha, so `c_lighting_to_trixel` can recover which light lit a
+    // cell and apply that light's SPOT cone factor. R16UI holds the full
+    // 1..kLightVolumeMaxSources (256) index range plus the 0 sentinel;
+    // NEAREST because integer IDs must never interpolate (the color pair
+    // keeps LINEAR — two textures, one sample coordinate). Swapped in
+    // lockstep with the color pair in `swap()`.
+    std::pair<ResourceId, Texture3D *> idTextureRead_;
+    std::pair<ResourceId, Texture3D *> idTextureWrite_;
+
     // LINEAR so the lighting consumer's sampler3D read interpolates
     // between volume cells — softens the integer Manhattan falloff
     // shells into a smooth gradient. The propagate/seed passes bind the
@@ -80,11 +92,31 @@ struct C_CanvasLightVolume {
               TextureFormat::RGBA8,
               TextureWrap::CLAMP_TO_EDGE,
               TextureFilter::LINEAR
+          )}
+        , idTextureRead_{IRRender::createResource<IRRender::Texture3D>(
+              TextureKind::TEXTURE_3D,
+              kLightVolumeSize,
+              kLightVolumeSize,
+              kLightVolumeSize,
+              TextureFormat::R16UI,
+              TextureWrap::CLAMP_TO_EDGE,
+              TextureFilter::NEAREST
+          )}
+        , idTextureWrite_{IRRender::createResource<IRRender::Texture3D>(
+              TextureKind::TEXTURE_3D,
+              kLightVolumeSize,
+              kLightVolumeSize,
+              kLightVolumeSize,
+              TextureFormat::R16UI,
+              TextureWrap::CLAMP_TO_EDGE,
+              TextureFilter::NEAREST
           )} {}
 
     void onDestroy() {
         IRRender::destroyResource<Texture3D>(textureRead_.first);
         IRRender::destroyResource<Texture3D>(textureWrite_.first);
+        IRRender::destroyResource<Texture3D>(idTextureRead_.first);
+        IRRender::destroyResource<Texture3D>(idTextureWrite_.first);
     }
 
     /// Texture currently holding the latest propagated light result.
@@ -110,11 +142,37 @@ struct C_CanvasLightVolume {
         return textureWrite_.second;
     }
 
+    /// Winning-light ID texture holding the latest propagated IDs, in
+    /// lockstep with `getReadTexture()`. Sampled (NEAREST) by
+    /// `LIGHTING_TO_TRIXEL` to recover which light lit each cell (#2318).
+    Texture3D *getReadIdTexture() const {
+        IR_ASSERT(
+            idTextureRead_.second != nullptr,
+            "C_CanvasLightVolume::getReadIdTexture() called on default-"
+            "constructed instance."
+        );
+        return idTextureRead_.second;
+    }
+
+    /// Scratch ID texture written by the next propagate pass; swapped to
+    /// the read side via `swap()` alongside the color pair.
+    Texture3D *getWriteIdTexture() const {
+        IR_ASSERT(
+            idTextureWrite_.second != nullptr,
+            "C_CanvasLightVolume::getWriteIdTexture() called on default-"
+            "constructed instance."
+        );
+        return idTextureWrite_.second;
+    }
+
     /// Promote `textureWrite_` to the read side after a propagation
     /// pass. Subsequent reads (`getReadTexture()`) see the new contents
-    /// while the old read texture becomes the next pass's scratch.
+    /// while the old read texture becomes the next pass's scratch. The ID
+    /// pair swaps in lockstep so IDs never desync from their colors mid-
+    /// chain (#2318).
     void swap() {
         std::swap(textureRead_, textureWrite_);
+        std::swap(idTextureRead_, idTextureWrite_);
     }
 
     /// Backwards-compatible alias for the previously-named accessor;

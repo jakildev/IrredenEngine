@@ -27,7 +27,19 @@ enum class TextureAccess : std::uint8_t {
 /// - @c R32I — canvas distance texture; written via @c imageAtomicMin.
 /// - @c RG32UI — entity-id texture; stores (low, high) 32-bit halves.
 /// - @c DEPTH24_STENCIL8 — framebuffer depth+stencil attachment.
-enum class TextureFormat : std::uint8_t { RGBA8, RGBA16F, RGBA32F, R32I, RG32UI, DEPTH24_STENCIL8 };
+/// - @c R16UI — light-volume winning-light ID channel (#2318); exact
+///   integer store/load (NEAREST), holds the 1..256 light index + a 0
+///   "no light" sentinel. Appended last so the pre-existing enumerators
+///   keep their numeric values.
+enum class TextureFormat : std::uint8_t {
+    RGBA8,
+    RGBA16F,
+    RGBA32F,
+    R32I,
+    RG32UI,
+    DEPTH24_STENCIL8,
+    R16UI
+};
 
 /// CPU-side pixel format for @c glReadPixels / texture upload.
 /// @c DEPTH_COMPONENT reads the depth plane of a @c DEPTH24_STENCIL8 attachment

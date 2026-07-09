@@ -75,6 +75,8 @@ inline GLenum toGLTextureFormat(TextureFormat format) {
         return GL_RG32UI;
     case TextureFormat::DEPTH24_STENCIL8:
         return GL_DEPTH24_STENCIL8;
+    case TextureFormat::R16UI:
+        return GL_R16UI;
     }
     return GL_RGBA8;
 }

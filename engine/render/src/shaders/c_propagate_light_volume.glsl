@@ -54,6 +54,12 @@ const uint kLightOcclusionBitfieldUintCount =
 
 layout(rgba8, binding = 0) readonly uniform image3D lightVolumeRead;
 layout(rgba8, binding = 1) writeonly uniform image3D lightVolumeWrite;
+// Winning-light ID channel (#2318): rides units 2/3 in lockstep with the
+// color pair. The ID of whichever candidate wins the residual contest
+// travels with its color/alpha, so the lighting consumer can look the
+// winning light up and apply its SPOT cone.
+layout(r16ui, binding = 2) readonly uniform uimage3D lightVolumeIdRead;
+layout(r16ui, binding = 3) writeonly uniform uimage3D lightVolumeIdWrite;
 
 // Phase 1c (#360) / T-126: camera-anchored layout — header carries the
 // world origin, then two parallel bitfields. The voxel-existence
@@ -121,6 +127,9 @@ void main() {
     }
 
     vec4 best = imageLoad(lightVolumeRead, cell);
+    // Winning-light ID travels with `best` (#2318): start with this cell's
+    // own ID and adopt a winning neighbor's ID whenever it takes over.
+    uint bestId = imageLoad(lightVolumeIdRead, cell).r;
     // Phase 1c (#360): map the local volume cell back to world coords
     // through the camera-anchored origin so the per-neighbor light-
     // occlusion lookup queries the right cell of the (independently
@@ -152,8 +161,10 @@ void main() {
         }
         if (candidateAlpha > best.a) {
             best = vec4(nv.rgb, candidateAlpha);
+            bestId = imageLoad(lightVolumeIdRead, nCell).r;
         }
     }
 
     imageStore(lightVolumeWrite, cell, best);
+    imageStore(lightVolumeIdWrite, cell, uvec4(bestId, 0u, 0u, 0u));
 }

@@ -23,6 +23,8 @@ MTL::PixelFormat toMetalTextureFormat(TextureFormat format) {
             return MTL::PixelFormatRG32Uint;
         case TextureFormat::DEPTH24_STENCIL8:
             return MTL::PixelFormatDepth32Float_Stencil8;
+        case TextureFormat::R16UI:
+            return MTL::PixelFormatR16Uint;
     }
     return MTL::PixelFormatRGBA8Unorm;
 }

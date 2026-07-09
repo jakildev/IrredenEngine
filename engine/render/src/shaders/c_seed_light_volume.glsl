@@ -47,6 +47,10 @@ layout(std140, binding = 23) uniform LightVolumeParams {
 };
 
 layout(rgba8, binding = 0) writeonly uniform image3D lightVolume;
+// Winning-light ID channel (#2318): the seed writes `lightIndex + 1`
+// (0 = no light) so the propagate pass and the lighting consumer can
+// recover which light source lit each cell and apply its SPOT cone.
+layout(r16ui, binding = 1) writeonly uniform uimage3D lightVolumeId;
 
 void main() {
     const uint lightIndex = gl_GlobalInvocationID.x;
@@ -70,4 +74,8 @@ void main() {
     );
     const float seedAlpha = clamp(light.coneAndSeedAlpha.y, 0.0, 1.0);
     imageStore(lightVolume, cell, vec4(emit, seedAlpha));
+    // `imageStore` is last-writer-wins on a shared origin texel — the same
+    // race the color write above has; the propagate pass then keeps the
+    // higher-residual candidate, so the closest light's ID dominates.
+    imageStore(lightVolumeId, cell, uvec4(lightIndex + 1u, 0u, 0u, 0u));
 }

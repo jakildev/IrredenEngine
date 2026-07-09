@@ -91,13 +91,22 @@ class ScopedCpuPhaseTimer {
     std::chrono::steady_clock::time_point m_start;
 };
 
-inline GPULightSource
-toGpuLight(const C_LightSource &light, const ivec3 &originVoxel, float seedAlpha) {
+// `seedOriginVoxel` is where the light SEEDS the volume — clamped to the
+// window edge for out-of-window lights (#360). `trueOriginVoxel` is the
+// light's real (unclamped) world voxel, carried separately so the SPOT
+// cone factor keeps the correct apex even for a boundary-seeded spot
+// (#2318). They are equal for the common in-window case.
+inline GPULightSource toGpuLight(
+    const C_LightSource &light,
+    const ivec3 &seedOriginVoxel,
+    const ivec3 &trueOriginVoxel,
+    float seedAlpha
+) {
     GPULightSource gpu{};
     gpu.originAndType_ = vec4(
-        static_cast<float>(originVoxel.x),
-        static_cast<float>(originVoxel.y),
-        static_cast<float>(originVoxel.z),
+        static_cast<float>(seedOriginVoxel.x),
+        static_cast<float>(seedOriginVoxel.y),
+        static_cast<float>(seedOriginVoxel.z),
         static_cast<float>(light.type_)
     );
     gpu.colorAndIntensity_ = vec4(
@@ -110,6 +119,12 @@ toGpuLight(const C_LightSource &light, const ivec3 &originVoxel, float seedAlpha
     gpu.directionAndRadius_ =
         vec4(light.direction_.x, light.direction_.y, light.direction_.z, radius);
     gpu.coneAndSeedAlpha_ = vec4(light.coneAngleDeg_, seedAlpha, 0.0f, 0.0f);
+    gpu.spotWorldOrigin_ = vec4(
+        static_cast<float>(trueOriginVoxel.x),
+        static_cast<float>(trueOriginVoxel.y),
+        static_cast<float>(trueOriginVoxel.z),
+        0.0f
+    );
     return gpu;
 }
 
@@ -161,16 +176,24 @@ inline ivec3 roundedLightOrigin(const C_WorldTransform &transform) {
 // seeded subset) would make a light's curve shift as another light crosses
 // the camera window boundary. Per-light falloff lands with the winning-light
 // ID channel (#2318, L2).
+// `outHasSpot` is set when any eligible (non-DIRECTIONAL, canvas-scoped)
+// light this frame is a SPOT. The host publishes it into the light-volume
+// params so `c_lighting_to_trixel` samples the winning-light ID channel +
+// applies cone shaping only when a spot exists — spot-free scenes stay
+// byte-identical (the ID channel is present but the consumer branch is
+// skipped).
 inline std::uint32_t gatherLightSources(
     std::vector<GPULightSource> &out,
     IREntity::EntityId currentCanvas,
     const ivec3 &volumeOriginVoxel,
     int &outMaxRadius,
-    std::uint32_t &outEligible
+    std::uint32_t &outEligible,
+    bool &outHasSpot
 ) {
     out.clear();
     outMaxRadius = 0;
     outEligible = 0;
+    outHasSpot = false;
     const auto include = IREntity::getArchetype<C_LightSource, C_WorldTransform>();
     const auto nodes = IREntity::queryArchetypeNodesSimple(include);
     auto &entityManager = IREntity::getEntityManager();
@@ -196,6 +219,9 @@ inline std::uint32_t gatherLightSources(
                 continue;
             }
             ++outEligible;
+            if (lights[i].type_ == LightType::SPOT) {
+                outHasSpot = true;
+            }
             const int r = static_cast<int>(lights[i].radius_);
             if (r > outMaxRadius) {
                 outMaxRadius = r;
@@ -251,7 +277,7 @@ inline std::uint32_t gatherLightSources(
             // (queryable against the CPU mirror BUILD_LIGHT_OCCLUSION_GRID
             // already maintains, which runs before this system) is deferred
             // to #2330 rather than shipped silently.
-            out.push_back(toGpuLight(lights[i], volumeOriginVoxel + clamped, seedAlpha));
+            out.push_back(toGpuLight(lights[i], volumeOriginVoxel + clamped, origin, seedAlpha));
         }
     }
     return static_cast<std::uint32_t>(out.size());
@@ -317,16 +343,22 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
             // range without resizing the texture.
             const ivec3 volumeOrigin = IRRender::detail::cameraAnchorVoxel();
             volume.setWorldOriginVoxel(volumeOrigin);
-            params_.worldOriginVoxel_ = ivec4(volumeOrigin.x, volumeOrigin.y, volumeOrigin.z, 0);
             int maxRadius = 0;
             std::uint32_t eligible = 0;
+            bool hasSpot = false;
             const std::uint32_t count = detail::gatherLightSources(
                 lightStaging_,
                 canvasEntity,
                 volumeOrigin,
                 maxRadius,
-                eligible
+                eligible,
+                hasSpot
             );
+            // `.w` = SPOT-present flag (#2318): the consumer gates its
+            // winning-light ID sample + cone factor on it, so spot-free
+            // scenes never read the ID channel and stay byte-identical.
+            params_.worldOriginVoxel_ =
+                ivec4(volumeOrigin.x, volumeOrigin.y, volumeOrigin.z, hasSpot ? 1 : 0);
             params_.lightCount_ = static_cast<int>(count);
             {
                 auto &timing = IRRender::gpuStageTiming();
@@ -362,6 +394,11 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
             clearProgram_->use();
             volume.getReadTexture()
                 ->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+            // Winning-light ID pair rides image unit 1 (#2318) — cleared to 0
+            // ("no light") in lockstep with the RGBA8 volume so no stale ID
+            // from the previous frame survives.
+            volume.getReadIdTexture()
+                ->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::R16UI);
             const int clearGroups = IRMath::divCeil(kVolumeSize, kClearGroupSize);
             IRRender::device()->dispatchCompute(clearGroups, clearGroups, clearGroups);
             IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
@@ -381,6 +418,10 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
                 );
                 volume.getReadTexture()
                     ->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+                // ID image unit 1 (#2318): the seed thread writes `lightIndex + 1`
+                // at the light's seed cell so the consumer can recover the winner.
+                volume.getReadIdTexture()
+                    ->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::R16UI);
                 const int seedGroups = IRMath::divCeil(params_.lightCount_, kSeedGroupSize);
                 IRRender::device()->dispatchCompute(static_cast<std::uint32_t>(seedGroups), 1u, 1u);
                 IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
@@ -416,6 +457,14 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
                         ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
                     volume.getWriteTexture()
                         ->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+                    // Winning-light ID pair rides image units 2/3 (#2318): the
+                    // winning candidate's ID travels with its color/alpha so the
+                    // consumer knows which light lit each cell. Swapped in lockstep
+                    // with the color pair (`volume.swap()` below).
+                    volume.getReadIdTexture()
+                        ->bindAsImage(2, TextureAccess::READ_ONLY, TextureFormat::R16UI);
+                    volume.getWriteIdTexture()
+                        ->bindAsImage(3, TextureAccess::WRITE_ONLY, TextureFormat::R16UI);
                     IRRender::device()->dispatchCompute(
                         static_cast<std::uint32_t>(gx),
                         static_cast<std::uint32_t>(gy),
