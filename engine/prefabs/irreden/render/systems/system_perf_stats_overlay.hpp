@@ -326,7 +326,8 @@ template <> struct System<PERF_STATS_OVERLAY> {
             "  VOX  %7u/%7u\n"
             "  LIGHTS %5u/%u\n"
             "  CASTERS %5u\n"
-            "  FEEDER %5.0f,%5.0f/%5.0f,%5.0f",
+            "  FEED MIN %5.0f,%5.0f\n"
+            "  FEED MAX %5.0f,%5.0f",
             gpu.visibleShapeCount_,
             gpu.shapeGroupsZ_,
             gpu.visibleVoxelCount_,

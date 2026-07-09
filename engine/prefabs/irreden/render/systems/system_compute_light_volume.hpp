@@ -277,6 +277,15 @@ inline std::uint32_t gatherLightSources(
                 continue;
             }
             if (out.size() >= kLightVolumeMaxSources) {
+                // Cap reached: lights past kLightVolumeMaxSources are neither
+                // seeded nor recorded in `outStates`, so the DOMAIN-STATE log
+                // under-reports the true non-directional light count in an
+                // overflow scene. Intentional — `lightGatherRecords_` is
+                // reserved to exactly kLightVolumeMaxSources at create(), so
+                // recording the tail would force a per-frame reallocation; this
+                // mirrors the GPU-staging cap the seed buffer already enforces.
+                // A future #2317 verify harness asserting total light counts
+                // against the log must account for this ceiling.
                 return static_cast<std::uint32_t>(out.size());
             }
             const ivec3 origin = roundedLightOrigin(transforms[i]);
