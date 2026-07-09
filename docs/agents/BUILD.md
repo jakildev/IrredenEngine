@@ -98,6 +98,40 @@ Two things to know:
   worktree) builds through `<engine>/build/` via the engine root's
   nested-checkout include.
 
+### Dedicated game build dir against a specific engine worktree (`build-game`)
+
+Fleet workers building a game PR (e.g. resolving a game-side semantic
+conflict, role-worker step 1c g) build against **their own engine
+worktree**, not the enclosing main clone the auto-configure above would
+pick — a stale or concurrently-edited main clone must not decide whether
+the resolution compiles. That is the `IRREDEN_BUILD_DIR` escape hatch
+with a one-time manual configure of a **dedicated** dir (dedicated so the
+game configure can't clobber the engine worktree's own preset build;
+idempotent — reuse it across iterations):
+
+```bash
+ENG=<your-engine-worktree-abs-path>
+GAME_WT=~/src/IrredenEngine/creations/game/.claude/worktrees/<your-worktree-name>
+# one-time configure (skip if $ENG/build-game/CMakeCache.txt exists):
+cmake --preset <host>-debug -B "$ENG/build-game" -DIRREDEN_USER_PROJECTS="$GAME_WT"
+# build the affected project's target via ir-build, pointed at that dir:
+IRREDEN_BUILD_DIR="$ENG/build-game" fleet-build --target IRIrredenAll
+```
+
+`<host>-debug` is your host preset (`macos-debug` / `linux-debug` /
+`windows-debug`). You own this configure: `ir-build` only auto-configures
+when it can derive the layout itself (bare preset, or the
+creation-worktree detection above, which targets the *enclosing* clone),
+so a dir bound to a specific engine worktree must be configured by hand
+once as shown. There is no `--build-dir` flag — the `IRREDEN_BUILD_DIR`
+env var is the override knob. If the cache in `$ENG/build-game` goes
+stale (worktree renamed/migrated, preset change), reconfigure in place:
+`cmake -S "$ENG" -B "$ENG/build-game" -DIRREDEN_USER_PROJECTS="$GAME_WT"`.
+
+Target selection stays with the caller (pick the `IR<Project>All` target
+matching what the PR touches), as does the **never build `IRGameAll`**
+rule (its midi dependency is broken — game #88).
+
 ### `ir-build` / `ir-run` (canonical) vs `fleet-build` / `fleet-run` (aliases)
 
 The canonical build/run wrappers live at `engine/tools/bin/ir-build`

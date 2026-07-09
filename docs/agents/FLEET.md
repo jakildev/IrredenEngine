@@ -328,6 +328,17 @@ the question to the architect and resume cleanly:
    file, addresses the direction, removes the label, pushes via
    `commit-and-push`. PR re-enters normal review flow.
 
+**The handoff is the PR, not the worker's claim.** The escalating worker
+releases its `fleet-claim` (and any worktree reservation) when it parks
+the PR design-blocked: resolution can take the architect a while, and
+when the PR returns as `fleet:design-unblocked` ANY worker — not
+necessarily the original one — must be able to resume it cleanly.
+Everything the resumer needs rides on the PR: the pushed WIP commit, the
+`## NEEDS-DESIGN` comment plus the architect's reply, the plan file on
+the branch, and the label itself. Holding the claim through the block is
+what let two workers race the #1310 resume and force-push over each
+other.
+
 **Epic children route steward-first.** When the blocked PR's backing
 issue is part of an epic (`**Part of epic:** #U`), the **epic-steward**
 — not the architect — does step 2's triage: questions derivable from

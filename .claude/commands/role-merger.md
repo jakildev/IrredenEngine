@@ -116,29 +116,18 @@ exit cleanly:
    `gh pr list --state open --json number,title,mergeable,labels,headRefName,baseRefName,updatedAt`.)
 
 2.5. **Reconcile stacked PRs whose base has merged or closed —
-   retarget proactively, label-independent.** Two failure modes
-   this step has to cover:
+   retarget proactively, label-independent.** Two failure modes this
+   step covers: (1) **labeled stacked PRs** — `fleet:awaiting-base`
+   (step 5a.5 i) or `fleet:needs-base-update` (step 2.6) are in step
+   3's skip set, so those PRs never advance after their base
+   transitions without this pass; (2) **unlabeled stacked PRs whose
+   base just merged** — a still-`MERGEABLE` child keeps its stale
+   `baseRefName`, gets no label, and a human merge would land on the
+   stale base instead of master (the PR-#558 incident:
+   [fleet-queue-stacking.md § Label-independent stacked reconcile](../../docs/design/fleet-queue-stacking.md#label-independent-stacked-reconcile-pr-558)).
 
-   1. **Labeled stacked PRs.** The merger sometimes sets
-      `fleet:awaiting-base` (step 5a.5 sub-case i — child
-      CONFLICTING because base merged) or `fleet:needs-base-update`
-      (step 2.6 — child stale vs upstream tip and cascade-rebase
-      failed). Step 3's filter skips PRs carrying either label, so
-      without this pass they never advance after their base
-      transitions.
-   2. **Unlabeled stacked PRs whose base just merged
-      (PR-#558 case).** A child that stays `MERGEABLE` against its
-      OLD base after the base merges keeps `baseRefName` pointing
-      at the stale `claude/<parent>` branch. If a human clicks
-      merge, GitHub merges to the stale base, NOT master — content
-      ends up on a branch that's unreachable from `origin/master`.
-      The merger normally sets `fleet:awaiting-base` only when the
-      child becomes CONFLICTING; a still-mergeable child gets no
-      label and slips past every guard.
-
-   This step covers both: scan every stacked PR (any
-   `baseRefName != "master"`) regardless of label state, and
-   retarget the moment the base lands.
+   So: scan every stacked PR (any `baseRefName != "master"`)
+   regardless of label state, and retarget the moment the base lands.
 
    From `repos.engine.prs[]`, collect every PR where:
    - `baseRefName != "master"` (stacked PR), AND
@@ -149,7 +138,9 @@ exit cleanly:
    `fleet:awaiting-base` and `fleet:needs-base-update` are NOT in
    the skip set — those PRs are exactly the labeled-population
    case from (1). `fleet:stacked` is also fine here for the same
-   reason. For each such PR, look up its base PR's state:
+   reason. For each such PR, look up its base PR's state with the
+   **base-lookup query** (steps 2.6 and 5a.5 reference this same
+   command):
 
    `gh pr list --search "head:<baseRefName>" --state all --json number,state --jq '.[] | "#\(.number) \(.state)"'`
 
@@ -195,14 +186,11 @@ exit cleanly:
    and we don't want to flood the API or the reviewer queue.
 
 2.6. **Cascade rebase stacked children whose upstream tip moved.**
-   Step 2.5 reconciles stacked PRs when their base merges or closes
-   (re-target + rebase in the MERGED case); this step handles the
-   orthogonal case where the base PR is still OPEN but its head ref
-   was force-pushed (typically because the upstream author addressed
-   reviewer feedback). Without this pass, the child PR's branch
-   stays anchored to the upstream's old tip until the base actually
-   merges — and any intervening reviews would see a stale diff that
-   doesn't reflect the upstream's latest fixes.
+   The orthogonal case to step 2.5: the base PR is still OPEN but its
+   head ref was force-pushed (upstream author addressed feedback).
+   Without this pass the child stays anchored to the upstream's old
+   tip until the base merges, and intervening reviews see a stale
+   diff missing the upstream's latest fixes.
 
    From `repos.engine.prs[]`, collect every PR where:
    - `baseRefName != "master"` (stacked PR), AND
@@ -217,12 +205,8 @@ exit cleanly:
    want to keep tracking. (`fleet:stacked` is also fine here; it
    marks the same population from a different angle.)
 
-   For each candidate, look up the base PR's state — same query as
-   step 2.5 and step 5a.5:
-
-   `gh pr list --search "head:<baseRefName>" --state all --json number,state --jq '.[] | "#\(.number) \(.state)"'`
-
-   If state is not OPEN, skip — step 2.5 owns the merged/closed
+   For each candidate, look up the base PR's state with the step-2.5
+   base-lookup query. If state is not OPEN, skip — step 2.5 owns the merged/closed
    transitions. If OPEN, fetch both refs (separate Bash calls,
    single-command rule):
 
@@ -298,30 +282,8 @@ exit cleanly:
         back to a known starting state for the next candidate:
         `git switch claude/merger-scratch`
       - Run `rm -f .merger-body.md`, then write `.merger-body.md`
-        with the **Write** tool:
-        ```
-        Merger: cannot cascade-rebase onto updated base PR
-        #<base-pr-number>. Its head ref `<baseRefName>` was force-
-        pushed and the new tip conflicts with this PR's own
-        commits.
-
-        Resolution: the author of this PR (or the upstream author)
-        rebases manually onto the new upstream tip:
-
-          git fetch origin
-          git rebase origin/<baseRefName>
-          # resolve conflicts, then:
-          git push --force-with-lease
-
-        Labeled `fleet:needs-base-update` — the merger and the
-        cascade-rebase pass skip this PR until the label clears.
-        It clears automatically when the upstream merges (step
-        2.5 re-targets to master and removes the label) or
-        closes; otherwise the human or an opus+-class worker clears it
-        after a manual rebase.
-
-        — fleet merger
-        ```
+        with the **Write** tool using the **§ cascade-rebase-conflict**
+        template from [merger-templates.md](../../docs/agents/merger-templates.md).
       - `gh pr comment <N> --body-file .merger-body.md`
       - `gh pr edit <N> --add-label "fleet:needs-base-update" --add-label "fleet:merger-cooldown"`
       - Log: `[YYYY-MM-DD HH:MM:SS] PR #<N> <headRefName>: cascade-rebase conflict onto #<base-pr-number>, labeled fleet:needs-base-update`
@@ -351,13 +313,11 @@ exit cleanly:
      Durable human-handoff signal; only the human clears it by
      re-targeting or closing.
    - `fleet:gated` — the PR's conflict surface is a gated self-config file
-     (`role-*.md` / `.claude/agents/*` / `SKILL.md`) no agent can push. A
-     worker hit the gate and parked it human-only. **Do not re-flag it
-     `fleet:semantic-conflict`** — that is the exact loop fleet:gated
-     exists to break (a worker would re-claim, re-hit the gate, re-park;
-     #1990 thrashed 11× before this label existed). Only the human (or the
-     architect, who can push gated edits with a human in the loop) clears it
-     by resolving the conflict and dropping the label.
+     no agent class can push; a worker parked it human-only. **Do not
+     re-flag it `fleet:semantic-conflict`** — that restarts the exact
+     thrash the label exists to break (#1990; full semantics:
+     [fleet-labels-reference.md § `fleet:gated`](../../docs/agents/fleet-labels-reference.md)).
+     Only the human (or the architect, human-in-loop) clears it.
    - `fleet:fork-of-other-pr` — PR's branch forked from another open PR; skip until the human clears this label after the upstream PR merges
    - `fleet:needs-base-update` — set in step 2.6 when a stacked child's
      upstream tip moved and the cascade-rebase conflicted. Durable
@@ -399,9 +359,8 @@ exit cleanly:
       value is `master`, proceed to step b (normal flow).
 
       Otherwise (stacked PR — base is a feature branch), look up the
-      base PR by its head ref. The base might be OPEN, MERGED, or
-      CLOSED without merging:
-      `gh pr list --search "head:<baseRefName>" --state all --json number,state --jq '.[] | "#\(.number) \(.state)"'`
+      base PR by its head ref with the step-2.5 base-lookup query. The
+      base might be OPEN, MERGED, or CLOSED without merging.
 
       Three sub-cases. Sub-cases i and iii skip the normal rebase
       (step b–d) and jump directly to step f (reset to scratch). Sub-
@@ -448,29 +407,11 @@ exit cleanly:
          The detached HEAD at `origin/<headRefName>` from step a is
          already set up — `git rebase` operates on it directly.
 
-         **Order rationale (re-target + label cleanup BEFORE rebase).**
-         On the rebase-conflict branch below, the re-target and label
-         cleanup are intentionally NOT rolled back — and they intentionally
-         run FIRST, before the rebase attempt. Two coupled reasons:
-         (1) worker's `fleet:semantic-conflict` filter at step 1c
-         excludes `fleet:awaiting-base` / `fleet:awaiting-upstream-review`
-         / `fleet:fork-of-other-pr` (PRs not yet rebaseable against
-         master), so those labels MUST be cleared for worker to
-         pick the PR up.
-         (2) worker's step 1c rebases against the PR's current
-         `baseRefName` (`git rebase origin/<baseRefName>`), so
-         `baseRefName` MUST point at master for worker to rebase
-         against the master tip rather than the merged-but-still-extant
-         base branch — which would replay the stacked-merge conflict
-         against the pre-merge base tip without actually resolving it
-         (master may have moved further).
-         Inverting (rebase first, re-target + label cleanup only on
-         clean exit) would silently strand conflict-path PRs: either
-         the labels survive and worker skips the PR indefinitely,
-         or the labels are cleared but `baseRefName` still points at
-         the stale base and worker's rebase target is wrong. The
-         current order keeps the merger ↔ worker contract
-         coherent. See issue #1149 for the full trade-off analysis.
+         The re-target + label cleanup below run FIRST, before the
+         rebase attempt, and are intentionally NOT rolled back on the
+         rebase-conflict branch — the worker ↔ merger contract depends
+         on that order (see
+         [fleet-queue-stacking.md § Re-target + label cleanup BEFORE the rebase (#1149)](../../docs/design/fleet-queue-stacking.md#re-target--label-cleanup-before-the-rebase-1149)).
 
          - `gh pr edit <N> --base master`
          - `gh pr edit <N> --remove-label "fleet:awaiting-base"`
@@ -607,29 +548,11 @@ exit cleanly:
       Each fetch + check is a separate Bash call (single-command rule).
 
       If any check exits 0 for an "upstream PR" (`<upstream-N>`):
-      - Resolve the upstream tip SHA (needed for the rebase recipe below):
-        `git rev-parse origin/<upstream-headRefName>`
+      - Resolve the upstream tip SHA (needed for the template's rebase
+        recipe): `git rev-parse origin/<upstream-headRefName>`
         Store this output as `<upstream-tip-sha>`.
-      - Write `.merger-body.md` with:
-        ```
-        Merger: this PR's branch was forked from open PR #<upstream-N>
-        (`<upstream-headRefName>`). Its diff carries inherited commits
-        from that PR and cannot be cleanly rebased onto master until
-        #<upstream-N> merges.
-
-        Resolution after #<upstream-N> merges:
-          git fetch origin
-          git rebase --onto origin/master <upstream-tip-sha> <this-headRefName>
-          git push --force-with-lease
-
-        This drops #<upstream-N>'s inherited commits and leaves only
-        this PR's own changes on top of master.
-
-        Labeled `fleet:fork-of-other-pr` — the merger and worker
-        skip this PR in their conflict-resolution sweeps.
-
-        — fleet merger
-        ```
+      - Write `.merger-body.md` using the **§ fork-of-other-pr** template
+        from [merger-templates.md](../../docs/agents/merger-templates.md).
       - `gh pr comment <N> --body-file .merger-body.md`
       - `gh pr edit <N> --add-label "fleet:fork-of-other-pr"`
       - `gh pr edit <N> --add-label "fleet:merger-cooldown"`
@@ -719,10 +642,9 @@ exit cleanly:
            If **every** conflicted file is a gated self-config file —
            `.claude/commands/role-*.md`, `.claude/agents/*`, or
            `.claude/skills/**/SKILL.md` — then **no worker class can push a
-           resolution**, so labeling `fleet:semantic-conflict` only starts the
-           worker↔merger thrash (the worker re-claims, re-hits the commit
-           gate, re-parks — #1990 looped 11× this way). Skip the
-           semantic-conflict path entirely:
+           resolution**, so labeling `fleet:semantic-conflict` only starts
+           the worker↔merger thrash (#1990 — see the `fleet:gated` skip
+           entry in step 3). Skip the semantic-conflict path entirely:
              - `git switch claude/merger-scratch`
              - `gh pr edit <N> --add-label "fleet:gated"`
              - `gh pr edit <N> --remove-label "fleet:approved"` (best-effort;
@@ -753,8 +675,8 @@ exit cleanly:
               (ref already fetched in step a)
            3. Fetch the most recent merger comment body (single command):
               `gh pr view <N> --json comments --jq '[.comments[] | select(.body | test("— fleet merger"))] | last | .body'`
-           4. Scan the returned body for a `SHA pair:` line (added to
-              the comment template below). Extract the two SHAs. (If the
+           4. Scan the returned body for a `SHA pair:` line (part of the
+              semantic-conflict template). Extract the two SHAs. (If the
               returned body is null or empty — jq `| last` on an empty
               array — treat as "no prior merger comment found" and
               proceed to step 6.)
@@ -765,13 +687,12 @@ exit cleanly:
               - Log: `[<timestamp>] PR #<N> <headRefName>: recurring semantic-conflict — sha pair unchanged, comment skipped`
               - Jump to step f.
            6. If the sha pair differs, or no prior merger comment is
-              found: proceed with the full comment below, embedding
-              the current sha pair in the `SHA pair:` line.
+              found: proceed with the full comment, embedding the
+              current sha pair in the `SHA pair:` line.
            If `fleet:semantic-conflict` is NOT in the cached labels,
            skip this check and proceed with the full comment.
-         - Build a description of the conflict. Cap the file list at
-           5; if more files conflict, append `… and N more` so the
-           comment stays readable. For each listed file, run
+         - Build a description of the conflict. For each conflicted
+           file, run
            `git log -1 --format="%h %s" origin/master -- <file>` to
            identify what touched it on master, and
            `git log -1 --format="%h %s" origin/<headRefName> -- <file>`
@@ -779,29 +700,10 @@ exit cleanly:
            because `git switch claude/merger-scratch` left HEAD on
            master (and the prior detached HEAD is gone) — a bare
            `git log -- <file>` would log master twice.
-           Write to `.merger-body.md`:
-           ```
-           Merger: cannot auto-resolve mechanically. The PR has
-           semantic conflicts with current master that need
-           judgement-level resolution.
-
-           Conflicted files:
-           - `<file1>` — master: `<sha> <subj>`; PR: `<sha> <subj>`
-           - `<file2>` — ...
-
-           Labeled `fleet:semantic-conflict` — a worker will
-           attempt resolution on its next iteration (rebase,
-           manually resolve, build, push). If the worker also
-           can't resolve (truly ambiguous, design decision needed),
-           it will escalate to `human:needs-fix`.
-
-           The `fleet:approved` label has been removed if it was set
-           — the PR no longer represents a reviewed state.
-
-           SHA pair: master=<master-tip-sha> × PR=<pr-head-sha>
-
-           — fleet merger
-           ```
+           Write `.merger-body.md` using the **§ semantic-conflict**
+           template from [merger-templates.md](../../docs/agents/merger-templates.md)
+           — it carries the file-list cap and the `SHA pair:` line the
+           dedup check above parses.
          - `gh pr comment <N> --body-file .merger-body.md`
          - Remove stale verdict labels (not fleet:has-nits — nits remain valid
            regardless of merge conflicts and should be addressed once the

@@ -302,14 +302,11 @@ Do the work, then exit cleanly:
 
     **Atomic claim before checkout.** Before starting the checkout,
     take a `fleet:resolving-<host>-<agent>` label on the PR (step b'
-    below). The lex-min tie-break — the same pattern used by
-    `fleet:reviewing-*` and `fleet:claim-*` — lets one winner proceed
-    while the other backs off immediately, before either has spent time
-    on the rebase + build. This eliminates the expensive
-    `--force-with-lease` loser path that previously wasted a full
-    iteration when two workers raced. The detached HEAD checkout
-    (step c) and `--force-with-lease` push (step h) remain in place as
-    safety nets; the resolving label is the first-line prevention.
+    below) — the same lex-min tie-break pattern as `fleet:reviewing-*`
+    / `fleet:claim-*`. The detached HEAD checkout (step c) and
+    `--force-with-lease` push (step h) remain the safety nets; the
+    resolving label is first-line prevention against two workers each
+    spending a full rebase + build on the same PR.
 
     **Repo routing.** Each candidate carries its source repo (the
     `repo` field on the cached PR record: `engine` or `game`). Resolve
@@ -378,12 +375,10 @@ Do the work, then exit cleanly:
        copy), do NOT resolve file-by-file — drop the inherited prefix:
        `git rebase --onto origin/master <child-fork-point>`
        where `<child-fork-point>` = `git merge-base HEAD origin/<parent-branch>`
-       (the parent's *pre-merge* head). That replays only your genuine commits;
-       inherited files resolve to master and the diff shrinks to your own
-       changes. `fleet-rebase` auto-drops this normally; do it by hand when it
-       silently doesn't fire — e.g. the parent was amended during review after
-       you forked, so its recorded `headRefOid` is no longer an ancestor of
-       your head (#1791).
+       (the parent's *pre-merge* head). That replays only your genuine
+       commits. `fleet-rebase` auto-drops this normally; do it by hand when it
+       silently doesn't fire (parent amended during review — why + mechanism:
+       [fleet-queue-stacking.md § Inherited-prefix drop (#1791)](../../docs/design/fleet-queue-stacking.md#inherited-prefix-drop-after-the-parent-merges-1791)).
        After the drop lands the branch on master, check the PR body: a
        leftover `Stacked on:` line is now stale (review-pr's stacked
        detection reads it; base==master + `Stacked on:` is a contradiction,
@@ -394,11 +389,11 @@ Do the work, then exit cleanly:
        conflicted files (`git diff --name-only --diff-filter=U`). If **every**
        one is a gated self-config file (`.claude/commands/role-*.md`,
        `.claude/agents/*`, `.claude/skills/**/SKILL.md`), you physically
-       cannot push the resolution — the commit gate blocks the role-doc/agent/
-       SKILL edit regardless of how cleanly you resolve it. Do **not** resolve
-       and do **not** escalate to `human:needs-fix` (that re-triggers step-1
-       worker pickup, and the next worker re-hits the same wall — this is the
-       #1990 thrash). Park it `fleet:gated`, which every picker skips:
+       cannot push the resolution — the commit gate blocks the edit regardless
+       of how cleanly you resolve it. Do **not** resolve and do **not**
+       escalate to `human:needs-fix` — park it `fleet:gated` instead
+       (rationale + the #1990 thrash this prevents:
+       [fleet-labels-reference.md § `fleet:gated`](../../docs/agents/fleet-labels-reference.md)):
        - `git rebase --abort`
        - `gh pr edit <N> --repo jakildev/IrredenEngine --remove-label "fleet:semantic-conflict" --add-label "fleet:gated"`
        - `gh pr comment <N> --repo jakildev/IrredenEngine --body "Conflict surface is entirely gated self-config; no worker class can push the resolution. Parking \`fleet:gated\` for human-only resolution (or the architect, who can push gated edits with a human in the loop). Conflicted: <file list>. — worker"`
@@ -423,25 +418,10 @@ Do the work, then exit cleanly:
 
        **Engine PR:** `fleet-build --target IRShapeDebug`.
 
-       **Game PR:** the game can't build standalone — it compiles via
-       the engine with your game worktree added as a user project. Use a
-       **dedicated** game build dir (so it doesn't clobber your engine
-       worktree's preset build) and point `ir-build` at it with the
-       `IRREDEN_BUILD_DIR` env var (that's the override knob — there is
-       no `--build-dir` flag). `ir-build` only auto-configures with the
-       bare preset, which omits `IRREDEN_USER_PROJECTS`, so you must
-       configure this dir yourself **once** (idempotent; reuse across
-       iterations) with the game worktree as the user project, then
-       build the **affected project's** target:
-       ```
-       ENG=<your-engine-worktree-abs-path>
-       GAME_WT=~/src/IrredenEngine/creations/game/.claude/worktrees/<your-worktree-name>
-       # one-time configure (skip if $ENG/build-game/CMakeCache.txt exists):
-       cmake --preset <host>-debug -B "$ENG/build-game" -DIRREDEN_USER_PROJECTS="$GAME_WT"
-       # build the affected project target via ir-build, pointed at that dir:
-       IRREDEN_BUILD_DIR="$ENG/build-game" fleet-build --target IRIrredenAll
-       ```
-       `<host>-debug` is your host preset (`macos-debug` / `linux-debug`).
+       **Game PR:** the game can't build standalone — build it in a
+       **dedicated** `build-game` dir pointed at YOUR engine worktree
+       via `IRREDEN_BUILD_DIR`. One-time-configure recipe + rationale:
+       [BUILD.md § Dedicated game build dir](../../docs/agents/BUILD.md#dedicated-game-build-dir-against-a-specific-engine-worktree-build-game).
        Pick the target that matches what the PR touches — `IRIrredenAll`
        (or `IRGame` for the demo) for `irreden/`, the corresponding
        `IR<Project>All` otherwise. **Never build `IRGameAll`** — it
@@ -652,21 +632,11 @@ Do the work, then exit cleanly:
    (e.g. `cd ~/src/IrredenEngine/creations/game/.claude/worktrees/worker-1`).
    For an engine task, stay in your engine worktree (no cd needed).
 
-   Then acquire the local filesystem lock. **Always pass the issue
+   Then acquire the local filesystem lock — exact per-repo command
+   forms: see § Cross-repo model above. **Always pass the issue
    number**, and pass your worktree basename (`worker-1` … `worker-4`)
-   as the agent name so it's visible in `fleet-claim list`:
-
-   ```
-   # engine task (issue #1234)
-   fleet-claim claim 1234 <your-worktree-name>
-
-   # game task (issue #45) — note --repo game BEFORE the subcommand
-   fleet-claim --repo game claim 45 <your-worktree-name>
-   ```
-
-   The `--repo game` namespace prefixes the slug with `game-` so it
-   doesn't collide with engine issue numbers. Mirror it in
-   `release` / `release-stack` calls later.
+   as the agent name so it's visible in `fleet-claim list`. Mirror
+   `--repo game` in `release` / `release-stack` calls later.
 
    - **Exit 0** — you own it. Proceed.
    - **Exit 1 (already taken)** — go back to step 3, pick another.
@@ -777,35 +747,31 @@ Do the work, then exit cleanly:
    dispatched `--print` one-shot; no human is attached to your pane, so
    `AskUserQuestion` (or "let me confirm with you first…") has nowhere to
    land — it stalls or burns the iteration. Resolve from the plan/issue,
-   or escalate **asynchronously** on the issue/PR (the artifact a human
-   reviews on their own schedule), then move to a different task:
-   comment on the issue naming exactly what a human must apply, then
-   park it out of autonomous pickup so you stop re-claiming it —
+   or escalate **asynchronously**, then move to a different task:
+   comment on the issue naming exactly what a human must apply, park it
+   out of autonomous pickup —
    `gh issue edit <N> --remove-label fleet:queued --add-label fleet:needs-human` —
    and release your `fleet-claim`. **Keep `human:approved`** — it's the
-   human's durable approval signal, not yours to strip; removing it was
-   the old workaround for the ingest re-stamping `fleet:queued` (it
-   re-queues any `human:approved` issue lacking it), which is exactly
-   what `fleet:needs-human` now suppresses (it's in the ingest skip set,
-   like `fleet:scope-shipped`). Do NOT re-claim it next iteration: the
-   gate is deterministic, so retrying only burns iterations on a wall.
-   The label clears when the human applies the change — then the ingest
-   re-queues it — or the human closes the issue.
+   human's durable approval signal, not yours to strip (why the park
+   suppresses ingest re-queue while keeping it:
+   [fleet-labels-reference.md § `fleet:needs-human`](../../docs/agents/fleet-labels-reference.md)).
+   Do NOT re-claim it next iteration — the gate is deterministic, so
+   retrying only burns iterations on a wall. The label clears when the
+   human applies the change (the ingest then re-queues) or closes the
+   issue.
 
    **(c) Design escalation via `fleet:design-blocked`.** When the
-   blocker is specifically architectural — the assigned task can't
-   proceed without a design call you don't have authority to make —
-   escalate via the label-driven flow ([`docs/agents/FLEET.md`](../../docs/agents/FLEET.md)
-   "Design-escalation flow") so the architect can pick it up from
-   the trigger surface and any worker can resume cleanly. (At sonnet
-   class, weigh (a) first: if the task needs design input, it usually
-   needs the heavier class for execution too.)
+   blocker is specifically architectural — a design call you don't have
+   authority to make — escalate via the label-driven flow. (At sonnet
+   class, weigh (a) first: a task that needs design input usually needs
+   the heavier class for execution too.) Full cycle + the
+   handoff-is-the-PR / #1310 claim-release rationale:
+   [FLEET.md § Design-escalation flow](../../docs/agents/FLEET.md#design-escalation-flow).
 
-   a. **Commit and push whatever in-progress work you have on the
-      branch.** Even if half-done — the next worker iteration will
-      need it as the starting point when `fleet:design-unblocked`
-      appears. Use `commit-and-push` (the WIP PR already exists).
-   b. Post a `## NEEDS-DESIGN` escalation comment on the PR:
+   a. **Commit and push your in-progress work** — even half-done; the
+      resuming worker starts from it. Use `commit-and-push` (the WIP
+      PR already exists).
+   b. Post the escalation comment on the PR:
       `gh pr comment <N> --body "## NEEDS-DESIGN
 
       <what you've learned about the existing code / framework that
@@ -816,36 +782,24 @@ Do the work, then exit cleanly:
 
       <suggested options if you have a view; the architect picks,
       you don't have to know the right answer>"`
-   c. Move the PR into the `fleet:design-blocked` state. If you reached
-      this PR via the `fleet:design-unblocked` feedback tier — i.e.
-      you're **re-escalating** after the architect already responded
-      once — the PR still carries `fleet:design-unblocked`. Clear it in
-      the same step, otherwise the PR keeps both labels and gets
-      re-picked as unblocked next iteration (step 1 priority 4). The
-      helper only removes labels that are present, so it's a safe no-op
-      on a first-time escalation straight from the queue:
+   c. Swap into the `fleet:design-blocked` state. If you're
+      **re-escalating** after an architect reply, the PR still carries
+      `fleet:design-unblocked` — clear it in the same step, otherwise
+      the PR keeps both labels and gets re-picked as unblocked next
+      iteration (step 1 priority 4). The helper only removes labels
+      that are present, so it's a safe no-op on a first-time escalation:
       `fleet-pr-clear-feedback-labels <N> --labels "fleet:design-unblocked"`
       `gh pr edit <N> --add-label "fleet:design-blocked"`
-      Keep `fleet:wip` — design-blocked is a state qualifier on top
-      of WIP. But **release your `fleet-claim` and worktree
-      reservation** — a design-blocked task is NOT yours to hold.
-      Resolution can take the architect a while, and when it returns as
-      `fleet:design-unblocked` ANY worker should resume it cleanly
-      (step d frees the branch; step 1 priority 4 re-picks it). The
-      handoff is the PR, not your claim: the pushed WIP commit (a), the
-      `## NEEDS-DESIGN` comment + the architect's reply, the plan file
-      (`~/.fleet/plans/issue-<N>.md`), and the `fleet:design-blocked`
-      label carry everything the next worker needs. Holding the claim
-      through the block is what let two workers race the #1310 resume
-      and force-push over each other — release it:
+      Keep `fleet:wip` — design-blocked is a state qualifier on top of
+      WIP. But **release your `fleet-claim` and worktree reservation** —
+      a design-blocked task is NOT yours to hold (see the FLEET.md
+      rationale linked above):
       `fleet-claim release <N>` (add `--repo game` for game tasks)
    d. Reset the worktree via `start-next-task` so the branch is free
-      for the architect (or anyone else) to `gh pr checkout`. Then
-      pick a different unblocked task from the issue queue as your
-      next iteration's work — do NOT re-claim the same task. Once
-      the architect responds, the PR will be re-armed via
-      `fleet:design-unblocked` and any worker can pick it up via
-      step 1 priority 4 above.
+      for anyone to `gh pr checkout`, then pick a **different** task —
+      do NOT re-claim this one. The architect's reply re-arms it as
+      `fleet:design-unblocked`; any worker resumes it via step 1
+      priority 4.
 
    For non-architectural escalations (scope grew beyond one PR's worth
    of work, build break is structural, public-API surface spans
