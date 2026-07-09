@@ -11,6 +11,7 @@
 
 #include <irreden/common/command_suite_capture.hpp>
 #include <irreden/render/camera_controls.hpp>
+#include <irreden/render/commands/command_toggle_culling_minimap.hpp>
 #include <irreden/common/components/component_name.hpp>
 #include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/input/systems/system_input_key_mouse.hpp>
@@ -31,6 +32,7 @@
 #include <irreden/render/systems/system_bake_sun_shadow_map.hpp>
 #include <irreden/render/systems/system_compute_sun_shadow.hpp>
 #include <irreden/render/systems/system_compute_voxel_ao.hpp>
+#include <irreden/render/systems/system_debug_culling_minimap.hpp>
 #include <irreden/render/systems/system_fog_to_trixel.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
 #include <irreden/render/systems/system_lighting_to_trixel.hpp>
@@ -154,6 +156,11 @@ inline bool g_cliDisableAO = false;
 // itself (`engine/system/CLAUDE.md` "System-owned state"), not in a
 // globally-queryable component.
 inline IRSystem::SystemId g_computeLightVolumeSystemId{};
+// BAKE_SUN_SHADOW_MAP SystemId (#2316, V2) — the culling minimap's caster
+// domain reads world-placed casters back via
+// `IRSystem::worldPlacedCasters(g_bakeSunShadowMapSystemId)`, mirroring
+// `g_computeLightVolumeSystemId` above.
+inline IRSystem::SystemId g_bakeSunShadowMapSystemId{};
 // The shot table actually wired into AutoScreenshotConfig this run
 // (kShots or the --light-boundary-sweep series) — the DOMAIN-STATE hook
 // only receives a shot index, so it needs this to recover the shot's
@@ -453,6 +460,13 @@ inline void initEntities(const DemoConfig &config) {
 inline void initCommands() {
     IRPrefab::Camera::registerStandardKeyboardCommands();
     IRCommand::registerCaptureCommands();
+    // Culling-minimap visibility toggle (#2316, V2). F11 matches shape_debug's
+    // binding.
+    IRCommand::createCommand<IRCommand::TOGGLE_CULLING_MINIMAP>(
+        IRInput::KEY_MOUSE,
+        IRInput::PRESSED,
+        IRInput::kKeyButtonF11
+    );
 }
 
 inline void initSystems(const DemoConfig &config) {
@@ -479,7 +493,9 @@ inline void initSystems(const DemoConfig &config) {
             IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
             IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
             IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>(),
-            IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>(),
+            // Captured for the culling minimap's caster domain (#2316, V2) —
+            // see g_bakeSunShadowMapSystemId's doc comment above.
+            (g_bakeSunShadowMapSystemId = IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>()),
             IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>(),
             // Captured for the DOMAIN-STATE emission hook (#2315, V1) — the hook
             // reads this system's per-light gather records back via
@@ -517,6 +533,17 @@ inline void initSystems(const DemoConfig &config) {
     }
     renderPipeline.push_back(IRSystem::createSystem<IRSystem::TEXT_TO_TRIXEL>());
     renderPipeline.push_back(IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>());
+    renderPipeline.push_back(
+        IRSystem::System<IRSystem::DEBUG_CULLING_MINIMAP>::create({
+            .lightVolumeSystemId_ = g_computeLightVolumeSystemId,
+            .bakeSunShadowSystemId_ = g_bakeSunShadowMapSystemId,
+        })
+    );
+    // Off during --auto-screenshot captures — the minimap is a live debug
+    // aid, not part of the render-verify golden image (#2316, V2 plan
+    // "Verification": map off during reference captures). Interactive runs
+    // (g_autoWarmupFrames == 0) default it visible; F11 toggles it either way.
+    IRRender::setCullingMinimapEnabled(g_autoWarmupFrames == 0);
     renderPipeline.push_back(IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>());
 
     if (g_autoProfileFrames > 0) {

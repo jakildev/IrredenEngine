@@ -102,6 +102,8 @@ inline std::string commandNameToString(CommandNames name) {
         return "GUI ZOOM IN";
     case GUI_ZOOM_OUT:
         return "GUI ZOOM OUT";
+    case TOGGLE_CULLING_MINIMAP:
+        return "TOGGLE MINIMAP";
     case TOGGLE_PERIODIC_IDLE_PAUSE:
         return "TOGGLE PAUSE";
     case SET_TRIXEL_COLOR:

@@ -29,6 +29,28 @@ inline void setCullingFrozen(bool frozen) {
     detail::cullingFreezeFlag() = frozen;
 }
 
+// Culling-minimap visibility flag (#2316, V2). Lives here — next to the
+// cull-freeze flag it's toggled alongside — rather than on
+// `System<DEBUG_CULLING_MINIMAP>` itself, so the interactive
+// `IRCommand::Command<TOGGLE_CULLING_MINIMAP>` (which has no `SystemId`
+// handle at bind time) can flip it the same way `TOGGLE_CULLING_FREEZE`
+// flips `cullingFreezeFlag()` above. Default true preserves the minimap's
+// current always-on behavior for demos that already register it.
+namespace detail {
+inline bool &cullingMinimapEnabledFlag() {
+    static bool enabled = true;
+    return enabled;
+}
+} // namespace detail
+
+inline bool isCullingMinimapEnabled() {
+    return detail::cullingMinimapEnabledFlag();
+}
+
+inline void setCullingMinimapEnabled(bool enabled) {
+    detail::cullingMinimapEnabledFlag() = enabled;
+}
+
 // Chunk margin for the CPU-side cull gate in REBUILD_GRID_VOXELS and the GPU
 // chunk-visibility mask in VOXEL_TO_TRIXEL_STAGE_1.  Both use this value so
 // the CPU skip decision is never tighter than the GPU raster decision:
