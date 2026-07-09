@@ -153,6 +153,14 @@ inline ivec3 roundedLightOrigin(const C_WorldTransform &transform) {
 // The host uses it as the propagate iteration count (all lights share the
 // max-radius falloff curve — per-light falloff waits on the winning-light
 // ID channel).
+//
+// Intended trade: because the falloff curve is shared across all eligible
+// lights, a single wide-radius light stretches every other light's decay
+// even when it never seeds. This is deliberate for multi-light scenes with
+// wide radius variance — the alternative (deriving stepFalloff from just the
+// seeded subset) would make a light's curve shift as another light crosses
+// the camera window boundary. Per-light falloff lands with the winning-light
+// ID channel (#2318, L2).
 inline std::uint32_t gatherLightSources(
     std::vector<GPULightSource> &out,
     IREntity::EntityId currentCanvas,
@@ -232,6 +240,17 @@ inline std::uint32_t gatherLightSources(
             if (seedAlpha <= 0.0f) {
                 continue;
             }
+            // Known residual (#2330, lighting epic #1717): the clamped
+            // boundary cell is NOT tested against occlusion. If the clamp
+            // lands inside solid geometry (an occupied voxel or an SDF
+            // C_LightBlocker), the seed is still emitted here, but
+            // `c_propagate_light_volume`'s symmetric occlusion gate traps
+            // its alpha at that cell, so the light silently drops instead of
+            // fading. Benign — a missing light, never light-through-wall —
+            // and fundamental to the finite window. An occlusion-aware seed
+            // (queryable against the CPU mirror BUILD_LIGHT_OCCLUSION_GRID
+            // already maintains, which runs before this system) is deferred
+            // to #2330 rather than shipped silently.
             out.push_back(toGpuLight(lights[i], volumeOriginVoxel + clamped, seedAlpha));
         }
     }
