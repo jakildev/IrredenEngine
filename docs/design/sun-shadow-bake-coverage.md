@@ -105,10 +105,34 @@ provably cannot.
   byte-identical to pre-#2270 master). If drift ever appears on a saturated
   host, this is the backstop; gate the splat on the derived density ratio
   before reaching for it.
-- **Gated to the cardinal single-canvas branch** (`perAxisRoute == 0 &&
-  residualYaw == 0`). The per-axis (#1724) and smooth-yaw (#1596) inputs are
-  already footprint-dense, so they keep the exact single write and stay
-  byte-identical — the per-axis `yaw30` / `yaw45` acceptance is unchanged.
+- **The shader gate is a decode-path predicate; the C++ driver disambiguates
+  the two resolve dispatches.** The gate
+  (`perAxisRoute == 0 && residualYaw == 0 && sunSplatMaxTexels > 0`) is a
+  **decode-path** predicate, not a camera-cardinality one. The raw smooth-yaw
+  single-canvas content (`residualYaw != 0`) and the per-axis face-local store
+  (`perAxisRoute != 0`) skip it by that gate, but the two **CARDINAL-layout
+  resolve** bake dispatches — per-axis screen-depth (#1435) and world-placed
+  cast (P4b-3, #1596) — deliberately zero `residualYaw` to reuse the cardinal
+  recovery, so the gate **alone** would engage the splat on both. The two are
+  **not** the same case, so `BAKE_SUN_SHADOW_MAP` drives them differently via
+  `sunSplatMaxTexels_`:
+  - **Per-axis resolve → splat OFF.** It zeroes the radius around this dispatch
+    (`patchSunSplatRadius` + `SunSplatRestoreGuard`, alongside the existing
+    `FrameYawRestoreGuard`), because the dispatch runs **only while rotating**
+    and its content is footprint-dense (#1724) — the splat would be a no-op
+    anyway. Gating it off makes invariant #1's per-axis / smooth-yaw
+    byte-identity **structural** (radius 0 = pre-#2270 master), not a fragile
+    lean on the density assumption. The `yaw30` / `yaw45` acceptance is unchanged.
+  - **World-placed resolve → splat ON (intentional).** The re-voxelize cube's
+    cast (#1596) is itself a screen-space projection with the **same**
+    grazing-surface undersampling as the main canvas, so its resolve texture
+    bakes into a moth-eaten sun-UV point scatter that the splat must fill. This
+    is **measured**, not assumed: on `shadow_overlay_floor` (cardinal, frozen),
+    gating the world-placed splat off shatters the cube's cast from **1 → 10
+    connected components**. So the splat rides the world-placed resolve at every
+    yaw — a deliberate coverage fix (same defect class as the main canvas), not
+    part of invariant #1's per-axis / smooth-yaw byte-identity, and covered by
+    the `shadow_overlay_floor` regression gate below.
 
 ### The #2204 cost rule and the chosen radius
 
@@ -139,9 +163,16 @@ shows sparse-detection is subtle).
 
 ## Byte-identity regimes (the two invariants)
 
-1. **Per-axis / smooth-yaw byte-identity (structural).** The splat is gated
-   to the cardinal single-canvas branch; every non-cardinal path takes
-   `radius == 0` → the single write, identical to pre-#2270 master.
+1. **Per-axis / smooth-yaw byte-identity (structural).** The raw smooth-yaw and
+   per-axis face-local inputs skip the splat by the shader gate; the per-axis
+   **resolve** dispatch — whose spoofed `residualYaw == 0` would otherwise trip
+   the gate mid-rotation — has `sunSplatMaxTexels_` zeroed around it by the C++
+   driver (`patchSunSplatRadius`). So every per-axis / smooth-yaw path takes
+   `radius == 0` → the single write, identical to pre-#2270 master, **by
+   construction** rather than by relying on the decode-path predicate to track
+   camera cardinality. (The world-placed cast resolve is deliberately **not**
+   part of this regime — see the "splat ON (intentional)" bullet above; it is a
+   separate feature whose cast the splat is meant to cover.)
 2. **Saturated-host byte-identity (empirical).** Where the bake is already
    dense, every box `atomicMin` is a no-op (farther-or-equal depth). Kept as
    an empirical property + the `sunSplatMaxTexels_ == 0` kill switch, not a
@@ -151,7 +182,12 @@ shows sparse-detection is subtle).
 
 - `canvas_stress --debug-overlay shadow --no-auto-rotate --no-spin`, shot
   `shadow_overlay_floor`, `render-shadow-metric.py --roi 1010,540,450,250`:
-  components ≤ 8 and largest_frac ≥ 0.9 (measured 1 / 1.0 at r6).
+  components ≤ 8 and largest_frac ≥ 0.9 (measured 1 / 1.0 at r6). This is wired
+  as an automated `structural` gate in
+  `creations/demos/canvas_stress/test/references/manifest.json` (the
+  `shadow_overlay_floor` `extra_runs` entry, mirroring the #2092
+  `floor_selfshadow` guard), so the coverage fix stays regression-guarded across
+  future bake churn — backend-agnostic, one threshold for both hosts.
 - `IRVoxelYaw` `zoom4_yaw0` renders a solid cast shadow.
 - Per-axis `yaw30` / `yaw45` byte-identity (splat gated off).
 

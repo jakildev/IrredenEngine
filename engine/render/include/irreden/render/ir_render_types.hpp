@@ -807,9 +807,12 @@ struct FrameDataSun {
     // holes). atomicMin makes the box a no-op where nearer geometry already
     // covers a texel, so a saturated-bake host is byte-identical and the fill
     // concentrates on genuinely-empty hole texels; doubles as the kill switch —
-    // 0 ⇒ the exact single-write path. Gated to the cardinal single-canvas bake
-    // branch. See docs/design/sun-shadow-bake-coverage.md. Occupies the trailing
-    // std140 pad floats so the 128-byte layout is unchanged.
+    // 0 ⇒ the exact single-write path. Engaged for the cardinal main-canvas bake
+    // and the world-placed cast resolve; the C++ driver zeros it for the per-axis
+    // resolve dispatch (structural per-axis / smooth-yaw byte-identity — see
+    // system_bake_sun_shadow_map.hpp patchSunSplatRadius). See
+    // docs/design/sun-shadow-bake-coverage.md. Occupies the trailing std140 pad
+    // floats so the 128-byte layout is unchanged.
     float sunSplatMaxTexels_ = 6.0f;
     float _cascadePad1_ = 0.0f;
 };

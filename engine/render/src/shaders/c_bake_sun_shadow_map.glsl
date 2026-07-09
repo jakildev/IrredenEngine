@@ -150,10 +150,17 @@ void main() {
         pos3D, sunBasisU.xyz, sunBasisV.xyz, sunDirection.xyz
     );
 
-    // #2270 coverage splat — cardinal single-canvas branch only. The per-axis
-    // (perAxisRoute != 0) and smooth-yaw (residualYaw != 0) inputs are already
-    // footprint-dense (#1724/#1596), so they keep the exact single write below
-    // and stay byte-identical. The atomicMin box preserves saturated-host
+    // #2270 coverage splat. The gate below is a DECODE-PATH predicate, not a
+    // camera-cardinality one: the raw smooth-yaw single-canvas content
+    // (residualYaw != 0) and the per-axis face-local store (perAxisRoute != 0)
+    // skip it, so it engages for the cardinal main-canvas bake AND the two
+    // CARDINAL-layout resolve dispatches (per-axis #1435, world-placed P4b-3),
+    // which spoof residualYaw == 0 with perAxisRoute == 0 to reuse the cardinal
+    // recovery. The C++ driver disambiguates via sunSplatMaxTexels: it zeros the
+    // radius for the PER-AXIS resolve (patchSunSplatRadius) so invariant #1's
+    // per-axis / smooth-yaw byte-identity is structural, but keeps it for the
+    // WORLD-PLACED resolve (whose cast carries the same point-scatter defect the
+    // splat must fill — measured). The atomicMin box preserves saturated-host
     // byte-identity (farther splats no-op where geometry is dense).
     int radius = 0;
     if (perAxisRoute == 0 && residualYaw == 0.0 && sunSplatMaxTexels > 0.0) {

@@ -147,11 +147,17 @@ kernel void c_bake_sun_shadow_map(
         sunFrameData.sunDirection.xyz
     );
 
-    // #2270 coverage splat — cardinal single-canvas branch only. The per-axis /
-    // smooth-yaw inputs are footprint-dense (#1724/#1596), so they keep the
-    // exact single write and stay byte-identical. The atomic_fetch_min box
-    // preserves saturated-host byte-identity (farther splats no-op where
-    // geometry is dense). Mirrors GLSL.
+    // #2270 coverage splat. The gate is a DECODE-PATH predicate, not a
+    // camera-cardinality one: the raw smooth-yaw and per-axis face-local inputs
+    // skip it, so it engages for the cardinal main-canvas bake AND the two
+    // CARDINAL-layout resolve dispatches (per-axis #1435, world-placed P4b-3),
+    // which spoof residualYaw == 0 with perAxisRoute == 0. The C++ driver
+    // disambiguates via sunSplatMaxTexels: it zeros the radius for the PER-AXIS
+    // resolve (patchSunSplatRadius) so invariant #1's per-axis / smooth-yaw
+    // byte-identity is structural, but keeps it for the WORLD-PLACED resolve
+    // (whose cast carries the same point-scatter defect — measured). The
+    // atomic_fetch_min box preserves saturated-host byte-identity (farther splats
+    // no-op where geometry is dense). Mirrors GLSL.
     int radius = 0;
     if (frameData.perAxisRoute == 0 && frameData.residualYaw == 0.0 &&
         sunFrameData.sunSplatMaxTexels > 0.0) {

@@ -63,8 +63,11 @@ constexpr float kCascadeSplitRatio = 0.4f;
 // #2270 coverage-splat radius (sun texels): c_bake_sun_shadow_map atomicMin's
 // each caster's depth into a (2·r+1)² box, filling the sun texels a grazing /
 // point-scattered caster footprint leaves empty (the moth-eaten cast-shadow
-// holes). Doubles as the shader kill switch — 0 forces the exact single-write
-// path. r=6 is the measured minimum that reaches a single-component coherent
+// holes). Engaged for the cardinal main-canvas bake AND the world-placed cast
+// resolve (its cast has the same defect). The PER-AXIS resolve zeros it via
+// patchSunSplatRadius (structural byte-identity for invariant #1). Doubles as
+// the shader kill switch — 0 forces the exact single-write path. r=6 is the
+// measured minimum that reaches a single-component coherent
 // cast shadow on the affected host (shadow_overlay_floor: r6 -> 1 comp /
 // largest_frac 1.0; r4 is the pass floor, r3 shatters to 119 comp) while
 // staying well under the architect-waived r8 atomic cost (#2204). See
@@ -240,6 +243,37 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         }
     };
 
+    // Patch the resident FrameDataSun UBO's #2270 coverage-splat radius (binding
+    // kBufferIndex_FrameDataSun) and re-bind — subData orphans the buffer on
+    // Metal, same convention as patchFrameYawSplit. Used to zero the radius for
+    // the PER-AXIS resolve dispatch. The shader's splat gate
+    // (`perAxisRoute == 0 && residualYaw == 0 && sunSplatMaxTexels > 0`) reads the
+    // *decode-path* predicate, not camera cardinality: the per-axis resolve
+    // (#1435) deliberately zeros residualYaw to reuse the cardinal recovery, so
+    // it would spuriously trip the splat while rotating and break invariant #1's
+    // per-axis / smooth-yaw byte-identity. Zeroing the radius there makes that
+    // byte-identity STRUCTURAL (radius 0 = pre-#2270 master) instead of leaning
+    // on the per-axis dense-footprint assumption. The world-placed resolve
+    // (P4b-3) does NOT use this — its cast has real point-scatter holes the splat
+    // must fill (measured). See docs/design/sun-shadow-bake-coverage.md
+    // § "Byte-identity regimes".
+    void patchSunSplatRadius(float radiusTexels) {
+        sunShadowFrameDataBuf_
+            ->subData(offsetof(FrameDataSun, sunSplatMaxTexels_), sizeof(float), &radiusTexels);
+        sunShadowFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataSun);
+    }
+
+    // Scope-guard mate for patchSunSplatRadius — restores the canonical radius on
+    // destruction so a resolve dispatch's zeroing never leaks into the resident
+    // FrameDataSun downstream consumers read.
+    struct SunSplatRestoreGuard {
+        System<BAKE_SUN_SHADOW_MAP> &sys_;
+        float radiusTexels_;
+        ~SunSplatRestoreGuard() {
+            sys_.patchSunSplatRadius(radiusTexels_);
+        }
+    };
+
     void tick(
         IREntity::EntityId entity,
         const C_TriangleCanvasTextures &canvasTextures,
@@ -308,6 +342,12 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
                 IRPrefab::Camera::computeYawSplit(cameraVisualYaw);
             patchFrameYawSplit(cameraRasterYaw, 0.0f);
             const FrameYawRestoreGuard restoreGuard{*this, cameraVisualYaw, cameraResidualYaw};
+            // This resolve reuses the cardinal recovery (residualYaw == 0), which
+            // would spuriously engage the #2270 coverage splat; the per-axis
+            // resolve is already footprint-dense (#1724), so gate it off
+            // structurally for this dispatch (byte-identical to master).
+            patchSunSplatRadius(0.0f);
+            const SunSplatRestoreGuard splatGuard{*this, frameData_.sunSplatMaxTexels_};
             // resolveDepth_ is allocated at the main canvas size, so dispatch
             // over canvasTextures.size_ (same domain as the main bake above).
             perAxisCanvases_->resolveDepth_.second
@@ -357,6 +397,16 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
                 IRPrefab::Camera::computeYawSplit(cameraVisualYaw);
             patchFrameYawSplit(cameraRasterYaw, 0.0f);
             const FrameYawRestoreGuard restoreGuard{*this, cameraVisualYaw, cameraResidualYaw};
+            // NOTE: unlike the per-axis resolve above, the #2270 coverage splat
+            // is left ENGAGED for pass 3's bake. The world-placed re-voxelize
+            // cast's resolve texture carries the SAME screen-space point-scatter
+            // as the main canvas (its sun-UV projection undersamples grazing
+            // surfaces identically), so the splat is load-bearing here — measured
+            // on shadow_overlay_floor, gating it off shatters the cube's cast to
+            // 10 components (r6 splat → 1). The splat reuses the cardinal recovery
+            // (residualYaw == 0) at every yaw, which is intentional: the cube's
+            // cast is a coverage fix, not part of invariant #1's per-axis /
+            // smooth-yaw byte-identity. See docs/design/sun-shadow-bake-coverage.md.
 
             // Pass 1 — scatter each caster into the shared scratch (front-most
             // per screen pixel via atomicMin). Only the 16-byte
@@ -605,11 +655,15 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         frameData_.cascadeCount_ = kSunShadowCascadeCount;
 
         // #2270 coverage-splat radius / kill switch. c_bake_sun_shadow_map
-        // atomicMin's each caster's depth into a (2·r+1)² box (gated to the
-        // cardinal single-canvas branch) to fill the point-scattered cast-shadow
-        // holes; the atomicMin makes it a no-op where geometry is already dense
-        // (saturated-host byte-identity). Set 0 here to force the exact
-        // single-write path (the byte-identity backstop). See
+        // atomicMin's each caster's depth into a (2·r+1)² box to fill the
+        // point-scattered cast-shadow holes; the atomicMin makes it a no-op where
+        // geometry is already dense (saturated-host byte-identity). This resident
+        // value drives the cardinal main-canvas bake AND the world-placed cast
+        // resolve (whose cast carries the same defect). Only the PER-AXIS resolve
+        // dispatch zeros it via patchSunSplatRadius — its spoofed residualYaw == 0
+        // would otherwise trip the shader gate and break invariant #1's per-axis /
+        // smooth-yaw byte-identity. Set 0 here to force the exact single-write
+        // path everywhere (the byte-identity backstop). See
         // docs/design/sun-shadow-bake-coverage.md.
         frameData_.sunSplatMaxTexels_ = static_cast<float>(kSunSplatMaxTexels);
     }
