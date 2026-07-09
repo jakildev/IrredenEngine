@@ -148,6 +148,13 @@ unlike `spawnDetachedReVoxelizeSolid` — never attached `C_CanvasAOTexture` or
 `COMPUTE_VOXEL_AO` nor `LIGHTING_TO_TRIXEL`, so it gets **no** AO, Lambert, sky,
 or world-receive and composites its raw rasterized albedo.
 
+> **Superseded (#2322 D1).** The `lightDetachedCanvas(canvas, size)` helper this
+> section proposes was retired: `IRPrefab::EntityCanvas::createWithVoxelPool`
+> (`entity_canvas.hpp`) now attaches the `C_CanvasAOTexture` +
+> `C_TrixelCanvasRenderBehavior` pair by default for any non-screen-locked
+> canvas, so world-placed detached canvases light up without a per-site call.
+> The **Fix** below is retained as the historical investigation record.
+
 **Fix.** Factor the lighting attach into a shared `lightDetachedCanvas(canvas,
 size)` helper (`canvas_stress/main.cpp`) and call it from **both** detached
 spawn helpers, so every detached solid participates in AO + directional sun +

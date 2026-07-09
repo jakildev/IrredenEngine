@@ -61,6 +61,13 @@ inline IRComponents::C_EntityCanvas create(std::string canvasName, IRMath::ivec2
 /// silently composited raw albedo). Pass `screenLocked = true` for a genuine
 /// overlay (HUD prop, billboard, floating showcase); it skips both
 /// components entirely, matching the fixed-depth overlay contract.
+///
+/// The `!screenLocked` attach is unconditional: the builder can't see a
+/// creation's `--no-lighting` (or equivalent) flag, so a world-placed canvas
+/// still allocates a (never-written) `C_CanvasAOTexture` under that flag.
+/// Harmless — the texture is small and canvas-sized — but it means this is not
+/// a byte-for-byte "skip all lighting-adjacent allocation" path; pass
+/// `screenLocked = true` at the call to opt a canvas out of the pair entirely.
 inline IRComponents::C_EntityCanvas createWithVoxelPool(
     std::string canvasName,
     IRMath::ivec2 canvasSize,
