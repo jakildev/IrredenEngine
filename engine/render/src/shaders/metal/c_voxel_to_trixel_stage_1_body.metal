@@ -75,6 +75,122 @@ inline void resolveWinnerTap(
     atomic_fetch_min_explicit(&perAxisWinnerIds[linearIndex], voxelIndex, memory_order_relaxed);
 }
 
+// View-visibility overflow lane (#2333) — GLSL twin in
+// c_voxel_to_trixel_stage_1_body.glsl. Yawed-depth quantization shared by
+// resolveMode 2 (mask write) and 3 (mask compare): 1/16-world-unit steps,
+// biased to a uint so atomic-min orders negative depths correctly. Both modes
+// call THE SAME function on the SAME facePos, so a face always ties its own
+// mask entry exactly regardless of float rounding.
+constant float kOverflowDepthQuantScale = 16.0f;
+// Half a world unit of tolerance (8 sixteenth-steps): absorbs quantization
+// ties between genuinely co-visible faces without admitting occluded coset
+// losers (the nearest coset pair separates by >= ~2.7 world units of yawed
+// depth). Over-emit is safe — the framebuffer depth test cleans up; under-emit
+// re-opens the #2331 holes.
+constant uint kOverflowDepthEpsSteps = 8u;
+constant int kOverflowDepthBias = 0x40000000;
+
+inline uint overflowYawedDepthKey(int3 facePos, float visualYaw) {
+    return uint(
+        int(floor(yawedIsoDistance(float3(facePos), visualYaw) * kOverflowDepthQuantScale)) +
+        kOverflowDepthBias
+    );
+}
+
+// The face's screen cell at the LIVE yaw, on the same perAxisBase anchor the
+// cardinal store uses (the scatter projects with the identical
+// pos3DtoPos2DIsoYawed, so mask cells and scattered quads agree).
+inline int2 overflowYawedPixel(int2 perAxisBase, int3 facePos, float visualYaw) {
+    return perAxisBase + roundHalfUp(pos3DtoPos2DIsoYawed(float3(facePos), visualYaw));
+}
+
+// resolveMode == 2: view-mask write. Every per-axis face (all three axis
+// routes — view visibility competes across axes) atomic-mins its quantized
+// yawed depth into the shared mask region of the buffer-28 scratch.
+inline void viewMaskTap(
+    int2 perAxisBase,
+    int3 facePos,
+    constant FrameDataVoxelToTrixel& frameData,
+    device atomic_uint* scratch
+) {
+    const int2 yawedPix = overflowYawedPixel(perAxisBase, facePos, frameData.visualYaw);
+    if (!isInsideCanvas(yawedPix, frameData.canvasSizePixels)) {
+        return;
+    }
+    const uint cell =
+        uint(yawedPix.y) * uint(frameData.canvasSizePixels.x) + uint(yawedPix.x);
+    atomic_fetch_min_explicit(
+        &scratch[uint(frameData.overflowScratchLayout.x) + cell],
+        overflowYawedDepthKey(facePos, frameData.visualYaw),
+        memory_order_relaxed
+    );
+}
+
+// resolveMode == 3: overflow append. A face appends iff it is view-visible
+// (within epsilon of its view-mask cell winner) AND it is NOT its cardinal
+// store cell's settled winner — exactly the set `viewVisible \ cardinalWinners`
+// the cardinal-keyed store drops (docs: epic #2331). Entries carry the exact
+// (cardinal cell, encoded distance) pair the store would have written plus the
+// raw colorPacked, so the scatter's overflow branch reuses the per-cell
+// recovery bit-for-bit (albedo-only in this child; lighting is #2334). Entry
+// words are written with relaxed atomic stores — the scratch is declared
+// atomic_uint, and a plain-store reinterpret would be UB.
+inline void overflowAppendTap(
+    int2 perAxisBase,
+    int3 facePos,
+    int voxelDistance,
+    uint colorPacked,
+    constant FrameDataVoxelToTrixel& frameData,
+    device const atomic_int* distanceScratch,
+    device atomic_uint* scratch,
+    int2 canvasSize
+) {
+    const int2 yawedPix = overflowYawedPixel(perAxisBase, facePos, frameData.visualYaw);
+    if (!isInsideCanvas(yawedPix, frameData.canvasSizePixels)) {
+        return; // off-screen at the live yaw
+    }
+    const uint yawedCell =
+        uint(yawedPix.y) * uint(frameData.canvasSizePixels.x) + uint(yawedPix.x);
+    const uint maskKey = atomic_load_explicit(
+        &scratch[uint(frameData.overflowScratchLayout.x) + yawedCell], memory_order_relaxed
+    );
+    if (overflowYawedDepthKey(facePos, frameData.visualYaw) >
+        maskKey + kOverflowDepthEpsSteps) {
+        return; // view-occluded — some nearer face owns this screen cell
+    }
+    const int2 cardPix = perAxisBase + pos3DtoPos2DIso(facePos);
+    // Off-canvas cardinal key never stored (writeDistanceTap dropped it) and is
+    // outside the worst-case-sized render domain — mirror the silent drop.
+    if (!isInsideCanvas(cardPix, canvasSize)) {
+        return;
+    }
+    const uint cardCell = uint(cardPix.y) * uint(canvasSize.x) + uint(cardPix.x);
+    if (atomic_load_explicit(&distanceScratch[cardCell], memory_order_relaxed) ==
+        voxelDistance) {
+        return; // this face IS (or ties) the settled winner — the cell path draws it
+    }
+    const uint ctrlBase = uint(frameData.overflowScratchLayout.y);
+    const uint idx =
+        atomic_fetch_add_explicit(&scratch[ctrlBase + 1u], 1u, memory_order_relaxed);
+    if (idx >= uint(frameData.overflowScratchLayout.w)) {
+        // Cap hit: pair the add back off so instanceCount settles at exactly
+        // min(appends, cap), and count the drop for the CPU one-shot warn
+        // (never silent). No reader sees the transient over-cap value — the
+        // indirect draw is barriered behind this whole dispatch.
+        atomic_fetch_sub_explicit(&scratch[ctrlBase + 1u], 1u, memory_order_relaxed);
+        atomic_fetch_add_explicit(&scratch[ctrlBase + 5u], 1u, memory_order_relaxed);
+        return;
+    }
+    const uint entryBase = uint(frameData.overflowScratchLayout.z) + idx * 3u;
+    atomic_store_explicit(
+        &scratch[entryBase + 0u],
+        (uint(cardPix.x) & 0xFFFFu) | ((uint(cardPix.y) & 0xFFFFu) << 16u),
+        memory_order_relaxed
+    );
+    atomic_store_explicit(&scratch[entryBase + 1u], colorPacked, memory_order_relaxed);
+    atomic_store_explicit(&scratch[entryBase + 2u], uint(voxelDistance), memory_order_relaxed);
+}
+
 // Emit a face's 2x3 trixel block through the deformation matrix D.
 // World canvas: maxN=2 (Z-yaw residual ≤ π/4, column lengths ≤ √3).
 // Detached canvas: maxN=6 (full SO(3)).
@@ -461,6 +577,17 @@ kernel void IR_STAGE1_KERNEL_NAME(
             // No sub-cell offset at base resolution; encode centre fracs (8,8).
             const int voxelDistance =
                 encodeDepthWithFaceFrac(pos3DtoDistance(facePos), slot, 8, 8, riserFlip);
+            if (frameData.resolveMode == 2) {
+                viewMaskTap(perAxisBase, facePos, frameData, perAxisWinnerIds);
+                return;
+            }
+            if (frameData.resolveMode == 3) {
+                overflowAppendTap(
+                    perAxisBase, facePos, voxelDistance, voxels[voxelIndex].colorPacked,
+                    frameData, distanceScratch, perAxisWinnerIds, canvasSize
+                );
+                return;
+            }
             if (frameData.resolveMode != 0) {
                 resolveWinnerTap(
                     perAxisBase + pos3DtoPos2DIso(facePos), voxelDistance, voxelIndex,
@@ -483,6 +610,17 @@ kernel void IR_STAGE1_KERNEL_NAME(
         const float3 fracInCell = worldAligned - float3(worldPos_sub);
         const int voxelDistance =
             encodeDepthWithFaceFrac(pos3DtoDistance(facePos_sub), slot, axis, fracInCell, riserFlip);
+        if (frameData.resolveMode == 2) {
+            viewMaskTap(perAxisBase, facePos_sub, frameData, perAxisWinnerIds);
+            return;
+        }
+        if (frameData.resolveMode == 3) {
+            overflowAppendTap(
+                perAxisBase, facePos_sub, voxelDistance, voxels[voxelIndex].colorPacked,
+                frameData, distanceScratch, perAxisWinnerIds, canvasSize
+            );
+            return;
+        }
         // #2255: the 4-bit frac quantization above is where equal keys arise —
         // see the GLSL twin. The winner election keeps stage 2's color tap
         // deterministic among the tied faces.

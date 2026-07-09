@@ -1005,6 +1005,15 @@ struct FrameDataVoxelToTrixel {
     // the two lanes pack the 192..208 std140 row exactly.
     int feederSubCap;
     int feederPassTailBase;
+    // View-visibility overflow scratch layout (#2333): region base offsets (in
+    // uints) into the unified buffer-28 scratch + the entry cap. .x = view
+    // mask, .y = ctrl block (draw args + counters), .z = overflow entries,
+    // .w = entry cap. Region 0 of the scratch is the #2255 winner-id array, so
+    // perAxisWinnerIds[cell] indexing is unchanged. Appended after the #2258
+    // feeder-partition lanes; mirrors
+    // FrameDataVoxelToCanvas::overflowScratchLayout_ (offset 208). Read only by
+    // c_voxel_to_trixel_stage_1 at resolveMode 2/3.
+    int4 overflowScratchLayout;
 };
 
 // Smooth analytic vision-circle reveal for one fog disc, shared by

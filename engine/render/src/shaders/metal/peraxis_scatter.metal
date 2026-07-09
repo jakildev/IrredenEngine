@@ -48,6 +48,16 @@ struct FrameDataIsoTriangles {
     float depthColorExtent;
     float _depthColorPad0;
     float _depthColorPad1;
+    // View-visibility overflow lane draw selector (#2333). 0 = the per-cell
+    // scatter (instancing over the compacted occupied cells). 1 = the overflow
+    // entry draw drawPerAxisScatter issues after the three cell draws: buffer
+    // 25 then holds the appended {iso cell, colorPacked, encoded distance}
+    // entries and the instance id indexes entries, not cells. std140-appended
+    // (offset 208) so every prior offset is unchanged.
+    int overflowMode;
+    int _overflowPad0;
+    int _overflowPad1;
+    int _overflowPad2;
 };
 
 struct VertexOut {
@@ -175,10 +185,27 @@ vertex VertexOut v_peraxis_scatter(
 ) {
     VertexOut out;
     const int2 canvasSize = int2(triangleColors.get_width(), triangleColors.get_height());
-    const int cell = int(compactedCells[instanceId]);
-    const uint2 ij = uint2(uint(cell % canvasSize.x), uint(cell / canvasSize.x));
-
-    const float4 color = triangleColors.read(ij);
+    int2 ij;
+    float4 color;
+    int rawDist;
+    if (frameData.overflowMode != 0) {
+        // View-visibility overflow lane (#2333): this instance is an appended
+        // entry carrying the exact (cardinal cell, encoded distance) pair the
+        // store would have written for a view-visible face the per-cell store
+        // dropped, plus its raw voxel color (albedo-only in this child —
+        // lighting is #2334). Everything below is bit-identical to the cell
+        // path; only the data source differs.
+        const uint entryBase = instanceId * 3u;
+        const uint packedCell = compactedCells[entryBase + 0u];
+        ij = int2(int(packedCell & 0xFFFFu), int(packedCell >> 16u));
+        color = unpackColor(compactedCells[entryBase + 1u]);
+        rawDist = int(compactedCells[entryBase + 2u]);
+    } else {
+        const int cell = int(compactedCells[instanceId]);
+        ij = int2(cell % canvasSize.x, cell / canvasSize.x);
+        color = triangleColors.read(uint2(ij));
+        rawDist = triangleDistances.read(uint2(ij)).r;
+    }
     if (color.a < 0.1f) {
         out.position = float4(2.0, 2.0, 2.0, 1.0);
         out.color = float4(0.0);
@@ -195,7 +222,6 @@ vertex VertexOut v_peraxis_scatter(
         return out;
     }
 
-    const int rawDist = triangleDistances.read(ij).r;
     // Per-axis fractional encoding (#1458, flip carrier #2207) — decode via the
     // shared ir_iso_common helpers. The frac fields keep their positions.
     const int slot = decodeSlot(rawDist);
@@ -241,17 +267,27 @@ vertex VertexOut v_peraxis_scatter(
     // interior unconditionally, so the tap result is irrelevant (max with 1.0).
     // That halves the per-vertex texture reads (2 taps, not 4) on this hot per-cell
     // path while staying output-identical to the max(tap, polarity) form.
-    const int2 stepU = pos3DtoPos2DIso(int3(eu));
-    const int2 stepV = pos3DtoPos2DIso(int3(ev));
-    const int euAxis = (eu.x != 0.0f) ? 0 : ((eu.y != 0.0f) ? 1 : 2);
-    const int evAxis = (ev.x != 0.0f) ? 0 : ((ev.y != 0.0f) ? 1 : 2);
-    const int euPol = visiblePolarityForAxis(euAxis, frameData.visibleFaceIds);
-    const int evPol = visiblePolarityForAxis(evAxis, frameData.visibleFaceIds);
-    out.edgeInterior = float4(
-        (euPol < 0) ? 1.0f : occupiedNeighbor(triangleColors, int2(ij) - stepU, canvasSize),  // u-low  (-eu)
-        (euPol > 0) ? 1.0f : occupiedNeighbor(triangleColors, int2(ij) + stepU, canvasSize),  // u-high (+eu)
-        (evPol < 0) ? 1.0f : occupiedNeighbor(triangleColors, int2(ij) - stepV, canvasSize),  // v-low  (-ev)
-        (evPol > 0) ? 1.0f : occupiedNeighbor(triangleColors, int2(ij) + stepV, canvasSize)); // v-high (+ev)
+    if (frameData.overflowMode != 0) {
+        // #2333: overflow entries are isolated revealed slivers, and the bound
+        // triangleColors is whichever axis drew last (the overflow draw is
+        // axis-agnostic), so the same-axis occupancy taps below would read a
+        // foreign axis's cells. Classify every edge as boundary: the analytic
+        // coverage then trims the exact footprint, which tiles gap-free against
+        // neighbouring faces' exact footprints in world space.
+        out.edgeInterior = float4(0.0);
+    } else {
+        const int2 stepU = pos3DtoPos2DIso(int3(eu));
+        const int2 stepV = pos3DtoPos2DIso(int3(ev));
+        const int euAxis = (eu.x != 0.0f) ? 0 : ((eu.y != 0.0f) ? 1 : 2);
+        const int evAxis = (ev.x != 0.0f) ? 0 : ((ev.y != 0.0f) ? 1 : 2);
+        const int euPol = visiblePolarityForAxis(euAxis, frameData.visibleFaceIds);
+        const int evPol = visiblePolarityForAxis(evAxis, frameData.visibleFaceIds);
+        out.edgeInterior = float4(
+            (euPol < 0) ? 1.0f : occupiedNeighbor(triangleColors, ij - stepU, canvasSize),  // u-low  (-eu)
+            (euPol > 0) ? 1.0f : occupiedNeighbor(triangleColors, ij + stepU, canvasSize),  // u-high (+eu)
+            (evPol < 0) ? 1.0f : occupiedNeighbor(triangleColors, ij - stepV, canvasSize),  // v-low  (-ev)
+            (evPol > 0) ? 1.0f : occupiedNeighbor(triangleColors, ij + stepV, canvasSize)); // v-high (+ev)
+    }
 
     const float2 cornerSel = in.position + float2(0.5);
     const float3 worldCorner = faceSpanCorner(axis, origin, cornerSel);

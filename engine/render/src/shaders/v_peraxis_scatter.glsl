@@ -65,6 +65,16 @@ layout (std140, binding = 3) uniform FrameDataIsoTriangles {
     float depthColorExtent;
     float _depthColorPad0;
     float _depthColorPad1;
+    // View-visibility overflow lane draw selector (#2333). 0 = the per-cell
+    // scatter (instancing over the compacted occupied cells). 1 = the overflow
+    // entry draw drawPerAxisScatter issues after the three cell draws: binding
+    // 25 then holds the appended {iso cell, colorPacked, encoded distance}
+    // entries and gl_InstanceID indexes entries, not cells. std140-appended
+    // (offset 208) so every prior offset is unchanged.
+    int overflowMode;
+    int _overflowPad0;
+    int _overflowPad1;
+    int _overflowPad2;
 };
 
 flat out vec4 vColor;
@@ -149,13 +159,30 @@ vec3 faceSpanCorner(int axis, vec3 origin, vec2 cornerSel) {
 
 void main() {
     const ivec2 canvasSize = textureSize(triangleDistances, 0);
-    // #1961: the compaction pre-pass appended this axis's occupied cells, so the
-    // instance id indexes the compacted list (this axis bindRange'd to base 0)
-    // instead of enumerating every worst-case grid cell.
-    const int cell = int(compactedCells[gl_InstanceID]);
-    const ivec2 ij = ivec2(cell % canvasSize.x, cell / canvasSize.x);
-
-    const vec4 color = texelFetch(triangleColors, ij, 0);
+    ivec2 ij;
+    vec4 color;
+    int rawDist;
+    if (overflowMode != 0) {
+        // View-visibility overflow lane (#2333): this instance is an appended
+        // entry carrying the exact (cardinal cell, encoded distance) pair the
+        // store would have written for a view-visible face the per-cell store
+        // dropped, plus its raw voxel color (albedo-only in this child —
+        // lighting is #2334). Everything below is bit-identical to the cell
+        // path; only the data source differs.
+        const uint entryBase = uint(gl_InstanceID) * 3u;
+        const uint packedCell = compactedCells[entryBase + 0u];
+        ij = ivec2(int(packedCell & 0xFFFFu), int(packedCell >> 16u));
+        color = unpackColor(compactedCells[entryBase + 1u]);
+        rawDist = int(compactedCells[entryBase + 2u]);
+    } else {
+        // #1961: the compaction pre-pass appended this axis's occupied cells,
+        // so the instance id indexes the compacted list (this axis bindRange'd
+        // to base 0) instead of enumerating every worst-case grid cell.
+        const int cell = int(compactedCells[gl_InstanceID]);
+        ij = ivec2(cell % canvasSize.x, cell / canvasSize.x);
+        color = texelFetch(triangleColors, ij, 0);
+        rawDist = texelFetch(triangleDistances, ij, 0).r;
+    }
     // Empty cell — kColorClear alpha is 0 (matches the gather's discard test).
     // Degenerate the whole instance off-screen so it produces no fragments.
     if (color.a < 0.1) {
@@ -170,8 +197,6 @@ void main() {
         vCellTieOffset = 0.0;
         return;
     }
-
-    const int rawDist = texelFetch(triangleDistances, ij, 0).r;
     // Per-axis fractional encoding (#1458, flip carrier #2207) — decode via the
     // shared ir_iso_common helpers. The frac fields keep their positions.
     const int slot = decodeSlot(rawDist);

@@ -125,10 +125,18 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     // effSub (or zero feeders) makes the feeder pass byte-identical to the
     // pre-Step-B single dispatch. Both lanes stay in the std140 block (offsets
     // 200/204, shifted one slot down by the #1812 gate) so every binding-7
-    // shader shares one layout; the former `feederPass` int at 208 is a
-    // reserved pad now the flag is compile-time.
+    // shader shares one layout; the former `feederPass` int at 208 became the
+    // base of the #2333 overflow layout below now the flag is compile-time.
     uniform int feederSubCap;
     uniform int feederPassTailBase;
+    // View-visibility overflow scratch layout (#2333): region base offsets (in
+    // uints) into the unified binding-28 scratch + the entry cap. .x = view
+    // mask, .y = ctrl block (draw args + counters), .z = overflow entries,
+    // .w = entry cap. Region 0 of the scratch is the #2255 winner-id array, so
+    // perAxisWinnerIds[cell] indexing below is unchanged. std140 lands the ivec4
+    // at offset 208, mirroring FrameDataVoxelToCanvas::overflowScratchLayout_.
+    // Read only at resolveMode 2/3 (rotating frames).
+    uniform ivec4 overflowScratchLayout;
 };
 
 layout(std430, binding = 5) readonly buffer PositionBuffer {
@@ -219,6 +227,89 @@ void resolveWinnerTap(const ivec2 canvasPixel, const int voxelDistance, const ui
     if (imageLoad(triangleCanvasDistances, canvasPixel).x != voxelDistance) return;
     const uint cell = uint(canvasPixel.y) * uint(canvasSize.x) + uint(canvasPixel.x);
     atomicMin(perAxisWinnerIds[cell], voxelIndex);
+}
+
+// View-visibility overflow lane (#2333) — yawed-depth quantization shared by
+// resolveMode 2 (mask write) and 3 (mask compare). 1/16-world-unit steps,
+// biased to a uint so atomicMin orders negative depths correctly. Both modes
+// call THE SAME function on the SAME facePos, so a face always ties its own
+// mask entry exactly regardless of float rounding.
+const float kOverflowDepthQuantScale = 16.0;
+// Half a world unit of tolerance (8 sixteenth-steps): absorbs quantization
+// ties between genuinely co-visible faces without admitting occluded coset
+// losers (the nearest coset pair separates by >= ~2.7 world units of yawed
+// depth). Over-emit is safe — the framebuffer depth test cleans up; under-emit
+// re-opens the #2331 holes.
+const uint kOverflowDepthEpsSteps = 8u;
+const int kOverflowDepthBias = 0x40000000;
+
+uint overflowYawedDepthKey(const ivec3 facePos) {
+    return uint(
+        int(floor(yawedIsoDistance(vec3(facePos), visualYaw) * kOverflowDepthQuantScale)) +
+        kOverflowDepthBias
+    );
+}
+
+// The face's screen cell at the LIVE yaw, on the same perAxisBase anchor the
+// cardinal store uses (the scatter projects with the identical
+// pos3DtoPos2DIsoYawed, so mask cells and scattered quads agree).
+ivec2 overflowYawedPixel(const ivec2 perAxisBase, const ivec3 facePos) {
+    return perAxisBase + roundHalfUp(pos3DtoPos2DIsoYawed(vec3(facePos), visualYaw));
+}
+
+// resolveMode == 2: view-mask write. Every per-axis face (all three axis
+// routes — view visibility competes across axes) atomicMins its quantized
+// yawed depth into the shared mask region.
+void viewMaskTap(const ivec2 perAxisBase, const ivec3 facePos) {
+    const ivec2 yawedPix = overflowYawedPixel(perAxisBase, facePos);
+    if (!isInsideCanvas(yawedPix, canvasSizePixels)) return;
+    const uint cell = uint(yawedPix.y) * uint(canvasSizePixels.x) + uint(yawedPix.x);
+    atomicMin(
+        perAxisWinnerIds[uint(overflowScratchLayout.x) + cell],
+        overflowYawedDepthKey(facePos)
+    );
+}
+
+// resolveMode == 3: overflow append. A face appends iff it is view-visible
+// (within epsilon of its view-mask cell winner) AND it is NOT its cardinal
+// store cell's settled winner — exactly the set `viewVisible \ cardinalWinners`
+// the cardinal-keyed store drops (docs: epic #2331). Entries carry the exact
+// (cardinal cell, encoded distance) pair the store would have written plus the
+// raw colorPacked, so the scatter's overflow branch reuses the per-cell
+// recovery bit-for-bit (albedo-only in this child; lighting is #2334).
+void overflowAppendTap(
+    const ivec2 perAxisBase, const ivec3 facePos, const int voxelDistance, const uint colorPacked
+) {
+    const ivec2 yawedPix = overflowYawedPixel(perAxisBase, facePos);
+    if (!isInsideCanvas(yawedPix, canvasSizePixels)) return; // off-screen at the live yaw
+    const uint yawedCell = uint(yawedPix.y) * uint(canvasSizePixels.x) + uint(yawedPix.x);
+    const uint maskKey = perAxisWinnerIds[uint(overflowScratchLayout.x) + yawedCell];
+    if (overflowYawedDepthKey(facePos) > maskKey + kOverflowDepthEpsSteps) {
+        return; // view-occluded — some nearer face owns this screen cell
+    }
+    const ivec2 cardPix = perAxisBase + pos3DtoPos2DIso(facePos);
+    // Off-canvas cardinal key never stored (writeDistanceTap dropped it) and is
+    // outside the worst-case-sized render domain — mirror the silent drop.
+    if (!isInsideCanvas(cardPix, imageSize(triangleCanvasDistances))) return;
+    if (imageLoad(triangleCanvasDistances, cardPix).x == voxelDistance) {
+        return; // this face IS (or ties) the settled winner — the cell path draws it
+    }
+    const uint ctrlBase = uint(overflowScratchLayout.y);
+    const uint idx = atomicAdd(perAxisWinnerIds[ctrlBase + 1u], 1u);
+    if (idx >= uint(overflowScratchLayout.w)) {
+        // Cap hit: pair the add back off so instanceCount settles at exactly
+        // min(appends, cap), and count the drop for the CPU one-shot warn
+        // (never silent). No reader sees the transient over-cap value — the
+        // indirect draw is barriered behind this whole dispatch.
+        atomicAdd(perAxisWinnerIds[ctrlBase + 1u], 0xFFFFFFFFu); // == -1 (wraps)
+        atomicAdd(perAxisWinnerIds[ctrlBase + 5u], 1u);
+        return;
+    }
+    const uint entryBase = uint(overflowScratchLayout.z) + idx * 3u;
+    perAxisWinnerIds[entryBase + 0u] =
+        (uint(cardPix.x) & 0xFFFFu) | ((uint(cardPix.y) & 0xFFFFu) << 16u);
+    perAxisWinnerIds[entryBase + 1u] = colorPacked;
+    perAxisWinnerIds[entryBase + 2u] = uint(voxelDistance);
 }
 
 // Emit a face's 2x3 trixel block through the deformation matrix D.
@@ -659,6 +750,16 @@ void main() {
             // No sub-cell offset at base resolution; encode centre fracs (8,8).
             const int voxelDistance =
                 encodeDepthWithFaceFrac(pos3DtoDistance(facePos), slot, 8, 8, riserFlip);
+            if (resolveMode == 2) {
+                viewMaskTap(perAxisBase, facePos);
+                return;
+            }
+            if (resolveMode == 3) {
+                overflowAppendTap(
+                    perAxisBase, facePos, voxelDistance, voxels[voxelIndex].colorPacked
+                );
+                return;
+            }
             if (resolveMode != 0) {
                 resolveWinnerTap(perAxisBase + pos3DtoPos2DIso(facePos), voxelDistance, voxelIndex);
                 return;
@@ -677,6 +778,16 @@ void main() {
         const vec3 fracInCell = worldAligned - vec3(worldPos_sub);
         const int voxelDistance =
             encodeDepthWithFaceFrac(pos3DtoDistance(facePos_sub), slot, axis, fracInCell, riserFlip);
+        if (resolveMode == 2) {
+            viewMaskTap(perAxisBase, facePos_sub);
+            return;
+        }
+        if (resolveMode == 3) {
+            overflowAppendTap(
+                perAxisBase, facePos_sub, voxelDistance, voxels[voxelIndex].colorPacked
+            );
+            return;
+        }
         // #2255: the 4-bit frac quantization above is where equal keys arise —
         // two sub-cell offsets in one 1/16 bucket (or both clamp-saturated)
         // encode byte-identically, so the winner election below is what keeps

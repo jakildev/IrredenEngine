@@ -304,6 +304,10 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // every frame — mirrors the light-volume out-of-range one-shot warn.
     int previousCapWarnEffSub_ = -1;
     int previousCapWarnDensity_ = -1;
+    // One-shot overflow-lane cap warn latch (#2333): the last dropped-entry
+    // count already warned about, so the "overflow cap hit" line fires once
+    // per distinct count rather than every rotating frame.
+    std::uint32_t lastOverflowDropWarned_ = 0;
     // Last canvas whose position SSBO contents were written to
     // `voxelPosBuf_`. Positions are otherwise pushed at mutation time by
     // `UPDATE_VOXEL_SET_CHILDREN`; we still need a per-canvas full
@@ -473,6 +477,46 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // (#1310) composites these canvases. Restores the UBO to the main-canvas
     // frame data on exit so downstream stages (AO, lighting, fog) are
     // unaffected.
+    // #2333 overflow-lane ctrl-block bookkeeping. The block doubles as the
+    // overflow scatter's indirect draw args: {indexCount, instanceCount,
+    // firstIndex, baseVertex, baseInstance, droppedCount, pad, pad}. Mode 3
+    // atomically appends instanceCount / droppedCount; everything else is
+    // CPU-seeded here each rotating frame.
+    void resetOverflowCtrl(const C_PerAxisTrixelCanvases &axes) {
+        const std::array<std::uint32_t, 8> ctrl{
+            static_cast<std::uint32_t>(IRShapes2D::kQuadIndicesLength), 0u, 0u, 0u, 0u, 0u, 0u, 0u
+        };
+        axes.winnerIds_.second->subData(
+            static_cast<std::ptrdiff_t>(axes.ctrlBaseUints_) * sizeof(std::uint32_t),
+            sizeof(ctrl),
+            ctrl.data()
+        );
+    }
+
+    // Cap overflow must never be silent (#2333 acceptance): read LAST rotating
+    // frame's ctrl block — written by a dispatch that already retired, so the
+    // CPU read needs no fence (the same pattern as the cull-diagnostic
+    // readback in tick()) — and one-shot-warn when entries were dropped.
+    void warnOverflowDropsIfAny(const C_PerAxisTrixelCanvases &axes) {
+        std::array<std::uint32_t, 8> ctrl{};
+        axes.winnerIds_.second->getSubData(
+            static_cast<std::ptrdiff_t>(axes.ctrlBaseUints_) * sizeof(std::uint32_t),
+            sizeof(ctrl),
+            ctrl.data()
+        );
+        const std::uint32_t dropped = ctrl[5];
+        if (dropped > 0 && dropped != lastOverflowDropWarned_) {
+            IRE_LOG_WARN(
+                "Per-axis view-visibility overflow list dropped {} entries last "
+                "rotating frame (cap {}); revealed-sliver coverage may be "
+                "incomplete while rotating (#2333).",
+                dropped,
+                axes.overflowCap_
+            );
+            lastOverflowDropWarned_ = dropped;
+        }
+    }
+
     void dispatchPerAxisCanvases(C_PerAxisTrixelCanvases &axes, C_CanvasFogOfWar *fog) {
         IR_PROFILE_SCOPE("vs1_per_axis");
         // Fog cut-face / own-column-clip input for the per-axis rotation route
@@ -521,10 +565,12 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         }
 
         const ivec2 perAxisOffsetZ1 = IRMath::trixelOriginOffsetZ1(axes.size_);
-        // #2255: the winner scratch is one uint per per-axis texel; bound once
-        // here for the per-axis winner-resolve + stage-2 guard (transient reuse
-        // of kBufferIndex_PerAxisResolveScratch — free during the per-axis
-        // store; the #1435 resolve + BAKE consumers re-bind it themselves).
+        // #2255 / #2333: the unified resolve scratch — [winnerIds][viewMask]
+        // [ctrl][overflow entries] — bound whole for every per-axis dispatch
+        // (transient reuse of kBufferIndex_PerAxisResolveScratch — free during
+        // the per-axis window; the #1435 resolve + BAKE consumers re-bind it
+        // themselves). winnerScratchBytes covers exactly region 0 (the winner
+        // ids), so the per-axis fillBuffer reset below is unchanged.
         const std::size_t winnerScratchBytes = static_cast<std::size_t>(axes.size_.x) *
                                                static_cast<std::size_t>(axes.size_.y) *
                                                sizeof(std::uint32_t);
@@ -532,41 +578,40 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             BufferTarget::SHADER_STORAGE,
             kBufferIndex_PerAxisResolveScratch
         );
-        for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
-            auto &tex = axes.axes_[axis];
-            Texture2D *colors = tex.colors_.second;
-            Texture2D *distances = tex.distances_.second;
-            Texture2D *entityIds = tex.entityIds_.second;
 
-            // Bind the distance image first so its Metal atomic-scratch buffer
-            // exists before clearTexImage mirrors the clear value into it (a
-            // freshly allocated scratch is zero-initialised, which would
-            // otherwise reject every depth-matched color write on the first
-            // rotating frame).
-            distances->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
-            IRRender::device()->clearTexImage(distances, 0, &kDistanceClear);
-            colors->clear(PixelDataFormat::RGBA, PixelDataType::UNSIGNED_BYTE, &kColorClear[0]);
-            entityIds->clear(PixelDataFormat::RG_INTEGER, PixelDataType::UINT32, &kEntityIdClear);
-            // #2255: reset the winner scratch to the no-winner sentinel
-            // (0xFFFFFFFF — a repeating byte, so both backends fill GPU-side)
-            // before this axis's winner-resolve dispatch below.
-            IRRender::device()->fillBuffer(axes.winnerIds_.second, winnerScratchBytes, 0xFFu);
+        // #2333 view-visibility overflow lane bookkeeping. Read LAST rotating
+        // frame's drop counter for the one-shot cap warn (before the reset
+        // clears it), reset the ctrl block (draw args + counters), and reset
+        // the winner + view-mask regions to the 0xFFFFFFFF empty sentinel in
+        // one prefix fill ([0, ctrlBase) — the winner region is re-filled per
+        // axis before its election below anyway).
+        warnOverflowDropsIfAny(axes);
+        resetOverflowCtrl(axes);
+        IRRender::device()->fillBuffer(
+            axes.winnerIds_.second,
+            static_cast<std::size_t>(axes.ctrlBaseUints_) * sizeof(std::uint32_t),
+            0xFFu
+        );
+        frameData_.overflowScratchLayout_ = ivec4(
+            axes.viewMaskBaseUints_,
+            axes.ctrlBaseUints_,
+            axes.entriesBaseUints_,
+            axes.overflowCap_
+        );
 
-            frameData_.perAxisRoute_ = axis + 1;
-            frameData_.trixelCanvasOffsetZ1_ = perAxisOffsetZ1;
-            frameData_.canvasSizePixels_ = axes.size_;
-            frameDataBuf_->subData(0, sizeof(FrameDataVoxelToCanvas), &frameData_);
+        frameData_.trixelCanvasOffsetZ1_ = perAxisOffsetZ1;
+        frameData_.canvasSizePixels_ = axes.size_;
 
-            // Per-axis store list-walk split (#1739): this axis dispatches over
-            // only its own ~1/3 region of the compacted list (every voxel in it
-            // already has an exposed face on this axis), so both stages walk a
-            // third of the voxels instead of the full list, with the store
-            // shader's (faceId>>1)!=axis reject pruning the other two of the
-            // workgroup's three visible-triplet slots. Bind this axis's region +
-            // indirect-params struct onto the 25/26 the store shaders read; the
-            // store-shader SSBO declarations are unchanged (they read from offset
-            // 0 of the bound range). The compact filled these in the split pass
-            // above. Offsets are kPerAxisSsboAlignBytes-aligned by construction.
+        // Per-axis store list-walk split (#1739): each axis dispatches over
+        // only its own ~1/3 region of the compacted list (every voxel in it
+        // already has an exposed face on this axis), with the store shader's
+        // (faceId>>1)!=axis reject pruning the other two of the workgroup's
+        // three visible-triplet slots. Bind this axis's region +
+        // indirect-params struct onto the 25/26 the store shaders read; the
+        // store-shader SSBO declarations are unchanged (they read from offset
+        // 0 of the bound range). The compact filled these in the split pass
+        // above. Offsets are kPerAxisSsboAlignBytes-aligned by construction.
+        auto bindAxisListRegions = [&](int axis) -> std::ptrdiff_t {
             const std::ptrdiff_t regionOffsetBytes = static_cast<std::ptrdiff_t>(axis) *
                                                      perAxisRegionStride_ *
                                                      static_cast<int>(sizeof(std::uint32_t));
@@ -584,8 +629,43 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 indirectOffsetBytes,
                 sizeof(VoxelIndirectDispatchParams)
             );
+            return indirectOffsetBytes;
+        };
+        auto uploadAxisFrameData = [&](int axis, int mode) {
+            frameData_.perAxisRoute_ = axis + 1;
+            frameData_.resolveMode_ = mode;
+            frameDataBuf_->subData(0, sizeof(FrameDataVoxelToCanvas), &frameData_);
+        };
 
-            stage1Program_->use();
+        // Dispatch order per rotating frame (#2333): stores ×3 → barrier →
+        // view mask (mode 2) ×3 → barrier → overflow append (mode 3) ×3 →
+        // barrier → per axis {election (mode 1) → stage 2}. The mask must be
+        // complete across ALL axes before any mode-3 test (view visibility
+        // competes across axes), and mode 3 reads each axis's settled distance
+        // store; the election stays last so its per-axis winner-region refill
+        // never overlaps the mask/append reads.
+        //
+        // Phase A — clears + cardinal stores (mode 0).
+        stage1Program_->use();
+        for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
+            auto &tex = axes.axes_[axis];
+            Texture2D *colors = tex.colors_.second;
+            Texture2D *distances = tex.distances_.second;
+            Texture2D *entityIds = tex.entityIds_.second;
+
+            // Bind the distance image first so its Metal atomic-scratch buffer
+            // exists before clearTexImage mirrors the clear value into it (a
+            // freshly allocated scratch is zero-initialised, which would
+            // otherwise reject every depth-matched color write on the first
+            // rotating frame).
+            distances->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
+            IRRender::device()->clearTexImage(distances, 0, &kDistanceClear);
+            colors->clear(PixelDataFormat::RGBA, PixelDataType::UNSIGNED_BYTE, &kColorClear[0]);
+            entityIds->clear(PixelDataFormat::RG_INTEGER, PixelDataType::UINT32, &kEntityIdClear);
+
+            uploadAxisFrameData(axis, 0);
+            const std::ptrdiff_t indirectOffsetBytes = bindAxisListRegions(axis);
+
             // STAGE_1 reads the fog grid (slot 0) + observers (binding 27) for its
             // per-voxel fog clip (#2102) + cut-face test (#2125). The per-axis
             // rotation route now runs that clip/cut too (#2128), so bind the REAL
@@ -597,24 +677,67 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             fogObserverBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FogObservers);
             distances->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
             IRRender::device()->dispatchComputeIndirect(perAxisIndirectBuf_, indirectOffsetBytes);
-            IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+        }
+        // All three distance stores settled — read below by the mode-3
+        // cardinal-winner test, the elections, and stage 2's depth re-test.
+        IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
 
-            // #2255 winner-resolve dispatch: re-run stage 1 over this axis's
-            // region with resolveMode=1 — among the faces whose encoded
-            // distance ties the now-settled per-cell atomicMin winner, elect
-            // the minimum run-stable voxel pool index into the winner
-            // scratch. Stage 2's per-axis tap then admits exactly one tied
-            // face, so the color/entity-id planes are byte-identical
-            // run-to-run at a fixed pose (the distance plane always was).
-            // stage1Program_ is still the active program and every bind
-            // persists; only the mode field changes. One extra dispatch per
-            // axis (plan-accepted).
-            frameData_.resolveMode_ = 1;
-            frameDataBuf_->subData(
-                offsetof(FrameDataVoxelToCanvas, resolveMode_),
-                sizeof(int),
-                &frameData_.resolveMode_
-            );
+        // Phase B — view mask (mode 2), all three axis routes into the SHARED
+        // mask region (view visibility competes across axes). Same geometry,
+        // fog early-outs, and binds as the store dispatch.
+        for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
+            uploadAxisFrameData(axis, 2);
+            const std::ptrdiff_t indirectOffsetBytes = bindAxisListRegions(axis);
+            fogTex->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+            fogObserverBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FogObservers);
+            axes.axes_[axis]
+                .distances_.second->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
+            IRRender::device()->dispatchComputeIndirect(perAxisIndirectBuf_, indirectOffsetBytes);
+        }
+        // Mask writes must settle before any mode-3 compare.
+        IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+
+        // Phase C — overflow append (mode 3): faces that win (tie) their view
+        // cell but lost their cardinal store cell append scatter entries.
+        for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
+            uploadAxisFrameData(axis, 3);
+            const std::ptrdiff_t indirectOffsetBytes = bindAxisListRegions(axis);
+            fogTex->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+            fogObserverBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FogObservers);
+            axes.axes_[axis]
+                .distances_.second->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
+            IRRender::device()->dispatchComputeIndirect(perAxisIndirectBuf_, indirectOffsetBytes);
+        }
+        // Entry + instanceCount writes feed the overflow indirect draw in
+        // TRIXEL_TO_FRAMEBUFFER — barrier both the storage reads and the
+        // indirect-command source (same pairing as compactPerAxisCells).
+        IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+        IRRender::device()->memoryBarrier(BarrierType::COMMAND);
+
+        // Phase D — #2255 winner election (mode 1) + stage 2, per axis. The
+        // winner scratch (region 0) is serially reused across axes: refill to
+        // the no-winner sentinel, elect this axis's winners, then let stage 2's
+        // guard admit exactly one tied face per cell — byte-identical semantics
+        // to the pre-#2333 interleaved loop (the election ran after this axis's
+        // store then too; the mask/append phases in between touch only the
+        // other scratch regions).
+        for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
+            auto &tex = axes.axes_[axis];
+            Texture2D *colors = tex.colors_.second;
+            Texture2D *distances = tex.distances_.second;
+            Texture2D *entityIds = tex.entityIds_.second;
+
+            // #2255: reset the winner scratch to the no-winner sentinel
+            // (0xFFFFFFFF — a repeating byte, so both backends fill GPU-side)
+            // before this axis's winner-resolve dispatch below.
+            IRRender::device()->fillBuffer(axes.winnerIds_.second, winnerScratchBytes, 0xFFu);
+
+            stage1Program_->use();
+            uploadAxisFrameData(axis, 1);
+            const std::ptrdiff_t indirectOffsetBytes = bindAxisListRegions(axis);
+            fogTex->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+            fogObserverBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FogObservers);
+            distances->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
             IRRender::device()->dispatchComputeIndirect(perAxisIndirectBuf_, indirectOffsetBytes);
             // The winner SSBO writes must land before stage 2's guard reads.
             IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);

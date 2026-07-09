@@ -93,19 +93,36 @@ struct C_PerAxisTrixelCanvases {
     std::pair<ResourceId, Buffer *> cellIndirect_{0, nullptr};
     int cellRegionStride_ = 0; // uints per axis region (>= axis cells, 64-aligned)
 
-    // Per-cell deterministic-winner scratch for the per-axis store (#2255):
-    // one uint per per-axis canvas texel (shared across the three axes — each
-    // axis's store/resolve/tap sequence completes before the next begins),
-    // holding the minimum run-stable voxel pool index among the faces that tie
-    // the settled per-cell distance key. Stage 2's per-axis color tap admits
-    // only that index, so the color/entity-id planes are byte-identical
-    // run-to-run at a fixed pose. A Buffer (not a fourth texture) because
-    // Metal has only one image-atomic scratch slot (held by distances_) — the
-    // same rationale as the #1435 resolve scratch, whose binding
-    // (kBufferIndex_PerAxisResolveScratch) this transiently reuses during the
-    // per-axis dispatches only. Reset to 0xFFFFFFFF ("no winner") per axis by
-    // dispatchPerAxisCanvases.
+    // Unified per-axis resolve scratch (#2255 winner election + #2333
+    // view-visibility overflow lane), bound whole at
+    // kBufferIndex_PerAxisResolveScratch during the per-axis dispatches only
+    // (transient reuse — the #1435 resolve + BAKE consumers re-bind 28
+    // themselves). Four 256-B-aligned regions, offsets in uints:
+    //   [0, viewMaskBaseUints_)          — #2255 winner ids, one uint per texel.
+    //     Region 0 on purpose: the stage-1/2 kernels' perAxisWinnerIds[cell]
+    //     indexing is unchanged, and dispatchPerAxisCanvases' per-axis
+    //     fillBuffer(bytes = texels*4) reset covers exactly this region.
+    //   [viewMaskBaseUints_, ctrlBaseUints_)  — #2333 view mask: per yawed
+    //     screen cell, the atomicMin of the biased quantized yawed depth
+    //     (shared across the three axis routes — view visibility competes
+    //     across axes). Reset to 0xFFFFFFFF once per rotating frame.
+    //   [ctrlBaseUints_, entriesBaseUints_)   — #2333 ctrl block: indirect
+    //     draw args {indexCount, instanceCount, firstIndex, baseVertex,
+    //     baseInstance} + droppedCount + pads. instanceCount/droppedCount are
+    //     GPU atomics (resolveMode 3); the rest is CPU-seeded per frame. The
+    //     overflow indirect draw sources its args at ctrlBaseUints_*4 directly.
+    //   [entriesBaseUints_, +overflowCap_*3)  — #2333 overflow entries, 3 uints
+    //     each: {iso cell x|y (16+16), colorPacked, encoded distance} — the
+    //     exact (cell, value) pair the cardinal store would have written, so
+    //     the scatter's overflow branch reuses the cell path's recovery
+    //     bit-for-bit.
+    // A Buffer (not textures) because Metal has only one image-atomic scratch
+    // slot (held by distances_). Sized/freed with the axis textures.
     std::pair<ResourceId, Buffer *> winnerIds_{0, nullptr};
+    int viewMaskBaseUints_ = 0;
+    int ctrlBaseUints_ = 0;
+    int entriesBaseUints_ = 0;
+    int overflowCap_ = 0;
 
     // Allocation state is the texture handles themselves — no separate bool to
     // drift out of sync (cf. the no-dirty-flags rule in .claude/rules/cpp-ecs.md).
@@ -168,13 +185,36 @@ struct C_PerAxisTrixelCanvases {
         static constexpr std::int32_t kDistanceClear =
             static_cast<std::int32_t>(IRConstants::kTrixelDistanceMaxDistance);
         IRRender::device()->clearTexImage(resolveDepth_.second, 0, &kDistanceClear);
+        // Unified resolve scratch (#2255 winner region + #2333 view mask / ctrl /
+        // overflow entries — see the field comment for the region map). Regions
+        // start on 256 B boundaries so future bindRange windows stay
+        // SSBO-alignment-safe; the whole buffer is bindBase'd at 28 during the
+        // per-axis dispatches, with region offsets carried in
+        // FrameDataVoxelToCanvas::overflowScratchLayout_.
+        constexpr int kScratchAlignUints = 64; // 256 B / 4
+        const int alignedCells = IRMath::divCeil(axisCells, kScratchAlignUints) * kScratchAlignUints;
+        viewMaskBaseUints_ = alignedCells;
+        ctrlBaseUints_ = viewMaskBaseUints_ + alignedCells;
+        entriesBaseUints_ = ctrlBaseUints_ + kScratchAlignUints;
+        // Bounded by view-visible faces ≈ O(screen cells); /4 is generous for the
+        // missing subset, floored so small canvases keep synthetic-test headroom.
+        overflowCap_ = IRMath::max(axisCells / 4, 65536);
         winnerIds_ = IRRender::createResource<Buffer>(
             nullptr,
-            static_cast<std::size_t>(size.x) * static_cast<std::size_t>(size.y) *
+            (static_cast<std::size_t>(entriesBaseUints_) +
+             static_cast<std::size_t>(overflowCap_) * 3u) *
                 sizeof(std::uint32_t),
             BUFFER_STORAGE_DYNAMIC,
             BufferTarget::SHADER_STORAGE,
             kBufferIndex_PerAxisResolveScratch
+        );
+        // Seed the ctrl block so the first rotating frame's pre-reset counter
+        // readback (the cap-overflow warn) reads zeros, not uninitialized data.
+        const std::array<std::uint32_t, 8> ctrlSeed{};
+        winnerIds_.second->subData(
+            static_cast<std::ptrdiff_t>(ctrlBaseUints_) * sizeof(std::uint32_t),
+            sizeof(ctrlSeed),
+            ctrlSeed.data()
         );
     }
 
@@ -202,6 +242,10 @@ struct C_PerAxisTrixelCanvases {
         cellRegionStride_ = 0;
         IRRender::destroyResource<Buffer>(winnerIds_.first);
         winnerIds_ = {0, nullptr};
+        viewMaskBaseUints_ = 0;
+        ctrlBaseUints_ = 0;
+        entriesBaseUints_ = 0;
+        overflowCap_ = 0;
         size_ = ivec2{0, 0};
     }
 
