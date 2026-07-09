@@ -139,15 +139,66 @@ else:
 PY
 }
 
-echo "[2/4] coverage pass — 64³ cube, whole-cube zoom (mode=$MODE) ..."
+echo "[2/5] coverage pass — 64³ cube, whole-cube zoom (mode=$MODE) ..."
 run_ramp "/tmp/perf-grid-sweep-coverage.log" --grid-size 64 --zoom 0.8
 score_pass "/tmp/perf-grid-sweep-coverage.log" "coverage"
 
 echo
-echo "[3/4] zoom pass — small cube, high zoom + ROI crops (seam signal) ..."
+echo "[3/5] zoom pass — small cube, high zoom + ROI crops (seam signal) ..."
 run_ramp "/tmp/perf-grid-sweep-zoom.log" --grid-size 12 --zoom 4 --yaw-ramp-crops
 score_pass "/tmp/perf-grid-sweep-zoom.log" "zoom"
 
+# --wave-freeze tier (#2332): a live per-cell wave scene is not byte-identical
+# run-to-run (the traveling wave rides wall/frame time), so it can't feed a
+# render-verify regression tier directly. --wave-freeze bakes each cell's
+# phase-0 offset into its spawn position instead of ticking C_PeriodicIdle,
+# giving the same (1,1,1)-coset collisions a live wave produces (#2331) in a
+# scene that stops moving. Fixed at --mode voxel_set --grid-size 32
+# regardless of $MODE — this tier is specifically about per-cell wave
+# content, not the dense/hollow $VoxelSetNew$ modes the other two passes vary.
+WAVE_SS_DIR="$SS_DIR"
+run_wave_ramp() {
+    local logfile="$1"
+    mkdir -p "$WAVE_SS_DIR"
+    find "$WAVE_SS_DIR" -maxdepth 1 -type f -name '*.png' -delete
+    ( cd "$EXE_DIR" && ./IRPerfGrid --mode voxel_set --wave-freeze --grid-size 32 --zoom 0.8 \
+        --yaw-ramp --yaw-ramp-wave --no-overlay --auto-screenshot "$WARMUP" ) >"$logfile" 2>&1 \
+        || { echo "RUN FAILED (see $logfile)"; tail -5 "$logfile"; exit 1; }
+}
+
 echo
-echo "[4/4] done. Full-frame + ROI-crop PNGs in: $SS_DIR"
+echo "[4/5] wave-freeze tier — voxel_set 32³, frozen per-cell wave (coset-collision signal) ..."
+run_wave_ramp "/tmp/perf-grid-sweep-wave.log"
+score_pass "/tmp/perf-grid-sweep-wave.log" "wave-freeze"
+
+echo
+echo "      determinism gate: re-run and img_diff the first pose (card000) ..."
+IMG_DIFF="$BUILD_DIR/tools/img_diff/img_diff"
+if [ ! -x "$IMG_DIFF" ]; then
+    echo "      img_diff not built at $IMG_DIFF — build it (cmake --build \"$BUILD_DIR\" --target img_diff) to run the gate"
+else
+    FIRST_SHOT="$WAVE_SS_DIR/screenshot_000001.png"
+    cp "$FIRST_SHOT" /tmp/perf-grid-sweep-wave-det-a.png
+    run_wave_ramp "/tmp/perf-grid-sweep-wave-det2.log"
+    cp "$FIRST_SHOT" /tmp/perf-grid-sweep-wave-det-b.png
+    # --threshold 16: --wave-freeze removes the traveling-wave motion, but the
+    # frozen per-cell positions are irregular (that's the point — it's what
+    # reproduces #2331's coset collisions), and the un-occluded per-cell
+    # voxels' near-tied depths leave the winner-take-all compaction pass
+    # (c_voxel_to_trixel_stage_1.glsl) sensitive to GPU dispatch scheduling.
+    # Measured drift on this exact tier: ~0.3% of pixels, max per-channel
+    # delta 10 (AO/shading-level jitter, not a different-voxel color swap).
+    # A --wave-amplitude 0 control (regular grid, no collisions) is fully
+    # byte-identical run-to-run, confirming this is scoped to the collision
+    # geometry itself, not a general render-path or --wave-freeze regression.
+    if "$IMG_DIFF" /tmp/perf-grid-sweep-wave-det-a.png /tmp/perf-grid-sweep-wave-det-b.png \
+        /tmp/perf-grid-sweep-wave-det-diff.png --threshold 16; then
+        echo "      DETERMINISM: PASS (card000 stable within threshold 16)"
+    else
+        echo "      DETERMINISM: drift exceeded threshold 16 — see /tmp/perf-grid-sweep-wave-det-diff.png"
+    fi
+fi
+
+echo
+echo "[5/5] done. Full-frame + ROI-crop PNGs in: $SS_DIR"
 echo "      (ROI crops: screenshot_<n>_<label>__crop_center.png — residual-band poses)"
