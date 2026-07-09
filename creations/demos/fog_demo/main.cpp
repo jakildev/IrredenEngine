@@ -911,15 +911,16 @@ void initEntities() {
         // (own-column drop) and the revealed boundary voxels face hidden columns
         // across their -X face (camera-visible at yaw 0) → a FILLED interior cut
         // wall, exactly like the GRID twin (no see-through hole, no black wedge).
+        // World-placed (the engine default since #1624) — NOT screen-locked — so
+        // PROPAGATE_CANVAS_ROTATION publishes worldCellOffset/worldPlaced and the
+        // detached STAGE_1/2 dispatch world-receives the fog. createWithVoxelPool
+        // also attaches the AO/lighting-behavior archetype pair by default for a
+        // non-screen-locked canvas (#2322 D1).
         C_EntityCanvas canvas = IRPrefab::EntityCanvas::createWithVoxelPool(
             "fog_detached_solid",
             kDetachedCanvasSize,
             kDetachedPoolSize
         );
-        // World-placed (the engine default since #1624) — NOT screen-locked — so
-        // PROPAGATE_CANVAS_ROTATION publishes worldCellOffset/worldPlaced and the
-        // detached STAGE_1/2 dispatch world-receives the fog.
-        canvas.screenLocked_ = false;
         IREntity::createEntity(
             C_LocalTransform{vec3(0.0f)},
             C_VoxelSetNew{kDetachedSolidSize, Color{130, 230, 150, 255}, true, canvas.canvasEntity_}
