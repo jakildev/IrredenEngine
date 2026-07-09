@@ -23,7 +23,9 @@
 #include <irreden/render/components/component_light_source.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
+#include <irreden/render/cull_viewport_state.hpp>
 #include <irreden/render/fog_of_war.hpp>
+#include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/systems/system_build_light_occlusion_grid.hpp>
 #include <irreden/render/systems/system_compute_light_volume.hpp>
 #include <irreden/render/systems/system_bake_sun_shadow_map.hpp>
@@ -144,6 +146,86 @@ inline IRRender::DebugOverlayMode g_cliOverlay = IRRender::DebugOverlayMode::NON
 // DemoConfig.aoEnabled_ so the flag wins. Lets validation runs flip AO
 // off without rebuilding.
 inline bool g_cliDisableAO = false;
+
+// DOMAIN-STATE instrumentation (#2315, V1). The COMPUTE_LIGHT_VOLUME
+// SystemId, captured at pipeline registration, so the DOMAIN-STATE
+// emission hook can read back its per-light gather records
+// (`IRSystem::lightGatherRecords`) — the system stores that state on
+// itself (`engine/system/CLAUDE.md` "System-owned state"), not in a
+// globally-queryable component.
+inline IRSystem::SystemId g_computeLightVolumeSystemId{};
+// The shot table actually wired into AutoScreenshotConfig this run
+// (kShots or the --light-boundary-sweep series) — the DOMAIN-STATE hook
+// only receives a shot index, so it needs this to recover the shot's
+// label.
+inline const IRVideo::AutoScreenshotShot *g_activeShots = nullptr;
+
+// DOMAIN-STATE emission hook (#2315, V1): `AutoScreenshotConfig::onCaptureFrame_`
+// callback wired below. Fires once per shot, on the settled capture frame,
+// after the frame's render systems (including COMPUTE_LIGHT_VOLUME) have
+// already run — so every value read here reflects what was actually
+// rendered. Emits one machine-readable log line per shot (the same
+// `IR_LOG_INFO` precedent as the `GUI-ASSERT` lines in
+// `gui_test_assertions.hpp`) for the V3 light-verify harness (#2317) to
+// parse; format is the contract — see issue #2315's plan "Sibling
+// reconciliation" note before changing it.
+//
+// Main canvas only for V1 (matches the minimap's V2 scope, #2314 plan
+// "Per-canvas gather scope" gotcha) — `lightGatherRecords` already reads
+// back COMPUTE_LIGHT_VOLUME's own per-canvas gather, so a multi-canvas demo
+// would need one call per canvas; none of the lighting demos have more than
+// the main canvas today.
+inline void logDomainState(int shotIndex) {
+    const char *label = (g_activeShots != nullptr) ? g_activeShots[shotIndex].label_ : "unknown";
+
+    const ivec3 anchor = IRRender::getLightAnchorFreeze().anchor_;
+    const ivec3 windowLo = anchor - ivec3(kLightVolumeHalfExtent);
+    const ivec3 windowHi = anchor + ivec3(kLightVolumeHalfExtent - 1);
+
+    std::string lights = "[";
+    const auto &records = IRSystem::lightGatherRecords(g_computeLightVolumeSystemId);
+    for (std::size_t i = 0; i < records.size(); ++i) {
+        const auto &r = records[i];
+        const char *state = r.state_ == IRSystem::LightGatherState::SEEDED_FULL ? "SEEDED_FULL"
+                            : r.state_ == IRSystem::LightGatherState::BOUNDARY_DISCOUNTED
+                                ? "BOUNDARY_DISCOUNTED"
+                                : "SKIPPED";
+        char entry[64];
+        std::snprintf(
+            entry,
+            sizeof(entry),
+            "%s%llu:%s:%.3f",
+            i == 0 ? "" : ",",
+            static_cast<unsigned long long>(r.entity_),
+            state,
+            r.residual_
+        );
+        lights += entry;
+    }
+    lights += "]";
+
+    const auto &gpu = IRRender::gpuStageTiming();
+    IR_LOG_INFO(
+        "DOMAIN-STATE shot={} anchor={},{},{} window={},{},{}..{},{},{} lights={} "
+        "feeder={:.1f},{:.1f}..{:.1f},{:.1f} casters={}",
+        label,
+        anchor.x,
+        anchor.y,
+        anchor.z,
+        windowLo.x,
+        windowLo.y,
+        windowLo.z,
+        windowHi.x,
+        windowHi.y,
+        windowHi.z,
+        lights,
+        gpu.shadowFeederMin_.x,
+        gpu.shadowFeederMin_.y,
+        gpu.shadowFeederMax_.x,
+        gpu.shadowFeederMax_.y,
+        gpu.worldPlacedCasterCount_
+    );
+}
 
 inline void registerArgs() {
     IREngine::args().optionalInt("--auto-profile", "Run for N frames then exit (default 300)", 300);
@@ -390,13 +472,20 @@ inline void initSystems(const DemoConfig &config) {
         renderPipeline.end(),
         {
             IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
+            // BUILD_LIGHT_OCCLUSION_GRID must create() before COMPUTE_LIGHT_VOLUME —
+            // the latter looks up "LightOcclusionGridBuffer" (a named resource the
+            // former creates) at init time.
             IRSystem::createSystem<IRSystem::BUILD_LIGHT_OCCLUSION_GRID>(),
             IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
             IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
             IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>(),
             IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>(),
             IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>(),
-            IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>(),
+            // Captured for the DOMAIN-STATE emission hook (#2315, V1) — the hook
+            // reads this system's per-light gather records back via
+            // `IRSystem::lightGatherRecords(g_computeLightVolumeSystemId)`.
+            (g_computeLightVolumeSystemId =
+                 IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>()),
             IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>(),
         }
     );
@@ -482,6 +571,8 @@ inline void initSystems(const DemoConfig &config) {
             screenshotConfig.shots_ = kShots;
             screenshotConfig.numShots_ = sizeof(kShots) / sizeof(kShots[0]);
         }
+        g_activeShots = screenshotConfig.shots_;
+        screenshotConfig.onCaptureFrame_ = &logDomainState;
         renderPipeline.push_back(IRVideo::createAutoScreenshotSystem(screenshotConfig));
     }
 

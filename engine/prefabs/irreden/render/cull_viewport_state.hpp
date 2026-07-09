@@ -66,6 +66,35 @@ struct CullViewportState {
     }
 };
 
+// Pinned light/occlusion anchor storage (#2315, V1). `cameraAnchorVoxel()`
+// (camera_anchor.hpp) re-derives the world voxel the light volume and
+// occlusion grid center on every frame from the LIVE camera pan — it
+// deliberately never consulted the cull freeze. Freezing the cull viewport
+// (above) without also pinning this anchor left the light window still
+// tracking the camera during a freeze, which defeats the freeze's purpose
+// for light/shadow domain inspection. `IRRender::detail::frozenAwareCameraAnchorVoxel()`
+// (camera_anchor.hpp) is the only writer — it owns the capture-on-transition
+// logic; `BUILD_LIGHT_OCCLUSION_GRID` / `COMPUTE_LIGHT_VOLUME` call that
+// helper, never this state directly. `getLightAnchorFreeze()` below is the
+// read-only diagnostic accessor (mirrors `getCullViewport()`) for consumers
+// that only need the pinned value, not the write-path — e.g. a lighting
+// demo's DOMAIN-STATE emission hook reporting the light window bounds.
+struct LightAnchorFreezeState {
+    ivec3 anchor_ = ivec3(0);
+    bool frozen_ = false;
+};
+
+namespace detail {
+inline LightAnchorFreezeState &lightAnchorFreezeState() {
+    static LightAnchorFreezeState s;
+    return s;
+}
+} // namespace detail
+
+inline const LightAnchorFreezeState &getLightAnchorFreeze() {
+    return detail::lightAnchorFreezeState();
+}
+
 namespace detail {
 inline CullViewportState &cullViewportState() {
     static CullViewportState s;

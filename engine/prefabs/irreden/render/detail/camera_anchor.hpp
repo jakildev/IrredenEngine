@@ -17,6 +17,7 @@
 
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_render.hpp>
+#include <irreden/render/cull_viewport_state.hpp>
 
 namespace IRRender::detail {
 
@@ -46,6 +47,28 @@ inline IRMath::ivec3 cameraAnchorVoxel() {
     const float worldX = (pan.x + pan.y) * 0.5f;
     const float worldY = (pan.y - pan.x) * 0.5f;
     return IRMath::ivec3(IRMath::round(worldX), IRMath::round(worldY), 0);
+}
+
+/// Freeze-aware variant of `cameraAnchorVoxel()` (#2315, V1). While the cull
+/// is live, behaves identically to `cameraAnchorVoxel()`. On the freeze
+/// transition it captures the live anchor once and pins it in
+/// `IRRender::LightAnchorFreezeState`; every subsequent call while still
+/// frozen returns that pinned value instead of re-deriving from the (now
+/// free-flying) camera pan. `BUILD_LIGHT_OCCLUSION_GRID` and
+/// `COMPUTE_LIGHT_VOLUME` both call this once per frame in the same
+/// pipeline order `cameraAnchorVoxel()` was called in before, so the two
+/// consumers stay coherent (same contract as `cameraAnchorVoxel()`'s own
+/// doc comment above). The occlusion-grid origin must stay pinned in lockstep
+/// with the light-volume origin — this single call site is what keeps them
+/// agreeing without a separate per-frame driver.
+inline IRMath::ivec3 frozenAwareCameraAnchorVoxel() {
+    auto &s = IRRender::detail::lightAnchorFreezeState();
+    const bool nowFrozen = IRRender::isCullingFrozen();
+    if (!nowFrozen || !s.frozen_) {
+        s.anchor_ = cameraAnchorVoxel();
+    }
+    s.frozen_ = nowFrozen;
+    return s.anchor_;
 }
 
 } // namespace IRRender::detail

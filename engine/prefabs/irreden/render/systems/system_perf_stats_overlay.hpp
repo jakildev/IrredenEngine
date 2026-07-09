@@ -233,7 +233,7 @@ template <> struct System<PERF_STATS_OVERLAY> {
         std::string out;
         out.reserve(1536);
 
-        char line[160];
+        char line[224];
 
         // The font is uppercase-only (`getGlyph` in `trixel_font.hpp` folds
         // lowercase to uppercase glyphs). Spell every label uppercase so the
@@ -324,13 +324,20 @@ template <> struct System<PERF_STATS_OVERLAY> {
             "CULL\n"
             "  SHAPES V/Z %5u/%u\n"
             "  VOX  %7u/%7u\n"
-            "  LIGHTS %5u/%u",
+            "  LIGHTS %5u/%u\n"
+            "  CASTERS %5u\n"
+            "  FEEDER %5.0f,%5.0f/%5.0f,%5.0f",
             gpu.visibleShapeCount_,
             gpu.shapeGroupsZ_,
             gpu.visibleVoxelCount_,
             gpu.totalVoxelCount_,
             gpu.lightsSeeded_,
-            gpu.lightsEligible_
+            gpu.lightsEligible_,
+            gpu.worldPlacedCasterCount_,
+            gpu.shadowFeederMin_.x,
+            gpu.shadowFeederMin_.y,
+            gpu.shadowFeederMax_.x,
+            gpu.shadowFeederMax_.y
         );
         out.append(line);
 

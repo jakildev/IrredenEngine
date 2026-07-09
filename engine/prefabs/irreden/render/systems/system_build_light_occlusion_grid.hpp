@@ -244,12 +244,14 @@ template <> struct System<BUILD_LIGHT_OCCLUSION_GRID> {
         if (!behavior.useCameraPositionIso_)
             return;
 
-        // Phase 1c (#360): re-center on the iso camera each
-        // frame. The CPU bitfield producer and the GPU consumer
-        // both translate world→local against `origin_` /
-        // `worldOriginVoxel` so the populate path stays origin-
-        // agnostic.
-        origin_ = IRRender::detail::cameraAnchorVoxel();
+        // Phase 1c (#360): re-center on the iso camera each frame. The CPU
+        // bitfield producer and the GPU consumer both translate world→local
+        // against `origin_` / `worldOriginVoxel` so the populate path stays
+        // origin-agnostic. #2315 V1: freeze-aware — pins with the light
+        // volume's anchor while frozen (engine/render/CLAUDE.md invariant
+        // 1: this system reads the pinned ANCHOR only, never the cull
+        // viewport).
+        origin_ = IRRender::detail::frozenAwareCameraAnchorVoxel();
 
         {
             IR_PROFILE_BLOCK("BuildLightOcclusionGrid::Clear", IR_PROFILER_COLOR_RENDER);
