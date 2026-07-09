@@ -62,7 +62,11 @@ named lookup. Holds shaders, buffers, textures, VAOs, etc.
 │        16-byte header at the start of LightOcclusionGridBuffer   │
 │        (SSBO @ 28). Lights whose rounded world origin falls      │
 │        outside the ±64-voxel window around the camera anchor     │
-│        still drop with a one-shot CPU warning. SDF blockers      │
+│        seed the clamped window edge at a distance-discounted     │
+│        residual alpha (exact under the Manhattan metric), so     │
+│        contribution fades continuously instead of popping; only  │
+│        lights whose residual can't reach the window are skipped  │
+│        (seeded/eligible counts on the perf HUD). SDF blockers    │
 │        (`C_ShapeDescriptor + C_LightBlocker(blocksLOS_=true)`    │
 │        entities) are CPU-rasterized into a second bitfield in    │
 │        the same SSBO; the propagate shader OR's both bitfields   │

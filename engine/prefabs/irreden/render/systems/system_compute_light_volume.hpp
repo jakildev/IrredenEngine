@@ -8,8 +8,11 @@
 //
 //   1. `c_clear_light_volume` zeroes the read texture.
 //   2. `c_seed_light_volume` writes one bright texel per light at its
-//      world voxel origin: rgb = emit_color × intensity, alpha = 1.0
-//      (full residual strength).
+//      world voxel origin: rgb = emit_color × intensity, alpha = the
+//      CPU-computed seed residual (1.0 for in-window lights; lights whose
+//      origin falls outside the camera-anchored window seed the nearest
+//      boundary cell at the residual the propagation would have carried
+//      there — see `gatherLightSources`).
 //   3. `c_propagate_light_volume` runs `kLightVolumePropagateIterations`
 //      Manhattan-dilation iterations against the camera-anchored
 //      light-occlusion SSBO produced by `BUILD_LIGHT_OCCLUSION_GRID`
@@ -33,14 +36,16 @@
 // per-light cone shaping (SPOT), and analytic point/spot LOS are
 // pending for later phases.
 //
-// Phase 1b (issue #362) addresses the volume-vs-occupancy extent
-// mismatch by surfacing it: any light origin that rounds outside
-// `[-kLightVolumeHalfExtent, +kLightVolumeHalfExtent)` is dropped on
-// the CPU before the SSBO upload and logged once per distinct origin
-// position (so the previous silent edge clamping at the volume
-// boundary becomes a clear, actionable warning). Phase 1c (#360)
-// replaces this with a camera-anchored window so most scenes keep
-// every light in-range without growing the texture footprint.
+// Phase 1c (#360) anchors the volume window on the camera so most scenes
+// keep every light in-range without growing the texture footprint. A light
+// whose origin falls outside the window is NOT dropped: it seeds the
+// per-axis-clamped boundary cell at a distance-discounted residual alpha,
+// which reproduces the exact in-window light field (the propagate pass
+// decrements alpha per Manhattan step, and the L1 triangle inequality is
+// an equality under per-axis clamping), so contribution fades continuously
+// as the camera pans away instead of popping at a window margin. Lights
+// whose discounted residual is ≤ 0 cannot reach the window and are skipped;
+// the gathered/eligible counts surface on the perf HUD's CULL block.
 
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
@@ -59,7 +64,6 @@
 
 #include <chrono>
 #include <cstdint>
-#include <unordered_set>
 #include <vector>
 
 using namespace IRComponents;
@@ -88,7 +92,7 @@ class ScopedCpuPhaseTimer {
 };
 
 inline GPULightSource
-toGpuLight(const C_LightSource &light, const ivec3 &originVoxel, float intensityScale = 1.0f) {
+toGpuLight(const C_LightSource &light, const ivec3 &originVoxel, float seedAlpha) {
     GPULightSource gpu{};
     gpu.originAndType_ = vec4(
         static_cast<float>(originVoxel.x),
@@ -100,12 +104,12 @@ toGpuLight(const C_LightSource &light, const ivec3 &originVoxel, float intensity
         static_cast<float>(light.emitColor_.red_) / 255.0f,
         static_cast<float>(light.emitColor_.green_) / 255.0f,
         static_cast<float>(light.emitColor_.blue_) / 255.0f,
-        IRMath::max(0.0f, light.intensity_ * intensityScale)
+        IRMath::max(0.0f, light.intensity_)
     );
     const float radius = static_cast<float>(light.radius_);
     gpu.directionAndRadius_ =
         vec4(light.direction_.x, light.direction_.y, light.direction_.z, radius);
-    gpu.coneAndPad_ = vec4(light.coneAngleDeg_, 0.0f, 0.0f, 0.0f);
+    gpu.coneAndSeedAlpha_ = vec4(light.coneAngleDeg_, seedAlpha, 0.0f, 0.0f);
     return gpu;
 }
 
@@ -114,28 +118,6 @@ inline ivec3 roundedLightOrigin(const C_WorldTransform &transform) {
     // grid cells populated by `system_build_light_occlusion_grid` (also
     // round-half-up).
     return IRMath::roundVec3HalfUp(transform.translation_);
-}
-
-inline bool isOriginInVolume(const ivec3 &lightOrigin, const ivec3 &volumeOrigin, int halfExtent) {
-    const ivec3 local = lightOrigin - volumeOrigin;
-    return local.x >= -halfExtent && local.x < halfExtent && local.y >= -halfExtent &&
-           local.y < halfExtent && local.z >= -halfExtent && local.z < halfExtent;
-}
-
-constexpr int kLightVolumeOverflowMargin = 8;
-
-// Pack a signed-int voxel position into a single uint64 so the
-// "already-warned" set can dedupe by exact origin without paying for a
-// custom hash on `ivec3`. 21 bits per axis covers ±1M cells, well
-// beyond any realistic scene; we add a bias to keep the value
-// nonnegative before shifting.
-inline std::uint64_t packOriginKey(const ivec3 &v) {
-    constexpr int kBias = 1 << 20;
-    constexpr std::uint64_t kMask = (1ull << 21) - 1ull;
-    const auto x = static_cast<std::uint64_t>(v.x + kBias) & kMask;
-    const auto y = static_cast<std::uint64_t>(v.y + kBias) & kMask;
-    const auto z = static_cast<std::uint64_t>(v.z + kBias) & kMask;
-    return (x << 42) | (y << 21) | z;
 }
 
 // Gathers all lights with positions into the supplied buffer (capped
@@ -150,38 +132,49 @@ inline std::uint64_t packOriginKey(const ivec3 &v) {
 // share the same relation tag in their archetype — a node's lights are
 // either all eligible for this canvas or all not.
 //
-// Lights whose origin rounds outside the volume's camera-anchored window
-// (`worldOriginVoxel ± kLightVolumeHalfExtent`) are skipped (the seed
-// shader's bounds check would silently drop them anyway) and logged once
-// per unique origin coordinate via `warnedOOBOrigins`. This makes the
-// Phase 1b (#362) silent-clamping issue visible without spamming when
-// the same misplaced static light is processed every frame; Phase 1c
-// (#360) shrinks the warning surface by panning the window with the
-// camera so most scenes stay in-range without manual intervention.
+// A light whose origin rounds outside the camera-anchored window seeds
+// the per-axis-clamped boundary cell at a distance-discounted residual:
+// `seedAlpha = 1 − manhattan(origin, clamped) × stepFalloff`. Because the
+// propagate pass decrements alpha by `stepFalloff` per Manhattan step and
+// per-axis clamping makes the L1 triangle inequality an equality, this
+// reproduces the exact field the light would produce inside the window if
+// the volume were unbounded (occluders outside the window are unknowable
+// either way). Contribution therefore fades continuously as the camera
+// pans away — no pop, no margin band. Lights whose discounted residual
+// is ≤ 0 cannot reach the window and are skipped silently; `outEligible`
+// vs the return count surfaces the drop rate on the perf HUD.
 //
-// `outMaxRadius` receives the largest `C_LightSource::radius_` across all
-// gathered (non-DIRECTIONAL, in-bounds) lights this frame, capped at
-// `kLightVolumePropagateIterations`. Zero when no lights were gathered
-// (or every gathered light has radius=0). The host uses it as the
-// effective propagate iteration count so a scene full of small-radius
-// lights skips iterations that would only re-propagate the alpha=0 tail.
-// Until Phase 1c per-light step counts land, the global `stepFalloff` is
-// derived from this same max so the visual cutoff matches the propagate
-// budget (all lights inherit the max-radius falloff curve — multi-light
-// scenes with very different radii are the known compromise).
+// `outMaxRadius` receives the largest `C_LightSource::radius_` across ALL
+// eligible (non-DIRECTIONAL, canvas-scoped) lights — deliberately NOT just
+// the seeded subset: `stepFalloff` derives from it and must be
+// camera-independent (a light crossing the window boundary must not shift
+// any other light's falloff curve). Capped at
+// `kLightVolumePropagateIterations`; zero when no eligible lights exist.
+// The host uses it as the propagate iteration count (all lights share the
+// max-radius falloff curve — per-light falloff waits on the winning-light
+// ID channel).
+//
+// Intended trade: because the falloff curve is shared across all eligible
+// lights, a single wide-radius light stretches every other light's decay
+// even when it never seeds. This is deliberate for multi-light scenes with
+// wide radius variance — the alternative (deriving stepFalloff from just the
+// seeded subset) would make a light's curve shift as another light crosses
+// the camera window boundary. Per-light falloff lands with the winning-light
+// ID channel (#2318, L2).
 inline std::uint32_t gatherLightSources(
     std::vector<GPULightSource> &out,
     IREntity::EntityId currentCanvas,
     const ivec3 &volumeOriginVoxel,
-    std::unordered_set<std::uint64_t> &warnedOOBOrigins,
-    int &outMaxRadius
+    int &outMaxRadius,
+    std::uint32_t &outEligible
 ) {
     out.clear();
     outMaxRadius = 0;
+    outEligible = 0;
     const auto include = IREntity::getArchetype<C_LightSource, C_WorldTransform>();
     const auto nodes = IREntity::queryArchetypeNodesSimple(include);
     auto &entityManager = IREntity::getEntityManager();
-    for (auto *node : nodes) {
+    const auto nodeInScope = [&](const auto *node) {
         // Per-canvas scope: skip the entire node when its lights are
         // CHILD_OF a different canvas. `kNullEntity` means the lights
         // are world-scope (no parent) and apply to every canvas — the
@@ -189,62 +182,20 @@ inline std::uint32_t gatherLightSources(
         // their light entities.
         const IREntity::EntityId nodeParent =
             entityManager.getParentEntityFromArchetype(node->type_);
-        if (nodeParent != IREntity::kNullEntity && nodeParent != currentCanvas) {
+        return nodeParent == IREntity::kNullEntity || nodeParent == currentCanvas;
+    };
+    for (auto *node : nodes) {
+        if (!nodeInScope(node)) {
             continue;
         }
         auto &lights = IREntity::getComponentData<C_LightSource>(node);
-        auto &transforms = IREntity::getComponentData<C_WorldTransform>(node);
         for (int i = 0; i < node->length_; ++i) {
             // Directional lights drive sun shading via the FrameDataSun
             // path; they do not seed the world-space light volume.
             if (lights[i].type_ == LightType::DIRECTIONAL) {
                 continue;
             }
-            if (out.size() >= kLightVolumeMaxSources) {
-                if (outMaxRadius > kLightVolumePropagateIterations)
-                    outMaxRadius = kLightVolumePropagateIterations;
-                return static_cast<std::uint32_t>(out.size());
-            }
-            const ivec3 origin = roundedLightOrigin(transforms[i]);
-            constexpr int kExtendedHalfExtent = kLightVolumeHalfExtent + kLightVolumeOverflowMargin;
-            if (!isOriginInVolume(origin, volumeOriginVoxel, kExtendedHalfExtent)) {
-                if (warnedOOBOrigins.insert(packOriginKey(origin)).second) {
-                    IR_LOG_WARN(
-                        "C_LightSource at world voxel ({}, {}, {}) is "
-                        "outside the camera-anchored light volume "
-                        "centered on ({}, {}, {}) with half-extent {}; "
-                        "dropping. Pan the camera nearer to the light "
-                        "or move the light into the visible region.",
-                        origin.x,
-                        origin.y,
-                        origin.z,
-                        volumeOriginVoxel.x,
-                        volumeOriginVoxel.y,
-                        volumeOriginVoxel.z,
-                        kLightVolumeHalfExtent
-                    );
-                }
-                continue;
-            }
-            ivec3 seedOrigin = origin;
-            float intensityScale = 1.0f;
-            if (!isOriginInVolume(origin, volumeOriginVoxel, kLightVolumeHalfExtent)) {
-                ivec3 rel = origin - volumeOriginVoxel;
-                for (int axis = 0; axis < 3; ++axis) {
-                    const int overflow = IRMath::abs(rel[axis]) - (kLightVolumeHalfExtent - 1);
-                    if (overflow > 0) {
-                        rel[axis] = (rel[axis] > 0) ? (kLightVolumeHalfExtent - 1)
-                                                    : -(kLightVolumeHalfExtent - 1);
-                        intensityScale = IRMath::min(
-                            intensityScale,
-                            1.0f - static_cast<float>(overflow) /
-                                       static_cast<float>(kLightVolumeOverflowMargin)
-                        );
-                    }
-                }
-                seedOrigin = volumeOriginVoxel + rel;
-            }
-            out.push_back(toGpuLight(lights[i], seedOrigin, intensityScale));
+            ++outEligible;
             const int r = static_cast<int>(lights[i].radius_);
             if (r > outMaxRadius) {
                 outMaxRadius = r;
@@ -253,6 +204,55 @@ inline std::uint32_t gatherLightSources(
     }
     if (outMaxRadius > kLightVolumePropagateIterations) {
         outMaxRadius = kLightVolumePropagateIterations;
+    }
+    if (outEligible == 0) {
+        return 0;
+    }
+    const float stepFalloff =
+        1.0f /
+        static_cast<float>(outMaxRadius > 0 ? outMaxRadius : kLightVolumePropagateIterations);
+    for (auto *node : nodes) {
+        if (!nodeInScope(node)) {
+            continue;
+        }
+        auto &lights = IREntity::getComponentData<C_LightSource>(node);
+        auto &transforms = IREntity::getComponentData<C_WorldTransform>(node);
+        for (int i = 0; i < node->length_; ++i) {
+            if (lights[i].type_ == LightType::DIRECTIONAL) {
+                continue;
+            }
+            if (out.size() >= kLightVolumeMaxSources) {
+                return static_cast<std::uint32_t>(out.size());
+            }
+            const ivec3 origin = roundedLightOrigin(transforms[i]);
+            const ivec3 rel = origin - volumeOriginVoxel;
+            // The seedable window is rel ∈ [−halfExtent, halfExtent−1] per
+            // axis (texel index = rel + halfExtent ∈ [0, gridSize)).
+            ivec3 clamped = rel;
+            int boundaryDist = 0;
+            for (int axis = 0; axis < 3; ++axis) {
+                const int c =
+                    IRMath::clamp(rel[axis], -kLightVolumeHalfExtent, kLightVolumeHalfExtent - 1);
+                boundaryDist += IRMath::abs(rel[axis] - c);
+                clamped[axis] = c;
+            }
+            const float seedAlpha = 1.0f - static_cast<float>(boundaryDist) * stepFalloff;
+            if (seedAlpha <= 0.0f) {
+                continue;
+            }
+            // Known residual (#2330, lighting epic #1717): the clamped
+            // boundary cell is NOT tested against occlusion. If the clamp
+            // lands inside solid geometry (an occupied voxel or an SDF
+            // C_LightBlocker), the seed is still emitted here, but
+            // `c_propagate_light_volume`'s symmetric occlusion gate traps
+            // its alpha at that cell, so the light silently drops instead of
+            // fading. Benign — a missing light, never light-through-wall —
+            // and fundamental to the finite window. An occlusion-aware seed
+            // (queryable against the CPU mirror BUILD_LIGHT_OCCLUSION_GRID
+            // already maintains, which runs before this system) is deferred
+            // to #2330 rather than shipped silently.
+            out.push_back(toGpuLight(lights[i], volumeOriginVoxel + clamped, seedAlpha));
+        }
     }
     return static_cast<std::uint32_t>(out.size());
 }
@@ -282,12 +282,8 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
     Buffer *occlusionBuf_ = nullptr;
     std::vector<GPULightSource> lightStaging_{};
     LightVolumeParams params_{};
-    // Set of out-of-bounds light origins we have already warned
-    // about — prevents the per-frame gather from spamming a stable
-    // misplaced light. Keyed via `detail::packOriginKey`.
-    std::unordered_set<std::uint64_t> warnedOOBOrigins_{};
     // Adaptive iteration count for the per-frame propagate dilation
-    // chain. Recomputed at upload time from the gathered lights' max
+    // chain. Recomputed at upload time from the eligible lights' max
     // radius. Pre-initialized to the global cap so the propagate
     // budget defaults to today's behavior if a frame ever dispatches
     // the loop without first running the upload phase.
@@ -323,24 +319,29 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
             volume.setWorldOriginVoxel(volumeOrigin);
             params_.worldOriginVoxel_ = ivec4(volumeOrigin.x, volumeOrigin.y, volumeOrigin.z, 0);
             int maxRadius = 0;
+            std::uint32_t eligible = 0;
             const std::uint32_t count = detail::gatherLightSources(
                 lightStaging_,
                 canvasEntity,
                 volumeOrigin,
-                warnedOOBOrigins_,
-                maxRadius
+                maxRadius,
+                eligible
             );
             params_.lightCount_ = static_cast<int>(count);
+            {
+                auto &timing = IRRender::gpuStageTiming();
+                timing.lightsSeeded_ = count;
+                timing.lightsEligible_ = eligible;
+            }
             // Adaptive iter count: lights of radius R only need R Manhattan
-            // steps to fade to alpha=0. Without per-light step counts
-            // (Phase 1c), the global stepFalloff has to match the iter
-            // count so alpha lands cleanly at 0 on the final step — pick
-            // both from the gather's max radius this frame. Falls back to
-            // the global cap when no lights are present (the dispatch
-            // loop below early-outs on lightCount==0 anyway, so the value
-            // is moot in that path).
-            propagateIterations_ =
-                (count > 0 && maxRadius > 0) ? maxRadius : kLightVolumePropagateIterations;
+            // steps to fade to alpha=0. The global stepFalloff must match
+            // the iter count so alpha lands cleanly at 0 on the final step —
+            // pick both from the ELIGIBLE lights' max radius (stable under
+            // camera motion; the gather derives boundary seed alphas from the
+            // same value). Falls back to the global cap when no lights are
+            // present (the dispatch loop below early-outs on lightCount==0
+            // anyway, so the value is moot in that path).
+            propagateIterations_ = (maxRadius > 0) ? maxRadius : kLightVolumePropagateIterations;
             params_.stepFalloff_ = 1.0f / static_cast<float>(propagateIterations_);
             if (count > 0) {
                 lightSourceBuf_->subData(0, sizeof(GPULightSource) * count, lightStaging_.data());

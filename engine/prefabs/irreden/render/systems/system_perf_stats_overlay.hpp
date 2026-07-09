@@ -79,9 +79,9 @@ template <> struct System<PERF_STATS_OVERLAY> {
     // slot per registry entry — adding a stage to the registry surfaces here
     // automatically with no edit to this system.
     static_assert(
-        std::tuple_size_v<
-            std::remove_reference_t<decltype(IRRender::gpuStageRegistry())>> == 20,
-        "EMA arrays must be resized to match gpuStageRegistry size");
+        std::tuple_size_v<std::remove_reference_t<decltype(IRRender::gpuStageRegistry())>> == 20,
+        "EMA arrays must be resized to match gpuStageRegistry size"
+    );
     std::array<double, 20> gpuStageMsEma_{};
     std::array<double, 20> cpuStageMsEma_{};
 
@@ -110,7 +110,8 @@ template <> struct System<PERF_STATS_OVERLAY> {
     void tick(C_PerfStatsOverlayTag &) {}
 
     void endTick() {
-        if (canvas_ == nullptr) return;
+        if (canvas_ == nullptr)
+            return;
 
         updateSmoothedValues();
 
@@ -151,9 +152,7 @@ template <> struct System<PERF_STATS_OVERLAY> {
     static double ema(double prev, double now) {
         // Seed on first sample so the displayed value reaches steady-state in
         // one frame instead of slow-rising from 0.
-        return prev <= 0.0
-                   ? now
-                   : (kPerfStatsEmaAlpha * now + (1.0 - kPerfStatsEmaAlpha) * prev);
+        return prev <= 0.0 ? now : (kPerfStatsEmaAlpha * now + (1.0 - kPerfStatsEmaAlpha) * prev);
     }
 
     void updateSmoothedValues() {
@@ -181,26 +180,46 @@ template <> struct System<PERF_STATS_OVERLAY> {
     // ≤13-char uppercase label that still reads recognizably. Returns nullptr
     // when no alias is defined — the caller uses %.*s with the raw name then.
     static const char *stageLabel(std::string_view name) {
-        if (name == "canvasClear") return "CLEAR";
-        if (name == "voxelCompact") return "VOX-COMPACT";
-        if (name == "voxelStage1") return "VOX-STAGE1";
-        if (name == "voxelStage2") return "VOX-STAGE2";
-        if (name == "shapeCompact") return "SHP-COMPACT";
-        if (name == "shapePass0") return "SHP-PASS0";
-        if (name == "shapePass1") return "SHP-PASS1";
-        if (name == "textToTrixel") return "TEXT";
-        if (name == "buildLightOcclusionGrid") return "OCCL-GRID";
-        if (name == "computeVoxelAO") return "VOXEL-AO";
-        if (name == "bakeSunShadowMap") return "SUNSHADOWMAP";
-        if (name == "computeSunShadow") return "SUNSHADOW";
-        if (name == "computeLightVolume") return "LIGHT-VOL";
-        if (name == "lightingToTrixel") return "LIGHTING";
-        if (name == "fogToTrixel") return "FOG";
-        if (name == "trixelToTrixel") return "TRIX-COMP";
-        if (name == "trixelToFb") return "TRIX-FB";
-        if (name == "entityCanvasToFb") return "ENT-FB";
-        if (name == "resolvePerAxisScreenDepth") return "PERAXIS-DEPTH";
-        if (name == "fbToScreen") return "FB-SCREEN";
+        if (name == "canvasClear")
+            return "CLEAR";
+        if (name == "voxelCompact")
+            return "VOX-COMPACT";
+        if (name == "voxelStage1")
+            return "VOX-STAGE1";
+        if (name == "voxelStage2")
+            return "VOX-STAGE2";
+        if (name == "shapeCompact")
+            return "SHP-COMPACT";
+        if (name == "shapePass0")
+            return "SHP-PASS0";
+        if (name == "shapePass1")
+            return "SHP-PASS1";
+        if (name == "textToTrixel")
+            return "TEXT";
+        if (name == "buildLightOcclusionGrid")
+            return "OCCL-GRID";
+        if (name == "computeVoxelAO")
+            return "VOXEL-AO";
+        if (name == "bakeSunShadowMap")
+            return "SUNSHADOWMAP";
+        if (name == "computeSunShadow")
+            return "SUNSHADOW";
+        if (name == "computeLightVolume")
+            return "LIGHT-VOL";
+        if (name == "lightingToTrixel")
+            return "LIGHTING";
+        if (name == "fogToTrixel")
+            return "FOG";
+        if (name == "trixelToTrixel")
+            return "TRIX-COMP";
+        if (name == "trixelToFb")
+            return "TRIX-FB";
+        if (name == "entityCanvasToFb")
+            return "ENT-FB";
+        if (name == "resolvePerAxisScreenDepth")
+            return "PERAXIS-DEPTH";
+        if (name == "fbToScreen")
+            return "FB-SCREEN";
         return nullptr;
     }
 
@@ -304,11 +323,14 @@ template <> struct System<PERF_STATS_OVERLAY> {
             "\n"
             "CULL\n"
             "  SHAPES V/Z %5u/%u\n"
-            "  VOX  %7u/%7u",
+            "  VOX  %7u/%7u\n"
+            "  LIGHTS %5u/%u",
             gpu.visibleShapeCount_,
             gpu.shapeGroupsZ_,
             gpu.visibleVoxelCount_,
-            gpu.totalVoxelCount_
+            gpu.totalVoxelCount_,
+            gpu.lightsSeeded_,
+            gpu.lightsEligible_
         );
         out.append(line);
 
@@ -362,11 +384,13 @@ template <> struct System<PERF_STATS_OVERLAY> {
     // same space, so the rect appears behind the text with no z-ordering
     // ambiguity.
     void paintBackground() {
-        if (canvas_ == nullptr || lastText_.empty()) return;
+        if (canvas_ == nullptr || lastText_.empty())
+            return;
 
         int lineCount = 1;
         for (char c : lastText_) {
-            if (c == '\n') ++lineCount;
+            if (c == '\n')
+                ++lineCount;
         }
 
         const int textH = lineCount * IRRender::kGlyphStepY;

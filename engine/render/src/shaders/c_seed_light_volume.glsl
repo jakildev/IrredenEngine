@@ -8,10 +8,14 @@
 // `(world + halfExtent)`, and writes:
 //   - rgb = emissive color × intensity (clamped so the RGBA8 image can
 //     hold it).
-//   - alpha = 1.0, the residual strength tracked by the propagate pass.
-//     Each propagate step decrements alpha by `stepFalloff`; the consumer
-//     reads `rgb * alpha` so light fades linearly with Manhattan distance
-//     and stops cleanly at radius `1 / stepFalloff`.
+//   - alpha = the CPU-computed seed residual (`coneAndSeedAlpha.y`): 1.0
+//     for lights inside the camera-anchored window, distance-discounted
+//     for out-of-window lights seeded at the clamped window edge (the
+//     discount reproduces the exact in-window field of the distant light
+//     — see `gatherLightSources`). Each propagate step decrements alpha
+//     by `stepFalloff`; the consumer reads `rgb * alpha` so light fades
+//     linearly with Manhattan distance and stops cleanly at the light's
+//     residual budget.
 //
 // `imageStore` is a plain write — if two lights share an origin texel
 // the later thread wins. The propagate pass picks the brightest
@@ -25,7 +29,7 @@ struct GPULightSource {
     vec4 originAndType;
     vec4 colorAndIntensity;
     vec4 directionAndRadius;
-    vec4 coneAndPad;
+    vec4 coneAndSeedAlpha;
 };
 
 layout(std430, binding = 4) readonly buffer LightSourceBuffer {
@@ -64,5 +68,6 @@ void main() {
         vec3(0.0),
         vec3(1.0)
     );
-    imageStore(lightVolume, cell, vec4(emit, 1.0));
+    const float seedAlpha = clamp(light.coneAndSeedAlpha.y, 0.0, 1.0);
+    imageStore(lightVolume, cell, vec4(emit, seedAlpha));
 }

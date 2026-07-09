@@ -1036,8 +1036,11 @@ struct GPULightSource {
     /// xyz = unit direction (unused for EMISSIVE / POINT); w = radius
     /// in voxel cells (clamped to `kLightVolumePropagateIterations`).
     vec4 directionAndRadius_ = vec4(0.0f);
-    /// x = cone aperture in degrees (SPOT only); yzw = std430 padding.
-    vec4 coneAndPad_ = vec4(0.0f);
+    /// x = cone aperture in degrees (SPOT only); y = seed residual alpha
+    /// in (0, 1] — 1.0 for lights inside the camera-anchored window,
+    /// boundary-distance-discounted for lights seeded at the clamped
+    /// window edge (see `gatherLightSources`); zw = std430 padding.
+    vec4 coneAndSeedAlpha_ = vec4(0.0f);
 };
 static_assert(sizeof(GPULightSource) == 64, "GPULightSource must match std430 layout");
 

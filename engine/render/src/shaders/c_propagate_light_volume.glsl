@@ -9,8 +9,10 @@
 //
 // Per-cell rule (distance-tracked linear falloff):
 //   • rgb stores the emissive color of the closest reaching light.
-//   • alpha stores residual strength in [0, 1] — 1.0 at the seed,
-//     decremented by `stepFalloff` per Manhattan step. alpha == 0 means
+//   • alpha stores residual strength in [0, 1] — seeded at the light's
+//     CPU-computed residual (1.0 in-window; distance-discounted for
+//     out-of-window lights clamped to the volume edge), decremented by
+//     `stepFalloff` per Manhattan step. alpha == 0 means
 //     "this cell is past the light's radius and contributes nothing".
 //   • Each cell picks the candidate (self or air-neighbor) with the
 //     highest residual alpha — i.e. whichever wavefront has the most
