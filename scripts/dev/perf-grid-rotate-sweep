@@ -155,7 +155,7 @@ score_pass "/tmp/perf-grid-sweep-zoom.log" "zoom"
 # giving the same (1,1,1)-coset collisions a live wave produces (#2331) in a
 # scene that stops moving. Fixed at --mode voxel_set --grid-size 32
 # regardless of $MODE — this tier is specifically about per-cell wave
-# content, not the dense/hollow $VoxelSetNew$ modes the other two passes vary.
+# content, not the dense/hollow voxel-set modes the other two passes vary.
 WAVE_SS_DIR="$SS_DIR"
 run_wave_ramp() {
     local logfile="$1"

@@ -811,25 +811,12 @@ C_PeriodicIdle makeWaveIdle(int x, int y, int z) {
 }
 
 // #2332 --wave-freeze: what makeWaveIdle's traveling wave would read at
-// phase 0 (t=0), i.e. before PERIODIC_IDLE's first tick(). Reuses the
-// component's own updateValue()/stage-mapping so the frozen offset matches
-// the running wave's easing exactly, rather than re-deriving the sine-ease
-// math here. The raw (x+y+z)-derived phase can span many cycles, so it's
-// wrapped into [0, 2*pi) first -- the two PeriodStages only cover one cycle.
+// phase 0 (t=0), i.e. before PERIODIC_IDLE's first tick(). Delegates to
+// C_PeriodicIdle::valueAtAngle so the wrap + stage-search + easing lives in
+// one place next to tick(), rather than re-deriving the sine-ease math here.
 vec3 waveFreezeOffset(int x, int y, int z) {
     C_PeriodicIdle idle = makeWaveIdle(x, y, z);
-    float wrapped = IRMath::fmod(idle.angle_, IRMath::kTwoPi);
-    if (wrapped < 0.0f) {
-        wrapped += IRMath::kTwoPi;
-    }
-    idle.angle_ = wrapped;
-    idle.currentStageIndex_ = 0;
-    while (idle.currentStageIndex_ < static_cast<int>(idle.stages_.size()) - 1 &&
-           idle.angle_ >= idle.stages_[idle.currentStageIndex_].endAngle_) {
-        ++idle.currentStageIndex_;
-    }
-    idle.updateValue();
-    return idle.getValue();
+    return idle.valueAtAngle(idle.angle_);
 }
 
 vec3 positionForCell(int x, int y, int z) {

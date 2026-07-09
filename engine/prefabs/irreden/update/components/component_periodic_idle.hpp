@@ -73,7 +73,9 @@ struct C_PeriodicIdle {
         return m_currentValue;
     }
 
-    void requestPauseAtCycleStart() { pauseRequested_ = true; }
+    void requestPauseAtCycleStart() {
+        pauseRequested_ = true;
+    }
 
     void resume() {
         paused_ = false;
@@ -90,8 +92,12 @@ struct C_PeriodicIdle {
         }
     }
 
-    bool isPaused() const { return paused_; }
-    bool isPauseRequested() const { return pauseRequested_; }
+    bool isPaused() const {
+        return paused_;
+    }
+    bool isPauseRequested() const {
+        return pauseRequested_;
+    }
 
     void tick() {
         if (paused_) {
@@ -122,22 +128,26 @@ struct C_PeriodicIdle {
                 return;
             }
         }
-        while (angle_ >= stages_[currentStageIndex_].endAngle_ &&
-               currentStageIndex_ < stages_.size() - 1) {
-            currentStageIndex_++;
-        }
+        currentStageIndex_ = advanceStageIndex(angle_, currentStageIndex_);
         updateValue();
     }
 
     void updateValue() {
-        PeriodStage &stage = stages_[currentStageIndex_];
-        float mappedAngle = mapAngleToStageTValue(angle_, stage);
-        float easedValue = IRMath::mix(
-            stage.startTValue_,
-            stage.endTValue_,
-            kEasingFunctions.at(stage.easingFunction_)(mappedAngle)
-        );
-        m_currentValue = amplitude_ * easedValue;
+        m_currentValue = evaluateStage(angle_, stages_[currentStageIndex_]);
+    }
+
+    // The offset this idle would produce at an arbitrary raw angle, without
+    // disturbing the live animation state -- e.g. to bake a traveling wave's
+    // phase-0 value before PERIODIC_IDLE's first tick() (see #2332). Wraps
+    // into [0, 2*pi) (a raw phase can span many cycles; the stages cover one)
+    // then runs the same stage-search + easing tick() does, so the result
+    // matches the running animation exactly.
+    vec3 valueAtAngle(float angle) const {
+        float wrapped = IRMath::fmod(angle, IRMath::kTwoPi);
+        if (wrapped < 0.0f) {
+            wrapped += IRMath::kTwoPi;
+        }
+        return evaluateStage(wrapped, stages_[advanceStageIndex(wrapped, 0)]);
     }
 
     void addStagePeriodRange(
@@ -261,7 +271,7 @@ struct C_PeriodicIdle {
         return radians / (2.0f * static_cast<float>(M_PI)) * periodLengthSeconds_;
     }
 
-    float mapAngleToStageTValue(float angle, PeriodStage &stage) {
+    float mapAngleToStageTValue(float angle, const PeriodStage &stage) const {
         float clampedAngle = std::max(stage.startAngle_, std::min(stage.endAngle_, angle));
         float relativePosition =
             (angle - stage.startAngle_) / (stage.endAngle_ - stage.startAngle_);
@@ -271,6 +281,31 @@ struct C_PeriodicIdle {
         }
 
         return relativePosition;
+    }
+
+    // Amplitude-scaled eased offset at wrappedAngle within stage. Pure; shared
+    // by updateValue() (stores it) and valueAtAngle() (returns it).
+    vec3 evaluateStage(float wrappedAngle, const PeriodStage &stage) const {
+        float mappedAngle = mapAngleToStageTValue(wrappedAngle, stage);
+        float easedValue = IRMath::mix(
+            stage.startTValue_,
+            stage.endTValue_,
+            kEasingFunctions.at(stage.easingFunction_)(mappedAngle)
+        );
+        return amplitude_ * easedValue;
+    }
+
+    // Forward-only search for the stage whose range contains wrappedAngle,
+    // starting at fromIndex (tick() advances from the current stage as angle_
+    // climbs; a from-scratch query passes 0). One implementation shared by
+    // tick() and valueAtAngle() so the stage model can't drift between them.
+    int advanceStageIndex(float wrappedAngle, int fromIndex) const {
+        int stageIndex = fromIndex;
+        while (stageIndex < static_cast<int>(stages_.size()) - 1 &&
+               wrappedAngle >= stages_[stageIndex].endAngle_) {
+            ++stageIndex;
+        }
+        return stageIndex;
     }
 };
 
