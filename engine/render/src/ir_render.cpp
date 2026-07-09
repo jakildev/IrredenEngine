@@ -330,6 +330,14 @@ bool getVoxelOcclusionCullEnabled() {
     return getRenderManager().getVoxelOcclusionCullEnabled();
 }
 
+void setVoxelPerVoxelOcclusionEnabled(bool enabled) {
+    getRenderManager().setVoxelPerVoxelOcclusionEnabled(enabled);
+}
+
+bool getVoxelPerVoxelOcclusionEnabled() {
+    return getRenderManager().getVoxelPerVoxelOcclusionEnabled();
+}
+
 void setAOEnabled(bool enabled) {
     getRenderManager().setAOEnabled(enabled);
 }

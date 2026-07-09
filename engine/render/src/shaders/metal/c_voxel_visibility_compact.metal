@@ -135,18 +135,23 @@ constant float kCullSafetyCells = 9.0f;
 // flags byte matching the full mask marks a fully-interior voxel.
 constant uint kFaceOccludedMaskBits = 0xFCu;
 
-// Strict-behind margin (encoded units) so FMA / round noise on the boundary
-// never culls a voxel only coplanar with the occluder. Must match
-// kOcclusionDepthMargin in c_chunk_occlusion_cull.metal.
-constant int kOcclusionDepthMargin = 4;
+// Strict-behind margin (one raw-depth unit of encoded slack) so FMA / round
+// noise on the boundary never culls a voxel only coplanar with the occluder,
+// and so the encoded low bits (slot [1:0] + flip [2], #2207) never tip the
+// comparison. Tracks kDepthEncodeShift, matching kOcclusionDepthMargin in
+// c_chunk_occlusion_cull.metal (both = the encode scale).
+constant int kOcclusionDepthMargin = kDepthEncodeShift;
 
 // Per-voxel Hi-Z occlusion refine (#1812) — see the GLSL twin
 // (c_voxel_visibility_compact.glsl) for the full rationale: conservative,
 // off by default (occlusionCullMipCount == 0 -> no-op), shadow-feeder-safe
 // (only voxels inside the un-widened visibleIsoBounds are tested), background
 // sentinel keeps a voxel that still sees background, and the encoding
-// (pos3DtoDistance(voxelPos) * 4) matches dispatchChunkOcclusion's cb.minDepth_
-// exactly. hiZLevel0 is the finest downsampled level (source px >> 1); the
+// (encodeDepthWithFace(pos3DtoDistance(voxelPos), 0)) matches
+// dispatchChunkOcclusion's cb.minDepth_ * kDepthEncodeShift exactly — routed
+// through the shared encode helper because #2207 changed the cardinal layout
+// from *4 to *kDepthEncodeShift (a hard-coded *4 silently no-ops the test).
+// hiZLevel0 is the finest downsampled level (source px >> 1); the
 // sampled window is derived from stage 1's emission hull (see the window
 // derivation below) so it always contains the voxel's own last-frame write.
 static bool voxelOccludedByHiZ(
@@ -203,7 +208,7 @@ static bool voxelOccludedByHiZ(
             hiZMax = max(hiZMax, hiZLevel0.read(uint2(c)).x);
         }
     }
-    return pos3DtoDistance(voxelPos) * 4 > hiZMax + kOcclusionDepthMargin;
+    return encodeDepthWithFace(pos3DtoDistance(voxelPos), 0) > hiZMax + kOcclusionDepthMargin;
 }
 
 // True iff this column lies under any live analytic vision circle, so its voxels

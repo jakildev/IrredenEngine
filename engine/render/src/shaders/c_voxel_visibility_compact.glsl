@@ -54,10 +54,12 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
 // only when occlusionCullMipCount > 0.
 layout(binding = 1) uniform isampler2D hiZLevel0;
 
-// Strict-behind margin (encoded units) so FMA / round noise on the boundary
-// never culls a voxel only coplanar with the occluder. Must match
-// kOcclusionDepthMargin in c_chunk_occlusion_cull.glsl.
-const int kOcclusionDepthMargin = 4;
+// Strict-behind margin (one raw-depth unit of encoded slack) so FMA / round
+// noise on the boundary never culls a voxel only coplanar with the occluder,
+// and so the encoded low bits (slot [1:0] + flip [2], #2207) never tip the
+// comparison. Tracks kDepthEncodeShift, matching kOcclusionDepthMargin in
+// c_chunk_occlusion_cull.glsl (both = the encode scale).
+const int kOcclusionDepthMargin = kDepthEncodeShift;
 
 layout(std430, binding = 5) readonly buffer PositionBuffer {
     vec4 positions[];
@@ -234,9 +236,15 @@ void writeDispatchDims(uint base) {
 //   * A footprint that still sees background keeps the voxel (empty texels carry
 //     the 65535 sentinel -> hiZMax stays large -> never occlude). A false
 //     positive is a visible hole; a false negative is only lost savings.
-// Encoding matches the Hi-Z exactly: encoded = pos3DtoDistance(voxelPos) * 4,
-// the same cardinal-rotated iso depth dispatchChunkOcclusion writes as
-// cb.minDepth_ * 4 (encodeDepthWithFace spacing, face slot 0).
+// Encoding matches the Hi-Z exactly: encodeDepthWithFace(pos3DtoDistance(voxelPos), 0)
+// — the same cardinal iso depth dispatchChunkOcclusion writes as its
+// encodedNearest_ (cb.minDepth_ * kDepthEncodeShift, face slot 0). Route through
+// the shared encode helper, NOT an open-coded scale: #2207 changed the cardinal
+// layout from *4 to *kDepthEncodeShift (depth [31:3] | flip [2] | slot [1:0]),
+// and a hard-coded *4 here silently compares a half-scale depth against the
+// Hi-Z's *8 values so the test never fires (a vacuous no-op). flip = 0 on the
+// cardinal path this cull runs on (riser-flip is gated to rotated content), so
+// slot 0 / flip 0 is the correct encode; the margin absorbs the Hi-Z's low bits.
 bool voxelOccludedByHiZ(ivec3 voxelPos, ivec2 isoPos) {
     if (occlusionCullMipCount <= 0) {
         return false;
@@ -288,7 +296,7 @@ bool voxelOccludedByHiZ(ivec3 voxelPos, ivec2 isoPos) {
             );
         }
     }
-    return pos3DtoDistance(voxelPos) * 4 > hiZMax + kOcclusionDepthMargin;
+    return encodeDepthWithFace(pos3DtoDistance(voxelPos), 0) > hiZMax + kOcclusionDepthMargin;
 }
 
 void main() {

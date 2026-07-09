@@ -1049,7 +1049,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // by default). Enabled only on the states whose distance encoding +
         // shadow-feeder semantics are verified: enabled, NOT stale (no
         // discontinuous camera move this frame — #1294 child 3/3, resolved in
-        // beginTick), NONE render mode (encodeDepthWithFace = rawDepth*4), cardinal
+        // beginTick), NONE render mode (encodeDepthWithFace = rawDepth*kDepthEncodeShift), cardinal
         // yaw (!rotating → per-axis canvases inactive, so no split-list
         // interaction), a non-re-voxelize pool (the frustum mask is the real
         // per-chunk mask, not the all-visible dest-cell scratch), AND a built Hi-Z
@@ -1062,7 +1062,16 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             IRRender::getVoxelOcclusionCullEnabled() && !occlusionLagSourceStale_ &&
             frameData_.voxelRenderOptions_.x == 0 && !rotating && revoxBuffer == nullptr &&
             occlusionMipCount > 0;
-        frameData_.occlusionCullMipCount_ = occlusionCullActive ? occlusionMipCount : 0;
+        // The chunk pre-pass (dispatched below on occlusionCullActive) and the
+        // per-voxel Hi-Z refine are separately toggleable so the #1812 marginal
+        // acceptance gate can A/B the per-voxel test in isolation while the chunk
+        // cull stays on: --no-per-voxel-occlusion zeroes the mip count (skips the
+        // compact's per-voxel test) without touching dispatchChunkOcclusion. The
+        // per-voxel toggle defaults on, so --occlusion-cull alone runs both.
+        frameData_.occlusionCullMipCount_ =
+            (occlusionCullActive && IRRender::getVoxelPerVoxelOcclusionEnabled())
+                ? occlusionMipCount
+                : 0;
         frameDataBuf_->subData(0, sizeof(FrameDataVoxelToCanvas), &frameData_);
 
         if (occlusionCullActive) {

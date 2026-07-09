@@ -356,6 +356,16 @@ bool g_noOverlay = false;
 // understates the mechanism. This is the baseline number the widened-domain
 // feeder-occlusion follow-on needs.
 bool g_noSunShadows = false;
+// --no-per-voxel-occlusion (#1812): with --occlusion-cull on, disable ONLY the
+// per-voxel Hi-Z refine (keep the #1294 chunk pre-pass). This is the marginal
+// acceptance-gate isolation: --occlusion-cull A/B measures the UNION of the two
+// culls, and the chunk cull owns the pre-existing `max_delta 96` silhouette
+// holes (its own bug, filed separately), so union-vs-no-cull can never be
+// bit-identical. The per-voxel test's real, PR-scoped contribution is the
+// MARGINAL delta — cull-with-per-voxel vs cull-without — which is bit-identical
+// (it drops zero visible voxels; the 2×2 isolation E2==A proved it). No-op
+// without --occlusion-cull.
+bool g_noPerVoxelOcclusion = false;
 
 PerfGridMode parseMode(const std::string &value) {
     if (value == "voxel_set" || value == "voxel") {
@@ -527,6 +537,10 @@ void registerCliArgs() {
         "--no-sun-shadows",
         "Disable sun shadows so the cull collapses to the visible viewport (occlusion-cull measurement baseline)"
     );
+    args.flag(
+        "--no-per-voxel-occlusion",
+        "With --occlusion-cull, disable only the #1812 per-voxel Hi-Z refine (keep the #1294 chunk cull) — the marginal-gate isolation"
+    );
     args.string("--mode", "Scene mode: voxel_set | sdf | dense_set | hollow_set", "voxel_set");
     args.integer("--grid-size", "Grid edge in cells", 64);
     args.number("--zoom", "Initial camera zoom", 0.5f);
@@ -566,6 +580,7 @@ void readCliArgs() {
     g_occlusionCull = args.getFlag("--occlusion-cull");
     g_noOverlay = args.getFlag("--no-overlay");
     g_noSunShadows = args.getFlag("--no-sun-shadows");
+    g_noPerVoxelOcclusion = args.getFlag("--no-per-voxel-occlusion");
 
     if (args.wasProvided("--mode")) {
         g_cliOverrides.mode_ = parseMode(args.getString("--mode"));
@@ -934,6 +949,19 @@ int main(int argc, char **argv) {
             "Voxel chunk-occlusion cull forced ON (--occlusion-cull, #1294 child 3/3). "
             "Output stays bit-identical to cull-off; one-frame silhouette pop on a "
             "discontinuous camera move is intentional drift (stale Hi-Z self-disable)."
+        );
+        if (g_noPerVoxelOcclusion) {
+            IRRender::setVoxelPerVoxelOcclusionEnabled(false);
+            IR_LOG_INFO(
+                "Per-voxel Hi-Z refine DISABLED (--no-per-voxel-occlusion, #1812). Chunk "
+                "cull only; this is the marginal-gate B side (A = per-voxel on). The two "
+                "must render bit-identical — the per-voxel test drops zero visible voxels."
+            );
+        }
+    } else if (g_noPerVoxelOcclusion) {
+        IR_LOG_WARN(
+            "--no-per-voxel-occlusion is a no-op without --occlusion-cull (the whole "
+            "cull is off, so the per-voxel refine never runs)."
         );
     }
 

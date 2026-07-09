@@ -94,6 +94,8 @@ class RenderManager {
     bool getAOEnabled() const;
     void setVoxelOcclusionCullEnabled(bool enabled);
     bool getVoxelOcclusionCullEnabled() const;
+    void setVoxelPerVoxelOcclusionEnabled(bool enabled);
+    bool getVoxelPerVoxelOcclusionEnabled() const;
 
     void setDebugOverlay(DebugOverlayMode mode);
     DebugOverlayMode getDebugOverlay() const;
@@ -185,6 +187,12 @@ class RenderManager {
     // not dispatched unless this is set, so a default scene is byte-identical to
     // master. The gating heuristic + camera-cut disable land in child 3 (#1800).
     bool m_voxelOcclusionCullEnabled = false;
+    // Per-voxel Hi-Z occlusion refine (#1812), layered on the chunk pre-pass
+    // above. On by default, but only active when the chunk cull is enabled (the
+    // per-voxel test shares getVoxelOcclusionCullEnabled()'s gate). Flip it off
+    // (--no-per-voxel-occlusion) to isolate the chunk cull's contribution for the
+    // #1812 marginal acceptance gate.
+    bool m_voxelPerVoxelOcclusionEnabled = true;
     DebugOverlayMode m_debugOverlayMode = DebugOverlayMode::NONE;
     bool m_depthColorDebugOn = false;
     float m_depthColorDebugExtent = 0.0f;
