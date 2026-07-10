@@ -135,6 +135,82 @@ constant float kCullSafetyCells = 9.0f;
 // flags byte matching the full mask marks a fully-interior voxel.
 constant uint kFaceOccludedMaskBits = 0xFCu;
 
+// Strict-behind margin (one raw-depth unit of encoded slack) so FMA / round
+// noise on the boundary never culls a voxel only coplanar with the occluder,
+// and so the encoded low bits (slot [1:0] + flip [2], #2207) never tip the
+// comparison. Tracks kDepthEncodeShift, matching kOcclusionDepthMargin in
+// c_chunk_occlusion_cull.metal (both = the encode scale).
+constant int kOcclusionDepthMargin = kDepthEncodeShift;
+
+// Per-voxel Hi-Z occlusion refine (#1812) — see the GLSL twin
+// (c_voxel_visibility_compact.glsl) for the full rationale: conservative,
+// off by default (occlusionCullMipCount == 0 -> no-op), shadow-feeder-safe
+// (only voxels inside the un-widened visibleIsoBounds are tested), background
+// sentinel keeps a voxel that still sees background, and the encoding
+// (encodeDepthWithFace(pos3DtoDistance(voxelPos), 0)) matches
+// dispatchChunkOcclusion's cb.minDepth_ * kDepthEncodeShift exactly — routed
+// through the shared encode helper because #2207 changed the cardinal layout
+// from *4 to *kDepthEncodeShift (a hard-coded *4 silently no-ops the test).
+// hiZLevel0 is the finest downsampled level (source px >> 1); the
+// sampled window is derived from stage 1's emission hull (see the window
+// derivation below) so it always contains the voxel's own last-frame write.
+static bool voxelOccludedByHiZ(
+    texture2d<int, access::read> hiZLevel0,
+    constant FrameDataVoxelToTrixel& fd,
+    int3 voxelPos,
+    int2 isoPos
+) {
+    if (fd.occlusionCullMipCount <= 0) {
+        return false;
+    }
+    if (isoPos.x < fd.visibleIsoBounds.x || isoPos.y < fd.visibleIsoBounds.y ||
+        isoPos.x > fd.visibleIsoBounds.z || isoPos.y > fd.visibleIsoBounds.w) {
+        return false;
+    }
+    // stage 1's emit `base` at NONE (effectiveTrixelSubdivisionScale == 1).
+    const int2 base =
+        fd.trixelCanvasOffsetZ1 + int2(floor(fd.frameCanvasOffset)) + isoPos;
+    // Sample the Hi-Z over the EMISSION HULL — the conservative superset of every
+    // pixel stage 1 can write for this voxel — NOT a fixed ±1 window. stage 1's
+    // emitDeformedFace writes each face at `base + roundHalfUp(D_s * src)` for src
+    // across the [0,2)x[0,3) invocation lattice (threadgroup 2x3), per visible-
+    // triplet slot s, with D_s = float2x2(faceDeform[s].xy, faceDeform[s].zw). A
+    // fixed ±1 window missed the +iso extreme of that hull at silhouette / upper
+    // edges (the near Z face is unexposed so it never writes at `base`, the exposed
+    // X/Y faces land past the window), false-culling a VISIBLE voxel — the #1812
+    // static-scene hole. The window MUST stay a superset of emitDeformedFace's write
+    // set: KEEP IN SYNC with c_voxel_to_trixel_stage_1.{glsl,metal} emitDeformedFace.
+    // faceDeform is identity at residualYaw==0 (the only path the cull runs on), so
+    // this reduces to a fixed ~3x4-texel box; deriving it from faceDeform keeps it
+    // correct by construction if the emit deform ever changes.
+    const float2 hullCorners[4] = {
+        float2(0.0f, 0.0f), float2(2.0f, 0.0f), float2(0.0f, 3.0f), float2(2.0f, 3.0f)
+    };
+    float2 loF = float2(1.0e30f);
+    float2 hiF = float2(-1.0e30f);
+    for (int s = 0; s < 3; ++s) {
+        const float2x2 D = float2x2(fd.faceDeform[s].xy, fd.faceDeform[s].zw);
+        for (int c = 0; c < 4; ++c) {
+            const float2 p = D * hullCorners[c];
+            loF = min(loF, p);
+            hiF = max(hiF, p);
+        }
+    }
+    // ±1 px pad absorbs roundHalfUp of the intra-hull super-sample taps; >>1 maps
+    // canvas px to the finest half-res Hi-Z level.
+    const int2 loTexel = (base + int2(floor(loF)) - int2(1)) >> 1;
+    const int2 hiTexel = (base + int2(ceil(hiF)) + int2(1)) >> 1;
+    const int2 sz = int2(int(hiZLevel0.get_width()), int(hiZLevel0.get_height()));
+    int hiZMax = -2147483648;
+    for (int ty = loTexel.y; ty <= hiTexel.y; ++ty) {
+        for (int tx = loTexel.x; tx <= hiTexel.x; ++tx) {
+            const int2 c = clamp(int2(tx, ty), int2(0), sz - int2(1));
+            hiZMax = max(hiZMax, hiZLevel0.read(uint2(c)).x);
+        }
+    }
+    return encodeDepthWithFace(pos3DtoDistance(voxelPos), 0) > hiZMax + kOcclusionDepthMargin;
+}
+
 // True iff this column lies under any live analytic vision circle, so its voxels
 // survive the grid cull and FOG_TO_TRIXEL can reveal them smoothly per pixel.
 // Uses a cell nearest-point (AABB) test (mirrors the GLSL): the voxel cell at
@@ -176,6 +252,17 @@ kernel void c_voxel_visibility_compact(
     device uint* compactedVoxelIndices [[buffer(25)]],
     device atomic_uint* indirectParams [[buffer(26)]],
     texture2d<float, access::read> canvasFogOfWar [[texture(0)]],
+    // Finest Hi-Z level for the per-voxel occlusion cull (#1812). access::read
+    // (image); the C++ binds it as an IMAGE at unit 1 (bindAsImage, not bind).
+    // The image bind is load-bearing: bindComputeResources flushes the sticky
+    // image-binding table AFTER the sampler table at the same texture index, so a
+    // sampler bind here was shadowed by the leftover trixelDistances IMAGE at
+    // unit 1 and the compact read the freshly-cleared distance sentinel (#1812
+    // zero-capture). The image bind makes the Hi-Z win that slot. At texture(1)
+    // so it never aliases the fog image at texture(0). Read only when
+    // frameData.occlusionCullMipCount > 0; else a never-read sentinel is bound so
+    // the argument table stays satisfied.
+    texture2d<int, access::read> hiZLevel0 [[texture(1)]],
     constant FogObserverData& fogObservers [[buffer(27)]],
     uint3 groupId [[threadgroup_position_in_grid]],
     uint3 groupCount [[threadgroups_per_grid]],
@@ -196,6 +283,10 @@ kernel void c_voxel_visibility_compact(
                 const int3 voxelPosRaw = roundHalfUp(positions[idx].xyz);
                 int2 isoPos;
                 int cullMargin = 0;
+                // Cardinal-rotated position, hoisted for the per-voxel occlusion
+                // test (only rotated on the residual==0 path — the only path
+                // where occlusionCullMipCount can be non-zero).
+                int3 voxelPos = voxelPosRaw;
                 // Smooth camera Z-yaw (T3 / #1310) — see the GLSL mirror for the
                 // rationale: while rotating, project the cull with the same
                 // continuous yaw the per-axis scatter raster uses (cardinal snap
@@ -207,7 +298,6 @@ kernel void c_voxel_visibility_compact(
                     );
                     cullMargin = 2;
                 } else {
-                    int3 voxelPos = voxelPosRaw;
                     if (cardinalIndex != 0) {
                         voxelPos = rotateCardinalZ(voxelPos, cardinalIndex);
                         voxelPos += cardinalLowerCornerShift(cardinalIndex);
@@ -231,9 +321,15 @@ kernel void c_voxel_visibility_compact(
                         // occluded vertical face as a cut wall, #2125). No early
                         // return — the completion barrier below must stay
                         // uniformly reached.
+                        // Per-voxel Hi-Z occlusion refine (#1812): drop a voxel
+                        // globally occluded by closer geometry. Off by default;
+                        // never re-adds a fully-interior voxel already dropped
+                        // above. No early return — the completion barrier below
+                        // must stay uniformly reached.
                         const uint flagsByte = (voxels[idx].materialFlagBone >> 8u) & 0xFFu;
-                        if (fogObservers.visionCircleCount != 0 ||
-                            (flagsByte & kFaceOccludedMaskBits) != kFaceOccludedMaskBits) {
+                        if ((fogObservers.visionCircleCount != 0 ||
+                             (flagsByte & kFaceOccludedMaskBits) != kFaceOccludedMaskBits) &&
+                            !voxelOccludedByHiZ(hiZLevel0, frameData, voxelPos, isoPos)) {
                             const uint slot = atomic_fetch_add_explicit(
                                 &indirectParams[kSlotVisibleCount],
                                 1u,

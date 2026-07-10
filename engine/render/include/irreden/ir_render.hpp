@@ -370,6 +370,15 @@ bool getSunShadowsEnabled();
 /// closer geometry (last frame's Hi-Z) are dropped before the compact pass.
 void setVoxelOcclusionCullEnabled(bool enabled);
 bool getVoxelOcclusionCullEnabled();
+/// Per-voxel Hi-Z occlusion refine (#1812), layered on the chunk cull above. On
+/// by default, but only active when the chunk cull is enabled (the per-voxel
+/// test shares getVoxelOcclusionCullEnabled()'s gate), so a default scene stays
+/// byte-identical. Set false to isolate the chunk cull's contribution: the
+/// #1812 marginal acceptance gate A/Bs this while --occlusion-cull stays on, so
+/// cull-with-per-voxel vs cull-without-per-voxel must be bit-identical (the
+/// per-voxel test drops zero visible voxels; the chunk cull owns any holes).
+void setVoxelPerVoxelOcclusionEnabled(bool enabled);
+bool getVoxelPerVoxelOcclusionEnabled();
 /// When false, ambient occlusion crease darkening is skipped — the AO compute
 /// shader short-circuits with a constant 1.0 so the lighting pass treats AO
 /// as a no-op. Sun face shading and projected shadows are unaffected.

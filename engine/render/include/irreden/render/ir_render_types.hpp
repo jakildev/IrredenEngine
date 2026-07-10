@@ -503,7 +503,16 @@ struct FrameDataVoxelToCanvas {
     // offset is unchanged. Trailing pads keep sizeof at the 16-byte std140
     // stride for the full-struct subData uploads.
     int resolveMode_ = 0;
-    int resolveModePad0_ = 0;
+    // Per-voxel Hi-Z occlusion-cull gate (#1812), refining the per-chunk cull
+    // (#1294 child 2/3). 0 = the compact's per-voxel test is skipped, so the
+    // default (occlusion cull off) pipeline is byte-identical. Non-zero = the
+    // Hi-Z chain level count; the compact samples level 0 at each surviving
+    // voxel's canvas pixel and drops it when strictly behind the farthest visible
+    // surface. Set (in VOXEL_TO_TRIXEL_STAGE_1) only on the same states the chunk
+    // pre-pass is verified for: enabled, lag source fresh, NONE render mode,
+    // cardinal (not rotating), non-re-voxelize pool, Hi-Z chain built. Reuses the
+    // first resolveMode tail pad so the std140 layout / sizeof stay unchanged.
+    int occlusionCullMipCount_ = 0;
     int resolveModePad1_ = 0;
     int resolveModePad2_ = 0;
 };

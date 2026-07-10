@@ -53,7 +53,10 @@ vec2 getEffectiveCameraIso() {
         // drift-cancel offset (`IRMath::cameraYawPivotOffset`) keeps the focus at
         // a constant on-screen position across the yaw sweep.
         return IRMath::cameraYawPivotOffset(
-            cameraIso, getRenderManager().getRotationPivotFocus(), visualYaw);
+            cameraIso,
+            getRenderManager().getRotationPivotFocus(),
+            visualYaw
+        );
     }
     // CAMERA_CENTER default — pivot Z-yaw about the EXACT z = 0 world point under
     // screen center, held fixed across the yaw sweep so the scene rotates in
@@ -70,8 +73,8 @@ vec2 getEffectiveCameraIso() {
     // together — see system_entity_canvas_to_framebuffer.hpp. See
     // docs/design/camera-yaw-pivot.md (#1352, #1942, #1944).
     const ivec2 canvasSize = getRenderManager().getMainCanvasSizeTriangles();
-    const vec2 viewCenterIso = vec2(canvasSize) * 0.5f -
-                               vec2(IRMath::trixelOriginOffsetZ1(canvasSize)) - cameraIso;
+    const vec2 viewCenterIso =
+        vec2(canvasSize) * 0.5f - vec2(IRMath::trixelOriginOffsetZ1(canvasSize)) - cameraIso;
     const vec3 cameraFocusWorld = IRMath::isoPixelToPos3D(viewCenterIso, 0.0f);
     return IRMath::cameraYawPivotOffset(cameraIso, cameraFocusWorld, visualYaw);
 }
@@ -328,6 +331,14 @@ void setVoxelOcclusionCullEnabled(bool enabled) {
 
 bool getVoxelOcclusionCullEnabled() {
     return getRenderManager().getVoxelOcclusionCullEnabled();
+}
+
+void setVoxelPerVoxelOcclusionEnabled(bool enabled) {
+    getRenderManager().setVoxelPerVoxelOcclusionEnabled(enabled);
+}
+
+bool getVoxelPerVoxelOcclusionEnabled() {
+    return getRenderManager().getVoxelPerVoxelOcclusionEnabled();
 }
 
 void setAOEnabled(bool enabled) {

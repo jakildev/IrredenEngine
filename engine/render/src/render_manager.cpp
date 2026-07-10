@@ -622,6 +622,14 @@ bool RenderManager::getVoxelOcclusionCullEnabled() const {
     return m_voxelOcclusionCullEnabled;
 }
 
+void RenderManager::setVoxelPerVoxelOcclusionEnabled(bool enabled) {
+    m_voxelPerVoxelOcclusionEnabled = enabled;
+}
+
+bool RenderManager::getVoxelPerVoxelOcclusionEnabled() const {
+    return m_voxelPerVoxelOcclusionEnabled;
+}
+
 void RenderManager::setDebugOverlay(DebugOverlayMode mode) {
     m_debugOverlayMode = mode;
 }

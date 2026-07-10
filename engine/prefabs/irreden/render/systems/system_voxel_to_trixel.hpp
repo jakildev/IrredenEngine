@@ -1044,20 +1044,37 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         const IsoBounds2D visibleVp = IRRender::getCullViewport().isoViewport(kGpuMargin);
         frameData_.visibleIsoBounds_ =
             ivec4(ivec2(IRMath::floor(visibleVp.min_)), ivec2(IRMath::ceil(visibleVp.max_)));
+
+        // Occlusion cull gate (#1294 chunk pre-pass + #1812 per-voxel refine, off
+        // by default). Enabled only on the states whose distance encoding +
+        // shadow-feeder semantics are verified: enabled, NOT stale (no
+        // discontinuous camera move this frame — #1294 child 3/3, resolved in
+        // beginTick), NONE render mode (encodeDepthWithFace = rawDepth*kDepthEncodeShift), cardinal
+        // yaw (!rotating → per-axis canvases inactive, so no split-list
+        // interaction), a non-re-voxelize pool (the frustum mask is the real
+        // per-chunk mask, not the all-visible dest-cell scratch), AND a built Hi-Z
+        // chain. Any other state keeps every voxel (conservative). The chunk
+        // pre-pass ANDs occluded chunks out of ChunkVisibility (24); the compact
+        // then runs the per-voxel Hi-Z test on the survivors (occlusionCullMipCount_
+        // uploaded here, Hi-Z bound at the compact dispatch below).
+        const int occlusionMipCount = triangleCanvasTextures.hiZMipCount();
+        const bool occlusionCullActive = IRRender::getVoxelOcclusionCullEnabled() &&
+                                         !occlusionLagSourceStale_ &&
+                                         frameData_.voxelRenderOptions_.x == 0 && !rotating &&
+                                         revoxBuffer == nullptr && occlusionMipCount > 0;
+        // The chunk pre-pass (dispatched below on occlusionCullActive) and the
+        // per-voxel Hi-Z refine are separately toggleable so the #1812 marginal
+        // acceptance gate can A/B the per-voxel test in isolation while the chunk
+        // cull stays on: --no-per-voxel-occlusion zeroes the mip count (skips the
+        // compact's per-voxel test) without touching dispatchChunkOcclusion. The
+        // per-voxel toggle defaults on, so --occlusion-cull alone runs both.
+        frameData_.occlusionCullMipCount_ =
+            (occlusionCullActive && IRRender::getVoxelPerVoxelOcclusionEnabled())
+                ? occlusionMipCount
+                : 0;
         frameDataBuf_->subData(0, sizeof(FrameDataVoxelToCanvas), &frameData_);
 
-        // Chunk-occlusion HZB pre-pass (#1294 child 2/3, off by default). Gated to
-        // the configuration whose distance encoding + shadow-feeder semantics are
-        // verified: enabled, NOT stale (no discontinuous camera move this frame —
-        // #1294 child 3/3, resolved in beginTick), NONE render mode
-        // (encodeDepthWithFace = rawDepth*4), cardinal yaw (!rotating → per-axis
-        // canvases are also inactive, so no split-list interaction), and a
-        // non-re-voxelize pool (the frustum mask is the real per-chunk mask, not
-        // the all-visible dest-cell scratch). Any other state keeps every chunk
-        // (conservative). The pass ANDs occluded chunks out of ChunkVisibility
-        // (24) before the compact pass reads it.
-        if (IRRender::getVoxelOcclusionCullEnabled() && !occlusionLagSourceStale_ &&
-            frameData_.voxelRenderOptions_.x == 0 && !rotating && revoxBuffer == nullptr) {
+        if (occlusionCullActive) {
             dispatchChunkOcclusion(voxelPool, triangleCanvasTextures, visibleVp);
         }
 
@@ -1243,6 +1260,30 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             fogObserverBuf_->subData(0, sizeof(FrameDataFogObservers), &cutSectionFog->observers_);
         }
         fogObserverBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FogObservers);
+        // Per-voxel occlusion cull Hi-Z input (#1812). Bind the finest Hi-Z level
+        // as a read-only IMAGE at a unit distinct from the fog image at 0. The
+        // image bind (not a sampler bind) is required on Metal: bindComputeResources
+        // flushes the sticky image-binding table AFTER the sampler table at the
+        // same encoder texture index, so a sampler bind of the Hi-Z at unit 1 was
+        // shadowed by the leftover trixelDistances IMAGE bound there by the prior
+        // frame's stage-1/stage-2 — the compact then read the freshly-cleared
+        // distance sentinel (all 65535) instead of the Hi-Z and the per-voxel test
+        // never fired (#1812 zero-capture). Binding the Hi-Z as an image overwrites
+        // that stale slot so it wins the flush. The compact reads it only when
+        // frameData_.occlusionCullMipCount_ > 0; a canvas with no Hi-Z chain (≤1px)
+        // binds the R32I distance texture as a never-read sentinel so the argument
+        // table stays satisfied. Bound every frame — the shader gate keeps the
+        // default (cull-off) output byte-identical (stage-1 re-binds distances as
+        // the image at this unit right after, so no downstream state leaks).
+        constexpr int kHiZLevel0CompactTextureUnit = 1;
+        const Texture2D *hiZLevel0 = (triangleCanvasTextures.hiZMipCount() > 0)
+                                         ? triangleCanvasTextures.getHiZMip(0)
+                                         : triangleCanvasTextures.getTextureDistances();
+        hiZLevel0->bindAsImage(
+            kHiZLevel0CompactTextureUnit,
+            TextureAccess::READ_ONLY,
+            TextureFormat::R32I
+        );
         constexpr int kCompactLocalSize = 64;
         // Inverse-resample walks the D dest slots; the source path walks the live
         // source count. frameData_.voxelCount_ (the compact's per-slot guard) was

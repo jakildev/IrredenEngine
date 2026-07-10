@@ -67,6 +67,12 @@ inline void resolveWinnerTap(
 // World canvas: maxN=2 (Z-yaw residual ≤ π/4, column lengths ≤ √3).
 // Detached canvas: maxN=6 (full SO(3)).
 // See c_voxel_to_trixel_stage_1.glsl for the full contract.
+// KEEP IN SYNC with c_voxel_visibility_compact.{glsl,metal} voxelOccludedByHiZ:
+// the per-voxel Hi-Z occlusion cull's sampled window MUST be a conservative
+// superset of this function's write set (`base + roundHalfUp(D * src)` over the
+// [0,2)x[0,3) invocation lattice) so a visible voxel's own last-frame write always
+// lands in the window it is tested against. Widening this emission hull without
+// widening that window re-introduces the #1812 static-scene silhouette holes.
 inline void emitDeformedFace(
     int2 base,
     float2x2 D,

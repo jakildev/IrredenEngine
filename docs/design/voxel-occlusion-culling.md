@@ -315,6 +315,40 @@ labels.
 - **One-frame-lag pop** — acceptable but call it out in the demo's intentional-
   drift note so reviewers don't read it as a regression.
 
+## Acceptance-gate lessons (#1812 per-voxel refine)
+
+The per-voxel refine (#1812) went through six rounds, three of which shipped a
+**vacuous PASS** — a cull that measured as correct while doing nothing. The
+durable lessons:
+
+- **(i) An identity gate requires a paired positive-fire gate.** Byte-identity
+  cull-on vs cull-off (or marginal-on vs marginal-off) only proves the OFF path
+  is a no-op — it can never prove the feature *works*. A cull that never fires
+  passes every byte-identity test. #1812's three vacuous-PASS variants were:
+  mode-gated-off (the enable flag never reached the tested state), union
+  mis-attribution (the byte-identity + "capture" numbers were entirely the
+  #1294 chunk cull; the per-voxel marginal was zero), and zero-fire (the Hi-Z
+  read returned the cleared sentinel — see below). Every default-off cull needs
+  a **positive-fire gate**: a measured, non-zero marginal capture at a pose
+  where the cull is legally active. This is the cull-shaped instance of the
+  "default-off features need a positive enabled-path test" rule in
+  [`engine/render/CLAUDE.md`](../../engine/render/CLAUDE.md).
+- **(h) Isolate the marginal.** `--occlusion-cull` measures the UNION of the
+  chunk pre-pass and the per-voxel refine; a split gate
+  (`--no-per-voxel-occlusion`) is required so each mechanism's acceptance is
+  measured *marginally*, against the other running. Without it, a zero-fire
+  per-voxel test rides the chunk cull's capture and reads as working.
+- **Metal: a sampler bind at a texture unit is shadowed by a stale IMAGE bind
+  at the same unit.** `bindComputeResources` flushes the (sticky, never-cleared)
+  image-binding table AFTER the sampler table at the same encoder texture index,
+  so binding a Hi-Z read at a unit that a prior dispatch left an image bound to
+  reads that stale image, not the Hi-Z. The compact read `trixelDistances`
+  (freshly cleared to the 65535 sentinel) instead of `getHiZMip(0)`, so the test
+  never fired. Bind Hi-Z reads as **images** (matching the Metal `access::read`
+  declaration) so they win the flush. GL is immune (separate image/texture-unit
+  namespaces) — a Metal-only defect a GL-only smoke will miss. The same
+  mechanism latently corrupts the #1294 chunk cull's fine Hi-Z levels on Metal.
+
 ---
 
 ## See also
