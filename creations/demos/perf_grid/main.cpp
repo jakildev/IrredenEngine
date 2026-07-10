@@ -535,11 +535,13 @@ void registerCliArgs() {
     args.flag("--no-overlay", "Drop PERF_STATS_OVERLAY so a captured frame is deterministic");
     args.flag(
         "--no-sun-shadows",
-        "Disable sun shadows so the cull collapses to the visible viewport (occlusion-cull measurement baseline)"
+        "Disable sun shadows so the cull collapses to the visible viewport (occlusion-cull "
+        "measurement baseline)"
     );
     args.flag(
         "--no-per-voxel-occlusion",
-        "With --occlusion-cull, disable only the #1812 per-voxel Hi-Z refine (keep the #1294 chunk cull) — the marginal-gate isolation"
+        "With --occlusion-cull, disable only the #1812 per-voxel Hi-Z refine (keep the #1294 chunk "
+        "cull) — the marginal-gate isolation"
     );
     args.string("--mode", "Scene mode: voxel_set | sdf | dense_set | hollow_set", "voxel_set");
     args.integer("--grid-size", "Grid edge in cells", 64);

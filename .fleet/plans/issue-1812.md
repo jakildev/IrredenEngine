@@ -55,18 +55,70 @@ Keep the chunk pre-pass as the cheap coarse pre-filter (it already ANDs into `ch
 - **binding 0** — fog image (`canvasFogOfWar`, GL image unit) and `hiZLevels[0]` (GL texture unit) coexist in GL; **Metal needs distinct argument-table indices** (the one real parity hazard).
 - **`system_build_light_occlusion_grid`** — **NOT touched** (lighting invariant 1: it iterates the full pool, never the compacted list). Do not wire the cull into it.
 
-### Acceptance criteria
+### Acceptance criteria (updated round 6 — positive-fire + marginal isolation)
 
-- On `voxel_set` zoom8, per-voxel cull captures a **clear majority** of the 0.97 `occludedExposedFraction` (target: far above the ~3 % per-chunk realizes); realized `voxelStage1` ms reduction recorded in the PR body.
-- **Bit-identical** cull-on vs cull-off (`IRPerfGrid --mode voxel_set --no-overlay --auto-screenshot`, md5 A/B) — a fully-occluded voxel writes nothing anyway, so any diff is a cull bug.
-- **Net-positive across the perf_grid zoom range**, or gated so no view regresses (the per-voxel sample must not cost more than it saves at low zoom, the failure mode the per-chunk cull hit).
-- **Zero added cost** when `getVoxelOcclusionCullEnabled()==false` (default-config profile unchanged; Hi-Z not bound, branch not taken).
-- Both backends build; `render-debug-loop` + `attach-screenshots`; carries both cross-host smoke labels.
+The `--no-per-voxel-occlusion` split gate lets the per-voxel test be A/B'd in
+isolation against the #1294 chunk cull. Both gates below compare
+**chunk+per-voxel (`--occlusion-cull`) vs chunk-only
+(`--occlusion-cull --no-per-voxel-occlusion`)** — the *marginal* delta the
+per-voxel refine adds over the chunk cull — NOT cull-on vs cull-off (a
+cull-off comparison folds in the chunk cull's own behavior; on Metal the chunk
+cull is not itself byte-identical to cull-off — see "Root cause" — so only the
+marginal isolation is a clean per-voxel gate).
+
+- **Positive-fire gate (required).** Marginal capture > 0 at amp 0,
+  `--no-sun-shadows`, zooms 1/4/8 — chunk+per-voxel vs chunk-only `avgVisible`
+  (`--auto-profile`), non-zero. Zero = not done (a cull that never fires passes
+  every byte-identity gate; #1812 was a zero-fire no-op for six rounds because
+  the Hi-Z read returned the cleared sentinel — see "Root cause"). Record the
+  numbers. **Measured: zoom1 233527→28200, zoom4 227847→27036, zoom8
+  166666→19373 (marginal 205k/201k/147k).**
+- **Marginal byte-identity (required).** chunk+per-voxel vs chunk-only md5 A/B
+  (`IRPerfGrid --mode voxel_set --no-overlay --auto-screenshot
+  --subdivision-mode none --wave-amplitude 0 --occlusion-cull` ±
+  `--no-per-voxel-occlusion`) — byte-identical across the shot table now that
+  the cull fires. Any diff is a too-tight emission-hull window (the
+  counterexample-dump case). This became a *real* test of the emission-hull
+  window + margin only once the cull fired. **Measured: byte-identical, 7/7.**
+- **Net-positive / no per-view regression** — perf ms deferred to Linux/GL via
+  the owed smoke (Metal timer rows read 0.000; the capture stat is the Metal
+  gate).
+- **Zero added cost** when `getVoxelOcclusionCullEnabled()==false` (default-config
+  profile unchanged; the compact never reads the Hi-Z when
+  `occlusionCullMipCount==0`, regardless of which texture is bound at its unit).
+- Both backends build; carries both cross-host smoke labels.
+
+### Root cause (round 6) — the Hi-Z read was a stale-image-shadowed sampler bind on Metal
+
+The compact bound the finest Hi-Z (`getHiZMip(0)`) at texture unit 1 via a
+SAMPLER bind (`Texture2D::bind`), but the Metal shader declared it `access::read`
+(image) and `bindComputeResources` flushes the sticky image-binding table AFTER
+the sampler table at the same encoder texture index. The prior frame's
+stage-1/stage-2 leave `trixelDistances` bound as an IMAGE at unit 1 (sticky,
+never cleared), and at compact time `trixelDistances` was just cleared to the
+65535 sentinel — so the stale image bind shadowed the Hi-Z sampler bind and the
+compact read all-sentinel, so the per-voxel test never fired (marginal capture
+0 — the exact "unit collision with `trixelDistances`" the architect predicted).
+**Fix:** bind the Hi-Z as a read-only IMAGE (matching the Metal `access::read`
+declaration) so it occupies — and wins — that same table slot. GL is unaffected
+(separate image/texture-unit namespaces). The SAME mechanism latently corrupts
+the #1294 chunk cull's fine Hi-Z levels (0-3, shadowed by fog/distances/entityId
+images) on Metal — so cull-on ≠ cull-off on Metal at cardinal poses (0.18-2.76%
+drift, pre-existing, GL-verified-only) — filed as a follow-up (the chunk cull
+reads coarse levels for 256-voxel chunks, so the corruption was never noticed).
+
+### Design-doc lesson (i): identity gates require a paired positive-fire gate
+
+Added to `docs/design/voxel-occlusion-culling.md` — a cull that never fires
+passes every byte-identity test. #1812 surfaced three vacuous-PASS variants
+(mode-gated-off, union mis-attribution, zero-fire) plus a stale-encoding fix a
+fire gate would have caught. Cross-references the "default-off features need a
+positive enabled-path test" rule in `engine/render/CLAUDE.md`.
 
 ### Gotchas
 
 - **Shadow-feeder coverage (the #1 correctness hazard).** The chunk cull's eligibility guard only tests chunks fully inside the VISIBLE viewport, so it never drops an off-screen shadow feeder. The per-voxel test **must preserve the same safety**: it runs only inside the visible-frustum gate (`cullIsoMin/Max`), and a voxel in the shadow-feeder-widened swept region but outside the visible viewport is never per-voxel-culled. Do not sample the Hi-Z (which covers only the visible viewport) for shadow-feeder voxels — dropping a camera-occluded but shadow-relevant caster loses its sun shadow (design § "The one real hazard").
-- **Encoding must match the Hi-Z.** `encoded = rawDepth * 4` (bits [31:2]); use `isoDepthAlongAxis` with the uploaded `voxelDepthAxis`, not a hand-rolled depth, or the compare desyncs from `trixelDistances`.
+- **Encoding must match the Hi-Z.** Route through `encodeDepthWithFace(pos3DtoDistance(voxelPos), 0)` — the shared cardinal encode (depth [31:3] | flip [2] | slot [1:0], `* kDepthEncodeShift`), NOT an open-coded `* 4` (#2207 changed the cardinal layout; a hard-coded `*4` compares a half-scale depth against the Hi-Z's `*8` values so the test never fires). Margin = `kDepthEncodeShift` absorbs the low bits.
 - **Cardinal / NONE-mode only.** Gate exactly on the chunk dispatch's conditions (`residualYaw==0`, NONE render mode, not rotating, no re-voxelize buffer); the continuous-yaw and per-axis paths keep every voxel (conservative), matching the shipped chunk cull.
 - **Per-voxel cost in the hottest loop** (design § 1 flags this explicitly). One Hi-Z sample per surviving voxel per frame. Keep it behind the enable flag and on survivors only; the net-positive acceptance gate is the guard against shipping a regression.
 - **One-frame-lag silhouette pop** — acceptable, same class as the chunk cull; note it as intentional drift so reviewers don't read it as a regression.

@@ -47,12 +47,18 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
 };
 
 // Finest Hi-Z downsampled level (conceptual mip 1) over last frame's canvas
-// distances (#1798), R32I. Bound at texture unit 1 by VOXEL_TO_TRIXEL_STAGE_1
-// when this compact runs — kept off unit 0 so it never aliases the fog IMAGE at
-// binding 0 on Metal's shared argument table (GL image/texture unit 0 are
-// separate namespaces, but the compact must stay backend-parity-clean). Sampled
-// only when occlusionCullMipCount > 0.
-layout(binding = 1) uniform isampler2D hiZLevel0;
+// distances (#1798), R32I. Bound as a read-only IMAGE at unit 1 (not a sampler)
+// by VOXEL_TO_TRIXEL_STAGE_1 when this compact runs. The image bind is load-
+// bearing on Metal: bindComputeResources flushes the image-binding table AFTER
+// the sampler table at the same encoder texture index, and the image table is
+// sticky, so the leftover trixelDistances IMAGE bound at unit 1 by the prior
+// frame's stage-1/stage-2 shadowed a sampler bind of the Hi-Z here — the compact
+// then read freshly-cleared trixelDistances (the all-65535 distance sentinel)
+// instead of the Hi-Z, and the per-voxel test never fired (#1812 zero-capture).
+// Binding the Hi-Z as an image overwrites that stale slot so it wins the flush.
+// Read only when occlusionCullMipCount > 0; off unit 0 so it never aliases the
+// fog image there.
+layout(r32i, binding = 1) readonly uniform iimage2D hiZLevel0;
 
 // Strict-behind margin (one raw-depth unit of encoded slack) so FMA / round
 // noise on the boundary never culls a voxel only coplanar with the occluder,
@@ -287,12 +293,12 @@ bool voxelOccludedByHiZ(ivec3 voxelPos, ivec2 isoPos) {
     // canvas px to the finest half-res Hi-Z level.
     ivec2 loTexel = (base + ivec2(floor(loF)) - ivec2(1)) >> 1;
     ivec2 hiTexel = (base + ivec2(ceil(hiF)) + ivec2(1)) >> 1;
-    ivec2 sz = textureSize(hiZLevel0, 0);
+    ivec2 sz = imageSize(hiZLevel0);
     int hiZMax = -2147483648;
     for (int ty = loTexel.y; ty <= hiTexel.y; ++ty) {
         for (int tx = loTexel.x; tx <= hiTexel.x; ++tx) {
             hiZMax = max(
-                hiZMax, texelFetch(hiZLevel0, clamp(ivec2(tx, ty), ivec2(0), sz - ivec2(1)), 0).x
+                hiZMax, imageLoad(hiZLevel0, clamp(ivec2(tx, ty), ivec2(0), sz - ivec2(1))).x
             );
         }
     }

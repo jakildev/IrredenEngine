@@ -252,10 +252,16 @@ kernel void c_voxel_visibility_compact(
     device uint* compactedVoxelIndices [[buffer(25)]],
     device atomic_uint* indirectParams [[buffer(26)]],
     texture2d<float, access::read> canvasFogOfWar [[texture(0)]],
-    // Finest Hi-Z level for the per-voxel occlusion cull (#1812). At texture(1)
-    // so it never aliases the fog image at texture(0) in Metal's shared argument
-    // table. Sampled only when frameData.occlusionCullMipCount > 0; otherwise a
-    // never-sampled sentinel is bound so the argument table stays satisfied.
+    // Finest Hi-Z level for the per-voxel occlusion cull (#1812). access::read
+    // (image); the C++ binds it as an IMAGE at unit 1 (bindAsImage, not bind).
+    // The image bind is load-bearing: bindComputeResources flushes the sticky
+    // image-binding table AFTER the sampler table at the same texture index, so a
+    // sampler bind here was shadowed by the leftover trixelDistances IMAGE at
+    // unit 1 and the compact read the freshly-cleared distance sentinel (#1812
+    // zero-capture). The image bind makes the Hi-Z win that slot. At texture(1)
+    // so it never aliases the fog image at texture(0). Read only when
+    // frameData.occlusionCullMipCount > 0; else a never-read sentinel is bound so
+    // the argument table stays satisfied.
     texture2d<int, access::read> hiZLevel0 [[texture(1)]],
     constant FogObserverData& fogObservers [[buffer(27)]],
     uint3 groupId [[threadgroup_position_in_grid]],

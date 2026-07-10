@@ -1058,10 +1058,10 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // then runs the per-voxel Hi-Z test on the survivors (occlusionCullMipCount_
         // uploaded here, Hi-Z bound at the compact dispatch below).
         const int occlusionMipCount = triangleCanvasTextures.hiZMipCount();
-        const bool occlusionCullActive =
-            IRRender::getVoxelOcclusionCullEnabled() && !occlusionLagSourceStale_ &&
-            frameData_.voxelRenderOptions_.x == 0 && !rotating && revoxBuffer == nullptr &&
-            occlusionMipCount > 0;
+        const bool occlusionCullActive = IRRender::getVoxelOcclusionCullEnabled() &&
+                                         !occlusionLagSourceStale_ &&
+                                         frameData_.voxelRenderOptions_.x == 0 && !rotating &&
+                                         revoxBuffer == nullptr && occlusionMipCount > 0;
         // The chunk pre-pass (dispatched below on occlusionCullActive) and the
         // per-voxel Hi-Z refine are separately toggleable so the #1812 marginal
         // acceptance gate can A/B the per-voxel test in isolation while the chunk
@@ -1261,18 +1261,29 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         }
         fogObserverBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FogObservers);
         // Per-voxel occlusion cull Hi-Z input (#1812). Bind the finest Hi-Z level
-        // at a texture unit distinct from the fog IMAGE at 0 (GL image/texture
-        // unit 0 alias; Metal's shared argument table needs the distinct index).
-        // The compact samples it only when frameData_.occlusionCullMipCount_ > 0;
-        // a canvas with no Hi-Z chain (≤1px) binds the R32I distance texture as a
-        // never-sampled sentinel so Metal's argument table stays satisfied. Bound
-        // every frame (one texture bind) — the shader gate keeps the default
-        // (cull-off) output byte-identical.
+        // as a read-only IMAGE at a unit distinct from the fog image at 0. The
+        // image bind (not a sampler bind) is required on Metal: bindComputeResources
+        // flushes the sticky image-binding table AFTER the sampler table at the
+        // same encoder texture index, so a sampler bind of the Hi-Z at unit 1 was
+        // shadowed by the leftover trixelDistances IMAGE bound there by the prior
+        // frame's stage-1/stage-2 — the compact then read the freshly-cleared
+        // distance sentinel (all 65535) instead of the Hi-Z and the per-voxel test
+        // never fired (#1812 zero-capture). Binding the Hi-Z as an image overwrites
+        // that stale slot so it wins the flush. The compact reads it only when
+        // frameData_.occlusionCullMipCount_ > 0; a canvas with no Hi-Z chain (≤1px)
+        // binds the R32I distance texture as a never-read sentinel so the argument
+        // table stays satisfied. Bound every frame — the shader gate keeps the
+        // default (cull-off) output byte-identical (stage-1 re-binds distances as
+        // the image at this unit right after, so no downstream state leaks).
         constexpr int kHiZLevel0CompactTextureUnit = 1;
         const Texture2D *hiZLevel0 = (triangleCanvasTextures.hiZMipCount() > 0)
                                          ? triangleCanvasTextures.getHiZMip(0)
                                          : triangleCanvasTextures.getTextureDistances();
-        hiZLevel0->bind(kHiZLevel0CompactTextureUnit);
+        hiZLevel0->bindAsImage(
+            kHiZLevel0CompactTextureUnit,
+            TextureAccess::READ_ONLY,
+            TextureFormat::R32I
+        );
         constexpr int kCompactLocalSize = 64;
         // Inverse-resample walks the D dest slots; the source path walks the live
         // source count. frameData_.voxelCount_ (the compact's per-slot guard) was
