@@ -54,6 +54,12 @@ const uint kLightOcclusionBitfieldUintCount =
 
 layout(rgba8, binding = 0) readonly uniform image3D lightVolumeRead;
 layout(rgba8, binding = 1) writeonly uniform image3D lightVolumeWrite;
+// Winning-light ID ping-pong (#2318): the ID of whichever candidate wins a
+// cell's residual contest rides along with its color, so the consumer knows
+// which light lit the cell (for the SPOT cone factor). Swapped in lockstep
+// with the color pair.
+layout(rgba8, binding = 2) readonly uniform image3D lightVolumeIdRead;
+layout(rgba8, binding = 3) writeonly uniform image3D lightVolumeIdWrite;
 
 // Phase 1c (#360) / T-126: camera-anchored layout — header carries the
 // world origin, then two parallel bitfields. The voxel-existence
@@ -73,6 +79,9 @@ layout(std140, binding = 23) uniform LightVolumeParams {
     // Phase 1c (#360): world voxel the volume is centered on this frame.
     // `worldCell = (cell - halfExtent) + lightVolumeWorldOrigin.xyz` maps
     // a local volume cell back to its world voxel for occupancy lookups.
+    // `.w` is the has-SPOT flag (#2318): a coherent (whole-dispatch) branch
+    // that skips the winning-light-ID image ops entirely when no SPOT was
+    // seeded, so no-spot scenes pay zero extra propagate bandwidth.
     ivec4 lightVolumeWorldOrigin;
 };
 
@@ -121,6 +130,13 @@ void main() {
     }
 
     vec4 best = imageLoad(lightVolumeRead, cell);
+    // Winning-light ID travels with `best` — seeded from self, overwritten
+    // whenever a neighbor candidate wins the residual contest below (#2318).
+    // Skipped when no SPOT was seeded (the consumer never reads it), so
+    // no-spot scenes do no extra id image traffic. `carryId` is uniform across
+    // the dispatch, so the branch is coherent (near-free).
+    const bool carryId = lightVolumeWorldOrigin.w != 0;
+    vec4 bestId = carryId ? imageLoad(lightVolumeIdRead, cell) : vec4(0.0);
     // Phase 1c (#360): map the local volume cell back to world coords
     // through the camera-anchored origin so the per-neighbor light-
     // occlusion lookup queries the right cell of the (independently
@@ -152,8 +168,16 @@ void main() {
         }
         if (candidateAlpha > best.a) {
             best = vec4(nv.rgb, candidateAlpha);
+            // Carry the winning neighbor's ID so it stays in sync with the
+            // color it just replaced. Only loaded on a win (≤6 extra reads).
+            if (carryId) {
+                bestId = imageLoad(lightVolumeIdRead, nCell);
+            }
         }
     }
 
     imageStore(lightVolumeWrite, cell, best);
+    if (carryId) {
+        imageStore(lightVolumeIdWrite, cell, bestId);
+    }
 }

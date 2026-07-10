@@ -1047,23 +1047,35 @@ constexpr int kLightVolumePropagateIterations = 32;
 /// CPU mirror of the `LightSource` GPU struct uploaded to the
 /// `LightSourceBuffer` SSBO. One entry per active `C_LightSource`
 /// entity. Layout follows std430: every member is a `vec4` so the GPU
-/// stride is 64 bytes per record. Decoded in `c_seed_light_volume`.
+/// stride is 80 bytes per record. Decoded in `c_seed_light_volume` (seed
+/// / propagate) and `c_lighting_to_trixel` (spot-cone consume, #2318).
 struct GPULightSource {
-    /// xyz = world-space origin in voxel units (round-half-up of
-    /// `C_WorldTransform.translation_`); w = `LightType` cast to float.
+    /// xyz = the volume texel origin the seed writes to: the light's
+    /// world voxel origin (round-half-up of `C_WorldTransform.translation_`)
+    /// for in-window lights, or the per-axis-clamped window-boundary cell for
+    /// an out-of-window light (see `gatherLightSources`); w = `LightType`
+    /// cast to float. This is the SEED cell, NOT the light's apex — the spot
+    /// cone reads `trueOriginVoxel_` for the true apex.
     vec4 originAndType_ = vec4(0.0f);
     /// xyz = emissive RGB in [0, 1]; w = intensity scalar.
     vec4 colorAndIntensity_ = vec4(0.0f);
-    /// xyz = unit direction (unused for EMISSIVE / POINT); w = radius
-    /// in voxel cells (clamped to `kLightVolumePropagateIterations`).
+    /// xyz = unit direction (SPOT cone axis / DIRECTIONAL ray; unused for
+    /// EMISSIVE / POINT); w = radius in voxel cells (clamped to
+    /// `kLightVolumePropagateIterations`).
     vec4 directionAndRadius_ = vec4(0.0f);
     /// x = cone aperture in degrees (SPOT only); y = seed residual alpha
     /// in (0, 1] — 1.0 for lights inside the camera-anchored window,
     /// boundary-distance-discounted for lights seeded at the clamped
     /// window edge (see `gatherLightSources`); zw = std430 padding.
     vec4 coneAndSeedAlpha_ = vec4(0.0f);
+    /// xyz = the light's TRUE world voxel origin (unclamped apex), used by
+    /// `c_lighting_to_trixel`'s spot-cone factor so an out-of-window spot's
+    /// cone stays oriented from its real apex rather than the clamped seed
+    /// cell (#2318, winning-light ID channel). Equals `originAndType_.xyz`
+    /// for in-window lights. w = std430 padding.
+    vec4 trueOriginVoxel_ = vec4(0.0f);
 };
-static_assert(sizeof(GPULightSource) == 64, "GPULightSource must match std430 layout");
+static_assert(sizeof(GPULightSource) == 80, "GPULightSource must match std430 layout");
 
 /// CPU mirror of the propagate pass UBO. Uploaded each frame by
 /// `system_compute_light_volume`. Read by `c_seed_light_volume.glsl`,
@@ -1092,8 +1104,7 @@ struct LightVolumeParams {
     /// Phase 1c (#360): camera-anchored origin. The 128³ light volume
     /// is centered on this world voxel each frame so a panned camera
     /// keeps lights in-range. Stored as `ivec4` for std140 alignment;
-    /// only `.xyz` is meaningful. `.w` is reserved for a future "snap
-    /// quantum changed" or "force re-clear" flag.
+    /// `.xyz` is the volume origin, `.w` is the has-SPOT flag (#2318).
     ivec4 worldOriginVoxel_ = ivec4(0);
 };
 static_assert(sizeof(LightVolumeParams) == 32, "LightVolumeParams must match std140 layout");

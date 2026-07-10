@@ -14,6 +14,9 @@ struct GPULightSource {
     float4 colorAndIntensity;
     float4 directionAndRadius;
     float4 coneAndSeedAlpha;
+    // #2318: true (unclamped) apex — read by the spot-cone consumer, not
+    // here; declared for std430 stride parity (80 bytes).
+    float4 trueOriginVoxel;
 };
 
 struct LightVolumeParams {
@@ -23,6 +26,7 @@ struct LightVolumeParams {
     float stepFalloff;
     // Phase 1c (#360): camera-anchored window. Subtract this world voxel
     // before mapping the light's world origin into a local texel index.
+    // `.w` carries the has-SPOT flag (#2318), unused by the seed.
     int4 worldOriginVoxel;
 };
 
@@ -30,6 +34,9 @@ kernel void c_seed_light_volume(
     device const GPULightSource *lights [[buffer(4)]],
     constant LightVolumeParams &params [[buffer(23)]],
     texture3d<float, access::write> lightVolume [[texture(0)]],
+    // Winning-light ID read texture (#2318): seed writes `lightIndex/255`
+    // into `.r` (index+1 so 0 stays "no light").
+    texture3d<float, access::write> lightVolumeId [[texture(1)]],
     uint3 globalId [[thread_position_in_grid]]
 ) {
     const uint lightIndex = globalId.x;
@@ -54,4 +61,15 @@ kernel void c_seed_light_volume(
     );
     const float seedAlpha = clamp(light.coneAndSeedAlpha.y, 0.0, 1.0);
     lightVolume.write(float4(emit, seedAlpha), uint3(cell));
+
+    // Winning-light ID: index+1 so 0 stays "no light". RGBA8 `.r` holds only
+    // 0–255, so the 256th light (index 255 → id 256) seeds as a plain omni
+    // sphere (id 0, no cone) — a non-issue for the "few dozen lights" cap.
+    // Skipped when no SPOT was seeded (worldOriginVoxel.w == 0): the cleared id
+    // volume stays 0 and the consumer never reads it (byte-identical).
+    if (params.worldOriginVoxel.w != 0) {
+        const uint idPlusOne = lightIndex + 1u;
+        const float idNorm = (idPlusOne <= 255u) ? float(idPlusOne) / 255.0 : 0.0;
+        lightVolumeId.write(float4(idNorm, 0.0, 0.0, 0.0), uint3(cell));
+    }
 }

@@ -98,6 +98,10 @@ inline bool lightBlockerGetBit(
 kernel void c_propagate_light_volume(
     texture3d<float, access::read> lightVolumeRead [[texture(0)]],
     texture3d<float, access::write> lightVolumeWrite [[texture(1)]],
+    // Winning-light ID ping-pong (#2318): the winner's ID rides along with
+    // its color so the consumer knows which light lit each cell (SPOT cone).
+    texture3d<float, access::read> lightVolumeIdRead [[texture(2)]],
+    texture3d<float, access::write> lightVolumeIdWrite [[texture(3)]],
     device const LightOcclusionData *occlusion [[buffer(28)]],
     constant LightVolumeParams &params [[buffer(23)]],
     uint3 globalId [[thread_position_in_grid]]
@@ -110,6 +114,12 @@ kernel void c_propagate_light_volume(
     }
 
     float4 best = lightVolumeRead.read(uint3(cell));
+    // Winning-light ID travels with `best` — seeded from self, overwritten
+    // whenever a neighbor candidate wins the residual contest below (#2318).
+    // Skipped when no SPOT was seeded (the consumer never reads it); the branch
+    // is coherent across the dispatch, so no-spot scenes pay no extra bandwidth.
+    const bool carryId = params.worldOriginVoxel.w != 0;
+    float4 bestId = carryId ? lightVolumeIdRead.read(uint3(cell)) : float4(0.0);
     // Phase 1c (#360): map the local volume cell back to world coords
     // through the camera-anchored origin so the per-neighbor light-
     // occlusion lookup queries the right cell of the (independently
@@ -141,8 +151,16 @@ kernel void c_propagate_light_volume(
         }
         if (candidateAlpha > best.a) {
             best = float4(nv.rgb, candidateAlpha);
+            // Carry the winning neighbor's ID so it stays in sync with the
+            // color it just replaced. Only loaded on a win (≤6 extra reads).
+            if (carryId) {
+                bestId = lightVolumeIdRead.read(uint3(nCell));
+            }
         }
     }
 
     lightVolumeWrite.write(best, uint3(cell));
+    if (carryId) {
+        lightVolumeIdWrite.write(bestId, uint3(cell));
+    }
 }
