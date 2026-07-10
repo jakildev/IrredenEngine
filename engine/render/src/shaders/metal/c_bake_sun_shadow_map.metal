@@ -70,15 +70,15 @@ inline void bakeCascadeBox(
     int2 base = int2(floor((sp.xy - origin) / texelSz));
     for (int dy = -radius; dy <= radius; ++dy) {
         for (int dx = -radius; dx <= radius; ++dx) {
-            // Splat provenance (#2319): the Chebyshev displacement of this box
-            // texel from the caster's own (dx=dy=0) texel, clamped to the 3-bit
-            // pack field, so the receiver widens its near-rejection only as far
-            // as this texel was displaced (a direct write stays at the base
-            // bias). Free — the box loop already carries (dx, dy). radius 0 ⇒
-            // only (0,0) ⇒ splatDist 0 ⇒ byte-identical. Mirrors GLSL.
-            uint splatDist = uint(min(max(abs(dx), abs(dy)), 7));
+            // Splat provenance (#2319): store the DISPLACEMENT VECTOR (dx, dy) of
+            // this box texel from the caster's own (0,0) texel, so the receiver
+            // can reconstruct the write's true origin (px - (dx,dy)) and reject a
+            // same-plane self-occluder while keeping a genuine cast at the base
+            // bias (ir_sun_shadow_sample same-plane test). Free — the box loop
+            // already carries (dx, dy). radius 0 ⇒ only (0,0) ⇒ a direct write ⇒
+            // byte-identical to the pre-splat single write. Mirrors GLSL.
             writeSunTexel(sunDepthBuf, cascadeOffset, base + int2(dx, dy),
-                          packSunDepth(sp.z, splatDist));
+                          packSunDepth(sp.z, int2(dx, dy)));
         }
     }
 }

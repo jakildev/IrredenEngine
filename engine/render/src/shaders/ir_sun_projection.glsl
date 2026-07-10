@@ -41,33 +41,53 @@ vec3 sunSpaceProject(vec3 pos3D, vec3 uHat, vec3 vHat, vec3 sunDir) {
 // Caster pack / receiver unpack — one co-located inverse pair, so what
 // casters store and what receivers compare cannot drift (see #2083).
 //
-// Bit layout (#2319 splat provenance): quantized depth in the high bits, the
-// low 3 bits carry `splatDist` — the Chebyshev displacement (sun texels,
-// clamped 0..7) of THIS write from its caster's own texel under the #2270
-// coverage splat. `splatDist == 0` is a direct write; a splat-filled neighbour
-// records how far it was displaced, so the receiver can trust a direct write at
-// the base bias but widen its near-rejection for a displaced one
-// (ir_sun_shadow_sample). The depth quantum maxes at kSunShadowMapDim^2 = 2^20,
-// so shifting up by 3 stays at 2^23 << the 0xFFFFFFFF empty sentinel, and the
-// recovered float depth is bit-exact vs the pre-#2319 single-write pack (pure
-// shift) — the radius-0 per-axis / smooth-yaw / detached paths stay
-// byte-identical. atomicMin over the packed word is depth-major and, at equal
-// quantized depth, minimizes splatDist, so a direct write always beats a splat
-// of the same depth into the same texel (strengthens the saturated-host
-// invariant — docs/design/sun-shadow-bake-coverage.md).
-uint packSunDepth(float sunZ, uint splatDist) {
+// Bit layout (#2319 splat provenance): quantized depth in the high 24 bits, the
+// low BYTE carries the #2270 coverage-splat DISPLACEMENT VECTOR — a
+// two's-complement nibble each for dx (bits [7:4]) and dy (bits [3:0]), the
+// sun-texel offset of THIS write from its caster's own texel under the box
+// splat. The radius is capped at kSunSplatMaxTexels = 6
+// (system_bake_sun_shadow_map.hpp), so each component fits the nibble's
+// [-8, 7] range. A DIRECT (caster's-own-texel) write is (dx,dy) = (0,0):
+//   - low byte 0 ⇒ the recovered depth is bit-exact vs a pure `<< 8` of the
+//     pre-#2319 single-write pack, so the radius-0 per-axis / smooth-yaw /
+//     detached paths stay byte-identical;
+//   - atomicMin over the packed word is depth-major (high 24 bits) and, at equal
+//     quantized depth, a direct write's 0 low byte beats any splat's nonzero low
+//     byte, so a genuine caster's own-texel depth always wins its texel
+//     (strengthens the saturated-host invariant — docs/design/sun-shadow-bake-coverage.md).
+// Max packed = (2^20 << 8) | 0xFF = 2^28+255 << the 0xFFFFFFFF empty sentinel.
+//
+// The vector (not the scalar displacement of the refuted round-1 form) is what
+// lets the receiver reconstruct the write's ORIGIN texel and run an EXACT
+// same-plane test — rejecting a same-face self-occluder at any splat distance
+// while keeping a genuine cast at the base bias — instead of a widened threshold
+// that erodes real cast shadows (ir_sun_shadow_sample; see the design doc).
+uint packSunDepth(float sunZ, ivec2 splatOffset) {
     float biased = clamp(sunZ + kSunDepthOffset, 0.0, kSunDepthOffset * 2.0);
-    return (uint(biased * kSunDepthScale) << 3) | (splatDist & 7u);
+    uint lowByte = (uint(splatOffset.x & 0xF) << 4) | uint(splatOffset.y & 0xF);
+    return (uint(biased * kSunDepthScale) << 8) | lowByte;
 }
 
 float unpackSunDepth(uint packedDepth) {
-    return float(packedDepth >> 3) / kSunDepthScale - kSunDepthOffset;
+    return float(packedDepth >> 8) / kSunDepthScale - kSunDepthOffset;
 }
 
-// Splat provenance (#2319): the Chebyshev displacement (0..7 texels) this
-// sun-map write was splatted from its caster's own texel. 0 = direct write.
-uint unpackSunSplatDist(uint packedDepth) {
-    return packedDepth & 7u;
+// True iff this sun-map write is a DIRECT caster's-own-texel write (low byte 0),
+// vs a #2270 coverage-splat neighbour. Direct writes keep the receiver's
+// unchanged (pre-#2319) near-rejection; splat writes take the same-plane test.
+bool sunWriteIsDirect(uint packedDepth) {
+    return (packedDepth & 0xFFu) == 0u;
+}
+
+// The coverage-splat displacement vector (sun texels) this write was splatted
+// from its caster's own texel: two sign-extended two's-complement nibbles.
+// (0,0) for a direct write. The receiver reconstructs originTexel = px - offset.
+ivec2 unpackSunSplatOffset(uint packedDepth) {
+    int dx = int((packedDepth >> 4u) & 0xFu);
+    int dy = int(packedDepth & 0xFu);
+    if (dx >= 8) dx -= 16;
+    if (dy >= 8) dy -= 16;
+    return ivec2(dx, dy);
 }
 
 // May this receiver sample the cascade at (origin, texelSz)? True only where

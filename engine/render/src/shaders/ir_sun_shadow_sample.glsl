@@ -49,15 +49,32 @@ layout(std430, binding = 28) readonly buffer SunShadowDepthMap {
 };
 
 float sampleCascadeShadow(
-    vec2 sunUV, float sunZ, vec3 normal, vec3 sunDir,
+    vec2 sunUV, float sunZ, vec3 normal, vec3 sunDir, vec3 uHat, vec3 vHat,
     vec2 origin, vec2 texelSz, int bufferOffset, float selfStepDepthRange
 ) {
     float slope = max(kShadowBiasSlopeMin, dot(normal, sunDir));
     float texelSize = max(texelSz.x, texelSz.y);
-    // Base receiver bias — the trustworthy near-rejection for a DIRECT sun-map
-    // write (splatDist 0). The far window (kMaxShadowDepthRange) always uses
-    // this base `bias`; the NEAR rejection is recomputed per tap below.
+    // Base receiver near-rejection — the trustworthy tolerance for a DIRECT
+    // (caster's-own-texel) sun-map write. selfStepDepthRange (#2010, 0 except on
+    // a detected round-to-cell staircase riser) lifts it as before. Both tap
+    // regimes below use this same base; there is NO per-tap widening (that was
+    // the refuted round-1 scalar form — it eroded genuine cast shadows because a
+    // cast splat's displacement is as large as a self-hit's). The far
+    // shadow-throw window (kMaxShadowDepthRange) also uses this base `bias`.
     float bias = texelSize * kShadowBiasTexelScale / slope + kShadowBiasQuantNoise;
+    float nearReject = max(bias, selfStepDepthRange);
+
+    // Receiver-plane depth gradient in sun-UV (#2319), used only by the splat-tap
+    // same-plane test below. Derivation: with (uHat, vHat, sunDir) orthonormal
+    // and depth z = -dot(P, sunDir), a displacement dP within the receiver plane
+    // (dot(dP, normal) = 0) gives dz/du = dot(uHat, normal)/dot(sunDir, normal)
+    // and likewise for v; dot(sunDir, normal) is exactly `slope`. So the plane's
+    // depth at sun-UV coordinate q is sunZ + dot(gradUV, q - sunUV). (Sign is +:
+    // for a coplanar occluder at the write's origin this must reproduce that
+    // occluder's own depth, so h below is ~0 and it stays lit. The base bias
+    // absorbs the sub-texel origin-quantization error — the same texel*|grad|
+    // term it absorbs today.)
+    vec2 gradUV = vec2(dot(normal, uHat), dot(normal, vHat)) / slope;
 
     vec2 sunPxF = (sunUV - origin) / texelSz;
     ivec2 base = ivec2(floor(sunPxF));
@@ -71,28 +88,36 @@ float sampleCascadeShadow(
             uint stored = sunDepthBuf[bufferOffset + px.y * kSunShadowMapDim + px.x];
             if (stored == 0xFFFFFFFFu) continue;
             float nearestZ = unpackSunDepth(stored);
-            // Per-tap near-rejection (#2319 splat provenance + #2010 staircase
-            // carve). The #2270 coverage splat may have written this texel from
-            // a caster up to `splatDist` sun texels away, so its stored depth is
-            // trustworthy only to within that displacement — widen the near
-            // reject by splatDist texel-scales. A tilted sun-facing face's
-            // SAME-face self-occluder is a nearby splat neighbour (small depth
-            // gap → skipped); a genuine DIFFERENT-face cast occluder has a large
-            // caster-to-receiver depth gap → still shadows. A direct write
-            // (splatDist 0) keeps the base scale, so every non-splatted receiver
-            // path is byte-identical. selfStepDepthRange (#2010, 0 except on a
-            // detected round-to-cell staircase riser) lifts the near reject as
-            // before. The kMaxShadowDepthRange window below keeps the base
-            // `bias`, so genuine far contact shadows still register.
-            float splatDist = float(unpackSunSplatDist(stored));
-            float tapBias = texelSize * (kShadowBiasTexelScale + splatDist) / slope
-                          + kShadowBiasQuantNoise;
-            float nearReject = max(tapBias, selfStepDepthRange);
             float weight = mix(1.0 - frac.x, frac.x, float(dx))
                          * mix(1.0 - frac.y, frac.y, float(dy));
+            // Far shadow-throw window — raw sun-Z gap to the stored occluder, the
+            // pre-#2319 form on BOTH tap regimes (throw-limit semantics belong to
+            // #2320, not here).
             float depthDiff = sunZ - nearestZ;
-            if (depthDiff > nearReject && depthDiff - bias < kMaxShadowDepthRange)
-                shadowAccum += weight;
+            if (depthDiff - bias >= kMaxShadowDepthRange) continue;
+
+            if (sunWriteIsDirect(stored)) {
+                // DIRECT caster's-own-texel write — the trustworthy depth. Today's
+                // (pre-#2319) near-rejection verbatim, so a radius-0 bake (per-axis
+                // / smooth-yaw / saturated host) is byte-identical.
+                if (depthDiff > nearReject) shadowAccum += weight;
+            } else {
+                // #2270 coverage-SPLAT neighbour: the winning depth was written
+                // from a caster `offset` texels away. Reconstruct that origin and
+                // test whether the occluder lies in the RECEIVER's OWN plane. A
+                // same-face self-hit extrapolates to ~nearestZ (h ~ 0 -> lit, at
+                // ANY splat distance and face tilt — the round-1 self-shadow
+                // artifact is gone by construction). A genuine cast sits far above
+                // the plane (h ~ caster height >> bias -> shadow at the base
+                // tolerance, no widening — the round-1 85% floor erosion is
+                // impossible whatever the caster-floor gap).
+                ivec2 offset = unpackSunSplatOffset(stored);
+                ivec2 originTexel = px - offset;
+                vec2 originUV = origin + (vec2(originTexel) + 0.5) * texelSz;
+                float expectedZ = sunZ + dot(gradUV, originUV - sunUV);
+                float h = expectedZ - nearestZ;
+                if (h > nearReject) shadowAccum += weight;
+            }
         }
     }
     return shadowAccum;
@@ -123,7 +148,7 @@ float worldSunShadowFactor(vec3 pos3D, vec3 normal, float isoDepth, float selfSt
     float shadowAccum;
     if (cascadeCount <= 1) {
         shadowAccum = sampleCascadeShadow(
-            sunUV, sunZ, normal, sunDir,
+            sunUV, sunZ, normal, sunDir, uHat, vHat,
             sunBufferOriginUV, sunBufferTexelSize, 0, selfStepDepthRange
         );
     } else {
@@ -143,21 +168,21 @@ float worldSunShadowFactor(vec3 pos3D, vec3 normal, float isoDepth, float selfSt
             sunCascadeKernelInterior(sunUV, cascadeOriginUV_0, cascadeTexelSize_0);
         if (nearInterior && distToSplit < -kCascadeBlendRange) {
             shadowAccum = sampleCascadeShadow(
-                sunUV, sunZ, normal, sunDir,
+                sunUV, sunZ, normal, sunDir, uHat, vHat,
                 cascadeOriginUV_0, cascadeTexelSize_0, 0, selfStepDepthRange
             );
         } else if (!nearInterior || distToSplit > kCascadeBlendRange) {
             shadowAccum = sampleCascadeShadow(
-                sunUV, sunZ, normal, sunDir,
+                sunUV, sunZ, normal, sunDir, uHat, vHat,
                 cascadeOriginUV_1, cascadeTexelSize_1, kCascadeTexelCount, selfStepDepthRange
             );
         } else {
             float nearShadow = sampleCascadeShadow(
-                sunUV, sunZ, normal, sunDir,
+                sunUV, sunZ, normal, sunDir, uHat, vHat,
                 cascadeOriginUV_0, cascadeTexelSize_0, 0, selfStepDepthRange
             );
             float farShadow = sampleCascadeShadow(
-                sunUV, sunZ, normal, sunDir,
+                sunUV, sunZ, normal, sunDir, uHat, vHat,
                 cascadeOriginUV_1, cascadeTexelSize_1, kCascadeTexelCount, selfStepDepthRange
             );
             float t = smoothstep(-kCascadeBlendRange, kCascadeBlendRange, distToSplit);
