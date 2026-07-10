@@ -31,6 +31,7 @@ Do **not** invoke proactively — only when the user explicitly asks.
 | **scope vocabulary** | Commit-title scope prefixes. | `render:`, `engine/voxel:`, `game/nav:`, `build:`, `docs:` |
 | **visual-file globs** | Paths whose change requires screenshots. | `engine/render/`, `engine/prefabs/irreden/render/`, `*.glsl`, `*.metal`, `creations/demos/*/src/**`, `creations/demos/*/main*.cpp` |
 | **screenshot skill** | The repo's screenshot-capture skill. | `attach-screenshots` |
+| **sha-pin token** | The literal placeholder the **screenshot skill** emits in place of a deletable branch ref; this flow substitutes it with the real commit SHA once one exists (see step 8). | `@COMMIT_SHA@` |
 | **info-isolation check** | The cross-repo leakage scan. | `docs/agents/CLAUDE-BASELINE.md` §"Cross-repo information isolation" |
 | **co-author trailer** | The commit trailer. | `Co-Authored-By: Claude <noreply@anthropic.com>` (exact form per the harness system prompt) |
 | **procedures** | Repo-specific step expansions. | the engine wrapper's `procedures/*.md` |
@@ -242,6 +243,19 @@ Use `gh pr create`. Body template: **procedures** `pr-body.md`.
 > Before calling `gh pr create`, complete step 8a (Closes-crosscheck) if the
 > drafted body contains a `Closes #N` line.
 
+**Substitute the sha-pin token.** If the **screenshot skill** ran earlier in
+this pass, its markdown snippet embeds the **sha-pin token** in place of a
+commit SHA (the screenshots were staged before a commit existed to pin to).
+Capture the drafted body into a variable, fold the skill's snippet in, and —
+immediately before calling `gh pr create` — replace every **sha-pin token**
+occurrence with the just-pushed commit, then pass that variable as the body
+(the example below is already wired this way). `HEAD` at this point is the
+commit created in step 6 and pushed in step 7, so the substituted SHA is the
+one whose tree actually contains the screenshots under the **screenshot
+skill**'s output path. The substitution is a no-op when the body has no
+**sha-pin token** (no screenshots this pass), so the same wiring serves the
+common no-screenshot case.
+
 For the **single-task flow** (default), resolve the base via `<claim-tool>
 claim-base` — the **default branch** for a normal claim or plain human PR
 (common case below), or the blocker's branch for a stackable claim (also
@@ -249,7 +263,7 @@ gets the stacked label). The idempotent edit-or-create and the `Stacked on:`
 body line live in the **procedures** `stackable-on.md`. Common case:
 
 ```bash
-gh pr create --base <default-branch> --title "<scope>: <title>" --body "$(cat <<'EOF'
+pr_body="$(cat <<'EOF'
 ## Summary
 - <bullet>
 
@@ -261,6 +275,10 @@ Closes #<issue-N>
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 EOF
 )"
+# If the screenshot skill ran this pass, fold its markdown snippet in here:
+#   pr_body="${pr_body}"$'\n\n'"<the screenshot skill's markdown snippet>"
+pr_body="${pr_body//<sha-pin token>/$(git rev-parse HEAD)}"   # no-op when the token is absent
+gh pr create --base <default-branch> --title "<scope>: <title>" --body "$pr_body"
 ```
 
 **`Closes #N` line** (required when the task has an `Issue:` field) is what

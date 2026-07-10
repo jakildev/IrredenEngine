@@ -407,6 +407,28 @@ fleet-build --target <name>
 If the touched code has an executable target, run it (see
 [`BUILD.md`](BUILD.md) for the `fleet-run` patterns).
 
+**If the feedback is (or includes) "attach a screenshot pair"**, run
+`attach-screenshots --two-ref` (see its "Two-ref mode" section — you're
+already on the detached HEAD this mode expects). Its markdown snippet
+embeds `@COMMIT_SHA@` in the URL ref position, same as the authoring-flow
+snippet, because no commit containing the screenshots exists yet at
+capture time. Fold the snippet into the **existing** PR body **after**
+step d pushes the amend commit, substituting the token against the
+**post-amend** HEAD (not the pre-amend `--two-ref` "after" capture ref).
+Fetch the current body first so the append doesn't clobber it, and write
+back with `--body-file` — never `gh pr edit --body "$pr_body"`, whose
+shell substitution blanks the whole PR body when the variable is empty
+(the shell-substitution hazard REVIEWER-PROTOCOL.md § Posting the review
+body uses `--body-file` to avoid):
+
+```bash
+pr_body="$(gh pr view <N> --json body -q .body)"                # existing body — do not clobber
+pr_body="${pr_body}"$'\n\n'"<the attach-screenshots --two-ref markdown snippet>"
+pr_body="${pr_body//@COMMIT_SHA@/$(git rev-parse HEAD)}"        # pin to the post-amend commit
+printf '%s\n' "$pr_body" > /tmp/pr-body-<N>.md
+gh pr edit <N> --body-file /tmp/pr-body-<N>.md
+```
+
 ### Step d — push the fixes
 
 You're on a detached HEAD pointing at the PR's head ref; the
