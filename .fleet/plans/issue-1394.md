@@ -54,16 +54,16 @@ with headroom visible in `fleet-gate-status` (acceptance #3). Then #1394 closes.
 
 ## Steward ledger
 
-reconciled-through: 2026-07-04
+reconciled-through: 2026-07-06 (all four code children merged)
 proposal-pending: none
 
 ### Children
 | Child | State | PR | Plan | Last validated |
 |---|---|---|---|---|
-| #2219 | open | — | plan | 2026-07-04 |
-| #2220 | open | — | plan | 2026-07-04 |
-| #2221 | open | — | plan | 2026-07-04 |
-| #2222 | open | — | plan | 2026-07-04 |
+| #2219 | merged | #2227 | plan | 2026-07-13 |
+| #2220 | merged | #2231 | plan | 2026-07-13 |
+| #2221 | merged | #2234 | plan | 2026-07-13 |
+| #2222 | merged | #2232 | plan | 2026-07-13 |
 
 ### Decisions
 D1 (2026-07-03): identity model = GitHub App; machine accounts last-resort; webhooks long-term.
@@ -72,3 +72,5 @@ D3 (2026-07-03): Q3 gates ON by default at 0.90 for core/graphql; search surface
 
 ### Events
 - 2026-07-04: children #2219–#2222 filed with plans; `fleet-validate-stack 1394` PASS (4/4); all children human:approved.
+- 2026-07-06: all four code children merged in-scope — Q1 #2219→PR #2227 (conditional-REST scout polling), Q2 #2220→PR #2231 (leader/follower centralized polling), Q3 #2221→PR #2234 (quota headroom + dispatcher gate), Q4 #2222→PR #2232 (GitHub App token plumbing). Scope-drift audit: each PR matches its Q-scope; no contradiction of D1–D3.
+- 2026-07-13: rollup — all four checklist boxes ticked. **Close-out remains blocked on the human-owned remainder** (create/install the `irreden-fleet` GitHub App + one sustained multi-device session with headroom visible in `fleet-gate-status`, per Closing criteria + umbrella acceptance #1/#3). Umbrella stays open with `fleet:needs-human`; no code touched.
