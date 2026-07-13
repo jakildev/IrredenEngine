@@ -186,22 +186,46 @@ per-ticket plans + the #1881 / #1885 comments.
 
 ## Steward ledger
 
-reconciled-through: 2026-06-17
+reconciled-through: 2026-07-13 (all three direct children closed COMPLETED; checklist healed on first steward claim)
 proposal-pending: none
 
 ### Children
 | Child | State | PR | Plan | Last validated |
 |---|---|---|---|---|
-| #1882 | re-scoped → harness fix; design-unblocked, in progress | #1885 | .fleet/plans/issue-1882.md | — |
-| #1883 | broadened → per-axis defect (bands + alignment); blocked by #1882 | — | .fleet/plans/issue-1883.md | — |
-| #1884 | filed (blocked by #1883) | — | .fleet/plans/issue-1884.md | — |
+| #1882 | closed COMPLETED — cardinal coverage loss fixed (`Camera::computeYawSplit` deadband + render-path-aware harness) | #1885 | .fleet/plans/issue-1882.md | 2026-06-19 (Metal: 4 cardinals path=single, coverage 1.0) |
+| #1883 | closed COMPLETED — per-axis bands + face-alignment seams; corner-spike residual forked to #1933 | #1907 | .fleet/plans/issue-1883.md | 2026-06-21 |
+| #1884 | closed COMPLETED — depth/clipping unified across render types; perf-cliff forked to #1961/#1963 (+ #1983) | — | .fleet/plans/issue-1884.md | 2026-06-24 |
 
 ### Decisions
 - 2026-06-17: #1882's original "single-canvas cardinal gather" premise was a
   misdiagnosis (single-canvas path verified correct via static cardinals + an
   early-return probe in #1885). Re-scoped #1882 → harness methodology fix; folded
   the real coverage loss + the face-alignment seams into #1883 (per-axis path).
+- 2026-06-18: #1882 re-scoped FINAL back to the real fix — the cardinal coverage
+  loss at 90°/180° is a residual-yaw gate mismatch, fixed via a single-source
+  deadband in `Camera::computeYawSplit` (the interim "harness-only" re-scope was a
+  degrees-vs-radians test bug). Delivered in #1885. Source: #1882 architect comment
+  2026-06-18.
+- 2026-07-13 (D-fork): residual render-quality beyond the three original defects
+  forked into separate OPEN epics rather than reopening/broadening #1881 —
+  corner-spike raggedness → #1933 (conservative rasterization); per-axis
+  view-visible face drops under residual yaw → #2331 (view-visibility overflow);
+  rotation perf cliff → #1961/#1963 (+ #1983). #1881's three direct defects are each
+  resolved, but its WHOLE-EPIC acceptance sweep (`perf-grid-rotate-sweep dense 60`
+  on BOTH Metal + OpenGL) is not steward-verifiable (steward writes docs only;
+  macOS host cannot build the GL backend). Source: closing comments on #1883
+  (PR #1907 → corner-spike follow-on) and #1884 (perf-track-refined comment
+  2026-06-22).
 
 ### Events
 - 2026-06-16: filed via file-epic; plans committed to repo retroactively (the stale global ~/.claude/skills/file-epic ran and skipped step 6.5).
 - 2026-06-17: #1885 worker design-blocked child 1; architect accepted the finding, re-scoped #1882 (harness) + broadened #1883 (per-axis bands + alignment, with human screenshots), unblocked #1885; synced the per-ticket plans to match.
+- 2026-07-13: steward first-claim heal — umbrella carried NO `## Children`
+  checklist (unmanaged since filing). Built it from the verified direct members
+  #1882/#1883/#1884 (all closed COMPLETED). Rejected free-text-search false
+  positives that merely mention #1881: #1923/#1954/#1922/#1920/#1921/#1910/#2010
+  (no `Part of epic:` line), #1937/#1939 (→ #1933), #2332 (→ #2331), #2323 (→ #2314),
+  #2083 (→ #1717). Posted a close-out-readiness assessment on the umbrella; NOT
+  closing this iteration — the whole-epic acceptance sweep is unrun and residual
+  quality lives in open follow-on epics #1933/#2331. Close-out is the human's call
+  (run the both-backend sweep and close, or close-as-forked).
