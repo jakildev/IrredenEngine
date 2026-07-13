@@ -62,22 +62,22 @@ independent heads.
 
 ## Steward ledger
 
-reconciled-through: 2026-07-08
-proposal-pending: none
+reconciled-through: 2026-07-13 (PR #2353 merge; STEWARD PROPOSAL 2026-07-13 answered + distributed)
+proposal-pending: none — the 2026-07-13 package (PR #2343 / S1 #2319) was answered by opus-architect and distributed 2026-07-13 (see D4–D6 and the `## Steward direction` comment on PR #2343)
 
 ### Children
 | Child | State | PR | Plan | Last validated |
 |---|---|---|---|---|
-| #2310 | open | #2313 | plan | 2026-07-08 |
-| #2315 | open | — | plan | 2026-07-08 |
-| #2316 | open | — | plan | 2026-07-08 |
-| #2317 | open | — | plan | 2026-07-08 |
-| #2318 | open | — | plan | 2026-07-08 |
-| #2319 | open | — | plan | 2026-07-08 |
-| #2320 | open | — | plan | 2026-07-08 |
-| #2321 | open | — | plan | 2026-07-08 |
-| #2322 | open | — | plan | 2026-07-08 |
-| #2323 | open | — | plan | 2026-07-08 |
+| #2310 | merged | #2313 | plan | 2026-07-13 |
+| #2315 | merged | #2347 | plan | 2026-07-13 |
+| #2316 | merged | #2353 | plan | 2026-07-13 (this rollup — V2 culling-minimap caster/light domains) |
+| #2317 | open | — | plan | 2026-07-13 (V3; unblocked by #2316 merge) |
+| #2318 | merged | #2337 | plan | 2026-07-13 |
+| #2319 | in-progress | #2343 | plan | 2026-07-13 (design-unblocked; oracle re-grounded per D4–D6) |
+| #2320 | open (blocked by #2319) | — | plan | 2026-07-13 |
+| #2321 | open (blocked by #2320) | — | plan | 2026-07-13 |
+| #2322 | merged | #2328 | plan | 2026-07-13 |
+| #2323 | merged | #2326 | plan | 2026-07-13 |
 
 ### Decisions
 <!-- entries: D<n> (<YYYY-MM-DD>): <decision> — source: <link> -->
@@ -88,7 +88,39 @@ proposal-pending: none
   2026-07-08 design session (human).
 - D3 (2026-07-08): every child verifies at cardinal + ~30° + 45° yaw on
   both backends — source: 2026-07-08 design session (human).
+- D4 (2026-07-13, final form): sun-depth pack low 8 bits = splat displacement
+  vector (`depth << 8 | dx:4 | dy:4`); receive-side rejection is
+  same-plane-at-origin on splat taps only; widened thresholds of any scope
+  (global, scalar) are measured-refuted — source: architect answer on the
+  #2314 STEWARD PROPOSAL 2026-07-13 thread (PR #2343 rounds 1–3).
+- D5 (2026-07-13): host-conditional floor self-acne removal is IN SCOPE for S1
+  #2319 (it is the same defect as the cube-top self-hit — a splat-displaced
+  coplanar write read back as an occluder); macOS S-series acceptance oracles
+  are re-grounded — zero-caster flat floor = 0 shadow px (primary gate),
+  `sunSplatMaxTexels=0` splat-off master = the genuine-cast lower bound; the
+  full-scene `88380` macOS anchor is contaminated (~64k acne + ~24k cast) and
+  retired — source: architect answer, #2314 thread 2026-07-13.
+- D6 (2026-07-13): the genuine-cast under-coverage residual unmasked by S1's
+  same-plane test is ACCEPTED for #2319 — it is #2270-lineage splat coverage
+  (not receive correctness) and files as a new unlabeled child at post-merge
+  reconcile (flow b), citing PR #2343's measurements; #2270/#2092 stay closed
+  — source: architect answer, #2314 thread 2026-07-13.
 
 ### Events
 - 2026-07-08: filed via file-epic (umbrella #2314, children #2315–#2323;
   #2310/PR #2313 pre-filed the same session as the first child).
+- 2026-07-13: ledger resynced from the drifted 2026-07-08 snapshot (all rows
+  still read "open") to current states — merged since filing: #2310 (#2313),
+  #2315 (#2347, V1 instrumentation), #2316 (#2353, V2 minimap — this rollup
+  trigger), #2318 (#2337, L2 spot cone), #2322 (#2328, D1 detached lighting),
+  #2323 (#2326, D3 SO(3) spike).
+- 2026-07-13: STEWARD PROPOSAL 2026-07-13 (PR #2343 / S1 #2319) answered by
+  opus-architect and distributed — `## Steward direction` posted on PR #2343,
+  `fleet-transition design-unblock 2343`, D4–D6 recorded. The architect
+  removed `fleet:steward-proposal` at 21:52 but it was spuriously re-added at
+  21:59 with no comment (steward-release over-broad-prefix artifact), which had
+  stranded the answered proposal; cleared this iteration.
+- 2026-07-13: OWED at PR #2343 merge — file the D6 follow-up child
+  ("genuine-cast under-coverage unmasked by S1: re-fix in-map coverage on the
+  decontaminated baseline"), unlabeled → planning gate, citing PR #2343's
+  cast-ROI measurements.
