@@ -500,8 +500,11 @@ struct FrameDataVoxelToCanvas {
     // matching the distance plane, whose atomicMin was always
     // order-independent. Read only by c_voxel_to_trixel_stage_1;
     // std140-appended after visibleIsoBounds_ (offset 192) so every prior
-    // offset is unchanged. Trailing pads keep sizeof at the 16-byte std140
-    // stride for the full-struct subData uploads.
+    // offset is unchanged. Tail lanes: offset 196 is the #1812 per-voxel
+    // occlusion-cull gate; 200/204 are the #2258 Step-B shadow-feeder
+    // dispatch partition (repurposed from the former resolveMode pads, shifted
+    // one slot down by the #1812 gate), packing the 192..208 16-byte std140
+    // stride exactly for the full-struct subData uploads.
     int resolveMode_ = 0;
     // Per-voxel Hi-Z occlusion-cull gate (#1812), refining the per-chunk cull
     // (#1294 child 2/3). 0 = the compact's per-voxel test is skipped, so the
@@ -510,11 +513,29 @@ struct FrameDataVoxelToCanvas {
     // voxel's canvas pixel and drops it when strictly behind the farthest visible
     // surface. Set (in VOXEL_TO_TRIXEL_STAGE_1) only on the same states the chunk
     // pre-pass is verified for: enabled, lag source fresh, NONE render mode,
-    // cardinal (not rotating), non-re-voxelize pool, Hi-Z chain built. Reuses the
-    // first resolveMode tail pad so the std140 layout / sizeof stay unchanged.
+    // cardinal (not rotating), non-re-voxelize pool, Hi-Z chain built. Keeps the
+    // first resolveMode tail pad slot (offset 196) it shipped on.
     int occlusionCullMipCount_ = 0;
-    int resolveModePad1_ = 0;
-    int resolveModePad2_ = 0;
+    // Shadow-feeder dispatch partition (#2258 Step B). The compact classifies
+    // each surviving voxel as visible (inside visibleIsoBounds_) or off-screen
+    // shadow feeder (outside it, the exact stage-2 #1740 skip convention) and
+    // tail-appends feeders into a SECOND indirect struct; stage 1 rasters that
+    // struct in a second dispatch at a strided micro-grid capped to
+    // feederSubCap_ per face edge, so feeder trixelDistances (bake-only, never
+    // on-screen) cost feederSubCap² micro-cells instead of the full effSub².
+    // feederSubCap_ tracks the sun-bake texel density (system_voxel_to_trixel
+    // beginTick); == effSub disarms the reduction (byte-identical), and sun
+    // shadows off ⇒ zero feeders ⇒ the whole partition is structurally inert.
+    int feederSubCap_ = 0;
+    // effectiveVoxelCount the compact was dispatched with — the tail base the
+    // feeder pass reads from (feeder slot i lives at feederPassTailBase_-1-i).
+    // Lands at offset 204, packing the 192..208 std140 row exactly (no tail
+    // pad): the runtime feederPass_ flag that once followed moved to a
+    // COMPILE-TIME shader specialization (IR_FEEDER_PASS; architect option
+    // a′) — the two stage-1 programs are distinct compiled kernels, so no
+    // per-dispatch flag upload is needed and the hottest kernel carries none
+    // of the feeder branches.
+    int feederPassTailBase_ = 0;
 };
 
 struct FrameDataTrixelToTrixel {
@@ -775,9 +796,25 @@ static_assert(
     "every existing offset — and the resolveMode==0 store path — stays unchanged"
 );
 static_assert(
+    offsetof(FrameDataVoxelToCanvas, occlusionCullMipCount_) == 196,
+    "FrameDataVoxelToCanvas::occlusionCullMipCount_ (#1812) must keep the "
+    "first resolveMode tail pad slot (offset 196) it shipped on — "
+    "c_voxel_visibility_compact reads it at that std140 offset"
+);
+static_assert(
+    offsetof(FrameDataVoxelToCanvas, feederSubCap_) == 200 &&
+        offsetof(FrameDataVoxelToCanvas, feederPassTailBase_) == 204,
+    "FrameDataVoxelToCanvas feeder lanes (#2258 Step B) must occupy the two "
+    "int slots after occlusionCullMipCount_ (offsets 200/204, shifted one "
+    "slot down by the #1812 gate) — the compact + stage-1 GLSL/Metal blocks "
+    "read them at those std140 offsets; no pad follows now the visible/feeder "
+    "split is compile-time (IR_FEEDER_PASS)"
+);
+static_assert(
     sizeof(FrameDataVoxelToCanvas) == 208,
     "FrameDataVoxelToCanvas size must mirror its std140 GLSL block "
-    "(resolveMode_ int append padded to the 16-byte stride: 192 + 16 = 208)"
+    "(resolveMode_ + the #1812 gate + the two feeder lanes pack the 192..208 "
+    "16-byte-stride tail exactly)"
 );
 
 struct FrameDataSun {

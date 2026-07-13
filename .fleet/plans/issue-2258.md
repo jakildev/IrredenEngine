@@ -102,3 +102,18 @@ Confirmed by reading the code on master (4a0934d0):
 ### One task or subtasks
 
 One task, one PR. Step A and Step B are sequential commits inside it with the measurement gate between them; the STOP rule escalates back to `fleet:needs-plan` rather than deferring any design choice to mid-implementation improvisation.
+
+---
+
+### Addendum — Step B design escalation + architect ruling a′ (2026-07-09)
+
+Step B (feeder dispatch partition) shipped and was byte-identical, but same-session profiling surfaced a tradeoff the plan didn't anticipate, so it was escalated (`fleet:design-blocked`). The runtime `feederPass` uniform branch — one shared stage-1 kernel selecting visible vs feeder at runtime — cost a **+16 % zoom8 `voxelStage1` regression** (5.15 → 5.97 ms). A disarm experiment proved the cost is **shader-side predication**, not dispatch overhead (disarming the gate left stage-1 at 5.97). So (b) ship-as-is is wrong (the tax is paid at every zoom forever, on the hottest kernel), and (c) close forfeits a measured −24 % zoom16 win.
+
+**Architect ruling (a′):** keep the feeder kernel but make its maintenance cost disappear by compiling the two kernels as **compile-time specializations of one shared source body**, so the feeder code is textually absent from the visible variant (tax gone by construction, not by predication). Mechanism:
+
+1. Extract the stage-1 source into `c_voxel_to_trixel_stage_1_body.{glsl,metal}` (include-fragment: no `#version`, no GLSL `#include`s — prerequisites in a header comment, the `ir_sun_shadow_sample.glsl` idiom).
+2. Two thin wrappers (`c_voxel_to_trixel_stage_1.{glsl,metal}` = `IR_FEEDER_PASS 0` visible; `c_voxel_to_trixel_stage_1_feeder.{glsl,metal}` = `IR_FEEDER_PASS 1` feeder) supply `#version` + the `#define` + the includes, then `#include` the body. Metal body names its kernel via an `IR_STAGE1_KERNEL_NAME` macro.
+3. Fence the feeder-only code (tail read, strided `((i/cap)*sub)/cap` divides) under `#if IR_FEEDER_PASS`. Retire the runtime `feederPass_` UBO lane to a reserved std140 pad (`feederLanesPad_`, offset 204).
+4. C++ builds the feeder program as a second `ShaderProgram`, dispatched from the existing `if (feederSubCap_ > 0)` block onto struct 1; visible dispatch keeps the original program. Metal: add the feeder function to BOTH `threadgroupSizeForFunctionName` (2,3,8) and `functionUsesImageAtomicScratch`.
+
+**Re-scoped acceptance (met):** `shape_debug` voxel shots `cmp`-identical (visible variant is semantically master's kernel); same-session A/B **zoom8 `voxelStage1` 5.97 → 5.33 (tax removed → net win)**, **zoom16 win retained** (`voxelStage2` 6.61 → 6.63; `voxelStage1` additionally 12.03 → 10.91). GL side owes `fleet:needs-linux-smoke`. Full rationale + the durable "uniform branch predication taxes the hot kernel" lesson + the wrapper/shared-body idiom recorded in `docs/design/voxel-feeder-split.md` § "#2258 Step B".

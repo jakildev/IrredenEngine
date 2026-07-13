@@ -55,7 +55,7 @@ struct Voxel {
 // Indirect dispatch grid for `base`'s struct from its visibleCount slot (matches
 // the single-canvas numGroups math exactly).
 static void writeDispatchDims(
-    device atomic_uint* indirectParams, uint base, int renderModeX, int subdivisionsY
+    device atomic_uint* indirectParams, uint base, uint microSliceCount
 ) {
     const uint count = atomic_load_explicit(
         &indirectParams[base + kSlotVisibleCount], memory_order_relaxed
@@ -67,11 +67,10 @@ static void writeDispatchDims(
         max((count + gx - 1u) / gx, 1u),
         memory_order_relaxed
     );
-    const int subdivisions = max(subdivisionsY, 1);
     // #2258: pack kStageMicroSlicesPerGroup micro-cells per z-workgroup (the
     // stage kernels' threadgroup z-size), so the launched z-workgroup count is
     // the ceil-divided micro-slice count. Mirrors c_voxel_visibility_compact.glsl.
-    const uint microSliceCount = (renderModeX != 0) ? uint(subdivisions * subdivisions) : 1u;
+    // Step B's feeder struct passes feederSubCap² here instead of effSub².
     const uint gz = (microSliceCount + uint(kStageMicroSlicesPerGroup) - 1u) /
         uint(kStageMicroSlicesPerGroup);
     atomic_store_explicit(&indirectParams[base + kSlotNumGroupsZ], gz, memory_order_relaxed);
@@ -330,12 +329,39 @@ kernel void c_voxel_visibility_compact(
                         if ((fogObservers.visionCircleCount != 0 ||
                              (flagsByte & kFaceOccludedMaskBits) != kFaceOccludedMaskBits) &&
                             !voxelOccludedByHiZ(hiZLevel0, frameData, voxelPos, isoPos)) {
-                            const uint slot = atomic_fetch_add_explicit(
-                                &indirectParams[kSlotVisibleCount],
-                                1u,
-                                memory_order_relaxed
-                            );
-                            compactedVoxelIndices[slot] = idx;
+                            // #2258 Step B — mirrors the GLSL twin: split into the
+                            // visible list (struct 0, full effSub²) or the
+                            // off-screen shadow-feeder list (struct 1, strided
+                            // feederSubCap²). The feeder test is the EXACT stage-2
+                            // #1740 skip (cardinal world survivor whose iso is
+                            // outside the un-widened visible viewport); `isoPos` is
+                            // the cardinal-snapped iso in that branch, so a voxel
+                            // called feeder is exactly one stage 2 skips —
+                            // over-classifying visible is the only failure mode.
+                            const bool isFeeder =
+                                frameData.residualYaw == 0.0f && frameData.isDetachedCanvas < 0.5f &&
+                                (isoPos.x < frameData.visibleIsoBounds.x ||
+                                 isoPos.x > frameData.visibleIsoBounds.z ||
+                                 isoPos.y < frameData.visibleIsoBounds.y ||
+                                 isoPos.y > frameData.visibleIsoBounds.w);
+                            if (isFeeder) {
+                                // Tail-append: feeder slot i lands at voxelCount-1-i
+                                // (grows down from the buffer top; nVisible +
+                                // nFeeder ≤ survivors ≤ voxelCount, no collision).
+                                const uint slot = atomic_fetch_add_explicit(
+                                    &indirectParams[kPerAxisIndirectStrideUints + kSlotVisibleCount],
+                                    1u,
+                                    memory_order_relaxed
+                                );
+                                compactedVoxelIndices[uint(frameData.voxelCount) - 1u - slot] = idx;
+                            } else {
+                                const uint slot = atomic_fetch_add_explicit(
+                                    &indirectParams[kSlotVisibleCount],
+                                    1u,
+                                    memory_order_relaxed
+                                );
+                                compactedVoxelIndices[slot] = idx;
+                            }
                         }
                     } else {
                         // Per-axis split (#1739): append into each axis region the
@@ -374,16 +400,23 @@ kernel void c_voxel_visibility_compact(
         ) + 1u;
         const uint totalGroups = groupCount.x * groupCount.y;
         if (finished == totalGroups) {
+            const int subdivisions = max(frameData.voxelRenderOptions.y, 1);
+            const uint visibleSlices = (frameData.voxelRenderOptions.x != 0)
+                ? uint(subdivisions * subdivisions) : 1u;
             if (frameData.perAxisRoute == 0) {
-                writeDispatchDims(
-                    indirectParams, 0u,
-                    frameData.voxelRenderOptions.x, frameData.voxelRenderOptions.y
-                );
+                writeDispatchDims(indirectParams, 0u, visibleSlices);
+                // #2258 Step B: struct 1 = the feeder dispatch at feederSubCap²
+                // micro-cells per face (vs effSub² for visible). Empty when no
+                // survivor was classified feeder ⇒ its stage-1 dispatch
+                // early-returns every workgroup.
+                const int cap = max(frameData.feederSubCap, 1);
+                const uint feederSlices = (frameData.voxelRenderOptions.x != 0)
+                    ? uint(cap * cap) : 1u;
+                writeDispatchDims(indirectParams, kPerAxisIndirectStrideUints, feederSlices);
             } else {
                 for (int axis = 0; axis < 3; ++axis) {
                     writeDispatchDims(
-                        indirectParams, uint(axis) * kPerAxisIndirectStrideUints,
-                        frameData.voxelRenderOptions.x, frameData.voxelRenderOptions.y
+                        indirectParams, uint(axis) * kPerAxisIndirectStrideUints, visibleSlices
                     );
                 }
             }

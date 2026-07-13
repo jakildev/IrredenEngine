@@ -220,6 +220,11 @@ static_assert(
 template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     ShaderProgram *compactProgram_ = nullptr;
     ShaderProgram *stage1Program_ = nullptr;
+    // #2258 Step B (architect a′): the feeder-pass compile-time specialization
+    // of stage 1 (IR_FEEDER_PASS 1) — a second compiled program dispatched for
+    // the off-screen shadow feeders (struct 1), so the visible stage-1 program
+    // carries none of the feeder branches (no runtime predication tax).
+    ShaderProgram *stage1FeederProgram_ = nullptr;
     ShaderProgram *stage2Program_ = nullptr;
     // Detached re-voxelize GPU scatter (#1556): fills binding 5 for a
     // DETACHED_REVOXELIZE pool from its resident locals + the canvas quat, in
@@ -1072,6 +1077,23 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             (occlusionCullActive && IRRender::getVoxelPerVoxelOcclusionEnabled())
                 ? occlusionMipCount
                 : 0;
+        // #2258 Step B: cap the shadow-feeder dispatch's strided micro-grid to
+        // the sun-bake texel density so an off-screen caster's coarse trixel
+        // depth still lands ≥1 sample per sun-map texel (no shadow holes).
+        // feederPassTailBase_ is the effectiveVoxelCount the compact was
+        // dispatched with (the top of the buffer feeders tail-grow down from).
+        // Sun shadows off ⇒ sunDir_ is zero ⇒ cap == effSub AND the compact
+        // classifies zero feeders, so the whole partition is inert
+        // (byte-identical). The visible-vs-feeder selection is a compile-time
+        // IR_FEEDER_PASS shader specialization now (architect a′), so there is no
+        // per-dispatch feederPass_ flag to seed here — the feeder dispatch just
+        // binds stage1FeederProgram_ (below).
+        frameData_.feederSubCap_ = IRPrefab::SunShadow::feederSubCap(
+            shadowFeederParams_.sunDir_,
+            IRMath::rasterYawCardinalIndex(frameData_.rasterYaw_),
+            frameData_.voxelRenderOptions_.y
+        );
+        frameData_.feederPassTailBase_ = effectiveVoxelCount;
         frameDataBuf_->subData(0, sizeof(FrameDataVoxelToCanvas), &frameData_);
 
         if (occlusionCullActive) {
@@ -1195,6 +1217,16 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
 
         const VoxelIndirectDispatchParams zeroed{};
         indirectBuf_->subData(0, sizeof(VoxelIndirectDispatchParams), &zeroed);
+        // #2258 Step B: struct 1 (the shadow-feeder dispatch) shares indirectBuf_
+        // at kPerAxisSsboAlignBytes; its count slot must start zeroed before the
+        // compact tail-appends feeders into it. Single-canvas mode only — the
+        // per-axis split routes through PerAxisIndirectDispatchParams and never
+        // reads this struct, so zeroing it there is a harmless no-op.
+        indirectBuf_->subData(
+            static_cast<std::ptrdiff_t>(kPerAxisSsboAlignBytes),
+            sizeof(VoxelIndirectDispatchParams),
+            &zeroed
+        );
 
         // Per-axis store list-walk split (#1739). For exactly the main-canvas-
         // rotating compact (whose voxels the per-axis dispatch consumes, and
@@ -1324,6 +1356,46 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             {
                 IRRender::GpuSubStageScope gpuScope("voxelStage1");
                 IRRender::device()->dispatchComputeIndirect(indirectBuf_, 0);
+                // #2258 Step B: second, shadow-feeder dispatch (struct 1) — the
+                // off-screen casters the compact tail-appended, rastered at the
+                // strided feederSubCap² micro-grid instead of the visible effSub².
+                // Bind the feeder-pass program (the IR_FEEDER_PASS 1 compile-time
+                // specialization of the shared stage-1 body; architect a′ — the
+                // visible program carries none of the feeder branches, so no
+                // runtime predication tax) and bindRange binding 26 onto struct 1
+                // so the feeder kernel reads its count/numGroupsX — and
+                // dispatchComputeIndirect reads its grid — from that struct. Empty
+                // (every workgroup early-returns) when the compact classified zero
+                // feeders (shadows off / all on-screen). Every image/SSBO/UBO bind
+                // from the visible dispatch persists: nothing runs between the two
+                // stage-1 dispatches, and ->use() switches only the pipeline, not
+                // the tracked resource table (Metal re-binds the whole table per
+                // dispatch, GL state persists), so ONLY the program + the binding-26
+                // range change. The feeder program is registered in
+                // metal_pipeline.cpp's functionUsesImageAtomicScratch +
+                // threadgroupSizeForFunctionName lists, so its atomic distance
+                // writes land in the same scratch at the same (2,3,8) shape. One
+                // image barrier covers both stage-1 dispatches before stage 2 reads
+                // the distances.
+                stage1FeederProgram_->use();
+                indirectBuf_->bindRange(
+                    BufferTarget::SHADER_STORAGE,
+                    kBufferIndex_IndirectDispatchParams,
+                    static_cast<std::ptrdiff_t>(kPerAxisSsboAlignBytes),
+                    sizeof(VoxelIndirectDispatchParams)
+                );
+                IRRender::device()->dispatchComputeIndirect(
+                    indirectBuf_,
+                    static_cast<std::ptrdiff_t>(kPerAxisSsboAlignBytes)
+                );
+                // Restore struct 0 on binding 26 so stage 2's
+                // dispatchComputeIndirect(indirectBuf_, 0) and the next canvas
+                // read it. Stage 2 rebinds its own program, so stage1Program_
+                // needn't be restored here.
+                indirectBuf_->bindBase(
+                    BufferTarget::SHADER_STORAGE,
+                    kBufferIndex_IndirectDispatchParams
+                );
                 IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
             }
 
@@ -1474,6 +1546,16 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             "SingleVoxelProgram1",
             std::vector{ShaderStage{IRRender::kFileCompVoxelToTrixelStage1, ShaderType::COMPUTE}}
         );
+        // #2258 Step B (architect a′): the feeder-pass compile-time
+        // specialization of stage 1, built from the same shared body via
+        // IR_FEEDER_PASS 1. Dispatched as the second stage-1 dispatch (struct 1)
+        // so the visible SingleVoxelProgram1 stays byte-for-byte master's kernel.
+        IRRender::createNamedResource<ShaderProgram>(
+            "SingleVoxelProgram1Feeder",
+            std::vector{
+                ShaderStage{IRRender::kFileCompVoxelToTrixelStage1Feeder, ShaderType::COMPUTE}
+            }
+        );
         IRRender::createNamedResource<ShaderProgram>(
             "SingleVoxel2",
             std::vector{ShaderStage{IRRender::kFileCompVoxelToTrixelStage2, ShaderType::COMPUTE}}
@@ -1585,10 +1667,16 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             BufferTarget::SHADER_STORAGE,
             kBufferIndex_CompactedVoxelIndices
         );
+        // Two 256 B-aligned structs: struct 0 = the visible dispatch, struct 1
+        // (offset kPerAxisSsboAlignBytes) = the #2258 Step-B shadow-feeder
+        // dispatch. The compact writes struct 1's count/dims and the CPU
+        // bindRanges it onto binding 26 for the second stage-1 dispatch, so the
+        // buffer must reach that slot (single-canvas mode only; the per-axis
+        // split routes through PerAxisIndirectDispatchParams instead).
         IRRender::createNamedResource<Buffer>(
             "IndirectDispatchParams",
             nullptr,
-            sizeof(VoxelIndirectDispatchParams),
+            static_cast<size_t>(2) * kPerAxisSsboAlignBytes,
             BUFFER_STORAGE_DYNAMIC,
             BufferTarget::SHADER_STORAGE,
             kBufferIndex_IndirectDispatchParams
@@ -1695,6 +1783,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         p->cellFinalizeProgram_ =
             IRRender::getNamedResource<ShaderProgram>("PerAxisCellFinalizeProgram");
         p->stage1Program_ = IRRender::getNamedResource<ShaderProgram>("SingleVoxelProgram1");
+        p->stage1FeederProgram_ =
+            IRRender::getNamedResource<ShaderProgram>("SingleVoxelProgram1Feeder");
         p->stage2Program_ = IRRender::getNamedResource<ShaderProgram>("SingleVoxel2");
         p->revoxelizeProgram_ =
             IRRender::getNamedResource<ShaderProgram>("RevoxelizeDetachedProgram");

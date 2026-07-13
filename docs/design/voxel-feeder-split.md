@@ -240,3 +240,107 @@ exercises sun shadows at high zoom (the cull-loose regime).
   `writeDistanceTap`'s `isInsideCanvas` no-op; the per-frame compute
   cost is the same regardless. The win from this doc is `sub²`
   multiplier removal, which dominates at high zoom.
+
+---
+
+## #2258 Step B — feeder dispatch partition (implemented)
+
+The `sub²`-multiplier-removal idea above lands as **#2258 Step B**, on top of
+Step A (micro-slice packing; #2258). The mechanism, the durable perf lesson it
+surfaced, and the shader-specialization idiom the fix established are recorded
+here as the engine's pattern for future hot-path kernel variants.
+
+### Mechanism (single-canvas mode)
+
+The compact (`c_voxel_visibility_compact`) already computes each survivor's
+`isoPos` for the widened-bounds cull, so it classifies each survivor for free:
+**visible** (inside `visibleIsoBounds_`) → forward-append to indirect struct 0
+as today; **off-screen shadow feeder** (outside it — the exact stage-2 #1740
+skip convention) → tail-append into a **second** indirect struct (struct 1,
+`kPerAxisSsboAlignBytes` into the shared `indirectBuf_`). Stage 1 then runs
+**two** dispatches per canvas tick:
+
+- **Visible dispatch** — struct 0, full `effSub²` micro-grid (unchanged).
+- **Feeder dispatch** — struct 1, a **strided** `feederSubCap²` micro-grid
+  (`u = (i/cap)*sub/cap`, monotone + full-span), so an off-screen caster's
+  coarse trixel depth still lands ≥1 sample per sun-map texel. `feederSubCap`
+  tracks the finest sun-bake cascade texel density (`IRPrefab::SunShadow::feederSubCap`).
+
+Stage 2 dispatches **struct 0 only** — feeders contribute nothing on-screen
+(the #1740 skip already proved byte-identity; now they stop *launching* there).
+Sun shadows OFF ⇒ the compact classifies zero feeders ⇒ the feeder dispatch is
+empty ⇒ the whole partition is structurally inert (byte-identical). `feederSubCap
+== effSub` (or zero feeders) makes the feeder pass byte-identical to the
+pre-Step-B single dispatch.
+
+### The durable lesson: a runtime-disarmed uniform branch still taxes the hottest kernel
+
+Step B first shipped the visible/feeder selection as a **runtime uniform**
+(`feederPass`) branching inside the ONE shared stage-1 kernel. Same-session
+profiling (`IRPerfGrid --auto-profile 120`, macOS/Metal) found a **+16 % zoom8
+regression on `voxelStage1`** (5.15 → 5.97 ms) even though the zoom16 win was
+large (−24 % combined). A disarm experiment isolated the cause: gating the
+partition OFF below effSub 12 (compact keeps all survivors visible, CPU skips
+the feeder dispatch) restored stage-2 to master but **left stage-1 at 5.97**. So
+the tax was **not** the extra dispatch — it was the shared kernel now carrying
+the feeder branches (the strided `((i/cap)*sub)/cap` divides) as **predicated
+instructions on every visible-path invocation**. The Metal compiler predicates a
+uniform branch rather than skipping it, so the divides are decoded on the hottest
+kernel in the engine at *all* zooms; the feeder saving only outweighs the tax once
+effSub is large.
+
+**Lesson:** a uniform-controlled branch on a hot compute kernel is not free even
+when it is never taken — the compiler predicates it, taxing every invocation. A
+runtime disarm gate cannot remove a shader-side cost.
+
+### The idiom: compile-time specialization from one shared body (architect option a′)
+
+The fix (#2258 architect ruling **a′**) removes the tax **by construction**:
+split the kernel into two **compile-time specializations of one shared source
+body**, so the visible variant compiles with the feeder code textually absent —
+codegen is master's kernel, no predication.
+
+Both backends already run their own `#include` preprocessor before compiling, so
+this needs zero engine infra:
+
+1. **Extract the body** into `c_voxel_to_trixel_stage_1_body.{glsl,metal}` — an
+   include-**fragment** (no `#version`, and on the GLSL side no `#include`s,
+   since the GLSL resolver is non-recursive; the body lists its prerequisites in
+   a header comment — the `ir_sun_shadow_sample.glsl` idiom).
+2. **Two thin wrappers** supply the `#version` + `#define IR_FEEDER_PASS {0|1}` +
+   the prerequisite includes, then `#include` the body:
+   `c_voxel_to_trixel_stage_1.{glsl,metal}` (IR_FEEDER_PASS 0 = visible) and
+   `c_voxel_to_trixel_stage_1_feeder.{glsl,metal}` (IR_FEEDER_PASS 1 = feeder).
+   The Metal body names its kernel via an `IR_STAGE1_KERNEL_NAME` macro each
+   wrapper defines (`metalFunctionNameForStage` keys off the file stem).
+3. **Fence** the feeder-only code (`feederPass` reads, the strided divides) under
+   `#if IR_FEEDER_PASS`. The runtime `feederPass` UBO lane is retired to a
+   reserved std140 pad (`feederLanesPad_`, offset 204) — the flag is compile-time
+   now.
+4. **C++** builds the feeder program as a second `ShaderProgram` and dispatches
+   it unconditionally after the visible dispatch — empty (every workgroup
+   early-returns) when the compact classified zero feeders, and `feederSubCap()`
+   floors at `cappedEffSub` so a `> 0` guard would be vacuous — `bindRange`-ing
+   binding 26 onto struct 1; the visible dispatch keeps the original program.
+   Metal bookkeeping: the feeder function name must be added to BOTH
+   `threadgroupSizeForFunctionName` (2,3,8) **and** `functionUsesImageAtomicScratch`
+   (both are explicit lists that do not self-detect — an omission silently
+   dispatches a 1×1×1 grid or drops the feeder's atomic distance writes).
+
+**Measured result** (same-session A/B, macOS/Metal, `IRPerfGrid --auto-profile 120`):
+
+| zoom · stage | runtime-`feederPass` (Step B v1) | compile-time `IR_FEEDER_PASS` (a′) | Δ |
+|---|---|---|---|
+| 8 · `voxelStage1` | 5.97 | 5.33 | **−0.64 (tax removed)** |
+| 8 · `voxelStage2` | 4.18 | 4.19 | ~0 |
+| 16 · `voxelStage1` | 12.03 | 10.91 | −1.12 |
+| 16 · `voxelStage2` | 6.61 | 6.63 | ~0 (feeder win retained) |
+
+The zoom8 regression (+0.34 net vs master under v1) becomes a **net win**, and the
+zoom16 win is retained (and `voxelStage1` additionally improves, the tax being
+paid there too). Byte-identity holds (`shape_debug` voxel shots `cmp`-identical;
+the visible variant is semantically master's kernel).
+
+**Future kernels with a mode branch on the hot path should specialize the same
+way** — one shared body, N compiled programs, `#if`-fenced mode code — rather
+than branching on a uniform.
