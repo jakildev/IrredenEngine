@@ -62,22 +62,22 @@ independent heads.
 
 ## Steward ledger
 
-reconciled-through: 2026-07-08
-proposal-pending: none
+reconciled-through: 2026-07-13
+proposal-pending: STEWARD PROPOSAL 2026-07-13 (S1 #2319 / PR #2343 — scope + oracle) — https://github.com/jakildev/IrredenEngine/issues/2314#issuecomment-4962885956
 
 ### Children
 | Child | State | PR | Plan | Last validated |
 |---|---|---|---|---|
-| #2310 | open | #2313 | plan | 2026-07-08 |
-| #2315 | open | — | plan | 2026-07-08 |
+| #2310 | merged | #2313 | plan | 2026-07-13 |
+| #2315 | merged (V1) | #2347 | plan | 2026-07-13 |
 | #2316 | open | — | plan | 2026-07-08 |
 | #2317 | open | — | plan | 2026-07-08 |
-| #2318 | open | — | plan | 2026-07-08 |
-| #2319 | open | — | plan | 2026-07-08 |
-| #2320 | open | — | plan | 2026-07-08 |
-| #2321 | open | — | plan | 2026-07-08 |
-| #2322 | open | — | plan | 2026-07-08 |
-| #2323 | open | — | plan | 2026-07-08 |
+| #2318 | merged | #2337 | plan | 2026-07-13 |
+| #2319 | design-proposed | #2343 | plan | 2026-07-13 |
+| #2320 | open (pending #2319 proposal — do not claim) | — | plan | 2026-07-13 |
+| #2321 | open (pending #2319 proposal — do not claim) | — | plan | 2026-07-13 |
+| #2322 | merged | #2328 | plan | 2026-07-13 |
+| #2323 | merged | #2326 | plan | 2026-07-13 |
 
 ### Decisions
 <!-- entries: D<n> (<YYYY-MM-DD>): <decision> — source: <link> -->
@@ -88,7 +88,42 @@ proposal-pending: none
   2026-07-08 design session (human).
 - D3 (2026-07-08): every child verifies at cardinal + ~30° + 45° yaw on
   both backends — source: 2026-07-08 design session (human).
+- D4 (2026-07-09, SUPERSEDED 2026-07-10 by D5): S1 #2319 self-vs-cast
+  discrimination = pack each bake write's Chebyshev *displacement scalar*
+  (0 = direct) into the sun-depth low bits; receiver widens near-rejection
+  per tap by the stored displacement — source (architect):
+  https://github.com/jakildev/IrredenEngine/pull/2343#issuecomment-4927017072
+  . Status: implemented faithfully, **measured-refuted** (85% floor
+  cast-shadow erosion — winning texels in moth-eaten regions are themselves
+  splat writes, so displacement magnitude cannot separate self from cast).
+- D5 (2026-07-10, supersedes D4): pack the *displacement vector*
+  `(quantizedDepth << 8) | dx:4 | dy:4`; receiver reconstructs the write
+  origin and rejects occluders consistent with its own plane (same-plane
+  test, splat taps only; direct taps keep the byte-identical master path) —
+  source (architect):
+  https://github.com/jakildev/IrredenEngine/pull/2343#issuecomment-4931112807
+  . Status: implemented + twinned (`c0d0ae84`); the mechanism is
+  measured-correct for its stated purpose (removes cube-top self-hit AND
+  #2270 zero-caster floor acne), but the macOS `shadow_overlay_floor`
+  acceptance anchor is contaminated by that same acne, so the *scope +
+  oracle* question is unresolved → **open STEWARD PROPOSAL 2026-07-13**
+  (proposal-pending above). D5 is not final until that proposal is answered.
 
 ### Events
 - 2026-07-08: filed via file-epic (umbrella #2314, children #2315–#2323;
   #2310/PR #2313 pre-filed the same session as the first child).
+- 2026-07-13 (steward reconcile): merged children ticked — L1 #2310 (PR
+  #2313, 07-09), L2 #2318 (PR #2337, 07-10), D1 #2322 (PR #2328, 07-09),
+  D3 #2323 spike (PR #2326, 07-09). No scope drift vs plan; #2318 matches
+  D2 (winning-light ID channel). L2 landing makes the plan's deferred
+  "per-light falloff curves" out-of-scope item now fileable (not yet filed).
+- 2026-07-13 (steward reconcile, mid-iteration): V1 #2315 merged (PR #2347)
+  while this iteration ran (master e13421ba → ff2aaf9e). Ticked + reconciled.
+  V2 #2316 (blocked by #2315) is now unblocked for pickup; its plan is
+  unchanged (depends on the V1 instrumentation as landed, no drift).
+- 2026-07-13 (steward, flow a): S1 #2319 / PR #2343 round-3 NEEDS-DESIGN
+  questions classified NOVEL (D4 + D5 both measured-refuted on the macOS
+  oracle); PR flipped `fleet:design-blocked → fleet:design-proposed`,
+  aggregated into STEWARD PROPOSAL 2026-07-13, umbrella labeled
+  `fleet:steward-proposal`. S2 #2320 / S3 #2321 bind to the #2319 ruling →
+  marked pending, do not claim.
