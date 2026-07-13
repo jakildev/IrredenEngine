@@ -87,6 +87,20 @@ done
 FLEET_LIB_DIR="${FLEET_LIB_DIR:-$(cd "$(dirname "$_fleet_dispatcher_self")" && pwd)}"
 unset _fleet_dispatcher_self
 
+# Network-call timeout guard (#2362). Source this BEFORE fleet-clone-freshness.sh
+# so advance_main_clone's `git fetch` resolves the git() shadow at call time
+# (bash binds function names when the call runs). Installs git()/gh() shadows
+# that bound every network op with a timeout — the dispatcher's own inline net
+# exposure is advance_main_clone's fetch + child fleet-claim calls, and a hang
+# in either is a fleet-wide outage (07-13 startup + 18 h loop wedges). It also
+# resolves FLEET_TIMEOUT_CMD via a coreutils-aware probe, reused for the
+# send-keys guard below. Missing lib (pre-rollout main clone) degrades to
+# unguarded, exactly today's behavior.
+if [[ -f "$FLEET_LIB_DIR/fleet-net.sh" ]]; then
+    # shellcheck source=/dev/null
+    source "$FLEET_LIB_DIR/fleet-net.sh"
+fi
+
 # Engine/game roots + main-clone freshness helper (#1810). The dispatcher
 # periodically advances the shared main clone's master in its main loop, so a
 # fleet-script fix that merges mid-session goes live without a fleet-up restart
@@ -365,16 +379,13 @@ USAGE_GATE_CLOSED_LOGGED=""
 # keeps pickup snappy without burning measurable CPU.
 POLL_INTERVAL_SECONDS="${FLEET_DISPATCHER_INTERVAL:-10}"
 
-# Which `timeout` binary to use when wrapping tmux send-keys. GNU
-# coreutils ships it as `timeout` on Linux and as `gtimeout` on macOS
-# (Homebrew coreutils, non-conflicting name). Empty string = not found;
-# dispatch_send_keys falls back to plain send-keys (today's behavior).
-TIMEOUT_CMD=""
-if command -v timeout &>/dev/null; then
-    TIMEOUT_CMD="timeout"
-elif command -v gtimeout &>/dev/null; then
-    TIMEOUT_CMD="gtimeout"
-fi
+# Which `timeout` binary to use when wrapping tmux send-keys. Reuse the net
+# lib's resolution (#2362) so there is a single source of truth, and so the
+# send-keys guard inherits its coreutils probe — a bare `command -v timeout`
+# would accept Windows System32 `timeout.exe`, an interactive wait rather than a
+# command runner. Empty when neither the lib nor a coreutils timeout is present;
+# dispatch_send_keys then falls back to plain send-keys (today's behavior).
+TIMEOUT_CMD="${FLEET_TIMEOUT_CMD:-}"
 
 # Periodic safety-net re-arm for merger. The merger's projection IS
 # responsive to PR state changes, so we only re-arm when the natural

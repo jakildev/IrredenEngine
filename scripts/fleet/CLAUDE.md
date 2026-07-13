@@ -30,3 +30,10 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
 - **A new executable ships with a `tests/test_<name>.{sh,py}`** in the same
   PR — the fleet-tooling form of the review checklist's "new feature with no
   new test"; the `simplify` pre-commit pass flags the omission.
+- **Unattended daemons timeout-guard their network calls.** The host's
+  connections to GitHub intermittently black-hole (silent TCP death), so a
+  hung `git fetch` / `gh …` in a fleet daemon (dispatcher loop, `fleet-rebase`,
+  `fleet-claim`) wedges the fleet indefinitely (#2362). `source
+  fleet-net.sh` — it shadows `git()`/`gh()` with a `timeout` and bounds every
+  current and future call site by construction — rather than adding per-site
+  guards. Python fetchers use their own subprocess/urllib timeouts instead.

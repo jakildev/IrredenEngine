@@ -53,14 +53,19 @@ esac
 
 INSTALL_APPEND_ZSHRC=1
 [[ -n "${IRREDEN_INSTALL_SKIP_ZSHRC:-}" ]] && INSTALL_APPEND_ZSHRC=0
+INSTALL_APPEND_SSH_CONFIG=1
+[[ -n "${IRREDEN_INSTALL_SKIP_SSH_CONFIG:-}" ]] && INSTALL_APPEND_SSH_CONFIG=0
 for arg in "$@"; do
     case "$arg" in
         --no-zshrc)
             INSTALL_APPEND_ZSHRC=0
             ;;
+        --no-ssh-config)
+            INSTALL_APPEND_SSH_CONFIG=0
+            ;;
         -h | --help)
             cat <<'EOF'
-Usage: install.sh [--no-zshrc]
+Usage: install.sh [--no-zshrc] [--no-ssh-config]
 
   Symlinks fleet scripts to ~/bin/, role slash commands to
   ~/.claude/commands/, and shell completions (bash + zsh helpers).
@@ -70,8 +75,15 @@ Usage: install.sh [--no-zshrc]
   zsh, or ~/.zshrc already exists — avoids creating ~/.zshrc on bash-only
   Linux). Skips if the marker is already present (safe to re-run).
 
-  --no-zshrc   Do not modify ~/.zshrc (still symlinks ~/.zsh/completions/).
-               Same effect: IRREDEN_INSTALL_SKIP_ZSHRC=1 install.sh
+  Also applies host protections against GitHub connection black-holes (#2362):
+  a marked ssh-keepalive block for Host github.com in ~/.ssh/config, git
+  http.lowSpeed* globals, and a ~/bin/timeout shim when no coreutils timeout
+  is present. All idempotent; an existing Host github.com block is left alone.
+
+  --no-zshrc       Do not modify ~/.zshrc (still symlinks ~/.zsh/completions/).
+                   Same effect: IRREDEN_INSTALL_SKIP_ZSHRC=1 install.sh
+  --no-ssh-config  Do not modify ~/.ssh/config (still sets git globals + shim).
+                   Same effect: IRREDEN_INSTALL_SKIP_SSH_CONFIG=1 install.sh
 EOF
             exit 0
             ;;
@@ -151,6 +163,13 @@ FLEET_COMMON_SRC="$SCRIPT_DIR/fleet-common.sh"
 FLEET_COMMON_DEST="$HOME/bin/fleet-common.sh"
 FLEET_CLONE_FRESHNESS_SRC="$SCRIPT_DIR/fleet-clone-freshness.sh"
 FLEET_CLONE_FRESHNESS_DEST="$HOME/bin/fleet-clone-freshness.sh"
+FLEET_NET_SRC="$SCRIPT_DIR/fleet-net.sh"
+FLEET_NET_DEST="$HOME/bin/fleet-net.sh"
+# timeout-shim.py installs as ~/bin/timeout ONLY when the host has no coreutils
+# timeout/gtimeout (host-protection section, step c) — declared here so the
+# chmod loop keeps it executable; its symlink is conditional, not in Step 1.
+TIMEOUT_SHIM_SRC="$SCRIPT_DIR/timeout-shim.py"
+TIMEOUT_SHIM_DEST="$HOME/bin/timeout"
 FLEET_BUILD_SRC="$SCRIPT_DIR/fleet-build"
 FLEET_BUILD_DEST="$HOME/bin/fleet-build"
 FLEET_DEBUG_SRC="$SCRIPT_DIR/fleet-debug"
@@ -244,7 +263,7 @@ fi
 # Ensure the sources are executable. Git normally preserves the +x bit,
 # but if someone unpacked a tarball or checked out with core.fileMode
 # off, fix it here.
-for src in "$FLEET_UP_SRC" "$FLEET_DOWN_SRC" "$FLEET_CLAIM_SRC" "$FLEET_COMMON_SRC" "$FLEET_CLONE_FRESHNESS_SRC" "$FLEET_BUILD_SRC" "$FLEET_DEBUG_SRC" "$FLEET_RUN_SRC" "$FLEET_RUN_TARGETS_SRC" "$FLEET_HELP_SRC" "$FLEET_BABYSIT_SRC" "$FLEET_LABELS_SRC" "$FLEET_TRANSITION_SRC" "$FLEET_REVIEW_VERDICT_SRC" "$FLEET_HEARTBEAT_SRC" "$FLEET_STREAM_SRC" "$FLEET_SCOUT_SRC" "$FLEET_FEEDBACK_SRC" "$FLEET_BUSY_SRC" "$FLEET_PR_SRC" "$FLEET_PR_CLEAR_SRC" "$FLEET_PR_CLAIM_FEEDBACK_SRC" "$FLEET_PR_DETACH_SRC" "$FLEET_PR_AMEND_SRC" "$FLEET_ISSUE_SRC" "$FLEET_GH_POLL_SRC" "$FLEET_DISPATCHER_SRC" "$FLEET_DISPATCH_WRAP_SRC" "$FLEET_GATE_STATUS_SRC" "$FLEET_QUEUE_INGEST_SRC" "$FLEET_PLAN_LINT_SRC" "$FLEET_QUEUE_LIST_SRC" "$FLEET_RECONCILE_AMENDMENTS_SRC" "$FLEET_ITERATION_SUMMARY_SRC" "$FLEET_EDIT_SRC" "$FLEET_NIT_CLOSE_SRC" "$FLEET_VALIDATE_STACK_SRC" "$FLEET_EPIC_STATUS_SRC" "$FLEET_VALIDATE_ROLES_SRC" "$FLEET_ASSERT_WT_SRC" "$WITNESS_SRC" "$SOLO_ARCHITECT_SRC" "$FLEET_REBASE_SRC" "$FLEET_GH_TOKEN_SRC" "$FLEET_SESSION_TRACK_SRC"; do
+for src in "$FLEET_UP_SRC" "$FLEET_DOWN_SRC" "$FLEET_CLAIM_SRC" "$FLEET_COMMON_SRC" "$FLEET_CLONE_FRESHNESS_SRC" "$FLEET_NET_SRC" "$TIMEOUT_SHIM_SRC" "$FLEET_BUILD_SRC" "$FLEET_DEBUG_SRC" "$FLEET_RUN_SRC" "$FLEET_RUN_TARGETS_SRC" "$FLEET_HELP_SRC" "$FLEET_BABYSIT_SRC" "$FLEET_LABELS_SRC" "$FLEET_TRANSITION_SRC" "$FLEET_REVIEW_VERDICT_SRC" "$FLEET_HEARTBEAT_SRC" "$FLEET_STREAM_SRC" "$FLEET_SCOUT_SRC" "$FLEET_FEEDBACK_SRC" "$FLEET_BUSY_SRC" "$FLEET_PR_SRC" "$FLEET_PR_CLEAR_SRC" "$FLEET_PR_CLAIM_FEEDBACK_SRC" "$FLEET_PR_DETACH_SRC" "$FLEET_PR_AMEND_SRC" "$FLEET_ISSUE_SRC" "$FLEET_GH_POLL_SRC" "$FLEET_DISPATCHER_SRC" "$FLEET_DISPATCH_WRAP_SRC" "$FLEET_GATE_STATUS_SRC" "$FLEET_QUEUE_INGEST_SRC" "$FLEET_PLAN_LINT_SRC" "$FLEET_QUEUE_LIST_SRC" "$FLEET_RECONCILE_AMENDMENTS_SRC" "$FLEET_ITERATION_SUMMARY_SRC" "$FLEET_EDIT_SRC" "$FLEET_NIT_CLOSE_SRC" "$FLEET_VALIDATE_STACK_SRC" "$FLEET_EPIC_STATUS_SRC" "$FLEET_VALIDATE_ROLES_SRC" "$FLEET_ASSERT_WT_SRC" "$WITNESS_SRC" "$SOLO_ARCHITECT_SRC" "$FLEET_REBASE_SRC" "$FLEET_GH_TOKEN_SRC" "$FLEET_SESSION_TRACK_SRC"; do
     if [[ -f "$src" && ! -x "$src" ]]; then
         chmod +x "$src"
     fi
@@ -279,6 +298,14 @@ fi
 if [[ -f "$FLEET_CLONE_FRESHNESS_SRC" ]]; then
     ln -sf "$FLEET_CLONE_FRESHNESS_SRC" "$FLEET_CLONE_FRESHNESS_DEST"
     echo "symlinked $FLEET_CLONE_FRESHNESS_DEST -> $FLEET_CLONE_FRESHNESS_SRC"
+fi
+
+# fleet-net.sh (the network-timeout guard, #2362) is a sourced lib like
+# fleet-common.sh — symlink it into ~/bin so the FLEET_LIB_DIR source pattern in
+# fleet-rebase / fleet-claim / fleet-dispatcher resolves it through ~/bin.
+if [[ -f "$FLEET_NET_SRC" ]]; then
+    ln -sf "$FLEET_NET_SRC" "$FLEET_NET_DEST"
+    echo "symlinked $FLEET_NET_DEST -> $FLEET_NET_SRC"
 fi
 
 if [[ -f "$FLEET_BUILD_SRC" ]]; then
@@ -660,6 +687,83 @@ if [[ -f "$FLEET_ZSH_COMP_SRC" ]]; then
         echo "    [[ -r $ZSH_COMP_DIR/irreden-fleet.zsh ]] && source $ZSH_COMP_DIR/irreden-fleet.zsh"
     fi
     echo "  Then \`fleet-run IR<Tab>\` lists built executables, not cwd files."
+fi
+
+# ----------------------------------------------------------------------
+# Step 5: host protections against GitHub connection black-holes (#2362)
+# ----------------------------------------------------------------------
+# The fleet host's TCP connections to GitHub intermittently die silently (no
+# RST), hanging any unguarded network call forever — three fleet-wide outages
+# in four days. fleet-net.sh (installed above) bounds every git/gh call inside
+# the daemons with a `timeout`; these host-level settings make a black-holed
+# connection self-terminate at the transport layer too, and guarantee a
+# `timeout` binary exists for the guard. All idempotent; safe to re-run.
+
+# (a) ssh keepalives for github.com — a black-holed ssh session that would
+# otherwise hang forever self-terminates in ~60s (interval 15 x count 4).
+# Written only as a MARKED block, and ONLY when no Host github.com block exists
+# yet: ssh is first-match-wins, so a second block would be silently ignored, and
+# merging into a user-owned block is not ours to do.
+SSH_CONFIG="$HOME/.ssh/config"
+SSH_MARKER="# IRREDEN_ENGINE: github.com ssh keepalives (install.sh, #2362)"
+if ((INSTALL_APPEND_SSH_CONFIG)); then
+    if [[ -f "$SSH_CONFIG" ]] && grep -qF "$SSH_MARKER" "$SSH_CONFIG" 2>/dev/null; then
+        echo "note: github.com ssh keepalives already present in $SSH_CONFIG (marker unchanged)."
+    elif [[ -f "$SSH_CONFIG" ]] && grep -qiE '^[[:space:]]*Host[[:space:]].*github\.com' "$SSH_CONFIG" 2>/dev/null; then
+        echo "note: $SSH_CONFIG already has a Host github.com block (user-owned) — leaving it alone."
+        echo "      For black-hole protection, ensure it sets ServerAliveInterval 15 / ServerAliveCountMax 4 / ConnectTimeout 15."
+    else
+        # Ensure ~/.ssh (700) exists and, if the config is absent, create it 600
+        # before appending — ssh refuses a group/world-writable setup. An
+        # existing file keeps its own mode (no chmod of user files).
+        ( umask 077; mkdir -p "$HOME/.ssh"; [[ -e "$SSH_CONFIG" ]] || : > "$SSH_CONFIG" ) 2>/dev/null || true
+        if {
+            echo ""
+            echo "$SSH_MARKER"
+            echo "Host github.com"
+            echo "    ServerAliveInterval 15"
+            echo "    ServerAliveCountMax 4"
+            echo "    ConnectTimeout 15"
+            echo "    IPQoS throughput"
+        } >>"$SSH_CONFIG" 2>/dev/null; then
+            echo "appended github.com ssh keepalives to $SSH_CONFIG"
+        else
+            echo "install.sh: could not write $SSH_CONFIG — add a Host github.com block with ServerAliveInterval 15 manually." >&2
+        fi
+    fi
+else
+    echo "note: skipped ~/.ssh/config (--no-ssh-config or IRREDEN_INSTALL_SKIP_SSH_CONFIG)."
+fi
+
+# (b) Bound git-over-HTTPS: abort a transfer stalled below 1000 B/s for 60s.
+# Set only when unset, so an intentional user value is respected.
+if command -v git >/dev/null 2>&1; then
+    git config --global --get http.lowSpeedLimit >/dev/null 2>&1 || \
+        git config --global http.lowSpeedLimit 1000
+    git config --global --get http.lowSpeedTime >/dev/null 2>&1 || \
+        git config --global http.lowSpeedTime 60
+    echo "ensured git http.lowSpeedLimit / http.lowSpeedTime globals (bounds stalled HTTPS transfers)."
+fi
+
+# (c) Guarantee a coreutils-compatible `timeout` for fleet-net.sh's guard. When
+# the host ships neither `timeout` nor `gtimeout`, install the python shim as
+# ~/bin/timeout (its --version advertises "coreutils" so the lib's probe accepts
+# it). A host that has real coreutils uses that; the shim is a last resort.
+_install_has_coreutils_timeout() {
+    local c
+    for c in timeout gtimeout; do
+        if command -v "$c" >/dev/null 2>&1 && "$c" --version 2>/dev/null | grep -qi coreutils; then
+            return 0
+        fi
+    done
+    return 1
+}
+if _install_has_coreutils_timeout; then
+    echo "note: coreutils timeout/gtimeout present — fleet-net.sh network guard is active."
+elif [[ -f "$TIMEOUT_SHIM_SRC" ]]; then
+    ln -sf "$TIMEOUT_SHIM_SRC" "$TIMEOUT_SHIM_DEST"
+    echo "symlinked $TIMEOUT_SHIM_DEST -> $TIMEOUT_SHIM_SRC (no coreutils timeout found; using the fleet shim)"
+    echo "note: for a native guard, install GNU coreutils (Linux: apt install coreutils; macOS: brew install coreutils -> gtimeout)."
 fi
 
 # Stamp this successful symlink pass so fleet-up / fleet-dispatch-wrap can skip

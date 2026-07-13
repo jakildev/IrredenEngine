@@ -142,6 +142,17 @@ else
     assert_clone_fresh() { :; }  # helper not installed yet — no-op (fail open)
 fi
 
+# Network-call timeout guard (#2362). fleet-claim runs INLINE in the dispatcher
+# main loop (reservation-role, planning-claim) across ~49 gh sites plus two git
+# net ops; one black-holed call there is a fleet-wide outage (the 18 h wedge on
+# 07-12). Sourcing fleet-net.sh shadows git()/gh() to bound every one with a
+# timeout — no per-site edits. Missing lib (main clone not yet advanced past
+# this PR) degrades to today's unguarded behavior.
+if [[ -f "$FLEET_LIB_DIR/fleet-net.sh" ]]; then
+    # shellcheck source=/dev/null
+    source "$FLEET_LIB_DIR/fleet-net.sh"
+fi
+
 # GitHub App token (#1394 Q4): guarded export so this invocation's 48 gh
 # call sites draw from the App pool. Never export GH_TOKEN="" — that would
 # defeat gh's keychain fallback on the unconfigured path.
