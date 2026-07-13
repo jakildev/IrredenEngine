@@ -221,21 +221,39 @@ regime (`kScatterDetachedPitchFraction`) and camera regime
 
 ## Steward ledger
 
-reconciled-through: 2026-06-21
+reconciled-through: PR #2013 merge (2026-07-13)
 proposal-pending: none
 
 ### Children
 | Child | State | PR | Plan | Last validated |
 |---|---|---|---|---|
-| #1937 | open | — | plan | 2026-06-21 |
-| #1938 | open | — | plan | 2026-06-21 |
-| #1939 | open | — | plan | 2026-06-21 |
+| #1937 | merged | #2013 | plan (stale header — see note) | 2026-07-13 |
+| #1938 | open | — | plan (amended A1) | 2026-07-13 |
+| #1939 | open | — | plan (amended A1) | 2026-07-13 |
 
 ### Decisions
-- 2026-06-21: approach picked = portable analytic edge-aware coverage; HW
+- D1 (2026-06-21): approach picked = portable analytic edge-aware coverage; HW
   conservative raster (no Metal API; GL extension non-portable on the WSL 4.5
   floor) and MSAA (integer R32I/depth resolve + 4–8× memory) ruled out by the
   source-verified capability audit.
+- D2 (2026-07-13): C1 lead backend = **Metal** (#1937, PR #2013); C2 = **GL**
+  parity (#1938). The GL→Metal lead order was flipped after planning — the child
+  titles were updated but the plan files were not; #1938/#1939 amended (A1) to
+  match. The approach (D1) is unchanged — this is a sequencing flip, not an
+  approach change. source: PR #2013 (metal shaders) + updated child titles +
+  in-code note `metal/peraxis_scatter.metal:282-283`.
 
 ### Events
-- 2026-06-21: filed via file-epic (planning of #1933)
+- 2026-06-21: filed via file-epic (planning of #1933).
+- 2026-07-13: **#1937 (C1) merged via PR #2013** — analytic edge-aware coverage
+  landed on the **Metal** backend (`metal/ir_iso_common.metal`,
+  `metal/peraxis_scatter.metal`); macOS references refreshed. Umbrella checklist
+  ticked. The GL side (`v_peraxis_scatter.glsl`, `ir_iso_common.glsl`) is still
+  on the old `scatterConservativeDilation` margin model — that is #1938's port
+  target. No scope drift vs #1937's (backend-flipped) plan intent.
+- 2026-07-13: **Drift note (record-only):** the merged child #1937's own plan
+  file (`issue-1937.md`) header/scope still reads "GL backend (C1)" — a
+  pre-merge title-flip artifact. #1937 is closed (no worker resumes it), so its
+  plan is left as-is; the authoritative issue title + PR #2013 record the truth.
+  The umbrella checklist descriptions were realigned to the current issue titles
+  during the tick (heal-shape).

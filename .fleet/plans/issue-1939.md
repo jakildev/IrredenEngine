@@ -84,3 +84,20 @@ Consumers: `v_peraxis_scatter.glsl:211,217-218`, `f_peraxis_scatter.glsl`,
 - The #1922 jitter harness (once on master) — temporal-stability gate.
 - `scripts/dev/perf-grid-rotate-sweep` — solidity/silhouette.
 - `render-verify` — cardinal byte-identity; `backend-parity` — GL↔Metal.
+
+## Amendments
+
+### A1 — 2026-07-13 — trigger: PR #2013 merged (#1937 C1)
+- **Decision:** The per-backend attribution in this plan is **inverted**. C1
+  (#1937) shipped **Metal** (PR #2013), and C2 (#1938) is the **GL** parity
+  port — read "#1937 Metal, #1938 GL" wherever this plan says the reverse. The
+  retire-the-tower work is backend-symmetric and **unchanged**: this child
+  still removes the six `kScatter*` margin/miter/yield symbols from **both**
+  `ir_iso_common.glsl` and `ir_iso_common.metal` in lockstep, once #1938 lands
+  GL analytic coverage (both backends then authoritative).
+- **Supersedes:** only the "#1937 GL, #1938 Metal" attribution in **Scope**. The
+  retire targets, the symbol table, `Blocked by: #1938, #1922`, and the
+  acceptance criteria are all unaffected.
+- **Acceptance criteria:** unchanged.
+- **By:** epic-steward — source: PR #2013 (merged Metal shaders); updated child
+  issue titles #1937/#1938.
