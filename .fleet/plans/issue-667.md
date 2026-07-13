@@ -62,19 +62,19 @@ dump; clean on `linux-debug` + `macos-debug`; Lua `saveWorld`/`loadWorld`.
 
 ## Steward ledger
 
-reconciled-through: 2026-07-04
+reconciled-through: 2026-07-13 (close-out)
 proposal-pending: none
 
 ### Children
 | Child | State | PR | Plan | Last validated |
 |---|---|---|---|---|
-| #2212 | open | — | plan | 2026-07-04 |
-| #2213 | open | — | plan | 2026-07-04 |
-| #2214 | open | — | plan | 2026-07-04 |
-| #2215 | open | — | plan | 2026-07-04 |
-| #2216 | open | — | plan | 2026-07-04 |
-| #2217 | open | — | plan | 2026-07-04 |
-| #2218 | open | — | plan | 2026-07-04 |
+| #2212 | merged | #2225 | plan | 2026-07-13 |
+| #2213 | merged | #2228 | plan | 2026-07-13 |
+| #2214 | merged | #2230 | plan | 2026-07-13 |
+| #2215 | merged | #2238 | plan | 2026-07-13 |
+| #2216 | merged | #2239 | plan | 2026-07-13 |
+| #2217 | merged | #2240 | plan | 2026-07-13 |
+| #2218 | merged | #2244 | plan | 2026-07-13 |
 
 ### Decisions
 D1 (2026-07-03): 7 chained single-PR children, mixed model routing, queue-now — human-ratified in the triage session.
@@ -84,3 +84,5 @@ D4 (2026-07-03): C_VoxelSetNew serializes into staged mode; P6 owns the canvas-a
 
 ### Events
 - 2026-07-04: children #2212–#2218 filed with plans via the adapted file-epic flow; `fleet-validate-stack 667` PASS (7/7); all children human:approved.
+- 2026-07-13: all 7 children merged (PRs #2225/#2228/#2230/#2238/#2239/#2240/#2244, 2026-07-05..07-06). Source-verified on master: `engine/world/include/irreden/world/{save_trait,save_migration,save_registry,save_component_inventory,world_snapshot}.hpp` + `src/world_snapshot{,_relations}.cpp`; Lua `IRPersist.saveWorld/loadWorld` (`engine/script/.../lua_world_snapshot_bindings.hpp`); `creations/demos/persist_roundtrip`; `test/world/{persist_round_trip,world_snapshot,world_snapshot_relations,chunk_persistence}_test.cpp`; `.json.txt` debug dump in `world_snapshot.cpp`. Epic close-out — all 8 umbrella acceptance criteria evidenced (see #667 closure comment).
+- 2026-07-13: **Known deviation (not a gap):** relations materialize **CHILD_OF only** per D3. PARENT_TO/SIBLING_OF remain unimplemented in the engine (`setRelation` asserts), so acceptance #1/#4's PARENT_TO/SIBLING_OF wording is satisfied for the supported relation set only. Extending the `RELN` chunk is a one-line enum add (Extensibility Rule #4) if/when those relations land. No follow-up filed — adding the relation *types* is an engine-wide concern out of persist scope, and the chunk is already forward-extensible.

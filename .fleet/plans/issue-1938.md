@@ -65,3 +65,32 @@ feature parity. No new design.
   `--auto-screenshot`; capture the same near-cardinal coarse-cube shots as #1937
   and compare GL↔Metal.
 - `backend-parity` skill (the primary gate for this child).
+
+## Amendments
+
+### A1 — 2026-07-13 — trigger: PR #2013 merged (#1937 C1)
+- **Decision:** C1 (#1937) landed the analytic edge-aware coverage on the
+  **Metal** backend (PR #2013 touched `metal/ir_iso_common.metal` +
+  `metal/peraxis_scatter.metal`), **not GL**. The lead backend was flipped
+  GL→Metal after this plan was written; the child titles now read #1937 =
+  "Metal backend (C1, lead)" and #1938 = "GL parity port (C2)". **This child
+  is therefore the GL parity port** — mirror the now-on-master Metal analytic
+  coverage into the GL shaders.
+- **Supersedes:** the plan's backend polarity throughout. "Scope",
+  "Verified current state", and "Affected files" describe porting GL→Metal —
+  **invert them**. The port *target* files are now
+  `engine/render/src/shaders/v_peraxis_scatter.glsl`, `f_peraxis_scatter.glsl`,
+  and `ir_iso_common.glsl` (add the analytic-coverage helper next to the GL
+  `scatterConservativeDilation` at `ir_iso_common.glsl:935`, still on the old
+  margin model). The *reference* implementation to mirror is the merged Metal
+  side: `metal/peraxis_scatter.metal` (analytic coverage + `discard_fragment()`
+  ~:373–381, interior/boundary classification) + `metal/ir_iso_common.metal`.
+  In-code confirmation: `metal/peraxis_scatter.metal:282-283` — "The GL twin
+  (v_peraxis_scatter.glsl) still carries that old coverage role; it ports to
+  this visit-bound in #1938."
+- **Acceptance criteria:** intent unchanged (crisp corners + no dashing,
+  cardinal byte-identical, backend parity). Re-read "Metal renders the same
+  result #1937 proved on GL" as "**GL** renders the same result #1937 proved on
+  **Metal**"; the `backend-parity` audit direction is now Metal→GL.
+- **By:** epic-steward — source: PR #2013 (merged Metal shaders); updated child
+  issue titles #1937/#1938; in-code note `metal/peraxis_scatter.metal:282-283`.
