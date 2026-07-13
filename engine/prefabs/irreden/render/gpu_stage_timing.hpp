@@ -54,6 +54,16 @@ struct GpuStageTiming {
     // influence cannot reach the camera-anchored volume window.
     std::uint32_t lightsSeeded_ = 0;
     std::uint32_t lightsEligible_ = 0;
+    // Shadow-feeder diagnostic (#2315, V1). Populated by BAKE_SUN_SHADOW_MAP
+    // each frame: `worldPlacedCasterCount_` = world-placed detached
+    // re-voxelize canvases gathered for the cast resolve
+    // (`gatherWorldPlacedCasters()`, P4b-3); `shadowFeederMin_`/`Max_` = the
+    // iso-space AABB (shared cull viewport widened toward the sun by
+    // `kSunShadowMaxDistance`, gated off when shadows are disabled) that
+    // determines which off-screen casters still feed the bake.
+    std::uint32_t worldPlacedCasterCount_ = 0;
+    IRMath::vec2 shadowFeederMin_ = IRMath::vec2(0.0f);
+    IRMath::vec2 shadowFeederMax_ = IRMath::vec2(0.0f);
     // Only flipped between frames by Lua on the main thread (Lua runs in
     // INPUT/UPDATE, never RENDER). Stable across the RENDER pipeline, so
     // probes can read `enabled_` twice and rely on both values matching.

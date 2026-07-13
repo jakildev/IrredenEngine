@@ -83,6 +83,26 @@ using namespace IRRender;
 
 namespace IRSystem {
 
+// Per-light gather outcome (#2315, V1 DOMAIN-STATE instrumentation).
+// `SEEDED_FULL` — origin fell inside the camera-anchored window, no
+// boundary clamp. `BOUNDARY_DISCOUNTED` — origin clamped to the window
+// edge; `residual_` is the seed alpha the clamp survived at. `SKIPPED` —
+// the discounted residual was ≤ 0 (light cannot reach the window);
+// `residual_` is 0. Public (not `detail`) — the DOMAIN-STATE emission hook
+// in a lighting demo's `main.cpp` reads these back via `lightGatherRecords()`
+// below.
+enum class LightGatherState : std::uint8_t {
+    SEEDED_FULL,
+    BOUNDARY_DISCOUNTED,
+    SKIPPED,
+};
+
+struct LightGatherRecord {
+    IREntity::EntityId entity_;
+    LightGatherState state_;
+    float residual_;
+};
+
 namespace detail {
 
 class ScopedCpuPhaseTimer {
@@ -196,12 +216,16 @@ inline std::uint32_t gatherLightSources(
     const ivec3 &volumeOriginVoxel,
     int &outMaxRadius,
     std::uint32_t &outEligible,
-    bool &outHasSpot
+    bool &outHasSpot,
+    std::vector<LightGatherRecord> *outStates = nullptr
 ) {
     out.clear();
     outMaxRadius = 0;
     outEligible = 0;
     outHasSpot = false;
+    if (outStates != nullptr) {
+        outStates->clear();
+    }
     const auto include = IREntity::getArchetype<C_LightSource, C_WorldTransform>();
     const auto nodes = IREntity::queryArchetypeNodesSimple(include);
     auto &entityManager = IREntity::getEntityManager();
@@ -253,6 +277,15 @@ inline std::uint32_t gatherLightSources(
                 continue;
             }
             if (out.size() >= kLightVolumeMaxSources) {
+                // Cap reached: lights past kLightVolumeMaxSources are neither
+                // seeded nor recorded in `outStates`, so the DOMAIN-STATE log
+                // under-reports the true non-directional light count in an
+                // overflow scene. Intentional — `lightGatherRecords_` is
+                // reserved to exactly kLightVolumeMaxSources at create(), so
+                // recording the tail would force a per-frame reallocation; this
+                // mirrors the GPU-staging cap the seed buffer already enforces.
+                // A future #2317 verify harness asserting total light counts
+                // against the log must account for this ceiling.
                 return static_cast<std::uint32_t>(out.size());
             }
             const ivec3 origin = roundedLightOrigin(transforms[i]);
@@ -269,6 +302,9 @@ inline std::uint32_t gatherLightSources(
             }
             const float seedAlpha = 1.0f - static_cast<float>(boundaryDist) * stepFalloff;
             if (seedAlpha <= 0.0f) {
+                if (outStates != nullptr) {
+                    outStates->push_back({node->entities_[i], LightGatherState::SKIPPED, 0.0f});
+                }
                 continue;
             }
             // This light is actually seeded — flag SPOTs so the consumer only
@@ -287,6 +323,12 @@ inline std::uint32_t gatherLightSources(
             // (queryable against the CPU mirror BUILD_LIGHT_OCCLUSION_GRID
             // already maintains, which runs before this system) is deferred
             // to #2330 rather than shipped silently.
+            if (outStates != nullptr) {
+                const LightGatherState state = boundaryDist == 0
+                                                   ? LightGatherState::SEEDED_FULL
+                                                   : LightGatherState::BOUNDARY_DISCOUNTED;
+                outStates->push_back({node->entities_[i], state, seedAlpha});
+            }
             out.push_back(toGpuLight(lights[i], volumeOriginVoxel + clamped, origin, seedAlpha));
         }
     }
@@ -317,6 +359,11 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
     Buffer *paramsBuf_ = nullptr;
     Buffer *occlusionBuf_ = nullptr;
     std::vector<GPULightSource> lightStaging_{};
+    // Per-light gather outcome (#2315, V1) — reused every frame, read back
+    // via `lightGatherRecords()` below by a lighting demo's DOMAIN-STATE
+    // emission hook (`AutoScreenshotConfig::onCaptureFrame_`) for the
+    // per-shot machine-readable log line.
+    std::vector<LightGatherRecord> lightGatherRecords_{};
     LightVolumeParams params_{};
     // Adaptive iteration count for the per-frame propagate dilation
     // chain. Recomputed at upload time from the eligible lights' max
@@ -350,8 +397,12 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
             // iso camera each frame; the seed/propagate/
             // lighting shaders subtract this origin before
             // indexing, so a panned camera keeps lights in
-            // range without resizing the texture.
-            const ivec3 volumeOrigin = IRRender::detail::cameraAnchorVoxel();
+            // range without resizing the texture. #2315 V1:
+            // freeze-aware — pins at the cull-freeze transition
+            // so F10 / shot-table FREEZE keeps lighting from the
+            // pinned window instead of tracking a free-flying
+            // camera.
+            const ivec3 volumeOrigin = IRRender::detail::frozenAwareCameraAnchorVoxel();
             volume.setWorldOriginVoxel(volumeOrigin);
             int maxRadius = 0;
             std::uint32_t eligible = 0;
@@ -362,7 +413,8 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
                 volumeOrigin,
                 maxRadius,
                 eligible,
-                hasSpot
+                hasSpot,
+                &lightGatherRecords_
             );
             // worldOriginVoxel_.w carries the has-SPOT flag (#2318): the
             // consumer skips the winning-light-ID read entirely when 0, so
@@ -533,10 +585,22 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
         // origin from the same binding.
         p->occlusionBuf_ = IRRender::getNamedResource<Buffer>("LightOcclusionGridBuffer");
         p->lightStaging_.reserve(kLightVolumeMaxSources);
+        p->lightGatherRecords_.reserve(kLightVolumeMaxSources);
         IRRender::tagGpuStage(systemId, "computeLightVolume");
         return systemId;
     }
 };
+
+// Read-back accessor for the DOMAIN-STATE emission hook (#2315, V1) — a
+// lighting demo holds the `SystemId` returned by
+// `createSystem<COMPUTE_LIGHT_VOLUME>()` and calls this from its
+// `AutoScreenshotConfig::onCaptureFrame_` callback to format the per-shot
+// per-light state list. Mirrors the sanctioned `getSystemParams<System<N>>`
+// diagnostics read-back pattern (engine/system/CLAUDE.md).
+inline const std::vector<LightGatherRecord> &lightGatherRecords(SystemId computeLightVolumeSystem) {
+    return getSystemParams<System<COMPUTE_LIGHT_VOLUME>>(computeLightVolumeSystem)
+        ->lightGatherRecords_;
+}
 
 } // namespace IRSystem
 

@@ -522,10 +522,15 @@ its own iteration path and must **not** consult that mask. The failure
 mode is sharing a helper that accidentally applies the render cull to
 the grid build.
 
-**Check:** `system_build_light_occlusion_grid.hpp` does not include
-`cull_viewport_state.hpp` and does not call `visibleIsoViewport`.
+**Check:** `System<BUILD_LIGHT_OCCLUSION_GRID>` does not call
+`visibleIsoViewport` and applies no viewport filter to the grid build.
+The invariant is **behavioral**, not "the header is absent":
+`system_build_light_occlusion_grid.hpp` now transitively includes
+`cull_viewport_state.hpp` (via `camera_anchor.hpp`, added in #2315 for
+`isCullingFrozen()` freeze-state gating) — the freeze check is fine; only a
+`visibleIsoViewport`-based cull on the grid path would break the invariant.
 
-**Status (T-010, PR #188; renamed in T-126):** compliant —
+**Status (T-010, PR #188; renamed in T-126; include note #2315):** compliant —
 `System<BUILD_LIGHT_OCCLUSION_GRID>` iterates `pool.getLiveVoxelCount()`
 on the full pool with no viewport filter.
 

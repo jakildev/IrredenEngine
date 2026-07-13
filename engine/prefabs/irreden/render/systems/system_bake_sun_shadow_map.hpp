@@ -558,6 +558,23 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         // once-per-frame canvas iteration (few canvases), not the per-voxel ECS
         // footgun — same pattern as resolveSun() above.
         gatherWorldPlacedCasters();
+        {
+            // #2315 V1: surface the caster count + the widened shadow-feeder
+            // AABB on the perf HUD's CULL block (same GpuStageTiming counter
+            // pattern as COMPUTE_LIGHT_VOLUME's lightsSeeded_/lightsEligible_).
+            // Uses the canonical gated helper (frameShadowFeederParams()) so
+            // the reported extent collapses to the plain (no-widen) cull
+            // viewport when shadows are off, matching every other feeder
+            // consumer's convention.
+            auto &timing = IRRender::gpuStageTiming();
+            timing.worldPlacedCasterCount_ = static_cast<std::uint32_t>(worldPlacedCasters_.size());
+            const IsoBounds2D feederVp = IRPrefab::SunShadow::shadowFeederCullViewport(
+                0,
+                IRPrefab::SunShadow::frameShadowFeederParams()
+            );
+            timing.shadowFeederMin_ = feederVp.min_;
+            timing.shadowFeederMax_ = feederVp.max_;
+        }
         resolveMainCanvasVoxelFrameInputs(
             perAxisCanvasEntity_,
             &mainTextures_,
