@@ -19,6 +19,7 @@
 // SET_TRIXEL_COLOR has no working Command<NAME> specialization today, so
 // fireByName falls through to the unimplemented-log path for it.
 #include <irreden/render/commands/command_toggle_culling_freeze.hpp>
+#include <irreden/render/commands/command_toggle_culling_minimap.hpp>
 #include <irreden/render/commands/command_toggle_gui.hpp>
 #include <irreden/render/commands/command_zoom_in.hpp>
 #include <irreden/render/commands/command_zoom_out.hpp>
@@ -226,6 +227,14 @@ CommandId bindPrefabCommand(
             requiredModifiers,
             blockedModifiers
         );
+    case TOGGLE_CULLING_MINIMAP:
+        return createCommand<TOGGLE_CULLING_MINIMAP>(
+            inputType,
+            triggerStatus,
+            button,
+            requiredModifiers,
+            blockedModifiers
+        );
     case RANDOMIZE_VOXELS:
         return createCommand<RANDOMIZE_VOXELS>(
             inputType,
@@ -322,6 +331,9 @@ void fireByName(CommandNames name) {
         return;
     case TOGGLE_CULLING_FREEZE:
         Command<TOGGLE_CULLING_FREEZE>::create()();
+        return;
+    case TOGGLE_CULLING_MINIMAP:
+        Command<TOGGLE_CULLING_MINIMAP>::create()();
         return;
     case RANDOMIZE_VOXELS:
         Command<RANDOMIZE_VOXELS>::create()();

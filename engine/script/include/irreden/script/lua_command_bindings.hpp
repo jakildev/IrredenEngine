@@ -74,6 +74,7 @@ inline void bindCommandNameEnum(LuaScript &script) {
     IR_BIND_CMD(GUI_ZOOM_IN);
     IR_BIND_CMD(GUI_ZOOM_OUT);
     IR_BIND_CMD(TOGGLE_CULLING_FREEZE);
+    IR_BIND_CMD(TOGGLE_CULLING_MINIMAP);
 #undef IR_BIND_CMD
     lua["IRCommand"]["CommandName"] = t;
 }
@@ -294,13 +295,12 @@ inline void bindCommandFunctions(LuaScript &script) {
         return static_cast<lua_Integer>(id);
     };
 
-    lua["IRCommand"]["createCommand"] =
-        [](lua_Integer inputType,
-           lua_Integer triggerStatus,
-           lua_Integer button,
-           sol::protected_function fn,
-           sol::optional<lua_Integer> requiredMods,
-           sol::optional<lua_Integer> blockedMods) -> lua_Integer {
+    lua["IRCommand"]["createCommand"] = [](lua_Integer inputType,
+                                           lua_Integer triggerStatus,
+                                           lua_Integer button,
+                                           sol::protected_function fn,
+                                           sol::optional<lua_Integer> requiredMods,
+                                           sol::optional<lua_Integer> blockedMods) -> lua_Integer {
         // Capture the protected_function by value into the lambda; the
         // CommandManager stores the wrapper as std::function<void()>, which
         // owns the protected_function for the manager's lifetime. World

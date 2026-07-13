@@ -51,6 +51,7 @@
 #include <irreden/render/systems/system_compute_sun_shadow.hpp>
 #include <irreden/render/systems/system_compute_light_volume.hpp>
 #include <irreden/render/systems/system_lighting_to_trixel.hpp>
+#include <irreden/render/systems/system_debug_culling_minimap.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
 #include <irreden/render/systems/system_sprites_to_screen.hpp>
@@ -61,6 +62,7 @@
 // COMMAND SUITES
 #include <irreden/common/command_suite_capture.hpp>
 #include <irreden/render/commands/command_toggle_culling_freeze.hpp>
+#include <irreden/render/commands/command_toggle_culling_minimap.hpp>
 
 namespace {
 
@@ -508,6 +510,16 @@ void initSystems() {
     const IRSystem::SystemId updateJointMatricesId =
         IRSystem::createSystem<IRSystem::UPDATE_JOINT_MATRICES>();
     IRPrefab::JointTransform::setSystem(updateJointMatricesId);
+    // Captured for the culling minimap's light + caster domains (#2316, V2) —
+    // the minimap reads these systems' per-frame gather state back rather
+    // than re-running its own light/caster query. Assigned in-place inside
+    // the initializer list below (NOT hoisted out as their own create()
+    // calls) — a braced-init-list evaluates left-to-right, and
+    // BAKE_SUN_SHADOW_MAP::create() depends on a named resource
+    // RESOLVE_PER_AXIS_SCREEN_DEPTH::create() creates earlier in this same
+    // list; calling create() early breaks that ordering.
+    IRSystem::SystemId bakeSunShadowMapId{};
+    IRSystem::SystemId computeLightVolumeId{};
     renderPipeline.insert(
         renderPipeline.end(),
         {
@@ -523,15 +535,25 @@ void initSystems() {
             // only — renders unchanged this PR.
             IRSystem::createSystem<IRSystem::COMPUTE_DISTANCE_HIZ>(),
             IRSystem::createSystem<IRSystem::RESOLVE_PER_AXIS_SCREEN_DEPTH>(),
-            IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>(),
+            (bakeSunShadowMapId = IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>()),
             IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>(),
-            IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>(),
+            (computeLightVolumeId = IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>()),
             IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>(),
             IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
+            IRSystem::System<IRSystem::DEBUG_CULLING_MINIMAP>::create({
+                .lightVolumeSystemId_ = computeLightVolumeId,
+                .bakeSunShadowSystemId_ = bakeSunShadowMapId,
+            }),
             IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
             IRSystem::createSystem<IRSystem::SPRITE_TO_SCREEN>(),
         }
     );
+    // Off during --auto-screenshot captures — the minimap is a live debug
+    // aid, not part of the render-verify golden image (#2316, V2 plan
+    // "Verification": map off during reference captures). Interactive /
+    // --auto-profile runs (g_autoWarmupFrames == 0) default it visible;
+    // F11 (initCommands below) toggles it either way.
+    IRRender::setCullingMinimapEnabled(g_autoWarmupFrames == 0);
 
     if (g_autoProfileFrames > 0) {
         IRSystem::SystemId autoProfileId = IRSystem::createSystem<C_VoxelSetNew>(
@@ -805,6 +827,14 @@ void initCommands() {
         IRInput::KEY_MOUSE,
         IRInput::PRESSED,
         IRInput::kKeyButtonF10
+    );
+    // Culling-minimap visibility toggle (#2316, V2). F11 sits next to F10's
+    // freeze toggle — the two are commonly used together (freeze, then
+    // inspect the minimap's light/caster domains while free-flying).
+    IRCommand::createCommand<IRCommand::TOGGLE_CULLING_MINIMAP>(
+        IRInput::KEY_MOUSE,
+        IRInput::PRESSED,
+        IRInput::kKeyButtonF11
     );
 }
 

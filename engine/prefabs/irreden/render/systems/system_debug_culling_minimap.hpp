@@ -8,10 +8,15 @@
 
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 #include <irreden/common/components/component_world_transform.hpp>
+#include <irreden/render/components/component_canvas_light_volume.hpp>
+#include <irreden/render/components/component_light_source.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
+#include <irreden/render/systems/system_bake_sun_shadow_map.hpp>
+#include <irreden/render/systems/system_compute_light_volume.hpp>
 #include <irreden/render/systems/system_debug_overlay.hpp>
 #include <irreden/render/cull_viewport_state.hpp>
 #include <irreden/render/iso_spatial_hash.hpp>
+#include <irreden/render/sun_shadow_constants.hpp>
 
 #include <algorithm>
 #include <vector>
@@ -131,6 +136,84 @@ inline void drawFrozenIndicator(vec2 minimapOrigin, float minimapWidth, float mi
     IRDebug::drawLineScreen(lineStart, lineEnd, 1.0f, 0.3f, 0.3f, 0.9f);
 }
 
+// Light domain (#2316, V2). Color encodes V1's per-light gather outcome
+// (system_compute_light_volume.hpp): full seed, boundary-clamped (residual
+// alpha), or skipped entirely.
+inline vec4 lightGatherStateColor(IRSystem::LightGatherState state, float residual) {
+    switch (state) {
+    case IRSystem::LightGatherState::SEEDED_FULL:
+        return vec4(0.0f, 1.0f, 0.0f, 0.9f);
+    case IRSystem::LightGatherState::BOUNDARY_DISCOUNTED:
+        return vec4(1.0f, 1.0f, 0.0f, IRMath::clamp(residual, 0.15f, 0.9f));
+    case IRSystem::LightGatherState::SKIPPED:
+        return vec4(1.0f, 0.0f, 0.0f, 0.7f);
+    }
+    return vec4(1.0f, 0.0f, 1.0f, 0.9f); // unreachable — magenta flags a new enum value
+}
+
+// One foreign getComponentOptional per gathered light, once per frame
+// (endTick) — the light-gather batch is already bounded to
+// kLightVolumeMaxSources, so this is the sanctioned "batched foreign lookup"
+// shape (cpp-ecs.md), not the per-entity-tick footgun.
+inline void drawLightDots(
+    const std::vector<IRSystem::LightGatherRecord> &records,
+    vec2 viewCenterIso,
+    float scale,
+    vec2 minimapCenter,
+    IsoBounds2D minimapScreenBounds
+) {
+    constexpr float kDotRadius = 2.5f;
+    for (const auto &record : records) {
+        auto xform = IREntity::getComponentOptional<C_WorldTransform>(record.entity_);
+        if (!xform.has_value()) {
+            continue;
+        }
+        vec2 isoPosition = IRMath::pos3DtoPos2DIso(xform.value()->translation_);
+        vec2 dotPosition = isoToMinimapScreen(isoPosition, viewCenterIso, scale, minimapCenter);
+        if (!minimapScreenBounds.contains(dotPosition)) {
+            continue;
+        }
+        IRDebug::drawDotScreen(
+            dotPosition,
+            kDotRadius,
+            lightGatherStateColor(record.state_, record.residual_)
+        );
+    }
+}
+
+// Caster domain (#2316, V2). Squares mark world-placed re-voxelize casters
+// gathered by BAKE_SUN_SHADOW_MAP (system_bake_sun_shadow_map.hpp);
+// membership is tested against the same shadow-feeder AABB the bake itself
+// widens toward the sun (sun_shadow_constants.hpp), so a caster reading as a
+// member here is exactly one the bake would still pick up off-screen.
+inline void drawCasterSquares(
+    const std::vector<IRSystem::WorldPlacedCaster> &casters,
+    const IsoBounds2D &feederViewport,
+    vec2 viewCenterIso,
+    float scale,
+    vec2 minimapCenter,
+    IsoBounds2D minimapScreenBounds
+) {
+    constexpr float kHalfSize = 3.0f;
+    const vec4 kMemberColor(0.2f, 0.8f, 1.0f, 0.85f);
+    const vec4 kOutsideColor(1.0f, 0.5f, 0.0f, 0.85f);
+
+    for (const auto &caster : casters) {
+        vec2 isoPosition = IRMath::pos3DtoPos2DIso(caster.worldCellOffset_);
+        vec2 screenPos = isoToMinimapScreen(isoPosition, viewCenterIso, scale, minimapCenter);
+        if (!minimapScreenBounds.contains(screenPos)) {
+            continue;
+        }
+        vec4 color = feederViewport.contains(isoPosition) ? kMemberColor : kOutsideColor;
+        IRDebug::drawRectScreen(
+            screenPos - vec2(kHalfSize),
+            screenPos + vec2(kHalfSize),
+            color,
+            vec4(0.0f, 0.0f, 0.0f, 0.9f)
+        );
+    }
+}
+
 } // namespace detail
 
 template <> struct System<DEBUG_CULLING_MINIMAP> {
@@ -138,6 +221,13 @@ template <> struct System<DEBUG_CULLING_MINIMAP> {
     float screenWidthFraction_ = 0.15f;
     float aspectRatio_ = 12.0f / 7.0f;
     float padding_ = 10.0f;
+
+    // Light + caster domain sources (#2316, V2) — settable via create(Params).
+    // Optional: kNullEntity means "not wired", so a demo with no lighting
+    // pipeline (e.g. the default demo) just gets the shape domain, no
+    // spurious empty-window rectangle.
+    IRSystem::SystemId lightVolumeSystemId_ = IREntity::kNullEntity;
+    IRSystem::SystemId bakeSunShadowSystemId_ = IREntity::kNullEntity;
 
     // Per-frame scratch buffers (reused across ticks).
     std::vector<detail::EntityRecord> entityRecords_;
@@ -149,13 +239,16 @@ template <> struct System<DEBUG_CULLING_MINIMAP> {
         float screenWidthFraction_ = 0.15f;
         float aspectRatio_ = 12.0f / 7.0f;
         float padding_ = 10.0f;
+        IRSystem::SystemId lightVolumeSystemId_ = IREntity::kNullEntity;
+        IRSystem::SystemId bakeSunShadowSystemId_ = IREntity::kNullEntity;
     };
 
     void tick(
-        IREntity::EntityId entityId,
-        const C_ShapeDescriptor &shape,
-        const C_WorldTransform &xform
+        IREntity::EntityId entityId, const C_ShapeDescriptor &shape, const C_WorldTransform &xform
     ) {
+        if (!IRRender::isCullingMinimapEnabled()) {
+            return;
+        }
         vec2 isoPosition = IRMath::pos3DtoPos2DIso(xform.translation_);
         vec2 isoHalfExtent = IRMath::shapeIsoHalfExtent(vec3(shape.params_));
 
@@ -169,6 +262,9 @@ template <> struct System<DEBUG_CULLING_MINIMAP> {
     }
 
     void endTick() {
+        if (!IRRender::isCullingMinimapEnabled()) {
+            return;
+        }
         const auto &cullState = IRRender::getCullViewport();
         bool isCullingFrozen = cullState.frozen_;
         vec2 liveCameraIso = IRRender::getCameraPosition2DIso();
@@ -249,6 +345,64 @@ template <> struct System<DEBUG_CULLING_MINIMAP> {
         if (isCullingFrozen) {
             detail::drawFrozenIndicator(layout.origin_, layout.width_, layout.height_);
         }
+
+        // Light domain (#2316, V2): gather-state-colored dots + the pinned
+        // light-volume window rectangle. Skipped when this instance wasn't
+        // wired to a COMPUTE_LIGHT_VOLUME system.
+        if (lightVolumeSystemId_ != IREntity::kNullEntity) {
+            const auto &lightRecords = IRSystem::lightGatherRecords(lightVolumeSystemId_);
+            detail::drawLightDots(
+                lightRecords,
+                viewCenterIso,
+                isoToMinimapScale,
+                minimapCenter,
+                layout.screenBounds()
+            );
+
+            // Iso-space footprint of the WORLD anchor±kLightVolumeHalfExtent
+            // cube, projected at z=0 — cameraAnchorVoxel() always pins
+            // anchor.z to 0 (camera_anchor.hpp), and the window's Z extent
+            // has no meaning on a top-down minimap. A z-degenerate box (min.z
+            // == max.z == 0) collapses isoAABBOfWorldAABBUnderYaw's 8-corner
+            // enumeration to the same 4 unique XY corners this needs.
+            const ivec3 anchor = IRRender::getLightAnchorFreeze().anchor_;
+            const float halfExtent = static_cast<float>(kLightVolumeHalfExtent);
+            const vec3 windowLo(anchor.x - halfExtent, anchor.y - halfExtent, 0.0f);
+            const vec3 windowHi(anchor.x + halfExtent, anchor.y + halfExtent, 0.0f);
+            IsoBounds2D windowBounds = IRMath::isoAABBOfWorldAABBUnderYaw(windowLo, windowHi, 0.0f);
+            detail::drawViewportOutline(
+                windowBounds,
+                viewCenterIso,
+                isoToMinimapScale,
+                minimapCenter,
+                vec4(1.0f, 1.0f, 0.0f, 0.6f)
+            );
+        }
+
+        // Caster domain (#2316, V2): world-placed casters as squares +
+        // the shadow-feeder AABB rectangle they're tested against. Skipped
+        // when this instance wasn't wired to a BAKE_SUN_SHADOW_MAP system.
+        if (bakeSunShadowSystemId_ != IREntity::kNullEntity) {
+            const auto shadowFeederParams = IRPrefab::SunShadow::frameShadowFeederParams();
+            const IsoBounds2D feederViewport =
+                IRPrefab::SunShadow::shadowFeederCullViewport(0, shadowFeederParams);
+            const auto &casters = IRSystem::worldPlacedCasters(bakeSunShadowSystemId_);
+            detail::drawCasterSquares(
+                casters,
+                feederViewport,
+                viewCenterIso,
+                isoToMinimapScale,
+                minimapCenter,
+                layout.screenBounds()
+            );
+            detail::drawViewportOutline(
+                feederViewport,
+                viewCenterIso,
+                isoToMinimapScale,
+                minimapCenter,
+                vec4(1.0f, 0.5f, 0.0f, 0.5f)
+            );
+        }
     }
 
     static SystemId create() {
@@ -264,6 +418,8 @@ template <> struct System<DEBUG_CULLING_MINIMAP> {
         p->screenWidthFraction_ = initialParams.screenWidthFraction_;
         p->aspectRatio_ = initialParams.aspectRatio_;
         p->padding_ = initialParams.padding_;
+        p->lightVolumeSystemId_ = initialParams.lightVolumeSystemId_;
+        p->bakeSunShadowSystemId_ = initialParams.bakeSunShadowSystemId_;
         return systemId;
     }
 };

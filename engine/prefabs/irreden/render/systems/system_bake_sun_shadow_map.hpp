@@ -121,6 +121,16 @@ inline ResolvedSun resolveSun() {
 
 } // namespace detail
 
+// World-placed re-voxelize caster gathered by gatherWorldPlacedCasters()
+// below (#1576 P4b-3). Hoisted to namespace scope (mirrors LightGatherRecord
+// in system_compute_light_volume.hpp) so a read-back consumer — the culling
+// minimap's caster domain (#2316, V2) — can name the type without reaching
+// into System<BAKE_SUN_SHADOW_MAP>'s private members.
+struct WorldPlacedCaster {
+    const C_TriangleCanvasTextures *textures_ = nullptr;
+    vec3 worldCellOffset_{0.0f};
+};
+
 template <> struct System<BAKE_SUN_SHADOW_MAP> {
     ShaderProgram *clearProgram_ = nullptr;
     ShaderProgram *bakeProgram_ = nullptr;
@@ -146,10 +156,7 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
     // canvas texture is never a bake input (the direct read returns empty
     // through Metal's image-atomic scratch indirection; that was PR #1626's
     // first, rejected mechanism). Empty caster list → byte-identical to master.
-    struct WorldPlacedCaster {
-        const C_TriangleCanvasTextures *textures_ = nullptr;
-        vec3 worldCellOffset_{0.0f};
-    };
+    // (`WorldPlacedCaster` itself lives at namespace scope above.)
     std::vector<WorldPlacedCaster> worldPlacedCasters_;
     FrameDataVoxelToCanvas voxelFrameScratch_{};
     const C_TriangleCanvasTextures *mainTextures_ = nullptr;
@@ -737,6 +744,15 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         return systemId;
     }
 };
+
+// Read-back accessor (#2316, V2) — mirrors lightGatherRecords()'s pattern
+// (system_compute_light_volume.hpp). The culling minimap's caster domain
+// reads this frame's world-placed casters back rather than re-running
+// gatherWorldPlacedCasters() itself.
+inline const std::vector<WorldPlacedCaster> &worldPlacedCasters(SystemId bakeSunShadowMapSystem) {
+    return getSystemParams<System<BAKE_SUN_SHADOW_MAP>>(bakeSunShadowMapSystem)
+        ->worldPlacedCasters_;
+}
 
 } // namespace IRSystem
 
