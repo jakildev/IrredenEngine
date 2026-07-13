@@ -204,19 +204,21 @@ Filed: V1 = #2332, C1 = #2333, C2 = #2334, D1 = #2335.
 
 ## Steward ledger
 
-reconciled-through: 2026-07-08
+reconciled-through: PR #2352 merge (2026-07-13)
 proposal-pending: none
 
 ### Children
 | Child | State | PR | Plan | Last validated |
 |---|---|---|---|---|
-| #2332 | open | — | plan | 2026-07-08 |
+| #2332 | merged | #2352 | plan | 2026-07-13 |
 | #2333 | open | — | plan | 2026-07-08 |
 | #2334 | open | — | plan | 2026-07-08 |
 | #2335 | open | — | plan | 2026-07-08 |
 
 ### Decisions
 <!-- entries: D<n> (<YYYY-MM-DD>): <decision> — source: <link>  (numbered scheme per epic-steward-protocol.md §Decisions; escalation rules reference decisions by D-id) -->
+- D1 (2026-07-13): V1 validation harness = the `perf-grid-rotate-sweep` wave-freeze tier, invoked `--mode voxel_set --wave-freeze --grid-size 32 --yaw-ramp --yaw-ramp-wave` (quadrant-0 residual ramp 5/10/20/30/40° + matched 10/30° spot-checks in the other three quadrants); determinism gate `img_diff --threshold 16`; red baseline coverage 0.9886 / hole-ratio 0.0114 at wave_q3_p30. C1's green-gate and C2's far-quadrant sweep both cite this invocation. — source: PR #2352 (child #2332).
 
 ### Events
 - 2026-07-08: filed via file-epic
+- 2026-07-13: V1 (#2332) merged via PR #2352 — `--wave-freeze` deterministic phase-0 bake + `--yaw-ramp-wave` pose table + a wave-freeze sweep tier in `scripts/dev/perf-grid-rotate-sweep`. Scope-drift audit: in-scope; captured the red baseline the #1880 dense-cube sweep is structurally blind to. In-scope note: the phase reused `component_periodic_idle.hpp` `updateValue()`/stage-mapping (+51/-16) so the frozen value matches the live wave's easing exactly (additive; no contract change). Downstream siblings re-validated against the merge — C1 #2333 / C2 #2334 / D1 #2335 reference the harness abstractly and design symbols V1 never touched (`pos3DtoPos2DIsoYawed`, binding-28, `resolveWinnerTap`); none stale, no amendments. C1 PR #2357 is already WIP against the merged harness.
