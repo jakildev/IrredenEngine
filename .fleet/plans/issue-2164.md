@@ -181,18 +181,28 @@ the only remaining callers of those primitives are the engine mutators.
 
 ## Steward ledger
 
-reconciled-through: 2026-06-30
+reconciled-through: 2026-07-13 (EPIC CLOSED)
 proposal-pending: none
 
 ### Children
 | Child | State | PR | Plan | Last validated |
 |---|---|---|---|---|
-| #2165 | open | — | plan | 2026-06-30 |
-| #2166 | open | — | plan | 2026-06-30 |
-| #2167 | open | — | plan | 2026-06-30 |
+| #2165 | merged (P1) | #2170 | plan | 2026-07-13 |
+| #2166 | merged (P2) | #2173 | plan | 2026-07-13 |
+| #2167 | merged (P3) | #2309 | plan | 2026-07-13 |
 
 ### Decisions
 - D1 (2026-06-30): API shape = editVoxels(fn) + carve(predicate) + resyncAfterRawEdits(); one cohesive delivery split into 3 phased children; codify convention (no broad cross-system audit this round) — source: umbrella plan §Decisions (confirmed with user)
 
 ### Events
 - 2026-06-30: filed via file-epic
+- 2026-07-13 (steward close-out): all 3 children merged — P1 #2165 (PR
+  #2170, 07-01), P2 #2166 (PR #2173, 07-02), P3 #2167 (PR #2309, 07-09).
+  Closing criteria verified: (1) 3/3 children closed; (2) grep
+  `recomputeFaceOccupancy|syncActiveMask` in `creations/` (excl game) →
+  only a doc comment in `skeletal_demo/main.cpp` remains, no hand-rolled
+  pairs; (3) render-verify byte-identity + `skeletal_demo` solid carve
+  verified in the P1/P2 PR reviews. Convention codified
+  (`cpp-ecs.md` §System-owned invariants); smell check upgraded
+  (`simplify-check-ecs.md` #9). Deferred cross-system caller-finalize
+  audit filed as `fleet:coding-improvement` #2364. Umbrella closed.
