@@ -147,6 +147,7 @@ struct CliOverrides {
     float yaw_ = 0.0f;
     bool yawRamp_ = false;
     bool yawRampCrops_ = false;
+    bool yawRampWave_ = false;
     bool waveAmplitudeSet_ = false;
     float waveAmplitude_ = 0.0f;
     bool waveModeSet_ = false;
@@ -219,24 +220,27 @@ IRVideo::RoiCrop g_yawRampCenterCrop{};
 PerfGridSettings g_settings{};
 CliOverrides g_cliOverrides{};
 
-void buildYawRampShots() {
-    // Every pose uses the run's camera zoom — the sweep drives a wide
-    // whole-cube coverage pass (default 0.8) and a tight small-cube zoom pass
-    // (high --zoom + small --grid-size) through the same shot table.
-    const float zoom = g_settings.initialZoom_;
+struct RampPose {
+    float yawRadians_;
+    bool cardinal_;
+    std::string label_;
+};
 
-    struct RampPose {
-        float yawRadians_;
-        bool cardinal_;
-        std::string label_;
-    };
-    std::vector<RampPose> poses;
-
+// Both pose tables below start from the same four exact cardinals.
+void pushCardinalPoses(std::vector<RampPose> &poses) {
     const float cardinals[4] = {0.0f, IRMath::kHalfPi, IRMath::kPi, 3.0f * IRMath::kHalfPi};
     const char *cardinalLabels[4] = {"card000", "card090", "card180", "card270"};
     for (int k = 0; k < 4; ++k) {
         poses.push_back({cardinals[k], true, cardinalLabels[k]});
     }
+}
+
+// Default --yaw-ramp table (#1882/#1883): the four exact cardinals plus a
+// dense near-cardinal residual band (±1..10°), where the per-axis
+// face-alignment seams peak.
+std::vector<RampPose> buildNearCardinalPoses() {
+    std::vector<RampPose> poses;
+    pushCardinalPoses(poses);
 
     const int residualBases[3] = {90, 180, 270};
     const float offsetsDeg[8] = {-10.0f, -6.0f, -3.0f, -1.0f, 1.0f, 3.0f, 6.0f, 10.0f};
@@ -250,6 +254,52 @@ void buildYawRampShots() {
             poses.push_back({rad, false, std::move(label)});
         }
     }
+    return poses;
+}
+
+// --yaw-ramp-wave (#2332): wider-angle pose table for the --wave-freeze
+// coset-collision sweep. #2331's defect (per-cell wave positions colliding
+// onto the same cardinal iso cell) isn't confined to the narrow near-cardinal
+// band the default table samples — it shows up across the whole residual
+// range — so this table covers quadrant-0 densely (5/10/20/30/40°) and
+// spot-checks the other three quadrants at two representative offsets
+// (10/30°) rather than repeating the full set four times over.
+std::vector<RampPose> buildWaveSweepPoses() {
+    std::vector<RampPose> poses;
+    pushCardinalPoses(poses);
+
+    const float quadrant0Deg[5] = {5.0f, 10.0f, 20.0f, 30.0f, 40.0f};
+    for (float deg : quadrant0Deg) {
+        const int rounded = static_cast<int>(deg + 0.5f);
+        std::string label = "wave_q0_p" + (rounded < 10 ? std::string("0") : std::string("")) +
+                            std::to_string(rounded);
+        poses.push_back({deg * IRMath::kPi / 180.0f, false, std::move(label)});
+    }
+
+    const int quadrantBases[3] = {90, 180, 270};
+    const char *quadrantNames[3] = {"q1", "q2", "q3"};
+    const float matchedOffsetsDeg[2] = {10.0f, 30.0f};
+    for (int qi = 0; qi < 3; ++qi) {
+        for (float off : matchedOffsetsDeg) {
+            const float deg = static_cast<float>(quadrantBases[qi]) + off;
+            const int roundedOff = static_cast<int>(off + 0.5f);
+            std::string label = "wave_" + std::string(quadrantNames[qi]) + "_p" +
+                                (roundedOff < 10 ? std::string("0") : std::string("")) +
+                                std::to_string(roundedOff);
+            poses.push_back({deg * IRMath::kPi / 180.0f, false, std::move(label)});
+        }
+    }
+    return poses;
+}
+
+void buildYawRampShots() {
+    // Every pose uses the run's camera zoom — the sweep drives a wide
+    // whole-cube coverage pass (default 0.8) and a tight small-cube zoom pass
+    // (high --zoom + small --grid-size) through the same shot table.
+    const float zoom = g_settings.initialZoom_;
+
+    std::vector<RampPose> poses =
+        g_cliOverrides.yawRampWave_ ? buildWaveSweepPoses() : buildNearCardinalPoses();
 
     // Order by yaw so consecutive shots are a small step apart, keeping the
     // iterative lighting (light volume / AO / sun-shadow) converged frame to
@@ -366,6 +416,14 @@ bool g_noSunShadows = false;
 // (it drops zero visible voxels; the 2×2 isolation E2==A proved it). No-op
 // without --occlusion-cull.
 bool g_noPerVoxelOcclusion = false;
+// --wave-freeze (#2332): bake each per-cell wave's phase-0 offset into the
+// cell's spawn position instead of attaching C_PeriodicIdle. The wave-scene
+// geometry (WaveMode::PerCell's per-cell (x+y+z) phase gradient) is the only
+// content shape that produces (1,1,1)-coset voxel pairs the #2331 defect
+// needs; a live C_PeriodicIdle wave is not byte-identical run-to-run, so a
+// render-verify regression tier needs the frozen static twin instead. Off by
+// default -> flagless spawn path is untouched (byte-identical to master).
+bool g_waveFreeze = false;
 
 PerfGridMode parseMode(const std::string &value) {
     if (value == "voxel_set" || value == "voxel") {
@@ -543,6 +601,12 @@ void registerCliArgs() {
         "With --occlusion-cull, disable only the #1812 per-voxel Hi-Z refine (keep the #1294 chunk "
         "cull) — the marginal-gate isolation"
     );
+    args.flag(
+        "--wave-freeze",
+        "Bake each cell's wave phase-0 offset into its spawn position instead of "
+        "attaching C_PeriodicIdle; makes voxel_set/sdf wave content static and "
+        "deterministic (#2332)"
+    );
     args.string("--mode", "Scene mode: voxel_set | sdf | dense_set | hollow_set", "voxel_set");
     args.integer("--grid-size", "Grid edge in cells", 64);
     args.number("--zoom", "Initial camera zoom", 0.5f);
@@ -551,6 +615,11 @@ void registerCliArgs() {
     args.flag(
         "--yaw-ramp-crops",
         "Attach a center ROI crop to each near-cardinal residual --yaw-ramp pose"
+    );
+    args.flag(
+        "--yaw-ramp-wave",
+        "Use the wider-angle wave-freeze coset-collision pose table instead of the "
+        "near-cardinal residual table (#2332)"
     );
     args.number("--wave-amplitude", "Per-frame idle wave amplitude (0 = static scene)", 0.0f);
     args.string(
@@ -583,6 +652,7 @@ void readCliArgs() {
     g_noOverlay = args.getFlag("--no-overlay");
     g_noSunShadows = args.getFlag("--no-sun-shadows");
     g_noPerVoxelOcclusion = args.getFlag("--no-per-voxel-occlusion");
+    g_waveFreeze = args.getFlag("--wave-freeze");
 
     if (args.wasProvided("--mode")) {
         g_cliOverrides.mode_ = parseMode(args.getString("--mode"));
@@ -608,6 +678,7 @@ void readCliArgs() {
     }
     g_cliOverrides.yawRamp_ = args.getFlag("--yaw-ramp");
     g_cliOverrides.yawRampCrops_ = args.getFlag("--yaw-ramp-crops");
+    g_cliOverrides.yawRampWave_ = args.getFlag("--yaw-ramp-wave");
     if (args.wasProvided("--wave-amplitude")) {
         // 0.0 = static scene (no per-frame voxel motion). Useful for isolating
         // per-frame upload cost in profiler runs.
@@ -739,6 +810,15 @@ C_PeriodicIdle makeWaveIdle(int x, int y, int z) {
     return idle;
 }
 
+// #2332 --wave-freeze: what makeWaveIdle's traveling wave would read at
+// phase 0 (t=0), i.e. before PERIODIC_IDLE's first tick(). Delegates to
+// C_PeriodicIdle::valueAtAngle so the wrap + stage-search + easing lives in
+// one place next to tick(), rather than re-deriving the sine-ease math here.
+vec3 waveFreezeOffset(int x, int y, int z) {
+    C_PeriodicIdle idle = makeWaveIdle(x, y, z);
+    return idle.valueAtAngle(idle.angle_);
+}
+
 vec3 positionForCell(int x, int y, int z) {
     const float center = (static_cast<float>(g_settings.gridSize_) - 1.0f) * 0.5f;
     return (vec3(x, y, z) - vec3(center)) * g_settings.spacing_;
@@ -801,17 +881,32 @@ void createGridEntities() {
     for (int z = 0; z < n; ++z) {
         for (int y = 0; y < n; ++y) {
             for (int x = 0; x < n; ++x) {
-                const vec3 pos = positionForCell(x, y, z);
+                vec3 pos = positionForCell(x, y, z);
                 const Color color = colorForCell(x, y, z, n);
-                C_PeriodicIdle idle = makeWaveIdle(x, y, z);
+                // --wave-freeze (#2332): bake the phase-0 offset into the spawn
+                // position and skip attaching C_PeriodicIdle, so the scene is
+                // fully static. Absent the flag, this branch is untouched and
+                // the idle-driven path below is byte-identical to master.
+                if (g_waveFreeze) {
+                    pos += waveFreezeOffset(x, y, z);
+                }
 
                 if (g_settings.mode_ == PerfGridMode::VoxelSet) {
-                    EntityId cellEntity = IREntity::createEntity(
-                        C_LocalTransform{pos},
-                        C_VoxelSetNew{ivec3(1, 1, 1), color, false},
-                        idle,
-                        C_Modifiers{}
-                    );
+                    EntityId cellEntity;
+                    if (g_waveFreeze) {
+                        cellEntity = IREntity::createEntity(
+                            C_LocalTransform{pos},
+                            C_VoxelSetNew{ivec3(1, 1, 1), color, false},
+                            C_Modifiers{}
+                        );
+                    } else {
+                        cellEntity = IREntity::createEntity(
+                            C_LocalTransform{pos},
+                            C_VoxelSetNew{ivec3(1, 1, 1), color, false},
+                            makeWaveIdle(x, y, z),
+                            C_Modifiers{}
+                        );
+                    }
                     // Cross-set face occupancy: single-voxel sets can't see
                     // their grid neighbors, so without this every interior
                     // voxel reports all six faces exposed and the compact
@@ -820,7 +915,9 @@ void createGridEntities() {
                     // the occluded bits directly. Valid only while the cells
                     // actually touch (spacing 1.0) and stay touching (rigid
                     // wave moves the whole block in phase; the per-cell wave
-                    // shears gaps open, where a stale mask would carve holes).
+                    // shears gaps open — with or without --wave-freeze — where
+                    // a stale mask would carve holes, so this stays gated on
+                    // Rigid only).
                     if (g_settings.waveMode_ == WaveMode::Rigid &&
                         IRMath::abs(g_settings.spacing_ - 1.0f) < 1e-4f) {
                         std::uint8_t occluded = 0;
@@ -842,16 +939,28 @@ void createGridEntities() {
                         }
                     }
                 } else {
-                    IREntity::createEntity(
-                        C_LocalTransform{pos},
-                        C_ShapeDescriptor{
-                            IRRender::ShapeType::BOX,
-                            vec4(1.0f, 1.0f, 1.0f, 0.0f),
-                            color
-                        },
-                        idle,
-                        C_Modifiers{}
-                    );
+                    if (g_waveFreeze) {
+                        IREntity::createEntity(
+                            C_LocalTransform{pos},
+                            C_ShapeDescriptor{
+                                IRRender::ShapeType::BOX,
+                                vec4(1.0f, 1.0f, 1.0f, 0.0f),
+                                color
+                            },
+                            C_Modifiers{}
+                        );
+                    } else {
+                        IREntity::createEntity(
+                            C_LocalTransform{pos},
+                            C_ShapeDescriptor{
+                                IRRender::ShapeType::BOX,
+                                vec4(1.0f, 1.0f, 1.0f, 0.0f),
+                                color
+                            },
+                            makeWaveIdle(x, y, z),
+                            C_Modifiers{}
+                        );
+                    }
                 }
             }
         }
