@@ -186,6 +186,14 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
             fbRes_.x * 0.5f + snappedCamOffset.x + entityAPos.x * fbRes_.x * cameraZoom_.x,
             fbRes_.y * 0.5f + snappedCamOffset.y + entityAPos.y * fbRes_.y * cameraZoom_.y
         );
+        // Z1 origin-anchor compensation: the raster anchors the model origin at
+        // trixelOriginOffsetZ1(canvasSize) = canvasCenter + (-1,-1) texels, but
+        // this quad centers the CANVAS on the entity's iso screen position — so
+        // the content renders one canvas texel left+up of its GRID twin, an
+        // error that scales with zoom on screen (~2*zoom px in x, ~zoom px in
+        // y). Shift the quad one texel so the model origin lands exactly where
+        // the world path puts the entity's iso position.
+        entityFbCenter += texelFb;
 
         vec2 entityScale = vec2(entityCanvas.canvasSize_) / mainCanvasSize_;
         // Placement only: the composite places each detached canvas
