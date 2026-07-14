@@ -99,7 +99,7 @@ layout(std140, binding = 29) uniform FrameDataSun {
     uniform float cascadeSplitDepth;
     uniform int cascadeCount;
     uniform float sunSplatMaxTexels;  // #2270; unused here (sun-map bake only)
-    uniform float _cascadePad1;
+    uniform float sunMaxShadowThrow;  // #2320; unused here (receiver-only)
 };
 
 layout(r32i, binding = 0) readonly uniform iimage2D trixelDistances;

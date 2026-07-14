@@ -29,7 +29,7 @@ struct FrameDataSun {
     // 0 => the exact single-write path (saturated hosts byte-identical). See
     // FrameDataSun in ir_render_types.hpp.
     float sunSplatMaxTexels;
-    float _cascadePad1;
+    float sunMaxShadowThrow;  // #2320; unused here (receiver-only)
 };
 
 // atomic_fetch_min the packed sun depth into one texel of a cascade, if in

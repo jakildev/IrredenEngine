@@ -73,8 +73,8 @@ const float kSelfStepMaxHeight = 1.5;
 // Near sun-Z rejection applied on a detected staircase receiver (#2010). The
 // in-cell step projects to a small sun-Z offset; kept generous (the detection
 // already restricts the carve to staircase pixels) so the self-step blocker is
-// reliably skipped, while the kMaxShadowDepthRange window still rejects genuine
-// far casters. Sized against the --debug-overlay shadow magenta residual over
+// reliably skipped, while the shadow-throw window (sunMaxShadowThrow) still
+// rejects casters past the sweep. Sized against the --debug-overlay shadow magenta residual over
 // the GRID spin cubes.
 const float kSelfStepDepthRange = 3.0;
 

@@ -18,10 +18,6 @@ const float kNormalBiasVoxels = 0.5;
 const float kShadowBiasTexelScale = 2.0;
 const float kShadowBiasSlopeMin = 0.05;
 const float kShadowBiasQuantNoise = 4.0 / kSunDepthScale;
-// Reject shadows from occluders farther than 24 voxels in sun-Z.
-// Prevents adjacent volumes from incorrectly casting onto faces they
-// are beside rather than in front of.
-const float kMaxShadowDepthRange = 24.0;
 const float kCascadeBlendRange = 8.0;
 
 layout(std140, binding = 29) uniform FrameDataSun {
@@ -41,7 +37,11 @@ layout(std140, binding = 29) uniform FrameDataSun {
     uniform float cascadeSplitDepth;
     uniform int cascadeCount;
     uniform float sunSplatMaxTexels;  // #2270; unused here (sun-map bake only)
-    uniform float _cascadePad1;
+    // Maximum shadow-throw window (sun-Z voxels). BAKE_SUN_SHADOW_MAP sets it
+    // from kSunShadowMaxDistance — the SAME distance the feeder / bake AABB
+    // sweep uses — so a baked caster is receivable at its full throw and the
+    // two cannot drift (#2320).
+    uniform float sunMaxShadowThrow;
 };
 
 layout(std430, binding = 28) readonly buffer SunShadowDepthMap {
@@ -50,7 +50,7 @@ layout(std430, binding = 28) readonly buffer SunShadowDepthMap {
 
 float sampleCascadeShadow(
     vec2 sunUV, float sunZ, vec3 normal, vec3 sunDir, vec3 uHat, vec3 vHat,
-    vec2 origin, vec2 texelSz, int bufferOffset, float selfStepDepthRange
+    vec2 origin, vec2 texelSz, int bufferOffset, float maxShadowThrow, float selfStepDepthRange
 ) {
     float slope = max(kShadowBiasSlopeMin, dot(normal, sunDir));
     float texelSize = max(texelSz.x, texelSz.y);
@@ -59,7 +59,7 @@ float sampleCascadeShadow(
     // a detected round-to-cell staircase riser) lifts it as before. Both tap
     // regimes below use this same base; there is NO per-tap widening (a widened
     // threshold was measured-refuted — see #2319 / sun-shadow-bake-coverage.md).
-    // The far shadow-throw window (kMaxShadowDepthRange) also uses this base `bias`.
+    // The far shadow-throw window (maxShadowThrow) also uses this base `bias`.
     float bias = texelSize * kShadowBiasTexelScale / slope + kShadowBiasQuantNoise;
     float nearReject = max(bias, selfStepDepthRange);
 
@@ -90,10 +90,11 @@ float sampleCascadeShadow(
             float weight = mix(1.0 - frac.x, frac.x, float(dx))
                          * mix(1.0 - frac.y, frac.y, float(dy));
             // Far shadow-throw window — raw sun-Z gap to the stored occluder, the
-            // pre-#2319 form on BOTH tap regimes (throw-limit semantics belong to
-            // #2320, not here).
+            // pre-#2319 form on BOTH tap regimes. maxShadowThrow == the feeder /
+            // bake sweep (kSunShadowMaxDistance) so a baked caster is receivable
+            // at its full throw (#2320).
             float depthDiff = sunZ - nearestZ;
-            if (depthDiff - bias >= kMaxShadowDepthRange) continue;
+            if (depthDiff - bias >= maxShadowThrow) continue;
 
             if (sunWriteIsDirect(stored)) {
                 // DIRECT caster's-own-texel write — the trustworthy depth. Today's
@@ -148,7 +149,7 @@ float worldSunShadowFactor(vec3 pos3D, vec3 normal, float isoDepth, float selfSt
     if (cascadeCount <= 1) {
         shadowAccum = sampleCascadeShadow(
             sunUV, sunZ, normal, sunDir, uHat, vHat,
-            sunBufferOriginUV, sunBufferTexelSize, 0, selfStepDepthRange
+            sunBufferOriginUV, sunBufferTexelSize, 0, sunMaxShadowThrow, selfStepDepthRange
         );
     } else {
         float distToSplit = isoDepth - cascadeSplitDepth;
@@ -168,21 +169,21 @@ float worldSunShadowFactor(vec3 pos3D, vec3 normal, float isoDepth, float selfSt
         if (nearInterior && distToSplit < -kCascadeBlendRange) {
             shadowAccum = sampleCascadeShadow(
                 sunUV, sunZ, normal, sunDir, uHat, vHat,
-                cascadeOriginUV_0, cascadeTexelSize_0, 0, selfStepDepthRange
+                cascadeOriginUV_0, cascadeTexelSize_0, 0, sunMaxShadowThrow, selfStepDepthRange
             );
         } else if (!nearInterior || distToSplit > kCascadeBlendRange) {
             shadowAccum = sampleCascadeShadow(
                 sunUV, sunZ, normal, sunDir, uHat, vHat,
-                cascadeOriginUV_1, cascadeTexelSize_1, kCascadeTexelCount, selfStepDepthRange
+                cascadeOriginUV_1, cascadeTexelSize_1, kCascadeTexelCount, sunMaxShadowThrow, selfStepDepthRange
             );
         } else {
             float nearShadow = sampleCascadeShadow(
                 sunUV, sunZ, normal, sunDir, uHat, vHat,
-                cascadeOriginUV_0, cascadeTexelSize_0, 0, selfStepDepthRange
+                cascadeOriginUV_0, cascadeTexelSize_0, 0, sunMaxShadowThrow, selfStepDepthRange
             );
             float farShadow = sampleCascadeShadow(
                 sunUV, sunZ, normal, sunDir, uHat, vHat,
-                cascadeOriginUV_1, cascadeTexelSize_1, kCascadeTexelCount, selfStepDepthRange
+                cascadeOriginUV_1, cascadeTexelSize_1, kCascadeTexelCount, sunMaxShadowThrow, selfStepDepthRange
             );
             float t = smoothstep(-kCascadeBlendRange, kCascadeBlendRange, distToSplit);
             shadowAccum = mix(nearShadow, farShadow, t);

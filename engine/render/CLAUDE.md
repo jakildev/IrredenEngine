@@ -587,7 +587,10 @@ shadow range project into the depth map even when their iso position
 is outside the visible rect — same role invariant #2 plays for the
 old occupancy march. Bumping `kSunShadowMaxDistance` is the lever for
 longer shadows; expect proportionally larger sun-space texels (the
-1024² depth map is fixed) and softer shadow boundaries.
+1024² depth map is fixed) and softer shadow boundaries. The receiver's
+shadow-throw window reads this same distance (uploaded into
+`FrameDataSun.sunMaxShadowThrow_`; #2320), so a caster the sweep bakes is
+receivable at its full throw — the two cannot drift.
 
 The AABB sweep governs which off-screen casters *reach* the map; a
 separate concern is **in-map coverage** — a screen-space bake projects a
