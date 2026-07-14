@@ -69,10 +69,15 @@ Don't re-check these — wasted Opus budget. Spend the pass on the
 1. `pwd` — confirm you are in the `opus-reviewer` worktree.
 2. **Discover repo slugs** — see [docs/agents/FLEET-CACHE.md § Repo slug discovery](../../docs/agents/FLEET-CACHE.md#repo-slug-discovery).
 3. Confirm you are on the throwaway branch
-   `claude/opus-reviewer-scratch`. If not, run these two commands
+   `claude/opus-reviewer-scratch`. If not, run these three commands
    separately (do NOT wrap in `cd ... &&`):
+   `fleet-assert-worktree opus-reviewer`
    `git -C ~/src/IrredenEngine fetch origin --quiet`
-   `git checkout -B claude/opus-reviewer-scratch origin/master`
+   `git -C ~/src/IrredenEngine/.claude/worktrees/opus-reviewer checkout -B claude/opus-reviewer-scratch origin/master`
+   The `-C` worktree path keeps the reset out of the shared main
+   clones even if the shell cwd drifted; if the assert fails, `cd`
+   back into your worktree first. See
+   [REVIEWER-PROTOCOL.md § Scratch reset & main-clone cwd discipline](../../docs/agents/REVIEWER-PROTOCOL.md#scratch-reset--main-clone-cwd-discipline).
 4. **Read the shared fleet state cache** with the Read tool:
    `~/.fleet/state/state.json`. One Read replaces the two `gh pr
    list --json reviews,labels,...` calls that used to live here —
@@ -212,10 +217,17 @@ iteration of polling, reviewing, and exiting cleanly:
       If the gate decides "do not post a verdict," release the claim
       and move on.
    d. **Engine PRs:** Invoke the `review-pr` skill on the PR.
-      **Game PRs:** Read the diff with `fleet-pr diff <N> --repo game`
-      and review manually (you cannot check out game PRs into this
-      engine worktree). For game conventions, read
-      `~/src/IrredenEngine/creations/game/CLAUDE.md`.
+      **Game PRs:** game-PR review is **diff-only** — you have no
+      game worktree, and you must NOT check the PR out in the shared
+      game main clone (`creations/game`) or `cd` into it: a checkout
+      there freezes the game clone's master and blocks every game
+      claim fleet-wide (see
+      [REVIEWER-PROTOCOL.md § Scratch reset & main-clone cwd discipline](../../docs/agents/REVIEWER-PROTOCOL.md#scratch-reset--main-clone-cwd-discipline)).
+      Read the diff with `fleet-pr diff <N> --repo game`, file
+      context with read-only `git -C
+      ~/src/IrredenEngine/creations/game show origin/master:<path>`
+      or the Read tool, and review manually. For game conventions,
+      read `~/src/IrredenEngine/creations/game/CLAUDE.md`.
    e. Focus your review on the items Sonnet could not confirm — do
       not duplicate work Sonnet already did. Your review body should
       explicitly call out the Sonnet review by saying "Sonnet flagged
@@ -247,10 +259,18 @@ iteration of polling, reviewing, and exiting cleanly:
    re-review round over a renamed variable.
 3. **Reset to scratch branch.** After reviewing all candidates (or if
    none existed), return to the scratch branch so no PR branch is left
-   checked out — other agents may need to check out the same branch:
-   `git checkout -B claude/opus-reviewer-scratch origin/master`
-   This prevents "branch already checked out in worktree" errors when
-   a worker agent tries to check out a PR branch you just reviewed.
+   checked out — other agents may need to check out the same branch.
+   Run as two separate commands (no `&&`):
+   `fleet-assert-worktree opus-reviewer`
+   `git -C ~/src/IrredenEngine/.claude/worktrees/opus-reviewer checkout -B claude/opus-reviewer-scratch origin/master`
+   The `-C` worktree path is mandatory — a bare `git checkout -B`
+   resolves against the shell's persisted cwd, and after a game-PR
+   pass that cwd can be the shared game main clone (see
+   [REVIEWER-PROTOCOL.md § Scratch reset & main-clone cwd discipline](../../docs/agents/REVIEWER-PROTOCOL.md#scratch-reset--main-clone-cwd-discipline)).
+   If the assert fails, `cd` back into your worktree before
+   continuing. This prevents "branch already checked out in worktree"
+   errors when a worker agent tries to check out a PR branch you just
+   reviewed.
 4. **Shutdown.** See [docs/agents/FLEET-RUNTIME.md § Per-iteration shutdown](../../docs/agents/FLEET-RUNTIME.md#per-iteration-shutdown--final-step).
    `fleet-iteration-summary opus-reviewer "<PR numbers reviewed, verdicts, snags — under 100 words.>"`
    Reviewers do not reserve worktrees, so skip `release-worktree`; the

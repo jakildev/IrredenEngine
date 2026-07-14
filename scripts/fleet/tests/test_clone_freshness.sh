@@ -120,6 +120,33 @@ echo "$out" | grep -q "not master" && ok "warns about non-master clone" || fail 
 git_q "$CLONE" checkout master
 git_q "$CLONE" branch -D feature/x
 
+# --- T5b: reviewer-scratch self-heal — clean tree parked on scratch heals ----
+echo "T5b: reviewer-scratch self-heal (clean tree)"
+reset_rate_limit
+advance_main_clone "$CLONE" 2>/dev/null            # sync to origin first
+git_q "$CLONE" checkout -B claude/opus-reviewer-scratch origin/master
+push_new_commit s1
+reset_rate_limit
+out=$(advance_main_clone "$CLONE" 2>&1 || true)
+[[ "$(git -C "$CLONE" rev-parse --abbrev-ref HEAD)" == "master" ]] && ok "clone put back on master" || fail "clone still on $(git -C "$CLONE" rev-parse --abbrev-ref HEAD)"
+behind=$(clone_behind_count "$CLONE")
+[[ "$behind" == "0" ]] && ok "advance continued after self-heal (behind 0)" || fail "behind=$behind after self-heal"
+if git -C "$CLONE" rev-parse --verify --quiet refs/heads/claude/opus-reviewer-scratch >/dev/null; then fail "junk scratch branch not deleted"; else ok "junk scratch branch deleted"; fi
+echo "$out" | grep -q "self-healed" && ok "logs the self-heal" || fail "no self-heal log: $out"
+
+# --- T5c: reviewer-scratch + dirty tree — refuse self-heal, warn loudly ------
+echo "T5c: reviewer-scratch with dirty tree is NOT self-healed"
+git_q "$CLONE" checkout -B claude/sonnet-reviewer-scratch origin/master
+echo "dirt" >> "$CLONE/file"
+push_new_commit s2
+reset_rate_limit
+out=$(advance_main_clone "$CLONE" 2>&1 || true)
+[[ "$(git -C "$CLONE" rev-parse --abbrev-ref HEAD)" == "claude/sonnet-reviewer-scratch" ]] && ok "dirty scratch clone left untouched" || fail "branch changed on dirty scratch clone"
+echo "$out" | grep -q "FROZEN" && ok "loud frozen-master warning" || fail "no loud warning: $out"
+git_q "$CLONE" checkout -- file
+git_q "$CLONE" checkout master
+git_q "$CLONE" branch -D claude/sonnet-reviewer-scratch
+
 # --- T6: dirty guard — never clobber uncommitted work ------------------------
 echo "T6: dirty working tree guard"
 reset_rate_limit

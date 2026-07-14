@@ -62,6 +62,49 @@ on your part — just don't expect to see mid-amend PRs.
 
 ---
 
+## Scratch reset & main-clone cwd discipline
+
+Both reviewer roles park their worktree on a throwaway branch
+(`claude/<role>-scratch`) at startup and re-park after the last
+candidate. Two rules keep that reset from contaminating shared state:
+
+**1. The reset must be cwd-proof.** The Bash tool's working directory
+persists across calls, so a `cd` from earlier in the iteration
+silently redirects a bare `git checkout -B …` at whatever repo the
+shell happens to be sitting in — observed twice landing a reviewer
+scratch branch in the shared game MAIN clone (2026-07-09,
+2026-07-13). Run the reset as two separate commands (no `&&`), with
+the checkout going through an explicit `-C` worktree path so the cwd
+is irrelevant:
+
+```
+fleet-assert-worktree <your-worktree-name>
+git -C ~/src/IrredenEngine/.claude/worktrees/<your-worktree-name> checkout -B claude/<role>-scratch origin/master
+```
+
+If `fleet-assert-worktree` exits non-zero, the shell has drifted out
+of your worktree — later relative-path steps (`.review-body.md`)
+would misroute too. Run
+`cd ~/src/IrredenEngine/.claude/worktrees/<your-worktree-name>` as
+its own Bash call, re-run the assert, then do the reset.
+
+**2. Never run mutating git in a shared MAIN clone** — neither the
+engine clone (`~/src/IrredenEngine`) nor the game clone
+(`~/src/IrredenEngine/creations/game`). Reviewers have **no game
+worktree**, and "you cannot check out game PRs into this engine
+worktree" does NOT mean "check them out in the game clone instead" —
+it means game-PR review is diff-only. Read the diff with `fleet-pr
+diff <N> --repo game`; read game file context with read-only
+commands (`git -C ~/src/IrredenEngine/creations/game show
+origin/master:<path>`, `… log`, `… ls-tree`) or the Read tool. Never
+`cd` there, never `gh pr checkout` there, never
+`checkout`/`switch`/`reset`/`stash` there. A reviewer scratch branch
+parked in the game main clone freezes that clone's master ref, and
+the clone-freshness gate (`assert_clone_fresh`) then refuses EVERY
+game-repo claim fleet-wide until the clone is put back on master.
+
+---
+
 ## Stack awareness — gate on upstream status, then note context
 
 A stacked PR's `baseRefName` IS its upstream PR's `headRefName`. The
@@ -359,6 +402,13 @@ role file.
 - **Never commit, push, or open PRs from a reviewer worktree.** The
   `review-pr` skill documents this as an anti-pattern; treat it as a
   hard rule.
+- **Never `cd` into or run mutating git in a shared MAIN clone**
+  (engine `~/src/IrredenEngine` or game
+  `~/src/IrredenEngine/creations/game`), and always use the
+  `fleet-assert-worktree` + `git -C <your-worktree>` form for the
+  scratch reset — see § Scratch reset & main-clone cwd discipline. A
+  scratch branch parked in a main clone freezes its master and blocks
+  every claim on that repo via the clone-freshness gate.
 - **Never `gh pr review --approve` or `--request-changes`.** All fleet
   agents share one GitHub account and GitHub rejects formal review
   actions on your own PRs. Always use `--comment` with a clear verdict
