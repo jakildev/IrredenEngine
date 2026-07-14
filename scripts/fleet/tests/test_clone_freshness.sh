@@ -206,6 +206,23 @@ else
     fail "restore errored on missing repo"
 fi
 
+# --- T14: ALREADY on master, disjoint tracked dirty file -> NOT advanced -------
+# The restore-side mirror of T6: a disjoint dirty tree would ff-advance fine on
+# its own (the incoming commits touch a different file), so only the tracked-WIP
+# guard stops it. Covers the guard firing on-master, not just on a parked
+# branch. See #2378.
+echo "T14: on master with disjoint tracked WIP -> master NOT advanced"
+git_q "$CLONE2" checkout master
+on_master_head=$(git -C "$CLONE2" rev-parse master)
+echo "disjoint-wip" > "$CLONE2/other"   # tracked WIP on a file the incoming commit won't touch
+git_q "$CLONE2" add other
+push_new_commit t14                      # origin advances 'file' (disjoint from 'other')
+out=$(restore_main_clone_to_master "$CLONE2" 2>&1 || true)
+[[ "$(git -C "$CLONE2" rev-parse master)" == "$on_master_head" ]] \
+    && ok "on-master disjoint-dirty clone NOT advanced" || fail "advanced master under uncommitted WIP"
+grep -q "disjoint-wip" "$CLONE2/other" && ok "on-master WIP preserved" || fail "WIP lost"
+echo "$out" | grep -q "live WIP wins" && ok "warns loudly on-master too" || fail "no WIP warning: $out"
+
 echo ""
 echo "PASS: $PASS  FAIL: $FAIL"
 [[ $FAIL -eq 0 ]]

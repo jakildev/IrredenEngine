@@ -195,11 +195,19 @@ restore_main_clone_to_master() {
 
     local branch
     branch="$(git -C "$root" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?')"
+
+    # Tracked WIP wins over the restore on EITHER path (parked branch or already
+    # on master). This must gate before the ff-advance below: _ff_advance's
+    # ff-only refuses only when the incoming commits *overlap* the dirty files —
+    # a disjoint dirty tree on master would otherwise be advanced silently
+    # underneath uncommitted work, contradicting the "never touch, warn loudly"
+    # invariant documented above.
+    if [[ -n "$tracked_dirty" ]]; then
+        echo "fleet-clone-freshness: $root has tracked modifications on '$branch' — leaving it alone (live WIP wins). Claims stay blocked until it is clean and on master; commit or ship the WIP, then rerun fleet-up." >&2
+        return 0
+    fi
+
     if [[ "$branch" != "master" ]]; then
-        if [[ -n "$tracked_dirty" ]]; then
-            echo "fleet-clone-freshness: $root is parked on '$branch' WITH tracked modifications — leaving it alone (live WIP wins). Claims stay blocked until it returns to master; commit or ship the WIP, then rerun fleet-up." >&2
-            return 0
-        fi
         if git -C "$root" checkout master --quiet 2>/dev/null; then
             echo "fleet-clone-freshness: $root returned to master (was on '$branch', no tracked WIP)." >&2
         else
