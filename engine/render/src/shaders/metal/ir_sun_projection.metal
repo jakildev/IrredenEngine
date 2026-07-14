@@ -51,12 +51,11 @@ inline float3 sunSpaceProject(float3 pos3D, float3 uHat, float3 vHat, float3 sun
 //     texel (strengthens the saturated-host invariant — docs/design/sun-shadow-bake-coverage.md).
 // Max packed = (2^20 << 8) | 0xFF = 2^28+255 << the 0xFFFFFFFF empty sentinel.
 //
-// The vector (not the scalar displacement of the refuted round-1 form) is what
-// lets the receiver reconstruct the write's ORIGIN texel and run an EXACT
-// same-plane test — rejecting a same-face self-occluder at any splat distance
-// while keeping a genuine cast at the base bias — instead of a widened threshold
-// that erodes real cast shadows (ir_sun_shadow_sample; see the design doc).
-// Mirrors GLSL.
+// The full displacement vector (see #2319) lets the receiver reconstruct the
+// write's ORIGIN texel and run an EXACT same-plane test — rejecting a same-face
+// self-occluder at any splat distance while keeping a genuine cast at the base
+// bias (ir_sun_shadow_sample). Why a stored vector rather than a widened bias:
+// docs/design/sun-shadow-bake-coverage.md. Mirrors GLSL.
 inline uint packSunDepth(float sunZ, int2 splatOffset) {
     float biased = clamp(sunZ + kSunDepthOffset, 0.0, kSunDepthOffset * 2.0);
     uint lowByte = (uint(splatOffset.x & 0xF) << 4) | uint(splatOffset.y & 0xF);

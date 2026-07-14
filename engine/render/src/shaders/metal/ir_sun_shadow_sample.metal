@@ -54,11 +54,10 @@ inline float sampleCascadeShadow(
     // Base receiver near-rejection — the trustworthy tolerance for a DIRECT
     // (caster's-own-texel) sun-map write. selfStepDepthRange (#2010, 0 except on
     // a detected round-to-cell staircase riser) lifts it as before. Both tap
-    // regimes below use this same base; there is NO per-tap widening (that was
-    // the refuted round-1 scalar form — it eroded genuine cast shadows because a
-    // cast splat's displacement is as large as a self-hit's). The far
-    // shadow-throw window (kMaxShadowDepthRange) also uses this base `bias`.
-    // Mirrors the GLSL twin.
+    // regimes below use this same base; there is NO per-tap widening (a widened
+    // threshold was measured-refuted — see #2319 / sun-shadow-bake-coverage.md).
+    // The far shadow-throw window (kMaxShadowDepthRange) also uses this base
+    // `bias`. Mirrors the GLSL twin.
     float bias = texelSize * kShadowBiasTexelScale / slope + kShadowBiasQuantNoise;
     float nearReject = max(bias, selfStepDepthRange);
 
