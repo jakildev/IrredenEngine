@@ -101,6 +101,24 @@ For each `fleet:needs-plan` issue:
      wrong-by-construction defect into the plan (#1814: "destroying an entity
      doesn't free its ResourceIds" was false for ~8 of 9 components; the
      prescribed hook would have double-freed them).
+   - **Mechanism premises are measured, not asserted (phase 0).** When any
+     phase's lever depends on a measurable mechanism claim — where a cost
+     lives (body-side vs dispatch-bound), which code path dominates, that a
+     stage/mode fires at all, that two values share one storage or shape — the
+     plan must either **(i)** cite an existing measurement with its source (a
+     per-system timer row, an `--auto-profile` table, a disarm probe per
+     [`docs/design/gpu-stage-timing-cost-model.md § 3`](../design/gpu-stage-timing-cost-model.md),
+     a DOMAIN-STATE log), or **(ii)** name a cheap probe as **phase 0 of the
+     Approach**: what the implementer runs, the expected reading that confirms
+     the premise, and the bail path if it is refuted (stop; comment the
+     measurement on the issue; design-block or flag for re-plan — never build
+     the dependent phases on a refuted premise). Phase 0 verifies the premise
+     of the **already-picked** approach — it is not approach-deferral: a
+     refuted premise routes to design-block/re-plan, never to a
+     mid-implementation choice between approaches. Recurrences: #2258 (assumed
+     body-side, measured dispatch-bound), #2256/#2271/#2273 (parallel efforts
+     on mutually-invalidated premises), #2278 (vacuous gate), #2321
+     (unverified singleton / same-shape premise).
    - **One approach, picked.** Step-by-step: which files, what order,
      key decisions — and the plan **commits to a single approach**.
      Deferring the choice to the worker ("confirm during
@@ -119,7 +137,13 @@ For each `fleet:needs-plan` issue:
    - Suggested model tag (`[fable]`, `[opus]`, or `[sonnet]`) for each
      piece — same criteria as the plan's `**Model:**` line (FLEET.md
      §"Model split")
-   - Acceptance criteria
+   - **Acceptance criteria** — and the named acceptance tests must be
+     **positive-fire**: at least one named check observably fires with the
+     feature ON (a count > 0, an asserted probe reading, a visible delta). A
+     gate that passes at default / on byte-identical output alone proves the
+     OFF path is a no-op, not that the premise holds — mirror of the
+     enabled-path rule (`engine/render/CLAUDE.md`, #1989/#2338; PR #2399
+     landed it render-side).
    - Known gotchas or pitfalls
    - **Cross-system audit (when planning a deletion or migration of a
      shared resource** — component, SSBO, GPU buffer, system,
@@ -238,7 +262,9 @@ For each `fleet:needs-plan` issue:
    reviewer (the architect, or the opus reviewer loop) reads the `## Plan`
    comment and judges it *as a plan* against the step-2 rigor — verified current
    state, a single committed approach, sibling/in-flight reconciliation, a
-   cross-system audit where one is required:
+   cross-system audit where one is required, no phase assuming an unmeasured
+   mechanism (a cited measurement or phase-0 probe is required), and
+   positive-fire acceptance tests:
    - **Sound →** remove `fleet:plan-review`. The issue is queue-ready **unless**
      it also carries `human:review-plan` (a high-stakes hold) — in that case it
      stays held for the human's approach sign-off; the scout queues it only once

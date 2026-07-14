@@ -61,6 +61,12 @@ DEFER = GOOD.replace("one approach: edit foo.cpp then bar.cpp",
                      "decide during implementation whether to edit foo or bar")
 SPIKE = GOOD.replace("one approach: edit foo.cpp then bar.cpp",
                      "investigation spike - decide during investigation")
+# #2401: a mechanism-lever premise (cost/path-dominance claim) with no
+# measurement citation should warn; the same plan citing a disarm probe should not.
+LEVER = GOOD.replace("one approach: edit foo.cpp then bar.cpp",
+                     "the cost is dominated by the resolve loop; one approach: edit foo.cpp")
+LEVER_CITED = LEVER.replace("dominated by the resolve loop",
+                            "dominated by the resolve loop, confirmed by a disarm probe")
 F = {
   "100": {"title": "sound task", "comments": [{"body": GOOD}]},
   "101": {"title": "defer task", "comments": [{"body": DEFER}]},
@@ -68,6 +74,8 @@ F = {
   "103": {"title": "skeletal", "comments": [{"body": "## Plan: skeletal\n\nwe should do it somehow"}]},
   "104": {"title": "investigation spike for X", "comments": [{"body": SPIKE}]},
   "105": {"title": "tbd task", "comments": [{"body": GOOD + "\n\nopen question: TBD"}]},
+  "106": {"title": "lever task", "comments": [{"body": LEVER}]},
+  "107": {"title": "lever cited task", "comments": [{"body": LEVER_CITED}]},
 }
 print(json.dumps(F.get(num, {"title": "missing", "comments": []})))
 PYEOF
@@ -87,6 +95,14 @@ pass_out=$("$LINT" 100 2>&1 || true)
 case "$pass_out" in *"PASS #100"*) ok "sound plan prints PASS line";; *) bad "sound PASS line missing: [$pass_out]";; esac
 defer_out=$("$LINT" 101 2>&1 || true)
 case "$defer_out" in *deferred-approach*) ok "defer fail names the phrase";; *) bad "defer phrase not named: [$defer_out]";; esac
+# #2401 — mechanism-lever premise without a measurement citation: warn fires, exit still 0.
+"$LINT" 106 >/dev/null 2>&1; assert_exit $? 0 "mechanism-lever w/o citation -> exit 0 (warn only)"
+lever_out=$("$LINT" 106 2>&1 || true)
+case "$lever_out" in *"mechanism-lever language"*) ok "mechanism-lever warn fires";; *) bad "mechanism-lever warn missing: [$lever_out]";; esac
+# Same plan citing a disarm probe -> warn suppressed.
+"$LINT" 107 >/dev/null 2>&1; assert_exit $? 0 "mechanism-lever w/ citation -> exit 0"
+cited_out=$("$LINT" 107 2>&1 || true)
+case "$cited_out" in *"mechanism-lever language"*) bad "mechanism-lever warn should be absent when premise cited: [$cited_out]";; *) ok "mechanism-lever warn absent when premise cited";; esac
 "$LINT" --repo bogus 100 >/dev/null 2>&1; assert_exit $? 2 "bad --repo -> usage exit 2"
 set -e
 
