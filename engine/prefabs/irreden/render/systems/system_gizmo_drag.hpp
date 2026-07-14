@@ -232,7 +232,7 @@ template <> struct System<GIZMO_DRAG> {
         }
         case IRComponents::GizmoKind::ROTATE_RING: {
             const float currentAngle = cursorCanvasAngle(mouseCanvasIso_);
-            float delta = wrapToPi(currentAngle - dragStartRotateAngle_);
+            float delta = IRMath::wrapAnglePi(currentAngle - dragStartRotateAngle_);
             if (shiftHeld_) {
                 delta = IRMath::round(delta / kRotateSnapStep) * kRotateSnapStep;
             }
@@ -318,19 +318,11 @@ template <> struct System<GIZMO_DRAG> {
     // iso position, in radians. Both terms live in the rasterYaw-
     // rotated canvas iso frame (mousePosition2DIsoWorldRender ↔
     // pos3DtoPos2DIso(rotateCardinalZ(worldPos))) so the relative
-    // vector is camera-pan invariant. wrapToPi normalizes deltas
-    // across the ±π discontinuity.
+    // vector is camera-pan invariant. IRMath::wrapAnglePi normalizes
+    // deltas across the ±π discontinuity.
     float cursorCanvasAngle(IRMath::vec2 cursorCanvas) const {
         const IRMath::vec2 delta = cursorCanvas - dragAnchorScreenIso_;
         return IRMath::atan2(delta.y, delta.x);
-    }
-
-    static float wrapToPi(float a) {
-        while (a > IRMath::kPi)
-            a -= IRMath::kTwoPi;
-        while (a < -IRMath::kPi)
-            a += IRMath::kTwoPi;
-        return a;
     }
 };
 

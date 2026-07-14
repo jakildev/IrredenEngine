@@ -143,10 +143,7 @@ struct C_PeriodicIdle {
     // then runs the same stage-search + easing tick() does, so the result
     // matches the running animation exactly.
     vec3 valueAtAngle(float angle) const {
-        float wrapped = IRMath::fmod(angle, IRMath::kTwoPi);
-        if (wrapped < 0.0f) {
-            wrapped += IRMath::kTwoPi;
-        }
+        float wrapped = IRMath::wrapAngleTwoPi(angle);
         return evaluateStage(wrapped, stages_[advanceStageIndex(wrapped, 0)]);
     }
 

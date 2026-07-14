@@ -21,26 +21,30 @@ namespace IRSystem {
 
 template <> struct System<ACTION_ANIMATION> {
     static SystemId create() {
-        static std::unordered_map<IREntity::EntityId, const C_AnimationClip*> clipCache;
+        static std::unordered_map<IREntity::EntityId, const C_AnimationClip *> clipCache;
 
         return createSystem<C_ActionAnimation, C_LocalTransform, C_ContactEvent>(
             "ActionAnimation",
             [](C_ActionAnimation &anim,
                C_LocalTransform &localXform,
                const C_ContactEvent &contact) {
-                if (anim.bindingCount_ <= 0) return;
+                if (anim.bindingCount_ <= 0)
+                    return;
 
                 if (!anim.originInitialized_) {
                     anim.origin_ = localXform.translation_;
                     anim.originInitialized_ = true;
                 }
 
-                auto fetchClip = [](IREntity::EntityId id) -> const C_AnimationClip* {
-                    if (id == IREntity::kNullEntity) return nullptr;
+                auto fetchClip = [](IREntity::EntityId id) -> const C_AnimationClip * {
+                    if (id == IREntity::kNullEntity)
+                        return nullptr;
                     auto it = clipCache.find(id);
-                    if (it != clipCache.end()) return it->second;
+                    if (it != clipCache.end())
+                        return it->second;
                     auto opt = IREntity::getComponentOptional<C_AnimationClip>(id);
-                    if (!opt.has_value()) return nullptr;
+                    if (!opt.has_value())
+                        return nullptr;
                     clipCache[id] = opt.value();
                     return opt.value();
                 };
@@ -51,23 +55,19 @@ template <> struct System<ACTION_ANIMATION> {
                         return contact.entered_;
 
                     case ANIM_TRIGGER_TIMER_SYNC:
-                        if (contact.touching_ &&
-                            contact.otherEntity_ != IREntity::kNullEntity) {
-                            auto launchOpt =
-                                IREntity::getComponentOptional<C_RhythmicLaunch>(
-                                    contact.otherEntity_);
+                        if (contact.touching_ && contact.otherEntity_ != IREntity::kNullEntity) {
+                            auto launchOpt = IREntity::getComponentOptional<C_RhythmicLaunch>(
+                                contact.otherEntity_
+                            );
                             if (launchOpt.has_value()) {
                                 const auto &launch = *launchOpt.value();
                                 if (launch.periodSeconds_ <= 0.0) {
                                     return false;
                                 }
-                                double elapsedWrapped = std::fmod(
+                                double elapsedWrapped = IRMath::wrapToRange(
                                     launch.elapsedSeconds_,
                                     launch.periodSeconds_
                                 );
-                                if (elapsedWrapped < 0.0) {
-                                    elapsedWrapped += launch.periodSeconds_;
-                                }
                                 double timeUntilFire = launch.periodSeconds_ - elapsedWrapped;
                                 return timeUntilFire <= binding.timerSyncLeadSeconds_ &&
                                        timeUntilFire >= 0.0;
@@ -82,8 +82,7 @@ template <> struct System<ACTION_ANIMATION> {
                     }
                 };
 
-                const double dt = static_cast<double>(
-                    IRTime::deltaTime(IRTime::UPDATE));
+                const double dt = static_cast<double>(IRTime::deltaTime(IRTime::UPDATE));
 
                 // --- Trigger check ---
                 for (int i = 0; i < anim.bindingCount_; ++i) {
@@ -112,8 +111,8 @@ template <> struct System<ACTION_ANIMATION> {
 
                 // --- Hold position when idle ---
                 if (!anim.isPlaying()) {
-                    localXform.translation_ = anim.origin_ +
-                        anim.direction_ * anim.currentDisplacement_;
+                    localXform.translation_ =
+                        anim.origin_ + anim.direction_ * anim.currentDisplacement_;
                     return;
                 }
 
@@ -132,20 +131,20 @@ template <> struct System<ACTION_ANIMATION> {
 
                 const auto &phase = clip->phases_[anim.currentPhase_];
                 double phaseDur = phase.durationSeconds_;
-                if (phaseDur <= 0.0) phaseDur = 0.001;
+                if (phaseDur <= 0.0)
+                    phaseDur = 0.001;
 
                 double t = anim.phaseElapsed_ / phaseDur;
-                if (t > 1.0) t = 1.0;
+                if (t > 1.0)
+                    t = 1.0;
 
                 float startDisp = phase.startDisplacement_;
                 if (anim.currentPhase_ == 0 && anim.hasPhaseStartOverride_) {
                     startDisp = anim.phaseStartOverride_;
                 }
 
-                float eased = kEasingFunctions.at(phase.easingFunction_)(
-                    static_cast<float>(t));
-                float displacement = IRMath::mix(
-                    startDisp, phase.endDisplacement_, eased);
+                float eased = kEasingFunctions.at(phase.easingFunction_)(static_cast<float>(t));
+                float displacement = IRMath::mix(startDisp, phase.endDisplacement_, eased);
 
                 anim.currentDisplacement_ = displacement;
                 localXform.translation_ = anim.origin_ + anim.direction_ * displacement;
@@ -167,8 +166,8 @@ template <> struct System<ACTION_ANIMATION> {
                         anim.currentDisplacement_ =
                             clip->phases_[clip->phaseCount_ - 1].endDisplacement_;
                         anim.stopClip();
-                        localXform.translation_ = anim.origin_ +
-                            anim.direction_ * anim.currentDisplacement_;
+                        localXform.translation_ =
+                            anim.origin_ + anim.direction_ * anim.currentDisplacement_;
                         return;
                     }
                 }

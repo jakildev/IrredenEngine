@@ -28,6 +28,7 @@ The wrapper layer in [`engine/math/include/irreden/`](../../engine/math/include/
 | `std::min(a, b)` / `std::max(a, b)` / `std::clamp(...)` | `IRMath::min` / `IRMath::max` / `IRMath::clamp` |
 | `std::sin(x)` / `std::cos(x)` / `std::abs(x)` | `IRMath::sin(x)` / `IRMath::cos(x)` / `IRMath::abs(x)` |
 | `std::cbrt(x)` | `IRMath::cbrt(x)` |
+| `std::fmod(x, p)` + `if (v < 0) v += p`, or `while` ±2π wrap loops | `IRMath::wrapToRange(x, p)` / `IRMath::wrapAngleTwoPi(a)` / `IRMath::wrapAnglePi(a)` |
 
 ## Iso projection: never inline the equations
 

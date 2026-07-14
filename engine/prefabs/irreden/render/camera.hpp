@@ -69,11 +69,7 @@ inline IRComponents::C_LocalTransform *cameraTransform() {
 // For q = qZ(yaw) × qX(pitch): atan2(q.z, q.w) = yaw/2 when pitch is
 // clamped to ±(π/2 − ε) as guaranteed by clampPitch.
 inline float yawFromQuat(const IRMath::vec4 &q) {
-    float yaw = 2.0f * IRMath::atan2(q.z, q.w);
-    yaw = IRMath::fmod(yaw + IRMath::kPi, IRMath::kTwoPi);
-    if (yaw < 0.0f)
-        yaw += IRMath::kTwoPi;
-    return yaw - IRMath::kPi;
+    return IRMath::wrapAnglePi(2.0f * IRMath::atan2(q.z, q.w));
 }
 
 // Extract X-pitch from the ZX-composed camera quaternion.
@@ -85,13 +81,9 @@ inline float pitchFromQuat(const IRMath::vec4 &q) {
 }
 
 inline float wrapYaw(float yaw) {
-    float wrapped = IRMath::fmod(yaw + IRMath::kPi, IRMath::kTwoPi);
-    if (wrapped < 0.0f)
-        wrapped += IRMath::kTwoPi;
-    wrapped = wrapped - IRMath::kPi;
     // Keep strictly above -π so pitchFromQuat's atan2(q.x, q.w) stays valid.
     // The 1e-4 gap is invisible to the rasterizer (<1/10 000 of π/2 ≈ 0°0.006').
-    return IRMath::max(wrapped, -IRMath::kPi + 1e-4f);
+    return IRMath::max(IRMath::wrapAnglePi(yaw), -IRMath::kPi + 1e-4f);
 }
 
 static constexpr float kPitchLimit = IRMath::kHalfPi - 0.01f;

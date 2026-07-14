@@ -41,6 +41,7 @@ add_executable(IrredenEngineTest
   ecs/voxel_set_target_canvas_test.cpp
   math/physics_test.cpp
   math/ir_math_test.cpp
+  math/ir_math_wrap_test.cpp
   math/ir_math_viewport_helpers_test.cpp
   math/camera_subpixel_test.cpp
   math/ir_math_color_layout_test.cpp
