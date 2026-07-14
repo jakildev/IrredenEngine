@@ -30,6 +30,11 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
 - **A new executable ships with a `tests/test_<name>.{sh,py}`** in the same
   PR — the fleet-tooling form of the review checklist's "new feature with no
   new test"; the `simplify` pre-commit pass flags the omission.
+- **Bash tests source `tests/lib_assert.sh`** for the PASS/FAIL counters,
+  `ok`/`bad`, `assert_eq`/`assert_contains`/`assert_absent`, and the
+  `summarize` exit idiom — don't re-copy the helpers into a new test.
+  Genuinely test-specific asserts (path existence, exit codes) stay local,
+  built on `ok`/`bad`.
 - **Unattended daemons timeout-guard their network calls.** The host's
   connections to GitHub intermittently black-hole (silent TCP death), so a
   hung `git fetch` / `gh …` in a fleet daemon (dispatcher loop, `fleet-rebase`,
