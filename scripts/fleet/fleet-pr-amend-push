@@ -57,6 +57,25 @@ if [[ -z "$git_dir" ]]; then
     exit 1
 fi
 
+# Worktree-scope guard (#2402): the push below runs from the cwd repo, and a
+# stale amend-ref sentinel in a shared main clone would route it from the wrong
+# tree. Refuse unless cwd is a fleet worktree. Resolve the sibling helper the
+# same way the other fleet-* tools do; fall back to an inline structural check if
+# it isn't linked yet (e.g. before install.sh has run).
+guard="${BASH_SOURCE[0]}"
+while [[ -L "$guard" ]]; do guard="$(readlink "$guard")"; done
+guard="$(cd "$(dirname "$guard")" && pwd)/fleet-assert-worktree"
+if [[ -x "$guard" ]]; then
+    "$guard" || exit 1
+else
+    _tl=$(git rev-parse --show-toplevel 2>/dev/null || true)
+    if [[ -n "$_tl" && "$_tl" != */.claude/worktrees/* && -z "${FLEET_ALLOW_MAIN_CLONE:-}" ]]; then
+        echo "fleet-pr-amend-push: REFUSING — cwd ($_tl) is not a fleet worktree (#2402)." >&2
+        echo "  cd into your worktree before pushing an amendment. Human override: FLEET_ALLOW_MAIN_CLONE=1" >&2
+        exit 1
+    fi
+fi
+
 sentinel="$git_dir/fleet-amend-ref"
 if [[ ! -f "$sentinel" ]]; then
     echo "fleet-pr-amend-push: $sentinel missing — was fleet-pr-checkout-detached run in this worktree?" >&2

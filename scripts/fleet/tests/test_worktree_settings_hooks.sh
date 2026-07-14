@@ -19,6 +19,11 @@
 #   - a stale fleet-session-track variant is replaced by the current command,
 #     not duplicated
 #   - malformed JSON falls back to a clean baseline write
+#   - the FLEET_ASSIGNED_WORKTREE env key + the PreToolUse edit-guard hook are
+#     emitted, the guard command references the engine clone by absolute path,
+#     and both keys carry #2284 preservation: hand-added env entries + non-fleet
+#     PreToolUse groups survive regeneration, a stale fleet guard-hook variant is
+#     replaced not duplicated, and fleet wins only on its own env key (#2402)
 
 set -euo pipefail
 
@@ -59,9 +64,16 @@ assert_eq() {
 
 TMPROOT=$(mktemp -d -t fleet-settings-hooks)
 
-# Regenerate <settings-file> the way fleet-up does (repo_root is inert here).
+# Regenerate <settings-file> the way fleet-up does. repo_root is inert here;
+# the worktree (argv[3], → FLEET_ASSIGNED_WORKTREE) and engine root (argv[4], →
+# guard hook path) default to sandbox stand-ins so existing single-arg callers
+# keep working. Pass args 2/3 to override for the env/guard-path assertions.
+#   regen <settings-file> [worktree] [engine-root]
+DEFAULT_WT="$TMPROOT/eng/.claude/worktrees/worker-9"
+DEFAULT_ENG="$TMPROOT/eng"
 regen() {
-    printf '%s\n' "$PY_SRC" | python3 - "$1" "$TMPROOT/repo"
+    printf '%s\n' "$PY_SRC" | python3 - "$1" "$TMPROOT/repo" \
+        "${2:-$DEFAULT_WT}" "${3:-$DEFAULT_ENG}"
 }
 
 # q <settings-file> <python expr over parsed dict d> — prints the expr value.
@@ -121,10 +133,62 @@ echo "T4: malformed settings file regenerates baseline"
 F4="$TMPROOT/t4/settings.local.json"; mkdir -p "$TMPROOT/t4"
 echo '{not json' > "$F4"
 regen "$F4"
-assert_eq "$(q "$F4" "sorted(d['hooks'])")" "['SessionStart']" \
-    "malformed file yields fleet-only hooks"
+assert_eq "$(q "$F4" "sorted(d['hooks'])")" "['PreToolUse', 'SessionStart']" \
+    "malformed file yields fleet-only hooks (SessionStart + PreToolUse guard)"
 assert_eq "$(q "$F4" "d['permissions']['defaultMode']")" "auto" \
     "baseline permissions written"
+assert_eq "$(q "$F4" "'FLEET_ASSIGNED_WORKTREE' in d.get('env', {})")" "True" \
+    "baseline write still emits the env assignment key"
+
+# --- T5: fresh write emits the env assignment + PreToolUse edit guard ---------
+echo "T5: fresh write emits FLEET_ASSIGNED_WORKTREE env + the PreToolUse guard"
+F5="$TMPROOT/t5/settings.local.json"; mkdir -p "$TMPROOT/t5"
+regen "$F5" "/eng/.claude/worktrees/worker-3" "/eng"
+assert_eq "$(q "$F5" "d['env']['FLEET_ASSIGNED_WORKTREE']")" "/eng/.claude/worktrees/worker-3" \
+    "env carries the assigned worktree path (argv[3])"
+assert_eq "$(q "$F5" "d['hooks']['PreToolUse'][0]['matcher']")" "Edit|Write|MultiEdit" \
+    "PreToolUse guard matches Edit|Write|MultiEdit"
+assert_eq "$(q "$F5" "'/eng/scripts/fleet/fleet-guard-worktree-edit' in d['hooks']['PreToolUse'][0]['hooks'][0]['command']")" \
+    "True" "guard command references the engine clone by absolute path (argv[4], not repo_root)"
+assert_eq "$(q "$F5" "d['hooks']['PreToolUse'][0]['hooks'][0]['command'].endswith('|| true')")" \
+    "True" "guard command is wrapped to fail OPEN on a missing script"
+
+# --- T6: hand-added env survives; fleet wins only on its own env key ----------
+echo "T6: hand-added env entries survive regeneration; fleet key wins"
+F6="$TMPROOT/t6/settings.local.json"; mkdir -p "$TMPROOT/t6"
+python3 - "$F6" <<'SEED'
+import json, sys
+json.dump({
+    "env": {"MY_TOKEN": "keep-me", "FLEET_ASSIGNED_WORKTREE": "/stale/path"},
+}, open(sys.argv[1], "w"))
+SEED
+regen "$F6" "/eng/.claude/worktrees/worker-7" "/eng"
+assert_eq "$(q "$F6" "d['env']['MY_TOKEN']")" "keep-me" \
+    "hand-added env entry preserved"
+assert_eq "$(q "$F6" "d['env']['FLEET_ASSIGNED_WORKTREE']")" "/eng/.claude/worktrees/worker-7" \
+    "fleet key overrides a stale hand value (fleet wins only on its own key)"
+
+# --- T7: stale fleet guard-hook variant replaced; hand PreToolUse preserved ---
+echo "T7: stale fleet guard-hook variant replaced, non-fleet PreToolUse preserved"
+F7="$TMPROOT/t7/settings.local.json"; mkdir -p "$TMPROOT/t7"
+python3 - "$F7" <<'SEED'
+import json, sys
+json.dump({
+    "hooks": {
+        "PreToolUse": [
+            # stale variant of the fleet's own guard (bare, no [ -x ] wrapper)
+            {"matcher": "Edit|Write", "hooks": [{"type": "command", "command": "fleet-guard-worktree-edit"}]},
+            # a human's own PreToolUse hook — must survive
+            {"matcher": "Bash", "hooks": [{"type": "command", "command": "echo hand-added-pre"}]},
+        ],
+    },
+}, open(sys.argv[1], "w"))
+SEED
+regen "$F7" "/eng/.claude/worktrees/worker-3" "/eng"
+assert_eq "$(q "$F7" "len([g for g in d['hooks']['PreToolUse'] if 'fleet-guard-worktree-edit' in str(g)])")" \
+    "1" "exactly one fleet guard group after regen (stale variant replaced)"
+assert_eq "$(q "$F7" "'echo hand-added-pre' in str(d['hooks']['PreToolUse'])")" \
+    "True" "hand-added non-fleet PreToolUse group preserved"
 
 echo
 echo "passed: $PASS  failed: $FAIL"

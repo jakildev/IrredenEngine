@@ -103,6 +103,12 @@ chmod +x "$BIN/fleet-claim"
 
 export PATH="$BIN:$PATH"
 
+# The #2402 worktree-scope assert (fleet-assert-worktree "$agent") now fronts the
+# --agent path. These cases exercise the CLAIM guard, not worktree scoping, and
+# run from an arbitrary cwd — allow the main-clone override so they stay
+# cwd-independent. T12 drops it to prove the worktree assert actually fires.
+export FLEET_ALLOW_MAIN_CLONE=1
+
 set_labels() {  # set_labels <N> <label...>
     local num="$1"; shift
     : >"$STORE/pr-${num}"
@@ -217,6 +223,22 @@ assert_eq "$(run verdict-approve 108 --agent=)" "2" "T11 empty --agent= exits 2"
 assert_eq "$(ft_calls)" "0" "T11 did NOT delegate on empty --agent="
 assert_eq "$(grep -c 'pr view' "$GH_LOG" 2>/dev/null || true)" "0" \
     "T11 did NOT read labels (rejected before the guard, not carved out)"
+
+# === T12: #2402 worktree-scope assert fronts the --agent path =============
+# With the override dropped and cwd a non-worktree dir, the worktree assert must
+# block BEFORE the claim read (exit 1, no gh view). The no-agent carve-out is
+# unaffected — still delegates from anywhere.
+echo "T12: worktree-scope assert fronts --agent (fires from a non-worktree cwd)"
+reset_logs
+set_labels 109 fleet:reviewing-mac-worker-2 fleet:wip
+rc=$(cd "$TMPROOT" && FLEET_ALLOW_MAIN_CLONE= "$WRAPPER" verdict-approve 109 --agent worker-2 >/dev/null 2>&1; echo $?)
+assert_eq "$rc" "1" "T12 worktree assert blocks the --agent verdict from a non-worktree cwd"
+assert_eq "$(grep -c 'pr view' "$GH_LOG" 2>/dev/null || true)" "0" \
+    "T12 blocked before the claim read"
+reset_logs
+set_labels 110 fleet:wip
+rc=$(cd "$TMPROOT" && FLEET_ALLOW_MAIN_CLONE= "$WRAPPER" verdict-approve 110 >/dev/null 2>&1; echo $?)
+assert_eq "$rc" "0" "T12 no-agent carve-out still delegates from a non-worktree cwd"
 
 echo ""
 echo "PASS: $PASS  FAIL: $FAIL"

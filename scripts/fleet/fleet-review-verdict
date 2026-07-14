@@ -150,6 +150,18 @@ repo_args=()
 # Omitting --agent is the interactive-human carve-out (no claim to hold).
 # ----------------------------------------------------------------------
 if [[ -n "$agent" ]]; then
+    # Worktree-scope guard (#2402): an --agent verdict must be applied from THAT
+    # agent's own worktree. The #2153/#2326 misroute stamped a verdict / posted a
+    # review body from wrong-tree state; assert cwd is the agent's worktree before
+    # any label write. The no-agent human carve-out never reaches here, so it
+    # still runs from anywhere. Fail open if the helper isn't linked yet — the
+    # claim check below remains the primary misroute guard.
+    _wtguard="${BASH_SOURCE[0]}"
+    while [[ -L "$_wtguard" ]]; do _wtguard="$(readlink "$_wtguard")"; done
+    _wtguard="$(cd "$(dirname "$_wtguard")" && pwd)/fleet-assert-worktree"
+    if [[ -x "$_wtguard" ]]; then
+        "$_wtguard" "$agent" || exit 1
+    fi
     if ! command -v fleet-claim >/dev/null 2>&1; then
         echo "$PROG: fleet-claim not found (needed to derive the host key)." >&2
         exit 1

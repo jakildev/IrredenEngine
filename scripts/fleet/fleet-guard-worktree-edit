@@ -1,25 +1,38 @@
 #!/usr/bin/env bash
 # fleet-guard-worktree-edit — PreToolUse hook for Edit | Write | MultiEdit.
 #
-# Refuses an edit whose absolute file_path lands OUTSIDE the fleet worktree the
-# session is working in. A fleet agent runs with its cwd inside
-# `.../.claude/worktrees/<name>/`; if it edits via a bare
-# `~/src/IrredenEngine/engine/...` absolute path, the write silently hits the
-# shared MAIN clone instead of the worktree. `fleet-build` (run in the worktree)
-# then compiles nothing and the agent wrongly concludes its fix "had no effect"
-# (observed on PR #1310 / #1336). The #1332 worktree-identity preflight guards
-# Bash/git, NOT the file tools — this closes that gap by enforcement instead of
-# role-doc discipline.
+# Refuses an edit whose target file_path lands OUTSIDE the fleet worktree the
+# session is assigned to. A fleet agent runs from `.../.claude/worktrees/<name>/`;
+# if it edits via a bare `~/src/IrredenEngine/engine/...` absolute path (or a
+# relative path while its cwd has drifted into the shared main clone), the write
+# silently hits the MAIN clone instead of the worktree. `fleet-build` (run in
+# the worktree) then compiles nothing and the agent wrongly concludes its fix
+# "had no effect" (observed on PR #1310 / #1336). The #1332 worktree-identity
+# preflight guards Bash/git, NOT the file tools — this closes that gap by
+# enforcement instead of role-doc discipline.
 #
-# Scope: ONLY constrains sessions whose cwd is inside a fleet worktree. The main
-# clone and isolated (e.g. /tmp) worktrees are unaffected. Relative paths
-# (resolved against the in-worktree cwd) are always allowed; only an absolute
-# path escaping the worktree root is blocked. Reads are NOT gated — the matcher
-# is Edit|Write|MultiEdit only (the silent-misroute hazard is mutations).
+# Two modes (#2402):
+#   * ASSIGNMENT mode — `FLEET_ASSIGNED_WORKTREE` is set (fleet-up bakes it into
+#     each generated worktree's settings.local.json `env`). Worktree identity is
+#     the ASSIGNED path, never the session cwd, so the guard holds even when cwd
+#     drifts into a main clone or a sibling agent's worktree. Allowed targets:
+#       - any `*/.claude/worktrees/<assigned-basename>/…` (covers this pane's
+#         engine + game worktree pair with one rule, excludes sibling agents),
+#       - `$HOME/.fleet/…`  (heartbeats, plans, claims, summaries),
+#       - `/tmp/…` and `/private/tmp/…` (macOS canonical form),
+#       - `$HOME/.claude/projects/*/memory/…` (auto-memory).
+#     A relative target is resolved against the hook-input cwd first, then tested
+#     the same way — so a relative edit from a drifted cwd is caught too.
+#   * LEGACY mode — env unset: the original cwd-derived behavior, byte-for-byte,
+#     so human sessions in the main clone and hand-made (e.g. /tmp) worktrees are
+#     unaffected.
+#
+# Scope: the matcher is Edit|Write|MultiEdit only — reads are never gated (the
+# silent-misroute hazard is mutations).
 #
 # Contract: reads the PreToolUse JSON on stdin; denies via the
-# hookSpecificOutput JSON form. ANY parse failure or missing field fails OPEN
-# (exit 0) — a hook must never wedge the fleet.
+# hookSpecificOutput JSON form. ANY parse failure, missing field, or unusable
+# assignment fails OPEN (exit 0) — a hook must never wedge the fleet.
 set -uo pipefail
 
 input=$(cat 2>/dev/null || true)
@@ -28,15 +41,77 @@ input=$(cat 2>/dev/null || true)
 cwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null || true)
 file=$(printf '%s' "$input" | jq -r '.tool_input.file_path // empty' 2>/dev/null || true)
 
+# No path → nothing to constrain.
+[[ -z "$file" ]] && exit 0
+
+home="$HOME"
+
+# deny <reason> — emit the hookSpecificOutput deny form (exit 0). If jq can't
+# produce the JSON, fall back to the exit-2 block form so the guard still fires
+# rather than failing open on a policy deny.
+deny() {
+    jq -n --arg r "$1" \
+        '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}' \
+        2>/dev/null && exit 0
+    printf '%s\n' "$1" >&2
+    exit 2
+}
+
+# ---------------------------------------------------------------------------
+# ASSIGNMENT mode: identity comes from FLEET_ASSIGNED_WORKTREE, not cwd.
+# ---------------------------------------------------------------------------
+if [[ -n "${FLEET_ASSIGNED_WORKTREE:-}" ]]; then
+    assigned_name=$(basename "$FLEET_ASSIGNED_WORKTREE" 2>/dev/null || true)
+    # Unusable assignment (empty / root / '.') → can't derive a basename to
+    # test against; fail open rather than over-block every edit.
+    case "$assigned_name" in
+        ""|"/"|".") exit 0 ;;
+    esac
+
+    # Relative target → resolve against the hook-input cwd, then test as an
+    # absolute path. If cwd is unknown we can't resolve it → fail open.
+    case "$file" in
+        /*) ;;
+        *)  [[ -z "$cwd" ]] && exit 0
+            file="$cwd/$file" ;;
+    esac
+
+    # Allow: this pane's own worktree (engine or game — same basename). Trailing
+    # slash on both sides so a sibling worktree like `<name>-foo` can't
+    # prefix-match `<name>`.
+    case "$file/" in
+        */.claude/worktrees/"$assigned_name"/*) exit 0 ;;
+    esac
+    # Allow: fleet state, scratch dirs, auto-memory.
+    case "$file" in
+        "$home"/.fleet/*)                    exit 0 ;;
+        /tmp/*|/private/tmp/*)               exit 0 ;;
+        "$home"/.claude/projects/*/memory/*) exit 0 ;;
+    esac
+
+    deny "fleet worktree guard (assignment mode): refusing to edit a path outside your assigned worktree.
+  assigned worktree: $FLEET_ASSIGNED_WORKTREE  (basename: $assigned_name)
+  edit target:       $file
+Allowed targets are your own worktree (engine or game, matched by basename),
+\$HOME/.fleet, /tmp, /private/tmp, and the auto-memory dir. This path is none of
+those — it points into the shared main clone or another agent's worktree,
+regardless of where your shell cwd drifted. Editing it there silently misroutes
+the write — fleet-build runs in your worktree and compiles nothing, so the
+change looks like it 'had no effect' (PR #1310 / #1336). Redo this edit with a
+path INSIDE your worktree."
+fi
+
+# ---------------------------------------------------------------------------
+# LEGACY mode (FLEET_ASSIGNED_WORKTREE unset): cwd-derived, unchanged.
+# ---------------------------------------------------------------------------
 # Not in a fleet worktree → no restriction.
 case "$cwd" in
     */.claude/worktrees/*) ;;
     *) exit 0 ;;
 esac
 
-# No path, or a relative path (the tools resolve it against the in-worktree
-# cwd, so it stays in-worktree) → allow.
-[[ -z "$file" ]] && exit 0
+# A relative path (the tools resolve it against the in-worktree cwd, so it stays
+# in-worktree) → allow.
 case "$file" in
     /*) ;;
     *)  exit 0 ;;
@@ -56,7 +131,7 @@ case "$file/" in
 esac
 
 # Outside the worktree → deny with a corrective message.
-reason="fleet worktree guard: refusing to edit a path outside your worktree.
+deny "fleet worktree guard: refusing to edit a path outside your worktree.
   your worktree: $wt_root
   edit target:   $file
 You are working in a fleet worktree, but this absolute path points into the
@@ -64,12 +139,3 @@ shared main clone (or a sibling worktree). Editing it there silently misroutes
 the write — fleet-build runs in your worktree and compiles nothing, so the
 change looks like it 'had no effect' (PR #1310 / #1336). Redo this edit with a
 path INSIDE your worktree, or a path relative to your current directory."
-
-jq -n --arg r "$reason" \
-    '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}' \
-    2>/dev/null && exit 0
-
-# jq output failed for some reason — fall back to the exit-2 block form so the
-# guard still fires rather than failing open on a deny.
-printf '%s\n' "$reason" >&2
-exit 2
