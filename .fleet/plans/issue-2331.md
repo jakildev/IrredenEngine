@@ -204,7 +204,7 @@ Filed: V1 = #2332, C1 = #2333, C2 = #2334, D1 = #2335.
 
 ## Steward ledger
 
-reconciled-through: PR #2357 merge (2026-07-14 — C1 #2333 overflow lane merged)
+reconciled-through: PR #2388 merge (2026-07-14 — C2 #2334 overflow-face lighting merged)
 proposal-pending: none
 
 ### Children
@@ -212,8 +212,8 @@ proposal-pending: none
 |---|---|---|---|---|
 | #2332 | merged | #2352 | plan | 2026-07-13 |
 | #2333 | merged | #2357 | plan | 2026-07-14 (C1 — view mask + overflow append + albedo scatter; both backends) |
-| #2334 | in-progress (unblocked — #2333 merged) | #2388 (in review) | plan | 2026-07-14 (C2 premise realized: color lane rewritable in place, per C1 layout; not stale) |
-| #2335 | in-progress (unblocked chain) | #2390 (approved, stacked on #2388) | plan | 2026-07-14 (D1 docs the shipped overflow contract; not stale) |
+| #2334 | merged | #2388 | plan | 2026-07-14 (C2 — overflow-face lighting: `c_light_overflow_faces.{glsl,metal}` + `system_lighting_to_trixel` dispatch; both backends; in-scope) |
+| #2335 | in-progress (D1 doc PR #2390 open) | #2390 (`fleet:semantic-conflict`, based on master — needs opus-worker step-1c resolve/escalate; `approved` + `merger-cooldown` cleared 18:44–18:47Z after the #2388 merge re-targeted it off #2388) | plan | 2026-07-14 (design premise unaffected by the C2 merge — no #2335-referenced symbol was renamed; the semantic conflict is a mechanical rebase concern on #2390's diff, decoupled from steward re-validation → premise not stale) |
 
 ### Decisions
 <!-- entries: D<n> (<YYYY-MM-DD>): <decision> — source: <link>  (numbered scheme per epic-steward-protocol.md §Decisions; escalation rules reference decisions by D-id) -->
@@ -241,3 +241,26 @@ proposal-pending: none
   merger-cooldown/stacked-rebase → skip-guard N/A). #2335 (D1) documents the
   shipped overflow contract — strengthened by the merge, not stale; PR #2390
   approved + `fleet:stacked` on #2388. No amendments to either sibling plan.
+- 2026-07-14 (flow b — #2334 rollup): PR #2388 merged (mergeCommit 14631b79,
+  2026-07-14T18:40:38Z, "Closes #2334") → #2334 checkbox ticked + ledger row set to
+  merged; reconciled-through advanced to PR #2388. Scope-drift audit: matches the C2
+  plan (umbrella Phases §3) — overflow-face lighting via a new
+  `c_light_overflow_faces.{glsl,metal}` compute pass (247/185 lines) dispatched from
+  `system_lighting_to_trixel.hpp` (+75), wired in `system_voxel_to_trixel.hpp`
+  (+33/-6), with `ir_render_types.hpp` (+9) / `shader_names.hpp` (+5) additions, the
+  shared `ir_iso_common.{glsl,metal}` helper (+8 each), and Metal pipeline reg
+  (`metal_pipeline.cpp` +2/-1). Sun + light-volume + Lambert, AO = 1, both backends —
+  exactly the C2 scope. PR screenshots wave-zoom4-rot before-albedo / after-lit /
+  diff-relit-slivers / marker-proof-magenta confirm the revealed overflow slivers are
+  now lit. In-scope, additive; contradicts no recorded Decision (D1). Sibling
+  re-validation: #2335 (D1) is the sole remaining open child; its doc PR #2390 currently
+  carries `fleet:semantic-conflict` (based on master — the #2388 merge re-targeted it off
+  #2388 and `approved`/`merger-cooldown` were both cleared 18:44–18:47Z when the merger
+  flagged a non-mechanical conflict). That is an opus-worker step-1c resolve-or-escalate
+  item on #2390's diff, not a design-premise regression: #2335 documents the overflow
+  contract (supersede the lossless-store invariant), references no symbol the C2 merge
+  renamed, and is strengthened by it → the plan premise is not stale; the semantic
+  conflict is decoupled from the steward's re-validation and clears via #2390's own
+  step-1c resolution. No amendment to the #2335 plan.
+  Flow c: no open `Part of epic: #2331` issue is absent from the checklist (only #2335,
+  already tracked) → nothing to adopt. Epic not close-out-ready (#2335 still open).
