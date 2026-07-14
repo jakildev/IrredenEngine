@@ -160,9 +160,23 @@ worktree_in_flight() {
     local _resv; _resv=$(fleet-claim reservation-of "$worktree_name" 2>/dev/null || true)
     [[ -n "$_resv" ]] && return 0
     local _br; _br=$(git -C "$PWD" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
-    [[ "$_br" == claude/* ]] || return 1
-    [[ -n "$(git -C "$PWD" status --porcelain 2>/dev/null)" ]] && return 0
-    local _ahead; _ahead=$(git -C "$PWD" rev-list --count origin/master..HEAD 2>/dev/null || echo 0)
+    # Task branches only. Scratch branches (claude/<x>-scratch) are throwaway
+    # by definition and must never pin a resume — worker-2 spent 07-09→07-14
+    # resuming a dead session because its scratch branch matched claude/*.
+    [[ "$_br" == claude/* && "$_br" != *-scratch ]] || return 1
+    # Tracked modifications only. Untracked leftovers (a screenshots dir from
+    # a shipped task, stray body files) are junk, not work a resumed session
+    # would continue.
+    [[ -n "$(git -C "$PWD" status --porcelain 2>/dev/null | grep -v '^??')" ]] && return 0
+    # Unpushed commits. Measure against the branch's OWN remote ref when one
+    # exists — a fully-pushed branch loses nothing by going fresh, and a
+    # squash-merged branch stays "ahead of origin/master" forever. Fall back
+    # to origin/master only for a never-pushed branch.
+    local _upstream="origin/master"
+    if git -C "$PWD" rev-parse --verify --quiet "refs/remotes/origin/$_br" >/dev/null 2>&1; then
+        _upstream="origin/$_br"
+    fi
+    local _ahead; _ahead=$(git -C "$PWD" rev-list --count "$_upstream..HEAD" 2>/dev/null || echo 0)
     [[ "$_ahead" =~ ^[0-9]+$ && "$_ahead" -gt 0 ]] && return 0
     return 1
 }
@@ -282,7 +296,23 @@ if (( _resume_role )); then
     if (( RESUMED )) && [[ "$rc" != "0" ]]; then
         rm -f "$SIDECAR"
     elif worktree_in_flight; then
-        :   # keep the sidecar — resume on the next dispatch
+        if (( RESUMED )); then
+            # Bounded resumes: a resumed session that exits CLEANLY while the
+            # worktree still looks in-flight gets one more try, then the
+            # sidecar clears and the next dispatch goes fresh (the
+            # claim/reservation path re-derives the task). An unbounded keep
+            # re-resumes a conversation that considers itself finished — the
+            # "No task to resume." $0.04 no-op loop — every dispatch forever.
+            _resumes=$(_read_sidecar resumes); _resumes=${_resumes:-0}
+            if [[ "$_resumes" =~ ^[0-9]+$ ]] && (( _resumes >= 1 )); then
+                rm -f "$SIDECAR"
+                echo "fleet-dispatch-wrap: resumed session exited clean twice with the worktree still in-flight — clearing sidecar; next dispatch goes fresh" >&2
+            else
+                python3 -c "import json;p='$SIDECAR';d=json.load(open(p));d['resumes']=int(d.get('resumes') or 0)+1;json.dump(d,open(p,'w'))" 2>/dev/null \
+                    || rm -f "$SIDECAR"
+            fi
+        fi
+        # fresh launch + in-flight: keep the sidecar — resume on the next dispatch
     else
         rm -f "$SIDECAR"
     fi
