@@ -36,7 +36,11 @@
 #                                     rev-parse only, NEVER fetches.
 #   advance_main_clone  <repo_root>  — guarded, rate-limited fetch + ff-only
 #                                     advance of a clean on-master clone. Never
-#                                     switches branches, never resets --hard.
+#                                     resets --hard; never switches branches
+#                                     except the one self-heal case: a clean
+#                                     tree parked on a claude/*-reviewer-scratch
+#                                     branch (provably junk from a reviewer cwd
+#                                     drift) is put back on master.
 #   restore_main_clone_to_master <repo_root>
 #                                   — fleet-up-time stronger variant: returns a
 #                                     clone parked off-master (PR branch from a
@@ -100,7 +104,8 @@ assert_clone_fresh() {
 # Guarded, rate-limited fast-forward of the main clone's master. Safe on the
 # shared main checkout: advances ONLY when the clone is on branch master, has a
 # clean working tree, and master is a strict pure-ancestor of origin/master
-# (i.e. a real fast-forward). Any guard miss → skip + warn, never mutate. Mirrors
+# (i.e. a real fast-forward). Any guard miss → skip + warn, never mutate —
+# except the reviewer-scratch self-heal in guard 1 (see comment there). Mirrors
 # fleet-up's reset_worktree dirty-guard idiom. Always returns 0 so a `set -e`
 # caller is never aborted by a skipped advance.
 advance_main_clone() {
@@ -125,14 +130,32 @@ advance_main_clone() {
 
     # Guard 1: must be on branch master (never touch a checked-out feature
     # branch — agents occasionally check one out in the shared main clone).
-    local branch
+    # Exception: a reviewer scratch branch (claude/<role>-reviewer-scratch) is a
+    # per-iteration throwaway that only ever belongs in .claude/worktrees/* —
+    # one parked HERE is provably junk left by a reviewer whose shell cwd
+    # drifted into the main clone, and it freezes master (blocking every claim
+    # on this repo via assert_clone_fresh) until fixed. Self-heal: with a clean
+    # tree, put the clone back on master, drop the junk branch, and fall
+    # through to the normal advance.
+    local branch dirty
     branch="$(git -C "$root" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?')"
     if [[ "$branch" != "master" ]]; then
-        echo "fleet-clone-freshness: $root is on '$branch' (not master) — skipping advance." >&2
-        return 0
+        dirty="$(git -C "$root" status --porcelain 2>/dev/null || echo SKIP)"
+        if [[ "$branch" == claude/*-reviewer-scratch && -z "$dirty" ]]; then
+            if git -C "$root" checkout master --quiet 2>/dev/null; then
+                git -C "$root" branch -D "$branch" --quiet 2>/dev/null || true
+                echo "fleet-clone-freshness: $root was parked on reviewer scratch branch '$branch' (clean tree) — self-healed back to master and deleted the junk branch." >&2
+                branch=master
+            else
+                echo "fleet-clone-freshness: $root parked on '$branch' but 'git checkout master' failed — master is FROZEN and every claim on this repo will be refused until a human fixes it (git -C $root checkout master)." >&2
+                return 0
+            fi
+        else
+            echo "fleet-clone-freshness: $root is on '$branch' (not master) — skipping advance. master is FROZEN and every claim on this repo will be refused until it is put back (git -C $root checkout master)." >&2
+            return 0
+        fi
     fi
     # Guard 2: clean working tree (never clobber uncommitted work).
-    local dirty
     dirty="$(git -C "$root" status --porcelain 2>/dev/null || echo SKIP)"
     if [[ -n "$dirty" && "$dirty" != "SKIP" ]]; then
         echo "fleet-clone-freshness: $root has uncommitted changes — skipping advance." >&2

@@ -895,13 +895,18 @@ protesting.
 Before starting a reviewer session:
 
 ```bash
-cd ~/src/IrredenEngine/.claude/worktrees/sonnet-reviewer
-git checkout -B claude/sonnet-reviewer-scratch origin/master
+git -C ~/src/IrredenEngine/.claude/worktrees/sonnet-reviewer checkout -B claude/sonnet-reviewer-scratch origin/master
 ```
 
 Then inside the session you can `gh pr checkout 42`, review, post the
-comment, and `git checkout -B claude/sonnet-reviewer-scratch origin/master`
-again for the next PR.
+comment, and re-park for the next PR with
+`git -C ~/src/IrredenEngine/.claude/worktrees/sonnet-reviewer checkout -B claude/sonnet-reviewer-scratch origin/master`
+— always through the explicit `-C` worktree path, never a bare
+`git checkout -B`: the agent shell's cwd persists across commands, and
+a reset that resolves against a drifted cwd parks the scratch branch in
+a shared MAIN clone (the game clone got frozen this way twice; see
+`docs/agents/REVIEWER-PROTOCOL.md` § "Scratch reset & main-clone cwd
+discipline").
 
 Don't commit or push from a reviewer worktree. The `review-pr` skill
 enforces this, but a human reviewer should know too.
