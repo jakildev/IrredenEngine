@@ -27,6 +27,8 @@
 #   - no `### Affected files` / `### Gotchas` section
 #   - no verified-current-state / repro signal
 #   - no `**Model:**` tag
+#   - mechanism-lever language (cost attribution / path dominance / a stage
+#     firing) with no measurement citation or phase-0 probe (#2401)
 #
 # Source of truth: scripts/fleet/fleet-plan-lint in the engine repo.
 set -euo pipefail
@@ -135,6 +137,17 @@ if not any(k in low for k in (
     warn.append("no verified-current-state / repro signal")
 if "**model:**" not in low and not re.search(r"(?im)^\s*-?\s*\*\*model", plan):
     warn.append("no '**Model:**' tag")
+
+# Mechanism-lever language resting on an unmeasured premise (#2401, fix-014):
+# a plan that leans on a cost / path-dominance / stage-fires claim but cites no
+# measurement and names no phase-0 probe is the recurring "premise disproved in
+# implementation" defect. Conservative substring match on `low`, warn-only.
+MECH_LEVER = ("bottleneck", "dominated by", "dispatch-bound", "fill-bound",
+              "the cost is", "hot path", "perf lever", "should be cheap")
+MECH_CITE = ("measur", "timer", "auto-profile", "disarm", "probe", "profil",
+             "domain-state")
+if any(k in low for k in MECH_LEVER) and not any(k in low for k in MECH_CITE):
+    warn.append("mechanism-lever language without a measurement citation or phase-0 probe")
 
 for w in warn:
     print(f"warn #{issue}: {w}")
