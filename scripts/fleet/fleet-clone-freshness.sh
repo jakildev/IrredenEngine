@@ -37,6 +37,13 @@
 #   advance_main_clone  <repo_root>  — guarded, rate-limited fetch + ff-only
 #                                     advance of a clean on-master clone. Never
 #                                     switches branches, never resets --hard.
+#   restore_main_clone_to_master <repo_root>
+#                                   — fleet-up-time stronger variant: returns a
+#                                     clone parked off-master (PR branch from a
+#                                     cursor session, reviewer scratch leftover,
+#                                     detached HEAD) to master when no tracked
+#                                     WIP is at risk, then ff-advances. Never
+#                                     touches a tree with tracked modifications.
 #
 # Env:
 #   FLEET_SKIP_CLONE_FRESHNESS=1  — disable the assert_clone_fresh claim gate
@@ -131,7 +138,17 @@ advance_main_clone() {
         echo "fleet-clone-freshness: $root has uncommitted changes — skipping advance." >&2
         return 0
     fi
-    # Guard 3: master must be a pure ancestor of origin/master (fast-forwardable).
+    # Guard 3 + the ff itself live in the shared tail.
+    _ff_advance_to_origin_master "$root"
+    return 0
+}
+
+# _ff_advance_to_origin_master <repo_root>
+# Shared tail of advance_main_clone / restore_main_clone_to_master: guarded
+# ff-only advance of an on-master clone whose origin/master ref is current
+# (callers own the fetch). Diverged or up-to-date → no-op. Always returns 0.
+_ff_advance_to_origin_master() {
+    local root="$1"
     if ! git -C "$root" merge-base --is-ancestor master origin/master 2>/dev/null; then
         echo "fleet-clone-freshness: $root master has diverged from origin/master — skipping advance (human fixup needed)." >&2
         return 0
@@ -141,10 +158,65 @@ advance_main_clone() {
     if [[ "${behind:-0}" -le 0 ]]; then
         return 0  # already current (or ahead — left to the human)
     fi
+    # ff-only refuses on its own rather than clobber a tracked modification
+    # that overlaps the incoming commits; a disjoint dirty tree advances fine.
     if git -C "$root" merge --ff-only origin/master --quiet 2>/dev/null; then
         echo "fleet-clone-freshness: advanced $root master by $behind commit(s) to origin/master." >&2
     else
-        echo "fleet-clone-freshness: ff-only advance of $root failed (concurrent git op?) — leaving as-is." >&2
+        echo "fleet-clone-freshness: ff-only advance of $root refused (overlapping local changes or concurrent git op) — leaving as-is." >&2
     fi
+    return 0
+}
+
+# restore_main_clone_to_master <repo_root>
+# fleet-up-time restore: get the shared main clone back onto an up-to-date
+# master before the fleet starts. A clone parked off-master (a cursor session's
+# PR branch, a stranded reviewer scratch branch, a detached HEAD) freezes the
+# local master ref while origin advances, and assert_clone_fresh then refuses
+# every claim — a silent whole-fleet stall (2026-07-13). advance_main_clone
+# deliberately never switches branches (it runs unattended every dispatcher
+# tick); this variant runs at the one moment branch-switching is safe to want,
+# with WIP protection:
+#   - tracked modifications anywhere (staged or not) → never touch, warn loudly.
+#     Untracked files don't block: `git checkout` refuses on its own if one
+#     would be overwritten, and stray junk files (0-byte `=`, .review-body.md)
+#     are exactly what used to wedge the old flow.
+#   - off-master + clean → checkout master.
+#   - then ff-advance master to origin/master (fetch is the caller's job at
+#     fleet-up; a cheap refresh here keeps standalone use correct).
+# Always returns 0 — a skipped restore must not abort a `set -e` fleet-up; the
+# warning + the claim gate's own refusal are the signal.
+restore_main_clone_to_master() {
+    local root="$1"
+    [[ -d "$root/.git" ]] || return 0
+
+    local tracked_dirty
+    tracked_dirty="$(git -C "$root" status --porcelain 2>/dev/null | grep -v '^??' || true)"
+
+    local branch
+    branch="$(git -C "$root" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?')"
+
+    # Tracked WIP wins over the restore on EITHER path (parked branch or already
+    # on master). This must gate before the ff-advance below: _ff_advance's
+    # ff-only refuses only when the incoming commits *overlap* the dirty files —
+    # a disjoint dirty tree on master would otherwise be advanced silently
+    # underneath uncommitted work, contradicting the "never touch, warn loudly"
+    # invariant documented above.
+    if [[ -n "$tracked_dirty" ]]; then
+        echo "fleet-clone-freshness: $root has tracked modifications on '$branch' — leaving it alone (live WIP wins). Claims stay blocked until it is clean and on master; commit or ship the WIP, then rerun fleet-up." >&2
+        return 0
+    fi
+
+    if [[ "$branch" != "master" ]]; then
+        if git -C "$root" checkout master --quiet 2>/dev/null; then
+            echo "fleet-clone-freshness: $root returned to master (was on '$branch', no tracked WIP)." >&2
+        else
+            echo "fleet-clone-freshness: $root checkout master failed (was on '$branch') — leaving as-is (human fixup needed)." >&2
+            return 0
+        fi
+    fi
+
+    git -C "$root" fetch origin master --quiet 2>/dev/null || true
+    _ff_advance_to_origin_master "$root"
     return 0
 }

@@ -43,7 +43,8 @@ if [[ -f "$_FLEET_CLONE_FRESHNESS_SH" ]]; then
     # shellcheck source=/dev/null
     source "$_FLEET_CLONE_FRESHNESS_SH"
 else
-    advance_main_clone() { :; }  # helper not installed yet — no-op
+    advance_main_clone() { :; }            # helper not installed yet — no-op
+    restore_main_clone_to_master() { :; }  # helper not installed yet — no-op
 fi
 unset _FLEET_CLONE_FRESHNESS_SH
 
@@ -481,9 +482,12 @@ migrate_legacy_worker_worktrees() {
 
 (cd "$ENGINE" && git fetch origin --quiet) || {
     echo "fleet-up: engine git fetch failed" >&2; exit 1; }
-# Advance the engine main clone before resetting worktrees, so a just-merged
-# fleet-script fix is live for this session's scout/claim/dispatcher. (#1810)
-advance_main_clone "$ENGINE"
+# Restore the engine main clone to an up-to-date master before resetting
+# worktrees: switches back from a parked branch when no tracked WIP is at risk
+# (a parked clone freezes the master ref and the freshness guard then blocks
+# every claim), then ff-advances so a just-merged fleet-script fix is live for
+# this session's scout/claim/dispatcher. (#1810)
+restore_main_clone_to_master "$ENGINE"
 
 ensure_worktree "$ENGINE" .claude/worktrees/opus-architect    fleet/opus-architect
 migrate_legacy_worker_worktrees "$ENGINE"
@@ -514,7 +518,7 @@ fi
 if [[ -d "$GAME/.git" ]]; then
     (cd "$GAME" && git fetch origin --quiet) || {
         echo "fleet-up: game git fetch failed (continuing without game panes)" >&2; }
-    advance_main_clone "$GAME"  # keep the game main clone current too (#1810)
+    restore_main_clone_to_master "$GAME"  # game main clone back on current master too (#1810)
     ensure_worktree "$GAME" .claude/worktrees/game-architect  fleet/game-architect
     # Worker panes cover both engine and game queues; each of the four
     # worker panes gets its own game worktree to cd into for game tasks.

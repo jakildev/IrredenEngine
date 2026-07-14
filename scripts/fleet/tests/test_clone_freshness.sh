@@ -153,6 +153,76 @@ behind=$(clone_behind_count "$TMPROOT/does-not-exist")
 [[ "$behind" == "0" ]] && ok "clone_behind_count 0 for missing repo" || fail "behind=$behind for missing repo"
 if advance_main_clone "$TMPROOT/does-not-exist" 2>/dev/null; then ok "advance no-ops on missing repo"; else fail "advance errored on missing repo"; fi
 
+# --- restore_main_clone_to_master (fleet-up-time restore) --------------------
+# Fresh fixture: CLONE is left diverged by T7, so restore tests get their own.
+CLONE2="$TMPROOT/clone2"
+git clone -q "$ORIGIN" "$CLONE2"
+git -C "$CLONE2" config user.email t@t
+git -C "$CLONE2" config user.name test
+
+# --- T9: parked on a feature branch, clean tree -> restored + ff-advanced ----
+echo "T9: parked branch, clean tree -> checkout master + ff-advance"
+git_q "$CLONE2" checkout -b claude/parked-pr
+push_new_commit t9
+git_q "$CLONE2" fetch origin master
+out=$(restore_main_clone_to_master "$CLONE2" 2>&1 || true)
+branch=$(git -C "$CLONE2" rev-parse --abbrev-ref HEAD)
+[[ "$branch" == "master" ]] && ok "returned to master" || fail "still on $branch"
+[[ "$(git -C "$CLONE2" rev-parse master)" == "$(git -C "$CLONE2" rev-parse origin/master)" ]] \
+    && ok "master ff-advanced to origin/master" || fail "master not advanced"
+echo "$out" | grep -q "returned to master" && ok "logs the restore" || fail "no restore log: $out"
+
+# --- T10: parked branch WITH tracked modification -> untouched ----------------
+echo "T10: parked branch with tracked WIP -> left alone"
+git_q "$CLONE2" checkout -b claude/live-wip
+echo "wip" >> "$CLONE2/file"
+out=$(restore_main_clone_to_master "$CLONE2" 2>&1 || true)
+branch=$(git -C "$CLONE2" rev-parse --abbrev-ref HEAD)
+[[ "$branch" == "claude/live-wip" ]] && ok "branch untouched" || fail "branch switched to $branch"
+grep -q "wip" "$CLONE2/file" && ok "WIP preserved" || fail "WIP lost"
+echo "$out" | grep -q "live WIP wins" && ok "warns loudly" || fail "no WIP warning: $out"
+git_q "$CLONE2" checkout -- file   # clean up for T11
+
+# --- T11: parked branch with only untracked junk -> restored, junk kept ------
+echo "T11: parked branch with untracked junk only -> restored"
+touch "$CLONE2/.review-body.md"
+out=$(restore_main_clone_to_master "$CLONE2" 2>&1 || true)
+branch=$(git -C "$CLONE2" rev-parse --abbrev-ref HEAD)
+[[ "$branch" == "master" ]] && ok "returned to master past untracked junk" || fail "still on $branch"
+[[ -f "$CLONE2/.review-body.md" ]] && ok "untracked file preserved" || fail "untracked file lost"
+
+# --- T12: detached HEAD, clean -> restored ------------------------------------
+echo "T12: detached HEAD, clean tree -> restored to master"
+git_q "$CLONE2" checkout --detach origin/master
+out=$(restore_main_clone_to_master "$CLONE2" 2>&1 || true)
+branch=$(git -C "$CLONE2" rev-parse --abbrev-ref HEAD)
+[[ "$branch" == "master" ]] && ok "detached HEAD returned to master" || fail "HEAD is $branch"
+
+# --- T13: missing repo is a safe no-op ----------------------------------------
+echo "T13: nonexistent root is a safe no-op for restore"
+if restore_main_clone_to_master "$TMPROOT/does-not-exist" 2>/dev/null; then
+    ok "restore no-ops on missing repo"
+else
+    fail "restore errored on missing repo"
+fi
+
+# --- T14: ALREADY on master, disjoint tracked dirty file -> NOT advanced -------
+# The restore-side mirror of T6: a disjoint dirty tree would ff-advance fine on
+# its own (the incoming commits touch a different file), so only the tracked-WIP
+# guard stops it. Covers the guard firing on-master, not just on a parked
+# branch. See #2378.
+echo "T14: on master with disjoint tracked WIP -> master NOT advanced"
+git_q "$CLONE2" checkout master
+on_master_head=$(git -C "$CLONE2" rev-parse master)
+echo "disjoint-wip" > "$CLONE2/other"   # tracked WIP on a file the incoming commit won't touch
+git_q "$CLONE2" add other
+push_new_commit t14                      # origin advances 'file' (disjoint from 'other')
+out=$(restore_main_clone_to_master "$CLONE2" 2>&1 || true)
+[[ "$(git -C "$CLONE2" rev-parse master)" == "$on_master_head" ]] \
+    && ok "on-master disjoint-dirty clone NOT advanced" || fail "advanced master under uncommitted WIP"
+grep -q "disjoint-wip" "$CLONE2/other" && ok "on-master WIP preserved" || fail "WIP lost"
+echo "$out" | grep -q "live WIP wins" && ok "warns loudly on-master too" || fail "no WIP warning: $out"
+
 echo ""
 echo "PASS: $PASS  FAIL: $FAIL"
 [[ $FAIL -eq 0 ]]
