@@ -62,7 +62,7 @@ independent heads.
 
 ## Steward ledger
 
-reconciled-through: PR #2356 merge (2026-07-14 — V3 #2317 light-verify harness merged; S1 #2319 reconciled prior iteration)
+reconciled-through: PR #2387 merge (2026-07-14 — S2 #2320 shadow-throw unify merged; V3 #2317 + S1 #2319 reconciled prior iterations)
 proposal-pending: none — the 2026-07-13 package (PR #2343 / S1 #2319) was answered by opus-architect and distributed 2026-07-13 (see D4–D6 and the `## Steward direction` comment on PR #2343)
 
 ### Children
@@ -74,8 +74,8 @@ proposal-pending: none — the 2026-07-13 package (PR #2343 / S1 #2319) was answ
 | #2317 | merged | #2356 | plan | 2026-07-14 (V3 light-verify harness; domain matrix covers yaw0/30/45 → satisfies D3) |
 | #2318 | merged | #2337 | plan | 2026-07-13 |
 | #2319 | merged | #2343 | plan | 2026-07-14 (S1 same-plane provenance test; D6 genuine-cast residual → #2385; Linux/GL smoke owed) |
-| #2320 | open (unblocked — #2319 merged) | — | plan | 2026-07-14 (premise holds vs landed same-plane bias) |
-| #2321 | open (blocked by #2320) | — | plan | 2026-07-14 |
+| #2320 | merged | #2387 | plan | 2026-07-14 (S2 — receive window unified 24→64 feeder sweep; floating top-face wedge restored) |
+| #2321 | open (unblocked — #2320 merged) | — | plan | 2026-07-14 (post-S2 premise realized: throw now = 64 swept AABB the cascade extents must cover; not stale) |
 | #2322 | merged | #2328 | plan | 2026-07-13 |
 | #2323 | merged | #2326 | plan | 2026-07-13 |
 | #2385 | open (adopted; needs planning) | — | stub | 2026-07-14 (flow-c adoption; validate-stack PASS) |
@@ -162,3 +162,19 @@ proposal-pending: none — the 2026-07-13 package (PR #2343 / S1 #2319) was answ
   no machine-line fixes needed. Appended `- [ ] #2385` to the umbrella
   `## Children`; committed a planning stub at `.fleet/plans/issue-2385.md`
   (unlabeled → planning gate, so a worker cannot claim it unplanned).
+- 2026-07-14 (flow b — #2320 rollup): PR #2387 merged (mergeCommit fea3ffbb,
+  2026-07-14; "Closes #2320") → #2320 checkbox ticked + ledger row set to merged.
+  Scope-drift audit: matches the S2 plan exactly — the receive-side throw window
+  is unified to the feeder sweep (PR screenshots `composite_before_window24` →
+  `composite_after_window64` confirm 24→64), twinned GLSL/Metal across the
+  sun-shadow bake / sample / AO shaders (`c_bake_sun_shadow_map`,
+  `c_compute_sun_shadow`, `ir_sun_shadow_sample`, `c_compute_voxel_ao`) +
+  `ir_render_types.hpp` + `engine/render/CLAUDE.md`. The AO-shader twin touch is
+  the shared `ir_sun_shadow_sample` include propagation the #2320 plan's
+  fog/AO gotcha anticipated; in-scope, additive, contradicts no recorded Decision
+  (D1–D6). Sibling re-validation: #2321 (S3) auto-unblocked when #2320 closed
+  (`fleet:blocked` cleared, `fleet:queued` present); its approach is explicitly
+  "evaluated on post-S2 master" and its dependency note ("the throw distance sets
+  the swept AABB the cascade extents must cover") is now concretely realized —
+  premise satisfied, not stale (PR #2387 renamed/removed no symbol #2321 cites),
+  no amendment. #2385 (S1-follow-up/D6) stays open, unlabeled planning stub.
