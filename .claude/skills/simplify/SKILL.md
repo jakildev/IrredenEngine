@@ -326,6 +326,14 @@ tool with no test_*; add one against a stubbed environment (see
 `scripts/fleet/CLAUDE.md` §Authoring rules for the hermeticity bar)."
 Report, don't auto-fix.
 
+The same rule fires on **non-trivial bash embedded inline in a changed
+`.github/workflows/*.yml` `run:` block** — logic that defines a shell
+function, loops/branches over multiple commands, or exceeds ~15 lines.
+Flag: "extract to a `scripts/fleet/*.sh` executable with a hermetic
+`tests/test_*.sh` and call it from the workflow" — inline `run:` logic
+ships with zero CI signal and no local-sandbox test (#2290's `net_patch_id`
+classify bug). Report, don't auto-fix.
+
 ### 2c. Serialized-struct version-bump check
 
 See `engine/asset/CLAUDE.md` §"Automated version-bump detection" for the full
@@ -374,6 +382,27 @@ Also check:
 - Hand-rolled compute dispatch sizes — should use
   `voxelDispatchGridForCount()` rather than computing `(n+63)/64`
   manually.
+- A **GPU shader** (`.glsl`/`.metal`) that writes indirect-dispatch dims
+  from a runtime count must cap `numGroupsX` at `kMaxDispatchGroupsX`
+  (1024) and spill the remainder into `numGroupsY` — mirror
+  `writeDispatchDims()` in `c_voxel_visibility_compact.glsl`; consumers
+  recover the flat group index as `groupId.x + groupId.y * numGroupsX`.
+  An uncapped 1-D `numGroupsX = divCeil(count, tile)` with
+  `numGroupsY = 1` is undefined past 65535 groups — silently dropped
+  cells, no error (#2273).
+- A dispatch function that `bindRange`s/`bindBase`s a shared
+  `kBufferIndex_*` slot (one bound elsewhere to a different buffer — the
+  reuse-transiently gotcha in `engine/render/CLAUDE.md` §Gotchas) and
+  returns without restoring the original binding. The same function must
+  restore; don't rely on a downstream system's restore surviving a
+  pipeline reorder (#2273).
+- A changed stats format row in `system_perf_stats_overlay.hpp` whose
+  minimum rendered width (leading label + each printf conversion spec's
+  minimum field width + literal separators, computed per `\n`-delimited
+  row) exceeds the overlay's documented column budget
+  `kPerfStatsColumnTrixels / kGlyphStepX` (= 22 chars) — an over-budget
+  row silently clips on the fixed-width panel; split it into two rows
+  (#2347).
 - 3D-world-coord values being mixed with iso-2D-coord values without
   going through `IRMath::pos3DtoPos2DIso` or a named helper. The two
   spaces are not interchangeable.
@@ -608,6 +637,13 @@ top-level `CLAUDE.md` and module-level `CLAUDE.md` files.
     avoid).
   - Decorative emoji bullets (`❌`, `✅`) — codebase convention is bare
     list bullets.
+- **PR/issue-body writes in bash fences.** A flow-doc fence that runs
+  `gh pr edit|create` or `gh issue create` with `--body "$var"` — require
+  `--body-file` after assembling the body (REVIEWER-PROTOCOL.md's
+  shell-substitution rule, generalized to flow docs). Also flag a `$var`
+  consumed in a `--body` or `${var//…}` substitution line with no `var=`
+  assignment earlier in the same fence — a worker running the snippet
+  literally executes `--body ""` and wipes the entire PR body (#2342).
 - **Broken cross-refs.** Every `[text](path)` / `[text](path#anchor)`
   link in the diff resolves to an existing file / heading. Section
   references cited as `§Foo` match an actual `## Foo` heading. Named

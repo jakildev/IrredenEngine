@@ -37,6 +37,8 @@ For changed files under `engine/render/`, `engine/prefabs/irreden/render/`, or a
 
 8. **Position-component selection.** A render system reading `C_Position3D` for visual placement instead of `C_PositionGlobal3D` (`APPLY_POSITION_OFFSET` has already folded any modifier-driven offset into globalPos).
 
+9. **Transient shared-slot restoration.** A new function that `bindRange`s/`bindBase`s a `kBufferIndex_*` slot already bound elsewhere to a different buffer (the reuse-transiently gotcha in `engine/render/CLAUDE.md` §Gotchas — e.g. `kBufferIndex_PerAxisCell{Compacted,Indirect}`, `kBufferIndex_CompactedVoxelIndices`, `kBufferIndex_IndirectDispatchParams`) must restore the original binding before returning — do not assume a downstream system restores it; that only holds until a pipeline reorder. Also confirm the aliasing constant's declaration comment in `ir_render_types.hpp` lists the new transient consumer, so a "who uses slot N" audit finds it.
+
 ## Lighting stage (additional checks)
 
 If the diff touches `system_*ao*`, `system_*shadow*`, `system_*flood*`, `system_*fog*`, `system_build_light_occlusion_grid*`, or `c_compute_*shadow*.glsl` / `.metal`:

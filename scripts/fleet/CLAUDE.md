@@ -35,6 +35,21 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   `summarize` exit idiom — don't re-copy the helpers into a new test.
   Genuinely test-specific asserts (path existence, exit codes) stay local,
   built on `ok`/`bad`.
+- **`git merge --ff-only` is not a dirty-tree guard.** It refuses only when
+  the incoming commits *overlap* the dirty files; a **disjoint** dirty tree
+  fast-forwards silently — WIP-loss-adjacent on a shared clone. Any path
+  that advances or restores a shared clone's branch gates on an explicit
+  `git status --porcelain` tracked-dirty check *before* the fetch/merge,
+  and the guard covers **every** branch path, not just the off-master arm
+  (#2378: the on-master arm fell through to an unguarded ff-advance).
+- **Config-file generators preserve hand-edits under every emitted key.**
+  A generator that wholesale-rewrites a config file (`fleet-up`'s
+  `write_worktree_settings` → `settings.local.json`) must carry
+  preservation logic — and a test — for **each** key it emits; adding a new
+  generated key means extending the preservation in the same change, or the
+  next regeneration silently clobbers human edits under that key (#2284:
+  the first `hooks` key repeated the lesson `permissions.allow` already
+  encoded).
 - **Unattended daemons timeout-guard their network calls.** The host's
   connections to GitHub intermittently black-hole (silent TCP death), so a
   hung `git fetch` / `gh …` in a fleet daemon (dispatcher loop, `fleet-rebase`,

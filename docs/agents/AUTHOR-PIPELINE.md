@@ -24,11 +24,16 @@ between "branch is ready" and "PR is finalized."
 fleet-build --target <name>
 ```
 
-**If the diff adds files under `engine/prefabs/**/systems/`**, also
-build `IrredenEngineTest` (or the engine static library) — creation
-targets like `IRShapeDebug` only link the systems they reference, so
-a new system with a missing `SystemName` enum entry is a silent
-linker error from the creation perspective.
+**If the diff adds files under `engine/prefabs/**/systems/` — or changes
+the signature of any free function or method consumed elsewhere in the
+tree** — also build `IrredenEngineTest` (or the engine static library)
+before the PR claims its test plan is green. Creation targets like
+`IRShapeDebug` only compile and link what they reference, so a demo-only
+build is blind both to a new system's missing `SystemName` enum entry
+(silent linker error) and to stale call sites of a changed signature that
+live only in `test/**` (#2313: nine call sites in
+`test/render/per_canvas_light_scope_test.cpp` broke the suite build while
+the PR's demo targets built green).
 
 If the touched code has an executable target, run it to confirm it
 launches cleanly:

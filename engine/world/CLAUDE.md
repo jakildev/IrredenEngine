@@ -372,7 +372,11 @@ compile: the heap-owning opted-in components (`C_Name`, `C_Skeleton`,
 primary-template `static_assert`. Add each component to the curated list as its
 serializer lands; the full-inventory path (a per-component serializer pass + a
 `HasExplicitSaveSerialize<C>` filter over `AllEngineComponents`) is tracked
-downstream. The registry is built **fresh per call** — cheap (a few
+downstream. **Adding a component here must also extend
+`test/script/lua_world_snapshot_test.cpp` with a round-trip case through the
+actual `IRPersist` Lua surface** — a standalone `SaveSerialize<C>` unit test
+(e.g. `voxel_set_serialize_test.cpp`) covers the serializer but leaves the
+wiring itself (registry entry → Lua binding → reload) unverified (#2244). The registry is built **fresh per call** — cheap (a few
 allocations, never a per-frame path) and, unlike a process-static, its
 session-local `ComponentId`s always match the live `EntityManager`.
 
