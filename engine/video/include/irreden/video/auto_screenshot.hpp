@@ -6,6 +6,11 @@
 #include <irreden/system/ir_system_types.hpp>
 #include <irreden/input/ir_input_types.hpp>
 
+#include <array>
+#include <cstddef>
+#include <cstdio>
+#include <vector>
+
 namespace IRVideo {
 
 /// Optional sub-rectangle of a shot's framebuffer to dump as a small PNG
@@ -99,6 +104,38 @@ struct AutoScreenshotConfig {
     const AutoScreenshotShot *shots_ = nullptr;
     int numShots_ = 0;
     void (*onCaptureFrame_)(int shotIndex) = nullptr;
+};
+
+/// Owns the label storage + shot vector for a runtime-computed indexed shot
+/// sweep — a numbered walk over zoom/pan/yaw computed from a per-index
+/// callback (a boundary pan, a spin-yaw walk, a zoom×yaw×pan matrix). @c
+/// AutoScreenshotShot::label_ is a non-owning @c const @c char*, so the label
+/// text must be stored somewhere that outlives the shots it's pointed at by
+/// — this struct keeps the label storage and the shot table together so a
+/// caller can't build one without the other.
+///
+/// @c LabelSize is the fixed per-shot label buffer width — pick the smallest
+/// power-of-two-ish size that fits the longest label your @c labelFn writes
+/// (snprintf truncates silently on overflow).
+template <std::size_t LabelSize = 40> struct IndexedSweepShots {
+    std::vector<AutoScreenshotShot> shots_;
+    std::vector<std::array<char, LabelSize>> labels_;
+
+    /// Builds @c n shots. @c shotFn(i) returns the shot's zoom/pan/yaw/etc.
+    /// (its @c label_ is ignored and overwritten). @c labelFn(i, buf, size)
+    /// writes the shot's label into @c buf via @c std::snprintf.
+    template <typename ShotFn, typename LabelFn>
+    void build(std::size_t n, ShotFn &&shotFn, LabelFn &&labelFn) {
+        shots_.reserve(n);
+        labels_.reserve(n);
+        for (std::size_t i = 0; i < n; ++i) {
+            auto &label = labels_.emplace_back();
+            labelFn(i, label.data(), label.size());
+            AutoScreenshotShot shot = shotFn(i);
+            shot.label_ = label.data();
+            shots_.push_back(shot);
+        }
+    }
 };
 
 /// True once @c createAutoScreenshotSystem has been called this run — i.e. the

@@ -47,12 +47,10 @@
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
 
-#include <array>
 #include <cstdint>
 #include <cstdio>
 #include <functional>
 #include <list>
-#include <vector>
 
 namespace IRLightingDemo {
 
@@ -141,8 +139,15 @@ inline float g_initialZoom = 0.0f;
 // continuously across the shots (in-window → clamped edge seed → out of
 // reach), never pop or band.
 inline bool g_lightBoundarySweep = false;
-inline std::vector<IRVideo::AutoScreenshotShot> g_boundarySweepShots;
-inline std::vector<std::array<char, 48>> g_boundarySweepLabels;
+inline IRVideo::IndexedSweepShots<48> g_boundarySweepShots;
+// `--light-domain-matrix` (V3, #2317): zoom x yaw x pan-distance shot matrix
+// over the same emissive-light-relative pan axis as the boundary sweep, for
+// light-verify.py's zoom/yaw/pan domain assertions.
+inline bool g_lightDomainMatrix = false;
+inline IRVideo::IndexedSweepShots<48> g_domainMatrixShots;
+// `--hover-sweep` (V3, #2317): see kHoverSweepHeights above.
+inline bool g_hoverSweep = false;
+inline IRVideo::IndexedSweepShots<32> g_hoverSweepShots;
 inline IRRender::DebugOverlayMode g_cliOverlay = IRRender::DebugOverlayMode::NONE;
 // CLI flag for `--no-ao` (or `--ao-off`). Applied after the demo's own
 // DemoConfig.aoEnabled_ so the flag wins. Lets validation runs flip AO
@@ -161,78 +166,11 @@ inline IRSystem::SystemId g_computeLightVolumeSystemId{};
 // `IRSystem::worldPlacedCasters(g_bakeSunShadowMapSystemId)`, mirroring
 // `g_computeLightVolumeSystemId` above.
 inline IRSystem::SystemId g_bakeSunShadowMapSystemId{};
-// The shot table actually wired into AutoScreenshotConfig this run
-// (kShots or the --light-boundary-sweep series) — the DOMAIN-STATE hook
-// only receives a shot index, so it needs this to recover the shot's
-// label.
+// The shot table actually wired into AutoScreenshotConfig this run (kShots or
+// one of the runtime-built series: --light-boundary-sweep,
+// --light-domain-matrix, --hover-sweep) — the DOMAIN-STATE hook only receives
+// a shot index, so it needs this to recover the shot's label.
 inline const IRVideo::AutoScreenshotShot *g_activeShots = nullptr;
-
-// DOMAIN-STATE emission hook (#2315, V1): `AutoScreenshotConfig::onCaptureFrame_`
-// callback wired below. Fires once per shot, on the settled capture frame,
-// after the frame's render systems (including COMPUTE_LIGHT_VOLUME) have
-// already run — so every value read here reflects what was actually
-// rendered. Emits one machine-readable log line per shot (the same
-// `IR_LOG_INFO` precedent as the `GUI-ASSERT` lines in
-// `gui_test_assertions.hpp`) for the V3 light-verify harness (#2317) to
-// parse; format is the contract — see issue #2315's plan "Sibling
-// reconciliation" note before changing it.
-//
-// Main canvas only for V1 (matches the minimap's V2 scope, #2314 plan
-// "Per-canvas gather scope" gotcha) — `lightGatherRecords` already reads
-// back COMPUTE_LIGHT_VOLUME's own per-canvas gather, so a multi-canvas demo
-// would need one call per canvas; none of the lighting demos have more than
-// the main canvas today.
-inline void logDomainState(int shotIndex) {
-    const char *label = (g_activeShots != nullptr) ? g_activeShots[shotIndex].label_ : "unknown";
-
-    const ivec3 anchor = IRRender::getLightAnchorFreeze().anchor_;
-    const ivec3 windowLo = anchor - ivec3(kLightVolumeHalfExtent);
-    const ivec3 windowHi = anchor + ivec3(kLightVolumeHalfExtent - 1);
-
-    std::string lights = "[";
-    const auto &records = IRSystem::lightGatherRecords(g_computeLightVolumeSystemId);
-    for (std::size_t i = 0; i < records.size(); ++i) {
-        const auto &r = records[i];
-        const char *state = r.state_ == IRSystem::LightGatherState::SEEDED_FULL ? "SEEDED_FULL"
-                            : r.state_ == IRSystem::LightGatherState::BOUNDARY_DISCOUNTED
-                                ? "BOUNDARY_DISCOUNTED"
-                                : "SKIPPED";
-        char entry[64];
-        std::snprintf(
-            entry,
-            sizeof(entry),
-            "%s%llu:%s:%.3f",
-            i == 0 ? "" : ",",
-            static_cast<unsigned long long>(r.entity_),
-            state,
-            r.residual_
-        );
-        lights += entry;
-    }
-    lights += "]";
-
-    const auto &gpu = IRRender::gpuStageTiming();
-    IR_LOG_INFO(
-        "DOMAIN-STATE shot={} anchor={},{},{} window={},{},{}..{},{},{} lights={} "
-        "feeder={:.1f},{:.1f}..{:.1f},{:.1f} casters={}",
-        label,
-        anchor.x,
-        anchor.y,
-        anchor.z,
-        windowLo.x,
-        windowLo.y,
-        windowLo.z,
-        windowHi.x,
-        windowHi.y,
-        windowHi.z,
-        lights,
-        gpu.shadowFeederMin_.x,
-        gpu.shadowFeederMin_.y,
-        gpu.shadowFeederMax_.x,
-        gpu.shadowFeederMax_.y,
-        gpu.worldPlacedCasterCount_
-    );
-}
 
 inline void registerArgs() {
     IREngine::args().optionalInt("--auto-profile", "Run for N frames then exit (default 300)", 300);
@@ -249,6 +187,17 @@ inline void registerArgs() {
         "Auto-screenshot series panning the camera anchor away from the "
         "emissive light through the light-volume window boundary"
     );
+    IREngine::args().flag(
+        "--light-domain-matrix",
+        "Auto-screenshot series covering the zoom x yaw x pan-distance domain "
+        "matrix relative to the emissive light (V3 light-verify harness)"
+    );
+    IREngine::args().flag(
+        "--hover-sweep",
+        "Auto-screenshot series raising a single cube through increasing "
+        "hover heights above the floor, for the shadow-footprint truncation "
+        "curve (V3 light-verify harness / S2 baseline)"
+    );
 }
 
 inline void readArgs() {
@@ -263,6 +212,8 @@ inline void readArgs() {
         g_cliOverlay = IRRender::debugOverlayModeFromString(overlayStr.c_str());
     g_cliDisableAO = IREngine::args().getFlag("--no-ao") || IREngine::args().getFlag("--ao-off");
     g_lightBoundarySweep = IREngine::args().getFlag("--light-boundary-sweep");
+    g_lightDomainMatrix = IREngine::args().getFlag("--light-domain-matrix");
+    g_hoverSweep = IREngine::args().getFlag("--hover-sweep");
 }
 
 inline EntityId createVoxelPoolShape(
@@ -315,6 +266,21 @@ inline void configureCanvases(bool enableFog) {
     );
 }
 
+inline constexpr float kSpacingX = 16.0f;
+inline constexpr float kSdfRowY = 12.0f;
+inline constexpr float kFloorCenterZ = 5.0f;
+
+inline vec4 floorSdfParams() {
+    return vec4(4.0f * kSpacingX + 16.0f, kSdfRowY + 24.0f, 2.0f, 0.0f);
+}
+
+// Shared by createGeometry and the --hover-sweep cube (V3, #2317) so a
+// hover-sweep shot's "grounded" height lands exactly on the same floor
+// surface the row-case shapes rest on.
+inline float floorTopZ() {
+    return kFloorCenterZ - sdfBottomZOffset(IRRender::ShapeType::BOX, floorSdfParams());
+}
+
 inline void createGeometry() {
     struct ShapeCase {
         IRRender::ShapeType type_;
@@ -323,12 +289,8 @@ inline void createGeometry() {
         Color color_;
     };
 
-    constexpr float kSpacingX = 16.0f;
-    constexpr float kSdfRowY = 12.0f;
-    constexpr float kFloorCenterZ = 5.0f;
-    const vec4 floorParams = vec4(4.0f * kSpacingX + 16.0f, kSdfRowY + 24.0f, 2.0f, 0.0f);
-    const float kFloorTopZ =
-        kFloorCenterZ - sdfBottomZOffset(IRRender::ShapeType::BOX, floorParams);
+    const vec4 floorParams = floorSdfParams();
+    const float kFloorTopZ = floorTopZ();
     const ShapeCase cases[] = {
         {IRRender::ShapeType::BOX, vec4(7, 7, 7, 0), ivec3(3, 3, 3), Color{100, 200, 220, 255}},
         {IRRender::ShapeType::SPHERE, vec4(4, 4, 4, 0), ivec3(5, 5, 5), Color{220, 180, 100, 255}},
@@ -362,8 +324,40 @@ inline void createGeometry() {
     IREntity::setComponent(floor, C_LightBlocker{false, false, 0.0f});
 }
 
-// Shared by createLights and the --light-boundary-sweep shot builder so the
-// sweep pans relative to where the emissive light actually is.
+// --hover-sweep (V3, #2317): a single cube raised through increasing hover
+// heights above the floor, so S2's shadow-throw unification work has a
+// hover-height shadow-footprint-truncation-curve baseline to diff against.
+// Positioned off to the side of the row-case shapes (negative X) so its
+// floor shadow isn't occluded by them. Assumes the default createGeometry()
+// floor — a geometryFn_-overridden demo's floor may not be at floorTopZ().
+inline constexpr IRRender::ShapeType kHoverSweepShapeType = IRRender::ShapeType::BOX;
+inline constexpr vec4 kHoverSweepShapeParams{7.0f, 7.0f, 7.0f, 0.0f};
+inline constexpr ivec3 kHoverSweepVoxelHalfExtent{3, 3, 3};
+// x=-8 keeps clear of both the floor's x=-16 edge and the row shapes at
+// x=0/y={0,kSdfRowY}; y=kSdfRowY*0.5 is the floor's own Y-center.
+inline constexpr vec2 kHoverSweepXY{-8.0f, kSdfRowY * 0.5f};
+inline constexpr float kHoverSweepHeights[] = {0.0f, 8.0f, 16.0f, 24.0f, 32.0f};
+inline EntityId g_hoverSweepCube{};
+
+// World Z is -up (see the row-case loop above: `kFloorTopZ - halfExtent.z`
+// lifts a shape off the floor), so hover height subtracts further.
+inline float hoverSweepZ(float height) {
+    return floorTopZ() - sdfBottomZOffset(kHoverSweepShapeType, kHoverSweepShapeParams) - height;
+}
+
+inline void createHoverSweepCube() {
+    g_hoverSweepCube = createVoxelPoolShape(
+        vec3(kHoverSweepXY.x, kHoverSweepXY.y, hoverSweepZ(kHoverSweepHeights[0])),
+        kHoverSweepShapeType,
+        kHoverSweepShapeParams,
+        Color{200, 90, 90, 255},
+        kHoverSweepVoxelHalfExtent
+    );
+}
+
+// Shared by createLights and the --light-boundary-sweep / --light-domain-matrix
+// shot builders so their world-space pans stay relative to where the emissive
+// light actually is.
 inline constexpr vec3 kEmissiveLightPos{24.0f, 6.0f, -2.0f};
 
 inline void createLights(const DemoConfig &config) {
@@ -441,6 +435,9 @@ inline void initEntities(const DemoConfig &config) {
     } else {
         createGeometry();
     }
+    if (g_hoverSweep) {
+        createHoverSweepCube();
+    }
     createLights(config);
 
     if (config.enableFog_) {
@@ -467,6 +464,94 @@ inline void initCommands() {
         IRInput::PRESSED,
         IRInput::kKeyButtonF11
     );
+}
+
+// DOMAIN-STATE emission hook (#2315, V1): `AutoScreenshotConfig::onCaptureFrame_`
+// callback wired below. Fires once per shot, on the settled capture frame,
+// after the frame's render systems (including COMPUTE_LIGHT_VOLUME) have
+// already run — so every value read here reflects what was actually
+// rendered. Emits one machine-readable log line per shot (the same
+// `IR_LOG_INFO` precedent as the `GUI-ASSERT` lines in
+// `gui_test_assertions.hpp`) for the V3 light-verify harness (#2317) to
+// parse; format is the contract — see issue #2315's plan "Sibling
+// reconciliation" note before changing it.
+//
+// Main canvas only for V1 (matches the minimap's V2 scope, #2314 plan
+// "Per-canvas gather scope" gotcha) — `lightGatherRecords` already reads
+// back COMPUTE_LIGHT_VOLUME's own per-canvas gather, so a multi-canvas demo
+// would need one call per canvas; none of the lighting demos have more than
+// the main canvas today.
+inline void logDomainState(int shotIndex) {
+    const char *label = (g_activeShots != nullptr) ? g_activeShots[shotIndex].label_ : "unknown";
+
+    const ivec3 anchor = IRRender::getLightAnchorFreeze().anchor_;
+    const ivec3 windowLo = anchor - ivec3(kLightVolumeHalfExtent);
+    const ivec3 windowHi = anchor + ivec3(kLightVolumeHalfExtent - 1);
+
+    std::string lights = "[";
+    const auto &records = IRSystem::lightGatherRecords(g_computeLightVolumeSystemId);
+    for (std::size_t i = 0; i < records.size(); ++i) {
+        const auto &r = records[i];
+        const char *state = r.state_ == IRSystem::LightGatherState::SEEDED_FULL ? "SEEDED_FULL"
+                            : r.state_ == IRSystem::LightGatherState::BOUNDARY_DISCOUNTED
+                                ? "BOUNDARY_DISCOUNTED"
+                                : "SKIPPED";
+        char entry[64];
+        std::snprintf(
+            entry,
+            sizeof(entry),
+            "%s%llu:%s:%.3f",
+            i == 0 ? "" : ",",
+            static_cast<unsigned long long>(r.entity_),
+            state,
+            r.residual_
+        );
+        lights += entry;
+    }
+    lights += "]";
+
+    const auto &gpu = IRRender::gpuStageTiming();
+    IR_LOG_INFO(
+        "DOMAIN-STATE shot={} anchor={},{},{} window={},{},{}..{},{},{} lights={} "
+        "feeder={:.1f},{:.1f}..{:.1f},{:.1f} casters={}",
+        label,
+        anchor.x,
+        anchor.y,
+        anchor.z,
+        windowLo.x,
+        windowLo.y,
+        windowLo.z,
+        windowHi.x,
+        windowHi.y,
+        windowHi.z,
+        lights,
+        gpu.shadowFeederMin_.x,
+        gpu.shadowFeederMin_.y,
+        gpu.shadowFeederMax_.x,
+        gpu.shadowFeederMax_.y,
+        gpu.worldPlacedCasterCount_
+    );
+
+    // --hover-sweep (V3, #2317): reposition the cube for the NEXT shot here,
+    // not the current one — this hook fires right after the current shot's
+    // screenshot is requested, and the cycling system takes one more tick to
+    // advance currentShot_ before it starts the next shot's settle window
+    // (engine/video/src/auto_screenshot.cpp), so the move lands a full settle
+    // window ahead of the next capture.
+    if (g_hoverSweep) {
+        constexpr int n = sizeof(kHoverSweepHeights) / sizeof(kHoverSweepHeights[0]);
+        const int nextIndex = shotIndex + 1;
+        if (nextIndex < n) {
+            IREntity::setComponent(
+                g_hoverSweepCube,
+                C_LocalTransform{vec3(
+                    kHoverSweepXY.x,
+                    kHoverSweepXY.y,
+                    hoverSweepZ(kHoverSweepHeights[nextIndex])
+                )}
+            );
+        }
+    }
 }
 
 inline void initSystems(const DemoConfig &config) {
@@ -564,32 +649,104 @@ inline void initSystems(const DemoConfig &config) {
         IRVideo::AutoScreenshotConfig screenshotConfig{};
         screenshotConfig.warmupFrames_ = g_autoWarmupFrames;
         screenshotConfig.settleFrames_ = 3;
-        if (g_lightBoundarySweep) {
+        if (g_hoverSweep) {
+            constexpr std::size_t n = sizeof(kHoverSweepHeights) / sizeof(kHoverSweepHeights[0]);
+            const vec2 hoverCameraIso =
+                -IRMath::pos3DtoPos2DIso(vec3(kHoverSweepXY.x, kHoverSweepXY.y, 0.0f));
+            g_hoverSweepShots.build(
+                n,
+                [&](std::size_t) {
+                    return IRVideo::AutoScreenshotShot{4.0f, hoverCameraIso, 0.0f};
+                },
+                [](std::size_t i, char *buf, std::size_t size) {
+                    std::snprintf(
+                        buf,
+                        size,
+                        "hover_h%03d",
+                        static_cast<int>(kHoverSweepHeights[i])
+                    );
+                }
+            );
+            screenshotConfig.shots_ = g_hoverSweepShots.shots_.data();
+            screenshotConfig.numShots_ = static_cast<int>(g_hoverSweepShots.shots_.size());
+        } else if (g_lightDomainMatrix) {
+            // Zoom x yaw x pan-distance domain matrix. Pan reuses the boundary
+            // sweep's calibration (see kSweepDistances below): in-window,
+            // clamped-edge band, and out-of-reach. Bounded to 4x3x3 = 36 shots
+            // (light-verify's own budget note: keep the matrix under ~45).
+            constexpr float kMatrixZooms[] = {1.0f, 2.0f, 4.0f, 8.0f};
+            constexpr float kMatrixYawDegrees[] = {0.0f, 30.0f, 45.0f};
+            constexpr float kMatrixPanDistances[] = {0.0f, 70.0f, 110.0f};
+            constexpr const char *kMatrixPanNames[] = {"inwin", "band", "beyond"};
+            constexpr std::size_t kNumYaws =
+                sizeof(kMatrixYawDegrees) / sizeof(kMatrixYawDegrees[0]);
+            constexpr std::size_t kNumPans =
+                sizeof(kMatrixPanDistances) / sizeof(kMatrixPanDistances[0]);
+            constexpr std::size_t kNumZooms = sizeof(kMatrixZooms) / sizeof(kMatrixZooms[0]);
+            g_domainMatrixShots.build(
+                kNumZooms * kNumYaws * kNumPans,
+                [&](std::size_t i) {
+                    const std::size_t zoomIdx = i / (kNumYaws * kNumPans);
+                    const std::size_t rem = i % (kNumYaws * kNumPans);
+                    const std::size_t yawIdx = rem / kNumPans;
+                    const std::size_t panIdx = rem % kNumPans;
+                    const vec3 anchorTarget = vec3(
+                        kEmissiveLightPos.x + kMatrixPanDistances[panIdx],
+                        kEmissiveLightPos.y,
+                        0.0f
+                    );
+                    return IRVideo::AutoScreenshotShot{
+                        kMatrixZooms[zoomIdx],
+                        -IRMath::pos3DtoPos2DIso(anchorTarget),
+                        kMatrixYawDegrees[yawIdx] * IRMath::kPi / 180.0f
+                    };
+                },
+                [&](std::size_t i, char *buf, std::size_t size) {
+                    const std::size_t zoomIdx = i / (kNumYaws * kNumPans);
+                    const std::size_t rem = i % (kNumYaws * kNumPans);
+                    const std::size_t yawIdx = rem / kNumPans;
+                    const std::size_t panIdx = rem % kNumPans;
+                    std::snprintf(
+                        buf,
+                        size,
+                        "domain_z%d_yaw%d_%s",
+                        static_cast<int>(kMatrixZooms[zoomIdx]),
+                        static_cast<int>(kMatrixYawDegrees[yawIdx]),
+                        kMatrixPanNames[panIdx]
+                    );
+                }
+            );
+            screenshotConfig.shots_ = g_domainMatrixShots.shots_.data();
+            screenshotConfig.numShots_ = static_cast<int>(g_domainMatrixShots.shots_.size());
+        } else if (g_lightBoundarySweep) {
             // World-X distances from the emissive light to the camera anchor.
             // With the light's radius r and the volume half-extent 64:
             // 0/40 stay in-window (identical full-strength field), 70 seeds
             // the clamped edge at residual 1 − 6·step, 88 at 1 − 24·step,
             // and 110 is out of residual reach (correctly dark).
             constexpr float kSweepDistances[] = {0.0f, 40.0f, 70.0f, 88.0f, 110.0f};
-            const std::size_t n = sizeof(kSweepDistances) / sizeof(kSweepDistances[0]);
-            g_boundarySweepShots.reserve(n);
-            g_boundarySweepLabels.reserve(n);
-            for (std::size_t i = 0; i < n; ++i) {
-                const vec3 anchorTarget =
-                    vec3(kEmissiveLightPos.x + kSweepDistances[i], kEmissiveLightPos.y, 0.0f);
-                auto &label = g_boundarySweepLabels.emplace_back();
-                std::snprintf(
-                    label.data(),
-                    label.size(),
-                    "light_boundary_d%03d",
-                    static_cast<int>(kSweepDistances[i])
-                );
-                IRVideo::AutoScreenshotShot
-                    shot{2.0f, -IRMath::pos3DtoPos2DIso(anchorTarget), 0.0f, label.data()};
-                g_boundarySweepShots.push_back(shot);
-            }
-            screenshotConfig.shots_ = g_boundarySweepShots.data();
-            screenshotConfig.numShots_ = static_cast<int>(g_boundarySweepShots.size());
+            g_boundarySweepShots.build(
+                sizeof(kSweepDistances) / sizeof(kSweepDistances[0]),
+                [&](std::size_t i) {
+                    const vec3 anchorTarget =
+                        vec3(kEmissiveLightPos.x + kSweepDistances[i], kEmissiveLightPos.y, 0.0f);
+                    return IRVideo::AutoScreenshotShot{
+                        2.0f,
+                        -IRMath::pos3DtoPos2DIso(anchorTarget),
+                        0.0f
+                    };
+                },
+                [&](std::size_t i, char *buf, std::size_t size) {
+                    std::snprintf(
+                        buf,
+                        size,
+                        "light_boundary_d%03d",
+                        static_cast<int>(kSweepDistances[i])
+                    );
+                }
+            );
+            screenshotConfig.shots_ = g_boundarySweepShots.shots_.data();
+            screenshotConfig.numShots_ = static_cast<int>(g_boundarySweepShots.shots_.size());
         } else if (config.shots_ != nullptr) {
             // Per-demo shot table (e.g. the spot demo's yaw sweep, #2318).
             screenshotConfig.shots_ = config.shots_;
