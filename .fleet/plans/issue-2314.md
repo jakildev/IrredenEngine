@@ -63,7 +63,7 @@ independent heads.
 ## Steward ledger
 
 reconciled-through: PR #2387 merge (2026-07-14 — S2 #2320 shadow-throw unify merged; V3 #2317 + S1 #2319 reconciled prior iterations)
-proposal-pending: none — the 2026-07-13 package (PR #2343 / S1 #2319) was answered by opus-architect and distributed 2026-07-13 (see D4–D6 and the `## Steward direction` comment on PR #2343)
+proposal-pending: STEWARD PROPOSAL 2026-07-14 (PR #2393 / S3 #2321) — 3 novel questions (sequence #2385 before S3? / finer-resolution architecture direction / #2321 plan disposition); awaiting architect/human answer on the #2314 thread (issuecomment-4973206838). Re-fire edge = removal of `fleet:steward-proposal`. Prior 2026-07-13 package (PR #2343 / S1 #2319) answered + distributed (D4–D6, `## Steward direction` on PR #2343).
 
 ### Children
 | Child | State | PR | Plan | Last validated |
@@ -75,7 +75,7 @@ proposal-pending: none — the 2026-07-13 package (PR #2343 / S1 #2319) was answ
 | #2318 | merged | #2337 | plan | 2026-07-13 |
 | #2319 | merged | #2343 | plan | 2026-07-14 (S1 same-plane provenance test; D6 genuine-cast residual → #2385; Linux/GL smoke owed) |
 | #2320 | merged | #2387 | plan | 2026-07-14 (S2 — receive window unified 24→64 feeder sweep; floating top-face wedge restored) |
-| #2321 | open (unblocked — #2320 merged) | — | plan | 2026-07-14 (post-S2 premise realized: throw now = 64 swept AABB the cascade extents must cover; not stale) |
+| #2321 | open — design-proposed (PR #2393 parked) | #2393 | plan | 2026-07-14 (flow-a triage: lever (a) measured-refuted on Metal; 3 novel Qs → STEWARD PROPOSAL 2026-07-14; awaiting answer) |
 | #2322 | merged | #2328 | plan | 2026-07-13 |
 | #2323 | merged | #2326 | plan | 2026-07-13 |
 | #2385 | open (adopted; needs planning) | — | stub | 2026-07-14 (flow-c adoption; validate-stack PASS) |
@@ -178,3 +178,28 @@ proposal-pending: none — the 2026-07-13 package (PR #2343 / S1 #2319) was answ
   the swept AABB the cascade extents must cover") is now concretely realized —
   premise satisfied, not stale (PR #2387 renamed/removed no symbol #2321 cites),
   no amendment. #2385 (S1-follow-up/D6) stays open, unlabeled planning stub.
+- 2026-07-14 (flow a — S3 #2321 design-block triage): PR #2393 (worker opus,
+  macOS) raised a `NEEDS-DESIGN` reporting that the plan's lever (a) (zoom-aware
+  near-cascade extent fit) is measured-refuted on Metal — a structural no-op:
+  the near slab clamps to today's full 204.8-voxel slab at every tested zoom
+  (visible iso-depth span 341–1364 ≫ 204.8), and the on-screen receivers (the
+  central cluster floor at iso-depth ≈ 0) are served by the FAR cascade, pinned
+  to its full slab as the covering fallback — so the shadow output is
+  byte-identical. Sun texels already track zoom sub-linearly (near 0.45→0.15
+  across zoom 0.55→4), and the residual zoom-4 jaggedness is a hexagonal
+  honeycomb of unshadowed floor holes = the #2385 under-coverage signature
+  (missing sun-map writes, D6-recorded #2270-lineage splat coverage), which
+  S3's ≥2× render-shadow-metric gate is defined on and its receive/extent
+  levers do not touch. All 3 questions — (1) sequence #2385 before S3? (2)
+  finer-resolution architecture direction (2048² / 3rd cascade / split retune)?
+  (3) amend vs re-scope #2321? — are NOVEL: none citable to the plan or D1–D6
+  (the plan sequences S3 only behind S2 #2320; #2385 has no declared ordering
+  vs S3; the architecture direction is undecided). Parked:
+  `fleet-transition design-propose 2393` (design-blocked→design-proposed),
+  aggregated STEWARD PROPOSAL 2026-07-14 posted on #2314 (recommendations: seq
+  #2385 first; defer the architecture choice until a post-#2385 re-measure;
+  amend #2321 append-only dropping lever (a), retaining lever (b) 3×3 PCF),
+  `fleet:steward-proposal` added to the umbrella. Re-fire edge = removal of
+  `fleet:steward-proposal`; distribution then amends the #2321 plan record
+  citing the answers, posts `## Steward direction` on #2393, and
+  `fleet-transition design-unblock 2393`.
