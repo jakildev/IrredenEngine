@@ -204,7 +204,7 @@ Filed: V1 = #2332, C1 = #2333, C2 = #2334, D1 = #2335.
 
 ## Steward ledger
 
-reconciled-through: PR #2388 merge (2026-07-14 — C2 #2334 overflow-face lighting merged)
+reconciled-through: PR #2390 merge (2026-07-14 — D1 #2335 docs merged; epic closed out)
 proposal-pending: none
 
 ### Children
@@ -213,7 +213,7 @@ proposal-pending: none
 | #2332 | merged | #2352 | plan | 2026-07-13 |
 | #2333 | merged | #2357 | plan | 2026-07-14 (C1 — view mask + overflow append + albedo scatter; both backends) |
 | #2334 | merged | #2388 | plan | 2026-07-14 (C2 — overflow-face lighting: `c_light_overflow_faces.{glsl,metal}` + `system_lighting_to_trixel` dispatch; both backends; in-scope) |
-| #2335 | in-progress (D1 doc PR #2390 open) | #2390 (`fleet:semantic-conflict`, based on master — needs opus-worker step-1c resolve/escalate; `approved` + `merger-cooldown` cleared 18:44–18:47Z after the #2388 merge re-targeted it off #2388) | plan | 2026-07-14 (design premise unaffected by the C2 merge — no #2335-referenced symbol was renamed; the semantic conflict is a mechanical rebase concern on #2390's diff, decoupled from steward re-validation → premise not stale) |
+| #2335 | merged | #2390 | plan | 2026-07-14 (D1 docs — superseded #1457 lossless-store invariant + documented two-set model/overflow contract in `per-axis-trixel-canvas-rotation.md` + `engine/render/CLAUDE.md`; the semantic-conflict resolved via #2390's own step-1c and merged as 884f8b62) |
 
 ### Decisions
 <!-- entries: D<n> (<YYYY-MM-DD>): <decision> — source: <link>  (numbered scheme per epic-steward-protocol.md §Decisions; escalation rules reference decisions by D-id) -->
@@ -264,3 +264,25 @@ proposal-pending: none
   step-1c resolution. No amendment to the #2335 plan.
   Flow c: no open `Part of epic: #2331` issue is absent from the checklist (only #2335,
   already tracked) → nothing to adopt. Epic not close-out-ready (#2335 still open).
+- 2026-07-14 (flow b — #2335 rollup + flow d — close-out): PR #2390 merged
+  (mergeCommit 884f8b62, 2026-07-14T21:19:20Z, "Closes #2335") → #2335 checkbox ticked;
+  reconciled-through advanced to PR #2390. Scope-drift audit: matches the D1 plan
+  (umbrella Phases §4) — docs-only (+210/-3): `docs/design/per-axis-trixel-canvas-rotation.md`
+  supersedes the #1457 "store is collision-free / winner uncontested" invariant + the
+  "faces screen-separated at the live yaw never share a cell" claim in place (dated notes,
+  history kept) and adds a "Current contract" section (two-set model, `Δiso = t·(−2sinθ,
+  2−2cosθ)` coset math, `2·cos(visualYaw)+1` election-inversion past 120°, resolveMode 2/3
+  passes, 3-uint entry format, binding reuse, measured cap utilization, recorded
+  yawed-election NO-GO); `engine/render/CLAUDE.md` (+14) points its per-axis pipeline note
+  at the lane. In-scope, additive; contradicts no recorded Decision (D1). Last child →
+  no downstream sibling to re-validate.
+  Flow d — close-out: all four children CLOSED COMPLETED (live-checked) with merged PRs
+  (#2332←#2352, #2333←#2357, #2334←#2388, #2335←#2390). Closing criteria collected in the
+  umbrella close-out comment: (1) wave-scene coverage/hole-ratio parity across residuals +
+  all four quadrants verified on Metal (C1/C2), OpenGL runtime pending `fleet:needs-windows-smoke`
+  on #2357/#2388 (platform-catchup tracker, not a new issue); (2) #1880 dense-cube unregressed
+  (zero coset pairs → overflow emits nothing); (3) cardinal/yaw-0 byte-identical (C1 exact,
+  C2 A/B 0.92% ≈ 0.86% non-determinism floor); (4) overflow cap never hit (~125k vs cap 437844,
+  0 drops), #2281 attribution rows, yawed-election swap measured NO-GO. Follow-ups: GL smoke via
+  the existing `fleet:needs-windows-smoke` labels; #2207 dual-emit may reuse the overflow `faceId`.
+  Umbrella #2331 closed COMPLETED; steward-claim released.
