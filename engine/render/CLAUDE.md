@@ -688,6 +688,20 @@ single-global-parity stripe class (#1256) cannot occur. Spec + the rejected
 gather/inverse alternatives:
 [`docs/design/per-axis-trixel-canvas-rotation.md`](../../docs/design/per-axis-trixel-canvas-rotation.md).
 
+**View-visibility overflow lane (epic #2331).** The cardinal-keyed store
+above elects one winner per store cell, which is the **cardinal**-visible
+face set — under residual yaw the **view**-visible set can include a coset
+member (two faces separated by world `t·(1,1,1)`) the store never wrote. A
+bounded, rotating-only overflow lane (two extra `resolveMode` passes in
+`c_voxel_to_trixel_stage_1_body.{glsl,metal}`, a second scatter pass in
+`v_peraxis_scatter.glsl`, and a relight pass in
+`c_light_overflow_faces.{glsl,metal}` at the tail of `LIGHTING_TO_TRIXEL`)
+carries exactly `viewVisible ∖ cardinalWinners`, gated off at cardinal
+(byte-identical fast path). See
+[`docs/design/per-axis-trixel-canvas-rotation.md`](../../docs/design/per-axis-trixel-canvas-rotation.md)
+§"Current contract — view-visibility overflow lane" for the two-set model,
+the pass sequence, the entry format, and the measured cap/cost numbers.
+
 **Accepted near-cardinal corner drift (coarse cubes) — #1883, root fix in
 epic #1933.** The forward-scatter composite grows each cell to a conservative
 quad (`scatterConservativeDilation`, `ir_iso_common.glsl`): the per-edge margin
