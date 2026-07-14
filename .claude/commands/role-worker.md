@@ -462,7 +462,15 @@ Do the work, then exit cleanly:
        watertight when the worker resolves before the merger fires):
        `gh pr edit <N> --repo jakildev/IrredenEngine --remove-label "fleet:merger-cooldown"`
        Then jump to step k (reset).
-    j. **Resolution failed (escalation).** When to escalate:
+    j. **Resolution failed (escalation).** Before escalating, scan the PR
+       thread (`gh pr view <N> --comments`) for an architect /
+       `fleet:design-*` direction posted since the conflict arose: if an
+       in-thread ruling already resolves the conflicting intent, execute
+       it (or route via the `fleet:design-unblocked` path) instead of
+       re-asking the human — escalating past an existing ruling produces a
+       contradictory-signal PR and an avoidable human round-trip (#2257:
+       the escalation ignored a re-scope direction posted 30 minutes
+       earlier in the same thread). When to escalate:
        - The two sides did substantively different things and you
          can't tell from the code which intent should win (master
          rewrote a function, PR also rewrote it, neither is a

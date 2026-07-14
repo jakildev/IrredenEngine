@@ -100,3 +100,14 @@ In any system `tick` function:
   the integer at the binding boundary. See
   [`cpp-lua-enums.md`](cpp-lua-enums.md) for the full pattern and
   allowlist.
+
+- **A Lua `createEntityBatch*` call whose factory-argument count differs
+  from the C++ `registerCreateEntityBatchFunction<...>` registration arity**
+  for that name. The generated binding
+  (`wrapCreateEntityBatchWithFunctions<...>`) reads exactly N positional
+  factories and Lua silently ignores args past a C function's fixed arity —
+  so "add a component by appending one more factory" (correct for C++
+  `createEntity` spawns) silently no-ops: no error, the component never
+  attaches, and a system whose archetype requires it just never matches.
+  Adding a factory means extending the C++ registration's template arity in
+  the same change.

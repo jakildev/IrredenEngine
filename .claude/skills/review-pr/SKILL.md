@@ -64,6 +64,20 @@ issue.
 - New shader file not following the `c_` / `v_` / `f_` / `g_` prefix.
 - Canvas allocation before the canvas entity exists.
 - Compute dispatch size doesn't match `voxelDispatchGridForCount()`.
+- A shader that writes indirect-dispatch dims from a runtime count without
+  capping `numGroupsX` at 1024 and spilling to `numGroupsY` (mirror
+  `writeDispatchDims()` in `c_voxel_visibility_compact.glsl`) — an uncapped
+  1-D grid is undefined past 65535 groups.
+- A new runtime *uniform* mode-branch added to a hot compute kernel (voxel
+  stage 1/2, `c_shapes_to_trixel`, lighting / sun-shadow / particle
+  kernels) — predicated, not skipped; should be a compile-time `#if`
+  specialization from a shared body
+  (`docs/design/gpu-stage-timing-cost-model.md` §2).
+- A rebased shader-kernel/encoding PR whose fork predates a carrier or
+  encoding migration on master: verify every `encode*`/`decode*` call's
+  arity and that the migration's carrier is threaded on the enabled path —
+  byte-identity at default doesn't prove it
+  (`engine/render/CLAUDE.md` §"Verifying render changes").
 - new `*.glsl` added without a matching `*.metal` counterpart (if parity is
   intentionally deferred, the PR body must acknowledge it and reference a
   follow-up task).
@@ -160,6 +174,14 @@ verdict footer if any of these surfaces are touched)
   to** this engine checklist. The engine checklist is the baseline; the
   creation's `CLAUDE.md` is the delta. Apply both. If the subdirectory has a
   dedicated `REVIEW.md`, prefer it for review-specific rules.
+
+**Flow docs** (markdown-only PRs skip the code checklist — still check this)
+- A bash fence in a changed `.md` that runs `gh pr edit|create` /
+  `gh issue create` with `--body "$var"` instead of `--body-file`, or that
+  consumes a `$var` in a `--body`/substitution line never assigned in the
+  same fence — a worker running it literally executes `--body ""` and wipes
+  the PR body (#2342; the `--body-file` rule generalizes
+  REVIEWER-PROTOCOL.md §Posting the review body to flow docs).
 
 **Fleet scripts** (if the diff touches `scripts/fleet/`)
 - Inline comments — layout diagrams, role-list blocks, `--help` banners —

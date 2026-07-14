@@ -82,11 +82,21 @@ selection heuristic, in order:
 
 1. **Diff touches `creations/demos/<name>/`** → use `IR<NameCamelCase>`
    (e.g. `shape_debug/` → `IRShapeDebug`).
-2. **Diff touches only engine render code** (`engine/render/**`,
+2. **Diff touches the sun-shadow / lighting / AO shader family**
+   (`ir_sun_*`, `c_bake_sun_shadow_map`, `c_clear_sun_shadow_map`,
+   `c_compute_sun_shadow`, `ir_sun_shadow_sample`, `c_compute_voxel_ao`,
+   `c_lighting_to_trixel`, `c_*light_volume*`) → use `IRCanvasStress` and
+   run **both** passes with
+   `--debug-overlay shadow|ao|light_level --no-auto-rotate --no-spin`
+   (pick the overlay matching the effect; the freeze flags keep the pose
+   comparable). These effects do not render in `shape_debug`, so its
+   before/after shots come out byte-identical and read as "no visual
+   change" (#2343).
+3. **Diff touches only other engine render code** (`engine/render/**`,
    `engine/prefabs/irreden/render/**`, shaders) → default to
    `IRShapeDebug`, which exercises the trixel pipeline most broadly
    and ships `--auto-screenshot`.
-3. **Ambiguous** (multiple demo directories touched, or a mix of
+4. **Ambiguous** (multiple demo directories touched, or a mix of
    render and non-render paths) → prompt the worker for the demo
    name. Do not guess in ambiguous cases; a wrong demo produces
    useless screenshots.

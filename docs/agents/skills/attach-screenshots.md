@@ -94,10 +94,18 @@ selection heuristic, in order:
 
 1. **Diff touches `creations/demos/<name>/`** → use the matching
    `IR<NameCamelCase>` target.
-2. **Diff touches only engine render code** (matching the render-scoped
-   **visual-file globs**) → use the **default demo**, which exercises the
-   trixel pipeline most broadly and ships `--auto-screenshot`.
-3. **Ambiguous** (multiple demo directories touched, or a mix of render and
+2. **Diff touches an effect family the default demo does not render**
+   (per the repo wrapper's effect-routing table — e.g. the engine's
+   sun-shadow / lighting / AO shaders, which only produce a visible delta
+   in the lighting-capable stress demo under a `--debug-overlay` mode at a
+   frozen pose) → use the routed demo and flags for **both** passes. The
+   default demo's before/after shots for such diffs are byte-identical and
+   read as "no visual change", giving the reviewer zero evidence.
+3. **Diff touches only other engine render code** (matching the
+   render-scoped **visual-file globs**) → use the **default demo**, which
+   exercises the trixel pipeline most broadly and ships
+   `--auto-screenshot`.
+4. **Ambiguous** (multiple demo directories touched, or a mix of render and
    non-render paths) → prompt the worker for the demo name. Do not guess in
    ambiguous cases; a wrong demo produces useless screenshots.
 

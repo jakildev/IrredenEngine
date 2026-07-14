@@ -82,6 +82,19 @@ a measurement says otherwise on a specific path:
   grid is fixed CPU-side at `dispatchCompute` time; an invocation that
   returns immediately still launched. PR #2266 capped shadow-feeder
   micro-grids via early-return and measured no change in `voxelStage1`.
+- **A runtime *uniform* mode-branch in a hot kernel is predicated, not
+  skipped** — its instructions decode on every invocation even when the
+  branch is never taken, so it taxes the kernel at all inputs. #2325 Step B
+  v1 selected visible-vs-feeder via a `feederPass` uniform inside the shared
+  stage-1 kernel and regressed zoom8 `voxelStage1` +16 %; a disarm probe
+  (gate off, dispatch skipped) held the taxed number, proving the cost was
+  shader-side predication of the strided divides, not dispatch overhead.
+  Prefer a **compile-time `#if` specialization** from one shared source body:
+  two thin wrappers `#define` the mode and `#include` the body, and each
+  Metal variant registers in `threadgroupSizeForFunctionName` +
+  `functionUsesImageAtomicScratch`. Specializing measured the tax away
+  (zoom8 `voxelStage1` 5.97 → 5.33 ms, zoom16 win retained). See
+  `docs/design/voxel-feeder-split.md` §"#2258 Step B".
 - **The stage-1 raster body is not where the high-zoom cost lives — but the
   stage-1 *dispatch* still carries ~half of it.** Forcing *every* voxel to a
   single 1×1 micro-tap (a 256× per-invocation body reduction at zoom 16) left

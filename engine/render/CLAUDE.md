@@ -258,6 +258,14 @@ If the PR intentionally changes silhouettes / lighting / shading
 model, call out the intentional drift in the description so reviewers
 know the new crop is the new baseline rather than a regression.
 
+**Sun-shadow / lighting / AO shader diffs don't show in the default demo.**
+For a diff touching the sun-shadow / lighting / AO shader family the
+`attach-screenshots` picker routes to the lighting-capable stress demo with
+a `--debug-overlay` mode at a frozen pose (`IRCanvasStress --debug-overlay
+shadow|ao|light_level --no-auto-rotate --no-spin`) — the default
+`IRShapeDebug` suite renders none of those effects, so its before/after
+pairs come out byte-identical and read as "no visual change" (#2343).
+
 **Occlusion diagnostics for rotated voxel content: use `--checkerboard`,
 not `--depth-color`.** `--depth-color` quantizes hue in 4/3-world-unit
 bands; at any non-cardinal yaw the bands beat against the 1-unit voxel
@@ -343,6 +351,27 @@ binding-6 voxel upload, not a detached-revoxelize bake) can silently never
 reach the shader, and a "compiles + byte-identical at default" merge ships a
 feature that doesn't function in its actual use case (#1989 per-trixel
 priority caught exactly this on resume).
+
+**The disabled-direction complement: a "gated-off / byte-identical on path
+X" claim that leans on a shared shader predicate is empirical, not
+structural.** Multi-dispatch passes (per-axis resolve, world-placed resolve,
+resolve-then-bake) read resident shared UBO state (`FrameDataVoxelToCanvas`,
+`FrameDataSun`) that the C++ driver patches per dispatch, so a gate over
+that state is a decode-path predicate — a sibling dispatch may deliberately
+spoof the gated field (the per-axis resolve zeroes `residualYaw` to reuse
+the cardinal recovery) and take the gated path spuriously (#2293).
+Positively verify which dispatches actually take the gated path, or drive
+the intent from a dedicated per-dispatch C++ value so the byte-identity
+holds by construction.
+
+**Rebasing a shader-kernel or encoding PR past a carrier/encoding migration
+on master:** re-verify against master's *current* source — (a) every
+`encode*`/`decode*` helper call's arity and signature, and (b) that any
+polarity/priority/flip carrier the migration added is threaded through the
+rebased kernel on the ENABLED path. Byte-identity at default does not prove
+the carrier survived the rebase: an extracted or open-coded kernel that
+forked pre-migration compiles and passes cardinal byte-identity while
+silently dropping the carrier on the rotated/enabled path (#2325 vs #2207).
 
 ### Verifying temporal stability (per-frame jitter)
 
@@ -829,6 +858,11 @@ parity with voxel-pool primary shapes.
   garbage from the previous frame.
 - **Dispatch limits.** `kMaxDispatchGroupsX = 1024` (≈1M voxels before
   hitting the second dispatch dimension). Very large voxel counts slow.
+- **Mode branches in hot compute kernels: compile-time-specialize, don't
+  uniform-branch.** A runtime *uniform* branch is predicated, not skipped —
+  its instructions decode on every invocation even when never taken, taxing
+  the kernel at all inputs. Prefer a `#if` specialization from one shared
+  source body. See `docs/design/gpu-stage-timing-cost-model.md` §2.
 - **Render mode × subdivision × zoom.** `SMOOTH` mode multiplies positions
   by `subdivisions × zoom`. Changing any of these mid-frame is a perf
   cliff and can desync chunk visibility.
