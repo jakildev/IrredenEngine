@@ -72,6 +72,16 @@ struct C_DetachedRevoxelizeBuffer {
     int destCenter_ = 0;
     int destCount_ = 0;
 
+    // Per-axis half-cell anchor of the authored solid: composed local minus its
+    // roundHalfUp source cell (-0.5 on even-sized centered axes, 0 on odd) —
+    // uniform across the pool because the locals are integers and the
+    // center-around-origin offset is one shared vector. The inverse resample
+    // maps between LATTICE cells while the solid's true points sit at
+    // cell + anchor; the anchored mapping keeps the rotated raster from
+    // shifting by a constant half cell per even axis (#2349). Seeded with the
+    // grids (rigid).
+    IRMath::vec3 anchor_{0.0f, 0.0f, 0.0f};
+
     // Allocation state is the handle itself — no separate bool to drift
     // (.claude/rules/cpp-ecs.md "No dirty flags"). Both buffers are allocated
     // together, so the resident-locals handle gates them both.
@@ -96,6 +106,7 @@ struct C_DetachedRevoxelizeBuffer {
         destSide_ = 0;
         destCenter_ = 0;
         destCount_ = 0;
+        anchor_ = IRMath::vec3(0.0f);
     }
 };
 

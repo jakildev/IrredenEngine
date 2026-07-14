@@ -17,7 +17,8 @@
 //    AABB cube (`dest_.y³` cells, center `dest_.z`). Forward scatter (mode 0 under
 //    rotation) is NOT surjective onto the rotated lattice → covered dest cells got
 //    no source voxel → holes. Inverse resampling dispatches over the DEST lattice
-//    and pulls: dest cell `c` inverse-maps to source cell `roundHalfUp(R⁻¹·c)`; if
+//    and pulls: dest cell `c` inverse-maps to source cell
+//    `roundHalfUp(R⁻¹·(c + anchor) - anchor)` (the half-cell-anchored map, #2349); if
 //    that source cell is occupied (in the per-pool source grid, binding 9) the
 //    thread authors `position[slot]=c`, `color[slot]=srcColor`, and sets the
 //    per-slot active bit. Surjective by construction → hole-free at every size.
@@ -83,12 +84,24 @@ layout(std140, binding = 16) uniform RevoxelizeParams {
     ivec4 dest_;          // x = dispatch count, y = dest side, z = dest center, w = inverse mode
     ivec4 srcGridMin_;    // xyz = source grid min cell
     ivec4 srcGridDims_;   // xyz = source grid dims
+    vec4 anchor_;         // xyz = half-cell anchor: solid point = cell + anchor (#2349)
 };
+
+// The solid's true points sit at `cell + anchor_` (an even-sized centered axis
+// authors at half-integers; roundHalfUp shifted its source cells by +0.5, so
+// anchor is -0.5 there, 0 on odd axes). The inverse resample must rotate the
+// anchored POINTS, not the raw lattice cells — mapping cells directly shifted
+// the whole rotated raster by a constant half cell per even axis (#2349).
+// Source cell for the anchored point p: roundHalfUp(p - anchor_).
+ivec3 revoxSourceCellForDest(ivec3 destCell) {
+    vec3 destPoint = vec3(destCell) + anchor_.xyz;
+    return roundHalfUp(rotateByInverseQuat(destPoint, canvasRotation_) - anchor_.xyz);
+}
 
 // Is dest cell `c` covered? Inverse-map to source + check occupancy — the GPU
 // twin of REBUILD_GRID_VOXELS' #1720 dest-grid adjacency probe.
 bool revoxDestCovered(ivec3 c) {
-    ivec3 src = roundHalfUp(rotateByInverseQuat(vec3(c), canvasRotation_));
+    ivec3 src = revoxSourceCellForDest(c);
     ivec3 g = src - srcGridMin_.xyz;
     if (any(lessThan(g, ivec3(0))) || any(greaterThanEqual(g, srcGridDims_.xyz))) {
         return false;
@@ -120,7 +133,10 @@ void main() {
     }
 
     // MODE 1 — inverse resample. Decode this thread's dest cell from its linear
-    // slot in the [side]³ cube, recenter to [-center, +center]³.
+    // slot in the [side]³ cube, recenter to [-center, +center]³ — shifted +1 on
+    // anchored axes: with anchor = -0.5 the dest cells (roundHalfUp(p - anchor),
+    // p in [-r, r]) span the SAME cell count one cell higher, so shifting the
+    // decode window covers them at zero dispatch growth (#2349).
     int side = dest_.y;
     int center = dest_.z;
     ivec3 d = ivec3(
@@ -128,11 +144,13 @@ void main() {
         (int(slot) / side) % side,
         int(slot) / (side * side)
     );
-    ivec3 destCell = d - ivec3(center);
+    ivec3 revoxDestDecodeShift = ivec3(lessThan(anchor_.xyz, vec3(-0.25)));
+    ivec3 destCell = d - ivec3(center) + revoxDestDecodeShift;
 
-    // Inverse map: which source cell rotates onto this dest cell. roundHalfUp on
-    // R⁻¹·c — the same half-integer classification the forward path + CPU use.
-    ivec3 src = roundHalfUp(rotateByInverseQuat(vec3(destCell), canvasRotation_));
+    // Inverse map: which source cell rotates onto this dest cell — via the
+    // anchored points (see revoxSourceCellForDest), the same half-integer
+    // classification the CPU mask twin uses.
+    ivec3 src = revoxSourceCellForDest(destCell);
     ivec3 g = src - srcGridMin_.xyz;
     uint colorPacked = 0u;
     uint matFlagBone = 0u;
@@ -146,7 +164,10 @@ void main() {
 
     if (((colorPacked >> 24u) & 0xFFu) != 0u) {
         // Occupied dest cell — author position + color + active for this slot.
-        globalPositions[slot] = vec4(vec3(destCell), 0.0);
+        // The raster position is the anchored POINT (cell + anchor), matching
+        // mode 0's unrounded composed locals at identity (#2349): without the
+        // anchor a rotating solid snapped to the shifted integer lattice.
+        globalPositions[slot] = vec4(vec3(destCell) + anchor_.xyz, 0.0);
         // Author the ROTATED-frame face-occlusion mask from dest-grid adjacency,
         // replacing the stale unrotated source mask so stage 1/2 gate the
         // re-voxelize emit on faceIsExposed (no all-3-face bypass → no slot-tie

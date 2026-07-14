@@ -643,7 +643,7 @@ struct GPUUpdateParams {
 ///       lattice → hole-free (the forward scatter was not). The CPU skips the
 ///       color + active uploads in this mode (the GPU fill owns them).
 ///
-/// std140 UBO at `kBufferIndex_RevoxelizeDetachedParams`: four 16 B vectors, 64 B.
+/// std140 UBO at `kBufferIndex_RevoxelizeDetachedParams`: five 16 B vectors, 80 B.
 struct RevoxelizeDetachedParams {
     vec4 canvasRotation_ = vec4(0.0f, 0.0f, 0.0f, 1.0f);
     // x = dispatch count (dest-cell count D in mode 1, live source count in mode 0)
@@ -651,11 +651,17 @@ struct RevoxelizeDetachedParams {
     ivec4 dest_ = ivec4(0, 0, 0, 0);
     ivec4 srcGridMin_ = ivec4(0, 0, 0, 0);  // xyz = source occupancy grid min cell
     ivec4 srcGridDims_ = ivec4(0, 0, 0, 0); // xyz = source occupancy grid dims
+    // xyz = the solid's per-axis half-cell anchor: composed local minus its
+    // roundHalfUp cell (-0.5 on even-sized centered axes, 0 on odd). The inverse
+    // resample maps between LATTICE cells; the solid's true points sit at
+    // cell + anchor, and ignoring that shifted the rotated raster by a constant
+    // half cell per even axis (#2349). w unused.
+    vec4 anchor_ = vec4(0.0f, 0.0f, 0.0f, 0.0f);
 };
 static_assert(
-    sizeof(RevoxelizeDetachedParams) == 64,
-    "RevoxelizeDetachedParams must mirror its std140 GLSL/Metal UBO block: four "
-    "16 B vec4/ivec4 = 64 B. A silent reorder or resize would corrupt the "
+    sizeof(RevoxelizeDetachedParams) == 80,
+    "RevoxelizeDetachedParams must mirror its std140 GLSL/Metal UBO block: five "
+    "16 B vec4/ivec4 = 80 B. A silent reorder or resize would corrupt the "
     "re-voxelize fill's dispatch descriptor with no compile diagnostic."
 );
 
