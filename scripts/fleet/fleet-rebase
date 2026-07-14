@@ -22,6 +22,17 @@
 #   - Conflicting PRs on master: attempt the rebase anyway — it's free;
 #     an actual conflict aborts cleanly and goes to the LLM pass.
 #
+# Auto-merge lane (plan-file PRs only): an approved, MERGEABLE, master-based
+# PR whose diff touches ONLY .fleet/plans/** (steward rollups, close-outs,
+# umbrella plan filings) is squash-merged here — zero build/runtime surface,
+# already fleet-reviewed, and the class most likely to conflict with its own
+# siblings while queued for a human click. Every gate is re-verified live
+# (REST, not the scout-tick-old slice) immediately before the merge, and the
+# label check is allowlist-shaped: any label outside a small benign set
+# (including every human:* label) disqualifies, so new labels default to
+# human-merge. Everything else stays human-merged; the LLM merger pass never
+# merges anything (role-merger.md Hard rules).
+#
 # Trigger protocol (shared with fleet-dispatcher's merger interception):
 #   empty trigger  -> dispatcher spawns this script and consumes the trigger
 #   content "llm"  -> dispatcher runs the LLM merger pass
@@ -111,6 +122,20 @@ rearm_llm() {
 # FLEET_REBASE_SKIP_RE and the pre-push re-verify greps it directly.
 SKIP_LABEL_RE='fleet:semantic-conflict|fleet:wip|human:wip|fleet:needs-fix|human:needs-fix|human:blocker|human:re-review|fleet:design-blocked|fleet:amending-|fleet:blocker|fleet:needs-info|fleet:fork-of-other-pr|fleet:needs-linux-smoke|fleet:needs-macos-smoke'
 export FLEET_REBASE_SKIP_RE="$SKIP_LABEL_RE"
+
+# Auto-merge lane gates. MERGE_LABEL_ALLOW_RE is the benign-label allowlist:
+# a merge candidate must carry fleet:approved and NOTHING outside this set.
+# Allowlist (not blocklist) so any label this script has never heard of —
+# fleet:human-deferred, fleet:changes-made, fleet:needs-opus-recheck, any
+# human:* — disqualifies by default and the PR stays on the human's click.
+# MERGE_PATH_RE is the only diff surface the lane may merge; the LLM pass and
+# the human own everything else. Cap 3 per run: each merge flips the scout
+# hash and re-fires the merger, so a longer queue drains across wakes anyway.
+MERGE_PATH_RE='^\.fleet/plans/'
+MERGE_LABEL_ALLOW_RE='^fleet:(approved|merger-cooldown|stacked-rebase|authored-on-[a-z0-9-]+|verified-[a-z0-9-]+)$'
+export FLEET_MERGE_ALLOW_RE="$MERGE_LABEL_ALLOW_RE"
+MERGE_CAP=3
+MERGED=0
 
 # Serialization: a second fleet-rebase against the same scratch worktree
 # would corrupt an in-flight rebase. mkdir is the atomic lock; the pid
@@ -283,6 +308,104 @@ cleanup_stale_conflict() {
     gh pr edit "$pr" --repo "$repo_slug" --remove-label "fleet:semantic-conflict" >/dev/null 2>&1 || true
     gh pr edit "$pr" --repo "$repo_slug" --remove-label "fleet:merger-cooldown"   >/dev/null 2>&1 || true
     log "$repo_key#$pr: removed stale fleet:semantic-conflict (fail-then-succeed race, #1654)"
+}
+
+# Auto-merge one plan-file PR. Returns 0 = merged (or would merge, dry-run),
+# 1 = not merged (stays on the human's click; counted like llm-other so the
+# re-arm behavior for approved+MERGEABLE PRs is unchanged from before this
+# lane existed). Every gate re-verifies LIVE via REST — the slice is a scout
+# tick old and labels churn faster than the cache refreshes; REST rather
+# than `gh pr view` (GraphQL) because the GraphQL quota exhausts
+# independently under fleet load.
+attempt_merge() {
+    local repo_key="$1" pr="$2"
+    local repo_slug
+    repo_slug=$(repo_slug_for "$repo_key")
+
+    if (( MERGED >= MERGE_CAP )); then
+        log "$repo_key#$pr: auto-merge cap ($MERGE_CAP) reached this run; next wake picks it up"
+        return 1
+    fi
+
+    # Live state + label gate. REST `mergeable` is true/false/null (null =
+    # GitHub still computing) — only an explicit true proceeds. head.sha is
+    # captured from the SAME fetch and pins the eventual merge via
+    # --match-head-commit: the verify and the merge are separate round-trips,
+    # so without the pin a commit pushed in that window would merge with a
+    # diff nobody verified.
+    local tsv state base_ref mergeable head_sha labels_csv
+    tsv=$(gh api "repos/$repo_slug/pulls/$pr" \
+        --jq '[.state, .base.ref, (.mergeable|tostring), .head.sha, ([.labels[].name]|join(","))] | @tsv' \
+        2>/dev/null) || {
+        log "$repo_key#$pr: live PR fetch failed; not auto-merging"
+        return 1
+    }
+    IFS=$'\t' read -r state base_ref mergeable head_sha labels_csv <<< "$tsv"
+    if [[ "$state" != "open" || "$base_ref" != "master" || "$mergeable" != "true" ]]; then
+        log "$repo_key#$pr: live state (state=$state base=$base_ref mergeable=$mergeable) not auto-mergeable"
+        return 1
+    fi
+    if [[ -z "$head_sha" || "$head_sha" == "null" ]]; then
+        log "$repo_key#$pr: no head SHA in live fetch; not auto-merging"
+        return 1
+    fi
+    if [[ ",$labels_csv," != *",fleet:approved,"* ]]; then
+        log "$repo_key#$pr: fleet:approved gone since the scout tick; not auto-merging"
+        return 1
+    fi
+    local bad_labels
+    bad_labels=$(printf '%s' "$labels_csv" | tr ',' '\n' | grep -Ev "$MERGE_LABEL_ALLOW_RE" || true)
+    if [[ -n "$bad_labels" ]]; then
+        log "$repo_key#$pr: label(s) outside the auto-merge allowlist ($(printf '%s' "$bad_labels" | head -1)); human merges"
+        return 1
+    fi
+
+    # Diff-surface gate: every changed path must sit under .fleet/plans/.
+    # per_page=100 returns one page; a full page means the diff may be
+    # truncated and therefore unverifiable — never merge what we can't see.
+    # Assumption: .filename is the post-rename path, so a rename INTO
+    # .fleet/plans/ from outside would pass this gate. Acceptable in a
+    # single-operator fleet where plan PRs are steward-authored; revisit if
+    # external contributors ever gain a path to fleet:approved.
+    local files n_files off_path
+    files=$(gh api "repos/$repo_slug/pulls/$pr/files?per_page=100" \
+        --jq '.[].filename' 2>/dev/null) || {
+        log "$repo_key#$pr: file-list fetch failed; not auto-merging"
+        return 1
+    }
+    n_files=$(printf '%s\n' "$files" | grep -c . || true)
+    if (( n_files == 0 )); then
+        log "$repo_key#$pr: empty diff; not auto-merging"
+        return 1
+    fi
+    if (( n_files >= 100 )); then
+        log "$repo_key#$pr: $n_files+ files — too large to verify; human merges"
+        return 1
+    fi
+    off_path=$(printf '%s\n' "$files" | grep -Ev "$MERGE_PATH_RE" | head -1 || true)
+    if [[ -n "$off_path" ]]; then
+        log "$repo_key#$pr: diff not pure .fleet/plans ($off_path); human merges"
+        return 1
+    fi
+
+    if (( DRY_RUN )); then
+        MERGED=$((MERGED + 1))
+        log "$repo_key#$pr: pure plan-file PR ($n_files file(s)) — would squash-merge (dry-run)"
+        return 0
+    fi
+    if gh pr merge "$pr" --repo "$repo_slug" --squash \
+            --match-head-commit "$head_sha" >/dev/null 2>&1; then
+        MERGED=$((MERGED + 1))
+        log "$repo_key#$pr: auto-merged at ${head_sha:0:12} (pure .fleet/plans diff, fleet:approved) — zero tokens"
+        # Provenance comment so a human scanning the thread sees this was
+        # the tier-0 lane, not a manual merge. Best-effort.
+        gh pr comment "$pr" --repo "$repo_slug" \
+            --body "Auto-merged by tier-0 fleet-rebase: diff touches only \`.fleet/plans/\` and the PR carried \`fleet:approved\` with no disqualifying labels. — fleet merger" \
+            >/dev/null 2>&1 || true
+        return 0
+    fi
+    log "$repo_key#$pr: gh pr merge failed; leaving for the human"
+    return 1
 }
 
 # Attempt one PR. Returns 0 = cleanly rebased+pushed (or nothing to do),
@@ -494,9 +617,12 @@ fi
 
 # Triage the slice. One line per PR:
 #   <repo> <number> <head> <base> <verdict>
-# verdict: attempt | skip-labels | llm-other
+# verdict: attempt | merge-candidate | skip-labels | llm-other
 # - attempt: approved, no skip labels, and either stacked (base!=master)
 #   or not cleanly MERGEABLE — tier-0 tries the rebase.
+# - merge-candidate: approved, MERGEABLE, base==master, and every label
+#   inside the auto-merge allowlist — attempt_merge live-verifies (including
+#   the pure-.fleet/plans diff check the slice can't answer) and merges.
 # - skip-labels: parked with another agent/human; neither tier touches it.
 # - llm-other: any other merger-actionable state this script doesn't
 #   handle (merge-ready label upkeep, stack-coordination transients,
@@ -505,6 +631,7 @@ mapfile -t PR_LINES < <(python3 - "$SLICE" <<'PYEOF'
 import json, os, re, sys
 
 skip_re = re.compile(os.environ["FLEET_REBASE_SKIP_RE"])
+merge_allow_re = re.compile(os.environ["FLEET_MERGE_ALLOW_RE"])
 
 try:
     with open(sys.argv[1]) as f:
@@ -556,6 +683,12 @@ for pr in data.get("prs", []):
         verdict = "llm-other"
     elif approved and (base != "master" or mergeable not in ("MERGEABLE", "UNKNOWN", "", None)):
         verdict = "attempt"
+    elif (approved and base == "master" and mergeable == "MERGEABLE"
+            and all(merge_allow_re.match(l) for l in labels)):
+        # Pre-filter for the auto-merge lane on the (stale) slice labels so
+        # PRs with any label outside the allowlist never cost gh calls;
+        # attempt_merge re-verifies everything live, plus the diff surface.
+        verdict = "merge-candidate"
     else:
         verdict = "llm-other"
     print(f"{repo} {number} {head} {base} {verdict}")
@@ -577,6 +710,15 @@ for line in "${PR_LINES[@]:-}"; do
                 LLM_REMAINING=$((LLM_REMAINING + 1))
             fi
             ;;
+        merge-candidate)
+            # Not-merged candidates count toward LLM_REMAINING — before this
+            # lane existed every approved+MERGEABLE PR was llm-other, so a
+            # candidate that fails the live verify (or isn't a pure plan-file
+            # diff) re-arms the LLM pass exactly as it always did.
+            if ! attempt_merge "$repo_key" "$pr"; then
+                LLM_REMAINING=$((LLM_REMAINING + 1))
+            fi
+            ;;
         stale-conflict)
             # Second concurrent pass succeeded but left the first pass's
             # fleet:semantic-conflict behind (#1654). Remove it so the PR
@@ -594,7 +736,7 @@ for line in "${PR_LINES[@]:-}"; do
     esac
 done
 
-log "done: attempted=$ATTEMPTED cleared=$CLEARED llm_remaining=$LLM_REMAINING"
+log "done: attempted=$ATTEMPTED cleared=$CLEARED merged=$MERGED llm_remaining=$LLM_REMAINING"
 
 if (( LLM_REMAINING > 0 )); then
     rearm_llm

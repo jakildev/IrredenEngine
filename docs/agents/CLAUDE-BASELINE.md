@@ -557,7 +557,9 @@ These apply to every fleet role. Each role file lists only the
 additional role-specific restrictions.
 
 - **Never `git push origin master`. Never `--force` push.** Never call
-  `gh pr merge`. The human merges.
+  `gh pr merge`. The human merges. (The sole auto-merge in the fleet is
+  the deterministic tier-0 plan-file lane inside the `fleet-rebase`
+  script — see FLEET.md § "Who merges". No LLM role merges anything.)
 - **Never run `cmake --preset`** — only `cmake --build` against the
   already-configured tree.
 - **Never touch the `.claude/worktrees/` layout.**

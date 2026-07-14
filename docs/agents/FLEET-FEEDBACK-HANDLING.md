@@ -303,7 +303,9 @@ that needs justification in the linked issue.
 3. **Keep `fleet:approved`** — the PR is internally consistent;
    the prior reviewer approval stands. `fleet:human-deferred` parks
    re-review of the deferred concern on the diff as it stands now —
-   it is NOT a merge-gate (every PR is human-merged). It holds only
+   it is NOT a merge-gate (a `fleet:human-deferred` PR is always
+   human-merged — the label sits outside the tier-0 auto-merge
+   allowlist, FLEET.md § "Who merges"). It holds only
    while the diff is unchanged: if later commits land (a conflict
    resolution, a human push), whoever pushes drops the label and the
    PR re-enters normal review, which honors the linked issue and does

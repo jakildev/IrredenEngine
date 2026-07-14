@@ -1811,11 +1811,14 @@ def _merger_action_signal(labels, mergeable, base_ref):
     must not loop on the PR), but the projection omitted them, so an
     approved-then-needs-fix PR (e.g. game #144) was projected
     `merge-ready` and woke the merger every scout tick to find nothing
-    to do. No merge hazard today — the fleet doesn't auto-merge — but the
-    wasted wakes are real and the projection/gate disagreement is a
-    latent footgun. These are durable reviewer/human labels, not
-    merger-set transients, so skipping them preserves the self-trigger
-    invariant above.
+    to do. And since tier-0 fleet-rebase grew its plan-file auto-merge
+    lane, `merge-ready` is no longer wake-only: it feeds that lane's
+    merge-candidate triage. This skip set is the first of three gates
+    (projection skip -> triage label-allowlist -> live REST re-verify
+    in attempt_merge), so keeping it consistent with the merge gate is
+    load-bearing, not just a wasted-wake fix. These are durable
+    reviewer/human labels, not merger-set transients, so skipping them
+    preserves the self-trigger invariant above.
     """
     skip = labels & {
         "fleet:wip", "human:wip", "fleet:blocker",
