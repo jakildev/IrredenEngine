@@ -36,35 +36,14 @@ if [[ ! -x "$TRACK" ]]; then
     exit 1
 fi
 
-PASS=0
-FAIL=0
+source "$(dirname "$0")/lib_assert.sh"
+
 TMPROOT=""
 
 cleanup() {
     [[ -n "$TMPROOT" && -d "$TMPROOT" ]] && rm -rf "$TMPROOT"
 }
 trap cleanup EXIT
-
-assert_eq() {
-    local actual="$1" expected="$2" msg="$3"
-    if [[ "$actual" == "$expected" ]]; then
-        PASS=$((PASS + 1)); echo "  ok: $msg"
-    else
-        FAIL=$((FAIL + 1)); echo "  FAIL: $msg"
-        echo "        expected: $expected"
-        echo "        actual:   $actual"
-    fi
-}
-
-assert_contains() {
-    local haystack="$1" needle="$2" msg="$3"
-    if [[ "$haystack" == *"$needle"* ]]; then
-        PASS=$((PASS + 1)); echo "  ok: $msg"
-    else
-        FAIL=$((FAIL + 1)); echo "  FAIL: $msg"
-        echo "        '$needle' not found in: $haystack"
-    fi
-}
 
 TMPROOT=$(mktemp -d -t fleet-session-track-test)
 
@@ -142,6 +121,4 @@ for bad in 'not json' '{}' '{"source":"clear"}' '{"session_id":""}' '{"session_i
 done
 assert_eq "$(cat "$F2")" "$before" "sidecar unchanged by malformed payloads"
 
-echo
-echo "passed: $PASS  failed: $FAIL"
-[[ "$FAIL" -eq 0 ]]
+summarize

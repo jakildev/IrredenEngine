@@ -19,17 +19,12 @@ SCRIPT_DIR=$(cd "$(dirname "$0")/.." && pwd)
 GHT="$SCRIPT_DIR/fleet-gh-token"
 [[ -x "$GHT" ]] || { echo "test setup: fleet-gh-token not executable at $GHT" >&2; exit 1; }
 
-PASS=0; FAIL=0
+source "$(dirname "$0")/lib_assert.sh"
+
 TMPROOT=$(mktemp -d)
 cleanup() { [[ -n "$TMPROOT" && -d "$TMPROOT" ]] && rm -rf "$TMPROOT"; }
 trap cleanup EXIT
-ok()  { PASS=$((PASS + 1)); echo "  ok: $1"; }
-bad() { FAIL=$((FAIL + 1)); echo "  FAIL: $1"; }
-assert_eq() {
-    local actual="$1" expected="$2" msg="$3"
-    if [[ "$actual" == "$expected" ]]; then ok "$msg"; else bad "$msg (expected [$expected], got [$actual])"; fi
-}
-assert_absent() { [[ -e "$1" ]] && bad "$2" || ok "$2"; }
+assert_no_path() { [[ -e "$1" ]] && bad "$2" || ok "$2"; }
 
 # --- throwaway RSA signing key + isolated conf/state ---
 KEY="$TMPROOT/app-key.pem"
@@ -92,7 +87,7 @@ rm -f "$CURL_STUB_ARGS"
 set +e; out=$(run_ght "$sd" 2>/dev/null); rc=$?; set -e
 assert_eq "$out" "ghs_CACHED" "cache hit -> serves cached token"
 assert_eq "$rc" "0" "cache hit -> exit 0"
-assert_absent "$CURL_STUB_ARGS" "cache hit -> no mint (curl not called)"
+assert_no_path "$CURL_STUB_ARGS" "cache hit -> no mint (curl not called)"
 
 # --- Case 3: cache miss → mints, writes cache, and the JWT is well-formed ---
 sd="$TMPROOT/s3"; mkdir -p "$sd"
@@ -133,7 +128,7 @@ write_cache "$sd" "ghs_FRESH" 400   # outside the 300s margin → serve cache
 rm -f "$CURL_STUB_ARGS"
 set +e; out=$(run_ght "$sd" 2>/dev/null); set -e
 assert_eq "$out" "ghs_FRESH" "outside stale margin -> serves cache"
-assert_absent "$CURL_STUB_ARGS" "outside stale margin -> no mint"
+assert_no_path "$CURL_STUB_ARGS" "outside stale margin -> no mint"
 
 # --- Case 5: lock held by a dead owner → cleaned up, then mints ---
 sd="$TMPROOT/s5"; mkdir -p "$sd"
@@ -146,7 +141,7 @@ rm -f "$CURL_STUB_ARGS"
 set +e; out=$(run_ght "$sd" 2>/dev/null); rc=$?; set -e
 assert_eq "$out" "ghs_AFTERCLEAN" "stale-owner lock -> cleaned and mints"
 assert_eq "$rc" "0" "stale-owner lock -> exit 0"
-assert_absent "$sd/gh-app-token.lock" "stale-owner lock -> lock released at exit"
+assert_no_path "$sd/gh-app-token.lock" "stale-owner lock -> lock released at exit"
 
 # --- Case 6: lock held by a LIVE owner → fall back to still-valid cache, no mint ---
 sd="$TMPROOT/s6"; mkdir -p "$sd"
@@ -161,7 +156,7 @@ set +e; out=$(run_ght "$sd" 2>/dev/null); rc=$?; set -e
 LOCK_TRIES=""
 assert_eq "$out" "ghs_WITHINMARGIN" "live-owner contention -> serves still-valid cache"
 assert_eq "$rc" "0" "live-owner contention -> exit 0"
-assert_absent "$CURL_STUB_ARGS" "live-owner contention -> no mint"
+assert_no_path "$CURL_STUB_ARGS" "live-owner contention -> no mint"
 
 # --- Case 7: group/other-readable signing key → warns on stderr, still serves ---
 sd="$TMPROOT/s7"; mkdir -p "$sd"
@@ -180,7 +175,4 @@ set -e
 assert_eq "$rc" "0" "loose-perm key -> still exit 0 (warn, not fail)"
 case "$err" in *"group/other-readable"*) ok "loose-perm key -> warns on stderr";; *) bad "loose-perm key -> missing warning: [$err]";; esac
 
-echo "================================"
-echo "  PASS: $PASS    FAIL: $FAIL"
-echo "================================"
-[[ "$FAIL" -eq 0 ]]
+summarize "fleet-gh-token tests"

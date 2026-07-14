@@ -36,8 +36,8 @@ if [[ ! -x "$REBASE" ]]; then
     exit 1
 fi
 
-PASS=0
-FAIL=0
+source "$(dirname "$0")/lib_assert.sh"
+
 TMPROOT=""
 
 cleanup() {
@@ -49,28 +49,6 @@ cleanup() {
     fi
 }
 trap cleanup EXIT
-
-assert_contains() {
-    local haystack="$1" needle="$2" msg="$3"
-    if printf '%s' "$haystack" | grep -qF -- "$needle"; then
-        PASS=$((PASS + 1)); echo "  ok: $msg"
-    else
-        FAIL=$((FAIL + 1)); echo "  FAIL: $msg"
-        echo "        expected to find: $needle"
-        echo "        in log:"; printf '%s\n' "$haystack" | sed 's/^/          | /'
-    fi
-}
-
-assert_absent() {
-    local haystack="$1" needle="$2" msg="$3"
-    if printf '%s' "$haystack" | grep -qF -- "$needle"; then
-        FAIL=$((FAIL + 1)); echo "  FAIL: $msg"
-        echo "        did NOT expect: $needle"
-        echo "        in log:"; printf '%s\n' "$haystack" | sed 's/^/          | /'
-    else
-        PASS=$((PASS + 1)); echo "  ok: $msg"
-    fi
-}
 
 # --- Sandbox ---------------------------------------------------------------
 TMPROOT=$(mktemp -d)
@@ -241,6 +219,4 @@ assert_absent   "$T3" "changed-file set drifted" "T3 no spurious file-set drift"
 assert_absent   "$T3" "conflicts; leaving for LLM" "T3 no conflict bail"
 
 # --- Summary ---------------------------------------------------------------
-echo ""
-echo "fleet-rebase inherited-drop tests: $PASS passed, $FAIL failed"
-[[ "$FAIL" -eq 0 ]]
+summarize "fleet-rebase inherited-drop tests"

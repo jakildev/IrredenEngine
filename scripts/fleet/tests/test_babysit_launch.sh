@@ -29,45 +29,14 @@ if [[ ! -x "$BABYSIT" ]]; then
     exit 1
 fi
 
-PASS=0
-FAIL=0
+source "$(dirname "$0")/lib_assert.sh"
+
 TMPROOT=""
 
 cleanup() {
     [[ -n "$TMPROOT" && -d "$TMPROOT" ]] && rm -rf "$TMPROOT"
 }
 trap cleanup EXIT
-
-assert_eq() {
-    local actual="$1" expected="$2" msg="$3"
-    if [[ "$actual" == "$expected" ]]; then
-        PASS=$((PASS + 1)); echo "  ok: $msg"
-    else
-        FAIL=$((FAIL + 1)); echo "  FAIL: $msg"
-        echo "        expected: $expected"
-        echo "        actual:   $actual"
-    fi
-}
-
-assert_contains() {
-    local haystack="$1" needle="$2" msg="$3"
-    if [[ "$haystack" == *"$needle"* ]]; then
-        PASS=$((PASS + 1)); echo "  ok: $msg"
-    else
-        FAIL=$((FAIL + 1)); echo "  FAIL: $msg"
-        echo "        '$needle' not found in: $haystack"
-    fi
-}
-
-assert_not_contains() {
-    local haystack="$1" needle="$2" msg="$3"
-    if [[ "$haystack" != *"$needle"* ]]; then
-        PASS=$((PASS + 1)); echo "  ok: $msg"
-    else
-        FAIL=$((FAIL + 1)); echo "  FAIL: $msg"
-        echo "        '$needle' unexpectedly present in: $haystack"
-    fi
-}
 
 TMPROOT=$(mktemp -d)
 # Stub claude/tmux/gh so nothing real launches even if a path slips past the
@@ -95,8 +64,8 @@ echo "$SID" > "$H1/.fleet/sessions/opus-architect.session-id"
 out=$(launch_for "$H1" 'claude-opus-4-8[1m]' opus-architect)
 assert_eq "$out" "claude --model claude-opus-4-8[1m] --effort xhigh --resume $SID" \
     "resume argv is exactly --model/--effort/--resume <id>, no trailing prompt"
-assert_not_contains "$out" "last working on" "resume carries no 'last working on' nudge"
-assert_not_contains "$out" "resume our previous" "resume carries no 'resume our previous' nudge"
+assert_absent "$out" "last working on" "resume carries no 'last working on' nudge"
+assert_absent "$out" "resume our previous" "resume carries no 'resume our previous' nudge"
 
 # --- T2: first-ever launch bootstraps via the role command ------------------
 echo "T2: first-ever architect launch uses --session-id + role command"
@@ -106,8 +75,8 @@ assert_contains "$out" "--session-id " "first launch passes --session-id"
 assert_contains "$out" "/role-opus-architect live" "first launch fires the role slash command"
 # the session-id file is now persisted for the next fleet-up to resume
 [[ -f "$H2/.fleet/sessions/opus-architect.session-id" ]] \
-    && { PASS=$((PASS + 1)); echo "  ok: first launch persisted the session-id file"; } \
-    || { FAIL=$((FAIL + 1)); echo "  FAIL: session-id file not written on first launch"; }
+    && ok "first launch persisted the session-id file" \
+    || bad "session-id file not written on first launch"
 
 # --- T3: game-architect resume path resolves the same way -------------------
 echo "T3: game-architect resume also drops the prompt"
@@ -131,6 +100,4 @@ assert_eq "$track" \
     "session-track: file=$H1/.fleet/sessions/opus-architect.session-id role=opus-architect mode=live" \
     "architect exports sidecar path, role, and mode for the hook"
 
-echo
-echo "passed: $PASS  failed: $FAIL"
-[[ "$FAIL" -eq 0 ]]
+summarize

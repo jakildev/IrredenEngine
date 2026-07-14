@@ -25,40 +25,14 @@ if [[ ! -x "$DISPATCHER" ]]; then
     exit 1
 fi
 
-PASS=0
-FAIL=0
+source "$(dirname "$0")/lib_assert.sh"
+
 TMPROOT=""
 
 cleanup() {
     [[ -n "$TMPROOT" && -d "$TMPROOT" ]] && rm -rf "$TMPROOT"
 }
 trap cleanup EXIT
-
-assert_eq() {
-    local actual="$1" expected="$2" msg="$3"
-    if [[ "$actual" == "$expected" ]]; then
-        PASS=$((PASS + 1))
-        echo "  ok: $msg"
-    else
-        FAIL=$((FAIL + 1))
-        echo "  FAIL: $msg"
-        echo "        expected: $expected"
-        echo "        actual:   $actual"
-    fi
-}
-
-assert_contains() {
-    local haystack="$1" needle="$2" msg="$3"
-    if [[ "$haystack" == *"$needle"* ]]; then
-        PASS=$((PASS + 1))
-        echo "  ok: $msg"
-    else
-        FAIL=$((FAIL + 1))
-        echo "  FAIL: $msg"
-        echo "        needle:   $needle"
-        echo "        haystack: $haystack"
-    fi
-}
 
 TMPROOT=$(mktemp -d)
 export FLEET_STATE_DIR="$TMPROOT/state"
@@ -95,9 +69,9 @@ assert_eq "${cmd_absent##* }" "live" "absent sentinel: trailing mode arg default
 # --- Test 3: usage error on missing args -----------------------------------
 echo "T3: --print-dispatch-command with missing pane_key → usage error"
 if "$DISPATCHER" --print-dispatch-command worker >/dev/null 2>&1; then
-    FAIL=$((FAIL + 1)); echo "  FAIL: missing pane_key should exit non-zero"
+    bad "missing pane_key should exit non-zero"
 else
-    PASS=$((PASS + 1)); echo "  ok: missing pane_key exits non-zero"
+    ok "missing pane_key exits non-zero"
 fi
 
 # --- Test 4: fleet-dispatch-wrap runs /role-<role> <mode> ------------------
@@ -138,6 +112,4 @@ else
     echo "  skip: fleet-dispatch-wrap not found at $WRAP"
 fi
 
-echo
-echo "passed: $PASS  failed: $FAIL"
-[[ "$FAIL" -eq 0 ]]
+summarize

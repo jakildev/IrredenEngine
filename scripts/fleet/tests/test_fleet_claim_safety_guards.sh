@@ -32,8 +32,8 @@ if [[ ! -x "$FLEET_CLAIM" ]]; then
     exit 1
 fi
 
-PASS=0
-FAIL=0
+source "$(dirname "$0")/lib_assert.sh"
+
 TMPROOT=""
 
 cleanup() {
@@ -44,11 +44,9 @@ trap cleanup EXIT
 assert_exit() {
     local actual_exit="$1" expected_exit="$2" msg="$3"
     if [[ "$actual_exit" -eq "$expected_exit" ]]; then
-        PASS=$((PASS + 1))
-        echo "  ok: $msg"
+        ok "$msg"
     else
-        FAIL=$((FAIL + 1))
-        echo "  FAIL: $msg"
+        bad "$msg"
         echo "        expected exit: $expected_exit"
         echo "        actual exit:   $actual_exit"
     fi
@@ -57,48 +55,18 @@ assert_exit() {
 assert_no_dir() {
     local dir="$1" msg="$2"
     if [[ ! -d "$dir" ]]; then
-        PASS=$((PASS + 1))
-        echo "  ok: $msg"
+        ok "$msg"
     else
-        FAIL=$((FAIL + 1))
-        echo "  FAIL: $msg (dir exists: $dir)"
+        bad "$msg (dir exists: $dir)"
     fi
 }
 
 assert_dir() {
     local dir="$1" msg="$2"
     if [[ -d "$dir" ]]; then
-        PASS=$((PASS + 1))
-        echo "  ok: $msg"
+        ok "$msg"
     else
-        FAIL=$((FAIL + 1))
-        echo "  FAIL: $msg (dir missing: $dir)"
-    fi
-}
-
-assert_contains() {
-    local haystack="$1" needle="$2" msg="$3"
-    if [[ "$haystack" == *"$needle"* ]]; then
-        PASS=$((PASS + 1))
-        echo "  ok: $msg"
-    else
-        FAIL=$((FAIL + 1))
-        echo "  FAIL: $msg"
-        echo "        expected to contain: $needle"
-        echo "        actual:              $haystack"
-    fi
-}
-
-assert_not_contains() {
-    local haystack="$1" needle="$2" msg="$3"
-    if [[ "$haystack" != *"$needle"* ]]; then
-        PASS=$((PASS + 1))
-        echo "  ok: $msg"
-    else
-        FAIL=$((FAIL + 1))
-        echo "  FAIL: $msg"
-        echo "        expected NOT to contain: $needle"
-        echo "        actual:                  $haystack"
+        bad "$msg (dir missing: $dir)"
     fi
 }
 
@@ -245,13 +213,13 @@ release_quiet 5002
 echo "T8: --stackable-on <url> is not misflagged as a trailing --repo"
 err=$("$FLEET_CLAIM" claim 5002 test-agent \
         --stackable-on https://github.com/jakildev/IrredenEngine/pull/123 2>&1 1>/dev/null) || true
-assert_not_contains "$err" "must precede the subcommand" "stackable-on URL doesn't trip the --repo scan"
+assert_absent "$err" "must precede the subcommand" "stackable-on URL doesn't trip the --repo scan"
 
 # --- T9: cleanup keeps its own trailing --repo (exemption) ------------------
 echo "T9: cleanup exemption — trailing --repo is not hard-errored"
 err=$("$FLEET_CLAIM" cleanup --repo jakildev/IrredenEngine 2>&1 1>/dev/null) && actual=0 || actual=$?
 assert_exit "$actual" 0 "cleanup --repo <owner/repo> (empty claims) → exit 0"
-assert_not_contains "$err" "must precede the subcommand" "cleanup's trailing --repo is exempt"
+assert_absent "$err" "must precede the subcommand" "cleanup's trailing --repo is exempt"
 
 # --- T10: reconcile keeps its own trailing --repo (exemption) ---------------
 # reconcile parses its args before any gh/state access, so a trailing --repo
@@ -261,8 +229,6 @@ echo "T10: reconcile exemption — trailing --repo reaches reconcile's own parse
 err=$("$FLEET_CLAIM" reconcile --repo jakildev/IrredenEngine --bogus-flag 2>&1 1>/dev/null) && actual=0 || actual=$?
 assert_exit "$actual" 2 "reconcile --repo <owner/repo> --bogus-flag → exit 2 (its own error)"
 assert_contains "$err" "reconcile: unknown arg" "reconcile's own parser saw the trailing --repo"
-assert_not_contains "$err" "must precede the subcommand" "reconcile's trailing --repo is exempt from Guard 2"
+assert_absent "$err" "must precede the subcommand" "reconcile's trailing --repo is exempt from Guard 2"
 
-echo ""
-echo "PASS: $PASS  FAIL: $FAIL"
-[[ "$FAIL" -eq 0 ]]
+summarize
