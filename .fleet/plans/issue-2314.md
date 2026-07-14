@@ -62,20 +62,20 @@ independent heads.
 
 ## Steward ledger
 
-reconciled-through: 2026-07-13
-proposal-pending: STEWARD PROPOSAL 2026-07-13 (S1 #2319 / PR #2343 — scope + oracle) — https://github.com/jakildev/IrredenEngine/issues/2314#issuecomment-4962885956
+reconciled-through: PR #2343 merge (2026-07-14 — S1 #2319 merged; prior STEWARD PROPOSAL 2026-07-13 answered + distributed)
+proposal-pending: none — the 2026-07-13 package (PR #2343 / S1 #2319) was answered by opus-architect and distributed 2026-07-13 (see D4–D6 and the `## Steward direction` comment on PR #2343)
 
 ### Children
 | Child | State | PR | Plan | Last validated |
 |---|---|---|---|---|
 | #2310 | merged | #2313 | plan | 2026-07-13 |
-| #2315 | merged (V1) | #2347 | plan | 2026-07-13 |
-| #2316 | open | — | plan | 2026-07-08 |
-| #2317 | open | — | plan | 2026-07-08 |
+| #2315 | merged | #2347 | plan | 2026-07-13 |
+| #2316 | merged | #2353 | plan | 2026-07-13 (this rollup — V2 culling-minimap caster/light domains) |
+| #2317 | open | — | plan | 2026-07-13 (V3; unblocked by #2316 merge) |
 | #2318 | merged | #2337 | plan | 2026-07-13 |
-| #2319 | design-proposed | #2343 | plan | 2026-07-13 |
-| #2320 | open (pending #2319 proposal — do not claim) | — | plan | 2026-07-13 |
-| #2321 | open (pending #2319 proposal — do not claim) | — | plan | 2026-07-13 |
+| #2319 | merged | #2343 | plan | 2026-07-14 (S1 same-plane provenance test; D6 genuine-cast residual → #2385; Linux/GL smoke owed) |
+| #2320 | open (unblocked — #2319 merged) | — | plan | 2026-07-14 (premise holds vs landed same-plane bias) |
+| #2321 | open (blocked by #2320) | — | plan | 2026-07-14 |
 | #2322 | merged | #2328 | plan | 2026-07-13 |
 | #2323 | merged | #2326 | plan | 2026-07-13 |
 
@@ -88,42 +88,57 @@ proposal-pending: STEWARD PROPOSAL 2026-07-13 (S1 #2319 / PR #2343 — scope + o
   2026-07-08 design session (human).
 - D3 (2026-07-08): every child verifies at cardinal + ~30° + 45° yaw on
   both backends — source: 2026-07-08 design session (human).
-- D4 (2026-07-09, SUPERSEDED 2026-07-10 by D5): S1 #2319 self-vs-cast
-  discrimination = pack each bake write's Chebyshev *displacement scalar*
-  (0 = direct) into the sun-depth low bits; receiver widens near-rejection
-  per tap by the stored displacement — source (architect):
-  https://github.com/jakildev/IrredenEngine/pull/2343#issuecomment-4927017072
-  . Status: implemented faithfully, **measured-refuted** (85% floor
-  cast-shadow erosion — winning texels in moth-eaten regions are themselves
-  splat writes, so displacement magnitude cannot separate self from cast).
-- D5 (2026-07-10, supersedes D4): pack the *displacement vector*
-  `(quantizedDepth << 8) | dx:4 | dy:4`; receiver reconstructs the write
-  origin and rejects occluders consistent with its own plane (same-plane
-  test, splat taps only; direct taps keep the byte-identical master path) —
-  source (architect):
-  https://github.com/jakildev/IrredenEngine/pull/2343#issuecomment-4931112807
-  . Status: implemented + twinned (`c0d0ae84`); the mechanism is
-  measured-correct for its stated purpose (removes cube-top self-hit AND
-  #2270 zero-caster floor acne), but the macOS `shadow_overlay_floor`
-  acceptance anchor is contaminated by that same acne, so the *scope +
-  oracle* question is unresolved → **open STEWARD PROPOSAL 2026-07-13**
-  (proposal-pending above). D5 is not final until that proposal is answered.
+- D4 (2026-07-13, final form): sun-depth pack low 8 bits = splat displacement
+  vector (`depth << 8 | dx:4 | dy:4`); receive-side rejection is
+  same-plane-at-origin on splat taps only; widened thresholds of any scope
+  (global, scalar) are measured-refuted — source: architect answer on the
+  #2314 STEWARD PROPOSAL 2026-07-13 thread (PR #2343 rounds 1–3).
+- D5 (2026-07-13): host-conditional floor self-acne removal is IN SCOPE for S1
+  #2319 (it is the same defect as the cube-top self-hit — a splat-displaced
+  coplanar write read back as an occluder); macOS S-series acceptance oracles
+  are re-grounded — zero-caster flat floor = 0 shadow px (primary gate),
+  `sunSplatMaxTexels=0` splat-off master = the genuine-cast lower bound; the
+  full-scene `88380` macOS anchor is contaminated (~64k acne + ~24k cast) and
+  retired — source: architect answer, #2314 thread 2026-07-13.
+- D6 (2026-07-13): the genuine-cast under-coverage residual unmasked by S1's
+  same-plane test is ACCEPTED for #2319 — it is #2270-lineage splat coverage
+  (not receive correctness) and files as a new unlabeled child at post-merge
+  reconcile (flow b), citing PR #2343's measurements; #2270/#2092 stay closed
+  — source: architect answer, #2314 thread 2026-07-13.
 
 ### Events
 - 2026-07-08: filed via file-epic (umbrella #2314, children #2315–#2323;
   #2310/PR #2313 pre-filed the same session as the first child).
-- 2026-07-13 (steward reconcile): merged children ticked — L1 #2310 (PR
-  #2313, 07-09), L2 #2318 (PR #2337, 07-10), D1 #2322 (PR #2328, 07-09),
-  D3 #2323 spike (PR #2326, 07-09). No scope drift vs plan; #2318 matches
-  D2 (winning-light ID channel). L2 landing makes the plan's deferred
-  "per-light falloff curves" out-of-scope item now fileable (not yet filed).
-- 2026-07-13 (steward reconcile, mid-iteration): V1 #2315 merged (PR #2347)
-  while this iteration ran (master e13421ba → ff2aaf9e). Ticked + reconciled.
-  V2 #2316 (blocked by #2315) is now unblocked for pickup; its plan is
-  unchanged (depends on the V1 instrumentation as landed, no drift).
-- 2026-07-13 (steward, flow a): S1 #2319 / PR #2343 round-3 NEEDS-DESIGN
-  questions classified NOVEL (D4 + D5 both measured-refuted on the macOS
-  oracle); PR flipped `fleet:design-blocked → fleet:design-proposed`,
-  aggregated into STEWARD PROPOSAL 2026-07-13, umbrella labeled
-  `fleet:steward-proposal`. S2 #2320 / S3 #2321 bind to the #2319 ruling →
-  marked pending, do not claim.
+- 2026-07-13: ledger resynced from the drifted 2026-07-08 snapshot (all rows
+  still read "open") to current states — merged since filing: #2310 (#2313),
+  #2315 (#2347, V1 instrumentation), #2316 (#2353, V2 minimap — this rollup
+  trigger), #2318 (#2337, L2 spot cone), #2322 (#2328, D1 detached lighting),
+  #2323 (#2326, D3 SO(3) spike).
+- 2026-07-13: STEWARD PROPOSAL 2026-07-13 (PR #2343 / S1 #2319) answered by
+  opus-architect and distributed — `## Steward direction` posted on PR #2343,
+  `fleet-transition design-unblock 2343`, D4–D6 recorded. The architect
+  removed `fleet:steward-proposal` at 21:52 but it was spuriously re-added at
+  21:59 with no comment (steward-release over-broad-prefix artifact), which had
+  stranded the answered proposal; cleared this iteration.
+- 2026-07-13: OWED at PR #2343 merge — file the D6 follow-up child
+  ("genuine-cast under-coverage unmasked by S1: re-fix in-map coverage on the
+  decontaminated baseline"), unlabeled → planning gate, citing PR #2343's
+  cast-ROI measurements. **Discharged 2026-07-14 → #2385 (see below).**
+- 2026-07-14 (flow b — #2319 rollup): PR #2343 merged (mergeCommit b2248fd7,
+  2026-07-14T04:43Z) → #2319 checkbox ticked + ledger row set to merged.
+  Scope-drift audit: matches D4 (packSunDepth displacement vector + receiver
+  same-plane test, twinned GLSL/Metal, 6 shader files); no contradiction of a
+  recorded Decision. Linux/GL smoke (gate 5) still owed
+  (`fleet:needs-linux-smoke` — GL twin unbuilt on the macOS pane).
+- 2026-07-14 (flow b — D6 discharge): filed the genuine-cast under-coverage
+  follow-up child as #2385 (unlabeled → planning gate; `**Part of epic:** #2314`,
+  Model opus), citing PR #2343's cast-ROI numbers (S1 24400 px / 59 comp /
+  0.7705 vs splat-off baseline 5056 / 93 / 0.3418). Pending flow-c adoption
+  into the checklist next iteration.
+- 2026-07-14 (flow b — sibling re-validation): #2320 (S2) auto-unblocked when
+  #2319 closed (`fleet:blocked` cleared); its inline-body premise holds vs the
+  landed same-plane mechanism — no amendment needed. #2321 (S3) stays blocked
+  by #2320.
+- 2026-07-14 (bookkeeping): this docs PR is cut fresh off origin/master and
+  supersedes the prior-iteration ledger PR #2371 (which conflicted after the
+  #2365 reconcile landed to master); #2371 closed as superseded.
