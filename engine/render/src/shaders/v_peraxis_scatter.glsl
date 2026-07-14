@@ -338,6 +338,18 @@ void main() {
                             float((flip << 2) | slot) + dilParam.x * kU + dilParam.y * kV;
     const float depthRange = float(kMaxTriangleDistance - kMinTriangleDistance);
     vDepth = (cornerKey + float(distanceOffset - kMinTriangleDistance)) / depthRange;
+    // #2333: overflow entries sit two tie bands BEHIND everything else, so an
+    // entry can never beat an equal-yawed-depth cell-path face (near the
+    // 120°/240° coset-depth degeneracy every coset member ties in view depth —
+    // without the bias the tie-band cell-code arbitration hands ~half the lit
+    // surface's pixels to unlit albedo entries, a q1/q2 stipple regression).
+    // The entries' job is filling pixels NO cell quad claims (the revealed
+    // slivers are background there, far beyond any bias), and any genuinely
+    // farther surface is >= one voxel depth step away (~10^3 bands), so the
+    // two-band yield changes nothing else.
+    if (overflowMode != 0) {
+        vDepth += 16.0 * kScatterCellTieStep;
+    }
     vMarginDepthBias = kScatterMarginDepthBiasKey * subScale / depthRange;
     // Deterministic cell tiebreak (#2255): 8 levels, distinct for every
     // same-plane / parallel-plane neighbor pair (in-plane world steps project

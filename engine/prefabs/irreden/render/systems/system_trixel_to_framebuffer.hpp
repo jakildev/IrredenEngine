@@ -21,6 +21,8 @@
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/gpu_stage_timing_observer.hpp>
 
+#include <cstdlib>
+
 using namespace IRComponents;
 using namespace IRRender;
 using namespace IRMath;
@@ -65,6 +67,12 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     // restore never fires.
     Buffer *voxelCompactedBuf_ = nullptr;
     Buffer *voxelIndirectBuf_ = nullptr;
+    // #2333 kill switch (same pattern as the sun-splat one): setting
+    // IR_PERAXIS_OVERFLOW_DISABLE in the environment skips the overflow entry
+    // draw only — the mask/append dispatches still run but nothing consumes
+    // them, restoring the pre-#2333 rendered output for A/B triage. Resolved
+    // once in create(); default off.
+    bool overflowDrawDisabled_ = false;
 
     void tick(
         IREntity::EntityId entity,
@@ -362,22 +370,24 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         // fall-through gather). Axis-agnostic: the recovery decodes faceId from
         // each entry, so whichever axis's textures stay bound only feed
         // textureSize().
-        frameData.frameData_.overflowMode_ = 1;
-        frameData.updateFrameData(frameDataBuf_);
-        Buffer *overflowScratch = axes.winnerIds_.second;
-        overflowScratch->bindRange(
-            BufferTarget::SHADER_STORAGE,
-            kBufferIndex_PerAxisCellCompacted,
-            static_cast<std::ptrdiff_t>(axes.entriesBaseUints_) * sizeof(std::uint32_t),
-            static_cast<size_t>(axes.overflowCap_) * 3u * sizeof(std::uint32_t)
-        );
-        IRRender::device()->drawElementsInstancedIndirect(
-            DrawMode::TRIANGLES,
-            IndexType::UNSIGNED_SHORT,
-            overflowScratch,
-            static_cast<std::ptrdiff_t>(axes.ctrlBaseUints_) * sizeof(std::uint32_t)
-        );
-        frameData.frameData_.overflowMode_ = 0;
+        if (!overflowDrawDisabled_) {
+            frameData.frameData_.overflowMode_ = 1;
+            frameData.updateFrameData(frameDataBuf_);
+            Buffer *overflowScratch = axes.winnerIds_.second;
+            overflowScratch->bindRange(
+                BufferTarget::SHADER_STORAGE,
+                kBufferIndex_PerAxisCellCompacted,
+                static_cast<std::ptrdiff_t>(axes.entriesBaseUints_) * sizeof(std::uint32_t),
+                static_cast<size_t>(axes.overflowCap_) * 3u * sizeof(std::uint32_t)
+            );
+            IRRender::device()->drawElementsInstancedIndirect(
+                DrawMode::TRIANGLES,
+                IndexType::UNSIGNED_SHORT,
+                overflowScratch,
+                static_cast<std::ptrdiff_t>(axes.ctrlBaseUints_) * sizeof(std::uint32_t)
+            );
+            frameData.frameData_.overflowMode_ = 0;
+        }
         // Restore slots 25/26 to the voxel-compaction buffers (#1961). The cell
         // compaction + the per-axis bindRange above leave 25/26 pointing at the
         // cell buffers; the next frame's VOXEL_TO_TRIXEL_STAGE_1 single-canvas
@@ -478,6 +488,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         sys->program_ = IRRender::getNamedResource<ShaderProgram>("CanvasToFramebufferProgram");
         sys->scatterProgram_ = IRRender::getNamedResource<ShaderProgram>("PerAxisScatterProgram");
         sys->quadVao_ = IRRender::getNamedResource<VAO>("QuadVAO");
+        sys->overflowDrawDisabled_ = std::getenv("IR_PERAXIS_OVERFLOW_DISABLE") != nullptr;
         IRRender::tagGpuStage(id, "trixelToFb");
         return id;
     }
