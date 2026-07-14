@@ -904,7 +904,16 @@ struct FrameDataSun {
     // docs/design/sun-shadow-bake-coverage.md. Occupies the trailing std140 pad
     // floats so the 128-byte layout is unchanged.
     float sunSplatMaxTexels_ = 6.0f;
-    float _cascadePad1_ = 0.0f;
+    // Maximum shadow-throw window in sun-Z voxels: the receiver
+    // (ir_sun_shadow_sample) rejects an occluder whose sun-Z gap exceeds this,
+    // capping how far a caster throws its shadow. Set from the bake / feeder
+    // AABB sweep distance (kSunShadowMaxDistance) by BAKE_SUN_SHADOW_MAP each
+    // frame (#2320) so a caster the sweep bakes is receivable at its full throw
+    // and the two cannot drift; a shorter window truncates a floating caster's
+    // top-face shadow (its farthest-from-floor caster). Occupies the trailing
+    // std140 pad float (128-byte layout unchanged); default only matters before
+    // the first bake tick.
+    float sunMaxShadowThrow_ = 64.0f;
 };
 static_assert(sizeof(FrameDataSun) == 128, "FrameDataSun must match std140 layout");
 static_assert(offsetof(FrameDataSun, sunBasisU_) == 32, "sunBasisU_ must align after aoEnabled_");

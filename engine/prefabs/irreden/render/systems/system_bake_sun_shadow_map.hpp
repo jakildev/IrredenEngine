@@ -690,6 +690,10 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         // path everywhere (the byte-identity backstop). See
         // docs/design/sun-shadow-bake-coverage.md.
         frameData_.sunSplatMaxTexels_ = static_cast<float>(kSunSplatMaxTexels);
+        // The receiver's shadow-throw window reads the SAME sweep distance the
+        // feeder / bake AABB use, so a baked caster is receivable at its full
+        // throw and the two cannot drift (#2320).
+        frameData_.sunMaxShadowThrow_ = kSunShadowMaxDistance;
     }
 
     static SystemId create() {

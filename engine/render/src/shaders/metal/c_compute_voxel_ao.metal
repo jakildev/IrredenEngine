@@ -49,7 +49,7 @@ struct FrameDataSun {
     float cascadeSplitDepth;
     int cascadeCount;
     float sunSplatMaxTexels;  // #2270; unused here (sun-map bake only)
-    float _cascadePad1;
+    float sunMaxShadowThrow;  // #2320; unused here (receiver-only)
 };
 
 kernel void c_compute_voxel_ao(

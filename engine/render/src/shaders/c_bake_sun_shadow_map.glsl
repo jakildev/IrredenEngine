@@ -60,7 +60,7 @@ layout(std140, binding = 29) uniform FrameDataSun {
     // 0 ⇒ the exact single-write path (saturated hosts byte-identical). See
     // FrameDataSun in ir_render_types.hpp and docs/design/sun-shadow-bake-coverage.md.
     uniform float sunSplatMaxTexels;
-    uniform float _cascadePad1;
+    uniform float sunMaxShadowThrow;  // #2320; unused here (receiver-only)
 };
 
 layout(r32i, binding = 0) readonly uniform iimage2D trixelDistances;
