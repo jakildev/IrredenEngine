@@ -90,5 +90,38 @@ class TestRecurrenceFires(unittest.TestCase):
                             for m in mutations))
 
 
+class TestGlHostStarvationSignature(unittest.TestCase):
+    """gl-host-starvation must catch the macOS-pane starvation entries that
+    previously fell through as singletons, and must win over queue-staleness
+    for "queue ... GL-host-starved" phrasing (first match wins)."""
+
+    def _sig(self, headline, body=""):
+        e = Entry(ts="2026-07-14", role="worker-4", headline=headline,
+                  body=[body] if body else [])
+        return _mod.signature_for(e)
+
+    def test_observed_starvation_headlines_cluster(self):
+        for h in (
+            "~06:24Z — opus macOS pane: zero macOS-viable opus work (GL-host churn, #1998)",
+            "macOS opus pane idle: all opus tasks are GL-host or covered",
+            "macOS opus pane: 0 pickable tasks (all opus candidates GL-host-blocked)",
+            "opus queue GL-host-starved on this host",
+        ):
+            self.assertEqual(self._sig(h), "gl-host-starvation", h)
+
+    def test_body_line_participates(self):
+        # Headline alone lacks the starvation token; the first body line
+        # supplies it (signature_for matches headline + first body line).
+        self.assertEqual(
+            self._sig("opus iteration (macOS/Metal) — GL-saturated queue",
+                      body="every candidate skipped as GL-host-gated"),
+            "gl-host-starvation")
+
+    def test_plain_queue_staleness_still_routes_there(self):
+        self.assertEqual(
+            self._sig("queue starved: fleet:queued diverged, ingest never ran"),
+            "queue-staleness")
+
+
 if __name__ == "__main__":
     unittest.main()
