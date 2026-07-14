@@ -44,6 +44,11 @@ const char *const kFileCompUpdateVoxelPositions = "shaders/c_update_voxel_positi
 const char *const kFileCompRevoxelizeDetached = "shaders/c_revoxelize_detached.glsl";
 const char *const kFileCompShapesToTrixel = "shaders/c_shapes_to_trixel.glsl";
 const char *const kFileCompLightingToTrixel = "shaders/c_lighting_to_trixel.glsl";
+// View-visibility overflow-face lighting (#2334): relights the C1 (#2333)
+// overflow entries at their world pos inside LIGHTING_TO_TRIXEL. Metal mirror in
+// metal/c_light_overflow_faces.metal (mapped to a 64×1×1 threadgroup in
+// metal_pipeline.cpp).
+const char *const kFileCompLightOverflowFaces = "shaders/c_light_overflow_faces.glsl";
 const char *const kFileCompFogToTrixel = "shaders/c_fog_to_trixel.glsl";
 const char *const kFileCompComputeVoxelAO = "shaders/c_compute_voxel_ao.glsl";
 // Hi-Z (max-depth) distance mip-chain build for voxel occlusion culling

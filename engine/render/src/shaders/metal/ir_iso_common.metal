@@ -60,6 +60,14 @@ inline float4 unpackColor(uint packedColor) {
     );
 }
 
+// Exact inverse of unpackColor: clamp to [0,1] and round-to-nearest so a
+// round-trip of a stored 8-bit channel is a fixed point (#2334 overflow-face
+// relight rewrites an entry's colorPacked in place through this).
+inline uint packColor(float4 c) {
+    uint4 q = uint4(clamp(c, 0.0, 1.0) * 255.0 + 0.5);
+    return q.r | (q.g << 8) | (q.b << 16) | (q.a << 24);
+}
+
 // PCG-flavored integer hash (low-collision, no FP precision loss). Cheap
 // enough for per-thread shader use; quality is sufficient for visual jitter
 // on the stateless particle path (T-163). Mirrors the GLSL implementation

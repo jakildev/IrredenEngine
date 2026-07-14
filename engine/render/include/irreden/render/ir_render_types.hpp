@@ -1052,6 +1052,15 @@ constexpr std::uint32_t kBufferIndex_SunShadowDepthMap = kBufferIndex_LightOcclu
 // narrower borrow than the resolve above: it never hands the resource across a
 // stage boundary.
 constexpr std::uint32_t kBufferIndex_PerAxisResolveScratch = kBufferIndex_LightOcclusionGrid;
+// View-visibility overflow-face lighting (#2334, epic #2331 C2). The overflow
+// entries live in the PerAxisResolveScratch (slot 28), but LIGHTING_TO_TRIXEL's
+// overflow-relight dispatch must ALSO sample the sun-depth map — which holds slot
+// 28 (kBufferIndex_SunShadowDepthMap) during that stage — so the two cannot share
+// it. The relight kernel binds the scratch here instead, aliasing VoxelActiveMask
+// (8): a VOXEL_TO_TRIXEL_STAGE_1 input that is dead throughout LIGHTING_TO_TRIXEL
+// and rebound by the next frame's stage 1. Same non-overlapping-stage safety as
+// the slot-28 aliases; the relight binds it explicitly before its own dispatch.
+constexpr std::uint32_t kBufferIndex_OverflowLightingScratch = kBufferIndex_VoxelActiveMask;
 // Per-axis empty-cell compaction (#1961). The TRIXEL_TO_FRAMEBUFFER composite
 // compacts each per-axis canvas's occupied cells into an indirect instanced
 // draw, so the scatter rasterizes only non-empty cells instead of sweeping the
