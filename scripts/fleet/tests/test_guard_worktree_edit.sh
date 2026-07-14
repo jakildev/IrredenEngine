@@ -15,7 +15,9 @@
 #     cwd IS the main clone; a sibling agent's worktree is denied; the same-
 #     basename game worktree is allowed; ~/.fleet, /tmp, /private/tmp, and the
 #     auto-memory dir are allowed; a relative path is resolved against the drifted
-#     cwd then tested; the sibling-prefix (worker-3-foo vs worker-3) trap.
+#     cwd then tested; the sibling-prefix (worker-3-foo vs worker-3) trap; a
+#     '..'-bearing target (relative or absolute) is lexically collapsed before the
+#     containment tests, so it can't pass the literal match while resolving out.
 #   LEGACY mode (env unset) — the original cwd-derived behavior, unchanged.
 #   Fail-open — malformed JSON and an empty file field never wedge (exit 0, allow).
 
@@ -72,6 +74,14 @@ assert_eq "$(verdict "$ASSIGNED" "$MAIN" "engine/foo.cpp")" DENY \
     "relative path resolved against a drifted main-clone cwd is denied"
 assert_eq "$(verdict "$ASSIGNED" "$ASSIGNED" "scripts/x.sh")" allow \
     "relative path resolved against an in-worktree cwd is allowed"
+assert_eq "$(verdict "$ASSIGNED" "$ASSIGNED" "../../../engine/foo.cpp")" DENY \
+    "relative ..-escape from the assigned worktree cwd denied (resolves to main clone)"
+assert_eq "$(verdict "$ASSIGNED" "$ASSIGNED" "$ASSIGNED/../../../engine/foo.cpp")" DENY \
+    "abs target embedding the assigned worktree + ..-escape denied"
+assert_eq "$(verdict "$ASSIGNED" "$ASSIGNED" "$ASSIGNED/scripts/../src/x.cpp")" allow \
+    "..-bearing target that stays inside the worktree allowed (no over-block)"
+assert_eq "$(verdict "$ASSIGNED" "$MAIN" "/tmp/../eng/engine/foo.cpp")" DENY \
+    "/tmp/..-escape cannot ride the scratch-dir allowlist"
 
 echo "LEGACY mode (env unset):"
 assert_eq "$(verdict "" "$ASSIGNED" "$MAIN/engine/foo.cpp")" DENY \

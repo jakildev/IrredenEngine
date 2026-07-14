@@ -22,7 +22,10 @@
 #       - `/tmp/…` and `/private/tmp/…` (macOS canonical form),
 #       - `$HOME/.claude/projects/*/memory/…` (auto-memory).
 #     A relative target is resolved against the hook-input cwd first, then tested
-#     the same way — so a relative edit from a drifted cwd is caught too.
+#     the same way — so a relative edit from a drifted cwd is caught too. Before
+#     the containment tests, '.'/'..' segments are lexically collapsed, so a
+#     '..'-laden target (relative or absolute) can't pass the literal match while
+#     resolving outside the allowed set.
 #   * LEGACY mode — env unset: the original cwd-derived behavior, byte-for-byte,
 #     so human sessions in the main clone and hand-made (e.g. /tmp) worktrees are
 #     unaffected.
@@ -57,6 +60,24 @@ deny() {
     exit 2
 }
 
+# normalize_path <abs-path> — lexically collapse '.', '..', and repeated
+# slashes without touching the filesystem (the target may not exist yet, and
+# the guard is pure string logic). '..' above root clamps at root, matching
+# kernel path resolution. Always called via $(…), so the subshell keeps the
+# `set -f` (no-glob during word split) from leaking.
+normalize_path() {
+    set -f
+    local IFS='/' seg out=""
+    for seg in $1; do
+        case "$seg" in
+            ""|".") ;;
+            "..")   out="${out%/*}" ;;
+            *)      out="$out/$seg" ;;
+        esac
+    done
+    printf '%s' "${out:-/}"
+}
+
 # ---------------------------------------------------------------------------
 # ASSIGNMENT mode: identity comes from FLEET_ASSIGNED_WORKTREE, not cwd.
 # ---------------------------------------------------------------------------
@@ -75,6 +96,12 @@ if [[ -n "${FLEET_ASSIGNED_WORKTREE:-}" ]]; then
         *)  [[ -z "$cwd" ]] && exit 0
             file="$cwd/$file" ;;
     esac
+
+    # Collapse '.'/'..' BEFORE the containment tests: they are literal string
+    # matches, so an un-normalized <worktree>/../../../engine/foo.cpp would
+    # pass the worktree match (and /tmp/../… would ride the scratch allowlist)
+    # while resolving outside.
+    file=$(normalize_path "$file")
 
     # Allow: this pane's own worktree (engine or game — same basename). Trailing
     # slash on both sides so a sibling worktree like `<name>-foo` can't
