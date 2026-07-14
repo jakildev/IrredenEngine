@@ -174,6 +174,19 @@ struct FrameDataTrixelToFramebuffer {
     /// `_depthColorPad1_` std140 slot (offset 204) — no size/offset change, so the
     /// scatter UBO asserts below stay valid.
     int depthPriorityMode_ = 0;
+    /// View-visibility overflow lane draw selector (#2333). 0 = the normal
+    /// per-cell scatter / gather draws (the only value any non-overflow draw
+    /// uploads). 1 = the overflow instanced indirect draw drawPerAxisScatter
+    /// issues after the three per-axis cell draws: v_peraxis_scatter then pulls
+    /// each instance's {iso cell, colorPacked, encoded distance} entry from the
+    /// SSBO at binding 25 (the overflow entry region bindRange'd there) instead
+    /// of texelFetching a canvas cell. Read only by the per-axis scatter vertex
+    /// shaders; std140-appended (offset 208) so every prior offset — and the
+    /// gather shaders reading only the prefix — stays unchanged.
+    int overflowMode_ = 0;
+    int overflowPad0_ = 0;
+    int overflowPad1_ = 0;
+    int overflowPad2_ = 0;
 };
 static_assert(
     offsetof(FrameDataTrixelToFramebuffer, visibleFaceIds_) == 128,
@@ -197,7 +210,13 @@ static_assert(
     "std140 int is 4-byte aligned, so it follows directly"
 );
 static_assert(
-    sizeof(FrameDataTrixelToFramebuffer) == 208,
+    offsetof(FrameDataTrixelToFramebuffer, overflowMode_) == 208,
+    "overflowMode_ must std140-append after the depthColorMode_ block "
+    "(ends at 208) so every prior offset — and the gather shaders reading only "
+    "the prefix — stays unchanged"
+);
+static_assert(
+    sizeof(FrameDataTrixelToFramebuffer) == 224,
     "FrameDataTrixelToFramebuffer size must mirror its std140 GLSL block. The "
     "camera scatter shaders (v_/f_peraxis_scatter) read the appended "
     "perAxisBase_ / visualYaw_ / visibleFaceIds_ and the #1494 scatterFbResolution_ "
@@ -536,6 +555,16 @@ struct FrameDataVoxelToCanvas {
     // per-dispatch flag upload is needed and the hottest kernel carries none
     // of the feeder branches.
     int feederPassTailBase_ = 0;
+    // View-visibility overflow lane scratch layout (#2333). Region base offsets
+    // (in uints) into the unified per-axis resolve scratch bound at
+    // kBufferIndex_PerAxisResolveScratch, plus the overflow entry cap:
+    // .x = view-mask base, .y = ctrl base (draw args + counters), .z = overflow
+    // entry base, .w = entry cap. The scratch's region 0 is the #2255 winner-id
+    // array, so the existing perAxisWinnerIds[cell] indexing is unchanged.
+    // Read only by c_voxel_to_trixel_stage_1 at resolveMode 2/3 (rotating
+    // frames); std140-appended after the #2258 feeder-partition block (offset
+    // 208) so every prior offset — and every prefix-reading shader — is unchanged.
+    ivec4 overflowScratchLayout_ = ivec4(0, 0, 0, 0);
 };
 
 struct FrameDataTrixelToTrixel {
@@ -811,10 +840,16 @@ static_assert(
     "split is compile-time (IR_FEEDER_PASS)"
 );
 static_assert(
-    sizeof(FrameDataVoxelToCanvas) == 208,
+    offsetof(FrameDataVoxelToCanvas, overflowScratchLayout_) == 208,
+    "FrameDataVoxelToCanvas::overflowScratchLayout_ (#2333) must land at offset "
+    "208 (the #2258 feeder-partition block ends at 208). Appended after the prior "
+    "last field so every existing offset — and the resolveMode==0 store path — "
+    "stays unchanged"
+);
+static_assert(
+    sizeof(FrameDataVoxelToCanvas) == 224,
     "FrameDataVoxelToCanvas size must mirror its std140 GLSL block "
-    "(resolveMode_ + the #1812 gate + the two feeder lanes pack the 192..208 "
-    "16-byte-stride tail exactly)"
+    "(overflowScratchLayout_ ivec4 append: 208 + 16 = 224)"
 );
 
 struct FrameDataSun {
