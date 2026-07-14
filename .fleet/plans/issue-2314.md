@@ -62,7 +62,7 @@ independent heads.
 
 ## Steward ledger
 
-reconciled-through: PR #2343 merge (2026-07-14 — S1 #2319 merged; prior STEWARD PROPOSAL 2026-07-13 answered + distributed)
+reconciled-through: PR #2356 merge (2026-07-14 — V3 #2317 light-verify harness merged; S1 #2319 reconciled prior iteration)
 proposal-pending: none — the 2026-07-13 package (PR #2343 / S1 #2319) was answered by opus-architect and distributed 2026-07-13 (see D4–D6 and the `## Steward direction` comment on PR #2343)
 
 ### Children
@@ -71,13 +71,14 @@ proposal-pending: none — the 2026-07-13 package (PR #2343 / S1 #2319) was answ
 | #2310 | merged | #2313 | plan | 2026-07-13 |
 | #2315 | merged | #2347 | plan | 2026-07-13 |
 | #2316 | merged | #2353 | plan | 2026-07-13 (this rollup — V2 culling-minimap caster/light domains) |
-| #2317 | open | — | plan | 2026-07-13 (V3; unblocked by #2316 merge) |
+| #2317 | merged | #2356 | plan | 2026-07-14 (V3 light-verify harness; domain matrix covers yaw0/30/45 → satisfies D3) |
 | #2318 | merged | #2337 | plan | 2026-07-13 |
 | #2319 | merged | #2343 | plan | 2026-07-14 (S1 same-plane provenance test; D6 genuine-cast residual → #2385; Linux/GL smoke owed) |
 | #2320 | open (unblocked — #2319 merged) | — | plan | 2026-07-14 (premise holds vs landed same-plane bias) |
 | #2321 | open (blocked by #2320) | — | plan | 2026-07-14 |
 | #2322 | merged | #2328 | plan | 2026-07-13 |
 | #2323 | merged | #2326 | plan | 2026-07-13 |
+| #2385 | open (adopted; needs planning) | — | stub | 2026-07-14 (flow-c adoption; validate-stack PASS) |
 
 ### Decisions
 <!-- entries: D<n> (<YYYY-MM-DD>): <decision> — source: <link> -->
@@ -142,3 +143,22 @@ proposal-pending: none — the 2026-07-13 package (PR #2343 / S1 #2319) was answ
 - 2026-07-14 (bookkeeping): this docs PR is cut fresh off origin/master and
   supersedes the prior-iteration ledger PR #2371 (which conflicted after the
   #2365 reconcile landed to master); #2371 closed as superseded.
+- 2026-07-14 (flow b — #2317 rollup): PR #2356 merged (2026-07-14T16:52Z,
+  stateReason COMPLETED) → #2317 checkbox ticked + ledger row set to merged.
+  Scope-drift audit: V3 light-verify harness — `scripts/light-verify.py`,
+  `lighting_demo_scene.hpp`, `auto_screenshot.hpp`, the light-verify reference
+  images (domain-matrix z1/z2/z4/z8 × yaw0/30/45 × in-win/band/beyond, hover
+  sweep, light-boundary sweep), plus `engine/render/CLAUDE.md` + render-debug-loop
+  diagnosis doc. Pure validation infrastructure (V-series); in-scope and
+  additive; contradicts no recorded Decision. The domain matrix's yaw0/30/45
+  coverage is exactly the D3 cross-cutting acceptance requirement, so the
+  harness now gives S2 #2320 / S3 #2321 a concrete both-yaw acceptance oracle —
+  no sibling plan amendment needed (harness is additive; renames/removes no
+  symbol either plan cites).
+- 2026-07-14 (flow c — #2385 adoption): #2385 (the D6 discharge child filed
+  2026-07-14) carries `**Part of epic:** #2314` + `**Model:** opus` and was
+  absent from the checklist → adopted. `fleet-validate-stack 2314` PASS on all
+  three open children (#2320/#2321/#2385, required structured fields present);
+  no machine-line fixes needed. Appended `- [ ] #2385` to the umbrella
+  `## Children`; committed a planning stub at `.fleet/plans/issue-2385.md`
+  (unlabeled → planning gate, so a worker cannot claim it unplanned).
