@@ -41,6 +41,23 @@ SLICE="$STATE_DIR/projections/merger.json"
 TRIGGERS_DIR="$STATE_DIR/triggers"
 SCRATCH_ROOT="${FLEET_REBASE_SCRATCH:-$HOME/.fleet/rebase-scratch}"
 
+# Network-call timeout guard (#2362). Sourcing fleet-net.sh installs git()/gh()
+# shadow wrappers that bound every network op with a timeout, so a black-holed
+# GitHub fetch/push can't hang this pass forever while it holds the rebase lock
+# (the 3-day outage that motivated this). FLEET_LIB_DIR is symlink-resolved so
+# the lib resolves through ~/bin the same way the other sourced libs do; a
+# missing lib (main clone not yet advanced past this PR) degrades to unguarded.
+_fleet_rebase_self="${BASH_SOURCE[0]}"
+while [[ -L "$_fleet_rebase_self" ]]; do
+    _fleet_rebase_self="$(readlink "$_fleet_rebase_self")"
+done
+FLEET_LIB_DIR="${FLEET_LIB_DIR:-$(cd "$(dirname "$_fleet_rebase_self")" && pwd)}"
+unset _fleet_rebase_self
+if [[ -f "$FLEET_LIB_DIR/fleet-net.sh" ]]; then
+    # shellcheck source=/dev/null
+    source "$FLEET_LIB_DIR/fleet-net.sh"
+fi
+
 DRY_RUN=0
 REARM=0
 AUTO=0
@@ -101,9 +118,23 @@ export FLEET_REBASE_SKIP_RE="$SKIP_LABEL_RE"
 # skips the EXIT trap) — without the break, a dead lock would silently
 # eat every future merger trigger.
 LOCK_DIR="$STATE_DIR/fleet-rebase.lock.d"
+# How long an ALIVE holder may hold the lock before the defer path escalates
+# loudly instead of logging the benign concurrency message. Generous — a real
+# tier-0 pass is seconds; anything near 30 min is wedged, not busy.
+FLEET_REBASE_LOCK_HUNG_SECS="${FLEET_REBASE_LOCK_HUNG_SECS:-1800}"
+ALERTS_DIR="${FLEET_ALERTS_DIR:-$HOME/.fleet/alerts}"
+
+# Stamp the lock we just created with our pid and acquisition time. The
+# `started` stamp powers the hung-lock escalation below; the EXIT trap removes
+# the whole LOCK_DIR, so both files vanish on a clean release.
+stamp_lock_holder() {
+    echo $$ > "$LOCK_DIR/pid"
+    date +%s > "$LOCK_DIR/started"
+}
+
 acquire_lock() {
     if mkdir "$LOCK_DIR" 2>/dev/null; then
-        echo $$ > "$LOCK_DIR/pid"
+        stamp_lock_holder
         return 0
     fi
     local holder
@@ -112,16 +143,45 @@ acquire_lock() {
         log "breaking stale lock (holder pid '${holder:-unknown}' not running)"
         rm -rf "$LOCK_DIR"
         if mkdir "$LOCK_DIR" 2>/dev/null; then
-            echo $$ > "$LOCK_DIR/pid"
+            stamp_lock_holder
             return 0
         fi
     fi
     return 1
 }
+
+# Hung-lock escalation (#2362): the benign "deferring to the LLM pass" message
+# below reads as ordinary concurrency, so a holder that is alive but wedged on a
+# black-holed network call (the outage that motivated this) went unseen for
+# days. When the current holder has held the lock past a generous ceiling, log
+# loudly and drop an alert file for the human / babysit. We do NOT auto-break an
+# alive holder — a mid-rebase kill corrupts the scratch worktree (see the
+# acquire_lock rationale). With every net op now timeout-bounded this alert
+# should be rare-to-never; it exists to make the next silent wedge visible.
+escalate_if_hung_lock() {
+    local started now age holder
+    started=$(cat "$LOCK_DIR/started" 2>/dev/null || true)
+    # Missing/garbage stamp (a pre-fix holder still running mid-rollout) → skip
+    # the age check rather than guess an age.
+    [[ "$started" =~ ^[0-9]+$ ]] || return 0
+    now=$(date +%s)
+    age=$(( now - started ))
+    (( age > FLEET_REBASE_LOCK_HUNG_SECS )) || return 0
+    holder=$(cat "$LOCK_DIR/pid" 2>/dev/null || echo unknown)
+    log "HUNG-LOCK: $LOCK_DIR held ${age}s by pid $holder (> ${FLEET_REBASE_LOCK_HUNG_SECS}s ceiling) — a wedged holder is starving tier-0 conflict rebasing; investigate (see #2362). Not auto-breaking an alive holder."
+    mkdir -p "$ALERTS_DIR" 2>/dev/null || true
+    printf 'fleet-rebase hung lock: host=%s holder_pid=%s age_secs=%s at=%s\n' \
+        "$(hostname 2>/dev/null || echo '?')" "$holder" "$age" \
+        "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+        > "$ALERTS_DIR/fleet-rebase-hung-lock" 2>/dev/null || true
+}
+
 if ! acquire_lock; then
     # A live concurrent run owns the pass. Hand this trigger's work to
     # the LLM pass rather than dropping it — the trigger was already
-    # consumed by the dispatcher before we were spawned.
+    # consumed by the dispatcher before we were spawned. Escalate first if the
+    # holder has been wedged past the ceiling.
+    escalate_if_hung_lock
     log "another fleet-rebase run holds $LOCK_DIR; deferring to the LLM pass"
     rearm_llm
     exit 0
