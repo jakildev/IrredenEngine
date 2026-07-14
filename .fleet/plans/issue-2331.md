@@ -204,16 +204,16 @@ Filed: V1 = #2332, C1 = #2333, C2 = #2334, D1 = #2335.
 
 ## Steward ledger
 
-reconciled-through: PR #2352 merge (2026-07-13)
+reconciled-through: PR #2357 merge (2026-07-14 — C1 #2333 overflow lane merged)
 proposal-pending: none
 
 ### Children
 | Child | State | PR | Plan | Last validated |
 |---|---|---|---|---|
 | #2332 | merged | #2352 | plan | 2026-07-13 |
-| #2333 | open | — | plan | 2026-07-08 |
-| #2334 | open | — | plan | 2026-07-08 |
-| #2335 | open | — | plan | 2026-07-08 |
+| #2333 | merged | #2357 | plan | 2026-07-14 (C1 — view mask + overflow append + albedo scatter; both backends) |
+| #2334 | in-progress (unblocked — #2333 merged) | #2388 (in review) | plan | 2026-07-14 (C2 premise realized: color lane rewritable in place, per C1 layout; not stale) |
+| #2335 | in-progress (unblocked chain) | #2390 (approved, stacked on #2388) | plan | 2026-07-14 (D1 docs the shipped overflow contract; not stale) |
 
 ### Decisions
 <!-- entries: D<n> (<YYYY-MM-DD>): <decision> — source: <link>  (numbered scheme per epic-steward-protocol.md §Decisions; escalation rules reference decisions by D-id) -->
@@ -222,3 +222,22 @@ proposal-pending: none
 ### Events
 - 2026-07-08: filed via file-epic
 - 2026-07-13: V1 (#2332) merged via PR #2352 — `--wave-freeze` deterministic phase-0 bake + `--yaw-ramp-wave` pose table + a wave-freeze sweep tier in `scripts/dev/perf-grid-rotate-sweep`. Scope-drift audit: in-scope; captured the red baseline the #1880 dense-cube sweep is structurally blind to. In-scope note: the phase reused `component_periodic_idle.hpp` `updateValue()`/stage-mapping (+51/-16) so the frozen value matches the live wave's easing exactly (additive; no contract change). Downstream siblings re-validated against the merge — C1 #2333 / C2 #2334 / D1 #2335 reference the harness abstractly and design symbols V1 never touched (`pos3DtoPos2DIsoYawed`, binding-28, `resolveWinnerTap`); none stale, no amendments. C1 PR #2357 is already WIP against the merged harness.
+- 2026-07-14 (flow b — #2333 rollup): PR #2357 merged (mergeCommit dbe7af3b,
+  2026-07-14T16:56Z, "Closes #2333") → #2333 checkbox ticked + ledger row set to
+  merged. Scope-drift audit: matches the C1 plan — `resolveMode 2` (view mask) +
+  `resolveMode 3` (overflow append) in the per-axis store body shader
+  (`c_voxel_to_trixel_stage_1_body.{glsl,metal}`), the overflow instanced draw in
+  `v_peraxis_scatter.glsl` / `metal/peraxis_scatter.metal`, dispatch/lifecycle in
+  `system_voxel_to_trixel.hpp` + `system_trixel_to_framebuffer.hpp` +
+  `component_per_axis_trixel_canvases.hpp` (lazy scratch alloc, plan step 8), and
+  the scratch-layout constants in `ir_render_types.hpp` (no new binding index).
+  Albedo-only as the plan specifies (lighting deferred to C2); PR screenshots
+  `wave-q1p30` / `wave-q2p10` before/after draw-on confirm the quadrant sweep.
+  In-scope, additive, contradicts no recorded Decision (D1). Sibling
+  re-validation: #2334 (C2) auto-unblock pending; its approach — "rewrite each
+  overflow entry's stored color" — is exactly the color lane C1's entry layout
+  (`uint1 = colorPacked`) kept rewritable in place, so premise satisfied, not
+  stale; PR #2388 already in review (`fleet:reviewing-mac-sonnet-reviewer`, no
+  merger-cooldown/stacked-rebase → skip-guard N/A). #2335 (D1) documents the
+  shipped overflow contract — strengthened by the merge, not stale; PR #2390
+  approved + `fleet:stacked` on #2388. No amendments to either sibling plan.
