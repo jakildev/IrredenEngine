@@ -228,8 +228,14 @@ void paintTotemBandsRawIdiom(C_VoxelSetNew &voxelSet) {
 // ---- Spawns ---------------------------------------------------------------
 
 IREntity::EntityId spawnGridTotem(vec3 worldPos, vec4 rotation) {
+    // C_RotationMode{GRID} is REQUIRED for the authored rotation to render:
+    // REBUILD_GRID_VOXELS's archetype includes it, and without the component
+    // the seeded twin silently rasterized at identity — which made the revox
+    // parity anchor compare a rotated solid against an unrotated one (the
+    // probe-side half of #2349's original mis-measurement).
     IREntity::EntityId totem = IREntity::createEntity(
         C_LocalTransform{worldPos, rotation},
+        C_RotationMode{RotationMode::GRID},
         C_VoxelSetNew{kTotemSize, kBandWhite, true}
     );
     paintTotemBands(IREntity::getComponent<C_VoxelSetNew>(totem));
@@ -516,27 +522,31 @@ void assertPlacementParity(
         // projection; the y axis flips per backend, so compare |dy| only.
         // Tolerances calibrate to the measured post-fix residuals so any
         // regression toward the fixed bug classes (whole-texel anchor drift,
-        // camera-offset leaks — tens of px) trips loudly:
-        //   * plain DETACHED tracks its GRID twin within ~1.3*zoom px
-        //     (band-centroid lattice quantization + sub-texel snap);
-        //   * DETACHED_REVOXELIZE additionally carries a ~1.9-iso-px
-        //     rotation-anchor displacement from the pool re-fill (the rebuild
-        //     rotates about a center offset from the model origin) — a real,
-        //     separately-tracked residual; tighten when that lands.
+        // camera-offset leaks — tens of px, and the half-cell rotation-anchor
+        // shift of the revox inverse resample, ~4*zoom px in x — the #2349
+        // fix) trips loudly: both detached flavors now track their GRID twin
+        // within the band-centroid lattice quantization + sub-texel snap bound
+        // (~1.3*zoom px). The revox pair carries one extra DOCUMENTED term on
+        // y only: GRID forward-rounds the totem's half-integer z coordinates
+        // UP half a cell onto its integer lattice, while the anchored revox
+        // fill places the content exactly (matching revox's own identity
+        // convention) — a bounded cross-MODE quantization difference
+        // (measured ~2.4*zoom px), not a revox placement error.
         const bool isRevox = totem.bucket_ == 2;
-        const double tolerance = isRevox ? 1.5 + 4.7 * zoom : 1.5 + 1.8 * zoom;
+        const double toleranceX = 1.5 + 1.8 * zoom;
+        const double toleranceY = isRevox ? 1.5 + 2.8 * zoom : toleranceX;
         const double errX = IRMath::abs(measuredDx - static_cast<double>(expectedGamePx.x));
         const double errY =
             IRMath::abs(IRMath::abs(measuredDy) - IRMath::abs(static_cast<double>(expectedGamePx.y)));
-        const bool pass = errX <= tolerance && errY <= tolerance;
+        const bool pass = errX <= toleranceX && errY <= toleranceY;
         if (!pass) {
             g_anyProbeFailure = true;
         }
         IR_LOG_INFO(
             "[detached-probe-parity] shot={} totem={} band={} measured=({:.1f},{:.1f}) "
-            "expected=({:.1f},{:.1f}) tol={:.1f} result={}",
+            "expected=({:.1f},{:.1f}) tol=({:.1f},{:.1f}) result={}",
             shotLabel, totem.name_, kBandNames[band], measuredDx, measuredDy,
-            expectedGamePx.x, expectedGamePx.y, tolerance, pass ? "PASS" : "FAIL"
+            expectedGamePx.x, expectedGamePx.y, toleranceX, toleranceY, pass ? "PASS" : "FAIL"
         );
     }
 }

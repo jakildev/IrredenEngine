@@ -68,6 +68,30 @@ inline IRMath::vec3 worldCellForGridVoxel(
     return IRMath::vec3(IRMath::roundVec3HalfUp(world));
 }
 
+/// Per-axis half-cell anchor of a composed local: `composed - roundHalfUp(composed)`
+/// — -0.5 on axes where a center-around-origin solid authors at half-integers
+/// (even-sized axes), 0 on odd. The detached re-voxelize mapping rotates
+/// anchored POINTS (`cell + anchor`), not raw lattice cells; ignoring the
+/// anchor shifted a rotating solid by a constant half cell per even axis
+/// (#2349). This is the ONE home of the derivation — the seed
+/// (`IRPrefab::DetachedRevoxelize::seedResidentLocals`) and the CPU mask twin
+/// (`SYSTEM_REBUILD_DETACHED_VOXELS`) both call it; the GLSL/Metal kernels
+/// receive the value via `RevoxelizeDetachedParams::anchor_`.
+inline IRMath::vec3 halfCellAnchor(IRMath::vec3 composed) {
+    return composed - IRMath::vec3(IRMath::roundVec3HalfUp(composed));
+}
+
+/// Anchored dest cell of a rotated detached voxel: `roundHalfUp(R·composed - anchor)`
+/// — the CPU twin of `revoxSourceCellForDest`'s forward direction in
+/// `c_revoxelize_detached.{glsl,metal}` (#2349), rotation about the pool
+/// origin (translation 0, scale 1). Kept beside the GRID map above so the
+/// CPU↔GPU roundHalfUp handshake convention stays in one header.
+inline IRMath::ivec3 anchoredCellForDetachedVoxel(
+    IRMath::vec3 composed, IRMath::vec4 rotation, IRMath::vec3 anchor
+) {
+    return IRMath::roundVec3HalfUp(IRMath::rotateVectorByQuat(composed, rotation) - anchor);
+}
+
 /// Inverse of @ref worldCellForGridVoxel's non-identity arm: maps an integer
 /// world cell back to the continuous source-frame position (`local + offset`
 /// space). Round the result with `IRMath::roundVec3HalfUp` to land on the

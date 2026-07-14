@@ -404,6 +404,9 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     ) {
         RevoxelizeDetachedParams params{};
         params.canvasRotation_ = canvasRotation.rotation_;
+        // Half-cell anchor of the authored solid (#2349); the inverse resample
+        // maps between anchored points (cell + anchor), not raw lattice cells.
+        params.anchor_ = vec4(buffer.anchor_, 0.0f);
         constexpr int kLocalSize = 64;
 
         if (!isInverse) {

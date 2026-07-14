@@ -12,7 +12,8 @@ using namespace metal;
 //  MODE 1 — INVERSE RESAMPLE (#1619). One thread per DEST cell of the rotated-
 //    AABB cube. Forward scatter is not surjective onto the rotated lattice (holes);
 //    inverse resampling dispatches over the DEST lattice and pulls: dest cell `c`
-//    inverse-maps to source cell `roundHalfUp(R⁻¹·c)`; if occupied (per-pool source
+//    inverse-maps to source cell `roundHalfUp(R⁻¹·(c + anchor) - anchor)` (the
+//    half-cell-anchored map, #2349); if occupied (per-pool source
 //    grid, buffer 9) the thread authors position (5) + color (6) + the active bit
 //    (8, atomic). Surjective → hole-free. The shared compact → stage1 → stage2
 //    raster is untouched; slot `i` now means "dest cell i" not "source voxel i".
@@ -30,6 +31,7 @@ struct RevoxelizeParams {
     int4 dest_;             // x = dispatch count, y = dest side, z = dest center, w = inverse mode
     int4 srcGridMin_;       // xyz = source grid min cell
     int4 srcGridDims_;      // xyz = source grid dims
+    float4 anchor_;         // xyz = half-cell anchor: solid point = cell + anchor (#2349)
 };
 
 struct Voxel {
@@ -38,12 +40,20 @@ struct Voxel {
     uint reserved;
 };
 
+// The solid's true points sit at `cell + anchor` (see the GLSL twin, #2349):
+// source cell for the anchored dest point = roundHalfUp(R⁻¹·(c + a) - a).
+static inline int3 revoxSourceCellForDest(int3 destCell, float4 rot, float3 anchor) {
+    const float3 destPoint = float3(destCell) + anchor;
+    return roundHalfUp(rotateByInverseQuat(destPoint, rot) - anchor);
+}
+
 // Is dest cell `c` covered? Inverse-map to source + check occupancy — the GPU
 // twin of REBUILD_GRID_VOXELS' #1720 dest-grid adjacency probe.
 static inline bool revoxDestCovered(
-    int3 c, float4 rot, int3 srcGridMin, int3 srcGridDims, device const uint* sourceGrid
+    int3 c, float4 rot, float3 anchor, int3 srcGridMin, int3 srcGridDims,
+    device const uint* sourceGrid
 ) {
-    const int3 src = roundHalfUp(rotateByInverseQuat(float3(c), rot));
+    const int3 src = revoxSourceCellForDest(c, rot, anchor);
     const int3 g = src - srcGridMin;
     if (any(g < int3(0)) || any(g >= srcGridDims)) {
         return false;
@@ -83,17 +93,24 @@ kernel void c_revoxelize_detached(
         return;
     }
 
-    // MODE 1 — inverse resample. Decode dest cell from the linear slot.
+    // MODE 1 — inverse resample. Decode dest cell from the linear slot,
+    // recentered — shifted +1 on anchored axes: with anchor = -0.5 the dest
+    // cells (roundHalfUp(p - anchor), p in [-r, r]) span the SAME cell count
+    // one cell higher, so shifting the decode window covers them at zero
+    // dispatch growth (#2349). Mirrors revoxDestDecodeShift in the GLSL twin.
     const int side = params.dest_.y;
     const int center = params.dest_.z;
+    const float4 rot = params.canvasRotation_;
+    const float3 anc = params.anchor_.xyz;
     const int3 d = int3(
         int(slot) % side,
         (int(slot) / side) % side,
         int(slot) / (side * side)
     );
-    const int3 destCell = d - int3(center);
+    const int3 revoxDestDecodeShift = select(int3(0), int3(1), anc < float3(-0.25));
+    const int3 destCell = d - int3(center) + revoxDestDecodeShift;
 
-    const int3 src = roundHalfUp(rotateByInverseQuat(float3(destCell), params.canvasRotation_));
+    const int3 src = revoxSourceCellForDest(destCell, rot, anc);
     const int3 g = src - params.srcGridMin_.xyz;
     uint colorPacked = 0u;
     uint matFlagBone = 0u;
@@ -106,7 +123,9 @@ kernel void c_revoxelize_detached(
     }
 
     if (((colorPacked >> 24u) & 0xFFu) != 0u) {
-        globalPositions[slot] = float4(float3(destCell), 0.0);
+        // Anchored raster position (cell + anchor), matching mode 0's unrounded
+        // composed locals at identity (#2349).
+        globalPositions[slot] = float4(float3(destCell) + params.anchor_.xyz, 0.0);
         // Author the ROTATED-frame face-occlusion mask from dest-grid adjacency
         // (GPU twin of REBUILD_GRID_VOXELS #1720), replacing the stale unrotated
         // source mask, so stage 1/2 gate the re-voxelize emit on faceIsExposed
@@ -116,16 +135,15 @@ kernel void c_revoxelize_detached(
         // mask. occ uses the kFaceOccluded* bit layout (component_voxel.hpp): a
         // neighbour-occupied face is occluded; flagsByte (bits 2..7) sits at
         // matFlagBone bits 10..15.
-        const float4 rot = params.canvasRotation_;
         const int3 gmin = params.srcGridMin_.xyz;
         const int3 gdim = params.srcGridDims_.xyz;
         uint occ = 0u;
-        if (revoxDestCovered(destCell + int3(-1, 0, 0), rot, gmin, gdim, sourceGrid)) occ |= (1u << 2);
-        if (revoxDestCovered(destCell + int3( 1, 0, 0), rot, gmin, gdim, sourceGrid)) occ |= (1u << 3);
-        if (revoxDestCovered(destCell + int3(0, -1, 0), rot, gmin, gdim, sourceGrid)) occ |= (1u << 4);
-        if (revoxDestCovered(destCell + int3(0,  1, 0), rot, gmin, gdim, sourceGrid)) occ |= (1u << 5);
-        if (revoxDestCovered(destCell + int3(0, 0, -1), rot, gmin, gdim, sourceGrid)) occ |= (1u << 6);
-        if (revoxDestCovered(destCell + int3(0, 0,  1), rot, gmin, gdim, sourceGrid)) occ |= (1u << 7);
+        if (revoxDestCovered(destCell + int3(-1, 0, 0), rot, anc, gmin, gdim, sourceGrid)) occ |= (1u << 2);
+        if (revoxDestCovered(destCell + int3( 1, 0, 0), rot, anc, gmin, gdim, sourceGrid)) occ |= (1u << 3);
+        if (revoxDestCovered(destCell + int3(0, -1, 0), rot, anc, gmin, gdim, sourceGrid)) occ |= (1u << 4);
+        if (revoxDestCovered(destCell + int3(0,  1, 0), rot, anc, gmin, gdim, sourceGrid)) occ |= (1u << 5);
+        if (revoxDestCovered(destCell + int3(0, 0, -1), rot, anc, gmin, gdim, sourceGrid)) occ |= (1u << 6);
+        if (revoxDestCovered(destCell + int3(0, 0,  1), rot, anc, gmin, gdim, sourceGrid)) occ |= (1u << 7);
         matFlagBone = (matFlagBone & ~(0x3Fu << 10)) | (occ << 8);
         // Carry the source voxel's reserved word (per-trixel priority in
         // bits[1:0], #1960 / #2023) into the dest record verbatim — the same

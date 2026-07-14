@@ -24,13 +24,13 @@
 // baked into the cells — it gates the wrong faces (background holes where the
 // rotation newly exposed a face, wrong-colored / spurious faces where it buried
 // one). We re-derive the mask against the ROTATED destination cells, rotating the
-// rigid authored locals about the pool origin exactly as the GPU scatter does
-// (worldCellForGridVoxel → roundHalfUp, CPU↔GPU byte-identical), so the
-// recomputed mask matches the raster's cells. STAGE_1 keeps its standard
-// visible-triplet × exposed-mask gate (no over-emit) and uploads the fresh flags
-// on its per-frame color upload. Bounded to the SMALL detached pool — not the
-// world pool — so the O(authored voxels) cost P2 removed for POSITIONS does not
-// return for the world raster.
+// rigid authored locals about the pool origin exactly as the GPU scatter does —
+// the anchored roundHalfUp map of #2349 (GridRotation::anchoredCellForDetachedVoxel,
+// CPU↔GPU byte-identical) — so the recomputed mask matches the raster's cells.
+// STAGE_1 keeps its standard visible-triplet × exposed-mask gate (no over-emit)
+// and uploads the fresh flags on its per-frame color upload. Bounded to the
+// SMALL detached pool — not the world pool — so the O(authored voxels) cost P2
+// removed for POSITIONS does not return for the world raster.
 //
 // Ticks the CANVAS entity (it owns the private pool + the reVoxelize_ flag),
 // gated on reVoxelize_. Register in the UPDATE pipeline after
@@ -46,7 +46,6 @@
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_system.hpp>
 
-#include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/render/components/component_canvas_local_rotation.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/voxel/face_occupancy.hpp>
@@ -109,25 +108,25 @@ template <> struct System<REBUILD_DETACHED_VOXELS> {
         }
 
         // Recompute the exposed-face mask against the ROTATED destination cells
-        // (#1557). Rotate each rigid authored local about the pool ORIGIN
-        // (translation 0, scale 1) the SAME way the GPU scatter
-        // (c_revoxelize_detached) does — worldCellForGridVoxel rounds via
-        // roundHalfUp, the CPU↔GPU handshake convention — so the cells the mask
-        // is built on match the cells the raster reads byte-for-byte. The fresh
-        // flags_ reach the GPU on STAGE_1's per-frame color upload.
-        const IRComponents::C_WorldTransform rotationOnly{
-            IRMath::vec3(0.0f),
-            canvasRotation.rotation_,
-            IRMath::vec3(1.0f)
-        };
+        // (#1557), through the anchored map the GPU scatter uses
+        // (c_revoxelize_detached, #2349): the solid's points sit at
+        // cell + anchor, so the dest cell is roundHalfUp(R·composed - anchor)
+        // — GridRotation::anchoredCellForDetachedVoxel, byte-identical with the
+        // kernel. The anchor is derived here (shared halfCellAnchor, from voxel
+        // 0) rather than read from C_DetachedRevoxelizeBuffer::anchor_ because
+        // this UPDATE-pipeline tick runs BEFORE the render-side seed on the
+        // pool's first frame; seedResidentLocals asserts pool-wide uniformity
+        // of the same derivation. The fresh flags_ reach the GPU on STAGE_1's
+        // per-frame color upload.
+        const IRMath::vec3 anchor = IRPrefab::GridRotation::halfCellAnchor(
+            localPositions[0].pos_ + localOffsets[0]
+        );
         cellsScratch_.resize(static_cast<std::size_t>(safeCount));
         for (int i = 0; i < safeCount; ++i) {
-            cellsScratch_[i] = IRMath::roundVec3HalfUp(
-                IRPrefab::GridRotation::worldCellForGridVoxel(
-                    localPositions[i].pos_,
-                    localOffsets[i],
-                    rotationOnly
-                )
+            cellsScratch_[i] = IRPrefab::GridRotation::anchoredCellForDetachedVoxel(
+                localPositions[i].pos_ + localOffsets[i],
+                canvasRotation.rotation_,
+                anchor
             );
         }
         IRPrefab::Voxel::recomputeFaceOccupancyOnCells(

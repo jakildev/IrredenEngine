@@ -18,6 +18,7 @@
 #include <irreden/render/components/component_canvas_local_rotation.hpp>
 #include <irreden/render/components/component_detached_revoxelize_buffer.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
+#include <irreden/voxel/grid_rotation.hpp>
 
 #include <cstdint>
 #include <utility>
@@ -59,13 +60,18 @@ inline void seedResidentLocals(
         IRMath::min(liveCount, static_cast<int>(IRMath::min(locals.size(), offsets.size())));
 
     // Resident composed locals (identity fast-path) + per-voxel integer cell and
-    // origin-centered bound scan for the inverse grid / dest cube.
+    // origin-centered bound scan for the inverse grid / dest cube. The per-axis
+    // half-cell anchor (#2349, GridRotation::halfCellAnchor: -0.5 on even-sized
+    // centered axes, 0 on odd) is uniform across the pool — integer authored
+    // locals plus ONE shared center-around-origin offset — asserted per voxel so
+    // a future non-uniform authoring fails loudly instead of rendering shifted.
     std::vector<IRMath::vec4> staging(static_cast<std::size_t>(n));
     std::vector<IRMath::ivec3> cells(static_cast<std::size_t>(n));
     constexpr int kBig = 1 << 30;
     IRMath::ivec3 gridMin(kBig, kBig, kBig);
     IRMath::ivec3 gridMax(-kBig, -kBig, -kBig);
     float maxRadius = 0.0f;
+    IRMath::vec3 anchor(0.0f);
     for (int i = 0; i < n; ++i) {
         const IRMath::vec3 composed = locals[i].pos_ + offsets[i];
         staging[i] = IRMath::vec4(composed, 0.0f);
@@ -74,7 +80,21 @@ inline void seedResidentLocals(
         gridMin = IRMath::min(gridMin, cell);
         gridMax = IRMath::max(gridMax, cell);
         maxRadius = IRMath::max(maxRadius, IRMath::length(composed));
+        const IRMath::vec3 residual = IRPrefab::GridRotation::halfCellAnchor(composed);
+        if (i == 0) {
+            anchor = residual;
+            continue;
+        }
+        const IRMath::vec3 delta = IRMath::abs(residual - anchor);
+        IR_ASSERT(
+            delta.x < 0.001f && delta.y < 0.001f && delta.z < 0.001f,
+            "DetachedRevoxelize: non-uniform half-cell anchor across pool voxels "
+            "(({},{},{}) vs ({},{},{})) — the anchored inverse resample assumes "
+            "one shared center-around-origin offset",
+            residual.x, residual.y, residual.z, anchor.x, anchor.y, anchor.z
+        );
     }
+    buffer.anchor_ = anchor;
     buffer.residentLocals_.second
         ->subData(0, static_cast<std::size_t>(n) * sizeof(IRMath::vec4), staging.data());
 
@@ -124,7 +144,12 @@ inline void seedResidentLocals(
     // Dest-AABB cube: enclose the rotated solid under ANY rotation. Rotation
     // preserves length, so the farthest authored corner (maxRadius) bounds every
     // rotated coordinate; the cube [-center, +center]³ holds them all. This is
-    // rotation-independent — computed once, valid for every spin pose.
+    // rotation-independent — computed once, valid for every spin pose. The
+    // anchored map (#2349) does NOT grow the cube: an anchored axis's dest
+    // cells span the same 2·center+1 count shifted +1 cell, which the kernels
+    // fold into the slot->cell decode per axis (see revoxDestDecodeShift in
+    // c_revoxelize_detached.{glsl,metal}) instead of paying a symmetric grow
+    // (a +1 on center costs 11-46% more dispatch/clear/compact work).
     const int center = (n > 0) ? static_cast<int>(IRMath::ceil(maxRadius)) : 0;
     buffer.destCenter_ = center;
     buffer.destSide_ = 2 * center + 1;
