@@ -241,8 +241,16 @@ smoke passed or failed:
 
 ```
 fleet-claim review-release <N> <your-worktree-basename>
-git checkout -B claude/<your-worktree-basename>-scratch origin/master
+fleet-assert-worktree <your-worktree-basename>
+git -C ~/src/IrredenEngine/.claude/worktrees/<your-worktree-basename> checkout -B claude/<your-worktree-basename>-scratch origin/master
 ```
+
+Run each command as its own Bash call. A bare `git checkout -B`
+resolves against the Bash tool's persisted cwd and has parked scratch
+branches in shared main clones — the explicit `-C` worktree path makes
+the reset cwd-proof. If the assert fails, `cd` back into your worktree
+as its own Bash call first (see
+[REVIEWER-PROTOCOL.md § Scratch reset & main-clone cwd discipline](REVIEWER-PROTOCOL.md#scratch-reset--main-clone-cwd-discipline)).
 
 Queue-tick's `cleanup --gh` would sweep a forgotten
 `fleet:reviewing-*` label after 30 min, but during that window the

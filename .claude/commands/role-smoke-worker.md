@@ -55,11 +55,19 @@ See [docs/agents/FLEET-RUNTIME.md § Exit protocol](../../docs/agents/FLEET-RUNT
 
 3. Confirm you are on the scratch branch:
    `git branch --show-current` should report `claude/<your-worktree-basename>-scratch`.
-   If not, check out the scratch branch before proceeding:
+   If not, check out the scratch branch before proceeding — run each
+   command as its own Bash call (do NOT wrap in `cd ... &&`):
    ```
+   fleet-assert-worktree <your-worktree-basename>
    git fetch origin --quiet
-   git checkout -B claude/<your-worktree-basename>-scratch origin/master
+   git -C ~/src/IrredenEngine/.claude/worktrees/<your-worktree-basename> checkout -B claude/<your-worktree-basename>-scratch origin/master
    ```
+   A bare `git checkout -B` resolves against the Bash tool's persisted
+   cwd and has parked scratch branches in shared main clones — the
+   explicit `-C` worktree path makes the reset cwd-proof. If the
+   assert fails, `cd` back into your worktree as its own Bash call
+   first (see
+   [REVIEWER-PROTOCOL.md § Scratch reset & main-clone cwd discipline](../../docs/agents/REVIEWER-PROTOCOL.md#scratch-reset--main-clone-cwd-discipline)).
    `gh pr checkout` will rewrite this branch for each smoke run.
 
 4. **Detect your host key** from `uname -s`:
@@ -193,8 +201,13 @@ failed:
 
 ```
 fleet-claim review-release <N> <your-worktree-basename>
-git checkout -B claude/<your-worktree-basename>-scratch origin/master
+fleet-assert-worktree <your-worktree-basename>
+git -C ~/src/IrredenEngine/.claude/worktrees/<your-worktree-basename> checkout -B claude/<your-worktree-basename>-scratch origin/master
 ```
+
+Same cwd-proofing as startup step 3: the `-C` worktree path keeps the
+reset out of the shared main clones even if the shell cwd drifted; if
+the assert fails, `cd` back into your worktree first.
 
 ### Step 7 — shutdown
 

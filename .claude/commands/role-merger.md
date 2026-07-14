@@ -80,9 +80,18 @@ the cooldown label prevents an immediate retry.
    `[merger] Auto-rebases stale PRs and auto-resolves whitespace-only conflicts. Transient — re-fires when scout sees actionable PR state.`
 1. `pwd` — confirm you are in the `merger` worktree.
 2. Reset to the throwaway branch unconditionally — `-B` makes it
-   idempotent. Run as two separate Bash calls:
+   idempotent. Run as three separate Bash calls (do NOT wrap in
+   `cd ... &&`):
+   `fleet-assert-worktree merger`
    `git -C ~/src/IrredenEngine fetch origin --quiet`
-   `git checkout -B claude/merger-scratch origin/master`
+   `git -C ~/src/IrredenEngine/.claude/worktrees/merger checkout -B claude/merger-scratch origin/master`
+   A bare `git checkout -B` resolves against the Bash tool's persisted
+   cwd and has parked scratch branches in shared main clones, freezing
+   their master and blocking claims via the clone-freshness gate — the
+   explicit `-C` worktree path makes the reset cwd-proof. If the
+   assert fails, `cd` back into the merger worktree as its own Bash
+   call first (see
+   [REVIEWER-PROTOCOL.md § Scratch reset & main-clone cwd discipline](../../docs/agents/REVIEWER-PROTOCOL.md#scratch-reset--main-clone-cwd-discipline)).
 3. Print `merger standing by` (or `merger standing by (dry-run)`
    if Mode above is `dry-run`). Don't pre-fetch the PR list —
    the first loop iteration does that and any startup-time fetch
@@ -176,7 +185,7 @@ exit cleanly:
      `git checkout --detach origin/<headRefName>`
 
      After running the 5a.5 ii actions, reset to scratch (step 5f):
-     `git checkout -B claude/merger-scratch origin/master`.
+     `git -C ~/src/IrredenEngine/.claude/worktrees/merger checkout -B claude/merger-scratch origin/master`.
 
      Log: `... reconcile: base #<N> merged, re-targeted + rebased onto master`.
 
@@ -295,7 +304,7 @@ exit cleanly:
       - Log: `[YYYY-MM-DD HH:MM:SS] PR #<N> <headRefName>: cascade-rebase conflict onto #<base-pr-number>, labeled fleet:needs-base-update`
 
    d. **Reset to scratch.** Same as step 5f:
-      `git checkout -B claude/merger-scratch origin/master`
+      `git -C ~/src/IrredenEngine/.claude/worktrees/merger checkout -B claude/merger-scratch origin/master`
 
 3. Filter to candidates. A PR is a candidate if:
    - `mergeable == "CONFLICTING"`, OR
@@ -744,8 +753,11 @@ exit cleanly:
       fail), return to the scratch branch so the next iteration
       starts clean. With detached HEAD in step a this reset no
       longer matters for unblocking other agents (the branch was
-      never claimed) — it's purely worktree hygiene:
-      `git checkout -B claude/merger-scratch origin/master`
+      never claimed) — it's purely worktree hygiene. Use the explicit
+      `-C` worktree path (a bare checkout resolves against the shell's
+      persisted cwd and can park the scratch branch in a shared main
+      clone — see startup step 2):
+      `git -C ~/src/IrredenEngine/.claude/worktrees/merger checkout -B claude/merger-scratch origin/master`
 
 ## Game-repo pass
 
@@ -765,8 +777,13 @@ worktree, and `gh` target change.
 - **PR source** — read `repos.game.prs[]` from the cache (not
   `repos.engine.prs[]`).
 - **Scratch branch** — reset the game worktree to scratch up front and
-  after each PR: `git checkout -B claude/merger-scratch origin/master`
-  (run from the game worktree, so `origin` is the game remote).
+  after each PR:
+  `git -C ~/src/IrredenEngine/creations/game/.claude/worktrees/merger checkout -B claude/merger-scratch origin/master`
+  The `-C` path targets the game WORKTREE (never the shared game main
+  clone `~/src/IrredenEngine/creations/game` — a scratch branch parked
+  there freezes the game clone's master and blocks every game claim
+  via the clone-freshness gate) and resolves `origin` to the game
+  remote regardless of where the shell cwd has drifted.
 - **Shared cap** — the "at most 2 candidates per iteration" cap is a
   **single budget across both passes**. If the engine pass already
   rebased 2 PRs, do the game cooldown-clear (below) but process zero
