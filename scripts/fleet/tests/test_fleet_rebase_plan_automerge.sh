@@ -100,9 +100,9 @@ write_slice() {
     printf '{"prs": %s}\n' "$1" > "$FLEET_STATE_DIR/projections/merger.json"
 }
 
-# stub_pr <number> <state> <base> <mergeable> <labels-csv>
+# stub_pr <number> <state> <base> <mergeable> <labels-csv> [head-sha]
 stub_pr() {
-    printf '%s\t%s\t%s\t%s\n' "$2" "$3" "$4" "$5" > "$GH_STUB_DIR/pr_$1.tsv"
+    printf '%s\t%s\t%s\t%s\t%s\n' "$2" "$3" "$4" "${6:-sha$1}" "$5" > "$GH_STUB_DIR/pr_$1.tsv"
 }
 
 # stub_files <number> <path>...
@@ -136,8 +136,8 @@ stub_files 400 ".fleet/plans/issue-1394.md" ".fleet/plans/issue-667.md"
 T1=$(run_rebase)
 assert_contains "$T1" "engine#400: auto-merged" "T1 logs the auto-merge"
 assert_contains "$T1" "merged=1 llm_remaining=0" "T1 summary counts the merge, no re-arm"
-assert_contains "$(cat "$GH_STUB_LOG")" "pr merge 400 --repo jakildev/IrredenEngine --squash" \
-    "T1 gh pr merge --squash invoked"
+assert_contains "$(cat "$GH_STUB_LOG")" "pr merge 400 --repo jakildev/IrredenEngine --squash --match-head-commit sha400" \
+    "T1 gh pr merge --squash invoked, pinned to the live-verified head SHA"
 assert_contains "$(cat "$GH_STUB_LOG")" "pr comment 400" "T1 provenance comment posted"
 
 # === T2: mixed diff → refused ==================================================
@@ -208,6 +208,16 @@ write_slice "${slice%,}]"
 T7=$(run_rebase)
 assert_contains "$T7" "merged=3 llm_remaining=1" "T7 cap merges 3, defers 1"
 assert_contains "$T7" "auto-merge cap (3) reached this run" "T7 cap log line"
+
+# === T8: live fetch returns no head SHA -> refused =============================
+echo "T8: null head SHA in live fetch -> refused (nothing to pin the merge to)"
+reset_stub
+write_slice "[$PLAN_SLICE_PR]"
+stub_pr 400 open master true "fleet:approved,fleet:authored-on-macos" "null"
+stub_files 400 ".fleet/plans/issue-1394.md"
+T8=$(run_rebase)
+assert_contains "$T8" "no head SHA in live fetch" "T8 head-SHA gate fires"
+assert_absent "$(cat "$GH_STUB_LOG")" "pr merge" "T8 gh pr merge never invoked"
 
 # --- Summary ------------------------------------------------------------------
 echo ""

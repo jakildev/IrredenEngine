@@ -268,17 +268,25 @@ attempt_merge() {
     fi
 
     # Live state + label gate. REST `mergeable` is true/false/null (null =
-    # GitHub still computing) — only an explicit true proceeds.
-    local tsv state base_ref mergeable labels_csv
+    # GitHub still computing) — only an explicit true proceeds. head.sha is
+    # captured from the SAME fetch and pins the eventual merge via
+    # --match-head-commit: the verify and the merge are separate round-trips,
+    # so without the pin a commit pushed in that window would merge with a
+    # diff nobody verified.
+    local tsv state base_ref mergeable head_sha labels_csv
     tsv=$(gh api "repos/$repo_slug/pulls/$pr" \
-        --jq '[.state, .base.ref, (.mergeable|tostring), ([.labels[].name]|join(","))] | @tsv' \
+        --jq '[.state, .base.ref, (.mergeable|tostring), .head.sha, ([.labels[].name]|join(","))] | @tsv' \
         2>/dev/null) || {
         log "$repo_key#$pr: live PR fetch failed; not auto-merging"
         return 1
     }
-    IFS=$'\t' read -r state base_ref mergeable labels_csv <<< "$tsv"
+    IFS=$'\t' read -r state base_ref mergeable head_sha labels_csv <<< "$tsv"
     if [[ "$state" != "open" || "$base_ref" != "master" || "$mergeable" != "true" ]]; then
         log "$repo_key#$pr: live state (state=$state base=$base_ref mergeable=$mergeable) not auto-mergeable"
+        return 1
+    fi
+    if [[ -z "$head_sha" || "$head_sha" == "null" ]]; then
+        log "$repo_key#$pr: no head SHA in live fetch; not auto-merging"
         return 1
     fi
     if [[ ",$labels_csv," != *",fleet:approved,"* ]]; then
@@ -295,6 +303,10 @@ attempt_merge() {
     # Diff-surface gate: every changed path must sit under .fleet/plans/.
     # per_page=100 returns one page; a full page means the diff may be
     # truncated and therefore unverifiable — never merge what we can't see.
+    # Assumption: .filename is the post-rename path, so a rename INTO
+    # .fleet/plans/ from outside would pass this gate. Acceptable in a
+    # single-operator fleet where plan PRs are steward-authored; revisit if
+    # external contributors ever gain a path to fleet:approved.
     local files n_files off_path
     files=$(gh api "repos/$repo_slug/pulls/$pr/files?per_page=100" \
         --jq '.[].filename' 2>/dev/null) || {
@@ -321,9 +333,10 @@ attempt_merge() {
         log "$repo_key#$pr: pure plan-file PR ($n_files file(s)) — would squash-merge (dry-run)"
         return 0
     fi
-    if gh pr merge "$pr" --repo "$repo_slug" --squash >/dev/null 2>&1; then
+    if gh pr merge "$pr" --repo "$repo_slug" --squash \
+            --match-head-commit "$head_sha" >/dev/null 2>&1; then
         MERGED=$((MERGED + 1))
-        log "$repo_key#$pr: auto-merged (pure .fleet/plans diff, fleet:approved) — zero tokens"
+        log "$repo_key#$pr: auto-merged at ${head_sha:0:12} (pure .fleet/plans diff, fleet:approved) — zero tokens"
         # Provenance comment so a human scanning the thread sees this was
         # the tier-0 lane, not a manual merge. Best-effort.
         gh pr comment "$pr" --repo "$repo_slug" \
