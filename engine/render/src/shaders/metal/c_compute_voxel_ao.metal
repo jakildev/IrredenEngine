@@ -112,6 +112,11 @@ kernel void c_compute_voxel_ao(
     // Smooth camera Z-yaw (#1311): a per-axis canvas stores the world frame
     // face-locally (perAxisRoute != 0), recovered via isoPixelToPos3D; the
     // single canvas uses the cardinal-snap reconstruction. Mirrors GLSL.
+    // Lattice recovery (not perAxisCellToWorld3DSubCell) is deliberate here:
+    // AO consumes pos3D only through `dot(neighbourPos3D - pos3D,
+    // worldOutward)`, and a per-axis canvas holds a single face axis, so the
+    // encoding's in-plane frac offsets are perpendicular to worldOutward on
+    // both operands and cancel exactly. Mirrors the GLSL note.
     bool perAxis = frameData.perAxisRoute != 0;
     float3 pos3D = perAxis
         ? perAxisCellToWorld3D(

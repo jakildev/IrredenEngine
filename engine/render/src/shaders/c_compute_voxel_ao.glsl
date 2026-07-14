@@ -174,6 +174,13 @@ void main() {
     // pixel, recovered via trixelCanvasPixelToWorld3D. Per-axis canvases are
     // only allocated while rotating, so the single-canvas path stays byte-
     // identical at the cardinal fast path.
+    // Lattice recovery (not perAxisCellToWorld3DSubCell) is deliberate here:
+    // AO consumes pos3D only through `dot(neighbourPos3D - pos3D,
+    // worldOutward)`, and a per-axis canvas holds a single face axis, so the
+    // encoding's in-plane frac offsets are perpendicular to worldOutward on
+    // both operands and cancel exactly — the sub-cell decode would be pure
+    // cost on this hot pass. Absolute-position consumers (light volume,
+    // sun-shadow receive, overflow relight) must use the sub-cell variant.
     bool perAxis = perAxisRoute != 0;
     vec3 pos3D = perAxis
         ? perAxisCellToWorld3D(pixel, rawDepth, faceId, size, frameCanvasOffset, voxelRenderOptions)

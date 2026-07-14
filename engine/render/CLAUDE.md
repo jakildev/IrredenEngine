@@ -762,6 +762,15 @@ caused #1380's cross-face self-occlusion). Invariant + the cast/receive
 agreement + the Metal `threadgroupSizeForFunctionName` requirement:
 [`docs/design/per-axis-sun-shadow-resolve.md`](../../docs/design/per-axis-sun-shadow-resolve.md).
 
+Per-axis lighting **receive** recovery: an absolute-position consumer of the
+per-axis store (light-volume sample, sun-shadow receive, overflow relight)
+must recover positions via `perAxisCellToWorld3DSubCell`
+(`ir_per_axis_lighting.{glsl,metal}`) — the lattice-only
+`perAxisCellToWorld3D` drops the encoding's sub-cell frac and lands up to
+half a world cell inside the solid for fractional-positioned content (see
+#2251). Relative-position consumers whose math provably cancels the in-plane
+offset (AO's outward-normal height dot) keep the cheaper lattice form.
+
 ## SDF (`SHAPES_TO_TRIXEL`) vs voxel-pool (`VOXEL_TO_TRIXEL_*`) parity
 
 A `C_ShapeDescriptor` (SDF, GPU-evaluated) and a `C_VoxelSetNew` carved

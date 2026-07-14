@@ -148,8 +148,10 @@ kernel void c_compute_sun_shadow(
     float3 normal;
     if (perAxis) {
         int faceId = frameData.visibleFaceIds[face];
-        pos3D = perAxisCellToWorld3D(
-            pixel, rawDepth, faceId, size,
+        // Sub-cell recovery — the receiver must sample the sun map at the
+        // drawn surface (see perAxisCellToWorld3DSubCell). Mirrors GLSL.
+        pos3D = perAxisCellToWorld3DSubCell(
+            pixel, encoded, faceId, size,
             frameData.frameCanvasOffset, frameData.voxelRenderOptions
         );
         normal = faceOutwardNormal6(faceId);

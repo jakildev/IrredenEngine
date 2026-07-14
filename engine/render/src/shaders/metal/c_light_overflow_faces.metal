@@ -120,16 +120,16 @@ kernel void c_light_overflow_faces(
 
     // Recover cardinal store cell → world FaceId + world pos, bit-for-bit the
     // same decode/recovery the scatter's overflow branch + per-axis cell lighting
-    // use. The sub-cell frac offset is a scatter-geometry detail, irrelevant to
-    // world-cell-resolution sun/volume sampling.
+    // use. Sub-cell recovery, not lattice-only — the sun/volume samples must
+    // land on the drawn surface (see perAxisCellToWorld3DSubCell). Mirrors GLSL.
     const int2 cell = int2(int(packedCell & 0xFFFFu), int(packedCell >> 16u));
     const int slot = decodeSlot(rawDist);
     const int flip = decodeFlipPerAxis(rawDist);
     const int rawDepth = decodeDepthPerAxis(rawDist);
     const int faceId = voxelFrameData.visibleFaceIds[slot] ^ flip;
     const float3 worldNormal = faceOutwardNormal6(faceId);
-    const float3 pos3D = perAxisCellToWorld3D(
-        cell, rawDepth, faceId, voxelFrameData.canvasSizePixels,
+    const float3 pos3D = perAxisCellToWorld3DSubCell(
+        cell, rawDist, faceId, voxelFrameData.canvasSizePixels,
         voxelFrameData.frameCanvasOffset, voxelFrameData.voxelRenderOptions
     );
 

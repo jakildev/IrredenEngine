@@ -27,3 +27,36 @@ vec3 perAxisCellToWorld3D(
     ivec2 isoPix = cell - perAxisBase;
     return isoPixelToPos3D(isoPix.x, isoPix.y, float(rawDepth));
 }
+
+// Sub-cell variant: the lattice recovery above plus the encoding's 4-bit
+// in-plane frac offset — the SAME reconstruction v_peraxis_scatter draws, so
+// lighting samples the surface where it is actually rendered. The frac is not
+// a sub-pixel nicety: fractional-positioned content (a voxel mid-glide, the
+// roundHalfUp tie convention placing half-integer content at cell − 0.5)
+// carries up to half a world cell here, and a lattice-only recovery samples
+// the light volume / sun map INSIDE the solid on every camera-facing surface
+// (see #2251). Integer-positioned content encodes frac 8/8 → zero offset, so
+// it is bit-identical to the lattice recovery. Consumers whose output
+// provably cancels the in-plane offset (AO's outward-normal height dot) may
+// keep the cheaper lattice form; absolute-position consumers (light volume,
+// sun-shadow receive, overflow relight) must use this one.
+vec3 perAxisCellToWorld3DSubCell(
+    ivec2 cell, int encoded, int faceId,
+    ivec2 canvasSize, vec2 frameCanvasOffset, ivec2 voxelRenderOptions
+) {
+    const vec3 origin = perAxisCellToWorld3D(
+        cell, decodeDepthPerAxis(encoded), faceId,
+        canvasSize, frameCanvasOffset, voxelRenderOptions
+    );
+    // Frac fields of the per-axis encoding (#1458): uFrac4 at [9:6], vFrac4 at
+    // [5:2], 8 = cell centre — the same open-coded positions v_peraxis_scatter
+    // reads (the shared ir_iso_common decode helpers cover depth/flip/slot;
+    // the frac fields kept their positions across the #2207 carrier migration).
+    const int uFrac4 = (encoded >> 6) & 15;
+    const int vFrac4 = (encoded >> 2) & 15;
+    vec3 eu, ev;
+    faceInPlaneUnitAxes(faceId >> 1, eu, ev);
+    return origin
+        + eu * (float(uFrac4) / 16.0 - 0.5)
+        + ev * (float(vFrac4) / 16.0 - 0.5);
+}
