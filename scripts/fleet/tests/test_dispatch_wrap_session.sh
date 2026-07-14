@@ -58,8 +58,13 @@ cat > "$BIN/git" <<'EOF'
 #!/usr/bin/env bash
 case "$*" in
   *"rev-parse --abbrev-ref HEAD"*) echo "${STUB_BRANCH:-master}" ;;
-  *"status --porcelain"*) [[ -n "${STUB_DIRTY:-}" ]] && echo " M f" ;;
-  *"rev-list --count"*) echo "${STUB_AHEAD:-0}" ;;
+  *"rev-parse --verify --quiet refs/remotes/origin/"*) exit "${STUB_REMOTE_REF_RC:-1}" ;;
+  *"status --porcelain"*)
+    [[ -n "${STUB_DIRTY:-}" ]] && echo " M f"
+    [[ -n "${STUB_UNTRACKED:-}" ]] && echo "?? junk/"
+    ;;
+  *"rev-list --count origin/master..HEAD"*) echo "${STUB_AHEAD:-0}" ;;
+  *"rev-list --count"*) echo "${STUB_AHEAD_OWN:-0}" ;;
   *) : ;;
 esac
 exit 0
@@ -164,6 +169,35 @@ grep -q -- '^--repo game planning-release 7 worker-1$' "$FLEET_CLAIM_LOG" \
   || bad "resume: no planning-release call: $(cat "$FLEET_CLAIM_LOG")"
 unset FLEET_CLAIM_LOG
 rm -f "$SIDECAR"
+
+# --- in-flight false positives + resume-loop breaker (worker-2, 07-09→07-14) --
+echo "T11: scratch branch is never in-flight — sidecar cleared even when dirty"
+rm -f "$SIDECAR"
+STUB_BRANCH="claude/worker-1-scratch" STUB_DIRTY=1 STUB_CLAUDE_RC=0 run_wrap "claude-opus-4-8[1m]" xhigh worker
+[[ ! -f "$SIDECAR" ]] && ok "scratch branch cleared the sidecar" || bad "scratch branch kept the sidecar"
+
+echo "T12: untracked-only junk is not in-flight — sidecar cleared"
+rm -f "$SIDECAR"
+STUB_BRANCH="claude/123-foo" STUB_UNTRACKED=1 STUB_CLAUDE_RC=0 run_wrap "claude-opus-4-8[1m]" xhigh worker
+[[ ! -f "$SIDECAR" ]] && ok "untracked-only cleared the sidecar" || bad "untracked junk kept the sidecar"
+
+echo "T13: fully-pushed branch (own remote ref current) is not in-flight"
+rm -f "$SIDECAR"
+# Remote ref exists (RC=0); 0 unpushed vs own ref; 5 "ahead" of master (the
+# squash-merge illusion) — must clear.
+STUB_BRANCH="claude/123-foo" STUB_REMOTE_REF_RC=0 STUB_AHEAD=5 STUB_AHEAD_OWN=0 STUB_CLAUDE_RC=0 run_wrap "claude-opus-4-8[1m]" xhigh worker
+[[ ! -f "$SIDECAR" ]] && ok "pushed branch cleared the sidecar (no squash-merge pin)" || bad "pushed branch kept the sidecar"
+
+echo "T14: resume-loop breaker — clean resumed exit twice while in-flight clears"
+printf '{"session_id":"SID-LOOP","role":"worker","model":"sonnet","effort":"high","created_epoch":1}\n' > "$SIDECAR"
+# 1st resumed clean exit, genuinely in-flight (task branch + tracked dirty): kept, resumes=1.
+STUB_BRANCH="claude/123-foo" STUB_DIRTY=1 STUB_CLAUDE_RC=0 run_wrap sonnet high worker
+[[ -f "$SIDECAR" ]] && ok "1st clean resume kept the sidecar" || bad "1st clean resume cleared too early"
+python3 -c "import json;d=json.load(open('$SIDECAR'));assert d.get('resumes')==1" 2>/dev/null \
+  && ok "resume counter recorded (resumes=1)" || bad "resume counter missing/wrong: $(cat "$SIDECAR" 2>/dev/null)"
+# 2nd resumed clean exit, still in-flight: breaker fires, sidecar cleared.
+STUB_BRANCH="claude/123-foo" STUB_DIRTY=1 STUB_CLAUDE_RC=0 run_wrap sonnet high worker
+[[ ! -f "$SIDECAR" ]] && ok "2nd clean resume cleared the sidecar (loop broken)" || bad "2nd clean resume kept the sidecar (loop!)"
 
 echo
 echo "PASS: $PASS  FAIL: $FAIL"
