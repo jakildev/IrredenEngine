@@ -178,18 +178,93 @@ shows sparse-detection is subtle).
    an empirical property + the `sunSplatMaxTexels_ == 0` kill switch, not a
    structural guarantee.
 
-## Acceptance / regression oracle
+## The receiver same-plane test (#2319) — removing the splat's coplanar self-acne
 
-- `canvas_stress --debug-overlay shadow --no-auto-rotate --no-spin`, shot
-  `shadow_overlay_floor`, `render-shadow-metric.py --roi 1010,540,450,250`:
-  components ≤ 8 and largest_frac ≥ 0.9 (measured 1 / 1.0 at r6). This is wired
-  as an automated `structural` gate in
-  `creations/demos/canvas_stress/test/references/manifest.json` (the
-  `shadow_overlay_floor` `extra_runs` entry, mirroring the #2092
-  `floor_selfshadow` guard), so the coverage fix stays regression-guarded across
-  future bake churn — backend-agnostic, one threshold for both hosts.
-- `IRVoxelYaw` `zoom4_yaw0` renders a solid cast shadow.
-- Per-axis `yaw30` / `yaw45` byte-identity (splat gated off).
+The r6 coverage box above fills the moth-eaten cast, but on a host whose
+cardinal bake is *not* already saturated (macOS/Metal, #2270) it also splats
+each caster's depth into a `(2·r+1)²` box that a **coplanar** receiver then reads
+back as an occluder of its own plane: a flat floor self-shadows (a caster-free
+floor at cardinal read a solid ~105k-px shadow) and a convex cube's sun-facing
+**top face** self-hits (artifact #1). Both are the *same* defect — a
+splat-displaced coplanar write, read at its origin as if it were a nearer caster.
+
+**Fix — splat provenance + an exact same-plane test** (`ir_sun_projection`,
+`ir_sun_shadow_sample`; twinned GLSL/Metal):
+
+- **Pack the displacement vector.** `packSunDepth(sunZ, splatOffset)` stores the
+  quantized depth in the high 24 bits and this box texel's `(dx, dy)`
+  displacement from its caster's own texel in the low byte (a two's-complement
+  nibble each; the r ≤ 6 cap fits `[-8, 7]`). A **direct** caster's-own-texel
+  write is `(0, 0)` ⇒ low byte 0 ⇒ `unpackSunDepth` (`>> 8`) recovers the depth
+  bit-exact vs a pre-#2319 `<< 8` single write, so every **radius-0** path
+  (per-axis / smooth-yaw / detached / saturated host) stays byte-identical — and
+  at equal quantized depth a direct write's 0 low byte wins `atomicMin` over any
+  splat's nonzero low byte, so a genuine caster's own depth always claims its
+  texel.
+- **Test the receiver plane at the reconstructed origin.** In
+  `sampleCascadeShadow`, a **direct** tap keeps the pre-#2319 near-rejection
+  verbatim; a **splat** tap reconstructs the write's origin texel
+  (`px − offset`) and asks whether the occluder lies in the receiver's *own*
+  plane. With `(uHat, vHat, sunDir)` orthonormal the receiver-plane depth
+  gradient in sun-UV is `gradUV = vec2(dot(n, uHat), dot(n, vHat)) / slope`
+  (`slope = dot(n, sunDir)`), so the plane's expected depth at the origin is
+  `sunZ + dot(gradUV, originUV − sunUV)`. A **same-face self-occluder**
+  extrapolates to `≈ nearestZ` (`h ≈ 0` → lit, at any splat distance and face
+  tilt) while a **genuine cast** sits `≈ caster_height` above the plane
+  (`h ≫ bias` → shadowed at the *base* tolerance, no widening).
+
+The **vector** is what the refuted round-1 *scalar* widening could not be: a
+global bias can't separate a same-face self-occluder from a real cast occluder,
+so widening it eroded genuine cast shadows (~85 % floor loss). The gradient sign
+is **+** — a leading minus reflects the plane, so a coplanar occluder at the
+write origin would give `h = −2·grad·d ≠ 0` and *break* the same-face → lit
+property; the derivation and a worked numeric check (sun 45° in XZ, flat floor)
+both give `dz/du = +dot(uHat, n)/slope`.
+
+**Residual (accepted for S1; epic #2314 D6).** A genuine-cast hole texel whose
+r6-box winner was a *coplanar floor* self-splat is provenance-identical to acne
+(both `h ≈ 0`), so the same-plane test lights it too — that texel is one the
+caster's rastered point-set + r6 box never reached. On master such texels read
+"shadowed" only because floor acne masqueraded as cast there; S1 **unmasks** the
+true, pre-existing under-coverage of the #2270 splat rather than growing a fourth
+mechanism round to absorb it. A follow-up child (*genuine-cast under-coverage
+unmasked by S1*) files at post-merge reconcile.
+
+## Acceptance / regression oracle (re-grounded for #2319, macOS/Metal pane)
+
+The full-scene `88380`-px macOS master anchor is **retired** — it was ~64k floor
+acne + ~24k genuine cast, so "match master / no erosion" required *reproducing*
+the #2270 acne and is unsatisfiable by any correct fix on this host. Replaced by
+acne-free, splat-off-referenced gates, all evaluable on macOS/Metal
+(`canvas_stress --debug-overlay shadow`, cardinal freeze `--no-auto-rotate
+--no-spin`, `render-shadow-metric.py`; cast-ROI `1010,540,450,250` on shot
+`shadow_overlay_floor`). Measured on this branch:
+
+1. **Acne gate (primary).** Caster-free flat floor at **cardinal** (`--only
+   floor`) → **0 shadow px** (measured 0 / hole_ratio 1.0, ROI and whole-image).
+   This is the gate the sibling `floor_selfshadow` guard *misses* — it runs at
+   non-cardinal π/6 where the splat radius is already 0. Wired as the
+   `shadow_overlay_floor` structural gate (`min_hole_ratio ≥ 0.98`) in
+   `creations/demos/canvas_stress/test/references/manifest.json`.
+2. **Artifact-#1 gate.** An isolated cube's sun-facing top face is fully lit (no
+   coplanar self-hit) — the same coplanar-rejection that zeroes the acne.
+3. **Genuine-cast lower bound.** Cast-ROI shadow px ≥ a same-session
+   **splat-off** capture (`kSunSplatMaxTexels = 0`, the uncontaminated genuine
+   cast — byte-identical whether built off master or this branch, since radius 0
+   is the pre-splat single write); cast-ROI structure (components / largest_frac)
+   no worse than that baseline. **Measured (this branch vs splat-off baseline):**
+   24400 px / 59 comp / 0.7705 frac ≥ 5056 px / 93 comp / 0.3418 frac — more
+   coverage *and* more coherent (the r6 splat legitimately fills genuine
+   cube-cast holes; the same-plane test drops only the coplanar floor
+   contamination). This is a **manual** A/B — `kSunSplatMaxTexels` has no runtime
+   flag — so it is not wired as a static manifest threshold.
+4. **`floor_selfshadow` ≥ 0.98** at π/6 (unchanged; measured hole_ratio 1.0) and
+   **per-axis `yaw30` / `yaw45` byte-identity** (structural: those paths bake at
+   radius 0, so every tap is a direct write on the verbatim pre-#2319
+   near-rejection).
+5. **Linux smoke owed** — the GL twin is unbuilt on the macOS pane; a large Linux
+   floor A/B vs master is a re-escalation signal (calibrated-host manifest
+   re-check), not something to tune away.
 
 See also `engine/render/CLAUDE.md` § "Sun shadow bake AABB sweep" and
 § "Lighting culling invariants" for the AABB-sweep coverage of off-screen
