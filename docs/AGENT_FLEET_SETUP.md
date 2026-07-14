@@ -895,8 +895,7 @@ protesting.
 Before starting a reviewer session:
 
 ```bash
-cd ~/src/IrredenEngine/.claude/worktrees/sonnet-reviewer
-git checkout -B claude/sonnet-reviewer-scratch origin/master
+git -C ~/src/IrredenEngine/.claude/worktrees/sonnet-reviewer checkout -B claude/sonnet-reviewer-scratch origin/master
 ```
 
 Then inside the session you can `gh pr checkout 42`, review, post the
