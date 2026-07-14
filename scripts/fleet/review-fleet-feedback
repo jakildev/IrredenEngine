@@ -124,6 +124,16 @@ SIGNATURES: list[tuple[str, re.Pattern]] = [
         r"(?=.*(silent|no-op|zero\s+finding|no\s+coverage|under-report|miss"
         r"|do(?:\s+not|n.t)\s+exist|not\s+present|working[- ]?tree|origin.?master"
         r"|committed\s+state))", re.I | re.S)),
+    # macOS/Metal panes finding zero class-viable work because the queue is
+    # saturated with GL-host-gated tasks (#1998). Must sit before
+    # queue-staleness: these entries often say "queue ... starved" and would
+    # otherwise be swallowed there — but the queue is fresh; the work is
+    # host-incompatible.
+    ("gl-host-starvation", re.compile(
+        r"(?=.*(GL[- ]host|needs-gl-host|GL[- ]saturated|GL-only"
+        r"|macOS[- ]viable|Metal\s+pane))"
+        r"(?=.*(starv|idle|churn|no[- ]op|zero|0\s+pickable|blocked"
+        r"|covered|skip))", re.I | re.S)),
     ("queue-staleness", re.compile(
         r"(queue.*(staleness|stale-queue|starved|wall|wedge|wedged|starving|race|backlog|invisible)"
         r"|stale-queue\s+wall|fleet:queued\b.*(diverge|no\s+TASKS|ingest))", re.I)),
