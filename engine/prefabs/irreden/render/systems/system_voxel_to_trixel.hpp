@@ -37,6 +37,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <limits>
 #include <utility>
 #include <vector>
@@ -308,6 +309,12 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // count already warned about, so the "overflow cap hit" line fires once
     // per distinct count rather than every rotating frame.
     std::uint32_t lastOverflowDropWarned_ = 0;
+    // #2334 measurement: IR_OVERFLOW_COUNT_LOG surfaces the per-frame overflow
+    // entry count (ctrl instanceCount) each time it changes — the per-pose counts
+    // the far-quadrant sweep records. Off by default (no per-frame log spam); read
+    // once at system construction. lastOverflowCountLogged_ de-dups identical poses.
+    bool overflowCountLogEnabled_ = std::getenv("IR_OVERFLOW_COUNT_LOG") != nullptr;
+    std::uint32_t lastOverflowCountLogged_ = 0xFFFFFFFFu;
     // Last canvas whose position SSBO contents were written to
     // `voxelPosBuf_`. Positions are otherwise pushed at mutation time by
     // `UPDATE_VOXEL_SET_CHILDREN`; we still need a per-canvas full
@@ -487,7 +494,14 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // CPU-seeded here each rotating frame.
     void resetOverflowCtrl(const C_PerAxisTrixelCanvases &axes) {
         const std::array<std::uint32_t, 8> ctrl{
-            static_cast<std::uint32_t>(IRShapes2D::kQuadIndicesLength), 0u, 0u, 0u, 0u, 0u, 0u, 0u
+            static_cast<std::uint32_t>(IRShapes2D::kQuadIndicesLength),
+            0u,
+            0u,
+            0u,
+            0u,
+            0u,
+            0u,
+            0u
         };
         axes.winnerIds_.second->subData(
             static_cast<std::ptrdiff_t>(axes.ctrlBaseUints_) * sizeof(std::uint32_t),
@@ -517,6 +531,20 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 axes.overflowCap_
             );
             lastOverflowDropWarned_ = dropped;
+        }
+        // #2334: per-pose overflow entry count for the far-quadrant cost sweep.
+        // ctrl[1] is the indirect-draw instanceCount = live overflow entries.
+        if (overflowCountLogEnabled_) {
+            const std::uint32_t count = ctrl[1];
+            if (count != lastOverflowCountLogged_) {
+                IRE_LOG_INFO(
+                    "[overflow-count] per-axis view-visibility overflow entries: {} "
+                    "(cap {}).",
+                    count,
+                    axes.overflowCap_
+                );
+                lastOverflowCountLogged_ = count;
+            }
         }
     }
 
@@ -1212,11 +1240,10 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // then runs the per-voxel Hi-Z test on the survivors (occlusionCullMipCount_
         // uploaded here, Hi-Z bound at the compact dispatch below).
         const int occlusionMipCount = triangleCanvasTextures.hiZMipCount();
-        const bool occlusionCullActive = IRRender::getVoxelOcclusionCullEnabled() &&
-                                         !occlusionLagSourceStale_ &&
-                                         frameData_.voxelRenderOptions_.x == 0 && !rotating &&
-                                         revoxBuffer == nullptr &&
-                                         !canvasLocalRotation.isDetached() && occlusionMipCount > 0;
+        const bool occlusionCullActive =
+            IRRender::getVoxelOcclusionCullEnabled() && !occlusionLagSourceStale_ &&
+            frameData_.voxelRenderOptions_.x == 0 && !rotating && revoxBuffer == nullptr &&
+            !canvasLocalRotation.isDetached() && occlusionMipCount > 0;
         // The chunk pre-pass (dispatched below on occlusionCullActive) and the
         // per-voxel Hi-Z refine are separately toggleable so the #1812 marginal
         // acceptance gate can A/B the per-voxel test in isolation while the chunk

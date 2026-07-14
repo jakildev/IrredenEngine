@@ -8,6 +8,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 
 #include <irreden/render/components/component_canvas_ao_texture.hpp>
 #include <irreden/render/components/component_canvas_light_volume.hpp>
@@ -18,6 +19,7 @@
 #include <irreden/render/components/component_canvas_local_rotation.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/render/per_axis_canvas.hpp>
+#include <irreden/render/voxel_dispatch_grid.hpp>
 #include <irreden/render/voxel_frame_data.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/gpu_stage_timing_observer.hpp>
@@ -71,6 +73,16 @@ struct FrameDataLightingToTrixel {
 // return in the tick.
 template <> struct System<LIGHTING_TO_TRIXEL> {
     ShaderProgram *program_ = nullptr;
+    // View-visibility overflow-face relight kernel (#2334): a bounded compute
+    // dispatch at the tail of the per-axis lighting that relights the C1 (#2333)
+    // overflow entries at their world pos and rewrites their stored colour in
+    // place, so the framebuffer scatter draws LIT slivers while rotating.
+    ShaderProgram *overflowLightingProgram_ = nullptr;
+    // IR_OVERFLOW_LIGHTING_DISABLE in the environment skips the relight dispatch
+    // (entries stay C1 albedo) — the A/B kill switch for the lit-vs-albedo
+    // screenshot pair and the GPU-delta measurement (#2334 acceptance).
+    bool overflowLightingDisabled_ = false;
+    static constexpr int kOverflowLightingGroupSize = 64; // matches local_size_x
     Buffer *frameDataBuf_ = nullptr;
     // Reuse the voxel pipeline's per-frame UBO so we can recover the
     // world voxel position of each pixel via the same iso math the AO
@@ -301,6 +313,13 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         // dispatch order doesn't matter) so they overlap on the GPU instead of
         // serializing per axis (#1311).
         IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+        // #2334: relight the overflow entries the C1 lane appended albedo-only,
+        // at their recovered world pos, while the sun-depth map (slot 28) + light
+        // volume are still bound from the cell pass above. Switches the compute
+        // program, so restore the lighting program for any remaining per-canvas
+        // ticks this frame (beginTick's program_->use() runs once per frame).
+        dispatchOverflowLighting(axes);
+        program_->use();
         const int kSingleCanvasRoute = 0;
         voxelFrameDataBuf_->subData(
             offsetof(FrameDataVoxelToCanvas, perAxisRoute_),
@@ -328,6 +347,52 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
             ->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
         mainAO.getTexture()->bindAsImage(2, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
         mainShadow.getTexture()->bindAsImage(4, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+    }
+
+    // #2334 (epic #2331 C2): relight the view-visibility overflow entries the C1
+    // (#2333) lane appended albedo-only. A bounded compute dispatch over the
+    // overflow list recovers each entry's world pos + face normal and rewrites
+    // its stored colour with the same world sample the per-axis cells got
+    // (sun cascade + light volume + Lambert, AO = 1.0); the unchanged framebuffer
+    // scatter then draws LIT slivers. Reuses every resource the cell pass bound —
+    // sun-depth map (28), light volume (5), light list (4), and the four UBOs —
+    // adding only the overflow scratch at kBufferIndex_OverflowLightingScratch (a
+    // buffer slot dead during lighting; slot 28 holds the sun-depth map). Runs
+    // only while rotating (per-axis canvases allocated), so yaw-0 is byte-identical.
+    void dispatchOverflowLighting(C_PerAxisTrixelCanvases &axes) {
+        if (overflowLightingDisabled_ || axes.overflowCap_ <= 0 ||
+            axes.winnerIds_.second == nullptr) {
+            return;
+        }
+        overflowLightingProgram_->use();
+        // The kernel indexes entries + the ctrl-block count via overflowScratchLayout
+        // read from the voxel-frame UBO (slot 7). Only VOXEL_TO_TRIXEL_STAGE_1 sets
+        // that field, and this system re-authors the shared UBO per canvas (#1558),
+        // so it reads back zero here — republish it from the canvas's own scratch
+        // offsets before the dispatch (matches the ivec4 order the store uploads).
+        const ivec4 overflowLayout(
+            axes.viewMaskBaseUints_,
+            axes.ctrlBaseUints_,
+            axes.entriesBaseUints_,
+            axes.overflowCap_
+        );
+        voxelFrameDataBuf_->subData(
+            offsetof(FrameDataVoxelToCanvas, overflowScratchLayout_),
+            sizeof(ivec4),
+            &overflowLayout
+        );
+        // Whole-buffer bind; the kernel offsets into it via overflowScratchLayout.
+        axes.winnerIds_.second->bindBase(
+            BufferTarget::SHADER_STORAGE,
+            kBufferIndex_OverflowLightingScratch
+        );
+        // Sized to the worst-case cap; threads past the live entry count
+        // early-return (the count lives in the scratch ctrl block). The cap can
+        // exceed 1024 groups, so wrap into the 2-D group grid the shader flattens.
+        const int groupCount = IRMath::divCeil(axes.overflowCap_, kOverflowLightingGroupSize);
+        const ivec2 grid = voxelDispatchGridForCount(groupCount);
+        IRRender::device()->dispatchCompute(grid.x, grid.y, 1);
+        IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
     }
 
     void beginTick() {
@@ -412,6 +477,12 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
             "LightingToTrixelProgram",
             std::vector{ShaderStage{IRRender::kFileCompLightingToTrixel, ShaderType::COMPUTE}}
         );
+        // #2334: overflow-face relight kernel, dispatched at the tail of the
+        // per-axis lighting (see dispatchOverflowLighting).
+        IRRender::createNamedResource<ShaderProgram>(
+            "LightOverflowFacesProgram",
+            std::vector{ShaderStage{IRRender::kFileCompLightOverflowFaces, ShaderType::COMPUTE}}
+        );
         IRRender::createNamedResource<Buffer>(
             "LightingToTrixelFrameData",
             nullptr,
@@ -487,6 +558,10 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
             C_CanvasAOTexture>("LightingToTrixel");
         auto *p = getSystemParams<System<LIGHTING_TO_TRIXEL>>(systemId);
         p->program_ = IRRender::getNamedResource<ShaderProgram>("LightingToTrixelProgram");
+        p->overflowLightingProgram_ =
+            IRRender::getNamedResource<ShaderProgram>("LightOverflowFacesProgram");
+        // A/B kill switch for the lit-vs-albedo overflow screenshots + GPU delta.
+        p->overflowLightingDisabled_ = std::getenv("IR_OVERFLOW_LIGHTING_DISABLE") != nullptr;
         p->frameDataBuf_ = IRRender::getNamedResource<Buffer>("LightingToTrixelFrameData");
         p->voxelFrameDataBuf_ = IRRender::getNamedResource<Buffer>("SingleVoxelFrameData");
         p->sunFrameDataBuf_ = IRRender::getNamedResource<Buffer>("ComputeSunShadowFrameData");
