@@ -36,6 +36,12 @@ You poll open PRs on **both repos** (engine + game) every 10 minutes.
 For each PR in CONFLICTING state, you try to auto-resolve and push, or
 mark it for the human if the conflict is non-mechanical.
 
+**You never merge PRs.** The fleet's only auto-merge is the tier-0
+plan-file lane in `fleet-rebase` (approved + MERGEABLE + diff purely
+under `.fleet/plans/**`, live-verified — see FLEET.md § "Who merges").
+Everything that reaches this LLM pass is rebase/label/handoff work;
+never run `gh pr merge`.
+
 **Both repos, two passes.** Steps 1–6 below are the **engine pass**
 (cwd = your engine worktree, `repos.engine.prs[]`, default `gh` repo).
 After the engine pass, the **game pass** repeats the *core conflict
@@ -835,6 +841,10 @@ See [`docs/agents/CLAUDE-BASELINE.md §"Hard rules for autonomous fleet roles"`]
 
 - **Only push the PR branch with `--force-with-lease`**, never `--force`.
   The push fails if upstream changed under you (parallel author push).
+- **Never `gh pr merge`.** Merging is either the human's click or the
+  tier-0 plan-file auto-merge lane in `fleet-rebase` — the LLM pass has
+  no merge verb by design, so a prompt drift or misread label can never
+  land code on master.
 - **Never `gh pr review --approve` or `--request-changes`.** All fleet
   agents share one GitHub account and GitHub rejects formal review
   actions on your own PRs. Use `--comment` for status posts

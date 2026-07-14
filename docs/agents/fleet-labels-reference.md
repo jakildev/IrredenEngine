@@ -392,9 +392,11 @@ Specifically, **never pass these via `--label` when filing**:
     the reviewer could re-apply `fleet:needs-fix`). `fleet:approved`
     is kept (PR is internally OK).
     **Scope: it parks re-review of the deferred concern on the diff
-    as it stood at defer time. It is NOT a merge-gate.** Every PR is
-    human-merged, so "the human decides whether to merge" is true of
-    every approved PR and is *not* what this label is for. While the
+    as it stood at defer time. It is NOT a merge-gate.** A PR carrying
+    it is always human-merged anyway — the label sits outside the
+    tier-0 auto-merge allowlist (FLEET.md § "Who merges"), so "the
+    human decides whether to merge" is guaranteed for it and is *not*
+    what this label is for. While the
     diff is unchanged, reviewer agents leave it alone and never
     re-apply `fleet:needs-fix` for the deferred concern — the human is
     the decision-maker on it.

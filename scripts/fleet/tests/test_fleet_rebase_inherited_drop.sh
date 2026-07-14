@@ -217,7 +217,7 @@ write_slice '[{"repo":"engine","number":200,"headRefName":"feat-child","baseRefN
 T1=$(run_rebase)
 assert_contains "$T1" "retargeting PR to master" "T1 took the retarget path"
 assert_contains "$T1" "dropping inherited prefix at ${B1:0:12}" "T1 dropped the inherited prefix at the boundary"
-assert_contains "$T1" "attempted=1 cleared=1 llm_remaining=0" "T1 tier-0 cleared the PR (no LLM bail)"
+assert_contains "$T1" "attempted=1 cleared=1 merged=0 llm_remaining=0" "T1 tier-0 cleared the PR (no LLM bail)"
 assert_absent   "$T1" "changed-file set drifted" "T1 no spurious file-set drift"
 assert_absent   "$T1" "conflicts; leaving for LLM" "T1 no conflict bail"
 
@@ -227,7 +227,7 @@ write_slice '[{"repo":"engine","number":201,"headRefName":"feat-child2","baseRef
 T2=$(run_rebase)
 assert_contains "$T2" "dropping inherited prefix at ${B1B:0:12}" "T2 still attempts the prefix drop"
 assert_contains "$T2" "(inherited-prefix drop) conflicts; leaving for LLM" "T2 own-commit conflict bails to LLM"
-assert_contains "$T2" "attempted=1 cleared=0 llm_remaining=1" "T2 left for the LLM pass"
+assert_contains "$T2" "attempted=1 cleared=0 merged=0 llm_remaining=1" "T2 left for the LLM pass"
 
 # === T3: parent edited after the child forked -> fork-point fallback drops ==
 echo "T3: parent amended post-fork (recorded head is a sibling) -> fork-point fallback drops + clears"
@@ -236,7 +236,7 @@ T3=$(run_rebase)
 assert_contains "$T3" "retargeting PR to master" "T3 took the retarget path"
 assert_contains "$T3" "parent edited post-fork; deriving inherited boundary from child fork point at ${P_FORK:0:12}" "T3 used the fork-point fallback at the boundary"
 assert_absent   "$T3" "dropping inherited prefix at" "T3 did NOT take the is-ancestor fast path"
-assert_contains "$T3" "attempted=1 cleared=1 llm_remaining=0" "T3 tier-0 cleared the PR (no LLM bail)"
+assert_contains "$T3" "attempted=1 cleared=1 merged=0 llm_remaining=0" "T3 tier-0 cleared the PR (no LLM bail)"
 assert_absent   "$T3" "changed-file set drifted" "T3 no spurious file-set drift"
 assert_absent   "$T3" "conflicts; leaving for LLM" "T3 no conflict bail"
 

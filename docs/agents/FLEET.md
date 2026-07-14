@@ -19,7 +19,8 @@ This repo runs a parallel-agent workflow. The rules:
    It resets the worktree to a fresh branch off `origin/master`. Do not keep
    adding unrelated commits to the same PR branch.
 4. **A separate reviewer agent** (running the `review-pr` skill in its own
-   worktree) looks at each PR. The user merges.
+   worktree) looks at each PR. The user merges — with one carve-out for
+   pure plan-file PRs; see "Who merges" below.
 5. **Never `--force` push to `master`.** Never use `--no-verify` to skip hooks
    unless the user explicitly asks.
 6. **Shared task queue lives in GitHub Issues.** Pick the next unblocked
@@ -32,6 +33,37 @@ This repo runs a parallel-agent workflow. The rules:
 
 See `fleet-queue-list` for the current queue and `.claude/skills/` for the
 exact commit/PR/review flows.
+
+### Who merges
+
+Every PR is merged by the human, with exactly one carve-out: **tier-0
+`fleet-rebase` squash-merges plan-file PRs** — steward rollups,
+close-outs, and umbrella plan filings whose diff touches only
+`.fleet/plans/**`. These have zero build/runtime surface, still pass
+through fleet review (`fleet:approved` is required), and are the PRs
+most likely to conflict with their own siblings while queued for a
+human click.
+
+The lane is deliberately narrow and re-verifies everything **live**
+(REST, not the scout cache) immediately before merging:
+
+- `fleet:approved` present, PR OPEN, base `master`, GitHub reports
+  mergeable.
+- **Label allowlist, not blocklist** — any label outside
+  `fleet:approved` / `fleet:merger-cooldown` / `fleet:stacked-rebase` /
+  `fleet:authored-on-*` / `fleet:verified-*` disqualifies. Every
+  `human:*` label, `fleet:human-deferred`, `fleet:changes-made`,
+  `fleet:needs-opus-recheck`, smoke labels, and any label added in the
+  future all default to human-merge.
+- Diff verified via the PR files endpoint: ≥1 file, every path under
+  `.fleet/plans/`, and refuses diffs it can't fully enumerate.
+- Capped at 3 merges per run; each merge flips the scout hash and
+  re-fires the merger, so longer queues drain across wakes.
+
+The **LLM merger pass never merges anything** (role-merger.md Hard
+rules) — keeping the merge verb out of the prompt-driven tier means a
+misread label can never land code on master. Merged plan PRs get a
+`— fleet merger` provenance comment.
 
 ### How `fleet-claim` enforces single-claim atomicity
 
@@ -450,7 +482,8 @@ opus list.
 - Nits-only feedback fixes (`fleet:has-nits`).
 - The **merger LLM pass** — and most merger wakes never reach an LLM at
   all: `fleet-rebase` (tier-0) clears clean rebases of approved stacked
-  or behind PRs mechanically for zero tokens, and only re-arms the
+  or behind PRs mechanically for zero tokens, auto-merges pure
+  plan-file PRs (see "Who merges"), and only re-arms the
   sonnet pass when conflicts or unhandled states remain. The
   `fleet:semantic-conflict` handoff to an opus+-class worker/human is unchanged.
 
