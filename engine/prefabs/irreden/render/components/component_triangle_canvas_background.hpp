@@ -13,7 +13,6 @@ using namespace IRMath;
 
 namespace IRComponents {
 
-
 enum class BackgroundTypes { kSingleColor, kGradient, kGradientRandom, kPulsePattern };
 
 struct C_TriangleCanvasBackground {
@@ -71,7 +70,8 @@ struct C_TriangleCanvasBackground {
         float pulseSpeed = 1.0f,
         int patternScale = 10
     )
-        : C_TriangleCanvasBackground(type, std::vector<Color>{colorA, colorB}, size, pulseSpeed, patternScale
+        : C_TriangleCanvasBackground(
+              type, std::vector<Color>{colorA, colorB}, size, pulseSpeed, patternScale
           ) {}
 
     // Default
@@ -181,15 +181,21 @@ struct C_TriangleCanvasBackground {
 
             // TODO(perf): Move pulse/interference color transform to a trixel->trixel compute pass.
             // Notes for future migration:
-            // 1) Keep this CPU side responsible only for low-frequency state (pattern mask / parameters),
-            //    then dispatch compute once per frame for animated color evaluation in trixel space.
-            // 2) Use ping-pong textures (read from A, write to B, then swap) to avoid undefined read/write
+            // 1) Keep this CPU side responsible only for low-frequency state (pattern mask /
+            // parameters),
+            //    then dispatch compute once per frame for animated color evaluation in trixel
+            //    space.
+            // 2) Use ping-pong textures (read from A, write to B, then swap) to avoid undefined
+            // read/write
             //    hazards on the same image in one dispatch.
-            // 3) Preserve current iso-space phase projection and timing params so visual output matches:
-            //    - primary/secondary directions, phase scales, speed multipliers, start offsets, mix.
+            // 3) Preserve current iso-space phase projection and timing params so visual output
+            // matches:
+            //    - primary/secondary directions, phase scales, speed multipliers, start offsets,
+            //    mix.
             // 4) Insert proper barriers after dispatch (image/texture fetch visibility) before the
             //    framebuffer pass samples the output trixel color texture.
-            // 5) Prefer one invocation per trixel texel (not per-fragment) since each trixel resolves
+            // 5) Prefer one invocation per trixel texel (not per-fragment) since each trixel
+            // resolves
             //    to a uniform color in this effect.
             for (int y = 0; y < m_size.y; y++) {
                 for (int x = 0; x < m_size.x; x++) {
@@ -215,7 +221,8 @@ struct C_TriangleCanvasBackground {
                         m_pulsePhase * m_pulseWaveSecondarySpeedMultiplier +
                         m_pulseWaveSecondaryStartOffset + phaseOffsetSecondary
                     );
-                    const float combined = IRMath::mix(primary, secondary, m_pulseWaveInterferenceMix);
+                    const float combined =
+                        IRMath::mix(primary, secondary, m_pulseWaveInterferenceMix);
                     const float wave = 0.5f + 0.5f * combined;
                     const Color colorPulseA = IRMath::lerpColor(colorA, colorB, wave);
                     const Color colorPulseB = IRMath::lerpColor(colorB, colorA, wave);
@@ -398,7 +405,7 @@ struct C_TriangleCanvasBackground {
             return fallbackDirection;
         }
         motion.timeSeconds_ += dt;
-        const float wrapped = std::fmod(motion.timeSeconds_, motion.periodSeconds_);
+        const float wrapped = IRMath::wrapToRange(motion.timeSeconds_, motion.periodSeconds_);
         const float normalized = wrapped / motion.periodSeconds_;
         const bool forward = normalized < 0.5f;
         const float phaseT = forward ? (normalized * 2.0f) : ((normalized - 0.5f) * 2.0f);
@@ -412,7 +419,6 @@ struct C_TriangleCanvasBackground {
             fallbackDirection
         );
     }
-
 };
 
 } // namespace IRComponents

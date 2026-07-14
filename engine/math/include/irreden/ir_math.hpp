@@ -15,6 +15,7 @@
 #include <cmath>
 #include <cstdint>
 #include <random>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -356,6 +357,32 @@ template <typename T> constexpr auto fract(const T &value) {
 /// Floating-point remainder: x - y * trunc(x / y). std::fmod equivalent.
 inline float fmod(float x, float y) {
     return std::fmod(x, y);
+}
+
+/// Wrap @p x into [0, range) (right half-open). Floor-mod semantics: negative
+/// x wraps correctly, matching GLSL/Metal `mod(x, y)` for range > 0, so CPU and
+/// GPU phase math agree (same rationale as roundHalfUp). Caller guarantees
+/// range > 0.
+template <typename T> inline T wrapToRange(T x, T range) {
+    static_assert(std::is_floating_point_v<T>);
+    T wrapped = std::fmod(x, range);
+    if (wrapped < T(0))
+        wrapped += range;
+    // A tiny-negative fmod result can round to exactly `range` after the
+    // correction; fold it back so the contract stays right-half-open.
+    if (wrapped >= range)
+        wrapped = T(0);
+    return wrapped;
+}
+
+/// Wrap an angle into [0, 2*pi).
+inline float wrapAngleTwoPi(float a) {
+    return wrapToRange(a, kTwoPi);
+}
+
+/// Wrap an angle into [-pi, pi).
+inline float wrapAnglePi(float a) {
+    return wrapToRange(a + kPi, kTwoPi) - kPi;
 }
 
 /// Fractional part of the absolute value; always in [0, 1). Ignores sign.
