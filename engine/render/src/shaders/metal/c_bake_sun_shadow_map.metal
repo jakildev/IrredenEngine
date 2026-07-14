@@ -68,10 +68,17 @@ inline void bakeCascadeBox(
     float2 origin, float2 texelSz, int cascadeOffset, int radius
 ) {
     int2 base = int2(floor((sp.xy - origin) / texelSz));
-    uint packed = packSunDepth(sp.z);
     for (int dy = -radius; dy <= radius; ++dy) {
         for (int dx = -radius; dx <= radius; ++dx) {
-            writeSunTexel(sunDepthBuf, cascadeOffset, base + int2(dx, dy), packed);
+            // Splat provenance (#2319): store the DISPLACEMENT VECTOR (dx, dy) of
+            // this box texel from the caster's own (0,0) texel, so the receiver
+            // can reconstruct the write's true origin (px - (dx,dy)) and reject a
+            // same-plane self-occluder while keeping a genuine cast at the base
+            // bias (ir_sun_shadow_sample same-plane test). Free — the box loop
+            // already carries (dx, dy). radius 0 ⇒ only (0,0) ⇒ a direct write ⇒
+            // byte-identical to the pre-splat single write. Mirrors GLSL.
+            writeSunTexel(sunDepthBuf, cascadeOffset, base + int2(dx, dy),
+                          packSunDepth(sp.z, int2(dx, dy)));
         }
     }
 }
