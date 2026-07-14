@@ -1450,6 +1450,16 @@ void initSystems() {
             //     read magenta and render-shadow-metric.py (#1765) measures
             //     hole_ratio / components (the swiss-cheese signature, #1717).
             g_allShots.push_back({0.55f, vec2(0.0f), 0.0f, "shadow_overlay_floor"});
+            //     Zoom-matrix shadow framings (S3, #2321): the near-cascade
+            //     sun-texel budget is ~zoom-independent under the fixed
+            //     iso-depth slab, so silhouette jaggedness worsens as zoom
+            //     climbs. These zoomed-in framings of the same central cluster
+            //     give render-shadow-metric.py the zoom {2,4} silhouette-
+            //     quantization signal the 0.55 pull-back can't show. Appended
+            //     after the manifest suite so render-verify's first-N pixel
+            //     gate ignores them; captured with `--debug-overlay shadow`.
+            g_allShots.push_back({2.0f, vec2(0.0f), 0.0f, "shadow_overlay_z2"});
+            g_allShots.push_back({4.0f, vec2(0.0f), 0.0f, "shadow_overlay_z4"});
             // (b) Re-voxelize surface coverage: the screen-center solid column
             //     zoomed for per-voxel surface readout, captured in normal render
             //     so a coverage metric can count interior background holes inside
