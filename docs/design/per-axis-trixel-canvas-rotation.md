@@ -23,6 +23,169 @@ visually interpolates between the 90° cardinals instead of snapping. Read
 voxel emits) and [`iso-depth-axis-invariant.md`](iso-depth-axis-invariant.md)
 first; this builds directly on both.
 
+## Current contract — view-visibility overflow lane (epic #2331, 2026-07-14)
+
+> Supersedes §"Per-axis store occlusion model — engine invariant (established
+> #1457, 2026-06-10)" below, and the "two faces … never share a cell" /
+> "collide *only* when they share a cardinal screen pixel" claims in
+> §"Implementation decision" and §"Mechanism chosen". Those were written for
+> a single-object, single-face-set census and are correct as far as they go —
+> the cardinal-keyed store's `atomicMin` election really is uncontested
+> *within one cell*. What they miss: the store's key is the **un-yawed
+> (cardinal)** iso pixel, so the store's one-winner-per-cell census is the
+> **cardinal-visible** face set, not the **view-visible** one the live camera
+> needs. The two sets differ under residual yaw; see below.
+
+### The two-set model
+
+Two faces separated by a world offset `t·(1,1,1)` (a "coset pair") project to
+the **same** un-yawed iso pixel and therefore the **same** store cell —
+that part of the historical text is exactly right, and it is why the
+un-yawed key is still the correct, lossless-for-*recovery* store key (it is
+injective: `(cell, rawDepth) → world` inverts exactly at every yaw). But
+"share a cell" only means "compete for one winner slot," not "only one of
+them is visible." Under a residual yaw θ the two faces separate on screen by
+
+```
+Δiso = t · (−2·sinθ, 2 − 2·cosθ)      // pos3DtoPos2DIsoYawed((1,1,1)·t, θ)
+```
+
+— ≈0.35 iso px per unit `t` at 10°, ≈1 px per unit at 30°. Once that
+separation exceeds sub-pixel, BOTH members can be view-visible even though
+the store elects only one; the coset loser is visible on screen but was
+never written anywhere the scatter can read. This needs ≥2 view-visible
+faces in one `(1,1,1)` coset to manifest — a single convex object never
+triggers it (a plane contains no two points differing by `t·(1,1,1)`), which
+is why the T1–T4 per-axis rollout's own dense-cube sweeps never caught it;
+the default `voxel_set` wave scene (per-cell single-voxel sets, phase riding
+`x+y+z`) is the epic #2331 worst case. The election metric's sign also
+inverts past 120° full yaw (`2·cos(visualYaw) + 1 < 0`), so in the
+(120°, 240°) quadrant range the store keeps the view-**farthest** coset
+member instead of the nearest — worse than a coin flip, not just a coverage
+gap.
+
+### The overflow lane (C1 #2333, C2 #2334)
+
+A bounded **overflow lane**, additive and rotating-only, carries exactly
+`viewVisible ∖ cardinalWinners` — the set the cardinal store cannot
+represent regardless of which election metric it sorts by. It rides the
+existing per-axis stage-1 kernel
+(`c_voxel_to_trixel_stage_1_body.{glsl,metal}`) as two extra `resolveMode`
+passes over the same per-axis face geometry, dispatched per rotating frame
+in this order (barrier between each group — the mask must be complete
+across ALL axes before any append test, since view visibility competes
+across axes, not per-axis):
+
+```
+stores ×3 (mode 0)  →  view mask ×3 (mode 2)  →  overflow append ×3 (mode 3)
+  →  per-axis {election (mode 1) → stage 2} ×3
+```
+
+1. **View mask (mode 2, `viewMaskTap`)** — every per-axis face `atomicMin`s
+   its quantized **yawed** depth (`overflowYawedDepthKey`, 1/16-world-unit
+   steps, biased into `uint` range) into a scratch region keyed by its
+   **yawed** screen cell (`overflowYawedPixel` — the same
+   `pos3DtoPos2DIsoYawed` projection the scatter uses, so mask cells and
+   scattered quads agree exactly).
+2. **Overflow append (mode 3, `overflowAppendTap`)** — a face appends
+   `{cardinal cell, encoded distance, colorPacked}` (3 packed uints, the
+   exact `(cell, rawDepth)` pair the store would have written plus the raw
+   color) to a capped array iff (a) its yawed depth is within
+   `kOverflowDepthEpsSteps` (8 steps ≈ half a world unit) of its view-mask
+   cell's winner — view-visible, with enough tolerance to absorb
+   quantization ties without admitting a genuinely occluded coset loser (the
+   nearest coset pair separates by ≥ ~2.7 world units of yawed depth) —
+   **and** (b) it is NOT its own cardinal cell's settled store winner (the
+   same match test the cell-path recovery already does). An atomic counter
+   tracks the append index against a hard cap; on overflow the add is paired
+   back off so `instanceCount` settles at exactly `min(appends, cap)`, and a
+   drop counter increments for a one-shot CPU warn
+   (`warnOverflowDropsIfAny`) — never silent.
+3. **Scatter** — `v_peraxis_scatter.glsl` draws a second instanced pass over
+   the overflow array (`overflowMode` uniform) after the normal per-cell
+   pass, decoding each entry through the **identical** recovery path the
+   cell path uses (`isoPixelToPos3D` + the #1458 fractional-offset decode,
+   including the #2207 flip bit carried inside the packed distance) — no new
+   recovery math. Overflow quads sit two composite-depth tie-bands behind
+   the cell-path draw (`vDepth += 16.0 * kScatterCellTieStep`), so they only
+   ever fill pixels no cell quad claims — necessary near the 120°/240°
+   coset-depth degeneracy, where every coset member ties in view depth and
+   an unbiased tie would hand roughly half the surface to unlit entries.
+4. **Lighting (C2, `c_light_overflow_faces.{glsl,metal}`)** — a bounded
+   compute pass at the tail of `LIGHTING_TO_TRIXEL`, dispatched while the
+   sun-shadow map and 128³ light volume are still bound, recovers each
+   overflow entry's world position + face normal from the same 3-uint entry
+   the scatter reads (`perAxisCellToWorld3D` + `faceOutwardNormal6`) and
+   relights it in place (sun cascade + light volume + Lambert, `AO = 1.0`,
+   mirroring `c_lighting_to_trixel`'s own world sample) before the scatter
+   draws it — so the rotating frame shows lit slivers, not flat albedo.
+
+**Binding.** No new permanent binding. The view-mask + ctrl-block +
+overflow-entries scratch rides `kBufferIndex_PerAxisResolveScratch` — the
+same transient per-axis-window reuse #2255's winner-id scratch already
+established (dead during the store window). C2's relight reuses every
+resource the per-axis lighting pass already bound; its one new binding
+(`kBufferIndex_OverflowLightingScratch`) lands on a slot dead **during
+lighting** specifically — slot 28 there holds the sun-depth map it samples,
+not the per-axis resolve scratch (which is live during lighting via
+#1435's resolve consumer).
+
+**Gating / cardinal fast path.** Every pass above is gated on per-axis
+canvas allocation (`residualYaw != 0`); at `visualYaw == 0` none of it
+dispatches, so the cardinal path stays byte-identical — confirmed by
+kill-switch A/B (`IR_OVERFLOW_LIGHTING_DISABLE`): 0.92% drift ≈ the ~0.86%
+same-config run-to-run non-determinism baseline (#2255), i.e. the feature
+contributes ~0 at cardinal.
+
+**Measured cost + cap utilization** (C2, Metal/Apple M4 Max; GL side owes
+cross-host smoke as of PR #2388):
+
+| scene / pose | overflow entries | cap | utilization | drops |
+|---|---|---|---|---|
+| wave, zoom 8, cardinal (yaw 0) | 0 | 437844 | 0% | 0 |
+| wave, zoom 8, yaw 0.35 (q0 residual) | ~122k–126k | 437844 | ~29% | 0 |
+| wave, zoom 8, yaw-ramp near-cardinal | 0 → 69k | 437844 | ≤16% | 0 |
+| cylinder (shape_debug), yaw 0→60° | 0 → 638 | 437844 | <1% | 0 |
+| dense_set (convex, no coset collisions) | 0 | — | 0% | 0 |
+
+The relight is one bounded compute dispatch sized to the cap (threads past
+the live entry count early-return — the "empty early-return sweeps are
+effectively free" cost model,
+[`gpu-stage-timing-cost-model.md`](gpu-stage-timing-cost-model.md)); the
+`LIGHTING` GPU-stage row stays sub-ms on the wave scene at zoom 8 — not a
+measured hotspot. Exact q1–q3 (120°–240°) peak counts were not captured
+headlessly for C2 (the four-quadrant pose table fell back to the default
+shot table in that measurement run); the numbers above are q0-residual +
+near-cardinal only, and the NO-GO decision below rests on the design size
+bound rather than a measured far-quadrant peak.
+
+**Yawed-election follow-up: NO-GO (recorded, no follow-up issue filed).**
+The epic's optional follow-up — switching the cardinal store's election
+metric from the un-yawed `x+y+z` to the yawed depth, to shrink overflow near
+the inverted-metric 180° quadrant — is unneeded for correctness now the lane
+exists. The view mask's filter already bounds overflow at ≤ view-visible
+faces ≈ O(screen cells), independent of quadrant; zero drops were observed
+at every measured pose including the inverted-metric far quadrants. The
+metric change remains available as a pure perf refinement if a future
+measurement finds the cap under real pressure.
+
+**Accepted drift.** Overflow-lit slivers carry no screen-space AO — they own
+no per-axis canvas cell, and AO is a canvas-cell-resident quantity. No other
+drift from the cell-path lighting model.
+
+### #2207 / #2157 synergy
+
+The overflow entry's packed distance carries the same encoding the cell path
+already decodes (`decodeSlot` / `decodeFlipPerAxis`), so a captured entry's
+#2207 riser-polarity flip survives through the shared scatter decode with no
+extra plumbing. The epic plan flagged this lane as a potential landing zone
+for #2207's deferred per-axis dual-emit story — representing a coset pair
+where *both* a triplet face and its opposite-polarity riser face are
+simultaneously view-visible, which today still costs one slot each and can
+still collide. That extension is **not** implemented by D1/C1/C2; noted here
+only as a cross-reference so #2207/#2157 (tracked separately) and #2331 stay
+reconciled for whoever picks it up.
+
 ## Implementation decision (T3 / #1310) — forward-scatter composite
 
 During T3 the empirical sweep (`fleet-run IRShapeDebug --spin-yaw
@@ -50,6 +213,12 @@ scatter_:**
    lose faces (see the store section below): the **yawed** iso index collapses
    the compressed axis, and the **in-plane** `(y,z)/(x,z)/(x,y)` index collapses
    separate objects stacked along the fixed axis.
+   > **Superseded (epic #2331, 2026-07-14):** "never share a cell" is true of
+   > *cardinal* screen separation, not *live-yaw* separation — two faces
+   > separated by `t·(1,1,1)` DO share this cell and DO both go on to be
+   > view-visible once residual yaw separates them on screen. See
+   > §"Current contract" above for the corrected two-set model and the
+   > overflow lane that recovers the dropped member.
 2. **Stage 1 (write):** each exposed visible face (visible-triplet × exposed
    mask) `atomicMin`s its shared world-space `pos3DtoDistance` into its axis
    canvas cell; store the depth winner's color + entityId. **Voxel-vs-voxel
@@ -109,6 +278,13 @@ Concretely:
      maingrid stacking defect). Neither holds at every yaw for arbitrary content;
      the un-yawed iso key does, because it is un-compressed (cardinal) *and*
      all-three-coords (screen-unique).
+   > **Superseded (epic #2331, 2026-07-14):** "collide *only* when they share
+   > a cardinal screen pixel, i.e. genuine cardinal occlusion" describes the
+   > *cardinal* census correctly but overstates it as the occlusion story for
+   > the *live view* — a coset pair sharing this cell can both be
+   > view-visible at residual yaw; the store's single winner drops the other
+   > one, and it is not "occluded" in any sense the view agrees with. See
+   > §"Current contract" above.
 2. **The scatter is an instanced draw over the canvas grid** (one instance per
    cell, `drawElementsInstanced` of the shared 6-index quad). The vertex shader:
    reads the cell's stored distance; degenerates (off-screen) if it is the clear
@@ -928,9 +1104,19 @@ limiter — confirmed above).
    is not culled from the cardinal-snapped viewport (all on-screen objects
    composite during rotation, not just the screen-center ones).
 
-## Per-axis store occlusion model — engine invariant (established #1457, 2026-06-10)
+## Per-axis store occlusion model — engine invariant (established #1457, 2026-06-10; store-vs-view scope corrected by epic #2331, 2026-07-14)
 
 ### Store is collision-free
+
+> **Scope correction (epic #2331, 2026-07-14):** everything in this
+> subsection is still true **as a store-cell statement** — one cell, one
+> winner, uncontested, and store-time sort-key choice is a no-op at
+> voxel-pool granularity. What it does not say, and what #2331 found, is
+> that "one winner per store cell" is not the same claim as "no face is
+> lost" — the store's cell key is cardinal, the view is yawed, and a coset
+> pair sharing one cell can both be view-visible. See §"Current contract"
+> near the top of this file for the two-set model and the overflow lane
+> that now recovers the coset loser this subsection's `atomicMin` drops.
 
 The per-axis stage-1 `atomicMin` has exactly **one camera-visible exposed
 face-voxel per cell**, keyed by its two in-plane world coordinates. The winner
@@ -940,8 +1126,15 @@ was verified empirically via three independent fix rounds (#1601 per-fragment
 composite depth, #1625 repacked yawed sort key, and #1625 v3 exact planar
 depth) each measured byte-identical to master at worst-case yaw 67.5°.
 
-**Invariant:** do not add per-axis store logic aimed at resolving occlusion
-between competing face-voxels at the same cell — no such competition exists.
+**Invariant (narrowed scope, #2331):** do not add per-axis store logic aimed
+at resolving occlusion **between two faces that both map to the same store
+cell** — no such competition exists; the `atomicMin` winner is correct and
+final for that cell. This does NOT mean the store cell set is the complete
+view-visible set — the overflow lane (`resolveMode` 2/3, §"Current contract")
+is exactly the sanctioned per-axis logic that recovers what the store cell
+model structurally cannot represent, and is not a violation of this
+invariant: it never contests a cell's stored winner, it appends the
+view-visible faces the store never had a cell for.
 
 ### Occlusion is decided at the cross-axis composite
 
