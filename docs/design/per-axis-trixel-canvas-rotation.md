@@ -107,7 +107,8 @@ stores ×3 (mode 0)  →  view mask ×3 (mode 2)  →  overflow append ×3 (mode
    cell path uses (`isoPixelToPos3D` + the #1458 fractional-offset decode,
    including the #2207 flip bit carried inside the packed distance) — no new
    recovery math. Overflow quads sit two composite-depth tie-bands behind
-   the cell-path draw (`vDepth += 16.0 * kScatterCellTieStep`), so they only
+   the cell-path draw (`vDepth += 32.0 * kScatterCellTieStep` — two of the
+   16-step priority-major tie bands, see #2411), so they only
    ever fill pixels no cell quad claims — necessary near the 120°/240°
    coset-depth degeneracy, where every coset member ties in view depth and
    an unbiased tie would hand roughly half the surface to unlit entries.

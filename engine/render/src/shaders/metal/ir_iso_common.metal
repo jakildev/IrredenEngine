@@ -791,14 +791,15 @@ constant float kScatterDilateMarginPx = 0.85;
 // fill pixels no exact footprint claims; never beat a same-plane owner).
 constant float kScatterMarginDepthBiasKey = 0.25;
 
-// Deterministic cell tiebreak (#2255) — mirror of kScatterCellTieStep /
-// kScatterCellTieBand in ir_iso_common.glsl; see that file for the full
-// rationale (margin-yield crossover pixels tie bit-exactly between parallel
-// neighbor faces and previously fell to the #1961 compaction's run-variant
-// draw order; quantize the final fragment depth to the band and inject the
-// 8-level cell code into the sub-band bits so ties resolve by cell identity).
+// Deterministic sub-band tiebreak (#2255/#2411) — mirror of
+// kScatterCellTieStep / kScatterCellTieBand in ir_iso_common.glsl; see that
+// file for the full rationale (quantize the final fragment depth to the
+// 16-step band and inject the 4-bit priority-major (rank2 << 2) | cell2 code
+// into the sub-band bits, so cross-axis band ties resolve by slot rank —
+// consistently, no parity alternation — and same-rank ties fall to cell
+// identity, preserving the #2255 determinism contract).
 constant float kScatterCellTieStep = 1.0f / 8388608.0f;
-constant float kScatterCellTieBand = 8.0f / 8388608.0f;
+constant float kScatterCellTieBand = 16.0f / 8388608.0f;
 
 // Margin-yield gradient scale (#1883) — mirror of ir_iso_common.glsl. Scales the
 // margin yield by the fragment's own plane-extrapolation excursion (penetration

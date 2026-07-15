@@ -35,16 +35,17 @@ flat in float vMarginYieldGradV;
 flat in float vIsoDepth;
 flat in int vDepthColorMode;
 flat in float vDepthColorExtent;
-// Deterministic cell tiebreak (#2255) — see v_peraxis_scatter.glsl: the
-// fragment's final depth is quantized to the tie band below and this 8-level
-// cell code (pre-scaled to step units) is injected into the sub-band bits,
-// so tie-band fragments resolve by cell identity instead of the #1961
-// compaction's run-variant draw order.
+// Deterministic sub-band tiebreak (#2255/#2411) — see v_peraxis_scatter.glsl:
+// the fragment's final depth is quantized to the tie band below and this
+// 4-bit priority-major code ((rank2 << 2) | cell2, pre-scaled to step units)
+// is injected into the sub-band bits, so tie-band fragments resolve by slot
+// rank then cell identity instead of the #1961 compaction's run-variant draw
+// order.
 flat in float vCellTieOffset;
 // Mirror of kScatterCellTieBand in ir_iso_common.glsl (this fragment stage
-// has no common include). Band = 8 x kScatterCellTieStep; power-of-two so the
-// floor-quantization below is exact in float32. Keep in sync.
-const float kScatterCellTieBand = 8.0 / 8388608.0;
+// has no common include). Band = 16 x kScatterCellTieStep; power-of-two so
+// the floor-quantization below is exact in float32. Keep in sync.
+const float kScatterCellTieBand = 16.0 / 8388608.0;
 
 out vec4 FragColor;
 

@@ -111,13 +111,16 @@ flat out float vMarginYieldGradV;
 flat out float vIsoDepth;
 flat out int vDepthColorMode;
 flat out float vDepthColorExtent;
-// Deterministic cell tiebreak (#2255): the fragment stage quantizes its
-// final depth to kScatterCellTieBand and injects this 8-level cell code
-// (pre-scaled to kScatterCellTieStep units) into the sub-band bits, so
-// tie-band fragments — canonically the margin-yield crossover between
-// parallel neighbor faces — resolve by cell identity instead of draw order
-// (the #1961 compaction's atomic-append instance order is run-variant). See
-// kScatterCellTieStep in ir_iso_common.glsl.
+// Deterministic sub-band tiebreak (#2255/#2411): the fragment stage
+// quantizes its final depth to kScatterCellTieBand and injects this 4-bit
+// priority-major code — (rank2 << 2) | cell2, pre-scaled to
+// kScatterCellTieStep units — into the sub-band bits. Cross-axis band ties
+// (distinct slots by construction) resolve by slot rank, consistently along
+// the whole plane-crossing strip; same-rank ties — the #2255 margin-yield
+// crossover between parallel neighbor faces — fall to cell identity instead
+// of draw order (the #1961 compaction's atomic-append instance order is
+// run-variant). See kScatterCellTieStep in ir_iso_common.glsl for the full
+// layout + separation argument.
 flat out float vCellTieOffset;
 
 // Composite-instrumentation overlay modes (#1457) — raw DebugOverlayMode
@@ -343,23 +346,28 @@ void main() {
                             float((flip << 2) | slot) + dilParam.x * kU + dilParam.y * kV;
     const float depthRange = float(kMaxTriangleDistance - kMinTriangleDistance);
     vDepth = (cornerKey + float(distanceOffset - kMinTriangleDistance)) / depthRange;
-    // #2333: overflow entries sit two tie bands BEHIND everything else, so an
-    // entry can never beat an equal-yawed-depth cell-path face (near the
-    // 120°/240° coset-depth degeneracy every coset member ties in view depth —
-    // without the bias the tie-band cell-code arbitration hands ~half the lit
-    // surface's pixels to unlit albedo entries, a q1/q2 stipple regression).
-    // The entries' job is filling pixels NO cell quad claims (the revealed
-    // slivers are background there, far beyond any bias), and any genuinely
-    // farther surface is >= one voxel depth step away (~10^3 bands), so the
-    // two-band yield changes nothing else.
+    // #2333: overflow entries sit two tie bands BEHIND everything else
+    // (32 steps = two 16-step bands), so an entry can never beat an
+    // equal-yawed-depth cell-path face (near the 120°/240° coset-depth
+    // degeneracy every coset member ties in view depth — without the bias
+    // the sub-band tie arbitration hands ~half the lit surface's pixels to
+    // unlit albedo entries, a q1/q2 stipple regression). The entries' job is
+    // filling pixels NO cell quad claims (the revealed slivers are
+    // background there, far beyond any bias), and any genuinely farther
+    // surface is >= one voxel depth step away (~500 bands), so the two-band
+    // yield changes nothing else.
     if (overflowMode != 0) {
-        vDepth += 16.0 * kScatterCellTieStep;
+        vDepth += 32.0 * kScatterCellTieStep;
     }
     vMarginDepthBias = kScatterMarginDepthBiasKey * subScale / depthRange;
-    // Deterministic cell tiebreak (#2255): 8 levels, distinct for every
-    // same-plane / parallel-plane neighbor pair (in-plane world steps project
-    // to iso-diagonal or (0,+/-2) only) — see kScatterCellTieStep.
-    vCellTieOffset = float((ij.x & 1) | ((ij.y & 3) << 1)) * kScatterCellTieStep;
+    // Deterministic sub-band tiebreak (#2255/#2411): priority-major
+    // (rank2 = flip ? 3 : slot), cell-minor (cell2 distinct for every
+    // same-plane / parallel-plane neighbor pair — in-plane world steps
+    // project to iso-diagonal or (0,+/-2) only). Full layout + rationale at
+    // kScatterCellTieStep in ir_iso_common.glsl.
+    const int rank2 = (flip != 0) ? 3 : slot;
+    const int cell2 = (ij.x & 1) | (ij.y & 2);
+    vCellTieOffset = float((rank2 << 2) | cell2) * kScatterCellTieStep;
     // Per-axis margin-yield slope (#1883). kU/kV are the per-unit-axis composite
     // depth gradients; scaled to vDepth units and pre-absed (penetration is always
     // outward) so the fragment stage adds penetration*slope as the over-grown
