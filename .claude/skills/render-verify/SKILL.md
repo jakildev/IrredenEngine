@@ -80,7 +80,11 @@ The driver:
 4. Clears `<exe_dir>/save_files/screenshots/`.
 5. Runs `fleet-run IRShapeDebug --auto-screenshot 10`.
 6. For each shot, runs `scripts/render-compare.py` against the reference.
-7. Prints a pass/fail table and exits non-zero on any failure.
+7. Prints a pass/fail table and exits non-zero on any failure. A crashed
+   demo run (`ir-run: RESULT=CRASH`, teardown crashes included) fails the
+   harness regardless of how many shots saved — see
+   [`docs/agents/FLEET.md`](../../../docs/agents/FLEET.md) §"Clean-exit
+   policy".
 
 ### Typical pass output
 

@@ -146,6 +146,19 @@ any `c_compute_*shadow*.glsl` / `.metal`)
   explicitly said "no tests").
 - Build or format-check not run before opening the PR (check the commit
   message, or run `fleet-build --target format-changed` yourself if cheap).
+- Verification claims green over an unclean exit: a PR body or run log that
+  reports a crash / `RESULT=CRASH` (teardown included) but presents the
+  verification as passing — needs-fix per
+  [`docs/agents/FLEET.md`](../../../docs/agents/FLEET.md) §"Clean-exit
+  policy". A crash observed but out of reach must be filed with forensics
+  AND the lane reported failed.
+
+**Opportunistic fixes (fix-forward covenant)**
+- A clearly-sectioned `## Opportunistic fixes` block in the PR body is the
+  expected shape under FLEET.md §"Fix-forward", not scope creep — review the
+  bundled fixes on their merits. Ask for a split only when a bundled fix
+  materially raises the PR's risk (schema changes, cross-module refactors,
+  behavior changes beyond what the section claims).
 
 **Opus-only items** (Sonnet should not attempt these — escalate via the
 verdict footer if any of these surfaces are touched)

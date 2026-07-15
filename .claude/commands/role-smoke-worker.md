@@ -151,7 +151,13 @@ Do **not** add `--timeout` — `fleet-run --timeout` reports "alive at
 deadline" as success, which masks an `--auto-screenshot` hang.
 
 If `fleet-run` exits nonzero or crashes, jump to **step 5 — failure
-verdict** with the run log.
+verdict** with the run log. Key off the `ir-run: RESULT=` line
+(`RESULT=CLEAN` required; `RESULT=CRASH` = failure even if every
+screenshot saved before the crash) rather than shell exit alone — a
+trailing pipe or `; echo` can mask the wrapper's status. This is the
+clean-exit policy
+([`docs/agents/FLEET.md`](../../docs/agents/FLEET.md) §"Clean-exit
+policy"); a crash verdict must never be reported as green.
 
 ### Step 5 — verdict
 

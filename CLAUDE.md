@@ -35,7 +35,7 @@ working inside such a subdirectory, always read that subdirectory's own
 | Module-specific patterns (ECS, prefabs, render, math, system, etc.) | the nearest `CLAUDE.md` (loaded automatically when you open a file in that subtree) |
 | Long-form architecture reference (ECS internals, render pipeline, coordinate systems, Lua integration) | [`docs/agents/AGENTS-ARCHITECTURE.md`](docs/agents/AGENTS-ARCHITECTURE.md) |
 | Build commands and environment setup (Linux/WSL, Windows, macOS) | [`docs/agents/BUILD.md`](docs/agents/BUILD.md) |
-| Fleet workflow (parallel agents, PRs, cursor cues, design escalation, model split, labels, feedback) | [`docs/agents/FLEET.md`](docs/agents/FLEET.md) |
+| Fleet workflow (parallel agents, PRs, cursor cues, design escalation, model split, labels, clean-exit policy, fix-forward, feedback) | [`docs/agents/FLEET.md`](docs/agents/FLEET.md) |
 | Skills (named workflows like `simplify`, `commit-and-push`, `review-pr`) | [`.claude/skills/`](.claude/skills/) — each has its own `SKILL.md` |
 | Shared skill flows (fleet skills factored for cross-repo reuse) | [`docs/agents/skills/`](docs/agents/skills/) — canonical flows; each repo's `SKILL.md` is a thin wrapper (mechanism: [`docs/design/skill-sharing.md`](docs/design/skill-sharing.md)) |
 | Roles (autonomous personas — worker, reviewer, merger, architect) | [`.claude/commands/role-*.md`](.claude/commands/) |

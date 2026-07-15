@@ -546,6 +546,69 @@ The skill drives any creation that supports `--auto-screenshot` (today:
 SDF shapes, lighting, and backend parity. See `engine/render/CLAUDE.md`
 "Verifying render changes" for the exceptions list.
 
+### Clean-exit policy
+
+Every scripted run of a demo, test, or tool through `fleet-run` / `ir-run`
+must end with the wrapper's `RESULT=CLEAN` verdict. A `RESULT=CRASH` —
+any signal death or non-zero exit, **including a teardown crash after the
+run's outputs (screenshots, profiles, logs) were already saved** — fails
+the verification step that ran it. Outputs existing is never evidence of
+green; parse the RESULT line or the propagated exit code, not the log
+prose. (`RESULT=ALIVE-TIMEOUT` — the watchdog killing a still-healthy
+process at `--timeout` — is healthy for smoke purposes but says nothing
+about shutdown-path health, since teardown never ran.)
+
+What the observing agent does with a CRASH:
+
+1. **Fix it, this session** — the fix-forward policy below applies in
+   full: ownership of the change that introduced the crash is
+   irrelevant. Bisect if needed (a deterministic crash plus incremental
+   builds makes the window cheap), root-cause, fix, and ship it with
+   your PR or as an immediate sibling PR.
+2. **Only if genuinely out of reach** (needs another host or hardware,
+   needs design escalation, exceeds the session): file an issue carrying
+   the exact repro command, the RESULT line, and the bisect window — AND
+   mark your own verification lane failed. A smoke verdict, PR body, or
+   `fleet:verified-<host>` label must never report green over a crash
+   you observed; say "N/M shots captured, run FAILED clean-exit
+   (issue #X)".
+
+A crashed run's partial outputs may still be *used* for diagnosis (the
+shots that saved before the crash are real data) — the policy is about
+the verdict you report, not about discarding evidence.
+
+### Fix-forward: opportunistic fixes ship with the finder
+
+When work on a task surfaces an adjacent defect — a bug, a crash, dead
+code, a duplication, a stale doc, a missing test — the default is that
+the agent who found it **fixes it in the same session**, not "file a
+follow-up and move on". You found it, you fix it; whether your change or
+someone else's introduced it does not matter.
+
+Choose the vehicle by review impact:
+
+- **Same PR** — small or mechanical fixes that a reviewer can absorb
+  without re-scoping (a wrong comment, an off-by-one, a missed rename, a
+  dead branch, a missing guard): include them in the PR that found them,
+  in their **own commit**, called out under an `## Opportunistic fixes`
+  section in the PR body.
+- **Immediate sibling PR** — separable fixes, or anything that would
+  balloon the primary PR's risk or review surface: finish the primary
+  PR, `start-next-task`, and ship the fix as the very next PR in the
+  same session (stacked when it depends on the primary).
+- **Issue, as the exception** — only when the fix needs design
+  escalation (`fleet:design-blocked` / `fleet:needs-plan`), another
+  host/hardware, or genuinely exceeds the session budget. The issue must
+  carry full forensics: repro command, observed output, suspected
+  window/commit, and what was already ruled out — enough that the next
+  agent starts at the root cause, not at reproduction.
+
+Reviewer covenant: a clearly-sectioned `## Opportunistic fixes` block in
+a PR body is the *expected* shape, not scope creep — reviewers review it
+on its merits and only ask for a split when the bundled fix materially
+raises the PR's risk (schema changes, cross-module refactors, behavior
+changes outside the section's claims).
+
 ### Resource coordination
 
 `ir-acquire` gates CPU-heavy builds and GPU-heavy bench runs so parallel

@@ -69,6 +69,13 @@ The demo renders warmup frames, cycles through its configured shots,
 captures one screenshot per shot, and closes the window. `fleet-run`
 handles the working-directory requirement automatically.
 
+**Gate on the run's `ir-run: RESULT=` verdict line, not on screenshots
+existing.** `RESULT=CRASH` (any signal death, teardown included) fails
+this step even when every shot saved — treat the crash as a finding of
+the current iteration and fix it per
+[`docs/agents/FLEET.md`](../../../docs/agents/FLEET.md) §"Clean-exit
+policy". The saved shots remain usable as diagnosis evidence.
+
 ### 4. Read the screenshots
 
 Use the **Glob** tool against

@@ -155,6 +155,17 @@ Run mode
                                 Set in ~/.fleet/fleet-up.conf or shell init
                                 to catch fleet agents that forgot --timeout.
 
+  Result reporting (self-terminating runs — auto verbs and --timeout):
+    ir-run: RESULT=CLEAN exe=<name> exit=0
+        The program ran to completion and exited 0, teardown included.
+    ir-run: RESULT=CRASH exe=<name> exit=<rc> signal=<SIGNAME|none>
+        FAILED run, exit code propagated. Saved outputs (screenshots,
+        profiles) do not make a crashed run green — see
+        docs/agents/FLEET.md "Clean-exit policy".
+    ir-run: RESULT=ALIVE-TIMEOUT exe=<name> ...
+        Watchdog killed a still-healthy process at --timeout. Says
+        nothing about shutdown-path health (teardown never ran).
+
   Build directory (when not using --build-dir):
     1. $IRREDEN_BUILD_DIR if set
     2. <git-worktree-root>/build from git rev-parse
@@ -271,17 +282,52 @@ if [[ -n "$acquire_verb" ]]; then
     acquire_prefix=("$IR_ACQUIRE" "$acquire_verb" "--")
 fi
 
+# Decode an exit code into a signal name for the RESULT line (128+N =
+# died on signal N; e.g. 139 = SIGSEGV, 134 = SIGABRT). Prints "none"
+# for plain non-zero exits.
+ir_exit_signal_name() {
+    local rc="$1"
+    if (( rc > 128 && rc < 165 )); then
+        local name
+        name="$(kill -l $((rc - 128)) 2>/dev/null || true)"
+        echo "SIG${name:-$((rc - 128))}"
+    else
+        echo "none"
+    fi
+}
+
+# One-line, machine-greppable verdict + the clean-exit directive. Every
+# self-terminating run (auto-screenshot, auto-profile, timeout mode)
+# reports through this so harnesses and agents key off a single stable
+# token instead of re-deriving "did it really pass" from log prose.
+# Policy: docs/agents/FLEET.md §"Clean-exit policy" — a signal exit is a
+# FAILED run even when outputs (screenshots, profiles) were saved before
+# the crash, teardown included.
+ir_report_result() {
+    local rc="$1"
+    if [[ $rc -eq 0 ]]; then
+        echo "ir-run: RESULT=CLEAN exe=$EXE_NAME exit=0"
+        return
+    fi
+    local sig
+    sig="$(ir_exit_signal_name "$rc")"
+    echo "ir-run: RESULT=CRASH exe=$EXE_NAME exit=$rc signal=$sig" >&2
+    echo "ir-run: this run FAILED the clean-exit policy — outputs saved" \
+         "before the crash do not make it green. Fix the crash before" \
+         "shipping, whoever introduced it (docs/agents/FLEET.md" \
+         "§\"Clean-exit policy\")." >&2
+}
+
 # --- No timeout: interactive mode, exec replaces this process --------------
-# Exception: `--auto-screenshot` is a self-terminating verb. The demo is
-# expected to call `closeWindow()` and exit 0 after its last shot — any
-# non-zero return is a crash on shutdown (e.g. T-336's Metal static-
-# destruction segfault that lands AFTER screenshots are saved). We still
-# need to surface that distinction at the script level, so swap exec for
-# a run-and-validate path when the verb is gpu/screenshot. Interactive
+# Exception: `--auto-screenshot` / `--auto-profile` are self-terminating
+# verbs. The program is expected to close its window and exit 0 after its
+# last shot / profile dump — any non-zero return is a crash (teardown
+# crashes included). Swap exec for a run-and-validate path for those verbs
+# so the verdict is surfaced and the exit code propagates. Interactive
 # mode (no verb, no timeout) keeps the exec path so signals and stdin
-# pass straight through.
+# pass straight through to the human-supervised process.
 if [[ -z "$TIMEOUT" ]]; then
-    if [[ "$acquire_verb" == "gpu" ]]; then
+    if [[ -n "$acquire_verb" ]]; then
         echo "ir-run: ${acquire_prefix[*]} $EXE_PATH $*"
         cd "$EXE_DIR"
         # Disarm `set -e` around the run so we can inspect the exit code
@@ -291,21 +337,12 @@ if [[ -z "$TIMEOUT" ]]; then
         "${acquire_prefix[@]}" "./$EXE_RUN" "$@"
         rc=$?
         set -e
-        if [[ $rc -ne 0 ]]; then
-            echo "ir-run: $EXE_NAME crashed on shutdown (exit code $rc) — " \
-                 "screenshots may have been saved before the crash, but the " \
-                 "process did not exit cleanly. See engine/render/CLAUDE.md " \
-                 "and T-336 for the canonical static-destruction symptom." >&2
-        fi
+        ir_report_result "$rc"
         exit "$rc"
     fi
-    if (( ${#acquire_prefix[@]} > 0 )); then
-        echo "ir-run: ${acquire_prefix[*]} $EXE_PATH $*"
-    else
-        echo "ir-run: $EXE_PATH $*"
-    fi
+    echo "ir-run: $EXE_PATH $*"
     cd "$EXE_DIR"
-    exec "${acquire_prefix[@]}" "./$EXE_RUN" "$@"
+    exec "./$EXE_RUN" "$@"
 fi
 
 # --- Timeout mode: launch, wait, kill, report ------------------------------
@@ -327,18 +364,20 @@ while [[ $elapsed -lt $TIMEOUT ]]; do
         wait "$PID" 2>/dev/null || exit_code=$?
         if [[ $exit_code -eq 0 ]]; then
             echo "ir-run: $EXE_NAME exited cleanly after ${elapsed}s"
-            exit 0
         else
-            echo "ir-run: $EXE_NAME crashed after ${elapsed}s (exit code $exit_code)"
-            exit 1
+            echo "ir-run: $EXE_NAME crashed after ${elapsed}s"
         fi
+        ir_report_result "$exit_code"
+        [[ $exit_code -eq 0 ]] && exit 0 || exit 1
     fi
     sleep 1
     elapsed=$((elapsed + 1))
 done
 
-# Process survived the timeout — it's healthy. Kill it.
+# Process survived the timeout — it's healthy for smoke purposes. Kill it.
+# RESULT=ALIVE-TIMEOUT is deliberately distinct from CLEAN: the run never
+# reached teardown, so it says nothing about shutdown-path health.
 kill "$PID" 2>/dev/null
 wait "$PID" 2>/dev/null || true
-echo "ir-run: $EXE_NAME ran for ${TIMEOUT}s without crashing — killed"
+echo "ir-run: RESULT=ALIVE-TIMEOUT exe=$EXE_NAME — ran for ${TIMEOUT}s without crashing, killed by watchdog"
 exit 0
