@@ -379,6 +379,76 @@ inline std::uint32_t decodeCarrierPriority(uvec2 packed) {
     return (packed.y >> kEntityIdPriorityShiftInHighWord) & ((1u << kEntityIdPriorityBits) - 1u);
 }
 
+// ── Per-axis scatter sub-band tie order (#2411) ───────────────────────────────
+// The scatter path quantizes each fragment's final depth to a coarse band and
+// injects a priority-major tie code into the sub-band bits, so band ties resolve
+// by rank instead of by run-variant draw order. Mirrors of the tie constants in
+// `ir_iso_common.{glsl,metal}` — the shaders remain authoritative for the values;
+// these exist so the two-sided precondition below can be CHECKED at compile time,
+// which the shader languages cannot do.
+//
+// The ordering guarantee rests on TWO independent halves, and they pull in
+// OPPOSITE directions:
+//
+//   A. margin-vs-exact — a margin fragment must land at least one full band
+//      behind its same-plane exact owner after floor quantization:
+//        kScatterMarginDepthBiasKey * subScale / depthRange >= band
+//      Widening the band TIGHTENS this (a bigger band is harder to clear).
+//      `subScale` is a runtime value floor-clamped to 1.0
+//      (`v_peraxis_scatter.glsl` / `metal/peraxis_scatter.metal`), and the bias
+//      is linear in it, so subScale == 1 is the true worst case and the check
+//      below is sound for every subdivision.
+//   B. code-fits-in-band — the tie code must not spill into the next band:
+//        maxCode <= bandSteps - 1
+//      Widening the band RELAXES this.
+//
+// At the current depth range these bracket the band to [16, 16.0002], so 16 is
+// the UNIQUE admissible width — which is also why the rank field collapses to 2
+// bits (6 face states do not fit; see the rank2 note in ir_iso_common.glsl).
+// A future pass that adds tie levels (a 3-bit rank, #2428's fractional-edge
+// work) pushes maxCode to 23 and needs a 32-step band — and a 32-step band
+// breaks half A. The two asserts below fail that change at compile time instead
+// of letting margins silently start beating their exact owners.
+constexpr int kScatterCellTieStepShift = 23;     // kScatterCellTieStep = 2^-23
+constexpr int kScatterCellTieBandSteps = 16;     // kScatterCellTieBand = 16 * 2^-23
+constexpr int kScatterTieMaxCode = (3 << 2) | 3; // code = (rank2 << 2) | cell2
+/// Reciprocal of the shader's `kScatterMarginDepthBiasKey` (0.25 key units).
+/// Kept as a reciprocal so the precondition stays in exact integer arithmetic.
+constexpr int kScatterMarginDepthBiasKeyInv = 4;
+constexpr int kScatterTieDepthRange =
+    IRConstants::kTrixelDistanceMaxDistance - IRConstants::kTrixelDistanceMinDistance;
+
+// Half A, multiplied through by `depthRange * 2^shift` to clear the fractions:
+//   bias/depthRange >= bandSteps * 2^-shift   <=>   2^shift/biasInv >= bandSteps*depthRange
+// Holds by 2097152 >= 2097120 — a 32-unit slack, i.e. depthRange may reach
+// 131072 and is 131070. There is no room to grow the range either.
+static_assert(
+    (1 << kScatterCellTieStepShift) / kScatterMarginDepthBiasKeyInv >=
+        kScatterCellTieBandSteps * kScatterTieDepthRange,
+    "per-axis scatter margin-vs-exact precondition broken: the margin bias no "
+    "longer clears one full tie band at subScale 1, so a margin fragment can tie "
+    "or beat its same-plane exact owner. Narrow kScatterCellTieBandSteps or "
+    "shrink the trixel depth range."
+);
+// Half B — exact today (15 <= 15): the code fills the band with zero slack.
+static_assert(
+    kScatterTieMaxCode <= kScatterCellTieBandSteps - 1,
+    "per-axis scatter tie code overflows its band: the sub-band code would spill "
+    "into the next band and reorder genuine occlusion. Widen "
+    "kScatterCellTieBandSteps (and re-check the margin-vs-exact assert above — "
+    "the two constraints are mutually opposed)."
+);
+// Uniqueness: doubling the band to satisfy a wider code would break half A.
+// Stated as its own assert so the next widening pass sees WHY it fails, rather
+// than re-deriving the bracket by hand.
+static_assert(
+    (1 << kScatterCellTieStepShift) / kScatterMarginDepthBiasKeyInv <
+        (2 * kScatterCellTieBandSteps) * kScatterTieDepthRange,
+    "kScatterCellTieBandSteps is no longer the unique admissible band width — the "
+    "margin-vs-exact ceiling moved, so the comment in ir_iso_common.{glsl,metal} "
+    "claiming band 16 is forced needs re-deriving."
+);
+
 struct FrameDataVoxelToCanvas {
     vec2 cameraTrixelOffset_;
     ivec2 trixelCanvasOffsetZ1_;

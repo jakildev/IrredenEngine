@@ -114,13 +114,16 @@ flat out float vDepthColorExtent;
 // Deterministic sub-band tiebreak (#2255/#2411): the fragment stage
 // quantizes its final depth to kScatterCellTieBand and injects this 4-bit
 // priority-major code — (rank2 << 2) | cell2, pre-scaled to
-// kScatterCellTieStep units — into the sub-band bits. Cross-axis band ties
-// (distinct slots by construction) resolve by slot rank, consistently along
-// the whole plane-crossing strip; same-rank ties — the #2255 margin-yield
-// crossover between parallel neighbor faces — fall to cell identity instead
-// of draw order (the #1961 compaction's atomic-append instance order is
-// run-variant). See kScatterCellTieStep in ir_iso_common.glsl for the full
-// layout + separation argument.
+// kScatterCellTieStep units — into the sub-band bits. UNFLIPPED cross-axis
+// band ties (distinct slots by construction) resolve by slot rank,
+// consistently along the whole plane-crossing strip; same-slot ties — the
+// #2255 margin-yield crossover between parallel neighbor faces — fall to cell
+// identity instead of draw order (the #1961 compaction's atomic-append
+// instance order is run-variant). Cross-axis flipped-vs-flipped pairs both
+// collapse to rank 3 and are NOT proven distinct — a rare residual of the same
+// #2255 class. See kScatterCellTieStep in ir_iso_common.glsl for the full
+// layout, the per-class separation argument, and the two-sided band
+// precondition.
 flat out float vCellTieOffset;
 
 // Composite-instrumentation overlay modes (#1457) — raw DebugOverlayMode

@@ -44,7 +44,11 @@ flat in float vDepthColorExtent;
 flat in float vCellTieOffset;
 // Mirror of kScatterCellTieBand in ir_iso_common.glsl (this fragment stage
 // has no common include). Band = 16 x kScatterCellTieStep; power-of-two so
-// the floor-quantization below is exact in float32. Keep in sync.
+// the floor-quantization below is exact in float32. Keep in sync. 16 is the
+// unique width satisfying both (mutually-opposed) halves of the tie-order
+// precondition documented at kScatterCellTieStep in ir_iso_common.glsl and
+// asserted CPU-side in ir_render_types.hpp — retuning it here alone would
+// silently break margin-vs-exact ordering.
 const float kScatterCellTieBand = 16.0 / 8388608.0;
 
 out vec4 FragColor;

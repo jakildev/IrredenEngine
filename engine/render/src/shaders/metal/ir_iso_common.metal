@@ -795,9 +795,14 @@ constant float kScatterMarginDepthBiasKey = 0.25;
 // kScatterCellTieStep / kScatterCellTieBand in ir_iso_common.glsl; see that
 // file for the full rationale (quantize the final fragment depth to the
 // 16-step band and inject the 4-bit priority-major (rank2 << 2) | cell2 code
-// into the sub-band bits, so cross-axis band ties resolve by slot rank —
-// consistently, no parity alternation — and same-rank ties fall to cell
-// identity, preserving the #2255 determinism contract).
+// into the sub-band bits, so UNFLIPPED cross-axis band ties resolve by slot
+// rank — consistently, no parity alternation — and same-slot ties fall to cell
+// identity, preserving the #2255 determinism contract; cross-axis
+// flipped-vs-flipped pairs collapse to rank 3 and are NOT proven distinct).
+// The 16-step band is the unique width satisfying the two mutually-opposed
+// halves of the margin-vs-exact / code-fits-in-band precondition — do not
+// retune it here without reading that note; both halves are asserted CPU-side
+// in ir_render_types.hpp (kScatterCellTieBandSteps).
 constant float kScatterCellTieStep = 1.0f / 8388608.0f;
 constant float kScatterCellTieBand = 16.0f / 8388608.0f;
 

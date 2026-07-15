@@ -92,7 +92,10 @@ struct VertexOut {
     // priority-major code ((rank2 << 2) | cell2, pre-scaled to
     // kScatterCellTieStep units) into the sub-band bits, so tie-band
     // fragments resolve by slot rank then cell identity instead of the
-    // #1961 compaction's run-variant atomic-append draw order.
+    // #1961 compaction's run-variant atomic-append draw order. Cross-axis
+    // flipped-vs-flipped pairs collapse to rank 3 and fall to cell identity
+    // without a distinctness proof — they stay draw-order on collision (the
+    // rare #2255 residual). Per-class argument: ir_iso_common.glsl.
     float cellTieOffset [[flat]];
     // Per-edge interior/boundary classification for analytic coverage (#1937) —
     // .x = u-low, .y = u-high, .z = v-low, .w = v-high (in the face's eu/ev basis);
