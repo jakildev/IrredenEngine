@@ -11,6 +11,11 @@
 
 #version 450 core
 
+// Sole consumer here is kScatterCellTie{Step,Band} — the same include the
+// sibling fragment gather (f_trixel_to_framebuffer.glsl) already uses, so the
+// tie band has exactly one GLSL definition site.
+#include "ir_iso_common.glsl"
+
 flat in vec4 vColor;
 // Per-fragment planar depth + margin-yield classification (#1457): vDepth is
 // the face plane's exact depth at this fragment (linear interpolation of
@@ -42,14 +47,6 @@ flat in float vDepthColorExtent;
 // rank then cell identity instead of the #1961 compaction's run-variant draw
 // order.
 flat in float vCellTieOffset;
-// Mirror of kScatterCellTieBand in ir_iso_common.glsl (this fragment stage
-// has no common include). Band = 16 x kScatterCellTieStep; power-of-two so
-// the floor-quantization below is exact in float32. Keep in sync. 16 is the
-// unique width satisfying both (mutually-opposed) halves of the tie-order
-// precondition documented at kScatterCellTieStep in ir_iso_common.glsl and
-// asserted CPU-side in ir_render_types.hpp — retuning it here alone would
-// silently break margin-vs-exact ordering.
-const float kScatterCellTieBand = 16.0 / 8388608.0;
 
 out vec4 FragColor;
 

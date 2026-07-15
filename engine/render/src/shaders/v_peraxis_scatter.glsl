@@ -349,8 +349,8 @@ void main() {
                             float((flip << 2) | slot) + dilParam.x * kU + dilParam.y * kV;
     const float depthRange = float(kMaxTriangleDistance - kMinTriangleDistance);
     vDepth = (cornerKey + float(distanceOffset - kMinTriangleDistance)) / depthRange;
-    // #2333: overflow entries sit two tie bands BEHIND everything else
-    // (32 steps = two 16-step bands), so an entry can never beat an
+    // #2333: overflow entries sit two tie bands BEHIND everything else,
+    // so an entry can never beat an
     // equal-yawed-depth cell-path face (near the 120°/240° coset-depth
     // degeneracy every coset member ties in view depth — without the bias
     // the sub-band tie arbitration hands ~half the lit surface's pixels to
@@ -360,7 +360,7 @@ void main() {
     // surface is >= one voxel depth step away (~500 bands), so the two-band
     // yield changes nothing else.
     if (overflowMode != 0) {
-        vDepth += 32.0 * kScatterCellTieStep;
+        vDepth += 2.0 * kScatterCellTieBand;
     }
     vMarginDepthBias = kScatterMarginDepthBiasKey * subScale / depthRange;
     // Deterministic sub-band tiebreak (#2255/#2411): priority-major

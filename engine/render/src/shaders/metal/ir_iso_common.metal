@@ -804,7 +804,11 @@ constant float kScatterMarginDepthBiasKey = 0.25;
 // retune it here without reading that note; both halves are asserted CPU-side
 // in ir_render_types.hpp (kScatterCellTieBandSteps).
 constant float kScatterCellTieStep = 1.0f / 8388608.0f;
-constant float kScatterCellTieBand = 16.0f / 8388608.0f;
+// Derived, not retunable alone — mirror of ir_iso_common.glsl: 16 is pinned by
+// the two-sided precondition asserted CPU-side (kScatterCellTieBandSteps,
+// ir_render_types.hpp). Exact power-of-two product (bit-identical to the
+// literal); the overflow lane's two-band bias derives from this in turn.
+constant float kScatterCellTieBand = 16.0f * kScatterCellTieStep;
 
 // Margin-yield gradient scale (#1883) — mirror of ir_iso_common.glsl. Scales the
 // margin yield by the fragment's own plane-extrapolation excursion (penetration

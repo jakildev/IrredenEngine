@@ -952,7 +952,12 @@ const float kScatterMarginDepthBiasKey = 0.25;
 // separations remain multiple bands, so no genuine occlusion is reordered;
 // only tie-band pixels gain a deterministic, priority-ordered winner.
 const float kScatterCellTieStep = 1.0 / 8388608.0;
-const float kScatterCellTieBand = 16.0 / 8388608.0;
+// Derived, not retunable alone: 16 is pinned by the PRECONDITION above and
+// asserted CPU-side (kScatterCellTieBandSteps, ir_render_types.hpp). Exact
+// power-of-two product, so the derivation is bit-identical to the literal.
+// The overflow lane's two-band bias derives from this in turn
+// (v_peraxis_scatter.glsl / metal/peraxis_scatter.metal: 2.0 * band).
+const float kScatterCellTieBand = 16.0 * kScatterCellTieStep;
 
 // Margin-yield gradient scale (#1883). The flat bias above only breaks SUB-PIXEL
 // same-plane ties. Once the per-axis margin grows large on a foreshortened face

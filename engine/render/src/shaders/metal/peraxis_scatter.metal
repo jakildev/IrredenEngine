@@ -389,8 +389,8 @@ vertex VertexOut v_peraxis_scatter(
         float(globals.kMaxTriangleDistance - globals.kMinTriangleDistance);
     out.depth =
         (cornerKey + float(frameData.distanceOffset - globals.kMinTriangleDistance)) / depthRange;
-    // #2333: overflow entries sit two tie bands BEHIND everything else
-    // (32 steps = two 16-step bands), so an entry can never beat an
+    // #2333: overflow entries sit two tie bands BEHIND everything else,
+    // so an entry can never beat an
     // equal-yawed-depth cell-path face (near the 120°/240° coset-depth
     // degeneracy every coset member ties in view depth — without the bias
     // the sub-band tie arbitration hands ~half the lit surface's pixels to
@@ -400,7 +400,7 @@ vertex VertexOut v_peraxis_scatter(
     // surface is >= one voxel depth step away (~500 bands), so the two-band
     // yield changes nothing else. Mirror of v_peraxis_scatter.glsl.
     if (frameData.overflowMode != 0) {
-        out.depth += 32.0f * kScatterCellTieStep;
+        out.depth += 2.0f * kScatterCellTieBand;
     }
     out.marginBias = kScatterMarginDepthBiasKey * subScale / depthRange;
     // Deterministic sub-band tiebreak (#2255/#2411) — mirror of
