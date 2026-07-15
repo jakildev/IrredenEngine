@@ -63,7 +63,7 @@ independent heads.
 ## Steward ledger
 
 reconciled-through: PR #2387 merge (2026-07-14 — S2 #2320 shadow-throw unify merged; V3 #2317 + S1 #2319 reconciled prior iterations)
-proposal-pending: STEWARD PROPOSAL 2026-07-14 (PR #2393 / S3 #2321) — 3 novel questions (sequence #2385 before S3? / finer-resolution architecture direction / #2321 plan disposition); awaiting architect/human answer on the #2314 thread (issuecomment-4973206838). Re-fire edge = removal of `fleet:steward-proposal`. Prior 2026-07-13 package (PR #2343 / S1 #2319) answered + distributed (D4–D6, `## Steward direction` on PR #2343).
+proposal-pending: none — STEWARD PROPOSAL 2026-07-14 (PR #2393 / S3 #2321) answered by opus-architect 2026-07-15 (issuecomment-4977022751) and distributed this iteration (D7–D9; child plan `issue-2321.md` A1; `## Steward direction` on PR #2393; `fleet-transition design-unblock 2393`; #2321 re-blocked on #2385; #2385 routed to the planning gate). Prior 2026-07-13 package (PR #2343 / S1 #2319) answered + distributed (D4–D6, `## Steward direction` on PR #2343).
 
 ### Children
 | Child | State | PR | Plan | Last validated |
@@ -75,10 +75,10 @@ proposal-pending: STEWARD PROPOSAL 2026-07-14 (PR #2393 / S3 #2321) — 3 novel 
 | #2318 | merged | #2337 | plan | 2026-07-13 |
 | #2319 | merged | #2343 | plan | 2026-07-14 (S1 same-plane provenance test; D6 genuine-cast residual → #2385; Linux/GL smoke owed) |
 | #2320 | merged | #2387 | plan | 2026-07-14 (S2 — receive window unified 24→64 feeder sweep; floating top-face wedge restored) |
-| #2321 | open — design-proposed (PR #2393 parked) | #2393 | plan | 2026-07-14 (flow-a triage: lever (a) measured-refuted on Metal; 3 novel Qs → STEWARD PROPOSAL 2026-07-14; awaiting answer) |
+| #2321 | open — blocked by #2385 (design answered, deferred) | #2393 (wip, design-unblocked) | plan (issue-2321.md, A1) | 2026-07-15 (flow-a distribute: proposal answered; lever (a) dropped measured-refuted, lever (b) retained, gate re-anchored on post-#2385 baseline; Blocked by #2385) |
 | #2322 | merged | #2328 | plan | 2026-07-13 |
 | #2323 | merged | #2326 | plan | 2026-07-13 |
-| #2385 | open (adopted; needs planning) | — | stub | 2026-07-14 (flow-c adoption; validate-stack PASS) |
+| #2385 | open — needs-plan (critical path) | — | stub | 2026-07-15 (D7: land before S3; routed to planning gate — fleet:task+fleet:opus+fleet:needs-plan applied per architect directive; still a STUB, do not queue until an opus planner expands it) |
 
 ### Decisions
 <!-- entries: D<n> (<YYYY-MM-DD>): <decision> — source: <link> -->
@@ -106,6 +106,35 @@ proposal-pending: STEWARD PROPOSAL 2026-07-14 (PR #2393 / S3 #2321) — 3 novel 
   (not receive correctness) and files as a new unlabeled child at post-merge
   reconcile (flow b), citing PR #2343's measurements; #2270/#2092 stay closed
   — source: architect answer, #2314 thread 2026-07-13.
+- D7 (2026-07-15): sequence #2385 BEFORE S3 #2321 — #2321 gains
+  `Blocked by: #2385`; #2385 is now the epic's critical path. S3's
+  render-shadow-metric (components/largest_frac) gate is contaminated by the
+  #2385 bake-coverage honeycomb (missing sun-map writes, D6-recorded
+  #2270-lineage coverage) that S3's receive/extent levers cannot touch, so the
+  gate is un-measurable on this baseline; land #2385 first for a clean oracle.
+  Option (b) ROI-exclude the honeycomb = metric gerrymandering; (c) scope-fold
+  hides #2385's own acceptance behind S3 — both rejected — source: architect
+  answer, #2314 thread 2026-07-15 (issuecomment-4977022751).
+- D8 (2026-07-15): the architecture direction for materially finer on-screen
+  sun shadows is DEFERRED — re-measure on the post-#2385 baseline before
+  committing. The FAR cascade (serving iso-depth ≈ 0 on-screen receivers while
+  pinned to its full slab as the covering fallback) is the limiter, so finer
+  on-screen shadows need an architecture change, not an extent tweak. Non-binding
+  cheapest-first order if still wanted after #2385: (c) content-fit split retune
+  (no buffer/UBO cost) → (a) 2048² sun map (≈4× memory; check Metal buffer
+  budget) → (b) 3rd cascade (most invasive). If the post-#2385 zoom 1–2 metric
+  already reads clean, close the "finer resolution" want with a measurement
+  citation instead of building any — source: architect answer, #2314 thread
+  2026-07-15.
+- D9 (2026-07-15): S3 #2321 plan amended append-only (`issue-2321.md` A1) —
+  lever (a) (zoom-aware near-cascade extent fit) DROPPED as measured-refuted
+  (structural no-op; byte-identical A/B on Metal, components 88/71 &
+  largest_frac 0.88/0.48 unchanged at z2/z4); lever (b) (3×3 PCF receive kernel)
+  RETAINED (keep S1 splat/bias untouched per D4); the blind "≥2×" gate
+  re-anchored to "material, measured improvement in components/largest_frac at
+  zoom 1–2, numeric target from the FIRST post-#2385 baseline capture" (the ≥2×
+  ratio was calibrated to a honeycomb-dominated metric) — source: architect
+  answer, #2314 thread 2026-07-15.
 
 ### Events
 - 2026-07-08: filed via file-epic (umbrella #2314, children #2315–#2323;
@@ -203,3 +232,22 @@ proposal-pending: STEWARD PROPOSAL 2026-07-14 (PR #2393 / S3 #2321) — 3 novel 
   `fleet:steward-proposal`; distribution then amends the #2321 plan record
   citing the answers, posts `## Steward direction` on #2393, and
   `fleet-transition design-unblock 2393`.
+- 2026-07-15 (flow a — S3 #2321 distribute): STEWARD PROPOSAL 2026-07-14
+  answered by opus-architect (issuecomment-4977022751, 2026-07-15T05:00:57Z;
+  `fleet:steward-proposal` removed = re-fire edge). All 3 answers accepted the
+  steward's recommendations and are recorded as D7–D9. Distributed: (1) created
+  per-child plan `issue-2321.md` with amendment A1 (drop lever (a)
+  measured-refuted, retain lever (b), re-anchor the gate on the post-#2385
+  baseline); (2) edited #2321 body `**Blocked by:** #2320` → `**Blocked by:**
+  #2385` and flipped its labels `fleet:queued` → `fleet:blocked` (stale-queued
+  from the #2320 auto-unblock; re-blocked on #2385 so no worker restarts #2393
+  prematurely — its claim was already released at the NEEDS-DESIGN escalation);
+  (3) routed #2385 to the planning gate — applied `fleet:task` + `fleet:opus` +
+  `fleet:needs-plan` (architect "queue #2385" directive; #2385 is a STUB, so it
+  enters via the planning gate — an opus planner must expand it before any
+  worker claims it — NOT direct `fleet:queued`; `human:*` left untouched for the
+  human); (4) posted `## Steward direction` on PR #2393; (5) `fleet-transition
+  design-unblock 2393` (design answered — `fleet:design-proposed` →
+  `fleet:design-unblocked`; PR stays `fleet:wip`, parked by the #2385 blocker
+  until #2385 lands, then a worker re-arms and resumes #2393 with lever (b) on
+  the decontaminated baseline).
