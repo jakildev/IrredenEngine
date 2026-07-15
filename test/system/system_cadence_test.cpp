@@ -392,4 +392,66 @@ TEST_F(SystemCadenceTest, RejoinAfterClearingPriorPipelineIsSilent) {
     EXPECT_NO_THROW(m_system_manager.appendToPipeline(IRTime::RENDER, sys));
 }
 
+// A system whose FIRST-EVER join is to a non-UPDATE event: m_cadenceEvent still
+// holds the inert UPDATE placeholder from emplaceCadenceState, so the guard's
+// `m_cadenceEvent[system] != event` arm is true and the isStillLiveInPriorPipeline
+// lookup is the only thing keeping it silent. Here UPDATE has no pipeline at all,
+// so the lookup returns via the map-miss arm. A render-only system is a
+// legitimate usage pattern and must never false-assert on its first join.
+TEST_F(SystemCadenceTest, FirstEverJoinToRenderIsSilent) {
+    auto sys = IRSystem::createSystem<C_CadA>(
+        "FirstJoinRender",
+        [](C_CadA &) {},
+        nullptr,
+        nullptr,
+        {},
+        nullptr,
+        IRSystem::Concurrency::SERIAL,
+        IRSystem::kDefaultGrainSize,
+        /*cadence=*/2,
+        /*offset=*/0
+    );
+
+    // No UPDATE registration whatsoever — RENDER is this system's first join.
+    EXPECT_NO_THROW(m_system_manager.appendToPipeline(IRTime::RENDER, sys));
+}
+
+// The same first-ever-join-to-RENDER case, but with UPDATE's pipeline populated
+// by an unrelated system. find(UPDATE) now succeeds, so the guard falls through
+// to the pipelineGroupsContain arm — which must report sys absent — instead of
+// short-circuiting on a map miss. This is the arm that distinguishes "someone
+// else is in the placeholder event" from "I am still live there".
+TEST_F(SystemCadenceTest, FirstEverJoinToRenderIsSilentWhenUpdateHostsAnotherSystem) {
+    auto resident = IRSystem::createSystem<C_CadB>(
+        "UpdateResident",
+        [](C_CadB &) {},
+        nullptr,
+        nullptr,
+        {},
+        nullptr,
+        IRSystem::Concurrency::SERIAL,
+        IRSystem::kDefaultGrainSize,
+        /*cadence=*/1,
+        /*offset=*/0
+    );
+    m_system_manager.registerPipeline(IRTime::UPDATE, {resident});
+
+    auto sys = IRSystem::createSystem<C_CadA>(
+        "FirstJoinRenderForeignUpdate",
+        [](C_CadA &) {},
+        nullptr,
+        nullptr,
+        {},
+        nullptr,
+        IRSystem::Concurrency::SERIAL,
+        IRSystem::kDefaultGrainSize,
+        /*cadence=*/2,
+        /*offset=*/0
+    );
+
+    // UPDATE's pipeline exists but lists only `resident` — sys has never joined
+    // anything, so the prior-pipeline lookup must find it absent.
+    EXPECT_NO_THROW(m_system_manager.appendToPipeline(IRTime::RENDER, sys));
+}
+
 } // namespace
