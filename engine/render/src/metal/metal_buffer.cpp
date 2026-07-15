@@ -32,7 +32,21 @@ class MetalBufferImpl final : public BufferImpl {
 
     ~MetalBufferImpl() override {
         if (m_buffer != nullptr) {
-            m_buffer->release();
+            // Scrub the sticky binding tables first: bindRenderResources /
+            // bindComputeResources re-encode every non-null table entry on
+            // the next dispatch, so a released buffer left behind is an
+            // objc_retain on a dangling pointer (the #2412 yaw-transition
+            // segfault — a transiently-bound SSBO whose owner died when the
+            // per-axis canvases released). Mirrors untrackMetalTexture.
+            replaceMetalBufferInBindings(m_buffer, nullptr);
+            // If an in-flight command buffer may still read it, defer the
+            // release to the post-wait drain (same contract as the subData
+            // orphan path); otherwise release immediately.
+            if (wasMetalBufferEncoded(m_buffer)) {
+                deferReleaseMetalBuffer(m_buffer);
+            } else {
+                m_buffer->release();
+            }
             m_buffer = nullptr;
         }
     }

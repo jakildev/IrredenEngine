@@ -426,7 +426,20 @@ void releaseImageAtomicScratchBuffer(MTL::Texture *texture) {
         return;
     }
     if (it->second != nullptr) {
-        it->second->release();
+        // The sticky current-scratch pointer ("set by every R32I
+        // bindAsImage, never cleared") may still name this buffer;
+        // bindComputeResources re-encodes it for every scratch-consumer
+        // kernel, so leaving it behind is the same dangling-retain class
+        // as an unscrubbed binding-table entry (#2412). Null it, and defer
+        // the release when an in-flight command buffer may still read it.
+        if (currentImageAtomicScratch() == it->second) {
+            setCurrentImageAtomicScratch(nullptr);
+        }
+        if (wasMetalBufferEncoded(it->second)) {
+            deferReleaseMetalBuffer(it->second);
+        } else {
+            it->second->release();
+        }
     }
     cache.erase(it);
 }

@@ -940,4 +940,16 @@ parity with voxel-pool primary shapes.
   that a stale image shadows. GL is immune (separate image/texture-unit
   namespaces), so a GL-only smoke will not catch it. Any compute kernel that
   mixes a sampler read with images bound elsewhere in the pipeline is exposed;
-  the #1294 chunk cull's fine Hi-Z levels are the known other victim.
+   the #1294 chunk cull's fine Hi-Z levels are the known other victim.
+- **Destroying a Metal resource must scrub the sticky binding tables
+  (#2412).** `bindComputeResources`/`bindRenderResources` re-encode every
+  non-null sticky table entry on each dispatch, so a released `MTL::Buffer`
+  / `MTL::Texture` left in a table is an `objc_retain` on a dangling
+  pointer — a segfault on the NEXT dispatch after the owner died (the
+  #2412 yaw-transition crash: the overflow-lighting scratch, transiently
+  bound at slot 8, died when the per-axis canvases released at a cardinal
+  return). The impl destructors now scrub (`replaceMetalBufferInBindings`
+  in `~MetalBufferImpl`, `untrackMetalTexture` in the texture dtor, and
+  `releaseImageAtomicScratchBuffer` nulls the sticky current-scratch
+  pointer). If you add a NEW sticky cache of a raw MTL object pointer,
+  wire the owner's destruction to scrub it the same way.
