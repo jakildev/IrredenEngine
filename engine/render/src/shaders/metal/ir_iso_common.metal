@@ -791,14 +791,24 @@ constant float kScatterDilateMarginPx = 0.85;
 // fill pixels no exact footprint claims; never beat a same-plane owner).
 constant float kScatterMarginDepthBiasKey = 0.25;
 
-// Deterministic cell tiebreak (#2255) — mirror of kScatterCellTieStep /
-// kScatterCellTieBand in ir_iso_common.glsl; see that file for the full
-// rationale (margin-yield crossover pixels tie bit-exactly between parallel
-// neighbor faces and previously fell to the #1961 compaction's run-variant
-// draw order; quantize the final fragment depth to the band and inject the
-// 8-level cell code into the sub-band bits so ties resolve by cell identity).
+// Deterministic sub-band tiebreak (#2255/#2411) — mirror of
+// kScatterCellTieStep / kScatterCellTieBand in ir_iso_common.glsl; see that
+// file for the full rationale (quantize the final fragment depth to the
+// 16-step band and inject the 4-bit priority-major (rank2 << 2) | cell2 code
+// into the sub-band bits, so UNFLIPPED cross-axis band ties resolve by slot
+// rank — consistently, no parity alternation — and same-slot ties fall to cell
+// identity, preserving the #2255 determinism contract; cross-axis
+// flipped-vs-flipped pairs collapse to rank 3 and are NOT proven distinct).
+// The 16-step band is the unique width satisfying the two mutually-opposed
+// halves of the margin-vs-exact / code-fits-in-band precondition — do not
+// retune it here without reading that note; both halves are asserted CPU-side
+// in ir_render_types.hpp (kScatterCellTieBandSteps).
 constant float kScatterCellTieStep = 1.0f / 8388608.0f;
-constant float kScatterCellTieBand = 8.0f / 8388608.0f;
+// Derived, not retunable alone — mirror of ir_iso_common.glsl: 16 is pinned by
+// the two-sided precondition asserted CPU-side (kScatterCellTieBandSteps,
+// ir_render_types.hpp). Exact power-of-two product (bit-identical to the
+// literal); the overflow lane's two-band bias derives from this in turn.
+constant float kScatterCellTieBand = 16.0f * kScatterCellTieStep;
 
 // Margin-yield gradient scale (#1883) — mirror of ir_iso_common.glsl. Scales the
 // margin yield by the fragment's own plane-extrapolation excursion (penetration

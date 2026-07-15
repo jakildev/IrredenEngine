@@ -86,12 +86,16 @@ struct VertexOut {
     float isoDepth [[flat]];
     int depthColorMode [[flat]];
     float depthColorExtent [[flat]];
-    // Deterministic cell tiebreak (#2255) — mirror of v_peraxis_scatter.glsl's
-    // vCellTieOffset: the fragment stage quantizes its final depth to
-    // kScatterCellTieBand and injects this 8-level cell code (pre-scaled to
+    // Deterministic sub-band tiebreak (#2255/#2411) — mirror of
+    // v_peraxis_scatter.glsl's vCellTieOffset: the fragment stage quantizes
+    // its final depth to kScatterCellTieBand and injects this 4-bit
+    // priority-major code ((rank2 << 2) | cell2, pre-scaled to
     // kScatterCellTieStep units) into the sub-band bits, so tie-band
-    // fragments resolve by cell identity instead of the #1961 compaction's
-    // run-variant atomic-append draw order.
+    // fragments resolve by slot rank then cell identity instead of the
+    // #1961 compaction's run-variant atomic-append draw order. Cross-axis
+    // flipped-vs-flipped pairs collapse to rank 3 and fall to cell identity
+    // without a distinctness proof — they stay draw-order on collision (the
+    // rare #2255 residual). Per-class argument: ir_iso_common.glsl.
     float cellTieOffset [[flat]];
     // Per-edge interior/boundary classification for analytic coverage (#1937) —
     // .x = u-low, .y = u-high, .z = v-low, .w = v-high (in the face's eu/ev basis);
@@ -385,23 +389,28 @@ vertex VertexOut v_peraxis_scatter(
         float(globals.kMaxTriangleDistance - globals.kMinTriangleDistance);
     out.depth =
         (cornerKey + float(frameData.distanceOffset - globals.kMinTriangleDistance)) / depthRange;
-    // #2333: overflow entries sit two tie bands BEHIND everything else, so an
-    // entry can never beat an equal-yawed-depth cell-path face (near the
-    // 120°/240° coset-depth degeneracy every coset member ties in view depth —
-    // without the bias the tie-band cell-code arbitration hands ~half the lit
-    // surface's pixels to unlit albedo entries, a q1/q2 stipple regression).
-    // The entries' job is filling pixels NO cell quad claims (the revealed
-    // slivers are background there, far beyond any bias), and any genuinely
-    // farther surface is >= one voxel depth step away (~10^3 bands), so the
-    // two-band yield changes nothing else. Mirror of v_peraxis_scatter.glsl.
+    // #2333: overflow entries sit two tie bands BEHIND everything else,
+    // so an entry can never beat an
+    // equal-yawed-depth cell-path face (near the 120°/240° coset-depth
+    // degeneracy every coset member ties in view depth — without the bias
+    // the sub-band tie arbitration hands ~half the lit surface's pixels to
+    // unlit albedo entries, a q1/q2 stipple regression). The entries' job is
+    // filling pixels NO cell quad claims (the revealed slivers are
+    // background there, far beyond any bias), and any genuinely farther
+    // surface is >= one voxel depth step away (~500 bands), so the two-band
+    // yield changes nothing else. Mirror of v_peraxis_scatter.glsl.
     if (frameData.overflowMode != 0) {
-        out.depth += 16.0f * kScatterCellTieStep;
+        out.depth += 2.0f * kScatterCellTieBand;
     }
     out.marginBias = kScatterMarginDepthBiasKey * subScale / depthRange;
-    // Deterministic cell tiebreak (#2255) — mirror of v_peraxis_scatter.glsl:
-    // 8 levels, distinct for every same-plane / parallel-plane neighbor pair.
-    out.cellTieOffset =
-        float((ij.x & 1u) | ((ij.y & 3u) << 1u)) * kScatterCellTieStep;
+    // Deterministic sub-band tiebreak (#2255/#2411) — mirror of
+    // v_peraxis_scatter.glsl: priority-major (rank2 = flip ? 3 : slot),
+    // cell-minor (cell2 distinct for every same-plane / parallel-plane
+    // neighbor pair). Full layout + rationale at kScatterCellTieStep in
+    // ir_iso_common.glsl.
+    const uint rank2 = (flip != 0) ? 3u : uint(slot);
+    const uint cell2 = (ij.x & 1u) | (ij.y & 2u);
+    out.cellTieOffset = float((rank2 << 2u) | cell2) * kScatterCellTieStep;
     // Per-axis margin-yield slope (#1883) — mirror of v_peraxis_scatter.glsl.
     // kU/kV are the per-unit-axis composite depth gradients; scaled to vDepth units
     // and pre-absed (penetration is always outward) and folded with
