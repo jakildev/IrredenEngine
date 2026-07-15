@@ -285,9 +285,16 @@ fi
 # Decode an exit code into a signal name for the RESULT line (128+N =
 # died on signal N; e.g. 139 = SIGSEGV, 134 = SIGABRT). Prints "none"
 # for plain non-zero exits.
+#
+# Upper bound 193: 128+64=192 is the highest signal-death code any host
+# emits — standard signals are ≤31 (rc ≤159), Linux realtime signals run
+# 34–64 (rc ≤192). rc ≥193 can only be a plain exit status, so it reports
+# signal=none rather than mis-decoding a large exit code as a signal.
+# kill -l falls back to the raw number when the host can't name N (macOS
+# has no realtime signals).
 ir_exit_signal_name() {
     local rc="$1"
-    if (( rc > 128 && rc < 165 )); then
+    if (( rc > 128 && rc < 193 )); then
         local name
         name="$(kill -l $((rc - 128)) 2>/dev/null || true)"
         echo "SIG${name:-$((rc - 128))}"
