@@ -1082,6 +1082,15 @@ FEEDBACK_LABELS = frozenset({
 # (and only there) so the worker iteration picks it up like any other
 # feedback PR; reviewers do not act on it.
 DESIGN_RESUME_LABELS = frozenset({"fleet:design-unblocked"})
+# role-worker step 1c's own pickup exclusions: a fleet:semantic-conflict PR
+# also carrying any of these is not resolvable right now — wip/human-held,
+# or not yet rebaseable against master (awaiting-*, fork-of-other-pr). Keep
+# in lockstep with the step-1c filter list in role-worker.md.
+SEMANTIC_CONFLICT_EXCLUDE_LABELS = frozenset({
+    "fleet:wip", "human:wip", "human:needs-fix", "human:blocker",
+    "fleet:awaiting-base", "fleet:awaiting-upstream-review",
+    "fleet:fork-of-other-pr",
+})
 REVIEW_VERDICT_LABELS = frozenset({
     "fleet:approved", "fleet:needs-fix", "fleet:blocker", "fleet:has-nits",
 })
@@ -1633,12 +1642,53 @@ def enrich_inflight_pr_tasks(state):
 # fleet:needs-linux-smoke), waking the role to find nothing actionable.
 # Same anti-pattern project_merger already documents and avoids — keep
 # only the labels each role's own decision logic actually keys on.
-# fleet:semantic-conflict is intentionally NOT in this set. A stale
-# fleet:semantic-conflict on a MERGEABLE PR (fail-then-succeed race, #1654)
-# must not trigger a false step-1c resolution pass — the structural exclusion
-# here is the guarantee. The label is cleared by fleet-rebase's stale-conflict
-# cleanup sweep (#1654) before the worker ever sees the PR.
+# fleet:semantic-conflict is intentionally NOT in this set — a plain label
+# match cannot tell a real conflict from a stale label on a MERGEABLE PR
+# (fail-then-succeed race, #1654), and a stale label must not trigger a
+# false step-1c resolution pass. Conflicted PRs still generate dispatch
+# pressure, but via _semantic_conflict_claimable, which gates on the
+# cached mergeable == CONFLICTING (the same live-state signal
+# _merger_action_signal keys on), so the #1654 shape stays structurally
+# excluded. fleet-rebase's stale-conflict cleanup sweep (#1654) still
+# clears the stale label itself.
 _WORKER_RELEVANT_LABELS = FEEDBACK_LABELS | DESIGN_RESUME_LABELS
+
+
+def _semantic_conflict_claimable(pr, labels, head_labels):
+    """True when role-worker step 1c would pick this PR up right now, so it
+    must count as opus-class claimable work in the worker projection + slice.
+
+    Without this, fleet:semantic-conflict has no dispatch pressure at all:
+    its only consumer is step 1c, which runs inside opus+-class worker
+    iterations, and the class election (fleet_task_class.py) elects from
+    feedback/tasks/needs-plan only — so when the opus queue is dry or
+    host-locked, conflicted PRs starve behind sonnet no-op iterations
+    (engine #2417 sat unclaimed while worker panes idled).
+
+    `head_labels` maps the repo's open-PR head refs to their label sets,
+    for the stacked-child check.
+    """
+    if "fleet:semantic-conflict" not in labels:
+        return False
+    # #1654 guard: only a live CONFLICTING PR is real step-1c work. A stale
+    # label on a MERGEABLE PR (fail-then-succeed race) generates no dispatch;
+    # UNKNOWN (GitHub still computing) fails closed until the next tick.
+    if pr.get("mergeable") != "CONFLICTING":
+        return False
+    if labels & SEMANTIC_CONFLICT_EXCLUDE_LABELS:
+        return False
+    # An active fleet:resolving-<host>-<agent> claim means a worker is
+    # already mid-resolution — covered, not claimable. Stale claims are
+    # swept by `fleet-claim cleanup --gh`, so this can't strand a PR.
+    if any(label.startswith("fleet:resolving-") for label in labels):
+        return False
+    # Stack-aware (role-worker step 1c): a stacked child whose base PR is
+    # itself semantic-conflicted is skipped — the base resolves first, and
+    # the base is the claimable item that carries the dispatch pressure.
+    base_labels = head_labels.get(pr.get("baseRefName"))
+    if base_labels and "fleet:semantic-conflict" in base_labels:
+        return False
+    return True
 
 
 def project_worker(state):
@@ -1646,9 +1696,10 @@ def project_worker(state):
     # sonnet-author split was vestigial once model class became a
     # property of the task (#1691), so this projector is the union of
     # the two — every open task regardless of class, every needs-plan
-    # issue, and every feedback/design-resume PR. The dispatcher picks
-    # the concrete model per dispatch from the slice (resolve_worker_class
-    # / fleet_task_class.py); the lane no longer pins a model.
+    # issue, every feedback/design-resume PR, and every claimable
+    # semantic-conflict PR. The dispatcher picks the concrete model per
+    # dispatch from the slice (resolve_worker_class / fleet_task_class.py);
+    # the lane no longer pins a model.
     items = []
     for repo, repo_state in state["repos"].items():
         for task in repo_state.get("tasks", {}).get("open", []):
@@ -1677,7 +1728,11 @@ def project_worker(state):
                 continue
             items.append({"kind": "needs_plan", "repo": repo,
                           "issue": issue["number"]})
-        for pr in repo_state.get("prs", []):
+        prs = repo_state.get("prs", [])
+        head_labels = {
+            p.get("headRefName"): set(p.get("labels", [])) for p in prs
+        }
+        for pr in prs:
             labels = set(pr["labels"])
             if "human:wip" in labels:
                 continue
@@ -1699,6 +1754,12 @@ def project_worker(state):
             if labels & _WORKER_RELEVANT_LABELS:
                 items.append({"kind": "pr", "repo": repo, "pr": pr["number"],
                               "labels": sorted(labels & _WORKER_RELEVANT_LABELS)})
+            # Distinct kind so the hash keys on presence only — resolution
+            # (label removed / PR merged) or a fleet:resolving-* claim drops
+            # the item; transient label churn on the PR doesn't re-flip it.
+            if _semantic_conflict_claimable(pr, labels, head_labels):
+                items.append({"kind": "semantic_conflict", "repo": repo,
+                              "pr": pr["number"]})
     return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))
 
 
@@ -2140,11 +2201,12 @@ def _slice_issue_with_repo(repo_key, issue):
 
 def slice_worker(state):
     # Unified worker slice (P2): all open tasks of every class, all
-    # needs-plan issues, and all feedback/design-resume PRs. The
-    # dispatcher's per-task class resolution (fleet_task_class.py)
-    # already handles a mixed-class tasks_open list, so a single slice
-    # serves fable / opus / sonnet work.
-    out = {"tasks_open": [], "needs_plan": [], "feedback_prs": []}
+    # needs-plan issues, all feedback/design-resume PRs, and all claimable
+    # semantic-conflict PRs. The dispatcher's per-task class resolution
+    # (fleet_task_class.py) already handles a mixed-class tasks_open list,
+    # so a single slice serves fable / opus / sonnet work.
+    out = {"tasks_open": [], "needs_plan": [], "feedback_prs": [],
+           "semantic_conflict_prs": []}
     for repo_key, repo_state in state["repos"].items():
         for task in repo_state.get("tasks", {}).get("open", []):
             if model_tags(task) & {"opus", "fable", "sonnet"}:
@@ -2166,7 +2228,11 @@ def slice_worker(state):
             if issue.get("blocked"):
                 continue
             out["needs_plan"].append(_slice_issue_with_repo(repo_key, issue))
-        for pr in repo_state.get("prs", []):
+        prs = repo_state.get("prs", [])
+        head_labels = {
+            p.get("headRefName"): set(p.get("labels", [])) for p in prs
+        }
+        for pr in prs:
             labels = set(pr["labels"])
             if "human:wip" in labels:
                 continue
@@ -2176,6 +2242,9 @@ def slice_worker(state):
                 continue
             if labels & (FEEDBACK_LABELS | DESIGN_RESUME_LABELS):
                 out["feedback_prs"].append(_slice_pr_with_repo(repo_key, pr))
+            if _semantic_conflict_claimable(pr, labels, head_labels):
+                out["semantic_conflict_prs"].append(
+                    _slice_pr_with_repo(repo_key, pr))
     return out
 
 

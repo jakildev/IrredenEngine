@@ -5,9 +5,15 @@ work it's serving (a claude process can't change model/effort after
 launch), so this resolution IS the per-task model routing. The invariants
 that matter:
 
-  - pickup priority mirrors the role docs: feedback PRs, then unblocked open
-    tasks (oldest first — slices arrive sorted), then stackable `blocked`
-    tasks, then needs_plan;
+  - pickup priority mirrors the role docs: feedback PRs, then
+    semantic-conflict PRs, then unblocked open tasks (oldest first — slices
+    arrive sorted), then stackable `blocked` tasks, then needs_plan;
+  - a semantic-conflict PR is one opus claimable item (role-worker step 1c is
+    opus+-only; the scout pre-filters the slice's semantic_conflict_prs[]),
+    so a conflicted PR generates opus dispatch pressure even when the task
+    queue is empty or host-locked — before this tier the label had no
+    dispatch pressure at all and conflicts starved behind sonnet no-op
+    iterations (engine #2417);
   - feedback class derives from review severity labels (fable opt-in via
     fleet:fable on the PR, blocking labels -> opus, nits-only -> sonnet);
   - the fable concurrency cap skips fable items rather than idling the
@@ -380,6 +386,93 @@ class GlHostGate(unittest.TestCase):
         out = self._resolve_on(
             "unknown", {"tasks_open": [_task("#1937", "opus", needs_gl_host=True)]})
         self.assertEqual(out, "defer")
+
+
+class SemanticConflictDispatchPressure(unittest.TestCase):
+    """Semantic-conflict PRs are opus-class claimable work slotted between
+    feedback and task pickup (role-worker step 1c, opus+-classes-only). This
+    tier is what gives the label dispatch pressure at all: before it, a
+    conflicted PR was only resolved as a ride-along when opus queue work
+    happened to be flowing, and starved when the opus lane was dry or
+    host-locked (engine #2417 sat unclaimed while sonnet iterations
+    no-op'd). The scout pre-filters the slice (CONFLICTING-gated per #1654,
+    step-1c exclusions, resolving-claims, stacked children), so the resolver
+    counts every entry as-is."""
+
+    def setUp(self):
+        self._saved_host = os.environ.get("FLEET_TEST_HOST")
+
+    def tearDown(self):
+        if self._saved_host is None:
+            os.environ.pop("FLEET_TEST_HOST", None)
+        else:
+            os.environ["FLEET_TEST_HOST"] = self._saved_host
+
+    @staticmethod
+    def _sc(num):
+        return {"number": num, "repo": "engine",
+                "labels": ["fleet:semantic-conflict"]}
+
+    def test_conflict_alone_elects_opus(self):
+        out = resolve({"semantic_conflict_prs": [self._sc(2417)]},
+                      "sonnet", fable_blocked=False)
+        self.assertEqual(out, "opus xhigh 0 1 0")
+
+    def test_conflict_dispatches_when_all_tasks_host_locked(self):
+        # The #2417 starvation shape: every open task is GL-locked on a
+        # Metal-only host, so tasks alone would defer and no opus iteration
+        # ever launches — the conflict must still dispatch opus.
+        os.environ["FLEET_TEST_HOST"] = "mac"
+        out = resolve({
+            "tasks_open": [_task("#1938", "opus", needs_gl_host=True)],
+            "semantic_conflict_prs": [self._sc(2417)],
+        }, "sonnet", fable_blocked=False)
+        self.assertEqual(out, "opus xhigh 0 1 0")
+
+    def test_feedback_still_elected_before_conflict(self):
+        # Pickup priority mirrors the worker loop: feedback (step 1) before
+        # conflicts (step 1c). The conflict stays servable -> more=1 so the
+        # next tick serves the opus lane.
+        out = resolve({
+            "feedback_prs": [{"number": 11, "labels": ["fleet:has-nits"]}],
+            "semantic_conflict_prs": [self._sc(2417)],
+        }, "sonnet", fable_blocked=False)
+        self.assertEqual(out, "sonnet high 1 1 0")
+
+    def test_conflict_elected_before_open_tasks(self):
+        # Step 1c runs before task pickup (step 2), so the conflict outranks
+        # a claimable sonnet task; the task holds more=1.
+        out = resolve({
+            "semantic_conflict_prs": [self._sc(2417)],
+            "tasks_open": [_task("#10", "sonnet")],
+        }, "sonnet", fable_blocked=False)
+        self.assertEqual(out, "opus xhigh 1 1 0")
+
+    def test_conflicts_and_opus_feedback_share_the_count(self):
+        # Each conflict is one claimable opus item alongside opus feedback:
+        # the fan-out cap must cover both, one worker per item.
+        out = resolve({
+            "feedback_prs": [{"number": 11, "labels": ["fleet:needs-fix"]}],
+            "semantic_conflict_prs": [self._sc(2417), self._sc(2420)],
+        }, "sonnet", fable_blocked=False)
+        self.assertEqual(out, "opus xhigh 0 3 0")
+
+    def test_exclude_opus_defers_not_lane_default(self):
+        # Cap-covered opus with only conflict work left -> defer (real work
+        # exists, none servable now), never '' — a lane-default dispatch
+        # would launch a sonnet iteration that skips step 1c by design.
+        out = resolve({"semantic_conflict_prs": [self._sc(2417)]},
+                      "sonnet", fable_blocked=False, exclude=["opus"])
+        self.assertEqual(out, "defer")
+
+    def test_no_host_gate_on_conflicts(self):
+        # Unlike needs_gl_host tasks, a conflict resolves on any host — step
+        # 1c build-verifies IRShapeDebug, which every fleet host builds
+        # natively. mac included.
+        os.environ["FLEET_TEST_HOST"] = "mac"
+        out = resolve({"semantic_conflict_prs": [self._sc(2417)]},
+                      "opus", fable_blocked=False)
+        self.assertEqual(out, "opus xhigh 0 1 0")
 
 
 class ExcludeClasses(unittest.TestCase):
