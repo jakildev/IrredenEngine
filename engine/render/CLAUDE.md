@@ -940,7 +940,7 @@ parity with voxel-pool primary shapes.
   that a stale image shadows. GL is immune (separate image/texture-unit
   namespaces), so a GL-only smoke will not catch it. Any compute kernel that
   mixes a sampler read with images bound elsewhere in the pipeline is exposed;
-   the #1294 chunk cull's fine Hi-Z levels are the known other victim.
+  the #1294 chunk cull's fine Hi-Z levels are the known other victim.
 - **Destroying a Metal resource must scrub the sticky binding tables
   (#2412).** `bindComputeResources`/`bindRenderResources` re-encode every
   non-null sticky table entry on each dispatch, so a released `MTL::Buffer`
