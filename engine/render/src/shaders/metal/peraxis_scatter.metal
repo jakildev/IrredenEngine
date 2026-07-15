@@ -456,10 +456,13 @@ vertex VertexOut v_peraxis_scatter(
     // the adjacent face across the whole shared edge — a sub-pixel
     // penetration times any slope can never repay it (the #2428 fringe's
     // dominant term; the integer row only escapes because lattice-aligned
-    // edges keep pixel centers out of dilation reach). 8 key units covers
-    // the full low-bits span with margin while staying far inside one
-    // subdivided depth step, so interior margins still gap-fill against
-    // background and genuinely farther surfaces.
+    // edges keep pixel centers out of dilation reach). 8 key units is the
+    // FORCED value, sitting ON its ceiling: strictly above the 7-key low-bits
+    // span, and exactly one subdivided depth step (kDepthEncodeShift key units
+    // at every subdivision) — not "inside" one. Interior margins still gap-fill
+    // against background and genuinely farther surfaces (>> 1 cell), which is
+    // what makes the ceiling sound. Bracket + asserts: ir_iso_common.metal and
+    // ir_render_types.hpp.
     out.marginInteriorYieldBias = kScatterMarginInteriorBiasKey / depthRange;
     return out;
 }

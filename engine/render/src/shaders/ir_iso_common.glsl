@@ -1013,6 +1013,20 @@ const float kScatterCellTieBand = 16.0 * kScatterCellTieStep;
 // covers the worst-case symmetric two-plane depth divergence near a cardinal with
 // headroom. Folded into the per-axis yield-grad varying by the scatter vertex
 // stage, so the fragment stage needs no copy of this constant.
+//
+// SECOND requirement (#2428) — this constant is now load-bearing for a purpose
+// the #1883 rationale above does not mention, and the two pull in OPPOSITE
+// directions. The Metal interior-edge yield slope is FLOORED at
+// kScatterMarginYieldGradScale * encScale, which must cover the worst-case
+// 2*sqrt(2)*encScale cross-face plane divergence: 3 >= 2.8284, only 6% of slack.
+// The #1883 goal above ("sub-pixel gap-fills still win") argues for a SMALLER
+// scale, so the plausible retune direction is precisely the one that drops the
+// floor under the divergence bound and revives the #2428 shared-edge fringe —
+// e.g. 2.0 would silently do it. Asserted CPU-side in ir_render_types.hpp
+// (kScatterMarginYieldGradScale, squared for exact integer comparison); that
+// assert fires on the GL side too even though the floor itself is Metal-lead
+// until the #1938 port. If the two purposes ever need different values, give the
+// #2428 floor its own constant rather than splitting the difference.
 const float kScatterMarginYieldGradScale = 3.0;
 
 // Miter limit for the conservative dilation below (#1538): caps how far a sharp
