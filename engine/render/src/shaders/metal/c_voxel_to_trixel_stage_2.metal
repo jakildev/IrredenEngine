@@ -347,11 +347,15 @@ kernel void c_voxel_to_trixel_stage_2(
         const int2 perAxisBase = trixelOriginOffsetZ1(frameData.canvasSizePixels) +
                                  int2(floor(frameData.frameCanvasOffset));
         if (frameData.voxelRenderOptions.x == 0) {
-            const int3 worldPos = roundHalfUp(voxelPosition.xyz);
+            const float3 worldAlignedBase = snapNearIntegerVoxelPosition(voxelPosition.xyz);
+            const int3 worldPos = roundHalfUp(worldAlignedBase);
             const int3 facePos = faceMicroPositionFixed6(faceId, worldPos, 0, 0, 1);
-            // No sub-cell offset at base resolution; encode centre fracs (8,8).
-            const int voxelDistance =
-                encodeDepthWithFaceFrac(pos3DtoDistance(facePos), slot, 8, 8, riserFlip);
+            // Full sub-cell fracs — MUST mirror stage 1's base-resolution
+            // store exactly or the colour tap desyncs from the distance.
+            const float3 fracInCellBase = worldAlignedBase - float3(worldPos);
+            const int voxelDistance = encodeDepthWithFaceFrac(
+                pos3DtoDistance(facePos), slot, axis, fracInCellBase, riserFlip
+            );
             writeColorTapPerAxis(
                 perAxisBase + pos3DtoPos2DIso(facePos), voxelDistance, voxelColor,
                 packedEntityId, voxelIndex, canvasSize, distanceScratch, perAxisWinnerIds,

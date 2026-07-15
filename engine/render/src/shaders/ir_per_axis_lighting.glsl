@@ -48,15 +48,16 @@ vec3 perAxisCellToWorld3DSubCell(
         cell, decodeDepthPerAxis(encoded), faceId,
         canvasSize, frameCanvasOffset, voxelRenderOptions
     );
-    // Frac fields of the per-axis encoding (#1458): uFrac4 at [9:6], vFrac4 at
-    // [5:2], 8 = cell centre — the same open-coded positions v_peraxis_scatter
-    // reads (the shared ir_iso_common decode helpers cover depth/flip/slot;
-    // the frac fields kept their positions across the #2207 carrier migration).
-    const int uFrac4 = (encoded >> 6) & 15;
-    const int vFrac4 = (encoded >> 2) & 15;
+    // The shared ir_iso_common decode helpers own the frac-field layout —
+    // the same decode v_peraxis_scatter uses, so lighting recovers exactly
+    // the plane the scatter draws.
+    const int uFrac4 = decodeUFrac4PerAxis(encoded);
+    const int vFrac4 = decodeVFrac4PerAxis(encoded);
+    const int wFrac4 = decodeWFrac4PerAxis(encoded);
     vec3 eu, ev;
     faceInPlaneUnitAxes(faceId >> 1, eu, ev);
     return origin
         + eu * (float(uFrac4) / 16.0 - 0.5)
-        + ev * (float(vFrac4) / 16.0 - 0.5);
+        + ev * (float(vFrac4) / 16.0 - 0.5)
+        + faceOutOfPlaneUnitAxis(faceId >> 1) * (float(wFrac4) / 16.0 - 0.5);
 }

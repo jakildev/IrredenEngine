@@ -338,11 +338,15 @@ void main() {
         // exactly, or color/id taps land on a different cell than the distance.
         const ivec2 perAxisBase = trixelOriginOffsetZ1(canvasSizePixels) + ivec2(floor(frameCanvasOffset));
         if (voxelRenderOptions.x == 0) {
-            const ivec3 worldPos = roundHalfUp(voxelPosition.xyz);
+            const vec3 worldAlignedBase = snapNearIntegerVoxelPosition(voxelPosition.xyz);
+            const ivec3 worldPos = roundHalfUp(worldAlignedBase);
             const ivec3 facePos = faceMicroPositionFixed6(faceId, worldPos, 0, 0, 1);
-            // No sub-cell offset at base resolution; encode centre fracs (8,8).
-            const int voxelDistance =
-                encodeDepthWithFaceFrac(pos3DtoDistance(facePos), slot, 8, 8, riserFlip);
+            // Full sub-cell fracs — MUST mirror stage 1's base-resolution
+            // store exactly or the colour tap desyncs from the distance.
+            const vec3 fracInCellBase = worldAlignedBase - vec3(worldPos);
+            const int voxelDistance = encodeDepthWithFaceFrac(
+                pos3DtoDistance(facePos), slot, axis, fracInCellBase, riserFlip
+            );
             writeColorTapPerAxis(
                 perAxisBase + pos3DtoPos2DIso(facePos), voxelDistance,
                 voxelColor, packedEntityId, voxelIndex

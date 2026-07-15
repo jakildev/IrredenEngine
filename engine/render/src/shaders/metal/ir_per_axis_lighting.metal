@@ -44,16 +44,19 @@ inline float3 perAxisCellToWorld3DSubCell(
         cell, decodeDepthPerAxis(encoded), faceId,
         canvasSize, frameCanvasOffset, voxelRenderOptions
     );
-    // Frac fields of the per-axis encoding (#1458): uFrac4 at [9:6], vFrac4 at
-    // [5:2], 8 = cell centre — the same positions peraxis_scatter.metal reads.
-    const int uFrac4 = (encoded >> 6) & 15;
-    const int vFrac4 = (encoded >> 2) & 15;
+    // The shared ir_iso_common decode helpers own the frac-field layout —
+    // the same decode peraxis_scatter.metal uses, so lighting recovers
+    // exactly the plane the scatter draws.
+    const int uFrac4 = decodeUFrac4PerAxis(encoded);
+    const int vFrac4 = decodeVFrac4PerAxis(encoded);
+    const int wFrac4 = decodeWFrac4PerAxis(encoded);
     float3 eu;
     float3 ev;
     faceInPlaneUnitAxes(faceId >> 1, eu, ev);
     return origin
         + eu * (float(uFrac4) / 16.0f - 0.5f)
-        + ev * (float(vFrac4) / 16.0f - 0.5f);
+        + ev * (float(vFrac4) / 16.0f - 0.5f)
+        + faceOutOfPlaneUnitAxis(faceId >> 1) * (float(wFrac4) / 16.0f - 0.5f);
 }
 
 #endif // IR_PER_AXIS_LIGHTING_METAL_INCLUDED
