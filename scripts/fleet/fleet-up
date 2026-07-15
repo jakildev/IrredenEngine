@@ -834,11 +834,18 @@ write_worktree_settings() {
     # Baseline allows that every fleet agent needs (beyond the user-level
     # ~/.claude/settings.json entries). These cover tools the agents use
     # during freeform work that aren't in the user-level allowlist.
-    python3 - "$settings_file" "$repo_root" <<'PYEOF'
+    # argv[3] = the absolute worktree path (baked into FLEET_ASSIGNED_WORKTREE so
+    # the edit guard derives worktree identity from the ASSIGNMENT, not the drift-
+    # prone session cwd). argv[4] = $ENGINE — the guard hook lives under the engine
+    # clone's scripts/fleet, which game-side worktrees (repo_root=$GAME) can't reach
+    # via repo_root; the engine root is the stable source for the hook path (#2402).
+    python3 - "$settings_file" "$repo_root" "$wt" "$ENGINE" <<'PYEOF'
 import json, sys, os
 
 settings_file = sys.argv[1]
 repo_root     = sys.argv[2]
+worktree      = sys.argv[3]
+engine_root   = sys.argv[4]
 
 baseline = [
     "Edit(*)",
@@ -916,6 +923,7 @@ baseline = [
 # The catch-all "Bash(python3:*)" baseline entry covers all python3 use.
 existing_extra = []
 existing_hooks = {}
+existing_env = {}
 if os.path.isfile(settings_file):
     try:
         d = json.load(open(settings_file))
@@ -924,6 +932,8 @@ if os.path.isfile(settings_file):
                 existing_extra.append(a)
         if isinstance(d.get("hooks"), dict):
             existing_hooks = d["hooks"]
+        if isinstance(d.get("env"), dict):
+            existing_env = d["env"]
     except Exception:
         pass  # malformed file — start fresh with baseline only
 
@@ -968,14 +978,33 @@ session_track_cmd = (
     " && fleet-session-track || true"
 )
 
+# PreToolUse edit guard (#2402): reject Edit/Write/MultiEdit whose target
+# escapes this pane's worktree, using the assignment (FLEET_ASSIGNED_WORKTREE
+# below) rather than the drift-prone session cwd. The command references the
+# engine clone's copy by ABSOLUTE path baked at generation time — game-side
+# worktrees have no scripts/fleet of their own, and ~/bin symlinks can lag an
+# install (#2262). Wrapped in `[ -x … ] && … || true` so a missing/renamed
+# guard fails OPEN (a hook must never wedge the fleet). Engine-launched
+# sessions also carry this guard via the checked-in project settings.json; the
+# double-fire is accepted (two identical verdicts; deny still wins).
+guard_path = f"{engine_root}/scripts/fleet/fleet-guard-worktree-edit"
+guard_cmd = f'[ -x "{guard_path}" ] && "{guard_path}" || true'
+
 # Hand-added hooks survive regeneration the same way user-granted allow
-# entries do: keep every hook group from the previous file except the
-# fleet's own (matched on the fleet-session-track marker, so a stale
-# variant of the fleet hook is replaced rather than duplicated).
+# entries do: keep every hook group from the previous file except the fleet's
+# own (matched on either fleet-hook marker, so a stale variant of a fleet hook
+# is replaced rather than duplicated).
+FLEET_HOOK_MARKERS = ("fleet-session-track", "fleet-guard-worktree-edit")
 hooks_out = {
     "SessionStart": [
         {"hooks": [{"type": "command", "command": session_track_cmd}]}
-    ]
+    ],
+    "PreToolUse": [
+        {
+            "matcher": "Edit|Write|MultiEdit",
+            "hooks": [{"type": "command", "command": guard_cmd}],
+        }
+    ],
 }
 for event, groups in existing_hooks.items():
     if not isinstance(groups, list):
@@ -985,11 +1014,19 @@ for event, groups in existing_hooks.items():
             continue
         cmds = group.get("hooks")
         if isinstance(cmds, list) and any(
-            isinstance(h, dict) and "fleet-session-track" in str(h.get("command", ""))
+            isinstance(h, dict)
+            and any(m in str(h.get("command", "")) for m in FLEET_HOOK_MARKERS)
             for h in cmds
         ):
             continue
         hooks_out.setdefault(event, []).append(group)
+
+# env: the authoritative worktree-identity signal for the edit guard and every
+# Bash call in sessions launched from this worktree. Hand-added env entries
+# survive regeneration (same contract as allow/hooks, #2284); fleet wins only on
+# its own key.
+env_out = dict(existing_env)
+env_out["FLEET_ASSIGNED_WORKTREE"] = worktree
 
 out = {
     "permissions": {
@@ -997,6 +1034,7 @@ out = {
         "allow": all_allows,
         "defaultMode": "auto",
     },
+    "env": env_out,
     "hooks": hooks_out,
 }
 

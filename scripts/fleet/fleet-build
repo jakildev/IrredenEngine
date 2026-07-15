@@ -12,6 +12,16 @@
 
 set -euo pipefail
 
+# Warn-only worktree-cwd notice (#2402): building from a shared main clone is a
+# common "my fix had no effect" precursor — the change landed in a worktree while
+# the build ran here. NEVER fail (humans build main clones deliberately; the
+# merger / platform-catchup build from clones by design), just surface the drift.
+_bld_tl=$(git rev-parse --show-toplevel 2>/dev/null || true)
+if [[ -n "$_bld_tl" && "$_bld_tl" != */.claude/worktrees/* ]]; then
+    echo "fleet-build: NOTE — cwd ($_bld_tl) is a main clone, not a fleet worktree." >&2
+    echo "             if you edited files in a worktree, this build won't see them (#2402)." >&2
+fi
+
 # Resolve ir-build through the symlinked-script discipline used by every
 # other ir-* tool. Prefer the source tree adjacent to this shim (works
 # from a worktree before install.sh runs); fall back to PATH lookup.

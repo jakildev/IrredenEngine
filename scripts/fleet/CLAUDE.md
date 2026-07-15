@@ -50,6 +50,17 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   next regeneration silently clobbers human edits under that key (#2284:
   the first `hooks` key repeated the lesson `permissions.allow` already
   encoded).
+- **Worktree scoping is assignment-derived, not cwd-derived (#2402).**
+  `fleet-up` bakes `FLEET_ASSIGNED_WORKTREE` (the absolute worktree path) into
+  each generated `settings.local.json` `env`; when set, `fleet-guard-worktree-edit`
+  and `fleet-edit` allow a mutation only inside that worktree (engine **or** game,
+  matched by basename), `$HOME/.fleet`, `/tmp`, `/private/tmp`, or the auto-memory
+  dir — so a drifted cwd can't misroute an edit into the shared main clone. Env
+  unset ⇒ the legacy cwd-derived behavior (human / non-fleet sessions). The
+  allowlist mirrors the settings' `additionalDirectories`; extend both together.
+  Mutating git wrappers (`fleet-pr-amend-push`, `fleet-review-verdict --agent`)
+  call `fleet-assert-worktree`; scout / ingest / claim / rebase legitimately run
+  from the main clone and are deliberately NOT asserted.
 - **Unattended daemons timeout-guard their network calls.** The host's
   connections to GitHub intermittently black-hole (silent TCP death), so a
   hung `git fetch` / `gh …` in a fleet daemon (dispatcher loop, `fleet-rebase`,

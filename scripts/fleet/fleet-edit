@@ -45,6 +45,30 @@ replace_all="${4:-}"
 [[ -f "$old_file" ]] || { echo "fleet-edit: old-file not found: $old_file" >&2; exit 1; }
 [[ -f "$new_file" ]] || { echo "fleet-edit: new-file not found: $new_file" >&2; exit 1; }
 
+# Worktree-scope guard (#2402): fleet-edit is an Edit-tool-equivalent CLI, so it
+# bypasses the PreToolUse edit hook. Under an assignment (FLEET_ASSIGNED_WORKTREE
+# set) apply the SAME allowlist the hook enforces so a misrouted CLI edit can't
+# land in a shared main clone. Unset (human / legacy session) → unchanged.
+if [[ -n "${FLEET_ASSIGNED_WORKTREE:-}" ]]; then
+    _wt_name=$(basename "$FLEET_ASSIGNED_WORKTREE" 2>/dev/null || true)
+    # Resolve the target to an absolute path (it exists — checked above).
+    _abs=$(cd "$(dirname "$target")" 2>/dev/null && printf '%s/%s' "$(pwd)" "$(basename "$target")")
+    _abs="${_abs:-$target}"
+    _ok=0
+    case "$_abs/" in
+        */.claude/worktrees/"$_wt_name"/*) _ok=1 ;;   # this pane's worktree (engine or game)
+    esac
+    case "$_abs" in
+        "$HOME"/.fleet/*|/tmp/*|/private/tmp/*|"$HOME"/.claude/projects/*/memory/*) _ok=1 ;;
+    esac
+    if [[ "$_ok" -ne 1 ]]; then
+        echo "fleet-edit: REFUSING to edit '$target' — outside your assigned worktree." >&2
+        echo "  assigned worktree: $FLEET_ASSIGNED_WORKTREE" >&2
+        echo "  allowed: your worktree, \$HOME/.fleet, /tmp, /private/tmp, the auto-memory dir (#2402)." >&2
+        exit 1
+    fi
+fi
+
 exec python3 - "$target" "$old_file" "$new_file" "$replace_all" <<'PYEOF'
 import sys, pathlib
 
