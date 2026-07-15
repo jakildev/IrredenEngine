@@ -252,6 +252,20 @@ filing for mechanical tasks (the worker plans those; a high-stakes worker-planne
 issue then holds on `human:review-plan` for your sign-off — see
 [`PLANNING-PROTOCOL.md`](PLANNING-PROTOCOL.md) step 3).
 
+**If you'll queue it yourself, attach the plan — even for mechanical tickets.**
+The rule above draws the line at "planned with the human," but the sharper
+trigger is *who approves it*. If **you** will stamp `human:approved` in the same
+session you file a standalone ticket — rather than handing it to the human's
+async triage — post the `## Plan` comment at file time. You have the context
+right then; a short plan (verified current state, one picked approach,
+verification) skips the round-trip; and `fleet-queue-ingest` otherwise bounces
+your own approved-but-plan-less issue straight to `fleet:needs-plan`. This is the
+same file-with-plan discipline `file-epic` already gives every epic child — a
+standalone ticket you queue deserves it too. Reserve deliberate plan-less filing
+for when you *want* a worker to plan it: then leave it for the human's
+needs-plan triage instead of self-approving, or tag `[no-plan]` if it is trivial
+enough to skip planning outright.
+
 **Multi-issue stacks (epic decomposition).** When the work decomposes into a
 stack of N issues that each depend on the prior — the canonical smooth-yaw /
 SO(3) / rotation / streaming patterns — do NOT hand-file the children. Invoke
