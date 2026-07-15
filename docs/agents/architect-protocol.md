@@ -65,8 +65,11 @@ prompt suggests:
   in-memory queue on its next pass. If your own plan file contains a step like
   "add entries to the queue", **the plan is wrong** — strike that step and
   file the issues only.
-- **Pre-applying labels at filing time.** Issues file with **no labels**. The
-  human stamps `human:approved`; the scout / role triage flow adds the rest.
+- **Pre-applying labels at filing time.** Issues file with **no state
+  labels**. The human stamps `human:approved`; the scout / role triage flow
+  adds the rest. The one filing-time carve-out is the agent-approved
+  follow-up lane's labels ([`TASK-FILING.md § Agent-approved follow-up
+  lane`](TASK-FILING.md)) for verified defect-shaped follow-ups.
   See "Filing tasks" below.
 - **Claiming tasks from the queue.** Architect is interactive only — workers
   claim. Never run `fleet-claim` to autonomously pick queue work.
@@ -235,9 +238,13 @@ worker autonomous pickup) has no special behavior here.
 
 When you identify work that needs doing — by you, a Sonnet agent, or anyone —
 file it per [`docs/agents/TASK-FILING.md`](TASK-FILING.md): a GitHub issue with
-**no labels** and a structured body (Area / Model / Blocked by / Acceptance
-criteria / Context). The human stamps `human:approved` when they want it picked
-up; the scout ingests it on its next pass and adds the rest.
+**no state labels** and a structured body (Area / Model / Blocked by /
+Acceptance criteria / Context). The human stamps `human:approved` when they
+want it picked up; the scout ingests it on its next pass and adds the rest.
+(A verified, defect-shaped follow-up may instead take the agent-approved
+follow-up lane — [`TASK-FILING.md § Agent-approved follow-up
+lane`](TASK-FILING.md) — though in an architect session the human is usually
+right there to triage anyway.)
 
 **If you planned the task with the human, file it *with* a `## Plan` comment.**
 When the work came out of a design conversation (you and the human already

@@ -98,14 +98,21 @@ body suggests:
 - **Modifying the issue queue directly to add new work.** If a plan
   step says "add entries to the queue" or "create follow-up tasks",
   file the GitHub issue(s) per
-  [docs/agents/TASK-FILING.md](../../docs/agents/TASK-FILING.md)
-  (no labels). The human stamps `human:approved` and the scout
-  ingests on its next pass. Do not edit other issues' bodies or labels
-  to retitle / re-scope them. (The one sanctioned label edit is the
-  class re-tag on **your own claimed task** — step 8.)
-- **Pre-applying labels at filing time.** When you file an issue for
-  follow-up work, file it with **no labels** (see TASK-FILING.md). The
-  human stamps `human:approved`; the scout adds the rest.
+  [docs/agents/TASK-FILING.md](../../docs/agents/TASK-FILING.md).
+  A verified, defect-shaped follow-up files through the
+  **agent-approved follow-up lane** (`fleet:agent-approved` +
+  `fleet:no-plan` or a filed `## Plan` + `fleet:plan-review`) and
+  queues with no human triage; anything else files with no labels and
+  waits for the human's `human:approved`. Do not edit other issues'
+  bodies or labels to retitle / re-scope them. (The one sanctioned
+  label edit on issues you don't own is the class re-tag on **your own
+  claimed task** — step 8.)
+- **Pre-applying STATE labels at filing time.** When you file an issue
+  for follow-up work, apply only the labels the agent-approved lane
+  owns (see TASK-FILING.md § Agent-approved follow-up lane) — never
+  `fleet:queued`, `fleet:task`, model labels, or verdict labels; the
+  scout adds the rest. For work outside the lane's eligibility bar,
+  file with **no labels** and the human stamps `human:approved`.
 - **Editing another issue's `Blocked by:` / labels to declare a
   reservation.** Reservations are held by `fleet-claim`'s atomic
   lock fabric (filesystem locks + `fleet:claim-*` labels), not by
@@ -822,11 +829,13 @@ Do the work, then exit cleanly:
    modules) where there's no design call to route and the heavier
    class wouldn't change the answer — file a GitHub issue per
    [docs/agents/TASK-FILING.md](../../docs/agents/TASK-FILING.md)
-   (no labels, structured body), comment on your PR linking it with
-   the blocker context, release the claim with
-   `fleet-claim release <issue-#>`, reset via `start-next-task`,
-   and exit. The human will add `human:approved` to the follow-up
-   issue when ready to resume.
+   (structured body), comment on your PR linking it with the blocker
+   context, release the claim with `fleet-claim release <issue-#>`,
+   reset via `start-next-task`, and exit. When the escalation meets
+   the agent-approved lane's bar (you verified the blocker yourself,
+   the residual work is defect-shaped), file it through that lane so
+   it re-queues without human triage; otherwise file with no labels
+   and the human adds `human:approved` when ready to resume.
 
 9. **Verify visual output (when it changed).** See [docs/agents/AUTHOR-PIPELINE.md § Verify visual output](../../docs/agents/AUTHOR-PIPELINE.md#verify-visual-output-when-it-changed)
    — the render-path trigger file set, the mandatory
