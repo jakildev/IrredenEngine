@@ -722,6 +722,8 @@ kernel void IR_STAGE1_KERNEL_NAME(
     // Both-exposed dual emit (#2157): the opposite face plane rasters its own
     // pixels here (faceMicroPositionFixed6 is polarity-dependent), so the riser
     // needs its own deformed-face emit — same view-space form as the primary.
+    // `viewFaceId ^ 1` after rotation == rotating the opposite face, since
+    // rotateFaceIdCardinalZ maps opposite-face pairs to opposite-face pairs.
     // See the GLSL twin.
     if (bothPolaritiesExposed) {
         const int3 microOpposite =

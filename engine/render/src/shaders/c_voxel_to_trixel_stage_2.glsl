@@ -456,6 +456,8 @@ void main() {
     // Both-exposed dual emit (#2157) — mirror of stage 1's opposite-face emit
     // so the colour tap lands on the riser plane's pixels too. See
     // c_voxel_to_trixel_stage_1.glsl for the full rationale.
+    // `viewFaceId ^ 1` after rotation == rotating the opposite face, since
+    // rotateFaceIdCardinalZ maps opposite-face pairs to opposite-face pairs.
     if (bothPolaritiesExposed) {
         const ivec3 microOpposite =
             faceMicroPositionFixed6(viewFaceId ^ 1, viewCellFixed, u, v, subdivisions);

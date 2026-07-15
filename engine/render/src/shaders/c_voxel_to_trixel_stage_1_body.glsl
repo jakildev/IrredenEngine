@@ -893,6 +893,8 @@ void main() {
     // Both-exposed dual emit (#2157): the opposite face plane rasters its own
     // pixels here (faceMicroPositionFixed6 is polarity-dependent), so the riser
     // needs its own deformed-face emit — same view-space form as the primary.
+    // `viewFaceId ^ 1` after rotation == rotating the opposite face, since
+    // rotateFaceIdCardinalZ maps opposite-face pairs to opposite-face pairs.
     if (bothPolaritiesExposed) {
         const ivec3 microOpposite =
             faceMicroPositionFixed6(viewFaceId ^ 1, viewCellFixed, u, v, subdivisions);
