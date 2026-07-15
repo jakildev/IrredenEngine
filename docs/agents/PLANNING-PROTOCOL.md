@@ -369,21 +369,27 @@ hoc can skip planning entirely:
 - **`human:no-plan` label** — applied by the human at filing. The issue bypasses
   the planning gate and the scout queues it directly; the worker opens a
   code-only PR with no `.fleet/plans/` file.
+- **`fleet:no-plan` label** — the agent-applied twin, applied by a fleet role
+  filing through the agent-approved follow-up lane
+  ([`TASK-FILING.md § Agent-approved follow-up lane`](TASK-FILING.md)) when the
+  fix is bounded enough to investigate-and-fix in one worker session. Honored
+  by ingest and the scout's planning-rotation skips exactly like
+  `human:no-plan`.
 - **`[no-plan]` title/body tag** — the literal token, honored by
   `fleet-queue-ingest` the same way the `investigation spike` phrase is, for when
   applying a label is more friction than typing a tag.
 
-The default is unchanged: an `human:approved` issue with neither a `## Plan`
-comment nor an opt-out is bounced to `fleet:needs-plan`. The opt-out is the
-human's explicit "this is small enough to skip" — it is not something a fleet
-agent applies.
+The default is unchanged: an approved issue with neither a `## Plan`
+comment nor an opt-out is bounced to `fleet:needs-plan`. The human opt-out is
+the human's explicit "this is small enough to skip"; the agent opt-out carries
+the same judgment made by the filer under the follow-up lane's eligibility bar.
 
 This gate is mechanically enforced by `fleet-queue-ingest` (the #1456 planning
 gate, re-keyed by this redesign): it refuses to stamp `fleet:queued` on an
 approved issue unless a `## Plan` comment exists OR the issue is opted out
-(`human:no-plan` / `[no-plan]` / `investigation spike`), and otherwise bounces
-it to `fleet:needs-plan`. Labeling an unplanned build task `human:approved` no
-longer queues it.
+(`human:no-plan` / `fleet:no-plan` / `[no-plan]` / `investigation spike`), and
+otherwise bounces it to `fleet:needs-plan`. Labeling an unplanned build task
+`human:approved` no longer queues it.
 
 ---
 

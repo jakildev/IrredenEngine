@@ -28,8 +28,13 @@
 # Planning gate (#1456, re-keyed by #1932): an approved issue with no plan — no
 # `## Plan` issue comment (canonical since #1932), no committed/staged plan file
 # (.fleet/plans/issue-<N>.md or ~/.fleet/plans/issue-<N>.md) — is bounced to
-# fleet:needs-plan unless opted out (`[no-plan]` / `human:no-plan` / investigation
-# spike). fleet:plan-review holds ingest until a reviewer vets the posted plan.
+# fleet:needs-plan unless opted out (`[no-plan]` / `human:no-plan` /
+# `fleet:no-plan` / investigation spike). fleet:plan-review holds ingest until a
+# reviewer vets the posted plan.
+#
+# Approval sources: the pending set is scout-built from human:approved AND
+# fleet:agent-approved (the agent-filed follow-up lane, TASK-FILING.md §"Agent-
+# approved follow-up lane") — everything below treats the two identically.
 # human:review-plan (#2011) is a second, human-owned hold: a worker-planned
 # HIGH-STAKES issue waits on the human's approach sign-off before it can queue
 # (kept alongside human:approved, like fleet:needs-human).
@@ -229,7 +234,8 @@ MODEL_RE = re.compile(r'\*\*(?:Suggested\s+)?Model:\*\*\s*(.+?)(?:\n|$)', re.IGN
 # tickets" is where the phrase is defined).
 SPIKE_RE = re.compile(r'investigation\s+spike', re.IGNORECASE)
 # #1932 PR2: the `[no-plan]` opt-out tag — the label-light twin of the
-# human:no-plan label, honored the same way as the investigation-spike phrase.
+# human:no-plan label (and its agent-applied twin fleet:no-plan), honored the
+# same way as the investigation-spike phrase.
 NO_PLAN_RE = re.compile(r'\[no-plan\]', re.IGNORECASE)
 # #1932 PR2: the canonical plan is now a `## Plan` issue comment (no longer a
 # committed/staged plan file). Match a Markdown heading line "## Plan…".
@@ -366,11 +372,15 @@ for issue in pending:
     # Opt-out detection (computed here so the late-opt-out reconcile below and
     # the planning gate further down share one source of truth): an explicit
     # investigation spike, the `[no-plan]` body/title tag, or the human:no-plan
-    # label all mean "skip planning, queue directly".
+    # label — or its agent-applied twin fleet:no-plan (the filer's "bounded
+    # enough to investigate-and-fix in one session" signal, TASK-FILING.md
+    # §"Agent-approved follow-up lane") — all mean "skip planning, queue
+    # directly".
     opted_out = bool(
         SPIKE_RE.search(title) or SPIKE_RE.search(body)
         or NO_PLAN_RE.search(title) or NO_PLAN_RE.search(body)
         or 'human:no-plan' in labels
+        or 'fleet:no-plan' in labels
     )
 
     # Late opt-out reconcile. human:no-plan / [no-plan] / spike means "queue
@@ -394,8 +404,9 @@ for issue in pending:
                   f'failed: {er.stderr.strip()}', file=sys.stderr)
             continue
         labels.discard('fleet:needs-plan')
-        print(f'INFO issue {repo}#{n}: opted out (human:no-plan / [no-plan] / spike) but '
-              f'still carried fleet:needs-plan — stripped it; queuing directly', file=sys.stderr)
+        print(f'INFO issue {repo}#{n}: opted out (human:no-plan / fleet:no-plan / [no-plan] / '
+              f'spike) but still carried fleet:needs-plan — stripped it; queuing directly',
+              file=sys.stderr)
 
     if ('fleet:queued' in labels or 'fleet:scope-shipped' in labels
             or 'fleet:needs-human' in labels or 'fleet:needs-plan' in labels
@@ -438,10 +449,10 @@ for issue in pending:
             f"Planning gate: this issue has no `## Plan` comment (the canonical "
             f"plan per #1932) and no committed/staged plan file "
             f"(`.fleet/plans/issue-{n}.md`), and it is not opted out "
-            f"(`human:no-plan` / `[no-plan]` / investigation spike). Unplanned "
-            f"carve-offs design-block on claim (#1456), so adding "
-            f"`fleet:needs-plan` to route it through PLANNING-PROTOCOL.md before "
-            "it can queue. — fleet-queue-ingest"
+            f"(`human:no-plan` / `fleet:no-plan` / `[no-plan]` / investigation "
+            f"spike). Unplanned carve-offs design-block on claim (#1456), so "
+            f"adding `fleet:needs-plan` to route it through PLANNING-PROTOCOL.md "
+            "before it can queue. — fleet-queue-ingest"
         )
         subprocess.run(
             ['gh', 'issue', 'comment', str(n), '--repo', repo,
@@ -459,7 +470,8 @@ for issue in pending:
             continue
         plan_bounced += 1
         print(f'WARN issue {repo}#{n}: no ## Plan comment, no plan file, and not '
-              f'opted out ([no-plan] / human:no-plan / spike) — bounced to fleet:needs-plan', file=sys.stderr)
+              f'opted out ([no-plan] / human:no-plan / fleet:no-plan / spike) — '
+              f'bounced to fleet:needs-plan', file=sys.stderr)
         continue
 
     # Blocked-by handling (#1527): queue blocked tasks too. A task whose

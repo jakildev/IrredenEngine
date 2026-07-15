@@ -386,12 +386,14 @@ _INGEST_SKIP_LABELS = frozenset({
 # ever ADDS one label — fleet-queue-ingest resets it to fleet:needs-plan.
 _INGEST_OVERRIDE_LABELS = frozenset({"human:revise-plan"})
 
-# Human-gate labels that take an issue out of fleet *planning/dispatch* rotation:
-# human:owned (de-queued), human:wip (human is on it), human:no-plan (queue
-# directly, never plan). A needs-plan or plan-review issue carrying any of these
-# is not worker-actionable, so the worker slice and the review projections drop
-# it rather than waking a no-op iteration on it.
-_HUMAN_GATE_LABELS = frozenset({"human:owned", "human:wip", "human:no-plan"})
+# Gate labels that take an issue out of fleet *planning/dispatch* rotation:
+# human:owned (de-queued), human:wip (human is on it), human:no-plan and its
+# agent-applied twin fleet:no-plan (queue directly, never plan). A needs-plan or
+# plan-review issue carrying any of these is not worker-actionable, so the worker
+# slice and the review projections drop it rather than waking a no-op iteration
+# on it.
+_HUMAN_GATE_LABELS = frozenset({"human:owned", "human:wip", "human:no-plan",
+                                "fleet:no-plan"})
 
 
 def _ingest_skipped(labels):
@@ -470,8 +472,32 @@ def fetch_human_approved(repo):
     # per_page=30 mirrors gh's default --limit (the prior fetch had no explicit
     # limit) so the queue-ingest set stays byte-for-byte the same across the
     # REST cutover.
-    return fetch_issues_by_label(repo, "human:approved", _ALREADY_QUEUED_LABELS,
-                                 with_body=True, per_page=30)
+    #
+    # fleet:agent-approved is approval-EQUIVALENT: an agent-filed follow-up
+    # carrying it enters the same ingest set with no human triage, and the
+    # label stays on the issue as the audit trail (TASK-FILING.md §"Agent-
+    # approved follow-up lane"). REST label filters AND rather than OR, so it
+    # is a second fetch merged in, deduped by number for issues carrying both.
+    # Either fetch failing fails the whole read (None) — a partial set would
+    # flap the ingest projection hash on transient errors.
+    approved = fetch_issues_by_label(repo, "human:approved",
+                                     _ALREADY_QUEUED_LABELS,
+                                     with_body=True, per_page=30)
+    agent_approved = fetch_issues_by_label(repo, "fleet:agent-approved",
+                                           _ALREADY_QUEUED_LABELS,
+                                           with_body=True, per_page=30)
+    if approved is None or agent_approved is None:
+        return None
+    seen = set()
+    merged = []
+    for issue in approved + agent_approved:
+        n = issue.get("number")
+        if n in seen:
+            continue
+        seen.add(n)
+        merged.append(issue)
+    merged.sort(key=lambda issue: issue.get("number", 0))
+    return merged
 
 
 def fetch_closed_fleet_queued(repo, limit=100):

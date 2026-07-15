@@ -50,6 +50,9 @@ PROJ="$HOME/.fleet/state/projections/queue-manager-ingest.json"
 # #746 = `[no-plan]` opt-out tag in title (#1932)  → stamp
 # #747 = human:no-plan opt-out label (#1932)       → stamp
 # #748 = fleet:plan-review (plan not yet vetted)    → early-skip (no stamp/bounce)
+# #749 = fleet:agent-approved + fleet:no-plan (follow-up lane) → stamp
+# #750 = fleet:agent-approved, no plan, no opt-out  → bounce to fleet:needs-plan
+# #751 = fleet:agent-approved + filed plan + fleet:plan-review → early-skip
 cat > "$PROJ" <<'JSON'
 {"pending_issues":[
   {"number":740,"repo":"engine"},
@@ -60,7 +63,10 @@ cat > "$PROJ" <<'JSON'
   {"number":745,"repo":"engine"},
   {"number":746,"repo":"engine"},
   {"number":747,"repo":"engine"},
-  {"number":748,"repo":"engine"}
+  {"number":748,"repo":"engine"},
+  {"number":749,"repo":"engine"},
+  {"number":750,"repo":"engine"},
+  {"number":751,"repo":"engine"}
 ],"unblock_issues":[]}
 JSON
 
@@ -85,6 +91,9 @@ case "$1" in
                     746) echo '{"title":"render: tiny tweak [no-plan]","body":"**Model:** sonnet\n**Blocked by:** (none)","labels":[{"name":"human:approved"}]}' ;;
                     747) echo '{"title":"render: human said skip","body":"**Model:** opus\n**Blocked by:** (none)","labels":[{"name":"human:approved"},{"name":"human:no-plan"}]}' ;;
                     748) echo '{"title":"render: plan under review","body":"**Model:** opus\n**Blocked by:** (none)","labels":[{"name":"human:approved"},{"name":"fleet:plan-review"}]}' ;;
+                    749) echo '{"title":"render: stale baseline follow-up","body":"**Model:** sonnet\n**Blocked by:** (none)","labels":[{"name":"fleet:agent-approved"},{"name":"fleet:no-plan"}]}' ;;
+                    750) echo '{"title":"render: verified defect, fix unknown","body":"**Model:** opus\n**Blocked by:** (none)","labels":[{"name":"fleet:agent-approved"}]}' ;;
+                    751) echo '{"title":"render: follow-up filed with plan","body":"**Model:** sonnet\n**Blocked by:** (none)","labels":[{"name":"fleet:agent-approved"},{"name":"fleet:plan-review"}],"comments":[{"body":"## Plan: filed by the finder\n\nstep one"}]}' ;;
                     *)   echo '{"title":"","body":"","labels":[]}' ;;
                 esac
                 exit 0 ;;
@@ -208,6 +217,33 @@ if [[ -z "$l748" ]]; then
     ok "#748 (fleet:plan-review) early-skipped — no stamp, no bounce"
 else
     bad "#748 plan-review issue was not skipped: '$l748'"
+fi
+
+# --- Agent-approved follow-up lane -------------------------------------------
+# #749 (fleet:agent-approved + fleet:no-plan, no human:approved) → stamped.
+l749=$(edit_line 749)
+if [[ -n "$l749" && "$l749" == *"fleet:queued"* && "$l749" != *"fleet:needs-plan"* ]]; then
+    ok "#749 (agent-approved + fleet:no-plan) stamped without a plan"
+else
+    bad "#749 fleet:no-plan opt-out failed: '$l749'"
+fi
+
+# #750 (fleet:agent-approved, no plan, no opt-out) → planning gate applies
+# identically to the agent lane: bounced to fleet:needs-plan, never queued.
+l750=$(edit_line 750)
+if [[ -n "$l750" && "$l750" == *"fleet:needs-plan"* && "$l750" != *"fleet:queued"* ]]; then
+    ok "#750 (planless agent-approved) bounced to fleet:needs-plan"
+else
+    bad "#750 planless agent-approved mis-handled: '$l750'"
+fi
+
+# #751 (agent-approved, filer-authored plan awaiting vetting) → early-skip,
+# same as the planner-swapped #748 — ingest waits for the plan reviewer.
+l751=$(edit_line 751)
+if [[ -z "$l751" ]]; then
+    ok "#751 (agent-approved + filed plan + plan-review) early-skipped"
+else
+    bad "#751 filed-plan follow-up was not skipped: '$l751'"
 fi
 
 echo

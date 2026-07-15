@@ -18,12 +18,31 @@ set and fails on drift — run it (or wire it into CI) to catch a forgotten edit
 When filing a GitHub issue (`gh issue create`) or PR (`gh pr create`)
 on either repo, **do not pre-apply state labels**. Every fleet label
 has an owner that's allowed to set it; agents filing new artifacts
-are not in that owner set.
+are not in that owner set. The deliberate exceptions — labels whose
+owner IS the filing agent — are `fleet:coding-improvement` and the
+agent-approved follow-up lane's labels (`fleet:agent-approved`,
+`fleet:no-plan`, and `fleet:plan-review` when filed with a plan); each
+is called out inline below.
 
 Specifically, **never pass these via `--label` when filing**:
 
 - `human:approved` — owned by the **human**. The human's "yes, work on
-  this" gate. `fleet-queue-ingest` keys ingestion off it.
+  this" gate. `fleet-queue-ingest` keys ingestion off it (or off its
+  agent-side equivalent, `fleet:agent-approved`, below).
+- `fleet:agent-approved` — owned by the **author agent**, applied **at
+  filing** on a follow-up issue that qualifies for the agent-approved
+  follow-up lane ([`TASK-FILING.md § Agent-approved follow-up
+  lane`](TASK-FILING.md)). Approval-**equivalent** to `human:approved`:
+  the scout fetches both into the same ingest set and everything
+  downstream treats them identically. A deliberate **exception** to the
+  "file with no state labels" rule — it is the lane's entry ticket and
+  its audit trail: it is never removed, so
+  `gh issue list --label fleet:agent-approved` always shows what entered
+  the queue without human triage. The human's veto is ordinary label
+  mechanics: close the issue, or park it with any hold the ingest
+  respects (`human:owned`, `fleet:needs-human`). Never apply it to
+  someone else's issue, to `fleet:coding-improvement` tickets (human-cued
+  by design), to epics, or to work whose fix surface is gated self-config.
 - `fleet:epic` — owned by the **human**. Marks an issue as a parent
   that bundles multiple child issues, listed as a markdown task list
   `- [ ] #N` under a `## Children` heading in the body. The ingest
@@ -66,9 +85,9 @@ Specifically, **never pass these via `--label` when filing**:
   files a tracking issue proposing where to add or better-surface the rule
   (style guide, `.claude/rules/cpp-*.md`, a `simplify` check, the `review-pr`
   checklist, worker direction) so the same class of mistake is caught at
-  authoring time. This is the only label the filer applies — a deliberate
-  **exception** to the "file issues with no labels" rule below: it's a
-  *classification* tag, not a queue/verdict signal. The worker does **not**
+  authoring time. A deliberate **exception** to the "file issues with no
+  labels" rule below (like the agent-approved follow-up lane's labels):
+  it's a *classification* tag, not a queue/verdict signal. The worker does **not**
   add `human:approved` or `fleet:queued`, so the ticket stays out of the
   pickup queue until the human triages it (most targets are gated self-config
   the fleet can't auto-edit anyway). The skill dedups first — if an open
@@ -78,19 +97,19 @@ Specifically, **never pass these via `--label` when filing**:
   which triages each ticket with the human and bundles the accepted
   convention changes into one PR per run.
 - `fleet:queued` / `fleet:task` — owned by **`fleet-queue-ingest`**,
-  set after `human:approved` has been observed. Adding it at filing
-  time excludes the issue from the ingest search (which looks for
-  `human:approved -label:fleet:queued`) and strands it. Let the
-  scout/ingest path apply these.
+  set after `human:approved` (or `fleet:agent-approved`) has been
+  observed. Adding it at filing time excludes the issue from the ingest
+  search (which looks for approved-but-not-yet-queued) and strands it.
+  Let the scout/ingest path apply these.
 - `fleet:needs-info` — owned by **`fleet-queue-ingest`** as a triage state.
   Set alongside `fleet:queued` when an issue lacks enough context for any
   worker to start. Workers skip issues carrying this label; the human adds
   the missing detail and removes it to re-enter normal pickup flow.
   Don't add manually.
 - `fleet:needs-plan` — owned by **`fleet-queue-ingest`** as a triage state.
-  Set (in place of `fleet:queued`) when an `human:approved` issue has no
-  `## Plan` comment and is not opted out — the issue must be planned before it
-  can queue. A planner — a **dispatcher-assigned** worker iteration
+  Set (in place of `fleet:queued`) when an approved (`human:approved` or
+  `fleet:agent-approved`) issue has no `## Plan` comment and is not opted
+  out — the issue must be planned before it can queue. A planner — a **dispatcher-assigned** worker iteration
   (`FLEET_PLAN_ISSUE`, pre-claimed via `fleet:planning-*`, #2197) or the
   opus-architect on request, via
   [`PLANNING-PROTOCOL.md`](PLANNING-PROTOCOL.md) / the `file-epic` skill —
@@ -111,7 +130,13 @@ Specifically, **never pass these via `--label` when filing**:
   flips out→in, the scout fires ingest, and it queues on the next pass); not
   sound → swap back to
   `fleet:needs-plan` with a comment naming the gaps. Distinct from the code
-  review the implementation PR later gets. Don't add at filing.
+  review the implementation PR later gets. Don't add at filing — with one
+  exception: an **agent-approved follow-up filed with a plan**
+  ([`TASK-FILING.md § Agent-approved follow-up lane`](TASK-FILING.md))
+  applies it at filing alongside the filer's `## Plan` comment, so the
+  filer-authored plan is vetted by the same reviewer pass before the issue
+  can queue (the label-lifecycle equivalent of the planner's step-3 swap;
+  ingest needs no new state to distinguish "not yet vetted" from "vetted").
 - `human:review-plan` — owned by the **human** as a release gate; **set by an
   opus+ planner** (worker or architect) when a worker-planned issue is
   **high-stakes** (#2011). Added alongside `fleet:plan-review` in the same edit
@@ -147,9 +172,17 @@ Specifically, **never pass these via `--label` when filing**:
   worker opens a code-only PR with no `.fleet/plans/` file. The literal
   `[no-plan]` title/body token is honored the same way (and so is the existing
   `investigation spike` phrase). `human:*`-prefixed by convention (a human
-  signal, like `human:approved`); a fleet agent never applies it. The default
-  for an unplanned `human:approved` issue is still a bounce to
-  `fleet:needs-plan`.
+  signal, like `human:approved`); a fleet agent applies `fleet:no-plan`
+  (below) instead. The default for an unplanned approved issue is still a
+  bounce to `fleet:needs-plan`.
+- `fleet:no-plan` — owned by the **author agent**, the agent-applied twin of
+  `human:no-plan`, applied **at filing** (alongside `fleet:agent-approved`)
+  when the filer judges the fix bounded enough for a worker to
+  investigate-and-fix in **one session**: single module, no design choice to
+  make, acceptance criteria runnable. Honored by `fleet-queue-ingest`'s
+  planning gate and the scout's planning-rotation skips exactly like
+  `human:no-plan`. If the fix needs more than that, the filer posts a
+  `## Plan` comment + `fleet:plan-review` instead — never both.
 - `fleet:fable` / `fleet:opus` / `fleet:sonnet` — owned by
   **`fleet-queue-ingest`** as a model-class tag, parsed from the issue's
   `**Model:**` field. Classes are literal (fable is opt-in for the

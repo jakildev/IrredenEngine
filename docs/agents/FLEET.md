@@ -133,9 +133,12 @@ coordination mechanisms prevent duplicate work:
   other. Today's topology (mac + WSL2 + native-Windows) is collision-free.
 
 **Ingestion (cross-host race prevention):**
-- The scout fires `fleet-queue-ingest` when new `human:approved` issues
-  appear. Two hosts' scouts may fire simultaneously from the same
-  projection snapshot.
+- The scout fires `fleet-queue-ingest` when new approved issues appear —
+  `human:approved`, or its agent-side equivalent `fleet:agent-approved`
+  (the follow-up lane, [`TASK-FILING.md § Agent-approved follow-up
+  lane`](TASK-FILING.md)); the two are treated identically from here on.
+  Two hosts' scouts may fire simultaneously from the same projection
+  snapshot.
 - `fleet-queue-ingest` is pure label-stamping — no LLM, no repo edits.
   It holds a per-host lockfile and performs a live GitHub label
   re-check immediately before each `gh issue edit` so two hosts that
@@ -159,15 +162,21 @@ coordination mechanisms prevent duplicate work:
 - **Planning gate:** ingest only queues an issue once it has a plan — a
   `## Plan` issue comment (posted by an opus+ planner via
   [`PLANNING-PROTOCOL.md`](PLANNING-PROTOCOL.md)) — or an explicit opt-out
-  (`human:no-plan`, a `[no-plan]` tag, or an "investigation spike"). Two paths
-  reach the queue:
+  (`human:no-plan`, its agent-applied twin `fleet:no-plan`, a `[no-plan]`
+  tag, or an "investigation spike"). Three paths reach the queue:
   - **Architect files *with* a plan → queues directly.** When the architect
     planned a task with the human, they post the `## Plan` comment at file time
     (per [`TASK-FILING.md § File with a plan`](TASK-FILING.md)); the gate's
     `## Plan`-comment check is satisfied, so it skips `fleet:needs-plan` and
     queues with no worker re-plan and no return trip to the human (#2011).
+  - **Agent-approved follow-up → queues with no human triage.** A fleet role
+    that verified a defect files it with `fleet:agent-approved` plus either
+    `fleet:no-plan` (bounded one-session fix; queues directly) or a filer-
+    authored `## Plan` comment + `fleet:plan-review` (the plan reviewer vets
+    it before queue). Eligibility bar and mechanics:
+    [`TASK-FILING.md § Agent-approved follow-up lane`](TASK-FILING.md).
   - **Planless filing → worker plans (the fallback).** An unplanned
-    `human:approved` issue is bounced to `fleet:needs-plan`; an opus+ worker
+    approved issue is bounced to `fleet:needs-plan`; an opus+ worker
     plans it and swaps to `fleet:plan-review` (agent vetting), and ingest skips
     it while that label is present. For a **high-stakes** worker-planned issue
     (ambiguous / cross-cutting / expensive / public-contract — see

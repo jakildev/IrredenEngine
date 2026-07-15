@@ -23,9 +23,12 @@ gh issue create --repo jakildev/IrredenEngine --title "<short title>" --body "<b
 Do NOT pre-apply `fleet:task`, `fleet:queued`, `fleet:needs-plan`,
 `fleet:opus` / `fleet:sonnet`, or any other state label. State labels
 are owned by specific roles (reviewers, the human) and by the scout's
-triage flow. **Author-side filing adds zero labels** and lets the human
-stamp `human:approved` when they want it picked up; the scout ingests it
-on its next pass and stamps the rest.
+triage flow. **Author-side filing adds zero state labels** and lets the
+human stamp `human:approved` when they want it picked up; the scout
+ingests it on its next pass and stamps the rest. The exception is the
+**agent-approved follow-up lane** below, whose labels
+(`fleet:agent-approved`, `fleet:no-plan`, `fleet:plan-review`-with-a-plan)
+are deliberately filer-owned — use it when the follow-up qualifies.
 
 The body should include these standalone lines (the scout's queue-ingest
 and `fleet-claim`'s blocker gate parse them):
@@ -75,6 +78,68 @@ worker holds it on `human:review-plan` for your approach sign-off — see
 [`PLANNING-PROTOCOL.md § The flow`](PLANNING-PROTOCOL.md) step 3); trivial →
 `human:no-plan`.
 
+### Agent-approved follow-up lane (no human triage)
+
+When a fleet role files a **follow-up for defect-shaped work it verified
+itself** — a crash it reproduced, a stale reference it confirmed, a parity
+gap it measured, dead code it traced — the issue can enter the queue
+**without waiting for `human:approved`**. The human's trust here is
+standing, not per-issue; their touchpoints move to PR merge time and the
+audit trail (`gh issue list --label fleet:agent-approved`).
+
+**Eligibility.** All of these must hold, or the issue files unlabeled for
+human triage as before:
+
+- **You verified the finding this session** — a repro you ran, output you
+  observed, a source read you performed. A hunch, a "probably", or a
+  feature idea is not eligible; those are the human's to shape.
+- **The work is defect-shaped**: fixing something that is wrong, stale,
+  missing, or drifting. New capabilities, public-API additions, and
+  design-direction changes are not.
+- **It is not one of the routed-elsewhere classes**: coding-improvement
+  observations (`fleet:coding-improvement`, human-cued by design),
+  architectural questions (`fleet:design-blocked` on the PR),
+  multi-issue stacks (`file-epic`, human-approved children), or work
+  whose fix surface is gated self-config (role docs, skills — the fleet
+  can't edit those anyway).
+- **You searched for an existing open issue first** and found none
+  covering the same defect (comment the new occurrence there instead of
+  filing a duplicate).
+
+**Mechanics.** File with the standard body (Area / Model / Blocked by /
+Acceptance criteria / Context, with fix-forward-grade forensics: repro
+command, observed output, suspected window, what was ruled out), plus
+`--label "fleet:agent-approved"`, plus exactly one of three plan shapes:
+
+1. **Bounded one-session fix** → also add `--label "fleet:no-plan"` (the
+   agent-applied twin of `human:no-plan`). Bar: single module, no design
+   choice to make, acceptance criteria runnable — a worker can
+   investigate and fix it in one session. Ingest queues it directly;
+   the worker opens a code-only PR. This is the expected default for
+   most follow-ups.
+2. **You know the fix and it has structure** → post a `## Plan` comment
+   (per [`PLANNING-PROTOCOL.md § The flow`](PLANNING-PROTOCOL.md) step 2)
+   at file time AND add `--label "fleet:plan-review"`. You already have
+   the root cause in context — write it down instead of making a planner
+   re-derive it. The plan reviewer vets your plan like any other
+   (sound → clears the label, queues; unsound → bounces to
+   `fleet:needs-plan`). Apply the step-3 high-stakes checklist yourself:
+   if any item trips, also add `human:review-plan` — that human approach
+   gate is the one pre-merge human touch this lane keeps.
+3. **You verified the defect but not the fix** → add neither. Ingest
+   bounces it to `fleet:needs-plan` and the autonomous planning lane
+   takes it from there.
+
+`fleet:agent-approved` is **never removed** — it is the permanent record
+that the issue entered the queue on agent judgment. The human's veto is
+ordinary label mechanics: close the issue, or park it (`human:owned`,
+`fleet:needs-human`).
+
+The fix-forward hierarchy is unchanged: same-PR and immediate-sibling-PR
+remain the preferred vehicles (FLEET.md §"Fix-forward"). This lane makes
+the *exception* case — "file an issue" — stop dying in the triage
+backlog; it does not make filing issues the default again.
+
 ### Escalation issues (scope-grew)
 
 When a worker hits a non-architectural blocker (scope grew, structural
@@ -94,7 +159,10 @@ Context: ..."
 ```
 
 Then comment on your PR linking the filed issue, release the claim,
-reset, and move on. The human triages and stamps `human:approved`.
+reset, and move on. When the escalation meets the agent-approved lane's
+eligibility bar (you verified the blocker yourself and the residual work
+is defect-shaped), file it through that lane so it re-queues without
+human triage; otherwise the human triages and stamps `human:approved`.
 
 > A task that is merely **subtler than its class** (not bigger) does
 > NOT get a fresh issue — re-tag the same issue one class up

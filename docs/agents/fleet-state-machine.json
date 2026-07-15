@@ -42,7 +42,13 @@
       "name": "fleet:queued",
       "scope": "issue",
       "color": "c5def5",
-      "description": "Queued for fleet pickup (requires human:approved)"
+      "description": "Queued for fleet pickup (requires human:approved or fleet:agent-approved)"
+    },
+    {
+      "name": "fleet:agent-approved",
+      "scope": "issue",
+      "color": "0e8a16",
+      "description": "Agent-applied at filing on a follow-up issue; approval-equivalent to human:approved — the scout ingests it with no human triage. Never removed: it stays on the issue as the audit trail of work that entered the queue without human eyes. TASK-FILING.md §Agent-approved follow-up lane"
     },
     {
       "name": "fleet:fable",
@@ -79,6 +85,12 @@
       "scope": "issue",
       "color": "fbca04",
       "description": "Needs a plan (## Plan issue comment) before a worker can pick it up"
+    },
+    {
+      "name": "fleet:no-plan",
+      "scope": "issue",
+      "color": "1d76db",
+      "description": "Agent opt-out at filing: the filer judges the fix bounded enough to investigate-and-fix in one worker session — skip planning, queue directly with no ## Plan comment. Twin of human:no-plan; honored identically by ingest's planning gate and the scout's planning-rotation skips"
     },
     {
       "name": "fleet:plan-review",
@@ -300,7 +312,7 @@
       "name": "human:no-plan",
       "scope": "issue",
       "color": "5319e7",
-      "description": "Human opt-out at filing: skip planning, queue directly with no ## Plan comment / plan file. Also honored as a [no-plan] title/body tag; a fleet agent never applies it"
+      "description": "Human opt-out at filing: skip planning, queue directly with no ## Plan comment / plan file. Also honored as a [no-plan] title/body tag; a fleet agent applies fleet:no-plan instead"
     },
     {
       "name": "human:review-plan",
