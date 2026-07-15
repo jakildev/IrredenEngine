@@ -385,18 +385,11 @@ class SystemManager {
     //                     counter — the events advance at different rates
     //                     (RENDER is uncapped, UPDATE is fixed-step), so
     //                     mixing clocks seeds `lastRun` far ahead of `now`.
-    //   m_cadenceJoined   whether `m_cadenceEvent` holds a real join (true)
-    //                     or is still the inert placeholder from
-    //                     emplaceCadenceState (false) — lets stampCadenceJoin
-    //                     tell "never joined" apart from "joined to UPDATE",
-    //                     so it can assert against a system still listed in
-    //                     a different event's pipeline when re-joined.
     std::vector<std::uint32_t> m_cadence;
     std::vector<std::uint32_t> m_cadenceOffset;
     std::vector<std::uint64_t> m_lastRunTick;
     std::vector<std::uint64_t> m_accumulatedTicks;
     std::vector<IRTime::Events> m_cadenceEvent;
-    std::vector<bool> m_cadenceJoined;
 
     // #2404: SystemManager-owned per-event execution counter, bumped once
     // at the top of executePipeline so every cadence gate in a pass sees
@@ -428,6 +421,13 @@ class SystemManager {
     // m_cadenceEvent so a later runtime re-phase (setSystemCadenceOffset)
     // binds to the same clock.
     void stampCadenceJoin(IRTime::Events event, SystemId system);
+
+    // #2404: true if `system` is still listed in `priorEvent`'s pipeline
+    // groups. Pure lookup (no side effects), so it's safe to call from an
+    // IR_ASSERT condition — used by stampCadenceJoin to guard against a
+    // system live in two event pipelines at once, which would thrash its
+    // cadence clock between two counters that advance at different rates.
+    bool isStillLiveInPriorPipeline(IRTime::Events priorEvent, SystemId system) const;
 
     // Begin tick functions happen once per system before tick function(s)
     template <typename FunctionBeginTick>

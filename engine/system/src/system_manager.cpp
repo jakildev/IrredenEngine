@@ -122,7 +122,6 @@ void SystemManager::emplaceCadenceState(std::uint32_t cadence, std::uint32_t off
     // event; a system never listed in any pipeline is unreachable by
     // executePipeline, so the placeholder is inert.
     m_cadenceEvent.emplace_back(IRTime::UPDATE);
-    m_cadenceJoined.emplace_back(false);
 }
 
 bool SystemManager::pollCadenceDue(SystemId system, std::uint64_t now) {
@@ -146,20 +145,28 @@ bool SystemManager::pollCadenceDue(SystemId system, std::uint64_t now) {
     return true;
 }
 
+bool SystemManager::isStillLiveInPriorPipeline(IRTime::Events priorEvent, SystemId system) const {
+    const auto it = m_systemPipelineGroups.find(priorEvent);
+    return it != m_systemPipelineGroups.end() && pipelineGroupsContain(it->second, system);
+}
+
 void SystemManager::stampCadenceJoin(IRTime::Events event, SystemId system) {
     if (system >= m_lastRunTick.size()) {
         return;
     }
-    if (m_cadenceJoined[system] && m_cadenceEvent[system] != event) {
+    if (m_cadenceEvent[system] != event) {
         // Re-joining to a different event is fine on its own (e.g. a scene
         // transition re-purposes the SystemId after clearing its old
-        // pipeline) — only assert if the system is STILL listed in the old
-        // event's pipeline, i.e. it would be live in two pipelines at once
-        // and thrash m_lastRunTick between two counters that advance at
-        // different rates (the same clock-mixing bug amendment 2 fixed).
-        const auto it = m_systemPipelineGroups.find(m_cadenceEvent[system]);
+        // pipeline, or this is the system's first-ever join to an event
+        // other than the inert UPDATE placeholder) — only assert if the
+        // system is STILL listed in the old event's pipeline, i.e. it would
+        // be live in two pipelines at once and thrash m_lastRunTick between
+        // two counters that advance at different rates (the same
+        // clock-mixing bug amendment 2 fixed). A never-joined system isn't
+        // listed in any pipeline yet, so isStillLiveInPriorPipeline is false
+        // and this never false-fires on a genuine first join.
         IR_ASSERT(
-            it == m_systemPipelineGroups.end() || !pipelineGroupsContain(it->second, system),
+            !isStillLiveInPriorPipeline(m_cadenceEvent[system], system),
             "stampCadenceJoin: system '{}' is still registered in its prior event's pipeline "
             "and is now being joined to a different event — listing the same system in two "
             "pipelines simultaneously thrashes its cadence clock between two counters that "
@@ -167,7 +174,6 @@ void SystemManager::stampCadenceJoin(IRTime::Events event, SystemId system) {
             getSystemName(system)
         );
     }
-    m_cadenceJoined[system] = true;
     m_cadenceEvent[system] = event; // bind the runtime re-phase clock to this event.
     const std::uint64_t now = m_eventTickCounts[event];
     const std::uint32_t offset = system < m_cadenceOffset.size() ? m_cadenceOffset[system] : 0u;
