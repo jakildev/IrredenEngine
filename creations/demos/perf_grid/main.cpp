@@ -88,6 +88,14 @@ enum class PerfGridMode {
     // function of active-voxel count while pool-occupancy stays constant.
     DenseSet,
     HollowSet,
+    // Rotated-solidity validation gallery: a static scene of ISOLATED
+    // multi-voxel entities (varied dimensions + an L-shape), one row at
+    // integer positions and one at fractional offsets, plus minimal
+    // touching / staircase-contact pairs. Nothing stacks, so every face
+    // misdraw under yaw is attributable to a single entity or a single
+    // two-entity contact — the reduction harness for the per-axis
+    // face-alignment class (#2411).
+    Gallery,
 };
 
 // Wave motion shape for the per-entity modes (voxel_set / sdf).
@@ -187,6 +195,20 @@ constexpr IRVideo::AutoScreenshotShot kShots[] = {
     // wrong rate breaks this pairing.
     {4.0f, vec2(16, 8), 0.0f, "zoom4_pan"},
     {4.0f, vec2(16, 8), 0.35f, "zoom4_rot_pan"},
+};
+
+// Gallery-mode shots (#2411 reduction harness): the same scene swept from
+// cardinal through mid-quadrant residual yaws, plus a close-up on the contact
+// pairs at screen center. Ordered by increasing yaw so consecutive shots stay
+// a small lighting-convergence step apart (mirrors the yaw-ramp ordering).
+constexpr IRVideo::AutoScreenshotShot kGalleryShots[] = {
+    {4.0f, vec2(0, 0), 0.0f, "gal_yaw000"},
+    {4.0f, vec2(0, 0), 0.35f, "gal_yaw020"},
+    {4.0f, vec2(0, 0), 0.7f, "gal_yaw040"},
+    {4.0f, vec2(0, 0), 1.2217f, "gal_yaw070"},
+    {4.0f, vec2(0, 0), IRMath::kHalfPi, "gal_yaw090"},
+    {8.0f, vec2(0, 0), 0.35f, "gal_pairs_zoom8_yaw020"},
+    {8.0f, vec2(0, 0), 0.7f, "gal_pairs_zoom8_yaw040"},
 };
 
 // --yaw-ramp harness: the rotated-solidity validation set (#1882 / #1883).
@@ -439,6 +461,9 @@ PerfGridMode parseMode(const std::string &value) {
     if (value == "hollow_set" || value == "hollow") {
         return PerfGridMode::HollowSet;
     }
+    if (value == "gallery") {
+        return PerfGridMode::Gallery;
+    }
     IR_LOG_WARN("Unknown perf_grid mode '{}'; using voxel_set", value);
     return PerfGridMode::VoxelSet;
 }
@@ -453,6 +478,8 @@ const char *modeName(PerfGridMode mode) {
         return "dense_set";
     case PerfGridMode::HollowSet:
         return "hollow_set";
+    case PerfGridMode::Gallery:
+        return "gallery";
     }
     return "voxel_set";
 }
@@ -608,7 +635,11 @@ void registerCliArgs() {
         "attaching C_PeriodicIdle; makes voxel_set/sdf wave content static and "
         "deterministic (#2332)"
     );
-    args.string("--mode", "Scene mode: voxel_set | sdf | dense_set | hollow_set", "voxel_set");
+    args.string(
+        "--mode",
+        "Scene mode: voxel_set | sdf | dense_set | hollow_set | gallery",
+        "voxel_set"
+    );
     args.integer("--grid-size", "Grid edge in cells", 64);
     args.number("--zoom", "Initial camera zoom", 0.5f);
     args.number("--yaw", "Initial camera Z-yaw in radians", 0.0f);
@@ -832,7 +863,87 @@ vec3 positionForCell(int x, int y, int z) {
     return (vec3(x, y, z) - vec3(center)) * g_settings.spacing_;
 }
 
+// Gallery mode (#2411 reduction harness). Static, no wave, no idle. Every
+// entity is far enough from its neighbors that silhouettes never overlap on
+// screen at the gallery shot zooms, so a broken cube is readable in isolation.
+void createGalleryEntities() {
+    struct GalleryShape {
+        const char *label_;
+        ivec3 size_;
+        bool carveL_; // deactivate the (+x,+y) quadrant → L cross-section
+    };
+    constexpr GalleryShape kShapes[] = {
+        {"cube1", ivec3(1, 1, 1), false},
+        {"cube2", ivec3(2, 2, 2), false},
+        {"cube3", ivec3(3, 3, 3), false},
+        {"cube4", ivec3(4, 4, 4), false},
+        {"slab", ivec3(6, 3, 2), false},
+        {"tower", ivec3(1, 1, 5), false},
+        {"plate", ivec3(5, 5, 1), false},
+        {"lshape", ivec3(4, 4, 4), true},
+    };
+    constexpr Color kPalette[] = {
+        Color{235, 120, 100, 255},
+        Color{90, 200, 190, 255},
+        Color{235, 200, 90, 255},
+        Color{170, 120, 235, 255},
+        Color{120, 220, 120, 255},
+        Color{110, 150, 240, 255},
+        Color{240, 150, 190, 255},
+        Color{150, 230, 200, 255},
+    };
+    constexpr int kShapeCount = static_cast<int>(sizeof(kShapes) / sizeof(kShapes[0]));
+    constexpr int kStride = 9; // ≥ max shape edge (6) + clear air
+
+    auto spawnShape = [&](const GalleryShape &shape, vec3 pos, Color color) {
+        EntityId entity = IREntity::createEntity(
+            C_LocalTransform{pos},
+            C_VoxelSetNew{shape.size_, color, false},
+            C_Modifiers{}
+        );
+        if (shape.carveL_) {
+            auto setOpt = IREntity::getComponentOptional<C_VoxelSetNew>(entity);
+            if (setOpt.has_value()) {
+                setOpt.value()->carve([](vec3 localPos) {
+                    return localPos.x >= 2.0f && localPos.y >= 2.0f;
+                });
+            }
+        }
+        return entity;
+    };
+
+    // Row A — isolated shapes at INTEGER world positions, spread along the
+    // screen-right iso axis (world (1,-1,0)).
+    // Row B — the same shapes at FRACTIONAL offsets (the mid-wave regime a
+    // gliding entity passes through), isolated the same way.
+    for (int i = 0; i < kShapeCount; ++i) {
+        // Integer spread: row A must sit at EXACT integer world positions so
+        // the two rows isolate the position-fraction variable cleanly.
+        const float d = static_cast<float>((i - kShapeCount / 2) * kStride);
+        const Color color = kPalette[i];
+        spawnShape(kShapes[i], vec3(d - 9.0f, -d - 9.0f, 0.0f), color);
+        spawnShape(kShapes[i], vec3(d + 9.0f + 0.37f, -d + 9.0f + 0.13f, 0.5f), color);
+    }
+
+    // Contact pairs at screen center — the minimal cross-entity cases the
+    // rows deliberately exclude. No occupancy stamping: the shared faces
+    // stay marked exposed, exactly like the moving per-cell grid.
+    const Color pairColorA{230, 230, 230, 255};
+    const Color pairColorB{140, 140, 220, 255};
+    // Face-to-face contact along x.
+    spawnShape({"pairA0", ivec3(2, 2, 2), false}, vec3(-5.0f, 0.0f, 0.0f), pairColorA);
+    spawnShape({"pairA1", ivec3(2, 2, 2), false}, vec3(-3.0f, 0.0f, 0.0f), pairColorB);
+    // Staircase contact: half-cell vertical offset across the shared face.
+    spawnShape({"pairB0", ivec3(2, 2, 2), false}, vec3(3.0f, -3.0f, 0.0f), pairColorA);
+    spawnShape({"pairB1", ivec3(2, 2, 2), false}, vec3(5.0f, -3.0f, -0.5f), pairColorB);
+}
+
 void createGridEntities() {
+    if (g_settings.mode_ == PerfGridMode::Gallery) {
+        IR_LOG_INFO("Creating perf_grid gallery scene (rotated-solidity validation, #2411)");
+        createGalleryEntities();
+        return;
+    }
     const int n = g_settings.gridSize_;
     const int expectedEntities = n * n * n;
     IR_LOG_INFO(
@@ -1274,6 +1385,12 @@ void initSystems() {
             cfg.settleFrames_ = 16;
             // Measure each pose's actual render path at the settled frame.
             cfg.onCaptureFrame_ = &logRampPose;
+        } else if (g_settings.mode_ == PerfGridMode::Gallery) {
+            cfg.shots_ = kGalleryShots;
+            cfg.numShots_ = sizeof(kGalleryShots) / sizeof(kGalleryShots[0]);
+            // Same rationale as the yaw ramp: consecutive shots step yaw, so
+            // give the iterative lighting time to converge before capture.
+            cfg.settleFrames_ = 12;
         } else {
             cfg.shots_ = kShots;
             cfg.numShots_ = sizeof(kShots) / sizeof(kShots[0]);
