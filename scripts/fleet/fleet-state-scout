@@ -1677,6 +1677,19 @@ def _semantic_conflict_claimable(pr, labels, head_labels):
         return False
     if labels & SEMANTIC_CONFLICT_EXCLUDE_LABELS:
         return False
+    # A PR that also owes worker feedback/design-resume work
+    # (fleet:needs-fix / fleet:has-nits / fleet:design-unblocked — plus
+    # human:needs-fix/blocker, already in SEMANTIC_CONFLICT_EXCLUDE_LABELS)
+    # is routed to the feedback lane. That lane's fleet:amending-* claim
+    # namespace is disjoint from this lane's fleet:resolving-*, so minting an
+    # opus conflict item in parallel lets a (sonnet) feedback pane and an opus
+    # resolver pane force-push the SAME head branch on one tick — a
+    # last-writer-wins race that silently drops the conflict resolution or the
+    # feedback fix. Feedback comes first (this PR's own stated priority), so a
+    # conflicted PR generates no conflict-resolution pressure until the
+    # feedback/design-resume label clears. Mirror in role-worker.md step 1c.
+    if labels & _WORKER_RELEVANT_LABELS:
+        return False
     # An active fleet:resolving-<host>-<agent> claim means a worker is
     # already mid-resolution — covered, not claimable. Stale claims are
     # swept by `fleet-claim cleanup --gh`, so this can't strand a PR.

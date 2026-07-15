@@ -318,14 +318,29 @@ class SemanticConflictDispatch(unittest.TestCase):
         child = _sc_pr(2418, head="claude/child-feat", base="claude/base-feat")
         self.assertEqual([i["pr"] for i in self._items([base, child])], [2418])
 
-    def test_feedback_and_conflict_are_distinct_items(self):
-        # A PR can owe both a feedback fix and a conflict resolution; each is
-        # its own projection item (kinds "pr" and "semantic_conflict"), so
-        # clearing one edge still flips the hash for the other.
-        prs = [_sc_pr(2417, labels=["fleet:semantic-conflict",
-                                    "fleet:has-nits"])]
-        kinds = sorted(i["kind"] for i in project_worker(_state(prs)))
-        self.assertEqual(kinds, ["pr", "semantic_conflict"])
+    def test_feedback_label_suppresses_conflict_pressure(self):
+        # A conflicted PR that ALSO owes worker feedback/design-resume work
+        # routes to the feedback lane ONLY — it must NOT also mint a
+        # semantic_conflict item. The two lanes hold disjoint claim
+        # namespaces (fleet:amending-* for the feedback fix vs
+        # fleet:resolving-* for the rebase), so surfacing both lets a
+        # (sonnet) nit-fix pane and an opus resolver pane force-push the same
+        # head branch on one tick — a last-writer-wins race that silently
+        # drops the conflict resolution or the feedback fix. Feedback comes
+        # first (the PR's own stated priority); conflict pressure holds until
+        # the feedback/design-resume label clears.
+        for label in ("fleet:needs-fix", "fleet:has-nits",
+                      "fleet:design-unblocked"):
+            prs = [_sc_pr(2417, labels=["fleet:semantic-conflict", label])]
+            # No semantic_conflict projection item or slice entry ...
+            self.assertEqual(self._items(prs), [], label)
+            self.assertEqual(self._slice(prs), [], label)
+            # ... but the PR still surfaces in the feedback lane, so the fix
+            # itself is not lost — only the parallel conflict dispatch is.
+            kinds = sorted(i["kind"] for i in project_worker(_state(prs)))
+            self.assertEqual(kinds, ["pr"], label)
+            feedback = slice_worker(_state(prs))["feedback_prs"]
+            self.assertEqual([p["number"] for p in feedback], [2417], label)
 
 
 class SliceWorkerSkipLabelsDropPR(unittest.TestCase):

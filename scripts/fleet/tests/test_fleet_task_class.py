@@ -38,6 +38,8 @@ that matter:
   - an empty/unroutable slice falls through to the lane default (covers
     reservation resumes and missing slices).
 """
+import importlib.machinery
+import importlib.util
 import os
 import sys
 import unittest
@@ -45,6 +47,18 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from fleet_task_class import feedback_pr_class, plan_pick, resolve  # noqa: E402
+
+# The scout's slice_worker is the pre-filter that feeds resolve(). Loaded here
+# (not only in test_worker_projection.py) to assert the cross-module contract:
+# a fleet:semantic-conflict PR that ALSO carries a worker feedback label is
+# dropped from semantic_conflict_prs[] so it reaches resolve() as feedback-only.
+_SCOUT = Path(__file__).parent.parent / "fleet-state-scout"
+_scout_loader = importlib.machinery.SourceFileLoader(
+    "fleet_state_scout", str(_SCOUT))
+_scout_spec = importlib.util.spec_from_loader("fleet_state_scout", _scout_loader)
+_scout_mod = importlib.util.module_from_spec(_scout_spec)
+_scout_loader.exec_module(_scout_mod)
+slice_worker = _scout_mod.slice_worker
 
 
 def _task(issue, model=None, effort=None, owner="free", blocked=False,
@@ -565,6 +579,44 @@ class PlanPick(unittest.TestCase):
 
     def test_empty_slice_yields_no_picks(self):
         self.assertEqual(plan_pick({}, "fable", False), [])
+
+
+class SemanticConflictFeedbackExclusionIntegration(unittest.TestCase):
+    """End-to-end (slice_worker -> resolve): a fleet:semantic-conflict PR that
+    ALSO owes a worker feedback fix must reach resolve() as feedback-only. The
+    scout drops it from semantic_conflict_prs[], so no parallel opus conflict
+    item is minted alongside the feedback item. Without this, a feedback pane
+    and an opus resolver pane can force-push the same head branch on one tick
+    (disjoint fleet:amending-* vs fleet:resolving-* claims give no mutual
+    exclusion), silently dropping the conflict resolution or the fix."""
+
+    @staticmethod
+    def _state(pr):
+        return {"repos": {"engine": {
+            "prs": [pr], "tasks": {"open": []}, "needs_plan": []}}}
+
+    @staticmethod
+    def _pr(labels, mergeable):
+        return {"number": 2422, "title": "T: feat",
+                "headRefName": "claude/feat", "baseRefName": "master",
+                "labels": sorted(labels), "isDraft": False,
+                "mergeable": mergeable, "author": "bot"}
+
+    def test_conflict_plus_feedback_dispatches_feedback_only(self):
+        # Every worker feedback / design-resume label suppresses the parallel
+        # conflict item, regardless of which class the feedback itself routes
+        # to (nits -> sonnet, needs-fix / design-unblocked -> opus). Assert the
+        # dispatch is identical to the same PR with no conflict label at all —
+        # the conflict adds zero pressure while the feedback is pending.
+        for label in ("fleet:has-nits", "fleet:needs-fix",
+                      "fleet:design-unblocked"):
+            combined = slice_worker(self._state(self._pr(
+                ["fleet:semantic-conflict", label], "CONFLICTING")))
+            self.assertEqual(combined["semantic_conflict_prs"], [], label)
+            self.assertEqual(len(combined["feedback_prs"]), 1, label)
+            plain = slice_worker(self._state(self._pr([label], "MERGEABLE")))
+            self.assertEqual(resolve(combined, "sonnet", False),
+                             resolve(plain, "sonnet", False), label)
 
 
 if __name__ == "__main__":
