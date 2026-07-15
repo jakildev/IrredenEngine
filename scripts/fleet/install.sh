@@ -165,6 +165,8 @@ FLEET_CLONE_FRESHNESS_SRC="$SCRIPT_DIR/fleet-clone-freshness.sh"
 FLEET_CLONE_FRESHNESS_DEST="$HOME/bin/fleet-clone-freshness.sh"
 FLEET_NET_SRC="$SCRIPT_DIR/fleet-net.sh"
 FLEET_NET_DEST="$HOME/bin/fleet-net.sh"
+FLEET_NET_DOCTOR_SRC="$SCRIPT_DIR/fleet-net-doctor"
+FLEET_NET_DOCTOR_DEST="$HOME/bin/fleet-net-doctor"
 # timeout-shim.py installs as ~/bin/timeout ONLY when the host has no coreutils
 # timeout/gtimeout (host-protection section, step c) — declared here so the
 # chmod loop keeps it executable; its symlink is conditional, not in Step 1.
@@ -263,7 +265,7 @@ fi
 # Ensure the sources are executable. Git normally preserves the +x bit,
 # but if someone unpacked a tarball or checked out with core.fileMode
 # off, fix it here.
-for src in "$FLEET_UP_SRC" "$FLEET_DOWN_SRC" "$FLEET_CLAIM_SRC" "$FLEET_COMMON_SRC" "$FLEET_CLONE_FRESHNESS_SRC" "$FLEET_NET_SRC" "$TIMEOUT_SHIM_SRC" "$FLEET_BUILD_SRC" "$FLEET_DEBUG_SRC" "$FLEET_RUN_SRC" "$FLEET_RUN_TARGETS_SRC" "$FLEET_HELP_SRC" "$FLEET_BABYSIT_SRC" "$FLEET_LABELS_SRC" "$FLEET_TRANSITION_SRC" "$FLEET_REVIEW_VERDICT_SRC" "$FLEET_HEARTBEAT_SRC" "$FLEET_STREAM_SRC" "$FLEET_SCOUT_SRC" "$FLEET_FEEDBACK_SRC" "$FLEET_BUSY_SRC" "$FLEET_PR_SRC" "$FLEET_PR_CLEAR_SRC" "$FLEET_PR_CLAIM_FEEDBACK_SRC" "$FLEET_PR_DETACH_SRC" "$FLEET_PR_AMEND_SRC" "$FLEET_ISSUE_SRC" "$FLEET_GH_POLL_SRC" "$FLEET_DISPATCHER_SRC" "$FLEET_DISPATCH_WRAP_SRC" "$FLEET_GATE_STATUS_SRC" "$FLEET_QUEUE_INGEST_SRC" "$FLEET_PLAN_LINT_SRC" "$FLEET_QUEUE_LIST_SRC" "$FLEET_RECONCILE_AMENDMENTS_SRC" "$FLEET_ITERATION_SUMMARY_SRC" "$FLEET_EDIT_SRC" "$FLEET_NIT_CLOSE_SRC" "$FLEET_VALIDATE_STACK_SRC" "$FLEET_EPIC_STATUS_SRC" "$FLEET_VALIDATE_ROLES_SRC" "$FLEET_ASSERT_WT_SRC" "$WITNESS_SRC" "$SOLO_ARCHITECT_SRC" "$FLEET_REBASE_SRC" "$FLEET_GH_TOKEN_SRC" "$FLEET_SESSION_TRACK_SRC"; do
+for src in "$FLEET_UP_SRC" "$FLEET_DOWN_SRC" "$FLEET_CLAIM_SRC" "$FLEET_COMMON_SRC" "$FLEET_CLONE_FRESHNESS_SRC" "$FLEET_NET_SRC" "$FLEET_NET_DOCTOR_SRC" "$TIMEOUT_SHIM_SRC" "$FLEET_BUILD_SRC" "$FLEET_DEBUG_SRC" "$FLEET_RUN_SRC" "$FLEET_RUN_TARGETS_SRC" "$FLEET_HELP_SRC" "$FLEET_BABYSIT_SRC" "$FLEET_LABELS_SRC" "$FLEET_TRANSITION_SRC" "$FLEET_REVIEW_VERDICT_SRC" "$FLEET_HEARTBEAT_SRC" "$FLEET_STREAM_SRC" "$FLEET_SCOUT_SRC" "$FLEET_FEEDBACK_SRC" "$FLEET_BUSY_SRC" "$FLEET_PR_SRC" "$FLEET_PR_CLEAR_SRC" "$FLEET_PR_CLAIM_FEEDBACK_SRC" "$FLEET_PR_DETACH_SRC" "$FLEET_PR_AMEND_SRC" "$FLEET_ISSUE_SRC" "$FLEET_GH_POLL_SRC" "$FLEET_DISPATCHER_SRC" "$FLEET_DISPATCH_WRAP_SRC" "$FLEET_GATE_STATUS_SRC" "$FLEET_QUEUE_INGEST_SRC" "$FLEET_PLAN_LINT_SRC" "$FLEET_QUEUE_LIST_SRC" "$FLEET_RECONCILE_AMENDMENTS_SRC" "$FLEET_ITERATION_SUMMARY_SRC" "$FLEET_EDIT_SRC" "$FLEET_NIT_CLOSE_SRC" "$FLEET_VALIDATE_STACK_SRC" "$FLEET_EPIC_STATUS_SRC" "$FLEET_VALIDATE_ROLES_SRC" "$FLEET_ASSERT_WT_SRC" "$WITNESS_SRC" "$SOLO_ARCHITECT_SRC" "$FLEET_REBASE_SRC" "$FLEET_GH_TOKEN_SRC" "$FLEET_SESSION_TRACK_SRC"; do
     if [[ -f "$src" && ! -x "$src" ]]; then
         chmod +x "$src"
     fi
@@ -306,6 +308,11 @@ fi
 if [[ -f "$FLEET_NET_SRC" ]]; then
     ln -sf "$FLEET_NET_SRC" "$FLEET_NET_DEST"
     echo "symlinked $FLEET_NET_DEST -> $FLEET_NET_SRC"
+fi
+
+if [[ -f "$FLEET_NET_DOCTOR_SRC" ]]; then
+    ln -sf "$FLEET_NET_DOCTOR_SRC" "$FLEET_NET_DOCTOR_DEST"
+    echo "symlinked $FLEET_NET_DOCTOR_DEST -> $FLEET_NET_DOCTOR_SRC"
 fi
 
 if [[ -f "$FLEET_BUILD_SRC" ]]; then
@@ -733,6 +740,40 @@ if ((INSTALL_APPEND_SSH_CONFIG)); then
     fi
 else
     echo "note: skipped ~/.ssh/config (--no-ssh-config or IRREDEN_INSTALL_SKIP_SSH_CONFIG)."
+fi
+
+# (a2) ssh connection multiplexing for github.com — the fleet's git-over-ssh
+# churn (a fresh TCP dial per operation, thousands/day) leaks a TIME_WAIT
+# socket per dial; on a host whose kernel PCB reaper wedges (2026-07-15
+# incident: macOS, 85-day uptime) the leak exhausts the entire ephemeral port
+# range and EVERY new outbound connection fails with EADDRNOTAVAIL. One
+# persistent master connection drops that churn to ~zero. Appended as its own
+# marked block: ssh config is first-match-wins PER PARAMETER, so this composes
+# with any earlier github.com block — options the user (or stanza (a)) already
+# set win, and only the unset Control* options are picked up from here. If the
+# master itself black-holes, stanza (a)'s keepalives kill it in ~60s and the
+# next git op re-dials. Diagnose pressure anytime with `fleet-net-doctor`.
+SSH_MUX_MARKER="# IRREDEN_ENGINE: github.com ssh connection multiplexing (install.sh)"
+if ((INSTALL_APPEND_SSH_CONFIG)); then
+    if [[ -f "$SSH_CONFIG" ]] && grep -qF "$SSH_MUX_MARKER" "$SSH_CONFIG" 2>/dev/null; then
+        echo "note: github.com ssh multiplexing already present in $SSH_CONFIG (marker unchanged)."
+    elif ssh -G github.com 2>/dev/null | grep -qi '^controlmaster auto'; then
+        echo "note: github.com already resolves ControlMaster auto (user-owned config) — leaving it alone."
+    else
+        ( umask 077; mkdir -p "$HOME/.ssh"; [[ -e "$SSH_CONFIG" ]] || : > "$SSH_CONFIG" ) 2>/dev/null || true
+        if {
+            echo ""
+            echo "$SSH_MUX_MARKER"
+            echo "Host github.com"
+            echo "    ControlMaster auto"
+            echo "    ControlPath ~/.ssh/cm-%r@%h:%p"
+            echo "    ControlPersist 10m"
+        } >>"$SSH_CONFIG" 2>/dev/null; then
+            echo "appended github.com ssh connection multiplexing to $SSH_CONFIG"
+        else
+            echo "install.sh: could not write $SSH_CONFIG — add ControlMaster auto / ControlPersist 10m for Host github.com manually." >&2
+        fi
+    fi
 fi
 
 # (b) Bound git-over-HTTPS: abort a transfer stalled below 1000 B/s for 60s.
