@@ -42,7 +42,7 @@ HOST_OS="${FLEET_NET_DOCTOR_OS:-$(uname -s)}"
 kill_hung=0
 case "${1:-}" in
     --kill-hung) kill_hung=1 ;;
-    -h|--help) sed -n '2,36p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     "") ;;
     *) echo "fleet-net-doctor: unknown option: $1 (try --help)" >&2; exit 64 ;;
 esac
@@ -132,7 +132,7 @@ while IFS= read -r line; do
     # zero-padded field ("08") is otherwise parsed as (invalid) octal.
     case "$etime" in
         *-*)   mins=99999 ;;
-        *:*:*) mins=$(( 10#${etime%%:*} * 60 )) ;;
+        *:*:*) IFS=: read -r hh mm _ <<<"$etime"; mins=$(( 10#$hh * 60 + 10#$mm )) ;;
         *)     mins=$(( 10#${etime%%:*} )) ;;
     esac
     if (( mins >= HUNG_MINUTES )); then

@@ -153,4 +153,22 @@ rc=0; out=$(FLEET_NET_DOCTOR_OS=Linux "$DOCTOR") || rc=$?
 assert_eq "$rc" "0" "exit 0 (below thresholds)"
 assert_contains "$out" "(TIME_WAIT=1 FIN_WAIT_1=1 LAST_ACK=1)" "ss states normalized to BSD names"
 
+# --- T7: --help prints only the usage/env doc block, no code lines --------------
+echo "T7: --help output range"
+help_out=$("$DOCTOR" --help)
+assert_absent "$help_out" "set -u" "help text excludes the code that follows the header"
+assert_absent "$help_out" "HUNG_MINUTES=\"" "help text excludes the HUNG_MINUTES assignment"
+assert_contains "$help_out" "FLEET_NET_DOCTOR_PORT_RANGE" "help text still includes the last env doc line"
+
+# --- T8: HUNG_MINUTES above 60 crosses an HH:MM:SS threshold --------------------
+echo "T8: hung-process scan with HUNG_MINUTES raised past an hour"
+reset_calls
+{ ns_line ESTABLISHED 50001; } >"$FIX/netstat.out"
+cat >"$FIX/ps.out" <<'EOF'
+71980 01:45:00 gh issue list --repo jakildev/IrredenEngine --state open --label fleet:needs-plan
+EOF
+rc=0; out=$(HUNG_MINUTES=90 "$DOCTOR") || rc=$?
+assert_eq "$rc" "0" "hung processes alone do not change the verdict"
+assert_contains "$out" "HUNG (01:45:00): 71980" "01:45:00 (105m) crosses a 90m threshold"
+
 summarize "fleet-net-doctor tests"
