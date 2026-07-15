@@ -271,4 +271,78 @@ TEST_F(SystemCadenceTest, RuntimeSettersNormalizeAndCadenceFromRate) {
     ); // half rate → 2
 }
 
+// A runtime drop to cadence 1 while `lastRunTick` is still ahead of `now`
+// (from a nonzero offset seed a prior, larger cadence hadn't yet caught up
+// to) must keep waiting for `now` to catch up, not fire immediately — firing
+// early would compute `now - lastRunTick` as an underflowed uint64_t. See
+// #2425.
+TEST_F(SystemCadenceTest, CadenceDropToOneDoesNotUnderflow) {
+    int exec = 0;
+    auto sys = IRSystem::createSystem<C_CadA>(
+        "DropToOne",
+        [](C_CadA &) {},
+        [&exec]() { ++exec; },
+        nullptr,
+        {},
+        nullptr,
+        IRSystem::Concurrency::SERIAL,
+        IRSystem::kDefaultGrainSize,
+        /*cadence=*/4,
+        /*offset=*/3
+    );
+    m_system_manager.registerPipeline(IRTime::UPDATE, {sys}); // stamp: lastRun = 0 + 3 = 3
+
+    m_system_manager.executePipeline(IRTime::UPDATE); // now=1: off-cadence, no fire.
+    EXPECT_EQ(exec, 0);
+
+    m_system_manager.setSystemCadence(sys, 1); // cadence=1, offset clamps to 0; lastRun stays 3.
+
+    // now=2, now=3: still off-cadence — due at now >= lastRun(3) + cadence(1) = 4.
+    m_system_manager.executePipeline(IRTime::UPDATE);
+    m_system_manager.executePipeline(IRTime::UPDATE);
+    EXPECT_EQ(exec, 0);
+
+    m_system_manager.executePipeline(IRTime::UPDATE); // now=4: due.
+    EXPECT_EQ(exec, 1);
+    EXPECT_EQ(m_system_manager.getAccumulatedTicks(sys), 1u); // not ~1.8e19 (UINT64_MAX underflow).
+}
+
+// setSystemCadenceOffset must re-phase against the system's own pipeline
+// event clock, not another event's counter — events advance at different
+// rates (RENDER is uncapped, UPDATE is fixed-step), so seeding from a
+// foreign clock can put `lastRunTick` far ahead of this system's `now` and
+// silently stall it. See #2425.
+TEST_F(SystemCadenceTest, OffsetRephaseUsesOwnEventClock) {
+    int exec = 0;
+    auto sys = IRSystem::createSystem<C_CadA>(
+        "OwnClock",
+        [](C_CadA &) {},
+        [&exec]() { ++exec; },
+        nullptr,
+        {},
+        nullptr,
+        IRSystem::Concurrency::SERIAL,
+        IRSystem::kDefaultGrainSize,
+        /*cadence=*/4,
+        /*offset=*/0
+    );
+    m_system_manager.registerPipeline(IRTime::UPDATE, {sys});
+    m_system_manager.registerPipelineGroups(IRTime::RENDER, {}); // establish RENDER's counter.
+
+    // Advance RENDER far past UPDATE — representative of a real World,
+    // where RENDER is uncapped and UPDATE is pinned to the fixed step.
+    for (int i = 0; i < 50; ++i) {
+        m_system_manager.executePipeline(IRTime::RENDER);
+    }
+
+    m_system_manager.setSystemCadenceOffset(sys, 1); // must re-phase against UPDATE's own clock.
+
+    // Fires within offset + cadence UPDATE ticks (5) — not stalled for
+    // ~50 ticks waiting for UPDATE to catch up to RENDER's counter.
+    for (int i = 0; i < 5; ++i) {
+        m_system_manager.executePipeline(IRTime::UPDATE);
+    }
+    EXPECT_EQ(exec, 1);
+}
+
 } // namespace

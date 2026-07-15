@@ -102,6 +102,10 @@ void SystemManager::emplaceCadenceState(std::uint32_t cadence, std::uint32_t off
     // pipeline is unreachable by executePipeline, so the 0 seed is inert.
     m_lastRunTick.emplace_back(0);
     m_accumulatedTicks.emplace_back(0);
+    // Placeholder until stampCadenceJoin records the system's real pipeline
+    // event; a system never listed in any pipeline is unreachable by
+    // executePipeline, so the placeholder is inert.
+    m_cadenceEvent.emplace_back(IRTime::UPDATE);
 }
 
 bool SystemManager::pollCadenceDue(SystemId system, std::uint64_t now) {
@@ -112,7 +116,11 @@ bool SystemManager::pollCadenceDue(SystemId system, std::uint64_t now) {
     // Additive comparison (`now >= lastRun + cadence`), NOT `now - lastRun >=
     // cadence`: a nonzero offset seeds `lastRun > now` on the first few ticks,
     // where the unsigned subtraction would underflow and read as "hugely due".
-    if (cadence > 1 && now < m_lastRunTick[system] + cadence) {
+    // Applies uniformly at cadence 1 too — no special-case short-circuit: for
+    // an un-offset cadence-1 system `lastRun == now - 1`, so the check is
+    // false and it fires every tick, same as before this held only for
+    // cadence > 1.
+    if (now < m_lastRunTick[system] + cadence) {
         return false; // off-cadence — skip the whole dispatch.
     }
     // Due: `now >= lastRun` holds here, so the subtraction is safe.
@@ -125,6 +133,7 @@ void SystemManager::stampCadenceJoin(IRTime::Events event, SystemId system) {
     if (system >= m_lastRunTick.size()) {
         return;
     }
+    m_cadenceEvent[system] = event; // bind the runtime re-phase clock to this event.
     const std::uint64_t now = m_eventTickCounts[event];
     const std::uint32_t offset = system < m_cadenceOffset.size() ? m_cadenceOffset[system] : 0u;
     // Seed `lastRun = now + offset`. The additive due check then first fires
@@ -133,16 +142,6 @@ void SystemManager::stampCadenceJoin(IRTime::Events event, SystemId system) {
     // cadence regardless of offset.
     m_lastRunTick[system] = now + offset;
     m_accumulatedTicks[system] = 0;
-}
-
-std::uint64_t SystemManager::maxEventTickCount() const {
-    std::uint64_t maxCount = 0;
-    for (std::uint64_t count : m_eventTickCounts) {
-        if (count > maxCount) {
-            maxCount = count;
-        }
-    }
-    return maxCount;
 }
 
 void SystemManager::setSystemCadence(SystemId system, std::uint32_t cadence) {
@@ -166,11 +165,13 @@ void SystemManager::setSystemCadenceOffset(SystemId system, std::uint32_t offset
     const std::uint32_t cadence = m_cadence[system];
     const std::uint32_t normOffset = cadence <= 1 ? 0u : offset % cadence;
     m_cadenceOffset[system] = normOffset;
-    // Re-phase against a reference clock so the offset takes effect as a
-    // fresh stagger (the runtime setter is event-agnostic; the largest
-    // per-event counter is the monotonic reference). Mirrors the stamp-time
-    // seed: next fire lands at reference + offset + cadence.
-    m_lastRunTick[system] = maxEventTickCount() + normOffset;
+    // Re-phase against the system's OWN event clock (bound at pipeline-join
+    // by stampCadenceJoin), not some other event's counter — events advance
+    // at different rates (e.g. RENDER is uncapped, UPDATE is fixed-step), so
+    // seeding from a foreign clock can put `lastRun` far ahead of this
+    // system's `now` and silently stall it until its own counter catches up.
+    // Mirrors the stamp-time seed: next fire lands at now + offset + cadence.
+    m_lastRunTick[system] = m_eventTickCounts[m_cadenceEvent[system]] + normOffset;
     m_accumulatedTicks[system] = 0;
 }
 

@@ -377,10 +377,19 @@ class SystemManager {
     //                     point, not counter zero.
     //   m_accumulatedTicks  phase ticks covered by the current/most-recent
     //                     execution (getAccumulatedTicks).
+    //   m_cadenceEvent    the event whose tick counter `m_lastRunTick` is
+    //                     measured against, bound at pipeline-join
+    //                     (stampCadenceJoin). A runtime re-phase
+    //                     (setSystemCadenceOffset) must seed from this
+    //                     system's own event clock, not some other event's
+    //                     counter — the events advance at different rates
+    //                     (RENDER is uncapped, UPDATE is fixed-step), so
+    //                     mixing clocks seeds `lastRun` far ahead of `now`.
     std::vector<std::uint32_t> m_cadence;
     std::vector<std::uint32_t> m_cadenceOffset;
     std::vector<std::uint64_t> m_lastRunTick;
     std::vector<std::uint64_t> m_accumulatedTicks;
+    std::vector<IRTime::Events> m_cadenceEvent;
 
     // #2404: SystemManager-owned per-event execution counter, bumped once
     // at the top of executePipeline so every cadence gate in a pass sees
@@ -408,12 +417,10 @@ class SystemManager {
 
     // #2404: seed a system's phase when it joins `event`'s pipeline, so its
     // first accumulated delta measures from the join tick (plus its offset
-    // stagger), not from counter zero.
+    // stagger), not from counter zero. Also records `event` into
+    // m_cadenceEvent so a later runtime re-phase (setSystemCadenceOffset)
+    // binds to the same clock.
     void stampCadenceJoin(IRTime::Events event, SystemId system);
-
-    // #2404: the largest per-event tick counter — the reference clock for a
-    // runtime offset re-phase (which is event-agnostic).
-    std::uint64_t maxEventTickCount() const;
 
     // Begin tick functions happen once per system before tick function(s)
     template <typename FunctionBeginTick>
