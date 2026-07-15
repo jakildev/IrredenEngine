@@ -831,6 +831,18 @@ constant float kScatterCellTieStep = 1.0f / 8388608.0f;
 // literal); the overflow lane's two-band bias derives from this in turn.
 constant float kScatterCellTieBand = 16.0f * kScatterCellTieStep;
 
+// Flat interior-edge margin yield (#2428), in composite-key units. The scatter
+// key folds the cardinal encode's (flip << 2) | slot low bits in at unit scale,
+// so two adjacent faces' planes sit a CONSTANT up-to-7-key-unit apart across
+// their whole shared edge; a conservative-dilation margin penetrating an
+// INTERIOR edge (over the adjacent visible face) can hold that advantage at
+// arbitrarily small penetration, where the #1883 penetration-scaled yield never
+// repays it — the fractional-offset shared-edge fringe. 8 covers the full span
+// with margin while staying well below one subdivided depth step (encScale =
+// kDepthEncodeShift x subScale >= 8 key per world unit), so interior margins
+// still gap-fill against background and genuinely farther surfaces.
+constant float kScatterMarginInteriorBiasKey = 8.0;
+
 // Margin-yield gradient scale (#1883) — mirror of ir_iso_common.glsl. Scales the
 // margin yield by the fragment's own plane-extrapolation excursion (penetration
 // past the exact footprint x per-axis depth gradient) so a cell-deep per-axis

@@ -666,7 +666,14 @@ void registerCliArgs() {
     args.enumValue(
         "--debug-overlay",
         "Lighting/composite debug overlay",
-        {"none", "ao", "light_level", "shadow", "peraxis_id", "peraxis_origin", "unlit"},
+        {"none",
+         "ao",
+         "light_level",
+         "shadow",
+         "peraxis_id",
+         "peraxis_origin",
+         "unlit",
+         "peraxis_margin"},
         "none"
     );
 }

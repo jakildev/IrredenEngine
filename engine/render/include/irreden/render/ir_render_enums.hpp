@@ -120,6 +120,16 @@ enum class DrawMode : std::uint8_t { TRIANGLES, LINES };
 ///                        unchanged), exposing the raw rasterized colors on
 ///                        every path. Isolates color-content faults from
 ///                        lighting faults (#1457 instrumentation).
+/// - @c PER_AXIS_MARGIN — per-axis scatter winner classification: axis hue
+///                        (X = red, Y = green, Z = blue) at full brightness
+///                        for MARGIN fragments (outside the quad's exact
+///                        [0,1]² footprint — conservative-dilation fill) and
+///                        dimmed for EXACT-footprint fragments. Depth is
+///                        untouched, so a bright pixel means a dilation
+///                        margin genuinely won the composite there —
+///                        separates margin-vs-exact contests from
+///                        footprint-overlap contests at shared face edges
+///                        (#2428 instrumentation).
 enum class DebugOverlayMode : std::uint8_t {
     NONE = 0,
     AO = 1,
@@ -127,12 +137,13 @@ enum class DebugOverlayMode : std::uint8_t {
     SHADOW = 3,
     PER_AXIS_ID = 4,
     PER_AXIS_ORIGIN = 5,
-    UNLIT = 6
+    UNLIT = 6,
+    PER_AXIS_MARGIN = 7
 };
 
 /// Parse a string to @c DebugOverlayMode. Accepts "none", "ao",
-/// "light_level", "shadow", "peraxis_id", "peraxis_origin", "unlit".
-/// Returns @c NONE for unrecognized input.
+/// "light_level", "shadow", "peraxis_id", "peraxis_origin", "unlit",
+/// "peraxis_margin". Returns @c NONE for unrecognized input.
 inline DebugOverlayMode debugOverlayModeFromString(const char *s) {
     if (std::strcmp(s, "ao") == 0)
         return DebugOverlayMode::AO;
@@ -146,6 +157,8 @@ inline DebugOverlayMode debugOverlayModeFromString(const char *s) {
         return DebugOverlayMode::PER_AXIS_ORIGIN;
     if (std::strcmp(s, "unlit") == 0)
         return DebugOverlayMode::UNLIT;
+    if (std::strcmp(s, "peraxis_margin") == 0)
+        return DebugOverlayMode::PER_AXIS_MARGIN;
     return DebugOverlayMode::NONE; // covers "none" and unrecognized input
 }
 
