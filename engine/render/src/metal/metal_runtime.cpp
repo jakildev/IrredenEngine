@@ -384,6 +384,20 @@ void replaceMetalBufferInBindings(MTL::Buffer *oldBuffer, MTL::Buffer *newBuffer
     }
 }
 
+void untrackMetalBuffer(MTL::Buffer *buffer) {
+    if (buffer == nullptr) {
+        return;
+    }
+    // Null-out every sticky table entry via the orphan-retarget helper. A
+    // cleared binding keeps its stale offset, which is benign — the flush
+    // loops gate on buffer_ != nullptr.
+    replaceMetalBufferInBindings(buffer, nullptr);
+    // Also drop it from the encoded-since-last-wait set: a future buffer
+    // allocated at the same address would otherwise false-positive
+    // wasMetalBufferEncoded and orphan on its first subData for no reason.
+    g_runtime().encodedBuffers_.erase(buffer);
+}
+
 MTL::Buffer *ensureImageAtomicScratchBuffer(MTL::Texture *texture) {
     if (texture == nullptr) {
         return nullptr;
@@ -426,6 +440,12 @@ void releaseImageAtomicScratchBuffer(MTL::Texture *texture) {
         return;
     }
     if (it->second != nullptr) {
+        // Same dangling-rebind hazard as untrackMetalBuffer: the sticky
+        // current-scratch pointer would re-bind the freed buffer on the next
+        // scratch-consumer dispatch if no R32I bindAsImage refreshed it first.
+        if (g_runtime().currentImageAtomicScratch_ == it->second) {
+            g_runtime().currentImageAtomicScratch_ = nullptr;
+        }
         it->second->release();
     }
     cache.erase(it);
