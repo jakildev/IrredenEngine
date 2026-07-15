@@ -621,6 +621,35 @@ ivec3 cardinalLowerCornerShift(int cardinalIndex) {
     return ivec3(0, 0, 0);
 }
 
+// Image of a six-face FaceId's outward normal under rotateCardinalZ (world ->
+// view). Lets the subdivided cardinal raster compute face micro-positions
+// NATIVELY IN VIEW SPACE — faceMicroPositionFixed6(viewFace, viewCell, ...)
+// on the shifted rotated cell — instead of rotating world-frame face planes
+// after the fact. The distinction matters because rotateCardinalZ +
+// cardinalLowerCornerShift is a CELL-INDEX map (half-open interval c -> -c-1
+// under axis negation), while a face PLANE is a boundary (c -> -c): applying
+// the cell shift to a world-computed POS-face plane lands it one sub-unit past
+// the neighbor faces' coverage — the #2424 1-sub-unit background seam along
+// every shared edge of a rotated-in POS face at cardinals 1/2/3. Z faces are
+// fixed points (R_z never moves the z axis). Cardinal 3 is the inverse
+// permutation of cardinal 1; cardinal 2 flips both in-plane polarities.
+int rotateFaceIdCardinalZ(int faceId, int cardinalIndex) {
+    if (cardinalIndex == 0 || faceId >= kFaceZNeg) return faceId;
+    if (cardinalIndex == 2) return faceId ^ 1;             // +/-x -> -/+x, +/-y -> -/+y
+    if (cardinalIndex == 1) {
+        // world +x -> view -y, world +y -> view +x
+        if (faceId == kFaceXNeg) return kFaceYPos;
+        if (faceId == kFaceXPos) return kFaceYNeg;
+        if (faceId == kFaceYNeg) return kFaceXNeg;
+        return kFaceXPos;                                  // kFaceYPos
+    }
+    // cardinalIndex == 3: world +x -> view +y, world +y -> view -x
+    if (faceId == kFaceXNeg) return kFaceYNeg;
+    if (faceId == kFaceXPos) return kFaceYPos;
+    if (faceId == kFaceYNeg) return kFaceXPos;
+    return kFaceXNeg;                                      // kFaceYPos
+}
+
 vec3 rotateCardinalZInv(vec3 v, int cardinalIndex) {
     if (cardinalIndex == 1) return vec3(-v.y,  v.x, v.z);    // R_z(+pi/2)
     if (cardinalIndex == 2) return vec3(-v.x, -v.y, v.z);    // R_z(+/-pi)

@@ -856,18 +856,30 @@ void main() {
     const ivec2 frameOffsetFixed =
         trixelFrameOffset(trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions);
 
-    // Six-face micro position — POS faces start at `voxelPositionFixed.<axis>
-    // + subdivisions` (high-coordinate side), NEG faces at
-    // `voxelPositionFixed.<axis>` (low-coordinate side, matching the 3-face
-    // path bit-for-bit at cardinal 0).
-    ivec3 microPositionFixed =
-        faceMicroPositionFixed6(faceId, voxelPositionFixed, u, v, subdivisions);
+    // Six-face micro position — POS faces start at the cell's high-coordinate
+    // side (`+ subdivisions` on the fixed axis), NEG faces at the low side
+    // (matching the 3-face path bit-for-bit at cardinal 0). At a non-zero
+    // cardinal the micro position is computed NATIVELY IN VIEW SPACE — rotate
+    // the CELL origin (a cell-index map, hence the lower-corner shift; scale
+    // is per-world-unit, matching `voxelPositionFixed = round(worldPos *
+    // subdivisions)`), rotate the FACE ID, then run the same cardinal-0 face
+    // math on the pair. Rotating a world-computed face plane after the fact
+    // instead applies the cell-index shift to a plane BOUNDARY (c -> -c, not
+    // c -> -c-1): a rotated-in POS face lands one sub-unit past its neighbor
+    // faces' coverage — the #2424 background seam along every shared edge of
+    // that face at cardinals 1/2/3. View-space math is seam-free by
+    // construction (it IS the cardinal-0 raster of the rotated scene) and
+    // matches the exact inverse recovery (`trixelCanvasPixelToWorld3D`).
+    // Stage 2 mirrors this byte-identically for the colour tap.
+    ivec3 viewCellFixed = voxelPositionFixed;
+    int viewFaceId = faceId;
     if (cardinalIndex != 0) {
-        microPositionFixed = rotateCardinalZ(microPositionFixed, cardinalIndex);
-        // Shift is per-world-unit; scale to subdivision units to match
-        // `voxelPositionFixed = round(worldPos * subdivisions)`.
-        microPositionFixed += cardinalLowerCornerShift(cardinalIndex) * subdivisions;
+        viewCellFixed = rotateCardinalZ(voxelPositionFixed, cardinalIndex) +
+            cardinalLowerCornerShift(cardinalIndex) * subdivisions;
+        viewFaceId = rotateFaceIdCardinalZ(faceId, cardinalIndex);
     }
+    const ivec3 microPositionFixed =
+        faceMicroPositionFixed6(viewFaceId, viewCellFixed, u, v, subdivisions);
     // Detached entities project occlusion depth onto the entity-rotated iso
     // axis (#1462); world/GRID keeps the (x+y+z) fixed-(1,1,1) form. Depth is
     // in subdivision units on both branches, so the encode scale is unchanged.
@@ -876,19 +888,16 @@ void main() {
         : (microPositionFixed.x + microPositionFixed.y + microPositionFixed.z);
     const int voxelDistance = encodeDepthWithFace(depthBase, slot, riserFlip);
     const ivec2 base = frameOffsetFixed + pos3DtoPos2DIso(microPositionFixed);
-    emitDeformedFace(base, D, voxelDistance, faceId, reVoxelize);
+    emitDeformedFace(base, D, voxelDistance, viewFaceId, reVoxelize);
 
     // Both-exposed dual emit (#2157): the opposite face plane rasters its own
     // pixels here (faceMicroPositionFixed6 is polarity-dependent), so the riser
-    // needs its own deformed-face emit.
+    // needs its own deformed-face emit — same view-space form as the primary.
+    // `viewFaceId ^ 1` after rotation == rotating the opposite face, since
+    // rotateFaceIdCardinalZ maps opposite-face pairs to opposite-face pairs.
     if (bothPolaritiesExposed) {
-        const int oppositeFaceId = faceId ^ 1;
-        ivec3 microOpposite =
-            faceMicroPositionFixed6(oppositeFaceId, voxelPositionFixed, u, v, subdivisions);
-        if (cardinalIndex != 0) {
-            microOpposite = rotateCardinalZ(microOpposite, cardinalIndex);
-            microOpposite += cardinalLowerCornerShift(cardinalIndex) * subdivisions;
-        }
+        const ivec3 microOpposite =
+            faceMicroPositionFixed6(viewFaceId ^ 1, viewCellFixed, u, v, subdivisions);
         const int depthOpposite = isDetachedCanvas > 0.5
             ? isoDepthAlongAxis(microOpposite, voxelDepthAxis.xyz)
             : (microOpposite.x + microOpposite.y + microOpposite.z);
@@ -896,6 +905,6 @@ void main() {
         // this slot (riserFlip is always 0 when both polarities are exposed).
         const int distanceOpposite = encodeDepthWithFace(depthOpposite, slot, riserFlip ^ 1);
         const ivec2 baseOpposite = frameOffsetFixed + pos3DtoPos2DIso(microOpposite);
-        emitDeformedFace(baseOpposite, D, distanceOpposite, oppositeFaceId, reVoxelize);
+        emitDeformedFace(baseOpposite, D, distanceOpposite, viewFaceId ^ 1, reVoxelize);
     }
 }

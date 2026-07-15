@@ -570,6 +570,27 @@ inline int3 cardinalLowerCornerShift(int cardinalIndex) {
     return int3(0, 0, 0);
 }
 
+// Image of a six-face FaceId's outward normal under rotateCardinalZ (world ->
+// view) — mirror of rotateFaceIdCardinalZ in ir_iso_common.glsl; see that
+// file for the #2424 rationale (cell-index shift vs face-plane boundary under
+// axis negation — the 1-sub-unit POS-face seam at cardinals 1/2/3).
+inline int rotateFaceIdCardinalZ(int faceId, int cardinalIndex) {
+    if (cardinalIndex == 0 || faceId >= kFaceZNeg) return faceId;
+    if (cardinalIndex == 2) return faceId ^ 1;             // +/-x -> -/+x, +/-y -> -/+y
+    if (cardinalIndex == 1) {
+        // world +x -> view -y, world +y -> view +x
+        if (faceId == kFaceXNeg) return kFaceYPos;
+        if (faceId == kFaceXPos) return kFaceYNeg;
+        if (faceId == kFaceYNeg) return kFaceXNeg;
+        return kFaceXPos;                                  // kFaceYPos
+    }
+    // cardinalIndex == 3: world +x -> view +y, world +y -> view -x
+    if (faceId == kFaceXNeg) return kFaceYNeg;
+    if (faceId == kFaceXPos) return kFaceYPos;
+    if (faceId == kFaceYNeg) return kFaceXPos;
+    return kFaceXNeg;                                      // kFaceYPos
+}
+
 inline float3 rotateCardinalZInv(float3 v, int cardinalIndex) {
     if (cardinalIndex == 1) return float3(-v.y,  v.x, v.z); // R_z(+pi/2)
     if (cardinalIndex == 2) return float3(-v.x, -v.y, v.z); // R_z(+/-pi)
