@@ -68,3 +68,7 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   fleet-net.sh` — it shadows `git()`/`gh()` with a `timeout` and bounds every
   current and future call site by construction — rather than adding per-site
   guards. Python fetchers use their own subprocess/urllib timeouts instead.
+  The escalated form of the same failure is host-wide: leaked/hung
+  connections exhaust the ephemeral port range and every network call dies
+  instantly with EADDRNOTAVAIL ("Can't assign requested address") — that is
+  not GitHub being down; run `fleet-net-doctor` (exit 2 ⇒ reboot the host).
