@@ -572,11 +572,17 @@ kernel void IR_STAGE1_KERNEL_NAME(
         const int2 perAxisBase = trixelOriginOffsetZ1(frameData.canvasSizePixels) +
                                  int2(floor(frameData.frameCanvasOffset));
         if (frameData.voxelRenderOptions.x == 0) {
-            const int3 worldPos = roundHalfUp(voxelPosition.xyz);
+            const float3 worldAlignedBase = snapNearIntegerVoxelPosition(voxelPosition.xyz);
+            const int3 worldPos = roundHalfUp(worldAlignedBase);
             const int3 facePos = faceMicroPositionFixed6(faceId, worldPos, 0, 0, 1);
-            // No sub-cell offset at base resolution; encode centre fracs (8,8).
-            const int voxelDistance =
-                encodeDepthWithFaceFrac(pos3DtoDistance(facePos), slot, 8, 8, riserFlip);
+            // Full sub-cell fracs (u/v in-plane + w out-of-plane) so a
+            // fractionally-positioned face reconstructs on its TRUE plane,
+            // not the integer lattice plane. Integer content encodes 8/8/8
+            // (zero offsets) — byte-identical to the old centre-frac store.
+            const float3 fracInCellBase = worldAlignedBase - float3(worldPos);
+            const int voxelDistance = encodeDepthWithFaceFrac(
+                pos3DtoDistance(facePos), slot, axis, fracInCellBase, riserFlip
+            );
             if (frameData.resolveMode == 2) {
                 viewMaskTap(perAxisBase, facePos, frameData, perAxisWinnerIds);
                 return;

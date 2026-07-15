@@ -153,16 +153,28 @@ int encodeDepthWithFace(int rawDepth, int face) {
 
 // Shared decode helpers — the ONLY places the two distance-encoding bit
 // layouts live (#2207). Single-canvas: [31:3] depth | [2] flip | [1:0] slot.
-// Per-axis (#1458): [31:11] depth | [10] flip | [9:6] uFrac4 | [5:2] vFrac4
+// Per-axis (#1458, wFrac carrier for out-of-plane sub-cell position):
+// [31:15] depth | [14:11] wFrac4 | [10] flip | [9:6] uFrac4 | [5:2] vFrac4
 // | [1:0] slot. Depth decodes by arithmetic right shift (floor), so negative
-// depths recover exactly; slot/flip are pure low-bit masks. Route every
-// consumer through these — an open-coded shift is how a carrier migration
-// silently mis-decodes.
+// depths recover exactly; slot/flip/fracs are pure low-bit masks. wFrac sits
+// directly below depth so atomicMin still orders by true plane depth (a
+// same-cell nearer plane wins) before flip/frac/slot. Route every consumer
+// through these — an open-coded shift is how a carrier migration silently
+// mis-decodes.
 int decodeSlot(int encoded) { return encoded & 3; }
 int decodeFlipSingle(int encoded) { return (encoded >> 2) & 1; }
 int decodeDepthSingle(int encoded) { return encoded >> 3; }
 int decodeFlipPerAxis(int encoded) { return (encoded >> 10) & 1; }
-int decodeDepthPerAxis(int encoded) { return encoded >> 11; }
+int decodeDepthPerAxis(int encoded) { return encoded >> 15; }
+// 4-bit sub-cell fracs (0..15, 8 = cell centre): u/v span the face's two
+// in-plane axes; w is the OUT-OF-PLANE fraction along the face axis — the
+// coordinate the integer cell lattice cannot carry. Dropping w reconstructs
+// every face of fractionally-positioned content on the integer lattice
+// plane, displacing it along its own normal by up to half a voxel (the
+// "cubes stop being cubes under yaw" class).
+int decodeUFrac4PerAxis(int encoded) { return (encoded >> 6) & 15; }
+int decodeVFrac4PerAxis(int encoded) { return (encoded >> 2) & 15; }
+int decodeWFrac4PerAxis(int encoded) { return (encoded >> 11) & 15; }
 // Route-aware forms for the shared lighting/AO/shadow/bake consumers that
 // read either encoding behind the perAxisRoute selector.
 int decodeDepthRoute(int encoded, int perAxisRoute) {
@@ -241,37 +253,54 @@ uvec2 encodeEntityIdCutFace(uvec2 packed, bool isCutFace) {
                      : packed;
 }
 
-// Per-axis fractional encoding (#1458, flip carrier #2207):
-// (depth << 11) | (flip << 10) | (uFrac4 << 6) | (vFrac4 << 2) | slot.
-// uFrac4/vFrac4 in 0..15 where 8 = cell centre (fracInCell=0). atomicMin orders
-// by depth first (flip sits below depth, above frac — same invariant as the
-// single-canvas encode). Per-axis canvases clear to INT_MAX (0x7FFFFFFF) so any
-// valid encoding overwrites the sentinel. rawDepth must be in world units;
-// depth field is 21 bits so rawDepth must stay < 2^20.
-int encodeDepthWithFaceFrac(int rawDepth, int slot, int uFrac4, int vFrac4, int flip) {
-    return (rawDepth << 11) | (flip << 10) | (uFrac4 << 6) | (vFrac4 << 2) | slot;
+// Per-axis fractional encoding (#1458, flip carrier #2207, wFrac carrier):
+// (depth << 15) | (wFrac4 << 11) | (flip << 10) | (uFrac4 << 6)
+// | (vFrac4 << 2) | slot. Frac fields in 0..15 where 8 = cell centre
+// (fracInCell = 0): u/v are the face's in-plane sub-cell offsets, w the
+// out-of-plane offset along the face axis. atomicMin orders by depth first,
+// then wFrac (the true-plane-depth remainder — a same-cell nearer plane
+// wins), then flip — the same relative invariant as the single-canvas
+// encode. Per-axis canvases clear to INT_MAX (0x7FFFFFFF) so any valid
+// encoding overwrites the sentinel. rawDepth must be in world units; the
+// depth field is 17 bits so rawDepth must stay < 2^16.
+int encodeDepthWithFaceFrac(
+    int rawDepth, int slot, int uFrac4, int vFrac4, int wFrac4, int flip
+) {
+    return (rawDepth << 15) | (wFrac4 << 11) | (flip << 10) | (uFrac4 << 6) |
+           (vFrac4 << 2) | slot;
 }
 
-// Maps fracInCell to 4-bit sub-cell offsets (0..15, 8 = cell centre) for the
-// given axis, following the uv assignment of faceInPlaneUnitAxes.
-void fracToFrac4(int axis, vec3 fracInCell, out int uFrac4, out int vFrac4) {
+// Maps fracInCell to the three 4-bit sub-cell offsets (0..15, 8 = cell
+// centre) for the given axis: u/v follow the uv assignment of
+// faceInPlaneUnitAxes; w is the fracInCell component along the face axis.
+void fracToFrac4(int axis, vec3 fracInCell, out int uFrac4, out int vFrac4, out int wFrac4) {
     if (axis == 0) {
         uFrac4 = clamp(int(fracInCell.y * 16.0) + 8, 0, 15);
         vFrac4 = clamp(int(fracInCell.z * 16.0) + 8, 0, 15);
+        wFrac4 = clamp(int(fracInCell.x * 16.0) + 8, 0, 15);
     } else if (axis == 1) {
         uFrac4 = clamp(int(fracInCell.x * 16.0) + 8, 0, 15);
         vFrac4 = clamp(int(fracInCell.z * 16.0) + 8, 0, 15);
+        wFrac4 = clamp(int(fracInCell.y * 16.0) + 8, 0, 15);
     } else {
         uFrac4 = clamp(int(fracInCell.x * 16.0) + 8, 0, 15);
         vFrac4 = clamp(int(fracInCell.y * 16.0) + 8, 0, 15);
+        wFrac4 = clamp(int(fracInCell.z * 16.0) + 8, 0, 15);
     }
 }
 
-// Convenience overload: compute uFrac4/vFrac4 from fracInCell and encode in one call.
+// Convenience overload: compute all three fracs from fracInCell and encode
+// in one call.
 int encodeDepthWithFaceFrac(int rawDepth, int slot, int axis, vec3 fracInCell, int flip) {
-    int uFrac4, vFrac4;
-    fracToFrac4(axis, fracInCell, uFrac4, vFrac4);
-    return encodeDepthWithFaceFrac(rawDepth, slot, uFrac4, vFrac4, flip);
+    int uFrac4, vFrac4, wFrac4;
+    fracToFrac4(axis, fracInCell, uFrac4, vFrac4, wFrac4);
+    return encodeDepthWithFaceFrac(rawDepth, slot, uFrac4, vFrac4, wFrac4, flip);
+}
+
+// Unit vector of a face's out-of-plane axis — the direction the wFrac
+// offset moves the reconstructed plane. Companion to faceInPlaneUnitAxes.
+vec3 faceOutOfPlaneUnitAxis(int axis) {
+    return vec3(axis == 0 ? 1.0 : 0.0, axis == 1 ? 1.0 : 0.0, axis == 2 ? 1.0 : 0.0);
 }
 
 // Outward unit normal for the visible side of each iso-rendered face. The

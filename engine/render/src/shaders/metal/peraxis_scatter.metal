@@ -225,8 +225,9 @@ vertex VertexOut v_peraxis_scatter(
     // Per-axis fractional encoding (#1458, flip carrier #2207) — decode via the
     // shared ir_iso_common helpers. The frac fields keep their positions.
     const int slot = decodeSlot(rawDist);
-    const int vFrac4 = (rawDist >> 2) & 15;
-    const int uFrac4 = (rawDist >> 6) & 15;
+    const int vFrac4 = decodeVFrac4PerAxis(rawDist);
+    const int uFrac4 = decodeUFrac4PerAxis(rawDist);
+    const int wFrac4 = decodeWFrac4PerAxis(rawDist);
     const int flip = decodeFlipPerAxis(rawDist);
     const int rawDepth = decodeDepthPerAxis(rawDist); // pos3DtoDistance of the face origin (world units)
     // A flipped cell (#2207) is the opposite-polarity face of its slot's axis.
@@ -247,10 +248,14 @@ vertex VertexOut v_peraxis_scatter(
     const int2 isoPix = int2(ij) - frameData.perAxisBase;
     const float3 baseOrigin =
         isoPixelToPos3D(isoPix.x, isoPix.y, float(rawDepth));
-    // Apply sub-cell offset packed in the encoding (#1458).
+    // Apply the sub-cell offsets packed in the encoding (#1458): u/v shift
+    // within the face plane; w moves the plane itself along the face axis —
+    // without it every fractionally-positioned face snaps to the integer
+    // lattice plane and the entity's faces stop meeting at shared edges.
     const float3 origin = baseOrigin
         + eu * (float(uFrac4) / 16.0f - 0.5f)
-        + ev * (float(vFrac4) / 16.0f - 0.5f);
+        + ev * (float(vFrac4) / 16.0f - 0.5f)
+        + faceOutOfPlaneUnitAxis(axis) * (float(wFrac4) / 16.0f - 0.5f);
 
     // Interior/boundary classification for the analytic coverage (#1937). An edge
     // is INTERIOR (fill solid, close the seam) if EITHER:

@@ -59,15 +59,20 @@ the ECS surface.
   **Per-axis base-resolution encoding (#1458):** the per-axis store writes at
   BASE (world-unit) resolution — one cell per voxel face, regardless of the
   active subdivision factor. The fractional sub-cell offset (where the voxel
-  lands within its world cell) is packed into bits `[9:2]` of the distance
-  encoding so the forward scatter can sub-pixel-shift each face quad and
-  recover smooth detail without overflowing the base-resolution canvas.
+  lands within its world cell) is packed into the distance encoding — the
+  two in-plane fracs at bits `[9:2]` and the OUT-OF-PLANE frac at `[14:11]`
+  (the wFrac carrier; without it every fractionally-positioned face snaps
+  to the integer lattice plane) — so the forward scatter can shift each
+  face quad onto its true plane without overflowing the base-resolution
+  canvas.
   The canvas IS still sized at base-resolution (not `world × subPerAxis`);
   the per-axis dispatch still uses the capped density from
   `IRPrefab::PerAxisCanvas::subdivisionDensity()` for how many work-groups
   to launch, but z-slices ≥ 1 return early — only the z=0 invocation writes.
   AO, sun-shadow, lighting, and scatter all decode `rawDepth` directly as
-  world units (`decodeDepthPerAxis` — `rawDist >> 11`, flip carrier #2207 at bit 10 — for the per-axis path).
+  world units (`decodeDepthPerAxis` — `rawDist >> 15`, wFrac at `[14:11]`,
+  flip carrier #2207 at bit 10 — for the per-axis path; the layout lives
+  only in the `ir_iso_common.{glsl,metal}` encode/decode helpers).
 - `C_TrixelCanvasRenderBehavior` — toggles: use camera pan/zoom, run
   subdivisions, hover detection, pixel offset, etc.
 - `C_TrixelFramebuffer` — wraps a `Framebuffer` (color + depth). Also

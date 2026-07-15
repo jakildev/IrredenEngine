@@ -200,8 +200,9 @@ void main() {
     // Per-axis fractional encoding (#1458, flip carrier #2207) — decode via the
     // shared ir_iso_common helpers. The frac fields keep their positions.
     const int slot = decodeSlot(rawDist);
-    const int vFrac4 = (rawDist >> 2) & 15;
-    const int uFrac4 = (rawDist >> 6) & 15;
+    const int vFrac4 = decodeVFrac4PerAxis(rawDist);
+    const int uFrac4 = decodeUFrac4PerAxis(rawDist);
+    const int wFrac4 = decodeWFrac4PerAxis(rawDist);
     const int flip = decodeFlipPerAxis(rawDist);
     const int rawDepth = decodeDepthPerAxis(rawDist); // pos3DtoDistance of the face origin (world units)
     // A flipped cell (#2207) is the opposite-polarity face of its slot's axis.
@@ -225,10 +226,14 @@ void main() {
     faceInPlaneUnitAxes(axis, eu, ev);
     const ivec2 isoPix = ij - perAxisBase;
     const vec3 baseOrigin = isoPixelToPos3D(isoPix.x, isoPix.y, float(rawDepth));
-    // Apply sub-cell offset packed in the encoding (#1458).
+    // Apply the sub-cell offsets packed in the encoding (#1458): u/v shift
+    // within the face plane; w moves the plane itself along the face axis —
+    // without it every fractionally-positioned face snaps to the integer
+    // lattice plane and the entity's faces stop meeting at shared edges.
     const vec3 origin = baseOrigin
         + eu * (float(uFrac4) / 16.0 - 0.5)
-        + ev * (float(vFrac4) / 16.0 - 0.5);
+        + ev * (float(vFrac4) / 16.0 - 0.5)
+        + faceOutOfPlaneUnitAxis(axis) * (float(wFrac4) / 16.0 - 0.5);
 
     // Project the selected face corner under the continuous yaw
     // (pos3DtoPos2DIsoYawed is linear, so this IS P(theta)*corner — the true
