@@ -121,6 +121,19 @@ void deferReleaseMetalBuffer(MTL::Buffer *buffer);
 void releaseDeferredMetalBuffers();
 void replaceMetalBufferInBindings(MTL::Buffer *oldBuffer, MTL::Buffer *newBuffer);
 
+// Null every sticky uniform/storage bind slot (and the active vertex-layout
+// slots) that still points at @p buffer, and drop it from the encoded-set.
+// The buffer twin of untrackMetalTexture: bindings are sticky, so a destroyed
+// buffer otherwise lingers as a dangling pointer that bindRenderResources /
+// bindComputeResources re-binds on a later dispatch — setBuffer objc_retains
+// the freed handle and EXC_BAD_ACCESSes. Realized by a rotation-lifecycle
+// buffer bound at a slot no cardinal-path pass re-binds (#2412: the #2334
+// overflow relight's slot-8 bind survived the per-axis release and crashed
+// STAGE_1's next dispatch at the yaw→0 transition). GL needs no equivalent —
+// deleting a GL buffer detaches it from every binding point. Call from the
+// Metal buffer destructor before releasing the handle.
+void untrackMetalBuffer(MTL::Buffer *buffer);
+
 void markMetalBufferEncoded(MTL::Buffer *buffer);
 bool wasMetalBufferEncoded(MTL::Buffer *buffer);
 

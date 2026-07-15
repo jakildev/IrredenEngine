@@ -941,3 +941,13 @@ parity with voxel-pool primary shapes.
   namespaces), so a GL-only smoke will not catch it. Any compute kernel that
   mixes a sampler read with images bound elsewhere in the pipeline is exposed;
   the #1294 chunk cull's fine Hi-Z levels are the known other victim.
+  The same stickiness makes resource **destruction** a hazard: the tables hold
+  non-owning pointers, so destroying a bound resource leaves a dangling entry
+  the next dispatch's flush re-binds — `objc_retain` on the freed handle
+  segfaults (#2412: a rotation-lifecycle buffer bound at a slot no
+  cardinal-path pass re-binds, freed at the yaw→0 per-axis release). The
+  backend therefore scrubs its tables on destruction — `untrackMetalTexture` /
+  `untrackMetalBuffer` in the Metal texture/buffer destructors
+  (`metal_runtime.cpp`) — mirroring GL's delete-unbinds semantics. A new
+  resource type that lands in any sticky table must untrack itself the same
+  way.
