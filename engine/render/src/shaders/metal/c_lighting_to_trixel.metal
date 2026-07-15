@@ -278,11 +278,13 @@ kernel void c_lighting_to_trixel(
         // the smooth inverse or the glow drifts off the surface as |residual|
         // grows. residualYaw == 0 (and every detached canvas, whose frame
         // carries zero yaw) keeps the byte-identical cardinal recovery.
+        // Sub-cell recovery on the per-axis route — the volume sample must
+        // land on the drawn surface (see perAxisCellToWorld3DSubCell).
         float3 pos3D = worldReceive
             ? worldReceivePos
             : (voxelFrameData.perAxisRoute != 0
-                ? perAxisCellToWorld3D(
-                      pixel, rawDepth, faceId, size,
+                ? perAxisCellToWorld3DSubCell(
+                      pixel, encoded, faceId, size,
                       voxelFrameData.frameCanvasOffset, voxelFrameData.voxelRenderOptions
                   )
                 : (voxelFrameData.residualYaw != 0.0

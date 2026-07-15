@@ -175,18 +175,18 @@ void main() {
     // Recover the face's cardinal store cell, its world FaceId, and its world
     // position — bit-for-bit the same decode the scatter's overflow branch uses
     // (v_peraxis_scatter.glsl) and the same world recovery the per-axis CELL
-    // lighting uses (perAxisCellToWorld3D). The per-axis store is base-resolution,
-    // so rawDepth (decodeDepthPerAxis) is world units and the sub-cell frac offset
-    // — a sub-pixel scatter-geometry detail — is irrelevant to world lighting
-    // sampling (sun map + volume are world-cell resolution).
+    // lighting uses. The per-axis store is base-resolution, so rawDepth
+    // (decodeDepthPerAxis) is world units. Sub-cell recovery, not
+    // lattice-only — the sun/volume samples must land on the drawn surface
+    // (see perAxisCellToWorld3DSubCell).
     const ivec2 cell = ivec2(int(packedCell & 0xFFFFu), int(packedCell >> 16u));
     const int slot = decodeSlot(rawDist);
     const int flip = decodeFlipPerAxis(rawDist);
     const int rawDepth = decodeDepthPerAxis(rawDist);
     const int faceId = visibleFaceIds[slot] ^ flip;
     const vec3 worldNormal = faceOutwardNormal6(faceId);
-    const vec3 pos3D = perAxisCellToWorld3D(
-        cell, rawDepth, faceId, canvasSizePixels, frameCanvasOffset, voxelRenderOptions
+    const vec3 pos3D = perAxisCellToWorld3DSubCell(
+        cell, rawDist, faceId, canvasSizePixels, frameCanvasOffset, voxelRenderOptions
     );
 
     // World-space lighting — mirrors c_lighting_to_trixel's world sample.

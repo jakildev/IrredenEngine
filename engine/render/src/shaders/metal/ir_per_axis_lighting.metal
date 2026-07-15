@@ -29,4 +29,31 @@ inline float3 perAxisCellToWorld3D(
     return isoPixelToPos3D(isoPix.x, isoPix.y, float(rawDepth));
 }
 
+// Sub-cell variant — mirrors ir_per_axis_lighting.glsl. Lattice recovery plus
+// the encoding's 4-bit in-plane frac offset (the same reconstruction the
+// scatter draws), so absolute-position lighting consumers (light volume,
+// sun-shadow receive, overflow relight) sample the surface where it is
+// actually rendered. Fractional-positioned content carries up to half a world
+// cell here (see #2251); integer content encodes frac 8/8 → zero offset,
+// bit-identical to the lattice form.
+inline float3 perAxisCellToWorld3DSubCell(
+    int2 cell, int encoded, int faceId,
+    int2 canvasSize, float2 frameCanvasOffset, int2 voxelRenderOptions
+) {
+    const float3 origin = perAxisCellToWorld3D(
+        cell, decodeDepthPerAxis(encoded), faceId,
+        canvasSize, frameCanvasOffset, voxelRenderOptions
+    );
+    // Frac fields of the per-axis encoding (#1458): uFrac4 at [9:6], vFrac4 at
+    // [5:2], 8 = cell centre — the same positions peraxis_scatter.metal reads.
+    const int uFrac4 = (encoded >> 6) & 15;
+    const int vFrac4 = (encoded >> 2) & 15;
+    float3 eu;
+    float3 ev;
+    faceInPlaneUnitAxes(faceId >> 1, eu, ev);
+    return origin
+        + eu * (float(uFrac4) / 16.0f - 0.5f)
+        + ev * (float(vFrac4) / 16.0f - 0.5f);
+}
+
 #endif // IR_PER_AXIS_LIGHTING_METAL_INCLUDED

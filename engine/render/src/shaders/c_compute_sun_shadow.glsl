@@ -185,7 +185,9 @@ void main() {
     vec3 normal;
     if (perAxis) {
         int faceId = visibleFaceIds[face];
-        pos3D = perAxisCellToWorld3D(pixel, rawDepth, faceId, size, frameCanvasOffset, voxelRenderOptions);
+        // Sub-cell recovery — the receiver must sample the sun map at the
+        // drawn surface (see perAxisCellToWorld3DSubCell).
+        pos3D = perAxisCellToWorld3DSubCell(pixel, encoded, faceId, size, frameCanvasOffset, voxelRenderOptions);
         normal = faceOutwardNormal6(faceId);
     } else if (residualYaw != 0.0) {
         // Smooth-yaw receive (#1719). While rotating, voxels leave the single

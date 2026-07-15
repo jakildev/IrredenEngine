@@ -406,6 +406,7 @@ bool g_noOverlay = false;
 // understates the mechanism. This is the baseline number the widened-domain
 // feeder-occlusion follow-on needs.
 bool g_noSunShadows = false;
+IRRender::DebugOverlayMode g_debugOverlay = IRRender::DebugOverlayMode::NONE;
 // --no-per-voxel-occlusion (#1812): with --occlusion-cull on, disable ONLY the
 // per-voxel Hi-Z refine (keep the #1294 chunk pre-pass). This is the marginal
 // acceptance-gate isolation: --occlusion-cull A/B measures the UNION of the two
@@ -631,6 +632,12 @@ void registerCliArgs() {
     args.integer("--base-subdivisions", "Base trixel subdivision count", 1);
     args.integer("--worker-threads", "Recorded for manifest/cell-ID; thread wiring is T-221", 0);
     args.string("--depth-probe", "Per-frame composite-depth readback at framebuffer pixel X,Y", "");
+    args.enumValue(
+        "--debug-overlay",
+        "Lighting/composite debug overlay",
+        {"none", "ao", "light_level", "shadow", "peraxis_id", "peraxis_origin", "unlit"},
+        "none"
+    );
 }
 
 // Read the parsed values back into the settings/override structs. Runs AFTER
@@ -651,6 +658,7 @@ void readCliArgs() {
     g_occlusionCull = args.getFlag("--occlusion-cull");
     g_noOverlay = args.getFlag("--no-overlay");
     g_noSunShadows = args.getFlag("--no-sun-shadows");
+    g_debugOverlay = IRRender::debugOverlayModeFromString(args.getEnum("--debug-overlay").c_str());
     g_noPerVoxelOcclusion = args.getFlag("--no-per-voxel-occlusion");
     g_waveFreeze = args.getFlag("--wave-freeze");
 
@@ -911,15 +919,23 @@ void createGridEntities() {
                     // their grid neighbors, so without this every interior
                     // voxel reports all six faces exposed and the compact
                     // pass rasters the full n³ volume instead of the ~6n²
-                    // shell. The lattice is known analytically here, so stamp
-                    // the occluded bits directly. Valid only while the cells
-                    // actually touch (spacing 1.0) and stay touching (rigid
-                    // wave moves the whole block in phase; the per-cell wave
-                    // shears gaps open — with or without --wave-freeze — where
-                    // a stale mask would carve holes, so this stays gated on
-                    // Rigid only).
-                    if (g_settings.waveMode_ == WaveMode::Rigid &&
-                        IRMath::abs(g_settings.spacing_ - 1.0f) < 1e-4f) {
+                    // shell. Worse than the perf cost: under residual yaw the
+                    // per-axis scatter composites those covered-face quads
+                    // against the true surface at exact-tie depths (a
+                    // half-integer-centered grid's same-voxel face planes
+                    // share their lattice origin), and the tie resolution
+                    // alternates per cell — the chevron shading stipple. The
+                    // lattice is known analytically here, so stamp the
+                    // occluded bits directly. Valid only while the cells
+                    // actually touch (spacing 1.0) and stay touching: the
+                    // rigid wave moves the whole block in phase, and a zero
+                    // amplitude is static in either mode. An ACTIVE (or
+                    // frozen) per-cell wave shears neighbors apart, where a
+                    // stale mask would carve holes — those configurations
+                    // stay unstamped.
+                    const bool alwaysTouching = g_settings.waveMode_ == WaveMode::Rigid ||
+                                                g_settings.waveAmplitude_ == 0.0f;
+                    if (alwaysTouching && IRMath::abs(g_settings.spacing_ - 1.0f) < 1e-4f) {
                         std::uint8_t occluded = 0;
                         if (x > 0)
                             occluded |= VoxelFlags::kFaceOccludedNegX;
@@ -982,6 +998,9 @@ void configureLightingAndCanvas() {
     IREntity::setComponent(mainCanvas, C_CanvasSunShadow{canvasSize});
     if (g_noSunShadows) {
         IRRender::setSunShadowsEnabled(false);
+    }
+    if (g_debugOverlay != IRRender::DebugOverlayMode::NONE) {
+        IRRender::setDebugOverlay(g_debugOverlay);
     }
     IREntity::setComponent(mainCanvas, C_CanvasLightVolume{});
     IRPrefab::Fog::attachToCanvas(mainCanvas);
