@@ -8,6 +8,7 @@
 #   - only cap-blocked fable work -> defer (keep trigger, no dispatch)
 #   - per-task Effort: override threads through to the dispatch
 #   - feedback severity routing (nits-only -> sonnet beats queued tasks)
+#   - semantic-conflict-only slice -> opus dispatch (step-1c pressure, #2417)
 #   - empty slice -> lane-default fallthrough (class empty)
 #   - non-worker role is a no-op (class empty)
 #   - planning pre-claim (#2197): plan=1 election, --plan-assign claim walk
@@ -229,6 +230,17 @@ case "$out" in
     *" plan="*) FAIL=$((FAIL+1)); echo "  FAIL: unassigned dispatch carries plan=: $out" ;;
     *) PASS=$((PASS+1)); echo "  ok: unassigned dispatch has no plan= arg" ;;
 esac
+
+# --- T18: semantic-conflict-only slice dispatches opus -----------------------
+# The #2417 starvation shape end-to-end: no feedback, no claimable tasks, no
+# needs-plan — just a conflicted PR the scout surfaced. The lane must elect
+# opus (role-worker step 1c is opus+-only), not defer and not fall through to
+# the lane default (a sonnet iteration skips step 1c by design).
+echo "T18: semantic-conflict-only slice dispatches opus (step-1c pressure)"
+write_slice worker '{"tasks_open":[],"feedback_prs":[],"needs_plan":[],"semantic_conflict_prs":[{"number":2417,"repo":"engine","labels":["fleet:semantic-conflict"]}]}'
+assert_eq "$(resolve worker)" \
+    "class=opus model=claude-opus-4-8[1m] effort=xhigh more=0 defer=0 count=1 plan=0" \
+    "conflicted PR alone elects opus with count=1"
 
 echo
 echo "PASS: $PASS  FAIL: $FAIL"

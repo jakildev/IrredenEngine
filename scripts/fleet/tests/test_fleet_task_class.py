@@ -5,9 +5,15 @@ work it's serving (a claude process can't change model/effort after
 launch), so this resolution IS the per-task model routing. The invariants
 that matter:
 
-  - pickup priority mirrors the role docs: feedback PRs, then unblocked open
-    tasks (oldest first — slices arrive sorted), then stackable `blocked`
-    tasks, then needs_plan;
+  - pickup priority mirrors the role docs: feedback PRs, then
+    semantic-conflict PRs, then unblocked open tasks (oldest first — slices
+    arrive sorted), then stackable `blocked` tasks, then needs_plan;
+  - a semantic-conflict PR is one opus claimable item (role-worker step 1c is
+    opus+-only; the scout pre-filters the slice's semantic_conflict_prs[]),
+    so a conflicted PR generates opus dispatch pressure even when the task
+    queue is empty or host-locked — before this tier the label had no
+    dispatch pressure at all and conflicts starved behind sonnet no-op
+    iterations (engine #2417);
   - feedback class derives from review severity labels (fable opt-in via
     fleet:fable on the PR, blocking labels -> opus, nits-only -> sonnet);
   - the fable concurrency cap skips fable items rather than idling the
@@ -32,6 +38,8 @@ that matter:
   - an empty/unroutable slice falls through to the lane default (covers
     reservation resumes and missing slices).
 """
+import importlib.machinery
+import importlib.util
 import os
 import sys
 import unittest
@@ -39,6 +47,18 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from fleet_task_class import feedback_pr_class, plan_pick, resolve  # noqa: E402
+
+# The scout's slice_worker is the pre-filter that feeds resolve(). Loaded here
+# (not only in test_worker_projection.py) to assert the cross-module contract:
+# a fleet:semantic-conflict PR that ALSO carries a worker feedback label is
+# dropped from semantic_conflict_prs[] so it reaches resolve() as feedback-only.
+_SCOUT = Path(__file__).parent.parent / "fleet-state-scout"
+_scout_loader = importlib.machinery.SourceFileLoader(
+    "fleet_state_scout", str(_SCOUT))
+_scout_spec = importlib.util.spec_from_loader("fleet_state_scout", _scout_loader)
+_scout_mod = importlib.util.module_from_spec(_scout_spec)
+_scout_loader.exec_module(_scout_mod)
+slice_worker = _scout_mod.slice_worker
 
 
 def _task(issue, model=None, effort=None, owner="free", blocked=False,
@@ -382,6 +402,93 @@ class GlHostGate(unittest.TestCase):
         self.assertEqual(out, "defer")
 
 
+class SemanticConflictDispatchPressure(unittest.TestCase):
+    """Semantic-conflict PRs are opus-class claimable work slotted between
+    feedback and task pickup (role-worker step 1c, opus+-classes-only). This
+    tier is what gives the label dispatch pressure at all: before it, a
+    conflicted PR was only resolved as a ride-along when opus queue work
+    happened to be flowing, and starved when the opus lane was dry or
+    host-locked (engine #2417 sat unclaimed while sonnet iterations
+    no-op'd). The scout pre-filters the slice (CONFLICTING-gated per #1654,
+    step-1c exclusions, resolving-claims, stacked children), so the resolver
+    counts every entry as-is."""
+
+    def setUp(self):
+        self._saved_host = os.environ.get("FLEET_TEST_HOST")
+
+    def tearDown(self):
+        if self._saved_host is None:
+            os.environ.pop("FLEET_TEST_HOST", None)
+        else:
+            os.environ["FLEET_TEST_HOST"] = self._saved_host
+
+    @staticmethod
+    def _sc(num):
+        return {"number": num, "repo": "engine",
+                "labels": ["fleet:semantic-conflict"]}
+
+    def test_conflict_alone_elects_opus(self):
+        out = resolve({"semantic_conflict_prs": [self._sc(2417)]},
+                      "sonnet", fable_blocked=False)
+        self.assertEqual(out, "opus xhigh 0 1 0")
+
+    def test_conflict_dispatches_when_all_tasks_host_locked(self):
+        # The #2417 starvation shape: every open task is GL-locked on a
+        # Metal-only host, so tasks alone would defer and no opus iteration
+        # ever launches — the conflict must still dispatch opus.
+        os.environ["FLEET_TEST_HOST"] = "mac"
+        out = resolve({
+            "tasks_open": [_task("#1938", "opus", needs_gl_host=True)],
+            "semantic_conflict_prs": [self._sc(2417)],
+        }, "sonnet", fable_blocked=False)
+        self.assertEqual(out, "opus xhigh 0 1 0")
+
+    def test_feedback_still_elected_before_conflict(self):
+        # Pickup priority mirrors the worker loop: feedback (step 1) before
+        # conflicts (step 1c). The conflict stays servable -> more=1 so the
+        # next tick serves the opus lane.
+        out = resolve({
+            "feedback_prs": [{"number": 11, "labels": ["fleet:has-nits"]}],
+            "semantic_conflict_prs": [self._sc(2417)],
+        }, "sonnet", fable_blocked=False)
+        self.assertEqual(out, "sonnet high 1 1 0")
+
+    def test_conflict_elected_before_open_tasks(self):
+        # Step 1c runs before task pickup (step 2), so the conflict outranks
+        # a claimable sonnet task; the task holds more=1.
+        out = resolve({
+            "semantic_conflict_prs": [self._sc(2417)],
+            "tasks_open": [_task("#10", "sonnet")],
+        }, "sonnet", fable_blocked=False)
+        self.assertEqual(out, "opus xhigh 1 1 0")
+
+    def test_conflicts_and_opus_feedback_share_the_count(self):
+        # Each conflict is one claimable opus item alongside opus feedback:
+        # the fan-out cap must cover both, one worker per item.
+        out = resolve({
+            "feedback_prs": [{"number": 11, "labels": ["fleet:needs-fix"]}],
+            "semantic_conflict_prs": [self._sc(2417), self._sc(2420)],
+        }, "sonnet", fable_blocked=False)
+        self.assertEqual(out, "opus xhigh 0 3 0")
+
+    def test_exclude_opus_defers_not_lane_default(self):
+        # Cap-covered opus with only conflict work left -> defer (real work
+        # exists, none servable now), never '' — a lane-default dispatch
+        # would launch a sonnet iteration that skips step 1c by design.
+        out = resolve({"semantic_conflict_prs": [self._sc(2417)]},
+                      "sonnet", fable_blocked=False, exclude=["opus"])
+        self.assertEqual(out, "defer")
+
+    def test_no_host_gate_on_conflicts(self):
+        # Unlike needs_gl_host tasks, a conflict resolves on any host — step
+        # 1c build-verifies IRShapeDebug, which every fleet host builds
+        # natively. mac included.
+        os.environ["FLEET_TEST_HOST"] = "mac"
+        out = resolve({"semantic_conflict_prs": [self._sc(2417)]},
+                      "opus", fable_blocked=False)
+        self.assertEqual(out, "opus xhigh 0 1 0")
+
+
 class ExcludeClasses(unittest.TestCase):
     """The dispatcher's cross-class fan-out: when an elected class is fully
     cap-covered but another class is claimable, it re-resolves with the covered
@@ -472,6 +579,44 @@ class PlanPick(unittest.TestCase):
 
     def test_empty_slice_yields_no_picks(self):
         self.assertEqual(plan_pick({}, "fable", False), [])
+
+
+class SemanticConflictFeedbackExclusionIntegration(unittest.TestCase):
+    """End-to-end (slice_worker -> resolve): a fleet:semantic-conflict PR that
+    ALSO owes a worker feedback fix must reach resolve() as feedback-only. The
+    scout drops it from semantic_conflict_prs[], so no parallel opus conflict
+    item is minted alongside the feedback item. Without this, a feedback pane
+    and an opus resolver pane can force-push the same head branch on one tick
+    (disjoint fleet:amending-* vs fleet:resolving-* claims give no mutual
+    exclusion), silently dropping the conflict resolution or the fix."""
+
+    @staticmethod
+    def _state(pr):
+        return {"repos": {"engine": {
+            "prs": [pr], "tasks": {"open": []}, "needs_plan": []}}}
+
+    @staticmethod
+    def _pr(labels, mergeable):
+        return {"number": 2422, "title": "T: feat",
+                "headRefName": "claude/feat", "baseRefName": "master",
+                "labels": sorted(labels), "isDraft": False,
+                "mergeable": mergeable, "author": "bot"}
+
+    def test_conflict_plus_feedback_dispatches_feedback_only(self):
+        # Every worker feedback / design-resume label suppresses the parallel
+        # conflict item, regardless of which class the feedback itself routes
+        # to (nits -> sonnet, needs-fix / design-unblocked -> opus). Assert the
+        # dispatch is identical to the same PR with no conflict label at all —
+        # the conflict adds zero pressure while the feedback is pending.
+        for label in ("fleet:has-nits", "fleet:needs-fix",
+                      "fleet:design-unblocked"):
+            combined = slice_worker(self._state(self._pr(
+                ["fleet:semantic-conflict", label], "CONFLICTING")))
+            self.assertEqual(combined["semantic_conflict_prs"], [], label)
+            self.assertEqual(len(combined["feedback_prs"]), 1, label)
+            plain = slice_worker(self._state(self._pr([label], "MERGEABLE")))
+            self.assertEqual(resolve(combined, "sonnet", False),
+                             resolve(plain, "sonnet", False), label)
 
 
 if __name__ == "__main__":

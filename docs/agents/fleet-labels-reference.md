@@ -263,6 +263,16 @@ Specifically, **never pass these via `--label` when filing**:
   `IRREDEN_USER_PROJECTS` build-verify) — or escalated to
   `human:needs-fix` if even Opus can't resolve (or, for a game PR, can't
   build-verify the resolution).
+  **Dispatch pressure:** the scout surfaces claimable conflicts in the
+  worker projection + slice (`semantic_conflict_prs[]`), and the class
+  election counts each as one **opus** item ranked between feedback and
+  task pickup — so a conflicted PR launches an opus iteration even when
+  the opus queue is empty or host-locked, instead of starving behind
+  sonnet no-op iterations (engine #2417). Claimable means: live
+  `mergeable == CONFLICTING` (a stale label on a MERGEABLE PR — the
+  #1654 race — generates no dispatch), none of step 1c's own exclusion
+  labels, no active `fleet:resolving-*` claim, and stacked children
+  defer to their conflicted base.
 - `fleet:fork-of-other-pr` — owned by the **merger** (sets when it
   detects this PR's branch was forked from another open PR's branch
   rather than from master, meaning the diff carries inherited commits

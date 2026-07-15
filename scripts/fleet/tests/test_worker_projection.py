@@ -52,15 +52,16 @@ def _state(prs, tasks=None, needs_plan=None):
     }
 
 
-def _pr(num, *, labels=None, head="claude/feat", is_draft=False):
+def _pr(num, *, labels=None, head="claude/feat", is_draft=False,
+        base="master", mergeable="MERGEABLE"):
     return {
         "number": num,
         "title": f"T-{num}: feat",
         "headRefName": head,
-        "baseRefName": "master",
+        "baseRefName": base,
         "labels": sorted(labels or []),
         "isDraft": is_draft,
-        "mergeable": "MERGEABLE",
+        "mergeable": mergeable,
         "author": "bot",
     }
 
@@ -84,10 +85,12 @@ class WorkerStableAcrossIrrelevantLabels(unittest.TestCase):
         self.assertEqual(before, after,
                          "merger-cooldown toggle must not re-fire the worker")
 
-    def test_semantic_conflict_does_not_flip_hash(self):
-        # The worker handles semantic-conflict (step 1c), but the projector
-        # includes a PR via FEEDBACK_LABELS, not semantic-conflict. Flipping
-        # that label while the feedback label is unchanged must not re-fire.
+    def test_stale_semantic_conflict_does_not_flip_hash(self):
+        # A fleet:semantic-conflict label on a MERGEABLE PR is the #1654
+        # fail-then-succeed race shape — stale, awaiting fleet-rebase's
+        # cleanup sweep. It must not re-fire the worker; only a live
+        # CONFLICTING PR is dispatch pressure (the SemanticConflictDispatch
+        # tests). `_pr` defaults to mergeable=MERGEABLE.
         before = self._hash([_pr(101, labels=["fleet:needs-fix"])])
         after = self._hash([_pr(101, labels=[
             "fleet:needs-fix", "fleet:semantic-conflict",
@@ -210,6 +213,134 @@ class WorkerSkipLabelsDropPR(unittest.TestCase):
             project_worker(_state([_pr(101, labels=["fleet:needs-fix", "fleet:gated"])])),
             [],
         )
+
+
+def _sc_pr(num, **kwargs):
+    kwargs.setdefault("labels", ["fleet:semantic-conflict"])
+    kwargs.setdefault("mergeable", "CONFLICTING")
+    return _pr(num, **kwargs)
+
+
+class SemanticConflictDispatch(unittest.TestCase):
+    """A claimable fleet:semantic-conflict PR IS worker dispatch pressure:
+    it enters project_worker (so its appearance/resolution flips the hash and
+    wakes the lane) and slice_worker's semantic_conflict_prs[] (so the class
+    election counts it as one opus item). Its only consumer, role-worker step
+    1c, runs exclusively in opus+-class iterations — without a projection
+    item, no opus iteration ever launches when the opus queue is dry or
+    host-locked, and conflicted PRs starve behind sonnet no-ops (engine
+    #2417). Only a live CONFLICTING PR counts: the #1654 stale-label shape
+    (label on a MERGEABLE PR) stays structurally excluded via the cached
+    mergeable field, preserving what the old blanket label exclusion
+    guaranteed."""
+
+    def _items(self, prs):
+        return [i for i in project_worker(_state(prs))
+                if i["kind"] == "semantic_conflict"]
+
+    def _slice(self, prs):
+        return slice_worker(_state(prs))["semantic_conflict_prs"]
+
+    def test_conflicting_pr_enters_projection_and_slice(self):
+        prs = [_sc_pr(2417)]
+        self.assertEqual(self._items(prs),
+                         [{"kind": "semantic_conflict", "repo": "engine",
+                           "pr": 2417}])
+        slice_prs = self._slice(prs)
+        self.assertEqual(len(slice_prs), 1)
+        self.assertEqual(slice_prs[0]["number"], 2417)
+        self.assertEqual(slice_prs[0]["repo"], "engine")
+
+    def test_appearance_and_resolution_flip_hash(self):
+        # Label lands (merger) -> wake; label cleared (worker resolved) ->
+        # the item leaves. Both edges are real dispatch-relevant transitions.
+        without = stable_hash(project_worker(_state([_pr(2417,
+            mergeable="CONFLICTING")])))
+        with_sc = stable_hash(project_worker(_state([_sc_pr(2417)])))
+        self.assertNotEqual(without, with_sc)
+
+    def test_stale_label_on_mergeable_pr_is_not_pressure(self):
+        # #1654: fail-then-succeed race leaves the label on a MERGEABLE PR.
+        # No projection item, no slice entry — the dispatch side must stay
+        # blind to it until fleet-rebase's cleanup sweep clears the label.
+        prs = [_sc_pr(2417, mergeable="MERGEABLE")]
+        self.assertEqual(self._items(prs), [])
+        self.assertEqual(self._slice(prs), [])
+
+    def test_unknown_mergeable_fails_closed(self):
+        # GitHub still computing mergeability -> not (yet) claimable; the
+        # next scout tick picks it up once CONFLICTING is confirmed.
+        prs = [_sc_pr(2417, mergeable="UNKNOWN")]
+        self.assertEqual(self._items(prs), [])
+        self.assertEqual(self._slice(prs), [])
+
+    def test_resolving_claim_covers_the_pr(self):
+        # A worker mid-resolution holds fleet:resolving-<host>-<agent>; the
+        # PR is covered, not claimable — no second opus dispatch for it.
+        prs = [_sc_pr(2417, labels=["fleet:semantic-conflict",
+                                    "fleet:resolving-mac-worker-1"])]
+        self.assertEqual(self._items(prs), [])
+        self.assertEqual(self._slice(prs), [])
+
+    def test_step1c_exclusion_labels_drop_the_pr(self):
+        # role-worker step 1c's own pickup filter: wip/human-held or not yet
+        # rebaseable against master. Mirror it exactly so a dispatched opus
+        # worker never wakes to a conflict it would refuse on sight.
+        for label in ("fleet:wip", "human:wip", "human:needs-fix",
+                      "human:blocker", "fleet:awaiting-base",
+                      "fleet:awaiting-upstream-review",
+                      "fleet:fork-of-other-pr"):
+            prs = [_sc_pr(2417, labels=["fleet:semantic-conflict", label])]
+            self.assertEqual(self._items(prs), [], label)
+            self.assertEqual(self._slice(prs), [], label)
+
+    def test_gated_pr_stays_human_only(self):
+        # fleet:gated wins unconditionally (loop-level exclusion shared with
+        # the feedback path): the conflict sits in a file no agent can push.
+        prs = [_sc_pr(2417, labels=["fleet:semantic-conflict", "fleet:gated"])]
+        self.assertEqual(self._items(prs), [])
+        self.assertEqual(self._slice(prs), [])
+
+    def test_stacked_child_defers_to_conflicted_base(self):
+        # Step 1c resolves the base first; the child is skipped until then,
+        # and the base is the (single) item carrying the dispatch pressure.
+        base = _sc_pr(2417, head="claude/base-feat")
+        child = _sc_pr(2418, head="claude/child-feat", base="claude/base-feat")
+        items = self._items([base, child])
+        self.assertEqual([i["pr"] for i in items], [2417])
+        self.assertEqual([p["number"] for p in self._slice([base, child])],
+                         [2417])
+
+    def test_stacked_child_with_clean_base_is_claimable(self):
+        # A conflicted child whose base PR is NOT semantic-conflicted is
+        # resolvable now — step 1c picks it up, so it counts.
+        base = _pr(2417, head="claude/base-feat")
+        child = _sc_pr(2418, head="claude/child-feat", base="claude/base-feat")
+        self.assertEqual([i["pr"] for i in self._items([base, child])], [2418])
+
+    def test_feedback_label_suppresses_conflict_pressure(self):
+        # A conflicted PR that ALSO owes worker feedback/design-resume work
+        # routes to the feedback lane ONLY — it must NOT also mint a
+        # semantic_conflict item. The two lanes hold disjoint claim
+        # namespaces (fleet:amending-* for the feedback fix vs
+        # fleet:resolving-* for the rebase), so surfacing both lets a
+        # (sonnet) nit-fix pane and an opus resolver pane force-push the same
+        # head branch on one tick — a last-writer-wins race that silently
+        # drops the conflict resolution or the feedback fix. Feedback comes
+        # first (the PR's own stated priority); conflict pressure holds until
+        # the feedback/design-resume label clears.
+        for label in ("fleet:needs-fix", "fleet:has-nits",
+                      "fleet:design-unblocked"):
+            prs = [_sc_pr(2417, labels=["fleet:semantic-conflict", label])]
+            # No semantic_conflict projection item or slice entry ...
+            self.assertEqual(self._items(prs), [], label)
+            self.assertEqual(self._slice(prs), [], label)
+            # ... but the PR still surfaces in the feedback lane, so the fix
+            # itself is not lost — only the parallel conflict dispatch is.
+            kinds = sorted(i["kind"] for i in project_worker(_state(prs)))
+            self.assertEqual(kinds, ["pr"], label)
+            feedback = slice_worker(_state(prs))["feedback_prs"]
+            self.assertEqual([p["number"] for p in feedback], [2417], label)
 
 
 class SliceWorkerSkipLabelsDropPR(unittest.TestCase):

@@ -17,10 +17,23 @@ Resolution order mirrors the worker role docs' pickup priority:
                       (``fleet:needs-fix`` / ``human:needs-fix`` /
                       ``human:blocker``) routes to opus; nits-only feedback
                       routes to sonnet.
-  2. open tasks     — the oldest claimable task's class (slices are sorted
+  2. semantic-conflict PRs — always opus: role-worker step 1c ("judging two
+                      sides' intent in a conflicted rebase is opus-tier
+                      work") runs between feedback and task pickup, and only
+                      inside opus+-class iterations, so each claimable
+                      conflict is one opus item. Without this tier the label
+                      has no dispatch pressure at all — conflicts only
+                      resolve as a ride-along when opus queue work happens
+                      to be flowing, and starve when it isn't (engine
+                      #2417). The scout pre-filters the slice's
+                      ``semantic_conflict_prs[]`` (CONFLICTING-gated per
+                      #1654, step-1c label exclusions, fleet:resolving-*
+                      unclaimed, stacked-child-deferred), so every entry
+                      counts.
+  3. open tasks     — the oldest claimable task's class (slices are sorted
                       by issue number; ``model`` comes from the
                       fleet:fable/opus/sonnet labels via the scout).
-  3. needs_plan     — a `fleet:sonnet`-tagged needs-plan issue is a MECHANICAL
+  4. needs_plan     — a `fleet:sonnet`-tagged needs-plan issue is a MECHANICAL
                       task the sonnet lane light-plans and self-queues (see
                       `_plan_class`); every other needs-plan issue is
                       architect-tier design work that prefers the fable class
@@ -233,14 +246,15 @@ def _candidates(slice_data, lane_default, host, fable_blocked=False):
     """Yield (class, effort, kind) per actionable item, pickup-priority order.
 
     Feedback PRs come first (the worker fixes review feedback before new work),
-    then unblocked open tasks, then stackable `blocked` tasks (a fallback tier,
-    claimable only as a stack on the blocker's PR), then needs_plan. This
-    mirrors the worker role docs so the *elected* class matches what the worker
-    actually picks up, and one yield per item lets the caller count claimable
-    work per class for the dispatcher's fan-out cap. ``kind`` is "plan" for a
-    needs_plan yield and "work" for everything else — `resolve` uses it to flag
-    the elected class's planning candidate so the dispatcher pre-claims a
-    specific issue for the dispatch (#2197).
+    then semantic-conflict PRs (role-worker step 1c sits between feedback and
+    task pickup), then unblocked open tasks, then stackable `blocked` tasks (a
+    fallback tier, claimable only as a stack on the blocker's PR), then
+    needs_plan. This mirrors the worker role docs so the *elected* class
+    matches what the worker actually picks up, and one yield per item lets the
+    caller count claimable work per class for the dispatcher's fan-out cap.
+    ``kind`` is "plan" for a needs_plan yield and "work" for everything else —
+    `resolve` uses it to flag the elected class's planning candidate so the
+    dispatcher pre-claims a specific issue for the dispatch (#2197).
 
     needs_plan yields once PER PLANNING CLASS, not once per issue: one planning
     assignment per class per tick is a deliberate serialization — planning is
@@ -268,6 +282,14 @@ def _candidates(slice_data, lane_default, host, fable_blocked=False):
     for pr in slice_data.get("feedback_prs", []) or []:
         cls = feedback_pr_class(pr.get("labels", []))
         yield cls, CLASS_DEFAULT_EFFORT[cls], "work"
+    # Step-1c work is opus+-only, so each conflict is one opus claimable item.
+    # The scout already filtered the slice (CONFLICTING-gated per #1654,
+    # step-1c label exclusions, no fleet:resolving-* claim, stacked children
+    # deferred to their base), so no re-filtering here. No host gate either:
+    # step 1c build-verifies IRShapeDebug, which every fleet host builds
+    # natively, unlike the GL-locked tasks below.
+    for _pr in slice_data.get("semantic_conflict_prs", []) or []:
+        yield "opus", CLASS_DEFAULT_EFFORT["opus"], "work"
     tasks = slice_data.get("tasks_open", []) or []
     for task in tasks:
         if _task_claimable(task, host) and not task.get("blocked"):
