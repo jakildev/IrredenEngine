@@ -109,6 +109,10 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
     // never reads it. Whenever LIGHTING_TO_TRIXEL runs the main canvas carries
     // C_CanvasSunShadow (asserted below), so BAKE ran and the map exists.
     Buffer *sunShadowDepthMap_ = nullptr;
+    // Lazily-resolved named VoxelActiveMaskBuffer — re-bound to slot 8 after
+    // the overflow-lighting dispatch borrows that slot (see the restore note
+    // in the per-axis block).
+    Buffer *voxelActiveMaskBuf_ = nullptr;
     Texture2D *paletteLUT_ = nullptr;
     FrameDataLightingToTrixel frameData_{};
 
@@ -335,6 +339,19 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         // per-axis loop above borrowed via bindRange — see the restore-slots
         // note in system_compute_voxel_ao.hpp for the corruption mode this avoids.
         IRPrefab::PerAxisCanvas::restoreVoxelCompactionSlots(voxelCompactedBuf_, voxelIndirectBuf_);
+        // Restore slot 8 to the pool's active mask. dispatchOverflowLighting
+        // bindBase'd the overflow scratch over kBufferIndex_OverflowLightingScratch,
+        // which ALIASES kBufferIndex_VoxelActiveMask — the named
+        // VoxelActiveMaskBuffer binds once at creation and is sticky thereafter,
+        // so without this restore the steal is permanent: when the per-axis
+        // canvases release at the cardinal return, the freed scratch dangles in
+        // the slot (the #2412 segfault) and, once destruction scrubs the
+        // binding, the compact reads an unbound active mask and culls every
+        // voxel — the empty-scene-at-cardinal-after-rotation regression.
+        if (voxelActiveMaskBuf_ == nullptr) {
+            voxelActiveMaskBuf_ = IRRender::getNamedResource<Buffer>("VoxelActiveMaskBuffer");
+        }
+        voxelActiveMaskBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_VoxelActiveMask);
         // Restore the main-canvas image bindings the loop overwrote. This is the
         // critical one: LIGHTING_TO_TRIXEL is the last image-binding compute stage,
         // so without this the freed per-axis textures linger in the persistent
