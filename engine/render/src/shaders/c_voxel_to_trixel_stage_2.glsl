@@ -428,14 +428,21 @@ void main() {
     const ivec2 frameOffsetFixed =
         trixelFrameOffset(trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions);
 
-    ivec3 microPositionFixed =
-        faceMicroPositionFixed6(faceId, voxelPositionFixed, u, v, subdivisions);
+    // View-space micro position at non-zero cardinals (#2424) — byte-identical
+    // mirror of stage 1's form: rotate the CELL origin (cell-index map, shift
+    // per-world-unit to match `voxelPositionFixed = round(worldPos *
+    // subdivisions)`) and the FACE ID, then run cardinal-0 face math. See
+    // c_voxel_to_trixel_stage_1_body.glsl for the seam rationale; the colour
+    // tap desyncs from the distance if the two stages disagree here.
+    ivec3 viewCellFixed = voxelPositionFixed;
+    int viewFaceId = faceId;
     if (cardinalIndex != 0) {
-        microPositionFixed = rotateCardinalZ(microPositionFixed, cardinalIndex);
-        // Shift is per-world-unit; scale to subdivision units to match
-        // `voxelPositionFixed = round(worldPos * subdivisions)`.
-        microPositionFixed += cardinalLowerCornerShift(cardinalIndex) * subdivisions;
+        viewCellFixed = rotateCardinalZ(voxelPositionFixed, cardinalIndex) +
+            cardinalLowerCornerShift(cardinalIndex) * subdivisions;
+        viewFaceId = rotateFaceIdCardinalZ(faceId, cardinalIndex);
     }
+    const ivec3 microPositionFixed =
+        faceMicroPositionFixed6(viewFaceId, viewCellFixed, u, v, subdivisions);
     // Detached: mirror stage 1's entity-rotated occlusion axis (#1462 / #1499);
     // depth is in subdivision units on both branches so the encode is unchanged.
     const int depthBase = isDetachedCanvas > 0.5
@@ -444,19 +451,14 @@ void main() {
     const int voxelDistance = encodeDepthWithFace(depthBase, slot, riserFlip);
     const ivec2 base = frameOffsetFixed + pos3DtoPos2DIso(microPositionFixed);
     // packedEntityId, not voxelIndex — emitDeformedFace's 5th param is uvec2 (#1960 carrier).
-    emitDeformedFace(base, D, voxelDistance, voxelColor, packedEntityId, faceId, reVoxelize);
+    emitDeformedFace(base, D, voxelDistance, voxelColor, packedEntityId, viewFaceId, reVoxelize);
 
     // Both-exposed dual emit (#2157) — mirror of stage 1's opposite-face emit
     // so the colour tap lands on the riser plane's pixels too. See
     // c_voxel_to_trixel_stage_1.glsl for the full rationale.
     if (bothPolaritiesExposed) {
-        const int oppositeFaceId = faceId ^ 1;
-        ivec3 microOpposite =
-            faceMicroPositionFixed6(oppositeFaceId, voxelPositionFixed, u, v, subdivisions);
-        if (cardinalIndex != 0) {
-            microOpposite = rotateCardinalZ(microOpposite, cardinalIndex);
-            microOpposite += cardinalLowerCornerShift(cardinalIndex) * subdivisions;
-        }
+        const ivec3 microOpposite =
+            faceMicroPositionFixed6(viewFaceId ^ 1, viewCellFixed, u, v, subdivisions);
         const int depthOpposite = isDetachedCanvas > 0.5
             ? isoDepthAlongAxis(microOpposite, voxelDepthAxis.xyz)
             : (microOpposite.x + microOpposite.y + microOpposite.z);
@@ -464,7 +466,7 @@ void main() {
         const int distanceOpposite = encodeDepthWithFace(depthOpposite, slot, riserFlip ^ 1);
         const ivec2 baseOpposite = frameOffsetFixed + pos3DtoPos2DIso(microOpposite);
         emitDeformedFace(
-            baseOpposite, D, distanceOpposite, voxelColor, packedEntityId, oppositeFaceId, reVoxelize
+            baseOpposite, D, distanceOpposite, voxelColor, packedEntityId, viewFaceId ^ 1, reVoxelize
         );
     }
 }

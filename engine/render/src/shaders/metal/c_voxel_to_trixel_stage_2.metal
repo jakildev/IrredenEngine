@@ -459,12 +459,20 @@ kernel void c_voxel_to_trixel_stage_2(
         frameData.voxelRenderOptions
     );
 
-    int3 microPositionFixed =
-        faceMicroPositionFixed6(faceId, voxelPositionFixed, u, v, subdivisions);
+    // View-space micro position at non-zero cardinals (#2424) — byte-identical
+    // mirror of stage 1's form (rotate the CELL origin + FACE ID, then run
+    // cardinal-0 face math); the colour tap desyncs from the distance if the
+    // two stages disagree here. See c_voxel_to_trixel_stage_1_body.glsl for
+    // the seam rationale.
+    int3 viewCellFixed = voxelPositionFixed;
+    int viewFaceId = faceId;
     if (cardinalIndex != 0) {
-        microPositionFixed = rotateCardinalZ(microPositionFixed, cardinalIndex);
-        microPositionFixed += cardinalLowerCornerShift(cardinalIndex) * subdivisions;
+        viewCellFixed = rotateCardinalZ(voxelPositionFixed, cardinalIndex) +
+            cardinalLowerCornerShift(cardinalIndex) * subdivisions;
+        viewFaceId = rotateFaceIdCardinalZ(faceId, cardinalIndex);
     }
+    const int3 microPositionFixed =
+        faceMicroPositionFixed6(viewFaceId, viewCellFixed, u, v, subdivisions);
     // Detached: mirror stage 1's entity-rotated occlusion axis (#1462 / #1499);
     // depth is in subdivision units on both branches so the encode is unchanged.
     const int depthBase = frameData.isDetachedCanvas > 0.5f
@@ -480,7 +488,7 @@ kernel void c_voxel_to_trixel_stage_2(
         packedEntityId,
         localId,
         frameData.isDetachedCanvas > 0.5f,
-        faceId,
+        viewFaceId,
         reVoxelize,
         canvasSize,
         distanceScratch,
@@ -493,13 +501,8 @@ kernel void c_voxel_to_trixel_stage_2(
     // so the colour tap lands on the riser plane's pixels too. GLSL twin has
     // the full rationale.
     if (bothPolaritiesExposed) {
-        const int oppositeFaceId = faceId ^ 1;
-        int3 microOpposite =
-            faceMicroPositionFixed6(oppositeFaceId, voxelPositionFixed, u, v, subdivisions);
-        if (cardinalIndex != 0) {
-            microOpposite = rotateCardinalZ(microOpposite, cardinalIndex);
-            microOpposite += cardinalLowerCornerShift(cardinalIndex) * subdivisions;
-        }
+        const int3 microOpposite =
+            faceMicroPositionFixed6(viewFaceId ^ 1, viewCellFixed, u, v, subdivisions);
         const int depthOpposite = frameData.isDetachedCanvas > 0.5f
             ? isoDepthAlongAxis(microOpposite, frameData.voxelDepthAxis.xyz)
             : (microOpposite.x + microOpposite.y + microOpposite.z);
@@ -514,7 +517,7 @@ kernel void c_voxel_to_trixel_stage_2(
             packedEntityId,
             localId,
             frameData.isDetachedCanvas > 0.5f,
-            oppositeFaceId,
+            viewFaceId ^ 1,
             reVoxelize,
             canvasSize,
             distanceScratch,
