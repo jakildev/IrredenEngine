@@ -530,6 +530,99 @@ in `IR_RELEASE` builds and safe to call when `g_jobManager ==
 nullptr` (unit tests / pre-`World` startup return `true` as the
 default).
 
+## Per-system update cadence (#2404)
+
+A system can declare — or set at runtime — a **cadence**: run on 1-in-N
+phase ticks of the pipeline it belongs to, instead of every tick. This is
+a *generic scheduling throttle*; which systems (or entities) get throttled
+is policy the consuming creation owns, not the engine. It is orthogonal to
+render LOD (`LOD_UPDATE` / `C_ActiveLodLevel`, which derives mesh detail
+from zoom) and to the T-224 threading groups (which parallelize *within* a
+tick): cadence decides whether a system dispatches *at all* on a given tick.
+
+Off-cadence ticks skip the system's **entire** dispatch — no `beginTick`,
+no archetype-node query, no per-entity iteration, no `endTick`, no observer
+fires. The saving is real dispatch/iteration cost, not an in-body early
+return. The per-group `flushStructuralChanges` still runs on every tick, so
+deferred changes queued by *other* systems keep flushing on schedule.
+
+### Declaring a cadence
+
+```cpp
+// registerSystem<N> form: constexpr members on the System<N> spec,
+// mirroring kConcurrency / kGrainSize. Absent → cadence 1 / offset 0.
+template <> struct System<BACKGROUND_DECAY> {
+    static constexpr std::uint32_t kCadence = 4;        // run every 4th tick
+    static constexpr std::uint32_t kCadenceOffset = 1;  // initial phase stagger
+    void tick(C_Foo &f) {
+        // integrate over the ticks this run covers so the reduced rate
+        // stays numerically correct — see accumulatedDeltaTime below.
+    }
+    static SystemId create() { return registerSystem<BACKGROUND_DECAY, C_Foo>("BgDecay"); }
+};
+
+// createSystem<Cs...> free function: trailing (cadence, offset) after grainSize.
+auto id = IRSystem::createSystem<C_Foo>(
+    "BgDecay", tickFn, beginFn, endFn, {}, relFn,
+    IRSystem::Concurrency::SERIAL, IRSystem::kDefaultGrainSize, /*cadence=*/4, /*offset=*/1);
+```
+
+`cadence == 1` (the default, unset) is every tick — legacy behavior, one
+load + compare on the hot path. `0` normalizes to `1`.
+
+### Runtime API (`IRSystem::` free functions + SystemManager methods)
+
+- `setSystemCadence(id, n)` / `getSystemCadence(id)` — change the divisor with
+  no re-registration; takes effect next tick and **re-phases from the last
+  run** (a shorter cadence fires sooner, a longer one later).
+- `setSystemCadenceOffset(id, o)` / `getSystemCadenceOffset(id)` — the initial
+  phase, `0..cadence-1`. K sibling cold-tier systems registered together at
+  cadence K with distinct offsets fire on K consecutive ticks (smoothed
+  load) instead of spiking on the same tick. Setting it at runtime re-staggers
+  from the current phase tick.
+- `getAccumulatedTicks(id)` — phase ticks the current/most-recent execution
+  covers (`>= 1` once it has run).
+- `accumulatedDeltaTime(id)` — **UPDATE-phase-only** convenience:
+  `getAccumulatedTicks(id) * IRTime::deltaTime(UPDATE)`. For an integrator or
+  accumulator running at a reduced rate, multiply your per-tick delta by this
+  so the math stays correct. RENDER-phase throttled consumers must use raw
+  `getAccumulatedTicks` — RENDER dt is wall-clock-variable.
+- `cadenceFromRate(hz)` — sugar mapping a target sub-rate to the nearest
+  integer divisor of the fixed UPDATE rate (`round(kFPS / hz)`, min 1). The
+  issue's "target sub-rate" is this helper, not a second scheduling mode.
+
+Lua mirrors the whole surface: `IRSystem.setSystemCadence(sysId, n)` /
+`getSystemCadence` / `setSystemCadenceOffset` / `getSystemCadenceOffset` /
+`getAccumulatedTicks` / `accumulatedDeltaTime` (see `engine/script/CLAUDE.md`).
+
+### How the gate works
+
+`executePipeline` bumps a SystemManager-owned per-event tick counter
+(`m_eventTickCounts`, sized `IRTime::END + 1` — self-contained, no
+TimeManager dependency, so cadence works for INPUT/RENDER and is unit-
+testable in isolation) once at entry to `now`, then gates each system with
+`now >= m_lastRunTick[id] + cadence`. The comparison is **additive, not
+`now - lastRun >= cadence`** — a nonzero offset seeds `lastRun > now` on the
+first ticks, where the unsigned subtraction would underflow; `now - lastRun`
+(the accumulated delta) is computed only at fire time, where `now >= lastRun`
+holds. A due system stamps `m_accumulatedTicks[id] = now - lastRun`, then
+`m_lastRunTick[id] = now`, on the main thread **before** any worker fan-out
+(a multi-system group filters its due members into a reused scratch vector
+first), so a tick body reading the accumulated delta from a worker never
+races the write. Joining a pipeline (`registerPipelineGroups` /
+`appendToPipeline` / insert) seeds `lastRun` from the current event counter
+(+ offset), so a system's first accumulated delta measures from its join
+point — not the pipeline's whole lifetime.
+
+`executeSystem` / `executeQuery` are **ungated** — cadence is a pipeline-
+scheduling property, so direct/manual invocation always runs.
+
+**Skip semantics on observers.** The `TickObserver` bracket (GPU-stage
+timing) fires only on ticks a singleton system actually runs, so the perf
+overlay / GPU-stage rows hold *stale* samples for a throttled system on its
+skip frames. That is expected — it's the honest picture of "this system
+didn't run this frame" — not a bug to special-case.
+
 ## Gotchas
 
 - **Archetype mutations in a TICK will skip or revisit entities.** If you

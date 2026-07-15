@@ -12,7 +12,9 @@
 #include <irreden/system/components/component_system_event.hpp>
 #include <irreden/system/components/component_system_relation.hpp>
 
+#include <array>
 #include <chrono>
+#include <cstdint>
 #include <vector>
 #include <unordered_map>
 #include <memory>
@@ -95,6 +97,8 @@ class SystemManager {
         Archetype excludeArchetype = {},
         Concurrency concurrency = Concurrency::SERIAL,
         int grainSize = kDefaultGrainSize,
+        std::uint32_t cadence = 1,
+        std::uint32_t offset = 0,
         SystemAccess accessDescriptor = {}
     ) {
         m_systemNames.emplace_back(C_Name{name});
@@ -111,6 +115,7 @@ class SystemManager {
         m_concurrency.emplace_back(concurrency);
         m_grainSize.emplace_back(grainSize > 0 ? grainSize : 1);
         m_systemAccess.emplace_back(accessDescriptor);
+        emplaceCadenceState(cadence, offset);
         return newSystemId;
     }
 
@@ -135,6 +140,39 @@ class SystemManager {
     const SystemAccess &getSystemAccess(SystemId system) const {
         static const SystemAccess kEmpty{};
         return system < m_systemAccess.size() ? m_systemAccess[system] : kEmpty;
+    }
+
+    /// #2404: per-system update cadence — run the system on 1-in-N phase
+    /// ticks of the pipeline it belongs to. `cadence == 1` (default) is
+    /// every tick (0 is normalized to 1). Takes effect on the next phase
+    /// tick with no re-registration; the change re-phases from the
+    /// system's last run (a shorter cadence fires sooner, a longer one
+    /// later). Off-cadence ticks skip the ENTIRE dispatch — no
+    /// `beginTick`, no archetype query, no per-entity iteration — so the
+    /// saving is real, not an in-body early return.
+    void setSystemCadence(SystemId system, std::uint32_t cadence);
+    std::uint32_t getSystemCadence(SystemId system) const {
+        return system < m_cadence.size() ? m_cadence[system] : 1u;
+    }
+
+    /// #2404 (amendment 1): initial phase stagger, `0..cadence-1`. Sibling
+    /// systems registered together at cadence N with distinct offsets fire
+    /// on distinct ticks (smoothed load) instead of spiking on the same
+    /// tick. Setting it at runtime re-phases the system so the offset takes
+    /// effect as a fresh stagger from the current phase tick.
+    void setSystemCadenceOffset(SystemId system, std::uint32_t offset);
+    std::uint32_t getSystemCadenceOffset(SystemId system) const {
+        return system < m_cadenceOffset.size() ? m_cadenceOffset[system] : 0u;
+    }
+
+    /// #2404: phase ticks covered by the system's current / most-recent
+    /// execution — the multiplier a throttled integrator reads so its
+    /// per-tick-rate math stays correct at the reduced rate. `>= 1` once
+    /// the system has run; `0` before its first execution. For UPDATE-
+    /// phase systems the accumulated fixed-step delta is this value times
+    /// `IRTime::deltaTime(UPDATE)` (see `IRSystem::accumulatedDeltaTime`).
+    std::uint64_t getAccumulatedTicks(SystemId system) const {
+        return system < m_accumulatedTicks.size() ? m_accumulatedTicks[system] : 0u;
     }
 
     template <typename Tag> void addSystemTag(SystemId system) {
@@ -170,7 +208,9 @@ class SystemManager {
         Archetype includeArchetype,
         Archetype excludeArchetype,
         std::function<void(ArchetypeNode *)> body,
-        Concurrency concurrency = Concurrency::SERIAL
+        Concurrency concurrency = Concurrency::SERIAL,
+        std::uint32_t cadence = 1,
+        std::uint32_t offset = 0
     );
 
     /// Replace the per-archetype tick body of an existing system in place.
@@ -326,6 +366,54 @@ class SystemManager {
     std::vector<Concurrency> m_concurrency;
     std::vector<int> m_grainSize;
     std::vector<SystemAccess> m_systemAccess;
+
+    // #2404: per-system update cadence. Parallel to m_ticks; emplaced in
+    // both system-creation paths via emplaceCadenceState.
+    //   m_cadence         run 1-in-N phase ticks (1 = every tick).
+    //   m_cadenceOffset   initial phase stagger, 0..cadence-1.
+    //   m_lastRunTick     per-event tick counter at this system's last run,
+    //                     seeded at pipeline-join (stampCadenceJoin) so the
+    //                     first accumulated delta measures from the join
+    //                     point, not counter zero.
+    //   m_accumulatedTicks  phase ticks covered by the current/most-recent
+    //                     execution (getAccumulatedTicks).
+    std::vector<std::uint32_t> m_cadence;
+    std::vector<std::uint32_t> m_cadenceOffset;
+    std::vector<std::uint64_t> m_lastRunTick;
+    std::vector<std::uint64_t> m_accumulatedTicks;
+
+    // #2404: SystemManager-owned per-event execution counter, bumped once
+    // at the top of executePipeline so every cadence gate in a pass sees
+    // the same `now`. Self-contained (no TimeManager dependency), so
+    // cadence works for INPUT/RENDER phases and is unit-testable in
+    // isolation. IRTime::Events is a C-style enum ending at END; size the
+    // array END + 1.
+    std::array<std::uint64_t, IRTime::END + 1> m_eventTickCounts{};
+
+    // #2404: reused scratch for filtering the due members of a multi-
+    // system group on the main thread before fan-out; reserved lazily,
+    // never reallocated per frame in steady state.
+    std::vector<SystemId> m_dueScratch;
+
+    // #2404: emplace the four cadence vectors for a newly-created system.
+    // Called by both createSystem and createSystemDynamic to keep the
+    // parallel vectors in lockstep with m_ticks. cadence 0 -> 1; offset is
+    // clamped into [0, cadence-1].
+    void emplaceCadenceState(std::uint32_t cadence, std::uint32_t offset);
+
+    // #2404: main-thread cadence gate. Returns true and advances the
+    // bookkeeping (accumulated ticks + last-run tick) when `system` is due
+    // to run at phase tick `now`; returns false to skip the whole dispatch.
+    bool pollCadenceDue(SystemId system, std::uint64_t now);
+
+    // #2404: seed a system's phase when it joins `event`'s pipeline, so its
+    // first accumulated delta measures from the join tick (plus its offset
+    // stagger), not from counter zero.
+    void stampCadenceJoin(IRTime::Events event, SystemId system);
+
+    // #2404: the largest per-event tick counter — the reference clock for a
+    // runtime offset re-phase (which is event-agnostic).
+    std::uint64_t maxEventTickCount() const;
 
     // Begin tick functions happen once per system before tick function(s)
     template <typename FunctionBeginTick>
