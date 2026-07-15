@@ -90,6 +90,15 @@ def main() -> None:
     ]
     run_rc, output = _run_capture(run_cmd)
 
+    # An --auto-screenshot GUI-test run must self-terminate. The fleet-run
+    # watchdog reports a process still alive at --timeout as exit 0
+    # ("healthy" for generic smoke), which would mask a hung GUI test as a
+    # zero-assertion success — treat the watchdog kill as a failure here.
+    hung = "RESULT=ALIVE-TIMEOUT" in output
+    if hung:
+        print(f"[gui-verify] run hung: watchdog killed it at --timeout "
+              f"{args.timeout}s before the shot table completed")
+
     assertions = []
     for m in _GUI_ASSERT_RE.finditer(output):
         shot, label, kind, target, name, result, actual = m.groups()
@@ -102,7 +111,7 @@ def main() -> None:
 
     if not assertions:
         msg = "[gui-verify] no GUI-ASSERT lines found in output"
-        if run_rc != 0:
+        if run_rc != 0 or hung:
             print(msg)
             raise SystemExit(1)
         print(msg + " (run exited 0 — target may have no assertion tables)")
@@ -131,7 +140,7 @@ def main() -> None:
         for a in failures:
             print(f"  shot={a['shot']} name={a['name']} kind={a['kind']} actual={a['actual']}")
 
-    if failures or run_rc != 0:
+    if failures or run_rc != 0 or hung:
         raise SystemExit(1)
 
 

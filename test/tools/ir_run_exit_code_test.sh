@@ -6,9 +6,12 @@
 # screenshots were written, so the per-shot comparator passed while the
 # process crashed. ir-run's `--auto-screenshot` path now refuses to
 # exec'-replace (which would hide the signal behind a bash builtin); it
-# runs as a child and prints a "crashed on shutdown" diagnostic on
-# non-zero. This test pins that behavior so a future revert doesn't
-# silently re-open the gap.
+# runs as a child and reports the clean-exit verdict (RESULT=CRASH … +
+# the clean-exit-policy failure text) on non-zero, propagating the code.
+# This test pins that behavior on the --auto-screenshot path — the
+# GPU-lock path, distinct from the --timeout coverage in
+# scripts/fleet/tests/test_ir_run_result_reporting.sh — so a future
+# revert doesn't silently re-open the gap.
 
 set -euo pipefail
 
@@ -68,10 +71,10 @@ set +e
 rc=$?
 set -e
 check "exit code matches binary (139)" "[[ $rc -eq 139 ]]"
-check "diagnostic mentions 'crashed on shutdown'" \
-    "grep -q 'crashed on shutdown' /tmp/ir-run-crash.log"
-check "diagnostic mentions T-336" \
-    "grep -q 'T-336' /tmp/ir-run-crash.log"
+check "RESULT=CRASH verdict names the propagated code + decoded signal" \
+    "grep -q 'RESULT=CRASH exe=IRFakeCrash exit=139 signal=SIGSEGV' /tmp/ir-run-crash.log"
+check "diagnostic cites the clean-exit policy" \
+    "grep -q 'clean-exit policy' /tmp/ir-run-crash.log"
 
 echo
 echo "ir_run_exit_code_test.sh: $pass passed, $fail failed"

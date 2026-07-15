@@ -8,8 +8,8 @@ description: >-
   merged PR. On red (build break), files / opens a fix PR for the offender
   and holds labels on PRs that touch the implicated source paths until
   the fix lands. On partial (per-demo runtime hang or crash but build
-  green), sweeps the rest and files a follow-up perf / functional issue
-  for the offending demo. Runs on Linux, macOS, AND native Windows (MSYS2
+  green), sweeps the rest, then fix-forwards the offending demo this
+  session (issue only as the documented fallback). Runs on Linux, macOS, AND native Windows (MSYS2
   mingw64) — Windows is now the primary validation host. Use when the human
   cues "platform-catchup", "catch up smoke tests", or "catch up Windows
   builds". Skill is **cue-only**, never auto-run — multi-target builds and
@@ -332,6 +332,12 @@ Per-target pass criteria:
 
 ### 7. Decide outcome
 
+"Pass" for a run means the wrapper's `ir-run: RESULT=CLEAN` verdict — a
+`RESULT=CRASH` (teardown crashes included, even with all screenshots
+saved) is a per-demo crash for this table, per
+[`docs/agents/FLEET.md`](../../../docs/agents/FLEET.md) §"Clean-exit
+policy".
+
 | Build result                       | Run result                                  | Outcome    |
 |------------------------------------|---------------------------------------------|------------|
 | All targets build                  | All pass                                    | **green**  |
@@ -375,7 +381,13 @@ touches the offending demo's source tree:
 For each held-back PR, do NOT edit the labels. Note them in the
 report's `held_prs` field.
 
-File a follow-up issue for the offending demo:
+Then apply fix-forward
+([`docs/agents/FLEET.md`](../../../docs/agents/FLEET.md) §"Fix-forward"):
+after the sweep, attempt the offender's fix **this session** — bisect
+the deterministic repro, root-cause, and open a fix PR — regardless of
+which merged change introduced it. Fall back to filing only when the
+fix genuinely exceeds the session (design escalation, other-host-only
+repro), and then with full forensics:
 
 ```bash
 gh issue create --repo <repo> \
@@ -383,9 +395,9 @@ gh issue create --repo <repo> \
   --body "<...>" --label "fleet:task"
 ```
 
-Body covers: which demo, what symptom, log excerpt, suspected root
-cause (e.g. "perf_grid runs ~1 FPS — likely an OpenGL lighting stage
-regression; `/optimize` flow needed").
+Body covers: which demo, the exact repro command and its
+`ir-run: RESULT=` line, log excerpt, the bisect window or suspected
+root cause, and what was already ruled out.
 
 Update marker: `last_outcome = "partial"`,
 `skipped_targets = [<failed-targets>]`,

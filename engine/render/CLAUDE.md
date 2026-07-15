@@ -243,7 +243,14 @@ PR that touches:
 - anything affecting pipeline ordering, canvas textures, or the voxel pool
 
 must run the **`render-debug-loop`** skill after the change and attach
-the following to the PR body:
+the following to the PR body.
+
+Every verification run must also end `ir-run: RESULT=CLEAN` — a
+teardown crash after the screenshots saved still fails the run (see
+[`docs/agents/FLEET.md`](../../docs/agents/FLEET.md) §"Clean-exit
+policy").
+
+Attach:
 
 1. At least one full-frame before/after screenshot pair.
 2. **At least one ROI crop pair** (current + baseline) covering a
