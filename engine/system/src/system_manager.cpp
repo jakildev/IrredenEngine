@@ -93,6 +93,22 @@ SystemId SystemManager::createSystemDynamic(
 
 // #2404 — per-system update cadence -------------------------------------
 
+namespace {
+// True if `system` appears in any group of `groups`. Used to reject a
+// double-add: appending / inserting a system already in the pipeline
+// would tick it twice per frame.
+bool pipelineGroupsContain(const std::vector<std::vector<SystemId>> &groups, SystemId system) {
+    for (const auto &group : groups) {
+        for (SystemId id : group) {
+            if (id == system) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+} // namespace
+
 void SystemManager::emplaceCadenceState(std::uint32_t cadence, std::uint32_t offset) {
     const std::uint32_t normCadence = cadence == 0 ? 1u : cadence;
     m_cadence.emplace_back(normCadence);
@@ -106,6 +122,7 @@ void SystemManager::emplaceCadenceState(std::uint32_t cadence, std::uint32_t off
     // event; a system never listed in any pipeline is unreachable by
     // executePipeline, so the placeholder is inert.
     m_cadenceEvent.emplace_back(IRTime::UPDATE);
+    m_cadenceJoined.emplace_back(false);
 }
 
 bool SystemManager::pollCadenceDue(SystemId system, std::uint64_t now) {
@@ -133,6 +150,24 @@ void SystemManager::stampCadenceJoin(IRTime::Events event, SystemId system) {
     if (system >= m_lastRunTick.size()) {
         return;
     }
+    if (m_cadenceJoined[system] && m_cadenceEvent[system] != event) {
+        // Re-joining to a different event is fine on its own (e.g. a scene
+        // transition re-purposes the SystemId after clearing its old
+        // pipeline) — only assert if the system is STILL listed in the old
+        // event's pipeline, i.e. it would be live in two pipelines at once
+        // and thrash m_lastRunTick between two counters that advance at
+        // different rates (the same clock-mixing bug amendment 2 fixed).
+        const auto it = m_systemPipelineGroups.find(m_cadenceEvent[system]);
+        IR_ASSERT(
+            it == m_systemPipelineGroups.end() || !pipelineGroupsContain(it->second, system),
+            "stampCadenceJoin: system '{}' is still registered in its prior event's pipeline "
+            "and is now being joined to a different event — listing the same system in two "
+            "pipelines simultaneously thrashes its cadence clock between two counters that "
+            "advance at different rates. Remove it from the old pipeline first.",
+            getSystemName(system)
+        );
+    }
+    m_cadenceJoined[system] = true;
     m_cadenceEvent[system] = event; // bind the runtime re-phase clock to this event.
     const std::uint64_t now = m_eventTickCounts[event];
     const std::uint32_t offset = system < m_cadenceOffset.size() ? m_cadenceOffset[system] : 0u;
@@ -225,22 +260,6 @@ void SystemManager::registerPipelineGroups(
         }
     }
 }
-
-namespace {
-// True if `system` appears in any group of `groups`. Used to reject a
-// double-add: appending / inserting a system already in the pipeline
-// would tick it twice per frame.
-bool pipelineGroupsContain(const std::vector<std::vector<SystemId>> &groups, SystemId system) {
-    for (const auto &group : groups) {
-        for (SystemId id : group) {
-            if (id == system) {
-                return true;
-            }
-        }
-    }
-    return false;
-}
-} // namespace
 
 void SystemManager::appendToPipeline(IRTime::Events event, SystemId system) {
     // operator[] default-constructs an empty group sequence when the

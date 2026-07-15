@@ -372,6 +372,12 @@ IRSystem::insertIntoPipelineAfter(IRTime::Events::UPDATE, sysId, anchor);
 - All three assert (debug; no-op in release) if `sysId` is already in
   the event's pipeline (a double-add would tick it twice), and the
   insert forms assert if `anchor` isn't found.
+- Joining a system into a **different** event's pipeline while it's
+  still listed in its prior one trips a matching debug assert in
+  `stampCadenceJoin` — a system's cadence clock binds to one event, so
+  being live in two pipelines at once would thrash `m_lastRunTick`
+  between two counters that advance at different rates. Clear the old
+  pipeline (or the group containing it) first.
 - Lua surface: `IRSystem.appendSystem(event, sysId)`,
   `IRSystem.insertSystemBefore(event, sysId, anchor)`,
   `IRSystem.insertSystemAfter(event, sysId, anchor)` — see

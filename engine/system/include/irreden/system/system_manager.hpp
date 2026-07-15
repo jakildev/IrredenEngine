@@ -385,11 +385,18 @@ class SystemManager {
     //                     counter — the events advance at different rates
     //                     (RENDER is uncapped, UPDATE is fixed-step), so
     //                     mixing clocks seeds `lastRun` far ahead of `now`.
+    //   m_cadenceJoined   whether `m_cadenceEvent` holds a real join (true)
+    //                     or is still the inert placeholder from
+    //                     emplaceCadenceState (false) — lets stampCadenceJoin
+    //                     tell "never joined" apart from "joined to UPDATE",
+    //                     so it can assert against a system still listed in
+    //                     a different event's pipeline when re-joined.
     std::vector<std::uint32_t> m_cadence;
     std::vector<std::uint32_t> m_cadenceOffset;
     std::vector<std::uint64_t> m_lastRunTick;
     std::vector<std::uint64_t> m_accumulatedTicks;
     std::vector<IRTime::Events> m_cadenceEvent;
+    std::vector<bool> m_cadenceJoined;
 
     // #2404: SystemManager-owned per-event execution counter, bumped once
     // at the top of executePipeline so every cadence gate in a pass sees
