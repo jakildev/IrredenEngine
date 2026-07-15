@@ -7,6 +7,7 @@
 #include <irreden/entity/entity_manager.hpp>
 
 #include <cstdint>
+#include <stdexcept>
 #include <vector>
 
 // #2404 — per-system update cadence. Exercises the SystemManager cadence
@@ -343,6 +344,52 @@ TEST_F(SystemCadenceTest, OffsetRephaseUsesOwnEventClock) {
         m_system_manager.executePipeline(IRTime::UPDATE);
     }
     EXPECT_EQ(exec, 1);
+}
+
+// A system's cadence clock is bound to one event (stampCadenceJoin). Joining
+// it to a second event while it is STILL listed in the first one would leave
+// it live in two pipelines, thrashing m_lastRunTick between two counters that
+// advance at different rates. stampCadenceJoin IR_ASSERTs on that; the assert
+// throws std::runtime_error via engAssert, as in pipeline_groups_test.cpp.
+TEST_F(SystemCadenceTest, JoinToSecondEventWhileLiveInFirstAsserts) {
+    auto sys = IRSystem::createSystem<C_CadA>(
+        "TwoPipelinesLive",
+        [](C_CadA &) {},
+        nullptr,
+        nullptr,
+        {},
+        nullptr,
+        IRSystem::Concurrency::SERIAL,
+        IRSystem::kDefaultGrainSize,
+        /*cadence=*/2,
+        /*offset=*/0
+    );
+    m_system_manager.registerPipeline(IRTime::UPDATE, {sys});
+
+    // UPDATE's pipeline still lists sys — joining RENDER must be rejected.
+    EXPECT_THROW(m_system_manager.appendToPipeline(IRTime::RENDER, sys), std::runtime_error);
+}
+
+// The counterpart success path: clearing the old event's pipeline first makes
+// the re-join legitimate (a scene transition re-purposing the SystemId), so
+// the guard must stay silent rather than false-assert on any re-join.
+TEST_F(SystemCadenceTest, RejoinAfterClearingPriorPipelineIsSilent) {
+    auto sys = IRSystem::createSystem<C_CadA>(
+        "RejoinAfterClear",
+        [](C_CadA &) {},
+        nullptr,
+        nullptr,
+        {},
+        nullptr,
+        IRSystem::Concurrency::SERIAL,
+        IRSystem::kDefaultGrainSize,
+        /*cadence=*/2,
+        /*offset=*/0
+    );
+    m_system_manager.registerPipeline(IRTime::UPDATE, {sys});
+    m_system_manager.clearPipeline(IRTime::UPDATE); // no longer live in UPDATE.
+
+    EXPECT_NO_THROW(m_system_manager.appendToPipeline(IRTime::RENDER, sys));
 }
 
 } // namespace
