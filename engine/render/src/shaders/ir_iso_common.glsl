@@ -988,6 +988,17 @@ const float kScatterCellTieStep = 1.0 / 8388608.0;
 // (v_peraxis_scatter.glsl / metal/peraxis_scatter.metal: 2.0 * band).
 const float kScatterCellTieBand = 16.0 * kScatterCellTieStep;
 
+// Interior-edge margin yield (#2428) — Metal-lead, like the #1937 analytic
+// coverage it depends on: a conservative-dilation margin that penetrates an
+// INTERIOR edge (over an adjacent visible face) can hold the constant
+// (flip << 2) | slot key-tiebreak advantage (up to 7 key units,
+// penetration-independent) over that face's exact fragments — the
+// fractional-offset shared-edge fringe. The Metal fragment stage floors the
+// yield slope at the cross-face divergence bound and adds a flat
+// kScatterMarginInteriorBiasKey (8 key units, ir_iso_common.metal) for
+// interior penetrations. The GL twin lacks the per-edge interior flags until
+// the #1938 coverage port and keeps the pre-#2428 behavior.
+
 // Margin-yield gradient scale (#1883). The flat bias above only breaks SUB-PIXEL
 // same-plane ties. Once the per-axis margin grows large on a foreshortened face
 // (iter-1's 0.5*|n| reaches a cell-deep fraction), the margin EXTRAPOLATES the
@@ -1002,6 +1013,20 @@ const float kScatterCellTieBand = 16.0 * kScatterCellTieStep;
 // covers the worst-case symmetric two-plane depth divergence near a cardinal with
 // headroom. Folded into the per-axis yield-grad varying by the scatter vertex
 // stage, so the fragment stage needs no copy of this constant.
+//
+// SECOND requirement (#2428) — this constant is now load-bearing for a purpose
+// the #1883 rationale above does not mention, and the two pull in OPPOSITE
+// directions. The Metal interior-edge yield slope is FLOORED at
+// kScatterMarginYieldGradScale * encScale, which must cover the worst-case
+// 2*sqrt(2)*encScale cross-face plane divergence: 3 >= 2.8284, only 6% of slack.
+// The #1883 goal above ("sub-pixel gap-fills still win") argues for a SMALLER
+// scale, so the plausible retune direction is precisely the one that drops the
+// floor under the divergence bound and revives the #2428 shared-edge fringe —
+// e.g. 2.0 would silently do it. Asserted CPU-side in ir_render_types.hpp
+// (kScatterMarginYieldGradScale, squared for exact integer comparison); that
+// assert fires on the GL side too even though the floor itself is Metal-lead
+// until the #1938 port. If the two purposes ever need different values, give the
+// #2428 floor its own constant rather than splitting the difference.
 const float kScatterMarginYieldGradScale = 3.0;
 
 // Miter limit for the conservative dilation below (#1538): caps how far a sharp

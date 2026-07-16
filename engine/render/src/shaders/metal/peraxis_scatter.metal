@@ -80,6 +80,24 @@ struct VertexOut {
     // ridge to the neighbor face's exact footprint (the doubled top<->side sliver).
     float marginYieldGradU [[flat]];
     float marginYieldGradV [[flat]];
+    // Interior-edge yield-slope floor (#2428), vDepth units per unit quad-param
+    // penetration. The per-axis slopes above are the OWN plane's depth
+    // gradients — near zero along a foreshortened axis — but a margin that
+    // penetrates an INTERIOR edge extends over the ADJACENT visible face,
+    // whose plane can diverge from the extrapolation at up to
+    // 2*sqrt(2)*encScale per world unit. At fractional offsets the sub-pixel
+    // phase then tips the near-balanced margin-vs-exact contest per pixel —
+    // the #2428 shared-edge fringe. Flooring the slope at
+    // kScatterMarginYieldGradScale * encScale (>= the divergence bound) for
+    // interior-edge penetration makes such margins always lose to the
+    // adjacent face's exact fragments; they keep only their gap-fill job.
+    // Boundary (silhouette) penetrations keep the tighter own-slope yield.
+    float marginYieldGradFloor [[flat]];
+    // Flat interior-edge yield (#2428): covers the constant (flip << 2) | slot
+    // key-tiebreak span between adjacent faces' planes — the
+    // penetration-independent advantage a sub-pixel interior margin can hold
+    // over the adjacent face's exact fragments (see the vertex stage).
+    float marginInteriorYieldBias [[flat]];
     // Face-center iso-depth for depth-color (#1697). Flat (constant across the
     // quad) — origin is the same for all 4 corners of a face instance so
     // interpolation is a no-op; flat avoids rasterization divergence.
@@ -113,6 +131,10 @@ struct VertexOut {
 // real composite's winner. Mirror of v_peraxis_scatter.glsl.
 constant int kOverlayPerAxisId = 4;     // winner identity: X=red, Y=green, Z=blue
 constant int kOverlayPerAxisOrigin = 5; // recovered-origin field: hue wheel of rawDepth
+// Margin-classification overlay (#2428) — mirror of v_peraxis_scatter.glsl:
+// axis hue, brightened per-fragment by the margin test (signaled via the
+// depthColorMode = -1 sentinel — the UBO field is never negative normally).
+constant int kOverlayPerAxisMargin = 7;
 
 // Long-period hue wheel for the recovered-origin overlay — mirror of
 // v_peraxis_scatter.glsl. 96 ≈ 12 voxels per revolution at density 8, so a
@@ -342,6 +364,11 @@ vertex VertexOut v_peraxis_scatter(
     out.depthColorExtent = frameData.depthColorExtent;
     if (frameData.scatterDebugMode == kOverlayPerAxisId) {
         out.color = float4(axis == 0 ? 1.0 : 0.0, axis == 1 ? 1.0 : 0.0, axis == 2 ? 1.0 : 0.0, 1.0);
+    } else if (frameData.scatterDebugMode == kOverlayPerAxisMargin) {
+        // #2428: axis hue; the fragment stage brightens margin fragments and
+        // dims exact-footprint ones, keyed on the -1 sentinel below.
+        out.color = float4(axis == 0 ? 1.0 : 0.0, axis == 1 ? 1.0 : 0.0, axis == 2 ? 1.0 : 0.0, 1.0);
+        out.depthColorMode = -1;
     } else if (frameData.scatterDebugMode == kOverlayPerAxisOrigin) {
         // Cell-parity brightness modulation — mirror of v_peraxis_scatter.glsl.
         const float cellParity = float((ij.x + ij.y) & 1u) * 0.45f + 0.55f;
@@ -418,6 +445,25 @@ vertex VertexOut v_peraxis_scatter(
     // the over-grown margin's extrapolation-proportional yield.
     out.marginYieldGradU = kScatterMarginYieldGradScale * abs(kU) / depthRange;
     out.marginYieldGradV = kScatterMarginYieldGradScale * abs(kV) / depthRange;
+    // Interior-edge floor (#2428): 3 * encScale >= the 2*sqrt(2)*encScale
+    // worst-case cross-face divergence per world unit (quadParam is in world
+    // units on the base-resolution store), so an interior-edge margin always
+    // yields past the adjacent face's exact fragments.
+    out.marginYieldGradFloor = kScatterMarginYieldGradScale * encScale / depthRange;
+    // Flat interior-edge yield (#2428): the composite key carries the
+    // constant (flip << 2) | slot tiebreak (up to 7 key units), so a margin
+    // whose slot ranks lower sits a CONSTANT ~key-scale distance nearer than
+    // the adjacent face across the whole shared edge — a sub-pixel
+    // penetration times any slope can never repay it (the #2428 fringe's
+    // dominant term; the integer row only escapes because lattice-aligned
+    // edges keep pixel centers out of dilation reach). 8 key units is the
+    // FORCED value, sitting ON its ceiling: strictly above the 7-key low-bits
+    // span, and exactly one subdivided depth step (kDepthEncodeShift key units
+    // at every subdivision) — not "inside" one. Interior margins still gap-fill
+    // against background and genuinely farther surfaces (>> 1 cell), which is
+    // what makes the ceiling sound. Bracket + asserts: ir_iso_common.metal and
+    // ir_render_types.hpp.
+    out.marginInteriorYieldBias = kScatterMarginInteriorBiasKey / depthRange;
     return out;
 }
 
@@ -447,7 +493,15 @@ fragment FragmentOut f_peraxis_scatter(VertexOut in [[stage_in]]) {
     if (coverage < 0.5f) {
         discard_fragment();
     }
-    if (in.depthColorMode != 0) {
+    // Margin-yield (#1457): fragments outside the exact [0,1]^2 footprint are
+    // conservative-dilation margin and only fill pixels no exact footprint
+    // claims — mirror of f_peraxis_scatter.glsl.
+    const bool inMargin = any(in.quadParam < float2(0.0)) || any(in.quadParam > float2(1.0));
+    if (in.depthColorMode == -1) {
+        // Margin-classification overlay (#2428) — mirror of
+        // f_peraxis_scatter.glsl: bright = margin fragment, dim = exact.
+        out.color = float4(in.color.rgb * (inMargin ? 1.0f : 0.4f), 1.0f);
+    } else if (in.depthColorMode != 0) {
         float dColor = in.depthColorExtent;
         float denomC = max((4.0f / 3.0f) * dColor, 1.0f);
         float t = clamp((in.isoDepth + dColor) / denomC, 0.0f, 1.0f);
@@ -455,18 +509,35 @@ fragment FragmentOut f_peraxis_scatter(VertexOut in [[stage_in]]) {
     } else {
         out.color = in.color;
     }
-    // Margin-yield (#1457): fragments outside the exact [0,1]^2 footprint are
-    // conservative-dilation margin and only fill pixels no exact footprint
-    // claims — mirror of f_peraxis_scatter.glsl.
-    const bool inMargin = any(in.quadParam < float2(0.0)) || any(in.quadParam > float2(1.0));
     // Penetration past the exact [0,1]^2 footprint (per axis, >= 0). A margin
     // fragment yields by the flat bias PLUS penetration * per-axis yield slope so a
     // cell-deep margin yields the shared ridge to the neighbor face's exact
     // footprint while a sub-pixel gap-fill still wins (#1883) — mirror of
     // f_peraxis_scatter.glsl.
     const float2 outside = max(max(-in.quadParam, in.quadParam - float2(1.0)), float2(0.0));
-    const float yieldBias =
-        in.marginBias + outside.x * in.marginYieldGradU + outside.y * in.marginYieldGradV;
+    // Interior-edge yield floor (#2428): a margin that penetrated an INTERIOR
+    // edge is extending over the adjacent visible face — floor its yield
+    // slope at the cross-face divergence bound so it always loses to that
+    // face's exact fragments (see marginYieldGradFloor). The penetrated side
+    // is u/v-low when quadParam < 0, u/v-high when > 1; edgeInterior packs
+    // (u-low, u-high, v-low, v-high).
+    const float interiorU =
+        (in.quadParam.x < 0.5f) ? in.edgeInterior.x : in.edgeInterior.y;
+    const float interiorV =
+        (in.quadParam.y < 0.5f) ? in.edgeInterior.z : in.edgeInterior.w;
+    const float gradU = (interiorU > 0.5f)
+        ? max(in.marginYieldGradU, in.marginYieldGradFloor)
+        : in.marginYieldGradU;
+    const float gradV = (interiorV > 0.5f)
+        ? max(in.marginYieldGradV, in.marginYieldGradFloor)
+        : in.marginYieldGradV;
+    // The flat interior term (see marginInteriorYieldBias) covers the
+    // penetration-INDEPENDENT (flip<<2)|slot key gap between adjacent faces;
+    // the floored slope covers the penetration-proportional plane divergence.
+    const bool interiorPen = (outside.x > 0.0f && interiorU > 0.5f) ||
+                             (outside.y > 0.0f && interiorV > 0.5f);
+    const float yieldBias = in.marginBias + outside.x * gradU + outside.y * gradV +
+        (interiorPen ? in.marginInteriorYieldBias : 0.0f);
     // #2255: band-quantize + cell-code injection — mirror of
     // f_peraxis_scatter.glsl (exact power-of-two float ops on both backends).
     const float scatterDepth = in.depth + (inMargin ? yieldBias : 0.0f);

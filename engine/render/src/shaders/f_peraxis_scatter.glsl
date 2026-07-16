@@ -62,7 +62,14 @@ void main() {
     if (vColor.a < 0.1) {
         discard;
     }
-    if (vDepthColorMode != 0) {
+    const bool inMargin = any(lessThan(vQuadParam, vec2(0.0))) ||
+                          any(greaterThan(vQuadParam, vec2(1.0)));
+    if (vDepthColorMode == -1) {
+        // Margin-classification overlay (#2428): bright = margin fragment
+        // (conservative-dilation fill outside the exact footprint), dim =
+        // exact-footprint fragment. Axis hue from the vertex stage.
+        FragColor = vec4(vColor.rgb * (inMargin ? 1.0 : 0.4), 1.0);
+    } else if (vDepthColorMode != 0) {
         float dColor = vDepthColorExtent;
         float denomC = max((4.0 / 3.0) * dColor, 1.0);
         float t = clamp((vIsoDepth + dColor) / denomC, 0.0, 1.0);
@@ -70,8 +77,6 @@ void main() {
     } else {
         FragColor = vColor;
     }
-    const bool inMargin = any(lessThan(vQuadParam, vec2(0.0))) ||
-                          any(greaterThan(vQuadParam, vec2(1.0)));
     // Penetration past the exact [0,1]^2 footprint (per axis, >= 0). A margin
     // fragment yields by the flat bias PLUS penetration * per-axis yield slope, so
     // a cell-deep margin (whose plane extrapolation gained a real depth advantage)

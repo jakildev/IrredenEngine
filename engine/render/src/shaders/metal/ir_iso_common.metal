@@ -831,12 +831,48 @@ constant float kScatterCellTieStep = 1.0f / 8388608.0f;
 // literal); the overflow lane's two-band bias derives from this in turn.
 constant float kScatterCellTieBand = 16.0f * kScatterCellTieStep;
 
+// Flat interior-edge margin yield (#2428), in composite-key units. The scatter
+// key folds the cardinal encode's (flip << 2) | slot low bits in at unit scale,
+// so two adjacent faces' planes sit a CONSTANT up-to-7-key-unit apart across
+// their whole shared edge; a conservative-dilation margin penetrating an
+// INTERIOR edge (over the adjacent visible face) can hold that advantage at
+// arbitrarily small penetration, where the #1883 penetration-scaled yield never
+// repays it — the fractional-offset shared-edge fringe.
+//
+// 8 is FORCED, not chosen, and it sits ON its ceiling — there is no headroom
+// here. The admissible range is bracketed (7, 8]: strictly above the 7-key
+// low-bits span it must cover, and at-or-below one subdivided depth step. That
+// step is kDepthEncodeShift (8) key units at EVERY subdivision, not just the
+// coarsest — depth key per world unit is encScale = kDepthEncodeShift x subScale
+// and a subdivided cell is 1/subScale world units, so Δkey per step =
+// encScale / subScale = kDepthEncodeShift. So this bias IS exactly one
+// subdivided step. The identity is structural (the low-bits span is by
+// construction one less than the step it must fit inside), which is why 8 is the
+// unique integer in the bracket. Sitting on the ceiling is sound: the only thing
+// within one cell behind an interior-edge margin is the adjacent visible face it
+// is SUPPOSED to lose to, so interior margins still gap-fill against background
+// and genuinely farther surfaces (>> 1 cell). Both bounds are asserted CPU-side
+// in ir_render_types.hpp (kScatterMarginInteriorBiasKey) — do not retune here.
+constant float kScatterMarginInteriorBiasKey = 8.0;
+
 // Margin-yield gradient scale (#1883) — mirror of ir_iso_common.glsl. Scales the
 // margin yield by the fragment's own plane-extrapolation excursion (penetration
 // past the exact footprint x per-axis depth gradient) so a cell-deep per-axis
 // margin yields the shared ridge to the neighbor face's exact footprint (the
 // doubled top<->side sliver) while sub-pixel gap-fills still win. Folded into the
 // yield-grad varying by the scatter vertex stage.
+//
+// SECOND requirement (#2428) — this constant is now load-bearing for a purpose
+// its #1883 definition does not mention: the interior-edge yield slope is
+// FLOORED at kScatterMarginYieldGradScale * encScale, which must cover the
+// worst-case 2*sqrt(2)*encScale cross-face plane divergence. 3 >= 2.8284 holds
+// by only 6%. Note the #1883 purpose above argues for a SMALLER scale
+// ("sub-pixel gap-fills still win"), so the plausible retune direction is
+// exactly the one that puts the floor under the divergence bound and revives the
+// #2428 shared-edge fringe. Asserted CPU-side in ir_render_types.hpp
+// (kScatterMarginYieldGradScale, squared for exact integer comparison); if the
+// two purposes ever need different values, give the #2428 floor its own constant
+// rather than splitting the difference.
 constant float kScatterMarginYieldGradScale = 3.0;
 
 // Miter limit for the conservative dilation below (#1538). Mirror of the GLSL

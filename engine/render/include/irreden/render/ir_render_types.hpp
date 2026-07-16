@@ -405,10 +405,13 @@ inline std::uint32_t decodeCarrierPriority(uvec2 packed) {
 // At the current depth range these bracket the band to [16, 16.0002], so 16 is
 // the UNIQUE admissible width — which is also why the rank field collapses to 2
 // bits (6 face states do not fit; see the rank2 note in ir_iso_common.glsl).
-// A future pass that adds tie levels (a 3-bit rank, #2428's fractional-edge
-// work) pushes maxCode to 23 and needs a 32-step band — and a 32-step band
-// breaks half A. The two asserts below fail that change at compile time instead
-// of letting margins silently start beating their exact owners.
+// A future pass that adds tie levels (a 3-bit rank) pushes maxCode to 23 and
+// needs a 32-step band — and a 32-step band breaks half A. The two asserts below
+// fail that change at compile time instead of letting margins silently start
+// beating their exact owners. The trap is specific to spending a RANK bit:
+// `kScatterMarginInteriorBiasKey` (#2428) orders interior-edge margins in KEY
+// space instead — a flat bias plus a yield-slope floor — which leaves maxCode at
+// 15 and is why that constant has its own bracket rather than widening this one.
 constexpr int kScatterCellTieStepShift = 23;     // kScatterCellTieStep = 2^-23
 constexpr int kScatterCellTieBandSteps = 16;     // kScatterCellTieBand = 16 * 2^-23
 constexpr int kScatterTieMaxCode = (3 << 2) | 3; // code = (rank2 << 2) | cell2
@@ -447,6 +450,93 @@ static_assert(
     "kScatterCellTieBandSteps is no longer the unique admissible band width — the "
     "margin-vs-exact ceiling moved, so the comment in ir_iso_common.{glsl,metal} "
     "claiming band 16 is forced needs re-deriving."
+);
+
+// ── Per-axis scatter interior-edge margin yield (#2428) ───────────────────────
+// The composite key folds the cardinal encode's low bits in at unit scale
+// (`encodeDepthWithFace`: depth [31:3] | flip [2] | slot [1:0]), so two adjacent
+// visible faces' planes sit a CONSTANT, penetration-independent distance apart
+// across their whole shared edge. A conservative-dilation margin penetrating an
+// INTERIOR edge holds that advantage at arbitrarily small penetration, where the
+// #1883 penetration-scaled yield can never repay it — the #2428
+// fractional-offset shared-edge fringe. `kScatterMarginInteriorBiasKey` is the
+// flat, penetration-independent yield that cancels it, and it is bracketed from
+// both sides — by bounds that sit exactly ONE unit apart:
+//
+//   A. must cover the tiebreak — the worst-case constant advantage is the
+//      encode's low-bits span, `max(flip << 2 | slot) == kDepthEncodeShift - 1`.
+//      Bounding on the FIELD WIDTH rather than the currently-reachable slot
+//      range (slot maxes at 2 today, so 6) is deliberate: a 4th slot must not
+//      silently invalidate the bias.
+//   B. must not out-yield real occlusion — one subdivided depth step is
+//      kDepthEncodeShift key units at EVERY subdivision: depth key per world
+//      unit is `encScale = kDepthEncodeShift * subScale` and a subdivided cell
+//      is `1/subScale` world units, so Δkey per step = encScale / subScale =
+//      kDepthEncodeShift, independent of subScale.
+//
+// So the bias is the unique integer in (kDepthEncodeShift - 1, kDepthEncodeShift]
+// — it EQUALS kDepthEncodeShift and sits ON the ceiling, exactly one subdivided
+// step, NOT "well below" one. That identity is structural, not a tuned choice:
+// the low-bits span is by construction one less than the step it must fit
+// inside, so it holds for any kDepthEncodeShift. Sitting on the ceiling is sound
+// because the only thing within one cell behind an interior-edge margin is the
+// adjacent visible face it is SUPPOSED to lose to; background and genuinely
+// farther gap-fill targets (>> 1 cell) still win. But there is no headroom here
+// — treat the bias as forced, not as a knob.
+//
+// Mirror of `kScatterMarginInteriorBiasKey` in `metal/ir_iso_common.metal`
+// (Metal-lead; the GL twin keeps pre-#2428 behavior until the #1938 port).
+constexpr int kScatterMarginInteriorBiasKey = 8;
+/// Worst-case constant low-bits advantage between two adjacent faces' planes:
+/// `max(flip << 2 | slot)` over the field width `encodeDepthWithFace` reserves.
+constexpr int kScatterTieLowBitsSpan = kDepthEncodeShift - 1;
+
+static_assert(
+    kScatterMarginInteriorBiasKey > kScatterTieLowBitsSpan,
+    "per-axis interior-edge margin bias no longer covers the (flip << 2) | slot "
+    "tiebreak span: a sub-pixel interior margin can again hold a constant "
+    "advantage over the adjacent face's exact fragments, reviving the #2428 "
+    "fractional-offset shared-edge fringe."
+);
+static_assert(
+    kScatterMarginInteriorBiasKey <= kDepthEncodeShift,
+    "per-axis interior-edge margin bias exceeds one subdivided depth step "
+    "(kDepthEncodeShift key units at every subdivision), so an interior margin "
+    "would yield past genuinely nearer geometry instead of only past the "
+    "adjacent visible face it shares an edge with."
+);
+// Uniqueness: halves A and B are one apart, so kDepthEncodeShift is the only
+// integer satisfying both. Stated as its own assert so a pass that widens the
+// encode's low-bits field sees WHY the bias must move with it, rather than
+// re-deriving the bracket by hand.
+static_assert(
+    kScatterMarginInteriorBiasKey == kDepthEncodeShift,
+    "kScatterMarginInteriorBiasKey is no longer the unique admissible bias — the "
+    "low-bits span and the subdivided depth step are no longer one apart, so the "
+    "comment in metal/ir_iso_common.metal claiming the bias is forced needs "
+    "re-deriving."
+);
+
+// `kScatterMarginYieldGradScale` (#1883) acquired a SECOND, independent
+// requirement in #2428: the interior-edge yield slope is floored at
+// `scale * encScale`, which must cover the worst-case cross-face plane
+// divergence of `2*sqrt(2) * encScale` per world unit. Its #1883 definition site
+// documents only the original purpose, and that purpose's own goal ("sub-pixel
+// gap-fills still win") argues for a SMALLER scale — so the plausible direction
+// of a future retune is exactly the one that silently breaks #2428. This assert
+// is what that retune trips. Mirror kept integral so the bound is exact; a
+// fractional retune must re-express it in exact form (cf. the reciprocal
+// `kScatterMarginDepthBiasKeyInv` above).
+constexpr int kScatterMarginYieldGradScale = 3;
+// Squared so the 2*sqrt(2) bound compares in exact integers: (2*sqrt(2))^2 == 8.
+// Holds by 9 >= 8 — a single unit of slack.
+static_assert(
+    kScatterMarginYieldGradScale * kScatterMarginYieldGradScale >= 8,
+    "kScatterMarginYieldGradScale dropped below the 2*sqrt(2) cross-face "
+    "divergence bound that #2428's interior-edge yield floor depends on: an "
+    "interior-edge margin can again beat the adjacent face's exact fragments at "
+    "sub-pixel penetration (the shared-edge fringe). Raise it back to "
+    ">= 2*sqrt(2), or give the #2428 floor a constant of its own."
 );
 
 struct FrameDataVoxelToCanvas {

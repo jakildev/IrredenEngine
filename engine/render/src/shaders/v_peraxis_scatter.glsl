@@ -132,6 +132,10 @@ flat out float vCellTieOffset;
 // real composite's winner.
 const int kOverlayPerAxisId = 4;     // winner identity: X=red, Y=green, Z=blue
 const int kOverlayPerAxisOrigin = 5; // recovered-origin field: hue wheel of rawDepth
+// Margin-classification overlay (#2428): axis hue, brightened per-fragment by
+// the margin test in f_peraxis_scatter (signaled via the vDepthColorMode = -1
+// sentinel — the depth-color UBO field is never negative on the normal path).
+const int kOverlayPerAxisMargin = 7;
 
 // Long-period hue wheel for the recovered-origin overlay. rawDepth steps by
 // the subdivision density per voxel, so a short or power-of-two period would
@@ -294,6 +298,11 @@ void main() {
     vDepthColorExtent = depthColorExtent;
     if (scatterDebugMode == kOverlayPerAxisId) {
         vColor = vec4(axis == 0 ? 1.0 : 0.0, axis == 1 ? 1.0 : 0.0, axis == 2 ? 1.0 : 0.0, 1.0);
+    } else if (scatterDebugMode == kOverlayPerAxisMargin) {
+        // #2428: axis hue; the fragment stage brightens margin fragments and
+        // dims exact-footprint ones, keyed on the -1 sentinel below.
+        vColor = vec4(axis == 0 ? 1.0 : 0.0, axis == 1 ? 1.0 : 0.0, axis == 2 ? 1.0 : 0.0, 1.0);
+        vDepthColorMode = -1;
     } else if (scatterDebugMode == kOverlayPerAxisOrigin) {
         // Cell-parity brightness modulation: distinguishes WHICH cell's quad
         // covers a pixel (adjacent cells alternate brightness) on top of the
