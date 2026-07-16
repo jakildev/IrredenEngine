@@ -832,6 +832,17 @@ IRSystem.registerPipeline(IRTime.UPDATE, {
   release a bad anchor silently front-inserts.
   Underlying semantics: `engine/system/CLAUDE.md` "Appending to a live
   pipeline".
+- **`IRSystem.setSystemCadence(sysId, n)`** / **`getSystemCadence(sysId)`**
+  (#2404) — throttle a system to run 1-in-`n` phase ticks (n ≥ 1; 1 = every
+  tick). Off-cadence ticks skip its entire dispatch. Paired with
+  **`setSystemCadenceOffset(sysId, o)`** / **`getSystemCadenceOffset(sysId)`**
+  — an initial phase stagger (`0..n-1`) so sibling throttled systems don't
+  spike on the same tick. A throttled Lua system that integrates at the
+  reduced rate reads **`getAccumulatedTicks(sysId)`** (phase ticks this run
+  covers) or **`accumulatedDeltaTime(sysId)`** (that × the fixed UPDATE dt,
+  UPDATE-phase-only) to stay numerically correct. `sysId` is any SystemId
+  (from `IRSystem.systemId` or `IRSystem.registerSystem`). Underlying
+  semantics: `engine/system/CLAUDE.md` "Per-system update cadence".
 - **Game-side enums** (e.g. `IRGameSystem.GameSystemName`) extend the
   same pattern — bind the game's own enum table at game-side init via
   `LuaScript::registerEnum<...>()` plus `registerPrefabSystemId` for each

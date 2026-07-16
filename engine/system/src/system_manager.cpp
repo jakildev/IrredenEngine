@@ -50,7 +50,9 @@ SystemId SystemManager::createSystemDynamic(
     Archetype includeArchetype,
     Archetype excludeArchetype,
     std::function<void(ArchetypeNode *)> body,
-    Concurrency concurrency
+    Concurrency concurrency,
+    std::uint32_t cadence,
+    std::uint32_t offset
 ) {
     m_systemNames.emplace_back(C_Name{std::move(name)});
     SystemId newSystemId = m_nextSystemId++;
@@ -85,7 +87,133 @@ SystemId SystemManager::createSystemDynamic(
     m_concurrency.emplace_back(concurrency);
     m_grainSize.emplace_back(kDefaultGrainSize);
     m_systemAccess.emplace_back();
+    emplaceCadenceState(cadence, offset);
     return newSystemId;
+}
+
+// #2404 — per-system update cadence -------------------------------------
+
+namespace {
+// True if `system` appears in any group of `groups`. Used to reject a
+// double-add: appending / inserting a system already in the pipeline
+// would tick it twice per frame.
+bool pipelineGroupsContain(const std::vector<std::vector<SystemId>> &groups, SystemId system) {
+    for (const auto &group : groups) {
+        for (SystemId id : group) {
+            if (id == system) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+} // namespace
+
+void SystemManager::emplaceCadenceState(std::uint32_t cadence, std::uint32_t offset) {
+    const std::uint32_t normCadence = cadence == 0 ? 1u : cadence;
+    m_cadence.emplace_back(normCadence);
+    m_cadenceOffset.emplace_back(normCadence <= 1 ? 0u : offset % normCadence);
+    // Seeded to 0 here; stampCadenceJoin re-seeds to the join tick (+offset)
+    // when the system is listed in a pipeline. A system never listed in any
+    // pipeline is unreachable by executePipeline, so the 0 seed is inert.
+    m_lastRunTick.emplace_back(0);
+    m_accumulatedTicks.emplace_back(0);
+    // Placeholder until stampCadenceJoin records the system's real pipeline
+    // event; a system never listed in any pipeline is unreachable by
+    // executePipeline, so the placeholder is inert.
+    m_cadenceEvent.emplace_back(IRTime::UPDATE);
+}
+
+bool SystemManager::pollCadenceDue(SystemId system, std::uint64_t now) {
+    if (system >= m_cadence.size()) {
+        return true; // no cadence state recorded — always run (defensive).
+    }
+    const std::uint32_t cadence = m_cadence[system];
+    // Additive comparison (`now >= lastRun + cadence`), NOT `now - lastRun >=
+    // cadence`: a nonzero offset seeds `lastRun > now` on the first few ticks,
+    // where the unsigned subtraction would underflow and read as "hugely due".
+    // Applies uniformly at cadence 1 too — no special-case short-circuit: for
+    // an un-offset cadence-1 system `lastRun == now - 1`, so the check is
+    // false and it fires every tick, same as before this held only for
+    // cadence > 1.
+    if (now < m_lastRunTick[system] + cadence) {
+        return false; // off-cadence — skip the whole dispatch.
+    }
+    // Due: `now >= lastRun` holds here, so the subtraction is safe.
+    m_accumulatedTicks[system] = now - m_lastRunTick[system];
+    m_lastRunTick[system] = now;
+    return true;
+}
+
+bool SystemManager::isStillLiveInPriorPipeline(IRTime::Events priorEvent, SystemId system) const {
+    const auto it = m_systemPipelineGroups.find(priorEvent);
+    return it != m_systemPipelineGroups.end() && pipelineGroupsContain(it->second, system);
+}
+
+void SystemManager::stampCadenceJoin(IRTime::Events event, SystemId system) {
+    if (system >= m_lastRunTick.size()) {
+        return;
+    }
+    if (m_cadenceEvent[system] != event) {
+        // Re-joining to a different event is fine on its own (e.g. a scene
+        // transition re-purposes the SystemId after clearing its old
+        // pipeline, or this is the system's first-ever join to an event
+        // other than the inert UPDATE placeholder) — only assert if the
+        // system is STILL listed in the old event's pipeline, i.e. it would
+        // be live in two pipelines at once and thrash m_lastRunTick between
+        // two counters that advance at different rates (the same
+        // clock-mixing bug amendment 2 fixed). A never-joined system isn't
+        // listed in any pipeline yet, so isStillLiveInPriorPipeline is false
+        // and this never false-fires on a genuine first join.
+        IR_ASSERT(
+            !isStillLiveInPriorPipeline(m_cadenceEvent[system], system),
+            "stampCadenceJoin: system '{}' is still registered in its prior event's pipeline "
+            "and is now being joined to a different event — listing the same system in two "
+            "pipelines simultaneously thrashes its cadence clock between two counters that "
+            "advance at different rates. Remove it from the old pipeline first.",
+            getSystemName(system)
+        );
+    }
+    m_cadenceEvent[system] = event; // bind the runtime re-phase clock to this event.
+    const std::uint64_t now = m_eventTickCounts[event];
+    const std::uint32_t offset = system < m_cadenceOffset.size() ? m_cadenceOffset[system] : 0u;
+    // Seed `lastRun = now + offset`. The additive due check then first fires
+    // at `now + offset + cadence`, so siblings with distinct offsets stagger
+    // across consecutive ticks; the first accumulated delta is exactly the
+    // cadence regardless of offset.
+    m_lastRunTick[system] = now + offset;
+    m_accumulatedTicks[system] = 0;
+}
+
+void SystemManager::setSystemCadence(SystemId system, std::uint32_t cadence) {
+    if (system >= m_cadence.size()) {
+        return;
+    }
+    const std::uint32_t normCadence = cadence == 0 ? 1u : cadence;
+    m_cadence[system] = normCadence;
+    // Keep the stored offset in range if the cadence shrank below it. No
+    // re-seed of lastRunTick: the additive due check re-phases from the last
+    // run automatically on the next tick (a shorter cadence fires sooner).
+    if (m_cadenceOffset[system] >= normCadence) {
+        m_cadenceOffset[system] = normCadence <= 1 ? 0u : m_cadenceOffset[system] % normCadence;
+    }
+}
+
+void SystemManager::setSystemCadenceOffset(SystemId system, std::uint32_t offset) {
+    if (system >= m_cadenceOffset.size()) {
+        return;
+    }
+    const std::uint32_t cadence = m_cadence[system];
+    const std::uint32_t normOffset = cadence <= 1 ? 0u : offset % cadence;
+    m_cadenceOffset[system] = normOffset;
+    // Re-phase against the system's OWN event clock (bound at pipeline-join
+    // by stampCadenceJoin), not some other event's counter — events advance
+    // at different rates (e.g. RENDER is uncapped, UPDATE is fixed-step), so
+    // seeding from a foreign clock can put `lastRun` far ahead of this
+    // system's `now` and silently stall it until its own counter catches up.
+    // Mirrors the stamp-time seed: next fire lands at now + offset + cadence.
+    m_lastRunTick[system] = m_eventTickCounts[m_cadenceEvent[system]] + normOffset;
+    m_accumulatedTicks[system] = 0;
 }
 
 void SystemManager::replaceSystemBody(SystemId system, std::function<void(ArchetypeNode *)> body) {
@@ -129,23 +257,15 @@ void SystemManager::registerPipelineGroups(
 ) {
     m_systemPipelineGroups[event] = std::move(groups);
     m_flattenedPipelinesDirty = true;
-}
-
-namespace {
-// True if `system` appears in any group of `groups`. Used to reject a
-// double-add: appending / inserting a system already in the pipeline
-// would tick it twice per frame.
-bool pipelineGroupsContain(const std::vector<std::vector<SystemId>> &groups, SystemId system) {
-    for (const auto &group : groups) {
-        for (SystemId id : group) {
-            if (id == system) {
-                return true;
-            }
+    // #2404: seed each listed system's cadence phase from the current event
+    // tick (+ its offset), so a mid-run re-registration measures elapsed
+    // from here rather than from counter zero.
+    for (const auto &group : m_systemPipelineGroups[event]) {
+        for (SystemId system : group) {
+            stampCadenceJoin(event, system);
         }
     }
-    return false;
 }
-} // namespace
 
 void SystemManager::appendToPipeline(IRTime::Events event, SystemId system) {
     // operator[] default-constructs an empty group sequence when the
@@ -160,6 +280,7 @@ void SystemManager::appendToPipeline(IRTime::Events event, SystemId system) {
     );
     groups.push_back({system});
     m_flattenedPipelinesDirty = true;
+    stampCadenceJoin(event, system); // #2404: seed phase from the join tick.
 }
 
 void SystemManager::insertIntoPipelineBefore(
@@ -213,6 +334,7 @@ void SystemManager::insertSingletonGroupRelativeTo(
     const std::size_t pos = after ? anchorGroup + 1 : anchorGroup;
     groups.insert(groups.begin() + static_cast<std::ptrdiff_t>(pos), std::vector<SystemId>{system});
     m_flattenedPipelinesDirty = true;
+    stampCadenceJoin(event, system); // #2404: seed phase from the join tick.
 }
 
 void SystemManager::refreshFlattenedPipelines() const {
@@ -337,6 +459,9 @@ void SystemManager::executePipeline(IRTime::Events event) {
     if (it == m_systemPipelineGroups.end()) {
         return;
     }
+    // #2404: bump this event's phase-tick counter once, so every cadence
+    // gate in this pass compares against the same `now`.
+    const std::uint64_t now = ++m_eventTickCounts[event];
     const auto &groups = it->second;
     for (const auto &group : groups) {
         if (group.size() == 1) {
@@ -349,13 +474,20 @@ void SystemManager::executePipeline(IRTime::Events event) {
             // + drives main-thread-only GPU APIs (device()->finish(),
             // writeTimestamp). See registerTickObserver doc + the
             // multi-system note below.
+            //
+            // #2404: a throttled system skips its entire dispatch
+            // (observers + executeSystem) on off-cadence ticks; the
+            // per-group flushStructuralChanges still runs, so deferred
+            // changes queued by other systems keep flushing on schedule.
             const SystemId id = group[0];
-            for (auto &entry : m_observers) {
-                entry.second->onBeforeTick(id);
-            }
-            executeSystem(id);
-            for (auto &entry : m_observers) {
-                entry.second->onAfterTick(id);
+            if (pollCadenceDue(id, now)) {
+                for (auto &entry : m_observers) {
+                    entry.second->onBeforeTick(id);
+                }
+                executeSystem(id);
+                for (auto &entry : m_observers) {
+                    entry.second->onAfterTick(id);
+                }
             }
         } else if (!group.empty()) {
             // T-224: parallel group — fan out across the worker pool.
@@ -379,23 +511,38 @@ void SystemManager::executePipeline(IRTime::Events event) {
             // single worker, killing the parallelism. It shares only the
             // null-pool serial guard with the helper, not the
             // chunk-planning boilerplate the helper consolidates.
-            if (g_jobManager != nullptr) {
-                IRJob::parallelFor(
-                    0,
-                    static_cast<int>(group.size()),
-                    1,
-                    [&group, this](int begin, int end) {
-                        for (int k = begin; k < end; ++k) {
-                            executeSystem(group[k]);
+            // #2404: filter the due members on the main thread before
+            // fan-out — a throttled member simply doesn't dispatch on its
+            // off-cadence ticks. The gate MUST run here, not inside the
+            // worker lambda: pollCadenceDue writes m_accumulatedTicks /
+            // m_lastRunTick, and those must be resolved before any worker
+            // (or a tick body) reads them. m_dueScratch is main-thread-
+            // owned and read-only during the fan-out.
+            m_dueScratch.clear();
+            for (SystemId id : group) {
+                if (pollCadenceDue(id, now)) {
+                    m_dueScratch.push_back(id);
+                }
+            }
+            if (!m_dueScratch.empty()) {
+                if (g_jobManager != nullptr) {
+                    IRJob::parallelFor(
+                        0,
+                        static_cast<int>(m_dueScratch.size()),
+                        1,
+                        [this](int begin, int end) {
+                            for (int k = begin; k < end; ++k) {
+                                executeSystem(m_dueScratch[k]);
+                            }
                         }
+                    );
+                } else {
+                    // No worker pool (unit tests, pre-World init) — fall
+                    // back to serial dispatch in declaration order so the
+                    // pipeline still runs.
+                    for (SystemId id : m_dueScratch) {
+                        executeSystem(id);
                     }
-                );
-            } else {
-                // No worker pool (unit tests, pre-World init) — fall
-                // back to serial dispatch in declaration order so the
-                // pipeline still runs.
-                for (SystemId id : group) {
-                    executeSystem(id);
                 }
             }
         }

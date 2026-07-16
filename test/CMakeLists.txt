@@ -85,6 +85,7 @@ add_executable(IrredenEngineTest
   system/pipeline_groups_test.cpp
   system/register_system_test.cpp
   system/system_access_test.cpp
+  system/system_cadence_test.cpp
   system/system_concurrency_test.cpp
   time/sim_clock_test.cpp
   time/cycle_test.cpp

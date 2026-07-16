@@ -34,6 +34,7 @@
 #include <irreden/ir_time.hpp>
 #include <irreden/script/lua_script.hpp>
 
+#include <cstdint>
 #include <list>
 #include <string>
 #include <unordered_map>
@@ -343,6 +344,51 @@ inline void bindRegisterPipelineAndSystemId(
                 static_cast<IRSystem::SystemId>(anchorId)
             );
         };
+
+    // #2404: per-system update cadence. A Lua throttle policy sets a
+    // system to run 1-in-N phase ticks (`setSystemCadence`), staggers its
+    // initial phase (`setSystemCadenceOffset`), and — for a throttled
+    // Lua-registered system that must stay numerically correct at the
+    // reduced rate — reads how many phase ticks / how much fixed-step
+    // time its current execution covers (`getAccumulatedTicks` /
+    // `accumulatedDeltaTime`, amendment 2). `sysId` is any SystemId (from
+    // IRSystem.systemId or IRSystem.registerSystem).
+    lua["IRSystem"]["setSystemCadence"] = [](lua_Integer sysId, lua_Integer cadence) {
+        if (cadence < 1) {
+            throw sol::error{"IRSystem.setSystemCadence: cadence must be >= 1 (1 = every tick)"};
+        }
+        IRSystem::setSystemCadence(
+            static_cast<IRSystem::SystemId>(sysId),
+            static_cast<std::uint32_t>(cadence)
+        );
+    };
+    lua["IRSystem"]["getSystemCadence"] = [](lua_Integer sysId) -> lua_Integer {
+        return static_cast<lua_Integer>(
+            IRSystem::getSystemCadence(static_cast<IRSystem::SystemId>(sysId))
+        );
+    };
+    lua["IRSystem"]["setSystemCadenceOffset"] = [](lua_Integer sysId, lua_Integer offset) {
+        if (offset < 0) {
+            throw sol::error{"IRSystem.setSystemCadenceOffset: offset must be >= 0"};
+        }
+        IRSystem::setSystemCadenceOffset(
+            static_cast<IRSystem::SystemId>(sysId),
+            static_cast<std::uint32_t>(offset)
+        );
+    };
+    lua["IRSystem"]["getSystemCadenceOffset"] = [](lua_Integer sysId) -> lua_Integer {
+        return static_cast<lua_Integer>(
+            IRSystem::getSystemCadenceOffset(static_cast<IRSystem::SystemId>(sysId))
+        );
+    };
+    lua["IRSystem"]["getAccumulatedTicks"] = [](lua_Integer sysId) -> lua_Integer {
+        return static_cast<lua_Integer>(
+            IRSystem::getAccumulatedTicks(static_cast<IRSystem::SystemId>(sysId))
+        );
+    };
+    lua["IRSystem"]["accumulatedDeltaTime"] = [](lua_Integer sysId) -> double {
+        return IRSystem::accumulatedDeltaTime(static_cast<IRSystem::SystemId>(sysId));
+    };
 }
 
 } // namespace IRScript::detail

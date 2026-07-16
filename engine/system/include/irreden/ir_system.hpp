@@ -9,6 +9,7 @@
 #include <irreden/system/system_access.hpp>
 #include <irreden/system/system_manager.hpp>
 
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <tuple>
@@ -118,6 +119,12 @@ validateConcurrencyForAccess(const std::string &name, Concurrency c, SystemAcces
 // the worker-pool dispatch path. `Concurrency::SERIAL` (default)
 // matches the legacy behavior; `PARALLEL_FOR` requires the tick body
 // to satisfy the validator (`detail::validateConcurrencyForAccess`).
+//
+// #2404: trailing `cadence` / `offset` opt the system into throttled
+// dispatch — run 1-in-`cadence` phase ticks (1 = every tick), staggered
+// by `offset` (0..cadence-1) against co-registered siblings. Off-cadence
+// ticks skip the whole dispatch; the runtime setters live on
+// SystemManager / the free functions below.
 template <
     typename... TickComponents,
     typename... TickRelationComponents,
@@ -133,7 +140,9 @@ constexpr SystemId createSystem(
     RelationParams<TickRelationComponents...> extraParams = {},
     FunctionRelationTick functionRelationTick = nullptr,
     Concurrency concurrency = Concurrency::SERIAL,
-    int grainSize = kDefaultGrainSize
+    int grainSize = kDefaultGrainSize,
+    std::uint32_t cadence = 1,
+    std::uint32_t offset = 0
 ) {
     using Partition = detail::PartitionExcludes<TickComponents...>;
     auto excludeArchetype = detail::ArchetypeFromList<typename Partition::Excluded>::value();
@@ -195,6 +204,8 @@ constexpr SystemId createSystem(
         std::move(excludeArchetype),
         concurrency,
         grainSize,
+        cadence,
+        offset,
         accessDescriptor
     );
 }
@@ -311,6 +322,36 @@ template <typename T> constexpr int grainSizeOf() {
     }
 }
 
+// #2404: detect `static constexpr std::uint32_t kCadence` / `kCadenceOffset`
+// members on a System<N> specialization, mirroring kConcurrency / kGrainSize.
+// Absent → cadence 1 (every tick) / offset 0, so every legacy spec is
+// unchanged.
+template <typename T>
+concept HasCadenceMember = requires {
+    { T::kCadence } -> std::convertible_to<std::uint32_t>;
+};
+
+template <typename T>
+concept HasCadenceOffsetMember = requires {
+    { T::kCadenceOffset } -> std::convertible_to<std::uint32_t>;
+};
+
+template <typename T> constexpr std::uint32_t cadenceOf() {
+    if constexpr (HasCadenceMember<T>) {
+        return T::kCadence;
+    } else {
+        return 1u;
+    }
+}
+
+template <typename T> constexpr std::uint32_t cadenceOffsetOf() {
+    if constexpr (HasCadenceOffsetMember<T>) {
+        return T::kCadenceOffset;
+    } else {
+        return 0u;
+    }
+}
+
 } // namespace detail
 
 // Register a system whose state lives as **member fields on the
@@ -373,6 +414,13 @@ registerSystem(std::string name, RelationParams<RelationComponents...> relationP
     constexpr Concurrency concurrency = detail::concurrencyOf<SystemT>();
     constexpr int grainSize = detail::grainSizeOf<SystemT>();
 
+    // #2404: a System<N> spec opts into throttled dispatch by declaring
+    // `static constexpr std::uint32_t kCadence = ...;` (and optionally
+    // `kCadenceOffset`). Detectors default to cadence 1 / offset 0, so
+    // legacy specs are unchanged.
+    constexpr std::uint32_t cadence = detail::cadenceOf<SystemT>();
+    constexpr std::uint32_t cadenceOffset = detail::cadenceOffsetOf<SystemT>();
+
     SystemId id = createSystem<Components...>(
         std::move(name),
         std::move(tickFn),
@@ -381,7 +429,9 @@ registerSystem(std::string name, RelationParams<RelationComponents...> relationP
         std::move(relationParams),
         std::move(relationFn),
         concurrency,
-        grainSize
+        grainSize,
+        cadence,
+        cadenceOffset
     );
     setSystemParams(id, std::move(instance));
     return id;
@@ -588,6 +638,57 @@ void validateAllPipelineGroups();
 void clearPipeline(IRTime::Events event);
 
 void executePipeline(IRTime::Events event);
+
+// #2404: per-system update cadence. Run a system on 1-in-`cadence` phase
+// ticks (1 = every tick, the default); off-cadence ticks skip the entire
+// dispatch. `offset` (0..cadence-1) staggers the initial phase so sibling
+// systems don't spike on the same tick. Both are settable at runtime with
+// no re-registration; a cadence change re-phases from the last run, an
+// offset change re-staggers from the current phase tick.
+inline void setSystemCadence(SystemId system, std::uint32_t cadence) {
+    getSystemManager().setSystemCadence(system, cadence);
+}
+inline std::uint32_t getSystemCadence(SystemId system) {
+    return getSystemManager().getSystemCadence(system);
+}
+inline void setSystemCadenceOffset(SystemId system, std::uint32_t offset) {
+    getSystemManager().setSystemCadenceOffset(system, offset);
+}
+inline std::uint32_t getSystemCadenceOffset(SystemId system) {
+    return getSystemManager().getSystemCadenceOffset(system);
+}
+
+// #2404: phase ticks covered by the system's current / most-recent
+// execution — the multiplier a throttled integrator reads to stay
+// numerically correct at the reduced rate (>= 1 once it has run).
+inline std::uint64_t getAccumulatedTicks(SystemId system) {
+    return getSystemManager().getAccumulatedTicks(system);
+}
+
+// #2404: accumulated fixed-step delta since the system's previous
+// execution. UPDATE-phase-only: `IRTime::deltaTime(UPDATE)` is the constant
+// fixed step. A RENDER-phase throttled consumer must use raw
+// `getAccumulatedTicks` — RENDER dt is wall-clock-variable, so a scaled
+// value would be meaningless. Asserts if the TimeManager is not
+// initialised (the fixed dt has no meaning without the running loop);
+// use `getAccumulatedTicks` in a pure-scheduler unit test.
+inline double accumulatedDeltaTime(SystemId system) {
+    return static_cast<double>(getSystemManager().getAccumulatedTicks(system)) *
+           IRTime::deltaTime(IRTime::UPDATE);
+}
+
+// #2404: convert a target sub-rate (Hz) to the nearest integer cadence
+// divisor of the engine's fixed UPDATE rate. `targetHz <= 0` clamps to 1
+// (every tick). Sugar over the integer-divisor primitive — not a second
+// scheduling mode.
+inline std::uint32_t cadenceFromRate(double targetHz) {
+    if (targetHz <= 0.0) {
+        return 1u;
+    }
+    const double divisor = static_cast<double>(IRConstants::kFPS) / targetHz;
+    const long rounded = static_cast<long>(divisor + 0.5); // round-half-up (divisor > 0)
+    return rounded < 1 ? 1u : static_cast<std::uint32_t>(rounded);
+}
 
 inline void setTimingEnabled(bool enabled) {
     getSystemManager().setTimingEnabled(enabled);
