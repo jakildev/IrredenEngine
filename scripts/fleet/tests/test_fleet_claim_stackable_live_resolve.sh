@@ -85,6 +85,18 @@ if [[ "$*" == *"remote get-url"* ]]; then
     echo "git@github.com:jakildev/IrredenEngine.git"
     exit 0
 fi
+# #2447 ancestry gate: the base-branch fetch is a no-op here, and
+# merge-base --is-ancestor <sha> <base-oid> is answered from a fixture map
+# (exit 0 = contained, 1 = not contained) so the check stays hermetic.
+if [[ "$1" == "fetch" ]]; then
+    exit 0
+fi
+if [[ "$1" == "merge-base" && "$2" == "--is-ancestor" ]]; then
+    case "$3:$4" in
+        sha100:oid906) exit 0 ;;  # #100 contained in base #906's head
+        *)             exit 1 ;;  # e.g. sha100:oid905 → base #905 lacks it
+    esac
+fi
 exec /usr/bin/git "$@"
 GITSTUB
 chmod +x "$STUB_DIR/git"
@@ -117,6 +129,17 @@ done
 
 case "$1 $2" in
     "issue view")
+        if [[ "$has_jq" -eq 1 && "$*" == *"--json body"* ]]; then
+            # #2447 ancestry gate: the base issue's raw blocker body. #905/#906
+            # are both blocked by merged #100; the open ancestor #101 carries no
+            # further blocker so the recursion terminates.
+            case "$issue_num" in
+                905) echo "**Blocked by:** #100" ;;
+                906) echo "**Blocked by:** #100" ;;
+                *)   echo "" ;;
+            esac
+            exit 0
+        fi
         if [[ "$has_jq" -eq 1 ]]; then
             # check_blockers / find-stackable-blockers state-only lookup
             case "$issue_num" in
@@ -154,8 +177,14 @@ case "$1 $2" in
         ;;
     "pr list")
         if [[ "$pr_state" == "merged" ]]; then
-            # No merged PRs in these fixtures — resolution uses gh issue view only.
-            echo "[]"
+            if [[ "$*" == *mergeCommit* ]]; then
+                # #2447 ancestry gate frontier: #100 merged as claude/100-m with
+                # squash sha100. Only the ancestry call requests mergeCommit; the
+                # blocker/find-stackable calls (headRefName only) still get [].
+                printf '%s\n' '[{"number":100,"headRefName":"claude/100-m","mergeCommit":{"oid":"sha100"}}]'
+            else
+                echo "[]"
+            fi
             exit 0
         fi
         if [[ "$pr_state" == "open" ]]; then
@@ -167,6 +196,15 @@ case "$1 $2" in
         exit 0
         ;;
     "pr view")
+        if [[ "$*" == *headRefOid* ]]; then
+            # #2447 ancestry gate: base head oid for git merge-base --is-ancestor.
+            case "$3" in
+                905) echo "oid905" ;;
+                906) echo "oid906" ;;
+                *)   echo "oidx"   ;;
+            esac
+            exit 0
+        fi
         # claim --stackable-on base re-verify (#1751): state + head + labels.
         # $3 is the PR id passed to --stackable-on.
         case "$3" in
@@ -174,6 +212,8 @@ case "$1 $2" in
             902) printf '%s' '{"state":"OPEN","headRefName":"claude/902-empty","labels":[{"name":"fleet:queued"}]}' ;;
             903) printf '%s' '{"state":"OPEN","headRefName":"claude/903-clean","labels":[{"name":"fleet:queued"}]}' ;;
             904) printf '%s' '{"state":"OPEN","headRefName":"claude/904-difffail","labels":[{"name":"fleet:queued"}]}' ;;
+            905) printf '%s' '{"state":"OPEN","headRefName":"claude/905-anc","labels":[{"name":"fleet:queued"}]}' ;;
+            906) printf '%s' '{"state":"OPEN","headRefName":"claude/906-anc","labels":[{"name":"fleet:queued"}]}' ;;
             *)   printf '%s' '{"state":"OPEN","headRefName":"claude/x","labels":[]}' ;;
         esac
         exit 0
@@ -281,6 +321,25 @@ assert_refused 902 "not a stackable base (empty claim-commit)" "empty-claim base
 
 echo "T8: claim --stackable-on a base whose diff fetch fails (#904) → refused"
 assert_refused 904 "refusing to stack on an unverifiable base" "unverifiable base refused"
+
+# --- #2447: claim --stackable-on rejects a base missing a merged ancestor ----
+# The base passes labels + diff (unsafe_base_reason clean) but its head lacks
+# the squash of a merged blocker in its ancestry, so the ancestry gate refuses.
+echo "T9: claim --stackable-on a base missing a merged ancestor (#905) → refused"
+assert_refused 905 "missing merged ancestor #100" "ancestry-hole base refused"
+
+echo "T10: claim --stackable-on a base that contains its merged ancestor (#906) → ancestry passes"
+pass_err="$TMPROOT/anc_pass.err"
+"$FLEET_CLAIM" claim 3006 worker-test --stackable-on 906 >/dev/null 2>"$pass_err" \
+    && anc_rc=0 || anc_rc=$?
+if grep -qE "missing merged ancestor|base-ancestry check failed|not a stackable base" "$pass_err"; then
+    FAIL=$((FAIL + 1))
+    echo "  FAIL: contained base wrongly refused at the base/ancestry gate:"
+    sed 's/^/        /' "$pass_err"
+else
+    PASS=$((PASS + 1))
+    echo "  ok: contained base cleared the ancestry gate (claim rc=$anc_rc)"
+fi
 
 echo ""
 echo "PASS: $PASS  FAIL: $FAIL"

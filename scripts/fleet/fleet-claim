@@ -978,6 +978,134 @@ sys.stdout.write(unsafe_base_reason(labels, files) or "")
                     echo "fleet-claim claim: $stackable_pr is not a stackable base ($stack_reject) — refusing claim" >&2
                     return 1
                 fi
+                # Ancestry gate (#2447): the label/diff check above never checks
+                # whether the base head actually CONTAINS the work of a blocker
+                # that merged after the base forked. Route the same walk the
+                # scout's offer filter uses (fleet_stack_base.missing_ancestor_reason)
+                # through live gh (base issue's blocker graph, merged-frontier
+                # shas) + git merge-base --is-ancestor (containment against the
+                # fetched base head), so offer and accept can't disagree. Fails
+                # CLOSED (refuse) on any unresolvable input — the safe direction
+                # for a claim, mirroring the base-safety check above.
+                local stack_anc_reject
+                if ! stack_anc_reject=$(BASE_PR="$stackable_pr" BASE_BRANCH="$pr_head" \
+                    REPO="$(repo_from_ns)" python3 <<'PYEOF'
+import json
+import os
+import subprocess
+import sys
+
+sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
+from fleet_blocked_by import blocker_refs
+from fleet_branch_match import branch_matches_issue, issue_from_branch
+from fleet_stack_base import missing_ancestor_reason
+
+repo = os.environ["REPO"]
+base_branch = os.environ["BASE_BRANCH"]
+base_pr = os.environ["BASE_PR"]
+
+
+def _run(cmd, timeout=15):
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except (subprocess.SubprocessError, OSError):
+        return None
+    return r if r.returncode == 0 else None
+
+
+# Base issue: the base PR's own issue, whose Blocked-by is the ancestry root.
+base_issue = issue_from_branch(base_branch)
+if base_issue is None:
+    r = _run(["gh", "pr", "view", base_pr, "--repo", repo, "--json",
+              "closingIssuesReferences", "--jq",
+              ".closingIssuesReferences[0].number"])
+    if r and r.stdout.strip().isdigit():
+        base_issue = int(r.stdout.strip())
+if base_issue is None:
+    sys.stdout.write("ancestry undeterminable (base issue unresolvable)")
+    sys.exit(0)
+
+r = _run(["gh", "pr", "view", base_pr, "--repo", repo, "--json", "headRefOid",
+          "--jq", ".headRefOid"])
+base_oid = r.stdout.strip() if r else ""
+
+merged_prs = []
+r = _run(["gh", "pr", "list", "--repo", repo, "--state", "merged", "--limit",
+          "50", "--json", "number,headRefName,mergeCommit"])
+if r:
+    try:
+        merged_prs = json.loads(r.stdout)
+    except json.JSONDecodeError:
+        merged_prs = []
+
+_merged_sha = {}
+
+
+def get_blocker_refs(issue):
+    # gh failure → None (fail closed → refuse the claim on an unverifiable base).
+    # Cross-repo refs are dropped, not failed on: same-repo git containment can't
+    # evaluate them and a cross-repo dependency is never in this repo's git head.
+    r = _run(["gh", "issue", "view", str(issue), "--repo", repo, "--json",
+              "body", "--jq", ".body"])
+    if r is None:
+        return None
+    return [num for slug, num in blocker_refs(r.stdout, repo) if slug == repo]
+
+
+def ref_merged(ref):
+    for pr in merged_prs:
+        if branch_matches_issue(pr.get("headRefName", ""), ref, repo):
+            _merged_sha[ref] = (pr.get("mergeCommit") or {}).get("oid", "")
+            return True
+    r = _run(["gh", "issue", "view", ref, "--repo", repo, "--json", "state",
+              "--jq", ".state"])
+    if r is None:
+        return None
+    state = r.stdout.strip()
+    if state in ("CLOSED", "MERGED"):
+        return True   # merged but its PR fell outside the window → sha None → fail closed
+    if state == "OPEN":
+        return False
+    return None
+
+
+def merged_sha(ref):
+    return _merged_sha.get(ref) or None
+
+
+if base_oid:
+    _run(["git", "fetch", "origin", base_branch], timeout=30)
+_contains = {}
+
+
+def contains(sha):
+    if not base_oid or not sha:
+        return None
+    if sha in _contains:
+        return _contains[sha]
+    try:
+        r = subprocess.run(["git", "merge-base", "--is-ancestor", sha, base_oid],
+                           capture_output=True, text=True, timeout=15)
+    except (subprocess.SubprocessError, OSError):
+        _contains[sha] = None
+        return None
+    v = True if r.returncode == 0 else (False if r.returncode == 1 else None)
+    _contains[sha] = v
+    return v
+
+
+reason = missing_ancestor_reason(base_issue, get_blocker_refs, ref_merged,
+                                 merged_sha, contains)
+sys.stdout.write(reason or "")
+PYEOF
+                ); then
+                    echo "fleet-claim claim: base-ancestry check failed (Python error) — refusing to stack on an unverifiable base" >&2
+                    return 1
+                fi
+                if [[ -n "$stack_anc_reject" ]]; then
+                    echo "fleet-claim claim: $stackable_pr is not a stackable base ($stack_anc_reject) — refusing claim" >&2
+                    return 1
+                fi
                 stackable_branch="$pr_head"
                 ;;
             "")
