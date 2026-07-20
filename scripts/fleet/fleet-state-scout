@@ -55,6 +55,7 @@ import fleet_poll_topology
 from fleet_blocked_by import is_no_blocker_value, parse_blocked_by
 from fleet_branch_match import (
     PARKED_PR_LABELS,
+    body_closed_issue_numbers,
     branch_matches_issue,
     issue_from_branch,
 )
@@ -254,11 +255,9 @@ def _is_pull_request(issue):
 # derived field rather than re-parsing pr["body"], which it may never receive:
 # bodies are popped after enrichment and fetch_prs's 304 fast path reuses the
 # body-stripped prior records, so the live parse was dead on every reuse tick
-# (#2442). Deriving once here keeps the offer and this grammar from drifting.
-CLOSES_RE = re.compile(
-    r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)\b",
-    re.IGNORECASE,
-)
+# (#2442). Deriving once here keeps the offer live; the closing-keyword grammar
+# itself lives in fleet_branch_match.body_closed_issue_numbers so it can't
+# drift from the claim/sweep side that shares it (#2419).
 
 
 def _fetch_prs_graphql(repo):
@@ -294,7 +293,7 @@ def _fetch_prs_graphql(repo):
         # post-enrich body-pop and fetch_prs's 304 reuse of body-stripped
         # records (#2442). Its presence is also fetch_prs's cache-desync marker.
         pr["closes_issues"] = sorted(
-            {int(n) for n in CLOSES_RE.findall(pr.get("body", "") or "")}
+            set(body_closed_issue_numbers(pr.get("body", "") or ""))
         )
     # gh's PR ordering is not stable run-to-run; sort by number so the
     # projection hash stays quiescent when nothing has actually changed.
@@ -1730,7 +1729,7 @@ def enrich_stackable_blocker_prs(state):
     #
     # A PR "matches" the blocker when its head branch is `claude/<NNN>-…` OR its
     # derived closes_issues (Closes/Fixes/Resolves #NNN, parsed at fetch time —
-    # see CLOSES_RE) contains NNN — the same union fleet-claim's
+    # see body_closed_issue_numbers) contains NNN — the same union fleet-claim's
     # find-stackable-blockers uses, so the scout offers every base the live
     # finder would (the Closes-#N form catches blocker PRs on non-standard /
     # human branches). The Closes half reads the derived field, not pr["body"],
@@ -3034,9 +3033,10 @@ def tick_once():
         # Drop PR bodies so they don't bloat state.json or the per-role slices
         # — mirrors resolve_human_approved_blockers popping issue bodies. Safe
         # because the Closes-#N stack-base signal was already derived into
-        # pr["closes_issues"] at fetch time (see CLOSES_RE); nothing downstream
-        # reads pr["body"]. Popping here after deriving there is what lets the
-        # signal survive the 304-reuse of these stripped records (#2442).
+        # pr["closes_issues"] at fetch time (see body_closed_issue_numbers);
+        # nothing downstream reads pr["body"]. Popping here after deriving
+        # there is what lets the signal survive the 304-reuse of these
+        # stripped records (#2442).
         for _repo_state in state["repos"].values():
             for _pr in _repo_state.get("prs", []):
                 _pr.pop("body", None)

@@ -49,13 +49,14 @@ def _task(id_, blocked_by):
 
 def _pr(number, head_ref, author="bot", labels=None, body=""):
     # Mirror _fetch_prs_graphql: derive closes_issues from the live body at
-    # "fetch" time via the module's own CLOSES_RE, so the record matches the
-    # shape enrichment actually consumes. enrich_stackable_blocker_prs reads
-    # closes_issues, not body (#2442) — deriving here (not hardcoding) keeps the
-    # test's derivation from drifting off production's.
+    # "fetch" time via the shared helper (body_closed_issue_numbers, centralized
+    # in fleet_branch_match — #2419), so the record matches the shape enrichment
+    # actually consumes. enrich_stackable_blocker_prs reads closes_issues, not
+    # body (#2442) — deriving here (not hardcoding) keeps the test's derivation
+    # from drifting off production's.
     pr = {"number": number, "headRefName": head_ref, "author": author,
           "body": body,
-          "closes_issues": sorted({int(n) for n in _mod.CLOSES_RE.findall(body)})}
+          "closes_issues": sorted(set(_mod.body_closed_issue_numbers(body)))}
     if labels is not None:
         pr["labels"] = labels
     return pr

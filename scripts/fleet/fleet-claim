@@ -1300,6 +1300,52 @@ cmd_claim_base() {
     echo "master"
 }
 
+cmd_branch_check() {
+    # Validate that a branch name encodes its claimed issue number, so the
+    # fleet PR-open flow never mints an untrackable branch. The #2419
+    # incident: `claude/game-worker-3-issue-255` was invisible to the claim
+    # matcher, the liveness sweep judged the claim abandoned, and a duplicate
+    # PR followed. Enforcing at mint time (right beside claim-base, which
+    # already has the issue number in hand) is the durable fix.
+    #
+    # Purely LOCAL — no network — so it can never hang the PR-open path.
+    #
+    # Usage: fleet-claim [--repo <ns>] branch-check <issue-number> [branch]
+    #   <branch> defaults to the current git branch. Exit 0 on match, 1 on
+    #   mismatch (printing the observed branch + expected form), 2 on bad args.
+    local issue_num
+    if ! issue_num=$(require_issue_number "$1"); then
+        return 2
+    fi
+    local branch="${2:-}"
+    if [[ -z "$branch" ]]; then
+        branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+    fi
+    if [[ -z "$branch" || "$branch" == "HEAD" ]]; then
+        echo "fleet-claim branch-check: no branch given and not on a named git branch" >&2
+        return 2
+    fi
+    # The matcher (and the expected-form message on mismatch) live in the
+    # shared module so the accepted grammar can't drift from the claim gate.
+    BRANCH="$branch" ISSUE_NUM="$issue_num" REPO_NS="$REPO_NS" python3 -c '
+import os, sys
+sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
+from fleet_branch_match import branch_matches_issue, issue_branch_prefixes
+branch = os.environ["BRANCH"]
+issue = os.environ["ISSUE_NUM"]
+repo = os.environ.get("REPO_NS", "")
+if branch_matches_issue(branch, issue, repo):
+    sys.exit(0)
+forms = ["%s<topic>" % p for p in issue_branch_prefixes(repo, issue)]
+sys.stderr.write(
+    "fleet-claim branch-check: branch %r does not encode issue #%s; expected "
+    "one of: %s (or a claude/... branch carrying an issue-%s token)\n"
+    % (branch, issue, ", ".join(forms), issue)
+)
+sys.exit(1)
+'
+}
+
 cmd_find_stackable_blockers() {
     # If the task's **Blocked by:** field resolves to exactly one unresolved
     # blocker with exactly one matching open PR (head-branch `claude/<N>-*`
@@ -1407,9 +1453,9 @@ PYEOF
     # qualifies; zero or multiple → empty output.
 
     BLOCKER="$blocker" REPO="$repo" python3 <<'PYEOF'
-import json, os, re, subprocess, sys
+import json, os, subprocess, sys
 sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
-from fleet_branch_match import branch_matches_issue
+from fleet_branch_match import body_closes_issue, branch_matches_issue
 # Same reject-state predicate the scout's offer and the claim gate use (#1751),
 # so the finder doesn't advertise a base the gate would then refuse — a worker
 # would otherwise burn an iteration claiming a WIP/design-unblocked base only to
@@ -1433,13 +1479,11 @@ try:
 except json.JSONDecodeError:
     sys.exit(0)
 
-closes_re = re.compile(r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#" + re.escape(blocker) + r"\b", re.IGNORECASE)
-
 matches = []
 for pr in prs:
     head = pr.get("headRefName", "") or ""
     body = pr.get("body", "") or ""
-    if branch_matches_issue(head, blocker, repo) or closes_re.search(body):
+    if branch_matches_issue(head, blocker, repo) or body_closes_issue(body, blocker):
         matches.append(pr)
 if len(matches) != 1:
     sys.exit(0)
@@ -3893,6 +3937,15 @@ cmd_molecule_rebase_downstream() {
         elif [[ "$current_branch" =~ ^claude/[Tt]-([0-9]+) ]]; then
             echo "auto-detect: legacy claude/T-NNN branch ($current_branch) — pass the issue number explicitly" >&2
             return 0
+        elif [[ "$current_branch" == claude/* && "$current_branch" =~ (^|[/-])issue-([0-9]+)(-|$) ]]; then
+            # Token fallback mirrors _token_issue in fleet_branch_match.py: a
+            # word-bounded issue-<N> token, reached only when the branch has no
+            # leading-number form (the first arm) and isn't a legacy T-NNN one,
+            # so the documented mirror doesn't drift from the widened shared
+            # matcher (#2419). bash ERE has no lookahead, so the `(-|$)` right
+            # boundary is spelled out; greedy `[0-9]+` captures the full number.
+            upstream_id="${BASH_REMATCH[2]}"
+            echo "auto-detected upstream issue: #${upstream_id} (from issue-<N> token in branch $current_branch)"
         else
             echo "could not auto-detect upstream issue from branch '$current_branch' (not on a claude/<N>-… branch); skipping" >&2
             return 0
@@ -4299,6 +4352,13 @@ case "${1:-}" in
         fi
         cmd_find_stackable_blockers "$2"
         ;;
+    branch-check)
+        if [[ -z "${2:-}" ]]; then
+            echo "usage: fleet-claim [--repo <ns>] branch-check <issue-number> [branch]" >&2
+            exit 2
+        fi
+        cmd_branch_check "$2" "${3:-}"
+        ;;
     release)
         if [[ -z "${2:-}" ]]; then
             echo "usage: fleet-claim release <issue-number>" >&2
@@ -4573,6 +4633,13 @@ commands:
                                 PR — "master" for normal claims, the
                                 recorded stackable_base_branch for a
                                 --stackable-on claim.
+  branch-check <issue-number> [branch]
+                                validate that <branch> (default: the current
+                                git branch) encodes <issue-number> via the
+                                shared matcher — the mint-time guard against
+                                an untrackable branch the liveness sweep would
+                                free (#2419). Network-free. Exit 0=match,
+                                1=mismatch (prints the expected form).
   find-stackable-blockers <issue-number>
                                 if exactly one #N blocker has exactly
                                 one open PR (matched via head-branch

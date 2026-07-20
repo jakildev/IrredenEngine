@@ -7,6 +7,8 @@ Pins the contract both fleet-claim and fleet-state-scout rely on:
   - issue_from_branch is the repo-agnostic inverse (strips optional game-)
   - (#2419) an improvised `issue-<N>` token branch, or a `Closes #N` body,
     resolves to the issue so a live PR is not swept into a duplicate claim
+  - the token is a *fallback*: a leading-number form suppresses it, so a
+    branch naming `issue-<M>` in its topic never dual-attributes to #M
 """
 import sys
 import unittest
@@ -15,6 +17,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from fleet_branch_match import (
     _is_game,
+    body_closed_issue_numbers,
     body_closes_issue,
     branch_matches_issue,
     issue_branch_prefixes,
@@ -93,10 +96,12 @@ class BranchMatchesIssue(unittest.TestCase):
 
     def test_issue_token_word_bounded(self):
         # `issue-25` must NOT satisfy #255 (word-bounded digit run), and the
-        # right boundary rejects a longer number too.
+        # right boundary rejects a longer number too — in both directions:
+        # `issue-255` must not satisfy #25 either.
         self.assertFalse(branch_matches_issue("claude/w-3-issue-25", 255, "engine"))
         self.assertTrue(branch_matches_issue("claude/w-3-issue-25", 25, "engine"))
         self.assertFalse(branch_matches_issue("claude/w-3-issue-2550", 255, "engine"))
+        self.assertFalse(branch_matches_issue("claude/w-3-issue-255", 25, "engine"))
 
     def test_issue_token_left_boundary(self):
         # `reissue-255` is not an `issue-<N>` token (must open a -/ segment).
@@ -113,6 +118,16 @@ class BranchMatchesIssue(unittest.TestCase):
         # Regression guard: widening the matcher didn't break the primary form.
         self.assertTrue(branch_matches_issue("claude/255-topic", 255, "engine"))
         self.assertFalse(branch_matches_issue("claude/1050-x", 105, "engine"))
+
+    def test_leading_number_is_authoritative_over_token(self):
+        # The dual-attribution lock: a branch carrying BOTH a leading number
+        # and an `issue-<N>` token resolves to the leading number ONLY — the
+        # token arm is a fallback, not an additional match. Without the gate,
+        # `cmd_claim`'s open-PR guard falsely refuses a fresh claim on #1425
+        # because an unrelated branch names `issue-1425` in its topic.
+        b = "claude/2419-fix-issue-1425-recurrence"
+        self.assertTrue(branch_matches_issue(b, 2419, "engine"))
+        self.assertFalse(branch_matches_issue(b, 1425, "engine"))
 
 
 class IssueFromBranch(unittest.TestCase):
@@ -147,6 +162,8 @@ class IssueFromBranch(unittest.TestCase):
         # the leading number, not the token.
         self.assertEqual(issue_from_branch("claude/255-issue-tracker"), 255)
         self.assertEqual(issue_from_branch("claude/game-105-issue-99-fix"), 105)
+        self.assertEqual(
+            issue_from_branch("claude/2419-fix-issue-1425-recurrence"), 2419)
 
 
 class IssuePrState(unittest.TestCase):
@@ -258,6 +275,14 @@ class BodyClosesIssue(unittest.TestCase):
             self.assertTrue(body_closes_issue("Closes #255", issue), issue)
         self.assertFalse(body_closes_issue("", 255))
         self.assertFalse(body_closes_issue(None, 255))
+
+    def test_closed_issue_numbers_extraction(self):
+        # The all-refs form the scout's closes_issues derivation rides on:
+        # keyword-gated (a bare `#99` mention is not a close) and int-typed.
+        body = "Closes #10, fixes #20 and resolves #255. Mentions #99 too."
+        self.assertEqual(sorted(body_closed_issue_numbers(body)), [10, 20, 255])
+        self.assertEqual(body_closed_issue_numbers(""), [])
+        self.assertEqual(body_closed_issue_numbers(None), [])
 
 
 if __name__ == "__main__":
