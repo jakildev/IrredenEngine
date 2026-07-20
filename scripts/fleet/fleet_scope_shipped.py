@@ -77,14 +77,34 @@ incidental match have to be rejected:
    deferral marker (the prep word must sit directly on one side of the ref, so
    "ship #1234, prep #1235" still ships #1234).
 
+8. Bookkeeping diff — an all-``.fleet/`` PR (#2385 ← #2392). Layers 1-7 read the
+   PR's title/body text; this one reads its *diff*. An epic-steward bookkeeping
+   PR — a ledger rollup, a plan adoption, a projection edit — is titled *about*
+   the issues it accounts for ("docs/fleet: epic-steward — #2317 rollup + #2385
+   adoption (#2314)"), but its diff is entirely ``.fleet/`` files (here two
+   ``.fleet/plans/`` docs). Its subject is neither ``plan`` nor ``design``, so
+   the layer-4 guard does not fire, and the bare ``#2385`` in the title
+   satisfies title-trust — ingest false-stamped ``fleet:scope-shipped`` on #2385
+   (a render fix with no impl PR anywhere) one minute after the human cleared it
+   for the queue, and the reconcile loop then re-bounced it to
+   ``fleet:needs-plan``. A PR whose changed files are *all* under ``.fleet/``
+   maintains fleet state and never ships an issue's code scope, so its title ref
+   is NOT trusted: like layers 4/6/7 it falls through to the body closing-verb
+   check, where a ``.fleet/``-only PR whose deliverable genuinely IS the fleet
+   change still ships via a prose ``Closes #N``. Real impl PRs that commit a plan
+   file (``.fleet/plans/issue-N.md``, per #1932) also carry the code, so their
+   diff is never ``.fleet/``-only. The file list is optional — a caller that does
+   not supply it keeps the pre-layer-8 title-trust behavior.
+
 So a body ``#N`` counts only when a closing-action verb sits directly before it
 in prose (``Closes #N``, ``fixes (#N)``, ``supersedes #N``) — code spans are
 stripped first (layer 5), so a verb quoted in backticks does not count. A
 ``#N`` in the *title* is trusted as-is — PRs in this repo are named
 ``#N: <desc>`` after the issue they implement — EXCEPT (layer 3) when it is a
 range endpoint, (layer 4) when the title is a plan/design-doc title, (layer 6)
-when the ref is marked deferred, or (layer 7) when the ref is marked prep: all
-four shapes name issues they enumerate, plan, defer, or prepare without
+when the ref is marked deferred, (layer 7) when the ref is marked prep, or
+(layer 8) when the PR's diff is entirely ``.fleet/`` bookkeeping paths: all five
+shapes name issues they enumerate, plan, defer, prepare, or account for without
 implementing.
 """
 import re
@@ -198,7 +218,38 @@ def _ref_is_nonship_marked(text, n):
                 or re.search(leading, text, re.IGNORECASE))
 
 
-def pr_references_issue(title, body, n):
+# Fleet-internal bookkeeping prefix (layer 8). A merged PR whose changed files
+# are ALL under ``.fleet/`` — an epic-steward ledger rollup, a plan adoption, a
+# projection edit — maintains fleet state; it never ships an issue's code scope.
+# Real impl PRs that commit a plan file (``.fleet/plans/issue-N.md``, per #1932)
+# also carry the code, so their diff is never ``.fleet/``-only.
+_FLEET_BOOKKEEPING_PREFIX = '.fleet/'
+
+
+def _is_bookkeeping_diff(files):
+    """True iff every changed path in ``files`` is under ``.fleet/`` — a fleet
+    bookkeeping PR (steward ledger / plan adoption / projection edit) that does
+    not ship any issue's code scope (layer 8).
+
+    ``files`` is the ``gh pr list --json files`` shape (a list of
+    ``{'path': ...}`` dicts); a plain list of path strings is accepted too.
+    Returns False when ``files`` is falsy/empty (no diff info supplied) so a
+    caller that omits the file list keeps the pre-layer-8 title-trust behavior.
+    """
+    if not files:
+        return False
+    paths = []
+    for f in files:
+        p = (f.get('path') if isinstance(f, dict) else f) or ''
+        p = p.strip()
+        if p:
+            paths.append(p)
+    if not paths:
+        return False
+    return all(p.startswith(_FLEET_BOOKKEEPING_PREFIX) for p in paths)
+
+
+def pr_references_issue(title, body, n, files=None):
     """True iff the PR genuinely ships issue ``n`` (see module docstring).
 
     Title: any word-boundary ``#n`` counts (the ``#N: <desc>`` PR-naming
@@ -208,13 +259,19 @@ def pr_references_issue(title, body, n):
     never ships it), the ref is marked deferred ("(#n deferred)" / "defers #n"
     — layer 6, a doc-and-defer PR that escalates ``n`` rather than shipping it),
     OR the ref is marked prep ("(#n prep)" / "prep for #n" — layer 7, a narrowed
-    refactor that prepares ``n`` rather than shipping it).
+    refactor that prepares ``n`` rather than shipping it), OR (layer 8) the PR's
+    ``files`` diff is entirely ``.fleet/`` bookkeeping paths (a steward ledger /
+    plan-adoption PR that accounts for ``n`` rather than implementing it).
     Body: ``#n`` counts only when immediately preceded by a
     closing-action verb, and likewise never as a range endpoint. A bare body
     mention ("downstream #n", "pre-existing #n", "Refs #n") is rejected, as is
     a closing verb quoted inside a markdown code span (layer 5): code spans are
     stripped before the body scan so ``... + `Closes #n` `` in a plan PR's body
     does not read as a ship.
+
+    ``files`` is the optional ``gh pr list --json files`` list for this PR; when
+    omitted the layer-8 bookkeeping-diff guard is inert and title-trust is
+    unchanged.
     """
     if not n:
         return False
@@ -229,10 +286,13 @@ def pr_references_issue(title, body, n):
     # closing-verb check below (where a genuine doc-ship still says ``Closes #N``).
     # Layers 6-7: a title ref marked deferred ("(#N deferred)") or prep
     # ("(#N prep)") is an explicit non-ship, so it is likewise not trusted and
-    # falls through to the body.
+    # falls through to the body. Layer 8: a PR whose diff is entirely ``.fleet/``
+    # bookkeeping paths (steward ledger / plan adoption) accounts for the issue
+    # without implementing it, so its title ref falls through too.
     if (not _PLAN_DOC_TITLE.search(title)
             and re.search(ref, title)
-            and not _ref_is_nonship_marked(title, n)):
+            and not _ref_is_nonship_marked(title, n)
+            and not _is_bookkeeping_diff(files)):
         return True
     body_re = re.compile(
         r'\b(?:' + _CLOSING_VERB + r')\b' + _VERB_TO_REF_GAP + ref,
@@ -246,9 +306,12 @@ def select_shipped_pr(prs, n):
 
     Replaces the old ``prs[0]`` blind trust: a merged-PR search hit only counts
     as scope-shipped evidence when ``pr_references_issue`` confirms a genuine
-    ship (title ref or closing-verb body ref), not an incidental mention.
+    ship (title ref or closing-verb body ref), not an incidental mention. The
+    PR's ``files`` list (from ``gh pr list --json files``) feeds the layer-8
+    bookkeeping-diff guard; a candidate without it falls back to text-only.
     """
     for pr in prs:
-        if pr_references_issue(pr.get('title', ''), pr.get('body', ''), n):
+        if pr_references_issue(pr.get('title', ''), pr.get('body', ''), n,
+                               pr.get('files')):
             return pr
     return None
