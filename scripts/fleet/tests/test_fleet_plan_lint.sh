@@ -67,6 +67,55 @@ LEVER = GOOD.replace("one approach: edit foo.cpp then bar.cpp",
                      "the cost is dominated by the resolve loop; one approach: edit foo.cpp")
 LEVER_CITED = LEVER.replace("dominated by the resolve loop",
                             "dominated by the resolve loop, confirmed by a disarm probe")
+# #2443: synonym-headed plan (the #2442-shaped false-positive regression) — core
+# sections worded naturally instead of leading with the literal token. Must pass.
+SYNONYM = '''## Plan: synonym headings
+
+- **Model:** sonnet
+
+### Files / modules
+foo.cpp, bar.cpp
+
+### Committed approach - one approach, picked
+verified current state via grep; edit foo.cpp then bar.cpp
+
+### Acceptance tests (positive-fire)
+builds + tests
+
+### Gotchas
+none'''
+# #2443 negative control: a real Approach section but no Scope-concept and no
+# Acceptance-concept heading anywhere -- must still hard-fail (missing_core >= 2).
+NO_SCOPE_NO_ACCEPTANCE = '''## Plan: negative control
+
+- **Model:** sonnet
+
+### Approach
+verified current state via grep; one approach: edit foo.cpp
+
+### Notes
+none'''
+# #2443 plan-exclusion guard: the mandatory "## Plan: <title>" heading is the
+# ONLY heading here that could match Approach -- Scope + Acceptance concepts are
+# present, no real Approach-shaped heading. "plan" is deliberately NOT an
+# Approach synonym, so Approach must report missing (single missing core -> warn,
+# exit 0), never vacuously match. Guards a future synonym-set edit that re-adds
+# "plan" to Approach (which would silently satisfy it for every plan comment).
+PLAN_ONLY_NO_APPROACH = '''## Plan: plan-heading only
+
+- **Model:** sonnet
+
+### Scope
+verified current state via grep; foo.cpp
+
+### Affected files
+foo.cpp
+
+### Acceptance criteria
+builds + tests
+
+### Gotchas
+none'''
 F = {
   "100": {"title": "sound task", "comments": [{"body": GOOD}]},
   "101": {"title": "defer task", "comments": [{"body": DEFER}]},
@@ -76,6 +125,9 @@ F = {
   "105": {"title": "tbd task", "comments": [{"body": GOOD + "\n\nopen question: TBD"}]},
   "106": {"title": "lever task", "comments": [{"body": LEVER}]},
   "107": {"title": "lever cited task", "comments": [{"body": LEVER_CITED}]},
+  "108": {"title": "synonym headings task", "comments": [{"body": SYNONYM}]},
+  "109": {"title": "negative control task", "comments": [{"body": NO_SCOPE_NO_ACCEPTANCE}]},
+  "110": {"title": "plan-exclusion guard task", "comments": [{"body": PLAN_ONLY_NO_APPROACH}]},
 }
 print(json.dumps(F.get(num, {"title": "missing", "comments": []})))
 PYEOF
@@ -104,6 +156,19 @@ case "$lever_out" in *"mechanism-lever language"*) ok "mechanism-lever warn fire
 cited_out=$("$LINT" 107 2>&1 || true)
 case "$cited_out" in *"mechanism-lever language"*) bad "mechanism-lever warn should be absent when premise cited: [$cited_out]";; *) ok "mechanism-lever warn absent when premise cited";; esac
 "$LINT" --repo bogus 100 >/dev/null 2>&1; assert_exit $? 2 "bad --repo -> usage exit 2"
+# #2443 — concept-based core-section matching: synonym-worded headings pass...
+"$LINT" 108 >/dev/null 2>&1; assert_exit $? 0 "synonym-headed plan (#2442-shaped) -> exit 0 (no longer a false positive)"
+# ...but a plan genuinely missing two core concepts still hard-fails.
+"$LINT" 109 >/dev/null 2>&1; assert_exit $? 1 "missing scope + acceptance concepts -> hard fail (negative control)"
+# #2443 plan-exclusion guard — the mandatory "## Plan:" heading must NOT
+# vacuously satisfy Approach (that is why "plan" is excluded from its synonym
+# set). Scope + Acceptance present, no Approach-shaped heading -> single missing
+# core -> warn (exit 0) that names Approach. If a future edit re-adds "plan" to
+# the Approach synonyms, that heading would match, missing_core would go empty,
+# and the warn below would vanish -> this test fails.
+"$LINT" 110 >/dev/null 2>&1; assert_exit $? 0 "plan-only (no Approach heading) -> exit 0 (single missing core = warn)"
+plan_excl_out=$("$LINT" 110 2>&1 || true)
+case "$plan_excl_out" in *"core section absent"*"Approach"*) ok "Approach reported missing (## Plan: heading does not vacuously satisfy it)";; *) bad "Approach not reported missing — did 'plan' leak into the Approach synonym set? [$plan_excl_out]";; esac
 set -e
 
 echo "================================"

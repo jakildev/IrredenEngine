@@ -100,9 +100,22 @@ plan = plans[-1]
 low = plan.lower()
 is_spike = "investigation spike" in low or "investigation spike" in title.lower()
 
-# Core + soft sections (heading at any depth, case-insensitive).
-missing_core = [s for s in ("Scope", "Approach", "Acceptance")
-                if not re.search(r"(?im)^\s*#{1,4}\s+" + s + r"\b", plan)]
+# Core sections (heading at any depth, case-insensitive), matched by CONCEPT
+# rather than requiring the heading to *begin* with the literal token — a
+# sound plan that words its headings naturally (e.g. "Files / modules" for
+# Scope, "Committed approach" for Approach) must not hard-fail (#2443).
+# "plan" is deliberately excluded from the Approach synonym set: every plan
+# comment's first heading is "## Plan: <title>", which would otherwise
+# vacuously satisfy Approach for every comment.
+CORE = {
+    "Scope": ("scope", "files", "modules", "affected"),
+    "Approach": ("approach", "design", "implementation"),
+    "Acceptance": ("acceptance", "verification", "tests", "done"),
+}
+missing_core = [
+    name for name, syns in CORE.items()
+    if not re.search(r"(?im)^\s*#{1,4}\s+.*\b(?:" + "|".join(syns) + r")\b", plan)
+]
 for s in ("Affected files", "Gotchas"):
     if not re.search(r"(?im)^\s*#{1,4}\s+" + re.escape(s) + r"\b", plan):
         warn.append(f"no '### {s}' section")
