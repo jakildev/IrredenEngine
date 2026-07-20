@@ -455,5 +455,154 @@ class TestFetchPrs304Reuse(unittest.TestCase):
         self.assertIs(_mod.fetch_prs("repo", prev=prev), prev)
 
 
+class TestEnrichAncestryGuard(unittest.TestCase):
+    """Filter (c), the stack-base ancestry guard (#2447): a base whose head is
+    missing the squash of a MERGED blocker in its ancestry is not offered, even
+    when the candidate task's own blocker list never names that blocker.
+
+    Hermetic: the compare-API fetch seam (_fetch_contains) is stubbed so no
+    live GitHub call fires, and the persistent memo + PRS_DIR are redirected
+    into a TemporaryDirectory (scripts/fleet/CLAUDE.md)."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self._orig_prs_dir = _mod.PRS_DIR
+        _mod.PRS_DIR = Path(self._tmp.name) / "prs"
+        self._orig_memo = _mod.ANCESTRY_MEMO_FILE
+        _mod.ANCESTRY_MEMO_FILE = Path(self._tmp.name) / "memo.json"
+        self._orig_fetch = _mod._fetch_contains
+        self._orig_log = _mod.log
+        self.fetch_calls = []
+        self.logs = []
+        _mod.log = lambda m: self.logs.append(m)
+
+    def tearDown(self):
+        _mod.PRS_DIR = self._orig_prs_dir
+        _mod.ANCESTRY_MEMO_FILE = self._orig_memo
+        _mod._fetch_contains = self._orig_fetch
+        _mod.log = self._orig_log
+        self._tmp.cleanup()
+
+    def _install_fetch(self, verdicts):
+        """verdicts: sha -> bool. An empty base_oid returns None, mirroring the
+        real _fetch_contains guard (undeterminable → fail closed)."""
+        def fake(repo_slug, base_oid, sha):
+            self.fetch_calls.append((base_oid, sha))
+            if not base_oid:
+                return None
+            return verdicts.get(sha)
+        _mod._fetch_contains = fake
+
+    def _state(self):
+        # Candidate #40 stacks on base #30's PR; #30 is blocked by #10 (merged)
+        # + #20 (open). #10's squash "sha10" is the frontier the base head
+        # (oid "oidbase") may or may not contain.
+        return {
+            "repos": {
+                "engine": {
+                    "tasks": {
+                        "open": [{"id": "#40", "issue": "#40",
+                                  "blocked_by": "#30", "area": None}],
+                        "in_progress": [
+                            {"id": "#30", "issue": "#30",
+                             "blocked_by": "#10, #20"},
+                            {"id": "#20", "issue": "#20",
+                             "blocked_by": "(none)"},
+                        ],
+                    },
+                    "prs": [{"number": 300, "headRefName": "claude/30-base",
+                             "headRefOid": "oidbase", "author": "bot",
+                             "labels": ["fleet:approved"]}],
+                    "recent_merged_prs": [
+                        {"number": 100, "headRefName": "claude/10-m",
+                         "mergeCommitSha": "sha10", "mergedAt": "t"}],
+                    "closed_fleet_queued": [],
+                },
+                "game": {"tasks": {"open": [], "in_progress": []}, "prs": [],
+                         "recent_merged_prs": [], "closed_fleet_queued": []},
+            }
+        }
+
+    def _candidate(self, state):
+        return state["repos"]["engine"]["tasks"]["open"][0]
+
+    def test_missing_ancestor_suppresses_and_logs(self):
+        """Base head lacks the merged frontier #10 → offer withheld, and the
+        suppression is LOGGED (never silent — the #2442 lesson)."""
+        self._install_fetch({"sha10": False})
+        state = self._state()
+        enrich_stackable_blocker_prs(state)
+        self.assertNotIn("stackable_blocker_pr", self._candidate(state))
+        self.assertTrue(any("ancestry guard" in m for m in self.logs),
+                        f"no suppression logged: {self.logs}")
+        self.assertTrue(any("#10" in m for m in self.logs))
+
+    def test_contained_ancestor_offered(self):
+        """Base head contains the merged frontier → the base is offered."""
+        self._install_fetch({"sha10": True})
+        state = self._state()
+        enrich_stackable_blocker_prs(state)
+        task = self._candidate(state)
+        self.assertIn("stackable_blocker_pr", task)
+        self.assertEqual(task["stackable_blocker_pr"]["number"], 300)
+
+    def test_warm_memo_zero_fetch(self):
+        """A pre-populated memo answers the containment verdict with zero
+        network calls (pins the steady-state per-tick cost at 0)."""
+        self._install_fetch({"sha10": False})
+        _mod.ANCESTRY_MEMO_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _mod.ANCESTRY_MEMO_FILE.write_text(json.dumps({"oidbase:sha10": False}))
+        state = self._state()
+        enrich_stackable_blocker_prs(state)
+        self.assertEqual(self.fetch_calls, [], "warm memo must not fetch")
+        self.assertNotIn("stackable_blocker_pr", self._candidate(state))
+
+    def test_verdict_persisted_to_memo(self):
+        """A fresh verdict is written to the memo keyed on (base_oid, sha) so
+        the next tick is warm."""
+        self._install_fetch({"sha10": True})
+        state = self._state()
+        enrich_stackable_blocker_prs(state)
+        memo = json.loads(_mod.ANCESTRY_MEMO_FILE.read_text())
+        self.assertIs(memo.get("oidbase:sha10"), True)
+
+    def test_missing_head_oid_suppressed(self):
+        """A base PR with no headRefOid can't be containment-checked → the
+        frontier is undeterminable → fail closed (suppressed)."""
+        self._install_fetch({"sha10": False})
+        state = self._state()
+        del state["repos"]["engine"]["prs"][0]["headRefOid"]
+        enrich_stackable_blocker_prs(state)
+        self.assertNotIn("stackable_blocker_pr", self._candidate(state))
+        self.assertTrue(any(oid == "" for oid, _ in self.fetch_calls))
+
+    def test_untracked_base_offered(self):
+        """A base whose issue has no queue record (e.g. a non-fleet Closes-#N
+        base) is offered — the scout has no in-memory ancestry, so the
+        claim-side live gate is the authoritative re-verify. No fetch fires."""
+        self._install_fetch({"sha10": False})
+        state = self._state()
+        state["repos"]["engine"]["tasks"]["in_progress"] = []
+        enrich_stackable_blocker_prs(state)
+        self.assertIn("stackable_blocker_pr", self._candidate(state))
+        self.assertEqual(self.fetch_calls, [])
+
+    def test_open_ancestor_recursed_transitive_hole(self):
+        """The hole two levels up: base #30's blocker #20 is OPEN and #20 is
+        itself blocked by merged #50, whose squash the base head lacks. #30's
+        collapsed list would never surface #50 — the walk recurses to find it."""
+        self._install_fetch({"sha10": True, "sha50": False})
+        state = self._state()
+        eng = state["repos"]["engine"]
+        # #20 now blocked by merged #50; add #50 to the merged window.
+        eng["tasks"]["in_progress"][1]["blocked_by"] = "#50"
+        eng["recent_merged_prs"].append(
+            {"number": 500, "headRefName": "claude/50-m",
+             "mergeCommitSha": "sha50", "mergedAt": "t"})
+        enrich_stackable_blocker_prs(state)
+        self.assertNotIn("stackable_blocker_pr", self._candidate(state))
+        self.assertTrue(any("#50" in m for m in self.logs))
+
+
 if __name__ == "__main__":
     unittest.main()

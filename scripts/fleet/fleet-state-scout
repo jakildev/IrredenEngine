@@ -53,14 +53,18 @@ if sys.platform == "win32" and not os.environ.get("PYTHONUTF8"):
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import fleet_poll_topology
 from fleet_blocked_by import is_no_blocker_value, parse_blocked_by
-from fleet_branch_match import PARKED_PR_LABELS, branch_matches_issue
+from fleet_branch_match import (
+    PARKED_PR_LABELS,
+    branch_matches_issue,
+    issue_from_branch,
+)
 
 # Conditional-REST polling core (#1394 Q1) — see the fetcher section below.
 # ETAG_DIR aliases the module's shared etag-cache default so the two never
 # drift; it's mkdir'd in main() and the fetchers rely on that default cache_dir.
 from fleet_gh_poll import DEFAULT_CACHE_DIR as ETAG_DIR
 from fleet_gh_poll import conditional_get
-from fleet_stack_base import unsafe_base_reason
+from fleet_stack_base import missing_ancestor_reason, unsafe_base_reason
 
 
 def _fleet_script_argv(cmd):
@@ -87,6 +91,12 @@ PROJECTIONS_DIR = STATE_DIR / "projections"
 PRS_DIR = STATE_DIR / "prs"
 DIFFS_DIR = STATE_DIR / "diffs"
 ISSUES_DIR = STATE_DIR / "issues"
+# Persistent memo for the stack-base ancestry guard (#2447): a compare-API
+# containment verdict keyed on `(base_head_oid, sha)`. Both keys are immutable
+# commit shas, so a cached verdict never invalidates — a base rebase changes
+# the head oid and naturally re-keys. Warm entries make the steady-state
+# per-tick cost of the guard zero network calls.
+ANCESTRY_MEMO_FILE = STATE_DIR / "stack-ancestry-memo.json"
 PID_FILE = STATE_DIR / "scout.pid"
 STATE_FILE = STATE_DIR / "state.json"
 SHUTDOWN_FLAG = Path.home() / ".fleet" / "shutdown-in-progress"
@@ -255,7 +265,10 @@ def _fetch_prs_graphql(repo):
     out = run_capture([
         "gh", "pr", "list", "--repo", repo, "--state", "open",
         "--json",
-        "number,title,headRefName,baseRefName,author,labels,mergeable,"
+        # headRefOid feeds the stack-base ancestry guard (#2447): the compare-API
+        # containment check is keyed on the base head oid. It rides the same list
+        # poll, so requesting it costs no extra call.
+        "number,title,headRefName,headRefOid,baseRefName,author,labels,mergeable,"
         "isDraft,reviews,updatedAt,body",
     ])
     if out is None:
@@ -595,6 +608,13 @@ def fetch_recent_merged_prs(repo, limit=30):
             "headRefName": (pr.get("head") or {}).get("ref", ""),
             "baseRefName": (pr.get("base") or {}).get("ref", ""),
             "mergedAt": pr.get("merged_at", ""),
+            # #2447: the merge commit sha feeds the stack-base ancestry guard's
+            # containment check (a frontier ancestor's squash must be reachable
+            # from the offered base head). REST's `merge_commit_sha` is only a
+            # real squash sha when `merged_at` is set — this list is already
+            # filtered to merged PRs above, so projecting it here costs zero
+            # extra API calls (the field rides the same /pulls payload).
+            "mergeCommitSha": pr.get("merge_commit_sha", "") or "",
         }
         for pr in merged
     ]
@@ -1391,6 +1411,15 @@ def resolve_blocked_by(state):
                     continue
                 unresolved.append(ref)
 
+            # #2447: preserve the pre-collapse blocker string. The mutation
+            # below drops merged/closed refs, which is exactly the "collapsed"
+            # data loss the stack-base ancestry guard needs to recover — a
+            # merged blocker that a stacked base forked before must still be
+            # checked for containment. `in_progress` tasks keep their raw
+            # blocked_by (resolve_blocked_by visits `open` only), so the walk
+            # reads blocked_by_raw here and blocked_by on those.
+            task["blocked_by_raw"] = raw
+
             if not unresolved:
                 task["blocked_by"] = "(none)"
             elif len(unresolved) == 1:
@@ -1564,6 +1593,132 @@ def resolve_epic_children(state):
                         repo_slug, child, per_tick_cache)
 
 
+# --- Stack-base ancestry guard (#2447) -------------------------------------
+#
+# `unsafe_base_reason` rejects a base by label/diff state; it never checks
+# whether the base branch actually CONTAINS the work of a blocker that merged
+# after the base forked. A four-task chain T1→T2→T3→T4 where T1 merged after T2
+# forked leaves T3's head (T4's offered base) missing every module T1 shipped —
+# a base T4 provably can't build on. T4's own `Blocked by:` names only T3, so a
+# check that looks at the candidate's own collapsed blockers finds nothing; the
+# hole lives in the BASE's ancestry and propagates transitively down the stack.
+# The pure walk lives in fleet_stack_base.missing_ancestor_reason; these helpers
+# wire it to the scout's in-memory projection + a compare-API containment check.
+
+
+def _fetch_contains(repo_slug, base_oid, sha):
+    """Compare-API containment verdict for the ancestry guard.
+
+    True when `base_oid`'s history contains `sha`, False when it provably does
+    not, None when the verdict is unavailable. `base_oid` is the compare base
+    and `sha` the head, so contained ⇔ `ahead_by == 0` (status `behind` or
+    `identical`: the merged ancestor adds no commits the base head lacks). Needs
+    no local git refs — the scout never fetches — and conditional_get ETag-caches
+    the immutable comparison, though the persistent memo normally answers first.
+    """
+    if not repo_slug or not base_oid or not sha:
+        return None
+    _changed, body = conditional_get(repo_slug, f"compare/{base_oid}...{sha}")
+    if body is None:
+        return None
+    try:
+        ahead = json.loads(body).get("ahead_by")
+    except json.JSONDecodeError:
+        return None
+    return None if ahead is None else ahead == 0
+
+
+def _load_ancestry_memo():
+    try:
+        data = json.loads(ANCESTRY_MEMO_FILE.read_text())
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _save_ancestry_memo(memo):
+    try:
+        # write_atomic (unique-temp + os.replace) so a concurrent scout reader
+        # under a leader/follower dual-poll tick only ever sees the complete
+        # prior or new memo, never a torn splice — matches every other writer in
+        # this file (state.json, the PR/diff/issue caches, the seen-file hashes).
+        write_atomic(ANCESTRY_MEMO_FILE, json.dumps(memo))
+    except OSError:
+        pass
+
+
+def _make_contains(memo, repo_slug, base_oid):
+    """One-arg containment predicate for missing_ancestor_reason, memoized on
+    the immutable `(base_oid, sha)` key so a warm memo costs zero network."""
+    def contains(sha):
+        key = f"{base_oid}:{sha}"
+        if key in memo:
+            return memo[key]
+        verdict = _fetch_contains(repo_slug, base_oid, sha)
+        if verdict is not None:
+            memo[key] = verdict
+        return verdict
+    return contains
+
+
+def _ancestry_ref_graph(repo_key, repo_state):
+    """Build the repo-scoped (get_blocker_refs, ref_merged, merged_sha)
+    callables the ancestry walk injects.
+
+    get_blocker_refs recovers each ancestor's *raw* (pre-collapse) same-repo
+    blocker refs: in_progress tasks keep their raw blocked_by (resolve_blocked_by
+    visits `open` only), open tasks carry blocked_by_raw (stashed before the
+    collapse). Cross-repo refs are dropped — same-repo git containment can't
+    evaluate them, and a cross-repo dependency is never in this repo's git head
+    (fleet-claim's routed blocker check owns that). An UNTRACKED base issue
+    (no queue record — e.g. a non-fleet Closes-#N base) returns [] rather than
+    suppressing: the scout has no in-memory ancestry for it, so it offers and
+    the claim-side LIVE gate (which reads the issue body directly) is the
+    authoritative re-verify. ref_merged classifies a ref as merged (in the
+    recent-merged or closed-queue window), open (a tracked open/in_progress
+    task), or unknown (None → fail closed). merged_sha resolves the squash sha
+    from the recent-merged window only (out-of-window → None → fail closed).
+    """
+    tasks = repo_state.get("tasks", {})
+    by_num = {}
+    for section in ("in_progress", "open"):
+        for t in tasks.get(section, []):
+            num = (t.get("issue") or "").lstrip("#")
+            if num:
+                by_num.setdefault(num, t)
+    closed_nums = _closed_issue_numbers(repo_state)
+    merged_shas = {}
+    for pr in repo_state.get("recent_merged_prs", []):
+        num = issue_from_branch(pr.get("headRefName", ""))
+        sha = pr.get("mergeCommitSha")
+        if num is not None and sha:
+            merged_shas[str(num)] = sha
+
+    def get_blocker_refs(issue):
+        rec = by_num.get(str(issue))
+        if rec is None:
+            return []  # untracked base → offer; claim-side live gate re-verifies
+        raw = rec.get("blocked_by_raw")
+        if raw is None:
+            raw = rec.get("blocked_by") or ""
+        if not raw or raw.strip().lower().startswith("(none"):
+            return []
+        return [ref for ref_key, ref in _parse_blocker_refs(raw, repo_key)
+                if ref_key == repo_key]  # same-repo git ancestry only
+
+    def ref_merged(ref):
+        if ref in merged_shas or ref in closed_nums:
+            return True
+        if ref in by_num:
+            return False
+        return None
+
+    def merged_sha(ref):
+        return merged_shas.get(ref)
+
+    return get_blocker_refs, ref_merged, merged_sha
+
+
 def enrich_stackable_blocker_prs(state):
     # Per T-110 PR 2: for each task whose blocked_by is exactly one issue
     # number (`#NNN`) with exactly one matching open PR in the same repo,
@@ -1597,8 +1752,18 @@ def enrich_stackable_blocker_prs(state):
     # Engine and game tasks are both enriched; worker pickup only honors
     # the field for engine in v1 (the merger's cascade-rebase doesn't
     # process game PRs yet) — that gating lives in the role doc.
+    #
+    # Filter (c) (#2447): the base's blocker ancestry must be contained in the
+    # base head — see _ancestry_ref_graph / missing_ancestor_reason. The memo is
+    # loaded once and threaded through so a warm containment verdict costs no
+    # network call.
+    memo = _load_ancestry_memo()
+    memo_size = len(memo)
     for repo_key, repo_state in state["repos"].items():
+        repo_slug = REPO_KEY_TO_SLUG.get(repo_key, "")
         prs = repo_state.get("prs", [])
+        get_blocker_refs, ref_merged, merged_sha = _ancestry_ref_graph(
+            repo_key, repo_state)
         for task in repo_state.get("tasks", {}).get("open", []):
             blocked_by = (task.get("blocked_by") or "").strip()
             issue_num = _single_blocker_issue(blocked_by)
@@ -1644,11 +1809,34 @@ def enrich_stackable_blocker_prs(state):
                 ):
                     continue
 
+            # Filter (c) (#2447): reject a base whose head is missing the squash
+            # of a merged blocker anywhere in its ancestry. issue_num IS the base
+            # issue (the task's sole blocker), so the walk starts from it; the
+            # base head oid keys the compare-API containment check. A
+            # suppression is LOGGED (never silent — the #2442 lesson) so an
+            # operator can see a churn base being correctly withheld.
+            base_head_oid = pr.get("headRefOid") or ""
+            ancestry_reason = missing_ancestor_reason(
+                issue_num, get_blocker_refs, ref_merged, merged_sha,
+                _make_contains(memo, repo_slug, base_head_oid),
+            )
+            if ancestry_reason:
+                log(f"stack-base ancestry guard: not offering PR "
+                    f"#{pr['number']} as base for {task.get('id', '?')} "
+                    f"— {ancestry_reason}")
+                continue
+
             task["stackable_blocker_pr"] = {
                 "number": pr["number"],
                 "headRefName": pr["headRefName"],
                 "author": pr.get("author", ""),
             }
+
+    # The memo only grows (immutable sha keys), so a length change means new
+    # verdicts were computed — persist only then, so quiescent ticks (the common
+    # no-candidate case) neither rewrite nor create the file.
+    if len(memo) != memo_size:
+        _save_ancestry_memo(memo)
 
 
 def enrich_inflight_pr_tasks(state):
