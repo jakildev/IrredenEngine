@@ -1314,7 +1314,7 @@ PYEOF
 
 # _issue_pr_state_from <prs-json> <issue-num> <repo>
 #   Echo the shared issue_pr_state() classification ("active" / "parked" /
-#   "none") for <issue-num> over a `gh pr list --json headRefName,labels` blob.
+#   "none") for <issue-num> over a `gh pr list --json headRefName,labels[,body]` blob.
 #   Defaults to "none" on any parse/import failure so callers fail safe (treat
 #   the claim as abandoned rather than wedged-active).
 _issue_pr_state_from() {
