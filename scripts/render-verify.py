@@ -59,8 +59,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
-import platform
 import re
 import shutil
 import subprocess
@@ -68,74 +66,11 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import verify_common
+
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent
 RENDER_COMPARE = SCRIPT_DIR / "render-compare.py"
-
-
-def _run(cmd: list[str], cwd: Path | None = None, check: bool = True,
-         env: dict[str, str] | None = None, timeout: int | None = None) -> int:
-    print("+ " + " ".join(cmd), flush=True)
-    proc = subprocess.run(cmd, cwd=str(cwd) if cwd else None, env=env,
-                          timeout=timeout)
-    if check and proc.returncode != 0:
-        raise SystemExit(f"command failed ({proc.returncode}): {' '.join(cmd)}")
-    return proc.returncode
-
-
-def _detect_worktree_root(start: Path) -> Path:
-    proc = subprocess.run(["git", "-C", str(start), "rev-parse", "--show-toplevel"],
-                          capture_output=True, text=True, check=True)
-    return Path(proc.stdout.strip())
-
-
-def _detect_backend(build_dir: Path) -> str:
-    """Return the preset name for the host, e.g. 'macos-debug'.
-
-    Derived from ``platform.system()`` — matches the convention used by the
-    ``backend-parity`` skill (``uname -s``). This assumes the harness runs
-    on the same host that built the tree under ``build_dir``; we also
-    require ``build/CMakeCache.txt`` to exist so we fail loudly if no
-    configure has run.
-    """
-    cache = build_dir / "CMakeCache.txt"
-    if not cache.exists():
-        raise SystemExit(
-            f"no CMakeCache.txt at {cache} — run `cmake --preset <name>` first"
-        )
-    system = platform.system().lower()
-    if system == "darwin":
-        return "macos-debug"
-    if system == "linux":
-        return "linux-debug"
-    if system == "windows":
-        return "windows-debug"
-    return f"{system}-debug"
-
-
-def _find_exe(build_dir: Path, target_name: str, demo_name: str) -> Path:
-    """Locate the demo's executable in its CMake output dir.
-
-    Scoped to ``build/creations/demos/<demo>/`` first so we don't
-    accidentally pick up a build-intermediate copy from elsewhere in
-    the tree. Falls back to the full ``build/`` walk if that subtree
-    is absent (e.g. editor creations under a different layout).
-    """
-    search_roots = [
-        build_dir / "creations" / "demos" / demo_name,
-        build_dir,
-    ]
-    names = (target_name, f"{target_name}.exe")
-    for root in search_roots:
-        if not root.exists():
-            continue
-        for name in names:
-            candidates = [p for p in root.rglob(name)
-                          if p.is_file() and os.access(p, os.X_OK)]
-            if candidates:
-                candidates.sort(key=lambda p: len(p.parts))
-                return candidates[0]
-    raise SystemExit(f"could not find executable {target_name} under {build_dir}")
 
 
 def _load_manifest(demo_dir: Path) -> dict[str, Any]:
@@ -596,9 +531,9 @@ def main(argv: list[str] | None = None) -> int:
                          "baseline (#1294 child 3/3).")
     args = ap.parse_args(argv)
 
-    worktree = _detect_worktree_root(Path.cwd())
+    worktree = verify_common.detect_worktree_root(Path.cwd())
     build_dir = Path(args.build_dir) if args.build_dir else worktree / "build"
-    backend = _detect_backend(build_dir)
+    backend = verify_common.detect_backend(build_dir)
 
     demo_name = args.demo or _target_to_demo_name(args.target)
     demo_dir = worktree / "creations" / "demos" / demo_name
@@ -649,9 +584,9 @@ def main(argv: list[str] | None = None) -> int:
               f"{', '.join(e['name'] for e in extra_runs)}")
 
     if not args.no_build:
-        _run(["fleet-build", "--target", args.target], cwd=worktree)
+        verify_common.run(["fleet-build", "--target", args.target], cwd=worktree)
 
-    exe = _find_exe(build_dir, args.target, demo_name)
+    exe = verify_common.find_exe(build_dir, args.target, demo_name)
     shots_dir = exe.parent / screenshot_subdir
     ref_dir = demo_dir / "test" / "references" / backend
     # Single-pass runs keep diffs in shots_dir/diffs (the original location,

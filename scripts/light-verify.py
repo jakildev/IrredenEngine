@@ -48,15 +48,13 @@ Assumes this file lives at ``<repo>/scripts/light-verify.py``.
 from __future__ import annotations
 
 import argparse
-import json
-import os
-import platform
 import re
 import shutil
-import subprocess
 import sys
 from pathlib import Path
 from typing import Any
+
+import verify_common
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent
@@ -97,66 +95,6 @@ _DOMAIN_STATE_RE = re.compile(
 _LIGHT_ENTRY_RE = re.compile(r"(\d+):(SEEDED_FULL|BOUNDARY_DISCOUNTED|SKIPPED):([\d.]+)")
 
 
-def _run(cmd: list[str], cwd: Path | None = None, check: bool = True) -> int:
-    print("+ " + " ".join(cmd), flush=True)
-    proc = subprocess.run(cmd, cwd=str(cwd) if cwd else None)
-    if check and proc.returncode != 0:
-        raise SystemExit(f"command failed ({proc.returncode}): {' '.join(cmd)}")
-    return proc.returncode
-
-
-def _run_capture(
-    cmd: list[str], cwd: Path | None = None, timeout: int | None = None
-) -> tuple[int, str]:
-    print("+ " + " ".join(cmd), flush=True)
-    proc = subprocess.Popen(
-        cmd, cwd=str(cwd) if cwd else None,
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
-    )
-    lines: list[str] = []
-    if proc.stdout is None:
-        raise RuntimeError("stdout unavailable (Popen stdout=PIPE failed)")
-    for line in proc.stdout:
-        print(line, end="", flush=True)
-        lines.append(line)
-    proc.wait(timeout=timeout)
-    return proc.returncode, "".join(lines)
-
-
-def _detect_worktree_root(start: Path) -> Path:
-    proc = subprocess.run(
-        ["git", "-C", str(start), "rev-parse", "--show-toplevel"],
-        capture_output=True, text=True, check=True,
-    )
-    return Path(proc.stdout.strip())
-
-
-def _detect_backend() -> str:
-    system = platform.system().lower()
-    if system == "darwin":
-        return "macos-debug"
-    if system == "linux":
-        return "linux-debug"
-    if system == "windows":
-        return "windows-debug"
-    return f"{system}-debug"
-
-
-def _find_exe(build_dir: Path, target: str) -> Path:
-    search_root = build_dir / "creations" / "demos" / DEMO_NAME
-    names = (target, f"{target}.exe")
-    for root in (search_root, build_dir):
-        if not root.exists():
-            continue
-        for name in names:
-            candidates = [p for p in root.rglob(name)
-                          if p.is_file() and os.access(p, os.X_OK)]
-            if candidates:
-                candidates.sort(key=lambda p: len(p.parts))
-                return candidates[0]
-    raise SystemExit(f"could not find executable {target} under {build_dir}")
-
-
 def _parse_domain_state(output: str) -> list[dict[str, Any]]:
     shots = []
     for m in _DOMAIN_STATE_RE.finditer(output):
@@ -174,27 +112,6 @@ def _parse_domain_state(output: str) -> list[dict[str, Any]]:
             "casters": int(casters),
         })
     return shots
-
-
-def _compare(actual: Path, reference: Path, diff_out: Path | None) -> dict[str, Any]:
-    cmd = [
-        sys.executable, str(RENDER_COMPARE),
-        str(actual), str(reference),
-        "--json",
-        "--per-pixel-tol", str(LIGHT_VERIFY_THRESHOLDS["per_pixel_tol"]),
-        "--threshold-match-pct", str(LIGHT_VERIFY_THRESHOLDS["match_pct"]),
-        "--threshold-max-delta", str(LIGHT_VERIFY_THRESHOLDS["max_delta"]),
-        "--threshold-psnr", str(LIGHT_VERIFY_THRESHOLDS["psnr_db"]),
-    ]
-    if diff_out:
-        cmd.extend(["--diff-out", str(diff_out)])
-    proc = subprocess.run(cmd, capture_output=True, text=True)
-    if proc.returncode == 2:
-        raise SystemExit(f"render-compare errored: {proc.stderr}")
-    try:
-        return json.loads(proc.stdout)
-    except json.JSONDecodeError as e:
-        raise SystemExit(f"render-compare returned non-JSON: {proc.stdout!r} ({e})")
 
 
 def _pan_category(shot_label: str) -> str | None:
@@ -259,24 +176,6 @@ def _check_boundary_sweep(shots: list[dict[str, Any]]) -> list[str]:
     return failures
 
 
-def _run_pass(
-    worktree: Path, target: str, flag: str, warmup: int, timeout: int, shots_dir: Path
-) -> tuple[list[dict[str, Any]], list[Path], int | None]:
-    if shots_dir.exists():
-        shutil.rmtree(shots_dir)
-    shots_dir.mkdir(parents=True, exist_ok=True)
-
-    run_cmd = [
-        "fleet-run", "--timeout", str(timeout), target,
-        f"--{flag}", "--auto-screenshot", str(warmup),
-    ]
-    rc, output = _run_capture(run_cmd, cwd=worktree, timeout=timeout + 30)
-    domain_states = _parse_domain_state(output)
-    images = sorted(shots_dir.glob("screenshot_*.png"))
-    run_crash = rc if rc != 0 else None
-    return domain_states, images, run_crash
-
-
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--target", default=DEFAULT_TARGET,
@@ -302,24 +201,24 @@ def main(argv: list[str] | None = None) -> int:
     if not RENDER_COMPARE.exists():
         raise SystemExit(f"render-compare.py not found at {RENDER_COMPARE}")
 
-    worktree = _detect_worktree_root(Path.cwd())
+    worktree = verify_common.detect_worktree_root(Path.cwd())
     build_dir = Path(args.build_dir) if args.build_dir else worktree / "build"
-    backend = _detect_backend()
+    backend = verify_common.detect_backend(build_dir)
     demo_dir = worktree / "creations" / "demos" / DEMO_NAME
 
     print(f"[light-verify] target={args.target}  backend={backend}")
 
     if not args.no_build:
-        _run(["fleet-build", "--target", args.target], cwd=worktree)
+        verify_common.run(["fleet-build", "--target", args.target], cwd=worktree)
 
-    exe = _find_exe(build_dir, args.target)
+    exe = verify_common.find_exe(build_dir, args.target, DEMO_NAME)
     shots_dir = exe.parent / SCREENSHOT_SUBDIR
-    # Each pass rmtrees shots_dir on entry (_run_pass), so per-pass diff PNGs
-    # must live in a sibling dir that outlives every pass — nested under
-    # shots_dir they'd be wiped by the next pass before a human inspects them
-    # (render-verify.py hit the identical multi-pass bug; see its diff_dir
-    # routing in scripts/render-verify.py). Clear it once up front so stale
-    # diffs from a prior run don't linger.
+    # Each pass rmtrees shots_dir on entry (verify_common.run_pass), so
+    # per-pass diff PNGs must live in a sibling dir that outlives every pass —
+    # nested under shots_dir they'd be wiped by the next pass before a human
+    # inspects them (render-verify.py hit the identical multi-pass bug; see
+    # its diff_dir routing in scripts/render-verify.py). Clear it once up
+    # front so stale diffs from a prior run don't linger.
     diff_root = shots_dir.parent / "light_verify_diffs"
     if diff_root.exists():
         shutil.rmtree(diff_root)
@@ -331,9 +230,15 @@ def main(argv: list[str] | None = None) -> int:
 
     for flag in PASSES:
         print(f"\n[light-verify] === pass: --{flag} ===")
-        domain_states, images, run_crash = _run_pass(
-            worktree, args.target, flag, args.warmup, args.timeout, shots_dir
+        run_cmd = [
+            "fleet-run", "--timeout", str(args.timeout), args.target,
+            f"--{flag}", "--auto-screenshot", str(args.warmup),
+        ]
+        rc, output, images = verify_common.run_pass(
+            run_cmd, worktree, shots_dir, timeout=args.timeout + 30
         )
+        domain_states = _parse_domain_state(output)
+        run_crash = rc if rc != 0 else None
         if run_crash is not None:
             any_run_crashed = True
             print(f"[light-verify] --{flag}: fleet-run exited {run_crash}", file=sys.stderr)
@@ -386,7 +291,9 @@ def main(argv: list[str] | None = None) -> int:
                                                           "max_delta": -1, "psnr_db": "n/a",
                                                           "error": "no reference"}))
                 continue
-            result = _compare(image, reference, diff_dir / f"{label}.diff.png")
+            result = verify_common.compare(
+                image, reference, diff_dir / f"{label}.diff.png", LIGHT_VERIFY_THRESHOLDS
+            )
             all_image_results.append((flag, label, result))
 
     print()

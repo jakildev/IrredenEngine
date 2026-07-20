@@ -11,7 +11,8 @@ Usage:
 """
 
 import re
-import subprocess
+
+import verify_common
 
 # Pattern: GUI-ASSERT shot=<N> label=<lbl> kind=<K> target=<eid> name=<tag>
 #          result=PASS|FAIL actual=<val>
@@ -25,28 +26,6 @@ _GUI_ASSERT_RE = re.compile(
     r"result=(PASS|FAIL)\s+"
     r"actual=(.*)"
 )
-
-
-def _run(cmd: list[str]) -> int:
-    """Run a command, streaming output to the terminal; return its exit code."""
-    print("+ " + " ".join(cmd), flush=True)
-    return subprocess.run(cmd).returncode
-
-
-def _run_capture(cmd: list[str]) -> tuple[int, str]:
-    """Run a command, tee output to the terminal, and return (exit_code, combined_text)."""
-    print("+ " + " ".join(cmd), flush=True)
-    proc = subprocess.Popen(
-        cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
-    )
-    lines: list[str] = []
-    if proc.stdout is None:
-        raise RuntimeError("stdout unavailable (Popen stdout=PIPE failed)")
-    for line in proc.stdout:
-        print(line, end="", flush=True)
-        lines.append(line)
-    proc.wait()
-    return proc.returncode, "".join(lines)
 
 
 def main() -> None:
@@ -78,7 +57,7 @@ def main() -> None:
     args = parser.parse_args()
 
     if not args.no_build:
-        rc = _run(["fleet-build", "--target", args.target])
+        rc = verify_common.run(["fleet-build", "--target", args.target], check=False)
         if rc != 0:
             raise SystemExit(f"[gui-verify] fleet-build failed ({rc})")
 
@@ -88,7 +67,7 @@ def main() -> None:
         args.target,
         "--auto-screenshot", str(args.warmup_frames),
     ]
-    run_rc, output = _run_capture(run_cmd)
+    run_rc, output = verify_common.run_capture(run_cmd)
 
     # An --auto-screenshot GUI-test run must self-terminate. The fleet-run
     # watchdog reports a process still alive at --timeout as exit 0

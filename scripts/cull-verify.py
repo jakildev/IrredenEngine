@@ -30,14 +30,13 @@ Assumes this file lives at ``<repo>/scripts/cull-verify.py``.
 from __future__ import annotations
 
 import argparse
-import json
-import os
-import platform
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any
+
+import verify_common
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent
@@ -84,61 +83,6 @@ CULL_THRESHOLDS: dict[str, Any] = {
 }
 
 
-def _run(cmd: list[str], cwd: Path | None = None, check: bool = True) -> int:
-    print("+ " + " ".join(cmd), flush=True)
-    proc = subprocess.run(cmd, cwd=str(cwd) if cwd else None)
-    if check and proc.returncode != 0:
-        raise SystemExit(f"command failed ({proc.returncode}): {' '.join(cmd)}")
-    return proc.returncode
-
-
-def _detect_worktree_root(start: Path) -> Path:
-    proc = subprocess.run(
-        ["git", "-C", str(start), "rev-parse", "--show-toplevel"],
-        capture_output=True, text=True, check=True,
-    )
-    return Path(proc.stdout.strip())
-
-
-def _detect_backend(build_dir: Path) -> str:
-    cache = build_dir / "CMakeCache.txt"
-    if not cache.exists():
-        raise SystemExit(
-            f"no CMakeCache.txt at {cache} — run `cmake --preset <name>` first"
-        )
-    system = platform.system().lower()
-    if system == "darwin":
-        return "macos-debug"
-    if system == "linux":
-        return "linux-debug"
-    if system == "windows":
-        return "windows-debug"
-    return f"{system}-debug"
-
-
-def _find_exe(build_dir: Path, demo_name: str) -> Path:
-    search_root = build_dir / "creations" / "demos" / demo_name
-    names = (TARGET, f"{TARGET}.exe")
-    for name in names:
-        candidates = [
-            p for p in search_root.rglob(name)
-            if p.is_file() and os.access(p, os.X_OK)
-        ]
-        if candidates:
-            candidates.sort(key=lambda p: len(p.parts))
-            return candidates[0]
-    # Fallback: full build tree walk.
-    for name in names:
-        candidates = [
-            p for p in build_dir.rglob(name)
-            if p.is_file() and os.access(p, os.X_OK)
-        ]
-        if candidates:
-            candidates.sort(key=lambda p: len(p.parts))
-            return candidates[0]
-    raise SystemExit(f"could not find executable {TARGET} under {build_dir}")
-
-
 def _collect_shots(shots_dir: Path) -> list[Path]:
     shots = sorted(shots_dir.glob("screenshot_*.png"))
     if len(shots) < TOTAL_SHOTS:
@@ -151,27 +95,6 @@ def _collect_shots(shots_dir: Path) -> list[Path]:
             f"expected {TOTAL_SHOTS}; ignoring extras"
         )
     return shots[:TOTAL_SHOTS]
-
-
-def _compare(actual: Path, reference: Path, diff_out: Path | None) -> dict[str, Any]:
-    cmd = [
-        sys.executable, str(RENDER_COMPARE),
-        str(actual), str(reference),
-        "--json",
-        "--per-pixel-tol", str(CULL_THRESHOLDS["per_pixel_tol"]),
-        "--threshold-match-pct", str(CULL_THRESHOLDS["match_pct"]),
-        "--threshold-max-delta", str(CULL_THRESHOLDS["max_delta"]),
-        "--threshold-psnr", str(CULL_THRESHOLDS["psnr_db"]),
-    ]
-    if diff_out:
-        cmd.extend(["--diff-out", str(diff_out)])
-    proc = subprocess.run(cmd, capture_output=True, text=True)
-    if proc.returncode == 2:
-        raise SystemExit(f"render-compare errored: {proc.stderr}")
-    try:
-        return json.loads(proc.stdout)
-    except json.JSONDecodeError as e:
-        raise SystemExit(f"render-compare returned non-JSON: {proc.stdout!r} ({e})")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -198,18 +121,18 @@ def main(argv: list[str] | None = None) -> int:
     if not RENDER_COMPARE.exists():
         raise SystemExit(f"render-compare.py not found at {RENDER_COMPARE}")
 
-    worktree = _detect_worktree_root(Path.cwd())
+    worktree = verify_common.detect_worktree_root(Path.cwd())
     build_dir = Path(args.build_dir) if args.build_dir else worktree / "build"
-    backend = _detect_backend(build_dir)
+    backend = verify_common.detect_backend(build_dir)
     demo_dir = worktree / "creations" / "demos" / DEMO_NAME
 
     print(f"[cull-verify] target={TARGET}  backend={backend}")
     print(f"[cull-verify] {POSES_PER_PHASE} poses/phase × 2 + 2 markers = {TOTAL_SHOTS} shots")
 
     if not args.no_build:
-        _run(["fleet-build", "--target", TARGET], cwd=worktree)
+        verify_common.run(["fleet-build", "--target", TARGET], cwd=worktree)
 
-    exe = _find_exe(build_dir, DEMO_NAME)
+    exe = verify_common.find_exe(build_dir, TARGET, DEMO_NAME)
     shots_dir = exe.parent / SCREENSHOT_SUBDIR
     if shots_dir.exists():
         shutil.rmtree(shots_dir)
@@ -274,7 +197,7 @@ def main(argv: list[str] | None = None) -> int:
         zip(live_shots, frozen_shots, LIVE_LABELS)
     ):
         diff_out = diff_dir / f"{label}_vs_frozen.diff.png"
-        result = _compare(live, frozen, diff_out)
+        result = verify_common.compare(live, frozen, diff_out, CULL_THRESHOLDS)
         verdict = "PASS" if result["pass"] else "FAIL"
         raw_psnr = result["psnr_db"]
         psnr_str = f"{raw_psnr:>8.2f}" if isinstance(raw_psnr, (int, float)) else f"{raw_psnr:>8}"
