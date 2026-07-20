@@ -238,6 +238,19 @@ def _is_pull_request(issue):
     return "pull_request" in issue
 
 
+# Closes/Fixes/Resolves #N refs parsed from a PR body at fetch time — where the
+# body is still live — into pr["closes_issues"], a bounded sorted int list.
+# enrich_stackable_blocker_prs matches its blocker union's body half on this
+# derived field rather than re-parsing pr["body"], which it may never receive:
+# bodies are popped after enrichment and fetch_prs's 304 fast path reuses the
+# body-stripped prior records, so the live parse was dead on every reuse tick
+# (#2442). Deriving once here keeps the offer and this grammar from drifting.
+CLOSES_RE = re.compile(
+    r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)\b",
+    re.IGNORECASE,
+)
+
+
 def _fetch_prs_graphql(repo):
     out = run_capture([
         "gh", "pr", "list", "--repo", repo, "--state", "open",
@@ -264,6 +277,12 @@ def _fetch_prs_graphql(repo):
             }
             for rev in pr.get("reviews", [])
         ]
+        # Derive here, while body is live, so the signal survives both the
+        # post-enrich body-pop and fetch_prs's 304 reuse of body-stripped
+        # records (#2442). Its presence is also fetch_prs's cache-desync marker.
+        pr["closes_issues"] = sorted(
+            {int(n) for n in CLOSES_RE.findall(pr.get("body", "") or "")}
+        )
     # gh's PR ordering is not stable run-to-run; sort by number so the
     # projection hash stays quiescent when nothing has actually changed.
     prs.sort(key=lambda pr: pr.get("number", 0))
@@ -290,7 +309,14 @@ def fetch_prs(repo, prev=None):
     changed, _body = conditional_get(repo, "pulls", params={
         "state": "open", "sort": "updated", "direction": "desc", "per_page": "100",
     })
-    if not changed and prev is not None:
+    # Reuse the prior list only when it carries the derived closes_issues field
+    # (added by _fetch_prs_graphql). On the first tick after a deploy that
+    # introduced the field, prev predates it — reusing it would re-strand every
+    # Closes-only stack base until an unrelated ETag flip, re-creating #2442. A
+    # missing key ⇒ cache desync ⇒ fall through to a fresh fetch. all() on an
+    # empty prev is True (an empty open-PR set needs no refetch).
+    if (not changed and prev is not None
+            and all("closes_issues" in p for p in prev)):
         return prev
     return _fetch_prs_graphql(repo)
 
@@ -1548,10 +1574,12 @@ def enrich_stackable_blocker_prs(state):
     # `#NNN` by resolve_blocked_by() (runs first), so it reaches here eligible.
     #
     # A PR "matches" the blocker when its head branch is `claude/<NNN>-…` OR its
-    # body Closes/Fixes/Resolves #NNN — the same union fleet-claim's
+    # derived closes_issues (Closes/Fixes/Resolves #NNN, parsed at fetch time —
+    # see CLOSES_RE) contains NNN — the same union fleet-claim's
     # find-stackable-blockers uses, so the scout offers every base the live
     # finder would (the Closes-#N form catches blocker PRs on non-standard /
-    # human branches).
+    # human branches). The Closes half reads the derived field, not pr["body"],
+    # which is body-stripped on 304 reuse ticks (#2442).
     #
     # The field is always omitted when:
     #   - blocked_by doesn't reference exactly one issue (multi-blocker,
@@ -1576,15 +1604,13 @@ def enrich_stackable_blocker_prs(state):
             issue_num = _single_blocker_issue(blocked_by)
             if not issue_num:
                 continue
-            closes_re = re.compile(
-                r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#"
-                + re.escape(issue_num) + r"\b",
-                re.IGNORECASE,
-            )
+            # _single_blocker_issue returns a digit string; closes_issues holds
+            # ints — compare as int so "255" in [255] doesn't silently miss.
+            issue_num_int = int(issue_num)
             matches = [
                 pr for pr in prs
                 if branch_matches_issue(pr.get("headRefName", ""), issue_num, repo_key)
-                or closes_re.search(pr.get("body", "") or "")
+                or issue_num_int in (pr.get("closes_issues") or [])
             ]
             if len(matches) != 1:
                 continue
@@ -2817,10 +2843,12 @@ def tick_once():
         resolve_needs_plan_blocked_by(state)
         resolve_epic_children(state)
         enrich_stackable_blocker_prs(state)
-        # Drop PR bodies now the only consumer (the Closes-#N stack-base match
-        # above) has run, so they don't bloat state.json or the per-role slices
-        # — mirrors resolve_human_approved_blockers popping issue bodies. No
-        # projector or slice needs pr body.
+        # Drop PR bodies so they don't bloat state.json or the per-role slices
+        # — mirrors resolve_human_approved_blockers popping issue bodies. Safe
+        # because the Closes-#N stack-base signal was already derived into
+        # pr["closes_issues"] at fetch time (see CLOSES_RE); nothing downstream
+        # reads pr["body"]. Popping here after deriving there is what lets the
+        # signal survive the 304-reuse of these stripped records (#2442).
         for _repo_state in state["repos"].values():
             for _pr in _repo_state.get("prs", []):
                 _pr.pop("body", None)

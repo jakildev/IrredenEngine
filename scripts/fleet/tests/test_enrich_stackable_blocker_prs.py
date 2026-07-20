@@ -48,11 +48,27 @@ def _task(id_, blocked_by):
 
 
 def _pr(number, head_ref, author="bot", labels=None, body=""):
+    # Mirror _fetch_prs_graphql: derive closes_issues from the live body at
+    # "fetch" time via the module's own CLOSES_RE, so the record matches the
+    # shape enrichment actually consumes. enrich_stackable_blocker_prs reads
+    # closes_issues, not body (#2442) — deriving here (not hardcoding) keeps the
+    # test's derivation from drifting off production's.
     pr = {"number": number, "headRefName": head_ref, "author": author,
-          "body": body}
+          "body": body,
+          "closes_issues": sorted({int(n) for n in _mod.CLOSES_RE.findall(body)})}
     if labels is not None:
         pr["labels"] = labels
     return pr
+
+
+def _strip_bodies(prs):
+    """Pop `body` from each PR, reproducing the state.json round-trip that the
+    304-reuse fast path serves back as `prev`: bodies are dropped after
+    enrichment (fleet-state-scout tick_once), so a reused record carries only
+    the derived closes_issues field, never body."""
+    for pr in prs:
+        pr.pop("body", None)
+    return prs
 
 
 # ---------------------------------------------------------------------------
@@ -371,6 +387,72 @@ class TestEnrichStackableBlockerPrs(unittest.TestCase):
         enrich_stackable_blocker_prs(state)
         self.assertIn("stackable_blocker_pr",
                       state["repos"]["engine"]["tasks"]["open"][0])
+
+    def test_closes_n_offer_survives_304_reuse(self):
+        """#2442: the Closes-#N offer must survive the 304-reuse path. The
+        prev list fetch_prs serves on a 304 is body-stripped (exactly what
+        state.json holds after the post-enrich body pop), retaining only the
+        derived closes_issues field. A blocker PR on a non-standard branch that
+        Closes the issue must still be offered off that shape. Fails on master,
+        whose enrich re-reads the now-absent body and finds no match."""
+        tasks = [_task("#1112", "#1111")]
+        prs = _strip_bodies([
+            _pr(540, "feature/manual-fix", body="Implements it.\nCloses #1111"),
+        ])
+        # Round-trip shape: no body survives, only the derived signal.
+        self.assertNotIn("body", prs[0])
+        self.assertEqual(prs[0]["closes_issues"], [1111])
+        self._write_pr_cache("engine", 540, ["engine/render/x.cpp"])
+        state = _state(engine_tasks=tasks, engine_prs=prs)
+        enrich_stackable_blocker_prs(state)
+        task = state["repos"]["engine"]["tasks"]["open"][0]
+        self.assertIn("stackable_blocker_pr", task)
+        self.assertEqual(task["stackable_blocker_pr"]["number"], 540)
+
+
+class TestFetchPrs304Reuse(unittest.TestCase):
+    """#2442 Phase 3: fetch_prs's 304 fast path must not reuse a prev whose
+    records predate the closes_issues field (the first tick after the deploy
+    that added it) — that would re-strand every Closes-only stack base until an
+    unrelated ETag flip, re-creating the exact defect. A missing key ⇒ cache
+    desync ⇒ fall through to a fresh fetch.
+
+    Hermetic: both network seams (conditional_get, _fetch_prs_graphql) are
+    stubbed so no live GitHub call fires (scripts/fleet/CLAUDE.md)."""
+
+    def setUp(self):
+        self._orig_cget = _mod.conditional_get
+        self._orig_graphql = _mod._fetch_prs_graphql
+        # (False, None) = the change-detector reports the open-PR set unchanged
+        # (a 304), so fetch_prs takes its reuse branch.
+        _mod.conditional_get = lambda *a, **k: (False, None)
+        # Sentinel identifies a fall-through to the fresh GraphQL fetch.
+        self._sentinel = [{"number": 1, "headRefName": "claude/1-x",
+                           "closes_issues": []}]
+        _mod._fetch_prs_graphql = lambda repo: self._sentinel
+
+    def tearDown(self):
+        _mod.conditional_get = self._orig_cget
+        _mod._fetch_prs_graphql = self._orig_graphql
+
+    def test_reuses_prev_that_has_closes_issues(self):
+        """A prev whose records already carry closes_issues is reused verbatim
+        on a 304 — the fast path still works, no needless refetch."""
+        prev = [{"number": 9, "headRefName": "claude/9-x", "closes_issues": [9]}]
+        self.assertIs(_mod.fetch_prs("repo", prev=prev), prev)
+
+    def test_refetches_when_prev_lacks_closes_issues(self):
+        """A prev predating the field (no closes_issues key) is cache desync:
+        fetch_prs ignores it and fires the fresh fetch despite the 304. Fails on
+        master, which returns prev unconditionally on a 304."""
+        prev = [{"number": 9, "headRefName": "claude/9-x"}]  # pre-field record
+        self.assertIs(_mod.fetch_prs("repo", prev=prev), self._sentinel)
+
+    def test_empty_prev_is_reused(self):
+        """all() over an empty prev is True — an empty open-PR set needs no
+        refetch, so the empty list is reused rather than triggering a fetch."""
+        prev = []
+        self.assertIs(_mod.fetch_prs("repo", prev=prev), prev)
 
 
 if __name__ == "__main__":
