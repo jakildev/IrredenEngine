@@ -121,8 +121,9 @@ claim-liveness matcher can't tie your open PR back to the issue — the sweep
 then judges the claim abandoned and a second worker files a duplicate PR
 (#2419: a `claude/<worktree>-issue-<N>`-shaped branch was invisible to it).
 Validate here, **before pushing** (the check is network-free — it can't hang
-the flow), immediately beside the `claim-base <issue#>` lookup that already
-threads the issue number:
+the flow). The `<issue#>` comes from your active fleet claim, not from any
+step-2 lookup — `claim-base <issue#>` doesn't run until PR-open (step 8), and
+stack mode's step-2 `stack-base` lookup is keyed by task-id:
 
 ```bash
 <claim-tool> [--repo <ns>] branch-check <issue#>   # exit 0 = ok, 1 = mismatch
