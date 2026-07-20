@@ -130,9 +130,12 @@ for issue in pending:
     # bodies, comments, line numbers, relevance) — so the search is a coarse
     # candidate set, not a reference match. select_shipped_pr() verifies a
     # genuine word-boundary #n cross-reference in title/body before trusting it.
+    # 'files' feeds the layer-8 bookkeeping-diff guard (a steward all-.fleet/ PR
+    # that names #n but ships no code scope); it rides the same query, no extra call.
     r = subprocess.run(
         ['gh', 'pr', 'list', '--repo', repo, '--state', 'merged',
-         '--search', f'#{n}', '--json', 'number,title,body,url,mergedAt', '--limit', '5'],
+         '--search', f'#{n}', '--json', 'number,title,body,url,mergedAt,files',
+         '--limit', '5'],
         capture_output=True, text=True, timeout=15,
     )
     try:

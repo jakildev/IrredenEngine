@@ -23,6 +23,11 @@ Covers the false-positive classes:
   trusted (non-plan) title ("render: extract … helper (#2258 prep)", linked
   `Part of` not `Closes`); a prep-marked ref prepares the issue rather than
   shipping it.
+* #2385 ← #2392 (layer 8) — an epic-steward bookkeeping PR ("docs/fleet:
+  epic-steward — #2317 rollup + #2385 adoption (#2314)") names #2385 in a
+  trusted (non-plan) title but its diff is entirely `.fleet/` files; an
+  all-`.fleet/` diff ships no code scope, so it falls through to the body
+  closing-verb check.
 
 The module is a real .py, but it is loaded via importlib (mirroring
 test_enrich_stackable_blocker_prs.py) so the test runs regardless of cwd.
@@ -42,8 +47,12 @@ pr_references_issue = _mod.pr_references_issue
 select_shipped_pr = _mod.select_shipped_pr
 
 
-def _pr(number, title="", body=""):
-    return {"number": number, "title": title, "body": body, "url": "", "mergedAt": ""}
+def _pr(number, title="", body="", files=None):
+    pr = {"number": number, "title": title, "body": body, "url": "", "mergedAt": ""}
+    if files is not None:
+        # Mirror the `gh pr list --json files` shape: a list of {'path': ...} dicts.
+        pr["files"] = [{"path": p} for p in files]
+    return pr
 
 
 class PrReferencesIssue(unittest.TestCase):
@@ -332,6 +341,53 @@ class PrReferencesIssue(unittest.TestCase):
         # "prep" inside "prepend").
         self.assertTrue(pr_references_issue("#2258 prepend the sun-bake header", "", 2258))
 
+    # --- bookkeeping diff — all-.fleet/ PRs (#2385 <- #2392 — layer 8) ---
+
+    _STEWARD_TITLE_2392 = (
+        "docs/fleet: epic-steward — #2317 rollup + #2385 adoption (#2314)")
+    _FLEET_FILES = [{"path": ".fleet/plans/issue-2314.md"},
+                    {"path": ".fleet/plans/issue-2385.md"}]
+
+    def test_bookkeeping_diff_title_ref_rejected(self):
+        # #2385 <- #2392: a steward rollup PR names #2385 in a trusted (non-plan)
+        # title, but its diff is two .fleet/plans/ docs — it adopts the plan, it
+        # does not ship #2385's render fix. Its subject is "epic-steward" (neither
+        # plan nor design), so layers 4/6/7 do not fire; the all-.fleet/ diff does.
+        self.assertFalse(pr_references_issue(
+            self._STEWARD_TITLE_2392, "", 2385, self._FLEET_FILES))
+        # The epic ref (#2314) it rolls up is likewise not shipped.
+        self.assertFalse(pr_references_issue(
+            self._STEWARD_TITLE_2392, "", 2314, self._FLEET_FILES))
+
+    def test_bookkeeping_diff_string_paths_accepted(self):
+        # Defensive: a plain list of path strings (not {'path': ...} dicts) works.
+        self.assertFalse(pr_references_issue(
+            self._STEWARD_TITLE_2392, "", 2385,
+            [".fleet/plans/issue-2314.md", ".fleet/plans/issue-2385.md"]))
+
+    def test_bookkeeping_diff_still_ships_via_body_closing_verb(self):
+        # A .fleet/-only PR whose deliverable genuinely IS the fleet change still
+        # ships via a prose body close (consistent with layers 4/6/7).
+        self.assertTrue(pr_references_issue(
+            self._STEWARD_TITLE_2392, "Closes #2385", 2385, self._FLEET_FILES))
+
+    def test_mixed_diff_keeps_title_trust(self):
+        # A real impl PR that commits its plan file (.fleet/plans/issue-N.md, per
+        # #1932) AND code is NOT all-.fleet/, so title-trust is retained.
+        files = [{"path": ".fleet/plans/issue-2385.md"},
+                 {"path": "engine/render/fog.cpp"}]
+        self.assertTrue(pr_references_issue("#2385: render: fog fix", "", 2385, files))
+
+    def test_no_files_keeps_pre_layer8_title_trust(self):
+        # files omitted (default None) — layer 8 inert, so the steward title's
+        # bare #2385 ref is still trusted (the pre-fix false positive; layer 8
+        # only fires once the caller supplies the diff).
+        self.assertTrue(pr_references_issue(self._STEWARD_TITLE_2392, "", 2385))
+
+    def test_empty_files_list_keeps_title_trust(self):
+        # An empty diff list carries no signal — treat as no-info, keep title-trust.
+        self.assertTrue(pr_references_issue(self._STEWARD_TITLE_2392, "", 2385, []))
+
 
 class SelectShippedPr(unittest.TestCase):
     def test_empty_candidates(self):
@@ -417,6 +473,21 @@ class SelectShippedPr(unittest.TestCase):
                  "drops the dead plumbing (the `feederSubCap` derivation, the "
                  "stage-1 feeder early-return).")
         self.assertIsNone(select_shipped_pr([pr], 2258))
+
+    def test_real_world_2385_bookkept_by_2392(self):
+        # #2385 <- #2392 (layer 8): the epic-steward rollup PR is a #2385 search
+        # hit whose diff is entirely .fleet/plans/ docs — it adopts the plan, it
+        # ships no render fix, so ingest must not stamp scope-shipped and bounce a
+        # queue-ready issue back to needs-plan.
+        pr = _pr(2392,
+                 "docs/fleet: epic-steward — #2317 rollup + #2385 adoption (#2314)",
+                 "Rolls up #2317; adopts the #2385 plan into the ledger.",
+                 files=[".fleet/plans/issue-2314.md", ".fleet/plans/issue-2385.md"])
+        self.assertIsNone(select_shipped_pr([pr], 2385))
+        # True-positive retained: a genuine impl PR delivering #2385 still stamps.
+        impl = _pr(2500, "#2385: render: fog vision fix", "Closes #2385",
+                   files=["engine/render/fog.cpp"])
+        self.assertEqual(select_shipped_pr([impl], 2385)["number"], 2500)
 
 
 if __name__ == "__main__":
