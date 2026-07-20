@@ -32,13 +32,16 @@ std::string metalFunctionNameForStage(const ShaderStage &stage) {
 MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
     if (functionName == "c_voxel_to_trixel_stage_1" ||
         functionName == "c_voxel_to_trixel_stage_1_feeder" ||
-        functionName == "c_voxel_to_trixel_stage_2") {
+        functionName == "c_voxel_to_trixel_stage_1_winner_resolve" ||
+        functionName == "c_voxel_to_trixel_stage_2" ||
+        functionName == "c_voxel_to_trixel_stage_2_winner") {
         // z-size = kStageMicroSlicesPerGroup (#2258): both stage kernels pack that
         // many micro-cell z-slices per threadgroup and re-derive their slice as
         // groupId.z * kStageMicroSlicesPerGroup + localId.z. MUST match the GLSL
         // local_size_z literal + shaders/ir_constants.{glsl,metal}. The stage-1
-        // feeder variant (#2258 Step B a′) is a compile-time specialization of
-        // the same body, so it shares the (2,3,8) shape.
+        // feeder variant (#2258 Step B a′) and the #2346 winner-election /
+        // winner-guarded variants are compile-time specializations of the same
+        // two bodies, so they share the (2,3,8) shape.
         return MTL::Size(2, 3, 8);
     }
     if (functionName == "c_text_to_trixel") {
@@ -117,7 +120,9 @@ MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
 bool functionUsesImageAtomicScratch(const std::string &functionName) {
     return functionName == "c_voxel_to_trixel_stage_1" ||
            functionName == "c_voxel_to_trixel_stage_1_feeder" ||
+           functionName == "c_voxel_to_trixel_stage_1_winner_resolve" ||
            functionName == "c_voxel_to_trixel_stage_2" ||
+           functionName == "c_voxel_to_trixel_stage_2_winner" ||
            functionName == "c_shapes_to_trixel" ||
            functionName == "c_render_gpu_particles_to_trixel" ||
            functionName == "c_render_stateless_particles_to_trixel";

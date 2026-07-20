@@ -37,7 +37,23 @@ const char *const kFileCompVoxelToTrixelStage1 = "shaders/c_voxel_to_trixel_stag
 // visible stage-1 kernel carries none of the feeder branches (architect a′).
 const char *const kFileCompVoxelToTrixelStage1Feeder =
     "shaders/c_voxel_to_trixel_stage_1_feeder.glsl";
+// #2346: the cardinal winner-election specialization of stage 1
+// (IR_STORE_WINNER_ELECTION 1) — re-runs the identical single-canvas geometry
+// with every distance tap swapped for a winner-election tap. Dispatched
+// between the stage-1 stores and stage 2 (struct 0 only) when the ticking
+// pool's storeTiesPossible_ flag is set. Metal mirror in
+// metal/c_voxel_to_trixel_stage_1_winner_resolve.metal (registered in
+// threadgroupSizeForFunctionName + functionUsesImageAtomicScratch).
+const char *const kFileCompVoxelToTrixelStage1WinnerResolve =
+    "shaders/c_voxel_to_trixel_stage_1_winner_resolve.glsl";
 const char *const kFileCompVoxelToTrixelStage2 = "shaders/c_voxel_to_trixel_stage_2.glsl";
+// #2346: the cardinal winner-guarded specialization of stage 2 — every
+// cardinal colour/entity-id tap additionally requires the elected winner to
+// match, admitting exactly one of the faces tying a cell's settled distance
+// key. Runs in place of the default stage 2 on flagged pools only. Metal
+// mirror in metal/c_voxel_to_trixel_stage_2_winner.metal (same registration).
+const char *const kFileCompVoxelToTrixelStage2Winner =
+    "shaders/c_voxel_to_trixel_stage_2_winner.glsl";
 const char *const kFileCompTrixelToTrixel = "shaders/c_trixel_to_trixel.glsl";
 const char *const kFileCompTextToTrixel = "shaders/c_text_to_trixel.glsl";
 const char *const kFileCompUpdateVoxelPositions = "shaders/c_update_voxel_positions.glsl";

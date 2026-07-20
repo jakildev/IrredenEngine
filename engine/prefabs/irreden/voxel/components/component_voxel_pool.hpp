@@ -70,6 +70,20 @@ struct ChunkWorldBounds {
 
 struct C_VoxelPool {
   public:
+    // Cardinal store tie-possibility signal (#2346). TRUE when the single-
+    // canvas store's (iso pixel, encoded depth) key may stop being a bijection
+    // of this pool's live voxels — any live voxel off the integer lattice
+    // (|pos − round(pos)| > the snapNearIntegerVoxelPosition epsilon), any two
+    // live voxels sharing a roundHalfUp cell, or any GPU-transformed slot
+    // (its world position is authored GPU-side and generically fractional).
+    // Recomputed by VOXEL_TO_TRIXEL_STAGE_1 on frames whose CPU position
+    // upload changed binding 5 (see recomputeStoreTiesPossible there) — static
+    // scenes scan once at seed. When set, the winner-election dispatch + the
+    // winner-guarded stage 2 replace the default cardinal stage 2 so the
+    // colour/entity-id planes stay deterministic among equal-key faces;
+    // lattice pools keep exactly today's programs and dispatch count.
+    bool storeTiesPossible_ = false;
+
     C_VoxelPool(ivec3 numVoxels)
         : m_voxelPoolSize{numVoxels.x * numVoxels.y * numVoxels.z}
         , m_voxelPoolSize3D{numVoxels}

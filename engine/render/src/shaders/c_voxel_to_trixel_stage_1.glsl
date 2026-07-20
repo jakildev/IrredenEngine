@@ -17,6 +17,7 @@
 // declares no #includes of its own). See the body file's header for the idiom.
 #version 450 core
 #define IR_FEEDER_PASS 0
+#define IR_STORE_WINNER_ELECTION 0
 #include "ir_iso_common.glsl"
 #include "ir_constants.glsl"
 #include "c_voxel_to_trixel_stage_1_body.glsl"
