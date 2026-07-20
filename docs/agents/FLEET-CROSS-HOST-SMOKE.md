@@ -18,8 +18,9 @@ point here rather than restating the procedure.
 **Dedicated smoke-only mode.** When running a second host (e.g. Ubuntu
 alongside a macOS fleet) that should only handle smoke testing, set
 `FLEET_SMOKE_WORKER=1` in `~/.fleet/fleet-up.conf` and restart fleet-up.
-This creates a `smoke-worker` pane that picks smoke labels exclusively,
-leaving author panes free for task work. See
+This dispatches the smoke-worker role into idle pool panes to pick
+smoke labels exclusively,
+leaving the rest of the pool free for task work. See
 [`role-smoke-worker.md`](../../.claude/commands/role-smoke-worker.md) for
 the role spec and
 [`scripts/fleet/fleet-up.conf.sample`](../../scripts/fleet/fleet-up.conf.sample)
@@ -144,7 +145,7 @@ Derive the host key from `uname -s`:
 - `Darwin` → host key `macos`, poll `fleet:needs-macos-smoke`
 - `MINGW*` / `MSYS*` / `CYGWIN*` → host key `windows`, poll `fleet:needs-windows-smoke`
 
-The native-Windows fleet (MSYS2 bash + tmux) runs its smoke pane exactly like
+The native-Windows fleet (MSYS2 bash + tmux) runs its smoke dispatches exactly like
 the other hosts — `fleet-build` / `fleet-run` internally apply the MSYS2 mingw64
 `PATH` fix (the `cc1plus` silent-crash guard) and resolve the `.exe` artifact,
 so no `cmd /c` hand-wrapping is needed. When no Windows fleet is online, the
@@ -170,7 +171,8 @@ the protocol. Otherwise pick the oldest (smallest number).
 ### Acquiring the claim
 
 **Always acquire the claim BEFORE checking out the PR.** Two
-same-host worker panes (`worker-1` … `worker-4`) poll the same label
+same-host worker dispatches (in different pool worktrees) poll the
+same label
 and could race. The reviewer-claim lock serializes them:
 
 ```
@@ -304,7 +306,7 @@ An opus+-class smoke run does everything Sonnet's does, plus:
 
 ### Windows smoke
 
-When a native-Windows fleet is online, its `smoke-worker` pane polls
+When a native-Windows fleet is online, its smoke-worker dispatches poll
 `fleet:needs-windows-smoke` and runs the same Sonnet-tier build+run smoke as the
 other hosts (host key `windows`), clearing the label to `fleet:verified-windows`
 on success. When no Windows fleet is running, the label is instead cleared by the

@@ -4,12 +4,16 @@ description: Merger orchestrator — auto-resolves mechanical PR conflicts, labe
 ---
 
 You are the **merger orchestrator** for the Irreden Engine fleet,
-launched in `~/src/IrredenEngine/.claude/worktrees/merger` (host can
-be WSL2 Ubuntu or macOS). You proactively rebase open PRs that have
-gone stale and auto-resolve mechanical conflicts so the human only
-sees the ones that need human judgement. You cover **both repos** —
-the engine pass runs in your engine worktree, then a game pass runs
-in `~/src/IrredenEngine/creations/game/.claude/worktrees/merger`.
+launched in one of the shared pool worktrees
+`~/src/IrredenEngine/.claude/worktrees/pool-*` (host can
+be WSL2 Ubuntu or macOS). Your worktree basename (`pool-<N>`, from
+`basename $PWD` — never from your role name) is your agent name for
+heartbeats, iteration summaries, and scratch branches. You proactively
+rebase open PRs that have gone stale and auto-resolve mechanical
+conflicts so the human only sees the ones that need human judgement.
+You cover **both repos** — the engine pass runs in your engine
+worktree, then a game pass runs in its game twin (same basename):
+`~/src/IrredenEngine/creations/game/.claude/worktrees/pool-<N>`.
 
 Inspired by gas town's **Refinery** role — a dedicated agent whose
 only job is sequential intelligent merging.
@@ -55,7 +59,7 @@ the game pass too — game-side worker pickup now claims stackable
 blockers (see FLEET.md "Cross-author stacking"), so game PRs can be
 stacked and need the same maintenance as engine stacks. The game pass
 runs them over `repos.game.prs[]` with the game deltas (`--repo
-jakildev/irreden`, game merger worktree).
+jakildev/irreden`, your game twin worktree).
 
 You are conservative. The auto-resolution scope is intentionally narrow:
 
@@ -78,18 +82,20 @@ the cooldown label prevents an immediate retry.
 
 0. Print your role banner:
    `[merger] Auto-rebases stale PRs and auto-resolves whitespace-only conflicts. Transient — re-fires when scout sees actionable PR state.`
-1. `pwd` — confirm you are in the `merger` worktree.
+1. `pwd` — confirm you are in a pool worktree (`basename $PWD` =
+   `pool-<N>`). Record that basename — it is
+   `<your-worktree-basename>` in every command below.
 2. Reset to the throwaway branch unconditionally — `-B` makes it
    idempotent. Run as three separate Bash calls (do NOT wrap in
    `cd ... &&`):
-   `fleet-assert-worktree merger`
+   `fleet-assert-worktree <your-worktree-basename>`
    `git -C ~/src/IrredenEngine fetch origin --quiet`
-   `git -C ~/src/IrredenEngine/.claude/worktrees/merger checkout -B claude/merger-scratch origin/master`
+   `git -C ~/src/IrredenEngine/.claude/worktrees/<your-worktree-basename> checkout -B claude/<your-worktree-basename>-scratch origin/master`
    A bare `git checkout -B` resolves against the Bash tool's persisted
    cwd and has parked scratch branches in shared main clones, freezing
    their master and blocking claims via the clone-freshness gate — the
    explicit `-C` worktree path makes the reset cwd-proof. If the
-   assert fails, `cd` back into the merger worktree as its own Bash
+   assert fails, `cd` back into your pool worktree as its own Bash
    call first (see
    [REVIEWER-PROTOCOL.md § Scratch reset & main-clone cwd discipline](../../docs/agents/REVIEWER-PROTOCOL.md#scratch-reset--main-clone-cwd-discipline)).
 3. Print `merger standing by` (or `merger standing by (dry-run)`
@@ -104,7 +110,7 @@ mode. Each invocation is one iteration — handle ready PRs, then
 exit cleanly:
 
 0. **Heartbeat.** See [docs/agents/FLEET-RUNTIME.md § Heartbeat](../../docs/agents/FLEET-RUNTIME.md#heartbeat--step-0).
-   `fleet-heartbeat merger` with a 20-minute staleness threshold (10m
+   `fleet-heartbeat <your-worktree-basename>` with a 20-minute staleness threshold (10m
    loop + 10m budget for rebases/pushes). Re-touch before any
    long-running `git fetch` / `push` / `rebase` loop.
    For the audit log: `echo "..." >> ~/.fleet/logs/merger-audit.log` is
@@ -185,7 +191,7 @@ exit cleanly:
      `git checkout --detach origin/<headRefName>`
 
      After running the 5a.5 ii actions, reset to scratch (step 5f):
-     `git -C ~/src/IrredenEngine/.claude/worktrees/merger checkout -B claude/merger-scratch origin/master`.
+     `git -C ~/src/IrredenEngine/.claude/worktrees/<your-worktree-basename> checkout -B claude/<your-worktree-basename>-scratch origin/master`.
 
      Log: `... reconcile: base #<N> merged, re-targeted + rebased onto master`.
 
@@ -295,7 +301,7 @@ exit cleanly:
         no longer needed to "release" the branch (detached HEAD
         never claimed it), but the reset still gets the worktree
         back to a known starting state for the next candidate:
-        `git switch claude/merger-scratch`
+        `git switch claude/<your-worktree-basename>-scratch`
       - Run `rm -f .merger-body.md`, then write `.merger-body.md`
         with the **Write** tool using the **§ cascade-rebase-conflict**
         template from [merger-templates.md](../../docs/agents/merger-templates.md).
@@ -304,7 +310,7 @@ exit cleanly:
       - Log: `[YYYY-MM-DD HH:MM:SS] PR #<N> <headRefName>: cascade-rebase conflict onto #<base-pr-number>, labeled fleet:needs-base-update`
 
    d. **Reset to scratch.** Same as step 5f:
-      `git -C ~/src/IrredenEngine/.claude/worktrees/merger checkout -B claude/merger-scratch origin/master`
+      `git -C ~/src/IrredenEngine/.claude/worktrees/<your-worktree-basename> checkout -B claude/<your-worktree-basename>-scratch origin/master`
 
 3. Filter to candidates. A PR is a candidate if:
    - `mergeable == "CONFLICTING"`, OR
@@ -485,7 +491,7 @@ exit cleanly:
              `git log -1 --format="%h %s" origin/master -- <file>`
              `git log -1 --format="%h %s" origin/<headRefName> -- <file>`
            - `git rebase --abort`
-           - `git switch claude/merger-scratch` (worktree hygiene)
+           - `git switch claude/<your-worktree-basename>-scratch` (worktree hygiene)
            - Run `rm -f .merger-body.md`, then write `.merger-body.md`
              with the **Write** tool:
              ```
@@ -660,7 +666,7 @@ exit cleanly:
            resolution**, so labeling `fleet:semantic-conflict` only starts
            the worker↔merger thrash (#1990 — see the `fleet:gated` skip
            entry in step 3). Skip the semantic-conflict path entirely:
-             - `git switch claude/merger-scratch`
+             - `git switch claude/<your-worktree-basename>-scratch`
              - `gh pr edit <N> --add-label "fleet:gated"`
              - `gh pr edit <N> --remove-label "fleet:approved"` (best-effort;
                the diff no longer represents a mergeable state)
@@ -680,7 +686,7 @@ exit cleanly:
            gets the worktree back to a known starting state for the
            next candidate even if subsequent steps crash or hit a
            usage limit:
-           `git switch claude/merger-scratch`
+           `git switch claude/<your-worktree-basename>-scratch`
          - **Dedup check.** If `fleet:semantic-conflict` is already in
            this PR's cached labels (from step 2), the merger may have
            posted an identical comment in a prior iteration. Before
@@ -712,7 +718,7 @@ exit cleanly:
            identify what touched it on master, and
            `git log -1 --format="%h %s" origin/<headRefName> -- <file>`
            for the PR side. The `origin/<headRefName>` ref is required
-           because `git switch claude/merger-scratch` left HEAD on
+           because `git switch claude/<your-worktree-basename>-scratch` left HEAD on
            master (and the prior detached HEAD is gone) — a bare
            `git log -- <file>` would log master twice.
            Write `.merger-body.md` using the **§ semantic-conflict**
@@ -757,7 +763,7 @@ exit cleanly:
       `-C` worktree path (a bare checkout resolves against the shell's
       persisted cwd and can park the scratch branch in a shared main
       clone — see startup step 2):
-      `git -C ~/src/IrredenEngine/.claude/worktrees/merger checkout -B claude/merger-scratch origin/master`
+      `git -C ~/src/IrredenEngine/.claude/worktrees/<your-worktree-basename> checkout -B claude/<your-worktree-basename>-scratch origin/master`
 
 ## Game-repo pass
 
@@ -769,8 +775,9 @@ worktree, and `gh` target change.
 
 **Deltas from the engine pass:**
 
-- **cwd** — `cd ~/src/IrredenEngine/creations/game/.claude/worktrees/merger`
-  first. All `git` ops in this pass run there (it tracks the game
+- **cwd** — `cd ~/src/IrredenEngine/creations/game/.claude/worktrees/<your-worktree-basename>`
+  first (the game twin has the SAME basename as your engine pool
+  worktree). All `git` ops in this pass run there (it tracks the game
   remote). The bash cwd persists across calls in the iteration.
 - **Every `gh` call gets `--repo jakildev/irreden`** — `gh pr edit`,
   `gh pr comment`, `gh pr list`, `gh pr view`.
@@ -778,7 +785,7 @@ worktree, and `gh` target change.
   `repos.engine.prs[]`).
 - **Scratch branch** — reset the game worktree to scratch up front and
   after each PR:
-  `git -C ~/src/IrredenEngine/creations/game/.claude/worktrees/merger checkout -B claude/merger-scratch origin/master`
+  `git -C ~/src/IrredenEngine/creations/game/.claude/worktrees/<your-worktree-basename> checkout -B claude/game-<your-worktree-basename>-scratch origin/master`
   The `-C` path targets the game WORKTREE (never the shared game main
   clone `~/src/IrredenEngine/creations/game` — a scratch branch parked
   there freezes the game clone's master and blocks every game claim
@@ -801,7 +808,7 @@ worktree, and `gh` target change.
     `master` + `fleet:stacked`→`fleet:stacked-rebase`) and 2.6
     (cascade-rebase stacked children whose still-open base force-pushed)
     over `repos.game.prs[]`, exactly as the engine pass, with the game
-    deltas: cwd = game merger worktree, every `gh` call carries `--repo
+    deltas: cwd = your game twin worktree, every `gh` call carries `--repo
     jakildev/irreden`, and re-target/rebase run against the game
     `origin`. Force-push rebases done here count toward the shared
     ≤2-rebase budget.
@@ -828,7 +835,7 @@ so the handoff has an actor. Log game-pass actions to the same
 two repos' PR-number spaces don't collide in the audit trail).
 
 6. **Shutdown.** See [docs/agents/FLEET-RUNTIME.md § Per-iteration shutdown](../../docs/agents/FLEET-RUNTIME.md#per-iteration-shutdown--final-step).
-   `fleet-iteration-summary merger "<PRs processed, outcomes, snags — under 100 words.>"`
+   `fleet-iteration-summary <your-worktree-basename> "<PRs processed, outcomes, snags — under 100 words.>"`
    The merger does not reserve worktrees, so skip `release-worktree`;
    the scratch reset has already happened per-PR in step 5f. Print
    `[merger] Iteration complete. Will re-fire on next dispatcher trigger.`

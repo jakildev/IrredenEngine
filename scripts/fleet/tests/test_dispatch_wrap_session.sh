@@ -110,6 +110,15 @@ out=$(cd "$WT" && FLEET_DISPATCH_PRINT_LAUNCH=1 "$WRAP" pane-3 sonnet high worke
 [[ "$out" == *"--model claude-opus-4-8[1m] --effort xhigh"* ]] && ok "resume: uses STORED model/effort" || bad "resume config: $out"
 [[ "$out" == *"--session-id"* ]] && bad "resume: should NOT pass --session-id" || ok "resume: no --session-id"
 
+echo "T3b: role-mismatched sidecar (pool pane) -> fresh launch, not a cross-role resume"
+# Pool panes host every transient role: a hard-killed reviewer's sidecar
+# must not be resumed by a worker dispatch landing on the same worktree.
+printf '{"session_id":"SID-REV","role":"sonnet-reviewer","model":"sonnet","effort":"high","created_epoch":1}\n' > "$SIDECAR"
+out=$(cd "$WT" && FLEET_DISPATCH_PRINT_LAUNCH=1 "$WRAP" pane-3 sonnet high worker "" live 2>/dev/null)
+[[ "$out" == resumed=0* ]] && ok "role mismatch: resumed=0" || bad "role mismatch resumed flag: $out"
+[[ "$out" == *"--resume"* ]] && bad "role mismatch: must not --resume the foreign session" || ok "role mismatch: no --resume"
+rm -f "$SIDECAR"
+
 echo "T4: reviewer fresh dispatch resumable + writes sidecar"
 rm -f "$FLEET_SESSIONS_DIR/opus-reviewer.session.json"
 WT2="$TMPROOT/opus-reviewer"; mkdir -p "$WT2"

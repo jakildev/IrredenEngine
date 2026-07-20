@@ -99,7 +99,8 @@ Before switching branches, distill the task you just finished into a compact,
 high-signal handoff — so the next task starts lean but not amnesiac. Run
 `mkdir -p ~/.fleet/handoff/` first (other fleet steps create `~/.fleet/`
 subdirs explicitly; do the same here). Write the handoff to
-`~/.fleet/handoff/<role-name>.md` (per-role, overwritten each boundary;
+`~/.fleet/handoff/<your-worktree-basename>.md` (e.g. `pool-2.md`;
+per-worktree, overwritten each boundary;
 `~/.fleet/` survives a `/clear` on this host — and cross-host too if your
 `~/.fleet/` is synced) AND keep a tight in-context copy. Four buckets:
 

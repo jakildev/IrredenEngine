@@ -121,11 +121,12 @@ SCOUT_STARTUP_TIMEOUT_SECONDS=30
 # iterations per role. Counts unique active worktrees: in-flight (pane
 # mid-claude-print) ∪ reserved (worktree pinned to a paused task).
 #
-# Defaults match each role's current pane count, so no role hits the
-# cap under normal operation. The cap only fires when reservations from
-# crashed iterations would push the total over (e.g. a reserved-but-idle
-# pane resumes on the next tick — its slot is counted up front so a
-# fresh dispatch to a free pane doesn't push the role above its budget).
+# With the generic pane pool the caps — not pane topology — are the
+# per-role parallelism budget: any transient role can fan out to any
+# idle pool pane, up to its cap. Reservations from crashed iterations
+# count up front (a reserved-but-idle pane resumes on the next tick —
+# its slot is counted so a fresh dispatch to a free pane doesn't push
+# the role above its budget).
 #
 # Override priority (highest first):
 #   1. Env var: FLEET_CONCURRENCY_<ROLE_UPPERCASE> (e.g. FLEET_CONCURRENCY_WORKER=4)
@@ -134,7 +135,7 @@ SCOUT_STARTUP_TIMEOUT_SECONDS=30
 #
 # Sample conf (write to ~/.fleet/fleet-up.conf):
 #   FLEET_CONCURRENCY_WORKER=4          # unified worker lane (any model class)
-#   FLEET_CONCURRENCY_SONNET_REVIEWER=1
+#   FLEET_CONCURRENCY_SONNET_REVIEWER=4
 #   FLEET_CONCURRENCY_OPUS_REVIEWER=1
 #   FLEET_CONCURRENCY_MERGER=1
 #
@@ -207,7 +208,7 @@ if [[ -f "$FLEET_CONF" ]]; then
 fi
 FLEET_CONCURRENCY_OPUS_WORKER="${_env_opus_worker:-${FLEET_CONCURRENCY_OPUS_WORKER:-2}}"
 FLEET_CONCURRENCY_SONNET_AUTHOR="${_env_sonnet_author:-${FLEET_CONCURRENCY_SONNET_AUTHOR:-2}}"
-FLEET_CONCURRENCY_SONNET_REVIEWER="${_env_sonnet_reviewer:-${FLEET_CONCURRENCY_SONNET_REVIEWER:-1}}"
+FLEET_CONCURRENCY_SONNET_REVIEWER="${_env_sonnet_reviewer:-${FLEET_CONCURRENCY_SONNET_REVIEWER:-4}}"
 FLEET_CONCURRENCY_OPUS_REVIEWER="${_env_opus_reviewer:-${FLEET_CONCURRENCY_OPUS_REVIEWER:-1}}"
 FLEET_CONCURRENCY_MERGER="${_env_merger:-${FLEET_CONCURRENCY_MERGER:-1}}"
 # FLEET_CONCURRENCY_WORKER: unified worker cap (any model class per task).
@@ -404,9 +405,11 @@ export FLEET_MODEL_MERGER FLEET_MODEL_OPUS_REVIEWER FLEET_FABLE_FALLBACK
 export OPUS_MODEL SONNET_MODEL
 
 # Short human-readable tag for a model string, shown in pane labels next
-# to the role slug (e.g. "worker-1 [fable 1m]"). Role slugs keep the
-# historical tier names; the bracket tag is what tells you which model
-# the tier is actually running this session.
+# to the role slug. Pool panes boot labeled "pool-1 [idle]"; once
+# fleet-dispatch-wrap dispatches into one it re-tags with the live role
+# and model, e.g. "worker [fable 1m]" (no numeric suffix — see
+# fleet-dispatch-wrap's pane re-tag). The bracket tag is what tells you
+# which model the role is actually running this session.
 model_tag() {
     local tag="$1"
     tag="${tag/claude-fable-5/fable}"
@@ -416,10 +419,9 @@ model_tag() {
     printf '%s' "$tag"
 }
 FABLE_TAG="$(model_tag "$FLEET_MODEL_FABLE")"
-OPUS_TAG="$(model_tag "$FLEET_MODEL_OPUS")"
-SONNET_TAG="$(model_tag "$FLEET_MODEL_SONNET")"
-MERGER_TAG="$(model_tag "$FLEET_MODEL_MERGER")"
-OPUS_REVIEWER_TAG="$(model_tag "$FLEET_MODEL_OPUS_REVIEWER")"
+# Pool panes launch label-less ("[idle]") — fleet-dispatch-wrap re-tags
+# each pane with the dispatched role + model per iteration, so only the
+# pinned architect panes need a boot-time model tag.
 
 # ----------------------------------------------------------------------
 # Step 1: ensure all worktrees exist
@@ -441,17 +443,29 @@ ensure_worktree() {
         || git worktree add "$wt" "$branch")
 }
 
-# migrate_legacy_worker_worktrees — one-time migration from the pre-P2.2
-# per-class layout (opus-worker-1/2, sonnet-fleet-1/2) to the unified
-# worker-1..4 names. Safe to run on every fleet-up: skips any pair where
-# the old dir is absent or the new dir already exists. Refuses to migrate
-# a dirty worktree or one with a live fleet-claim reservation (warns and
-# keeps the old name; the fleet boots cleanly with the old worktree).
-# Expected to be a no-op on most runs after the first boot post-P2.2.
+# migrate_legacy_worker_worktrees — one-time migration of legacy role-named
+# worktrees to the generic pane pool (pool-1..pool-9). Two generations of
+# legacy names are handled in one pass: the pre-P2.2 per-class layout
+# (opus-worker-1/2, sonnet-fleet-1/2) and the role-pinned layout
+# (worker-1..4, sonnet-reviewer, …). Callers pass the repo-specific
+# old→new map as paired name arrays. Safe to run on every fleet-up: skips
+# any pair where the old dir is absent or the new dir already exists.
+# Refuses to migrate a dirty worktree or one with a live fleet-claim
+# reservation (warns and keeps the old name; ensure_worktree then creates
+# the pool worktree fresh and the parked legacy dir gets a
+# warn_legacy_worktree pointer). Expected to be a no-op on most runs after
+# the first boot post-pool-migration.
 migrate_legacy_worker_worktrees() {
     local repo="$1"
-    local -a OLD_NAMES=(opus-worker-1 opus-worker-2 sonnet-fleet-1 sonnet-fleet-2)
-    local -a NEW_NAMES=(worker-1 worker-2 worker-3 worker-4)
+    shift
+    local -a OLD_NAMES=() NEW_NAMES=()
+    local half=$(( $# / 2 ))
+    OLD_NAMES=("${@:1:$half}")
+    NEW_NAMES=("${@:$((half + 1))}")
+    (( ${#OLD_NAMES[@]} == ${#NEW_NAMES[@]} )) || {
+        echo "fleet-up: migrate_legacy_worker_worktrees: odd argument count — old/new name split is unbalanced" >&2
+        exit 1
+    }
     local i old new old_wt new_wt dirty
 
     for (( i = 0; i < ${#OLD_NAMES[@]}; i++ )); do
@@ -461,7 +475,14 @@ migrate_legacy_worker_worktrees() {
         new_wt="$repo/.claude/worktrees/$new"
 
         [[ -d "$old_wt" ]] || continue
-        [[ -d "$new_wt" ]] && continue
+        if [[ -d "$new_wt" ]]; then
+            # Pool slot already filled (normal after the first migrated
+            # boot) but the legacy dir still exists — a prior migration
+            # refused it (dirty / reserved). Keep pointing the human at it.
+            echo "fleet-up: legacy worktree at $old_wt is no longer used."
+            echo "          remove with: git worktree remove $old_wt (after committing/stashing any work)"
+            continue
+        fi
 
         dirty="$(cd "$old_wt" && git status --porcelain 2>/dev/null || echo SKIP)"
         if [[ -n "$dirty" && "$dirty" != "SKIP" ]]; then
@@ -476,8 +497,34 @@ migrate_legacy_worker_worktrees() {
 
         echo "fleet-up: migrating worktree $old → $new"
         (cd "$repo" && git worktree move ".claude/worktrees/$old" ".claude/worktrees/$new") || {
-            echo "fleet-up: migrate: git worktree move failed for $old — keeping" >&2; }
+            echo "fleet-up: migrate: git worktree move failed for $old — keeping" >&2;
+            continue; }
+        # A moved worktree carries a CMake cache bound to its OLD absolute
+        # path; the first fleet-build in the new location would fail on the
+        # stale binding. Drop the build dir so it reconfigures fresh.
+        rm -rf "$new_wt/build"
     done
+}
+
+# Old→new name maps for migrate_legacy_worker_worktrees. The role-pinned
+# generation maps each role's worktree onto its pool slot; the pre-P2.2
+# per-class generation maps straight to the same slots (skipped per-pair
+# whenever the role-pinned migration already filled the slot).
+ENGINE_MIGRATE_OLD=(worker-1 worker-2 worker-3 worker-4 sonnet-reviewer opus-reviewer merger smoke-worker epic-steward opus-worker-1 opus-worker-2 sonnet-fleet-1 sonnet-fleet-2)
+ENGINE_MIGRATE_NEW=(pool-1   pool-2   pool-3   pool-4   pool-5          pool-6        pool-7 pool-8       pool-9       pool-1        pool-2        pool-3         pool-4)
+GAME_MIGRATE_OLD=(worker-1 worker-2 worker-3 worker-4 merger epic-steward)
+GAME_MIGRATE_NEW=(pool-1   pool-2   pool-3   pool-4   pool-7 pool-9)
+
+# A future edit to one *_MIGRATE_OLD/*_MIGRATE_NEW array without updating its
+# pair would silently mis-map every migration past the imbalance point (no
+# runtime error otherwise) — catch it here, at definition time.
+(( ${#ENGINE_MIGRATE_OLD[@]} == ${#ENGINE_MIGRATE_NEW[@]} )) || {
+    echo "fleet-up: ENGINE_MIGRATE_OLD/NEW length mismatch (${#ENGINE_MIGRATE_OLD[@]} vs ${#ENGINE_MIGRATE_NEW[@]}) — fix the maps" >&2
+    exit 1
+}
+(( ${#GAME_MIGRATE_OLD[@]} == ${#GAME_MIGRATE_NEW[@]} )) || {
+    echo "fleet-up: GAME_MIGRATE_OLD/NEW length mismatch (${#GAME_MIGRATE_OLD[@]} vs ${#GAME_MIGRATE_NEW[@]}) — fix the maps" >&2
+    exit 1
 }
 
 (cd "$ENGINE" && git fetch origin --quiet) || {
@@ -490,54 +537,38 @@ migrate_legacy_worker_worktrees() {
 restore_main_clone_to_master "$ENGINE"
 
 ensure_worktree "$ENGINE" .claude/worktrees/opus-architect    fleet/opus-architect
-migrate_legacy_worker_worktrees "$ENGINE"
-ensure_worktree "$ENGINE" .claude/worktrees/worker-1  fleet/worker-1
-ensure_worktree "$ENGINE" .claude/worktrees/worker-2  fleet/worker-2
-ensure_worktree "$ENGINE" .claude/worktrees/worker-3  fleet/worker-3
-ensure_worktree "$ENGINE" .claude/worktrees/worker-4  fleet/worker-4
-ensure_worktree "$ENGINE" .claude/worktrees/sonnet-reviewer   fleet/sonnet-reviewer
-ensure_worktree "$ENGINE" .claude/worktrees/opus-reviewer     fleet/opus-reviewer
+migrate_legacy_worker_worktrees "$ENGINE" \
+    "${ENGINE_MIGRATE_OLD[@]}" "${ENGINE_MIGRATE_NEW[@]}"
+# Generic pane pool: pool-1..pool-9 are role-agnostic worktrees, each
+# reserved for its pane, not for a role. The dispatcher routes ANY
+# transient role (worker, reviewers, merger, smoke, epic-steward) to any
+# idle pool pane; per-role parallelism is bounded by the
+# FLEET_CONCURRENCY_<ROLE> caps, not by pane topology. FLEET_SMOKE_WORKER /
+# FLEET_EPIC_STEWARD gate whether the dispatcher SERVES those roles, not
+# whether their panes exist.
+for _p in 1 2 3 4 5 6 7 8 9; do
+    ensure_worktree "$ENGINE" ".claude/worktrees/pool-$_p" "fleet/pool-$_p"
+done
+unset _p
 ensure_worktree "$ENGINE" .claude/worktrees/queue-manager        fleet/queue-manager
 ensure_worktree "$ENGINE" .claude/worktrees/queue-manager-ingest fleet/queue-manager-ingest
-ensure_worktree "$ENGINE" .claude/worktrees/merger               fleet/merger
-# smoke-worker worktree is optional — only created when FLEET_SMOKE_WORKER=1.
-# Useful for running a dedicated smoke pane on a second host (e.g. Ubuntu
-# alongside the primary macOS fleet). Set FLEET_SMOKE_WORKER=1 in
-# ~/.fleet/fleet-up.conf or as an env var before calling fleet-up.
-if [[ "${FLEET_SMOKE_WORKER:-0}" == "1" ]]; then
-    ensure_worktree "$ENGINE" .claude/worktrees/smoke-worker fleet/smoke-worker
-fi
-# epic-steward worktree is optional — only created when FLEET_EPIC_STEWARD=1.
-# The epic-steward is the fleet's epic bookkeeper (umbrella checklists, design-
-# block triage, proposal aggregation, close-out). Enable for active multi-epic
-# queues; omit when the queue is mostly single-task work.
-if [[ "${FLEET_EPIC_STEWARD:-0}" == "1" ]]; then
-    ensure_worktree "$ENGINE" .claude/worktrees/epic-steward fleet/epic-steward
-fi
 
 if [[ -d "$GAME/.git" ]]; then
     (cd "$GAME" && git fetch origin --quiet) || {
         echo "fleet-up: game git fetch failed (continuing without game panes)" >&2; }
     restore_main_clone_to_master "$GAME"  # game main clone back on current master too (#1810)
     ensure_worktree "$GAME" .claude/worktrees/game-architect  fleet/game-architect
-    # Worker panes cover both engine and game queues; each of the four
-    # worker panes gets its own game worktree to cd into for game tasks.
-    # cwd at launch is the engine worktree; the agent cd's per task.
-    migrate_legacy_worker_worktrees "$GAME"
-    ensure_worktree "$GAME" .claude/worktrees/worker-1  fleet/game-worker-1
-    ensure_worktree "$GAME" .claude/worktrees/worker-2  fleet/game-worker-2
-    ensure_worktree "$GAME" .claude/worktrees/worker-3  fleet/game-worker-3
-    ensure_worktree "$GAME" .claude/worktrees/worker-4  fleet/game-worker-4
-    # The single merger pane covers both repos (one dispatcher role, two
-    # passes per iteration). This game worktree is where it checks out and
-    # rebases game PRs; the engine pass uses .claude/worktrees/merger under
-    # the engine root above. Same dual-worktree model as the workers.
-    ensure_worktree "$GAME" .claude/worktrees/merger          fleet/game-merger
-    # epic-steward game worktree — only when FLEET_EPIC_STEWARD=1. Same
-    # dual-worktree model as the workers: engine pane cds here for game epics.
-    if [[ "${FLEET_EPIC_STEWARD:-0}" == "1" ]]; then
-        ensure_worktree "$GAME" .claude/worktrees/epic-steward fleet/game-epic-steward
-    fi
+    # Pool panes cover both engine and game queues; each pool pane gets its
+    # own game worktree — SAME basename as its engine twin (claims,
+    # reservations, and heartbeats all key on that shared basename) — to cd
+    # into for game tasks. cwd at launch is the engine worktree; the agent
+    # cd's per task.
+    migrate_legacy_worker_worktrees "$GAME" \
+        "${GAME_MIGRATE_OLD[@]}" "${GAME_MIGRATE_NEW[@]}"
+    for _p in 1 2 3 4 5 6 7 8 9; do
+        ensure_worktree "$GAME" ".claude/worktrees/pool-$_p" "fleet/game-pool-$_p"
+    done
+    unset _p
 else
     echo "fleet-up: game repo not found at $GAME — skipping game panes"
 fi
@@ -783,30 +814,22 @@ reset_worktree() {
 }
 
 reset_worktree "$ENGINE/.claude/worktrees/opus-architect"  claude/opus-arch-scratch
-reset_worktree "$ENGINE/.claude/worktrees/worker-1"  claude/worker-1-scratch
-reset_worktree "$ENGINE/.claude/worktrees/worker-2"  claude/worker-2-scratch
-reset_worktree "$ENGINE/.claude/worktrees/worker-3"  claude/worker-3-scratch
-reset_worktree "$ENGINE/.claude/worktrees/worker-4"  claude/worker-4-scratch
-reset_worktree "$ENGINE/.claude/worktrees/sonnet-reviewer" claude/sonnet-reviewer-scratch
-reset_worktree "$ENGINE/.claude/worktrees/opus-reviewer"   claude/opus-reviewer-scratch
+for _p in 1 2 3 4 5 6 7 8 9; do
+    reset_worktree "$ENGINE/.claude/worktrees/pool-$_p" "claude/pool-$_p-scratch"
+done
+unset _p
 reset_worktree "$ENGINE/.claude/worktrees/queue-manager"        claude/queue-manager-scratch
 reset_worktree "$ENGINE/.claude/worktrees/queue-manager-ingest" claude/queue-manager-ingest-scratch
-reset_worktree "$ENGINE/.claude/worktrees/merger"               claude/merger-scratch
-reset_worktree "$ENGINE/.claude/worktrees/smoke-worker"         claude/smoke-worker-scratch
-reset_worktree "$ENGINE/.claude/worktrees/epic-steward"         claude/epic-steward-scratch
 
 if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then
     reset_worktree "$GAME/.claude/worktrees/game-architect" claude/game-arch-scratch
 fi
-for _n in 1 2 3 4; do
-    if [[ -d "$GAME/.claude/worktrees/worker-$_n" ]]; then
-        reset_worktree "$GAME/.claude/worktrees/worker-$_n" "claude/game-worker-$_n-scratch"
+for _p in 1 2 3 4 5 6 7 8 9; do
+    if [[ -d "$GAME/.claude/worktrees/pool-$_p" ]]; then
+        reset_worktree "$GAME/.claude/worktrees/pool-$_p" "claude/game-pool-$_p-scratch"
     fi
 done
-unset _n
-if [[ -d "$GAME/.claude/worktrees/epic-steward" ]]; then
-    reset_worktree "$GAME/.claude/worktrees/epic-steward" claude/game-epic-steward-scratch
-fi
+unset _p
 
 # ----------------------------------------------------------------------
 # Step 3: write per-worktree .claude/settings.local.json
@@ -1044,33 +1067,22 @@ with open(settings_file, "w") as f:
 PYEOF
 }
 
-for wt in opus-architect worker-1 worker-2 worker-3 worker-4 sonnet-reviewer opus-reviewer queue-manager queue-manager-ingest merger; do
+for wt in opus-architect pool-1 pool-2 pool-3 pool-4 pool-5 pool-6 pool-7 pool-8 pool-9 queue-manager queue-manager-ingest; do
     write_worktree_settings "$ENGINE/.claude/worktrees/$wt" "$ENGINE"
 done
-if [[ -d "$ENGINE/.claude/worktrees/smoke-worker" ]]; then
-    write_worktree_settings "$ENGINE/.claude/worktrees/smoke-worker" "$ENGINE"
-fi
-if [[ -d "$ENGINE/.claude/worktrees/epic-steward" ]]; then
-    write_worktree_settings "$ENGINE/.claude/worktrees/epic-steward" "$ENGINE"
-fi
 
 if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then
     write_worktree_settings "$GAME/.claude/worktrees/game-architect" "$GAME"
 fi
-# Game-side worker worktrees (used by worker panes when they cd over for game
+# Game-side pool worktrees (used by pool panes when they cd over for game
 # tasks). Allow access to BOTH the game tree (the worktree's own scope) and the
 # engine tree (so engine helper scripts + CLAUDE.md are reachable from a game cd).
-for _n in 1 2 3 4; do
-    if [[ -d "$GAME/.claude/worktrees/worker-$_n" ]]; then
-        write_worktree_settings "$GAME/.claude/worktrees/worker-$_n" "$ENGINE"
+for _p in 1 2 3 4 5 6 7 8 9; do
+    if [[ -d "$GAME/.claude/worktrees/pool-$_p" ]]; then
+        write_worktree_settings "$GAME/.claude/worktrees/pool-$_p" "$ENGINE"
     fi
 done
-unset _n
-# Game-side epic-steward worktree — allow access to both game tree and engine
-# helpers (same pattern as the game-side worker worktrees).
-if [[ -d "$GAME/.claude/worktrees/epic-steward" ]]; then
-    write_worktree_settings "$GAME/.claude/worktrees/epic-steward" "$ENGINE"
-fi
+unset _p
 
 # ----------------------------------------------------------------------
 # Step 3b: clear stale task claims
@@ -1496,29 +1508,30 @@ launch_cmd() {
 # Two windows:
 #
 # Window 1 ("fleet") — three equal rows, 8 panes total (with game-arch):
-#   Top    (~33%): worker-1  worker-2  sonnet-reviewer
-#   Middle (~33%): opus-architect      [game-architect]
-#   Bottom (~33%): worker-3  worker-4  opus-reviewer
+#   Top    (~33%): pool-1  pool-2  pool-3
+#   Middle (~33%): opus-architect  [game-architect]
+#   Bottom (~33%): pool-4  pool-5  pool-6
 #
-# Window 2 ("ops") — 2x2 grid, 4 panes:
-#   queue-manager  merger
-#   witness        terminal (interactive shell in $HOME)
+# Window 2 ("ops") — 2x2 grid + pool column, up to 7 panes:
+#   queue-mgr/scratch  pool-7 (pool-8, pool-9 stacked below)
+#   witness            terminal (interactive shell in $HOME)
 #
-# Reviewers sit at the right end of each worker row so the verdict
-# pane is adjacent to the work it reviews. Architects span the
-# middle row at full width — that's where interactive design work
-# happens.
+# Architects span the middle row at full width — that's where
+# interactive design work happens.
 #
-# Workers are model-class-agnostic: the dispatcher routes each task to
-# the first idle worker pane and passes the model class as an argument.
-# All four worker panes are equivalent; task routing by model/effort
-# happens at dispatch time, not at pane-creation time.
+# Pool panes are role- AND model-class-agnostic: the dispatcher routes
+# any transient role (worker, sonnet-reviewer, opus-reviewer, merger,
+# smoke-worker, epic-steward) to any idle pool pane and passes the role
+# + model class as arguments. All nine pool panes are equivalent; role
+# and model/effort routing happens at dispatch time, not at
+# pane-creation time. Per-role parallelism is bounded only by the
+# FLEET_CONCURRENCY_<ROLE> caps.
 #
-# The "ops" window holds the meta panes — queue-manager (intake +
-# maintenance), merger (auto-rebase), witness (heartbeat monitor),
-# and a free-form terminal for ad-hoc commands. These don't need
-# constant visibility; jump to ops with Alt+n when you want to
-# check on them, then Alt+p back to the fleet view.
+# The "ops" window holds the meta panes — the queue-manager scratch
+# terminal (manual ingestion), witness (heartbeat monitor), a free-form
+# terminal for ad-hoc commands, and the pool overflow (pool-7..9).
+# These don't need constant visibility; jump to ops with Alt+n when you
+# want to check on them, then Alt+p back to the fleet view.
 #
 # Navigate without a prefix key:
 #   Option+arrow              — pane navigation within current window
@@ -1533,10 +1546,13 @@ label_pane_id() {
     tmux set-option -t "$1" -p @role "$2"
 }
 
-# Tag a pane with its dispatcher role slug. The dispatcher matches
-# panes via this tag (separate from the human-readable @role label).
-# Architects don't get tagged — they stay on fleet-babysit and the
-# dispatcher's role list excludes them.
+# Tag a pane for the dispatcher (separate from the human-readable @role
+# label). Pool panes carry the literal tag "pool" — the dispatcher
+# matches a triggered role against panes tagged with that role OR with
+# "pool", so any pool pane can serve any transient role. A pane tagged
+# with a concrete role slug stays pinned to that role (e.g. a dedicated
+# smoke pane on a secondary host). Architects don't get tagged — they
+# stay on fleet-babysit and the dispatcher's role list excludes them.
 set_fleet_role() {
     tmux set-option -t "$1" -p @fleet-role "$2"
 }
@@ -1555,7 +1571,7 @@ TRANSIENT_PANE_CMD='exec $SHELL -i'
 # print the new pane's ID so we can target it for the next split.
 
 tmux new-session -d -s "$SESSION" -n fleet \
-    -c "$ENGINE/.claude/worktrees/worker-1" \
+    -c "$ENGINE/.claude/worktrees/pool-1" \
     "$TRANSIENT_PANE_CMD"
 # Seed IR_FLEET_WORKERS into the tmux server env so the split-window panes
 # below inherit it even when this fleet-up attached to a pre-existing tmux
@@ -1585,8 +1601,8 @@ else
 fi
 unset _gh_app_token gh_token_cmd
 TOP_LEFT=$(tmux display-message -t "$SESSION:fleet" -p "#{pane_id}")
-label_pane_id "$TOP_LEFT" "worker-1 [$OPUS_TAG]"
-set_fleet_role "$TOP_LEFT" "worker"
+label_pane_id "$TOP_LEFT" "pool-1 [idle]"
+set_fleet_role "$TOP_LEFT" "pool"
 pane_stagger
 
 # Split bottom 2/3 off — that becomes the middle row's leftmost pane.
@@ -1598,28 +1614,28 @@ pane_stagger
 
 # Split bottom 1/2 of the middle off — that becomes bottom row leftmost.
 BOT_LEFT=$(tmux split-window -v -t "$MID_LEFT" -l 50% -P -F "#{pane_id}" \
-    -c "$ENGINE/.claude/worktrees/worker-3" \
+    -c "$ENGINE/.claude/worktrees/pool-4" \
     "$TRANSIENT_PANE_CMD")
-label_pane_id "$BOT_LEFT" "worker-3 [$OPUS_TAG]"
-set_fleet_role "$BOT_LEFT" "worker"
+label_pane_id "$BOT_LEFT" "pool-4 [idle]"
+set_fleet_role "$BOT_LEFT" "pool"
 pane_stagger
 
-# Top row: split TOP_LEFT horizontally for worker-2 and sonnet-reviewer.
+# Top row: split TOP_LEFT horizontally for pool-2 and pool-3.
 # -l 67% gives the new pane 67% of the original TOP_LEFT region (TOP_LEFT
 # shrinks to 33%); the second split halves what's left, giving three equal
 # columns.
 TOP_MID=$(tmux split-window -h -t "$TOP_LEFT" -l 67% -P -F "#{pane_id}" \
-    -c "$ENGINE/.claude/worktrees/worker-2" \
+    -c "$ENGINE/.claude/worktrees/pool-2" \
     "$TRANSIENT_PANE_CMD")
-label_pane_id "$TOP_MID" "worker-2 [$OPUS_TAG]"
-set_fleet_role "$TOP_MID" "worker"
+label_pane_id "$TOP_MID" "pool-2 [idle]"
+set_fleet_role "$TOP_MID" "pool"
 pane_stagger
 
 TOP_RIGHT=$(tmux split-window -h -t "$TOP_MID" -l 50% -P -F "#{pane_id}" \
-    -c "$ENGINE/.claude/worktrees/sonnet-reviewer" \
+    -c "$ENGINE/.claude/worktrees/pool-3" \
     "$TRANSIENT_PANE_CMD")
-label_pane_id "$TOP_RIGHT" "sonnet-reviewer [$SONNET_TAG]"
-set_fleet_role "$TOP_RIGHT" "sonnet-reviewer"
+label_pane_id "$TOP_RIGHT" "pool-3 [idle]"
+set_fleet_role "$TOP_RIGHT" "pool"
 pane_stagger
 
 # Middle row: split MID_LEFT horizontally for game-architect (only if
@@ -1633,27 +1649,27 @@ if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then
     pane_stagger
 fi
 
-# Bottom row: split BOT_LEFT horizontally for worker-4 and opus-reviewer.
+# Bottom row: split BOT_LEFT horizontally for pool-5 and pool-6.
 # Same 67/50 pattern as the top row to get three equal columns.
 BOT_MID=$(tmux split-window -h -t "$BOT_LEFT" -l 67% -P -F "#{pane_id}" \
-    -c "$ENGINE/.claude/worktrees/worker-4" \
+    -c "$ENGINE/.claude/worktrees/pool-5" \
     "$TRANSIENT_PANE_CMD")
-label_pane_id "$BOT_MID" "worker-4 [$OPUS_TAG]"
-set_fleet_role "$BOT_MID" "worker"
+label_pane_id "$BOT_MID" "pool-5 [idle]"
+set_fleet_role "$BOT_MID" "pool"
 pane_stagger
 
 BOT_RIGHT=$(tmux split-window -h -t "$BOT_MID" -l 50% -P -F "#{pane_id}" \
-    -c "$ENGINE/.claude/worktrees/opus-reviewer" \
+    -c "$ENGINE/.claude/worktrees/pool-6" \
     "$TRANSIENT_PANE_CMD")
-label_pane_id "$BOT_RIGHT" "opus-reviewer [$OPUS_REVIEWER_TAG]"
-set_fleet_role "$BOT_RIGHT" "opus-reviewer"
+label_pane_id "$BOT_RIGHT" "pool-6 [idle]"
+set_fleet_role "$BOT_RIGHT" "pool"
 pane_stagger
 
-# --- Window 2: "ops" — 2x2 grid (+ optional smoke-worker pane) --------
+# --- Window 2: "ops" — 2x2 grid + pool overflow column ----------------
 #
-# queue-manager (top-left), merger (top-right, with optional smoke-worker
-# below it when FLEET_SMOKE_WORKER=1),
-# witness (bottom-left), terminal (bottom-right, $HOME, free-form shell).
+# queue-mgr scratch (top-left), pool-7 (top-right, with pool-8 and
+# pool-9 stacked below it), witness (bottom-left), terminal
+# (bottom-right, $HOME, free-form shell).
 
 # Anchor explicitly after the fleet window with `-a -t fleet`. Without
 # the anchor, `new-window -t "$SESSION"` picks the lowest unused index
@@ -1670,10 +1686,10 @@ label_pane_id "$OPS_TL" "queue-mgr/scratch [human]"
 pane_stagger
 
 OPS_TR=$(tmux split-window -h -t "$OPS_TL" -l 50% -P -F "#{pane_id}" \
-    -c "$ENGINE/.claude/worktrees/merger" \
+    -c "$ENGINE/.claude/worktrees/pool-7" \
     "$TRANSIENT_PANE_CMD")
-label_pane_id "$OPS_TR" "merger [$MERGER_TAG]"
-set_fleet_role "$OPS_TR" "merger"
+label_pane_id "$OPS_TR" "pool-7 [idle]"
+set_fleet_role "$OPS_TR" "pool"
 
 OPS_BL=$(tmux split-window -v -t "$OPS_TL" -l 50% -P -F "#{pane_id}" \
     -c "$HOME/.fleet" \
@@ -1685,31 +1701,24 @@ OPS_BR=$(tmux split-window -v -t "$OPS_TR" -l 50% -P -F "#{pane_id}" \
     "exec $SHELL")
 label_pane_id "$OPS_BR" "terminal"
 
-# Optional smoke-worker pane — only launched when the worktree exists
-# (i.e. FLEET_SMOKE_WORKER=1 was set during ensure_worktree above).
-if [[ -d "$ENGINE/.claude/worktrees/smoke-worker" ]]; then
-    OPS_SMOKE=$(tmux split-window -v -t "$OPS_TR" -l 50% -P -F "#{pane_id}" \
-        -c "$ENGINE/.claude/worktrees/smoke-worker" \
-        "$TRANSIENT_PANE_CMD")
-    label_pane_id "$OPS_SMOKE" "smoke-worker [$SONNET_TAG]"
-    set_fleet_role "$OPS_SMOKE" "smoke-worker"
-    pane_stagger
-fi
+# Pool overflow panes — pool-8 and pool-9 stack below pool-7 in the ops
+# window's right column. Same generic pool as the fleet-window panes;
+# whether the smoke-worker / epic-steward ROLES dispatch is gated by
+# FLEET_SMOKE_WORKER / FLEET_EPIC_STEWARD in the dispatcher, not by pane
+# existence.
+OPS_P8=$(tmux split-window -v -t "$OPS_TR" -l 50% -P -F "#{pane_id}" \
+    -c "$ENGINE/.claude/worktrees/pool-8" \
+    "$TRANSIENT_PANE_CMD")
+label_pane_id "$OPS_P8" "pool-8 [idle]"
+set_fleet_role "$OPS_P8" "pool"
+pane_stagger
 
-# Optional epic-steward pane — only launched when the worktree exists
-# (i.e. FLEET_EPIC_STEWARD=1 was set during ensure_worktree above).
-# Placed after the smoke-worker pane in the right column of the ops window;
-# if smoke-worker is absent, splits directly from the merger pane.
-if [[ -d "$ENGINE/.claude/worktrees/epic-steward" ]]; then
-    _epic_base="${OPS_SMOKE:-$OPS_TR}"
-    OPS_EPIC=$(tmux split-window -v -t "$_epic_base" -l 50% -P -F "#{pane_id}" \
-        -c "$ENGINE/.claude/worktrees/epic-steward" \
-        "$TRANSIENT_PANE_CMD")
-    label_pane_id "$OPS_EPIC" "epic-steward [$OPUS_TAG]"
-    set_fleet_role "$OPS_EPIC" "epic-steward"
-    pane_stagger
-    unset _epic_base
-fi
+OPS_P9=$(tmux split-window -v -t "$OPS_P8" -l 50% -P -F "#{pane_id}" \
+    -c "$ENGINE/.claude/worktrees/pool-9" \
+    "$TRANSIENT_PANE_CMD")
+label_pane_id "$OPS_P9" "pool-9 [idle]"
+set_fleet_role "$OPS_P9" "pool"
+pane_stagger
 
 # Enable pane border labels using @role (immune to program overrides).
 # Apply at session level so it covers both windows.
@@ -1740,14 +1749,16 @@ the dispatcher launches each worker iteration with its task's class):
 
 layout (two windows):
   window 1 "fleet" (3x3 grid, ~33% per row):
-    top    — worker-1  worker-2  sonnet-reviewer
-    middle — opus-architect      [game-architect]
-    bottom — worker-3  worker-4  opus-reviewer
-  window 2 "ops" (2x2 grid):
-    top    — queue-manager  merger
-    bottom — witness        terminal (\$HOME, free-form shell)
-  worker panes run any model class (opus/sonnet/fable) per task;
-  initial label shows opus (lane default); per-dispatch re-tag takes over.
+    top    — pool-1  pool-2  pool-3
+    middle — opus-architect  [game-architect]
+    bottom — pool-4  pool-5  pool-6
+  window 2 "ops":
+    top    — queue-mgr/scratch  pool-7 (pool-8, pool-9 below)
+    bottom — witness            terminal (\$HOME, free-form shell)
+  pool panes run ANY transient role (worker, reviewers, merger, smoke,
+  epic-steward) and any model class per dispatch; per-role parallelism
+  is bounded by FLEET_CONCURRENCY_<ROLE>, not pane topology. Labels
+  start [idle]; per-dispatch re-tag shows the live role + model.
 
 effort levels (per-role; override with FLEET_EFFORT_<ROLE> in env or
 ~/.fleet/fleet-up.conf, or FLEET_EFFORT=<level> to force all panes):
@@ -1785,12 +1796,11 @@ the session if claude exits (crash, usage limit, network drop).
   live        — auto-resumes on any exit (runs indefinitely)
   review-only — same as live; the role docs gate new-work pickup
 
-scheduling (live mode): each worker iteration is a fresh \`claude\` process
-  (no context carry-over between tasks). babysit relaunches per role's
-  configured interval:
-  sonnet-reviewer    — every ~3m     opus-reviewer — every ~30m
-  worker-1..4        — dispatcher-routed (opus/sonnet/fable class per task)
-  merger             — every ~10m    queue-manager — every ~5m
+scheduling (live mode): each transient-role iteration is a fresh \`claude\`
+  process (no context carry-over between tasks), dispatcher-routed to any
+  idle pool pane when the scout triggers its role. Per-role concurrency:
+  FLEET_CONCURRENCY_WORKER (default 4), _SONNET_REVIEWER (default 4),
+  _OPUS_REVIEWER / _MERGER / _SMOKE_WORKER / _EPIC_STEWARD (default 1).
   opus-architect, game-architect — interactive, persistent session
                                    (--resume across crashes + fleet-down/up)
 

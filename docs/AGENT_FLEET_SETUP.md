@@ -484,24 +484,21 @@ named worktrees **inside the host clone you're running on**
 sessions. If you plan to run the fleet on both WSL and macOS, each
 clone gets its own independent set of worktrees — they don't share.
 
-A reasonable starting setup with the model split in mind:
+The standard setup — a generic pane pool plus the pinned architects:
 
 | Worktree            | Repo   | Model  | Role                                                |
 |---------------------|--------|--------|-----------------------------------------------------|
-| `opus-architect`    | engine | Opus   | Core engine work, ECS/render/audio. Stand-by.       |
-| `worker-1`          | engine | class-routed | Executes queued tasks of the dispatched class; plans at opus+ |
-| `worker-2`          | engine | class-routed | Second worker pane — parallel execution             |
-| `worker-3`          | engine | class-routed | Third worker pane                                   |
-| `worker-4`          | engine | class-routed | Fourth worker pane                                  |
-| `sonnet-reviewer`   | engine | Sonnet | First-pass PR review (polling loop)                 |
-| `opus-reviewer`     | engine | Opus   | Final review on flagged PRs (polling loop)          |
-| `merger`            | engine | Opus   | Auto-rebases stale PRs, resolves semantic conflicts (polling loop) |
-| `game-architect`    | game   | Opus   | Game-side architect / stand-by, cross-repo aware    |
+| `opus-architect`    | engine | Fable  | Core engine work, ECS/render/audio. Stand-by.       |
+| `pool-1` … `pool-9` | engine | per dispatch | Generic pane pool — any transient role (worker, reviewers, merger, smoke, epic-steward), routed by the dispatcher; per-role parallelism bounded by `FLEET_CONCURRENCY_<ROLE>` caps |
+| `game-architect`    | game   | Fable  | Game-side architect / stand-by, cross-repo aware    |
 
-The first eight live in `~/src/IrredenEngine/.claude/worktrees/`. The
-last (`game-architect`) lives inside the game repo at
-`~/src/IrredenEngine/creations/game/.claude/worktrees/game-architect`,
-because the game is its own git repo with its own PR namespace.
+The architect and pool worktrees live in
+`~/src/IrredenEngine/.claude/worktrees/`. Each pool worktree also has a
+same-basename game twin at
+`~/src/IrredenEngine/creations/game/.claude/worktrees/pool-<N>` (the
+pane cd's over for game tasks), and `game-architect` lives inside the
+game repo, because the game is its own git repo with its own PR
+namespace.
 
 > **Note:** `fleet-up` also creates `queue-manager` and
 > `queue-manager-ingest` worktrees as scratch terminals for manual
@@ -515,9 +512,9 @@ to bootstrap by hand or recover from a broken state.
 
 Each worktree needs its own seed branch — git refuses to check out
 `master` in a second worktree while the main clone still has it
-checked out, so we create each worktree on a `fleet/<role>` branch
+checked out, so we create each worktree on a `fleet/<name>` branch
 that starts from `origin/master`. The seed branch is just a parking
-spot; `fleet-up` resets it to a fresh `claude/<role>-scratch` branch
+spot; `fleet-up` resets it to a fresh `claude/<name>-scratch` branch
 on every invocation, and `start-next-task` will move it onto a real
 `claude/<area>-<topic>` branch as soon as a task starts.
 
@@ -528,17 +525,16 @@ cd ~/src/IrredenEngine
 git fetch origin master
 
 git worktree add -b fleet/opus-architect  .claude/worktrees/opus-architect  origin/master
-git worktree add -b fleet/worker-1        .claude/worktrees/worker-1        origin/master
-git worktree add -b fleet/worker-2        .claude/worktrees/worker-2        origin/master
-git worktree add -b fleet/worker-3        .claude/worktrees/worker-3        origin/master
-git worktree add -b fleet/worker-4        .claude/worktrees/worker-4        origin/master
-git worktree add -b fleet/sonnet-reviewer .claude/worktrees/sonnet-reviewer origin/master
-git worktree add -b fleet/opus-reviewer   .claude/worktrees/opus-reviewer   origin/master
-git worktree add -b fleet/merger               .claude/worktrees/merger               origin/master
+for n in 1 2 3 4 5 6 7 8 9; do
+    git worktree add -b "fleet/pool-$n" ".claude/worktrees/pool-$n" origin/master
+done
 
 cd ~/src/IrredenEngine/creations/game
 git fetch origin master
 git worktree add -b fleet/game-architect  .claude/worktrees/game-architect  origin/master
+for n in 1 2 3 4 5 6 7 8 9; do
+    git worktree add -b "fleet/game-pool-$n" ".claude/worktrees/pool-$n" origin/master
+done
 ```
 
 Verify:
@@ -547,11 +543,10 @@ Verify:
 git worktree list
 ```
 
-You should see the main clone on `master` plus eight engine worktrees
-(`opus-architect`, `worker-1` … `worker-4`,
-`sonnet-reviewer`, `opus-reviewer`, `merger`) each on
-their own `fleet/*` seed branch, plus a ninth `game-architect` worktree under
-`creations/game/` if the game repo is present. The
+You should see the main clone on `master` plus ten engine worktrees
+(`opus-architect`, `pool-1` … `pool-9`) each on their own `fleet/*`
+seed branch, plus the `game-architect` and game-twin `pool-*`
+worktrees under `creations/game/` if the game repo is present. The
 `fleet/` prefix keeps these distinct from `claude/<area>-<topic>`
 agent branches so `gh pr list` and branch-completion never confuse
 them.
@@ -892,15 +887,16 @@ protesting.
 
 ### Basic setup
 
-Before starting a reviewer session:
+Before starting a reviewer session (in whichever pool worktree the
+review runs — `pool-5` here as the example):
 
 ```bash
-git -C ~/src/IrredenEngine/.claude/worktrees/sonnet-reviewer checkout -B claude/sonnet-reviewer-scratch origin/master
+git -C ~/src/IrredenEngine/.claude/worktrees/pool-5 checkout -B claude/pool-5-scratch origin/master
 ```
 
 Then inside the session you can `gh pr checkout 42`, review, post the
 comment, and re-park for the next PR with
-`git -C ~/src/IrredenEngine/.claude/worktrees/sonnet-reviewer checkout -B claude/sonnet-reviewer-scratch origin/master`
+`git -C ~/src/IrredenEngine/.claude/worktrees/pool-5 checkout -B claude/pool-5-scratch origin/master`
 — always through the explicit `-C` worktree path, never a bare
 `git checkout -B`: the agent shell's cwd persists across commands, and
 a reset that resolves against a drifted cwd parks the scratch branch in
@@ -1203,10 +1199,10 @@ to every future fleet-up.
 | Slash command              | Model  | Worktree           | Loop?         |
 |----------------------------|--------|--------------------|---------------|
 | `/role-opus-architect`     | Opus   | `opus-architect`   | Stand-by      |
-| `/role-worker`             | class-routed (fable\|opus\|sonnet) | `worker-*` | Dispatcher-triggered |
-| `/role-sonnet-reviewer`    | Sonnet | `sonnet-reviewer`  | Polling 10min |
-| `/role-opus-reviewer`      | Opus   | `opus-reviewer`    | Polling 30min |
-| `/role-merger`             | Opus   | `merger`           | Polling 10min |
+| `/role-worker`             | class-routed (fable\|opus\|sonnet) | `pool-*` | Dispatcher-triggered |
+| `/role-sonnet-reviewer`    | Sonnet | `pool-*`           | Dispatcher-triggered |
+| `/role-opus-reviewer`      | Opus   | `pool-*`           | Dispatcher-triggered |
+| `/role-merger`             | Opus   | `pool-*`           | Dispatcher-triggered |
 | `/role-game-architect`     | Opus   | `game-architect`   | Stand-by      |
 
 Each command takes one optional argument: `dry-run` or `live`.
@@ -1365,8 +1361,8 @@ gh issue create --repo jakildev/IrredenEngine \
 Note the issue number printed. Wait ~30 seconds for `fleet-state-scout`
 to ingest it, then confirm it appears in `fleet-queue-list`.
 
-Switch to **worker-1** and type (substituting the actual issue
-number):
+Switch to a pool pane (e.g. **pool-1**) and type (substituting the
+actual issue number):
 
 > exit dry-run mode and do exactly ONE task end-to-end. Pick issue #NNN
 > (test: unit tests for engine/math/physics.hpp) — it's bounded,
@@ -1390,9 +1386,9 @@ finish the dry run first.
 
 ### Step 3 — watch the Sonnet reviewer pick it up
 
-Switch to **sonnet-reviewer** and type:
+Switch to another pool pane and type:
 
-> exit dry-run mode and review exactly ONE PR — the one worker-1
+> exit dry-run mode and review exactly ONE PR — the one the worker
 > just opened. Use the `review-pr` skill. End with the explicit
 > "Opus recheck not required" or "Opus recheck required" line. Stop
 > after the review posts.

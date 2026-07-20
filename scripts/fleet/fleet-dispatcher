@@ -133,9 +133,10 @@ fi
 # dispatch record and a reservation for the same task.
 #
 # Override priority: env var > ~/.fleet/fleet-up.conf > built-in default.
-# Default values match each role's current pane count, so no role hits the
-# cap under normal flow — the cap only fires when reservations from a
-# crashed iteration would push the total over.
+# Panes are a generic pool (tagged @fleet-role "pool"): any transient role
+# dispatches to any idle pool pane, so these caps — not pane topology —
+# are the per-role parallelism budget. The pool size bounds the TOTAL
+# concurrent iterations across all roles.
 FLEET_CONF="${FLEET_CONF:-$HOME/.fleet/fleet-up.conf}"
 # Capture env-set values before sourcing the conf, so a `FLEET_CONCURRENCY_X`
 # in the caller's environment still wins over a value set inside conf.
@@ -208,7 +209,7 @@ if [[ -z "$_worker_cap" ]]; then
 fi
 declare -A ROLE_CONCURRENCY=(
     ["worker"]="$_worker_cap"
-    ["sonnet-reviewer"]="${_env_sonnet_reviewer:-${FLEET_CONCURRENCY_SONNET_REVIEWER:-1}}"
+    ["sonnet-reviewer"]="${_env_sonnet_reviewer:-${FLEET_CONCURRENCY_SONNET_REVIEWER:-4}}"
     ["opus-reviewer"]="${_env_opus_reviewer:-${FLEET_CONCURRENCY_OPUS_REVIEWER:-1}}"
     ["queue-manager"]="${_env_queue_manager:-${FLEET_CONCURRENCY_QUEUE_MANAGER:-1}}"
     ["merger"]="${_env_merger:-${FLEET_CONCURRENCY_MERGER:-1}}"
@@ -485,16 +486,24 @@ if ! [[ "$CLAIM_SETTLE_SECONDS" =~ ^[0-9]+$ ]]; then
 fi
 
 # Roles this dispatcher is responsible for. Architects are excluded
-# (kept on fleet-babysit). Aligned with the worker / reviewer /
-# queue-mgr / merger roles in fleet-up.
+# (kept on fleet-babysit). Panes are a generic pool, so this list — not
+# pane topology — is what enables a role: the smoke-worker and
+# epic-steward roles are opt-in via FLEET_SMOKE_WORKER /
+# FLEET_EPIC_STEWARD (conf or env; pre-pool these flags gated the
+# dedicated pane's creation instead). A disabled role's triggers sit
+# unread, same as when its pane didn't exist.
 DISPATCHED_ROLES=(
     "worker"
     "sonnet-reviewer"
     "opus-reviewer"
     "merger"
-    "smoke-worker"
-    "epic-steward"
 )
+if [[ "${FLEET_SMOKE_WORKER:-0}" == "1" ]]; then
+    DISPATCHED_ROLES+=("smoke-worker")
+fi
+if [[ "${FLEET_EPIC_STEWARD:-0}" == "1" ]]; then
+    DISPATCHED_ROLES+=("epic-steward")
+fi
 # queue-manager is no longer LLM-dispatched. Maintenance (derived-field
 # rendering via fleet-queue-tick) was eliminated in #1229 — the queue is
 # now issue-based. Ingestion (new issues → queue) fires on its own
@@ -659,12 +668,36 @@ pane_has_running_wrapper() {
     pgrep -P "$pane_pid" -f fleet-dispatch-wrap >/dev/null 2>&1
 }
 
+# True when a pane's tag serves a role: an exact role tag (a pinned pane,
+# e.g. a dedicated smoke pane on a secondary host) or the generic "pool"
+# tag any transient role can land on.
+pane_tag_serves_role() {
+    local pane_role="$1" role="$2"
+    [[ "$pane_role" == "$role" || "$pane_role" == "pool" ]]
+}
+
+# True when a worktree carries a reservation. A reservation pins a pool
+# pane's worktree to its paused task until released: only the worker
+# lane may land there (reservations are exclusively worker-resume
+# artifacts — fleet-claim reservation-role maps every task class to
+# "worker"; reviewers/merger/smoke/steward never reserve), and the
+# role-doc step-0.5 resumption picks the task back up. Any other role
+# dispatched onto that worktree would trample the paused task's branch
+# state. Existence check only — no fleet-claim/gh round-trip per pane
+# per tick.
+worktree_is_reserved() {
+    [[ -f "$RESERVATIONS_DIR/$1.json" ]]
+}
+
 find_idle_panes_for_role() {
     local role="$1"
-    list_pane_state | while IFS='|' read -r pane_id pane_role pane_cmd; do
-        if [[ "$pane_role" != "$role" ]]; then
-            continue
-        fi
+    # For the worker lane, reserved-worktree panes print FIRST so a
+    # crash-resume reservation is consumed by the next dispatch instead
+    # of starving while free panes soak up the lane's cap headroom.
+    local -a reserved_panes=() free_panes=()
+    local pane_id pane_role pane_cmd wt_path wt_name
+    while IFS='|' read -r pane_id pane_role pane_cmd; do
+        pane_tag_serves_role "$pane_role" "$role" || continue
         case "$pane_cmd" in
             bash|zsh|sh|fish)
                 # tmux reports "bash" while fleet-dispatch-wrap is running.
@@ -674,10 +707,30 @@ find_idle_panes_for_role() {
                 if pane_has_running_wrapper "$pane_id"; then
                     continue
                 fi
-                printf '%s\n' "$pane_id"
+                wt_name=""
+                wt_path=$(tmux display-message -t "$pane_id" -p '#{pane_current_path}' 2>/dev/null || true)
+                [[ -n "$wt_path" ]] && wt_name=$(basename "$wt_path")
+                if [[ -n "$wt_name" ]] && worktree_is_reserved "$wt_name"; then
+                    if [[ "$role" == "worker" ]]; then
+                        reserved_panes+=("$pane_id")
+                    fi
+                    # Non-worker roles never land on a reserved worktree.
+                    continue
+                fi
+                free_panes+=("$pane_id")
                 ;;
         esac
-    done
+    done < <(list_pane_state)
+    local p
+    # bash 4.0-4.3 errors ("unbound variable") expanding "${empty[@]}" under
+    # `set -u` (safe on >= 4.4, and every real fleet host runs bash 5.x, but
+    # the version floor above nominally admits 4.0) — skip the expansion
+    # entirely when both arrays are empty rather than narrow the floor.
+    if (( ${#reserved_panes[@]} + ${#free_panes[@]} > 0 )); then
+        for p in "${reserved_panes[@]}" "${free_panes[@]}"; do
+            printf '%s\n' "$p"
+        done
+    fi
 }
 
 # Wraps tmux send-keys in a $TIMEOUT_CMD guard (issue #502). A wedged
@@ -735,7 +788,7 @@ pane_id_to_key() {
 }
 
 # Basename of a pane's current working directory — the worktree name
-# (`worker-1` … `worker-4`) fleet panes sit in, which is also the agent
+# (`pool-1` … `pool-9`) fleet panes sit in, which is also the agent
 # name fleet-claim locks are held under. The planning pre-claim (#2197)
 # must claim under EXACTLY this name: the dispatched worker releases
 # with its own worktree basename, so any other claim name would make
@@ -1136,15 +1189,17 @@ count_active_for_role() {
     local role="$1"
     declare -A seen=()
 
-    # Build worktree → busy map for panes tagged with this role. Used
-    # by the reservation pass below to skip idle-pane reservations.
+    # Build worktree → busy map across ALL panes. Used by the
+    # reservation pass below to skip idle-pane reservations. Not
+    # role-filtered: with the generic pane pool a reservation's worktree
+    # can sit under any pool pane, and "busy" is a property of the pane,
+    # not of the role that reserved the worktree.
     declare -A worktree_busy=()
     local have_tmux=0
     if session_exists; then
         have_tmux=1
         local pane_id pane_role pane_cmd wt_path wt_name
         while IFS='|' read -r pane_id pane_role pane_cmd; do
-            [[ "$pane_role" == "$role" ]] || continue
             wt_path=$(tmux display-message -t "$pane_id" -p '#{pane_current_path}' 2>/dev/null || true)
             [[ -n "$wt_path" ]] || continue
             wt_name=$(basename "$wt_path")
@@ -1437,6 +1492,11 @@ dispatch_role() {
     # iteration finishes or a reservation releases. Logged once per cap-held
     # window to avoid spamming.
     local cap="${ROLE_CONCURRENCY[$role]:-0}"
+    # Remaining cap headroom bounds this tick's fan-out. Pre-pool this was
+    # implicit — a role could never out-dispatch its dedicated pane count —
+    # but any pool pane can serve any role, so a single trigger meeting a
+    # mostly-idle pool would otherwise blow straight past the cap.
+    local role_headroom=-1   # -1 = uncapped
     if (( cap > 0 )); then
         local active
         active=$(count_active_for_role "$role")
@@ -1448,13 +1508,14 @@ dispatch_role() {
             return
         fi
         unset "CAP_DEFER_LOGGED[$role]"
+        role_headroom=$(( cap - active ))
     fi
 
-    # Fan out across every idle pane for this role, skipping any that
-    # already have an in-flight dispatch record. A role with multiple
-    # panes (the worker lane has worker-1..4)
-    # gets concurrent iterations this way; the previous design
-    # single-flighted the role because the dispatch record was keyed
+    # Fan out across every idle pane serving this role (its own tag or
+    # the generic "pool" tag), skipping any that already have an
+    # in-flight dispatch record. Any role gets concurrent iterations
+    # this way, bounded by role_headroom above; the original design
+    # single-flighted each role because the dispatch record was keyed
     # by role name and only the first idle pane was ever picked.
     #
     # TASK coordination stays claim-side: each iteration runs the same
@@ -1540,6 +1601,12 @@ dispatch_role() {
     local plan_attempted=""
     while IFS= read -r pane_id; do
         [[ -n "$pane_id" ]] || continue
+        # Role-cap headroom: stop once this tick's launches have consumed the
+        # role's remaining cap slots (cap - active at tick start). Records
+        # written this tick aren't in that count, so bound by launches.
+        if (( role_headroom >= 0 && dispatched >= role_headroom )); then
+            break
+        fi
         # Claimable-count cap: stop once this tick's launches have filled the
         # class's remaining claimable headroom. Extra idle panes would only
         # no-op claim. claim_headroom<0 is the uncapped (legacy) path.
@@ -2038,6 +2105,18 @@ case "${1:-}" in
             exit 2
         fi
         count_active_for_role "$2"
+        exit 0
+        ;;
+    --find-idle)
+        # Print the idle panes that would serve <role> this tick, one
+        # pane_id per line, reserved-for-role panes first (pool tag +
+        # reservation-binding semantics included). Used by tests and for
+        # operator inspection.
+        if [[ -z "${2:-}" ]]; then
+            echo "usage: fleet-dispatcher --find-idle <role>" >&2
+            exit 2
+        fi
+        find_idle_panes_for_role "$2"
         exit 0
         ;;
     --count-recent-active-class)

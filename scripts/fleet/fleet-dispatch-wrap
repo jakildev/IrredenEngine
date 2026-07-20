@@ -186,7 +186,20 @@ _read_sidecar() { python3 -c "import json;print(json.load(open('$SIDECAR')).get(
 RESUMED=0
 RESUME_ID=""
 if (( _resume_role )) && [[ -f "$SIDECAR" ]]; then
-    RESUME_ID=$(_read_sidecar session_id)
+    # Pool panes host every transient role, so the sidecar this worktree
+    # carries may belong to a DIFFERENT role's interrupted session (e.g.
+    # a hard-killed reviewer's sidecar, now hit by a worker dispatch).
+    # Resuming across roles would continue the wrong kind of work under
+    # this dispatch's identity — only resume a role-matching sidecar and
+    # launch fresh otherwise (the fresh launch overwrites the stale
+    # sidecar below; resume is a best-effort optimization, not state).
+    _srole=$(_read_sidecar role)
+    if [[ -n "$_srole" && "$_srole" != "$ROLE" ]]; then
+        echo "fleet-dispatch-wrap: sidecar for $worktree_name belongs to role '$_srole' (this dispatch: '$ROLE') — launching fresh" >&2
+    else
+        RESUME_ID=$(_read_sidecar session_id)
+    fi
+    unset _srole
     if [[ -n "$RESUME_ID" ]]; then
         RESUMED=1
         # Resume with the ORIGINAL session's model/effort (stored at launch),

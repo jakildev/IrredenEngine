@@ -41,9 +41,9 @@ and comments, labels. It never pushes code.
 | **downstream-repo-slug** | The downstream repo slug, used for downstream-repo epics. |
 | **repo-root** | Absolute path of the primary clone. |
 | **downstream-repo-root** | Absolute path of the downstream clone. |
-| **worktree-path** | The steward's dedicated worktree under the primary clone. |
-| **downstream-worktree-path** | The steward's worktree under the downstream clone (cd here before any git op for a downstream epic). |
-| **role-name** | The role's `fleet-claim` agent id (e.g. `epic-steward`). |
+| **worktree-path** | The pool worktree the steward was dispatched into under the primary clone. Its basename (`basename $PWD`, e.g. `pool-4`) is your **agent name** for `fleet-claim` and heartbeats — never derive it from the role name. |
+| **downstream-worktree-path** | The same-basename twin worktree under the downstream clone (cd here before any git op for a downstream epic). |
+| **role-name** | The role's name for banners and feedback (e.g. `epic-steward`). Not the `fleet-claim` agent id — that is the worktree basename. |
 | **role-banner** | The one-line banner printed at startup. |
 | **claim-tool-flags** | Per-repo namespace flags for `fleet-claim` (e.g. none for the primary repo, `--repo game` for the downstream repo — global flags, BEFORE the subcommand). |
 | **plans-path** | Where plan files live: the repo copy (synced from master) and the local staging dir. |
@@ -143,10 +143,11 @@ in GitHub (labels, umbrella bodies/comments) and repo-committed plan
 files — never in a session.
 
 0. **Heartbeat.** See [`FLEET-RUNTIME.md § Heartbeat`](FLEET-RUNTIME.md#heartbeat--step-0)
-   (the helper argument is your **role-name**). Re-touch before long
+   (the helper argument is your **worktree basename**, from
+   `basename $PWD`). Re-touch before long
    reads and before `commit-and-push`.
 1. **Claim an epic before touching it:**
-   `fleet-claim <claim-tool-flags> steward-claim <umbrella-#> <role-name>`
+   `fleet-claim <claim-tool-flags> steward-claim <umbrella-#> <your-worktree-basename>`
    - Exit 0 — you hold the umbrella's `fleet:stewarding-<host>-<agent>`
      label; proceed.
    - Exit 1 — another steward session holds it; skip this epic entirely.

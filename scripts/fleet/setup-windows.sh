@@ -44,13 +44,14 @@ REPO_URL="${FLEET_REPO_URL:-git@github.com:jakildev/IrredenEngine.git}"
 # Set a number to cap it if that ever changes (e.g. FLEET_CPU_BUDGET=16).
 FLEET_CPU_BUDGET="${FLEET_CPU_BUDGET:-auto}"
 FLEET_BUILD_WORKERS="${FLEET_BUILD_WORKERS:-4}"
-# Engine fleet roles fleet-up drives (kept in sync with fleet-up's pane list).
+# Engine fleet worktrees fleet-up drives (kept in sync with fleet-up's
+# worktree list): the generic pane pool (pool-1..pool-9, any transient role)
+# plus the pinned architect and queue-manager scratch worktrees.
 # Game-repo worktrees are created by fleet-up itself when creations/game exists.
 # STORAGE: each worktree's source is ~250 MB; once it compiles, its build/ tree
 # is ~4-5 GB — the full list below grows to ~25-55 GB of build trees over time.
-# On a tight disk, trim it: FLEET_ROLES="worker-1 sonnet-reviewer".
-# Add smoke-worker only if FLEET_SMOKE_WORKER=1 — it needs an extra ~5 GB build.
-FLEET_ROLES="${FLEET_ROLES:-opus-architect worker-1 worker-2 worker-3 worker-4 sonnet-reviewer opus-reviewer queue-manager queue-manager-ingest merger}"
+# On a tight disk, trim it: FLEET_ROLES="pool-1 pool-2".
+FLEET_ROLES="${FLEET_ROLES:-opus-architect pool-1 pool-2 pool-3 pool-4 pool-5 pool-6 pool-7 pool-8 pool-9 queue-manager queue-manager-ingest}"
 
 say() { printf '\n== %s ==\n' "$*"; }
 

@@ -29,8 +29,9 @@ diff, or invoking the `review-pr` skill:
 fleet-claim review-claim <N> <your-worktree-name>
 ```
 
-`<your-worktree-name>` is your worktree basename — `sonnet-reviewer`
-or `opus-reviewer`. Add `--repo game` BEFORE the subcommand for
+`<your-worktree-name>` is your worktree basename — the pool worktree
+you were dispatched into (`pool-<N>`, from `basename $PWD`, never
+your role name). Add `--repo game` BEFORE the subcommand for
 game-repo PRs.
 
 - **Exit 0** — you own this PR. Proceed.
@@ -65,8 +66,8 @@ on your part — just don't expect to see mid-amend PRs.
 ## Scratch reset & main-clone cwd discipline
 
 Both reviewer roles park their worktree on a throwaway branch
-(`claude/<role>-scratch`) at startup and re-park after the last
-candidate. Two rules keep that reset from contaminating shared state:
+(`claude/<your-worktree-name>-scratch`) at startup and re-park after
+the last candidate. Two rules keep that reset from contaminating shared state:
 
 **1. The reset must be cwd-proof.** The Bash tool's working directory
 persists across calls, so a `cd` from earlier in the iteration
@@ -79,7 +80,7 @@ is irrelevant:
 
 ```
 fleet-assert-worktree <your-worktree-name>
-git -C ~/src/IrredenEngine/.claude/worktrees/<your-worktree-name> checkout -B claude/<role>-scratch origin/master
+git -C ~/src/IrredenEngine/.claude/worktrees/<your-worktree-name> checkout -B claude/<your-worktree-name>-scratch origin/master
 ```
 
 If `fleet-assert-worktree` exits non-zero, the shell has drifted out
@@ -90,8 +91,9 @@ its own Bash call, re-run the assert, then do the reset.
 
 **2. Never run mutating git in a shared MAIN clone** — neither the
 engine clone (`~/src/IrredenEngine`) nor the game clone
-(`~/src/IrredenEngine/creations/game`). Reviewers have **no game
-worktree**, and "you cannot check out game PRs into this engine
+(`~/src/IrredenEngine/creations/game`). Reviewer iterations do
+**not** use the pool worktree's game twin, and "you cannot check out
+game PRs into this engine
 worktree" does NOT mean "check them out in the game clone instead" —
 it means game-PR review is diff-only. Read the diff with `fleet-pr
 diff <N> --repo game`; read game file context with read-only
@@ -399,7 +401,7 @@ Shared by both reviewer roles, on top of
 Each reviewer file points here; role-specific additions stay in the
 role file.
 
-- **Never commit, push, or open PRs from a reviewer worktree.** The
+- **Never commit, push, or open PRs during a reviewer iteration.** The
   `review-pr` skill documents this as an anti-pattern; treat it as a
   hard rule.
 - **Never `cd` into or run mutating git in a shared MAIN clone**
