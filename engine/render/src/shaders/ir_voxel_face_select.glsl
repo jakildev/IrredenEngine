@@ -28,6 +28,17 @@ layout(rgba8, binding = IR_VOXEL_FOG_GRID_BINDING) readonly uniform image2D canv
 layout(std140, binding = 27) uniform FogObserverData {
     vec4 visionCircles[kMaxFogVisionCircles]; // (centerX, centerY, radius, edgeSoftness)
     int visionCircleCount;
+    // Per-circle height penalty (#2260), std140-appended after the count so the
+    // existing fields keep their offsets (std140 16-aligns the array, landing it
+    // at 144 in every declaring shader whether or not the block spells out the
+    // trailing pad ints). visionCircleHeights[i] = (observerZ, zCost, 0, 0). The
+    // face-selection math here never reads it — only stage 1's own-column DROP
+    // does (fogColumnRevealZ / fogColumnRevealNearestZ in
+    // c_voxel_to_trixel_stage_1_body.glsl) — but the field lives on this block
+    // because GLSL admits exactly one declaration of a named uniform block and
+    // this is it. zCost 0 (the default) → the drop is byte-identical to the
+    // pre-#2260 2D clip.
+    vec4 visionCircleHeights[kMaxFogVisionCircles];
 };
 
 // Fog reveal of world grid COLUMN `col` in [0,1]. Stage 1 emits the cut face's
