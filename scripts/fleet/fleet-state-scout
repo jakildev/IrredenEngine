@@ -1638,7 +1638,11 @@ def _load_ancestry_memo():
 
 def _save_ancestry_memo(memo):
     try:
-        ANCESTRY_MEMO_FILE.write_text(json.dumps(memo))
+        # write_atomic (unique-temp + os.replace) so a concurrent scout reader
+        # under a leader/follower dual-poll tick only ever sees the complete
+        # prior or new memo, never a torn splice — matches every other writer in
+        # this file (state.json, the PR/diff/issue caches, the seen-file hashes).
+        write_atomic(ANCESTRY_MEMO_FILE, json.dumps(memo))
     except OSError:
         pass
 
