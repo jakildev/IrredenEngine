@@ -722,9 +722,15 @@ find_idle_panes_for_role() {
         esac
     done < <(list_pane_state)
     local p
-    for p in "${reserved_panes[@]}" "${free_panes[@]}"; do
-        printf '%s\n' "$p"
-    done
+    # bash 4.0-4.3 errors ("unbound variable") expanding "${empty[@]}" under
+    # `set -u` (safe on >= 4.4, and every real fleet host runs bash 5.x, but
+    # the version floor above nominally admits 4.0) — skip the expansion
+    # entirely when both arrays are empty rather than narrow the floor.
+    if (( ${#reserved_panes[@]} + ${#free_panes[@]} > 0 )); then
+        for p in "${reserved_panes[@]}" "${free_panes[@]}"; do
+            printf '%s\n' "$p"
+        done
+    fi
 }
 
 # Wraps tmux send-keys in a $TIMEOUT_CMD guard (issue #502). A wedged

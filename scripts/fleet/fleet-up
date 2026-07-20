@@ -405,9 +405,11 @@ export FLEET_MODEL_MERGER FLEET_MODEL_OPUS_REVIEWER FLEET_FABLE_FALLBACK
 export OPUS_MODEL SONNET_MODEL
 
 # Short human-readable tag for a model string, shown in pane labels next
-# to the role slug (e.g. "worker-1 [fable 1m]"). Role slugs keep the
-# historical tier names; the bracket tag is what tells you which model
-# the tier is actually running this session.
+# to the role slug. Pool panes boot labeled "pool-1 [idle]"; once
+# fleet-dispatch-wrap dispatches into one it re-tags with the live role
+# and model, e.g. "worker [fable 1m]" (no numeric suffix — see
+# fleet-dispatch-wrap's pane re-tag). The bracket tag is what tells you
+# which model the role is actually running this session.
 model_tag() {
     local tag="$1"
     tag="${tag/claude-fable-5/fable}"
@@ -460,6 +462,10 @@ migrate_legacy_worker_worktrees() {
     local half=$(( $# / 2 ))
     OLD_NAMES=("${@:1:$half}")
     NEW_NAMES=("${@:$((half + 1))}")
+    (( ${#OLD_NAMES[@]} == ${#NEW_NAMES[@]} )) || {
+        echo "fleet-up: migrate_legacy_worker_worktrees: odd argument count — old/new name split is unbalanced" >&2
+        exit 1
+    }
     local i old new old_wt new_wt dirty
 
     for (( i = 0; i < ${#OLD_NAMES[@]}; i++ )); do
@@ -508,6 +514,18 @@ ENGINE_MIGRATE_OLD=(worker-1 worker-2 worker-3 worker-4 sonnet-reviewer opus-rev
 ENGINE_MIGRATE_NEW=(pool-1   pool-2   pool-3   pool-4   pool-5          pool-6        pool-7 pool-8       pool-9       pool-1        pool-2        pool-3         pool-4)
 GAME_MIGRATE_OLD=(worker-1 worker-2 worker-3 worker-4 merger epic-steward)
 GAME_MIGRATE_NEW=(pool-1   pool-2   pool-3   pool-4   pool-7 pool-9)
+
+# A future edit to one *_MIGRATE_OLD/*_MIGRATE_NEW array without updating its
+# pair would silently mis-map every migration past the imbalance point (no
+# runtime error otherwise) — catch it here, at definition time.
+(( ${#ENGINE_MIGRATE_OLD[@]} == ${#ENGINE_MIGRATE_NEW[@]} )) || {
+    echo "fleet-up: ENGINE_MIGRATE_OLD/NEW length mismatch (${#ENGINE_MIGRATE_OLD[@]} vs ${#ENGINE_MIGRATE_NEW[@]}) — fix the maps" >&2
+    exit 1
+}
+(( ${#GAME_MIGRATE_OLD[@]} == ${#GAME_MIGRATE_NEW[@]} )) || {
+    echo "fleet-up: GAME_MIGRATE_OLD/NEW length mismatch (${#GAME_MIGRATE_OLD[@]} vs ${#GAME_MIGRATE_NEW[@]}) — fix the maps" >&2
+    exit 1
+}
 
 (cd "$ENGINE" && git fetch origin --quiet) || {
     echo "fleet-up: engine git fetch failed" >&2; exit 1; }
