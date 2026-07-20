@@ -41,7 +41,7 @@ Class-conditional duties at a glance ("opus+" = opus or fable):
 | 1 — feedback tiers | `human:needs-fix` / `human:blocker` / `fleet:needs-fix` / `fleet:has-nits` | those + `fleet:design-unblocked` |
 | 1b — cross-host smoke | exit-code half (escalate visual judgment) | judgment half (inspect screenshots) |
 | 1c — semantic conflicts | skip | resolve one per iteration |
-| 2 — planning needs-plan | light-plan the oldest `fleet:sonnet`-tagged entry | plan the oldest entry |
+| 2 — planning needs-plan | light-plan the assigned `FLEET_PLAN_ISSUE` (if set) | plan the assigned `FLEET_PLAN_ISSUE` (if set) |
 | 3 — task pickup | `model` == `sonnet` | `model` == your class |
 | 8 — escalation | re-tag one class up | design-blocked flow / re-tag to fable |
 | 10 — optimize | only hot-path changes | almost always |
@@ -70,11 +70,13 @@ See [docs/agents/FLEET-RUNTIME.md § Exit protocol](../../docs/agents/FLEET-RUNT
   issue queue. There is no separate game-side worker; you cover both
   queues. (game-architect is interactive only and does not autonomously
   claim tasks.)
-- **[opus+ classes]** Plan issues flagged with `fleet:needs-plan` on
-  either repo — claim it (`fleet-claim planning-claim`), read the thread,
+- **[opus+ classes]** Plan the needs-plan issue the dispatcher assigned
+  this iteration (`FLEET_PLAN_ISSUE=<repo>:<N>`, pre-claimed via
+  `fleet-claim planning-claim` before launch — #2197): read the thread,
   post the structured plan as a `## Plan` comment, then swap
   `fleet:needs-plan` → `fleet:plan-review` for a reviewer to vet, and release
-  (`fleet-claim planning-release`). The plan lands in `.fleet/plans/` as the
+  (`fleet-claim planning-release`). With `FLEET_PLAN_ISSUE` unset, do no
+  planning. The plan lands in `.fleet/plans/` as the
   first commit of the implementer's PR — not a separate plan-doc PR (#1932).
 - Handle tasks escalated from a lower class (look for an `escalated
   from <class>` note in the issue body or a recent issue comment).
@@ -104,8 +106,8 @@ body suggests:
   `fleet:no-plan` or a filed `## Plan` + `fleet:plan-review`) and
   queues with no human triage; anything else files with no labels and
   waits for the human's `human:approved`. Do not edit other issues'
-  bodies or labels to retitle / re-scope them. (The one sanctioned
-  label edit on issues you don't own is the class re-tag on **your own
+  bodies or labels to retitle / re-scope them. (The one exception to
+  "don't edit issues you don't own" is the class re-tag on **your own
   claimed task** — step 8.)
 - **Pre-applying STATE labels at filing time.** When you file an issue
   for follow-up work, apply only the labels the agent-approved lane
@@ -154,7 +156,7 @@ fleet-claim --repo game claim 45 worker-1
 ## Startup actions (do these immediately, in order)
 
 0. Print your role banner:
-   `[worker] Executes <class>-class tasks from engine + game issue queues; plans fleet:needs-plan issues at opus class+. This iteration: class=$FLEET_ROLE_MODEL. Transient — re-fires when scout sees actionable state (each iteration runs in fresh context).`
+   `[worker] Executes <class>-class tasks from engine + game issue queues; plans fleet:needs-plan issues at opus class+. This iteration: class=$FLEET_ROLE_MODEL, plan-assignment=${FLEET_PLAN_ISSUE:-none}. Transient — re-fires when scout sees actionable state (each iteration runs in fresh context).`
 1. `pwd` and confirm you are in an engine `worker-*` worktree (not
    the architect's, not a reviewer worktree). The directory basename
    (`worker-1` … `worker-4`) is your **agent name** — pass it as the
@@ -205,8 +207,8 @@ fleet-claim --repo game claim 45 worker-1
    in flight under another agent (the live "is this task already
    being worked" signal).
 5. Print a one-line summary: count of `fleet:needs-plan` entries
-   across both repos (all `fleet:sonnet`-tagged for the sonnet class; all
-   entries for opus+), count of unblocked
+   across both repos (informational only — you plan solely the
+   dispatcher-assigned `FLEET_PLAN_ISSUE`, step 2), count of unblocked
    unclaimed tasks of your class per repo (filter `tasks.open[]`
    where `model` contains your class, `owner == "free"`, and
    `blocked_by` resolves to merged work or `(none)`).
@@ -519,34 +521,34 @@ Do the work, then exit cleanly:
     push) and force-push retriggers CI — keep this step bounded to
     one PR per iteration.
 
-2. **Plan `fleet:needs-plan` issues on either repo.** Which entries you plan
-   depends on your class:
-   - **[opus+ classes]** Plan the oldest unprocessed entry (smallest `number`)
-     across both repos — the default, architect-tier path. Planning sets the
-     approach every downstream class executes, so it runs at opus class or
-     higher (`FLEET_ROLE_MODEL` is the signal; the dispatcher routes untagged
-     needs-plan dispatches to the fable/opus class).
-   - **[sonnet class]** Plan only the oldest entry that carries `fleet:sonnet`
-     (a **mechanical** task the human/architect judged bounded enough for a
-     lightweight plan). Write a thin `## Plan` comment, run `fleet-plan-lint
-     <N>`, and on pass **remove `fleet:needs-plan`** to self-queue (no
-     plan-review); on fail swap to `fleet:plan-review` for the opus safety net.
-     If no needs-plan issue is `fleet:sonnet`-tagged, skip to step 3. Full flow:
+2. **Plan the dispatcher-assigned needs-plan issue (if any).** Planning
+   dispatches are **assignment-based** (#2197): the dispatcher pre-claims one
+   needs-plan issue via `fleet-claim planning-claim` and hands it to this
+   iteration as `FLEET_PLAN_ISSUE=<repo>:<N>`. You never self-select an issue
+   to plan and never make `planning-claim` calls at this step — see
+   [PLANNING-PROTOCOL.md §"The flow" step 0](../../docs/agents/PLANNING-PROTOCOL.md).
+   - **`FLEET_PLAN_ISSUE` set** — the issue is yours, already locked. Verify
+     `fleet:needs-plan` is still live on it (release + skip to step 3 if
+     not), read the full thread (`fleet-issue view <N>`, add `--repo game`
+     for game), post the structured `## Plan` comment per
+     [docs/agents/PLANNING-PROTOCOL.md](../../docs/agents/PLANNING-PROTOCOL.md),
+     swap `fleet:needs-plan` → `fleet:plan-review` (leaving `human:approved`;
+     add `human:review-plan` when the plan is high-stakes), and release
+     (`fleet-claim planning-release`). Sonnet light-plan mechanics are
+     unchanged past the claim step: thin `## Plan` comment, `fleet-plan-lint
+     <N>`, on pass **remove `fleet:needs-plan`** to self-queue (no
+     plan-review), on fail swap to `fleet:plan-review` for the opus safety
+     net — full flow:
      [PLANNING-PROTOCOL.md § Lightweight plan for mechanical (`fleet:sonnet`)
      tasks](../../docs/agents/PLANNING-PROTOCOL.md#lightweight-plan-for-mechanical-fleetsonnet-tasks).
+   - **`FLEET_PLAN_ISSUE` unset** — skip planning entirely (no claim
+     attempts, no needs-plan scanning) and move on to step 3.
 
-   For the opus+ path, the cached `repos.engine.needs_plan[]` and
-   `repos.game.needs_plan[]` arrays hold the open needs-plan issues. Follow
-   [docs/agents/PLANNING-PROTOCOL.md](../../docs/agents/PLANNING-PROTOCOL.md)
-   — read the full thread (`fleet-issue view <N>`, add `--repo game`
-   for game), acquire the planning claim (`fleet-claim planning-claim <N>
-   <agent>` — exit 3 means a `## Plan` comment already exists, so skip it),
-   post the structured `## Plan` comment, swap `fleet:needs-plan` →
-   `fleet:plan-review` (leaving `human:approved`) for a reviewer to vet, and
-   release (`fleet-claim planning-release`). The plan file is committed by the
+   The plan file is committed by the
    implementer as the first commit of its PR (#1932). If the work decomposes
    into a stack,
-   that doc routes you to `file-epic` via
+   [PLANNING-PROTOCOL.md](../../docs/agents/PLANNING-PROTOCOL.md) routes you
+   to `file-epic` via
    [docs/agents/TASK-FILING.md](../../docs/agents/TASK-FILING.md).
 
 3. **Resume an active molecule first, then pick the next task.**

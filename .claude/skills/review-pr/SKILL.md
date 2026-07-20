@@ -142,8 +142,22 @@ any `c_compute_*shadow*.glsl` / `.metal`)
 
 **Tests / build**
 - Code change with no corresponding test change where a test existed.
-- New feature with no new test at all (flag as needs-fix unless the user
-  explicitly said "no tests").
+- New **public surface** with no covering test — judge per *surface*, not
+  per PR: a PR that tests one surface while shipping others uncovered still
+  fails this check; flag each uncovered surface as needs-fix unless the
+  human explicitly waived tests ("no tests" stays a human-explicit waiver).
+  Specifically call out:
+  - a new **Lua binding** needs a `test/script/lua_*_test.cpp` exercising
+    the sol2 seam (the existing `lua_*_test.cpp` files there are the
+    precedent);
+  - a facility with **two registration paths** (free-function params AND
+    `System<N>` spec-member detection) needs both paths covered.
+  Worked example (#2425): the per-system cadence gate shipped 13 solid
+  SystemManager tests, but the new `IRSystem.*` cadence Lua surface and the
+  `kCadence`/`kCadenceOffset` spec-member path shipped with zero coverage —
+  under the old "a new test exists" wording that was unflaggable; under
+  per-surface wording each gap is a needs-fix hook. Suite layout and
+  authoring conventions: [`test/CLAUDE.md`](../../../test/CLAUDE.md).
 - Build or format-check not run before opening the PR (check the commit
   message, or run `fleet-build --target format-changed` yourself if cheap).
 - Verification claims green over an unclean exit: a PR body or run log that
