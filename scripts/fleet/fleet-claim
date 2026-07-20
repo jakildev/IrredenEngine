@@ -186,6 +186,25 @@ EOF
     return 0
 }
 
+# require_agent_token <cmd-name> <token>
+#   Exit 0 = valid; exit 2 = invalid (with stderr message). Refuses an empty
+#   token or one that looks like a flag (--*) — a caller mistake where a flag
+#   meant elsewhere (most commonly --repo placed after the subcommand instead
+#   of before it, or a stray --role/--agent) lands on the <agent> positional
+#   and gets silently stamped into a claim label, e.g.
+#   fleet:reviewing-mac---role (#2441). cmd_claim / cmd_planning_claim already
+#   guard this inline via their own optional-agent shift-parse and don't call
+#   this; every other fixed-arity agent-positional subcommand (review-/
+#   resolving-/amending-/steward- claim and release) does.
+require_agent_token() {
+    local cmd_name="$1" token="${2:-}"
+    if [[ -z "$token" || "$token" == --* ]]; then
+        echo "fleet-claim ${cmd_name}: <agent> is required and must not look like a flag, got '${token:-<empty>}'" >&2
+        return 2
+    fi
+    return 0
+}
+
 # --- slug canonicalization ------------------------------------------------
 
 slugify() {
@@ -1869,7 +1888,7 @@ cmd_cleanup() {
 }
 
 # cmd_cleanup_gh <repo> [<repo> ...]
-#   Three-pass GitHub label sweep — see help text for the full contract.
+#   Five-pass GitHub label sweep — see help text for the full contract.
 cmd_cleanup_gh() {
     if ! command -v gh >/dev/null 2>&1; then
         echo "fleet-claim cleanup --gh: 'gh' not on PATH; skipping" >&2
@@ -2183,6 +2202,32 @@ for issue in issues:
                     "cleanup --gh: planning remove-label failed"
             fi
         done <<< "$planning_plan"
+    done
+
+    # Fifth pass: reap flag-token-consumed claim labels — a label whose
+    # <agent> segment starts with '--' can only exist because a flag was
+    # consumed as the <agent> positional, e.g. fleet:reviewing-mac---role
+    # from `review-claim <pr> --role <agent>`. No real agent name starts
+    # with '-', so this shape is unconditionally malformed — no TTL/age/
+    # heartbeat check needed, unlike the passes above. `gh label delete`
+    # removes the catalog entry AND strips it off every issue/PR carrying
+    # it in one call. See #2441.
+    for repo in "${repos[@]}"; do
+        local orphan_names
+        orphan_names=$(gh label list --repo "$repo" --limit 300 \
+            --json name --jq \
+            '.[] | select(.name | test("^fleet:(reviewing|resolving|amending|stewarding)-(mac|linux|windows)---")) | .name' \
+            2>/dev/null || echo "")
+        [[ -z "$orphan_names" ]] && continue
+        while IFS= read -r label_name; do
+            [[ -z "$label_name" ]] && continue
+            if gh label delete "$label_name" --repo "$repo" --yes >/dev/null 2>&1; then
+                echo "cleanup --gh: reaped orphan claim label '$label_name' on $repo (flag-token-consumed, #2441)"
+                total_removed=$((total_removed + 1))
+            else
+                echo "fleet-claim: WARN failed to delete orphan label '$label_name' on $repo" >&2
+            fi
+        done <<< "$orphan_names"
     done
 
     if [[ $total_removed -eq 0 ]]; then
@@ -4331,59 +4376,59 @@ case "${1:-}" in
         cmd_reconcile "$@"
         ;;
     review-claim)
-        if [[ -z "${3:-}" ]]; then
+        require_agent_token "review-claim" "${3:-}" || {
             echo "usage: fleet-claim [--repo <ns>] review-claim <pr-number> <agent>" >&2
             exit 2
-        fi
+        }
         cmd_review_claim "$2" "$3"
         ;;
     review-release)
-        if [[ -z "${3:-}" ]]; then
+        require_agent_token "review-release" "${3:-}" || {
             echo "usage: fleet-claim [--repo <ns>] review-release <pr-number> <agent>" >&2
             exit 2
-        fi
+        }
         cmd_review_release "$2" "$3"
         ;;
     resolving-claim)
-        if [[ -z "${3:-}" ]]; then
+        require_agent_token "resolving-claim" "${3:-}" || {
             echo "usage: fleet-claim [--repo <ns>] resolving-claim <pr-number> <agent>" >&2
             exit 2
-        fi
+        }
         cmd_resolving_claim "$2" "$3"
         ;;
     resolving-release)
-        if [[ -z "${3:-}" ]]; then
+        require_agent_token "resolving-release" "${3:-}" || {
             echo "usage: fleet-claim [--repo <ns>] resolving-release <pr-number> <agent>" >&2
             exit 2
-        fi
+        }
         cmd_resolving_release "$2" "$3"
         ;;
     amending-claim)
-        if [[ -z "${3:-}" ]]; then
+        require_agent_token "amending-claim" "${3:-}" || {
             echo "usage: fleet-claim [--repo <ns>] amending-claim <pr-number> <agent>" >&2
             exit 2
-        fi
+        }
         cmd_amending_claim "$2" "$3"
         ;;
     amending-release)
-        if [[ -z "${3:-}" ]]; then
+        require_agent_token "amending-release" "${3:-}" || {
             echo "usage: fleet-claim [--repo <ns>] amending-release <pr-number> <agent>" >&2
             exit 2
-        fi
+        }
         cmd_amending_release "$2" "$3"
         ;;
     steward-claim)
-        if [[ -z "${3:-}" ]]; then
+        require_agent_token "steward-claim" "${3:-}" || {
             echo "usage: fleet-claim [--repo <ns>] steward-claim <umbrella-issue> <agent>" >&2
             exit 2
-        fi
+        }
         cmd_steward_claim "$2" "$3"
         ;;
     steward-release)
-        if [[ -z "${3:-}" ]]; then
+        require_agent_token "steward-release" "${3:-}" || {
             echo "usage: fleet-claim [--repo <ns>] steward-release <umbrella-issue> <agent>" >&2
             exit 2
-        fi
+        }
         cmd_steward_release "$2" "$3"
         ;;
     planning-claim)
@@ -4572,7 +4617,7 @@ commands:
                                 (default: 7200).
   cleanup [--repo o/r] [--gh] ...
                                 Remove claims whose linked issue is
-                                CLOSED. With --gh also runs four
+                                CLOSED. With --gh also runs five
                                 GitHub sweeps:
                                 (1) stale fleet:reviewing-*,
                                     fleet:resolving-*, and
@@ -4598,7 +4643,15 @@ commands:
                                 (4) stale fleet:planning-* labels off
                                     open fleet:needs-plan issues (age >
                                     FLEET_CLAIM_STALE_SECS_PLANNING,
-                                    default 3600s).
+                                    default 3600s),
+                                (5) orphan fleet:(reviewing|resolving|
+                                    amending|stewarding)-<host>---*
+                                    catalog labels off every issue/PR
+                                    (a flag was consumed as the <agent>
+                                    positional) — deleted outright via
+                                    `gh label delete`, no TTL/age check
+                                    since the `---` shape can never be a
+                                    real agent name (#2441).
                                 `fleet:claim-*` labels on CLOSED
                                 issues are preserved as a historical
                                 "who worked on this" record.
