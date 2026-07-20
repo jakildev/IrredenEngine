@@ -35,14 +35,13 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform ivec4 visibleFaceIds;       // offset 128
     uniform vec4 voxelDepthAxis;        // offset 144
     uniform vec4 detachedWorldReceive;  // offset 160
-    // Un-widened (no shadow-feeder sweep) visible iso viewport (#1740). Two
-    // consumers here: the per-voxel occlusion test only culls voxels fully
-    // inside this box — a caster in the shadow-feeder swept ring (inside
-    // cullIsoMin/Max but outside here) must keep its sun shadow (mirrors
-    // dispatchChunkOcclusion's fully-visible eligibility) — and the #2258
-    // Step-B classify routes a survivor OUTSIDE this box (an off-screen
-    // feeder, the exact stage-2 #1740 skip convention) to the feeder dispatch
-    // struct instead of the full-density visible list.
+    // Un-widened (no shadow-feeder sweep) visible iso viewport (#1740).
+    // Consumer here: the #2258 Step-B classify routes a survivor OUTSIDE this
+    // box (an off-screen feeder, the exact stage-2 #1740 skip convention) to
+    // the feeder dispatch struct instead of the full-density visible list. The
+    // per-voxel occlusion cull no longer gates on this box as of #2298 — it now
+    // tests the full shadow-feeder-widened canvas via a Hi-Z canvas-COVERAGE
+    // guard (see voxelOccludedByHiZ); visibleIsoBounds must stay for the classify.
     uniform ivec4 visibleIsoBounds;     // offset 176
     uniform int resolveMode;            // offset 192
     // Per-voxel Hi-Z occlusion-cull gate (#1812): 0 = off (byte-identical),
@@ -245,11 +244,19 @@ void writeDispatchDims(uint base, uint microSliceCount) {
 // chunk test leaves on the table. Conservative + off by default:
 //   * occlusionCullMipCount == 0 (the default; any non-cardinal / rotating /
 //     re-voxelize / no-Hi-Z frame) -> no test, byte-identical to master.
-//   * Only voxels inside the UN-WIDENED visible viewport are tested. A caster in
-//     the shadow-feeder swept ring (inside cullIsoMin/Max but outside
-//     visibleIsoBounds) is never culled — the Hi-Z covers only the visible
-//     viewport, so dropping it would lose its sun shadow. Mirrors
-//     dispatchChunkOcclusion's fully-inside-visible eligibility.
+//   * Domain = the full shadow-feeder-widened canvas (#2298). The Hi-Z
+//     downsample-maxes the WHOLE distance canvas — visible viewport plus the
+//     shadow-feeder ring the feeders raster into — so a ring caster's occluder
+//     data is real and testable. The gate is a canvas-COVERAGE guard, not a
+//     viewport box: a voxel is tested iff its expanded footprint lies fully
+//     inside the Hi-Z texel extent (a footprint spilling off-canvas would clamp
+//     onto the border texel and is kept — see the guard below). SOUNDNESS: a
+//     voxel conservatively occluded at every canvas texel it can raster to leaves
+//     no trace in trixelDistances, and BOTH the visible resolve and the
+//     sun-shadow bake consume trixelDistances (never voxels) — so dropping it is
+//     bit-identical for the shadow it would have cast too. This supersedes the
+//     #1812 "never cull a shadow-feeder" mitigation (correct only while the test
+//     domain was assumed visible-only).
 //   * A footprint that still sees background keeps the voxel (empty texels carry
 //     the 65535 sentinel -> hiZMax stays large -> never occlude). A false
 //     positive is a visible hole; a false negative is only lost savings.
@@ -264,10 +271,6 @@ void writeDispatchDims(uint base, uint microSliceCount) {
 // slot 0 / flip 0 is the correct encode; the margin absorbs the Hi-Z's low bits.
 bool voxelOccludedByHiZ(ivec3 voxelPos, ivec2 isoPos) {
     if (occlusionCullMipCount <= 0) {
-        return false;
-    }
-    if (isoPos.x < visibleIsoBounds.x || isoPos.y < visibleIsoBounds.y ||
-        isoPos.x > visibleIsoBounds.z || isoPos.y > visibleIsoBounds.w) {
         return false;
     }
     // iso -> canvas pixel, exactly as dispatchChunkOcclusion / stage 1 at NONE
@@ -305,12 +308,26 @@ bool voxelOccludedByHiZ(ivec3 voxelPos, ivec2 isoPos) {
     ivec2 loTexel = (base + ivec2(floor(loF)) - ivec2(1)) >> 1;
     ivec2 hiTexel = (base + ivec2(ceil(hiF)) + ivec2(1)) >> 1;
     ivec2 sz = imageSize(hiZLevel0);
+    // Canvas-coverage guard (#2298): only cull a voxel whose full expanded
+    // footprint lies inside the Hi-Z texel extent [0, sz). c_build_distance_hiz
+    // ceil-sizes each level and writes every texel a real downsampled max
+    // (background sentinel 65535 where empty), so every read in [0, sz-1] is
+    // faithful. A footprint that spills PAST that extent has no data off-canvas;
+    // the former clamp folded such a tap onto the border texel — reading a near
+    // occluder in place of the empty-background sentinel, deflating hiZMax and
+    // risking a false cull of an edge voxel that actually sees background. Keep
+    // those voxels. Voxels fully inside the old visibleIsoBounds gate are a
+    // strict subset of this domain (the canvas >= the visible viewport), so their
+    // test — and the cull-off byte-identity — is unchanged; the widening only
+    // ADDS the shadow-feeder ring, this issue's target population. With the guard
+    // holding, the read is provably in-bounds, so the former per-tap clamp is dead.
+    if (loTexel.x < 0 || loTexel.y < 0 || hiTexel.x >= sz.x || hiTexel.y >= sz.y) {
+        return false;
+    }
     int hiZMax = -2147483648;
     for (int ty = loTexel.y; ty <= hiTexel.y; ++ty) {
         for (int tx = loTexel.x; tx <= hiTexel.x; ++tx) {
-            hiZMax = max(
-                hiZMax, imageLoad(hiZLevel0, clamp(ivec2(tx, ty), ivec2(0), sz - ivec2(1))).x
-            );
+            hiZMax = max(hiZMax, imageLoad(hiZLevel0, ivec2(tx, ty)).x);
         }
     }
     return encodeDepthWithFace(pos3DtoDistance(voxelPos), 0) > hiZMax + kOcclusionDepthMargin;
