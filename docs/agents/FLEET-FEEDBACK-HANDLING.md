@@ -59,9 +59,11 @@ lex-min in Step a.
 
 ## Step a — claim the PR atomically (before anything else)
 
-Feedback pickup fans out: the dispatcher launches **every** idle pane
-of your role on a single trigger (`find_idle_panes_for_role` is plural
-by design — that's how the worker panes run concurrently). So
+Feedback pickup fans out: the dispatcher can launch your role into
+**every** idle pool pane on a single trigger (`find_idle_panes_for_role`
+is plural
+by design, bounded by the per-role concurrency cap — that's how worker
+dispatches run concurrently). So
 two workers routinely select the same flagged PR in the same tick
 (observed #1336, 2026-05-30 — two workers both started the same
 `human:needs-fix` AMEND). The **only** thing that makes pickup safe is
@@ -396,7 +398,7 @@ clobbering the in-progress work:
 fleet-claim reserve <issue-number> <your-worktree-basename> <branch>
 ```
 
-Example: `fleet-claim reserve 163 worker-2 claude/163-stateless-particles`.
+Example: `fleet-claim reserve 163 pool-2 claude/163-stateless-particles`.
 
 ### Step c — address the feedback
 
@@ -572,7 +574,8 @@ covers engine **and** game feedback (each iteration within its own
 class — the dispatcher routes the PR's class per dispatch). There is
 no engine-only carve-out.
 
-For game-side feedback, **cd into your role's game worktree** before any
+For game-side feedback, **cd into your game twin worktree** (same
+`pool-<N>` basename under the game root) before any
 git/gh ops:
 
 ```

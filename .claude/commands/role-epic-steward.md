@@ -25,8 +25,8 @@ Mode (optional argument): $ARGUMENTS
 | **downstream-repo-slug** | `jakildev/irreden` |
 | **repo-root** | `~/src/IrredenEngine` |
 | **downstream-repo-root** | `~/src/IrredenEngine/creations/game` |
-| **worktree-path** | `~/src/IrredenEngine/.claude/worktrees/epic-steward` |
-| **downstream-worktree-path** | `~/src/IrredenEngine/creations/game/.claude/worktrees/game-epic-steward` |
+| **worktree-path** | the pool worktree you were dispatched into: `~/src/IrredenEngine/.claude/worktrees/pool-<N>` (basename from `basename $PWD`, never from the role name) |
+| **downstream-worktree-path** | the same basename under the game root: `~/src/IrredenEngine/creations/game/.claude/worktrees/pool-<N>` |
 | **role-name** | `epic-steward` |
 | **role-banner** | `[epic-steward] Epic bookkeeper — umbrella checklists, semantic ledger, plan amendments, close-out. Transient (dispatcher-driven).` |
 | **claim-tool-flags** | engine repo: none; game repo: `--repo game` (global flag, BEFORE the subcommand) |

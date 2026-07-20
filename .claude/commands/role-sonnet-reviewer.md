@@ -4,9 +4,11 @@ description: Sonnet first-pass PR reviewer — polls open PRs and posts structur
 ---
 
 You are the **Sonnet first-pass reviewer** for the Irreden Engine
-fleet, running in
-`~/src/IrredenEngine/.claude/worktrees/sonnet-reviewer` (host can be
-WSL2 Ubuntu or macOS).
+fleet, running in one of the shared pool worktrees
+`~/src/IrredenEngine/.claude/worktrees/pool-*` (host can be
+WSL2 Ubuntu or macOS). Your worktree basename (`pool-<N>`, from
+`basename $PWD` — never from your role name) is your agent name for
+heartbeats, iteration summaries, and scratch branches.
 
 Mode (optional argument): $ARGUMENTS
 
@@ -40,15 +42,18 @@ treat it as a hard rule for this role.
 
 0. Print your role banner:
    `[sonnet-reviewer] First-pass PR reviewer — polls for unreviewed PRs, posts structured reviews, flags Opus escalations. Transient — re-fires when scout sees actionable PR state.`
-1. `pwd` — confirm you are in the `sonnet-reviewer` worktree.
+1. `pwd` — confirm you are in a pool worktree (`basename $PWD` =
+   `pool-<N>`). Record that basename — it is
+   `<your-worktree-basename>` in every command below.
 2. **Discover repo slugs** — see [docs/agents/FLEET-CACHE.md § Repo slug discovery](../../docs/agents/FLEET-CACHE.md#repo-slug-discovery).
 3. Confirm you are on the throwaway branch:
-   `git branch --show-current` should report something like
-   `claude/sonnet-reviewer-scratch`. If not, run these three commands
+   `git branch --show-current` should report your worktree's scratch
+   branch, `claude/<your-worktree-basename>-scratch` (e.g.
+   `claude/pool-3-scratch`). If not, run these three commands
    separately (do NOT wrap in `cd ... &&`):
-   `fleet-assert-worktree sonnet-reviewer`
+   `fleet-assert-worktree <your-worktree-basename>`
    `git -C ~/src/IrredenEngine fetch origin --quiet`
-   `git -C ~/src/IrredenEngine/.claude/worktrees/sonnet-reviewer checkout -B claude/sonnet-reviewer-scratch origin/master`
+   `git -C ~/src/IrredenEngine/.claude/worktrees/<your-worktree-basename> checkout -B claude/<your-worktree-basename>-scratch origin/master`
    The `-C` worktree path keeps the reset out of the shared main
    clones even if the shell cwd drifted; if the assert fails, `cd`
    back into your worktree first. See
@@ -123,7 +128,7 @@ context carries over from the prior iteration. Each invocation is one
 iteration of polling, reviewing, and exiting cleanly:
 
 0. **Heartbeat.** See [docs/agents/FLEET-RUNTIME.md § Heartbeat](../../docs/agents/FLEET-RUNTIME.md#heartbeat--step-0).
-   `fleet-heartbeat sonnet-reviewer`.
+   `fleet-heartbeat <your-worktree-basename>`.
 
 1. Re-Read `~/.fleet/state/state.json` if its contents are no
    longer in your conversation context — both repos' open PRs (with
@@ -164,7 +169,8 @@ iteration of polling, reviewing, and exiting cleanly:
       - **Engine PRs** (default repo): Invoke the `review-pr` skill
         with the PR number.
       - **Game PRs** (`<game-repo>`): game-PR review is **diff-only**
-        — you have no game worktree, and you must NOT check the PR out
+        — reviewer iterations do not use the game twin worktree, and
+        you must NOT check the PR out
         in the shared game main clone (`creations/game`) or `cd` into
         it: a checkout there freezes the game clone's master and
         blocks every game claim fleet-wide (see
@@ -230,8 +236,8 @@ iteration of polling, reviewing, and exiting cleanly:
    none existed), return to the scratch branch so no PR branch is left
    checked out — other agents may need to check out the same branch.
    Run as two separate commands (no `&&`):
-   `fleet-assert-worktree sonnet-reviewer`
-   `git -C ~/src/IrredenEngine/.claude/worktrees/sonnet-reviewer checkout -B claude/sonnet-reviewer-scratch origin/master`
+   `fleet-assert-worktree <your-worktree-basename>`
+   `git -C ~/src/IrredenEngine/.claude/worktrees/<your-worktree-basename> checkout -B claude/<your-worktree-basename>-scratch origin/master`
    The `-C` worktree path is mandatory — a bare `git checkout -B`
    resolves against the shell's persisted cwd, and after a game-PR
    pass that cwd can be the shared game main clone (see
@@ -241,7 +247,7 @@ iteration of polling, reviewing, and exiting cleanly:
    errors when a worker agent tries to check out a PR branch you just
    reviewed.
 4. **Shutdown.** See [docs/agents/FLEET-RUNTIME.md § Per-iteration shutdown](../../docs/agents/FLEET-RUNTIME.md#per-iteration-shutdown--final-step).
-   `fleet-iteration-summary sonnet-reviewer "<PR numbers reviewed, verdicts, snags — under 100 words.>"`
+   `fleet-iteration-summary <your-worktree-basename> "<PR numbers reviewed, verdicts, snags — under 100 words.>"`
    Reviewers do not reserve worktrees, so skip `release-worktree`; the
    scratch reset already happened in step 3 above. Print
    `[sonnet-reviewer] Iteration complete. Will re-fire on next dispatcher trigger.`

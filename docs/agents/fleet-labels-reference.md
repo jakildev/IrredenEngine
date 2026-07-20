@@ -363,7 +363,8 @@ Specifically, **never pass these via `--label` when filing**:
   `fleet-claim review-release` immediately after the verdict label
   is set, or on abort paths. Host disambiguation
   (mac / linux / windows) is required for correctness — both hosts
-  can have an `opus-reviewer` agent; without the host prefix the
+  can have an agent with the same pool basename (e.g. `pool-3`);
+  without the host prefix the
   sole-holder claim would collide. A claimant wins only as the sole
   `fleet:reviewing-*` holder; in a simultaneous race the lex-min drops
   and retries to re-acquire alone, and any later claimant that finds an

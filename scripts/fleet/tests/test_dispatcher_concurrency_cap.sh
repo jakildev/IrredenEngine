@@ -194,8 +194,10 @@ case "$sub" in
         # Pane reports `zsh` (idle shell). The pgrep stub alongside
         # this tmux stub forces the wrapper-child probe to "not
         # running" → the new count_active_for_role semantics skip
-        # the reservation as a queued resume signal.
-        printf '%%5\tworker\tzsh\n'
+        # the reservation as a queued resume signal. "|"-delimited to
+        # match list_pane_state's -F format (the stubs originally
+        # printed tabs and silently parsed as an empty role).
+        printf '%%5|worker|zsh\n'
         exit 0
         ;;
     display-message)
@@ -245,7 +247,10 @@ case "$sub" in
     list-panes)
         # pane_current_command=claude → outside the shell allowlist
         # → considered busy without needing the wrapper-child probe.
-        printf '%%5\tworker\tclaude\n'
+        # "|"-delimited to match list_pane_state's -F format — with the
+        # old tab delimiter this line parsed as an empty role and the
+        # busy pane was invisible, so this assertion failed on master.
+        printf '%%5|worker|claude\n'
         exit 0
         ;;
     display-message)
@@ -309,7 +314,7 @@ assert_eq "$cap" "4" "conf file sets worker cap to 4"
 cap=$("$DISPATCHER" --print-cap merger)
 assert_eq "$cap" "3" "conf file sets merger cap to 3"
 cap=$("$DISPATCHER" --print-cap sonnet-reviewer)
-assert_eq "$cap" "1" "untouched roles keep their default"
+assert_eq "$cap" "4" "untouched roles keep their default"
 
 # --- Test 8: env var beats conf --------------------------------------------
 echo "T8: env var has higher priority than conf"
@@ -373,6 +378,70 @@ echo "T15: non-numeric BOOT_FANOUT_WINDOW_SECONDS clamps to 60s default"
 out=$(FLEET_DISPATCHER_BOOT_FANOUT_WINDOW_SECONDS="9999s" \
     "$DISPATCHER" --retain-trigger-check worker 1 2>/dev/null)
 assert_eq "$out" "retain" "non-numeric env override clamps to 60s → in-window retain"
+
+# --- Tests 16-18: generic pane pool (--find-idle) ---------------------------
+#
+# Three idle panes: %1 and %2 are pool-tagged (worktrees pool-1, pool-2),
+# %3 is pinned to smoke-worker (a dedicated secondary-host pane shape).
+# The pgrep stub reports no running wrapper, so all three read as idle.
+rm -f "$FLEET_RESERVATIONS_DIR"/*.json
+mkdir -p "$TMPROOT/bin-tmux-pool"
+cat >"$TMPROOT/bin-tmux-pool/tmux" <<'TMUXEOF'
+#!/usr/bin/env bash
+sub="$1"; shift
+case "$sub" in
+    has-session) exit 0 ;;
+    list-panes)
+        printf '%%1|pool|zsh\n'
+        printf '%%2|pool|zsh\n'
+        printf '%%3|smoke-worker|zsh\n'
+        exit 0
+        ;;
+    display-message)
+        pane=""; fmt=""
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                -t) pane="$2"; shift 2 ;;
+                -p) fmt="$2"; shift 2 ;;
+                *)  shift ;;
+            esac
+        done
+        if [[ "$fmt" == *pane_current_path* ]]; then
+            case "$pane" in
+                %1) echo "/fake/worktrees/pool-1" ;;
+                %2) echo "/fake/worktrees/pool-2" ;;
+                %3) echo "/fake/worktrees/smoke-worker" ;;
+            esac
+        elif [[ "$fmt" == *pane_pid* ]]; then
+            echo "1"
+        fi
+        exit 0
+        ;;
+    *) exit 0 ;;
+esac
+TMUXEOF
+chmod +x "$TMPROOT/bin-tmux-pool/tmux"
+cat >"$TMPROOT/bin-tmux-pool/pgrep" <<'PGREPEOF'
+#!/usr/bin/env bash
+exit 1
+PGREPEOF
+chmod +x "$TMPROOT/bin-tmux-pool/pgrep"
+
+echo "T16: pool-tagged panes serve any transient role"
+out=$(PATH="$TMPROOT/bin-tmux-pool:$PATH" "$DISPATCHER" --find-idle sonnet-reviewer)
+assert_eq "$out" "$(printf '%%1\n%%2')" "reviewer gets both pool panes, not the pinned smoke pane"
+
+echo "T17: exact-tag pane stays pinned to its role"
+out=$(PATH="$TMPROOT/bin-tmux-pool:$PATH" "$DISPATCHER" --find-idle smoke-worker)
+assert_eq "$out" "$(printf '%%1\n%%2\n%%3')" "smoke-worker gets pool panes AND its pinned pane"
+
+echo "T18: reserved worktree — worker-only, and served first"
+"$FLEET_CLAIM" reserve 901 pool-2 claude/901-something >/dev/null
+out=$(PATH="$TMPROOT/bin-tmux-pool:$PATH" "$DISPATCHER" --find-idle sonnet-reviewer)
+assert_eq "$out" "%1" "non-worker role skips the reserved pool pane"
+out=$(PATH="$TMPROOT/bin-tmux-pool:$PATH" "$DISPATCHER" --find-idle worker)
+assert_eq "$out" "$(printf '%%2\n%%1')" "worker lists the reserved pane first (crash-resume priority)"
+"$FLEET_CLAIM" release-worktree pool-2 >/dev/null 2>&1 || true
 
 echo ""
 echo "PASS: $PASS  FAIL: $FAIL"

@@ -50,10 +50,10 @@ with your worktree basename:
 fleet-heartbeat <your-worktree-basename>
 ```
 
-The basename is your `pwd` at startup — for example `worker-1`,
-`worker-2`, `merger`, `opus-reviewer`,
-`sonnet-reviewer`. The wrapper is a thin `touch
-~/.fleet/heartbeats/<role>` routed through a helper script so the raw
+The basename is your `pwd` at startup — for the transient roles that
+is a pool worktree name (`pool-1` … `pool-9`), never the role name.
+The wrapper is a thin `touch
+~/.fleet/heartbeats/<basename>` routed through a helper script so the raw
 `touch ~/...` form doesn't trigger the path-scope permission prompt.
 
 **Re-touch before long-running steps.** Run `fleet-heartbeat
@@ -195,8 +195,8 @@ The feedback name is per-role:
 
 | Role | File |
 |---|---|
-| worker | `<your-worktree-basename>.md` (e.g. `worker-1.md`) — per-worktree so the human can tell which pane observed what |
-| opus-reviewer, sonnet-reviewer, merger, smoke-worker | the fixed role name (e.g. `opus-reviewer.md`) |
+| worker | `<your-worktree-basename>.md` (e.g. `pool-1.md`) — per-worktree so the human can tell which pane observed what |
+| opus-reviewer, sonnet-reviewer, merger, smoke-worker | the fixed role name (e.g. `opus-reviewer.md`) — pool panes serve many roles, so feedback stays keyed by role, not pane |
 | opus-architect | `opus-architect.md` |
 
 See [`FLEET.md § Fleet feedback channel`](FLEET.md) for the entry format

@@ -5,11 +5,17 @@ fleet workflow.
 
 ## Files
 
-- **`fleet-up`** — brings the 8-pane tmux fleet online. Idempotent.
-  Creates any missing worktrees, resets each to a fresh branch off
-  `origin/master`, builds a `fleet` tmux session with one tiled
-  window, and auto-launches `claude` in each pane with the matching
-  role slash command. Default mode is `dry-run` (startup + stand-by);
+- **`fleet-up`** — brings the tmux fleet online. Idempotent.
+  Creates any missing worktrees (the shared `pool-1`…`pool-9` pool
+  worktrees plus the named architect worktrees), resets each to a
+  fresh branch off
+  `origin/master`, and builds a `fleet` tmux session with a fleet
+  window (pool panes 1–6 + the architect panes) and an ops window
+  (queue-manager scratch, pool panes 7–9, witness, terminal). The
+  architect panes auto-launch `claude`; pool panes sit at bash and
+  `fleet-dispatcher` routes transient roles (worker, reviewers,
+  merger, smoke-worker, epic-steward) into whichever pool pane is
+  idle, bounded by per-role `FLEET_CONCURRENCY_<ROLE>` caps. Default mode is `dry-run` (startup + stand-by);
   `fleet-up live` skips dry-run, goes straight to the normal loop, and
   auto-attaches the tmux session. `fleet-up review-only` runs the
   loop but tells worker / queue-manager roles to skip new task

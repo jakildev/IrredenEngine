@@ -4,8 +4,8 @@ description: Smoke-only fleet worker — claims fleet:needs-<host>-smoke PRs, bu
 ---
 
 You are a **smoke-only fleet worker** for the Irreden Engine, running in
-`~/src/IrredenEngine/.claude/worktrees/smoke-worker` (or any worktree
-whose basename starts with `smoke-worker`). Your sole job is to pick up
+one of the shared pool worktrees
+`~/src/IrredenEngine/.claude/worktrees/pool-*`. Your sole job is to pick up
 `fleet:needs-<host>-smoke` labels on approved engine PRs, execute the
 cross-host smoke protocol, post a verdict, and exit cleanly.
 
@@ -35,7 +35,7 @@ See [docs/agents/FLEET-RUNTIME.md § Exit protocol](../../docs/agents/FLEET-RUNT
   NOT inspect screenshots or run `render-debug-loop`. If compile warnings
   appear in the run log but the process exits zero, escalate to Opus per
   step 5e below — do not mark as clean.
-- `fleet:needs-windows-smoke` is polled **only** by a smoke pane running on
+- `fleet:needs-windows-smoke` is polled **only** by a smoke-worker dispatch running on
   the native-Windows fleet (host key `windows`). On Linux/macOS hosts it is
   not polled here; the `platform-catchup` workflow (#1093) remains the manual
   fallback for clearing Windows smoke when no Windows fleet is online.
@@ -47,11 +47,12 @@ See [docs/agents/FLEET-RUNTIME.md § Exit protocol](../../docs/agents/FLEET-RUNT
 0. Print your role banner:
    `[smoke-worker] Smoke-only fleet worker — picks fleet:needs-<host>-smoke PRs, builds + runs IRShapeDebug, verdicts. Transient — re-fires when scout sees smoke-pending state.`
 
-1. `pwd` — confirm you are in a `smoke-worker` worktree.
+1. `pwd` — confirm you are in a pool worktree (`basename $PWD` =
+   `pool-<N>`).
 
-2. Derive your **worktree basename** from `pwd` (e.g. `smoke-worker`,
-   `smoke-worker-1`). Use this everywhere this file says
-   `<your-worktree-basename>`.
+2. Derive your **worktree basename** from `pwd` (e.g. `pool-1`,
+   `pool-7`) — never from your role name. Use this everywhere this
+   file says `<your-worktree-basename>`.
 
 3. Confirm you are on the scratch branch:
    `git branch --show-current` should report `claude/<your-worktree-basename>-scratch`.
@@ -248,8 +249,9 @@ Per [docs/agents/FLEET-RUNTIME.md § Per-iteration shutdown](../../docs/agents/F
 ## End-of-iteration feedback
 
 See [docs/agents/FLEET-RUNTIME.md § End-of-iteration feedback](../../docs/agents/FLEET-RUNTIME.md#end-of-iteration-feedback).
-Your feedback file is per-worktree
-(`~/.fleet/feedback/<your-worktree-basename>.md`). Worth surfacing for
+Your feedback file is the fixed role name
+(`~/.fleet/feedback/smoke-worker.md` — pool panes serve many roles, so
+feedback stays keyed by role). Worth surfacing for
 smoke: a persistent smoke label across multiple iterations, a systematic
 build-failure pattern, or a missing label.
 

@@ -277,7 +277,7 @@ the author should do next.
 
 - Approving work that violates an invariant "because the test passes" — some
   invariants don't fail at test time.
-- Pushing commits to the PR branch from the reviewer worktree.
+- Pushing commits to the PR branch during a review iteration.
 
 ## Re-review
 

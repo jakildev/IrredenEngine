@@ -840,7 +840,8 @@ Always exits 0 (safe to include in a parallel tool batch with
   **Cross-repo molecules**: if the in-flight molecule's issues live
   in the game repo (claimed with `--repo game`), all
   `fleet-claim molecule advance/complete` calls must include
-  `--repo game` too. Cd into the game worker worktree before
+  `--repo game` too. Cd into your game twin worktree (same `pool-<N>`
+  basename under the game root) before
   resuming so `commit-and-push` targets the right repo.
 
 - **Stdout is empty** — nothing to resume. Either no molecule exists

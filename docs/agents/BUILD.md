@@ -72,7 +72,7 @@ user project. `ir-build` / `ir-run` handle this automatically:
 - **Detection** — the invoker's git toplevel lacks `CMakePresets.json`
   and sits under an engine root at `creations/<name>/…`.
 - **Build dir** — `<engine>/build-<creation>-<agent>/` (e.g.
-  `~/src/IrredenEngine/build-game-worker-2/`), already covered by
+  `~/src/IrredenEngine/build-game-pool-2/`), already covered by
   the engine `.gitignore`'s `build-*/` pattern. Build output never lands
   in the creation repo, and the engine's own build trees are untouched.
 - **Auto-configure** (first build only) — host preset against the

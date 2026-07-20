@@ -7,7 +7,8 @@ description: >-
   for new PRs to review", "review the open PRs", or otherwise asks for a code
   review — and also invoke automatically from a persistent reviewer-loop session
   when `gh pr list` surfaces a PR that has not yet been reviewed by this fleet.
-  Designed to be invoked inside a dedicated "reviewer" worktree/agent whose job
+  Designed to be invoked by a dedicated reviewer agent (dispatched into a pool
+  worktree) whose job
   is to look at another agent's work with a fresh context. Writes a structured
   review covering ownership, ECS invariants, allocation hot paths, naming,
   tests, and project-specific smells, then posts it as a PR comment.

@@ -114,19 +114,20 @@
 # prevents the role from briefly exceeding its budget when a reserved-idle
 # pane wakes up alongside a normal dispatch to a free pane.
 #
-# Defaults match each role's current pane count under stock fleet-up
-# layout (the unified worker lane fans out across all worker panes, 1 each
-# of the rest), so under default values no role hits its cap during normal
-# operation. Tune up to allow more parallelism (requires adding panes);
-# tune down to throttle a role that's burning too much credit budget.
+# Panes are a generic pool (pool-1..pool-9): the dispatcher routes any
+# transient role to any idle pool pane, so the caps — not pane topology —
+# are the per-role parallelism budget. The pool size (9) bounds TOTAL
+# concurrent iterations across all roles. Tune a cap up for more
+# parallelism in that role; tune down to throttle a role that's burning
+# too much credit budget.
 
 # FLEET_CONCURRENCY_WORKER=4         # unified worker lane (any model class)
-# FLEET_CONCURRENCY_SONNET_REVIEWER=1
+# FLEET_CONCURRENCY_SONNET_REVIEWER=4
 # FLEET_CONCURRENCY_OPUS_REVIEWER=1
 # FLEET_CONCURRENCY_QUEUE_MANAGER=1
 # FLEET_CONCURRENCY_MERGER=1
-# FLEET_CONCURRENCY_SMOKE_WORKER=1   # concurrent cap for the smoke-only worker pane
-# FLEET_CONCURRENCY_EPIC_STEWARD=1   # concurrent cap for the epic-steward pane
+# FLEET_CONCURRENCY_SMOKE_WORKER=1   # concurrent cap for the smoke-only worker role
+# FLEET_CONCURRENCY_EPIC_STEWARD=1   # concurrent cap for the epic-steward role
 #
 # Deprecated (pre-P2 per-lane caps). Still honored: when
 # FLEET_CONCURRENCY_WORKER is unset, the worker cap is the sum of these
@@ -294,37 +295,37 @@
 
 # --- Smoke-only worker (cross-host) ----------------------------------------
 #
-# FLEET_SMOKE_WORKER=1 tells fleet-up to create and launch a dedicated
-# smoke-worker pane. Useful when running a second host (e.g. Ubuntu
-# alongside a macOS fleet) that should only smoke-test render PRs and not
-# pick up tasks. The pane appears in the ops window and is dispatched by
-# fleet-dispatcher (session-scoped — the dispatcher for THIS session picks
-# it up; a second host needs its own fleet-dispatcher pointed at its session).
+# FLEET_SMOKE_WORKER=1 tells fleet-dispatcher to serve the smoke-worker
+# role (dispatched to any idle pool pane). Useful when running a second
+# host (e.g. Ubuntu alongside a macOS fleet) that should smoke-test
+# render PRs.
 #
-# When unset or 0, no smoke-worker worktree or pane is created. The
-# sonnet-author and opus-worker panes continue to run step-1b smoke as a
-# secondary responsibility — this flag is opt-in extra dedicated capacity.
+# When unset or 0, the dispatcher ignores smoke-worker triggers. The
+# worker lane continues to run step-1b smoke as a secondary
+# responsibility — this flag is opt-in extra dedicated capacity.
 
 # FLEET_SMOKE_WORKER=0
 
 # --- Epic-steward (umbrella bookkeeper) ------------------------------------
 #
-# FLEET_EPIC_STEWARD=1 tells fleet-up to create and launch a dedicated
-# epic-steward pane. The epic-steward is the fleet's epic bookkeeper: a
-# transient, dispatcher-driven role that maintains `fleet:epic` umbrella
-# `## Children` checklists, triages design-blocked epic children, aggregates
-# proposal packages for the architect, and drives epic close-out. It writes
-# only docs artifacts (plan files, umbrella comments, labels) — never pushes
-# code. Two worktrees are created: one under the engine clone and one under
-# the game clone (the pane's cwd is the engine worktree; it cds for game epics).
+# FLEET_EPIC_STEWARD=1 tells fleet-dispatcher to serve the epic-steward
+# role (dispatched to any idle pool pane). The epic-steward is the
+# fleet's epic bookkeeper: a transient, dispatcher-driven role that
+# maintains `fleet:epic` umbrella `## Children` checklists, triages
+# design-blocked epic children, aggregates proposal packages for the
+# architect, and drives epic close-out. It writes only docs artifacts
+# (plan files, umbrella comments, labels) — never pushes code. The pool
+# pane's cwd is its engine worktree; it cds to the same-named game
+# worktree for game epics.
 #
-# When unset or 0, no epic-steward worktree or pane is created. The role's
-# epic-bookkeeping work simply doesn't run; umbrella issues accumulate until
-# the flag is enabled or the human triages them manually.
+# When unset or 0, the dispatcher ignores epic-steward triggers. The
+# role's epic-bookkeeping work simply doesn't run; umbrella issues
+# accumulate until the flag is enabled or the human triages them
+# manually.
 #
 # Recommended: enable during active multi-epic queues; disable when the queue
 # is mostly single-task work to conserve credit budget.
 
 # FLEET_EPIC_STEWARD=0
-# FLEET_CONCURRENCY_EPIC_STEWARD=1  # matches the single pane
+# FLEET_CONCURRENCY_EPIC_STEWARD=1
 # FLEET_EFFORT_EPIC_STEWARD=xhigh   # umbrella triage needs heavier reasoning

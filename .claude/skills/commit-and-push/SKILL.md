@@ -25,7 +25,7 @@ for why. Do **not** invoke proactively — only when the user explicitly asks.
 | **default branch** | `master` |
 | **remote** | `origin` |
 | **branch prefix** | `claude/` |
-| **worktree-assert command** | `fleet-assert-worktree` (e.g. `fleet-assert-worktree worker-2`) |
+| **worktree-assert command** | `fleet-assert-worktree` (e.g. `fleet-assert-worktree pool-2`) |
 | **claim tool** | `fleet-claim` |
 | **simplify skill** | `simplify` (`Skill: simplify`) |
 | **scope vocabulary** | `render:`, `engine/voxel:`, `game/nav:`, `build:`, `docs:` — derive from the dominant changed path |
