@@ -1034,11 +1034,11 @@ sys.stdout.write(unsafe_base_reason(labels, files) or "")
         if [[ -n "$repo_for_pr_check" ]]; then
             local existing_pr
             existing_pr=$(gh pr list --repo "$repo_for_pr_check" --state open \
-                --json number,headRefName 2>/dev/null \
+                --json number,headRefName,body 2>/dev/null \
                 | ISSUE_NUM="$issue_num" REPO_NS="$REPO_NS" python3 -c '
 import json, os, sys
 sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
-from fleet_branch_match import branch_matches_issue
+from fleet_branch_match import body_closes_issue, branch_matches_issue
 issue = os.environ["ISSUE_NUM"]
 repo = os.environ.get("REPO_NS", "")
 try:
@@ -1046,12 +1046,15 @@ try:
 except Exception:
     prs = []
 for pr in prs:
-    if branch_matches_issue(pr.get("headRefName") or "", issue, repo):
+    # Second liveness signal (#2419): an untrackable branch name still
+    # blocks a duplicate claim when its body closes the issue.
+    if (branch_matches_issue(pr.get("headRefName") or "", issue, repo)
+            or body_closes_issue(pr.get("body") or "", issue)):
         print(pr.get("number"))
         break
 ' 2>/dev/null | head -1)
             if [[ -n "$existing_pr" ]]; then
-                echo "fleet-claim claim: #${issue_num} already has open PR #${existing_pr} (head claude/[game-]${issue_num}-…); refusing duplicate claim" >&2
+                echo "fleet-claim claim: #${issue_num} already has open PR #${existing_pr} (branch or Closes #${issue_num}); refusing duplicate claim" >&2
                 return 1
             fi
         fi
@@ -1347,7 +1350,7 @@ _release_parked_issue_labels() {
 
     local prs_json
     prs_json=$(gh pr list --repo "$repo" --state open \
-        --json number,headRefName,labels --limit 300 2>/dev/null || echo "[]")
+        --json number,headRefName,labels,body --limit 300 2>/dev/null || echo "[]")
 
     [[ "$(_issue_pr_state_from "$prs_json" "$issue_num" "$repo")" == "parked" ]] || return 1
 
@@ -1887,8 +1890,11 @@ for issue in issues:
 
         [[ -z "$open_claim_plan" ]] && continue
 
+        # `body` feeds the #2419 second liveness signal: issue_pr_state()
+        # keeps a claim whose PR closes the issue even under a branch name
+        # the head-prefix/token matcher can't tie to it.
         open_pr_branches_json=$(gh pr list --repo "$repo" --state open \
-            --json headRefName,labels --limit 300 2>/dev/null || echo "[]")
+            --json headRefName,labels,body --limit 300 2>/dev/null || echo "[]")
 
         while IFS=$'\t' read -r issue_num label_name; do
             [[ -z "$issue_num" || -z "$label_name" ]] && continue
@@ -2107,7 +2113,7 @@ for issue in issues:
         [[ -z "$open_claim_plan" ]] && continue
 
         open_pr_branches_json=$(gh pr list --repo "$repo" --state open \
-            --json headRefName --limit 300 2>/dev/null || echo "[]")
+            --json headRefName,body --limit 300 2>/dev/null || echo "[]")
 
         while IFS=$'\t' read -r issue_num label_name; do
             [[ -z "$issue_num" || -z "$label_name" ]] && continue
@@ -2116,7 +2122,7 @@ for issue in issues:
             has_wip_pr=$(echo "$open_pr_branches_json" | ISSUE_NUM="$issue_num" REPO="$repo" python3 -c '
 import json, os, sys
 sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
-from fleet_branch_match import branch_matches_issue
+from fleet_branch_match import body_closes_issue, branch_matches_issue
 try:
     prs = json.load(sys.stdin)
 except Exception:
@@ -2124,7 +2130,10 @@ except Exception:
 issue = os.environ["ISSUE_NUM"]
 repo = os.environ.get("REPO", "")
 for pr in prs:
-    if branch_matches_issue(pr.get("headRefName") or "", issue, repo):
+    # #2419 second liveness signal: a Closes #N body keeps the claim even
+    # when the branch name is untrackable by the matcher.
+    if (branch_matches_issue(pr.get("headRefName") or "", issue, repo)
+            or body_closes_issue(pr.get("body") or "", issue)):
         print(1)
         sys.exit(0)
 print(0)

@@ -17,7 +17,14 @@ matcher so they can't drift, and fixes every inference at once.
 The matcher accepts BOTH forms for the game repo, so in-flight
 `claude/game-<N>-*` branches keep resolving while the convention migrates
 to the prefix-less form. Engine accepts only `claude/<N>-`.
+
+It also recognizes the improvised `issue-<N>` token form
+(`claude/<worktree>-issue-<N>`) that a worker minted in the #2419 incident,
+plus a `Closes/Fixes/Resolves #N` body reference as a second liveness
+signal — so a live PR under a non-standard branch name is no longer read
+as an abandoned claim and swept into a duplicate.
 """
+import re
 
 
 def _is_game(repo):
@@ -42,6 +49,35 @@ def _norm_issue(issue):
     return str(issue).strip().lstrip("#")
 
 
+# An `issue-<N>` segment anywhere in the branch. `(?:^|[-/])` pins it to a
+# `-`/`/`-delimited token start (so `reissue-1` is not a match), and the
+# greedy `\d+` consumes the whole digit run so an `issue-25` token yields
+# "25", never a prefix of #255 (#2419).
+_ISSUE_TOKEN_RE = re.compile(r"(?:^|[-/])issue-(\d+)")
+
+# Same close-keyword set as find-stackable-blockers' `closes_re` (fleet-claim);
+# this is the importable copy the other hand-rolled inlines can converge on.
+_CLOSES_RE_TMPL = r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#%s\b"
+
+
+def _issue_token_numbers(head_ref):
+    """Issue numbers carried by word-bounded `issue-<N>` tokens in a branch."""
+    return [m.group(1) for m in _ISSUE_TOKEN_RE.finditer(head_ref or "")]
+
+
+def body_closes_issue(body, issue):
+    """True when `body` carries a `Closes/Fixes/Resolves #<issue>` reference.
+
+    The #2419 second liveness signal: a PR whose branch shape the matcher
+    can't tie to `issue` is still live work for it when its body closes the
+    issue (the same dual-match find-stackable-blockers already uses).
+    """
+    n = _norm_issue(issue)
+    if not body or not n:
+        return False
+    return re.search(_CLOSES_RE_TMPL % re.escape(n), body, re.IGNORECASE) is not None
+
+
 def issue_branch_prefixes(repo, issue):
     """Accepted `claude/...` branch prefixes for `issue` in `repo`.
 
@@ -57,9 +93,19 @@ def issue_branch_prefixes(repo, issue):
 
 
 def branch_matches_issue(head_ref, issue, repo):
-    """True when `head_ref` is the working branch for `issue` in `repo`."""
+    """True when `head_ref` is the working branch for `issue` in `repo`.
+
+    Matches the number-first fleet forms (`claude/<N>-`, game
+    `claude/game-<N>-`) and — for any `claude/…` branch — the improvised
+    `issue-<N>` token form (`claude/<worktree>-issue-<N>`) that the #2419
+    sweep read as an abandoned claim and duplicated.
+    """
     head = head_ref or ""
-    return any(head.startswith(p) for p in issue_branch_prefixes(repo, issue))
+    if any(head.startswith(p) for p in issue_branch_prefixes(repo, issue)):
+        return True
+    if head.startswith("claude/"):
+        return _norm_issue(issue) in _issue_token_numbers(head)
+    return False
 
 
 # A PR carrying any of these is *parked*: a worker hit a design wall and
@@ -88,13 +134,17 @@ def issue_pr_state(prs, issue, repo):
                  stale and safe to clear/sweep (#1488 Fix A/B).
       "none"   — no open PR branch matches the issue.
 
-    `prs` is a list of `gh pr list --json headRefName,labels` records (any
-    extra keys are ignored). Callers that only distinguish "keep the claim"
-    from "release the claim" treat "parked" and "none" identically.
+    `prs` is a list of `gh pr list --json headRefName,labels[,body]` records
+    (any extra keys are ignored). A record whose branch the matcher can't tie
+    to the issue but whose `body` closes it counts as a match too (#2419); a
+    caller that omits `body` from its fetch simply forgoes that second signal.
+    Callers that only distinguish "keep the claim" from "release the claim"
+    treat "parked" and "none" identically.
     """
     saw_parked = False
     for pr in (prs or []):
-        if not branch_matches_issue(pr.get("headRefName") or "", issue, repo):
+        if not (branch_matches_issue(pr.get("headRefName") or "", issue, repo)
+                or body_closes_issue(pr.get("body") or "", issue)):
             continue
         names = {
             (lbl or {}).get("name", "")
@@ -113,7 +163,9 @@ def issue_from_branch(head_ref):
 
     Repo-agnostic inverse of `branch_matches_issue`: handles both
     `claude/<N>-...` (engine / new game) and `claude/game-<N>-...` (legacy
-    game) by stripping the optional `game-` infix before reading the digits.
+    game) by stripping the optional `game-` infix before reading the digits,
+    and falls back to an explicit `issue-<N>` token (#2419) when the
+    number-first form is absent.
     """
     head = head_ref or ""
     if not head.startswith("claude/"):
@@ -127,4 +179,9 @@ def issue_from_branch(head_ref):
             num += ch
         else:
             break
-    return int(num) if num else None
+    if num:
+        return int(num)
+    # Number-first form absent — read an explicit `issue-<N>` token
+    # (`claude/<worktree>-issue-<N>`), the shape behind the #2419 sweep miss.
+    tokens = _issue_token_numbers(head)
+    return int(tokens[0]) if tokens else None
