@@ -1757,7 +1757,7 @@ cmd_cleanup() {
 }
 
 # cmd_cleanup_gh <repo> [<repo> ...]
-#   Three-pass GitHub label sweep — see help text for the full contract.
+#   Five-pass GitHub label sweep — see help text for the full contract.
 cmd_cleanup_gh() {
     if ! command -v gh >/dev/null 2>&1; then
         echo "fleet-claim cleanup --gh: 'gh' not on PATH; skipping" >&2
@@ -4480,7 +4480,7 @@ commands:
                                 (default: 7200).
   cleanup [--repo o/r] [--gh] ...
                                 Remove claims whose linked issue is
-                                CLOSED. With --gh also runs four
+                                CLOSED. With --gh also runs five
                                 GitHub sweeps:
                                 (1) stale fleet:reviewing-*,
                                     fleet:resolving-*, and
@@ -4506,7 +4506,15 @@ commands:
                                 (4) stale fleet:planning-* labels off
                                     open fleet:needs-plan issues (age >
                                     FLEET_CLAIM_STALE_SECS_PLANNING,
-                                    default 3600s).
+                                    default 3600s),
+                                (5) orphan fleet:(reviewing|resolving|
+                                    amending|stewarding)-<host>---*
+                                    catalog labels off every issue/PR
+                                    (a flag was consumed as the <agent>
+                                    positional) — deleted outright via
+                                    `gh label delete`, no TTL/age check
+                                    since the `---` shape can never be a
+                                    real agent name (#2441).
                                 `fleet:claim-*` labels on CLOSED
                                 issues are preserved as a historical
                                 "who worked on this" record.
