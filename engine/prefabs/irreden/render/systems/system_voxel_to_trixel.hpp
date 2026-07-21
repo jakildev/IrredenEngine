@@ -199,6 +199,71 @@ inline void flushStaticPositionRanges(C_VoxelPool &pool, Buffer *buf, int liveCo
     }
 }
 
+// Recompute the pool's cardinal-store tie-possibility signal (#2346) from the
+// CPU position mirror. Called on frames whose CPU upload changed binding 5
+// (pending ranges flushed, or a canvas-switch re-seed) — one walk of the live
+// prefix, comparable to the upload's own walk; static scenes scan once at
+// seed. TRUE, early-exit, when any ACTIVE voxel:
+//   - is GPU-transformed (its world position is authored GPU-side by
+//     UPDATE_VOXEL_POSITIONS_GPU and generically fractional — the CPU mirror
+//     cannot judge it, so tie-possible is the safe direction), or
+//   - sits off the integer lattice by more than the
+//     snapNearIntegerVoxelPosition epsilon (1e-4, ir_iso_common) on any
+//     component, or
+//   - (all-integer fallback) shares its IRMath::roundHalfUp cell with another
+//     active voxel — the pure-integer collision case the fract scan cannot
+//     see. Detected via a sort of packed cell keys in @p cellScratch (caller-
+//     owned, capacity reused across frames — no per-tick allocation after the
+//     first high-water mark).
+// The dup scan rounds like the shader: IRMath::roundHalfUp, never std::round —
+// half-integer ties must land in the same cell on both sides (CPU↔GPU
+// handshake contract in ir_math.hpp).
+inline void recomputeStoreTiesPossible(
+    C_VoxelPool &pool, int liveCount, std::vector<std::uint64_t> &cellScratch
+) {
+    constexpr float kLatticeEpsilon = 1e-4f;
+    const auto &globals = pool.getPositionGlobals();
+    const auto &indices = pool.getTransformIndices();
+    const auto &activeMask = pool.getActiveMask();
+    const int n = IRMath::min(
+        liveCount,
+        IRMath::min(static_cast<int>(globals.size()), static_cast<int>(indices.size()))
+    );
+
+    cellScratch.clear();
+    for (int i = 0; i < n; ++i) {
+        const std::size_t word = static_cast<std::size_t>(i) / kVoxelActiveMaskBits;
+        const std::size_t bit = static_cast<std::size_t>(i) % kVoxelActiveMaskBits;
+        if (word >= activeMask.size() || (activeMask[word] & (1u << bit)) == 0u) {
+            continue;
+        }
+        if (indices[i] != IRRender::kVoxelTransformStatic) {
+            pool.storeTiesPossible_ = true;
+            return;
+        }
+        const vec3 pos = globals[i].pos_;
+        const ivec3 cell = IRMath::roundVec3HalfUp(pos);
+        if (IRMath::abs(pos.x - static_cast<float>(cell.x)) > kLatticeEpsilon ||
+            IRMath::abs(pos.y - static_cast<float>(cell.y)) > kLatticeEpsilon ||
+            IRMath::abs(pos.z - static_cast<float>(cell.z)) > kLatticeEpsilon) {
+            pool.storeTiesPossible_ = true;
+            return;
+        }
+        // 21 bits per axis, offset-biased — covers ±1M cells, far beyond any
+        // pool extent; equal keys <=> equal cells within that range.
+        cellScratch.push_back(
+            (static_cast<std::uint64_t>(static_cast<std::uint32_t>(cell.x + 0x100000) & 0x1FFFFFu)
+             << 42) |
+            (static_cast<std::uint64_t>(static_cast<std::uint32_t>(cell.y + 0x100000) & 0x1FFFFFu)
+             << 21) |
+            static_cast<std::uint64_t>(static_cast<std::uint32_t>(cell.z + 0x100000) & 0x1FFFFFu)
+        );
+    }
+    std::sort(cellScratch.begin(), cellScratch.end());
+    pool.storeTiesPossible_ =
+        std::adjacent_find(cellScratch.begin(), cellScratch.end()) != cellScratch.end();
+}
+
 // Mirrors `kMaxHiZMipLevels` in c_chunk_occlusion_cull.{glsl,metal}; CPU
 // binds [0, mipCount) to real levels and fills the surplus with the coarsest.
 constexpr int kChunkOcclusionMaxHiZLevels = 12;
@@ -227,6 +292,30 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // carries none of the feeder branches (no runtime predication tax).
     ShaderProgram *stage1FeederProgram_ = nullptr;
     ShaderProgram *stage2Program_ = nullptr;
+    // #2346 cardinal winner election: the IR_STORE_WINNER_ELECTION 1
+    // specializations of the shared stage-1/stage-2 bodies. Dispatched in the
+    // single-canvas block ONLY when the ticking pool's storeTiesPossible_ flag
+    // is set (displaced-voxel scenes); lattice pools keep exactly the default
+    // programs and dispatch count.
+    ShaderProgram *stage1WinnerResolveProgram_ = nullptr;
+    ShaderProgram *stage2WinnerProgram_ = nullptr;
+    // System-owned, grow-only winner buffer for the cardinal election —
+    // allocated lazily on the first flagged canvas (lattice scenes allocate
+    // nothing), sized canvasW × canvasH × 4 B for the largest flagged canvas
+    // seen, transiently bound at kBufferIndex_PerAxisResolveScratch around the
+    // election + stage-2 dispatches. NOT axes.winnerIds_: that buffer is
+    // rotation-lifecycle (freed at cardinal yaw — the #2412 class) and sized
+    // to the per-axis canvas, not this one.
+    std::pair<ResourceId, Buffer *> cardinalWinner_{0, nullptr};
+    std::size_t cardinalWinnerBytes_ = 0;
+    // The 4-byte placeholder created at init to keep binding 28 never-unbound;
+    // restored there after the election window so the next canvas's default
+    // dispatches see the same state as before (#2255 placeholder note below).
+    Buffer *winnerPlaceholderBuf_ = nullptr;
+    // Reused key scratch for recomputeStoreTiesPossible's duplicate-cell scan
+    // (capacity persists across frames — no per-tick allocation after the
+    // first high-water mark).
+    std::vector<std::uint64_t> tieScanCellScratch_;
     // Detached re-voxelize GPU scatter (#1556): fills binding 5 for a
     // DETACHED_REVOXELIZE pool from its resident locals + the canvas quat, in
     // place of the CPU flushStaticPositionRanges.
@@ -1001,6 +1090,31 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         fog.dirty_ = false;
     }
 
+    // Lazily (re)allocate the cardinal winner buffer to cover @p canvasSize
+    // (#2346). Grow-only: canvas sizes are static per scene, so this fires at
+    // most a handful of times per run; lattice (unflagged) scenes never call
+    // it and allocate nothing. Standard destroy-then-create keeps the Metal
+    // sticky binding tables scrubbed (the Buffer destructor untracks — #2412);
+    // never hand-roll a raw MTLBuffer here.
+    void ensureCardinalWinnerCapacity(ivec2 canvasSize) {
+        const std::size_t bytes = static_cast<std::size_t>(canvasSize.x) *
+                                  static_cast<std::size_t>(canvasSize.y) * sizeof(std::uint32_t);
+        if (cardinalWinner_.second != nullptr && bytes <= cardinalWinnerBytes_) {
+            return;
+        }
+        if (cardinalWinner_.second != nullptr) {
+            IRRender::destroyResource<Buffer>(cardinalWinner_.first);
+        }
+        cardinalWinner_ = IRRender::createResource<Buffer>(
+            nullptr,
+            bytes,
+            BUFFER_STORAGE_DYNAMIC,
+            BufferTarget::SHADER_STORAGE,
+            kBufferIndex_PerAxisResolveScratch
+        );
+        cardinalWinnerBytes_ = bytes;
+    }
+
     void tick(
         IREntity::EntityId entity,
         C_VoxelPool &voxelPool,
@@ -1288,6 +1402,15 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // would clobber the prepass output with translation-only data.
         {
             IR_PROFILE_SCOPE("vs1_pos");
+            // #2346: activation-only edits (activate/deactivate/carve/fillPlane/
+            // reshape) change which voxels are live without queuing a position
+            // range, so `positionsChanged` below misses them. Consume the pool's
+            // active-mask-mutation signal here (every branch, so it never leaks to
+            // a later frame) and OR it into the recompute trigger — otherwise a
+            // voxel activated onto an already-occupied roundHalfUp cell leaves
+            // `storeTiesPossible_` stale and the last-writer-wins cardinal race
+            // this feature closes reappears for editor/carve/reveal workflows.
+            const bool activeMaskChanged = voxelPool.consumeActiveMaskChanged();
             if (revoxBuffer != nullptr && revoxBuffer->isAllocated()) {
                 // Detached re-voxelize (#1556 / #1619): the GPU compute owns binding
                 // 5 (and, in the inverse path, color + active) for this pool — fill
@@ -1305,8 +1428,27 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 flushStaticPositionRanges(voxelPool, voxelPosBuf_, liveVoxelCount);
                 voxelPool.clearPendingPositionRanges();
                 lastUploadedCanvas_ = entity;
+                // #2346: the re-seed is a position-content change for this
+                // canvas — refresh the pool's cardinal tie-possibility signal.
+                // (The re-voxelize branch above is exempt by construction: its
+                // GPU fill authors integer DEST cells, which are unique — no
+                // cardinal tie is representable there.)
+                recomputeStoreTiesPossible(voxelPool, liveVoxelCount, tieScanCellScratch_);
             } else {
+                const bool positionsChanged = !voxelPool.getPendingPositionRanges().empty();
                 flushPendingPositionRanges(voxelPool, voxelPosBuf_);
+                if (positionsChanged || activeMaskChanged) {
+                    // #2346: positions moved OR an activation-only edit changed
+                    // which voxels are live this frame — refresh the tie signal.
+                    // Off-lattice content early-exits the scan on its first
+                    // fractional component, so animating scenes pay near-zero
+                    // here; the full duplicate scan runs only for all-integer
+                    // content, which rarely re-flushes per frame. The active-mask
+                    // arm fires only on a discrete edit to a resting set (a moving
+                    // set already re-queues position ranges, so `positionsChanged`
+                    // covers it) — no new per-frame recompute for animating scenes.
+                    recomputeStoreTiesPossible(voxelPool, liveVoxelCount, tieScanCellScratch_);
+                }
             }
         }
         // Color + active uploads are source-indexed (slot == source voxel). The
@@ -1576,6 +1718,49 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
             }
 
+            // #2346 cardinal winner election — flagged (displaced-voxel) pools
+            // only. Between the settled distance stores and stage 2, re-run
+            // the identical cardinal geometry with every distance tap swapped
+            // for an atomicMin of the face's run-stable voxel pool index, so
+            // the winner-guarded stage 2 below admits exactly one of the
+            // equal-key faces per cell (the extension of #2255's per-axis
+            // election to the single-canvas store). Unflagged pools skip this
+            // entire block AND keep stage2Program_ — exactly master's programs
+            // and dispatch count, no added cost.
+            const bool cardinalElection = voxelPool.storeTiesPossible_;
+            if (cardinalElection) {
+                ensureCardinalWinnerCapacity(triangleCanvasTextures.size_);
+                // Reset this canvas's cell span to the 0xFFFFFFFF no-winner
+                // sentinel (repeating byte → GPU-side fill on both backends).
+                IRRender::device()->fillBuffer(
+                    cardinalWinner_.second,
+                    static_cast<std::size_t>(triangleCanvasTextures.size_.x) *
+                        static_cast<std::size_t>(triangleCanvasTextures.size_.y) *
+                        sizeof(std::uint32_t),
+                    0xFFu
+                );
+                cardinalWinner_.second->bindBase(
+                    BufferTarget::SHADER_STORAGE,
+                    kBufferIndex_PerAxisResolveScratch
+                );
+                stage1WinnerResolveProgram_->use();
+                // Same argument set as the visible stage-1 dispatch — re-bind
+                // the per-dispatch pieces for Metal's per-encoder argument
+                // table (GL state persists across the program switch).
+                (cutSectionFog != nullptr ? cutSectionFog->getTexture() : fogCullPlaceholder_)
+                    ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+                fogObserverBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FogObservers);
+                triangleCanvasTextures.getTextureDistances()
+                    ->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
+                // Struct 0 ONLY — deliberate symmetry: stage 2 itself
+                // dispatches only struct 0, and feeder-won pixels are never
+                // colour-tapped (#1740's margin guarantees no on-screen pixel
+                // is a feeder), so there is no feeder election dispatch.
+                IRRender::device()->dispatchComputeIndirect(indirectBuf_, 0);
+                // The winner SSBO writes must land before stage 2's guard reads.
+                IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+            }
+
             // Stage 2 runs in the SAME per-canvas tick rather than as a separate
             // system. The compact + position/color SSBOs (`voxelPosBuf_`,
             // `voxelColorBuf_`, `CompactedVoxelIndices`, `IndirectDispatchParams`)
@@ -1586,7 +1771,10 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             // stage-2 dispatch in here keeps each canvas's upload→compact→stage1
             // →stage2 sequence atomic before the next canvas overwrites the
             // buffers.
-            stage2Program_->use();
+            // #2346: a flagged pool runs the winner-guarded stage-2 variant in
+            // place of the default — same UBO, same dispatch, same taps, plus
+            // the per-cell winner guard resolved by the election above.
+            (cardinalElection ? stage2WinnerProgram_ : stage2Program_)->use();
             triangleCanvasTextures.getTextureColors()
                 ->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
             triangleCanvasTextures.getTextureDistances()
@@ -1609,6 +1797,17 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 IRRender::GpuSubStageScope gpuScope("voxelStage2");
                 IRRender::device()->dispatchComputeIndirect(indirectBuf_, 0);
                 IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+            }
+            if (cardinalElection) {
+                // Restore the never-unbound placeholder on 28 (see its #2255
+                // creation note) so the next canvas's default dispatches see
+                // the same binding state as before the election window; every
+                // real consumer of 28 (per-axis, sun bake, light grid) re-binds
+                // itself regardless.
+                winnerPlaceholderBuf_->bindBase(
+                    BufferTarget::SHADER_STORAGE,
+                    kBufferIndex_PerAxisResolveScratch
+                );
             }
         }
 
@@ -1736,6 +1935,24 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         IRRender::createNamedResource<ShaderProgram>(
             "SingleVoxel2",
             std::vector{ShaderStage{IRRender::kFileCompVoxelToTrixelStage2, ShaderType::COMPUTE}}
+        );
+        // #2346 cardinal winner election: the IR_STORE_WINNER_ELECTION 1
+        // specializations of the shared stage-1/stage-2 bodies, dispatched only
+        // for pools whose storeTiesPossible_ flag is set — the default
+        // SingleVoxelProgram1 / SingleVoxel2 stay byte-for-byte master's
+        // kernels (the election code is textually absent from their compiles).
+        IRRender::createNamedResource<ShaderProgram>(
+            "SingleVoxelWinnerResolve",
+            std::vector{ShaderStage{
+                IRRender::kFileCompVoxelToTrixelStage1WinnerResolve,
+                ShaderType::COMPUTE
+            }}
+        );
+        IRRender::createNamedResource<ShaderProgram>(
+            "SingleVoxel2Winner",
+            std::vector{
+                ShaderStage{IRRender::kFileCompVoxelToTrixelStage2Winner, ShaderType::COMPUTE}
+            }
         );
         // Chunk-occlusion HZB pre-pass program (#1294 child 2/3).
         IRRender::createNamedResource<ShaderProgram>(
@@ -1963,6 +2180,10 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         p->stage1FeederProgram_ =
             IRRender::getNamedResource<ShaderProgram>("SingleVoxelProgram1Feeder");
         p->stage2Program_ = IRRender::getNamedResource<ShaderProgram>("SingleVoxel2");
+        p->stage1WinnerResolveProgram_ =
+            IRRender::getNamedResource<ShaderProgram>("SingleVoxelWinnerResolve");
+        p->stage2WinnerProgram_ = IRRender::getNamedResource<ShaderProgram>("SingleVoxel2Winner");
+        p->winnerPlaceholderBuf_ = IRRender::getNamedResource<Buffer>("PerAxisWinnerPlaceholder");
         p->revoxelizeProgram_ =
             IRRender::getNamedResource<ShaderProgram>("RevoxelizeDetachedProgram");
         p->revoxelizeParamsBuf_ =

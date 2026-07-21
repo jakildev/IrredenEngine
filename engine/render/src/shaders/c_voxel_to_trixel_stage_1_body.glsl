@@ -8,24 +8,34 @@
  */
 
 // Shared stage-1 compute BODY (#2258 Step B, architect option a′). This is an
-// include-FRAGMENT, not a standalone shader: the two thin wrappers supply the
-// `#version`, the `#define IR_FEEDER_PASS {0|1}`, and the prerequisite includes,
+// include-FRAGMENT, not a standalone shader: the thin wrappers supply the
+// `#version`, the `#define IR_FEEDER_PASS {0|1}`, the
+// `#define IR_STORE_WINNER_ELECTION {0|1}`, and the prerequisite includes,
 // then `#include` this body. GLSL's include resolver is non-recursive
 // (opengl_shader.cpp `resolveShaderIncludes` pastes verbatim, no re-scan), so
 // this file lists NO `#include`s of its own — each wrapper MUST include, IN
-// THIS ORDER and with IR_FEEDER_PASS defined FIRST, before it (the
+// THIS ORDER and with both macros defined FIRST, before it (the
 // ir_sun_shadow_sample.glsl idiom):
 //   #define IR_FEEDER_PASS {0|1}
+//   #define IR_STORE_WINNER_ELECTION {0|1}
 //   #include "ir_iso_common.glsl"
 //   #include "ir_constants.glsl"
 //   #include "c_voxel_to_trixel_stage_1_body.glsl"
-// The two wrappers:
-//   c_voxel_to_trixel_stage_1.glsl        → IR_FEEDER_PASS 0 = visible dispatch
-//   c_voxel_to_trixel_stage_1_feeder.glsl → IR_FEEDER_PASS 1 = shadow-feeder dispatch
+// The three wrappers:
+//   c_voxel_to_trixel_stage_1.glsl        → FEEDER 0, ELECTION 0 = visible dispatch
+//   c_voxel_to_trixel_stage_1_feeder.glsl → FEEDER 1, ELECTION 0 = shadow-feeder dispatch
+//   c_voxel_to_trixel_stage_1_winner_resolve.glsl
+//                                         → FEEDER 0, ELECTION 1 = cardinal
+//     winner-election dispatch (#2346): re-runs the identical cardinal geometry
+//     with every distance tap swapped for a resolveWinnerTap, electing the
+//     minimum run-stable voxel pool index among the faces that tie each cell's
+//     settled distance key. Dispatched between the stage-1 stores and stage 2
+//     (struct 0 only) when the pool's storeTiesPossible_ flag is set.
 // The feeder-only code (tail read + strided micro-grid) is fenced under
-// `#if IR_FEEDER_PASS`, so the visible kernel compiles as master's stage-1 with
-// the feeder branches textually ABSENT — no runtime predication tax on the
-// hottest kernel (the whole point of a′ over the prior `feederPass` uniform).
+// `#if IR_FEEDER_PASS`, and the election swap under `#if
+// IR_STORE_WINNER_ELECTION`, so the visible kernel compiles as master's stage-1
+// with both variants' branches textually ABSENT — no runtime predication tax on
+// the hottest kernel (the whole point of a′ over a runtime uniform).
 
 // local_size_z MUST equal kStageMicroSlicesPerGroup (ir_constants.glsl) — the
 // #2258 micro-slice packing that cuts launched workgroups. Kept a literal here
@@ -221,6 +231,11 @@ void writeDistanceTap(const ivec2 canvasPixel, const int voxelDistance) {
 // per-axis tap and the election is a total order — stage 2's matching guard
 // then admits exactly one writer, making the color/entity-id planes
 // order-independent (the distance plane's atomicMin always was).
+// The cardinal election variant (#2346, IR_STORE_WINNER_ELECTION 1) reuses this
+// tap at every cardinal-branch distance-tap site: a voxel can tap a cell more
+// than once there (a slot's 2x3 block, the re-voxelize dilation, the dual
+// emit), but all same-voxel taps that match one settled key carry identical
+// color/entity-id values, so stage 2's guarded writes stay order-independent.
 void resolveWinnerTap(const ivec2 canvasPixel, const int voxelDistance, const uint voxelIndex) {
     const ivec2 canvasSize = imageSize(triangleCanvasDistances);
     if (!isInsideCanvas(canvasPixel, canvasSize)) return;
@@ -359,9 +374,16 @@ void overflowAppendTap(
 // emission hull (a larger super-sample lattice, a new dilation, a bigger D)
 // without widening the compact's window re-introduces the #1812 static-scene
 // silhouette holes (it false-culls voxels whose write escapes the stale window).
+// Under IR_STORE_WINNER_ELECTION (#2346) every distance tap below becomes a
+// resolveWinnerTap, so the election dispatch's footprint equals the store's by
+// construction — a missed site would leave winner == 0xFFFFFFFF at a tapped
+// pixel and stage 2's guard would reject ALL writers there (a colour hole).
 void emitDeformedFace(
     const ivec2 base, const mat2 D, const int voxelDistance, const int faceId,
     const bool reVoxelize
+#if IR_STORE_WINNER_ELECTION
+    , const uint voxelIndex
+#endif
 ) {
     int maxN = isDetachedCanvas > 0.5 ? 6 : 2;
     int n = clamp(int(ceil(max(length(D[0]), length(D[1])))), 1, maxN);
@@ -383,6 +405,15 @@ void emitDeformedFace(
         for (int sx = 0; sx < n; ++sx) {
             vec2 src = vec2(gl_LocalInvocationID.xy) + vec2(float(sx), float(sy)) * inv;
             ivec2 p = base + roundHalfUp(D * src);
+#if IR_STORE_WINNER_ELECTION
+            resolveWinnerTap(p, voxelDistance, voxelIndex);
+            if (reVoxelize) {
+                resolveWinnerTap(p + su, voxelDistance, voxelIndex);
+                resolveWinnerTap(p - su, voxelDistance, voxelIndex);
+                resolveWinnerTap(p + sv, voxelDistance, voxelIndex);
+                resolveWinnerTap(p - sv, voxelDistance, voxelIndex);
+            }
+#else
             writeDistanceTap(p, voxelDistance);
             if (reVoxelize) {
                 writeDistanceTap(p + su, voxelDistance);
@@ -390,6 +421,7 @@ void emitDeformedFace(
                 writeDistanceTap(p + sv, voxelDistance);
                 writeDistanceTap(p - sv, voxelDistance);
             }
+#endif
         }
     }
 }
@@ -865,7 +897,12 @@ void main() {
         const ivec2 base =
             trixelFrameOffset(trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions) +
             pos3DtoPos2DIso(voxelPositionInt);
-        emitDeformedFace(base, D, voxelDistance, faceId, reVoxelize);
+        emitDeformedFace(
+            base, D, voxelDistance, faceId, reVoxelize
+#if IR_STORE_WINNER_ELECTION
+            , voxelIndex
+#endif
+        );
         return;
     }
 
@@ -921,7 +958,12 @@ void main() {
         : (microPositionFixed.x + microPositionFixed.y + microPositionFixed.z);
     const int voxelDistance = encodeDepthWithFace(depthBase, slot, riserFlip);
     const ivec2 base = frameOffsetFixed + pos3DtoPos2DIso(microPositionFixed);
-    emitDeformedFace(base, D, voxelDistance, viewFaceId, reVoxelize);
+    emitDeformedFace(
+        base, D, voxelDistance, viewFaceId, reVoxelize
+#if IR_STORE_WINNER_ELECTION
+        , voxelIndex
+#endif
+    );
 
     // Both-exposed dual emit (#2157): the opposite face plane rasters its own
     // pixels here (faceMicroPositionFixed6 is polarity-dependent), so the riser
@@ -938,6 +980,11 @@ void main() {
         // this slot (riserFlip is always 0 when both polarities are exposed).
         const int distanceOpposite = encodeDepthWithFace(depthOpposite, slot, riserFlip ^ 1);
         const ivec2 baseOpposite = frameOffsetFixed + pos3DtoPos2DIso(microOpposite);
-        emitDeformedFace(baseOpposite, D, distanceOpposite, viewFaceId ^ 1, reVoxelize);
+        emitDeformedFace(
+            baseOpposite, D, distanceOpposite, viewFaceId ^ 1, reVoxelize
+#if IR_STORE_WINNER_ELECTION
+            , voxelIndex
+#endif
+        );
     }
 }

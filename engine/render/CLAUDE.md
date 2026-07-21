@@ -40,6 +40,11 @@ named lookup. Holds shaders, buffers, textures, VAOs, etc.
 │      • c_voxel_visibility_compact.glsl → visible index list      │
 │      • c_voxel_to_trixel_stage_1.glsl  → distance writes         │
 │      • c_voxel_to_trixel_stage_2.glsl  → color + entity id       │
+│        (a pool whose storeTiesPossible_ flag is set — displaced  │
+│        voxels sharing a rounded cell, #2346 — inserts the        │
+│        c_voxel_to_trixel_stage_1_winner_resolve election between │
+│        the stages and swaps stage 2 for the winner-guarded       │
+│        variant; lattice pools run exactly the two kernels above) │
 │    SHAPES_TO_TRIXEL / TEXT_TO_TRIXEL  (optional overlays)        │
 │    COMPUTE_VOXEL_AO                                              │
 │      • c_compute_voxel_ao.glsl → per-pixel AO factor             │

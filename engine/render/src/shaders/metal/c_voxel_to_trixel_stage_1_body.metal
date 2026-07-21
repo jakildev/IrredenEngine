@@ -1,17 +1,25 @@
 // Shared stage-1 compute BODY (#2258 Step B, architect option a′) — Metal twin
 // of c_voxel_to_trixel_stage_1_body.glsl. An include-FRAGMENT, not a standalone
-// shader: the two thin wrappers supply the prerequisite includes, the
-// `#define IR_FEEDER_PASS {0|1}`, and the `#define IR_STAGE1_KERNEL_NAME`, then
-// `#include` this body. The wrappers:
-//   c_voxel_to_trixel_stage_1.metal        → IR_FEEDER_PASS 0, kernel name
+// shader: the thin wrappers supply the prerequisite includes, the
+// `#define IR_FEEDER_PASS {0|1}`, the `#define IR_STORE_WINNER_ELECTION {0|1}`,
+// and the `#define IR_STAGE1_KERNEL_NAME`, then `#include` this body. The
+// wrappers:
+//   c_voxel_to_trixel_stage_1.metal        → FEEDER 0, ELECTION 0, kernel name
 //     c_voxel_to_trixel_stage_1        (visible dispatch)
-//   c_voxel_to_trixel_stage_1_feeder.metal → IR_FEEDER_PASS 1, kernel name
+//   c_voxel_to_trixel_stage_1_feeder.metal → FEEDER 1, ELECTION 0, kernel name
 //     c_voxel_to_trixel_stage_1_feeder (shadow-feeder dispatch)
+//   c_voxel_to_trixel_stage_1_winner_resolve.metal
+//                                          → FEEDER 0, ELECTION 1, kernel name
+//     c_voxel_to_trixel_stage_1_winner_resolve (#2346 cardinal winner election:
+//     the identical cardinal geometry with every distance tap swapped for a
+//     resolveWinnerTap — dispatched between the stores and stage 2, struct 0
+//     only, when the pool's storeTiesPossible_ flag is set)
 // The feeder-only code (tail read + strided micro-grid) is fenced under
-// `#if IR_FEEDER_PASS`, so the visible kernel compiles with the feeder branches
-// textually absent — no runtime predication tax on the hottest kernel. Metal's
-// loadAndPreprocessMetalSource IS recursive, but the body is kept include-free
-// to mirror the (non-recursive) GLSL idiom.
+// `#if IR_FEEDER_PASS`, and the election swap under `#if
+// IR_STORE_WINNER_ELECTION`, so the visible kernel compiles with both variants'
+// branches textually absent — no runtime predication tax on the hottest kernel.
+// Metal's loadAndPreprocessMetalSource IS recursive, but the body is kept
+// include-free to mirror the (non-recursive) GLSL idiom.
 
 // Stage 1 of the voxel→trixel pipeline: each surviving voxel writes a depth
 // tap into the canvas distance scratch buffer using atomic-min, so stage 2
@@ -228,6 +236,10 @@ inline void overflowAppendTap(
 // [0,2)x[0,3) invocation lattice) so a visible voxel's own last-frame write always
 // lands in the window it is tested against. Widening this emission hull without
 // widening that window re-introduces the #1812 static-scene silhouette holes.
+// Under IR_STORE_WINNER_ELECTION (#2346) every distance tap below becomes a
+// resolveWinnerTap, so the election dispatch's footprint equals the store's by
+// construction — a missed site would leave winner == 0xFFFFFFFF at a tapped
+// pixel and stage 2's guard would reject ALL writers there (a colour hole).
 inline void emitDeformedFace(
     int2 base,
     float2x2 D,
@@ -238,6 +250,10 @@ inline void emitDeformedFace(
     bool reVoxelize,
     device atomic_int* distanceScratch,
     int2 canvasSize
+#if IR_STORE_WINNER_ELECTION
+    , uint voxelIndex
+    , device atomic_uint* perAxisWinnerIds
+#endif
 ) {
     const int maxN = isDetached ? 6 : 2;
     const int n = clamp(int(ceil(max(length(D[0]), length(D[1])))), 1, maxN);
@@ -256,6 +272,15 @@ inline void emitDeformedFace(
         for (int sx = 0; sx < n; ++sx) {
             const float2 src = float2(localId) + float2(float(sx), float(sy)) * inv;
             const int2 p = base + roundHalfUp(D * src);
+#if IR_STORE_WINNER_ELECTION
+            resolveWinnerTap(p, voxelDistance, voxelIndex, distanceScratch, perAxisWinnerIds, canvasSize);
+            if (reVoxelize) {
+                resolveWinnerTap(p + su, voxelDistance, voxelIndex, distanceScratch, perAxisWinnerIds, canvasSize);
+                resolveWinnerTap(p - su, voxelDistance, voxelIndex, distanceScratch, perAxisWinnerIds, canvasSize);
+                resolveWinnerTap(p + sv, voxelDistance, voxelIndex, distanceScratch, perAxisWinnerIds, canvasSize);
+                resolveWinnerTap(p - sv, voxelDistance, voxelIndex, distanceScratch, perAxisWinnerIds, canvasSize);
+            }
+#else
             writeDistanceTap(p, voxelDistance, distanceScratch, canvasSize);
             if (reVoxelize) {
                 writeDistanceTap(p + su, voxelDistance, distanceScratch, canvasSize);
@@ -263,6 +288,7 @@ inline void emitDeformedFace(
                 writeDistanceTap(p + sv, voxelDistance, distanceScratch, canvasSize);
                 writeDistanceTap(p - sv, voxelDistance, distanceScratch, canvasSize);
             }
+#endif
         }
     }
 }
@@ -695,7 +721,13 @@ kernel void IR_STAGE1_KERNEL_NAME(
                 frameData.voxelRenderOptions
             ) +
             pos3DtoPos2DIso(voxelPositionInt);
-        emitDeformedFace(base, D, voxelDistance, localId, frameData.isDetachedCanvas > 0.5f, faceId, reVoxelize, distanceScratch, canvasSize);
+        emitDeformedFace(
+            base, D, voxelDistance, localId, frameData.isDetachedCanvas > 0.5f, faceId,
+            reVoxelize, distanceScratch, canvasSize
+#if IR_STORE_WINNER_ELECTION
+            , voxelIndex, perAxisWinnerIds
+#endif
+        );
         return;
     }
 
@@ -744,7 +776,13 @@ kernel void IR_STAGE1_KERNEL_NAME(
         : (microPositionFixed.x + microPositionFixed.y + microPositionFixed.z);
     const int voxelDistance = encodeDepthWithFace(depthBase, slot, riserFlip);
     const int2 base = frameOffsetFixed + pos3DtoPos2DIso(microPositionFixed);
-    emitDeformedFace(base, D, voxelDistance, localId, frameData.isDetachedCanvas > 0.5f, viewFaceId, reVoxelize, distanceScratch, canvasSize);
+    emitDeformedFace(
+        base, D, voxelDistance, localId, frameData.isDetachedCanvas > 0.5f, viewFaceId,
+        reVoxelize, distanceScratch, canvasSize
+#if IR_STORE_WINNER_ELECTION
+        , voxelIndex, perAxisWinnerIds
+#endif
+    );
 
     // Both-exposed dual emit (#2157): the opposite face plane rasters its own
     // pixels here (faceMicroPositionFixed6 is polarity-dependent), so the riser
@@ -761,6 +799,12 @@ kernel void IR_STAGE1_KERNEL_NAME(
         // The opposite plane is the non-triplet polarity (GLSL twin).
         const int distanceOpposite = encodeDepthWithFace(depthOpposite, slot, riserFlip ^ 1);
         const int2 baseOpposite = frameOffsetFixed + pos3DtoPos2DIso(microOpposite);
-        emitDeformedFace(baseOpposite, D, distanceOpposite, localId, frameData.isDetachedCanvas > 0.5f, viewFaceId ^ 1, reVoxelize, distanceScratch, canvasSize);
+        emitDeformedFace(
+            baseOpposite, D, distanceOpposite, localId, frameData.isDetachedCanvas > 0.5f,
+            viewFaceId ^ 1, reVoxelize, distanceScratch, canvasSize
+#if IR_STORE_WINNER_ELECTION
+            , voxelIndex, perAxisWinnerIds
+#endif
+        );
     }
 }
