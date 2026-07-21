@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+# fleet-notify — best-effort desktop notification on every fleet host.
+#
+# Routes by host: osascript (macOS), a stock-PowerShell WinRT toast (native
+# Windows / MSYS2), the same toast via powershell.exe interop (WSL — no Linux
+# notification daemon there; toasts land in the Windows tray), notify-send
+# (native Linux, when present). Log-first contract: the message is always
+# appended to ~/.fleet/notify.log BEFORE any delivery attempt, and delivery
+# failure never fails the caller — callers depend on the log, not the toast.
+#
+# Usage:
+#   fleet-notify <title> <body>
+#
+# Test seams: FLEET_NOTIFY_HOST forces the host arm (mac|windows|wsl|linux);
+# FLEET_HOME relocates the log. Delivery binaries are resolved from PATH so
+# tests stub them.
+#
+# Source of truth: scripts/fleet/fleet-notify in the engine repo.
+# Installed to ~/bin/fleet-notify by scripts/fleet/install.sh.
+
+set -uo pipefail
+
+if [[ $# -ne 2 ]]; then
+    echo "Usage: fleet-notify <title> <body>" >&2
+    exit 1
+fi
+
+title="$1"
+body="$2"
+
+FLEET_HOME="${FLEET_HOME:-$HOME/.fleet}"
+mkdir -p "$FLEET_HOME"
+printf '%s\t%s\t%s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$title" "$body" \
+    >> "$FLEET_HOME/notify.log"
+
+detect_host() {
+    if [[ -n "${FLEET_NOTIFY_HOST:-}" ]]; then
+        echo "$FLEET_NOTIFY_HOST"
+        return
+    fi
+    case "$(uname -s)" in
+        Darwin) echo "mac" ;;
+        MINGW*|MSYS*|CYGWIN*) echo "windows" ;;
+        Linux)
+            # WSL2 derives `linux` in the claim taxonomy, but notification
+            # delivery genuinely differs: WSL has no notification daemon and
+            # must interop out to Windows toasts.
+            if grep -qi microsoft /proc/version 2>/dev/null; then
+                echo "wsl"
+            else
+                echo "linux"
+            fi
+            ;;
+        *) echo "unknown" ;;
+    esac
+}
+
+# Windows toast via stock PowerShell (no modules): WinRT ToastNotification.
+# Shared by the native-Windows and WSL arms; $1 is the powershell binary name.
+send_toast() {
+    local ps_bin="$1"
+    FLEET_NOTIFY_TITLE="$title" FLEET_NOTIFY_BODY="$body" "$ps_bin" \
+        -NoProfile -NonInteractive -Command '
+        $ErrorActionPreference = "Stop"
+        [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
+        [Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null
+        $template = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02)
+        $texts = $template.GetElementsByTagName("text")
+        $texts.Item(0).AppendChild($template.CreateTextNode($env:FLEET_NOTIFY_TITLE)) | Out-Null
+        $texts.Item(1).AppendChild($template.CreateTextNode($env:FLEET_NOTIFY_BODY)) | Out-Null
+        $toast = [Windows.UI.Notifications.ToastNotification]::new($template)
+        [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("fleet").Show($toast)
+    '
+}
+
+deliver() {
+    case "$(detect_host)" in
+        mac)
+            command -v osascript > /dev/null 2>&1 || return 1
+            # Passed via env so quotes/backslashes in the message can't break
+            # out of the AppleScript string.
+            FLEET_NOTIFY_TITLE="$title" FLEET_NOTIFY_BODY="$body" osascript \
+                -e 'display notification (system attribute "FLEET_NOTIFY_BODY") with title (system attribute "FLEET_NOTIFY_TITLE")'
+            ;;
+        windows)
+            command -v powershell > /dev/null 2>&1 || return 1
+            send_toast powershell
+            ;;
+        wsl)
+            command -v powershell.exe > /dev/null 2>&1 || return 1
+            send_toast powershell.exe
+            ;;
+        linux)
+            command -v notify-send > /dev/null 2>&1 || return 1
+            notify-send "$title" "$body"
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+if ! deliver > /dev/null 2>&1; then
+    echo "fleet-notify: delivery unavailable on this host (logged to $FLEET_HOME/notify.log)" >&2
+fi
+exit 0
