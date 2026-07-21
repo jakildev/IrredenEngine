@@ -96,6 +96,17 @@ Specifically, **never pass these via `--label` when filing**:
   drained in batches by the human-cued `triage-coding-improvements` skill,
   which triages each ticket with the human and bundles the accepted
   convention changes into one PR per run.
+- `fleet:triage-recommend` — owned by the **triage role**
+  (`docs/agents/triage-protocol.md`), dry-run only. Applied together with a
+  `## Triage` comment when the role classifies an untriaged issue against
+  the standing objectives (`docs/design/objectives/`). Deliberately
+  **inert**: no queue machinery reads it — it routes the issue into
+  `fleet-decisions`' decision list so the verdict reaches the human via the
+  digest. The human acts (approve / close / park / reply) and removes the
+  label; removal re-arms the role's idempotency guard for a re-triage
+  after edits. The role never adds `human:approved`, `fleet:agent-approved`,
+  or `fleet:queued` — graduation to live approval is a human-authorized
+  protocol change (triage-protocol.md § Graduation).
 - `fleet:queued` / `fleet:task` — owned by **`fleet-queue-ingest`**,
   set after `human:approved` (or `fleet:agent-approved`) has been
   observed. Adding it at filing time excludes the issue from the ingest

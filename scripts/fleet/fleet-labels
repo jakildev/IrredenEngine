@@ -101,6 +101,7 @@ LABELS=(
     "fleet:needs-human|fbca04|Fleet can't finish autonomously (e.g. gated self-config); human acts. Held, keeps human:approved"
     "fleet:state-drift|fbca04|reconcile found claim-surface drift persisting N ticks; one deduped tracking issue for a human"
     "fleet:coding-improvement|c2e0c6|Worker-filed: a fix revealed a generalizable rule for the fleet's dev procedures; human triages"
+    "fleet:triage-recommend|d4c5f9|Dry-run triage verdict posted as a ## Triage comment; inert - human reads, decides, removes"
     "fleet:task|0366d6|Task from the fleet issue queue"
     "fleet:epic|cc317c|Parent issue tracking child issues; epic-steward maintains the Children checklist, closes it out"
     "fleet:queued|c5def5|Queued for fleet pickup (requires human:approved or fleet:agent-approved)"

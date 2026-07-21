@@ -106,6 +106,7 @@ DECISION_TAGS = {
     "fleet:steward-proposal": "steward proposal to answer",
     "fleet:state-drift": "state drift to reconcile",
     "human:review-plan": "plan approach sign-off",
+    "fleet:triage-recommend": "triage verdict to review",
 }
 
 repos = []

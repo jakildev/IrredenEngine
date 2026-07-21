@@ -58,7 +58,9 @@ cat > "$TMP/engine-issues.json" << 'EOF'
   {"number": 204, "title": "task: queued", "url": "u",
    "labels": [{"name": "fleet:queued"}, {"name": "human:approved"}]},
   {"number": 205, "title": "task: needs plan", "url": "u",
-   "labels": [{"name": "fleet:needs-plan"}, {"name": "human:approved"}]}
+   "labels": [{"name": "fleet:needs-plan"}, {"name": "human:approved"}]},
+  {"number": 206, "title": "idea: triaged, verdict pending", "url": "u",
+   "labels": [{"name": "fleet:triage-recommend"}]}
 ]
 EOF
 
@@ -108,17 +110,19 @@ err=$(cat "$TMP/err.txt")
 assert_eq "$status" "0" "default run exits 0 despite unreachable game repo"
 assert_contains "$err" "skipping jakildev/irreden" "unreachable repo warned on stderr"
 
-assert_contains "$out" "5 decision(s) waiting" "headline counts merge queue + decisions"
+assert_contains "$out" "6 decision(s) waiting" "headline counts merge queue + decisions"
 assert_contains "$out" "Merge queue (2)" "merge queue counts both approved PRs"
 assert_contains "$out" "engine PR #101" "clean approved PR listed"
 assert_contains "$out" "#102" "approved-with-nits PR listed"
 assert_contains "$out" "[approved+nits]" "has-nits annotated"
 assert_contains "$out" "hold: fleet:needs-linux-smoke outstanding" "smoke hold sub-line"
-assert_contains "$out" "Decisions (3)" "decision bucket counts gated + design-blocked + plan hold"
+assert_contains "$out" "Decisions (4)" "decision bucket counts gated + design-blocked + plan hold + triage verdict"
 assert_contains "$out" "engine PR #103" "gated PR in decisions"
 assert_contains "$out" "gated self-config edit" "gated tag rendered"
 assert_contains "$out" "engine PR #104" "design-blocked PR in decisions"
 assert_contains "$out" "engine issue #201" "plan sign-off issue in decisions"
+assert_contains "$out" "engine issue #206" "triage-recommend issue in decisions"
+assert_contains "$out" "triage verdict to review" "triage tag rendered"
 assert_absent  "$out" "#105" "wip-only PR appears in no bucket"
 assert_contains "$out" "fleet:coding-improvement: 1 open" "coding-improvement cue with count"
 assert_contains "$out" "untriaged (no state labels): 1" "untriaged cue counts label-less issue"
