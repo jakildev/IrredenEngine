@@ -25,19 +25,8 @@
 
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
-struct GPULightSource {
-    vec4 originAndType;
-    vec4 colorAndIntensity;
-    vec4 directionAndRadius;
-    vec4 coneAndSeedAlpha;
-    // #2318: true (unclamped) world voxel apex — read by the spot-cone
-    // consumer, not here; declared for std430 stride parity (80 bytes).
-    vec4 trueOriginVoxel;
-};
-
-layout(std430, binding = 4) readonly buffer LightSourceBuffer {
-    GPULightSource lights[];
-};
+// GPULightSource + the LightSourceBuffer (slot 4) SSBO declaration.
+#include "ir_world_lighting.glsl"
 
 layout(std140, binding = 23) uniform LightVolumeParams {
     int gridSize;

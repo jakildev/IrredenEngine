@@ -4,6 +4,8 @@
 // for the opt-in detached re-voxelize world-receive path (#1576 P4b-2). Shared
 // with c_compute_sun_shadow; replaces this kernel's former local FrameDataSun.
 #include "ir_sun_shadow_sample.metal"
+// GPULightSource layout, light-volume extents, spotConeFactor, ACESFilm.
+#include "ir_world_lighting.metal"
 
 // Mirrors shaders/c_lighting_to_trixel.glsl. Screen-space lighting
 // application pass — modulates trixelColors.rgb by (AO × sun-shadow),
@@ -26,10 +28,6 @@ struct FrameDataLightingToTrixel {
     float4 skyColor;
 };
 
-// Mirror of `kLightVolumeSize` in component_canvas_light_volume.hpp.
-constant float kLightVolumeSize = 128.0;
-constant float kLightVolumeHalfExtent = 64.0;
-
 // Layout must match the propagate/seed UBO layout so the shared buffer
 // binding works. Lighting reads `worldOriginVoxel.xyz` (volume origin) and
 // `.w` (has-SPOT flag, #2318).
@@ -40,48 +38,6 @@ struct LightVolumeParams {
     float _stepFalloff;
     int4  worldOriginVoxel;
 };
-
-// SPOT cone shaping (#2318). Mirrors GPULightSource / LightType::SPOT.
-struct GPULightSource {
-    float4 originAndType;
-    float4 colorAndIntensity;
-    float4 directionAndRadius;
-    float4 coneAndSeedAlpha;
-    float4 trueOriginVoxel;
-};
-constant int kLightTypeSpot = 3;
-constant float kConeEdgeSoftness = 1.15f;
-// Metal has no radians() builtin (GLSL does); convert degrees inline.
-constant float kDegToRad = 3.14159265358979323846f / 180.0f;
-
-// Analytic SPOT falloff at world position `pos3D` for the 0-based light
-// `lightIdx`. 1.0 inside the cone, smoothstep to 0.0 across the soft edge
-// band, 0.0 outside. Apex is the light's TRUE (unclamped) origin. Mirrors
-// the GLSL twin.
-float spotConeFactor(device const GPULightSource* lights, int lightIdx, float3 pos3D) {
-    const GPULightSource L = lights[lightIdx];
-    const float3 axis = normalize(L.directionAndRadius.xyz);
-    const float3 toCell = pos3D - L.trueOriginVoxel.xyz;
-    const float toCellLen = length(toCell);
-    if (toCellLen < 1e-4f) {
-        return 1.0f;   // at the apex — fully lit, avoid a 0/0 direction.
-    }
-    const float cosToCell = dot(toCell / toCellLen, axis);
-    const float halfAngle = L.coneAndSeedAlpha.x * 0.5f * kDegToRad;
-    const float cosInner = cos(halfAngle);
-    const float cosOuter = cos(min(halfAngle * kConeEdgeSoftness, 90.0f * kDegToRad));
-    return smoothstep(cosOuter, cosInner, cosToCell);
-}
-
-// ACES Filmic tone mapping (Stephen Hill's fitted curve).
-float3 ACESFilm(float3 x) {
-    const float a = 2.51f;
-    const float b = 0.03f;
-    const float c = 2.43f;
-    const float d = 0.59f;
-    const float e = 0.14f;
-    return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0f, 1.0f);
-}
 
 // Per-axis empty-cell compaction (#2256): on the per-axis route
 // (perAxisRoute != 0) this kernel is dispatched indirectly over only each axis's
@@ -324,7 +280,7 @@ kernel void c_lighting_to_trixel(
         if (lightVolumeParams.worldOriginVoxel.w != 0) {
             const int3 idCell = int3(floor(localPos + float3(kLightVolumeHalfExtent) + float3(0.5)));
             if (all(idCell >= int3(0)) && all(idCell < int3(int(kLightVolumeSize)))) {
-                const int winId = int(round(lightVolumeId.read(uint3(idCell)).r * 255.0f));
+                const int winId = roundHalfUp(lightVolumeId.read(uint3(idCell)).r * 255.0f);
                 if (winId > 0 && int(lights[winId - 1].originAndType.w) == kLightTypeSpot) {
                     light *= spotConeFactor(lights, winId - 1, pos3D);
                 }

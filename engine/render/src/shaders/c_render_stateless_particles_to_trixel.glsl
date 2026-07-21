@@ -121,7 +121,7 @@ void main() {
     // positional precision matching the voxel-pool `position * sub` cast
     // in c_voxel_to_trixel_stage_1.glsl.
     const int subdivisions = effectiveTrixelSubdivisionScale(voxelRenderOptions);
-    const ivec3 posScaled = ivec3(round(position * float(subdivisions)));
+    const ivec3 posScaled = roundHalfUp(position * float(subdivisions));
 
     const ivec2 frameOffset =
         trixelFrameOffset(trixelCanvasOffsetZ1, cameraTrixelOffset, voxelRenderOptions);

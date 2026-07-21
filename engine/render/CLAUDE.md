@@ -115,7 +115,9 @@ Location: `engine/render/src/shaders/` (GLSL) and
 
 Naming prefixes follow the convention in
 [`CLAUDE-BASELINE.md §Naming`](../../docs/agents/CLAUDE-BASELINE.md#naming).
-Shared includes: `ir_iso_common.glsl`, `ir_constants.glsl`.
+Shared includes: `ir_iso_common.glsl`, `ir_constants.glsl`,
+`ir_world_lighting.glsl` (light-source list layout + SPOT cone +
+ACES tonemap, shared by the world-lighting passes).
 Shader file paths are stored in `render/shader_names.hpp`. Update that
 header when you add or rename a shader.
 

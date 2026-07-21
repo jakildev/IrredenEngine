@@ -9,15 +9,8 @@ using namespace metal;
 // window edge (see `gatherLightSources`). The propagate pass decrements
 // alpha by `stepFalloff` per step.
 
-struct GPULightSource {
-    float4 originAndType;
-    float4 colorAndIntensity;
-    float4 directionAndRadius;
-    float4 coneAndSeedAlpha;
-    // #2318: true (unclamped) apex — read by the spot-cone consumer, not
-    // here; declared for std430 stride parity (80 bytes).
-    float4 trueOriginVoxel;
-};
+// GPULightSource layout (the light-list entry this kernel seeds from).
+#include "ir_world_lighting.metal"
 
 struct LightVolumeParams {
     int gridSize;

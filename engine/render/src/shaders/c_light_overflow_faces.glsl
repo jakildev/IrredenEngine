@@ -29,6 +29,7 @@ layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 // resolver is non-recursive) — same order as c_lighting_to_trixel.glsl.
 #include "ir_sun_projection.glsl"
 #include "ir_sun_shadow_sample.glsl" // FrameDataSun(29), sun-depth SSBO(28), worldSunShadowFactor()
+#include "ir_world_lighting.glsl"    // GPULightSource list (slot 4), spotConeFactor, ACESFilm
 
 layout(std140, binding = 27) uniform FrameDataLightingToTrixel {
     int   lightingEnabled;
@@ -96,51 +97,6 @@ layout(rgba8, binding = 7) readonly uniform image3D lightVolumeId;
 layout(std430, binding = 8) buffer OverflowLightingScratch {
     uint overflowScratch[];
 };
-
-// --- shared world-lighting primitives -----------------------------------------
-// These MIRROR c_lighting_to_trixel.glsl (kept in lockstep). Duplicated rather
-// than extracted so the shipped lighting kernel stays byte-identical — a future
-// simplify pass can hoist both into a shared ir_world_lighting.glsl include.
-struct GPULightSource {
-    vec4 originAndType;
-    vec4 colorAndIntensity;
-    vec4 directionAndRadius;
-    vec4 coneAndSeedAlpha;
-    vec4 trueOriginVoxel;
-};
-layout(std430, binding = 4) readonly buffer LightSourceBuffer {
-    GPULightSource lights[];
-};
-
-const float kLightVolumeSize = 128.0;
-const float kLightVolumeHalfExtent = 64.0;
-const int   kLightTypeSpot = 3;
-const float kConeEdgeSoftness = 1.15;
-
-float spotConeFactor(int lightIdx, vec3 pos3D) {
-    const GPULightSource L = lights[lightIdx];
-    const vec3 axis = normalize(L.directionAndRadius.xyz);
-    const vec3 toCell = pos3D - L.trueOriginVoxel.xyz;
-    const float toCellLen = length(toCell);
-    if (toCellLen < 1e-4) {
-        return 1.0;
-    }
-    const float cosToCell = dot(toCell / toCellLen, axis);
-    const float halfAngle = radians(L.coneAndSeedAlpha.x * 0.5);
-    const float cosInner = cos(halfAngle);
-    const float cosOuter = cos(min(halfAngle * kConeEdgeSoftness, radians(90.0)));
-    return smoothstep(cosOuter, cosInner, cosToCell);
-}
-
-vec3 ACESFilm(vec3 x) {
-    const float a = 2.51;
-    const float b = 0.03;
-    const float c = 2.43;
-    const float d = 0.59;
-    const float e = 0.14;
-    return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0);
-}
-// -----------------------------------------------------------------------------
 
 void main() {
     // The dispatch is a 2-D group grid (voxelDispatchGridForCount wraps past
@@ -224,7 +180,7 @@ void main() {
                 ivec3(floor(localPos + vec3(kLightVolumeHalfExtent) + vec3(0.5)));
             if (all(greaterThanEqual(idCell, ivec3(0))) &&
                 all(lessThan(idCell, ivec3(int(kLightVolumeSize))))) {
-                const int winId = int(round(imageLoad(lightVolumeId, idCell).r * 255.0));
+                const int winId = roundHalfUp(imageLoad(lightVolumeId, idCell).r * 255.0);
                 if (winId > 0 && int(lights[winId - 1].originAndType.w) == kLightTypeSpot) {
                     light *= spotConeFactor(winId - 1, pos3D);
                 }

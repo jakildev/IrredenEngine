@@ -89,7 +89,10 @@ void main() {
     // i.e. the byte-identical fast path.
     float depthScale = effectiveSubdivisionsForHover.y;
     if (depthScale <= 0.0) depthScale = 1.0;
-    int base = int(round(float(rawDist) * depthScale));
+    // roundHalfUp, not hardware round(): a fractional depthScale (effSub /
+    // cubeSub) lands odd rawDist values on exact .5 ties, where GLSL round()
+    // is implementation-defined and diverges from the Metal twin.
+    int base = roundHalfUp(float(rawDist) * depthScale);
     // Hover state, computed BEFORE the (now-conditional) entity-id read (#2155).
     // It needs only `origin` + the hover uniforms — no texture fetch — so hoisting
     // it above the read is inert, and it lets the read be gated on hover too.

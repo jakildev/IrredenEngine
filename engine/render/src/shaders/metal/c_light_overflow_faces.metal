@@ -2,6 +2,7 @@
                                      // FrameDataVoxelToTrixel (with overflowScratchLayout)
 #include "ir_per_axis_lighting.metal" // perAxisCellToWorld3D
 #include "ir_sun_shadow_sample.metal" // FrameDataSun + worldSunShadowFactor()
+#include "ir_world_lighting.metal"    // GPULightSource layout, spotConeFactor, ACESFilm
 
 // Mirrors shaders/c_light_overflow_faces.glsl — view-visibility overflow-face
 // lighting (#2334, epic #2331 phase C2). Dispatched inside LIGHTING_TO_TRIXEL
@@ -30,49 +31,6 @@ struct LightVolumeParams {
     float _stepFalloff;
     int4  worldOriginVoxel;
 };
-
-// --- shared world-lighting primitives -----------------------------------------
-// These MIRROR c_lighting_to_trixel.metal (kept in lockstep). Duplicated rather
-// than extracted so the shipped lighting kernel stays byte-identical — a future
-// simplify pass can hoist both into a shared ir_world_lighting.metal include.
-constant float kLightVolumeSize = 128.0;
-constant float kLightVolumeHalfExtent = 64.0;
-constant int   kLightTypeSpot = 3;
-constant float kConeEdgeSoftness = 1.15f;
-constant float kDegToRad = 3.14159265358979323846f / 180.0f;
-
-struct GPULightSource {
-    float4 originAndType;
-    float4 colorAndIntensity;
-    float4 directionAndRadius;
-    float4 coneAndSeedAlpha;
-    float4 trueOriginVoxel;
-};
-
-float spotConeFactor(device const GPULightSource* lights, int lightIdx, float3 pos3D) {
-    const GPULightSource L = lights[lightIdx];
-    const float3 axis = normalize(L.directionAndRadius.xyz);
-    const float3 toCell = pos3D - L.trueOriginVoxel.xyz;
-    const float toCellLen = length(toCell);
-    if (toCellLen < 1e-4f) {
-        return 1.0f;
-    }
-    const float cosToCell = dot(toCell / toCellLen, axis);
-    const float halfAngle = L.coneAndSeedAlpha.x * 0.5f * kDegToRad;
-    const float cosInner = cos(halfAngle);
-    const float cosOuter = cos(min(halfAngle * kConeEdgeSoftness, 90.0f * kDegToRad));
-    return smoothstep(cosOuter, cosInner, cosToCell);
-}
-
-float3 ACESFilm(float3 x) {
-    const float a = 2.51f;
-    const float b = 0.03f;
-    const float c = 2.43f;
-    const float d = 0.59f;
-    const float e = 0.14f;
-    return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0f, 1.0f);
-}
-// -----------------------------------------------------------------------------
 
 kernel void c_light_overflow_faces(
     constant FrameDataLightingToTrixel& frameData [[buffer(27)]],
@@ -162,7 +120,7 @@ kernel void c_light_overflow_faces(
         if (lightVolumeParams.worldOriginVoxel.w != 0) {
             const int3 idCell = int3(floor(localPos + float3(kLightVolumeHalfExtent) + float3(0.5)));
             if (all(idCell >= int3(0)) && all(idCell < int3(int(kLightVolumeSize)))) {
-                const int winId = int(round(lightVolumeId.read(uint3(idCell)).r * 255.0f));
+                const int winId = roundHalfUp(lightVolumeId.read(uint3(idCell)).r * 255.0f);
                 if (winId > 0 && int(lights[winId - 1].originAndType.w) == kLightTypeSpot) {
                     light *= spotConeFactor(lights, winId - 1, pos3D);
                 }

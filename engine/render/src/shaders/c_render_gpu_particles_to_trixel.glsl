@@ -54,7 +54,7 @@ void main() {
     Particle p = particles[idx];
     if (p.lifetime <= 0.0) return;
 
-    const ivec3 posI = ivec3(round(p.position));
+    const ivec3 posI = roundHalfUp(p.position);
     const ivec2 frameOffset = trixelCanvasOffsetZ1 + ivec2(floor(cameraTrixelOffset));
     const vec4 baseColor = unpackColor(p.color);
     const ivec2 canvasSize = imageSize(triangleCanvasDistances);

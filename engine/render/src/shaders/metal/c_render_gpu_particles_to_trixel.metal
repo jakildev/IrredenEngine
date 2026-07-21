@@ -46,7 +46,7 @@ kernel void c_render_gpu_particles_to_trixel(
     Particle p = particles[gid];
     if (p.lifetime <= 0.0) return;
 
-    const int3 posI = int3(round(float3(p.position)));
+    const int3 posI = roundHalfUp(float3(p.position));
     const int2 frameOffset = frameData.trixelCanvasOffsetZ1 + int2(floor(frameData.cameraTrixelOffset));
     const float4 baseColor = unpackColor(p.color);
 

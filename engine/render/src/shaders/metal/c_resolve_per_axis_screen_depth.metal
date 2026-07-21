@@ -65,7 +65,7 @@ kernel void c_resolve_per_axis_screen_depth(
     // `perAxisBase + pos3DtoPos2DIso(facePos)`; invert via isoPixelToPos3D
     // (exact integer facePos for integer cell + rawDepth).
     const int2 isoPix = cell - perAxisBase;
-    const int3 origin = int3(round(isoPixelToPos3D(isoPix.x, isoPix.y, float(rawDepth))));
+    const int3 origin = roundHalfUp(isoPixelToPos3D(isoPix.x, isoPix.y, float(rawDepth)));
 
     // Re-project into the MAIN-canvas cardinal distance layout, mirroring
     // c_voxel_to_trixel_stage_1.metal's cardinal store, so the BAKE cardinal

@@ -103,7 +103,7 @@ void main() {
     // base-resolution origin into the SUBDIVIDED main-canvas cardinal layout.)
     const ivec2 perAxisBase = trixelOriginOffsetZ1(perAxisSize) + ivec2(floor(frameCanvasOffset));
     const ivec2 isoPix = cell - perAxisBase;
-    const ivec3 origin = ivec3(round(isoPixelToPos3D(isoPix.x, isoPix.y, float(rawDepth))));
+    const ivec3 origin = roundHalfUp(isoPixelToPos3D(isoPix.x, isoPix.y, float(rawDepth)));
 
     // Re-project into the MAIN-canvas cardinal distance layout, mirroring
     // c_voxel_to_trixel_stage_1's cardinal (perAxisRoute==0) store exactly:

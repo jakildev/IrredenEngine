@@ -23,6 +23,8 @@ layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 // the opt-in detached re-voxelize world-receive path (#1576 P4b-2). Shared with
 // c_compute_sun_shadow; replaces this pass's former local FrameDataSun block.
 #include "ir_sun_shadow_sample.glsl"
+// GPULightSource list (slot 4), light-volume extents, spotConeFactor, ACESFilm.
+#include "ir_world_lighting.glsl"
 
 layout(std140, binding = 27) uniform FrameDataLightingToTrixel {
     uniform int   lightingEnabled;
@@ -93,21 +95,6 @@ layout(rg32ui, binding = 6) readonly uniform uimage2D trixelEntityIds;
 // byte-identical. Bound every tick so Metal's slot table is populated.
 layout(rgba8, binding = 7) readonly uniform image3D lightVolumeId;
 
-// SPOT cone shaping (#2318). The winning-light ID indexes this list to recover
-// the light's cone axis (`directionAndRadius.xyz`), aperture
-// (`coneAndSeedAlpha.x`, full degrees), and TRUE apex (`trueOriginVoxel.xyz`).
-// Bound transiently at slot 4 by LIGHTING_TO_TRIXEL; only read on the spot path.
-struct GPULightSource {
-    vec4 originAndType;
-    vec4 colorAndIntensity;
-    vec4 directionAndRadius;
-    vec4 coneAndSeedAlpha;
-    vec4 trueOriginVoxel;
-};
-layout(std430, binding = 4) readonly buffer LightSourceBuffer {
-    GPULightSource lights[];
-};
-
 // Per-axis empty-cell compaction (#2256): on the per-axis route (perAxisRoute !=
 // 0) this kernel is dispatched indirectly over only each axis's OCCUPIED cells
 // (compacted by the STAGE_1 per-axis pre-pass) instead of sweeping the full
@@ -140,51 +127,6 @@ layout(std140, binding = 23) uniform LightVolumeParams {
     float _stepFalloff;
     ivec4 lightVolumeWorldOrigin;
 };
-
-// Mirror of `kLightVolumeSize` in component_canvas_light_volume.hpp.
-// The volume covers world voxels in [-half, half) with one texel per
-// voxel; sample coords are `(worldVoxel + half + 0.5) / size` to land
-// at texel centers.
-const float kLightVolumeSize = 128.0;
-const float kLightVolumeHalfExtent = 64.0;
-
-// SPOT cone shaping (#2318). Mirrors `LightType::SPOT` in
-// component_light_source.hpp. The cone factor smoothly falls off across a
-// band from the nominal half-aperture to `kConeEdgeSoftness ×` that angle so
-// the cone edge is anti-aliased rather than a hard step.
-const int kLightTypeSpot = 3;
-const float kConeEdgeSoftness = 1.15;
-
-// Analytic SPOT falloff at world position `pos3D` for the light whose 0-based
-// index is `lightIdx`. 1.0 inside the cone, smoothstep to 0.0 across the soft
-// edge band, 0.0 outside. The apex is the light's TRUE (unclamped) origin so
-// an out-of-window spot's cone stays oriented from its real position.
-float spotConeFactor(int lightIdx, vec3 pos3D) {
-    const GPULightSource L = lights[lightIdx];
-    const vec3 axis = normalize(L.directionAndRadius.xyz);
-    const vec3 toCell = pos3D - L.trueOriginVoxel.xyz;
-    const float toCellLen = length(toCell);
-    if (toCellLen < 1e-4) {
-        return 1.0;   // at the apex — fully lit, avoid a 0/0 direction.
-    }
-    const float cosToCell = dot(toCell / toCellLen, axis);
-    const float halfAngle = radians(L.coneAndSeedAlpha.x * 0.5);
-    const float cosInner = cos(halfAngle);
-    const float cosOuter = cos(min(halfAngle * kConeEdgeSoftness, radians(90.0)));
-    return smoothstep(cosOuter, cosInner, cosToCell);
-}
-
-// ACES Filmic tone mapping (Stephen Hill's fitted curve).
-// Maps [0, ∞) → [0, 1) with a gentle shoulder that preserves color
-// saturation in bright highlights better than Reinhard.
-vec3 ACESFilm(vec3 x) {
-    const float a = 2.51;
-    const float b = 0.03;
-    const float c = 2.43;
-    const float d = 0.59;
-    const float e = 0.14;
-    return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0);
-}
 
 void main() {
     if (lightingEnabled == 0) {
@@ -394,7 +336,7 @@ void main() {
             const ivec3 idCell = ivec3(floor(localPos + vec3(kLightVolumeHalfExtent) + vec3(0.5)));
             if (all(greaterThanEqual(idCell, ivec3(0))) &&
                 all(lessThan(idCell, ivec3(int(kLightVolumeSize))))) {
-                const int winId = int(round(imageLoad(lightVolumeId, idCell).r * 255.0));
+                const int winId = roundHalfUp(imageLoad(lightVolumeId, idCell).r * 255.0);
                 if (winId > 0 && int(lights[winId - 1].originAndType.w) == kLightTypeSpot) {
                     light *= spotConeFactor(winId - 1, pos3D);
                 }
