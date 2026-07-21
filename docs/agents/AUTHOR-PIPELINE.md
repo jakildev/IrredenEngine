@@ -131,6 +131,54 @@ changed) before invoking `commit-and-push` to push the fix.
 
 ---
 
+## Acceptance evidence
+
+The ticket-derived exit gate. Every step above is keyed off *which
+files changed*. This step is keyed off the *ticket*: it closes the
+loop between the plan's `### Acceptance criteria` and the PR that
+claims to satisfy them. Criteria are authored at plan time under
+[`PLANNING-PROTOCOL.md`](PLANNING-PROTOCOL.md)'s positive-fire rule
+(step 2 of its flow); this is where they get re-checked against the
+finished tree instead of silently trusted.
+
+Skip only when the work has no originating issue (`Issue:` field
+`(none)`) or the issue has no `## Plan` comment / plan file — then
+there are no authored criteria to grade.
+
+1. **Re-read the plan's `### Acceptance criteria`** — from
+   `.fleet/plans/issue-<N>.md` if the branch carries it, else the
+   issue's `## Plan` comment (`gh issue view <N> --comments`).
+2. **Run each named check NOW, on the final tree.** Evidence from an
+   earlier iteration is stale if the tree changed since. Record the
+   exact command and the observed output line that proves the criterion
+   *fired* — a count > 0, an asserted probe reading, a visible delta.
+   "Nothing broke" is not evidence; that's what the build/run steps
+   already established.
+3. **Paste the results into the PR body** as an
+   `## Acceptance evidence` section (template:
+   `commit-and-push` `procedures/pr-body.md`) — one row per criterion:
+   criterion | check run | observed.
+4. **Grade honestly.** Three non-met shapes, each with its own move:
+   - *Unverifiable on this host* (needs the other backend, a GL host,
+     a game build): record `unverifiable on <host>: <reason>` in the
+     row — never silently drop it. The reviewer and the cross-host
+     smoke lane pick it up from there.
+   - *Fails*: the task is not done. Fix it — or, if the criterion
+     itself turned out to be wrong (plan premise falsified), escalate
+     per `role-worker.md` step 8 instead of shipping around it.
+   - *Satisfied by a different mechanism than planned*: record what
+     actually proves it and note the delta from the plan, so the
+     reviewer isn't grading against a stale approach.
+
+If the `commit-and-push` simplify pass later applies a
+behavior-affecting fix, re-run the affected checks before the PR
+opens — the table must describe the tree that ships.
+
+The reviewer side audits this table against the plan; a missing or
+hand-waved table costs a review round-trip.
+
+---
+
 ## Finalize the PR
 
 Use the `commit-and-push` skill to push your work commits to the

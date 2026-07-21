@@ -12,6 +12,11 @@ stack modes apply a delta to the canonical template.
 ## Test plan
 - [ ] <verification steps>
 
+## Acceptance evidence
+| Criterion | Check run | Observed |
+|---|---|---|
+| <criterion from the plan> | `<command>` | <output line proving it fired> |
+
 ## Notes for reviewer
 <optional — include only when the reviewer needs specific guidance>
 
@@ -26,6 +31,16 @@ Omit the `Closes #<issue-N>` line when the task's `Issue:` field is `(none)`
 
 The `Closes #N` line is what makes GitHub auto-close the originating issue on
 merge. Always include it when an Issue number exists.
+
+`## Acceptance evidence` is required whenever the body carries a `Closes #N`
+line and issue N has a `## Plan` with `### Acceptance criteria`; omit it
+otherwise (`Issue: (none)`, plan-less issues). One row per criterion —
+authoring rules, the unverifiable-on-this-host convention, and the
+fails-means-not-done rule live in
+[`docs/agents/AUTHOR-PIPELINE.md`](../../../../docs/agents/AUTHOR-PIPELINE.md)
+§ "Acceptance evidence". The two sections answer different questions:
+`## Test plan` says how you verified the code doesn't break; `## Acceptance
+evidence` proves the ticket's named criteria actually fired.
 
 ## Fleet stack delta
 
