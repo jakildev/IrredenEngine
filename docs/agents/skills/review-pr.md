@@ -24,6 +24,7 @@ Wherever a step needs a repo-specific value it names a **delta key** in bold.
 | **claim tool** | The fleet claim/release helper. | `fleet-claim` |
 | **default branch** | The repo's main branch (step-1c base check). | `master` |
 | **review checklist** | The repo's domain-specific review items (step 4). | the engine checklist in the wrapper |
+| **acceptance grader** | Optional subagent that grades the PR against the originating issue's planned acceptance criteria (step 4b). | the `review-acceptance` agent |
 | **smoke procedure** | Cross-host/backend validation tagging, if any. | the wrapper's `procedures/cross-host-smoke.md` |
 | **re-review procedure** | The repo's re-review expansion. | the wrapper's `procedures/re-review.md` |
 | **stacked-review procedure** | Per-PR scoping for stacked PRs. | the wrapper's `procedures/stacked-pr-review.md` |
@@ -191,6 +192,26 @@ If the PR touches a subdirectory with its own `CLAUDE.md` (or `REVIEW.md`),
 read it **in addition to** the repo checklist and apply both — the repo
 checklist is the baseline, the subdirectory's rules are the delta.
 
+### 4b. Grade acceptance against the originating issue
+
+The checklist above grades code health; this step grades **outcome**. If
+the repo defines an **acceptance grader** delta and the PR body carries a
+`Closes #N` line, dispatch the grader (via the Agent tool) with the PR
+number and the closed issue number(s). It reads the issue's planned
+`### Acceptance criteria` plus the PR's `## Acceptance evidence` table and
+returns a fragment grading each criterion met / unmet / unverifiable.
+
+Fold the fragment into the review body as its own `### Acceptance
+(issue #N)` section and map the grades into the verdict per the wrapper's
+rules — an unmet criterion is at least needs-fix. The grader is
+deliberately a separate context from this session: it grades the ticket's
+outcome without being anchored by the code-health walk you just did.
+
+Skip when the delta is absent, the body has no `Closes #N`, or the grader
+reports the issue has no planned criteria — the code-health review stands
+on its own in those cases. Dispatch it concurrently with step 4's checklist
+walk when convenient; it needs the metadata from step 1, not your findings.
+
 ### 5. Write the review and set the verdict label
 
 **These are one indivisible action.** Post the review comment and set the
@@ -225,6 +246,9 @@ Body shape:
 
 ### Praise
 - <non-obvious good decision, if any>
+
+### Acceptance (issue #N)
+<the acceptance grader's table, when step 4b ran>
 
 ### Test plan the author should run before merge
 - [ ] <...>

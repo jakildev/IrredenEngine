@@ -30,6 +30,7 @@ verdict-label swap commands (step 5b). See
 | **claim tool** | `fleet-claim` (bail release: `fleet-claim review-release <N> <worktree>`) |
 | **default branch** | `master` |
 | **review checklist** | the engine checklist below |
+| **acceptance grader** | [`review-acceptance`](../../agents/review-acceptance.md) — dispatch per shared-flow step 4b; verdict mapping below |
 | **smoke procedure** | [`procedures/cross-host-smoke.md`](procedures/cross-host-smoke.md) |
 | **re-review procedure** | [`procedures/re-review.md`](procedures/re-review.md) |
 | **stacked-review procedure** | [`procedures/stacked-pr-review.md`](procedures/stacked-pr-review.md) |
@@ -167,6 +168,19 @@ any `c_compute_*shadow*.glsl` / `.metal`)
   [`docs/agents/FLEET.md`](../../../docs/agents/FLEET.md) §"Clean-exit
   policy". A crash observed but out of reach must be filed with forensics
   AND the lane reported failed.
+
+**Acceptance vs the originating issue** (shared-flow step 4b)
+- When the PR body carries `Closes #N` and issue N has a `## Plan` with
+  `### Acceptance criteria`, dispatch the **acceptance grader**
+  (`review-acceptance`) with the PR + issue numbers and fold its fragment
+  into the review as `### Acceptance (issue #N)`.
+- Verdict mapping: any **unmet** criterion is at least needs-fix — blocker
+  if the miss means the shipped mechanism doesn't function at all. A
+  missing `## Acceptance evidence` PR-body section whose criteria you can
+  still establish from the diff is a nit; a criterion you cannot establish
+  is unmet, not a nit.
+- **unverifiable on <host>** rows are not penalized — confirm the smoke
+  labels from step 5c cover the lane the grader named.
 
 **Opportunistic fixes (fix-forward covenant)**
 - A clearly-sectioned `## Opportunistic fixes` block in the PR body is the
