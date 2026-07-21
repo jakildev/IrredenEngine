@@ -280,12 +280,45 @@ void viewMaskTap(const ivec2 perAxisBase, const ivec3 facePos) {
 void overflowAppendTap(
     const ivec2 perAxisBase, const ivec3 facePos, const int voxelDistance, const uint colorPacked
 ) {
-    const ivec2 yawedPix = overflowYawedPixel(perAxisBase, facePos);
-    if (!isInsideCanvas(yawedPix, canvasSizePixels)) return; // off-screen at the live yaw
-    const uint yawedCell = uint(yawedPix.y) * uint(canvasSizePixels.x) + uint(yawedPix.x);
-    const uint maskKey = perAxisWinnerIds[uint(overflowScratchLayout.x) + yawedCell];
-    if (overflowYawedDepthKey(facePos) > maskKey + kOverflowDepthEpsSteps) {
-        return; // view-occluded — some nearer face owns this screen cell
+    // #2427: compare the face's key against the MOST PERMISSIVE (largest) mask
+    // winner over the 2x2 cell neighborhood spanning the UNROUNDED yawed
+    // position, not the single roundHalfUp cell. A face whose footprint straddles
+    // a cell boundary rounds to cell A at one yaw step and the adjacent cell B at
+    // the next; a single-cell compare then flips its append membership discretely
+    // (A and B carry different winners), popping a whole face quad frame-to-frame
+    // — the x-only multi-pixel jitter this issue reports. roundHalfUp(p) is
+    // floor(p) or floor(p)+1 per axis, so both A and B always lie in the 2x2
+    // neighborhood of the unrounded position; reading the neighborhood max makes
+    // the compare vary continuously with the winner landscape the footprint
+    // actually covers. (A 3x3 span is equivalent: the sub-pixel residual that
+    // survives is the per-axis scatter's positioning wobble (#2469), not overflow
+    // membership, so widening this compare span cannot remove it.) The mask WRITE
+    // side (viewMaskTap) stays the single roundHalfUp cell, so the write/compare
+    // self-tie holds: a face's own rounded cell is inside its neighborhood, and
+    // max() can only admit a superset of the single-cell pass — the sanctioned
+    // over-emit direction (over-emit loses the framebuffer depth test; only
+    // under-emit re-opens the #2331 holes).
+    const vec2 yawedPosRel = pos3DtoPos2DIsoYawed(vec3(facePos), visualYaw);
+    const ivec2 neighborhoodBase = perAxisBase + ivec2(floor(yawedPosRel));
+    bool anyInside = false;
+    uint maxMaskKey = 0u;
+    for (int dy = 0; dy < 2; ++dy) {
+        for (int dx = 0; dx < 2; ++dx) {
+            const ivec2 neighborPix = neighborhoodBase + ivec2(dx, dy);
+            if (!isInsideCanvas(neighborPix, canvasSizePixels)) continue;
+            const uint neighborCell = uint(neighborPix.y) * uint(canvasSizePixels.x) + uint(neighborPix.x);
+            maxMaskKey = max(maxMaskKey, perAxisWinnerIds[uint(overflowScratchLayout.x) + neighborCell]);
+            anyInside = true;
+        }
+    }
+    if (!anyInside) return; // off-screen at the live yaw (whole footprint off-canvas)
+    // Wrap-safe occlusion test: an unwritten neighborhood cell reads the
+    // 0xFFFFFFFF empty sentinel, so `maxMaskKey + eps` would wrap — compare in the
+    // `key - eps` form instead (the key is bias-centered at ~0x40000000, eps=8u,
+    // so no underflow), which treats the empty sentinel as infinitely permissive
+    // (a footprint straddling background is on the silhouette — append it).
+    if (overflowYawedDepthKey(facePos) - kOverflowDepthEpsSteps > maxMaskKey) {
+        return; // view-occluded — nearer faces own the whole footprint neighborhood
     }
     const ivec2 cardPix = perAxisBase + pos3DtoPos2DIso(facePos);
     // Off-canvas cardinal key never stored (writeDistanceTap dropped it) and is

@@ -145,18 +145,45 @@ inline void overflowAppendTap(
     device atomic_uint* scratch,
     int2 canvasSize
 ) {
-    const int2 yawedPix = overflowYawedPixel(perAxisBase, facePos, frameData.visualYaw);
-    if (!isInsideCanvas(yawedPix, frameData.canvasSizePixels)) {
-        return; // off-screen at the live yaw
+    // #2427: compare the face's key against the MOST PERMISSIVE (largest) mask
+    // winner over the 2x2 cell neighborhood spanning the UNROUNDED yawed
+    // position, not the single roundHalfUp cell — see the GLSL twin for the full
+    // rationale. A footprint straddling a cell boundary flips its rounded cell
+    // (and thus its single-cell winner) frame-to-frame under yaw; the 2x2
+    // neighborhood max removes that discontinuity while erring toward append
+    // (over-emit loses the depth test; under-emit re-opens the #2331 holes). The
+    // mask WRITE side stays the single roundHalfUp cell, so max() only admits a
+    // superset of the single-cell pass and the write/compare self-tie holds.
+    const float2 yawedPosRel =
+        pos3DtoPos2DIsoYawed(float3(facePos), frameData.visualYaw);
+    const int2 neighborhoodBase = perAxisBase + int2(floor(yawedPosRel));
+    bool anyInside = false;
+    uint maxMaskKey = 0u;
+    for (int dy = 0; dy < 2; ++dy) {
+        for (int dx = 0; dx < 2; ++dx) {
+            const int2 neighborPix = neighborhoodBase + int2(dx, dy);
+            if (!isInsideCanvas(neighborPix, frameData.canvasSizePixels)) {
+                continue;
+            }
+            const uint neighborCell =
+                uint(neighborPix.y) * uint(frameData.canvasSizePixels.x) + uint(neighborPix.x);
+            maxMaskKey = max(maxMaskKey, atomic_load_explicit(
+                &scratch[uint(frameData.overflowScratchLayout.x) + neighborCell],
+                memory_order_relaxed
+            ));
+            anyInside = true;
+        }
     }
-    const uint yawedCell =
-        uint(yawedPix.y) * uint(frameData.canvasSizePixels.x) + uint(yawedPix.x);
-    const uint maskKey = atomic_load_explicit(
-        &scratch[uint(frameData.overflowScratchLayout.x) + yawedCell], memory_order_relaxed
-    );
-    if (overflowYawedDepthKey(facePos, frameData.visualYaw) >
-        maskKey + kOverflowDepthEpsSteps) {
-        return; // view-occluded — some nearer face owns this screen cell
+    if (!anyInside) {
+        return; // off-screen at the live yaw (whole footprint off-canvas)
+    }
+    // Wrap-safe occlusion test: an unwritten neighborhood cell reads the
+    // 0xFFFFFFFF empty sentinel, so `maxMaskKey + eps` would wrap — compare in the
+    // `key - eps` form (the key is bias-centered at ~0x40000000, eps=8u, no
+    // underflow), treating the sentinel as infinitely permissive.
+    if (overflowYawedDepthKey(facePos, frameData.visualYaw) - kOverflowDepthEpsSteps >
+        maxMaskKey) {
+        return; // view-occluded — nearer faces own the whole footprint neighborhood
     }
     const int2 cardPix = perAxisBase + pos3DtoPos2DIso(facePos);
     // Off-canvas cardinal key never stored (writeDistanceTap dropped it) and is
