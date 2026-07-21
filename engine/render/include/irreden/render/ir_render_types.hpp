@@ -1211,6 +1211,15 @@ constexpr std::uint32_t kBufferIndex_SunShadowDepthMap = kBufferIndex_LightOcclu
 // resolve/bake consumer rebinds — same non-overlapping-stage safety, but a
 // narrower borrow than the resolve above: it never hands the resource across a
 // stage boundary.
+// VOXEL_TO_TRIXEL_STAGE_1's cardinal (single-canvas) winner election (#2346) is a
+// FOURTH transient consumer, and the narrowest borrow of the four: for a pool
+// whose storeTiesPossible_ flag is set (displaced voxels sharing a rounded cell)
+// it binds its own winner buffer (cardinalWinner_) here between the settled
+// distance stores and the winner-guarded stage 2, atomicMin-elects the per-cell
+// winner, then restores the placeholder — the whole fill/elect/read/restore cycle
+// lives inside ONE canvas's tick, upstream of every slot-28 lighting/occlusion/
+// resolve/bake consumer. Same non-overlapping-stage safety as the per-axis
+// election above; a lattice (unflagged) pool never binds it at all.
 constexpr std::uint32_t kBufferIndex_PerAxisResolveScratch = kBufferIndex_LightOcclusionGrid;
 // View-visibility overflow-face lighting (#2334, epic #2331 C2). The overflow
 // entries live in the PerAxisResolveScratch (slot 28), but LIGHTING_TO_TRIXEL's

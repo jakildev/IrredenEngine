@@ -1402,6 +1402,15 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // would clobber the prepass output with translation-only data.
         {
             IR_PROFILE_SCOPE("vs1_pos");
+            // #2346: activation-only edits (activate/deactivate/carve/fillPlane/
+            // reshape) change which voxels are live without queuing a position
+            // range, so `positionsChanged` below misses them. Consume the pool's
+            // active-mask-mutation signal here (every branch, so it never leaks to
+            // a later frame) and OR it into the recompute trigger — otherwise a
+            // voxel activated onto an already-occupied roundHalfUp cell leaves
+            // `storeTiesPossible_` stale and the last-writer-wins cardinal race
+            // this feature closes reappears for editor/carve/reveal workflows.
+            const bool activeMaskChanged = voxelPool.consumeActiveMaskChanged();
             if (revoxBuffer != nullptr && revoxBuffer->isAllocated()) {
                 // Detached re-voxelize (#1556 / #1619): the GPU compute owns binding
                 // 5 (and, in the inverse path, color + active) for this pool — fill
@@ -1428,12 +1437,16 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             } else {
                 const bool positionsChanged = !voxelPool.getPendingPositionRanges().empty();
                 flushPendingPositionRanges(voxelPool, voxelPosBuf_);
-                if (positionsChanged) {
-                    // #2346: positions moved this frame — refresh the tie
-                    // signal. Off-lattice content early-exits the scan on its
-                    // first fractional component, so animating scenes pay
-                    // near-zero here; the full duplicate scan runs only for
-                    // all-integer content, which rarely re-flushes per frame.
+                if (positionsChanged || activeMaskChanged) {
+                    // #2346: positions moved OR an activation-only edit changed
+                    // which voxels are live this frame — refresh the tie signal.
+                    // Off-lattice content early-exits the scan on its first
+                    // fractional component, so animating scenes pay near-zero
+                    // here; the full duplicate scan runs only for all-integer
+                    // content, which rarely re-flushes per frame. The active-mask
+                    // arm fires only on a discrete edit to a resting set (a moving
+                    // set already re-queues position ranges, so `positionsChanged`
+                    // covers it) — no new per-frame recompute for animating scenes.
                     recomputeStoreTiesPossible(voxelPool, liveVoxelCount, tieScanCellScratch_);
                 }
             }

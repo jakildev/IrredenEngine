@@ -499,6 +499,18 @@ struct C_VoxelPool {
         return m_activeMask.size() * sizeof(std::uint32_t);
     }
 
+    // #2346 — read-and-clear the per-frame active-mask-mutation signal. Consumed
+    // once per tick by VOXEL_TO_TRIXEL_STAGE_1 to fold an activation-only edit
+    // (activate/deactivate/carve/fillPlane/reshape — none of which queue a
+    // position range) into the `storeTiesPossible_` recompute trigger, so a
+    // voxel activated onto an already-occupied roundHalfUp cell re-arms the
+    // cardinal winner election instead of leaving the last-writer-wins race.
+    [[nodiscard]] bool consumeActiveMaskChanged() {
+        const bool changed = m_activeMaskChangedThisFrame;
+        m_activeMaskChangedThisFrame = false;
+        return changed;
+    }
+
     void setActiveBit(std::size_t idx) {
         IR_ASSERT(
             idx < static_cast<std::size_t>(m_voxelPoolSize),
@@ -508,6 +520,7 @@ struct C_VoxelPool {
         );
         m_activeMask[idx / kVoxelActiveMaskBits] |=
             (std::uint32_t{1} << (idx % kVoxelActiveMaskBits));
+        m_activeMaskChangedThisFrame = true; // #2346 — see the member decl.
     }
 
     void clearActiveBit(std::size_t idx) {
@@ -519,6 +532,7 @@ struct C_VoxelPool {
         );
         m_activeMask[idx / kVoxelActiveMaskBits] &=
             ~(std::uint32_t{1} << (idx % kVoxelActiveMaskBits));
+        m_activeMaskChangedThisFrame = true; // #2346 — see the member decl.
     }
 
     // Bulk variants for span-shaped mutations on `C_VoxelSetNew`. The single-bit
@@ -705,6 +719,17 @@ struct C_VoxelPool {
     std::vector<IRRender::VoxelGpuPosition> m_voxelPositionsGlobal;
     std::vector<C_Voxel> m_voxelColors;
     std::vector<std::uint32_t> m_activeMask;
+    // #2346 — set by any active-mask mutation (setActiveBit / clearActiveBit /
+    // setActiveMaskRange / clearActiveMaskRange, hence resyncActiveMaskFromColors),
+    // consumed+cleared once per frame by VOXEL_TO_TRIXEL_STAGE_1 via
+    // consumeActiveMaskChanged(). This is NOT a GPU-sync dirty flag (the active
+    // mask uploads unconditionally every frame regardless): it gates only the
+    // CPU-side tie-possibility recompute — the "did an activation change" analog
+    // of `positionsChanged = !m_pendingPositionRanges.empty()`, which likewise
+    // re-triggers the scan without owning any GPU upload. Push-at-mutation,
+    // consume-once — the sanctioned pattern per .claude/rules/cpp-ecs.md, not a
+    // per-frame CPU→GPU sync gate.
+    bool m_activeMaskChangedThisFrame = false;
     std::vector<std::pair<size_t, size_t>> m_freeVoxelSpans;
     std::map<size_t, std::set<std::pair<size_t, size_t>>> m_freeSpanLookup;
     std::vector<ChunkBounds> m_chunkBounds;
@@ -765,6 +790,9 @@ struct C_VoxelPool {
         if (count == 0) {
             return;
         }
+        // #2346 — flag here too: the whole-word middle path below writes
+        // `m_activeMask` directly, bypassing the per-bit setters that flag.
+        m_activeMaskChangedThisFrame = true;
         IR_ASSERT(
             start + count <= static_cast<std::size_t>(m_voxelPoolSize),
             "setMaskRange out of bounds: start={}, count={}, poolSize={}",
