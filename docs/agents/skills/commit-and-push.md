@@ -115,6 +115,30 @@ default branch for the first task, else the previous task's branch). See the
 
 If you're already on a feature branch, use it — don't rename mid-session.
 
+**Fleet-lane branch validation (mint-time guard).** When you hold a fleet
+claim, the branch name must encode the claimed issue number, or the
+claim-liveness matcher can't tie your open PR back to the issue — the sweep
+then judges the claim abandoned and a second worker files a duplicate PR
+(#2419: a `claude/<worktree>-issue-<N>`-shaped branch was invisible to it).
+Validate here, **before pushing** (the check is network-free — it can't hang
+the flow). The `<issue#>` comes from your active fleet claim, not from any
+step-2 lookup — `claim-base <issue#>` doesn't run until PR-open (step 8), and
+stack mode's step-2 `stack-base` lookup is keyed by task-id:
+
+```bash
+<claim-tool> [--repo <ns>] branch-check <issue#>   # exit 0 = ok, 1 = mismatch
+```
+
+On a non-zero exit it prints the expected form; rename to it before the push
+in step 7:
+
+```bash
+git branch -m claude/<issue#>-<short-topic>
+```
+
+Skip this for a plain human PR with no claimed issue (`Issue:` field
+`(none)`) — there's no issue number to validate against.
+
 ### 3. Pre-commit checks and `simplify`
 
 **First**, run the **rebase guard** (**procedures** `rebase-guard.md`): if
