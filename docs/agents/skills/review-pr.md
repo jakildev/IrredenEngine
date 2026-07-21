@@ -269,7 +269,11 @@ Anything you describe with "must resolve before merge", "pre-merge ask",
 Nit** — it's needs-fix; move it and drop the verdict to `needs-fix`. The
 contradiction "approve, but please fix X before merge" is forbidden. Nits
 are still encouraged — author roles scan approved PRs and address every nit
-before landing, so put real nits in freely.
+before landing, so put real nits in freely. This bright line applies to
+step 4b's acceptance grading unchanged: an unmet criterion is blocking by
+definition, so it lives in the top-level `### Needs-fix` (or `### Blockers`)
+list per step 4b's mirroring rule — never only inside `### Acceptance
+(issue #N)`.
 
 **Do not use `gh pr review --approve` or `--request-changes`** — all fleet
 agents share one account and the API rejects formal review actions on your
