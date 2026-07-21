@@ -28,11 +28,12 @@
 namespace IRPrefab::GuiTest {
 
 enum class AssertKind {
-    HOVERS,       // IRPrefab::Widget::hoveredWidget() == widget_
-    CLICK_FIRES,  // widget_ pulsed C_WidgetState::fireAction_ during the shot
-    SLIDER_VALUE, // |sliderValue(widget_) - expectedFloat_| <= tolerance_
-    CHECKBOX,     // checkboxState(widget_) == expectedBool_
-    PICKS_VOXEL,  // castVoxelRay() hits with voxelPos_ == expectedVoxel_
+    HOVERS,           // IRPrefab::Widget::hoveredWidget() == widget_
+    CLICK_FIRES,      // widget_ pulsed C_WidgetState::fireAction_ during the shot
+    SLIDER_VALUE,     // |sliderValue(widget_) - expectedFloat_| <= tolerance_
+    CHECKBOX,         // checkboxState(widget_) == expectedBool_
+    PICKS_VOXEL,      // castVoxelRay() hits with voxelPos_ == expectedVoxel_
+    PICKS_ISO_COLUMN, // castVoxelRay() hits a voxel on expectedVoxel_'s iso column
 };
 
 // One assertion evaluated at a shot's capture frame. Only the fields a given
@@ -98,6 +99,19 @@ inline Assertion picksVoxel(IRMath::ivec3 expected, const char *label = "picks_v
     return assertion;
 }
 
+// Assert the click's ray hit a voxel on @p targetVoxel's iso column (same
+// screen projection) — the occlusion-independent test of screen→world mapping
+// accuracy. Unlike picksVoxel it does not require the target to be the
+// front-most voxel, so it validates the mapping even when scene geometry sits
+// in front of the aimed cell.
+inline Assertion picksIsoColumn(IRMath::ivec3 targetVoxel, const char *label = "picks_iso_column") {
+    Assertion assertion;
+    assertion.kind_ = AssertKind::PICKS_ISO_COLUMN;
+    assertion.expectedVoxel_ = targetVoxel;
+    assertion.label_ = label;
+    return assertion;
+}
+
 // Caller-owned latch. CLICK_FIRES needs it: C_WidgetState::fireAction_ is a
 // single-frame pulse on click-release, gone by the post-settle capture frame,
 // so we accumulate which widgets fired across the shot window. The creation
@@ -121,6 +135,8 @@ inline const char *kindName(AssertKind kind) {
         return "CHECKBOX";
     case AssertKind::PICKS_VOXEL:
         return "PICKS_VOXEL";
+    case AssertKind::PICKS_ISO_COLUMN:
+        return "PICKS_ISO_COLUMN";
     }
     return "UNKNOWN";
 }
@@ -176,6 +192,22 @@ inline bool evaluateOne(const Assertion &assertion, const LatchState &latch, std
         actual = "voxel=(" + std::to_string(v.x) + "," + std::to_string(v.y) + "," +
                  std::to_string(v.z) + ")";
         return v == assertion.expectedVoxel_;
+    }
+    case AssertKind::PICKS_ISO_COLUMN: {
+        const std::optional<IRPrefab::Picking::RayHit> hit = IRPrefab::Picking::castVoxelRay();
+        if (!hit) {
+            actual = "miss";
+            return false;
+        }
+        // Screen→world mapping accuracy is a 2D iso-column property: the click
+        // must land the ray on the target voxel's iso column. Which voxel along
+        // that column is front-most is scene/occlusion-dependent, not a mapping
+        // fact, so compare iso projections rather than exact world voxels.
+        const IRMath::ivec2 hitIso = IRMath::pos3DtoPos2DIso(hit->voxelPos_);
+        const IRMath::ivec2 wantIso = IRMath::pos3DtoPos2DIso(assertion.expectedVoxel_);
+        actual = "iso=(" + std::to_string(hitIso.x) + "," + std::to_string(hitIso.y) + ") want=(" +
+                 std::to_string(wantIso.x) + "," + std::to_string(wantIso.y) + ")";
+        return hitIso == wantIso;
     }
     }
     actual = "unknown-kind";

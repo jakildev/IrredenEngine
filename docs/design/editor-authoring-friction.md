@@ -69,34 +69,81 @@ was confirmed empirically against current `origin/master`:
 
 ---
 
-## Phase 0 mechanism probe — status: NOT YET RUN (next slice)
+## Phase 0 mechanism probe — status: RUN, GATE PASSED (macOS/Metal)
 
-Phase 0 (per the plan) extends the editor shot table with four probes that gate
-the rest of the task. Groundwork located this slice, to be implemented next:
+Phase 0 added probe shots to the editor GUI-test shot table (`editor_probe_*`,
+appended after the stable framings so existing labels + the `editor_pick_voxel`
+regression baseline are untouched). **Result: the auto-authoring premise holds.**
+`gui-verify.py IRVoxelEditor` → `13/13 assertions passed`, exit 0, on
+macOS/Metal. Findings per probe:
 
-1. **Keyboard→command dispatch** — inject Ctrl+S; assert
-   `data/editor_scene/scene_frame_0.vxs` exists post-run (runner-side file check).
-   *Lowest risk; no coordinate mapping needed.*
-2. **World→screen mapping accuracy** — the crux. Compute screen px for ~8
-   ground-plane cells' top faces at one fixed zoom/yaw → `MOVE` + `PICKS_VOXEL`
-   each; expect 8/8 PASS. Reference forward-projection:
-   `worldToScreen(vec3)` at
-   `engine/prefabs/irreden/render/systems/system_debug_overlay.hpp:181`
-   (uses `pos3DtoPos2DIso` + `IRRender::getCameraPosition2DIso()` +
-   `getTriangleStepSizeScreen()` + viewport). **Gotcha:** GUI panels render on
-   the full-resolution GUI canvas (`setGuiCanvasFullResolution`, gui_scale=2)
-   while the scene lives in game-canvas space — the `GuiInputEvent.screenPx_`
-   window coordinate and the `worldToScreen` game-canvas output are *not* the
-   same space; the mapping must reconcile them. The seed ground plane is at
-   `z == size_.z - 1` (`main.cpp` `fillPlane(2, set.size_.z-1, …)`), the
-   editable set is 16³ by default at `kEditableSceneOrigin`.
-3. **Drag stroke** — `PRESS` + per-frame `MOVE`s + `RELEASE` → box-fill fires;
-   verify by hovering a newly placed voxel (`PICKS_VOXEL` occupancy proxy).
-4. **A/D overload measurement** — inject `A`; expect frame count 2 and record the
-   camera delta (A/D frame-add/duplicate share the WASD camera bindings, no
-   modifier guard — `main.cpp:2130-2155` vs `2290,2326`).
+### P0-1 — keyboard→command dispatch (PASS)
+Injected Ctrl+S (`PRESS LeftControl`, `PRESS S`, releases; Ctrl leads S by two
+frames so the modifier is held when the S press drains). The editor logged
+`Scene saved to data/editor_scene/scene` and wrote `scene_frame_0.vxs` (~52 KB).
+Scripted keyboard **and modifier chords** drive the real command dispatch — the
+runner clears stale `.vxs` pre-run and file-checks post-run.
 
-**Bail path (opus judgment).** If probe (2) cannot hit target cells reliably at
-*any* zoom (GUI-canvas scaling / rounding), STOP — post the measurements on #766
-and design-block. Do **not** fall back to hand-tuned pixel constants for five
-entities; that defeats the "author by really using the editor" premise.
+### P0-2 — world→screen mapping accuracy (PASS — the gate)
+This is the crux, and it passed 8/8. Key results:
+
+- **The mapping is `IRRender::worldPos3DToMouseScreenPx(vec3)` (new, this PR),
+  the exact inverse of the picking chain `mouseWorldPos3DAtIsoDepth`** — NOT the
+  debug-overlay `worldToScreen` the groundwork cited. `worldToScreen` omits the
+  letterbox offset, the framebuffer buffer-correction (`kSizeExtraPixelBuffer`),
+  and the canvas-centre reference term that the *picking* read-chain applies, so
+  it is off by a constant. The inverse reuses the picking chain's own live
+  getters (zoom, iso offset, main-canvas size, step size, letterbox, buffer),
+  so screen↔world stays consistent across backends and camera state with **zero
+  hand-tuned constants** (the bail-path anti-pattern is avoided).
+- **`GuiInputEvent.screenPx_` is window pixels, top-left origin, and reads back
+  byte-identically** (`injPx == cursor`) — no retina/DPI scaling confound on
+  the injected cursor. The GUI-canvas full-resolution setting only affects
+  widget hitboxes; scene picking goes through the output-view/game-canvas chain,
+  which `worldPos3DToMouseScreenPx` mirrors.
+- **Vertical picking needs zoom ≥ 2.** At zoom 1.0 the iso step is `(2,1)` px
+  per iso unit — only **1 px per iso-Y unit**, so the cell-centre half-offset
+  is below integer-pixel resolution and `floor()` tips to the neighbouring iso
+  column (a 1-cell miss). At zoom 2.0 the step doubles to `(4,2)` and all 8
+  cells land on the exact target column. The probe shots therefore run at zoom
+  2.0. **Authoring implication:** the SessionBuilder must author at zoom ≥ 2 for
+  reliable per-cell vertical aim (or accept ±1-cell tolerance and aim at exposed
+  faces, where placement-adjacent absorbs it).
+- **Mapping accuracy is an iso-*column* property, asserted with a new
+  `PICKS_ISO_COLUMN` GuiTest kind (this PR).** The seed scene is NOT just the
+  ground plane: it also carries the skeleton rig voxel set (`31×3×3`) + joints,
+  which `VOXEL_PICKING` walks as active geometry and which occlude the ground
+  plane along many columns. So a click aimed at a ground cell correctly hits its
+  iso column but returns whatever voxel is front-most on it — not necessarily
+  the ground cell. Depth/occlusion is scene state, not a mapping fact, so the
+  honest test compares iso projections (`pos3DtoPos2DIso(hit) ==
+  pos3DtoPos2DIso(target)`). Every probe pick differed from its target by an
+  exact multiple of the `(1,1,1)` view-ray direction (iso-invariant) —
+  conclusive proof the mapping hits the intended column. In real authoring the
+  builder aims at *exposed* faces (front-most by construction), where the
+  stricter `PICKS_VOXEL` will be exact.
+
+### P0-3 — drag stroke — DEFERRED to the session-infrastructure slice
+The press→per-frame-MOVE→release → box-fill path is verifiable with the same
+harness, but a placement-verify depends on box-fill's placement geometry (where
+voxels land relative to the ray-hit face), which is cleaner to pin down once the
+`worldPos3DToMouseScreenPx` primitive (validated here) drives real placement.
+Sequenced as the first task of the session-infrastructure slice, not a gate.
+
+### P0-4 — A/D binding overload (PASS, + bug found)
+One injected `A` press logged `Added blank frame` — confirming the plain-PRESSED
+`A` binding both adds an animation frame **and** starts a camera-left move (no
+modifier guard). Sessions must re-establish the camera after any A/D frame op;
+the per-shot camera re-apply already handles this. **Bug surfaced:** the add-frame
+log line (`main.cpp` ~2314) uses printf `%d` inside the fmt-style `IR_LOG_INFO`,
+so it prints the literal `Added blank frame %d / %d`. Pre-existing, cosmetic
+(log-only); filed as a follow-up, not fixed in this de-risk PR.
+
+### Reusable primitives this slice lands for the session infrastructure
+- `IRRender::worldPos3DToMouseScreenPx(vec3)` — world voxel → click pixel; the
+  aiming primitive the `SessionBuilder` needs.
+- `IRPrefab::GuiTest::picksIsoColumn(...)` / `AssertKind::PICKS_ISO_COLUMN` —
+  occlusion-robust mapping assertion for the harness.
+- The `editor_probe_*` shot pattern (runtime-computed `MOVE` pixels filled in
+  `onGuiAssertFrame` before the same-tick event injection, so the aim uses the
+  shot's live camera state — no init-time viewport-timing fragility).

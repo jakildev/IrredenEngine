@@ -261,6 +261,20 @@ ivec2 mouseTrixelPositionWorld();
 /// Use this when world-frame coordinates are needed (e.g. spawning an
 /// entity at the click location).
 vec3 mouseWorldPos3DAtIsoDepth(float canvasIsoDepth);
+/// Inverse of @ref mouseWorldPos3DAtIsoDepth: the window pixel (top-left
+/// origin, GLFW cursor convention) that — injected as the mouse position —
+/// makes the picking chain read @p worldPos's iso column. Reuses the exact
+/// same live camera / canvas / viewport terms as the forward chain (camera
+/// zoom, iso offset, main-canvas size, step size, letterbox offset,
+/// framebuffer buffer correction), so screen↔world stays consistent across
+/// backends and camera state with no hand-tuned constants. The +0.5 iso
+/// offset aims at the iso cell centre so the forward chain's `floor()` lands
+/// on @p worldPos's integer iso pixel. Because the iso projection is
+/// many-to-one along the view ray, @ref IRPrefab::Picking::castVoxelRay
+/// returns the front-most active voxel in that column — for the aimed voxel
+/// this is exact when nothing occludes it. Scripted GUI-harness input
+/// (auto-authoring sessions, alignment probes) is the primary caller.
+ivec2 worldPos3DToMouseScreenPx(vec3 worldPos);
 /// Entity id of the voxel under the mouse cursor, read from the entity-id GPU texture.
 /// @note This reads a persistent-mapped GPU buffer — values become valid only after the
 ///       GPU pipeline has completed the previous frame's @c FRAMEBUFFER_TO_SCREEN pass.

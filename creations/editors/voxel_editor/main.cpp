@@ -322,6 +322,87 @@ constexpr IRVideo::GuiInputEvent kPickVoxelEvents[] = {
     {0, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(800, 450)},
 };
 
+// --- Phase 0 mechanism probes (#766) --------------------------------------
+// De-risk the auto-authoring premise before building session infrastructure:
+// prove keyboard→command dispatch, world→screen click mapping, and measure the
+// A/D binding overload — all through the live GUI harness on the seed scene.
+// These shots append after the stable framings so existing labels and the
+// screen→world regression baseline (kPickVoxelShotIndex) stay untouched.
+
+// Probe 1 — keyboard→command dispatch: hold Ctrl, tap S, release. The editor's
+// Ctrl+S handler writes data/editor_scene/scene_frame_0.vxs; the runner checks
+// the file exists post-run (no screen mapping needed — the lowest-risk probe).
+// Ctrl leads S by two frames so the modifier is held when the S press drains.
+constexpr IRVideo::GuiInputEvent kProbeSaveEvents[] = {
+    {0,
+     IRVideo::GuiInputEvent::Type::PRESS,
+     IRMath::ivec2(0),
+     IRMath::vec2(0.0f),
+     IRInput::kKeyButtonLeftControl},
+    {2,
+     IRVideo::GuiInputEvent::Type::PRESS,
+     IRMath::ivec2(0),
+     IRMath::vec2(0.0f),
+     IRInput::kKeyButtonS},
+    {3,
+     IRVideo::GuiInputEvent::Type::RELEASE,
+     IRMath::ivec2(0),
+     IRMath::vec2(0.0f),
+     IRInput::kKeyButtonS},
+    {4,
+     IRVideo::GuiInputEvent::Type::RELEASE,
+     IRMath::ivec2(0),
+     IRMath::vec2(0.0f),
+     IRInput::kKeyButtonLeftControl},
+};
+
+// Probe 4 — A/D binding overload: tap A. The plain-PRESSED A binding both starts
+// a camera-left move AND adds an animation frame (no modifier guard, main.cpp
+// ~2130 vs ~2290) — one press fires both. The runner greps the "Added blank
+// frame" log to confirm the overload so later sessions re-establish the camera
+// after any frame op.
+constexpr IRVideo::GuiInputEvent kProbeADEvents[] = {
+    {0,
+     IRVideo::GuiInputEvent::Type::PRESS,
+     IRMath::ivec2(0),
+     IRMath::vec2(0.0f),
+     IRInput::kKeyButtonA},
+    {1,
+     IRVideo::GuiInputEvent::Type::RELEASE,
+     IRMath::ivec2(0),
+     IRMath::vec2(0.0f),
+     IRInput::kKeyButtonA},
+};
+
+// Probe 2 (the gate) — world→screen mapping accuracy. Eight central seed
+// ground-plane cells (local z == size-1); each probe shot moves the cursor to
+// the pixel IRRender::worldPos3DToMouseScreenPx computes for the cell centre,
+// then a PICKS_VOXEL assertion checks the ray hit that world voxel. Cells stay
+// near the plane centre so all project on-screen at zoom 1.0. The move pixel is
+// filled at shot-run time in onGuiAssertFrame (needs the shot's live camera
+// state), so g_probeMapMoves is mutable, not constexpr.
+constexpr int kProbeMapCount = 8;
+constexpr IRMath::ivec3 kProbeMapLocalCells[kProbeMapCount] = {
+    {4, 4, 15},
+    {11, 11, 15},
+    {4, 11, 15},
+    {11, 4, 15},
+    {7, 7, 15},
+    {8, 8, 15},
+    {5, 9, 15},
+    {9, 5, 15},
+};
+IRVideo::GuiInputEvent g_probeMapMoves[kProbeMapCount] = {
+    {0, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(0)},
+    {0, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(0)},
+    {0, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(0)},
+    {0, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(0)},
+    {0, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(0)},
+    {0, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(0)},
+    {0, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(0)},
+    {0, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(0)},
+};
+
 // GUI-test shot table covering stable render framings plus the scripted-click
 // shots. Superset of the previous kShots[] — render-verify labels still match.
 // kGuiAssertShotIndex / kPickVoxelShotIndex select the assertion-bearing shots.
@@ -332,10 +413,33 @@ constexpr IRVideo::GuiTestShot kGuiTestShots[] = {
     {{1.5f, IRMath::vec2(0.0f), 0.0f, "editor_zoom_in"}, nullptr, 0},
     {{1.0f, IRMath::vec2(0.0f), 0.0f, "editor_gui_assert"}, kGuiAssertEvents, 3},
     {{1.0f, IRMath::vec2(0.0f), 0.0f, "editor_pick_voxel"}, kPickVoxelEvents, 1},
+    // Phase 0 probes (#766), appended after the stable shots so their indices
+    // stay fixed. The eight mapping-accuracy shots come first (clean read-only
+    // picks), then the Ctrl+S dispatch and A/D-overload shots (both mutate state).
+    {{2.0f, IRMath::vec2(0.0f), 0.0f, "editor_probe_map_0"}, &g_probeMapMoves[0], 1},
+    {{2.0f, IRMath::vec2(0.0f), 0.0f, "editor_probe_map_1"}, &g_probeMapMoves[1], 1},
+    {{2.0f, IRMath::vec2(0.0f), 0.0f, "editor_probe_map_2"}, &g_probeMapMoves[2], 1},
+    {{2.0f, IRMath::vec2(0.0f), 0.0f, "editor_probe_map_3"}, &g_probeMapMoves[3], 1},
+    {{2.0f, IRMath::vec2(0.0f), 0.0f, "editor_probe_map_4"}, &g_probeMapMoves[4], 1},
+    {{2.0f, IRMath::vec2(0.0f), 0.0f, "editor_probe_map_5"}, &g_probeMapMoves[5], 1},
+    {{2.0f, IRMath::vec2(0.0f), 0.0f, "editor_probe_map_6"}, &g_probeMapMoves[6], 1},
+    {{2.0f, IRMath::vec2(0.0f), 0.0f, "editor_probe_map_7"}, &g_probeMapMoves[7], 1},
+    {{1.0f, IRMath::vec2(0.0f), 0.0f, "editor_probe_save"}, kProbeSaveEvents, 4},
+    {{1.0f, IRMath::vec2(0.0f), 0.0f, "editor_probe_ad"}, kProbeADEvents, 2},
 };
 constexpr int kNumGuiTestShots = static_cast<int>(sizeof(kGuiTestShots) / sizeof(kGuiTestShots[0]));
 constexpr int kGuiAssertShotIndex = 4;
 constexpr int kPickVoxelShotIndex = 5;
+// Phase 0 probe shot indices (#766). Map shots occupy [start, start+count);
+// the dispatch and overload shots follow. Derived from kPickVoxelShotIndex so
+// they track any reordering of the stable shots.
+constexpr int kProbeMapShotStart = kPickVoxelShotIndex + 1;
+constexpr int kProbeSaveShotIndex = kProbeMapShotStart + kProbeMapCount;
+constexpr int kProbeADShotIndex = kProbeSaveShotIndex + 1;
+static_assert(
+    kProbeADShotIndex + 1 == kNumGuiTestShots,
+    "Phase 0 probe shots (#766) must be the final kGuiTestShots entries"
+);
 
 // GUI-test assertion tables (P3, #1796). Filled in initEntities once the widget
 // entities exist — assertions reference runtime EntityIds, so unlike the shot
@@ -351,6 +455,17 @@ std::vector<IRPrefab::GuiTest::Assertion> g_shotAssertions[kNumGuiTestShots];
 void onGuiAssertFrame(int shotIndex, bool isCaptureFrame) {
     if (shotIndex < 0 || shotIndex >= kNumGuiTestShots)
         return;
+    // Phase 0 probe 2 (#766): fill this probe-map shot's cursor move with the
+    // pixel worldPos3DToMouseScreenPx computes for the target cell at the shot's
+    // live camera state. This runs before the harness's event phase on the same
+    // tick, so the frame-0 MOVE injects the freshly-computed pixel; the write is
+    // idempotent across the shot's frames.
+    if (shotIndex >= kProbeMapShotStart && shotIndex < kProbeMapShotStart + kProbeMapCount) {
+        const int cellIndex = shotIndex - kProbeMapShotStart;
+        const IRMath::vec3 worldCenter =
+            kEditableSceneOrigin + IRMath::vec3(kProbeMapLocalCells[cellIndex]);
+        g_probeMapMoves[cellIndex].screenPx_ = IRRender::worldPos3DToMouseScreenPx(worldCenter);
+    }
     const auto &assertions = g_shotAssertions[shotIndex];
     if (assertions.empty())
         return; // shots without assertions (idle / zoom framings) skip latch+eval
@@ -3275,4 +3390,16 @@ void initEntities() {
     IRVoxelEditor::g_shotAssertions[IRVoxelEditor::kPickVoxelShotIndex] = {
         IRPrefab::GuiTest::picksVoxel(kScenePickExpected, "scene_pick"),
     };
+    // Phase 0 probe 2 (#766): each probe-map shot asserts the ray landed on the
+    // target cell's iso COLUMN (not the exact voxel) — mapping accuracy is a 2D
+    // screen-projection property, and the seed scene's rig geometry can occlude
+    // the ground cell along the aimed column. Target = scene origin + local cell
+    // (integers, so exact). onGuiAssertFrame supplies the matching cursor pixel.
+    for (int i = 0; i < IRVoxelEditor::kProbeMapCount; ++i) {
+        const ivec3 target =
+            ivec3(IRVoxelEditor::kEditableSceneOrigin) + IRVoxelEditor::kProbeMapLocalCells[i];
+        IRVoxelEditor::g_shotAssertions[IRVoxelEditor::kProbeMapShotStart + i] = {
+            IRPrefab::GuiTest::picksIsoColumn(target, "probe_map"),
+        };
+    }
 }
