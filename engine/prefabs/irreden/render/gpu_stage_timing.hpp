@@ -47,6 +47,11 @@ struct GpuStageTiming {
     // VoxelCullAccumulator below.
     std::uint32_t visibleVoxelCount_ = 0;
     std::uint32_t totalVoxelCount_ = 0;
+    // Shadow-feeder (struct 1) survivors from the same prior-frame readback —
+    // the #2258 Step-B tail-append population the #2298 domain-widened cull
+    // targets. 0 whenever shadows are off / per-axis split active (feeders
+    // exist only on the single-canvas path).
+    std::uint32_t feederVoxelCount_ = 0;
     // Light-gather diagnostic. Populated by COMPUTE_LIGHT_VOLUME each
     // frame: `lightsSeeded_` = sources written to the seed SSBO (in-window
     // plus boundary-discounted), `lightsEligible_` = non-directional
@@ -138,23 +143,29 @@ inline ComputeLightVolumeTiming &computeLightVolumeTiming() {
 struct VoxelCullAccumulator {
     std::uint64_t visibleSum_ = 0;
     std::uint64_t totalSum_ = 0;
+    std::uint64_t feederSum_ = 0;
     std::uint32_t maxVisible_ = 0;
     std::uint32_t maxTotal_ = 0;
+    std::uint32_t maxFeeder_ = 0;
     std::uint32_t sampleCount_ = 0;
 
-    void record(std::uint32_t visible, std::uint32_t total) {
+    void record(std::uint32_t visible, std::uint32_t total, std::uint32_t feeder) {
         visibleSum_ += visible;
         totalSum_ += total;
+        feederSum_ += feeder;
         maxVisible_ = IRMath::max(maxVisible_, visible);
         maxTotal_ = IRMath::max(maxTotal_, total);
+        maxFeeder_ = IRMath::max(maxFeeder_, feeder);
         ++sampleCount_;
     }
 
     void reset() {
         visibleSum_ = 0;
         totalSum_ = 0;
+        feederSum_ = 0;
         maxVisible_ = 0;
         maxTotal_ = 0;
+        maxFeeder_ = 0;
         sampleCount_ = 0;
     }
 };

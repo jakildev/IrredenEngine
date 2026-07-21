@@ -201,6 +201,8 @@ void writeProfileReport(const ProfileReport &report, const char *outputPath) {
             c.sampleCount_
         );
         std::fprintf(f, "%-12s %14.1f %14u %10u\n", "Total", avgTotal, c.maxTotal_, c.sampleCount_);
+        const double avgFeeder = static_cast<double>(c.feederSum_) / samples;
+        std::fprintf(f, "%-12s %14.1f %14u %10u\n", "Feeder", avgFeeder, c.maxFeeder_, c.sampleCount_);
         std::fprintf(
             f,
             "Ratio:       %14.4f (visible/total — 1.0 = no cull, 0.0 = all culled)\n",

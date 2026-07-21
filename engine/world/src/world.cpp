@@ -178,13 +178,17 @@ void World::setupLuaBindings(const std::vector<LuaBindingRegistration> &bindings
         const auto &acc = IRRender::voxelCullAccumulator();
         out["visible"] = timing.visibleVoxelCount_;
         out["total"] = timing.totalVoxelCount_;
+        out["feeder"] = timing.feederVoxelCount_;
         out["samples"] = acc.sampleCount_;
         out["avgVisible"] =
             acc.sampleCount_ > 0 ? static_cast<double>(acc.visibleSum_) / acc.sampleCount_ : 0.0;
         out["avgTotal"] =
             acc.sampleCount_ > 0 ? static_cast<double>(acc.totalSum_) / acc.sampleCount_ : 0.0;
+        out["avgFeeder"] =
+            acc.sampleCount_ > 0 ? static_cast<double>(acc.feederSum_) / acc.sampleCount_ : 0.0;
         out["maxVisible"] = acc.maxVisible_;
         out["maxTotal"] = acc.maxTotal_;
+        out["maxFeeder"] = acc.maxFeeder_;
         return out;
     };
 
@@ -389,8 +393,10 @@ void World::buildAndWriteProfileReport() {
     const auto &cull = IRRender::voxelCullAccumulator();
     report.voxelCullStats_.visibleSum_ = cull.visibleSum_;
     report.voxelCullStats_.totalSum_ = cull.totalSum_;
+    report.voxelCullStats_.feederSum_ = cull.feederSum_;
     report.voxelCullStats_.maxVisible_ = cull.maxVisible_;
     report.voxelCullStats_.maxTotal_ = cull.maxTotal_;
+    report.voxelCullStats_.maxFeeder_ = cull.maxFeeder_;
     report.voxelCullStats_.sampleCount_ = cull.sampleCount_;
 
     // Collect per-system timing, grouped by pipeline

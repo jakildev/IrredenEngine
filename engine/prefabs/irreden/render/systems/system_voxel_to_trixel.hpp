@@ -1514,6 +1514,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // overlay wants, not a strict voxel count comparable 1:1 to cardinal.
         if (gpuStageTiming().enabled_) {
             std::uint32_t visible = 0;
+            std::uint32_t feeder = 0;
             if (skipSingleCanvasVoxels && perAxisIndirectBuf_ != nullptr) {
                 for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
                     VoxelIndirectDispatchParams region{};
@@ -1528,10 +1529,28 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 VoxelIndirectDispatchParams previous{};
                 indirectBuf_->getSubData(0, sizeof(VoxelIndirectDispatchParams), &previous);
                 visible = previous.visibleCount;
+                // Struct 1 (the #2258 Step-B shadow-feeder tail list) shares
+                // indirectBuf_ at kPerAxisSsboAlignBytes and follows the same
+                // prior-frame-before-zeroing contract, so its count rides the
+                // same sync-free read. Single-canvas path only — the per-axis
+                // split never populates it. This is the #2298 target
+                // population; the acceptance gates diff it pv-on vs pv-off.
+                VoxelIndirectDispatchParams previousFeeder{};
+                indirectBuf_->getSubData(
+                    static_cast<std::ptrdiff_t>(kPerAxisSsboAlignBytes),
+                    sizeof(VoxelIndirectDispatchParams),
+                    &previousFeeder
+                );
+                feeder = previousFeeder.visibleCount;
             }
             gpuStageTiming().visibleVoxelCount_ = visible;
             gpuStageTiming().totalVoxelCount_ = static_cast<std::uint32_t>(effectiveVoxelCount);
-            voxelCullAccumulator().record(visible, static_cast<std::uint32_t>(effectiveVoxelCount));
+            gpuStageTiming().feederVoxelCount_ = feeder;
+            voxelCullAccumulator().record(
+                visible,
+                static_cast<std::uint32_t>(effectiveVoxelCount),
+                feeder
+            );
         }
 
         const VoxelIndirectDispatchParams zeroed{};
