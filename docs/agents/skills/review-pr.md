@@ -203,9 +203,13 @@ returns a fragment grading each criterion met / unmet / unverifiable.
 
 Fold the fragment into the review body as its own `### Acceptance
 (issue #N)` section and map the grades into the verdict per the wrapper's
-rules — an unmet criterion is at least needs-fix. The grader is
-deliberately a separate context from this session: it grades the ticket's
-outcome without being anchored by the code-health walk you just did.
+rules — an unmet criterion is at least needs-fix. Mirror every
+unmet-criterion finding into the top-level `### Needs-fix` (or
+`### Blockers`) list as well, as one line pointing back to the Acceptance
+table — blocking items never live only inside the fragment; the step-5
+bright line applies to them unchanged. The grader is deliberately a
+separate context from this session: it grades the ticket's outcome
+without being anchored by the code-health walk you just did.
 
 Skip when the delta is absent, the body has no `Closes #N`, or the grader
 reports the issue has no planned criteria — the code-health review stands
