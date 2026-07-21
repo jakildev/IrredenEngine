@@ -154,6 +154,26 @@ vec3 mouseWorldPos3DAtIsoDepth(float canvasIsoDepth) {
     return IRMath::rotateCardinalZInv(rotatedWorld, IRMath::rasterYawCardinalIndex(rasterYaw));
 }
 
+ivec2 worldPos3DToMouseScreenPx(vec3 worldPos) {
+    // Exact inverse of mouseWorldPos3DAtIsoDepth's screen→world chain, run in
+    // reverse and reusing the identical live terms so the two never drift:
+    //   world → rotateCardinalZ → pos3DtoPos2DIso (iso pixel of worldPos)
+    //         → +0.5 (aim iso cell centre) → +effectiveCameraIso
+    //         → +mainCanvasSizeTrixels/zoom/2 → *stepSize (undo /stepSize)
+    //         → +letterboxOffset − bufferCorrection (undo getMousePositionOutputView)
+    const float rasterYaw = IRPrefab::Camera::getRasterYaw();
+    const vec3 rotated =
+        IRMath::rotateCardinalZ(worldPos, IRMath::rasterYawCardinalIndex(rasterYaw));
+    const vec2 canvasIso = IRMath::pos3DtoPos2DIso(rotated) + vec2(0.5f);
+    const vec2 isoScreen = canvasIso + IRRender::getEffectiveCameraIso() +
+                           getMainCanvasSizeTrixels() / getCameraZoom() / vec2(2.0f);
+    const vec2 outputView = isoScreen * IRRender::getTriangleStepSizeScreen();
+    const vec2 offset = getRenderManager().screenToOutputWindowOffset();
+    const vec2 bufferCorrection = vec2(IRConstants::kSizeExtraPixelBuffer) / vec2(2.0f) *
+                                  vec2(getRenderManager().getOutputScaleFactor());
+    return IRMath::roundVec(outputView + offset - bufferCorrection);
+}
+
 ivec2 mouseTrixelPositionWorld() {
     const ivec2 canvasSize = getRenderManager().getMainCanvasSizeTriangles();
     const ivec2 z1 = IRMath::trixelOriginOffsetZ1(canvasSize);

@@ -412,9 +412,13 @@ wiring contract in `engine/script/CLAUDE.md` §"Widget framework bindings".
 
 **Headless GUI assertions (P3, #1796).** `gui_test_assertions.hpp`
 exposes `IRPrefab::GuiTest::` — capture-frame assertions
-(`hovers` / `clickFires` / `sliderValue` / `checkbox` / `picksVoxel`)
-over the introspectable widget + picking state, each emitting one
-machine-readable `GUI-ASSERT …` log line. Evaluation lives in the prefab
+(`hovers` / `clickFires` / `sliderValue` / `checkbox` / `picksVoxel` /
+`picksIsoColumn`) over the introspectable widget + picking state, each
+emitting one machine-readable `GUI-ASSERT …` log line. `picksIsoColumn`
+(#766) asserts the click's ray hit a voxel on the target's iso column —
+the occlusion-independent test of screen→world mapping accuracy, since
+which voxel along the column is front-most is scene state, not a mapping
+fact. Evaluation lives in the prefab
 layer (it needs widget / picking access engine/video lacks); the
 `engine/video` scripted-shot harness drives it through the type-erased
 `IRVideo::GuiTestConfig::onAssertFrame_` callback, threading a
