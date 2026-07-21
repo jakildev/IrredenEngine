@@ -1055,11 +1055,16 @@ IRSave.has("highscores", "top1"); IRSave.remove("highscores", "top1"); IRSave.cl
 
 `bindLuaDrivenEcs()` also exposes the ECS **world snapshot** (persist P7, #2218,
 epic #667) as the `IRPersist` table — whole-world binary save/load, distinct
-from `IRSave` (the flat KV store above). `lua_world_snapshot_bindings.hpp` is
-**include-only glue** (`bindWorldSnapshotApi`): a thin forward to
-`IRWorld::saveWorld/loadWorld(path)` over `makeDefaultSaveRegistry()`, wired via
-the same generator-expression include of `IrredenEngineWorld` as the render/
-audio glue — no link edge (World links Scripting; a link back would cycle).
+from `IRSave` (the flat KV store above). `lua_world_snapshot_bindings.hpp`'s
+`bindWorldSnapshotApi` is a thin forward to
+`IRWorld::saveWorld/loadWorld(path)` over `makeDefaultSaveRegistry()`. Because
+that inline glue *calls* those symbols — not just includes the header, as the
+render/audio glue does — Scripting **links** `IrredenEngineWorld`. World links
+Scripting back, so the edge closes a static-library cycle; CMake resolves it by
+repeating both archives on the final link line, which is what lets single-pass
+linkers (mingw / GNU ld) rescan World after Scripting's back-reference. Without
+the link those symbols went undefined on native-Windows demo links; Apple
+ld64's multi-pass resolver had masked the gap (#2499).
 
 ```lua
 IRPersist.saveWorld("scene.irws")   -- serialize the live world (+ .json sidecar).
