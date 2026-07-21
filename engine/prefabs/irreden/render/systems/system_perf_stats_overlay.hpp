@@ -79,11 +79,12 @@ template <> struct System<PERF_STATS_OVERLAY> {
     // slot per registry entry — adding a stage to the registry surfaces here
     // automatically with no edit to this system.
     static_assert(
-        std::tuple_size_v<std::remove_reference_t<decltype(IRRender::gpuStageRegistry())>> == 20,
+        std::tuple_size_v<std::remove_reference_t<decltype(IRRender::gpuStageRegistry())>> ==
+            IRRender::kGpuStageCount,
         "EMA arrays must be resized to match gpuStageRegistry size"
     );
-    std::array<double, 20> gpuStageMsEma_{};
-    std::array<double, 20> cpuStageMsEma_{};
+    std::array<double, IRRender::kGpuStageCount> gpuStageMsEma_{};
+    std::array<double, IRRender::kGpuStageCount> cpuStageMsEma_{};
 
     // Refresh throttle counter and the last-built text. Reused on
     // non-refresh frames to keep the displayed digits stable.
@@ -188,6 +189,22 @@ template <> struct System<PERF_STATS_OVERLAY> {
             return "VOX-STAGE1";
         if (name == "voxelStage2")
             return "VOX-STAGE2";
+        if (name == "voxelPerAxisStore")
+            return "PA-STORE";
+        if (name == "voxelPerAxisOverflow")
+            return "PA-OVERFLOW";
+        if (name == "voxelPerAxisFinalize")
+            return "PA-FINALIZE";
+        if (name == "perAxisCellCompact")
+            return "PA-COMPACT";
+        if (name == "computeVoxelAoPerAxis")
+            return "PA-AO";
+        if (name == "lightingPerAxis")
+            return "PA-LIGHTING";
+        if (name == "lightingOverflow")
+            return "PA-OVF-LIGHT";
+        if (name == "perAxisScatter")
+            return "PA-SCATTER";
         if (name == "shapeCompact")
             return "SHP-COMPACT";
         if (name == "shapePass0")

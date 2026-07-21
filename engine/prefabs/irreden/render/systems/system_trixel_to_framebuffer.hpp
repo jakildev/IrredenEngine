@@ -20,6 +20,8 @@
 #include <irreden/common/components/component_name.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/gpu_stage_timing_observer.hpp>
+#include <irreden/render/gpu_substage_timing.hpp>
+#include <irreden/ir_profile.hpp>
 
 #include <cstdlib>
 
@@ -79,6 +81,8 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         const C_TriangleCanvasTextures &triangleCanvasTextures,
         const C_Name &
     ) {
+        // CPU histogram bracket — this system is not observer-tagged (#2281).
+        IR_PROFILE_SCOPE("trixelToFb");
         auto &framebuffer = IREntity::getComponent<C_TrixelCanvasFramebuffer>("mainFramebuffer");
         auto &frameData = IREntity::getComponent<C_FrameDataTrixelToFramebuffer>("mainFramebuffer");
         vec2 framebufferResolution = vec2(framebuffer.getResolutionPlusBuffer());
@@ -176,14 +180,19 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
 
         frameData.updateFrameData(frameDataBuf_);
 
-        triangleCanvasTextures.bind(0, 1, 2);
-        IRRender::device()->setPolygonMode(PolygonMode::FILL);
-        IRRender::device()->drawElements(
-            DrawMode::TRIANGLES,
-            IRShapes2D::kQuadIndicesLength,
-            IndexType::UNSIGNED_SHORT
-        );
-        IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+        {
+            // Sub-scope (#2281): the single-canvas gather draw only — the
+            // per-axis scatter above owns its own row (perAxisScatter).
+            GpuSubStageScope gatherScope("trixelToFb");
+            triangleCanvasTextures.bind(0, 1, 2);
+            IRRender::device()->setPolygonMode(PolygonMode::FILL);
+            IRRender::device()->drawElements(
+                DrawMode::TRIANGLES,
+                IRShapes2D::kQuadIndicesLength,
+                IndexType::UNSIGNED_SHORT
+            );
+            IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+        }
     }
 
     // Smooth camera Z-yaw forward-scatter composite (Option 4, T3 / #1310;
@@ -324,6 +333,10 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         frameData.frameData_.scatterDebugMode_ = static_cast<int>(IRRender::getDebugOverlay());
         frameData.updateFrameData(frameDataBuf_);
 
+        // Sub-scope (#2281): the 3 per-axis instanced scatter draws + the
+        // overflow-entry draw — the rotating-only composite work, separated
+        // from the fall-through gather's trixelToFb row.
+        GpuSubStageScope scatterScope("perAxisScatter");
         scatterProgram_->use();
         IRRender::device()->setPolygonMode(PolygonMode::FILL);
         // #1961: instance over only the compacted occupied cells (filled by the
@@ -489,7 +502,8 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         sys->scatterProgram_ = IRRender::getNamedResource<ShaderProgram>("PerAxisScatterProgram");
         sys->quadVao_ = IRRender::getNamedResource<VAO>("QuadVAO");
         sys->overflowDrawDisabled_ = std::getenv("IR_PERAXIS_OVERFLOW_DISABLE") != nullptr;
-        IRRender::tagGpuStage(id, "trixelToFb");
+        // NOT observer-tagged: the tick owns GpuSubStageScopes (#2281), which
+        // reuse the observer's timestamp attachment slot.
         return id;
     }
 

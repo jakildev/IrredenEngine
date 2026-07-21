@@ -182,3 +182,90 @@ now possible.
 **Not deferring on the merits:** the delta is user-visible (~3.5× frame time at
 zoom 3 during any rotation transient = dropped frames on every rotation), and
 the measurement step Phase 2 needs is cheap now that the #2288 tooling merged.
+
+## Phase 2 — separated per-axis burst attribution (#2281, 2026-07-20)
+
+Instrumentation: `GpuSubStageScope` brackets on every rotating-only dispatch
+group (the #2280 mechanism, extended). New registry rows: `voxelPerAxisStore`
+(phase A: clears + cardinal stores ×3), `voxelPerAxisOverflow` (phases B+C:
+view mask ×3 + overflow append ×3), `voxelPerAxisFinalize` (phase D: winner
+election + stage-2 ×3), `perAxisCellCompact`, `computeVoxelAoPerAxis`,
+`lightingPerAxis`, `lightingOverflow`, `perAxisScatter` — and
+`COMPUTE_VOXEL_AO` / `LIGHTING_TO_TRIXEL` / `TRIXEL_TO_FRAMEBUFFER` are
+untagged from the per-system observer with their rows narrowed to the
+main-canvas dispatch only (the #2280 `voxelStage1` precedent). Cardinal
+`IRShapeDebug` full shot table byte-identical pre/post (28/28, max_delta 0);
+every per-axis row reads 0.0 at cardinal, so row deltas ARE the burst.
+
+Matrix (macOS/Metal, M4 Max; `IRPerfGrid --auto-profile 300 --no-overlay`;
+avg over 3 repeats; spread = max−min of per-run avgs, well under every quoted
+delta):
+
+### voxel_set `--zoom 3` — frame 14.92 → 28.16 ms (+13.24)
+
+| stage | cardinal | yaw 0.35 | Δ |
+|---|---|---|---|
+| voxelStage1 + voxelStage2 (single-canvas raster) | 3.61 | 0.00 | −3.61 |
+| voxelPerAxisStore | 0.00 | 6.91 | +6.91 |
+| voxelPerAxisOverflow | 0.00 | 6.37 | +6.37 |
+| voxelPerAxisFinalize | 0.00 | 5.60 | +5.60 |
+| perAxisScatter | 0.00 | 2.19 | +2.19 |
+| trixelToFb (gather, SDF/text fall-through) | 0.04 | 1.53 | +1.50 |
+| perAxisCellCompact + AO + lighting + overflow relight | 0.00 | 0.20 | +0.20 |
+| computeLightVolume | 7.56 | 4.83 | −2.73 |
+| bakeSunShadowMap | 4.82 | 18.59 | +13.78 * |
+
+### wave (default) — frame 8.60 → 20.36 ms (+11.77)
+
+| stage | cardinal | yaw 0.35 | Δ |
+|---|---|---|---|
+| voxelStage1 + voxelStage2 | 1.32 | 0.00 | −1.32 |
+| voxelPerAxisStore | 0.00 | 5.27 | +5.27 |
+| voxelPerAxisOverflow | 0.00 | 3.27 | +3.27 |
+| voxelPerAxisFinalize | 0.00 | 2.93 | +2.93 |
+| perAxisScatter | 0.00 | 2.59 | +2.59 |
+| trixelToFb (gather) | 0.04 | 1.93 | +1.88 |
+| perAxisCellCompact + AO + lighting + overflow relight | 0.00 | 0.21 | +0.21 |
+| bakeSunShadowMap | 1.50 | 11.22 | +9.72 * |
+
+\* **The bake row's yaw swing is an overlap artifact, not real cost.** The
+stage rows are genuine GPU-timeline windows and still overlap across systems
+(voxel_set yaw rows sum ≈ 46 ms against a 28 ms frame). The decisive
+counter-probe: `--no-sun-shadows` moves the yaw frame only 20.2 → 18.9 ms
+(−1.3 ms) while moving cardinal 8.6 → 5.9 ms — the sun path's real marginal
+cost at yaw is ~1.3 ms; the bake's whole-tick bracket absorbs concurrent
+per-axis work. (perf_grid also registers no
+`RESOLVE_PER_AXIS_SCREEN_DEPTH`, so per-axis voxels do not cast shadows
+there at all — a demo-pipeline drift vs the five demos that do register it;
+adding it would raise the yaw baseline and should ride its own change.)
+
+### Findings
+
+1. **The burst is the stage-1 rotating kernel family, full stop.** Store +
+   overflow + finalize ≈ 18.9 ms (voxel_set) / 11.5 ms (wave) — ~85 % of the
+   attributable delta. Per-axis AO and lighting are ~0.05 ms combined
+   (occupied-cell-bound, exactly as the #2273 result predicted); the scatter
+   draw is a bounded 2.2–2.6 ms.
+2. **The same per-axis face geometry is dispatched five times per axis** —
+   store (mode 0), view mask (mode 2), overflow append (mode 3), winner
+   election (mode 1), stage-2 — 15 sweeps of the compacted face list per
+   rotating frame, all through one runtime-`resolveMode`-branched kernel.
+   The overflow lane's two extra phases (B+C) alone cost 6.4 / 3.3 ms — a
+   third of the burst — matching the frame-level
+   `IR_PERAXIS_OVERFLOW_DISABLE` kill-switch probe (~2.9 ms on wave).
+3. **Candidate lever** (plan option (a), now with row-level evidence): reduce
+   the pass count over the face list — fold the view-mask tap into the store
+   pass (both write disjoint scratch; the mask needs only the yawed
+   projection the store already computes), and/or compile-time-specialize
+   `resolveMode` into per-pass kernel variants to remove the 4-way
+   predication tax from the hottest kernel (the #2325 `IR_FEEDER_PASS` a′
+   precedent measured a 16 % tax for ONE such uniform branch). Election +
+   stage-2 fusion is constrained by the winner-scratch serial reuse across
+   axes (#2255) — evaluate last.
+4. **Pursue-at-all:** the delta exists only while the camera is actively
+   rotating (canvases release at every cardinal), but it is user-visible on
+   every rotation: voxel_set 69 → 37 FPS, wave 120 → 50 FPS. Given the
+   standing yaw-parity goal, the lever is worth a design-gated follow-up.
+
+Lever implementation is a **separate task** behind the design gate, per the
+Phase-2 plan.

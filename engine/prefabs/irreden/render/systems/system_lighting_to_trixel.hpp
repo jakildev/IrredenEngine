@@ -22,7 +22,8 @@
 #include <irreden/render/voxel_dispatch_grid.hpp>
 #include <irreden/render/voxel_frame_data.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
-#include <irreden/render/gpu_stage_timing_observer.hpp>
+#include <irreden/render/gpu_substage_timing.hpp>
+#include <irreden/ir_profile.hpp>
 
 using namespace IRComponents;
 using namespace IRMath;
@@ -151,6 +152,8 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         if (!behavior.useCameraPositionIso_) {
             return;
         }
+        // CPU histogram bracket — this system is not observer-tagged (#2281).
+        IR_PROFILE_SCOPE("lightingToTrixel");
 
         // Author THIS canvas's voxel frame data so the Lambert + sky terms read
         // its own visible-triplet world normals and isDetachedCanvas flag, not
@@ -176,75 +179,85 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         const C_CanvasLightVolume *lightVolume =
             lightVolumeOpt.has_value() ? lightVolumeOpt.value() : mainCanvasLightVolume_;
 
-        canvasTextures.getTextureColors()
-            ->bindAsImage(0, TextureAccess::READ_WRITE, TextureFormat::RGBA8);
-        canvasTextures.getTextureDistances()
-            ->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
-        ao.getTexture()->bindAsImage(2, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
-        // Texture/image unit layout (must match GLSL + MSL):
-        //   3: paletteLUT (sampler2D)
-        //   4: canvasSunShadow (image2D, R/O)
-        //   5: lightVolume (sampler3D)
-        // Metal flattens the sampler and image namespaces into a
-        // shared setTexture slot space, so all three slots must be
-        // unique across both kinds.
-        paletteLUT_->bind(3);
-        // Metal requires every setTexture slot to be populated (it does not
-        // default-bind a null slot). `shadow` is the per-canvas component when
-        // present, else the main canvas's as an inert placeholder — the main canvas
-        // always carries C_CanvasSunShadow when LIGHTING_TO_TRIXEL is registered.
-        IR_ASSERT(
-            shadow != nullptr,
-            "Metal requires slot 4 bound — main canvas must carry C_CanvasSunShadow "
-            "when LIGHTING_TO_TRIXEL iterates"
-        );
-        if (shadow != nullptr) {
-            shadow->getTexture()->bindAsImage(4, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
-        }
-        // `getReadTexture()` returns whichever ping-pong texture
-        // the GPU light-volume producer last wrote to, so this
-        // sampler always sees the latest dilation result.
-        if (lightVolume != nullptr) {
-            lightVolume->getReadTexture()->bind(5);
-            // Winning-light ID volume (image unit 7, #2318). Bound every tick so
-            // Metal's slot table is populated; only fetched on the has-SPOT
-            // path. Stays resident across the per-axis dispatches below (they
-            // never rebind unit 7), so per-axis canvases get spot cones too.
-            lightVolume->getIdReadTexture()
-                ->bindAsImage(7, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
-        }
-        // Entity-id image (unit 6, R/O): the lighting shader reads it ONLY to
-        // recover the fog cut-face flag (bit 29) and force those faces fully lit
-        // (#2124 lit-cross-section follow-up). Bound every tick so Metal's slot
-        // table is populated; the per-axis dispatch below leaves it resident and
-        // its perAxisRoute != 0 skips the read.
-        canvasTextures.getTextureEntityIds()
-            ->bindAsImage(6, TextureAccess::READ_ONLY, TextureFormat::RG32UI);
-        frameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataLightingToTrixel);
-        voxelFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataVoxelToCanvas);
-        sunFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataSun);
-        lightVolumeParamsBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_LightVolumeParams);
-        // Light list (SSBO slot 4) for the spot-cone factor (#2318). SSBO and
-        // image bindings are independent namespaces on both backends, so slot 4
-        // here does not collide with the image-unit-4 sun-shadow texture. Stays
-        // resident across the per-axis dispatches (they never rebind slot 4).
-        lightSourceBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_LightSourceBuffer);
-        // Sun-depth map (slot 28) for the opt-in detached world-receive path
-        // (#1576 P4b-2). Bound every tick — the shader declares the SSBO
-        // unconditionally (Metal kernel arg); only a world-placed detached solid
-        // reads it. Persists across the per-axis lighting dispatches below (they
-        // only rebind the colour/dist/AO/sun-shadow images).
-        if (sunShadowDepthMap_ != nullptr) {
-            sunShadowDepthMap_->bindBase(
-                BufferTarget::SHADER_STORAGE,
-                kBufferIndex_SunShadowDepthMap
+        // Sub-scope (#2281): the main-canvas lighting dispatch only. The braces
+        // bound the TIMER, not the GPU bindings — image/buffer binds are global
+        // state and stay resident for the per-axis dispatches below.
+        {
+            GpuSubStageScope lightingScope("lightingToTrixel");
+            canvasTextures.getTextureColors()
+                ->bindAsImage(0, TextureAccess::READ_WRITE, TextureFormat::RGBA8);
+            canvasTextures.getTextureDistances()
+                ->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
+            ao.getTexture()->bindAsImage(2, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+            // Texture/image unit layout (must match GLSL + MSL):
+            //   3: paletteLUT (sampler2D)
+            //   4: canvasSunShadow (image2D, R/O)
+            //   5: lightVolume (sampler3D)
+            // Metal flattens the sampler and image namespaces into a
+            // shared setTexture slot space, so all three slots must be
+            // unique across both kinds.
+            paletteLUT_->bind(3);
+            // Metal requires every setTexture slot to be populated (it does not
+            // default-bind a null slot). `shadow` is the per-canvas component when
+            // present, else the main canvas's as an inert placeholder — the main canvas
+            // always carries C_CanvasSunShadow when LIGHTING_TO_TRIXEL is registered.
+            IR_ASSERT(
+                shadow != nullptr,
+                "Metal requires slot 4 bound — main canvas must carry C_CanvasSunShadow "
+                "when LIGHTING_TO_TRIXEL iterates"
             );
-        }
+            if (shadow != nullptr) {
+                shadow->getTexture()
+                    ->bindAsImage(4, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+            }
+            // `getReadTexture()` returns whichever ping-pong texture
+            // the GPU light-volume producer last wrote to, so this
+            // sampler always sees the latest dilation result.
+            if (lightVolume != nullptr) {
+                lightVolume->getReadTexture()->bind(5);
+                // Winning-light ID volume (image unit 7, #2318). Bound every tick so
+                // Metal's slot table is populated; only fetched on the has-SPOT
+                // path. Stays resident across the per-axis dispatches below (they
+                // never rebind unit 7), so per-axis canvases get spot cones too.
+                lightVolume->getIdReadTexture()
+                    ->bindAsImage(7, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+            }
+            // Entity-id image (unit 6, R/O): the lighting shader reads it ONLY to
+            // recover the fog cut-face flag (bit 29) and force those faces fully lit
+            // (#2124 lit-cross-section follow-up). Bound every tick so Metal's slot
+            // table is populated; the per-axis dispatch below leaves it resident and
+            // its perAxisRoute != 0 skips the read.
+            canvasTextures.getTextureEntityIds()
+                ->bindAsImage(6, TextureAccess::READ_ONLY, TextureFormat::RG32UI);
+            frameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataLightingToTrixel);
+            voxelFrameDataBuf_->bindBase(
+                BufferTarget::UNIFORM,
+                kBufferIndex_FrameDataVoxelToCanvas
+            );
+            sunFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataSun);
+            lightVolumeParamsBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_LightVolumeParams);
+            // Light list (SSBO slot 4) for the spot-cone factor (#2318). SSBO and
+            // image bindings are independent namespaces on both backends, so slot 4
+            // here does not collide with the image-unit-4 sun-shadow texture. Stays
+            // resident across the per-axis dispatches (they never rebind slot 4).
+            lightSourceBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_LightSourceBuffer);
+            // Sun-depth map (slot 28) for the opt-in detached world-receive path
+            // (#1576 P4b-2). Bound every tick — the shader declares the SSBO
+            // unconditionally (Metal kernel arg); only a world-placed detached solid
+            // reads it. Persists across the per-axis lighting dispatches below (they
+            // only rebind the colour/dist/AO/sun-shadow images).
+            if (sunShadowDepthMap_ != nullptr) {
+                sunShadowDepthMap_->bindBase(
+                    BufferTarget::SHADER_STORAGE,
+                    kBufferIndex_SunShadowDepthMap
+                );
+            }
 
-        const int groupsX = IRMath::divCeil(canvasTextures.size_.x, kLightingToTrixelGroupSize);
-        const int groupsY = IRMath::divCeil(canvasTextures.size_.y, kLightingToTrixelGroupSize);
-        IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
-        IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+            const int groupsX = IRMath::divCeil(canvasTextures.size_.x, kLightingToTrixelGroupSize);
+            const int groupsY = IRMath::divCeil(canvasTextures.size_.y, kLightingToTrixelGroupSize);
+            IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
+            IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+        }
 
         // Smooth camera Z-yaw (#1311): apply lighting to each per-axis voxel
         // canvas (AO x sun-shadow x face Lambert + shared world light volume) so
@@ -267,56 +280,66 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         const C_CanvasAOTexture &mainAO,
         const C_CanvasSunShadow &mainShadow
     ) {
-        // perAxisRoute is a boolean route flag on the lighting path (any nonzero
-        // = per-axis canvas); the shader recovers the axis per-pixel from faceId,
-        // NOT from this field — distinct from stage-1's 1/2/3 = X/Y/Z axis selector.
-        const int kPerAxisRoute = 1;
-        voxelFrameDataBuf_
-            ->subData(offsetof(FrameDataVoxelToCanvas, perAxisRoute_), sizeof(int), &kPerAxisRoute);
-        // Recover world-pos with the SAME #1431-capped lattice density the store
-        // wrote (perAxisCellToWorld3D reads voxelRenderOptions.y); restored below.
-        IRPrefab::PerAxisCanvas::setUboSubdivisionDensity(
-            voxelFrameDataBuf_,
-            IRPrefab::PerAxisCanvas::subdivisionDensity()
-        );
-        // #2256: dispatch indirectly over only each axis's OCCUPIED cells
-        // (compacted by the STAGE_1 per-axis pre-pass) instead of sweeping the
-        // full worst-case per-axis grid. Each kernel recovers its cell from the
-        // compacted list (slot 25) and reads visibleCount for its 1-D bound guard
-        // from the indirect-args region (slot 26).
-        Buffer *cellCompacted = axes.cellCompacted_.second;
-        Buffer *cellIndirect = axes.cellIndirect_.second;
-        const int regionStride = axes.cellRegionStride_;
-        for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
-            auto &tex = axes.axes_[axis];
-            tex.colors_.second->bindAsImage(0, TextureAccess::READ_WRITE, TextureFormat::RGBA8);
-            tex.distances_.second->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
-            tex.ao_.second->bindAsImage(2, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
-            tex.sunShadow_.second->bindAsImage(4, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
-            cellCompacted->bindRange(
-                BufferTarget::SHADER_STORAGE,
-                kBufferIndex_PerAxisCellCompacted,
-                static_cast<std::ptrdiff_t>(axis) * regionStride *
-                    static_cast<int>(sizeof(std::uint32_t)),
-                static_cast<size_t>(regionStride) * sizeof(std::uint32_t)
+        // Sub-scope (#2281): the 3 per-axis relight dispatches; the overflow
+        // relight below gets its own row.
+        {
+            GpuSubStageScope perAxisScope("lightingPerAxis");
+            // perAxisRoute is a boolean route flag on the lighting path (any nonzero
+            // = per-axis canvas); the shader recovers the axis per-pixel from faceId,
+            // NOT from this field — distinct from stage-1's 1/2/3 = X/Y/Z axis selector.
+            const int kPerAxisRoute = 1;
+            voxelFrameDataBuf_->subData(
+                offsetof(FrameDataVoxelToCanvas, perAxisRoute_),
+                sizeof(int),
+                &kPerAxisRoute
             );
-            cellIndirect->bindRange(
-                BufferTarget::SHADER_STORAGE,
-                kBufferIndex_PerAxisCellIndirect,
-                static_cast<std::ptrdiff_t>(axis) * kPerAxisCellIndirectStrideBytes,
-                kPerAxisCellIndirectStrideBytes
+            // Recover world-pos with the SAME #1431-capped lattice density the store
+            // wrote (perAxisCellToWorld3D reads voxelRenderOptions.y); restored below.
+            IRPrefab::PerAxisCanvas::setUboSubdivisionDensity(
+                voxelFrameDataBuf_,
+                IRPrefab::PerAxisCanvas::subdivisionDensity()
             );
-            IRRender::device()->dispatchComputeIndirect(
-                cellIndirect,
-                static_cast<std::ptrdiff_t>(axis) * kPerAxisCellIndirectStrideBytes +
-                    kPerAxisCellDispatchArgsOffsetBytes
-            );
+            // #2256: dispatch indirectly over only each axis's OCCUPIED cells
+            // (compacted by the STAGE_1 per-axis pre-pass) instead of sweeping the
+            // full worst-case per-axis grid. Each kernel recovers its cell from the
+            // compacted list (slot 25) and reads visibleCount for its 1-D bound guard
+            // from the indirect-args region (slot 26).
+            Buffer *cellCompacted = axes.cellCompacted_.second;
+            Buffer *cellIndirect = axes.cellIndirect_.second;
+            const int regionStride = axes.cellRegionStride_;
+            for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
+                auto &tex = axes.axes_[axis];
+                tex.colors_.second->bindAsImage(0, TextureAccess::READ_WRITE, TextureFormat::RGBA8);
+                tex.distances_.second
+                    ->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
+                tex.ao_.second->bindAsImage(2, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+                tex.sunShadow_.second
+                    ->bindAsImage(4, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+                cellCompacted->bindRange(
+                    BufferTarget::SHADER_STORAGE,
+                    kBufferIndex_PerAxisCellCompacted,
+                    static_cast<std::ptrdiff_t>(axis) * regionStride *
+                        static_cast<int>(sizeof(std::uint32_t)),
+                    static_cast<size_t>(regionStride) * sizeof(std::uint32_t)
+                );
+                cellIndirect->bindRange(
+                    BufferTarget::SHADER_STORAGE,
+                    kBufferIndex_PerAxisCellIndirect,
+                    static_cast<std::ptrdiff_t>(axis) * kPerAxisCellIndirectStrideBytes,
+                    kPerAxisCellIndirectStrideBytes
+                );
+                IRRender::device()->dispatchComputeIndirect(
+                    cellIndirect,
+                    static_cast<std::ptrdiff_t>(axis) * kPerAxisCellIndirectStrideBytes +
+                        kPerAxisCellDispatchArgsOffsetBytes
+                );
+            }
+            // One barrier after the 3 independent per-axis dispatches (each axis
+            // writes its own colour image texture in place — disjoint outputs, so
+            // dispatch order doesn't matter) so they overlap on the GPU instead of
+            // serializing per axis (#1311).
+            IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
         }
-        // One barrier after the 3 independent per-axis dispatches (each axis
-        // writes its own colour image texture in place — disjoint outputs, so
-        // dispatch order doesn't matter) so they overlap on the GPU instead of
-        // serializing per axis (#1311).
-        IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
         // #2334: relight the overflow entries the C1 lane appended albedo-only,
         // at their recovered world pos, while the sun-depth map (slot 28) + light
         // volume are still bound from the cell pass above. Switches the compute
@@ -381,6 +404,10 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
             axes.winnerIds_.second == nullptr) {
             return;
         }
+        // Sub-scope (#2281) — opened after the early-return so the row only
+        // samples when the dispatch actually runs (a scope with no enclosed
+        // encoder never resolves its pair).
+        GpuSubStageScope overflowScope("lightingOverflow");
         overflowLightingProgram_->use();
         // The kernel indexes entries + the ctrl-block count via overflowScratchLayout
         // read from the voxel-frame UBO (slot 7). Only VOXEL_TO_TRIXEL_STAGE_1 sets
@@ -590,7 +617,8 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         // ahead of LIGHTING_TO_TRIXEL); safe to resolve here (#2318).
         p->lightSourceBuf_ = IRRender::getNamedResource<Buffer>("LightSourceBuffer");
         p->paletteLUT_ = IRRender::getNamedResource<Texture2D>("PaletteLUT_Nearest");
-        IRRender::tagGpuStage(systemId, "lightingToTrixel");
+        // NOT observer-tagged: the tick owns GpuSubStageScopes (#2281), which
+        // reuse the observer's timestamp attachment slot.
         return systemId;
     }
 };
