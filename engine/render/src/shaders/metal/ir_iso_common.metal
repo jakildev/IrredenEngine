@@ -221,9 +221,11 @@ inline uint2 encodeEntityIdWithPriority(uint2 id, uint priority) {
                            ((priority & 0x3u) << kEntityIdPriorityShiftInHighWord));
 }
 // Set the fog cut-face flag on an ALREADY priority-encoded id — GLSL twin.
-inline uint2 encodeEntityIdCutFace(uint2 packed, bool isCutFace) {
-    return isCutFace ? uint2(packed.x, packed.y | kEntityIdCutFaceMaskInHighWord)
-                     : packed;
+// `packedId` mirrors the GLSL side, where `packed` is a reserved keyword
+// (NVIDIA rejects it as an identifier); keep the twins in lockstep.
+inline uint2 encodeEntityIdCutFace(uint2 packedId, bool isCutFace) {
+    return isCutFace ? uint2(packedId.x, packedId.y | kEntityIdCutFaceMaskInHighWord)
+                     : packedId;
 }
 
 // Per-axis fractional encoding (#1458, flip carrier #2207, wFrac carrier):
