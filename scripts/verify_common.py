@@ -41,9 +41,18 @@ def run(cmd: list[str], cwd: Path | None = None, check: bool = True,
 def run_capture(cmd: list[str], cwd: Path | None = None,
                  timeout: int | None = None) -> tuple[int, str]:
     print("+ " + " ".join(cmd), flush=True)
+    # errors="replace": the child's stdout can carry non-UTF-8 bytes that
+    # aren't ours to sanitize — e.g. the engine logs system audio/MIDI device
+    # names verbatim, and a device named "Robert's iPhone" emits a Mac-Roman
+    # 0xd5 apostrophe. Strict decoding (the text=True default) raises
+    # UnicodeDecodeError mid-stream and aborts the whole verify run. The
+    # harnesses only ever grep for ASCII markers (GUI-ASSERT / PASS / FAIL /
+    # screenshot paths), so replacing an undecodable byte with U+FFFD is loss-
+    # free for our purposes.
     proc = subprocess.Popen(
         cmd, cwd=str(cwd) if cwd else None,
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        text=True, encoding="utf-8", errors="replace",
     )
     lines: list[str] = []
     if proc.stdout is None:
