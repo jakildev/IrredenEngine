@@ -1111,3 +1111,29 @@ on first use; just `mkdir -p` it before appending.
 - `fleet-feedback --headlines` — one-liners only
 - `fleet-feedback --clear` — archive all entries to
   `~/.fleet/feedback/.archive/<timestamp>/` and start fresh
+
+## The decision digest (`fleet-decisions`)
+
+Everything above reaches the human as *pull* — labels to poll, files to
+read, commands to remember. `fleet-decisions` consolidates the
+waiting-on-you set into one read-only report:
+
+- **Merge queue** — open PRs carrying `fleet:approved` (with a `+nits`
+  annotation and a hold sub-line for any outstanding
+  `fleet:needs-<host>-smoke` label).
+- **Decisions** — PRs and issues parked on a human-only label:
+  `fleet:needs-human`, `fleet:gated`, `fleet:human-deferred`,
+  `fleet:design-blocked`, `fleet:steward-proposal`, `fleet:state-drift`,
+  and `human:review-plan` plan sign-off holds.
+- **Cues** — the `fleet:coding-improvement` backlog count (cue
+  `triage-coding-improvements`), untriaged issues with no state labels
+  (awaiting `human:approved`), and feedback-channel role files newer
+  than `~/.fleet/feedback/.last-reviewed` (cue `review-fleet-feedback`).
+- **Status** — per-repo open-PR / queued / needs-plan counts.
+
+Invocation: `fleet-decisions` (engine + game; a repo that fails to
+query is skipped with a warning) or `fleet-decisions --repo engine|game`.
+It changes no state and applies no labels — the human acts on what it
+surfaces through the existing mechanisms (merge, label, cue a skill).
+Run on demand today; it is the substrate for a pushed digest
+(cron / notification) once a delivery channel is chosen.

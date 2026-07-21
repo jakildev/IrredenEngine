@@ -1,0 +1,207 @@
+#!/usr/bin/env bash
+# fleet-decisions — everything currently waiting on the human, in one read.
+#
+# Consolidates the fleet's human-pull surfaces into a single decision-first
+# report: the merge queue (verdict labels + smoke holds), parked decisions
+# (fleet:needs-human, fleet:gated, fleet:design-blocked, fleet:steward-proposal,
+# fleet:state-drift, human:review-plan holds), backlog cues
+# (fleet:coding-improvement, untriaged issues), and unread feedback-channel
+# entries. Read-only: changes no labels, writes no state.
+#
+# Usage:
+#   fleet-decisions                  # engine + game
+#   fleet-decisions --repo engine    # one repo only
+#   fleet-decisions --repo game
+#
+# Source of truth: scripts/fleet/fleet-decisions in the engine repo.
+# Installed to ~/bin/fleet-decisions by scripts/fleet/install.sh.
+
+set -euo pipefail
+
+FLEET_HOME="${FLEET_HOME:-$HOME/.fleet}"
+REPOS=("jakildev/IrredenEngine" "jakildev/irreden")
+
+resolve_repo() {
+    case "$1" in
+        engine) REPOS=("jakildev/IrredenEngine") ;;
+        game)   REPOS=("jakildev/irreden") ;;
+        "")     echo "fleet-decisions: --repo needs a value" >&2; exit 1 ;;
+        *)      REPOS=("$1") ;;
+    esac
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --repo)
+            shift
+            resolve_repo "${1:-}"
+            shift
+            ;;
+        --repo=*)
+            resolve_repo "${1#--repo=}"
+            shift
+            ;;
+        *)
+            echo "Usage: fleet-decisions [--repo engine|game|<owner/name>]" >&2
+            exit 1
+            ;;
+    esac
+done
+
+workdir=$(mktemp -d "${TMPDIR:-/tmp}/fleet-decisions.XXXXXX")
+trap 'rm -rf "$workdir"' EXIT
+
+manifest="$workdir/manifest.tsv"
+: > "$manifest"
+idx=0
+for repo in "${REPOS[@]}"; do
+    prs_f="$workdir/$idx-prs.json"
+    issues_f="$workdir/$idx-issues.json"
+    if gh pr list --repo "$repo" --state open \
+            --json number,title,labels,url --limit 200 > "$prs_f" 2>/dev/null \
+        && gh issue list --repo "$repo" --state open \
+            --json number,title,labels,url --limit 200 > "$issues_f" 2>/dev/null; then
+        printf '%s\t%s\t%s\n' "$repo" "$prs_f" "$issues_f" >> "$manifest"
+    else
+        echo "fleet-decisions: skipping $repo (query failed)" >&2
+    fi
+    idx=$((idx + 1))
+done
+
+if [[ ! -s "$manifest" ]]; then
+    echo "fleet-decisions: no repo could be queried" >&2
+    exit 1
+fi
+
+# Feedback channel: role files newer than the .last-reviewed marker (the
+# marker review-fleet-feedback bumps). Marker absent => everything is unread.
+feedback_f="$workdir/feedback.txt"
+: > "$feedback_f"
+fb_dir="$FLEET_HOME/feedback"
+marker="$fb_dir/.last-reviewed"
+if [[ -d "$fb_dir" ]]; then
+    for f in "$fb_dir"/*.md; do
+        [[ -e "$f" ]] || continue
+        if [[ ! -f "$marker" || "$f" -nt "$marker" ]]; then
+            basename "$f" .md >> "$feedback_f"
+        fi
+    done
+fi
+
+# PYTHONIOENCODING forces UTF-8 stdout for native-Windows consoles (cp1252
+# default raises on the report's em-dash / middle-dot glyphs).
+PYTHONIOENCODING=utf-8 python3 - "$manifest" "$feedback_f" << 'PYEOF'
+import json
+import sys
+
+SHORT = {"jakildev/IrredenEngine": "engine", "jakildev/irreden": "game"}
+
+# label -> human-readable decision tag; presence on an open PR/issue means
+# a human (or human-cued architect) action is the only way it moves again.
+DECISION_TAGS = {
+    "fleet:needs-human": "needs human",
+    "fleet:gated": "gated self-config edit",
+    "fleet:human-deferred": "deferred to human",
+    "fleet:design-blocked": "design answer needed",
+    "fleet:steward-proposal": "steward proposal to answer",
+    "fleet:state-drift": "state drift to reconcile",
+    "human:review-plan": "plan approach sign-off",
+}
+
+repos = []
+with open(sys.argv[1], encoding="utf-8") as manifest_file:
+    for line in manifest_file:
+        slug, prs_path, issues_path = line.rstrip("\n").split("\t")
+        with open(prs_path, encoding="utf-8") as f:
+            prs = json.load(f)
+        with open(issues_path, encoding="utf-8") as f:
+            issues = json.load(f)
+        repos.append((SHORT.get(slug, slug), prs, issues))
+
+with open(sys.argv[2], encoding="utf-8") as f:
+    unread_roles = [line.strip() for line in f if line.strip()]
+
+
+def names(item):
+    return [label["name"] for label in item.get("labels", [])]
+
+
+merge_queue = []   # (repo, item, has_nits, smoke_holds)
+decisions = []     # (repo, kind, item, tags)
+coding_improvements = 0
+untriaged = []
+status = []        # (repo, open_prs, queued, needs_plan)
+
+for repo, prs, issues in repos:
+    queued = needs_plan = 0
+    for pr in prs:
+        labels = names(pr)
+        if "fleet:approved" in labels:
+            smoke = [
+                label for label in labels
+                if label.startswith("fleet:needs-") and label.endswith("-smoke")
+            ]
+            merge_queue.append((repo, pr, "fleet:has-nits" in labels, smoke))
+        tags = [DECISION_TAGS[label] for label in labels if label in DECISION_TAGS]
+        if tags:
+            decisions.append((repo, "PR", pr, tags))
+    for issue in issues:
+        labels = names(issue)
+        tags = [DECISION_TAGS[label] for label in labels if label in DECISION_TAGS]
+        if tags:
+            decisions.append((repo, "issue", issue, tags))
+        if "fleet:coding-improvement" in labels:
+            coding_improvements += 1
+        if not any(label.startswith(("fleet:", "human:")) for label in labels):
+            untriaged.append((repo, issue))
+        queued += "fleet:queued" in labels
+        needs_plan += "fleet:needs-plan" in labels
+    status.append((repo, len(prs), queued, needs_plan))
+
+total = len(merge_queue) + len(decisions)
+scope = "+".join(repo for repo, _, _ in repos)
+print(f"fleet-decisions: {total} decision(s) waiting   [{scope}]")
+
+if merge_queue:
+    print(f"\n## Merge queue ({len(merge_queue)})")
+    for repo, pr, has_nits, smoke in merge_queue:
+        nits = "+nits" if has_nits else ""
+        print(f"  {repo} PR #{pr['number']}  {pr['title']}  [approved{nits}]")
+        for label in smoke:
+            print(f"      hold: {label} outstanding")
+
+if decisions:
+    print(f"\n## Decisions ({len(decisions)})")
+    for repo, kind, item, tags in decisions:
+        print(f"  {repo} {kind} #{item['number']}  {item['title']}  [{'; '.join(tags)}]")
+
+cues = []
+if coding_improvements:
+    cues.append(
+        f"fleet:coding-improvement: {coding_improvements} open — "
+        "cue `triage-coding-improvements` when ready"
+    )
+if untriaged:
+    newest = ", ".join(
+        f"{repo} #{issue['number']}" for repo, issue in untriaged[:5]
+    )
+    cues.append(
+        f"untriaged (no state labels): {len(untriaged)} awaiting triage — {newest}"
+    )
+if unread_roles:
+    cues.append(
+        f"feedback channel: {len(unread_roles)} role file(s) unread "
+        f"({', '.join(sorted(unread_roles))}) — cue `review-fleet-feedback`"
+    )
+if cues:
+    print("\n## Cues")
+    for cue in cues:
+        print(f"  {cue}")
+
+print("\n## Status")
+for repo, open_prs, queued, needs_plan in status:
+    print(f"  {repo}: {open_prs} open PR(s) · {queued} queued · {needs_plan} needs-plan")
+
+if total == 0 and not cues:
+    print("\n  nothing is waiting on you.")
+PYEOF
