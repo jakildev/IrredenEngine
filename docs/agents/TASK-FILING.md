@@ -39,6 +39,13 @@ and `fleet-claim`'s blocker gate parse them):
 - **Acceptance criteria** — concrete check (build passes, test X works)
 - **Context** — why this matters, what you observed
 
+Optional, when the work serves a standing objective
+([`docs/design/objectives/`](../design/objectives/README.md)):
+
+- **Objective:** `<slug>` — the objective file's basename. No parser
+  reads it; the architect's objectives sweep and the human use it to
+  attribute shipped work to the objective's progress ledger.
+
 The issue sits in the backlog until the **human triages and adds
 `human:approved`**. Only then does the scout ingest it.
 

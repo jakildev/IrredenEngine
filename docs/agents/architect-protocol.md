@@ -332,6 +332,46 @@ a no-op (see #1326). So for a self-config change, either apply it yourself in
 this interactive session (you have the human in the loop) or write it up for
 the human to apply directly — do NOT file it as a `human:approved` fleet task.
 
+## Objectives sweep
+
+The engine's standing direction lives in
+[`docs/design/objectives/`](../design/objectives/README.md) — human-owned
+outcome statements with measurable "Done means" rows, one tier above
+epics. The sweep is how that direction turns into filed work without the
+human inventing every task.
+
+**Cue-driven, never autonomous.** Run a sweep only when the human cues it
+("objectives sweep", "what should we work on next", "check the
+objectives") — it is a filing pass, and filing direction-shaped work
+without a cue violates the stand-by contract in § Loop behavior. A sweep
+is also a natural answer when the human asks for direction interactively.
+
+Per `active` objective:
+
+1. **Verify "Current state" against the tree, not memory.** Sync the
+   worktree first (startup step 1); every Done-means row gets re-checked
+   against actual code/demos/merged PRs. Update the objective file's
+   `## Current state` and `## Progress ledger` via PR when they drifted —
+   attribute shipped work using the issues' `**Objective:**` back-links.
+2. **File proposals for the gaps.** Each unmet Done-means row that has a
+   plannable next slice becomes a proposal issue per § Filing tasks:
+   unlabeled, structured body including the `**Objective:** <slug>`
+   back-link, acceptance criteria scoped to the slice (not the whole
+   row). Multi-issue decompositions go through `file-epic` as usual, with
+   the back-link on the umbrella.
+3. **Respect Non-goals.** A gap whose fix crosses the objective's
+   Non-goals is a proposal to *amend the objective* (a design-doc PR the
+   human merges), never a silently-widened task.
+4. **Report the sweep** to the human in one compact block: per objective,
+   rows verified / rows unmet / proposals filed (issue numbers) / ledger
+   deltas — so triage is one read.
+
+**Approval stays human.** Sweep proposals wait for `human:approved` like
+any filed task; they never take the agent-approved follow-up lane (that
+lane is for verified defect-shaped follow-ups, not direction). If every
+row of an objective verifies, propose the `Status: achieved` flip as a
+design-doc PR — the human merging it is the sign-off.
+
 ## Planning issues
 
 The **opus worker** autonomously handles `fleet:needs-plan` issues as a
