@@ -422,13 +422,20 @@ IRVideo::GuiInputEvent g_probeMapMoves[kProbeMapCount] = {
     {0, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(0)},
 };
 
-// The i-th probe-map cell with its z snapped to the live ground plane
-// (local z == size.z-1). Keeps the probe valid under --scene-size — the stored
-// z is the 16³ default; the actual seed plane moves with the scene height.
+// The i-th probe-map cell snapped into the live scene bounds so the probe
+// stays valid under --scene-size: z rides the ground plane (local z ==
+// size.z-1), and x/y clamp into the live footprint. The stored cells target a
+// 16³ grid (x/y up to 11), so a --scene-size narrower than 12 in x or y would
+// otherwise push them off-grid; clamping collapses those onto the nearest edge
+// cell (a valid ground cell that still projects on-screen), trading probe
+// coverage for a probe that asserts at any footprint. At the default 16³ every
+// stored x/y is < 16 and passes through unchanged. Both the assertion target
+// (initEntities) and the cursor-move pixel (onGuiAssertFrame) go through this
+// helper, so they stay consistent for whatever cell it returns.
 inline IRMath::ivec3 probeGroundCell(int i) {
     return IRMath::ivec3(
-        kProbeMapLocalCells[i].x,
-        kProbeMapLocalCells[i].y,
+        IRMath::min(kProbeMapLocalCells[i].x, g_editableSceneSize.x - 1),
+        IRMath::min(kProbeMapLocalCells[i].y, g_editableSceneSize.y - 1),
         g_editableSceneSize.z - 1
     );
 }
