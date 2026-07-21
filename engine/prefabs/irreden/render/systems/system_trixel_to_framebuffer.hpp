@@ -2,6 +2,7 @@
 #define SYSTEM_TRIXEL_TO_FRAMEBUFFER_H
 
 #include <irreden/ir_render.hpp>
+#include <irreden/ir_system.hpp>
 #include <irreden/ir_constants.hpp>
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_entity.hpp>
@@ -19,7 +20,6 @@
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/common/components/component_name.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
-#include <irreden/render/gpu_stage_timing_observer.hpp>
 #include <irreden/render/gpu_substage_timing.hpp>
 #include <irreden/ir_profile.hpp>
 

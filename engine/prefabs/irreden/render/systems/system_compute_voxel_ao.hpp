@@ -85,6 +85,10 @@ template <> struct System<COMPUTE_VOXEL_AO> {
         if (!behavior.useCameraPositionIso_)
             return;
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
+        // CPU histogram bracket — this system is not observer-tagged (#2281),
+        // so without it the perf overlay's VOXEL-AO CPU row reads 0.0. The
+        // IR_PROFILE_FUNCTION above feeds easy_profiler, not cpuFrameHistogram.
+        IR_PROFILE_SCOPE("computeVoxelAO");
 
         // Author THIS canvas's voxel frame data so AO shades it with its own
         // visible-triplet / detached state (#1558). No-op for a canvas with no
