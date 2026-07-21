@@ -248,9 +248,9 @@ uvec2 encodeEntityIdWithPriority(uvec2 id, uint priority) {
 }
 // Set the fog cut-face flag on an ALREADY priority-encoded id. Call after
 // encodeEntityIdWithPriority (which strips this bit via kEntityIdHighWordMask).
-uvec2 encodeEntityIdCutFace(uvec2 packed, bool isCutFace) {
-    return isCutFace ? uvec2(packed.x, packed.y | kEntityIdCutFaceMaskInHighWord)
-                     : packed;
+uvec2 encodeEntityIdCutFace(uvec2 packedId, bool isCutFace) {
+    return isCutFace ? uvec2(packedId.x, packedId.y | kEntityIdCutFaceMaskInHighWord)
+                     : packedId;
 }
 
 // Per-axis fractional encoding (#1458, flip carrier #2207, wFrac carrier):
