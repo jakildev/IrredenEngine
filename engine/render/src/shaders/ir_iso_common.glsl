@@ -447,6 +447,9 @@ bool isInsideCanvas(ivec2 pixel, ivec2 canvasSize) {
            pixel.y >= 0 && pixel.y < canvasSize.y;
 }
 
+// Hardware round() is safe here: the 1e-4 near-grid gate excludes
+// half-integer inputs, so the tie direction — the only point where
+// round() is implementation-defined — is unobservable.
 vec3 snapNearIntegerVoxelPosition(vec3 voxelPosition) {
     vec3 voxelRounded = round(voxelPosition);
     bvec3 nearGrid = lessThanEqual(abs(voxelPosition - voxelRounded), vec3(0.0001));

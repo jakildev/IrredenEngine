@@ -84,7 +84,7 @@ kernel void c_render_stateless_particles_to_trixel(
     // pool uses under FULL subdivision mode (sub > 1 → sub-voxel precision;
     // sub == 1 collapses to plain integer rounding).
     const int subdivisions = effectiveTrixelSubdivisionScale(frameData.voxelRenderOptions);
-    const int3 posScaled = int3(round(position * float(subdivisions)));
+    const int3 posScaled = roundHalfUp(position * float(subdivisions));
 
     const int2 frameOffset = trixelFrameOffset(
         frameData.trixelCanvasOffsetZ1,

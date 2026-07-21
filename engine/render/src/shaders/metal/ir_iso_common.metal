@@ -415,6 +415,9 @@ inline bool isInsideCanvas(int2 pixel, int2 canvasSize) {
            pixel.y >= 0 && pixel.y < canvasSize.y;
 }
 
+// Hardware round() is safe here: the 1e-4 near-grid gate excludes
+// half-integer inputs, so the tie direction — the only point where
+// round() can differ from the GLSL twin — is unobservable.
 inline float3 snapNearIntegerVoxelPosition(float3 voxelPosition) {
     float3 voxelRounded = round(voxelPosition);
     bool3 nearGrid = abs(voxelPosition - voxelRounded) <= float3(0.0001);

@@ -121,7 +121,10 @@ fragment FragmentOut f_trixel_to_framebuffer(
     // (the byte-identical world/overlay fast path).
     float depthScale = frameData.effectiveSubdivisionsForHover.y;
     if (depthScale <= 0.0f) depthScale = 1.0f;
-    int base = int(round(float(rawDist) * depthScale));
+    // roundHalfUp, not hardware round(): a fractional depthScale (effSub /
+    // cubeSub) lands odd rawDist values on exact .5 ties, where the GLSL
+    // twin's round() is implementation-defined; both twins share roundHalfUp.
+    int base = roundHalfUp(float(rawDist) * depthScale);
     // Per-trixel priority tiers (#1960) — twin of f_trixel_to_framebuffer.glsl.
     // No-priority perf fast-path (#2155): read this fragment's entity id (at the
     // SAME texel its color/depth came from — sampleCoord, the raw position) only
