@@ -20,7 +20,11 @@
 #         engine + game worktree pair with one rule, excludes sibling agents),
 #       - `$HOME/.fleet/…`  (heartbeats, plans, claims, summaries),
 #       - `/tmp/…` and `/private/tmp/…` (macOS canonical form),
+#       - `/<drive>/msys64/tmp/…` (native-Windows MSYS tmp — the harness
+#         scratchpad lives there),
 #       - `$HOME/.claude/projects/*/memory/…` (auto-memory).
+#     Native-Windows path spellings (`C:\…` / `C:/…`, from the file tools on
+#     that host) are canonicalized to the MSYS `/c/…` form before any test.
 #     A relative target is resolved against the hook-input cwd first, then tested
 #     the same way — so a relative edit from a drifted cwd is caught too. Before
 #     the containment tests, '.'/'..' segments are lexically collapsed, so a
@@ -78,11 +82,49 @@ normalize_path() {
     printf '%s' "${out:-/}"
 }
 
+# canonicalize_path_spelling — inlined VERBATIM from fleet-common.sh (keep the
+# two copies in sync). This hook must stay standalone and fail-open, so it
+# cannot source a helper file it can't guarantee exists. Why it's needed: the
+# file tools on a Windows host hand the hook `C:\...` / `C:/...` absolute
+# targets, which the POSIX `/*` test below reads as RELATIVE — the guard then
+# prepends cwd, producing a garbage path no containment test can ever match,
+# and denies EVERY edit on a Windows host, including correctly-routed
+# in-worktree ones. Inert on macOS/Linux (see the fleet-common.sh original
+# for the per-branch rationale).
+canonicalize_path_spelling() {
+    local p=$1
+    p=${p//\\//} # backslashes -> forward slashes (C:\Users\x -> C:/Users/x)
+    if [[ $p =~ ^([A-Za-z]):(/.*)?$ ]]; then
+        # drive-letter form (C:/Users/x, c:) -> /c/Users/x, /c
+        local drive rest
+        drive=$(printf '%s' "${BASH_REMATCH[1]}" | tr '[:upper:]' '[:lower:]')
+        rest=${BASH_REMATCH[2]}
+        printf '/%s%s' "$drive" "$rest"
+        return 0
+    fi
+    if [[ $p =~ ^/([A-Z])(/.*)?$ ]]; then
+        # uppercase POSIX drive form (/C/Users/x) -> /c/Users/x
+        local drive2 rest2
+        drive2=$(printf '%s' "${BASH_REMATCH[1]}" | tr '[:upper:]' '[:lower:]')
+        rest2=${BASH_REMATCH[2]}
+        printf '/%s%s' "$drive2" "$rest2"
+        return 0
+    fi
+    printf '%s' "$p"
+}
+
+# Normalize every path-valued input once, up front: the target, the resolve
+# base (cwd), $HOME (Git Bash spells it `C:\Users\<u>`, but the `$home/...`
+# literal matches below need the target's spelling), and the assignment.
+file=$(canonicalize_path_spelling "$file")
+cwd=$(canonicalize_path_spelling "$cwd")
+home=$(canonicalize_path_spelling "$home")
+
 # ---------------------------------------------------------------------------
 # ASSIGNMENT mode: identity comes from FLEET_ASSIGNED_WORKTREE, not cwd.
 # ---------------------------------------------------------------------------
 if [[ -n "${FLEET_ASSIGNED_WORKTREE:-}" ]]; then
-    assigned_name=$(basename "$FLEET_ASSIGNED_WORKTREE" 2>/dev/null || true)
+    assigned_name=$(basename "$(canonicalize_path_spelling "$FLEET_ASSIGNED_WORKTREE")" 2>/dev/null || true)
     # Unusable assignment (empty / root / '.') → can't derive a basename to
     # test against; fail open rather than over-block every edit.
     case "$assigned_name" in
@@ -113,6 +155,8 @@ if [[ -n "${FLEET_ASSIGNED_WORKTREE:-}" ]]; then
     case "$file" in
         "$home"/.fleet/*)                    exit 0 ;;
         /tmp/*|/private/tmp/*)               exit 0 ;;
+        # Native-Windows harness scratchpad + MSYS /tmp (C:\msys64\tmp\...).
+        /[a-z]/msys64/tmp/*)                 exit 0 ;;
         "$home"/.claude/projects/*/memory/*) exit 0 ;;
     esac
 

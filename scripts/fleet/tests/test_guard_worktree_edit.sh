@@ -23,6 +23,13 @@
 
 set -uo pipefail
 
+# Native-Windows (Git Bash / MSYS2): stop the shell from path-converting the
+# synthetic POSIX stand-ins (`/private/tmp/...` -> `C:/Program Files/Git/...`)
+# as they pass through native jq.exe — the conversion corrupts the pure-string
+# fixtures before the guard ever sees them. Inert on macOS/Linux.
+export MSYS_NO_PATHCONV=1
+export MSYS2_ARG_CONV_EXCL='*'
+
 SCRIPT_DIR=$(cd "$(dirname "$0")/.." && pwd)
 source "$(dirname "$0")/lib_assert.sh"
 
@@ -82,6 +89,29 @@ assert_eq "$(verdict "$ASSIGNED" "$ASSIGNED" "$ASSIGNED/scripts/../src/x.cpp")" 
     "..-bearing target that stays inside the worktree allowed (no over-block)"
 assert_eq "$(verdict "$ASSIGNED" "$MAIN" "/tmp/../eng/engine/foo.cpp")" DENY \
     "/tmp/..-escape cannot ride the scratch-dir allowlist"
+
+echo "ASSIGNMENT mode (native-Windows path spellings):"
+# The file tools on a Windows host hand the hook drive-letter absolute paths
+# (backslashed `C:\...` or forward `C:/...`); un-normalized, the guard's POSIX
+# `/*` test reads them as RELATIVE and denies EVERY edit — including
+# correctly-routed in-worktree ones (observed on the first native-Windows
+# fleet boot). win_norm maps them to the MSYS `/c/...` form. Pure-string
+# fixtures — these cases run on any host.
+WIN_ASSIGNED='C:/eng/.claude/worktrees/worker-3'
+assert_eq "$(verdict "$WIN_ASSIGNED" 'C:\eng\.claude\worktrees\worker-3' 'C:\eng\.claude\worktrees\worker-3\scripts\x.sh')" allow \
+    "backslashed drive-letter target inside the assigned worktree allowed"
+assert_eq "$(verdict "$WIN_ASSIGNED" 'C:/eng/.claude/worktrees/worker-3' 'C:/eng/.claude/worktrees/worker-3/scripts/x.sh')" allow \
+    "forward-slash drive-letter target inside the assigned worktree allowed"
+assert_eq "$(verdict "$WIN_ASSIGNED" 'C:\eng' 'C:\eng\engine\foo.cpp')" DENY \
+    "backslashed main-clone target denied"
+assert_eq "$(verdict "$WIN_ASSIGNED" 'C:\eng' 'C:\eng\.claude\worktrees\worker-1\x.sh')" DENY \
+    "backslashed sibling worktree denied"
+assert_eq "$(verdict "$WIN_ASSIGNED" 'C:\eng' 'C:\msys64\tmp\claude\sess\scratch.txt')" allow \
+    "native-Windows harness scratchpad (C:\msys64\tmp) allowed"
+assert_eq "$(verdict "$WIN_ASSIGNED" 'C:\eng\.claude\worktrees\worker-3' 'scripts\fleet\x.sh')" allow \
+    "backslashed relative target resolved against an in-worktree cwd allowed"
+assert_eq "$(verdict "$WIN_ASSIGNED" 'C:\eng' 'engine\foo.cpp')" DENY \
+    "backslashed relative target from a drifted main-clone cwd denied"
 
 echo "LEGACY mode (env unset):"
 assert_eq "$(verdict "" "$ASSIGNED" "$MAIN/engine/foo.cpp")" DENY \

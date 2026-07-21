@@ -918,6 +918,39 @@ baseline = [
     "Bash(fleet-iteration-summary:*)",
     "Bash(fleet-worktree-busy-branches:*)",
     "Bash(fleet-labels:*)",
+    # Role-protocol mutation + read wrappers the docs instruct agents to run
+    # (feedback claims, design-unblock transitions, review verdicts, plan
+    # lint, queue/epic reads). On macOS/Linux the Bash-tool OS sandbox
+    # auto-approves these, so the gaps never bit; a native-Windows host has
+    # NO sandbox — prefix-allowlist matching is the ONLY approval path in a
+    # headless session, and every miss auto-denies (observed: a Windows
+    # worker's `fleet-pr-claim-feedback` auto-denied, stranding its
+    # feedback claim mid-protocol).
+    # NOTE: `Bash(fleet-pr:*)` does NOT cover `fleet-pr-claim-feedback` —
+    # prefix rules match on word boundaries, so each hyphenated tool needs
+    # its own entry (same reason fleet-pr-clear-feedback-labels is listed).
+    "Bash(fleet-pr-claim-feedback:*)",
+    "Bash(fleet-pr-amend-push:*)",
+    "Bash(fleet-pr-checkout-detached:*)",
+    "Bash(fleet-transition:*)",
+    "Bash(fleet-review-verdict:*)",
+    "Bash(fleet-queue-list:*)",
+    "Bash(fleet-assert-worktree:*)",
+    "Bash(fleet-validate-stack:*)",
+    "Bash(fleet-plan-lint:*)",
+    "Bash(fleet-decisions:*)",
+    "Bash(fleet-epic-status:*)",
+    "Bash(fleet-nit-close-for-pr:*)",
+    "Bash(fleet-gate-status:*)",
+    "Bash(fleet-debug:*)",
+    "Bash(fleet-edit:*)",
+    "Bash(fleet-feedback:*)",
+    # Read-only env introspection: role docs print startup context from
+    # FLEET_* vars, but a `$VAR` expansion inside any command can never
+    # prefix-match an allowlist rule, so on sandbox-less hosts the idiom
+    # must be `printenv NAME` (literal argv, matchable) instead of
+    # `echo $NAME`.
+    "Bash(printenv:*)",
     # GitHub CLI — every role uses gh pr edit/review/comment for label
     # management and review posting. Without this entry, headless
     # claude --print runs (fleet-dispatcher) see a permission prompt they
@@ -1053,7 +1086,12 @@ env_out["FLEET_ASSIGNED_WORKTREE"] = worktree
 
 out = {
     "permissions": {
-        "additionalDirectories": [repo_root, f"{home}/.fleet", "/tmp", "/private/tmp"],
+        # C:/msys64/tmp is the MSYS /tmp on a native-Windows host (also where
+        # the harness puts its per-session scratchpad); nonexistent on
+        # macOS/Linux, where the entry is inert. Mirrored by the
+        # fleet-guard-worktree-edit scratch allowlist — extend both together.
+        "additionalDirectories": [repo_root, f"{home}/.fleet", "/tmp",
+                                  "/private/tmp", "C:/msys64/tmp"],
         "allow": all_allows,
         "defaultMode": "auto",
     },

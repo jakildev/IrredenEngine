@@ -54,8 +54,12 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   `fleet-up` bakes `FLEET_ASSIGNED_WORKTREE` (the absolute worktree path) into
   each generated `settings.local.json` `env`; when set, `fleet-guard-worktree-edit`
   and `fleet-edit` allow a mutation only inside that worktree (engine **or** game,
-  matched by basename), `$HOME/.fleet`, `/tmp`, `/private/tmp`, or the auto-memory
-  dir — so a drifted cwd can't misroute an edit into the shared main clone. Env
+  matched by basename), `$HOME/.fleet`, `/tmp`, `/private/tmp`, the native-Windows
+  MSYS tmp (`C:\msys64\tmp`, the harness scratchpad), or the auto-memory
+  dir — so a drifted cwd can't misroute an edit into the shared main clone. The
+  guard normalizes native-Windows path spellings (`C:\…` / `C:/…`) to the MSYS
+  `/c/…` form before testing — un-normalized they read as relative and deny
+  every edit on a Windows host. Env
   unset ⇒ the legacy cwd-derived behavior (human / non-fleet sessions). The
   allowlist mirrors the settings' `additionalDirectories`; extend both together.
   Mutating git wrappers (`fleet-pr-amend-push`, `fleet-review-verdict --agent`)

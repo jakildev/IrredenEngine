@@ -57,6 +57,13 @@
 
 set -euo pipefail
 
+# Native-Windows (MSYS2) host: msys bash path-converts exec args that look
+# like POSIX paths when spawning a native executable, so the "/role-<name>
+# <mode>" prompt reaches claude.exe as "C:/msys64/role-<name> <mode>".
+# Exclude args starting with /role- from conversion; inert on macOS/Linux.
+# (fleet-dispatch-wrap carries the same guard for dispatched iterations.)
+export MSYS2_ARG_CONV_EXCL="${MSYS2_ARG_CONV_EXCL:+$MSYS2_ARG_CONV_EXCL;}/role-"
+
 MODEL="${1:?usage: fleet-babysit <model> <role> [mode] [loop-interval]}"
 ROLE="${2:?usage: fleet-babysit <model> <role> [mode] [loop-interval]}"
 MODE="${3:-dry-run}"
