@@ -39,6 +39,7 @@ working inside such a subdirectory, always read that subdirectory's own
 | Skills (named workflows like `simplify`, `commit-and-push`, `review-pr`) | [`.claude/skills/`](.claude/skills/) — each has its own `SKILL.md` |
 | Shared skill flows (fleet skills factored for cross-repo reuse) | [`docs/agents/skills/`](docs/agents/skills/) — canonical flows; each repo's `SKILL.md` is a thin wrapper (mechanism: [`docs/design/skill-sharing.md`](docs/design/skill-sharing.md)) |
 | Roles (autonomous personas — worker, reviewer, merger, architect) | [`.claude/commands/role-*.md`](.claude/commands/) |
+| Standing objectives (the human-owned "what" above epics) | [`docs/design/objectives/`](docs/design/objectives/README.md) |
 | Task queue (when running fleet roles) | `fleet-queue-list` or `gh issue list --label fleet:queued --repo jakildev/IrredenEngine` |
 | Cross-repo info isolation rule (engine repo public, game repo private) | [`docs/agents/CLAUDE-BASELINE.md`](docs/agents/CLAUDE-BASELINE.md) §"Cross-repo information isolation" |
 
