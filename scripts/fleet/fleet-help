@@ -206,6 +206,9 @@ Parallel-agent fleet (tmux + Claude)
   fleet-claim …                  task claims under ~/.fleet/claims/
   fleet-queue-list [--repo …] [--json]
                                  human-readable task queue from GitHub Issues
+  fleet-decisions [--repo …]     everything waiting on the human in one read:
+                                 merge queue, parked decisions, plan sign-off
+                                 holds, backlog cues, unread feedback
   fleet-queue-ingest             stamp fleet:queued + model-affinity label on
                                  human:approved issues (+ fleet:blocked while a
                                  **Blocked by:** predecessor is open); invoked
