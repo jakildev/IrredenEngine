@@ -209,6 +209,10 @@ Parallel-agent fleet (tmux + Claude)
   fleet-decisions [--repo …]     everything waiting on the human in one read:
                                  merge queue, parked decisions, plan sign-off
                                  holds, backlog cues, unread feedback
+  fleet-digest-tick              cron tick: refresh ~/.fleet/digest/latest.md
+                                 and fleet-notify only when decisions changed
+  fleet-notify <title> <body>    best-effort desktop notification on any
+                                 fleet host (mac/windows/WSL/linux); log-first
   fleet-queue-ingest             stamp fleet:queued + model-affinity label on
                                  human:approved issues (+ fleet:blocked while a
                                  **Blocked by:** predecessor is open); invoked

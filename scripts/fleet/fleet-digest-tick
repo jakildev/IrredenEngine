@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# fleet-digest-tick — per-host digest refresh + change notification.
+#
+# Runs fleet-decisions, writes $FLEET_HOME/digest/latest.md, and fires
+# fleet-notify only when the decision-relevant content changed since this
+# host's last tick. Deliberately per-host, no cross-host coordination:
+# the compute is read-only (safe to run everywhere), a notification only
+# helps on the host you are sitting at, and the change-dedup state
+# (digest/last-hash) is host-local — each host tells you once.
+#
+# The change hash covers everything ABOVE the "## Status" section (merge
+# queue, decisions, cues). The Status footer churns with every PR
+# open/close and would over-notify; it still ships in latest.md.
+#
+# Run from cron / launchd / a scheduled task, e.g.:
+#   */30 * * * * $HOME/bin/fleet-digest-tick
+#
+# A fleet-decisions failure (network down, gh unauthenticated) keeps the
+# previous digest and exits 0 — a cron tick must not alarm on transient
+# network state.
+#
+# Source of truth: scripts/fleet/fleet-digest-tick in the engine repo.
+# Installed to ~/bin/fleet-digest-tick by scripts/fleet/install.sh.
+
+set -uo pipefail
+
+FLEET_HOME="${FLEET_HOME:-$HOME/.fleet}"
+DIGEST_DIR="$FLEET_HOME/digest"
+mkdir -p "$DIGEST_DIR"
+
+# PATH first so tests stub the tools; sibling fallback for a bare checkout.
+resolve_tool() {
+    local name="$1"
+    if command -v "$name" > /dev/null 2>&1; then
+        echo "$name"
+    else
+        echo "$(cd "$(dirname "$0")" && pwd)/$name"
+    fi
+}
+
+decisions_bin=$(resolve_tool fleet-decisions)
+notify_bin=$(resolve_tool fleet-notify)
+
+digest=$("$decisions_bin" 2>/dev/null)
+if [[ $? -ne 0 || -z "$digest" ]]; then
+    echo "fleet-digest-tick: fleet-decisions failed; keeping previous digest" >&2
+    exit 0
+fi
+
+printf '%s\n' "$digest" > "$DIGEST_DIR/latest.md"
+
+decision_slice=$(printf '%s\n' "$digest" | awk '/^## Status/{exit} {print}')
+new_hash=$(printf '%s' "$decision_slice" | cksum | awk '{print $1}')
+old_hash=$(cat "$DIGEST_DIR/last-hash" 2>/dev/null || echo "")
+
+if [[ "$new_hash" == "$old_hash" ]]; then
+    exit 0
+fi
+printf '%s\n' "$new_hash" > "$DIGEST_DIR/last-hash"
+
+# Headline is "fleet-decisions: N decision(s) waiting   [scope]".
+headline=$(printf '%s\n' "$digest" | head -1 | sed 's/^fleet-decisions: //')
+"$notify_bin" "fleet: $headline" "details: $DIGEST_DIR/latest.md"
+exit 0
