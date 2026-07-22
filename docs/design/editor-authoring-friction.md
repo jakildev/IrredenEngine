@@ -147,3 +147,43 @@ so it prints the literal `Added blank frame %d / %d`. Pre-existing, cosmetic
 - The `editor_probe_*` shot pattern (runtime-computed `MOVE` pixels filled in
   `onGuiAssertFrame` before the same-tick event injection, so the aim uses the
   shot's live camera state — no init-time viewport-timing fragility).
+
+---
+
+## Part 2 — session infrastructure + first entities
+
+Builds on the Phase 0 primitives above. Sequence: (a) editor-authoring
+prerequisites → (b) `SessionBuilder` + `--gui-session` + `scripts/author-entity.py`
+runner → (c) the five entities (rock first). This slice appends as it lands.
+
+### 2a — `--scene-size W H D` (LANDED)
+
+The ant needs a 20³ grid and the tree ~26 tall, so the editable scene size is
+now a runtime arg instead of the constexpr 16³. `kEditableSceneSize` /
+`kEditableSceneOrigin` became `g_editableSceneSize` / `g_editableSceneOrigin`,
+set in `main()` after the engine arg parse. `deriveSceneOrigin(size)` keeps the
+scene centred in X/Y (`origin.{x,y} = -size.{x,y}/2`) and pins the seed ground
+plane (local `z == size.z-1`) at **world z == 3 for any height**
+(`origin.z = -(size.z-4)`), so authoring recipes and probe cells stay
+height-agnostic — the ground never moves under the camera as the scene grows.
+
+Friction notes for the session slice:
+- **The seed ground plane is a saved slab.** `fillPlane(2, size.z-1, …)` puts a
+  full gray layer in the scene; a clean entity save wants it erased first. Confirms
+  the plan's call for an **erase-fill mode** (2b) to clear the slab and carve —
+  single-voxel right-click is the only erase today, so clearing a 20×20 slab by
+  hand is ~400 clicks.
+- **The `editor_pick_voxel` baseline is 16³-specific** (a hardcoded expected
+  voxel at a hardcoded pixel), so it is skipped under `--scene-size`. The
+  `editor_probe_*` mapping shots are size-robust — their target z derives from
+  `g_editableSceneSize.z-1` — and pass at 20³ (`gui-verify` default 13/13; a
+  direct `--scene-size 20 20 20` run is CLEAN with all 8 mapping probes PASS).
+
+### 2b — erase-fill mode, SessionBuilder, runner, ROCK — NEXT
+Remaining Part 2 work, in order: erase-fill mode toggle (flips place↔erase for
+the click/box/line/face paths); `SessionBuilder` compiling authoring recipes to
+`GuiInputEvent` streams via `worldPos3DToMouseScreenPx`; `--gui-session <name>`
+selection; `scripts/author-entity.py` (run → parse `GUI-ASSERT` → verify saves →
+copy to `assets/voxel/entities/` → re-run byte-compare); then the ROCK session
+(sequence the P0-3 drag-stroke probe here). Note: vertical picking needs
+**zoom ≥ 2** (see P0-2) — session shots that pick by column must honour it.

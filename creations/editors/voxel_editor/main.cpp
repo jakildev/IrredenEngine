@@ -120,8 +120,27 @@ namespace IRVoxelEditor {
 // Scene + palette config (kept as named constants so the editor never
 // inlines a hardcoded dimension — D1 in the T-211 architect direction
 // calls out that the size be configurable per scene).
-constexpr ivec3 kEditableSceneSize{16, 16, 16};
-constexpr vec3 kEditableSceneOrigin{-8.0f, -8.0f, -12.0f};
+//
+// The editable grid dimensions are runtime-configurable via --scene-size W H D
+// (#766 Part 2 — the ant needs 20³, the tree ~26 tall). g_editableSceneSize /
+// g_editableSceneOrigin default to the historical 16³ scene and are overwritten
+// in main() after arg parse. deriveSceneOrigin keeps the scene centred in X/Y
+// and pins the seed ground plane (local z == size.z-1) at world z == 3 for any
+// height, so authoring recipes and probe cells stay height-agnostic.
+constexpr ivec3 kDefaultEditableSceneSize{16, 16, 16};
+// The seed ground plane lives at local z == size.z-1; anchoring it to a fixed
+// world z keeps the camera framing and authoring recipes stable as the scene
+// grows taller (origin.z shifts down by exactly the height increase).
+constexpr int kSeedGroundPlaneWorldZ = 3;
+inline vec3 deriveSceneOrigin(ivec3 size) {
+    return vec3(
+        -static_cast<float>(size.x) / 2.0f,
+        -static_cast<float>(size.y) / 2.0f,
+        static_cast<float>(kSeedGroundPlaneWorldZ - (size.z - 1))
+    );
+}
+ivec3 g_editableSceneSize = kDefaultEditableSceneSize;
+vec3 g_editableSceneOrigin = deriveSceneOrigin(kDefaultEditableSceneSize);
 constexpr int kPaletteCount = 16;
 
 // 16 distinct palette colors. Indexed in row-major order across the
@@ -403,6 +422,24 @@ IRVideo::GuiInputEvent g_probeMapMoves[kProbeMapCount] = {
     {0, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(0)},
 };
 
+// The i-th probe-map cell snapped into the live scene bounds so the probe
+// stays valid under --scene-size: z rides the ground plane (local z ==
+// size.z-1), and x/y clamp into the live footprint. The stored cells target a
+// 16³ grid (x/y up to 11), so a --scene-size narrower than 12 in x or y would
+// otherwise push them off-grid; clamping collapses those onto the nearest edge
+// cell (a valid ground cell that still projects on-screen), trading probe
+// coverage for a probe that asserts at any footprint. At the default 16³ every
+// stored x/y is < 16 and passes through unchanged. Both the assertion target
+// (initEntities) and the cursor-move pixel (onGuiAssertFrame) go through this
+// helper, so they stay consistent for whatever cell it returns.
+inline IRMath::ivec3 probeGroundCell(int i) {
+    return IRMath::ivec3(
+        IRMath::min(kProbeMapLocalCells[i].x, g_editableSceneSize.x - 1),
+        IRMath::min(kProbeMapLocalCells[i].y, g_editableSceneSize.y - 1),
+        g_editableSceneSize.z - 1
+    );
+}
+
 // GUI-test shot table covering stable render framings plus the scripted-click
 // shots. Superset of the previous kShots[] — render-verify labels still match.
 // kGuiAssertShotIndex / kPickVoxelShotIndex select the assertion-bearing shots.
@@ -462,8 +499,11 @@ void onGuiAssertFrame(int shotIndex, bool isCaptureFrame) {
     // idempotent across the shot's frames.
     if (shotIndex >= kProbeMapShotStart && shotIndex < kProbeMapShotStart + kProbeMapCount) {
         const int cellIndex = shotIndex - kProbeMapShotStart;
-        const IRMath::vec3 worldCenter =
-            kEditableSceneOrigin + IRMath::vec3(kProbeMapLocalCells[cellIndex]);
+        // Derive the ground-plane z from the live scene size so the probe stays
+        // valid under --scene-size (the seed plane is always local z==size.z-1);
+        // at the default 16³ this is the cell's stored z==15.
+        const IRMath::ivec3 cell = probeGroundCell(cellIndex);
+        const IRMath::vec3 worldCenter = g_editableSceneOrigin + IRMath::vec3(cell);
         g_probeMapMoves[cellIndex].screenPx_ = IRRender::worldPos3DToMouseScreenPx(worldCenter);
     }
     const auto &assertions = g_shotAssertions[shotIndex];
@@ -1232,7 +1272,33 @@ int main(int argc, char **argv) {
     IR_LOG_INFO("  N: toggle bone-paint mode (click swatch in BONE panel to pick bone)");
     IR_LOG_INFO("  Joint arrows place (re-binds at release); rings FK-pose (live deform)");
     IR_LOG_INFO("  T: set current pose as bind (joint mode)");
+    // Editable grid dims (#766 Part 2): the ant needs 20³, the tree ~26 tall.
+    // Register before init (which owns the parse); read back + derive the origin
+    // after. Omitted / non-positive dims keep the historical 16³ scene.
+    IREngine::args()
+        .numbers("--scene-size", "editable voxel grid dims: W H D (default 16 16 16)", 3);
     IREngine::init(argc, argv);
+    {
+        const std::vector<float> &dims = IREngine::args().getFloats("--scene-size");
+        if (dims.size() == 3 && dims[0] >= 1.0f && dims[1] >= 1.0f && dims[2] >= 1.0f) {
+            IRVoxelEditor::g_editableSceneSize = ivec3(
+                static_cast<int>(dims[0]),
+                static_cast<int>(dims[1]),
+                static_cast<int>(dims[2])
+            );
+            IRVoxelEditor::g_editableSceneOrigin =
+                IRVoxelEditor::deriveSceneOrigin(IRVoxelEditor::g_editableSceneSize);
+        }
+        IR_LOG_INFO(
+            "Editor scene size: {}x{}x{} (origin {},{},{})",
+            IRVoxelEditor::g_editableSceneSize.x,
+            IRVoxelEditor::g_editableSceneSize.y,
+            IRVoxelEditor::g_editableSceneSize.z,
+            IRVoxelEditor::g_editableSceneOrigin.x,
+            IRVoxelEditor::g_editableSceneOrigin.y,
+            IRVoxelEditor::g_editableSceneOrigin.z
+        );
+    }
     initSystems();
     initCommands();
     initEntities();
@@ -1279,9 +1345,9 @@ void initSystems() {
             if (!IRVoxelEditor::g_loftTool.active_ || !lrp->canvas_)
                 return;
             auto &loft = IRVoxelEditor::g_loftTool;
-            const int sx = IRVoxelEditor::kEditableSceneSize.x;
-            const int sy = IRVoxelEditor::kEditableSceneSize.y;
-            const int sz = IRVoxelEditor::kEditableSceneSize.z;
+            const int sx = IRVoxelEditor::g_editableSceneSize.x;
+            const int sy = IRVoxelEditor::g_editableSceneSize.y;
+            const int sz = IRVoxelEditor::g_editableSceneSize.z;
             IRRender::drawMaskGridOntoCanvas(
                 *lrp->canvas_,
                 loft.maskXZ_,
@@ -1431,9 +1497,9 @@ void initSystems() {
                 static_cast<int>(lip->mouseGuiTrixel_.y)
             );
             const bool shiftHeld = IRInput::checkKeyMouseModifiers(IRInput::kModifierShift, 0u);
-            const int sx = IRVoxelEditor::kEditableSceneSize.x;
-            const int sy = IRVoxelEditor::kEditableSceneSize.y;
-            const int sz = IRVoxelEditor::kEditableSceneSize.z;
+            const int sx = IRVoxelEditor::g_editableSceneSize.x;
+            const int sy = IRVoxelEditor::g_editableSceneSize.y;
+            const int sz = IRVoxelEditor::g_editableSceneSize.z;
             const int cell = IRVoxelEditor::kLoftCellPx;
 
             auto paintCell = [&](std::vector<bool> &mask, ivec2 cellHV, int sH) {
@@ -2734,7 +2800,7 @@ void initCommands() {
                 std::string(IRVoxelEditor::kSceneSaveDir),
                 std::string(IRVoxelEditor::kSceneBaseName),
                 snapshots,
-                IRVoxelEditor::kEditableSceneSize,
+                IRVoxelEditor::g_editableSceneSize,
                 IRVoxelEditor::g_layerManager,
                 anim,
                 IRVoxelEditor::g_symmetry
@@ -3044,8 +3110,8 @@ void initEntities() {
     // first click to land on. Architect D1: the size is a named
     // constant on the editor side, not hardcoded inline.
     g_editor.editableVoxelSet_ = IREntity::createEntity(
-        C_LocalTransform{IRVoxelEditor::kEditableSceneOrigin},
-        C_VoxelSetNew{IRVoxelEditor::kEditableSceneSize, Color{200, 200, 210, 255}}
+        C_LocalTransform{IRVoxelEditor::g_editableSceneOrigin},
+        C_VoxelSetNew{IRVoxelEditor::g_editableSceneSize, Color{200, 200, 210, 255}}
     );
     IRVoxelEditor::g_sceneVoxelSetEntity = g_editor.editableVoxelSet_;
     {
@@ -3386,10 +3452,16 @@ void initEntities() {
             "fps_value"
         ),
     };
-    constexpr ivec3 kScenePickExpected{-1, -1, -1};
-    IRVoxelEditor::g_shotAssertions[IRVoxelEditor::kPickVoxelShotIndex] = {
-        IRPrefab::GuiTest::picksVoxel(kScenePickExpected, "scene_pick"),
-    };
+    // The pick_voxel baseline is a specific 16³-scene voxel; it only holds at the
+    // default size, so skip it under --scene-size (the probe_map assertions below
+    // cover mapping accuracy at any size). Leaving the table empty makes
+    // onGuiAssertFrame skip the shot cleanly.
+    if (IRVoxelEditor::g_editableSceneSize == IRVoxelEditor::kDefaultEditableSceneSize) {
+        constexpr ivec3 kScenePickExpected{-1, -1, -1};
+        IRVoxelEditor::g_shotAssertions[IRVoxelEditor::kPickVoxelShotIndex] = {
+            IRPrefab::GuiTest::picksVoxel(kScenePickExpected, "scene_pick"),
+        };
+    }
     // Phase 0 probe 2 (#766): each probe-map shot asserts the ray landed on the
     // target cell's iso COLUMN (not the exact voxel) — mapping accuracy is a 2D
     // screen-projection property, and the seed scene's rig geometry can occlude
@@ -3397,7 +3469,7 @@ void initEntities() {
     // (integers, so exact). onGuiAssertFrame supplies the matching cursor pixel.
     for (int i = 0; i < IRVoxelEditor::kProbeMapCount; ++i) {
         const ivec3 target =
-            ivec3(IRVoxelEditor::kEditableSceneOrigin) + IRVoxelEditor::kProbeMapLocalCells[i];
+            ivec3(IRVoxelEditor::g_editableSceneOrigin) + IRVoxelEditor::probeGroundCell(i);
         IRVoxelEditor::g_shotAssertions[IRVoxelEditor::kProbeMapShotStart + i] = {
             IRPrefab::GuiTest::picksIsoColumn(target, "probe_map"),
         };
