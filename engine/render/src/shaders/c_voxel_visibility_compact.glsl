@@ -464,9 +464,14 @@ void main() {
                 uint feederSlices = (voxelRenderOptions.x != 0) ? uint(cap * cap) : 1u;
                 writeDispatchDims(kPerAxisIndirectStrideUints, feederSlices);
             } else {
-                for (int axis = 0; axis < 3; ++axis) {
-                    writeDispatchDims(uint(axis) * kPerAxisIndirectStrideUints, visibleSlices);
-                }
+                // Unrolled (was a for over axis 0..2): NVIDIA's link-time
+                // optimizer dies with "C5025 lvalue in array access too
+                // complex" + a C9999 ICE when the loop-variant base mixes
+                // with the constant-base call sites above; constant bases
+                // at every call site keep the inlined stores foldable.
+                writeDispatchDims(0u, visibleSlices);
+                writeDispatchDims(kPerAxisIndirectStrideUints, visibleSlices);
+                writeDispatchDims(2u * kPerAxisIndirectStrideUints, visibleSlices);
             }
         }
     }
