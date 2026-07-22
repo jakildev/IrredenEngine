@@ -27,6 +27,12 @@
       "description": "Worker-filed: a fix revealed a generalizable rule for the fleet's dev procedures; human triages"
     },
     {
+      "name": "fleet:triage-recommend",
+      "scope": "issue",
+      "color": "d4c5f9",
+      "description": "Dry-run triage verdict posted as a ## Triage comment; inert - human reads, decides, removes"
+    },
+    {
       "name": "fleet:task",
       "scope": "issue",
       "color": "0366d6",
