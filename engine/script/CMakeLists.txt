@@ -53,14 +53,23 @@ target_include_directories(
     IrredenEngineScripting PRIVATE
     $<TARGET_PROPERTY:IrredenEngineAudio,INTERFACE_INCLUDE_DIRECTORIES>
 )
-# lua_world_snapshot_bindings.hpp includes <irreden/world/world_snapshot.hpp>
-# (IRPersist world save/load, persist P7 #2218). Same include-only generator-
-# expression pattern — IRWorld:: symbols resolve at final exe link through
-# IrredenEngineWorld. NO library link: World links Scripting, so a link back
-# would form a cycle.
-target_include_directories(
-    IrredenEngineScripting PRIVATE
-    $<TARGET_PROPERTY:IrredenEngineWorld,INTERFACE_INCLUDE_DIRECTORIES>
+# lua_world_snapshot_bindings.hpp's inline bindWorldSnapshotApi references
+# IRWorld::saveWorld / IRWorld::loadWorld (IRPersist world save/load, persist
+# P7 #2218 / #2244), which are DEFINED in IrredenEngineWorld
+# (world_default_registry.cpp) — a genuine link-time dependency Scripting ->
+# World. World already links Scripting back, so declaring this edge closes a
+# static-library cycle; CMake resolves such cycles by REPEATING the archives on
+# the final link line, which lets single-pass linkers (mingw / GNU ld) rescan
+# World after Scripting's back-reference and pull world_default_registry.obj.
+# The prior include-only workaround (bare INTERFACE_INCLUDE_DIRECTORIES, no
+# link) left those symbols undefined on single-pass ld — every native-Windows
+# demo link failed (#2499); Apple ld64's multi-pass resolver masked the gap.
+# PUBLIC so consumers that include this header and instantiate the bindings
+# resolve the World symbols too. World's include dirs propagate via the link, so
+# no separate target_include_directories is needed.
+target_link_libraries(
+    IrredenEngineScripting PUBLIC
+    IrredenEngineWorld
 )
 # Force sol2 to use its try/catch trampoline rather than letting C++
 # exceptions propagate through the LuaJIT VM. With LuaJIT 2.1 sol2's
