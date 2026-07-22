@@ -280,88 +280,44 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         const C_CanvasAOTexture &mainAO,
         const C_CanvasSunShadow &mainShadow
     ) {
-        // Sub-scope (#2281): the 3 per-axis relight dispatches; the overflow
-        // relight below gets its own row.
+        // The LightingRouteScope flips the shared UBO onto the per-axis decode
+        // route at the #1431-capped store density and restores route / density /
+        // compaction slots on exit; it spans the overflow relight below, which
+        // reads the same per-axis frame state. The GpuSubStageScope (#2281)
+        // brackets only the 3 per-axis relight dispatches — the overflow
+        // relight owns its own row.
         {
-            GpuSubStageScope perAxisScope("lightingPerAxis");
-            // perAxisRoute is a boolean route flag on the lighting path (any nonzero
-            // = per-axis canvas); the shader recovers the axis per-pixel from faceId,
-            // NOT from this field — distinct from stage-1's 1/2/3 = X/Y/Z axis selector.
-            const int kPerAxisRoute = 1;
-            voxelFrameDataBuf_->subData(
-                offsetof(FrameDataVoxelToCanvas, perAxisRoute_),
-                sizeof(int),
-                &kPerAxisRoute
-            );
-            // Recover world-pos with the SAME #1431-capped lattice density the store
-            // wrote (perAxisCellToWorld3D reads voxelRenderOptions.y); restored below.
-            IRPrefab::PerAxisCanvas::setUboSubdivisionDensity(
+            IRPrefab::PerAxisCanvas::LightingRouteScope route(
                 voxelFrameDataBuf_,
-                IRPrefab::PerAxisCanvas::subdivisionDensity()
+                voxelCompactedBuf_,
+                voxelIndirectBuf_
             );
-            // #2256: dispatch indirectly over only each axis's OCCUPIED cells
-            // (compacted by the STAGE_1 per-axis pre-pass) instead of sweeping the
-            // full worst-case per-axis grid. Each kernel recovers its cell from the
-            // compacted list (slot 25) and reads visibleCount for its 1-D bound guard
-            // from the indirect-args region (slot 26).
-            Buffer *cellCompacted = axes.cellCompacted_.second;
-            Buffer *cellIndirect = axes.cellIndirect_.second;
-            const int regionStride = axes.cellRegionStride_;
-            for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
-                auto &tex = axes.axes_[axis];
-                tex.colors_.second->bindAsImage(0, TextureAccess::READ_WRITE, TextureFormat::RGBA8);
-                tex.distances_.second
-                    ->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
-                tex.ao_.second->bindAsImage(2, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
-                tex.sunShadow_.second
-                    ->bindAsImage(4, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
-                cellCompacted->bindRange(
-                    BufferTarget::SHADER_STORAGE,
-                    kBufferIndex_PerAxisCellCompacted,
-                    static_cast<std::ptrdiff_t>(axis) * regionStride *
-                        static_cast<int>(sizeof(std::uint32_t)),
-                    static_cast<size_t>(regionStride) * sizeof(std::uint32_t)
-                );
-                cellIndirect->bindRange(
-                    BufferTarget::SHADER_STORAGE,
-                    kBufferIndex_PerAxisCellIndirect,
-                    static_cast<std::ptrdiff_t>(axis) * kPerAxisCellIndirectStrideBytes,
-                    kPerAxisCellIndirectStrideBytes
-                );
-                IRRender::device()->dispatchComputeIndirect(
-                    cellIndirect,
-                    static_cast<std::ptrdiff_t>(axis) * kPerAxisCellIndirectStrideBytes +
-                        kPerAxisCellDispatchArgsOffsetBytes
-                );
+            {
+                GpuSubStageScope perAxisScope("lightingPerAxis");
+                IRPrefab::PerAxisCanvas::dispatchPerAxisCells(axes, [&](int axis) {
+                    auto &tex = axes.axes_[axis];
+                    tex.colors_.second
+                        ->bindAsImage(0, TextureAccess::READ_WRITE, TextureFormat::RGBA8);
+                    tex.distances_.second
+                        ->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
+                    tex.ao_.second->bindAsImage(2, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+                    tex.sunShadow_.second
+                        ->bindAsImage(4, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+                });
+                // One barrier after the 3 independent per-axis dispatches (each
+                // axis writes its own colour image texture in place — disjoint
+                // outputs, so dispatch order doesn't matter) so they overlap on
+                // the GPU instead of serializing per axis (#1311).
+                IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
             }
-            // One barrier after the 3 independent per-axis dispatches (each axis
-            // writes its own colour image texture in place — disjoint outputs, so
-            // dispatch order doesn't matter) so they overlap on the GPU instead of
-            // serializing per axis (#1311).
-            IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+            // #2334: relight the overflow entries the C1 lane appended albedo-only,
+            // at their recovered world pos, while the sun-depth map (slot 28) + light
+            // volume are still bound from the cell pass above. Switches the compute
+            // program, so restore the lighting program for any remaining per-canvas
+            // ticks this frame (beginTick's program_->use() runs once per frame).
+            dispatchOverflowLighting(axes);
+            program_->use();
         }
-        // #2334: relight the overflow entries the C1 lane appended albedo-only,
-        // at their recovered world pos, while the sun-depth map (slot 28) + light
-        // volume are still bound from the cell pass above. Switches the compute
-        // program, so restore the lighting program for any remaining per-canvas
-        // ticks this frame (beginTick's program_->use() runs once per frame).
-        dispatchOverflowLighting(axes);
-        program_->use();
-        const int kSingleCanvasRoute = 0;
-        voxelFrameDataBuf_->subData(
-            offsetof(FrameDataVoxelToCanvas, perAxisRoute_),
-            sizeof(int),
-            &kSingleCanvasRoute
-        );
-        // Restore the uncapped density for downstream single-canvas passes.
-        IRPrefab::PerAxisCanvas::setUboSubdivisionDensity(
-            voxelFrameDataBuf_,
-            IRRender::getVoxelRenderEffectiveSubdivisions()
-        );
-        // Restore slots 25/26 to the voxel-compaction buffers (#1961/#2256) the
-        // per-axis loop above borrowed via bindRange — see the restore-slots
-        // note in system_compute_voxel_ao.hpp for the corruption mode this avoids.
-        IRPrefab::PerAxisCanvas::restoreVoxelCompactionSlots(voxelCompactedBuf_, voxelIndirectBuf_);
         // Restore slot 8 to the pool's active mask. dispatchOverflowLighting
         // bindBase'd the overflow scratch over kBufferIndex_OverflowLightingScratch,
         // which ALIASES kBufferIndex_VoxelActiveMask — the named

@@ -17,6 +17,7 @@
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 
 #include <cstddef>
+#include <cstdint>
 
 namespace IRPrefab::PerAxisCanvas {
 
@@ -149,8 +150,7 @@ inline void setUboSubdivisionDensity(IRRender::Buffer *frameDataUbo, int density
 // caching pattern) and pass them by reference so the named-resource lookup
 // only runs once per system.
 inline void restoreVoxelCompactionSlots(
-    IRRender::Buffer *&voxelCompactedBuf,
-    IRRender::Buffer *&voxelIndirectBuf
+    IRRender::Buffer *&voxelCompactedBuf, IRRender::Buffer *&voxelIndirectBuf
 ) {
     if (voxelCompactedBuf == nullptr) {
         voxelCompactedBuf = IRRender::getNamedResource<IRRender::Buffer>("CompactedVoxelIndices");
@@ -168,6 +168,97 @@ inline void restoreVoxelCompactionSlots(
         voxelIndirectBuf->bindBase(
             IRRender::BufferTarget::SHADER_STORAGE,
             IRRender::kBufferIndex_PerAxisCellIndirect
+        );
+    }
+}
+
+// RAII scope for the per-axis lighting-family dispatches (AO / sun-shadow /
+// lighting): flips the shared voxel frame-data UBO onto the per-axis decode
+// route (perAxisRoute_ = 1 — a boolean route flag on the lighting path; the
+// shader recovers the axis per-pixel from faceId, distinct from stage-1's
+// 1/2/3 axis selector) at the #1431-capped lattice density the store wrote,
+// and restores the single-canvas state on destruction: route 0, the uncapped
+// effSub density, and the voxel-compaction slots 25/26 (see
+// restoreVoxelCompactionSlots — the loop below borrows them). One definition
+// of the patch/restore discipline those three dispatches each hand-rolled —
+// the FrameYawRestoreGuard idiom (system_bake_sun_shadow_map.hpp) applied to
+// the lighting family, so a new consumer cannot forget a restore.
+class LightingRouteScope {
+  public:
+    LightingRouteScope(
+        IRRender::Buffer *frameDataUbo,
+        IRRender::Buffer *&voxelCompactedBuf,
+        IRRender::Buffer *&voxelIndirectBuf
+    )
+        : m_frameDataUbo{frameDataUbo}
+        , m_voxelCompactedBuf{voxelCompactedBuf}
+        , m_voxelIndirectBuf{voxelIndirectBuf} {
+        const int kPerAxisRoute = 1;
+        m_frameDataUbo->subData(
+            offsetof(IRRender::FrameDataVoxelToCanvas, perAxisRoute_),
+            sizeof(int),
+            &kPerAxisRoute
+        );
+        setUboSubdivisionDensity(m_frameDataUbo, subdivisionDensity());
+    }
+
+    ~LightingRouteScope() {
+        const int kSingleCanvasRoute = 0;
+        m_frameDataUbo->subData(
+            offsetof(IRRender::FrameDataVoxelToCanvas, perAxisRoute_),
+            sizeof(int),
+            &kSingleCanvasRoute
+        );
+        setUboSubdivisionDensity(m_frameDataUbo, IRRender::getVoxelRenderEffectiveSubdivisions());
+        restoreVoxelCompactionSlots(m_voxelCompactedBuf, m_voxelIndirectBuf);
+    }
+
+    LightingRouteScope(const LightingRouteScope &) = delete;
+    LightingRouteScope &operator=(const LightingRouteScope &) = delete;
+    LightingRouteScope(LightingRouteScope &&) = delete;
+    LightingRouteScope &operator=(LightingRouteScope &&) = delete;
+
+  private:
+    IRRender::Buffer *m_frameDataUbo;
+    // References to the owning system's lazily-resolved members (the
+    // restoreVoxelCompactionSlots contract) — the scope is stack-local inside
+    // one tick, so the referents always outlive it.
+    IRRender::Buffer *&m_voxelCompactedBuf;
+    IRRender::Buffer *&m_voxelIndirectBuf;
+};
+
+// One indirect compute dispatch per axis over that axis's compacted OCCUPIED
+// cell list (#2256): calls @p bindAxis(axis) for the pass-specific image
+// bindings, binds the axis's region of the component-owned compacted-cell +
+// dispatch-args buffers onto slots 25/26 (borrowing them — the caller restores
+// via restoreVoxelCompactionSlots / LightingRouteScope), then issues the
+// indirect dispatch from the axis's args region. One definition of the loop
+// the per-axis AO / sun-shadow / lighting / screen-depth-resolve dispatches
+// each hand-rolled.
+template <typename BindAxis>
+inline void dispatchPerAxisCells(IRComponents::C_PerAxisTrixelCanvases &axes, BindAxis &&bindAxis) {
+    IRRender::Buffer *cellCompacted = axes.cellCompacted_.second;
+    IRRender::Buffer *cellIndirect = axes.cellIndirect_.second;
+    const int regionStride = axes.cellRegionStride_;
+    for (int axis = 0; axis < IRComponents::C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
+        bindAxis(axis);
+        cellCompacted->bindRange(
+            IRRender::BufferTarget::SHADER_STORAGE,
+            IRRender::kBufferIndex_PerAxisCellCompacted,
+            static_cast<std::ptrdiff_t>(axis) * regionStride *
+                static_cast<int>(sizeof(std::uint32_t)),
+            static_cast<size_t>(regionStride) * sizeof(std::uint32_t)
+        );
+        cellIndirect->bindRange(
+            IRRender::BufferTarget::SHADER_STORAGE,
+            IRRender::kBufferIndex_PerAxisCellIndirect,
+            static_cast<std::ptrdiff_t>(axis) * IRRender::kPerAxisCellIndirectStrideBytes,
+            IRRender::kPerAxisCellIndirectStrideBytes
+        );
+        IRRender::device()->dispatchComputeIndirect(
+            cellIndirect,
+            static_cast<std::ptrdiff_t>(axis) * IRRender::kPerAxisCellIndirectStrideBytes +
+                IRRender::kPerAxisCellDispatchArgsOffsetBytes
         );
     }
 }
