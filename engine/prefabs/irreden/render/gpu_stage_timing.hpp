@@ -14,13 +14,24 @@ inline constexpr float kFrameTimeBudgetMs = 1000.0f / 60.0f;
 
 // Number of named GPU stages in `gpuStageRegistry()`. Single source of truth
 // for both the registry array and the parallel per-stage accumulator array.
-inline constexpr std::size_t kGpuStageCount = 20;
+inline constexpr std::size_t kGpuStageCount = 28;
 
 struct GpuStageTiming {
     float canvasClearMs_ = 0.0f;
     float voxelCompactMs_ = 0.0f;
     float voxelStage1Ms_ = 0.0f;
     float voxelStage2Ms_ = 0.0f;
+    // Rotating-only per-axis burst sub-rows (#2281 Phase 2). Attributed by
+    // GpuSubStageScope brackets inside the owning ticks; 0.0 at cardinal
+    // (the per-axis canvases are released, none of the dispatches run).
+    float voxelPerAxisStoreMs_ = 0.0f;
+    float voxelPerAxisOverflowMs_ = 0.0f;
+    float voxelPerAxisFinalizeMs_ = 0.0f;
+    float perAxisCellCompactMs_ = 0.0f;
+    float computeVoxelAoPerAxisMs_ = 0.0f;
+    float lightingPerAxisMs_ = 0.0f;
+    float lightingOverflowMs_ = 0.0f;
+    float perAxisScatterMs_ = 0.0f;
     float shapeCompactMs_ = 0.0f;
     float shapePass0Ms_ = 0.0f;
     float shapePass1Ms_ = 0.0f;
@@ -240,7 +251,31 @@ inline void commitGpuStageSample(const GpuStageInfo &info, int registryIndex, fl
 // The old bundled `voxelStage1` value is reconstructed as the sum of these
 // four rows. Sub-scopes are single-canvas-exact and record the last canvas's
 // sample on multi-canvas scenes (like every `*Ms_` field's last-sample
-// semantics); the rotating-only per-axis voxel dispatch is not sub-scoped.
+// semantics).
+//
+// Per-axis burst sub-rows (#2281 Phase 2): COMPUTE_VOXEL_AO,
+// LIGHTING_TO_TRIXEL, and TRIXEL_TO_FRAMEBUFFER are likewise NOT tagged for
+// the per-system observer; each brackets its dispatch groups with
+// GpuSubStageScopes so the rotating-only per-axis work is attributed
+// separately from the always-on main-canvas work:
+//   `computeVoxelAO`        ← the main-canvas AO dispatch ONLY
+//   `computeVoxelAoPerAxis` ← the 3 per-axis AO dispatches
+//   `lightingToTrixel`      ← the main-canvas lighting dispatch ONLY
+//   `lightingPerAxis`       ← the 3 per-axis relight dispatches
+//   `lightingOverflow`      ← the overflow-face relight dispatch (#2334)
+//   `trixelToFb`            ← the single-canvas gather draw ONLY
+//   `perAxisScatter`        ← the 3 per-axis scatter draws + overflow draw
+// and VOXEL_TO_TRIXEL_STAGE_1's rotating-only per-axis dispatch groups get
+// their own rows (phases per docs/design/per-axis-trixel-canvas-rotation.md
+// §"The overflow lane"):
+//   `voxelPerAxisStore`     ← phase A: per-axis clears + cardinal stores ×3
+//   `voxelPerAxisOverflow`  ← phases B+C: view mask ×3 + overflow append ×3
+//   `voxelPerAxisFinalize`  ← phase D: winner election + stage-2 ×3
+//   `perAxisCellCompact`    ← the occupied-cell compaction + finalize
+//                             dispatches feeding every per-axis consumer
+// Every per-axis row reads 0.0 at cardinal (the canvases are released and
+// none of those dispatches run), so cardinal-vs-yaw row deltas ARE the
+// per-axis burst attribution.
 //
 // Two rows still have no current writer: `shapePass0` (folded into the
 // SHAPES_TO_TRIXEL per-system measurement) and `shapeCompact` (no system has
@@ -253,6 +288,14 @@ inline const std::array<GpuStageInfo, kGpuStageCount> &gpuStageRegistry() {
         {"voxelCompact", &GpuStageTiming::voxelCompactMs_, 0.10f},
         {"voxelStage1", &GpuStageTiming::voxelStage1Ms_, 0.20f},
         {"voxelStage2", &GpuStageTiming::voxelStage2Ms_, 0.15f},
+        {"voxelPerAxisStore", &GpuStageTiming::voxelPerAxisStoreMs_, 0.10f},
+        {"voxelPerAxisOverflow", &GpuStageTiming::voxelPerAxisOverflowMs_, 0.05f},
+        {"voxelPerAxisFinalize", &GpuStageTiming::voxelPerAxisFinalizeMs_, 0.10f},
+        {"perAxisCellCompact", &GpuStageTiming::perAxisCellCompactMs_, 0.05f},
+        {"computeVoxelAoPerAxis", &GpuStageTiming::computeVoxelAoPerAxisMs_, 0.05f},
+        {"lightingPerAxis", &GpuStageTiming::lightingPerAxisMs_, 0.05f},
+        {"lightingOverflow", &GpuStageTiming::lightingOverflowMs_, 0.05f},
+        {"perAxisScatter", &GpuStageTiming::perAxisScatterMs_, 0.10f},
         {"shapeCompact", &GpuStageTiming::shapeCompactMs_, 0.05f},
         {"shapePass0", &GpuStageTiming::shapePass0Ms_, 0.10f},
         {"shapePass1", &GpuStageTiming::shapePass1Ms_, 0.10f},

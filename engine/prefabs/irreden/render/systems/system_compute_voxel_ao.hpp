@@ -24,7 +24,7 @@
 #include <irreden/render/per_axis_canvas.hpp>
 #include <irreden/render/voxel_frame_data.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
-#include <irreden/render/gpu_stage_timing_observer.hpp>
+#include <irreden/render/gpu_substage_timing.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -85,6 +85,10 @@ template <> struct System<COMPUTE_VOXEL_AO> {
         if (!behavior.useCameraPositionIso_)
             return;
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
+        // CPU histogram bracket — this system is not observer-tagged (#2281),
+        // so without it the perf overlay's VOXEL-AO CPU row reads 0.0. The
+        // IR_PROFILE_FUNCTION above feeds easy_profiler, not cpuFrameHistogram.
+        IR_PROFILE_SCOPE("computeVoxelAO");
 
         // Author THIS canvas's voxel frame data so AO shades it with its own
         // visible-triplet / detached state (#1558). No-op for a canvas with no
@@ -99,22 +103,32 @@ template <> struct System<COMPUTE_VOXEL_AO> {
             canvasTextures
         );
 
-        canvasTextures.getTextureDistances()
-            ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
-        ao.getTexture()->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
-        voxelFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataVoxelToCanvas);
-        sunFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataSun);
+        {
+            // Sub-scope (#2281): the main-canvas AO dispatch only — the system
+            // is untagged from the per-system observer so the per-axis rows
+            // below stay separable (a sub-scope reuses the observer's slot).
+            GpuSubStageScope aoScope("computeVoxelAO");
+            canvasTextures.getTextureDistances()
+                ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
+            ao.getTexture()->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+            voxelFrameDataBuf_->bindBase(
+                BufferTarget::UNIFORM,
+                kBufferIndex_FrameDataVoxelToCanvas
+            );
+            sunFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataSun);
 
-        const int groupsX = IRMath::divCeil(canvasTextures.size_.x, kComputeVoxelAOGroupSize);
-        const int groupsY = IRMath::divCeil(canvasTextures.size_.y, kComputeVoxelAOGroupSize);
-        IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
-        IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+            const int groupsX = IRMath::divCeil(canvasTextures.size_.x, kComputeVoxelAOGroupSize);
+            const int groupsY = IRMath::divCeil(canvasTextures.size_.y, kComputeVoxelAOGroupSize);
+            IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
+            IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+        }
 
         // Smooth camera Z-yaw (#1311): compute AO for each per-axis voxel
         // canvas so the framebuffer scatter composites LIT voxels while rotating.
         // Only the main canvas owns them, and only while at a non-cardinal yaw.
         if (entity == perAxisCanvasEntity_ && perAxisCanvases_ != nullptr &&
             perAxisCanvases_->isAllocated()) {
+            GpuSubStageScope perAxisScope("computeVoxelAoPerAxis");
             dispatchPerAxisAO(*perAxisCanvases_, canvasTextures, ao);
         }
     }
@@ -269,7 +283,8 @@ template <> struct System<COMPUTE_VOXEL_AO> {
         auto *p = getSystemParams<System<COMPUTE_VOXEL_AO>>(systemId);
         p->program_ = IRRender::getNamedResource<ShaderProgram>("ComputeVoxelAOProgram");
         p->voxelFrameDataBuf_ = IRRender::getNamedResource<Buffer>("SingleVoxelFrameData");
-        IRRender::tagGpuStage(systemId, "computeVoxelAO");
+        // NOT observer-tagged: the tick owns GpuSubStageScopes (#2281), which
+        // reuse the observer's timestamp attachment slot.
         return systemId;
     }
 };
