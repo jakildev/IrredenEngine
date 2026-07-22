@@ -38,6 +38,7 @@
 #include <irreden/render/gpu_stage_timing_observer.hpp>
 
 #include <cstddef>
+#include <cstdint>
 #include <vector>
 
 using namespace IRComponents;
