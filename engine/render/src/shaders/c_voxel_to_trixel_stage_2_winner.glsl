@@ -21,5 +21,7 @@
 #version 450 core
 #define IR_STORE_WINNER_ELECTION 1
 #include "ir_iso_common.glsl"
+#define IR_VOXEL_FOG_GRID_BINDING 3
 #include "ir_constants.glsl"
+#include "ir_voxel_face_select.glsl"
 #include "c_voxel_to_trixel_stage_2_body.glsl"

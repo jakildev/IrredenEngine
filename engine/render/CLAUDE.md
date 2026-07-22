@@ -117,7 +117,10 @@ Naming prefixes follow the convention in
 [`CLAUDE-BASELINE.md §Naming`](../../docs/agents/CLAUDE-BASELINE.md#naming).
 Shared includes: `ir_iso_common.glsl`, `ir_constants.glsl`,
 `ir_world_lighting.glsl` (light-source list layout + SPOT cone +
-ACES tonemap, shared by the world-lighting passes).
+ACES tonemap, shared by the world-lighting passes),
+`ir_voxel_face_select.glsl` (fog reveal + face selection + per-axis
+store key, shared by the stage-1/stage-2 kernel family — the fog grid
+image slot is wrapper-supplied via `IR_VOXEL_FOG_GRID_BINDING`).
 Shader file paths are stored in `render/shader_names.hpp`. Update that
 header when you add or rename a shader.
 

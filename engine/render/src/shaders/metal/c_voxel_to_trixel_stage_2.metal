@@ -10,4 +10,5 @@
 
 #define IR_STORE_WINNER_ELECTION 0
 #define IR_STAGE2_KERNEL_NAME c_voxel_to_trixel_stage_2
+#include "ir_voxel_face_select.metal"
 #include "c_voxel_to_trixel_stage_2_body.metal"

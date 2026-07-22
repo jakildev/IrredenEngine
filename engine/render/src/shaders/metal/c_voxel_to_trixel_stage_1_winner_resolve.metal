@@ -18,4 +18,5 @@
 #define IR_FEEDER_PASS 0
 #define IR_STORE_WINNER_ELECTION 1
 #define IR_STAGE1_KERNEL_NAME c_voxel_to_trixel_stage_1_winner_resolve
+#include "ir_voxel_face_select.metal"
 #include "c_voxel_to_trixel_stage_1_body.metal"
