@@ -355,6 +355,15 @@ cancels its batch siblings.
   than the current working directory.
 - **Use the Grep tool** instead of `grep` via Bash. The built-in Grep
   tool is already allowlisted and doesn't require approval.
+- **Native-Windows host (MSYS2 / Git Bash): there is no Bash-tool OS
+  sandbox**, so an allowlist prefix match is the ONLY auto-approval path —
+  every miss hard-blocks in a headless session. Two idioms that work on
+  macOS/Linux (where the sandbox auto-approves) therefore wedge a Windows
+  agent: (1) any command containing a `$VAR` expansion can never
+  prefix-match — use `printenv NAME` (literal argv, allowlisted) instead of
+  `echo $NAME`; (2) `command -v tool` is unmatched — use `which tool` or
+  `type tool`. Write scratch files with the Write tool, never `>`
+  redirection (banned above on every host anyway).
 - **Use the Glob tool** instead of `find`. Glob supports patterns like
   `**/*.hpp` and is already allowlisted.
 - **Use `--jq`** on `gh` commands instead of piping to `python3` or

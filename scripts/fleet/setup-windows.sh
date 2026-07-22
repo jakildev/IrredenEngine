@@ -71,6 +71,17 @@ if [[ ! -x "${IR_MSYS2_MINGW_DIR:-/c/msys64/mingw64/bin}/g++.exe" ]] \
     echo "  WARN: MSYS2 mingw64 toolchain not found at /c/msys64/mingw64/bin" >&2
     echo "        install with: pacman -S mingw-w64-x86_64-toolchain" >&2
 fi
+# pgrep ships in procps-ng, not the MSYS2 base install. fleet-dispatcher's
+# busy-pane guard (pane_has_running_wrapper) depends on it: tmux reports the
+# pane shell ("bash") while fleet-dispatch-wrap runs its claude pipeline, so
+# pgrep is the ONLY signal that an iteration is mid-flight. Without it every
+# busy pane looks idle — the dispatcher logs phantom completions, pollutes
+# the empty-exit streak accounting, and re-dispatches into live iterations
+# (observed on the first native-Windows fleet boot).
+if ! command -v pgrep >/dev/null 2>&1; then
+    echo "  MISSING: pgrep — install with: pacman -S procps-ng" >&2
+    missing=1
+fi
 # ruff lints the fleet Python surface (scripts/fleet/) — run before committing
 # fleet-script changes. Soft dependency (needed for the local Python lint, not
 # to run the fleet), so install best-effort: MSYS2 package first, else pipx/pip.

@@ -260,6 +260,14 @@ fi
 # never trigger a real install.sh. Best-effort: never block the dispatch.
 fleet_install_maybe_refresh || true
 
+# Native-Windows (MSYS2) host: msys bash path-converts exec args that look
+# like POSIX paths when spawning a native executable, so the "/role-<name>
+# <mode>" prompt reaches claude.exe as "C:/msys64/role-<name> <mode>"
+# (observed on the first Windows fleet boot — the skill still resolved, but
+# only by model inference, not by the literal slash-command). Exclude args
+# starting with /role- from conversion; inert on macOS/Linux.
+export MSYS2_ARG_CONV_EXCL="${MSYS2_ARG_CONV_EXCL:+$MSYS2_ARG_CONV_EXCL;}/role-"
+
 claude "${CLAUDE_ARGS[@]}" "$PROMPT" | fleet-claude-stream
 
 rc="${PIPESTATUS[0]}"

@@ -12,6 +12,7 @@
       "Bash(xargs:*)", "Bash(tee:*)", "Bash(echo:*)", "Bash(printf:*)",
       "Bash(jq:*)", "Bash(od:*)", "Bash(xxd:*)",
       "Bash(date:*)", "Bash(env:*)", "Bash(which:*)", "Bash(type:*)",
+      "Bash(printenv:*)",
 
       "Bash(mkdir:*)", "Bash(cp:*)", "Bash(mv:*)", "Bash(touch:*)",
       "Bash(chmod:*)", "Bash(ln:*)", "Bash(mktemp:*)",
