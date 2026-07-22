@@ -8,6 +8,14 @@
 // observer buffer as function arguments (no global bindings), so no
 // fog-binding macro is needed here — the GLSL side #defines
 // IR_VOXEL_FOG_GRID_BINDING instead.
+//
+// No `#ifndef ..._INCLUDED` self-guard (unlike the ir_per_axis_lighting.metal
+// precedent) is needed: every function here is `static` (internal linkage) and
+// each wrapper includes this file exactly once, so neither in-TU re-inclusion
+// nor a standalone glob-compile can raise a duplicate-symbol conflict.
+// ir_per_axis_lighting.metal carries its guard only because it uses
+// external-linkage `inline` functions — do NOT "fix" this file by switching
+// its functions to `inline` and reintroducing that hazard.
 
 // Prerequisite helpers (faceIsExposed, roundHalfUp, fogVisionCircleReveal,
 // faceMicroPositionFixed6, encodeDepthWithFaceFrac, …). The runtime include
@@ -105,7 +113,6 @@ static float fogColumnRevealNearest(
 struct VoxelFaceSelect {
     int faceId;                 // possibly riser-flipped (#2207)
     int riserFlip;              // 1 = opposite polarity of the slot's triplet face
-    bool rotatedEmit;           // rotated-content gate (re-voxelize OR kRotatedEmit)
     bool bothPolaritiesExposed; // #2157 dual-emit predicate (cardinal subdivided path)
     bool fogActive;             // world fog route gate (#2125/#2127/#2128)
     int2 worldColumn;           // world fog column (valid iff fogActive)
@@ -134,14 +141,16 @@ static VoxelFaceSelect selectVoxelFace(
 ) {
     VoxelFaceSelect sel;
     sel.faceId = faceIdIn;
-    sel.rotatedEmit = reVoxelize || (reserved & 4u) != 0u;
+    // Function-local intermediate — only the riserFlip gate and
+    // bothPolaritiesExposed predicate read it, so it stays off the verdict struct.
+    const bool rotatedEmit = reVoxelize || (reserved & 4u) != 0u;
     sel.riserFlip = 0;
-    if (sel.rotatedEmit && !faceIsExposed(flagsByte, sel.faceId) &&
+    if (rotatedEmit && !faceIsExposed(flagsByte, sel.faceId) &&
         faceIsExposed(flagsByte, sel.faceId ^ 1)) {
         sel.faceId = sel.faceId ^ 1;
         sel.riserFlip = 1;
     }
-    sel.bothPolaritiesExposed = sel.rotatedEmit && faceIsExposed(flagsByte, sel.faceId) &&
+    sel.bothPolaritiesExposed = rotatedEmit && faceIsExposed(flagsByte, sel.faceId) &&
         faceIsExposed(flagsByte, sel.faceId ^ 1);
     sel.fogActive = obs.visionCircleCount > 0 && perAxisRouteIn <= 2 &&
         (isDetachedCanvasIn < 0.5f ||

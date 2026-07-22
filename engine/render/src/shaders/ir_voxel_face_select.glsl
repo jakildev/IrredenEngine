@@ -111,7 +111,6 @@ float fogColumnRevealNearest(ivec2 col) {
 struct VoxelFaceSelect {
     int faceId;                 // possibly riser-flipped (#2207)
     int riserFlip;              // 1 = opposite polarity of the slot's triplet face
-    bool rotatedEmit;           // rotated-content gate (re-voxelize OR kRotatedEmit)
     bool bothPolaritiesExposed; // #2157 dual-emit predicate (cardinal subdivided path)
     bool fogActive;             // world fog route gate (#2125/#2127/#2128)
     ivec2 worldColumn;          // world fog column (valid iff fogActive)
@@ -151,10 +150,12 @@ VoxelFaceSelect selectVoxelFace(
     // exposed, emit that opposite face — the missing silhouette riser on a
     // rotated staircase edge. Gated to ROTATED content (the re-voxelize
     // uniform OR the per-voxel kRotatedEmit marker, reserved bit 2), so
-    // axis-aligned fast paths never flip and stay byte-identical.
-    sel.rotatedEmit = reVoxelize || (reserved & 4u) != 0u;
+    // axis-aligned fast paths never flip and stay byte-identical. Kept a
+    // function-local intermediate — only the riserFlip gate and
+    // bothPolaritiesExposed predicate read it, so it stays off the verdict struct.
+    const bool rotatedEmit = reVoxelize || (reserved & 4u) != 0u;
     sel.riserFlip = 0;
-    if (sel.rotatedEmit && !faceIsExposed(flagsByte, sel.faceId) &&
+    if (rotatedEmit && !faceIsExposed(flagsByte, sel.faceId) &&
         faceIsExposed(flagsByte, sel.faceId ^ 1)) {
         sel.faceId = sel.faceId ^ 1;
         sel.riserFlip = 1;
@@ -164,7 +165,7 @@ VoxelFaceSelect selectVoxelFace(
     // above never fires there, so the cardinal subdivided path emits both
     // planes (the per-axis store takes NO second tap — measured net-worse,
     // see #2207).
-    sel.bothPolaritiesExposed = sel.rotatedEmit && faceIsExposed(flagsByte, sel.faceId) &&
+    sel.bothPolaritiesExposed = rotatedEmit && faceIsExposed(flagsByte, sel.faceId) &&
         faceIsExposed(flagsByte, sel.faceId ^ 1);
     // World fog route: fires on the world fog route (perAxisRoute==0 — the
     // GRID world canvas or a world-placed re-voxelize detached canvas, #2127)
