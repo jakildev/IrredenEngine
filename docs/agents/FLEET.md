@@ -1135,5 +1135,35 @@ Invocation: `fleet-decisions` (engine + game; a repo that fails to
 query is skipped with a warning) or `fleet-decisions --repo engine|game`.
 It changes no state and applies no labels — the human acts on what it
 surfaces through the existing mechanisms (merge, label, cue a skill).
-Run on demand today; it is the substrate for a pushed digest
-(cron / notification) once a delivery channel is chosen.
+
+### The push half: `fleet-digest-tick` + `fleet-notify`
+
+`fleet-digest-tick` turns the digest from pull to push. Each run
+refreshes `~/.fleet/digest/latest.md` and fires `fleet-notify` — a
+per-host best-effort desktop notification (osascript on macOS, a
+stock-PowerShell WinRT toast on native Windows, the same toast via
+`powershell.exe` interop on WSL, `notify-send` on native Linux;
+log-first to `~/.fleet/notify.log`, so a failed toast never loses the
+message) — **only when the decision-relevant content changed** since
+this host's last tick. The change hash excludes the `## Status` footer
+(open-PR counts churn constantly and would over-notify); a
+`fleet-decisions` failure keeps the previous digest and exits 0.
+
+Schedule it per host — cron (Linux/WSL/MSYS2) or launchd (macOS):
+
+```
+*/30 * * * * $HOME/bin/fleet-digest-tick
+```
+
+**Deliberately per-host, no cross-host coordination.** The compute is
+read-only and safe to run everywhere; a notification only helps on the
+host you are sitting at; and the change-dedup state
+(`~/.fleet/digest/last-hash`) is host-local, so each host tells you
+once when *it* first sees a change. Nothing here needs the singleton
+treatment that judgment-spending processes (triage) do.
+
+A scout-triggered variant (fire on projection change instead of a
+timer) is deliberately deferred: `fleet-decisions` computes the
+untriaged set from an all-open-issues query the scout does not fetch,
+so a scout hook today would either drop that view or duplicate gh
+calls per tick. Revisit once untriaged state lives in the scout.
