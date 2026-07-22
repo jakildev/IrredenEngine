@@ -121,6 +121,29 @@ ACES tonemap, shared by the world-lighting passes).
 Shader file paths are stored in `render/shader_names.hpp`. Update that
 header when you add or rename a shader.
 
+### Metal AOT metallib build (opt-in, no runtime consumer)
+
+`engine/render/CMakeLists.txt` can precompile every `.metal` file into
+`default.metallib` via `xcrun metal`/`metallib`, gated behind
+`IRREDEN_METAL_AOT_SHADERS` (default `OFF`). **This is a convention, not a
+build-time check**: kernel wrapper files (`c_voxel_to_trixel_stage_1.metal`,
+`_feeder`, `_winner_resolve`, `c_voxel_to_trixel_stage_2.metal`, `_winner`,
+and the other top-level kernel files) are the only standalone compile units
+— they `#define` the macros an include-fragment needs and then `#include`
+it. `*_body.metal` (the stage bodies) and `ir_*.metal` (shared helpers like
+`ir_iso_common.metal`, `ir_per_axis_lighting.metal`) are include-fragments:
+they reference wrapper-supplied macros or lack an entry point, so they
+cannot compile as standalone translation units. The AOT glob excludes both
+patterns by filename convention — a new include-fragment MUST match one of
+them or it silently re-breaks the opt-in AOT path.
+
+`default.metallib` currently has **no runtime consumer** — the live path is
+always `metal_pipeline.cpp`'s `loadAndPreprocessMetalSource`, which resolves
+`#include` recursively (with a visited-set cycle guard) and compiles from
+source at runtime. The AOT path exists for a future full-Xcode packaging
+step; enabling it costs an `xcrun`-not-found `WARNING` (correct once
+opted in) and produces an unloaded `.metallib` today.
+
 ## Backends
 
 `render/opengl/` and `render/metal/` each implement the `RenderImpl` /

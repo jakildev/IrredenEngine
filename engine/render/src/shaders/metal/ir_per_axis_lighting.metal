@@ -3,9 +3,10 @@
 // Kept OUT of ir_iso_common.metal so adding it does not recompile the SDF /
 // voxel / scatter shaders that share ir_iso_common — which would perturb their
 // FP scheduling and drift SDF-edge pixels at the cardinal fast path (breaking
-// the residualYaw == 0 byte-identity guarantee). The metallib build globs every
-// *.metal and compiles it standalone, so this file includes ir_iso_common.metal
-// (guarded) to resolve its helpers when compiled on its own.
+// the residualYaw == 0 byte-identity guarantee). This file includes
+// ir_iso_common.metal (guarded) to resolve its helpers and stay self-contained
+// as an include-fragment; the runtime preprocessor's visited-set (metal_pipeline.cpp)
+// dedupes the include when a wrapper also pulls in ir_iso_common.metal directly.
 #ifndef IR_PER_AXIS_LIGHTING_METAL_INCLUDED
 #define IR_PER_AXIS_LIGHTING_METAL_INCLUDED
 
