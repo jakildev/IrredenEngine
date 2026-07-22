@@ -200,8 +200,11 @@ layout(r32i, binding = 1) uniform iimage2D triangleCanvasDistances;
 // (not a texture image) because Metal has no second image-atomic slot — the
 // same rationale as the #1435 resolve scratch, whose binding this transiently
 // reuses (kBufferIndex_PerAxisResolveScratch; free during the per-axis
-// dispatches). Untouched at resolveMode == 0, so the store dispatch — and
-// every cardinal / single-canvas / detached path — never reads or writes it.
+// dispatches). The winner-id region (region 0) stays untouched at
+// resolveMode == 0, but since #2487 the mode-0 per-axis store DOES write this
+// buffer: viewMaskTap atomicMins into the disjoint view-mask region (base
+// overflowScratchLayout.x). Only the perAxisRoute != 0 dispatches touch any
+// region; every cardinal / single-canvas / detached path leaves it untouched.
 layout(std430, binding = 28) buffer PerAxisWinnerScratch {
     uint perAxisWinnerIds[];
 };
