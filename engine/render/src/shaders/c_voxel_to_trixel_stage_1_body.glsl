@@ -112,7 +112,8 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     // at the same std140 offset (192) as FrameDataVoxelToCanvas::resolveMode_.
     uniform ivec4 visibleIsoBounds;
     // Per-axis deterministic-winner resolve mode (#2255). 0 = the normal
-    // distance store. 1 = the winner-resolve dispatch between the stage-1
+    // distance store (also writes the view mask since #2487 folded the former
+    // mode-2 sweep in). 1 = the winner-resolve dispatch between the stage-1
     // store and stage 2: re-run the identical per-axis geometry and, for each
     // face whose encoded distance MATCHES the settled per-cell atomicMin
     // winner, atomicMin the face's run-stable voxel pool index into the
@@ -147,7 +148,8 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     // .w = entry cap. Region 0 of the scratch is the #2255 winner-id array, so
     // perAxisWinnerIds[cell] indexing below is unchanged. std140 lands the ivec4
     // at offset 208, mirroring FrameDataVoxelToCanvas::overflowScratchLayout_.
-    // Read only at resolveMode 2/3 (rotating frames).
+    // Read at resolveMode 0 (mask write, folded #2487) and 3 (append), rotating
+    // frames only.
     uniform ivec4 overflowScratchLayout;
 };
 
@@ -235,7 +237,8 @@ void resolveWinnerTap(const ivec2 canvasPixel, const int voxelDistance, const ui
 }
 
 // View-visibility overflow lane (#2333) — yawed-depth quantization shared by
-// resolveMode 2 (mask write) and 3 (mask compare). 1/16-world-unit steps,
+// the mask write (in the mode-0 store since #2487) and the resolveMode-3 mask
+// compare. 1/16-world-unit steps,
 // biased to a uint so atomicMin orders negative depths correctly. Both modes
 // call THE SAME function on the SAME facePos, so a face always ties its own
 // mask entry exactly regardless of float rounding.
@@ -262,9 +265,12 @@ ivec2 overflowYawedPixel(const ivec2 perAxisBase, const ivec3 facePos) {
     return perAxisBase + roundHalfUp(pos3DtoPos2DIsoYawed(vec3(facePos), visualYaw));
 }
 
-// resolveMode == 2: view-mask write. Every per-axis face (all three axis
-// routes — view visibility competes across axes) atomicMins its quantized
-// yawed depth into the shared mask region.
+// View-mask write (#2331/#2333; folded into the resolveMode-0 store pass by
+// #2487). Every per-axis face (all three axis routes — view visibility competes
+// across axes) atomicMins its quantized yawed depth into the shared mask region.
+// Runs inside the store now: the store already walks this exact face set and
+// computed facePos, so the mask costs only its own yawed projection + atomicMin
+// rather than a third full sweep of the rotating burst.
 void viewMaskTap(const ivec2 perAxisBase, const ivec3 facePos) {
     const ivec2 yawedPix = overflowYawedPixel(perAxisBase, facePos);
     if (!isInsideCanvas(yawedPix, canvasSizePixels)) return;
@@ -601,10 +607,6 @@ void main() {
         int voxelDistance;
         const ivec3 facePos =
             perAxisStoreFacePos(voxelPosition, faceId, slot, axis, riserFlip, voxelDistance);
-        if (resolveMode == 2) {
-            viewMaskTap(perAxisBase, facePos);
-            return;
-        }
         if (resolveMode == 3) {
             overflowAppendTap(perAxisBase, facePos, voxelDistance, voxels[voxelIndex].colorPacked);
             return;
@@ -616,7 +618,12 @@ void main() {
             resolveWinnerTap(perAxisBase + pos3DtoPos2DIso(facePos), voxelDistance, voxelIndex);
             return;
         }
+        // #2487: the store pass folds in the view-mask write (former resolveMode
+        // 2). Both sweeps walk the identical face set and share everything up to
+        // facePos, so the mask costs only its own yawed projection + atomicMin
+        // rather than 3 separate mask dispatches in the rotating burst.
         writeDistanceTap(perAxisBase + pos3DtoPos2DIso(facePos), voxelDistance);
+        viewMaskTap(perAxisBase, facePos);
         return;
     }
 

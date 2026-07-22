@@ -70,18 +70,22 @@ A bounded **overflow lane**, additive and rotating-only, carries exactly
 `viewVisible ∖ cardinalWinners` — the set the cardinal store cannot
 represent regardless of which election metric it sorts by. It rides the
 existing per-axis stage-1 kernel
-(`c_voxel_to_trixel_stage_1_body.{glsl,metal}`) as two extra `resolveMode`
-passes over the same per-axis face geometry, dispatched per rotating frame
-in this order (barrier between each group — the mask must be complete
-across ALL axes before any append test, since view visibility competes
-across axes, not per-axis):
+(`c_voxel_to_trixel_stage_1_body.{glsl,metal}`). The **view-mask write folds
+into the mode-0 store pass** (#2487 — the store already walks the identical
+face set and has computed the face position, so the mask costs only its yawed
+projection + `atomicMin` there instead of a third full sweep), leaving **one**
+extra `resolveMode` pass — the overflow append — over the same per-axis face
+geometry, dispatched per rotating frame in this order (barrier between each
+group — the mask must be complete across ALL axes before any append test,
+since view visibility competes across axes, not per-axis):
 
 ```
-stores ×3 (mode 0)  →  view mask ×3 (mode 2)  →  overflow append ×3 (mode 3)
+stores + view mask ×3 (mode 0)  →  overflow append ×3 (mode 3)
   →  per-axis {election (mode 1) → stage 2} ×3
 ```
 
-1. **View mask (mode 2, `viewMaskTap`)** — every per-axis face `atomicMin`s
+1. **View mask (`viewMaskTap`, written by the mode-0 store since #2487)** —
+   every per-axis face `atomicMin`s
    its quantized **yawed** depth (`overflowYawedDepthKey`, 1/16-world-unit
    steps, biased into `uint` range) into a scratch region keyed by its
    **yawed** screen cell (`overflowYawedPixel` — the same
