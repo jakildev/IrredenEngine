@@ -110,8 +110,12 @@ T-300 Phase 2.
 ## Manager globals
 
 Each manager (`EntityManager`, `SystemManager`, `RenderManager`, etc.) is
-stored as a global pointer (`g_entityManager`, `g_systemManager`, ...) set by
-`World`'s constructor and cleared by its destructor. The `ir_<module>.hpp`
+stored as a global pointer (`g_entityManager`, `g_systemManager`, ...). The
+manager's own constructor stamps it (`g_entityManager = this;`) and its
+destructor clears it if still pointing at itself; `World` assigns nothing —
+it owns every manager as a member in dependency order, so member order IS
+the deterministic set/clear order. The `ir_<module>.hpp`
 entry points wrap access via free functions (`IREntity::getEntityManager()`).
 **Do not hold references or raw pointers to managers across frames outside
-of World's lifetime.**
+of World's lifetime.** Full global-state pattern catalog + the
+header-global ban: [`.claude/rules/cpp-globals.md`](../.claude/rules/cpp-globals.md).
