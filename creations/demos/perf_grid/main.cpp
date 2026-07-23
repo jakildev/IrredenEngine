@@ -45,6 +45,7 @@
 #include <irreden/render/systems/system_perf_stats_overlay.hpp>
 #include <irreden/render/systems/system_render_velocity_2d_iso.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
+#include <irreden/render/systems/system_resolve_per_axis_screen_depth.hpp>
 #include <irreden/render/systems/system_shapes_to_trixel.hpp>
 #include <irreden/render/systems/system_text_to_trixel.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
@@ -1268,6 +1269,11 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
             IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
             IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>(),
+            // Per-axis voxel sun-shadow casting under continuous Z-yaw (#1435):
+            // resolves the three per-axis voxel canvases into a screen-space
+            // depth the bake casts through its cardinal path. No-ops at a
+            // cardinal — matches ir_voxel_yaw/main.cpp's wiring.
+            IRSystem::createSystem<IRSystem::RESOLVE_PER_AXIS_SCREEN_DEPTH>(),
             // Hi-Z max-depth mip chain over the (now final) distance texture,
             // for next frame's voxel occlusion cull (#1294 child 1/3). Produces
             // only — renders unchanged this PR.
