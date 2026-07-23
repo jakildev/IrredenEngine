@@ -63,6 +63,12 @@ layout(std430, binding = 28) restrict buffer PerAxisResolveScratch {
     int resolveScratch[];
 };
 
+// The cardinal-layout micro-cell emit shared with
+// c_resolve_per_axis_screen_depth. Included AFTER ir_iso_common.glsl and AFTER
+// the resolveScratch declaration it writes through (the fragment's wrapper
+// contract).
+#include "ir_resolve_cardinal_emit.glsl"
+
 void main() {
     const ivec2 cell = ivec2(gl_GlobalInvocationID.xy);
     const ivec2 detachedSize = imageSize(detachedDistances);
@@ -111,7 +117,6 @@ void main() {
         viewPos = rotateCardinalZ(worldPos, cardinalIndex);
         viewPos += cardinalLowerCornerShift(cardinalIndex) * scale;
     }
-    const int encoded = encodeDepthWithFace(pos3DtoDistance(viewPos), slot, flip);
 
     const ivec2 mainBase = trixelFrameOffset(
         trixelOriginOffsetZ1(canvasSizePixels), frameCanvasOffset, voxelRenderOptions
@@ -128,15 +133,7 @@ void main() {
         rotateCardinalZ(faceOutwardNormal6I(slot << 1), cardinalIndex);
     const int viewAxis =
         (viewNormal.x != 0) ? kXFace : ((viewNormal.y != 0) ? kYFace : kZFace);
-    const ivec2 cellBase = mainBase + pos3DtoPos2DIso(viewPos);
-    for (int k = 0; k < 2; ++k) {
-        const ivec2 mainPixel = cellBase + faceOffset_2x3(viewAxis, k);
-        if (!isInsideCanvas(mainPixel, canvasSizePixels)) {
-            continue;
-        }
-        // Front-most per screen pixel: smallest encoded distance wins (depth
-        // dominates the 2 slot bits), exactly like the main canvas atomicMin
-        // store.
-        atomicMin(resolveScratch[mainPixel.y * canvasSizePixels.x + mainPixel.x], encoded);
-    }
+    emitResolveCardinalDiamond(
+        viewPos, viewAxis, slot, flip, mainBase, canvasSizePixels
+    );
 }

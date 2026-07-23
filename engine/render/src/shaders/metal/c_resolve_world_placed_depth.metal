@@ -1,5 +1,8 @@
 #include "ir_iso_common.metal"
 #include <metal_atomic>
+// The cardinal-layout micro-cell emit shared with
+// c_resolve_per_axis_screen_depth.
+#include "ir_resolve_cardinal_emit.metal"
 
 // Mirrors shaders/c_resolve_world_placed_depth.glsl. Re-projects one opt-in
 // world-placed detached re-voxelize canvas (model-frame R32I distance texture)
@@ -60,7 +63,6 @@ kernel void c_resolve_world_placed_depth(
         viewPos = rotateCardinalZ(worldPos, cardinalIndex);
         viewPos += cardinalLowerCornerShift(cardinalIndex) * scale;
     }
-    const int encoded = encodeDepthWithFace(pos3DtoDistance(viewPos), slot, flip);
 
     const int2 canvasSize = frameData.canvasSizePixels; // MAIN canvas size
     const int2 mainBase = trixelFrameOffset(
@@ -80,16 +82,7 @@ kernel void c_resolve_world_placed_depth(
         rotateCardinalZ(faceOutwardNormal6I(slot << 1), cardinalIndex);
     const int viewAxis =
         (viewNormal.x != 0) ? kXFace : ((viewNormal.y != 0) ? kYFace : kZFace);
-    const int2 cellBase = mainBase + pos3DtoPos2DIso(viewPos);
-    for (int k = 0; k < 2; ++k) {
-        const int2 mainPixel = cellBase + faceOffset_2x3(viewAxis, k);
-        if (!isInsideCanvas(mainPixel, canvasSize)) {
-            continue;
-        }
-        // Front-most per screen pixel: smallest encoded distance wins (depth
-        // dominates the 2 slot bits), exactly like the main canvas atomicMin
-        // store.
-        const uint idx = uint(mainPixel.y) * uint(canvasSize.x) + uint(mainPixel.x);
-        atomic_fetch_min_explicit(&resolveScratch[idx], encoded, memory_order_relaxed);
-    }
+    emitResolveCardinalDiamond(
+        resolveScratch, viewPos, viewAxis, slot, flip, mainBase, canvasSize
+    );
 }

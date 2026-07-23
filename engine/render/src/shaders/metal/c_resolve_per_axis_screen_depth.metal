@@ -1,5 +1,7 @@
 #include "ir_iso_common.metal"
 #include <metal_atomic>
+// The cardinal-layout micro-cell emit shared with c_resolve_world_placed_depth.
+#include "ir_resolve_cardinal_emit.metal"
 
 // Mirrors shaders/c_resolve_per_axis_screen_depth.glsl. Re-projects one
 // face-local per-axis voxel canvas into a screen-space front-most iso-depth
@@ -106,23 +108,9 @@ kernel void c_resolve_per_axis_screen_depth(
     for (int v = 0; v < scale; ++v) {
         for (int u = 0; u < scale; ++u) {
             const int3 microView = viewPos + stepU * u + stepV * v;
-            // Per-micro-cell depth, shared by the region's two pixels — the
-            // exact encode a real cardinal store would hold here, so BAKE's
-            // pixel+depth inverse recovers points on the face plane.
-            const int encoded = encodeDepthWithFace(pos3DtoDistance(microView), slot, flip);
-            const int2 cellBase = mainBase + pos3DtoPos2DIso(microView);
-            for (int k = 0; k < 2; ++k) {
-                const int2 mainPixel = cellBase + faceOffset_2x3(slot, k);
-                if (!isInsideCanvas(mainPixel, canvasSize)) {
-                    continue;
-                }
-                // Front-most per screen pixel: smallest encoded distance wins
-                // (depth dominates the 2 slot bits), exactly like the main
-                // canvas atomicMin store.
-                const uint idx =
-                    uint(mainPixel.y) * uint(canvasSize.x) + uint(mainPixel.x);
-                atomic_fetch_min_explicit(&resolveScratch[idx], encoded, memory_order_relaxed);
-            }
+            emitResolveCardinalDiamond(
+                resolveScratch, microView, slot, slot, flip, mainBase, canvasSize
+            );
         }
     }
 }
