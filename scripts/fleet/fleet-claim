@@ -850,6 +850,11 @@ check_host_capability() {
     # backstop for a manual or raced claim, and it runs unconditionally so it
     # also covers --stackable-on GL claims. Fail-closed on an unrecognized
     # host (refuse) — a real dispatch host is always mac/linux/windows.
+    #
+    # Also runs on amending-claim (#2524): the label is valid on PRs too
+    # (remaining work is GL-host-only — e.g. a design-unblocked resume whose
+    # gates only run on GL), and PR numbers share the issues label namespace,
+    # so the same fetch works unchanged.
     local issue_num="$1"
 
     local info
@@ -1687,7 +1692,17 @@ cmd_review_claim()   { _cmd_pr_label_claim   "fleet:reviewing-" "review-claim"  
 cmd_review_release() { _cmd_pr_label_release "fleet:reviewing-" "review-release" "$@"; }
 cmd_resolving_claim()   { _cmd_pr_label_claim   "fleet:resolving-" "resolving-claim"   "$@"; }
 cmd_resolving_release() { _cmd_pr_label_release "fleet:resolving-" "resolving-release" "$@"; }
-cmd_amending_claim()   { _cmd_pr_label_claim   "fleet:amending-" "amending-claim"   "$@"; }
+cmd_amending_claim() {
+    # Host-capability backstop (#2524): refuse to amend-claim a PR whose
+    # remaining work is GL-host-gated (fleet:needs-gl-host) from a non-GL
+    # host — the pane can only burn the claim and release with zero commits.
+    # The load-bearing fix is the pickup-side skip in
+    # FLEET-FEEDBACK-HANDLING.md; this catches stale-docs / raced claims.
+    if [[ "${1:-}" =~ ^[0-9]+$ ]] && ! check_host_capability "$1"; then
+        return 1
+    fi
+    _cmd_pr_label_claim   "fleet:amending-" "amending-claim"   "$@"
+}
 cmd_amending_release() {
     # Remove the local amend-snapshot sidecar written by fleet-pr-claim-feedback
     # so R7's grace-period guard resets on clean release (#1650).

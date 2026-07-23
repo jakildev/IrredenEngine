@@ -138,7 +138,7 @@ LABELS=(
     "fleet:verified-linux|0e8a16|Smoking agent set this on a successful Linux smoke run; audit trail, not a merge gate"
     "fleet:verified-macos|0e8a16|Smoking agent set this on a successful macOS smoke run; audit trail, not a merge gate"
     "fleet:verified-windows|0e8a16|Windows smoke worker or platform-catchup set this on a successful Windows smoke; audit trail"
-    "fleet:needs-gl-host|c5def5|Task needs an OpenGL-4.5 host (Linux/Windows); macOS/Metal panes skip it"
+    "fleet:needs-gl-host|c5def5|Remaining work needs an OpenGL-4.5 host (Linux/Windows); macOS/Metal panes skip it"
     "fleet:stacked|c5def5|PR's base is a feature branch (stacked PR)"
     "fleet:awaiting-base|c5def5|Stacked PR; merger is waiting for base PR to merge"
     "fleet:needs-base-update|fbca04|Stacked child PR; upstream force-pushed and cascade-rebase conflicted; author rebases manually"

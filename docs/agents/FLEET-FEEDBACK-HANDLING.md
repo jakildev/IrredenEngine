@@ -57,6 +57,17 @@ itself, so a PR that slips past this filter (claimed after your state
 snapshot) is still caught when your own `amending-claim` loses the
 lex-min in Step a.
 
+**Skip** PRs carrying `fleet:needs-gl-host` unless this host is
+GL-capable (`{linux, windows}` — macOS GL is 4.1, below the shaders'
+required 4.5). On a PR the label marks the **remaining** work as
+GL-host-only; the typical case is a `fleet:design-unblocked` resume
+whose architect reply leaves only GL gate runs (the architect applies
+the label at unblock time — see `architect-protocol.md`). A wrong-host
+pane can only burn the claim and release with zero commits (PR #2475
+collected five such iterations in 80 minutes — #2524). `fleet-claim
+amending-claim` refuses these claims as a backstop, but skip pre-claim
+so the iteration goes to work you can actually do.
+
 ## Step a — claim the PR atomically (before anything else)
 
 Feedback pickup fans out: the dispatcher can launch your role into

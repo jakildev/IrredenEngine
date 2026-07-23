@@ -250,9 +250,9 @@
     },
     {
       "name": "fleet:needs-gl-host",
-      "scope": "issue",
+      "scope": "issue+pr",
       "color": "c5def5",
-      "description": "Task needs an OpenGL-4.5 host (Linux/Windows); macOS/Metal panes skip it (dispatcher filter + claim gate). Human/architect triage signal."
+      "description": "Remaining work needs an OpenGL-4.5 host (Linux/Windows); macOS/Metal panes skip it (dispatcher filter, claim + amending-claim gates, feedback-tier skip). Human/architect triage signal."
     },
     {
       "name": "fleet:stacked",

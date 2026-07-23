@@ -554,6 +554,16 @@ When working a `fleet:design-blocked` PR:
    Then verify the PR carries `fleet:design-unblocked` (and not
    `fleet:design-blocked`) before moving on. The reconcile guard for the
    stranded state is tracked in #1516.
+
+   **Host-gate the resume when the remaining work is GL-only (#2524).**
+   `fleet:design-unblocked` routes to every opus+ pane regardless of host.
+   If your unblock direction leaves only work a GL host can run (GL gate
+   runs, GL-only repro or verification), add `fleet:needs-gl-host` in the
+   **same** `gh pr edit` as the swap — otherwise Metal-only panes claim
+   the PR, find nothing runnable, and release, every dispatch cycle
+   (PR #2475 burned five opus iterations in 80 minutes this way). The
+   GL-capable pane that finishes the gated work removes the label with
+   its push.
 6. **Self-heal stale resume-state (do this every unblock).** A worker that
    escalated typically released its claim and reset/parked the branch
    ("releasing the claim so any worker can resume"), but two pieces of stale

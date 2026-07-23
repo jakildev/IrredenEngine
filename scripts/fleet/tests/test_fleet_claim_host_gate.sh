@@ -16,6 +16,8 @@
 #   - unknown host is fail-closed → refused (exit 1)
 #   - issue without the label passes on a mac host (gate is opt-in, exit 0)
 #   - gh failure soft-degrades to pass (exit 0)
+#   - amending-claim (#2524): mac host refuses a fleet:needs-gl-host PR,
+#     linux host passes it, an unlabeled PR passes on mac
 
 set -euo pipefail
 
@@ -59,10 +61,14 @@ export FLEET_RESERVATIONS_DIR="$TMPROOT/reservations"
 mkdir -p "$FLEET_CLAIMS_DIR" "$FLEET_RESERVATIONS_DIR"
 
 # Stub `gh` so check_host_capability reads canned JSON instead of hitting
-# GitHub. Dispatches on the issue number passed via `gh issue view <N>`.
+# GitHub. Dispatches on the issue number passed via `gh issue view <N>`
+# (PR numbers share the issues label namespace, so PRs go through the same
+# arm).
 #   2001 — carries fleet:needs-gl-host (GL-only task)
 #   2002 — no host label (gate is opt-in)
 #   2003 — gh failure (soft-degrade contract)
+#   3001 — PR carrying fleet:needs-gl-host (GL-gated design-unblocked resume)
+#   3002 — PR without the label
 # The `api` arm emulates the cross-host fleet:claim-* lock acquire so a
 # gate-passing claim runs through to success (echo the requested label back
 # as the lex-min winner). All issues carry fleet:opus so a stray ambient
@@ -84,6 +90,12 @@ case "$1 $2" in
                 ;;
             2003)
                 exit 1
+                ;;
+            3001)
+                echo '{"state":"OPEN","labels":[{"name":"fleet:wip"},{"name":"fleet:design-unblocked"},{"name":"fleet:needs-gl-host"}],"body":""}'
+                ;;
+            3002)
+                echo '{"state":"OPEN","labels":[{"name":"fleet:wip"},{"name":"fleet:design-unblocked"}],"body":""}'
                 ;;
             *)
                 echo '{"state":"OPEN","labels":[],"body":""}'
@@ -162,6 +174,21 @@ echo "T6: gh failure soft-degrades to pass"
 actual=0; FLEET_TEST_HOST=mac FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" claim 2003 test-agent 2>/dev/null || actual=$?
 assert_exit "$actual" 0 "gh failure → soft-pass exit 0"
 release_quiet 2003
+
+# --- T7: mac host refuses amending-claim on a fleet:needs-gl-host PR --------
+echo "T7: mac host refuses amending-claim on a fleet:needs-gl-host PR"
+actual=0; FLEET_TEST_HOST=mac FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" amending-claim 3001 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 1 "mac + fleet:needs-gl-host PR → amending-claim exit 1"
+
+# --- T8: linux host passes amending-claim on the same PR --------------------
+echo "T8: linux host passes amending-claim on a fleet:needs-gl-host PR"
+actual=0; FLEET_TEST_HOST=linux FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" amending-claim 3001 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 0 "linux + fleet:needs-gl-host PR → amending-claim exit 0"
+
+# --- T9: unlabeled PR passes amending-claim on a mac host -------------------
+echo "T9: mac host passes amending-claim on a PR without the label"
+actual=0; FLEET_TEST_HOST=mac FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" amending-claim 3002 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 0 "mac + no host label PR → amending-claim exit 0"
 
 echo ""
 echo "PASS: $PASS  FAIL: $FAIL"

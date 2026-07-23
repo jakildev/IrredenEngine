@@ -265,17 +265,24 @@ Specifically, **never pass these via `--label` when filing**:
   **smoking agent** on a successful smoke run (Windows: a native-Windows
   smoke worker, or `platform-catchup` as fallback). Permanent audit trail;
   not used by the merge gate. Don't add to issues.
-- `fleet:needs-gl-host` — **issue/task** label marking a backend-specific
-  task that needs an OpenGL-4.5 host (`{linux, windows}`). macOS GL is 4.1, so
+- `fleet:needs-gl-host` — **issue/task and PR** label marking work that
+  needs an OpenGL-4.5 host (`{linux, windows}`). macOS GL is 4.1, so
   a Metal-only pane genuinely cannot build/run/verify the GL backend.
+  On an issue it marks the whole task; on a PR it marks the **remaining**
+  work (typical case: a `fleet:design-unblocked` resume whose architect
+  reply leaves only GL gate runs — the architect adds it in the same edit
+  as the unblock swap, see `architect-protocol.md`; the GL pane that
+  finishes the gated work removes it).
   **Applied by the human/architect** as a triage signal (like the model
   labels) — the scout can't reliably infer "GL-only" from a render task, so
-  it is never auto-derived. **Respected at two points:** the dispatcher's
+  it is never auto-derived. **Respected at three points:** the dispatcher's
   claimability filter (`fleet_task_class.py`) skips the task on a macOS pane
-  (a slice whose only open task is GL-only → `defer`, no churn), and a
+  (a slice whose only open task is GL-only → `defer`, no churn), a
   `fleet-claim claim` backstop gate refuses a GL-only claim from a non-GL
-  host (covers manual / raced / `--stackable-on` claims). No host online to
-  run it just means the task waits for a Linux/Windows pane — the correct
+  host (covers manual / raced / `--stackable-on` claims), and the feedback
+  tier skips + `fleet-claim amending-claim` refuses a labeled PR on a
+  non-GL host (#2524). No host online to
+  run it just means the work waits for a Linux/Windows pane — the correct
   behavior, not a loss. Once the GL task merges on a GL host, its blocked
   dependents resolve normally.
 - `fleet:in-progress` — generic "a worker has claimed this issue"

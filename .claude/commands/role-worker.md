@@ -264,7 +264,10 @@ Do the work, then exit cleanly:
    class routing already sends those PRs to an opus+ dispatch). Skip
    any PR already carrying a `fleet:amending-*` label (another
    worker holds the atomic feedback claim and is handling it; step a
-   will reject your claim anyway).
+   will reject your claim anyway). Also skip any feedback PR carrying
+   `fleet:needs-gl-host` unless this host is GL-capable
+   (`{linux, windows}`) — its remaining work needs a GL host, and
+   `amending-claim` refuses the claim as a backstop (#2524).
 
    Follow [`docs/agents/FLEET-FEEDBACK-HANDLING.md`](../../docs/agents/FLEET-FEEDBACK-HANDLING.md) —
    it owns the priority order, the detached-HEAD checkout flow,
