@@ -8,6 +8,7 @@ Usage:
     python3 scripts/gui-verify.py IRVoxelEditor
     python3 scripts/gui-verify.py IRVoxelEditor --warmup-frames 15 --timeout 60
     python3 scripts/gui-verify.py IRVoxelEditor --no-build
+    python3 scripts/gui-verify.py IRVoxelEditor -- --gui-session drag_probe
 """
 
 import re
@@ -54,6 +55,13 @@ def main() -> None:
         metavar="S",
         help="Watchdog timeout in seconds passed to fleet-run (default: 120)",
     )
+    parser.add_argument(
+        "target_args",
+        nargs="*",
+        metavar="-- TARGET_ARG ...",
+        help="Extra args forwarded to the target, after a literal -- separator "
+             "(e.g. -- --gui-session drag_probe --scene-size 20 20 20)",
+    )
     args = parser.parse_args()
 
     if not args.no_build:
@@ -66,7 +74,7 @@ def main() -> None:
         "--timeout", str(args.timeout),
         args.target,
         "--auto-screenshot", str(args.warmup_frames),
-    ]
+    ] + list(args.target_args)
     run_rc, output = verify_common.run_capture(run_cmd)
 
     # An --auto-screenshot GUI-test run must self-terminate. The fleet-run
