@@ -30,6 +30,45 @@ struct GPULightSource {
     float4 trueOriginVoxel;
 };
 
+// LIGHTING_TO_TRIXEL's own frame UBO (`[[buffer(27)]]`), shared by the
+// composite pass and the overflow-face relight that runs at its tail — both
+// carried byte-identical copies of this layout. The GLSL twins declare the
+// equivalent as a per-kernel `layout(std140)` interface block, which cannot be
+// hoisted the same way, so this fold is Metal-only.
+struct FrameDataLightingToTrixel {
+    int   lightingEnabled;
+    int   lutEnabled;
+    int   lightVolumeEnabled;
+    float debugLightLevel;
+    int   debugOverlayMode;
+    int   hdrEnabled;
+    float exposure;
+    float skyIntensity;
+    float4 skyColor;
+};
+
+// The light-volume UBO (`[[buffer(23)]]`), written once by the CPU and read by
+// every light-volume stage — the seed, the lighting composite, and the
+// overflow relight all bind the SAME buffer, so this layout must stay in
+// lockstep across them; that is exactly why it is one definition here rather
+// than a copy per kernel.
+//
+// The seed reads all five fields; the lighting/overflow passes read only
+// `worldOriginVoxel` (`.xyz` = the volume's camera-anchored world origin,
+// #360 Phase 1c; `.w` = the has-SPOT flag, #2318) and ignore the other four.
+//
+// c_propagate_light_volume.metal keeps its own copy of this layout on purpose:
+// it is the one consumer that does not include this fragment, and pulling the
+// light-source list + SPOT/ACES helpers into a kernel dispatched 32× a frame
+// to share a struct declaration is not worth it. Keep the two in lockstep.
+struct LightVolumeParams {
+    int   gridSize;
+    int   halfExtent;
+    int   lightCount;
+    float stepFalloff;
+    int4  worldOriginVoxel;
+};
+
 // Analytic SPOT falloff at world position `pos3D` for the 0-based light
 // `lightIdx`. 1.0 inside the cone, smoothstep to 0.0 across the soft edge
 // band, 0.0 outside. Apex is the light's TRUE (unclamped) origin. Mirrors
