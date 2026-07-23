@@ -117,6 +117,14 @@ path, or the API keeps signalling "experimental" when it's the production code
   that isn't in `IRMath` yet, add a wrapper in `engine/math/` first,
   then call it. The math library may itself wrap `glm::*` / `std::*`
   internally — that is the **only** place those names should appear.
+- **No new mutable namespace-scope variables in headers** (`inline` or
+  `extern`). Every process- or world-scoped mutable object lives behind an
+  owner with a lifecycle and an accessor: process-singular subsystems use
+  the manager-global + free-function pattern (module `ir_*.hpp` entry
+  points only); world-scoped mutate-once state is a singleton component
+  (`IREntity::singleton<T>`); system wiring is `SystemManager`-owned.
+  Full pattern catalog, rationale, and detection grep:
+  [`.claude/rules/cpp-globals.md`](../../.claude/rules/cpp-globals.md).
 - **"Set above" is code narration, not a WHY.** Comments that point at
   *where* code is — `// set above`, `// see below`, `// defined above`,
   `// called from X` — narrate location instead of explaining intent.
@@ -253,6 +261,7 @@ agent-facing doc, link to the canonical home rather than restating.
 | ECS smell diagnostics (machine-checkable) | `.claude/rules/cpp-ecs-smells.md` |
 | Math substitution rules (machine-checkable) | `.claude/rules/cpp-math.md` |
 | System-state smells (machine-checkable) | `.claude/rules/cpp-systems.md` |
+| Global-state patterns · header-global ban (machine-checkable) | `.claude/rules/cpp-globals.md` |
 | Tick-function signatures · INPUT → UPDATE → RENDER ordering | `engine/system/CLAUDE.md` |
 | Component-method tier rules | `engine/prefabs/CLAUDE.md` |
 | Asset serialization version-bump | `engine/asset/CLAUDE.md` |
