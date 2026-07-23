@@ -148,31 +148,10 @@ template <> struct System<RESOLVE_PER_AXIS_SCREEN_DEPTH> {
         // STAGE_1 per-axis compaction) instead of sweeping the full worst-case grid.
         scatterProgram_->use();
         scratch_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_PerAxisResolveScratch);
-        Buffer *cellCompacted = perAxisCanvases_->cellCompacted_.second;
-        Buffer *cellIndirect = perAxisCanvases_->cellIndirect_.second;
-        const int regionStride = perAxisCanvases_->cellRegionStride_;
-        for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
+        IRPrefab::PerAxisCanvas::dispatchPerAxisCells(*perAxisCanvases_, [&](int axis) {
             perAxisCanvases_->axes_[axis]
                 .distances_.second->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
-            cellCompacted->bindRange(
-                BufferTarget::SHADER_STORAGE,
-                kBufferIndex_PerAxisCellCompacted,
-                static_cast<std::ptrdiff_t>(axis) * regionStride *
-                    static_cast<int>(sizeof(std::uint32_t)),
-                static_cast<size_t>(regionStride) * sizeof(std::uint32_t)
-            );
-            cellIndirect->bindRange(
-                BufferTarget::SHADER_STORAGE,
-                kBufferIndex_PerAxisCellIndirect,
-                static_cast<std::ptrdiff_t>(axis) * kPerAxisCellIndirectStrideBytes,
-                kPerAxisCellIndirectStrideBytes
-            );
-            IRRender::device()->dispatchComputeIndirect(
-                cellIndirect,
-                static_cast<std::ptrdiff_t>(axis) * kPerAxisCellIndirectStrideBytes +
-                    kPerAxisCellDispatchArgsOffsetBytes
-            );
-        }
+        });
         IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
 
         // Pass 2 — blit the scratch into the resolve texture BAKE reads, and

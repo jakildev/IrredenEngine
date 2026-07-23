@@ -27,7 +27,6 @@
 #include <irreden/render/gpu_substage_timing.hpp>
 
 #include <cstddef>
-#include <cstdint>
 
 using namespace IRComponents;
 using namespace IRMath;
@@ -133,79 +132,35 @@ template <> struct System<COMPUTE_VOXEL_AO> {
         }
     }
 
-    // Run the AO compute over each of the three per-axis canvases. Flips the
-    // shared UBO's perAxisRoute selector so the shader reconstructs world-pos
-    // face-locally (perAxisCellToWorld3D), then restores it to 0 so downstream
-    // single-canvas passes are unaffected. The world AO band is per-axis-correct
-    // because the canvas is a same-axis cardinal-iso lattice.
+    // Run the AO compute over each of the three per-axis canvases. The
+    // LightingRouteScope flips the shared UBO onto the per-axis decode route
+    // (the shader reconstructs world-pos face-locally, perAxisCellToWorld3D)
+    // and restores route / density / compaction slots on exit. The world AO
+    // band is per-axis-correct because the canvas is a same-axis cardinal-iso
+    // lattice.
     void dispatchPerAxisAO(
         C_PerAxisTrixelCanvases &axes,
         const C_TriangleCanvasTextures &mainTextures,
         const C_CanvasAOTexture &mainAO
     ) {
-        // perAxisRoute is a boolean route flag on the lighting path (any nonzero
-        // = per-axis canvas); the shader recovers the axis per-pixel from faceId,
-        // NOT from this field — distinct from stage-1's 1/2/3 = X/Y/Z axis selector.
-        const int kPerAxisRoute = 1;
-        voxelFrameDataBuf_
-            ->subData(offsetof(FrameDataVoxelToCanvas, perAxisRoute_), sizeof(int), &kPerAxisRoute);
-        // Recover world-pos with the SAME #1431-capped lattice density the store
-        // wrote (perAxisCellToWorld3D reads voxelRenderOptions.y); restored below.
-        IRPrefab::PerAxisCanvas::setUboSubdivisionDensity(
-            voxelFrameDataBuf_,
-            IRPrefab::PerAxisCanvas::subdivisionDensity()
-        );
-        // #2256: dispatch indirectly over only each axis's compacted occupied
-        // cells (filled by the STAGE_1 per-axis compaction into these
-        // component-owned buffers) instead of sweeping the full worst-case grid.
-        Buffer *cellCompacted = axes.cellCompacted_.second;
-        Buffer *cellIndirect = axes.cellIndirect_.second;
-        const int regionStride = axes.cellRegionStride_;
-        for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
-            auto &tex = axes.axes_[axis];
-            tex.distances_.second->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
-            tex.ao_.second->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
-            cellCompacted->bindRange(
-                BufferTarget::SHADER_STORAGE,
-                kBufferIndex_PerAxisCellCompacted,
-                static_cast<std::ptrdiff_t>(axis) * regionStride *
-                    static_cast<int>(sizeof(std::uint32_t)),
-                static_cast<size_t>(regionStride) * sizeof(std::uint32_t)
+        {
+            IRPrefab::PerAxisCanvas::LightingRouteScope route(
+                voxelFrameDataBuf_,
+                voxelCompactedBuf_,
+                voxelIndirectBuf_
             );
-            cellIndirect->bindRange(
-                BufferTarget::SHADER_STORAGE,
-                kBufferIndex_PerAxisCellIndirect,
-                static_cast<std::ptrdiff_t>(axis) * kPerAxisCellIndirectStrideBytes,
-                kPerAxisCellIndirectStrideBytes
-            );
-            IRRender::device()->dispatchComputeIndirect(
-                cellIndirect,
-                static_cast<std::ptrdiff_t>(axis) * kPerAxisCellIndirectStrideBytes +
-                    kPerAxisCellDispatchArgsOffsetBytes
-            );
+            IRPrefab::PerAxisCanvas::dispatchPerAxisCells(axes, [&](int axis) {
+                auto &tex = axes.axes_[axis];
+                tex.distances_.second
+                    ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
+                tex.ao_.second->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+            });
+            // One barrier after the 3 independent per-axis dispatches (each axis
+            // writes its own AO image texture — disjoint outputs, so dispatch
+            // order doesn't matter) so they overlap on the GPU instead of
+            // serializing per axis (#1311).
+            IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
         }
-        // One barrier after the 3 independent per-axis dispatches (each axis
-        // writes its own AO image texture — disjoint outputs, so dispatch order
-        // doesn't matter) so they overlap on the GPU instead of serializing per
-        // axis (#1311).
-        IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
-        const int kSingleCanvasRoute = 0;
-        voxelFrameDataBuf_->subData(
-            offsetof(FrameDataVoxelToCanvas, perAxisRoute_),
-            sizeof(int),
-            &kSingleCanvasRoute
-        );
-        // Restore the uncapped density for downstream single-canvas passes.
-        IRPrefab::PerAxisCanvas::setUboSubdivisionDensity(
-            voxelFrameDataBuf_,
-            IRRender::getVoxelRenderEffectiveSubdivisions()
-        );
-        // Restore slots 25/26 to the voxel-compaction buffers (#1961/#2256) the
-        // per-axis loop above borrowed via bindRange — VOXEL_TO_TRIXEL_STAGE_1's
-        // single-canvas compact binds them once at create() and trusts sticky
-        // global state thereafter, so a leaked borrow re-reads the cell list as
-        // the voxel index list next frame and corrupts world voxels.
-        IRPrefab::PerAxisCanvas::restoreVoxelCompactionSlots(voxelCompactedBuf_, voxelIndirectBuf_);
         // Restore the main-canvas image bindings the loop overwrote. The Metal
         // backend's image-binding table persists across frames and is read on
         // every dispatch; leaving the per-axis textures bound here would dangle
