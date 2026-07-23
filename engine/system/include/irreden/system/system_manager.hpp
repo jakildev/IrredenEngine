@@ -312,9 +312,8 @@ class SystemManager {
     /// ...>`), so a single registration legitimately reports itself from
     /// both. `m_nextSystemId` is monotonic, so a genuinely duplicate
     /// registration always carries a *different* id — which is what the
-    /// assert catches. In release (assert stripped) the newest id wins,
-    /// matching the last-call-wins behavior of the wire-once setters this
-    /// registry replaces.
+    /// assert catches. In release (assert stripped) the newest id wins, so a
+    /// duplicate degrades to last-call-wins rather than to a stale mapping.
     void recordEngineSystemId(SystemName name, SystemId id) {
         SystemId &slot = m_engineSystemIds.try_emplace(name, id).first->second;
         IR_ASSERT(
@@ -335,10 +334,9 @@ class SystemManager {
     ///
     /// Caveat: `kNullEntity` is 0 and system ids also count up from 0, so
     /// the *first* system created in a process is indistinguishable from
-    /// "not registered" through this return value. That ambiguity predates
-    /// this registry (it is the same sentinel the wire-once globals used)
-    /// and is harmless for the current consumers, which are never the first
-    /// system a creation registers. Tracked separately.
+    /// "not registered" through this return value. Harmless for the current
+    /// consumers, which are never the first system a creation registers —
+    /// see #2540 for the sentinel fix.
     SystemId findEngineSystem(SystemName name) const {
         const auto it = m_engineSystemIds.find(name);
         return it == m_engineSystemIds.end() ? IREntity::kNullEntity : it->second;
