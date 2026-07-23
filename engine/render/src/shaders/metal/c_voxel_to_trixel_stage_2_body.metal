@@ -254,47 +254,12 @@ struct Voxel {
     uint reserved;
 };
 
-// Fog cut-face inputs (#2125). STAGE_1 binds the fog grid at [[texture(0)]] (free
-// there), but [[texture(0)]] is the colour output here, so the fog grid binds at
-// [[texture(3)]] instead. Every non-fog / detached canvas binds a 1×1 all-visible
-// placeholder + count-0 observers, so fogColumnReveal short-circuits to "fully
-// visible" and those scenes stay byte-identical.
-constant int kFogOfWarHalfExtent = 128;
-constant float kFogExploredThreshold = 0.25f;
-constant int kMaxFogVisionCircles = 8; // mirror of component_canvas_fog_of_war.hpp kMaxFogVisionCircles
-struct FogObserverData {
-    float4 visionCircles[kMaxFogVisionCircles]; // (centerX, centerY, radius, edgeSoftness)
-    int visionCircleCount;
-    int _fogObsPad0;
-    int _fogObsPad1;
-    int _fogObsPad2;
-};
-
-// Fog reveal of world grid COLUMN `col` in [0,1]. MUST stay byte-identical to
-// c_voxel_to_trixel_stage_1.metal::fogColumnReveal (and the GLSL twin) — stage 1
-// emits the cut face's DISTANCE for `reveal < 1.0` (#2126 P2), and stage 2 must
-// paint colour on the same set of faces or the cut wall reads as cleared
-// background.
-static float fogColumnReveal(
-    texture2d<float, access::read> fog, constant FogObserverData& obs, int2 col
-) {
-    const int2 fogSize = int2(int(fog.get_width()), int(fog.get_height()));
-    if (fogSize.x <= 1) {
-        return 1.0f; // 1×1 all-visible placeholder (non-fog / detached canvas)
-    }
-    const int2 cell = col + int2(kFogOfWarHalfExtent);
-    if (cell.x < 0 || cell.x >= fogSize.x || cell.y < 0 || cell.y >= fogSize.y) {
-        return 1.0f; // out-of-range column reads as visible
-    }
-    if (fog.read(uint2(cell)).r >= kFogExploredThreshold) {
-        return 1.0f; // explored / visible grid memory — keep
-    }
-    float reveal = 0.0f;
-    for (int i = 0; i < obs.visionCircleCount; ++i) {
-        reveal = max(reveal, fogVisionCircleReveal(float2(col), obs.visionCircles[i], 0.0f));
-    }
-    return reveal;
-}
+// Fog constants/struct + fogColumnReveal and the shared face-selection /
+// per-axis store-key math live in ir_voxel_face_select.metal (the wrapper
+// includes it before this body). STAGE_2's [[texture(0)]] is the colour
+// output, so the fog grid binds at [[texture(3)]] here (1/2 are the distance +
+// entity-id outputs); Metal passes the texture + observers into the shared
+// functions as arguments.
 
 kernel void IR_STAGE2_KERNEL_NAME(
     constant FrameDataVoxelToTrixel& frameData [[buffer(7)]],
@@ -363,64 +328,29 @@ kernel void IR_STAGE2_KERNEL_NAME(
     // winner among the emitted faces.
     const uint flagsByte = (voxels[voxelIndex].materialFlagBone >> 8u) & 0xFFu;
 
-    // Silhouette-riser face selection — MUST mirror stage 1's flip + rotated-content
-    // gate exactly so the colour tap lands on the same (possibly opposite-polarity)
-    // face stage 1 wrote the distance for. See c_voxel_to_trixel_stage_1.glsl.
-    const bool rotatedEmit = reVoxelize || (voxels[voxelIndex].reserved & 4u) != 0u;
-    // Polarity carrier (#2207) — mirror of stage 1's riserFlip: the colour tap
-    // must re-derive the identical encoding (flip bit included) or the depth
-    // re-test rejects every flipped-face tap.
-    int riserFlip = 0;
-    if (rotatedEmit && !faceIsExposed(flagsByte, faceId) &&
-        faceIsExposed(flagsByte, faceId ^ 1)) {
-        faceId = faceId ^ 1;
-        riserFlip = 1;
-    }
-    // Both-exposed silhouette-riser dual emit (#2157) — MUST mirror stage 1's
-    // predicate + emit site so the colour taps land on the dual-emitted
-    // distance taps. See the GLSL twin for the full rationale.
-    const bool bothPolaritiesExposed = rotatedEmit && faceIsExposed(flagsByte, faceId) &&
-        faceIsExposed(flagsByte, faceId ^ 1);
-
-    // Exposed-face gate + fog CUT-FACE widening (#2125/#2127; per-axis #2128) —
-    // MUST mirror stage 1's predicate EXACTLY so the colour tap lands on the same
-    // face set stage 1 wrote distances for, on the single-canvas (0) and X/Y
-    // per-axis routes (1/2) alike (a cut face is non-exposed; without this it'd read
-    // as cleared background). The world-column recovery handles a world-placed
-    // detached re-voxelize canvas (model + detachedWorldReceive.xy); see the GLSL
-    // twin (incl. why a `perAxisRoute` comparison term is kept in `fogActive` for
-    // non-fog byte-identity). The own-column drop (#2102/#2127) is NOT repeated here
-    // — stage 1 already dropped those voxels' distances on every route, so
-    // writeColorTap's depth re-test rejects their colour taps.
-    const bool fogActive = fogObservers.visionCircleCount > 0 &&
-        frameData.perAxisRoute <= 2 &&
-        (frameData.isDetachedCanvas < 0.5f ||
-         (frameData.perAxisRoute == 0 && frameData.detachedWorldReceive.w != 0.0f));
-    int2 worldColumn = int2(0);
-    if (fogActive) {
-        worldColumn = roundHalfUp(voxelPosition.xyz).xy +
-            (frameData.isDetachedCanvas > 0.5f
-                 ? roundHalfUp(frameData.detachedWorldReceive.xy)
-                 : int2(0));
-    }
-    bool keepFace = faceIsExposed(flagsByte, faceId);
-    bool isCutFace = false;
-    if (!keepFace && faceId < kFaceZNeg && fogActive) {
-        // P2 (#2126): cut iff the neighbor column is not fully revealed (reveal <
-        // 1.0) — mirrors stage 1 exactly. Mode A (edgeSoftness 0) reveal is binary so
-        // this collapses to the #2125/#2127 boolean boundary (byte-identical).
-        keepFace = fogColumnReveal(
-            canvasFogOfWar, fogObservers,
-            worldColumn + faceOutwardNormal6I(faceId).xy) < 1.0f;
-        // A non-exposed VERTICAL face kept ONLY by the fog cut rule is the interior
-        // cross-section wall — flag it so LIGHTING_TO_TRIXEL force-lights it as a
-        // clean exposed face (#2124 lit-cross-section follow-up). GLSL twin.
-        isCutFace = keepFace;
-    }
-    if (!keepFace) return;
-    // Fold the cut-face flag into the id AFTER the priority encode (which strips it
-    // via kEntityIdHighWordMask). Non-cut ⇒ id unchanged (byte-identical).
-    packedEntityId = encodeEntityIdCutFace(packedEntityId, isCutFace);
+    // Face selection — the visible-triplet × exposed-mask gate (#1278), the
+    // silhouette-riser flip (#2207) + dual-emit predicate (#2157), and the fog
+    // cut-face widening (#2125/#2126/#2127; per-axis #2128) — is shared with
+    // stage 1 via ir_voxel_face_select.metal: both stages key their taps off
+    // ONE definition, so the colour tap cannot desync from the distance tap.
+    // The own-column drop (#2102/#2127) is NOT repeated here — stage 1 already
+    // dropped those voxels' distances on every route, so the depth re-test in
+    // writeColorTap rejects their colour taps.
+    const VoxelFaceSelect sel = selectVoxelFace(
+        canvasFogOfWar, fogObservers, faceId, reVoxelize,
+        voxels[voxelIndex].reserved, flagsByte, voxelPosition,
+        frameData.perAxisRoute, frameData.isDetachedCanvas,
+        frameData.detachedWorldReceive
+    );
+    if (!sel.keepFace) return;
+    faceId = sel.faceId;
+    const int riserFlip = sel.riserFlip;
+    const bool bothPolaritiesExposed = sel.bothPolaritiesExposed;
+    // A face kept ONLY by the fog cut rule is the interior cross-section wall —
+    // fold the flag into the id (bit 29) AFTER the priority encode (which strips
+    // it via kEntityIdHighWordMask) so LIGHTING_TO_TRIXEL force-lights it
+    // (#2124). Non-cut ⇒ id unchanged, so non-fog scenes stay byte-identical.
+    packedEntityId = encodeEntityIdCutFace(packedEntityId, sel.isCutFace);
 
     // Per-slot deformation matrix — see stage 1 GLSL for the contract.
     const float2x2 D = float2x2(
@@ -442,33 +372,15 @@ kernel void IR_STAGE2_KERNEL_NAME(
         // Whole-iso base anchor (#1944) — MUST match stage 1's per-axis anchor.
         const int2 perAxisBase = trixelOriginOffsetZ1(frameData.canvasSizePixels) +
                                  int2(floor(frameData.frameCanvasOffset));
-        if (frameData.voxelRenderOptions.x == 0) {
-            const float3 worldAlignedBase = snapNearIntegerVoxelPosition(voxelPosition.xyz);
-            const int3 worldPos = roundHalfUp(worldAlignedBase);
-            const int3 facePos = faceMicroPositionFixed6(faceId, worldPos, 0, 0, 1);
-            // Full sub-cell fracs — MUST mirror stage 1's base-resolution
-            // store exactly or the colour tap desyncs from the distance.
-            const float3 fracInCellBase = worldAlignedBase - float3(worldPos);
-            const int voxelDistance = encodeDepthWithFaceFrac(
-                pos3DtoDistance(facePos), slot, axis, fracInCellBase, riserFlip
-            );
-            writeColorTapPerAxis(
-                perAxisBase + pos3DtoPos2DIso(facePos), voxelDistance, voxelColor,
-                packedEntityId, voxelIndex, canvasSize, distanceScratch, perAxisWinnerIds,
-                triangleCanvasColors, triangleCanvasDistances, triangleCanvasEntityIds
-            );
-            return;
-        }
-        // #1458: mirror stage 1's base-resolution store (z=0 only).
-        if (zIdx != 0) return;
-        const float3 worldAligned_s2 = snapNearIntegerVoxelPosition(voxelPosition.xyz);
-        const int3 worldPos_s2 = roundHalfUp(worldAligned_s2);
-        const int3 facePos_s2 = faceMicroPositionFixed6(faceId, worldPos_s2, 0, 0, 1);
-        const float3 fracInCell_s2 = worldAligned_s2 - float3(worldPos_s2);
-        const int voxelDistance_s2 =
-            encodeDepthWithFaceFrac(pos3DtoDistance(facePos_s2), slot, axis, fracInCell_s2, riserFlip);
+        // #1458: store at BASE (world-unit) resolution regardless of effSub —
+        // on the subdivided path only the z=0 invocation writes. The cell + key
+        // derive through the SAME shared helper stage 1's taps used.
+        if (frameData.voxelRenderOptions.x != 0 && zIdx != 0) return;
+        int voxelDistance;
+        const int3 facePos =
+            perAxisStoreFacePos(voxelPosition, faceId, slot, axis, riserFlip, voxelDistance);
         writeColorTapPerAxis(
-            perAxisBase + pos3DtoPos2DIso(facePos_s2), voxelDistance_s2, voxelColor,
+            perAxisBase + pos3DtoPos2DIso(facePos), voxelDistance, voxelColor,
             packedEntityId, voxelIndex, canvasSize, distanceScratch, perAxisWinnerIds,
             triangleCanvasColors, triangleCanvasDistances, triangleCanvasEntityIds
         );
