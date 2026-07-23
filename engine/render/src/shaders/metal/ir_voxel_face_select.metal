@@ -38,6 +38,14 @@ struct FogObserverData {
     int _fogObsPad0;
     int _fogObsPad1;
     int _fogObsPad2;
+    // Per-circle height penalty (#2260), appended after the ivec4 tail to match
+    // FrameDataFogObservers::visionCircleHeights_ (offset 144) and the GLSL
+    // block. heights[i] = (observerZ, zCost, 0, 0), read only by stage 1's
+    // own-column DROP (fogColumnRevealZ / fogColumnRevealNearestZ in
+    // c_voxel_to_trixel_stage_1_body.metal); the selection math below ignores
+    // it. zCost 0 (the default) → the drop is byte-identical to the pre-#2260
+    // 2D clip.
+    float4 visionCircleHeights[kMaxFogVisionCircles];
 };
 
 // Fog reveal of world grid COLUMN `col` in [0,1]. Stage 1 emits the cut face's

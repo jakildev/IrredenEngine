@@ -313,6 +313,84 @@ struct Voxel {
 // scratch buffer; Metal passes the texture + observers into the shared
 // functions as arguments.
 
+// #2260 Z-cost twins of fogColumnReveal / fogColumnRevealNearest for the
+// OWN-COLUMN DROP only (the voxel's world Z is known there). They fold the
+// per-circle height penalty (zCost * |voxelZ - observerZ|) into the effective
+// radial distance so a boundary voxel clips consistently with FOG_TO_TRIXEL's
+// per-pixel z reveal — a pillar top / pit floor far from the observer height
+// drops even with its XY column inside the disc. Mirror of the GLSL twins. These
+// live HERE rather than beside their z-free twins in ir_voxel_face_select.metal
+// because the drop is STAGE-1-ONLY — stage 2 never repeats it — so the shared
+// include stays exactly the definitions both stages must agree on (#2508). The
+// reveal math is inlined (not a shared ir_iso_common Z helper) for the #1944
+// cardinal-fast-path reason. The cut-face + keep-ring tests keep calling the
+// z-free twins in the shared include (best-case-z, keep a superset); only the
+// DROP metric and
+// nearest-Z DISTANCE carry the penalty, the keep-ring WIDTH stays z-free. zCost
+// 0 (the default) → these return bit-identically to the z-free twins.
+static float fogColumnRevealZ(
+    texture2d<float, access::read> fog, constant FogObserverData& obs, int2 col, float voxelZ
+) {
+    const int2 fogSize = int2(int(fog.get_width()), int(fog.get_height()));
+    if (fogSize.x <= 1) {
+        return 1.0f;
+    }
+    const int2 cell = col + int2(kFogOfWarHalfExtent);
+    if (cell.x < 0 || cell.x >= fogSize.x || cell.y < 0 || cell.y >= fogSize.y) {
+        return 1.0f;
+    }
+    if (fog.read(uint2(cell)).r >= kFogExploredThreshold) {
+        return 1.0f;
+    }
+    float reveal = 0.0f;
+    for (int i = 0; i < obs.visionCircleCount; ++i) {
+        const float4 h = obs.visionCircleHeights[i];
+        const float distEff =
+            length(float2(col) - obs.visionCircles[i].xy) + h.y * abs(voxelZ - h.x);
+        const float a = max(obs.visionCircles[i].w, 0.0f);
+        reveal = max(
+            reveal,
+            1.0f - smoothstep(obs.visionCircles[i].z - a, obs.visionCircles[i].z + a, distEff)
+        );
+    }
+    return reveal;
+}
+
+static float fogColumnRevealNearestZ(
+    texture2d<float, access::read> fog, constant FogObserverData& obs, int2 col, float voxelZ
+) {
+    const int2 fogSize = int2(int(fog.get_width()), int(fog.get_height()));
+    if (fogSize.x <= 1) {
+        return 1.0f;
+    }
+    const int2 cell = col + int2(kFogOfWarHalfExtent);
+    if (cell.x < 0 || cell.x >= fogSize.x || cell.y < 0 || cell.y >= fogSize.y) {
+        return 1.0f;
+    }
+    if (fog.read(uint2(cell)).r >= kFogExploredThreshold) {
+        return 1.0f;
+    }
+    float reveal = 0.0f;
+    for (int i = 0; i < obs.visionCircleCount; ++i) {
+        const float2 nearest = clamp(
+            obs.visionCircles[i].xy,
+            float2(col) - kFogColumnCellHalf,
+            float2(col) + kFogColumnCellHalf
+        );
+        const float4 h = obs.visionCircleHeights[i];
+        const float distEff =
+            length(nearest - obs.visionCircles[i].xy) + h.y * abs(voxelZ - h.x);
+        // Keep-ring WIDTH stays z-free (a fixed geometric ring so the cut always
+        // has matter to repaint); only the distance carries the z penalty.
+        const float a = max(obs.visionCircles[i].w, kFogColumnKeepAa + kFogHiddenKeepCells);
+        reveal = max(
+            reveal,
+            1.0f - smoothstep(obs.visionCircles[i].z - a, obs.visionCircles[i].z + a, distEff)
+        );
+    }
+    return reveal;
+}
+
 kernel void IR_STAGE1_KERNEL_NAME(
     constant FrameDataVoxelToTrixel& frameData [[buffer(7)]],
     device const float4* positions [[buffer(5)]],
@@ -413,9 +491,16 @@ kernel void IR_STAGE1_KERNEL_NAME(
     // #2124 hidden-ring via fogColumnRevealNearest, the #2248 detached
     // lattice clip, and why the per-axis routes run their own clip inside
     // their branch below).
+    // #2260: the drop uses this voxel's OWN world Z so a height-penalized voxel
+    // (pillar top / pit floor far from the observer height) clips consistently
+    // with FOG_TO_TRIXEL's per-pixel z reveal. Only the DROP takes the Z twins —
+    // the cut-face test inside selectVoxelFace stays on the z-free
+    // fogColumnReveal (best-case-z keeps a superset). zCost 0 → identical to the
+    // 2D drop.
     const bool ownColumnHidden = frameData.isDetachedCanvas > 0.5f
-        ? fogColumnReveal(canvasFogOfWar, fogObservers, sel.worldColumn) <= 0.0f
-        : fogColumnRevealNearest(canvasFogOfWar, fogObservers, sel.worldColumn) <= 0.0f;
+        ? fogColumnRevealZ(canvasFogOfWar, fogObservers, sel.worldColumn, voxelPosition.z) <= 0.0f
+        : fogColumnRevealNearestZ(
+              canvasFogOfWar, fogObservers, sel.worldColumn, voxelPosition.z) <= 0.0f;
     if (sel.fogActive && frameData.perAxisRoute == 0 && ownColumnHidden) {
         return;
     }
@@ -440,8 +525,16 @@ kernel void IR_STAGE1_KERNEL_NAME(
         // Lives inside the per-axis branch so the shared pre-split path is byte-
         // identical to the pre-#2128 per-axis store; visionCircleCount==0 / the 1×1
         // placeholder short-circuit, so non-fog rotating scenes stay byte-identical.
+        // The two arguments round differently on purpose: the COLUMN is rounded
+        // because it indexes the integer fog grid, while the HEIGHT stays the raw
+        // continuous voxelPosition.z. Rounding the height would quantize the
+        // penalty into whole world-Z steps AND disagree with c_fog_to_trixel's
+        // per-pixel reveal, which penalizes against the unrounded `pos3D.z`.
+        // Same split as the single-canvas route above. Mirror of the GLSL twin.
         if (fogObservers.visionCircleCount > 0 &&
-            fogColumnReveal(canvasFogOfWar, fogObservers, roundHalfUp(voxelPosition.xyz).xy) <= 0.0f) {
+            fogColumnRevealZ(
+                canvasFogOfWar, fogObservers, roundHalfUp(voxelPosition.xyz).xy, voxelPosition.z
+            ) <= 0.0f) {
             return;
         }
         const int axis = frameData.perAxisRoute - 1;
