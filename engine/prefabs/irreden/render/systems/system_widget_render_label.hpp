@@ -16,11 +16,13 @@ namespace IRSystem {
 
 template <> struct System<WIDGET_RENDER_LABEL> {
     IRComponents::C_TriangleCanvasTextures *canvas_ = nullptr;
+    IRPrefab::Widget::WidgetTheme theme_;
     std::vector<IRRender::GlyphDrawCommand> textCmds_;
 
     void beginTick() {
         IREntity::EntityId guiCanvas = IRRender::getCanvas("gui");
         canvas_ = &IREntity::getComponent<IRComponents::C_TriangleCanvasTextures>(guiCanvas);
+        theme_ = IRPrefab::Widget::defaultTheme();
     }
 
     void tick(
@@ -32,9 +34,8 @@ template <> struct System<WIDGET_RENDER_LABEL> {
             return;
         if (label.text_.empty())
             return;
-        const auto &theme = IRPrefab::Widget::defaultTheme();
         const IRMath::Color color = (label.colorOverride_.alpha_ == 0)
-                                        ? IRPrefab::Widget::detail::stateText(theme, widget)
+                                        ? IRPrefab::Widget::detail::stateText(theme_, widget)
                                         : label.colorOverride_;
         IRPrefab::GuiText::queueGuiText(
             textCmds_,

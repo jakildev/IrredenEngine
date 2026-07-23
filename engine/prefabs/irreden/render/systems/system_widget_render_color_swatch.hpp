@@ -23,11 +23,13 @@ namespace IRSystem {
 // click feedback survives selection.
 template <> struct System<WIDGET_RENDER_COLOR_SWATCH> {
     IRComponents::C_TriangleCanvasTextures *canvas_ = nullptr;
+    IRPrefab::Widget::WidgetTheme theme_;
     IRRender::RectFillScratch scratch_;
 
     void beginTick() {
         IREntity::EntityId guiCanvas = IRRender::getCanvas("gui");
         canvas_ = &IREntity::getComponent<IRComponents::C_TriangleCanvasTextures>(guiCanvas);
+        theme_ = IRPrefab::Widget::defaultTheme();
     }
 
     void tick(
@@ -39,7 +41,6 @@ template <> struct System<WIDGET_RENDER_COLOR_SWATCH> {
         if (!canvas_)
             return;
 
-        const auto &theme = IRPrefab::Widget::defaultTheme();
         IRRender::fillRect(
             *canvas_,
             guiPos.pos_,
@@ -55,10 +56,10 @@ template <> struct System<WIDGET_RENDER_COLOR_SWATCH> {
         // theme call), which keeps click feedback consistent with the
         // other interactive widgets.
         const IRMath::Color borderColor =
-            swatch.selected_ ? theme.borderFocused_
-                             : IRPrefab::Widget::detail::stateBorder(theme, widget, state);
+            swatch.selected_ ? theme_.borderFocused_
+                             : IRPrefab::Widget::detail::stateBorder(theme_, widget, state);
         const int thickness =
-            swatch.selected_ ? theme.borderThickness_ + 1 : theme.borderThickness_;
+            swatch.selected_ ? theme_.borderThickness_ + 1 : theme_.borderThickness_;
         IRRender::drawBorder(
             *canvas_,
             guiPos.pos_,

@@ -16,12 +16,14 @@ namespace IRSystem {
 
 template <> struct System<WIDGET_RENDER_CHECKBOX> {
     IRComponents::C_TriangleCanvasTextures *canvas_ = nullptr;
+    IRPrefab::Widget::WidgetTheme theme_;
     IRRender::RectFillScratch scratch_;
     std::vector<IRRender::GlyphDrawCommand> textCmds_;
 
     void beginTick() {
         IREntity::EntityId guiCanvas = IRRender::getCanvas("gui");
         canvas_ = &IREntity::getComponent<IRComponents::C_TriangleCanvasTextures>(guiCanvas);
+        theme_ = IRPrefab::Widget::defaultTheme();
     }
 
     void tick(
@@ -33,15 +35,14 @@ template <> struct System<WIDGET_RENDER_CHECKBOX> {
         if (!canvas_)
             return;
 
-        const auto &theme = IRPrefab::Widget::defaultTheme();
-        const int boxSize = theme.checkboxBoxSize_;
+        const int boxSize = theme_.checkboxBoxSize_;
         const int boxY = guiPos.pos_.y + (widget.size_.y - boxSize) / 2;
 
         IRRender::fillRect(
             *canvas_,
             IRMath::ivec2(guiPos.pos_.x, boxY),
             IRMath::ivec2(boxSize, boxSize),
-            IRPrefab::Widget::detail::stateBackground(theme, widget, state),
+            IRPrefab::Widget::detail::stateBackground(theme_, widget, state),
             IRRender::kWidgetBackgroundDistance,
             scratch_
         );
@@ -49,19 +50,19 @@ template <> struct System<WIDGET_RENDER_CHECKBOX> {
             *canvas_,
             IRMath::ivec2(guiPos.pos_.x, boxY),
             IRMath::ivec2(boxSize, boxSize),
-            IRPrefab::Widget::detail::stateBorder(theme, widget, state),
+            IRPrefab::Widget::detail::stateBorder(theme_, widget, state),
             IRRender::kWidgetBorderDistance,
-            theme.borderThickness_,
+            theme_.borderThickness_,
             scratch_
         );
 
         if (checkbox.checked_) {
-            const int inset = theme.borderThickness_ + 2;
+            const int inset = theme_.borderThickness_ + 2;
             IRRender::fillRect(
                 *canvas_,
                 IRMath::ivec2(guiPos.pos_.x + inset, boxY + inset),
                 IRMath::ivec2(boxSize - 2 * inset, boxSize - 2 * inset),
-                theme.checkboxFill_,
+                theme_.checkboxFill_,
                 IRRender::kWidgetLabelDistance,
                 scratch_
             );
@@ -72,9 +73,9 @@ template <> struct System<WIDGET_RENDER_CHECKBOX> {
                 textCmds_,
                 canvas_->size_,
                 checkbox.label_,
-                IRMath::ivec2(guiPos.pos_.x + boxSize + theme.padding_ * 2, guiPos.pos_.y),
+                IRMath::ivec2(guiPos.pos_.x + boxSize + theme_.padding_ * 2, guiPos.pos_.y),
                 widget.size_.y,
-                IRPrefab::Widget::detail::stateText(theme, widget)
+                IRPrefab::Widget::detail::stateText(theme_, widget)
             );
         }
     }

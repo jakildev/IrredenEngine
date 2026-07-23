@@ -94,6 +94,7 @@
 #include <irreden/render/components/component_viewport.hpp>
 #include <irreden/render/components/component_voxel_selection.hpp>
 #include <irreden/render/components/component_widget.hpp>
+#include <irreden/render/components/component_widget_theme.hpp>
 #include <irreden/render/components/component_zoom_level.hpp>
 #include <irreden/render/systems/system_perf_stats_overlay.hpp>
 #include <irreden/spatial/components/component_spatial_index.hpp>
@@ -318,6 +319,11 @@ IR_SAVE_OPT_IN(IRComponents::C_WidgetScroll, 1)
 IR_SAVE_OPT_IN(IRComponents::C_WidgetSlider, 1)
 IR_SAVE_OPT_IN(IRComponents::C_WidgetTextInput, 1)
 IR_SAVE_OPT_IN(IRComponents::C_WidgetState, 1)
+
+// C_WidgetTheme: OPT-OUT — creation-authored init config re-established by
+// the creation's setup code on every run; persisting it in a world snapshot
+// would fight that init-time mutation on load.
+IR_SAVE_OPT_OUT(IRComponents::C_WidgetTheme)
 IR_SAVE_OPT_IN(IRComponents::C_Splitter, 1)
 IR_SAVE_OPT_IN(IRComponents::C_VoxelSelection, 1)
 IR_SAVE_OPT_IN(IRComponents::C_VoxelSelectionHighlight, 1)
@@ -498,6 +504,7 @@ using AllEngineComponents = std::tuple<
     IRComponents::C_WidgetSlider,
     IRComponents::C_WidgetTextInput,
     IRComponents::C_WidgetState,
+    IRComponents::C_WidgetTheme,
     IRComponents::C_Splitter,
     IRComponents::C_VoxelSelection,
     IRComponents::C_VoxelSelectionHighlight,
@@ -514,7 +521,7 @@ using AllEngineComponents = std::tuple<
     IRSystem::C_PerfStatsOverlayTag,
     IRComponents::C_SystemEvent<IRSystem::TICK>>;
 
-inline constexpr std::size_t kExpectedEngineComponentCount = 165;
+inline constexpr std::size_t kExpectedEngineComponentCount = 166;
 
 static_assert(
     detail::allExplicit<AllEngineComponents>(),

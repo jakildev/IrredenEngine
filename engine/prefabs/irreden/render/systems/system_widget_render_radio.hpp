@@ -24,12 +24,14 @@ namespace IRSystem {
 // reads identically once paired with the rest of the widget set.
 template <> struct System<WIDGET_RENDER_RADIO> {
     IRComponents::C_TriangleCanvasTextures *canvas_ = nullptr;
+    IRPrefab::Widget::WidgetTheme theme_;
     IRRender::RectFillScratch scratch_;
     std::vector<IRRender::GlyphDrawCommand> textCmds_;
 
     void beginTick() {
         IREntity::EntityId guiCanvas = IRRender::getCanvas("gui");
         canvas_ = &IREntity::getComponent<IRComponents::C_TriangleCanvasTextures>(guiCanvas);
+        theme_ = IRPrefab::Widget::defaultTheme();
     }
 
     void tick(
@@ -41,15 +43,14 @@ template <> struct System<WIDGET_RENDER_RADIO> {
         if (!canvas_)
             return;
 
-        const auto &theme = IRPrefab::Widget::defaultTheme();
-        const int box = theme.radioBoxSize_;
+        const int box = theme_.radioBoxSize_;
         const int boxY = guiPos.pos_.y + (widget.size_.y - box) / 2;
 
         IRRender::fillRect(
             *canvas_,
             IRMath::ivec2(guiPos.pos_.x, boxY),
             IRMath::ivec2(box, box),
-            IRPrefab::Widget::detail::stateBackground(theme, widget, state),
+            IRPrefab::Widget::detail::stateBackground(theme_, widget, state),
             IRRender::kWidgetBackgroundDistance,
             scratch_
         );
@@ -57,19 +58,19 @@ template <> struct System<WIDGET_RENDER_RADIO> {
             *canvas_,
             IRMath::ivec2(guiPos.pos_.x, boxY),
             IRMath::ivec2(box, box),
-            IRPrefab::Widget::detail::stateBorder(theme, widget, state),
+            IRPrefab::Widget::detail::stateBorder(theme_, widget, state),
             IRRender::kWidgetBorderDistance,
-            theme.borderThickness_,
+            theme_.borderThickness_,
             scratch_
         );
 
         if (radio.selected_) {
-            const int inset = theme.borderThickness_ + 2;
+            const int inset = theme_.borderThickness_ + 2;
             IRRender::fillRect(
                 *canvas_,
                 IRMath::ivec2(guiPos.pos_.x + inset, boxY + inset),
                 IRMath::ivec2(box - 2 * inset, box - 2 * inset),
-                theme.radioFill_,
+                theme_.radioFill_,
                 IRRender::kWidgetLabelDistance,
                 scratch_
             );
@@ -80,9 +81,9 @@ template <> struct System<WIDGET_RENDER_RADIO> {
                 textCmds_,
                 canvas_->size_,
                 radio.label_,
-                IRMath::ivec2(guiPos.pos_.x + box + theme.padding_ * 2, guiPos.pos_.y),
+                IRMath::ivec2(guiPos.pos_.x + box + theme_.padding_ * 2, guiPos.pos_.y),
                 widget.size_.y,
-                IRPrefab::Widget::detail::stateText(theme, widget)
+                IRPrefab::Widget::detail::stateText(theme_, widget)
             );
         }
     }
