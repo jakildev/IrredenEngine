@@ -154,4 +154,37 @@ TEST_F(RegisterSystemTest, ParamsAccessibleAfterCreate) {
     EXPECT_EQ(params->scaleFromBegin_, 0);
 }
 
+// #2526 — the SystemName registry. Registration self-wires, which is what lets
+// the prefab handles drop their manual wire-once setters.
+TEST_F(RegisterSystemTest, FindSystemResolvesEachRegisteredName) {
+    auto sysA = IRSystem::createSystem<IRSystem::TEST_REGISTER_SYSTEM_A>();
+    auto sysB = IRSystem::createSystem<IRSystem::TEST_REGISTER_SYSTEM_B>();
+    ASSERT_NE(sysA, sysB);
+
+    EXPECT_EQ(IRSystem::findSystem(IRSystem::TEST_REGISTER_SYSTEM_A), sysA);
+    EXPECT_EQ(IRSystem::findSystem(IRSystem::TEST_REGISTER_SYSTEM_B), sysB);
+}
+
+TEST_F(RegisterSystemTest, FindSystemReportsANameThatWasNeverCreated) {
+    // Only A is created, so B has no entry — the miss value is the same
+    // `kNullEntity` the wire-once globals used as their "unwired" sentinel, so
+    // `system()` / `allocator()` null-return semantics are unchanged.
+    IRSystem::createSystem<IRSystem::TEST_REGISTER_SYSTEM_A>();
+
+    EXPECT_EQ(IRSystem::findSystem(IRSystem::TEST_REGISTER_SYSTEM_B), IREntity::kNullEntity);
+}
+
+// Deliberately NOT a RegisterSystemTest fixture case: the guard under test is
+// that `findSystem` tolerates a null `g_systemManager`. The prefab handles are
+// reached from headless contexts that tick a `System<N>` against a bare
+// `EntityManager` with no `World` (see test/ecs/voxel_bone_slot_seed_test.cpp),
+// and the wire-once globals this registry replaces checked their sentinel
+// BEFORE touching the manager. Without the guard this segfaults.
+TEST(FindSystemNoManagerTest, ReportsNullWhenNoSystemManagerExists) {
+    ASSERT_EQ(IRSystem::g_systemManager, nullptr)
+        << "precondition: no SystemManager is alive between fixtures";
+
+    EXPECT_EQ(IRSystem::findSystem(IRSystem::TEST_REGISTER_SYSTEM_A), IREntity::kNullEntity);
+}
+
 } // namespace

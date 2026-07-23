@@ -78,6 +78,43 @@ Schema-level changes (different include / exclude archetype) are out
 of scope — `replaceSystemBody` is the cheap path that avoids entity
 migration. To change the archetype, register a new system.
 
+## `findSystem` — resolve a `SystemName` to its `SystemId` (#2526)
+
+`SystemManager` owns a `SystemName -> SystemId` map populated by the two
+enum-templated registration paths (`createSystem<N>` and
+`registerSystem<N, ...>` — the only entry points that have the enum
+statically). Read it back with the free function:
+
+```cpp
+IRSystem::SystemId id = IRSystem::findSystem(IRSystem::UPDATE_JOINT_MATRICES);
+```
+
+Registration **self-wires**, so a feature that needs to reach its own
+system from a free function no longer needs a manual "wire-once" setter
+the consuming creation must remember to call after `create()`. That
+pattern (a mutable namespace-scope global in a prefab header plus a
+`setFooSystem(id)` call at init) is retired — see
+`engine/prefabs/irreden/render/CLAUDE.md` §Deprecated and
+`.claude/rules/cpp-ecs.md` §"System-owned invariants: encapsulate, don't
+delegate to callers".
+
+Contract:
+
+- Returns `IREntity::kNullEntity` when the name was never registered, and
+  when no `SystemManager` exists at all (headless unit tests that tick a
+  `System<N>` against a bare `EntityManager`) — so a prefab handle built
+  on it degrades to its "unwired" branch instead of dereferencing null.
+- Dynamic systems (`createSystemDynamic`, Lua-defined) carry no enum and
+  are absent from the registry.
+- Registering the same `SystemName` twice is an `IR_ASSERT` (debug only).
+  The two entry points nest, so one registration recording itself twice
+  with the *same* id is expected and does not trip it.
+- Costs one hash lookup. Fine per-operation; a per-entity tick should
+  resolve once in `beginTick` and cache the pointer (the ECS footgun
+  rule), not call it per row.
+- Caveat: ids count up from 0 and `kNullEntity` is 0, so the first system
+  created in a process is indistinguishable from "unregistered" — #2540.
+
 ## Three valid TICK function signatures
 
 `createSystem<Components...>` detects the signature at compile time via
