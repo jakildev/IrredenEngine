@@ -95,13 +95,15 @@ World::World(const char *configFileName)
 
 World::~World() {
     // No-op after `end()` (which ran during `gameLoop()` while the GL context
-    // was still live and already cleared the observers). `g_world` is a global
-    // `unique_ptr`, so this dtor runs at process-exit static destruction — past
-    // that point the GL driver/context may already be torn down (MSYS2 unloads
-    // it first), and the GpuStageTimingObserver dtor's `glDeleteQueries` would
-    // crash against dead driver state (#2031). The live-context release in
-    // `end()` is the real cleanup; this stays idempotent as a safety net for any
-    // path that never ran the loop.
+    // was still live and already cleared the observers). On the `IREngine` path
+    // this runs at the tail of `IREngine::gameLoop()`, which resets `g_world`
+    // while the driver is still loaded; `end()` is still the real cleanup,
+    // since it also covers the exception path and any owner driving `World`
+    // directly. Releasing device resources from here instead would reach a
+    // torn-down driver on any path that does destruct at process exit — MSYS2
+    // unloads the GL driver first, so `glDeleteQueries` from the
+    // GpuStageTimingObserver dtor hits dead driver state (#2031). Idempotent,
+    // so it stays a safety net for a path that never ran the loop.
     m_systemManager.clearTickObservers();
     IRE_LOG_INFO("Clean shutdown complete.");
 }
