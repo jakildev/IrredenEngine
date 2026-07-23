@@ -23,12 +23,14 @@ namespace IRSystem {
 // canvas clear into its own system; tracked as a follow-up.
 template <> struct System<WIDGET_RENDER_PANEL> {
     IRComponents::C_TriangleCanvasTextures *canvas_ = nullptr;
+    IRPrefab::Widget::WidgetTheme theme_;
     IRRender::RectFillScratch scratch_;
     std::vector<IRRender::GlyphDrawCommand> textCmds_;
 
     void beginTick() {
         IREntity::EntityId guiCanvas = IRRender::getCanvas("gui");
         canvas_ = &IREntity::getComponent<IRComponents::C_TriangleCanvasTextures>(guiCanvas);
+        theme_ = IRPrefab::Widget::defaultTheme();
     }
 
     void tick(
@@ -40,23 +42,22 @@ template <> struct System<WIDGET_RENDER_PANEL> {
         if (!canvas_)
             return;
 
-        const auto &theme = IRPrefab::Widget::defaultTheme();
         IRRender::fillRect(
             *canvas_,
             guiPos.pos_,
             widget.size_,
-            theme.panelBackground_,
+            theme_.panelBackground_,
             IRRender::kWidgetBackgroundDistance,
             scratch_
         );
 
         if (!panel.title_.empty()) {
-            const int titleBarH = IRRender::kGlyphStepY + theme.padding_ * 2;
+            const int titleBarH = IRRender::kGlyphStepY + theme_.padding_ * 2;
             IRRender::fillRect(
                 *canvas_,
                 guiPos.pos_,
                 IRMath::ivec2(widget.size_.x, titleBarH),
-                theme.panelTitleBackground_,
+                theme_.panelTitleBackground_,
                 IRRender::kWidgetBorderDistance,
                 scratch_
             );
@@ -66,7 +67,7 @@ template <> struct System<WIDGET_RENDER_PANEL> {
                 panel.title_,
                 guiPos.pos_,
                 IRMath::ivec2(widget.size_.x, titleBarH),
-                IRPrefab::Widget::detail::stateText(theme, widget)
+                IRPrefab::Widget::detail::stateText(theme_, widget)
             );
         }
 
@@ -75,9 +76,9 @@ template <> struct System<WIDGET_RENDER_PANEL> {
                 *canvas_,
                 guiPos.pos_,
                 widget.size_,
-                IRPrefab::Widget::detail::stateBorder(theme, widget, state),
+                IRPrefab::Widget::detail::stateBorder(theme_, widget, state),
                 IRRender::kWidgetBorderDistance,
-                theme.borderThickness_,
+                theme_.borderThickness_,
                 scratch_
             );
         }

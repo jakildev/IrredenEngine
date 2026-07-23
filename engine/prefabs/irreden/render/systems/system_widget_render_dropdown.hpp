@@ -23,12 +23,14 @@ namespace IRSystem {
 // handled by WIDGET_APPLY_DROPDOWN (hitbox size mutation).
 template <> struct System<WIDGET_RENDER_DROPDOWN> {
     IRComponents::C_TriangleCanvasTextures *canvas_ = nullptr;
+    IRPrefab::Widget::WidgetTheme theme_;
     IRRender::RectFillScratch scratch_;
     std::vector<IRRender::GlyphDrawCommand> textCmds_;
 
     void beginTick() {
         IREntity::EntityId guiCanvas = IRRender::getCanvas("gui");
         canvas_ = &IREntity::getComponent<IRComponents::C_TriangleCanvasTextures>(guiCanvas);
+        theme_ = IRPrefab::Widget::defaultTheme();
     }
 
     void tick(
@@ -42,7 +44,6 @@ template <> struct System<WIDGET_RENDER_DROPDOWN> {
         if (widget.size_.x <= 0 || widget.size_.y <= 0)
             return;
 
-        const auto &theme = IRPrefab::Widget::defaultTheme();
         const int itemH = IRMath::max(1, dd.itemHeight_);
         const int n = static_cast<int>(dd.items_.size());
 
@@ -51,7 +52,7 @@ template <> struct System<WIDGET_RENDER_DROPDOWN> {
             *canvas_,
             guiPos.pos_,
             widget.size_,
-            IRPrefab::Widget::detail::stateBackground(theme, widget, state),
+            IRPrefab::Widget::detail::stateBackground(theme_, widget, state),
             IRRender::kWidgetBackgroundDistance,
             scratch_
         );
@@ -59,9 +60,9 @@ template <> struct System<WIDGET_RENDER_DROPDOWN> {
             *canvas_,
             guiPos.pos_,
             widget.size_,
-            IRPrefab::Widget::detail::stateBorder(theme, widget, state),
+            IRPrefab::Widget::detail::stateBorder(theme_, widget, state),
             IRRender::kWidgetBorderDistance,
-            theme.borderThickness_,
+            theme_.borderThickness_,
             scratch_
         );
 
@@ -73,9 +74,9 @@ template <> struct System<WIDGET_RENDER_DROPDOWN> {
             textCmds_,
             canvas_->size_,
             headerText,
-            IRMath::ivec2(guiPos.pos_.x + theme.padding_ * 2, guiPos.pos_.y),
+            IRMath::ivec2(guiPos.pos_.x + theme_.padding_ * 2, guiPos.pos_.y),
             widget.size_.y,
-            IRPrefab::Widget::detail::stateText(theme, widget)
+            IRPrefab::Widget::detail::stateText(theme_, widget)
         );
 
         // Dropdown chevron — solid triangle approximated as a small stack of rects
@@ -83,13 +84,13 @@ template <> struct System<WIDGET_RENDER_DROPDOWN> {
         // GUI canvas resolution this framework targets.
         const int chevronW = 8;
         const int chevronH = 4;
-        const int chevX = guiPos.pos_.x + widget.size_.x - chevronW - theme.padding_ * 2;
+        const int chevX = guiPos.pos_.x + widget.size_.x - chevronW - theme_.padding_ * 2;
         const int chevY = guiPos.pos_.y + (widget.size_.y - chevronH) / 2;
         IRRender::fillRect(
             *canvas_,
             IRMath::ivec2(chevX, chevY),
             IRMath::ivec2(chevronW, 2),
-            IRPrefab::Widget::detail::stateText(theme, widget),
+            IRPrefab::Widget::detail::stateText(theme_, widget),
             IRRender::kWidgetBorderDistance,
             scratch_
         );
@@ -97,7 +98,7 @@ template <> struct System<WIDGET_RENDER_DROPDOWN> {
             *canvas_,
             IRMath::ivec2(chevX + 2, chevY + 2),
             IRMath::ivec2(chevronW - 4, 2),
-            IRPrefab::Widget::detail::stateText(theme, widget),
+            IRPrefab::Widget::detail::stateText(theme_, widget),
             IRRender::kWidgetBorderDistance,
             scratch_
         );
@@ -112,7 +113,7 @@ template <> struct System<WIDGET_RENDER_DROPDOWN> {
             *canvas_,
             panelPos,
             panelSize,
-            theme.backgroundIdle_,
+            theme_.backgroundIdle_,
             IRRender::kWidgetBorderDistance,
             scratch_
         );
@@ -129,7 +130,7 @@ template <> struct System<WIDGET_RENDER_DROPDOWN> {
                     *canvas_,
                     rowPos,
                     rowSize,
-                    theme.listRowSelected_,
+                    theme_.listRowSelected_,
                     IRRender::kWidgetLabelDistance,
                     scratch_
                 );
@@ -138,7 +139,7 @@ template <> struct System<WIDGET_RENDER_DROPDOWN> {
                     *canvas_,
                     rowPos,
                     rowSize,
-                    theme.listRowHover_,
+                    theme_.listRowHover_,
                     IRRender::kWidgetLabelDistance,
                     scratch_
                 );
@@ -147,9 +148,9 @@ template <> struct System<WIDGET_RENDER_DROPDOWN> {
                 textCmds_,
                 canvas_->size_,
                 dd.items_[static_cast<std::size_t>(i)],
-                IRMath::ivec2(rowPos.x + theme.padding_ * 2, rowPos.y),
+                IRMath::ivec2(rowPos.x + theme_.padding_ * 2, rowPos.y),
                 itemH,
-                IRPrefab::Widget::detail::stateText(theme, widget)
+                IRPrefab::Widget::detail::stateText(theme_, widget)
             );
         }
 
@@ -157,9 +158,9 @@ template <> struct System<WIDGET_RENDER_DROPDOWN> {
             *canvas_,
             panelPos,
             panelSize,
-            IRPrefab::Widget::detail::stateBorder(theme, widget, state),
+            IRPrefab::Widget::detail::stateBorder(theme_, widget, state),
             IRRender::kWidgetLabelDistance,
-            theme.borderThickness_,
+            theme_.borderThickness_,
             scratch_
         );
     }

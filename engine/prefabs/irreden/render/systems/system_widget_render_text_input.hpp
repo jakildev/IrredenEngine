@@ -24,6 +24,7 @@ namespace IRSystem {
 // holds keyboard focus.
 template <> struct System<WIDGET_RENDER_TEXT_INPUT> {
     IRComponents::C_TriangleCanvasTextures *canvas_ = nullptr;
+    IRPrefab::Widget::WidgetTheme theme_;
     IRRender::RectFillScratch scratch_;
     std::vector<IRRender::GlyphDrawCommand> textCmds_;
     int frameCounter_ = 0;
@@ -32,6 +33,7 @@ template <> struct System<WIDGET_RENDER_TEXT_INPUT> {
         IREntity::EntityId guiCanvas = IRRender::getCanvas("gui");
         canvas_ = &IREntity::getComponent<IRComponents::C_TriangleCanvasTextures>(guiCanvas);
         ++frameCounter_;
+        theme_ = IRPrefab::Widget::defaultTheme();
     }
 
     void tick(
@@ -43,12 +45,11 @@ template <> struct System<WIDGET_RENDER_TEXT_INPUT> {
         if (!canvas_)
             return;
 
-        const auto &theme = IRPrefab::Widget::defaultTheme();
         IRRender::fillRect(
             *canvas_,
             guiPos.pos_,
             widget.size_,
-            IRPrefab::Widget::detail::stateBackground(theme, widget, state),
+            IRPrefab::Widget::detail::stateBackground(theme_, widget, state),
             IRRender::kWidgetBackgroundDistance,
             scratch_
         );
@@ -56,13 +57,13 @@ template <> struct System<WIDGET_RENDER_TEXT_INPUT> {
             *canvas_,
             guiPos.pos_,
             widget.size_,
-            IRPrefab::Widget::detail::stateBorder(theme, widget, state),
+            IRPrefab::Widget::detail::stateBorder(theme_, widget, state),
             IRRender::kWidgetBorderDistance,
-            theme.borderThickness_,
+            theme_.borderThickness_,
             scratch_
         );
 
-        const int textX = guiPos.pos_.x + theme.padding_ * 2;
+        const int textX = guiPos.pos_.x + theme_.padding_ * 2;
         if (!textInput.text_.empty()) {
             IRPrefab::Widget::detail::queueLeftText(
                 textCmds_,
@@ -70,7 +71,7 @@ template <> struct System<WIDGET_RENDER_TEXT_INPUT> {
                 textInput.text_,
                 IRMath::ivec2(textX, guiPos.pos_.y),
                 widget.size_.y,
-                IRPrefab::Widget::detail::stateText(theme, widget)
+                IRPrefab::Widget::detail::stateText(theme_, widget)
             );
         }
 
@@ -80,7 +81,7 @@ template <> struct System<WIDGET_RENDER_TEXT_INPUT> {
         // Blink: cursor visible during the first half of each blink
         // period, hidden during the second. textCursorBlinkPeriodFrames_
         // is the FULL period.
-        const int period = IRMath::max(2, theme.textCursorBlinkPeriodFrames_);
+        const int period = IRMath::max(2, theme_.textCursorBlinkPeriodFrames_);
         const bool cursorVisible = (frameCounter_ % period) < (period / 2);
         if (!cursorVisible)
             return;
@@ -89,15 +90,15 @@ template <> struct System<WIDGET_RENDER_TEXT_INPUT> {
             IRMath::clamp(textInput.cursorPos_, 0, static_cast<int>(textInput.text_.size()));
         const int cursorX = IRMath::min(
             textX + cursorChars * IRRender::kGlyphStepX,
-            guiPos.pos_.x + widget.size_.x - theme.textInputCursorWidth_
+            guiPos.pos_.x + widget.size_.x - theme_.textInputCursorWidth_
         );
         const int cursorH = IRRender::kGlyphHeight;
         const int cursorY = guiPos.pos_.y + (widget.size_.y - cursorH) / 2;
         IRRender::fillRect(
             *canvas_,
             IRMath::ivec2(cursorX, cursorY),
-            IRMath::ivec2(theme.textInputCursorWidth_, cursorH),
-            theme.textInputCursor_,
+            IRMath::ivec2(theme_.textInputCursorWidth_, cursorH),
+            theme_.textInputCursor_,
             IRRender::kWidgetBorderDistance,
             scratch_
         );

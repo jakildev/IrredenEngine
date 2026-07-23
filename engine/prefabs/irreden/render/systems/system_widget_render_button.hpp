@@ -16,12 +16,14 @@ namespace IRSystem {
 
 template <> struct System<WIDGET_RENDER_BUTTON> {
     IRComponents::C_TriangleCanvasTextures *canvas_ = nullptr;
+    IRPrefab::Widget::WidgetTheme theme_;
     IRRender::RectFillScratch scratch_;
     std::vector<IRRender::GlyphDrawCommand> textCmds_;
 
     void beginTick() {
         IREntity::EntityId guiCanvas = IRRender::getCanvas("gui");
         canvas_ = &IREntity::getComponent<IRComponents::C_TriangleCanvasTextures>(guiCanvas);
+        theme_ = IRPrefab::Widget::defaultTheme();
     }
 
     void tick(
@@ -33,12 +35,11 @@ template <> struct System<WIDGET_RENDER_BUTTON> {
         if (!canvas_)
             return;
 
-        const auto &theme = IRPrefab::Widget::defaultTheme();
         IRRender::fillRect(
             *canvas_,
             guiPos.pos_,
             widget.size_,
-            IRPrefab::Widget::detail::stateBackground(theme, widget, state),
+            IRPrefab::Widget::detail::stateBackground(theme_, widget, state),
             IRRender::kWidgetBackgroundDistance,
             scratch_
         );
@@ -46,9 +47,9 @@ template <> struct System<WIDGET_RENDER_BUTTON> {
             *canvas_,
             guiPos.pos_,
             widget.size_,
-            IRPrefab::Widget::detail::stateBorder(theme, widget, state),
+            IRPrefab::Widget::detail::stateBorder(theme_, widget, state),
             IRRender::kWidgetBorderDistance,
-            theme.borderThickness_,
+            theme_.borderThickness_,
             scratch_
         );
         IRPrefab::Widget::detail::queueCenteredText(
@@ -57,7 +58,7 @@ template <> struct System<WIDGET_RENDER_BUTTON> {
             button.label_,
             guiPos.pos_,
             widget.size_,
-            IRPrefab::Widget::detail::stateText(theme, widget)
+            IRPrefab::Widget::detail::stateText(theme_, widget)
         );
     }
 

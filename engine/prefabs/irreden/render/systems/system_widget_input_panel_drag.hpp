@@ -20,7 +20,7 @@ namespace IRSystem {
 // panel drag-to-dock flow in IRPrefab::Layout. Panels that are NOT
 // layout leaves are ignored (not part of the managed dockspace).
 //
-// Panel title-bar height is kGlyphStepY + 2*theme.padding_ (same value
+// Panel title-bar height is kGlyphStepY + 2*theme_.padding_ (same value
 // used by WIDGET_RENDER_PANEL to draw the title bar).
 //
 // Pipeline order requirement (INPUT pipeline):
@@ -30,6 +30,7 @@ template <> struct System<WIDGET_INPUT_PANEL_DRAG> {
     IRMath::vec2 mouseGuiTrixel_ = IRMath::vec2(0.0f);
     bool mouseLeftPressedThisFrame_ = false;
     bool mouseLeftDown_ = false;
+    IRPrefab::Widget::WidgetTheme theme_;
 
     void beginTick() {
         mouseGuiTrixel_ = IRPrefab::Layout::mousePositionInGuiTrixels();
@@ -43,6 +44,7 @@ template <> struct System<WIDGET_INPUT_PANEL_DRAG> {
             IRInput::ButtonStatuses::HELD
         );
         mouseLeftDown_ = heldThisFrame || mouseLeftPressedThisFrame_;
+        theme_ = IRPrefab::Widget::defaultTheme();
     }
 
     void tick(
@@ -51,16 +53,13 @@ template <> struct System<WIDGET_INPUT_PANEL_DRAG> {
         const IRComponents::C_GuiPosition &guiPos,
         const IRComponents::C_LayoutLeaf &leaf
     ) {
-        const int padding = IRPrefab::Widget::defaultTheme().padding_;
-        const int titleBarH = IRRender::kGlyphStepY + padding * 2;
+        const int titleBarH = IRRender::kGlyphStepY + theme_.padding_ * 2;
 
-        const IRMath::ivec2 mouseI = IRMath::ivec2(
-            static_cast<int>(mouseGuiTrixel_.x),
-            static_cast<int>(mouseGuiTrixel_.y)
-        );
+        const IRMath::ivec2 mouseI =
+            IRMath::ivec2(static_cast<int>(mouseGuiTrixel_.x), static_cast<int>(mouseGuiTrixel_.y));
 
         const bool isDraggingThis = IRPrefab::Layout::isDraggingPanel() &&
-            IRPrefab::Layout::getDraggedPanelNodeIdx() == leaf.nodeIdx_;
+                                    IRPrefab::Layout::getDraggedPanelNodeIdx() == leaf.nodeIdx_;
 
         if (isDraggingThis) {
             if (!mouseLeftDown_) {
@@ -71,19 +70,16 @@ template <> struct System<WIDGET_INPUT_PANEL_DRAG> {
             return;
         }
 
-        if (IRPrefab::Layout::isDraggingPanel()) return;
+        if (IRPrefab::Layout::isDraggingPanel())
+            return;
 
         if (mouseLeftPressedThisFrame_) {
             const bool inTitleBar =
-                mouseI.x >= guiPos.pos_.x &&
-                mouseI.x < guiPos.pos_.x + widget.size_.x &&
-                mouseI.y >= guiPos.pos_.y &&
-                mouseI.y < guiPos.pos_.y + titleBarH;
+                mouseI.x >= guiPos.pos_.x && mouseI.x < guiPos.pos_.x + widget.size_.x &&
+                mouseI.y >= guiPos.pos_.y && mouseI.y < guiPos.pos_.y + titleBarH;
 
             if (inTitleBar) {
-                IRPrefab::Layout::beginPanelDrag(
-                    leaf.nodeIdx_, entityId, mouseI, guiPos.pos_
-                );
+                IRPrefab::Layout::beginPanelDrag(leaf.nodeIdx_, entityId, mouseI, guiPos.pos_);
             }
         }
     }
@@ -93,8 +89,7 @@ template <> struct System<WIDGET_INPUT_PANEL_DRAG> {
             WIDGET_INPUT_PANEL_DRAG,
             IRComponents::C_Widget,
             IRComponents::C_GuiPosition,
-            IRComponents::C_LayoutLeaf
-        >("WidgetInputPanelDrag");
+            IRComponents::C_LayoutLeaf>("WidgetInputPanelDrag");
     }
 };
 

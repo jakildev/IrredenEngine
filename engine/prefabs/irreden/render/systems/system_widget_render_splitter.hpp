@@ -23,11 +23,13 @@ namespace IRSystem {
 //   LAYOUT_COMPUTE → ... → WIDGET_RENDER_SPLITTER → TRIXEL_TO_FRAMEBUFFER
 template <> struct System<WIDGET_RENDER_SPLITTER> {
     IRComponents::C_TriangleCanvasTextures *canvas_ = nullptr;
+    IRPrefab::Widget::WidgetTheme theme_;
     IRRender::RectFillScratch scratch_;
 
     void beginTick() {
         IREntity::EntityId guiCanvas = IRRender::getCanvas("gui");
         canvas_ = &IREntity::getComponent<IRComponents::C_TriangleCanvasTextures>(guiCanvas);
+        theme_ = IRPrefab::Widget::defaultTheme();
     }
 
     void tick(
@@ -35,15 +37,15 @@ template <> struct System<WIDGET_RENDER_SPLITTER> {
         const IRComponents::C_Widget &widget,
         const IRComponents::C_GuiPosition &guiPos
     ) {
-        if (!canvas_) return;
+        if (!canvas_)
+            return;
 
-        const auto &theme = IRPrefab::Widget::defaultTheme();
         const auto &ls = IRPrefab::Layout::getLayout();
         const bool active = IRPrefab::Layout::isDraggingSplitter() &&
-            ls.dragSplitterParent_ == splitter.parentNodeIdx_ &&
-            ls.dragSplitterChildIdx_ == splitter.childIdx_;
+                            ls.dragSplitterParent_ == splitter.parentNodeIdx_ &&
+                            ls.dragSplitterChildIdx_ == splitter.childIdx_;
 
-        IRMath::Color color = active ? theme.borderHover_ : theme.borderIdle_;
+        IRMath::Color color = active ? theme_.borderHover_ : theme_.borderIdle_;
         IRRender::fillRect(
             *canvas_,
             guiPos.pos_,
@@ -59,8 +61,7 @@ template <> struct System<WIDGET_RENDER_SPLITTER> {
             WIDGET_RENDER_SPLITTER,
             IRComponents::C_Splitter,
             IRComponents::C_Widget,
-            IRComponents::C_GuiPosition
-        >("WidgetRenderSplitter");
+            IRComponents::C_GuiPosition>("WidgetRenderSplitter");
     }
 };
 

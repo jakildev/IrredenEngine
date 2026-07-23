@@ -20,12 +20,14 @@ namespace IRSystem {
 
 template <> struct System<WIDGET_RENDER_SLIDER> {
     IRComponents::C_TriangleCanvasTextures *canvas_ = nullptr;
+    IRPrefab::Widget::WidgetTheme theme_;
     IRRender::RectFillScratch scratch_;
     std::vector<IRRender::GlyphDrawCommand> textCmds_;
 
     void beginTick() {
         IREntity::EntityId guiCanvas = IRRender::getCanvas("gui");
         canvas_ = &IREntity::getComponent<IRComponents::C_TriangleCanvasTextures>(guiCanvas);
+        theme_ = IRPrefab::Widget::defaultTheme();
     }
 
     void tick(
@@ -37,7 +39,6 @@ template <> struct System<WIDGET_RENDER_SLIDER> {
         if (!canvas_)
             return;
 
-        const auto &theme = IRPrefab::Widget::defaultTheme();
         const int W = widget.size_.x;
         const int H = widget.size_.y;
         if (W <= 0 || H <= 0)
@@ -45,7 +46,7 @@ template <> struct System<WIDGET_RENDER_SLIDER> {
 
         // Top half is the optional label, bottom half is track + thumb.
         const int labelH = slider.label_.empty() ? 0 : IRRender::kGlyphStepY;
-        const int trackY = guiPos.pos_.y + labelH + (H - labelH - theme.sliderTrackThickness_) / 2;
+        const int trackY = guiPos.pos_.y + labelH + (H - labelH - theme_.sliderTrackThickness_) / 2;
         const int trackX = guiPos.pos_.x;
 
         if (!slider.label_.empty()) {
@@ -55,7 +56,7 @@ template <> struct System<WIDGET_RENDER_SLIDER> {
                 slider.label_,
                 guiPos.pos_,
                 labelH,
-                IRPrefab::Widget::detail::stateText(theme, widget)
+                IRPrefab::Widget::detail::stateText(theme_, widget)
             );
         }
 
@@ -63,8 +64,8 @@ template <> struct System<WIDGET_RENDER_SLIDER> {
         IRRender::fillRect(
             *canvas_,
             IRMath::ivec2(trackX, trackY),
-            IRMath::ivec2(W, theme.sliderTrackThickness_),
-            theme.sliderTrack_,
+            IRMath::ivec2(W, theme_.sliderTrackThickness_),
+            theme_.sliderTrack_,
             IRRender::kWidgetBackgroundDistance,
             scratch_
         );
@@ -75,13 +76,13 @@ template <> struct System<WIDGET_RENDER_SLIDER> {
                                 : 1.0f;
         const float t =
             IRMath::clamp((slider.currentValue_ - slider.minValue_) / range, 0.0f, 1.0f);
-        const int thumbW = theme.sliderThumbWidth_;
+        const int thumbW = theme_.sliderThumbWidth_;
         const int thumbH = H - labelH;
         const int thumbX = guiPos.pos_.x + static_cast<int>(t * static_cast<float>(W - thumbW));
         const int thumbY = guiPos.pos_.y + labelH;
-        const IRMath::Color thumbColor = widget.disabled_ ? theme.backgroundDisabled_
-                                         : state.hovered_ ? theme.sliderThumbHover_
-                                                          : theme.sliderThumbIdle_;
+        const IRMath::Color thumbColor = widget.disabled_ ? theme_.backgroundDisabled_
+                                         : state.hovered_ ? theme_.sliderThumbHover_
+                                                          : theme_.sliderThumbIdle_;
         IRRender::fillRect(
             *canvas_,
             IRMath::ivec2(thumbX, thumbY),
@@ -100,7 +101,7 @@ template <> struct System<WIDGET_RENDER_SLIDER> {
                 buf,
                 guiPos.pos_,
                 canvas_->size_,
-                IRPrefab::Widget::detail::stateText(theme, widget),
+                IRPrefab::Widget::detail::stateText(theme_, widget),
                 IRPrefab::Widget::detail::kWidgetTextFontSize,
                 IRComponents::TextAlignH::RIGHT,
                 IRComponents::TextAlignV::CENTER,

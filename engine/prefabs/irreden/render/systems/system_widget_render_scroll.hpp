@@ -24,11 +24,13 @@ namespace IRSystem {
 // that content.
 template <> struct System<WIDGET_RENDER_SCROLL> {
     IRComponents::C_TriangleCanvasTextures *canvas_ = nullptr;
+    IRPrefab::Widget::WidgetTheme theme_;
     IRRender::RectFillScratch scratch_;
 
     void beginTick() {
         IREntity::EntityId guiCanvas = IRRender::getCanvas("gui");
         canvas_ = &IREntity::getComponent<IRComponents::C_TriangleCanvasTextures>(guiCanvas);
+        theme_ = IRPrefab::Widget::defaultTheme();
     }
 
     void tick(
@@ -37,12 +39,13 @@ template <> struct System<WIDGET_RENDER_SCROLL> {
         const IRComponents::C_WidgetState &state,
         const IRComponents::C_GuiPosition &guiPos
     ) {
-        if (!canvas_) return;
-        if (widget.size_.x <= 0 || widget.size_.y <= 0) return;
+        if (!canvas_)
+            return;
+        if (widget.size_.x <= 0 || widget.size_.y <= 0)
+            return;
 
-        const auto &theme = IRPrefab::Widget::defaultTheme();
         const bool vertical = (scroll.axis_ == IRComponents::C_WidgetScroll::Axis::VERTICAL);
-        const int bar = IRMath::max(1, theme.scrollBarThickness_);
+        const int bar = IRMath::max(1, theme_.scrollBarThickness_);
 
         IRMath::ivec2 trackPos = guiPos.pos_;
         IRMath::ivec2 trackSize = widget.size_;
@@ -58,7 +61,7 @@ template <> struct System<WIDGET_RENDER_SCROLL> {
             *canvas_,
             trackPos,
             trackSize,
-            theme.scrollTrack_,
+            theme_.scrollTrack_,
             IRRender::kWidgetBackgroundDistance,
             scratch_
         );
@@ -70,17 +73,14 @@ template <> struct System<WIDGET_RENDER_SCROLL> {
 
         // Thumb size proportional to viewExtent / contentExtent, clamped to a
         // minimum so it remains grabbable at extreme content sizes.
-        const int thumbExtentRaw = (contentExtent > 0)
-            ? (viewExtent * viewExtent) / contentExtent
-            : viewExtent;
-        const int thumbExtent = IRMath::clamp(
-            thumbExtentRaw, theme.scrollThumbMinExtent_, viewExtent
-        );
+        const int thumbExtentRaw =
+            (contentExtent > 0) ? (viewExtent * viewExtent) / contentExtent : viewExtent;
+        const int thumbExtent =
+            IRMath::clamp(thumbExtentRaw, theme_.scrollThumbMinExtent_, viewExtent);
 
         // Thumb offset proportional to scrollPos_ / maxScroll.
-        const int thumbOffset = (maxScroll > 0)
-            ? (clampedScroll * (viewExtent - thumbExtent)) / maxScroll
-            : 0;
+        const int thumbOffset =
+            (maxScroll > 0) ? (clampedScroll * (viewExtent - thumbExtent)) / maxScroll : 0;
 
         IRMath::ivec2 thumbPos = trackPos;
         IRMath::ivec2 thumbSize = trackSize;
@@ -92,11 +92,10 @@ template <> struct System<WIDGET_RENDER_SCROLL> {
             thumbSize.x = thumbExtent;
         }
 
-        const IRMath::Color thumbColor =
-            widget.disabled_   ? theme.backgroundDisabled_
-            : state.pressed_   ? theme.scrollThumbHover_
-            : state.hovered_   ? theme.scrollThumbHover_
-                               : theme.scrollThumb_;
+        const IRMath::Color thumbColor = widget.disabled_ ? theme_.backgroundDisabled_
+                                         : state.pressed_ ? theme_.scrollThumbHover_
+                                         : state.hovered_ ? theme_.scrollThumbHover_
+                                                          : theme_.scrollThumb_;
         IRRender::fillRect(
             *canvas_,
             thumbPos,
@@ -113,8 +112,7 @@ template <> struct System<WIDGET_RENDER_SCROLL> {
             IRComponents::C_Widget,
             IRComponents::C_WidgetScroll,
             IRComponents::C_WidgetState,
-            IRComponents::C_GuiPosition
-        >("WidgetRenderScroll");
+            IRComponents::C_GuiPosition>("WidgetRenderScroll");
     }
 };
 

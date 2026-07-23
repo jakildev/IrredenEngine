@@ -355,8 +355,11 @@ kind-specific data component (`C_WidgetPanel` / `C_WidgetLabel` /
 `C_WidgetButton` / `C_WidgetSlider` / `C_WidgetCheckbox` /
 `C_WidgetList` / `C_WidgetDropdown` / `C_WidgetRadio` /
 `C_WidgetTextInput` / `C_WidgetScroll` / `C_WidgetColorSwatch`).
-Theme lives in `widget_theme.hpp::defaultTheme()` — a single inline
-header-level instance a creation mutates once at init.
+Theme lives on the `C_WidgetTheme` singleton component, read via
+`widget_theme.hpp::defaultTheme()` — a creation mutates it once at init
+before constructing widgets. Per-tick readers (`WIDGET_RENDER_*` systems)
+cache the theme in `beginTick` rather than reading the singleton per
+entity.
 
 `C_WidgetColorSwatch` (T-211) is a single solid-color clickable cell
 for palette panels and theme editors. Each swatch carries its own
