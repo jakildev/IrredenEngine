@@ -211,8 +211,16 @@ constexpr SystemId createSystem(
 }
 
 // Create a prefab system
+//
+// #2526: this and `registerSystem<N, ...>` below are the only registration
+// entry points that have the `SystemName` statically, so both record the
+// resulting id in SystemManager's registry. They nest — `System<type>::create()`
+// often calls `registerSystem<type, ...>` — and re-recording the same id is a
+// deliberate no-op; see `SystemManager::recordEngineSystemId`.
 template <SystemName type, typename... Args> SystemId createSystem(Args &&...args) {
-    return System<type>::create(args...);
+    const SystemId id = System<type>::create(args...);
+    getSystemManager().recordEngineSystemId(type, id);
+    return id;
 }
 
 namespace detail {
@@ -434,7 +442,22 @@ registerSystem(std::string name, RelationParams<RelationComponents...> relationP
         cadenceOffset
     );
     setSystemParams(id, std::move(instance));
+    getSystemManager().recordEngineSystemId(N, id);
     return id;
+}
+
+// #2526: resolve a `SystemName` to the id it was registered under, or
+// `IREntity::kNullEntity` if no enum-templated registration recorded it.
+// This is the manager-owned replacement for the wire-once
+// `setSystem(id)` / `setAllocatorSystem(id)` handles prefab headers used to
+// carry: registration self-wires, so a creation no longer has to remember a
+// bookkeeping call after `create()`.
+//
+// Costs one hash lookup. Fine for per-operation callers; a per-entity tick
+// should resolve once in `beginTick` and cache the pointer (the ECS footgun
+// rule) rather than calling this per row.
+inline SystemId findSystem(SystemName name) {
+    return getSystemManager().findEngineSystem(name);
 }
 
 // Free-function wrapper around `SystemManager::createSystemDynamic`. Used by

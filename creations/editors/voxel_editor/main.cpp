@@ -2319,14 +2319,12 @@ void initSystems() {
     // UPDATE_VOXEL_POSITIONS_GPU so binding 18 holds the skin matrices when
     // the prepass dispatches. Both are no-ops until a voxel set opts in via
     // gpuTransformSlot_ (the seeded rig does), so an unrigged scene renders
-    // byte-identically. Created up-front so their SystemIds can wire the
-    // slot-allocator handles.
+    // byte-identically. Created up-front so their SystemIds can order the
+    // render pipeline below.
     const IRSystem::SystemId updateVoxelPositionsId =
         IRSystem::createSystem<IRSystem::UPDATE_VOXEL_POSITIONS_GPU>();
-    IRPrefab::VoxelTransform::setAllocatorSystem(updateVoxelPositionsId);
     const IRSystem::SystemId updateJointMatricesId =
         IRSystem::createSystem<IRSystem::UPDATE_JOINT_MATRICES>();
-    IRPrefab::JointTransform::setSystem(updateJointMatricesId);
 
     std::list<IRSystem::SystemId> renderPipeline = IRPrefab::Camera::standardControlSystems();
     renderPipeline.push_front(animPlaybackSystem);

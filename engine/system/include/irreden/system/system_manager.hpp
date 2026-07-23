@@ -298,6 +298,51 @@ class SystemManager {
     SystemId getSystemCount() const {
         return m_nextSystemId;
     }
+
+    /// #2526: record `name -> id` in the engine-system registry. Called by
+    /// the enum-templated registration paths (`IRSystem::createSystem<N>` /
+    /// `IRSystem::registerSystem<N, ...>`), the only two entry points that
+    /// have the `SystemName` statically. Dynamic systems
+    /// (`createSystemDynamic`, Lua-defined) carry no enum and are absent
+    /// from the registry.
+    ///
+    /// Recording the same id twice is expected, not an error: the two
+    /// enum-aware entry points nest (`createSystem<N>` calls
+    /// `System<N>::create()`, whose body often calls `registerSystem<N,
+    /// ...>`), so a single registration legitimately reports itself from
+    /// both. `m_nextSystemId` is monotonic, so a genuinely duplicate
+    /// registration always carries a *different* id — which is what the
+    /// assert catches. In release (assert stripped) the newest id wins,
+    /// matching the last-call-wins behavior of the wire-once setters this
+    /// registry replaces.
+    void recordEngineSystemId(SystemName name, SystemId id) {
+        SystemId &slot = m_engineSystemIds.try_emplace(name, id).first->second;
+        IR_ASSERT(
+            slot == id,
+            "SystemName is already registered as system '{}' (id {}) and is now being "
+            "registered again as '{}' (id {}). A SystemName maps to exactly one system; "
+            "create it once and share the id.",
+            getSystemName(slot),
+            slot,
+            getSystemName(id),
+            id
+        );
+        slot = id;
+    }
+
+    /// #2526: resolve a `SystemName` to the `SystemId` it was registered
+    /// under, or `IREntity::kNullEntity` when it was never registered.
+    ///
+    /// Caveat: `kNullEntity` is 0 and system ids also count up from 0, so
+    /// the *first* system created in a process is indistinguishable from
+    /// "not registered" through this return value. That ambiguity predates
+    /// this registry (it is the same sentinel the wire-once globals used)
+    /// and is harmless for the current consumers, which are never the first
+    /// system a creation registers. Tracked separately.
+    SystemId findEngineSystem(SystemName name) const {
+        const auto it = m_engineSystemIds.find(name);
+        return it == m_engineSystemIds.end() ? IREntity::kNullEntity : it->second;
+    }
     const TimingAccum &getTimingAccum(SystemId id) const {
         return m_timingAccum[id];
     }
@@ -330,6 +375,11 @@ class SystemManager {
     std::vector<C_SystemEvent<RELATION_TICK>> m_relationTicks;
     std::vector<C_SystemRelation> m_relations;
     std::vector<ErasedParamsPtr> m_systemParams;
+    /// `SystemName -> SystemId` for enum-registered engine systems.
+    /// Written by `recordEngineSystemId`, read by `findEngineSystem`.
+    /// Owned by the manager, so it dies with the World — never cleared by
+    /// `clearPipeline`, since systems outlive pipeline registration and
+    /// scene transitions re-register pipelines, not systems.
     std::unordered_map<SystemName, SystemId> m_engineSystemIds;
 
     /// T-224: canonical pipeline storage is per-group. The legacy
