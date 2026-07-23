@@ -338,12 +338,14 @@ kernel void c_voxel_visibility_compact(
                             // the cardinal-snapped iso in that branch, so a voxel
                             // called feeder is exactly one stage 2 skips —
                             // over-classifying visible is the only failure mode.
-                            const bool isFeeder =
-                                frameData.residualYaw == 0.0f && frameData.isDetachedCanvas < 0.5f &&
-                                (isoPos.x < frameData.visibleIsoBounds.x ||
-                                 isoPos.x > frameData.visibleIsoBounds.z ||
-                                 isoPos.y < frameData.visibleIsoBounds.y ||
-                                 isoPos.y > frameData.visibleIsoBounds.w);
+                            // One definition with stage 2's skip
+                            // (isShadowFeederIso, ir_iso_common.metal).
+                            const bool isFeeder = isShadowFeederIso(
+                                isoPos,
+                                frameData.visibleIsoBounds,
+                                frameData.residualYaw,
+                                frameData.isDetachedCanvas
+                            );
                             if (isFeeder) {
                                 // Tail-append: feeder slot i lands at voxelCount-1-i
                                 // (grows down from the buffer top; nVisible +

@@ -400,10 +400,11 @@ void main() {
                             // Feeders are off-screen by construction, so their
                             // coarser trixel depth reaches only the sun-shadow
                             // bake, never a visible pixel.
-                            bool isFeeder =
-                                residualYaw == 0.0 && isDetachedCanvas < 0.5 &&
-                                (isoPos.x < visibleIsoBounds.x || isoPos.x > visibleIsoBounds.z ||
-                                 isoPos.y < visibleIsoBounds.y || isoPos.y > visibleIsoBounds.w);
+                            // One definition with stage 2's skip
+                            // (isShadowFeederIso, ir_iso_common.glsl).
+                            bool isFeeder = isShadowFeederIso(
+                                isoPos, visibleIsoBounds, residualYaw, isDetachedCanvas
+                            );
                             if (isFeeder) {
                                 // Tail-append: feeder slot i lands at
                                 // voxelCount-1-i, growing down from the top of the
