@@ -297,6 +297,15 @@ struct C_CanvasFogOfWar {
             return;
         observers_.visionCircles_[observers_.visionCircleCount_] =
             IRMath::vec4(cx, cy, radius, IRMath::max(edge, 0.0f));
+        // The zCost clamp is load-bearing, not defensive hygiene: it is what
+        // keeps c_voxel_visibility_compact's z-FREE coarse cull a superset of
+        // stage 1's z-AWARE own-column drop. That holds only because
+        // `distEff = dist + zCost * |z - observerZ| >= dist` for zCost >= 0, so
+        // the penalized reveal is pointwise <= the z-free one and the drop can
+        // only ever drop MORE. A negative zCost inverts it, and the compact pass
+        // culls voxels stage 1 would still render — matter silently missing,
+        // with no shader error. `observers_` is public, so a caller that writes
+        // visionCircleHeights_ directly owns this invariant itself.
         observers_.visionCircleHeights_[observers_.visionCircleCount_] =
             IRMath::vec4(observerZ, IRMath::max(zCost, 0.0f), 0.0f, 0.0f);
         ++observers_.visionCircleCount_;

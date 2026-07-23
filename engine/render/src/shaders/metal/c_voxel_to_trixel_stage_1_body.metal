@@ -525,6 +525,12 @@ kernel void IR_STAGE1_KERNEL_NAME(
         // Lives inside the per-axis branch so the shared pre-split path is byte-
         // identical to the pre-#2128 per-axis store; visionCircleCount==0 / the 1×1
         // placeholder short-circuit, so non-fog rotating scenes stay byte-identical.
+        // The two arguments round differently on purpose: the COLUMN is rounded
+        // because it indexes the integer fog grid, while the HEIGHT stays the raw
+        // continuous voxelPosition.z. Rounding the height would quantize the
+        // penalty into whole world-Z steps AND disagree with c_fog_to_trixel's
+        // per-pixel reveal, which penalizes against the unrounded `pos3D.z`.
+        // Same split as the single-canvas route above. Mirror of the GLSL twin.
         if (fogObservers.visionCircleCount > 0 &&
             fogColumnRevealZ(
                 canvasFogOfWar, fogObservers, roundHalfUp(voxelPosition.xyz).xy, voxelPosition.z
