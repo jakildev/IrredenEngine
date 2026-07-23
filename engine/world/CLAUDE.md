@@ -492,12 +492,24 @@ same `config = { ... }` table — there is one source of truth per file.
   video recording until the first input arrives — used to keep capture
   clips from starting mid-loading-screen. If video recording is not
   starting, check these flags first.
-- **Release GPU/GL resources in `end()`, never in `~World()`.** `g_world`
-  is a global `unique_ptr`, so `~World()` runs at process-exit static
-  destruction — past that point the GL driver/context may already be torn
-  down (MSYS2 unloads it first), and any `glDelete*` issued from a
-  member/observer dtor crashes against dead driver state (#2031). `end()`
-  runs during `gameLoop()` while the context is live and is the canonical
+- **Release GPU/GL resources in `end()`, never in `~World()`.** `end()` runs
+  during `gameLoop()` while the context is provably live, and is the canonical
   spot for device-resource teardown (it already drives `destroyAllEntities()`
   for `onDestroy` GPU frees). The dtor stays a no-op safety net.
+
+  The hazard it guards against: `g_world` is a global `unique_ptr`, so a
+  `~World()` that runs at process-exit static destruction lands past the point
+  where the GL driver/context may already be torn down (MSYS2 unloads it
+  first), and any `glDelete*` issued from a member/observer dtor crashes
+  against dead driver state (#2031).
+
+  **That static-destruction hazard is retired for the `IREngine` path** —
+  `IREngine::gameLoop()` resets `g_world` as soon as `World::gameLoop()`
+  returns (#2528), so `~World()` runs with `main` on the stack and the driver
+  loaded. The rule still stands, because the reset does not cover two paths:
+  `World::gameLoop()`'s catch block calls `end()` and rethrows, skipping the
+  reset entirely; and an owner who constructs a `World` directly (rather than
+  through `IREngine::init`) picks its own destruction point. Treat the reset
+  as defense in depth, not a licence to move device-resource frees into the
+  dtor.
 
