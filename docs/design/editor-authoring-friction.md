@@ -179,11 +179,61 @@ Friction notes for the session slice:
   `g_editableSceneSize.z-1` — and pass at 20³ (`gui-verify` default 13/13; a
   direct `--scene-size 20 20 20` run is CLEAN with all 8 mapping probes PASS).
 
-### 2b — erase-fill mode, SessionBuilder, runner, ROCK — NEXT
-Remaining Part 2 work, in order: erase-fill mode toggle (flips place↔erase for
-the click/box/line/face paths); `SessionBuilder` compiling authoring recipes to
-`GuiInputEvent` streams via `worldPos3DToMouseScreenPx`; `--gui-session <name>`
-selection; `scripts/author-entity.py` (run → parse `GUI-ASSERT` → verify saves →
-copy to `assets/voxel/entities/` → re-run byte-compare); then the ROCK session
-(sequence the P0-3 drag-stroke probe here). Note: vertical picking needs
-**zoom ≥ 2** (see P0-2) — session shots that pick by column must honour it.
+### 2b — erase-fill mode (LANDED)
+
+The left-click place / box / line / face-fill gestures now ERASE instead of
+place while **erase-fill mode** is on (toggled with **V**; reported in the
+fill-mode status label as an `ERASE ` prefix, e.g. `ERASE BOX`). Each fill path
+passes `place = false` and aims at the hit voxel itself rather than the empty
+cell adjacent to the hit face; right-click single-voxel erase is unchanged. This
+fills the Phase-1 gap where a single-voxel right-click was the only erase —
+clearing the seeded ground slab by hand was ~one right-click per cell — and is
+the carve primitive the session-authoring recipes need.
+
+Verified by a new `editor_probe_erase` GUI-test shot: synthetic **V** flips the
+mode ON and the capture-frame assertion confirms `g_eraseMode` is set and the
+status label reads `ERASE BOX` (`gui-verify.py IRVoxelEditor` → 14/14, macOS/
+Metal). The check is **occlusion-free** (no scene click) by design — see the
+findings below for why a scripted-erase-removes-a-voxel check is deferred.
+
+Findings surfaced while trying to verify the erase functionally through a
+scripted click on the seed scene (all inform the Part 2c SessionBuilder):
+
+- **F-2b-1 — the posed starter rig blankets the central ground plane.** The
+  F-2.5 starter rig (a skinned 31×3×3 bar) projects across a wide iso band at
+  z=2, one step toward the camera from the ground plane at z=3, so a click aimed
+  at almost any interior ground cell hits a rig voxel first, not the ground.
+  Empirically every interior + edge column tried (world (0,4), (0,7), (4,-2))
+  returned the rig entity. Authoring the ground directly by click is only
+  reliable off the rig's iso footprint — which the SessionBuilder must model
+  (or the recipe must clear/reframe first).
+- **F-2b-2 — skinned voxel sets are not click-erasable.** Even when the click
+  lands squarely on the rig, the edit is a silent no-op: the rig is skinned, so
+  the pick's *world* voxel position doesn't map back to a static local index
+  (`worldVoxelToLocal` subtracts the set's `C_WorldTransform` origin, which the
+  per-bone skin transform doesn't honour). So place/erase on a skinned set finds
+  no cell and drops the edit. Editing skinned content by clicking the deformed
+  result is not supported today; the authoring recipes operate on the static
+  editable set only.
+- **F-2b-3 — perimeter gizmos consume clicks over a wide screen area.** The
+  reference gizmos are screen-space-sized, so their handles occupy a large pixel
+  radius; a scripted click aimed at a ground cell near a gizmo (e.g. world
+  (-4,-4) vs the scale gizmo at (-12,-12)) is swallowed by `GIZMO_DRAG` before
+  the place/erase system sees it. Session shots must aim clear of the gizmo
+  screen footprints.
+- **Fixed in passing:** the `V` toggle's log line used a printf `%s` inside the
+  fmt-style `IR_LOG_INFO` (printed the literal `%s`); corrected to `{}` — same
+  class as the A/D add-frame log bug already filed as #2491.
+
+### 2c — SessionBuilder, `--gui-session`, runner, ROCK — NEXT
+
+Remaining Part 2 work, in order: `SessionBuilder` compiling authoring recipes to
+`GuiInputEvent` streams via `worldPos3DToMouseScreenPx` **with a shadow
+occupancy model** so it aims at exposed faces and steers clear of the rig / gizmo
+occluders documented above (F-2b-1..3); `--gui-session <name>` selection;
+`scripts/author-entity.py` (run → parse `GUI-ASSERT` → verify saves → copy to
+`assets/voxel/entities/` → re-run byte-compare); then the ROCK session (sequence
+the P0-3 drag-stroke probe here, and add the functional carve/erase asset checks
+this slice's occlusion-free label check stops short of). Note: vertical picking
+needs **zoom ≥ 2** (see P0-2) — session shots that pick by column must honour it.
+The erase-fill mode (2b) is the carve primitive these recipes drive.

@@ -268,6 +268,16 @@ constexpr float kRotationSensitivity = 0.004f;
 
 SymmetryState g_symmetry;
 
+// Erase-fill mode (#766 Part 2b). When ON, the left-click place / box / line /
+// face-fill gestures ERASE instead of place — each fill path passes
+// `place = false` and aims at the hit voxel itself (not the empty cell adjacent
+// to the hit face). Toggled with V; reported in the fill-mode status label.
+// Fills the Phase-1 gap where a single-voxel right-click was the only erase
+// (clearing the seeded ground slab by hand is ~one right-click per cell) and is
+// the carve primitive the session-authoring recipes (Part 2c) need. Right-click
+// single-voxel erase is unchanged (always erases regardless of this mode).
+bool g_eraseMode = false;
+
 struct RotateParams {
     bool firstRotFrame_ = true;
     float prevMouseX_ = 0.0f;
@@ -440,6 +450,41 @@ inline IRMath::ivec3 probeGroundCell(int i) {
     );
 }
 
+// --- Part 2b (#766) erase-fill mode probe ---------------------------------
+// Verifies the erase-fill toggle through the live UI, occlusion-free: synthetic
+// V flips g_eraseMode ON, and the capture-frame assertion (emitted in
+// onGuiAssertFrame) checks the fill-mode status label the place/erase system
+// repaints each frame now reads "ERASE BOX". This exercises the whole control
+// path — synthetic key → command dispatch → g_eraseMode → status label —
+// without a scene click, so it is immune to the seed scene's occlusion.
+//
+// Why not a scripted-erase-removes-a-voxel check: the only clean, static,
+// click-erasable surface would be the editable ground plane, but the posed
+// starter rig (a skinned 31×3×3 bar) blankets the central ground in iso, and
+// skinned voxels are not click-erasable (the world→local mapping fails on them).
+// Reliable scripted authoring needs the SessionBuilder's occupancy-model aiming
+// (Part 2c); that slice adds the functional carve/erase asset checks. The two V
+// key events carry no pixel; the shot leaves erase mode ON (harmless — the
+// trailing save / A-D probes don't read it).
+constexpr IRVideo::GuiInputEvent kProbeEraseEvents[] = {
+    {0,
+     IRVideo::GuiInputEvent::Type::PRESS,
+     IRMath::ivec2(0),
+     IRMath::vec2(0.0f),
+     IRInput::kKeyButtonV},
+    {1,
+     IRVideo::GuiInputEvent::Type::RELEASE,
+     IRMath::ivec2(0),
+     IRMath::vec2(0.0f),
+     IRInput::kKeyButtonV},
+};
+constexpr int kProbeEraseNumEvents =
+    static_cast<int>(sizeof(kProbeEraseEvents) / sizeof(kProbeEraseEvents[0]));
+
+// The fill-mode status label's current text, read by the Part 2b (#766) erase
+// probe. Returns "" when the label isn't built yet.
+std::string fillModeLabelText();
+
 // GUI-test shot table covering stable render framings plus the scripted-click
 // shots. Superset of the previous kShots[] — render-verify labels still match.
 // kGuiAssertShotIndex / kPickVoxelShotIndex select the assertion-bearing shots.
@@ -461,21 +506,29 @@ constexpr IRVideo::GuiTestShot kGuiTestShots[] = {
     {{2.0f, IRMath::vec2(0.0f), 0.0f, "editor_probe_map_5"}, &g_probeMapMoves[5], 1},
     {{2.0f, IRMath::vec2(0.0f), 0.0f, "editor_probe_map_6"}, &g_probeMapMoves[6], 1},
     {{2.0f, IRMath::vec2(0.0f), 0.0f, "editor_probe_map_7"}, &g_probeMapMoves[7], 1},
+    // Part 2b (#766) erase-fill probe — placed after the read-only map shots
+    // (which leave the seed scene intact) and before the state-mutating save /
+    // A-D probes, so it erases from the still-seeded editable set.
+    {{2.0f, IRMath::vec2(0.0f), 0.0f, "editor_probe_erase"},
+     kProbeEraseEvents,
+     kProbeEraseNumEvents},
     {{1.0f, IRMath::vec2(0.0f), 0.0f, "editor_probe_save"}, kProbeSaveEvents, 4},
     {{1.0f, IRMath::vec2(0.0f), 0.0f, "editor_probe_ad"}, kProbeADEvents, 2},
 };
 constexpr int kNumGuiTestShots = static_cast<int>(sizeof(kGuiTestShots) / sizeof(kGuiTestShots[0]));
 constexpr int kGuiAssertShotIndex = 4;
 constexpr int kPickVoxelShotIndex = 5;
-// Phase 0 probe shot indices (#766). Map shots occupy [start, start+count);
-// the dispatch and overload shots follow. Derived from kPickVoxelShotIndex so
-// they track any reordering of the stable shots.
+// Phase 0 / Part 2b probe shot indices (#766). Map shots occupy
+// [start, start+count); the erase probe, then the dispatch and overload shots
+// follow. Derived from kPickVoxelShotIndex so they track any reordering of the
+// stable shots.
 constexpr int kProbeMapShotStart = kPickVoxelShotIndex + 1;
-constexpr int kProbeSaveShotIndex = kProbeMapShotStart + kProbeMapCount;
+constexpr int kProbeEraseShotIndex = kProbeMapShotStart + kProbeMapCount;
+constexpr int kProbeSaveShotIndex = kProbeEraseShotIndex + 1;
 constexpr int kProbeADShotIndex = kProbeSaveShotIndex + 1;
 static_assert(
     kProbeADShotIndex + 1 == kNumGuiTestShots,
-    "Phase 0 probe shots (#766) must be the final kGuiTestShots entries"
+    "Phase 0 / Part 2b probe shots (#766) must be the final kGuiTestShots entries"
 );
 
 // GUI-test assertion tables (P3, #1796). Filled in initEntities once the widget
@@ -505,6 +558,30 @@ void onGuiAssertFrame(int shotIndex, bool isCaptureFrame) {
         const IRMath::ivec3 cell = probeGroundCell(cellIndex);
         const IRMath::vec3 worldCenter = g_editableSceneOrigin + IRMath::vec3(cell);
         g_probeMapMoves[cellIndex].screenPx_ = IRRender::worldPos3DToMouseScreenPx(worldCenter);
+    }
+    // Part 2b (#766) erase probe: after synthetic V toggled erase mode ON, assert
+    // (on the capture frame) that g_eraseMode is set and the fill-mode status
+    // label the place/erase system repaints each frame now reads "ERASE BOX".
+    // Own GUI-ASSERT line in the gui-verify format the prefab evaluator emits —
+    // the mode flag + label are editor state engine/video can't see. Occlusion-
+    // free (no scene click); the functional scripted-erase check is Part 2c.
+    if (shotIndex == kProbeEraseShotIndex) {
+        if (isCaptureFrame) {
+            const std::string labelText = fillModeLabelText();
+            const bool pass = g_eraseMode && labelText == "ERASE BOX";
+            IR_LOG_INFO(
+                "GUI-ASSERT shot={} label={} kind={} target={} name={} result={} actual={}",
+                shotIndex,
+                "editor_probe_erase",
+                "ERASE_MODE_LABEL",
+                0,
+                "v_toggles_erase_mode",
+                pass ? "PASS" : "FAIL",
+                "eraseMode=" + std::string(g_eraseMode ? "ON" : "OFF") + " label=\"" + labelText +
+                    "\""
+            );
+        }
+        return; // erase shot has no g_shotAssertions entry
     }
     const auto &assertions = g_shotAssertions[shotIndex];
     if (assertions.empty())
@@ -539,8 +616,17 @@ IREntity::EntityId g_layerAddBtn = IREntity::kNullEntity;
 IREntity::EntityId g_layerDelBtn = IREntity::kNullEntity;
 
 // Fill-mode status label — top-left status bar updated each frame with the
-// active fill mode (BOX / LINE / FACE) and active symmetry axes.
+// active fill mode (BOX / LINE / FACE), the erase-mode prefix, and active
+// symmetry axes.
 IREntity::EntityId g_fillModeLabel = IREntity::kNullEntity;
+
+// Current text of the fill-mode status label (Part 2b #766 erase probe reads it
+// to verify the erase-mode toggle). Empty when the label isn't built yet.
+std::string fillModeLabelText() {
+    if (g_fillModeLabel == IREntity::kNullEntity)
+        return {};
+    return IREntity::getComponent<C_WidgetLabel>(g_fillModeLabel).text_;
+}
 
 // Parametric shape bake panel widget entity IDs (T-286).
 IREntity::EntityId g_bakePanel = IREntity::kNullEntity;
@@ -1257,6 +1343,7 @@ int main(int argc, char **argv) {
     IR_LOG_INFO("  Ctrl + left-click: face-fill (flood-fill axis-plane of hit face)");
     IR_LOG_INFO("  Left-click (no drag): place single voxel adjacent to hit face");
     IR_LOG_INFO("  Right-click: erase hit voxel (drag still rotates camera)");
+    IR_LOG_INFO("  V: toggle erase-fill mode (left-click place/box/line/face gestures erase)");
     IR_LOG_INFO("  Escape: cancel active drag without committing");
     IR_LOG_INFO("  Middle-drag: pan camera");
     IR_LOG_INFO("  Scroll: zoom in/out");
@@ -1594,13 +1681,15 @@ void initSystems() {
 
             if (IRVoxelEditor::g_fillModeLabel != IREntity::kNullEntity) {
                 std::string status;
-                if (IRVoxelEditor::g_bonePaint.active_) {
+                const bool shiftNow = IRInput::checkKeyMouseModifiers(IRInput::kModifierShift, 0u);
+                const bool ctrlNow = IRInput::checkKeyMouseModifiers(IRInput::kModifierControl, 0u);
+                if (IRVoxelEditor::g_eraseMode) {
+                    // Erase mode takes precedence over bone-paint — erasing uses
+                    // no color, so the active bone is irrelevant while it is on.
+                    status = ctrlNow ? "ERASE FACE" : (shiftNow ? "ERASE LINE" : "ERASE BOX");
+                } else if (IRVoxelEditor::g_bonePaint.active_) {
                     status = "BONE";
                 } else {
-                    const bool shiftNow =
-                        IRInput::checkKeyMouseModifiers(IRInput::kModifierShift, 0u);
-                    const bool ctrlNow =
-                        IRInput::checkKeyMouseModifiers(IRInput::kModifierControl, 0u);
                     status = ctrlNow ? "FACE" : (shiftNow ? "LINE" : "BOX");
                 }
                 const auto &sym = IRVoxelEditor::g_symmetry;
@@ -1674,13 +1763,19 @@ void initSystems() {
                 if (hit && hit->faceNormal_ != ivec3(0)) {
                     auto &set = IREntity::getComponent<C_VoxelSetNew>(hit->entity_);
                     auto &gpos = IREntity::getComponent<C_WorldTransform>(hit->entity_);
+                    // Erase mode floods the hit voxel's own face plane (removing
+                    // the exposed layer); place mode floods the empty plane in
+                    // front of the hit face.
+                    const bool erase = IRVoxelEditor::g_eraseMode;
+                    const ivec3 faceStart =
+                        erase ? hit->voxelPos_ : hit->voxelPos_ + hit->faceNormal_;
                     IRVoxelEditor::applyFillFace(
                         hit->entity_,
                         set,
                         gpos,
-                        hit->voxelPos_ + hit->faceNormal_,
+                        faceStart,
                         hit->faceNormal_,
-                        true,
+                        !erase,
                         placeColor,
                         placeBoneId
                     );
@@ -1697,7 +1792,11 @@ void initSystems() {
             if (noCtrl && !overWidget && leftPressedNow) {
                 const auto hit = IRPrefab::Picking::castVoxelRay();
                 if (hit && hit->faceNormal_ != ivec3(0)) {
-                    const ivec3 startPos = hit->voxelPos_ + hit->faceNormal_;
+                    // Erase drags target the hit voxels themselves; place drags
+                    // target the empty cells adjacent to the hit face.
+                    const ivec3 startPos = IRVoxelEditor::g_eraseMode
+                                               ? hit->voxelPos_
+                                               : hit->voxelPos_ + hit->faceNormal_;
                     IRVoxelEditor::g_fillTool.dragging_ = true;
                     IRVoxelEditor::g_fillTool.dragStartWorld_ = startPos;
                     IRVoxelEditor::g_fillTool.dragStartEntity_ = hit->entity_;
@@ -1710,7 +1809,9 @@ void initSystems() {
                 IRInput::checkKeyMouseButton(IRInput::kMouseButtonLeft, IRInput::HELD)) {
                 const auto hit = IRPrefab::Picking::castVoxelRay();
                 if (hit && hit->faceNormal_ != ivec3(0)) {
-                    const ivec3 endPos = hit->voxelPos_ + hit->faceNormal_;
+                    const ivec3 endPos = IRVoxelEditor::g_eraseMode
+                                             ? hit->voxelPos_
+                                             : hit->voxelPos_ + hit->faceNormal_;
                     IRVoxelEditor::g_fillTool.lastEndWorld_ = endPos;
                     const bool shiftHeld =
                         IRInput::checkKeyMouseModifiers(IRInput::kModifierShift, 0u);
@@ -1738,6 +1839,9 @@ void initSystems() {
                 const ivec3 startPos = IRVoxelEditor::g_fillTool.dragStartWorld_;
                 const ivec3 endPos = IRVoxelEditor::g_fillTool.lastEndWorld_;
                 const bool shiftHeld = IRInput::checkKeyMouseModifiers(IRInput::kModifierShift, 0u);
+                // Erase mode flips the whole drag to removal; startPos / endPos
+                // were already captured in the hit-cell frame at PRESS / HELD.
+                const bool place = !IRVoxelEditor::g_eraseMode;
 
                 if (startPos == endPos) {
                     ivec3 local{};
@@ -1748,7 +1852,7 @@ void initSystems() {
                             set,
                             local,
                             flat,
-                            true,
+                            place,
                             placeColor,
                             placeBoneId
                         );
@@ -1759,7 +1863,7 @@ void initSystems() {
                         gpos,
                         startPos,
                         endPos,
-                        true,
+                        place,
                         placeColor,
                         placeBoneId
                     );
@@ -1770,7 +1874,7 @@ void initSystems() {
                         gpos,
                         startPos,
                         endPos,
-                        true,
+                        place,
                         placeColor,
                         placeBoneId
                     );
@@ -2415,6 +2519,19 @@ void initCommands() {
                 IRVoxelEditor::g_symmetry.enableZ_ = !IRVoxelEditor::g_symmetry.enableZ_;
                 logSymmetry();
             }
+        }
+    );
+
+    // V — toggle erase-fill mode (#766 Part 2b): the left-click place / box /
+    // line / face gestures ERASE instead of place while it is on. Right-click
+    // single-voxel erase is unaffected.
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonV,
+        []() {
+            IRVoxelEditor::g_eraseMode = !IRVoxelEditor::g_eraseMode;
+            IR_LOG_INFO("Erase-fill mode: {}", IRVoxelEditor::g_eraseMode ? "ON" : "OFF");
         }
     );
 
