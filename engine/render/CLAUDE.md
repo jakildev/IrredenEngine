@@ -761,7 +761,8 @@ gather/inverse alternatives:
 above elects one winner per store cell, which is the **cardinal**-visible
 face set — under residual yaw the **view**-visible set can include a coset
 member (two faces separated by world `t·(1,1,1)`) the store never wrote. A
-bounded, rotating-only overflow lane (two extra `resolveMode` passes in
+bounded, rotating-only overflow lane (the view-mask write folded into the
+mode-0 store since #2487 plus one extra `resolveMode` append pass in
 `c_voxel_to_trixel_stage_1_body.{glsl,metal}`, a second scatter pass in
 `v_peraxis_scatter.glsl`, and a relight pass in
 `c_light_overflow_faces.{glsl,metal}` at the tail of `LIGHTING_TO_TRIXEL`)
