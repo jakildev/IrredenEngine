@@ -98,6 +98,10 @@
 // Symmetry modes (T-212)
 #include "symmetry.hpp"
 
+// Authoring sessions (#766 Part 2c) — recipes of editor gestures compiled into
+// scripted input and replayed against the live UI by the GUI-test harness.
+#include "sessions.hpp"
+
 // Scene save/load
 #include "scene_io.hpp"
 // Rig save/load (joint entities ↔ .rig asset)
@@ -261,6 +265,15 @@ BonePaintState g_bonePaint;
 // a free global avoids threading a pointer through SystemParams just to
 // reach the same address every frame.
 AnimationState g_anim;
+
+// Authoring session selected by --gui-session (#766 Part 2c). When one is
+// active it replaces the standing GUI-test shot table with the recipe's
+// segments, and the scene is built without the demo furniture (see
+// initEntities). Both live at module scope because main() resolves them right
+// after the arg parse, initSystems hands the shots to the harness, and the
+// per-frame assert callback reads them back.
+Session::Id g_sessionId = Session::Id::NONE;
+Session::Recipe g_session;
 
 namespace {
 
@@ -452,20 +465,18 @@ inline IRMath::ivec3 probeGroundCell(int i) {
 
 // --- Part 2b (#766) erase-fill mode probe ---------------------------------
 // Verifies the erase-fill toggle through the live UI, occlusion-free: synthetic
-// V flips g_eraseMode ON, and the capture-frame assertion (emitted in
-// onGuiAssertFrame) checks the fill-mode status label the place/erase system
-// repaints each frame now reads "ERASE BOX". This exercises the whole control
-// path — synthetic key → command dispatch → g_eraseMode → status label —
+// V flips g_eraseMode ON, and a capture-frame PREDICATE assertion
+// (evaluateEraseModeLabel) checks the fill-mode status label the place/erase
+// system repaints each frame now reads "ERASE BOX". This exercises the whole
+// control path — synthetic key → command dispatch → g_eraseMode → status label —
 // without a scene click, so it is immune to the seed scene's occlusion.
 //
-// Why not a scripted-erase-removes-a-voxel check: the only clean, static,
-// click-erasable surface would be the editable ground plane, but the posed
-// starter rig (a skinned 31×3×3 bar) blankets the central ground in iso, and
-// skinned voxels are not click-erasable (the world→local mapping fails on them).
-// Reliable scripted authoring needs the SessionBuilder's occupancy-model aiming
-// (Part 2c); that slice adds the functional carve/erase asset checks. The two V
-// key events carry no pixel; the shot leaves erase mode ON (harmless — the
-// trailing save / A-D probes don't read it).
+// Why not a scripted-erase-removes-a-voxel check here: the standing shot table
+// runs against the demo scene, whose reference shapes and posed starter rig sit
+// between the camera and the editable ground plane. The functional carve check
+// lives in the Part 2c `drag_probe` session instead, which authors on a scene
+// built without that furniture. The two V key events carry no pixel; the shot
+// leaves erase mode ON (harmless — the trailing save / A-D probes don't read it).
 constexpr IRVideo::GuiInputEvent kProbeEraseEvents[] = {
     {0,
      IRVideo::GuiInputEvent::Type::PRESS,
@@ -539,10 +550,53 @@ static_assert(
 IRPrefab::GuiTest::LatchState g_guiAssertLatch;
 std::vector<IRPrefab::GuiTest::Assertion> g_shotAssertions[kNumGuiTestShots];
 
+// Part 2b (#766) erase-fill probe check: after synthetic V toggled erase mode
+// ON, the fill-mode status label the place/erase system repaints each frame
+// must read "ERASE BOX". Exercises the whole control path — synthetic key →
+// command dispatch → g_eraseMode → status label — with no scene click, so it is
+// immune to the seed scene's occlusion.
+bool evaluateEraseModeLabel(const void *, std::string &actual) {
+    const std::string labelText = fillModeLabelText();
+    actual =
+        "eraseMode=" + std::string(g_eraseMode ? "ON" : "OFF") + " label=\"" + labelText + "\"";
+    return g_eraseMode && labelText == "ERASE BOX";
+}
+
+// Per-frame driver for an authoring session (#766 Part 2c). Resolves this
+// segment's cursor aims against the shot's live camera — the world→screen
+// mapping reads zoom / iso offset / letterbox, so the pixel cannot be baked at
+// recipe-build time — then evaluates the segment's occupancy assertions. The
+// write is idempotent across the shot's frames and lands before the harness's
+// event phase on the same tick, so the scheduled MOVE injects the fresh pixel
+// (same ordering the Phase 0 probe-map shots rely on).
+void onSessionAssertFrame(int shotIndex, bool isCaptureFrame) {
+    if (shotIndex < 0 || shotIndex >= static_cast<int>(g_session.segments_.size()))
+        return;
+    Session::Segment &segment = g_session.segments_[shotIndex];
+    for (const Session::AimFixup &aim : segment.aims_) {
+        segment.events_[static_cast<std::size_t>(aim.eventIndex_)].screenPx_ =
+            IRRender::worldPos3DToMouseScreenPx(aim.worldPoint_);
+    }
+    if (segment.assertions_.empty())
+        return;
+    IRPrefab::GuiTest::onFrame(
+        g_guiAssertLatch,
+        shotIndex,
+        isCaptureFrame,
+        segment.label_.c_str(),
+        segment.assertions_.data(),
+        static_cast<int>(segment.assertions_.size())
+    );
+}
+
 // Forwarder wired to IRVideo::GuiTestConfig::onAssertFrame_. The harness owns
 // input + capture timing in engine/video; this hands each frame to the prefab
 // evaluator with the shot's assertion table (engine/video can't see widgets).
 void onGuiAssertFrame(int shotIndex, bool isCaptureFrame) {
+    if (g_sessionId != Session::Id::NONE) {
+        onSessionAssertFrame(shotIndex, isCaptureFrame);
+        return;
+    }
     if (shotIndex < 0 || shotIndex >= kNumGuiTestShots)
         return;
     // Phase 0 probe 2 (#766): fill this probe-map shot's cursor move with the
@@ -558,30 +612,6 @@ void onGuiAssertFrame(int shotIndex, bool isCaptureFrame) {
         const IRMath::ivec3 cell = probeGroundCell(cellIndex);
         const IRMath::vec3 worldCenter = g_editableSceneOrigin + IRMath::vec3(cell);
         g_probeMapMoves[cellIndex].screenPx_ = IRRender::worldPos3DToMouseScreenPx(worldCenter);
-    }
-    // Part 2b (#766) erase probe: after synthetic V toggled erase mode ON, assert
-    // (on the capture frame) that g_eraseMode is set and the fill-mode status
-    // label the place/erase system repaints each frame now reads "ERASE BOX".
-    // Own GUI-ASSERT line in the gui-verify format the prefab evaluator emits —
-    // the mode flag + label are editor state engine/video can't see. Occlusion-
-    // free (no scene click); the functional scripted-erase check is Part 2c.
-    if (shotIndex == kProbeEraseShotIndex) {
-        if (isCaptureFrame) {
-            const std::string labelText = fillModeLabelText();
-            const bool pass = g_eraseMode && labelText == "ERASE BOX";
-            IR_LOG_INFO(
-                "GUI-ASSERT shot={} label={} kind={} target={} name={} result={} actual={}",
-                shotIndex,
-                "editor_probe_erase",
-                "ERASE_MODE_LABEL",
-                0,
-                "v_toggles_erase_mode",
-                pass ? "PASS" : "FAIL",
-                "eraseMode=" + std::string(g_eraseMode ? "ON" : "OFF") + " label=\"" + labelText +
-                    "\""
-            );
-        }
-        return; // erase shot has no g_shotAssertions entry
     }
     const auto &assertions = g_shotAssertions[shotIndex];
     if (assertions.empty())
@@ -1330,6 +1360,43 @@ void seedDemoSkeleton() {
 
 } // namespace
 
+namespace Session {
+
+// Reads one recipe occupancy expectation against the live editable set at a
+// segment's capture frame (#766 Part 2c). This is the check that makes a
+// session positive-fire: a gesture that was swallowed — click intercepted by a
+// widget or a reference shape, aim occluded, drag never committing — leaves the
+// cell in its old state and FAILs here, instead of quietly authoring nothing.
+bool evaluateOccupancyCheck(const void *context, std::string &actual) {
+    const OccupancyCheck &check = *static_cast<const OccupancyCheck *>(context);
+    const IRMath::ivec3 cell = check.localCell_;
+    const std::string where = "cell=(" + std::to_string(cell.x) + "," + std::to_string(cell.y) +
+                              "," + std::to_string(cell.z) + ")";
+    if (g_sceneVoxelSetEntity == IREntity::kNullEntity) {
+        actual = where + " no-editable-set";
+        return false;
+    }
+    const auto &set = IREntity::getComponent<C_VoxelSetNew>(g_sceneVoxelSetEntity);
+    if (cell.x < 0 || cell.x >= set.size_.x || cell.y < 0 || cell.y >= set.size_.y || cell.z < 0 ||
+        cell.z >= set.size_.z) {
+        actual = where + " out-of-bounds";
+        return false;
+    }
+    const std::size_t flat = static_cast<std::size_t>(IRMath::index3DtoIndex1D(cell, set.size_));
+    if (flat >= set.voxels_.size()) {
+        actual = where + " unallocated";
+        return false;
+    }
+    // Active = non-zero alpha, the same liveness test the picker and the GPU
+    // pipeline use (C_Voxel::activate / deactivate).
+    const bool occupied = set.voxels_[flat].color_.alpha_ != 0;
+    actual = where + " occupied=" + (occupied ? "yes" : "no") +
+             " want=" + (check.expectOccupied_ ? "yes" : "no");
+    return occupied == check.expectOccupied_;
+}
+
+} // namespace Session
+
 } // namespace IRVoxelEditor
 
 void initSystems();
@@ -1364,6 +1431,15 @@ int main(int argc, char **argv) {
     // after. Omitted / non-positive dims keep the historical 16³ scene.
     IREngine::args()
         .numbers("--scene-size", "editable voxel grid dims: W H D (default 16 16 16)", 3);
+    // Authoring sessions (#766 Part 2c): replay a recipe of editor gestures
+    // through the GUI-test harness instead of the standing shot table. Needs
+    // --auto-screenshot as well (that is what wires the harness at all).
+    IREngine::args().enumValue(
+        "--gui-session",
+        "replay an authoring session's scripted gestures: none | drag_probe",
+        {"none", "drag_probe"},
+        "none"
+    );
     IREngine::init(argc, argv);
     {
         const std::vector<float> &dims = IREngine::args().getFloats("--scene-size");
@@ -1384,6 +1460,33 @@ int main(int argc, char **argv) {
             IRVoxelEditor::g_editableSceneOrigin.x,
             IRVoxelEditor::g_editableSceneOrigin.y,
             IRVoxelEditor::g_editableSceneOrigin.z
+        );
+    }
+    // Build the session recipe before the systems are wired — initSystems hands
+    // its shot table to the harness. A recipe that cannot aim one of its
+    // gestures is a hard error rather than a partial replay: a session that
+    // silently drops an op authors the wrong entity and saves it anyway.
+    IRVoxelEditor::g_sessionId =
+        IRVoxelEditor::Session::idFromName(IREngine::args().getEnum("--gui-session"));
+    if (IRVoxelEditor::g_sessionId != IRVoxelEditor::Session::Id::NONE) {
+        IRVoxelEditor::g_session = IRVoxelEditor::Session::build(
+            IRVoxelEditor::g_sessionId,
+            IRVoxelEditor::g_editableSceneSize,
+            IRVoxelEditor::g_editableSceneOrigin
+        );
+        if (!IRVoxelEditor::g_session.ok()) {
+            for (const std::string &error : IRVoxelEditor::g_session.errors_)
+                IR_LOG_ERROR("Session recipe error: {}", error);
+            return 1;
+        }
+        // Resolve the shot table only now that the recipe sits in the storage
+        // it keeps for the whole run — the shots point into its segments.
+        IRVoxelEditor::Session::resolveShots(IRVoxelEditor::g_session);
+        IR_LOG_INFO(
+            "Authoring session '{}': {} segments, {} occupancy checks",
+            IRVoxelEditor::g_session.name_,
+            IRVoxelEditor::g_session.segments_.size(),
+            IRVoxelEditor::g_session.checks_.size()
         );
     }
     initSystems();
@@ -2372,9 +2475,16 @@ void initSystems() {
         IRVideo::GuiTestConfig cfg{};
         cfg.warmupFrames_ = IREngine::args().autoScreenshotWarmupFrames();
         cfg.settleFrames_ = 3;
-        cfg.shots_ = IRVoxelEditor::kGuiTestShots;
-        cfg.numShots_ =
-            sizeof(IRVoxelEditor::kGuiTestShots) / sizeof(IRVoxelEditor::kGuiTestShots[0]);
+        // An authoring session (#766 Part 2c) replaces the standing table with
+        // its own segments; the Recipe owns that storage for the whole run.
+        if (IRVoxelEditor::g_sessionId != IRVoxelEditor::Session::Id::NONE) {
+            cfg.shots_ = IRVoxelEditor::g_session.shots_.data();
+            cfg.numShots_ = static_cast<int>(IRVoxelEditor::g_session.shots_.size());
+        } else {
+            cfg.shots_ = IRVoxelEditor::kGuiTestShots;
+            cfg.numShots_ =
+                sizeof(IRVoxelEditor::kGuiTestShots) / sizeof(IRVoxelEditor::kGuiTestShots[0]);
+        }
         // P3 (#1796): evaluate GUI assertions at each shot's capture frame. The
         // assertion tables themselves are populated later in initEntities (once
         // the widget entities exist), before the game loop fires this callback.
@@ -3148,47 +3258,60 @@ void initEntities() {
     g_editor.perFrameUndoStacks_.resize(IRVoxelEditor::g_anim.frameCount());
     g_editor.perFrameUndoBytes_.resize(IRVoxelEditor::g_anim.frameCount(), 0);
 
+    // An authoring session (#766 Part 2c) needs a stage with nothing on it but
+    // the editable set: the picking walk tests SDF shapes before voxel sets and
+    // reports no face normal for a shape hit, so any reference shape between the
+    // camera and a target cell silently swallows the click (the place/erase
+    // driver drops hits with a zero face normal). The demo furniture below —
+    // floor slab, axis bars, centre cube, perimeter gizmos, starter rig,
+    // satellite sets — is exactly that kind of occluder, so sessions build
+    // without it. Everything else about the scene, including the seeded ground
+    // plane the first click lands on, is unchanged.
+    const bool sessionScene = IRVoxelEditor::g_sessionId != IRVoxelEditor::Session::Id::NONE;
+
     constexpr float kFloorZ = 2.0f;
 
-    IREntity::createEntity(
-        C_LocalTransform{vec3(0.0f, 0.0f, kFloorZ)},
-        C_ShapeDescriptor{
-            IRRender::ShapeType::BOX,
-            vec4(40.0f, 40.0f, 1.0f, 0.0f),
-            Color{55, 60, 75, 255}
-        }
-    );
+    if (!sessionScene) {
+        IREntity::createEntity(
+            C_LocalTransform{vec3(0.0f, 0.0f, kFloorZ)},
+            C_ShapeDescriptor{
+                IRRender::ShapeType::BOX,
+                vec4(40.0f, 40.0f, 1.0f, 0.0f),
+                Color{55, 60, 75, 255}
+            }
+        );
 
-    IREntity::createEntity(
-        C_LocalTransform{vec3(0.0f, 0.0f, 0.0f)},
-        C_ShapeDescriptor{
-            IRRender::ShapeType::BOX,
-            vec4(16.0f, 0.5f, 0.5f, 0.0f),
-            Color{180, 60, 60, 255}
-        }
-    );
+        IREntity::createEntity(
+            C_LocalTransform{vec3(0.0f, 0.0f, 0.0f)},
+            C_ShapeDescriptor{
+                IRRender::ShapeType::BOX,
+                vec4(16.0f, 0.5f, 0.5f, 0.0f),
+                Color{180, 60, 60, 255}
+            }
+        );
 
-    IREntity::createEntity(
-        C_LocalTransform{vec3(0.0f, 0.0f, 0.0f)},
-        C_ShapeDescriptor{
-            IRRender::ShapeType::BOX,
-            vec4(0.5f, 16.0f, 0.5f, 0.0f),
-            Color{60, 180, 60, 255}
-        }
-    );
+        IREntity::createEntity(
+            C_LocalTransform{vec3(0.0f, 0.0f, 0.0f)},
+            C_ShapeDescriptor{
+                IRRender::ShapeType::BOX,
+                vec4(0.5f, 16.0f, 0.5f, 0.0f),
+                Color{60, 180, 60, 255}
+            }
+        );
 
-    IREntity::createEntity(
-        C_LocalTransform{vec3(0.0f, 0.0f, 0.0f)},
-        C_ShapeDescriptor{
-            IRRender::ShapeType::BOX,
-            vec4(1.5f, 1.5f, 1.5f, 0.0f),
-            Color{220, 220, 240, 255}
-        }
-    );
+        IREntity::createEntity(
+            C_LocalTransform{vec3(0.0f, 0.0f, 0.0f)},
+            C_ShapeDescriptor{
+                IRRender::ShapeType::BOX,
+                vec4(1.5f, 1.5f, 1.5f, 0.0f),
+                Color{220, 220, 240, 255}
+            }
+        );
+    }
 
     // F-0.5 Phase 1 gizmo primitives — kept around the perimeter as
     // visual references for the gizmo render pass.
-    {
+    if (!sessionScene) {
         IREntity::EntityId translateGizmo = IRPrefab::Gizmo::createTranslateGizmo();
         IREntity::getComponent<C_LocalTransform>(translateGizmo).translation_ =
             vec3(-12.0f, 12.0f, -3.0f);
@@ -3218,7 +3341,8 @@ void initEntities() {
     // feature is visible on launch and in auto-screenshots (same spirit as the
     // perimeter gizmo references above). Author more with J (toggle mode) + B
     // (add joint); R starts a new chain off the rig root.
-    IRVoxelEditor::seedDemoSkeleton();
+    if (!sessionScene)
+        IRVoxelEditor::seedDemoSkeleton();
 
     // Editable voxel set — the place/erase target. Allocated empty
     // (default color, alpha=255 so cells are active at start) then
@@ -3248,14 +3372,16 @@ void initEntities() {
     // picking from T-219 and give the user secondary targets to click
     // on. Their colors stay fixed so it's obvious which click landed
     // on the editable set versus a satellite.
-    IREntity::createEntity(
-        C_LocalTransform{vec3(-16.0f, 0.0f, -6.0f)},
-        C_VoxelSetNew{ivec3(4, 4, 4), Color{120, 180, 240, 255}}
-    );
-    IREntity::createEntity(
-        C_LocalTransform{vec3(16.0f, 0.0f, -6.0f)},
-        C_VoxelSetNew{ivec3(4, 4, 4), Color{240, 180, 120, 255}}
-    );
+    if (!sessionScene) {
+        IREntity::createEntity(
+            C_LocalTransform{vec3(-16.0f, 0.0f, -6.0f)},
+            C_VoxelSetNew{ivec3(4, 4, 4), Color{120, 180, 240, 255}}
+        );
+        IREntity::createEntity(
+            C_LocalTransform{vec3(16.0f, 0.0f, -6.0f)},
+            C_VoxelSetNew{ivec3(4, 4, 4), Color{240, 180, 120, 255}}
+        );
+    }
 
     // Canvas setup (unchanged from the F-0.5 baseline).
     IREntity::EntityId mainCanvas = IRRender::getActiveCanvasEntity();
@@ -3558,6 +3684,11 @@ void initEntities() {
     // onto the scene. PICKS_VOXEL's expected voxel is the regression baseline
     // for screen→world picking alignment.
     IRPrefab::Widget::makeGuiHoverState();
+    // A session drives its own per-segment assertion tables (built with the
+    // recipe, evaluated through onSessionAssertFrame), so the standing tables
+    // below are only wired for the standing shot table.
+    if (sessionScene)
+        return;
     IRVoxelEditor::g_shotAssertions[IRVoxelEditor::kGuiAssertShotIndex] = {
         IRPrefab::GuiTest::hovers(IRVoxelEditor::g_layerList, "layer_list_hover"),
         IRPrefab::GuiTest::clickFires(IRVoxelEditor::g_layerList, "layer_list_click"),
@@ -3591,4 +3722,14 @@ void initEntities() {
             IRPrefab::GuiTest::picksIsoColumn(target, "probe_map"),
         };
     }
+    // Part 2b (#766): the erase-fill toggle's mode + status-label check. A
+    // PREDICATE assertion so it shares the harness's single GUI-ASSERT emitter
+    // with every other kind.
+    IRVoxelEditor::g_shotAssertions[IRVoxelEditor::kProbeEraseShotIndex] = {
+        IRPrefab::GuiTest::predicate(
+            &IRVoxelEditor::evaluateEraseModeLabel,
+            nullptr,
+            "v_toggles_erase_mode"
+        ),
+    };
 }

@@ -225,15 +225,93 @@ scripted click on the seed scene (all inform the Part 2c SessionBuilder):
   fmt-style `IR_LOG_INFO` (printed the literal `%s`); corrected to `{}` — same
   class as the A/D add-frame log bug already filed as #2491.
 
-### 2c — SessionBuilder, `--gui-session`, runner, ROCK — NEXT
+### 2c — SessionBuilder + `--gui-session` + the P0-3 drag stroke (LANDED)
 
-Remaining Part 2 work, in order: `SessionBuilder` compiling authoring recipes to
-`GuiInputEvent` streams via `worldPos3DToMouseScreenPx` **with a shadow
-occupancy model** so it aims at exposed faces and steers clear of the rig / gizmo
-occluders documented above (F-2b-1..3); `--gui-session <name>` selection;
-`scripts/author-entity.py` (run → parse `GUI-ASSERT` → verify saves → copy to
-`assets/voxel/entities/` → re-run byte-compare); then the ROCK session (sequence
-the P0-3 drag-stroke probe here, and add the functional carve/erase asset checks
-this slice's occlusion-free label check stops short of). Note: vertical picking
-needs **zoom ≥ 2** (see P0-2) — session shots that pick by column must honour it.
-The erase-fill mode (2b) is the carve primitive these recipes drive.
+The authoring spine. A **recipe** names cells; `SessionBuilder`
+(`creations/editors/voxel_editor/session_builder.hpp`) works out which face of
+which already-placed voxel to click, aims the cursor with
+`worldPos3DToMouseScreenPx`, and emits the MOVE / PRESS / RELEASE stream the
+GUI-test harness replays against the live UI. No recipe touches voxel storage —
+every voxel lands because a scripted click ran the editor's own place/erase path.
+`--gui-session <name>` selects one (`sessions.hpp` holds the registry);
+`gui-verify.py` now forwards target args after a `--` separator, so a session
+runs through the standard runner:
+
+```
+python3 scripts/gui-verify.py IRVoxelEditor -- --gui-session drag_probe
+```
+
+**Shadow occupancy model.** `OccupancyModel` mirrors the editable set as the
+recipe grows it and replays `castVoxelRay`'s front-to-back walk over that mirror,
+so an aim that would be occluded is caught while the recipe is being *built*
+rather than as a mystery FAIL — or a silent no-op — at run time. An unaimable
+gesture aborts the run with the offending cell named, because a session that
+quietly drops an op authors the wrong entity and saves it anyway.
+
+**Positive-fire assertions.** Each segment asserts the *live* set's occupancy at
+its capture frame, so a swallowed gesture fails loudly. These go through a new
+`AssertKind::PREDICATE` (`gui_test_assertions.hpp`) — a creation-supplied
+`bool(context, actual)` — so creation-specific state checks reuse the harness's
+single `GUI-ASSERT` emitter instead of hand-rolling the log line. The 2b erase
+probe moved onto it, retiring the one hand-rolled emitter that existed.
+
+**Result: `drag_probe` is 11/11 PASS on macOS/Metal** (`gui-verify` exit 0), and
+the standing shot table is unchanged at 14/14. The session also passes at
+`--scene-size 20 20 20` (cells derive from the live scene dims), so the ant's
+20³ framing is covered. **P0-3 — the drag stroke deferred out of Phase 0 — is
+resolved**: press → move → release commits a four-cell box fill, verified by
+per-cell occupancy rather than a hover proxy.
+
+Findings:
+
+- **F-2c-1 — the shipped editor's own reference scene makes the ground plane
+  unauthorable. Measured, not inferred.** Running `drag_probe` against the
+  default scene: **every** gesture is swallowed — place FAIL, all four drag cells
+  empty, and the aim assertion reports `voxel=(-1,-1,2)`, a *shape* hit. Root
+  cause: `castVoxelRay` tests SDF shapes before voxel sets at each depth step,
+  and a shape hit returns `faceNormal_ == (0,0,0)`, which every branch of the
+  place/erase driver drops (`if (hit && hit->faceNormal_ != ivec3(0))`). The demo
+  floor slab alone (`vec4(40,40,1)` at world z=2, so it spans z ∈ [1,3]) covers
+  the whole seeded ground plane at z=3 from the camera side. So this is not a
+  harness artifact — **a human clicking the ground in the shipped editor is
+  clicking through a slab that eats the event**, with no feedback. Sessions
+  therefore build the scene without the demo furniture (floor slab, axis bars,
+  centre cube, perimeter gizmos, starter rig, satellite sets); with it removed
+  the same recipe is 11/11. This supersedes F-2b-1's diagnosis: the starter rig
+  is *a* central-ground occluder, but the floor slab is the total one. Filed as a
+  child issue — the editor should either exclude non-editable reference shapes
+  from picking or fall back to the voxel-set hit behind them.
+- **F-2c-2 — face-accurate aiming needs zoom ≥ 3; P0-2's zoom ≥ 2 floor only
+  covers the column.** A face-centre aim sits half a column-spacing off the voxel
+  centre in screen space, so below zoom 3 it rounds onto the *neighbouring* iso
+  column and the click edits the wrong cell. Measured by sweeping `kSessionZoom`
+  against this session: zoom 2 → 2 FAIL (the side-face erase aim lands on the
+  adjacent ground column, `voxel=(0,1,3)` vs target `(0,0,2)`); zoom 3 / 4 / 8 →
+  11/11. Sessions author at **zoom 4** (floor plus one step of margin). Entity
+  recipes must not zoom out below that for a wider framing.
+- **F-2c-3 — one screenshot per segment is the session cost knob.** The harness
+  captures a PNG per shot, and a segment is a shot. The four-segment probe is
+  cheap; a per-op segmentation of the ant would be thousands of captures. Ops
+  therefore pack into frame offsets *within* a segment, and a segment boundary is
+  only spent where the recipe wants an assertion checkpoint or a camera re-apply
+  (after A/D, per P0-4).
+- **F-2c-4 — an erase gesture is not diagnosable from occupancy alone.** The
+  first `drag_probe` run failed the carve with nothing but "cell still occupied",
+  which is equally consistent with a bad aim, an occluded ray, or the gesture
+  never reaching the erase path. Splitting it into a `hover` + `PICKS_VOXEL`
+  segment followed by the click named the cause in one run (the aim was on the
+  wrong column). `hover` / `expectPick` are now part of the op vocabulary; entity
+  recipes should arm a novel gesture with a pick assertion before trusting it.
+
+### 2d — `author-entity.py` + ROCK — NEXT
+
+Remaining Part 2 work, in order: `scripts/author-entity.py` (run session → parse
+`GUI-ASSERT` → verify the saved `.vxs` → copy to `assets/voxel/entities/` →
+re-run and byte-compare for the determinism gate), then the **ROCK** session
+(box-fill blob + erase-carve + ground-slab erase + Ctrl+S) as the first committed
+entity. The spine is in place: the ops the rock needs — `click`, `dragBox`,
+`toggleEraseMode`, `save`, occupancy checks — all exist and are proven. Open
+questions for that slice: whether the seeded ground slab is erased by a
+`dragBox` sweep in erase mode (cheap — one drag per z-slice) or wants a
+select-all-plane affordance, and where `save()` lands its files relative to the
+runner's cwd (P0-1 established the write happens; the runner has to find it).
