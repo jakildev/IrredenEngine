@@ -9,19 +9,12 @@ using namespace metal;
 // window edge (see `gatherLightSources`). The propagate pass decrements
 // alpha by `stepFalloff` per step.
 
-// GPULightSource layout (the light-list entry this kernel seeds from).
+// GPULightSource layout (the light-list entry this kernel seeds from) and the
+// shared LightVolumeParams UBO layout. Phase 1c (#360): subtract
+// `worldOriginVoxel.xyz` — the camera-anchored window origin — before mapping a
+// light's world origin into a local texel index; `.w` is the has-SPOT flag
+// (#2318), unused by the seed.
 #include "ir_world_lighting.metal"
-
-struct LightVolumeParams {
-    int gridSize;
-    int halfExtent;
-    int lightCount;
-    float stepFalloff;
-    // Phase 1c (#360): camera-anchored window. Subtract this world voxel
-    // before mapping the light's world origin into a local texel index.
-    // `.w` carries the has-SPOT flag (#2318), unused by the seed.
-    int4 worldOriginVoxel;
-};
 
 kernel void c_seed_light_volume(
     device const GPULightSource *lights [[buffer(4)]],

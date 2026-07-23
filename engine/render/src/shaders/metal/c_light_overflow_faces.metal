@@ -2,7 +2,8 @@
                                      // FrameDataVoxelToTrixel (with overflowScratchLayout)
 #include "ir_per_axis_lighting.metal" // perAxisCellToWorld3D
 #include "ir_sun_shadow_sample.metal" // FrameDataSun + worldSunShadowFactor()
-#include "ir_world_lighting.metal"    // GPULightSource layout, spotConeFactor, ACESFilm
+#include "ir_world_lighting.metal"    // GPULightSource layout, spotConeFactor, ACESFilm,
+                                     // FrameDataLightingToTrixel + LightVolumeParams
 
 // Mirrors shaders/c_light_overflow_faces.glsl — view-visibility overflow-face
 // lighting (#2334, epic #2331 phase C2). Dispatched inside LIGHTING_TO_TRIXEL
@@ -11,26 +12,6 @@
 // AO = 1.0 — same world sample as c_lighting_to_trixel) and rewrites the entry's
 // stored colorPacked in place, so the unchanged scatter draws LIT slivers while
 // rotating. Runs ONLY while rotating; the cardinal fast path is byte-identical.
-
-struct FrameDataLightingToTrixel {
-    int   lightingEnabled;
-    int   lutEnabled;
-    int   lightVolumeEnabled;
-    float debugLightLevel;
-    int   debugOverlayMode;
-    int   hdrEnabled;
-    float exposure;
-    float skyIntensity;
-    float4 skyColor;
-};
-
-struct LightVolumeParams {
-    int   _gridSize;
-    int   _halfExtent;
-    int   _lightCount;
-    float _stepFalloff;
-    int4  worldOriginVoxel;
-};
 
 kernel void c_light_overflow_faces(
     constant FrameDataLightingToTrixel& frameData [[buffer(27)]],
