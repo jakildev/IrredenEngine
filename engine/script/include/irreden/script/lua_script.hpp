@@ -111,7 +111,8 @@ class LuaScript {
     // six modifier-resolver SystemIds and creates the singleton globals
     // entity in the same call. Calling
     // `registerPrefabSystem<MODIFIER_DECAY>()` after that would create a
-    // duplicate; this helper records the existing id without recreating.
+    // duplicate (and now trips an IR_ASSERT via the SystemName registry);
+    // this helper records the existing id without recreating.
     void registerPrefabSystemId(IRSystem::SystemName name, IRSystem::SystemId id) {
         m_prefabSystemIds[static_cast<int>(name)] = id;
     }

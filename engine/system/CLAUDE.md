@@ -104,6 +104,10 @@ Contract:
   when no `SystemManager` exists at all (headless unit tests that tick a
   `System<N>` against a bare `EntityManager`) — so a prefab handle built
   on it degrades to its "unwired" branch instead of dereferencing null.
+  Note: a `System<N>::create()` called directly (bypassing the
+  `createSystem<N>` wrapper) only records if its spec routes through
+  `registerSystem<N, ...>` — direct-`create()` alone does not populate the
+  registry.
 - Dynamic systems (`createSystemDynamic`, Lua-defined) carry no enum and
   are absent from the registry.
 - Registering the same `SystemName` twice is an `IR_ASSERT` (debug only).
