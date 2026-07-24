@@ -223,9 +223,7 @@ int main(int argc, char **argv) {
     parser.string("--color", "Foreground = pixels within T of color R,G,B (format: R,G,B,T)", "");
     parser.number("--reversal-eps", "Per-frame deltas under this (px) are treated as 0", 0.10f);
     parser.number("--max-residual", "SMOOTH verdict requires residual <= this (px)", 1.50f);
-    parser.flag(
-        "--stationary", "Assert the centroid does NOT move (rotation-pivot pin check)"
-    );
+    parser.flag("--stationary", "Assert the centroid does NOT move (rotation-pivot pin check)");
     parser.number("--max-deviation", "PINNED verdict requires deviation <= this (px)", 1.50f);
     parser.flag("--verbose", "Print the per-frame centroid + residual table");
     parser.variadic("frames", "Frame PNGs in capture order (>= 3)", 3);
@@ -287,7 +285,12 @@ int main(int argc, char **argv) {
                     continue;
                 }
                 std::printf(
-                    "%5zu    %9.2f  %+7.2f    %9.2f  %+7.2f\n", i, cx[i], dx[i], cy[i], dy[i]
+                    "%5zu    %9.2f  %+7.2f    %9.2f  %+7.2f\n",
+                    i,
+                    cx[i],
+                    dx[i],
+                    cy[i],
+                    dy[i]
                 );
             }
         }
