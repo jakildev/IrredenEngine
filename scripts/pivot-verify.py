@@ -43,15 +43,6 @@ ALL_BLOCKS = ["focus-ctr", "focus-off", "center-column", "center-depth"]
 SDF_BLOCKS = ["focus-ctr"]
 
 
-def _jitter_probe_exe(build_dir: Path) -> Path:
-    for name in ("jitter_probe", "jitter_probe.exe"):
-        candidate = build_dir / "tools" / "jitter_probe" / name
-        if candidate.is_file():
-            return candidate
-    raise SystemExit(f"jitter_probe not found under {build_dir}/tools/jitter_probe "
-                     f"(build it: fleet-build --target jitter_probe)")
-
-
 def _score_pass(probe_exe: Path, frames: list[Path],
                 max_deviation: float) -> tuple[str, float, float, str]:
     cmd = [str(probe_exe), "--stationary", "--verbose",
@@ -108,7 +99,7 @@ def main(argv: list[str] | None = None) -> int:
     if not args.no_build:
         verify_common.run(["fleet-build", "--target", args.target], cwd=worktree)
         verify_common.run(["fleet-build", "--target", "jitter_probe"], cwd=worktree)
-    probe_exe = _jitter_probe_exe(build_dir)
+    probe_exe = verify_common.find_exe(build_dir, "jitter_probe", "jitter_probe")
 
     passes: list[tuple[str, bool, float]] = []
     for zoom in zooms:
