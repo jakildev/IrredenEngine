@@ -84,6 +84,36 @@ out off-center** (not a pivot bug) — pin a focus (cursor mode, or a
 content-centroid focus) to rotate it in place. (Before this fix the default pivot
 itself swung a panned scene; that path is now correct.)
 
+## Known deviations (2026-07, epic #2544)
+
+The `scripts/pivot-verify.py` harness (isolated cylinder probe +
+`jitter_probe --stationary`; no reference images) measures three defects in
+the contract above on master — all invisible at cardinal yaw 0, so the
+"Empirically verified" section below remains true for what it measured while
+the pivot is still wrong under rotation:
+
+1. **Half-cell rotation-anchor mismatch (#2545).** The voxel raster rotates
+   content about `position + (0.5,0.5,0.5)` while the SDF path and the CPU
+   pivot/picking math rotate about the exact `position`. The offset rides the
+   iso depth axis (projects to zero at yaw 0); under yaw the voxel layer
+   orbits any pinned focus ~1 iso px and the voxel/SDF layers counter-rotate
+   apart.
+2. **Default focus pins the wrong depth (#2547).** The pinned set of the
+   drift-cancel offset is the vertical column `{W : W.xy == F.xy}`, and the
+   default `F` is the **iso-depth-0** point under the viewport center (this
+   doc's "z = 0 world point" wording is inaccurate — `isoPixelToPos3D`'s
+   third argument is iso depth `x+y+z`, not z). Content at screen center at
+   another depth sits on the center iso ray, off the pinned column by (t, t)
+   in xy, and orbits — 336 px measured at z=10, zoom 4.
+3. **Per-axis registration offset (#2546).** With (1) compensated, every
+   residual-yaw frame renders the voxel scene a constant ≈1 iso px off the
+   cardinal frames — the non-integer effective offset is rounded under a
+   different convention on the per-axis route than the cardinal gather.
+
+Fix chain and acceptance gates: epic #2544 (P1 #2545 → P2 #2546 → P3 #2547 →
+P4 #2548, cursor-pivot true-depth latch + indicator). Each child flips its
+pivot-verify block(s) to PINNED; this section shrinks as they land.
+
 ## History
 
 - #1352 / #1362 — first focus-pivot (panned-and-rotated correctness).

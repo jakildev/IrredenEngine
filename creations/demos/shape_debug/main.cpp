@@ -256,6 +256,76 @@ std::vector<std::array<char, 40>> g_pivotFocusShotLabels;
 // the focus exactly matches the rendered geometry.
 constexpr vec3 kPivotPillarCenter = vec3(8.0f, -8.0f, 10.0f);
 
+// --pivot-verify <block>: deterministic rotation-pivot invariance harness.
+// Each block spawns ONE vertical voxel cylinder (Z-yaw-invariant silhouette, so
+// its whole-silhouette centroid is immune to face-triplet changes) and sweeps
+// the camera yaw through cardinals + non-cardinals at a fixed pan; jitter_probe
+// --stationary then asserts the centroid holds its frame-0 position. Blocks:
+//   focus-ctr     — explicit focus on the probe center, probe at screen center.
+//   focus-off     — explicit focus on the probe center, probe panned off-center
+//                   (catches errors that vanish exactly at screen center).
+//   center-column — DEFAULT pivot; probe on the pinned vertical column (the
+//                   depth-0 focus's xy) at z > 0. Verifies the implemented
+//                   contract: the pivot correction pins the column
+//                   {W : W.xy == F.xy}, so this probe must hold even though it
+//                   renders below screen center.
+//   center-depth  — DEFAULT pivot; probe AT the viewport center but at z > 0:
+//                   on the center iso RAY, off the pinned column by (z, z) in
+//                   xy. Encodes the user-facing contract "what is at screen
+//                   center stays at screen center while rotating". DRIFT here
+//                   with center-column PINNED means the default pivot pins the
+//                   wrong DEPTH, not that the drift-cancel math is broken.
+// Requires --auto-screenshot (value = warmup frames per shot); score with
+// scripts/pivot-verify.py. Same stable-storage discipline as the other tables.
+std::string g_pivotVerifyBlock = "off";
+// --pivot-verify-sdf: probe via the SDF solver instead of the voxel pool, so
+// the two render paths' pivot conventions can be compared A/B — a layer that
+// pins while the other orbits means the paths disagree on the rendered-center
+// convention (invisible at yaw 0: a (0.5,0.5,0.5) offset rides the iso depth
+// axis and projects to zero until rotated).
+bool g_pivotVerifySdf = false;
+std::vector<IRVideo::AutoScreenshotShot> g_pivotVerifyShots;
+std::vector<std::array<char, 40>> g_pivotVerifyShotLabels;
+// Anchor of the DEFAULT-pivot blocks: an integer world point at iso depth 0
+// (x + y + z == 0) so `isoPixelToPos3D(viewCenterIso, 0)` — the default-pivot
+// focus derivation in getEffectiveCameraIso — recovers it EXACTLY when the pan
+// places it under the viewport center. Integer placement keeps the probe on
+// the voxel lattice (no displaced-pool tie noise in the measurement).
+constexpr vec3 kPivotVerifyDefaultAnchor = vec3(12.0f, -12.0f, 0.0f);
+// Probe z for the DEFAULT-pivot blocks. center-depth's xy displacement off the
+// pinned column equals this value in both axes (iso-ray geometry), so the
+// predicted master-drift scales with it.
+constexpr float kPivotVerifyProbeZ = 10.0f;
+// focus-off: iso offset of the pan away from probe-centered, so the pinned
+// probe holds a NON-center screen position.
+constexpr vec2 kPivotVerifyOffCenterIso = vec2(14.0f, 9.0f);
+
+// Camera pan that places kPivotVerifyDefaultAnchor under the exact viewport
+// center: inverts `viewCenterIso = canvasSize/2 - trixelOriginOffsetZ1 -
+// cameraIso` (getEffectiveCameraIso's default-focus derivation) at
+// `viewCenterIso == pos3DtoPos2DIso(anchor)`.
+vec2 pivotVerifyDefaultPan() {
+    const ivec2 canvasSize = ivec2(IRRender::getMainCanvasSizeTrixels());
+    return vec2(canvasSize) * 0.5f - vec2(IRMath::trixelOriginOffsetZ1(canvasSize)) -
+           IRMath::pos3DtoPos2DIso(kPivotVerifyDefaultAnchor);
+}
+
+// World center of the --pivot-verify probe cylinder for the active block.
+vec3 pivotVerifyProbeCenter() {
+    if (g_pivotVerifyBlock == "center-column") {
+        // On the pinned vertical column (anchor xy), shifted to z > 0.
+        return vec3(kPivotVerifyDefaultAnchor.x, kPivotVerifyDefaultAnchor.y, kPivotVerifyProbeZ);
+    }
+    if (g_pivotVerifyBlock == "center-depth") {
+        // On the viewport-center iso RAY at z = kPivotVerifyProbeZ: same screen
+        // position as the anchor, off the pinned column by (z, z) in xy.
+        return kPivotVerifyDefaultAnchor + vec3(kPivotVerifyProbeZ);
+    }
+    // focus-ctr / focus-off pin the same off-origin z>0 center the
+    // --pivot-focus-demo pillar uses.
+    return kPivotPillarCenter;
+}
+
 // --pan-sweep (#1944 diagnosis): hold yaw + zoom fixed and step the camera iso
 // position in fine sub-trixel increments across ~2 trixels, capturing one frame
 // per step. A static scene must translate SMOOTHLY across the sweep — any
@@ -303,6 +373,17 @@ void registerCliArgs() {
     args.flag("--skin-smoke", "Spawn one 2-bone rigged voxel bar skinned via binding-17 (#1605)");
     args.flag("--pan-sweep", "Fine fixed-yaw camera-pan jitter sweep (#1944)");
     args.flag("--yaw-sweep", "Fine fixed-position camera-yaw jitter sweep (#1944)");
+    args.enumValue(
+        "--pivot-verify",
+        "Rotation-pivot invariance sweep block "
+        "(off|focus-ctr|focus-off|center-column|center-depth)",
+        {"off", "focus-ctr", "focus-off", "center-column", "center-depth"},
+        "off"
+    );
+    args.flag(
+        "--pivot-verify-sdf",
+        "Render the --pivot-verify probe via the SDF solver instead of the voxel pool"
+    );
     args.number("--zoom", "Initial camera zoom (snapped to nearest power of two)", 0.0f);
     args.string("--debug-overlay", "Debug overlay mode (e.g. none, depth, normals)", "none");
     args.number("--yaw", "Initial camera Z-yaw in radians", 0.0f);
@@ -347,6 +428,8 @@ void readCliArgs() {
     g_skinSmoke = args.getFlag("--skin-smoke");
     g_panSweep = args.getFlag("--pan-sweep");
     g_yawSweep = args.getFlag("--yaw-sweep");
+    g_pivotVerifyBlock = args.getEnum("--pivot-verify");
+    g_pivotVerifySdf = args.getFlag("--pivot-verify-sdf");
 
     if (args.wasProvided("--zoom")) {
         const float zoom = args.getFloat("--zoom");
@@ -737,6 +820,71 @@ void initSystems() {
                 kPivotPillarCenter.x,
                 kPivotPillarCenter.y,
                 kPivotPillarCenter.z,
+                sweepZoom
+            );
+        } else if (g_pivotVerifyBlock != "off") {
+            // Pivot-invariance sweep (see the block comment on
+            // g_pivotVerifyBlock). One probe, fixed pan, yaw stepped through
+            // cardinals AND non-cardinals — both the cardinal gather and the
+            // per-axis residual path must hold the pin.
+            const float sweepZoom = g_initialZoom > 0.0f ? g_initialZoom : 4.0f;
+            const bool explicitFocus =
+                g_pivotVerifyBlock == "focus-ctr" || g_pivotVerifyBlock == "focus-off";
+            vec2 pan;
+            if (explicitFocus) {
+                pan = -IRMath::pos3DtoPos2DIso(kPivotPillarCenter);
+                if (g_pivotVerifyBlock == "focus-off") {
+                    pan += kPivotVerifyOffCenterIso;
+                }
+            } else {
+                pan = pivotVerifyDefaultPan();
+            }
+            const float yaws[] = {
+                0.0f,
+                IRMath::kPi / 6.0f,
+                IRMath::kQuarterPi,
+                IRMath::kHalfPi,
+                2.0f * IRMath::kPi / 3.0f,
+                IRMath::kPi,
+                IRMath::kPi + IRMath::kQuarterPi,
+                3.0f * IRMath::kHalfPi,
+                IRMath::kTwoPi - IRMath::kQuarterPi
+            };
+            constexpr int n = sizeof(yaws) / sizeof(yaws[0]);
+            g_pivotVerifyShotLabels.reserve(n);
+            g_pivotVerifyShots.reserve(n);
+            for (int i = 0; i < n; ++i) {
+                auto &label = g_pivotVerifyShotLabels.emplace_back();
+                std::snprintf(
+                    label.data(),
+                    label.size(),
+                    "pv_%s_yaw_%03d",
+                    g_pivotVerifyBlock.c_str(),
+                    i
+                );
+                IRVideo::AutoScreenshotShot shot{};
+                shot.zoom_ = sweepZoom;
+                shot.cameraIso_ = pan;
+                shot.yawRadians_ = yaws[i];
+                shot.label_ = label.data();
+                if (explicitFocus) {
+                    shot.pivotFocusWorld_ = kPivotPillarCenter;
+                    shot.hasPivotFocus_ = true;
+                }
+                g_pivotVerifyShots.push_back(shot);
+            }
+            cfg.shots_ = g_pivotVerifyShots.data();
+            cfg.numShots_ = static_cast<int>(g_pivotVerifyShots.size());
+            const vec3 probeCenter = pivotVerifyProbeCenter();
+            IR_LOG_INFO(
+                "Pivot-verify block '{}': {} yaw shots, pan ({},{}), probe ({},{},{}) at zoom={}",
+                g_pivotVerifyBlock,
+                cfg.numShots_,
+                pan.x,
+                pan.y,
+                probeCenter.x,
+                probeCenter.y,
+                probeCenter.z,
                 sweepZoom
             );
         } else if (g_panSweep) {
@@ -1174,6 +1322,41 @@ void initPivotFocusScene() {
     }
 }
 
+// Minimal scene for --pivot-verify: ONE bright vertical voxel cylinder centered
+// on the active block's probe point, nothing else. The scorer uses a
+// whole-frame THRESHOLD mask (any lit pixel), which is immune to the
+// shading-orientation bias that contaminates a color-locked mask: sun/AO
+// shading rotates with camera yaw, so a mask that keys on the lit base color
+// tracks the lit faces and fabricates an orbit-like centroid swing on
+// perfectly pinned geometry.
+void initPivotVerifyScene() {
+    const vec3 center = pivotVerifyProbeCenter();
+    if (g_pivotVerifySdf) {
+        createSDFShape(
+            center,
+            IRRender::ShapeType::CYLINDER,
+            vec4(4, 4, 17, 0),
+            Color{235, 235, 235, 255}
+        );
+    } else {
+        createVoxelPoolShape(
+            center,
+            IRRender::ShapeType::CYLINDER,
+            vec4(4, 4, 17, 0),
+            Color{235, 235, 235, 255},
+            ivec3(5, 5, 8)
+        );
+    }
+    IR_LOG_INFO(
+        "Pivot-verify scene: block '{}' probe {} cylinder at ({},{},{})",
+        g_pivotVerifyBlock,
+        g_pivotVerifySdf ? "SDF" : "voxel",
+        center.x,
+        center.y,
+        center.z
+    );
+}
+
 // Map a --spin-shape token to its ShapeType. Tokens match the lower-cased
 // fixture shapes below; returns false (leaving `out` untouched) on an unknown
 // name so the caller can diagnose it.
@@ -1225,6 +1408,11 @@ void setupCanvasLighting() {
 }
 
 void initEntities() {
+    if (g_pivotVerifyBlock != "off") {
+        IR_LOG_INFO("--- Pivot-verify probe scene ({}) ---", g_pivotVerifyBlock);
+        initPivotVerifyScene();
+        return;
+    }
     if (g_pivotFocusDemo) {
         IR_LOG_INFO("--- Camera pivot-focus demo scene (#1921) ---");
         initPivotFocusScene();

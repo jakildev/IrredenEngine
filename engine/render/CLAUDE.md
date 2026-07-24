@@ -467,6 +467,19 @@ Three checks, in order:
 frames stay byte-identical (`img_diff`) *and* that motion is jitter-free
 (`jitter_probe`) — a change can pass one and fail the other.
 
+**Rotation-pivot invariance is a THIRD independent property** — a sweep can be
+SMOOTH and byte-identical at yaw 0 while the pivot pins the wrong point (a
+(0.5,0.5,0.5) anchor offset rides the iso depth axis: zero projection at
+cardinal 0, a visible orbit under yaw). Any change to `getEffectiveCameraIso`,
+`cameraYawPivotOffset`, the kernels' yawed reposition, or the per-axis anchor
+must also run `python3 scripts/pivot-verify.py` — it drives
+`IRShapeDebug --pivot-verify <block>` (isolated cylinder probe, explicit-focus
++ default-pivot blocks, voxel + SDF twins) and gates with
+`jitter_probe --stationary`. No reference images; the assertion is pure
+temporal invariance. Contract + known deviations:
+[`docs/design/camera-yaw-pivot.md`](../../docs/design/camera-yaw-pivot.md)
+(epic #2544).
+
 For changes that touch only one graphics backend (GLSL without MSL
 counterpart, or vice versa), follow up with the **`backend-parity`**
 skill on the lagging-side host — the rule is in [`docs/agents/FLEET.md`](../../docs/agents/FLEET.md)
