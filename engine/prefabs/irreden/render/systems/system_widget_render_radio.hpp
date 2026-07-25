@@ -93,6 +93,7 @@ template <> struct System<WIDGET_RENDER_RADIO> {
     }
 
     static SystemId create() {
+        IRPrefab::Widget::ensureThemeSingleton();
         return registerSystem<
             WIDGET_RENDER_RADIO,
             IRComponents::C_Widget,

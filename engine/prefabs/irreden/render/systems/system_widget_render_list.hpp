@@ -118,6 +118,7 @@ template <> struct System<WIDGET_RENDER_LIST> {
     }
 
     static SystemId create() {
+        IRPrefab::Widget::ensureThemeSingleton();
         return registerSystem<
             WIDGET_RENDER_LIST,
             IRComponents::C_Widget,

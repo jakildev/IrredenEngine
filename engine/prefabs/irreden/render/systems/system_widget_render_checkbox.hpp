@@ -85,6 +85,7 @@ template <> struct System<WIDGET_RENDER_CHECKBOX> {
     }
 
     static SystemId create() {
+        IRPrefab::Widget::ensureThemeSingleton();
         return registerSystem<
             WIDGET_RENDER_CHECKBOX,
             IRComponents::C_Widget,

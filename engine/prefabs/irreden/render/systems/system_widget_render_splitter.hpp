@@ -57,6 +57,7 @@ template <> struct System<WIDGET_RENDER_SPLITTER> {
     }
 
     static SystemId create() {
+        IRPrefab::Widget::ensureThemeSingleton();
         return registerSystem<
             WIDGET_RENDER_SPLITTER,
             IRComponents::C_Splitter,

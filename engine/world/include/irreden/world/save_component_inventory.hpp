@@ -320,9 +320,9 @@ IR_SAVE_OPT_IN(IRComponents::C_WidgetSlider, 1)
 IR_SAVE_OPT_IN(IRComponents::C_WidgetTextInput, 1)
 IR_SAVE_OPT_IN(IRComponents::C_WidgetState, 1)
 
-// C_WidgetTheme: OPT-OUT — creation-authored init config re-established by
-// the creation's setup code on every run; persisting it in a world snapshot
-// would fight that init-time mutation on load.
+// C_WidgetTheme: OPT-OUT — pure defaults every run; no creation mutates it
+// at runtime today, so a world snapshot would add nothing. Revisit if a
+// theme editor makes this user-authored state.
 IR_SAVE_OPT_OUT(IRComponents::C_WidgetTheme)
 IR_SAVE_OPT_IN(IRComponents::C_Splitter, 1)
 IR_SAVE_OPT_IN(IRComponents::C_VoxelSelection, 1)

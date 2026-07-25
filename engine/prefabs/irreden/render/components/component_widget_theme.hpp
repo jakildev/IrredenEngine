@@ -73,10 +73,13 @@ struct WidgetTheme {
 namespace IRComponents {
 
 // Singleton row backing `IRPrefab::Widget::defaultTheme()`
-// (`widget_theme.hpp`). Setup-time-only: a creation mutates the theme once
-// at init before constructing widgets. Per-tick readers must cache it in
-// `beginTick` rather than reading the singleton per entity (the ECS
-// footgun) — see the `WIDGET_RENDER_*` systems for the pattern.
+// (`widget_theme.hpp`). Setup-time-only: a creation may mutate the theme
+// once at init before constructing widgets. Every `WIDGET_RENDER_*` system
+// touches the singleton from `create()` (`ensureThemeSingleton()`), so it
+// reliably exists before frame 1 whether or not a creation customizes it.
+// Per-tick readers must cache it in `beginTick` rather than reading the
+// singleton per entity (the ECS footgun) — see the `WIDGET_RENDER_*`
+// systems for the pattern.
 struct C_WidgetTheme {
     IRPrefab::Widget::WidgetTheme theme_;
 };

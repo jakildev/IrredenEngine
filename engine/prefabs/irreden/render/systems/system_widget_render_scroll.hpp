@@ -107,6 +107,7 @@ template <> struct System<WIDGET_RENDER_SCROLL> {
     }
 
     static SystemId create() {
+        IRPrefab::Widget::ensureThemeSingleton();
         return registerSystem<
             WIDGET_RENDER_SCROLL,
             IRComponents::C_Widget,

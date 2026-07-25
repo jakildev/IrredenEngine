@@ -170,6 +170,7 @@ template <> struct System<WIDGET_RENDER_DROPDOWN> {
     }
 
     static SystemId create() {
+        IRPrefab::Widget::ensureThemeSingleton();
         return registerSystem<
             WIDGET_RENDER_DROPDOWN,
             IRComponents::C_Widget,

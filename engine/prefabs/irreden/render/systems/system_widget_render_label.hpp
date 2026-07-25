@@ -52,6 +52,7 @@ template <> struct System<WIDGET_RENDER_LABEL> {
     }
 
     static SystemId create() {
+        IRPrefab::Widget::ensureThemeSingleton();
         return registerSystem<
             WIDGET_RENDER_LABEL,
             IRComponents::C_Widget,

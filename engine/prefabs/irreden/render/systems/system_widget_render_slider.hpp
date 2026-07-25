@@ -116,6 +116,7 @@ template <> struct System<WIDGET_RENDER_SLIDER> {
     }
 
     static SystemId create() {
+        IRPrefab::Widget::ensureThemeSingleton();
         return registerSystem<
             WIDGET_RENDER_SLIDER,
             IRComponents::C_Widget,

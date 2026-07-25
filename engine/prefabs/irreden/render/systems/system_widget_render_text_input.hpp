@@ -109,6 +109,7 @@ template <> struct System<WIDGET_RENDER_TEXT_INPUT> {
     }
 
     static SystemId create() {
+        IRPrefab::Widget::ensureThemeSingleton();
         return registerSystem<
             WIDGET_RENDER_TEXT_INPUT,
             IRComponents::C_Widget,

@@ -85,6 +85,7 @@ template <> struct System<WIDGET_INPUT_PANEL_DRAG> {
     }
 
     static SystemId create() {
+        IRPrefab::Widget::ensureThemeSingleton();
         return registerSystem<
             WIDGET_INPUT_PANEL_DRAG,
             IRComponents::C_Widget,

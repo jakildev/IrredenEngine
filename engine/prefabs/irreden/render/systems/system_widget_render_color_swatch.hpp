@@ -72,6 +72,7 @@ template <> struct System<WIDGET_RENDER_COLOR_SWATCH> {
     }
 
     static SystemId create() {
+        IRPrefab::Widget::ensureThemeSingleton();
         return registerSystem<
             WIDGET_RENDER_COLOR_SWATCH,
             IRComponents::C_Widget,
