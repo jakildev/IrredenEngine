@@ -1436,8 +1436,8 @@ int main(int argc, char **argv) {
     // --auto-screenshot as well (that is what wires the harness at all).
     IREngine::args().enumValue(
         "--gui-session",
-        "replay an authoring session's scripted gestures: none | drag_probe",
-        {"none", "drag_probe"},
+        "replay an authoring session's scripted gestures: none | drag_probe | rock",
+        {"none", "drag_probe", "rock"},
         "none"
     );
     IREngine::init(argc, argv);
