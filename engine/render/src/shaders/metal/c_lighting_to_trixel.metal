@@ -4,7 +4,9 @@
 // for the opt-in detached re-voxelize world-receive path (#1576 P4b-2). Shared
 // with c_compute_sun_shadow; replaces this kernel's former local FrameDataSun.
 #include "ir_sun_shadow_sample.metal"
-// GPULightSource layout, light-volume extents, spotConeFactor, ACESFilm.
+// GPULightSource layout, light-volume extents, spotConeFactor, ACESFilm, plus
+// the FrameDataLightingToTrixel + LightVolumeParams UBO layouts this kernel and
+// c_light_overflow_faces both bind.
 #include "ir_world_lighting.metal"
 
 // Mirrors shaders/c_lighting_to_trixel.glsl. Screen-space lighting
@@ -15,29 +17,6 @@
 // float precision, adds the sky-term contribution, applies exposure,
 // and tonemaps via the ACES Filmic curve before writing back to the
 // canvas.
-
-struct FrameDataLightingToTrixel {
-    int   lightingEnabled;
-    int   lutEnabled;
-    int   lightVolumeEnabled;
-    float debugLightLevel;
-    int   debugOverlayMode;
-    int   hdrEnabled;
-    float exposure;
-    float skyIntensity;
-    float4 skyColor;
-};
-
-// Layout must match the propagate/seed UBO layout so the shared buffer
-// binding works. Lighting reads `worldOriginVoxel.xyz` (volume origin) and
-// `.w` (has-SPOT flag, #2318).
-struct LightVolumeParams {
-    int   _gridSize;
-    int   _halfExtent;
-    int   _lightCount;
-    float _stepFalloff;
-    int4  worldOriginVoxel;
-};
 
 // Per-axis empty-cell compaction (#2256): on the per-axis route
 // (perAxisRoute != 0) this kernel is dispatched indirectly over only each axis's

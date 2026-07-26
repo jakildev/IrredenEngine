@@ -384,9 +384,14 @@ void main() {
             feederPos = rotateCardinalZ(feederPos, cardinalIndex);
             feederPos += cardinalLowerCornerShift(cardinalIndex);
         }
-        const ivec2 feederIso = pos3DtoPos2DIso(feederPos);
-        if (feederIso.x < visibleIsoBounds.x || feederIso.x > visibleIsoBounds.z ||
-            feederIso.y < visibleIsoBounds.y || feederIso.y > visibleIsoBounds.w) {
+        // One definition with the compact cull's Step-B classify
+        // (isShadowFeederIso, ir_iso_common.glsl) so the skip and the
+        // classification cannot drift. The predicate re-tests the two route
+        // terms — provably true inside this gate; the gate itself stays as the
+        // cheap early-out that avoids the cardinal projection above.
+        if (isShadowFeederIso(
+                pos3DtoPos2DIso(feederPos), visibleIsoBounds, residualYaw, isDetachedCanvas
+        )) {
             return;
         }
     }

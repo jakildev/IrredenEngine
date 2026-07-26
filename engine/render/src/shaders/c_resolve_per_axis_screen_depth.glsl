@@ -54,6 +54,11 @@ layout(std430, binding = 28) restrict buffer PerAxisResolveScratch {
     int resolveScratch[];
 };
 
+// The cardinal-layout micro-cell emit shared with c_resolve_world_placed_depth.
+// Included AFTER ir_iso_common.glsl and AFTER the resolveScratch declaration it
+// writes through (the fragment's wrapper contract).
+#include "ir_resolve_cardinal_emit.glsl"
+
 // #2256: this stage is dispatched indirectly over only this axis's OCCUPIED
 // cells (compacted by the STAGE_1 per-axis pre-pass) instead of sweeping the
 // full worst-case grid. compactedCells holds the occupied linear cell indices;
@@ -145,24 +150,12 @@ void main() {
     for (int v = 0; v < scale; ++v) {
         for (int u = 0; u < scale; ++u) {
             const ivec3 microView = viewPos + stepU * u + stepV * v;
-            // Per-micro-cell depth, shared by the region's two pixels — the
-            // exact encode a real cardinal store would hold here, so BAKE's
-            // pixel+depth inverse recovers points on the face plane.
-            const int encoded = encodeDepthWithFace(pos3DtoDistance(microView), slot, flip);
-            const ivec2 cellBase = mainBase + pos3DtoPos2DIso(microView);
-            for (int k = 0; k < 2; ++k) {
-                const ivec2 mainPixel = cellBase + faceOffset_2x3(slot, k);
-                if (!isInsideCanvas(mainPixel, canvasSizePixels)) {
-                    continue;
-                }
-                // Front-most per screen pixel: smallest encoded distance wins
-                // (depth dominates the 3 low bits — flip+slot), exactly like
-                // the main canvas atomicMin store.
-                atomicMin(
-                    resolveScratch[mainPixel.y * canvasSizePixels.x + mainPixel.x],
-                    encoded
-                );
-            }
+            // `slot` twice: the per-axis store is already view-frame, so the
+            // slot IS the region axis; the world-placed twin must rotate its
+            // model face to get one.
+            emitResolveCardinalDiamond(
+                microView, slot, slot, flip, mainBase, canvasSizePixels
+            );
         }
     }
 }

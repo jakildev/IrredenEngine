@@ -450,6 +450,36 @@ bool isInsideCanvas(ivec2 pixel, ivec2 canvasSize) {
            pixel.y >= 0 && pixel.y < canvasSize.y;
 }
 
+// Shadow-feeder classification (#1740): on the cardinal single-canvas world
+// route, a voxel whose cardinal iso position lies outside the UN-widened
+// visible viewport but inside the shadow-feeder-widened cull exists only to
+// cast sun shadows onto on-screen pixels through stage 1's distance bake — it
+// is never displayed, lit, or picked.
+//
+// Two kernels ask this same question and must agree: c_voxel_visibility_compact
+// partitions survivors into the visible list vs the strided off-screen feeder
+// list (#2258 Step B), and c_voxel_to_trixel_stage_2 skips a feeder's colour +
+// entity-id taps. They re-derived the predicate independently; one definition
+// is what keeps the classification and the skip from drifting (a compact that
+// called a voxel VISIBLE while stage 2 skipped it would drop an on-screen
+// pixel's colour). Over-classifying VISIBLE is the only safe failure direction.
+//
+// The route terms are part of the predicate, not a caller-side gate: the
+// widened cull only exists on the cardinal (residualYaw == 0) world
+// (isDetachedCanvas < 0.5) route, so both terms must hold before an
+// out-of-bounds iso means "feeder". When sun shadows are off,
+// visibleIsoBounds == cullIsoMin/Max and this never fires — byte-identical.
+bool isShadowFeederIso(
+    ivec2 isoPos,
+    ivec4 visibleIsoBounds,
+    float residualYaw,
+    float isDetachedCanvas
+) {
+    return residualYaw == 0.0 && isDetachedCanvas < 0.5 &&
+        (isoPos.x < visibleIsoBounds.x || isoPos.x > visibleIsoBounds.z ||
+         isoPos.y < visibleIsoBounds.y || isoPos.y > visibleIsoBounds.w);
+}
+
 // Hardware round() is safe here: the 1e-4 near-grid gate excludes
 // half-integer inputs, so the tie direction — the only point where
 // round() is implementation-defined — is unobservable.

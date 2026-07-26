@@ -120,7 +120,12 @@ Shared includes: `ir_iso_common.glsl`, `ir_constants.glsl`,
 ACES tonemap, shared by the world-lighting passes),
 `ir_voxel_face_select.glsl` (fog reveal + face selection + per-axis
 store key, shared by the stage-1/stage-2 kernel family — the fog grid
-image slot is wrapper-supplied via `IR_VOXEL_FOG_GRID_BINDING`).
+image slot is wrapper-supplied via `IR_VOXEL_FOG_GRID_BINDING`),
+`ir_resolve_cardinal_emit.glsl` (the cardinal-layout micro-cell diamond
+emit shared by the two sun-shadow RESOLVE scatter kernels — on the GLSL
+side it writes through the wrapper's own `resolveScratch` SSBO, since
+GLSL cannot pass a buffer as an argument; the Metal twin takes it as a
+parameter).
 Shader file paths are stored in `render/shader_names.hpp`. Update that
 header when you add or rename a shader.
 

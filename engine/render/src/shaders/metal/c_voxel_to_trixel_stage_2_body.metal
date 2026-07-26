@@ -403,11 +403,17 @@ kernel void IR_STAGE2_KERNEL_NAME(
             feederPos = rotateCardinalZ(feederPos, cardinalIndex);
             feederPos += cardinalLowerCornerShift(cardinalIndex);
         }
-        const int2 feederIso = pos3DtoPos2DIso(feederPos);
-        if (feederIso.x < frameData.visibleIsoBounds.x ||
-            feederIso.x > frameData.visibleIsoBounds.z ||
-            feederIso.y < frameData.visibleIsoBounds.y ||
-            feederIso.y > frameData.visibleIsoBounds.w) {
+        // One definition with the compact cull's Step-B classify
+        // (isShadowFeederIso, ir_iso_common.metal) so the skip and the
+        // classification cannot drift. The predicate re-tests the two route
+        // terms — provably true inside this gate; the gate itself stays as the
+        // cheap early-out that avoids the cardinal projection above.
+        if (isShadowFeederIso(
+                pos3DtoPos2DIso(feederPos),
+                frameData.visibleIsoBounds,
+                frameData.residualYaw,
+                frameData.isDetachedCanvas
+        )) {
             return;
         }
     }

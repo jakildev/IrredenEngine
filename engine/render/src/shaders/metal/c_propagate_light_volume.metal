@@ -29,6 +29,11 @@ constant uint kLightOcclusionBitfieldUintCount =
     uint(kLightOcclusionGridSize) * uint(kLightOcclusionGridSize) *
     uint(kLightOcclusionGridSize) / 32u;
 
+// Deliberate local copy of the shared layout in ir_world_lighting.metal (which
+// the seed / lighting / overflow passes bind through): this is the one
+// light-volume consumer that does not include that fragment, and pulling the
+// light-source list + SPOT/ACES helpers into a kernel dispatched 32× a frame
+// just to share a struct declaration is not worth it. Keep the two in lockstep.
 struct LightVolumeParams {
     int gridSize;
     int halfExtent;
