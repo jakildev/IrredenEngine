@@ -45,7 +45,11 @@ GUI-ASSERT shot=<N> label=<lbl> kind=<KIND> target=<eid> name=<tag> result=PASS|
 ```
 
 Assertion kinds: `HOVERS`, `CLICK_FIRES`, `SLIDER_VALUE`, `CHECKBOX`,
-`PICKS_VOXEL`.
+`PICKS_VOXEL`, `PICKS_ISO_COLUMN`, `PREDICATE`. `PREDICATE` takes a
+creation-supplied `bool(context, actual)` — the escape hatch for state the
+prefab layer can't see (an editor mode flag, a voxel-set cell). Use it rather
+than emitting a `GUI-ASSERT` line by hand: the runner parses one format, and a
+second emitter is one drift away from being unparseable.
 
 ### Platform
 
@@ -75,14 +79,24 @@ Options:
 | `--warmup-frames N` | 10 | Warmup frames for `--auto-screenshot N`. |
 | `--no-build` | off | Skip the build step (assume binary is current). |
 | `--timeout S` | 120 | Watchdog: kill the process after S seconds. |
+| `-- ARG ...` | none | Everything after a literal `--` is forwarded to the target, so a run can select a mode the shot table depends on. |
+
+Forwarded args are how a creation's alternate shot tables are reached — e.g.
+the voxel editor's authoring sessions (#766), which replace the standing shot
+table with a recipe of scripted editor gestures:
+
+```
+python3 scripts/gui-verify.py IRVoxelEditor -- --gui-session drag_probe
+```
 
 ---
 
 ## What the runner does
 
 1. **Build** — `fleet-build --target <target>` (unless `--no-build`).
-2. **Run** — `fleet-run --timeout <S> <target> --auto-screenshot <N>`,
-   capturing combined stdout+stderr while streaming it to the terminal.
+2. **Run** — `fleet-run --timeout <S> <target> --auto-screenshot <N>
+   <forwarded args>`, capturing combined stdout+stderr while streaming it
+   to the terminal.
 3. **Parse** — scan the captured output for lines matching
    `GUI-ASSERT ... result=PASS|FAIL ...`.
 4. **Report** — print a per-assertion table (shot / label / kind / name /

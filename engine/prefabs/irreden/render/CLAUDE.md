@@ -413,8 +413,12 @@ wiring contract in `engine/script/CLAUDE.md` §"Widget framework bindings".
 **Headless GUI assertions (P3, #1796).** `gui_test_assertions.hpp`
 exposes `IRPrefab::GuiTest::` — capture-frame assertions
 (`hovers` / `clickFires` / `sliderValue` / `checkbox` / `picksVoxel` /
-`picksIsoColumn`) over the introspectable widget + picking state, each
-emitting one machine-readable `GUI-ASSERT …` log line. `picksIsoColumn`
+`picksIsoColumn` / `predicate`) over the introspectable widget + picking
+state, each emitting one machine-readable `GUI-ASSERT …` log line.
+`predicate` (#766) takes a creation-supplied `bool(context, actual)` for
+state this layer can't reach — an editor mode flag, a voxel-set cell — so a
+creation extends the vocabulary without hand-rolling the log line.
+`picksIsoColumn`
 (#766) asserts the click's ray hit a voxel on the target's iso column —
 the occlusion-independent test of screen→world mapping accuracy, since
 which voxel along the column is front-most is scene state, not a mapping

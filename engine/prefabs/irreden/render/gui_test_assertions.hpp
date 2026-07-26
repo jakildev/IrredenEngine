@@ -34,6 +34,7 @@ enum class AssertKind {
     CHECKBOX,         // checkboxState(widget_) == expectedBool_
     PICKS_VOXEL,      // castVoxelRay() hits with voxelPos_ == expectedVoxel_
     PICKS_ISO_COLUMN, // castVoxelRay() hits a voxel on expectedVoxel_'s iso column
+    PREDICATE,        // creation-supplied predicate over its own state
 };
 
 // One assertion evaluated at a shot's capture frame. Only the fields a given
@@ -46,6 +47,11 @@ struct Assertion {
     bool expectedBool_ = false;                         // CHECKBOX
     IRMath::ivec3 expectedVoxel_ = IRMath::ivec3(0);    // PICKS_VOXEL
     const char *label_ = "assert";                      // human-readable tag
+    // PREDICATE: creation-owned check + its context. Both the function and
+    // whatever `context_` points at must outlive the run, same contract as the
+    // shot table itself.
+    bool (*predicate_)(const void *context, std::string &actual) = nullptr;
+    const void *context_ = nullptr;
 };
 
 // Factory helpers — readable, order-safe assertion construction at call sites
@@ -112,6 +118,28 @@ inline Assertion picksIsoColumn(IRMath::ivec3 targetVoxel, const char *label = "
     return assertion;
 }
 
+// Assert a creation-owned predicate over state this layer cannot see (an
+// editor mode flag, a voxel-set cell, a tool's internal phase). @p fn writes
+// the observed value into `actual` for the log line and returns pass/fail;
+// @p context is handed back to it unchanged, so one function can serve many
+// assertions that differ only by their expectation.
+//
+// Exists so creations extend the assertion vocabulary without hand-rolling the
+// `GUI-ASSERT ...` log line — gui-verify.py parses one format, and a
+// second emitter is one drift away from being unparseable.
+inline Assertion predicate(
+    bool (*fn)(const void *context, std::string &actual),
+    const void *context,
+    const char *label = "predicate"
+) {
+    Assertion assertion;
+    assertion.kind_ = AssertKind::PREDICATE;
+    assertion.predicate_ = fn;
+    assertion.context_ = context;
+    assertion.label_ = label;
+    return assertion;
+}
+
 // Caller-owned latch. CLICK_FIRES needs it: C_WidgetState::fireAction_ is a
 // single-frame pulse on click-release, gone by the post-settle capture frame,
 // so we accumulate which widgets fired across the shot window. The creation
@@ -137,6 +165,8 @@ inline const char *kindName(AssertKind kind) {
         return "PICKS_VOXEL";
     case AssertKind::PICKS_ISO_COLUMN:
         return "PICKS_ISO_COLUMN";
+    case AssertKind::PREDICATE:
+        return "PREDICATE";
     }
     return "UNKNOWN";
 }
@@ -208,6 +238,13 @@ inline bool evaluateOne(const Assertion &assertion, const LatchState &latch, std
         actual = "iso=(" + std::to_string(hitIso.x) + "," + std::to_string(hitIso.y) + ") want=(" +
                  std::to_string(wantIso.x) + "," + std::to_string(wantIso.y) + ")";
         return hitIso == wantIso;
+    }
+    case AssertKind::PREDICATE: {
+        if (assertion.predicate_ == nullptr) {
+            actual = "no-predicate";
+            return false;
+        }
+        return assertion.predicate_(assertion.context_, actual);
     }
     }
     actual = "unknown-kind";
