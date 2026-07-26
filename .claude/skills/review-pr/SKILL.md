@@ -53,6 +53,12 @@ issue.
 - Stored `g_*Manager` pointer or reference in any object whose lifetime can
   outlive `World` (background threads, sol2 callback closures, long-lived
   caches) — see `engine/world/CLAUDE.md` and `engine/CLAUDE.md`.
+- New mutable namespace-scope variable in a header (`inline` or `extern`)
+  outside a module `ir_*.hpp` entry point — state with no owner, teardown,
+  or reset participation. Belongs on a manager, a singleton component
+  (`IREntity::singleton<T>`), or a `.cpp` anonymous namespace; sanctioned
+  patterns + detection grep in
+  [`.claude/rules/cpp-globals.md`](../../rules/cpp-globals.md).
 
 **Render pipeline**
 - CPU frame-data struct out of sync with its GLSL `layout(std140)`

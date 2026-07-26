@@ -127,8 +127,9 @@ section is the reciprocal pointer for renderer-side authors.
 
 Most code never touches `World` directly. It accesses managers via the
 `IR<Module>::get*Manager()` free functions in each module's `ir_*.hpp`
-header, which reach through the global pointers `World` sets up at
-construction time.
+header, which reach through the global pointers established during
+`World` construction (each manager's own ctor stamps its global — see
+Responsibilities below).
 
 ## Save-trait policy layer (persist P1, #2212, epic #667)
 
@@ -406,7 +407,10 @@ flag-off (W-8 parity holds). It is distinct from the always-on lightweight
    (renderer, input, video) and consumes only `WorldConfig` —
    see `engine/job/CLAUDE.md` for the IRJob surface and lifetime
    contract (Phase 1 of the multithreading epic #226).
-3. Sets the globals: `g_entityManager = &m_entityManager;`, etc.
+3. Each manager's constructor stamps its module global as it is
+   constructed (`g_entityManager = this;` in `EntityManager`'s ctor, and
+   so on) — `World` itself assigns none of them; the member order above
+   IS the set order.
 4. Calls `initEngineSystems()`, `initIRInputSystems()`,
    `initIRUpdateSystems()`, `initIRRenderSystems()` to register the
    engine-provided prefab systems and assign them to pipelines.
@@ -423,8 +427,8 @@ flag-off (W-8 parity holds). It is distinct from the always-on lightweight
 
 Destructor:
 
-- Clears the global pointers.
-- Destroys managers in reverse order of construction.
+- Destroys managers in reverse declaration order; each manager's
+  destructor clears its own module global (if it still points at itself).
 
 ## Lua wiring
 
