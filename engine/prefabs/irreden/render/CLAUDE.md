@@ -618,6 +618,26 @@ sub-attribution is per-dispatch, CPU stays coarse. Sub-scopes are
 single-canvas-exact (last-sample on multi-canvas) and do not cover the
 rotating-only per-axis voxel dispatch.
 
+## Deprecated
+
+| Surface | Replacement | Marked |
+|---|---|---|
+| `IRPrefab::JointTransform::setSystem(SystemId)` | none needed — `IRPrefab::JointTransform::system()` resolves the id itself via `IRSystem::findSystem(UPDATE_JOINT_MATRICES)` | #2526, 2026-07-22 |
+| `IRPrefab::VoxelTransform::setAllocatorSystem(SystemId)` | none needed — `IRPrefab::VoxelTransform::allocator()` resolves the id itself via `IRSystem::findSystem(UPDATE_VOXEL_POSITIONS_GPU)` | #2526, 2026-07-22 |
+
+Both were **wire-once handles**: a creation had to call the setter once,
+immediately after `System<N>::create()`, or the feature silently degraded
+(`allocator()` / `system()` returned `nullptr`, so GPU-transform slots and
+skinning fell back to CPU-direct with no diagnostic). `SystemManager` now owns a
+`SystemName -> SystemId` registry populated by the enum-templated registration
+paths, so **registration self-wires** and the bookkeeping call is gone — see
+`.claude/rules/cpp-ecs.md` §"System-owned invariants: encapsulate, don't delegate
+to callers".
+
+Both setters remain as **no-ops** so out-of-tree creations keep compiling (engine
+API removal rule); every in-tree call site was deleted in #2526. Delete the
+setters once out-of-tree creations have migrated.
+
 ## Gotchas
 
 - **SQT transition complete (T-299/T-300/T-301a/T-302).** All render-side, update-side, and voxel-side readers/writers use `C_LocalTransform` + `C_WorldTransform`. The voxel pool's per-voxel SoA arrays are a dedicated 16-byte `IRRender::VoxelGpuPosition` POD (std430 stride contract). The legacy `C_Position3D` / `C_PositionGlobal3D` / `C_Rotation` components and `SYSTEM_GLOBAL_POSITION_3D` were deleted in T-302; consumers read `C_WorldTransform.translation_` and the SQT quat directly.

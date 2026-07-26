@@ -300,29 +300,26 @@ template <> struct System<UPDATE_VOXEL_POSITIONS_GPU> {
 
 namespace IRPrefab::VoxelTransform {
 
-// Wire-once-at-init handle to the UPDATE_VOXEL_POSITIONS_GPU transform-slot
-// allocator (#1396). A consumer reaches the system's free-list through this
-// rather than threading the SystemId through every call — the same shape as
-// `IRPrefab::Chunk::setMembershipMigrationManager` (which threads the id per
-// call; here the id is config so the slot API can stay id-free). Init-config: a
-// creation that opts voxel sets into the GPU prepass calls
-// `setAllocatorSystem(systemId)` once, right after
-// `System<UPDATE_VOXEL_POSITIONS_GPU>::create()`. `IREntity::kNullEntity` is the
-// "never wired" sentinel (system ids count up from 0, so they never collide).
-inline IRSystem::SystemId g_allocatorSystem = IREntity::kNullEntity;
-
-inline void setAllocatorSystem(IRSystem::SystemId systemId) {
-    g_allocatorSystem = systemId;
-}
-
+// Handle to the UPDATE_VOXEL_POSITIONS_GPU transform-slot allocator (#1396). A
+// consumer reaches the system's free-list through this rather than threading the
+// SystemId through every call, so the slot API stays id-free. The id is resolved
+// from SystemManager's `SystemName` registry (#2526): creating the system is all
+// the wiring there is, and `IREntity::kNullEntity` means "never created" —
+// callers treat that as "stay CPU-direct".
 inline IRSystem::System<IRSystem::UPDATE_VOXEL_POSITIONS_GPU> *allocator() {
-    if (g_allocatorSystem == IREntity::kNullEntity) {
+    const IRSystem::SystemId systemId = IRSystem::findSystem(IRSystem::UPDATE_VOXEL_POSITIONS_GPU);
+    if (systemId == IREntity::kNullEntity) {
         return nullptr;
     }
     return IRSystem::getSystemParams<IRSystem::System<IRSystem::UPDATE_VOXEL_POSITIONS_GPU>>(
-        g_allocatorSystem
+        systemId
     );
 }
+
+// DEPRECATED — registration self-wires via SystemManager; remove once
+// out-of-tree creations migrate. Kept as a no-op so an existing call site
+// keeps compiling (engine API removal rule).
+inline void setAllocatorSystem(IRSystem::SystemId) {}
 
 // Acquire an EntityTransformBuffer slot for a GPU-transform-indirected set.
 // Returns `IRRender::kVoxelTransformStatic` when the allocator was never wired

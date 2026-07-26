@@ -497,19 +497,16 @@ void initSystems() {
     // GPU voxel-position prepass (#1396) — writes binding 5 for
     // GPU-transform-indirected voxel sets before STAGE_1 reads it. A no-op (no
     // dispatch) unless a voxel set opts in via gpuTransformSlot_, so the default
-    // scene stays byte-identical. Created up-front so its SystemId can wire the
-    // transform-slot allocator; it keeps its pipeline position below (before
-    // STAGE_1).
+    // scene stays byte-identical. Created up-front so its SystemId can order the
+    // render pipeline below (before STAGE_1).
     const IRSystem::SystemId updateVoxelPositionsId =
         IRSystem::createSystem<IRSystem::UPDATE_VOXEL_POSITIONS_GPU>();
-    IRPrefab::VoxelTransform::setAllocatorSystem(updateVoxelPositionsId);
     // Joint skin-matrix upload (#1603) + per-voxel bone→slot seeding (#1605).
     // Before UPDATE_VOXEL_POSITIONS_GPU so binding 18 holds the skin matrices
     // when the prepass dispatches; a no-op (zero skeletons) unless --skin-smoke
     // rigs a set, so the default scene stays byte-identical.
     const IRSystem::SystemId updateJointMatricesId =
         IRSystem::createSystem<IRSystem::UPDATE_JOINT_MATRICES>();
-    IRPrefab::JointTransform::setSystem(updateJointMatricesId);
     // Captured for the culling minimap's light + caster domains (#2316, V2) —
     // the minimap reads these systems' per-frame gather state back rather
     // than re-running its own light/caster query. Assigned in-place inside

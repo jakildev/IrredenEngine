@@ -104,10 +104,8 @@ void initSystems() {
     std::list<IRSystem::SystemId> renderPipeline = IRPrefab::Camera::standardControlSystems();
     const IRSystem::SystemId updateVoxelPositionsId =
         IRSystem::createSystem<IRSystem::UPDATE_VOXEL_POSITIONS_GPU>();
-    IRPrefab::VoxelTransform::setAllocatorSystem(updateVoxelPositionsId);
     const IRSystem::SystemId updateJointMatricesId =
         IRSystem::createSystem<IRSystem::UPDATE_JOINT_MATRICES>();
-    IRPrefab::JointTransform::setSystem(updateJointMatricesId);
     renderPipeline.insert(
         renderPipeline.end(),
         {

@@ -1522,9 +1522,10 @@ local w,  h  = IRRender.getGuiCanvasSize()            -- "gui" canvas size (trix
   in the INPUT pipeline **immediately after `WIDGET_INPUT`** (so `fireAction_`
   is fresh) before main.lua registers an `onClick` — the binding raises a Lua
   error naming the missing registration if it's absent. Because
-  `registerPrefabSystem` and a C++ `createSystem` would make two instances, the
-  creation passes the registered prefab id into the pipeline (so the binding
-  and the ticked instance are the same one).
+  `registerPrefabSystem` and a C++ `createSystem` would make two instances
+  (and, since the `SystemName` registry, now trips an `IR_ASSERT` on the
+  second registration), the creation passes the registered prefab id into the
+  pipeline (so the binding and the ticked instance are the same one).
 - **`IRGui` / `IRRender` are extended, never replaced** (`if (!valid())`
   guard), so the render-glue `drawDisc`/`drawLine` and setters bound earlier
   survive.

@@ -410,25 +410,23 @@ template <> struct System<UPDATE_JOINT_MATRICES> {
 
 namespace IRPrefab::JointTransform {
 
-// Wire-once-at-init handle to the UPDATE_JOINT_MATRICES skeleton slot blocks —
-// the same shape as `IRPrefab::VoxelTransform` (the entity-slot half of the
-// shared binding-18 budget). A creation that rigs voxel sets calls
-// `setSystem(systemId)` once, right after
-// `System<UPDATE_JOINT_MATRICES>::create()`.
-inline IRSystem::SystemId g_jointMatrixSystem = IREntity::kNullEntity;
-
-inline void setSystem(IRSystem::SystemId systemId) {
-    g_jointMatrixSystem = systemId;
-}
-
+// Handle to the UPDATE_JOINT_MATRICES skeleton slot blocks — the same shape as
+// `IRPrefab::VoxelTransform` (the entity-slot half of the shared binding-18
+// budget). The id is resolved from SystemManager's `SystemName` registry
+// (#2526), so creating the system is all the wiring there is; a creation that
+// rigs voxel sets needs no follow-up call.
 inline IRSystem::System<IRSystem::UPDATE_JOINT_MATRICES> *system() {
-    if (g_jointMatrixSystem == IREntity::kNullEntity) {
+    const IRSystem::SystemId systemId = IRSystem::findSystem(IRSystem::UPDATE_JOINT_MATRICES);
+    if (systemId == IREntity::kNullEntity) {
         return nullptr;
     }
-    return IRSystem::getSystemParams<IRSystem::System<IRSystem::UPDATE_JOINT_MATRICES>>(
-        g_jointMatrixSystem
-    );
+    return IRSystem::getSystemParams<IRSystem::System<IRSystem::UPDATE_JOINT_MATRICES>>(systemId);
 }
+
+// DEPRECATED — registration self-wires via SystemManager; remove once
+// out-of-tree creations migrate. Kept as a no-op so an existing call site
+// keeps compiling (engine API removal rule).
+inline void setSystem(IRSystem::SystemId) {}
 
 // Absolute binding-18 slot of joint 0 in `rigRoot`'s skeleton block —
 // per-voxel skinning slots are `slotBase + bone_id` (#605 Phase 2.3). Returns
