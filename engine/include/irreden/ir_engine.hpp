@@ -94,7 +94,7 @@ inline void init(int argc, char **argv, const char *configFileName = "config.lua
 }
 
 inline void runScript(const char *scriptFileName) {
-    g_world->runScript(resolveScriptPath(scriptFileName).c_str());
+    getWorld().runScript(resolveScriptPath(scriptFileName).c_str());
 }
 
 inline void enableFrameTiming(bool enabled) {
