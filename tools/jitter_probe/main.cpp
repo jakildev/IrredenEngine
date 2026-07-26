@@ -16,6 +16,8 @@
 //     [--color R,G,B,T]    instead, foreground = pixels within T of color R,G,B
 //     [--reversal-eps PX]  per-frame deltas under this are treated as 0 (default 0.10)
 //     [--max-residual PX]  SMOOTH verdict requires residual <= this (default 1.50)
+//     [--stationary]       assert the centroid does NOT move (pivot-pin check)
+//     [--max-deviation PX] PINNED verdict requires deviation <= this (default 1.50)
 //     [--verbose]          print the per-frame centroid + residual table
 //
 // Capture the sequence with an ISOLATED shape on a black field so the centroid
@@ -23,8 +25,20 @@
 // (pan jitter) or `--yaw-sweep` (rotation jitter). For a multi-shape scene pass
 // --color to lock onto one shape. Frames MUST be given in capture order.
 //
-// Exit: 0 = SMOOTH, 1 = JITTER detected, 2 = argument / IO error. (Mirrors
-// img_diff's 0/1/2 convention so it slots into the same verification scripts.)
+// --stationary answers a different question than the default line-fit: the
+// default asserts SMOOTH LINEAR motion (a sweep translates the shape without
+// oscillation), while --stationary asserts NO motion at all — the shape's
+// centroid holds its frame-0 position across the whole sequence. That is the
+// rotation-pivot contract (a probe centered on the pivot must not move during a
+// yaw sweep), and the line-fit cannot express it: a slow orbital arc fits a
+// line well enough to pass SMOOTH while being exactly the pivot-drift bug.
+// Verdict: PINNED iff max |centroid_i - centroid_0| <= --max-deviation on both
+// axes. Use a Z-yaw-invariant probe (vertical cylinder) so silhouette change
+// doesn't contaminate the centroid.
+//
+// Exit: 0 = SMOOTH/PINNED, 1 = JITTER/DRIFT detected, 2 = argument / IO error.
+// (Mirrors img_diff's 0/1/2 convention so it slots into the same verification
+// scripts.)
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
@@ -47,6 +61,8 @@ struct Args {
     int colorR_ = 0, colorG_ = 0, colorB_ = 0, colorTol_ = 0;
     double reversalEps_ = 0.10;
     double maxResidual_ = 1.50;
+    bool stationary_ = false;
+    double maxDeviation_ = 1.50;
     bool verbose_ = false;
 };
 
@@ -130,6 +146,29 @@ struct AxisStats {
     double deltaMaxAbs_ = 0.0;
 };
 
+// Max deviation of each valid sample from the FIRST valid sample — the
+// --stationary metric. The reference is frame 0 (not the mean) so a monotone
+// drift accumulates against it instead of averaging itself half away.
+double maxDeviationFromFirst(
+    const std::vector<double> &v, const std::vector<bool> &valid, std::vector<double> &deviation
+) {
+    double ref = 0.0;
+    bool haveRef = false;
+    double maxDev = 0.0;
+    deviation.assign(v.size(), 0.0);
+    for (size_t i = 0; i < v.size(); ++i) {
+        if (!valid[i])
+            continue;
+        if (!haveRef) {
+            ref = v[i];
+            haveRef = true;
+        }
+        deviation[i] = v[i] - ref;
+        maxDev = std::max(maxDev, std::fabs(deviation[i]));
+    }
+    return maxDev;
+}
+
 AxisStats analyze(
     const std::vector<double> &v,
     const std::vector<bool> &valid,
@@ -184,6 +223,8 @@ int main(int argc, char **argv) {
     parser.string("--color", "Foreground = pixels within T of color R,G,B (format: R,G,B,T)", "");
     parser.number("--reversal-eps", "Per-frame deltas under this (px) are treated as 0", 0.10f);
     parser.number("--max-residual", "SMOOTH verdict requires residual <= this (px)", 1.50f);
+    parser.flag("--stationary", "Assert the centroid does NOT move (rotation-pivot pin check)");
+    parser.number("--max-deviation", "PINNED verdict requires deviation <= this (px)", 1.50f);
     parser.flag("--verbose", "Print the per-frame centroid + residual table");
     parser.variadic("frames", "Frame PNGs in capture order (>= 3)", 3);
     parser.parse(argc, argv);
@@ -192,6 +233,8 @@ int main(int argc, char **argv) {
     args.threshold_ = parser.getInt("--threshold");
     args.reversalEps_ = parser.getFloat("--reversal-eps");
     args.maxResidual_ = parser.getFloat("--max-residual");
+    args.stationary_ = parser.getFlag("--stationary");
+    args.maxDeviation_ = parser.getFloat("--max-deviation");
     args.verbose_ = parser.getFlag("--verbose");
     args.frames_ = parser.positionalArgs();
     if (parser.wasProvided("--color")) {
@@ -228,6 +271,43 @@ int main(int argc, char **argv) {
     if (validCount < 3) {
         std::fprintf(stderr, "jitter_probe: < 3 frames had a usable foreground\n");
         return 2;
+    }
+
+    if (args.stationary_) {
+        std::vector<double> dx, dy;
+        const double devX = maxDeviationFromFirst(cx, valid, dx);
+        const double devY = maxDeviationFromFirst(cy, valid, dy);
+        if (args.verbose_) {
+            std::printf("frame    centroid_x  dev_x      centroid_y  dev_y\n");
+            for (size_t i = 0; i < n; ++i) {
+                if (!valid[i]) {
+                    std::printf("%5zu    (empty)\n", i);
+                    continue;
+                }
+                std::printf(
+                    "%5zu    %9.2f  %+7.2f    %9.2f  %+7.2f\n",
+                    i,
+                    cx[i],
+                    dx[i],
+                    cy[i],
+                    dy[i]
+                );
+            }
+        }
+        const bool pinned = devX <= args.maxDeviation_ && devY <= args.maxDeviation_;
+        std::printf(
+            "jitter_probe: frames=%zu (valid=%d)  verdict=%s\n"
+            "  x: max_deviation=%.2fpx\n"
+            "  y: max_deviation=%.2fpx\n"
+            "  (threshold: max_deviation<=%.2fpx vs frame 0)\n",
+            n,
+            validCount,
+            pinned ? "PINNED" : "DRIFT",
+            devX,
+            devY,
+            args.maxDeviation_
+        );
+        return pinned ? 0 : 1;
     }
 
     std::vector<double> rx, ry;

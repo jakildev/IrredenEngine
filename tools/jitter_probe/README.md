@@ -24,11 +24,28 @@ jitter_probe <frame_0.png> <frame_1.png> ... <frame_N.png>   # >=3, in capture o
     [--color R,G,B,T]    instead, foreground = pixels within T of color R,G,B
     [--reversal-eps PX]  per-frame deltas under this count as 0 (default 0.10)
     [--max-residual PX]  SMOOTH verdict requires residual <= this (default 1.50)
+    [--stationary]       assert the centroid does NOT move (pivot-pin check)
+    [--max-deviation PX] PINNED verdict requires deviation <= this (default 1.50)
     [--verbose]          print the per-frame centroid + residual table
 ```
 
-Exit code: `0` = SMOOTH, `1` = JITTER detected, `2` = argument / IO error (same
-convention as `img_diff`, so it drops into the same verification scripts).
+Exit code: `0` = SMOOTH/PINNED, `1` = JITTER/DRIFT detected, `2` = argument / IO
+error (same convention as `img_diff`, so it drops into the same verification
+scripts).
+
+## `--stationary` — the rotation-pivot pin check
+
+The default verdict asserts smooth LINEAR motion; `--stationary` asserts NO
+motion: verdict `PINNED` iff every frame's centroid stays within
+`--max-deviation` px of frame 0 on both axes, else `DRIFT`. This is the
+rotation-pivot contract (a probe centered on the pivot must hold its screen
+position through a yaw sweep), and the line-fit cannot express it — a slow
+orbital arc fits a line well enough to pass SMOOTH while being exactly the
+pivot-drift bug. Use a Z-yaw-invariant probe (vertical cylinder) and a
+THRESHOLD mask, not `--color`: directional shading rotates with camera yaw, so
+a color-locked mask tracks the lit faces and fabricates an orbit on pinned
+geometry. Driven end-to-end by `scripts/pivot-verify.py` over the
+`IRShapeDebug --pivot-verify <block>` sweeps.
 
 ## Capturing a clean sweep
 
