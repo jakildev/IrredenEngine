@@ -107,6 +107,12 @@ Lua (`scripts/audio_demo.lua`).
   fallback patterns for common devices (UMC1820, Focusrite, MPKmini2,
   OP-1). Edit `midi_in.cpp` / `midi_out.cpp` to add a new hardware match.
   Opening an already-open port is a no-op that returns the existing handle.
+- **No device = silent, never a crash** (same doctrine as `AudioPlayback`).
+  If the RtMidi client can't be created (no MIDI server access), `MidiIn`/
+  `MidiOut` degrade to a no-MIDI state instead of throwing out of the
+  constructor: 0 ports, `openPort` warns and returns -1, `tick()`/queries/
+  `sendMidiMessage` no-op. One `IRE_LOG_WARN` names the RtMidi error at
+  degrade time.
 
 ## Outbound MIDI observer (#1869)
 

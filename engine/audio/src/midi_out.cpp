@@ -4,16 +4,27 @@ namespace IRAudio {
 
 MidiOut::MidiOut()
     : m_rtMidiOut{}
-    , m_numberPorts(m_rtMidiOut.getPortCount())
+    , m_numberPorts(0)
     , m_portNames{}
     , m_ports{} {
-
-    IRE_LOG_INFO("Descovered {} MIDI output sources", m_numberPorts);
-    for (int i = 0; i < m_numberPorts; i++) {
-        m_portNames.push_back(m_rtMidiOut.getPortName(i));
-        IRE_LOG_INFO("MIDI Output source {}: {}", i, m_portNames[i].c_str());
+    try {
+        m_rtMidiOut = std::make_unique<RtMidiOut>();
+        m_numberPorts = m_rtMidiOut->getPortCount();
+        IRE_LOG_INFO("Descovered {} MIDI output sources", m_numberPorts);
+        for (int i = 0; i < m_numberPorts; i++) {
+            m_portNames.push_back(m_rtMidiOut->getPortName(i));
+            IRE_LOG_INFO("MIDI Output source {}: {}", i, m_portNames[i].c_str());
+        }
+        IRE_LOG_INFO("Created MidiOut");
+    } catch (const RtMidiError &error) {
+        m_rtMidiOut.reset();
+        m_numberPorts = 0;
+        m_portNames.clear();
+        IRE_LOG_WARN(
+            "MidiOut: RtMidi client init failed ({}); MIDI output disabled",
+            error.getMessage()
+        );
     }
-    IRE_LOG_INFO("Created MidiOut");
 }
 
 MidiOut::~MidiOut() {
@@ -50,14 +61,24 @@ int MidiOut::openPort(std::string portNameSubstring) {
                 return i;
             }
         }
-        auto port = std::make_unique<MidiOutPort>();
-        port->portIndex_ = i;
-        port->name_ = m_portNames[i];
-        port->rtMidiOut_ = std::make_unique<RtMidiOut>();
-        port->rtMidiOut_->openPort(i);
-        m_ports.push_back(std::move(port));
-        IRE_LOG_INFO("Opened MIDI Out port {}: {}", i, portName);
-        return i;
+        try {
+            auto port = std::make_unique<MidiOutPort>();
+            port->portIndex_ = i;
+            port->name_ = m_portNames[i];
+            port->rtMidiOut_ = std::make_unique<RtMidiOut>();
+            port->rtMidiOut_->openPort(i);
+            m_ports.push_back(std::move(port));
+            IRE_LOG_INFO("Opened MIDI Out port {}: {}", i, portName);
+            return i;
+        } catch (const RtMidiError &error) {
+            IRE_LOG_WARN(
+                "MidiOut::openPort: failed to open port {} ({}): {}",
+                i,
+                portName,
+                error.getMessage()
+            );
+            return -1;
+        }
     }
     IRE_LOG_WARN(
         "No MIDI output port matching '{}' — {} port(s) available",

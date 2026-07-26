@@ -14,16 +14,28 @@ namespace IRAudio {
 
 MidiIn::MidiIn()
     : m_rtMidiIn{}
-    , m_numberPorts(m_rtMidiIn.getPortCount())
+    , m_numberPorts(0)
     , m_portNames{}
     , m_ports{}
     , m_frameBuffer{} {
-    IRE_LOG_INFO("Descovered {} MIDI input sources", m_numberPorts);
-    for (int i = 0; i < m_numberPorts; i++) {
-        m_portNames.push_back(m_rtMidiIn.getPortName(i));
-        IRE_LOG_INFO("MIDI input source {}: {}", i, m_portNames[i].c_str());
+    try {
+        m_rtMidiIn = std::make_unique<RtMidiIn>();
+        m_numberPorts = m_rtMidiIn->getPortCount();
+        IRE_LOG_INFO("Descovered {} MIDI input sources", m_numberPorts);
+        for (int i = 0; i < m_numberPorts; i++) {
+            m_portNames.push_back(m_rtMidiIn->getPortName(i));
+            IRE_LOG_INFO("MIDI input source {}: {}", i, m_portNames[i].c_str());
+        }
+        IRE_LOG_INFO("Created MidiIn");
+    } catch (const RtMidiError &error) {
+        m_rtMidiIn.reset();
+        m_numberPorts = 0;
+        m_portNames.clear();
+        IRE_LOG_WARN(
+            "MidiIn: RtMidi client init failed ({}); MIDI input disabled",
+            error.getMessage()
+        );
     }
-    IRE_LOG_INFO("Created MidiIn");
 }
 
 MidiIn::~MidiIn() {}
@@ -72,15 +84,25 @@ int MidiIn::openPort(const std::string &portNameSubstring) {
                 return i;
             }
         }
-        auto port = std::make_unique<MidiInPort>();
-        port->portIndex_ = i;
-        port->name_ = m_portNames[i];
-        port->rtMidiIn_ = std::make_unique<RtMidiIn>();
-        port->rtMidiIn_->openPort(i);
-        port->rtMidiIn_->setCallback(onRtMidiMessage, &port->queue_);
-        m_ports.push_back(std::move(port));
-        IRE_LOG_INFO("Opened MIDI In port {}: {}", i, portName);
-        return i;
+        try {
+            auto port = std::make_unique<MidiInPort>();
+            port->portIndex_ = i;
+            port->name_ = m_portNames[i];
+            port->rtMidiIn_ = std::make_unique<RtMidiIn>();
+            port->rtMidiIn_->openPort(i);
+            port->rtMidiIn_->setCallback(onRtMidiMessage, &port->queue_);
+            m_ports.push_back(std::move(port));
+            IRE_LOG_INFO("Opened MIDI In port {}: {}", i, portName);
+            return i;
+        } catch (const RtMidiError &error) {
+            IRE_LOG_WARN(
+                "MidiIn::openPort: failed to open port {} ({}): {}",
+                i,
+                portName,
+                error.getMessage()
+            );
+            return -1;
+        }
     }
     IRE_LOG_WARN(
         "No MIDI input port matching '{}' — {} port(s) available",
@@ -148,9 +170,7 @@ void MidiIn::insertCCMessage(int portIndex, MidiChannel channel, const C_MidiMes
 
 //-----------Callback---------//
 
-void onRtMidiMessage(
-    double deltaTime, std::vector<unsigned char> *message, void *userdata
-) {
+void onRtMidiMessage(double deltaTime, std::vector<unsigned char> *message, void *userdata) {
     // Audio messages will be processed async
     // Game input messages will be added to synchronous queue
 
