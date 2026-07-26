@@ -721,9 +721,11 @@ struct FrameDataVoxelToCanvas {
     // .x = view-mask base, .y = ctrl base (draw args + counters), .z = overflow
     // entry base, .w = entry cap. The scratch's region 0 is the #2255 winner-id
     // array, so the existing perAxisWinnerIds[cell] indexing is unchanged.
-    // Read only by c_voxel_to_trixel_stage_1 at resolveMode 2/3 (rotating
-    // frames); std140-appended after the #2258 feeder-partition block (offset
-    // 208) so every prior offset — and every prefix-reading shader — is unchanged.
+    // Read/written by c_voxel_to_trixel_stage_1 at resolveMode 0 (view-mask
+    // write, folded from the former mode-2 sweep by #2487) and 3 (overflow
+    // append), rotating frames only; std140-appended after the #2258 feeder-
+    // partition block (offset 208) so every prior offset — and every prefix-
+    // reading shader — is unchanged.
     ivec4 overflowScratchLayout_ = ivec4(0, 0, 0, 0);
 };
 

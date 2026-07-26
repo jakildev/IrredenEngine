@@ -85,7 +85,8 @@ inline void resolveWinnerTap(
 
 // View-visibility overflow lane (#2333) — GLSL twin in
 // c_voxel_to_trixel_stage_1_body.glsl. Yawed-depth quantization shared by
-// resolveMode 2 (mask write) and 3 (mask compare): 1/16-world-unit steps,
+// the mask write (in the mode-0 store since #2487) and the resolveMode-3 mask
+// compare: 1/16-world-unit steps,
 // biased to a uint so atomic-min orders negative depths correctly. Both modes
 // call THE SAME function on the SAME facePos, so a face always ties its own
 // mask entry exactly regardless of float rounding.
@@ -112,9 +113,12 @@ inline int2 overflowYawedPixel(int2 perAxisBase, int3 facePos, float visualYaw) 
     return perAxisBase + roundHalfUp(pos3DtoPos2DIsoYawed(float3(facePos), visualYaw));
 }
 
-// resolveMode == 2: view-mask write. Every per-axis face (all three axis
-// routes — view visibility competes across axes) atomic-mins its quantized
-// yawed depth into the shared mask region of the buffer-28 scratch.
+// View-mask write (#2331/#2333; folded into the resolveMode-0 store pass by
+// #2487). Every per-axis face (all three axis routes — view visibility competes
+// across axes) atomic-mins its quantized yawed depth into the shared mask region
+// of the buffer-28 scratch. Runs inside the store now: it shares the store's
+// face set + facePos, so it costs only its yawed projection instead of a third
+// full sweep of the rotating burst.
 inline void viewMaskTap(
     int2 perAxisBase,
     int3 facePos,
@@ -471,10 +475,6 @@ kernel void IR_STAGE1_KERNEL_NAME(
         int voxelDistance;
         const int3 facePos =
             perAxisStoreFacePos(voxelPosition, faceId, slot, axis, riserFlip, voxelDistance);
-        if (frameData.resolveMode == 2) {
-            viewMaskTap(perAxisBase, facePos, frameData, perAxisWinnerIds);
-            return;
-        }
         if (frameData.resolveMode == 3) {
             overflowAppendTap(
                 perAxisBase, facePos, voxelDistance, voxels[voxelIndex].colorPacked,
@@ -492,10 +492,14 @@ kernel void IR_STAGE1_KERNEL_NAME(
             );
             return;
         }
+        // #2487: the store pass folds in the view-mask write (former resolveMode
+        // 2) — same face set + shared facePos, so the mask costs only its yawed
+        // projection here instead of 3 separate mask sweeps.
         writeDistanceTap(
             perAxisBase + pos3DtoPos2DIso(facePos), voxelDistance,
             distanceScratch, canvasSize
         );
+        viewMaskTap(perAxisBase, facePos, frameData, perAxisWinnerIds);
         return;
     }
 

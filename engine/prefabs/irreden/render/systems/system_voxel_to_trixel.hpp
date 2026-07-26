@@ -757,15 +757,16 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             frameDataBuf_->subData(0, sizeof(FrameDataVoxelToCanvas), &frameData_);
         };
 
-        // Dispatch order per rotating frame (#2333): stores ×3 → barrier →
-        // view mask (mode 2) ×3 → barrier → overflow append (mode 3) ×3 →
-        // barrier → per axis {election (mode 1) → stage 2}. The mask must be
-        // complete across ALL axes before any mode-3 test (view visibility
-        // competes across axes), and mode 3 reads each axis's settled distance
-        // store; the election stays last so its per-axis winner-region refill
-        // never overlaps the mask/append reads.
+        // Dispatch order per rotating frame (#2333; view mask folded into the
+        // store by #2487): store + view mask (mode 0) ×3 → barrier → overflow
+        // append (mode 3) ×3 → barrier → per axis {election (mode 1) → stage 2}.
+        // The mask must be complete across ALL axes before any mode-3 test (view
+        // visibility competes across axes) — the store phase now writes all three
+        // axes' masks, so the barrier after it satisfies that; mode 3 reads each
+        // axis's settled distance store; the election stays last so its per-axis
+        // winner-region refill never overlaps the mask/append reads.
         //
-        // Phase A — clears + cardinal stores (mode 0).
+        // Phase A — clears + cardinal stores + view mask (mode 0).
         // Sub-scope (#2281): each phase group below owns its GPU row so the
         // rotating burst is attributable per phase (the braces bound the
         // timers, not the GPU bindings).
@@ -810,33 +811,19 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             // All three distance stores settled — read below by the mode-3
             // cardinal-winner test, the elections, and stage 2's depth re-test.
             IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+            // #2487: the store now also writes the view mask (folded from the
+            // former mode-2 sweep) into the binding-28 scratch — all three axes'
+            // masks are complete here, so barrier the storage writes before the
+            // mode-3 compare reads them below.
+            IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
         }
 
         {
             GpuSubStageScope overflowScope("voxelPerAxisOverflow");
-            // Phase B — view mask (mode 2), all three axis routes into the SHARED
-            // mask region (view visibility competes across axes). Same geometry,
-            // fog early-outs, and binds as the store dispatch.
-            for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
-                uploadAxisFrameData(axis, 2);
-                const std::ptrdiff_t indirectOffsetBytes = bindAxisListRegions(axis);
-                fogTex->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
-                fogObserverBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FogObservers);
-                axes.axes_[axis].distances_.second->bindAsImage(
-                    1,
-                    TextureAccess::READ_ONLY,
-                    TextureFormat::R32I
-                );
-                IRRender::device()->dispatchComputeIndirect(
-                    perAxisIndirectBuf_,
-                    indirectOffsetBytes
-                );
-            }
-            // Mask writes must settle before any mode-3 compare.
-            IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
-
             // Phase C — overflow append (mode 3): faces that win (tie) their view
-            // cell but lost their cardinal store cell append scatter entries.
+            // cell but lost their cardinal store cell append scatter entries. The
+            // view mask it reads was written by the store phase above (#2487) and
+            // barriered before this scope.
             for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
                 uploadAxisFrameData(axis, 3);
                 const std::ptrdiff_t indirectOffsetBytes = bindAxisListRegions(axis);

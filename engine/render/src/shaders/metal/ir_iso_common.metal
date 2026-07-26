@@ -1119,8 +1119,9 @@ struct FrameDataVoxelToTrixel {
     // .w = entry cap. Region 0 of the scratch is the #2255 winner-id array, so
     // perAxisWinnerIds[cell] indexing is unchanged. Appended after the #2258
     // feeder-partition lanes; mirrors
-    // FrameDataVoxelToCanvas::overflowScratchLayout_ (offset 208). Read only by
-    // c_voxel_to_trixel_stage_1 at resolveMode 2/3.
+    // FrameDataVoxelToCanvas::overflowScratchLayout_ (offset 208). Read by
+    // c_voxel_to_trixel_stage_1 at resolveMode 0 (mask write, folded #2487) and
+    // 3 (append).
     int4 overflowScratchLayout;
 };
 

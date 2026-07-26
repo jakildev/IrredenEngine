@@ -268,8 +268,11 @@ inline void commitGpuStageSample(const GpuStageInfo &info, int registryIndex, fl
 // and VOXEL_TO_TRIXEL_STAGE_1's rotating-only per-axis dispatch groups get
 // their own rows (phases per docs/design/per-axis-trixel-canvas-rotation.md
 // §"The overflow lane"):
-//   `voxelPerAxisStore`     ← phase A: per-axis clears + cardinal stores ×3
-//   `voxelPerAxisOverflow`  ← phases B+C: view mask ×3 + overflow append ×3
+//   `voxelPerAxisStore`     ← phase A: per-axis clears + cardinal stores +
+//                             view-mask writes ×3 (mask folded into the store
+//                             by #2487, formerly its own phase-B sweep)
+//   `voxelPerAxisOverflow`  ← phase C: overflow append ×3 (phase B's view mask
+//                             folded into the store above by #2487)
 //   `voxelPerAxisFinalize`  ← phase D: winner election + stage-2 ×3
 //   `perAxisCellCompact`    ← the occupied-cell compaction + finalize
 //                             dispatches feeding every per-axis consumer
