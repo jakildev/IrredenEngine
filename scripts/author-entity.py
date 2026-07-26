@@ -78,13 +78,14 @@ def run_session(exe: Path, save_dir: Path, session: str, scene_size: list[int] |
     return rc, output, frame_files(save_dir)
 
 
-def check_assertions(output: str, run_rc: int) -> list[dict[str, str]]:
+def check_assertions(output: str, run_rc: int, timeout: int | None = None) -> list[dict[str, str]]:
     """Print the GUI-ASSERT table and exit non-zero on any FAIL / hang / empty.
 
     Unlike gui-verify, an assertion-less run is always a failure here — the
     session exists to run its recipe, so no GUI-ASSERT means the recipe never
     fired (a build / session-name / scene-size problem)."""
-    assertions, hung, failures = verify_common.report_gui_asserts(output, "[author-entity] ")
+    assertions, hung, failures = verify_common.report_gui_asserts(
+        output, "[author-entity] ", timeout=timeout)
     if not assertions:
         raise SystemExit("[author-entity] no GUI-ASSERT lines — the session never "
                          "ran its recipe (build/session-name/scene-size issue?)")
@@ -151,7 +152,7 @@ def main() -> None:
 
     rc1, out1, frames1 = run_session(exe, save_dir, session, args.scene_size,
                                      args.warmup_frames, args.timeout)
-    check_assertions(out1, rc1)
+    check_assertions(out1, rc1, args.timeout)
     if not frames1:
         raise SystemExit(f"[author-entity] session '{session}' passed its asserts but "
                          f"wrote no {SAVE_BASENAME}_frame_*.vxs — did the recipe save()?")
@@ -162,9 +163,8 @@ def main() -> None:
 
     rc2, out2, frames2 = run_session(exe, save_dir, session, args.scene_size,
                                      args.warmup_frames, args.timeout)
-    check_assertions(out2, rc2)
-    # Restore run-1 snapshots into memory-backed temp paths for the compare by
-    # reading run 2's live files against run 1's captured bytes.
+    check_assertions(out2, rc2, args.timeout)
+    # Compare run 2's live files against run 1's captured bytes.
     if sorted(first_bytes) != sorted(p.name for p in frames2):
         raise SystemExit("[author-entity] non-deterministic: the two runs wrote "
                          "different frame files")

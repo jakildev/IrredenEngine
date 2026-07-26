@@ -67,7 +67,8 @@ def main() -> None:
     # for generic smoke), which would mask a hung GUI test as a zero-assertion
     # success — report_gui_asserts surfaces the ALIVE-TIMEOUT marker as `hung`,
     # which this harness treats as a failure.
-    assertions, hung, failures = verify_common.report_gui_asserts(output, "[gui-verify] ")
+    assertions, hung, failures = verify_common.report_gui_asserts(
+        output, "[gui-verify] ", timeout=args.timeout)
 
     if not assertions:
         msg = "[gui-verify] no GUI-ASSERT lines found in output"

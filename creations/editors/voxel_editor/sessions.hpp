@@ -104,9 +104,10 @@ inline Recipe buildDragProbe(IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin) 
 }
 
 // The rock — an irregular, no-symmetry, single-layer blob (#766 Part 2d). The
-// recipe assumes a scene at least ~11 wide in x/y and ~12 tall (the default 16³
-// satisfies it); the footprint and layers derive from the live dims so it stays
-// centred and clear of the left-column GUI panels at any conforming size.
+// recipe assumes a scene at least ~11 wide in x/y and 5 deep in z (the peak
+// voxel sits at gz - 4; the default 16³ satisfies both); the footprint and
+// layers derive from the live dims so it stays centred and clear of the
+// left-column GUI panels at any conforming size.
 //
 // Sequence: (1) clear the seeded ground slab down to a 5×5 central footprint,
 // (2) build three asymmetric layers on that footprint, (3) carve two base
@@ -186,21 +187,32 @@ inline Recipe buildRock(IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin) {
     builder.expectOccupancy(IRMath::ivec3(cx, cy - 1, gz - 4), true, "peak_placed");
 
     // --- Carve two base corners for irregularity ------------------------
-    // Arm the carve in its own segment: hover the first corner and pick-assert
+    // Arm each carve in its own segment: hover the corner and pick-assert
     // the aim while the voxel is still there (F-2c-4 — an erase is not
     // diagnosable from occupancy alone, and a pick check must fire before the
     // click removes its own target, or the ray falls through to the cell behind).
     const IRMath::ivec3 carveA(fpLo.x, fpHi.y, gz - 1);
     const IRMath::ivec3 carveB(fpHi.x, fpLo.y, gz - 1);
-    builder.segment("carve_arm");
+    builder.segment("carve_arm_a");
     builder.toggleEraseMode();
     builder.hover(carveA);
-    builder.expectPick(carveA, "carve_aim_hits_corner");
-    builder.expectOccupancy(carveA, true, "carve_target_present");
+    builder.expectPick(carveA, "carve_aim_hits_corner_a");
+    builder.expectOccupancy(carveA, true, "carve_target_present_a");
 
-    builder.segment("carve");
+    builder.segment("carve_a");
     builder.click(carveA);
     builder.expectOccupancy(carveA, false, "carve_removed_corner_a");
+
+    // carveB is armed in its own segment too — a hover/pick-assert issued
+    // within the same shot as its click is evaluated after all of that
+    // shot's inputs fire (segments are shot boundaries, not per-event
+    // checkpoints), so it would see the post-click state instead of pre-arm.
+    builder.segment("carve_arm_b");
+    builder.hover(carveB);
+    builder.expectPick(carveB, "carve_aim_hits_corner_b");
+    builder.expectOccupancy(carveB, true, "carve_target_present_b");
+
+    builder.segment("carve_b");
     builder.click(carveB);
     builder.expectOccupancy(carveB, false, "carve_removed_corner_b");
     builder.expectOccupancy(IRMath::ivec3(cx, cy, gz - 1), true, "carve_spares_center");

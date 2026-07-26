@@ -109,8 +109,9 @@ def print_assert_table(assertions: list[dict[str, str]]) -> None:
         )
 
 
-def report_gui_asserts(output: str, prefix: str = "") -> tuple[list[dict[str, str]],
-                                                               bool, list[dict[str, str]]]:
+def report_gui_asserts(output: str, prefix: str = "",
+                        timeout: int | None = None) -> tuple[list[dict[str, str]],
+                                                              bool, list[dict[str, str]]]:
     """Parse a captured run, print the pass/fail table + summary, and return
     ``(assertions, hung, failures)``.
 
@@ -118,10 +119,13 @@ def report_gui_asserts(output: str, prefix: str = "") -> tuple[list[dict[str, st
     parse → table → count → failure-list flow lives in one place. Each caller
     keeps its own policy for the empty-assertion case and its own exit message
     — those genuinely differ (gui-verify tolerates an assertion-less run that
-    exited 0; author-entity treats it as a failed session)."""
+    exited 0; author-entity treats it as a failed session). ``timeout``, when
+    passed, is the caller's ``--timeout`` value in seconds, echoed into the
+    hung message for diagnosis."""
     hung = "RESULT=ALIVE-TIMEOUT" in output
     if hung:
-        print(f"{prefix}run hung: watchdog killed it before the shot table completed")
+        at = f" at --timeout {timeout}s" if timeout is not None else ""
+        print(f"{prefix}run hung: watchdog killed it{at} before the shot table completed")
     assertions = parse_gui_asserts(output)
     print()
     if not assertions:
