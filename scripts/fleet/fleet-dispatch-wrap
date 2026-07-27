@@ -4,7 +4,7 @@
 #
 # Called by fleet-dispatcher via tmux send-keys. Arguments:
 #   $1  pane_key  e.g. "pane-3"
-#   $2  model     e.g. "sonnet" or "claude-fable-5[1m]"
+#   $2  model     e.g. "sonnet" or "fable[1m]" (alias or full id)
 #   $3  effort    e.g. "high" or "xhigh"
 #   $4  role      e.g. "worker"
 #   $5  fallback  optional --fallback-model chain (comma-separated) for
@@ -77,6 +77,7 @@ else
     # No-op release degrades a discarded planning assignment (#2197) to the
     # 1-hour TTL reaper — the same failure budget as the dispatcher's copy.
     fleet_planning_release_assignment() { :; }
+    fleet_model_tag() { printf '%s' "$1"; }  # raw-id label fallback
 fi
 unset _FLEET_COMMON_SH
 
@@ -112,11 +113,7 @@ unset _gh_app_token
 # "sonnet-reviewer"/"merger" labels. PANE_KEY is "pane-<N>" for tmux
 # pane id "%<N>" (see pane_id_to_key in fleet-dispatcher), so the exact
 # pane this dispatch landed in is reconstructible.
-_tag="$MODEL"
-_tag="${_tag/claude-fable-5/fable}"
-_tag="${_tag/claude-opus-4-8/opus 4.8}"
-_tag="${_tag/claude-sonnet-5/sonnet 5}"
-_tag="${_tag/\[1m\]/ 1m}"
+_tag="$(fleet_model_tag "$MODEL")"
 tmux set-option -t "%${PANE_KEY#pane-}" -p @role "$ROLE [$_tag]" 2>/dev/null || true
 unset _tag
 

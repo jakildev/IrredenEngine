@@ -35,19 +35,25 @@ set -euo pipefail
 
 ENGINE="${FLEET_ENGINE_ROOT:-$HOME/src/IrredenEngine}"
 GAME="$ENGINE/creations/game"
-# Architects run the fable class. Keep in sync with fleet-up's fable
-# ladder (FABLE_MODEL_CANDIDATES — the fleet's single source of truth)
-# and the fable xhigh default in fleet-babysit — a model/effort bump
-# there must be mirrored here. FLEET_MODEL_FABLE (env or
+# Architects run the fable class. The default comes from fleet-common.sh
+# (a version-free tier alias the CLI resolves to the newest Fable at
+# launch — no per-release edit needed here; the inline backstop fires
+# only if fleet-common.sh is missing). FLEET_MODEL_FABLE (env or
 # ~/.fleet/fleet-up.conf) pins the model, same knob fleet-up honors. No
 # availability probe here — this is an interactive launch, so an
 # unavailable model fails loudly on the first turn; pin
-# FLEET_MODEL_FABLE="claude-opus-4-8[1m]" once the plan loses Fable.
+# FLEET_MODEL_FABLE="opus[1m]" once the plan loses Fable.
+_FLEET_COMMON_SH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/fleet-common.sh"
+if [[ -f "$_FLEET_COMMON_SH" ]]; then
+  # shellcheck source=/dev/null
+  source "$_FLEET_COMMON_SH"
+fi
+unset _FLEET_COMMON_SH
 if [[ -z "${FLEET_MODEL_FABLE:-}" && -f "$HOME/.fleet/fleet-up.conf" ]]; then
   # shellcheck disable=SC1091
   source "$HOME/.fleet/fleet-up.conf"
 fi
-MODEL="${FLEET_MODEL_FABLE:-claude-fable-5[1m]}"
+MODEL="${FLEET_MODEL_FABLE:-${FLEET_FABLE_CANDIDATES_DEFAULT[0]:-fable[1m]}}"
 # Global FLEET_EFFORT (env or conf) lowers solo sessions too; default
 # stays xhigh — heavy design work is where that budget earns its keep.
 EFFORT="${FLEET_EFFORT:-xhigh}"

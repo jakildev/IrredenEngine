@@ -78,10 +78,12 @@ LOOP_INTERVAL="${4:-}"
 # the architects babysit launches do the heavy design / render reasoning,
 # which is where xhigh earns its budget; sonnet defaults to high
 # (diminishing returns past that on its task mix).
+# Patterns match both spellings of each class: alias forms including the
+# suffixed "fable[1m]" (hence fable*, not bare fable) and full claude-* ids.
 case "$MODEL" in
-    fable|claude-fable*) _effort_default="xhigh" ;;
-    opus|claude-opus*) _effort_default="xhigh" ;;
-    sonnet|claude-sonnet*) _effort_default="high" ;;
+    fable*|claude-fable*) _effort_default="xhigh" ;;
+    opus*|claude-opus*) _effort_default="xhigh" ;;
+    sonnet*|claude-sonnet*) _effort_default="high" ;;
     *) _effort_default="high" ;;
 esac
 _role_effort_var="FLEET_EFFORT_$(printf '%s' "$ROLE" | tr 'a-z-' 'A-Z_')"
@@ -406,7 +408,7 @@ stream_claude() {
     # fleet-up's boot-time resolution.)
     local _fallback_args=()
     case "$MODEL" in
-        fable|claude-fable*)
+        fable*|claude-fable*)
             if [[ -n "${FLEET_FABLE_FALLBACK:-}" && "$FLEET_FABLE_FALLBACK" != "$MODEL" ]]; then
                 _fallback_args=(--fallback-model "$FLEET_FABLE_FALLBACK")
             fi

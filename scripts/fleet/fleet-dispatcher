@@ -512,16 +512,19 @@ fi
 # Model classes. Inherited from fleet-up's exported, boot-resolved
 # FLEET_MODEL_FABLE / FLEET_MODEL_OPUS / FLEET_MODEL_SONNET table (the
 # single source of truth — fleet-up probes the fable ladder there). The
-# conf knobs of the same names (captured above) and the literal defaults
+# conf knobs of the same names (captured above) and the shared defaults
 # here apply only when the dispatcher runs standalone (e.g. debugging)
-# without fleet-up in the environment; keep them in sync with fleet-up.
-# Standalone fable defaults to Fable unprobed — safe because every
-# fable-class dispatch carries --fallback-model, so a plan without Fable
-# degrades per-iteration. OPUS_MODEL / SONNET_MODEL are the pre-class
-# legacy env names, still honored as fallthroughs.
-FABLE_MODEL="${FLEET_MODEL_FABLE:-claude-fable-5[1m]}"
-OPUS_MODEL="${FLEET_MODEL_OPUS:-${OPUS_MODEL:-claude-opus-4-8[1m]}}"
-SONNET_MODEL="${FLEET_MODEL_SONNET:-${SONNET_MODEL:-sonnet}}"
+# without fleet-up in the environment. Defaults come from fleet-common.sh
+# (version-free tier aliases — the CLI resolves them to the newest model
+# of each tier, so they never need a per-release edit); the inline alias
+# backstops fire only if fleet-common.sh is missing. Standalone fable
+# defaults to Fable unprobed — safe because every fable-class dispatch
+# carries --fallback-model, so a plan without Fable degrades
+# per-iteration. OPUS_MODEL / SONNET_MODEL are the pre-class legacy env
+# names, still honored as fallthroughs.
+FABLE_MODEL="${FLEET_MODEL_FABLE:-${FLEET_FABLE_CANDIDATES_DEFAULT[0]:-fable[1m]}}"
+OPUS_MODEL="${FLEET_MODEL_OPUS:-${OPUS_MODEL:-${FLEET_OPUS_CLASS_DEFAULT:-opus[1m]}}}"
+SONNET_MODEL="${FLEET_MODEL_SONNET:-${SONNET_MODEL:-${FLEET_SONNET_CLASS_DEFAULT:-sonnet}}}"
 # Single-dash expansion is deliberate: fleet-up exports an EMPTY
 # FLEET_FABLE_FALLBACK to mean "fallback disabled" (fable resolved to the
 # opus floor), and `:-` would silently re-enable it. Don't "fix" to `:-`.
