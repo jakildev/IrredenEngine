@@ -95,15 +95,16 @@ World::World(const char *configFileName)
 
 World::~World() {
     // No-op after `end()` (which ran during `gameLoop()` while the GL context
-    // was still live and already cleared the observers). `g_world` is a global
-    // `unique_ptr`, so this dtor runs at process-exit static destruction — past
-    // that point the GL driver/context may already be torn down (MSYS2 unloads
-    // it first), and the GpuStageTimingObserver dtor's `glDeleteQueries` would
-    // crash against dead driver state (#2031). The live-context release in
-    // `end()` is the real cleanup; this stays idempotent as a safety net for any
-    // path that never ran the loop.
+    // was still live and already cleared the observers). On the `IREngine` path
+    // this runs at the tail of `IREngine::gameLoop()`, which resets `g_world`
+    // while the driver is still loaded; `end()` is still the real cleanup,
+    // since it also covers the exception path and any owner driving `World`
+    // directly. Releasing device resources from here instead would reach a
+    // torn-down driver on any path that does destruct at process exit — MSYS2
+    // unloads the GL driver first, so `glDeleteQueries` from the
+    // GpuStageTimingObserver dtor hits dead driver state (#2031). Idempotent,
+    // so it stays a safety net for a path that never ran the loop.
     m_systemManager.clearTickObservers();
-    IRE_LOG_INFO("Clean shutdown complete.");
 }
 
 void World::setupLuaBindings(const std::vector<LuaBindingRegistration> &bindings) {
@@ -288,9 +289,10 @@ void World::start() {
 void World::end() {
     buildAndWriteProfileReport();
     // Release the GPU stage-timing observer's GL timestamp queries here, while
-    // the render context is guaranteed live. The observer is program-bound and
-    // only ~World() would otherwise destroy it — but that runs at static
-    // destruction, after the GL driver/context may already be gone (#2031).
+    // the render context is guaranteed live. The observer is program-bound;
+    // clearing it from ~World() instead is safe on the IREngine path (which
+    // resets g_world at gameLoop's tail, #2528) but would still reach a
+    // torn-down driver on any path that destructs at process exit (#2031).
     // `clearTickObservers()` is idempotent, so the dtor's later call no-ops.
     m_systemManager.clearTickObservers();
     m_videoManager.shutdown();
@@ -298,6 +300,11 @@ void World::end() {
     // (e.g. MIDI cleanup that sends NOTE_OFF on shutdown).
     m_entityManager.destroyAllEntities();
     IRProfile::CPUProfiler::instance().shutdown();
+    // Last log before shutdownLogging() flips g_loggingEnabled off — the
+    // observable proof that deterministic teardown ran (#2528). The same line
+    // in ~World() is swallowed, since end() always runs first on both the loop
+    // and exception paths and disables logging just below.
+    IRE_LOG_INFO("Clean shutdown complete.");
     IRProfile::shutdownLogging();
 }
 

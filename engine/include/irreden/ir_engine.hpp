@@ -94,7 +94,7 @@ inline void init(int argc, char **argv, const char *configFileName = "config.lua
 }
 
 inline void runScript(const char *scriptFileName) {
-    g_world->runScript(resolveScriptPath(scriptFileName).c_str());
+    getWorld().runScript(resolveScriptPath(scriptFileName).c_str());
 }
 
 inline void enableFrameTiming(bool enabled) {
@@ -105,8 +105,17 @@ inline int entityCountOverride() {
     return getWorld().entityCountOverride();
 }
 
+// Destroys the World when the loop exits, so every manager destructor runs
+// while main() is still on the stack and the window/graphics driver are alive.
+// Leaving it to process-exit static destruction is the #2031 hazard: a
+// `glDelete*` from a member or observer dtor reaches an already-unloaded
+// driver. Managers destruct in reverse member-declaration order either way.
+//
+// Engine access after gameLoop() returns is unsupported: getWorld() and every
+// IR<Module>::get*Manager() accessor assert on the cleared global in debug.
 inline void gameLoop() {
     getWorld().gameLoop();
+    g_world.reset();
 }
 
 } // namespace IREngine

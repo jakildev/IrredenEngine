@@ -117,5 +117,17 @@ it owns every manager as a member in dependency order, so member order IS
 the deterministic set/clear order. The `ir_<module>.hpp`
 entry points wrap access via free functions (`IREntity::getEntityManager()`).
 **Do not hold references or raw pointers to managers across frames outside
-of World's lifetime.** Full global-state pattern catalog + the
-header-global ban: [`.claude/rules/cpp-globals.md`](../.claude/rules/cpp-globals.md).
+of World's lifetime.**
+
+**Managers are torn down when `gameLoop()` returns.** `IREngine::gameLoop()`
+resets `g_world` as soon as `World::gameLoop()` exits (#2528), so every manager
+destructor runs there — deterministically, with `main` still on the stack and
+the graphics driver still loaded — instead of at process-exit static
+destruction (#2031). The practical contract for a creation: **engine access
+after `IREngine::gameLoop()` returns is unsupported.** `main` should read only
+its own state (exit codes, file-scope counters) past that point; every
+`get*Manager()` accessor and `IREngine::getWorld()` asserts on the cleared
+global in debug builds, and is undefined in release.
+
+Full global-state pattern catalog + the header-global ban:
+[`.claude/rules/cpp-globals.md`](../.claude/rules/cpp-globals.md).
