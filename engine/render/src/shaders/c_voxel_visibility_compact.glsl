@@ -348,12 +348,16 @@ void main() {
                 // still rasterizes. residual == 0 keeps the byte-identical
                 // cardinal-snap path.
                 if (residualYaw != 0.0) {
-                    isoPos = roundHalfUp(pos3DtoPos2DIsoYawed(vec3(voxelPosRaw), visualYaw));
+                    // Cell-anchor projection (#2545) so the cull tests the
+                    // same screen position the scatter renders at.
+                    isoPos = roundHalfUp(
+                        pos3DtoPos2DIsoYawedCellAnchor(vec3(voxelPosRaw), visualYaw));
                     cullMargin = 2;
                 } else {
                     if (cardinalIndex != 0) {
+                        // Plain cardinal rotation — no lower-corner shift
+                        // (#2545); mirrors the stage-1/2 store cell.
                         voxelPos = rotateCardinalZ(voxelPos, cardinalIndex);
-                        voxelPos += cardinalLowerCornerShift(cardinalIndex);
                     }
                     isoPos = pos3DtoPos2DIso(voxelPos);
                 }

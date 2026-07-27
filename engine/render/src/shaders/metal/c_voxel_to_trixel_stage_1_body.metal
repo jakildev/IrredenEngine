@@ -101,16 +101,16 @@ constant int kOverflowDepthBias = 0x40000000;
 
 inline uint overflowYawedDepthKey(int3 facePos, float visualYaw) {
     return uint(
-        int(floor(yawedIsoDistance(float3(facePos), visualYaw) * kOverflowDepthQuantScale)) +
+        int(floor(yawedIsoDistanceCellAnchor(float3(facePos), visualYaw) * kOverflowDepthQuantScale)) +
         kOverflowDepthBias
     );
 }
 
 // The face's screen cell at the LIVE yaw, on the same perAxisBase anchor the
-// cardinal store uses (the scatter projects with the identical
-// pos3DtoPos2DIsoYawed, so mask cells and scattered quads agree).
+// cardinal store uses (the scatter projects with the identical cell-anchor
+// projection (#2545), so mask cells and scattered quads agree).
 inline int2 overflowYawedPixel(int2 perAxisBase, int3 facePos, float visualYaw) {
-    return perAxisBase + roundHalfUp(pos3DtoPos2DIsoYawed(float3(facePos), visualYaw));
+    return perAxisBase + roundHalfUp(pos3DtoPos2DIsoYawedCellAnchor(float3(facePos), visualYaw));
 }
 
 // View-mask write (#2331/#2333; folded into the resolveMode-0 store pass by
@@ -167,7 +167,7 @@ inline void overflowAppendTap(
     // mask WRITE side stays the single roundHalfUp cell, so max() only admits a
     // superset of the single-cell pass and the write/compare self-tie holds.
     const float2 yawedPosRel =
-        pos3DtoPos2DIsoYawed(float3(facePos), frameData.visualYaw);
+        pos3DtoPos2DIsoYawedCellAnchor(float3(facePos), frameData.visualYaw);
     const int2 neighborhoodBase = perAxisBase + int2(floor(yawedPosRel));
     bool anyInside = false;
     uint maxMaskKey = 0u;
@@ -510,8 +510,10 @@ kernel void IR_STAGE1_KERNEL_NAME(
         // implementation-defined and leave a one-cell seam along tie planes.
         int3 voxelPositionInt = roundHalfUp(voxelPosition.xyz);
         if (cardinalIndex != 0) {
+            // Plain cardinal rotation — no lower-corner shift (#2545): the
+            // shift rotated the mass about its lower-corner lattice (anchor
+            // p + 0.5), orbiting any pinned focus. Matches the GLSL twin.
             voxelPositionInt = rotateCardinalZ(voxelPositionInt, cardinalIndex);
-            voxelPositionInt += cardinalLowerCornerShift(cardinalIndex);
         }
         // Detached entities raster in model space; project occlusion depth
         // onto the entity-rotated iso axis (#1462). World/GRID keeps the fixed
@@ -559,17 +561,17 @@ kernel void IR_STAGE1_KERNEL_NAME(
     );
 
     // View-space micro position at non-zero cardinals (#2424) — mirror of
-    // c_voxel_to_trixel_stage_1_body.glsl: rotate the CELL origin (cell-index
-    // map, hence the lower-corner shift; per-world-unit, scaled to match
-    // `voxelPositionFixed = round(worldPos * subdivisions)`) and the FACE ID,
-    // then run cardinal-0 face math on the pair. Rotating a world-computed
-    // face plane after the fact applies the cell-index shift to a plane
+    // c_voxel_to_trixel_stage_1_body.glsl: rotate the CELL origin and the
+    // FACE ID, then run cardinal-0 face math on the pair. Rotating a
+    // world-computed face plane after the fact applies a cell-index map to a plane
     // BOUNDARY — the 1-sub-unit POS-face seam at cardinals 1/2/3.
     int3 viewCellFixed = voxelPositionFixed;
     int viewFaceId = faceId;
     if (cardinalIndex != 0) {
-        viewCellFixed = rotateCardinalZ(voxelPositionFixed, cardinalIndex) +
-            cardinalLowerCornerShift(cardinalIndex) * subdivisions;
+        // Plain cardinal rotation — no lower-corner shift (#2545); the whole
+        // cell grid translates uniformly so face adjacency is preserved.
+        // Matches the GLSL twin.
+        viewCellFixed = rotateCardinalZ(voxelPositionFixed, cardinalIndex);
         viewFaceId = rotateFaceIdCardinalZ(faceId, cardinalIndex);
     }
     const int3 microPositionFixed =

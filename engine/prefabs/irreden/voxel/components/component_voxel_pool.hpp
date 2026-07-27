@@ -348,9 +348,12 @@ struct C_VoxelPool {
         if (m_staticReVoxelizeBound.has_value()) {
             const int chunkCount = getChunkCount();
             m_chunkBounds.assign(chunkCount, ChunkBounds{});
+            // Cell-anchor shift (#2545): the raster projects cell positions
+            // half a cell toward the origin under yaw, so the gate's bound
+            // translates the same way to keep covering the rendered mass.
             const IsoBounds2D iso = IRMath::isoAABBOfWorldAABBUnderYaw(
-                m_staticReVoxelizeBound->worldMin_,
-                m_staticReVoxelizeBound->worldMax_,
+                m_staticReVoxelizeBound->worldMin_ - vec3(0.5f),
+                m_staticReVoxelizeBound->worldMax_ - vec3(0.5f),
                 visualYaw
             );
             for (ChunkBounds &cb : m_chunkBounds) {
@@ -384,8 +387,14 @@ struct C_VoxelPool {
                 const ChunkWorldBounds &wb = m_chunkWorldBounds[c];
                 if (wb.empty())
                     continue; // leave the inverted sentinel → chunk never visible
-                const IsoBounds2D iso =
-                    IRMath::isoAABBOfWorldAABBUnderYaw(wb.worldMin_, wb.worldMax_, visualYaw);
+                // Cell-anchor shift (#2545) — matches the compact cull's
+                // anchored per-voxel projection, keeping this gate a
+                // conservative superset of the per-voxel iso bounds.
+                const IsoBounds2D iso = IRMath::isoAABBOfWorldAABBUnderYaw(
+                    wb.worldMin_ - vec3(0.5f),
+                    wb.worldMax_ - vec3(0.5f),
+                    visualYaw
+                );
                 m_chunkBounds[c].isoMin_ = iso.min_;
                 m_chunkBounds[c].isoMax_ = iso.max_;
             }
@@ -406,8 +415,9 @@ struct C_VoxelPool {
             int chunk = i / IRRender::kVoxelChunkSize;
             vec3 pos = m_voxelPositionsGlobal[i].pos_;
             if (cardinalIndex != CardinalIndex::k0) {
+                // Plain cardinal rotation — no lower-corner shift (#2545);
+                // mirrors the stage-1/2 store cell and the compact cull.
                 pos = IRMath::rotateCardinalZ(pos, cardinalIndex);
-                pos += vec3(IRMath::cardinalLowerCornerShift(cardinalIndex));
             }
             m_chunkBounds[chunk].expand(IRMath::pos3DtoPos2DIso(pos));
             // Track the chunk's front-most raw iso depth in the same projection,

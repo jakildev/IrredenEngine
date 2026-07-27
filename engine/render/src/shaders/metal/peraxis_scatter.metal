@@ -322,8 +322,16 @@ vertex VertexOut v_peraxis_scatter(
 
     const float2 cornerSel = in.position + float2(0.5);
     const float3 worldCorner = faceSpanCorner(axis, origin, cornerSel);
-    const float2 cornerIso =
-        float2(frameData.perAxisBase) + pos3DtoPos2DIsoYawed(worldCorner, frameData.visualYaw);
+    // Whole-pixel anchor shift (#2545): the recovered origin is lower-corner
+    // lattice, so the layer translates by the rounded -h iso shift to rotate
+    // about the authored position instead of orbiting it by the half cell
+    // (integer so the pan/coverage phase is untouched; exact at cardinals).
+    // Matches the GLSL twin.
+    // Cell-anchor projection (#2545): the recovered origin is lower-corner
+    // lattice, so the anchored form rotates the face about the authored
+    // position instead of orbiting it by the half cell. Matches the GLSL twin.
+    const float2 cornerIso = float2(frameData.perAxisBase) +
+        pos3DtoPos2DIsoYawedCellAnchor(worldCorner, frameData.visualYaw);
 
     float2 quadPos;
     quadPos.x = cornerIso.x / float(canvasSize.x) - 0.5f;
@@ -359,7 +367,9 @@ vertex VertexOut v_peraxis_scatter(
     // Face-center iso-depth for depth-color (#1697). Flat (constant across the
     // quad) — origin is the same for all 4 corners of a face instance so
     // interpolation is a no-op; flat avoids rasterization divergence.
-    out.isoDepth = origin.x + origin.y + origin.z;
+    // Cell-anchor sum (#2545) — keeps the depth-color binning consistent with
+    // the authored-lattice depth the composite key below now carries.
+    out.isoDepth = origin.x + origin.y + origin.z - 1.5f;
     out.depthColorMode = frameData.depthColorMode;
     out.depthColorExtent = frameData.depthColorExtent;
     if (frameData.scatterDebugMode == kOverlayPerAxisId) {
@@ -410,7 +420,10 @@ vertex VertexOut v_peraxis_scatter(
     const float kV = yawedIsoDistance(ev, frameData.visualYaw) * encScale;  // gradient (no slot)
     // Tiebreak mirrors the integer encode's low bits ((flip << 2) | slot) so a
     // flipped cell co-sorts exactly where a real cardinal store would land it.
-    const float cornerKey = yawedIsoDistance(worldCorner, frameData.visualYaw) * encScale +
+    // Cell-anchor depth (#2545): measured at the corner's authored-lattice
+    // world point so voxel and SDF surfaces at one world location co-sort
+    // exactly at every residual. Matches the GLSL twin.
+    const float cornerKey = yawedIsoDistanceCellAnchor(worldCorner, frameData.visualYaw) * encScale +
                             float((flip << 2) | slot) + dilParam.x * kU + dilParam.y * kV;
     const float depthRange =
         float(globals.kMaxTriangleDistance - globals.kMinTriangleDistance);

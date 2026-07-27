@@ -41,6 +41,9 @@ import verify_common
 
 ALL_BLOCKS = ["focus-ctr", "focus-off", "center-column", "center-depth"]
 SDF_BLOCKS = ["focus-ctr"]
+# Frame indices of the cardinal yaws (0, pi/2, pi, 3pi/2) within the demo's
+# 9-yaw sweep table (`yaws[]` in creations/demos/shape_debug/main.cpp).
+CARDINAL_FRAME_INDICES = (0, 3, 5, 7)
 
 
 def _score_pass(probe_exe: Path, frames: list[Path],
@@ -72,6 +75,10 @@ def main(argv: list[str] | None = None) -> int:
                         help=f"Comma-separated block list (default {','.join(ALL_BLOCKS)}).")
     parser.add_argument("--skip-sdf", action="store_true",
                         help="Skip the SDF-probe twin passes.")
+    parser.add_argument("--cardinals-only", action="store_true",
+                        help="Score only the cardinal-yaw frames (0, pi/2, pi, "
+                             "3pi/2) of each sweep — the #2545 (epic #2544 P1) "
+                             "gate; the full-sweep residual is P2's gate.")
     parser.add_argument("--zoom", type=float, action="append", default=None,
                         help="Zoom level(s) to sweep (repeatable; default 4).")
     parser.add_argument("--warmup", type=int, default=12,
@@ -110,7 +117,8 @@ def main(argv: list[str] | None = None) -> int:
 
     results: list[tuple[str, str, float, float, int]] = []
     for block, sdf, zoom in passes:
-        label = f"{block}{'-sdf' if sdf else ''}@z{zoom:g}"
+        label = (f"{block}{'-sdf' if sdf else ''}"
+                 f"{'-card' if args.cardinals_only else ''}@z{zoom:g}")
         cmd = ["fleet-run", "--timeout", str(args.timeout), args.target,
                "--auto-screenshot", str(args.warmup),
                "--pivot-verify", block, "--zoom", f"{zoom:g}"]
@@ -120,6 +128,8 @@ def main(argv: list[str] | None = None) -> int:
                                                      shots_dir=shots_dir,
                                                      timeout=args.timeout + 60)
         frames = [f for f in frames if "_crop_" not in f.name]
+        if args.cardinals_only:
+            frames = [frames[i] for i in CARDINAL_FRAME_INDICES if i < len(frames)]
         if rc != 0:
             print(f"[pivot-verify] ({label}) fleet-run exited {rc}", file=sys.stderr)
             results.append((label, "CRASH", float("nan"), float("nan"), len(frames)))

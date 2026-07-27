@@ -92,12 +92,23 @@ the contract above on master — all invisible at cardinal yaw 0, so the
 "Empirically verified" section below remains true for what it measured while
 the pivot is still wrong under rotation:
 
-1. **Half-cell rotation-anchor mismatch (#2545).** The voxel raster rotates
-   content about `position + (0.5,0.5,0.5)` while the SDF path and the CPU
-   pivot/picking math rotate about the exact `position`. The offset rides the
-   iso depth axis (projects to zero at yaw 0); under yaw the voxel layer
-   orbits any pinned focus ~1 iso px and the voxel/SDF layers counter-rotate
-   apart.
+1. **Half-cell rotation-anchor mismatch — FIXED (#2545).** The voxel raster
+   rotated content about `position + (0.5,0.5,0.5)` while the SDF path and
+   the CPU pivot/picking math rotate about the exact `position`; under yaw
+   the voxel layer orbited any pinned focus ~1 iso px and the voxel/SDF
+   layers counter-rotated apart. The settled convention — **an entity's
+   `position` is the rotation anchor for every render path** — is now
+   enforced in the raster: the smooth per-axis route projects cell positions
+   through `pos3DtoPos2DIsoYawedCellAnchor` / `yawedIsoDistanceCellAnchor`
+   (`ir_iso_common.{glsl,metal}` — the lower-corner cell lattice shifted half
+   a cell so the rendered mass rotates about the authored lattice; exact
+   no-op at yaw 0 since `iso(0.5,0.5,0.5) == (0,0)`), and the settled
+   cardinal store keeps the **plain** `rotateCardinalZ` position — the
+   former `cardinalLowerCornerShift` add (and its undo in
+   `trixelCanvasPixelToWorld3D`) was this bug's cardinal form and is retired
+   from the store/cull/resolve chain. Exact world positions (SDF centers,
+   entity translations, the pivot math itself) keep the un-anchored
+   projections.
 2. **Default focus pins the wrong depth (#2547).** The pinned set of the
    drift-cancel offset is the vertical column `{W : W.xy == F.xy}`, and the
    default `F` is the **iso-depth-0** point under the viewport center (this

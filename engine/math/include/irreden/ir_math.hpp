@@ -616,9 +616,11 @@ inline std::array<FaceId, 3> visibleTriplet(const vec4 &rotation) {
 /// CPU mirror of `cardinalLowerCornerShift` in `shaders/ir_iso_common.glsl`.
 /// After `rotateCardinalZ`, the unit voxel's view-space AABB lower corner
 /// is offset from the rotated origin because R_z permutes/negates axes.
-/// Adding this shift to the rotated voxel position keeps the rasterizer's
-/// diamond 2x3 emit aligned with the voxel's iso footprint at every
-/// cardinal. Zero at cardinal 0 so the cardinal-snap path is unchanged.
+/// RETIRED from the raster store/cull chain (#2545): applying it rotated the
+/// voxel mass about `position + (0.5,0.5,0.5)`, orbiting any pinned pivot
+/// focus at cardinals 1-3; the unified anchor convention stores the plain
+/// rotated position. Kept for the geometry fact and external consumers —
+/// do NOT reintroduce it into the store or its inverses.
 constexpr ivec3 cardinalLowerCornerShift(CardinalIndex cardinalIndex) {
     if (cardinalIndex == CardinalIndex::k90)
         return ivec3(0, -1, 0);

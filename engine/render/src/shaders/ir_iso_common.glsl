@@ -639,17 +639,22 @@ ivec3 rotateCardinalZ(ivec3 v, int cardinalIndex) {
     return v;
 }
 
-// View-space lower-corner shift applied after rotateCardinalZ so the
-// rotated unit voxel's view-space AABB lower corner equals the rotated
-// voxel position. R_z permutes/negates axes; for the unit voxel [0,1]^3
-// the post-rotation AABB lower corner relative to the rotated origin is:
+// View-space lower-corner displacement of the rotated unit voxel [0,1]^3:
+// R_z permutes/negates axes, so the post-rotation AABB lower corner relative
+// to the rotated origin is:
 //   cardinal 0: (0, 0, 0)
 //   cardinal 1: (0,-1, 0)  (world x in [0,1] -> view y in [-1, 0])
 //   cardinal 2: (-1,-1, 0)
 //   cardinal 3: (-1, 0, 0)
-// Adding this shift keeps the diamond 2x3 emit aligned with the voxel's
-// view-space iso footprint at every cardinal. At cardinal 0 the shift is
-// zero so the cardinal-snap path stays bit-identical to master.
+// RETIRED from the raster store/cull/resolve chain (#2545): adding this shift
+// rotated the voxel MASS rigidly about the world origin — i.e. about
+// `position + (0.5,0.5,0.5)` after the pivot cancel — orbiting any pinned
+// focus by the half cell at cardinals 1-3, while the SDF path and the CPU
+// picking math rotate about the exact position. The unified convention stores
+// the plain rotated position (the cardinal-0 raster of the rotated scene; the
+// half cell projects to zero iso offset, so the mass footprint is unchanged).
+// The geometry fact above is kept for reference and any external consumer;
+// do NOT reintroduce it into the store or its inverses.
 ivec3 cardinalLowerCornerShift(int cardinalIndex) {
     if (cardinalIndex == 1) return ivec3(0, -1, 0);
     if (cardinalIndex == 2) return ivec3(-1, -1, 0);
@@ -724,10 +729,9 @@ vec3 trixelCanvasPixelToWorld3D(
         pos3D /= float(scale);
     }
     if (cardinalIndex != 0) {
-        // Undo the rasterizer's `cardinalLowerCornerShift` (applied in
-        // world units after division by scale) before rotating back to
-        // world coordinates.
-        pos3D -= vec3(cardinalLowerCornerShift(cardinalIndex));
+        // The rasterizer stores the plain rotated position (#2545 — the
+        // lower-corner shift was the half-cell anchor bug's cardinal form),
+        // so the inverse is the plain cardinal rotation back to world.
         pos3D = rotateCardinalZInv(pos3D, cardinalIndex);
     }
     return pos3D;
@@ -799,6 +803,33 @@ vec2 pos3DtoPos2DIsoYawed(vec3 worldPos, float visualYaw) {
     return vec2(-vx + vy, -vx - vy + 2.0 * worldPos.z);
 }
 
+// Rotation-anchor unification for VOXEL-RASTER cell positions (#2545). The
+// raster parameterizes the voxel authored at position p by its cell's
+// LOWER-CORNER lattice (mass spans [p, p+1]); the engine's rotation
+// convention (SDF path, CPU pivot math, picking inverses) rotates about the
+// authored position itself — the center of that mass. The raster therefore
+// renders every cell position displaced by -h (h = the half cell below) so
+// the rendered mass rotates about the authored lattice instead of orbiting
+// it. iso(0.5,0.5,0.5) == (0,0), so the correction is an exact no-op at yaw
+// 0 — every cardinal-0 output stays byte-identical. Two forms, split by
+// consumer: pos3DtoPos2DIsoYawedCellAnchor for PLACEMENT,
+// yawedIsoDistanceCellAnchor for DEPTH. Exact world positions (SDF centers,
+// entity translations) keep the un-anchored pos3DtoPos2DIsoYawed /
+// yawedIsoDistance.
+//
+// The correction is CONTINUOUS in yaw — do not quantize it. A whole-cell or
+// whole-framebuffer-pixel quantization steps the whole layer at rounding
+// crossings during a yaw sweep (1.9-15px single-frame jumps, the exact
+// popping this convention exists to remove), while the continuous form's
+// only cost is sub-pixel coverage-phase noise on the now-pinned centroid,
+// equal in amplitude to the pre-existing coverage noise (measured; see
+// #2545).
+const vec3 kVoxelRasterCellAnchor = vec3(0.5);
+
+vec2 pos3DtoPos2DIsoYawedCellAnchor(vec3 rasterPos, float visualYaw) {
+    return pos3DtoPos2DIsoYawed(rasterPos - kVoxelRasterCellAnchor, visualYaw);
+}
+
 // Exact (unquantized) composite depth key for a forward-scattered face: the
 // true yawed camera-space iso depth of the recovered face origin, kept in the
 // cardinal encodeDepthWithFace scale (xkDepthEncodeShift + slot) so it stays comparable with
@@ -829,6 +860,16 @@ float yawedIsoDistance(vec3 worldPos, float visualYaw) {
     float c = cos(visualYaw);
     float s = sin(visualYaw);
     return worldPos.x * (c - s) + worldPos.y * (s + c) + worldPos.z;
+}
+
+// Cell-anchor twin of yawedIsoDistance (#2545): composite depth of a
+// voxel-raster cell/face position, measured at its authored-lattice world
+// point (rasterPos - half cell) so voxel and SDF surfaces at the same world
+// location carry the SAME yawed depth and co-sort exactly at every residual.
+// Only the per-axis composite path calls this (cardinal gather depths come
+// from the integer store), so the cardinal fast path is untouched.
+float yawedIsoDistanceCellAnchor(vec3 rasterPos, float visualYaw) {
+    return yawedIsoDistance(rasterPos - kVoxelRasterCellAnchor, visualYaw);
 }
 
 float scatterCompositeDepthKey(vec3 origin, float visualYaw, int slot) {

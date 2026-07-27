@@ -256,16 +256,16 @@ const int kOverflowDepthBias = 0x40000000;
 
 uint overflowYawedDepthKey(const ivec3 facePos) {
     return uint(
-        int(floor(yawedIsoDistance(vec3(facePos), visualYaw) * kOverflowDepthQuantScale)) +
+        int(floor(yawedIsoDistanceCellAnchor(vec3(facePos), visualYaw) * kOverflowDepthQuantScale)) +
         kOverflowDepthBias
     );
 }
 
 // The face's screen cell at the LIVE yaw, on the same perAxisBase anchor the
-// cardinal store uses (the scatter projects with the identical
-// pos3DtoPos2DIsoYawed, so mask cells and scattered quads agree).
+// cardinal store uses (the scatter projects with the identical cell-anchor
+// projection (#2545), so mask cells and scattered quads agree).
 ivec2 overflowYawedPixel(const ivec2 perAxisBase, const ivec3 facePos) {
-    return perAxisBase + roundHalfUp(pos3DtoPos2DIsoYawed(vec3(facePos), visualYaw));
+    return perAxisBase + roundHalfUp(pos3DtoPos2DIsoYawedCellAnchor(vec3(facePos), visualYaw));
 }
 
 // View-mask write (#2331/#2333; folded into the resolveMode-0 store pass by
@@ -312,7 +312,7 @@ void overflowAppendTap(
     // max() can only admit a superset of the single-cell pass — the sanctioned
     // over-emit direction (over-emit loses the framebuffer depth test; only
     // under-emit re-opens the #2331 holes).
-    const vec2 yawedPosRel = pos3DtoPos2DIsoYawed(vec3(facePos), visualYaw);
+    const vec2 yawedPosRel = pos3DtoPos2DIsoYawedCellAnchor(vec3(facePos), visualYaw);
     const ivec2 neighborhoodBase = perAxisBase + ivec2(floor(yawedPosRel));
     bool anyInside = false;
     uint maxMaskKey = 0u;
@@ -637,8 +637,12 @@ void main() {
         // implementation-defined and leave a one-cell seam along tie planes.
         ivec3 voxelPositionInt = roundHalfUp(voxelPosition.xyz);
         if (cardinalIndex != 0) {
+            // Plain cardinal rotation — no lower-corner shift (#2545): the
+            // shift rotated the mass about its lower-corner lattice (anchor
+            // p + 0.5), orbiting any pinned focus; the plain rotation renders
+            // the cardinal-0 raster of the rotated scene, anchored on the
+            // authored position like the SDF path and the picking inverses.
             voxelPositionInt = rotateCardinalZ(voxelPositionInt, cardinalIndex);
-            voxelPositionInt += cardinalLowerCornerShift(cardinalIndex);
         }
         // Encode `slot` (not faceId) in depth — keeps the 2-bit field
         // unchanged, and AO/lighting recover the world faceId via
@@ -703,8 +707,11 @@ void main() {
     ivec3 viewCellFixed = voxelPositionFixed;
     int viewFaceId = faceId;
     if (cardinalIndex != 0) {
-        viewCellFixed = rotateCardinalZ(voxelPositionFixed, cardinalIndex) +
-            cardinalLowerCornerShift(cardinalIndex) * subdivisions;
+        // Plain cardinal rotation — no lower-corner shift (#2545, see the
+        // unsubdivided branch above). The whole cell grid translates
+        // uniformly, so face adjacency (and the #2424 seam-free view-space
+        // face math) is preserved; stage 2 mirrors this bit-identically.
+        viewCellFixed = rotateCardinalZ(voxelPositionFixed, cardinalIndex);
         viewFaceId = rotateFaceIdCardinalZ(faceId, cardinalIndex);
     }
     const ivec3 microPositionFixed =
