@@ -65,6 +65,12 @@ layout(std140, binding = 27) uniform FogObserverData {
     // geometric cross-section cap below needs no external occupancy source,
     // so the lane is unread (kept for the std140/Metal layout).
     int _fogObserverPad0;
+    // Per-circle height penalty (#2260), std140-appended after the count so the
+    // existing fields keep their offsets. visionCircleHeights[i] =
+    // (observerZ, zCost, 0, 0). The reveal folds zCost * |z - observerZ| into
+    // the radial distance; zCost 0 (the default) → the term is 0 and this pass
+    // is byte-identical to the pre-#2260 plain-2D disc.
+    vec4 visionCircleHeights[kMaxFogVisionCircles];
 };
 
 // Cross-section cap tuning. The tone is the factor applied to the hidden
@@ -209,14 +215,26 @@ void main() {
         // per-pixel reveal here and the voxel-object edge there trace the same
         // analytic curve (#2102). worldPerPixel floors the rim at ~1 canvas px.
         for (int i = 0; i < visionCircleCount; ++i) {
+            // #2260 height-penalized reveal: fold this pixel's world-Z penalty
+            // (zCost * |z - observerZ|) into the radial distance so matter far
+            // above/below the observer's height reveals less at the same XY. The
+            // 2D reveal (`fogVisionCircleReveal` in ir_iso_common) is inlined here
+            // rather than a shared Z helper — adding a symbol to ir_iso_common
+            // would perturb every cardinal voxel/SDF shader's byte-identical fast
+            // path (the #1944 note there, why fogColumnReveal is inlined too).
+            // heights.y (zCost) 0 → distEff == the plain 2D length, so every
+            // existing fog scene stays byte-identical.
+            const vec4 heights = visionCircleHeights[i];
+            const float distEff = length(pos3D.xy - visionCircles[i].xy) +
+                heights.y * abs(pos3D.z - heights.x);
+            const float aa = max(visionCircles[i].w, worldPerPixel);
             const float reveal =
-                fogVisionCircleReveal(pos3D.xy, visionCircles[i], worldPerPixel);
+                1.0 - smoothstep(visionCircles[i].z - aa, visionCircles[i].z + aa, distEff);
             state = max(state, reveal);
             if (visionCircles[i].w == 0.0) {
-                hardDistPastRim = min(
-                    hardDistPastRim,
-                    length(pos3D.xy - visionCircles[i].xy) - visionCircles[i].z
-                );
+                // The rim fade tracks the SAME penalized boundary (distEff past
+                // the radius) so a z-hidden surface fades on the z-aware curve.
+                hardDistPastRim = min(hardDistPastRim, distEff - visionCircles[i].z);
             }
         }
     }

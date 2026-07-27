@@ -335,6 +335,42 @@ constexpr IRVideo::AutoScreenshotShot kEdgeSmoothShots[] = {
     {14.0f, vec2(0, 0), 0.0f, "fog_edge_smooth14"},
 };
 
+// --edge-zcost (#2260): the vision disc as an XY radius with a Z-COST HEIGHT
+// PENALTY. The observer sits at floor level (kEdgeZCostObserverZ); a central
+// TALL voxel pillar at the observer's XY has its base at the floor (revealed —
+// |z - observerZ| small) and its top far above (penalized past the disc radius
+// → faded then dropped), while a LOW cube a few cells over stays fully revealed
+// at the same XY band. The pure height readout: matter far from the observer's
+// height reveals less even at equal XY distance. The effective reveal distance
+// is dist_xy + zCost * |z - observerZ|, evaluated per pixel in FOG_TO_TRIXEL and
+// (own-column drop) per voxel in VOXEL_TO_TRIXEL_STAGE_1. Static, straight-down
+// sun, all-unexplored grid (only the disc reveals) → deterministic refs. zCost 0
+// would render byte-identical to --edge-zoom; the point of this scene is zCost>0.
+bool g_edgeZCost = false; // --edge-zcost
+constexpr float kEdgeZCostRadius = 14.0f;
+constexpr float kEdgeZCostObserverZ = 4.5f; // ~floor level (iso +Z is downward)
+constexpr float kEdgeZCostFactor = 1.0f;    // extra reach per world unit of |z - observerZ|
+
+// ROI crop over the central pillar's height-fade transition at zoom9 (per
+// engine/render/CLAUDE.md's ROI-crop request). Bounds are a per-host iteration
+// point (see the shape_debug kCrops* note); tuned against this host's HiDPI
+// 2560x1440 framebuffer.
+constexpr IRVideo::RoiCrop kCropsEdgeZCost9[] = {
+    {1000, 360, 560, 560, "zcost_pillar_fade"},
+};
+
+// Origin-centered shots matching the other edge scenes' framing so the pillar's
+// height fade reads against the same floor edge.
+constexpr IRVideo::AutoScreenshotShot kEdgeZCostShots[] = {
+    {5.0f, vec2(0, 0), 0.0f, "fog_edge_zcost5"},
+    {9.0f,
+     vec2(0, 0),
+     0.0f,
+     "fog_edge_zcost9",
+     kCropsEdgeZCost9,
+     sizeof(kCropsEdgeZCost9) / sizeof(kCropsEdgeZCost9[0])},
+};
+
 // --edge-yaw-sweep (#2128 P4): the edge-zoom cross-section under CONTINUOUS
 // camera yaw. Reuses the static --edge-zoom scene (same boundary voxel objects +
 // origin vision circle) but steps the camera Z-yaw in fine increments inside one
@@ -399,6 +435,12 @@ int main(int argc, char **argv) {
         "The --edge-zoom cross-section under a continuous camera-yaw sweep "
         "(per-axis rotation route, #2128 P4); implies --edge-zoom"
     );
+    IREngine::args().flag(
+        "--edge-zcost",
+        "XY-radius vision disc with a Z-cost HEIGHT penalty (#2260): a central "
+        "tall pillar's base reveals while its top fades past the disc, a low cube "
+        "at the same XY stays revealed; skips the static grid reveal"
+    );
     IREngine::init(argc, argv);
     g_autoWarmupFrames = IREngine::args().autoScreenshotWarmupFrames();
     g_movingObserver = IREngine::args().getFlag("--moving-observer");
@@ -408,16 +450,33 @@ int main(int argc, char **argv) {
     g_detachedEdge = IREngine::args().getFlag("--detached-edge");
     g_edgeSmooth = IREngine::args().getFlag("--edge-smooth");
     g_edgeYawSweep = IREngine::args().getFlag("--edge-yaw-sweep");
+    g_edgeZCost = IREngine::args().getFlag("--edge-zcost");
     // --edge-yaw-sweep owns the same scene as --edge-zoom (boundary objects +
     // origin vision circle); it only swaps the static climbing-zoom shots for a
     // yaw sweep, so turn the edge scene on.
     if (g_edgeYawSweep) {
         g_edgeZoom = true;
     }
-    // The reveal modes are mutually exclusive; precedence: --detached-edge, then
-    // --edge-sdf-blocker, then --edge-zoom / --edge-yaw-sweep, then --edge-smooth,
-    // then --player-walk, then --moving-observer (each owns its own scene + shots).
-    if (g_detachedEdge) {
+    // The reveal modes are mutually exclusive; precedence: --edge-zcost, then
+    // --detached-edge, then --edge-sdf-blocker, then --edge-zoom / --edge-yaw-sweep,
+    // then --edge-smooth, then --player-walk, then --moving-observer (each owns its
+    // own scene + shots).
+    if (g_edgeZCost) {
+        if (g_detachedEdge || g_edgeSdfBlocker || g_edgeZoom || g_edgeYawSweep || g_edgeSmooth ||
+            g_playerWalk || g_movingObserver) {
+            IR_LOG_INFO(
+                "--edge-zcost overrides --detached-edge / --edge-sdf-blocker / --edge-zoom / "
+                "--edge-yaw-sweep / --edge-smooth / --player-walk / --moving-observer"
+            );
+        }
+        g_detachedEdge = false;
+        g_edgeSdfBlocker = false;
+        g_edgeZoom = false;
+        g_edgeYawSweep = false;
+        g_edgeSmooth = false;
+        g_playerWalk = false;
+        g_movingObserver = false;
+    } else if (g_detachedEdge) {
         if (g_edgeSdfBlocker || g_edgeZoom || g_edgeYawSweep || g_edgeSmooth || g_playerWalk ||
             g_movingObserver) {
             IR_LOG_INFO(
@@ -564,7 +623,10 @@ void initSystems() {
         // --edge-zoom / --edge-smooth zoom on the GRID cross-section clip edge (hard
         // vs smooth disc); --player-walk captures the walking reveal sequence; the
         // default captures the three static fog-boundary shots.
-        if (g_detachedEdge) {
+        if (g_edgeZCost) {
+            cfg.shots_ = kEdgeZCostShots;
+            cfg.numShots_ = sizeof(kEdgeZCostShots) / sizeof(kEdgeZCostShots[0]);
+        } else if (g_detachedEdge) {
             cfg.shots_ = kDetachedEdgeShots;
             cfg.numShots_ = sizeof(kDetachedEdgeShots) / sizeof(kDetachedEdgeShots[0]);
         } else if (g_edgeYawSweep) {
@@ -661,7 +723,7 @@ void initEntities() {
     // cross it (the two-black-bands artifact) instead of capping with the toned
     // cut colour.
     constexpr float kFloorZ = 5.0f;
-    if (!g_edgeZoom && !g_edgeSmooth && !g_edgeSdfBlocker && !g_detachedEdge) {
+    if (!g_edgeZoom && !g_edgeSmooth && !g_edgeSdfBlocker && !g_detachedEdge && !g_edgeZCost) {
         createShape(
             vec3(0.0f, 0.0f, kFloorZ),
             IRRender::ShapeType::BOX,
@@ -676,7 +738,8 @@ void initEntities() {
     // its own content (the gliding disc + marker / the boundary-straddling voxel
     // objects) reads clearly without the tall shapes' iso-projected tops poking
     // through the disc.
-    if (!g_playerWalk && !g_edgeZoom && !g_edgeSmooth && !g_edgeSdfBlocker && !g_detachedEdge) {
+    if (!g_playerWalk && !g_edgeZoom && !g_edgeSmooth && !g_edgeSdfBlocker && !g_detachedEdge &&
+        !g_edgeZCost) {
         // A few simple SDF primitives sitting on the floor inside the visible
         // circle, so the bright (visible) region has recognizable content.
         createShape(
@@ -753,7 +816,7 @@ void initEntities() {
     // face IS the band under test, so an angled sun's terminator across it would
     // masquerade as a cut defect. Fog x shadow composition stays covered by the
     // default grid scene's refs, which keep the angled sun.
-    if (g_edgeZoom || g_edgeSmooth || g_edgeSdfBlocker || g_detachedEdge) {
+    if (g_edgeZoom || g_edgeSmooth || g_edgeSdfBlocker || g_detachedEdge || g_edgeZCost) {
         IRRender::setSunDirection(vec3(0.0f, 0.0f, -1.0f));
     }
 
@@ -931,6 +994,48 @@ void initEntities() {
             C_LocalTransform{vec3(-9.0f, 0.0f, 2.0f)},
             C_RotationMode{RotationMode::DETACHED_REVOXELIZE},
             canvas
+        );
+        return;
+    }
+
+    // --edge-zcost (#2260): the vision disc as an XY radius with a Z-cost height
+    // penalty. Set the disc once at the origin with the observer at floor level
+    // and a positive zCost — nothing re-clears it, so it persists across
+    // warmup/settle/capture — and leave the grid all-unexplored so ONLY the disc
+    // (with its height penalty) reveals.
+    if (g_edgeZCost) {
+        IRPrefab::Fog::setVisionCircle(
+            0.0f,
+            0.0f,
+            kEdgeZCostRadius,
+            kFogVisionEdgeDefault,
+            kEdgeZCostObserverZ,
+            kEdgeZCostFactor
+        );
+
+        // Low floor slab — its z sits at observer height (~kEdgeZCostObserverZ),
+        // so |z - observerZ| is small and the whole disc-interior floor reveals.
+        createEdgeGroundSlab();
+
+        // Central TALL pillar at the observer's XY (distXY 0): iso +Z is downward,
+        // so center it well ABOVE the floor to stand a tall column up. Its BASE
+        // (z near the floor, ~4) reveals — |z - observerZ| small — while its TOP
+        // (z ≈ -24, far above the observer) is penalized past the disc radius:
+        // effective distance dist_xy + zCost*|z - observerZ| = 0 + 1*|−24−4.5| ≈
+        // 28.5 ≫ radius 14, so it fades then drops (own-column clip), showing the
+        // revealed floor behind. The height fade down its length is the headline.
+        IREntity::createEntity(
+            C_LocalTransform{vec3(0.0f, 0.0f, -10.0f)},
+            C_VoxelSetNew{IRMath::ivec3{4, 4, 28}, Color{120, 200, 240, 255}, true}
+        );
+
+        // A LOW wide cube a few cells off-origin, still well inside the disc: its
+        // z stays near the floor, so it reveals fully at the same XY band where the
+        // tall pillar's top fades — the side-by-side "same XY, different height"
+        // contrast that reads the penalty as a height effect, not an XY one.
+        IREntity::createEntity(
+            C_LocalTransform{vec3(6.0f, 0.0f, 2.0f)},
+            C_VoxelSetNew{IRMath::ivec3{5, 5, 4}, Color{130, 230, 150, 255}, true}
         );
         return;
     }

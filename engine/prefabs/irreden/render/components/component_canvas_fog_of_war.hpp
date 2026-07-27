@@ -118,10 +118,22 @@ struct FrameDataFogObservers {
     std::int32_t pad0_ = 0;
     std::int32_t pad1_ = 0;
     std::int32_t pad2_ = 0;
+    /// Per-circle height penalty (#2260), std140-appended AFTER the tail so
+    /// every EXISTING member offset is unchanged — a shader that reads only
+    /// `visionCircles_` / `visionCircleCount_` (c_voxel_to_trixel_stage_2,
+    /// c_voxel_visibility_compact) sees byte-identical bytes and needs no edit.
+    /// `visionCircleHeights_[i]` = (observerZ, zCost, 0, 0): the fog reveal adds
+    /// `zCost * |z - observerZ|` to the radial XY distance, so matter far
+    /// above/below the observer's height reveals less at the same XY (iso +Z is
+    /// the downward height axis). zCost 0 (the default for every existing
+    /// caller) makes the penalty term exactly 0, so the whole struct
+    /// uploads/decodes byte-identically to the pre-#2260 layout. Only the first
+    /// `visionCircleCount_` entries are read, paired 1:1 with `visionCircles_`.
+    IRMath::vec4 visionCircleHeights_[kMaxFogVisionCircles] = {};
 };
 static_assert(
-    sizeof(FrameDataFogObservers) == kMaxFogVisionCircles * 16 + 16,
-    "FrameDataFogObservers must stay std140/Metal-tight (vec4[N] + ivec4 tail)"
+    sizeof(FrameDataFogObservers) == 2 * kMaxFogVisionCircles * 16 + 16,
+    "FrameDataFogObservers must stay std140/Metal-tight (vec4[N] + ivec4 tail + vec4[N])"
 );
 
 struct C_CanvasFogOfWar {
@@ -265,11 +277,37 @@ struct C_CanvasFogOfWar {
     /// cell — to also leave explored "memory" behind a moving observer, stamp
     /// the grid separately (e.g. integer `revealRadius` for the voxelized
     /// floor).
-    void addVisionCircle(float cx, float cy, float radius, float edge = kFogVisionEdgeDefault) {
+    ///
+    /// @p observerZ + @p zCost (#2260) shape the disc into an XY radius with a
+    /// height penalty: the effective reveal distance is
+    /// `dist_xy + zCost * |z - observerZ|`, so matter at the observer's height
+    /// reveals to the full radius while a tall pillar top / deep pit floor at
+    /// the same XY reveals less (iso +Z is the downward height axis). @p zCost 0
+    /// (the default) is the back-compat plain 2D disc — byte-identical to the
+    /// pre-#2260 reveal.
+    void addVisionCircle(
+        float cx,
+        float cy,
+        float radius,
+        float edge = kFogVisionEdgeDefault,
+        float observerZ = 0.0f,
+        float zCost = 0.0f
+    ) {
         if (radius <= 0.0f || observers_.visionCircleCount_ >= kMaxFogVisionCircles)
             return;
         observers_.visionCircles_[observers_.visionCircleCount_] =
             IRMath::vec4(cx, cy, radius, IRMath::max(edge, 0.0f));
+        // The zCost clamp is load-bearing, not defensive hygiene: it is what
+        // keeps c_voxel_visibility_compact's z-FREE coarse cull a superset of
+        // stage 1's z-AWARE own-column drop. That holds only because
+        // `distEff = dist + zCost * |z - observerZ| >= dist` for zCost >= 0, so
+        // the penalized reveal is pointwise <= the z-free one and the drop can
+        // only ever drop MORE. A negative zCost inverts it, and the compact pass
+        // culls voxels stage 1 would still render — matter silently missing,
+        // with no shader error. `observers_` is public, so a caller that writes
+        // visionCircleHeights_ directly owns this invariant itself.
+        observers_.visionCircleHeights_[observers_.visionCircleCount_] =
+            IRMath::vec4(observerZ, IRMath::max(zCost, 0.0f), 0.0f, 0.0f);
         ++observers_.visionCircleCount_;
     }
 

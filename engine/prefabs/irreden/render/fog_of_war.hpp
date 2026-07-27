@@ -65,26 +65,41 @@ inline void revealRadius(int cx, int cy, int radius) {
 /// the edge is crisp at game resolution, tracks sub-voxel observer motion
 /// without grid quantization, and reveals partial voxels at the boundary —
 /// distinct from the voxel-grid `revealRadius`. @p edge is the edge softness
-/// in world units (default reads as antialiasing). For multiple sources, call
-/// `clearVisionCircles` then `addVisionCircle` per source. Combines (with the
-/// grid and other circles) via max.
+/// in world units (default reads as antialiasing). @p observerZ + @p zCost
+/// (#2260) add a height penalty — the effective reveal distance becomes
+/// `dist_xy + zCost * |z - observerZ|`, so matter far above/below the
+/// observer's height reveals less at the same XY; @p zCost 0 (the default) is
+/// the plain 2D disc. For multiple sources, call `clearVisionCircles` then
+/// `addVisionCircle` per source. Combines (with the grid and other circles) via
+/// max.
 inline void setVisionCircle(
-    float cx, float cy, float radius, float edge = IRComponents::kFogVisionEdgeDefault
+    float cx,
+    float cy,
+    float radius,
+    float edge = IRComponents::kFogVisionEdgeDefault,
+    float observerZ = 0.0f,
+    float zCost = 0.0f
 ) {
     if (auto *fog = detail::activeFogComponent()) {
         fog->clearVisionCircles();
-        fog->addVisionCircle(cx, cy, radius, edge);
+        fog->addVisionCircle(cx, cy, radius, edge, observerZ, zCost);
     }
 }
 
 /// Append one analytic vision disc to the live set (up to
-/// `kMaxFogVisionCircles`). See `setVisionCircle` for disc semantics; use this
-/// after `clearVisionCircles` to drive several vision sources in one frame.
+/// `kMaxFogVisionCircles`). See `setVisionCircle` for disc semantics (including
+/// the @p observerZ / @p zCost height penalty, #2260); use this after
+/// `clearVisionCircles` to drive several vision sources in one frame.
 inline void addVisionCircle(
-    float cx, float cy, float radius, float edge = IRComponents::kFogVisionEdgeDefault
+    float cx,
+    float cy,
+    float radius,
+    float edge = IRComponents::kFogVisionEdgeDefault,
+    float observerZ = 0.0f,
+    float zCost = 0.0f
 ) {
     if (auto *fog = detail::activeFogComponent()) {
-        fog->addVisionCircle(cx, cy, radius, edge);
+        fog->addVisionCircle(cx, cy, radius, edge, observerZ, zCost);
     }
 }
 
