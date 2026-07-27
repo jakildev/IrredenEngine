@@ -14,6 +14,8 @@
 #   - planning pre-claim (#2197): plan=1 election, --plan-assign claim walk
 #     (grant / held-fallthrough / exit-3 --replan / all-held / game --repo
 #     namespacing / dry-run+review-only gating) against a stubbed fleet-claim
+#   - FLEET_MODEL_* unset -> standalone alias-default fallback resolves each
+#     class to its fleet-common.sh default (fable[1m]/opus[1m]/sonnet)
 #
 # The fable in-flight count comes from dispatch records under
 # $FLEET_STATE_DIR/dispatch, same records --count-active reads.
@@ -241,6 +243,31 @@ write_slice worker '{"tasks_open":[],"feedback_prs":[],"needs_plan":[],"semantic
 assert_eq "$(resolve worker)" \
     "class=opus model=claude-opus-4-8[1m] effort=xhigh more=0 defer=0 count=1 plan=0" \
     "conflicted PR alone elects opus with count=1"
+
+# --- T19: FLEET_MODEL_* unset -> fleet-common.sh alias-default fallback -------
+# T1-T18 pin FLEET_MODEL_FABLE/OPUS/SONNET (lines ~60-62), so the
+# ${FLEET_MODEL_*:-...} arms in fleet-dispatcher's standalone model resolution
+# always short-circuit and the alias-default fallback never runs. Unset the
+# whole table — plus the pre-class legacy OPUS_MODEL/SONNET_MODEL fallthroughs —
+# so each class resolves THROUGH the fallback to the fleet-common.sh alias
+# default (FLEET_FABLE_CANDIDATES_DEFAULT[0] / FLEET_{OPUS,SONNET}_CLASS_DEFAULT).
+# solo-architect's MODEL= line uses the byte-identical fable expansion;
+# test_solo_architect_model.sh covers that consumer end-to-end.
+echo "T19: FLEET_MODEL_* unset resolves to fleet-common.sh alias defaults"
+resolve_unpinned() { # $1 = task model class
+    write_slice worker "{\"tasks_open\":[{\"issue\":\"#10\",\"model\":\"$1\",\"effort\":null,\"owner\":\"free\",\"blocked\":false}],\"feedback_prs\":[],\"needs_plan\":[]}"
+    env -u FLEET_MODEL_FABLE -u FLEET_MODEL_OPUS -u FLEET_MODEL_SONNET \
+        -u OPUS_MODEL -u SONNET_MODEL "$DISPATCHER" --resolve-class worker
+}
+assert_eq "$(resolve_unpinned fable)" \
+    "class=fable model=fable[1m] effort=xhigh more=0 defer=0 count=1 plan=0" \
+    "unpinned fable resolves to FLEET_FABLE_CANDIDATES_DEFAULT[0]=fable[1m]"
+assert_eq "$(resolve_unpinned opus)" \
+    "class=opus model=opus[1m] effort=xhigh more=0 defer=0 count=1 plan=0" \
+    "unpinned opus resolves to FLEET_OPUS_CLASS_DEFAULT=opus[1m]"
+assert_eq "$(resolve_unpinned sonnet)" \
+    "class=sonnet model=sonnet effort=high more=0 defer=0 count=1 plan=0" \
+    "unpinned sonnet resolves to FLEET_SONNET_CLASS_DEFAULT=sonnet"
 
 echo
 echo "PASS: $PASS  FAIL: $FAIL"
