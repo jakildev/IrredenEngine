@@ -174,10 +174,20 @@ this piece is a no-op at shutdown.
 Then exit cleanly. `fleet-dispatcher` launches a fresh `claude` for the
 role when the scout's projection sees new actionable state — no
 carry-over between iterations, except when `fleet-dispatch-wrap`'s
-session-id sidecar resumes a worker/sonnet-reviewer/opus-reviewer
-session after a hard kill (the resumed session keeps its full prior
-context; see `fleet-dispatch-wrap`'s "Session-id persistence" comment
-block).
+session-id sidecar resumes an interrupted session after a hard kill
+(the resumed session keeps its full prior context; see
+`fleet-dispatch-wrap`'s "Session-id persistence" comment block). Every
+dispatched role is resume-eligible — worker, both reviewers, merger,
+epic-steward, smoke-worker — and the durability contract spans the whole
+boot path: `fleet-up` preserves reserved / dirty / unpushed-`claude/*`
+worktrees, seeds a dispatcher trigger for any surviving sidecar so the
+resume actually fires after a power cycle, and the boot claim sweep
+keeps the GitHub claim label on any issue a local reservation says will
+resume (no cross-host duplicate-claim window). A resume that fails on
+quota or a short-window 429 keeps the sidecar (cooldowns pace the
+retry); any other failure gets one more attempt before the sidecar is
+cleared and the next dispatch goes fresh via the claim/reservation
+path.
 
 ---
 

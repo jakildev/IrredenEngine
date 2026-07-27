@@ -805,6 +805,30 @@ reset_worktree() {
         return 0
     fi
 
+    # A clean tree can still carry unpushed work: a crash after commit but
+    # before push leaves a claude/<N>-* task branch ahead of its remote.
+    # Resetting it to scratch would strand the commits on a dangling ref AND
+    # break fleet-dispatch-wrap's in-flight check (which keys on the branch),
+    # so the interrupted session would never resume. Scratch branches are
+    # throwaway and never preserved. Compare against the branch's OWN remote
+    # ref when it exists — a fully-pushed (possibly squash-merged) branch is
+    # safe to reset; origin/master is the yardstick only for a never-pushed
+    # branch, and local-only commits stay "ahead" of it even when the fetch
+    # is stale.
+    local cur_branch upstream ahead
+    cur_branch="$(cd "$wt" && git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")"
+    if [[ "$cur_branch" == claude/* && "$cur_branch" != *-scratch ]]; then
+        upstream="origin/master"
+        if (cd "$wt" && git rev-parse --verify --quiet "refs/remotes/origin/$cur_branch" >/dev/null 2>&1); then
+            upstream="origin/$cur_branch"
+        fi
+        ahead="$(cd "$wt" && git rev-list --count "$upstream..HEAD" 2>/dev/null || echo 0)"
+        if [[ "$ahead" =~ ^[0-9]+$ && "$ahead" -gt 0 ]]; then
+            echo "fleet-up: $wt on $cur_branch with $ahead unpushed commit(s) — preserving for resumption."
+            return 0
+        fi
+    fi
+
     echo "fleet-up: resetting $wt -> $branch"
     (cd "$wt" \
         && git fetch origin --quiet \
@@ -1391,6 +1415,36 @@ for role, predicate in [
         print(f"fleet-up: bootstrap-triggered {role} (projection has actionable content)")
 PY
 fi
+
+# Sidecar-resume bootstrap: a *.session.json left behind by a hard-killed
+# iteration (power cycle, pane kill) only resumes when its role is next
+# dispatched into that worktree — but after a reboot the projection often
+# shows nothing actionable for that role (its interrupted task reads as
+# in-progress), so the symmetric bootstrap above never fires and the session
+# strands until an organic trigger. Seed a trigger for every role with a
+# surviving sidecar so the dispatcher's first tick re-dispatches it and
+# fleet-dispatch-wrap's resume path reloads the exact session. A false
+# positive costs one short no-op iteration (the wrap clears a sidecar with
+# no in-flight work behind it). Role allowlist mirrors fleet-dispatch-wrap's
+# _resume_role set.
+seed_sidecar_resume_triggers() {
+    local sessions_dir="${FLEET_SESSIONS_DIR:-$HOME/.fleet/sessions}"
+    local trig_dir="${FLEET_STATE_DIR:-$HOME/.fleet/state}/triggers"
+    [[ -d "$sessions_dir" ]] || return 0
+    local sc sc_role
+    for sc in "$sessions_dir"/*.session.json; do
+        [[ -f "$sc" ]] || continue
+        sc_role=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("role",""))' "$sc" 2>/dev/null || true)
+        case "$sc_role" in
+            worker|sonnet-reviewer|opus-reviewer|merger|smoke-worker|epic-steward)
+                mkdir -p "$trig_dir"
+                touch "$trig_dir/$sc_role"
+                echo "fleet-up: bootstrap-triggered $sc_role (session sidecar $(basename "$sc") pending resume)"
+                ;;
+        esac
+    done
+}
+seed_sidecar_resume_triggers
 
 # ----------------------------------------------------------------------
 # Step 3f: launch fleet-dispatcher daemon

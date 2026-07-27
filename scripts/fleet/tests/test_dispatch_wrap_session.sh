@@ -8,11 +8,14 @@
 # resume) is checked by running to completion with stubbed claude/git/fleet-claim.
 #
 # Covers:
-#   - fresh dispatch: --session-id, /role-<role>, sidecar written (worker+reviewer)
-#   - non-resume role (merger): no --session-id sidecar, no resume
+#   - fresh dispatch: --session-id, /role-<role>, sidecar written (worker,
+#     reviewer, merger — every dispatched role resumes now)
+#   - non-dispatched role (queue-manager): no sidecar, no resume
 #   - resume: sidecar present -> --resume <id> with the STORED model/effort
 #     (not the dispatcher-passed class)
-#   - cleanup: failed resume clears the sidecar (no loop)
+#   - cleanup: failed resume keeps the sidecar ONCE (transient tolerance),
+#     clears on the second straight failure; quota (rc=2) and short-window
+#     429 failures never count against the streak
 #   - cleanup: in-flight work (claude/* branch + dirty) keeps the sidecar
 #   - cleanup: in-flight work (reservation present, branch otherwise clean) keeps the sidecar
 #   - cleanup: in-flight work (claude/* branch, clean but ahead of master) keeps the sidecar
@@ -46,6 +49,9 @@ exit "${STUB_CLAUDE_RC:-0}"
 EOF
 cat > "$BIN/fleet-claude-stream" <<'EOF'
 #!/usr/bin/env bash
+# STUB_TOUCH_THROTTLE simulates the real stream formatter spotting a
+# short-window 429 and touching the wrap-exported flag file.
+[[ -n "${STUB_TOUCH_THROTTLE:-}" && -n "${FLEET_THROTTLE_FLAG:-}" ]] && touch "$FLEET_THROTTLE_FLAG"
 cat >/dev/null 2>&1 || true
 EOF
 cat > "$BIN/fleet-claim" <<'EOF'
@@ -95,11 +101,18 @@ out=$(cd "$WT" && FLEET_DISPATCH_PRINT_LAUNCH=1 "$WRAP" pane-3 "claude-opus-4-8[
 python3 -c "import json;d=json.load(open('$SIDECAR'));assert d['role']=='worker' and d['model']=='claude-opus-4-8[1m]' and d['effort']=='xhigh'" 2>/dev/null \
   && ok "fresh: sidecar records role/model/effort" || bad "fresh: sidecar fields wrong"
 
-echo "T2: non-resume role (merger) — no sidecar, no --session-id persistence"
+echo "T2: merger is resume-eligible — fresh dispatch writes a sidecar"
 rm -f "$FLEET_SESSIONS_DIR/worker-1.session.json"
 out=$(cd "$WT" && FLEET_DISPATCH_PRINT_LAUNCH=1 "$WRAP" pane-3 sonnet high merger "" live 2>/dev/null)
 [[ "$out" == resumed=0* ]] && ok "merger: resumed=0" || bad "merger resumed: $out"
-[[ ! -f "$SIDECAR" ]] && ok "merger: no sidecar written" || bad "merger wrote a sidecar"
+python3 -c "import json;d=json.load(open('$SIDECAR'));assert d['role']=='merger'" 2>/dev/null \
+  && ok "merger: sidecar written (crash recovery)" || bad "merger: no/wrong sidecar"
+rm -f "$SIDECAR"
+
+echo "T2b: non-dispatched role (queue-manager) — no sidecar, no resume"
+out=$(cd "$WT" && FLEET_DISPATCH_PRINT_LAUNCH=1 "$WRAP" pane-3 sonnet high queue-manager "" live 2>/dev/null)
+[[ "$out" == resumed=0* ]] && ok "queue-manager: resumed=0" || bad "queue-manager resumed: $out"
+[[ ! -f "$SIDECAR" ]] && ok "queue-manager: no sidecar written" || bad "queue-manager wrote a sidecar"
 
 echo "T3: resume — sidecar present -> --resume <id> with STORED model/effort"
 printf '{"session_id":"SID-123","role":"worker","model":"claude-opus-4-8[1m]","effort":"xhigh","created_epoch":1}\n' > "$SIDECAR"
@@ -127,10 +140,29 @@ out=$(cd "$WT2" && FLEET_DISPATCH_PRINT_LAUNCH=1 "$WRAP" pane-7 "claude-opus-4-8
 [[ -f "$FLEET_SESSIONS_DIR/opus-reviewer.session.json" ]] && ok "reviewer: sidecar written" || bad "reviewer: no sidecar"
 
 # --- cleanup lifecycle (full run, stubbed claude) ------------------------
-echo "T5: cleanup — failed resume clears the sidecar (no loop)"
+echo "T5: cleanup — one failed resume is tolerated (transient), the second clears"
 printf '{"session_id":"SID-9","role":"worker","model":"sonnet","effort":"high","created_epoch":1}\n' > "$SIDECAR"
 STUB_CLAUDE_RC=1 run_wrap sonnet high worker
-[[ ! -f "$SIDECAR" ]] && ok "failed resume cleared the sidecar" || bad "failed resume left the sidecar"
+[[ -f "$SIDECAR" ]] && ok "1st failed resume kept the sidecar (one retry)" || bad "1st failed resume cleared the sidecar"
+python3 -c "import json;d=json.load(open('$SIDECAR'));assert d.get('resume_failures')==1" 2>/dev/null \
+  && ok "failure streak recorded (resume_failures=1)" || bad "failure streak missing: $(cat "$SIDECAR" 2>/dev/null)"
+STUB_CLAUDE_RC=1 run_wrap sonnet high worker
+[[ ! -f "$SIDECAR" ]] && ok "2nd failed resume cleared the sidecar (poisoned session)" || bad "2nd failed resume left the sidecar"
+
+echo "T5b: quota exit (rc=2) on a resume keeps the sidecar untouched"
+printf '{"session_id":"SID-Q","role":"worker","model":"sonnet","effort":"high","created_epoch":1}\n' > "$SIDECAR"
+STUB_CLAUDE_RC=2 run_wrap sonnet high worker
+[[ -f "$SIDECAR" ]] && ok "quota failure kept the sidecar" || bad "quota failure cleared the sidecar"
+python3 -c "import json;d=json.load(open('$SIDECAR'));assert not d.get('resume_failures')" 2>/dev/null \
+  && ok "quota failure did not count against the streak" || bad "quota failure bumped resume_failures"
+
+echo "T5c: short-window 429 (throttle flag) on a resume keeps the sidecar untouched"
+printf '{"session_id":"SID-T","role":"worker","model":"sonnet","effort":"high","created_epoch":1}\n' > "$SIDECAR"
+STUB_TOUCH_THROTTLE=1 STUB_CLAUDE_RC=1 run_wrap sonnet high worker
+[[ -f "$SIDECAR" ]] && ok "throttled failure kept the sidecar" || bad "throttled failure cleared the sidecar"
+python3 -c "import json;d=json.load(open('$SIDECAR'));assert not d.get('resume_failures')" 2>/dev/null \
+  && ok "throttled failure did not count against the streak" || bad "throttled failure bumped resume_failures"
+rm -f "$SIDECAR"
 
 echo "T6: cleanup — in-flight (claude/* branch + dirty) keeps the sidecar"
 rm -f "$SIDECAR"
@@ -207,6 +239,13 @@ python3 -c "import json;d=json.load(open('$SIDECAR'));assert d.get('resumes')==1
 # 2nd resumed clean exit, still in-flight: breaker fires, sidecar cleared.
 STUB_BRANCH="claude/123-foo" STUB_DIRTY=1 STUB_CLAUDE_RC=0 run_wrap sonnet high worker
 [[ ! -f "$SIDECAR" ]] && ok "2nd clean resume cleared the sidecar (loop broken)" || bad "2nd clean resume kept the sidecar (loop!)"
+
+echo "T15: a clean resumed exit resets the transient-failure streak"
+printf '{"session_id":"SID-OK","role":"worker","model":"sonnet","effort":"high","created_epoch":1,"resume_failures":1}\n' > "$SIDECAR"
+STUB_BRANCH="claude/123-foo" STUB_DIRTY=1 STUB_CLAUDE_RC=0 run_wrap sonnet high worker
+python3 -c "import json;d=json.load(open('$SIDECAR'));assert d.get('resume_failures')==0 and d.get('resumes')==1" 2>/dev/null \
+  && ok "clean resume zeroed resume_failures (and bumped resumes)" || bad "streak not reset: $(cat "$SIDECAR" 2>/dev/null)"
+rm -f "$SIDECAR"
 
 echo
 echo "PASS: $PASS  FAIL: $FAIL"

@@ -78,6 +78,7 @@ else
     # 1-hour TTL reaper — the same failure budget as the dispatcher's copy.
     fleet_planning_release_assignment() { :; }
     fleet_model_tag() { printf '%s' "$1"; }  # raw-id label fallback
+    fleet_main_clone_root() { :; }  # game-worktree in-flight check degrades off
 fi
 unset _FLEET_COMMON_SH
 
@@ -127,7 +128,7 @@ mkdir -p "$RATE_LIMIT_DIR"
 export FLEET_THROTTLE_FLAG="$RATE_LIMIT_DIR/$PANE_KEY.throttle-seen"
 rm -f "$FLEET_THROTTLE_FLAG"
 
-# --- Session-id persistence + interrupted-session resume (workers + reviewers) ---
+# --- Session-id persistence + interrupted-session resume (dispatched roles) ---
 #
 # Each iteration normally launches a FRESH `claude --session-id <uuid>` running
 # `/role-<role>`. On an interruption (fleet-down/up, crash, a killed pane) the
@@ -142,21 +143,27 @@ SESSIONS_DIR="${FLEET_SESSIONS_DIR:-$HOME/.fleet/sessions}"
 mkdir -p "$SESSIONS_DIR"
 worktree_name=$(basename "$PWD")
 SIDECAR="$SESSIONS_DIR/$worktree_name.session.json"
-# Roles worth resuming: workers (multi-step authoring; lost scratch is costly)
-# and reviewers (re-read a full diff). Short mechanical roles are not.
+# Roles worth resuming after an interruption: workers (multi-step authoring;
+# lost scratch is costly), reviewers (re-read a full diff), the merger
+# (mid-conflict-resolution context), the steward (mid-ledger pass), and the
+# smoke worker (mid build+run). For every non-worker role
+# worktree_in_flight stays false, so the sidecar clears on any clean exit
+# and only survives a HARD kill — resume there is pure crash recovery, never
+# a continuation of finished work.
 _resume_role=0
-case "$ROLE" in worker|sonnet-reviewer|opus-reviewer) _resume_role=1 ;; esac
+case "$ROLE" in
+    worker|sonnet-reviewer|opus-reviewer|merger|epic-steward|smoke-worker) _resume_role=1 ;;
+esac
 
 # Is there genuine unfinished work in this worktree that a resumed session should
 # continue? A reservation (feedback-amend) OR a claude/<N>-* branch carrying
 # uncommitted or unpushed-vs-master commits (a normal task mid-flow). Reviewers
 # hold no branch/reservation work, so they're never "in flight" — they clear on
 # a clean exit and only persist a sidecar across a hard kill.
-worktree_in_flight() {
-    [[ "$ROLE" == worker ]] || return 1
-    local _resv; _resv=$(fleet-claim reservation-of "$worktree_name" 2>/dev/null || true)
-    [[ -n "$_resv" ]] && return 0
-    local _br; _br=$(git -C "$PWD" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+# True when <dir> carries work a resumed session would continue.
+_repo_in_flight() {
+    local _dir="$1"
+    local _br; _br=$(git -C "$_dir" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
     # Task branches only. Scratch branches (claude/<x>-scratch) are throwaway
     # by definition and must never pin a resume — worker-2 spent 07-09→07-14
     # resuming a dead session because its scratch branch matched claude/*.
@@ -164,17 +171,31 @@ worktree_in_flight() {
     # Tracked modifications only. Untracked leftovers (a screenshots dir from
     # a shipped task, stray body files) are junk, not work a resumed session
     # would continue.
-    [[ -n "$(git -C "$PWD" status --porcelain 2>/dev/null | grep -v '^??')" ]] && return 0
+    [[ -n "$(git -C "$_dir" status --porcelain 2>/dev/null | grep -v '^??')" ]] && return 0
     # Unpushed commits. Measure against the branch's OWN remote ref when one
     # exists — a fully-pushed branch loses nothing by going fresh, and a
     # squash-merged branch stays "ahead of origin/master" forever. Fall back
     # to origin/master only for a never-pushed branch.
     local _upstream="origin/master"
-    if git -C "$PWD" rev-parse --verify --quiet "refs/remotes/origin/$_br" >/dev/null 2>&1; then
+    if git -C "$_dir" rev-parse --verify --quiet "refs/remotes/origin/$_br" >/dev/null 2>&1; then
         _upstream="origin/$_br"
     fi
-    local _ahead; _ahead=$(git -C "$PWD" rev-list --count "$_upstream..HEAD" 2>/dev/null || echo 0)
+    local _ahead; _ahead=$(git -C "$_dir" rev-list --count "$_upstream..HEAD" 2>/dev/null || echo 0)
     [[ "$_ahead" =~ ^[0-9]+$ && "$_ahead" -gt 0 ]] && return 0
+    return 1
+}
+
+worktree_in_flight() {
+    [[ "$ROLE" == worker ]] || return 1
+    local _resv; _resv=$(fleet-claim reservation-of "$worktree_name" 2>/dev/null || true)
+    [[ -n "$_resv" ]] && return 0
+    _repo_in_flight "$PWD" && return 0
+    # A worker mid-GAME-task has its branch/dirty state in the game worktree
+    # of the same basename, not in this engine pool cwd — an un-reserved
+    # interrupted game task must still pin the resume.
+    local _game_wt
+    _game_wt="$(fleet_main_clone_root 2>/dev/null || true)/creations/game/.claude/worktrees/$worktree_name"
+    [[ -d "$_game_wt" ]] && _repo_in_flight "$_game_wt" && return 0
     return 1
 }
 
@@ -284,6 +305,10 @@ elif [[ "$rc" != "0" && -f "$FLEET_THROTTLE_FLAG" ]]; then
     touch "$TRIGGERS_DIR/$ROLE"
     echo "fleet-dispatch-wrap: short-window 429 on $ROLE ($PANE_KEY); wrote throttle cooldown + re-armed $ROLE" >&2
 fi
+# The sidecar lifecycle below still needs to know a 429 was seen after the
+# flag file is cleaned up.
+THROTTLE_SEEN=0
+[[ -f "$FLEET_THROTTLE_FLAG" ]] && THROTTLE_SEEN=1
 rm -f "$FLEET_THROTTLE_FLAG"
 
 # Auto-retrigger: when a worker role exits cleanly (rc=0) with a dirty
@@ -306,13 +331,31 @@ fi
 
 # Session sidecar lifecycle. This runs only when claude EXITED (a hard kill skips
 # it, leaving the sidecar so the next dispatch resumes — the desired behavior):
-#   - a resume that itself failed (rc!=0) -> clear, so the next dispatch goes
-#     fresh and recovers via the claim/reservation path (breaks any resume loop);
+#   - a resume that failed on quota (rc=2) or a short-window 429 -> keep the
+#     sidecar untouched: the failure is the API's, not the session's, and the
+#     rate-limit / throttle cooldowns already pace the retry;
+#   - a resume that failed any other way (rc!=0) -> allow ONE more attempt,
+#     then clear: a single transient network error must not destroy the only
+#     pointer to the session (it is needed most exactly during flaky outage
+#     recovery), but a session that fails two straight resumes is poisoned —
+#     the next dispatch goes fresh and recovers via the claim/reservation path;
 #   - genuine in-flight work remaining -> keep, so the next dispatch resumes;
 #   - otherwise (task finished + worktree reset, or a no-op iteration) -> clear.
 if (( _resume_role )); then
     if (( RESUMED )) && [[ "$rc" != "0" ]]; then
-        rm -f "$SIDECAR"
+        if [[ "$rc" == "2" || "$THROTTLE_SEEN" == "1" ]]; then
+            :
+        else
+            _rfail=$(_read_sidecar resume_failures); _rfail=${_rfail:-0}
+            [[ "$_rfail" =~ ^[0-9]+$ ]] || _rfail=0
+            if (( _rfail >= 1 )); then
+                rm -f "$SIDECAR"
+                echo "fleet-dispatch-wrap: resume of $worktree_name failed twice (rc=$rc) — clearing sidecar; next dispatch goes fresh" >&2
+            else
+                python3 -c "import json;p='$SIDECAR';d=json.load(open(p));d['resume_failures']=int(d.get('resume_failures') or 0)+1;json.dump(d,open(p,'w'))" 2>/dev/null \
+                    || rm -f "$SIDECAR"
+            fi
+        fi
     elif worktree_in_flight; then
         if (( RESUMED )); then
             # Bounded resumes: a resumed session that exits CLEANLY while the
@@ -326,7 +369,8 @@ if (( _resume_role )); then
                 rm -f "$SIDECAR"
                 echo "fleet-dispatch-wrap: resumed session exited clean twice with the worktree still in-flight — clearing sidecar; next dispatch goes fresh" >&2
             else
-                python3 -c "import json;p='$SIDECAR';d=json.load(open(p));d['resumes']=int(d.get('resumes') or 0)+1;json.dump(d,open(p,'w'))" 2>/dev/null \
+                # A clean resumed exit also ends any transient-failure streak.
+                python3 -c "import json;p='$SIDECAR';d=json.load(open(p));d['resumes']=int(d.get('resumes') or 0)+1;d['resume_failures']=0;json.dump(d,open(p,'w'))" 2>/dev/null \
                     || rm -f "$SIDECAR"
             fi
         fi
