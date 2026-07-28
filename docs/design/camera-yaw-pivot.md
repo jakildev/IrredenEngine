@@ -87,10 +87,12 @@ itself swung a panned scene; that path is now correct.)
 ## Known deviations (2026-07, epic #2544)
 
 The `scripts/pivot-verify.py` harness (isolated cylinder probe +
-`jitter_probe --stationary`; no reference images) measures three defects in
-the contract above on master — all invisible at cardinal yaw 0, so the
-"Empirically verified" section below remains true for what it measured while
-the pivot is still wrong under rotation:
+`jitter_probe --stationary`; no reference images) enumerates three defects
+in the contract above — all invisible at cardinal yaw 0, so the "Empirically
+verified" section below remains true for what it measured while the pivot is
+still wrong under rotation. #2545 (deviation 1) and #2546 (deviation 3) are
+now fixed; #2547 (deviation 2) remains open on master. Fixed entries are
+retained below until the epic closes:
 
 1. **Half-cell rotation-anchor mismatch — FIXED (#2545).** The voxel raster
    rotated content about `position + (0.5,0.5,0.5)` while the SDF path and
@@ -116,10 +118,23 @@ the pivot is still wrong under rotation:
    third argument is iso depth `x+y+z`, not z). Content at screen center at
    another depth sits on the center iso ray, off the pinned column by (t, t)
    in xy, and orbits — 336 px measured at z=10, zoom 4.
-3. **Per-axis registration offset (#2546).** With (1) compensated, every
-   residual-yaw frame renders the voxel scene a constant ≈1 iso px off the
-   cardinal frames — the non-integer effective offset is rounded under a
-   different convention on the per-axis route than the cardinal gather.
+3. **Per-axis registration offset — FIXED (#2546).** With (1) compensated,
+   every residual-yaw frame rendered the voxel scene a constant ≈1 iso px
+   (per axis, zoom-scaled) off the cardinal frames. Root cause: the
+   forward-scatter's SCREEN re-projection anchored on the per-axis STORE
+   origin `perAxisBase` (= `trixelOriginOffsetZ1(canvasSize) + floor(cameraIso)`),
+   whose `trixelOriginOffsetZ1` carries the trixel grid's `(-1,-1)` sub-pixel
+   LATTICE alignment — a canvas-storage convention the `ij - perAxisBase`
+   recovery needs, but not a screen offset. The scatter emits true face quads
+   (no trixel-grid gather), so that lattice alignment rode into the on-screen
+   placement while the cardinal gather's focus carried none. Fix: anchor the
+   re-projection on the canvas geometric CENTER (`canvasSize/2`, exactly
+   `perAxisBase + (1,1)` back from the storage origin) in
+   `v_peraxis_scatter.glsl` / `metal/peraxis_scatter.metal`; recovery keeps
+   the store anchor unchanged, so cardinal frames stay byte-identical (the
+   scatter runs only at non-cardinal yaw). Depth (`yawedIsoDistanceCellAnchor`)
+   and the store/RESOLVE/overflow paths are untouched — pure screen-XY
+   registration.
 
 Fix chain and acceptance gates: epic #2544 (P1 #2545 → P2 #2546 → P3 #2547 →
 P4 #2548, cursor-pivot true-depth latch + indicator). Each child flips its
