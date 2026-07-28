@@ -381,8 +381,9 @@ void main() {
     if (residualYaw == 0.0 && isDetachedCanvas < 0.5) {
         ivec3 feederPos = roundHalfUp(voxelPosition.xyz);
         if (cardinalIndex != 0) {
+            // Plain cardinal rotation — no lower-corner shift (#2545);
+            // mirrors the compact cull and the stage-1 store.
             feederPos = rotateCardinalZ(feederPos, cardinalIndex);
-            feederPos += cardinalLowerCornerShift(cardinalIndex);
         }
         // One definition with the compact cull's Step-B classify
         // (isShadowFeederIso, ir_iso_common.glsl) so the skip and the
@@ -402,8 +403,9 @@ void main() {
         // writeColorTap's depth re-test reject the tap at tie positions.
         ivec3 voxelPositionInt = roundHalfUp(voxelPosition.xyz);
         if (cardinalIndex != 0) {
+            // Plain cardinal rotation — no lower-corner shift (#2545);
+            // MUST mirror stage 1's store cell bit-identically.
             voxelPositionInt = rotateCardinalZ(voxelPositionInt, cardinalIndex);
-            voxelPositionInt += cardinalLowerCornerShift(cardinalIndex);
         }
         // Detached entities project occlusion depth onto the entity-rotated
         // iso axis (#1462); world/GRID keeps the fixed (1,1,1) via
@@ -435,16 +437,16 @@ void main() {
         trixelFrameOffset(trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions);
 
     // View-space micro position at non-zero cardinals (#2424) — byte-identical
-    // mirror of stage 1's form: rotate the CELL origin (cell-index map, shift
-    // per-world-unit to match `voxelPositionFixed = round(worldPos *
-    // subdivisions)`) and the FACE ID, then run cardinal-0 face math. See
-    // c_voxel_to_trixel_stage_1_body.glsl for the seam rationale; the colour
-    // tap desyncs from the distance if the two stages disagree here.
+    // mirror of stage 1's form: rotate the CELL origin and the FACE ID, then
+    // run cardinal-0 face math. See c_voxel_to_trixel_stage_1_body.glsl for
+    // the seam rationale; the colour tap desyncs from the distance if the two
+    // stages disagree here.
     ivec3 viewCellFixed = voxelPositionFixed;
     int viewFaceId = faceId;
     if (cardinalIndex != 0) {
-        viewCellFixed = rotateCardinalZ(voxelPositionFixed, cardinalIndex) +
-            cardinalLowerCornerShift(cardinalIndex) * subdivisions;
+        // Plain cardinal rotation — no lower-corner shift (#2545); mirrors
+        // stage 1's subdivided branch bit-identically.
+        viewCellFixed = rotateCardinalZ(voxelPositionFixed, cardinalIndex);
         viewFaceId = rotateFaceIdCardinalZ(faceId, cardinalIndex);
     }
     const ivec3 microPositionFixed =

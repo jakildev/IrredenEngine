@@ -249,9 +249,13 @@ void main() {
     // (pos3DtoPos2DIsoYawed is linear, so this IS P(theta)*corner — the true
     // deformed footprint, with no gather / parity inverse). `origin` is already
     // the face plane, so only the in-plane axes are spanned (no polarity).
+    // Cell-anchor projection (#2545): the recovered origin is lower-corner
+    // lattice, so the anchored form rotates the face about the authored
+    // position instead of orbiting it by the half cell.
     const vec2 cornerSel = aPos + vec2(0.5);
     const vec3 worldCorner = faceSpanCorner(axis, origin, cornerSel);
-    const vec2 cornerIso = vec2(perAxisBase) + pos3DtoPos2DIsoYawed(worldCorner, visualYaw);
+    const vec2 cornerIso =
+        vec2(perAxisBase) + pos3DtoPos2DIsoYawedCellAnchor(worldCorner, visualYaw);
 
     // Inverse of the gather's aPos->canvasPixel map (v_trixel_to_framebuffer):
     //   canvasPixel = (aPos.x + 0.5, -aPos.y + 0.5) * canvasSize
@@ -293,7 +297,9 @@ void main() {
     // quad) — origin is the same for all 4 corners of a face instance, so
     // interpolation would be a no-op anyway and flat avoids shader-pipeline
     // divergence from adding a smooth varying.
-    vIsoDepth = origin.x + origin.y + origin.z;
+    // Cell-anchor sum (#2545) — keeps the depth-color binning consistent with
+    // the authored-lattice depth the composite key below now carries.
+    vIsoDepth = origin.x + origin.y + origin.z - 1.5;
     vDepthColorMode = depthColorMode;
     vDepthColorExtent = depthColorExtent;
     if (scatterDebugMode == kOverlayPerAxisId) {
@@ -354,7 +360,10 @@ void main() {
     const float kV = yawedIsoDistance(ev, visualYaw) * encScale;  // gradient (no slot)
     // Tiebreak mirrors the integer encode's low bits ((flip << 2) | slot) so a
     // flipped cell co-sorts exactly where a real cardinal store would land it.
-    const float cornerKey = yawedIsoDistance(worldCorner, visualYaw) * encScale +
+    // Cell-anchor depth (#2545): measured at the corner's authored-lattice
+    // world point so voxel and SDF surfaces at one world location co-sort
+    // exactly at every residual (they previously disagreed by cos(yaw)+0.5).
+    const float cornerKey = yawedIsoDistanceCellAnchor(worldCorner, visualYaw) * encScale +
                             float((flip << 2) | slot) + dilParam.x * kU + dilParam.y * kV;
     const float depthRange = float(kMaxTriangleDistance - kMinTriangleDistance);
     vDepth = (cornerKey + float(distanceOffset - kMinTriangleDistance)) / depthRange;

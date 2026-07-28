@@ -664,10 +664,10 @@ inline float3 trixelCanvasPixelToWorld3D(
         pos3D /= float(scale);
     }
     if (cardinalIndex != 0) {
-        // Undo the rasterizer's `cardinalLowerCornerShift` (applied in
-        // world units after division by scale) before rotating back to
-        // world coordinates. Matches shaders/ir_iso_common.glsl.
-        pos3D -= float3(cardinalLowerCornerShift(cardinalIndex));
+        // The rasterizer stores the plain rotated position (#2545 — the
+        // lower-corner shift was the half-cell anchor bug's cardinal form),
+        // so the inverse is the plain cardinal rotation back to world.
+        // Matches shaders/ir_iso_common.glsl.
         pos3D = rotateCardinalZInv(pos3D, cardinalIndex);
     }
     return pos3D;
@@ -734,6 +734,20 @@ inline float2 pos3DtoPos2DIsoYawed(float3 worldPos, float visualYaw) {
     return float2(-vx + vy, -vx - vy + 2.0f * worldPos.z);
 }
 
+// Rotation-anchor unification for VOXEL-RASTER cell positions (#2545) —
+// mirror of ir_iso_common.glsl: the raster's lower-corner cell lattice
+// renders displaced by -h so the mass rotates about the authored position
+// (exact no-op at yaw 0 — iso(0.5,0.5,0.5) == (0,0)). Placement uses
+// pos3DtoPos2DIsoYawedCellAnchor; depth keys use yawedIsoDistanceCellAnchor.
+// Exact world positions (SDF centers, entity translations) keep the
+// un-anchored forms. The correction is CONTINUOUS in yaw — do not quantize
+// it (rationale in the GLSL twin's doc).
+constant float3 kVoxelRasterCellAnchor = float3(0.5f);
+
+inline float2 pos3DtoPos2DIsoYawedCellAnchor(float3 rasterPos, float visualYaw) {
+    return pos3DtoPos2DIsoYawed(rasterPos - kVoxelRasterCellAnchor, visualYaw);
+}
+
 // Exact (unquantized) composite depth key for a forward-scattered face —
 // mirror of scatterCompositeDepthKey in ir_iso_common.glsl; see that file for
 // the full rationale (the rounded key it replaces tied adjacent micro-cells on
@@ -751,6 +765,14 @@ inline float yawedIsoDistance(float3 worldPos, float visualYaw) {
     const float c = cos(visualYaw);
     const float s = sin(visualYaw);
     return worldPos.x * (c - s) + worldPos.y * (s + c) + worldPos.z;
+}
+
+// Cell-anchor twin of yawedIsoDistance (#2545) — mirror of
+// yawedIsoDistanceCellAnchor in ir_iso_common.glsl: composite depth of a
+// raster cell/face position measured at its authored-lattice world point so
+// voxel and SDF surfaces co-sort exactly at every residual.
+inline float yawedIsoDistanceCellAnchor(float3 rasterPos, float visualYaw) {
+    return yawedIsoDistance(rasterPos - kVoxelRasterCellAnchor, visualYaw);
 }
 
 inline float scatterCompositeDepthKey(float3 origin, float visualYaw, int slot) {

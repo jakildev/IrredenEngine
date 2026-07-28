@@ -400,8 +400,9 @@ kernel void IR_STAGE2_KERNEL_NAME(
     if (frameData.residualYaw == 0.0f && frameData.isDetachedCanvas < 0.5f) {
         int3 feederPos = roundHalfUp(voxelPosition.xyz);
         if (cardinalIndex != 0) {
+            // Plain cardinal rotation — no lower-corner shift (#2545);
+            // mirrors the compact cull and the stage-1 store.
             feederPos = rotateCardinalZ(feederPos, cardinalIndex);
-            feederPos += cardinalLowerCornerShift(cardinalIndex);
         }
         // One definition with the compact cull's Step-B classify
         // (isShadowFeederIso, ir_iso_common.metal) so the skip and the
@@ -424,8 +425,9 @@ kernel void IR_STAGE2_KERNEL_NAME(
         // writeColorTap's depth re-test reject the tap at tie positions.
         int3 voxelPositionInt = roundHalfUp(voxelPosition.xyz);
         if (cardinalIndex != 0) {
+            // Plain cardinal rotation — no lower-corner shift (#2545);
+            // MUST mirror stage 1's store cell bit-identically.
             voxelPositionInt = rotateCardinalZ(voxelPositionInt, cardinalIndex);
-            voxelPositionInt += cardinalLowerCornerShift(cardinalIndex);
         }
         // Detached entities project occlusion depth onto the entity-rotated
         // iso axis (#1462); world/GRID keeps the fixed (1,1,1) via
@@ -485,8 +487,9 @@ kernel void IR_STAGE2_KERNEL_NAME(
     int3 viewCellFixed = voxelPositionFixed;
     int viewFaceId = faceId;
     if (cardinalIndex != 0) {
-        viewCellFixed = rotateCardinalZ(voxelPositionFixed, cardinalIndex) +
-            cardinalLowerCornerShift(cardinalIndex) * subdivisions;
+        // Plain cardinal rotation — no lower-corner shift (#2545); mirrors
+        // stage 1's subdivided branch bit-identically.
+        viewCellFixed = rotateCardinalZ(voxelPositionFixed, cardinalIndex);
         viewFaceId = rotateFaceIdCardinalZ(faceId, cardinalIndex);
     }
     const int3 microPositionFixed =

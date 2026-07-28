@@ -79,8 +79,10 @@ kernel void c_resolve_per_axis_screen_depth(
     // main-canvas layout so BAKE's trixelCanvasPixelToWorld3D recovers correctly.
     int3 viewPos = origin;
     if (cardinalIndex != 0) {
+        // Plain cardinal rotation — no lower-corner shift (#2545); mirrors
+        // the stage-1 cardinal store, and the BAKE recovery
+        // (trixelCanvasPixelToWorld3D) dropped its undo symmetrically.
         viewPos = rotateCardinalZ(origin, cardinalIndex);
-        viewPos += cardinalLowerCornerShift(cardinalIndex);  // world units
     }
     viewPos *= scale;  // face-plane origin in subdivision units
 

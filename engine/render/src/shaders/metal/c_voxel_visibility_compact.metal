@@ -292,14 +292,17 @@ kernel void c_voxel_visibility_compact(
                 // drops off-center voxels), widened by the sqrt2 face footprint.
                 // residual == 0 keeps the byte-identical cardinal-snap path.
                 if (frameData.residualYaw != 0.0f) {
+                    // Cell-anchor projection (#2545) so the cull tests the
+                    // same screen position the scatter renders at.
                     isoPos = roundHalfUp(
-                        pos3DtoPos2DIsoYawed(float3(voxelPosRaw), frameData.visualYaw)
+                        pos3DtoPos2DIsoYawedCellAnchor(float3(voxelPosRaw), frameData.visualYaw)
                     );
                     cullMargin = 2;
                 } else {
                     if (cardinalIndex != 0) {
+                        // Plain cardinal rotation — no lower-corner shift
+                        // (#2545); mirrors the stage-1/2 store cell.
                         voxelPos = rotateCardinalZ(voxelPos, cardinalIndex);
-                        voxelPos += cardinalLowerCornerShift(cardinalIndex);
                     }
                     isoPos = pos3DtoPos2DIso(voxelPos);
                 }

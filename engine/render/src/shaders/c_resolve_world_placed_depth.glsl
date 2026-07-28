@@ -114,8 +114,10 @@ void main() {
     const int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
     ivec3 viewPos = worldPos;
     if (cardinalIndex != 0) {
+        // Plain cardinal rotation — no lower-corner shift (#2545); mirrors
+        // the stage-1 cardinal store, and the BAKE recovery
+        // (trixelCanvasPixelToWorld3D) dropped its undo symmetrically.
         viewPos = rotateCardinalZ(worldPos, cardinalIndex);
-        viewPos += cardinalLowerCornerShift(cardinalIndex) * scale;
     }
 
     const ivec2 mainBase = trixelFrameOffset(
