@@ -54,6 +54,15 @@ namespace detail {
 // `engine/world/CLAUDE.md` "Init-affecting runtime params".
 void applyPreInitLuaConfig(const char *configFile);
 
+// Releases the prefab-layer Lua handler references held by the
+// process-lifetime IRSystem::EntityEventHandlers static, called at the
+// gameLoop() tail while the World's Lua VM is still alive. Out-of-line in
+// engine.cpp for the same reason as applyPreInitLuaConfig: the prefab header
+// pulls in sol2 + ir_render, and inlining the call would transitively widen
+// every includer of ir_engine.hpp. See #2572 for the __cxa_finalize crash
+// this deterministic clear prevents.
+void clearEntityEventHandlers();
+
 } // namespace detail
 
 // The process-global engine argument parser, pre-loaded with the engine-common
@@ -113,8 +122,14 @@ inline int entityCountOverride() {
 //
 // Engine access after gameLoop() returns is unsupported: getWorld() and every
 // IR<Module>::get*Manager() accessor assert on the cleared global in debug.
+//
+// The prefab-layer EntityEventHandlers static holds Lua handler references; it
+// is cleared here — before g_world.reset() destroys the Lua VM — so its own
+// process-exit destructor unrefs into nothing (#2572). Order matters: after
+// the reset the VM is gone and the unref is the crash itself.
 inline void gameLoop() {
     getWorld().gameLoop();
+    detail::clearEntityEventHandlers();
     g_world.reset();
 }
 

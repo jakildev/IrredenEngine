@@ -69,6 +69,21 @@ struct EntityEventHandlers {
         eraseById(onRightClick);
     }
 
+    // Drops every registered handler, destroying the sol::protected_functions
+    // they hold. The engine tail calls this while the World's Lua VM is still
+    // alive (before g_world.reset()), so the process-lifetime static's own
+    // destructor later runs luaL_unref on nothing but empty vectors. Without
+    // it, that destructor fires at __cxa_finalize — after lua_close — and
+    // unrefs into freed memory, segfaulting any creation that registered a
+    // handler from Lua (#2572). nextId is intentionally left as-is: ids never
+    // recycle within a process, so there is no id-reuse hazard to guard.
+    void clear() {
+        onHovered.clear();
+        onUnhovered.clear();
+        onClicked.clear();
+        onRightClick.clear();
+    }
+
     void fireHovered(IREntity::EntityId entityId) {
         for (auto &entry : onHovered) {
             auto result = entry.fn(entityId);
