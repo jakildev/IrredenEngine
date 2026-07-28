@@ -30,6 +30,12 @@
 // aims at a voxel the recipe never clicked — all of which read empty / wrong if
 // mirroring is broken. Two layers (stem default, cap added via K), a hide/show
 // visibility pair, and a save→reload round-trip round out the acceptance.
+//
+// `ant` is the third committed entity (#766 Part 2f) and the largest session:
+// an X-mirrored body on four named layers with six legs as three mirrored
+// pairs, authored at `--scene-size 20 20 20`. It is the first recipe to enable
+// the mirror *before* the ground clear, so the silhouette is carved from half
+// the erase drags, and the first to walk the layer selection (`[` / `]`).
 namespace IRVoxelEditor::Session {
 
 enum class Id {
@@ -37,6 +43,7 @@ enum class Id {
     DRAG_PROBE,
     ROCK,
     MUSHROOM,
+    ANT,
 };
 
 // CLI name -> id. The accepted set is declared to IRArgs as an enum arg, so an
@@ -50,6 +57,8 @@ inline Id idFromName(const std::string &name) {
         return Id::ROCK;
     if (name == "mushroom")
         return Id::MUSHROOM;
+    if (name == "ant")
+        return Id::ANT;
     return Id::NONE;
 }
 
@@ -368,6 +377,259 @@ inline Recipe buildMushroom(IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin) {
     return builder.finish();
 }
 
+// Body rows the ant occupies along y, back to front: abdomen 5, petiole 1,
+// thorax 5, neck 1, head 2, antennae 2. The block is centred in the scene's y
+// span so the ant stays clear of both ends of the plane.
+inline constexpr int kAntBodyRows = 16;
+
+// How far a leg tip lands from the body column it grows out of, and how many
+// tiers the body stands above the ground plane. Both bound the scene the ant
+// fits in, so the precondition below derives its minimums from them rather
+// than restating them as literals that could drift apart.
+inline constexpr int kAntLegReach = 5;
+inline constexpr int kAntBodyTiers = 2;
+
+// The ant — the plan's PR-3 and the largest session (#766 F-1.6). A bilaterally
+// symmetric body authored entirely from its low-x half under an **X mirror**,
+// with six legs as three mirrored pairs and four named layers (abdomen, thorax,
+// legs, head) stacked on the default layer the kept ground footprint lands on.
+// Runs at the plan's `--scene-size 20 20 20`; anything that would clip the ant
+// is a recipe error rather than a silently smaller animal.
+//
+// Sequence: (1) enable the X mirror **before** the ground clear, so the eight
+// erase drags that carve the ant's silhouette out of the seeded slab are
+// themselves authored on one half only, (2) abdomen layer — two domed tiers,
+// (3) thorax layer, (4) legs layer — three chains of `-x`-face clicks marching
+// out of the thorax side, each mirrored into its opposite leg, (5) head layer
+// plus eyes, (6) `[` back to the legs layer and hide/show it, (7) save + reload.
+//
+// Every occupancy check names a **mirror-created** cell or a cell the mirror was
+// responsible for clearing, so the whole session is a positive fire for the
+// F-1.2 fix — the recipe never clicks past the mirror plane.
+//
+// The body grows only in `-x` and `-z` from the seeded plane: a voxel's `-y`
+// face does not reliably place its `-y` neighbour at the cardinal camera
+// (#2575), so no gesture here depends on one. Rows along y are reached from the
+// ground plane below them instead, which is why each tier is a box drag whose
+// two corners sit over kept footprint rather than a march along the body.
+inline Recipe buildAnt(IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin) {
+    using IRMath::ivec3;
+    Builder builder("ant", sceneSize, sceneOrigin);
+
+    const int gz = sceneSize.z - 1;     // seeded ground plane (local z)
+    const int lx = sceneSize.x / 2 - 1; // low-x cell adjacent to the mirror plane
+    const int y0 = (sceneSize.y - kAntBodyRows) / 2;
+    // The X mirror pairs cell x with sceneSize.x-1-x (plane at (size-1)/2, the
+    // one mirrorCenterOffset seats). Naming it keeps every "the mirror made
+    // this" assertion below readable as exactly that.
+    const auto mirrorX = [&](int x) { return sceneSize.x - 1 - x; };
+
+    // Clipping the legs, the body's length, or its tiers authors a different
+    // animal and saves it anyway, so refuse the scene instead. lx and y0 are
+    // derived from sceneSize, so each bound is stated once and the message
+    // reports what the guard actually enforces.
+    const int minHalfWidth = kAntLegReach + 1;
+    if (lx < minHalfWidth || y0 < 1 || gz < kAntBodyTiers) {
+        builder.recordError(
+            "ant needs a scene at least " + std::to_string((minHalfWidth + 1) * 2) + " x " +
+            std::to_string(kAntBodyRows + 2) + " x " + std::to_string(kAntBodyTiers + 1) +
+            "; got " + std::to_string(sceneSize.x) + " x " + std::to_string(sceneSize.y) + " x " +
+            std::to_string(sceneSize.z)
+        );
+        return builder.finish();
+    }
+
+    // Where each leg's outermost click lands; the assertions below read it back
+    // on both sides of the mirror.
+    const int legTipX = lx - kAntLegReach;
+
+    const int abdomenLoY = y0;
+    const int abdomenHiY = y0 + 4;
+    const int petioleY = y0 + 5;
+    const int thoraxLoY = y0 + 6;
+    const int thoraxHiY = y0 + 10;
+    const int neckY = y0 + 11;
+    const int headLoY = y0 + 12;
+    const int headHiY = y0 + 13;
+    const int antennaLoY = y0 + 14;
+    const int antennaHiY = y0 + 15;
+
+    // --- Carve the silhouette out of the seeded ground slab -----------------
+    // With the mirror on, each drag clears its own low-x strip and the
+    // reflection clears the matching high-x one, so the whole plane is framed
+    // from half the gestures. Runs first, while the plane is flat and every
+    // corner face is exposed (once a tier sits above it, the (1,1,1) march to
+    // the cells behind is occluded). What survives IS the ant's underside: the
+    // body outline, plus the two antenna stalks.
+    builder.segment("clear_ground");
+    builder.enableSymmetry(true, false, false);
+    builder.toggleEraseMode();
+    builder.dragBox(ivec3(0, 0, gz), ivec3(lx, abdomenLoY - 1, gz));
+    builder.dragBox(ivec3(0, antennaHiY + 1, gz), ivec3(lx, sceneSize.y - 1, gz));
+    builder.dragBox(ivec3(0, abdomenLoY, gz), ivec3(lx - 3, abdomenHiY, gz));
+    builder.dragBox(ivec3(0, petioleY, gz), ivec3(lx - 1, petioleY, gz));
+    builder.dragBox(ivec3(0, thoraxLoY, gz), ivec3(lx - 2, thoraxHiY, gz));
+    builder.dragBox(ivec3(0, neckY, gz), ivec3(lx - 1, neckY, gz));
+    builder.dragBox(ivec3(0, headLoY, gz), ivec3(lx - 2, antennaHiY, gz));
+    // The antennae are the head's two outer columns run forward; erase the
+    // inner pair the head strip would otherwise have kept.
+    builder.dragBox(ivec3(lx, antennaLoY, gz), ivec3(lx, antennaHiY, gz));
+    builder.toggleEraseMode();
+
+    // The kept width of each body segment is set by where its erase strip
+    // stopped on ONE side — the other side is the mirror's work, so a broken
+    // mirror leaves the high-x half of the plane fully slabbed and fails here.
+    builder.expectOccupancy(ivec3(lx, abdomenLoY + 2, gz), true, "abdomen_footprint_kept");
+    builder
+        .expectOccupancy(ivec3(mirrorX(lx - 2), abdomenLoY + 2, gz), true, "abdomen_mirror_kept");
+    builder.expectOccupancy(ivec3(lx - 3, abdomenLoY + 2, gz), false, "abdomen_side_cleared");
+    builder.expectOccupancy(
+        ivec3(mirrorX(lx - 3), abdomenLoY + 2, gz),
+        false,
+        "abdomen_side_mirror_cleared"
+    );
+    builder.expectOccupancy(ivec3(lx, petioleY, gz), true, "petiole_kept");
+    builder.expectOccupancy(ivec3(lx - 1, petioleY, gz), false, "waist_pinched");
+    builder.expectOccupancy(ivec3(mirrorX(lx - 1), petioleY, gz), false, "waist_mirror_pinched");
+    builder.expectOccupancy(ivec3(lx - 1, antennaLoY, gz), true, "antenna_kept");
+    builder.expectOccupancy(ivec3(mirrorX(lx - 1), antennaHiY, gz), true, "antenna_mirror_kept");
+    builder.expectOccupancy(ivec3(lx, antennaLoY, gz), false, "antenna_gap_cleared");
+    // F-2d-1 measured the plane fully reachable at 16³ but flagged that a
+    // larger scene could push its edges under the left GUI panels. The ant is
+    // the first 20³ session, so all four corners are re-instrumented: a
+    // swallowed erase drag fails here instead of shipping a slab in the asset.
+    builder.expectOccupancy(ivec3(0, 0, gz), false, "ground_corner_lo_cleared");
+    builder.expectOccupancy(ivec3(sceneSize.x - 1, 0, gz), false, "ground_corner_hi_x_cleared");
+    builder.expectOccupancy(ivec3(0, sceneSize.y - 1, gz), false, "ground_corner_hi_y_cleared");
+    builder.expectOccupancy(
+        ivec3(sceneSize.x - 1, sceneSize.y - 1, gz),
+        false,
+        "ground_corner_hi_cleared"
+    );
+
+    // --- Abdomen: two domed tiers on their own layer ------------------------
+    builder.addLayer();
+    builder.segment("abdomen");
+    builder.dragBox(ivec3(lx - 1, abdomenLoY + 1, gz - 1), ivec3(lx, abdomenHiY - 1, gz - 1));
+    builder.dragBox(ivec3(lx - 1, abdomenLoY + 1, gz - 2), ivec3(lx, abdomenHiY - 2, gz - 2));
+    builder
+        .expectOccupancy(ivec3(mirrorX(lx), abdomenLoY + 1, gz - 1), true, "abdomen_tier2_mirror");
+    builder.expectOccupancy(
+        ivec3(mirrorX(lx - 1), abdomenHiY - 1, gz - 1),
+        true,
+        "abdomen_tier2_mirror_edge"
+    );
+    builder
+        .expectOccupancy(ivec3(mirrorX(lx), abdomenLoY + 1, gz - 2), true, "abdomen_tier3_mirror");
+
+    // --- Thorax: the leg-bearing tier, on its own layer ---------------------
+    builder.addLayer();
+    builder.segment("thorax");
+    builder.dragBox(ivec3(lx - 1, thoraxLoY, gz - 1), ivec3(lx, thoraxHiY, gz - 1));
+    builder
+        .expectOccupancy(ivec3(mirrorX(lx - 1), thoraxLoY, gz - 1), true, "thorax_mirror_filled");
+    builder.expectOccupancy(ivec3(mirrorX(lx), thoraxHiY, gz - 1), true, "thorax_mirror_far_row");
+    // The waist is what makes this an ant and not a loaf: the petiole and neck
+    // rows stay one tier tall, so a tier drag that overran its y range shows up
+    // as a filled cell here rather than as a subtly wrong silhouette.
+    builder.expectOccupancy(ivec3(lx, petioleY, gz - 1), false, "waist_stays_one_tier");
+
+    // --- Legs: three chains of -x-face clicks, each mirrored into its pair ---
+    // The only gesture in the session that grows sideways out of standing
+    // geometry rather than up off the plane, so it is armed with a pick
+    // assertion first (F-2c-4) — and in its own segment, since the aim names a
+    // cell the very next click builds off (F-2d-2).
+    builder.addLayer();
+    builder.segment("legs_arm");
+    builder.hover(ivec3(lx - 2, thoraxLoY, gz - 1));
+    builder.expectPick(ivec3(lx - 1, thoraxLoY, gz - 1), "leg_aim_hits_thorax_face");
+
+    builder.segment("legs");
+    const int legRows[3] = {thoraxLoY, thoraxLoY + 2, thoraxLoY + 4};
+    for (int legIndex = 0; legIndex < 3; ++legIndex) {
+        const int legY = legRows[legIndex];
+        // Each click anchors on the one before it, so the chain is what walks
+        // the leg outward; the mirror builds its pair at the same time.
+        for (int x = lx - 2; x >= legTipX; --x)
+            builder.click(ivec3(x, legY, gz - 1));
+        const std::string tag = std::to_string(legIndex + 1);
+        builder.expectOccupancy(ivec3(legTipX, legY, gz - 1), true, "leg_" + tag + "_tip");
+        builder.expectOccupancy(
+            ivec3(mirrorX(legTipX), legY, gz - 1),
+            true,
+            "leg_" + tag + "_mirror_tip"
+        );
+    }
+    // The gaps are what make these six legs rather than two slabs: a chain that
+    // smeared along y, or a box fill standing in for the clicks, fills them.
+    builder.expectOccupancy(ivec3(legTipX, thoraxLoY + 1, gz - 1), false, "leg_gap_1_empty");
+    builder.expectOccupancy(
+        ivec3(mirrorX(legTipX), thoraxLoY + 3, gz - 1),
+        false,
+        "leg_gap_2_mirror_empty"
+    );
+
+    // --- Head + eyes on the last layer --------------------------------------
+    builder.addLayer();
+    builder.segment("head");
+    builder.dragBox(ivec3(lx - 1, headLoY, gz - 1), ivec3(lx, headHiY, gz - 1));
+    builder.click(ivec3(lx - 1, headHiY, gz - 2));
+    builder.expectOccupancy(ivec3(mirrorX(lx - 1), headLoY, gz - 1), true, "head_mirror_filled");
+    builder.expectOccupancy(ivec3(mirrorX(lx - 1), headHiY, gz - 2), true, "eye_mirror_placed");
+    builder.expectOccupancy(ivec3(lx, neckY, gz - 1), false, "neck_stays_one_tier");
+
+    // --- Layer select + visibility ------------------------------------------
+    // Five layers exist now (default, abdomen, thorax, legs, head) and the head
+    // is active, so one `[` lands on the legs. Hiding it zeroes only the legs'
+    // alpha — the thorax and head cells beside them stay lit, which is what
+    // separates "the hide worked" from "`[` selected the wrong layer".
+    builder.segment("legs_hide");
+    builder.selectPrevLayer();
+    builder.toggleActiveLayerVisibility();
+    builder.expectOccupancy(ivec3(legTipX, thoraxLoY, gz - 1), false, "legs_hidden_read_empty");
+    builder.expectOccupancy(ivec3(mirrorX(legTipX), thoraxLoY, gz - 1), false, "leg_mirror_hidden");
+    builder.expectOccupancy(ivec3(lx - 1, thoraxLoY, gz - 1), true, "thorax_lit_while_legs_hidden");
+    builder.expectOccupancy(
+        ivec3(mirrorX(lx - 1), headLoY, gz - 1),
+        true,
+        "head_lit_while_legs_hidden"
+    );
+
+    // Restore before saving — a hidden layer's voxels write out as empty.
+    builder.segment("legs_show");
+    builder.toggleActiveLayerVisibility();
+    builder.selectNextLayer();
+    builder.expectOccupancy(ivec3(legTipX, thoraxLoY, gz - 1), true, "legs_shown_again");
+
+    // --- Save + reload round-trip -------------------------------------------
+    builder.segment("save");
+    builder.save();
+    builder.expectOccupancy(ivec3(lx, thoraxLoY, gz - 1), true, "scene_intact_after_save");
+
+    // Five layers through the round-trip (the mushroom took two), so the
+    // reload checks read one cell per authored layer plus the waist, which
+    // must still be empty — a load that filled it would read as "intact".
+    builder.segment("reload");
+    builder.reload();
+    builder.expectOccupancy(
+        ivec3(mirrorX(lx), abdomenLoY + 1, gz - 2),
+        true,
+        "abdomen_survives_reload"
+    );
+    builder
+        .expectOccupancy(ivec3(mirrorX(lx - 1), thoraxLoY, gz - 1), true, "thorax_survives_reload");
+    builder.expectOccupancy(
+        ivec3(mirrorX(legTipX), thoraxLoY + 4, gz - 1),
+        true,
+        "leg_survives_reload"
+    );
+    builder
+        .expectOccupancy(ivec3(mirrorX(lx - 1), antennaHiY, gz), true, "antenna_survives_reload");
+    builder.expectOccupancy(ivec3(lx, petioleY, gz - 1), false, "waist_survives_reload");
+
+    return builder.finish();
+}
+
 } // namespace detail
 
 // Build the named session's recipe against the live scene dimensions. Returns
@@ -381,6 +643,8 @@ inline Recipe build(Id id, IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin) {
         return detail::buildRock(sceneSize, sceneOrigin);
     case Id::MUSHROOM:
         return detail::buildMushroom(sceneSize, sceneOrigin);
+    case Id::ANT:
+        return detail::buildAnt(sceneSize, sceneOrigin);
     case Id::NONE:
         break;
     }
