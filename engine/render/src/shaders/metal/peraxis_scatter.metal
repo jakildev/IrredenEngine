@@ -322,11 +322,6 @@ vertex VertexOut v_peraxis_scatter(
 
     const float2 cornerSel = in.position + float2(0.5);
     const float3 worldCorner = faceSpanCorner(axis, origin, cornerSel);
-    // Whole-pixel anchor shift (#2545): the recovered origin is lower-corner
-    // lattice, so the layer translates by the rounded -h iso shift to rotate
-    // about the authored position instead of orbiting it by the half cell
-    // (integer so the pan/coverage phase is untouched; exact at cardinals).
-    // Matches the GLSL twin.
     // Cell-anchor projection (#2545): the recovered origin is lower-corner
     // lattice, so the anchored form rotates the face about the authored
     // position instead of orbiting it by the half cell. Matches the GLSL twin.
