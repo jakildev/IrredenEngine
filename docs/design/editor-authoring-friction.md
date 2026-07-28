@@ -537,6 +537,12 @@ Findings:
 
 ### M-2 — `-y`-face single-click place no-ops at the cardinal (yaw-0) camera (#2575)
 
+*ID note — `M-` tags a **mechanism** limitation: one that lives in the shared
+picker rather than in a single authoring slice, so it is not numbered `F-2e-n`
+like the slice findings above. There is no `M-1`; the number is fixed at 2
+because #2575's acceptance criteria named this write-up `M-2` before it
+existed, and #2578 cites `§M-2` too.*
+
 Surfaced authoring the mushroom (2e). Growing a voxel outward by clicking the
 exposed face of a neighbour, at the editor's cardinal (yaw-0) camera and
 authoring zoom (`kSessionZoom = 4`):
