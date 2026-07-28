@@ -10,7 +10,9 @@
 #include <irreden/render/entities/entity_trixel_canvas.hpp>
 #include <irreden/render/entities/entity_framebuffer.hpp>
 
+#include <irreden/render/camera.hpp>
 #include <irreden/render/components/component_texture_scroll.hpp>
+#include <irreden/render/components/component_trixel_framebuffer.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
@@ -201,6 +203,7 @@ void RenderManager::beginFrame() {
 
     IRWindow::getWindowSize(m_viewport);
     updateOutputResolution();
+    updateDefaultRotationPivotFocus();
     IRRender::device()->beginFrame();
 }
 
@@ -275,6 +278,107 @@ bool RenderManager::hasRotationPivotFocus() const {
 
 vec3 RenderManager::getRotationPivotFocus() const {
     return m_rotationPivotFocus;
+}
+
+vec2 RenderManager::getViewCenterIso() const {
+    // A world point W lands at screen center when `pos3DtoPos2DIso(W) +
+    // cameraIso == canvasCenterIso`, so the iso coordinate to invert is
+    // `canvasCenterIso - cameraIso`.
+    const ivec2 canvasSize = getMainCanvasSizeTriangles();
+    return vec2(canvasSize) * 0.5f - vec2(IRMath::trixelOriginOffsetZ1(canvasSize)) -
+           getCameraPosition2DIso();
+}
+
+vec3 RenderManager::getDefaultRotationPivotFocus() const {
+    if (m_hasDefaultRotationPivotFocus) {
+        return m_defaultRotationPivotFocus;
+    }
+    // Before the first derive (and for a creation whose frame never reaches
+    // beginFrame): the iso-depth-0 point under the viewport center — the
+    // pre-#2547 default, so the fallback path is the legacy behavior exactly.
+    return IRMath::isoPixelToPos3D(getViewCenterIso(), 0.0f);
+}
+
+void RenderManager::updateDefaultRotationPivotFocus() {
+    IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
+
+    // Only the DEFAULT CAMERA_CENTER pivot derives a focus. ORIGIN mode ignores
+    // the focus entirely and an explicit setRotationPivotFocus overrides it, so
+    // neither should pay a readback.
+    if (m_rotationPivotMode != RotationPivotMode::CAMERA_CENTER || m_hasRotationPivotFocus) {
+        return;
+    }
+
+    // Latch policy (#2547), deterministic and gesture-free:
+    //  - Re-derive ONLY while visualYaw is NOT changing between frames. While
+    //    yaw moves, hold the latch — that is what pins the pre-rotation center
+    //    content through the whole rotation, identically for a mouse drag, a
+    //    key, or a programmatic setYaw (auto-screenshot needs no gesture
+    //    plumbing).
+    //  - A deadband-snapped residual counts as settled (camera.hpp's
+    //    kResidualYawDeadband), so a yaw that has snapped to its cardinal does
+    //    not oscillate the latch.
+    //  - Re-derive only when pan or zoom moved since the last derive: the
+    //    readback costs a full GPU flush, so steady state does ZERO readbacks.
+    const float visualYaw = IRPrefab::Camera::getYaw();
+    const vec2 cameraIso = getCameraPosition2DIso();
+    const vec2 zoom = getCameraZoom();
+
+    // The depth attachment this derive reads was written by the PREVIOUS frame
+    // (beginFrame runs ahead of the RENDER pipeline), so it only describes the
+    // current view once the camera has held still for a frame. Stamp what THIS
+    // frame is about to render with, then require the previous frame to have
+    // rendered the same pose before trusting its depth. Deriving on the frame a
+    // pan lands would read the pre-pan image and latch a focus for a view that
+    // no longer exists.
+    const bool yawSettled =
+        IRMath::abs(visualYaw - m_defaultPivotLastYaw) <= IRPrefab::Camera::kResidualYawDeadband;
+    const bool depthMatchesView =
+        cameraIso == m_defaultPivotRenderedCameraIso && zoom == m_defaultPivotRenderedZoom;
+    m_defaultPivotLastYaw = visualYaw;
+    m_defaultPivotRenderedCameraIso = cameraIso;
+    m_defaultPivotRenderedZoom = zoom;
+    if (!yawSettled || !depthMatchesView) {
+        return;
+    }
+
+    if (m_hasDefaultRotationPivotFocus && cameraIso == m_defaultPivotDerivedCameraIso &&
+        zoom == m_defaultPivotDerivedZoom) {
+        return;
+    }
+
+    const vec2 viewCenterIso = getViewCenterIso();
+    // The framebuffer texel under the viewport center. The framebuffer's
+    // resolution-plus-buffer is symmetric about the view, so its center texel is
+    // the center of the view.
+    const auto framebufferOpt =
+        IREntity::getComponentOptional<C_TrixelCanvasFramebuffer>(m_mainFramebuffer);
+    float isoDepth = 0.0f;
+    if (framebufferOpt.has_value()) {
+        const ivec2 resolution = (*framebufferOpt.value()).getResolutionPlusBuffer();
+        const IRRender::CompositeDepthSample sample =
+            IRRender::readbackCompositeDepth(resolution / 2);
+        const IRRender::DecodedCompositeDepth decoded =
+            IRRender::decodeCompositeDepth(sample.rawDist_);
+        // Background (depth clear at the far plane) and any foreground-tier
+        // fragment fall back to iso depth 0 — the pre-#2547 point. A
+        // foreground-tier hit is a screen-locked / priority overlay whose
+        // encoded depth is a reserved band code, NOT a world iso depth, so
+        // consuming it would pin the pivot to a meaningless world point.
+        constexpr float kBackgroundNormDepthThreshold = 0.99f;
+        if (sample.valid_ && sample.normDepth_ < kBackgroundNormDepthThreshold &&
+            decoded.tier_ == 0) {
+            // decoded.iso_ is in shared framebuffer units (worldIso × effSub);
+            // divide the subdivision factor back out to land in world units.
+            isoDepth = static_cast<float>(decoded.iso_) /
+                       static_cast<float>(IRMath::max(1, getVoxelRenderEffectiveSubdivisions()));
+        }
+    }
+
+    m_defaultRotationPivotFocus = IRMath::isoPixelToPos3D(viewCenterIso, isoDepth);
+    m_hasDefaultRotationPivotFocus = true;
+    m_defaultPivotDerivedCameraIso = cameraIso;
+    m_defaultPivotDerivedZoom = zoom;
 }
 
 void RenderManager::setVoxelRenderSubdivisions(int subdivisions) {

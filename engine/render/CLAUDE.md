@@ -356,10 +356,13 @@ either backend; the earlier "Metal composite drops depth — #1884/#1950
 Finding 1" reading was a misdiagnosis — the composite participates in
 depth, and where its `x+y+z` iso-depth ranks behind the floor it loses
 the test rather than failing to write, which is the #1958 Bug A
-wrong-winner problem, not a missing write.) The probe lives in
-`IRPrefab::DepthProbe::` (a prefab-scoped
-Pattern-B namespace over the `Texture2D` /
-`PixelDataFormat::DEPTH_COMPONENT` readback primitive). Pure readback:
+wrong-winner problem, not a missing write.) The readback + `enc` decode
+are `IRRender::readbackCompositeDepth` / `decodeCompositeDepth` (over the
+`Texture2D` / `PixelDataFormat::DEPTH_COMPONENT` primitive) — engine-side
+because the depth-aware camera pivot consumes them too, so the #1960
+N-tier decode has one home; the `IRPrefab::DepthProbe::` prefab-scoped
+Pattern-B namespace layers the debug log line + assert guards on top.
+Pure readback:
 no shader or pipeline change, so a flagless run is byte-identical. Use
 it when a screenshot can't disambiguate which surface won a pixel.
 
@@ -982,7 +985,12 @@ parity with voxel-pool primary shapes.
   `RotationPivotMode` correction (#1352) so camera Z-yaw pivots about the
   on-screen focus instead of the world origin; in `ORIGIN` mode and at
   `visualYaw == 0` it returns the raw offset, so the cardinal fast path is
-  byte-identical. Reading the raw offset at a new producer site silently
+  byte-identical. The DEFAULT (no explicit `setRotationPivotFocus`) focus is
+  **latched**, not computed per call: `RenderManager::beginFrame` re-derives
+  it once per frame from a composite-depth readback under the viewport center
+  (#2547), so every stage in a frame reads one value. Don't move that derive
+  into the pipeline — a mid-frame re-derive splits the frame across two
+  pivots. Reading the raw offset at a new producer site silently
   reintroduces the off-origin orbital swing while every other layer pivots
   correctly. The detached composite reads the effective offset only for the
   screen PLACEMENT of the canvas quad; its de-tile gather parity stays keyed

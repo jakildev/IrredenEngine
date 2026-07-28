@@ -1,13 +1,10 @@
 #ifndef DEPTH_PROBE_H
 #define DEPTH_PROBE_H
 
-#include <irreden/ir_constants.hpp>
-#include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
-#include <irreden/ir_platform.hpp>
 #include <irreden/ir_profile.hpp>
+#include <irreden/ir_render.hpp>
 
-#include <irreden/render/components/component_trixel_framebuffer.hpp>
 #include <irreden/render/ir_render_types.hpp>
 
 #include <cstdio>
@@ -37,26 +34,19 @@
 // full GPU flush per probed frame (device()->finish(): Metal commit+wait, GL
 // glFinish), so keep it strictly debug-gated and single-pixel.
 //
-// Lives in the prefab layer (not IRRender::) because it resolves the
-// "mainFramebuffer" prefab entity — engine/render/ owns graphics primitives, not
-// scene entities. The generic depth-texture readback primitive it builds on is
+// The readback + `enc` decode themselves live in `IRRender::`
+// (`readbackCompositeDepth` / `decodeCompositeDepth`) — engine/render's own
+// depth-aware camera pivot consumes them, and it sits upstream of this layer, so
+// a prefab-side implementation would invert the dependency and fork the #1960
+// N-tier decode. What lives HERE is the debug vocabulary built on them: the
+// machine-readable log line and the two regression guards. The generic
+// depth-texture readback primitive underneath is
 // `Texture2D::getSubImage2D(..., PixelDataFormat::DEPTH_COMPONENT, FLOAT32, ...)`.
 // See #1910 (design), #1957 (depth-write guard).
 namespace IRPrefab::DepthProbe {
 
-/// Result of a single-pixel composite-depth readback.
-/// @c normDepth_ is the raw window depth in [0, 1] read from the attachment (the
-/// depth-test winner across every render path). @c rawDist_ decodes it to the
-/// shared trixel-distance units via the exact inverse of
-/// @c f_trixel_to_framebuffer's @c normalizeDistance, using the same
-/// @c kTrixelDistance{Min,Max}Distance constants — so the same world point reads
-/// the same value regardless of which path produced it.
-struct CompositeDepthSample {
-    IRMath::ivec2 pixel_{-1, -1};
-    float normDepth_ = 1.0f;
-    float rawDist_ = 0.0f;
-    bool valid_ = false;
-};
+/// Result of a single-pixel composite-depth readback (engine-side type).
+using CompositeDepthSample = IRRender::CompositeDepthSample;
 
 /// Read and decode the main framebuffer's composite depth at pixel @p px.
 /// Coordinates are in the MAIN FRAMEBUFFER's texture space (its
@@ -67,89 +57,24 @@ struct CompositeDepthSample {
 /// complete (after @c ENTITY_CANVAS_TO_FRAMEBUFFER / @c FRAMEBUFFER_TO_SCREEN).
 /// Returns @c valid_ == false when @p px is outside the framebuffer.
 inline CompositeDepthSample readbackCompositeDepth(IRMath::ivec2 px) {
-    CompositeDepthSample sample;
-    sample.pixel_ = px;
-
-    const auto &framebuffer =
-        IREntity::getComponent<IRComponents::C_TrixelCanvasFramebuffer>("mainFramebuffer");
-    const IRMath::ivec2 resolution = framebuffer.getResolutionPlusBuffer();
-    if (px.x < 0 || px.y < 0 || px.x >= resolution.x || px.y >= resolution.y) {
-        return sample;
-    }
-
-    // The offscreen framebuffer depth texture is bottom-left origin on OpenGL,
-    // top-left on Metal; map the top-left screen pixel to the texel accordingly
-    // (mirrors readDefaultFramebuffer's GL row flip so a pixel picked from an
-    // auto-screenshot maps to the same texel on both backends).
-    const int texelY = IRPlatform::kIsOpenGL ? (resolution.y - 1 - px.y) : px.y;
-
-    // Flush so the readback sees this frame's committed composite. On Metal this
-    // is the mandatory commit+wait before getBytes (#1436); on OpenGL glFinish.
-    IRRender::device()->finish();
-
-    // gl_FragDepth is written directly as window depth in [0, 1] on both
-    // backends (the shader stores `normalizeDistance(...)`), so the value read
-    // back IS the normalized distance — no NDC depth-range conversion needed.
-    float windowDepth = 1.0f;
-    framebuffer.getTextureDepth().getSubImage2D(
-        px.x,
-        texelY,
-        1,
-        1,
-        IRRender::PixelDataFormat::DEPTH_COMPONENT,
-        IRRender::PixelDataType::FLOAT32,
-        &windowDepth
-    );
-
-    sample.normDepth_ = windowDepth;
-    sample.rawDist_ = windowDepth * static_cast<float>(
-                                        IRConstants::kTrixelDistanceMaxDistance -
-                                        IRConstants::kTrixelDistanceMinDistance
-                                    ) +
-                      static_cast<float>(IRConstants::kTrixelDistanceMinDistance);
-    sample.valid_ = true;
-    return sample;
+    return IRRender::readbackCompositeDepth(px);
 }
 
 namespace detail {
 
-/// The @c [depth-probe] integer-encode decode, factored so the diagnostic probe
-/// and the tier-assert guard partition @c enc the same way (one source of truth
-/// for the #1960 N-tier layout). @c enc > kDepthForegroundCeil is WORLD content
-/// (tier 0), encoded as @c iso*8 + flip*4 + face (#2207 riser-polarity carrier
-/// at bit 2); @c enc inside the reserved band is a FOREGROUND fragment whose
-/// disjoint sub-range names its priority tier (1..N-1). iso/face is the
-/// @c encodeDepthWithFace inverse, taken tier-center-relative for a foreground
-/// fragment so @c iso reads as the unit's local model-frame iso depth.
-struct DecodedComposite {
-    int enc_ = 0;
-    int tier_ = 0;
-    int iso_ = 0;
-    int face_ = 0;
-    int flip_ = 0;
-};
+/// The @c [depth-probe] integer-encode decode. Aliases the engine-side decode so
+/// every consumer partitions @c enc the same way (one source of truth for the
+/// #1960 N-tier layout).
+/// @c enc > kDepthForegroundCeil is WORLD content (tier 0), encoded as
+/// @c iso*8 + flip*4 + face (#2207 riser-polarity carrier at bit 2); @c enc
+/// inside the reserved band is a FOREGROUND fragment whose disjoint sub-range
+/// names its priority tier (1..N-1). iso/face is the @c encodeDepthWithFace
+/// inverse, taken tier-center-relative for a foreground fragment so @c iso reads
+/// as the unit's local model-frame iso depth.
+using DecodedComposite = IRRender::DecodedCompositeDepth;
 
 inline DecodedComposite decodeComposite(const CompositeDepthSample &sample) {
-    DecodedComposite decoded;
-    decoded.enc_ = static_cast<int>(IRMath::roundHalfUp(sample.rawDist_));
-    if (decoded.enc_ <= IRRender::kDepthForegroundCeil) {
-        const int slot = (decoded.enc_ - IRConstants::kTrixelDistanceMinDistance) /
-                         IRRender::kDepthForegroundTierWidth;
-        decoded.tier_ = IRMath::clamp(
-            IRRender::kDepthForegroundTierCount - 1 - slot,
-            1,
-            IRRender::kDepthForegroundTierCount - 1
-        );
-    }
-    const int encRel = decoded.tier_ == 0
-                           ? decoded.enc_
-                           : decoded.enc_ - IRRender::depthForegroundTierCenter(decoded.tier_);
-    const int shift = IRRender::kDepthEncodeShift;
-    const int lowBits = ((encRel % shift) + shift) % shift;
-    decoded.face_ = lowBits & 3;
-    decoded.flip_ = lowBits >> 2;
-    decoded.iso_ = (encRel - lowBits) / shift;
-    return decoded;
+    return IRRender::decodeCompositeDepth(sample.rawDist_);
 }
 
 } // namespace detail

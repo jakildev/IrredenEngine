@@ -26,11 +26,30 @@ helper.
 
 `RotationPivotMode::CAMERA_CENTER` (the engine default) picks `F`:
 
-1. **Screen center (default).** `F` is the z=0 world point under the EXACT
-   viewport center: `isoPixelToPos3D(viewCenterIso, 0)`, where `viewCenterIso =
-   canvasSize/2 - trixelOriginOffsetZ1(canvasSize) - cameraIso` (derive: a world
-   point lands at screen center when `pos3DtoPos2DIso(W) + cameraIso ==
-   canvasCenterIso`). The offset is the drift-cancel `cameraYawPivotOffset` form
+1. **Screen center (default).** `F` is the world point under the EXACT viewport
+   center, at the depth the content there actually renders at (#2547):
+   `isoPixelToPos3D(viewCenterIso, d)`, where `viewCenterIso = canvasSize/2 -
+   trixelOriginOffsetZ1(canvasSize) - cameraIso` (derive: a world point lands at
+   screen center when `pos3DtoPos2DIso(W) + cameraIso == canvasCenterIso`) and
+   `d` is the **iso depth** (`x+y+z`, NOT `z` — `isoPixelToPos3D`'s third
+   argument is an iso depth) read back from the composite depth attachment at
+   the viewport-center pixel. A background center pixel falls back to `d = 0`,
+   the pre-#2547 behavior.
+
+   **Latch policy.** `RenderManager::updateDefaultRotationPivotFocus` runs once
+   per frame from `beginFrame`, ahead of the RENDER pipeline, so every stage in
+   a frame reads ONE focus. It re-derives only while `visualYaw` is unchanged
+   between frames (a `kResidualYawDeadband`-snapped residual counts as settled)
+   AND the previous frame rendered the current pan/zoom — the depth attachment
+   it reads belongs to the previous frame, so a derive is only sound one frame
+   after the camera settles. While yaw moves the latch is HELD: that is what
+   pins the pre-rotation center content through the whole rotation, identically
+   for a mouse drag, a key, or a programmatic `setYaw` (auto-screenshot needs no
+   gesture plumbing). Steady state and continuous panning both do ZERO readbacks
+   — a readback costs a full GPU flush, so it fires only on the settled frame
+   after a pan/zoom change.
+
+   The offset is the drift-cancel `cameraYawPivotOffset` form
    above — NOT a bare `pos3DtoPos2DIsoYawed(F, yaw)`, which leaves a yaw-varying
    residual that swings a panned scene in an arc (the latent #1352 bug;
    un-panned both forms collapse to 0, so canvas_stress — which never pans —
@@ -111,13 +130,29 @@ retained below until the epic closes:
    from the store/cull/resolve chain. Exact world positions (SDF centers,
    entity translations, the pivot math itself) keep the un-anchored
    projections.
-2. **Default focus pins the wrong depth (#2547).** The pinned set of the
-   drift-cancel offset is the vertical column `{W : W.xy == F.xy}`, and the
-   default `F` is the **iso-depth-0** point under the viewport center (this
-   doc's "z = 0 world point" wording is inaccurate — `isoPixelToPos3D`'s
-   third argument is iso depth `x+y+z`, not z). Content at screen center at
-   another depth sits on the center iso ray, off the pinned column by (t, t)
-   in xy, and orbits — 336 px measured at z=10, zoom 4.
+2. **Default focus depth — mechanism landed, CONTRACT OPEN (#2547).** The
+   pinned set of the drift-cancel offset is the vertical column
+   `{W : W.xy == F.xy}`. `F` was the **iso-depth-0** point under the viewport
+   center, so content at screen center at another depth sat on the center iso
+   ray, off the pinned column by (t, t) in xy, and orbited — 336 px at z=10,
+   zoom 4 on master, 320 px once #2545's half-cell landed.
+
+   The depth-aware derivation above now pins the point the depth buffer
+   reports under the center pixel, verified exact (derived focus
+   `(19.167, -4.833, 7.167)` at iso depth 21.5 == the analytic ray/cylinder
+   surface intersection, to 3 decimals). **But a depth buffer yields the
+   SURFACE under the center pixel, while `pivot-verify` scores the
+   whole-silhouette CENTROID of an extended probe.** Pinning a column on a
+   rigid body's surface orbits its centroid by 2r, which the harness's metric
+   converts to `16·(δx+δy)` px — ~22.6·r px at zoom 4. Measured: `center-depth`
+   320 → 92 px, `center-column` 0.9 → 76 px (both within 2% of that model) for
+   the radius-4 probe. No probe radius above ~0.07 world units can pass a
+   1.5 px centroid gate, so this is structural, not a tuning gap: the gate
+   encodes "pin the content's axis", the mechanism delivers "pin the surface
+   point". Epic Phase 4 (#2548) latches the clicked SURFACE point
+   (`castVoxelRay`'s `worldHitPos_`), which points at the surface contract
+   being the intended one — pending an architect ruling on whether to
+   re-ground the two blocks' oracle or change the mechanism.
 3. **Per-axis registration offset — FIXED (#2546).** With (1) compensated,
    every residual-yaw frame rendered the voxel scene a constant ≈1 iso px
    (per axis, zoom-scaled) off the cardinal frames. Root cause: the
