@@ -30,7 +30,7 @@
 // aim that would be occluded is caught while the recipe is being built rather
 // than as a mystery FAIL (or, worse, a silent no-op) at run time.
 //
-// Two properties of the editor's isometric view drive the whole design:
+// Three properties of the editor's isometric view drive the whole design:
 //   - The picking ray marches along +(1,1,1), so exactly three faces of a voxel
 //     can ever be clicked: -x, -y, -z. Placing at cell T therefore means
 //     clicking face n of anchor cell T - n for one of those three normals.
@@ -39,6 +39,13 @@
 //     needs zoom >= 3 (see kSessionZoom), because a face-centre aim is offset
 //     half a column-spacing in screen space and rounds across the boundary
 //     below that.
+//   - The cursor->ray inverse FLOORS the aim onto the integer iso lattice, so a
+//     sub-half-pixel face offset is destroyed before the ray is cast. At the
+//     cardinal camera a voxel's -x and -y faces land on one pixel (root cause:
+//     docs/design/editor-authoring-friction.md §M-2), so the model must
+//     march the floored column and predict the face normal — a model that
+//     marched the exact aim ray would separate two aims the live picker cannot,
+//     and greenlight a click that silently no-ops.
 //
 // Recipes run at the cardinal baseline yaw (no camera rotation between
 // segments), which is what lets the model assume the (1,1,1) march axis.
@@ -53,20 +60,20 @@ inline constexpr IRMath::ivec3 kCameraFacingNormals[3] = {
     IRMath::ivec3(0, 0, -1),
 };
 
-// How far inside the anchor voxel a face click aims, measured from the voxel
-// centre toward the clicked face. Strictly < 0.5 so the point stays inside the
-// cube: the picker derives the hit face from the dominant axis of
-// (hit point - voxel centre), and a point exactly on the face plane can round
-// to either side of it. 0.4 leaves a 0.1-voxel margin to the clicked face while
-// the other two axes stay 0.5 away, so the dominant axis survives the cursor
-// pixel being rounded to an integer.
+// How far from the voxel centre, toward the clicked face, the model probes to
+// find out which iso pixel that face maps to. It is ONLY a pixel selector: the
+// picker floors the cursor onto the integer iso lattice and re-casts from the
+// pixel, so no sub-voxel structure of the probe point survives into the hit
+// (which is why the emitted aim is re-centred in the chosen pixel — see
+// faceAim). Strictly < 0.5 so the probe stays inside the cube; 0.4 puts the -z
+// probe a clear 0.8 iso row off the voxel's own pixel while leaving -x / -y on
+// it, which is the (unfixable) collapse §M-2 documents.
 inline constexpr float kFaceAimDepth = 0.4f;
 
-// Ray-march step for the occlusion model, in voxels per axis. The picker walks
-// iso depth in kPickingDepthStep increments and one iso-depth unit moves the
-// recovered world point by (1/3, 1/3, 1/3), so this matches its sampling
-// density — the model can't miss a cell the real ray would have hit.
-inline constexpr float kRayStep = IRPrefab::Picking::kPickingDepthStep / 3.0f;
+// Cardinal camera index the recipes author at. Sessions never rotate the
+// camera, so the model's aim->pixel projection is fixed at the identity
+// rotation — the same assumption that lets it hard-code the (1,1,1) march.
+inline constexpr IRMath::CardinalIndex kSessionCardinalIndex = IRMath::CardinalIndex::k0;
 
 // Frames a session shot leaves between the cursor MOVE and the button PRESS,
 // and again before the RELEASE. One frame each is what the existing scripted
@@ -130,33 +137,89 @@ class OccupancyModel {
         return m_origin + IRMath::vec3(local);
     }
 
-    // The cell IRPrefab::Picking::castVoxelRay would report for a cursor aimed
-    // at `worldAim` — the front-most occupied cell along the +(1,1,1) march.
+    // Iso depth (the picker's march coordinate) of `local`'s centre.
+    float cellIsoDepth(IRMath::ivec3 local) const {
+        return static_cast<float>(IRMath::pos3DtoDistance(worldCenter(local)));
+    }
+
+    // What IRPrefab::Picking::castVoxelRay would report for a cursor aimed at
+    // `worldAim`: the cell the ray lands on AND the face normal it derives.
+    // Both halves matter — the editor places at `voxelPos_ + faceNormal_`, so a
+    // prediction that only carries the cell can still greenlight a click that
+    // edits a different neighbour than the recipe asked for.
+    struct PickPrediction {
+        IRMath::ivec3 cell_ = IRMath::ivec3(0);
+        IRMath::ivec3 faceNormal_ = IRMath::ivec3(0);
+    };
+
     // Replays the picker's walk over the mirror rather than approximating it,
-    // so "is this aim occluded" is answered the same way the editor will answer
-    // it at run time.
-    std::optional<IRMath::ivec3> pick(IRMath::vec3 worldAim) const {
-        const float span = static_cast<float>(m_size.x + m_size.y + m_size.z);
-        for (float t = -span; t <= span; t += kRayStep) {
-            const IRMath::vec3 point = worldAim + IRMath::vec3(t);
+    // so "where does this aim land" is answered the same way the editor will
+    // answer it at run time — including the lossy parts. The aim is reduced to
+    // its floored iso pixel first (aimIsoPixel), because that pixel is the only
+    // thing the live picker ever sees; marching the exact aim ray instead would
+    // resolve sub-pixel detail the cursor cannot carry.
+    std::optional<PickPrediction> pick(IRMath::vec3 worldAim) const {
+        const IRMath::ivec2 isoPixel =
+            IRPrefab::Picking::aimIsoPixel(worldAim, kSessionCardinalIndex);
+        // Front-to-back over the scene's iso-depth span at the picker's own
+        // step, so no cell the real ray would sample is skipped. The span is
+        // the near and far cells' own depths, widened by the picker's margin
+        // for the half-cell rounding at either end.
+        const float nearDepth = cellIsoDepth(IRMath::ivec3(0));
+        const float farDepth = cellIsoDepth(m_size - IRMath::ivec3(1));
+        for (float depth = nearDepth - IRPrefab::Picking::kPickingDepthMargin;
+             depth <= farDepth + IRPrefab::Picking::kPickingDepthMargin;
+             depth += IRPrefab::Picking::kPickingDepthStep) {
+            const IRMath::vec3 point = IRMath::isoPixelToPos3D(isoPixel.x, isoPixel.y, depth);
             const IRMath::ivec3 local = IRMath::roundVec3HalfUp(point - m_origin);
-            if (occupied(local))
-                return local;
+            if (!occupied(local))
+                continue;
+            return PickPrediction{
+                local,
+                IRPrefab::Picking::voxelHitFaceNormal(point - worldCenter(local))
+            };
         }
         return std::nullopt;
+    }
+
+    // Where to put the cursor to click `local`'s `normal` face.
+    //
+    // The face direction only chooses which iso pixel the click lands on; the
+    // picker floors the cursor onto the lattice and re-casts from that pixel, so
+    // nothing else about the aim survives. So probe for the pixel, then aim at
+    // the point that lands DEAD CENTRE of it rather than at the face plane.
+    //
+    // That margin is load-bearing. The live forward mapping rounds to a whole
+    // screen pixel before the inverse floors it back, and a face-plane aim sits
+    // only ~0.1 iso from a floor boundary — inside that rounding, so it flips
+    // onto the neighbouring column for some cells and not others (measured at
+    // kSessionZoom: every -x face-plane aim recovered a pixel one iso row off
+    // the model's). Re-centring buys the full half-pixel, which no rounding at
+    // any authoring zoom can cross, so model and live pick agree by
+    // construction. The depth argument only slides the point along the pixel's
+    // column; the anchor's own depth keeps it inside the anchor cube.
+    IRMath::vec3 faceAim(IRMath::ivec3 local, IRMath::ivec3 normal) const {
+        const IRMath::vec3 center = worldCenter(local);
+        const IRMath::ivec2 pixel = IRPrefab::Picking::aimIsoPixel(
+            center + IRMath::vec3(normal) * kFaceAimDepth,
+            kSessionCardinalIndex
+        );
+        return IRMath::isoPixelToPos3D(pixel.x, pixel.y, cellIsoDepth(local));
     }
 
     // Where to aim to click `target` itself (erase / drag over existing
     // geometry). Returns nullopt when every camera-facing face of `target` is
     // occluded — the caller reports that as a recipe error rather than emitting
-    // a click that would silently edit the wrong cell.
+    // a click that would silently edit the wrong cell. Deliberately
+    // normal-agnostic: the erase path acts on `hit.voxelPos_`, so which of the
+    // target's faces the picker attributes the hit to does not change the edit.
     std::optional<IRMath::vec3> aimAtVoxel(IRMath::ivec3 target) const {
         if (!occupied(target))
             return std::nullopt;
         for (const IRMath::ivec3 &normal : kCameraFacingNormals) {
-            const IRMath::vec3 aim = worldCenter(target) + IRMath::vec3(normal) * kFaceAimDepth;
-            const std::optional<IRMath::ivec3> hit = pick(aim);
-            if (hit && *hit == target)
+            const IRMath::vec3 aim = faceAim(target, normal);
+            const std::optional<PickPrediction> hit = pick(aim);
+            if (hit && hit->cell_ == target)
                 return aim;
         }
         return std::nullopt;
@@ -165,7 +228,11 @@ class OccupancyModel {
     // Where to aim so a place-mode click lands a voxel at `target`. The editor
     // places at (hit voxel + hit face normal), so the anchor is target - normal
     // for one of the camera-facing normals; the anchor must be occupied, the
-    // target empty, and the anchor's face unoccluded.
+    // target empty, and the anchor's face must be the one the picker actually
+    // resolves. Preferring the first normal that satisfies all three is what
+    // routes a target around the -x/-y pixel collapse: a cell with a +x-side or
+    // +z-side anchor is placed through that clean face instead, and only a cell
+    // whose sole anchor sits on the +y side comes back unreachable.
     std::optional<IRMath::vec3> aimToPlace(IRMath::ivec3 target) const {
         if (!inBounds(target) || occupied(target))
             return std::nullopt;
@@ -173,9 +240,13 @@ class OccupancyModel {
             const IRMath::ivec3 anchor = target - normal;
             if (!occupied(anchor))
                 continue;
-            const IRMath::vec3 aim = worldCenter(anchor) + IRMath::vec3(normal) * kFaceAimDepth;
-            const std::optional<IRMath::ivec3> hit = pick(aim);
-            if (hit && *hit == anchor)
+            const IRMath::vec3 aim = faceAim(anchor, normal);
+            const std::optional<PickPrediction> hit = pick(aim);
+            // The predicted face has to agree as well as the cell: an aim that
+            // picks the right anchor through the wrong face places the wrong
+            // neighbour, or — when that neighbour is already filled — nothing
+            // at all, which is the silent no-op this model exists to catch.
+            if (hit && hit->cell_ == anchor && hit->faceNormal_ == normal)
                 return aim;
         }
         return std::nullopt;
@@ -417,11 +488,20 @@ class Builder {
         m_frame += kFramesPerClickStep;
     }
 
+    // An op the model could not aim. In place mode that covers both "every
+    // camera-facing anchor is occluded" and "the only anchor's face is one the
+    // picker's iso-pixel floor collapses" — same remedy either way (re-order the
+    // recipe so a clean face is exposed, or take the cell from a mirror), so
+    // they share one error rather than splitting into two the author must
+    // distinguish. The docs pointer is what makes the second case diagnosable.
     void recordUnreachable(const char *op, IRMath::ivec3 target) {
         m_recipe.errors_.push_back(
             std::string(op) + " at local (" + std::to_string(target.x) + "," +
             std::to_string(target.y) + "," + std::to_string(target.z) +
-            "): no unoccluded camera-facing anchor in segment " + m_current.label_
+            "): no camera-facing anchor the picker resolves (occluded, or the face "
+            "collapses onto the voxel's own iso pixel — see "
+            "docs/design/editor-authoring-friction.md §M-2) in segment " +
+            m_current.label_
         );
     }
 

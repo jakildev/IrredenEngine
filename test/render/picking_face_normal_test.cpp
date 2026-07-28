@@ -4,7 +4,7 @@
 
 namespace {
 
-using IRPrefab::Picking::detail::voxelHitFaceNormal;
+using IRPrefab::Picking::voxelHitFaceNormal;
 
 TEST(PickingFaceNormal, PositiveXFace) {
     EXPECT_EQ(voxelHitFaceNormal(IRMath::vec3(0.4f, 0.1f, -0.2f)), IRMath::ivec3(1, 0, 0));
@@ -33,17 +33,11 @@ TEST(PickingFaceNormal, OutOfBoundsDeltaPositiveXFace) {
     // Pure-function stress-test: delta (0.6, 0, 0) is outside the
     // [-0.5, 0.5) range the rounding step guarantees in normal flow.
     // Exercises robustness for callers that bypass the rounding path.
-    EXPECT_EQ(
-        voxelHitFaceNormal(IRMath::vec3(0.6f, 0.0f, 0.0f)),
-        IRMath::ivec3(1, 0, 0)
-    );
+    EXPECT_EQ(voxelHitFaceNormal(IRMath::vec3(0.6f, 0.0f, 0.0f)), IRMath::ivec3(1, 0, 0));
 }
 
 TEST(PickingFaceNormal, OriginVoxelMinusZFace) {
-    EXPECT_EQ(
-        voxelHitFaceNormal(IRMath::vec3(0.0f, 0.0f, -0.4f)),
-        IRMath::ivec3(0, 0, -1)
-    );
+    EXPECT_EQ(voxelHitFaceNormal(IRMath::vec3(0.0f, 0.0f, -0.4f)), IRMath::ivec3(0, 0, -1));
 }
 
 TEST(PickingFaceNormal, ExactCenterFavorsXAxisPositive) {
@@ -53,10 +47,24 @@ TEST(PickingFaceNormal, ExactCenterFavorsXAxisPositive) {
     // before the next depth step), so any of the three faces would be a
     // valid place-adjacent direction — this test pins the deterministic
     // choice for regression-detection rather than asserting a semantic.
-    EXPECT_EQ(
-        voxelHitFaceNormal(IRMath::vec3(0.0f, 0.0f, 0.0f)),
-        IRMath::ivec3(1, 0, 0)
-    );
+    EXPECT_EQ(voxelHitFaceNormal(IRMath::vec3(0.0f, 0.0f, 0.0f)), IRMath::ivec3(1, 0, 0));
+}
+
+TEST(PickingFaceNormal, DiagonalEntryTieResolvesToNegativeX) {
+    // The (1,1,1) march enters a cell whose iso pixel is the cell's own
+    // centre pixel exactly at its near corner, so all three components are
+    // equal and negative. The tie-break lands on -x. This is not cosmetic:
+    // it is why a -y face click at cardinal yaw resolves to the -x face and
+    // places the wrong neighbour (#2575), which the voxel editor's session
+    // shadow model reproduces in order to reject such an aim.
+    EXPECT_EQ(voxelHitFaceNormal(IRMath::vec3(-0.4f, -0.4f, -0.4f)), IRMath::ivec3(-1, 0, 0));
+    // The whole in-cell entry band the march can sample, not just one point:
+    // the sample step is 1/6 of a cell along the diagonal, so the first
+    // in-cell sample always lands in [-0.5, -1/3).
+    for (float offset = -0.5f; offset < -1.0f / 3.0f; offset += 0.02f) {
+        EXPECT_EQ(voxelHitFaceNormal(IRMath::vec3(offset, offset, offset)), IRMath::ivec3(-1, 0, 0))
+            << "offset=" << offset;
+    }
 }
 
 TEST(PickingFaceNormal, ReturnsSingleNonzeroAxis) {
@@ -64,9 +72,9 @@ TEST(PickingFaceNormal, ReturnsSingleNonzeroAxis) {
     // non-zero component — the place-adjacent compute `voxelPos + normal`
     // breaks badly if two axes fire simultaneously.
     const IRMath::vec3 deltas[] = {
-        IRMath::vec3(0.49f, 0.40f, 0.30f),   // X dominant
-        IRMath::vec3(0.30f, 0.49f, 0.40f),   // Y dominant
-        IRMath::vec3(0.30f, 0.40f, 0.49f),   // Z dominant
+        IRMath::vec3(0.49f, 0.40f, 0.30f),    // X dominant
+        IRMath::vec3(0.30f, 0.49f, 0.40f),    // Y dominant
+        IRMath::vec3(0.30f, 0.40f, 0.49f),    // Z dominant
         IRMath::vec3(-0.49f, -0.40f, -0.30f), // -X dominant
     };
     for (const IRMath::vec3 &delta : deltas) {

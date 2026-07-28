@@ -50,6 +50,67 @@
 
 namespace IRPrefab::Picking {
 
+// Picks the hit-face outward normal for a unit-cube voxel. Returns the
+// axis with the largest |delta| component, signed by that component —
+// "place adjacent" math just adds this normal to `voxelPos_` to land
+// on the cell on the entry side.
+//
+// The tie-break order is contractual, not incidental: equal magnitudes
+// resolve x → y → z, so a hit whose entry offset is parallel to the
+// (1,1,1) march axis (the ray passing exactly through the voxel centre)
+// always reports the x face. Predictors of `RayHit::faceNormal_` — the
+// voxel editor's session shadow model — depend on reproducing it
+// exactly. `test/render/picking_face_normal_test.cpp` pins it.
+inline IRMath::ivec3 voxelHitFaceNormal(IRMath::vec3 delta) {
+    const IRMath::vec3 absDelta = IRMath::abs(delta);
+    IRMath::ivec3 normal(0);
+    if (absDelta.x >= absDelta.y && absDelta.x >= absDelta.z) {
+        normal.x = delta.x >= 0.0f ? 1 : -1;
+    } else if (absDelta.y >= absDelta.z) {
+        normal.y = delta.y >= 0.0f ? 1 : -1;
+    } else {
+        normal.z = delta.z >= 0.0f ? 1 : -1;
+    }
+    return normal;
+}
+
+// The canvas-frame iso pixel a cursor aimed at `worldAim` casts its ray
+// from — the CPU mirror of the `IRRender::worldPos3DToMouseScreenPx` →
+// `IRRender::mouseWorldPos3DAtIsoDepth` round trip, with the camera pan
+// and letterbox terms cancelled (they appear identically in both halves).
+// What survives is the forward aim's `+0.5` cell-centre bias and the
+// inverse's floor back onto the integer iso lattice.
+//
+// The floor is lossy by design: an aim offset whose iso projection is
+// smaller than the half-pixel bias lands on the voxel centre's pixel, so
+// two faces of one voxel can share a pixel — at cardinal yaw the -x and
+// -y faces always do, the iso equations giving x and y coefficient 1
+// while z gets 2 (`docs/design/editor-authoring-friction.md` §M-2).
+// Anything predicting where a scripted click lands must go through this,
+// not through the exact aim ray.
+//
+// Exact only near a pixel's CENTRE. The live forward half rounds to a
+// whole screen pixel before the inverse divides back out, and near a
+// floor boundary that half-pixel is enough to land the real cursor one
+// iso pixel off this result (at zoom 4 an iso row is 4 screen px, so the
+// error reaches 0.125 iso while a face-plane aim sits 0.1 from the
+// boundary). A caller that chooses its own aim should therefore pick the
+// point that lands dead centre — `isoPixelToPos3D` re-projects onto a
+// pixel exactly. What the rounding cannot do is un-collapse two aims
+// this helper maps to one pixel.
+//
+// Cardinal-only in the same sense the rest of the picking chain is:
+// `cardinalIndex` covers the rasterYaw snap, not a residual yaw, whose
+// face deformation the picking math does not reverse either.
+inline IRMath::ivec2 aimIsoPixel(IRMath::vec3 worldAim, IRMath::CardinalIndex cardinalIndex) {
+    const IRMath::vec3 rotated = IRMath::rotateCardinalZ(worldAim, cardinalIndex);
+    const IRMath::vec2 iso = IRMath::pos3DtoPos2DIso(rotated) + IRMath::vec2(0.5f);
+    return IRMath::ivec2(
+        static_cast<int>(IRMath::floor(iso.x)),
+        static_cast<int>(IRMath::floor(iso.y))
+    );
+}
+
 struct RayHit {
     IREntity::EntityId entity_ = IREntity::kNullEntity;
     IRMath::vec3 worldHitPos_ = IRMath::vec3(0.0f);
@@ -191,23 +252,6 @@ gatherVisibleVoxelSets(IRMath::CardinalIndex cardinalIndex, IREntity::EntityId e
     return snapshot;
 }
 
-// Picks the hit-face outward normal for a unit-cube voxel. Returns the
-// axis with the largest |delta| component, signed by that component —
-// "place adjacent" math just adds this normal to `voxelPos_` to land
-// on the cell on the entry side.
-inline IRMath::ivec3 voxelHitFaceNormal(IRMath::vec3 delta) {
-    const IRMath::vec3 absDelta = IRMath::abs(delta);
-    IRMath::ivec3 normal(0);
-    if (absDelta.x >= absDelta.y && absDelta.x >= absDelta.z) {
-        normal.x = delta.x >= 0.0f ? 1 : -1;
-    } else if (absDelta.y >= absDelta.z) {
-        normal.y = delta.y >= 0.0f ? 1 : -1;
-    } else {
-        normal.z = delta.z >= 0.0f ? 1 : -1;
-    }
-    return normal;
-}
-
 } // namespace detail
 
 // Casts a ray from the cursor into the scene and returns the first
@@ -289,7 +333,7 @@ castVoxelRay(IREntity::EntityId excludeEntity = IREntity::kNullEntity) {
                 vs.entity_,
                 worldPoint,
                 IRMath::roundVec3HalfUp(candidateCenter),
-                detail::voxelHitFaceNormal(delta)
+                voxelHitFaceNormal(delta)
             };
         }
     }
