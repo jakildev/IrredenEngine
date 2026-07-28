@@ -27,9 +27,8 @@ are grandchildren. See **D1** below for the rule and its citation.
 
 ## Steward ledger
 
-reconciled-through: 2026-07-28 (first steward claim — heal + membership audit)
+reconciled-through: 2026-07-28 (first steward claim — heal + membership audit; close-out NOT READY — 9 of 11 children open, only Phase 0 and Phase 2 done)
 proposal-pending: none
-close-out: NOT READY — 9 of 11 children open (only Phase 0 and Phase 2 are done).
 
 ### Children
 
