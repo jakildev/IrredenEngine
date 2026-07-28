@@ -15,9 +15,14 @@ empty vectors. No change to the runtime dispatch surface.
 2. Call it at the `IREngine::gameLoop()` tail, immediately **before** the
    `g_world.reset()` that #2539 added — the VM is still alive there, and the
    engine tail is unconditional, so a creation cannot forget the cleanup.
-3. This also fixes the latent multi-world hazard: without the clear, a
-   future second `World` in-process would dispatch stale handlers bound to
-   the dead VM.
+3. This also closes the stale-handler half of the latent multi-world
+   hazard: without the clear, a future second `World` in-process would
+   dispatch stale handlers bound to the dead VM; with it, the registry
+   starts empty. Multi-world is NOT fully clean after this fix —
+   `previousHoveredEntity` (a second process-lifetime static inside
+   `System<ENTITY_HOVER_DETECT>::create()`) survives into a hypothetical
+   second World, whose first hover change would fire `fireUnhovered` with
+   the previous World's stale id. Pre-existing and unreachable today.
 
 Implementation note: `IREngine::gameLoop()` is header-inline in
 `ir_engine.hpp`, and the handler registry lives behind a prefab header that
