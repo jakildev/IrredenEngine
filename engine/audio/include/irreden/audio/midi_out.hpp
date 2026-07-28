@@ -43,7 +43,10 @@ class MidiOut {
     void sendAllNotesOff();
 
   private:
-    RtMidiOut m_rtMidiOut; // enumeration probe only — never opened for output
+    // Enumeration probe only — never opened for output. Null when the RtMidi
+    // client failed to init (no MIDI server available); degraded state is
+    // 0 ports, every query/tick path already tolerates that.
+    std::unique_ptr<RtMidiOut> m_rtMidiOut;
     unsigned int m_numberPorts;
     std::vector<std::string> m_portNames;
     std::vector<std::unique_ptr<MidiOutPort>> m_ports;

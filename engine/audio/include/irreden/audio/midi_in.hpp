@@ -77,7 +77,10 @@ class MidiIn {
     void insertCCMessage(int portIndex, MidiChannel channel, const C_MidiMessage &midiMessage);
 
   private:
-    RtMidiIn m_rtMidiIn; // enumeration probe only — never opened for input
+    // Enumeration probe only — never opened for input. Null when the RtMidi
+    // client failed to init (no MIDI server available); degraded state is
+    // 0 ports, every query/tick path already tolerates that.
+    std::unique_ptr<RtMidiIn> m_rtMidiIn;
     unsigned int m_numberPorts;
     std::vector<std::string> m_portNames;
     std::vector<std::unique_ptr<MidiInPort>> m_ports;
@@ -86,9 +89,7 @@ class MidiIn {
     void clearPreviousMessages();
 };
 
-void onRtMidiMessage(
-    double deltaTime, std::vector<unsigned char> *message, void *userData
-);
+void onRtMidiMessage(double deltaTime, std::vector<unsigned char> *message, void *userData);
 
 } // namespace IRAudio
 

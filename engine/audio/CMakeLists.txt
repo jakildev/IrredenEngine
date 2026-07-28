@@ -68,6 +68,19 @@ FetchContent_Declare(
 # rtmidi's uninstall target no longer clashes with rtaudio's: upstream renamed
 # RTMIDI_TARGETNAME_UNINSTALL to "rt_uninstall", and ir_rtaudio.patch renames
 # rtaudio's to "RtAudioUninstall".
+# ir_rtmidi.patch: MidiInCore/MidiOutCore::getCoreMidiClientSingleton is
+# declared `throw()`, which C++17+ treats as `noexcept` — but it calls
+# error() with a non-WARNING type, which throws RtMidiError when no error
+# callback is registered. Under C++23 that violates the noexcept contract
+# and calls std::terminate() before the exception ever reaches a caller's
+# try/catch, no matter how the client code is written. Dropping the
+# obsolete `throw()` spec lets the CoreMIDI client-init failure propagate
+# normally so MidiIn/MidiOut can degrade to no-MIDI instead of crashing.
+IrredenEngine_applyPatchOnce(
+    rtmidi
+    "fix_coremidi_singleton_noexcept_violation"
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/ir_rtmidi.patch
+)
 FetchContent_MakeAvailable(rtmidi)
 target_link_libraries(
     IrredenEngineAudio PUBLIC
