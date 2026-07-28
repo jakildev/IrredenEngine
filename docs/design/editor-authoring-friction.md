@@ -370,3 +370,93 @@ The plan's PR-2: wire `applyMirrors` into the edit paths (the F-1.2 regression,
 mirrors + two layers as the fix's positive-fire regression test. The runner,
 erase mode, and the aiming spine are all in place; the mushroom adds mirror +
 layer ops (`tapKey` for X/Y/K already exists on the `Builder`).
+
+### M-2 — `-y`-face single-click place no-ops at the cardinal (yaw-0) camera (#2575)
+
+Surfaced authoring the mushroom (2e). Growing a voxel outward by clicking the
+exposed face of a neighbour, at the editor's cardinal (yaw-0) camera and
+authoring zoom (`kSessionZoom = 4`):
+
+- A `-x`-face or `-z`-face single click places the intended neighbour every time.
+- A `-y`-face single click **no-ops** — the intended `-y` neighbour is never
+  placed, with no feedback.
+
+| primary click | anchored face | result |
+|---|---|---|
+| `(6,7,11)` | `-x` of `(7,7,11)` | placed ✓ |
+| `(7,6,11)` | `-y` of `(7,7,11)` | **empty ✗** |
+| `(7,5,11)` | `-y` of `(7,6,11)` | **empty ✗** |
+
+**Root cause — the picker's iso-pixel floor collapses `-x` and `-y` face aims
+onto the same pixel at cardinal yaw.** The place path is `hit.voxelPos_ +
+hit.faceNormal_` (`voxel_editor/main.cpp`), where `hit.faceNormal_` comes from
+`IRPrefab::Picking::detail::voxelHitFaceNormal(worldHitPos - voxelCenter)` — the
+dominant axis of the ray's entry offset, with tie-break priority **x > y > z**.
+The cursor→ray inverse (`IRRender::mouseWorldPos3DAtIsoDepth`) **floors** the iso
+pixel to the integer lattice: `isoPixelToPos3D(floor(canvasIso.x),
+floor(canvasIso.y), depth)`, and the forward aim (`worldPos3DToMouseScreenPx`)
+adds `+0.5` (aim-at-cell-centre). The iso projection is `iso.x = -x + y`,
+`iso.y = -x - y + 2z`.
+
+For a face aim `center + normal·kFaceAimDepth` (`kFaceAimDepth = 0.4`), the
+recovered floored iso pixel is `floor(pos3DtoPos2DIso(aim) + 0.5)`:
+
+| face of `(7,7,11)` | aim | `pos3DtoPos2DIso(aim)` | floored pixel |
+|---|---|---|---|
+| `-x` | `(6.6, 7, 11)` | `(0.4, 8.4)` | **`(0, 8)`** |
+| `-y` | `(7, 6.6, 11)` | `(-0.4, 8.4)` | **`(0, 8)`** |
+| `-z` | `(7, 7, 10.6)` | `(0, 7.2)` | `(0, 7)` |
+
+The `-x` and `-y` aims land on the **identical** pixel `(0, 8)` — which is also
+the voxel *centre's* pixel — because their iso offsets (`±0.4` in `iso.x`, from
+the coefficient-1 `x`/`y` terms) are smaller than the `+0.5` cell-centre bias, so
+the floor snaps both back to the centre column. `-z` escapes only because
+`iso.y`'s `2z` coefficient turns a `-0.4` z-offset into a `-0.8` iso shift, large
+enough to cross the floor boundary onto a distinct column. On the collapsed
+centre column the ray marches through the voxel centre and enters at the
+`(1,1,1)` corner, so `worldHitPos - voxelCenter` is **parallel to `(1,1,1)`** —
+`|Δx| = |Δy| = |Δz|` — a three-way tie that `voxelHitFaceNormal` resolves to
+`-x`. That is *correct* for a `-x` click (coincidentally) and *wrong* for a `-y`
+click (it should be `(0,-1,0)`), so the `-y` neighbour cell stays empty and the
+edit is dropped. (For `cx != cy`, e.g. `-y` of `(7,6,11)`, the aim collapses onto
+that voxel's own centre pixel `(-1, 9)` the same way — the offset is still
+parallel to `(1,1,1)`, so the tie still resolves to `-x`.)
+
+**A/B repro (no editor run required).** `A = -x` aim `(6.6,7,11)` and `B = -y`
+aim `(7,6.6,11)` both reduce to floored iso pixel `(0,8)` under
+`floor(pos3DtoPos2DIso(aim) + (0.5,0.5))`. The picker receives byte-identical
+input for A and B, so it *cannot* return different results for them — the `-y`
+distinction is destroyed at the floor, not merely mis-resolved downstream.
+
+**This is a genuine projection/quantization limitation, not a fixable
+face-derivation bug.** At the picker's integer-iso-pixel resolution a voxel's
+`-x` and `-y` faces map to the same picking pixel at cardinal yaw, so no
+tie-break rule or `Δ`-based heuristic can separate them (the inputs are equal).
+Disambiguating would require sub-iso-pixel picking precision — a change to the
+`mouseWorldPos3DAtIsoDepth` / `worldPos3DToMouseScreenPx` round-trip contract
+that every editor picking consumer (live click, hover, gizmo drag, the session
+shadow model) depends on — out of scope for this friction fix and a design-level
+change to the load-bearing picker.
+
+**Authoring path (per #2575 acceptance).**
+
+- **Hand-authoring:** rotate the camera one cardinal step with `Q`/`E` before
+  the click. Under a `±90°` yaw the target's `-y` face presents as an `-x`- or
+  `-z`-facing face, which the picker resolves cleanly; place, then rotate back.
+- **Symmetric solids:** take `-y` thickness from the **Y mirror** rather than a
+  raw `-y` click — the mushroom (2e) does exactly this (cap grown in `-x`/`-z`,
+  y-thickness mirrored). The F-1.2 mirror path fans a `-x`/`-z` primary click out
+  to both Y sides, so no `-y` primary click is needed.
+- **Session recipes:** `aimToPlace` already tries `-x` before `-y`, so any target
+  with a `+x`-side or `+z`-side anchor is placed through a clean face
+  automatically; only a target whose *sole* occupied anchor is on the `+y` side
+  hits this wall.
+
+**Recommended follow-up (#2578, agent-approved lane).** The session shadow model
+(`OccupancyModel::pick`, `session_builder.hpp`) marches the *exact* aim ray, so
+it does **not** reproduce the picker's iso-pixel floor and greenlights a `-y` aim
+whose live click misfires — the silent-no-op source. A hardening pass should make
+`pick` reproduce the floored-iso march + `voxelHitFaceNormal`, and have
+`aimToPlace` reject an aim whose predicted face normal disagrees with the
+intended one (so it either finds a disambiguable anchor or records an
+`unreachable` recipe error, instead of emitting a click that no-ops).
