@@ -71,6 +71,38 @@ canonicalize_path_spelling() {
     printf '%s' "$p"
 }
 
+# --- Model-class defaults (single source of truth) --------------------------
+# CLI tier ALIASES on purpose ("opus[1m]", never "claude-opus-4-8[1m]"): the
+# claude CLI resolves an alias to the NEWEST model of that tier at launch, so
+# a new Opus/Fable/Sonnet release reaches the fleet on its next iteration with
+# no edit anywhere — alias strings carry no version, so they never rot. Pin an
+# explicit ID via FLEET_MODEL_* (env or ~/.fleet/fleet-up.conf) to freeze a
+# class. "[1m]" selects the 1M-context variant and composes with aliases;
+# sonnet stays the 200K alias (the 1M beta is not covered for Sonnet on this
+# plan — see fleet-up's model notes). Consumers: fleet-up (boot resolution +
+# fable probe ladder), fleet-dispatcher (standalone defaults), solo-architect
+# (standalone fable default). Their inline `:-` backstops repeat these alias
+# strings for the common-missing case — version-free, so no sync burden.
+FLEET_FABLE_CANDIDATES_DEFAULT=("fable[1m]" "fable" "opus[1m]")
+FLEET_OPUS_CLASS_DEFAULT="opus[1m]"
+FLEET_SONNET_CLASS_DEFAULT="sonnet"
+
+# fleet_model_tag <model> — short human label for pane borders/logs, derived
+# programmatically so a new release never needs a label-map edit:
+#   claude-opus-4-8[1m] -> "opus 4.8 1m"    opus[1m] -> "opus 1m"
+#   claude-sonnet-5     -> "sonnet 5"       sonnet   -> "sonnet"
+# Unknown shapes pass through unchanged (label degrades to the raw id).
+fleet_model_tag() {
+    local t="${1#claude-}"
+    t="${t/\[1m\]/ 1m}"
+    if [[ "$t" =~ ^([a-z]+)-([0-9]+)-([0-9]+)(.*)$ ]]; then
+        t="${BASH_REMATCH[1]} ${BASH_REMATCH[2]}.${BASH_REMATCH[3]}${BASH_REMATCH[4]}"
+    elif [[ "$t" =~ ^([a-z]+)-([0-9]+)(.*)$ ]]; then
+        t="${BASH_REMATCH[1]} ${BASH_REMATCH[2]}${BASH_REMATCH[3]}"
+    fi
+    printf '%s' "$t"
+}
+
 # --- install-symlink freshness (#2262) --------------------------------------
 # New fleet scripts / role slash-commands / ir-* tools merge to master, but a
 # host's ~/bin symlinks are only (re)created by install.sh — so a tool added

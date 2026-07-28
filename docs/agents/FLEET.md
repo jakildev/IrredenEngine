@@ -420,16 +420,17 @@ optional `**Effort:** low|medium|high|xhigh|max` line; when absent the
 class default applies (fable/opus → xhigh, sonnet → high).
 
 Class names are the stable queue vocabulary; the concrete model strings
-live in `scripts/fleet/fleet-up`'s class table, not here. The fable
-class resolves at boot from a probed ladder (Fable 5 [1m] → Fable 5 →
-Opus 4.8 [1m]), so when the plan stops covering Fable, `fleet:fable`
-tasks degrade to the Opus floor automatically; dispatched fable
-iterations also carry `--fallback-model` for mid-session resilience.
-The opus class is pinned to a full version (`claude-opus-4-8[1m]`) so a
-bare alias can't silently upgrade it, while the sonnet class is the bare
-`sonnet` alias on purpose — it always tracks the latest Sonnet (currently
-Sonnet 5) without a per-release edit. Pin classes with `FLEET_MODEL_FABLE`
-/ `FLEET_MODEL_OPUS` / `FLEET_MODEL_SONNET` in `~/.fleet/fleet-up.conf`.
+live in `scripts/fleet/fleet-common.sh`'s class defaults (consumed by
+`fleet-up`'s boot resolution), not here. All three classes default to
+CLI tier aliases (`fable[1m]` / `opus[1m]` / `sonnet`), which the claude
+CLI resolves to the newest model of each tier at launch — a new model
+release reaches the fleet with no edit anywhere. The fable class
+resolves at boot from a probed ladder (`fable[1m]` → `fable` →
+`opus[1m]`), so when the plan stops covering Fable, `fleet:fable` tasks
+degrade to the Opus floor automatically; dispatched fable iterations
+also carry `--fallback-model` for mid-session resilience. Freeze a
+class on a specific release by pinning `FLEET_MODEL_FABLE` /
+`FLEET_MODEL_OPUS` / `FLEET_MODEL_SONNET` in `~/.fleet/fleet-up.conf`.
 
 **fable — design-tier work.** Budget is the scarce resource;
 `FLEET_CONCURRENCY_MODEL_FABLE` (default 1) caps concurrent fable

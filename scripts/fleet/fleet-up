@@ -58,10 +58,12 @@ if [[ -f "$_FLEET_COMMON_SH" ]]; then
     source "$_FLEET_COMMON_SH"
 else
     fleet_install_maybe_refresh() { :; }  # helper not installed yet — no-op
+    fleet_model_tag() { printf '%s' "$1"; }  # raw-id label fallback
 fi
 unset _FLEET_COMMON_SH
 
-# Model classes — change these when bumping the fleet to a new release.
+# Model classes. Defaults are CLI tier aliases from fleet-common.sh — a
+# new model release needs no edit here (pin via FLEET_MODEL_* to freeze).
 #
 # The queue routes work by model CLASS: fable | opus | sonnet. Tasks carry
 # a class (`fleet:fable` / `fleet:opus` / `fleet:sonnet` label, `Model:`
@@ -91,19 +93,24 @@ unset _FLEET_COMMON_SH
 # [1m] (real headroom for long architect/worker iterations); Sonnet uses
 # the standard 200K alias, which its bounded review/author iterations fit
 # fine. (If you ever want sonnet[1m], enable usage credits at
-# claude.ai/settings/usage and re-add the suffix.) fable/opus strings are
-# pinned to full versions (a bare "fable"/"opus" alias would silently
-# upgrade); sonnet stays the bare "sonnet" alias ON PURPOSE, so it always
-# tracks the latest Sonnet with no per-release edit here — currently
-# Sonnet 5 (claude-sonnet-5) on the 2.x CLI. Pin an explicit version via
-# FLEET_MODEL_SONNET only if you need to freeze it.
-FABLE_MODEL_CANDIDATES=(
-    "claude-fable-5[1m]"
-    "claude-fable-5"
-    "claude-opus-4-8[1m]"
-)
-OPUS_CLASS_DEFAULT="claude-opus-4-8[1m]"
-SONNET_CLASS_DEFAULT="sonnet"
+# claude.ai/settings/usage and re-add the suffix.)
+#
+# All three classes default to CLI tier ALIASES (fable/opus/sonnet), which
+# the claude CLI resolves to the newest model of that tier at launch — a
+# new release reaches the fleet with no edit here or anywhere. The
+# canonical defaults live in fleet-common.sh (shared with the
+# fleet-dispatcher / solo-architect standalone paths); the backstops below
+# only fire when fleet-common.sh is missing, and being version-free alias
+# strings they never need a per-release sync. Pin an explicit version via
+# FLEET_MODEL_FABLE / FLEET_MODEL_OPUS / FLEET_MODEL_SONNET (env or
+# ~/.fleet/fleet-up.conf) only when you need to freeze a class.
+if [[ -n "${FLEET_FABLE_CANDIDATES_DEFAULT+x}" ]]; then
+    FABLE_MODEL_CANDIDATES=("${FLEET_FABLE_CANDIDATES_DEFAULT[@]}")
+else
+    FABLE_MODEL_CANDIDATES=("fable[1m]" "fable" "opus[1m]")
+fi
+OPUS_CLASS_DEFAULT="${FLEET_OPUS_CLASS_DEFAULT:-opus[1m]}"
+SONNET_CLASS_DEFAULT="${FLEET_SONNET_CLASS_DEFAULT:-sonnet}"
 
 # Minimum seconds between opus-reviewer relaunches (cooldown floor).
 # fleet-babysit reads this via FLEET_MIN_BACKOFF; keep the two in sync.
@@ -410,15 +417,7 @@ export OPUS_MODEL SONNET_MODEL
 # and model, e.g. "worker [fable 1m]" (no numeric suffix — see
 # fleet-dispatch-wrap's pane re-tag). The bracket tag is what tells you
 # which model the role is actually running this session.
-model_tag() {
-    local tag="$1"
-    tag="${tag/claude-fable-5/fable}"
-    tag="${tag/claude-opus-4-8/opus 4.8}"
-    tag="${tag/claude-sonnet-5/sonnet 5}"
-    tag="${tag/\[1m\]/ 1m}"
-    printf '%s' "$tag"
-}
-FABLE_TAG="$(model_tag "$FLEET_MODEL_FABLE")"
+FABLE_TAG="$(fleet_model_tag "$FLEET_MODEL_FABLE")"
 # Pool panes launch label-less ("[idle]") — fleet-dispatch-wrap re-tags
 # each pane with the dispatched role + model per iteration, so only the
 # pinned architect panes need a boot-time model tag.

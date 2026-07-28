@@ -66,22 +66,23 @@
 # smoke, and the merger LLM pass run sonnet. See FLEET.md "Model split".
 #
 # The fable class resolves at boot from a probed ladder —
-# claude-fable-5[1m] -> claude-fable-5 -> claude-opus-4-8[1m] — one-token
-# claude call per rung (a few cents, ~5-15 s). When the plan loses Fable
-# access, re-running fleet-up lands the class on the Opus floor.
+# fable[1m] -> fable -> opus[1m] — one-token claude call per rung (a few
+# cents, ~5-15 s). When the plan loses Fable access, re-running fleet-up
+# lands the class on the Opus floor.
 #
-# The sonnet class stays the bare `sonnet` alias by default, so it always
-# tracks the latest Sonnet (currently Sonnet 5). Opus/fable are pinned to
-# full versions so a bare alias can't silently upgrade them.
+# All classes default to CLI tier ALIASES (fable/opus/sonnet — canonical
+# defaults in scripts/fleet/fleet-common.sh), which the claude CLI
+# resolves to the newest model of each tier at launch. New releases reach
+# the fleet automatically; pin a class only to freeze it.
 #
 # Pin a class verbatim (pinning fable skips the probe):
 # FLEET_MODEL_FABLE="claude-fable-5[1m]"
-# FLEET_MODEL_OPUS="claude-opus-4-8[1m]"
-# FLEET_MODEL_SONNET="claude-sonnet-5"   # freeze sonnet; omit to track latest
+# FLEET_MODEL_OPUS="claude-opus-5[1m]"
+# FLEET_MODEL_SONNET="claude-sonnet-5"
 #
 # Per-role dispatch models for the bounded fixed-model roles:
 # FLEET_MODEL_MERGER="sonnet"
-# FLEET_MODEL_OPUS_REVIEWER="claude-opus-4-8[1m]"
+# FLEET_MODEL_OPUS_REVIEWER="opus[1m]"
 #
 # FLEET_MODEL_FABLE_FALLBACK is handed to dispatched (print-mode) fable
 # iterations as `claude --fallback-model`, so a single iteration survives
@@ -89,7 +90,7 @@
 # Comma-separated chain accepted; set to "" to disable. Interactive
 # architect panes can't take the flag (print-only) — they rely on the
 # boot-time resolution above. opus/sonnet dispatches never get a fallback.
-# FLEET_MODEL_FABLE_FALLBACK="claude-opus-4-8[1m]"
+# FLEET_MODEL_FABLE_FALLBACK="opus[1m]"
 #
 # Fleet-wide cap on concurrent fable-class iterations (the budget
 # throttle; counted across all panes, 0 disables fable dispatch).

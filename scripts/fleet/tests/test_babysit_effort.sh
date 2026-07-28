@@ -72,6 +72,15 @@ echo "T2: full model name hits heavy globs"
 assert_eq "$(effort_for 'claude-fable-5[1m]' opus-architect)"  "xhigh" "claude-fable-5[1m] -> xhigh"
 assert_eq "$(effort_for 'claude-opus-4-8[1m]' opus-architect)" "xhigh" "claude-opus-4-8[1m] -> xhigh"
 
+# --- Test 2b: suffixed alias forms hit the heavy globs ---------------------
+# The class defaults are tier aliases (fleet-common.sh), so the strings
+# babysit actually receives are "fable[1m]" / "opus[1m]" — a bare-word
+# `fable|` pattern would miss them and misroute effort to the sonnet tier.
+echo "T2b: alias-with-[1m] hits heavy globs"
+assert_eq "$(effort_for 'fable[1m]' opus-architect)" "xhigh" "fable[1m] -> xhigh"
+assert_eq "$(effort_for 'opus[1m]' opus-architect)"  "xhigh" "opus[1m] -> xhigh"
+assert_eq "$(effort_for 'sonnet[1m]' worker)"        "high"  "sonnet[1m] -> high"
+
 # --- Test 3: per-role override ---------------------------------------------
 echo "T3: per-role FLEET_EFFORT_<ROLE> overrides the default"
 assert_eq "$(effort_for opus opus-architect FLEET_EFFORT_OPUS_ARCHITECT=high)" \
