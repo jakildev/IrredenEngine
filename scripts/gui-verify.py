@@ -11,22 +11,7 @@ Usage:
     python3 scripts/gui-verify.py IRVoxelEditor -- --gui-session drag_probe
 """
 
-import re
-
 import verify_common
-
-# Pattern: GUI-ASSERT shot=<N> label=<lbl> kind=<K> target=<eid> name=<tag>
-#          result=PASS|FAIL actual=<val>
-_GUI_ASSERT_RE = re.compile(
-    r"GUI-ASSERT\s+"
-    r"shot=(\S+)\s+"
-    r"label=(\S+)\s+"
-    r"kind=(\S+)\s+"
-    r"target=(\S+)\s+"
-    r"name=(\S+)\s+"
-    r"result=(PASS|FAIL)\s+"
-    r"actual=(.*)"
-)
 
 
 def main() -> None:
@@ -78,23 +63,12 @@ def main() -> None:
     run_rc, output = verify_common.run_capture(run_cmd)
 
     # An --auto-screenshot GUI-test run must self-terminate. The fleet-run
-    # watchdog reports a process still alive at --timeout as exit 0
-    # ("healthy" for generic smoke), which would mask a hung GUI test as a
-    # zero-assertion success — treat the watchdog kill as a failure here.
-    hung = "RESULT=ALIVE-TIMEOUT" in output
-    if hung:
-        print(f"[gui-verify] run hung: watchdog killed it at --timeout "
-              f"{args.timeout}s before the shot table completed")
-
-    assertions = []
-    for m in _GUI_ASSERT_RE.finditer(output):
-        shot, label, kind, target, name, result, actual = m.groups()
-        assertions.append(
-            dict(shot=shot, label=label, kind=kind,
-                 target=target, name=name, result=result, actual=actual.strip())
-        )
-
-    print()
+    # watchdog reports a process still alive at --timeout as exit 0 ("healthy"
+    # for generic smoke), which would mask a hung GUI test as a zero-assertion
+    # success — report_gui_asserts surfaces the ALIVE-TIMEOUT marker as `hung`,
+    # which this harness treats as a failure.
+    assertions, hung, failures = verify_common.report_gui_asserts(
+        output, "[gui-verify] ", timeout=args.timeout)
 
     if not assertions:
         msg = "[gui-verify] no GUI-ASSERT lines found in output"
@@ -103,29 +77,6 @@ def main() -> None:
             raise SystemExit(1)
         print(msg + " (run exited 0 — target may have no assertion tables)")
         return
-
-    # Pass/fail table
-    C = dict(shot=6, label=30, kind=14, name=22, result=8)
-    header = (f"{'shot':<{C['shot']}} {'label':<{C['label']}} "
-              f"{'kind':<{C['kind']}} {'name':<{C['name']}} {'result':<{C['result']}} actual")
-    print(header)
-    print("-" * (sum(C.values()) + 4 + 30))
-    for a in assertions:
-        print(
-            f"{a['shot']:<{C['shot']}} {a['label']:<{C['label']}} "
-            f"{a['kind']:<{C['kind']}} {a['name']:<{C['name']}} "
-            f"{a['result']:<{C['result']}} {a['actual']}"
-        )
-
-    failures = [a for a in assertions if a["result"] == "FAIL"]
-    n = len(assertions)
-    passed = n - len(failures)
-    print(f"\n[gui-verify] {passed}/{n} assertions passed")
-
-    if failures:
-        print("\nFailing assertions:")
-        for a in failures:
-            print(f"  shot={a['shot']} name={a['name']} kind={a['kind']} actual={a['actual']}")
 
     if failures or run_rc != 0 or hung:
         raise SystemExit(1)

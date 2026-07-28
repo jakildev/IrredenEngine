@@ -303,15 +303,70 @@ Findings:
   wrong column). `hover` / `expectPick` are now part of the op vocabulary; entity
   recipes should arm a novel gesture with a pick assertion before trusting it.
 
-### 2d — `author-entity.py` + ROCK — NEXT
+### 2d — `author-entity.py` + ROCK (LANDED)
 
-Remaining Part 2 work, in order: `scripts/author-entity.py` (run session → parse
-`GUI-ASSERT` → verify the saved `.vxs` → copy to `assets/voxel/entities/` →
-re-run and byte-compare for the determinism gate), then the **ROCK** session
-(box-fill blob + erase-carve + ground-slab erase + Ctrl+S) as the first committed
-entity. The spine is in place: the ops the rock needs — `click`, `dragBox`,
-`toggleEraseMode`, `save`, occupancy checks — all exist and are proven. Open
-questions for that slice: whether the seeded ground slab is erased by a
-`dragBox` sweep in erase mode (cheap — one drag per z-slice) or wants a
-select-all-plane affordance, and where `save()` lands its files relative to the
-runner's cwd (P0-1 established the write happens; the runner has to find it).
+The runner and the first committed entity. `scripts/author-entity.py` replays a
+`--gui-session <name>` recipe through the same `run_capture` flow `gui-verify`
+uses, then: parses `GUI-ASSERT` (fails on any FAIL / zero asserts), confirms the
+editor wrote `scene_frame_*.vxs`, **re-runs and byte-compares the saved set**
+(the acceptance's determinism gate), and copies the frames to
+`assets/voxel/entities/<entity>[_frame_N].vxs(+.json)`. The `GUI-ASSERT` regex +
+pass/fail table moved to `verify_common` so the runner and `gui-verify` share one
+parser.
+
+The **ROCK** — an irregular, no-symmetry, single-layer blob — is authored by:
+clearing the seeded ground slab down to a 5×5 central footprint (four erase-mode
+box drags), building three asymmetric layers on that footprint, and carving two
+base corners. `author-entity.py rock` → **18/18 GUI-ASSERT PASS, determinism gate
+byte-identical, `rock.vxs` = 65 occupied voxels** in a compact 5×5×5 bounds
+(footprint 25 + base 23 + mid 12 + cap 4 + peak 1). Renders as a small rock in
+`IRShapeDebug --load-vxs`.
+
+The two open questions from the 2c handoff are answered:
+
+- **The ground slab erases with a `dragBox` sweep in erase mode — no
+  select-all-plane affordance needed.** Four erase boxes frame the footprint;
+  each drag clears a whole grid-AABB strip from just its two corner clicks
+  (`applyFillAABB` fills the AABB between the hit cells, so cells *inside* the
+  box are cleared without being individually clicked). Run **first**, while the
+  ground is a single flat layer — once rock voxels sit above the plane they
+  occlude the `(1,1,1)` march to the cells diagonally behind them.
+- **`save()` lands at `<exe-dir>/data/editor_scene/scene_frame_N.vxs`.** ir-run
+  `cd`s into the exe dir before launch, so the DENSE save (`kSceneSaveDir`,
+  exe-relative) resolves there; the runner finds the exe under the build dir and
+  reads that directory.
+
+Findings:
+
+- **F-2d-1 — the left GUI panels do NOT occlude the ground plane in session
+  mode (at zoom 4, 16³).** The 2b/2c notes flagged the left-column panels and
+  perimeter gizmos as click-swallowers, so the recipe instrumented all four
+  ground corners + two edge midpoints with `cleared` checks. **All eight
+  passed** — the entire 16×16 plane was reachable, including the far corners.
+  Session mode strips the furniture (F-2c-1) and the panels sit clear of the
+  centred scene's screen footprint at the authoring zoom, so a recipe can erase
+  or place anywhere on the plane. (A much larger `--scene-size` could still push
+  the plane edges under the panels; re-instrument if an entity needs one.)
+- **F-2d-2 — a pick assertion must fire in a segment *before* the click that
+  edits its own target.** The first rock draft put the carve's `hover` +
+  `expectPick` in the same segment as the erase `click`; assertions evaluate at
+  the segment's capture frame, which is *after* the click removed the voxel, so
+  `castVoxelRay` fell through to the footprint cell behind it and the pick read
+  the wrong voxel while the carve itself passed. Splitting the arm (hover + pick)
+  from the erase — the pattern `drag_probe` already used — fixes it. A generic
+  rule for entity recipes: an `expectPick` that names a cell an upcoming edit
+  will change belongs in its own segment ahead of that edit.
+- **F-2d-3 — an erased voxel keeps its RGB with alpha zeroed; the DENSE `.vxs`
+  stores every slot.** `rock.vxs` is 50 KB (all 4096 slots × 12 B) but only 65
+  slots are `alpha != 0`; the renderer (and the VRLE "empty when alpha==0"
+  convention) skip the rest. An occupancy audit of a saved asset must test the
+  packed-RGBA alpha byte, not "record is non-zero" (the erased slots retain a
+  non-zero colour). Not an editor defect — just the format's empty encoding.
+
+### 2e — MUSHROOM (symmetry fix) — NEXT
+
+The plan's PR-2: wire `applyMirrors` into the edit paths (the F-1.2 regression,
+`symmetry.hpp:24` still has zero call sites) and author the mushroom with X+Y
+mirrors + two layers as the fix's positive-fire regression test. The runner,
+erase mode, and the aiming spine are all in place; the mushroom adds mirror +
+layer ops (`tapKey` for X/Y/K already exists on the `Builder`).

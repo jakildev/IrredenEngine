@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Shared helpers for the cull/render/gui/light verify-harness family (#2358).
 
-``cull-verify.py``, ``render-verify.py``, ``gui-verify.py``, and
-``light-verify.py`` all import from this module for process-run wrappers,
-worktree/backend detection, executable discovery, and pixel-diff comparison
-against ``render-compare.py``. render-verify.py's ``_run_capture`` (an
-``--auto-screenshot`` demo-capture runner) and ``_compare_shot`` are domain-
-specific and stay local to that file.
+``cull-verify.py``, ``render-verify.py``, ``gui-verify.py``,
+``light-verify.py``, and ``author-entity.py`` all import from this module for
+process-run wrappers, worktree/backend detection, executable discovery, the
+``GUI-ASSERT`` log parser (``gui-verify`` + ``author-entity``), and pixel-diff
+comparison against ``render-compare.py``. render-verify.py's ``_run_capture``
+(an ``--auto-screenshot`` demo-capture runner) and ``_compare_shot`` are
+domain-specific and stay local to that file.
 
 Assumes this file lives at ``<repo>/scripts/verify_common.py``, alongside the
 harnesses that import it (they run as ``__main__`` from this directory, so
@@ -18,6 +19,7 @@ from __future__ import annotations
 import json
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -26,6 +28,23 @@ from typing import Any
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 RENDER_COMPARE = SCRIPT_DIR / "render-compare.py"
+
+# One GUI-ASSERT line emitted by IRPrefab::GuiTest::evaluate() under
+# --auto-screenshot:
+#   GUI-ASSERT shot=<N> label=<lbl> kind=<K> target=<eid> name=<tag>
+#             result=PASS|FAIL actual=<val>
+# Shared by every harness that reads the harness's assertion log
+# (gui-verify.py, author-entity.py) so the pattern lives in one place.
+GUI_ASSERT_RE = re.compile(
+    r"GUI-ASSERT\s+"
+    r"shot=(\S+)\s+"
+    r"label=(\S+)\s+"
+    r"kind=(\S+)\s+"
+    r"target=(\S+)\s+"
+    r"name=(\S+)\s+"
+    r"result=(PASS|FAIL)\s+"
+    r"actual=(.*)"
+)
 
 
 def run(cmd: list[str], cwd: Path | None = None, check: bool = True,
@@ -62,6 +81,63 @@ def run_capture(cmd: list[str], cwd: Path | None = None,
         lines.append(line)
     proc.wait(timeout=timeout)
     return proc.returncode, "".join(lines)
+
+
+def parse_gui_asserts(output: str) -> list[dict[str, str]]:
+    """Extract every GUI-ASSERT line from a captured run into dict rows."""
+    rows: list[dict[str, str]] = []
+    for m in GUI_ASSERT_RE.finditer(output):
+        shot, label, kind, target, name, result, actual = m.groups()
+        rows.append(dict(shot=shot, label=label, kind=kind, target=target,
+                         name=name, result=result, actual=actual.strip()))
+    return rows
+
+
+def print_assert_table(assertions: list[dict[str, str]]) -> None:
+    """Print the aligned pass/fail table both GUI harnesses render."""
+    widths = dict(shot=6, label=30, kind=14, name=26, result=8)
+    header = (f"{'shot':<{widths['shot']}} {'label':<{widths['label']}} "
+              f"{'kind':<{widths['kind']}} {'name':<{widths['name']}} "
+              f"{'result':<{widths['result']}} actual")
+    print(header)
+    print("-" * (sum(widths.values()) + 4 + 30))
+    for a in assertions:
+        print(
+            f"{a['shot']:<{widths['shot']}} {a['label']:<{widths['label']}} "
+            f"{a['kind']:<{widths['kind']}} {a['name']:<{widths['name']}} "
+            f"{a['result']:<{widths['result']}} {a['actual']}"
+        )
+
+
+def report_gui_asserts(output: str, prefix: str = "",
+                        timeout: int | None = None) -> tuple[list[dict[str, str]],
+                                                              bool, list[dict[str, str]]]:
+    """Parse a captured run, print the pass/fail table + summary, and return
+    ``(assertions, hung, failures)``.
+
+    Shared by every GUI harness (gui-verify, author-entity) so the
+    parse → table → count → failure-list flow lives in one place. Each caller
+    keeps its own policy for the empty-assertion case and its own exit message
+    — those genuinely differ (gui-verify tolerates an assertion-less run that
+    exited 0; author-entity treats it as a failed session). ``timeout``, when
+    passed, is the caller's ``--timeout`` value in seconds, echoed into the
+    hung message for diagnosis."""
+    hung = "RESULT=ALIVE-TIMEOUT" in output
+    if hung:
+        at = f" at --timeout {timeout}s" if timeout is not None else ""
+        print(f"{prefix}run hung: watchdog killed it{at} before the shot table completed")
+    assertions = parse_gui_asserts(output)
+    print()
+    if not assertions:
+        return assertions, hung, []
+    print_assert_table(assertions)
+    failures = [a for a in assertions if a["result"] == "FAIL"]
+    print(f"\n{prefix}{len(assertions) - len(failures)}/{len(assertions)} assertions passed")
+    if failures:
+        print("\nFailing assertions:")
+        for a in failures:
+            print(f"  shot={a['shot']} name={a['name']} kind={a['kind']} actual={a['actual']}")
+    return assertions, hung, failures
 
 
 def detect_worktree_root(start: Path) -> Path:
