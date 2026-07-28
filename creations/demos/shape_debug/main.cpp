@@ -351,6 +351,31 @@ bool g_yawSweep = false;
 std::vector<IRVideo::AutoScreenshotShot> g_yawSweepShots;
 std::vector<std::array<char, 40>> g_yawSweepShotLabels;
 
+// Shared shot-table emission for the sweep-flag family below (--spin-yaw,
+// --pivot-focus-demo, --pivot-verify, --pan-sweep, --yaw-sweep): reserves
+// both vectors up front — `shots`/`labels` must never reallocate mid-loop,
+// since every shot's `label_` points into `labels` — then for each index
+// formats the label (`formatLabel`) and asks `makeShot` for the rest of the
+// shot's fields.
+template <typename LabelArray, typename FormatLabelFn, typename MakeShotFn>
+void emitSweepShots(
+    std::vector<IRVideo::AutoScreenshotShot> &shots,
+    std::vector<LabelArray> &labels,
+    int n,
+    FormatLabelFn &&formatLabel,
+    MakeShotFn &&makeShot
+) {
+    labels.reserve(n);
+    shots.reserve(n);
+    for (int i = 0; i < n; ++i) {
+        auto &label = labels.emplace_back();
+        formatLabel(label, i);
+        IRVideo::AutoScreenshotShot shot = makeShot(i);
+        shot.label_ = label.data();
+        shots.push_back(shot);
+    }
+}
+
 // Register shape_debug's custom flags on the engine-owned parser. --help /
 // --auto-screenshot / --config-preset are pre-registered by the Parser ctor;
 // IREngine::init(argc, argv) parses common + these in one pass, so --help lists
@@ -744,11 +769,6 @@ void initSystems() {
             // visible at full pixel scale. The regression set baselines both.
             const float sweepZoom = g_initialZoom > 0.0f ? g_initialZoom : 4.0f;
             const int n = IRMath::max(2, g_spinYawShotCount);
-            // Reserve up front so push_back never reallocates — moving the
-            // label buffer would invalidate the pointers already in
-            // g_spinYawShots.
-            g_spinYawShotLabels.reserve(n);
-            g_spinYawShots.reserve(n);
             // In --spin-shape mode the single shape is screen-centred under
             // yaw-about-origin, so attach a centred ROI crop sized to half the
             // shorter framebuffer edge: the jitter sweep then scores small
@@ -760,17 +780,24 @@ void initSystems() {
                 const int side = IRMath::max(64, IRMath::min(fb.x, fb.y) / 2);
                 g_spinShapeCrop = {(fb.x - side) / 2, (fb.y - side) / 2, side, side, "center"};
             }
-            for (int i = 0; i < n; ++i) {
-                const float yaw = (static_cast<float>(i) / static_cast<float>(n)) * IRMath::kTwoPi;
-                auto &label = g_spinYawShotLabels.emplace_back();
-                std::snprintf(label.data(), label.size(), "spin_yaw_%03d_of_%03d", i, n);
-                IRVideo::AutoScreenshotShot shot{sweepZoom, vec2(0, 0), yaw, label.data()};
-                if (useSpinShapeCrop) {
-                    shot.crops_ = &g_spinShapeCrop;
-                    shot.numCrops_ = 1;
+            emitSweepShots(
+                g_spinYawShots,
+                g_spinYawShotLabels,
+                n,
+                [n](auto &label, int i) {
+                    std::snprintf(label.data(), label.size(), "spin_yaw_%03d_of_%03d", i, n);
+                },
+                [&](int i) {
+                    const float yaw =
+                        (static_cast<float>(i) / static_cast<float>(n)) * IRMath::kTwoPi;
+                    IRVideo::AutoScreenshotShot shot{sweepZoom, vec2(0, 0), yaw};
+                    if (useSpinShapeCrop) {
+                        shot.crops_ = &g_spinShapeCrop;
+                        shot.numCrops_ = 1;
+                    }
+                    return shot;
                 }
-                g_spinYawShots.push_back(shot);
-            }
+            );
             cfg.shots_ = g_spinYawShots.data();
             cfg.numShots_ = static_cast<int>(g_spinYawShots.size());
             IR_LOG_INFO(
@@ -793,22 +820,25 @@ void initSystems() {
             const float yaws[] =
                 {0.0f, IRMath::kHalfPi, IRMath::kPi, 3.0f * IRMath::kHalfPi, IRMath::kQuarterPi};
             constexpr int n = sizeof(yaws) / sizeof(yaws[0]);
-            g_pivotFocusShotLabels.reserve(n);
-            g_pivotFocusShots.reserve(n);
-            for (int i = 0; i < n; ++i) {
-                auto &label = g_pivotFocusShotLabels.emplace_back();
-                std::snprintf(label.data(), label.size(), "pivot_focus_yaw_%03d", i);
-                IRVideo::AutoScreenshotShot shot{};
-                shot.zoom_ = sweepZoom;
-                shot.cameraIso_ = centerPan;
-                shot.yawRadians_ = yaws[i];
-                shot.label_ = label.data();
-                shot.crops_ = kCropsPivotPillar;
-                shot.numCrops_ = sizeof(kCropsPivotPillar) / sizeof(kCropsPivotPillar[0]);
-                shot.pivotFocusWorld_ = kPivotPillarCenter;
-                shot.hasPivotFocus_ = true;
-                g_pivotFocusShots.push_back(shot);
-            }
+            emitSweepShots(
+                g_pivotFocusShots,
+                g_pivotFocusShotLabels,
+                n,
+                [](auto &label, int i) {
+                    std::snprintf(label.data(), label.size(), "pivot_focus_yaw_%03d", i);
+                },
+                [&](int i) {
+                    IRVideo::AutoScreenshotShot shot{};
+                    shot.zoom_ = sweepZoom;
+                    shot.cameraIso_ = centerPan;
+                    shot.yawRadians_ = yaws[i];
+                    shot.crops_ = kCropsPivotPillar;
+                    shot.numCrops_ = sizeof(kCropsPivotPillar) / sizeof(kCropsPivotPillar[0]);
+                    shot.pivotFocusWorld_ = kPivotPillarCenter;
+                    shot.hasPivotFocus_ = true;
+                    return shot;
+                }
+            );
             cfg.shots_ = g_pivotFocusShots.data();
             cfg.numShots_ = static_cast<int>(g_pivotFocusShots.size());
             IR_LOG_INFO(
@@ -848,28 +878,31 @@ void initSystems() {
                 IRMath::kTwoPi - IRMath::kQuarterPi
             };
             constexpr int n = sizeof(yaws) / sizeof(yaws[0]);
-            g_pivotVerifyShotLabels.reserve(n);
-            g_pivotVerifyShots.reserve(n);
-            for (int i = 0; i < n; ++i) {
-                auto &label = g_pivotVerifyShotLabels.emplace_back();
-                std::snprintf(
-                    label.data(),
-                    label.size(),
-                    "pv_%s_yaw_%03d",
-                    g_pivotVerifyBlock.c_str(),
-                    i
-                );
-                IRVideo::AutoScreenshotShot shot{};
-                shot.zoom_ = sweepZoom;
-                shot.cameraIso_ = pan;
-                shot.yawRadians_ = yaws[i];
-                shot.label_ = label.data();
-                if (explicitFocus) {
-                    shot.pivotFocusWorld_ = kPivotPillarCenter;
-                    shot.hasPivotFocus_ = true;
+            emitSweepShots(
+                g_pivotVerifyShots,
+                g_pivotVerifyShotLabels,
+                n,
+                [](auto &label, int i) {
+                    std::snprintf(
+                        label.data(),
+                        label.size(),
+                        "pv_%s_yaw_%03d",
+                        g_pivotVerifyBlock.c_str(),
+                        i
+                    );
+                },
+                [&](int i) {
+                    IRVideo::AutoScreenshotShot shot{};
+                    shot.zoom_ = sweepZoom;
+                    shot.cameraIso_ = pan;
+                    shot.yawRadians_ = yaws[i];
+                    if (explicitFocus) {
+                        shot.pivotFocusWorld_ = kPivotPillarCenter;
+                        shot.hasPivotFocus_ = true;
+                    }
+                    return shot;
                 }
-                g_pivotVerifyShots.push_back(shot);
-            }
+            );
             cfg.shots_ = g_pivotVerifyShots.data();
             cfg.numShots_ = static_cast<int>(g_pivotVerifyShots.size());
             const vec3 probeCenter = pivotVerifyProbeCenter();
@@ -894,19 +927,22 @@ void initSystems() {
             const float sweepYaw = g_initialYawSet ? g_initialYaw : IRMath::kQuarterPi;
             const int n = IRMath::max(2, g_autoWarmupFrames > 0 ? g_spinYawShotCount : 24);
             const vec2 base = vec2(16.0f, 16.0f);
-            g_panSweepShotLabels.reserve(n);
-            g_panSweepShots.reserve(n);
-            for (int i = 0; i < n; ++i) {
-                const float t = static_cast<float>(i) / static_cast<float>(n - 1);
-                auto &label = g_panSweepShotLabels.emplace_back();
-                std::snprintf(label.data(), label.size(), "pan_sweep_%03d_of_%03d", i, n);
-                IRVideo::AutoScreenshotShot shot{};
-                shot.zoom_ = sweepZoom;
-                shot.cameraIso_ = base + vec2(2.0f * t, 0.0f);
-                shot.yawRadians_ = sweepYaw;
-                shot.label_ = label.data();
-                g_panSweepShots.push_back(shot);
-            }
+            emitSweepShots(
+                g_panSweepShots,
+                g_panSweepShotLabels,
+                n,
+                [n](auto &label, int i) {
+                    std::snprintf(label.data(), label.size(), "pan_sweep_%03d_of_%03d", i, n);
+                },
+                [&](int i) {
+                    const float t = static_cast<float>(i) / static_cast<float>(n - 1);
+                    IRVideo::AutoScreenshotShot shot{};
+                    shot.zoom_ = sweepZoom;
+                    shot.cameraIso_ = base + vec2(2.0f * t, 0.0f);
+                    shot.yawRadians_ = sweepYaw;
+                    return shot;
+                }
+            );
             cfg.shots_ = g_panSweepShots.data();
             cfg.numShots_ = static_cast<int>(g_panSweepShots.size());
             IR_LOG_INFO(
@@ -929,19 +965,22 @@ void initSystems() {
             const int n = IRMath::max(2, 24);
             constexpr float kYawLo = 0.05f;
             constexpr float kYawHi = 0.70f;
-            g_yawSweepShotLabels.reserve(n);
-            g_yawSweepShots.reserve(n);
-            for (int i = 0; i < n; ++i) {
-                const float t = static_cast<float>(i) / static_cast<float>(n - 1);
-                auto &label = g_yawSweepShotLabels.emplace_back();
-                std::snprintf(label.data(), label.size(), "yaw_sweep_%03d_of_%03d", i, n);
-                IRVideo::AutoScreenshotShot shot{};
-                shot.zoom_ = sweepZoom;
-                shot.cameraIso_ = vec2(0.0f, 0.0f);
-                shot.yawRadians_ = kYawLo + (kYawHi - kYawLo) * t;
-                shot.label_ = label.data();
-                g_yawSweepShots.push_back(shot);
-            }
+            emitSweepShots(
+                g_yawSweepShots,
+                g_yawSweepShotLabels,
+                n,
+                [n](auto &label, int i) {
+                    std::snprintf(label.data(), label.size(), "yaw_sweep_%03d_of_%03d", i, n);
+                },
+                [&](int i) {
+                    const float t = static_cast<float>(i) / static_cast<float>(n - 1);
+                    IRVideo::AutoScreenshotShot shot{};
+                    shot.zoom_ = sweepZoom;
+                    shot.cameraIso_ = vec2(0.0f, 0.0f);
+                    shot.yawRadians_ = kYawLo + (kYawHi - kYawLo) * t;
+                    return shot;
+                }
+            );
             cfg.shots_ = g_yawSweepShots.data();
             cfg.numShots_ = static_cast<int>(g_yawSweepShots.size());
             IR_LOG_INFO(
