@@ -396,7 +396,7 @@ authoring zoom (`kSessionZoom = 4`):
 **Root cause — the picker's iso-pixel floor collapses `-x` and `-y` face aims
 onto the same pixel at cardinal yaw.** The place path is `hit.voxelPos_ +
 hit.faceNormal_` (`voxel_editor/main.cpp`), where `hit.faceNormal_` comes from
-`IRPrefab::Picking::detail::voxelHitFaceNormal(worldHitPos - voxelCenter)` — the
+`IRPrefab::Picking::voxelHitFaceNormal(worldHitPos - voxelCenter)` — the
 dominant axis of the ray's entry offset, with tie-break priority **x > y > z**.
 The cursor→ray inverse (`IRRender::mouseWorldPos3DAtIsoDepth`) **floors** the iso
 pixel to the integer lattice: `isoPixelToPos3D(floor(canvasIso.x),
@@ -458,11 +458,24 @@ change to the load-bearing picker.
   automatically; only a target whose *sole* occupied anchor is on the `+y` side
   hits this wall.
 
-**Recommended follow-up (#2578, agent-approved lane).** The session shadow model
-(`OccupancyModel::pick`, `session_builder.hpp`) marches the *exact* aim ray, so
-it does **not** reproduce the picker's iso-pixel floor and greenlights a `-y` aim
-whose live click misfires — the silent-no-op source. A hardening pass should make
-`pick` reproduce the floored-iso march + `voxelHitFaceNormal`, and have
-`aimToPlace` reject an aim whose predicted face normal disagrees with the
-intended one (so it either finds a disambiguable anchor or records an
-`unreachable` recipe error, instead of emitting a click that no-ops).
+**Follow-up (#2578, agent-approved lane) — LANDED.** The session shadow model
+(`OccupancyModel::pick`, `session_builder.hpp`) marched the *exact* aim ray, so
+it did **not** reproduce the picker's iso-pixel floor and greenlit a `-y` aim
+whose live click misfires — the silent-no-op source. `pick` now reproduces the
+floored-iso march + `voxelHitFaceNormal` and returns the predicted normal
+alongside the cell, and `aimToPlace` rejects an aim whose predicted normal
+disagrees with the intended one — so a `-y`-only target either finds a
+disambiguable anchor or records an `unreachable` recipe error, instead of
+emitting a click that no-ops.
+
+**The round trip above is idealized — the live one quantizes to a whole screen
+pixel first.** `worldPos3DToMouseScreenPx` rounds to an integer *screen* pixel
+before `mouseWorldPos3DAtIsoDepth` floors back to iso, and at `kSessionZoom = 4`
+an iso row is 4 screen px. A face-plane aim sits only ~0.1 iso from a floor
+boundary, i.e. inside that rounding, so its recovered pixel can be one row off
+the table above. The collapse tables stay valid as the *mechanism*; what changes
+is that a shadow model cannot place its aim on the face plane and expect the
+floor to agree. `pick` therefore treats the face offset as a pixel *probe* and
+re-centres the emitted aim inside the chosen pixel, which buys the full
+half-pixel of margin. See `aimIsoPixel` in
+`engine/prefabs/irreden/render/picking.hpp`.
