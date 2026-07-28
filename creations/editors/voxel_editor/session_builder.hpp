@@ -8,6 +8,8 @@
 #include <irreden/render/gui_test_assertions.hpp>
 #include <irreden/render/picking.hpp>
 
+#include "symmetry.hpp"
+
 #include <deque>
 #include <optional>
 #include <string>
@@ -111,10 +113,33 @@ class OccupancyModel {
         m_occupied[flatIndex(local)] = on;
     }
 
-    void setBox(IRMath::ivec3 a, IRMath::ivec3 b, bool on) {
+    // Mirror-symmetry-aware writes (#766 F-1.6 PR-2). The editor's applyEdit
+    // reflects every edit across the enabled mirror planes (via applyMirrors);
+    // the shadow model must mirror the same way, or aiming a later click at a
+    // mirror-created voxel (or asserting its occupancy) would disagree with the
+    // live set. Both sides call the one applyMirrors helper against the same
+    // scene-centre plane, so they can't drift.
+    void setMirrored(IRMath::ivec3 cell, bool on, const SymmetryState &sym) {
+        if (!sym.enableX_ && !sym.enableY_ && !sym.enableZ_) {
+            set(cell, on);
+            return;
+        }
+        std::vector<IRMath::ivec3> cells;
+        applyMirrors(cell, sym, cells);
+        for (const IRMath::ivec3 &c : cells)
+            set(c, on);
+    }
+
+    void setBoxMirrored(IRMath::ivec3 a, IRMath::ivec3 b, bool on, const SymmetryState &sym) {
         const IRMath::ivec3 lo{IRMath::min(a.x, b.x), IRMath::min(a.y, b.y), IRMath::min(a.z, b.z)};
         const IRMath::ivec3 hi{IRMath::max(a.x, b.x), IRMath::max(a.y, b.y), IRMath::max(a.z, b.z)};
-        IRMath::iterateAABB(lo, hi, [&](int x, int y, int z) { set(IRMath::ivec3(x, y, z), on); });
+        IRMath::iterateAABB(lo, hi, [&](int x, int y, int z) {
+            setMirrored(IRMath::ivec3(x, y, z), on, sym);
+        });
+    }
+
+    IRMath::ivec3 size() const {
+        return m_size;
     }
 
     // The editor seeds the editable set with a full ground plane at the far z
@@ -301,7 +326,7 @@ class Builder {
         emitMove(*aim);
         emitButton(IRVideo::GuiInputEvent::Type::PRESS, IRInput::kMouseButtonLeft);
         emitButton(IRVideo::GuiInputEvent::Type::RELEASE, IRInput::kMouseButtonLeft);
-        m_model.set(target, !m_eraseMode);
+        m_model.setMirrored(target, !m_eraseMode, m_symmetry);
     }
 
     // Park the cursor on `target`'s clickable face without pressing. Splits
@@ -340,7 +365,7 @@ class Builder {
         // before the release commits the fill.
         m_frame += kFramesPerClickStep;
         emitButton(IRVideo::GuiInputEvent::Type::RELEASE, IRInput::kMouseButtonLeft);
-        m_model.setBox(a, b, !m_eraseMode);
+        m_model.setBoxMirrored(a, b, !m_eraseMode, m_symmetry);
     }
 
     // Tap a key with no modifier (V erase-mode toggle, X/Y/Z mirrors, K layer).
@@ -364,8 +389,54 @@ class Builder {
         m_eraseMode = !m_eraseMode;
     }
 
+    // Enable mirror-symmetry axes for subsequent edits (#766 F-1.6 PR-2). Taps
+    // the editor's X/Y/Z toggles so the live editor mirrors each edit, and turns
+    // on the shadow model's mirroring against the same scene-centre planes the
+    // editor uses (SymmetryState offsets set to (size-1)/2 in main() — the
+    // editor mirrors around that plane, so the model must too). Call once with
+    // every axis to enable; assumes symmetry starts off (the editor's default).
+    void enableSymmetry(bool x, bool y, bool z) {
+        const IRMath::ivec3 size = m_model.size();
+        if (x) {
+            tapKey(IRInput::kKeyButtonX);
+            m_symmetry.enableX_ = true;
+            m_symmetry.offsetX_ = mirrorCenterOffset(size.x);
+        }
+        if (y) {
+            tapKey(IRInput::kKeyButtonY);
+            m_symmetry.enableY_ = true;
+            m_symmetry.offsetY_ = mirrorCenterOffset(size.y);
+        }
+        if (z) {
+            tapKey(IRInput::kKeyButtonZ);
+            m_symmetry.enableZ_ = true;
+            m_symmetry.offsetZ_ = mirrorCenterOffset(size.z);
+        }
+    }
+
+    // Create a new layer (K); the editor auto-activates it, so subsequent
+    // placements land on it.
+    void addLayer() {
+        tapKey(IRInput::kKeyButtonK);
+    }
+
+    // Toggle the active layer's visibility (H). A hidden layer's voxels report
+    // unoccupied (alpha 0, the same liveness test evaluateOccupancyCheck reads),
+    // so a hide-then-assert-empty / show-then-assert-full pair positively fires
+    // the visibility path.
+    void toggleActiveLayerVisibility() {
+        tapKey(IRInput::kKeyButtonH);
+    }
+
     void save() {
         chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonS);
+    }
+
+    // Reload the last-saved scene from disk (Ctrl+O) — the save→load round-trip
+    // check. The shadow model is NOT re-synced from disk, so issue no aiming ops
+    // after this; only occupancy asserts, which read the live reloaded set.
+    void reload() {
+        chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonO);
     }
 
     // Assert the live editable set's occupancy at `local` when this segment
@@ -437,6 +508,7 @@ class Builder {
     Segment m_current;
     int m_frame = 0;
     bool m_eraseMode = false;
+    SymmetryState m_symmetry;
 };
 
 } // namespace IRVoxelEditor::Session

@@ -715,23 +715,22 @@ void applyLayerVisibility(std::uint8_t layerId, bool visible) {
     });
 }
 
-// Apply a single placement / erasure edit to the voxel set, appending
-// the prior state to the in-flight stroke buffer. Skips the edit when
-// the target index is out of bounds for the set. `flat` is the linear
-// pool index so the per-voxel mutation reuses the precomputed offset.
-// `boneId` defaults to 0 (identity) for normal color-paint; pass the
-// active bone index when in bone-paint mode (#1608). Writes the raw
-// `voxels_` span directly — callers always finish a batch of these
-// (single edit, line, AABB, face-fill, or SDF bake) with one
-// `commitStroke()`, which resyncs derived state once for the whole batch.
-void applyEdit(
+// Apply a single placement / erasure edit to one cell, appending the prior
+// state to the in-flight stroke buffer. `flat` is the linear pool index so the
+// per-voxel mutation reuses the precomputed offset. `boneId` is 0 (identity) for
+// normal color-paint; the active bone index in bone-paint mode (#1608). Writes
+// the raw `voxels_` span directly — callers always finish a batch of these
+// (single edit, line, AABB, face-fill, or SDF bake) with one `commitStroke()`,
+// which resyncs derived state once for the whole batch. Not called directly:
+// applyEdit fans an edit out across the enabled mirror planes into this.
+void applyEditRaw(
     IREntity::EntityId voxelSetEntity,
     C_VoxelSetNew &set,
     ivec3 localIdx,
     std::size_t flat,
     bool place,
     Color placeColor,
-    std::uint8_t boneId = 0
+    std::uint8_t boneId
 ) {
     UndoEdit edit{voxelSetEntity, localIdx, set.voxels_[flat]};
     g_editor.pendingStroke_.edits_.push_back(edit);
@@ -747,6 +746,42 @@ void applyEdit(
     } else {
         set.voxels_[flat].deactivate();
         set.voxels_[flat].layer_id_ = 0;
+    }
+}
+
+// Scratch buffer for the mirror expansion, retained across edits so a symmetric
+// stroke doesn't reallocate per voxel (applyMirrors clears it on entry).
+std::vector<ivec3> g_mirrorScratch;
+
+// Apply a placement / erasure at `localIdx`, mirrored across every enabled
+// symmetry plane (#766 F-1.6 — wires the previously call-site-less applyMirrors,
+// the F-1.2 regression). Every mirror copy lands in the one pending stroke, so a
+// single Ctrl+Z restores the whole symmetric edit and the derived-state resync
+// still runs once per stroke in commitStroke. With symmetry off this is a thin
+// pass-through to applyEditRaw. `flat` is localIdx's precomputed pool index.
+void applyEdit(
+    IREntity::EntityId voxelSetEntity,
+    C_VoxelSetNew &set,
+    ivec3 localIdx,
+    std::size_t flat,
+    bool place,
+    Color placeColor,
+    std::uint8_t boneId = 0
+) {
+    if (!g_symmetry.enableX_ && !g_symmetry.enableY_ && !g_symmetry.enableZ_) {
+        applyEditRaw(voxelSetEntity, set, localIdx, flat, place, placeColor, boneId);
+        return;
+    }
+    applyMirrors(localIdx, g_symmetry, g_mirrorScratch);
+    for (const ivec3 &cell : g_mirrorScratch) {
+        if (cell.x < 0 || cell.x >= set.size_.x || cell.y < 0 || cell.y >= set.size_.y ||
+            cell.z < 0 || cell.z >= set.size_.z)
+            continue;
+        const std::size_t cellFlat =
+            static_cast<std::size_t>(IRMath::index3DtoIndex1D(cell, set.size_));
+        if (cellFlat >= set.voxels_.size())
+            continue;
+        applyEditRaw(voxelSetEntity, set, cell, cellFlat, place, placeColor, boneId);
     }
 }
 
@@ -1436,8 +1471,8 @@ int main(int argc, char **argv) {
     // --auto-screenshot as well (that is what wires the harness at all).
     IREngine::args().enumValue(
         "--gui-session",
-        "replay an authoring session's scripted gestures: none | drag_probe | rock",
-        {"none", "drag_probe", "rock"},
+        "replay an authoring session's scripted gestures: none | drag_probe | rock | mushroom",
+        {"none", "drag_probe", "rock", "mushroom"},
         "none"
     );
     IREngine::init(argc, argv);
@@ -2578,7 +2613,13 @@ void initCommands() {
         }
     );
 
-    // X/Y/Z: toggle mirror-symmetry axis.
+    // X/Y/Z: toggle mirror-symmetry axis. When an axis turns ON, seat its mirror
+    // plane at the scene centre ((size-1)/2, pairing cell 0 with size-1) so the
+    // edit reflection (applyEdit → applyMirrors) lands within [0, size); the
+    // default offset 0 would map cell v to -v, out of bounds, dropping every
+    // mirror. There is no UI for a non-centre plane, so the centre is the only
+    // meaningful position; leaving the offset alone on toggle-OFF keeps a
+    // symmetry-disabled scene's saved META (sym_offset_*) untouched (#766 F-1.6).
     auto logSymmetry = []() {
         IR_LOG_INFO(
             "Symmetry: X=%s Y=%s Z=%s",
@@ -2593,6 +2634,9 @@ void initCommands() {
         IRInput::KeyMouseButtons::kKeyButtonX,
         [logSymmetry]() {
             IRVoxelEditor::g_symmetry.enableX_ = !IRVoxelEditor::g_symmetry.enableX_;
+            if (IRVoxelEditor::g_symmetry.enableX_)
+                IRVoxelEditor::g_symmetry.offsetX_ =
+                    IRVoxelEditor::mirrorCenterOffset(IRVoxelEditor::g_editableSceneSize.x);
             logSymmetry();
         }
     );
@@ -2602,6 +2646,9 @@ void initCommands() {
         IRInput::KeyMouseButtons::kKeyButtonY,
         [logSymmetry]() {
             IRVoxelEditor::g_symmetry.enableY_ = !IRVoxelEditor::g_symmetry.enableY_;
+            if (IRVoxelEditor::g_symmetry.enableY_)
+                IRVoxelEditor::g_symmetry.offsetY_ =
+                    IRVoxelEditor::mirrorCenterOffset(IRVoxelEditor::g_editableSceneSize.y);
             logSymmetry();
         }
     );
@@ -2625,6 +2672,9 @@ void initCommands() {
         [logSymmetry]() {
             if (!IRInput::checkKeyMouseModifiers(IRInput::kModifierControl, 0u)) {
                 IRVoxelEditor::g_symmetry.enableZ_ = !IRVoxelEditor::g_symmetry.enableZ_;
+                if (IRVoxelEditor::g_symmetry.enableZ_)
+                    IRVoxelEditor::g_symmetry.offsetZ_ =
+                        IRVoxelEditor::mirrorCenterOffset(IRVoxelEditor::g_editableSceneSize.z);
                 logSymmetry();
             }
         }

@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "mode": "DENSE",
+  "bounds": {
+    "min": [
+      0,
+      0,
+      0
+    ],
+    "max": [
+      16,
+      16,
+      16
+    ]
+  },
+  "material_registry_refs": [],
+  "layer_names": [],
+  "frame_count": 0,
+  "shape_primitives_summary": {}
+}
