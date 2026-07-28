@@ -101,6 +101,18 @@ state_for() {
 case "$1 $2" in
     "issue view")
         issue_num="$3"
+        # #2586: the stack-base ancestry gate fetches the BASE issue's raw
+        # body via `--json body --jq .body` — distinct from every other
+        # issue-view call in this stub (which asks for state, or the full
+        # state,labels,body tuple). #9001 is the only base used below and
+        # carries no blockers, so the ancestry walk clears trivially.
+        if [[ "$*" == *"--json body"* ]]; then
+            case "$issue_num" in
+                9001) echo "**Blocked by:** (none)" ;;
+                *)    echo "" ;;
+            esac
+            exit 0
+        fi
         has_jq=0
         for a in "$@"; do
             [[ "$a" == "--jq" ]] && has_jq=1
@@ -134,11 +146,35 @@ case "$1 $2" in
         exit 0
         ;;
     "pr view")
-        # Only the --stackable-on no-false-positive test reaches this; make it
-        # fail so cmd_claim bails cleanly (we assert on the guard, not success).
-        exit 1
+        # #2586: PR #9001 is a deliberately-valid stack base (OPEN, resolvable
+        # head, no unsafe labels) so a claim can reach the open-PR duplicate
+        # check below under --stackable-on. Every other id keeps the
+        # pre-existing fail-closed behavior — the T8 no-false-positive-on-the
+        # `--repo`-scan case never depends on this resolving.
+        case "$3" in
+            9001) printf '%s' '{"state":"OPEN","headRefName":"claude/9001-base","labels":[]}' ;;
+            *)    exit 1 ;;
+        esac
+        exit 0
+        ;;
+    "pr diff")
+        # #2586: non-empty diff for the valid base #9001 — an empty diff reads
+        # as a claim-commit-only skeleton and unsafe_base_reason rejects it.
+        # Every other id keeps the pre-existing default (empty diff, exit 0).
+        case "$3" in
+            9001) printf '%s\n' "engine/base.cpp" ;;
+        esac
+        exit 0
         ;;
     "pr list"|"issue list")
+        if [[ "$*" == *"--state open"* ]]; then
+            # #2586: two open PRs — #8001 duplicates issue #9002 (the
+            # regression case for the fix), #8002 is the stack base's OWN PR
+            # (named for #9001, not the claimed issue), proving the base's PR
+            # is never mistaken for a duplicate of a *different* claimed issue.
+            printf '%s\n' '[{"number":8001,"headRefName":"claude/9002-dup","body":""},{"number":8002,"headRefName":"claude/9001-base","body":""}]'
+            exit 0
+        fi
         echo '[]'
         exit 0
         ;;
@@ -230,5 +266,35 @@ err=$("$FLEET_CLAIM" reconcile --repo jakildev/IrredenEngine --bogus-flag 2>&1 1
 assert_exit "$actual" 2 "reconcile --repo <owner/repo> --bogus-flag → exit 2 (its own error)"
 assert_contains "$err" "reconcile: unknown arg" "reconcile's own parser saw the trailing --repo"
 assert_absent "$err" "must precede the subcommand" "reconcile's trailing --repo is exempt from Guard 2"
+
+# ============================================================================
+# Guard 3 (#2586) — duplicate-open-PR guard also fires under --stackable-on
+# ============================================================================
+#
+# Prior behavior: `[[ -z "$stackable_branch" ]] && ...` skipped the open-PR
+# sanity check entirely whenever --stackable-on was passed, so the stackable
+# fallback tier could hand out a task that already has its own open, approved
+# PR (game #284 via PR #323 — caught by hand, not by the tool). The fix drops
+# that short-circuit; the guard's matcher already keys on the *claimed* issue
+# number, so a stack base's own PR (named for the *blocker*, a different
+# issue) can never be mistaken for a duplicate of the claimed issue.
+#
+# PR #9001 (branch claude/9001-base) is a deliberately-valid stack base for
+# both cases below: OPEN, no unsafe labels, non-empty diff, and its own issue
+# has no blockers (so the ancestry gate clears trivially) — see the gh stub.
+
+# --- T11: claimed issue already has its OWN open PR → refused ---------------
+echo "T11: --stackable-on claim refused when the CLAIMED issue already has its own open PR"
+err=$("$FLEET_CLAIM" claim 9002 test-agent --stackable-on 9001 2>&1 1>/dev/null) && actual=0 || actual=$?
+assert_exit "$actual" 1 "claim 9002 --stackable-on 9001 (9002 already has open PR #8001) → exit 1"
+assert_contains "$err" "already has open PR #8001" "duplicate-PR guard fires under --stackable-on"
+assert_no_dir "$FLEET_CLAIMS_DIR/9002" "no claim dir created when the duplicate-PR guard refuses"
+
+# --- T12: only the STACK BASE has an open PR → not a false-positive dup -----
+echo "T12: --stackable-on claim still succeeds when only the stack base has an open PR (no false positive)"
+actual=0; "$FLEET_CLAIM" claim 9003 test-agent --stackable-on 9001 2>/dev/null || actual=$?
+assert_exit "$actual" 0 "claim 9003 --stackable-on 9001 (base's own PR #8002 isn't a false-positive dup) → exit 0"
+assert_dir "$FLEET_CLAIMS_DIR/9003" "claim dir created for the legitimate stackable claim"
+release_quiet 9003
 
 summarize
