@@ -18,7 +18,9 @@ constexpr IRMath::CardinalIndex kCardinal = IRMath::CardinalIndex::k0;
 
 // The face-aim depth the session builder clicks at: far enough inside the cube
 // that the picker's dominant-axis face derivation is stable, but well under the
-// half-pixel bias the floor applies.
+// half-pixel bias the floor applies. Mirrors
+// IRVoxelEditor::Session::kFaceAimDepth (session_builder.hpp) — a test under
+// test/ can't include a creation header, so keep this value in sync by hand.
 constexpr float kFaceAimDepth = 0.4f;
 
 TEST(PickingAimIsoPixel, VoxelCentreLandsOnItsOwnPixel) {

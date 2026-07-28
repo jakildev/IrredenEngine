@@ -158,6 +158,14 @@ class OccupancyModel {
     // its floored iso pixel first (aimIsoPixel), because that pixel is the only
     // thing the live picker ever sees; marching the exact aim ray instead would
     // resolve sub-pixel detail the cursor cannot carry.
+    //
+    // The face normal this returns agrees with the live picker's only because
+    // both grids land on the same 0.5 lattice today (session scenes build
+    // without demo furniture and every occupied cell/ghost origin is a multiple
+    // of 0.5 — see docs/design/editor-authoring-friction.md §M-2's
+    // quantization caveat); a future visible entity with an off-lattice depth
+    // origin in a session scene would silently break that agreement on the
+    // collapsed -x/-y columns without failing a test.
     std::optional<PickPrediction> pick(IRMath::vec3 worldAim) const {
         const IRMath::ivec2 isoPixel =
             IRPrefab::Picking::aimIsoPixel(worldAim, kSessionCardinalIndex);
