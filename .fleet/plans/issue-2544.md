@@ -192,19 +192,98 @@ suites green, pan/yaw jitter sweeps SMOOTH, clean exits.
 
 ## Steward ledger
 
-reconciled-through: 2026-07-22
-proposal-pending: none
+reconciled-through: PR #2562 merge (2026-07-28)
+proposal-pending: https://github.com/jakildev/IrredenEngine/issues/2544#issuecomment-5100516659
 
 ### Children
 | Child | State | PR | Plan | Last validated |
 |---|---|---|---|---|
-| #2545 | open | — | plan | 2026-07-24 |
-| #2546 | open | — | plan | 2026-07-24 |
-| #2547 | open | — | plan | 2026-07-24 |
-| #2548 | open | — | plan | 2026-07-24 |
+| #2545 | merged | #2562 | plan | 2026-07-28 (PR #2562 merge) |
+| #2546 | in-progress | #2576 (approved, awaiting Windows smoke) | plan | 2026-07-28 (PR #2562 merge) |
+| #2547 | in-progress (design-proposed) | #2585 | plan + A1 | 2026-07-28 (PR #2562 merge) |
+| #2548 | open | — | plan | 2026-07-28 (PR #2562 merge) |
 
 ### Decisions
 <!-- entries: D<n> (<YYYY-MM-DD>): <decision> — source: <link>  (numbered scheme per epic-steward-protocol.md §Decisions; escalation rules reference decisions by D-id) -->
+- D1 (2026-07-28): One rotation-anchor convention engine-wide — an entity's exact
+  `position` is the point the scene rotates about under camera Z-yaw, for every
+  render path; the voxel raster (previously `position + (0.5,0.5,0.5)`) is the
+  deviant and was moved, not the SDF/CPU path. Phase 1 candidate **1**
+  (kernel-side) was selected over candidate 2. — source: §Phase 1 (A) opening
+  sentence + decision criterion; realized by PR #2562.
+- D2 (2026-07-28): The settled-cardinal `cardinalLowerCornerShift` (`s_k`, k=1..3)
+  is removed from the stores AND symmetrically from the recovery inverse
+  `trixelCanvasPixelToWorld3D`, so every (pixel, depth) → world round-trip
+  (lighting, AO, fog, sun-shadow bake/receive) recovers identical world positions
+  while the canvas pixel where content sits moves at cardinals 1–3. Cardinal
+  yaw-**0** output is unchanged. — source: PR #2562 §What + §Cross-system audit.
+- D3 (2026-07-28): CPU picking (`mouseWorldPos3DAtIsoDepth` /
+  `worldPos3DToMouseScreenPx`) never applied `s_k`, so after D2 the raster
+  *agrees* with picking at cardinals 1–3 with zero picking changes. Phase 4's
+  `castVoxelRay` surface latch inherits this agreement — do not re-derive a
+  picking compensation for it. — source: PR #2562 §What, final bullet.
 
 ### Events
 - 2026-07-22: filed via file-epic
+- 2026-07-24: epic plan doc + ledger landed (PR #2555); pivot-verify harness
+  landed 2026-07-26 (PR #2553).
+- 2026-07-28: **#2545 (P1) merged via PR #2562** — checklist ticked. Scope-drift
+  audit: in scope, candidate 1 as the plan's decision criterion allows (D1). Two
+  in-scope deltas beyond the literal "yaw-project the half cell" text, both
+  recorded above: the `s_k` removal + symmetric recovery-inverse drop (D2) and
+  the resulting picking agreement (D3). Reference refresh in that PR is confined
+  to **yaw** shots and therefore does NOT breach Phase 1 acceptance 3
+  ("`img_diff` = 0 … for non-yaw shots") / 4:
+  - shape_debug: `zoom4_yaw45_inter_cardinal`, `zoom4_yaw90/180/270`,
+    `zoom8_yaw180`, `zoom4_pan16_yaw45/90/180_pivot` — every refreshed ref is a
+    yaw≠0 pose. The suite's settled yaw-0 refs (`zoom4_origin`, `zoom8_origin`,
+    `zoom4_pan16_yaw0_pivot`, the `__crop_*` variants) were **not** touched,
+    which is the positive evidence for cardinal-0 byte-identity.
+  - canvas_stress: `compare_yaw0`, `compare_yaw_q`, `so3_*`, `revoxelize_solids`
+    — the `yaw0`-named ones are not settled yaw-0 poses. `autoRotate_` defaults
+    true (`creations/demos/canvas_stress/main.cpp`) and the manifest's `compare`
+    extra_run passes only `--only compare` (unlike the `floor_selfshadow` /
+    `shadow_overlay_floor` runs, which do pass `--no-auto-rotate --no-spin`), so
+    `AUTO_YAW_ROTATE` is live through the 60-frame settle window that
+    `applyShotCameraState` opens *after* it writes the shot's
+    `yawRadians_ = 0` (`engine/video/src/auto_screenshot.cpp`).
+- 2026-07-28: downstream siblings re-validated against PR #2562. No stale plan
+  text found: #2546's plan targets the residual-yaw offset, which D1/D2 do not
+  touch, and its PR #2576 is already authored on top; #2547's `DepthProbe` /
+  `isoPixelToPos3D` / `cameraYawPivotOffset` references all survive (the
+  composite depth key moved to the cell anchor, and PR #2585 is stacked above
+  that change); #2548's premise is strengthened by D3, not invalidated. Skip-guard
+  not engaged — #2576 carries neither `fleet:merger-cooldown` nor
+  `fleet:stacked-rebase`.
+- 2026-07-28: **#2547 / PR #2585 design triage.** One question derivable
+  (amendment A1), one novel → parked `fleet:design-proposed` and escalated as
+  this iteration's proposal package (`fleet:steward-proposal` on the umbrella;
+  see `proposal-pending` above). Steward direction:
+  https://github.com/jakildev/IrredenEngine/pull/2585#issuecomment-5100511180
+
+## Amendments
+
+<!-- append-only; newest wins where it contradicts older plan text. Format per
+     docs/agents/epic-steward-protocol.md §"Plan amendments (append-only)". -->
+
+### A1 — 2026-07-28 — child #2547 (Phase 3 / B) — trigger: design-block triage of PR #2585
+
+- **Decision:** Phase 3 acceptance criterion 2 is discharged by a **purpose-built
+  background-center variant** of the harness — center pixel on background, the
+  derive must fall back to `isoPixelToPos3D(viewCenterIso, 0)`, and that block
+  must pin ≤1.5px across the sweep. It is **not** discharged by holding the
+  existing `center-column` block green: `center-column`'s center pixel lands on
+  the probe at iso depth 7, so that block never exercised the fallback path the
+  criterion is about.
+- **Supersedes:** the implicit reading of §Phase 3 (B) Acceptance 2 that
+  `center-column` is the vehicle for the fallback check. The criterion's subject
+  (the background-fallback path) is unchanged.
+- **Acceptance criteria:** §Phase 3 (B) Acceptance 2 now reads: "a
+  background-center block pins ≤1.5px across the sweep with the derive falling
+  back to `isoPixelToPos3D(viewCenterIso, 0)`." Whether `center-column` itself
+  may go red is **not** settled here — it is a consequence of the surface-vs-axis
+  contract ruling and rides the proposal package.
+- **By:** epic-steward — source: §Phase 3 (B) Acceptance 2, "add a
+  background-fallback shot variant **if needed**"; the parallel clause in #2547
+  §Acceptance criteria, "add a background-fallback variant to the harness **if
+  needed**".
