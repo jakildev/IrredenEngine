@@ -84,3 +84,34 @@ jitter_probe: frames=24 (valid=24)  verdict=SMOOTH
 SMOOTH requires `reversals == 0` on both axes and `max_residual <= --max-residual`.
 A clean fix flips a JITTER verdict (high reversals, multi-px residual) to SMOOTH
 (0 reversals, sub-px residual).
+
+## Accepted floors, and the model's blind spot (#2469)
+
+The default verdict models **linear** motion. On a probe where one axis is
+supposed to stay **pinned** (the Z-yaw-invariant cylinder under `--yaw-sweep`),
+that model is mis-specified on exactly that axis, in both directions:
+
+- **False positives.** A pinned centroid still moves ±0.1–0.8px from coverage
+  noise, and every sign flip counts as a reversal. Healthy engine master fails
+  `reversals == 0` at zoom 2, 4 and 8 on the yaw sweep, and on the `--pan-sweep`
+  twin. The canonical recipe therefore passes `--reversal-eps 0.8`, which
+  retires the criterion for these probes and leaves `--max-residual` as the live
+  assertion. That eps is not a calibrated floor — it sits at the top of the
+  observed per-frame delta range.
+- **False negatives.** A large but *smooth* centroid migration is what the line
+  fit calls correct. A known render defect (re-exposed via the engine's
+  `IR_PERAXIS_OVERFLOW_DISABLE=1` kill switch) migrates the x centroid by an
+  order of magnitude more than healthy master and still scores `reversals=0`
+  with a sub-pixel residual. Neither shipped axis fires on it.
+
+`--stationary` does not close the gap: it requires BOTH axes pinned, but on a
+yaw sweep the *other* axis legitimately translates — by more than the defect
+migrates — so `--stationary` reports DRIFT on every healthy run, including on
+the defect-free continuous-geometry control.
+
+Until **#2606** adds a per-axis excursion assertion, read per-axis excursion by
+hand from `--verbose` (max-min per centroid column) when a change touches the
+per-axis store, the scatter, or the camera-offset decomposition. Measured
+accepted floors and the full table live in
+[`engine/render/CLAUDE.md`](../../engine/render/CLAUDE.md) §"Accepted sub-pixel
+yaw-sweep centroid residual (voxel content) — #2469".
