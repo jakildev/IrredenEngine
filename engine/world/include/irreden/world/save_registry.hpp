@@ -24,11 +24,12 @@
 /// opted-out type never instantiates `SaveSerialize<C>`, so a component
 /// with no serializer only breaks the build if it actually opts in.
 ///
-/// Scope note (P2): this layer is the *mechanism*. P2 proves it with
-/// trivially-copyable test components (see `test/world/world_snapshot_test.cpp`);
-/// wiring every engine component in `AllEngineComponents` — each of which
-/// needs a `SaveSerialize<C>` specialization for its non-POD fields — is
-/// downstream work, not this slice.
+/// The `SaveSerializable<C>` `static_assert` in that same branch is the
+/// engine-wide completeness gate (#2242): the process-default registry walks
+/// all of `AllEngineComponents`, so an opted-in component with no serializer
+/// fails to compile there rather than silently vanishing from every save.
+/// Note the pairing — opting out is what makes a serializer unnecessary, and
+/// the `if constexpr` is what keeps that true.
 
 #include <irreden/world/save_migration.hpp>
 #include <irreden/world/save_serialize.hpp>
@@ -155,6 +156,15 @@ class SaveRegistry {
     /// a caller can register defensively.
     template <typename C> void registerComponent() {
         if constexpr (shouldSave<C>()) {
+            static_assert(
+                SaveSerializable<C>,
+                "SaveRegistry::registerComponent<C>: C opts in to persistence but has no "
+                "usable SaveSerialize<C> — it is not trivially copyable and no explicit "
+                "specialization is in scope. Either write one (e.g. for a component owning "
+                "std::string / std::vector / resource handles), include the header that "
+                "defines it, or flip the component to IR_SAVE_OPT_OUT in "
+                "save_component_inventory.hpp."
+            );
             const char *name = saveName<C>();
             if (name == nullptr || m_byName.contains(name)) {
                 return;

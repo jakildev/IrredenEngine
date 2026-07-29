@@ -56,6 +56,23 @@ template <typename Tuple> constexpr bool allExplicit() {
     return allExplicitImpl<Tuple>(std::make_index_sequence<std::tuple_size_v<Tuple>>{});
 }
 
+template <typename Tuple, std::size_t... I>
+constexpr std::size_t countOptInsImpl(std::index_sequence<I...>) {
+    return (
+        std::size_t{0} + ... +
+        (SaveTrait<std::tuple_element_t<I, Tuple>>::kSave ? std::size_t{1} : std::size_t{0})
+    );
+}
+
+// How many types in Tuple opt IN. This is the expected size of a registry
+// built by walking the whole tuple, so a test can assert that the
+// process-default registry's membership is *derived* from the inventory
+// rather than hand-curated — the two diverge the moment someone adds a
+// register line by hand or an opt-in silently stops being registered.
+template <typename Tuple> constexpr std::size_t countOptIns() {
+    return countOptInsImpl<Tuple>(std::make_index_sequence<std::tuple_size_v<Tuple>>{});
+}
+
 } // namespace detail
 
 } // namespace IRWorld

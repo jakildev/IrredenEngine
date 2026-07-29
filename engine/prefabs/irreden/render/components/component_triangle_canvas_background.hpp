@@ -11,6 +11,13 @@
 
 using namespace IRMath;
 
+namespace IRWorld {
+// Forward declaration only — the friend declaration below needs the template
+// to exist, not its definition, so this header stays free of
+// engine/world/save_serialize.hpp.
+template <typename C> struct SaveSerialize;
+} // namespace IRWorld
+
 namespace IRComponents {
 
 enum class BackgroundTypes { kSingleColor, kGradient, kGradientRandom, kPulsePattern };
@@ -353,6 +360,15 @@ struct C_TriangleCanvasBackground {
     }
 
   private:
+    // The world-snapshot serializer (#2242) persists the authored subset of
+    // the private state below — type, colors, size, and the pulse/pattern
+    // tuning parameters — and lets the per-frame caches (m_randomColorData,
+    // m_patternMask, and their initialization flags) rebuild on load.
+    // Declared a friend rather than widening the public API: none of these
+    // fields has a legitimate reader outside persistence, and the accessor
+    // pairs required to reach them would be a larger surface than the friend.
+    friend struct IRWorld::SaveSerialize<C_TriangleCanvasBackground>;
+
     ivec2 m_size;
     std::vector<Color> m_colors;
     std::vector<Color> m_randomColorData;

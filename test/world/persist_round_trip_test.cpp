@@ -7,6 +7,24 @@
 #include <irreden/asset/binary_io.hpp>
 #include <irreden/ir_entity.hpp>
 
+// The heap-owning half of this file (#2242) registers real engine components,
+// so it needs their SaveSerialize<C> specializations in scope — the same
+// include contract world_default_registry.cpp follows. The inventory include
+// is load-bearing, not incidental: registerComponent<C> is `if constexpr`-gated
+// on shouldSave<C>(), and without the IR_SAVE_OPT_IN specializations in scope
+// SaveTrait<C> falls back to the "no decision yet" primary (kSave = false), so
+// every registerComponent call would silently no-op and the test would save an
+// empty world and still pass its ok() assertions.
+#include <irreden/world/save_component_inventory.hpp>
+
+#include <irreden/common/components/component_name.hpp>
+#include <irreden/common/save_serializers_common.hpp>
+#include <irreden/render/components/component_widget.hpp>
+#include <irreden/render/save_serializers_render.hpp>
+#include <irreden/voxel/components/component_bind_points.hpp>
+#include <irreden/voxel/components/component_skeleton.hpp>
+#include <irreden/voxel/save_serializers_voxel.hpp>
+
 #include <cstdint>
 #include <fstream>
 #include <string>
@@ -327,6 +345,137 @@ TEST_F(PersistDeterminism, SaveLoadSaveDigestStable) {
     ASSERT_FALSE(bytesB.empty());
     EXPECT_EQ(fnv1a64(bytesB), fnv1a64(bytesC));
     EXPECT_EQ(bytesB, bytesC);
+}
+
+// #2242: W-7 and W-8 over *heap-owning* engine components. Every test above
+// uses in-TU trivially-copyable stand-ins, so they exercise the walker but
+// never a real SaveSerialize<C> specialization. This one drives the direct
+// C++ saveWorld(registry, path) surface (the Lua binding's coverage lives in
+// test/script/lua_world_snapshot_test.cpp) with a world whose components own
+// a string, two independent vectors, and a hash map — the three shapes where
+// a serializer can silently drop content or emit non-deterministic bytes.
+class PersistHeapOwningFixture : public PersistRoundTripFixture {
+  protected:
+    IRWorld::SaveRegistry heapOwningRegistry() {
+        IRWorld::SaveRegistry reg;
+        reg.registerComponent<IRComponents::C_Name>();
+        reg.registerComponent<IRComponents::C_Skeleton>();
+        reg.registerComponent<IRComponents::C_WidgetLabel>();
+        reg.registerComponent<IRComponents::C_BindPoints>();
+        // Vacuity guard: registerComponent no-ops for a type whose
+        // IR_SAVE_OPT_IN is not in scope, which would make every assertion
+        // below pass against an empty save.
+        EXPECT_EQ(reg.size(), 4u) << "registry is not holding all four components";
+        return reg;
+    }
+
+    // Deliberately inserts the bind points in non-sorted order: the map's
+    // iteration order is not the write order, so a serializer that skipped
+    // the sort would produce different bytes here than for the same content
+    // inserted the other way round.
+    void buildHeapOwningWorld() {
+        m_named =
+            m_em.createEntity(IRComponents::C_Name{"the player"}) & IREntity::IR_ENTITY_ID_BITS;
+        m_emptyNamed = m_em.createEntity(IRComponents::C_Name{""}) & IREntity::IR_ENTITY_ID_BITS;
+
+        IRComponents::C_WidgetLabel label{};
+        label.text_ = "Frames/sec";
+        label.colorOverride_ = IRMath::Color{9, 8, 7, 240};
+        m_widget = m_em.createEntity(label) & IREntity::IR_ENTITY_ID_BITS;
+
+        IRComponents::C_Skeleton skeleton{};
+        skeleton.joints_ = {101, IREntity::kNullEntity, 103};
+        skeleton.bindPose_.resize(3);
+        skeleton.bindPose_[1].translation_ = IRMath::vec3(1.5f, -2.5f, 3.5f);
+
+        IRComponents::C_BindPoints points{};
+        points.setPoint(
+            "hand.R",
+            IRComponents::BindPointRuntime{
+                2,
+                IRMath::vec3(1.0f, 0.0f, 0.0f),
+                IRMath::vec4(0.0f, 0.0f, 0.0f, 1.0f)
+            }
+        );
+        points.setPoint(
+            "hand.L",
+            IRComponents::BindPointRuntime{
+                1,
+                IRMath::vec3(-1.0f, 0.0f, 0.0f),
+                IRMath::vec4(0.0f, 0.0f, 0.0f, 1.0f)
+            }
+        );
+        points.setPoint(
+            "head",
+            IRComponents::BindPointRuntime{
+                0,
+                IRMath::vec3(0.0f, 0.0f, 2.0f),
+                IRMath::vec4(0.0f, 0.0f, 0.0f, 1.0f)
+            }
+        );
+        m_rig = m_em.createEntity(skeleton, points) & IREntity::IR_ENTITY_ID_BITS;
+    }
+
+    IREntity::EntityId m_named = IREntity::kNullEntity;
+    IREntity::EntityId m_emptyNamed = IREntity::kNullEntity;
+    IREntity::EntityId m_widget = IREntity::kNullEntity;
+    IREntity::EntityId m_rig = IREntity::kNullEntity;
+};
+
+using PersistHeapOwning = PersistHeapOwningFixture;
+
+TEST_F(PersistHeapOwning, ValuesSurviveRoundTrip) {
+    buildHeapOwningWorld();
+    IRWorld::SaveRegistry reg = heapOwningRegistry();
+    const std::string path = tempPath("heap_owning");
+    ASSERT_TRUE(IRWorld::saveWorld(reg, path).ok());
+
+    m_em.destroyAllEntities();
+    IRWorld::LoadResult result = IRWorld::loadWorld(reg, path);
+    ASSERT_TRUE(result.ok()) << result.status_.message_;
+    EXPECT_EQ(result.entitiesRestored_, 4u);
+    EXPECT_EQ(result.columnsSkipped_, 0u);
+
+    ASSERT_TRUE(m_em.entityExists(m_named));
+    EXPECT_EQ(m_em.getComponent<IRComponents::C_Name>(m_named).name_, "the player");
+    ASSERT_TRUE(m_em.entityExists(m_emptyNamed));
+    EXPECT_EQ(m_em.getComponent<IRComponents::C_Name>(m_emptyNamed).name_, "");
+
+    ASSERT_TRUE(m_em.entityExists(m_widget));
+    const IRComponents::C_WidgetLabel &label =
+        m_em.getComponent<IRComponents::C_WidgetLabel>(m_widget);
+    EXPECT_EQ(label.text_, "Frames/sec");
+    EXPECT_EQ(label.colorOverride_.red_, 9);
+    EXPECT_EQ(label.colorOverride_.alpha_, 240);
+
+    ASSERT_TRUE(m_em.entityExists(m_rig));
+    const IRComponents::C_Skeleton &skeleton = m_em.getComponent<IRComponents::C_Skeleton>(m_rig);
+    ASSERT_EQ(skeleton.joints_.size(), 3u);
+    EXPECT_EQ(skeleton.joints_[1], IREntity::kNullEntity)
+        << "a severance hole must not be compacted away — slot order is the bone-id space";
+    EXPECT_EQ(skeleton.joints_[2], 103u);
+    ASSERT_EQ(skeleton.bindPose_.size(), 3u);
+    EXPECT_FLOAT_EQ(skeleton.bindPose_[1].translation_.y, -2.5f);
+
+    const IRComponents::C_BindPoints &points = m_em.getComponent<IRComponents::C_BindPoints>(m_rig);
+    ASSERT_EQ(points.points_.size(), 3u);
+    EXPECT_EQ(points.points_.at("hand.L").boneId_, 1u);
+    EXPECT_FLOAT_EQ(points.points_.at("head").offset_.z, 2.0f);
+}
+
+TEST_F(PersistHeapOwning, DoubleSaveIsByteIdentical) {
+    buildHeapOwningWorld();
+    IRWorld::SaveRegistry reg = heapOwningRegistry();
+    const std::string pathA = tempPath("heap_det_a");
+    const std::string pathB = tempPath("heap_det_b");
+    ASSERT_TRUE(IRWorld::saveWorld(reg, pathA).ok());
+    ASSERT_TRUE(IRWorld::saveWorld(reg, pathB).ok());
+
+    const std::vector<std::uint8_t> bytesA = readFileBytes(pathA);
+    const std::vector<std::uint8_t> bytesB = readFileBytes(pathB);
+    ASSERT_FALSE(bytesA.empty());
+    EXPECT_EQ(bytesA, bytesB);
+    EXPECT_EQ(fnv1a64(bytesA), fnv1a64(bytesB));
 }
 
 } // namespace

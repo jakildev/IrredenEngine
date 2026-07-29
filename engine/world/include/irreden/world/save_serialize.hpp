@@ -6,15 +6,30 @@
 /// *whether* a component is saved and at what schema version; this header
 /// decides *how* one instance turns into bytes.
 ///
-/// The primary template is a trivially-copyable fast path: any component
-/// that is `std::is_trivially_copyable` round-trips as a raw byte image,
-/// which covers the bulk of plain gameplay data (positions, velocities,
-/// timers, flags, small PODs). A component that owns heap storage
-/// (`std::string`, `std::vector`, resource handles) is NOT trivially
-/// copyable — a raw memcpy would persist dangling pointers — so it must
-/// provide an explicit `SaveSerialize<C>` specialization. The
-/// `static_assert` in the primary template turns "opted in but no
-/// serializer" into a compile error rather than a silent corrupt save.
+/// The primary template is **declared but never defined**; the two ways to
+/// be serializable are both specializations of it:
+///
+///   - the constrained partial specialization below — a trivially-copyable
+///     fast path: any component that is `std::is_trivially_copyable`
+///     round-trips as a raw byte image, which covers the bulk of plain
+///     gameplay data (positions, velocities, timers, flags, small PODs);
+///   - an explicit full specialization, for a component that owns heap
+///     storage (`std::string`, `std::vector`, resource handles) and is NOT
+///     trivially copyable — a raw memcpy would persist dangling pointers.
+///
+/// Leaving the primary undefined is what makes serializability *detectable*:
+/// `SaveSerializable<C>` below is satisfied exactly when one of those two
+/// arms exists — a fact the compiler already knows, rather than a
+/// hand-maintained companion trait (which would drift the moment a serializer
+/// landed without its trait line — the silent-omission failure this concept
+/// exists to kill).
+///
+/// The concept is a **gate, not a filter**: `makeDefaultSaveRegistry` hands
+/// every `AllEngineComponents` entry to `registerComponent<C>`, which
+/// `static_assert`s `SaveSerializable<C>` with a friendly diagnostic, so
+/// "opted in but no serializer" is a build error. Do not "restore" a filter
+/// here — silently dropping such a component from every save is the precise
+/// failure this design exists to kill.
 ///
 /// Determinism note: the byte image of a trivially-copyable struct
 /// includes padding. Padding bytes are stable for a fixed in-memory value
@@ -24,24 +39,24 @@
 
 #include <irreden/asset/binary_io.hpp>
 
+#include <concepts>
 #include <cstddef>
 #include <type_traits>
 
 namespace IRWorld {
 
-/// Customization point: `write` serializes one `const C&`; `read` pulls
-/// one `C` back. Specialize for any component that is not trivially
-/// copyable. The default requires trivial-copyability and stores the raw
-/// byte image little-endian-agnostically (host layout — the snapshot is a
-/// same-machine round-trip contract; cross-endian is out of scope).
-template <typename C> struct SaveSerialize {
-    static_assert(
-        std::is_trivially_copyable_v<C>,
-        "SaveSerialize<C>: C is not trivially copyable — provide an explicit "
-        "SaveSerialize<C> specialization (e.g. for components owning std::string / "
-        "std::vector / resource handles). The primary template only handles PODs."
-    );
+/// Customization point: `write` serializes one `const C&`; `read` pulls one
+/// `C` back. Declared-not-defined on purpose — see the header note; a
+/// component is serializable only via the trivially-copyable arm below or an
+/// explicit full specialization.
+template <typename C> struct SaveSerialize;
 
+/// Trivially-copyable fast path: store the raw byte image little-endian-
+/// agnostically (host layout — the snapshot is a same-machine round-trip
+/// contract; cross-endian is out of scope).
+template <typename C>
+    requires std::is_trivially_copyable_v<C>
+struct SaveSerialize<C> {
     static void write(IRAsset::BinaryWriter &w, const C &value) {
         w.writeBytes(&value, sizeof(C));
     }
@@ -55,6 +70,21 @@ template <typename C> struct SaveSerialize {
         return IRAsset::Result<C>::success(value);
     }
 };
+
+/// True iff `SaveSerialize<C>` is usable — the trivially-copyable arm or an
+/// explicit specialization. Self-detecting by construction: writing the
+/// serializer IS the opt-in, so there is no second bookkeeping step to
+/// forget. Used as a **gate, not a filter**: `makeDefaultSaveRegistry` hands
+/// every `AllEngineComponents` entry to `SaveRegistry::registerComponent`,
+/// which `static_assert`s this — so "opted in but no serializer" is a build
+/// error, never a silent drop. Reintroducing a filter here would restore
+/// exactly that silent drop.
+template <typename C>
+concept SaveSerializable =
+    requires(IRAsset::BinaryWriter &w, const C &value, IRAsset::BinaryReader &r) {
+        SaveSerialize<C>::write(w, value);
+        { SaveSerialize<C>::read(r) } -> std::same_as<IRAsset::Result<C>>;
+    };
 
 } // namespace IRWorld
 
