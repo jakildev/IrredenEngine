@@ -202,9 +202,10 @@ TEST_F(LuaDebugOverlayBindingsTest, DrawCircle3DBelowMinimumSegmentsRaises) {
 // last vertex has to land back on the first. Stepping the table truncated, so
 // 12 segments stopped at 270 degrees.
 TEST_F(LuaDebugOverlayBindingsTest, CircleUnitPointClosesTheRingForNonDivisorSegmentCounts) {
+    const IRDebug::CircleLut &lut = IRDebug::getCircleLut();
     for (const int segs : {3, 5, 12, 16, 32}) {
-        const IRMath::vec2 first = IRDebug::circleUnitPoint(0, segs);
-        const IRMath::vec2 last = IRDebug::circleUnitPoint(segs, segs);
+        const IRMath::vec2 first = IRDebug::circleUnitPoint(0, segs, lut);
+        const IRMath::vec2 last = IRDebug::circleUnitPoint(segs, segs, lut);
         EXPECT_NEAR(first.x, last.x, 1e-5f) << "segments=" << segs;
         EXPECT_NEAR(first.y, last.y, 1e-5f) << "segments=" << segs;
     }

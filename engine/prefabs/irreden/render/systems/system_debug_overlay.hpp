@@ -147,6 +147,9 @@ template <> struct System<DEBUG_OVERLAY> {
                     lineVertices.push_back({line.to.x, line.to.y, line.r, line.g, line.b, line.a});
                 }
 
+                // Read once per flush: `getCircleLut()` carries a thread-safe-init
+                // guard load the per-vertex path shouldn't pay.
+                const IRDebug::CircleLut &circleLut = IRDebug::getCircleLut();
                 for (const auto &circle : circles) {
                     // Clamped at BOTH ends: the record carries whatever the
                     // caller asked for, and `circleUnitPoint` divides by this.
@@ -158,9 +161,9 @@ template <> struct System<DEBUG_OVERLAY> {
                     // Carried forward: each vertex is shared by two segments, so
                     // evaluating both ends per step would double the trig on the
                     // non-divisor path.
-                    vec2 unit0 = IRDebug::circleUnitPoint(0, segs);
+                    vec2 unit0 = IRDebug::circleUnitPoint(0, segs, circleLut);
                     for (int i = 0; i < segs; i++) {
-                        const vec2 unit1 = IRDebug::circleUnitPoint(i + 1, segs);
+                        const vec2 unit1 = IRDebug::circleUnitPoint(i + 1, segs, circleLut);
                         vec3 p0 = circle.center +
                                   vec3(unit0.x * circle.radius, unit0.y * circle.radius, 0.0f);
                         vec3 p1 = circle.center +

@@ -304,9 +304,11 @@ inline const CircleLut &getCircleLut() {
 // of a full turn: 12 segments ended at 270 degrees while documenting itself as
 // a circle. Those counts evaluate the angle directly instead; the divisor cases
 // keep reading the table.
-inline IRMath::vec2 circleUnitPoint(int i, int segs) {
+//
+// `lut` is caller-supplied so a per-vertex loop hoists `getCircleLut()`'s
+// static-init guard load out of the inner path; the non-divisor arm ignores it.
+inline IRMath::vec2 circleUnitPoint(int i, int segs, const CircleLut &lut) {
     if (kCircleLutMaxSegments % segs == 0) {
-        const CircleLut &lut = getCircleLut();
         const int index = (i * (kCircleLutMaxSegments / segs)) % kCircleLutMaxSegments;
         return IRMath::vec2{lut.cosTable[index], lut.sinTable[index]};
     }
