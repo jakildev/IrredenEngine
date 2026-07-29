@@ -606,7 +606,22 @@ when extending or composing widgets:
   equal-`zOrder_` hover tie-break to them, so every item row covering
   another widget is unclickable (first hit by the settings menu's ENUM
   rows, whose dropdowns always overlap the row below). Both revert when the
-  dropdown closes; authored z-orders must stay below the bias.
+  dropdown closes. The constant lives in `component_widget.hpp` beside the
+  `zOrder_` field it constrains, and the `C_Widget` ctor asserts authored
+  z-orders stay below it.
+  **It does not order two dropdowns against each other**: nothing closes one
+  dropdown when another opens (same gap as the outside-click-to-close TODO),
+  so two *simultaneously* expanded dropdowns both sit at base+bias and the
+  tie-break returns for that pair — reachable in the settings menu by
+  expanding DEBUG OVERLAY and then ROTATION PIVOT above it. Ordering them
+  needs an open-order rank, not a flat bias.
+- **Dropdown item-row geometry has one owner.** `C_WidgetDropdown::rowHeight`
+  / `expandedHeight` / `itemCenterOffsetY` / `itemAtOffsetY` are the only
+  place the expanded strip's layout is computed; `WIDGET_APPLY_DROPDOWN`
+  (hitbox + hover row), `WIDGET_RENDER_DROPDOWN` (where it paints), and
+  `SettingsMenu::enumItemScreenPx` (where a headless test aims a click) all
+  go through them. A re-derived formula drifts silently — the only symptom
+  is a scripted click landing on the wrong row.
 - **Radio group exclusion runs in endTick.** `WIDGET_APPLY_RADIO` sets
   the fired radio in its per-entity tick, then walks every
   `C_WidgetRadio` in `endTick` to clear siblings with the same

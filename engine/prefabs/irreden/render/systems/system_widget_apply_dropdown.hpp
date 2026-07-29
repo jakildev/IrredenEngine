@@ -12,16 +12,25 @@
 
 namespace IRSystem {
 
-// Z-order bias applied to a dropdown for as long as it is expanded, so its item
-// strip out-ranks whatever it overlaps in WIDGET_INPUT's hover routing. The
-// input-side counterpart to registering WIDGET_RENDER_DROPDOWN last in the
-// render chain: the strip is *painted* over its neighbors either way, but
-// without this it loses the equal-zOrder tie-break to the widgets underneath and
-// every item row that covers one is unclickable (the settings menu's ENUM rows
-// are the reference case — a dropdown there always overlaps the row below it).
-// Biased rather than assigned so an authored z-order survives the round trip;
-// authored values must stay below the bias.
-inline constexpr int kWidgetDropdownOpenZBias = 1000;
+// The z-order bias below is `IRComponents::kWidgetDropdownOpenZBias`, declared
+// beside `C_Widget::zOrder_` (the field it constrains) so the widget ctor can
+// assert authored values stay under it. Applied here for as long as a dropdown
+// is expanded, so its item strip out-ranks whatever it overlaps in
+// WIDGET_INPUT's hover routing. The input-side counterpart to registering
+// WIDGET_RENDER_DROPDOWN last in the render chain: the strip is *painted* over
+// its neighbors either way, but without this it loses the equal-zOrder
+// tie-break to the widgets underneath and every item row that covers one is
+// unclickable (the settings menu's ENUM rows are the reference case — a
+// dropdown there always overlaps the row below it). Biased rather than assigned
+// so an authored z-order survives the round trip.
+//
+// **The bias does not order two dropdowns against each other.** Nothing closes
+// a dropdown when another opens (see the outside-click-to-close TODO below), so
+// two *simultaneously* expanded dropdowns both sit at base+bias and the
+// equal-zOrder tie-break this exists to break comes back for that pair — the
+// upper strip can lose to the lower dropdown it covers. Reachable in the
+// settings menu (expand DEBUG OVERLAY, then ROTATION PIVOT above it). Ordering
+// them needs an open-order rank, not a flat bias.
 
 // Per-kind follower for dropdowns. Owns four pieces of behavior:
 //   1. While open, grows the hitbox to cover the expanded item panel and
@@ -45,9 +54,10 @@ template <> struct System<WIDGET_APPLY_DROPDOWN> {
     // the current value rather than a stored base, so it is idempotent across
     // frames and leaves an authored z-order intact.
     static void syncFloatingZOrder(IRComponents::C_Widget &widget, bool isOpen) {
-        const bool floating = widget.zOrder_ >= kWidgetDropdownOpenZBias;
+        const bool floating = widget.zOrder_ >= IRComponents::kWidgetDropdownOpenZBias;
         if (floating != isOpen) {
-            widget.zOrder_ += isOpen ? kWidgetDropdownOpenZBias : -kWidgetDropdownOpenZBias;
+            widget.zOrder_ += isOpen ? IRComponents::kWidgetDropdownOpenZBias
+                                     : -IRComponents::kWidgetDropdownOpenZBias;
         }
     }
 
@@ -66,27 +76,25 @@ template <> struct System<WIDGET_APPLY_DROPDOWN> {
             return;
         }
 
-        const int itemH = IRMath::max(1, dd.itemHeight_);
-        const int n = static_cast<int>(dd.items_.size());
-
         // Sync hitbox extent and z-order to current open state so WIDGET_INPUT's
         // hover routing can find us anywhere inside the expanded panel, ahead of
         // the widgets that panel covers.
-        const int openHeight = widget.size_.y + (n > 0 ? itemH * n : 0);
-        hitbox.size_ = IRMath::ivec2(widget.size_.x, dd.isOpen_ ? openHeight : widget.size_.y);
+        hitbox.size_ = IRMath::ivec2(
+            widget.size_.x,
+            dd.isOpen_ ? dd.expandedHeight(widget.size_.y) : widget.size_.y
+        );
         syncFloatingZOrder(widget, dd.isOpen_);
 
         // Compute the row the cursor is currently over, if any. -1 = not
         // over a row (cursor on header, outside widget, or list empty).
         int rowFromMouse = -1;
-        if (dd.isOpen_ && n > 0) {
-            const float rel =
-                mouseGuiTrixel_.y - static_cast<float>(guiPos.pos_.y + widget.size_.y);
+        if (dd.isOpen_) {
             const float withinX = mouseGuiTrixel_.x - static_cast<float>(guiPos.pos_.x);
-            if (rel >= 0.0f && withinX >= 0.0f && withinX < static_cast<float>(widget.size_.x)) {
-                const int r = static_cast<int>(rel / static_cast<float>(itemH));
-                if (r >= 0 && r < n)
-                    rowFromMouse = r;
+            if (withinX >= 0.0f && withinX < static_cast<float>(widget.size_.x)) {
+                rowFromMouse = dd.itemAtOffsetY(
+                    widget.size_.y,
+                    mouseGuiTrixel_.y - static_cast<float>(guiPos.pos_.y)
+                );
             }
         }
         state.dragValue_ = static_cast<float>(rowFromMouse);
@@ -100,7 +108,8 @@ template <> struct System<WIDGET_APPLY_DROPDOWN> {
         }
 
         // Open + clicked: if a row was hovered at release, select it.
-        if (rowFromMouse >= 0 && rowFromMouse < n) {
+        // `itemAtOffsetY` already bounded the index, so >= 0 is the whole test.
+        if (rowFromMouse >= 0) {
             dd.selectedIndex_ = rowFromMouse;
         }
         dd.isOpen_ = false;

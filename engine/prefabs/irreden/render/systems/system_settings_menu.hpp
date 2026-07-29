@@ -17,6 +17,7 @@
 #include <irreden/render/widget_theme.hpp>
 #include <irreden/render/widgets.hpp>
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -287,24 +288,33 @@ template <> struct System<SETTINGS_MENU> {
             if (row.settingIndex_ < 0 || row.settingIndex_ >= static_cast<int>(settings.size())) {
                 continue;
             }
-            IRComponents::SettingEntry &setting =
-                settings[static_cast<std::size_t>(row.settingIndex_)];
+            const std::size_t settingIndex = static_cast<std::size_t>(row.settingIndex_);
 
             // The user's edit wins over an external write in the same frame:
             // it is the more recent intent, and re-reading the getter first
             // would overwrite the click that just happened.
             const float widgetValue = readWidget(row);
             if (differs(row.kind_, widgetValue, row.lastValue_)) {
-                if (setting.set_) {
-                    setting.set_(widgetValue);
+                // Copied out of the registry before the call, never held as a
+                // reference across it: `settings_registry.hpp` allows a setting
+                // to be registered any time before the menu opens, and a setter
+                // that registered one would push_back into `settings_` and
+                // reallocate this `std::function` out from under itself
+                // mid-call. Costs one copy per *changed* row — per click, not
+                // per frame.
+                const std::function<void(float)> set = settings[settingIndex].set_;
+                if (set) {
+                    set(widgetValue);
                 }
                 row.lastValue_ = widgetValue;
                 continue;
             }
-            if (!setting.get_) {
+            // Re-indexed rather than aliased for the same reason, minus the
+            // copy: the getter runs every frame for every unchanged row.
+            if (!settings[settingIndex].get_) {
                 continue;
             }
-            const float settingValue = setting.get_();
+            const float settingValue = settings[settingIndex].get_();
             if (differs(row.kind_, settingValue, row.lastValue_)) {
                 writeWidget(row, settingValue);
                 row.lastValue_ = settingValue;

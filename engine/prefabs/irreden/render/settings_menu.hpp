@@ -24,7 +24,9 @@
 //
 // Settings may be registered at any point before the menu is first opened;
 // the menu reads the registry when it opens, so a late registration appears
-// at the next open rather than mid-session.
+// at the next open rather than mid-session. Registration from *inside* a
+// setting's own getter or setter is the one shape that is not allowed — see
+// `settings_registry.hpp`'s note on `SettingEntry::get_` / `set_`.
 
 #include <irreden/ir_command.hpp>
 #include <irreden/ir_input.hpp>
@@ -193,8 +195,9 @@ inline IRMath::ivec2 quitButtonScreenPx() {
 ///
 /// An ENUM row takes two clicks — one on the header to expand, one on the item
 /// — and the item strip only exists between them (`WIDGET_APPLY_DROPDOWN` grows
-/// the hitbox to `size.y + itemHeight * n` while open). Mirrors that system's
-/// row geometry so a scripted shot aims at the row it means to select.
+/// the hitbox to `C_WidgetDropdown::expandedHeight` while open). Row geometry
+/// comes from the component's own helpers, the same ones the apply and render
+/// systems use, so an aimed click cannot drift from where the row is drawn.
 inline IRMath::ivec2 enumItemScreenPx(int index, int itemIndex) {
     const auto *system = systemOrNull();
     if (system == nullptr || index < 0 || index >= static_cast<int>(system->rows_.size()) ||
@@ -213,11 +216,10 @@ inline IRMath::ivec2 enumItemScreenPx(int index, int itemIndex) {
     }
     const IRMath::ivec2 pos = IREntity::getComponent<IRComponents::C_GuiPosition>(widget).pos_;
     const IRMath::ivec2 size = IREntity::getComponent<IRComponents::C_Widget>(widget).size_;
-    const float itemHeight = static_cast<float>(IRMath::max(1, dropdown.itemHeight_));
     return IRRender::guiTrixelToScreenPx(
         IRMath::vec2(
             static_cast<float>(pos.x) + static_cast<float>(size.x) * 0.5f,
-            static_cast<float>(pos.y + size.y) + (static_cast<float>(itemIndex) + 0.5f) * itemHeight
+            static_cast<float>(pos.y) + dropdown.itemCenterOffsetY(size.y, itemIndex)
         )
     );
 }

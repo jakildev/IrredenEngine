@@ -44,7 +44,7 @@ template <> struct System<WIDGET_RENDER_DROPDOWN> {
         if (widget.size_.x <= 0 || widget.size_.y <= 0)
             return;
 
-        const int itemH = IRMath::max(1, dd.itemHeight_);
+        const int itemH = dd.rowHeight();
         const int n = static_cast<int>(dd.items_.size());
 
         // Collapsed header.
@@ -107,8 +107,11 @@ template <> struct System<WIDGET_RENDER_DROPDOWN> {
             return;
 
         // Expanded item panel. Painted in painter order over anything below it.
-        const IRMath::ivec2 panelPos(guiPos.pos_.x, guiPos.pos_.y + widget.size_.y);
-        const IRMath::ivec2 panelSize(widget.size_.x, itemH * n);
+        const IRMath::ivec2 panelPos(
+            guiPos.pos_.x,
+            guiPos.pos_.y + dd.itemTopOffsetY(widget.size_.y, 0)
+        );
+        const IRMath::ivec2 panelSize(widget.size_.x, dd.stripHeight());
         IRRender::fillRect(
             *canvas_,
             panelPos,
@@ -123,7 +126,10 @@ template <> struct System<WIDGET_RENDER_DROPDOWN> {
         const int hoverRow = static_cast<int>(state.dragValue_);
 
         for (int i = 0; i < n; ++i) {
-            const IRMath::ivec2 rowPos(panelPos.x, panelPos.y + i * itemH);
+            const IRMath::ivec2 rowPos(
+                panelPos.x,
+                guiPos.pos_.y + dd.itemTopOffsetY(widget.size_.y, i)
+            );
             const IRMath::ivec2 rowSize(panelSize.x, itemH);
             if (i == dd.selectedIndex_) {
                 IRRender::fillRect(

@@ -51,6 +51,13 @@ struct SettingEntry {
 
     // Read on every menu frame so a value changed elsewhere (a hotkey, a
     // script, another setting's setter) shows up in the open menu.
+    //
+    // **Neither may register a setting.** Registration push_backs into
+    // `C_SettingsRegistry::settings_`, so a re-entrant one would reallocate
+    // the vector — and destroy the `std::function` that is mid-call — while
+    // the menu is iterating it. Settings are registered at init; a setter that
+    // wants to reveal more knobs should toggle a flag the already-registered
+    // rows read, not grow the registry.
     std::function<float()> get_;
     std::function<void(float)> set_;
 

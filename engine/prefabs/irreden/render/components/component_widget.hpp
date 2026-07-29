@@ -2,6 +2,7 @@
 #define COMPONENT_WIDGET_H
 
 #include <irreden/ir_math.hpp>
+#include <irreden/ir_profile.hpp>
 
 #include <cstdint>
 #include <string>
@@ -28,6 +29,14 @@ enum class WidgetKind : int {
     COLOR_SWATCH = 10,
 };
 
+// Z-order bias WIDGET_APPLY_DROPDOWN adds to a dropdown for as long as it is
+// expanded, so its item strip out-ranks whatever it overlaps in WIDGET_INPUT's
+// hover routing. It lives here rather than beside that system because it is a
+// contract on `C_Widget::zOrder_` below: every authored z-order must stay under
+// it, or the bias inverts and the expanded strip loses the tie-break it exists
+// to win. The `C_Widget` ctor asserts that.
+inline constexpr int kWidgetDropdownOpenZBias = 1000;
+
 // Common widget header. Every widget entity carries this alongside its
 // per-kind data component (C_WidgetButton, C_WidgetSlider, etc.). Pos
 // + size are in GUI-canvas-trixel coordinates (top-left origin); the
@@ -44,7 +53,14 @@ struct C_Widget {
     C_Widget(WidgetKind kind, IRMath::ivec2 size, int zOrder = 0)
         : kind_{kind}
         , size_{size}
-        , zOrder_{zOrder} {}
+        , zOrder_{zOrder} {
+        IR_ASSERT(
+            zOrder < kWidgetDropdownOpenZBias,
+            "C_Widget authored at zOrder_ >= kWidgetDropdownOpenZBias — an "
+            "expanded dropdown biases into that range, so this widget would "
+            "out-rank the item strip and make its rows unclickable."
+        );
+    }
 };
 
 // Interactive state — written by the WIDGET_INPUT system, read by the
@@ -122,6 +138,56 @@ struct C_WidgetDropdown {
     int selectedIndex_ = -1;
     bool isOpen_ = false;
     int itemHeight_ = 18;
+
+    // --- Expanded-strip geometry ------------------------------------------
+    //
+    // Three consumers must agree on where the item rows are:
+    // WIDGET_APPLY_DROPDOWN (hitbox extent + hover-row routing),
+    // WIDGET_RENDER_DROPDOWN (where it paints them), and any headless test
+    // aiming a scripted click at a row. Deriving all of them from these
+    // helpers makes that coupling compile-visible — a duplicated formula
+    // drifts silently, and the only symptom is a click landing on the wrong
+    // row. Offsets are in GUI-canvas trixels relative to the widget's own
+    // top-left; `headerHeight` is the collapsed widget's `C_Widget::size_.y`.
+
+    /// `itemHeight_` floored at one trixel — the divisor every row
+    /// calculation uses, so an authored zero cannot divide by zero.
+    int rowHeight() const {
+        return IRMath::max(1, itemHeight_);
+    }
+
+    /// Height of the expanded item strip alone, excluding the header.
+    int stripHeight() const {
+        return rowHeight() * static_cast<int>(items_.size());
+    }
+
+    /// Total height of the header plus the expanded item strip.
+    int expandedHeight(int headerHeight) const {
+        return headerHeight + stripHeight();
+    }
+
+    /// Offset from the widget's top edge to the top edge of item @p itemIndex.
+    /// Index 0 is the strip's own origin, so it doubles as the header/strip seam.
+    int itemTopOffsetY(int headerHeight, int itemIndex) const {
+        return headerHeight + itemIndex * rowHeight();
+    }
+
+    /// Offset from the widget's top edge to the center of item @p itemIndex.
+    float itemCenterOffsetY(int headerHeight, int itemIndex) const {
+        return static_cast<float>(itemTopOffsetY(headerHeight, itemIndex)) +
+               0.5f * static_cast<float>(rowHeight());
+    }
+
+    /// Item index @p offsetY trixels below the widget's top edge, or -1 when
+    /// that point is on the header or past the last row.
+    int itemAtOffsetY(int headerHeight, float offsetY) const {
+        const float withinStrip = offsetY - static_cast<float>(headerHeight);
+        if (withinStrip < 0.0f) {
+            return -1;
+        }
+        const int index = static_cast<int>(withinStrip / static_cast<float>(rowHeight()));
+        return index < static_cast<int>(items_.size()) ? index : -1;
+    }
 };
 
 // RADIO — exclusive group of toggles. `groupId_` ties radios to one

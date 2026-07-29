@@ -168,6 +168,11 @@ constexpr IRVideo::AutoScreenshotShot kShots[] = {
 int g_autoWarmupFrames = 0; // 0 = --auto-screenshot not requested
 bool g_depthColor = false;
 bool g_checkerboard = false; // opt-in via --checkerboard; flickered, off by default
+// Sim rate in effect before the PAUSE SIMULATION setting was flipped on, so
+// unpausing restores it instead of hard-resetting to 1x — the contract
+// `System<SETTINGS_MENU>::destroyMenu()` keeps for its own pause path, and this
+// demo is the reference other creations copy the setter shape from.
+float g_timeScaleBeforePause = 1.0f;
 // --occlusion-cull (#1294 child 2/3): force the voxel-pool chunk-occlusion HZB
 // pre-pass on (off by default in the engine). A test hook so the cull can be
 // exercised before the child-3 measurement demo lands. On the sparse shape_debug
@@ -1311,8 +1316,25 @@ static_assert(
 );
 
 // First shot that opens the menu; from here on every live frame re-aims the
-// click targets.
+// click targets. Pinned structurally, like its kMenuQuitShotIndex neighbor: the
+// fill gate keys on this index, so a shot inserted ahead of the menu block would
+// silently stop aiming the early menu clicks and leave them at the screen
+// corner. Identified by the events the shot carries — the label is not
+// constexpr-comparable, and kMenuOpenEvents IS what "opens the menu" means here.
 constexpr int kMenuOpenShotIndex = 2;
+constexpr bool isFirstMenuOpeningShot(int index) {
+    for (int i = 0; i < index; ++i) {
+        if (kHelpOverlayGuiShots[i].inputs_ == kMenuOpenEvents) {
+            return false;
+        }
+    }
+    return kHelpOverlayGuiShots[index].inputs_ == kMenuOpenEvents;
+}
+static_assert(
+    isFirstMenuOpeningShot(kMenuOpenShotIndex),
+    "kMenuOpenShotIndex must name the FIRST shot that opens the settings menu — "
+    "the click-target fill gate keys on it"
+);
 
 // The QUIT click ends the run: `applyEdits()` calls `IRWindow::closeWindow()`
 // during that click's INPUT phase, and `World::gameLoop()` tests
@@ -1933,7 +1955,18 @@ void registerDemoSettings() {
     IRPrefab::Settings::registerBool(
         "PAUSE SIMULATION",
         [] { return IRSim::isPaused(); },
-        [](bool paused) { IRSim::setTimeScale(paused ? 0.0f : 1.0f); }
+        [](bool paused) {
+            if (!paused) {
+                IRSim::setTimeScale(g_timeScaleBeforePause);
+                return;
+            }
+            // Guarded so a redundant pause (an external writer zeroed the clock
+            // first) cannot latch 0 as the rate to come back to.
+            if (!IRSim::isPaused()) {
+                g_timeScaleBeforePause = IRSim::timeScale();
+            }
+            IRSim::pause();
+        }
     );
 }
 
