@@ -349,14 +349,12 @@ IRSystem::SystemId resolveLuaWaveTickId(IRScript::LuaScript &script) {
         return waveTickFromIds(ids);
     } else {
         const sol::object obj = script.lua()["LuaWaveTickSysId"];
-        if (!obj.valid() || !obj.is<lua_Integer>()) {
-            IR_LOG_ERROR(
-                "lua_perf_grid: LuaWaveTickSysId missing after main.lua "
-                "(EVAL build expects IRSystem.registerSystem to return a "
-                "non-zero SystemId and main.lua to assign it to the global)."
-            );
-            return IRSystem::SystemId{0};
-        }
+        IR_ASSERT(
+            obj.valid() && obj.is<lua_Integer>(),
+            "lua_perf_grid: LuaWaveTickSysId missing after main.lua "
+            "(EVAL build expects IRSystem.registerSystem to return a "
+            "non-zero SystemId and main.lua to assign it to the global)."
+        );
         return static_cast<IRSystem::SystemId>(obj.as<lua_Integer>());
     }
 }
