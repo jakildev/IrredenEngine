@@ -6,8 +6,12 @@
 #include <irreden/script/lua_script.hpp>
 
 #include <irreden/common/components/component_local_transform.hpp>
+#include <irreden/common/components/component_name.hpp>
 #include <irreden/common/components/component_position_int_3d.hpp>
 #include <irreden/common/components/component_size_int_3d.hpp>
+#include <irreden/render/components/component_widget.hpp>
+#include <irreden/voxel/components/component_bind_points.hpp>
+#include <irreden/voxel/components/component_skeleton.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 
 #include <sol/sol.hpp>
@@ -28,11 +32,15 @@
 
 namespace {
 
+using IRComponents::C_BindPoints;
 using IRComponents::C_LocalTransform;
+using IRComponents::C_Name;
 using IRComponents::C_PositionInt3D;
 using IRComponents::C_SizeInt3D;
+using IRComponents::C_Skeleton;
 using IRComponents::C_Voxel;
 using IRComponents::C_VoxelSetNew;
+using IRComponents::C_WidgetLabel;
 using IREntity::EntityId;
 
 std::vector<std::uint8_t> readFileBytes(const std::string &path) {
@@ -225,6 +233,107 @@ TEST_F(LuaWorldSnapshotTest, RoundTripsVoxelSetNew) {
         EXPECT_EQ(0, std::memcmp(&reloaded.pendingVoxels_[i], &voxels[i], sizeof(C_Voxel)))
             << "voxel record " << i << " differs after round-trip";
     }
+}
+
+// #2242 acceptance: the process-default registry now derives its membership
+// from the whole opted-in inventory, so heap-owning components round-trip
+// through the Lua binding too — not just the four hand-curated PODs P7
+// shipped with. C_Name is the issue's named criterion; C_WidgetLabel and
+// C_Skeleton cover the other two container shapes the serializers introduce
+// (string + packed color, and two independent vectors).
+//
+// This is the wiring-level test `engine/world/CLAUDE.md` requires for any
+// component reachable through the default registry (#2244): the per-serializer
+// unit coverage in test/world/save_serializers_test.cpp proves the bytes, but
+// only a run through the real IRPersist surface proves registry entry ->
+// binding -> reload.
+TEST_F(LuaWorldSnapshotTest, RoundTripsHeapOwningComponents) {
+    const EntityId named = m_entity_manager.createEntity(C_Name{"the player"});
+    const EntityId emptyName = m_entity_manager.createEntity(C_Name{""});
+
+    C_WidgetLabel label{};
+    label.text_ = "Frames/sec";
+    label.colorOverride_ = IRMath::Color{9, 8, 7, 240};
+    const EntityId widget = m_entity_manager.createEntity(label);
+
+    C_Skeleton skeleton{};
+    skeleton.joints_ = {101, IREntity::kNullEntity, 103};
+    skeleton.bindPose_.resize(3);
+    skeleton.bindPose_[1].translation_ = IRMath::vec3(1.5f, -2.5f, 3.5f);
+    const EntityId rig = m_entity_manager.createEntity(skeleton);
+
+    const std::string path = tempPath("heap_owning");
+    ASSERT_TRUE(runOk("assert(IRPersist.saveWorld('" + path + "'))"));
+
+    m_entity_manager.destroyAllEntities();
+    ASSERT_EQ(m_entity_manager.getLiveEntityCount(), 0u);
+    ASSERT_TRUE(runOk("assert(IRPersist.loadWorld('" + path + "'))"));
+
+    ASSERT_TRUE(m_entity_manager.entityExists(named));
+    EXPECT_EQ(m_entity_manager.getComponent<C_Name>(named).name_, "the player")
+        << "C_Name did not survive the Lua round trip";
+    ASSERT_TRUE(m_entity_manager.entityExists(emptyName));
+    EXPECT_EQ(m_entity_manager.getComponent<C_Name>(emptyName).name_, "");
+
+    ASSERT_TRUE(m_entity_manager.entityExists(widget));
+    const C_WidgetLabel &reloadedLabel = m_entity_manager.getComponent<C_WidgetLabel>(widget);
+    EXPECT_EQ(reloadedLabel.text_, "Frames/sec");
+    EXPECT_EQ(reloadedLabel.colorOverride_.red_, 9);
+    EXPECT_EQ(reloadedLabel.colorOverride_.alpha_, 240);
+
+    ASSERT_TRUE(m_entity_manager.entityExists(rig));
+    const C_Skeleton &reloadedRig = m_entity_manager.getComponent<C_Skeleton>(rig);
+    ASSERT_EQ(reloadedRig.joints_.size(), 3u);
+    EXPECT_EQ(reloadedRig.joints_[0], 101u);
+    EXPECT_EQ(reloadedRig.joints_[1], IREntity::kNullEntity)
+        << "a severance hole must not be compacted away — slot order is the bone-id space";
+    EXPECT_EQ(reloadedRig.joints_[2], 103u);
+    ASSERT_EQ(reloadedRig.bindPose_.size(), 3u);
+    EXPECT_FLOAT_EQ(reloadedRig.bindPose_[1].translation_.y, -2.5f);
+}
+
+// W-8 determinism over the widened registry: a world carrying heap-owning
+// components must still double-save byte-identically. The map-ordering hazard
+// this guards against (C_BindPoints) is unit-tested directly; this is the
+// end-to-end backstop through the real save path.
+TEST_F(LuaWorldSnapshotTest, DoubleSaveIsByteIdenticalWithHeapOwningComponents) {
+    m_entity_manager.createEntity(C_Name{"alpha"});
+    m_entity_manager.createEntity(C_Name{"beta"}, C_PositionInt3D{1, 2, 3});
+
+    C_BindPoints points{};
+    points.setPoint(
+        "hand.R",
+        IRComponents::BindPointRuntime{
+            2,
+            IRMath::vec3(1.0f, 0.0f, 0.0f),
+            IRMath::vec4(0.0f, 0.0f, 0.0f, 1.0f)
+        }
+    );
+    points.setPoint(
+        "hand.L",
+        IRComponents::BindPointRuntime{
+            1,
+            IRMath::vec3(-1.0f, 0.0f, 0.0f),
+            IRMath::vec4(0.0f, 0.0f, 0.0f, 1.0f)
+        }
+    );
+    points.setPoint(
+        "head",
+        IRComponents::BindPointRuntime{
+            0,
+            IRMath::vec3(0.0f, 0.0f, 2.0f),
+            IRMath::vec4(0.0f, 0.0f, 0.0f, 1.0f)
+        }
+    );
+    m_entity_manager.createEntity(points);
+
+    const std::string first = tempPath("determinism_a");
+    const std::string second = tempPath("determinism_b");
+    ASSERT_TRUE(runOk("assert(IRPersist.saveWorld('" + first + "'))"));
+    ASSERT_TRUE(runOk("assert(IRPersist.saveWorld('" + second + "'))"));
+
+    EXPECT_EQ(readFileBytes(first), readFileBytes(second))
+        << "same-world double save is not byte-identical";
 }
 
 // Missing/corrupt path -> false with no Lua error (I/O failure is a bool, not

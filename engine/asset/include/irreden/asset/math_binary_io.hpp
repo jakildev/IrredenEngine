@@ -1,12 +1,49 @@
 #ifndef IR_ASSET_MATH_BINARY_IO_H
 #define IR_ASSET_MATH_BINARY_IO_H
 
-// Centralizes vec3/vec4/Color binary I/O — lives in engine/asset/ (not engine/math/) to avoid the reverse dep.
+// Centralizes vec3/vec4/Color binary I/O — lives in engine/asset/ (not engine/math/) to avoid the
+// reverse dep.
 
 #include <irreden/asset/binary_io.hpp>
 #include <irreden/math/ir_math_types.hpp>
 
 namespace IRMath::BinaryIO {
+
+inline void writeVec2(IRAsset::BinaryWriter &w, const IRMath::vec2 &v) {
+    w.writeF32(v.x);
+    w.writeF32(v.y);
+}
+
+inline void writeIVec2(IRAsset::BinaryWriter &w, const IRMath::ivec2 &v) {
+    w.writeI32(v.x);
+    w.writeI32(v.y);
+}
+
+inline IRAsset::Result<IRMath::vec2> readVec2(IRAsset::BinaryReader &r) {
+    auto x = r.readF32();
+    if (!x.ok())
+        return IRAsset::Result<IRMath::vec2>::error(x.status_.code_, std::move(x.status_.message_));
+    auto y = r.readF32();
+    if (!y.ok())
+        return IRAsset::Result<IRMath::vec2>::error(y.status_.code_, std::move(y.status_.message_));
+    return IRAsset::Result<IRMath::vec2>::success(IRMath::vec2(x.value_, y.value_));
+}
+
+inline IRAsset::Result<IRMath::ivec2> readIVec2(IRAsset::BinaryReader &r) {
+    auto x = r.readI32();
+    if (!x.ok())
+        return IRAsset::Result<IRMath::ivec2>::error(
+            x.status_.code_,
+            std::move(x.status_.message_)
+        );
+    auto y = r.readI32();
+    if (!y.ok())
+        return IRAsset::Result<IRMath::ivec2>::error(
+            y.status_.code_,
+            std::move(y.status_.message_)
+        );
+    return IRAsset::Result<IRMath::ivec2>::success(IRMath::ivec2(x.value_, y.value_));
+}
 
 inline void writeVec3(IRAsset::BinaryWriter &w, const IRMath::vec3 &v) {
     w.writeF32(v.x);
@@ -47,7 +84,9 @@ inline IRAsset::Result<IRMath::vec4> readVec4(IRAsset::BinaryReader &r) {
     auto w = r.readF32();
     if (!w.ok())
         return IRAsset::Result<IRMath::vec4>::error(w.status_.code_, std::move(w.status_.message_));
-    return IRAsset::Result<IRMath::vec4>::success(IRMath::vec4(x.value_, y.value_, z.value_, w.value_));
+    return IRAsset::Result<IRMath::vec4>::success(
+        IRMath::vec4(x.value_, y.value_, z.value_, w.value_)
+    );
 }
 
 inline void writeColorPacked(IRAsset::BinaryWriter &w, IRMath::Color color) {

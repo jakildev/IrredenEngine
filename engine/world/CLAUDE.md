@@ -200,10 +200,20 @@ write-only `.json` sidecar (Rule #6) rides alongside.
 Three collaborating headers:
 
 - `save_serialize.hpp` — `IRWorld::SaveSerialize<C>`, the per-component
-  bytes customization point. The primary template is a trivially-copyable
-  raw-image fast path (`static_assert`s trivial-copyability); a component
-  owning heap storage (`std::string`/`std::vector`/handles) must specialize
-  it. P1 decides *whether*; this decides *how*.
+  bytes customization point. The primary template is **declared but never
+  defined**; the two arms that exist are a constrained partial specialization
+  for trivially-copyable components (a raw byte image) and explicit
+  specializations for components owning heap storage
+  (`std::string`/`std::vector`/handles). Leaving the primary undefined is what
+  makes the companion `SaveSerializable<C>` concept in the same header a true
+  test of "does this component have a serializer" (#2242) — writing the
+  serializer IS the opt-in, with no second bookkeeping step to forget. P1
+  decides *whether*; this decides *how*.
+- `save_serialize_common.hpp` — the shared byte layouts most heap-owning
+  serializers need: counted vectors of trivially-copyable records, counted
+  string vectors, and `writeSortedStringMap` (ascending key order, so an
+  `unordered_map` member cannot make a double-save non-byte-identical). Also
+  home to the `IR_SAVE_READ*` bail-out macros the serializers read with.
 - `save_registry.hpp` — `IRWorld::SaveRegistry`, the type-erased bridge.
   `registerComponent<C>()` is `if constexpr`-gated on `shouldSave<C>()`
   (opted-out → no-op, and no `SaveSerialize<C>` instantiation), capturing
@@ -236,11 +246,9 @@ component names skip with counts.
 **P2 scope is the mechanism.** It ships one headless gtest
 (`test/world/world_snapshot_test.cpp`) proving the round-trip with
 trivially-copyable *test* components. The `(path)`-only convenience wrapper
-over a process-default registry (for the P7 Lua binding) has since landed —
-see "Process-default registry" below — but only over a **curated subset**;
-registering every engine component in `AllEngineComponents` (each needs a
-`SaveSerialize<C>` specialization for its non-POD fields) is still downstream
-work.
+over a process-default registry (for the P7 Lua binding) has since landed and
+now covers the **whole opted-in inventory** — see "Process-default registry"
+below.
 
 **Relation chunk `RELN` (persist P3, #2214).** `CHILD_OF` entity relations
 round-trip through one self-describing chunk: a `Relation`-enum name table at
@@ -362,24 +370,56 @@ pipeline (see `creations/demos/persist_roundtrip`).
 `makeDefaultSaveRegistry()` (`src/world_default_registry.cpp`) builds the
 process-default `SaveRegistry` the no-registry-argument overloads
 `saveWorld(path)` / `loadWorld(path)` forward to — the surface the `IRPersist`
-Lua binding (`engine/script`) needs, since Lua passes no registry. It is
-**deliberately a curated subset** of `AllEngineComponents`: only components
-with a working `SaveSerialize<C>` today — `C_VoxelSetNew` (P6's explicit
-serializer, so `voxel_set_serialize.hpp` must be included there) plus
-trivially-copyable plain-data components (`C_LocalTransform`,
-`C_PositionInt3D`, `C_SizeInt3D`). Registering the **full** inventory does not
-compile: the heap-owning opted-in components (`C_Name`, `C_Skeleton`,
-`C_MidiSequence`, `C_TextSegment`, ...) still lack a serializer and hit the
-primary-template `static_assert`. Add each component to the curated list as its
-serializer lands; the full-inventory path (a per-component serializer pass + a
-`HasExplicitSaveSerialize<C>` filter over `AllEngineComponents`) is tracked
-downstream. **Adding a component here must also extend
+Lua binding (`engine/script`) needs, since Lua passes no registry.
+
+**Membership is derived, never curated (#2242).** The function walks
+`AllEngineComponents` and hands every entry to `registerComponent<C>()`; the
+opt-outs no-op through that call's `if constexpr (shouldSave<C>())` gate, so
+the registry's membership *is* the inventory's opted-in set, by construction.
+There are deliberately **no per-component register lines** — adding one is the
+regression this design exists to prevent, and
+`test/world/save_serializers_test.cpp` asserts
+`makeDefaultSaveRegistry().size() == detail::countOptIns<AllEngineComponents>()`
+so the two cannot drift.
+
+**That walk is also the completeness gate.** Every opted-in entry instantiates
+`SaveSerialize<C>`, so a future `IR_SAVE_OPT_IN` with no serializer **breaks
+this build** with `registerComponent`'s `SaveSerializable<C>` `static_assert`
+instead of silently dropping the component from every Lua-driven save. Adding
+an engine component that opts in therefore means writing its serializer in the
+same change. Three consequences for authors:
+
+- **A heap-owning component needs a `SaveSerialize<C>` specialization** in its
+  domain's `engine/prefabs/irreden/<domain>/save_serializers_<domain>.hpp`
+  (`C_VoxelSetNew` keeps its own `voxel_set_serialize.hpp` — its read path has
+  a pool-interaction contract the others don't). Those headers are included by
+  `world_default_registry.cpp` only, never by the component headers, so the
+  prefab domains stay out of `engine/world`'s include graph.
+- **A component whose state cannot honestly round-trip opts OUT**, with a
+  comment saying why. The current class is callback-bearing state:
+  `C_LambdaModifiers`, `C_LerpEntity`, and — since #2242 — `C_GotoEasing3D`
+  and `C_RotationTarget`, which keep a resolved `GLMEasingFunction`
+  (`std::function`) rather than the `IREasingFunctions` enum they were built
+  from, so the authored curve is unrecoverable at save time. Do **not** write a
+  serializer that substitutes a default on load; that is a silent behavior
+  change wearing a round-trip's clothes.
+- **Any TU that builds a registry must include `save_component_inventory.hpp`.**
+  `registerComponent<C>` is `if constexpr`-gated on `shouldSave<C>()`, and
+  without the `IR_SAVE_OPT_IN` specializations in scope `SaveTrait<C>` resolves
+  to the "no decision yet" primary (`kSave = false`) — so every call silently
+  no-ops and you get an empty registry that saves an empty world without
+  erroring.
+
+**Adding a component here must also extend
 `test/script/lua_world_snapshot_test.cpp` with a round-trip case through the
 actual `IRPersist` Lua surface** — a standalone `SaveSerialize<C>` unit test
-(e.g. `voxel_set_serialize_test.cpp`) covers the serializer but leaves the
-wiring itself (registry entry → Lua binding → reload) unverified (#2244). The registry is built **fresh per call** — cheap (a few
-allocations, never a per-frame path) and, unlike a process-static, its
-session-local `ComponentId`s always match the live `EntityManager`.
+(e.g. `save_serializers_test.cpp`, `voxel_set_serialize_test.cpp`) covers the
+serializer but leaves the wiring itself (registry entry → Lua binding →
+reload) unverified (#2244).
+
+The registry is built **fresh per call** — cheap (a few allocations, never a
+per-frame path) and, unlike a process-static, its session-local `ComponentId`s
+always match the live `EntityManager`.
 
 The `.json.txt` **debug dump** (W-11) is a second, richer writer over the same
 save walk (archetype members + `CHILD_OF` edges), gated by the
