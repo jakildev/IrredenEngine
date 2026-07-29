@@ -1178,9 +1178,11 @@ PYEOF
     # tie-break (below) covers the active-work window, but the open PR
     # itself is the canonical ownership signal — guarding here catches
     # the case where the claim label was manually cleared while the PR
-    # is still live. Skipped on --stackable-on (stacking deliberately
-    # claims a task whose blocker has an open PR).
-    if [[ -z "$stackable_branch" ]] && command -v gh >/dev/null 2>&1; then
+    # is still live. Runs on the --stackable-on path too (#2586): the
+    # matcher below keys on the *claimed* issue number, so the stack
+    # base's own PR (named for the blocker, a different issue) can never
+    # match here — only a duplicate PR for the claimed issue itself does.
+    if command -v gh >/dev/null 2>&1; then
         local repo_for_pr_check
         repo_for_pr_check=$(repo_from_ns)
         if [[ -n "$repo_for_pr_check" ]]; then
