@@ -456,8 +456,10 @@ Three checks, in order:
    # rotation jitter (voxel cylinder, Z-yaw-invariant probe):
    IRShapeDebug --spin-shape cylinder --spin-shape-voxel --yaw-sweep \
        --zoom 4 --auto-screenshot 6
-   # then score the captured sequence (in order):
-   build/tools/jitter_probe/jitter_probe <save_files>/screenshots/screenshot_0*.png
+   # then score the captured sequence (in order). --reversal-eps 0.8 retires the
+   # reversal criterion on these probes (see "the reversal criterion" below):
+   build/tools/jitter_probe/jitter_probe --reversal-eps 0.8 \
+       <save_files>/screenshots/screenshot_0*.png
    ```
 
 3. **Read the verdict.** `jitter_probe` tracks the shape's centroid across the
@@ -467,6 +469,34 @@ Three checks, in order:
    zooms (the per-axis class worsens with zoom/subdivision). For a multi-shape
    scene with no isolation, pass `jitter_probe --color R,G,B,T` to lock onto one
    shape. See `tools/jitter_probe/README.md`.
+
+   **The reversal criterion, and what this gate does NOT catch (#2469).** On both
+   canonical probes one axis is near-**pinned** while the other translates, so
+   `reversals == 0` counts sign flips of sub-pixel coverage noise and is
+   unsatisfiable on healthy master — measured 2026-07-28 at zoom 2/4/8 on the
+   yaw sweep AND on the pan-sweep twin. `--reversal-eps 0.8` zeroes those deltas
+   and makes the gate effectively **residual-axis only**; the `--max-residual`
+   default (1.50px) is unchanged and is the live assertion. Do not read the eps
+   as a calibrated floor — it sits at the top of the observed per-frame delta
+   range precisely because the criterion is being retired for these probes.
+
+   Two consequences to know before you lean on this gate:
+
+   - **It does not fire on the `IR_PERAXIS_OVERFLOW_DISABLE=1` runtime control.**
+     That lever now presents as a *smooth* 11.13px x-centroid migration scoring
+     `reversals=0, max_residual=0.73px` — clean on both shipped axes. No eps
+     separates the populations (the control clears at 0.6, healthy master at
+     0.8), which is why the eps was not calibrated against it.
+   - **The hard check is the residual axis against the analytic floor.** The
+     pre-#2427 defect record (residual 2.93px, Δmax 5.37 at zoom 4) fails the
+     1.50px bar by ~2×, so the original multi-pixel face-pop class is still
+     caught. A *systematic migration* class is not.
+
+   The principled fix — a per-axis excursion assertion, so a probe can require
+   "x stays pinned while y may translate" — is **#2606**. Until it lands, check
+   per-axis excursion by hand (`--verbose`, max-min per column) when validating
+   a change to the per-axis store, the scatter, or the camera-offset
+   decomposition; healthy master reads 1.26–2.83px on the pinned axis.
 
 **Jitter is NOT the same as cardinal byte-identity.** Confirm yaw-0 / static
 frames stay byte-identical (`img_diff`) *and* that motion is jitter-free
@@ -811,6 +841,50 @@ rasterization / MSAA** on the scatter pass, which removes the sub-pixel
 rasterization dropout at the source so no manual dilation/margin is needed
 (killing spikes and silhouette dashing together) — is deferred to epic
 **#1933** (fits #935/#937).
+
+**Accepted sub-pixel yaw-sweep centroid residual (voxel content) — #2469.**
+On the canonical Z-yaw-invariant probe (voxel cylinder, `--yaw-sweep`) the
+per-axis path leaves a sub-pixel centroid residual that scales with zoom. It is
+**content + sampling, not a positioning defect**, and is accepted as intentional
+drift. Measured on macOS/Metal, 2026-07-28 (24-frame sweeps, one quadrant):
+
+| probe | x excursion | x rev | x residual | y excursion | y rev | y residual |
+|---|---|---|---|---|---|---|
+| voxel cylinder, zoom 2 | 1.68px | 3 | 0.85px | 2.69px | 2 | 0.21px |
+| voxel cylinder, zoom 4 | 1.26px | 5 | 0.57px | 5.29px | 0 | 0.19px |
+| voxel cylinder, zoom 8 | 2.83px | 5 | 1.25px | 10.79px | 0 | 0.18px |
+| **SDF cylinder** (continuous-geometry control), zoom 4 / 8 | 2.00px | 0 | 1.43px | 4.00 / 10.00px | 0 | 0.95px |
+
+Three findings ground the accept, each measured rather than asserted:
+
+1. **The 4-bit face-frac lane is inert on this probe.** The probe's cylinder is
+   an odd-size (9³) origin-centred grid, so every active voxel sits on the exact
+   integer lattice: `fracInCell ≡ 0` after `snapNearIntegerVoxelPosition`, and
+   `fracToFrac4` encodes exactly 8/8/8, for which the scatter's decoded origin
+   adjustment (`peraxis_scatter.metal:281-284`, `v_peraxis_scatter.glsl:243-246`)
+   evaluates to exactly `0.0`. Staging a diagnostic scatter shader with that
+   adjustment deleted produced **`img_diff` = 0 on all 24 frames at both zoom 4
+   and zoom 8**, with bit-identical probe metrics. A lane pinned at its zero
+   point cannot produce a yaw-varying wobble. (`emitDeformedFace` is likewise
+   off-path: the per-axis store writes one cell per face centre.)
+2. **The voxel path's residual is LOWER than the defect-free control's.** The
+   SDF twin — continuous geometry, no voxel store — reads 1.43px at zoom 4 and 8,
+   above the voxel path at every zoom. The residual is a floor the probe itself
+   carries, not a per-axis excess.
+3. **The scaling fits content anisotropy, not a pixel-domain defect.** A voxelized
+   cylinder is only 4-fold symmetric — only the *continuous* cylinder is
+   Z-yaw-invariant, so the rotating staircase's true silhouette legitimately
+   wobbles. A pixel-domain positioning defect would sit ~constant in px across
+   zooms; the pre-#2427 overflow defect measured 2.93px residual / 5.37 Δmax at
+   zoom 4, ~2-5x this floor.
+
+There is no local fix: the residual is content plus the sampling floor, so the
+principled root fix is the same conservative-rasterization / MSAA direction
+already deferred to epic **#1933** (as for the #1883 corner drift above).
+
+**The `reversals == 0` criterion misfires on these probes — see the gate recipe
+in §"Verifying temporal stability" for the shipped flags and the limitation
+they carry.**
 
 Per-axis voxels **cast** sun shadows under continuous yaw via
 `RESOLVE_PER_AXIS_SCREEN_DEPTH` (#1435), which collapses the three face-local
