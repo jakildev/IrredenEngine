@@ -9,6 +9,7 @@
 #include <irreden/script/lua_audio_bindings.hpp>
 #include <irreden/script/lua_collision_bindings.hpp>
 #include <irreden/script/lua_command_bindings.hpp>
+#include <irreden/script/lua_debug_overlay_bindings.hpp>
 #include <irreden/script/lua_input_bindings.hpp>
 #include <irreden/script/lua_enum_def.hpp>
 #include <irreden/script/lua_modifier_bindings.hpp>
@@ -725,6 +726,7 @@ void LuaScript::bindLuaDrivenEcs() {
     detail::bindSpatialApi(*this);
     detail::bindRenderGlue(*this);
     detail::bindWidgets(*this);
+    detail::bindDebugOverlay(*this);
     detail::bindCollisionEvents(*this);
     detail::bindSimApi(*this);
     detail::bindAudioApi(*this);

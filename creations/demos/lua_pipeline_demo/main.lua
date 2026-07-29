@@ -67,14 +67,34 @@ local hudDrawSysId = IRSystem.registerSystem({
         IRGui.drawDisc(40, 30, 18, { 235, 90, 70 })       -- filled disc
         IRGui.drawLine(8, 56, 96, 56, { 90, 200, 255 })   -- horizontal line
         IRGui.drawLine(40, 8, 40, 56, { 120, 235, 140 })  -- vertical line
+
+        -- Debug-overlay draws (engine #2375). Same immediate-mode contract as
+        -- the IRGui draws above: DEBUG_OVERLAY consumes AND clears these
+        -- buffers every RENDER tick, so they must be re-issued here each
+        -- frame. Colors are 0..1 floats (the C++ IRDebug convention), NOT the
+        -- 0-255 tables IRGui takes.
+        --
+        -- World-anchored marker at the origin: IRDebug projects world → screen
+        -- itself, so this tracks the camera without any Lua-side math.
+        IRDebug.drawDiamond3D({ 0, 0, 0 }, 24, 1.0, 0.85, 0.2)
+        -- Screen-space HUD frame, in viewport pixels with (0,0) bottom-left.
+        IRDebug.drawRectScreen(
+            { 400, 30 }, { 610, 150 },
+            { 0.1, 0.15, 0.35, 0.6 },  -- fill
+            { 0.4, 0.9, 1.0, 1.0 }     -- border
+        )
     end,
 })
 
 -- HUD draw → composite the trixel canvases (incl. "gui") to the framebuffer →
--- blit to screen. The gui canvas is camera-independent, so no camera-control
--- systems are needed to show the HUD.
+-- DEBUG_OVERLAY flush → blit to screen. The gui canvas is camera-independent,
+-- so no camera-control systems are needed to show the HUD. DEBUG_OVERLAY sits
+-- after TRIXEL_TO_FRAMEBUFFER and before FRAMEBUFFER_TO_SCREEN, matching the
+-- default demo's placement; HudDraw runs before it so the buffers are filled
+-- by the time the flush reads them.
 IRSystem.registerPipeline(IRTime.RENDER, {
     hudDrawSysId,
     IRSystem.systemId(SystemName.TRIXEL_TO_FRAMEBUFFER),
+    IRSystem.systemId(SystemName.DEBUG_OVERLAY),
     IRSystem.systemId(SystemName.FRAMEBUFFER_TO_SCREEN),
 })

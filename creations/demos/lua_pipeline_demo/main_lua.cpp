@@ -22,6 +22,7 @@
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 #include <irreden/update/systems/system_lifetime.hpp>
 #include <irreden/update/systems/system_propagate_transform.hpp>
+#include <irreden/render/systems/system_debug_overlay.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 
@@ -49,6 +50,8 @@ void registerLuaBindings() {
             IRSystem::LIFETIME,
             IRSystem::PROPAGATE_TRANSFORM,
             IRSystem::TRIXEL_TO_FRAMEBUFFER,
+            // Flushes the IRDebug.* draws main.lua issues (engine #2375).
+            IRSystem::DEBUG_OVERLAY,
             IRSystem::FRAMEBUFFER_TO_SCREEN>();
 
         // Modifier resolver pipeline. `registerResolverPipeline()` does
