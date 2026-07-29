@@ -192,16 +192,22 @@ suites green, pan/yaw jitter sweeps SMOOTH, clean exits.
 
 ## Steward ledger
 
-reconciled-through: PR #2562 merge (2026-07-28)
-proposal-pending: https://github.com/jakildev/IrredenEngine/issues/2544#issuecomment-5100516659
+reconciled-through: PR #2576 merge (2026-07-29)
+proposal-pending: none — answered 2026-07-28 by the architect ruling
+https://github.com/jakildev/IrredenEngine/issues/2544#issuecomment-5106383295
+(package: issuecomment-5100516659); distributed 2026-07-29 as A2/A3 + the
+`## Steward direction` on PR #2585.
 
 ### Children
 | Child | State | PR | Plan | Last validated |
 |---|---|---|---|---|
 | #2545 | merged | #2562 | plan | 2026-07-28 (PR #2562 merge) |
-| #2546 | in-progress | #2576 (approved, awaiting Windows smoke) | plan | 2026-07-28 (PR #2562 merge) |
-| #2547 | in-progress (design-proposed) | #2585 | plan + A1 | 2026-07-28 (PR #2562 merge) |
-| #2548 | open | — | plan | 2026-07-28 (PR #2562 merge) |
+| #2546 | merged | #2576 (`fleet:needs-windows-smoke` open) | plan | 2026-07-29 (PR #2576 merge) |
+| #2547 | in-progress (design-unblocked) | #2585 | plan + A1–A2 | 2026-07-29 (proposal distributed) |
+| #2548 | open | — | plan | 2026-07-29 (PR #2576 merge) |
+
+A3 is epic-scope (the whole-epic verification bar) and is not listed per child;
+it binds every row above at close-out.
 
 ### Decisions
 <!-- entries: D<n> (<YYYY-MM-DD>): <decision> — source: <link>  (numbered scheme per epic-steward-protocol.md §Decisions; escalation rules reference decisions by D-id) -->
@@ -222,6 +228,39 @@ proposal-pending: https://github.com/jakildev/IrredenEngine/issues/2544#issuecom
   *agrees* with picking at cardinals 1–3 with zero picking changes. Phase 4's
   `castVoxelRay` surface latch inherits this agreement — do not re-derive a
   picking compensation for it. — source: PR #2562 §What, final bullet.
+- D4 (2026-07-28): The default `CAMERA_CENTER` pivot owes contract **(A)** — it
+  pins **the surface point under the viewport-center pixel**, not the content's
+  axis. Rationale of record is pivot-source consistency: Phase 4 (#2548) latches
+  a clicked *surface* point, so an axis-pinning default would fork the meaning of
+  "rotate" by how the pivot was acquired; (A) is also the only depth-honest
+  option ("the axis of the content" is not well-formed for terrain, floors, or
+  merged voxel fields). An extended body swinging about its near surface is
+  therefore correct behavior, not a defect. Literal spin-in-place, if ever
+  wanted, is a separate **object-pivot mode** (pick → entity →
+  transform/centroid) layered on top of the surface latch — its own child issue,
+  never a replacement. — source: architect ruling
+  https://github.com/jakildev/IrredenEngine/issues/2544#issuecomment-5106383295
+  §1; realized by amendment A2.
+- D5 (2026-07-28): Under D4, re-grounding the `center-depth` and `center-column`
+  `pivot-verify` gates onto a **pinned-point oracle** is authorized **inside PR
+  #2585 itself** — an accepted mechanism that shifts a measured signal re-grounds
+  the stale gate in the same PR; shipping red is not acceptable, and a gate
+  unreachable by construction (≤1.5px needs r ≤ ~0.07 world units) is worse. The
+  whole-silhouette-centroid oracle is retired for the default-pivot passes only;
+  `focus-ctr` / `focus-off` / `focus-ctr-sdf` are untouched. — source: architect
+  ruling §2; realized by amendments A2 (child gates) and A3 (epic criteria).
+- D6 (2026-07-29): Phase 2's residual per-axis offset was **not** a rounding-
+  function mismatch. §Phase 2 (C) named "`roundHalfUp` vs `floor` mismatch is the
+  prime suspect"; the shipped root cause is that the forward scatter's screen
+  re-projection built `cornerIso` from the per-axis **store** anchor
+  `perAxisBase` (`trixelOriginOffsetZ1(canvasSize) + floor(cameraIso)`), whose
+  `(-1,-1)` term is the trixel grid's sub-pixel **lattice alignment** — a
+  canvas-storage convention that the `ij - perAxisBase` recovery depends on but
+  which must not ride into on-screen placement. Fix: anchor the re-projection on
+  the canvas geometric center (`canvasSize/2` = `perAxisBase + (1,1)`), recovery
+  untouched. **Standing consequence:** store anchor and screen anchor are now
+  distinct concepts on the per-axis route — Phase 4 and any future scatter work
+  must not re-conflate them. — source: PR #2576 §Root cause / §Fix.
 
 ### Events
 - 2026-07-22: filed via file-epic
@@ -260,6 +299,66 @@ proposal-pending: https://github.com/jakildev/IrredenEngine/issues/2544#issuecom
   this iteration's proposal package (`fleet:steward-proposal` on the umbrella;
   see `proposal-pending` above). Steward direction:
   https://github.com/jakildev/IrredenEngine/pull/2585#issuecomment-5100511180
+- 2026-07-29: **#2546 (P2) merged via PR #2576** (master `dce3d104`) — checklist
+  ticked. Scope-drift audit: in scope (both scatter shader twins,
+  `docs/design/camera-yaw-pivot.md`, refreshed references), but the **mechanism
+  differs from the plan's stated hypothesis** — §Phase 2 (C) named a
+  `roundHalfUp`/`floor` mismatch; the real cause was the store-anchor lattice
+  alignment riding into screen placement (recorded as **D6**). No Decision
+  contradicted. The PR also added a child plan file `.fleet/plans/issue-2546.md`
+  (worker-authored, 2026-07-24) — the first child of this epic with its own plan;
+  the epic plan stays the authority for cross-phase text.
+- 2026-07-29: **#2546 acceptance-criteria audit** (not just scope) — 1, 3, 4 met
+  as written (pivot-verify `focus-ctr`/`focus-off`/`center-column` PINNED ≤1.31px
+  at zoom 4 **and** 8; 19 cardinal shape_debug shots + all crops byte-identical,
+  `max_delta` 0; `RESULT=CLEAN`). **Criterion 2 is discharged by a different
+  instrument than its wording:** it asks for pan/yaw jitter sweeps to "stay
+  SMOOTH", and the PR reports the sweeps **bit-identical to master** at zoom
+  2/4/8 with the residual sub-pixel JITTER verdicts unchanged, which the PR
+  attributes to the "pre-existing #2427/#2346 class". Bit-identity is the correct
+  no-regression discharge for *this* PR — it did not shift the signal.
+  **Unresolved, and close-out must not paper over it:** #2427 and #2346 are both
+  **CLOSED**, and #2427 closed `COMPLETED` (2026-07-21) on an acceptance
+  criterion of "reversals=0, residual ≤1.5px at zoom 2/4/8" — i.e. **SMOOTH**.
+  If PR #2576's reading is right, either that gate regressed after #2427 closed
+  or a distinct residual survives it; **either way no open issue owns the
+  residual**, and §Verification (whole epic) / §Closing criteria still demand
+  "pan/yaw jitter sweeps SMOOTH". Steward has not run the probe (docs-only lane),
+  so this is recorded as a discrepancy to verify, **not** as an asserted
+  regression. Close-out must resolve it — re-run the sweeps and either cite a
+  SMOOTH verdict or file an owner for the residual and restate the criterion.
+  Flagged on the umbrella.
+- 2026-07-29: reference-refresh check against Phase 2 acceptance 3 — the 10
+  refreshed macOS references are 2 shape_debug yaw-45 shots
+  (`zoom4_yaw45_inter_cardinal`, `zoom4_pan16_yaw45_pivot`) and 8 canvas_stress
+  auto-rotating-pose shots (`compare_yaw0`, `compare_yaw_q`, `revoxelize_solids`,
+  `so3_*`). No settled shape_debug yaw-0 reference was touched, so acceptance 3
+  holds by the same reasoning recorded for PR #2562 (canvas_stress `yaw0`-named
+  shots are not settled yaw-0 poses — `autoRotate_` defaults true).
+- 2026-07-29: cross-host — PR #2576 carries `fleet:needs-windows-smoke`; its
+  test-plan line "build + smoke IRShapeDebug on Linux/OpenGL (GLSL twin
+  unverified here)" is unchecked. The GLSL twin of the scatter fix is therefore
+  **unverified on any OpenGL host**; the smoke lane owns it. Close-out must cite
+  that verdict. Not an invisible gap — the label is applied.
+- 2026-07-29: downstream siblings re-validated against PR #2576. **No stale plan
+  text.** #2547's Phase 3 surfaces (`DepthProbe`, `isoPixelToPos3D`,
+  `cameraYawPivotOffset`) are untouched by #2576, which changed only the scatter
+  screen anchor; PR #2585 is stacked on #2576's branch and so already contains
+  it, and A2's `center-column` re-grounding is authored against the
+  **post-#2576** baseline (PINNED ≤1.31px) — correct as written. #2548's Phase 4
+  surfaces (`castVoxelRay`/`worldHitPos_`, `system_camera_mouse_rotate.hpp`) are
+  likewise untouched; its only delta is D6's standing consequence (store anchor ≠
+  screen anchor on the per-axis route) and the A3 criteria restatement.
+  Skip-guard not engaged — #2585 carries neither `fleet:merger-cooldown` nor
+  `fleet:stacked-rebase`. **Branch note (merger's lane, not the steward's):**
+  #2585's base `claude/2546-peraxis-composite-registration` merged, so #2585
+  needs re-targeting onto master.
+- 2026-07-29: **proposal answered and distributed.** Architect ruling
+  https://github.com/jakildev/IrredenEngine/issues/2544#issuecomment-5106383295
+  answered both questions (contract (A); gate re-grounding authorized in #2585)
+  and removed `fleet:steward-proposal` — the re-fire edge. Recorded as D4/D5,
+  realized as amendments **A2** (child #2547 gates + superseded "spins in place"
+  wording) and **A3** (whole-epic verification bar). PR #2585 design-unblocked.
 
 ## Amendments
 
@@ -287,3 +386,84 @@ proposal-pending: https://github.com/jakildev/IrredenEngine/issues/2544#issuecom
   background-fallback shot variant **if needed**"; the parallel clause in #2547
   §Acceptance criteria, "add a background-fallback variant to the harness **if
   needed**".
+
+### A2 — 2026-07-29 — child #2547 (Phase 3 / B) — trigger: proposal answered (architect ruling on #2544)
+
+- **Decision:** the default `CAMERA_CENTER` pivot owes contract **(A)** — it pins
+  **the surface point under the viewport-center pixel** (the composite-depth
+  readback), not the axis/centroid of the content under it. Two consequences the
+  worker may act on directly:
+  1. **An extended body swinging about its near surface is correct behavior**,
+     not a residual defect. The centroid orbit that remains at r=4 is what (A)
+     specifies; do not add a compensation pass chasing it.
+  2. **Re-grounding `center-depth` and `center-column` onto a pinned-point oracle
+     is authorized inside PR #2585 itself.** Prefer **both** forms per the
+     ruling: assert the derived focus against the analytic ray-surface value (the
+     sharp check) **and** score a small crop about the center pixel (the visual
+     regression net). `center-column`'s old PINNED 0.94/1.27 was measuring the
+     defect this phase fixes — its center pixel hits the probe at iso depth 7, so
+     the derive moving the focus off the depth-0 anchor is correct under (A).
+     `focus-ctr` / `focus-off` / `focus-ctr-sdf` are **untouched** — they are not
+     default-pivot passes and keep the existing whole-silhouette oracle.
+  A literal "spins in place" pivot is a separate **object-pivot mode** (pick →
+  entity → transform/centroid) layered on the surface latch — its own child
+  issue if ever wanted, never a replacement. Do not absorb it into #2547.
+- **Supersedes:**
+  - §Phase 3 (B) Acceptance 1 — "`pivot-verify.py --blocks center-depth` PINNED
+    (≤1.5px, all 9 yaws, zoom 4+8)" now means **pinned-point-oracle** ≤1.5px, not
+    whole-silhouette-centroid ≤1.5px. Under the centroid oracle the criterion is
+    unreachable by construction (≤1.5px needs r ≤ ~0.07 world units).
+  - §Phase 3 (B) Acceptance 3 — "the shape under the crosshair rotates in place"
+    is superseded by "**the surface point under the crosshair holds its screen
+    position**". Same substitution applies to the twin sentences in child issue
+    #2547's §Scope ("what I'm looking at spins in place regardless of scene
+    elevation") and §Acceptance criteria ("the shape under the center rotates in
+    place"): those were authored under the point-probe approximation, where
+    surface ≡ axis and the arithmetic works exactly — descriptive of that case,
+    not a contract for extended bodies. **The issue body is not edited** (steward
+    scope); this amendment governs, and workers read the plan newest-first.
+  - Nothing in A1 — A1's background-fallback vehicle stands unchanged, and A1's
+    explicitly-deferred question ("whether `center-column` itself may go red") is
+    what this amendment settles.
+- **Acceptance criteria:** §Phase 3 (B) Acceptance now reads:
+  1. `pivot-verify.py --blocks center-depth` PINNED ≤1.5px (all 9 yaws, zoom 4+8)
+     **against the pinned-point oracle** — analytic ray-surface assert plus a
+     center-pixel crop score.
+  2. unchanged (A1's background-center block).
+  3. Interactive sanity: pan over an elevated shape in shape_debug, Alt+drag
+     rotate — **the surface point under the crosshair holds its screen position**
+     (attach before/after screenshot pair to the PR).
+  4. unchanged (cardinal byte-identity at yaw 0).
+  Plus: `center-column` re-grounded onto the same pinned-point oracle in this PR,
+  and the re-grounding documented in the PR body so the gate change is auditable.
+- **By:** epic-steward — source: architect ruling
+  https://github.com/jakildev/IrredenEngine/issues/2544#issuecomment-5106383295
+  §1 ("**1. Contract: (A) — the surface point under the viewport-center pixel.**
+  Confirmed … pivot-source consistency"; "treat it as descriptive of that case,
+  not a contract for extended bodies. Amend the wording accordingly.") and §2
+  ("**2. Gate re-grounding: authorized, in #2585 itself.** … prefer **both**
+  forms … `center-column`: re-ground the same way."). Recorded as ledger D4/D5.
+
+### A3 — 2026-07-29 — epic #2544 (whole-epic verification) — trigger: proposal answered (architect ruling on #2544)
+
+- **Decision:** the whole-epic verification bar is restated so gate and criteria
+  cannot contradict: `pivot-verify.py` all passes PINNED ≤1.5px at zoom 4 and 8
+  on both backends, where the **default-pivot passes (`center-depth`,
+  `center-column`) are scored against the pinned-point oracle** and the remaining
+  passes keep their existing oracle. The rest of §Verification (whole epic) —
+  shape_debug + canvas_stress render-verify suites green, pan/yaw jitter sweeps
+  SMOOTH, clean exits — is unchanged.
+- **Supersedes:** the unqualified "all passes PINNED (≤1.5px)" reading in
+  §Verification (whole epic) of this plan, and the identically-worded sentence in
+  the umbrella issue #2544 §Closing criteria. **The umbrella body is not edited**
+  — the steward's body carve-out covers the `## Children` checklist only; this
+  amendment is the restatement of record and is linked from the umbrella thread.
+- **Acceptance criteria:** unchanged in count; only the oracle for the two
+  default-pivot passes is restated. Close-out for this epic must cite the
+  pinned-point-oracle results for `center-depth` / `center-column`, not centroid
+  numbers.
+- **By:** epic-steward — source: architect ruling
+  https://github.com/jakildev/IrredenEngine/issues/2544#issuecomment-5106383295
+  §2, "Restate the umbrella §Closing criteria in the same docs pass ('all passes
+  PINNED (≤1.5px)' → pinned-point-oracle ≤1.5px for the default-pivot passes), so
+  gate and criteria cannot contradict." Recorded as ledger D5.
