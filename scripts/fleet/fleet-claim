@@ -2373,6 +2373,21 @@ print(0)
 
             [[ "$has_wip_pr" -eq 1 ]] && continue
 
+            # Reservation guard: a live local reservation binds this issue to
+            # a worktree whose interrupted session resumes it on the next
+            # dispatch (#521), so its claim label is NOT stale — sweeping it
+            # here advertises the task as free and another host can re-claim
+            # while this host finishes, yielding duplicate PRs. Reservations
+            # survive cmd_clear_all, so this guard holds through the boot
+            # sequence. (task_id is repo-unqualified; a cross-repo number
+            # collision at worst keeps a label that the 2h TTL still reaps.)
+            local resv_holder
+            resv_holder=$(reservation_holder_for_task "$issue_num" 2>/dev/null || true)
+            if [[ -n "$resv_holder" ]]; then
+                echo "reset-sweep-host-claims: keeping '$label_name' on $repo issue#$issue_num — reserved by worktree '$resv_holder' (resumes)"
+                continue
+            fi
+
             if gh issue edit "$issue_num" --repo "$repo" \
                     --remove-label "$label_name" >/dev/null 2>&1; then
                 echo "reset-sweep-host-claims: removed '$label_name' on $repo issue#$issue_num (no open PR)"
