@@ -417,7 +417,7 @@ namespace IRPrefab::JointTransform {
 // rigs voxel sets needs no follow-up call.
 inline IRSystem::System<IRSystem::UPDATE_JOINT_MATRICES> *system() {
     const IRSystem::SystemId systemId = IRSystem::findSystem(IRSystem::UPDATE_JOINT_MATRICES);
-    if (systemId == IREntity::kNullEntity) {
+    if (systemId == IRSystem::kNullSystemId) {
         return nullptr;
     }
     return IRSystem::getSystemParams<IRSystem::System<IRSystem::UPDATE_JOINT_MATRICES>>(systemId);

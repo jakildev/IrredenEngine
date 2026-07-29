@@ -223,11 +223,11 @@ template <> struct System<DEBUG_CULLING_MINIMAP> {
     float padding_ = 10.0f;
 
     // Light + caster domain sources (#2316, V2) — settable via create(Params).
-    // Optional: kNullEntity means "not wired", so a demo with no lighting
+    // Optional: kNullSystemId means "not wired", so a demo with no lighting
     // pipeline (e.g. the default demo) just gets the shape domain, no
     // spurious empty-window rectangle.
-    IRSystem::SystemId lightVolumeSystemId_ = IREntity::kNullEntity;
-    IRSystem::SystemId bakeSunShadowSystemId_ = IREntity::kNullEntity;
+    IRSystem::SystemId lightVolumeSystemId_ = IRSystem::kNullSystemId;
+    IRSystem::SystemId bakeSunShadowSystemId_ = IRSystem::kNullSystemId;
 
     // Per-frame scratch buffers (reused across ticks).
     std::vector<detail::EntityRecord> entityRecords_;
@@ -239,8 +239,8 @@ template <> struct System<DEBUG_CULLING_MINIMAP> {
         float screenWidthFraction_ = 0.15f;
         float aspectRatio_ = 12.0f / 7.0f;
         float padding_ = 10.0f;
-        IRSystem::SystemId lightVolumeSystemId_ = IREntity::kNullEntity;
-        IRSystem::SystemId bakeSunShadowSystemId_ = IREntity::kNullEntity;
+        IRSystem::SystemId lightVolumeSystemId_ = IRSystem::kNullSystemId;
+        IRSystem::SystemId bakeSunShadowSystemId_ = IRSystem::kNullSystemId;
     };
 
     void tick(
@@ -349,7 +349,7 @@ template <> struct System<DEBUG_CULLING_MINIMAP> {
         // Light domain (#2316, V2): gather-state-colored dots + the pinned
         // light-volume window rectangle. Skipped when this instance wasn't
         // wired to a COMPUTE_LIGHT_VOLUME system.
-        if (lightVolumeSystemId_ != IREntity::kNullEntity) {
+        if (lightVolumeSystemId_ != IRSystem::kNullSystemId) {
             const auto &lightRecords = IRSystem::lightGatherRecords(lightVolumeSystemId_);
             detail::drawLightDots(
                 lightRecords,
@@ -382,7 +382,7 @@ template <> struct System<DEBUG_CULLING_MINIMAP> {
         // Caster domain (#2316, V2): world-placed casters as squares +
         // the shadow-feeder AABB rectangle they're tested against. Skipped
         // when this instance wasn't wired to a BAKE_SUN_SHADOW_MAP system.
-        if (bakeSunShadowSystemId_ != IREntity::kNullEntity) {
+        if (bakeSunShadowSystemId_ != IRSystem::kNullSystemId) {
             const auto shadowFeederParams = IRPrefab::SunShadow::frameShadowFeederParams();
             const IsoBounds2D feederViewport =
                 IRPrefab::SunShadow::shadowFeederCullViewport(0, shadowFeederParams);

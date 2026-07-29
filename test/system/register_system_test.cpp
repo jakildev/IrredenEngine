@@ -166,12 +166,30 @@ TEST_F(RegisterSystemTest, FindSystemResolvesEachRegisteredName) {
 }
 
 TEST_F(RegisterSystemTest, FindSystemReportsANameThatWasNeverCreated) {
-    // Only A is created, so B has no entry — the miss value is the same
-    // `kNullEntity` the wire-once globals used as their "unwired" sentinel, so
-    // `system()` / `allocator()` null-return semantics are unchanged.
+    // Only A is created, so B has no entry — the miss value is `kNullSystemId`,
+    // which the prefab handles compare against for their "unwired -> nullptr"
+    // branch, so `system()` / `allocator()` null-return semantics are unchanged.
     IRSystem::createSystem<IRSystem::TEST_REGISTER_SYSTEM_A>();
 
-    EXPECT_EQ(IRSystem::findSystem(IRSystem::TEST_REGISTER_SYSTEM_B), IREntity::kNullEntity);
+    EXPECT_EQ(IRSystem::findSystem(IRSystem::TEST_REGISTER_SYSTEM_B), IRSystem::kNullSystemId);
+}
+
+// The miss sentinel has to be unreachable as a real id, and id 0 — handed to
+// whichever system registers first — is the one value a `kNullEntity`-based
+// sentinel could not express (#2540).
+TEST_F(RegisterSystemTest, FirstRegisteredSystemIsDistinguishableFromAMiss) {
+    // A is the first system this fixture creates, so it holds id 0; B is never
+    // created. The ASSERT pins that premise: if SystemManager ever
+    // pre-registers a system or stops counting from 0, it fails here rather
+    // than letting the EXPECT_NE below pass vacuously.
+    const auto sysA = IRSystem::createSystem<IRSystem::TEST_REGISTER_SYSTEM_A>();
+    ASSERT_EQ(sysA, 0u) << "premise: the first system registered holds id 0";
+
+    EXPECT_EQ(IRSystem::findSystem(IRSystem::TEST_REGISTER_SYSTEM_A), sysA);
+    EXPECT_NE(
+        IRSystem::findSystem(IRSystem::TEST_REGISTER_SYSTEM_A),
+        IRSystem::findSystem(IRSystem::TEST_REGISTER_SYSTEM_B)
+    ) << "registered-first must not read back as never-registered";
 }
 
 // Deliberately NOT a RegisterSystemTest fixture case: the guard under test is
@@ -184,7 +202,7 @@ TEST(FindSystemNoManagerTest, ReportsNullWhenNoSystemManagerExists) {
     ASSERT_EQ(IRSystem::g_systemManager, nullptr)
         << "precondition: no SystemManager is alive between fixtures";
 
-    EXPECT_EQ(IRSystem::findSystem(IRSystem::TEST_REGISTER_SYSTEM_A), IREntity::kNullEntity);
+    EXPECT_EQ(IRSystem::findSystem(IRSystem::TEST_REGISTER_SYSTEM_A), IRSystem::kNullSystemId);
 }
 
 } // namespace

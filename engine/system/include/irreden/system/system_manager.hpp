@@ -183,12 +183,29 @@ class SystemManager {
         m_ticks[system].excludeArchetype_.insert(IREntity::getComponentType<Tag>());
     }
 
+    /// Asserts on out-of-range SystemId (debug), same as `replaceSystemBody`
+    /// — this is the guard that turns an accidental index by
+    /// `kNullSystemId` into a diagnosed failure instead of an unchecked
+    /// `std::vector::operator[]` past the end (#2540).
     template <typename Params>
     void setSystemParams(SystemId system, std::unique_ptr<Params> params) {
+        IR_ASSERT(
+            system < m_nextSystemId,
+            "setSystemParams: SystemId {} out of range (have {} systems)",
+            system,
+            m_nextSystemId
+        );
         m_systemParams[system] = std::make_unique<ISystemParamsImpl<Params>>(std::move(params));
     }
 
+    /// Asserts on out-of-range SystemId (debug); see `setSystemParams`.
     template <typename Params> Params *getSystemParams(SystemId system) {
+        IR_ASSERT(
+            system < m_nextSystemId,
+            "getSystemParams: SystemId {} out of range (have {} systems)",
+            system,
+            m_nextSystemId
+        );
         auto *paramsImpl = static_cast<ISystemParamsImpl<Params> *>(m_systemParams[system].get());
         return paramsImpl == nullptr ? nullptr : paramsImpl->params_.get();
     }
@@ -330,16 +347,12 @@ class SystemManager {
     }
 
     /// #2526: resolve a `SystemName` to the `SystemId` it was registered
-    /// under, or `IREntity::kNullEntity` when it was never registered.
-    ///
-    /// Caveat: `kNullEntity` is 0 and system ids also count up from 0, so
-    /// the *first* system created in a process is indistinguishable from
-    /// "not registered" through this return value. Harmless for the current
-    /// consumers, which are never the first system a creation registers —
-    /// see #2540 for the sentinel fix.
+    /// under, or `kNullSystemId` when it was never registered. The sentinel
+    /// is unreachable as a real id (#2540), so a system registered first in
+    /// the process — id 0 — reads back as registered rather than as a miss.
     SystemId findEngineSystem(SystemName name) const {
         const auto it = m_engineSystemIds.find(name);
-        return it == m_engineSystemIds.end() ? IREntity::kNullEntity : it->second;
+        return it == m_engineSystemIds.end() ? kNullSystemId : it->second;
     }
     const TimingAccum &getTimingAccum(SystemId id) const {
         return m_timingAccum[id];

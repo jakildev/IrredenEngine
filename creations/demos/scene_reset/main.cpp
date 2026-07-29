@@ -90,11 +90,11 @@ int g_baselineWaterline = 0;
 // they persist across resetGameplay and never count toward getLiveEntityCount;
 // re-calling createSystem each cycle would slowly grow those arrays for nothing.
 struct SceneSystems {
-    IRSystem::SystemId lodUpdate_ = 0;
-    IRSystem::SystemId propagateTransform_ = 0;
-    IRSystem::SystemId updateVoxelSetChildren_ = 0;
-    IRSystem::SystemId rebuildGridVoxels_ = 0;
-    IRSystem::SystemId squashStretch_ = 0;
+    IRSystem::SystemId lodUpdate_ = IRSystem::kNullSystemId;
+    IRSystem::SystemId propagateTransform_ = IRSystem::kNullSystemId;
+    IRSystem::SystemId updateVoxelSetChildren_ = IRSystem::kNullSystemId;
+    IRSystem::SystemId rebuildGridVoxels_ = IRSystem::kNullSystemId;
+    IRSystem::SystemId squashStretch_ = IRSystem::kNullSystemId;
 };
 SceneSystems g_systems;
 

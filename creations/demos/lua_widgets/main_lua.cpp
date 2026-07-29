@@ -54,7 +54,7 @@ namespace IRLuaWidgets {
 // The single WIDGET_LUA_DISPATCH instance, registered as a prefab system in
 // the Lua-binding callback (so the binding resolves the SAME instance the
 // INPUT pipeline ticks) and inserted into the pipeline in initSystems().
-IRSystem::SystemId g_dispatchId = IREntity::kNullEntity;
+IRSystem::SystemId g_dispatchId = IRSystem::kNullSystemId;
 
 // Widget ids, published from main.lua via IRTest.setButtons once built.
 IREntity::EntityId g_onClickButton = IREntity::kNullEntity;
