@@ -155,12 +155,19 @@ void registerArgs() {
     );
 }
 
-// Read the parsed flags into g_autoProfileFrames + g_cliOverrides. Runs inside
-// the lua-bindings callback (which fires during init, after the parse) so
-// g_cliOverrides is populated before applyCliOverrides() consumes it. Replaces
-// the retired hand-rolled parseArgs.
+// Read the parsed flags into g_autoWarmupFrames + g_autoProfileFrames +
+// g_cliOverrides. Runs inside the lua-bindings callback (which fires during
+// init, after the parse) so g_cliOverrides is populated before
+// applyCliOverrides() consumes it. Replaces the retired hand-rolled parseArgs.
 void applyArgs() {
     const IRArgs::Parser &args = IREngine::args();
+    // registerLuaBindings() builds the RENDER pipeline — including the
+    // auto-screenshot system — from inside the binding callback, which runs
+    // during IREngine::init. So the warmup count must land here, at callback
+    // time: assigning it after init returns leaves that guard reading 0, and
+    // --auto-screenshot then hangs forever with no capture system to call
+    // closeWindow() and no diagnostic (#2502).
+    g_autoWarmupFrames = args.autoScreenshotWarmupFrames();
     if (args.wasProvided("--auto-profile")) {
         g_autoProfileFrames = args.getInt("--auto-profile");
     }
@@ -517,7 +524,6 @@ int main(int argc, char **argv) {
     );
     registerLuaBindings();
     IREngine::init(argc, argv);
-    g_autoWarmupFrames = IREngine::args().autoScreenshotWarmupFrames();
     if (g_autoProfileFrames > 0) {
         IREngine::enableFrameTiming(true);
     }
