@@ -399,11 +399,17 @@ same change. Four consequences for authors:
   invariant its constructors establish (a count bounded by an inline array's
   capacity, parallel grids sized to a stored extent), re-check it after
   reading and return `BinaryIOError::UnknownTag` on violation, so the
-  reader's admissible set equals the constructors'. Truncation is already
+  reader admits no more than the constructors do. Truncation is already
   caught by the short read; this covers the well-formed-but-inconsistent
   file, whose damage otherwise surfaces as an out-of-bounds access in an
   unchecked accessor rather than as a load error. `SaveSerialize<C_Cycle>`
-  and `SaveSerialize<C_TrianglesOnlySet>` are the reference shape.
+  and `SaveSerialize<C_TrianglesOnlySet>` are the reference shape. Match
+  the **accessors'** requirements, not merely the constructors': where a
+  constructor is laxer than the indexing math its own accessors perform
+  (`C_TrianglesOnlySet::resize` accepts a both-negative extent, which
+  multiplies to a positive cell count), the reader is deliberately the
+  tighter of the two — a reader that only mirrored the constructor would
+  restore a component the accessors then index out of bounds.
 - **A component whose state cannot honestly round-trip opts OUT**, with a
   comment saying why. The current class is callback-bearing state:
   `C_LambdaModifiers`, `C_LerpEntity`, and — since #2242 — `C_GotoEasing3D`

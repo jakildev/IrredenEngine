@@ -95,11 +95,16 @@ template <> struct SaveSerialize<IRComponents::C_SpriteAnimation> {
 /// `triangleColors_[index2DtoIndex1D(index, size_)]` unchecked and
 /// `setTriangle`'s lone bounds check is an `IR_ASSERT` that compiles out
 /// under `IR_RELEASE`, so an inconsistent grid is an out-of-bounds access on
-/// first use rather than visibly-wrong data. Rejecting keeps the reader's
-/// admissible set equal to the constructors', which establish
-/// `triangleColors_.size() == triangleDistances_.size() == size_.x*size_.y` —
-/// the same contract `SaveSerialize<C_Cycle>` enforces on its breakpoint
-/// count.
+/// first use rather than visibly-wrong data. Rejecting holds the reader to the
+/// contract the constructors establish —
+/// `triangleColors_.size() == triangleDistances_.size() == size_.x*size_.y`,
+/// the same shape `SaveSerialize<C_Cycle>` enforces on its breakpoint count.
+/// The reader is deliberately **tighter** than the constructors in one respect:
+/// it also rejects a negative dimension. `resize()` admits one (a both-negative
+/// pair multiplies to a positive cell count, so the grids come out plausibly
+/// sized), but the resulting extent breaks the indexing math the accessors
+/// rely on — the component's own invariant is weaker here than the accessors
+/// need, so the reader does not widen to match it.
 template <> struct SaveSerialize<IRComponents::C_TrianglesOnlySet> {
     static void write(IRAsset::BinaryWriter &w, const IRComponents::C_TrianglesOnlySet &value) {
         IRMath::BinaryIO::writeIVec2(w, value.size_);
@@ -117,13 +122,16 @@ template <> struct SaveSerialize<IRComponents::C_TrianglesOnlySet> {
         IR_SAVE_READ_STATUS(detail::readTrivialVector(r, value.triangleDistances_));
 
         // Widened to 64-bit because both dimensions come off disk: a corrupt
-        // pair overflows the component's own `int` multiply. A negative
-        // product (mixed-sign dimensions) is unconstructible as well —
-        // `resize()` would convert it to a huge `size_t` — so the same test
-        // rejects it.
+        // pair overflows the component's own `int` multiply. Each dimension is
+        // tested for sign independently rather than relying on the product:
+        // a mixed-sign pair gives a negative product, but a both-negative pair
+        // gives a POSITIVE one ((-2,-3) -> +6), so a product-only test admits
+        // it — and `index2DtoIndex1D` (`index.y * size_.x + index.x`) then goes
+        // negative for any row past the first, indexing out of bounds in the
+        // unchecked `atTriangleColor` / `atTriangleDistance` accessors.
         const std::int64_t expectedCells =
             static_cast<std::int64_t>(value.size_.x) * static_cast<std::int64_t>(value.size_.y);
-        if (expectedCells < 0 ||
+        if (value.size_.x < 0 || value.size_.y < 0 ||
             static_cast<std::int64_t>(value.triangleColors_.size()) != expectedCells ||
             static_cast<std::int64_t>(value.triangleDistances_.size()) != expectedCells) {
             return Res::error(

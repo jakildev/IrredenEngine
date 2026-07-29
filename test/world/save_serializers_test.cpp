@@ -447,6 +447,33 @@ TEST(SaveSerializers, TrianglesOnlySetRejectsExtentGridMismatch) {
     EXPECT_EQ(restored.status_.code_, IRAsset::BinaryIOError::UnknownTag);
 }
 
+// A both-negative extent multiplies to a POSITIVE cell count ((-2,-3) -> +6),
+// so it agrees with the six colors and six distances actually on disk — a
+// product-only consistency test admits it. It must still be rejected: the
+// accessors index `index.y * size_.x + index.x`, which goes negative for any
+// row past the first. TrianglesOnlySetRoundTrips is the positive control —
+// the same bytes, unpatched, restore cleanly.
+TEST(SaveSerializers, TrianglesOnlySetRejectsNegativeExtent) {
+    const C_TrianglesOnlySet set{IRMath::ivec2(2, 3), IRMath::ivec2(-1, 4)};
+    std::vector<std::uint8_t> bytes = serialize(set);
+    // Layout: size_ = i32 x then i32 y (little-endian), so x is [0..3], y is [4..7].
+    ASSERT_GE(bytes.size(), 8u);
+    ASSERT_EQ(bytes[0], 2u) << "expected size_.x at this offset";
+    ASSERT_EQ(bytes[4], 3u) << "expected size_.y at this offset";
+    bytes[0] = 0xFEu; // size_.x = -2
+    bytes[1] = 0xFFu;
+    bytes[2] = 0xFFu;
+    bytes[3] = 0xFFu;
+    bytes[4] = 0xFDu; // size_.y = -3, so size_.x * size_.y == +6 == the grid sizes
+    bytes[5] = 0xFFu;
+    bytes[6] = 0xFFu;
+    bytes[7] = 0xFFu;
+
+    IRAsset::Result<C_TrianglesOnlySet> restored = deserialize<C_TrianglesOnlySet>(bytes);
+    EXPECT_FALSE(restored.ok());
+    EXPECT_EQ(restored.status_.code_, IRAsset::BinaryIOError::UnknownTag);
+}
+
 // Every field of C_TriangleCanvasBackground is private, so the round trip is
 // asserted through byte identity rather than field comparison — see the
 // helper's comment.

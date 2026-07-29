@@ -74,8 +74,11 @@ struct SaveSerialize<C> {
 /// True iff `SaveSerialize<C>` is usable — the trivially-copyable arm or an
 /// explicit specialization. Self-detecting by construction: writing the
 /// serializer IS the opt-in, so there is no second bookkeeping step to
-/// forget. `makeDefaultSaveRegistry` filters `AllEngineComponents` on this,
-/// and `SaveRegistry::registerComponent` asserts it.
+/// forget. Used as a **gate, not a filter**: `makeDefaultSaveRegistry` hands
+/// every `AllEngineComponents` entry to `SaveRegistry::registerComponent`,
+/// which `static_assert`s this — so "opted in but no serializer" is a build
+/// error, never a silent drop. Reintroducing a filter here would restore
+/// exactly that silent drop.
 template <typename C>
 concept SaveSerializable =
     requires(IRAsset::BinaryWriter &w, const C &value, IRAsset::BinaryReader &r) {
