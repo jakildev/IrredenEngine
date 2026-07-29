@@ -47,6 +47,27 @@ fixed here because it blocks the runner this task builds on.
 **Verified.** `gui-verify.py IRVoxelEditor` → `[gui-verify] 5/5 assertions
 passed`, exit 0, on macOS/Metal.
 
+### H-2 — back-to-back editor runs can exhaust the macOS CoreMIDI client pool
+
+**Symptom.** Re-authoring several entities in one sitting, a run aborts ~1 s in,
+before any session gesture fires: `MidiInCore::initialize: error creating OS-X
+MIDI client object (-304)` → uncaught `RtMidiError` → `RESULT=CRASH … exit=134
+signal=SIGABRT`, which `ir-run`'s clean-exit policy correctly reports as a
+failure.
+
+**It is not an authoring failure.** The crash is in engine MIDI startup, ahead of
+the harness; the same binary and recipe pass on a fresh run. Observed on the 2f
+slice while running `ant`, `rock`, `mushroom`, and `gui-verify` back to back —
+`mushroom` aborted, then passed 20/20 with the determinism gate byte-identical
+when re-run alone moments later.
+
+**How to react.** Re-run the single failing entity before believing a regression.
+Distinguish the two cases by *where* the log stops: a real recipe failure reaches
+`GUI-ASSERT … result=FAIL`, whereas this one never emits a single `GUI-ASSERT`
+line. Don't "fix" a recipe against it, and don't re-author its asset from a run
+that crashed. Not filed as an editor defect — it is a host resource limit, not an
+authoring-surface gap — but worth knowing before it costs an iteration.
+
 ---
 
 ## Platform-viability de-risk (macOS/Metal)
@@ -439,3 +460,74 @@ Findings:
   re-synced, so the `reload()` op is documented as terminal: only occupancy
   asserts (which read the live reloaded set) may follow it. The mushroom asserts
   stem, stem-mirror, and cap cells all survive the disk round-trip.
+
+### 2f — ANT (LANDED)
+
+The plan's PR-3 and the largest session: a bilaterally symmetric body on four
+named layers with six legs as three mirrored pairs, authored at
+`--scene-size 20 20 20` under a single X mirror. It is the first recipe to run
+at 20³, the first to enable the mirror **before** the ground clear, and the
+first to walk the layer selection (`[` / `]`). Nothing new had to be built in
+the editor — the ant is authored entirely from the 2a–2e vocabulary, which is
+the slice's main result: the harness surface is now sufficient for a
+multi-layer, multi-part entity.
+
+Sequence: enable the X mirror, carve the silhouette out of the seeded slab with
+eight erase drags, then abdomen (two domed tiers) / thorax / legs / head each on
+its own added layer (K), a `[`-back-to-legs hide/show pair, and a save→reload
+round-trip. Every occupancy check names a cell the mirror either created or was
+responsible for clearing — the recipe never clicks past the mirror plane — so
+the run is a second positive fire for the F-1.2 fix, on a larger surface than
+the mushroom. `author-entity.py ant --scene-size 20 20 20` → **43/43 GUI-ASSERT
+PASS, determinism gate byte-identical**, `ant.vxs` committed. Renders in
+`IRShapeDebug --load-vxs` (see `docs/pr-screenshots/`).
+
+Findings:
+
+- **F-2f-1 — the mirror is a silhouette tool, not just a placement tool.**
+  Because the F-1.2 fix fans *every* edit through `applyMirrors`, erase drags
+  mirror too. Enabling symmetry before the ground clear means the eight drags
+  that cut the ant's outline out of the seeded slab are each authored on the
+  low-x half and reflected into the high-x half, so a broken mirror fails at the
+  very first segment (the high-x plane would stay fully slabbed) instead of
+  surviving to a body assertion.
+- **F-2f-2 — both dedup deferrals from 2e resolve as "don't factor".** 2e parked
+  two extractions until a third entity could confirm the shape; the ant is that
+  entity and confirms neither. (a) `clearGroundToFootprint` — rock and mushroom
+  both clear the slab down to a *rectangular* footprint in four erase drags, but
+  the ant's footprint is the animal's outline: eight drags, mirrored, with
+  per-segment y ranges. Two call sites that would fit a rectangle helper and one
+  that structurally can't is the rule of three coming out negative, so the
+  preamble stays inline in each recipe. (b) `forEachMirroredCell` in
+  `symmetry.hpp` — gated on a third `applyMirrors` fan-out call site appearing;
+  there are still exactly two (`applyEdit` in the editor,
+  `OccupancyModel::setMirrored` in the builder's shadow model) because the ant
+  aims through the existing shadow-model path rather than adding its own.
+  Re-check at the bird/tree slice only if one of them needs a third.
+- **F-2f-3 — the 20³ editable plane is fully reachable at `kSessionZoom`; F-2d-1's
+  concern does not bite.** 2d flagged that a scene larger than 16³ could push the
+  plane's edges under the left GUI panels, where an erase drag would be swallowed
+  and ship a slab inside the asset. The ant is the first 20³ session and
+  instruments all four plane corners as cleared; all four pass. So `--scene-size
+  20 20 20` needs no zoom or camera change, and the failure mode is now
+  *instrumented* rather than merely argued — any future session that grows the
+  scene should copy the four corner asserts rather than re-reason about panel
+  occlusion.
+- **F-2f-4 — a hide assertion alone cannot tell a working hide from the wrong
+  layer being selected.** With five layers live (default + four authored), `[`
+  moves the selection and `H` hides whatever it landed on; asserting only that
+  the legs read empty passes just as well if `[` overshot and hid a layer whose
+  cells nobody checks. The discriminator is a neighbouring-layer cell that must
+  stay **lit**: the recipe asserts legs-empty *and* thorax-lit *and* head-lit
+  across the hide. Generalizes to every selection-then-mutate hotkey pair — the
+  negative assertion proves the mutation, a positive one on an untargeted
+  neighbour proves the selection.
+- **F-2f-5 — recipes need a precondition refusal distinct from an unaimable
+  gesture.** `recordUnreachable` fires per-gesture when no unoccluded anchor
+  exists, but a scene merely *too small* for the entity has no unaimable
+  gesture: every op still resolves, and the session quietly authors and saves a
+  clipped animal. `Builder::recordError(why)` is the free-form counterpart —
+  same `errors_` channel and same pre-run abort, raised by the recipe itself
+  from its own dimensional preconditions (the ant refuses anything under
+  14 × 18 × 3). A recipe that scales its geometry off `sceneSize` should state
+  the bound it actually needs rather than trusting the caller's `--scene-size`.

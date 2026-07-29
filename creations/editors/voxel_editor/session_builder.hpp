@@ -420,6 +420,17 @@ class Builder {
         tapKey(IRInput::kKeyButtonK);
     }
 
+    // Walk the active-layer selection back / forward through the layer list
+    // ([ and ]). Both wrap, and neither moves voxels — only which layer the
+    // next placement and the H visibility toggle apply to.
+    void selectPrevLayer() {
+        tapKey(IRInput::kKeyButtonLeftBracket);
+    }
+
+    void selectNextLayer() {
+        tapKey(IRInput::kKeyButtonRightBracket);
+    }
+
     // Toggle the active layer's visibility (H). A hidden layer's voxels report
     // unoccupied (alpha 0, the same liveness test evaluateOccupancyCheck reads),
     // so a hide-then-assert-empty / show-then-assert-full pair positively fires
@@ -454,6 +465,14 @@ class Builder {
     void expectPick(IRMath::ivec3 local, const char *name) {
         const IRMath::ivec3 worldVoxel = IRMath::roundVec3HalfUp(m_model.worldCenter(local));
         m_current.assertions_.push_back(IRPrefab::GuiTest::picksVoxel(worldVoxel, name));
+    }
+
+    // Reject the recipe outright. For preconditions the op vocabulary cannot
+    // express — a scene too small to hold the entity, say — where the ops
+    // would each still "work" and quietly author a clipped shape. Same
+    // channel as an unaimable gesture: main() logs it and exits non-zero.
+    void recordError(std::string why) {
+        m_recipe.errors_.push_back(std::move(why));
     }
 
     // Closes the last segment and hands back the recipe. The shot table is NOT
