@@ -24,6 +24,60 @@ inline IRMath::vec3 vec3FromLua(sol::object obj) {
     return {0.0f, 0.0f, 0.0f};
 }
 
+// `sol::object` → `IRMath::vec2`. Mirrors `vec3FromLua` one component down:
+// accepts an `IRMath::vec2` userdata or an `{x,y}` / `{1,2}` table, and
+// zero-defaults for nil/unrecognized input.
+inline IRMath::vec2 vec2FromLua(sol::object obj) {
+    if (obj.is<IRMath::vec2>())
+        return obj.as<IRMath::vec2>();
+    if (obj.is<sol::table>()) {
+        sol::table t = obj.as<sol::table>();
+        auto pickFloat = [&t](const char *key, int idx) -> float {
+            if (sol::optional<float> v = t[key])
+                return *v;
+            if (sol::optional<float> v = t[idx])
+                return *v;
+            return 0.0f;
+        };
+        return {pickFloat("x", 1), pickFloat("y", 2)};
+    }
+    return {0.0f, 0.0f};
+}
+
+// `sol::object` → `IRMath::vec4`. Mirrors `vec3FromLua` one component up:
+// accepts an `IRMath::vec4` userdata or a table keyed `{x,y,z,w}` **or**
+// `{r,g,b,a}` (the same vec4 carries positions and float colors), or indexed
+// `{1,2,3,4}`. Zero-defaults for nil/unrecognized input and for any missing
+// component, per the `vec3FromLua` contract.
+//
+// Distinct from `quatFromLua`, which reads the same `IRMath::vec4` storage but
+// identity-defaults (`w = 1`) because a zero quat is degenerate. Pick by
+// meaning: `vec4FromLua` for a position/color 4-vector, `quatFromLua` for a
+// rotation.
+inline IRMath::vec4 vec4FromLua(sol::object obj) {
+    if (obj.is<IRMath::vec4>())
+        return obj.as<IRMath::vec4>();
+    if (obj.is<sol::table>()) {
+        sol::table t = obj.as<sol::table>();
+        auto pickFloat = [&t](const char *key, const char *altKey, int idx) -> float {
+            if (sol::optional<float> v = t[key])
+                return *v;
+            if (sol::optional<float> v = t[altKey])
+                return *v;
+            if (sol::optional<float> v = t[idx])
+                return *v;
+            return 0.0f;
+        };
+        return {
+            pickFloat("x", "r", 1),
+            pickFloat("y", "g", 2),
+            pickFloat("z", "b", 3),
+            pickFloat("w", "a", 4)
+        };
+    }
+    return {0.0f, 0.0f, 0.0f, 0.0f};
+}
+
 // `sol::object` → `IRMath::ivec3`. Mirrors `vec3FromLua` but reads integer
 // components (truncating toward zero on a fractional Lua number, matching a
 // C++ `static_cast<int>`). Accepts an `IRMath::ivec3` userdata or an

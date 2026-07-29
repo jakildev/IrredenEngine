@@ -1537,6 +1537,84 @@ Coverage: `creations/demos/lua_widgets` builds the whole UI from `main.lua` and
 proves `onClick` + `wasClicked` headlessly via the gui-verify GUI-test harness
 (`GUI-ASSERT … result=PASS`).
 
+## Debug-overlay draws (`IRDebug.*`)
+
+`bindLuaDrivenEcs()` also exposes the immediate-mode debug-overlay draw surface
+(engine #2375) as the `IRDebug` table, so an EVAL Lua system can issue overlay
+primitives exactly like a C++ caller — no hand-rolled C++ system just to reach
+the buffering calls. The binding block is `detail::bindDebugOverlay` in
+`engine/script/include/irreden/script/lua_debug_overlay_bindings.hpp`; it
+forwards to `namespace IRDebug` in
+`engine/prefabs/irreden/render/debug_overlay_draws.hpp` (split out of
+`systems/system_debug_overlay.hpp` so the script module doesn't pull in the
+flush's GPU headers).
+
+```lua
+-- World-space (IRDebug projects world → screen itself; tracks the camera):
+IRDebug.drawLine3D(from, to, r, g, b [, a])            -- vec3 args
+IRDebug.drawCircle3D(center, radius, r, g, b [, a [, segments]])
+IRDebug.drawTriangle3D(a, b, c, r, g, b [, alpha])
+IRDebug.drawDiamond3D(center, radius, r, g, b [, a])
+IRDebug.drawPath3D(points, r, g, b [, a])              -- points: array of vec3
+
+-- Screen-space, in viewport pixels with (0,0) bottom-left:
+IRDebug.drawLineScreen(from, to, r, g, b [, a])        -- vec2 args
+IRDebug.drawTriangleScreen(a, b, c, r, g, b [, alpha])
+IRDebug.drawRectScreen(min, max, fillColor, borderColor)  -- vec4 colors
+IRDebug.drawDotScreen(center, radius, color)              -- vec4 color
+```
+
+- **Colors are 0..1 floats**, mirroring the C++ surface argument-for-argument —
+  NOT the 0-255 `colorFromLua` tables `IRGui` takes. Parity with the C++ callers
+  is deliberate so existing C++ overlay code ports to Lua line-for-line. The two
+  vec4-color draws take 0..1 components too. **Nothing range-checks this:**
+  `vec4FromLua` accepts the `{r,g,b,a}` spelling, so an `IRGui`-style 0-255 table
+  passed to `drawRectScreen` / `drawDotScreen` is read without complaint and
+  lands ~255× out of range. A creation that uses both conventions in one file
+  (`creations/demos/lua_pipeline_demo/main.lua` does) has to keep them straight
+  per call.
+- **Vector arguments** accept an IRMath userdata or a component table, keyed or
+  indexed (`{x,y,z}` / `{1,2,3}`; vec4 also accepts `{r,g,b,a}`). Unlike the bare
+  `*FromLua` helpers — which zero-default by contract — the bindings type-check
+  first and raise a Lua error naming the argument, so a typo'd call fails loudly
+  instead of silently drawing at the origin. The userdata check is **per vector
+  type**: a `vec2` passed where a `vec3` is wanted raises, rather than falling
+  through `vec3FromLua` to the origin. Component **tables** stay arity-blind per
+  the `*FromLua` contract — `{x = 1, y = 2}` where a vec3 is wanted zero-fills
+  `z` and does not raise.
+- **IMMEDIATE MODE — the load-bearing contract.** `DEBUG_OVERLAY` consumes AND
+  clears every buffer on each RENDER tick, so a draw survives exactly one flush.
+  It persists on screen only if **re-issued every frame** from a Lua system
+  ordered **before `DEBUG_OVERLAY` in the RENDER pipeline**. A one-shot draw at
+  script-load time shows for at most one frame. Same shape as the `IRGui.draw*`
+  contract above.
+- **Do not issue from an UPDATE-phase system.** UPDATE runs on a fixed timestep,
+  so it fires 0..N times per rendered frame — the overlay flickers (0 runs) or is
+  overdrawn N times. RENDER-phase placement is the supported shape.
+- **Wiring contract.** The creation must
+  `registerPrefabSystem<IRSystem::DEBUG_OVERLAY>()` (or otherwise register it)
+  and splice `IRSystem.systemId(SystemName.DEBUG_OVERLAY)` into the RENDER
+  pipeline after `TRIXEL_TO_FRAMEBUFFER` and before `FRAMEBUFFER_TO_SCREEN` —
+  the default demo's placement. Without the flush system the draws buffer and are
+  never consumed.
+- **Not bound, deliberately:** `clear()` (the flush owns clearing; a Lua caller
+  clearing mid-frame would silently drop other systems' draws) and
+  `worldToScreen` / `screenToWorld` (pure-math helpers — additive follow-up if a
+  creation needs them).
+- **Segments range.** `drawCircle3D` raises below `kMinCircleSegments` (3) — a
+  sub-3 count can't close a ring, and 0 was an integer division by zero in the
+  flush. Above the floor the record carries the caller's value verbatim and the
+  flush clamps the top end to `kCircleLutMaxSegments` (32). Any count in range
+  draws a **closed** ring: the flush reads the cos/sin table for counts that
+  divide it evenly and evaluates the angle directly otherwise (stepping the
+  table truncated, so 12 segments used to close at 270°).
+
+Coverage: `test/script/lua_debug_overlay_bindings_test.cpp` invokes every draw
+headless and asserts the resulting buffer records (the draws are pure CPU
+`push_back`, so this is a strictly stronger shape than the presence-only
+render-glue test); the runtime flush is exercised visually by
+`creations/demos/lua_pipeline_demo`.
+
 ## C++ ↔ Lua math type helpers
 
 When a binding accepts a math type that Lua callers may pass as either a
@@ -1546,13 +1624,25 @@ ad-hoc extraction lambdas per binding:
 
 | Task | Helper |
 |------|--------|
+| `sol::object` → `IRMath::vec2` | `IRScript::vec2FromLua(obj)` |
 | `sol::object` → `IRMath::vec3` | `IRScript::vec3FromLua(obj)` |
+| `sol::object` → `IRMath::vec4` | `IRScript::vec4FromLua(obj)` |
+| `sol::object` → `IRMath::ivec3` | `IRScript::ivec3FromLua(obj)` |
+| `sol::object` → `IRMath::vec4` (quaternion) | `IRScript::quatFromLua(obj)` |
 | `sol::object` → `IRMath::Color` | `IRScript::colorFromLua(obj)` |
 
 `vec3FromLua` accepts an `IRMath::vec3` userdata **or** a `{x,y,z}` / `{1,2,3}`
-table. Returns `{0,0,0}` for nil/none. Validate the type at the callsite and
-return an error string *before* calling the helper — it zero-defaults on
-unrecognized types so bad-type errors need a caller-side check.
+table. Returns `{0,0,0}` for nil/none. `vec2FromLua` / `vec4FromLua` mirror it
+one component down / up; `vec4FromLua` also accepts the `{r,g,b,a}` spelling,
+since the same `vec4` carries positions and float colors. Validate the type at
+the callsite and return an error string *before* calling the helper — it
+zero-defaults on unrecognized types so bad-type errors need a caller-side check.
+
+**`vec4FromLua` vs `quatFromLua`** read the same `IRMath::vec4` storage but
+default differently: `vec4FromLua` zero-defaults per the `vec3FromLua` contract,
+while `quatFromLua` identity-defaults (`w = 1`) because a zero quat is
+degenerate. Pick by meaning — `vec4FromLua` for a position/color 4-vector,
+`quatFromLua` for a rotation.
 
 To add a helper for a new math type, add an `inline` free function to
 `ir_script_utils.hpp` and extend the table above.

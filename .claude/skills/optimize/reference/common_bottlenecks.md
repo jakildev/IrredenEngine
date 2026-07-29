@@ -94,6 +94,35 @@ session uncovers lands here in the same PR as the fix.
   is dedupe-at-queue-time or drain-per-UPDATE-tick; the saturation cap is
   the contained, provably-correct version.
 
+### 13. `sol::table::size()` in a loop condition at the Lua binding boundary
+
+- **Pattern**: A sol2 binding that iterates a Lua array argument with
+  `for (std::size_t i = 1; i <= t.size(); ++i)`. `sol::table::size()` is a
+  Lua `#` call **across the VM boundary**, not a cached C++ member — leaving
+  it in the loop condition re-pays that crossing once per element. Reads as
+  ordinary C++ (`v.size()` in a loop condition is free for `std::vector`),
+  which is exactly why it survives review.
+- **Where**: `IRDebug.drawPath3D` in
+  `engine/script/include/irreden/script/lua_debug_overlay_bindings.hpp`
+  (fixed in the PR that added this entry, #2375). Audit any binding taking an
+  array table — grep `engine/script/include/irreden/script/lua_*_bindings.hpp`
+  for `<= *\w+\.size()` and `\.size()` inside a `for`.
+- **Symptom**: Binding cost scales with element count noticeably faster than
+  the per-element work justifies. Not visible in `perf_grid_matrix.sh` — the
+  grid demo drives no Lua bindings, so this class needs an in-process A/B
+  (bind both shapes, time from Lua in one process to cancel build/thermal
+  noise).
+- **Fix**: Hoist to `const std::size_t n = t.size();` before the loop.
+  Measured **~8.5%** off the whole binding's cost at 200 paths × 5 points
+  per frame.
+- **Measured non-fix (don't bother)**: eliminating the temp
+  `std::vector` and streaming straight into the underlying draw call was
+  only a further **~2%** — below the 5% bar, and it costs all-or-nothing
+  argument validation (a bad entry mid-array would leave a partial path
+  already buffered). The boundary crossing dominates the allocation at this
+  surface; reach for the alloc removal only where the per-element work is
+  itself trivial *and* partial-effect-on-error is acceptable.
+
 ---
 
 ## GPU bottlenecks (render pipeline)

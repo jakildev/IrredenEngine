@@ -71,6 +71,7 @@ add_executable(IrredenEngineTest
   script/lua_command_test.cpp
   script/lua_input_bindings_test.cpp
   script/lua_component_codegen_test.cpp
+  script/lua_debug_overlay_bindings_test.cpp
   script/lua_component_register_test.cpp
   script/lua_deferred_entity_test.cpp
   script/lua_enum_register_test.cpp
