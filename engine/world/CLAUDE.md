@@ -413,7 +413,16 @@ same change. Four consequences for authors:
   bounds. When one guard covers two distinct faults, give each its own check
   and message: a shared message necessarily mis-describes whichever fault it
   wasn't written for, and a load-time diagnostic is the only thing the person
-  debugging a corrupt save has.
+  debugging a corrupt save has. **A reader guard that is tighter than the type
+  gets a debug-only `IR_ASSERT` mirror in `write`** (split the same way): the
+  state it rejects is state the component's own API can produce, so the mirror
+  catches the producer while the offending entity is still live, instead of one
+  save/load cycle later as a corrupt-file error with the culprit long gone.
+  `read` stays the enforcing check — the mirror compiles out under
+  `IR_RELEASE`. A guard that only re-checks what the type already enforces
+  needs **no** mirror (`SaveSerialize<C_Cycle>`'s breakpoint-count clamp: only
+  `addBreakpoint` writes the count and it bounds itself at `kMaxBreakpoints`,
+  so the clamp can fire on a corrupt file but never on a live component).
 - **A component whose state cannot honestly round-trip opts OUT**, with a
   comment saying why. The current class is callback-bearing state:
   `C_LambdaModifiers`, `C_LerpEntity`, and — since #2242 — `C_GotoEasing3D`

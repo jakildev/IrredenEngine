@@ -114,11 +114,22 @@ template <> struct SaveSerialize<IRComponents::C_TrianglesOnlySet> {
         // Debug-only mirror of `read`'s guard. Without it the fault surfaces
         // one save/load cycle later as a corrupt-file error, by which point the
         // entity that held the bad extent is gone; here the culprit is still
-        // live. `read` remains the enforcing check — this compiles out under
+        // live. `read` remains the enforcing check — these compile out under
         // `IR_RELEASE`.
+        //
+        // Split into the same two checks as `read`, for the same reason: one
+        // message covering both faults mis-names whichever it wasn't written
+        // for. A failing assert throws, so the sign check short-circuits the
+        // cardinality check exactly as `read`'s early return does.
         IR_ASSERT(
-            value.size_.x >= 0 && value.size_.y >= 0 &&
-                static_cast<std::int64_t>(value.triangleColors_.size()) ==
+            value.size_.x >= 0 && value.size_.y >= 0,
+            "C_TrianglesOnlySet: saving a negative extent {}x{}; it is not indexable and read "
+            "will reject this file",
+            value.size_.x,
+            value.size_.y
+        );
+        IR_ASSERT(
+            static_cast<std::int64_t>(value.triangleColors_.size()) ==
                     static_cast<std::int64_t>(value.size_.x) *
                         static_cast<std::int64_t>(value.size_.y) &&
                 value.triangleDistances_.size() == value.triangleColors_.size(),
