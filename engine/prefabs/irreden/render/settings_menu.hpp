@@ -152,6 +152,26 @@ inline IREntity::EntityId rowWidget(int index) {
     return system->rows_[static_cast<std::size_t>(index)].control_;
 }
 
+/// The menu's QUIT button while the menu is open, else `kNullEntity`.
+inline IREntity::EntityId quitButton() {
+    const auto *system = systemOrNull();
+    return system == nullptr ? IREntity::kNullEntity : system->quitButton_;
+}
+
+namespace detail {
+
+/// Screen pixel at the center of @p widget, or `ivec2(0)` for `kNullEntity`.
+inline IRMath::ivec2 widgetCenterScreenPx(IREntity::EntityId widget) {
+    if (widget == IREntity::kNullEntity) {
+        return IRMath::ivec2(0);
+    }
+    const IRMath::ivec2 pos = IREntity::getComponent<IRComponents::C_GuiPosition>(widget).pos_;
+    const IRMath::ivec2 size = IREntity::getComponent<IRComponents::C_Widget>(widget).size_;
+    return IRRender::guiTrixelToScreenPx(IRMath::vec2(pos) + IRMath::vec2(size) * 0.5f);
+}
+
+} // namespace detail
+
 /// Screen pixel at the center of setting @p index's control, for a headless
 /// GUI test's synthetic click; `ivec2(0)` while the menu is closed.
 ///
@@ -159,13 +179,47 @@ inline IREntity::EntityId rowWidget(int index) {
 /// known until it opens — a scripted shot table has to fill its MOVE target
 /// from here at run time rather than hardcoding one.
 inline IRMath::ivec2 rowWidgetScreenPx(int index) {
-    const IREntity::EntityId widget = rowWidget(index);
+    return detail::widgetCenterScreenPx(rowWidget(index));
+}
+
+/// Screen pixel at the center of the QUIT button; `ivec2(0)` while closed.
+inline IRMath::ivec2 quitButtonScreenPx() {
+    return detail::widgetCenterScreenPx(quitButton());
+}
+
+/// Screen pixel at the center of item @p itemIndex in setting @p index's
+/// **expanded** dropdown; `ivec2(0)` unless that row is an open dropdown whose
+/// item list covers @p itemIndex.
+///
+/// An ENUM row takes two clicks — one on the header to expand, one on the item
+/// — and the item strip only exists between them (`WIDGET_APPLY_DROPDOWN` grows
+/// the hitbox to `size.y + itemHeight * n` while open). Mirrors that system's
+/// row geometry so a scripted shot aims at the row it means to select.
+inline IRMath::ivec2 enumItemScreenPx(int index, int itemIndex) {
+    const auto *system = systemOrNull();
+    if (system == nullptr || index < 0 || index >= static_cast<int>(system->rows_.size()) ||
+        system->rows_[static_cast<std::size_t>(index)].kind_ !=
+            IRComponents::SettingEntry::Kind::ENUM) {
+        return IRMath::ivec2(0);
+    }
+    const IREntity::EntityId widget = system->rows_[static_cast<std::size_t>(index)].control_;
     if (widget == IREntity::kNullEntity) {
+        return IRMath::ivec2(0);
+    }
+    const auto &dropdown = IREntity::getComponent<IRComponents::C_WidgetDropdown>(widget);
+    if (!dropdown.isOpen_ || itemIndex < 0 ||
+        itemIndex >= static_cast<int>(dropdown.items_.size())) {
         return IRMath::ivec2(0);
     }
     const IRMath::ivec2 pos = IREntity::getComponent<IRComponents::C_GuiPosition>(widget).pos_;
     const IRMath::ivec2 size = IREntity::getComponent<IRComponents::C_Widget>(widget).size_;
-    return IRRender::guiTrixelToScreenPx(IRMath::vec2(pos) + IRMath::vec2(size) * 0.5f);
+    const float itemHeight = static_cast<float>(IRMath::max(1, dropdown.itemHeight_));
+    return IRRender::guiTrixelToScreenPx(
+        IRMath::vec2(
+            static_cast<float>(pos.x) + static_cast<float>(size.x) * 0.5f,
+            static_cast<float>(pos.y + size.y) + (static_cast<float>(itemIndex) + 0.5f) * itemHeight
+        )
+    );
 }
 
 } // namespace IRPrefab::SettingsMenu

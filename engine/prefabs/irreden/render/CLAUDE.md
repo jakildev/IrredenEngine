@@ -412,11 +412,21 @@ IRPrefab::Settings::registerBool("CHECKERBOARD", getter, setter);
 - **Settings are read at open**, so one registered after the menu is already
   open appears at the next open — register during init.
 - **Headless coverage:** `liveRowCount()` / `rowWidget(i)` /
-  `rowWidgetScreenPx(i)` expose the live panel to `GuiTest::predicate` bodies.
-  The last one exists because the menu centers itself, so a scripted shot can't
-  hardcode a click coordinate — it fills its MOVE target at run time via
-  `IRRender::guiTrixelToScreenPx`. The `shape_debug --gui-test` table asserts
-  both halves of a toggle: the widget latched *and* the registered setter ran.
+  `rowWidgetScreenPx(i)` / `quitButton()` / `quitButtonScreenPx()` /
+  `enumItemScreenPx(i, item)` expose the live panel to `GuiTest::predicate`
+  bodies. The screen-px ones exist because the menu centers itself, so a
+  scripted shot can't hardcode a click coordinate — it fills its MOVE target at
+  run time via `IRRender::guiTrixelToScreenPx`. `enumItemScreenPx` additionally
+  resolves a row inside an **expanded** dropdown (an ENUM row takes two clicks)
+  and reads `ivec2(0)` while collapsed. The `shape_debug --gui-test` table
+  asserts both halves of every toggle: the widget latched *and* the registered
+  setter reached the engine — checkbox (`IRSim::isPaused()`), both ENUM
+  dropdowns (`IRRender::get{RotationPivotMode,DebugOverlay}()`), and the QUIT
+  button (`IRWindow::isCloseRequested()`).
+- **A QUIT click ends the run**, so its shot never reaches the harness's
+  post-settle capture frame — a creation asserting it must evaluate the moment
+  the close is observed (`shape_debug`'s `kMenuQuitShotIndex` path) rather than
+  on `isCaptureFrame`, which would emit nothing and read as a silent pass.
 
 ## Editor gizmo primitives
 
@@ -586,10 +596,17 @@ when extending or composing widgets:
   slider writes it) to convey the cursor's row index to the render
   system. -1 means "cursor outside any row." `WIDGET_RENDER_LIST` /
   `WIDGET_RENDER_DROPDOWN` paint a hover band on the matching row.
-- **Dropdown hitbox grows when open.** `WIDGET_APPLY_DROPDOWN`
-  mutates the dropdown's `C_HitBox2DGui::size_` to cover the expanded
-  panel so subsequent frames' `WIDGET_INPUT` hover routing keeps
-  reaching it. The hitbox shrinks back when the dropdown closes.
+- **Dropdown hitbox grows — and its z-order floats — when open.**
+  `WIDGET_APPLY_DROPDOWN` mutates the dropdown's `C_HitBox2DGui::size_` to
+  cover the expanded panel so subsequent frames' `WIDGET_INPUT` hover
+  routing keeps reaching it, and biases `C_Widget::zOrder_` by
+  `kWidgetDropdownOpenZBias` for as long as it is expanded. The bias is the
+  input-side counterpart to registering `WIDGET_RENDER_DROPDOWN` last:
+  without it the item strip paints over its neighbors but *loses* the
+  equal-`zOrder_` hover tie-break to them, so every item row covering
+  another widget is unclickable (first hit by the settings menu's ENUM
+  rows, whose dropdowns always overlap the row below). Both revert when the
+  dropdown closes; authored z-orders must stay below the bias.
 - **Radio group exclusion runs in endTick.** `WIDGET_APPLY_RADIO` sets
   the fired radio in its per-entity tick, then walks every
   `C_WidgetRadio` in `endTick` to clear siblings with the same

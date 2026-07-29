@@ -32,7 +32,6 @@
 #include <irreden/common/components/component_position_int_3d.hpp>
 #include <irreden/common/components/component_rotation_mode.hpp>
 #include <irreden/common/components/component_selected.hpp>
-#include <irreden/common/settings_registry.hpp>
 #include <irreden/common/components/component_sim_clock.hpp>
 #include <irreden/common/components/component_size_int_2d.hpp>
 #include <irreden/common/components/component_size_int_3d.hpp>
@@ -41,6 +40,7 @@
 #include <irreden/common/components/component_tags_all.hpp>
 #include <irreden/common/components/component_timer.hpp>
 #include <irreden/common/components/component_world_transform.hpp>
+#include <irreden/common/settings_registry.hpp>
 #include <irreden/demo/components/component_example.hpp>
 #include <irreden/input/components/component_cursor_position.hpp>
 #include <irreden/input/components/component_glfw_gamepad_state.hpp>
