@@ -445,6 +445,10 @@ TEST(SaveSerializers, TrianglesOnlySetRejectsExtentGridMismatch) {
     IRAsset::Result<C_TrianglesOnlySet> restored = deserialize<C_TrianglesOnlySet>(bytes);
     EXPECT_FALSE(restored.ok());
     EXPECT_EQ(restored.status_.code_, IRAsset::BinaryIOError::UnknownTag);
+    // The two rejection paths share a status code, so the message is the only
+    // thing that tells them apart — pin which one fired.
+    EXPECT_NE(restored.status_.message_.find("disagree with the extent"), std::string::npos)
+        << "expected the cardinality message, got: " << restored.status_.message_;
 }
 
 // A both-negative extent multiplies to a POSITIVE cell count ((-2,-3) -> +6),
@@ -472,6 +476,11 @@ TEST(SaveSerializers, TrianglesOnlySetRejectsNegativeExtent) {
     IRAsset::Result<C_TrianglesOnlySet> restored = deserialize<C_TrianglesOnlySet>(bytes);
     EXPECT_FALSE(restored.ok());
     EXPECT_EQ(restored.status_.code_, IRAsset::BinaryIOError::UnknownTag);
+    // The sign fault must name itself. The grids DO hold the 6 cells -2 * -3
+    // predicts, so the cardinality message would be actively misleading here —
+    // that mis-diagnosis is exactly why the two checks are separate.
+    EXPECT_NE(restored.status_.message_.find("negative extent"), std::string::npos)
+        << "expected the negative-extent message, got: " << restored.status_.message_;
 }
 
 // Every field of C_TriangleCanvasBackground is private, so the round trip is

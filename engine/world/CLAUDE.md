@@ -406,10 +406,14 @@ same change. Four consequences for authors:
   and `SaveSerialize<C_TrianglesOnlySet>` are the reference shape. Match
   the **accessors'** requirements, not merely the constructors': where a
   constructor is laxer than the indexing math its own accessors perform
-  (`C_TrianglesOnlySet::resize` accepts a both-negative extent, which
-  multiplies to a positive cell count), the reader is deliberately the
-  tighter of the two — a reader that only mirrored the constructor would
-  restore a component the accessors then index out of bounds.
+  (`C_TrianglesOnlySet`'s two-argument constructor and `resize()` both accept
+  a both-negative extent, which multiplies to a positive cell count), the
+  reader is deliberately the tighter of the two — a reader that only mirrored
+  the constructor would restore a component the accessors then index out of
+  bounds. When one guard covers two distinct faults, give each its own check
+  and message: a shared message necessarily mis-describes whichever fault it
+  wasn't written for, and a load-time diagnostic is the only thing the person
+  debugging a corrupt save has.
 - **A component whose state cannot honestly round-trip opts OUT**, with a
   comment saying why. The current class is callback-bearing state:
   `C_LambdaModifiers`, `C_LerpEntity`, and — since #2242 — `C_GotoEasing3D`

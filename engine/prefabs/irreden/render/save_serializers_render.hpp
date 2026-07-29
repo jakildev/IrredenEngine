@@ -24,6 +24,8 @@
 #include <irreden/asset/binary_io.hpp>
 #include <irreden/asset/math_binary_io.hpp>
 
+#include <irreden/ir_profile.hpp>
+
 #include <cstdint>
 #include <string>
 #include <utility>
@@ -100,13 +102,33 @@ template <> struct SaveSerialize<IRComponents::C_SpriteAnimation> {
 /// `triangleColors_.size() == triangleDistances_.size() == size_.x*size_.y`,
 /// the same shape `SaveSerialize<C_Cycle>` enforces on its breakpoint count.
 /// The reader is deliberately **tighter** than the constructors in one respect:
-/// it also rejects a negative dimension. `resize()` admits one (a both-negative
-/// pair multiplies to a positive cell count, so the grids come out plausibly
-/// sized), but the resulting extent breaks the indexing math the accessors
-/// rely on — the component's own invariant is weaker here than the accessors
-/// need, so the reader does not widen to match it.
+/// it also rejects a negative dimension. Both the two-argument constructor and
+/// `resize()` admit one — each sizes the grids with an unguarded
+/// `resize(size_.x * size_.y)`, and a both-negative pair multiplies to a
+/// positive cell count, so the grids come out plausibly sized — but the
+/// resulting extent breaks the indexing math the accessors rely on. The
+/// component's own invariant is weaker here than the accessors need, so the
+/// reader does not widen to match it.
 template <> struct SaveSerialize<IRComponents::C_TrianglesOnlySet> {
     static void write(IRAsset::BinaryWriter &w, const IRComponents::C_TrianglesOnlySet &value) {
+        // Debug-only mirror of `read`'s guard. Without it the fault surfaces
+        // one save/load cycle later as a corrupt-file error, by which point the
+        // entity that held the bad extent is gone; here the culprit is still
+        // live. `read` remains the enforcing check — this compiles out under
+        // `IR_RELEASE`.
+        IR_ASSERT(
+            value.size_.x >= 0 && value.size_.y >= 0 &&
+                static_cast<std::int64_t>(value.triangleColors_.size()) ==
+                    static_cast<std::int64_t>(value.size_.x) *
+                        static_cast<std::int64_t>(value.size_.y) &&
+                value.triangleDistances_.size() == value.triangleColors_.size(),
+            "C_TrianglesOnlySet: saving grids ({} colors, {} distances) that disagree with the "
+            "extent {}x{}; read will reject this file",
+            value.triangleColors_.size(),
+            value.triangleDistances_.size(),
+            value.size_.x,
+            value.size_.y
+        );
         IRMath::BinaryIO::writeIVec2(w, value.size_);
         IRMath::BinaryIO::writeIVec2(w, value.origin_);
         detail::writeTrivialVector(w, value.triangleColors_);
@@ -121,18 +143,32 @@ template <> struct SaveSerialize<IRComponents::C_TrianglesOnlySet> {
         IR_SAVE_READ_STATUS(detail::readTrivialVector(r, value.triangleColors_));
         IR_SAVE_READ_STATUS(detail::readTrivialVector(r, value.triangleDistances_));
 
-        // Widened to 64-bit because both dimensions come off disk: a corrupt
-        // pair overflows the component's own `int` multiply. Each dimension is
-        // tested for sign independently rather than relying on the product:
-        // a mixed-sign pair gives a negative product, but a both-negative pair
-        // gives a POSITIVE one ((-2,-3) -> +6), so a product-only test admits
-        // it — and `index2DtoIndex1D` (`index.y * size_.x + index.x`) then goes
-        // negative for any row past the first, indexing out of bounds in the
-        // unchecked `atTriangleColor` / `atTriangleDistance` accessors.
+        // Two independent faults, so two checks with their own messages: a
+        // corrupt extent and a cardinality mismatch point at different repairs,
+        // and a shared message mis-names whichever one it wasn't written for
+        // (a both-negative extent reads as "6 and 6 disagree with -2x-3", which
+        // is self-contradicting — -2 * -3 predicts exactly 6).
+        //
+        // Sign first. A mixed-sign pair gives a negative product, but a
+        // both-negative pair gives a POSITIVE one ((-2,-3) -> +6), so a
+        // product-only test admits it — and `index2DtoIndex1D`
+        // (`index.y * size_.x + index.x`) then goes negative for any row past
+        // the first, indexing out of bounds in the unchecked `atTriangleColor`
+        // / `atTriangleDistance` accessors.
+        if (value.size_.x < 0 || value.size_.y < 0) {
+            return Res::error(
+                IRAsset::BinaryIOError::UnknownTag,
+                "C_TrianglesOnlySet: negative extent " + std::to_string(value.size_.x) + "x" +
+                    std::to_string(value.size_.y) + " is not indexable"
+            );
+        }
+
+        // Then cardinality. Widened to 64-bit because both dimensions come off
+        // disk: the check above bounds them at >= 0, but a corrupt pair still
+        // overflows the component's own `int` multiply.
         const std::int64_t expectedCells =
             static_cast<std::int64_t>(value.size_.x) * static_cast<std::int64_t>(value.size_.y);
-        if (value.size_.x < 0 || value.size_.y < 0 ||
-            static_cast<std::int64_t>(value.triangleColors_.size()) != expectedCells ||
+        if (static_cast<std::int64_t>(value.triangleColors_.size()) != expectedCells ||
             static_cast<std::int64_t>(value.triangleDistances_.size()) != expectedCells) {
             return Res::error(
                 IRAsset::BinaryIOError::UnknownTag,
