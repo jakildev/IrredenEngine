@@ -9,6 +9,7 @@
 #include <irreden/render/components/component_help_overlay.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/gui_text_batch.hpp>
+#include <irreden/render/help_overlay_state.hpp>
 #include <irreden/render/trixel_font.hpp>
 #include <irreden/render/trixel_rect.hpp>
 #include <irreden/render/widget_theme.hpp>
@@ -207,8 +208,9 @@ template <> struct System<HELP_OVERLAY> {
     // sync through one multiply rather than a second measuring pass.
     void paintBackground() {
         const int textW = maxLineChars_ * IRRender::kGlyphStepX * kHelpOverlayFontSize;
-        // The trailing newline on the last line adds a row to `lineCount_`
-        // that renders nothing; drop it so the panel hugs the text.
+        // Standard N-line block height: N-1 inter-line steps plus one glyph
+        // row. `kGlyphStepY` includes the line gap, so using it for the last
+        // row too would pad the panel by that gap.
         const int textH = (lineCount_ - 1) * IRRender::kGlyphStepY * kHelpOverlayFontSize +
                           IRRender::kGlyphHeight * kHelpOverlayFontSize;
 

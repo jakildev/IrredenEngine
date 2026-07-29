@@ -339,7 +339,12 @@ as they register through a named path.
 - **Visibility is a singleton component**, `C_HelpOverlayState`, flipped by
   `Command<TOGGLE_HELP_OVERLAY>` — not a `RenderManager` field
   (`.claude/rules/cpp-globals.md`; `m_guiVisible` is a pre-existing deviation,
-  not a precedent). `setVisible` / `toggleVisible` / `isVisible` wrap it.
+  not a precedent). `setVisible` / `toggleVisible` / `isVisible` wrap it, from
+  `help_overlay_state.hpp` — the accessors sit in their own header beside the
+  POD-only `components/component_help_overlay.hpp`, the same split
+  `widget_theme.hpp` uses. They can't live in `help_overlay.hpp` itself: it
+  includes `systems/system_help_overlay.hpp`, whose `create()` calls
+  `ensureStateSingleton()`.
 - **Default off, zero-cost hidden.** The system iterates the state singleton,
   so a hidden overlay costs one row tick and two early returns — no string
   build, no `fillRect`, no glyph batching. Text rebuilds only when

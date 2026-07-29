@@ -3,7 +3,7 @@
 
 #include <irreden/ir_command.hpp>
 
-#include <irreden/render/components/component_help_overlay.hpp>
+#include <irreden/render/help_overlay_state.hpp>
 
 namespace IRCommand {
 

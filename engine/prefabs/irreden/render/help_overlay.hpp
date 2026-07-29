@@ -26,7 +26,7 @@
 #include <irreden/ir_system.hpp>
 
 #include <irreden/render/commands/command_toggle_help_overlay.hpp>
-#include <irreden/render/components/component_help_overlay.hpp>
+#include <irreden/render/help_overlay_state.hpp>
 #include <irreden/render/systems/system_help_overlay.hpp>
 
 #include <list>
