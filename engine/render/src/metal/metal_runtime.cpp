@@ -234,6 +234,17 @@ void bindMetalTexture(std::uint32_t unit, MTL::Texture *texture) {
         return;
     }
     g_runtime().textures_[unit] = texture;
+    // Metal flattens the sampler and image namespaces into ONE setTexture slot
+    // space, so the two sticky tables are really one slot per unit: the most
+    // recent bind wins. Evicting the sibling entry here is what enforces that —
+    // otherwise both tables hold an entry and bindComputeResources' flush ORDER
+    // silently decides the winner (#2350/#2360: the image flush ran last, so a
+    // stale image from an earlier dispatch shadowed every sampler read at the
+    // same unit — no error, no warning). An unbind (nullptr) clears only its own
+    // table, so it can't evict a live sibling bind.
+    if (texture != nullptr) {
+        g_runtime().imageTextures_[unit] = nullptr;
+    }
 }
 
 MTL::Texture *boundMetalTexture(std::uint32_t unit) {
@@ -248,6 +259,10 @@ void bindMetalImageTexture(std::uint32_t unit, MTL::Texture *texture) {
         return;
     }
     g_runtime().imageTextures_[unit] = texture;
+    // Mirror of bindMetalTexture's eviction — see the rationale there.
+    if (texture != nullptr) {
+        g_runtime().textures_[unit] = nullptr;
+    }
 }
 
 MTL::Texture *boundMetalImageTexture(std::uint32_t unit) {

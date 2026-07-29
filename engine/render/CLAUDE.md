@@ -982,25 +982,25 @@ parity with voxel-pool primary shapes.
   texture as a bake/compute read input. Invariant: the sun-shadow bake only
   ever reads main-canvas-layout depth sources. The underlying backend gap is
   tracked as #1640; until it lands, resolve-then-bake is mandatory.
-- **A compute kernel's texture read is silently shadowed by a stale IMAGE bind
-  at the same unit on Metal (#1812).** `bindComputeResources`
-  (`metal_render_impl.cpp`) flushes the sticky image-binding table AFTER the
-  sampler table at the *same* encoder texture index, and the image table is
-  never cleared per-frame. So if you bind a texture as a **sampler**
-  (`Texture2D::bind`) at unit N to read it, but a prior dispatch left a
-  **different** texture bound as an **image** (`bindAsImage`) at unit N, your
-  read gets that stale image, not your texture — no error, no warning. The
-  #1812 per-voxel cull read `getHiZMip(0)` at unit 1 via `bind()`, but
-  `VOXEL_TO_TRIXEL_STAGE_1`/`STAGE_2` leave `trixelDistances` imaged at unit 1,
-  so the compact read the (just-cleared, all-65535) distance texture and the
-  cull captured zero. **Fix: bind compute texture reads as IMAGES**
-  (`bindAsImage(unit, READ_ONLY, <fmt>)` + `access::read` on Metal / `imageLoad`
-  on GL) so they occupy — and win — the image slot, rather than a sampler bind
-  that a stale image shadows. GL is immune (separate image/texture-unit
-  namespaces), so a GL-only smoke will not catch it. Any compute kernel that
-  mixes a sampler read with images bound elsewhere in the pipeline is exposed;
-  the #1294 chunk cull's fine Hi-Z levels are the known other victim.
-  The same stickiness makes resource **destruction** a hazard: the tables hold
+- **Sampler and image binds are mutually exclusive per texture unit on Metal —
+  the most recent bind wins (#2350/#2360; supersedes the #1812 workaround).**
+  Metal flattens the sampler and image namespaces into ONE `setTexture` slot
+  space. The backend keeps two sticky tables, so `bindMetalTexture` /
+  `bindMetalImageTexture` (`metal_runtime.cpp`) each **evict the sibling
+  entry** at that unit; `bindComputeResources` then flushes whichever survived.
+  Bind your reads however the kernel declares them — the last bind at a unit is
+  what the dispatch sees.
+
+  The former guidance — "bind compute texture reads as IMAGES so they win the
+  slot" — is **retired**; it was a per-kernel workaround for a flush-order bug
+  that can no longer occur, so existing image-bound reads are still correct but
+  no longer required. GL is structurally immune (separate image/texture-unit
+  namespaces), so a GL-only smoke never catches this class (see #1812, #2350).
+
+  A dispatch must still bind every texture it reads: mutual exclusion means a
+  sampler bind at unit N drops an image another pass left there, so relying on
+  a *previous* dispatch's leftover bind is not safe. The same stickiness makes
+  resource **destruction** a hazard: the tables hold
   non-owning pointers, so destroying a bound resource leaves a dangling entry
   the next dispatch's flush re-binds — `objc_retain` on the freed handle
   segfaults (#2412: a rotation-lifecycle buffer bound at a slot no
