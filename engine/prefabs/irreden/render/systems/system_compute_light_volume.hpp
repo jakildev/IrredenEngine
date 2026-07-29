@@ -335,6 +335,21 @@ inline std::uint32_t gatherLightSources(
     return static_cast<std::uint32_t>(out.size());
 }
 
+// The consumer (LIGHTING_TO_TRIXEL) reads the has-SPOT gate + light list from
+// the GLOBAL LightVolumeParamsBuffer / LightSourceBuffer, which this system
+// overwrites per canvas — after the tick they hold only the LAST processed
+// canvas's data. That is simultaneously correct for every processed canvas
+// only while at most one light-volume canvas is processed, OR no processed
+// canvas seeds a SPOT (the only per-canvas-VARYING field the consumer reads;
+// .xyz is the camera anchor, identical for all canvases). Returns false when
+// the globals cannot be correct for all processed canvases at once — 2+
+// processed canvases AND at least one SPOT. Multi-canvas SPOT scenes need
+// per-canvas storage (issue #2341 deferred option b).
+inline bool
+lightVolumeGlobalBufferSafe(int processedLightVolumeCanvases, bool anyCanvasSeededSpot) {
+    return !(processedLightVolumeCanvases >= 2 && anyCanvasSeededSpot);
+}
+
 } // namespace detail
 
 // `LightVolumeParams` defaults must mirror the volume's CPU constants —
@@ -371,6 +386,34 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
     // budget defaults to today's behavior if a frame ever dispatches
     // the loop without first running the upload phase.
     int propagateIterations_ = kLightVolumePropagateIterations;
+    // Per-frame tally backing the endTick global-buffer guard (#2341). Counts
+    // only canvases this system actually PROCESSES, since a canvas that takes
+    // the `useCameraPositionIso_` early-return never clobbers the shared
+    // buffers.
+    int processedLightVolumeCanvases_ = 0;
+    bool anyCanvasSeededSpot_ = false;
+
+    void beginTick() {
+        processedLightVolumeCanvases_ = 0;
+        anyCanvasSeededSpot_ = false;
+    }
+
+    // The shared LightSourceBuffer / LightVolumeParamsBuffer this tick
+    // overwrote per canvas are read back by LIGHTING_TO_TRIXEL as if they
+    // described the canvas it is lighting. Assert the assumption that makes
+    // that sound — see `detail::lightVolumeGlobalBufferSafe`.
+    void endTick() {
+        IR_ASSERT(
+            detail::lightVolumeGlobalBufferSafe(
+                processedLightVolumeCanvases_,
+                anyCanvasSeededSpot_
+            ),
+            "COMPUTE_LIGHT_VOLUME: global LightSourceBuffer/LightVolumeParams hold only the "
+            "last processed canvas's spot data; a scene with 2+ rendered C_CanvasLightVolume "
+            "canvases where any seeds a SPOT renders wrong/omni cones (issue #2341). Make the "
+            "light list / has-SPOT per-canvas (option b) to lift this assumption."
+        );
+    }
 
     void tick(
         IREntity::EntityId canvasEntity,
@@ -379,6 +422,13 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
     ) {
         if (!behavior.useCameraPositionIso_)
             return;
+        // Counted only past the early-return — a skipped canvas never reaches
+        // the uploads that clobber the shared buffers. The count DOES include
+        // #363's sentinel canvas B: `C_TrixelCanvasRenderBehavior`'s default
+        // ctor sets `useCameraPositionIso_ = true`, so that scene legitimately
+        // reaches 2 processed canvases and stays under the guard by seeding no
+        // SPOT, not by skipping the sentinel.
+        ++processedLightVolumeCanvases_;
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
         auto &phaseTiming = IRRender::computeLightVolumeTiming();
 
@@ -416,6 +466,7 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
                 hasSpot,
                 &lightGatherRecords_
             );
+            anyCanvasSeededSpot_ |= hasSpot;
             // worldOriginVoxel_.w carries the has-SPOT flag (#2318): the
             // consumer skips the winning-light-ID read entirely when 0, so
             // no-spot scenes stay byte-identical.

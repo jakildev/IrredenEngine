@@ -235,6 +235,15 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
                 kBufferIndex_FrameDataVoxelToCanvas
             );
             sunFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataSun);
+            // The two light-volume buffers are GLOBAL, not per-canvas:
+            // COMPUTE_LIGHT_VOLUME re-uploads them once per canvas, so by the time
+            // this system runs they hold only the LAST processed canvas's has-SPOT
+            // gate (`worldOriginVoxel.w`) and light list. The spot-cone read here
+            // therefore assumes at most one rendered C_CanvasLightVolume canvas
+            // seeds a SPOT — guarded in COMPUTE_LIGHT_VOLUME::endTick via
+            // `detail::lightVolumeGlobalBufferSafe` (#2341). `.xyz` is the camera
+            // anchor, identical for every canvas in a frame, so it was always safe.
+            // Multi-canvas + SPOT needs per-canvas storage (#2341 option b).
             lightVolumeParamsBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_LightVolumeParams);
             // Light list (SSBO slot 4) for the spot-cone factor (#2318). SSBO and
             // image bindings are independent namespaces on both backends, so slot 4
