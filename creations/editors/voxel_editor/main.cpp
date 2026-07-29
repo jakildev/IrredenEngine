@@ -2789,7 +2789,7 @@ void initCommands() {
                 editor.perFrameUndoBytes_[newFrame] = 0;
             }
             IRVoxelEditor::loadFrameToLive(anim.activeFrame_);
-            IR_LOG_INFO("Deleted frame (now %d / %d)", anim.activeFrame_ + 1, anim.frameCount());
+            IR_LOG_INFO("Deleted frame (now {} / {})", anim.activeFrame_ + 1, anim.frameCount());
         }
     );
 
