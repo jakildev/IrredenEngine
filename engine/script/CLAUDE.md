@@ -155,9 +155,12 @@ IREntity.deferredDestroy(eid)   -- eid is a raw EntityId (e.g. arch.entityAt(i))
 
 The returned EntityId is reserved immediately (usable to destroy or stash the
 entity), but the entity does not materialize until the flush. Attaches any
-component addressable from Lua by `componentId`; a native C++-only component
-(no Lua-typed default-row support) still uses the templated C++
-`createEntity`. See `docs/design/lua-driven-ecs.md` §G4.
+component with a Lua attach path — `IRComponent.register` components and
+codegen'd ones (see "Which view do I get?" below); a hand-written C++ component
+with neither still uses the templated C++ `createEntity` / `setComponent<T>`.
+An ineligible entry raises at the `deferredCreate` call site, naming the entry's
+index — the attach itself runs inside the flush drain, where a raise would have
+no Lua context to point at. See `docs/design/lua-driven-ecs.md` §G4.
 
 - **Type inference:** integer literal → `int32`; float literal → `float`;
   string → `std::string`; bool → `bool`; function → `sol::function`. The
@@ -263,6 +266,35 @@ IREntity.setLuaField(entity, C_Hp, currentIdx, v + 1)
 Both accessors bounds-check `fieldIndex` and raise a Lua error on
 out-of-range. Use index-style inside any per-tick Lua system body.
 
+### Which view do I get, and what can I call on it? (#2446)
+
+How a component was *declared* — not the build flavor — decides its whole Lua
+surface. Three declaration kinds exist:
+
+| Declared as | Tick column view | `IREntity.*Lua*` accessors | Attach from Lua | Modifier `bindingId` |
+|---|---|---|---|---|
+| **Codegen'd** — `IRComponent.register` in an `irreden_lua_codegen(SOURCES ...)` file (emitted as a real C++ struct) | `LuaCppColumnView`: `:at(i)` → assignable row ref, `:setAt(i, Comp.new(...))`. **No `:getField` / `:setField`** | **Raise** — the accessors cast to `IComponentDataLuaTyped`, which a C++-typed impl is not | `addLuaComponent` / `deferredCreate`, via the emitted attach factory | ✗ — the C++-side registration doesn't populate the modifier registry |
+| **Lua-typed** — `IRComponent.register` at runtime (EVAL) | `LuaTypedColumnView`: `:getField(i, "f")` / `:setField(i, "f", v)`, `:getRow(i)` / `:setRow(i, t)` | ✓ `getLuaComponent` / `getLuaField` / `setLuaField` | `addLuaComponent` / `deferredCreate`, via a default row + per-field writes | ✓ scalar fields expose `Comp.fields.<name>.bindingId` |
+| **Hand-written C++** — a `component_<name>_lua.hpp` binding + `lua_component_pack` | `LuaCppColumnView`, as codegen'd | **Raise**, as codegen'd | ✗ by default — attach from C++ via `setComponent<T>`, or opt in with `registerComponentAttachFactory` | ✗ |
+
+`removeLuaComponent` / `hasLuaComponent` / `IREntity.singleton` are
+id-generic (no cast) and work for all three.
+
+The raising rows are deliberate: before #2446 those accessors
+`static_cast`ed any `IComponentData*` to `IComponentDataLuaTyped*` with no
+check, so reading a codegen'd component through `getLuaComponent` was
+undefined behavior. They now raise a Lua error naming the supported path.
+
+**Consequence for the dual-mode loop.** A tick body written with
+`:setField(i, 'name', v)` — the shape `cmake/lua_codegen` lowers, and what the
+in-tree CODEGEN exemplar uses — compiles fine as CODEGEN but fails if that same
+body is dispatched through LuaJIT against the codegen'd struct, which has no
+`setField`. So "the same body runs identically under EVAL and CODEGEN" does not
+hold for a system whose components are codegen'd. Pin such a system with
+`mode = 'codegen'`. Unifying the two column-view surfaces is deliberately out of
+scope for #2446 — file it as its own designed follow-up if EVAL-dispatch parity
+for codegen'd systems becomes load-bearing.
+
 The full design is in [`docs/design/lua-driven-ecs.md`](../../docs/design/lua-driven-ecs.md).
 
 ## Lua-defined enums (`IREnum.register`)
@@ -331,6 +363,24 @@ the matching `kHasLuaBinding` + `bindLuaType` specializations and a
 `IRScript::CodegenRegistry::registerCodegenComponents(LuaScript&)` helper
 that pre-registers each component with the EntityManager and binds the
 usertype.
+
+Each emitted `bindLuaType<C_Name>` also registers the component's **attach
+factory** (#2446) — a `default-construct → apply overrides → setComponent<T>`
+closure that gives `IREntity.addLuaComponent` / `deferredCreate` a path for a
+C++-typed component (the entity core refuses to append a default row for one,
+since some engine components have deleted default ctors). Unknown override keys
+and type-mismatched values are ignored, matching the EVAL path's
+`writeRowFromTable` contract.
+
+> **Do not grow `registerCodegenComponents`.** Every codegen run in a binary
+> emits that function — plus `CodegenSystemIds`, `registerCodegenSystems`, and
+> `kDefaultEcsMode` — under the *same* name in the same namespace. Distinct
+> definitions survive only because each is small enough to inline at its single
+> call site. Grow one past the inline threshold and the compiler emits an
+> out-of-line `linkonce_odr` copy, the linker merges every run into one winner,
+> and callers silently get an arbitrary run's components. The engine test binary
+> links three codegen runs and is where this bites first. Per-component work
+> belongs in `bindLuaType<C_Name>`, whose name is unique.
 
 **CODEGEN supports:** `int32` / `float` / `bool` / `string` / `vec3` / `ivec3`
 field types and both the short form (`current = 100`) and the explicit-type
@@ -540,7 +590,9 @@ the carve-out, the runtime load would create a parallel
 storage. Lua-side code that depends on `handle.fields.<name>.bindingId`
 (modifier framework) does NOT work for codegen'd-as-C++ components —
 the C++-side registration doesn't populate the modifier registry the
-way the runtime path does.
+way the runtime path does. Attaching one from Lua *does* work (#2446);
+the full per-declaration surface is the "Which view do I get, and what
+can I call on it?" table above.
 
 **Hot-reload contract.** `IRSystem.replaceSystemBody(systemId, newTick)`
 works on EVAL systems; calling it on a CODEGEN system raises a Lua
@@ -1112,7 +1164,7 @@ return {
     unbounded      = true | false,       -- OPTIONAL, default false
     canvas_size    = { x = 64, y = 64 }, -- REQUIRED when DETACHED or DETACHED_REVOXELIZE
     setup          = function(entity)    -- OPTIONAL, user-provided
-        IREntity.setComponent(entity, ...)
+        IREntity.addLuaComponent(entity, C_Hp, { current = 50 })
     end,
 }
 ```

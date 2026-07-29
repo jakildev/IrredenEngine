@@ -14,6 +14,7 @@
 #include <irreden/script/lua_binding_traits.hpp>
 #include <irreden/script/lua_component_data.hpp>
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -144,6 +145,25 @@ class LuaScript {
         return it->second;
     }
 
+    // #2446: default-construct a C++-typed component, apply the optional
+    // Lua overrides table field-by-field, and attach it via the templated
+    // `IREntity::setComponent<T>`. The entity core deliberately refuses to
+    // default-row a C++-typed component through `addComponentDynamic` (some
+    // have deleted default ctors), so this is how a codegen'd component
+    // becomes reachable from `IREntity.addLuaComponent` / `deferredCreate`.
+    using ComponentAttachFn =
+        std::function<void(IREntity::EntityId, const sol::optional<sol::table> &)>;
+
+    // Record the attach factory for `componentId`. Called once per
+    // codegen'd component from the emitted `registerCodegenComponents()`;
+    // a hand-written `*_lua.hpp` component may opt in the same way.
+    // Per-`LuaScript` (World lifetime) because ComponentIds are per-World
+    // runtime allocations — a process-static registry would key stale ids
+    // across World re-creation.
+    void registerComponentAttachFactory(IREntity::ComponentId componentId, ComponentAttachFn fn) {
+        m_componentAttachFactories[componentId] = std::move(fn);
+    }
+
     // Returns the column accessor pair registered for the C++ component
     // with `componentId`, or nullptr if the component does not have a
     // Lua binding (Lua-defined components go through
@@ -243,7 +263,24 @@ class LuaScript {
     // Lua-defined components go through `EntityManager`'s
     // `m_pureComponentTypes` directly; this map only covers C++ types.
     std::unordered_map<std::string, IREntity::ComponentId> m_componentByLuaName;
+    // ComponentId → Lua-visible name, for both C++-bound and Lua-typed
+    // components. Diagnostics only — the attach / accessor error paths name
+    // the offending component instead of printing a bare numeric id. Kept
+    // separate from `m_componentByLuaName` (C++ types only), which the
+    // coexistence carve-out in `IRComponent.register` keys off.
     std::unordered_map<IREntity::ComponentId, std::string> m_componentLuaName;
+
+    // ComponentIds registered through `IRComponent.register` — i.e.
+    // backed by an `IComponentDataLuaTyped` impl. The `IREntity.*Lua*`
+    // accessors `static_cast` `IComponentData*` to that type, which is UB
+    // for any other impl, so every such cast is gated on membership here.
+    // Excludes the coexistence carve-out's early-return (that path returns
+    // an existing C++-typed handle and registers no Lua-typed impl).
+    std::unordered_set<IREntity::ComponentId> m_luaTypedComponentIds;
+
+    // ComponentId → attach factory for C++-typed components,
+    // populated by the codegen-emitted `registerCodegenComponents()`.
+    std::unordered_map<IREntity::ComponentId, ComponentAttachFn> m_componentAttachFactories;
 
     // Per-C++-component-id row accessor pair (read + replace) used by
     // `LuaCppColumnView` so a Lua system tick can read or overwrite a
@@ -304,6 +341,36 @@ class LuaScript {
     // entry; the public API stays singular so creations only need one
     // init call regardless of which Lua-driven-ECS PRs land.
     void bindLuaDrivenSystems();
+
+    // Attach `componentId` to `entity`, routing on how the component
+    // is stored — attach factory (C++-typed / codegen'd) first, then the
+    // `addComponentDynamic` + `writeRowFromTable` path (Lua-typed). Raises a
+    // `sol::error` naming the supported paths when neither applies, so the
+    // engine-side `appendDefaultRow` assertion is unreachable from Lua.
+    // Shared by `IREntity.addLuaComponent` and `deferredCreate`'s flush.
+    void attachComponentFromLua(
+        IREntity::EntityId entity,
+        IREntity::ComponentId componentId,
+        const sol::optional<sol::table> &overrides
+    );
+
+    // True when `componentId` can be attached from Lua by id — i.e.
+    // `attachComponentFromLua` will not raise. `deferredCreate` checks this
+    // at marshal time so an ineligible entry raises at the Lua call site
+    // rather than inside the flush drain, where there is no Lua context.
+    bool isLuaAttachable(IREntity::ComponentId componentId) const {
+        return m_componentAttachFactories.find(componentId) != m_componentAttachFactories.end() ||
+               m_luaTypedComponentIds.find(componentId) != m_luaTypedComponentIds.end();
+    }
+
+    // Raises unless `componentId` is Lua-typed. The `IREntity.*Lua*`
+    // read/write accessors cast to `IComponentDataLuaTyped`; a C++-typed
+    // component reaching that cast is undefined behavior.
+    void requireLuaTypedComponent(IREntity::ComponentId componentId, const char *accessor) const;
+
+    // Lua-visible name recorded for `componentId`, or `component id <N>`
+    // when none was recorded. Diagnostics only.
+    std::string componentDisplayName(IREntity::ComponentId componentId) const;
 
     // Build the read/replace accessor pair for a C++ component type
     // and record it under the type's `ComponentId`. Called from
