@@ -2717,7 +2717,7 @@ void initCommands() {
                 std::size_t{0}
             );
             IRVoxelEditor::loadFrameToLive(anim.activeFrame_);
-            IR_LOG_INFO("Added blank frame %d / %d", anim.activeFrame_ + 1, anim.frameCount());
+            IR_LOG_INFO("Added blank frame {} / {}", anim.activeFrame_ + 1, anim.frameCount());
         }
     );
 
