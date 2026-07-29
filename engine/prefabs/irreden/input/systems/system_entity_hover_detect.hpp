@@ -52,8 +52,18 @@ struct EntityEventHandlers {
         return id;
     }
 
+    // The single enumeration of the handler-category vectors — clear() and
+    // removeHandler() drive through it, so a new category is one edit here,
+    // not a silent miss in a hand-maintained copy.
+    template <typename F> void forEachHandlerVector(F &&f) {
+        f(onHovered);
+        f(onUnhovered);
+        f(onClicked);
+        f(onRightClick);
+    }
+
     void removeHandler(int handlerId) {
-        auto eraseById = [handlerId](std::vector<HandlerEntry> &vec) {
+        forEachHandlerVector([handlerId](std::vector<HandlerEntry> &vec) {
             vec.erase(
                 std::remove_if(
                     vec.begin(),
@@ -62,11 +72,19 @@ struct EntityEventHandlers {
                 ),
                 vec.end()
             );
-        };
-        eraseById(onHovered);
-        eraseById(onUnhovered);
-        eraseById(onClicked);
-        eraseById(onRightClick);
+        });
+    }
+
+    // Drops every registered handler, destroying the sol::protected_functions
+    // they hold. The engine tail calls this while the World's Lua VM is still
+    // alive (before g_world.reset()), so the process-lifetime static's own
+    // destructor later runs luaL_unref on nothing but empty vectors. Without
+    // it, that destructor fires at __cxa_finalize — after lua_close — and
+    // unrefs into freed memory, segfaulting any creation that registered a
+    // handler from Lua (#2572). nextId is intentionally left as-is: ids never
+    // recycle within a process, so there is no id-reuse hazard to guard.
+    void clear() {
+        forEachHandlerVector([](std::vector<HandlerEntry> &vec) { vec.clear(); });
     }
 
     void fireHovered(IREntity::EntityId entityId) {
