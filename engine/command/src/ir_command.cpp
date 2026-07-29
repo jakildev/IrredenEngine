@@ -16,6 +16,7 @@
 #include <irreden/render/commands/command_gui_zoom.hpp>
 #include <irreden/render/commands/command_move_camera.hpp>
 #include <irreden/render/commands/command_toggle_help_overlay.hpp>
+#include <irreden/render/commands/command_toggle_settings_menu.hpp>
 // command_set_trixel_color.hpp is WIP and includes non-existent ir_ecs.hpp —
 // SET_TRIXEL_COLOR has no working Command<NAME> specialization today, so
 // fireByName falls through to the unimplemented-log path for it.
@@ -244,6 +245,14 @@ CommandId bindPrefabCommand(
             requiredModifiers,
             blockedModifiers
         );
+    case TOGGLE_SETTINGS_MENU:
+        return createCommand<TOGGLE_SETTINGS_MENU>(
+            inputType,
+            triggerStatus,
+            button,
+            requiredModifiers,
+            blockedModifiers
+        );
     case RANDOMIZE_VOXELS:
         return createCommand<RANDOMIZE_VOXELS>(
             inputType,
@@ -346,6 +355,9 @@ void fireByName(CommandNames name) {
         return;
     case TOGGLE_HELP_OVERLAY:
         Command<TOGGLE_HELP_OVERLAY>::create()();
+        return;
+    case TOGGLE_SETTINGS_MENU:
+        Command<TOGGLE_SETTINGS_MENU>::create()();
         return;
     case RANDOMIZE_VOXELS:
         Command<RANDOMIZE_VOXELS>::create()();

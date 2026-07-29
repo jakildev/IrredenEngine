@@ -363,6 +363,61 @@ as they register through a named path.
   `shape_debug --gui-test` (`python3 scripts/gui-verify.py IRShapeDebug --
   --gui-test`).
 
+## Settings menu (`settings_menu.hpp`, #2551)
+
+`IRPrefab::SettingsMenu::` is the sibling of the help overlay: the overlay
+answers *which key does what*, the menu makes *typed modes* flippable at
+runtime. A creation registers settings and splices two lists; the menu owns
+layout, interaction, and teardown:
+
+```cpp
+// initSystems() — INPUT, after the creation's own INPUT_KEY_MOUSE:
+inputPipeline.splice(inputPipeline.end(), IRPrefab::SettingsMenu::inputSystems());
+
+// initSystems() — RENDER, after TEXT_TO_TRIXEL, before the composite:
+renderPipeline.splice(renderPipeline.end(), IRPrefab::SettingsMenu::renderSystems());
+
+// initCommands() — Escape opens the menu, so the camera suite must not quit on it:
+IRPrefab::Camera::registerStandardKeyboardCommands(/*bindEscapeCloseWindow=*/false);
+IRPrefab::SettingsMenu::registerToggleCommand();
+
+// after initEntities() — one call per togglable mode:
+IRPrefab::Settings::registerBool("CHECKERBOARD", getter, setter);
+```
+
+- **Two registries, one per concern.** `C_SettingsRegistry`
+  (`common/settings_registry.hpp`) holds typed settings — `registerBool` /
+  `registerEnum` / `registerFloat`, each a name plus a getter/setter pair,
+  rendered as checkbox / dropdown / slider. Key bindings stay in
+  `CommandManager`'s registry, which the overlay renders; the menu links to it
+  with a one-line `CONTROLS: <key>` read back out of that registry rather than
+  re-rendering the list.
+- **Escape is the toggle**, which is why `registerCameraCommands` grew a
+  defaulted `bindEscapeCloseWindow` opt-out. The default is unchanged, so every
+  non-adopting demo still quits on Escape; an adopting demo passes `false` and
+  gets a QUIT button in the panel instead.
+- **Zero-cost closed.** The menu owns no entities until it opens, so the widget
+  systems iterate empty archetypes and existing captures stay byte-identical.
+  Measured on `shape_debug`: +0.022 ms/frame against an 8.92 ms frame.
+- **Spawn/teardown ride the frame's own ordering.** Widgets are created in
+  `endTick` (main thread, past this system's iteration) and released with
+  `IREntity::destroyEntity`, which marks rather than destroys — INPUT runs
+  before `destroyMarkedEntities()`, which runs before RENDER, so a menu opened
+  this frame draws this frame and one closed this frame never does.
+- **Same no-probe precondition as the overlay.** `inputSystems()` needs
+  `INPUT_KEY_MOUSE` already registered ahead of it and `renderSystems()` needs
+  `TEXT_TO_TRIXEL`; neither auto-detects, because a duplicate `WIDGET_INPUT`
+  would double-fire every click and the available probes can't tell "absent"
+  from "registered as id 0" (#2540).
+- **Settings are read at open**, so one registered after the menu is already
+  open appears at the next open — register during init.
+- **Headless coverage:** `liveRowCount()` / `rowWidget(i)` /
+  `rowWidgetScreenPx(i)` expose the live panel to `GuiTest::predicate` bodies.
+  The last one exists because the menu centers itself, so a scripted shot can't
+  hardcode a click coordinate — it fills its MOVE target at run time via
+  `IRRender::guiTrixelToScreenPx`. The `shape_debug --gui-test` table asserts
+  both halves of a toggle: the widget latched *and* the registered setter ran.
+
 ## Editor gizmo primitives
 
 `gizmo.hpp` exposes `IRPrefab::Gizmo::` builders that spawn the editor's

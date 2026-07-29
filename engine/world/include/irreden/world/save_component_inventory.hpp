@@ -32,6 +32,7 @@
 #include <irreden/common/components/component_position_int_3d.hpp>
 #include <irreden/common/components/component_rotation_mode.hpp>
 #include <irreden/common/components/component_selected.hpp>
+#include <irreden/common/settings_registry.hpp>
 #include <irreden/common/components/component_sim_clock.hpp>
 #include <irreden/common/components/component_size_int_2d.hpp>
 #include <irreden/common/components/component_size_int_3d.hpp>
@@ -78,6 +79,7 @@
 #include <irreden/render/components/component_light_source.hpp>
 #include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
 #include <irreden/render/components/component_render_cache.hpp>
+#include <irreden/render/components/component_settings_menu.hpp>
 #include <irreden/render/components/component_splitter.hpp>
 #include <irreden/render/components/component_sprite.hpp>
 #include <irreden/render/components/component_sprite_animation.hpp>
@@ -339,6 +341,14 @@ IR_SAVE_OPT_OUT(IRComponents::C_WidgetTheme)
 // authored state. Restoring a snapshot with the overlay open would paste a
 // developer's momentary view onto someone else's session.
 IR_SAVE_OPT_OUT(IRComponents::C_HelpOverlayState)
+// C_SettingsMenuState: OPT-OUT — same reasoning as the help overlay above. A
+// menu left open is a momentary view, not authored state.
+IR_SAVE_OPT_OUT(IRComponents::C_SettingsMenuState)
+// C_SettingsRegistry: OPT-OUT — the entries hold `std::function`s closing over
+// creation-owned state, which no snapshot can carry across a process. The
+// registry is rebuilt by the creation's init every run; the *values* the
+// setters write are owned (and saved, or not) by whatever they mutate.
+IR_SAVE_OPT_OUT(IRComponents::C_SettingsRegistry)
 IR_SAVE_OPT_IN(IRComponents::C_Splitter, 1)
 IR_SAVE_OPT_IN(IRComponents::C_VoxelSelection, 1)
 IR_SAVE_OPT_IN(IRComponents::C_VoxelSelectionHighlight, 1)
@@ -521,6 +531,8 @@ using AllEngineComponents = std::tuple<
     IRComponents::C_WidgetState,
     IRComponents::C_WidgetTheme,
     IRComponents::C_HelpOverlayState,
+    IRComponents::C_SettingsMenuState,
+    IRComponents::C_SettingsRegistry,
     IRComponents::C_Splitter,
     IRComponents::C_VoxelSelection,
     IRComponents::C_VoxelSelectionHighlight,

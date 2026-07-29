@@ -56,8 +56,11 @@
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
 #include <irreden/render/systems/system_sprites_to_screen.hpp>
 #include <irreden/render/camera_controls.hpp>
+#include <irreden/common/settings_registry.hpp>
+#include <irreden/common/sim_clock.hpp>
 #include <irreden/render/gui_test_assertions.hpp>
 #include <irreden/render/help_overlay.hpp>
+#include <irreden/render/settings_menu.hpp>
 #include <irreden/render/systems/system_text_to_trixel.hpp>
 #include <irreden/render/systems/system_render_velocity_2d_iso.hpp>
 #include <irreden/render/systems/system_auto_yaw_rotate.hpp>
@@ -728,6 +731,7 @@ void readCliArgs() {
 void initSystems();
 void initCommands();
 void initEntities();
+void registerDemoSettings();
 
 int main(int argc, char **argv) {
     // Register custom flags, then let init parse common + custom in one pass
@@ -757,6 +761,8 @@ int main(int argc, char **argv) {
     initSystems();
     initCommands();
     initEntities();
+    // After initEntities: the tint setters re-apply over the shapes it created.
+    registerDemoSettings();
     if (g_initialZoom > 0.0f) {
         IRRender::setCameraZoom(g_initialZoom);
         vec2 actualZoom = IRRender::getCameraZoom();
@@ -809,17 +815,26 @@ int main(int argc, char **argv) {
 }
 
 // ---------------------------------------------------------------------------
-// Help-overlay GUI test (#2550, --gui-test)
+// Help-overlay + settings-menu GUI test (#2550, #2551, --gui-test)
 // ---------------------------------------------------------------------------
-// Positive-fire coverage for the registry-driven overlay: byte-identity with
-// the overlay hidden (render-verify) only proves the OFF path is a no-op, so
-// this drives the ON path end to end — inject the toggle key, assert the
-// overlay is visible AND actually emitted glyphs AND that its text carries a
-// camera-suite entry with its description (which is what proves adoption costs
-// zero per-demo wiring), then toggle back and assert it is hidden again.
+// Positive-fire coverage for both discoverability surfaces: byte-identity with
+// them hidden (render-verify) only proves the OFF path is a no-op, so this
+// drives the ON paths end to end.
+//
+// Overlay (#2550): inject the toggle key, assert the overlay is visible AND
+// actually emitted glyphs AND that its text carries a camera-suite entry with
+// its description (which is what proves adoption costs zero per-demo wiring),
+// then toggle back and assert it is hidden again.
+//
+// Menu (#2551): open on Escape and assert rows actually materialized, then
+// CLICK the "PAUSE SIMULATION" checkbox through the real input path and assert
+// BOTH halves — the widget latched checked, and `IRSim` actually stopped. The
+// second is the one that proves the registered setter ran; a widget that
+// toggles without reaching its setting is exactly the failure a flag-only
+// assertion would miss. Then untoggle and close.
 //
 // Flag-gated: the standing kShots table and every render-verify reference are
-// untouched by this run. #2551's settings menu extends this same table.
+// untouched by this run.
 namespace {
 
 // F1 is shape_debug's toggle (IRPrefab::HelpOverlay::kDefaultToggleButton).
@@ -836,9 +851,117 @@ constexpr IRVideo::GuiInputEvent kHelpCloseEvents[] = {
     {1, IRVideo::GuiInputEvent::Type::RELEASE, IRMath::ivec2(0), vec2(0.0f), IRInput::kKeyButtonF1},
 };
 
+// Escape toggles the settings menu in this demo (#2551) — the camera suite is
+// registered with bindEscapeCloseWindow=false, so it no longer quits.
+constexpr IRVideo::GuiInputEvent kMenuOpenEvents[] = {
+    {0,
+     IRVideo::GuiInputEvent::Type::PRESS,
+     IRMath::ivec2(0),
+     vec2(0.0f),
+     IRInput::kKeyButtonEscape},
+    {1,
+     IRVideo::GuiInputEvent::Type::RELEASE,
+     IRMath::ivec2(0),
+     vec2(0.0f),
+     IRInput::kKeyButtonEscape},
+};
+
+constexpr IRVideo::GuiInputEvent kMenuCloseEvents[] = {
+    {0,
+     IRVideo::GuiInputEvent::Type::PRESS,
+     IRMath::ivec2(0),
+     vec2(0.0f),
+     IRInput::kKeyButtonEscape},
+    {1,
+     IRVideo::GuiInputEvent::Type::RELEASE,
+     IRMath::ivec2(0),
+     vec2(0.0f),
+     IRInput::kKeyButtonEscape},
+};
+
+// Indices into registerDemoSettings()'s registration order.
+constexpr int kCheckerboardSettingIndex = 3;
+constexpr int kPauseSettingIndex = 4;
+
+// The menu centers itself on the GUI canvas, so the checkbox's screen pixel is
+// not known until it opens — these two arrays are mutable and get their MOVE
+// target filled by fillPauseClickTarget() while the menu-open shot is live
+// (same runtime-filled-events pattern voxel_editor's probe-map shots use).
+IRVideo::GuiInputEvent g_pauseOnEvents[] = {
+    {0, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(0)},
+    {1,
+     IRVideo::GuiInputEvent::Type::PRESS,
+     IRMath::ivec2(0),
+     vec2(0.0f),
+     IRInput::kMouseButtonLeft},
+    {2,
+     IRVideo::GuiInputEvent::Type::RELEASE,
+     IRMath::ivec2(0),
+     vec2(0.0f),
+     IRInput::kMouseButtonLeft},
+};
+
+IRVideo::GuiInputEvent g_pauseOffEvents[] = {
+    {0, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(0)},
+    {1,
+     IRVideo::GuiInputEvent::Type::PRESS,
+     IRMath::ivec2(0),
+     vec2(0.0f),
+     IRInput::kMouseButtonLeft},
+    {2,
+     IRVideo::GuiInputEvent::Type::RELEASE,
+     IRMath::ivec2(0),
+     vec2(0.0f),
+     IRInput::kMouseButtonLeft},
+};
+
+// Same runtime-aimed click, on the CHECKERBOARD row. Its shot's capture is the
+// visible-effect evidence: the tint reaches the scene behind the open menu, so
+// the frame pairs against settings_menu_open at identical framing.
+IRVideo::GuiInputEvent g_checkerboardOnEvents[] = {
+    {0, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(0)},
+    {1,
+     IRVideo::GuiInputEvent::Type::PRESS,
+     IRMath::ivec2(0),
+     vec2(0.0f),
+     IRInput::kMouseButtonLeft},
+    {2,
+     IRVideo::GuiInputEvent::Type::RELEASE,
+     IRMath::ivec2(0),
+     vec2(0.0f),
+     IRInput::kMouseButtonLeft},
+};
+
+// Point every event of a click triple at @p screenPx. The MOVE establishes
+// hover; PRESS/RELEASE carry the same position so the widget state machine
+// sees a click that begins and ends inside the same hitbox.
+void aimClickEvents(IRVideo::GuiInputEvent (&events)[3], IRMath::ivec2 screenPx) {
+    for (IRVideo::GuiInputEvent &event : events) {
+        event.screenPx_ = screenPx;
+    }
+}
+
+void fillClickTargets() {
+    const IRMath::ivec2 pausePx = IRPrefab::SettingsMenu::rowWidgetScreenPx(kPauseSettingIndex);
+    if (pausePx == IRMath::ivec2(0)) {
+        return; // menu not open yet this frame; the next one fills it
+    }
+    aimClickEvents(g_pauseOnEvents, pausePx);
+    aimClickEvents(g_pauseOffEvents, pausePx);
+    aimClickEvents(
+        g_checkerboardOnEvents,
+        IRPrefab::SettingsMenu::rowWidgetScreenPx(kCheckerboardSettingIndex)
+    );
+}
+
 constexpr IRVideo::GuiTestShot kHelpOverlayGuiShots[] = {
     {{4.0f, vec2(0.0f), 0.0f, "help_overlay_open"}, kHelpOpenEvents, 2},
     {{4.0f, vec2(0.0f), 0.0f, "help_overlay_closed"}, kHelpCloseEvents, 2},
+    {{4.0f, vec2(0.0f), 0.0f, "settings_menu_open"}, kMenuOpenEvents, 2},
+    {{4.0f, vec2(0.0f), 0.0f, "settings_menu_pause_on"}, g_pauseOnEvents, 3},
+    {{4.0f, vec2(0.0f), 0.0f, "settings_menu_pause_off"}, g_pauseOffEvents, 3},
+    {{4.0f, vec2(0.0f), 0.0f, "settings_menu_checkerboard_on"}, g_checkerboardOnEvents, 3},
+    {{4.0f, vec2(0.0f), 0.0f, "settings_menu_closed"}, kMenuCloseEvents, 2},
 };
 constexpr int kNumHelpOverlayGuiShots =
     static_cast<int>(sizeof(kHelpOverlayGuiShots) / sizeof(kHelpOverlayGuiShots[0]));
@@ -888,24 +1011,147 @@ const IRPrefab::GuiTest::Assertion kHelpClosedAssertions[] = {
     IRPrefab::GuiTest::predicate(&helpOverlayGlyphsPredicate, &kExpectHidden, "no_glyphs_batched"),
 };
 
-// The overlay assertions need no widget/click latching, but GuiTest::onFrame
-// owns the capture-frame dispatch, so route through it with an unused latch.
+// --- Settings-menu predicates (#2551) --------------------------------------
+
+bool settingsMenuOpenPredicate(const void *context, std::string &actual) {
+    const bool expected = *static_cast<const bool *>(context);
+    const bool open = IRPrefab::SettingsMenu::isOpen();
+    actual = open ? "open" : "closed";
+    return open == expected;
+}
+
+// The toggle flag alone cannot distinguish "the menu opened" from "the command
+// fired but the system never built anything". Live rows are that evidence, and
+// on the closed shot they prove teardown actually destroyed the widgets rather
+// than leaving them on the canvas.
+bool settingsMenuRowsPredicate(const void *context, std::string &actual) {
+    const bool expectRows = *static_cast<const bool *>(context);
+    const int rows = IRPrefab::SettingsMenu::liveRowCount();
+    actual = std::to_string(rows);
+    return expectRows ? rows > 0 : rows == 0;
+}
+
+// Widget-side half of the click: the checkbox latched.
+bool pauseCheckboxPredicate(const void *context, std::string &actual) {
+    const bool expected = *static_cast<const bool *>(context);
+    const EntityId widget = IRPrefab::SettingsMenu::rowWidget(kPauseSettingIndex);
+    if (widget == IREntity::kNullEntity) {
+        actual = "no-widget";
+        return false;
+    }
+    const bool checked = IRPrefab::Widget::checkboxState(widget);
+    actual = checked ? "checked" : "unchecked";
+    return checked == expected;
+}
+
+// Engine-side half: the registered setter actually ran and stopped the clock.
+// This is the assertion that fails if the menu renders and latches but never
+// reaches the setting behind it.
+bool simPausedPredicate(const void *context, std::string &actual) {
+    const bool expected = *static_cast<const bool *>(context);
+    const bool paused = IRSim::isPaused();
+    actual = paused ? "paused" : "running";
+    return paused == expected;
+}
+
+const IRPrefab::GuiTest::Assertion kMenuOpenAssertions[] = {
+    IRPrefab::GuiTest::predicate(&settingsMenuOpenPredicate, &kExpectVisible, "menu_open"),
+    IRPrefab::GuiTest::predicate(&settingsMenuRowsPredicate, &kExpectVisible, "rows_spawned"),
+};
+
+const IRPrefab::GuiTest::Assertion kMenuPauseOnAssertions[] = {
+    IRPrefab::GuiTest::predicate(&pauseCheckboxPredicate, &kExpectVisible, "checkbox_checked"),
+    IRPrefab::GuiTest::predicate(&simPausedPredicate, &kExpectVisible, "sim_paused"),
+};
+
+const IRPrefab::GuiTest::Assertion kMenuPauseOffAssertions[] = {
+    IRPrefab::GuiTest::predicate(&pauseCheckboxPredicate, &kExpectHidden, "checkbox_unchecked"),
+    IRPrefab::GuiTest::predicate(&simPausedPredicate, &kExpectHidden, "sim_running"),
+};
+
+// The render-side half of a live toggle: the setter did not merely flip a
+// global, it re-applied the tint flag onto the shapes the shader reads. Without
+// this, `applyTintFlags()` could silently no-op and the capture would look
+// unchanged for a reason no assertion names.
+bool shapeCheckerboardFlagPredicate(const void *context, std::string &actual) {
+    const bool expected = *static_cast<const bool *>(context);
+    int flagged = 0;
+    int total = 0;
+    IREntity::forEachComponent<C_ShapeDescriptor>([&flagged,
+                                                   &total](EntityId &, C_ShapeDescriptor &desc) {
+        ++total;
+        if ((desc.flags_ & IRRender::SHAPE_FLAG_CHECKERBOARD) != 0) {
+            ++flagged;
+        }
+    });
+    actual = std::to_string(flagged) + "/" + std::to_string(total) + " flagged";
+    return expected ? (total > 0 && flagged == total) : flagged == 0;
+}
+
+const IRPrefab::GuiTest::Assertion kMenuCheckerboardOnAssertions[] = {
+    IRPrefab::GuiTest::predicate(&pauseCheckboxPredicate, &kExpectHidden, "pause_still_off"),
+    IRPrefab::GuiTest::predicate(
+        &shapeCheckerboardFlagPredicate, &kExpectVisible, "shapes_checkerboard_flagged"
+    ),
+};
+
+const IRPrefab::GuiTest::Assertion kMenuClosedAssertions[] = {
+    IRPrefab::GuiTest::predicate(&settingsMenuOpenPredicate, &kExpectHidden, "menu_closed"),
+    IRPrefab::GuiTest::predicate(&settingsMenuRowsPredicate, &kExpectHidden, "rows_destroyed"),
+};
+
+// Per-shot assertion table, indexed by shot. One row per kHelpOverlayGuiShots
+// entry — a table rather than a chain of ternaries so adding a shot is one
+// line in each array and the static_assert below catches a missed pairing.
+struct ShotAssertions {
+    const IRPrefab::GuiTest::Assertion *assertions_;
+    int count_;
+};
+
+template <std::size_t N>
+constexpr ShotAssertions shotAssertions(const IRPrefab::GuiTest::Assertion (&table)[N]) {
+    return ShotAssertions{table, static_cast<int>(N)};
+}
+
+const ShotAssertions kShotAssertions[] = {
+    shotAssertions(kHelpOpenAssertions),
+    shotAssertions(kHelpClosedAssertions),
+    shotAssertions(kMenuOpenAssertions),
+    shotAssertions(kMenuPauseOnAssertions),
+    shotAssertions(kMenuPauseOffAssertions),
+    shotAssertions(kMenuCheckerboardOnAssertions),
+    shotAssertions(kMenuClosedAssertions),
+};
+static_assert(
+    static_cast<int>(sizeof(kShotAssertions) / sizeof(kShotAssertions[0])) ==
+        kNumHelpOverlayGuiShots,
+    "every --gui-test shot needs an assertion row — a shot without one would "
+    "capture silently and prove nothing"
+);
+
+// Shot index whose live frames are used to aim the pause-checkbox click.
+constexpr int kMenuOpenShotIndex = 2;
+
+// The overlay assertions need no widget/click latching, but the menu's do
+// (C_WidgetState::fireAction_ is a one-frame pulse), and GuiTest::onFrame owns
+// both the latching and the capture-frame dispatch.
 IRPrefab::GuiTest::LatchState g_helpOverlayLatch;
 
 void onHelpOverlayAssertFrame(int shotIndex, bool isCaptureFrame) {
-    const IRPrefab::GuiTest::Assertion *assertions =
-        shotIndex == 0 ? kHelpOpenAssertions : kHelpClosedAssertions;
-    const int count =
-        shotIndex == 0
-            ? static_cast<int>(sizeof(kHelpOpenAssertions) / sizeof(kHelpOpenAssertions[0]))
-            : static_cast<int>(sizeof(kHelpClosedAssertions) / sizeof(kHelpClosedAssertions[0]));
+    // Runs every live frame of the menu-open shot: by the settle frames the
+    // menu has built, so the checkbox's screen pixel is resolvable for the
+    // click shots that follow.
+    if (shotIndex == kMenuOpenShotIndex) {
+        fillClickTargets();
+    }
+    const ShotAssertions &shot = kShotAssertions[shotIndex];
     IRPrefab::GuiTest::onFrame(
         g_helpOverlayLatch,
         shotIndex,
         isCaptureFrame,
         kHelpOverlayGuiShots[shotIndex].render_.label_,
-        assertions,
-        count
+        shot.assertions_,
+        shot.count_
     );
 }
 
@@ -920,10 +1166,14 @@ void initSystems() {
          IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS>(),
          IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS_IMPLICIT>()}
     );
-    IRSystem::registerPipeline(
-        IRTime::Events::INPUT,
-        {IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>()}
-    );
+    // Settings menu (#2551) rides the INPUT pipeline: its widget chain needs
+    // the cursor state INPUT_KEY_MOUSE publishes, and polling the widgets in
+    // INPUT means a toggle applies before the same frame renders.
+    std::list<IRSystem::SystemId> inputPipeline{
+        IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>()
+    };
+    inputPipeline.splice(inputPipeline.end(), IRPrefab::SettingsMenu::inputSystems());
+    IRSystem::registerPipeline(IRTime::Events::INPUT, inputPipeline);
 
     std::list<IRSystem::SystemId> renderPipeline = IRPrefab::Camera::standardControlSystems();
     // --spin-yaw live mode: drive the camera each frame. In auto-screenshot
@@ -993,6 +1243,10 @@ void initSystems() {
     // captures stay byte-identical.
     renderPipeline.push_back(IRSystem::createSystem<IRSystem::TEXT_TO_TRIXEL>());
     renderPipeline.splice(renderPipeline.end(), IRPrefab::HelpOverlay::systems());
+    // Settings-menu widgets (#2551) draw on the same GUI canvas, after the
+    // overlay so an open menu paints over it. Both are default-off and own no
+    // entities until opened, so captures stay byte-identical.
+    renderPipeline.splice(renderPipeline.end(), IRPrefab::SettingsMenu::renderSystems());
     renderPipeline.insert(
         renderPipeline.end(),
         {
@@ -1362,7 +1616,10 @@ void initSystems() {
 }
 
 void initCommands() {
-    IRPrefab::Camera::registerStandardKeyboardCommands();
+    // Escape opens the settings menu instead of quitting (#2551); the menu's
+    // QUIT button is the replacement exit, so quitting is two inputs away
+    // rather than one. Every other camera binding is unchanged.
+    IRPrefab::Camera::registerStandardKeyboardCommands(/*bindEscapeCloseWindow=*/false);
     IRCommand::registerCaptureCommands();
     // Interactive cull-freeze toggle (#1438): freeze the cull viewport at the
     // current camera pose, then free-fly (WASD pan / mouse drag / scroll zoom,
@@ -1384,6 +1641,91 @@ void initCommands() {
     // F1 lists every command registered above — including the camera bundle
     // and the two culling toggles — with its description (#2550).
     IRPrefab::HelpOverlay::registerToggleCommand();
+    // Escape opens the settings menu built from registerDemoSettings() (#2551).
+    IRPrefab::SettingsMenu::registerToggleCommand();
+}
+
+// ---------------------------------------------------------------------------
+// Live-togglable demo settings (#2551)
+// ---------------------------------------------------------------------------
+
+// Re-apply the debug tint to every live SDF shape. `--depth-color` and
+// `--checkerboard` bake their flag into `C_ShapeDescriptor` at creation; the
+// flags are read by the shader every frame, so rewriting them here flips the
+// tint live with no entity churn.
+//
+// Voxel-pool shapes (`--spin-shape-voxel`) are NOT re-tinted: their tint is
+// baked into per-voxel colors by `applyCheckerboard` / `applyDepthColor`, and
+// reverting needs each set's pre-tint base color, which the demo does not
+// retain. The default scene is SDF, which is what these two settings drive.
+void applyTintFlags() {
+    IREntity::forEachComponent<C_ShapeDescriptor>([](EntityId &, C_ShapeDescriptor &desc) {
+        desc.flags_ &= ~(IRRender::SHAPE_FLAG_DEPTH_COLOR | IRRender::SHAPE_FLAG_CHECKERBOARD);
+        if (g_depthColor) {
+            desc.flags_ |= IRRender::SHAPE_FLAG_DEPTH_COLOR;
+        } else if (g_checkerboard) {
+            desc.flags_ |= IRRender::SHAPE_FLAG_CHECKERBOARD;
+        }
+    });
+}
+
+void registerDemoSettings() {
+    IRPrefab::Settings::registerEnum(
+        "ROTATION PIVOT",
+        {"ORIGIN", "CAMERA CENTER"},
+        [] { return static_cast<int>(IRRender::getRotationPivotMode()); },
+        [](int mode) {
+            IRRender::setRotationPivotMode(static_cast<IRRender::RotationPivotMode>(mode));
+        }
+    );
+    // Labels are indexed by DebugOverlayMode, so the order here is the enum's
+    // order, not a display preference.
+    IRPrefab::Settings::registerEnum(
+        "DEBUG OVERLAY",
+        {"NONE",
+         "AO",
+         "LIGHT LEVEL",
+         "SHADOW",
+         "PER AXIS ID",
+         "PER AXIS ORIGIN",
+         "UNLIT",
+         "PER AXIS MARGIN"},
+        [] { return static_cast<int>(IRRender::getDebugOverlay()); },
+        [](int mode) { IRRender::setDebugOverlay(static_cast<IRRender::DebugOverlayMode>(mode)); }
+    );
+    // Depth-color and checkerboard are mutually exclusive on the CLI path
+    // (if/else); the setters keep that invariant rather than letting the menu
+    // reach a combination the flag path cannot express.
+    IRPrefab::Settings::registerBool(
+        "DEPTH COLOR",
+        [] { return g_depthColor; },
+        [](bool on) {
+            g_depthColor = on;
+            if (on) {
+                g_checkerboard = false;
+            }
+            applyTintFlags();
+        }
+    );
+    IRPrefab::Settings::registerBool(
+        "CHECKERBOARD",
+        [] { return g_checkerboard; },
+        [](bool on) {
+            g_checkerboard = on;
+            if (on) {
+                g_depthColor = false;
+            }
+            applyTintFlags();
+        }
+    );
+    // Pause is a registered setting rather than the menu's `pauseSimWhileOpen_`
+    // flag: exposing it as a row makes it observable (the GUI test asserts the
+    // clock actually stopped), and the two would otherwise both write the clock.
+    IRPrefab::Settings::registerBool(
+        "PAUSE SIMULATION",
+        [] { return IRSim::isPaused(); },
+        [](bool paused) { IRSim::setTimeScale(paused ? 0.0f : 1.0f); }
+    );
 }
 
 void applyCheckerboard(C_VoxelSetNew &voxelSet, Color baseColor) {

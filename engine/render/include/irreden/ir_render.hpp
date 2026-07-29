@@ -201,6 +201,15 @@ bool readDefaultFramebuffer(int x, int y, int width, int height, void *rgbaData)
 CompositeDepthSample readbackCompositeDepth(ivec2 px);
 /// Mouse position in the output view (after upscaling), in pixels.
 vec2 getMousePositionOutputView();
+/// Inverse of the screen-pixel → GUI-canvas-trixel chain that
+/// @c getMousePositionOutputView feeds: maps a point on the GUI canvas back to
+/// the screen pixel a cursor must sit at to land on it.
+///
+/// Exists for headless GUI tests, which must click widgets whose GUI-canvas
+/// position is computed at runtime (a centered menu, a list row) and so cannot
+/// hardcode a screen coordinate. Returns @c ivec2(0) when the GUI canvas or
+/// main framebuffer is missing — not a per-frame call.
+ivec2 guiTrixelToScreenPx(vec2 guiTrixel);
 /// Logical game resolution before any output upscaling.
 vec2 getGameResolution();
 /// Main canvas size in trixels.

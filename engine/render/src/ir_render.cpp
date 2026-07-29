@@ -152,6 +152,33 @@ vec2 getMousePositionOutputView() {
         vec2(IRConstants::kSizeExtraPixelBuffer) / vec2(2.0f) * vec2(scale);
     return raw - offset + bufferCorrection;
 }
+ivec2 guiTrixelToScreenPx(vec2 guiTrixel) {
+    const EntityId guiCanvas = getCanvas("gui");
+    if (guiCanvas == IREntity::kNullEntity) {
+        return ivec2(0);
+    }
+    const vec2 guiSize =
+        vec2(IREntity::getComponent<IRComponents::C_TriangleCanvasTextures>(guiCanvas).size_);
+    if (guiSize.x <= 0.0f || guiSize.y <= 0.0f) {
+        return ivec2(0);
+    }
+    const vec2 fbRes = vec2(
+        IREntity::getComponent<IRComponents::C_TrixelCanvasFramebuffer>("mainFramebuffer")
+            .getResolutionPlusBuffer()
+    );
+
+    // Forward chain (System<HITBOX_MOUSE_TEST_GUI>::beginTick):
+    //   guiTrixel = getMousePositionOutputView() / fbRes * guiSize
+    // so the output-view pixel is guiTrixel / guiSize * fbRes, and the raw
+    // cursor position is that run back through getMousePositionOutputView.
+    const vec2 outputViewPx = guiTrixel / guiSize * fbRes;
+    const vec2 offset = getRenderManager().screenToOutputWindowOffset();
+    const ivec2 scale = getRenderManager().getOutputScaleFactor();
+    const vec2 bufferCorrection =
+        vec2(IRConstants::kSizeExtraPixelBuffer) / vec2(2.0f) * vec2(scale);
+    const vec2 screenPx = outputViewPx + offset - bufferCorrection;
+    return ivec2(IRMath::round(screenPx.x), IRMath::round(screenPx.y));
+}
 vec2 getGameResolution() {
     return getRenderManager().getGameResolution();
 }
