@@ -94,6 +94,7 @@ struct SceneSystems {
     IRSystem::SystemId propagateTransform_ = IRSystem::kNullSystemId;
     IRSystem::SystemId updateVoxelSetChildren_ = IRSystem::kNullSystemId;
     IRSystem::SystemId rebuildGridVoxels_ = IRSystem::kNullSystemId;
+    IRSystem::SystemId rebuildGridVoxelsImplicit_ = IRSystem::kNullSystemId;
     IRSystem::SystemId squashStretch_ = IRSystem::kNullSystemId;
 };
 SceneSystems g_systems;
@@ -149,6 +150,8 @@ void setupSystemsOnce() {
     g_systems.updateVoxelSetChildren_ =
         IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>();
     g_systems.rebuildGridVoxels_ = IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS>();
+    g_systems.rebuildGridVoxelsImplicit_ =
+        IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS_IMPLICIT>();
     g_systems.squashStretch_ = IRSystem::createSystem<IRSystem::VOXEL_SQUASH_STRETCH>();
 
     IRSystem::registerPipeline(
@@ -222,6 +225,7 @@ void registerSceneUpdatePipeline(SceneId scene) {
     }
     update.push_back(g_systems.updateVoxelSetChildren_);
     update.push_back(g_systems.rebuildGridVoxels_);
+    update.push_back(g_systems.rebuildGridVoxelsImplicit_);
     IRSystem::registerPipeline(IRTime::Events::UPDATE, update);
 }
 

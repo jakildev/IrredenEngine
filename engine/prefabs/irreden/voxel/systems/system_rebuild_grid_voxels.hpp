@@ -48,6 +48,10 @@
 // side-channel is a dirty flag in disguise (see `cpp-ecs.md` "No dirty
 // flags").
 //
+// Entities WITHOUT `C_RotationMode` are implicitly GRID and are covered by
+// the twin arm at the bottom of this header (`REBUILD_GRID_VOXELS_IMPLICIT`,
+// #2376) — register both wherever this one registers.
+//
 // Skipped (early returns):
 //  - `C_RotationMode::mode_ != GRID` — DETACHED entities rotate through
 //    the per-canvas TRS composite (system_entity_canvas_to_framebuffer)
@@ -579,6 +583,53 @@ template <> struct System<REBUILD_GRID_VOXELS> {
         return registerSystem<REBUILD_GRID_VOXELS, C_VoxelSetNew, C_WorldTransform, C_RotationMode>(
             "RebuildGridVoxels"
         );
+    }
+};
+
+// REBUILD_GRID_VOXELS_IMPLICIT — the same re-rasterize for entities that
+// carry NO C_RotationMode (#2376).
+//
+// `component_rotation_mode.hpp` documents absence of the component as
+// implicitly GRID, and every other consumer honors that
+// (`IRPrefab::RotationMode::setMode` defaults to GRID via
+// `getComponentOptional`). The re-rasterize above was the one archetype-gated
+// violator: a component-less entity never matched it, so only the
+// translate-only baseline from UPDATE_VOXEL_SET_CHILDREN wrote its world
+// cells and an authored rotation/scale silently rendered as identity — with
+// nothing logged. The rotation drivers (AUTO_SPIN_LOCAL_TRANSFORM,
+// ROTATION_TARGET_LOCAL_TRANSFORM) query neither C_RotationMode nor
+// C_VoxelSetNew, so they happily author a rotation that then never showed.
+//
+// The two systems partition the population: `Exclude<C_RotationMode>` here
+// vs. the required `C_RotationMode` above. No entity is ever ticked twice,
+// and an entity that gains or loses the component (`setMode`) migrates
+// archetypes and switches arms on its own — no special handling.
+//
+// Composition, not a refactor of the hot body: this spec owns a
+// `System<REBUILD_GRID_VOXELS>` instance and delegates, so the inverse /
+// identity / forward arms and all of their reused scratch capacity stay in
+// exactly one place. The delegate's scratch is per-instance, so the two
+// systems never share buffers.
+template <> struct System<REBUILD_GRID_VOXELS_IMPLICIT> {
+    // The mode an absent component means. Passing it explicitly keeps the
+    // delegate's GRID gate intact rather than carving a second entry point
+    // into it.
+    static constexpr C_RotationMode kImplicitGrid{};
+
+    System<REBUILD_GRID_VOXELS> impl_;
+
+    void beginTick() { impl_.beginTick(); }
+
+    void tick(C_VoxelSetNew &voxelSet, const C_WorldTransform &worldTransform) {
+        impl_.tick(voxelSet, worldTransform, kImplicitGrid);
+    }
+
+    static SystemId create() {
+        return registerSystem<
+            REBUILD_GRID_VOXELS_IMPLICIT,
+            C_VoxelSetNew,
+            C_WorldTransform,
+            Exclude<C_RotationMode>>("RebuildGridVoxelsImplicit");
     }
 };
 } // namespace IRSystem

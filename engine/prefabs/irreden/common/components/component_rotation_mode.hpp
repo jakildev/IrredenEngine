@@ -29,6 +29,16 @@
 // component so prefab-driven entities are discoverable by archetype
 // queries.
 //
+// The re-rasterize path honors that default through a second query arm:
+// `SYSTEM_REBUILD_GRID_VOXELS_IMPLICIT` (#2376) runs the identical GRID
+// body over `Exclude<C_RotationMode>`. Before it existed, an
+// archetype-gated `REBUILD_GRID_VOXELS` skipped component-less entities
+// entirely, so an authored rotation on one silently rendered as identity
+// — the contract above held for every consumer EXCEPT the one that
+// actually rasterizes. A creation registering `REBUILD_GRID_VOXELS`
+// registers the implicit twin next to it; see
+// `engine/prefabs/irreden/voxel/CLAUDE.md`.
+//
 // Mode is mutable at runtime via `IRPrefab::RotationMode::setMode`
 // (in `engine/prefabs/irreden/common/rotation_mode.hpp`) at a
 // re-allocation cost — switching to DETACHED allocates a new entity

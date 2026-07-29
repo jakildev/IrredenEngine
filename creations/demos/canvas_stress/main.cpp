@@ -1232,6 +1232,7 @@ void initSystems() {
          IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
          IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>(),
          IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS>(),
+         IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS_IMPLICIT>(),
          IRSystem::createSystem<IRSystem::PROPAGATE_CANVAS_ROTATION>(),
          // Detached re-voxelize (#1555): fills each DETACHED_REVOXELIZE canvas's
          // private pool at the full-rotation cell positions. Must run AFTER

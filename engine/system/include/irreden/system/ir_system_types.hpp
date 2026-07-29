@@ -117,6 +117,12 @@ enum SystemName {
     VOXEL_SQUASH_STRETCH,
     UPDATE_VOXEL_SET_CHILDREN,
     REBUILD_GRID_VOXELS,
+    // Twin query arm of REBUILD_GRID_VOXELS for entities WITHOUT
+    // C_RotationMode (#2376). The component's own header documents absence
+    // as implicitly GRID; this arm makes that true for the re-rasterize
+    // path too. Register it wherever REBUILD_GRID_VOXELS registers — the
+    // two archetypes are disjoint, so neither covers the other's entities.
+    REBUILD_GRID_VOXELS_IMPLICIT,
     REBUILD_DETACHED_VOXELS,
     SEED_STAGED_VOXELS,
     PROPAGATE_CANVAS_ROTATION,

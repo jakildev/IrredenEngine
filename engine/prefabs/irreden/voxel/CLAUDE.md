@@ -139,6 +139,26 @@ for single voxels and particles.
   `C_RotationMode::GRID` must register `REBUILD_GRID_VOXELS` in their
   UPDATE pipeline after `UPDATE_VOXEL_SET_CHILDREN`; omitting it produces
   silent no-ops.
+- `REBUILD_GRID_VOXELS_IMPLICIT` (UPDATE pipeline, #2376) — the twin query
+  arm of `REBUILD_GRID_VOXELS` for entities that carry **no**
+  `C_RotationMode`. `component_rotation_mode.hpp` documents absence as
+  implicitly GRID and every other consumer honors that; the re-rasterize
+  was the one archetype-gated violator, so a rotated component-less voxel
+  set silently rendered at identity (only the translate-only baseline from
+  `UPDATE_VOXEL_SET_CHILDREN` wrote its cells) with nothing logged. Same
+  system body, reached by composition — the twin owns a
+  `System<REBUILD_GRID_VOXELS>` instance and delegates with a GRID mode —
+  so the inverse / identity / forward arms live in exactly one place. The
+  two archetypes are disjoint (`C_RotationMode` required vs.
+  `Exclude<C_RotationMode>`), so no entity ticks twice and an entity that
+  gains or loses the component via `IRPrefab::RotationMode::setMode`
+  migrates between the arms on its own.
+  **Pair-registration rule: wherever a pipeline registers
+  `REBUILD_GRID_VOXELS`, register `REBUILD_GRID_VOXELS_IMPLICIT` next to
+  it** (order between the two is immaterial — disjoint archetypes; keep
+  them adjacent, twin second). Registering only the first re-opens the
+  silent-identity gap for every ad-hoc `createEntity` caller in that
+  creation.
 - `REBUILD_DETACHED_VOXELS` (UPDATE pipeline, #1553 P1 / #1555, **repurposed P2
   / #1556**) — P1 re-rasterized a `RotationMode::DETACHED_REVOXELIZE` entity's
   **private** pool into full-rotation cell positions on the CPU every frame. P2
