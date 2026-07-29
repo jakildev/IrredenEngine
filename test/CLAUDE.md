@@ -56,7 +56,9 @@ it.
 `IRSystem.*Cadence*` Lua bindings, and the `kCadence` / `kCadenceOffset`
 spec-member detection path on `System<N>`. Both are public, both are how
 downstream code actually consumes the feature, and "a new test exists" hid
-them. Count surfaces, not tests.
+them. Count surfaces, not tests. (Both gaps were backfilled in #2450 —
+`LuaCadenceTest` and the `TEST_CADENCE_SPEC_*` specs; the lesson is that they
+had to be backfilled at all.)
 
 ## Lua seam tests
 

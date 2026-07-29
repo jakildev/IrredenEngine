@@ -227,7 +227,13 @@ enum SystemName {
     // Reserved for tests of the registerSystem<> member-on-System<N>
     // helper. Do not use from a creation or prefab system.
     TEST_REGISTER_SYSTEM_A,
-    TEST_REGISTER_SYSTEM_B
+    TEST_REGISTER_SYSTEM_B,
+
+    // Reserved for tests of the #2404 kCadence / kCadenceOffset
+    // spec-member detection path. Do not use from a creation or prefab
+    // system.
+    TEST_CADENCE_SPEC_MEMBER, // declares kCadence / kCadenceOffset
+    TEST_CADENCE_SPEC_DEFAULT // declares neither (defaults path)
 };
 
 template <typename... RelationComponents> struct RelationParams {
