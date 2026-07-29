@@ -997,10 +997,19 @@ parity with voxel-pool primary shapes.
   no longer required. GL is structurally immune (separate image/texture-unit
   namespaces), so a GL-only smoke never catches this class (see #1812, #2350).
 
-  A dispatch must still bind every texture it reads: mutual exclusion means a
-  sampler bind at unit N drops an image another pass left there, so relying on
-  a *previous* dispatch's leftover bind is not safe. The same stickiness makes
-  resource **destruction** a hazard: the tables hold
+  **Residency rule:** a bind at unit N stays resident until the next bind of
+  *either kind* at unit N — a dispatch boundary does not clear it. Carrying a
+  bind across dispatches is therefore supported, and the engine relies on it:
+  `LIGHTING_TO_TRIXEL` binds units 6/7 on its main-canvas dispatch and the
+  per-axis dispatches ride on them, rebinding only 0/1/2/4. What mutual
+  exclusion removes is *cross-kind* survival — a sampler bind at unit N now
+  evicts an image another pass left there, and vice versa. So before relying on
+  a leftover bind, confirm nothing binds that unit, **in either table**, between
+  the producer and the consumer. The widest such range in the frame is
+  `VOXEL_TO_TRIXEL`'s chunk-occlusion pass, which sampler-binds units 0–11
+  every frame the cull runs.
+
+  The same stickiness makes resource **destruction** a hazard: the tables hold
   non-owning pointers, so destroying a bound resource leaves a dangling entry
   the next dispatch's flush re-binds — `objc_retain` on the freed handle
   segfaults (#2412: a rotation-lifecycle buffer bound at a slot no

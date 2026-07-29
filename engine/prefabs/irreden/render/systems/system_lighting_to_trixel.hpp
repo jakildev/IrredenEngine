@@ -213,20 +213,35 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
             // `getReadTexture()` returns whichever ping-pong texture
             // the GPU light-volume producer last wrote to, so this
             // sampler always sees the latest dilation result.
+            // Null only when NEITHER this canvas nor the main canvas carries
+            // C_CanvasLightVolume — no in-tree creation is in that state (every
+            // one whose LIGHTING_TO_TRIXEL archetype is non-empty puts the
+            // component on the main canvas). If you author one, note that slots
+            // 5/7 then go unbound here and the chunk-occlusion cull's Hi-Z
+            // sampler loop (units 0-11, #2350) leaves a texture2d<int> mip in
+            // slot 7 against this shader's texture3d<float> declaration. Benign
+            // today — the slot is read only on the has-SPOT path, unreachable
+            // without a light volume — and verified clean on Metal, but it is
+            // the reason not to start reading slot 7 unconditionally.
             if (lightVolume != nullptr) {
                 lightVolume->getReadTexture()->bind(5);
                 // Winning-light ID volume (image unit 7, #2318). Bound every tick so
                 // Metal's slot table is populated; only fetched on the has-SPOT
-                // path. Stays resident across the per-axis dispatches below (they
-                // never rebind unit 7), so per-axis canvases get spot cones too.
+                // path. Stays resident across the per-axis dispatches below —
+                // because nothing binds unit 7, as sampler OR image, between this
+                // dispatch and them (Metal evicts the sibling table per unit since
+                // #2350, so a sampler bind at 7 would drop this image) — which is
+                // how per-axis canvases get spot cones too.
                 lightVolume->getIdReadTexture()
                     ->bindAsImage(7, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
             }
             // Entity-id image (unit 6, R/O): the lighting shader reads it ONLY to
             // recover the fog cut-face flag (bit 29) and force those faces fully lit
             // (#2124 lit-cross-section follow-up). Bound every tick so Metal's slot
-            // table is populated; the per-axis dispatch below leaves it resident and
-            // its perAxisRoute != 0 skips the read.
+            // table is populated; the per-axis dispatch below leaves it resident —
+            // because nothing binds unit 6, as sampler OR image, in between (same
+            // #2350 cross-kind eviction rule as unit 7 above) — and its
+            // perAxisRoute != 0 skips the read.
             canvasTextures.getTextureEntityIds()
                 ->bindAsImage(6, TextureAccess::READ_ONLY, TextureFormat::RG32UI);
             frameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataLightingToTrixel);
