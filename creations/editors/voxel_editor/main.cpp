@@ -2752,7 +2752,7 @@ void initCommands() {
                 editor.perFrameUndoBytes_.begin() + anim.activeFrame_,
                 std::size_t{0}
             );
-            IR_LOG_INFO("Duplicated frame %d / %d", anim.activeFrame_ + 1, anim.frameCount());
+            IR_LOG_INFO("Duplicated frame {} / {}", anim.activeFrame_ + 1, anim.frameCount());
         }
     );
 
