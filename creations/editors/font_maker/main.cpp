@@ -30,7 +30,7 @@
 #include <irreden/render/commands/command_zoom_in.hpp>
 #include <irreden/render/commands/command_zoom_out.hpp>
 #include <irreden/render/commands/command_move_camera.hpp>
-#include <irreden/render/commands/command_toggle_gui.hpp>
+#include <irreden/render/help_overlay.hpp>
 #include <irreden/render/commands/command_gui_zoom.hpp>
 #include <irreden/video/commands/command_take_screenshot.hpp>
 #include <irreden/video/commands/command_take_screenshot_canvas.hpp>
@@ -72,6 +72,7 @@ void initSystems() {
         {IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
          IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
          IRSystem::createSystem<IRSystem::TEXT_TO_TRIXEL>(),
+         IRSystem::System<IRSystem::HELP_OVERLAY>::create(),
          IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
          IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>()}
     );
@@ -148,11 +149,9 @@ void initCommands() {
         ButtonStatuses::PRESSED,
         KeyMouseButtons::kKeyButtonF9
     );
-    IRCommand::createCommand<IRCommand::TOGGLE_GUI>(
-        InputTypes::KEY_MOUSE,
-        ButtonStatuses::PRESSED,
-        KeyMouseButtons::kKeyButtonGraveAccent
-    );
+    // Backtick keeps its "show the command list" meaning, now backed by the
+    // registry-driven help overlay (#2550).
+    IRPrefab::HelpOverlay::registerToggleCommand(KeyMouseButtons::kKeyButtonGraveAccent);
     IRCommand::createCommand<IRCommand::GUI_ZOOM_IN>(
         InputTypes::KEY_MOUSE,
         ButtonStatuses::PRESSED,

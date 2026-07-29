@@ -188,6 +188,12 @@ enum SystemName {
     VOXEL_PICKING,
     DEBUG_CULLING_MINIMAP,
     PERF_STATS_OVERLAY,
+    // Registry-driven command help overlay (#2550). Renders the registered
+    // PRESSED bindings + their descriptions onto the GUI canvas when the
+    // C_HelpOverlayState singleton is visible. Register AFTER TEXT_TO_TRIXEL
+    // (which clears the GUI canvas and owns the shared text GPU resources)
+    // and BEFORE TRIXEL_TO_FRAMEBUFFER.
+    HELP_OVERLAY,
     ENTITY_CANVAS_TO_FRAMEBUFFER,
     WIDGET_INPUT,
     WIDGET_LUA_DISPATCH,

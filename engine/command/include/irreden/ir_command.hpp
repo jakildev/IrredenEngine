@@ -6,7 +6,9 @@
 #include <irreden/command/ir_command_types.hpp>
 #include <irreden/command/command_manager.hpp>
 
+#include <iterator>
 #include <string>
+#include <utility>
 
 namespace IRCommand {
 
@@ -58,63 +60,103 @@ CommandId bindPrefabCommand(
 /// the unimplemented-name path.
 inline constexpr CommandId kInvalidCommandId = ~CommandId{0};
 
+/// One row of the command catalog: the display label and the help-overlay
+/// description for a `CommandNames` value. Descriptions are engine-public
+/// text rendered by the uppercase-only trixel font — keep them to one short
+/// clause (~40 chars) so a line fits the overlay column.
+struct CommandInfo {
+    CommandNames name_;
+    const char *displayName_;
+    const char *description_;
+};
+
+/// The command catalog — one row per `CommandNames` value, indexed by the
+/// enum value itself. Replaces the former hand-listed `commandNameToString`
+/// switch, whose `default:` arm silently rendered omitted values as
+/// "UNKNOWN"; the static_asserts below turn that omission class into a
+/// compile error instead. Values with no `Command<NAME>` specialization
+/// still get a row — the label is what `fireByName`'s diagnostic prints.
+inline constexpr CommandInfo kCommandInfo[] = {
+    {NULL_COMMAND, "NULL", ""},
+    {EXAMPLE, "EXAMPLE", ""},
+    {ZOOM_IN, "ZOOM IN", "ZOOM THE CAMERA IN ONE STEP"},
+    {ZOOM_OUT, "ZOOM OUT", "ZOOM THE CAMERA OUT ONE STEP"},
+    {BACKGROUND_ZOOM_IN, "BG ZOOM IN", "ZOOM THE BACKGROUND CANVAS IN"},
+    {BACKGROUND_ZOOM_OUT, "BG ZOOM OUT", "ZOOM THE BACKGROUND CANVAS OUT"},
+    {CLOSE_WINDOW, "CLOSE WINDOW", "CLOSE THE WINDOW AND EXIT"},
+    {MOVE_CAMERA_LEFT_START, "CAMERA LEFT", "PAN THE CAMERA LEFT WHILE HELD"},
+    {MOVE_CAMERA_RIGHT_START, "CAMERA RIGHT", "PAN THE CAMERA RIGHT WHILE HELD"},
+    {MOVE_CAMERA_UP_START, "CAMERA UP", "PAN THE CAMERA UP WHILE HELD"},
+    {MOVE_CAMERA_DOWN_START, "CAMERA DOWN", "PAN THE CAMERA DOWN WHILE HELD"},
+    {MOVE_CAMERA_LEFT_END, "CAMERA LEFT END", "STOP PANNING THE CAMERA LEFT"},
+    {MOVE_CAMERA_RIGHT_END, "CAMERA RIGHT END", "STOP PANNING THE CAMERA RIGHT"},
+    {MOVE_CAMERA_UP_END, "CAMERA UP END", "STOP PANNING THE CAMERA UP"},
+    {MOVE_CAMERA_DOWN_END, "CAMERA DOWN END", "STOP PANNING THE CAMERA DOWN"},
+    {SCREENSHOT, "SCREENSHOT", "SAVE A SCREENSHOT OF THE WINDOW"},
+    {SCREENSHOT_CANVAS, "SCREENSHOT CANVAS", "SAVE THE CANVAS WITHOUT OVERLAYS"},
+    {RECORD_START, "RECORD START", "START RECORDING VIDEO"},
+    {RECORD_STOP, "RECORD STOP", "STOP RECORDING VIDEO"},
+    {RECORD_TOGGLE, "RECORD TOGGLE", "START OR STOP RECORDING VIDEO"},
+    {STOP_VELOCITY, "STOP VELOCITY", "ZERO THE TARGET ENTITY VELOCITY"},
+    {RESHAPE_SPHERE, "RESHAPE SPHERE", "RESHAPE THE TARGET INTO A SPHERE"},
+    {RESHAPE_RECTANGULAR_PRISM, "RESHAPE PRISM", "RESHAPE THE TARGET INTO A BOX"},
+    {RANDOMIZE_VOXELS, "RANDOMIZE VOXELS", "RECOLOR EVERY UNLOCKED VOXEL SET"},
+    {LOCK_VOXEL_SCALE, "LOCK VOXEL SCALE", "PIN THE VOXEL SCALE TO ITS VALUE"},
+    {UNLOCK_VOXEL_SCALE, "UNLOCK VOXEL SCALE", "LET THE VOXEL SCALE TRACK ZOOM"},
+    {SPAWN_PARTICLE_MOUSE_POSITION, "SPAWN PARTICLE", "SPAWN A PARTICLE AT THE CURSOR"},
+    {SET_TRIXEL_COLOR, "SET TRIXEL", "SET THE TRIXEL UNDER THE CURSOR"},
+    {TOGGLE_PERIODIC_IDLE_PAUSE, "TOGGLE PAUSE", "PAUSE OR RESUME PERIODIC IDLE MOTION"},
+    {TOGGLE_GUI, "TOGGLE GUI", "SHOW OR HIDE THE LEGACY GUI FLAG"},
+    {GUI_ZOOM_IN, "GUI ZOOM IN", "ENLARGE THE GUI CANVAS SCALE"},
+    {GUI_ZOOM_OUT, "GUI ZOOM OUT", "SHRINK THE GUI CANVAS SCALE"},
+    {TOGGLE_CULLING_FREEZE, "TOGGLE CULL FREEZE", "FREEZE THE CULL VIEWPORT AT THIS POSE"},
+    {TOGGLE_CULLING_MINIMAP, "TOGGLE MINIMAP", "SHOW OR HIDE THE CULLING MINIMAP"},
+    {TOGGLE_HELP_OVERLAY, "TOGGLE HELP", "SHOW OR HIDE THIS COMMAND LIST"},
+};
+
+static_assert(
+    static_cast<int>(std::size(kCommandInfo)) == kCommandNameCount,
+    "kCommandInfo needs one row per CommandNames value — add the row (and bump "
+    "kCommandNameCount) in the same change that adds the enum entry"
+);
+
+/// Compile-time check that row `i` describes enum value `i`, so the O(1)
+/// index lookup below is sound and a row inserted in the wrong place can't
+/// silently mislabel two commands.
+inline constexpr bool commandInfoRowsAligned() {
+    for (int i = 0; i < kCommandNameCount; ++i) {
+        if (static_cast<int>(kCommandInfo[i].name_) != i) {
+            return false;
+        }
+    }
+    return true;
+}
+static_assert(
+    commandInfoRowsAligned(),
+    "kCommandInfo rows must appear in CommandNames declaration order — the table is indexed "
+    "by enum value"
+);
+
 /// Returns a short human-readable label for @p name (e.g. "ZOOM IN").
-/// Used by the debug overlay and `buildCommandListText()`.
+/// Used by the help overlay and `buildCommandListText()`. Out-of-range
+/// values (a cast from a bad Lua integer) return "UNKNOWN"; every declared
+/// enum value has a real label by the static_asserts above.
 inline std::string commandNameToString(CommandNames name) {
-    switch (name) {
-    case ZOOM_IN:
-        return "ZOOM IN";
-    case ZOOM_OUT:
-        return "ZOOM OUT";
-    case BACKGROUND_ZOOM_IN:
-        return "BG ZOOM IN";
-    case BACKGROUND_ZOOM_OUT:
-        return "BG ZOOM OUT";
-    case CLOSE_WINDOW:
-        return "CLOSE WINDOW";
-    case MOVE_CAMERA_LEFT_START:
-        return "CAMERA LEFT";
-    case MOVE_CAMERA_RIGHT_START:
-        return "CAMERA RIGHT";
-    case MOVE_CAMERA_UP_START:
-        return "CAMERA UP";
-    case MOVE_CAMERA_DOWN_START:
-        return "CAMERA DOWN";
-    case MOVE_CAMERA_LEFT_END:
-        return "CAMERA LEFT END";
-    case MOVE_CAMERA_RIGHT_END:
-        return "CAMERA RIGHT END";
-    case MOVE_CAMERA_UP_END:
-        return "CAMERA UP END";
-    case MOVE_CAMERA_DOWN_END:
-        return "CAMERA DOWN END";
-    case SCREENSHOT:
-        return "SCREENSHOT";
-    case RECORD_START:
-        return "RECORD START";
-    case RECORD_STOP:
-        return "RECORD STOP";
-    case RECORD_TOGGLE:
-        return "RECORD TOGGLE";
-    case TOGGLE_GUI:
-        return "TOGGLE GUI";
-    case GUI_ZOOM_IN:
-        return "GUI ZOOM IN";
-    case GUI_ZOOM_OUT:
-        return "GUI ZOOM OUT";
-    case TOGGLE_CULLING_MINIMAP:
-        return "TOGGLE MINIMAP";
-    case TOGGLE_PERIODIC_IDLE_PAUSE:
-        return "TOGGLE PAUSE";
-    case SET_TRIXEL_COLOR:
-        return "SET TRIXEL";
-    case RANDOMIZE_VOXELS:
-        return "RANDOMIZE VOXELS";
-    case SPAWN_PARTICLE_MOUSE_POSITION:
-        return "SPAWN PARTICLE";
-    default:
+    const int index = static_cast<int>(name);
+    if (index < 0 || index >= kCommandNameCount) {
         return "UNKNOWN";
     }
+    return kCommandInfo[index].displayName_;
+}
+
+/// Returns the help-overlay description for @p name, or an empty string
+/// for a value with no description (and for out-of-range values).
+inline std::string commandDescription(CommandNames name) {
+    const int index = static_cast<int>(name);
+    if (index < 0 || index >= kCommandNameCount) {
+        return "";
+    }
+    return kCommandInfo[index].description_;
 }
 
 /// Returns a short display name for a @ref IRInput::KeyMouseButtons value
@@ -339,6 +381,11 @@ inline std::string buildCommandListText() {
 /// @param command      The callable to invoke on trigger; `void()` signature.
 /// @param requiredModifiers Modifier bits that must be active (KEY_MOUSE only).
 /// @param blockedModifiers  Modifier bits that must be inactive (KEY_MOUSE only).
+/// @param name        Display label for the help overlay. Empty (the default)
+///                    keeps the binding out of the registry entirely — the
+///                    pre-existing behavior for every ad-hoc lambda binding.
+/// @param description Short clause describing the effect, shown beside the
+///                    label in the help overlay.
 /// @return A `CommandId` handle for the binding.
 template <typename Function>
 CommandId createCommand(
@@ -347,7 +394,9 @@ CommandId createCommand(
     int button,
     Function command,
     IRInput::KeyModifierMask requiredModifiers = IRInput::kModifierNone,
-    IRInput::KeyModifierMask blockedModifiers = IRInput::kModifierNone
+    IRInput::KeyModifierMask blockedModifiers = IRInput::kModifierNone,
+    std::string name = "",
+    std::string description = ""
 ) {
     return getCommandManager().createCommand(
         inputType,
@@ -355,13 +404,16 @@ CommandId createCommand(
         button,
         command,
         requiredModifiers,
-        blockedModifiers
+        blockedModifiers,
+        std::move(name),
+        std::move(description)
     );
 }
 
 /// Registers a named engine command using its `Command<NAME>::create()` factory.
-/// The enum value doubles as the identifier; the display name is derived from
-/// @ref commandNameToString and appears in the debug help overlay.
+/// The enum value doubles as the identifier; the display name and description
+/// both come from @ref kCommandInfo, so every prefab command appears in the
+/// help overlay fully described with no per-creation wiring.
 template <CommandNames commandName>
 CommandId createCommand(
     IRInput::InputTypes inputType,
@@ -377,7 +429,8 @@ CommandId createCommand(
         Command<commandName>::create(),
         requiredModifiers,
         blockedModifiers,
-        commandNameToString(commandName)
+        commandNameToString(commandName),
+        commandDescription(commandName)
     );
 }
 

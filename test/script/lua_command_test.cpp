@@ -197,6 +197,72 @@ TEST_F(LuaCommandTest, LuaCommandBodyErrorDoesNotPropagate) {
     EXPECT_EQ(lua["before"].get<int>(), 2);
 }
 
+// ---- Named Lua commands + the help-overlay registry (#2550) ---------------
+
+// The trailing name / description strings are what put a Lua-defined command
+// in the help overlay: the registry records only NAMED PRESSED bindings, so
+// without them every Lua command body was invisible there.
+TEST_F(LuaCommandTest, CreateCommandWithNameAndDescriptionEntersRegistry) {
+    auto &lua = m_lua.lua();
+    auto result = lua.safe_script(
+        R"(
+        return IRCommand.createCommand(
+            IRInput.InputType.KEY_MOUSE,
+            IRInput.ButtonStatus.PRESSED,
+            IRInput.Key.J,
+            function() end,
+            nil, nil,
+            "LUA PULSE",
+            "FIRE THE LUA TEST PULSE"
+        )
+        )",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(result.valid()) << result.get<sol::error>().what();
+
+    const auto &registrations = m_command_manager.getCommandRegistrations();
+    ASSERT_EQ(registrations.size(), 1u);
+    EXPECT_EQ(registrations[0].name, "LUA PULSE");
+    EXPECT_EQ(registrations[0].description, "FIRE THE LUA TEST PULSE");
+    EXPECT_EQ(registrations[0].button, IRInput::kKeyButtonJ);
+}
+
+// Both are optional: without them the command still registers and fires, it
+// just doesn't appear in the overlay.
+TEST_F(LuaCommandTest, CreateCommandWithoutNameStaysOutOfRegistry) {
+    auto &lua = m_lua.lua();
+    auto result = lua.safe_script(
+        R"(
+        _G.unnamed_fired = 0
+        local id = IRCommand.createCommand(
+            IRInput.InputType.KEY_MOUSE,
+            IRInput.ButtonStatus.PRESSED,
+            IRInput.Key.K,
+            function() _G.unnamed_fired = _G.unnamed_fired + 1 end
+        )
+        IRCommand.fire(id)
+        return _G.unnamed_fired
+        )",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(result.valid()) << result.get<sol::error>().what();
+    EXPECT_EQ(result.get<lua_Integer>(), 1);
+    EXPECT_TRUE(m_command_manager.getCommandRegistrations().empty());
+}
+
+// The new prefab command must be spellable from Lua — a missing IR_BIND_CMD
+// row resolves to nil at binding time, which is the silent failure mode the
+// engine/command hand-list checklist exists to catch.
+TEST_F(LuaCommandTest, ToggleHelpOverlayCommandNameIsBound) {
+    auto &lua = m_lua.lua();
+    auto result = lua.safe_script(
+        "return IRCommand.CommandName.TOGGLE_HELP_OVERLAY",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(result.valid()) << result.get<sol::error>().what();
+    EXPECT_EQ(result.get<lua_Integer>(), static_cast<lua_Integer>(IRCommand::TOGGLE_HELP_OVERLAY));
+}
+
 // ---- Modifier mask composition via LuaJIT bit.bor -------------------------
 
 TEST_F(LuaCommandTest, BindPrefabAcceptsBitOrModifierMask) {
@@ -230,11 +296,9 @@ TEST_F(LuaCommandTest, BindLuaCommandsIsIdempotent) {
     // earlier IRCommand handle and IRInput.Key.A integer must still be
     // valid afterward.
     auto &lua = m_lua.lua();
-    const auto firstKeyA =
-        lua.script("return IRInput.Key.A").get<lua_Integer>();
+    const auto firstKeyA = lua.script("return IRInput.Key.A").get<lua_Integer>();
     m_lua.bindLuaCommands();
-    const auto secondKeyA =
-        lua.script("return IRInput.Key.A").get<lua_Integer>();
+    const auto secondKeyA = lua.script("return IRInput.Key.A").get<lua_Integer>();
     EXPECT_EQ(firstKeyA, secondKeyA);
 
     // Functions still callable.

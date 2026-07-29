@@ -15,6 +15,7 @@ add_executable(IrredenEngineTest
   audio/audio_playback_test.cpp
   audio/midi_multiport_test.cpp
   audio/music_theory_test.cpp
+  common/command_registry_test.cpp
   common/ir_args_test.cpp
   common/ir_platform_test.cpp
   ecs/command_randomize_voxels_test.cpp

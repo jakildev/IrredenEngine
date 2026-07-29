@@ -22,6 +22,9 @@
 #include <irreden/ir_input.hpp>
 #include <irreden/script/lua_script.hpp>
 
+#include <string>
+#include <utility>
+
 namespace IRScript::detail {
 
 // Populate `IRCommand.CommandName.X` as an integer table, hand-listed
@@ -75,6 +78,7 @@ inline void bindCommandNameEnum(LuaScript &script) {
     IR_BIND_CMD(GUI_ZOOM_OUT);
     IR_BIND_CMD(TOGGLE_CULLING_FREEZE);
     IR_BIND_CMD(TOGGLE_CULLING_MINIMAP);
+    IR_BIND_CMD(TOGGLE_HELP_OVERLAY);
 #undef IR_BIND_CMD
     lua["IRCommand"]["CommandName"] = t;
 }
@@ -295,12 +299,19 @@ inline void bindCommandFunctions(LuaScript &script) {
         return static_cast<lua_Integer>(id);
     };
 
+    // The trailing `name` / `description` strings are what make a Lua-defined
+    // command visible in the help overlay: the registry only records named
+    // PRESSED bindings, so without them every Lua command body is invisible
+    // there (`bindPrefab` routes through the enum path and is already named).
+    // Both optional — omitting them preserves the pre-existing behavior.
     lua["IRCommand"]["createCommand"] = [](lua_Integer inputType,
                                            lua_Integer triggerStatus,
                                            lua_Integer button,
                                            sol::protected_function fn,
                                            sol::optional<lua_Integer> requiredMods,
-                                           sol::optional<lua_Integer> blockedMods) -> lua_Integer {
+                                           sol::optional<lua_Integer> blockedMods,
+                                           sol::optional<std::string> name,
+                                           sol::optional<std::string> description) -> lua_Integer {
         // Capture the protected_function by value into the lambda; the
         // CommandManager stores the wrapper as std::function<void()>, which
         // owns the protected_function for the manager's lifetime. World
@@ -325,7 +336,9 @@ inline void bindCommandFunctions(LuaScript &script) {
             static_cast<int>(button),
             std::move(body),
             required,
-            blocked
+            blocked,
+            name.value_or(std::string{}),
+            description.value_or(std::string{})
         );
         return static_cast<lua_Integer>(id);
     };

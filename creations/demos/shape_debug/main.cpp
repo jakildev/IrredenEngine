@@ -56,6 +56,9 @@
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
 #include <irreden/render/systems/system_sprites_to_screen.hpp>
 #include <irreden/render/camera_controls.hpp>
+#include <irreden/render/gui_test_assertions.hpp>
+#include <irreden/render/help_overlay.hpp>
+#include <irreden/render/systems/system_text_to_trixel.hpp>
 #include <irreden/render/systems/system_render_velocity_2d_iso.hpp>
 #include <irreden/render/systems/system_auto_yaw_rotate.hpp>
 
@@ -286,6 +289,10 @@ std::string g_pivotVerifyBlock = "off";
 bool g_pivotVerifySdf = false;
 std::vector<IRVideo::AutoScreenshotShot> g_pivotVerifyShots;
 std::vector<std::array<char, 40>> g_pivotVerifyShotLabels;
+// --gui-test: swap the capture table for the headless help-overlay GUI test
+// (#2550). Flag-gated so the standing render-verify tables are untouched —
+// the overlay is default-hidden and this is the only run that opens it.
+bool g_guiTest = false;
 // Anchor of the DEFAULT-pivot blocks: an integer world point at iso depth 0
 // (x + y + z == 0) so `isoPixelToPos3D(viewCenterIso, 0)` — the default-pivot
 // focus derivation in getEffectiveCameraIso — recovers it EXACTLY when the pan
@@ -431,6 +438,11 @@ void registerCliArgs() {
         ""
     );
     args.flag("--spin-shape-voxel", "Render the --spin-shape via the voxel-pool twin, not the SDF");
+    args.flag(
+        "--gui-test",
+        "Replace the capture table with the headless help-overlay GUI test (#2550); "
+        "needs --auto-screenshot"
+    );
 }
 
 // Read the parsed values back into the demo's globals. Runs AFTER
@@ -455,6 +467,7 @@ void readCliArgs() {
     g_yawSweep = args.getFlag("--yaw-sweep");
     g_pivotVerifyBlock = args.getEnum("--pivot-verify");
     g_pivotVerifySdf = args.getFlag("--pivot-verify-sdf");
+    g_guiTest = args.getFlag("--gui-test");
 
     if (args.wasProvided("--zoom")) {
         const float zoom = args.getFloat("--zoom");
@@ -573,6 +586,109 @@ int main(int argc, char **argv) {
     return 0;
 }
 
+// ---------------------------------------------------------------------------
+// Help-overlay GUI test (#2550, --gui-test)
+// ---------------------------------------------------------------------------
+// Positive-fire coverage for the registry-driven overlay: byte-identity with
+// the overlay hidden (render-verify) only proves the OFF path is a no-op, so
+// this drives the ON path end to end — inject the toggle key, assert the
+// overlay is visible AND actually emitted glyphs AND that its text carries a
+// camera-suite entry with its description (which is what proves adoption costs
+// zero per-demo wiring), then toggle back and assert it is hidden again.
+//
+// Flag-gated: the standing kShots table and every render-verify reference are
+// untouched by this run. #2551's settings menu extends this same table.
+namespace {
+
+// F1 is shape_debug's toggle (IRPrefab::HelpOverlay::kDefaultToggleButton).
+// Injected during RENDER, so the binding fires on the following frame's INPUT
+// phase; the 3-frame settle window covers that latency.
+constexpr IRVideo::GuiInputEvent kHelpOpenEvents[] = {
+    {0, IRVideo::GuiInputEvent::Type::PRESS, IRMath::ivec2(0), vec2(0.0f), IRInput::kKeyButtonF1},
+    {1, IRVideo::GuiInputEvent::Type::RELEASE, IRMath::ivec2(0), vec2(0.0f), IRInput::kKeyButtonF1},
+};
+
+// A second press on the next shot toggles it back off.
+constexpr IRVideo::GuiInputEvent kHelpCloseEvents[] = {
+    {0, IRVideo::GuiInputEvent::Type::PRESS, IRMath::ivec2(0), vec2(0.0f), IRInput::kKeyButtonF1},
+    {1, IRVideo::GuiInputEvent::Type::RELEASE, IRMath::ivec2(0), vec2(0.0f), IRInput::kKeyButtonF1},
+};
+
+constexpr IRVideo::GuiTestShot kHelpOverlayGuiShots[] = {
+    {{4.0f, vec2(0.0f), 0.0f, "help_overlay_open"}, kHelpOpenEvents, 2},
+    {{4.0f, vec2(0.0f), 0.0f, "help_overlay_closed"}, kHelpCloseEvents, 2},
+};
+constexpr int kNumHelpOverlayGuiShots =
+    static_cast<int>(sizeof(kHelpOverlayGuiShots) / sizeof(kHelpOverlayGuiShots[0]));
+
+bool helpOverlayVisiblePredicate(const void *context, std::string &actual) {
+    const bool expected = *static_cast<const bool *>(context);
+    const bool visible = IRPrefab::HelpOverlay::isVisible();
+    actual = visible ? "visible" : "hidden";
+    return visible == expected;
+}
+
+// Glyph commands are batched and uploaded inside the overlay's endTick, so the
+// count is the only after-the-fact evidence it drew rather than merely flipped
+// its flag. Expect > 0 while open, exactly 0 while closed.
+bool helpOverlayGlyphsPredicate(const void *context, std::string &actual) {
+    const bool expectGlyphs = *static_cast<const bool *>(context);
+    const int count = IRPrefab::HelpOverlay::lastGlyphCommandCount();
+    actual = std::to_string(count);
+    return expectGlyphs ? count > 0 : count == 0;
+}
+
+// The zero-per-demo-wiring claim: shape_debug never describes the camera keys,
+// yet the overlay must render one of them WITH the description the engine's
+// command catalog supplies.
+bool helpOverlayCameraEntryPredicate(const void *context, std::string &actual) {
+    const char *needle = static_cast<const char *>(context);
+    const std::string text = IRPrefab::HelpOverlay::builtText();
+    const bool found = text.find(needle) != std::string::npos;
+    actual = found ? "found" : (text.empty() ? "empty-text" : "missing");
+    return found;
+}
+
+constexpr bool kExpectVisible = true;
+constexpr bool kExpectHidden = false;
+constexpr char kCameraSuiteEntry[] = "CAMERA UP - PAN THE CAMERA UP WHILE HELD";
+
+const IRPrefab::GuiTest::Assertion kHelpOpenAssertions[] = {
+    IRPrefab::GuiTest::predicate(&helpOverlayVisiblePredicate, &kExpectVisible, "overlay_visible"),
+    IRPrefab::GuiTest::predicate(&helpOverlayGlyphsPredicate, &kExpectVisible, "glyphs_batched"),
+    IRPrefab::GuiTest::predicate(
+        &helpOverlayCameraEntryPredicate, kCameraSuiteEntry, "camera_entry_described"
+    ),
+};
+
+const IRPrefab::GuiTest::Assertion kHelpClosedAssertions[] = {
+    IRPrefab::GuiTest::predicate(&helpOverlayVisiblePredicate, &kExpectHidden, "overlay_hidden"),
+    IRPrefab::GuiTest::predicate(&helpOverlayGlyphsPredicate, &kExpectHidden, "no_glyphs_batched"),
+};
+
+// The overlay assertions need no widget/click latching, but GuiTest::onFrame
+// owns the capture-frame dispatch, so route through it with an unused latch.
+IRPrefab::GuiTest::LatchState g_helpOverlayLatch;
+
+void onHelpOverlayAssertFrame(int shotIndex, bool isCaptureFrame) {
+    const IRPrefab::GuiTest::Assertion *assertions =
+        shotIndex == 0 ? kHelpOpenAssertions : kHelpClosedAssertions;
+    const int count =
+        shotIndex == 0
+            ? static_cast<int>(sizeof(kHelpOpenAssertions) / sizeof(kHelpOpenAssertions[0]))
+            : static_cast<int>(sizeof(kHelpClosedAssertions) / sizeof(kHelpClosedAssertions[0]));
+    IRPrefab::GuiTest::onFrame(
+        g_helpOverlayLatch,
+        shotIndex,
+        isCaptureFrame,
+        kHelpOverlayGuiShots[shotIndex].render_.label_,
+        assertions,
+        count
+    );
+}
+
+} // namespace
+
 void initSystems() {
     IRSystem::registerPipeline(
         IRTime::Events::UPDATE,
@@ -644,6 +760,19 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>(),
             (computeLightVolumeId = IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>()),
             IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>(),
+        }
+    );
+    // Registry-driven command help overlay (#2550), F1. TEXT_TO_TRIXEL first —
+    // shape_debug had no GUI text before, and the overlay needs its GUI-canvas
+    // clear plus the shared text GPU resources. Both land before
+    // TRIXEL_TO_FRAMEBUFFER composites the gui canvas. The overlay is hidden by
+    // default and an empty gui canvas composites to nothing, so `--auto-screenshot`
+    // captures stay byte-identical.
+    renderPipeline.push_back(IRSystem::createSystem<IRSystem::TEXT_TO_TRIXEL>());
+    renderPipeline.splice(renderPipeline.end(), IRPrefab::HelpOverlay::systems());
+    renderPipeline.insert(
+        renderPipeline.end(),
+        {
             IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
             IRSystem::System<IRSystem::DEBUG_CULLING_MINIMAP>::create({
                 .lightVolumeSystemId_ = computeLightVolumeId,
@@ -675,7 +804,15 @@ void initSystems() {
         renderPipeline.push_back(autoProfileId);
     }
 
-    if (g_autoWarmupFrames > 0) {
+    if (g_autoWarmupFrames > 0 && g_guiTest) {
+        IRVideo::GuiTestConfig cfg{};
+        cfg.warmupFrames_ = g_autoWarmupFrames;
+        cfg.settleFrames_ = 3;
+        cfg.shots_ = kHelpOverlayGuiShots;
+        cfg.numShots_ = kNumHelpOverlayGuiShots;
+        cfg.onAssertFrame_ = &onHelpOverlayAssertFrame;
+        renderPipeline.push_back(IRVideo::createGuiTestSystem(cfg));
+    } else if (g_autoWarmupFrames > 0) {
         IRVideo::AutoScreenshotConfig cfg{};
         cfg.warmupFrames_ = g_autoWarmupFrames;
         cfg.settleFrames_ = 3;
@@ -1020,6 +1157,9 @@ void initCommands() {
         IRInput::PRESSED,
         IRInput::kKeyButtonF11
     );
+    // F1 lists every command registered above — including the camera bundle
+    // and the two culling toggles — with its description (#2550).
+    IRPrefab::HelpOverlay::registerToggleCommand();
 }
 
 void applyCheckerboard(C_VoxelSetNew &voxelSet, Color baseColor) {

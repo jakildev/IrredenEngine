@@ -305,6 +305,59 @@ backing field to `RenderManager`. See `engine/render/CLAUDE.md`
 full principle, the rule of thumb, and the list of existing violations being
 cleaned up.
 
+## Command help overlay (`help_overlay.hpp`, #2550)
+
+`IRPrefab::HelpOverlay::` is the adoption surface for the registry-driven
+runtime command list — the IRArgs `--help` pattern applied to the key/command
+surface. Two calls adopt it:
+
+```cpp
+// initSystems() — TEXT_TO_TRIXEL first (required), before the composite:
+renderPipeline.push_back(IRSystem::createSystem<IRSystem::TEXT_TO_TRIXEL>());
+renderPipeline.splice(renderPipeline.end(), IRPrefab::HelpOverlay::systems());
+renderPipeline.push_back(IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>());
+
+// initCommands():
+IRPrefab::HelpOverlay::registerToggleCommand();   // F1 by default
+```
+
+Content comes from `CommandManager`'s registry, not hand-maintained strings:
+every `IRCommand::createCommand<NAME>(...)` records its display name and
+description from `kCommandInfo` (`engine/command/CLAUDE.md`), so a demo that
+calls `registerStandardKeyboardCommands()` gets the whole camera bundle
+described with **zero** per-demo wiring. A creation's own keys appear as soon
+as they register through a named path.
+
+- **Ordering is a hard invariant.** `TEXT_TO_TRIXEL` clears the GUI canvas and
+  owns `TextToTrixelProgram` / `GlyphDrawCommandBuffer`, which the overlay's
+  `dispatchGuiText` reuses — same contract every `WIDGET_RENDER_*` system has.
+  `systems()` deliberately does **not** auto-prepend it: `getNamedResource`
+  asserts rather than returning null on a miss, and `findSystem`'s
+  "unregistered" answer collides with a valid first-system id (#2540), so both
+  available probes are unsound and a wrong guess double-creates named GPU
+  resources.
+- **Visibility is a singleton component**, `C_HelpOverlayState`, flipped by
+  `Command<TOGGLE_HELP_OVERLAY>` — not a `RenderManager` field
+  (`.claude/rules/cpp-globals.md`; `m_guiVisible` is a pre-existing deviation,
+  not a precedent). `setVisible` / `toggleVisible` / `isVisible` wrap it.
+- **Default off, zero-cost hidden.** The system iterates the state singleton,
+  so a hidden overlay costs one row tick and two early returns — no string
+  build, no `fillRect`, no glyph batching. Text rebuilds only when
+  `getRegistrationGeneration()` changes.
+- **Never default-visible in a reference-gated creation.** `random_voxels`
+  opens it at frame 0 (it is that demo's whole HUD) and has no reference set;
+  doing the same in a render-verify-gated demo would rewrite every reference.
+- **The header names no key.** The toggle registers through the same named
+  path as everything else and appears as its own row, so the overlay
+  self-documents whichever key the creation chose (F1 default; `random_voxels`
+  uses G, `modifier_demo` / `font_maker` use backtick).
+- **Headless coverage:** `IRPrefab::HelpOverlay::builtText()` /
+  `lastGlyphCommandCount()` expose what the overlay actually rendered for
+  `GuiTest::predicate` bodies — byte-identity with the overlay hidden only
+  proves the OFF path is a no-op. Reference table:
+  `shape_debug --gui-test` (`python3 scripts/gui-verify.py IRShapeDebug --
+  --gui-test`).
+
 ## Editor gizmo primitives
 
 `gizmo.hpp` exposes `IRPrefab::Gizmo::` builders that spawn the editor's

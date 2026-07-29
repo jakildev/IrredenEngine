@@ -5,7 +5,6 @@
 #include <irreden/ir_system.hpp>
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_constants.hpp>
-#include <irreden/ir_command.hpp>
 
 #include <irreden/render/trixel_font.hpp>
 #include <irreden/render/trixel_text.hpp>
@@ -30,14 +29,17 @@ namespace IRSystem {
 // irreden/render/gui_text_batch.hpp (IRPrefab::GuiText) so the widget render
 // systems share the same path. This system owns the GPU resources
 // (TextToTrixelProgram / FontDataBuffer / GlyphDrawCommandBuffer) and renders
-// free-text entities + the GUI command-list overlay; dispatchGuiText reuses
-// those resources for widget text, which is why TEXT_TO_TRIXEL must run first.
+// free-text entities; dispatchGuiText reuses those resources for widget text,
+// which is why TEXT_TO_TRIXEL must run first. It also clears the GUI canvas
+// each beginTick, the other half of that ordering contract.
+//
+// The runtime command list is rendered by `System<HELP_OVERLAY>`, not here —
+// see #2550.
 template <> struct System<TEXT_TO_TRIXEL> {
     ShaderProgram *textProgram_ = nullptr;
     Buffer *fontDataBuf_ = nullptr;
     Buffer *glyphCmdBuf_ = nullptr;
     std::vector<GlyphDrawCommand> drawCommands_;
-    std::string commandList_;
     bool fontUploaded_ = false;
 
     // Cached once per frame in beginTick; the gui canvas entity is permanent so
@@ -80,20 +82,6 @@ template <> struct System<TEXT_TO_TRIXEL> {
         canvasTextures_->clear();
 
         drawCommands_.clear();
-
-        if (IRRender::isGuiVisible()) {
-            if (commandList_.empty()) {
-                commandList_ = IRCommand::buildCommandListText();
-            }
-            IRPrefab::GuiText::expandTextToCommands(
-                drawCommands_,
-                commandList_,
-                IRPrefab::GuiText::kGuiOverlayPadding,
-                canvasTextures_->size_,
-                IRMath::IRColors::kWhite,
-                0
-            );
-        }
     }
 
     void endTick() {

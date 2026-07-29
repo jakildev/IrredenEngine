@@ -16,12 +16,12 @@
 // query's `Exclude<C_Locked>` filter) and they stay white while the field
 // changes: a live, self-explaining demonstration of the exclude semantics.
 //
-// The help text in the top-left is the engine's built-in command-list overlay
-// (`IRCommand::buildCommandListText`, rasterized by TEXT_TO_TRIXEL whenever the
-// GUI is visible). It lists every registered key binding, so the scene is
+// The help text in the top-left is the engine's registry-driven help overlay
+// (`IRPrefab::HelpOverlay`, #2550), open from frame 0 and toggled with G. It
+// lists every registered key binding with its description, so the scene is
 // self-documenting with no bespoke HUD code. This is the growth seam: any new
 // scene-mutation command registered in `initCommands()` automatically appears
-// in that overlay — add a command, get a labelled hotkey for free.
+// in that overlay — add a command, get a labelled, described hotkey for free.
 
 #include <irreden/ir_engine.hpp>
 #include <irreden/ir_system.hpp>
@@ -62,7 +62,7 @@
 #include <irreden/render/camera_controls.hpp>
 
 // COMMANDS
-#include <irreden/render/commands/command_toggle_gui.hpp>
+#include <irreden/render/help_overlay.hpp>
 #include <irreden/voxel/commands/command_randomize_voxels.hpp>
 
 #include <list>
@@ -72,10 +72,10 @@ using namespace IRComponents;
 namespace {
 
 // Isometric field: a gridN x gridN carpet of small cubes, centered on origin.
-constexpr int kGridN = 6;                     // cubes per side
-constexpr IRMath::ivec3 kCubeDims{4, 4, 4};   // voxels per field cube
+constexpr int kGridN = 6;                      // cubes per side
+constexpr IRMath::ivec3 kCubeDims{4, 4, 4};    // voxels per field cube
 constexpr IRMath::ivec3 kPillarDims{4, 12, 4}; // taller corner landmark
-constexpr float kSpacing = 6.0f;              // world-unit gap between cube centers
+constexpr float kSpacing = 6.0f;               // world-unit gap between cube centers
 
 // Neutral color for the locked corner pillars — random recoloring never lands
 // on flat white, so persistent white pillars read as intentionally fixed.
@@ -109,17 +109,19 @@ IRMath::Color invertColor(IRMath::Color c) {
 IRMath::Color grayscaleColor(IRMath::Color c) {
     // Integer Rec.601 luminance: (77r + 150g + 29b) / 256 (weights sum to 256,
     // so a white voxel maps back to 255). Stays in integer math — no glm/std.
-    const auto lum =
-        static_cast<uint8_t>((77 * c.red_ + 150 * c.green_ + 29 * c.blue_) >> 8);
+    const auto lum = static_cast<uint8_t>((77 * c.red_ + 150 * c.green_ + 29 * c.blue_) >> 8);
     return IRMath::Color{lum, lum, lum, c.alpha_};
 }
 
 // Bind a PRESSED key to a one-shot recolor over every active voxel, mirroring
 // Command<RANDOMIZE_VOXELS>' contract (skip C_Locked sets, skip carved alpha-0
-// voxels, preserve alpha) but parameterized by `transform`. Passing `name` to
-// the manager registers the binding in the top-left command overlay.
-void registerVoxelRecolor(int button, const char *name, ColorFn transform) {
-    IRCommand::getCommandManager().createCommand(
+// voxels, preserve alpha) but parameterized by `transform`. `name` and
+// `description` are what put the binding in the help overlay — the registry
+// records only named PRESSED bindings (#2550).
+void registerVoxelRecolor(
+    int button, const char *name, const char *description, ColorFn transform
+) {
+    IRCommand::createCommand(
         IRInput::KEY_MOUSE,
         IRInput::PRESSED,
         button,
@@ -139,7 +141,8 @@ void registerVoxelRecolor(int button, const char *name, ColorFn transform) {
         },
         IRInput::kModifierNone,
         IRInput::kModifierNone,
-        name
+        name,
+        description
     );
 }
 
@@ -158,9 +161,11 @@ int main(int argc, char **argv) {
     initCommands();
     initEntities();
 
-    // Show the command-list overlay from the first frame so the hotkeys are
-    // discoverable without pressing anything; TOGGLE GUI (G) hides it.
-    IRRender::setGuiVisible(true);
+    // Show the help overlay from the first frame so the hotkeys are
+    // discoverable without pressing anything; TOGGLE HELP (G) hides it. Safe
+    // to default-visible here because this demo has no reference-image set —
+    // never do this in a render-verify-gated creation.
+    IRPrefab::HelpOverlay::setVisible(true);
 
     IREngine::gameLoop();
     return 0;
@@ -201,9 +206,12 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>(),
             IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>(),
             IRSystem::createSystem<IRSystem::FOG_TO_TRIXEL>(),
-            // Overlay text -> gui canvas -> composite: TEXT_TO_TRIXEL must run
-            // before TRIXEL_TO_FRAMEBUFFER for the HUD to land on screen.
+            // Overlay text -> gui canvas -> composite: TEXT_TO_TRIXEL clears
+            // the gui canvas and owns the shared text resources HELP_OVERLAY
+            // batches into, and both must precede TRIXEL_TO_FRAMEBUFFER for
+            // the HUD to land on screen.
             IRSystem::createSystem<IRSystem::TEXT_TO_TRIXEL>(),
+            IRSystem::System<IRSystem::HELP_OVERLAY>::create(),
             IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
             IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
             IRSystem::createSystem<IRSystem::SPRITE_TO_SCREEN>(),
@@ -235,15 +243,24 @@ void initCommands() {
     );
     // H / I / M: more one-shot recolors, composed from the same #2210 query
     // primitive but parameterized by a per-color transform.
-    registerVoxelRecolor(IRInput::kKeyButtonH, "CYCLE CHANNELS", cycleChannels);
-    registerVoxelRecolor(IRInput::kKeyButtonI, "INVERT", invertColor);
-    registerVoxelRecolor(IRInput::kKeyButtonM, "GRAYSCALE", grayscaleColor);
-
-    IRCommand::createCommand<IRCommand::TOGGLE_GUI>(
-        IRInput::KEY_MOUSE,
-        IRInput::PRESSED,
-        IRInput::kKeyButtonG
+    registerVoxelRecolor(
+        IRInput::kKeyButtonH,
+        "CYCLE CHANNELS",
+        "ROTATE EACH VOXEL RGB TO GBR",
+        cycleChannels
     );
+    registerVoxelRecolor(IRInput::kKeyButtonI, "INVERT", "INVERT EVERY VOXEL COLOR", invertColor);
+    registerVoxelRecolor(
+        IRInput::kKeyButtonM,
+        "GRAYSCALE",
+        "DESATURATE BY REC.601 LUMINANCE",
+        grayscaleColor
+    );
+
+    // G opens the F1-standard help overlay (#2550). Kept on G rather than F1
+    // here because the overlay is this demo's whole HUD and G is what the
+    // file-doc above advertises; registerToggleCommand takes the key.
+    IRPrefab::HelpOverlay::registerToggleCommand(IRInput::kKeyButtonG);
 
     IRPrefab::Camera::registerStandardKeyboardCommands();
 }
@@ -255,9 +272,7 @@ void initEntities() {
     const float half = (kGridN - 1) * 0.5f;
     // Two-axis gradient so the initial field reads as intentional and the
     // recolor is an obvious shuffle away from it.
-    const auto channel = [](int v) {
-        return static_cast<uint8_t>(40 + (200 * v) / (kGridN - 1));
-    };
+    const auto channel = [](int v) { return static_cast<uint8_t>(40 + (200 * v) / (kGridN - 1)); };
     for (int i = 0; i < kGridN; ++i) {
         for (int j = 0; j < kGridN; ++j) {
             const IRMath::vec3 pos{(i - half) * kSpacing, 0.0f, (j - half) * kSpacing};

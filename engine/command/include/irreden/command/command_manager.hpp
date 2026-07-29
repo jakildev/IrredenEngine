@@ -8,11 +8,13 @@
 #include <irreden/command/ir_command_types.hpp>
 #include <irreden/common/components/component_tags_all.hpp>
 
+#include <cstdint>
 #include <unordered_map>
 #include <memory>
 #include <list>
 #include <functional>
 #include <string>
+#include <utility>
 #include <vector>
 
 using namespace IRInput;
@@ -20,8 +22,16 @@ using namespace IRAudio;
 
 namespace IRCommand {
 
+/// One row of the introspectable command registry: what a binding is called,
+/// what it does, and which key/modifier combination fires it. Populated only
+/// for named `PRESSED` bindings (see `createCommand`). Consumed by the help
+/// overlay (`System<HELP_OVERLAY>`) and `IRCommand::buildCommandListText()`.
 struct CommandRegistration {
     std::string name;
+    /// Short human-readable clause describing the effect ("ZOOM THE CAMERA
+    /// IN"). Empty when the registering call site supplied none — the
+    /// overlay renders the binding + name alone in that case.
+    std::string description;
     int button;
     ButtonStatuses triggerStatus;
     KeyModifierMask requiredModifiers;
@@ -40,7 +50,8 @@ class CommandManager {
         Function command,
         KeyModifierMask requiredModifiers = kModifierNone,
         KeyModifierMask blockedModifiers = kModifierNone,
-        std::string name = ""
+        std::string name = "",
+        std::string description = ""
     ) {
         m_userCommands.emplace_back(
             CommandStruct<COMMAND_BUTTON>{
@@ -53,7 +64,10 @@ class CommandManager {
             }
         );
         if (!name.empty() && triggerStatus == PRESSED) {
-            m_commandRegistrations.push_back({name, button, triggerStatus, requiredModifiers});
+            m_commandRegistrations.push_back(
+                {std::move(name), std::move(description), button, triggerStatus, requiredModifiers}
+            );
+            ++m_registrationGeneration;
         }
         return static_cast<CommandId>(m_userCommands.size() - 1);
     }
@@ -68,6 +82,16 @@ class CommandManager {
 
     const std::vector<CommandRegistration> &getCommandRegistrations() const {
         return m_commandRegistrations;
+    }
+
+    /// Monotonic counter bumped every time `m_commandRegistrations` actually
+    /// grows. A consumer that caches text built from the registry compares
+    /// this against its own snapshot to know when to rebuild — commands
+    /// registered after the first rendered frame would otherwise never
+    /// appear. Bumped on append only, so a cache keyed on it costs one
+    /// integer compare per frame in the steady state.
+    std::uint32_t getRegistrationGeneration() const {
+        return m_registrationGeneration;
     }
 
     template <typename Function, typename... Args>
@@ -115,6 +139,7 @@ class CommandManager {
     std::unordered_map<int, std::vector<CommandStruct<COMMAND_MIDI_CC>>> m_midiCCDeviceCommands;
     std::vector<CommandStruct<COMMAND_BUTTON>> m_userCommands;
     std::vector<CommandRegistration> m_commandRegistrations;
+    std::uint32_t m_registrationGeneration = 0;
 };
 
 } // namespace IRCommand
