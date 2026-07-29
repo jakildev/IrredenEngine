@@ -121,8 +121,12 @@ Contract:
   `IREntity::kNullEntity` — ids count up from 0, so `0` is the real id of the
   first system registered in the process (#2540). Use `kNullSystemId` for any
   stored "not wired yet" `SystemId` too; it can never be handed out, and an
-  accidental index-by-sentinel trips `SystemManager`'s range assert instead of
-  silently reading slot 0.
+  accidental index-by-sentinel trips `SystemManager`'s `system < m_nextSystemId`
+  range assert — on the params accessors (`getSystemParams` /
+  `setSystemParams`) as well as `replaceSystemBody` — instead of silently
+  reading slot 0. The assert is debug-only (`IR_ASSERT` is stripped under
+  `IR_RELEASE`); in release the same misuse is an out-of-bounds access that
+  crashes rather than silently reading a real system's state.
 
 ## Three valid TICK function signatures
 

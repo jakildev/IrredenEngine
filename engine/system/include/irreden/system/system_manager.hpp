@@ -183,12 +183,29 @@ class SystemManager {
         m_ticks[system].excludeArchetype_.insert(IREntity::getComponentType<Tag>());
     }
 
+    /// Asserts on out-of-range SystemId (debug), same as `replaceSystemBody`
+    /// — this is the guard that turns an accidental index by
+    /// `kNullSystemId` into a diagnosed failure instead of an unchecked
+    /// `std::vector::operator[]` past the end (#2540).
     template <typename Params>
     void setSystemParams(SystemId system, std::unique_ptr<Params> params) {
+        IR_ASSERT(
+            system < m_nextSystemId,
+            "setSystemParams: SystemId {} out of range (have {} systems)",
+            system,
+            m_nextSystemId
+        );
         m_systemParams[system] = std::make_unique<ISystemParamsImpl<Params>>(std::move(params));
     }
 
+    /// Asserts on out-of-range SystemId (debug); see `setSystemParams`.
     template <typename Params> Params *getSystemParams(SystemId system) {
+        IR_ASSERT(
+            system < m_nextSystemId,
+            "getSystemParams: SystemId {} out of range (have {} systems)",
+            system,
+            m_nextSystemId
+        );
         auto *paramsImpl = static_cast<ISystemParamsImpl<Params> *>(m_systemParams[system].get());
         return paramsImpl == nullptr ? nullptr : paramsImpl->params_.get();
     }
