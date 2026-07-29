@@ -325,7 +325,16 @@ vertex VertexOut v_peraxis_scatter(
     // Cell-anchor projection (#2545): the recovered origin is lower-corner
     // lattice, so the anchored form rotates the face about the authored
     // position instead of orbiting it by the half cell. Matches the GLSL twin.
-    const float2 cornerIso = float2(frameData.perAxisBase) +
+    // Screen re-projection anchor (#2546): perAxisBase carries
+    // trixelOriginOffsetZ1's (-1,-1) sub-pixel LATTICE alignment (a canvas-storage
+    // convention the `ij - perAxisBase` recovery needs); the forward scatter emits
+    // true face quads, so that must not ride into the screen placement. Anchor on
+    // the canvas geometric CENTER instead — the +(1,1) shift back from the storage
+    // origin (canvasSize/2 - trixelOriginOffsetZ1(canvasSize)). Without it the
+    // scatter registered a constant ~1 iso px (per axis) off the cardinal frames
+    // at non-cardinal yaw (epic #2544 deviation 3). Matches the GLSL twin.
+    const int2 reprojBase = frameData.perAxisBase + int2(1);
+    const float2 cornerIso = float2(reprojBase) +
         pos3DtoPos2DIsoYawedCellAnchor(worldCorner, frameData.visualYaw);
 
     float2 quadPos;

@@ -254,8 +254,22 @@ void main() {
     // position instead of orbiting it by the half cell.
     const vec2 cornerSel = aPos + vec2(0.5);
     const vec3 worldCorner = faceSpanCorner(axis, origin, cornerSel);
+    // Screen re-projection anchor (#2546). `perAxisBase` is the STORE anchor —
+    // trixelOriginOffsetZ1(canvasSize) (== canvasSize/2 - (1,1)) + floor(cameraIso).
+    // Its (-1,-1) is the trixel grid's sub-pixel LATTICE alignment: a
+    // canvas-STORAGE convention the `ij - perAxisBase` recovery above depends on,
+    // but NOT a screen offset. The forward scatter emits true face quads (no
+    // trixel-grid gather), so that lattice alignment must not ride into the
+    // on-screen placement — anchor the re-projection on the canvas geometric
+    // CENTER (canvasSize/2), which the model matrix maps to screen center. The
+    // shift back from the storage origin to the center is exactly +(1,1)
+    // (canvasSize/2 - trixelOriginOffsetZ1(canvasSize)). The cardinal gather's
+    // on-screen focus carries no such offset; without this the scatter registered
+    // a constant ~1 iso px (per axis, zoom-scaled) off the cardinal frames at
+    // every non-cardinal yaw (epic #2544 deviation 3).
+    const ivec2 reprojBase = perAxisBase + ivec2(1);
     const vec2 cornerIso =
-        vec2(perAxisBase) + pos3DtoPos2DIsoYawedCellAnchor(worldCorner, visualYaw);
+        vec2(reprojBase) + pos3DtoPos2DIsoYawedCellAnchor(worldCorner, visualYaw);
 
     // Inverse of the gather's aPos->canvasPixel map (v_trixel_to_framebuffer):
     //   canvasPixel = (aPos.x + 0.5, -aPos.y + 0.5) * canvasSize
