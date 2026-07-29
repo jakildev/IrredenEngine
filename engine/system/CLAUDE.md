@@ -100,7 +100,7 @@ delegate to callers".
 
 Contract:
 
-- Returns `IREntity::kNullEntity` when the name was never registered, and
+- Returns `IRSystem::kNullSystemId` when the name was never registered, and
   when no `SystemManager` exists at all (headless unit tests that tick a
   `System<N>` against a bare `EntityManager`) — so a prefab handle built
   on it degrades to its "unwired" branch instead of dereferencing null.
@@ -116,8 +116,13 @@ Contract:
 - Costs one hash lookup. Fine per-operation; a per-entity tick should
   resolve once in `beginTick` and cache the pointer (the ECS footgun
   rule), not call it per row.
-- Caveat: ids count up from 0 and `kNullEntity` is 0, so the first system
-  created in a process is indistinguishable from "unregistered" — #2540.
+- The miss sentinel is `IRSystem::kNullSystemId`
+  (`std::numeric_limits<SystemId>::max()`, `ir_system_types.hpp`), **not**
+  `IREntity::kNullEntity` — ids count up from 0, so `0` is the real id of the
+  first system registered in the process (#2540). Use `kNullSystemId` for any
+  stored "not wired yet" `SystemId` too; it can never be handed out, and an
+  accidental index-by-sentinel trips `SystemManager`'s range assert instead of
+  silently reading slot 0.
 
 ## Three valid TICK function signatures
 

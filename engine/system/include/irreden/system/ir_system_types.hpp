@@ -3,11 +3,27 @@
 
 #include <irreden/entity/ir_entity_types.hpp>
 
+#include <limits>
+
 using namespace IREntity;
 
 namespace IRSystem {
 
 using SystemId = EntityId;
+
+/// The "no such system" sentinel (#2540). Deliberately NOT
+/// `IREntity::kNullEntity`: ids are handed out from `SystemManager`'s
+/// `m_nextSystemId` counting up from 0, so `0` is the id of the *first*
+/// system registered in the process — a real id that `kNullEntity` cannot
+/// be told apart from. `max()` is unreachable (the counter would have to
+/// exhaust the whole id space to reach it) and fails loudly rather than
+/// silently: a sentinel mistakenly used as an index trips the
+/// `system < m_nextSystemId` range assert instead of aliasing slot 0.
+///
+/// C++-side only. `SystemId`s cross into Lua as plain integers, but the Lua
+/// miss contract is to raise an error rather than return a sentinel (see
+/// `engine/script/CLAUDE.md`), so this value is never bound.
+constexpr SystemId kNullSystemId = std::numeric_limits<SystemId>::max();
 
 enum SystemTickModifiers { SYSTEM_MODIFIER_NONE = 0, SYSTEM_MODIFIER_WITH_ENTITY = 1 };
 

@@ -447,7 +447,7 @@ registerSystem(std::string name, RelationParams<RelationComponents...> relationP
 }
 
 // #2526: resolve a `SystemName` to the id it was registered under, or
-// `IREntity::kNullEntity` if no enum-templated registration recorded it.
+// `kNullSystemId` if no enum-templated registration recorded it.
 // This is the manager-owned replacement for the wire-once
 // `setSystem(id)` / `setAllocatorSystem(id)` handles prefab headers used to
 // carry: registration self-wires, so a creation no longer has to remember a
@@ -465,8 +465,7 @@ registerSystem(std::string name, RelationParams<RelationComponents...> relationP
 // dereferencing null; the sentinel check the wire-once globals did before
 // touching the manager is what this preserves.
 inline SystemId findSystem(SystemName name) {
-    return g_systemManager == nullptr ? IREntity::kNullEntity
-                                      : g_systemManager->findEngineSystem(name);
+    return g_systemManager == nullptr ? kNullSystemId : g_systemManager->findEngineSystem(name);
 }
 
 // Free-function wrapper around `SystemManager::createSystemDynamic`. Used by

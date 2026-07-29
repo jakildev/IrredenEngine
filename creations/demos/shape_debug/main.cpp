@@ -623,8 +623,8 @@ void initSystems() {
     // BAKE_SUN_SHADOW_MAP::create() depends on a named resource
     // RESOLVE_PER_AXIS_SCREEN_DEPTH::create() creates earlier in this same
     // list; calling create() early breaks that ordering.
-    IRSystem::SystemId bakeSunShadowMapId{};
-    IRSystem::SystemId computeLightVolumeId{};
+    IRSystem::SystemId bakeSunShadowMapId = IRSystem::kNullSystemId;
+    IRSystem::SystemId computeLightVolumeId = IRSystem::kNullSystemId;
     renderPipeline.insert(
         renderPipeline.end(),
         {

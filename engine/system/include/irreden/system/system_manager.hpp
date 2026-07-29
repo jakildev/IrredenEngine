@@ -330,16 +330,12 @@ class SystemManager {
     }
 
     /// #2526: resolve a `SystemName` to the `SystemId` it was registered
-    /// under, or `IREntity::kNullEntity` when it was never registered.
-    ///
-    /// Caveat: `kNullEntity` is 0 and system ids also count up from 0, so
-    /// the *first* system created in a process is indistinguishable from
-    /// "not registered" through this return value. Harmless for the current
-    /// consumers, which are never the first system a creation registers —
-    /// see #2540 for the sentinel fix.
+    /// under, or `kNullSystemId` when it was never registered. The sentinel
+    /// is unreachable as a real id (#2540), so a system registered first in
+    /// the process — id 0 — reads back as registered rather than as a miss.
     SystemId findEngineSystem(SystemName name) const {
         const auto it = m_engineSystemIds.find(name);
-        return it == m_engineSystemIds.end() ? IREntity::kNullEntity : it->second;
+        return it == m_engineSystemIds.end() ? kNullSystemId : it->second;
     }
     const TimingAccum &getTimingAccum(SystemId id) const {
         return m_timingAccum[id];

@@ -160,12 +160,12 @@ inline bool g_cliDisableAO = false;
 // (`IRSystem::lightGatherRecords`) — the system stores that state on
 // itself (`engine/system/CLAUDE.md` "System-owned state"), not in a
 // globally-queryable component.
-inline IRSystem::SystemId g_computeLightVolumeSystemId{};
+inline IRSystem::SystemId g_computeLightVolumeSystemId = IRSystem::kNullSystemId;
 // BAKE_SUN_SHADOW_MAP SystemId (#2316, V2) — the culling minimap's caster
 // domain reads world-placed casters back via
 // `IRSystem::worldPlacedCasters(g_bakeSunShadowMapSystemId)`, mirroring
 // `g_computeLightVolumeSystemId` above.
-inline IRSystem::SystemId g_bakeSunShadowMapSystemId{};
+inline IRSystem::SystemId g_bakeSunShadowMapSystemId = IRSystem::kNullSystemId;
 // The shot table actually wired into AutoScreenshotConfig this run (kShots or
 // one of the runtime-built series: --light-boundary-sweep,
 // --light-domain-matrix, --hover-sweep) — the DOMAIN-STATE hook only receives

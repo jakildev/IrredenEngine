@@ -304,11 +304,11 @@ namespace IRPrefab::VoxelTransform {
 // consumer reaches the system's free-list through this rather than threading the
 // SystemId through every call, so the slot API stays id-free. The id is resolved
 // from SystemManager's `SystemName` registry (#2526): creating the system is all
-// the wiring there is, and `IREntity::kNullEntity` means "never created" —
+// the wiring there is, and `IRSystem::kNullSystemId` means "never created" —
 // callers treat that as "stay CPU-direct".
 inline IRSystem::System<IRSystem::UPDATE_VOXEL_POSITIONS_GPU> *allocator() {
     const IRSystem::SystemId systemId = IRSystem::findSystem(IRSystem::UPDATE_VOXEL_POSITIONS_GPU);
-    if (systemId == IREntity::kNullEntity) {
+    if (systemId == IRSystem::kNullSystemId) {
         return nullptr;
     }
     return IRSystem::getSystemParams<IRSystem::System<IRSystem::UPDATE_VOXEL_POSITIONS_GPU>>(
