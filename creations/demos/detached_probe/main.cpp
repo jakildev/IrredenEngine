@@ -123,7 +123,7 @@ enum BandId : int {
 };
 constexpr const char *kBandNames[kBandCount]{"RED", "GREEN", "BLUE", "WHITE", "MAGENTA"};
 
-// World placement: along the iso-horizontal axis (x = t, y = -t) so all four
+// World placement: along the iso-horizontal axis (x = t, y = -t) so all five
 // share one screen row (iso y = -x - y + 2z is t-independent). Each detached
 // totem gets a GRID anchor twin at the SAME rotation, so the parity
 // expectation (centroid delta == iso-projected translation delta) holds — a
@@ -134,10 +134,42 @@ constexpr vec3 kGridPos{-14.0f, 14.0f, kTotemZ};       // identity anchor
 constexpr vec3 kDetachedPos{0.0f, 0.0f, kTotemZ};      // identity, avatar config
 constexpr vec3 kRevoxPos{14.0f, -14.0f, kTotemZ};      // 45deg-Z seed
 constexpr vec3 kGridSeededPos{-28.0f, 28.0f, kTotemZ}; // 45deg-Z anchor
-// 45deg-Z again, but spawned WITHOUT C_RotationMode (#2376). Mirrors the
-// seeded anchor across the row so it sits at the same distance from screen
-// center (same visibility budget at the widest zoom shot).
-constexpr vec3 kGridImplicitPos{28.0f, -28.0f, kTotemZ};
+// 45deg-Z again, but spawned WITHOUT C_RotationMode (#2376). Placed further
+// down the -iso.x end of the row than the walk corridor reaches, NOT mirrored
+// onto the +iso.x side past the seeded anchor: at zoom 4 the seeded anchor's
+// bucket center already sits at ~1170 of the 1284 px framebuffer under the pan
+// shot, so a totem beyond it would clip off-frame and its bands would vanish.
+// The clearance this position has to hold is asserted below.
+constexpr vec3 kGridImplicitPos{33.0f, -33.0f, kTotemZ};
+
+// --walk ping-pong half-span, at namespace scope so the placement assert below
+// can see it (driveWalk is the only other reader).
+constexpr float kWalkSpan = 8.0f;
+
+// Conservative iso-x extent of one totem: the unrotated box spans x [0,8) and
+// y [0,6), and iso.x = -x + y, so its bands cover 14 iso units. (A 45deg-Z
+// totem covers only ~8.5, so 14 bounds both poses.)
+constexpr float kTotemIsoWidth =
+    static_cast<float>(kTotemSize.x) + static_cast<float>(kTotemSize.y);
+
+// runProbeAsserts buckets framebuffer pixels by NEAREST expected center, so two
+// totems whose bands overlap in screen-x get misattributed between buckets —
+// silently corrupting whichever asserts read them. --walk sweeps the two
+// detached totems by delta{+o, -o, 0} for o in [0, kWalkSpan], i.e. by
+// -2 * kWalkSpan in iso.x, so they close on whatever sits at the -iso.x end of
+// the row. Only the implicit totem is stationary on that side (the identity and
+// seeded anchors sit at +iso.x, which the walk moves away from), so it is the
+// one placement the walk can invalidate — and it is checked here rather than
+// left to a --walk run to discover, because nothing automated combines --walk
+// with --probe-assert.
+static_assert(
+    pos3DtoPos2DIso(kRevoxPos).x - 2.0f * kWalkSpan - pos3DtoPos2DIso(kGridImplicitPos).x >=
+        kTotemIsoWidth,
+    "implicit-GRID totem sits inside the --walk corridor: at maximum walk offset its bands "
+    "overlap the revoxelize totem's in screen-x, aliasing their nearest-center buckets. Move it "
+    "further along -iso.x (mind the framebuffer width), or shorten the row -- do NOT shrink "
+    "kWalkSpan, whose sub-voxel sweep length is load-bearing for fractional-position coverage."
+);
 
 // Detached canvas + pool sized to mirror the smallest real consumer (a
 // player-avatar canvas), so the probe also guards that exact configuration.
@@ -317,12 +349,11 @@ void driveWalk() {
         return;
     }
     constexpr float kStep = 0.15f; // world units per render frame, sub-voxel
-    constexpr float kSpan = 8.0f;  // ping-pong half-span around the spawn pose
-    const int period = static_cast<int>(2.0f * kSpan / kStep);
+    const int period = static_cast<int>(2.0f * kWalkSpan / kStep);
     const int phase = (g_walkFrame - g_autoWarmupFrames) % period;
     const float t = static_cast<float>(phase) * kStep;
-    const float offset = (t <= kSpan) ? t : 2.0f * kSpan - t; // triangle wave
-    const vec3 delta{offset, -offset, 0.0f};                  // stays on the iso row
+    const float offset = (t <= kWalkSpan) ? t : 2.0f * kWalkSpan - t; // triangle wave
+    const vec3 delta{offset, -offset, 0.0f};                          // stays on the iso row
 
     IREntity::getComponent<C_LocalTransform>(g_detachedTotem).translation_ = kDetachedPos + delta;
     IREntity::getComponent<C_LocalTransform>(g_revoxTotem).translation_ = kRevoxPos + delta;
@@ -679,15 +710,15 @@ void assertImplicitGridParity(
     }
 
     const CentroidResidual match = measureCentroidResidual(
-        fbBuckets[kImplicitBucket][static_cast<size_t>(matchBand)],
-        fbBuckets[kSeededAnchorBucket][static_cast<size_t>(matchBand)],
+        fbBuckets[static_cast<size_t>(kImplicitBucket)][static_cast<size_t>(matchBand)],
+        fbBuckets[static_cast<size_t>(kSeededAnchorBucket)][static_cast<size_t>(matchBand)],
         g_gridImplicitTotem,
         g_gridSeededTotem,
         zoom
     );
     const CentroidResidual distinct = measureCentroidResidual(
-        fbBuckets[kImplicitBucket][static_cast<size_t>(distinctBand)],
-        fbBuckets[kIdentityAnchorBucket][static_cast<size_t>(distinctBand)],
+        fbBuckets[static_cast<size_t>(kImplicitBucket)][static_cast<size_t>(distinctBand)],
+        fbBuckets[static_cast<size_t>(kIdentityAnchorBucket)][static_cast<size_t>(distinctBand)],
         g_gridImplicitTotem,
         g_gridTotem,
         zoom
