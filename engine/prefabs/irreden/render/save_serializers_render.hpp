@@ -25,6 +25,7 @@
 #include <irreden/asset/math_binary_io.hpp>
 
 #include <cstdint>
+#include <string>
 #include <utility>
 
 namespace IRWorld {
@@ -88,10 +89,17 @@ template <> struct SaveSerialize<IRComponents::C_SpriteAnimation> {
 
 /// The two parallel grids are the authored content; `size_` gives their
 /// expected extent. `read` restores the vectors verbatim rather than calling
-/// `resize()` off `size_`, so a file whose grids disagree with its extent
-/// round-trips to exactly what was written instead of being silently
-/// truncated or zero-padded — the mismatch stays visible to whatever reads
-/// it rather than being laundered here.
+/// `resize()` off `size_` — a mismatch is **rejected**, never truncated or
+/// zero-padded into looking valid, and never passed through: the
+/// `atTriangleColor` / `atTriangleDistance` accessors index
+/// `triangleColors_[index2DtoIndex1D(index, size_)]` unchecked and
+/// `setTriangle`'s lone bounds check is an `IR_ASSERT` that compiles out
+/// under `IR_RELEASE`, so an inconsistent grid is an out-of-bounds access on
+/// first use rather than visibly-wrong data. Rejecting keeps the reader's
+/// admissible set equal to the constructors', which establish
+/// `triangleColors_.size() == triangleDistances_.size() == size_.x*size_.y` —
+/// the same contract `SaveSerialize<C_Cycle>` enforces on its breakpoint
+/// count.
 template <> struct SaveSerialize<IRComponents::C_TrianglesOnlySet> {
     static void write(IRAsset::BinaryWriter &w, const IRComponents::C_TrianglesOnlySet &value) {
         IRMath::BinaryIO::writeIVec2(w, value.size_);
@@ -107,6 +115,25 @@ template <> struct SaveSerialize<IRComponents::C_TrianglesOnlySet> {
         IR_SAVE_READ(value.origin_, IRMath::BinaryIO::readIVec2(r));
         IR_SAVE_READ_STATUS(detail::readTrivialVector(r, value.triangleColors_));
         IR_SAVE_READ_STATUS(detail::readTrivialVector(r, value.triangleDistances_));
+
+        // Widened to 64-bit because both dimensions come off disk: a corrupt
+        // pair overflows the component's own `int` multiply. A negative
+        // product (mixed-sign dimensions) is unconstructible as well —
+        // `resize()` would convert it to a huge `size_t` — so the same test
+        // rejects it.
+        const std::int64_t expectedCells =
+            static_cast<std::int64_t>(value.size_.x) * static_cast<std::int64_t>(value.size_.y);
+        if (expectedCells < 0 ||
+            static_cast<std::int64_t>(value.triangleColors_.size()) != expectedCells ||
+            static_cast<std::int64_t>(value.triangleDistances_.size()) != expectedCells) {
+            return Res::error(
+                IRAsset::BinaryIOError::UnknownTag,
+                "C_TrianglesOnlySet: grid sizes (" + std::to_string(value.triangleColors_.size()) +
+                    " colors, " + std::to_string(value.triangleDistances_.size()) +
+                    " distances) disagree with the extent " + std::to_string(value.size_.x) + "x" +
+                    std::to_string(value.size_.y)
+            );
+        }
         return Res::success(std::move(value));
     }
 };

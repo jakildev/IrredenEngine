@@ -387,14 +387,23 @@ so the two cannot drift.
 this build** with `registerComponent`'s `SaveSerializable<C>` `static_assert`
 instead of silently dropping the component from every Lua-driven save. Adding
 an engine component that opts in therefore means writing its serializer in the
-same change. Three consequences for authors:
+same change. Four consequences for authors:
 
 - **A heap-owning component needs a `SaveSerialize<C>` specialization** in its
   domain's `engine/prefabs/irreden/<domain>/save_serializers_<domain>.hpp`
   (`C_VoxelSetNew` keeps its own `voxel_set_serialize.hpp` — its read path has
   a pool-interaction contract the others don't). Those headers are included by
   `world_default_registry.cpp` only, never by the component headers, so the
-  prefab domains stay out of `engine/world`'s include graph.
+  prefab domains stay out of `engine/world`'s include graph. **`read` must
+  reject bytes it cannot honestly restore** — if the component has a class
+  invariant its constructors establish (a count bounded by an inline array's
+  capacity, parallel grids sized to a stored extent), re-check it after
+  reading and return `BinaryIOError::UnknownTag` on violation, so the
+  reader's admissible set equals the constructors'. Truncation is already
+  caught by the short read; this covers the well-formed-but-inconsistent
+  file, whose damage otherwise surfaces as an out-of-bounds access in an
+  unchecked accessor rather than as a load error. `SaveSerialize<C_Cycle>`
+  and `SaveSerialize<C_TrianglesOnlySet>` are the reference shape.
 - **A component whose state cannot honestly round-trip opts OUT**, with a
   comment saying why. The current class is callback-bearing state:
   `C_LambdaModifiers`, `C_LerpEntity`, and — since #2242 — `C_GotoEasing3D`
@@ -409,6 +418,18 @@ same change. Three consequences for authors:
   to the "no decision yet" primary (`kSave = false`) — so every call silently
   no-ops and you get an empty registry that saves an empty world without
   erroring.
+- **Never write an explicit `SaveSerialize<C>` for a component that IS
+  trivially copyable.** A missing serializer header is loud today only because
+  every explicit specialization is on a non-trivially-copyable component: with
+  the primary declared-but-undefined, a TU that misses the header sees an
+  incomplete type, `SaveSerializable<C>` is false, and the `static_assert`
+  fires. A trivially-copyable component has the constrained partial
+  specialization to fall back on, so the same missing header binds **silently**
+  to the raw-image arm — different bytes under the same save-name and version,
+  no diagnostic, and formally an ODR violation across the two TUs. If you need
+  a hand-written layout (to skip a derived field, narrow an enum, drop
+  padding), make the component non-trivially-copyable or route the exception
+  through the inventory instead.
 
 **Adding a component here must also extend
 `test/script/lua_world_snapshot_test.cpp` with a round-trip case through the

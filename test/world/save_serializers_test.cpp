@@ -426,6 +426,27 @@ TEST(SaveSerializers, TrianglesOnlySetRoundTripsEmpty) {
     expectConsumesAllBytes(set);
 }
 
+// Truncation is already caught by readTrivialVector's short read; this is the
+// well-formed-but-inconsistent file — every byte present, but the extent
+// disagrees with the two grids it is supposed to describe. Restoring it would
+// hand back a component no constructor can build, and the unchecked
+// atTriangle* accessors turn that into an out-of-bounds access on first use
+// (setTriangle's bounds check is an IR_ASSERT and compiles out under
+// IR_RELEASE). TrianglesOnlySetRoundTrips is the positive control for this
+// case: the same bytes, unpatched, restore cleanly.
+TEST(SaveSerializers, TrianglesOnlySetRejectsExtentGridMismatch) {
+    const C_TrianglesOnlySet set{IRMath::ivec2(2, 3), IRMath::ivec2(-1, 4)};
+    std::vector<std::uint8_t> bytes = serialize(set);
+    // Layout: size_ = i32 x then i32 y, so x occupies bytes [0..3].
+    ASSERT_GE(bytes.size(), 4u);
+    ASSERT_EQ(bytes[0], 2u) << "expected size_.x at this offset";
+    bytes[0] = 3u; // claims a 3x3 = 9-cell extent over the 6 cells on disk
+
+    IRAsset::Result<C_TrianglesOnlySet> restored = deserialize<C_TrianglesOnlySet>(bytes);
+    EXPECT_FALSE(restored.ok());
+    EXPECT_EQ(restored.status_.code_, IRAsset::BinaryIOError::UnknownTag);
+}
+
 // Every field of C_TriangleCanvasBackground is private, so the round trip is
 // asserted through byte identity rather than field comparison — see the
 // helper's comment.

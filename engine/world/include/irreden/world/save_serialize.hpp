@@ -19,12 +19,17 @@
 ///
 /// Leaving the primary undefined is what makes serializability *detectable*:
 /// `SaveSerializable<C>` below is satisfied exactly when one of those two
-/// arms exists, so `makeDefaultSaveRegistry` can filter `AllEngineComponents`
-/// on a fact the compiler already knows instead of a hand-maintained
-/// companion trait (which would drift the moment a serializer landed without
-/// its trait line — the silent-omission failure this concept exists to kill).
-/// "Opted in but no serializer" stays a compile error: `registerComponent<C>`
-/// static_asserts `SaveSerializable<C>` with the friendly diagnostic.
+/// arms exists — a fact the compiler already knows, rather than a
+/// hand-maintained companion trait (which would drift the moment a serializer
+/// landed without its trait line — the silent-omission failure this concept
+/// exists to kill).
+///
+/// The concept is a **gate, not a filter**: `makeDefaultSaveRegistry` hands
+/// every `AllEngineComponents` entry to `registerComponent<C>`, which
+/// `static_assert`s `SaveSerializable<C>` with a friendly diagnostic, so
+/// "opted in but no serializer" is a build error. Do not "restore" a filter
+/// here — silently dropping such a component from every save is the precise
+/// failure this design exists to kill.
 ///
 /// Determinism note: the byte image of a trivially-copyable struct
 /// includes padding. Padding bytes are stable for a fixed in-memory value

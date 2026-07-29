@@ -19,10 +19,14 @@
 /// (world-snapshot criterion 6). Vectors keep their authored order.
 ///
 /// Read-side guard: element counts come off disk, so a corrupt or truncated
-/// stream can claim an absurd count. The readers never pre-size to the
-/// claimed count — they reserve a bounded amount and append per record, so a
-/// bad count fails on the first short read instead of attempting a huge
-/// allocation first.
+/// stream can claim an absurd count. No reader ever pre-sizes to the claimed
+/// count — each appends per record, so a bad count fails on the first short
+/// read instead of attempting a huge allocation first. The **vector** readers
+/// additionally `detail::boundedReserve` up to `kReadReserveCap` before the
+/// loop; the map reader does not, because the helper is generic over `Map`
+/// and `std::map` has no `reserve`. That asymmetry is a non-issue: it is an
+/// allocation-churn guard, and node-based map inserts don't benefit from a
+/// reserve anyway.
 ///
 /// Versioning note: a component's schema version is **not** the
 /// `// IRAsset: serialized` + `kSaveVersion` member pair that `engine/asset/`
