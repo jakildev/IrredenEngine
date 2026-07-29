@@ -11,10 +11,10 @@
 #include <irreden/render/vao.hpp>
 #include <irreden/render/vertex_attributes.hpp>
 
-// The `namespace IRDebug` draw surface this system flushes. Split out in
-// #2375 so the Lua binding can issue draws without pulling in the GPU
+// The `namespace IRDebug` draw surface this system flushes. It sits in its own
+// header so non-render TUs (the Lua binding) can issue draws without the GPU
 // headers above; the buffers are shared across TUs by inline-function
-// static-local deduplication.
+// static-local deduplication. See #2375.
 #include <irreden/render/debug_overlay_draws.hpp>
 
 #include <vector>
@@ -32,8 +32,14 @@ template <> struct System<DEBUG_OVERLAY> {
         IRRender::createNamedResource<IRRender::ShaderProgram>(
             "DebugOverlayProgram",
             std::vector{
-                IRRender::ShaderStage{IRRender::kFileVertDebugOverlay, IRRender::ShaderType::VERTEX},
-                IRRender::ShaderStage{IRRender::kFileFragDebugOverlay, IRRender::ShaderType::FRAGMENT}
+                IRRender::ShaderStage{
+                    IRRender::kFileVertDebugOverlay,
+                    IRRender::ShaderType::VERTEX
+                },
+                IRRender::ShaderStage{
+                    IRRender::kFileFragDebugOverlay,
+                    IRRender::ShaderType::FRAGMENT
+                }
             }
         );
         IRRender::createNamedResource<IRRender::Buffer>(
@@ -70,8 +76,8 @@ template <> struct System<DEBUG_OVERLAY> {
                 auto &triangles = IRDebug::getTriangles();
                 auto &screenLines = IRDebug::getScreenLines();
                 auto &screenTriangles = IRDebug::getScreenTriangles();
-                if (lines.empty() && circles.empty() && triangles.empty() &&
-                    screenLines.empty() && screenTriangles.empty()) {
+                if (lines.empty() && circles.empty() && triangles.empty() && screenLines.empty() &&
+                    screenTriangles.empty()) {
                     return;
                 }
 
@@ -109,18 +115,35 @@ template <> struct System<DEBUG_OVERLAY> {
 
                 for (const auto &triangle : screenTriangles) {
                     triangleVertices.push_back(
-                        {triangle.a.x, triangle.a.y, triangle.r, triangle.g, triangle.bColor, triangle.aColor}
+                        {triangle.a.x,
+                         triangle.a.y,
+                         triangle.r,
+                         triangle.g,
+                         triangle.bColor,
+                         triangle.aColor}
                     );
                     triangleVertices.push_back(
-                        {triangle.b.x, triangle.b.y, triangle.r, triangle.g, triangle.bColor, triangle.aColor}
+                        {triangle.b.x,
+                         triangle.b.y,
+                         triangle.r,
+                         triangle.g,
+                         triangle.bColor,
+                         triangle.aColor}
                     );
                     triangleVertices.push_back(
-                        {triangle.c.x, triangle.c.y, triangle.r, triangle.g, triangle.bColor, triangle.aColor}
+                        {triangle.c.x,
+                         triangle.c.y,
+                         triangle.r,
+                         triangle.g,
+                         triangle.bColor,
+                         triangle.aColor}
                     );
                 }
 
                 for (const auto &line : screenLines) {
-                    lineVertices.push_back({line.from.x, line.from.y, line.r, line.g, line.b, line.a});
+                    lineVertices.push_back(
+                        {line.from.x, line.from.y, line.r, line.g, line.b, line.a}
+                    );
                     lineVertices.push_back({line.to.x, line.to.y, line.r, line.g, line.b, line.a});
                 }
 
@@ -132,27 +155,34 @@ template <> struct System<DEBUG_OVERLAY> {
                         const int idx0 = (i * step) % IRDebug::kCircleLutMaxSegments;
                         const int idx1 = ((i + 1) * step) % IRDebug::kCircleLutMaxSegments;
                         vec3 p0 = circle.center + vec3(
-                            lut.cosTable[idx0] * circle.radius,
-                            lut.sinTable[idx0] * circle.radius,
-                            0.0f);
+                                                      lut.cosTable[idx0] * circle.radius,
+                                                      lut.sinTable[idx0] * circle.radius,
+                                                      0.0f
+                                                  );
                         vec3 p1 = circle.center + vec3(
-                            lut.cosTable[idx1] * circle.radius,
-                            lut.sinTable[idx1] * circle.radius,
-                            0.0f);
+                                                      lut.cosTable[idx1] * circle.radius,
+                                                      lut.sinTable[idx1] * circle.radius,
+                                                      0.0f
+                                                  );
                         vec2 s0 = w2s.project(p0);
                         vec2 s1 = w2s.project(p1);
-                        lineVertices.push_back({s0.x, s0.y, circle.r, circle.g, circle.b, circle.a});
-                        lineVertices.push_back({s1.x, s1.y, circle.r, circle.g, circle.b, circle.a});
+                        lineVertices.push_back(
+                            {s0.x, s0.y, circle.r, circle.g, circle.b, circle.a}
+                        );
+                        lineVertices.push_back(
+                            {s1.x, s1.y, circle.r, circle.g, circle.b, circle.a}
+                        );
                     }
                 }
 
-                if (triangleVertices.empty() && lineVertices.empty()) return;
+                if (triangleVertices.empty() && lineVertices.empty())
+                    return;
 
-                if (triangleVertices.size() + lineVertices.size() > IRDebug::kDebugOverlayMaxVertices) {
-                    const size_t triMax =
-                        (IRDebug::kDebugOverlayTriangleVertexBudget /
-                         IRDebug::kDebugOverlayTriangleVertexCount) *
-                        IRDebug::kDebugOverlayTriangleVertexCount;
+                if (triangleVertices.size() + lineVertices.size() >
+                    IRDebug::kDebugOverlayMaxVertices) {
+                    const size_t triMax = (IRDebug::kDebugOverlayTriangleVertexBudget /
+                                           IRDebug::kDebugOverlayTriangleVertexCount) *
+                                          IRDebug::kDebugOverlayTriangleVertexCount;
                     if (triangleVertices.size() > triMax) {
                         triangleVertices.resize(triMax);
                     }
@@ -167,8 +197,9 @@ template <> struct System<DEBUG_OVERLAY> {
 
                 auto *vbuf = IRRender::getNamedResource<IRRender::Buffer>("DebugOverlayVB");
 
-                const auto triBytes =
-                    static_cast<std::ptrdiff_t>(triangleVertices.size() * sizeof(IRDebug::DebugVertex));
+                const auto triBytes = static_cast<std::ptrdiff_t>(
+                    triangleVertices.size() * sizeof(IRDebug::DebugVertex)
+                );
                 const auto lineBytes =
                     static_cast<std::ptrdiff_t>(lineVertices.size() * sizeof(IRDebug::DebugVertex));
 
@@ -176,14 +207,22 @@ template <> struct System<DEBUG_OVERLAY> {
                     vbuf->subData(0, static_cast<std::size_t>(triBytes), triangleVertices.data());
                 }
                 if (!lineVertices.empty()) {
-                    vbuf->subData(triBytes, static_cast<std::size_t>(lineBytes), lineVertices.data());
+                    vbuf->subData(
+                        triBytes,
+                        static_cast<std::size_t>(lineBytes),
+                        lineVertices.data()
+                    );
                 }
 
                 ivec2 vp = IRRender::getViewport();
                 mat4 projection = IRMath::ortho(
-                    0.0f, static_cast<float>(vp.x),
-                    0.0f, static_cast<float>(vp.y),
-                    -1.0f, 1.0f);
+                    0.0f,
+                    static_cast<float>(vp.x),
+                    0.0f,
+                    static_cast<float>(vp.y),
+                    -1.0f,
+                    1.0f
+                );
                 DebugOverlayUBO ubo{projection};
                 IRRender::getNamedResource<IRRender::Buffer>("DebugOverlayUBO")
                     ->subData(0, sizeof(DebugOverlayUBO), &ubo);
@@ -197,7 +236,9 @@ template <> struct System<DEBUG_OVERLAY> {
 
                 if (!triangleVertices.empty()) {
                     IRRender::device()->drawArrays(
-                        IRRender::DrawMode::TRIANGLES, 0, static_cast<int>(triangleVertices.size())
+                        IRRender::DrawMode::TRIANGLES,
+                        0,
+                        static_cast<int>(triangleVertices.size())
                     );
                 }
 

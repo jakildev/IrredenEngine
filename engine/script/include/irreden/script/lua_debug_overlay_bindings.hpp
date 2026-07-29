@@ -94,21 +94,17 @@ inline void bindDebugOverlay(LuaScript &script) {
     }
     sol::table debug = lua["IRDebug"];
 
-    debug["drawLine3D"] = [](sol::object from,
-                             sol::object to,
-                             float r,
-                             float g,
-                             float b,
-                             sol::optional<float> a) {
-        IRDebug::drawLine3D(
-            requireVec3(from, "IRDebug.drawLine3D: 'from'"),
-            requireVec3(to, "IRDebug.drawLine3D: 'to'"),
-            r,
-            g,
-            b,
-            a.value_or(1.0f)
-        );
-    };
+    debug["drawLine3D"] =
+        [](sol::object from, sol::object to, float r, float g, float b, sol::optional<float> a) {
+            IRDebug::drawLine3D(
+                requireVec3(from, "IRDebug.drawLine3D: 'from'"),
+                requireVec3(to, "IRDebug.drawLine3D: 'to'"),
+                r,
+                g,
+                b,
+                a.value_or(1.0f)
+            );
+        };
 
     debug["drawCircle3D"] = [](sol::object center,
                                float radius,
@@ -146,64 +142,55 @@ inline void bindDebugOverlay(LuaScript &script) {
         );
     };
 
-    debug["drawDiamond3D"] = [](sol::object center,
-                                float radius,
-                                float r,
-                                float g,
-                                float b,
-                                sol::optional<float> a) {
-        IRDebug::drawDiamond3D(
-            requireVec3(center, "IRDebug.drawDiamond3D: 'center'"),
-            radius,
-            r,
-            g,
-            b,
-            a.value_or(1.0f)
-        );
-    };
+    debug["drawDiamond3D"] =
+        [](sol::object center, float radius, float r, float g, float b, sol::optional<float> a) {
+            IRDebug::drawDiamond3D(
+                requireVec3(center, "IRDebug.drawDiamond3D: 'center'"),
+                radius,
+                r,
+                g,
+                b,
+                a.value_or(1.0f)
+            );
+        };
 
     // `points` is an array table of vec3-shaped entries. The temp vector is
     // built per call at the boundary — acceptable for a debug surface, and
     // deliberately not cached (bindings hold no cross-frame state).
     debug["drawPath3D"] =
         [](sol::object points, float r, float g, float b, sol::optional<float> a) {
-        if (!points.is<sol::table>()) {
-            throw sol::error{"IRDebug.drawPath3D: 'points' must be an array table of vec3"};
-        }
-        sol::table pointTable = points.as<sol::table>();
-        // Hoisted deliberately: `sol::table::size()` is a Lua `#` call across
-        // the VM boundary, and leaving it in the loop condition re-pays it per
-        // point — measured ~8.5% of this binding's cost at 200 paths/frame.
-        // (Dropping the vector entirely to stream into drawLine3D was measured
-        // too: only ~2% more, not worth losing all-or-nothing validation — a
-        // bad entry must not leave a half-drawn path buffered.)
-        const std::size_t pointCount = pointTable.size();
-        std::vector<IRMath::vec3> resolved;
-        resolved.reserve(pointCount);
-        for (std::size_t i = 1; i <= pointCount; ++i) {
-            resolved.push_back(requireVec3(
-                pointTable[i],
-                "IRDebug.drawPath3D: every entry of 'points'"
-            ));
-        }
-        IRDebug::drawPath3D(resolved, r, g, b, a.value_or(1.0f));
-    };
+            if (!points.is<sol::table>()) {
+                throw sol::error{"IRDebug.drawPath3D: 'points' must be an array table of vec3"};
+            }
+            sol::table pointTable = points.as<sol::table>();
+            // Hoisted deliberately: `sol::table::size()` is a Lua `#` call across
+            // the VM boundary, and leaving it in the loop condition re-pays it per
+            // point — measured ~8.5% of this binding's cost at 200 paths/frame.
+            // (Dropping the vector entirely to stream into drawLine3D was measured
+            // too: only ~2% more, not worth losing all-or-nothing validation — a
+            // bad entry must not leave a half-drawn path buffered.)
+            const std::size_t pointCount = pointTable.size();
+            std::vector<IRMath::vec3> resolved;
+            resolved.reserve(pointCount);
+            for (std::size_t i = 1; i <= pointCount; ++i) {
+                resolved.push_back(
+                    requireVec3(pointTable[i], "IRDebug.drawPath3D: every entry of 'points'")
+                );
+            }
+            IRDebug::drawPath3D(resolved, r, g, b, a.value_or(1.0f));
+        };
 
-    debug["drawLineScreen"] = [](sol::object from,
-                                 sol::object to,
-                                 float r,
-                                 float g,
-                                 float b,
-                                 sol::optional<float> a) {
-        IRDebug::drawLineScreen(
-            requireVec2(from, "IRDebug.drawLineScreen: 'from'"),
-            requireVec2(to, "IRDebug.drawLineScreen: 'to'"),
-            r,
-            g,
-            b,
-            a.value_or(1.0f)
-        );
-    };
+    debug["drawLineScreen"] =
+        [](sol::object from, sol::object to, float r, float g, float b, sol::optional<float> a) {
+            IRDebug::drawLineScreen(
+                requireVec2(from, "IRDebug.drawLineScreen: 'from'"),
+                requireVec2(to, "IRDebug.drawLineScreen: 'to'"),
+                r,
+                g,
+                b,
+                a.value_or(1.0f)
+            );
+        };
 
     debug["drawTriangleScreen"] = [](sol::object a,
                                      sol::object b,
@@ -225,13 +212,13 @@ inline void bindDebugOverlay(LuaScript &script) {
 
     debug["drawRectScreen"] =
         [](sol::object min, sol::object max, sol::object fillColor, sol::object borderColor) {
-        IRDebug::drawRectScreen(
-            requireVec2(min, "IRDebug.drawRectScreen: 'min'"),
-            requireVec2(max, "IRDebug.drawRectScreen: 'max'"),
-            requireVec4(fillColor, "IRDebug.drawRectScreen: 'fillColor'"),
-            requireVec4(borderColor, "IRDebug.drawRectScreen: 'borderColor'")
-        );
-    };
+            IRDebug::drawRectScreen(
+                requireVec2(min, "IRDebug.drawRectScreen: 'min'"),
+                requireVec2(max, "IRDebug.drawRectScreen: 'max'"),
+                requireVec4(fillColor, "IRDebug.drawRectScreen: 'fillColor'"),
+                requireVec4(borderColor, "IRDebug.drawRectScreen: 'borderColor'")
+            );
+        };
 
     debug["drawDotScreen"] = [](sol::object center, float radius, sol::object color) {
         IRDebug::drawDotScreen(

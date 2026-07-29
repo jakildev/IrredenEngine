@@ -1,12 +1,12 @@
 #ifndef IR_PREFAB_DEBUG_OVERLAY_DRAWS_H
 #define IR_PREFAB_DEBUG_OVERLAY_DRAWS_H
 
-// Immediate-mode debug-overlay draw surface (`namespace IRDebug`), split out
-// of `systems/system_debug_overlay.hpp` in #2375 so non-render translation
-// units — notably the Lua binding in
+// Immediate-mode debug-overlay draw surface (`namespace IRDebug`). Lives apart
+// from the `System<DEBUG_OVERLAY>` flush that consumes it so non-render
+// translation units — notably the Lua binding in
 // `engine/script/include/irreden/script/lua_debug_overlay_bindings.hpp` — can
-// issue draws without pulling in the flush system's GPU headers
-// (`buffer.hpp` / `shader.hpp` / `vao.hpp`).
+// issue draws without pulling in the flush's GPU headers (`buffer.hpp` /
+// `shader.hpp` / `vao.hpp`). See #2375.
 //
 // Every draw here is pure CPU buffering: it appends a record to one of the
 // five inline-static vectors below and performs no render work. The
@@ -100,20 +100,13 @@ inline std::vector<DebugTriangle2D> &getScreenTriangles() {
     return triangles;
 }
 
-inline void drawLine3D(
-    IRMath::vec3 from, IRMath::vec3 to, float r, float g, float b, float a = 1.0f
-) {
+inline void
+drawLine3D(IRMath::vec3 from, IRMath::vec3 to, float r, float g, float b, float a = 1.0f) {
     getLines().push_back({from, to, r, g, b, a});
 }
 
 inline void drawCircle3D(
-    IRMath::vec3 center,
-    float radius,
-    float r,
-    float g,
-    float b,
-    float a = 1.0f,
-    int segments = 32
+    IRMath::vec3 center, float radius, float r, float g, float b, float a = 1.0f, int segments = 32
 ) {
     getCircles().push_back({center, radius, r, g, b, a, segments});
 }
@@ -130,9 +123,8 @@ inline void drawTriangle3D(
     getTriangles().push_back({a, b, c, r, g, bColor, aColor});
 }
 
-inline void drawLineScreen(
-    IRMath::vec2 from, IRMath::vec2 to, float r, float g, float b, float a = 1.0f
-) {
+inline void
+drawLineScreen(IRMath::vec2 from, IRMath::vec2 to, float r, float g, float b, float a = 1.0f) {
     getScreenLines().push_back({from, to, r, g, b, a});
 }
 
@@ -160,36 +152,67 @@ inline void drawRectScreen(
     const IRMath::vec2 bottomRight(max.x, min.y);
 
     drawTriangleScreen(
-        bottomLeft, bottomRight, topRight,
-        fillColor.r, fillColor.g, fillColor.b, fillColor.a
+        bottomLeft,
+        bottomRight,
+        topRight,
+        fillColor.r,
+        fillColor.g,
+        fillColor.b,
+        fillColor.a
     );
     drawTriangleScreen(
-        bottomLeft, topRight, topLeft,
-        fillColor.r, fillColor.g, fillColor.b, fillColor.a
+        bottomLeft,
+        topRight,
+        topLeft,
+        fillColor.r,
+        fillColor.g,
+        fillColor.b,
+        fillColor.a
     );
 
-    drawLineScreen(bottomLeft, bottomRight, borderColor.r, borderColor.g, borderColor.b, borderColor.a);
-    drawLineScreen(bottomRight, topRight, borderColor.r, borderColor.g, borderColor.b, borderColor.a);
+    drawLineScreen(
+        bottomLeft,
+        bottomRight,
+        borderColor.r,
+        borderColor.g,
+        borderColor.b,
+        borderColor.a
+    );
+    drawLineScreen(
+        bottomRight,
+        topRight,
+        borderColor.r,
+        borderColor.g,
+        borderColor.b,
+        borderColor.a
+    );
     drawLineScreen(topRight, topLeft, borderColor.r, borderColor.g, borderColor.b, borderColor.a);
     drawLineScreen(topLeft, bottomLeft, borderColor.r, borderColor.g, borderColor.b, borderColor.a);
 }
 
 inline void drawDotScreen(IRMath::vec2 center, float radius, IRMath::vec4 color) {
     drawTriangleScreen(
-        center + IRMath::vec2(-radius, 0), center + IRMath::vec2(radius, 0),
+        center + IRMath::vec2(-radius, 0),
+        center + IRMath::vec2(radius, 0),
         center + IRMath::vec2(0, radius),
-        color.r, color.g, color.b, color.a
+        color.r,
+        color.g,
+        color.b,
+        color.a
     );
     drawTriangleScreen(
-        center + IRMath::vec2(-radius, 0), center + IRMath::vec2(0, -radius),
+        center + IRMath::vec2(-radius, 0),
+        center + IRMath::vec2(0, -radius),
         center + IRMath::vec2(radius, 0),
-        color.r, color.g, color.b, color.a
+        color.r,
+        color.g,
+        color.b,
+        color.a
     );
 }
 
-inline void drawDiamond3D(
-    IRMath::vec3 center, float radius, float r, float g, float b, float a = 1.0f
-) {
+inline void
+drawDiamond3D(IRMath::vec3 center, float radius, float r, float g, float b, float a = 1.0f) {
     const IRMath::vec3 xPos = center + IRMath::vec3(radius, 0.0f, 0.0f);
     const IRMath::vec3 yPos = center + IRMath::vec3(0.0f, radius, 0.0f);
     const IRMath::vec3 xNeg = center + IRMath::vec3(-radius, 0.0f, 0.0f);
@@ -199,9 +222,8 @@ inline void drawDiamond3D(
     drawTriangle3D(xPos, xNeg, yNeg, r, g, b, a);
 }
 
-inline void drawPath3D(
-    const std::vector<IRMath::vec3> &points, float r, float g, float b, float a = 1.0f
-) {
+inline void
+drawPath3D(const std::vector<IRMath::vec3> &points, float r, float g, float b, float a = 1.0f) {
     for (size_t i = 0; i + 1 < points.size(); i++) {
         drawLine3D(points[i], points[i + 1], r, g, b, a);
     }

@@ -36,8 +36,12 @@ class LuaDebugOverlayBindingsTest : public testing::Test {
 
     // The buffers are process-wide inline statics shared across TUs, so tests
     // must not inherit each other's records.
-    void SetUp() override { IRDebug::clear(); }
-    void TearDown() override { IRDebug::clear(); }
+    void SetUp() override {
+        IRDebug::clear();
+    }
+    void TearDown() override {
+        IRDebug::clear();
+    }
 
     bool isFunction(const char *expr) {
         auto result = m_lua.lua().safe_script(
@@ -299,8 +303,7 @@ TEST_F(LuaDebugOverlayBindingsTest, Vec2FromLuaMissingComponentsZeroDefault) {
 
 TEST_F(LuaDebugOverlayBindingsTest, Vec4FromLuaAcceptsXyzwAndRgbaAndIndexed) {
     auto &lua = m_lua.lua();
-    const vec4 xyzw =
-        IRScript::vec4FromLua(lua.create_table_with("x", 1, "y", 2, "z", 3, "w", 4));
+    const vec4 xyzw = IRScript::vec4FromLua(lua.create_table_with("x", 1, "y", 2, "z", 3, "w", 4));
     EXPECT_FLOAT_EQ(xyzw.x, 1.0f);
     EXPECT_FLOAT_EQ(xyzw.w, 4.0f);
 
