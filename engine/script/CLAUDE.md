@@ -1567,12 +1567,21 @@ IRDebug.drawDotScreen(center, radius, color)              -- vec4 color
 - **Colors are 0..1 floats**, mirroring the C++ surface argument-for-argument —
   NOT the 0-255 `colorFromLua` tables `IRGui` takes. Parity with the C++ callers
   is deliberate so existing C++ overlay code ports to Lua line-for-line. The two
-  vec4-color draws take 0..1 components too.
+  vec4-color draws take 0..1 components too. **Nothing range-checks this:**
+  `vec4FromLua` accepts the `{r,g,b,a}` spelling, so an `IRGui`-style 0-255 table
+  passed to `drawRectScreen` / `drawDotScreen` is read without complaint and
+  lands ~255× out of range. A creation that uses both conventions in one file
+  (`creations/demos/lua_pipeline_demo/main.lua` does) has to keep them straight
+  per call.
 - **Vector arguments** accept an IRMath userdata or a component table, keyed or
   indexed (`{x,y,z}` / `{1,2,3}`; vec4 also accepts `{r,g,b,a}`). Unlike the bare
   `*FromLua` helpers — which zero-default by contract — the bindings type-check
   first and raise a Lua error naming the argument, so a typo'd call fails loudly
-  instead of silently drawing at the origin.
+  instead of silently drawing at the origin. The userdata check is **per vector
+  type**: a `vec2` passed where a `vec3` is wanted raises, rather than falling
+  through `vec3FromLua` to the origin. Component **tables** stay arity-blind per
+  the `*FromLua` contract — `{x = 1, y = 2}` where a vec3 is wanted zero-fills
+  `z` and does not raise.
 - **IMMEDIATE MODE — the load-bearing contract.** `DEBUG_OVERLAY` consumes AND
   clears every buffer on each RENDER tick, so a draw survives exactly one flush.
   It persists on screen only if **re-issued every frame** from a Lua system
@@ -1592,9 +1601,13 @@ IRDebug.drawDotScreen(center, radius, color)              -- vec4 color
   clearing mid-frame would silently drop other systems' draws) and
   `worldToScreen` / `screenToWorld` (pure-math helpers — additive follow-up if a
   creation needs them).
-- **Segments clamp.** `drawCircle3D` records the caller's `segments` verbatim;
-  the flush clamps to `kCircleLutMaxSegments` (32). Mirror-C++ behavior — the
-  binding adds no validation.
+- **Segments range.** `drawCircle3D` raises below `kMinCircleSegments` (3) — a
+  sub-3 count can't close a ring, and 0 was an integer division by zero in the
+  flush. Above the floor the record carries the caller's value verbatim and the
+  flush clamps the top end to `kCircleLutMaxSegments` (32). Any count in range
+  draws a **closed** ring: the flush reads the cos/sin table for counts that
+  divide it evenly and evaluates the angle directly otherwise (stepping the
+  table truncated, so 12 segments used to close at 270°).
 
 Coverage: `test/script/lua_debug_overlay_bindings_test.cpp` invokes every draw
 headless and asserts the resulting buffer records (the draws are pure CPU

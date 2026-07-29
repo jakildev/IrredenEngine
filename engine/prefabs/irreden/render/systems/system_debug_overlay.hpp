@@ -147,23 +147,25 @@ template <> struct System<DEBUG_OVERLAY> {
                     lineVertices.push_back({line.to.x, line.to.y, line.r, line.g, line.b, line.a});
                 }
 
-                const auto &lut = IRDebug::getCircleLut();
                 for (const auto &circle : circles) {
-                    const int segs = std::min(circle.segments, IRDebug::kCircleLutMaxSegments);
-                    const int step = IRDebug::kCircleLutMaxSegments / segs;
+                    // Clamped at BOTH ends: the record carries whatever the
+                    // caller asked for, and `circleUnitPoint` divides by this.
+                    const int segs = IRMath::clamp(
+                        circle.segments,
+                        IRDebug::kMinCircleSegments,
+                        IRDebug::kCircleLutMaxSegments
+                    );
+                    // Carried forward: each vertex is shared by two segments, so
+                    // evaluating both ends per step would double the trig on the
+                    // non-divisor path.
+                    vec2 unit0 = IRDebug::circleUnitPoint(0, segs);
                     for (int i = 0; i < segs; i++) {
-                        const int idx0 = (i * step) % IRDebug::kCircleLutMaxSegments;
-                        const int idx1 = ((i + 1) * step) % IRDebug::kCircleLutMaxSegments;
-                        vec3 p0 = circle.center + vec3(
-                                                      lut.cosTable[idx0] * circle.radius,
-                                                      lut.sinTable[idx0] * circle.radius,
-                                                      0.0f
-                                                  );
-                        vec3 p1 = circle.center + vec3(
-                                                      lut.cosTable[idx1] * circle.radius,
-                                                      lut.sinTable[idx1] * circle.radius,
-                                                      0.0f
-                                                  );
+                        const vec2 unit1 = IRDebug::circleUnitPoint(i + 1, segs);
+                        vec3 p0 = circle.center +
+                                  vec3(unit0.x * circle.radius, unit0.y * circle.radius, 0.0f);
+                        vec3 p1 = circle.center +
+                                  vec3(unit1.x * circle.radius, unit1.y * circle.radius, 0.0f);
+                        unit0 = unit1;
                         vec2 s0 = w2s.project(p0);
                         vec2 s1 = w2s.project(p1);
                         lineVertices.push_back(

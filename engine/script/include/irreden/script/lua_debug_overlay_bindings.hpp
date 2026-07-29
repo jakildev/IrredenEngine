@@ -32,7 +32,13 @@
 // argument, NOT the 0-255 `colorFromLua` tables `IRGui` uses. Parity with the
 // C++ callers wins here so existing C++ overlay code ports to Lua line-for-line.
 // The two vec4-color draws (`drawRectScreen`, `drawDotScreen`) likewise take
-// 0..1 float components, matching their C++ `vec4` parameters.
+// 0..1 float components, matching their C++ `vec4` parameters. `vec4FromLua`
+// also accepts the `{r, g, b, a}` spelling, so an `IRGui`-style 0-255 table is
+// read without complaint and lands wildly out of range — keep the two color
+// conventions straight per call.
+//
+// `drawCircle3D`'s `segments` must be at least `kMinCircleSegments`; the call
+// raises below that. The flush clamps the top end to `kCircleLutMaxSegments`.
 //
 // Deliberately NOT bound: `clear()` (the flush owns clearing — a Lua caller
 // clearing mid-frame would silently drop other systems' draws) and
@@ -57,30 +63,47 @@ namespace IRScript::detail {
 // typo'd argument would otherwise draw silently at the origin instead of
 // failing. Validate the shape first and raise a Lua-visible error naming the
 // offending argument.
-inline void requireVecShape(const sol::object &obj, const char *context) {
-    if (obj.is<sol::table>()) {
-        return;
-    }
-    if (obj.is<IRMath::vec2>() || obj.is<IRMath::vec3>() || obj.is<IRMath::vec4>()) {
+//
+// Two details make the order below load-bearing:
+//
+//   1. The userdata check is per-vector-type. A shared any-IRMath-vector
+//      predicate admits a `vec2` where a `vec3` is wanted, and `vec3FromLua`'s
+//      userdata branch tests only `is<vec3>()`, so the mismatch falls through
+//      to that helper's table branch.
+//   2. `sol::object::is<sol::table>()` is TRUE for userdata as well — sol2
+//      treats userdata as table-like. So a table-FIRST check admits every
+//      userdata regardless of (1), and the wrong-typed vector reaches
+//      `*FromLua`'s table branch, where indexing a metatable-less userdata
+//      raises a bare "attempt to index a userdata value" from inside the
+//      helper. Loud, but it names neither the argument nor the expected type.
+//
+// Hence: match the concrete usertype first, then the EXACT Lua table type.
+//
+// Component TABLES stay arity-blind, per the documented `*FromLua` contract:
+// `{x = 1, y = 2}` passed where a vec3 is wanted zero-fills `z`. Only the
+// userdata path carries enough type information to discriminate.
+template <typename VecT>
+inline void requireVecShape(const sol::object &obj, const char *context, const char *typeName) {
+    if (obj.is<VecT>() || obj.get_type() == sol::type::table) {
         return;
     }
     throw sol::error{
-        std::string{context} + " must be an IRMath vector userdata or a component table"
+        std::string{context} + " must be an IRMath " + typeName + " userdata or a component table"
     };
 }
 
 inline IRMath::vec2 requireVec2(const sol::object &obj, const char *context) {
-    requireVecShape(obj, context);
+    requireVecShape<IRMath::vec2>(obj, context, "vec2");
     return vec2FromLua(obj);
 }
 
 inline IRMath::vec3 requireVec3(const sol::object &obj, const char *context) {
-    requireVecShape(obj, context);
+    requireVecShape<IRMath::vec3>(obj, context, "vec3");
     return vec3FromLua(obj);
 }
 
 inline IRMath::vec4 requireVec4(const sol::object &obj, const char *context) {
-    requireVecShape(obj, context);
+    requireVecShape<IRMath::vec4>(obj, context, "vec4");
     return vec4FromLua(obj);
 }
 
@@ -113,6 +136,17 @@ inline void bindDebugOverlay(LuaScript &script) {
                                float b,
                                sol::optional<float> a,
                                sol::optional<int> segments) {
+        // Same raise-don't-silently-misdraw contract the vector args carry: a
+        // sub-3 count can't describe a closed polygon, and 0 in particular is a
+        // plausible typo (or an underflowed computed value). The flush clamps
+        // defensively too, but a script deserves to hear about it here.
+        const int segmentCount = segments.value_or(IRDebug::kCircleLutMaxSegments);
+        if (segmentCount < IRDebug::kMinCircleSegments) {
+            throw sol::error{
+                "IRDebug.drawCircle3D: 'segments' must be at least " +
+                std::to_string(IRDebug::kMinCircleSegments)
+            };
+        }
         IRDebug::drawCircle3D(
             requireVec3(center, "IRDebug.drawCircle3D: 'center'"),
             radius,
@@ -120,7 +154,7 @@ inline void bindDebugOverlay(LuaScript &script) {
             g,
             b,
             a.value_or(1.0f),
-            segments.value_or(32)
+            segmentCount
         );
     };
 

@@ -63,6 +63,24 @@ class LuaDebugOverlayBindingsTest : public testing::Test {
         return !result.valid();
     }
 
+    // Asserting the MESSAGE, not just that something raised, is what makes the
+    // wrong-vector-type cases meaningful: those already raised before the
+    // per-type check landed, but from `*FromLua` indexing a metatable-less
+    // userdata ("attempt to index a userdata value") — an error that names
+    // neither the argument nor the expected type.
+    testing::AssertionResult raisesWith(const char *source, const std::string &needle) {
+        auto result = m_lua.lua().safe_script(source, sol::script_pass_on_error);
+        if (result.valid()) {
+            return testing::AssertionFailure() << source << " did not raise";
+        }
+        const std::string message = sol::error{result}.what();
+        if (message.find(needle) == std::string::npos) {
+            return testing::AssertionFailure() << source << " raised \"" << message
+                                               << "\", expected it to mention \"" << needle << '"';
+        }
+        return testing::AssertionSuccess();
+    }
+
     IRScript::LuaScript m_lua;
     IREntity::EntityManager m_entity_manager;
     IRSystem::SystemManager m_system_manager;
@@ -153,8 +171,8 @@ TEST_F(LuaDebugOverlayBindingsTest, DrawCircle3DDefaultsSegmentsTo32) {
     EXPECT_EQ(circles[0].segments, 32);
 }
 
-// The flush clamps segments to kCircleLutMaxSegments; the binding records the
-// caller's value verbatim (mirror-C++ behavior — no binding-side validation).
+// The flush clamps the top end to kCircleLutMaxSegments; the binding records
+// the caller's value verbatim above the kMinCircleSegments floor.
 TEST_F(LuaDebugOverlayBindingsTest, DrawCircle3DRecordsSegmentsOverrideVerbatim) {
     run("IRDebug.drawCircle3D({0, 0, 0}, 1, 1, 1, 1, 0.5, 64)");
 
@@ -162,6 +180,34 @@ TEST_F(LuaDebugOverlayBindingsTest, DrawCircle3DRecordsSegmentsOverrideVerbatim)
     ASSERT_EQ(circles.size(), 1u);
     EXPECT_FLOAT_EQ(circles[0].a, 0.5f);
     EXPECT_EQ(circles[0].segments, 64);
+}
+
+// The floor is the raise-don't-silently-misdraw contract applied to `segments`:
+// 0 reached an integer division by zero in the flush, and 1/2 can't close a
+// ring. Buffering nothing is what keeps the bad record away from the flush.
+TEST_F(LuaDebugOverlayBindingsTest, DrawCircle3DBelowMinimumSegmentsRaises) {
+    EXPECT_TRUE(raises("IRDebug.drawCircle3D({0, 0, 0}, 1, 1, 1, 1, 1, 0)"));
+    EXPECT_TRUE(IRDebug::getCircles().empty());
+
+    EXPECT_TRUE(raises("IRDebug.drawCircle3D({0, 0, 0}, 1, 1, 1, 1, 1, -4)"));
+    EXPECT_TRUE(IRDebug::getCircles().empty());
+
+    // kMinCircleSegments itself is accepted.
+    run("IRDebug.drawCircle3D({0, 0, 0}, 1, 1, 1, 1, 1, 3)");
+    ASSERT_EQ(IRDebug::getCircles().size(), 1u);
+    EXPECT_EQ(IRDebug::getCircles()[0].segments, IRDebug::kMinCircleSegments);
+}
+
+// A segment count that doesn't divide the LUT must still close the ring: the
+// last vertex has to land back on the first. Stepping the table truncated, so
+// 12 segments stopped at 270 degrees.
+TEST_F(LuaDebugOverlayBindingsTest, CircleUnitPointClosesTheRingForNonDivisorSegmentCounts) {
+    for (const int segs : {3, 5, 12, 16, 32}) {
+        const IRMath::vec2 first = IRDebug::circleUnitPoint(0, segs);
+        const IRMath::vec2 last = IRDebug::circleUnitPoint(segs, segs);
+        EXPECT_NEAR(first.x, last.x, 1e-5f) << "segments=" << segs;
+        EXPECT_NEAR(first.y, last.y, 1e-5f) << "segments=" << segs;
+    }
 }
 
 TEST_F(LuaDebugOverlayBindingsTest, DrawTriangle3DBuffersOneRecord) {
@@ -270,6 +316,48 @@ TEST_F(LuaDebugOverlayBindingsTest, NonVectorArgumentRaisesInsteadOfDrawingAtOri
 
     EXPECT_TRUE(raises("IRDebug.drawDotScreen({1, 2}, 3, 7)"));
     EXPECT_TRUE(IRDebug::getScreenTriangles().empty());
+}
+
+// A WRONG-shaped vector userdata is the subtler half of the same contract.
+// `is<sol::table>()` is true for userdata, so a table-first shape check admits
+// every userdata; the mismatch then reaches `*FromLua`'s table branch and dies
+// indexing a metatable-less userdata. It raises either way — so these assert on
+// the MESSAGE, which is the part the contract actually promises.
+TEST_F(LuaDebugOverlayBindingsTest, WrongVectorUserdataTypeRaisesNamingTheArgument) {
+    auto &lua = m_lua.lua();
+    lua["v2"] = IRMath::vec2(1.0f, 2.0f);
+    lua["v3"] = vec3(1.0f, 2.0f, 3.0f);
+    lua["v4"] = vec4(1.0f, 2.0f, 3.0f, 4.0f);
+
+    // vec2 / vec4 where vec3 is expected.
+    EXPECT_TRUE(raisesWith(
+        "IRDebug.drawLine3D(v2, {4, 5, 6}, 1, 0, 0)",
+        "IRDebug.drawLine3D: 'from' must be an IRMath vec3"
+    ));
+    EXPECT_TRUE(raisesWith(
+        "IRDebug.drawLine3D({4, 5, 6}, v4, 1, 0, 0)",
+        "IRDebug.drawLine3D: 'to' must be an IRMath vec3"
+    ));
+    EXPECT_TRUE(IRDebug::getLines().empty());
+
+    // vec3 where vec2 is expected.
+    EXPECT_TRUE(raisesWith(
+        "IRDebug.drawLineScreen(v3, {3, 4}, 1, 0, 0)",
+        "IRDebug.drawLineScreen: 'from' must be an IRMath vec2"
+    ));
+    EXPECT_TRUE(IRDebug::getScreenLines().empty());
+
+    // vec2 where a vec4 color is expected.
+    EXPECT_TRUE(raisesWith(
+        "IRDebug.drawDotScreen({1, 2}, 3, v2)",
+        "IRDebug.drawDotScreen: 'color' must be an IRMath vec4"
+    ));
+    EXPECT_TRUE(IRDebug::getScreenTriangles().empty());
+
+    // The matching type still passes, so the check discriminates rather than
+    // rejecting all userdata.
+    run("IRDebug.drawLineScreen(v2, {3, 4}, 1, 0, 0)");
+    EXPECT_EQ(IRDebug::getScreenLines().size(), 1u);
 }
 
 TEST_F(LuaDebugOverlayBindingsTest, NonTablePathRaises) {

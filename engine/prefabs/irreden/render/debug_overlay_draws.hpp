@@ -9,7 +9,7 @@
 // `shader.hpp` / `vao.hpp`). See #2375.
 //
 // Every draw here is pure CPU buffering: it appends a record to one of the
-// five inline-static vectors below and performs no render work. The
+// five accessor-owned static-local vectors below and performs no render work. The
 // `System<DEBUG_OVERLAY>` flush (the system header, which includes this one)
 // owns all GPU work AND owns clearing — it consumes and clears every buffer
 // each RENDER tick.
@@ -272,6 +272,10 @@ constexpr std::size_t kDebugOverlayLineVertexCount = 2;
 constexpr std::size_t kDebugOverlayTriangleVertexBudget = kDebugOverlayMaxVertices / 2;
 
 constexpr int kCircleLutMaxSegments = 32;
+// A closed polygon needs three sides. The floor also keeps `segments` off the
+// divisor in `circleUnitPoint` — 0 was an integer division by zero (SIGFPE) for
+// any caller that reached it.
+constexpr int kMinCircleSegments = 3;
 
 struct CircleLut {
     std::array<float, kCircleLutMaxSegments + 1> cosTable;
@@ -282,13 +286,32 @@ inline const CircleLut &getCircleLut() {
     static const CircleLut lut = []() {
         CircleLut t{};
         for (int i = 0; i <= kCircleLutMaxSegments; ++i) {
-            float angle = static_cast<float>(i) * (2.0f * 3.14159265f / kCircleLutMaxSegments);
+            float angle = static_cast<float>(i) * (IRMath::kTwoPi / kCircleLutMaxSegments);
             t.cosTable[i] = IRMath::cos(angle);
             t.sinTable[i] = IRMath::sin(angle);
         }
         return t;
     }();
     return lut;
+}
+
+// Unit-circle point for vertex `i` of a `segs`-segment circle. `segs` must
+// already be clamped to [kMinCircleSegments, kCircleLutMaxSegments].
+//
+// The table is addressable only at a whole-number stride, so it serves segment
+// counts that divide it evenly (32 — the default — 16, 8, 4). Any other count
+// stepped by `kCircleLutMaxSegments / segs` truncates and closes the ring short
+// of a full turn: 12 segments ended at 270 degrees while documenting itself as
+// a circle. Those counts evaluate the angle directly instead; the divisor cases
+// keep reading the table.
+inline IRMath::vec2 circleUnitPoint(int i, int segs) {
+    if (kCircleLutMaxSegments % segs == 0) {
+        const CircleLut &lut = getCircleLut();
+        const int index = (i * (kCircleLutMaxSegments / segs)) % kCircleLutMaxSegments;
+        return IRMath::vec2{lut.cosTable[index], lut.sinTable[index]};
+    }
+    const float angle = static_cast<float>(i) * (IRMath::kTwoPi / static_cast<float>(segs));
+    return IRMath::vec2{IRMath::cos(angle), IRMath::sin(angle)};
 }
 
 struct WorldToScreenCache {
