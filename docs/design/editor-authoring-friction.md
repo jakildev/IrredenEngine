@@ -363,10 +363,79 @@ Findings:
   packed-RGBA alpha byte, not "record is non-zero" (the erased slots retain a
   non-zero colour). Not an editor defect — just the format's empty encoding.
 
-### 2e — MUSHROOM (symmetry fix) — NEXT
+### 2e — MUSHROOM + the F-1.2 symmetry fix (LANDED)
 
-The plan's PR-2: wire `applyMirrors` into the edit paths (the F-1.2 regression,
-`symmetry.hpp:24` still has zero call sites) and author the mushroom with X+Y
-mirrors + two layers as the fix's positive-fire regression test. The runner,
-erase mode, and the aiming spine are all in place; the mushroom adds mirror +
-layer ops (`tapKey` for X/Y/K already exists on the `Builder`).
+The plan's PR-2: wire the previously call-site-less `applyMirrors` into the
+editor's edit path (the F-1.2 mirror regression) and author the mushroom with
+X+Y mirror symmetry as the fix's positive-fire regression test.
+
+**The fix.** `applyMirrors` (`symmetry.hpp`) had **zero call sites** — the X/Y/Z
+toggles moved only the status label and the saved META, so no edit was ever
+mirrored. `applyEdit` now fans each edit across the enabled mirror planes: the
+single-cell write moved to `applyEditRaw`, and `applyEdit` calls `applyMirrors`
+and applies every in-bounds reflection through it. All mirror copies land in the
+one pending stroke, so a single Ctrl+Z restores the whole symmetric edit and the
+derived-state resync still runs once per stroke. Because every edit path (single
+click, box / line / face fill, SDF bake, right-click erase) already funnels
+through `applyEdit`, mirroring covers all of them from one choke point. Symmetry
+off is a thin pass-through — no per-voxel cost added to the common path.
+
+**M-1 — mirror planes had no meaningful position; seated at scene centre on
+enable.** The `SymmetryState` offsets defaulted to `0`, which mirrors cell `v` to
+`-v` — out of bounds for a `[0, size)` scene, so *every* mirror silently dropped
+even once the call site existed. The X/Y/Z toggle handlers now seat the plane at
+`(size-1)/2` for that axis **when it turns on** (cell 0 pairs with `size-1`);
+there is no UI for a non-centre plane, so the centre is the only meaningful
+position. Setting it on-enable rather than at init keeps a symmetry-*disabled*
+scene's saved META (`sym_offset_*`) at `0` — i.e. re-authoring the rock (no
+symmetry) is still byte-identical. The offset round-trips through the `.vxs` META.
+The `SessionBuilder` mirrors its shadow `OccupancyModel` against the *same* plane
+via the same `applyMirrors` helper, so the aiming model and the live editor can't
+disagree about where a mirror-created voxel lands.
+
+**M-2 — a voxel's `-y` face does not reliably place its `-y` neighbour at the
+cardinal (yaw-0) camera.** The load-bearing finding. Building the cap outward
+from the stem, `-x`-face and `-z`-face single clicks place their neighbour every
+time, but a `-y`-face click **no-ops**: measured directly — `(6,7,cz)` and
+`(5,7,cz)` (‑x arm) place; `(7,6,cz)` and `(7,5,cz)` (‑y arm) stay empty, at the
+same zoom, in the same segment. The iso-projected `-y`-face aim mis-picks (the
+click resolves to a face/cell that isn't the intended `-y` neighbour), so the
+place is dropped with no feedback. This is a **primary-placement** limitation in
+the editor's picking / drag-state path — *not* the mirror code, which is
+symmetric and is proven working on both axes by the stem checks (`(7,8,·)` Y
+mirror and `(8,7,·)` X mirror both fill). A human hand-authoring would hit the
+same wall: some faces of a voxel can't be clicked to grow in that direction at
+this camera. Worked around here by growing the cap in `-x`/`-z` only and taking
+its y-thickness from the Y mirror (a wide flat cap); filed as #2575.
+
+**The MUSHROOM** — a radially-symmetric (4-fold, X+Y mirror) cap + stem on two
+layers — is authored by: clearing the ground to a 2×2 stem base (symmetry off),
+enabling X+Y mirror and growing a 2×2 stem column from one authored quadrant,
+adding a **new layer (K)** for a wider flat cap, exercising **visibility (H)**
+with a hide→assert-empty / show→assert-full pair, and a **save→reload (Ctrl+O)
+round-trip**. Every stem/cap occupancy check reads a *mirror-created* cell (the
+recipe only ever clicks the low-x quadrant), so a broken mirror fails the run.
+`author-entity.py mushroom` → **20/20 GUI-ASSERT PASS, determinism gate
+byte-identical**, `mushroom.vxs` committed. Renders in `IRShapeDebug --load-vxs`
+(see `docs/pr-screenshots/`).
+
+Findings:
+
+- **F-2e-1 — the shadow model must be symmetry-aware, or the recipe can't aim at
+  mirror-created geometry.** Once the editor mirrors edits, a cell the recipe
+  never clicked exists in the live set, and a later gesture may need to anchor on
+  it or assert it. `OccupancyModel::setMirrored` / `setBoxMirrored` mirror the
+  model with the same `applyMirrors` + centre plane the editor uses, so aiming
+  and occupancy stay in lockstep with reality. (The occupancy *assertions* still
+  read the live set, not the model — the model only aims.)
+- **F-2e-2 — hide/show is a clean positive-fire for layer visibility.** A hidden
+  layer's voxels report `alpha == 0` (the same liveness test `evaluateOccupancyCheck`
+  reads), so `toggleActiveLayerVisibility()` (H) then asserting the cap cell reads
+  empty, and toggling back asserting it reads full, exercises the visibility path
+  with no GUI-widget click — the checkbox is a hotkey. The recipe leaves the cap
+  visible before saving so the asset is intact.
+- **F-2e-3 — the reload round-trip must issue no aiming ops after Ctrl+O.** Load
+  repopulates the live set from disk but the builder's shadow model is not
+  re-synced, so the `reload()` op is documented as terminal: only occupancy
+  asserts (which read the live reloaded set) may follow it. The mushroom asserts
+  stem, stem-mirror, and cap cells all survive the disk round-trip.
