@@ -27,6 +27,52 @@ struct C_CadB {
     int m_ = 0;
 };
 
+} // namespace
+
+namespace IRSystem {
+
+// #2450 — the second registration path onto the same gate. The suite's other
+// cases all drive the `createSystem` trailing-parameter spelling; these two
+// specs cover `registerSystem<N>`'s constexpr-member detection
+// (`detail::cadenceOf` / `cadenceOffsetOf`), which no test exercised.
+// Execution counting rides beginTick, matching the file's convention.
+template <> struct System<TEST_CADENCE_SPEC_MEMBER> {
+    static constexpr std::uint32_t kCadence = 3;
+    static constexpr std::uint32_t kCadenceOffset = 1;
+
+    int execCount_ = 0;
+
+    void beginTick() {
+        execCount_++;
+    }
+
+    void tick(C_CadA &) {}
+
+    static SystemId create() {
+        return registerSystem<TEST_CADENCE_SPEC_MEMBER, C_CadA>("CadenceSpecMember");
+    }
+};
+
+// The same shape declaring NEITHER member — the detectors must fall back to
+// cadence 1 / offset 0 so every legacy spec keeps its every-tick behavior.
+template <> struct System<TEST_CADENCE_SPEC_DEFAULT> {
+    int execCount_ = 0;
+
+    void beginTick() {
+        execCount_++;
+    }
+
+    void tick(C_CadA &) {}
+
+    static SystemId create() {
+        return registerSystem<TEST_CADENCE_SPEC_DEFAULT, C_CadA>("CadenceSpecDefault");
+    }
+};
+
+} // namespace IRSystem
+
+namespace {
+
 class SystemCadenceTest : public testing::Test {
   protected:
     SystemCadenceTest()
@@ -452,6 +498,51 @@ TEST_F(SystemCadenceTest, FirstEverJoinToRenderIsSilentWhenUpdateHostsAnotherSys
     // UPDATE's pipeline exists but lists only `resident` — sys has never joined
     // anything, so the prior-pipeline lookup must find it absent.
     EXPECT_NO_THROW(m_system_manager.appendToPipeline(IRTime::RENDER, sys));
+}
+
+// #2450: a System<N> spec's `kCadence` / `kCadenceOffset` members are both
+// DETECTED (readable through the public getters) and DRIVE the gate (an
+// observable fire count), with no createSystem trailing-parameter spelling
+// anywhere in the path.
+TEST_F(SystemCadenceTest, SpecMemberCadenceDetectedAndDrivesGate) {
+    auto sys = IRSystem::createSystem<IRSystem::TEST_CADENCE_SPEC_MEMBER>();
+    m_system_manager.registerPipeline(IRTime::UPDATE, {sys}); // stamp: lastRun = 0 + 1 = 1
+
+    EXPECT_EQ(m_system_manager.getSystemCadence(sys), 3u);
+    EXPECT_EQ(m_system_manager.getSystemCadenceOffset(sys), 1u);
+
+    for (int i = 0; i < 12; ++i) {
+        m_system_manager.executePipeline(IRTime::UPDATE);
+    }
+
+    auto *params =
+        m_system_manager.getSystemParams<IRSystem::System<IRSystem::TEST_CADENCE_SPEC_MEMBER>>(sys);
+    ASSERT_NE(params, nullptr);
+    // Due at now >= lastRun + cadence: fires on phase ticks 4, 7, 10.
+    EXPECT_EQ(params->execCount_, 3);
+    EXPECT_EQ(m_system_manager.getAccumulatedTicks(sys), 3u);
+}
+
+// #2450: the absent-members default. A spec that declares neither member
+// must register at cadence 1 / offset 0 and fire every tick — the guarantee
+// that made the detectors safe to add to every legacy spec.
+TEST_F(SystemCadenceTest, SpecWithoutCadenceMembersDefaultsToEveryTick) {
+    auto sys = IRSystem::createSystem<IRSystem::TEST_CADENCE_SPEC_DEFAULT>();
+    m_system_manager.registerPipeline(IRTime::UPDATE, {sys});
+
+    EXPECT_EQ(m_system_manager.getSystemCadence(sys), 1u);
+    EXPECT_EQ(m_system_manager.getSystemCadenceOffset(sys), 0u);
+
+    for (int i = 0; i < 5; ++i) {
+        m_system_manager.executePipeline(IRTime::UPDATE);
+    }
+
+    auto *params =
+        m_system_manager.getSystemParams<IRSystem::System<IRSystem::TEST_CADENCE_SPEC_DEFAULT>>(
+            sys
+        );
+    ASSERT_NE(params, nullptr);
+    EXPECT_EQ(params->execCount_, 5);
 }
 
 } // namespace

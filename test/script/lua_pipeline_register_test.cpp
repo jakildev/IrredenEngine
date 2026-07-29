@@ -4,11 +4,15 @@
 #include <irreden/common/components/component_local_transform_lua.hpp>
 #include <irreden/common/components/component_modifiers.hpp>
 #include <irreden/common/modifier.hpp>
+#include <irreden/ir_constants.hpp>
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_system.hpp>
 #include <irreden/ir_time.hpp>
 #include <irreden/script/lua_script.hpp>
+#include <irreden/time/time_manager.hpp>
 #include <irreden/update/systems/system_lifetime.hpp>
+
+#include <string>
 
 namespace {
 
@@ -481,6 +485,180 @@ TEST_F(LuaPipelineRegisterTest, AppendSystemRejectsInvalidEvent) {
     auto &lua = m_lua.lua();
     auto result = lua.safe_script("IRSystem.appendSystem(999, 0)", sol::script_pass_on_error);
     EXPECT_FALSE(result.valid());
+}
+
+// ---- Cadence bindings — the #2404 Lua seam --------------------------------
+
+// The six `IRSystem.*` cadence functions are a surface of their own: driving
+// `SystemManager` directly (test/system/system_cadence_test.cpp) proves
+// nothing about the sol2 layer in front of it. Own fixture so the file's
+// existing cases stay untouched; it additionally carries a TimeManager because
+// `accumulatedDeltaTime` reads `IRTime::deltaTime(UPDATE)`, which asserts on a
+// null `g_timeManager`. A bare TimeManager constructs standalone (no window /
+// GL) and its UPDATE dt is the constant fixed step, so the value is
+// deterministic here.
+class LuaCadenceTest : public testing::Test {
+  protected:
+    LuaCadenceTest() {
+        m_lua.bindLuaDrivenEcs();
+    }
+
+    // Registers a Lua system throttled to cadence 3 with ONE matched entity,
+    // then runs `ticks` UPDATE ticks. The matched entity is mandatory — a Lua
+    // system's body fires per matched *archetype*, so with zero entities the
+    // body never runs and any fire-count assertion passes vacuously.
+    //
+    // The body writes back what it observes from inside the throttled tick:
+    // `g_tickCount` counts fires, `g_acc` / `g_dt` snapshot the accumulated
+    // readbacks. Cadence is set AFTER the pipeline join, so the join seeds
+    // `lastRun = 0` and the system is due at `now >= lastRun + 3`.
+    void runThrottledLuaSystem(int ticks) {
+        auto &lua = m_lua.lua();
+        lua["g_tickCount"] = 0;
+        lua["g_acc"] = 0;
+        lua["g_dt"] = 0.0;
+        lua["g_entity"] = static_cast<lua_Integer>(IREntity::createEntity(C_Modifiers{}));
+
+        auto setup = lua.safe_script(
+            R"(
+            Marker = IRComponent.register("CadenceThrottleMarker", { dummy = 0 })
+            g_sys = IRSystem.registerSystem({
+                name = "CadenceThrottleSys",
+                components = { Marker },
+                tick = function(arch)
+                    g_tickCount = g_tickCount + 1
+                    g_acc = IRSystem.getAccumulatedTicks(g_sys)
+                    g_dt = IRSystem.accumulatedDeltaTime(g_sys)
+                end,
+            })
+            IREntity.addLuaComponent(LuaEntity.new(g_entity), Marker)
+            IRSystem.registerPipeline(IRTime.UPDATE, { g_sys })
+            IRSystem.setSystemCadence(g_sys, 3)
+        )",
+            sol::script_pass_on_error
+        );
+        ASSERT_TRUE(setup.valid()) << sol::error{setup}.what();
+
+        for (int i = 0; i < ticks; ++i) {
+            m_system_manager.executePipeline(IRTime::Events::UPDATE);
+        }
+    }
+
+    // Registers a tickless Lua system into the `g_sys` global — just something
+    // for the guard tests to aim a bad argument at.
+    void registerBareLuaSystem() {
+        auto setup = m_lua.lua().safe_script(
+            R"(
+            local Marker = IRComponent.register("CadenceGuardMarker", { dummy = 0 })
+            g_sys = IRSystem.registerSystem({
+                name = "CadenceGuardSys",
+                components = { Marker },
+                tick = function(arch) end,
+            })
+        )",
+            sol::script_pass_on_error
+        );
+        ASSERT_TRUE(setup.valid()) << sol::error{setup}.what();
+    }
+
+    // Member order is load-bearing: LuaScript FIRST so it is destroyed LAST —
+    // sol::function references captured in dynamic-system bodies lua_unref
+    // during manager teardown. See test/CLAUDE.md §"Lua seam tests".
+    IRScript::LuaScript m_lua;
+    IRTime::TimeManager m_time_manager;
+    IREntity::EntityManager m_entity_manager;
+    IRSystem::SystemManager m_system_manager;
+};
+
+TEST_F(LuaCadenceTest, SetGetRoundTripThroughLua) {
+    auto &lua = m_lua.lua();
+    auto result = lua.safe_script(
+        R"(
+        local Marker = IRComponent.register("CadenceRoundTripMarker", { dummy = 0 })
+        local sys = IRSystem.registerSystem({
+            name = "CadenceRoundTripSys",
+            components = { Marker },
+            tick = function(arch) end,
+        })
+
+        IRSystem.setSystemCadence(sys, 4)
+        IRSystem.setSystemCadenceOffset(sys, 3)
+        g_cadence = IRSystem.getSystemCadence(sys)
+        g_offset = IRSystem.getSystemCadenceOffset(sys)
+
+        -- The offset setter reduces into [0, cadence) against the CURRENT
+        -- cadence, so the manager's normalization has to survive the seam
+        -- intact: 7 against cadence 5 reads back as 2.
+        IRSystem.setSystemCadence(sys, 5)
+        IRSystem.setSystemCadenceOffset(sys, 7)
+        g_cadence_after = IRSystem.getSystemCadence(sys)
+        g_offset_normalized = IRSystem.getSystemCadenceOffset(sys)
+    )",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(result.valid()) << sol::error{result}.what();
+
+    EXPECT_EQ(lua["g_cadence"].get<int>(), 4);
+    EXPECT_EQ(lua["g_offset"].get<int>(), 3);
+    EXPECT_EQ(lua["g_cadence_after"].get<int>(), 5);
+    EXPECT_EQ(lua["g_offset_normalized"].get<int>(), 2);
+}
+
+TEST_F(LuaCadenceTest, ThrottledLuaSystemFiresOneInNAndReadsAccumulatedTicks) {
+    runThrottledLuaSystem(/*ticks=*/9);
+
+    auto &lua = m_lua.lua();
+    // Due at now >= lastRun + 3: fires on phase ticks 3, 6, 9 — an observable
+    // count, not a pass-at-default.
+    EXPECT_EQ(lua["g_tickCount"].get<int>(), 3);
+    // Read from inside the throttled body: each run covers 3 phase ticks.
+    EXPECT_EQ(lua["g_acc"].get<int>(), 3);
+}
+
+TEST_F(LuaCadenceTest, AccumulatedDeltaTimeScalesTicksByFixedStep) {
+    runThrottledLuaSystem(/*ticks=*/9);
+
+    auto &lua = m_lua.lua();
+    ASSERT_EQ(lua["g_tickCount"].get<int>(), 3);
+    // The seam must return ticks SCALED by the fixed UPDATE step, not the raw
+    // tick count. DOUBLE_EQ, not EQ: the engine computes 3 * (1/60) while the
+    // expectation writes 3/60, which can differ by an ULP.
+    EXPECT_DOUBLE_EQ(lua["g_dt"].get<double>(), 3.0 / static_cast<double>(IRConstants::kFPS));
+}
+
+TEST_F(LuaCadenceTest, CadenceBelowOneRaisesLuaError) {
+    registerBareLuaSystem();
+    auto &lua = m_lua.lua();
+
+    // The Lua seam THROWS on cadence < 1 where the C++ manager normalizes
+    // 0 -> 1 — a deliberate asymmetry accepted in #2425's review. Assert the
+    // throw, not the normalization.
+    auto result = lua.safe_script("IRSystem.setSystemCadence(g_sys, 0)", sol::script_pass_on_error);
+    ASSERT_FALSE(result.valid());
+    const std::string message = sol::error{result}.what();
+    EXPECT_NE(message.find("cadence must be >= 1"), std::string::npos) << message;
+
+    // Positive control: the guard rejects the ARGUMENT, not the call. Without
+    // this, a broken `g_sys` would produce the same red-to-green reading,
+    // since the binding throws before it ever reaches the manager.
+    auto legal = lua.safe_script("IRSystem.setSystemCadence(g_sys, 1)", sol::script_pass_on_error);
+    EXPECT_TRUE(legal.valid()) << sol::error{legal}.what();
+}
+
+TEST_F(LuaCadenceTest, NegativeOffsetRaisesLuaError) {
+    registerBareLuaSystem();
+    auto &lua = m_lua.lua();
+
+    auto result =
+        lua.safe_script("IRSystem.setSystemCadenceOffset(g_sys, -1)", sol::script_pass_on_error);
+    ASSERT_FALSE(result.valid());
+    const std::string message = sol::error{result}.what();
+    EXPECT_NE(message.find("offset must be >= 0"), std::string::npos) << message;
+
+    // Positive control, as above: the same sysId accepts a legal offset.
+    auto legal =
+        lua.safe_script("IRSystem.setSystemCadenceOffset(g_sys, 0)", sol::script_pass_on_error);
+    EXPECT_TRUE(legal.valid()) << sol::error{legal}.what();
 }
 
 } // namespace
