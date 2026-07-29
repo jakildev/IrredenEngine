@@ -320,3 +320,32 @@ TEST_F(PerCanvasLightScopeTest, GatherSpotFlagsHasSpotAndCarriesTrueOrigin) {
     // Type lane still encodes SPOT for the consumer's branch.
     EXPECT_EQ(static_cast<int>(out[0].originAndType_.w), static_cast<int>(LightType::SPOT));
 }
+
+// #2341: COMPUTE_LIGHT_VOLUME re-uploads the GLOBAL LightSourceBuffer /
+// LightVolumeParamsBuffer per canvas, so after its tick they describe only the
+// last processed canvas — while LIGHTING_TO_TRIXEL reads them per canvas. The
+// endTick guard trips exactly when that cannot be simultaneously correct.
+// Pure predicate: no RenderManager, no GPU, no death test.
+TEST(LightVolumeGlobalBufferGuardTest, TripsForMultiCanvasWithSpot) {
+    // The positive fire — 2+ processed canvases and some canvas seeded a SPOT
+    // means the per-canvas-varying has-SPOT gate / light list is already lost.
+    EXPECT_FALSE(IRSystem::detail::lightVolumeGlobalBufferSafe(2, /*anySpot=*/true));
+    EXPECT_FALSE(IRSystem::detail::lightVolumeGlobalBufferSafe(3, /*anySpot=*/true));
+}
+
+TEST(LightVolumeGlobalBufferGuardTest, PermitsConfigurationsCorrectToday) {
+    // Positive controls — the guard must stay silent on every config that
+    // renders correctly today, or it would abort shipping scenes.
+    // Single canvas: the globals ARE that canvas's data, spot or not.
+    EXPECT_TRUE(IRSystem::detail::lightVolumeGlobalBufferSafe(1, /*anySpot=*/true));
+    // Multi-canvas without a spot: the consumer's has-SPOT gate reads 0 for
+    // every canvas, so the stale light list is never indexed. This is the
+    // case that keeps #363's two-canvas `lighting_per_canvas_scope` demo
+    // silent — its sentinel canvas B IS processed and counted (the default
+    // C_TrixelCanvasRenderBehavior sets useCameraPositionIso_ = true), but
+    // the scene is emissive-only.
+    EXPECT_TRUE(IRSystem::detail::lightVolumeGlobalBufferSafe(2, /*anySpot=*/false));
+    // No processed light-volume canvas at all (every candidate canvas took
+    // the useCameraPositionIso_ early-return).
+    EXPECT_TRUE(IRSystem::detail::lightVolumeGlobalBufferSafe(0, /*anySpot=*/false));
+}
