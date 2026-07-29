@@ -94,10 +94,15 @@ void bindComputeResources(MTL::ComputeCommandEncoder *encoder) {
             markMetalBufferEncoded(storage.buffer_);
         }
 
+        // Sampler and image binds are mutually exclusive per unit (bindMetalTexture
+        // / bindMetalImageTexture evict each other), so at most one of these is
+        // non-null and the flush order no longer picks a winner — the most recent
+        // bind does. Keep the else-if: an unconditional second setTexture would
+        // reintroduce the #2350/#2360 shadowing the moment the tables ever diverge.
         if (MTL::Texture *texture = boundMetalTexture(i); texture != nullptr) {
             encoder->setTexture(texture, i);
-        }
-        if (MTL::Texture *imageTexture = boundMetalImageTexture(i); imageTexture != nullptr) {
+        } else if (MTL::Texture *imageTexture = boundMetalImageTexture(i);
+                   imageTexture != nullptr) {
             encoder->setTexture(imageTexture, i);
         }
     }
