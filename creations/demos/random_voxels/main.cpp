@@ -72,10 +72,10 @@ using namespace IRComponents;
 namespace {
 
 // Isometric field: a gridN x gridN carpet of small cubes, centered on origin.
-constexpr int kGridN = 6;                     // cubes per side
-constexpr IRMath::ivec3 kCubeDims{4, 4, 4};   // voxels per field cube
+constexpr int kGridN = 6;                      // cubes per side
+constexpr IRMath::ivec3 kCubeDims{4, 4, 4};    // voxels per field cube
 constexpr IRMath::ivec3 kPillarDims{4, 12, 4}; // taller corner landmark
-constexpr float kSpacing = 6.0f;              // world-unit gap between cube centers
+constexpr float kSpacing = 6.0f;               // world-unit gap between cube centers
 
 // Neutral color for the locked corner pillars — random recoloring never lands
 // on flat white, so persistent white pillars read as intentionally fixed.
@@ -109,8 +109,7 @@ IRMath::Color invertColor(IRMath::Color c) {
 IRMath::Color grayscaleColor(IRMath::Color c) {
     // Integer Rec.601 luminance: (77r + 150g + 29b) / 256 (weights sum to 256,
     // so a white voxel maps back to 255). Stays in integer math — no glm/std.
-    const auto lum =
-        static_cast<uint8_t>((77 * c.red_ + 150 * c.green_ + 29 * c.blue_) >> 8);
+    const auto lum = static_cast<uint8_t>((77 * c.red_ + 150 * c.green_ + 29 * c.blue_) >> 8);
     return IRMath::Color{lum, lum, lum, c.alpha_};
 }
 
@@ -256,9 +255,7 @@ void initEntities() {
     const float half = (kGridN - 1) * 0.5f;
     // Two-axis gradient so the initial field reads as intentional and the
     // recolor is an obvious shuffle away from it.
-    const auto channel = [](int v) {
-        return static_cast<uint8_t>(40 + (200 * v) / (kGridN - 1));
-    };
+    const auto channel = [](int v) { return static_cast<uint8_t>(40 + (200 * v) / (kGridN - 1)); };
     for (int i = 0; i < kGridN; ++i) {
         for (int j = 0; j < kGridN; ++j) {
             const IRMath::vec3 pos{(i - half) * kSpacing, 0.0f, (j - half) * kSpacing};

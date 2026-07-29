@@ -107,10 +107,10 @@ constexpr ivec3 kTotemSize{8, 6, 16}; // x forward, y lateral, z up
 
 // Band palette. Saturated primaries so the readback classifier survives the
 // raster's per-face shading (classification is by channel RATIO, not value).
-constexpr Color kBandRed{230, 40, 40, 255};     // feet   z [0,4)
-constexpr Color kBandGreen{40, 210, 60, 255};   // shins  z [4,8)
-constexpr Color kBandBlue{40, 90, 230, 255};    // torso  z [8,12)
-constexpr Color kBandWhite{245, 245, 245, 255}; // head   z [12,16)
+constexpr Color kBandRed{230, 40, 40, 255};      // feet   z [0,4)
+constexpr Color kBandGreen{40, 210, 60, 255};    // shins  z [4,8)
+constexpr Color kBandBlue{40, 90, 230, 255};     // torso  z [8,12)
+constexpr Color kBandWhite{245, 245, 245, 255};  // head   z [12,16)
 constexpr Color kBandMagenta{230, 40, 230, 255}; // +x face marker on the torso
 
 enum BandId : int {
@@ -130,9 +130,9 @@ constexpr const char *kBandNames[kBandCount]{"RED", "GREEN", "BLUE", "WHITE", "M
 // rotated solid's band centroid shifts around the model origin, so an
 // unrotated anchor would mis-predict the rotated totem's centroid.
 constexpr float kTotemZ = 6.0f;
-constexpr vec3 kGridPos{-14.0f, 14.0f, kTotemZ};      // identity anchor
-constexpr vec3 kDetachedPos{0.0f, 0.0f, kTotemZ};     // identity, avatar config
-constexpr vec3 kRevoxPos{14.0f, -14.0f, kTotemZ};     // 45deg-Z seed
+constexpr vec3 kGridPos{-14.0f, 14.0f, kTotemZ};       // identity anchor
+constexpr vec3 kDetachedPos{0.0f, 0.0f, kTotemZ};      // identity, avatar config
+constexpr vec3 kRevoxPos{14.0f, -14.0f, kTotemZ};      // 45deg-Z seed
 constexpr vec3 kGridSeededPos{-28.0f, 28.0f, kTotemZ}; // 45deg-Z anchor
 // 45deg-Z again, but spawned WITHOUT C_RotationMode (#2376). Mirrors the
 // seeded anchor across the row so it sits at the same distance from screen
@@ -244,15 +244,9 @@ void paintTotemBandsRawIdiom(C_VoxelSetNew &voxelSet) {
 // ---- Spawns ---------------------------------------------------------------
 
 // The explicit-C_RotationMode spawn. Both parity anchors use it, so the
-// anchors stay on the archetype REBUILD_GRID_VOXELS itself ticks.
-//
-// The component used to be load-bearing here: REBUILD_GRID_VOXELS's archetype
-// required it, so the seeded twin spawned without it silently rasterized at
-// identity — which made the revox parity anchor compare a rotated solid
-// against an unrotated one (the probe-side half of #2349's original
-// mis-measurement). #2376 closed that gap with the implicit twin arm, and
-// `spawnGridTotemNoRotationMode` below is the regression totem that keeps it
-// closed.
+// anchors stay on the archetype REBUILD_GRID_VOXELS itself ticks — the
+// measurement is then a GRID-vs-GRID comparison at a known pose, not a
+// cross-arm one (see #2349 for the mis-measurement that motivates it).
 IREntity::EntityId spawnGridTotem(vec3 worldPos, vec4 rotation) {
     IREntity::EntityId totem = IREntity::createEntity(
         C_LocalTransform{worldPos, rotation},
@@ -278,14 +272,10 @@ IREntity::EntityId spawnGridTotemNoRotationMode(vec3 worldPos, vec4 rotation) {
 }
 
 IREntity::EntityId spawnDetachedTotem(
-    const char *canvasName,
-    RotationMode mode,
-    vec3 worldPos,
-    IREntity::EntityId &outCanvasEntity
+    const char *canvasName, RotationMode mode, vec3 worldPos, IREntity::EntityId &outCanvasEntity
 ) {
-    C_EntityCanvas canvas = IRPrefab::EntityCanvas::createWithVoxelPool(
-        canvasName, kProbeCanvasSize, kProbePoolSize
-    );
+    C_EntityCanvas canvas =
+        IRPrefab::EntityCanvas::createWithVoxelPool(canvasName, kProbeCanvasSize, kProbePoolSize);
     canvas.screenLocked_ = false; // world-placed: the game-avatar configuration
     outCanvasEntity = canvas.canvasEntity_;
 
@@ -304,9 +294,8 @@ IREntity::EntityId spawnDetachedTotem(
     // The plain-DETACHED totem stays at identity (the walking-avatar
     // configuration); the re-voxelize one seeds the off-cardinal pose so the
     // probe also covers the real rotation bake.
-    const vec4 seedRotation = mode == RotationMode::DETACHED_REVOXELIZE
-        ? kSeedRotation
-        : vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    const vec4 seedRotation =
+        mode == RotationMode::DETACHED_REVOXELIZE ? kSeedRotation : vec4(0.0f, 0.0f, 0.0f, 1.0f);
     IREntity::EntityId totem = IREntity::createEntity(
         C_LocalTransform{worldPos, seedRotation},
         C_RotationMode{mode},
@@ -333,12 +322,10 @@ void driveWalk() {
     const int phase = (g_walkFrame - g_autoWarmupFrames) % period;
     const float t = static_cast<float>(phase) * kStep;
     const float offset = (t <= kSpan) ? t : 2.0f * kSpan - t; // triangle wave
-    const vec3 delta{offset, -offset, 0.0f}; // stays on the iso row
+    const vec3 delta{offset, -offset, 0.0f};                  // stays on the iso row
 
-    IREntity::getComponent<C_LocalTransform>(g_detachedTotem).translation_ =
-        kDetachedPos + delta;
-    IREntity::getComponent<C_LocalTransform>(g_revoxTotem).translation_ =
-        kRevoxPos + delta;
+    IREntity::getComponent<C_LocalTransform>(g_detachedTotem).translation_ = kDetachedPos + delta;
+    IREntity::getComponent<C_LocalTransform>(g_revoxTotem).translation_ = kRevoxPos + delta;
 }
 
 // ---- Readback + classification ---------------------------------------------
@@ -386,8 +373,12 @@ struct BandStats {
         sumY_ += y;
         ++count_;
     }
-    double centroidX() const { return count_ > 0 ? sumX_ / count_ : 0.0; }
-    double centroidY() const { return count_ > 0 ? sumY_ / count_ : 0.0; }
+    double centroidX() const {
+        return count_ > 0 ? sumX_ / count_ : 0.0;
+    }
+    double centroidY() const {
+        return count_ > 0 ? sumY_ / count_ : 0.0;
+    }
 };
 
 // Read back one RGBA8 texture and accumulate per-band stats over the whole
@@ -399,11 +390,12 @@ void accumulateBands(
     const std::vector<double> &bucketCenters,
     std::vector<std::array<BandStats, kBandCount>> &outBuckets
 ) {
-    std::vector<std::uint8_t> pixels(
-        static_cast<size_t>(size.x) * static_cast<size_t>(size.y) * 4
-    );
+    std::vector<std::uint8_t> pixels(static_cast<size_t>(size.x) * static_cast<size_t>(size.y) * 4);
     texture->getSubImage2D(
-        0, 0, size.x, size.y,
+        0,
+        0,
+        size.x,
+        size.y,
         IRRender::PixelDataFormat::RGBA,
         IRRender::PixelDataType::UNSIGNED_BYTE,
         pixels.data()
@@ -487,9 +479,7 @@ CentroidResidual measureCentroidResidual(
 // falling back to the feet (RED) so a measurement still reports while an
 // inversion bug hides the head. -1 when the two share no visible band.
 int sharedBand(
-    const std::vector<std::array<BandStats, kBandCount>> &fbBuckets,
-    int bucketA,
-    int bucketB
+    const std::vector<std::array<BandStats, kBandCount>> &fbBuckets, int bucketA, int bucketB
 ) {
     for (int candidate : {kWhite, kRed}) {
         if (fbBuckets[static_cast<size_t>(bucketA)][static_cast<size_t>(candidate)].count_ > 0 &&
@@ -512,7 +502,8 @@ void assertDetachedCanvas(
     if (!texturesOpt.has_value()) {
         IR_LOG_ERROR(
             "[detached-probe-assert] shot={} canvas={} missing textures result=FAIL",
-            shotLabel, canvasName
+            shotLabel,
+            canvasName
         );
         g_anyProbeFailure = true;
         return;
@@ -548,7 +539,10 @@ void assertDetachedCanvas(
     }
     IR_LOG_INFO(
         "[detached-probe-assert] shot={} canvas={} bands={}/4 orientation={} clipped={} result={}",
-        shotLabel, canvasName, present, orientation,
+        shotLabel,
+        canvasName,
+        present,
+        orientation,
         clipped.empty() ? "none" : clipped.c_str(),
         pass ? "PASS" : "FAIL"
     );
@@ -581,7 +575,8 @@ void assertPlacementParity(
         if (band < 0) {
             IR_LOG_ERROR(
                 "[detached-probe-parity] shot={} totem={} no shared band visible result=FAIL",
-                shotLabel, totem.name_
+                shotLabel,
+                totem.name_
             );
             g_anyProbeFailure = true;
             continue;
@@ -617,8 +612,15 @@ void assertPlacementParity(
         IR_LOG_INFO(
             "[detached-probe-parity] shot={} totem={} band={} measured=({:.1f},{:.1f}) "
             "expected=({:.1f},{:.1f}) tol=({:.1f},{:.1f}) result={}",
-            shotLabel, totem.name_, kBandNames[band], residual.measuredDx_, residual.measuredDy_,
-            residual.expectedGamePx_.x, residual.expectedGamePx_.y, toleranceX, toleranceY,
+            shotLabel,
+            totem.name_,
+            kBandNames[band],
+            residual.measuredDx_,
+            residual.measuredDy_,
+            residual.expectedGamePx_.x,
+            residual.expectedGamePx_.y,
+            toleranceX,
+            toleranceY,
             pass ? "PASS" : "FAIL"
         );
     }
@@ -668,7 +670,9 @@ void assertImplicitGridParity(
         IR_LOG_ERROR(
             "[detached-probe] DOMAIN-STATE grid-default-parity shot={} "
             "no shared band visible (match={} distinct={}) result=FAIL",
-            shotLabel, matchBand, distinctBand
+            shotLabel,
+            matchBand,
+            distinctBand
         );
         g_anyProbeFailure = true;
         return;
@@ -703,8 +707,15 @@ void assertImplicitGridParity(
         "[detached-probe] DOMAIN-STATE grid-default-parity shot={} "
         "match_vs_seeded=({:.1f},{:.1f}) distinct_vs_identity=({:.1f},{:.1f}) tol={:.1f} "
         "matched={} distinct={} result={}",
-        shotLabel, match.errX_, match.errY_, distinct.errX_, distinct.errY_, tolerance,
-        matched ? "yes" : "no", distinctEnough ? "yes" : "no", pass ? "PASS" : "FAIL"
+        shotLabel,
+        match.errX_,
+        match.errY_,
+        distinct.errX_,
+        distinct.errY_,
+        tolerance,
+        matched ? "yes" : "no",
+        distinctEnough ? "yes" : "no",
+        pass ? "PASS" : "FAIL"
     );
 }
 
@@ -778,8 +789,11 @@ void initCommands();
 void initEntities();
 
 int main(int argc, char **argv) {
-    IREngine::args().flag("--probe-assert", "Read back canvases on each capture and assert "
-                                            "band presence / orientation / placement parity");
+    IREngine::args().flag(
+        "--probe-assert",
+        "Read back canvases on each capture and assert "
+        "band presence / orientation / placement parity"
+    );
     IREngine::args().flag("--walk", "Ping-pong the detached totems along the iso row");
     IR_LOG_INFO("Starting creation: detached_probe");
     IREngine::init(argc, argv);
@@ -866,9 +880,15 @@ void initEntities() {
     g_gridSeededTotem = spawnGridTotem(kGridSeededPos, kSeedRotation);
     g_gridImplicitTotem = spawnGridTotemNoRotationMode(kGridImplicitPos, kSeedRotation);
     g_detachedTotem = spawnDetachedTotem(
-        "probe_detached", RotationMode::DETACHED, kDetachedPos, g_detachedCanvas
+        "probe_detached",
+        RotationMode::DETACHED,
+        kDetachedPos,
+        g_detachedCanvas
     );
     g_revoxTotem = spawnDetachedTotem(
-        "probe_revox", RotationMode::DETACHED_REVOXELIZE, kRevoxPos, g_revoxCanvas
+        "probe_revox",
+        RotationMode::DETACHED_REVOXELIZE,
+        kRevoxPos,
+        g_revoxCanvas
     );
 }

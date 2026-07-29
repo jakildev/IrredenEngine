@@ -49,8 +49,8 @@
 // flags").
 //
 // Entities WITHOUT `C_RotationMode` are implicitly GRID and are covered by
-// the twin arm at the bottom of this header (`REBUILD_GRID_VOXELS_IMPLICIT`,
-// #2376) — register both wherever this one registers.
+// the twin arm `REBUILD_GRID_VOXELS_IMPLICIT` in this same header — register
+// both wherever this one registers.
 //
 // Skipped (early returns):
 //  - `C_RotationMode::mode_ != GRID` — DETACHED entities rotate through
@@ -590,19 +590,16 @@ template <> struct System<REBUILD_GRID_VOXELS> {
 // carry NO C_RotationMode (#2376).
 //
 // `component_rotation_mode.hpp` documents absence of the component as
-// implicitly GRID, and every other consumer honors that
-// (`IRPrefab::RotationMode::setMode` defaults to GRID via
-// `getComponentOptional`). The re-rasterize above was the one archetype-gated
-// violator: a component-less entity never matched it, so only the
-// translate-only baseline from UPDATE_VOXEL_SET_CHILDREN wrote its world
-// cells and an authored rotation/scale silently rendered as identity — with
-// nothing logged. The rotation drivers (AUTO_SPIN_LOCAL_TRANSFORM,
-// ROTATION_TARGET_LOCAL_TRANSFORM) query neither C_RotationMode nor
-// C_VoxelSetNew, so they happily author a rotation that then never showed.
+// implicitly GRID; this arm is what makes that true of the re-rasterize,
+// whose own archetype requires the component. Without it a component-less
+// entity gets only the translate-only baseline from UPDATE_VOXEL_SET_CHILDREN
+// and its authored rotation/scale renders as identity, silently — and the
+// rotation drivers (AUTO_SPIN_LOCAL_TRANSFORM, ROTATION_TARGET_LOCAL_TRANSFORM)
+// query neither C_RotationMode nor C_VoxelSetNew, so nothing upstream notices.
 //
 // The two systems partition the population: `Exclude<C_RotationMode>` here
-// vs. the required `C_RotationMode` above. No entity is ever ticked twice,
-// and an entity that gains or loses the component (`setMode`) migrates
+// vs. the required `C_RotationMode` on the main arm. No entity is ever ticked
+// twice, and an entity that gains or loses the component (`setMode`) migrates
 // archetypes and switches arms on its own — no special handling.
 //
 // Composition, not a refactor of the hot body: this spec owns a
@@ -610,6 +607,21 @@ template <> struct System<REBUILD_GRID_VOXELS> {
 // identity / forward arms and all of their reused scratch capacity stay in
 // exactly one place. The delegate's scratch is per-instance, so the two
 // systems never share buffers.
+//
+// The sibling include/exclude twin in the tree (MODIFIER_RESOLVE_GLOBAL /
+// MODIFIER_RESOLVE_EXEMPT) instead shares its body through a `detail::` free
+// function. That shape fits a pure compose step; it does not fit here,
+// because the GRID body carries a dozen pieces of reused per-frame scratch —
+// hoisting them into a shared struct just reinvents `System<N>`.
+//
+// Cost: component-less sets now pay the same cull-gated per-frame
+// re-rasterize an explicit `C_RotationMode{GRID}` set already pays — no new
+// cost CLASS, but it is new cost for that population, and the identity arm's
+// per-voxel face-occupancy recompute dominates it. Measured on shape_debug
+// (macOS/Metal, 300 frames, 8 component-less sets): ~0.19-0.26 ms per UPDATE
+// tick for this system, ~0.13 ms/frame at the demo's tick rate, against an
+// ~8.5 ms frame. The cull gate bounds it to visible sets; a scene with many
+// large static component-less sets pays proportionally more.
 template <> struct System<REBUILD_GRID_VOXELS_IMPLICIT> {
     // The mode an absent component means. Passing it explicitly keeps the
     // delegate's GRID gate intact rather than carving a second entry point
@@ -618,7 +630,9 @@ template <> struct System<REBUILD_GRID_VOXELS_IMPLICIT> {
 
     System<REBUILD_GRID_VOXELS> impl_;
 
-    void beginTick() { impl_.beginTick(); }
+    void beginTick() {
+        impl_.beginTick();
+    }
 
     void tick(C_VoxelSetNew &voxelSet, const C_WorldTransform &worldTransform) {
         impl_.tick(voxelSet, worldTransform, kImplicitGrid);
