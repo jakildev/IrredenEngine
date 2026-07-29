@@ -903,6 +903,10 @@ void writeOutput(
     // run's components (the engine test binary links three runs, so it breaks
     // first). Per-component work belongs in the emitted `bindLuaType<C_X>`,
     // whose name is unique — that is where the #2446 attach factory lives.
+    // That escape hatch holds only while component struct names are unique
+    // across the runs linked into one binary: `bindLuaType<C_X>` is emitted
+    // `template <> inline`, so two runs declaring the same component name
+    // merge the same way, swapping attach factories. #2609 owns the fix.
     os << "namespace IRScript::CodegenRegistry {\n\n";
     os << "inline void registerCodegenComponents(IRScript::LuaScript &luaScript) {\n";
     os << "    auto &em = IREntity::getEntityManager();\n";

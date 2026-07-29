@@ -42,7 +42,12 @@ class World {
     // m_lua must lead the manager block: EntityManager's archetype columns
     // can hold sol::object refs (Lua-typed components, see T-100). Members
     // destruct in reverse declaration order, so sol::state has to outlive
-    // EntityManager or those refs UAF on shutdown.
+    // EntityManager or those refs UAF on shutdown. A second consumer rides
+    // the same ordering (#2446): EntityManager's staged structural-change
+    // queue holds lambdas capturing `LuaScript *` (IREntity.deferredCreate's
+    // attach op), which a reorder would leave dangling. That queue is
+    // normally empty at teardown, so no test would catch the regression —
+    // treat this order as load-bearing for both reasons.
     IRScript::LuaScript m_lua;
     IREntity::EntityManager m_entityManager;
     IRSystem::SystemManager m_systemManager;

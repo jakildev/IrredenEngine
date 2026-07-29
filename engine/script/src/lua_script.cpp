@@ -671,6 +671,11 @@ void LuaScript::bindLuaDrivenEcs() {
             }
         }
         const IREntity::EntityId entity = em.createEntityDeferred();
+        // Capturing `this` is sound for the queue's whole lifetime: the queue
+        // is an EntityManager member and World declares m_lua ahead of
+        // m_entityManager, so the manager — and every lambda staged on it —
+        // is destroyed while the LuaScript is still alive. That member order
+        // is load-bearing; see the comment on it in world.hpp before moving it.
         em.stageStructuralChange([this, entity, pending = std::move(pending)]() {
             for (const auto &[componentId, overrides] : pending) {
                 attachComponentFromLua(entity, componentId, overrides);

@@ -380,7 +380,13 @@ and type-mismatched values are ignored, matching the EVAL path's
 > out-of-line `linkonce_odr` copy, the linker merges every run into one winner,
 > and callers silently get an arbitrary run's components. The engine test binary
 > links three codegen runs and is where this bites first. Per-component work
-> belongs in `bindLuaType<C_Name>`, whose name is unique.
+> belongs in `bindLuaType<C_Name>`, whose name is unique — but only *while*
+> component struct names are unique across the runs linked into one binary.
+> `bindLuaType<C_Name>` is emitted `template <> inline`, so two runs declaring
+> a same-named component merge exactly the way `registerCodegenComponents`
+> does, and post-#2446 that silently swaps **attach factories**, not just
+> registrations. (The emitted structs would already collide in that case — a
+> wider symptom of the same root cause, which #2609 owns.)
 
 **CODEGEN supports:** `int32` / `float` / `bool` / `string` / `vec3` / `ivec3`
 field types and both the short form (`current = 100`) and the explicit-type
