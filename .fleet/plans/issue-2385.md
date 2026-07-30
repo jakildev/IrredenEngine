@@ -73,6 +73,112 @@ light-verify harness from #2317 — `scripts/light-verify.py` domain matrix — 
 the acceptance oracle). Acceptance criterion 7 records the **Linux/GL smoke
 owed**: the GL twin is unbuilt on the macOS pane.
 
+## Approach recap (from v2 — the comment stays canonical)
+
+Increase the #2270 coverage-splat radius `kSunSplatMaxTexels`, widening the
+`packSunDepth` displacement encoding only if the radius must exceed the nibble
+cap. Phased so the free in-nibble measurement precedes any encoding change:
+**Phase 0** bumps 6 → 7 and re-captures the genuine-cast metric, with an
+early exit ("ship the constant bump alone, skip Phase 1") if r7 clears the bar
+without ballooning cast-ROI px, and a documented bail to
+`fleet:design-blocked` if r6 → r7 does not reduce component count at all;
+**Phase 1** (only on Phase-0 failure) widens the displacement field 8 → 10
+bits and sweeps r ∈ {7,9,11,13,15} for the smallest clearing radius.
+
+Halo guard (both phases): the component / largest_frac metric *improves* with
+over-extension, so a radius is rejected if cast-ROI px balloons relative to the
+coverage gain, **and** `attach-screenshots` must show the cast edge staying
+crisp. The visual half is not optional.
+
+## Phase-0 measured outcome (2026-07-30, macOS/Metal, pool-2)
+
+Harness: `IRCanvasStress --debug-overlay shadow --no-auto-rotate --no-spin
+--auto-screenshot`, shot `shadow_overlay_floor` (g_allShots index 8),
+`scripts/render-shadow-metric.py --roi 1010,540,450,250`.
+
+**Controls both pass** (neither was run by the v1/v2 planning passes):
+
+- **A==A determinism.** Two back-to-back runs of the same binary → the shot is
+  **byte-identical**. The metric is trustworthy on this host for this shot
+  under freeze flags.
+- **Positive control.** `kSunSplatMaxTexels = 0` (documented kill switch)
+  collapses the cast to 6936 px / 91 comp / 0.3230 frac — the splat path is
+  live and the radius lever reaches this observable.
+
+| config | shadow_px | components | largest_frac |
+|---|---|---|---|
+| r0 (splat off) | 6936 | 91 | 0.3230 |
+| **r6 (master, today)** | **31320** | **53** | **0.9203** |
+| **r7** | **32144** | **47** | **0.9276** |
+
+**Premise CONFIRMED** — components fall monotonically 53 → 47 (−11.3%),
+largest_frac rises, and px rises only +2.6% against that, i.e. fill rather
+than halo. No bail; the early exit fires, so **Phase 1 is skipped**.
+
+### F1 — the issue's AC-1 thresholds are STALE
+
+AC 1 asks for "component count materially below 59 and largest-frac above
+0.7705", grounded on the PR #2343 measurement of 2026-07-14 (24400 px /
+59 comp / 0.7705). **Master today already reads 53 comp / 0.9203 frac** and
+therefore clears both thresholds with *zero* change. Master improved the cast
+in the intervening 16 days (candidates: #2320/#2387 shadow-throw unification,
+#2545/#2562 and #2546/#2576 anchor work). Re-grounded bar: r7 must beat
+**today's** r6 baseline, which it does.
+
+The steward confirmed the staleness and ruled that AC 1's operative clause was
+always its same-session anchor, not the absolute figures: the splat-off
+reference itself moved ~37% in px between sessions (5056 px on 2026-07-14 vs
+6936 px today), so no 2026-07-14 number was ever comparable across sessions.
+**AC 1: PASS** on the re-grounded same-session A/B.
+
+### F2 — AC-5's byte-identity probe conflicts with the mechanism
+
+AC 5 requires per-axis `yaw30` / `yaw45` byte-identity. Measured with a clean
+attribution control:
+
+| suite | result |
+|---|---|
+| master r6 | 5 of 6 default shots **100.0% / max_delta 0**; only `so3_smooth_sweep` FAILs (max_delta 98 — the documented ~1-in-4 wobble) |
+| r7 | **all 6** FAIL at 99.80–99.84%, max_delta 60–64 |
+
+So r7 genuinely changes the rotating shots. The diff image localizes the change
+to ~15 scattered **thin-contour clusters, one per world-placed detached solid** —
+shadow-*edge* shifts, not dense per-axis content and not a floor-wide acne wash.
+
+Mechanism: `system_bake_sun_shadow_map.hpp` zeroes the radius for the **per-axis
+resolve** (`patchSunSplatRadius(0.0f)`), but the **world-placed cast resolve
+(P4b-3) deliberately keeps the splat engaged** — its comment states its cast
+"has real point-scatter holes the splat must fill (measured)". Every one of
+those six shots contains world-placed detached solids, so a radius change
+*must* move their cast edges by design.
+
+**RESOLVED (steward direction, 2026-07-30)** — [#2654 comment][sd]. The
+world-placed detached cast is **out of scope** for the radius-0 byte-identity
+invariant, by citation to text already on master: `sun-shadow-bake-coverage.md`
+§ "Byte-identity regimes" invariant 1 names the world-placed cast resolve as
+deliberately excluded, and `system_bake_sun_shadow_map.hpp:63-68` scopes the
+structural zeroing to the per-axis resolve. Restating AC 5 to cite the *path*
+rather than those mixed-content *shots* is a correction, not a re-scope — the
+shots were never clean probes of the path they were cited for. Shipping r7
+therefore includes re-blessing the affected reference PNGs.
+
+[sd]: https://github.com/jakildev/IrredenEngine/pull/2654#issuecomment-5134594811
+
+## Other acceptance criteria measured at r7
+
+- **AC 2 (acne gate, D5 primary) — PASS.** `--only floor` caster-free floor at
+  cardinal: **0 shadow px, hole_ratio 1.0**. No acne reintroduced at r7.
+- **`floor_selfshadow` (π/6) — PASS.**
+- **`shadow_overlay_floor` structural gate — PASS.**
+- **compare_yaw0 / compare_yaw_q — PASS**, and left un-blessed.
+- **AC 7 — Linux smoke owed, and it is a blocking co-requisite.** Reference
+  PNGs live in per-preset sibling dirs (`macos-debug/`, `linux-debug/`) because
+  Metal and OpenGL are pixel-different. The twinned shader change moves the
+  same edges under GL, so `linux-debug/`'s six default-shot references go stale
+  too and cannot be regenerated from a macOS pane. A Linux host must discharge
+  `fleet:needs-linux-smoke` with `render-verify --update-references` before
+  merge, or the GL gate lands red.
+
 ## Amendments
 
 ### A1 — 2026-07-30 — trigger: flow-a design-block triage of PR #2654 (`## NEEDS-DESIGN`, Phase-0 measured)

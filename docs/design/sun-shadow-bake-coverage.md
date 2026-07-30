@@ -252,16 +252,38 @@ acne-free, splat-off-referenced gates, all evaluable on macOS/Metal
    **splat-off** capture (`kSunSplatMaxTexels = 0`, the uncontaminated genuine
    cast — byte-identical whether built off master or this branch, since radius 0
    is the pre-splat single write); cast-ROI structure (components / largest_frac)
-   no worse than that baseline. **Measured (this branch vs splat-off baseline):**
-   24400 px / 59 comp / 0.7705 frac ≥ 5056 px / 93 comp / 0.3418 frac — more
-   coverage *and* more coherent (the r6 splat legitimately fills genuine
-   cube-cast holes; the same-plane test drops only the coplanar floor
-   contamination). This is a **manual** A/B — `kSunSplatMaxTexels` has no runtime
-   flag — so it is not wired as a static manifest threshold.
-4. **`floor_selfshadow` ≥ 0.98** at π/6 (unchanged; measured hole_ratio 1.0) and
-   **per-axis `yaw30` / `yaw45` byte-identity** (structural: those paths bake at
-   radius 0, so every tap is a direct write on the verbatim pre-#2319
-   near-rejection).
+   no worse than that baseline. This is a **manual** A/B —
+   `kSunSplatMaxTexels` has no runtime flag — so it is not wired as a static
+   manifest threshold.
+
+   **Re-measured 2026-07-30 (#2385, macOS/Metal), same harness and ROI.** The
+   2026-07-14 row below it (24400 px / 59 comp / 0.7705 vs splat-off 5056 /
+   93 / 0.3418) is **superseded** — master's genuine cast improved materially
+   in the interval, so any acceptance threshold grounded on it is stale:
+
+   | config | shadow_px | components | largest_frac |
+   |---|---|---|---|
+   | r0 (splat off) | 6936 | 91 | 0.3230 |
+   | r6 (master) | 31320 | 53 | 0.9203 |
+   | r7 | 32144 | 47 | 0.9276 |
+
+   Both controls were run this pass and both pass: **A==A** (two runs of one
+   binary → byte-identical, so the metric is trustworthy under the freeze
+   flags on this host) and the **positive control** (r0 collapses the cast,
+   so the radius lever demonstrably reaches this observable). Run both before
+   quoting any radius comparison — a single-run A/B proves neither.
+4. **`floor_selfshadow` ≥ 0.98** at π/6 (unchanged; measured hole_ratio 1.0).
+   **Per-axis `yaw30` / `yaw45` byte-identity is structural for the per-axis
+   *resolve* path only** — it bakes at radius 0, so every tap is a direct write
+   on the verbatim pre-#2319 near-rejection. **The canvas_stress shots named
+   yaw30 / yaw45 (`so3_offsnap_wide` / `so3_offsnap_disc`) are NOT clean probes
+   of that path**: they also contain world-placed detached solids, and the
+   world-placed cast resolve (P4b-3) deliberately KEEPS the splat engaged, so
+   a radius change moves those solids' cast edges by design. Measured at r7
+   (#2385): all six default shots diff (99.80–99.84%, max_delta 60–64) against
+   a master control that is 100.0% / max_delta 0 on five of six. Cite the
+   per-axis path's radius-0 property, not those shots, when claiming
+   byte-identity for a radius change.
 5. **Linux smoke owed** — the GL twin is unbuilt on the macOS pane; a large Linux
    floor A/B vs master is a re-escalation signal (calibrated-host manifest
    re-check), not something to tune away.
