@@ -17,7 +17,6 @@
 #include <irreden/render/widget_theme.hpp>
 #include <irreden/render/widgets.hpp>
 
-#include <functional>
 #include <string>
 #include <vector>
 
@@ -295,22 +294,21 @@ template <> struct System<SETTINGS_MENU> {
             // would overwrite the click that just happened.
             const float widgetValue = readWidget(row);
             if (differs(row.kind_, widgetValue, row.lastValue_)) {
-                // Copied out of the registry before the call, never held as a
-                // reference across it: `settings_registry.hpp` allows a setting
-                // to be registered any time before the menu opens, and a setter
-                // that registered one would push_back into `settings_` and
-                // reallocate this `std::function` out from under itself
-                // mid-call. Costs one copy per *changed* row — per click, not
-                // per frame.
-                const std::function<void(float)> set = settings[settingIndex].set_;
-                if (set) {
-                    set(widgetValue);
+                // Both callbacks are invoked straight out of the registry, and
+                // what makes that safe is `settings_registry.hpp`'s contract:
+                // neither a getter nor a setter may register a setting, so
+                // `settings_` cannot reallocate under this loop. Copying the
+                // `std::function` out first would not buy the getter path the
+                // same protection anyway — `get_()` reads the object and
+                // *then* calls it, so a re-entrant registration destroys it
+                // mid-call either way. One rule for both, enforced at the
+                // registry.
+                if (settings[settingIndex].set_) {
+                    settings[settingIndex].set_(widgetValue);
                 }
                 row.lastValue_ = widgetValue;
                 continue;
             }
-            // Re-indexed rather than aliased for the same reason, minus the
-            // copy: the getter runs every frame for every unchanged row.
             if (!settings[settingIndex].get_) {
                 continue;
             }

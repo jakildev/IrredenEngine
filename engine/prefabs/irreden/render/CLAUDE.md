@@ -608,7 +608,10 @@ when extending or composing widgets:
   rows, whose dropdowns always overlap the row below). Both revert when the
   dropdown closes. The constant lives in `component_widget.hpp` beside the
   `zOrder_` field it constrains, and the `C_Widget` ctor asserts authored
-  z-orders stay below it.
+  z-orders stay below it. The one script-facing authoring path,
+  `IRGui.makePanel`, **clamps** rather than inheriting that assert — script
+  data shouldn't throw, and the assert compiles out under `IR_RELEASE`
+  (`engine/script/CLAUDE.md` §"Widget framework bindings").
   **It does not order two dropdowns against each other**: nothing closes one
   dropdown when another opens (same gap as the outside-click-to-close TODO),
   so two *simultaneously* expanded dropdowns both sit at base+bias and the

@@ -30,6 +30,7 @@
 
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
+#include <irreden/ir_profile.hpp>
 #include <irreden/ir_render.hpp>
 #include <irreden/ir_system.hpp>
 #include <irreden/script/ir_script_utils.hpp>
@@ -89,12 +90,31 @@ inline void bindWidgets(LuaScript &script) {
                           sol::optional<std::string> title,
                           sol::optional<bool> drawBorder,
                           sol::optional<int> zOrder) -> lua_Integer {
+        // Clamp instead of letting `C_Widget`'s ctor assert. This is the only
+        // zOrder-taking factory Lua exposes, so the value is script-supplied
+        // data, not a programmer error: IR_ASSERT throws out of the ctor in
+        // debug and compiles to nothing under IR_RELEASE, which would leave a
+        // release build silently inverting the expanded-dropdown hover
+        // tie-break the bias exists to win. The clamp is plain code, so it
+        // holds in both build flavors; only the diagnostic is debug-only.
+        const int requestedZOrder = zOrder.value_or(0);
+        const int clampedZOrder =
+            IRMath::min(requestedZOrder, IRComponents::kWidgetDropdownOpenZBias - 1);
+        if (clampedZOrder != requestedZOrder) {
+            IRE_LOG_WARN(
+                "IRGui.makePanel: zOrder {} is at or above the dropdown-open bias {}; "
+                "clamped to {} so expanded dropdown rows stay clickable",
+                requestedZOrder,
+                IRComponents::kWidgetDropdownOpenZBias,
+                clampedZOrder
+            );
+        }
         const IREntity::EntityId id = IRPrefab::Widget::makePanel(
             IRMath::ivec2(x, y),
             IRMath::ivec2(w, h),
             title.value_or(std::string{}),
             drawBorder.value_or(true),
-            zOrder.value_or(0)
+            clampedZOrder
         );
         return static_cast<lua_Integer>(id);
     };
