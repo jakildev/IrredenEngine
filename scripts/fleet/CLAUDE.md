@@ -65,6 +65,18 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   Mutating git wrappers (`fleet-pr-amend-push`, `fleet-review-verdict --agent`)
   call `fleet-assert-worktree`; scout / ingest / claim / rebase legitimately run
   from the main clone and are deliberately NOT asserted.
+- **An every-tick guard that warns must escalate-then-quiet.** A skip
+  condition in an unattended loop (`advance_main_clone`, the dispatcher's
+  per-tick guards) persists until a human acts, so a plain `echo … >&2`
+  re-emits identically forever — spam that hides the outage instead of
+  reporting it (#2363: a parked main clone froze every claim on both repos
+  for 30 min behind one line repeated per minute). Count consecutive
+  identical skips keyed by `<reason>|<subject>`; at the Nth emit one loud
+  line plus a flat `${FLEET_ALERTS_DIR:-$HOME/.fleet/alerts}/<tool>-<tag>`
+  file, then go silent until a healthy pass clears both. Size N against the
+  outage you're catching, not a round number, and keep every counter/alert
+  write best-effort (`|| true`) so a read-only `$HOME` can't break the path
+  being guarded.
 - **Unattended daemons timeout-guard their network calls.** The host's
   connections to GitHub intermittently black-hole (silent TCP death), so a
   hung `git fetch` / `gh …` in a fleet daemon (dispatcher loop, `fleet-rebase`,

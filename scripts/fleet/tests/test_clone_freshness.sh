@@ -32,9 +32,11 @@ cleanup() { [[ -n "$TMPROOT" && -d "$TMPROOT" ]] && rm -rf "$TMPROOT"; }
 trap cleanup EXIT
 TMPROOT=$(mktemp -d)
 
-# Isolate the rate-limit sentinel from the real ~/.fleet/state.
+# Isolate the rate-limit sentinel and the persistent-skip counter from the real
+# ~/.fleet/state, and the escalation alert file from the real ~/.fleet/alerts.
 export FLEET_STATE_DIR="$TMPROOT/state"
-mkdir -p "$FLEET_STATE_DIR"
+export FLEET_ALERTS_DIR="$TMPROOT/alerts"
+mkdir -p "$FLEET_STATE_DIR" "$FLEET_ALERTS_DIR"
 
 ok()   { echo "  ok: $1";   PASS=$((PASS+1)); }
 fail() { echo "  FAIL: $1"; FAIL=$((FAIL+1)); }
@@ -70,6 +72,11 @@ push_new_commit() {  # $1 = content tag
 }
 
 reset_rate_limit() { rm -f "$FLEET_STATE_DIR"/.*-clone-advanced 2>/dev/null || true; }
+
+# Skip-counter + alert reset, so each escalation test starts from count 0.
+reset_skip_counter() {
+    rm -f "$FLEET_STATE_DIR"/.*-freshness-skip "$FLEET_ALERTS_DIR"/clone-freshness-* 2>/dev/null || true
+}
 
 # --- T1: fresh clone -> behind 0, assert passes ------------------------------
 echo "T1: fresh clone (master == origin/master)"
@@ -249,6 +256,112 @@ out=$(restore_main_clone_to_master "$CLONE2" 2>&1 || true)
     && ok "on-master disjoint-dirty clone NOT advanced" || fail "advanced master under uncommitted WIP"
 grep -q "disjoint-wip" "$CLONE2/other" && ok "on-master WIP preserved" || fail "WIP lost"
 echo "$out" | grep -q "live WIP wins" && ok "warns loudly on-master too" || fail "no WIP warning: $out"
+
+# --- generalized claude/* self-heal + persistent-skip escalation (#2363) -----
+# Fresh fixture again: CLONE is diverged (T7) and CLONE2 carries the T14 WIP.
+CLONE3="$TMPROOT/clone3"
+git clone -q "$ORIGIN" "$CLONE3"
+git -C "$CLONE3" config user.email t@t
+git -C "$CLONE3" config user.name test
+COUNTER3="$FLEET_STATE_DIR/.$(basename "$CLONE3")-freshness-skip"
+ALERT3="$FLEET_ALERTS_DIR/clone-freshness-$(basename "$CLONE3")"
+
+# --- T15: claude/* park, HEAD pushed to origin -> healed, branch ref kept -----
+echo "T15: claude/* park with pushed HEAD -> self-healed, ref preserved"
+reset_skip_counter
+git_q "$CLONE3" checkout -b claude/123-x
+echo "branch-work" >> "$CLONE3/file"
+git_q "$CLONE3" add file
+git_q "$CLONE3" commit -m branch-work
+git_q "$CLONE3" push -u origin claude/123-x   # HEAD now recoverable from origin/<branch>
+push_new_commit t15                            # origin/master moves ahead
+reset_rate_limit
+out=$(advance_main_clone "$CLONE3" 2>&1 || true)
+[[ "$(git -C "$CLONE3" rev-parse --abbrev-ref HEAD)" == "master" ]] && ok "pushed claude/* park healed to master" || fail "still on $(git -C "$CLONE3" rev-parse --abbrev-ref HEAD)"
+behind=$(clone_behind_count "$CLONE3")
+[[ "$behind" == "0" ]] && ok "advance continued after tier-2 heal (behind 0)" || fail "behind=$behind after tier-2 heal"
+if git -C "$CLONE3" rev-parse --verify --quiet refs/heads/claude/123-x >/dev/null; then ok "branch ref preserved (not deleted)"; else fail "tier-2 heal deleted the branch ref"; fi
+[[ "$(echo "$out" | grep -c "self-healed")" == "1" ]] && ok "exactly one self-heal line" || fail "expected 1 self-heal line, got: $out"
+
+# --- T16: claude/* park at an old master commit (ancestor) -> healed ---------
+echo "T16: claude/* park at an ancestor of origin/master -> self-healed"
+reset_skip_counter
+stale_point=$(git -C "$CLONE3" rev-parse master~1)
+git_q "$CLONE3" checkout -b claude/124-y "$stale_point"   # no origin counterpart
+push_new_commit t16
+reset_rate_limit
+out=$(advance_main_clone "$CLONE3" 2>&1 || true)
+[[ "$(git -C "$CLONE3" rev-parse --abbrev-ref HEAD)" == "master" ]] && ok "stale-ancestor park healed to master" || fail "still on $(git -C "$CLONE3" rev-parse --abbrev-ref HEAD)"
+if git -C "$CLONE3" rev-parse --verify --quiet refs/heads/claude/124-y >/dev/null; then ok "stale-ancestor branch ref preserved"; else fail "heal deleted the branch ref"; fi
+echo "$out" | grep -q "self-healed" && ok "logs the tier-2 self-heal" || fail "no self-heal log: $out"
+
+# --- T17: claude/* park with an UNPUSHED commit -> untouched -----------------
+# The line between "stranded junk" and "live work": an unrecoverable HEAD.
+echo "T17: claude/* park with an unpushed local commit -> left alone"
+reset_skip_counter
+git_q "$CLONE3" checkout -b claude/125-z
+echo "unpushed" >> "$CLONE3/file"
+git_q "$CLONE3" add file
+git_q "$CLONE3" commit -m unpushed
+unpushed_head=$(git -C "$CLONE3" rev-parse HEAD)
+push_new_commit t17
+reset_rate_limit
+out=$(advance_main_clone "$CLONE3" 2>&1 || true)
+[[ "$(git -C "$CLONE3" rev-parse --abbrev-ref HEAD)" == "claude/125-z" ]] && ok "unpushed claude/* park untouched" || fail "branch switched to $(git -C "$CLONE3" rev-parse --abbrev-ref HEAD)"
+[[ "$(git -C "$CLONE3" rev-parse HEAD)" == "$unpushed_head" ]] && ok "unpushed commit preserved" || fail "HEAD moved under an unpushed commit"
+echo "$out" | grep -q "not master" && ok "warns about the unhealed park" || fail "no park warning: $out"
+
+# --- T18: claude/* park with a dirty tree -> untouched -----------------------
+echo "T18: claude/* park with a dirty tree -> left alone"
+reset_skip_counter
+git_q "$CLONE3" checkout master
+git_q "$CLONE3" checkout -b claude/126-w
+echo "dirt" >> "$CLONE3/file"
+push_new_commit t18
+reset_rate_limit
+out=$(advance_main_clone "$CLONE3" 2>&1 || true)
+[[ "$(git -C "$CLONE3" rev-parse --abbrev-ref HEAD)" == "claude/126-w" ]] && ok "dirty claude/* park untouched" || fail "branch switched on a dirty claude/* park"
+echo "$out" | grep -q "not master" && ok "warns about the dirty park" || fail "no park warning: $out"
+git_q "$CLONE3" checkout -- file
+
+# --- T19: persistent identical skip escalates once, then goes quiet ----------
+echo "T19: persistent skip -> one ESCALATION + alert file, then silence"
+reset_skip_counter
+git_q "$CLONE3" checkout master
+git_q "$CLONE3" checkout -b feature/persistent   # non-claude/*: never healed
+export FLEET_FRESHNESS_SKIP_ESCALATE_N=3
+reset_rate_limit; esc1=$(advance_main_clone "$CLONE3" 2>&1 || true)
+reset_rate_limit; esc2=$(advance_main_clone "$CLONE3" 2>&1 || true)
+reset_rate_limit; esc3=$(advance_main_clone "$CLONE3" 2>&1 || true)
+reset_rate_limit; esc4=$(advance_main_clone "$CLONE3" 2>&1 || true)
+echo "$esc1" | grep -q "not master" && ! echo "$esc1" | grep -q "ESCALATION" && ok "tick 1 warns normally" || fail "tick 1 wrong: $esc1"
+echo "$esc2" | grep -q "not master" && ! echo "$esc2" | grep -q "ESCALATION" && ok "tick 2 warns normally" || fail "tick 2 wrong: $esc2"
+echo "$esc3" | grep -q "ESCALATION" && ok "tick 3 (== N) escalates" || fail "tick 3 did not escalate: $esc3"
+[[ -f "$ALERT3" ]] && ok "alert file written" || fail "no alert file at $ALERT3"
+grep -q "reason=parked" "$ALERT3" 2>/dev/null && ok "alert records reason=parked" || fail "alert missing reason: $(cat "$ALERT3" 2>/dev/null)"
+grep -q "count=3" "$ALERT3" 2>/dev/null && ok "alert records count=3" || fail "alert missing count: $(cat "$ALERT3" 2>/dev/null)"
+grep -q "branch=feature/persistent" "$ALERT3" 2>/dev/null && ok "alert records the parked branch" || fail "alert missing branch: $(cat "$ALERT3" 2>/dev/null)"
+[[ -z "$esc4" ]] && ok "tick 4 (> N) is silent" || fail "tick 4 still warned: $esc4"
+
+# --- T20: a different skip key restarts the count ---------------------------
+echo "T20: changing the skip condition re-arms the warning"
+git_q "$CLONE3" checkout -b feature/other
+reset_rate_limit
+out=$(advance_main_clone "$CLONE3" 2>&1 || true)
+echo "$out" | grep -q "not master" && ok "new key warns again (not suppressed)" || fail "new key stayed suppressed: $out"
+! echo "$out" | grep -q "ESCALATION" && ok "new key does not re-escalate immediately" || fail "re-escalated on a fresh key: $out"
+
+# --- T21: clearing the condition removes the counter and the alert ----------
+echo "T21: healthy pass clears the counter + alert file"
+git_q "$CLONE3" checkout master
+push_new_commit t21
+reset_rate_limit
+out=$(advance_main_clone "$CLONE3" 2>&1 || true)
+behind=$(clone_behind_count "$CLONE3")
+[[ "$behind" == "0" ]] && ok "clone advanced once back on master" || fail "behind=$behind after restoring master"
+[[ ! -f "$COUNTER3" ]] && ok "skip counter removed on the healthy pass" || fail "counter survived: $(cat "$COUNTER3" 2>/dev/null)"
+[[ ! -f "$ALERT3" ]] && ok "alert file removed on the healthy pass" || fail "alert survived: $(cat "$ALERT3" 2>/dev/null)"
+unset FLEET_FRESHNESS_SKIP_ESCALATE_N
 
 echo ""
 echo "PASS: $PASS  FAIL: $FAIL"
