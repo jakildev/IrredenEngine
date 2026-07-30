@@ -721,9 +721,11 @@ rebase server-side, synchronously; cascade rebases are one
 couple bottom-up — merging a child pulls its unmerged parents in, so
 a child can never land on a stale base. Design + evaluation:
 [`docs/design/native-stacked-prs-migration.md`](../design/native-stacked-prs-migration.md).
-PRs opened before the migration (no native stack object) are **legacy
-stacks**; the merger's retarget/cascade machinery services only those
-until they drain.
+A PR with a feature-branch base but no native stack object is an
+anomaly — the merger's a.6 fork check flags it `fleet:needs-info` with
+a link-or-rescope comment (the legacy retarget/cascade machinery is
+retired; archive + re-enable guide:
+`scripts/fleet/legacy/stacked-prs/README.md`).
 
 Two stacking modes exist in this fleet:
 
@@ -777,8 +779,8 @@ Two stacking modes exist in this fleet:
   otherwise-idle panes. The coordination tax (reviewer gating on
   upstream state) makes the simple path preferable by default.
 - **Q2 — Cascade rebase.** GitHub-native. Server-side cascade
-  rebases replaced the v1 merger-driven hybrid; the merger's
-  cascade machinery services only pre-migration legacy stacks.
+  rebases replaced the v1 merger-driven hybrid outright (the legacy
+  machinery is archived at the `pre-native-stacks` tag).
 - **Q3 — Multi-blocker.** Single-blocker issues only. An issue
   blocked by both #A and #B is never eligible for the fallback tier
   even if all blockers have open PRs. Picking a single base branch
@@ -788,8 +790,7 @@ Two stacking modes exist in this fleet:
 Engine **and** game tasks are both stackable: the scout enriches
 blocked tasks in both repos, worker pickup claims `--stackable-on` in
 either (game with `--repo game`), and native stacks work identically
-in both repos. The merger's game pass services legacy game stacks
-(steps 2.5/2.6/a.5/a.6) until they drain.
+in both repos.
 
 **v1 limitations:**
 
@@ -799,8 +800,8 @@ in both repos. The merger's game pass services legacy game stacks
 
 For role-specific framing (when to stack, role-specific edge cases),
 see `role-worker.md`. For the
-merger's cascade-rebase step and `fleet:needs-base-update`, see
-`role-merger.md`. For upstream-gating and cross-author topology
+merger's stacked-PR handling (base-target substitution, fork
+detection), see `role-merger.md`. For upstream-gating and cross-author topology
 notes, see `role-sonnet-reviewer.md`. The shared command sequences
 authoring roles use live in the next three sections.
 

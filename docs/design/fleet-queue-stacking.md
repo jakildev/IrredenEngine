@@ -1,5 +1,15 @@
 # Fleet queue stacking — design
 
+> **Partially superseded (native stacked PRs).** The *queue* half of this
+> doc — queue-all / mark-blocked, `fleet:blocked`, claimability, the
+> `stackable_blocker_pr` offer — is still the live model. The *PR-mechanics*
+> half (merger retargeting, cascade rebases, inherited-prefix drop, the
+> #2447 ancestry guard, the stack labels) was replaced by GitHub's native
+> Stacked PRs and is retained below as history: see
+> [`native-stacked-prs-migration.md`](native-stacked-prs-migration.md) for
+> the live design, and `scripts/fleet/legacy/stacked-prs/README.md` +
+> the `pre-native-stacks` tag for the archive.
+
 Source-of-truth model for how the fleet queues blocked tasks and feeds the
 autonomous stacking path. Supersedes the earlier "queue one child at a time"
 behavior (#1476) with a **queue-all / mark-blocked** model (#1527).

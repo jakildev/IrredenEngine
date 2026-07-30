@@ -240,19 +240,23 @@ human-facing summary:
 
 ### Stacking PRs
 
-Two patterns, depending on flow:
+Two patterns, depending on flow — both end in a **native GitHub
+stack** (`commit-and-push` links each stacked PR after open; GitHub
+owns retarget-on-merge, cascade rebases, and coupled bottom-up merges
+— see `docs/design/native-stacked-prs-migration.md`):
 
 - **Cursor flow** uses a lightweight per-branch git config
   (`branch.<new>.cursor-stack-base`). Cue stacking with "stack this"
   / "next slice, stacked" and `start-next-task` records the parent
   branch; the next `commit-and-push` opens the PR with
-  `--base <parent>`. State persists across chat boundaries via git
-  config — a fresh chat that lands mid-stack picks up automatically.
+  `--base <parent>` and links it into the stack. State persists
+  across chat boundaries via git config — a fresh chat that lands
+  mid-stack picks up automatically.
 - **Fleet flow** uses `fleet-claim stack` molecules. A single
   worktree owns a multi-task chain; `start-next-task` and
   `commit-and-push` cooperate via the molecule's metadata.
 
-The two systems are independent and don't share state.
+The two claim systems are independent and don't share state.
 
 ### Issue and PR labels — don't pre-apply state labels
 

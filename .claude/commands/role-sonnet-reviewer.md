@@ -116,9 +116,9 @@ treat it as a hard rule for this role.
      rebase conflict; an opus+-class worker is queued to attempt
      resolution. The PR's diff against master is meaningless until
      the rebase lands, so reviewing now wastes a pass.
-   - `fleet:fork-of-other-pr` — PR branch forked from another open
-     PR; diff includes inherited commits — skip until the human runs
-     `rebase --onto` and clears this label.
+   - `fleet:fork-of-other-pr` — retired legacy label (a fork now
+     gets `fleet:needs-info` + a link-or-rescope comment); a straggler
+     PR still carrying it stays skipped until the human clears it.
 
 ## Loop behavior
 
@@ -148,7 +148,7 @@ iteration of polling, reviewing, and exiting cleanly:
      the unchanged diff (not a merge-gate). Skip only while unchanged;
      review post-defer commits, honoring the linked issue
    - `fleet:semantic-conflict` — merger conflict pending resolution
-   - `fleet:fork-of-other-pr` — inherited commits; skip until `rebase --onto`
+   - `fleet:fork-of-other-pr` — retired legacy straggler; skip until the human clears it
    - any label starting with `fleet:reviewing-` — another reviewer
      (possibly on a different host) holds the atomic claim; skip
      silently
