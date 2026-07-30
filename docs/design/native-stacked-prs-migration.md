@@ -19,7 +19,7 @@ recurring failure class — most seriously a child staying `MERGEABLE` against
 a merged base so a human merge lands content on an unreachable branch
 (PR #558), plus the inherited-prefix rebase bugs (#1791/#1690/#1824), the
 collapsed-merged-ref churn loop (#2447), and stale `Stacked on:` body markers
-misrouting review (#2231).
+misrouting review (surfaced on #2231, tracked as #2250).
 
 GitHub's native Stacked PRs (private preview, April 2026) make that whole
 class structurally impossible:
@@ -40,10 +40,17 @@ class structurally impossible:
 Verified live on this account before adoption:
 
 - The preview is **enabled on both repos** (engine and game): the stacks
-  REST endpoint responds on each, and a probe stack (#2644, from draft PRs
-  #2642/#2643, fully cleaned up afterward) was created with `gh stack link`,
-  rendered the stack badge in the PR UI even for signed-out visitors, and
-  exposed `{number, base.ref, open, pull_requests[…]}` via the API.
+  REST endpoint responds on each, and a probe stack (stack object #2644,
+  from draft PRs #2642/#2643, all cleaned up afterward) was created with
+  `gh stack link`, rendered the stack badge in the PR UI even for
+  signed-out visitors, and exposed `{number, base.ref, open,
+  pull_requests[…]}` via the API.
+- **Stack numbers are not issue/PR numbers.** A stack draws its `number`
+  from the same repo-wide sequence as issues and PRs, but the object it
+  names is a stack — so it resolves only at
+  `GET repos/<slug>/stacks/<number>`, never via `gh issue view` /
+  `gh pr view`. Cite stack numbers explicitly as such; a bare `#N` in
+  fleet prose always means an issue or PR.
 - **Trunk is always the repo default branch** — `gh stack link`
   force-corrected a bottom PR that targeted a non-default branch to
   `master`. Stacks cannot target arbitrary branches.
