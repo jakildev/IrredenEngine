@@ -12,6 +12,10 @@
 #   - a wip-only PR appears in no decision bucket
 #   - cues: coding-improvement count, untriaged count, unread feedback roles
 #     (file newer than .last-reviewed counts, older does not)
+#   - drain thresholds: coding-improvement cue flips to OVERDUE at >= 12
+#     open (informational below); feedback cue flips to OVERDUE when the
+#     .last-reviewed marker is >= 14 days old or absent (informational when
+#     fresh) — both arms of each threshold exercised
 #   - headline decision count = merge queue + decisions
 #   - unreachable repo is skipped with a warning, not fatal
 #   - --repo=engine equals-form works; empty --repo= rejected (dual-spelling)
@@ -80,7 +84,7 @@ for arg in "$@"; do
 done
 case "$1 $2 $repo" in
     "pr list jakildev/IrredenEngine")    cat "$fixtures/engine-prs.json" ;;
-    "issue list jakildev/IrredenEngine") cat "$fixtures/engine-issues.json" ;;
+    "issue list jakildev/IrredenEngine") cat "${GH_STUB_ENGINE_ISSUES:-$fixtures/engine-issues.json}" ;;
     "pr list jakildev/irreden")          exit 1 ;;
     "issue list jakildev/irreden")       exit 1 ;;
     *) echo "gh stub: unexpected invocation: $*" >&2; exit 99 ;;
@@ -124,12 +128,58 @@ assert_contains "$out" "engine issue #201" "plan sign-off issue in decisions"
 assert_contains "$out" "engine issue #206" "triage-recommend issue in decisions"
 assert_contains "$out" "triage verdict to review" "triage tag rendered"
 assert_absent  "$out" "#105" "wip-only PR appears in no bucket"
-assert_contains "$out" "fleet:coding-improvement: 1 open" "coding-improvement cue with count"
+assert_contains "$out" "fleet:coding-improvement: 1 open — cue" "coding-improvement cue informational below drain threshold"
+assert_absent  "$out" "fleet:coding-improvement: 1 open — OVERDUE" "1 open never reads as overdue"
+assert_contains "$out" "stale threshold 14d" "ancient .last-reviewed marker flips feedback cue to OVERDUE"
 assert_contains "$out" "untriaged (no state labels): 1" "untriaged cue counts label-less issue"
 assert_contains "$out" "engine #203" "untriaged cue names the issue"
 assert_contains "$out" "merger" "feedback role newer than marker is unread"
 assert_absent  "$out" "role-worker" "feedback role older than marker is not unread"
 assert_contains "$out" "engine: 5 open PR(s) · 1 queued · 1 needs-plan" "status footer"
+
+# --- drain thresholds: both arms of each cue --------------------------------
+
+# Fresh marker (now), one feedback file made newer a second later: unread
+# but not stale — the feedback cue must render informational, not OVERDUE.
+touch "$TMP/fleet-home/feedback/.last-reviewed"
+sleep 1
+touch "$TMP/fleet-home/feedback/merger.md"
+
+status=$(run_decisions --repo=engine)
+out=$(cat "$TMP/out.txt")
+assert_eq "$status" "0" "fresh-marker run exits 0"
+assert_contains "$out" "merger" "feedback file newer than fresh marker is still unread"
+assert_contains "$out" "cue \`review-fleet-feedback\`" "fresh-marker feedback cue still points at the skill"
+assert_absent  "$out" "stale threshold" "fresh marker keeps the feedback cue informational"
+
+# 12 open coding-improvement tickets: the cue flips to OVERDUE.
+python3 - "$TMP/engine-issues-many.json" << 'PYEOF'
+import json
+import sys
+
+issues = [
+    {
+        "number": 300 + i,
+        "title": f"improvement: rule {i}",
+        "url": "u",
+        "labels": [{"name": "fleet:coding-improvement"}],
+    }
+    for i in range(12)
+]
+with open(sys.argv[1], "w", encoding="utf-8") as f:
+    json.dump(issues, f)
+PYEOF
+
+status=$(GH_STUB_ENGINE_ISSUES="$TMP/engine-issues-many.json" run_decisions --repo=engine)
+out=$(cat "$TMP/out.txt")
+assert_eq "$status" "0" "threshold run exits 0"
+assert_contains "$out" "fleet:coding-improvement: 12 open — OVERDUE" "12 open flips the cue to OVERDUE"
+assert_contains "$out" "drain threshold 12" "overdue cue names the threshold"
+
+# Restore the ancient marker layout for any later cases.
+touch -t 202401010000 "$TMP/fleet-home/feedback/role-worker.md"
+touch -t 202401020000 "$TMP/fleet-home/feedback/.last-reviewed"
+touch -t 202401030000 "$TMP/fleet-home/feedback/merger.md"
 
 # --- --repo equals-form + dual-spelling validation --------------------------
 

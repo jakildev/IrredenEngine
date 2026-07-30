@@ -12,7 +12,10 @@ description: >-
   fleet feedback", "check fleet snags", "summarize fleet feedback", "what
   has the fleet been complaining about", "any new fleet snags", or after
   a stretch of autonomous fleet activity when the human wants to absorb
-  the backlog. Do NOT invoke proactively — only on explicit ask.
+  the backlog. Do NOT invoke proactively — only on explicit ask, or as
+  the feedback leg of an architect-run interactive triage sweep
+  (docs/agents/triage-protocol.md "Extended sweep"), where the human's
+  sweep cue carries the ask.
 ---
 
 # review-fleet-feedback

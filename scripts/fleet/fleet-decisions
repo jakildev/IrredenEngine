@@ -6,7 +6,10 @@
 # (fleet:needs-human, fleet:gated, fleet:design-blocked, fleet:steward-proposal,
 # fleet:state-drift, human:review-plan holds), backlog cues
 # (fleet:coding-improvement, untriaged issues), and unread feedback-channel
-# entries. Read-only: changes no labels, writes no state.
+# entries. Backlog cues flip to OVERDUE past their drain thresholds
+# (coding-improvement count, feedback-marker age) — the informational cue
+# alone let the coding-improvement backlog reach 54 before its first drain.
+# Read-only: changes no labels, writes no state.
 #
 # Usage:
 #   fleet-decisions                  # engine + game
@@ -88,13 +91,31 @@ if [[ -d "$fb_dir" ]]; then
     done
 fi
 
+# Marker age in whole days ("none" when the channel was never reviewed).
+# The marker is a touch-file whose whole meaning is its mtime — the
+# state.json generated_at rule doesn't apply here.
+marker_age_days="none"
+if [[ -f "$marker" ]]; then
+    marker_mtime=$(stat -f %m "$marker" 2>/dev/null || stat -c %Y "$marker" 2>/dev/null)
+    if [[ -n "$marker_mtime" ]]; then
+        marker_age_days=$(( ($(date +%s) - marker_mtime) / 86400 ))
+    fi
+fi
+
 # PYTHONIOENCODING forces UTF-8 stdout for native-Windows consoles (cp1252
 # default raises on the report's em-dash / middle-dot glyphs).
-PYTHONIOENCODING=utf-8 python3 - "$manifest" "$feedback_f" << 'PYEOF'
+PYTHONIOENCODING=utf-8 python3 - "$manifest" "$feedback_f" "$marker_age_days" << 'PYEOF'
 import json
 import sys
 
 SHORT = {"jakildev/IrredenEngine": "engine", "jakildev/irreden": "game"}
+
+# Drain thresholds: past these, a backlog cue flips to OVERDUE. Values per
+# the 2026-07-30 triage retrospective — batches past ~a dozen tickets cost
+# a full architect session, and rules sit unabsorbed while their mistakes
+# recur (the acceptance-evidence omission recurred 4x with its fix filed).
+CI_DRAIN_THRESHOLD = 12
+FEEDBACK_STALE_DAYS = 14
 
 # label -> human-readable decision tag; presence on an open PR/issue means
 # a human (or human-cued architect) action is the only way it moves again.
@@ -121,6 +142,8 @@ with open(sys.argv[1], encoding="utf-8") as manifest_file:
 
 with open(sys.argv[2], encoding="utf-8") as f:
     unread_roles = [line.strip() for line in f if line.strip()]
+
+marker_age_days = None if sys.argv[3] == "none" else int(sys.argv[3])
 
 
 def names(item):
@@ -177,7 +200,15 @@ if decisions:
         print(f"  {repo} {kind} #{item['number']}  {item['title']}  [{'; '.join(tags)}]")
 
 cues = []
-if coding_improvements:
+if coding_improvements >= CI_DRAIN_THRESHOLD:
+    cues.append(
+        f"fleet:coding-improvement: {coding_improvements} open — OVERDUE "
+        f"(drain threshold {CI_DRAIN_THRESHOLD}): triage cost grows with "
+        "batch size and filed rules sit unabsorbed while their mistakes "
+        "recur; cue `triage-coding-improvements` (or an architect extended "
+        "sweep, triage-protocol.md) now"
+    )
+elif coding_improvements:
     cues.append(
         f"fleet:coding-improvement: {coding_improvements} open — "
         "cue `triage-coding-improvements` when ready"
@@ -190,10 +221,22 @@ if untriaged:
         f"untriaged (no state labels): {len(untriaged)} awaiting triage — {newest}"
     )
 if unread_roles:
-    cues.append(
+    unread = (
         f"feedback channel: {len(unread_roles)} role file(s) unread "
-        f"({', '.join(sorted(unread_roles))}) — cue `review-fleet-feedback`"
+        f"({', '.join(sorted(unread_roles))})"
     )
+    if marker_age_days is None or marker_age_days >= FEEDBACK_STALE_DAYS:
+        age = (
+            "never reviewed"
+            if marker_age_days is None
+            else f"last reviewed {marker_age_days}d ago"
+        )
+        cues.append(
+            f"{unread} — OVERDUE ({age}, stale threshold "
+            f"{FEEDBACK_STALE_DAYS}d): cue `review-fleet-feedback`"
+        )
+    else:
+        cues.append(f"{unread} — cue `review-fleet-feedback`")
 if cues:
     print("\n## Cues")
     for cue in cues:
