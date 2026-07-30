@@ -30,7 +30,10 @@ Two oracles, applied per block:
   focus the engine derived from its live composite-depth readback against the
   analytic ray/surface intersection over the probe's own carve constants. Every
   default-pivot block carries it, and it must also hold the SAME value across
-  the whole sweep (the derive is latched).
+  the whole sweep (the derive is latched). That last check requires the block to
+  hold the camera pan/zoom FIXED across its shots — the latch re-derives on any
+  pan/zoom change by design — so the demo reports ``view_held`` per shot and a
+  block that moves the view is flagged as misconfigured, not as a regression.
 - **Whole-silhouette temporal invariance** — ``jitter_probe --stationary``,
   gated only for the blocks in ``CENTROID_GATED_BLOCKS``: those rotate their
   probe about a point on the probe's own axis, so a correct pivot maps the
@@ -76,9 +79,10 @@ CENTROID_GATED_BLOCKS = {"focus-ctr", "focus-off", "background-center"}
 # Frame indices of the cardinal yaws (0, pi/2, pi, 3pi/2) within the demo's
 # 9-yaw sweep table (`yaws[]` in creations/demos/shape_debug/main.cpp).
 CARDINAL_FRAME_INDICES = (0, 3, 5, 7)
-# `[pivot-focus-assert] ... derived=(x,y,z) ... result=PASS|FAIL`
+# `[pivot-focus-assert] ... derived=(x,y,z) ... view_held=0|1 result=PASS|FAIL`
 FOCUS_ASSERT_RE = re.compile(
-    r"\[pivot-focus-assert\].*?derived=\(([^)]*)\).*?result=(PASS|FAIL)")
+    r"\[pivot-focus-assert\].*?derived=\(([^)]*)\).*?view_held=([01]).*?"
+    r"result=(PASS|FAIL)")
 
 
 def _score_focus_asserts(output: str) -> tuple[str, str]:
@@ -87,14 +91,28 @@ def _score_focus_asserts(output: str) -> tuple[str, str]:
     Returns ``(verdict, detail)`` where verdict is ``OK`` / ``BAD`` / ``NONE``.
     The derive is latched for the whole sweep, so a value that MOVES mid-sweep
     is a failure even when every individual line reports PASS.
+
+    A block MUST hold the camera pan/zoom fixed across its shots — the latch
+    re-derives on any pan/zoom change by design, so a block that moves the view
+    breaks the moved-value check on correct behavior. ``view_held`` is checked
+    first so that misconfiguration is reported as itself rather than as a pivot
+    regression.
     """
     matches = FOCUS_ASSERT_RE.findall(output)
     if not matches:
         return "NONE", "no [pivot-focus-assert] lines in run output"
-    failed = [d for d, verdict in matches if verdict == "FAIL"]
+    moved_view = [d for d, held, _ in matches if held == "0"]
+    if moved_view:
+        return "BAD", (
+            f"{len(moved_view)}/{len(matches)} shots moved the camera pan/zoom "
+            "mid-sweep — a default-pivot block must hold the view fixed (the "
+            "latch re-derives on pan/zoom by design). Fix the block's shot "
+            "table, not the gate; see logPivotFocusAssert in "
+            "creations/demos/shape_debug/main.cpp")
+    failed = [d for d, _, verdict in matches if verdict == "FAIL"]
     if failed:
         return "BAD", f"{len(failed)}/{len(matches)} shots off the analytic focus"
-    derived = {d for d, _ in matches}
+    derived = {d for d, _, _ in matches}
     if len(derived) > 1:
         return "BAD", f"latched focus moved mid-sweep across {len(derived)} values"
     return "OK", f"{len(matches)} shots at derived=({matches[0][0]})"

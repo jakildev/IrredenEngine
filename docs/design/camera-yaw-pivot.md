@@ -196,8 +196,12 @@ retained below until the epic closes:
    `[pivot-focus-assert]` line comparing the focus the engine derived from its
    live composite-depth readback against the analytic ray/surface intersection
    over the probe's own carve constants, and `pivot-verify.py` fails the pass on
-   any FAIL or on a latched focus that moves mid-sweep. Their silhouette
-   deviation is still measured and reported, just not gated.
+   any FAIL, on a latched focus that moves mid-sweep, or on a block that moved
+   the camera pan/zoom mid-sweep (`view_held=0`). That last one is the
+   moved-focus check's own precondition: the latch re-derives on pan/zoom by
+   design, so a block that pans would break the check on correct behavior, and
+   it is reported as a misconfigured block rather than a pivot regression. Their
+   silhouette deviation is still measured and reported, just not gated.
 
    Two blocks join them, both new in #2547:
 

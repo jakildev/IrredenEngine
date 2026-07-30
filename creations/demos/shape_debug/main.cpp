@@ -483,6 +483,13 @@ vec3 pivotVerifyAnalyticFocus() {
     return kPivotVerifyDefaultAnchor;
 }
 
+// The view (camera pan + zoom) the sweep's FIRST capture frame rendered, latched
+// to check the precondition below. Per-process, which is per-pass: pivot-verify.py
+// runs one demo invocation per (block, zoom).
+vec2 g_pivotFocusAssertCameraIso = vec2(0.0f);
+vec2 g_pivotFocusAssertZoom = vec2(0.0f);
+bool g_hasPivotFocusAssertView = false;
+
 // Per-shot `[pivot-focus-assert]` line for the DEFAULT-pivot blocks
 // (AutoScreenshotConfig::onCaptureFrame_, fired on the settled capture frame):
 // the sharp half of the re-grounded gate. The derived focus's iso DEPTH is
@@ -491,6 +498,14 @@ vec3 pivotVerifyAnalyticFocus() {
 // constant too: every shot must report the SAME value, and that value must be
 // the analytic one. scripts/pivot-verify.py parses these lines and fails the
 // pass on any FAIL or on a value that moves mid-sweep.
+//
+// `view_held` reports that "holds the camera position fixed" PRECONDITION rather
+// than assuming it. RenderManager re-derives the latch on any pan/zoom change by
+// design, so a block whose shot table panned or zoomed mid-sweep would move the
+// focus legitimately — and the moved-value check above would fail on CORRECT
+// behavior. Emitting the precondition lets pivot-verify.py name that as a
+// misconfigured block instead of reporting a pivot regression, which is the
+// reading that would otherwise invite "fixing" it by loosening the gate.
 void logPivotFocusAssert(int shotIndex) {
     if (!pivotVerifyIsDefaultBlock()) {
         return;
@@ -498,9 +513,20 @@ void logPivotFocusAssert(int shotIndex) {
     const vec3 derived = IRRender::getDefaultRotationPivotFocus();
     const vec3 analytic = pivotVerifyAnalyticFocus();
     const float worldDelta = IRMath::length(derived - analytic);
+    // Exactly the values RenderManager's latch guard compares, so this tracks the
+    // real re-derive trigger rather than a proxy for it.
+    const vec2 cameraIso = IRRender::getCameraPosition2DIso();
+    const vec2 zoom = IRRender::getCameraZoom();
+    if (!g_hasPivotFocusAssertView) {
+        g_pivotFocusAssertCameraIso = cameraIso;
+        g_pivotFocusAssertZoom = zoom;
+        g_hasPivotFocusAssertView = true;
+    }
+    const bool viewHeld =
+        cameraIso == g_pivotFocusAssertCameraIso && zoom == g_pivotFocusAssertZoom;
     IR_LOG_INFO(
         "[pivot-focus-assert] block={} shot={} derived=({},{},{}) analytic=({},{},{}) "
-        "world_delta={} tolerance={} result={}",
+        "world_delta={} tolerance={} view_held={} result={}",
         g_pivotVerifyBlock,
         shotIndex,
         derived.x,
@@ -511,6 +537,7 @@ void logPivotFocusAssert(int shotIndex) {
         analytic.z,
         worldDelta,
         kPivotFocusAssertToleranceWorld,
+        viewHeld ? 1 : 0,
         worldDelta <= kPivotFocusAssertToleranceWorld ? "PASS" : "FAIL"
     );
 }
