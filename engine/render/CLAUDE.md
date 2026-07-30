@@ -988,12 +988,18 @@ parity with voxel-pool primary shapes.
   `RotationPivotMode` correction (#1352) so camera Z-yaw pivots about the
   on-screen focus instead of the world origin; in `ORIGIN` mode and at
   `visualYaw == 0` it returns the raw offset, so the cardinal fast path is
-  byte-identical. The DEFAULT (no explicit `setRotationPivotFocus`) focus is
-  **latched**, not computed per call: `RenderManager::beginFrame` re-derives
-  it once per frame from a composite-depth readback under the viewport center
-  (#2547), so every stage in a frame reads one value. Don't move that derive
+  byte-identical. For the DEFAULT (no explicit `setRotationPivotFocus`) focus,
+  **the iso depth is latched and the point is derived live**:
+  `RenderManager::beginFrame` re-derives the depth once per frame from a
+  composite-depth readback under the viewport center (#2547), so every stage in
+  a frame reads one value, while `getDefaultRotationPivotFocus` recomputes the
+  point from the current `cameraIso` on every call. Don't move that derive
   into the pipeline — a mid-frame re-derive splits the frame across two
-  pivots. Reading the raw offset at a new producer site silently
+  pivots — and don't "optimize" it into a latched world point:
+  `IRMath::cameraMoveRelativeToYaw`'s pan pre-compensation inverts
+  `d effCam / d cameraIso`, which only holds while the focus tracks the camera
+  (a frozen point makes interactive pan overshoot and pop back at any non-zero
+  yaw; `test/render/camera_pan_pivot_test.cpp` guards it). Reading the raw offset at a new producer site silently
   reintroduces the off-origin orbital swing while every other layer pivots
   correctly. The detached composite reads the effective offset only for the
   screen PLACEMENT of the canvas quad; its de-tile gather parity stays keyed

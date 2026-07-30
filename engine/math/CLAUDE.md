@@ -105,6 +105,16 @@ formulas. The convention is world→view = R\_z(−yaw), so view→world = R\_z(
           : 0.0f;
   camPos.pos_ = dragStart + cameraMoveRelativeToYaw(isoDelta, panYaw);
   ```
+  **Second precondition: the CAMERA_CENTER focus must track `cameraIso`.** The
+  pre-compensation inverts `d effCam / d cameraIso`, which equals
+  `P(R_z(−yaw)·Pinv(Δ))` only while the focus is re-derived from the live
+  camera each frame — at any focus *depth*, since `isoPixelToPos3D`'s depth
+  parameter shifts along `(1,1,1)` and projects to `(0,0)`. Latch the focus as
+  a fixed **world point** and that derivative becomes the identity, so pan at
+  any non-zero yaw moves content in the wrong direction and pops back when the
+  focus re-derives. A depth-aware pivot latches the iso **depth** and derives
+  the point live (`RenderManager::getDefaultRotationPivotFocus`, #2547);
+  `test/render/camera_pan_pivot_test.cpp` guards it.
 
 **Split helpers** (live in `engine/prefabs/irreden/render/camera.hpp`):
 

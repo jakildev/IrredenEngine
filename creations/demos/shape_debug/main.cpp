@@ -485,11 +485,12 @@ vec3 pivotVerifyAnalyticFocus() {
 
 // Per-shot `[pivot-focus-assert]` line for the DEFAULT-pivot blocks
 // (AutoScreenshotConfig::onCaptureFrame_, fired on the settled capture frame):
-// the sharp half of the re-grounded gate. The derived focus is LATCHED — it is
-// derived once, before the sweep's first yaw, and held across the sweep — so
-// every shot must report the SAME value, and that value must be the analytic
-// one. scripts/pivot-verify.py parses these lines and fails the pass on any
-// FAIL or on a value that moves mid-sweep.
+// the sharp half of the re-grounded gate. The derived focus's iso DEPTH is
+// LATCHED — derived once, before the sweep's first yaw, and held across it —
+// and the sweep holds the camera position fixed, so the derived POINT is
+// constant too: every shot must report the SAME value, and that value must be
+// the analytic one. scripts/pivot-verify.py parses these lines and fails the
+// pass on any FAIL or on a value that moves mid-sweep.
 void logPivotFocusAssert(int shotIndex) {
     if (!pivotVerifyIsDefaultBlock()) {
         return;

@@ -60,15 +60,33 @@ helper.
    **Latch policy.** `RenderManager::updateDefaultRotationPivotFocus` runs once
    per frame from `beginFrame`, ahead of the RENDER pipeline, so every stage in
    a frame reads ONE focus. It re-derives only while `visualYaw` is unchanged
-   between frames (a `kResidualYawDeadband`-snapped residual counts as settled)
-   AND the previous frame rendered the current pan/zoom — the depth attachment
+   between frames (per-frame absolute-yaw delta under
+   `RenderManager::kPivotYawSettleDelta`) AND the previous frame rendered the
+   current pan/zoom — the depth attachment
    it reads belongs to the previous frame, so a derive is only sound one frame
    after the camera settles. While yaw moves the latch is HELD: that is what
    pins the pre-rotation center content through the whole rotation, identically
    for a mouse drag, a key, or a programmatic `setYaw` (auto-screenshot needs no
-   gesture plumbing). Steady state and continuous panning both do ZERO readbacks
-   — a readback costs a full GPU flush, so it fires only on the settled frame
-   after a pan/zoom change.
+   gesture plumbing). A genuinely still camera does ZERO readbacks — a readback
+   costs a full GPU flush — but the cost lands on every motion-stop frame during
+   real interaction, not once at startup.
+
+   **What is latched is the iso DEPTH, not the point.**
+   `getDefaultRotationPivotFocus` recomputes
+   `isoPixelToPos3D(viewCenterIso, latchedDepth)` from the *live* `cameraIso` on
+   every call. This is required, not stylistic:
+   `IRMath::cameraMoveRelativeToYaw` (the pan pre-compensation every pan system
+   goes through) inverts `d effCam / d cameraIso`, which equals
+   `P(R_z(−yaw)·Pinv(Δ))` only while the focus tracks the camera. Because
+   `isoPixelToPos3D`'s depth parameter shifts along `(1,1,1)` — projecting to
+   `(0,0)` — the latched depth is invisible to that derivative, so a depth-aware
+   pivot and the pan identity coexist exactly. Latching the *world point*
+   instead collapses the derivative to the identity and interactive pan at any
+   non-zero yaw overshoots (at yaw 90°, a `(10,0)` drag moves content `(20,30)`)
+   and pops back on mouse-stop. The pivot-verify harness cannot see this class —
+   it holds `cameraIso` fixed while sweeping yaw, the one regime where a frozen
+   and a live focus agree — so the guard is the headless unit test
+   `test/render/camera_pan_pivot_test.cpp`.
 
    The offset is the drift-cancel `cameraYawPivotOffset` form
    above — NOT a bare `pos3DtoPos2DIsoYawed(F, yaw)`, which leaves a yaw-varying

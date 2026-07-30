@@ -53,6 +53,7 @@ add_executable(IrredenEngineTest
   math/ir_math_trixel_index_test.cpp
   math/ir_math_yaw_deformation_test.cpp
   math/sdf_test.cpp
+  render/camera_pan_pivot_test.cpp
   render/camera_yaw_test.cpp
   render/detached_world_depth_test.cpp
   render/per_axis_canvas_size_test.cpp
