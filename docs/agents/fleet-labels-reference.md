@@ -324,57 +324,28 @@ Specifically, **never pass these via `--label` when filing**:
   #1654 race — generates no dispatch), none of step 1c's own exclusion
   labels, no active `fleet:resolving-*` claim, and stacked children
   defer to their conflicted base.
-- `fleet:fork-of-other-pr` — owned by the **merger** (sets when it
-  detects this PR's branch was forked from another open PR's branch
-  rather than from master, meaning the diff carries inherited commits
-  from that PR). Signals: wait for the other PR to merge, then use
-  `rebase --onto` to drop the inherited commits. The merger skips
-  these in its CONFLICTING sweep; the worker excludes them from its
-  `fleet:semantic-conflict` step. Cleared by the **human** after the
-  upstream PR merges.
-- `fleet:needs-base-update` — owned by the **merger** (sets in step 2.6
-  when a stacked child PR's upstream tip was force-pushed and the
-  cascade-rebase onto the new tip conflicts with the child's own
-  commits). The child's branch is anchored to the upstream's old tip;
-  without manual reconciliation it cannot inherit the upstream's
-  updated state. The merger and the cascade-rebase pass skip these.
-  Cleared automatically when the base merges (step 2.5 ii's re-target
-  to master removes it) or closes (step 2.5 iii). Otherwise the
-  **author** rebases manually onto the new upstream tip and removes
-  the label, or an **opus+-class worker** drives the resolution similar to
-  `fleet:semantic-conflict`.
-- `fleet:stacked` — owned by the **author's `commit-and-push`** (set when the
-  claim was made with `--stackable-on`). Signals that the PR's base is a
-  feature branch rather than `master`; the merger picks it up for the
-  cascade-rebase step once the upstream PR merges. Don't add to issues.
-- `fleet:awaiting-base` — owned by the **merger** (sets in step 5a.5
-  sub-case i when a stacked child PR is CONFLICTING because its base
-  already merged, or carried forward by step 2.5 while the base PR is
-  still OPEN). Signals that the child is waiting for its base PR to
-  merge before it can be re-targeted to master. Cleared automatically
-  by the merger in step 2.5 ii when the base merges (re-targets the
-  child to master and removes the label) or in step 2.5 iii when the
-  base closes (replaced by `fleet:needs-info`).
-  **Distinct from `fleet:awaiting-upstream-review`**: this label is
-  about *merge state* (has the upstream PR landed?), not *review state*
-  (has the upstream PR been approved?). A stacked child can be waiting
-  for its upstream to be *approved* (reviewer-owned gate) while the
-  upstream is still OPEN, or waiting for its upstream to *merge*
-  (merger-owned gate) after it has already been approved.
+- **Retired stacking labels** — `fleet:stacked`, `fleet:awaiting-base`,
+  `fleet:needs-base-update`, `fleet:stacked-rebase`, and
+  `fleet:fork-of-other-pr` retired with the native-stacked-PRs
+  migration: stack membership is GitHub's stack object (the PR
+  header's stack badge / `GET repos/<slug>/stacks`), retarget +
+  cascade rebases are server-side, and merges couple bottom-up, so
+  the merge-state coordination the labels carried no longer exists.
+  Definitions + ownership preserved at the `pre-native-stacks` tag;
+  re-enable steps in `scripts/fleet/legacy/stacked-prs/README.md`.
+  A straggler PR still carrying one is legacy state — agents treat
+  it as skip/handoff, never re-apply. See
+  [`docs/design/native-stacked-prs-migration.md`](../design/native-stacked-prs-migration.md).
 - `fleet:awaiting-upstream-review` — owned by the **reviewer**. Set
   on a stacked child PR when the upstream PR is not yet approved
   (the child's review is deferred until the upstream verdict
-  lands). Cleared by the **reviewer** on the next pass once the
-  upstream has been approved or merged, or implicitly cleared as
-  part of any subsequent verdict label-swap (the reviewer's
-  approve/has-nits/needs-fix/blocker commands all remove it).
-- `fleet:stacked-rebase` — owned by the **merger** (sets in step
-  2.5 ii alongside `fleet:changes-made` when re-targeting a stacked
-  child PR to `master` after the upstream merges, signalling that
-  the diff against the new base may differ from the prior review).
-  Cleared by the **reviewer** on the post-rebase verdict (the same
-  label-swap commands that handle `fleet:awaiting-upstream-review`
-  remove it).
+  lands). This is a *review-state* gate and survives the native
+  migration — it is what keeps an approved child from pulling an
+  unapproved parent in via a coupled stack merge. Cleared by the
+  **reviewer** on the next pass once the upstream has been approved
+  or merged, or implicitly cleared as part of any subsequent verdict
+  label-swap (the reviewer's approve/has-nits/needs-fix/blocker
+  commands all remove it).
 - `fleet:reviewing-<host>-<agent>` — owned by the **`fleet-claim`
   script** (atomic review-claim primitive). Applied at the start of
   reviewer or cross-host-smoke work; removed by

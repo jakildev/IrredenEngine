@@ -42,12 +42,10 @@ claim-time open missed them:
 ```bash
 branch=$(git branch --show-current)
 labels=(--label "fleet:wip")
-[[ "$base" != "master" ]] && labels+=(--label "fleet:stacked")
 
 existing=$(gh pr list --head "$branch" --state open --json url -q '.[0].url')
 if [[ -n "$existing" ]]; then
     gh pr edit "$existing" --base "$base"                       # no-op when already correct
-    [[ "$base" != "master" ]] && gh pr edit "$existing" --add-label "fleet:stacked"
 else
     gh pr create --base "$base" "${labels[@]}" \
         --title "<scope>: <title> (#<N>)" \
@@ -69,14 +67,12 @@ server object (the legacy body marker produced stale-marker misrouting,
 - **No `stack-set-pr`.** That bookkeeping is molecule-only ([fleet-stack.md](fleet-stack.md)).
   Single-task mode writes no claim state — it only *reads* `claim-base`.
 - **`fleet:wip` is unchanged.** The claim-time PR is WIP; the finalize step
-  removes `fleet:wip` for reviewer pickup, leaving `fleet:stacked` in place.
+  removes `fleet:wip` for reviewer pickup.
 - **GitHub owns the base after the link.** When the upstream PR merges,
   GitHub re-targets and rebases this PR server-side, synchronously with the
-  merge. Only set the base/label from the *current* `claim-base` value at
-  push time; never re-stack a PR that GitHub (or, for unlinked legacy PRs,
-  the merger) has already re-targeted.
-- The merger routes stacked PRs by `baseRefName != "master"` regardless of the
-  label, and skips PRs that are in a native stack; `fleet:stacked` is the
-  human-visibility / cheap-filter convenience this procedure guarantees is
-  present during the migration (it retires with the legacy machinery —
-  see `docs/design/native-stacked-prs-migration.md`).
+  merge. Only set the base from the *current* `claim-base` value at push
+  time; never re-stack a PR that GitHub has already re-targeted.
+- **No stack label.** Stack membership is the native stack object
+  (`baseRefName != "master"` + the stack badge); the legacy `fleet:stacked`
+  label retired with the self-built machinery — see
+  `docs/design/native-stacked-prs-migration.md`.

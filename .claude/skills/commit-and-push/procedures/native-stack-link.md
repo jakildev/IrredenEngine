@@ -50,9 +50,9 @@ falling back — surface the skip in your report.
   membership is a server object and the PR header's stack badge shows the
   chain. Body markers were the legacy mechanism and produced stale-marker
   misrouting (#2231).
-- Keep applying `fleet:stacked` where the stack mode says so — transition-
-  period readers still filter by it. The label retires with the legacy
-  machinery (migration Phase 2).
+- No stack label: membership is the stack object itself (`baseRefName !=
+  "master"` + the PR header's stack badge). The legacy `fleet:stacked` label
+  retired with the self-built machinery.
 - Never run the legacy re-stack dance (`gh pr edit --base master` after a
   parent merge) on a linked PR — GitHub already did it, synchronously with
   the merge.
