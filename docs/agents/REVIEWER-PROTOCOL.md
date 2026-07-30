@@ -179,23 +179,23 @@ queue. After every `gh pr review --comment ...`, your VERY NEXT bash
 call MUST be the `fleet-transition` verdict edge below.
 
 Always remove stale verdict labels before adding the new one. Each
-verdict also clears the stacked-PR review gate so a single verdict
-re-evaluation cleans it up:
+verdict also clears two derived-state labels, so a single verdict
+re-evaluation cleans them up:
 
 - `fleet:awaiting-upstream-review` — a previously-gated stacked PR
   exits the gate cleanly when the reviewer finally proceeds.
-
-(The merger-owned `fleet:stacked-rebase` / `fleet:needs-base-update`
-clears retired with the native-stacked-PRs migration — GitHub's
-server-side retarget + rebase produce no label to clear, and the
-auto-rereview classifier preserves the verdict across the
-content-identical force-push.)
 - `fleet:needs-opus-recheck` — the opus-reviewer consumes its own
   escalation the moment it posts any verdict (approve clears it;
   needs-fix / blocker also clear it and hand the PR back to the
   author → sonnet-reviewer cycle). For the sonnet-reviewer this
   remove is a harmless no-op — it only ever ADDS this label in the
   special case below, which sets no verdict and bypasses this swap.
+
+(The merger-owned `fleet:stacked-rebase` / `fleet:needs-base-update`
+clears retired with the native-stacked-PRs migration — GitHub's
+server-side retarget + rebase produce no label to clear, and the
+auto-rereview classifier preserves the verdict across the
+content-identical force-push.)
 
 **One named edge per verdict.** Apply the verdict label-swap with
 `fleet-review-verdict` (`scripts/fleet/fleet-review-verdict`), passing

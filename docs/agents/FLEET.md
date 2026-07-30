@@ -721,11 +721,17 @@ rebase server-side, synchronously; cascade rebases are one
 couple bottom-up — merging a child pulls its unmerged parents in, so
 a child can never land on a stale base. Design + evaluation:
 [`docs/design/native-stacked-prs-migration.md`](../design/native-stacked-prs-migration.md).
-A PR with a feature-branch base but no native stack object is an
-anomaly — the merger's a.6 fork check flags it `fleet:needs-info` with
-a link-or-rescope comment (the legacy retarget/cascade machinery is
-retired; archive + re-enable guide:
-`scripts/fleet/legacy/stacked-prs/README.md`).
+The merger does not verify stack membership: its step a.5 rebases any
+feature-branch-based PR against its own base, linked or not. The case it
+*does* flag is the accidental fork — `baseRefName` reads `master` but the
+branch inherited another open PR's commits — which step a.6 labels
+`fleet:needs-info` with a link-or-rescope comment. A stack child whose
+base branch has disappeared (parent closed unmerged) is logged and
+skipped rather than labeled, and does not self-heal: GitHub re-targets
+children when a parent **merges**, not when it is closed, so that case
+needs a human. (The legacy retarget/cascade machinery is retired;
+archive + re-enable guide:
+`scripts/fleet/legacy/stacked-prs/README.md`.)
 
 Two stacking modes exist in this fleet:
 
