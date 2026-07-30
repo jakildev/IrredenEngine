@@ -409,17 +409,6 @@ exit cleanly:
       base PR by its head ref with the step-2.5 base-lookup query. The
       base might be OPEN, MERGED, or CLOSED without merging.
 
-      **Native-stack override.** If the candidate is in step 2.4's
-      **native-stacked set**, only the label-side sub-cases apply:
-      sub-case i (base OPEN → park with `fleet:awaiting-base`) and
-      sub-case iii (base CLOSED unmerged → `fleet:needs-info` handoff)
-      run as written — they are comment + label only. Sub-case ii
-      (base MERGED → retarget + rebase) must NOT run: GitHub retargets
-      native children synchronously with the parent's merge, so
-      observing a native PR with a merged base is a transient race at
-      worst — log `... skip #<N>: native stack, GitHub owns retarget`
-      and jump to step f.
-
       Three sub-cases. Sub-cases i and iii skip the normal rebase
       (step b–d) and jump directly to step f (reset to scratch). Sub-
       case ii performs its OWN re-target + rebase inline (the rebase
@@ -433,6 +422,17 @@ exit cleanly:
       (removing an absent label returns non-zero and would abort a
       chained add) but collapses the adds into a single `gh pr edit`
       call where possible.
+
+      **Native-stack override — read before executing any sub-case.**
+      If the candidate is in step 2.4's **native-stacked set**, only the
+      label-side sub-cases apply: sub-case i (base OPEN → park with
+      `fleet:awaiting-base`) and sub-case iii (base CLOSED unmerged →
+      `fleet:needs-info` handoff) run as written — they are comment +
+      label only. Sub-case ii (base MERGED → retarget + rebase) must
+      NOT run: GitHub retargets native children synchronously with the
+      parent's merge, so observing a native PR with a merged base is a
+      transient race at worst — log `... skip #<N>: native stack,
+      GitHub owns retarget` and jump to step f.
 
       **i. Base PR is OPEN.** The child can't safely rebase onto master
          until the base lands; skip this iteration.
