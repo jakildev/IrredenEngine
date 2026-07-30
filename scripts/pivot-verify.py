@@ -23,6 +23,7 @@ Blocks (see ``g_pivotVerifyBlock`` in ``creations/demos/shape_debug/main.cpp``):
 
 ``focus-ctr`` additionally runs an SDF-probe twin (``--pivot-verify-sdf``)
 so the voxel-pool and SDF render paths' pivot conventions are compared A/B.
+The twin is REPORTED, never gated — see ``SDF_GATED`` (#2645).
 
 Two oracles, applied per block:
 
@@ -38,7 +39,8 @@ Two oracles, applied per block:
   gated only for the blocks in ``CENTROID_GATED_BLOCKS``: those rotate their
   probe about a point on the probe's own axis, so a correct pivot maps the
   silhouette onto itself. Every other block's deviation is measured and
-  reported but not gated.
+  reported but not gated. The SDF twin is exempt even on a gated block
+  (``SDF_GATED``, #2645) — no lattice, so no pin to hold.
 
 Why a block falls in one bucket or the other — and what the reported-but-not-
 gated deviations mean — is ``docs/design/camera-yaw-pivot.md`` §"Known
@@ -76,6 +78,19 @@ DEFAULT_PIVOT_BLOCKS = {"center-column", "center-depth", "background-center",
 # silhouette onto itself. For every other block the deviation is reported but
 # not gated — see the module docstring.
 CENTROID_GATED_BLOCKS = {"focus-ctr", "focus-off", "background-center"}
+# The SDF twin is a continuous-geometry A/B control, NOT a pin gate (#2645).
+# Its analytic silhouette has no voxel lattice to snap to, so its centroid is
+# quantized only by the destination pixel grid: dev_x measures exactly 2.00px
+# at zoom 1, 2, 4, 8 AND 16 — flat over a 16x range. That 2.00px is one whole
+# game-resolution pixel (1280x720 game res rendered to a 2560x1440 HiDPI
+# framebuffer, so outputScaleFactor == 2), i.e. the smallest step the screen
+# can represent. A pivot-anchor error is a world-space offset and must scale
+# with zoom; a destination-grid quantization floor cannot, so no pivot fix can
+# move it and gating on it is a permanent false red. The voxel twin stays
+# gated and pins at <= 1.4px across the same sweep. This exemption is what
+# keeps `focus-ctr` gated for its voxel pass while its SDF twin only reports,
+# even though the block itself is in CENTROID_GATED_BLOCKS.
+SDF_GATED = False
 # Frame indices of the cardinal yaws (0, pi/2, pi, 3pi/2) within the demo's
 # 9-yaw sweep table (`yaws[]` in creations/demos/shape_debug/main.cpp).
 CARDINAL_FRAME_INDICES = (0, 3, 5, 7)
@@ -225,17 +240,24 @@ def main(argv: list[str] | None = None) -> int:
                       file=sys.stderr)
 
         # Whole-silhouette oracle. Always measured; gated only where it is a
-        # valid pin (CENTROID_GATED_BLOCKS).
+        # valid pin (CENTROID_GATED_BLOCKS), and never for the SDF twin, whose
+        # continuous silhouette rides a destination-grid floor (SDF_GATED).
         centroid, dev_x, dev_y, _ = _score_pass(probe_exe, frames,
                                                 args.max_deviation)
-        if block in CENTROID_GATED_BLOCKS:
+        centroid_gated = (block in CENTROID_GATED_BLOCKS
+                          and (SDF_GATED if sdf else True))
+        if centroid_gated:
             verdict = centroid if focus in ("-", "OK") else "FOCUS-BAD"
+        elif focus == "-":
+            # Neither oracle gates this pass — the SDF twin (#2645). Its real
+            # numbers still print; it just cannot fail the run.
+            verdict = "REPORT"
         else:
             verdict = {"OK": "FOCUS-OK", "BAD": "FOCUS-BAD",
                        "NONE": "NO-ASSERT"}[focus]
         results.append((label, verdict, dev_x, dev_y, len(frames), focus))
 
-    passing = {"PINNED", "FOCUS-OK"}
+    passing = {"PINNED", "FOCUS-OK", "REPORT"}
     print()
     print(f"{'pass':<28} {'verdict':<10} {'dev_x(px)':>10} {'dev_y(px)':>10} "
           f"{'frames':>7} {'focus':>7}")
@@ -249,7 +271,8 @@ def main(argv: list[str] | None = None) -> int:
     print("verdicts: PINNED = silhouette held (threshold "
           f"{args.max_deviation}px) · FOCUS-OK = derived focus matched the "
           "analytic pin; the silhouette deviation is reported, not gated "
-          "(see the module docstring)")
+          "· REPORT = SDF twin, measured but ungated (see the module "
+          "docstring)")
     if failed:
         print(f"pivot-verify: {failed}/{len(results)} passes FAILED")
         return 1

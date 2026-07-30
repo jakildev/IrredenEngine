@@ -150,8 +150,10 @@ whole-silhouette invariance; no reference images) enumerates the defects it has
 found in the contract above — all invisible at cardinal yaw 0, so the
 "Empirically verified" section below remains true for what it measured while the
 pivot is still wrong under rotation. #2545 (deviation 1), #2546 (deviation 3),
-and #2547 (deviation 2) are now fixed; deviation 4 is open. Fixed entries are
-retained below until the epic closes:
+and #2547 (deviation 2) are now fixed; deviation 4 turned out not to be a pivot
+defect at all (#2645 — a destination-grid quantization floor, see the
+subsection after this list). Fixed entries are retained below until the epic
+closes:
 
 1. **Half-cell rotation-anchor mismatch — FIXED (#2545).** The voxel raster
    rotated content about `position + (0.5,0.5,0.5)` while the SDF path and
@@ -255,13 +257,17 @@ retained below until the epic closes:
    and the store/RESOLVE/overflow paths are untouched — pure screen-XY
    registration.
 
-4. **SDF-twin silhouette wobble — OPEN (#2645).** `focus-ctr-sdf` scores DRIFT
-   2.00 px at zoom 4 and 8 while its voxel twin holds 0.94/1.27 with the same
-   explicit focus. Both take an explicit `setRotationPivotFocus`, so the #2547
-   derive never runs for them and this is not a default-pivot deviation; it is
-   either the analytical solver's continuous silhouette re-forming per yaw (in
-   which case the twin is a comparison, not a 1.5 px gate) or an SDF-side
-   rotation-anchor delta that #2545 did not cover. #2645 settles which.
+4. **SDF-twin silhouette wobble — NOT A DEVIATION (#2645).** `focus-ctr-sdf`
+   scores DRIFT 2.00 px at zoom 4 and 8 while its voxel twin holds 0.94/1.27
+   with the same explicit focus. Both take an explicit `setRotationPivotFocus`,
+   so the #2547 derive never runs for them and this is not a default-pivot
+   deviation. Of the two candidate readings — the analytical solver's
+   continuous silhouette re-forming per yaw (a comparison, not a 1.5 px gate)
+   versus an SDF-side rotation-anchor delta #2545 did not cover — #2645 settled
+   it on the first by zoom sweep: the deviation is flat at exactly 2.00 px over
+   a 16x zoom range, which a world-space anchor delta cannot be. The twin is
+   reported rather than gated; see §"Not a deviation: the SDF twin's flat
+   2.00px floor (#2645)" below.
 
 Fix chain and acceptance gates: epic #2544 (P1 #2545 → P2 #2546 → P3 #2547 →
 P4 #2548, cursor-pivot true-depth latch + indicator). Each child flips its
@@ -269,6 +275,69 @@ pivot-verify block(s) to its own gate — PINNED for the blocks whose probe
 rotates about a point on its own axis, `[pivot-focus-assert]` FOCUS-OK for the
 default-pivot blocks whose silhouette legitimately orbits (see deviation 2).
 This section shrinks as they land.
+
+### Not a deviation: the SDF twin's flat 2.00px floor (#2645)
+
+`focus-ctr`'s SDF twin (`--pivot-verify-sdf`) draws a DRIFT verdict from
+`jitter_probe` at 2.00px while the voxel twin on the same explicit focus pins
+at ~1px. This is **not** a pivot defect and no pivot fix can move it — it is
+the SDF path's rasterization quantum, so the twin is **reported, not gated**
+(`SDF_GATED` in `scripts/pivot-verify.py`) and the harness prints it as
+`REPORT` rather than failing the run.
+
+The discriminator is zoom. A rotation-anchor delta of Δ world units projects to
+Δ·zoom screen px, so it must scale with zoom; a destination-grid quantization
+floor must not. Measured on macOS/Metal against `origin/master` @ `13094837`, one
+full-circle 9-yaw sweep per cell:
+
+| zoom | voxel dev_x / dev_y | SDF dev_x / dev_y |
+|---|---|---|
+| 1 | 0.99 / 1.35 | **2.00** / 2.00 |
+| 2 | 0.98 / 1.36 | **2.00** / 2.00 |
+| 4 | 0.94 / 1.27 | **2.00** / 2.00 |
+| 8 | 0.96 / 1.31 | **2.00** / 2.00 |
+| 16 | 0.06 / 0.53 | **2.00** / 1.34 |
+
+`dev_x` is **exactly 2.00px at every zoom over a 16x range** — flat, so the
+anchor-delta reading is ruled out by measurement rather than by argument.
+
+That 2.00px is not an arbitrary number: it is **one whole game-resolution
+pixel**. `shape_debug` renders a 1280x720 game resolution
+(`creations/demos/shape_debug/config.lua`) into a 2560x1440 HiDPI framebuffer
+(confirmed from the captured PNG headers), so `outputScaleFactor == 2` and the
+smallest step the destination grid can represent is 2.00 framebuffer px. The
+raw centroids sit right at that quantum — at zoom 4 they take only two discrete
+values per axis, exactly 2.00px apart (x ∈ {1277.50, 1279.50}: the frame-centre
+pixel and the one game-pixel step next to it).
+
+Because the quantum is one *game-resolution* pixel, the framebuffer figure is
+host-dependent: on a 1x (non-HiDPI) host the same floor should read ~1.00px and
+fall under the 1.5px threshold on its own. A Linux/GL re-measure that reports
+~1.00px is therefore agreeing with this entry, not contradicting it — the
+un-gating is keyed on the floor being a floor, not on the specific number.
+
+The voxel twin has a lattice of its own to land on: its cells sit on exact
+integer world positions, so its silhouette re-forms identically at each yaw and
+it pins sub-pixel. The SDF twin is a *continuous* solved surface with no such
+lattice, so as it rotates its silhouette edge crosses destination-pixel
+boundaries and the centroid steps by the one-pixel quantum. That is the
+sampling floor of rasterizing continuous geometry to a fixed grid: you cannot
+pin a continuously-moving analytic silhouette better than the destination pixel.
+
+This agrees with the independent #2469 measurement in
+[`engine/render/CLAUDE.md`](../../engine/render/CLAUDE.md) §"Accepted sub-pixel
+yaw-sweep centroid residual", which records the same 2.00px x-excursion for the
+SDF cylinder at zoom 4/8 under the unrelated `--yaw-sweep` harness and already
+treats the SDF twin as the *defect-free control* whose residual is "a floor the
+probe itself carries". Two harnesses, one number.
+
+Closing it would mean resolving the silhouette below one destination pixel —
+supersampling / conservative rasterization on the SDF path, which is the same
+principled root fix already deferred to epic **#1933** for the #1883 corner
+drift and the #2469 centroid residual. It is not reachable by any change to the
+pivot math, which is what this harness exists to gate. The twin keeps running
+because the A/B against the voxel path is the useful signal; only its
+contribution to the exit code is dropped.
 
 ## History
 
