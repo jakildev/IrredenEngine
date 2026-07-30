@@ -217,6 +217,30 @@ closes:
      probe's own axis point and the silhouette *should* rotate onto itself. It
      is the isolating diagnostic for the residual below.
 
+   A third joins them in #2548, for the CURSOR pivot rather than the default:
+
+   - `cursor-latch` — `center-axis` geometry, but the focus comes from
+     `IRPrefab::CursorPivot::resolveFocusWorld` (the real `castVoxelRay` path)
+     with a synthetic cursor parked on the viewport-center anchor's screen
+     pixel, latched once and held for the sweep. Same routing as `center-axis`
+     — pinned-point oracle, silhouette reported not gated (16 px at zoom 4, the
+     same residual model plus the half-voxel offset below). It runs on the
+     GUI-test cycler rather than the plain auto-screenshot one, because it needs
+     scripted cursor input and a per-frame hook: the shot cycler clears the
+     pivot focus at every shot boundary and the latched point is only known at
+     runtime, so it cannot ride the shot table.
+
+     Its tolerance is a whole world unit rather than 0.6, and the reason is
+     geometric, not slack: the cursor latch reports a `castVoxelRay` SURFACE hit
+     — the marched point where the ray first lands inside the winning voxel's
+     unit cube — while the analytic oracle predicts that voxel's CENTER. The L2
+     gap is bounded by the cube's half-diagonal, `sqrt(3)/2 ~= 0.87`, and the
+     bound is TIGHT here rather than pessimistic: the iso ray runs along
+     (1,1,1), so it enters through the cell's near corner and the measured delta
+     is exactly 0.87. The gate keeps ~8x of margin over the regression it
+     exists to catch (a revert to the pre-#2548 iso-depth-0 latch lands ~8.5
+     world units off on this geometry).
+
    **Residual: composite-depth quantization (accepted, measured).** The derive
    consumes what the composite reports, which is quantized per trixel at
    sub-voxel resolution. Against the probe's voxel lattice the readback lands

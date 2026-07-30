@@ -465,6 +465,43 @@ gizmo interaction" above for the state machine, the press-locked
 iso-depth plane convention, and the anchor-routing rules used by the
 builders.
 
+## Cursor-latched rotation pivot (`cursor_pivot.hpp`)
+
+`IRPrefab::CursorPivot::` is the Pattern-B surface behind
+`System<CAMERA_MOUSE_ROTATE>`'s Ctrl+Shift+middle-drag (#2548, epic #2544
+Phase 4):
+
+- `resolveFocusWorld(exclude)` — the world point under the cursor at its TRUE
+  surface depth, via `IRPrefab::Picking::castVoxelRay`. A background click (no
+  hit) falls back to `IRRender::getDefaultRotationPivotFocus()`, so it behaves
+  exactly like the no-Shift default pivot. Pass the indicator entity as
+  `exclude` so the marker can't catch its own ray. Epic ledger D3: CPU picking
+  never applied the #2545 raster anchor shift, so `castVoxelRay` already agrees
+  with the raster at every cardinal — **do not** add a picking compensation.
+- `createIndicator()` / `showIndicator()` / `hideIndicator()` — the marker
+  entity drawn at the latched point. Spawned **lazily, on the first
+  cursor-pivot drag** (a creation that never uses the mode spawns nothing, so
+  its entity-id layout and existing captures are untouched), then reused and
+  re-hidden rather than destroyed. It sets `canvasEntity_ = kNullEntity`
+  deliberately so `SHAPES_TO_TRIXEL` resolves the canvas at RENDER time —
+  `C_ShapeDescriptor`'s ctor snapshot of the active canvas is right for a
+  scene-setup spawn but not for one built from an INPUT-pipeline system at an
+  arbitrary frame.
+
+The system holds the indicator id as a member (system-owned state), and
+`IRPrefab::Camera::setCursorPivotByDefault` (`camera_controls.hpp`) swaps which
+middle-drag chord latches the cursor, so a demo can key-toggle between the
+screen-center default and the cursor latch under the same gesture.
+
+**A marker spawned from a RENDER-pipeline hook never renders** — that is past
+`SHAPES_TO_TRIXEL` for the frame, and the entity reaches no archetype the pass
+reads (measured: zero pixels). Spawn from INPUT (the drag path) or at scene
+setup (the `--pivot-verify cursor-latch` harness).
+
+Gate: `python3 scripts/pivot-verify.py --blocks cursor-latch`; the ENABLED-path
+capture for the marker itself is
+`IRShapeDebug --pivot-verify cursor-latch --cursor-pivot-indicator`.
+
 ## Trixel UI widget framework
 
 `widgets.hpp` exposes `IRPrefab::Widget::make<kind>(...)` builders and
