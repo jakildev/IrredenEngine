@@ -136,6 +136,24 @@ exit cleanly:
    stacked-PR check need. (Cached equivalent of the previous
    `gh pr list --state open --json number,title,mergeable,labels,headRefName,baseRefName,updatedAt`.)
 
+2.4. **Fetch the native-stack membership set (one API call per repo
+   pass).** PRs linked into a **native GitHub stack** (created via the
+   `commit-and-push` link step — see
+   [`docs/design/native-stacked-prs-migration.md`](../../docs/design/native-stacked-prs-migration.md))
+   have GitHub itself as their base-management authority: retargeting
+   happens server-side synchronously with the parent's merge, cascade
+   rebases are server-side, and merges couple bottom-up. The merger
+   must never retarget, cascade-rebase, or strip markers on them —
+   only the label-side policy steps (parking, orphan handoff) still
+   apply. Fetch the set once:
+
+   `gh api "repos/jakildev/IrredenEngine/stacks" --jq '[.[] | select(.open) | .pull_requests[] | select(.merged_at == null) | .number] | unique'`
+
+   Store the resulting PR numbers as this pass's **native-stacked
+   set**. An empty array (or a 404 while the preview is repo-disabled)
+   means no native stacks — the legacy steps below then own every
+   stacked PR, as before.
+
 2.5. **Reconcile stacked PRs whose base has merged or closed —
    retarget proactively, label-independent.** Two failure modes this
    step covers: (1) **labeled stacked PRs** — `fleet:awaiting-base`
@@ -152,6 +170,9 @@ exit cleanly:
 
    From `repos.engine.prs[]`, collect every PR where:
    - `baseRefName != "master"` (stacked PR), AND
+   - the PR is NOT in step 2.4's **native-stacked set** (GitHub owns
+     native retargeting; log `... skip #<N>: native stack` and move
+     on), AND
    - `labels` contains NONE of `fleet:wip`, `human:wip`,
      `fleet:fork-of-other-pr`, `fleet:merger-cooldown`,
      `fleet:semantic-conflict`.
@@ -215,6 +236,11 @@ exit cleanly:
 
    From `repos.engine.prs[]`, collect every PR where:
    - `baseRefName != "master"` (stacked PR), AND
+   - the PR is NOT in step 2.4's **native-stacked set** (server-side
+     cascade rebases own native stacks; the author runs
+     `gh stack sync` when a mid-review upstream push needs
+     propagating — the merger hand-rebasing here would race the
+     server), AND
    - `labels` contains NONE of `fleet:wip`, `human:wip`,
      `fleet:blocker`, `human:needs-fix`, `human:blocker`,
      `human:re-review`, `fleet:semantic-conflict`,
@@ -382,6 +408,17 @@ exit cleanly:
       Otherwise (stacked PR — base is a feature branch), look up the
       base PR by its head ref with the step-2.5 base-lookup query. The
       base might be OPEN, MERGED, or CLOSED without merging.
+
+      **Native-stack override.** If the candidate is in step 2.4's
+      **native-stacked set**, only the label-side sub-cases apply:
+      sub-case i (base OPEN → park with `fleet:awaiting-base`) and
+      sub-case iii (base CLOSED unmerged → `fleet:needs-info` handoff)
+      run as written — they are comment + label only. Sub-case ii
+      (base MERGED → retarget + rebase) must NOT run: GitHub retargets
+      native children synchronously with the parent's merge, so
+      observing a native PR with a merged base is a transient race at
+      worst — log `... skip #<N>: native stack, GitHub owns retarget`
+      and jump to step f.
 
       Three sub-cases. Sub-cases i and iii skip the normal rebase
       (step b–d) and jump directly to step f (reset to scratch). Sub-
@@ -803,15 +840,18 @@ worktree, and `gh` target change.
 2g. **Gather + filter candidates** — same candidate rule and skip-label
     set as step 3 (CONFLICTING, or UNKNOWN updated >5m ago), over
     `repos.game.prs[]`.
-2.5g. **Reconcile + cascade-rebase stacked game PRs** — run steps 2.5
+2.5g. **Reconcile + cascade-rebase stacked game PRs** — first run step
+    2.4 for the game repo
+    (`gh api "repos/jakildev/irreden/stacks" --jq …`, same filter) to
+    build the game pass's **native-stacked set**, then run steps 2.5
     (reconcile stacked PRs whose base merged or closed — re-target to
     `master` + `fleet:stacked`→`fleet:stacked-rebase`) and 2.6
     (cascade-rebase stacked children whose still-open base force-pushed)
-    over `repos.game.prs[]`, exactly as the engine pass, with the game
-    deltas: cwd = your game twin worktree, every `gh` call carries `--repo
-    jakildev/irreden`, and re-target/rebase run against the game
-    `origin`. Force-push rebases done here count toward the shared
-    ≤2-rebase budget.
+    over `repos.game.prs[]`, exactly as the engine pass — including the
+    native-stack skips — with the game deltas: cwd = your game twin
+    worktree, every `gh` call carries `--repo jakildev/irreden`, and
+    re-target/rebase run against the game `origin`. Force-push rebases
+    done here count toward the shared ≤2-rebase budget.
 3g. **Resolve each candidate (within the shared cap)** — run step 5's
     core resolution: **a** (detached checkout in the game worktree,
     **including a.5 stacked-PR check and a.6 fork detection**),

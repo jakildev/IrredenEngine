@@ -384,6 +384,12 @@ Do the work, then exit cleanly:
        whichever the PR is actually based on, NOT always master:
        `git fetch origin <baseRefName>`
        `git rebase origin/<baseRefName>`
+       For a PR in a **native GitHub stack** (stack badge on the PR
+       header; membership via `gh api "repos/{owner}/{repo}/stacks"`),
+       this per-PR rebase against its *current* base is still fine —
+       but never retarget its base or replay it onto master by hand:
+       GitHub owns retarget-on-merge and cascade rebases for native
+       stacks (see `docs/design/native-stacked-prs-migration.md`).
     d'. **Inherited-prefix shortcut — check before resolving by hand.** If
        every conflicted file is one your branch *inherited* from a parent PR
        that has since merged (stale inherited copy vs master's now-merged
@@ -635,8 +641,9 @@ Do the work, then exit cleanly:
    tasks with multiple `Blocked by:` entries (Q3 decision: multi-blocker
    not eligible in v1). Pick the oldest eligible task by task ID. **For a
    `repo == "game"` task, `cd` into your game worktree and prefix the
-   claim with `--repo game`** — the merger's game pass now cascade-
-   rebases stacked game PRs, so the stack is maintained.
+   claim with `--repo game`** — stacks are native GitHub stacks in both
+   repos (commit-and-push links the PR after open), so the chain is
+   maintained server-side either way.
 
    If a stackable-blocked task is found, claim it with `--stackable-on`:
    `fleet-claim claim "<task-id>" <your-worktree-name> --stackable-on <stackable_blocker_pr.number>`

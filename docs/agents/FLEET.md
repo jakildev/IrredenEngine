@@ -306,8 +306,9 @@ Mechanics:
    `branch.<new>.cursor-stack-base = <A's branch>` to git config.
 3. Iterate on B, then "commit and push" → `commit-and-push` reads
    the `cursor-stack-base` config; if set, opens the PR with
-   `--base <A's branch>` and adds `Stacked on: <PR A URL>` to the
-   PR body.
+   `--base <A's branch>` and links it into the **native GitHub
+   stack** (the `native-stack-link.md` procedure). The PR header's
+   stack badge shows the chain; no body markers.
 4. Repeat for C, D, …
 
 Stacks usually live in one Cursor chat (ship A → start B → ship B
@@ -316,10 +317,11 @@ config is per-branch and persists, so a fresh chat that lands on
 `claude/slice-c` finds its `cursor-stack-base` automatically and
 `commit-and-push` does the right thing.
 
-When PR A merges, change PR B's base to `master` in the GitHub UI
-(or `gh pr edit B --base master`) — same step as in any stacked-PR
-workflow. The `cursor-stack-base` config is local-only; nothing
-upstream needs cleanup.
+When PR A merges, GitHub re-targets and rebases PR B onto `master`
+server-side — no manual base edit. Merging any PR in the stack
+pulls its unmerged parents in with it (coupled bottom-up merge).
+The `cursor-stack-base` config is local-only; nothing upstream
+needs cleanup.
 
 If a chat lands on a branch that already has `cursor-stack-base`
 set and the human cues a non-specific "next slice" without saying
@@ -708,6 +710,21 @@ requires `Bash(fleet-edit:*)` in `.claude/settings.json`.
 
 Stacked PRs let downstream work start before an upstream dependency
 merges, keeping each task's diff scoped to its own branch and PR.
+
+**Stack mechanics are GitHub-native.** Every stack mode below ends
+with the `commit-and-push` link step
+([`native-stack-link.md`](../../.claude/skills/commit-and-push/procedures/native-stack-link.md)),
+which registers the chain as a native GitHub stack. GitHub then owns
+base management: when a parent merges, its children re-target and
+rebase server-side, synchronously; cascade rebases are one
+`gh stack sync` (or the PR page's "Rebase stack" button); and merges
+couple bottom-up — merging a child pulls its unmerged parents in, so
+a child can never land on a stale base. Design + evaluation:
+[`docs/design/native-stacked-prs-migration.md`](../design/native-stacked-prs-migration.md).
+PRs opened before the migration (no native stack object) are **legacy
+stacks**; the merger's retarget/cascade machinery services only those
+until they drain.
+
 Two stacking modes exist in this fleet:
 
 - **Cursor stacking** — human-driven; described under
@@ -717,8 +734,7 @@ Two stacking modes exist in this fleet:
 - **Cross-author stacking (scheduler)** — autonomous; described
   below. A free worker picks up a blocked issue when the blocker
   already has an open PR, branches off the blocker's branch, and
-  opens a stacked PR. The merger keeps the chain in sync as the
-  upstream PR evolves.
+  opens a stacked PR.
 
 ### Cross-author stacking (scheduler)
 
@@ -733,53 +749,47 @@ Two stacking modes exist in this fleet:
 3. Worker B reads `fleet-claim claim-base <Y>` → returns
    `claude/<X>-…` (not `master`). It fetches and branches off
    `origin/claude/<X>-…`, then opens PR #101 with
-   `--base claude/<X>-…` and adds `fleet:stacked`. PR #101's diff
-   shows only #Y's changes; #X's commits are part of the base.
-4. **Reviewer** sees `fleet:stacked` on #101 and checks #100's
-   approval state. If #100 is not yet approved, the reviewer defers
-   with `fleet:awaiting-upstream-review`. Once #100 is approved, the
-   reviewer evaluates #101's delta only and notes the cross-author
-   topology in the review body.
+   `--base claude/<X>-…`, adds `fleet:stacked`, and links #100→#101
+   into a native stack (the `native-stack-link.md` step). PR #101's
+   diff shows only #Y's changes; #X's commits are part of the base.
+4. **Reviewer** sees `fleet:stacked` on #101 (or the stack badge)
+   and checks #100's approval state. If #100 is not yet approved,
+   the reviewer defers with `fleet:awaiting-upstream-review`. Once
+   #100 is approved, the reviewer evaluates #101's delta only and
+   notes the cross-author topology in the review body.
 5. **Worker A** pushes a feedback fix to #100 (new commits on
-   `claude/<X>-…`). The **merger** detects that #101's upstream tip
-   moved on its next iteration:
-   - **Clean rebase** → force-push #101, post a confirmation
-     comment, leave existing approval labels intact.
-   - **Conflict** → add `fleet:needs-base-update` to #101, name
-     the conflict files, leave it for Worker B (or any opus+-class worker)
-     to reconcile manually with `git rebase origin/<baseRefName>`;
-     the label clears when they push a clean rebase or when the
-     upstream merges.
-6. **PR #100 merges.** The merger re-targets #101's base from
-   `claude/<X>-…` to `master` (existing re-target logic, unchanged)
-   and removes `fleet:stacked`. PR #101 is now a standard PR vs
-   `master`. The merger also adds `fleet:stacked-rebase` and
-   `fleet:changes-made` — the reviewer's re-eval of the re-targeted
-   diff is the action `fleet:stacked-rebase` is waiting for.
+   `claude/<X>-…`). Propagating that into #101 is one
+   `gh stack sync` (Worker A, from the stack) or the "Rebase stack"
+   button — server-side cascade, conflict-safe replay. A sync whose
+   replay conflicts pauses with exit code 3; whoever ran it resolves
+   and `gh stack rebase --continue`s, or surfaces to the human.
+6. **PR #100 merges.** GitHub re-targets #101 to `master` and
+   rebases it server-side, synchronously with the merge — the
+   content-based auto-rereview classifier recognizes the
+   content-identical force-push and preserves the verdict label.
+   PR #101 is now a standard PR vs `master`. (Merging #101 directly
+   from the stack UI would instead pull #100 in with it, bottom-up.)
 
-**Design decisions (v1):**
+**Design decisions:**
 
 - **Q1 — Aggression.** Two-tier pickup: workers exhaust the normal
   unblocked list first; cross-author stacking is a fallback only for
-  otherwise-idle panes. The coordination tax (rebase cascades,
-  reviewer gating on upstream state) makes the simple path
-  preferable by default.
-- **Q2 — Cascade rebase.** Merger-driven hybrid. When the upstream
-  PR force-pushes, the merger (which has no claim conflicts on the
-  child) attempts the rebase. The upstream's author does not rebase
-  the child — that would require cross-worktree gymnastics that
-  introduce ownership conflicts.
+  otherwise-idle panes. The coordination tax (reviewer gating on
+  upstream state) makes the simple path preferable by default.
+- **Q2 — Cascade rebase.** GitHub-native. Server-side cascade
+  rebases replaced the v1 merger-driven hybrid; the merger's
+  cascade machinery services only pre-migration legacy stacks.
 - **Q3 — Multi-blocker.** Single-blocker issues only. An issue
   blocked by both #A and #B is never eligible for the fallback tier
   even if all blockers have open PRs. Picking a single base branch
-  from multiple blockers is a design call the v1 merger machinery
-  does not handle.
+  from multiple blockers is a design call the offer machinery does
+  not handle (native stacks are linear chains anyway).
 
 Engine **and** game tasks are both stackable: the scout enriches
 blocked tasks in both repos, worker pickup claims `--stackable-on` in
-either (game with `--repo game`), and the merger's game pass runs the
-same stacked-base re-target / cascade-rebase / fork-detection (steps
-2.5/2.6/a.5/a.6) as the engine pass.
+either (game with `--repo game`), and native stacks work identically
+in both repos. The merger's game pass services legacy game stacks
+(steps 2.5/2.6/a.5/a.6) until they drain.
 
 **v1 limitations:**
 
@@ -880,28 +890,29 @@ For the current issue in the stack (first `(pending)` row in
 3. Do the issue's work in that branch. Commit as normal — no special
    commit-subject prefix is required; one issue per branch means the
    branch name IS the per-issue anchor.
-4. **Open the PR with `--base "$base"` and record it in the stack.**
-   When `$base` is a feature branch (not `master`), add
-   `--label "fleet:stacked"` so the merger and reviewer can filter
-   by label without an extra `gh pr view --json baseRefName` call:
+4. **Open the PR with `--base "$base"`, record it in the stack, and
+   link it natively.** When `$base` is a feature branch (not
+   `master`), add `--label "fleet:stacked"` so the merger and
+   reviewer can filter by label without an extra
+   `gh pr view --json baseRefName` call:
    `gh pr create --base "$base" --title "<title> (#<N>)" --body "..." --label "fleet:wip" --label "fleet:stacked"`
    `fleet-claim stack-set-pr <your-worktree-name> <issue-number> "$(git branch --show-current)" "<pr-url>"`
-   For the first issue in the chain (`$base == master`), omit
-   `fleet:stacked` — that PR merges into master normally.
+   Then run the
+   [`native-stack-link.md`](../../.claude/skills/commit-and-push/procedures/native-stack-link.md)
+   step so GitHub owns the chain. For the first issue in the chain
+   (`$base == master`), omit `fleet:stacked` and skip the link —
+   that PR merges into master normally (it becomes the stack's
+   bottom when the second PR links onto it).
 
 **Stacked PR title + body format.** Use a descriptive title with the
 issue number in parentheses (standard GitHub convention) so reviewers
-can find the source issue. The body includes a `Stacked on:` line
-pointing at the previous PR (or `master` for the first) and a
-`Closes #N` line so the issue auto-closes when the PR merges.
+can find the source issue. Include a `Closes #N` line so the issue
+auto-closes when the PR merges. No stack markers in the body — the
+PR header's stack badge is the chain navigation.
 
 ```markdown
 ## Summary
 - <what this issue does>
-
-## Stack context
-Stacked on: <previous PR URL, or "master" for the first>
-Full chain: #1195 → #1196 → #1197
 
 ## Test plan
 - [ ] <issue-specific checks>
@@ -911,16 +922,15 @@ Closes #<N>
 
 The `commit-and-push` skill's "Stack-aware mode" section walks
 through the branch + PR creation; let it drive — it already knows
-to call `stack-base` and `stack-set-pr`.
+to call `stack-base`, `stack-set-pr`, and the native link.
 
-**When an earlier PR in the stack merges:** GitHub auto-rebases the
-next PR's base to master. Pull the latest master into the next
-branch before continuing work on it:
-`git fetch origin master`
-`git rebase origin/master`
-Force-push with `--force-with-lease` (never `--force`). The
-reviewer's approval on the unchanged commits carries over unless a
-conflict actually modified them.
+**When an earlier PR in the stack merges:** GitHub re-targets and
+rebases the remaining PRs server-side, synchronously with the
+merge — no manual pull/rebase needed. Run `gh stack sync` from the
+stack before continuing local work on a downstream branch so your
+local refs match the server-side rebase. The reviewer's approval
+carries over: the auto-rereview classifier recognizes the
+content-identical force-push and leaves the verdict label alone.
 
 **Addressing review feedback on a stacked PR:** commit the fix on
 the same branch, push, and comment as usual. No cross-issue
@@ -946,18 +956,20 @@ automatically when the PR merges:
 `gh pr create --title "<issue title> (#<N>)" --body "Claiming issue. Work in progress.\n\nCloses #<N>" --label "fleet:wip"`
 
 For a stackable-on claim (base is a feature branch), open with
-`--base <upstream-branch>` and add `fleet:stacked`:
+`--base <upstream-branch>`, add `fleet:stacked`, and link natively:
 
-First look up the upstream PR URL:
-`gh pr view <stackable_blocker_pr.number> --json url --jq .url`
+`gh pr create --base <upstream-branch> --title "<issue title> (#<N>)" --body "Work in progress.\n\nCloses #<N>" --label "fleet:wip" --label "fleet:stacked"`
 
-Then open the PR:
-`gh pr create --base <upstream-branch> --title "<issue title> (#<N>)" --body "Stacked on: <upstream PR URL>\n\nWork in progress.\n\nCloses #<N>" --label "fleet:wip" --label "fleet:stacked"`
+Then run the
+[`native-stack-link.md`](../../.claude/skills/commit-and-push/procedures/native-stack-link.md)
+step (parent = `<stackable_blocker_pr.number>`) so GitHub owns the
+chain from the start. No `Stacked on:` body line.
 
 > You don't have to get this exactly right by hand: **`commit-and-push`
-> resolves the base via `claim-base` and applies `fleet:stacked`
-> automatically for single-task claims** (idempotent edit-or-create), so a
-> missed `--base`/label here is repaired before review — see
+> resolves the base via `claim-base`, applies `fleet:stacked`, and runs
+> the native link automatically for single-task claims** (idempotent
+> edit-or-create), so a missed `--base`/label/link here is repaired
+> before review — see
 > [`commit-and-push/procedures/stackable-on.md`](../../.claude/skills/commit-and-push/procedures/stackable-on.md).
 
 ---
