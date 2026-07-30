@@ -334,6 +334,17 @@ bool hasRotationPivotFocus();
 /// The explicit pivot focus world point. Meaningful only when
 /// @ref hasRotationPivotFocus is true.
 vec3 getRotationPivotFocus();
+/// The focus the DEFAULT pivot (CAMERA_CENTER with no explicit override)
+/// rotates about: the SURFACE point under the viewport center, at the depth the
+/// content there actually renders at (#2547). Latched — re-derived once per
+/// frame by @c RenderManager::updateDefaultRotationPivotFocus on the frames its
+/// policy admits, held otherwise; falls back to the iso-depth-0 point under the
+/// viewport center before the first derive and whenever the center pixel reads
+/// background. Meaningful only while @ref hasRotationPivotFocus is false and
+/// the mode is @c CAMERA_CENTER. Exposed so a verification harness can assert
+/// the derived focus against an analytic ray/surface intersection
+/// (`shape_debug --pivot-verify`, `scripts/pivot-verify.py`).
+vec3 getDefaultRotationPivotFocus();
 /// @}
 
 /// @{

@@ -512,9 +512,12 @@ cardinal 0, a visible orbit under yaw). Any change to `getEffectiveCameraIso`,
 `cameraYawPivotOffset`, the kernels' yawed reposition, or the per-axis anchor
 must also run `python3 scripts/pivot-verify.py` — it drives
 `IRShapeDebug --pivot-verify <block>` (isolated cylinder probe, explicit-focus
-+ default-pivot blocks, voxel + SDF twins) and gates with
-`jitter_probe --stationary`. No reference images; the assertion is pure
-temporal invariance. Contract + known deviations:
++ default-pivot blocks, voxel + SDF twins) and gates each block with the oracle
+that is valid for it: `jitter_probe --stationary` whole-silhouette invariance
+where the probe rotates about a point on its own axis, and the demo's
+`[pivot-focus-assert]` pinned-point check — derived focus vs the analytic
+ray/surface intersection — for the default-pivot blocks, whose silhouettes
+legitimately orbit the pin. No reference images. Contract + known deviations:
 [`docs/design/camera-yaw-pivot.md`](../../docs/design/camera-yaw-pivot.md)
 (epic #2544).
 

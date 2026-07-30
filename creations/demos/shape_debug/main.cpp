@@ -271,10 +271,32 @@ constexpr vec3 kPivotPillarCenter = vec3(8.0f, -8.0f, 10.0f);
 //                   renders below screen center.
 //   center-depth  — DEFAULT pivot; probe AT the viewport center but at z > 0:
 //                   on the center iso RAY, off the pinned column by (z, z) in
-//                   xy. Encodes the user-facing contract "what is at screen
-//                   center stays at screen center while rotating". DRIFT here
-//                   with center-column PINNED means the default pivot pins the
-//                   wrong DEPTH, not that the drift-cancel math is broken.
+//                   xy. Encodes the ratified contract: the SURFACE point under
+//                   the crosshair holds its screen position.
+//   background-center — DEFAULT pivot, BACKGROUND center pixel: the probe sits
+//                   on the pinned column but high enough in z that the
+//                   viewport-center iso ray passes UNDER it (the ray is within
+//                   the column's radius only for |z| <= r/sqrt(2)), so the
+//                   center pixel reads background and the derive must fall back
+//                   to `isoPixelToPos3D(viewCenterIso, 0)` — the pre-#2547
+//                   point. Discharges epic #2544 Phase 3 acceptance criterion 2
+//                   (plan amendment A1); center-column cannot, because its
+//                   center pixel hits the probe and so never exercises the
+//                   fallback.
+//   center-axis   — DEFAULT pivot, probe axis ON the viewport-center ray with
+//                   its near cap AT the ray's entry step, so the derived
+//                   surface point IS the probe's own axis point and rotating
+//                   about it maps the column onto itself — the derived-focus
+//                   twin of focus-ctr. It isolates how far the derive lands
+//                   from that axis: a regression to the pre-#2547 iso-depth-0
+//                   focus swings the probe about a point 8.5 world units away.
+//
+// Every DEFAULT-pivot block emits a per-shot `[pivot-focus-assert]` line: the
+// focus the engine derived from its live composite-depth readback against the
+// analytic ray/surface intersection below. Which blocks ALSO carry a
+// whole-silhouette centroid gate, and why the two default blocks above cannot,
+// is `docs/design/camera-yaw-pivot.md` §"Known deviations" deviation 2 —
+// `scripts/pivot-verify.py` owns the routing.
 // Requires --auto-screenshot (value = warmup frames per shot); score with
 // scripts/pivot-verify.py. Same stable-storage discipline as the other tables.
 std::string g_pivotVerifyBlock = "off";
@@ -299,6 +321,71 @@ constexpr float kPivotVerifyProbeZ = 10.0f;
 // focus-off: iso offset of the pan away from probe-centered, so the pinned
 // probe holds a NON-center screen position.
 constexpr vec2 kPivotVerifyOffCenterIso = vec2(14.0f, 9.0f);
+// The probe cylinder: radius kPivotVerifyProbeRadius about the vertical (z)
+// axis, kPivotVerifyProbeHeight tall, carved into a voxel grid of half-extent
+// kPivotVerifyProbeHalfExtent. Shared by the spawn and by the analytic focus
+// oracle so the rendered geometry and the predicted focus cannot drift. Note
+// the grid's z half-extent CLIPS the cylinder's 8.5 half-height to 8 — the
+// oracle bounds its walk by the grid, not by the SDF alone, for that reason.
+constexpr float kPivotVerifyProbeRadius = 4.0f;
+constexpr float kPivotVerifyProbeHeight = 17.0f;
+constexpr vec4 kPivotVerifyProbeParams =
+    vec4(kPivotVerifyProbeRadius, kPivotVerifyProbeRadius, kPivotVerifyProbeHeight, 0.0f);
+constexpr ivec3 kPivotVerifyProbeHalfExtent = ivec3(5, 5, 8);
+// background-center gets a SHORTER column. It has to clear the viewport-center
+// ray in z for the center pixel to read background, and at zoom 8 a full-height
+// probe pushed that far down the screen runs off the bottom of the framebuffer
+// — a clipped silhouette's centroid is yaw-dependent, so the block would read
+// DRIFT for a reason that has nothing to do with the pivot (measured 3.42px at
+// zoom 8 before the shortening; 0.97/1.27 after).
+constexpr float kPivotVerifyBackgroundProbeHeight = 9.0f;
+constexpr vec4 kPivotVerifyBackgroundProbeParams =
+    vec4(kPivotVerifyProbeRadius, kPivotVerifyProbeRadius, kPivotVerifyBackgroundProbeHeight, 0.0f);
+constexpr ivec3 kPivotVerifyBackgroundProbeHalfExtent = ivec3(5, 5, 4);
+// background-center: probe z on the pinned column, chosen so the
+// viewport-center iso ray misses the cylinder entirely. The ray
+// `anchor + t*(1,1,1)` sits within the carve's surface shell (radius + the
+// half-voxel threshold, 4.5) only while `t*sqrt(2) <= 4.5`, i.e. t <= 3.18; the
+// carved probe spans [z - 4, z + 4] = [4, 12], clear of that band, so the center
+// pixel reads background while the probe itself stays on the pinned column (and
+// therefore must hold its screen position).
+constexpr float kPivotVerifyBackgroundProbeZ = 8.0f;
+
+// The carve of the --pivot-verify probe for the active block. Shared by the
+// spawn and by the analytic focus oracle, so the rendered geometry and the
+// predicted focus cannot drift.
+vec4 pivotVerifyProbeParams() {
+    return g_pivotVerifyBlock == "background-center" ? kPivotVerifyBackgroundProbeParams
+                                                     : kPivotVerifyProbeParams;
+}
+
+ivec3 pivotVerifyProbeHalfExtent() {
+    return g_pivotVerifyBlock == "background-center" ? kPivotVerifyBackgroundProbeHalfExtent
+                                                     : kPivotVerifyProbeHalfExtent;
+}
+// `[pivot-focus-assert]` tolerance, in world units: ONE iso-depth unit of
+// composite quantization, which is `1/3` per axis, i.e. `sqrt(3)/3 ~= 0.577`.
+//
+// The composite stores depth per TRIXEL at sub-voxel resolution and the derive
+// reads back a single framebuffer texel, which can resolve to the neighbouring
+// triangle of the view-center iso cell — so where the center ray grazes a
+// silhouette or cap edge, "the surface under the crosshair" is genuinely
+// ambiguous by one iso unit. Measured on macOS/Metal at zoom 4: background-center
+// 0.00 (exact fallback), center-depth 0.29, center-column 0.58 (its ray enters
+// through the probe's bottom cap, the ambiguous case).
+//
+// The gate stays sharp — every failure this assert exists to catch is an order
+// of magnitude outside it: a regression to the pre-#2547 iso-depth-0 focus is
+// 3.46 world units off on center-column and 12.1 on center-depth, and electing
+// the far surface instead of the near one is 10.0 off on center-depth.
+//
+// Deliberately NOT measured in iso-depth units: `pos3DtoDistance` rounds to an
+// integer, which would hide exactly the sub-voxel disagreement being bounded.
+constexpr float kPivotFocusAssertToleranceWorld = 0.6f;
+// center-axis: the lattice step along the viewport-center ray at which that
+// block's probe places its near cap, centred on the ray, so the probe's axis
+// passes through the derived surface point.
+constexpr float kPivotVerifyAxisProbeStep = 6.0f;
 
 // Camera pan that places kPivotVerifyDefaultAnchor under the exact viewport
 // center: inverts `viewCenterIso = canvasSize/2 - trixelOriginOffsetZ1 -
@@ -321,9 +408,110 @@ vec3 pivotVerifyProbeCenter() {
         // position as the anchor, off the pinned column by (z, z) in xy.
         return kPivotVerifyDefaultAnchor + vec3(kPivotVerifyProbeZ);
     }
+    if (g_pivotVerifyBlock == "background-center") {
+        // On the pinned column, lifted clear of the viewport-center ray so the
+        // center pixel reads background (see kPivotVerifyBackgroundProbeZ).
+        return vec3(
+            kPivotVerifyDefaultAnchor.x,
+            kPivotVerifyDefaultAnchor.y,
+            kPivotVerifyBackgroundProbeZ
+        );
+    }
+    if (g_pivotVerifyBlock == "center-axis") {
+        // Axis ON the viewport-center ray, near cap AT the ray's entry step: the
+        // ray meets the cap dead centre, so the derived surface point is the
+        // probe's own axis point. Offsetting the center by the grid's z
+        // half-extent is what puts the cap — not the mid-height — at the step.
+        return vec3(
+            kPivotVerifyDefaultAnchor.x + kPivotVerifyAxisProbeStep,
+            kPivotVerifyDefaultAnchor.y + kPivotVerifyAxisProbeStep,
+            kPivotVerifyAxisProbeStep + static_cast<float>(kPivotVerifyProbeHalfExtent.z)
+        );
+    }
     // focus-ctr / focus-off pin the same off-origin z>0 center the
     // --pivot-focus-demo pillar uses.
     return kPivotPillarCenter;
+}
+
+// True for the blocks that exercise the DEFAULT (derived) pivot focus rather
+// than an explicit setRotationPivotFocus. These are the blocks the
+// pinned-point oracle applies to.
+bool pivotVerifyIsDefaultBlock() {
+    return g_pivotVerifyBlock == "center-column" || g_pivotVerifyBlock == "center-depth" ||
+           g_pivotVerifyBlock == "background-center" || g_pivotVerifyBlock == "center-axis";
+}
+
+// Analytic focus oracle for the DEFAULT-pivot blocks: the world point the
+// engine's depth-aware derive must land on, computed from the SAME constants
+// and the SAME surface test the spawn carves with, so the two cannot drift.
+//
+// The preimage of one iso pixel is the world line along (1,1,1), so the
+// viewport-center ray is `anchor + a*(1,1,1)` and a point's iso depth is 3a (the
+// anchor sits at iso depth 0). Voxel CENTERS on that ray are the integer a —
+// the probe is spawned on the integer lattice for exactly this reason — and the
+// raster elects its per-pixel winner by atomicMin over x + y + z, so the winner
+// is the smallest integer a whose voxel is carved active.
+//
+// Predicting the winning voxel center rather than the smooth cylinder's surface
+// entry is what makes this a SHARP oracle: the composite depth the derive reads
+// back is the winning voxel's own x + y + z, which sits half a voxel inside the
+// smooth surface — asserting against the smooth entry would need a tolerance
+// wide enough to also admit the defect. Returns the anchor when no lattice voxel
+// on the ray is active, which is exactly the iso-depth-0 background fallback the
+// derive is specified to take.
+vec3 pivotVerifyAnalyticFocus() {
+    const vec3 center = pivotVerifyProbeCenter();
+    const auto sdfType = static_cast<IRMath::SDF::ShapeType>(IRRender::ShapeType::CYLINDER);
+    const vec4 sdfParams = IRMath::SDF::effectiveParams(sdfType, pivotVerifyProbeParams());
+    const vec3 gridHalfExtent = vec3(pivotVerifyProbeHalfExtent());
+    // The ray leaves the carved grid for good once its z clears the grid top;
+    // z along the ray IS a, so that bound is the walk's end.
+    const int lastStep = static_cast<int>(center.z + gridHalfExtent.z);
+    for (int step = 0; step <= lastStep; ++step) {
+        const vec3 world = kPivotVerifyDefaultAnchor + vec3(static_cast<float>(step));
+        const vec3 local = world - center;
+        // Outside the carved grid there is no voxel to win, however the
+        // unbounded SDF reads there.
+        if (IRMath::abs(local.x) > gridHalfExtent.x || IRMath::abs(local.y) > gridHalfExtent.y ||
+            IRMath::abs(local.z) > gridHalfExtent.z) {
+            continue;
+        }
+        if (IRMath::SDF::evaluate(local, sdfType, sdfParams) <= IRMath::SDF::kSurfaceThreshold) {
+            return world;
+        }
+    }
+    return kPivotVerifyDefaultAnchor;
+}
+
+// Per-shot `[pivot-focus-assert]` line for the DEFAULT-pivot blocks
+// (AutoScreenshotConfig::onCaptureFrame_, fired on the settled capture frame):
+// the sharp half of the re-grounded gate. The derived focus is LATCHED — it is
+// derived once, before the sweep's first yaw, and held across the sweep — so
+// every shot must report the SAME value, and that value must be the analytic
+// one. scripts/pivot-verify.py parses these lines and fails the pass on any
+// FAIL or on a value that moves mid-sweep.
+void logPivotFocusAssert(int shotIndex) {
+    if (!pivotVerifyIsDefaultBlock()) {
+        return;
+    }
+    const vec3 derived = IRRender::getDefaultRotationPivotFocus();
+    const vec3 analytic = pivotVerifyAnalyticFocus();
+    const float worldDelta = IRMath::length(derived - analytic);
+    IR_LOG_INFO(
+        "[pivot-focus-assert] block={} shot={} derived=({},{},{}) analytic=({},{},{}) "
+        "world_delta={} tolerance={} result={}",
+        g_pivotVerifyBlock,
+        shotIndex,
+        derived.x,
+        derived.y,
+        derived.z,
+        analytic.x,
+        analytic.y,
+        analytic.z,
+        worldDelta,
+        kPivotFocusAssertToleranceWorld,
+        worldDelta <= kPivotFocusAssertToleranceWorld ? "PASS" : "FAIL"
+    );
 }
 
 // --pan-sweep (#1944 diagnosis): hold yaw + zoom fixed and step the camera iso
@@ -401,8 +589,14 @@ void registerCliArgs() {
     args.enumValue(
         "--pivot-verify",
         "Rotation-pivot invariance sweep block "
-        "(off|focus-ctr|focus-off|center-column|center-depth)",
-        {"off", "focus-ctr", "focus-off", "center-column", "center-depth"},
+        "(off|focus-ctr|focus-off|center-column|center-depth|background-center|center-axis)",
+        {"off",
+         "focus-ctr",
+         "focus-off",
+         "center-column",
+         "center-depth",
+         "background-center",
+         "center-axis"},
         "off"
     );
     args.flag(
@@ -905,6 +1099,7 @@ void initSystems() {
             );
             cfg.shots_ = g_pivotVerifyShots.data();
             cfg.numShots_ = static_cast<int>(g_pivotVerifyShots.size());
+            cfg.onCaptureFrame_ = &logPivotFocusAssert;
             const vec3 probeCenter = pivotVerifyProbeCenter();
             IR_LOG_INFO(
                 "Pivot-verify block '{}': {} yaw shots, pan ({},{}), probe ({},{},{}) at zoom={}",
@@ -1371,16 +1566,16 @@ void initPivotVerifyScene() {
         createSDFShape(
             center,
             IRRender::ShapeType::CYLINDER,
-            vec4(4, 4, 17, 0),
+            pivotVerifyProbeParams(),
             Color{235, 235, 235, 255}
         );
     } else {
         createVoxelPoolShape(
             center,
             IRRender::ShapeType::CYLINDER,
-            vec4(4, 4, 17, 0),
+            pivotVerifyProbeParams(),
             Color{235, 235, 235, 255},
-            ivec3(5, 5, 8)
+            pivotVerifyProbeHalfExtent()
         );
     }
     IR_LOG_INFO(

@@ -9,8 +9,8 @@ the offset math that pins it. Consumed by `IRRender::getEffectiveCameraIso`
 The composite places a world point on screen at
 `screen_iso(W) = pos3DtoPos2DIsoYawed(W, yaw) + getEffectiveCameraIso()`.
 To keep a chosen focus `F` at a fixed screen position as the camera Z-yaws
-(rotation in place), the camera offset must **cancel** `F`'s yaw-induced canvas
-drift. That single formula lives in one place:
+(`F` holds its screen position), the camera offset must **cancel** `F`'s
+yaw-induced canvas drift. That single formula lives in one place:
 
 ```
 IRMath::cameraYawPivotOffset(cameraIso, F, yaw)
@@ -35,6 +35,27 @@ helper.
    argument is an iso depth) read back from the composite depth attachment at
    the viewport-center pixel. A background center pixel falls back to `d = 0`,
    the pre-#2547 behavior.
+
+   **What it pins (ratified 2026-07-29, epic #2544).** The default pivot pins
+   **the surface point under the crosshair** — that point holds its screen
+   position across the yaw sweep. It does NOT pin the axis or centroid of the
+   content under the crosshair: a depth buffer knows only surfaces, and "the
+   axis of the content" is not a well-formed quantity for terrain, floors, or
+   merged voxel fields, which is where a default pivot spends most of its life.
+   The choice is also what keeps ONE meaning of "rotate" in the engine — Phase 4
+   (#2548) latches a *clicked* surface point (`castVoxelRay`'s `worldHitPos_`),
+   so an axis-pinning default would fork the contract by pivot-acquisition
+   route. Consequence, and it is correct behavior rather than a defect: an
+   extended body swings about its near surface by up to its own radius. If
+   literal spins-in-place is ever wanted it is an **object-pivot mode** — its
+   own issue, layered on top of the surface latch (pick → entity →
+   transform/centroid), never a replacement for it.
+
+   Earlier text in this doc, in #2547, and in the epic plan described the
+   contract as "what I'm looking at **spins in place**". That wording was
+   authored under a point-probe approximation, where surface ≡ axis and the
+   arithmetic works exactly; treat it as descriptive of that case, **not** as a
+   contract for extended bodies. The sentence above supersedes it.
 
    **Latch policy.** `RenderManager::updateDefaultRotationPivotFocus` runs once
    per frame from `beginFrame`, ahead of the RENDER pipeline, so every stage in
@@ -105,12 +126,13 @@ itself swung a panned scene; that path is now correct.)
 
 ## Known deviations (2026-07, epic #2544)
 
-The `scripts/pivot-verify.py` harness (isolated cylinder probe +
-`jitter_probe --stationary`; no reference images) enumerates three defects
-in the contract above — all invisible at cardinal yaw 0, so the "Empirically
-verified" section below remains true for what it measured while the pivot is
-still wrong under rotation. #2545 (deviation 1) and #2546 (deviation 3) are
-now fixed; #2547 (deviation 2) remains open on master. Fixed entries are
+The `scripts/pivot-verify.py` harness (isolated cylinder probe, two oracles —
+the `[pivot-focus-assert]` pinned point and `jitter_probe --stationary`
+whole-silhouette invariance; no reference images) enumerates the defects it has
+found in the contract above — all invisible at cardinal yaw 0, so the
+"Empirically verified" section below remains true for what it measured while the
+pivot is still wrong under rotation. #2545 (deviation 1), #2546 (deviation 3),
+and #2547 (deviation 2) are now fixed; deviation 4 is open. Fixed entries are
 retained below until the epic closes:
 
 1. **Half-cell rotation-anchor mismatch — FIXED (#2545).** The voxel raster
@@ -130,29 +152,69 @@ retained below until the epic closes:
    from the store/cull/resolve chain. Exact world positions (SDF centers,
    entity translations, the pivot math itself) keep the un-anchored
    projections.
-2. **Default focus depth — mechanism landed, CONTRACT OPEN (#2547).** The
-   pinned set of the drift-cancel offset is the vertical column
-   `{W : W.xy == F.xy}`. `F` was the **iso-depth-0** point under the viewport
-   center, so content at screen center at another depth sat on the center iso
-   ray, off the pinned column by (t, t) in xy, and orbited — 336 px at z=10,
-   zoom 4 on master, 320 px once #2545's half-cell landed.
+2. **Default focus depth — FIXED (#2547), gate re-grounded.** The pinned set of
+   the drift-cancel offset is the vertical column `{W : W.xy == F.xy}`. `F` was
+   the **iso-depth-0** point under the viewport center, so content at screen
+   center at another depth sat on the center iso ray, off the pinned column by
+   (t, t) in xy, and orbited — 336 px at z=10, zoom 4 on master, 320 px once
+   #2545's half-cell landed.
 
-   The depth-aware derivation above now pins the point the depth buffer
-   reports under the center pixel, verified exact (derived focus
-   `(19.167, -4.833, 7.167)` at iso depth 21.5 == the analytic ray/cylinder
-   surface intersection, to 3 decimals). **But a depth buffer yields the
-   SURFACE under the center pixel, while `pivot-verify` scores the
-   whole-silhouette CENTROID of an extended probe.** Pinning a column on a
-   rigid body's surface orbits its centroid by 2r, which the harness's metric
-   converts to `16·(δx+δy)` px — ~22.6·r px at zoom 4. Measured: `center-depth`
-   320 → 92 px, `center-column` 0.9 → 76 px (both within 2% of that model) for
-   the radius-4 probe. No probe radius above ~0.07 world units can pass a
-   1.5 px centroid gate, so this is structural, not a tuning gap: the gate
-   encodes "pin the content's axis", the mechanism delivers "pin the surface
-   point". Epic Phase 4 (#2548) latches the clicked SURFACE point
-   (`castVoxelRay`'s `worldHitPos_`), which points at the surface contract
-   being the intended one — pending an architect ruling on whether to
-   re-ground the two blocks' oracle or change the mechanism.
+   The depth-aware derivation above now pins the point the depth buffer reports
+   under the center pixel. **But a depth buffer yields the SURFACE under the
+   center pixel, while the harness's original oracle scored the whole-silhouette
+   CENTROID of an extended probe.** Pinning a column on a rigid body's surface
+   orbits its centroid by 2r, which that metric converts to `16·(δx+δy)` px —
+   ~22.6·r px at zoom 4. Measured: `center-depth` 320 → 92 px, `center-column`
+   0.9 → 76 px (both within 2% of that model) for the radius-4 probe. No probe
+   radius above ~0.07 world units can pass a 1.5 px centroid gate, so the old
+   gate was unreachable by construction, not a tuning gap: it encoded "pin the
+   content's axis" while the ratified contract is "pin the surface point".
+
+   Re-grounded per the ruling of record
+   ([#2544 comment 5106383295](https://github.com/jakildev/IrredenEngine/issues/2544#issuecomment-5106383295),
+   plan amendments A2/A3). `center-column` / `center-depth` keep their geometry
+   — they are what *demonstrates* the contract — but are now scored by the
+   **pinned-point oracle**: `shape_debug` emits a per-shot
+   `[pivot-focus-assert]` line comparing the focus the engine derived from its
+   live composite-depth readback against the analytic ray/surface intersection
+   over the probe's own carve constants, and `pivot-verify.py` fails the pass on
+   any FAIL or on a latched focus that moves mid-sweep. Their silhouette
+   deviation is still measured and reported, just not gated.
+
+   Two blocks join them, both new in #2547:
+
+   - `background-center` — the center pixel reads BACKGROUND, so the derive must
+     take its `d = 0` fallback (Phase 3 acceptance criterion 2, amendment A1).
+     Its probe stays rotationally symmetric about the pinned column, so the
+     whole-silhouette oracle remains exact for it: PINNED at 0.91/1.21 px
+     (zoom 4) and 0.94/1.25 px (zoom 8).
+   - `center-axis` — the probe's axis lies ON the viewport-center ray with its
+     near cap at the ray's entry step, so the derived surface point is the
+     probe's own axis point and the silhouette *should* rotate onto itself. It
+     is the isolating diagnostic for the residual below.
+
+   **Residual: composite-depth quantization (accepted, measured).** The derive
+   consumes what the composite reports, which is quantized per trixel at
+   sub-voxel resolution. Against the probe's voxel lattice the readback lands
+   within one iso-depth unit — measured on macOS/Metal at zoom 4:
+   `background-center` 0.00 (exact), `center-depth` +0.5 iso (lateral-surface
+   entry), `center-column` and `center-axis` +1.0 iso (both enter through a
+   camera-facing cap). A 1-iso-unit bias displaces `F` by (1/3, 1/3, 1/3) world
+   units, whose xy part leaves a residual orbit: `center-axis` measures 12 px at
+   zoom 4 and 22 px at zoom 8, which is that model to within the read. This is
+   ~12x better than the pre-#2547 focus in the same configuration (150 px at
+   zoom 4) but is not exact; whether the cap-entry case can report the geometric
+   surface rather than a neighbouring trixel's depth is **#2641**, and
+   `--pivot-verify center-axis` is its repro. That issue also carries the
+   cross-backend risk: the trixel→framebuffer parity shift applies to the depth
+   read on GL but not on Metal, so the bias may differ per host (measured on
+   macOS/Metal only).
+
+   The `[pivot-focus-assert]` tolerance (0.6 world units) is set to admit
+   exactly that one-iso-unit quantization and nothing more: a regression to the
+   pre-#2547 iso-depth-0 focus is 3.46 world units off on `center-column` and
+   12.1 on `center-depth`, and electing the far surface instead of the near one
+   is 10.0 off on `center-depth`.
 3. **Per-axis registration offset — FIXED (#2546).** With (1) compensated,
    every residual-yaw frame rendered the voxel scene a constant ≈1 iso px
    (per axis, zoom-scaled) off the cardinal frames. Root cause: the
@@ -171,9 +233,20 @@ retained below until the epic closes:
    and the store/RESOLVE/overflow paths are untouched — pure screen-XY
    registration.
 
+4. **SDF-twin silhouette wobble — OPEN (#2645).** `focus-ctr-sdf` scores DRIFT
+   2.00 px at zoom 4 and 8 while its voxel twin holds 0.94/1.27 with the same
+   explicit focus. Both take an explicit `setRotationPivotFocus`, so the #2547
+   derive never runs for them and this is not a default-pivot deviation; it is
+   either the analytical solver's continuous silhouette re-forming per yaw (in
+   which case the twin is a comparison, not a 1.5 px gate) or an SDF-side
+   rotation-anchor delta that #2545 did not cover. #2645 settles which.
+
 Fix chain and acceptance gates: epic #2544 (P1 #2545 → P2 #2546 → P3 #2547 →
 P4 #2548, cursor-pivot true-depth latch + indicator). Each child flips its
-pivot-verify block(s) to PINNED; this section shrinks as they land.
+pivot-verify block(s) to its own gate — PINNED for the blocks whose probe
+rotates about a point on its own axis, `[pivot-focus-assert]` FOCUS-OK for the
+default-pivot blocks whose silhouette legitimately orbits (see deviation 2).
+This section shrinks as they land.
 
 ## History
 
