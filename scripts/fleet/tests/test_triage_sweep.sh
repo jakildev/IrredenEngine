@@ -240,6 +240,19 @@ assert_absent  "$writes" "issue edit 305" "race-guarded issue never written"
 assert_contains "$out" "2 issue(s) labeled, 0 closed" "apply summary"
 assert_eq "$(wc -l < "$TMP/gh-closes.log" | tr -d ' ')" "0" "apply never calls gh issue close"
 assert_contains "$(cat "$TMP/fleet-home/triage/log.jsonl")" '"issue":301' "audit log records the applied issue"
+assert_contains "$(cat "$TMP/fleet-home/triage/log.jsonl")" '"labels":["human:approved", "fleet:sonnet"]' \
+    "audit log stores labels as a JSON array, not a CLI-flag string"
+if python3 -c '
+import json, sys
+with open(sys.argv[1], encoding="utf-8") as f:
+    for line in f:
+        entry = json.loads(line)
+        assert isinstance(entry["labels"], list), entry
+' "$TMP/fleet-home/triage/log.jsonl" 2>/dev/null; then
+    ok "every audit-log line parses as JSON with a list-valued labels field"
+else
+    bad "every audit-log line parses as JSON with a list-valued labels field"
+fi
 
 # --- arg handling -----------------------------------------------------------
 

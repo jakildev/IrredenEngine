@@ -309,18 +309,19 @@ if [[ $rc -ne 0 ]]; then
     exit 1
 fi
 
+[[ $DRY_RUN -eq 1 ]] || mkdir -p "$TRIAGE_DIR"
+
 applied=0
-while IFS=$'\t' read -r number labels; do
+while IFS=$'\t' read -r number labels label_json; do
     [[ -n "$number" ]] || continue
     if [[ $DRY_RUN -eq 1 ]]; then
         echo "  would run: gh issue edit $number --repo $REPO $labels"
     else
-        mkdir -p "$TRIAGE_DIR"
         # shellcheck disable=SC2086 # $labels is a pre-built, allowlisted flag string
         gh issue edit "$number" --repo "$REPO" $labels > /dev/null
         echo "  applied   #$number: $labels"
-        printf '{"repo":"%s","issue":%s,"labels":"%s"}\n' \
-            "$REPO" "$number" "$labels" >> "$TRIAGE_DIR/log.jsonl"
+        printf '{"repo":"%s","issue":%s,"labels":%s}\n' \
+            "$REPO" "$number" "$label_json" >> "$TRIAGE_DIR/log.jsonl"
     fi
     applied=$((applied + 1))
 done < <(python3 -c '
@@ -328,7 +329,7 @@ import json, sys
 with open(sys.argv[1], encoding="utf-8") as f:
     for entry in json.load(f):
         flags = " ".join("--add-label %s" % label for label in entry["labels"])
-        print("%s\t%s" % (entry["number"], flags))
+        print("%s\t%s\t%s" % (entry["number"], flags, json.dumps(entry["labels"])))
 ' "$plan_f")
 
 if [[ $DRY_RUN -eq 1 ]]; then
