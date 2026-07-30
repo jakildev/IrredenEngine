@@ -1458,6 +1458,27 @@ IRCommand.fireByName(CN.SCREENSHOT)
   ids log + return.
 - `IRCommand.fireByName(commandName)` — invoke a prefab command's
   body without registering it first.
+- `IRCommand.suiteDefaults(suite) -> {rows}` — what the engine binds
+  **by default** for `suite`, in registration order. Each row is
+  `{command, inputType, status, button, modifiers}`. Includes the
+  `RELEASED` `MOVE_CAMERA_*_END` rows, which the live registration map
+  never sees. An out-of-range suite logs and returns an empty table.
+- `IRCommand.registerSuite(suite, overrides?)` — register a suite with
+  registration-time `{omit = {CommandName, ...}, remap = {{from, to},
+  ...}}`. `omit` drops rows by command; `remap` moves every row using
+  `from` onto `to` (so one entry carries a pan key's PRESSED +
+  RELEASED pair), applied at most once per row. Sugar over the same
+  `IRCommand::registerBindings` primitive the C++ suites use — see
+  `engine/command/CLAUDE.md` §"Default-binding manifests (#2666)".
+
+```lua
+-- Full camera controls minus Escape, with pan moved to the numpad.
+IRCommand.registerSuite(IRCommand.Suite.CAMERA, {
+    omit  = {IRCommand.CommandName.CLOSE_WINDOW},
+    remap = {{IRInput.Key.W, IRInput.Key.KP_8},
+             {IRInput.Key.S, IRInput.Key.KP_2}},
+})
+```
 
 **Enum tables.** All integer tables; spell every value through them
 in Lua (never bare integer literals).
@@ -1472,13 +1493,21 @@ in Lua (never bare integer literals).
 - `IRInput.InputType.{KEY_MOUSE, GAMEPAD, MIDI_NOTE, MIDI_CC}`
 - `IRInput.ButtonStatus.{NOT_HELD, PRESSED, HELD, RELEASED,
   PRESSED_AND_RELEASED}`
+- `IRCommand.Suite.{CAMERA, CAPTURE}` — which engine-shipped
+  default-binding manifest `suiteDefaults` / `registerSuite` act on.
+  Mirrors `IRCommand::Suite` in
+  `engine/prefabs/irreden/common/command_suite_registry.hpp`.
 - `IRInput.Key.{A..Z, NUM_0..NUM_9, F1..F12, SPACE, ENTER, TAB,
   BACKSPACE, ESCAPE, INSERT, DELETE, HOME, END, PAGE_UP, PAGE_DOWN,
   UP, DOWN, LEFT, RIGHT, LEFT_SHIFT/CONTROL/ALT, RIGHT_SHIFT/CONTROL/
   ALT, MINUS, EQUAL, COMMA, PERIOD, SLASH, SEMICOLON, APOSTROPHE,
   LEFT_BRACKET, RIGHT_BRACKET, BACKSLASH, GRAVE, CAPS_LOCK,
+  KP_0..KP_9, KP_DECIMAL, KP_DIVIDE, KP_MULTIPLY, KP_SUBTRACT,
+  KP_ADD, KP_ENTER, KP_EQUAL,
   MOUSE_LEFT, MOUSE_RIGHT, MOUSE_MIDDLE}`. Drops the engine-internal
-  `kKeyButton` / `kMouseButton` prefixes for readability.
+  `kKeyButton` / `kMouseButton` prefixes for readability. The table is
+  a subset of `KeyMouseButtons` — `IRInput.KeyMouseButtons` (see
+  `engine/input/CLAUDE.md`) carries the full enum under its C++ names.
 - `IRInput.Modifier.{NONE, SHIFT, CONTROL, ALT}` — bitmask bits.
   Compose with LuaJIT `bit.bor(a, b, ...)`.
 - `IRInput.GamepadButton.{A, B, X, Y, LEFT_BUMPER, RIGHT_BUMPER,

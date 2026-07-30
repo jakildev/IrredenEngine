@@ -1,7 +1,11 @@
 #ifndef IR_COMMAND_TYPES_H
 #define IR_COMMAND_TYPES_H
 
+#include <irreden/input/ir_input_types.hpp>
+
 #include <cstdint>
+#include <utility>
+#include <vector>
 
 namespace IRCommand {
 
@@ -57,6 +61,47 @@ enum CommandNames {
 /// row is a compile error there, not a silent "UNKNOWN" at render time.
 /// Update alongside the last enumerator when extending the enum.
 inline constexpr int kCommandNameCount = static_cast<int>(TOGGLE_SETTINGS_MENU) + 1;
+
+/// One declarative row of a default-binding manifest: "this command, on this
+/// trigger". Pure data — a manifest never names a `Command<NAME>` body, so a
+/// table of these can be declared (and enumerated) without pulling the prefab
+/// command headers into scope. @ref registerBindings turns a row into a live
+/// registration via the runtime `bindPrefabCommand` dispatch.
+///
+/// Engine-shipped manifests live in
+/// `engine/prefabs/irreden/common/command_suite_registry.hpp`; a creation is
+/// free to declare its own table of the same type and feed it to the same
+/// registration primitive.
+struct DefaultBinding {
+    CommandNames command_;
+    IRInput::InputTypes inputType_;
+    IRInput::ButtonStatuses status_;
+    int button_;
+    IRInput::KeyModifierMask requiredModifiers_ = IRInput::kModifierNone;
+};
+
+/// Registration-time customization of a @ref DefaultBinding manifest, applied
+/// by @ref registerBindings.
+///
+/// - `omit_` drops every row whose `command_` appears in the list. Matching is
+///   by command identity, so a command bound on several rows (the camera
+///   suite's PRESSED + RELEASED pairs are *distinct* commands) drops only the
+///   rows naming that exact command.
+/// - `remap_` substitutes buttons as `{from, to}` pairs, applied to `button_`
+///   after the omit filter. A remap matches on the button, so it moves **every**
+///   row using that button — `{kKeyButtonW, kKeyButtonUp}` carries both
+///   `MOVE_CAMERA_UP_START` (PRESSED) and `MOVE_CAMERA_UP_END` (RELEASED)
+///   across together. At most one substitution is applied per row (the first
+///   matching pair wins), so remaps never chain.
+///
+/// Deliberately registration-time rather than a mutable unbind/rebind registry:
+/// `CommandId` is an index into an append-only vector, and `CommandNames` is
+/// not a unique key in the live registry — see `engine/command/CLAUDE.md`
+/// §"Default-binding manifests".
+struct BindingOverrides {
+    std::vector<CommandNames> omit_;
+    std::vector<std::pair<int, int>> remap_;
+};
 
 /// Type-tag struct; specialised per command to provide a `create()` factory
 /// that returns the `std::function<void()>` for that command.

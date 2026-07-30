@@ -16,7 +16,7 @@
 //
 //   // initCommands() — Escape opens the menu, so the camera suite must not
 //   // also bind it to quit; the menu's QUIT button replaces that path:
-//   IRPrefab::Camera::registerStandardKeyboardCommands(/*bindEscapeCloseWindow=*/false);
+//   IRPrefab::Camera::registerStandardKeyboardCommands({.omit_ = {IRCommand::CLOSE_WINDOW}});
 //   IRPrefab::SettingsMenu::registerToggleCommand();
 //
 //   // initEntities() — one call per togglable mode:
@@ -53,8 +53,8 @@
 
 namespace IRPrefab::SettingsMenu {
 
-// Escape. Repurposing it is the reason `registerCameraCommands` grew an
-// opt-out: every demo historically quit on Escape, and a pause menu that
+// Escape. Repurposing it is why an adopting demo omits `CLOSE_WINDOW` from the
+// camera suite: every demo historically quit on Escape, and a pause menu that
 // opens on anything else is not the key people reach for. Quitting stays
 // reachable through the menu's QUIT button.
 inline constexpr int kDefaultToggleButton = IRInput::KeyMouseButtons::kKeyButtonEscape;

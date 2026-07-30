@@ -18,6 +18,7 @@
 #define SOL_ALL_SAFETIES_ON 1
 #include <sol/sol.hpp>
 
+#include <irreden/common/command_suite_registry.hpp>
 #include <irreden/ir_command.hpp>
 #include <irreden/ir_input.hpp>
 #include <irreden/script/lua_script.hpp>
@@ -82,6 +83,77 @@ inline void bindCommandNameEnum(LuaScript &script) {
     IR_BIND_CMD(TOGGLE_SETTINGS_MENU);
 #undef IR_BIND_CMD
     lua["IRCommand"]["CommandName"] = t;
+
+    // `IRCommand.Suite.X` — which engine-shipped default-binding manifest to
+    // enumerate or register. An integer table, never a string suite name, per
+    // `.claude/rules/cpp-lua-enums.md`.
+    sol::table suite = lua.create_table();
+#define IR_BIND_SUITE(name) suite[#name] = static_cast<lua_Integer>(IRCommand::Suite::name)
+    IR_BIND_SUITE(CAMERA);
+    IR_BIND_SUITE(CAPTURE);
+#undef IR_BIND_SUITE
+    lua["IRCommand"]["Suite"] = suite;
+}
+
+// Validates a Lua-supplied `IRCommand.Suite` integer. Out-of-range values log
+// and report failure rather than throwing — same "log and keep the VM running"
+// contract as `bindPrefab` / `fireByName`.
+inline bool toSuite(lua_Integer value, IRCommand::Suite &out) {
+    switch (static_cast<IRCommand::Suite>(value)) {
+    case IRCommand::Suite::CAMERA:
+    case IRCommand::Suite::CAPTURE:
+        out = static_cast<IRCommand::Suite>(value);
+        return true;
+    }
+    IRE_LOG_ERROR(
+        "IRCommand suite binding: {} is not a valid IRCommand.Suite value",
+        static_cast<int>(value)
+    );
+    return false;
+}
+
+// Reads a Lua `{omit = {CommandName, ...}, remap = {{from, to}, ...}}` table
+// into a `BindingOverrides`. A missing or nil table yields the zero-override
+// default; malformed rows are logged and skipped.
+inline IRCommand::BindingOverrides toBindingOverrides(const sol::optional<sol::table> &table) {
+    IRCommand::BindingOverrides overrides;
+    if (!table) {
+        return overrides;
+    }
+    if (sol::optional<sol::table> omit = (*table)["omit"]) {
+        for (const auto &[key, value] : *omit) {
+            if (!value.is<lua_Integer>()) {
+                IRE_LOG_ERROR(
+                    "IRCommand.registerSuite: omit entries must be IRCommand.CommandName "
+                    "integers"
+                );
+                continue;
+            }
+            overrides.omit_.push_back(
+                static_cast<IRCommand::CommandNames>(value.as<lua_Integer>())
+            );
+        }
+    }
+    if (sol::optional<sol::table> remap = (*table)["remap"]) {
+        constexpr const char *kRemapShapeError =
+            "IRCommand.registerSuite: remap entries must be {from, to} pairs of IRInput.Key "
+            "integers";
+        for (const auto &[key, value] : *remap) {
+            sol::optional<sol::table> pair = value.as<sol::optional<sol::table>>();
+            if (!pair) {
+                IRE_LOG_ERROR("{}", kRemapShapeError);
+                continue;
+            }
+            sol::optional<lua_Integer> from = (*pair)[1];
+            sol::optional<lua_Integer> to = (*pair)[2];
+            if (!from || !to) {
+                IRE_LOG_ERROR("{}", kRemapShapeError);
+                continue;
+            }
+            overrides.remap_.emplace_back(static_cast<int>(*from), static_cast<int>(*to));
+        }
+    }
+    return overrides;
 }
 
 // Populate `IRInput.{InputType, ButtonStatus, Key, Modifier,
@@ -222,6 +294,25 @@ inline void bindInputEnums(LuaScript &script) {
     IR_BIND_KEY(RIGHT_BRACKET, kKeyButtonRightBracket);
     IR_BIND_KEY(BACKSLASH, kKeyButtonBackslash);
     IR_BIND_KEY(GRAVE, kKeyButtonGraveAccent);
+    // Keypad — nameable so a Lua-authored `IRCommand.registerSuite` remap can
+    // target the numpad.
+    IR_BIND_KEY(KP_0, kKeyButtonKP0);
+    IR_BIND_KEY(KP_1, kKeyButtonKP1);
+    IR_BIND_KEY(KP_2, kKeyButtonKP2);
+    IR_BIND_KEY(KP_3, kKeyButtonKP3);
+    IR_BIND_KEY(KP_4, kKeyButtonKP4);
+    IR_BIND_KEY(KP_5, kKeyButtonKP5);
+    IR_BIND_KEY(KP_6, kKeyButtonKP6);
+    IR_BIND_KEY(KP_7, kKeyButtonKP7);
+    IR_BIND_KEY(KP_8, kKeyButtonKP8);
+    IR_BIND_KEY(KP_9, kKeyButtonKP9);
+    IR_BIND_KEY(KP_DECIMAL, kKeyButtonKPDecimal);
+    IR_BIND_KEY(KP_DIVIDE, kKeyButtonKPDivide);
+    IR_BIND_KEY(KP_MULTIPLY, kKeyButtonKPMultiply);
+    IR_BIND_KEY(KP_SUBTRACT, kKeyButtonKPSubtract);
+    IR_BIND_KEY(KP_ADD, kKeyButtonKPAdd);
+    IR_BIND_KEY(KP_ENTER, kKeyButtonKPEnter);
+    IR_BIND_KEY(KP_EQUAL, kKeyButtonKPEqual);
     // Mouse
     IR_BIND_KEY(MOUSE_LEFT, kMouseButtonLeft);
     IR_BIND_KEY(MOUSE_RIGHT, kMouseButtonRight);
@@ -342,6 +433,43 @@ inline void bindCommandFunctions(LuaScript &script) {
             description.value_or(std::string{})
         );
         return static_cast<lua_Integer>(id);
+    };
+
+    // What the engine binds BY DEFAULT for a suite — not what is bound right
+    // now. Returns an array of `{command, inputType, status, button,
+    // modifiers}` rows in registration order, including the RELEASED
+    // `MOVE_CAMERA_*_END` rows that the live registration map never sees.
+    lua["IRCommand"]["suiteDefaults"] = [](sol::this_state L,
+                                           lua_Integer suiteValue) -> sol::table {
+        sol::state_view lua_view(L);
+        sol::table rows = lua_view.create_table();
+        IRCommand::Suite suite{};
+        if (!toSuite(suiteValue, suite)) {
+            return rows;
+        }
+        for (const IRCommand::DefaultBinding &binding : IRCommand::suiteDefaults(suite)) {
+            sol::table row = lua_view.create_table();
+            row["command"] = static_cast<lua_Integer>(binding.command_);
+            row["inputType"] = static_cast<lua_Integer>(binding.inputType_);
+            row["status"] = static_cast<lua_Integer>(binding.status_);
+            row["button"] = static_cast<lua_Integer>(binding.button_);
+            row["modifiers"] = static_cast<lua_Integer>(binding.requiredModifiers_);
+            rows.add(row);
+        }
+        return rows;
+    };
+
+    // Sugar over the same `registerBindings` primitive the C++ suites use, so
+    // a Lua-driven creation gets omit / remap without re-declaring the suite:
+    //   IRCommand.registerSuite(IRCommand.Suite.CAMERA,
+    //                           {omit = {IRCommand.CommandName.CLOSE_WINDOW}})
+    lua["IRCommand"]["registerSuite"] = [](lua_Integer suiteValue,
+                                           sol::optional<sol::table> overrides) {
+        IRCommand::Suite suite{};
+        if (!toSuite(suiteValue, suite)) {
+            return;
+        }
+        IRCommand::registerBindings(IRCommand::suiteDefaults(suite), toBindingOverrides(overrides));
     };
 
     lua["IRCommand"]["fire"] = [](lua_Integer commandId) {

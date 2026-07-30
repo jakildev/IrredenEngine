@@ -47,6 +47,65 @@ IRCommand::createCommand<IRCommand::CommandNames::ZOOM_IN>(
     Command<ZOOM_IN>::create());
 ```
 
+## Default-binding manifests (#2666)
+
+The engine's default keys are **data**, not imperative suite bodies.
+`constexpr DefaultBinding kCameraSuite[]` / `kCaptureSuite[]` in
+[`engine/prefabs/irreden/common/command_suite_registry.hpp`](../prefabs/irreden/common/command_suite_registry.hpp)
+are the single definition site per suite; `registerCameraCommands()` /
+`registerCaptureCommands()` are loops over them.
+
+One primitive drives all of it:
+
+```cpp
+void IRCommand::registerBindings(
+    std::span<const DefaultBinding> bindings,
+    const BindingOverrides &overrides = {});
+```
+
+It filters by `overrides.omit_`, substitutes buttons per
+`overrides.remap_`, and dispatches each surviving row through
+`bindPrefabCommand`. Nothing about it is suite-specific — a creation's
+own `DefaultBinding` table gets the same omit/remap machinery:
+
+```cpp
+// Everything except Escape (voxel_editor owns its own Escape handling).
+IRCommand::registerCameraCommands({.omit_ = {IRCommand::CLOSE_WINDOW}});
+
+// Pan on the arrow keys instead of WASD.
+IRCommand::registerCameraCommands({.remap_ = {
+    {IRInput::kKeyButtonW, IRInput::kKeyButtonUp},
+    {IRInput::kKeyButtonA, IRInput::kKeyButtonLeft}, /* ... */}});
+```
+
+Semantics worth knowing before you use it:
+
+- **`omit_` matches on command, `remap_` matches on button.** A pan axis
+  is two *distinct* commands sharing one button
+  (`MOVE_CAMERA_UP_START` + `MOVE_CAMERA_UP_END` on `W`), so one remap
+  entry moves both rows, while omitting `MOVE_CAMERA_UP_START` leaves
+  the RELEASED row bound. Omit both to drop the axis.
+- **Remaps never chain.** The first matching pair wins per row, so
+  `{W→A, A→UP}` leaves `W` on `A`.
+- **Registration-time, not a mutable rebind registry.** There is
+  deliberately no `unbind(command)` / `rebind(command, key)`:
+  `CommandId` is an index into an append-only vector (removal would
+  invalidate outstanding ids or force tombstones onto the per-tick
+  dispatch loop), and `CommandNames` is not a unique key in the live
+  registry, so rebind-by-command is ambiguous by construction.
+  Never-bound also keeps the help overlay and
+  `getCommandRegistrations()` consistent for free. A true *runtime*
+  rebind surface (settings menu, persisted keymaps) is a separate
+  design and stays reachable via in-place `CommandId` mutation.
+- **The registration map is not the manifest.**
+  `getCommandRegistrations()` is populated only after registration and
+  only for *named PRESSED* binds — it cannot see the RELEASED
+  `MOVE_CAMERA_*_END` rows. Enumerate defaults via
+  `IRCommand::suiteDefaults(Suite)`, which reads the constexpr tables.
+
+Lua parity is `IRCommand.{Suite, suiteDefaults, registerSuite}` — see
+`engine/script/CLAUDE.md` §"Commands and input".
+
 ## `CommandManager`
 
 Owns three registries: button commands (keyboard/mouse/gamepad), MIDI note
@@ -187,3 +246,9 @@ for prefab command bodies. PR 2 does not delete any existing command.
   formats the same registry without descriptions. Kept working as #2551's
   declared fallback and per the engine API removal rule; new code reads
   `getCommandRegistrations()` directly.
+- **A manifest row needs its `bindPrefabCommand` case first.** Adding a
+  command to `kCameraSuite` / `kCaptureSuite` (or any `DefaultBinding`
+  table) without the matching case in `bindPrefabCommand` makes
+  `registerBindings` log an error and assert in debug — deliberately
+  loud, so a missing case can't silently thin a suite. Add the switch
+  case before the manifest row.

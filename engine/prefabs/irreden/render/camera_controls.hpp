@@ -52,10 +52,16 @@ inline std::list<IRSystem::SystemId> standardControlSystems() {
 }
 
 // Pairs with standardControlSystems(); wraps IRCommand::registerCameraCommands.
-// Pass `bindEscapeCloseWindow = false` to keep Escape free for the creation —
-// see `registerCameraCommands` for the contract.
-inline void registerStandardKeyboardCommands(bool bindEscapeCloseWindow = true) {
-    IRCommand::registerCameraCommands(bindEscapeCloseWindow);
+// Takes the same registration-time overrides — a creation that owns Escape
+// itself passes `{.omit_ = {IRCommand::CLOSE_WINDOW}}` rather than dropping to
+// hand-registering the rest of the suite. That is how a `IRPrefab::SettingsMenu`
+// adopter keeps Escape free for the menu (#2551).
+inline void registerStandardKeyboardCommands(const IRCommand::BindingOverrides &overrides) {
+    IRCommand::registerCameraCommands(overrides);
+}
+
+inline void registerStandardKeyboardCommands() {
+    IRCommand::registerCameraCommands();
 }
 
 } // namespace IRPrefab::Camera
