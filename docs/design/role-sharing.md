@@ -189,14 +189,17 @@ first line points at it).
 
 ### Lint enforcement
 
-`fleet-validate-roles` (tracked as a child of epic #1661) asserts that
-every protocol declaring a delta table has a wrapper in each fleet-enabled
-repo root, and that every wrapper answers every declared key — the role
-analogue of the skill-sharing CI check. Until it lands, the check is
-manual (grep the protocol's bold keys against the wrapper's table). It
-starts with an alias map for the downstream architect wrapper's legacy key
-names; renaming those to the baseline set is deferred until the lint
-exists to catch regressions.
+`fleet-validate-roles` **shipped** (#1667, a child of epic #1661): it
+asserts that every protocol declaring a delta table has a wrapper in each
+fleet-enabled repo root, and that every wrapper answers every declared key
+— the role analogue of the skill-sharing CI check. A missing key in a
+present wrapper is an error; an extra key, or a fleet-enabled repo with no
+wrapper at all, is a warn (`--strict` promotes warns to errors). Nothing
+runs it automatically today — no CI job, hook, or install step invokes it —
+so it stays a cue-driven check. Its alias map
+(`DELTA_KEY_ALIASES`) is currently empty: key names must match the wrapper
+verbatim, and the deferred rename of the downstream architect wrapper's
+legacy key names now has the lint in place to catch regressions.
 
 ### Protocol versioning
 

@@ -372,6 +372,16 @@ lane is for verified defect-shaped follow-ups, not direction). If every
 row of an objective verifies, propose the `Status: achieved` flip as a
 design-doc PR — the human merging it is the sign-off.
 
+## Triage sweep
+
+The sibling cue for the *inbound* direction: where the objectives sweep
+files new work, the triage sweep judges work already filed. On the human's
+cue ("triage sweep"), enumerate this repo's untriaged issues with
+`fleet-triage-sweep list --repo <slug>`, judge each one, stage the verdicts,
+and apply labels only after the human confirms — full flow in
+[`triage-protocol.md`](triage-protocol.md) § Architect-managed sweep. Also
+cue-driven, never autonomous.
+
 ## Planning issues
 
 The **opus worker** autonomously handles `fleet:needs-plan` issues as a
