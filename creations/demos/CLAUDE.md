@@ -62,3 +62,12 @@ canonical CMake shape.
 - **Keep Lua bindings lean.** A demo's `lua_component_pack.hpp` should
   register **only** the components the demo actually uses. Don't copy
   the kitchen-sink pack from another demo just to save typing.
+- **Run-mode flags compose, but no automated run exercises every
+  combination.** An invariant that holds only for a subset of flag
+  combinations (`--walk` × `--probe-assert`, a shot-table index paired
+  to its table) has no automated owner, so enforce it with a
+  load-bearing `static_assert` on the geometric/config relationship (or
+  a startup assert) — never a comment (#2617; verify the assert is
+  load-bearing by restoring the bad value and watching the build fail).
+  General rule: [`docs/agents/CLAUDE-BASELINE.md`](../../docs/agents/CLAUDE-BASELINE.md)
+  §"Encode contracts in code, not in comments".

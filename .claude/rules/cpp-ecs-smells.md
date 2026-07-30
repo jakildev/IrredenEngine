@@ -31,6 +31,14 @@ In any system `tick` function:
     dropping the rest). This is the accepted canvas-iteration pattern; don't
     flag it.
 
+- **`IREntity::singleton<C_Foo>()` inside a per-entity `tick`/`endTick`**
+  (not `beginTick`). Same hash-map-lookup-per-row footgun as
+  `getComponent`, just against the singleton registry instead of the
+  archetype/component map. Fix: resolve once in `beginTick`, cache the
+  pointer (anonymous-namespace variable or `SystemParams`), and read the
+  cached pointer from `tick`/`endTick`. Canonical example:
+  `engine/prefabs/irreden/common/systems/system_modifier_resolve_global.hpp`.
+
 - **`createEntity`, `addComponent`, `removeComponent`, or `removeEntity`**
   mid-iteration without the deferred variant. Fix: use
   `IREntity::deferredCreate` / `deferredSetComponent` etc.; let

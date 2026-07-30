@@ -34,6 +34,16 @@ The shutdown profile report (`save_files/profile_report.txt`) includes
 the same data under `--- GPU stage timing ---`. The matrix script
 aggregates this across cells.
 
+- **When quoting per-stage GPU timings in a PR / acceptance-evidence
+  body, cite the `profile_report.txt` average** (`--auto-profile N`, avg
+  over N frames — better, a multi-run mean + run-to-run spread via
+  `compare_perf_runs.py`), never a single-frame HUD /
+  `gpuStageTiming().*Ms_` / `lastFrameMs` read. Per-frame values are
+  noisy, especially on the per-axis path (#2255 nondeterminism): a
+  single frame can be ~2× the steady-state average (#2518's "5.60 →
+  ~6.8 ms | unchanged" self-contradiction was a single-frame read of a
+  stage whose 300-frame average held at 5.64 ms).
+
 ## Voxel cull effectiveness
 
 `VOXEL_TO_TRIXEL_STAGE_1` reads the prior frame's

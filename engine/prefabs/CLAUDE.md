@@ -100,6 +100,16 @@ a system (per-frame work) or one of:
 The split keeps component layout trivial (good for archetype iteration)
 and concentrates per-entity orchestration where it belongs.
 
+A `components/component_*.hpp` header holds **data only** — an
+`IRPrefab::<Feature>::` function definition (accessor,
+`ensure*Singleton`, flip/query helper) belongs in the sibling
+`<feature>*.hpp`, never in the component header (#2631; the
+`component_widget_theme.hpp` / `widget_theme.hpp` pair is the reference
+split). If the feature's main header includes its own system, the
+accessors need their own third header to avoid an include cycle — the
+system's `create()` calling an accessor while the feature header
+includes the system is the trap (PR #2622 hit and resolved it this way).
+
 ### Documented exceptions
 
 These patterns *look* like (c) but are accepted because the alternatives

@@ -229,6 +229,22 @@ is worse than a duplicate.
 - Names cited (type, function, label, task ID) still exist. Renamed-
   and-not-swept names are how `engine/input/CLAUDE.md` ended up
   pointing at a `C_Hitbox2D` that never existed (PR #909).
+- A section ID that implies a series (`M-2`, `P0-4`) either has its
+  predecessors in the same doc, or states at the heading what the
+  prefix means and why the numbering starts where it does — required
+  when the ID was coined in an issue before the section existed,
+  since by then renumbering breaks the issue's backrefs.
+
+**Check absolute rules against the tree first.** Before stating a
+rule absolutely in an agent-facing doc ("never X", "relying on X is
+not safe"), grep the tree for deliberate counter-examples. If in-tree
+code intentionally does X, either narrow the rule to what the code
+actually supports, or keep the absolute form and record the
+exceptions — the `## Live deviations` convention the
+`.claude/rules/cpp-*.md` files use generalizes to any agent-facing
+doc. An over-broad rule is worse than a missing one: it reads as
+authoritative and steers the next agent away from a correct, in-use
+pattern.
 
 **The test for inclusion:** would this section survive a rename
 refactor, or would it go stale? Names are fine when part of a pattern
@@ -517,10 +533,68 @@ Concrete forms:
   through to a runtime `IR_ASSERT` at the non-consteval branch.** Use
   for helpers that are sometimes called from `constexpr` contexts and
   sometimes from runtime.
+- **Precondition coupling two or more module-level constants →
+  `static_assert` next to the constants.** A shader-side constant
+  cannot assert — mirror it into the C++ constants header and assert
+  there (`ir_render_types.hpp`'s documented mirrors of
+  `ir_iso_common.{glsl,metal}` constants are the precedent). Keep the
+  comparison in exact integer arithmetic (no float compares), assert
+  the structural identity where one exists (`bias ==
+  kDepthEncodeShift`, not `bias == 8`), and negative-test that the
+  assert fires. A constant that acquires a second, independent
+  requirement from a later change gets that requirement asserted and
+  documented at its *definition* site, not only at the new use site —
+  the plausible retune direction is exactly the one that silently
+  breaks the later requirement.
+- **Value crossing an untrusted-input boundary (Lua script,
+  deserialized file, network) → clamp or reject at the boundary, not
+  `IR_ASSERT` alone.** `IR_RELEASE` strips asserts, so an assert-only
+  guard aborts in debug and silently produces a wrong result — or an
+  out-of-bounds access — in release. `IR_ASSERT` stays correct for
+  C++ call sites, where the caller is bound by the C++ contract. The
+  rule bites in both directions: adding an `IR_ASSERT` to a type a
+  Lua binding constructs is the same event as adding a binding to an
+  asserting setter — check the binding surface either way. Log a
+  warning on the clamped path where the call is not per-frame.
 
 The assertion message should restate the constraint in the same words
 the docstring uses, so a hit reads as one consistent contract violation
 rather than two separate signals.
+
+**Which assert.** Runtime invariants go through `IR_ASSERT(predicate,
+"diagnostic")` — it logs through the engine sink and is stripped under
+`IR_RELEASE`. Compile-time invariants use raw `static_assert` with a
+message — there is no `IR_STATIC_ASSERT` wrapper and none is needed
+(no runtime sink to route, no release-stripping question). Raw
+`<cassert>` `assert()`: never — silently absent in release, and it
+bypasses the engine log sink. Thread-affinity checks use
+`IR_ASSERT_MAIN_THREAD()`.
+
+**Invariants no automated run exercises get a load-bearing assert,
+not a comment.** Run-mode flag combinations, hand-paired table
+indices, and cross-file constraints on a component field have no
+automated owner — the blessed coverage runs one or two configurations
+where the invariant happens to hold, so a comment lives or dies on
+whether the next author happens to reason about the other mode.
+Enforce with a `static_assert` (or a startup assert) and verify it is
+load-bearing: restore the bad value and watch the build or assert
+fail. An assert that cannot fire is a comment with extra steps.
+
+**A comment naming a specific runtime guard must be true on every
+path it covers.** "Trips the `x < n` range assert" is read as
+verified fact, not aspiration — before writing it, confirm the named
+guard exists on each accessor/path the comment's scope implies, not
+just on one sibling function; add the missing guards or state what
+actually happens. And because `IR_ASSERT` is stripped in release,
+"trips the assert" is only ever a debug-build claim — say which build
+config you mean.
+
+A guard, clamp, or asymmetry whose correctness rationale lives in a
+*different file* must say so at its own site — and a declaration-order
+invariant lists its consumers at the declaration site. The full
+counterweight rule lives in `.claude/skills/simplify/SKILL.md` §8, so
+the simplify pass doesn't read such a guard as deletable defensive
+hygiene.
 
 ---
 

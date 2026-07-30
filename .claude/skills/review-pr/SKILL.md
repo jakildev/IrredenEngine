@@ -42,6 +42,11 @@ Go through each explicitly. For every item, confirm compliance or raise an
 issue.
 
 **ECS invariants** — check against [`.claude/rules/cpp-ecs-smells.md`](../../rules/cpp-ecs-smells.md).
+- A change-gated recompute touched by the diff: does every mutable input
+  the recomputed function reads have a trigger? A position-change trigger
+  that misses the active-mask mutation path leaves the derived state stale
+  (`.claude/rules/cpp-ecs.md` §"A change-gated recompute must trigger on
+  every input its function reads").
 
 **Ownership / lifetime**
 - `shared_ptr` where `unique_ptr` would do.
@@ -174,6 +179,10 @@ any `c_compute_*shadow*.glsl` / `.metal`)
   [`docs/agents/FLEET.md`](../../../docs/agents/FLEET.md) §"Clean-exit
   policy". A crash observed but out of reach must be filed with forensics
   AND the lane reported failed.
+- When a PR cites a grep as a completeness gate ("sweep returns empty"),
+  check the grep's **key**: a sweep keyed on a retired symbol does not
+  establish that value-equivalent bare literals (`T{0}`, `return 0;` from
+  a `T`-returning function) are gone.
 
 **Acceptance vs the originating issue** (shared-flow step 4b)
 - When the PR body carries `Closes #N` and issue N has a `## Plan` with

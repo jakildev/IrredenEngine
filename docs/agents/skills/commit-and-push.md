@@ -293,13 +293,22 @@ pr_body="$(cat <<'EOF'
 - <bullet>
 
 ## Test plan
-- [ ] <check>
+- [x] <check — written from output you observed, box ticked>
+
+## Acceptance evidence
+| Criterion | Check run | Observed |
+|---|---|---|
+| <criterion> | `<command>` | <output line proving it fired> |
 
 Closes #<issue-N>
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 EOF
 )"
+# ## Acceptance evidence is conditional: required whenever the issue in
+# `Closes #N` states acceptance criteria ANYWHERE — a `## Plan` comment
+# OR the issue body (fleet:no-plan follow-ups carry them in the body).
+# Omit the section otherwise. Template + rules: procedures/pr-body.md.
 # If the screenshot skill ran this pass, fold its markdown snippet in here:
 #   pr_body="${pr_body}"$'\n\n'"<the screenshot skill's markdown snippet>"
 pr_body="${pr_body//<sha-pin token>/$(git rev-parse HEAD)}"   # no-op when the token is absent
@@ -342,6 +351,37 @@ non-blocking — proceed if the number is intentional (e.g. an umbrella).
 
 Skip when the body has no `Closes #N` line, or for the queue-manager role
 (its `Closes #` rows mean task IDs, not tracker issues).
+
+**Acceptance-evidence check (same trigger, same fetch):** the `gh issue
+view` above already answers whether `## Acceptance evidence` is required —
+fetch the body and comments and look for acceptance criteria **anywhere**
+(a `## Plan` comment's `### Acceptance criteria` heading, or a bold
+`**Acceptance criteria**` line in the issue body — the `fleet:no-plan`
+agent-approved lane puts them in the body by construction, #2521). If the
+issue states criteria and the drafted body has no `## Acceptance evidence`
+section, **stop and fill the table** before `gh pr create` — reviewers
+grade criteria from that table, and its absence has cost a review
+round-trip four separate times.
+
+**Test-plan boxes are records, not to-dos (same moment):** `## Test plan`
+records verification *already performed* — write each item from output you
+observed and tick it, or don't write it. A body leaving unticked `- [ ]`
+boxes under `## Test plan` is not ready to leave WIP; an item worded from
+expectation rather than execution launders an assumption into a
+reviewer-facing artifact (#2658).
+
+**Duplicate-PR check (same trigger):** for each drafted `Closes #N`, query
+other open PRs' bodies before creating —
+
+```bash
+gh pr list --repo <repo> --state open --json number,body \
+    --jq ".[] | select(.body | test(\"Closes #${closes_n}\\\\b\")) | .number"
+```
+
+A hit means an open PR already carries this fix's `Closes` line
+(title/branch matching cannot see body-only links, #2507). **Stop** — do
+not `gh pr create`. Route to dedup instead: add any missing `Closes` line
+to the existing PR and comment the issue with the disposition.
 
 **Stale-diagnostic check (same trigger):** for each `Closes #N`, grep the
 branch for annotations that promise removal when that issue closes —

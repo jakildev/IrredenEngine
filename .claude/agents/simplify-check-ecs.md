@@ -1,6 +1,6 @@
 ---
 name: simplify-check-ecs
-description: ECS-smell scanner for the simplify skill. Use proactively when simplify needs a focused per-file ECS-invariant pass that returns a tight findings list without polluting the main session's context. Catches per-entity getComponent in ticks, allocations in hot loops, missing SystemName enum entries, mid-iteration structural changes, and component method (a/b/c) violations.
+description: ECS-smell scanner for the simplify skill. Use proactively when simplify needs a focused per-file ECS-invariant pass that returns a tight findings list without polluting the main session's context. Catches per-entity getComponent and singleton<> lookups in ticks, allocations in hot loops, missing SystemName enum entries, mid-iteration structural changes, and component method (a/b/c) violations.
 tools: Read, Grep, Glob
 model: haiku
 color: cyan
@@ -19,6 +19,8 @@ For each `.hpp`/`.cpp` file in the diff, scan for:
    - **Allowed exception:** dynamically-determined foreign entities (contact pair `.otherEntity_`, parent lookups via stored `EntityId`). Note this case as "foreign-entity lookup" and recommend the batched-vector pattern from `cpp-ecs.md` §"Foreign-entity lookups".
 
    - **Allowed exception:** per-canvas `getComponentOptional` in a render tick that must iterate *all* canvases while only *some* carry an optional per-canvas component (`C_CanvasFogOfWar`, `C_CanvasSunShadow`, `C_CanvasLightVolume`). This is O(canvases), not the O(voxels) footgun, and the template-param fix would wrongly drop the canvases without the component. Don't flag it. See the carve-out in `cpp-ecs-smells.md` §"Per-entity tick violations".
+
+1b. **Per-entity `IREntity::singleton<C_Foo>()` inside a `tick`/`endTick`** (not `beginTick`). Same hash-map-lookup-per-row footgun as item 1, against the singleton registry instead of the archetype map. Fix: resolve once in `beginTick`, cache the pointer (anonymous-namespace or `SystemParams`), read the cache from `tick`/`endTick`. Canonical example: `engine/prefabs/irreden/common/systems/system_modifier_resolve_global.hpp`. See `cpp-ecs-smells.md` §"Per-entity tick violations".
 
 2. **Allocations in hot tick paths:** `new`, `std::vector::push_back` on a hot vector, `std::string` concatenation, `std::map::operator[]` insertion, `std::make_unique` inside a tick. Reserve at `beginTick` or in `SystemParams` instead.
 

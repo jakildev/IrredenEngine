@@ -368,11 +368,22 @@ Do the work, then exit cleanly:
        Confirm the conflict is still real before you checkout and rebase:
        `gh pr view <N> --json mergeable --jq '.mergeable'`
        (add `--repo jakildev/irreden` for game PRs).
-       - `MERGEABLE` — already resolved; the label is stale. Do **NOT**
-         rebase — re-rebasing an already-resolved PR near-clobbers the
-         resolver's work. Just clear the stale label and release, then go to
-         step 2: `gh pr edit <N> --remove-label "fleet:semantic-conflict"`
+       - `MERGEABLE` — probably already resolved, but `MERGEABLE` alone
+         is not proof: it only means a trial merge found no textual
+         conflict markers, which a stale, diverged branch also produces
+         (a stack whose upstream squash-merged under a new SHA is
+         exactly this — no shared history, no textual overlap, and
+         merging would silently revert landed master work, #2400).
+         Sanity-check the diff before trusting it:
+         `git diff origin/master...origin/<headRefName> --stat | tail -1`
+         If the file count / churn is plausible for the PR's stated
+         scope, treat it as resolved — clear the stale label and
+         release, then go to step 2:
+         `gh pr edit <N> --remove-label "fleet:semantic-conflict"`
          and `fleet-claim resolving-release <N> <your-worktree-basename>`.
+         If the diff is implausibly large or deletion-heavy relative to
+         the PR's own description, it is stale-and-diverged, not
+         resolved — proceed to step c and do the manual rebase.
        - `CONFLICTING` — the conflict is real; proceed to step c.
        - `UNKNOWN` — GitHub is still computing mergeability; proceed to
          step c (the rebase in step d is authoritative either way).
@@ -469,6 +480,15 @@ Do the work, then exit cleanly:
        this PR matched the filter):
        `gh pr edit <N> --repo jakildev/IrredenEngine --remove-label "fleet:semantic-conflict" --add-label "fleet:changes-made"`
        `gh pr comment <N> --repo jakildev/IrredenEngine --body "Resolved semantic conflict: <one-line summary of what you reconciled>. Build clean. Reviewer please re-evaluate the rebased diff. — worker"`
+       **Reconcile the PR body before commenting.** The rebase changed
+       the base, so re-read the body's `## Verification`, any
+       known-failure/drift warning, and the touched-file list. Anything
+       the rebase invalidated — especially a documented failure master
+       has since fixed — gets corrected in the same
+       `gh pr edit --body-file` pass. Cite the fresh numbers you just
+       measured in step g. (Negative claims are the dangerous ones: a
+       scary-but-false drift warning left standing misleads everyone
+       reading the merged history, and no build gate catches it, #2536.)
        **If the PR also carries `fleet:human-deferred`, drop it.** Your
        push added new commits, so the deferral — which covered the diff
        as it stood at defer time — no longer holds. Dropping it re-enters
@@ -508,6 +528,18 @@ Do the work, then exit cleanly:
        `git rebase --abort`
        `gh pr edit <N> --repo jakildev/IrredenEngine --remove-label "fleet:semantic-conflict" --add-label "human:needs-fix"`
        `gh pr comment <N> --repo jakildev/IrredenEngine --body "Worker pass on semantic conflict could not resolve: <one paragraph of why — what the two sides did, what the ambiguity is>. Handing off to human. — worker"`
+    j'. **Superseded-duplicate verdict.** If the pass concludes the PR
+       was superseded by already-merged work, the close recommendation
+       must do two things before it ships (#2474):
+       - **Size the residual mechanically** — walk a per-phase
+         `git diff <loser-branch>..origin/master` yourself; never
+         inherit the thread's or the author's earlier delta summary
+         (each agent trusting the previous comment is how an entire
+         unmerged phase gets written off as a "small follow-up").
+       - **Run the loser's test additions against the winner's merged
+         implementation** and report any failures as candidate defects
+         in the winner — the loser's regression locks encode properties
+         the winner was never tested against.
     k. Reset to scratch (runs at the end of every step 1c branch —
        success, lease-fail, or escalation — so the next iteration
        starts clean and reviewers aren't blocked from `gh pr
@@ -602,9 +634,24 @@ Do the work, then exit cleanly:
      belongs to the stackable fallback tier below (which stacks it on the
      blocker's open PR). Skipping it here avoids a plain claim on a task
      that has no mergeable base yet.
-   - **Issue is NOT referenced in any open PR's title or branch name**
-     in **the same repo** (cross-check against the same repo's
-     `prs[]` array from the cache)
+   - **Issue is NOT in-flight via any PR** in **the same repo**. Three
+     checks, not one (#2507 — title/branch match alone let two panes
+     re-implement shipped work):
+     - Not referenced in any open PR's **title or branch name**
+       (cross-check against the same repo's `prs[]` array from the
+       cache).
+     - No **open PR's body** carries `Closes #<N>` — a body-only link
+       is invisible to the title/branch check:
+       `gh pr list --repo <slug> --state open --json number,body --jq '.[] | select(.body | test("(Closes|Fixes|Resolves) #<N>\\b"; "i")) | .number'`
+     - No **merged PR with a non-master base** carries `Closes #<N>`
+       while the issue is still open — that is shipped-but-stack-gated
+       (GitHub only auto-closes on merge to the default branch), so
+       skip it exactly as if it were shadowed by an open PR:
+       `gh pr list --repo <slug> --state merged --limit 100 --json number,baseRefName,body --jq '.[] | select(.body | test("(Closes|Fixes|Resolves) #<N>\\b"; "i")) | "#\(.number) base=\(.baseRefName)"'`
+       (A hit whose base IS master means the issue should have
+       auto-closed and is stale-queued — also a no-pick.)
+     These checks apply to the stackable-fallback tier below too — a
+     starved queue funnels every pane at exactly the rows this misses.
 
    **Priority:** prefer engine tasks over game tasks when both are
    available — engine work is the core dependency surface. But if
@@ -615,8 +662,9 @@ Do the work, then exit cleanly:
    - The issue's `fleet:claim-*` label (cross-host atomic claim)
    - The issue body's `Blocked by:` field (parsed by the scout and
      surfaced in `tasks.open[].blocked_by`)
-   - Open PR titles/branches in the task's repo (the live in-flight
-     signal)
+   - PR linkage in the task's repo: open-PR titles/branches, open-PR
+     bodies (`Closes #N`), and merged-into-non-master `Closes #N`
+     (the three in-flight checks above)
    - `fleet-claim`'s local lock state (atomic claims, with `--repo game`
      namespacing for game tasks)
 

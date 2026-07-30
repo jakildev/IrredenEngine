@@ -397,6 +397,17 @@ reach the shader, and a "compiles + byte-identical at default" merge ships a
 feature that doesn't function in its actual use case (#1989 per-trixel
 priority caught exactly this on resume).
 
+**The vacuous-failure mirror: a gate no correct implementation can pass is
+a gate defect, not a code defect.** Harnesses outlive the contracts they
+were written against — an early phase pins a metric, a later phase changes
+what the right answer *is*, and the metric keeps scoring the old one.
+Before treating a red harness as a bug, check whether its oracle measures
+the ratified contract; the tell is cheap: solve the metric for its
+parameter, and if no input satisfies the threshold (#2585's ≤1.5px
+centroid gate needed a probe radius ≤ ~0.07 world units), re-ground the
+oracle rather than bending the mechanism to the metric — and verify the
+replacement oracle is itself *reachable* before it ships as the new gate.
+
 **The disabled-direction complement: a "gated-off / byte-identical on path
 X" claim that leans on a shared shader predicate is empirical, not
 structural.** Multi-dispatch passes (per-axis resolve, world-placed resolve,
@@ -417,6 +428,11 @@ rebased kernel on the ENABLED path. Byte-identity at default does not prove
 the carrier survived the rebase: an extracted or open-coded kernel that
 forked pre-migration compiles and passes cardinal byte-identity while
 silently dropping the carrier on the rotated/enabled path (#2325 vs #2207).
+
+**Per-stage GPU timings quoted as evidence are multi-frame averages +
+spread, never single-frame reads** — see
+`.claude/skills/optimize/reference/gpu_profiling.md` for the rule (#2255
+per-axis nondeterminism makes a single frame ~2× off).
 
 ### Verifying temporal stability (per-frame jitter)
 
