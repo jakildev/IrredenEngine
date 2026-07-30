@@ -72,3 +72,57 @@ Verify at cardinal + ~30° + 45° yaw on both backends per **D3** (the V3
 light-verify harness from #2317 — `scripts/light-verify.py` domain matrix — is
 the acceptance oracle). Acceptance criterion 7 records the **Linux/GL smoke
 owed**: the GL twin is unbuilt on the macOS pane.
+
+## Amendments
+
+### A1 — 2026-07-30 — trigger: flow-a design-block triage of PR #2654 (`## NEEDS-DESIGN`, Phase-0 measured)
+
+- **Decision (AC 5 scope).** The **world-placed detached cast resolve (P4b-3) is
+  OUT of scope for the radius-0 byte-identity invariant.** A radius change moves
+  those solids' cast edges by design, so the six `canvas_stress` default shots —
+  which all carry world-placed detached content — are not clean probes of the
+  per-axis path AC 5 names. The invariant is a property of *paths* (the per-axis
+  resolve, whose radius `patchSunSplatRadius` structurally zeroes), not of those
+  shots. The worker's Option A is adopted; Option B (confining the bump to the
+  cardinal main-canvas bake) is **refuted** — it would withhold the splat from
+  the one other path the design doc says it exists to cover.
+- **Decision (AC 1 grounding).** AC 1's absolute figures (59 comp / 0.7705 frac,
+  PR #2343, 2026-07-14) are **stale and were never valid across sessions**: the
+  splat-off *reference* itself moved 5056 → 6936 px / 0.3418 → 0.3230 frac in
+  the interval. The criterion's operative clause is its same-session splat-off
+  anchor. Evaluated that way, r7 (32144 px / 47 comp / 0.9276) clears it. AC 1
+  **PASS**. Master r6 also clears the stale absolute bar with zero change — see
+  the #2314 steward escalation (2026-07-30) for the epic-scope consequence;
+  it does not gate this child.
+- **Decision (Phase 1).** **Skipped** — the plan's early exit fired and r7 sits
+  under the #2204 waived cost ceiling (r8, the architect anchor), so no fresh
+  cost waiver is owed.
+- **Decision (still owed before merge).** (a) AC 4's *visual* half is
+  non-optional and must be captured on a shot that shows the delta —
+  `shadow_overlay_floor` measured zero change, so use `revoxelize_solids` or
+  `so3_offsnap_wide`. A soft dark border rejects r7 as halo regardless of the
+  component count. (b) Re-blessing is a **two-host** job: `linux-debug/`'s six
+  references stale alongside `macos-debug/`'s, and cannot be regenerated on the
+  macOS pane — so AC 7 is a blocking co-requisite here, not a routine
+  post-merge smoke.
+- **Supersedes:** AC 5's shot-level wording ("per-axis `yaw30` / `yaw45`
+  byte-identical") and `docs/design/sun-shadow-bake-coverage.md` § Acceptance
+  oracle item 4's matching phrasing — both restated to cite the per-axis
+  resolve's radius-0 property rather than the mixed-content shots. AC 1's
+  absolute 59 / 0.7705 thresholds are superseded by the same-session anchor.
+- **Acceptance criteria:** AC 1 re-grounded (same-session splat-off A/B; no
+  absolute carry-over). AC 5 restated (scope = radius-0 paths). AC 4 unchanged
+  but its shot selection is now specified. AC 7 escalated from "owed" to
+  blocking co-requisite. AC 2 / AC 3 / AC 6 unchanged.
+- **By:** epic-steward — sources: `docs/design/sun-shadow-bake-coverage.md`
+  § "Byte-identity regimes" invariant 1 parenthetical ("The world-placed cast
+  resolve is deliberately **not** part of this regime … it is a separate feature
+  whose cast the splat is meant to cover");
+  `engine/prefabs/irreden/render/systems/system_bake_sun_shadow_map.hpp:63-68`
+  and `:263-265`; the v2 `## Plan` comment's gotchas ("the genuine-cast metric
+  is a manual A/B — capture the splat-off baseline in the **same session** …";
+  "the halo guard (criterion 4) is not optional") and its Phase-0 early exit;
+  design doc § "The #2204 cost rule and the chosen radius" (r8 architect
+  anchor); `creations/demos/canvas_stress/test/references/manifest.json` § notes
+  (per-preset reference dirs). Distributed as `## Steward direction` on PR #2654
+  (issuecomment-5134594811); `fleet-transition design-unblock 2654` applied.

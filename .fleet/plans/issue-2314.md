@@ -62,8 +62,8 @@ independent heads.
 
 ## Steward ledger
 
-reconciled-through: scope-shipped false-positive repair on #2385/#2321 (2026-07-30). Code-side: PR #2387 merge (2026-07-14 — S2 #2320 shadow-throw unify merged; V3 #2317 + S1 #2319 reconciled prior iterations) — no child has merged since.
-proposal-pending: none — STEWARD PROPOSAL 2026-07-14 (PR #2393 / S3 #2321) answered by opus-architect 2026-07-15 (issuecomment-4977022751) and distributed this iteration (D7–D9; child plan `issue-2321.md` A1; `## Steward direction` on PR #2393; `fleet-transition design-unblock 2393`; #2321 re-blocked on #2385; #2385 routed to the planning gate). Prior 2026-07-13 package (PR #2343 / S1 #2319) answered + distributed (D4–D6, `## Steward direction` on PR #2343).
+reconciled-through: flow-a triage of PR #2654 / #2385 Phase-0 (2026-07-30) — all questions derivable, `design-unblock` applied, child plan amended A1, no proposal package. Code-side: PR #2387 merge (2026-07-14 — S2 #2320 shadow-throw unify merged; V3 #2317 + S1 #2319 reconciled prior iterations) — no child has merged since.
+proposal-pending: none — this iteration's flow-a resolved entirely by citation (no `fleet:steward-proposal` added); the one epic-scope question it surfaced rides a **non-blocking** escalation comment on #2314 (2026-07-30, issuecomment-5134608422). Prior: STEWARD PROPOSAL 2026-07-14 (PR #2393 / S3 #2321) answered by opus-architect 2026-07-15 (issuecomment-4977022751) and distributed (D7–D9; child plan `issue-2321.md` A1; `## Steward direction` on PR #2393; `fleet-transition design-unblock 2393`; #2321 re-blocked on #2385; #2385 routed to the planning gate). Prior 2026-07-13 package (PR #2343 / S1 #2319) answered + distributed (D4–D6, `## Steward direction` on PR #2343).
 
 ### Children
 | Child | State | PR | Plan | Last validated |
@@ -78,7 +78,7 @@ proposal-pending: none — STEWARD PROPOSAL 2026-07-14 (PR #2393 / S3 #2321) ans
 | #2321 | open — `fleet:blocked` on #2385 (design answered, deferred) | #2393 (open, wip) | plan (issue-2321.md, A1) | 2026-07-30 (scope-shipped false positive cleared; `fleet:blocked` restored per D7 — was 2026-07-15 flow-a distribute: lever (a) dropped measured-refuted, lever (b) retained, gate re-anchored on post-#2385 baseline) |
 | #2322 | merged | #2328 | plan | 2026-07-13 |
 | #2323 | merged | #2326 | plan | 2026-07-13 |
-| #2385 | open — **`fleet:queued` (critical path, pickable now)** | — | **plan** (v2 `## Plan` comment, human-approved + plan-review cleared 2026-07-20; `issue-2385.md` is now a POINTER to it, no longer a stub) | 2026-07-30 (scope-shipped false positive cleared; `fleet:queued` restored — planned/approved since 2026-07-20, dequeued 10 days by tooling) |
+| #2385 | open — in-progress, PR #2654 `fleet:wip` + `fleet:design-unblocked` (critical path) | #2654 (open, wip, CONFLICTING) | **plan** (v2 `## Plan` comment; `issue-2385.md` = pointer + **A1**) | 2026-07-30 (flow-a triage of PR #2654: Phase-0 r7 measured, both controls green; AC 5 scope + AC 1 grounding + skip-Phase-1 all answered by citation; AC 4 visual half and two-host re-bless owed) |
 
 ### Decisions
 <!-- entries: D<n> (<YYYY-MM-DD>): <decision> — source: <link> -->
@@ -293,3 +293,53 @@ proposal-pending: none — STEWARD PROPOSAL 2026-07-14 (PR #2393 / S3 #2321) ans
     The plan itself was neither copied nor altered — the comment stays canonical.
   - **No Decision recorded:** this is a tooling-artifact repair, not a design
     call. D6–D9 stand unchanged and uncontradicted.
+- 2026-07-30 (flow a — #2385 design-block triage, PR #2654): the repair above
+  worked — an opus worker picked #2385 within hours and measured Phase 0
+  (macOS/Metal, cardinal freeze, cast-ROI `1010,540,450,250`): r0 6936 px /
+  91 comp / 0.3230 · r6 31320 / 53 / 0.9203 · r7 32144 / 47 / 0.9276. Premise
+  CONFIRMED (components fall −11.3 % while cast px rises only +2.6 % = fill, not
+  halo); both controls run and green (A==A byte-identical; the
+  `kSunSplatMaxTexels = 0` kill switch collapses the cast). **All questions
+  DERIVABLE — no proposal package, no park.**
+  - **AC 5 (the blocker).** The worker found the six `canvas_stress` default
+    shots cited as the per-axis byte-identity probes all carry **world-placed
+    detached solids**, whose cast resolve (P4b-3) deliberately keeps the splat
+    engaged — so *any* radius change moves their edges and AC 5 as written is
+    unsatisfiable. Answered by citation, not synthesis: master's
+    `docs/design/sun-shadow-bake-coverage.md` § "Byte-identity regimes" already
+    states "(The world-placed cast resolve is deliberately **not** part of this
+    regime … it is a separate feature whose cast the splat is meant to cover)",
+    and `system_bake_sun_shadow_map.hpp:63-68` scopes the structural guarantee to
+    the PER-AXIS resolve. Worker's Option A adopted; Option B (confine the bump
+    to the cardinal main-canvas bake) refuted as a regression against that
+    recorded position.
+  - **AC 1.** Confirmed stale — and never valid cross-session: the splat-off
+    *reference* itself moved 5056 → 6936 px / 0.3418 → 0.3230 since 2026-07-14,
+    which is exactly what the plan's same-session-A/B gotcha exists to cancel.
+    Re-grounded on the criterion's own same-session anchor; r7 PASSES.
+  - **Phase 1 skipped** (plan early exit fired; r7 is under the #2204 waived r8
+    ceiling, so no fresh cost waiver is owed).
+  - **Still owed before merge, both derivable:** AC 4's *visual* half (the plan's
+    "the halo guard is not optional") captured on a shot that shows the delta —
+    `shadow_overlay_floor` measured zero change, so `revoxelize_solids` /
+    `so3_offsnap_wide`; and a **two-host** re-bless — `linux-debug/`'s six
+    references stale alongside `macos-debug/`'s and cannot be regenerated on the
+    macOS pane, so AC 7 becomes a blocking co-requisite, not a routine smoke.
+  - Distributed: `## Steward direction` on PR #2654 (issuecomment-5134594811);
+    `.fleet/plans/issue-2385.md` amendment **A1**; `fleet-transition
+    design-unblock 2654` (verified: `fleet:design-blocked` →
+    `fleet:design-unblocked`, PR stays `fleet:wip` — it is the worker's to
+    finish).
+  - **Escalated, non-blocking** (issuecomment-5134608422): master r6 clears
+    AC 1's *original* bar with zero change, so the criterion could never have
+    failed the state it was written against — and 47 components is still a
+    fragmented cast against the issue's "toward 1.0" goal. Question for the
+    architect: does r7 discharge D6, or does #2385 close as a partial with a
+    successor child? Steward recommendation: ship r7 and let **D8**'s reserved
+    post-#2385 re-measure rule on the remainder rather than pre-empting it.
+    No `fleet:steward-proposal` added; no Decision recorded — D1–D9 stand.
+  - **Null-surface sweep** (per the #2385 lesson): live-checked every unticked
+    child of every epic carrying no trigger — engine #1938/#1939/#2091/#2547/
+    #2548/#2321 and game #202/#295/#299–#305. All are legitimately queued,
+    host-gated, blocked, or claimed-in-progress. No second parked false-free
+    this iteration.
