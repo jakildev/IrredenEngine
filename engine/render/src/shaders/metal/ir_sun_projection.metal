@@ -40,8 +40,9 @@ inline float3 sunSpaceProject(float3 pos3D, float3 uHat, float3 vHat, float3 sun
 // two's-complement nibble each for dx (bits [7:4]) and dy (bits [3:0]), the
 // sun-texel offset of THIS write from its caster's own texel under the box
 // splat. The radius is capped at kSunSplatMaxTexels = 7
-// (system_bake_sun_shadow_map.hpp) — r7 SATURATES the nibble's [-8, 7] range,
-// so any larger radius needs the displacement field widened past 8 bits
+// (system_bake_sun_shadow_map.hpp) — the symmetric ±r sweep exactly fills the
+// nibble's +7 ceiling at r7 (its asymmetric -8 slot is never emitted), so any
+// larger radius needs the displacement field widened past 8 bits
 // (#2385 Phase 1). A DIRECT (caster's-own-texel) write is (dx,dy) = (0,0):
 //   - low byte 0 ⇒ the recovered depth is bit-exact vs a pure `<< 8` of the
 //     pre-#2319 single-write pack, so the radius-0 per-axis / smooth-yaw /
