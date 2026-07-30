@@ -34,6 +34,7 @@
 
 #include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/common/components/component_name.hpp>
+#include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/render/picking.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 
@@ -96,9 +97,9 @@ inline IREntity::EntityId createIndicator() {
     // Resolve the canvas at RENDER time (SHAPES_TO_TRIXEL's kNullEntity
     // fallback) instead of keeping `C_ShapeDescriptor`'s ctor snapshot of the
     // active canvas. The snapshot is right for a shape built during scene
-    // setup, but this one is built from an INPUT-pipeline system at an
-    // arbitrary frame, where "the active canvas" is whatever the last pass
-    // happened to leave set.
+    // setup, but this one is built mid-frame from a per-frame system (the drag
+    // path's `CAMERA_MOUSE_ROTATE` tick), where "the active canvas" is whatever
+    // the last pass happened to leave set.
     marker.canvasEntity_ = IREntity::kNullEntity;
     return IREntity::createEntity(
         IRComponents::C_LocalTransform{IRMath::vec3(0.0f)},
@@ -107,14 +108,26 @@ inline IREntity::EntityId createIndicator() {
     );
 }
 
-// Move the marker to @p worldPos and reveal it. One foreign-entity component
-// reach per drag start — O(1), the same shape as `VOXEL_PICKING`'s highlight
-// toggle, not the per-entity-tick footgun.
+// Move the marker to @p worldPos and reveal it. Three foreign-entity component
+// reaches per drag start — edge-triggered (drag start/end only), not the
+// per-entity-tick footgun. `VOXEL_PICKING` does the equivalent write without
+// any `getComponent` because the highlight is its OWN iterating entity, so the
+// transforms arrive as template params; the caller here holds only an id.
+//
+// `C_LocalTransform` AND `C_WorldTransform` are written together, for the same
+// reason `VOXEL_PICKING` does it (`system_voxel_picking.hpp:29-32`): the drag
+// path (`System<CAMERA_MOUSE_ROTATE>`) ticks in RENDER, by which point UPDATE's
+// `PROPAGATE_TRANSFORM` has already run this frame — writing only the local
+// transform would leave `SHAPES_TO_TRIXEL` (a `C_WorldTransform` reader) drawing
+// the marker at its stale prior-frame position for the first frame of every
+// show/reposition. The indicator is parentless, so world == local is the correct
+// composition.
 inline void showIndicator(IREntity::EntityId indicator, IRMath::vec3 worldPos) {
     if (indicator == IREntity::kNullEntity) {
         return;
     }
     IREntity::getComponent<IRComponents::C_LocalTransform>(indicator).translation_ = worldPos;
+    IREntity::getComponent<IRComponents::C_WorldTransform>(indicator).translation_ = worldPos;
     auto &marker = IREntity::getComponent<IRComponents::C_ShapeDescriptor>(indicator);
     marker.flags_ |= IRRender::SHAPE_FLAG_VISIBLE;
 }

@@ -2473,8 +2473,12 @@ void initPivotVerifyScene() {
     // reveals it, once the latch resolves. It cannot be spawned from that hook:
     // the hook runs inside the RENDER pipeline, past SHAPES_TO_TRIXEL, so a
     // marker created there never reaches the render archetype (measured: zero
-    // pixels changed). The real drag path spawns from an INPUT-pipeline system,
-    // whose structural flush lands well before RENDER.
+    // pixels changed). The real drag path spawns from CAMERA_MOUSE_ROTATE — also
+    // a RENDER-pipeline system, but registered BEFORE SHAPES_TO_TRIXEL (this
+    // demo splices standardControlSystems() at the head of renderPipeline), so
+    // its spawn is visible to the pass the same frame. Ordering relative to
+    // SHAPES_TO_TRIXEL is what decides this, not which pipeline the spawner
+    // lives in.
     if (g_cursorPivotIndicator) {
         g_cursorLatchIndicator = IRPrefab::CursorPivot::createIndicator();
     }

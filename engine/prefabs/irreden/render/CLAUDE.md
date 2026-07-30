@@ -485,18 +485,25 @@ Phase 4):
   re-hidden rather than destroyed. It sets `canvasEntity_ = kNullEntity`
   deliberately so `SHAPES_TO_TRIXEL` resolves the canvas at RENDER time —
   `C_ShapeDescriptor`'s ctor snapshot of the active canvas is right for a
-  scene-setup spawn but not for one built from an INPUT-pipeline system at an
-  arbitrary frame.
+  scene-setup spawn but not for one built mid-frame from a per-frame system,
+  where "the active canvas" is whatever the last pass happened to leave set.
 
 The system holds the indicator id as a member (system-owned state), and
 `IRPrefab::Camera::setCursorPivotByDefault` (`camera_controls.hpp`) swaps which
 middle-drag chord latches the cursor, so a demo can key-toggle between the
 screen-center default and the cursor latch under the same gesture.
 
-**A marker spawned from a RENDER-pipeline hook never renders** — that is past
-`SHAPES_TO_TRIXEL` for the frame, and the entity reaches no archetype the pass
-reads (measured: zero pixels). Spawn from INPUT (the drag path) or at scene
-setup (the `--pivot-verify cursor-latch` harness).
+**A marker spawned from a hook that runs AFTER `SHAPES_TO_TRIXEL` never
+renders** — the pass is done for the frame and the new entity reaches no
+archetype it reads (measured: zero pixels). What decides this is the spawner's
+order relative to `SHAPES_TO_TRIXEL`, **not** which pipeline it lives in: the
+real drag path (`CAMERA_MOUSE_ROTATE`, spliced by `standardControlSystems()`)
+is itself a **RENDER**-pipeline system and renders fine because it is
+registered before `SHAPES_TO_TRIXEL`. The capture-frame hooks
+(`onCaptureFrame_` / `onAssertFrame_`) are the ones past it — hence the
+`--pivot-verify cursor-latch` harness spawns its marker at scene setup instead.
+A creation that reorders camera controls after `SHAPES_TO_TRIXEL` breaks the
+drag path's marker; keep the controls ahead of it.
 
 Gate: `python3 scripts/pivot-verify.py --blocks cursor-latch`; the ENABLED-path
 capture for the marker itself is
