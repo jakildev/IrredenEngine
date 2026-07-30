@@ -144,22 +144,45 @@ objection for the uniform box once the per-pixel lever (b) was proven unable
 to localise the fix, on the measured anchors. The radius is chosen at the
 **measured minimum**, not headroom:
 
+Original #2204 sweep, on the **pre-#2319 (acne-contaminated) oracle** —
+`shadow_overlay_floor` cube-cast, cardinal, frozen:
+
 | radius | hole_ratio | components | largest_frac | pass (≤8 comp, ≥0.9 frac) |
 |---|---|---|---|---|
 | 8 | 0.2026 | 6 | 0.9938 | ✓ (architect anchor) |
-| 6 | 0.2023 | **1** | **1.0** | ✓ (**chosen**) |
+| 6 | 0.2023 | **1** | **1.0** | ✓ (chosen at #2204) |
 | 5 | 0.1972 | 1 | 1.0 | ✓ |
 | 4 | 0.2101 | 5 | 0.9995 | ✓ (pass floor) |
 | 3 | 0.2588 | 119 | 0.9795 | ✗ (shatters) |
 | 2 | 0.5674 | 460 | 0.44 | ✗ |
 
-**r = 6** is the chosen value: cleanest result (single connected component),
-a solid margin above the r3 cliff, and ~41 % fewer atomics than the
-architect-sanctioned r8 — the smallest bounded radius that both clears the
-anchor with margin and honours the #2204 cost principle. A future
-density-gated firing (splat only where the local neighbourhood is sparse)
-could reclaim the remaining cost; deferred (lever (a)'s localisation attempt
-shows sparse-detection is subtle).
+**r = 6** was the #2204 choice on that oracle: cleanest result (single
+connected component), a solid margin above the r3 cliff, and ~41 % fewer
+atomics than the architect-sanctioned r8.
+
+**#2385 re-measured on the decontaminated baseline and moved the choice to
+r = 7** (2026-07-30, macOS/Metal, cast-ROI `1010,540,450,250`). S1's
+same-plane provenance fix (#2319) removed the coplanar floor contamination
+that the table above was measured through, and the residual genuine cast is
+still fragmented at r6:
+
+| radius | shadow_px | components | largest_frac |
+|---|---|---|---|
+| 0 (splat off) | 6936 | 91 | 0.3230 |
+| 6 | 31320 | 53 | 0.9203 |
+| **7** | **32144** | **47** | **0.9276** |
+
+r7 buys −11.3 % components for +2.6 % cast-ROI px — fill, not halo (the
+visual half of the guard is discharged on `revoxelize_solids` /
+`so3_offsnap_wide`: the newly-shadowed rim is 1–2 device px thick at full
+shadow luminance, i.e. a crisp one-cell edge shift, not a soft border).
+Cost stays inside the #2204 envelope: `(2·r+1)²` is 225 atomics at r7
+against 289 at the architect-sanctioned r8 anchor — **~22 % fewer than the
+waived ceiling** — and r7 is the nibble cap, so anything larger would need
+the displacement-encoding widen (#2385 Phase 1), which the measured minimum
+does not justify. A future density-gated firing (splat only where the local
+neighbourhood is sparse) could reclaim the remaining cost; deferred (lever
+(a)'s localisation attempt shows sparse-detection is subtle).
 
 ## Byte-identity regimes (the two invariants)
 
