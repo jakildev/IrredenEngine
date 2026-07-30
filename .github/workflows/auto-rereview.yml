@@ -15,15 +15,18 @@ name: Auto re-review on push to approved PR
 #     again."
 #
 # Why the mechanical-rebase guard (the `classify` step below):
-#   A push whose *content* is unchanged does not need re-review. The
-#   fleet merger re-targets a stacked PR onto master and force-pushes
-#   the replayed child commits (see role-merger.md — "verdict labels
-#   survive a mechanical rebase that doesn't change the PR's content
-#   intent"). That force-push fires `synchronize` but introduces no new
-#   content, so stripping fleet:approved there is wrong. We cannot rely
-#   on a `fleet:stacked-rebase` label guard because the merger applies
-#   that label *after* it pushes — the synchronize event payload
-#   captures labels at push time and races ahead of it. Instead we
+#   A push whose *content* is unchanged does not need re-review. Two
+#   producers of such pushes exist: GitHub's native stacked PRs
+#   re-target + rebase a child server-side when its parent merges (and
+#   on stack-wide cascade rebases), and the fleet merger does the same
+#   by hand for legacy pre-native stacks (see role-merger.md — "verdict
+#   labels survive a mechanical rebase that doesn't change the PR's
+#   content intent"). Either force-push fires `synchronize` but
+#   introduces no new content, so stripping fleet:approved there is
+#   wrong. We cannot rely on a label guard (e.g. the legacy
+#   `fleet:stacked-rebase`): the merger applies labels *after* it
+#   pushes — the synchronize event payload captures labels at push time
+#   and races ahead of it — and native rebases set no label at all. So we
 #   compare the PR's net-diff patch-id (reduced by `git patch-id --stable`,
 #   which is invariant across rebases/SHAs) before vs after the push, each
 #   tip against its *own* base. Identical patch-id => mechanical rebase =>

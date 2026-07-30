@@ -19,12 +19,12 @@ fleet-claim stack-pr-state <your-worktree-name>
 
 - **Step 2 branch name** is `claude/<issue#>-<short-topic>` (e.g. `claude/1234-occupancy-grid`). The issue-number prefix lets reviewers and `stack-base` resolve the chain.
 - **Step 8 PR base** is `fleet-claim stack-base <agent> <task-id>` instead of `master`. For the first task this still returns `master`; for subsequent tasks it returns the previous task's branch.
-- **After `gh pr create`** record the PR in the stack so the next task can chain off it:
+- **After `gh pr create`** record the PR in the stack so the next task can chain off it, then link it into the native GitHub stack (skip the link for the first task — its base is `master`):
   ```bash
   fleet-claim stack-set-pr <agent> <task-id> <branch> <pr-url>
   ```
-- **PR body** includes a `## Stack context` block with a `Stacked on:` line (the previous PR URL, or `master` for the first task in the chain) and a `Full chain:` line listing the task IDs the molecule covers. Reviewers use this to navigate sibling PRs without leaving the diff.
-- **Labels** include `fleet:stacked` whenever `--base != master` (i.e. every PR in the chain except the first). The merger reads `baseRefName` directly for routing decisions; the label is a derived convenience for human visibility and cheap GitHub-side filtering.
+  Link step: [native-stack-link.md](native-stack-link.md), with `$base` from `stack-base` and the new PR number. GitHub then owns retarget-on-merge and cascade rebases for the chain; the PR header's stack badge is the chain navigation (no `Stacked on:` / `Full chain:` body lines — legacy markers went stale and misrouted review, #2231).
+- **Labels** include `fleet:stacked` whenever `--base != master` (i.e. every PR in the chain except the first). The merger reads `baseRefName` directly for routing decisions and skips native-stacked PRs; the label is a derived convenience for human visibility and cheap GitHub-side filtering during the migration.
 - **Title** starts with a scope prefix per the commit-message style guide; the issue number goes in the `Closes #N` line so reviewers can trace the chain.
 
 ## After the PR opens

@@ -44,35 +44,22 @@ evidence` proves the ticket's named criteria actually fired.
 
 ## Fleet stack delta
 
-Insert after `## Summary`, before `## Test plan`:
-
-```
-## Stack context
-This PR is part of a stack. Reviewers: review this PR on its own;
-the chain is coordinated in the PR body's "Stacked on" line.
-
-Stacked on: <previous PR URL, or "master" for the first PR>
-Full chain: #<A>, #<B>, #<C>
-```
+No body block. Stack membership, chain navigation, and merge sequencing all
+live in the native GitHub stack (the [native-stack-link.md](native-stack-link.md)
+step registers it after PR open; the PR header's stack badge shows the
+chain). Never write `Stacked on:` or `Full chain:` lines — the legacy body
+markers went stale after retargets and misrouted review (#2231).
 
 Drop `## Notes for reviewer`. The `Closes #<issue-N>` line is already in the
-canonical template above — keep it as written.
+canonical template above — keep it as written (each fleet-stack task has its
+own issue).
 
 ## Cursor stack delta
 
-Insert after `## Summary`, before `## Test plan`:
+No body block either — same native-stack rule as the fleet stack delta.
 
-```
-## Stack context
-Stacked on: $parent_pr_ref
-
-When the parent PR merges, change this PR's base to `master`
-(via the GitHub UI or `gh pr edit <N> --base master`).
-```
-
-No `Full chain:` line. **Drop the `Closes #<issue-N>` line** — the parent PR
-closes the shared issue when it merges to master. Avoid duplicating `Closes #N`
-on the child while the parent is still in review. The parent PR (which targets
-master directly via the canonical template) carries the `Closes` line and closes
-the shared issue when it merges first. Drop `## Notes for reviewer`.
-`$parent_pr_ref` is the parent PR URL (or branch name if no PR exists yet). Use `<<EOF` (no quotes) in the HEREDOC so that `$parent_pr_ref` expands; `<<'EOF'` suppresses expansion and embeds the literal string.
+**Drop the `Closes #<issue-N>` line** — cursor-stack slices usually share
+one issue, and the parent PR (which targets master directly via the
+canonical template) carries the `Closes` line. Avoid duplicating `Closes #N`
+on the child while the parent is still in review. Drop `## Notes for
+reviewer`.

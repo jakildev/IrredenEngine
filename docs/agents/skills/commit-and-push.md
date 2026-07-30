@@ -65,7 +65,7 @@ Three modes, detected at the start in priority order:
    One PR per task, chained by `--base`. Detected via `<claim-tool>
    stack-pr-state <worktree>`. See the **procedures** `fleet-stack.md` for
    the deltas (issue-number-prefixed branch name, `stack-base` lookup,
-   `Stack context` body block, stacked label, `stack-set-pr` after PR open).
+   stacked label, `stack-set-pr` + native-stack link after PR open).
 2. **Cursor stack mode** — current branch has `branch.<name>.cursor-stack-base`
    git config (written by `start-next-task` when the human cued stacking).
    PRs target the parent branch instead of the default branch. See the
@@ -283,8 +283,9 @@ common no-screenshot case.
 For the **single-task flow** (default), resolve the base via `<claim-tool>
 claim-base` — the **default branch** for a normal claim or plain human PR
 (common case below), or the blocker's branch for a stackable claim (also
-gets the stacked label). The idempotent edit-or-create and the `Stacked on:`
-body line live in the **procedures** `stackable-on.md`. Common case:
+gets the stacked label). The idempotent edit-or-create and the post-open
+native-stack link live in the **procedures** `stackable-on.md` /
+`native-stack-link.md`. Common case:
 
 ```bash
 pr_body="$(cat <<'EOF'

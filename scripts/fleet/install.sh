@@ -666,6 +666,26 @@ else
 fi
 
 # ----------------------------------------------------------------------
+# Step 3b: gh-stack extension (native stacked PRs)
+# ----------------------------------------------------------------------
+# Stack modes link PRs into native GitHub stacks after open (see
+# docs/design/native-stacked-prs-migration.md); the link step needs the
+# gh-stack CLI extension. Best-effort: skipped without gh, auth, or network.
+
+if command -v gh >/dev/null 2>&1; then
+    if gh extension list 2>/dev/null | grep -q 'github/gh-stack'; then
+        echo "gh-stack extension already installed."
+    elif gh extension install github/gh-stack >/dev/null 2>&1; then
+        echo "installed gh extension github/gh-stack (native stacked PRs)."
+    else
+        echo "note: could not install the gh-stack extension (offline or gh unauthenticated)."
+        echo "      install it later with: gh extension install github/gh-stack"
+    fi
+else
+    echo "note: gh not found — skipping gh-stack extension install."
+fi
+
+# ----------------------------------------------------------------------
 # Step 4: PATH sanity check
 # ----------------------------------------------------------------------
 

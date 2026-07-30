@@ -52,19 +52,17 @@ else
     gh pr create --base "$base" "${labels[@]}" \
         --title "<scope>: <title> (#<N>)" \
         --body "$(cat <<EOF
-<single-task body — procedures/pr-body.md; include the Stacked on: line below when base != master>
+<single-task body — procedures/pr-body.md>
 EOF
 )"
 fi
 ```
 
-When `base != master`, add a `Stacked on:` line to the body, pointing at the
-upstream PR (look it up once — same pattern as cursor-stack.md):
-
-```bash
-upstream_pr=$(gh pr list --head "$base" --state all --json url -q '.[0].url')
-# body: "Stacked on: ${upstream_pr:-$base (no PR yet)}"
-```
+When `base != master`, link the PR into the native GitHub stack — run the
+[native-stack-link.md](native-stack-link.md) step with `$base` and the PR
+number. Do NOT write a `Stacked on:` body line; stack membership is the
+server object (the legacy body marker produced stale-marker misrouting,
+#2231).
 
 ## Notes / non-goals
 
@@ -72,10 +70,13 @@ upstream_pr=$(gh pr list --head "$base" --state all --json url -q '.[0].url')
   Single-task mode writes no claim state — it only *reads* `claim-base`.
 - **`fleet:wip` is unchanged.** The claim-time PR is WIP; the finalize step
   removes `fleet:wip` for reviewer pickup, leaving `fleet:stacked` in place.
-- **Don't fight the merger.** When the upstream PR merges, the merger
-  re-targets this PR to `master` and removes `fleet:stacked`. Only set the
-  base/label from the *current* `claim-base` value at push time; never
-  re-stack a PR the merger has already re-targeted.
+- **GitHub owns the base after the link.** When the upstream PR merges,
+  GitHub re-targets and rebases this PR server-side, synchronously with the
+  merge. Only set the base/label from the *current* `claim-base` value at
+  push time; never re-stack a PR that GitHub (or, for unlinked legacy PRs,
+  the merger) has already re-targeted.
 - The merger routes stacked PRs by `baseRefName != "master"` regardless of the
-  label; `fleet:stacked` is the human-visibility / cheap-filter convenience
-  this procedure guarantees is present.
+  label, and skips PRs that are in a native stack; `fleet:stacked` is the
+  human-visibility / cheap-filter convenience this procedure guarantees is
+  present during the migration (it retires with the legacy machinery —
+  see `docs/design/native-stacked-prs-migration.md`).

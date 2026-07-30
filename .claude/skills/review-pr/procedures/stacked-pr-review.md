@@ -8,12 +8,12 @@ Every fleet PR today is single-task. When workers claim a dependency chain via `
 
 Detect stacking from the metadata already fetched in `SKILL.md` step 1:
 
-- **Base branch** (`baseRefName`) is not `master` → stacked on the PR whose head is that branch.
-- **Body** contains a `Stacked on:` line → confirms it, and the line gives you the parent PR URL for the review-body callout.
+- **Base branch** (`baseRefName`) is not `master` → stacked on the PR whose head is that branch. This is the authoritative signal.
+- PRs created since the native-stack migration carry **no body marker** — the chain lives in GitHub's stack object (stack badge on the PR header). Legacy PRs may still carry a `Stacked on:` body line; treat it as confirmation only, never as the detection signal.
 
 If the base is `master` and there's no `Stacked on:` line, this is a standalone PR — return to `SKILL.md` step 1c (churn audit) and continue normally.
 
-If the base is `master` but the body **still carries** a `Stacked on:` line, the marker is stale — the PR was un-stacked (parent merged, base re-targeted) and the strip step was missed. Review it as a standalone PR, and flag the stale line as a nit so it gets removed.
+If the base is `master` but the body **still carries** a `Stacked on:` line, the marker is stale legacy state — the PR was un-stacked (parent merged, base re-targeted) and the strip step was missed. Review it as a standalone PR, and flag the stale line as a nit so it gets removed.
 
 ## What changes when the PR is stacked
 

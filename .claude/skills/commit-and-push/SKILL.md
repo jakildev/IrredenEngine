@@ -51,6 +51,9 @@ there.
   stacking via `branch.<name>.cursor-stack-base`.
 - [`procedures/stackable-on.md`](procedures/stackable-on.md) — single-task
   base resolution + `--stackable-on`.
+- [`procedures/native-stack-link.md`](procedures/native-stack-link.md) —
+  the post-open `gh stack link` step every stack mode runs (native GitHub
+  stacks own retarget-on-merge and cascade rebases).
 - [`procedures/pr-body.md`](procedures/pr-body.md) — PR body templates +
   stack-mode deltas.
 - [`procedures/host-label.md`](procedures/host-label.md) — the
