@@ -83,7 +83,9 @@ if(_untracked_rc EQUAL 0 AND NOT _untracked_out STREQUAL "")
 endif()
 
 if(NOT _changed_files)
-    message(STATUS "clang-format (changed): no diff vs ${_diff_base}; nothing to format.")
+    message(STATUS
+        "clang-format (changed): no diff vs ${_diff_base} in ${PROJECT_ROOT}; "
+        "nothing to format.")
     return()
 endif()
 
@@ -106,7 +108,11 @@ foreach(_rel IN LISTS _changed_files)
 endforeach()
 
 if(NOT _targets)
-    message(STATUS "clang-format (changed): diff vs ${_diff_base} touches no formattable sources.")
+    list(LENGTH _changed_files _changed_count)
+    message(STATUS
+        "clang-format (changed): diff vs ${_diff_base} touches no formattable "
+        "sources (${_changed_count} changed file(s) examined, 0 on the "
+        "quality list).")
     return()
 endif()
 
