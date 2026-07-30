@@ -121,13 +121,9 @@ inline void logCompositeDepth(IRMath::ivec2 px) {
 /// attachment on GL and Metal. Pure readback, so registering this guard never
 /// perturbs the frame (byte-identical, like the diagnostic probe).
 inline bool assertCompositeWritesDepth(IRMath::ivec2 px) {
-    // Background is the depth clear at the far plane: rawDist == +kTrixelDistance
-    // MaxDistance, i.e. normDepth == 1.0. Any composite-written surface reads
-    // well below that (the canvas_stress canary reads ~0.49). 0.99 separates the
-    // two with wide margin and no dependence on the exact stored distance.
-    constexpr float kBackgroundNormDepthThreshold = 0.99f;
     const CompositeDepthSample sample = readbackCompositeDepth(px);
-    const bool wroteDepth = sample.valid_ && sample.normDepth_ < kBackgroundNormDepthThreshold;
+    const bool wroteDepth =
+        sample.valid_ && sample.normDepth_ < IRRender::kBackgroundNormDepthThreshold;
     IR_LOG_INFO(
         "[depth-probe-assert] pixel=({},{}) normDepth={:.6f} rawDist={:.1f} result={}",
         px.x,

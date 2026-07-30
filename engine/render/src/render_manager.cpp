@@ -365,8 +365,7 @@ void RenderManager::updateDefaultRotationPivotFocus() {
         // foreground-tier hit is a screen-locked / priority overlay whose
         // encoded depth is a reserved band code, NOT a world iso depth, so
         // consuming it would pin the pivot to a meaningless world point.
-        constexpr float kBackgroundNormDepthThreshold = 0.99f;
-        if (sample.valid_ && sample.normDepth_ < kBackgroundNormDepthThreshold &&
+        if (sample.valid_ && sample.normDepth_ < IRRender::kBackgroundNormDepthThreshold &&
             decoded.tier_ == 0) {
             // decoded.iso_ is in shared framebuffer units (worldIso × effSub);
             // divide the subdivision factor back out to land in world units.

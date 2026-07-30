@@ -355,6 +355,18 @@ struct CompositeDepthSample {
     bool valid_ = false;
 };
 
+/// @c normDepth_ at or above which a @ref CompositeDepthSample is BACKGROUND —
+/// the depth clear at the far plane (@c rawDist == @c kTrixelDistanceMaxDistance,
+/// i.e. @c normDepth == 1.0) rather than a surface the composite wrote. Any
+/// composite-written fragment reads well below it (the canvas_stress canary
+/// reads ~0.49), so 0.99 separates the two with wide margin and no dependence
+/// on the exact stored distance. Lives beside @ref CompositeDepthSample because
+/// every CPU consumer of a readback needs the same background test — the
+/// diagnostic probe's depth-write guard (@c IRPrefab::DepthProbe) and the
+/// depth-aware pivot derive (@c RenderManager) would otherwise each carry their
+/// own copy and drift.
+constexpr float kBackgroundNormDepthThreshold = 0.99f;
+
 /// Decoded composite `enc`. @c tier_ 0 is WORLD content (encoded as
 /// `iso·kDepthEncodeShift + flip·4 + face`, #2207 riser-polarity carrier at bit
 /// 2); a non-zero tier names the reserved foreground sub-range the fragment
