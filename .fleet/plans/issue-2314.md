@@ -62,7 +62,7 @@ independent heads.
 
 ## Steward ledger
 
-reconciled-through: PR #2387 merge (2026-07-14 — S2 #2320 shadow-throw unify merged; V3 #2317 + S1 #2319 reconciled prior iterations)
+reconciled-through: scope-shipped false-positive repair on #2385/#2321 (2026-07-30). Code-side: PR #2387 merge (2026-07-14 — S2 #2320 shadow-throw unify merged; V3 #2317 + S1 #2319 reconciled prior iterations) — no child has merged since.
 proposal-pending: none — STEWARD PROPOSAL 2026-07-14 (PR #2393 / S3 #2321) answered by opus-architect 2026-07-15 (issuecomment-4977022751) and distributed this iteration (D7–D9; child plan `issue-2321.md` A1; `## Steward direction` on PR #2393; `fleet-transition design-unblock 2393`; #2321 re-blocked on #2385; #2385 routed to the planning gate). Prior 2026-07-13 package (PR #2343 / S1 #2319) answered + distributed (D4–D6, `## Steward direction` on PR #2343).
 
 ### Children
@@ -75,10 +75,10 @@ proposal-pending: none — STEWARD PROPOSAL 2026-07-14 (PR #2393 / S3 #2321) ans
 | #2318 | merged | #2337 | plan | 2026-07-13 |
 | #2319 | merged | #2343 | plan | 2026-07-14 (S1 same-plane provenance test; D6 genuine-cast residual → #2385; Linux/GL smoke owed) |
 | #2320 | merged | #2387 | plan | 2026-07-14 (S2 — receive window unified 24→64 feeder sweep; floating top-face wedge restored) |
-| #2321 | open — blocked by #2385 (design answered, deferred) | #2393 (wip, design-unblocked) | plan (issue-2321.md, A1) | 2026-07-15 (flow-a distribute: proposal answered; lever (a) dropped measured-refuted, lever (b) retained, gate re-anchored on post-#2385 baseline; Blocked by #2385) |
+| #2321 | open — `fleet:blocked` on #2385 (design answered, deferred) | #2393 (open, wip) | plan (issue-2321.md, A1) | 2026-07-30 (scope-shipped false positive cleared; `fleet:blocked` restored per D7 — was 2026-07-15 flow-a distribute: lever (a) dropped measured-refuted, lever (b) retained, gate re-anchored on post-#2385 baseline) |
 | #2322 | merged | #2328 | plan | 2026-07-13 |
 | #2323 | merged | #2326 | plan | 2026-07-13 |
-| #2385 | open — needs-plan (critical path) | — | stub | 2026-07-15 (D7: land before S3; routed to planning gate — fleet:task+fleet:opus+fleet:needs-plan applied per architect directive; still a STUB, do not queue until an opus planner expands it) |
+| #2385 | open — **`fleet:queued` (critical path, pickable now)** | — | **plan** (v2 `## Plan` comment, human-approved + plan-review cleared 2026-07-20; `issue-2385.md` is now a POINTER to it, no longer a stub) | 2026-07-30 (scope-shipped false positive cleared; `fleet:queued` restored — planned/approved since 2026-07-20, dequeued 10 days by tooling) |
 
 ### Decisions
 <!-- entries: D<n> (<YYYY-MM-DD>): <decision> — source: <link> -->
@@ -251,3 +251,45 @@ proposal-pending: none — STEWARD PROPOSAL 2026-07-14 (PR #2393 / S3 #2321) ans
   `fleet:design-unblocked`; PR stays `fleet:wip`, parked by the #2385 blocker
   until #2385 lands, then a worker re-arms and resumes #2393 with lever (b) on
   the decontaminated baseline).
+- 2026-07-30: **both remaining children were parked on a `fleet:scope-shipped`
+  FALSE POSITIVE — repaired.** No trigger surfaced this: the projection fires
+  `closeout` only when every child is *closed*, and #2321/#2385 were open but
+  dequeued, so epic #2314 sat invisible to the steward surface for 10 days. Found
+  by live-checking the labels of every unticked child rather than trusting the
+  cache's trigger list.
+  - **The evidence.** `fleet-queue-ingest`'s scope check stamped #2385 citing
+    merged PR **#2392** ("docs/fleet: epic-steward — #2317 rollup + #2385
+    adoption (#2314)") and #2321 citing merged PR **#2396** ("docs/fleet:
+    epic-steward — S3 #2321 design-block → proposal (#2314)"). Both are
+    **all-`.fleet/` steward bookkeeping PRs** — #2392's entire diff is
+    `.fleet/plans/issue-2314.md` + `.fleet/plans/issue-2385.md` (this ledger and
+    #2385's own stub), #2396's is `.fleet/plans/issue-2314.md` alone. Neither
+    shipped a line of either child's scope; the titles merely name the issues.
+    Independently confirmed by PR search: the only PR that has ever carried
+    #2321's implementation is **#2393, still OPEN**, and **no PR has ever
+    implemented #2385**.
+  - **The damage, timed.** #2385's stamp fired **13 s** after the human cleared
+    its approach (01:49:53Z → 01:50:06Z), and again **49 s** after the v2
+    plan-review cleared (11:02:25Z → 11:03:14Z). The v2 plan comment itself names
+    the first bounce ("post-approval ingest churn bounced the issue back to
+    `fleet:needs-plan`"). The second stamp stuck. So the epic's declared critical
+    path (D7) has been fully planned, human-approved, and unpickable since
+    2026-07-20 — and #2321/PR #2393 sat blocked behind it.
+  - **Root cause already fixed, sweep never ran.** PR **#2464** ("fleet:
+    scope-shipped skips all-`.fleet/` steward bookkeeping PRs") merged 2026-07-20
+    **20:26:38Z** — ~9 h after the stamp that stuck. The predicate no longer fires
+    on this class; these two issues are simply un-swept residue of the old bug.
+    Nothing here needs re-deciding, re-planning, or escalating.
+  - **Repair applied.** `fleet:scope-shipped` removed from both.
+    #2385 → `fleet:queued` (it is planned and approved; class `fleet:opus`
+    already set). #2321 → `fleet:blocked` (its body's `Blocked by: #2385` and D7
+    both stand; the label had been lost to the park). `human:*` untouched.
+  - **Stale plan artifact corrected.** `.fleet/plans/issue-2385.md` still read
+    `## Plan status: STUB — needs planning before claim` — the steward's own
+    2026-07-14 flow-c stub, false since 2026-07-20 and precisely the file whose
+    presence in #2392 caused the false match. Rewritten as a **POINTER** to the
+    canonical v2 `## Plan` comment (issuecomment-5021470607) with the approval
+    trail, so the opus worker who now picks up #2385 cannot read it as unplanned.
+    The plan itself was neither copied nor altered — the comment stays canonical.
+  - **No Decision recorded:** this is a tooling-artifact repair, not a design
+    call. D6–D9 stand unchanged and uncontradicted.
