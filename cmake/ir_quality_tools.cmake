@@ -102,8 +102,9 @@ function(irreden_add_quality_targets)
             VERBATIM
         )
 
-        # Diff-scoped formatter: only rewrites files changed on the
-        # current branch (committed vs upstream + working tree).
+        # Diff-scoped formatter: only rewrites the lines changed on the
+        # current branch (committed vs upstream + working tree), so a
+        # touched file's pre-existing drift stays out of the diff.
         # Safe to invoke mid-iteration; the bare `format` target is
         # whole-tree and should only run on intentional cleanup PRs.
         add_custom_target(format-changed

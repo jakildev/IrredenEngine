@@ -196,10 +196,13 @@ cmake --build build --target format-check    # check only
 cmake --build build --target lint            # clang-tidy
 ```
 
-`format-changed` is what you want mid-iteration: it only touches files
-your branch has modified (committed vs `@{upstream}` plus working
-tree). The bare `format` target rewrites every formattable file in the
-repo and should only run on intentional cleanup PRs.
+`format-changed` is what you want mid-iteration: it only rewrites the
+**lines** your branch has modified (committed vs `@{upstream}` plus
+working tree), so a touched file's pre-existing clang-format drift stays
+out of your diff (#2719). Brand-new untracked files are still formatted
+in full — all of their content is new. The bare `format` target rewrites
+every formattable file in the repo and should only run on intentional
+cleanup PRs.
 
 ### Python (scripts)
 
