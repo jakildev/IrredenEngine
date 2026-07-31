@@ -181,6 +181,44 @@ touch -t 202401010000 "$TMP/fleet-home/feedback/role-worker.md"
 touch -t 202401020000 "$TMP/fleet-home/feedback/.last-reviewed"
 touch -t 202401030000 "$TMP/fleet-home/feedback/merger.md"
 
+# --- marker age under GNU stat ----------------------------------------------
+#
+# The marker-age read must try GNU's `-c %Y` before BSD's `-f %m`: GNU reads
+# `-f`'s argument as a path, so it emits a filesystem block on stdout that
+# poisons the captured mtime and aborts the digest under `set -e`. This stub
+# emulates GNU stat so a macOS host still exercises the Linux path.
+cat > "$TMP/bin/stat" << 'EOF'
+#!/usr/bin/env bash
+# Delegate to the host's real stat, trying both spellings (this stub runs on
+# macOS and Linux alike); the shim's job is only to mimic GNU's *interface*.
+real_mtime() {
+    /usr/bin/stat -c %Y "$1" 2>/dev/null || /usr/bin/stat -f %m "$1" 2>/dev/null
+}
+if [[ "$1" == "-c" && "$2" == "%Y" ]]; then
+    real_mtime "$3"
+    exit $?
+fi
+if [[ "$1" == "-f" ]]; then
+    # GNU: %m is not a format here, it's a path that does not exist.
+    echo "  File: \"$3\""
+    echo "Blocks: Total: 1  Free: 1  Available: 1"
+    echo "stat: cannot read file system information for '$2'" >&2
+    exit 1
+fi
+exit 1
+EOF
+chmod +x "$TMP/bin/stat"
+
+status=$(run_decisions --repo=engine)
+out=$(cat "$TMP/out.txt")
+assert_eq "$status" "0" "GNU-stat run exits 0"
+assert_contains "$out" "stale threshold 14d" \
+    "ancient marker still flips the feedback cue to OVERDUE under GNU stat"
+assert_absent "$out" "Blocks: Total" \
+    "GNU stat's filesystem block never leaks into the report"
+
+rm -f "$TMP/bin/stat"
+
 # --- --repo equals-form + dual-spelling validation --------------------------
 
 status=$(run_decisions --repo=engine)

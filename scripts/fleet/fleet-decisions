@@ -96,7 +96,12 @@ fi
 # state.json generated_at rule doesn't apply here.
 marker_age_days="none"
 if [[ -f "$marker" ]]; then
-    marker_mtime=$(stat -f %m "$marker" 2>/dev/null || stat -c %Y "$marker" 2>/dev/null)
+    # GNU-first is load-bearing, not cosmetic: GNU's `-f` is --file-system and
+    # reads its argument as a path, so `stat -f %m` prints a filesystem block
+    # to *stdout* (which 2>/dev/null cannot suppress) before failing, and the
+    # captured garbage aborts the arithmetic below under `set -e`. BSD stat
+    # rejects `-c` on stderr only, so this order is safe on both hosts.
+    marker_mtime=$(stat -c %Y "$marker" 2>/dev/null || stat -f %m "$marker" 2>/dev/null)
     if [[ -n "$marker_mtime" ]]; then
         marker_age_days=$(( ($(date +%s) - marker_mtime) / 86400 ))
     fi
