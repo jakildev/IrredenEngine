@@ -13,7 +13,7 @@ endif()
 # and this executor are meant to name the same set, so update both together.
 # Ratchet only: a file may leave this list, never join it.
 set(header_global_baseline
-    "creations/demos/lighting/common/lighting_demo_scene.hpp" # 15 globals, #2728
+    "creations/demos/lighting/common/lighting_demo_scene.hpp" # 16 globals, #2728
 )
 
 set(anonymous_namespace_failures "")
@@ -68,10 +68,36 @@ foreach(file_path IN LISTS QUALITY_FILES)
             if(line MATCHES "^[ \t]*extern[ \t]+\"")
                 continue()
             endif()
-            # constexpr / const anywhere in the qualifier run: a program
-            # constant. Catches `inline constexpr`, `extern const`, and the
-            # `inline static const` form the rule's inline lookahead missed.
-            if(line MATCHES "(^|[ \t])(const|constexpr)[ \t]")
+            # Declaration head only — everything before the initializer or
+            # terminator. A whole-line scan would read a trailing comment's
+            # "const" as a qualifier and pass real globals as clean.
+            string(REGEX REPLACE "[=;{].*$" "" decl_head "${line}")
+            # `constexpr` always makes the declared object itself a constant.
+            if(decl_head MATCHES "(^|[ \t])constexpr[ \t]")
+                continue()
+            endif()
+            # Strip template argument lists before looking for a pointer
+            # declarator — a `*` inside `<...>` belongs to a type argument
+            # (`std::array<const char *, N>`), not to the declared object.
+            # Repeated to unwrap nesting; CMake has no loop-until-stable.
+            set(decl_core "${decl_head}")
+            foreach(unused_pass RANGE 3)
+                string(REGEX REPLACE "<[^<>]*>" "" decl_core "${decl_core}")
+            endforeach()
+            if(decl_core MATCHES "\\*")
+                # A pointer declaration is a program constant only when BOTH
+                # ends are const: `const T *const p`. A leading `const` alone
+                # freezes the pointee (`const T *p` is a mutable pointer —
+                # reseatable state), and a trailing `const` alone freezes the
+                # pointer to still-mutable data. Either way it is unowned
+                # process state, which is what this ban is about.
+                if(decl_core MATCHES "(^|[ \t])const[ \t]" AND
+                   decl_core MATCHES "\\*[ \t]*const([ \t]|$)")
+                    continue()
+                endif()
+            elseif(decl_core MATCHES "(^|[ \t])const[ \t]")
+                # Non-pointer `const` (incl. `extern const`, `inline static
+                # const`) and `const T &` references are program constants.
                 continue()
             endif()
             # A `(` before the initializer means a function declaration, which
@@ -86,12 +112,19 @@ foreach(file_path IN LISTS QUALITY_FILES)
                 continue()
             endif()
             string(STRIP "${line}" stripped_line)
+            # Escape the source line's `;` — CMake lists are `;`-delimited, so
+            # an unescaped one splits the entry and emits a blank bullet.
+            string(REPLACE ";" "\\;" stripped_line "${stripped_line}")
             list(APPEND header_global_failures "${normalized_file_path}: ${stripped_line}")
         endforeach()
     endif()
 endforeach()
 
-message(STATUS "Header convention checks scanned ${file_count} header file(s).")
+list(LENGTH header_global_baseline header_global_baseline_count)
+message(STATUS
+    "Header convention checks scanned ${file_count} header file(s); "
+    "${header_global_baseline_count} file(s) baselined for header-global violations."
+)
 
 if(anonymous_namespace_failures)
     list(JOIN anonymous_namespace_failures "\n  - " anonymous_namespace_failures_joined)

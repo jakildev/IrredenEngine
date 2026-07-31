@@ -70,15 +70,27 @@ matcher allows `constexpr` / `const` (including `inline static const`),
 are the module entry points `engine/*/include/irreden/ir_*.hpp` and
 `engine/include/irreden/ir_engine.hpp`.
 
+Two precision notes, both measured against the tree:
+
+- The `const` exemption is scoped to the **declaration head** (everything
+  before `=` / `;` / `{`), not the whole line. A whole-line scan reads a
+  trailing comment's "const" as a qualifier and passes real globals as clean.
+- On a pointer declaration, `const` must appear on **both** ends to qualify
+  as a constant. `inline const T *p` is a mutable, reseatable pointer and is
+  banned; `inline T *const p` is a frozen handle to still-mutable data and is
+  also banned. Only `inline const T *const p` is a program constant. A `*`
+  inside a template argument (`std::array<const char *, N>`) belongs to the
+  type argument, not the declarator, and does not make the object a pointer.
+
 Keep the executor and this file in sync — a detection spec nothing runs
 drifts silently (see #2727).
 
 ## Live deviations
 
-- `creations/demos/lighting/common/lighting_demo_scene.hpp` — 15 demo
+- `creations/demos/lighting/common/lighting_demo_scene.hpp` — 13 demo
   CLI/config globals, two wire-once `SystemId` handles, and one scene
-  `EntityId`; migrate to a singleton component + the `SystemManager`
-  registry (#2728).
+  `EntityId` (16 total, as reported by the executor); migrate to a
+  singleton component + the `SystemManager` registry (#2728).
 
 This list mirrors `header_global_baseline` in
 `cmake/run_header_convention_checks.cmake` — update both together. The
