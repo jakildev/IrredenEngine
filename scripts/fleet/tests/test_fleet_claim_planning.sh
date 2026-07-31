@@ -35,6 +35,11 @@ assert_exit() {
 
 TMPROOT=$(mktemp -d)
 export FLEET_ORPHANS_DIR="$TMPROOT/orphans"
+# Hermetic claims dir: the fourth pass consults $CLAIMS_DIR for the planning
+# liveness marker, so an unset FLEET_CLAIMS_DIR would read the host's real
+# ~/.fleet/claims and make the sweep asserts depend on live fleet state.
+export FLEET_CLAIMS_DIR="$TMPROOT/claims"
+mkdir -p "$FLEET_CLAIMS_DIR"
 export FLEET_TEST_HOST="mac"
 export FLEET_CLAIM_NO_SLEEP=1
 export FLEET_CLAIM_ACQUIRE_RETRIES=2
@@ -116,6 +121,19 @@ cmd_planning_release 740 worker >/dev/null 2>&1 || rc=$?
 assert_exit "$rc" 0 "release exits 0"
 if grep -q -- "--remove-label $MINE" "$REMOVE_LOG"; then ok "release removed $MINE"; else bad "release did not remove $MINE (log: $(cat "$REMOVE_LOG"))"; fi
 
+echo "T5b: the claim/release pair maintains the same-host liveness marker (#2711)"
+# Without this marker a leaked planning label is indistinguishable from a live
+# claim, so the sole-holder lock strands a fleet:needs-plan issue for every
+# planner on every host — and `fleet-claim list` cannot tell the two apart
+# because a planning claim writes no task-claim lock at all.
+MARKER="$FLEET_CLAIMS_DIR/_prlabel-planning-worker"
+rm -f "$MARKER"; STUB_HOLDERS=""; STUB_PLAN_COMMENTS=0
+cmd_planning_claim 741 worker >/dev/null 2>&1
+if [[ -f "$MARKER" ]]; then ok "planning-claim wrote the liveness marker"; else bad "planning-claim wrote no marker at $MARKER"; fi
+if [[ "$(cat "$MARKER" 2>/dev/null)" == "741" ]]; then ok "marker content is the claimed issue number"; else bad "marker content should be 741, got '$(cat "$MARKER" 2>/dev/null)'"; fi
+cmd_planning_release 741 worker >/dev/null 2>&1
+if [[ ! -f "$MARKER" ]]; then ok "planning-release removed the liveness marker"; else bad "marker survived release (would read as a live claim forever)"; fi
+
 echo "== --replan re-plan path (#1999): bypass dedup, gate on needs-plan present =="
 
 echo "T8: --replan with a ## Plan comment AND fleet:needs-plan present → acquires (exit 0), bypassing dedup"
@@ -145,7 +163,8 @@ NP_JSON="$TMPROOT/needsplan.json"
 cat > "$NP_JSON" <<JSON
 [
   {"number":80,"labels":[{"name":"fleet:needs-plan"},{"name":"fleet:planning-mac-worker"}]},
-  {"number":81,"labels":[{"name":"fleet:needs-plan"},{"name":"fleet:planning-linux-worker"}]}
+  {"number":81,"labels":[{"name":"fleet:needs-plan"},{"name":"fleet:planning-linux-worker"}]},
+  {"number":82,"labels":[{"name":"fleet:needs-plan"},{"name":"fleet:planning-mac-fresh"}]}
 ]
 JSON
 export NP_JSON
@@ -171,10 +190,28 @@ out=$(cmd_cleanup_gh "jakildev/IrredenEngine" 2>&1)
 if grep -q -- "--remove-label fleet:planning-mac-worker" "$REMOVE_LOG"; then ok "stale planning label on needs-plan#80 swept"; else bad "stale label not swept (log: $(cat "$REMOVE_LOG"); out: $out)"; fi
 if grep -q -- "--remove-label fleet:planning-linux-worker" "$REMOVE_LOG"; then bad "fresh planning label on #81 wrongly swept"; else ok "fresh planning label on #81 kept"; fi
 
-echo "T7: FLEET_CLAIM_STALE_SECS_PLANNING override keeps even the 2h-old label"
+echo "T7: FLEET_CLAIM_STALE_SECS_PLANNING override keeps even the 2h-old VOUCHED label"
+# Post-#2711 the TTL knob governs claims the sweep cannot confirm dead:
+# cross-host labels, and same-host labels with a matching liveness marker. Give
+# #80 its marker so it is a vouched live claim — that is the claim class the
+# override is meant to protect. (A same-host label with NO marker is a confirmed
+# orphan and deliberately bypasses the TTL; T7b pins that.)
 : > "$REMOVE_LOG"; export FLEET_CLAIM_STALE_SECS_PLANNING=999999
+printf '80\n' > "$FLEET_CLAIMS_DIR/_prlabel-planning-worker"
 cmd_cleanup_gh "jakildev/IrredenEngine" >/dev/null 2>&1
-if grep -q -- "--remove-label fleet:planning-" "$REMOVE_LOG"; then bad "label swept despite TTL override (log: $(cat "$REMOVE_LOG"))"; else ok "TTL override respected; nothing swept"; fi
+if grep -q -- "--remove-label fleet:planning-" "$REMOVE_LOG"; then bad "vouched label swept despite TTL override (log: $(cat "$REMOVE_LOG"))"; else ok "TTL override respected for a vouched claim; nothing swept"; fi
+
+echo "T7b: a same-host planning label with NO marker is a confirmed orphan — swept despite the TTL override (#2711)"
+: > "$REMOVE_LOG"; rm -f "$FLEET_CLAIMS_DIR/_prlabel-planning-worker"
+cmd_cleanup_gh "jakildev/IrredenEngine" >/dev/null 2>&1
+if grep -q -- "--remove-label fleet:planning-mac-worker" "$REMOVE_LOG"; then ok "confirmed orphan swept on the fast path, not held for the TTL"; else bad "orphaned planning label survived the TTL override (log: $(cat "$REMOVE_LOG"))"; fi
+if grep -q -- "--remove-label fleet:planning-linux-worker" "$REMOVE_LOG"; then bad "cross-host label wrongly swept (cannot be vouched for locally)"; else ok "cross-host label kept on the TTL"; fi
+
+echo "T7c: a FRESH same-host no-marker label is spared by the grace (claim/marker write race)"
+# #82's label is 10s old (< the 120s grace), so the fast path must not reap it
+# even though it has no marker — that is the window between _acquire_label_on
+# returning and the marker write landing.
+if grep -q -- "--remove-label fleet:planning-mac-fresh" "$REMOVE_LOG"; then bad "fresh no-marker label reaped inside the grace"; else ok "fresh no-marker label spared by the grace"; fi
 unset FLEET_CLAIM_STALE_SECS_PLANNING
 
 echo

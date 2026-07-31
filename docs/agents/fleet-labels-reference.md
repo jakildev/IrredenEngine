@@ -434,9 +434,21 @@ Specifically, **never pass these via `--label` when filing**:
   on human request and calls `planning-claim` directly); the shared
   mutex arbitrates dispatcher-vs-architect collisions. Orphans (a died
   iteration, a hard-killed pane) are swept by `fleet-claim cleanup
-  --gh` on a 1-hour TTL (`FLEET_CLAIM_STALE_SECS_PLANNING`), and
-  fleet-dispatch-wrap releases the label itself when a session-resume
-  discards the fresh assignment. Don't add manually.
+  --gh`: a **same-host** label whose liveness marker
+  (`~/.fleet/claims/_prlabel-planning-<agent>`, written on claim and
+  removed on release) is missing or points at another issue is a
+  confirmed orphan and is swept after a short grace
+  (`FLEET_CLAIM_PRLABEL_ORPHAN_GRACE_SECS`, 120s); anything the sweep
+  cannot vouch for locally — cross-host labels, and same-host labels
+  with a matching marker — waits the 1-hour TTL
+  (`FLEET_CLAIM_STALE_SECS_PLANNING`). The marker matters because this
+  claim is sole-holder over a `fleet:needs-plan` issue: an unswept
+  orphan strands that issue for every planner on every host, and
+  without the marker the leak is indistinguishable from a live claim
+  (#2711 — note a planning claim writes no task-claim lock, so
+  `fleet-claim list` is empty for a *live* planner too and is NOT a
+  leak test). fleet-dispatch-wrap releases the label itself when a
+  session-resume discards the fresh assignment. Don't add manually.
 - `fleet:human-amending` / `fleet:human-deferred` — owned by the
   **author worker** (any class) when picking up
   `human:needs-fix`. The two labels express which disposition the

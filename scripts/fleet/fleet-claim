@@ -1643,14 +1643,18 @@ _cmd_pr_label_claim() {
         return 1
     fi
 
-    # Same-host liveness marker for reviewing/resolving claims: lets the cleanup
-    # sweep distinguish a live claim from one orphaned by a dead/restarted
+    # Same-host liveness marker for reviewing/resolving/planning claims: lets the
+    # cleanup sweep distinguish a live claim from one orphaned by a dead/restarted
     # session (whose GitHub label outlived the fleet-down wipe of ~/.fleet/claims).
     # A file (not a dir) so it can't collide with the dir-based task-claim
-    # iteration. amending carries its own heartbeat liveness; steward/planning
-    # are out of scope.
+    # iteration. amending carries its own heartbeat liveness. planning is here
+    # because it is sole-holder over a fleet:needs-plan issue: without a marker an
+    # orphaned label strands that issue for every planner on every host, and the
+    # leak is indistinguishable from a live claim (#2711). stewarding stays out of
+    # scope — it runs one pane per host, so the label itself is the cross-host
+    # signal and there is no second local claimant to vouch against.
     case "$prefix" in
-        fleet:reviewing-|fleet:resolving-)
+        fleet:reviewing-|fleet:resolving-|fleet:planning-)
             mkdir -p "$CLAIMS_DIR"
             local _tag="${prefix#fleet:}"; _tag="${_tag%-}"
             printf '%s\n' "$pr" > "$CLAIMS_DIR/_prlabel-${_tag}-${agent}" 2>/dev/null || true
@@ -1677,7 +1681,7 @@ _cmd_pr_label_release() {
 
     # Drop the same-host liveness marker (paired with the claim-side write).
     case "$prefix" in
-        fleet:reviewing-|fleet:resolving-)
+        fleet:reviewing-|fleet:resolving-|fleet:planning-)
             local _tag="${prefix#fleet:}"; _tag="${_tag%-}"
             rm -f "$CLAIMS_DIR/_prlabel-${_tag}-${agent}" 2>/dev/null || true
             ;;
@@ -2252,11 +2256,47 @@ for issue in issues:
             [[ "$added_epoch" -eq 0 ]] && continue
 
             local age=$(( now - added_epoch ))
-            [[ $age -lt $planning_stale_secs ]] && continue
+
+            # Confirmed-orphan fast path, same shape as the reviewing/resolving
+            # sweep above (#2711). planning-claim drops
+            # $CLAIMS_DIR/_prlabel-planning-<agent> (content = the issue number)
+            # on acquire and removes it on release, so a SAME-HOST planning label
+            # with no matching marker belongs to a session that died before
+            # releasing. That distinction matters more here than for reviewing: a
+            # planning claim is sole-holder over a fleet:needs-plan issue, so an
+            # orphan strands it for every planner on every host, silently — the
+            # issue keeps all its correct labels. Cross-host labels can't be
+            # vouched for locally and stay on the full TTL.
+            local planning_orphan=0
+            local _prest="${label_name#fleet:}"      # planning-<host>-<agent>
+            local _ptag="${_prest%%-*}"              # planning
+            local _pha="${_prest#*-}"                # <host>-<agent>
+            local _phost="${_pha%%-*}"               # <host>
+            local _pagent="${_pha#*-}"               # <agent>
+            if [[ "$_phost" == "$this_host" ]]; then
+                local _pmarker="$CLAIMS_DIR/_prlabel-${_ptag}-${_pagent}"
+                if [[ ! -f "$_pmarker" || "$(cat "$_pmarker" 2>/dev/null)" != "$issue_num" ]]; then
+                    planning_orphan=1
+                fi
+            fi
+
+            # The grace spares the microsecond race between the label add and the
+            # marker write, plus pre-fix claims during the one-time transition; a
+            # planner mid-thread-read is spared instead by holding a matching
+            # marker for the whole claim.
+            local _planning_grace="${FLEET_CLAIM_PRLABEL_ORPHAN_GRACE_SECS:-120}"
+            if (( planning_orphan )); then
+                [[ $age -lt $_planning_grace ]] && continue
+            elif [[ $age -lt $planning_stale_secs ]]; then
+                continue
+            fi
+
+            local _planning_note="age: $((age / 60))m"
+            (( planning_orphan )) && _planning_note="orphaned: no local marker on $this_host, ${_planning_note}"
 
             if gh issue edit "$issue_num" --repo "$repo" \
                     --remove-label "$label_name" >/dev/null 2>&1; then
-                echo "cleanup --gh: removed stale '$label_name' on $repo issue#$issue_num (age: $((age / 60))m)"
+                echo "cleanup --gh: removed stale '$label_name' on $repo issue#$issue_num (${_planning_note})"
                 total_removed=$((total_removed + 1))
             else
                 write_orphan_sentinel "$repo" "$issue_num" "$label_name" \
