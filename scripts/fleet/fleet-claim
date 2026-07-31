@@ -17,7 +17,7 @@
 #
 # Usage:
 #   fleet-claim claim <issue-number> <agent-name> [--stackable-on <pr-url>]
-#   fleet-claim claim-base <issue-number>
+#   fleet-claim claim-base <issue-number> [--strict]
 #   fleet-claim find-stackable-blockers <issue-number>
 #   fleet-claim release <issue-number>
 #   fleet-claim check <issue-number>
@@ -72,6 +72,10 @@ FLEET_GITHUB_REPO="${FLEET_GITHUB_REPO:-jakildev/IrredenEngine}"
 # claim-base reads it to tell commit-and-push which branch to base the
 # task's PR on; release / check-stale / cleanup all delete the sidecar
 # alongside the claim dir so it never outlives the claim.
+#
+# Because the two are deleted together, the claim dir's presence is what
+# lets claim-base tell "normal claim, master is correct" from "the claim
+# is gone, so I cannot know the base" — see cmd_claim_base (#2703).
 
 __remove_claim() {
     # Remove a claim's directory and its --stackable-on sidecar (if any).
@@ -1287,11 +1291,37 @@ cmd_claim_base() {
     # the task was claimed with --stackable-on. commit-and-push reads
     # this at PR-open time to pick `--base` for `gh pr create`.
     #
-    # Usage: fleet-claim claim-base <issue-number>
+    # A missing sidecar is ambiguous, and the two readings must not be
+    # conflated: answering "master" for a --stackable-on task whose claim was
+    # TTL-swept mid-iteration opens the PR against master, so the diff swallows
+    # every commit of the blocker branch (#2703). __remove_claim deletes the
+    # claim dir and its sidecar together, so the claim dir discriminates them:
+    #
+    #   dir + sidecar   → stackable; print the recorded base
+    #   dir, no sidecar → active normal claim; "master" is an affirmative answer
+    #   no dir          → nothing local to answer from (swept claim, or an
+    #                     ad-hoc PR that never claimed) — say so on stderr
+    #
+    # The unknown case still prints "master" so existing callers (which capture
+    # stdout without checking the exit code) keep working; --strict opts into
+    # failing closed instead, the way the sibling `stack-base` already does.
+    #
+    # Usage: fleet-claim claim-base <issue-number> [--strict]
     local issue_num
     if ! issue_num=$(require_issue_number "$1"); then
         return 2
     fi
+    local strict=0
+    case "${2:-}" in
+        --strict) strict=1 ;;
+        "")       ;;
+        *)  # Never ignore an unrecognized flag: silently dropping a typo'd
+            # --strict would restore exactly the guess-quietly behavior above.
+            echo "fleet-claim claim-base: unknown option: $2" >&2
+            echo "usage: fleet-claim claim-base <issue-number> [--strict]" >&2
+            return 2
+            ;;
+    esac
     local slug
     slug=$(slugify "$issue_num")
     local meta_file="$CLAIMS_DIR/${slug}.meta"
@@ -1302,6 +1332,19 @@ cmd_claim_base() {
         if [[ -n "$base" ]]; then
             echo "$base"
             return 0
+        fi
+    fi
+    if [[ ! -d "$CLAIMS_DIR/$slug" ]]; then
+        {
+            echo "fleet-claim claim-base: no active claim for #${issue_num} — base is UNVERIFIED."
+            echo "  If this task was claimed --stackable-on, its sidecar was swept with the"
+            echo "  claim and \"master\" is wrong: the PR would swallow the blocker branch."
+            echo "  Confirm the fork point before opening the PR (both network-free):"
+            echo "    git merge-base --is-ancestor origin/<blocker-branch> HEAD"
+            echo "    git log --oneline origin/master..HEAD"
+        } >&2
+        if [[ "$strict" -eq 1 ]]; then
+            return 1
         fi
     fi
     echo "master"
@@ -4372,10 +4415,10 @@ case "${1:-}" in
         ;;
     claim-base)
         if [[ -z "${2:-}" ]]; then
-            echo "usage: fleet-claim claim-base <issue-number>" >&2
+            echo "usage: fleet-claim claim-base <issue-number> [--strict]" >&2
             exit 2
         fi
-        cmd_claim_base "$2"
+        cmd_claim_base "$2" "${3:-}"
         ;;
     find-stackable-blockers)
         if [[ -z "${2:-}" ]]; then
@@ -4661,10 +4704,14 @@ Task identity:
 commands:
   claim <issue-number> [agent] [--stackable-on <pr-url>]
                                 claim a task (exit 0=claimed, 1=taken).
-  claim-base <issue-number>     print the base branch for this task's
+  claim-base <issue-number> [--strict]
+                                print the base branch for this task's
                                 PR — "master" for normal claims, the
                                 recorded stackable_base_branch for a
-                                --stackable-on claim.
+                                --stackable-on claim. With no active
+                                claim the base is unverifiable: warns on
+                                stderr and still prints "master", or
+                                exits 1 under --strict.
   branch-check <issue-number> [branch]
                                 validate that <branch> (default: the current
                                 git branch) encodes <issue-number> via the
