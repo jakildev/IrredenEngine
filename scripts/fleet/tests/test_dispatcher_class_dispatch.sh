@@ -16,6 +16,10 @@
 #     namespacing / dry-run+review-only gating) against a stubbed fleet-claim
 #   - FLEET_MODEL_* unset -> standalone alias-default fallback resolves each
 #     class to its fleet-common.sh default (fable[1m]/opus[1m]/sonnet)
+#   - class fairness floor (#2699, T20+): negative control, positive fire,
+#     disable/clamp of the threshold, single-class no-op, the vanished-
+#     alternative give-back, three-class rotation (rank 3 must not starve
+#     behind ranks 1-2 trading turns), and a cap-saturated yield target
 #
 # The fable in-flight count comes from dispatch records under
 # $FLEET_STATE_DIR/dispatch, same records --count-active reads.
@@ -485,6 +489,121 @@ case "$out" in
     *) PASS=$((PASS+1)); echo "  ok: no tick deferred" ;;
 esac
 unset STUB_SLICE_AFTER_3 STUB_SEND_COUNT
+
+echo "T27: three claimable classes — the lowest-ranked one is not starved"
+# T21/T25 are both TWO-class slices, and the defect they cannot see lives one
+# rank down. A single-class yield excludes only CLASS_ELECTION_LAST, so the
+# yield tick always lands on rank 2; the bookkeeping then records rank 2 as
+# LAST with RUN=1, the monopolist re-elects on the next tick, and rank 3 is
+# never reached — unbounded starvation, the same shape #2699 was filed
+# against. Measured in the wild as the fable planning lane (17/17 claimable,
+# zero dispatches) sitting behind opus+sonnet.
+#
+# The yield is therefore a SET: every class served more recently than the
+# longest-unserved one is excluded, so the resolver walks down the candidate
+# order until it reaches a class that has actually gone unserved.
+# Both T27 and T28 soak across more ticks than there are panes, so panes have
+# to free up as their iterations finish — otherwise the run dies on the role
+# concurrency cap long before the assertion window. Modelled at the list-panes
+# seam, which the dispatcher calls at tick start, BEFORE the class election
+# (the send-keys seam T25 uses is too late: write_dispatch_record runs after
+# it). `pane-seed.json` is deliberately exempt — T28 needs one dispatch to stay
+# in flight across ticks.
+cat > "$STUB_BIN/tmux" <<'TMUXEOF'
+#!/usr/bin/env bash
+sub="$1"; shift
+case "$sub" in
+    has-session) exit 0 ;;
+    list-panes)
+        # The previous tick's workers finished and returned to a shell.
+        for f in "$FLEET_STATE_DIR"/dispatch/pane-*.json; do
+            if [[ -f "$f" && "$f" != *pane-seed.json ]]; then rm -f "$f"; fi
+        done
+        for i in 1 2 3 4 5; do printf '%%%s|pool|zsh\n' "$i"; done
+        exit 0
+        ;;
+    display-message)
+        pane=""; fmt=""
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                -t) pane="$2"; shift 2 ;;
+                -p) fmt="$2"; shift 2 ;;
+                *)  shift ;;
+            esac
+        done
+        if [[ "$fmt" == *pane_current_path* ]]; then
+            echo "/fake/worktrees/pool-${pane#%}"
+        elif [[ "$fmt" == *pane_pid* ]]; then
+            echo "1"
+        fi
+        exit 0
+        ;;
+    send-keys) exit 0 ;;
+    *) exit 0 ;;
+esac
+TMUXEOF
+chmod +x "$STUB_BIN/tmux"
+THREE_CLASS_SLICE='{"tasks_open":[
+  {"issue":"#10","model":"opus","effort":null,"owner":"free","blocked":false},
+  {"issue":"#13","model":"sonnet","effort":null,"owner":"free","blocked":false}],
+ "feedback_prs":[],
+ "needs_plan":[{"number":99,"repo":"engine","labels":[]}]}'
+rm -f "$FLEET_STATE_DIR/dispatch"/*.json
+: > "$FLEET_STATE_DIR/triggers/worker"
+write_slice worker "$THREE_CLASS_SLICE"
+out=$(STUB_GRANT='engine:99' "$DISPATCHER" --dispatch-role worker 16 2>&1 >/dev/null)
+# >=2 rather than >=1 deliberately: a single dispatch is also what a one-shot
+# walk that then re-locks onto ranks 1-2 would produce. Two proves the yield
+# target keeps rotating. The machine is fully deterministic here (settle=0
+# pins class_racing to 0 and the stub frees every pane each tick), so the
+# measured 12 opus / 2 sonnet / 2 fable is stable, not timing-dependent.
+for _cls in opus sonnet fable; do
+    _n=$(printf '%s\n' "$out" | grep -c "class=$_cls effort" || true)
+    if (( _n >= 2 )); then
+        PASS=$((PASS+1)); echo "  ok: $_cls dispatched $_n times in 16 ticks"
+    else
+        FAIL=$((FAIL+1)); echo "  FAIL: $_cls dispatched $_n times in 16 ticks (want >=2):"
+        printf '%s\n' "$out"
+    fi
+done
+
+echo "T28: a cap-saturated yield target does not idle the lane"
+# fleet-dispatcher's fairness comment claims the floor "can never turn a
+# servable tick into a deferred one". The drop-and-retry backing that claim
+# fires only on RESOLVER defer; the cap-saturation defer further down was not
+# covered. Shape: the yielded-TO class resolves fine (more=0, defer=0) but has
+# no claim headroom, so the tick returns "already covered" with the fairness
+# exclusion still applied — while the yielded class had headroom and would
+# have been served without the floor. Worse, the return is above the
+# bookkeeping, so CLASS_ELECTION_RUN stays at the threshold and EVERY
+# subsequent tick re-yields and re-defers until the records age out.
+#
+# Reproduced with the MONOPOLY_SLICE shape (opus fan-out of 1/tick, so ticks
+# stay countable) plus a live settle window and one pre-seeded in-flight sonnet
+# record, so claim_headroom(sonnet) == 0 while opus still has room.
+#
+# Reuses the pane-freeing stub installed above T27; `pane-seed.json` survives
+# its sweep, so sonnet stays saturated while opus's own records never
+# accumulate against it.
+rm -f "$FLEET_STATE_DIR/dispatch"/*.json
+: > "$FLEET_STATE_DIR/triggers/worker"
+write_slice worker "$MONOPOLY_SLICE"
+# The sonnet lane's only claimable slot, already in flight and still inside the
+# settle window — claim_headroom(sonnet) == 0 on the yield tick.
+printf '{"role":"worker","pane":"%%99","class":"sonnet","dispatched_at":"%s","dispatched_epoch":%s}\n' \
+    "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$(date +%s)" \
+    > "$FLEET_STATE_DIR/dispatch/pane-seed.json"
+out=$(FLEET_DISPATCHER_CLAIM_SETTLE_SECONDS=90 \
+    "$DISPATCHER" --dispatch-role worker 4 2>&1 >/dev/null)
+case "$out" in
+    *"already covered by"*"deferring trigger"*|*"no claimable work"*)
+        FAIL=$((FAIL+1)); echo "  FAIL: the yield deferred a tick the elected class could serve:"
+        printf '%s\n' "$out" ;;
+    *)  PASS=$((PASS+1)); echo "  ok: no tick deferred while opus had headroom" ;;
+esac
+assert_eq "$(printf '%s\n' "$out" | grep -c 'dispatching worker -> .*class=opus')" "4" \
+    "all four ticks served opus — the saturated yield target degraded to serving, not deferring"
+rm -f "$FLEET_STATE_DIR/dispatch/pane-seed.json"
 
 echo "T26: --dispatch-role argument validation"
 "$DISPATCHER" --dispatch-role >/dev/null 2>&1 \

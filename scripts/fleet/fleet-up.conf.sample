@@ -274,9 +274,11 @@
 # every worker refuses (host-gated, design-parked, content-declined): those are
 # counted forever but never claimed, so one class can hold the lane for days
 # (#2699). This is the backstop: after this many consecutive ticks electing the
-# same class while another class is claimable, the lane yields one pass to that
-# class regardless of coverage. Raise it to favor throughput on the busiest
-# class, lower it for a tighter round-robin, 0 to disable. Default 3.
+# same class while another class is claimable, the lane yields one pass
+# regardless of coverage — to the least recently served claimable class, so a
+# third class cannot starve behind the top two trading turns. Raise it to favor
+# throughput on the busiest class, lower it for a tighter round-robin, 0 to
+# disable. Default 3.
 # FLEET_DISPATCHER_CLASS_FAIRNESS_RUN=3
 #
 # FLEET_DISPATCHER_RATE429_DELAY is the per-pane cooldown applied after a

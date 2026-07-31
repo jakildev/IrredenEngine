@@ -496,11 +496,17 @@ fi
 # see #2699).
 #
 # So bound the monopoly by turns as well: after this many consecutive ticks
-# electing the same class while ANOTHER class is claimable, yield one pass to
-# the next class regardless of coverage. Turn count is a deliberately weaker
-# signal than "workers claimed nothing" (that needs the per-(role, class, host)
-# empty-exit streak, #2698) — this bounds how long a monopoly can last, it does
-# not detect one. 0 disables the floor, leaving coverage the only yield.
+# electing the same class while ANOTHER class is claimable, yield one pass
+# regardless of coverage. The yield goes to the LEAST RECENTLY SERVED claimable
+# class, not simply the next one in candidate order — with three classes live,
+# yielding to rank 2 every time leaves rank 3 unserved forever (rank 2 is
+# recorded as the last-elected class with a run of 1, so the monopolist
+# re-elects on the very next tick and the pair just alternates). That is the
+# same unbounded starvation this floor exists to prevent, one rank down.
+# Turn count is a deliberately weaker signal than "workers claimed nothing"
+# (that needs the per-(role, class, host) empty-exit streak, #2698) — this
+# bounds how long a monopoly can last, it does not detect one.
+# 0 disables the floor, leaving coverage the only yield.
 # Validated-and-clamped like the overrides above: a non-numeric value would
 # emit arithmetic errors every tick or kill the daemon under `set -u`.
 CLASS_FAIRNESS_RUN="${FLEET_DISPATCHER_CLASS_FAIRNESS_RUN:-3}"
@@ -516,6 +522,32 @@ fi
 # a fairness heuristic (no state file to go stale or leak).
 declare -A CLASS_ELECTION_LAST=()
 declare -A CLASS_ELECTION_RUN=()
+# Per-(role, class) recency: the value of CLASS_ELECTION_TICKS at that class's
+# last election, 0 for never-served. A single-class yield only ever reaches
+# rank 2 — the yielded-to class is recorded as LAST with RUN=1, the monopolist
+# re-elects next tick, and rank 3 is never served at all. Recency is what lets
+# the yield walk PAST an already-recently-served class to the genuinely starved
+# one (the 3-class defect found on #2705).
+declare -A CLASS_ELECTION_SERVED=()
+declare -A CLASS_ELECTION_TICKS=()
+# The worker model classes, for the recency scan. Not derived from the slice:
+# a class absent from this tick's slice must still read as starved, or it could
+# never be walked to once it reappears.
+WORKER_CLASS_NAMES=(opus fable sonnet)
+
+# Lowest CLASS_ELECTION_SERVED value across all worker classes for a role —
+# i.e. how recently the LEAST recently served class ran. A never-served class
+# pins this at 0, which is what makes it the yield walk's target.
+class_min_served() {
+    local role="$1" cls served min=""
+    for cls in "${WORKER_CLASS_NAMES[@]}"; do
+        served="${CLASS_ELECTION_SERVED["$role:$cls"]:-0}"
+        if [[ -z "$min" ]] || (( served < min )); then
+            min="$served"
+        fi
+    done
+    printf '%s\n' "${min:-0}"
+}
 
 # Roles this dispatcher is responsible for. Architects are excluded
 # (kept on fleet-babysit). Panes are a generic pool, so this list — not
@@ -1587,29 +1619,54 @@ dispatch_role() {
     local _excluded="" _sat_excluded="" _passes=0
     # Fairness floor (#2699): the headroom test below can never fire when the
     # elected class's claimable items are ones every worker refuses, so bound
-    # the monopoly by turns as well. `_fair_yield` is kept separate from the
-    # saturation exclusions (`_sat_excluded`) so it can be dropped on its own
-    # if the yield turns out to have nothing to yield TO.
-    local _fair_yield=""
+    # the monopoly by turns as well. `_fair_yield` is a comma list, not a single
+    # class: yielding only the monopolist reaches rank 2 and no further, so with
+    # three classes live the bottom one starves anyway. It is kept separate from
+    # the saturation exclusions (`_sat_excluded`) so it can be given back on its
+    # own — one entry at a time — when the yield has nothing left to yield TO.
+    # `_fair_min` snapshots the least-recently-served class at yield time; the
+    # walk below uses it as the target, and `_fair_walked` keeps that walk
+    # one-directional so a give-back cannot re-add what it just released.
+    local _fair_yield="" _fair_walked=0 _fair_min=0
     if (( CLASS_FAIRNESS_RUN > 0 )) \
         && [[ -n "${CLASS_ELECTION_LAST[$role]:-}" ]] \
         && (( ${CLASS_ELECTION_RUN[$role]:-0} >= CLASS_FAIRNESS_RUN )); then
         _fair_yield="${CLASS_ELECTION_LAST[$role]}"
+        _fair_min=$(class_min_served "$role")
         log "$role: class=$_fair_yield elected ${CLASS_ELECTION_RUN[$role]} consecutive ticks with other classes queued; yielding one pass (fairness floor)"
     fi
     while : ; do
         _excluded="$_sat_excluded"
         [[ -n "$_fair_yield" ]] && _excluded="$_fair_yield${_excluded:+,$_excluded}"
         resolve_worker_class "$role" "$_excluded"
-        # The yielded class was claimable when the run accumulated; by this tick
-        # the OTHER class may not be. Drop only the fairness exclusion (keeping
-        # any saturation exclusions, which are still true) and re-resolve, so the
-        # floor can never turn a servable tick into a deferred one. One-shot:
-        # clearing `_fair_yield` makes this branch unreachable on the retry.
+        # The yielded class(es) were claimable when the run accumulated; by this
+        # tick the OTHERS may not be. Give back one exclusion at a time — the
+        # most recently added first — so an overshooting walk (below) falls back
+        # to the class it just skipped rather than all the way to the
+        # monopolist. Saturation exclusions are kept throughout; they are still
+        # true. Once the fairness set empties, serve the monopolist after all,
+        # so the floor can never turn a servable tick into a deferred one.
         if [[ -n "$_fair_yield" ]] && (( DISPATCH_DEFER )); then
+            if [[ "$_fair_yield" == *,* ]]; then
+                _fair_yield="${_fair_yield%,*}"
+                _fair_walked=1   # stop walking, or we would re-add what we just gave back
+                continue
+            fi
             log "$role: fairness yield of class=$_fair_yield found no other servable class; serving it after all"
             _fair_yield=""
             CLASS_ELECTION_RUN["$role"]=0
+            continue
+        fi
+        # Walk down to the genuinely starved class. The elected one may itself
+        # have been served more recently than some other class — yielding to it
+        # would just rotate between ranks 1 and 2 forever while rank 3 starves.
+        # Bounded: each pass excludes one more of the three classes, and
+        # `_fair_walked` makes the walk one-directional.
+        if [[ -n "$_fair_yield" ]] && (( ! _fair_walked )) && [[ -n "$DISPATCH_CLASS" ]] \
+            && (( ${CLASS_ELECTION_SERVED["$role:$DISPATCH_CLASS"]:-0} > _fair_min )) \
+            && [[ ",$_fair_yield," != *",$DISPATCH_CLASS,"* ]]; then
+            _fair_yield="$_fair_yield,$DISPATCH_CLASS"
+            log "$role: class=$DISPATCH_CLASS also served recently; yielding further down the class order"
             continue
         fi
         if (( DISPATCH_DEFER )); then
@@ -1646,6 +1703,19 @@ dispatch_role() {
             log "$role: class=$DISPATCH_CLASS covered ($class_racing in-flight >= $DISPATCH_COUNT claimable); serving next class"
             continue
         fi
+        # Saturated, and the fairness yield is what steered us here: the class
+        # we yielded AWAY from may still have headroom, so serving it beats
+        # idling the lane. Symmetric with the resolver-defer give-back above,
+        # and needed for the same invariant — without it the tick dispatches
+        # nothing, and because this `return` sits above the bookkeeping,
+        # CLASS_ELECTION_RUN stays at the threshold and every following tick
+        # re-yields and re-defers until the racing records settle out.
+        if [[ -n "$_fair_yield" ]]; then
+            log "$role: fairness yield target class=$DISPATCH_CLASS is cap-saturated; dropping the yield and re-resolving rather than idling the lane"
+            _fair_yield=""
+            CLASS_ELECTION_RUN["$role"]=0
+            continue
+        fi
         # Saturated with no other claimable class — keep the trigger; a later
         # tick re-evaluates once the racing workers claim or settle out.
         if [[ -z "${CAP_DEFER_LOGGED[$role-claimcap]+x}" ]]; then
@@ -1675,6 +1745,11 @@ dispatch_role() {
             CLASS_ELECTION_RUN["$role"]=1
         fi
         CLASS_ELECTION_LAST["$role"]="$DISPATCH_CLASS"
+        # Recency stamp for the yield walk. Counts ticks that actually reached
+        # an election (same guard as the run counter above), so it advances on
+        # the same clock the fairness threshold is expressed in.
+        CLASS_ELECTION_TICKS["$role"]=$(( ${CLASS_ELECTION_TICKS[$role]:-0} + 1 ))
+        CLASS_ELECTION_SERVED["$role:$DISPATCH_CLASS"]="${CLASS_ELECTION_TICKS[$role]}"
     fi
 
     local dispatched=0
