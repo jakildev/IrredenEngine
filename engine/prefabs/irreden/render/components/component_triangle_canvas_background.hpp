@@ -400,9 +400,7 @@ struct C_TriangleCanvasBackground {
     }
 
     float quantizePowerOfTwo(float value) const {
-        const float clamped = IRMath::max(0.01f, value);
-        const float exponent = std::round(std::log2(clamped));
-        return std::pow(2.0f, exponent);
+        return IRMath::snapToPowerOfTwo(IRMath::max(0.01f, value));
     }
 
     vec2 normalizeDirectionOrFallback(float x, float y, const vec2 &fallback) const {

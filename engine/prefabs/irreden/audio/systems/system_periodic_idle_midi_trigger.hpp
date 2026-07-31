@@ -5,6 +5,7 @@
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_audio.hpp>
 #include <irreden/ir_constants.hpp>
+#include <irreden/ir_math.hpp>
 
 #include <irreden/update/components/component_periodic_idle.hpp>
 #include <irreden/audio/components/component_midi_note.hpp>
@@ -39,7 +40,7 @@ template <> struct System<PERIODIC_IDLE_MIDI_TRIGGER> {
                 );
                 // NOTE_OFF: delayed by hold duration
                 int holdFrames = static_cast<int>(midiNote.holdSeconds_ * IRConstants::kFPS);
-                holdFrames = std::max(holdFrames, 1);
+                holdFrames = IRMath::max(holdFrames, 1);
                 IREntity::createEntity(
                     C_MidiMessage{
                         buildMidiStatus(kMidiStatus_NOTE_OFF, channel),

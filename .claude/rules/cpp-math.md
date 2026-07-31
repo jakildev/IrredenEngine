@@ -28,6 +28,8 @@ The wrapper layer in [`engine/math/include/irreden/`](../../engine/math/include/
 | `std::min(a, b)` / `std::max(a, b)` / `std::clamp(...)` | `IRMath::min` / `IRMath::max` / `IRMath::clamp` |
 | `std::sin(x)` / `std::cos(x)` / `std::abs(x)` | `IRMath::sin(x)` / `IRMath::cos(x)` / `IRMath::abs(x)` |
 | `std::cbrt(x)` | `IRMath::cbrt(x)` |
+| `std::pow(b, e)` / `std::log2(x)` | `IRMath::pow(b, e)` / `IRMath::log2(x)` |
+| `std::pow(2.0f, std::round(std::log2(x)))` | `IRMath::snapToPowerOfTwo(x)` |
 | `std::fmod(x, p)` + `if (v < 0) v += p`, or `while` ±2π wrap loops | `IRMath::wrapToRange(x, p)` / `IRMath::wrapAngleTwoPi(a)` / `IRMath::wrapAnglePi(a)` |
 
 ## Iso projection: never inline the equations
@@ -48,7 +50,9 @@ If the helper you need doesn't exist yet:
 
 ## When the wrapper doesn't exist yet
 
-If you need a primitive `IRMath` doesn't expose, **add the wrapper to `engine/math/` first**, then call it. Don't reach for `glm::` "just for now" — that's the path that produced the 164 violations this rule exists to clean up.
+If you need a primitive `IRMath` doesn't expose, **add the wrapper to `engine/math/` first**, then call it. Don't reach for `glm::` "just for now" — that's the path that produced the backlog this rule exists to clean up.
+
+Known ergonomic gap: `IRMath::clamp` / `IRMath::max` / `IRMath::min` take **one** type parameter, so the mixed vector/scalar form `clamp(vec3, 0.0f, 1.0f)` that `glm::` accepts does not compile. Spell the bounds as vectors (`clamp(v, vec3(0.0f), vec3(1.0f))`) rather than reaching back for `glm::`.
 
 The math library may itself wrap `glm::*` / `std::*` internally — that is the **only** place those names should appear.
 
@@ -58,7 +62,42 @@ The math library may itself wrap `glm::*` / `std::*` internally — that is the 
 - The graphics-backend interop layer at `engine/render/include/irreden/render/backend/**` — when wiring an actual `glm` value into a `glDrawElements`-shaped API, raw glm types are the surface.
 - Shader source: `*.glsl`, `*.metal`. These have their own native math; the rule is about C++ files.
 - Standalone tools under `tools/**` that do not link the engine library (`jitter_probe`, `img_diff`): IRMath lives in `engine/math/` and is genuinely unavailable there, so `std::`/`<cmath>` math is correct. (Also outside this rule's `paths:` scope — don't raise the nit from prose alone.)
+- `engine/profile/**`. Profile is one of the three lowest modules (`common/`, `math/`, `profile/`) and does not link `IrredenEngineMath` — its only uses are index clamping (`values[std::min(n * 95 / 100, n - 1)]`), so adding a link edge from the logging module to math buys nothing. If `engine/profile` ever gains a math dependency for other reasons, drop this carve-out and migrate the sites.
 
-## Live deviations (queue-manager-owned)
+## Detection
 
-The current list of files still calling `glm::*` outside the allowlist lives in `.fleet/status/glm-deviations.md` (or will, once it's introduced — track via a follow-up task). Don't add new violations; do migrate when you're already touching one of the deviation files.
+Grep the rule's `paths:` scope minus the allowlist above, skipping `//`-comment lines:
+
+```
+pattern: '\bglm::\w+|\bstd::(sin|cos|tan|sqrt|abs|min|max|clamp|floor|ceil|round|pow|log2|atan2|asin|acos|cbrt|fmod)\b'
+glob:    'engine/**/*.{hpp,cpp,h,cc}', 'creations/**/*.{hpp,cpp,h,cc}'
+skip:    engine/math/**, engine/profile/**,
+         engine/render/include/irreden/render/backend/**, tools/**
+```
+
+Unlike the `simplify` math check and review-pr, which read a **diff**, this
+form measures the standing population. Run it tree-wide — the diff-scoped
+checks are structurally blind to violations that were already in the tree
+when they landed, which is how the count below went unmeasured for months
+(#2735).
+
+## Live deviations
+
+**Zero.** Swept tree-wide 2026-07-31 (#2735): 73 sites across 18 files
+migrated (11 `glm::`, 62 `std::`), the Detection sweep above now returns
+empty, and this register is the whole answer — there is no external status
+file. The sweep is one command; re-run it rather than trusting this line.
+
+Two rules for whoever adds the next entry:
+
+- **Keep the register inline and dated.** If it delegates to an external
+  status file, that file's existence must be verified against the tree —
+  this section spent months pointing at a `.fleet/status/` path that was
+  never created, and the sibling registers failed the same way (#2726,
+  #2733).
+- **A `round` on a position is `roundHalfUp`, not `round`.** `glm::round` /
+  `IRMath::round` are round-half-away-from-zero and disagree with the GPU
+  mirror at negative half-integers, which is the CPU↔GPU divergence §2
+  exists to prevent. Use `IRMath::roundHalfUp` / `roundVec3HalfUp` for any
+  position→cell assignment (see #2735 for a latent instance that sat in the
+  render-verify reference demo).

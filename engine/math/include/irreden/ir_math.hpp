@@ -405,6 +405,26 @@ constexpr float sqrt(float value) {
     return glm::sqrt(value);
 }
 
+/// @p base raised to @p exponent. Wraps std::pow.
+inline float pow(float base, float exponent) noexcept {
+    return std::pow(base, exponent);
+}
+
+/// Base-2 logarithm of @p value. Wraps std::log2. Caller guarantees value > 0.
+inline float log2(float value) noexcept {
+    return std::log2(value);
+}
+
+/// Snaps @p value to the nearest power of two (in log space, so the tie goes
+/// to the geometrically nearer neighbour, not the arithmetically nearer one).
+/// Caller guarantees value > 0.
+///
+/// Named so the tie-breaking rule lives in one place instead of being
+/// re-derived as `pow(2, round(log2(x)))` at each mip/zoom-quantization site.
+inline float snapToPowerOfTwo(float value) noexcept {
+    return pow(2.0f, static_cast<float>(std::round(log2(value))));
+}
+
 /// Cube root of @p value (float). Wraps std::cbrt.
 inline float cbrt(float value) noexcept {
     return std::cbrt(value);

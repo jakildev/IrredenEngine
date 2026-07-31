@@ -211,11 +211,11 @@ session uncovers lands here in the same PR as the fix.
 
 - **Pattern**: `glm::sin(x)`, `std::max(a, b)`, etc. in C++ code
   outside `engine/math/`.
-- **Where**: tracked in `<engine-root>/.fleet/status/glm-deviations.md`
-  (queue-manager-owned, committed; not `~/.fleet/`) — or will be, once
-  the file is introduced. Until then, discover violations with
-  `rg 'glm::|std::(sin|cos|sqrt|abs|min|max|clamp)' --type cpp engine/
-  -g '!engine/math/**'`.
+- **Where**: tracked inline in [`.claude/rules/cpp-math.md`](../../../rules/cpp-math.md)
+  §"Live deviations" (zero as of the #2735 sweep). That section's
+  §"Detection" carries the sweep command and the current allowlist — run
+  it rather than re-deriving a grep; the earlier pointer here named
+  `.fleet/status/glm-deviations.md`, a file that was never created.
 - **Symptom**: Not a runtime hotspot, but blocks the
   IRMath-implementation-swap path and breaks CPU↔GPU consistency
   (e.g. `glm::round` vs `IRMath::roundHalfUp`).

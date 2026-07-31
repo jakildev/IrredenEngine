@@ -306,7 +306,7 @@ void RenderManager::setCameraZoom(float zoom) {
         IRConstants::kTrixelCanvasZoomMin.x,
         IRConstants::kTrixelCanvasZoomMax.x
     );
-    float snapped = std::pow(2.0f, std::round(std::log2(clamped)));
+    float snapped = IRMath::snapToPowerOfTwo(clamped);
     IREntity::setComponent(m_camera, C_ZoomLevel{snapped});
 }
 
@@ -539,7 +539,7 @@ void RenderManager::resizeGuiCanvas(ivec2 newSize) {
 }
 
 void RenderManager::setGuiScale(int scale) {
-    scale = std::clamp(scale, 1, 8);
+    scale = IRMath::clamp(scale, 1, 8);
     if (scale == m_guiScale)
         return;
     if (m_guiFullResolution)
@@ -574,7 +574,7 @@ bool RenderManager::isHoveredTrixelVisible() const {
 }
 
 void RenderManager::setSunDirection(vec3 dir) {
-    const float len = glm::length(dir);
+    const float len = IRMath::length(dir);
     m_sunDirection = len > 0.0f ? dir / len : vec3(-0.3f, -0.2f, -0.93f);
 }
 

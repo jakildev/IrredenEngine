@@ -1,6 +1,7 @@
 #include <irreden/video/video_manager.hpp>
 
 #include <irreden/ir_constants.hpp>
+#include <irreden/ir_math.hpp>
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_audio.hpp>
 #include <irreden/audio/audio_capture_source.hpp>
@@ -47,13 +48,13 @@ void VideoManager::configureCapture(
     IRAudio::IAudioCaptureSource *audioCaptureSource
 ) {
     m_outputFilePath = outputFilePath;
-    m_targetFps = std::max(targetFps, 1);
-    m_videoBitrate = std::max(videoBitrate, 250000);
+    m_targetFps = IRMath::max(targetFps, 1);
+    m_videoBitrate = IRMath::max(videoBitrate, 250000);
     m_captureAudioInput = captureAudioInput;
     m_audioInputDeviceName = audioInputDeviceName;
-    m_audioSampleRate = std::max(audioSampleRate, 8'000);
-    m_audioChannels = std::clamp(audioChannels, 1, 2);
-    m_audioBitrate = std::max(audioBitrate, 64'000);
+    m_audioSampleRate = IRMath::max(audioSampleRate, 8'000);
+    m_audioChannels = IRMath::clamp(audioChannels, 1, 2);
+    m_audioBitrate = IRMath::max(audioBitrate, 64'000);
     m_audioMuxEnabled = audioMuxEnabled;
     m_audioWavEnabled = audioWavEnabled;
     m_audioSyncOffsetMs = audioSyncOffsetMs;
@@ -152,7 +153,7 @@ void VideoManager::render() {
     ++m_totalCapturedFrames;
 
     static constexpr int kMaxCatchupFrames = 4;
-    const int duplicates = std::min(framesToCapture - 1, kMaxCatchupFrames);
+    const int duplicates = IRMath::min(framesToCapture - 1, kMaxCatchupFrames);
     if (duplicates > 0) {
         IRE_LOG_WARN(
             "Video capture: {} frames due, submitting {} duplicate(s) for catchup",
@@ -383,10 +384,10 @@ void VideoManager::writePendingRoiCrops(
         IRUtility::formatNumberedFilename("screenshot_", shotIndex, 6, "");
     const std::filesystem::path outputDir(m_screenshotOutputDirPath);
     for (const PendingCrop &crop : m_pendingScreenshotCrops) {
-        const int x0 = std::max(0, crop.x_);
-        const int y0 = std::max(0, crop.y_);
-        const int x1 = std::min(frameWidth, crop.x_ + crop.w_);
-        const int y1 = std::min(frameHeight, crop.y_ + crop.h_);
+        const int x0 = IRMath::max(0, crop.x_);
+        const int y0 = IRMath::max(0, crop.y_);
+        const int x1 = IRMath::min(frameWidth, crop.x_ + crop.w_);
+        const int y1 = IRMath::min(frameHeight, crop.y_ + crop.h_);
         const int outW = x1 - x0;
         const int outH = y1 - y0;
         if (outW <= 0 || outH <= 0) {

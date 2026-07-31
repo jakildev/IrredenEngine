@@ -1026,7 +1026,7 @@ void applyCheckerboard(C_VoxelSetNew &voxelSet, Color baseColor) {
     for (int i = 0; i < voxelSet.numVoxels_; ++i) {
         if (voxelSet.voxels_[i].color_.alpha_ == 0)
             continue;
-        ivec3 cellPos = ivec3(glm::round(voxelSet.positions_[i].pos_));
+        ivec3 cellPos = IRMath::roundVec3HalfUp(voxelSet.positions_[i].pos_);
         Color c = baseColor;
         if (((cellPos.x + cellPos.y + cellPos.z) & 1) != 0) {
             c.red_ = static_cast<std::uint8_t>(c.red_ * 0.55f);
@@ -1043,8 +1043,8 @@ void applyCheckerboard(C_VoxelSetNew &voxelSet, Color baseColor) {
 // Classic HSV->RGB (h,s,v in [0,1]) matching the shader's hsvToRgb helper.
 vec3 hsvToRgbCpu(vec3 c) {
     const vec4 K(1.0f, 2.0f / 3.0f, 1.0f / 3.0f, 3.0f);
-    vec3 p = glm::abs(glm::fract(vec3(c.x) + vec3(K)) * 6.0f - vec3(K.w));
-    return c.z * glm::mix(vec3(K.x), glm::clamp(p - vec3(K.x), 0.0f, 1.0f), c.y);
+    vec3 p = IRMath::abs(IRMath::fract(vec3(c.x) + vec3(K)) * 6.0f - vec3(K.w));
+    return c.z * IRMath::mix(vec3(K.x), IRMath::clamp(p - vec3(K.x), vec3(0.0f), vec3(1.0f)), c.y);
 }
 
 // Color each active voxel by its LOCAL iso-depth (x+y+z), normalized to
@@ -1062,14 +1062,14 @@ void applyDepthColor(C_VoxelSetNew &voxelSet, IRRender::ShapeType type, vec4 sdf
     for (int i = 0; i < voxelSet.numVoxels_; ++i) {
         if (voxelSet.voxels_[i].color_.alpha_ == 0)
             continue;
-        ivec3 cellPos = ivec3(glm::round(voxelSet.positions_[i].pos_));
+        ivec3 cellPos = IRMath::roundVec3HalfUp(voxelSet.positions_[i].pos_);
         float d = static_cast<float>(cellPos.x + cellPos.y + cellPos.z);
-        float t = glm::clamp((d + dColor) / denom, 0.0f, 1.0f);
+        float t = IRMath::clamp((d + dColor) / denom, 0.0f, 1.0f);
         vec3 rgb = hsvToRgbCpu(vec3(0.66f * t, 1.0f, 1.0f));
         Color c{
-            static_cast<std::uint8_t>(glm::clamp(rgb.x, 0.0f, 1.0f) * 255.0f),
-            static_cast<std::uint8_t>(glm::clamp(rgb.y, 0.0f, 1.0f) * 255.0f),
-            static_cast<std::uint8_t>(glm::clamp(rgb.z, 0.0f, 1.0f) * 255.0f),
+            static_cast<std::uint8_t>(IRMath::clamp(rgb.x, 0.0f, 1.0f) * 255.0f),
+            static_cast<std::uint8_t>(IRMath::clamp(rgb.y, 0.0f, 1.0f) * 255.0f),
+            static_cast<std::uint8_t>(IRMath::clamp(rgb.z, 0.0f, 1.0f) * 255.0f),
             255
         };
         voxelSet.voxels_[i].color_ = c;

@@ -1,5 +1,6 @@
 #include <irreden/video/video_recorder.hpp>
 
+#include <irreden/ir_math.hpp>
 #include <irreden/ir_profile.hpp>
 #include <irreden/ir_utility.hpp>
 
@@ -219,8 +220,8 @@ bool VideoRecorder::start(const VideoRecorderConfig &config) {
 #else
     std::unique_ptr<FFmpegState> state = std::make_unique<FFmpegState>();
     state->audioCaptureRequested = config.capture_audio_input_;
-    state->audioSampleRate = std::max(config.audio_sample_rate_, 8'000);
-    state->audioChannels = std::clamp(config.audio_channels_, 1, 2);
+    state->audioSampleRate = IRMath::max(config.audio_sample_rate_, 8'000);
+    state->audioChannels = IRMath::clamp(config.audio_channels_, 1, 2);
     state->wavWriteEnabled = config.audio_wav_enabled_;
     if (state->audioCaptureRequested) {
         state->fallbackAudioPath = makeFallbackAudioPath(config.output_file_path_);
@@ -274,7 +275,7 @@ bool VideoRecorder::start(const VideoRecorderConfig &config) {
     state->videoCodecContext->height = config.height_;
     state->videoCodecContext->time_base = AVRational{1, config.target_fps_};
     state->videoCodecContext->framerate = AVRational{config.target_fps_, 1};
-    state->videoCodecContext->bit_rate = std::max(config.video_bitrate_, 250000);
+    state->videoCodecContext->bit_rate = IRMath::max(config.video_bitrate_, 250000);
     state->videoCodecContext->gop_size = config.target_fps_ * 2;
     state->videoCodecContext->max_b_frames = 0;
     state->videoCodecContext->thread_count = 0;
@@ -334,7 +335,7 @@ bool VideoRecorder::start(const VideoRecorderConfig &config) {
                     state->audioCodecContext->time_base = AVRational{1, state->audioSampleRate};
                     if (!config.audio_lossless_) {
                         state->audioCodecContext->bit_rate =
-                            std::max(config.audio_bitrate_, 64'000);
+                            IRMath::max(config.audio_bitrate_, 64'000);
                         state->audioCodecContext->profile = AV_PROFILE_AAC_LOW;
                     }
                     if ((state->formatContext->oformat->flags & AVFMT_GLOBALHEADER) != 0) {
@@ -555,7 +556,8 @@ bool VideoRecorder::start(const VideoRecorderConfig &config) {
                         break;
                     }
 
-                    const int chunkFrames = std::min(frameBlockSize, audioChunk.frameCount - consumedFrames);
+                    const int chunkFrames =
+                        IRMath::min(frameBlockSize, audioChunk.frameCount - consumedFrames);
                     state->audioFrame->pts = audioChunk.pts + consumedFrames;
                     const AVSampleFormat sampleFormat = state->audioCodecContext->sample_fmt;
                     const int channels = state->audioChannels;
@@ -589,8 +591,9 @@ bool VideoRecorder::start(const VideoRecorderConfig &config) {
                                 const std::size_t srcIndex = srcBaseIndex +
                                     static_cast<std::size_t>(i) * static_cast<std::size_t>(channels) +
                                     static_cast<std::size_t>(channel);
-                                const float clamped =
-                                    std::clamp(audioChunk.interleavedSamples[srcIndex], -1.0f, 1.0f);
+                                const float clamped = IRMath::clamp(
+                                    audioChunk.interleavedSamples[srcIndex], -1.0f, 1.0f
+                                );
                                 dst[i] = static_cast<std::int16_t>(std::lrint(clamped * 32767.0f));
                             }
                             for (int i = chunkFrames; i < frameBlockSize; ++i) {
@@ -602,8 +605,9 @@ bool VideoRecorder::start(const VideoRecorderConfig &config) {
                         std::fill(dst, dst + frameBlockSize * channels, 0);
                         const int totalSamples = chunkFrames * channels;
                         for (int i = 0; i < totalSamples; ++i) {
-                            const float clamped =
-                                std::clamp(audioChunk.interleavedSamples[srcBaseIndex + i], -1.0f, 1.0f);
+                            const float clamped = IRMath::clamp(
+                                audioChunk.interleavedSamples[srcBaseIndex + i], -1.0f, 1.0f
+                            );
                             dst[i] = static_cast<std::int16_t>(std::lrint(clamped * 32767.0f));
                         }
                     } else {
@@ -1005,11 +1009,11 @@ bool VideoRecorder::submitAudioInputSamples(
     if (state->firstAudioStreamTimeSeconds < 0.0) {
         state->firstAudioStreamTimeSeconds = streamTime;
     }
-    const double relativeTime = std::max(0.0, streamTime - state->firstAudioStreamTimeSeconds);
+    const double relativeTime = IRMath::max(0.0, streamTime - state->firstAudioStreamTimeSeconds);
     int64_t chunkPts =
         static_cast<int64_t>(std::llround(relativeTime * static_cast<double>(state->audioSampleRate)));
     chunkPts += state->audioSyncOffsetSamples;
-    chunkPts = std::max(chunkPts, state->nextAudioPts);
+    chunkPts = IRMath::max(chunkPts, state->nextAudioPts);
     state->nextAudioPts = chunkPts + frameCount;
 
     FFmpegState::AudioChunk chunk;

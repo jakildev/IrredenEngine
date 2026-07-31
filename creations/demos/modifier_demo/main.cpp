@@ -1,4 +1,5 @@
 #include <irreden/ir_engine.hpp>
+#include <irreden/ir_math.hpp>
 #include <irreden/ir_system.hpp>
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_input.hpp>
@@ -267,7 +268,7 @@ void initSystems() {
                         IRModifierDemo::g_speedField,
                         [](float v) -> float {
                             float phase = static_cast<float>(IRModifierDemo::g_tick) * 0.05f;
-                            return v * (1.0f + std::sin(phase));
+                            return v * (1.0f + IRMath::sin(phase));
                         },
                         IRModifierDemo::g_cubes[6],
                         -1
@@ -337,7 +338,7 @@ void initSystems() {
                 // constant under the (+x,-y) animation. The row mapping is
                 // `rowIsoY(i) = (i - (N+1)/2) * kRowIsoSpacing`.
                 const float isoY = -(pos.translation_.x + pos.translation_.y);
-                const int rowIdx = static_cast<int>(std::round(
+                const int rowIdx = static_cast<int>(IRMath::round(
                     isoY / IRModifierDemo::kRowIsoSpacing + (IRModifierDemo::kNumCubes + 1) * 0.5f
                 ));
                 Color baseColor = (rowIdx >= 1 && rowIdx <= IRModifierDemo::kNumCubes)

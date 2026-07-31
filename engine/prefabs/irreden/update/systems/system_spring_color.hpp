@@ -59,8 +59,8 @@ template <> struct System<SPRING_COLOR> {
                 if (spring.colorMinValue_ > 0.0f
                     || spring.colorMinSaturation_ > 0.0f) {
                     ColorHSV hsv = IRMath::colorToColorHSV(shifted);
-                    hsv.value_ = std::max(hsv.value_, spring.colorMinValue_);
-                    hsv.saturation_ = std::max(
+                    hsv.value_ = IRMath::max(hsv.value_, spring.colorMinValue_);
+                    hsv.saturation_ = IRMath::max(
                         hsv.saturation_, spring.colorMinSaturation_);
                     shifted = IRMath::colorHSVToColor(hsv);
                 }
