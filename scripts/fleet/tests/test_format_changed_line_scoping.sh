@@ -163,4 +163,26 @@ assert_contains "$OUT" "falling back to whole-file formatting" \
 REMAINING=$(clang-format --style=file "$REPO/drift.cpp" | diff - "$REPO/drift.cpp" | grep -cE '^[<>]' || true)
 assert_eq "$REMAINING" "0" "fallback still formats the file (old behavior preserved)"
 
+echo ""
+echo "T6: a new file COMMITTED on the branch is formatted in full"
+# T3's new file is untracked, so it takes the explicit whole-file branch.
+# `git add` + commit makes it tracked, so it goes down the line-range path
+# instead and its hunk header is `@@ -0,0 +1,N @@` — a zero-length
+# PRE-image, the mirror of T4's zero-length post-image. The range must come
+# out as 1:N (the whole file). Getting it wrong is not silent: a 0-start
+# range makes clang-format reject the argument outright, which is what the
+# error assertions below pin.
+REPO=$(new_repo t6)
+write_drift_file "$REPO/added.cpp"
+git -C "$REPO" add added.cpp
+git -C "$REPO" commit -qm "add a new source file on the branch"
+OUT=$(run_format_changed "$REPO" drift.cpp added.cpp)
+assert_absent "$OUT" "CMake Error" "no CMake error on a '-0,0' hunk"
+assert_absent "$OUT" "start line should be at least 1" \
+    "the range starts at line 1, not 0"
+REMAINING=$(clang-format --style=file "$REPO/added.cpp" | diff - "$REPO/added.cpp" | grep -cE '^[<>]' || true)
+assert_eq "$REMAINING" "0" "the whole added file is formatted (all of it is new)"
+assert_eq "$(changed_line_count "$REPO" drift.cpp)" "" \
+    "the untouched tracked file is not reformatted"
+
 summarize "format-changed line scoping (#2719)"
