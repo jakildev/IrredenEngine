@@ -6,6 +6,11 @@ paths:
 
 # ECS rules: getComponent in ticks, deferred entity ops, component method tiers
 
+> **Sweeping this rule?** Run it with `fleet-sweep`, not `rg` or the Grep
+> tool — a sweep rooted at `creations/` walks ~0 files and reads a false
+> clean (#2739). The `paths:` block above is an attach matcher, not a sweep
+> scope; see [README.md](README.md).
+
 ## The ECS footgun: never call getComponent inside a per-entity tick
 
 > **Never** call `IREntity::getComponent` or `IREntity::getComponentOptional` on a system's *own* iterating entity inside its per-entity tick function.

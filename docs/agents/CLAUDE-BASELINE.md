@@ -258,6 +258,7 @@ agent-facing doc, link to the canonical home rather than restating.
 | Reviewer protocols (stack gating · label-swap · claim · nits) | `docs/agents/REVIEWER-PROTOCOL.md` |
 | Architect protocol (startup · loop · filing · planning · design-blocked handling) | `docs/agents/architect-protocol.md` |
 | Shared fleet state cache | `docs/agents/FLEET-CACHE.md` |
+| Running a rule's Detection sweep (`fleet-sweep`; why not `rg`/Grep) | `.claude/rules/README.md` |
 | ECS smell diagnostics (machine-checkable) | `.claude/rules/cpp-ecs-smells.md` |
 | Math substitution rules (machine-checkable) | `.claude/rules/cpp-math.md` |
 | System-state smells (machine-checkable) | `.claude/rules/cpp-systems.md` |
@@ -332,6 +333,12 @@ silently kills every other call you batched with it. Therefore:
 - Prefer Read/Glob/Grep over Bash for files and directories; they return
   an empty/no-match result instead of a non-zero exit, so they never
   trigger the cascade.
+  - **Exception — a sweep whose conclusion is "no hits" uses `fleet-sweep`.**
+    Grep is ripgrep-backed: rooted at `creations/` or `.claude/` it walks
+    ~0 files and returns the same empty result as a genuine clean, and no
+    `rg` spelling reads the full tracked set (#2739). `fleet-sweep` takes
+    the denominator from the git index and exits 2 rather than call a
+    zero-file sweep clean — see [`.claude/rules/README.md`](../../.claude/rules/README.md).
 
 This compounds with the single-command rule above: even a
 single-command-compliant but fallible call like `which some-tool`,

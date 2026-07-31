@@ -116,7 +116,7 @@ Example:
 See scripts/fleet/fleet-edit header.
 EOF
             ;;
-        fleet-run | fleet-run-targets | fleet-down | fleet-claim | fleet-labels | fleet-gate-status | fleet-net-doctor)
+        fleet-run | fleet-run-targets | fleet-down | fleet-claim | fleet-labels | fleet-gate-status | fleet-net-doctor | fleet-sweep)
             bash "$path" --help
             ;;
         fleet-claude-stream | fleet-state-scout | fleet-feedback)
@@ -247,6 +247,10 @@ Parallel-agent fleet (tmux + Claude)
   fleet-net-doctor [--kill-hung] TCP socket / ephemeral-port pressure report
                                  (EADDRNOTAVAIL forensics) + hung git/ssh/gh
                                  reaper; exit 0 OK / 1 WARN / 2 CRITICAL
+  fleet-sweep [-E|-P|-F] <pat> [-- <pathspec>...]
+                                 tree-wide detector sweep that cannot read a
+                                 false clean: git-index denominator + git grep;
+                                 exit 0 found / 1 PROVEN clean / 2 did NOT run
   fleet-claude-stream            format claude stream-json for tmux
   fleet-heartbeat <agent>        bump heartbeat mtime
   fleet-iteration-summary <agent> "<text>"

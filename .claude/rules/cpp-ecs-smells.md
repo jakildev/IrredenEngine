@@ -8,6 +8,11 @@ paths:
 
 # ECS smell checklist
 
+> **Sweeping this rule?** Run it with `fleet-sweep`, not `rg` or the Grep
+> tool — a sweep rooted at `creations/` walks ~0 files and reads a false
+> clean (#2739). The `paths:` block above is an attach matcher, not a sweep
+> scope; see [README.md](README.md).
+
 Diagnostic checklist for catching common ECS pattern violations. Use during
 code review, pre-commit passes, and performance audits. Full rule rationale
 lives in [`.claude/rules/cpp-ecs.md`](cpp-ecs.md) and `engine/system/CLAUDE.md`.

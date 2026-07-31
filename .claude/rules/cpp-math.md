@@ -6,6 +6,11 @@ paths:
 
 # Math primitives go through IRMath, never glm:: or std::
 
+> **Sweeping this rule?** Run it with `fleet-sweep`, not `rg` or the Grep
+> tool — a sweep rooted at `creations/` walks ~0 files and reads a false
+> clean (#2739). The `paths:` block above is an attach matcher, not a sweep
+> scope; see [README.md](README.md).
+
 Rule, with zero exceptions outside `engine/math/`:
 
 > **Never** call `glm::*`, `std::sin`, `std::cos`, `std::tan`, `std::sqrt`, `std::abs`, `std::min`, `std::max`, `std::clamp`, `std::floor`, `std::ceil`, `std::round`, `std::pow`, `std::atan2`, `std::asin`, or `std::acos` from C++ files outside `engine/math/`.

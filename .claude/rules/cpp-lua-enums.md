@@ -7,6 +7,12 @@ paths:
 
 # Lua surface: enums and constants, never string-name lookups
 
+> **Sweeping this rule?** Run it with `fleet-sweep`, not `rg` or the Grep
+> tool — a sweep rooted at `creations/` walks ~0 files and reads a false
+> clean (#2739). The `paths:` block above is an attach matcher, not a sweep
+> scope; see [README.md](README.md). This rule's §"Audit hooks" is what
+> surfaced the bug: it returned 0 hits over a tree with 4 matching files.
+
 Rule:
 
 > **Never** check a Lua-side string name against a fixed set of values

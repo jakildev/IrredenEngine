@@ -1,0 +1,239 @@
+#!/usr/bin/env bash
+# fleet-sweep — run a tree-wide detector sweep that cannot silently read clean.
+#
+# Why this exists
+# ---------------
+# A "sweep" is any tree-wide grep run to prove a rule holds: the Detection
+# blocks in `.claude/rules/*.md`, the creation-side passes in `simplify` /
+# `review-pr`, a one-off "does this pattern still occur anywhere" audit. Its
+# whole value is the NEGATIVE result — "zero hits, the rule holds".
+#
+# That makes a sweep uniquely dangerous: every way it can go wrong produces
+# the same output as success. #2739 found four independent ways a
+# ripgrep-rooted sweep of this repo reads a false clean:
+#
+#   1. Ignore-negation pruning. `.gitignore` has two `dir/*` + `!dir/child/`
+#      blocks (`creations/*`, `.claude/*`). Rooting the walk AT that
+#      directory prunes every child before the negation is applied:
+#          rg --files creations   ->   2 files   (git tracks 273)
+#          rg --files .claude     ->   1 file    (git tracks  76)
+#      One level down (`creations/demos`) is correct, which is why this sat
+#      undetected — and why 5 of the 6 `.claude/rules/*.md` `paths:` scopes,
+#      which name `creations/**`, were never actually swept.
+#   2. Hidden directories. `.claude` is a dotdir, so every repo-top-rooted
+#      form skips it entirely without `--hidden`:
+#          rg --files -g '**/.claude/**' .   ->   0 files
+#   3. Symlinks. `.claude/agents/role-*.md` are tracked symlinks (git mode
+#      120000); ripgrep's walker never follows them without `-L`, so those
+#      7 tracked paths are invisible to every rooted sweep.
+#   4. No `rg` binary. In the fleet's Claude Code panes `rg` is a *shell
+#      function* that re-execs the `claude` binary with ARGV0=rg — there is
+#      no `rg` on PATH. Any scripted `xargs rg` dies with rc=127, and a
+#      caller that pipes to `| wc -l` sees 0. This one is silent even when
+#      the sweep is otherwise spelled perfectly.
+#
+# The fix is not "remember four caveats". It is to stop asking a
+# filesystem walker what the repo contains and ask **git**, which is the
+# ground truth the walker was approximating:
+#
+#   * `git ls-files` establishes the DENOMINATOR — the files the sweep will
+#     actually read. A sweep that walked zero files has not run, and this
+#     script refuses to report that as clean (exit 2, not 1).
+#   * `git grep` performs the search. Being index-driven it is immune to all
+#     four vectors above, needs no `rg`, and — unlike `--no-ignore-parent` —
+#     will not pull the gitignored private `creations/game` clone into an
+#     engine-side sweep (the cross-repo information isolation rule).
+#
+# Exit status is the contract; the three cases are deliberately distinct:
+#
+#   0   matches found (the detector fired)
+#   1   PROVEN clean — N > 0 files were read and none matched
+#   2   the sweep did not run (bad pathspec, zero files, bad pattern,
+#       not in a git tree). NEVER interpret as clean.
+#
+# Conflating 1 and 2 is the entire bug class this script exists to close.
+#
+# Usage
+# -----
+#   fleet-sweep [-E|-P|-F] [-i] [-l] [--min N] <pattern> [-- <pathspec>...]
+#
+#   fleet-sweep -P '(?!x)y' -- 'creations/*.cpp'     # rules Detection block
+#   fleet-sweep -l 'glm::' -- 'creations/*' 'engine/*'
+#   fleet-sweep -F 'TODO'                            # whole tree
+#
+# Note `-P` (PCRE): the Detection patterns in `.claude/rules/*.md` use
+# negative lookahead, which is PCRE-only. If this git was built without
+# PCRE, `-P` fails loudly (exit 2) rather than returning a false clean.
+#
+# Source of truth: scripts/fleet/fleet-sweep in the engine repo. Installed
+# to ~/bin/fleet-sweep by scripts/fleet/install.sh.
+
+set -uo pipefail
+
+usage() {
+    cat <<'EOF'
+fleet-sweep — a tree-wide detector sweep that cannot silently read clean.
+
+  fleet-sweep [-E|-P|-F] [-i] [-l] [--min N] <pattern> [-- <pathspec>...]
+
+Pattern type (default -E):
+  -E            POSIX extended regex
+  -P            Perl/PCRE  (required for the (?!...) lookahead the
+                .claude/rules Detection patterns use)
+  -F            fixed string
+
+Options:
+  -i            case-insensitive
+  -l            list matching files only (default: file:line:text)
+  --min N       require at least N files in the sweep denominator
+                (default 1). Use to pin an expected scope size so a
+                silently-narrowed pathspec fails instead of reading clean.
+  -h, --help    this text
+
+Pathspecs are git pathspecs, passed after `--`. They are matched against
+the index, so `creations/*.cpp` reaches every depth (git pathspec `*`
+crosses `/`). With no pathspec the whole tree is swept.
+
+Exit status:
+  0   matches found
+  1   PROVEN clean (N > 0 files swept, none matched)
+  2   sweep did NOT run — bad pathspec, zero files, bad pattern, or not a
+      git tree. This is not a clean result; fix the invocation.
+EOF
+}
+
+mode="-E"
+icase=""
+list_only=""
+min_files=1
+pattern=""
+pathspecs=()
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -h|--help) usage; exit 0 ;;
+        -E|-P|-F)  mode="$1"; shift ;;
+        -i)        icase="-i"; shift ;;
+        -l)        list_only="-l"; shift ;;
+        # Both spellings validate identically (scripts/fleet/CLAUDE.md):
+        # an empty --min= must be rejected exactly as a missing value is.
+        --min)
+            if [[ $# -lt 2 || -z "${2:-}" ]]; then
+                echo "fleet-sweep: --min requires a value" >&2; exit 2
+            fi
+            min_files="$2"; shift 2 ;;
+        --min=*)
+            min_files="${1#--min=}"
+            if [[ -z "$min_files" ]]; then
+                echo "fleet-sweep: --min requires a value" >&2; exit 2
+            fi
+            shift ;;
+        --)
+            shift
+            pathspecs=("$@")
+            break ;;
+        -*)
+            echo "fleet-sweep: unknown option '$1' (try --help)" >&2; exit 2 ;;
+        *)
+            if [[ -n "$pattern" ]]; then
+                echo "fleet-sweep: unexpected extra argument '$1' — put pathspecs after '--'" >&2
+                exit 2
+            fi
+            pattern="$1"; shift ;;
+    esac
+done
+
+if [[ -z "$pattern" ]]; then
+    echo "fleet-sweep: no pattern given (try --help)" >&2
+    exit 2
+fi
+if [[ ! "$min_files" =~ ^[0-9]+$ ]]; then
+    echo "fleet-sweep: --min must be a non-negative integer, got '$min_files'" >&2
+    exit 2
+fi
+if ! git rev-parse --show-toplevel >/dev/null 2>&1; then
+    echo "fleet-sweep: not inside a git working tree (cwd: $PWD)" >&2
+    exit 2
+fi
+
+# `-P` on a git built without PCRE fails at the first search. Probe it up
+# front against a pattern that cannot match, so the diagnostic names the
+# real cause instead of surfacing as an empty (false-clean-shaped) result.
+if [[ "$mode" == "-P" ]]; then
+    probe=$(git grep -P -e 'zzz(?!zzz)' -- ':(exclude)*' 2>&1)
+    if [[ "$probe" == *"not compiled with PCRE"* || "$probe" == *"PCRE is not available"* ]]; then
+        echo "fleet-sweep: this git has no PCRE support, so -P cannot run." >&2
+        echo "             Refusing to fall back to -E — the lookahead would" >&2
+        echo "             silently change meaning and read clean. Install a" >&2
+        echo "             PCRE-enabled git, or rewrite the pattern for -E." >&2
+        exit 2
+    fi
+fi
+
+# --- the denominator ---------------------------------------------------
+# What the sweep will actually read. Established from the index, never from
+# a filesystem walk, so an ignored/hidden/symlinked path cannot vanish.
+if [[ ${#pathspecs[@]} -gt 0 ]]; then
+    swept=$(git ls-files -- "${pathspecs[@]}" | wc -l | tr -d ' ')
+else
+    swept=$(git ls-files | wc -l | tr -d ' ')
+fi
+
+scope_desc="whole tree"
+[[ ${#pathspecs[@]} -gt 0 ]] && scope_desc="${pathspecs[*]}"
+
+if [[ "$swept" -eq 0 ]]; then
+    cat >&2 <<EOF
+fleet-sweep: REFUSING to report a result — the sweep read ZERO files.
+
+  pathspec: $scope_desc
+
+Nothing was searched, so "no matches" would be meaningless. Usual causes:
+  * a typo'd or over-anchored pathspec (git pathspec '*' already crosses
+    '/', so 'creations/*.cpp' is right and 'creations/**/*.cpp' is not
+    needed);
+  * a path that exists on disk but is untracked or gitignored — git grep
+    only reads tracked content;
+  * a scope that is genuinely empty at this commit.
+
+Verify with:  git ls-files -- $scope_desc
+EOF
+    exit 2
+fi
+
+if [[ "$swept" -lt "$min_files" ]]; then
+    echo "fleet-sweep: swept $swept files but --min $min_files was required (pathspec: $scope_desc)." >&2
+    echo "             The scope narrowed unexpectedly; treat as NOT swept." >&2
+    exit 2
+fi
+
+# --- the search --------------------------------------------------------
+grep_args=("$mode")
+[[ -n "$icase" ]]     && grep_args+=("$icase")
+[[ -n "$list_only" ]] && grep_args+=("$list_only")
+[[ -z "$list_only" ]] && grep_args+=("-n")
+
+if [[ ${#pathspecs[@]} -gt 0 ]]; then
+    out=$(git grep "${grep_args[@]}" -e "$pattern" -- "${pathspecs[@]}" 2>&1)
+else
+    out=$(git grep "${grep_args[@]}" -e "$pattern" 2>&1)
+fi
+rc=$?
+
+# git grep: 0 = matched, 1 = no match, anything else = it failed to run.
+if [[ $rc -ne 0 && $rc -ne 1 ]]; then
+    echo "fleet-sweep: git grep failed (rc=$rc) — the sweep did NOT run." >&2
+    printf '%s\n' "$out" | sed 's/^/  /' >&2
+    exit 2
+fi
+
+[[ -n "$out" ]] && printf '%s\n' "$out"
+
+if [[ $rc -eq 0 ]]; then
+    hits=$(printf '%s\n' "$out" | grep -c '' )
+    echo "fleet-sweep: swept $swept files, $hits match line(s) — pattern FOUND (pathspec: $scope_desc)" >&2
+    exit 0
+fi
+
+echo "fleet-sweep: swept $swept files, 0 matches — PROVEN clean (pathspec: $scope_desc)" >&2
+exit 1

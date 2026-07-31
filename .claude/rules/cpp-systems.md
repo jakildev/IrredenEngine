@@ -7,6 +7,11 @@ paths:
 
 # System state lives on System<N> or in SystemParams, never function-local static
 
+> **Sweeping this rule?** Run it with `fleet-sweep`, not `rg` or the Grep
+> tool — a sweep rooted at `creations/` walks ~0 files and reads a false
+> clean (#2739). The `paths:` block above is an attach matcher, not a sweep
+> scope; see [README.md](README.md).
+
 Rule:
 
 > **Never** use function-local `static` for *mutable* or *system-owned* state inside a system tick or its `create()` function. Use the member-on-`System<N>` form (preferred) or the explicit `SystemParams` form.
