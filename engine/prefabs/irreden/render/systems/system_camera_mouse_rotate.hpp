@@ -99,7 +99,16 @@ template <> struct System<CAMERA_MOUSE_ROTATE> {
     }
 
     static SystemId create() {
-        return registerSystem<CAMERA_MOUSE_ROTATE, C_Camera>("CameraMouseRotate");
+        // MainThread is load-bearing, not documentation: `endTick` spawns the
+        // indicator with an eager `IREntity::createEntity` and immediately
+        // `getComponent`s the id it got back. Both are main-thread-only (see
+        // engine/entity/CLAUDE.md) — a multi-system pipeline group fans every
+        // member out onto a worker via IRJob::parallelFor, `endTick` included,
+        // regardless of the system's own Concurrency. The tag makes that a
+        // boot-time FATAL in `validateAllPipelineGroups` instead of a
+        // heisenbug. Not `Spawns`: T-225 lifted MUTATOR_IN_PARALLEL_GROUP, so
+        // it would document the mutation without preventing it.
+        return registerSystem<CAMERA_MOUSE_ROTATE, C_Camera, MainThread>("CameraMouseRotate");
     }
 };
 

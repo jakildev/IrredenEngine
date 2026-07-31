@@ -505,6 +505,15 @@ registered before `SHAPES_TO_TRIXEL`. The capture-frame hooks
 A creation that reorders camera controls after `SHAPES_TO_TRIXEL` breaks the
 drag path's marker; keep the controls ahead of it.
 
+`CAMERA_MOUSE_ROTATE` is registered with the `IRSystem::MainThread` tag for the
+same reason — the lazy spawn is an eager `IREntity::createEntity` followed
+immediately by `getComponent` on the returned id, and both are main-thread-only.
+A multi-system pipeline group dispatches every member onto a worker (`endTick`
+included, whatever the system's own `Concurrency`), so the tag turns that wiring
+mistake into a boot-time FATAL in `validateAllPipelineGroups` rather than a
+heisenbug. Keep the camera controls in singleton groups — the shape
+`registerPipeline` already produces.
+
 Gate: `python3 scripts/pivot-verify.py --blocks cursor-latch`; the ENABLED-path
 capture for the marker itself is
 `IRShapeDebug --pivot-verify cursor-latch --cursor-pivot-indicator`.
