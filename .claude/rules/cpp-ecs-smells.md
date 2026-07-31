@@ -31,13 +31,29 @@ In any system `tick` function:
     dropping the rest). This is the accepted canvas-iteration pattern; don't
     flag it.
 
-- **`IREntity::singleton<C_Foo>()` inside a per-entity `tick`/`endTick`**
-  (not `beginTick`). Same hash-map-lookup-per-row footgun as
-  `getComponent`, just against the singleton registry instead of the
-  archetype/component map. Fix: resolve once in `beginTick`, cache the
-  pointer (anonymous-namespace variable or `SystemParams`), and read the
-  cached pointer from `tick`/`endTick`. Canonical example:
-  `engine/prefabs/irreden/common/systems/system_modifier_resolve_global.hpp`.
+- **`IREntity::singleton<C_Foo>()` — and the rest of its family — inside a
+  per-entity `tick`/`endTick`** (not `beginTick`). Match the whole family, not
+  the bare spelling: `singleton(OrNull|Entity|EntityOrNull)?<`. The `…OrNull`
+  variants are the ones most likely to be missed, because
+  `engine/entity/CLAUDE.md` §"Pre-destroy hooks" actively directs authors to
+  `singletonEntityOrNull<T>` / `singletonOrNull<T>` wherever lazy-create is
+  unsafe — so the spelling a careful author reaches for is exactly the one a
+  bare-`singleton<` pattern is blind to.
+
+  The cost is **worse** than the `getComponent` footgun above, not a lateral
+  swap against a different map: `singleton<C>()` is
+  `getComponent<C>(singletonEntity<C>())` and `singletonEntity<C>()` is
+  `getOrCreateSingleton<C>()`, so each row pays the singleton-cache lookup **on
+  top of** the full `getComponent` cost (hash-map → archetype scan → hash-map).
+  `singletonOrNull<C>()` has the same two-lookup shape
+  (`singletonEntityOrNull` + `getComponentOptional`).
+
+  Fix: resolve once in `beginTick`, cache the pointer (anonymous-namespace
+  variable or `SystemParams`), and read the cached pointer from
+  `tick`/`endTick`. Canonical example:
+  `engine/prefabs/irreden/common/systems/system_modifier_resolve_global.hpp` —
+  it caches in `beginTick` and the per-entity body reads only the cached
+  pointer, so it is a working exemplar rather than an aspirational citation.
 
 - **`createEntity`, `addComponent`, `removeComponent`, or `removeEntity`**
   mid-iteration without the deferred variant. Fix: use

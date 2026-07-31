@@ -375,8 +375,15 @@ other open PRs' bodies before creating —
 
 ```bash
 gh pr list --repo <repo> --state open --json number,body \
-    --jq ".[] | select(.body | test(\"Closes #${closes_n}\\\\b\")) | .number"
+    --jq ".[] | select(.body | test(\"(Closes|Fixes|Resolves) #${closes_n}\\\\b\"; \"i\")) | .number"
 ```
+
+Match all three closing verbs, case-insensitively — the same pattern
+`role-worker.md`'s in-flight check uses. Narrowing this to bare `Closes` would
+leave the hole that check already closed: an open PR whose body says
+`Fixes #N` slips the guard and you get the exact duplicate-PR outcome #2507
+describes. The body template standardizes on `Closes`, so the practical risk is
+low, but the two checks exist for the same reason and must not disagree.
 
 A hit means an open PR already carries this fix's `Closes` line
 (title/branch matching cannot see body-only links, #2507). **Stop** — do
