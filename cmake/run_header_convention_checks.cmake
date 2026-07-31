@@ -8,8 +8,17 @@ if(NOT DEFINED QUALITY_FILES OR QUALITY_FILES STREQUAL "")
     message(FATAL_ERROR "QUALITY_FILES is empty. No files to check.")
 endif()
 
+# Headers that still carry banned namespace-scope mutable globals. Mirrors the
+# `## Live deviations` section of .claude/rules/cpp-globals.md — the rule text
+# and this executor are meant to name the same set, so update both together.
+# Ratchet only: a file may leave this list, never join it.
+set(header_global_baseline
+    "creations/demos/lighting/common/lighting_demo_scene.hpp" # 15 globals, #2728
+)
+
 set(anonymous_namespace_failures "")
 set(feature_detail_namespace_failures "")
+set(header_global_failures "")
 set(file_count 0)
 
 foreach(file_path IN LISTS QUALITY_FILES)
@@ -33,6 +42,53 @@ foreach(file_path IN LISTS QUALITY_FILES)
     if(has_feature_detail_namespace)
         list(APPEND feature_detail_namespace_failures "${normalized_file_path}")
     endif()
+
+    # Header-global ban (.claude/rules/cpp-globals.md): no new mutable
+    # namespace-scope `inline` / `extern` variable in a header. `constexpr` /
+    # `const` are program constants and stay allowed, as do the module entry
+    # points that declare the sanctioned manager globals.
+    set(is_baselined FALSE)
+    foreach(baselined IN LISTS header_global_baseline)
+        if(normalized_file_path MATCHES "/${baselined}$")
+            set(is_baselined TRUE)
+            break()
+        endif()
+    endforeach()
+    # engine/<module>/include/irreden/ir_<module>.hpp + engine/include/irreden/ir_engine.hpp
+    if(normalized_file_path MATCHES "/engine/([^/]+/)?include/irreden/ir_[^/]+\\.hpp$")
+        set(is_baselined TRUE)
+    endif()
+
+    if(NOT is_baselined)
+        # CMake's regex engine has no lookahead, so the rule's negative
+        # assertions are applied as per-line rejects below rather than inline.
+        file(STRINGS "${normalized_file_path}" candidate_lines REGEX "^[ \t]*(inline|extern)[ \t]")
+        foreach(line IN LISTS candidate_lines)
+            # `extern "C" {` — a linkage block, not a variable.
+            if(line MATCHES "^[ \t]*extern[ \t]+\"")
+                continue()
+            endif()
+            # constexpr / const anywhere in the qualifier run: a program
+            # constant. Catches `inline constexpr`, `extern const`, and the
+            # `inline static const` form the rule's inline lookahead missed.
+            if(line MATCHES "(^|[ \t])(const|constexpr)[ \t]")
+                continue()
+            endif()
+            # A `(` before the initializer means a function declaration, which
+            # is what the rule's `[^(]*` guard drops.
+            if(line MATCHES "^[^;={]*\\(")
+                continue()
+            endif()
+            if(line MATCHES "(^|[ \t])void[ \t]")
+                continue()
+            endif()
+            if(NOT line MATCHES "[;={]")
+                continue()
+            endif()
+            string(STRIP "${line}" stripped_line)
+            list(APPEND header_global_failures "${normalized_file_path}: ${stripped_line}")
+        endforeach()
+    endif()
 endforeach()
 
 message(STATUS "Header convention checks scanned ${file_count} header file(s).")
@@ -53,5 +109,16 @@ if(feature_detail_namespace_failures)
         "nested lowercase `detail` convention unless the helper namespace is an intentional "
         "shared submodule.\n"
         "  - ${feature_detail_namespace_failures_joined}"
+    )
+endif()
+
+if(header_global_failures)
+    list(JOIN header_global_failures "\n  - " header_global_failures_joined)
+    message(FATAL_ERROR
+        "Mutable namespace-scope globals are not allowed in headers. Every process- or "
+        "world-scoped mutable object needs an owner, a lifecycle, and an accessor; route "
+        "this one to the pattern that fits its state kind (see the table in "
+        ".claude/rules/cpp-globals.md). `constexpr` / `const` constants stay allowed.\n"
+        "  - ${header_global_failures_joined}"
     )
 endif()

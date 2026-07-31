@@ -55,24 +55,32 @@ change `ir_<module>.cpp` internals, not call sites).
 Grep new diff hunks in headers for namespace-scope `inline` / `extern`
 declarations that are not `constexpr` / `const`:
 
+**This check is executed** — don't hand-grep it. It lives in
+`cmake/run_header_convention_checks.cmake` alongside the anonymous-namespace
+and `*Detail`-namespace checks, and runs via either target:
+
 ```
-pattern: '^\s*(inline|extern)\s+(?!(constexpr|const|void)\b)[^(]*[;={]'
-glob:    '**/*.{hpp,h}'
+cmake --build <build-dir> --target header-checks   # pure CMake, no external tools
+cmake --build <build-dir> --target lint            # + clang-tidy
 ```
 
-The `[^(]*` guard drops function declarations; classify surviving hits by
-hand. Allowlisted paths (the sanctioned patterns above): module entry
-points `engine/*/include/irreden/ir_*.hpp` and
-`engine/include/irreden/ir_engine.hpp`. Everything else that matches is a
-violation — route it to the pattern that fits the state kind per the table.
+It reports the offending file and declaration and fails the target. The
+matcher allows `constexpr` / `const` (including `inline static const`),
+`extern "C"` linkage blocks, and function declarations; allowlisted paths
+are the module entry points `engine/*/include/irreden/ir_*.hpp` and
+`engine/include/irreden/ir_engine.hpp`.
+
+Keep the executor and this file in sync — a detection spec nothing runs
+drifts silently (see #2727).
 
 ## Live deviations
 
-- `system_update_joint_matrices.hpp::g_jointMatrixSystem` and
-  `system_update_voxel_positions_gpu.hpp::g_allocatorSystem` — wire-once
-  system handles; migrate to the `SystemManager` registry (#2526).
-- `widget_theme.hpp::g_defaultTheme` — mutate-once widget theme; migrate
-  to a `C_WidgetTheme` singleton component (#2527).
+- `creations/demos/lighting/common/lighting_demo_scene.hpp` — 15 demo
+  CLI/config globals, two wire-once `SystemId` handles, and one scene
+  `EntityId`; migrate to a singleton component + the `SystemManager`
+  registry (#2728).
 
-Don't add new violations; these migrate via the tracked issues. Don't
-migrate them in an unrelated PR — the issues carry the plans.
+This list mirrors `header_global_baseline` in
+`cmake/run_header_convention_checks.cmake` — update both together. The
+baseline is a ratchet: a file may leave it, never join it. Don't migrate a
+deviation in an unrelated PR — the issue carries the plan.

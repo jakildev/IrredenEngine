@@ -139,6 +139,18 @@ function(irreden_add_quality_targets)
         )
     endif()
 
+    # Standalone so the header conventions stay runnable without clang-tidy
+    # installed — they are pure CMake and have no external tool dependency,
+    # but until now they only ran as the second command of `lint`, which
+    # exists only when find_program below succeeds.
+    add_custom_target(header-checks
+        COMMAND ${CMAKE_COMMAND}
+            -DQUALITY_FILE_LIST="${irreden_quality_file_list}"
+            -P "${PROJECT_SOURCE_DIR}/cmake/run_header_convention_checks.cmake"
+        COMMENT "Running header convention checks"
+        VERBATIM
+    )
+
     find_program(IRREDEN_CLANG_TIDY_BIN NAMES clang-tidy HINTS ${IRREDEN_CLANG_TOOL_HINTS})
     if(IRREDEN_CLANG_TIDY_BIN)
         add_custom_target(lint
