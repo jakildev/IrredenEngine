@@ -485,6 +485,38 @@ if ! [[ "$CLAIM_SETTLE_SECONDS" =~ ^[0-9]+$ ]]; then
     CLAIM_SETTLE_SECONDS=90
 fi
 
+# Class fairness floor. The cross-class fan-out serves another class only when
+# the elected one is fully covered (headroom 0), which inherits the settle
+# window's premise above: a claimed task leaves tasks_open, so coverage is
+# eventually reached. An item every worker REFUSES — host-gated, design-parked,
+# content-declined — breaks that: it is never claimed, so it counts toward
+# DISPATCH_COUNT forever, while the workers that walked it and declined age out
+# of CLAIM_SETTLE_SECONDS. Headroom stays permanently positive and the fan-out
+# is unreachable, letting one class hold the lane indefinitely (observed: 39h,
+# see #2699).
+#
+# So bound the monopoly by turns as well: after this many consecutive ticks
+# electing the same class while ANOTHER class is claimable, yield one pass to
+# the next class regardless of coverage. Turn count is a deliberately weaker
+# signal than "workers claimed nothing" (that needs the per-(role, class, host)
+# empty-exit streak, #2698) — this bounds how long a monopoly can last, it does
+# not detect one. 0 disables the floor, leaving coverage the only yield.
+# Validated-and-clamped like the overrides above: a non-numeric value would
+# emit arithmetic errors every tick or kill the daemon under `set -u`.
+CLASS_FAIRNESS_RUN="${FLEET_DISPATCHER_CLASS_FAIRNESS_RUN:-3}"
+if ! [[ "$CLASS_FAIRNESS_RUN" =~ ^[0-9]+$ ]]; then
+    printf '[%s dispatcher] CLASS_FAIRNESS_RUN=%q is not a non-negative integer; falling back to 3\n' \
+        "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$CLASS_FAIRNESS_RUN" >&2
+    CLASS_FAIRNESS_RUN=3
+fi
+# Per-role bookkeeping for the floor: the class elected on the previous tick
+# that reached an election, and how many consecutive such ticks elected it with
+# another class still claimable. In-memory / daemon-lifetime, like
+# CAP_DEFER_LOGGED — a restart forgives the run, which is the right default for
+# a fairness heuristic (no state file to go stale or leak).
+declare -A CLASS_ELECTION_LAST=()
+declare -A CLASS_ELECTION_RUN=()
+
 # Roles this dispatcher is responsible for. Architects are excluded
 # (kept on fleet-babysit). Panes are a generic pool, so this list — not
 # pane topology — is what enables a role: the smoke-worker and
@@ -1552,9 +1584,34 @@ dispatch_role() {
     # three (opus|fable|sonnet), so the loop runs a handful of times then either
     # finds a class with headroom, hits the uncapped path, or defers.
     local claim_headroom=-1   # -1 = uncapped
-    local _excluded="" _passes=0
+    local _excluded="" _sat_excluded="" _passes=0
+    # Fairness floor (#2699): the headroom test below can never fire when the
+    # elected class's claimable items are ones every worker refuses, so bound
+    # the monopoly by turns as well. `_fair_yield` is kept separate from the
+    # saturation exclusions (`_sat_excluded`) so it can be dropped on its own
+    # if the yield turns out to have nothing to yield TO.
+    local _fair_yield=""
+    if (( CLASS_FAIRNESS_RUN > 0 )) \
+        && [[ -n "${CLASS_ELECTION_LAST[$role]:-}" ]] \
+        && (( ${CLASS_ELECTION_RUN[$role]:-0} >= CLASS_FAIRNESS_RUN )); then
+        _fair_yield="${CLASS_ELECTION_LAST[$role]}"
+        log "$role: class=$_fair_yield elected ${CLASS_ELECTION_RUN[$role]} consecutive ticks with other classes queued; yielding one pass (fairness floor)"
+    fi
     while : ; do
+        _excluded="$_sat_excluded"
+        [[ -n "$_fair_yield" ]] && _excluded="$_fair_yield${_excluded:+,$_excluded}"
         resolve_worker_class "$role" "$_excluded"
+        # The yielded class was claimable when the run accumulated; by this tick
+        # the OTHER class may not be. Drop only the fairness exclusion (keeping
+        # any saturation exclusions, which are still true) and re-resolve, so the
+        # floor can never turn a servable tick into a deferred one. One-shot:
+        # clearing `_fair_yield` makes this branch unreachable on the retry.
+        if [[ -n "$_fair_yield" ]] && (( DISPATCH_DEFER )); then
+            log "$role: fairness yield of class=$_fair_yield found no other servable class; serving it after all"
+            _fair_yield=""
+            CLASS_ELECTION_RUN["$role"]=0
+            continue
+        fi
         if (( DISPATCH_DEFER )); then
             # Nothing a fresh worker can claim right now: cap-blocked fable only,
             # the queue's only items already have open PRs (inflight_pr, #1726),
@@ -1585,7 +1642,7 @@ dispatch_role() {
         fi
         # This class is saturated. Serve another claimable class if one exists.
         if (( DISPATCH_MORE )) && (( _passes++ < 3 )); then
-            _excluded="${_excluded:+$_excluded,}$DISPATCH_CLASS"
+            _sat_excluded="${_sat_excluded:+$_sat_excluded,}$DISPATCH_CLASS"
             log "$role: class=$DISPATCH_CLASS covered ($class_racing in-flight >= $DISPATCH_COUNT claimable); serving next class"
             continue
         fi
@@ -1598,6 +1655,27 @@ dispatch_role() {
         return
     done
     unset "CAP_DEFER_LOGGED[$role-noclaim]" "CAP_DEFER_LOGGED[$role-claimcap]"
+
+    # Fairness-floor bookkeeping (#2699). Deliberately here, after the election
+    # settled and before the fan-out: every return path above (no trigger, role
+    # cap, no idle pane, defer) skips it, so a quiet or fully-busy fleet cannot
+    # accumulate a run it never actually served and then yield spuriously.
+    # `DISPATCH_CLASS` is empty on the uncapped/lane-default path and for
+    # non-worker roles, which is what keeps this worker-lane-only.
+    if [[ -n "$DISPATCH_CLASS" ]]; then
+        if (( ! DISPATCH_MORE )); then
+            # Sole servable class — there is nothing to be fair to, so serving
+            # it again is not a monopoly. Reset rather than accumulate, or a
+            # single-class stretch would bank a run and yield the moment a
+            # second class appeared.
+            CLASS_ELECTION_RUN["$role"]=0
+        elif [[ "${CLASS_ELECTION_LAST[$role]:-}" == "$DISPATCH_CLASS" ]]; then
+            CLASS_ELECTION_RUN["$role"]=$(( ${CLASS_ELECTION_RUN[$role]:-0} + 1 ))
+        else
+            CLASS_ELECTION_RUN["$role"]=1
+        fi
+        CLASS_ELECTION_LAST["$role"]="$DISPATCH_CLASS"
+    fi
 
     local dispatched=0
     local gap_blocked=""
@@ -2170,6 +2248,29 @@ case "${1:-}" in
         fi
         DISPATCH_MODE="$(read_dispatch_mode)"
         build_dispatch_command "$2" "$3"
+        exit 0
+        ;;
+    --dispatch-role)
+        # Test/debug: run <count> (default 1) consecutive dispatch_role ticks
+        # and exit, without starting the daemon loop. The ticks deliberately
+        # share one process — the class fairness floor's run counter is
+        # daemon-lifetime, so a multi-tick monopoly and the yield that ends it
+        # are only observable within a single process. Everything a tick touches
+        # is env-redirectable (FLEET_STATE_DIR, tmux/pgrep on PATH), so this
+        # stays hermetic; assert on the log lines, which go to stderr.
+        # Usage: --dispatch-role <role> [count]
+        if [[ -z "${2:-}" ]]; then
+            echo "usage: fleet-dispatcher --dispatch-role <role> [count]" >&2
+            exit 2
+        fi
+        if [[ -n "${3:-}" ]] && ! [[ "$3" =~ ^[1-9][0-9]*$ ]]; then
+            echo "fleet-dispatcher --dispatch-role: count must be a positive integer" >&2
+            exit 2
+        fi
+        DISPATCH_MODE="$(read_dispatch_mode)"
+        for (( _tick = 0; _tick < ${3:-1}; _tick++ )); do
+            dispatch_role "$2"
+        done
         exit 0
         ;;
     --resolve-class)

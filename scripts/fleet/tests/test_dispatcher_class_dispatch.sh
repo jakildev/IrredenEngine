@@ -269,6 +269,231 @@ assert_eq "$(resolve_unpinned sonnet)" \
     "class=sonnet model=sonnet effort=high more=0 defer=0 count=1 plan=0" \
     "unpinned sonnet resolves to FLEET_SONNET_CLASS_DEFAULT=sonnet"
 
+# --- T20+: class fairness floor (#2699) ---------------------------------------
+#
+# The measured defect shape: the elected class's claimable items are ones every
+# worker REFUSES, so they never leave tasks_open, while the workers that walked
+# and declined them age past CLAIM_SETTLE_SECONDS and stop counting as racing.
+# `claim_headroom = DISPATCH_COUNT - class_racing` therefore stays permanently
+# positive and the `serving next class` fan-out at the saturation branch is
+# unreachable — 57 opus / 0 sonnet / 0 fable dispatches over 2h in the wild.
+#
+# Reproduced here by pinning CLAIM_SETTLE_SECONDS=0 (nothing is ever "recent",
+# so class_racing is always 0 — the same end state as every record aging out)
+# against a slice with more opus items than the tick can cover. The assertions
+# below run whole dispatch_role ticks via --dispatch-role, not just the
+# resolver, so the positive case observes a non-elected class ACTUALLY
+# DISPATCHED rather than merely a counter incrementing.
+export FLEET_RESERVATIONS_DIR="$TMPROOT/reservations"; mkdir -p "$FLEET_RESERVATIONS_DIR"
+export FLEET_DISPATCH_MIN_GAP_SECONDS=0     # no stagger between the ticks
+export FLEET_DISPATCHER_CLAIM_SETTLE_SECONDS=0
+export FLEET_CONCURRENCY_WORKER=5           # > the tick count, so the role cap never gates
+export FLEET_SESSION="fleet-test-$$"
+
+# Five idle pool panes, each on its own worktree (count_active_for_role dedupes
+# by worktree). pgrep exits 1 so no pane reads as running a wrapper.
+cat > "$STUB_BIN/tmux" <<'TMUXEOF'
+#!/usr/bin/env bash
+sub="$1"; shift
+case "$sub" in
+    has-session) exit 0 ;;
+    list-panes)
+        for i in 1 2 3 4 5; do printf '%%%s|pool|zsh\n' "$i"; done
+        exit 0
+        ;;
+    display-message)
+        pane=""; fmt=""
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                -t) pane="$2"; shift 2 ;;
+                -p) fmt="$2"; shift 2 ;;
+                *)  shift ;;
+            esac
+        done
+        if [[ "$fmt" == *pane_current_path* ]]; then
+            echo "/fake/worktrees/pool-${pane#%}"
+        elif [[ "$fmt" == *pane_pid* ]]; then
+            echo "1"
+        fi
+        exit 0
+        ;;
+    send-keys) exit 0 ;;
+    *) exit 0 ;;
+esac
+TMUXEOF
+chmod +x "$STUB_BIN/tmux"
+cat > "$STUB_BIN/pgrep" <<'PGREPEOF'
+#!/usr/bin/env bash
+exit 1
+PGREPEOF
+chmod +x "$STUB_BIN/pgrep"
+
+# One opus task (the refused-but-permanently-counted head) + one sonnet task
+# (the starved lane). DISPATCH_COUNT=1 with class_racing pinned to 0 makes
+# claim_headroom permanently 1 — positive, so the saturation fan-out never
+# fires — while capping each tick's fan-out at a single pane, which is what
+# makes ticks countable in the assertions below.
+MONOPOLY_SLICE='{"tasks_open":[
+  {"issue":"#10","model":"opus","effort":null,"owner":"free","blocked":false},
+  {"issue":"#13","model":"sonnet","effort":null,"owner":"free","blocked":false}],
+ "feedback_prs":[],"needs_plan":[]}'
+OPUS_ONLY_SLICE='{"tasks_open":[
+  {"issue":"#10","model":"opus","effort":null,"owner":"free","blocked":false}],
+ "feedback_prs":[],"needs_plan":[]}'
+
+# Run <count> consecutive worker ticks from a clean dispatch dir + fresh
+# trigger, and print the dispatcher log (stderr) for assertion.
+run_ticks() { # $1 = tick count, rest = env assignments
+    rm -f "$FLEET_STATE_DIR/dispatch"/*.json
+    mkdir -p "$FLEET_STATE_DIR/triggers"
+    : > "$FLEET_STATE_DIR/triggers/worker"
+    write_slice worker "$MONOPOLY_SLICE"
+    local n="$1"; shift
+    env "$@" "$DISPATCHER" --dispatch-role worker "$n" 2>&1 >/dev/null
+}
+
+echo "T20: negative control — a single tick still dispatches the elected class"
+# Scoped to ONE tick deliberately: the floor yields on turn count, so a
+# multi-tick soak would (correctly) yield and read as a regression. One tick is
+# the shape that pins "the settle-window intent at fleet-dispatcher:470-481 is
+# preserved — a healthy elected class is served, not withheld".
+out=$(run_ticks 1)
+case "$out" in
+    *"dispatching worker -> %1 [class=opus"*)
+        PASS=$((PASS+1)); echo "  ok: elected opus dispatched on the first tick" ;;
+    *) FAIL=$((FAIL+1)); echo "  FAIL: first tick did not dispatch opus:"; printf '%s\n' "$out" ;;
+esac
+case "$out" in
+    *"fairness floor"*) FAIL=$((FAIL+1)); echo "  FAIL: floor fired on the first tick" ;;
+    *) PASS=$((PASS+1)); echo "  ok: no yield before the run threshold" ;;
+esac
+
+echo "T21: positive fire — the 4th tick dispatches the NON-elected class"
+out=$(run_ticks 4)
+case "$out" in
+    *"dispatching worker -> "*"[class=sonnet"*)
+        PASS=$((PASS+1)); echo "  ok: sonnet (never elected) actually dispatched" ;;
+    *) FAIL=$((FAIL+1)); echo "  FAIL: no sonnet dispatch in 4 ticks:"; printf '%s\n' "$out" ;;
+esac
+case "$out" in
+    *"class=opus elected 3 consecutive ticks with other classes queued; yielding one pass (fairness floor)"*)
+        PASS=$((PASS+1)); echo "  ok: yield logged with class and run length" ;;
+    *) FAIL=$((FAIL+1)); echo "  FAIL: fairness-yield log line missing:"; printf '%s\n' "$out" ;;
+esac
+# The headroom-based fan-out must NOT be what produced it — that branch is
+# exactly the one the defect makes unreachable in this slice shape.
+case "$out" in
+    *"serving next class"*)
+        FAIL=$((FAIL+1)); echo "  FAIL: saturation fan-out fired; the defect shape is not reproduced" ;;
+    *) PASS=$((PASS+1)); echo "  ok: sonnet came from the floor, not the (unreachable) headroom fan-out" ;;
+esac
+assert_eq "$(printf '%s\n' "$out" | grep -c 'dispatching worker -> .*class=opus')" "3" \
+    "opus served exactly its 3 turns before the yield"
+
+echo "T22: FLEET_DISPATCHER_CLASS_FAIRNESS_RUN=0 disables the floor"
+out=$(run_ticks 5 FLEET_DISPATCHER_CLASS_FAIRNESS_RUN=0)
+case "$out" in
+    *"[class=sonnet"*) FAIL=$((FAIL+1)); echo "  FAIL: floor fired while disabled" ;;
+    *) PASS=$((PASS+1)); echo "  ok: run=0 restores the pre-#2699 headroom-only behaviour" ;;
+esac
+
+echo "T23: a non-numeric threshold falls back to 3 instead of killing the daemon"
+out=$(run_ticks 4 FLEET_DISPATCHER_CLASS_FAIRNESS_RUN=banana)
+case "$out" in
+    *"CLASS_FAIRNESS_RUN=banana is not a non-negative integer; falling back to 3"*)
+        PASS=$((PASS+1)); echo "  ok: invalid override warned and clamped" ;;
+    *) FAIL=$((FAIL+1)); echo "  FAIL: no clamp warning:"; printf '%s\n' "$out" ;;
+esac
+case "$out" in
+    *"[class=sonnet"*) PASS=$((PASS+1)); echo "  ok: clamped default still yields on the 4th tick" ;;
+    *) FAIL=$((FAIL+1)); echo "  FAIL: clamped-to-3 floor did not fire" ;;
+esac
+
+echo "T24: single-class slice never accumulates a run (more=0 resets it)"
+write_slice worker "$OPUS_ONLY_SLICE"
+rm -f "$FLEET_STATE_DIR/dispatch"/*.json
+: > "$FLEET_STATE_DIR/triggers/worker"
+out=$("$DISPATCHER" --dispatch-role worker 5 2>&1 >/dev/null)
+case "$out" in
+    *"fairness floor"*) FAIL=$((FAIL+1)); echo "  FAIL: floor fired with no other class to serve" ;;
+    *) PASS=$((PASS+1)); echo "  ok: opus-only slice serves opus indefinitely — no monopoly to break" ;;
+esac
+
+echo "T25: the floor never turns a servable tick into a deferred one"
+# The class the run accrued against is gone by the time the yield fires (its
+# task got claimed between ticks — the scout rewrites the slice constantly, so
+# this is a live daemon state, not a contrived one). The yield must drop its
+# own exclusion and serve the elected class anyway rather than defer the tick.
+# Simulated at the send-keys seam: the 3rd dispatch is when "another worker
+# claimed the sonnet task", so the stub rewrites the slice to drop it.
+export STUB_SLICE_AFTER_3="$TMPROOT/slice-after-3.json"
+printf '%s\n' "$OPUS_ONLY_SLICE" > "$STUB_SLICE_AFTER_3"
+export STUB_SEND_COUNT="$TMPROOT/send-count"
+cat > "$STUB_BIN/tmux" <<'TMUXEOF'
+#!/usr/bin/env bash
+sub="$1"; shift
+case "$sub" in
+    has-session) exit 0 ;;
+    list-panes)
+        for i in 1 2 3 4 5; do printf '%%%s|pool|zsh\n' "$i"; done
+        exit 0
+        ;;
+    display-message)
+        pane=""; fmt=""
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                -t) pane="$2"; shift 2 ;;
+                -p) fmt="$2"; shift 2 ;;
+                *)  shift ;;
+            esac
+        done
+        if [[ "$fmt" == *pane_current_path* ]]; then
+            echo "/fake/worktrees/pool-${pane#%}"
+        elif [[ "$fmt" == *pane_pid* ]]; then
+            echo "1"
+        fi
+        exit 0
+        ;;
+    send-keys)
+        # Optional world-changes-under-us seam (T25): after N dispatches,
+        # swap in a slice where the other class's work is gone.
+        if [[ -n "${STUB_SLICE_AFTER_3:-}" && -n "${STUB_SEND_COUNT:-}" ]]; then
+            n=$(( $(cat "$STUB_SEND_COUNT" 2>/dev/null || echo 0) + 1 ))
+            printf '%s' "$n" > "$STUB_SEND_COUNT"
+            (( n >= 3 )) && cp "$STUB_SLICE_AFTER_3" "$FLEET_STATE_DIR/projections/worker.json"
+        fi
+        exit 0
+        ;;
+    *) exit 0 ;;
+esac
+TMUXEOF
+chmod +x "$STUB_BIN/tmux"
+rm -f "$FLEET_STATE_DIR/dispatch"/*.json "$STUB_SEND_COUNT"
+: > "$FLEET_STATE_DIR/triggers/worker"
+write_slice worker "$MONOPOLY_SLICE"
+out=$("$DISPATCHER" --dispatch-role worker 4 2>&1 >/dev/null)
+case "$out" in
+    *"fairness yield of class=opus found no other servable class; serving it after all"*)
+        PASS=$((PASS+1)); echo "  ok: vanished alternative detected, exclusion dropped" ;;
+    *) FAIL=$((FAIL+1)); echo "  FAIL: no fallback log line:"; printf '%s\n' "$out" ;;
+esac
+assert_eq "$(printf '%s\n' "$out" | grep -c 'dispatching worker -> .*class=opus')" "4" \
+    "all four ticks dispatched opus — the yield degraded to serving it, not to a defer"
+case "$out" in
+    *"deferring trigger"*|*"no claimable work"*)
+        FAIL=$((FAIL+1)); echo "  FAIL: the yield deferred a servable tick" ;;
+    *) PASS=$((PASS+1)); echo "  ok: no tick deferred" ;;
+esac
+unset STUB_SLICE_AFTER_3 STUB_SEND_COUNT
+
+echo "T26: --dispatch-role argument validation"
+"$DISPATCHER" --dispatch-role >/dev/null 2>&1 \
+    && { FAIL=$((FAIL+1)); echo "  FAIL: missing role exited zero"; } \
+    || { PASS=$((PASS+1)); echo "  ok: missing role exits non-zero"; }
+"$DISPATCHER" --dispatch-role worker 0 >/dev/null 2>&1 \
+    && { FAIL=$((FAIL+1)); echo "  FAIL: count=0 exited zero"; } \
+    || { PASS=$((PASS+1)); echo "  ok: non-positive count exits non-zero"; }
+
 echo
 echo "PASS: $PASS  FAIL: $FAIL"
 [[ "$FAIL" -eq 0 ]]
