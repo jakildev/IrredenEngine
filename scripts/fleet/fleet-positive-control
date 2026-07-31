@@ -1,0 +1,150 @@
+#!/usr/bin/env bash
+# fleet-positive-control — run a test suite against a pre-fix ref to prove the
+# suite actually detects the fix (i.e. that it is not vacuous).
+#
+# Why this exists
+# ---------------
+# scripts/fleet/ has no CI coverage, so a new suite's worth rests on a positive
+# control: stage the old code, run the new suite against it, and confirm the
+# fix-specific assertions fail there. Hand-staging that gets it wrong silently.
+#
+# The wrappers here dispatch to the fleet_*.py modules beside them, so staging
+# only the script under test makes every invocation abort on its own lib-dir
+# preflight with rc=1 and empty stdout — which the suite records as ordinary
+# assertion failures and reports as a normal-looking tally. A mis-stage read
+# 2 passed / 21 failed where the truth was 14 / 9, inflating the fix's apparent
+# coverage with nothing to signal the number was bogus (#2713).
+#
+# Staging the whole directory with `git archive` puts that failure mode out of
+# reach. `require_fleet_lib_dir` in tests/lib_assert.sh is the backstop for
+# controls still run by hand.
+#
+# Usage
+# -----
+#   fleet-positive-control <test-file> <ref> [--include <pathspec>]...
+#
+#   <test-file>  the suite to run — your working-tree copy, which is the
+#                version under development and the thing being validated
+#   <ref>        the pre-fix baseline (e.g. origin/master, or the sha the
+#                fix landed on top of)
+#   --include    stage an extra pathspec beside scripts/fleet (repeatable),
+#                for a suite that reads outside this directory
+#
+# Output ends with a copy-pasteable line for the PR body's test plan, with the
+# arithmetic already checked — the #2708 nit was a miscounted fail count.
+#
+# Exit status:
+#   0  control is meaningful — at least one assertion failed on the old code
+#   1  control is VACUOUS — the suite passes unchanged against the old code,
+#      so it does not test the fix
+#   2  usage error, bad ref, or the suite aborted as a setup failure
+
+set -euo pipefail
+
+die() { echo "fleet-positive-control: $*" >&2; exit 2; }
+
+TEST_FILE=""
+REF=""
+INCLUDES=()
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --include)
+            [[ -n "${2:-}" ]] || die "--include needs a pathspec"
+            INCLUDES+=("$2"); shift 2 ;;
+        --include=*)
+            spec="${1#--include=}"
+            [[ -n "$spec" ]] || die "--include= needs a pathspec"
+            INCLUDES+=("$spec"); shift ;;
+        -h|--help)
+            # The whole header comment, minus the shebang — a line range would
+            # silently truncate the moment the header grows.
+            awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' "$0"
+            exit 0 ;;
+        -*)
+            die "unknown option: $1" ;;
+        *)
+            if   [[ -z "$TEST_FILE" ]]; then TEST_FILE="$1"
+            elif [[ -z "$REF" ]];       then REF="$1"
+            else die "unexpected argument: $1"
+            fi
+            shift ;;
+    esac
+done
+
+[[ -n "$TEST_FILE" && -n "$REF" ]] || die "usage: fleet-positive-control <test-file> <ref> [--include <pathspec>]..."
+[[ -f "$TEST_FILE" ]] || die "test file not found: $TEST_FILE"
+
+REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || die "not inside a git working tree"
+git -C "$REPO_ROOT" rev-parse --verify --quiet "$REF^{commit}" >/dev/null \
+    || die "not a commit-ish: $REF"
+REF_SHA=$(git -C "$REPO_ROOT" rev-parse --short "$REF^{commit}")
+# A symbolic ref is worth pinning to its sha; a ref the caller already gave as a
+# sha would just print itself twice.
+REF_LABEL="$REF"
+[[ "$REF_SHA" == "$REF"* ]] || REF_LABEL="$REF ($REF_SHA)"
+
+# Absolute, so the copy below is immune to the cd into the staged tree.
+TEST_ABS=$(cd "$(dirname "$TEST_FILE")" && pwd)/$(basename "$TEST_FILE")
+# Where the suite sits relative to the repo, so it lands in the same spot in
+# the staged tree and its own $(dirname $0)/.. resolution still works.
+TEST_REL=${TEST_ABS#"$REPO_ROOT"/}
+[[ "$TEST_REL" != "$TEST_ABS" ]] || die "test file is outside the repo: $TEST_FILE"
+
+STAGE=$(mktemp -d)
+cleanup() { [[ -n "${STAGE:-}" && -d "$STAGE" ]] && rm -rf "$STAGE"; }
+trap cleanup EXIT
+
+# Whole directory, never a hand-picked subset — that is the entire point.
+git -C "$REPO_ROOT" archive "$REF" scripts/fleet "${INCLUDES[@]+"${INCLUDES[@]}"}" \
+    | tar -x -C "$STAGE" || die "failed to stage scripts/fleet from $REF"
+
+# Drop the working-tree suite over the old tree: new test, old code.
+mkdir -p "$STAGE/$(dirname "$TEST_REL")"
+cp "$TEST_ABS" "$STAGE/$TEST_REL"
+chmod +x "$STAGE/$TEST_REL"
+
+echo "positive control: $(basename "$TEST_FILE") vs $REF_LABEL"
+echo "  staged scripts/fleet${INCLUDES[*]+ + ${INCLUDES[*]}} into $STAGE"
+echo ""
+
+set +e
+"$STAGE/$TEST_REL" > "$STAGE/.out" 2>&1
+RC=$?
+set -e
+cat "$STAGE/.out"
+
+# summarize's own line is the authority on the counts — parsing it keeps this
+# wrapper honest about what the suite actually reported. The `|| true` matters:
+# no match is the no-tally case handled below, and under `set -o pipefail` it
+# would otherwise kill the script here with rc=1, which reads as "vacuous".
+TALLY=$(grep -E '^(passed: [0-9]+  failed: [0-9]+|.*: [0-9]+ passed, [0-9]+ failed)$' "$STAGE/.out" | tail -1 || true)
+if [[ -z "$TALLY" ]]; then
+    echo ""
+    echo "fleet-positive-control: the suite printed no tally (exit $RC)." >&2
+    echo "  It aborted before summarize — treat this as a setup failure, not a result." >&2
+    exit 2
+fi
+
+if [[ "$TALLY" =~ ^passed:\ ([0-9]+)\ \ failed:\ ([0-9]+)$ ]]; then
+    P=${BASH_REMATCH[1]}; F=${BASH_REMATCH[2]}
+else
+    [[ "$TALLY" =~ ([0-9]+)\ passed,\ ([0-9]+)\ failed$ ]] || die "could not parse tally: $TALLY"
+    P=${BASH_REMATCH[1]}; F=${BASH_REMATCH[2]}
+fi
+TOTAL=$((P + F))
+
+echo ""
+echo "--- positive control result ---"
+if [[ "$F" -eq 0 ]]; then
+    echo "VACUOUS: all $TOTAL assertions pass against $REF_LABEL."
+    echo "The suite does not distinguish the fix from the code it replaces."
+    exit 1
+fi
+
+echo "MEANINGFUL: $F of $TOTAL assertions fail against $REF_LABEL."
+echo ""
+echo "For the PR body's test plan:"
+echo "- [x] **Positive control**: the suite run against the pre-fix \`$REF\` (\`$REF_SHA\`)"
+echo "      fails **$F** assertions; the **$P** that still pass are the non-regression"
+echo "      assertions. ($P + $F = $TOTAL, the full suite.)"
