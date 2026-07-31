@@ -207,16 +207,23 @@ Paste the PR URL.
 > **Claim-label lifecycle.** `fleet-claim release` clears the local
 > filesystem lock and the worktree reservation. The issue's
 > `fleet:claim-<host>-<agent>` and `fleet:in-progress` labels are
-> normally **left in place** — they persist through the PR's
-> review/merge lifecycle and are swept by `fleet-claim cleanup --gh`
-> only when the issue closes or the claim goes stale with no matching
-> open `claude/<N>-*` PR. Don't hand-strip them. The one exception is
-> a **design-blocked / design-unblocked** escalation: when the issue's
-> matching PR is parked, `release` clears those two labels itself so
-> the scout stops treating the issue as in-progress and any worker can
-> re-claim once the architect unblocks it (#1488). You don't do
-> anything special — the design-escalation step's existing
-> `fleet-claim release <N>` call handles it.
+> **left in place while a live PR backs the claim** — they persist
+> through that PR's review/merge lifecycle. Don't hand-strip them.
+> When no live PR backs the claim, `release` clears both labels
+> itself so the scout stops treating the issue as in-progress and any
+> worker can re-claim. Two such cases, and you do nothing special for
+> either — the `fleet-claim release <N>` you already run handles it:
+>
+> - **design-blocked / design-unblocked escalation** — the matching PR
+>   is parked, awaiting the architect (#1488).
+> - **decline after claim** — you claimed, found the task unworkable,
+>   commented why, and released without ever opening a PR (#2732).
+>   Retaining the labels here parked a still-`fleet:queued` task in
+>   the scout's `in_progress[]` bucket, invisible to every pane's
+>   queue walk, until the `cleanup --gh` TTL aged it out.
+>
+> `fleet-claim cleanup --gh` remains the TTL safety net for a claim
+> abandoned with no `release` call at all (crash, killed pane).
 
 Then run the shared shutdown ceremony — see
 [`FLEET-RUNTIME.md § Per-iteration shutdown`](FLEET-RUNTIME.md#per-iteration-shutdown--final-step).

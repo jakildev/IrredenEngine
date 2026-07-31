@@ -2,10 +2,13 @@
 # Tests for the #1488 claim-lifecycle hardening in fleet-claim:
 #
 #   Fix A — `fleet-claim release` clears this host's `fleet:claim-<host>-*`
-#           + `fleet:in-progress` labels off the issue ONLY when the issue's
-#           matching open PR is parked (fleet:design-blocked/-unblocked). A
-#           normal PR-open release (active matching PR) keeps the labels, per
-#           AUTHOR-PIPELINE.md "Claim-label lifecycle".
+#           + `fleet:in-progress` labels off the issue whenever no LIVE PR
+#           backs the claim: the matching open PR is parked
+#           (fleet:design-blocked/-unblocked), or there is no matching PR at
+#           all (the decline-after-claim path, #2732). A normal PR-open
+#           release (active matching PR) keeps the labels, per
+#           AUTHOR-PIPELINE.md "Claim-label lifecycle". `fleet:in-progress`
+#           survives while ANOTHER host's claim label does (#2732).
 #
 #   Fix B — `fleet-claim cleanup --gh` open-issue claim sweep treats a parked
 #           matching PR like a no-PR abandon: a stale claim whose only matching
@@ -164,6 +167,42 @@ REL701=$("$FLEET_CLAIM" release 701 2>&1); echo "$REL701" | sed 's/^/    /'
 assert_dir_absent "$FLEET_CLAIMS_DIR/701" "release dropped FS claim #701"
 assert_removed_absent $'701\tfleet:claim-mac-opus-worker-1' "active release KEPT #701 claim label"
 assert_removed_absent $'701\tfleet:in-progress' "active release KEPT #701 fleet:in-progress"
+
+# =========================================================================
+echo "=== Phase 1b: release with NO matching PR clears labels too (#2732) ==="
+# =========================================================================
+# The decline-after-claim path: a worker claims, finds the task unworkable,
+# comments, and releases without ever opening a PR. `issue_pr_state` returns
+# "none", which its own docstring says keep-vs-release callers must treat like
+# "parked" — otherwise the issue sits in the scout's in_progress[] bucket
+# (invisible to every pane's queue walk) until the 2h cleanup --gh TTL.
+#
+# #702 no PR                     -> release clears claim + in-progress.
+# #703 no PR, foreign-host claim -> our claim label goes, in-progress STAYS.
+cat > "$ISSUES_JSON" <<'JSON'
+[
+  {"number":702,"state":"OPEN","labels":[{"name":"fleet:queued"},{"name":"fleet:claim-mac-opus-worker-1"},{"name":"fleet:in-progress"}]},
+  {"number":703,"state":"OPEN","labels":[{"name":"fleet:queued"},{"name":"fleet:claim-mac-opus-worker-1"},{"name":"fleet:claim-linux-pool-2"},{"name":"fleet:in-progress"}]}
+]
+JSON
+cat > "$PRS_JSON" <<'JSON'
+[
+  {"number":802,"headRefName":"claude/999-unrelated","labels":[{"name":"fleet:wip"}]}
+]
+JSON
+mk_claim 702 opus-worker-1
+mk_claim 703 opus-worker-1
+
+REL702=$("$FLEET_CLAIM" release 702 2>&1); echo "$REL702" | sed 's/^/    /'
+assert_dir_absent "$FLEET_CLAIMS_DIR/702" "release dropped FS claim #702"
+assert_removed_contains $'702\tfleet:claim-mac-opus-worker-1' "no-PR release cleared #702 claim label"
+assert_removed_contains $'702\tfleet:in-progress' "no-PR release cleared #702 fleet:in-progress"
+
+REL703=$("$FLEET_CLAIM" release 703 2>&1); echo "$REL703" | sed 's/^/    /'
+assert_dir_absent "$FLEET_CLAIMS_DIR/703" "release dropped FS claim #703"
+assert_removed_contains $'703\tfleet:claim-mac-opus-worker-1' "no-PR release cleared #703 own-host claim label"
+assert_removed_absent  $'703\tfleet:claim-linux-pool-2' "no-PR release left #703 foreign-host claim label"
+assert_removed_absent  $'703\tfleet:in-progress' "no-PR release KEPT #703 fleet:in-progress (foreign claim live)"
 
 # =========================================================================
 echo "=== Phase 2: cleanup --gh sweeps a PARKED claim like a no-PR abandon (Fix B) ==="
