@@ -172,11 +172,20 @@ cat >"$FLEET_RESERVATIONS_DIR/opus-worker-1.json" <<JSON
 JSON
 write_pr_list '[{"number":659,"headRefName":"claude/163-stateless-particles","title":"T-163 particles"}]'
 
-t1_res_mtime_before=$(stat -f '%m' "$FLEET_RESERVATIONS_DIR/opus-worker-1.json" 2>/dev/null \
-    || stat -c '%Y' "$FLEET_RESERVATIONS_DIR/opus-worker-1.json")
+# GNU spelling first, BSD second — same order as fleet-claim's sentinel read.
+# The reverse order silently breaks on GNU: there `-f` means "filesystem
+# status", so `stat -f '%m' FILE` parses the format as a second FILE operand,
+# prints a statfs blob to stdout AND exits non-zero — the `||` fallback then
+# appends the real mtime to that blob. The blob carries free-block/inode
+# counts, which drift between two calls, so the comparison fails on a file
+# nothing touched.
+res_mtime() {
+    stat -c '%Y' "$1" 2>/dev/null || stat -f '%m' "$1"
+}
+
+t1_res_mtime_before=$(res_mtime "$FLEET_RESERVATIONS_DIR/opus-worker-1.json")
 "$RECONCILER" >"$TMPROOT/log/t1.log" 2>&1 || true
-t1_res_mtime_after=$(stat -f '%m' "$FLEET_RESERVATIONS_DIR/opus-worker-1.json" 2>/dev/null \
-    || stat -c '%Y' "$FLEET_RESERVATIONS_DIR/opus-worker-1.json")
+t1_res_mtime_after=$(res_mtime "$FLEET_RESERVATIONS_DIR/opus-worker-1.json")
 assert_eq "$t1_res_mtime_after" "$t1_res_mtime_before" "T1 reservation untouched"
 # `grep -c` exits 1 when there are no matches but still prints "0" —
 # use `|| true` to suppress the failure without appending another "0".

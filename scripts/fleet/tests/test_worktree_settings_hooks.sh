@@ -62,7 +62,7 @@ assert_eq() {
     fi
 }
 
-TMPROOT=$(mktemp -d -t fleet-settings-hooks)
+TMPROOT=$(mktemp -d "${TMPDIR:-/tmp}/fleet-settings-hooks.XXXXXX")
 
 # Regenerate <settings-file> the way fleet-up does. repo_root is inert here;
 # the worktree (argv[3], → FLEET_ASSIGNED_WORKTREE) and engine root (argv[4], →

@@ -45,7 +45,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-TMPROOT=$(mktemp -d -t fleet-session-track-test)
+TMPROOT=$(mktemp -d "${TMPDIR:-/tmp}/fleet-session-track-test.XXXXXX")
 
 payload() {
     # $1 = source, $2 = session_id, $3 = cwd (optional — where the hook

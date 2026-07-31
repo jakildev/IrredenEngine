@@ -18,7 +18,7 @@ source "$(dirname "$0")/lib_assert.sh"
 WRAPPER="$SCRIPT_DIR/fleet-pr-amend-push"
 [[ -x "$WRAPPER" ]] || { echo "test setup: fleet-pr-amend-push not executable at $WRAPPER" >&2; exit 1; }
 
-TMPROOT=$(mktemp -d -t fleet-amend-scope)
+TMPROOT=$(mktemp -d "${TMPDIR:-/tmp}/fleet-amend-scope.XXXXXX")
 trap '[[ -n "${TMPROOT:-}" ]] && rm -rf "$TMPROOT"' EXIT
 
 MAIN="$TMPROOT/mainclone"
