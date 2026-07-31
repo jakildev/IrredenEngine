@@ -274,8 +274,16 @@ Specifically, **never pass these via `--label` when filing**:
   as the unblock swap, see `architect-protocol.md`; the GL pane that
   finishes the gated work removes it).
   **Applied by the human/architect** as a triage signal (like the model
-  labels) — the scout can't reliably infer "GL-only" from a render task, so
-  it is never auto-derived. **Respected at three points:** the dispatcher's
+  labels) — it remains the primary, recommended signal, because the scout
+  cannot infer "GL-only" from a render task in general. It is not the *only*
+  signal: the scout runs a deliberately precision-first body **backstop** for
+  a label the filer forgot, projecting `needs_gl_host` when the body declares
+  a Linux/Windows/OpenGL host requirement (#1969) or names a file in a
+  CMake-platform-gated GL-only source set such as `src/opengl/` (#2704).
+  The backstop trades recall for precision on purpose — a false positive
+  wrongly skips a mac-runnable task, which is worse than a miss — so it never
+  fires on a passing mention, on `.glsl`, or on `src/metal/`.
+  **Respected at three points:** the dispatcher's
   claimability filter (`fleet_task_class.py`) skips the item on a macOS pane
   — **both** dimensions, a labeled task and a labeled feedback PR (#2696) —
   so a slice whose only claimable-shaped work is GL-only → `defer`, no

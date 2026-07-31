@@ -671,10 +671,46 @@ _GL_HOST_REQUIRED_RE = re.compile(
 )
 
 
+# #2704: `_GL_HOST_REQUIRED_RE` only fires on a *declaration*, so a task that
+# simply names the file it will edit slips through — and for a GL-only source
+# set that miss is worse than the #1969 churn it was meant to catch.
+# `engine/render/CMakeLists.txt` (and `engine/video/`) select `OPENGL_SRC` vs
+# `METAL_SRC` on `IR_isDarwin`, so `src/opengl/*` is not merely unverifiable on
+# a Metal host — it is absent from the target. `fleet-build` then goes GREEN on
+# a diff the compiler never saw, which reads as a passing verification.
+#
+# Precision-first for the same reason as #1969 (a false positive wrongly skips
+# a mac-runnable task). Both forms require a real filename — an extension after
+# the path segment / basename stem — so prose ("the OpenGL backend renders…")
+# can never match:
+#   - path form: an `opengl/` path segment followed by a file. This is the
+#     primary signal and the only one that generalizes; `engine/video/`'s two
+#     backends are BOTH named `video_backend.cpp`, so the directory segment is
+#     the only thing distinguishing them.
+#   - basename form: `opengl_<stem>.<ext>`, for a body that cites the file
+#     bare (#2514 cites `opengl_shader.cpp` with no path). The `opengl_`
+#     prefix is GL-specific by construction across the tree.
+#
+# Deliberately NOT matched, both on the precision-over-recall rule:
+#   - `.glsl` — runtime-compiled by the driver, so a shader-only change still
+#     builds on macOS, and shader-compile fixes are macOS-verifiable.
+#   - `src/metal/` — the inverse (Metal-host) gate is a separate design call;
+#     there is no `fleet:needs-metal-host` label, and a mac task is never
+#     self-gated off the only host that can build it.
+_GL_ONLY_SOURCE_PATH_RE = re.compile(
+    r"(?:/|\b)opengl/[\w.+-]+\.\w+"
+    r"|\bopengl_\w+\.(?:c|cc|cpp|h|hpp)\b",
+    re.IGNORECASE,
+)
+
+
 def _body_requires_gl_host(body):
-    """True when the task body explicitly declares a Linux/Windows/OpenGL host
-    requirement — a backstop for a missing fleet:needs-gl-host label (#1969)."""
-    return bool(_GL_HOST_REQUIRED_RE.search(body or ""))
+    """True when the task body declares a Linux/Windows/OpenGL host requirement
+    (#1969) or names a source file in a CMake-platform-gated GL-only source set
+    (#2704) — a backstop for a missing fleet:needs-gl-host label."""
+    body = body or ""
+    return bool(_GL_HOST_REQUIRED_RE.search(body)
+                or _GL_ONLY_SOURCE_PATH_RE.search(body))
 
 
 def _parse_epic_checklist(body):
@@ -798,9 +834,10 @@ def fetch_task_queue(repo_slug):
             # needs an OpenGL-4.5 host (linux/windows); macOS/Metal panes can't
             # build/run/verify it. Surfaced here so the dispatcher's claimability
             # filter (fleet_task_class.py) skips it on a Metal host instead of
-            # churning claim->refuse->release no-ops. #1969: also inferred from an
-            # explicit host-requirement declaration in the body, as a backstop
-            # for a label the filer forgot (see _GL_HOST_REQUIRED_RE).
+            # churning claim->refuse->release no-ops. #1969/#2704: also inferred
+            # from a host-requirement declaration in the body, or from the body
+            # naming a file in a platform-gated GL-only source set, as a backstop
+            # for a label the filer forgot (see _body_requires_gl_host).
             "needs_gl_host": ("fleet:needs-gl-host" in labels
                               or _body_requires_gl_host(body)),
             "issue": task_id,
