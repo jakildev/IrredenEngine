@@ -100,7 +100,7 @@ Don't add new violations. Migrate when you're already touching one of these
 files for other reasons; don't delay other work to migrate aggressively.
 
 **Measured 2026-07-31** over the `paths:` globs above (134 tracked files) —
-16 sites in 8 files. Re-measure when you edit this list; a stamp that drifts
+16 sites in 7 files. Re-measure when you edit this list; a stamp that drifts
 from the tree is what made the previous register useless. Paths below are
 relative to `engine/prefabs/irreden/`.
 
