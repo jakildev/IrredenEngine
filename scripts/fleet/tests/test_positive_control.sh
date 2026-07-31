@@ -113,6 +113,17 @@ run "$WRAPPER" "$SCRIPT_DIR/tests/test_positive_control.sh" HEAD --bogus-flag
 assert_eq "$RC" "2" "an unrecognized option is rejected, not ignored"
 assert_contains "$OUT" "unknown option" "the rejected option names itself"
 
+# Both spellings of --include reject an empty value identically. scripts/fleet's
+# CLAUDE.md makes this a standing rule: a diverging equals arm lets
+# `--include=$UNSET_VAR` slip an empty string past downstream guards (#2193).
+run "$WRAPPER" "$SCRIPT_DIR/tests/test_positive_control.sh" HEAD --include
+assert_eq "$RC" "2" "--include with no pathspec exits 2"
+assert_contains "$OUT" "needs a pathspec" "the space form names the missing value"
+
+run "$WRAPPER" "$SCRIPT_DIR/tests/test_positive_control.sh" HEAD --include=
+assert_eq "$RC" "2" "--include= with an empty pathspec exits 2"
+assert_contains "$OUT" "needs a pathspec" "the equals form names the missing value"
+
 # Fixtures live in tests/ because the wrapper requires a suite inside the repo.
 # Untracked, so `git archive HEAD` stages the tree WITHOUT them and the wrapper's
 # copy-over is what puts each one in play — the real new-test/old-code flow.
@@ -134,9 +145,20 @@ assert_contains "$OUT" "VACUOUS" "the vacuous verdict names itself"
 rm -f "$VAC"
 
 echo "--- a suite that does distinguish the ref is reported MEANINGFUL ---"
-# Self-referential on purpose: fleet-positive-control does not exist in HEAD's
-# tree yet, so this fixture fails there and passes here — a real positive
-# control of this PR's own change.
+# The discriminator is an UNTRACKED marker beside the wrapper: `git archive <ref>`
+# only ever emits tracked content, so the stage cannot contain it for any ref,
+# while the working tree can. That models "a file the fix adds" without asking
+# what the ref happens to hold.
+#
+# The obvious shortcut — assert the wrapper's own presence, absent from the
+# pre-fix ref — is what this originally did, and it was self-invalidating: it
+# discriminates only while this change is uncommitted. The moment the commit
+# existed, HEAD carried the wrapper, the fixture scored 2-of-2 passing, and the
+# four assertions below failed VACUOUS on the PR's own branch (and would have on
+# master forever after). Keep the discriminator independent of the ref's content.
+MEANMARK="$SCRIPT_DIR/fleet-zz-tmp-added-by-fix-2713"
+STRAYS+=("$MEANMARK")
+: > "$MEANMARK"
 MEAN="$SCRIPT_DIR/tests/test_zz_tmp_meaningful_2713.sh"
 STRAYS+=("$MEAN")
 cat > "$MEAN" <<'FIXTURE'
@@ -144,10 +166,10 @@ cat > "$MEAN" <<'FIXTURE'
 set -euo pipefail
 SCRIPT_DIR=$(cd "$(dirname "$0")/.." && pwd)
 source "$(dirname "$0")/lib_assert.sh"
-if [[ -x "$SCRIPT_DIR/fleet-positive-control" ]]; then
-    ok "the wrapper is present in this tree"
+if [[ -f "$SCRIPT_DIR/fleet-zz-tmp-added-by-fix-2713" ]]; then
+    ok "the file the fix adds is present in this tree"
 else
-    bad "the wrapper is present in this tree"
+    bad "the file the fix adds is present in this tree"
 fi
 assert_eq "kept" "kept" "a non-regression assertion that holds on both refs"
 summarize
@@ -158,7 +180,52 @@ assert_eq "$RC" "0" "a meaningful suite exits 0"
 assert_contains "$OUT" "MEANINGFUL: 1 of 2 assertions fail" "the verdict reports the real counts"
 assert_contains "$OUT" "(1 + 1 = 2, the full suite.)" "the PR-body line shows its own arithmetic"
 assert_contains "$OUT" "For the PR body's test plan:" "the wrapper emits a copy-pasteable line"
-rm -f "$MEAN"
+rm -f "$MEAN" "$MEANMARK"
+
+echo "--- --include stages a pathspec outside scripts/fleet ---"
+# A suite that reads outside scripts/fleet is exactly the case --include exists
+# for, and the discriminator has to be the staged tree itself: the fixture below
+# scores 2-of-2 failing without --include and 1-of-2 with it, so the assertion
+# proves the flag STAGED something rather than merely that it parsed.
+OUTSIDE="docs/agents/FLEET.md"
+if git -C "$REPO_ROOT" cat-file -e "HEAD:$OUTSIDE" 2>/dev/null; then
+    ok "precondition: $OUTSIDE is tracked at HEAD (the --include probe target)"
+else
+    bad "precondition: $OUTSIDE is tracked at HEAD (the --include probe target)"
+fi
+
+INC="$SCRIPT_DIR/tests/test_zz_tmp_include_2713.sh"
+STRAYS+=("$INC")
+cat > "$INC" <<FIXTURE
+#!/usr/bin/env bash
+set -euo pipefail
+SCRIPT_DIR=\$(cd "\$(dirname "\$0")/.." && pwd)
+source "\$(dirname "\$0")/lib_assert.sh"
+if [[ -f "\$SCRIPT_DIR/../../$OUTSIDE" ]]; then
+    ok "$OUTSIDE is present in the staged tree"
+else
+    bad "$OUTSIDE is present in the staged tree"
+fi
+assert_eq "x" "y" "a standing failure, so the verdict is MEANINGFUL either way"
+summarize
+FIXTURE
+chmod +x "$INC"
+
+# Without the flag: the outside path is absent, so both assertions fail. Pinning
+# the no-flag case is what makes the two below evidence of staging.
+run "$WRAPPER" "$INC" HEAD
+assert_contains "$OUT" "MEANINGFUL: 2 of 2 assertions fail" "without --include the outside path is not staged"
+
+run "$WRAPPER" "$INC" HEAD --include "$OUTSIDE"
+assert_eq "$RC" "0" "--include <pathspec> runs the suite"
+assert_contains "$OUT" "MEANINGFUL: 1 of 2 assertions fail" "--include <pathspec> stages the outside path"
+assert_contains "$OUT" "staged scripts/fleet + $OUTSIDE" "the run reports what it staged, not just scripts/fleet"
+
+# The equals arm must reach the same staged tree, not merely be accepted.
+run "$WRAPPER" "$INC" HEAD "--include=$OUTSIDE"
+assert_eq "$RC" "0" "--include=<pathspec> runs the suite"
+assert_contains "$OUT" "MEANINGFUL: 1 of 2 assertions fail" "--include=<pathspec> stages the outside path identically"
+rm -f "$INC"
 
 echo "--- a suite that aborts before summarize is a setup failure, not a result ---"
 NOTALLY="$SCRIPT_DIR/tests/test_zz_tmp_notally_2713.sh"
