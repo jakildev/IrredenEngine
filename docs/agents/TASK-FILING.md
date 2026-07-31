@@ -133,6 +133,13 @@ command, observed output, suspected window, what was ruled out), plus
    `fleet:needs-plan`). Apply the step-3 high-stakes checklist yourself:
    if any item trips, also add `human:review-plan` — that human approach
    gate is the one pre-merge human touch this lane keeps.
+   This shape is three non-atomic steps and the planning gate keys on the
+   `## Plan` **comment**, so an ingest tick landing before you post it
+   stamps `fleet:needs-plan` on top of your `fleet:plan-review`. You don't
+   need to hand-strip it — ingest reconciles the pair on its next tick
+   (#2701). `fleet:needs-plan` alongside `human:review-plan` is a
+   different, legitimate state (a reviewer bounced the plan) and is left
+   alone.
 3. **You verified the defect but not the fix** → add neither. Ingest
    bounces it to `fleet:needs-plan` and the autonomous planning lane
    takes it from there.

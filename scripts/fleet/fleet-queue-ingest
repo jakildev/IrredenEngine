@@ -307,6 +307,7 @@ def _has_plan_comment(comments):
 
 stamped = 0
 revise_reconciled = 0
+plan_race_reconciled = 0
 skipped_already = 0
 blocked_marked = 0
 plan_bounced = 0
@@ -409,6 +410,44 @@ for issue in pending:
         labels.discard('fleet:needs-plan')
         print(f'INFO issue {repo}#{n}: opted out (human:no-plan / fleet:no-plan / [no-plan] / '
               f'spike) but still carried fleet:needs-plan — stripped it; queuing directly',
+              file=sys.stderr)
+
+    # Raced-planning-gate reconcile (#2701). TASK-FILING.md §"Agent-approved
+    # follow-up lane" plan-shape 2 files in three non-atomic steps: create with
+    # fleet:agent-approved, post the `## Plan` comment, add fleet:plan-review.
+    # The planning gate below keys on the *comment* (#1932), so a tick landing
+    # between steps 1 and 2 sees a plan-less issue and stamps fleet:needs-plan;
+    # step 3 then lands fleet:plan-review on top. The pair then persists
+    # forever — the skip guard just below returns early on either label, so no
+    # later tick re-examines the issue. Left alone, the stale needs-plan makes
+    # it a candidate for a planning dispatch that re-plans work which already
+    # has a plan awaiting review, and a reviewer clearing plan-review strands
+    # it short of fleet:queued (the #2110 shape, on the plan-present path).
+    #
+    # The predicate is the label PAIR, not plan presence: a reviewer's bounce
+    # *swaps* plan-review → needs-plan (PLANNING-PROTOCOL.md), and the
+    # human:revise-plan reconcile above removes plan-review when it adds
+    # needs-plan — so nothing in the protocol produces both on purpose.
+    # fleet:needs-plan + human:review-plan, by contrast, is legitimate (a
+    # bounced plan on a high-stakes issue keeps the human's approach gate) and
+    # must NOT be touched. Stripping only needs-plan leaves the issue held by
+    # the plan-review arm of the skip guard, which is the correct state.
+    if 'fleet:needs-plan' in labels and 'fleet:plan-review' in labels:
+        er = subprocess.run(
+            ['gh', 'issue', 'edit', str(n), '--repo', repo,
+             '--remove-label', 'fleet:needs-plan'],
+            capture_output=True, text=True, timeout=15,
+        )
+        if er.returncode != 0:
+            failed += 1
+            print(f'WARN issue {repo}#{n}: strip raced fleet:needs-plan alongside '
+                  f'fleet:plan-review failed: {er.stderr.strip()}', file=sys.stderr)
+            continue
+        labels.discard('fleet:needs-plan')
+        plan_race_reconciled += 1
+        print(f'INFO issue {repo}#{n}: carried both fleet:needs-plan and '
+              f'fleet:plan-review (planning gate raced the plan comment) — '
+              f'stripped the stale needs-plan; holding for plan review',
               file=sys.stderr)
 
     if ('fleet:queued' in labels or 'fleet:scope-shipped' in labels
@@ -577,13 +616,13 @@ for issue in data.get('unblock_issues', []):
         continue
     unblocked += 1
 
-print(f'{stamped},{skipped_already},{failed},{blocked_marked},{unblocked},{unblock_still},{plan_bounced},{revise_reconciled}')
+print(f'{stamped},{skipped_already},{failed},{blocked_marked},{unblocked},{unblock_still},{plan_bounced},{revise_reconciled},{plan_race_reconciled}')
 STAMP_PY
 )
 
 if [[ -n "$stamping_out" ]]; then
-    IFS=',' read -r stamped_count skipped_count failed_count blocked_count unblocked_count unblock_still_count plan_bounced_count revise_reconciled_count <<< "$stamping_out"
-    log "stamped ${stamped_count:-0} issue(s) (${blocked_count:-0} marked fleet:blocked); skipped ${skipped_count:-0} already-labeled; bounced ${plan_bounced_count:-0} to fleet:needs-plan; re-plan requested ${revise_reconciled_count:-0} (human:revise-plan); unblocked ${unblocked_count:-0} (${unblock_still_count:-0} still blocked); ${failed_count:-0} failed"
+    IFS=',' read -r stamped_count skipped_count failed_count blocked_count unblocked_count unblock_still_count plan_bounced_count revise_reconciled_count plan_race_count <<< "$stamping_out"
+    log "stamped ${stamped_count:-0} issue(s) (${blocked_count:-0} marked fleet:blocked); skipped ${skipped_count:-0} already-labeled; bounced ${plan_bounced_count:-0} to fleet:needs-plan; re-plan requested ${revise_reconciled_count:-0} (human:revise-plan); raced needs-plan stripped ${plan_race_count:-0} (needs-plan + plan-review); unblocked ${unblocked_count:-0} (${unblock_still_count:-0} still blocked); ${failed_count:-0} failed"
 fi
 
 log "ingestion iteration complete"
