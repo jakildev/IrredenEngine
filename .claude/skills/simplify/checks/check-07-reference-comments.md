@@ -27,3 +27,8 @@ Cross-reference hits against added (`+`) lines only. A bare durable backref
 For motivation prose, eyeball each added comment block of 3+ lines in the
 diff: if it explains the module's origin story or pre-change state rather
 than a durable invariant, cut it (keep at most a one-line WHY + `// see #N`).
+
+Fix: delete the comment when the task narration was all it carried; reduce
+it to the bare `// see #N` backref when it also states a durable WHY. Same
+disposition for a motivation-prose block — keep at most a one-line WHY +
+`// see #N`, drop the rest.
