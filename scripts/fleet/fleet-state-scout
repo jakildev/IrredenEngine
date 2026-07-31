@@ -680,9 +680,9 @@ _GL_HOST_REQUIRED_RE = re.compile(
 # a diff the compiler never saw, which reads as a passing verification.
 #
 # Precision-first for the same reason as #1969 (a false positive wrongly skips
-# a mac-runnable task). Both forms require a real filename — an extension after
-# the path segment / basename stem — so prose ("the OpenGL backend renders…")
-# can never match:
+# a mac-runnable task). Both forms require a real filename — one of the
+# `_GL_ONLY_SOURCE_EXT` extensions after the path segment / basename stem — so
+# prose ("the OpenGL backend renders…") can never match:
 #   - path form: an `opengl/` path segment followed by a file. This is the
 #     primary signal and the only one that generalizes; `engine/video/`'s two
 #     backends are BOTH named `video_backend.cpp`, so the directory segment is
@@ -697,9 +697,17 @@ _GL_HOST_REQUIRED_RE = re.compile(
 #   - `src/metal/` — the inverse (Metal-host) gate is a separate design call;
 #     there is no `fleet:needs-metal-host` label, and a mac task is never
 #     self-gated off the only host that can build it.
+#
+# Both forms pin the SAME extension set, and share one fragment so they cannot
+# drift apart again. The path form previously accepted any extension after the
+# `opengl/` segment, which made the `.glsl` exclusion above incidental to the
+# tree layout (no `.glsl` happens to sit under an `opengl/` directory today)
+# rather than structural — a `.glsl` or a `README.md` added there would have
+# tripped the backstop against this file's stated design (#2709 review nit).
+_GL_ONLY_SOURCE_EXT = r"(?:c|cc|cpp|h|hpp)"
 _GL_ONLY_SOURCE_PATH_RE = re.compile(
-    r"(?:/|\b)opengl/[\w.+-]+\.\w+"
-    r"|\bopengl_\w+\.(?:c|cc|cpp|h|hpp)\b",
+    rf"(?:/|\b)opengl/[\w.+-]+\.{_GL_ONLY_SOURCE_EXT}\b"
+    rf"|\bopengl_\w+\.{_GL_ONLY_SOURCE_EXT}\b",
     re.IGNORECASE,
 )
 
