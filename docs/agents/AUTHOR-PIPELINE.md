@@ -224,6 +224,14 @@ Paste the PR URL.
 >
 > `fleet-claim cleanup --gh` remains the TTL safety net for a claim
 > abandoned with no `release` call at all (crash, killed pane).
+>
+> One issue can carry claim labels from **two hosts**. Every path that
+> clears `fleet:in-progress` — `release`, the `cleanup --gh` TTL sweep,
+> and the `reset-sweep-host-claims` boot sweep — first checks whether a
+> claim it is *not* retiring is still live, and keeps the label if so.
+> Your host's claim going dead says nothing about the other host's, and
+> clearing `fleet:in-progress` under a live claim advertises an owned
+> task as free.
 
 Then run the shared shutdown ceremony — see
 [`FLEET-RUNTIME.md § Per-iteration shutdown`](FLEET-RUNTIME.md#per-iteration-shutdown--final-step).

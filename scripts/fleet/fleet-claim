@@ -1528,6 +1528,57 @@ print(issue_pr_state(prs, os.environ["ISSUE_NUM"], os.environ.get("REPO", "")))
 ' 2>/dev/null || echo none
 }
 
+# _issue_has_unswept_claim <repo> <issue-num> <self-label> <scope> [stale-secs] [now]
+#   Does the issue still carry a `fleet:claim-*` label that the caller's pass
+#   is NOT going to remove? If so another agent's work is live and
+#   `fleet:in-progress` must stay: clearing it advertises an owned task as free
+#   and invites the double-claim race. Every path that clears
+#   `fleet:in-progress` alongside a claim label asks exactly this question, and
+#   they must not answer it differently — hence one predicate here rather than
+#   an inline copy per site.
+#
+#   <scope> selects what "the caller's pass sweeps" means:
+#     - "host" — the pass removes only `fleet:claim-<this-host>-*`
+#       (`cmd_release`, `cmd_reset_sweep_host_claims`), so ANY other host's
+#       claim is live by construction and same-host labels never count.
+#     - "ttl"  — the pass removes any host's claim once it ages past
+#       <stale-secs> (`cmd_cleanup_gh`), so another claim is live while it is
+#       younger than that. Same-host claims with no local lock are confirmed
+#       orphans that this pass sweeps on their own row, so they don't count.
+#       The PR-state gate is per-issue, shared by every label on it, so age
+#       (plus the orphan fast path) is the only per-label discriminator.
+#
+#   Fails closed: an unreadable label set or an unknown label age counts as
+#   live. Keeping `fleet:in-progress` one sweep cycle too long costs a delay;
+#   dropping it while a claim is live costs a duplicate PR.
+_issue_has_unswept_claim() {
+    local repo="$1" issue_num="$2" self_label="$3" scope="$4"
+    local stale_secs="${5:-0}" now="${6:-0}"
+    local this_host issue_labels lbl lbl_host added
+    this_host=$(derive_host)
+    issue_labels=$(gh issue view "$issue_num" --repo "$repo" \
+        --json labels --jq '.labels[].name' 2>/dev/null) || return 0
+    while IFS= read -r lbl; do
+        [[ -z "$lbl" || "$lbl" == "$self_label" ]] && continue
+        [[ "$lbl" == fleet:claim-* ]] || continue
+        lbl_host="${lbl#fleet:claim-}"
+        lbl_host="${lbl_host%%-*}"
+        if [[ "$scope" == "host" ]]; then
+            [[ "$lbl_host" == "$this_host" ]] && continue
+            return 0
+        fi
+        if [[ "$lbl_host" == "$this_host" \
+              && ! -d "$CLAIMS_DIR/$(slugify "$issue_num")" ]]; then
+            continue
+        fi
+        added=$(label_added_epoch "$repo" "$issue_num" "$lbl")
+        if [[ "$added" -eq 0 ]] || (( now - added < stale_secs )); then
+            return 0
+        fi
+    done <<< "$issue_labels"
+    return 1
+}
+
 # _release_inactive_issue_labels <issue-num>
 #   Clear this host's `fleet:claim-<host>-*` and `fleet:in-progress` labels off
 #   the issue whenever the claim is NOT backed by live work, so the scout stops
@@ -1569,17 +1620,15 @@ _release_inactive_issue_labels() {
 
     # Remove this host's claim label(s) + fleet:in-progress (mirrors the
     # cleanup --gh open-issue sweep).
-    local issue_labels lbl foreign_claim=0
+    local issue_labels lbl
     issue_labels=$(gh issue view "$issue_num" --repo "$repo" \
         --json labels --jq '.labels[].name' 2>/dev/null || echo "")
     while IFS= read -r lbl; do
         if [[ "$lbl" == fleet:claim-${host}-* ]]; then
             gh_release_label "$repo" "$issue_num" "$lbl" || true
-        elif [[ "$lbl" == fleet:claim-* ]]; then
-            foreign_claim=1
         fi
     done <<< "$issue_labels"
-    if [[ "$foreign_claim" -eq 0 ]]; then
+    if ! _issue_has_unswept_claim "$repo" "$issue_num" "" "host"; then
         gh_release_label "$repo" "$issue_num" "fleet:in-progress" || true
     fi
     return 0
@@ -2176,8 +2225,16 @@ for issue in issues:
                     --remove-label "$label_name" >/dev/null 2>&1; then
                 echo "cleanup --gh: removed stale '$label_name' on $repo issue#$issue_num (age: $((age / 60))m, ${sweep_reason})"
                 total_removed=$((total_removed + 1))
-                gh issue edit "$issue_num" --repo "$repo" \
-                    --remove-label "fleet:in-progress" >/dev/null 2>&1 || true
+                # Two hosts can hold claims on one issue and age past the TTL
+                # at different times; only the row that retires the LAST live
+                # claim may clear fleet:in-progress.
+                if _issue_has_unswept_claim "$repo" "$issue_num" "$label_name" \
+                        "ttl" "$claim_issue_stale_secs" "$now"; then
+                    echo "cleanup --gh: keeping 'fleet:in-progress' on $repo issue#$issue_num — another claim is still live"
+                else
+                    gh issue edit "$issue_num" --repo "$repo" \
+                        --remove-label "fleet:in-progress" >/dev/null 2>&1 || true
+                fi
             else
                 write_orphan_sentinel "$repo" "$issue_num" "$label_name" \
                     "cleanup --gh: open-issue claim remove-label failed"
@@ -2412,8 +2469,15 @@ print(0)
                     --remove-label "$label_name" >/dev/null 2>&1; then
                 echo "reset-sweep-host-claims: removed '$label_name' on $repo issue#$issue_num (no open PR)"
                 total_removed=$((total_removed + 1))
-                gh issue edit "$issue_num" --repo "$repo" \
-                    --remove-label "fleet:in-progress" >/dev/null 2>&1 || true
+                # This pass only ever removes THIS host's claim labels, so a
+                # foreign claim here is live by construction — our boot
+                # sequence says nothing about another host's work.
+                if _issue_has_unswept_claim "$repo" "$issue_num" "$label_name" "host"; then
+                    echo "reset-sweep-host-claims: keeping 'fleet:in-progress' on $repo issue#$issue_num — another host's claim is still live"
+                else
+                    gh issue edit "$issue_num" --repo "$repo" \
+                        --remove-label "fleet:in-progress" >/dev/null 2>&1 || true
+                fi
             fi
         done <<< "$open_claim_plan"
     done
