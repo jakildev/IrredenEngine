@@ -432,6 +432,10 @@ for issue in pending:
     # bounced plan on a high-stakes issue keeps the human's approach gate) and
     # must NOT be touched. Stripping only needs-plan leaves the issue held by
     # the plan-review arm of the skip guard, which is the correct state.
+    # No protocol path produces all three (the bounce that adds needs-plan is
+    # the same one that removes plan-review), but the triple state is inert if
+    # it is ever reached: the strip leaves plan-review AND human:review-plan,
+    # and the skip guard below holds on either — so the issue stays held.
     if 'fleet:needs-plan' in labels and 'fleet:plan-review' in labels:
         er = subprocess.run(
             ['gh', 'issue', 'edit', str(n), '--repo', repo,
