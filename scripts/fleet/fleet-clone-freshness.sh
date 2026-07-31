@@ -37,16 +37,16 @@
 #   advance_main_clone  <repo_root>  — guarded, rate-limited fetch + ff-only
 #                                     advance of a clean on-master clone. Never
 #                                     resets --hard; never switches branches
-#                                     except the two self-heal cases: a clean
-#                                     tree parked on a claude/*-reviewer-scratch
-#                                     branch (provably junk from a reviewer cwd
-#                                     drift) is put back on master and the ref
-#                                     dropped; a clean tree parked on any other
-#                                     claude/* branch whose HEAD is provably
-#                                     recoverable (pushed, or an ancestor of
-#                                     origin/master) is put back on master with
-#                                     the branch ref PRESERVED. Persistent skips
-#                                     escalate once, then go quiet (#2363).
+#                                     except one self-heal case: a clean tree
+#                                     parked on the fleet's scratch namespace
+#                                     (claude/*-scratch) with no unique commits
+#                                     is provably junk from a role's cwd drift,
+#                                     so it is put back on master and the ref
+#                                     dropped. Every other park — including a
+#                                     clean, pushed claude/* feature branch,
+#                                     which is exactly what a live Cursor
+#                                     session looks like — is left alone and
+#                                     escalated instead (#2363).
 #   restore_main_clone_to_master <repo_root>
 #                                   — fleet-up-time stronger variant: returns a
 #                                     clone parked off-master (PR branch from a
@@ -185,11 +185,9 @@ _freshness_warn() {
     mkdir -p "$(dirname "$counter")" 2>/dev/null || true
     printf '%s %s %s\n' "$count" "$first" "$key" > "$counter" 2>/dev/null || true
 
-    if (( count > n )); then
-        return 0   # already escalated — the alert file is the standing signal
-    fi
-    echo "$msg" >&2
+    # Below the threshold: the ordinary per-tick warn, no alert yet.
     if (( count < n )); then
+        echo "$msg" >&2
         return 0
     fi
 
@@ -199,7 +197,16 @@ _freshness_warn() {
     branch="${key#*|}"
     since="$(_freshness_iso8601 "$first")"
     remedy="git -C $root checkout master && git -C $root merge --ff-only origin/master  (or rerun fleet-up)"
-    echo "fleet-clone-freshness: ESCALATION — $root has skipped its advance $count consecutive times (reason=$reason branch='$branch') since $since. Wrote $alert. Remedy: $remedy. Suppressing further identical warns until the condition clears." >&2
+    # stderr goes quiet after the one loud escalation, so the alert is the only
+    # standing signal — hence rewritten every tick past N, not stamped once at
+    # it. Write-once would freeze count= at the escalation instant, and would
+    # let a human triaging the alerts inbox silence a still-live condition
+    # forever (warns stay suppressed, so nothing recreates the file). Same shape
+    # as fleet-rebase's escalate_if_hung_lock (#2362).
+    if (( count == n )); then
+        echo "$msg" >&2
+        echo "fleet-clone-freshness: ESCALATION — $root has skipped its advance $count consecutive times (reason=$reason branch='$branch') since $since. Wrote $alert. Remedy: $remedy. Suppressing further identical warns until the condition clears." >&2
+    fi
     mkdir -p "$(dirname "$alert")" 2>/dev/null || true
     printf "clone-freshness skip: host=%s root=%s branch=%s reason=%s count=%s since=%s remedy='%s'\n" \
         "$(hostname 2>/dev/null || echo '?')" "$root" "$branch" "$reason" "$count" "$since" "$remedy" \
@@ -215,28 +222,12 @@ _freshness_all_clear() {
     return 0
 }
 
-# _head_recoverable <repo_root> <branch>
-# Is the parked HEAD provably reachable from somewhere other than this local
-# ref — i.e. does checking master out lose nothing? True when HEAD is already
-# an ancestor of origin/master (a stale park at an old master), or when the
-# branch has an origin counterpart that contains HEAD (the work is pushed).
-# A local commit on a branch with no origin ref is unpushed work: not
-# recoverable, so the park is left alone.
-_head_recoverable() {
-    local root="$1" branch="$2"
-    if git -C "$root" merge-base --is-ancestor HEAD origin/master 2>/dev/null; then
-        return 0
-    fi
-    git -C "$root" rev-parse --verify --quiet "refs/remotes/origin/$branch" >/dev/null 2>&1 || return 1
-    git -C "$root" merge-base --is-ancestor HEAD "refs/remotes/origin/$branch" 2>/dev/null
-}
-
 # advance_main_clone <repo_root>
 # Guarded, rate-limited fast-forward of the main clone's master. Safe on the
 # shared main checkout: advances ONLY when the clone is on branch master, has a
 # clean working tree, and master is a strict pure-ancestor of origin/master
 # (i.e. a real fast-forward). Any guard miss → skip + warn, never mutate —
-# except the reviewer-scratch self-heal in guard 1 (see comment there). Mirrors
+# except the scratch-namespace self-heal in guard 1 (see comment there). Mirrors
 # fleet-up's reset_worktree dirty-guard idiom. Always returns 0 so a `set -e`
 # caller is never aborted by a skipped advance.
 advance_main_clone() {
@@ -261,37 +252,35 @@ advance_main_clone() {
 
     # Guard 1: must be on branch master (never touch a checked-out feature
     # branch — agents occasionally check one out in the shared main clone).
-    # Exception: a reviewer scratch branch (claude/<role>-reviewer-scratch) is a
-    # per-iteration throwaway that only ever belongs in .claude/worktrees/* —
-    # one parked HERE is provably junk left by a reviewer whose shell cwd
-    # drifted into the main clone, and it freezes master (blocking every claim
-    # on this repo via assert_clone_fresh) until fixed. Self-heal: with a clean
-    # tree, put the clone back on master, drop the junk branch, and fall
-    # through to the normal advance.
+    # Exception: the fleet's scratch namespace, claude/*-scratch — the pool
+    # worktrees' per-iteration scratch refs (claude/pool-<N>-scratch, its
+    # claude/game-pool-<N>-scratch twin, the legacy claude/<role>-reviewer-scratch).
+    # A scratch ref only ever belongs in .claude/worktrees/*, so one parked HERE
+    # is junk left by a role whose shell cwd drifted into the main clone, and it
+    # freezes master (blocking every claim on this repo via assert_clone_fresh)
+    # until fixed. Self-heal: clean tree AND a HEAD already contained by
+    # origin/master (no unique commits, so the ref holds nothing) → back to
+    # master, drop the junk ref, fall through to the normal advance.
     #
-    # Tier 2: scripted cwd drift parks the clone anywhere in the fleet's own
-    # claude/* namespace, not just on scratch refs, so heal those too when the
-    # tree is clean AND the HEAD is provably recoverable — but keep the branch
-    # ref, since unlike a scratch ref it may be someone's work. A non-claude/*
-    # checkout is a human's deliberate session: alert on it (via the skip
-    # counter), never switch it out from under them. See #2363.
+    # Everything else is left alone and escalated via the skip counter instead —
+    # INCLUDING a clean claude/* branch whose HEAD is pushed. "Recoverable" is
+    # not "idle": FLEET.md rule 1 puts Cursor / ad-hoc sessions on
+    # claude/<area>-<topic>, and commit-and-push leaves exactly that session
+    # clean-and-pushed while the human sits on the PR. Healing it would send
+    # their next commit to master (violating rule 1) or split the slice across
+    # two PRs, with no notice the human ever sees. Proving git loses nothing is
+    # a different invariant from proving no session is using the checkout; only
+    # the scratch namespace establishes the latter. See #2363.
     local branch dirty checkout_failed_msg
     branch="$(git -C "$root" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?')"
     if [[ "$branch" != "master" ]]; then
         dirty="$(git -C "$root" status --porcelain 2>/dev/null || echo SKIP)"
         checkout_failed_msg="fleet-clone-freshness: $root parked on '$branch' but 'git checkout master' failed — master is FROZEN and every claim on this repo will be refused until a human fixes it (git -C $root checkout master)."
-        if [[ "$branch" == claude/*-reviewer-scratch && -z "$dirty" ]]; then
+        if [[ "$branch" == claude/*-scratch && -z "$dirty" ]] \
+            && git -C "$root" merge-base --is-ancestor HEAD origin/master 2>/dev/null; then
             if git -C "$root" checkout master --quiet 2>/dev/null; then
                 git -C "$root" branch -D "$branch" --quiet 2>/dev/null || true
-                echo "fleet-clone-freshness: $root was parked on reviewer scratch branch '$branch' (clean tree) — self-healed back to master and deleted the junk branch." >&2
-                branch=master
-            else
-                _freshness_warn "$root" "checkout-failed|$branch" "$checkout_failed_msg"
-                return 0
-            fi
-        elif [[ "$branch" == claude/* && -z "$dirty" ]] && _head_recoverable "$root" "$branch"; then
-            if git -C "$root" checkout master --quiet 2>/dev/null; then
-                echo "fleet-clone-freshness: self-healed $root — was on '$branch' (fleet branch, clean, no unpushed commits); restored master, branch ref preserved." >&2
+                echo "fleet-clone-freshness: $root was parked on scratch branch '$branch' (clean tree, no unique commits) — self-healed back to master and deleted the junk branch." >&2
                 branch=master
             else
                 _freshness_warn "$root" "checkout-failed|$branch" "$checkout_failed_msg"

@@ -57,22 +57,39 @@ test file; no caller edits, sourcing interface unchanged.
 **A. Escalate-then-quiet for persistent identical skips** in `advance_main_clone`
 — the load-bearing half: nothing in the loop noticed the 07-15 freeze.
 
-**B. Self-heal scope decision (committed):** extend the tick-time self-heal to a
-clean-tree park on any **fleet-namespace (`claude/*`) branch whose HEAD is
-provably recoverable** — ancestor of (or equal to) `origin/master` or its own
-`origin/<branch>` counterpart — with the branch **ref preserved** (no `-D`
-outside the existing reviewer-scratch case). Non-`claude/*` branches, dirty
-trees, and unpushed local commits keep the current warn+skip behavior (now
-escalated by A instead of spamming).
+**B. Self-heal scope decision (committed):** keep the tick-time self-heal inside
+the fleet's **scratch namespace** — `claude/*-scratch`, which covers the pool
+worktrees' `claude/pool-<N>-scratch`, its `claude/game-pool-<N>-scratch` twin,
+and the legacy `claude/<role>-reviewer-scratch` — gated on a clean tree AND a
+HEAD already contained by `origin/master` (no unique commits). That is the
+issue's literal AC. The heal drops the junk ref (`-D`), as #2381 shipped.
+Every other park — non-`claude/*`, a `claude/*` feature branch, a dirty tree, or
+a scratch ref carrying a unique commit — keeps the warn+skip behavior, now
+escalated by A instead of spamming.
 
-Scope-line rationale: every scripted-drift park observed (reviewer scratch 07-09,
-feature branch `claude/2428-frac-edge-coverage` 07-15) is in the fleet's
-`claude/*` branch namespace — a non-`claude/*` checkout in the main clone is a
-human's deliberate session, and switching that out from under a human is the one
-case with real surprise cost; those get the alert instead. Because the heal is
-checkout-only with the ref preserved and requires a clean tree + no unpushed
-commits, a wrong guess costs a re-checkout, never data. "Stranded junk" is
-distinguished from "live work" by unpushed commits.
+Scope-line rationale (**corrected 2026-07-30**, PR #2668 opus recheck): an
+earlier draft of this plan widened the heal to any `claude/*` branch with a
+"provably recoverable" HEAD, on the premise that *non*-`claude/*` is the human
+case. That premise is false. `docs/agents/FLEET.md` rule 1 states Cursor /
+ad-hoc work uses `claude/<area>-<topic>`, so a human's deliberate session is
+**inside** `claude/*`; and `commit-and-push` leaves exactly that session clean
+and pushed while the human sits on the PR, which is precisely the state the
+recoverability check green-lights. Healing it sends the human's next commit to
+`master` (violating rule 1) or splits one slice across two PRs, with no notice
+they ever see. Recoverability proves *git loses nothing*; it does not prove
+*no session is using this checkout*. Only the scratch namespace — a
+per-iteration throwaway that belongs solely in `.claude/worktrees/*` — proves
+the latter, so the scope stays there. Genuine feature-branch parks (the 07-15
+`claude/2428-frac-edge-coverage` case) are handled by A's alert, which is what
+the issue prescribes: *"Keep skipping … when the tree is dirty or the branch is
+a real WIP feature branch."*
+
+Folding the tiers also retires dead code: the shipped tier-1 pattern
+`claude/*-reviewer-scratch` matches nothing the live fleet produces (reviewer
+and worker scratch refs are `claude/pool-<N>-scratch`; `grep -rn reviewer-scratch`
+outside this script and its tests returns nothing), so every real scratch park
+was already falling through to the over-wide tier 2. One `claude/*-scratch`
+glob covers both spellings.
 
 ## Approach
 
@@ -121,33 +138,36 @@ All in `scripts/fleet/fleet-clone-freshness.sh`.
    - Self-heal success paths fall through to the tail, so the clear happens
      there; no separate call needed.
 
-3. **Generalized self-heal (tier 2) in Guard 1.** Keep the shipped
-   reviewer-scratch case first and byte-for-byte (clean → checkout + `branch -D`,
-   per #2381's reviewed judgment that scratch refs are junk). Then:
-   `elif [[ "$branch" == claude/* && -z "$dirty" ]] && _head_recoverable "$root" "$branch"`
-   → `git checkout master --quiet` (ref **kept**), one heal line
-   (`fleet-clone-freshness: self-healed <root> — was on '<branch>' (fleet branch,
-   clean, no unpushed commits); restored master, branch ref preserved.`), set
+3. **Scratch-namespace self-heal in Guard 1** (one tier, replacing #2381's
+   `claude/*-reviewer-scratch` arm):
+   `if [[ "$branch" == claude/*-scratch && -z "$dirty" ]] && git -C "$root"
+   merge-base --is-ancestor HEAD origin/master`
+   → `git checkout master --quiet`, `branch -D` the junk ref (per #2381's
+   reviewed judgment that scratch refs hold nothing), one heal line, set
    `branch=master`, fall through to Guard 2 + tail.
-   `_head_recoverable`: `git -C "$root" merge-base --is-ancestor HEAD
-   origin/master` OR (`git -C "$root" rev-parse --verify --quiet
-   "refs/remotes/origin/$branch"` succeeds AND `git -C "$root" merge-base
-   --is-ancestor HEAD "refs/remotes/origin/$branch"`).
-   Any other branch (or unrecoverable HEAD) → the step-2 `parked` warn (unchanged
-   skip). Checkout failure → the existing `checkout-failed` warn + `return 0`
-   (unchanged semantics).
+   Any other branch, a dirty tree, or a scratch HEAD holding a unique commit →
+   the step-2 `parked` warn (unchanged skip). Checkout failure → the existing
+   `checkout-failed` warn + `return 0` (unchanged semantics). No
+   `_head_recoverable` helper: its `origin/<branch>`-contains-HEAD arm is exactly
+   the clean-and-pushed live-session state, and a scratch ref is never pushed, so
+   the ancestor check alone is both necessary and sufficient here.
 
 4. **Tests** — extend `scripts/fleet/tests/test_clone_freshness.sh` (reuse the
    fixture and `reset_rate_limit`; add `export FLEET_ALERTS_DIR="$TMPROOT/alerts"`
    alongside the existing `FLEET_STATE_DIR` isolation):
-   - **T15 heal-pushed:** clean `claude/123-x` park with HEAD pushed to
-     `origin/claude/123-x`, origin/master ahead → healed to master, ff-advanced,
-     **branch ref still exists**, exactly one self-heal line.
-   - **T16 heal-stale-ancestor:** clean `claude/124-y` at an old master commit
-     (ancestor of origin/master, no origin counterpart) → healed.
-   - **T17 unpushed-commit park:** clean `claude/125-z` with one local commit on
-     no origin ref → untouched: "not master" warn, branch + HEAD unchanged.
-   - **T18 dirty `claude/*` park** → untouched (T5c pattern).
+   - **T15 live-session regression:** clean `claude/render-glow-pulse` park whose
+     HEAD is pushed to `origin/<branch>` (recoverable, but NOT an ancestor of
+     origin/master) → **untouched**: branch + HEAD unchanged, no self-heal line,
+     "not master" warn. This is the fixture the widened scope healed.
+   - **T16 heal pool scratch:** clean `claude/pool-7-scratch` at an ancestor of
+     origin/master → healed to master, ff-advanced, **junk ref deleted**,
+     exactly one self-heal line.
+   - **T17 scratch with a unique commit:** clean `claude/pool-8-scratch` holding
+     one commit origin/master doesn't contain → untouched: "not master" warn,
+     branch + HEAD unchanged.
+   - **T18 dirty scratch park** → untouched (T5c pattern).
+   - **T5b/T5c regression:** the legacy `claude/<role>-reviewer-scratch`
+     spelling still heals / still refuses when dirty under the folded glob.
    - **T5 regression:** non-claude `feature/x` clean park → still skipped, still
      warns (already asserted — must stay green).
    - **T19 escalation:** `FLEET_FRESHNESS_SKIP_ESCALATE_N=3`; three warn-eligible
@@ -163,7 +183,8 @@ All in `scripts/fleet/fleet-clone-freshness.sh`.
 
 ## Affected files
 
-- `scripts/fleet/fleet-clone-freshness.sh` — helpers + guard wiring + tier-2 heal
+- `scripts/fleet/fleet-clone-freshness.sh` — helpers + guard wiring + the
+  scratch-namespace heal
 - `scripts/fleet/tests/test_clone_freshness.sh` — T15–T21
 - Nothing else: no caller edits (`fleet-up` / `fleet-dispatcher` / `fleet-claim`
   source the same functions), `install.sh` already symlinks the file,
@@ -171,16 +192,19 @@ All in `scripts/fleet/fleet-clone-freshness.sh`.
 
 ## Acceptance criteria
 
-1. Clean `claude/*` park with recoverable HEAD (pushed, or ancestor of
-   origin/master): next warn-eligible tick restores master, ff-advances,
-   preserves the branch ref, logs exactly one self-heal line (T15/T16 fire).
-2. Unpushed commits / dirty tree / non-`claude/*` branch: no mutation, warn+skip
-   preserved (T17/T18/T5).
+1. Clean `claude/*-scratch` park whose HEAD is contained by origin/master: next
+   warn-eligible tick restores master, ff-advances, deletes the junk ref, logs
+   exactly one self-heal line (T16, T5b fire).
+2. Anything else — a `claude/*` feature branch (even clean and pushed), a dirty
+   tree, a scratch ref with a unique commit, a non-`claude/*` branch: no
+   mutation, warn+skip preserved (T15/T17/T18/T5/T5c).
 3. The same skip persisting N warn-eligible ticks: exactly one ESCALATION line +
    an alert file with host/root/branch/reason/count/since/remedy; identical warns
-   suppressed afterwards; counter + alert removed when the condition clears
-   (T19/T21 fire — positive-fire on file presence and fields).
-4. `bash scripts/fleet/tests/test_clone_freshness.sh` fully green (T1–T21) on
+   suppressed afterwards; the alert **refreshed every subsequent tick** (honest
+   `count=`, and a human-cleared alert re-appears while the condition holds);
+   counter + alert removed when the condition clears (T19/T21/T22 fire —
+   positive-fire on file presence and fields).
+4. `bash scripts/fleet/tests/test_clone_freshness.sh` fully green (T1–T22) on
    macOS bash 3.2 and Linux.
 5. `restore_main_clone_to_master` behavior byte-identical (fleet-up path
    untouched); every entry point still always returns 0 under `set -e` callers.

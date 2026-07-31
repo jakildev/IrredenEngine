@@ -76,7 +76,12 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   file, then go silent until a healthy pass clears both. Size N against the
   outage you're catching, not a round number, and keep every counter/alert
   write best-effort (`|| true`) so a read-only `$HOME` can't break the path
-  being guarded.
+  being guarded. **Keep rewriting the alert on every tick past N**, not just
+  at N: once stderr goes quiet the file is the only standing signal, so a
+  write-once alert freezes its `count=`/age at the escalation instant and —
+  worse — lets a human triaging the alerts inbox silence a still-live
+  condition permanently (nothing would ever recreate it). `fleet-rebase`'s
+  `escalate_if_hung_lock` is the reference shape (#2363).
 - **Unattended daemons timeout-guard their network calls.** The host's
   connections to GitHub intermittently black-hole (silent TCP death), so a
   hung `git fetch` / `gh …` in a fleet daemon (dispatcher loop, `fleet-rebase`,
