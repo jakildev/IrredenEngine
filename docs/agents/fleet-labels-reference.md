@@ -276,12 +276,13 @@ Specifically, **never pass these via `--label` when filing**:
   **Applied by the human/architect** as a triage signal (like the model
   labels) — the scout can't reliably infer "GL-only" from a render task, so
   it is never auto-derived. **Respected at three points:** the dispatcher's
-  claimability filter (`fleet_task_class.py`) skips the task on a macOS pane
-  (a slice whose only open task is GL-only → `defer`, no churn), a
-  `fleet-claim claim` backstop gate refuses a GL-only claim from a non-GL
-  host (covers manual / raced / `--stackable-on` claims), and the feedback
-  tier skips + `fleet-claim amending-claim` refuses a labeled PR on a
-  non-GL host (#2524). No host online to
+  claimability filter (`fleet_task_class.py`) skips the item on a macOS pane
+  — **both** dimensions, a labeled task and a labeled feedback PR (#2696) —
+  so a slice whose only claimable-shaped work is GL-only → `defer`, no
+  churn, a `fleet-claim claim` backstop gate refuses a GL-only claim from a
+  non-GL host (covers manual / raced / `--stackable-on` claims), and the
+  feedback tier skips + `fleet-claim amending-claim` refuses a labeled PR on
+  a non-GL host (#2524). No host online to
   run it just means the work waits for a Linux/Windows pane — the correct
   behavior, not a loss. Once the GL task merges on a GL host, its blocked
   dependents resolve normally.
