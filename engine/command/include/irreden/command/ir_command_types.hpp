@@ -72,6 +72,13 @@ inline constexpr int kCommandNameCount = static_cast<int>(TOGGLE_SETTINGS_MENU) 
 /// `engine/prefabs/irreden/common/command_suite_registry.hpp`; a creation is
 /// free to declare its own table of the same type and feed it to the same
 /// registration primitive.
+///
+/// A row carries `requiredModifiers_` but deliberately **no blocked-modifier
+/// field**, so the manifest is narrower than the primitive it feeds:
+/// @ref registerBindings passes only `requiredModifiers_` through to
+/// `bindPrefabCommand`, leaving its `blockedModifiers` at the default. A
+/// binding that must be *suppressed* while a modifier is held stays a
+/// hand-written `bindPrefabCommand` call rather than a manifest row.
 struct DefaultBinding {
     CommandNames command_;
     IRInput::InputTypes inputType_;

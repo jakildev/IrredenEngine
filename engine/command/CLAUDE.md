@@ -69,7 +69,9 @@ It filters by `overrides.omit_`, substitutes buttons per
 own `DefaultBinding` table gets the same omit/remap machinery:
 
 ```cpp
-// Everything except Escape (voxel_editor owns its own Escape handling).
+// Everything except Escape, for a creation that owns its own Escape handling.
+// (voxel_editor wants exactly this, and spells it through the forwarding
+// wrapper IRPrefab::Camera::registerStandardKeyboardCommands.)
 IRCommand::registerCameraCommands({.omit_ = {IRCommand::CLOSE_WINDOW}});
 
 // Pan on the arrow keys instead of WASD.

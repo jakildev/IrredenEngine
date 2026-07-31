@@ -2532,7 +2532,7 @@ void initSystems() {
 void initCommands() {
     // The full camera suite minus Escape→CLOSE_WINDOW, which would conflict
     // with the drag-cancel handler below — we handle Escape ourselves.
-    IRCommand::registerCameraCommands({.omit_ = {IRCommand::CLOSE_WINDOW}});
+    IRPrefab::Camera::registerStandardKeyboardCommands({.omit_ = {IRCommand::CLOSE_WINDOW}});
 
     IRCommand::createCommand(
         IRInput::InputTypes::KEY_MOUSE,
