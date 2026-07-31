@@ -6,6 +6,10 @@ paths:
   - "creations/**/*.lua"
 ---
 
+> **Sweeping for violations?** `paths:` is an injection scope, not a search
+> root. `rg`/`Grep` rooted at `creations/` reads a **false clean** (#2739) —
+> run detectors through `fleet-rules-sweep`. See [`README.md`](README.md).
+
 # ECS smell checklist
 
 Diagnostic checklist for catching common ECS pattern violations. Use during

@@ -315,6 +315,14 @@ Parallel-agent fleet (tmux + Claude)
                                  queue/PR/plan state, checklist-vs-discovered
                                  drift rows, and embedded validate_stack result;
                                  --json for stable machine-readable output
+  fleet-rules-sweep --pattern REGEX [--glob GLOB]… [SCOPE…]
+                                 run a .claude/rules/ detector tree-wide
+                                 without the ripgrep-walker false clean
+                                 (#2739): rg/Grep rooted at creations/ or
+                                 .claude/ walks ~2 of 273 files and reports a
+                                 clean pass. Resolves files via git ls-files;
+                                 exits 0=hits, 1=real clean, 2=scope covered
+                                 nothing. rg -g glob semantics
   fleet-assert-worktree [agent]  refuse a mutating flow run in the shared main
                                  clone (cwd must be a .claude/worktrees/* tree);
                                  wired into commit-and-push, start-next-task,

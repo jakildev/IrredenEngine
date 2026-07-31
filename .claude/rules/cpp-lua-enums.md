@@ -5,6 +5,10 @@ paths:
   - "creations/**/*.{hpp,cpp,h,cc}"
 ---
 
+> **Sweeping for violations?** `paths:` is an injection scope, not a search
+> root. `rg`/`Grep` rooted at `creations/` reads a **false clean** (#2739) —
+> run detectors through `fleet-rules-sweep`. See [`README.md`](README.md).
+
 # Lua surface: enums and constants, never string-name lookups
 
 Rule:
@@ -103,3 +107,12 @@ Open-coded `if (s == "FOO") ... else if (s == "BAR") ...` chains in
 `engine/script/src/**`, `engine/**/*_lua.hpp`, or creation Lua-binding
 code are a smell. Replace them with the binding-table + enum-cast
 pattern above when you touch the surrounding code.
+
+Run the hook through `fleet-rules-sweep`, never `rg creations` — this is the
+detector whose false clean surfaced #2739 (0 hits reported on a tree with 4
+matching files):
+
+```
+fleet-rules-sweep --glob '*.{hpp,cpp,h,cc}' --pattern '== *"' \
+  engine/script/src creations
+```

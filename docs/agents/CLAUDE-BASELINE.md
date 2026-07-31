@@ -293,6 +293,7 @@ agent-facing doc, link to the canonical home rather than restating.
 | Math substitution rules (machine-checkable) | `.claude/rules/cpp-math.md` |
 | System-state smells (machine-checkable) | `.claude/rules/cpp-systems.md` |
 | Global-state patterns · header-global ban (machine-checkable) | `.claude/rules/cpp-globals.md` |
+| Running a rules detector tree-wide · the `creations/` sweep trap | `.claude/rules/README.md` |
 | Tick-function signatures · INPUT → UPDATE → RENDER ordering | `engine/system/CLAUDE.md` |
 | Component-method tier rules | `engine/prefabs/CLAUDE.md` |
 | Asset serialization version-bump | `engine/asset/CLAUDE.md` |
@@ -395,6 +396,17 @@ cancels its batch siblings.
   than the current working directory.
 - **Use the Grep tool** instead of `grep` via Bash. The built-in Grep
   tool is already allowlisted and doesn't require approval.
+- **Never root a tree search at `creations/` or `.claude/`** — both own an
+  ignore-then-negate block in `.gitignore`, and ripgrep's walker prunes the
+  child directories before the negation re-includes them. `rg`/`Grep` rooted
+  there walks ~2 of 273 files and returns a **clean pass** on a tree that has
+  matches (#2739); `git check-ignore` disagrees, so this is a walker
+  behaviour, not an ignore rule. The Grep tool is backed by the same
+  ripgrep, so `Grep(pattern, path="creations")` has the identical exposure.
+  Root at the repo top or at a child (`creations/demos`), or — for anything
+  you intend to report as a clean pass — run it through **`fleet-rules-sweep`**,
+  which resolves files via `git ls-files` and exits 2 rather than 1 when a
+  scope covers nothing. Details: [`.claude/rules/README.md`](../../.claude/rules/README.md).
 - **Native-Windows host (MSYS2 / Git Bash): there is no Bash-tool OS
   sandbox**, so an allowlist prefix match is the ONLY auto-approval path —
   every miss hard-blocks in a headless session. Two idioms that work on
