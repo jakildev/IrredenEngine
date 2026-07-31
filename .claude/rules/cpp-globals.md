@@ -85,14 +85,30 @@ Two precision notes, both measured against the tree:
 Keep the executor and this file in sync — a detection spec nothing runs
 drifts silently (see #2727).
 
+Both notes are findings from the #2726 sweep, not hypotheticals: the pointer
+case hid that header's `g_activeShots` — a genuine violation — through an
+entire hand-grep pass, which is why the executor encodes the both-ends rule
+rather than leaving it to the reader.
+
+Run the check **tree-wide**, not only over a diff. Diff-scoping is what let
+the #2726 population accumulate unseen: all 16 of those declarations predated
+the rule, so no new-hunk check ever had cause to look at them. The
+`header-checks` target scans every header by construction — that is what makes
+it a standing check rather than a triage aid.
+
 ## Live deviations
 
-- `creations/demos/lighting/common/lighting_demo_scene.hpp` — 13 demo
-  CLI/config globals, two wire-once `SystemId` handles, and one scene
-  `EntityId` (16 total, as reported by the executor); migrate to a
-  singleton component + the `SystemManager` registry (#2728).
+**None.**
+
+Add an entry here — **with its tracking issue** — whenever a sweep finds
+a violation that can't be migrated on the spot, and drop the entry when
+that issue closes. A register that names only already-fixed symbols is
+worse than an empty one: its "don't re-flag these" instruction then
+shields nothing while still reading as complete.
 
 This list mirrors `header_global_baseline` in
-`cmake/run_header_convention_checks.cmake` — update both together. The
-baseline is a ratchet: a file may leave it, never join it. Don't migrate a
+`cmake/run_header_convention_checks.cmake` — update both together. A
+baselined path is skipped by the scan **entirely**, so an entry left standing
+after its migration lands silently exempts that file from the check forever.
+The baseline is a ratchet: a file may leave it, never join it. Don't migrate a
 deviation in an unrelated PR — the issue carries the plan.
