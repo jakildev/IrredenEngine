@@ -1,0 +1,42 @@
+name: Fleet Tests
+
+# The fleet's own bash/python suites (scripts/fleet/tests/). They are not
+# CMake tests, so `ctest` never sees them — without this workflow nothing
+# executes them and a suite can go red silently (#2712).
+#
+# Standalone rather than a step in quality.yml: that workflow is disabled
+# at the repo level, so any step added there is inert (re-enabling it is a
+# separate call — see #2718). These suites need no compiler, no GL, and no
+# CMake, so they have no reason to ride along with a build job anyway.
+#
+# Path-filtered to the fleet tooling surface — engine, shader, and asset
+# PRs skip this entirely (same convention as perf-gate.yml).
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'scripts/fleet/**'
+      - '.github/workflows/fleet-tests.yml'
+  pull_request:
+    paths:
+      - 'scripts/fleet/**'
+      - '.github/workflows/fleet-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fleet-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # The suites are hermetic by the authoring rules (no live GitHub, no
+      # live ~/.fleet), and resolve the tool under test from their own
+      # directory — so a plain checkout is the whole environment. bash, python3
+      # and gh are preinstalled on ubuntu-latest.
+      - name: Run fleet tool tests
+        run: bash scripts/fleet/tests/run_all.sh

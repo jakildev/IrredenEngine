@@ -82,11 +82,5 @@ jobs:
       - name: Run tests
         run: ctest --preset linux-default-tests
 
-      # The fleet's own bash/python suites (scripts/fleet/tests/). They are
-      # not CMake tests, so the ctest step above does not cover them — this
-      # is the only thing that runs them (see #2712). ~2 min serial.
-      - name: Run fleet tool tests
-        run: bash scripts/fleet/tests/run_all.sh
-
       - name: Build smoke target (IRShapeDebug)
         run: cmake --build build --target IRShapeDebug -j $(nproc)

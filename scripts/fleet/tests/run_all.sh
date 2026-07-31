@@ -2,9 +2,9 @@
 # run_all.sh — run every fleet test suite in this directory once.
 #
 # These suites are not CMake tests, so `ctest` never sees them; this runner
-# and the `quality.yml` step that calls it are the only things that execute
-# them. Keep the CI step wired — an unexecuted suite goes red silently and
-# stays that way (see #2712).
+# and the `fleet-tests.yml` workflow that calls it are the only things that
+# execute them. Keep that workflow wired — an unexecuted suite goes red
+# silently and stays that way (see #2712).
 #
 # Discovery is by glob, so a new suite is picked up with no registration
 # step. lib_assert.sh is deliberately named outside the test_* pattern and

@@ -32,9 +32,10 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   new test"; the `simplify` pre-commit pass flags the omission. Run the whole
   set with `bash scripts/fleet/tests/run_all.sh` (`--only <substring>` while
   iterating); discovery is by glob, so a new suite needs no registration.
-  These are not CMake tests — `ctest` does not cover them, so `quality.yml`'s
-  `linux-build` job calls the runner directly. That step is the only thing
-  gating them; an unexecuted suite goes red silently (see #2712).
+  These are not CMake tests — `ctest` does not cover them, so the dedicated
+  `fleet-tests.yml` workflow calls the runner directly on every push and PR
+  that touches `scripts/fleet/**`. That workflow is the only thing gating
+  them; an unexecuted suite goes red silently (see #2712).
 - **Bash tests source `tests/lib_assert.sh`** for the PASS/FAIL counters,
   `ok`/`bad`, `assert_eq`/`assert_contains`/`assert_absent`, and the
   `summarize` exit idiom — don't re-copy the helpers into a new test.
