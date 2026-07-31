@@ -399,6 +399,55 @@ grep -q "count=3" "$ALERT3" 2>/dev/null && ok "refreshed alert carries the curre
 git_q "$CLONE3" checkout master
 unset FLEET_FRESHNESS_SKIP_ESCALATE_N
 
+# --- T23: a refused `branch -D` is reported honestly, not as a delete --------
+# The delete is refusable two ways: another worktree holds the ref (the live
+# pool worktree owning claude/pool-<N>-scratch, reachable through the
+# checkout-master→delete window or a stale worktree admin entry), or a
+# refs/heads lock survives a killed git process — the fixture here. The heal
+# itself still succeeded, so the line must say the ref was LEFT: an operator
+# reading it mid-outage acts on that claim. See #2668.
+echo "T23: heal with a refused branch -D -> reports the ref as left, not deleted"
+reset_skip_counter
+git_q "$CLONE3" checkout master
+reset_rate_limit
+advance_main_clone "$CLONE3" 2>/dev/null                   # sync origin/master first
+git_q "$CLONE3" checkout -B claude/pool-6-scratch origin/master
+push_new_commit t23                                        # origin/master moves ahead
+: > "$CLONE3/.git/refs/heads/claude/pool-6-scratch.lock"   # killed-git-process leftover
+reset_rate_limit
+out=$(advance_main_clone "$CLONE3" 2>&1 || true)
+[[ "$(git -C "$CLONE3" rev-parse --abbrev-ref HEAD)" == "master" ]] && ok "healed to master despite the refused delete" || fail "still on $(git -C "$CLONE3" rev-parse --abbrev-ref HEAD)"
+if git -C "$CLONE3" rev-parse --verify --quiet refs/heads/claude/pool-6-scratch >/dev/null; then ok "ref survives the refusal (fixture reproduces it)"; else fail "ref deleted — fixture did not reproduce the refusal"; fi
+echo "$out" | grep -q "left the junk branch in place" && ok "line reports the ref as left" || fail "wrong heal line: $out"
+! echo "$out" | grep -q "deleted the junk branch" && ok "no false delete claim" || fail "claimed a delete git refused: $out"
+behind=$(clone_behind_count "$CLONE3")
+[[ "$behind" == "0" ]] && ok "advance continued past the refusal (behind 0)" || fail "behind=$behind after the refused delete"
+rm -f "$CLONE3/.git/refs/heads/claude/pool-6-scratch.lock"
+
+# --- T24: the namespace conjunct, isolated from the containment one ----------
+# T15's session carries a commit origin/master does not, so the containment
+# check alone already refuses it — leaving the scratch-namespace half of the
+# predicate unproven. A session branched at origin/master's tip with nothing
+# committed yet is clean AND contained, so only the namespace glob can refuse
+# it. That shape is the common one (branch, get pulled away, come back), and
+# healing it switches the human's branch out from under them: recoverable is
+# not idle. See #2668.
+echo "T24: clean claude/<area>-<topic> at origin/master's tip -> left alone"
+reset_skip_counter
+git_q "$CLONE3" checkout master
+reset_rate_limit
+advance_main_clone "$CLONE3" 2>/dev/null                   # sync origin/master first
+git_q "$CLONE3" checkout -B claude/editor-timeline-polish origin/master
+session_head=$(git -C "$CLONE3" rev-parse HEAD)
+push_new_commit t24                                        # origin/master moves ahead
+reset_rate_limit
+out=$(advance_main_clone "$CLONE3" 2>&1 || true)
+[[ "$(git -C "$CLONE3" rev-parse --abbrev-ref HEAD)" == "claude/editor-timeline-polish" ]] && ok "contained-HEAD session park untouched" || fail "healed a contained session onto $(git -C "$CLONE3" rev-parse --abbrev-ref HEAD)"
+[[ "$(git -C "$CLONE3" rev-parse HEAD)" == "$session_head" ]] && ok "session HEAD unmoved" || fail "HEAD moved under a contained session"
+! echo "$out" | grep -q "self-healed" && ok "namespace refuses it (containment alone would not)" || fail "self-healed a contained session: $out"
+echo "$out" | grep -q "not master" && ok "warns (escalates) instead of healing" || fail "no park warning: $out"
+git_q "$CLONE3" checkout master
+
 echo ""
 echo "PASS: $PASS  FAIL: $FAIL"
 [[ $FAIL -eq 0 ]]

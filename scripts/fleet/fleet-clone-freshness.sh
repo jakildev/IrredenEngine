@@ -271,7 +271,7 @@ advance_main_clone() {
     # two PRs, with no notice the human ever sees. Proving git loses nothing is
     # a different invariant from proving no session is using the checkout; only
     # the scratch namespace establishes the latter. See #2363.
-    local branch dirty checkout_failed_msg
+    local branch dirty checkout_failed_msg ref_note
     branch="$(git -C "$root" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?')"
     if [[ "$branch" != "master" ]]; then
         dirty="$(git -C "$root" status --porcelain 2>/dev/null || echo SKIP)"
@@ -279,8 +279,18 @@ advance_main_clone() {
         if [[ "$branch" == claude/*-scratch && -z "$dirty" ]] \
             && git -C "$root" merge-base --is-ancestor HEAD origin/master 2>/dev/null; then
             if git -C "$root" checkout master --quiet 2>/dev/null; then
-                git -C "$root" branch -D "$branch" --quiet 2>/dev/null || true
-                echo "fleet-clone-freshness: $root was parked on scratch branch '$branch' (clean tree, no unique commits) — self-healed back to master and deleted the junk branch." >&2
+                # The delete is best-effort: `branch -D` refuses a ref another
+                # worktree holds (claude/pool-<N>-scratch is exactly that) or
+                # one whose refs/heads entry a killed git process left locked.
+                # The freeze is already cleared by then, so report which of the
+                # two happened rather than claiming a delete git refused — the
+                # operator reading this mid-outage acts on the ref.
+                if git -C "$root" branch -D "$branch" --quiet 2>/dev/null; then
+                    ref_note="deleted the junk branch"
+                else
+                    ref_note="left the junk branch in place (delete refused — a worktree holds it or the ref is locked)"
+                fi
+                echo "fleet-clone-freshness: $root was parked on scratch branch '$branch' (clean tree, no unique commits) — self-healed back to master and $ref_note." >&2
                 branch=master
             else
                 _freshness_warn "$root" "checkout-failed|$branch" "$checkout_failed_msg"
