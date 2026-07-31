@@ -217,13 +217,14 @@ splat-displaced coplanar write, read at its origin as if it were a nearer caster
 - **Pack the displacement vector.** `packSunDepth(sunZ, splatOffset)` stores the
   quantized depth in the high 24 bits and this box texel's `(dx, dy)`
   displacement from its caster's own texel in the low byte (a two's-complement
-  nibble each; the r ≤ 7 cap emits `[-7, 7]`, inside `[-8, 7]`). A **direct**
-  caster's-own-texel write is `(0, 0)` ⇒ low byte 0 ⇒ `unpackSunDepth` (`>> 8`)
-  recovers the depth bit-exact vs a pre-#2319 `<< 8` single write, so every
-  **radius-0** path (per-axis / smooth-yaw / detached / saturated host) stays
-  byte-identical — and at equal quantized depth a direct write's 0 low byte wins
-  `atomicMin` over any splat's nonzero low byte, so a genuine caster's own depth
-  always claims its texel.
+  nibble each; the r ≤ 7 cap emits `[-7, 7]`, the range that round-trips — r8's
+  `dx = 8` aliases to `-8` on unpack and inverts the reconstructed origin). A
+  **direct** caster's-own-texel write is `(0, 0)` ⇒ low byte 0 ⇒
+  `unpackSunDepth` (`>> 8`) recovers the depth bit-exact vs a pre-#2319 `<< 8`
+  single write, so every **radius-0** path (per-axis / smooth-yaw / detached /
+  saturated host) stays byte-identical — and at equal quantized depth a direct
+  write's 0 low byte wins `atomicMin` over any splat's nonzero low byte, so a
+  genuine caster's own depth always claims its texel.
 - **Test the receiver plane at the reconstructed origin.** In
   `sampleCascadeShadow`, a **direct** tap keeps the pre-#2319 near-rejection
   verbatim; a **splat** tap reconstructs the write's origin texel

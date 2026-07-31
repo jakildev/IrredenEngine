@@ -171,6 +171,14 @@ therefore includes re-blessing the affected reference PNGs.
 - **`floor_selfshadow` (π/6) — PASS.**
 - **`shadow_overlay_floor` structural gate — PASS.**
 - **compare_yaw0 / compare_yaw_q — PASS**, and left un-blessed.
+- **Cost envelope (#2204 rule) — count-based, and UNMEASURED in wall-clock.**
+  r7's atomic cost is 225 writes per caster per cascade against master r6's 169
+  (+33%, ×2 cascades), clearing the ratified #2204 ceiling of 289 (the r8
+  architect anchor). That rule is a **count** rule, and this PR took no
+  frame-time number at either radius — so the envelope is satisfied exactly as
+  written, but nothing here establishes the wall-clock delta. A future radius
+  change, or any challenge to the count rule itself, needs a real measurement
+  rather than this arithmetic. (Raised by the Opus recheck on PR #2654.)
 - **AC 7 — Linux smoke owed, and it is a blocking co-requisite.** Reference
   PNGs live in per-preset sibling dirs (`macos-debug/`, `linux-debug/`) because
   Metal and OpenGL are pixel-different. The twinned shader change moves the
