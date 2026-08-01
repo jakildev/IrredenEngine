@@ -132,11 +132,13 @@ else:
         # timestamp. Future rather than `date +%s` because the tests pin
         # FLEET_CLAIM_STALE_SECS_ISSUES=1: a "now" stamp goes stale the moment
         # the clock ticks past the next second, which would flake.
+        # The queried label rides in $FLEET_LABEL_NAME, not argv: `gh api` has
+        # no --arg, so label_added_epoch passes it through the environment
+        # (#2781).
         if printf '%s ' "$@" | grep -q 'events'; then
-            argline=$(printf '%s ' "$@")
             stamp="2020-01-01T00:00:00Z"
             for fresh in ${FRESH_LABELS:-}; do
-                case "$argline" in *"$fresh"*) stamp="2099-01-01T00:00:00Z"; break ;; esac
+                case "${FLEET_LABEL_NAME:-}" in *"$fresh"*) stamp="2099-01-01T00:00:00Z"; break ;; esac
             done
             echo "$stamp"
         fi
