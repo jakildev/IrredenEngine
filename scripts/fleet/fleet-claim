@@ -1448,17 +1448,83 @@ print(issue_pr_state(prs, os.environ["ISSUE_NUM"], os.environ.get("REPO", "")))
 ' 2>/dev/null || echo none
 }
 
-# _release_parked_issue_labels <issue-num>
-#   When the issue's matching open PR is PARKED (fleet:design-blocked /
-#   fleet:design-unblocked), clear this host's `fleet:claim-<host>-*` and
-#   `fleet:in-progress` labels off the issue so the scout stops seeing it as
-#   in-progress and any worker can re-claim after the architect unblocks it
-#   (#1488 Fix A). Returns 0 only when a parked PR was detected and the sweep
-#   ran; returns 1 otherwise (gh missing, no GH repo for the namespace, or the
-#   matching PR is active — the normal PR-open release keeps its labels through
-#   the merge lifecycle, per AUTHOR-PIPELINE.md "Claim-label lifecycle").
-#   Multi-host safe: only this host's `fleet:claim-<host>-*` labels are touched.
-_release_parked_issue_labels() {
+# _issue_has_unswept_claim <repo> <issue-num> <self-label> <scope> [stale-secs] [now]
+#   Does the issue still carry a `fleet:claim-*` label that the caller's pass
+#   is NOT going to remove? If so another agent's work is live and
+#   `fleet:in-progress` must stay: clearing it advertises an owned task as free
+#   and invites the double-claim race. Every path that clears
+#   `fleet:in-progress` alongside a claim label asks exactly this question, and
+#   they must not answer it differently — hence one predicate here rather than
+#   an inline copy per site.
+#
+#   <scope> selects what "the caller's pass sweeps" means:
+#     - "host" — the pass removes only `fleet:claim-<this-host>-*`
+#       (`cmd_release`, `cmd_reset_sweep_host_claims`), so ANY other host's
+#       claim is live by construction and same-host labels never count.
+#     - "ttl"  — the pass removes any host's claim once it ages past
+#       <stale-secs> (`cmd_cleanup_gh`), so another claim is live while it is
+#       younger than that. Same-host claims with no local lock are confirmed
+#       orphans that this pass sweeps on their own row, so they don't count.
+#       The PR-state gate is per-issue, shared by every label on it, so age
+#       (plus the orphan fast path) is the only per-label discriminator.
+#
+#   Fails closed: an unreadable label set or an unknown label age counts as
+#   live. Keeping `fleet:in-progress` one sweep cycle too long costs a delay;
+#   dropping it while a claim is live costs a duplicate PR.
+_issue_has_unswept_claim() {
+    local repo="$1" issue_num="$2" self_label="$3" scope="$4"
+    local stale_secs="${5:-0}" now="${6:-0}"
+    local this_host issue_labels lbl lbl_host added
+    this_host=$(derive_host)
+    issue_labels=$(gh issue view "$issue_num" --repo "$repo" \
+        --json labels --jq '.labels[].name' 2>/dev/null) || return 0
+    while IFS= read -r lbl; do
+        [[ -z "$lbl" || "$lbl" == "$self_label" ]] && continue
+        [[ "$lbl" == fleet:claim-* ]] || continue
+        lbl_host="${lbl#fleet:claim-}"
+        lbl_host="${lbl_host%%-*}"
+        if [[ "$scope" == "host" ]]; then
+            [[ "$lbl_host" == "$this_host" ]] && continue
+            return 0
+        fi
+        if [[ "$lbl_host" == "$this_host" \
+              && ! -d "$CLAIMS_DIR/$(slugify "$issue_num")" ]]; then
+            continue
+        fi
+        added=$(label_added_epoch "$repo" "$issue_num" "$lbl")
+        if [[ "$added" -eq 0 ]] || (( now - added < stale_secs )); then
+            return 0
+        fi
+    done <<< "$issue_labels"
+    return 1
+}
+
+# _release_inactive_issue_labels <issue-num>
+#   Clear this host's `fleet:claim-<host>-*` and `fleet:in-progress` labels off
+#   the issue whenever the claim is NOT backed by live work, so the scout stops
+#   seeing it as in-progress and any worker can re-claim. Two such cases, both
+#   of which `issue_pr_state` reports as not-"active":
+#     - "parked" — the matching PR is design-blocked/-unblocked; the worker
+#       released precisely so anyone can resume once the architect answers
+#       (#1488 Fix A).
+#     - "none"   — no matching PR at all: the decline-after-claim path, where a
+#       worker claims, finds the task unworkable, comments, and releases
+#       without opening a PR (#2732). Retaining the labels there leaves a
+#       still-`fleet:queued` task in the scout's in_progress[] bucket,
+#       invisible to every pane's queue walk, until `cleanup --gh`'s
+#       open-issue sweep ages it out at FLEET_CLAIM_STALE_SECS_ISSUES (2h);
+#       that sweep classifies "none" and "parked" identically, as here.
+#   `issue_pr_state`'s own contract states that callers which only distinguish
+#   keep-the-claim from release-the-claim treat "parked" and "none" identically
+#   — this is such a caller, so it gates on != "active" rather than == "parked".
+#   Returns 0 only when the sweep ran; returns 1 otherwise (gh missing, no GH
+#   repo for the namespace, or the matching PR is active — the normal PR-open
+#   release keeps its labels through the merge lifecycle, per
+#   AUTHOR-PIPELINE.md "Claim-label lifecycle").
+#   Multi-host safe: only this host's `fleet:claim-<host>-*` labels are touched,
+#   and `fleet:in-progress` is left alone while ANOTHER host's claim label
+#   survives — that host's work is still live even though ours isn't.
+_release_inactive_issue_labels() {
     local issue_num="$1"
     command -v gh >/dev/null 2>&1 || return 1
     local repo host
@@ -1470,7 +1536,7 @@ _release_parked_issue_labels() {
     prs_json=$(gh pr list --repo "$repo" --state open \
         --json number,headRefName,labels,body --limit 300 2>/dev/null || echo "[]")
 
-    [[ "$(_issue_pr_state_from "$prs_json" "$issue_num" "$repo")" == "parked" ]] || return 1
+    [[ "$(_issue_pr_state_from "$prs_json" "$issue_num" "$repo")" != "active" ]] || return 1
 
     # Remove this host's claim label(s) + fleet:in-progress (mirrors the
     # cleanup --gh open-issue sweep).
@@ -1478,10 +1544,13 @@ _release_parked_issue_labels() {
     issue_labels=$(gh issue view "$issue_num" --repo "$repo" \
         --json labels --jq '.labels[].name' 2>/dev/null || echo "")
     while IFS= read -r lbl; do
-        [[ "$lbl" == fleet:claim-${host}-* ]] || continue
-        gh_release_label "$repo" "$issue_num" "$lbl" || true
+        if [[ "$lbl" == fleet:claim-${host}-* ]]; then
+            gh_release_label "$repo" "$issue_num" "$lbl" || true
+        fi
     done <<< "$issue_labels"
-    gh_release_label "$repo" "$issue_num" "fleet:in-progress" || true
+    if ! _issue_has_unswept_claim "$repo" "$issue_num" "" "host"; then
+        gh_release_label "$repo" "$issue_num" "fleet:in-progress" || true
+    fi
     return 0
 }
 
@@ -1510,20 +1579,18 @@ cmd_release() {
                 cmd_release_worktree "$owner" >/dev/null 2>&1 || true
             fi
         fi
-        # Issue-side `fleet:claim-*` + `fleet:in-progress` normally persist
-        # through the PR's review/merge lifecycle (see AUTHOR-PIPELINE.md
-        # "Claim-label lifecycle"): the queue reflects "active work present"
-        # until the issue closes, and `cleanup --gh` ages out abandoned
-        # claims. The ONE exception is a design-blocked / design-unblocked
-        # escalation — the worker releases precisely so ANY worker can resume
-        # after the architect responds, but the lingering claim/in-progress
-        # labels make the scout treat the issue as in-progress and block
-        # re-claim (#1488 Fix A). The escalation step adds fleet:design-blocked
-        # to the PR before calling release, so we detect the park here and
-        # clear both sides. (cleanup --gh's parked-PR carve-out is the TTL
-        # safety net if the label landed late or release was skipped.)
-        if _release_parked_issue_labels "$issue_num"; then
-            echo "released: #${issue_num} (slug: $slug, FS lock + worktree reservation + parked issue labels cleared)"
+        # Issue-side `fleet:claim-*` + `fleet:in-progress` persist through the
+        # PR's review/merge lifecycle (see AUTHOR-PIPELINE.md "Claim-label
+        # lifecycle"): the queue reflects "active work present" until the issue
+        # closes. That holds only while a live PR backs the claim — when none
+        # does (design-blocked/-unblocked park, #1488 Fix A; or no PR at all,
+        # the decline-after-claim path, #2732), the lingering labels make the
+        # scout treat the issue as in-progress and block re-claim, so we clear
+        # both sides here. (cleanup --gh's open-issue sweep, which classifies
+        # the same two cases identically, stays the TTL safety net for a claim
+        # abandoned without any release at all.)
+        if _release_inactive_issue_labels "$issue_num"; then
+            echo "released: #${issue_num} (slug: $slug, FS lock + worktree reservation + stale issue labels cleared)"
         else
             echo "released: #${issue_num} (slug: $slug, FS lock + worktree reservation cleared; issue labels retained)"
         fi
@@ -2082,8 +2149,16 @@ for issue in issues:
                     --remove-label "$label_name" >/dev/null 2>&1; then
                 echo "cleanup --gh: removed stale '$label_name' on $repo issue#$issue_num (age: $((age / 60))m, ${sweep_reason})"
                 total_removed=$((total_removed + 1))
-                gh issue edit "$issue_num" --repo "$repo" \
-                    --remove-label "fleet:in-progress" >/dev/null 2>&1 || true
+                # Two hosts can hold claims on one issue and age past the TTL
+                # at different times; only the row that retires the LAST live
+                # claim may clear fleet:in-progress.
+                if _issue_has_unswept_claim "$repo" "$issue_num" "$label_name" \
+                        "ttl" "$claim_issue_stale_secs" "$now"; then
+                    echo "cleanup --gh: keeping 'fleet:in-progress' on $repo issue#$issue_num — another claim is still live"
+                else
+                    gh issue edit "$issue_num" --repo "$repo" \
+                        --remove-label "fleet:in-progress" >/dev/null 2>&1 || true
+                fi
             else
                 write_orphan_sentinel "$repo" "$issue_num" "$label_name" \
                     "cleanup --gh: open-issue claim remove-label failed"
@@ -2354,8 +2429,15 @@ print(0)
                     --remove-label "$label_name" >/dev/null 2>&1; then
                 echo "reset-sweep-host-claims: removed '$label_name' on $repo issue#$issue_num (no open PR)"
                 total_removed=$((total_removed + 1))
-                gh issue edit "$issue_num" --repo "$repo" \
-                    --remove-label "fleet:in-progress" >/dev/null 2>&1 || true
+                # This pass only ever removes THIS host's claim labels, so a
+                # foreign claim here is live by construction — our boot
+                # sequence says nothing about another host's work.
+                if _issue_has_unswept_claim "$repo" "$issue_num" "$label_name" "host"; then
+                    echo "reset-sweep-host-claims: keeping 'fleet:in-progress' on $repo issue#$issue_num — another host's claim is still live"
+                else
+                    gh issue edit "$issue_num" --repo "$repo" \
+                        --remove-label "fleet:in-progress" >/dev/null 2>&1 || true
+                fi
             fi
         done <<< "$open_claim_plan"
     done
