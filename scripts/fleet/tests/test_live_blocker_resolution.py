@@ -242,6 +242,31 @@ class TestResolveAndEnrichIntegration(unittest.TestCase):
         enrich_stackable_blocker_prs(state)
         self.assertNotIn("stackable_blocker_pr", state["repos"]["engine"]["tasks"]["open"][0])
 
+    def test_declared_view_emptying_out_still_offers_the_gate_ref(self):
+        """#2783 — the declared-only narrowing may only ADD an offer.
+
+        The declared blocker (#100) closes while the decorative ref (#102) is
+        still open, so the declared view empties to "(none)" while the claim
+        gate still blocks on #102. Reading "(none)" in preference would leave
+        the task un-claimable AND un-stackable; enrich must fall back to
+        `blocked_by` and offer #102's PR."""
+        tasks = [_task("#300", "#100 (context: see #102)")]
+        open_prs = [_pr(536, "claude/102-decorative-work")]
+        state = _state(
+            engine_tasks=tasks,
+            engine_prs=open_prs,
+            closed=[_closed_issue(100)],
+        )
+        with patch.object(_mod.subprocess, "run", _gh_state_stub({"102": "OPEN"})):
+            resolve_blocked_by(state)
+        enrich_stackable_blocker_prs(state)
+        task = state["repos"]["engine"]["tasks"]["open"][0]
+        self.assertEqual(task["blocked_by"], "#102")
+        # The diagnostic field still records that nothing *declared* remains.
+        self.assertEqual(task["blocked_by_declared"], "(none)")
+        self.assertIn("stackable_blocker_pr", task)
+        self.assertEqual(task["stackable_blocker_pr"]["number"], 536)
+
 
 # ---------------------------------------------------------------------------
 # Part (c) — cross-repo blocker refs (#1522)

@@ -1647,8 +1647,15 @@ def enrich_stackable_blocker_prs(state):
             # Prefer the declared-only view when resolve_blocked_by found the
             # value's prose inflating the ref count (#2783) — eligibility asks
             # "how many blockers were declared", not "what gates the claim".
-            blocked_by = (task.get("blocked_by_declared")
-                          or task.get("blocked_by") or "").strip()
+            # The narrowing may only ever ADD an offer, never withdraw one. Once
+            # every declared ref resolves while a decorative one has not, the
+            # declared view reads "(none)" while the gate still blocks on that
+            # decorative ref (#1281) — honoring it would leave the task with no
+            # claim AND no base to stack on. Fall back to the gate's own value.
+            declared_view = (task.get("blocked_by_declared") or "").strip()
+            if declared_view.lower().startswith("(none"):
+                declared_view = ""
+            blocked_by = (declared_view or task.get("blocked_by") or "").strip()
             issue_num = _single_blocker_issue(blocked_by)
             if not issue_num:
                 continue
