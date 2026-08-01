@@ -28,7 +28,7 @@
 
 // Commands
 #include <irreden/common/command_suite_capture.hpp>
-#include <irreden/render/commands/command_toggle_gui.hpp>
+#include <irreden/render/help_overlay.hpp>
 #include <irreden/render/commands/command_gui_zoom.hpp>
 
 // Modifier framework
@@ -505,6 +505,7 @@ void initSystems() {
             clearMainCanvasId,
             IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
             IRSystem::createSystem<IRSystem::TEXT_TO_TRIXEL>(),
+            IRSystem::System<IRSystem::HELP_OVERLAY>::create(),
             IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
             IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
         }
@@ -528,11 +529,10 @@ void initSystems() {
 void initCommands() {
     IRPrefab::Camera::registerStandardKeyboardCommands();
     IRCommand::registerCaptureCommands();
-    IRCommand::createCommand<IRCommand::TOGGLE_GUI>(
-        InputTypes::KEY_MOUSE,
-        ButtonStatuses::PRESSED,
-        KeyMouseButtons::kKeyButtonGraveAccent
-    );
+    // Backtick keeps its "show the command list" meaning, now backed by the
+    // registry-driven help overlay (#2550). The bespoke H help panel below is
+    // a separate, demo-specific explainer and is unaffected.
+    IRPrefab::HelpOverlay::registerToggleCommand(KeyMouseButtons::kKeyButtonGraveAccent);
     IRCommand::createCommand<IRCommand::GUI_ZOOM_IN>(
         InputTypes::KEY_MOUSE,
         ButtonStatuses::PRESSED,

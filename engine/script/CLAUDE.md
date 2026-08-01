@@ -1444,9 +1444,15 @@ IRCommand.fireByName(CN.SCREENSHOT)
   specialization (`NULL_COMMAND`, `EXAMPLE`, `SET_TRIXEL_COLOR`,
   ...), returns `kInvalidCommandId` and logs an error.
 - `IRCommand.createCommand(inputType, status, button, fn,
-  requiredMods?, blockedMods?) -> CommandId` — register a Lua closure
-  body. Body errors are caught in-VM via `sol::protected_function`
-  and logged; the dispatch loop continues.
+  requiredMods?, blockedMods?, name?, description?) -> CommandId` —
+  register a Lua closure body. Body errors are caught in-VM via
+  `sol::protected_function` and logged; the dispatch loop continues.
+  The optional trailing `name` / `description` strings list the binding
+  in the F1 help overlay (#2550) — without them a Lua command body is
+  invisible there, since the registry records only named `PRESSED`
+  bindings. Omitting them preserves the pre-#2550 behavior.
+  `bindPrefab` needs no such argument: it routes through the
+  enum-templated path and is auto-named from the command catalog.
 - `IRCommand.fire(commandId)` — invoke a registered command id
   imperatively (bypasses input trigger). Bounds-checked; out-of-range
   ids log + return.

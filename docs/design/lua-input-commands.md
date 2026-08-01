@@ -90,7 +90,7 @@ surface required from Lua is:
 | Need | Maps to |
 |------|---------|
 | Bind an input trigger to a prefab command | `IRCommand.bindPrefab(name, inputType, status, button, mods)` |
-| Bind an input trigger to a Lua closure | `IRCommand.createCommand(inputType, status, button, fn, mods)` |
+| Bind an input trigger to a Lua closure | `IRCommand.createCommand(inputType, status, button, fn, mods, name, description)` |
 | Spell prefab command names | `IRCommand.CommandName.X` (mirrors `IRSystem.SystemName.X`) |
 | Spell input enums | `IRInput.InputType.X`, `IRInput.ButtonStatus.X`, `IRInput.Key.X`, `IRInput.Modifier.X`, `IRInput.GamepadButton.X`, `IRInput.GamepadAxis.X` |
 | Fire a command imperatively from Lua | `IRCommand.fire(commandIdOrName)` (lets game code trigger commands from systems / event handlers, not just input) |
@@ -311,7 +311,9 @@ IRCommand.bindPrefab(
 
 -- Register a Lua-defined command with a closure body:
 IRCommand.createCommand(
-    inputType, status, button, fn, requiredMods, blockedMods
+    inputType, status, button, fn, requiredMods, blockedMods,
+    name,           -- optional; display label in the F1 help overlay (#2550)
+    description     -- optional; short clause shown beside the label
 ) -> CommandId
 
 -- Fire a registered command (bindPrefab or createCommand) by id:
@@ -570,6 +572,29 @@ wants to "compose Lua commands in a pipeline" is:
 A command that needs both shapes is two abstractions — a system that
 does the per-entity work, plus a command that decides when to invoke
 it. The boundary stays clean.
+
+## Amendment: named Lua commands (#2550)
+
+`IRCommand.createCommand` gained two optional trailing strings, `name` and
+`description`. They are what makes a Lua-defined command visible in the
+registry-driven help overlay (`IRPrefab::HelpOverlay`): the registry records
+only **named** `PRESSED` bindings, so before this every Lua command body was
+invisible there while `IRCommand.bindPrefab` — which routes through the
+enum-templated C++ path and is auto-named from `kCommandInfo` — already
+appeared.
+
+```lua
+IRCommand.createCommand(
+    IT.KEY_MOUSE, BS.PRESSED, K.P, function() ... end,
+    nil, nil,                       -- requiredMods / blockedMods
+    "PULSE", "HALVE GAME SPEED FOR 2 SECONDS"
+)
+```
+
+Both are optional and default to empty, so every pre-existing call site keeps
+its exact behavior (unnamed → not listed). `bindPrefab` needs no signature
+change. The trixel font is uppercase-only — spell both strings uppercase and
+keep the description to one short clause.
 
 ## Out of scope
 

@@ -71,6 +71,7 @@
 #include <irreden/render/components/component_gpu_particle_pool.hpp>
 #include <irreden/render/components/component_gui_hover_state.hpp>
 #include <irreden/render/components/component_gui_position.hpp>
+#include <irreden/render/components/component_help_overlay.hpp>
 #include <irreden/render/components/component_layout_leaf.hpp>
 #include <irreden/render/components/component_layout_state.hpp>
 #include <irreden/render/components/component_light_blocker.hpp>
@@ -334,6 +335,10 @@ IR_SAVE_OPT_IN(IRComponents::C_WidgetState, 1)
 // at runtime today, so a world snapshot would add nothing. Revisit if a
 // theme editor makes this user-authored state.
 IR_SAVE_OPT_OUT(IRComponents::C_WidgetTheme)
+// C_HelpOverlayState: OPT-OUT — a transient debug-overlay toggle, not
+// authored state. Restoring a snapshot with the overlay open would paste a
+// developer's momentary view onto someone else's session.
+IR_SAVE_OPT_OUT(IRComponents::C_HelpOverlayState)
 IR_SAVE_OPT_IN(IRComponents::C_Splitter, 1)
 IR_SAVE_OPT_IN(IRComponents::C_VoxelSelection, 1)
 IR_SAVE_OPT_IN(IRComponents::C_VoxelSelectionHighlight, 1)
@@ -515,6 +520,7 @@ using AllEngineComponents = std::tuple<
     IRComponents::C_WidgetTextInput,
     IRComponents::C_WidgetState,
     IRComponents::C_WidgetTheme,
+    IRComponents::C_HelpOverlayState,
     IRComponents::C_Splitter,
     IRComponents::C_VoxelSelection,
     IRComponents::C_VoxelSelectionHighlight,
@@ -531,7 +537,7 @@ using AllEngineComponents = std::tuple<
     IRSystem::C_PerfStatsOverlayTag,
     IRComponents::C_SystemEvent<IRSystem::TICK>>;
 
-inline constexpr std::size_t kExpectedEngineComponentCount = 166;
+inline constexpr std::size_t kExpectedEngineComponentCount = 167;
 
 static_assert(
     detail::allExplicit<AllEngineComponents>(),

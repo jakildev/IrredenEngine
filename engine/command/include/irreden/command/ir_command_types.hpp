@@ -47,9 +47,15 @@ enum CommandNames {
     GUI_ZOOM_IN,
     GUI_ZOOM_OUT,
     TOGGLE_CULLING_FREEZE,
-    TOGGLE_CULLING_MINIMAP
-
+    TOGGLE_CULLING_MINIMAP,
+    TOGGLE_HELP_OVERLAY
 };
+
+/// Number of `CommandNames` values. Keeps the hand-listed `kCommandInfo`
+/// table in `ir_command.hpp` honest — a new enum value without a matching
+/// row is a compile error there, not a silent "UNKNOWN" at render time.
+/// Update alongside the last enumerator when extending the enum.
+inline constexpr int kCommandNameCount = static_cast<int>(TOGGLE_HELP_OVERLAY) + 1;
 
 /// Type-tag struct; specialised per command to provide a `create()` factory
 /// that returns the `std::function<void()>` for that command.
