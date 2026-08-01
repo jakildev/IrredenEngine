@@ -251,9 +251,26 @@ unticked.
    = the plan references a symbol, file, or decision the merge renamed,
    removed, or superseded. Amend stale plans (append-only `## Amendments`
    entry citing the merged PR) — never rewrite plan history in place.
+   **Ledger claims are backed by the child's own plan file:** before
+   committing a ledger update that marks a child's Plan column
+   `plan + A<n>`, confirm the staged tree actually contains
+   `<plans-path>/issue-<child>.md` with the new `### A<n>` heading. If
+   the child has no plan file yet (its plan lives only as an issue
+   comment), materialize the file first — the same stub mechanism as
+   flow c step 3 — then append the amendment to it. Never record the
+   amendment only in the umbrella's own Events prose: a worker resuming
+   the child reads the child's plan file, not the umbrella's ledger, so
+   an Events-only amendment is a ledger asserting something false
+   (#2571).
    **Skip-guard:** defer re-validation while the next child's PR carries
    `fleet:merger-cooldown` or `fleet:stacked-rebase` — the merger is
    mid-cascade and the diff you'd validate against is still moving.
+   Evaluate the skip-guard against the child PR's **live** labels
+   (`gh pr view <PR> --json labels`) at the moment you write, never the
+   scout cache snapshot: the cascade you're deferring for is exactly
+   what flips those transient labels (often → `fleet:semantic-conflict`)
+   within minutes, so a snapshot read is routinely stale by the time
+   the ledger commit lands (#2398).
 
 ### Flow c — adoption
 
@@ -282,6 +299,15 @@ each child's state, not the cache.
    the issue carries an explicit close rationale (e.g. superseded,
    scope-shipped). Neither → comment on the umbrella asking the human to
    confirm, and do NOT close this iteration.
+   **A merged PR only counts as the child's closing PR if it contains an
+   implementation artifact** — check `gh pr view <PR> --json files`. A PR
+   whose entire file list sits under `<plans-path>/` (or is otherwise
+   docs-only) closed the child *prematurely*: search for the re-filed
+   implementation ticket (`gh issue list --search "#<child>"`, or the
+   child's own timeline cross-references) and record the *re-filed issue
+   → its shipping PR* in the ledger instead of the docs-only PR. This is
+   the standing exposure of every pre-#1932 child — plans then landed as
+   standalone `.fleet/plans/` PRs that could carry `Closes #N` (#2583).
 2. Audit the umbrella's closing criteria (acceptance criteria in the
    umbrella body/plan) and collect evidence per criterion.
 3. Post the closure summary comment: a phase/child/PR/outcome table,
@@ -307,6 +333,13 @@ proposal-pending: <none | link to the umbrella's STEWARD PROPOSAL comment>
 | Child | State | PR | Plan | Last validated |
 |---|---|---|---|---|
 | #<N> | open / in-progress / merged / closed-other | #<PR> or — | plan / stub / — | <date or trigger> |
+
+The PR column carries the PR reference **only** — never a volatile
+review/merge label (`approved` / `needs-fix` / `merger-cooldown` /
+`semantic-conflict`). Those labels churn within minutes under normal
+merger/reviewer activity, so a durable ledger record of one decays no
+matter how fresh the read was at write time; the child's durable status
+already lives in the monotonic State column (#2398).
 
 ### Decisions
 - D<n> (<date>): <one-line decision> — source: <umbrella plan §, proposal answer link, or design doc>

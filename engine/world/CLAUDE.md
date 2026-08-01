@@ -410,7 +410,9 @@ same change. Four consequences for authors:
   a both-negative extent, which multiplies to a positive cell count), the
   reader is deliberately the tighter of the two — a reader that only mirrored
   the constructor would restore a component the accessors then index out of
-  bounds. When one guard covers two distinct faults, give each its own check
+  bounds. A validity guard on a multi-dimensional value must constrain
+  **each dimension**, not a derived product — the reduction destroys sign
+  and magnitude information (#2613). When one guard covers two distinct faults, give each its own check
   and message: a shared message necessarily mis-describes whichever fault it
   wasn't written for, and a load-time diagnostic is the only thing the person
   debugging a corrupt save has. **A reader guard that is tighter than the type

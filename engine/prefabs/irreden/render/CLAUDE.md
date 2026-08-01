@@ -689,6 +689,14 @@ sub-attribution is per-dispatch, CPU stays coarse. Sub-scopes are
 single-canvas-exact (last-sample on multi-canvas) and do not cover the
 rotating-only per-axis voxel dispatch.
 
+**Untagging any system from the observer is a paired edit (#2496).**
+The per-system observer is what feeds `cpuFrameHistogram`, so removing a
+system's observer tag drops its CPU overlay row to a permanent 0.0
+unless the tick gains a replacement `IR_PROFILE_SCOPE("<stageName>")` in
+the same change. An `IR_PROFILE_FUNCTION` already sitting in the tick is
+an active decoy — it feeds easy_profiler, not the histogram the overlay
+reads. Green build, no runtime error; the row just silently zeroes.
+
 ## Deprecated
 
 | Surface | Replacement | Marked |

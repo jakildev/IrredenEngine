@@ -1702,6 +1702,14 @@ since the same `vec4` carries positions and float colors. Validate the type at
 the callsite and return an error string *before* calling the helper — it
 zero-defaults on unrecognized types so bad-type errors need a caller-side check.
 
+**`sol::object::is<sol::table>()` returns TRUE for userdata** — sol2
+treats userdata as table-like. A binding that shape-checks a Lua argument
+must test the concrete usertypes FIRST (`obj.is<vec2>()`, …) and match
+the exact Lua table type second (`obj.get_type() == sol::type::table`);
+a table-first check returns early for every userdata and makes the
+per-type validation inert (#2610 — both reviewers misread the broken
+guard as discriminating).
+
 **`vec4FromLua` vs `quatFromLua`** read the same `IRMath::vec4` storage but
 default differently: `vec4FromLua` zero-defaults per the `vec3FromLua` contract,
 while `quatFromLua` identity-defaults (`w = 1`) because a zero quat is

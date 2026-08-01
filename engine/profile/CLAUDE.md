@@ -99,6 +99,17 @@ reads both sides to render CPU+GPU per-stage ms in the HUD.
   user-supplied `std::string` as the format string is a footgun — if it
   contains `{}`, fmt will treat them as format specifiers. Wrap user
   input explicitly.
+- **`fmt::runtime` means format strings are NOT compile-time checked.**
+  A printf-style conversion (`%d`, `%s`, `%zu`, …) in a log macro
+  compiles fine and prints as literal text with the arguments silently
+  dropped; an arity mismatch throws `fmt::format_error` at runtime, not
+  at compile time. A green build proves nothing about a log format
+  string — use `{}` (#2637; shipped three times in `voxel_editor`).
+- **A local hoisted only to feed an `IR_ASSERT` condition goes unused
+  under `IR_RELEASE`** — direct corollary of the condition being not
+  evaluated at all (§Assertion above). Prefer a named pure helper
+  called inline from the condition so no local escapes the macro
+  (#2439).
 - **Wrong logger macro = routed to the wrong sink.** Don't use
   `IR_LOG_*` from engine code; it'll land in the game log.
 - **`IR_ASSERT` throws.** If you're in a `noexcept` scope, `IR_ASSERT`

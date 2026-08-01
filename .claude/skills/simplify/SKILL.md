@@ -240,6 +240,13 @@ done
 Auto-fix: append a single `\n`. Scope to files changed on this branch (the
 §10 `format-changed` set), not the whole tree.
 
+For each changed `.lua` file the same loop already collects, also flag
+**dead locals** — a `local x = ...` assigned once and never read again in
+the file (luacheck's `unused-local` class; game PR #323's dead
+`local playerId` cost a review round-trip). Auto-fix: delete the
+assignment when the initializer is side-effect-free; otherwise report.
+(#2574)
+
 **Check 6: hand-rolled demo asset-copy blocks instead of `irreden_bundle_assets`.**
 
 `creations/CLAUDE.md` §"CMake boilerplate" mandates `irreden_bundle_assets(...)`
@@ -362,6 +369,177 @@ the `.cpp`. Live deviations (don't re-flag): `g_jointMatrixSystem` /
 `g_allocatorSystem` (#2526), `g_defaultTheme` (#2527). Report, don't
 auto-fix — the right owner is a design call.
 
+**Check 12: printf-style conversions inside the fmt-based log macros.**
+
+`IR_LOG_*` / `IRE_LOG_*` / `IRE_GL_LOG_*` format through
+`fmt::format(fmt::runtime(...))`, which disables fmt's compile-time format
+checking — so `IR_LOG_INFO("now %d / %d", a, b)` compiles clean and prints
+the literal `%d`s with the arguments dropped (three voxel-editor PRs
+shipped exactly this one-liner: #2491, #2625, #2633). A green build proves
+nothing about a log format string on this path.
+
+```
+Grep tool with:
+  pattern: '(IR_LOG_|IRE_LOG_|IRE_GL_LOG_)[A-Z]+\("[^"]*%[-+#0-9.]*(d|i|u|s|f|g|e|x|X|o|c|p|z[ud]|l[ud]|ll[ud])'
+  glob:    '**/*.{hpp,cpp,h,cc,tpp}'
+  output_mode: 'content'
+  -n: true
+```
+
+Discard hits whose only `%`s are `%%` (literal percent) — a line carrying
+both `%%` and a real conversion is still a hit. Keep the conversion-flag class
+exactly as written — adding a space (`[-+ #0-9.]*`) false-positives on
+prose percentages ("50% complete"). Auto-fix: replace each conversion with
+`{}` (the argument list is already positional); an arity mismatch throws
+`fmt::format_error` at runtime, so fix on sight. (#2637)
+
+**Check 13: a named constant added in the diff that already exists elsewhere.**
+
+The §1b reuse fan-out's five subagents are all aimed at callables and
+control flow, so a duplicated *named constant* reaches review by
+construction (PR #2585 defined `kBackgroundNormDepthThreshold = 0.99f`
+twice — same name, same literal, same semantic role — in the same PR that
+made both files consumers of one shared type). For each `k<Name>` in a
+`constexpr` / `const` definition on an added (`+`) line, grep the tree for
+the same identifier; two-plus definition sites → flag with the hoist
+target: one shared constant beside the type both consumers share (there,
+`ir_render_types.hpp` next to `CompositeDepthSample`). Report, don't
+auto-fix — which header is the right home is a design call. (#2651)
+
+**Check 14: removal of a still-used standard-library include.**
+
+A refactor that removes the last std-symbol use from the *edited region*
+of a file can drop the `#include` while untouched code in the same file
+still uses it — compiling today only via a transitive include path, i.e. a
+latent break (PR #2509 dropped `<cstdint>` with `std::int32_t` live at
+four untouched lines; two review passes were spent on it). For each
+`-#include <header>` line in the diff, grep the file's surviving lines
+against a finite header→symbol map:
+
+- `<cstdint>` → `std::u?int(8|16|32|64)_t`, `std::u?intptr_t`
+- `<cstddef>` → `std::size_t`, `std::ptrdiff_t`, `std::byte`
+- `<cstring>` → `std::mem\w+`, `std::str\w+`
+- `<vector>` / `<array>` / `<string>` / `<optional>` / `<memory>` → the
+  obvious type names (`std::vector`, `std::array`, `std::string`,
+  `std::optional`, `std::unique_ptr` / `std::shared_ptr` / `std::make_*`)
+
+A match means the include is still load-bearing. Auto-fix: restore it.
+(#2517)
+
+**Check 15: retirement sweep — the old value, not just the old symbol.**
+
+When the diff introduces or migrates sites onto a named sentinel/constant
+that replaces a prior value (`kNullSystemId` replacing the
+`kNullEntity`/`0` collision), a completeness grep keyed on the retired
+*symbol* is structurally blind to sites spelled as the bare *literal*: a
+fabricated `SystemId{0}` on an error path survived three independent
+`kNullEntity`-keyed sweeps and silently ticked the wrong system
+(#2596 → #2599). Grep the relevant type context for value-equivalent
+bare-literal constructions (`T{<old>}`, `T x = <old>`, `return <old>;`
+from a `T`-returning function) and report survivors. The doc-prose mirror
+of the same blind spot — retired entities surviving as paraphrases — is
+§9a's retired-entity sweep. (#2600)
+
+**Check 16: `save_component_inventory.hpp` include order.**
+
+`.clang-format` sets `SortIncludes: Never` precisely so this hand-audited
+inventory keeps its grouping — which means nothing mechanical will ever
+fix or even notice a misplaced entry, on a ~135-line include block that
+`engine/world/CLAUDE.md` §"New-component contract" makes every new engine
+component edit (#2624 slotted `settings_registry.hpp` mid-`components/`
+run; a reviewer caught it). When the diff touches
+`engine/world/include/irreden/world/save_component_inventory.hpp`, check
+each added `#include` line in the component block (everything below the
+file's own leading `save_trait.hpp` include) sorts alphabetically by full
+path against both neighbors. Scoped to this one file by design — other
+headers group by module intentionally. Auto-fix: move the line to its
+slot. (#2636)
+
+**Check 17: a new invariant guard with no test proving it fires.**
+
+`IR_ASSERT` is debug-only, so an untested guard has zero coverage in
+*both* configs — it compiles out in release, and nothing proves it fires
+in debug (#2425's cadence guard shipped exactly so). Both directions:
+
+- For each `IR_ASSERT(` on an added (`+`) line in a non-test file that
+  encodes a **new invariant** (skip restatements of already-tested
+  preconditions): look for a test in the diff, or an existing one naming
+  the enclosing function, that drives it via `EXPECT_THROW`
+  (`test/system/pipeline_groups_test.cpp` is the convention). No hit →
+  flag.
+- For a diff that **deletes** a member/flag/special-case whose comment or
+  name states a defensive purpose: look for a test naming the scenario it
+  protected. A redundancy claim is a claim about a scenario, and a
+  scenario is precisely what a test encodes — two reviews on #2425
+  asserted *opposite* things about the same deleted bit; only a test
+  adjudicates (#2438's recurrence).
+
+The new test must be seen to **fail** against the unguarded/pre-fix code —
+and when the pre-fix code also errors, it must discriminate on the
+diagnostic, not just on "something raised" (#2604). Report, don't
+auto-fix — where the test belongs is a judgment call. (#2438)
+
+**Check 18: raw `assert()` instead of the engine convention.**
+
+Runtime invariants go through `IR_ASSERT` (routes to the engine log sink,
+stripped under `IR_RELEASE`); compile-time invariants use raw
+`static_assert` with a message (no `IR_` wrapper exists or is needed);
+raw `<cassert>` `assert()` never — silently absent in release and
+invisible to the log sink. Full convention:
+[`docs/agents/CLAUDE-BASELINE.md`](../../../docs/agents/CLAUDE-BASELINE.md).
+
+```
+Grep tool with:
+  pattern: '\bassert\s*\('
+  glob:    '{engine,creations,test}/**/*.{hpp,cpp,h,cc,tpp}'
+  output_mode: 'content'
+  -n: true
+```
+
+(`\b` after `_` does not fire, so `static_assert(` never matches.)
+Cross-reference against added (`+`) lines. Skip Lua `assert(...)` inside
+string literals handed to the script engine (`runOk("assert(...)")` in
+script tests) — that is Lua's own assert, not `<cassert>`. Allowlist:
+standalone `tools/**` binaries that don't link the engine. Live deviations
+(don't re-flag):
+
+- `engine/asset/include/irreden/asset/chunk_header.hpp:69` — **migrating**
+  via #2674; the site disappears when that lands.
+- `engine/ir_args.cpp:16`
+  (`#define IR_ASSERT(cond, msg) assert((cond) && (msg))`) — **permanent**,
+  not migrating. It is a dependency-free macro so the standalone tools
+  (`img_diff`, `jitter_probe`, `lua_codegen`) can compile that translation
+  unit without linking the engine profiler, and it lives outside `tools/**`
+  so the allowlist above does not reach it. Don't try to "finish" this one —
+  there is nothing to migrate.
+
+Auto-fix: `IR_ASSERT` for runtime conditions. (#2440)
+
+**Check 19: citations must resolve — at the PR's base, via the right resolver.**
+
+Two citation classes grep-against-the-worktree cannot verify, and both
+apply to **every** changed file type (`.hpp/.cpp/.glsl/.metal/.lua/.py`,
+not just `.md` — source comments and runtime strings carry the most
+durable citations, and §9a's markdown gate never reaches them):
+
+- **`docs/**.md` paths and `§<id>` section citations** on added (`+`)
+  lines must resolve **at the PR's own base**
+  (`git show origin/master:<path>`), not in the worktree — a citation that
+  resolves only because a sibling *open* PR adds the heading is the same
+  failure with a merge-order fuse (PR #2584 shipped six `§M-2` citations,
+  one in a runtime error string, against a section only open PR #2579
+  adds; an author who rebased locally would grep the worktree and conclude
+  it fine). A true forward-reference is a stacking decision, not a typo —
+  surface it as one.
+- **Bare `#<N>` GitHub citations** on added lines of changed markdown name
+  objects outside the tree: resolve with
+  `gh issue view <N> --json title,state` (fall back to `gh pr view`). A
+  404 is a dead link, and the resolved **title must match the claim the
+  surrounding prose makes about it** — PR #2649 cited an unrelated polling
+  PR for a stale-marker fix, and a second number resolved to nothing at
+  all. Print the title beside the citing sentence and eyeball the subject
+  match. (#2587, #2655)
+
 ### 2c. Serialized-struct version-bump check
 
 See `engine/asset/CLAUDE.md` §"Automated version-bump detection" for the full
@@ -424,6 +602,12 @@ Also check:
   returns without restoring the original binding. The same function must
   restore; don't rely on a downstream system's restore surviving a
   pipeline reorder (#2273).
+- A diff that removes a system's `GpuStageTimingObserver` tag without the
+  same system's tick gaining a replacement `IR_PROFILE_SCOPE("<stageName>")`
+  — the observer fed `cpuFrameHistogram`, so the perf overlay's CPU row
+  for that stage reads 0.0 forever on a green build; an
+  `IR_PROFILE_FUNCTION` above it is a decoy (it feeds easy_profiler, not
+  the histogram the overlay reads) (#2486).
 - A changed stats format row in `system_perf_stats_overlay.hpp` whose
   minimum rendered width (leading label + each printf conversion spec's
   minimum field width + literal separators, computed per `\n`-delimited
@@ -589,6 +773,16 @@ The engine's style preferences are simple and worth applying inline:
 - Don't add abstractions for hypothetical future requirements.
 - Don't validate scenarios that can't happen (defensive checks
   against impossible states); only validate at system boundaries.
+- The counterweight to the previous bullet: a guard, clamp, or asymmetry
+  whose correctness rationale lives in a **different file** must say so at
+  its own site — otherwise it reads as exactly the deletable defensive
+  hygiene the previous bullet targets, and removing or "unifying" it
+  breaks a cross-file invariant with no local signal (the `zCost` clamp
+  holding a cross-shader cull-superset invariant, #2460). When the
+  invariant is a declaration-order/layout fact, the declaration site gets
+  the back-pointer too — "this ordering has N consumers" — because that
+  is where the breaking edit is made (#2608). Before deleting any guard
+  under the previous bullet, check it isn't one of these.
 - Magic numbers that carry domain meaning — `if (count > 64)` where
   64 is a GPU dispatch group size, `sleep(900)` where 900 is the
   usage-limit cooldown, `if (depth > 4)` where 4 is the max
@@ -625,6 +819,24 @@ top-level `CLAUDE.md` and module-level `CLAUDE.md` files.
   got merged into another, a GitHub issue number that already shipped.
   Grep the cited identifiers against the current tree and fix what
   drifted.
+- **Retired-entity paraphrase sweep.** When the diff *retires* a named
+  entity (a label, flag, script, body marker), grep the tree for **prose
+  paraphrases** of it, not just the literal token (`fleet:stacked` →
+  `stacked label|stack label`) — and check the docs that **delegate** to
+  the changed files ("see `<file>` for the deltas"), not only the files
+  in the diff. The delegating summary is the more load-bearing copy and
+  the one a token grep reports clean (#2656 left four "stacked label"
+  sites in the summary doc that delegates to the two procedure files the
+  PR rewrote). Code-side literal values: §2b Check 15.
+- **Stale restatements of a corrected claim.** When the diff corrects a
+  claim — in markdown *or in a C++ doc comment*: this bullet runs even
+  when no markdown is in the diff — take the distinctive phrase of the
+  superseded claim and grep the **module subtree** (the changed file plus
+  its nearest `CLAUDE.md`) for surviving copies. A module `CLAUDE.md`
+  restating a contract the code states is the *predictable* second home,
+  not a coincidence, and the surviving copy is usually the more
+  load-bearing one — attached to the symbol readers actually use (three
+  occurrences on PR #2594 alone, two crossing the doc/code pair). (#2614)
 - **Examples that drifted from the current API.** A doc shows a
   code snippet using `IRRender::makeCanvas()` but the API is now
   `IRRender::createCanvas()`. Same for shell snippets that use
@@ -676,7 +888,11 @@ top-level `CLAUDE.md` and module-level `CLAUDE.md` files.
   link in the diff resolves to an existing file / heading. Section
   references cited as `§Foo` match an actual `## Foo` heading. Named
   symbols (type, function, label, task ID) still exist in the tree.
-  Use the Grep tool to verify, then fix or report.
+  Use the Grep tool to verify, then fix or report. Two classes grep
+  structurally cannot verify — bare `#N` GitHub citations (resolve via
+  `gh`) and citations that must hold at the PR's *base* rather than the
+  worktree — are owned by §2b Check 19, which also covers non-markdown
+  files.
 
 For role docs and skill docs specifically, also report (don't
 auto-fix — these need human judgment on scope):
@@ -728,6 +944,16 @@ author):
 - **A convention the doc warned about that no longer applies.**
   The diff removes the constraint; the warning in the doc is now
   noise.
+- **The diff's own code vs. the rule it writes.** When the diff adds or
+  edits a rule statement in a `CLAUDE.md` / rules file, re-read the rest
+  of *the same diff* against that rule. The diff that writes a rule is
+  the diff most likely to violate it — the author is thinking about the
+  site that motivated the rule, not its siblings, and an exemplar that
+  contradicts the rule it establishes is the worst place for the
+  violation to land (PR #2594 wrote the one-fault-one-message rule and
+  shipped a two-fault single-message assert in the rule's own reference
+  file, in the same commit). This is 9b's inverse direction: doc → the
+  diff's own code. (#2629)
 
 Skip 9b when:
 

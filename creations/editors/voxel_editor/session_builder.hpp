@@ -384,6 +384,16 @@ class Builder {
     // Close the current segment and open a new one. The camera framing is
     // re-applied per shot, which is also how a session recovers from the A/D
     // frame keys nudging the camera (Phase 0 probe P0-4).
+    //
+    // Segments are shot boundaries: a segment's assertions evaluate ONCE, at
+    // end of segment, against the state after ALL of that segment's events
+    // have fired — never interleaved with individual ops within it (#2560).
+    // A hover()/expectPick() pre-arm check for one target added to the same
+    // segment as a later destructive click() on a different target therefore
+    // evaluates against the post-click state, even though it reads as firing
+    // "before" the click in source order. To pre-arm a check before a click,
+    // close the arm in its own segment (via segment(...)) before the click's
+    // segment opens — the carve_arm / carve pair is the reference shape.
     void segment(const char *label, float zoom = kSessionZoom) {
         flushSegment();
         m_current = Segment{};
@@ -530,7 +540,8 @@ class Builder {
     }
 
     // Assert the live editable set's occupancy at `local` when this segment
-    // settles.
+    // settles — i.e. after every event in the segment has fired, not at this
+    // call's position in the op sequence (see segment()).
     void expectOccupancy(IRMath::ivec3 local, bool expectOccupied, std::string name) {
         m_recipe.checks_.push_back(OccupancyCheck{local, expectOccupied, std::move(name)});
         const OccupancyCheck &check = m_recipe.checks_.back();
@@ -540,7 +551,10 @@ class Builder {
     }
 
     // Assert the ray from the parked cursor lands on `local` — the aim check
-    // that pairs with a hover op.
+    // that pairs with a hover op. Evaluates at end of segment, so the hover it
+    // pairs with must be the segment's LAST cursor-moving event; to arm an aim
+    // check ahead of a click, put hover+expectPick in their own segment before
+    // the click's segment (see segment()).
     void expectPick(IRMath::ivec3 local, const char *name) {
         const IRMath::ivec3 worldVoxel = IRMath::roundVec3HalfUp(m_model.worldCenter(local));
         m_current.assertions_.push_back(IRPrefab::GuiTest::picksVoxel(worldVoxel, name));

@@ -169,13 +169,23 @@ fix in Step i.)
 - **For `fleet:has-nits`**: focus on the latest review's `### Nits`
   section. Treat it like a checklist. Address every nit unless
   it's purely subjective preference.
-- **Verify a cited `file:line` correction before applying it.** When a nit
+- **Verify a cited `file:line` correction — and any concrete VALUE the
+  reviewer supplies as the fix — before applying it.** When a nit
   asserts a specific line ("actual: 128-132") or a precedent location, confirm
   it against `git show origin/master:<path>` first — reviewer citations drift
   from intermediate `master` merges or off-by-N arithmetic, and applying a
   wrong "correction" injects a wrong citation (#1832: the suggested 128-132
   pointed at `private:`/comment lines; the original 136-141 was correct.
-  #1725: a cited line was past the end of an 81-line file).
+  #1725: a cited line was past the end of an 81-line file). The same
+  applies to suggested coordinates, constants, and replacement
+  expressions: re-derive them against the constraints the reviewer had
+  no reason to check — a correct diagnosis does not make the suggested
+  remedy correct, and a drifted value is worse than a drifted citation
+  because it lands in running code (#2618: reviewer-suggested totem
+  coordinates were 30 px off a 1284 px framebuffer — walk-corridor
+  arithmetic checked, framebuffer-width arithmetic not). If the value
+  does not hold, say so in the summary comment and take the reviewer's
+  alternative or propose one.
 - **For `fleet:design-unblocked`** (opus+ classes only): also re-read
   the architect's plan file at `~/.fleet/plans/issue-<N>.md` (current
   naming, keyed to the issue number; some older plans use `T-<NNN>.md`

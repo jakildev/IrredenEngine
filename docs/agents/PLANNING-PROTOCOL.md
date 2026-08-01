@@ -143,7 +143,14 @@ For each `fleet:needs-plan` issue:
      gate that passes at default / on byte-identical output alone proves the
      OFF path is a no-op, not that the premise holds — mirror of the
      enabled-path rule (`engine/render/CLAUDE.md`, #1989/#2338; PR #2399
-     landed it render-side).
+     landed it render-side). The criterion must also **name the
+     fixture/scene it will fire on, and that fixture must already
+     exist** — if it doesn't, creating it is part of this plan, or it is
+     filed as a blocker before the criterion is written. A positive-fire
+     criterion with no fixture is no gate at all while reading as though
+     the premise were covered (#2603: #2350's "culled-chunk count > 0"
+     was unsatisfiable on every `perf_grid` scene mode, a debt inherited
+     from #1294 closing without filing its declared evaluation scene).
    - Known gotchas or pitfalls
    - **Cross-system audit (when planning a deletion or migration of a
      shared resource** — component, SSBO, GPU buffer, system,

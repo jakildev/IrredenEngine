@@ -10,7 +10,7 @@ stack modes apply a delta to the canonical template.
 - <one bullet per key change>
 
 ## Test plan
-- [ ] <verification steps>
+- [x] <verification steps — written from observed output, ticked>
 
 ## Acceptance evidence
 | Criterion | Check run | Observed |
@@ -33,14 +33,21 @@ The `Closes #N` line is what makes GitHub auto-close the originating issue on
 merge. Always include it when an Issue number exists.
 
 `## Acceptance evidence` is required whenever the body carries a `Closes #N`
-line and issue N has a `## Plan` with `### Acceptance criteria`; omit it
-otherwise (`Issue: (none)`, plan-less issues). One row per criterion —
-authoring rules, the unverifiable-on-this-host convention, and the
-fails-means-not-done rule live in
+line and issue N states acceptance criteria **anywhere** — a `## Plan`
+comment's `### Acceptance criteria` section OR the issue body itself (the
+`fleet:no-plan` agent-approved lane carries them in the body under a bold
+`**Acceptance criteria**` line, never a `## Plan` comment, #2521); omit it
+otherwise (`Issue: (none)`, issues stating no criteria). One row per
+criterion — authoring rules, the unverifiable-on-this-host convention, and
+the fails-means-not-done rule live in
 [`docs/agents/AUTHOR-PIPELINE.md`](../../../../docs/agents/AUTHOR-PIPELINE.md)
 § "Acceptance evidence". The two sections answer different questions:
 `## Test plan` says how you verified the code doesn't break; `## Acceptance
-evidence` proves the ticket's named criteria actually fired.
+evidence` proves the ticket's named criteria actually fired. `## Test plan`
+is past tense — a record of verification already run, each item written
+from output you observed, box ticked. An unticked `- [ ]` box means the PR
+is not ready to leave WIP: either run the check and tick it from the
+observed output, or delete the item (#2658).
 
 ## Fleet stack delta
 

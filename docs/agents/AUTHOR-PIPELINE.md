@@ -91,6 +91,18 @@ visual effect. The exceptions list in `engine/render/CLAUDE.md`
 "Verifying render changes" is authoritative — when in doubt, run the
 loop; a missing diagnostic pass is a fast reviewer-rejection.
 
+**"The default shot table is byte-identical for this change" is a
+reason to change the SHOT, never a reason to attach nothing.** The
+whole camera-yaw / pivot family is byte-identical at cardinal poses by
+design (see `.claude/skills/attach-screenshots/SKILL.md` §"Camera-yaw
+fixes need a non-cardinal shot"), so every PR in it hits this decision
+point. When the PR ships or exercises its own non-cardinal harness (a
+sweep/verify mode like `--pivot-verify`), that harness IS the capture
+vehicle for the required before/after pair — one already-built binary,
+one run (#2650; #2585 shipped zero screenshots on a correct-but-
+incomplete "byte-identical by construction" rationale and ate a full
+review round).
+
 Both must complete before `optimize` and `commit-and-push` so any
 resulting fixes land in the same commit as the code change.
 
