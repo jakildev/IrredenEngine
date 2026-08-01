@@ -9,7 +9,7 @@ run from the index there when the trigger matches. Section references
 A new `inline` / `extern` variable at namespace scope in a header is state
 with no owner — never cleared at World teardown, invisible to scene reset
 and save/load. Full rule, sanctioned-pattern table, and rationale:
-[`.claude/rules/cpp-globals.md`](../../rules/cpp-globals.md).
+[`.claude/rules/cpp-globals.md`](../../../rules/cpp-globals.md).
 
 ```
 Grep tool with:

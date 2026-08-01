@@ -24,7 +24,7 @@ For each hit, manually exclude paths in the allowlist (do not flag):
 - `*.glsl` / `*.metal` files (the grep glob excludes these, but
   double-check).
 
-For everything else, flag with the IRMath equivalent. See [`.claude/rules/cpp-math.md`](../../rules/cpp-math.md) for the full substitution table.
+For everything else, flag with the IRMath equivalent. See [`.claude/rules/cpp-math.md`](../../../rules/cpp-math.md) for the full substitution table.
 
 If the IRMath wrapper does not exist yet, **don't auto-substitute** —
 flag with: "IRMath::<name> does not exist; add the wrapper to

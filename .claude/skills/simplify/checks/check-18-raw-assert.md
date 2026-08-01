@@ -11,7 +11,7 @@ stripped under `IR_RELEASE`); compile-time invariants use raw
 `static_assert` with a message (no `IR_` wrapper exists or is needed);
 raw `<cassert>` `assert()` never — silently absent in release and
 invisible to the log sink. Full convention:
-[`docs/agents/CLAUDE-BASELINE.md`](../../../docs/agents/CLAUDE-BASELINE.md).
+[`docs/agents/CLAUDE-BASELINE.md`](../../../../docs/agents/CLAUDE-BASELINE.md).
 
 ```
 Grep tool with:

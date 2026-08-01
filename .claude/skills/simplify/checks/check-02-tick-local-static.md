@@ -27,9 +27,9 @@ For each hit, suggest the canonical `SystemParams` migration pattern:
 
 > Replace `static <T> name;` with a `SystemParams` field. Capture the
 > params pointer once at `create()` time and pass into the lambdas by
-> value. See [`.claude/rules/cpp-systems.md`](../../rules/cpp-systems.md)
+> value. See [`.claude/rules/cpp-systems.md`](../../../rules/cpp-systems.md)
 > "Canonical SystemParams pattern" or
-> [`engine/system/CLAUDE.md`](../../../engine/system/CLAUDE.md) for the
+> [`engine/system/CLAUDE.md`](../../../../engine/system/CLAUDE.md) for the
 > canonical example.
 
 Live deviations already on the list (don't re-flag, but note in the
