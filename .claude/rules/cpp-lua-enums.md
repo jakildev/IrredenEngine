@@ -8,6 +8,8 @@ paths:
 > **Sweeping for violations?** `paths:` is an injection scope, not a search
 > root. `rg`/`Grep` rooted at `creations/` reads a **false clean** (#2739) —
 > run detectors through `fleet-rules-sweep`. See [`README.md`](README.md).
+> The `creations/**` injection scope is deliberately wider than the audit
+> hook's globs; §"Audit hooks" says why.
 
 # Lua surface: enums and constants, never string-name lookups
 
@@ -130,7 +132,7 @@ matching files):
 
 ```
 fleet-rules-sweep --glob 'engine/script/**' --glob '**/*_lua.hpp' \
-  --glob '**/*_lua_bindings.hpp' --glob 'creations/**/lua_*.{hpp,cpp}' \
+  --glob '**/lua_*_bindings.hpp' --glob 'creations/**/lua_*.{hpp,cpp}' \
   --pattern '== *"'
 ```
 
@@ -149,6 +151,29 @@ under `demos/default` and `demos/sprite_demo` — which are clean today. Drop it
 and the detector narrows until it structurally cannot see creation binding code:
 the same false-clean shape as #2739, spelled with a glob instead of a walker. A
 creation whose binding file is named something else adds its own `--glob`.
+
+`**/lua_*_bindings.hpp` is the **prefix** spelling the binding headers actually
+use (`engine/script/include/irreden/script/lua_*_bindings.hpp`, as §"What to do
+instead" names them). The suffix form `**/*_lua_bindings.hpp` matches nothing in
+the tree — `fleet-rules-sweep` reports `swept 0 file(s)` for it alone. The
+correction is coverage-neutral (those headers already sit inside
+`engine/script/**`, so the totals stay 81/12/2); it exists so a binding header
+added *outside* `engine/script/` is swept instead of silently skipped.
+
+**`paths:` stays wider than these globs — deliberately.** The frontmatter keeps
+`creations/**/*.{hpp,cpp,h,cc}` (the shape `cpp-ecs.md`, `cpp-ecs-smells.md`,
+and `cpp-math.md` share) rather than tracking
+`creations/**/lua_*.{hpp,cpp}`. Injection and detection answer different
+questions: the glob narrows because a bare `== "` pattern cannot tell a
+Lua-sourced value from any other string compare — a constraint an author
+*reading* the rule does not share. And the escape hatch above (a
+differently-named binding file adds its own `--glob`) only fires if the rule
+reached that author in the first place. Narrowing injection to `lua_*` would
+hide it from exactly the person who needs to widen the glob, sealing the
+detector's blind spot shut. `cpp-systems.md` can mirror its own detector scope
+because `system_<name>.hpp` is a mandated filename (`engine/prefabs/CLAUDE.md`
+§"File pattern"); the creation-side binding surface has no such spelling to
+lean on.
 
 A creation's `main*.cpp` is deliberately **not** in scope, `main_lua.cpp`
 included — its string compares are CLI-argv parses (three in
