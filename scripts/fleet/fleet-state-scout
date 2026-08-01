@@ -1208,10 +1208,17 @@ def _review_skipped(labels):
         return True
     return any(label.startswith(p) for label in labels for p in REVIEW_SKIP_PREFIXES)
 
-# Smoke-worker label sets. Windows smoke is excluded — cleared by
-# platform-catchup (#1093), not by fleet agents.
+# Smoke-worker label sets. Every host label belongs in the pending set:
+# update_role_trigger keys the smoke-worker wake on this projection's hash, so
+# a host whose label is absent here has no dispatch trigger at all. Host
+# *routing* is the role's job, not the projection's — role-smoke-worker.md
+# step 4 derives the host key from `uname -s` and polls only that host's
+# label, so a dispatch woken by another host's pending PR finds nothing and
+# exits. platform-catchup (#1093) is the manual fallback for when no Windows
+# fleet is online, not the owner of fleet:needs-windows-smoke (#2804).
 _SMOKE_PENDING_LABELS = frozenset({
     "fleet:needs-linux-smoke", "fleet:needs-macos-smoke",
+    "fleet:needs-windows-smoke",
 })
 _SMOKE_SKIP_LABELS = frozenset({
     "fleet:needs-fix", "fleet:blocker", "human:wip", "fleet:wip",
