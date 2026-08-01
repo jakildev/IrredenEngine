@@ -91,15 +91,35 @@ fleet-rules-sweep \
   --pattern '^(?!\s*(//|\*)).*(\bglm::\w+|\bstd::(sin|cos|tan|sqrt|abs|min|max|clamp|floor|ceil|round|pow|log2|atan2|asin|acos|cbrt|fmod)\b)'
 ```
 
-Without the wrapper, glob from the repo top — never a path rooted at
-`creations/` — and cross-check coverage before believing a zero:
+**There is no correct `rg` spelling for this scope** — the wrapper is not a
+convenience here. `rg` honours `.gitignore`; `git ls-files` does not apply it to
+*tracked* files. Three tracked files under `creations/` sit in re-ignored
+directories (`.gitignore:40` `creations/*` with no re-inclusion for
+`bazel_test`, and `.gitignore:45` re-ignoring `creations/editors/font_maker`),
+so ripgrep cannot see them at any search root or glob spelling:
+
+```
+creations/bazel_test/main.cpp
+creations/editors/font_maker/main.cpp
+creations/editors/font_maker/systems/system_font_maker.hpp
+```
+
+Measured on this scope: the repo-top glob form covers **769** files, the sweep
+**772**. That is a second false-clean class stacked on #2739's — the walker
+one is fixed by rooting the glob at the repo top, this one is not fixable in
+`rg` at all (short of `--no-ignore`, which then pulls in the gitignored private
+`creations/game` clone and violates cross-repo isolation).
+
+If you must hand-roll it anyway, glob from the repo top — never a path rooted
+at `creations/` — and treat any count below the expected coverage as a failed
+sweep, not a clean one:
 
 ```
 rg -n -g 'engine/**/*.{hpp,cpp,h,cc}' -g 'creations/**/*.{hpp,cpp,h,cc}' '<pattern>' .
 git ls-files engine creations | grep -cE '\.(hpp|cpp|h|cc)$'   # 795 minus 23 skipped = 772
 ```
 
-Compare against the extension-filtered count, not `wc -l` over every tracked
+Compare against that extension-filtered count, not `wc -l` over every tracked
 file — `git ls-files engine creations | wc -l` is 1231, and measuring 772
 against *that* reads like a walker failure when it is the correct coverage.
 
