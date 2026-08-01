@@ -9,9 +9,15 @@ All I/O is via temporary directories; no network calls.
 """
 import importlib.machinery
 import importlib.util
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+
+# exec_module doesn't inherit the CLI wrapper's sys.path; add scripts/fleet/
+# so fleet_blocked_by resolves when the fleet_validate_stack loader runs below
+# (mirrors test_fleet_validate_stack.py).
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # Load the module via importlib so the test works regardless of cwd.
 _MODULE = Path(__file__).parent.parent / "fleet_validate_roles.py"
