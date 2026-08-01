@@ -80,15 +80,17 @@ TEST_F(DefaultBindingManifestTest, CameraSuiteZeroArgMatchesPreManifestRegistrat
 TEST_F(DefaultBindingManifestTest, CaptureSuiteZeroArgMatchesPreManifestRegistrations) {
     IRCommand::registerCaptureCommands();
 
-    // SCREENSHOT_CANVAS renders as "UNKNOWN" because it has no
-    // `commandNameToString` case — asserted deliberately rather than
-    // papered over, so the overlay text stays pinned until someone fixes
-    // the label on purpose.
+    // Pinning the exact rendered sequence, same as the camera suite above.
+    // SCREENSHOT_CANVAS used to render as "UNKNOWN" here — it had no
+    // `commandNameToString` case, and this test asserted that deliberately
+    // rather than papering over it. #2550 replaced that hand-listed switch
+    // with the `kCommandInfo` catalog, which gives every enum value a real
+    // label by static_assert, so the label is now the fixed one.
     EXPECT_EQ(
         pressedRegistrations(),
         (std::vector<std::string>{
             "F8: SCREENSHOT",
-            "F7: UNKNOWN",
+            "F7: SCREENSHOT CANVAS",
             "F9: RECORD TOGGLE",
         })
     );
