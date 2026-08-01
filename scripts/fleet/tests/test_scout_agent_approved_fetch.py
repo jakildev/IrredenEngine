@@ -76,6 +76,28 @@ class TestAgentApprovedFetchUnion(unittest.TestCase):
         with patch.object(_mod, "fetch_issues_by_label", side_effect=stub):
             self.assertEqual(fetch_human_approved(_REPO), [])
 
+    def test_parked_labels_excluded_from_both_fetches(self):
+        # Both fetches must carry the parked-label exclusions, or a park that
+        # KEEPS human:approved (fleet:needs-human, fleet:gated) is re-fetched on
+        # every tick and never leaves repo_state["human_approved"] (#2762).
+        # fleet:needs-human is the positive control: it has been excluded since
+        # #1312, so a run where only it is asserted would pass even if
+        # fleet:gated were missing.
+        seen = {}
+
+        def _capture(repo, filter_label, exclude_labels=None, with_body=False,
+                     per_page=100):
+            seen[filter_label] = set(exclude_labels or ())
+            return []
+
+        with patch.object(_mod, "fetch_issues_by_label", side_effect=_capture):
+            fetch_human_approved(_REPO)
+        self.assertEqual(set(seen), {"human:approved", "fleet:agent-approved"})
+        for filter_label, excluded in seen.items():
+            for parked in ("fleet:needs-human", "fleet:gated"):
+                self.assertIn(parked, excluded,
+                              f"{filter_label} fetch must exclude {parked}")
+
 
 if __name__ == "__main__":
     unittest.main()

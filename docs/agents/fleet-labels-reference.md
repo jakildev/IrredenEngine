@@ -476,10 +476,14 @@ Specifically, **never pass these via `--label` when filing**:
   pickup (see fleet-state-scout `_merger_action_signal`,
   `project_worker`/`slice_worker`, and `REVIEW_SKIP_LABELS`); on **issues**:
   `fetch_task_queue`'s per-issue skip (so a gated issue never lands in
-  `tasks.open[]` as free-and-pickable) and `fleet-queue-ingest`'s hold set
+  `tasks.open[]` as free-and-pickable), `fleet-queue-ingest`'s hold set
   (so ingest never re-stamps `fleet:queued` onto it — the issue keeps
-  `human:approved` and survives re-ingest, same shape as `fleet:needs-human`;
-  #2762). Nothing automated touches it until a human (or
+  `human:approved` and survives re-ingest, same shape as `fleet:needs-human`),
+  and both projection-side sets `_ALREADY_QUEUED_LABELS` /
+  `_INGEST_SKIP_LABELS` (so a park that keeps `human:approved` also *leaves*
+  `human_approved` and the ingest hash input, instead of being re-fetched and
+  re-submitted every tick for as long as it stays parked; #2762). Nothing
+  automated touches it until a human (or
   the architect, who can push gated edits with a human in the loop) resolves
   the gated edit and drops the label.
   **Why it exists, distinct from `fleet:human-deferred`:** human-deferred
