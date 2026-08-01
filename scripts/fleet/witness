@@ -14,10 +14,14 @@
 # If NO rostered agent has ever written a heartbeat (roster misconfigured,
 # or every rostered role retired), witness does not report "all healthy" —
 # tracking zero agents is not health. It logs a ROSTER EMPTY warning and
-# writes ~/.fleet/alerts/witness-roster.stuck instead. That condition holds
-# until a human acts, so the warning escalates-then-quiets: loud for the
-# first N consecutive passes, then silent while the alert file keeps being
-# refreshed every pass. A rostered heartbeat clears counter and alert.
+# writes ~/.fleet/alerts/witness-roster.stuck instead.
+#
+# Every one of those conditions — stale agent, dead dispatcher, empty roster —
+# holds until a human acts, so each warning escalates-then-quiets on its own
+# counter: loud for the first N consecutive passes, then silent while the
+# alert file keeps being refreshed every pass. A healthy pass for that subject
+# (a fresh heartbeat, a live dispatcher pid, a rostered heartbeat) clears its
+# counter, so a later recurrence escalates from scratch.
 #
 # Usage:
 #   witness          run continuously (normal fleet pane mode)
@@ -74,107 +78,115 @@ file_mtime() {
     python3 -c "import os, sys; print(int(os.path.getmtime(sys.argv[1])))" "$1"
 }
 
-# --- roster-empty escalation --------------------------------------------------
-# run_one_pass runs unattended every 60 s and the roster-empty condition stays
-# true until a human acts (it means no rostered agent writes a heartbeat at
-# all), so a plain per-pass warn re-emits identically forever — spam that buries
-# the outage instead of reporting it, and grows witness.log without bound. Count
-# consecutive zero-tracked passes; emit the loud line up to the Nth, then go
-# quiet. See scripts/fleet/CLAUDE.md §"An every-tick guard that warns must
-# escalate-then-quiet" (#2363); fleet-clone-freshness.sh's _freshness_warn is
-# the reference shape.
+# --- escalate-then-quiet warnings ---------------------------------------------
+# run_one_pass runs unattended every 60 s and every condition it warns on — a
+# stale agent heartbeat, a dead dispatcher pid, an empty roster — stays true
+# until a human acts, so a plain per-pass warn re-emits identically forever:
+# spam that buries the outage instead of reporting it, and grows witness.log
+# without bound. Count consecutive passes per subject; emit the loud line up to
+# the Nth, then go quiet. See scripts/fleet/CLAUDE.md §"An every-tick guard that
+# warns must escalate-then-quiet" (#2363); fleet-clone-freshness.sh's
+# _freshness_warn is the reference shape.
 #
-# Counter: $STATE_DIR/.witness-roster-skip
-#          one line, "<count> <first_seen_epoch> <reason>|<roster>"
-# Alert:   $ALERT_DIR/witness-roster.stuck
+# Counter: $STATE_DIR/.witness-<tag>-skip
+#          one line, "<count> <first_seen_epoch> <reason>|<subject>"
 #
-# Deliberate deviation from _freshness_warn: the alert is written from the FIRST
-# pass, not only from the Nth. witness has always written it on every pass and
-# it is not the noisy channel — one file, overwritten, never appended — so
-# gating it behind N would remove a durable signal rather than reduce noise.
-# Only the stdout/log line is rate-limited. It keeps being rewritten past N per
-# the sub-rule: once the loud channel is quiet the file is the only standing
-# signal, so a write-once alert would freeze its count/age at the escalation
-# instant and let a human clearing the alerts inbox silence a still-live
-# condition forever.
+# The <tag> is what keeps the streaks independent: two agents stale at once
+# must not share one counter, or each one's warn would reset the other's tally
+# and neither would ever reach N. The in-file key is the second half of that —
+# a changed <subject> under the same tag (a relaunched dispatcher's new pid) is
+# news again and restarts the tally rather than inheriting one raised against
+# something else.
 #
-# Every counter/alert write is best-effort: a read-only $HOME must not break
-# the health pass this guards.
-ROSTER_COUNTER="$STATE_DIR/.witness-roster-skip"
+# Alert files are NOT written here: each caller already rewrites its own
+# `.stuck` file every pass, which is the durable signal the rule requires past
+# N. Only the stdout/log line is rate-limited — the alert is one file,
+# overwritten, never appended, so gating it behind N would remove a standing
+# signal rather than reduce noise, and freezing it at the escalation instant
+# would let a human clearing the alerts inbox silence a still-live condition
+# forever.
+#
+# Every counter write is best-effort: a read-only $HOME must not break the
+# health pass this guards.
 ROSTER_ALERT="$ALERT_DIR/witness-roster.stuck"
 
-# Consecutive zero-tracked passes before escalating. Passes run ~1/min, so 10 is
+# Consecutive matching passes before escalating. Passes run ~1/min, so 10 is
 # ~10 min — long enough to ride out the boot-time gap before a freshly launched
 # architect pane writes its first heartbeat, and an order of magnitude inside
-# the 2 h staleness threshold above. Roster-empty is strictly worse than a stale
-# heartbeat (nothing is being watched at all), so it must not alert later than
-# staleness would.
-_roster_escalate_n() {
-    local n="${FLEET_WITNESS_ROSTER_ESCALATE_N:-10}"
+# the 2 h staleness threshold above. One N covers every site: roster-empty is
+# strictly worse than a stale heartbeat (nothing is being watched at all), so it
+# must not alert later than staleness would, and a stale agent has already burned
+# its 2 h threshold before the first warn, which dwarfs the escalation delay.
+_witness_escalate_n() {
+    local n="${FLEET_WITNESS_ESCALATE_N:-10}"
     if [[ ! "$n" =~ ^[0-9]+$ ]] || (( n < 1 )); then
         n=10
     fi
     echo "$n"
 }
 
-# _roster_iso8601 <epoch>
+# _witness_iso8601 <epoch>
 # BSD (macOS) spells it `date -r`, GNU spells it `date -d @…`; -r on GNU tries
 # to stat a file and fails, so the chain lands on the right one either way.
-_roster_iso8601() {
+_witness_iso8601() {
     date -u -r "$1" '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null \
         || date -u -d "@$1" '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null \
         || echo "$1"
 }
 
-# _roster_warn <now_str> <msg>
-# Emit the roster-empty warning, escalating-then-quieting on repetition.
-_roster_warn() {
-    local now_str="$1" msg="$2"
-    local key n now count first prev_key since
-    key="roster-empty|${ROSTER[*]}"
-    n="$(_roster_escalate_n)"
+# _witness_warn <tag> <key> <label> <now_str> <msg> <remedy>
+#   <tag>    counter discriminator — one streak per subject
+#   <key>    "<reason>|<subject>"; a changed subject restarts the tally
+#   <label>  escalation-line prefix, e.g. STALE / ROSTER EMPTY
+#   <msg>    the loud per-pass line (may carry a changing age — keep it OUT of
+#            <key>, or the streak would restart every pass and never quiet)
+#   <remedy> what a human should do, appended to the escalation line
+#
+# Emit <msg>, escalating-then-quieting on repetition. Publishes the streak as
+# _WITNESS_WARN_COUNT / _WITNESS_WARN_SINCE for callers that record it in their
+# own alert file.
+_witness_warn() {
+    local tag="$1" key="$2" label="$3" now_str="$4" msg="$5" remedy="$6"
+    local counter n now count first prev_key since
+    counter="$STATE_DIR/.witness-${tag}-skip"
+    n="$(_witness_escalate_n)"
     now="$(date +%s)"
 
     count=0
     first="$now"
     prev_key=""
-    if [[ -f "$ROSTER_COUNTER" ]]; then
-        read -r count first prev_key < "$ROSTER_COUNTER" 2>/dev/null || true
+    if [[ -f "$counter" ]]; then
+        read -r count first prev_key < "$counter" 2>/dev/null || true
     fi
     [[ "${count:-}" =~ ^[0-9]+$ ]] || count=0
     [[ "${first:-}" =~ ^[0-9]+$ ]] || first="$now"
-    # A changed roster is news again — restart rather than inherit a tally
-    # raised against a different set of agents.
     if [[ "${prev_key:-}" != "$key" ]]; then
         count=0
         first="$now"
     fi
     count=$(( count + 1 ))
 
-    mkdir -p "$(dirname "$ROSTER_COUNTER")" 2>/dev/null || true
-    printf '%s %s %s\n' "$count" "$first" "$key" > "$ROSTER_COUNTER" 2>/dev/null || true
+    mkdir -p "$(dirname "$counter")" 2>/dev/null || true
+    printf '%s %s %s\n' "$count" "$first" "$key" > "$counter" 2>/dev/null || true
 
-    since="$(_roster_iso8601 "$first")"
+    since="$(_witness_iso8601 "$first")"
+    _WITNESS_WARN_COUNT="$count"
+    _WITNESS_WARN_SINCE="$since"
 
     if (( count < n )); then
         echo "[$now_str witness] $msg" | tee -a "$LOG"
     elif (( count == n )); then
         echo "[$now_str witness] $msg" | tee -a "$LOG"
-        echo "[$now_str witness] ROSTER EMPTY ESCALATION: $count consecutive passes tracking zero agents since $since. Wrote $ROSTER_ALERT. Remedy: give each rostered agent (${ROSTER[*]}) a fleet-heartbeat call at its role step 0, or correct the roster. Suppressing further identical warns until a rostered heartbeat appears." | tee -a "$LOG"
+        echo "[$now_str witness] $label ESCALATION: $count consecutive passes since $since. $remedy Suppressing further identical warns until the condition clears." | tee -a "$LOG"
     fi
-
-    mkdir -p "$(dirname "$ROSTER_ALERT")" 2>/dev/null || true
-    printf '%s roster=%s count=%s since=%s\n' \
-        "$now_str" "${ROSTER[*]}" "$count" "$since" \
-        > "$ROSTER_ALERT" 2>/dev/null || true
     return 0
 }
 
-# _roster_all_clear
-# A rostered heartbeat appeared: drop the counter and the alert so the next
-# persistent roster-empty escalates from scratch.
-_roster_all_clear() {
-    rm -f "$ROSTER_COUNTER" "$ROSTER_ALERT" 2>/dev/null || true
+# _witness_all_clear <tag>
+# The condition resolved: drop that subject's counter so the next occurrence
+# escalates from scratch. Callers clear their own alert file alongside.
+_witness_all_clear() {
+    rm -f "$STATE_DIR/.witness-${1}-skip" 2>/dev/null || true
     return 0
 }
 
@@ -201,10 +213,16 @@ run_one_pass() {
             thr_min=$((threshold / 60))
             stale_count=$((stale_count + 1))
             msg="STALE: $agent (last hb ${age_min}m ago, threshold ${thr_min}m)"
-            echo "[$now_str witness] $msg" | tee -a "$LOG"
+            # Per-agent tag: two agents stale at once keep independent streaks.
+            # The age is deliberately absent from the key — it grows every pass,
+            # and keying on it would restart the tally forever.
+            _witness_warn "stale-$agent" "stale-heartbeat|$agent" "STALE" \
+                "$now_str" "$msg" \
+                "Wrote $ALERT_DIR/$agent.stuck, refreshed every pass. Remedy: check the $agent pane — it is alive but not looping, or it died without clearing its heartbeat."
             echo "$now_str $agent age=${age_min}m threshold=${thr_min}m" > "$ALERT_DIR/$agent.stuck"
         else
             rm -f "$ALERT_DIR/$agent.stuck"
+            _witness_all_clear "stale-$agent"
         fi
     done
 
@@ -220,18 +238,34 @@ run_one_pass() {
         if [[ -n "$dispatcher_pid" ]] && ! kill -0 "$dispatcher_pid" 2>/dev/null; then
             stale_count=$((stale_count + 1))
             local msg="STALE: fleet-dispatcher (pid $dispatcher_pid recorded but process is dead)"
-            echo "[$now_str witness] $msg" | tee -a "$LOG"
+            # Subject is the pid: a relaunch that also died is a new outage, so
+            # it escalates on its own streak rather than inheriting the old one.
+            _witness_warn "stale-dispatcher" "dispatcher-dead|$dispatcher_pid" "STALE" \
+                "$now_str" "$msg" \
+                "Wrote $ALERT_DIR/fleet-dispatcher.stuck, refreshed every pass. Remedy: rerun fleet-up to relaunch the dispatcher."
             echo "$now_str dispatcher pid=$dispatcher_pid not running" > "$ALERT_DIR/fleet-dispatcher.stuck"
         else
             rm -f "$ALERT_DIR/fleet-dispatcher.stuck"
+            _witness_all_clear "stale-dispatcher"
         fi
     fi
 
     if [[ "$tracked" -eq 0 ]]; then
         local msg="ROSTER EMPTY: no heartbeat file for any monitored agent (${ROSTER[*]}) — witness is not tracking anyone, this is not health"
-        _roster_warn "$now_str" "$msg"
+        # A changed roster is news again: it is the subject here, so a tally
+        # raised against a different set of agents is not inherited.
+        _witness_warn "roster" "roster-empty|${ROSTER[*]}" "ROSTER EMPTY" \
+            "$now_str" "$msg" \
+            "Wrote $ROSTER_ALERT, refreshed every pass. Remedy: give each rostered agent (${ROSTER[*]}) a fleet-heartbeat call at its role step 0, or correct the roster."
+        # No other site writes this alert, and it is the roster condition's
+        # only durable signal — so it is refreshed every pass, including past N.
+        mkdir -p "$(dirname "$ROSTER_ALERT")" 2>/dev/null || true
+        printf '%s roster=%s count=%s since=%s\n' \
+            "$now_str" "${ROSTER[*]}" "$_WITNESS_WARN_COUNT" "$_WITNESS_WARN_SINCE" \
+            > "$ROSTER_ALERT" 2>/dev/null || true
     else
-        _roster_all_clear
+        _witness_all_clear "roster"
+        rm -f "$ROSTER_ALERT" 2>/dev/null || true
         if [[ "$stale_count" -eq 0 ]]; then
             echo "[$now_str witness] all healthy ($tracked agent(s) tracked)"
         fi

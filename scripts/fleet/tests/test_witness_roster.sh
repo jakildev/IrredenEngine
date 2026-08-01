@@ -9,10 +9,11 @@
 # roster with zero tracked heartbeats gets a distinct ROSTER EMPTY warning
 # and a `witness-roster.stuck` alert file instead of "all healthy".
 #
-# The roster-empty condition holds until a human acts, so the warning must
-# escalate-then-quiet rather than re-emit every 60 s forever (see
+# Every condition witness warns on holds until a human acts, so each warning
+# must escalate-then-quiet rather than re-emit every 60 s forever (see
 # scripts/fleet/CLAUDE.md §"An every-tick guard that warns must
-# escalate-then-quiet"). Case (d) pins that rate-limiting.
+# escalate-then-quiet"). Cases (d)-(g) pin that rate-limiting on all three
+# branches: roster-empty (#2770), stale agent and dead dispatcher (#2780).
 #
 # Hermetic: HOME points at a temp dir per case, and the FLEET_* overrides
 # witness honours are scrubbed from the caller's environment, so no live
@@ -30,6 +31,15 @@
 #       witness.log stops growing, witness-roster.stuck keeps refreshing its
 #       count past N, and a rostered heartbeat clears counter + alert so the
 #       next outage escalates from scratch
+#   (e) a persistently-stale agent => same escalate-then-quiet shape on its own
+#       per-agent counter, <agent>.stuck still refreshed past N, and a
+#       heartbeat refresh restarts the streak
+#   (f) two agents stale at once => independent counters; neither resets the
+#       other, both escalate at N, and one recovering leaves the other's
+#       streak intact
+#   (g) a dead dispatcher pid => same shape on .witness-stale-dispatcher-skip,
+#       a new dead pid restarts the streak (the pid is the subject), and a
+#       live pid clears counter + alert
 
 set -uo pipefail
 
@@ -56,11 +66,11 @@ run_witness() {
     local fake_home="$1" escalate_n="${2:-}"
     mkdir -p "$fake_home/.fleet/heartbeats"
     local -a env_args=(
-        -u FLEET_ALERTS_DIR -u FLEET_STATE_DIR -u FLEET_WITNESS_ROSTER_ESCALATE_N
+        -u FLEET_ALERTS_DIR -u FLEET_STATE_DIR -u FLEET_WITNESS_ESCALATE_N
         "HOME=$fake_home"
     )
     if [[ -n "$escalate_n" ]]; then
-        env_args+=("FLEET_WITNESS_ROSTER_ESCALATE_N=$escalate_n")
+        env_args+=("FLEET_WITNESS_ESCALATE_N=$escalate_n")
     fi
     env "${env_args[@]}" "$WITNESS" --once > "$fake_home/out.txt" 2>&1
 }
@@ -183,5 +193,147 @@ assert_contains "$out_d_again" "ROSTER EMPTY" "after clear: warns loudly again"
 assert_absent   "$out_d_again" "ESCALATION"   "after clear: streak restarted, not resumed"
 assert_contains "$(cat "$alert_d" 2>/dev/null || true)" "count=1" \
     "after clear: count restarts at 1"
+
+# --- (e) persistently-stale agent: escalate, then quiet ---------------------
+# Same rule as (d), on the other unbounded-append branch (#2780). The agent
+# stays stale until a human acts, so the loud line must stop while
+# <agent>.stuck keeps being refreshed every pass.
+
+home_e="$TMP/home-stale-escalate"
+mkdir -p "$home_e/.fleet/heartbeats"
+touch -t 202401010000 "$home_e/.fleet/heartbeats/opus-architect"
+counter_e="$home_e/.fleet/state/.witness-stale-opus-architect-skip"
+alert_e="$home_e/.fleet/alerts/opus-architect.stuck"
+log_e="$home_e/.fleet/logs/witness.log"
+
+run_witness "$home_e" 3
+assert_contains "$(cat "$home_e/out.txt")" "STALE: opus-architect" \
+    "stale pass 1 (< N): still warns loudly"
+assert_absent "$(cat "$home_e/out.txt")" "ESCALATION" \
+    "stale pass 1 (< N): has not escalated yet"
+[[ -f "$counter_e" ]] \
+    && ok "stale pass 1 (< N): per-agent counter written" \
+    || bad "stale pass 1 (< N): per-agent counter written"
+
+run_witness "$home_e" 3
+run_witness "$home_e" 3
+out_e3=$(cat "$home_e/out.txt")
+assert_contains "$out_e3" "STALE ESCALATION" "stale pass N: escalates once"
+assert_contains "$out_e3" "3 consecutive passes" "stale pass N: names the streak length"
+log_lines_at_n_e=$(wc -l < "$log_e" 2>/dev/null || echo 0)
+
+# Past N: silent on stdout and in the log. Delete the alert first so its
+# recreation proves witness still writes the durable signal past the
+# escalation instead of freezing it there.
+rm -f "$alert_e"
+run_witness "$home_e" 3
+out_e4=$(cat "$home_e/out.txt")
+assert_absent "$out_e4" "STALE: opus-architect" "stale pass N+1: quiet on stdout"
+assert_absent "$out_e4" "all healthy" "stale pass N+1: quiet does not become a health claim"
+[[ -f "$alert_e" ]] \
+    && ok "stale pass N+1: <agent>.stuck still refreshed past N" \
+    || bad "stale pass N+1: <agent>.stuck still refreshed past N"
+log_lines_after_e=$(wc -l < "$log_e" 2>/dev/null || echo 0)
+assert_eq "$log_lines_after_e" "$log_lines_at_n_e" \
+    "past N: witness.log stops growing on the stale branch"
+
+# A heartbeat refresh clears that subject's counter, so a later re-stale
+# escalates from scratch rather than resuming the quieted streak.
+touch "$home_e/.fleet/heartbeats/opus-architect"
+run_witness "$home_e" 3
+assert_contains "$(cat "$home_e/out.txt")" "all healthy" "stale: fresh heartbeat reports health"
+[[ -f "$counter_e" ]] \
+    && bad "stale: fresh heartbeat clears the counter" \
+    || ok "stale: fresh heartbeat clears the counter"
+
+touch -t 202401010000 "$home_e/.fleet/heartbeats/opus-architect"
+run_witness "$home_e" 3
+out_e_again=$(cat "$home_e/out.txt")
+assert_contains "$out_e_again" "STALE: opus-architect" "stale after clear: warns loudly again"
+assert_absent "$out_e_again" "ESCALATION" "stale after clear: streak restarted, not resumed"
+
+# --- (f) two agents stale at once: independent counters ---------------------
+# The discriminating case for the per-subject <tag>. On one shared counter the
+# two warns would each see the other's key, reset to 1 every pass, and never
+# reach N at all.
+
+home_f="$TMP/home-stale-two"
+mkdir -p "$home_f/.fleet/heartbeats"
+touch -t 202401010000 "$home_f/.fleet/heartbeats/opus-architect"
+touch -t 202401010000 "$home_f/.fleet/heartbeats/game-architect"
+
+run_witness "$home_f" 3
+run_witness "$home_f" 3
+run_witness "$home_f" 3
+out_f=$(cat "$home_f/out.txt")
+assert_contains "$out_f" "STALE: opus-architect" "two stale: first agent still warned at N"
+assert_contains "$out_f" "STALE: game-architect" "two stale: second agent still warned at N"
+assert_eq "$(grep -c "STALE ESCALATION" <<< "$out_f")" "2" \
+    "two stale: both escalate on the same pass (neither reset the other)"
+for a in opus-architect game-architect; do
+    c=$(awk '{print $1}' "$home_f/.fleet/state/.witness-stale-$a-skip" 2>/dev/null || echo "")
+    assert_eq "$c" "3" "two stale: $a kept its own streak"
+done
+
+# Clearing one must not touch the other's streak.
+touch "$home_f/.fleet/heartbeats/opus-architect"
+run_witness "$home_f" 3
+[[ -f "$home_f/.fleet/state/.witness-stale-opus-architect-skip" ]] \
+    && bad "two stale: recovered agent's counter cleared" \
+    || ok "two stale: recovered agent's counter cleared"
+assert_eq "$(awk '{print $1}' "$home_f/.fleet/state/.witness-stale-game-architect-skip" 2>/dev/null || echo "")" \
+    "4" "two stale: still-stale agent's streak untouched by the other's recovery"
+
+# --- (g) dead dispatcher pid: escalate, then quiet --------------------------
+# A rostered heartbeat keeps tracked>0 so this exercises the dispatcher branch
+# alone, not roster-empty.
+
+home_g="$TMP/home-dispatcher"
+mkdir -p "$home_g/.fleet/heartbeats" "$home_g/.fleet/state"
+touch "$home_g/.fleet/heartbeats/opus-architect"
+echo 999999 > "$home_g/.fleet/state/dispatcher.pid"
+counter_g="$home_g/.fleet/state/.witness-stale-dispatcher-skip"
+alert_g="$home_g/.fleet/alerts/fleet-dispatcher.stuck"
+
+run_witness "$home_g" 3
+assert_contains "$(cat "$home_g/out.txt")" "STALE: fleet-dispatcher" \
+    "dead dispatcher pass 1 (< N): still warns loudly"
+assert_absent "$(cat "$home_g/out.txt")" "all healthy" \
+    "dead dispatcher: a dead dispatcher is not health"
+
+run_witness "$home_g" 3
+run_witness "$home_g" 3
+assert_contains "$(cat "$home_g/out.txt")" "STALE ESCALATION" \
+    "dead dispatcher pass N: escalates once"
+
+rm -f "$alert_g"
+run_witness "$home_g" 3
+out_g4=$(cat "$home_g/out.txt")
+assert_absent "$out_g4" "STALE: fleet-dispatcher" "dead dispatcher pass N+1: quiet on stdout"
+assert_absent "$out_g4" "all healthy" "dead dispatcher pass N+1: quiet is not a health claim"
+[[ -f "$alert_g" ]] \
+    && ok "dead dispatcher pass N+1: fleet-dispatcher.stuck still refreshed past N" \
+    || bad "dead dispatcher pass N+1: fleet-dispatcher.stuck still refreshed past N"
+
+# A relaunched-but-also-dead dispatcher is a NEW outage: the pid is the
+# subject, so the streak restarts rather than staying quiet under the old one.
+echo 999998 > "$home_g/.fleet/state/dispatcher.pid"
+run_witness "$home_g" 3
+out_g_newpid=$(cat "$home_g/out.txt")
+assert_contains "$out_g_newpid" "STALE: fleet-dispatcher (pid 999998" \
+    "dead dispatcher: a new dead pid warns loudly again"
+assert_absent "$out_g_newpid" "ESCALATION" \
+    "dead dispatcher: new pid restarts the streak, not resumes it"
+
+# A live pid clears the counter, so a later death escalates from scratch.
+echo $$ > "$home_g/.fleet/state/dispatcher.pid"
+run_witness "$home_g" 3
+assert_contains "$(cat "$home_g/out.txt")" "all healthy" "live dispatcher: reports health"
+[[ -f "$counter_g" ]] \
+    && bad "live dispatcher: counter cleared" \
+    || ok "live dispatcher: counter cleared"
+[[ -f "$alert_g" ]] \
+    && bad "live dispatcher: alert cleared" \
+    || ok "live dispatcher: alert cleared"
 
 summarize "witness roster tests"
