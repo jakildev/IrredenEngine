@@ -224,8 +224,12 @@ escalate_if_hung_lock() {
     now=$(date +%s)
     age=$(( now - started ))
     (( age > FLEET_REBASE_LOCK_HUNG_SECS )) || return 0
-    holder=$(cat "$LOCK_DIR/pid" 2>/dev/null || echo unknown)
-    key="hung-lock|${holder:-unknown}"
+    # Default once, at the read (acquire_lock's read has the same shape): `cat`
+    # on an *empty* stamp exits 0, so a trailing `|| echo unknown` defaults the
+    # key but leaves the log and alert lines below printing an empty holder.
+    holder=$(cat "$LOCK_DIR/pid" 2>/dev/null || true)
+    holder="${holder:-unknown}"
+    key="hung-lock|$holder"
     n="$(hung_lock_escalate_n)"
 
     count=0
