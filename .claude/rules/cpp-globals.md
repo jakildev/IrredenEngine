@@ -55,24 +55,44 @@ change `ir_<module>.cpp` internals, not call sites).
 Grep new diff hunks in headers for namespace-scope `inline` / `extern`
 declarations that are not `constexpr` / `const`:
 
+**This check is executed** — don't hand-grep it. It lives in
+`cmake/run_header_convention_checks.cmake` alongside the anonymous-namespace
+and `*Detail`-namespace checks, and runs via either target:
+
 ```
-pattern: '^\s*(inline|extern)\s+(?!(constexpr|const|void)\b)[^(]*[;={]'
-glob:    '**/*.{hpp,h}'
+cmake --build <build-dir> --target header-checks   # pure CMake, no external tools
+cmake --build <build-dir> --target lint            # + clang-tidy
 ```
 
-The `[^(]*` guard drops function declarations; classify surviving hits by
-hand. Allowlisted paths (the sanctioned patterns above): module entry
-points `engine/*/include/irreden/ir_*.hpp` and
-`engine/include/irreden/ir_engine.hpp`. Everything else that matches is a
-violation — route it to the pattern that fits the state kind per the table.
+It reports the offending file and declaration and fails the target. The
+matcher allows `constexpr` / `const` (including `inline static const`),
+`extern "C"` linkage blocks, and function declarations; allowlisted paths
+are the module entry points `engine/*/include/irreden/ir_*.hpp` and
+`engine/include/irreden/ir_engine.hpp`.
+
+Two precision notes, both measured against the tree:
+
+- The `const` exemption is scoped to the **declaration head** (everything
+  before `=` / `;` / `{`), not the whole line. A whole-line scan reads a
+  trailing comment's "const" as a qualifier and passes real globals as clean.
+- On a pointer declaration, `const` must appear on **both** ends to qualify
+  as a constant. `inline const T *p` is a mutable, reseatable pointer and is
+  banned; `inline T *const p` is a frozen handle to still-mutable data and is
+  also banned. Only `inline const T *const p` is a program constant. A `*`
+  inside a template argument (`std::array<const char *, N>`) belongs to the
+  type argument, not the declarator, and does not make the object a pointer.
+
+Keep the executor and this file in sync — a detection spec nothing runs
+drifts silently (see #2727).
 
 ## Live deviations
 
-- `system_update_joint_matrices.hpp::g_jointMatrixSystem` and
-  `system_update_voxel_positions_gpu.hpp::g_allocatorSystem` — wire-once
-  system handles; migrate to the `SystemManager` registry (#2526).
-- `widget_theme.hpp::g_defaultTheme` — mutate-once widget theme; migrate
-  to a `C_WidgetTheme` singleton component (#2527).
+- `creations/demos/lighting/common/lighting_demo_scene.hpp` — 13 demo
+  CLI/config globals, two wire-once `SystemId` handles, and one scene
+  `EntityId` (16 total, as reported by the executor); migrate to a
+  singleton component + the `SystemManager` registry (#2728).
 
-Don't add new violations; these migrate via the tracked issues. Don't
-migrate them in an unrelated PR — the issues carry the plans.
+This list mirrors `header_global_baseline` in
+`cmake/run_header_convention_checks.cmake` — update both together. The
+baseline is a ratchet: a file may leave it, never join it. Don't migrate a
+deviation in an unrelated PR — the issue carries the plan.
