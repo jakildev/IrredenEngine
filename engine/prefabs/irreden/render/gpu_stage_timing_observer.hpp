@@ -2,6 +2,7 @@
 #define GPU_STAGE_TIMING_OBSERVER_H
 
 #include <irreden/ir_system.hpp>
+#include <irreden/ir_math.hpp>
 #include <irreden/ir_profile.hpp>
 #include <irreden/render/render_device.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
@@ -49,8 +50,9 @@ class GpuStageTimingObserver : public IRSystem::TickObserver {
         state.registryIndex_ = static_cast<int>(&info - gpuStageRegistry().data());
         state.device_ = IRRender::device();
         if (state.device_ != nullptr && state.device_->supportsGpuTimestampPairs()) {
-            const int pairsInFlight =
-                std::clamp(state.device_->recommendedTimestampPairsInFlight(), 1, kSamplesInFlight);
+            const int pairsInFlight = IRMath::clamp(
+                state.device_->recommendedTimestampPairsInFlight(), 1, kSamplesInFlight
+            );
             for (int i = 0; i < pairsInFlight; ++i) {
                 state.handles_[i] = state.device_->createTimestampPair();
             }

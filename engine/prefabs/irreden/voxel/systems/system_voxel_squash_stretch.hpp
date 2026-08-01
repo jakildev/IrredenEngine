@@ -131,13 +131,13 @@ template <> struct System<VOXEL_SQUASH_STRETCH> {
                     deformAxis = useVelDir;
                     primaryScale = 1.0f + squashStretch.stretchStrength_ * blend;
                     perpScale = squashStretch.volumePreserve_
-                                    ? 1.0f / std::sqrt(primaryScale)
+                                    ? 1.0f / IRMath::sqrt(primaryScale)
                                     : 1.0f - squashStretch.squashStrength_ * blend;
                 } else if (blend < -0.0001f) {
                     deformAxis = accelDir;
                     primaryScale = 1.0f - squashStretch.squashStrength_ * (-blend);
                     perpScale = squashStretch.volumePreserve_
-                                    ? 1.0f / std::sqrt(IRMath::max(primaryScale, 0.01f))
+                                    ? 1.0f / IRMath::sqrt(IRMath::max(primaryScale, 0.01f))
                                     : 1.0f;
                 } else {
                     primaryScale = 1.0f;

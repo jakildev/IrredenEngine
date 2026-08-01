@@ -1,5 +1,7 @@
 #include <irreden/audio/audio.hpp>
 
+#include <irreden/ir_math.hpp>
+
 #include <algorithm>
 #include <sstream>
 #include <utility>
@@ -47,7 +49,7 @@ bool Audio::openStreamIn(
 
     RtAudio::DeviceInfo deviceInfo = m_rtAudio.getDeviceInfo(deviceId);
     const unsigned int requestedChannels =
-        static_cast<unsigned int>(std::clamp(channels, 1, 2));
+        static_cast<unsigned int>(IRMath::clamp(channels, 1, 2));
     const unsigned int availableInputChannels = static_cast<unsigned int>(deviceInfo.inputChannels);
     if (availableInputChannels < requestedChannels) {
         IRE_LOG_ERROR(
@@ -64,7 +66,8 @@ bool Audio::openStreamIn(
     parameters.nChannels = requestedChannels;
     parameters.firstChannel = 0;
 
-    const unsigned int requestedSampleRate = static_cast<unsigned int>(std::max(sampleRate, 8'000));
+    const unsigned int requestedSampleRate =
+        static_cast<unsigned int>(IRMath::max(sampleRate, 8'000));
     unsigned int bufferFrames = kAudioInputDefaultBufferFrames;
 
     try {

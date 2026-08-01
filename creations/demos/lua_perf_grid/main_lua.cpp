@@ -10,6 +10,7 @@
 // hand-written `system_periodic_idle.tick()` body for the parity gate.
 
 #include <irreden/ir_engine.hpp>
+#include <irreden/ir_math.hpp>
 #include <irreden/ir_system.hpp>
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_script.hpp>
@@ -210,9 +211,9 @@ void applyArgs() {
 }
 
 void validateSettings() {
-    g_settings.gridSize_ = std::max(1, g_settings.gridSize_);
-    g_settings.spacing_ = std::max(0.25f, g_settings.spacing_);
-    g_settings.wavePeriodSeconds_ = std::max(0.1f, g_settings.wavePeriodSeconds_);
+    g_settings.gridSize_ = IRMath::max(1, g_settings.gridSize_);
+    g_settings.spacing_ = IRMath::max(0.25f, g_settings.spacing_);
+    g_settings.wavePeriodSeconds_ = IRMath::max(0.1f, g_settings.wavePeriodSeconds_);
     const int poolEdge = IRRender::VoxelPoolConfig::getEdge();
     if (g_settings.gridSize_ > poolEdge) {
         IR_LOG_WARN(
@@ -226,7 +227,7 @@ void validateSettings() {
 }
 
 Color colorForCell(int x, int y, int z, int gridSize) {
-    const float denom = static_cast<float>(std::max(gridSize - 1, 1));
+    const float denom = static_cast<float>(IRMath::max(gridSize - 1, 1));
     return Color{
         static_cast<std::uint8_t>(80 + 120.0f * (static_cast<float>(x) / denom)),
         static_cast<std::uint8_t>(120 + 100.0f * (static_cast<float>(y) / denom)),
@@ -247,7 +248,7 @@ C_LuaWaveState makeWaveState(int x, int y, int z) {
     // angleIncrementPerTick = 2*pi / period / kFPS.
     const float tau = 2.0f * std::numbers::pi_v<float>;
     const float pi = std::numbers::pi_v<float>;
-    const float wavelength = std::max(8.0f, static_cast<float>(g_settings.gridSize_) * 0.5f);
+    const float wavelength = IRMath::max(8.0f, static_cast<float>(g_settings.gridSize_) * 0.5f);
     const float phase = tau * static_cast<float>(x + y + z) / wavelength;
     const float period = g_settings.wavePeriodSeconds_;
     const float angleInc = tau / period / static_cast<float>(IRConstants::kFPS);

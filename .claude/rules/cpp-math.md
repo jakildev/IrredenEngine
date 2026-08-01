@@ -28,6 +28,8 @@ The wrapper layer in [`engine/math/include/irreden/`](../../engine/math/include/
 | `std::min(a, b)` / `std::max(a, b)` / `std::clamp(...)` | `IRMath::min` / `IRMath::max` / `IRMath::clamp` |
 | `std::sin(x)` / `std::cos(x)` / `std::abs(x)` | `IRMath::sin(x)` / `IRMath::cos(x)` / `IRMath::abs(x)` |
 | `std::cbrt(x)` | `IRMath::cbrt(x)` |
+| `std::pow(b, e)` / `std::log2(x)` | `IRMath::pow(b, e)` / `IRMath::log2(x)` |
+| `std::pow(2.0f, std::round(std::log2(x)))` | `IRMath::snapToPowerOfTwo(x)` |
 | `std::fmod(x, p)` + `if (v < 0) v += p`, or `while` ±2π wrap loops | `IRMath::wrapToRange(x, p)` / `IRMath::wrapAngleTwoPi(a)` / `IRMath::wrapAnglePi(a)` |
 
 ## Iso projection: never inline the equations
@@ -48,7 +50,9 @@ If the helper you need doesn't exist yet:
 
 ## When the wrapper doesn't exist yet
 
-If you need a primitive `IRMath` doesn't expose, **add the wrapper to `engine/math/` first**, then call it. Don't reach for `glm::` "just for now" — that's the path that produced the 164 violations this rule exists to clean up.
+If you need a primitive `IRMath` doesn't expose, **add the wrapper to `engine/math/` first**, then call it. Don't reach for `glm::` "just for now" — that's the path that produced the backlog this rule exists to clean up.
+
+Known ergonomic gap: `IRMath::clamp` / `IRMath::max` / `IRMath::min` take **one** type parameter, so the mixed vector/scalar form `clamp(vec3, 0.0f, 1.0f)` that `glm::` accepts does not compile. Spell the bounds as vectors (`clamp(v, vec3(0.0f), vec3(1.0f))`) rather than reaching back for `glm::`.
 
 The math library may itself wrap `glm::*` / `std::*` internally — that is the **only** place those names should appear.
 
@@ -58,7 +62,92 @@ The math library may itself wrap `glm::*` / `std::*` internally — that is the 
 - The graphics-backend interop layer at `engine/render/include/irreden/render/backend/**` — when wiring an actual `glm` value into a `glDrawElements`-shaped API, raw glm types are the surface.
 - Shader source: `*.glsl`, `*.metal`. These have their own native math; the rule is about C++ files.
 - Standalone tools under `tools/**` that do not link the engine library (`jitter_probe`, `img_diff`): IRMath lives in `engine/math/` and is genuinely unavailable there, so `std::`/`<cmath>` math is correct. (Also outside this rule's `paths:` scope — don't raise the nit from prose alone.)
+- `engine/profile/**`. Profile is one of the three lowest modules (`common/`, `math/`, `profile/`) and does not link `IrredenEngineMath` — its only uses are index clamping (`values[std::min(n * 95 / 100, n - 1)]`), so adding a link edge from the logging module to math buys nothing. If `engine/profile` ever gains a math dependency for other reasons, drop this carve-out and migrate the sites.
 
-## Live deviations (queue-manager-owned)
+## Detection
 
-The current list of files still calling `glm::*` outside the allowlist lives in `.fleet/status/glm-deviations.md` (or will, once it's introduced — track via a follow-up task). Don't add new violations; do migrate when you're already touching one of the deviation files.
+Grep the rule's `paths:` scope minus the allowlist above, skipping `//`-comment lines:
+
+```
+pattern: '\bglm::\w+|\bstd::(sin|cos|tan|sqrt|abs|min|max|clamp|floor|ceil|round|pow|log2|atan2|asin|acos|cbrt|fmod)\b'
+glob:    'engine/**/*.{hpp,cpp,h,cc}', 'creations/**/*.{hpp,cpp,h,cc}'
+skip:    engine/math/**, engine/profile/**,
+         engine/render/include/irreden/render/backend/**, tools/**
+```
+
+Tree-wide, run it through `fleet-rules-sweep` — this rule's `paths:` names
+`creations/**`, and an `rg`/`Grep` rooted **at** `creations/` walks 2 of its
+273 files and reports a false clean (#2739). The skip-list goes in as negation
+globs and the `//`-comment skip goes in the pattern, so the exit code is the
+whole result: **1** = real clean pass, **0** = violations, **2** = the scope
+resolved to zero files — the guard that stops a mis-scoped sweep from
+masquerading as success.
+
+```
+fleet-rules-sweep \
+  --glob 'engine/**/*.{hpp,cpp,h,cc}' --glob 'creations/**/*.{hpp,cpp,h,cc}' \
+  --glob '!engine/math/**' --glob '!engine/profile/**' \
+  --glob '!engine/render/include/irreden/render/backend/**' --glob '!tools/**' \
+  --pattern '^(?!\s*(//|\*)).*(\bglm::\w+|\bstd::(sin|cos|tan|sqrt|abs|min|max|clamp|floor|ceil|round|pow|log2|atan2|asin|acos|cbrt|fmod)\b)'
+```
+
+**There is no correct `rg` spelling for this scope** — the wrapper is not a
+convenience here. `rg` honours `.gitignore`; `git ls-files` does not apply it to
+*tracked* files. Three tracked files under `creations/` sit in re-ignored
+directories (`.gitignore:40` `creations/*` with no re-inclusion for
+`bazel_test`, and `.gitignore:45` re-ignoring `creations/editors/font_maker`),
+so ripgrep cannot see them at any search root or glob spelling:
+
+```
+creations/bazel_test/main.cpp
+creations/editors/font_maker/main.cpp
+creations/editors/font_maker/systems/system_font_maker.hpp
+```
+
+Measured on this scope: the repo-top glob form covers **769** files, the sweep
+**772**. That is a second false-clean class stacked on #2739's — the walker
+one is fixed by rooting the glob at the repo top, this one is not fixable in
+`rg` at all (short of `--no-ignore`, which then pulls in the gitignored private
+`creations/game` clone and violates cross-repo isolation).
+
+If you must hand-roll it anyway, glob from the repo top — never a path rooted
+at `creations/` — and treat any count below the expected coverage as a failed
+sweep, not a clean one:
+
+```
+rg -n -g 'engine/**/*.{hpp,cpp,h,cc}' -g 'creations/**/*.{hpp,cpp,h,cc}' '<pattern>' .
+git ls-files engine creations | grep -cE '\.(hpp|cpp|h|cc)$'   # 795 minus 23 skipped = 772
+```
+
+Compare against that extension-filtered count, not `wc -l` over every tracked
+file — `git ls-files engine creations | wc -l` is 1231, and measuring 772
+against *that* reads like a walker failure when it is the correct coverage.
+
+Unlike the `simplify` math check and review-pr, which read a **diff**, this
+form measures the standing population. Run it tree-wide — the diff-scoped
+checks are structurally blind to violations that were already in the tree
+when they landed, which is how the count below went unmeasured for months
+(#2735).
+
+## Live deviations
+
+**Zero.** Swept tree-wide 2026-07-31 (#2735): 73 sites across 18 files
+migrated (11 `glm::`, 62 `std::`), and this register is the whole answer —
+there is no external status file. The Detection sweep above exits **1**
+(`swept 772 file(s)`) — a clean pass that covered something, not a walker
+that scoped itself into the hole. The sweep is one command; re-run it rather
+than trusting this line.
+
+Two rules for whoever adds the next entry:
+
+- **Keep the register inline and dated.** If it delegates to an external
+  status file, that file's existence must be verified against the tree —
+  this section spent months pointing at a `.fleet/status/` path that was
+  never created, and the sibling registers failed the same way (#2726,
+  #2733).
+- **A `round` on a position is `roundHalfUp`, not `round`.** `glm::round` /
+  `IRMath::round` are round-half-away-from-zero and disagree with the GPU
+  mirror at negative half-integers, which is the CPU↔GPU divergence §2
+  exists to prevent. Use `IRMath::roundHalfUp` / `roundVec3HalfUp` for any
+  position→cell assignment (see #2735 for a latent instance that sat in the
+  render-verify reference demo).

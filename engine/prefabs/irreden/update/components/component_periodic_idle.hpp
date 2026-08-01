@@ -269,10 +269,10 @@ struct C_PeriodicIdle {
     }
 
     float mapAngleToStageTValue(float angle, const PeriodStage &stage) const {
-        float clampedAngle = std::max(stage.startAngle_, std::min(stage.endAngle_, angle));
+        float clampedAngle = IRMath::max(stage.startAngle_, IRMath::min(stage.endAngle_, angle));
         float relativePosition =
             (angle - stage.startAngle_) / (stage.endAngle_ - stage.startAngle_);
-        relativePosition = std::max(0.0f, std::min(1.0f, relativePosition));
+        relativePosition = IRMath::max(0.0f, IRMath::min(1.0f, relativePosition));
         if (stage.isReversed_) {
             relativePosition = 1.0f - relativePosition;
         }

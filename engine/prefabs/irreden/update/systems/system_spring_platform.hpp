@@ -51,7 +51,7 @@ template <> struct System<SPRING_PLATFORM> {
                             IREntity::getComponentOptional<C_Velocity3D>(contact.otherEntity_);
                         if (velOpt.has_value()) {
                             vec3 bv = velOpt.value()->velocity_;
-                            impactSpeed = std::abs(IRMath::dot(bv, spring.direction_));
+                            impactSpeed = IRMath::abs(IRMath::dot(bv, spring.direction_));
                         }
                     }
                     spring.springVelocity_ = spring.absorptionRatio_ * impactSpeed;
@@ -91,7 +91,7 @@ template <> struct System<SPRING_PLATFORM> {
                             localXform.translation_ =
                                 spring.origin_ + spring.direction_ * spring.displacement_;
 
-                            if (std::abs(spring.displacement_ - lockPoint) < 0.01f) {
+                            if (IRMath::abs(spring.displacement_ - lockPoint) < 0.01f) {
                                 spring.displacement_ = lockPoint;
                                 spring.state_ = SPRING_LOCKED;
                                 localXform.translation_ =
@@ -104,8 +104,8 @@ template <> struct System<SPRING_PLATFORM> {
                                 IRMath::max(0.0f, 1.0f - spring.damping_ * dt);
 
                             if (spring.maxCatchOscillations_ <= 0 &&
-                                std::abs(spring.springVelocity_) <= spring.settleSpeed_ &&
-                                std::abs(offset) < 0.5f) {
+                                IRMath::abs(spring.springVelocity_) <= spring.settleSpeed_ &&
+                                IRMath::abs(offset) < 0.5f) {
                                 spring.displacement_ = lockPoint;
                                 spring.springVelocity_ = 0.0f;
                                 spring.state_ = SPRING_LOCKED;
@@ -148,7 +148,7 @@ template <> struct System<SPRING_PLATFORM> {
                 // ── Launch ──
                 if (spring.launchRequested_) {
                     float launchSpeed =
-                        std::sqrt(spring.stiffness_ * spring.length_ * spring.length_);
+                        IRMath::sqrt(spring.stiffness_ * spring.length_ * spring.length_);
                     spring.springVelocity_ = -launchSpeed;
                     spring.state_ = SPRING_LAUNCHING;
                     spring.launchRequested_ = false;
@@ -181,8 +181,8 @@ template <> struct System<SPRING_PLATFORM> {
                     spring.springVelocity_ *= IRMath::max(0.0f, 1.0f - spring.damping_ * dt);
 
                     if (spring.state_ == SPRING_REBOUNDING && spring.maxLaunchOscillations_ <= 0 &&
-                        std::abs(spring.springVelocity_) <= spring.settleSpeed_ &&
-                        std::abs(spring.displacement_) < 0.5f) {
+                        IRMath::abs(spring.springVelocity_) <= spring.settleSpeed_ &&
+                        IRMath::abs(spring.displacement_) < 0.5f) {
                         spring.displacement_ = 0.0f;
                         spring.springVelocity_ = 0.0f;
                         spring.state_ = SPRING_IDLE;
@@ -208,7 +208,7 @@ template <> struct System<SPRING_PLATFORM> {
                     localXform.translation_ =
                         spring.origin_ + spring.direction_ * spring.displacement_;
 
-                    if (std::abs(spring.displacement_) < 0.01f) {
+                    if (IRMath::abs(spring.displacement_) < 0.01f) {
                         spring.displacement_ = 0.0f;
                         spring.state_ = SPRING_IDLE;
                         spring.oscillationCount_ = 0;
