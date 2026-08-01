@@ -469,6 +469,13 @@ Three checks, in order:
    silhouette changes under yaw and contaminates the metric).
 
    ```bash
+   # ALWAYS wipe first. The engine never clears this dir and numbers *around*
+   # leftovers (VideoManager::reserveNextScreenshotIndex), so without this the
+   # glob below scores earlier runs' frames too. End the path at .../screenshots
+   # — a find rooted at the demo dir also deletes staged data/images/ assets and
+   # the next run dies on a misleading image-load assert. Use -delete, not
+   # `rm -f <dir>/*.png`: zsh aborts the whole && chain on an unmatched glob.
+   find <save_files>/screenshots -name '*.png' -delete
    # pan jitter (voxel box, yaw 45, zoom 4):
    IRShapeDebug --spin-shape box --spin-shape-voxel --pan-sweep --yaw 0.785 \
        --zoom 4 --auto-screenshot 6
@@ -476,9 +483,15 @@ Three checks, in order:
    IRShapeDebug --spin-shape cylinder --spin-shape-voxel --yaw-sweep \
        --zoom 4 --auto-screenshot 6
    # then score the captured sequence (in order). --reversal-eps 0.8 retires the
-   # reversal criterion on these probes (see "the reversal criterion" below):
-   build/tools/jitter_probe/jitter_probe --reversal-eps 0.8 \
-       <save_files>/screenshots/screenshot_0*.png
+   # reversal criterion on these probes (see "the reversal criterion" below).
+   # The 6-digit glob matches full frames ONLY — ROI crops share the prefix and
+   # append _<label>__crop_<crop>.png, and a 128x128 crop has no usable
+   # foreground. --expect-frames must equal the --auto-screenshot count: it is
+   # the only thing that catches a widened glob, since scoring the wrong set
+   # still yields a confident verdict (measured during #2469 — see
+   # tools/jitter_probe/README.md §"Wipe before every capture").
+   build/tools/jitter_probe/jitter_probe --reversal-eps 0.8 --expect-frames 6 \
+       <save_files>/screenshots/screenshot_[0-9][0-9][0-9][0-9][0-9][0-9].png
    ```
 
 3. **Read the verdict.** `jitter_probe` tracks the shape's centroid across the
