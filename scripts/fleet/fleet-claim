@@ -4558,8 +4558,9 @@ commands:
   find-stackable-blockers <issue-number>
                                 if exactly one #N blocker has exactly
                                 one open PR (matched via head-branch
-                                `claude/<N>-*` or a body `Closes #N`
-                                reference), print one tab-separated
+                                `claude/<N>-*`, a body `Closes #N`
+                                reference, or the ref being that PR's
+                                own number), print one tab-separated
                                 line:
                                 <url><TAB><headRefName><TAB><author><TAB><number>.
                                 Empty stdout means no eligible blocker.
