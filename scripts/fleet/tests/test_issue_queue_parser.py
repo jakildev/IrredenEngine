@@ -257,6 +257,28 @@ class FetchTaskQueueDispatch(unittest.TestCase):
         self.assertEqual(out["in_progress"], [])
         self.assertEqual(out["done"], [])
 
+    def test_gated_issue_absent_from_all_sections(self):
+        # #2762: fleet:gated parks an issue whose fix surface no class can
+        # push. Without this skip it stays in tasks.open as free-and-pickable
+        # and ingest re-stamps fleet:queued, recycling panes indefinitely.
+        out = self._run([{
+            "number": 100, "title": "gated task",
+            "labels": [{"name": "fleet:queued"}, {"name": "fleet:gated"}],
+            "body": "",
+        }])
+        all_ids = [t["id"] for t in out["open"] + out["in_progress"] + out["done"]]
+        self.assertNotIn("#100", all_ids)
+
+    def test_gated_issue_positive_control_present_without_label(self):
+        # Same issue minus fleet:gated must still surface — proves the skip
+        # above is keyed on the label, not some other property of the fixture.
+        out = self._run([{
+            "number": 101, "title": "ungated task",
+            "labels": [{"name": "fleet:queued"}],
+            "body": "",
+        }])
+        self.assertEqual(out["open"][0]["id"], "#101")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -766,6 +766,15 @@ def fetch_task_queue(repo_slug):
         if "fleet:plan-review" in labels:
             continue
 
+        # fleet:gated marks issues a worker parked because the fix surface
+        # is gated self-config no class can push (#2066). Skip for the same
+        # reason as fleet:needs-human above: without this, ingest re-stamps
+        # fleet:queued and every matching dispatch re-claims, re-hits the
+        # ungateable surface, and releases — an unbounded pane-burn loop
+        # (#2762).
+        if "fleet:gated" in labels:
+            continue
+
         in_progress = "fleet:in-progress" in labels or owner != "free"
         status = "~" if in_progress else " "
 

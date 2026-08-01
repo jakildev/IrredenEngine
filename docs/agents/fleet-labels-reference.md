@@ -464,15 +464,22 @@ Specifically, **never pass these via `--label` when filing**:
   merger (when a conflict's whole surface is gated self-config — it labels
   `fleet:gated` instead of `fleet:semantic-conflict`), or a worker (a
   semantic-conflict whose conflicted files are all gated, role-worker.md step
-  1c d''; or a `fleet:needs-fix` PR whose entire fix surface is gated,
-  FLEET-FEEDBACK-HANDLING.md DEFER path). Means **the PR is blocked on an edit
-  to a gated self-config file** (`.claude/commands/role-*.md`,
-  `.claude/agents/*`, `.claude/skills/**/SKILL.md`) that the auto-mode
-  self-modification gate physically prevents any agent class from pushing.
+  1c d''; a `fleet:needs-fix` PR whose entire fix surface is gated,
+  FLEET-FEEDBACK-HANDLING.md DEFER path; or an **issue** whose task itself
+  turns out to require a gated edit, per an approved plan). Means **the PR (or
+  issue) is blocked on an edit to a gated self-config file**
+  (`.claude/commands/role-*.md`, `.claude/agents/*`,
+  `.claude/skills/**/SKILL.md`) that the auto-mode self-modification gate
+  physically prevents any agent class from pushing.
   **It is a hard, human-only stop:** it is in *every* picker's skip set —
-  the merger sweep, all worker-class dispatch, and reviewer pickup (see
-  fleet-state-scout `_merger_action_signal`, `project_worker`/`slice_worker`,
-  and `REVIEW_SKIP_LABELS`). Nothing automated touches it until a human (or
+  on **PRs**: the merger sweep, all worker-class dispatch, and reviewer
+  pickup (see fleet-state-scout `_merger_action_signal`,
+  `project_worker`/`slice_worker`, and `REVIEW_SKIP_LABELS`); on **issues**:
+  `fetch_task_queue`'s per-issue skip (so a gated issue never lands in
+  `tasks.open[]` as free-and-pickable) and `fleet-queue-ingest`'s hold set
+  (so ingest never re-stamps `fleet:queued` onto it — the issue keeps
+  `human:approved` and survives re-ingest, same shape as `fleet:needs-human`;
+  #2762). Nothing automated touches it until a human (or
   the architect, who can push gated edits with a human in the loop) resolves
   the gated edit and drops the label.
   **Why it exists, distinct from `fleet:human-deferred`:** human-deferred
