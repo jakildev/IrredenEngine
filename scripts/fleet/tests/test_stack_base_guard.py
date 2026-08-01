@@ -84,6 +84,64 @@ class TestUnsafeBaseReason(unittest.TestCase):
                 self.assertNotIn(label, NOT_STACKABLE_BASE_LABELS)
                 self.assertIsNone(unsafe_base_reason([label], ["engine/x.cpp"]))
 
+    def test_awaiting_base_is_a_stackable_base(self):
+        """#2805: `fleet:awaiting-base` describes the base's OWN base, not its
+        head diff, and the merger mints it on every stacked PR whose base is
+        still open — so rejecting it made depth-2+ stacking impossible. Live
+        shape when filed: PR #2792 (fleet:approved + fleet:awaiting-base) was
+        refused as a base for #2803, whose target code exists only on that
+        branch. Graded against a base that STILL carries the label — the fix
+        does not remove it from any PR."""
+        self.assertNotIn("fleet:awaiting-base", NOT_STACKABLE_BASE_LABELS)
+        self.assertIsNone(unsafe_base_reason(
+            ["fleet:approved", "fleet:awaiting-base", "fleet:authored-on-macos"],
+            ["scripts/fleet/witness"]))
+
+    def test_awaiting_base_does_not_exempt_a_co_carried_reject(self):
+        """Dropping the label must not turn its carriers into a blanket
+        exemption: a base that is awaiting-base AND genuinely in flux still
+        rejects, and reports the in-flux label by name. (Pre-fix these returned
+        "fleet:awaiting-base" — it sorts first — so this flips with the fix.)"""
+        for label in ("fleet:wip", "fleet:merger-cooldown",
+                      "fleet:semantic-conflict", "fleet:amending-mac-pool-1"):
+            with self.subTest(label=label):
+                self.assertEqual(
+                    unsafe_base_reason(["fleet:awaiting-base", label],
+                                       ["scripts/fleet/witness"]),
+                    label)
+        self.assertEqual(
+            unsafe_base_reason(["fleet:approved", "fleet:awaiting-base"], []),
+            "empty claim-commit")
+
+    def test_retained_reject_states_survive_the_awaiting_base_drop(self):
+        """The states #2805 keeps must still reject, each reported by name — a
+        bare `assertIsNone` on the safe case passes vacuously if a future edit
+        empties the set. These assertions hold in BOTH arms of the #2805
+        positive control (pre- and post-fix), so they are not keyed on the fix;
+        only the two tests above flip."""
+        for label in ("fleet:wip", "human:wip", "fleet:human-amending",
+                      "fleet:merger-cooldown", "fleet:design-unblocked",
+                      "fleet:semantic-conflict", "fleet:awaiting-upstream-review",
+                      "fleet:fork-of-other-pr"):
+            with self.subTest(label=label):
+                self.assertIn(label, NOT_STACKABLE_BASE_LABELS)
+                self.assertEqual(
+                    unsafe_base_reason([label], ["scripts/fleet/witness"]), label)
+        self.assertEqual(unsafe_base_reason(["fleet:approved"], []),
+                         "empty claim-commit")
+
+    def test_fork_of_other_pr_stays_rejected_on_its_own_grounds(self):
+        """#2805's sibling decision: `fleet:fork-of-other-pr` shares the false
+        "retired legacy label" framing but keeps rejecting — the branch carries
+        commits inherited from another open PR, so the base is not the author's
+        own work and the upstream author may rewrite the prefix under the
+        stack. Unlike awaiting-base, that is a property of the head diff."""
+        self.assertIn("fleet:fork-of-other-pr", NOT_STACKABLE_BASE_LABELS)
+        self.assertEqual(
+            unsafe_base_reason(["fleet:approved", "fleet:fork-of-other-pr"],
+                               ["engine/x.cpp"]),
+            "fleet:fork-of-other-pr")
+
     def test_semantic_conflict_rejected(self):
         """A PR awaiting merger rebase is not a safe stack base — its diff
         against master is meaningless until the conflict is resolved, and
