@@ -248,6 +248,14 @@ run_one_pass() {
             rm -f "$ALERT_DIR/fleet-dispatcher.stuck"
             _witness_all_clear "stale-dispatcher"
         fi
+    else
+        # No pidfile: nothing asserts a dead dispatcher, so neither artifact
+        # may outlive it. A streak raised while the pidfile existed would
+        # otherwise survive its removal, and the .stuck alert — the only
+        # standing signal once the warn goes quiet past N — would become a
+        # file no pass can ever rewrite or clear.
+        rm -f "$ALERT_DIR/fleet-dispatcher.stuck"
+        _witness_all_clear "stale-dispatcher"
     fi
 
     if [[ "$tracked" -eq 0 ]]; then

@@ -336,4 +336,28 @@ assert_contains "$(cat "$home_g/out.txt")" "all healthy" "live dispatcher: repor
     && bad "live dispatcher: alert cleared" \
     || ok "live dispatcher: alert cleared"
 
+# A removed pidfile clears both artifacts too. Nothing asserts a dead
+# dispatcher without one, so a streak and a .stuck alert raised while it
+# existed must not outlive it — the alert especially, since past N it is the
+# only standing signal and no later pass could rewrite or clear it.
+echo 999997 > "$home_g/.fleet/state/dispatcher.pid"
+run_witness "$home_g" 3
+assert_contains "$(cat "$home_g/out.txt")" "STALE: fleet-dispatcher (pid 999997" \
+    "removed pidfile: precondition — a dead pid raises the streak and the alert"
+[[ -f "$counter_g" && -f "$alert_g" ]] \
+    && ok "removed pidfile: precondition — counter and alert both on disk" \
+    || bad "removed pidfile: precondition — counter and alert both on disk"
+
+rm -f "$home_g/.fleet/state/dispatcher.pid"
+run_witness "$home_g" 3
+out_g_nopid=$(cat "$home_g/out.txt")
+assert_absent "$out_g_nopid" "STALE: fleet-dispatcher" \
+    "removed pidfile: no dead-dispatcher claim without a recorded pid"
+[[ -f "$counter_g" ]] \
+    && bad "removed pidfile: counter cleared" \
+    || ok "removed pidfile: counter cleared"
+[[ -f "$alert_g" ]] \
+    && bad "removed pidfile: alert cleared" \
+    || ok "removed pidfile: alert cleared"
+
 summarize "witness roster tests"
