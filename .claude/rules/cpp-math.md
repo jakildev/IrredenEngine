@@ -75,6 +75,34 @@ skip:    engine/math/**, engine/profile/**,
          engine/render/include/irreden/render/backend/**, tools/**
 ```
 
+Tree-wide, run it through `fleet-rules-sweep` — this rule's `paths:` names
+`creations/**`, and an `rg`/`Grep` rooted **at** `creations/` walks 2 of its
+273 files and reports a false clean (#2739). The skip-list goes in as negation
+globs and the `//`-comment skip goes in the pattern, so the exit code is the
+whole result: **1** = real clean pass, **0** = violations, **2** = the scope
+resolved to zero files — the guard that stops a mis-scoped sweep from
+masquerading as success.
+
+```
+fleet-rules-sweep \
+  --glob 'engine/**/*.{hpp,cpp,h,cc}' --glob 'creations/**/*.{hpp,cpp,h,cc}' \
+  --glob '!engine/math/**' --glob '!engine/profile/**' \
+  --glob '!engine/render/include/irreden/render/backend/**' --glob '!tools/**' \
+  --pattern '^(?!\s*(//|\*)).*(\bglm::\w+|\bstd::(sin|cos|tan|sqrt|abs|min|max|clamp|floor|ceil|round|pow|log2|atan2|asin|acos|cbrt|fmod)\b)'
+```
+
+Without the wrapper, glob from the repo top — never a path rooted at
+`creations/` — and cross-check coverage before believing a zero:
+
+```
+rg -n -g 'engine/**/*.{hpp,cpp,h,cc}' -g 'creations/**/*.{hpp,cpp,h,cc}' '<pattern>' .
+git ls-files engine creations | grep -cE '\.(hpp|cpp|h|cc)$'   # 795 minus 23 skipped = 772
+```
+
+Compare against the extension-filtered count, not `wc -l` over every tracked
+file — `git ls-files engine creations | wc -l` is 1231, and measuring 772
+against *that* reads like a walker failure when it is the correct coverage.
+
 Unlike the `simplify` math check and review-pr, which read a **diff**, this
 form measures the standing population. Run it tree-wide — the diff-scoped
 checks are structurally blind to violations that were already in the tree
@@ -84,9 +112,11 @@ when they landed, which is how the count below went unmeasured for months
 ## Live deviations
 
 **Zero.** Swept tree-wide 2026-07-31 (#2735): 73 sites across 18 files
-migrated (11 `glm::`, 62 `std::`), the Detection sweep above now returns
-empty, and this register is the whole answer — there is no external status
-file. The sweep is one command; re-run it rather than trusting this line.
+migrated (11 `glm::`, 62 `std::`), and this register is the whole answer —
+there is no external status file. The Detection sweep above exits **1**
+(`swept 772 file(s)`) — a clean pass that covered something, not a walker
+that scoped itself into the hole. The sweep is one command; re-run it rather
+than trusting this line.
 
 Two rules for whoever adds the next entry:
 
