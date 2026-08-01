@@ -64,14 +64,6 @@ cmake --build <build-dir> --target header-checks   # pure CMake, no external too
 cmake --build <build-dir> --target lint            # + clang-tidy
 ```
 
-In CI it runs as the **Header Checks** workflow
-(`.github/workflows/header-checks.yml`) on every push and PR touching the
-scanned tree, via `cmake/run_header_checks_standalone.cmake` — same collector,
-same rules, no configure step. The workflow is named here on purpose: "this
-check is executed" is only worth asserting if the reader can go confirm *what*
-executes it. Note that `lint` is not that path — it reaches CI only through
-`quality.yml`, which is disabled (#2718).
-
 It reports the offending file and declaration and fails the target. The
 matcher allows `constexpr` / `const` (including `inline static const`),
 `extern "C"` linkage blocks, and function declarations; allowlisted paths
