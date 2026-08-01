@@ -14,7 +14,10 @@
 # If NO rostered agent has ever written a heartbeat (roster misconfigured,
 # or every rostered role retired), witness does not report "all healthy" —
 # tracking zero agents is not health. It logs a ROSTER EMPTY warning and
-# writes ~/.fleet/alerts/witness-roster.stuck instead.
+# writes ~/.fleet/alerts/witness-roster.stuck instead. That condition holds
+# until a human acts, so the warning escalates-then-quiets: loud for the
+# first N consecutive passes, then silent while the alert file keeps being
+# refreshed every pass. A rostered heartbeat clears counter and alert.
 #
 # Usage:
 #   witness          run continuously (normal fleet pane mode)
@@ -26,7 +29,8 @@
 set -euo pipefail
 
 HEARTBEAT_DIR="$HOME/.fleet/heartbeats"
-ALERT_DIR="$HOME/.fleet/alerts"
+ALERT_DIR="${FLEET_ALERTS_DIR:-$HOME/.fleet/alerts}"
+STATE_DIR="${FLEET_STATE_DIR:-$HOME/.fleet/state}"
 LOG_DIR="$HOME/.fleet/logs"
 LOG="$LOG_DIR/witness.log"
 
@@ -68,6 +72,110 @@ threshold_for_agent() {
 # Portable file mtime in Unix seconds (macOS + Linux).
 file_mtime() {
     python3 -c "import os, sys; print(int(os.path.getmtime(sys.argv[1])))" "$1"
+}
+
+# --- roster-empty escalation --------------------------------------------------
+# run_one_pass runs unattended every 60 s and the roster-empty condition stays
+# true until a human acts (it means no rostered agent writes a heartbeat at
+# all), so a plain per-pass warn re-emits identically forever — spam that buries
+# the outage instead of reporting it, and grows witness.log without bound. Count
+# consecutive zero-tracked passes; emit the loud line up to the Nth, then go
+# quiet. See scripts/fleet/CLAUDE.md §"An every-tick guard that warns must
+# escalate-then-quiet" (#2363); fleet-clone-freshness.sh's _freshness_warn is
+# the reference shape.
+#
+# Counter: $STATE_DIR/.witness-roster-skip
+#          one line, "<count> <first_seen_epoch> <reason>|<roster>"
+# Alert:   $ALERT_DIR/witness-roster.stuck
+#
+# Deliberate deviation from _freshness_warn: the alert is written from the FIRST
+# pass, not only from the Nth. witness has always written it on every pass and
+# it is not the noisy channel — one file, overwritten, never appended — so
+# gating it behind N would remove a durable signal rather than reduce noise.
+# Only the stdout/log line is rate-limited. It keeps being rewritten past N per
+# the sub-rule: once the loud channel is quiet the file is the only standing
+# signal, so a write-once alert would freeze its count/age at the escalation
+# instant and let a human clearing the alerts inbox silence a still-live
+# condition forever.
+#
+# Every counter/alert write is best-effort: a read-only $HOME must not break
+# the health pass this guards.
+ROSTER_COUNTER="$STATE_DIR/.witness-roster-skip"
+ROSTER_ALERT="$ALERT_DIR/witness-roster.stuck"
+
+# Consecutive zero-tracked passes before escalating. Passes run ~1/min, so 10 is
+# ~10 min — long enough to ride out the boot-time gap before a freshly launched
+# architect pane writes its first heartbeat, and an order of magnitude inside
+# the 2 h staleness threshold above. Roster-empty is strictly worse than a stale
+# heartbeat (nothing is being watched at all), so it must not alert later than
+# staleness would.
+_roster_escalate_n() {
+    local n="${FLEET_WITNESS_ROSTER_ESCALATE_N:-10}"
+    if [[ ! "$n" =~ ^[0-9]+$ ]] || (( n < 1 )); then
+        n=10
+    fi
+    echo "$n"
+}
+
+# _roster_iso8601 <epoch>
+# BSD (macOS) spells it `date -r`, GNU spells it `date -d @…`; -r on GNU tries
+# to stat a file and fails, so the chain lands on the right one either way.
+_roster_iso8601() {
+    date -u -r "$1" '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null \
+        || date -u -d "@$1" '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null \
+        || echo "$1"
+}
+
+# _roster_warn <now_str> <msg>
+# Emit the roster-empty warning, escalating-then-quieting on repetition.
+_roster_warn() {
+    local now_str="$1" msg="$2"
+    local key n now count first prev_key since
+    key="roster-empty|${ROSTER[*]}"
+    n="$(_roster_escalate_n)"
+    now="$(date +%s)"
+
+    count=0
+    first="$now"
+    prev_key=""
+    if [[ -f "$ROSTER_COUNTER" ]]; then
+        read -r count first prev_key < "$ROSTER_COUNTER" 2>/dev/null || true
+    fi
+    [[ "${count:-}" =~ ^[0-9]+$ ]] || count=0
+    [[ "${first:-}" =~ ^[0-9]+$ ]] || first="$now"
+    # A changed roster is news again — restart rather than inherit a tally
+    # raised against a different set of agents.
+    if [[ "${prev_key:-}" != "$key" ]]; then
+        count=0
+        first="$now"
+    fi
+    count=$(( count + 1 ))
+
+    mkdir -p "$(dirname "$ROSTER_COUNTER")" 2>/dev/null || true
+    printf '%s %s %s\n' "$count" "$first" "$key" > "$ROSTER_COUNTER" 2>/dev/null || true
+
+    since="$(_roster_iso8601 "$first")"
+
+    if (( count < n )); then
+        echo "[$now_str witness] $msg" | tee -a "$LOG"
+    elif (( count == n )); then
+        echo "[$now_str witness] $msg" | tee -a "$LOG"
+        echo "[$now_str witness] ROSTER EMPTY ESCALATION: $count consecutive passes tracking zero agents since $since. Wrote $ROSTER_ALERT. Remedy: give each rostered agent (${ROSTER[*]}) a fleet-heartbeat call at its role step 0, or correct the roster. Suppressing further identical warns until a rostered heartbeat appears." | tee -a "$LOG"
+    fi
+
+    mkdir -p "$(dirname "$ROSTER_ALERT")" 2>/dev/null || true
+    printf '%s roster=%s count=%s since=%s\n' \
+        "$now_str" "${ROSTER[*]}" "$count" "$since" \
+        > "$ROSTER_ALERT" 2>/dev/null || true
+    return 0
+}
+
+# _roster_all_clear
+# A rostered heartbeat appeared: drop the counter and the alert so the next
+# persistent roster-empty escalates from scratch.
+_roster_all_clear() {
+    rm -f "$ROSTER_COUNTER" "$ROSTER_ALERT" 2>/dev/null || true
+    return 0
 }
 
 run_one_pass() {
@@ -121,10 +229,9 @@ run_one_pass() {
 
     if [[ "$tracked" -eq 0 ]]; then
         local msg="ROSTER EMPTY: no heartbeat file for any monitored agent (${ROSTER[*]}) — witness is not tracking anyone, this is not health"
-        echo "[$now_str witness] $msg" | tee -a "$LOG"
-        echo "$now_str roster=${ROSTER[*]}" > "$ALERT_DIR/witness-roster.stuck"
+        _roster_warn "$now_str" "$msg"
     else
-        rm -f "$ALERT_DIR/witness-roster.stuck"
+        _roster_all_clear
         if [[ "$stale_count" -eq 0 ]]; then
             echo "[$now_str witness] all healthy ($tracked agent(s) tracked)"
         fi
