@@ -16,10 +16,19 @@ function(irreden_collect_quality_files out_var)
         "${PROJECT_SOURCE_DIR}/tools"
     )
 
+    # CONFIGURE_DEPENDS re-runs the glob on rebuild, but CMake rejects it
+    # outside configure mode. run_header_checks_standalone.cmake calls this same
+    # function under `cmake -P` so CI can check headers with no configure, so
+    # the flag has to drop out there (#2794).
+    set(glob_mode CONFIGURE_DEPENDS)
+    if(CMAKE_SCRIPT_MODE_FILE)
+        set(glob_mode "")
+    endif()
+
     set(globbed_files "")
     foreach(root IN LISTS search_roots)
         if(EXISTS "${root}")
-            file(GLOB_RECURSE root_files CONFIGURE_DEPENDS
+            file(GLOB_RECURSE root_files ${glob_mode}
                 "${root}/*.h"
                 "${root}/*.hpp"
                 "${root}/*.c"
