@@ -192,10 +192,15 @@ suites green, pan/yaw jitter sweeps SMOOTH, clean exits.
 
 ## Steward ledger
 
-reconciled-through: PR #2576 merge (2026-07-29)
-proposal-pending: none — answered 2026-07-28 by the architect ruling
+reconciled-through: PR #2585 merge (2026-08-01T04:43:21Z, master `4c4554d5`) —
+P3 (#2547) reconciled; #2669 adopted (flow c)
+proposal-pending: **OPEN** — `## STEWARD PROPOSAL 2026-08-01`
+https://github.com/jakildev/IrredenEngine/issues/2544#issuecomment-5149886413
+(one question: #2669's default-pivot latch-update policy / contract amendment).
+`fleet:steward-proposal` applied to the umbrella; its removal is the re-fire
+edge. The **prior** package (2026-07-28) was answered by the architect ruling
 https://github.com/jakildev/IrredenEngine/issues/2544#issuecomment-5106383295
-(package: issuecomment-5100516659); distributed 2026-07-29 as A2/A3 + the
+(package: issuecomment-5100516659) and distributed 2026-07-29 as A2/A3 + the
 `## Steward direction` on PR #2585.
 
 ### Children
@@ -203,11 +208,13 @@ https://github.com/jakildev/IrredenEngine/issues/2544#issuecomment-5106383295
 |---|---|---|---|---|
 | #2545 | merged | #2562 | plan | 2026-07-28 (PR #2562 merge) |
 | #2546 | merged | #2576 (`fleet:needs-windows-smoke` open) | plan | 2026-07-29 (PR #2576 merge) |
-| #2547 | in-progress (design-unblocked) | #2585 | plan + A1–A2 | 2026-07-29 (proposal distributed) |
-| #2548 | open | — | plan | 2026-07-29 (PR #2576 merge) |
+| #2547 | merged | #2585 (`fleet:needs-windows-smoke` + `fleet:needs-human` open) | plan + A1–A2 | 2026-08-01 (PR #2585 merge) |
+| #2548 | open — PR #2659 in flight (`fleet:semantic-conflict`) | #2659 (open) | plan + A5 | 2026-08-01 (PR #2585 merge) |
+| #2669 | open — **adopted 2026-08-01 (flow c)**, blocked on the pending ruling | — | stub | 2026-08-01 (adoption) |
 
-A3 is epic-scope (the whole-epic verification bar) and is not listed per child;
-it binds every row above at close-out.
+A3 and A4 are epic-scope (the whole-epic verification bar) and are not listed per
+child; they bind every row above at close-out. A4 supersedes A3's block set and
+verdict vocabulary.
 
 ### Decisions
 <!-- entries: D<n> (<YYYY-MM-DD>): <decision> — source: <link>  (numbered scheme per epic-steward-protocol.md §Decisions; escalation rules reference decisions by D-id) -->
@@ -261,6 +268,29 @@ it binds every row above at close-out.
   untouched. **Standing consequence:** store anchor and screen anchor are now
   distinct concepts on the per-axis route — Phase 4 and any future scatter work
   must not re-conflate them. — source: PR #2576 §Root cause / §Fix.
+- D7 (2026-08-01): The default-pivot gate as **shipped** is the per-shot
+  `[pivot-focus-assert]` pinned-point check (derived focus vs the analytic
+  ray/surface intersection over the probe's own carve constants — `IRMath::SDF::evaluate`
+  + `effectiveParams`, the same call the spawn makes, so oracle and geometry
+  cannot drift; tolerance 0.6 world units = one iso-depth unit of composite
+  quantization), plus a **`center-axis`** block as the visual net. The ruling's
+  second form — a small crop about the center pixel — was **built, measured, and
+  rejected**: on a rotationally-symmetric probe the pinned surface point rotates
+  onto the limb at ±90°, so the crop straddles the silhouette edge (**42 px** of
+  crop-centroid drift on `center-depth` at zoom 4, 180 px crop; `center-column`
+  leaves ~15 px of margin), and the effect is scale-invariant so no crop size
+  fixes it. `center-axis` puts the probe's axis **on** the viewport-center ray
+  with its near cap at the ray's entry step, so the derived surface point *is*
+  the probe's axis point and a bias-free derive maps the silhouette onto itself —
+  the derived-focus twin of `focus-ctr`, isolating the residual to one number.
+  `center-column` / `center-depth` keep their geometry (they are what
+  *demonstrates* the contract) but their silhouette deviation is **reported, not
+  gated**, and they emit `FOCUS-OK` rather than `PINNED`. **Not an escalation:**
+  D5's substance (re-ground the default-pivot gates inside #2585) is honored, and
+  A2's "prefer both forms" was the ruling's own word — the substitution is
+  carried by a measurement, not a preference. Realized by A4. — source: PR #2585
+  §"Contract ratified + gate re-grounded" (§"Deviation from the direction, with
+  the measurement that forced it") and §Test plan.
 
 ### Events
 - 2026-07-22: filed via file-epic
@@ -359,6 +389,101 @@ it binds every row above at close-out.
   and removed `fleet:steward-proposal` — the re-fire edge. Recorded as D4/D5,
   realized as amendments **A2** (child #2547 gates + superseded "spins in place"
   wording) and **A3** (whole-epic verification bar). PR #2585 design-unblocked.
+- 2026-08-01: **#2547 (P3) merged via PR #2585** (master `4c4554d5`, base
+  `master` — the re-targeting flagged 07-29 was done) — checklist ticked.
+  Scope-drift audit, three deltas, **no Decision contradicted by the code**:
+  - **A2's second gate form was built, measured, and replaced.** Recorded as
+    **D7** above; restated for the epic bar as **A4** below. The one real
+    deviation from a steward amendment this iteration, and it arrives with the
+    measurement that forced it.
+  - **Verdict vocabulary changed.** `center-column`, `center-depth` and the new
+    `center-axis` emit **`FOCUS-OK`**, not `PINNED`. A3 anticipated the oracle
+    swap but predates both the vocabulary and the block-set growth
+    (`background-center` and `center-axis` are new blocks). The umbrella's
+    §Closing criteria sentence "all passes PINNED (≤1.5px)" is therefore
+    unreachable as literally worded — **A4** is the restatement of record; the
+    umbrella body was **not** edited (the steward's body carve-out covers the
+    `## Children` checklist only).
+  - **Additive, in scope.** Readback + `enc` decode relocated into
+    `IRRender::readbackCompositeDepth` / `decodeCompositeDepth`, with
+    `IRPrefab::DepthProbe` keeping its public surface and delegating (verified on
+    master: `depth_probe.hpp:59,77`); new `IRRender::getDefaultRotationPivotFocus()`
+    (`ir_render.hpp:347`); new `test/render/camera_pan_pivot_test.cpp` (5 tests,
+    including a negative control pinning the broken world-point latch's exact
+    `(20,30)` shift). Post-review amendment `c883c9e1` latches the iso **depth**,
+    not the world point — `isoPixelToPos3D`'s depth argument shifts along
+    `(1,1,1)`, which projects to `(0,0)`, so the focus's iso projection is
+    depth-invariant and `IRMath::cameraMoveRelativeToYaw`'s pan identity holds at
+    every latched depth.
+  - **A1 discharged as amended.** A1 required a purpose-built background-center
+    block rather than holding `center-column` green; `background-center` shipped,
+    derive returns `(12,-12,0)` exactly on all 9 shots, PINNED 0.91/1.21 px at
+    zoom 4 and 0.94/1.25 at zoom 8.
+- 2026-08-01: **close-out gate grew three items** (see Findings F1–F3 below):
+  **#2645** (the only currently-red pass), **#2641** (systematic derive bias,
+  cross-backend risk), **#2669** (contract amendment — adopted, and this
+  iteration's proposal package).
+- 2026-08-01: **#2669 adopted onto the checklist (flow c).** It carries
+  `**Part of epic:** #2544` and `**Blocked by:** #2547` and was absent from the
+  checklist. `fleet-validate-stack 2544 --state all --check-checklist` reports
+  **all 5 children PASS** with #2669 as the sole `missing-from-checklist` drift
+  item — stack accepted, adoption stands. Plan **stub** committed
+  (`.fleet/plans/issue-2669.md`): it must not be claimed before the ruling. It is
+  worker-filed at the Opus final reviewer's explicit direction, not a steward
+  debt-capture stub, so the pending-human adoption skip-guard does not apply.
+- 2026-08-01: **proposal package raised** —
+  https://github.com/jakildev/IrredenEngine/issues/2544#issuecomment-5149886413,
+  one question (#2669's latch-update policy). Novel: it amends the contract D4
+  ratified, so no sentence in the plan, the ledger, or
+  `docs/design/camera-yaw-pivot.md` decides it. Steward recommendation is
+  **option 2** (re-derive at rotation start) on two grounds the issue itself does
+  not make — (i) each readback is a full GPU flush and
+  `engine/prefabs/irreden/render/depth_probe.hpp:32-35` names that cost as the
+  reason to keep the probe "strictly debug-gated and single-pixel", which option
+  3's N-flush per-derive loop contradicts on the very primitive it calls; (ii)
+  D4's *own* rationale of record was pivot-source consistency with Phase 4, and
+  Phase 4's cursor latch re-acquires depth at gesture start by construction, so
+  option 2 is that same policy for the default pivot while option 1 leaves the
+  two pivot sources with different staleness behavior — the fork D4 was chosen to
+  avoid. `fleet:steward-proposal` applied.
+- 2026-08-01: downstream sibling re-validated against PR #2585 → **A5** (P4 /
+  #2548). **Skip-guard did not fire:** #2548's open PR #2659 carries
+  `fleet:semantic-conflict`, `fleet:authored-on-macos`,
+  `fleet:needs-windows-smoke` — neither `fleet:merger-cooldown` nor
+  `fleet:stacked-rebase`, the two labels the guard names. Flagged on the umbrella
+  anyway, because that PR is *in flight* and its author should read A5 before the
+  next push. #2669's ruling is a live dependency on P4's own latch policy.
+
+### Findings (close-out gate — beyond the checklist)
+- **F1 — #2645 is the only currently-red `pivot-verify` pass.** `focus-ctr-sdf`
+  DRIFT 2.00/2.00 px at both zooms while its voxel twin pins at 0.94/1.27.
+  §Closing criteria demands every pass green, so it gates close-out regardless of
+  attribution. **Its own body states that "pre-existing" is inferred from
+  structure (the explicit-focus path short-circuits the #2547 derive), not
+  measured against an `origin/master` build** — close-out must not cite it as
+  pre-existing without that measurement.
+- **F2 — #2641 is a systematic derive bias with cross-backend risk.** The derive
+  reads exactly one iso-depth unit deep on camera-facing cap entries
+  (`center-column`, `center-axis`); the lateral entry is within half a unit and
+  the background fallback is exact. That `(1/3,1/3,1/3)` world-unit displacement
+  is the *entire* 12 px (zoom 4) / 22 px (zoom 8) residual `center-axis` measures
+  — still a ~12× improvement on the pre-#2547 focus's 150 px in the same
+  configuration. Leading hypothesis is the trixel→framebuffer parity shift
+  applied to the depth read on GL but not Metal, so §Closing criteria's "on both
+  backends" is the binding clause.
+- **F3 — #2669 is unresolved and adopted.** See the proposal package. Note its
+  last word on testing: the guard has to **move the camera between derives**,
+  which no current `pivot-verify.py` block does — close-out must not accept a
+  green sweep as evidence on this question.
+- **F4 (standing, unchanged) — the jitter residual still has no owner.** #2427
+  closed COMPLETED on a SMOOTH criterion and #2346 is closed, yet §Verification
+  (whole epic) / §Closing criteria still demand SMOOTH pan/yaw sweeps. Recorded
+  2026-07-29; nothing this iteration changes it.
+- **F5 (standing, widened) — the OpenGL host has verified none of this.** Both
+  #2576 and now #2585 carry `fleet:needs-windows-smoke`; the GLSL twin of the
+  Phase-2 scatter fix and the Phase-3 composite-depth readback are unverified on
+  any OpenGL host. #2641 is where the backend question lands. Labels are applied,
+  so this is tracked, not invisible.
 
 ## Amendments
 
@@ -467,3 +592,110 @@ it binds every row above at close-out.
   §2, "Restate the umbrella §Closing criteria in the same docs pass ('all passes
   PINNED (≤1.5px)' → pinned-point-oracle ≤1.5px for the default-pivot passes), so
   gate and criteria cannot contradict." Recorded as ledger D5.
+
+### A4 — 2026-08-01 — epic #2544 (whole-epic verification) — trigger: PR #2585 merged (P3 / #2547)
+
+- **Decision:** the whole-epic verification bar is restated a second time to
+  match the gate that actually shipped (D7). `python3 scripts/pivot-verify.py
+  --zoom 4 --zoom 8` on both backends, scored per block:
+  - **Silhouette-gated, `PINNED` ≤1.5 px** — `focus-ctr`, `focus-off`,
+    `focus-ctr-sdf`, and the new **`background-center`**. Each rotates its probe
+    about a point on the probe's own axis, so the silhouette maps onto itself and
+    the centroid gate is exact. These are the passes whose verdict word is still
+    `PINNED`.
+  - **Pinned-point-gated, `FOCUS-OK`** — `center-column`, `center-depth`, and the
+    new **`center-axis`**. Gated on the per-shot `[pivot-focus-assert]` line
+    (derived focus vs analytic ray/surface, tolerance 0.6 world units) **and** on
+    the latched focus not moving mid-sweep, with `view_held` as a checkable
+    precondition. Their silhouette deviation is **reported, not gated** — a
+    non-zero `dev_x`/`dev_y` on these three is not a failure, and close-out must
+    not read one as such.
+  - `center-axis` is the visual regression net. The center-pixel **crop** the
+    2026-07-28 ruling §2 preferred is **retired unbuilt-as-a-gate** — see D7 for
+    the measurement (42 px of crop-centroid drift, scale-invariant).
+- **Supersedes:**
+  - **A3** — which restated the bar as "all passes PINNED ≤1.5px … where the
+    default-pivot passes are scored against the pinned-point oracle". A3's oracle
+    substitution stands; what it could not know is that (a) the default-pivot
+    passes stopped emitting the word `PINNED` at all, and (b) the block set grew
+    by two. A4 is the current bar; where they disagree, A4 wins.
+  - **A2 §Acceptance 1's** "analytic ray-surface assert **plus** a center-pixel
+    crop score" — the second conjunct is retired per D7. A2's first conjunct and
+    everything else in A2 stand unchanged.
+  - the unqualified "all passes PINNED (≤1.5px)" sentence in **umbrella #2544
+    §Closing criteria** (and the identical sentence in §Verification (whole
+    epic) of this plan). **The umbrella body is not edited** — the steward's
+    carve-out covers the `## Children` checklist only; this amendment is the
+    restatement of record and is linked from the umbrella thread.
+- **Acceptance criteria:** unchanged in substance and count. The remainder of
+  §Verification (whole epic) — shape_debug + canvas_stress render-verify suites
+  green, pan/yaw jitter sweeps SMOOTH, clean exits — is untouched. Close-out
+  must additionally clear F1–F5 in the Findings section above: #2645 (red pass),
+  #2641 (derive bias, both backends), #2669 (contract ruling), the unowned
+  jitter residual, and an OpenGL-host verdict for #2576 + #2585.
+- **By:** epic-steward — source: D7 above; PR #2585 §"Contract ratified + gate
+  re-grounded" (the per-block "New oracle" list and the "Deviation from the
+  direction, with the measurement that forced it" paragraph) and §Test plan (the
+  verdict column: `PINNED` for `focus-ctr`/`focus-off`/`background-center`,
+  `FOCUS-OK` for `center-column`/`center-depth`/`center-axis`, `DRIFT` for
+  `focus-ctr-sdf`).
+
+### A5 — 2026-08-01 — child #2548 (Phase 4 / D) — trigger: PR #2585 merged (P3 / #2547)
+
+- **Decision:** two things Phase 4 must take from what P3 shipped, plus one live
+  dependency.
+  1. **The "Phase 3 helper" now has a name and a layer.** §Phase 4 bullet 1's
+     fallback — "the depth-probe center derivation (Phase 3 helper)" on a
+     `castVoxelRay` miss — resolves to **`IRRender::readbackCompositeDepth(px)`
+     + `IRRender::decodeCompositeDepth(rawDist)`** (`ir_render.hpp:201`,
+     `ir_render_types.hpp:390`), or **`IRRender::getDefaultRotationPivotFocus()`**
+     (`ir_render.hpp:347`) when the already-latched default focus is what is
+     wanted. It is **not** a prefab-side derivation: the pivot runs inside
+     `engine/render`, upstream of `IRPrefab::DepthProbe`, so implementing it
+     prefab-side would invert the dependency and fork the #1960 N-tier decode.
+     `IRPrefab::DepthProbe` keeps its public surface and **delegates**
+     (`depth_probe.hpp:59,77`), so existing `DepthProbe` call sites are
+     unaffected — but new pivot-path code belongs on the `IRRender::` entry
+     points.
+  2. **Latch the iso DEPTH, not the world point.** P3's post-review amendment
+     `c883c9e1` fixed exactly this class of bug: latching the derived *point*
+     froze `getEffectiveCameraIso`'s dependence on the live `cameraIso`, which is
+     the derivative `IRMath::cameraMoveRelativeToYaw` inverts, so a middle-drag
+     pan at non-zero yaw stopped tracking the cursor. `isoPixelToPos3D`'s depth
+     argument shifts along `(1,1,1)`, which projects to `(0,0)`, so the focus's
+     iso projection is depth-invariant and the pan identity survives at every
+     latched depth. `test/render/camera_pan_pivot_test.cpp` carries the negative
+     control (`WorldPointLatchBreaksThePanIdentity`, pinning the broken `(20,30)`
+     shift) — a Phase 4 cursor latch that stores a world point re-introduces the
+     same defect, and that test is the guard that should catch it.
+  3. **#2669 is a live dependency, not background reading.** The default pivot's
+     latch-update policy is under a pending ruling (proposal package,
+     2026-08-01). Option 2 ("re-derive at rotation start") is the policy Phase 4
+     already has by construction, so it is the outcome that costs Phase 4
+     nothing; option 3 ("iterate to the fixed point") would put an N-readback
+     loop on a per-derive path Phase 4 also touches. **Do not hand-roll a latch
+     policy for the cursor pivot ahead of the ruling** — re-acquire on click, as
+     §Phase 4 bullet 1 already says, and let the ruling settle the default
+     pivot's behavior.
+- **Supersedes:** §Phase 4 bullet 1's "the depth-probe center derivation (Phase 3
+  helper)" only, which named a helper that did not exist yet and implied the
+  wrong layer. Bullets 2 and 3 (the indicator entity, the shape_debug mode
+  cycle) and all three §Phase 4 acceptance criteria are unchanged.
+- **Acceptance criteria:** unchanged. Note that acceptance 1 asks for a
+  `cursor-latch` block "driven via `setRotationPivotFocus` + castVoxelRay" —
+  `setRotationPivotFocus` short-circuits the #2547 derive entirely
+  (`updateDefaultRotationPivotFocus` early-returns when `m_hasRotationPivotFocus`
+  is set), so that block is scored on the **silhouette** oracle like `focus-ctr`,
+  not on `[pivot-focus-assert]`. Per A4 it belongs in the `PINNED` ≤1.5 px group.
+- **Confirmed still valid (not stale):** **D3** — CPU picking never applied
+  `s_k`, so the raster agrees with picking at cardinals 1–3 with zero picking
+  changes; do not re-derive a picking compensation for `castVoxelRay`. **D6's
+  standing consequence** — store anchor ≠ screen anchor on the per-axis route;
+  PR #2585 touched neither. §Phase 4's other named surfaces
+  (`system_camera_mouse_rotate.hpp`, `worldHitPos_`) are untouched by #2585.
+- **By:** epic-steward — source: PR #2585 §Summary (bullets 1–3 and the
+  background-fallback bullet) and §"Post-review amendments" (`c883c9e1`);
+  verified on `origin/master` at `engine/render/include/irreden/ir_render.hpp:201,347`,
+  `engine/render/include/irreden/render/ir_render_types.hpp:390`,
+  `engine/prefabs/irreden/render/depth_probe.hpp:37-44,59,77`; ledger D3, D6, D7
+  and issue #2669 §"Decision surface".
