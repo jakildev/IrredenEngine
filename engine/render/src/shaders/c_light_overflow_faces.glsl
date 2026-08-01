@@ -25,8 +25,8 @@ layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
 #include "ir_iso_common.glsl"        // decode*, faceOutwardNormal6, unpack/packColor
 #include "ir_per_axis_lighting.glsl" // perAxisCellToWorld3D
-// ir_sun_projection.glsl must precede ir_sun_shadow_sample.glsl (the include
-// resolver is non-recursive) — same order as c_lighting_to_trixel.glsl.
+// ir_sun_projection.glsl must precede ir_sun_shadow_sample.glsl, which uses its
+// symbols without including it — same order as c_lighting_to_trixel.glsl.
 #include "ir_sun_projection.glsl"
 #include "ir_sun_shadow_sample.glsl" // FrameDataSun(29), sun-depth SSBO(28), worldSunShadowFactor()
 #include "ir_world_lighting.glsl"    // GPULightSource list (slot 4), spotConeFactor, ACESFilm

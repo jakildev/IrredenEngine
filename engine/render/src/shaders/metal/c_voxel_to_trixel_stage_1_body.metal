@@ -18,8 +18,9 @@
 // `#if IR_FEEDER_PASS`, and the election swap under `#if
 // IR_STORE_WINNER_ELECTION`, so the visible kernel compiles with both variants'
 // branches textually absent — no runtime predication tax on the hottest kernel.
-// Metal's loadAndPreprocessMetalSource IS recursive, but the body is kept
-// include-free to mirror the (non-recursive) GLSL idiom.
+// Both resolvers are recursive (Metal's loadAndPreprocessMetalSource, and
+// GLSL's resolveShaderIncludes since #2514), but the body is kept include-free
+// to mirror the GLSL twin's wrapper-supplied chain.
 
 // Stage 1 of the voxel→trixel pipeline: each surviving voxel writes a depth
 // tap into the canvas distance scratch buffer using atomic-min, so stage 2

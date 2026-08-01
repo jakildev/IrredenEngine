@@ -21,8 +21,8 @@
 // colour-tapped — #1740's margin), between the stage-1 stores and stage 2,
 // and only when the ticking pool's storeTiesPossible_ flag is set — lattice
 // scenes never run it. The visible twin is c_voxel_to_trixel_stage_1.glsl.
-// Includes come BEFORE the body (non-recursive GLSL include resolver); see the
-// body file's header for the idiom.
+// Includes come BEFORE the body (the body declares no #includes of its own);
+// see the body file's header for the idiom.
 #version 450 core
 #define IR_FEEDER_PASS 0
 #define IR_STORE_WINNER_ELECTION 1

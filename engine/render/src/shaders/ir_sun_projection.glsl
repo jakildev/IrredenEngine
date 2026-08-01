@@ -10,10 +10,12 @@
 // keep their cardinal-yaw byte-identity (same rationale as
 // ir_per_axis_lighting.glsl and ir_sun_shadow_sample.glsl).
 //
-// Include-order contract: the GLSL include resolver
-// (opengl_shader.cpp detail::resolveShaderIncludes) is NON-recursive, so the
-// TOP-LEVEL shader must #include this file BEFORE ir_sun_shadow_sample.glsl
-// (which consumes these symbols). This file declares no buffers and no
+// Include-order contract: ir_sun_shadow_sample.glsl consumes these symbols
+// without including this file itself, so the TOP-LEVEL shader must #include
+// this file BEFORE it. (The resolver, opengl_shader.cpp
+// detail::resolveShaderIncludes, has been recursive with a visited-set cycle
+// guard since #2514 — the ordering is a chain convention now, not a resolver
+// limit.) This file declares no buffers and no
 // bindings — the bake declares the sun-depth SSBO `restrict`, the sample
 // declares it `readonly`; they share only the math here.
 
