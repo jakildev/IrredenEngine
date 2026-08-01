@@ -86,9 +86,20 @@ except subprocess.CalledProcessError as e:
 
 data = json.loads(out)
 title = data.get("title", "")
+
+
+def is_plan_heading(body):
+    # The plan comment's first line is "## Plan" or "## Plan: <title>" —
+    # anchored so a "## Plan review — ..." verdict comment (same leading
+    # token, same startswith prefix) never matches (#2707).
+    stripped = body.lstrip()
+    first_line = stripped.splitlines()[0] if stripped else ""
+    return re.match(r"^##\s+Plan\s*(:|$)", first_line) is not None
+
+
 # Most-recent `## Plan` comment (a re-plan posts a fresh one).
 plans = [c.get("body", "") for c in data.get("comments", [])
-         if c.get("body", "").lstrip().startswith("## Plan")]
+         if is_plan_heading(c.get("body", ""))]
 
 hard, warn = [], []
 
