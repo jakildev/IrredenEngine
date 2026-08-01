@@ -32,9 +32,11 @@ cleanup() { [[ -n "$TMPROOT" && -d "$TMPROOT" ]] && rm -rf "$TMPROOT"; }
 trap cleanup EXIT
 TMPROOT=$(mktemp -d)
 
-# Isolate the rate-limit sentinel from the real ~/.fleet/state.
+# Isolate the rate-limit sentinel and the persistent-skip counter from the real
+# ~/.fleet/state, and the escalation alert file from the real ~/.fleet/alerts.
 export FLEET_STATE_DIR="$TMPROOT/state"
-mkdir -p "$FLEET_STATE_DIR"
+export FLEET_ALERTS_DIR="$TMPROOT/alerts"
+mkdir -p "$FLEET_STATE_DIR" "$FLEET_ALERTS_DIR"
 
 ok()   { echo "  ok: $1";   PASS=$((PASS+1)); }
 fail() { echo "  FAIL: $1"; FAIL=$((FAIL+1)); }
@@ -70,6 +72,11 @@ push_new_commit() {  # $1 = content tag
 }
 
 reset_rate_limit() { rm -f "$FLEET_STATE_DIR"/.*-clone-advanced 2>/dev/null || true; }
+
+# Skip-counter + alert reset, so each escalation test starts from count 0.
+reset_skip_counter() {
+    rm -f "$FLEET_STATE_DIR"/.*-freshness-skip "$FLEET_ALERTS_DIR"/clone-freshness-* 2>/dev/null || true
+}
 
 # --- T1: fresh clone -> behind 0, assert passes ------------------------------
 echo "T1: fresh clone (master == origin/master)"
@@ -249,6 +256,197 @@ out=$(restore_main_clone_to_master "$CLONE2" 2>&1 || true)
     && ok "on-master disjoint-dirty clone NOT advanced" || fail "advanced master under uncommitted WIP"
 grep -q "disjoint-wip" "$CLONE2/other" && ok "on-master WIP preserved" || fail "WIP lost"
 echo "$out" | grep -q "live WIP wins" && ok "warns loudly on-master too" || fail "no WIP warning: $out"
+
+# --- scratch-namespace self-heal + persistent-skip escalation (#2363) --------
+# Fresh fixture again: CLONE is diverged (T7) and CLONE2 carries the T14 WIP.
+CLONE3="$TMPROOT/clone3"
+git clone -q "$ORIGIN" "$CLONE3"
+git -C "$CLONE3" config user.email t@t
+git -C "$CLONE3" config user.name test
+COUNTER3="$FLEET_STATE_DIR/.$(basename "$CLONE3")-freshness-skip"
+ALERT3="$FLEET_ALERTS_DIR/clone-freshness-$(basename "$CLONE3")"
+
+# --- T15: live-Cursor-session shape -> NEVER healed --------------------------
+# The regression guard for #2668's review: FLEET.md rule 1 puts Cursor / ad-hoc
+# sessions on claude/<area>-<topic>, and commit-and-push leaves that session
+# clean-and-pushed while the human sits on the PR. That HEAD is "recoverable"
+# (contained by origin/<branch>) yet emphatically live, so recoverability must
+# NOT authorize a heal — only the scratch namespace does.
+echo "T15: clean, pushed claude/<area>-<topic> (live Cursor session) -> left alone"
+reset_skip_counter
+git_q "$CLONE3" checkout -b claude/render-glow-pulse
+echo "branch-work" >> "$CLONE3/file"
+git_q "$CLONE3" add file
+git_q "$CLONE3" commit -m branch-work
+git_q "$CLONE3" push -u origin claude/render-glow-pulse   # clean + pushed: the steady state
+session_head=$(git -C "$CLONE3" rev-parse HEAD)
+push_new_commit t15                                        # origin/master moves ahead
+reset_rate_limit
+out=$(advance_main_clone "$CLONE3" 2>&1 || true)
+[[ "$(git -C "$CLONE3" rev-parse --abbrev-ref HEAD)" == "claude/render-glow-pulse" ]] && ok "live cursor-session park untouched" || fail "healed a live session onto $(git -C "$CLONE3" rev-parse --abbrev-ref HEAD)"
+[[ "$(git -C "$CLONE3" rev-parse HEAD)" == "$session_head" ]] && ok "session HEAD unmoved" || fail "HEAD moved under a live session"
+! echo "$out" | grep -q "self-healed" && ok "no self-heal attempted" || fail "self-healed a live session: $out"
+echo "$out" | grep -q "not master" && ok "warns (escalates) instead of healing" || fail "no park warning: $out"
+
+# --- T16: pool scratch ref -> healed, junk ref dropped -----------------------
+# The namespace that IS junk: claude/pool-<N>-scratch (and its game twin /
+# the legacy claude/<role>-reviewer-scratch) only ever belongs in a worktree.
+echo "T16: claude/pool-N-scratch park -> self-healed, junk ref deleted"
+reset_skip_counter
+git_q "$CLONE3" checkout master
+reset_rate_limit
+advance_main_clone "$CLONE3" 2>/dev/null                   # sync origin/master first
+git_q "$CLONE3" checkout -B claude/pool-7-scratch origin/master
+push_new_commit t16                                        # origin/master moves ahead
+reset_rate_limit
+out=$(advance_main_clone "$CLONE3" 2>&1 || true)
+[[ "$(git -C "$CLONE3" rev-parse --abbrev-ref HEAD)" == "master" ]] && ok "pool scratch park healed to master" || fail "still on $(git -C "$CLONE3" rev-parse --abbrev-ref HEAD)"
+behind=$(clone_behind_count "$CLONE3")
+[[ "$behind" == "0" ]] && ok "advance continued after the heal (behind 0)" || fail "behind=$behind after heal"
+if git -C "$CLONE3" rev-parse --verify --quiet refs/heads/claude/pool-7-scratch >/dev/null; then fail "junk scratch ref not deleted"; else ok "junk scratch ref deleted"; fi
+[[ "$(echo "$out" | grep -c "self-healed")" == "1" ]] && ok "exactly one self-heal line" || fail "expected 1 self-heal line, got: $out"
+
+# --- T17: scratch ref carrying a unique commit -> untouched ------------------
+# Clean + in-namespace is not enough: a scratch ref holding a commit that
+# origin/master does not contain is not provably junk, so leave it.
+echo "T17: claude/*-scratch with a unique local commit -> left alone"
+reset_skip_counter
+git_q "$CLONE3" checkout -b claude/pool-8-scratch
+echo "unpushed" >> "$CLONE3/file"
+git_q "$CLONE3" add file
+git_q "$CLONE3" commit -m unpushed
+unpushed_head=$(git -C "$CLONE3" rev-parse HEAD)
+push_new_commit t17
+reset_rate_limit
+out=$(advance_main_clone "$CLONE3" 2>&1 || true)
+[[ "$(git -C "$CLONE3" rev-parse --abbrev-ref HEAD)" == "claude/pool-8-scratch" ]] && ok "scratch ref with unique commit untouched" || fail "branch switched to $(git -C "$CLONE3" rev-parse --abbrev-ref HEAD)"
+[[ "$(git -C "$CLONE3" rev-parse HEAD)" == "$unpushed_head" ]] && ok "unique commit preserved" || fail "HEAD moved under a unique commit"
+echo "$out" | grep -q "not master" && ok "warns about the unhealed park" || fail "no park warning: $out"
+
+# --- T18: scratch ref with a dirty tree -> untouched -------------------------
+echo "T18: claude/*-scratch with a dirty tree -> left alone"
+reset_skip_counter
+git_q "$CLONE3" checkout master
+reset_rate_limit
+advance_main_clone "$CLONE3" 2>/dev/null                   # sync origin/master first
+git_q "$CLONE3" checkout -B claude/pool-9-scratch origin/master
+echo "dirt" >> "$CLONE3/file"
+push_new_commit t18
+reset_rate_limit
+out=$(advance_main_clone "$CLONE3" 2>&1 || true)
+[[ "$(git -C "$CLONE3" rev-parse --abbrev-ref HEAD)" == "claude/pool-9-scratch" ]] && ok "dirty scratch park untouched" || fail "branch switched on a dirty scratch park"
+echo "$out" | grep -q "not master" && ok "warns about the dirty park" || fail "no park warning: $out"
+git_q "$CLONE3" checkout -- file
+
+# --- T19: persistent identical skip escalates once, then goes quiet ----------
+echo "T19: persistent skip -> one ESCALATION + alert file, then silence"
+reset_skip_counter
+git_q "$CLONE3" checkout master
+git_q "$CLONE3" checkout -b feature/persistent   # non-claude/*: never healed
+export FLEET_FRESHNESS_SKIP_ESCALATE_N=3
+reset_rate_limit; esc1=$(advance_main_clone "$CLONE3" 2>&1 || true)
+reset_rate_limit; esc2=$(advance_main_clone "$CLONE3" 2>&1 || true)
+reset_rate_limit; esc3=$(advance_main_clone "$CLONE3" 2>&1 || true)
+# Snapshot the alert AT the escalation tick: ticks past N deliberately refresh
+# it (T22), so its count= advances from here on.
+alert_at_n=$(cat "$ALERT3" 2>/dev/null || true)
+reset_rate_limit; esc4=$(advance_main_clone "$CLONE3" 2>&1 || true)
+echo "$esc1" | grep -q "not master" && ! echo "$esc1" | grep -q "ESCALATION" && ok "tick 1 warns normally" || fail "tick 1 wrong: $esc1"
+echo "$esc2" | grep -q "not master" && ! echo "$esc2" | grep -q "ESCALATION" && ok "tick 2 warns normally" || fail "tick 2 wrong: $esc2"
+echo "$esc3" | grep -q "ESCALATION" && ok "tick 3 (== N) escalates" || fail "tick 3 did not escalate: $esc3"
+[[ -n "$alert_at_n" ]] && ok "alert file written" || fail "no alert file at $ALERT3"
+echo "$alert_at_n" | grep -q "reason=parked" && ok "alert records reason=parked" || fail "alert missing reason: $alert_at_n"
+echo "$alert_at_n" | grep -q "count=3" && ok "alert records count=3" || fail "alert missing count: $alert_at_n"
+echo "$alert_at_n" | grep -q "branch=feature/persistent" && ok "alert records the parked branch" || fail "alert missing branch: $alert_at_n"
+[[ -z "$esc4" ]] && ok "tick 4 (> N) is silent" || fail "tick 4 still warned: $esc4"
+
+# --- T20: a different skip key restarts the count ---------------------------
+echo "T20: changing the skip condition re-arms the warning"
+git_q "$CLONE3" checkout -b feature/other
+reset_rate_limit
+out=$(advance_main_clone "$CLONE3" 2>&1 || true)
+echo "$out" | grep -q "not master" && ok "new key warns again (not suppressed)" || fail "new key stayed suppressed: $out"
+! echo "$out" | grep -q "ESCALATION" && ok "new key does not re-escalate immediately" || fail "re-escalated on a fresh key: $out"
+
+# --- T21: clearing the condition removes the counter and the alert ----------
+echo "T21: healthy pass clears the counter + alert file"
+git_q "$CLONE3" checkout master
+push_new_commit t21
+reset_rate_limit
+out=$(advance_main_clone "$CLONE3" 2>&1 || true)
+behind=$(clone_behind_count "$CLONE3")
+[[ "$behind" == "0" ]] && ok "clone advanced once back on master" || fail "behind=$behind after restoring master"
+[[ ! -f "$COUNTER3" ]] && ok "skip counter removed on the healthy pass" || fail "counter survived: $(cat "$COUNTER3" 2>/dev/null)"
+[[ ! -f "$ALERT3" ]] && ok "alert file removed on the healthy pass" || fail "alert survived: $(cat "$ALERT3" 2>/dev/null)"
+
+# --- T22: the alert is refreshed past N, not stamped once --------------------
+# Past N stderr goes quiet, so the alert file is the ONLY standing signal. If it
+# were written once at count == N, a human triaging ~/.fleet/alerts would
+# silence a still-live condition forever, and count= would freeze at the
+# escalation instant. Delete it mid-outage and assert it comes back, current.
+echo "T22: alert refreshes past N (cleared inbox re-arms, count stays honest)"
+reset_skip_counter
+git_q "$CLONE3" checkout -b feature/refresh
+export FLEET_FRESHNESS_SKIP_ESCALATE_N=2
+reset_rate_limit; advance_main_clone "$CLONE3" 2>/dev/null || true   # count=1
+reset_rate_limit; advance_main_clone "$CLONE3" 2>/dev/null || true   # count=2 == N
+[[ -f "$ALERT3" ]] && ok "alert written at N" || fail "no alert at N"
+rm -f "$ALERT3"                                                      # human clears the inbox
+reset_rate_limit; out=$(advance_main_clone "$CLONE3" 2>&1 || true)   # count=3 > N
+[[ -f "$ALERT3" ]] && ok "alert re-created past N" || fail "alert stayed gone past N — condition permanently silent"
+grep -q "count=3" "$ALERT3" 2>/dev/null && ok "refreshed alert carries the current count" || fail "stale count: $(cat "$ALERT3" 2>/dev/null)"
+[[ -z "$out" ]] && ok "refresh stays silent on stderr past N" || fail "tick past N warned: $out"
+git_q "$CLONE3" checkout master
+unset FLEET_FRESHNESS_SKIP_ESCALATE_N
+
+# --- T23: a refused `branch -D` is reported honestly, not as a delete --------
+# The delete is refusable two ways: another worktree holds the ref (the live
+# pool worktree owning claude/pool-<N>-scratch, reachable through the
+# checkout-master→delete window or a stale worktree admin entry), or a
+# refs/heads lock survives a killed git process — the fixture here. The heal
+# itself still succeeded, so the line must say the ref was LEFT: an operator
+# reading it mid-outage acts on that claim. See #2668.
+echo "T23: heal with a refused branch -D -> reports the ref as left, not deleted"
+reset_skip_counter
+git_q "$CLONE3" checkout master
+reset_rate_limit
+advance_main_clone "$CLONE3" 2>/dev/null                   # sync origin/master first
+git_q "$CLONE3" checkout -B claude/pool-6-scratch origin/master
+push_new_commit t23                                        # origin/master moves ahead
+: > "$CLONE3/.git/refs/heads/claude/pool-6-scratch.lock"   # killed-git-process leftover
+reset_rate_limit
+out=$(advance_main_clone "$CLONE3" 2>&1 || true)
+[[ "$(git -C "$CLONE3" rev-parse --abbrev-ref HEAD)" == "master" ]] && ok "healed to master despite the refused delete" || fail "still on $(git -C "$CLONE3" rev-parse --abbrev-ref HEAD)"
+if git -C "$CLONE3" rev-parse --verify --quiet refs/heads/claude/pool-6-scratch >/dev/null; then ok "ref survives the refusal (fixture reproduces it)"; else fail "ref deleted — fixture did not reproduce the refusal"; fi
+echo "$out" | grep -q "left the junk branch in place" && ok "line reports the ref as left" || fail "wrong heal line: $out"
+! echo "$out" | grep -q "deleted the junk branch" && ok "no false delete claim" || fail "claimed a delete git refused: $out"
+behind=$(clone_behind_count "$CLONE3")
+[[ "$behind" == "0" ]] && ok "advance continued past the refusal (behind 0)" || fail "behind=$behind after the refused delete"
+rm -f "$CLONE3/.git/refs/heads/claude/pool-6-scratch.lock"
+
+# --- T24: the namespace conjunct, isolated from the containment one ----------
+# T15's session carries a commit origin/master does not, so the containment
+# check alone already refuses it — leaving the scratch-namespace half of the
+# predicate unproven. A session branched at origin/master's tip with nothing
+# committed yet is clean AND contained, so only the namespace glob can refuse
+# it. That shape is the common one (branch, get pulled away, come back), and
+# healing it switches the human's branch out from under them: recoverable is
+# not idle. See #2668.
+echo "T24: clean claude/<area>-<topic> at origin/master's tip -> left alone"
+reset_skip_counter
+git_q "$CLONE3" checkout master
+reset_rate_limit
+advance_main_clone "$CLONE3" 2>/dev/null                   # sync origin/master first
+git_q "$CLONE3" checkout -B claude/editor-timeline-polish origin/master
+session_head=$(git -C "$CLONE3" rev-parse HEAD)
+push_new_commit t24                                        # origin/master moves ahead
+reset_rate_limit
+out=$(advance_main_clone "$CLONE3" 2>&1 || true)
+[[ "$(git -C "$CLONE3" rev-parse --abbrev-ref HEAD)" == "claude/editor-timeline-polish" ]] && ok "contained-HEAD session park untouched" || fail "healed a contained session onto $(git -C "$CLONE3" rev-parse --abbrev-ref HEAD)"
+[[ "$(git -C "$CLONE3" rev-parse HEAD)" == "$session_head" ]] && ok "session HEAD unmoved" || fail "HEAD moved under a contained session"
+! echo "$out" | grep -q "self-healed" && ok "namespace refuses it (containment alone would not)" || fail "self-healed a contained session: $out"
+echo "$out" | grep -q "not master" && ok "warns (escalates) instead of healing" || fail "no park warning: $out"
+git_q "$CLONE3" checkout master
 
 echo ""
 echo "PASS: $PASS  FAIL: $FAIL"
