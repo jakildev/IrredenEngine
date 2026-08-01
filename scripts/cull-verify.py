@@ -84,7 +84,10 @@ CULL_THRESHOLDS: dict[str, Any] = {
 
 
 def _collect_shots(shots_dir: Path) -> list[Path]:
-    shots = sorted(shots_dir.glob("screenshot_*.png"))
+    # Full frames only — the live/frozen pairing is positional (shots[i] vs
+    # shots[i + POSES_PER_PHASE + 1]), so a crop sorting between full frames
+    # shifts every index. Rationale: verify_common.FULL_FRAME_RE.
+    shots = verify_common.collect_full_frames(shots_dir)
     if len(shots) < TOTAL_SHOTS:
         raise SystemExit(
             f"expected {TOTAL_SHOTS} screenshots in {shots_dir}, got {len(shots)}"

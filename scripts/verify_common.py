@@ -46,6 +46,30 @@ GUI_ASSERT_RE = re.compile(
     r"actual=(.*)"
 )
 
+# Full-frame captures are ``screenshot_<6-digit-index>.png``. ROI crop files
+# share that prefix but append ``_<shotLabel>__crop_<crop>.png`` and land in the
+# same directory (see VideoManager::writePendingRoiCrops). A bare
+# ``screenshot_*.png`` glob matches both, and since ``.`` < ``_`` the crops sort
+# *between* full frames — so a first-N slice of that glob picks 128x128 crops as
+# full shots, and any positional shot->label/reference mapping silently shifts.
+# Match the index-only form so crops never enter a full-frame index mapping.
+# Crops are still compared where a harness wants them, but by *constructing* the
+# filename from the full frame (render-verify.py's crop gate), never by globbing.
+FULL_FRAME_RE = re.compile(r"screenshot_\d+\.png")
+
+
+def collect_full_frames(shots_dir: Path) -> list[Path]:
+    """Full-frame captures in ``shots_dir``, index-ordered, crops excluded.
+
+    The single crop-exclusion point for the verify-harness family — see
+    ``FULL_FRAME_RE`` for why a bare glob is wrong. Harnesses that need a count
+    expectation layer it on top of this list rather than re-deriving the
+    filter; a second private copy is how the guard goes missing from a sibling
+    (see #2819).
+    """
+    return sorted(p for p in shots_dir.glob("screenshot_*.png")
+                  if FULL_FRAME_RE.fullmatch(p.name))
+
 
 def run(cmd: list[str], cwd: Path | None = None, check: bool = True,
         env: dict[str, str] | None = None, timeout: int | None = None) -> int:
@@ -220,7 +244,10 @@ def compare(actual: Path, reference: Path, diff_out: Path | None,
 
 def run_pass(cmd: list[str], cwd: Path, shots_dir: Path,
              timeout: int | None = None) -> tuple[int, str, list[Path]]:
-    """Clear ``shots_dir``, run ``cmd``, and collect the resulting screenshots.
+    """Clear ``shots_dir``, run ``cmd``, and collect the resulting full frames.
+
+    The returned list is ``collect_full_frames(shots_dir)`` — ROI crops are
+    excluded, so callers may index it positionally against a shot table.
 
     Callers that run multiple passes against the same ``shots_dir`` (e.g.
     light-verify's domain-matrix / boundary-sweep / hover-sweep flags) must
@@ -234,5 +261,4 @@ def run_pass(cmd: list[str], cwd: Path, shots_dir: Path,
         shutil.rmtree(shots_dir)
     shots_dir.mkdir(parents=True, exist_ok=True)
     rc, output = run_capture(cmd, cwd=cwd, timeout=timeout)
-    images = sorted(shots_dir.glob("screenshot_*.png"))
-    return rc, output, images
+    return rc, output, collect_full_frames(shots_dir)

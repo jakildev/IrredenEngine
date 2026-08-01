@@ -59,7 +59,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import shutil
 import subprocess
 import sys
@@ -90,15 +89,11 @@ def _load_manifest(demo_dir: Path) -> dict[str, Any]:
     return data
 
 
-# Full-frame captures are ``screenshot_<6-digit-index>.png``. ROI crop files
-# share the prefix but append ``_<shotLabel>__crop_<crop>.png`` (see
-# VideoManager::writePendingRoiCrops). A bare ``screenshot_*.png`` glob matches
-# both, and since ``.`` < ``_`` the crops sort *between* full frames — so the
-# first-N slice below would pick 128x128 crops as full shots. Match the
-# index-only form so crops never enter the *full-frame* shot->reference
-# mapping. Crops are still compared, but via the separate manifest-driven
-# ``crops`` gate (see ``evaluate_shots``), not this index mapping.
-_FULL_FRAME_RE = re.compile(r"screenshot_\d+\.png")
+# Crop-exclusion (the reason a bare ``screenshot_*.png`` glob is wrong) lives in
+# verify_common.FULL_FRAME_RE / collect_full_frames — one definition for the
+# whole harness family (#2819). Crops are still compared here, but via the
+# manifest-driven ``crops`` gate (see ``evaluate_shots``), which *constructs*
+# each crop filename from its full frame rather than globbing.
 
 
 def _collect_all_shots(shots_dir: Path) -> list[Path]:
@@ -111,10 +106,7 @@ def _collect_all_shots(shots_dir: Path) -> list[Path]:
     appends the compare shots at the tail — so its mapping is positional into
     the full list, resolved by the pass's ``capture_offset``.
     """
-    return sorted(
-        p for p in shots_dir.glob("screenshot_*.png")
-        if _FULL_FRAME_RE.fullmatch(p.name)
-    )
+    return verify_common.collect_full_frames(shots_dir)
 
 
 def _collect_shots(shots_dir: Path, num_shots: int) -> list[Path]:
