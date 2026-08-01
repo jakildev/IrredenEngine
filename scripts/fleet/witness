@@ -11,6 +11,11 @@
 # ~/.fleet/alerts/<agent>.stuck. Healthy agents have their alert files
 # cleared automatically.
 #
+# If NO rostered agent has ever written a heartbeat (roster misconfigured,
+# or every rostered role retired), witness does not report "all healthy" —
+# tracking zero agents is not health. It logs a ROSTER EMPTY warning and
+# writes ~/.fleet/alerts/witness-roster.stuck instead.
+#
 # Usage:
 #   witness          run continuously (normal fleet pane mode)
 #   witness --once   run one pass and exit (for testing/CI)
@@ -31,7 +36,7 @@ ONCE=0
 for arg in "$@"; do
     case "$arg" in
         --once)      ONCE=1 ;;
-        -h|--help)   sed -n '2,20p' "$0"; exit 0 ;;
+        -h|--help)   awk 'NR==1{next} /^#/{print; next} {exit}' "$0"; exit 0 ;;
         *) echo "witness: unknown argument '$arg'" >&2; exit 2 ;;
     esac
 done
@@ -46,6 +51,13 @@ done
 # Architects use --resume sessions, may sit at "standing by" between
 # human prompts. The 2 h threshold is generous enough for typical
 # desk-time gaps without missing a genuine wedge.
+#
+# ROSTER names the same agents as the case arms below — kept in sync by
+# hand since bash has no clean way to introspect a case statement. Used
+# to detect the roster-empty condition (no rostered agent has ever
+# written a heartbeat) so that case reports as broken, not healthy.
+readonly ROSTER=(opus-architect game-architect)
+
 threshold_for_agent() {
     case "$1" in
         opus-architect|game-architect)  echo 7200 ;;  # 2 h
@@ -107,8 +119,15 @@ run_one_pass() {
         fi
     fi
 
-    if [[ "$stale_count" -eq 0 ]]; then
-        echo "[$now_str witness] all healthy ($tracked agent(s) tracked)"
+    if [[ "$tracked" -eq 0 ]]; then
+        local msg="ROSTER EMPTY: no heartbeat file for any monitored agent (${ROSTER[*]}) — witness is not tracking anyone, this is not health"
+        echo "[$now_str witness] $msg" | tee -a "$LOG"
+        echo "$now_str roster=${ROSTER[*]}" > "$ALERT_DIR/witness-roster.stuck"
+    else
+        rm -f "$ALERT_DIR/witness-roster.stuck"
+        if [[ "$stale_count" -eq 0 ]]; then
+            echo "[$now_str witness] all healthy ($tracked agent(s) tracked)"
+        fi
     fi
 }
 
