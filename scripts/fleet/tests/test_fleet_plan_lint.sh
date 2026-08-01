@@ -116,6 +116,13 @@ builds + tests
 
 ### Gotchas
 none'''
+# #2707 fixtures: a "## Plan review" verdict comment shares the same
+# startswith("## Plan") prefix as the plan itself but has no core sections,
+# so a naive plans[-1] selection would hard-fail a plan that already PASSed.
+REVIEW_PASS = "## Plan review — #111 (opus-reviewer)\n\nfleet-plan-lint PASS. Looks sound."
+REVIEW_BOUNCE = "## Plan review — not sound, back to `fleet:needs-plan`\n\nMissing acceptance criteria."
+SKELETAL_REPLAN_SEED = "## Plan: skeletal re-plan seed\n\nwe should do it somehow"
+REVIEW_ONLY = "## Plan review — #113 (opus-reviewer)\n\nfleet-plan-lint PASS. Looks sound."
 F = {
   "100": {"title": "sound task", "comments": [{"body": GOOD}]},
   "101": {"title": "defer task", "comments": [{"body": DEFER}]},
@@ -128,6 +135,10 @@ F = {
   "108": {"title": "synonym headings task", "comments": [{"body": SYNONYM}]},
   "109": {"title": "negative control task", "comments": [{"body": NO_SCOPE_NO_ACCEPTANCE}]},
   "110": {"title": "plan-exclusion guard task", "comments": [{"body": PLAN_ONLY_NO_APPROACH}]},
+  "111": {"title": "reviewed plan task", "comments": [{"body": GOOD}, {"body": REVIEW_PASS}]},
+  "112": {"title": "re-planned after bounce task", "comments": [
+      {"body": SKELETAL_REPLAN_SEED}, {"body": REVIEW_BOUNCE}, {"body": GOOD}]},
+  "113": {"title": "review only, no plan task", "comments": [{"body": REVIEW_ONLY}]},
 }
 print(json.dumps(F.get(num, {"title": "missing", "comments": []})))
 PYEOF
@@ -169,6 +180,18 @@ case "$cited_out" in *"mechanism-lever language"*) bad "mechanism-lever warn sho
 "$LINT" 110 >/dev/null 2>&1; assert_exit $? 0 "plan-only (no Approach heading) -> exit 0 (single missing core = warn)"
 plan_excl_out=$("$LINT" 110 2>&1 || true)
 case "$plan_excl_out" in *"core section absent"*"Approach"*) ok "Approach reported missing (## Plan: heading does not vacuously satisfy it)";; *) bad "Approach not reported missing — did 'plan' leak into the Approach synonym set? [$plan_excl_out]";; esac
+# #2707 — a "## Plan review" comment must never shadow the plan it reviews.
+"$LINT" 111 >/dev/null 2>&1; assert_exit $? 0 "reviewed plan (plan + review comment) -> exit 0 (review not selected)"
+review_out=$("$LINT" 111 2>&1 || true)
+case "$review_out" in *"missing core sections"*) bad "reviewed plan hard-failed — the review comment shadowed the plan: [$review_out]";; *) ok "reviewed plan does not hard-fail on the review's shape";; esac
+# A re-plan posted after a bounce review must still select the NEWEST ## Plan
+# comment, skipping over the review in between (acceptance criteria #2).
+"$LINT" 112 >/dev/null 2>&1; assert_exit $? 0 "re-plan after bounce review -> exit 0 (newest plan selected, not the skeletal seed or the review)"
+# Only a review comment, no ## Plan at all -> must report "no comment found",
+# never lint the review's own (non-plan-shaped) body (acceptance criteria #3).
+"$LINT" 113 >/dev/null 2>&1; assert_exit $? 1 "review present, no plan -> hard fail"
+review_only_out=$("$LINT" 113 2>&1 || true)
+case "$review_only_out" in *"no \`## Plan\` comment found"*) ok "review-only reports 'no ## Plan comment found', does not lint the review";; *) bad "review-only did not report the expected message: [$review_only_out]";; esac
 set -e
 
 echo "================================"
