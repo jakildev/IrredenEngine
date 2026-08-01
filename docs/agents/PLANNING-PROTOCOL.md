@@ -61,8 +61,14 @@ For each `fleet:needs-plan` issue:
    The `fleet:planning-<host>-<agent>` label lock itself is unchanged — the
    dispatcher and the interactive architect still take it through
    `fleet-claim planning-claim`, and the same lex-min mutex arbitrates
-   dispatcher-vs-architect collisions (plus the 1-hour TTL reaper for
-   orphans). What #2197 retires is the *worker-side contention protocol*:
+   dispatcher-vs-architect collisions (plus the orphan sweep in
+   `fleet-claim cleanup --gh`: a same-host label whose liveness marker is
+   missing or points at another issue is a *confirmed* orphan and goes
+   after a 120s grace, while anything the sweep can't vouch for locally —
+   cross-host labels, and same-host labels with a matching marker — still
+   waits the 1-hour TTL; see
+   [`fleet-labels-reference.md § fleet:planning-*`](fleet-labels-reference.md)).
+   What #2197 retires is the *worker-side contention protocol*:
    N panes racing per tick for the same oldest issue and arbitrating after
    the fact (#1810's three duplicate plans; #1999's triple re-derive). A
    planning dispatch now exists only after a successful sole-holder claim,
