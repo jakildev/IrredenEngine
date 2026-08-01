@@ -2,6 +2,7 @@
 #include <irreden/ir_utility.hpp>
 
 #include <irreden/render/ir_gl_api.hpp>
+#include <irreden/render/opengl/opengl_shader.hpp>
 #include <irreden/render/opengl/opengl_types.hpp>
 #include <irreden/render/shader.hpp>
 
@@ -12,6 +13,8 @@
 namespace IRRender {
 
 namespace detail {
+
+namespace {
 
 std::string resolveShaderIncludesRecursive(
     const std::string &source,
@@ -52,8 +55,17 @@ std::string resolveShaderIncludesRecursive(
     return result.str();
 }
 
-std::string resolveShaderIncludes(const std::string &source, const std::filesystem::path &baseDir) {
+} // namespace
+
+std::string resolveShaderIncludes(
+    const std::string &source,
+    const std::filesystem::path &baseDir,
+    const std::filesystem::path &sourceFilepath
+) {
     std::unordered_set<std::string> visited;
+    if (!sourceFilepath.empty()) {
+        visited.insert(std::filesystem::weakly_canonical(sourceFilepath).string());
+    }
     return resolveShaderIncludesRecursive(source, baseDir, visited);
 }
 
@@ -71,7 +83,8 @@ class OpenGLShaderPipelineImpl final : public ShaderPipelineImpl {
             std::string rawSource = IRUtility::readFileAsString(stage.getFilepath());
             std::filesystem::path shaderDir =
                 std::filesystem::path(stage.getFilepath()).parent_path();
-            std::string source = detail::resolveShaderIncludes(rawSource, shaderDir);
+            std::string source =
+                detail::resolveShaderIncludes(rawSource, shaderDir, stage.getFilepath());
             const char *sourcePtr = source.c_str();
             ENG_API->glShaderSource(shader, 1, &sourcePtr, nullptr);
             ENG_API->glCompileShader(shader);

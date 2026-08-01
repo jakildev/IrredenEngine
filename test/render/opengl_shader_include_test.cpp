@@ -11,6 +11,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <sstream>
 #include <string>
 
 // Contract tests for IRRender::detail::resolveShaderIncludes (#2514): the
@@ -56,6 +57,17 @@ class GlslIncludeResolver : public ::testing::Test {
 
     std::string resolve(const std::string &source) {
         return resolveShaderIncludes(source, m_dir);
+    }
+
+    // Resolves a source read from a real file, passing its path so the visited
+    // set is seeded with the top-level file — the shape the shader pipeline
+    // uses, where the caller holds `ShaderStage::getFilepath()`.
+    std::string resolveFile(const std::string &relativePath) {
+        const std::filesystem::path path = m_dir / relativePath;
+        std::ifstream file(path);
+        std::ostringstream contents;
+        contents << file.rdbuf();
+        return resolveShaderIncludes(contents.str(), path.parent_path(), path);
     }
 
     static int countOccurrences(const std::string &haystack, const std::string &needle) {
@@ -132,6 +144,25 @@ TEST_F(GlslIncludeResolver, TerminatesOnCyclicIncludeWithoutDuplicating) {
 
     EXPECT_EQ(countOccurrences(resolved, "int cycleASymbol = 1;"), 1);
     EXPECT_EQ(countOccurrences(resolved, "int cycleBSymbol = 2;"), 1);
+    EXPECT_EQ(countOccurrences(resolved, "#include"), 0);
+}
+
+// A cycle the TOP-LEVEL source participates in. The sibling cycle tests
+// (`TerminatesOnCyclicIncludeWithoutDuplicating`, `TerminatesOnSelfInclude`)
+// reach their cycle through *included* files only, so the top-level body is
+// never a re-entry candidate there; here it is. Seeding the visited set with
+// the source's own path drops the re-entry — without the seed the top-level
+// body is pasted a second time, a GLSL redefinition error. Metal's twin gets
+// this for free by taking a filepath rather than a source string.
+TEST_F(GlslIncludeResolver, TerminatesOnCycleThroughTheTopLevelSource) {
+    writeShader("top.glsl", "int topSymbol = 1;\n#include \"leaf.glsl\"\n");
+    writeShader("leaf.glsl", "int leafSymbol = 2;\n#include \"top.glsl\"\n");
+
+    const std::string resolved = resolveFile("top.glsl");
+
+    EXPECT_EQ(countOccurrences(resolved, "int topSymbol = 1;"), 1)
+        << "top-level body pasted twice — a GLSL redefinition error";
+    EXPECT_EQ(countOccurrences(resolved, "int leafSymbol = 2;"), 1);
     EXPECT_EQ(countOccurrences(resolved, "#include"), 0);
 }
 
