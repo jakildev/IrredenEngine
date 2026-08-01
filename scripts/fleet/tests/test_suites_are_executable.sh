@@ -10,7 +10,7 @@
 set -uo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-source "$(dirname "$0")/lib_assert.sh"
+source "$SCRIPT_DIR/lib_assert.sh"
 
 echo "T1: every test_*.sh suite is executable"
 for f in "$SCRIPT_DIR"/test_*.sh; do
