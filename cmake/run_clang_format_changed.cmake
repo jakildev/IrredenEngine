@@ -77,6 +77,7 @@ execute_process(
     ERROR_QUIET
     OUTPUT_STRIP_TRAILING_WHITESPACE
 )
+set(_untracked "")
 if(_untracked_rc EQUAL 0 AND NOT _untracked_out STREQUAL "")
     string(REPLACE "\n" ";" _untracked "${_untracked_out}")
     list(APPEND _changed_files ${_untracked})
@@ -107,6 +108,16 @@ foreach(_rel IN LISTS _changed_files)
     endif()
 endforeach()
 
+# Absolute form of the untracked set, so the formatting loop below can
+# tell "brand-new file" (format it whole — all of it is new) from
+# "existing file with a few edited lines" (format only those lines).
+set(_untracked_abs "")
+foreach(_rel IN LISTS _untracked)
+    if(NOT _rel STREQUAL "")
+        list(APPEND _untracked_abs "${PROJECT_ROOT}/${_rel}")
+    endif()
+endforeach()
+
 if(NOT _targets)
     list(LENGTH _changed_files _changed_count)
     message(STATUS
@@ -116,12 +127,90 @@ if(NOT _targets)
     return()
 endif()
 
+# Line ranges must be expressed in WORKING-TREE coordinates, because that
+# is the text clang-format rewrites. So the diff that produces them needs
+# the working tree as its post-image: `git diff <merge-base>` (two-dot,
+# commit vs working tree) covers committed AND uncommitted edits in one
+# pass, while still excluding commits the base gained after we branched —
+# the reason the file-list pass above uses three-dot `...HEAD`.
+execute_process(
+    COMMAND git -C "${PROJECT_ROOT}" merge-base "${_diff_base}" HEAD
+    OUTPUT_VARIABLE _range_base
+    RESULT_VARIABLE _range_base_rc
+    ERROR_QUIET
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+if(NOT _range_base_rc EQUAL 0 OR _range_base STREQUAL "")
+    set(_range_base "")
+    message(STATUS
+        "clang-format (changed): no merge-base vs ${_diff_base}; "
+        "falling back to whole-file formatting.")
+endif()
+
+# Changed line ranges for one file, as repeated `--lines=<start>:<end>`
+# arguments — clang-format's own scoping mechanism, and how upstream
+# git-clang-format restricts its rewrites.
+function(_collect_line_ranges file out_var)
+    set(${out_var} "" PARENT_SCOPE)
+    if(_range_base STREQUAL "")
+        return()
+    endif()
+    execute_process(
+        COMMAND git -C "${PROJECT_ROOT}" diff -U0 "${_range_base}" -- "${file}"
+        OUTPUT_VARIABLE _diff_out
+        RESULT_VARIABLE _diff_rc
+        ERROR_QUIET
+    )
+    if(NOT _diff_rc EQUAL 0 OR _diff_out STREQUAL "")
+        return()
+    endif()
+    # Every content line in a unified diff carries a '+'/'-'/' ' prefix and
+    # -U0 emits no context lines, so "@@" at column 0 is unambiguously a
+    # hunk header. Matching against the whole blob (rather than splitting
+    # it into a CMake list) keeps ';' inside source lines from corrupting
+    # the parse.
+    string(REGEX MATCHALL "(^|\n)@@ -[0-9]+(,[0-9]+)? \\+[0-9]+(,[0-9]+)? @@"
+        _hunks "${_diff_out}")
+    set(_ranges "")
+    foreach(_hunk IN LISTS _hunks)
+        string(REGEX MATCH "\\+([0-9]+)(,([0-9]+))?" _matched "${_hunk}")
+        if(NOT _matched)
+            continue()
+        endif()
+        set(_start "${CMAKE_MATCH_1}")
+        set(_len "${CMAKE_MATCH_3}")
+        if(_len STREQUAL "")
+            set(_len 1)
+        endif()
+        # '+N,0' is a pure deletion — no post-image lines to format, and
+        # clang-format rejects a zero-length range.
+        if(_len GREATER 0)
+            math(EXPR _end "${_start} + ${_len} - 1")
+            list(APPEND _ranges "--lines=${_start}:${_end}")
+        endif()
+    endforeach()
+    set(${out_var} "${_ranges}" PARENT_SCOPE)
+endfunction()
+
 set(_failed "")
 set(_count 0)
+set(_skipped 0)
 foreach(_file IN LISTS _targets)
+    set(_line_args "")
+    list(FIND _untracked_abs "${_file}" _untracked_idx)
+    if(_untracked_idx EQUAL -1 AND NOT _range_base STREQUAL "")
+        _collect_line_ranges("${_file}" _line_args)
+        if(NOT _line_args)
+            # Tracked, but no post-image line ranges: a mode-only or
+            # rename-only change. Nothing to format — and formatting it
+            # whole would drag the file's pre-existing drift into the diff.
+            math(EXPR _skipped "${_skipped} + 1")
+            continue()
+        endif()
+    endif()
     math(EXPR _count "${_count} + 1")
     execute_process(
-        COMMAND "${CLANG_FORMAT_BIN}" -i --style=file "${_file}"
+        COMMAND "${CLANG_FORMAT_BIN}" -i --style=file ${_line_args} "${_file}"
         RESULT_VARIABLE _rc
         ERROR_VARIABLE _err
     )
@@ -133,7 +222,8 @@ foreach(_file IN LISTS _targets)
     endif()
 endforeach()
 
-message(STATUS "clang-format (changed) formatted ${_count} file(s) vs ${_diff_base}.")
+message(STATUS "clang-format (changed) formatted ${_count} file(s) vs ${_diff_base}, "
+    "scoped to changed lines (${_skipped} skipped: no changed lines).")
 
 if(_failed)
     list(JOIN _failed "\n  - " _failed_joined)
