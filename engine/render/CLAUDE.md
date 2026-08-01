@@ -1126,3 +1126,20 @@ parity with voxel-pool primary shapes.
   (`metal_runtime.cpp`) — mirroring GL's delete-unbinds semantics. A new
   resource type that lands in any sticky table must untrack itself the same
   way.
+
+  **The render-target pair is a sticky table too, and it is the one this rule
+  keeps getting read as excluding.** `MetalRuntimeState` holds non-owning
+  `MTL::Texture *` in four places, not two: the `textures_` / `imageTextures_`
+  bind-slot arrays **plus** `colorTexture_` / `depthTexture_`, written by
+  `bindMetalFramebufferRenderTarget` and consumed by `createRenderEncoder`
+  (`metal_render_impl.cpp`), which both `setTexture:`-retains the handle and
+  dereferences it for the viewport. `untrackMetalTexture` scrubs all four
+  (#2808); a destroyed attachment falls the runtime back to the **default**
+  target rather than nulling in place, because a null colour attachment with
+  `useDefaultRenderTarget_` still false makes `createRenderEncoder` return
+  `nullptr` for every later pass — rendering nothing, silently.
+  `~MetalFramebufferImpl` performs the same scrub as an independent second
+  closing path. The invariant is executed by
+  `test/render/metal_sticky_untrack_test.cpp`, so extending
+  `MetalRuntimeState` with a fifth handle-holding field should fail a test
+  rather than a screenshot.

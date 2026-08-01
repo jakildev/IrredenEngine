@@ -41,6 +41,23 @@ class MetalFramebufferImpl final : public FramebufferImpl {
               static_cast<MTL::PixelFormat>(textureDepth.getNativePixelFormat())
           ) {}
 
+    // The runtime's render-target pair is sticky and holds non-owning handles,
+    // so a framebuffer destroyed while it is the bound target would leave them
+    // dangling into createRenderEncoder's setTexture + viewport deref. The
+    // attachment textures' own destructors scrub it too (untrackMetalTexture);
+    // this is the second, independent closing path, mirroring how the texture
+    // dtor and the runtime scrub double-cover the sampler/image tables.
+    // Guarded: destroying an *unbound* framebuffer must not steal whichever
+    // target is actually bound.
+    ~MetalFramebufferImpl() override {
+        const bool isBoundTarget =
+            (m_colorTexture != nullptr && metalCurrentColorTexture() == m_colorTexture) ||
+            (m_depthTexture != nullptr && metalCurrentDepthTexture() == m_depthTexture);
+        if (isBoundTarget) {
+            bindMetalDefaultRenderTarget();
+        }
+    }
+
     void bind() const override {
         bindMetalFramebufferRenderTarget(
             m_colorTexture,

@@ -60,6 +60,7 @@ add_executable(IrredenEngineTest
   render/per_axis_canvas_size_test.cpp
   render/frame_data_sun_layout_test.cpp
   render/gpu_compute_dispatch_test.cpp
+  render/metal_sticky_untrack_test.cpp
   render/opengl_shader_include_test.cpp
   render/per_canvas_light_scope_test.cpp
   render/picking_aim_iso_pixel_test.cpp
