@@ -93,6 +93,17 @@ Wire-up order in `main.cpp`:
 Reference callers: `creations/demos/shape_debug/main.cpp` and
 `creations/demos/metal_clear_test/main.cpp`.
 
+**Creations that compose the RENDER pipeline inside a Lua-bindings
+callback** (`IREngine::registerLuaBindings`) must read the warmup count
+*inside that callback* instead — the callback fires from
+`World::setupLuaBindings` partway through `IREngine::init`, so a step-1 read
+placed after `init` returns lands after the pipeline is already built. The
+failure is silent and total: the `warmupFrames > 0` guard sees 0, no capture
+system is ever created, nothing calls `IRWindow::closeWindow()`, and the run
+hangs to the harness timeout with no screenshot and no error (#2502). A
+creation that instead builds its pipeline in `main()` after `init` (the
+step-1–3 order above) is unaffected.
+
 ## Commands and components (prefabs/irreden/video)
 
 - `command_take_screenshot` → `requestScreenshot()`.
