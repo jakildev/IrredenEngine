@@ -180,13 +180,15 @@ lean on.
 sweeps.** Wherever detection reaches a file injection doesn't, the rule is
 enforced on an author it was never shown to — and the escape hatch above,
 which is the whole reason the wide creations scope is justified, cannot fire.
-That held on the creations side and *not* on the engine side: `**/lua_*_bindings.hpp`
-sweeps a binding header anywhere in the tree, while `engine/script/**` +
-`engine/**/*_lua.hpp` only inject under `engine/script/`. A file one directory
-over — `engine/prefabs/irreden/render/lua_ctrl_bindings.hpp` — was swept and
-never injected. `engine/**/lua_*_bindings.hpp` in the frontmatter closes it;
-with that entry the swept set is a subset of the injected set with nothing left
-over. Not widened to `engine/**/*.{hpp,cpp,h,cc}` (the sibling shape): that
+**It holds today** — the swept set is a strict subset of the injected set
+(81 ⊆ 141), because every binding header currently lives under
+`engine/script/include/irreden/script/`, which `engine/script/**` already
+injects. The frontmatter's `engine/**/lua_*_bindings.hpp` is **forward-looking,
+not remedial**: the hook's `**/lua_*_bindings.hpp` glob matches a binding header
+*anywhere* in the tree, so the first one placed outside `engine/script/` would
+be swept while `engine/script/**` + `engine/**/*_lua.hpp` failed to inject it.
+The entry closes that hole before it opens; it changes no counts today. Not
+widened to `engine/**/*.{hpp,cpp,h,cc}` (the sibling shape): that
 would inject a Lua-binding rule into every engine translation unit to reach a
 surface with a consistent, greppable spelling. The creations side needs the
 blunt glob because creation binding files have no mandated name; the engine
