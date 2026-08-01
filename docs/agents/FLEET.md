@@ -948,6 +948,16 @@ determine the base branch before checking out:
   `git fetch origin <upstream-branch>`
   `git checkout -b claude/<issue-number>-<short-topic> origin/<upstream-branch>`
 
+`claim-base` answers from the local claim, so it can only speak for a claim
+that still exists. With **no active claim** for the issue (released, or
+TTL-swept mid-iteration) it prints `master` but warns `base is UNVERIFIED`
+on stderr — do not take that `master` at face value on a task you claimed
+`--stackable-on`, because the sidecar recording the real base was swept with
+the claim and opening against `master` makes the diff swallow the blocker
+branch (#2703). Confirm the fork point first
+(`git merge-base --is-ancestor origin/<blocker-branch> HEAD`), or use
+`claim-base <N> --strict` to fail closed instead of guessing.
+
 Always include `Closes #<N>` in the PR body so the issue closes
 automatically when the PR merges:
 `gh pr create --title "<issue title> (#<N>)" --body "Claiming issue. Work in progress.\n\nCloses #<N>" --label "fleet:wip"`
