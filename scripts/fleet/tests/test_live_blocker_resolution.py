@@ -105,6 +105,28 @@ class TestResolveBlockedBy(unittest.TestCase):
             resolve_blocked_by(state)
         self.assertEqual(tasks[0]["blocked_by"], "#101")
 
+    def test_prose_ref_stashes_declared_only_view(self):
+        """#2783 — normalization throws the prose away, so the declared-only
+        view is captured alongside it for stackable eligibility. `blocked_by`
+        itself still carries both refs: the parenthetical PR gates the claim
+        (#1281), it just isn't a second *declared* blocker."""
+        tasks = [_task("#2780", "#2770 (PR #2772 — lands the shape this generalizes)")]
+        state = _state(engine_tasks=tasks)
+        with patch.object(_mod.subprocess, "run",
+                          _gh_state_stub({"2770": "OPEN", "2772": "OPEN"})):
+            resolve_blocked_by(state)
+        self.assertEqual(tasks[0]["blocked_by"], "#2770, #2772")
+        self.assertEqual(tasks[0]["blocked_by_declared"], "#2770")
+
+    def test_no_declared_field_when_prose_adds_nothing(self):
+        """The field is absent for the overwhelming majority of tasks — it
+        appears only where the prose actually inflated the count."""
+        tasks = [_task("#200", "#101")]
+        state = _state(engine_tasks=tasks)
+        with patch.object(_mod.subprocess, "run", _gh_state_stub({"101": "OPEN"})):
+            resolve_blocked_by(state)
+        self.assertNotIn("blocked_by_declared", tasks[0])
+
     def test_both_refs_closed_resolves_to_none(self):
         """Both refs closed → (none)."""
         tasks = [_task("#200", "#100, #102")]

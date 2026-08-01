@@ -218,6 +218,119 @@ class BlockerRefs(unittest.TestCase):
         self.assertEqual(fbb.blocker_refs("**Blocked by:** (none)\n", "jakildev/IrredenEngine"), [])
 
 
+class DecorativeProseRefs(unittest.TestCase):
+    """#2783 — `ref_is_decorative` answers "was this ref *declared*", the
+    narrower question stackable eligibility asks.
+
+    The miscount it fixes is not cosmetic: `enrich_stackable_blocker_prs`
+    offers a base only for single-blocker tasks, so one phantom ref silently
+    drops the task out of the worker's stackable fallback tier for the
+    blocker's whole pre-merge window.
+
+    `blocker_refs` — the blocking gate — deliberately does NOT use this; see
+    `BlockerRefsCountsProseForTheGate` below.
+    """
+
+    def _nums(self, value):
+        # Production always hands ref_is_decorative a parsed *value*, never the
+        # whole `**Blocked by:** …` line — the leading-`none` guard keys on the
+        # value's first token, so passing the label would mask it.
+        v = fbb.parse_blocked_by(f"**Blocked by:** {value}\n") or value
+        return [m.group(2) for m in fbb._REF_RE.finditer(v)
+                if not fbb.ref_is_decorative(v, m.start())]
+
+    def test_blockers_own_pr_in_parens_is_not_a_second_blocker(self):
+        # The live #2780 shape: the parenthetical names the very PR a stacker
+        # should stack ON, and counting it withheld that offer.
+        self.assertEqual(
+            self._nums("#2770 (PR #2772 — lands the `_roster_warn` shape this generalizes)"),
+            ["2770"],
+        )
+
+    def test_blockers_own_pr_after_dash(self):
+        # Live #1938: a merged-blocker note trailing the ref.
+        self.assertEqual(
+            self._nums("#1937 — **MERGED** (PR #2013, 2026-06-25); the reference now exists."),
+            ["1937"],
+        )
+
+    def test_genuine_multi_ref_list_survives(self):
+        self.assertEqual(self._nums("#100, #101"), ["100", "101"])
+
+    def test_per_ref_annotated_list_survives(self):
+        # Each ref carries its own parenthetical — every segment's first ref is
+        # declared, so neither is mistaken for prose.
+        self.assertEqual(self._nums("#100 (done), #101 (still open)"), ["100", "101"])
+
+    def test_and_spelled_list_survives(self):
+        self.assertEqual(self._nums("#100 and #101"), ["100", "101"])
+
+    def test_cross_repo_qualifier_survives_in_list(self):
+        self.assertEqual(self._nums("#324, jakildev/IrredenEngine#2666"),
+                         ["324", "2666"])
+
+    def test_prose_ref_with_blocker_verb_still_gates(self):
+        # #1910's anti-evasion guard, now reused for enumeration: prose that
+        # restates a real dependency must not be droppable.
+        self.assertEqual(self._nums("#100 — also blocked by #999"), ["100", "999"])
+        self.assertEqual(self._nums("#100 (depends on #999 too)"), ["100", "999"])
+
+    def test_leading_prose_ref_is_declared(self):
+        # No earlier ref in the segment ⇒ declared, whatever introduces it.
+        self.assertEqual(self._nums("waiting on #500"), ["500"])
+
+    def test_duplicate_mention_collapses(self):
+        # Live irreden#72: the same blocker restated in its own prose used to
+        # read as two, which also cost the stackable offer.
+        self.assertEqual(
+            self._nums("#83 (game does not build against engine master — see #83)"),
+            ["83"],
+        )
+
+    def test_leading_none_value_keeps_every_ref(self):
+        # A `(none) — …` value is #1910's territory; #2783 stays out of it so
+        # that corpus is byte-identical. Live #1923's shape.
+        self.assertEqual(
+            self._nums("(none) — touches shaders shared with #1883/#1884; per #1881's rule"),
+            ["1883", "1884", "1881"],
+        )
+
+    def test_sentinel_rows_unchanged(self):
+        # The `(none) — #N` corpus is deliberately conservative (#1910): a ref
+        # with neither qualifier still gates. #2783 must not move it.
+        self.assertFalse(
+            fbb.is_no_blocker_value("(none) — #2278 is expected to merge independently"))
+        self.assertTrue(
+            fbb.is_no_blocker_value("(none — runs in parallel with #2497)"))
+
+
+class BlockerRefsCountsProseForTheGate(unittest.TestCase):
+    """#2783's counterpart lock: `blocker_refs` must keep counting prose refs.
+
+    A parenthetical PR ref is load-bearing for the *blocking gate*: #1281
+    resolves it against PR state, so it keeps gating until that PR is MERGED,
+    and the signal lives only in the prose. Narrowing `blocker_refs` to
+    declared refs would let a worker claim a task whose base has not merged, so
+    the two questions stay separate on purpose — `test_fleet_claim_blockers.sh`
+    T2 is the end-to-end lock.
+    """
+
+    def test_parenthetical_pr_ref_still_counted(self):
+        self.assertEqual(
+            fbb.blocker_refs("**Blocked by:** #100 (PR #201 must merge — context)\n",
+                             "jakildev/IrredenEngine"),
+            [("jakildev/IrredenEngine", "100"), ("jakildev/IrredenEngine", "201")],
+        )
+
+    def test_blockers_own_pr_still_counted(self):
+        # The very value #2783 fixes for *eligibility* is unchanged here.
+        self.assertEqual(
+            fbb.blocker_refs("**Blocked by:** #2770 (PR #2772 — lands the shape)\n",
+                             "jakildev/IrredenEngine"),
+            [("jakildev/IrredenEngine", "2770"), ("jakildev/IrredenEngine", "2772")],
+        )
+
+
 class HasBlockedByField(unittest.TestCase):
     def test_present_forms(self):
         for body in ("**Blocked by:** #5\n", "**Blocked by:** (none)\n",
