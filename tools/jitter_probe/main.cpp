@@ -229,7 +229,7 @@ int main(int argc, char **argv) {
     parser.flag("--verbose", "Print the per-frame centroid + residual table");
     parser.integer(
         "--expect-frames",
-        "Fail unless exactly this many frames were passed (0 = no check)",
+        "Fail unless exactly this many frames were passed (omit to disable)",
         0
     );
     parser.variadic("frames", "Frame PNGs in capture order (>= 3)", 3);
@@ -265,7 +265,16 @@ int main(int argc, char **argv) {
     // verdict, indistinguishable from a real regression. See README.md
     // §"Wipe before every capture" for the measured case.
     if (parser.wasProvided("--expect-frames")) {
-        const size_t expected = static_cast<size_t>(parser.getInt("--expect-frames"));
+        const int expectArg = parser.getInt("--expect-frames");
+        if (expectArg < 0) {
+            std::fprintf(
+                stderr,
+                "jitter_probe: --expect-frames expects a non-negative count (got %d)\n",
+                expectArg
+            );
+            return 2;
+        }
+        const size_t expected = static_cast<size_t>(expectArg);
         if (args.frames_.size() != expected) {
             std::fprintf(
                 stderr,

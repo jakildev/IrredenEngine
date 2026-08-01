@@ -94,9 +94,14 @@ Two things that recipe gets right and are easy to get wrong:
 - **End the path at `.../save_files/screenshots`.** A `find` rooted at the demo
   build dir also deletes the staged runtime assets under `data/images/`, and the
   next run dies on `Failed to load image file: .../irreden_engine_logo_v6_alpha.png`
-  — which reads as a crash your change caused. `fleet-build --target
-  <Demo>Assets` will *not* restore them (the copy is up to date by timestamp);
-  restage by hand with `cp -R engine/render/data/. <exedir>/data/`.
+  — which reads as a crash your change caused. Recover by rebuilding the demo's
+  asset target: `fleet-build --target <Demo>Assets` (e.g. `IRShapeDebugAssets`).
+  That restores them — the target is an `add_custom_target` with no `OUTPUT`
+  (`cmake/ir_functions.cmake`), so an explicit build always re-runs its
+  `copy_directory` commands rather than short-circuiting on timestamps. Don't
+  hand-copy a single source dir: the staged `data/` is a *merge* of
+  `engine/render/data` and `engine/data`, and the file in the assert above
+  lives in the latter.
 - **Use `-delete`, not `rm -f <dir>/*.png`.** Under zsh an unmatched glob aborts
   the entire `&&` chain, silently skipping everything after it.
 
