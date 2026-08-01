@@ -1599,9 +1599,10 @@ def enrich_stackable_blocker_prs(state):
     #     bases ARE accepted; see fleet_stack_base)
     #   - downstream task's area files appear in the blocker PR diff (filter a)
     #
-    # Engine and game tasks are both enriched; worker pickup only honors
-    # the field for engine in v1 (the merger's cascade-rebase doesn't
-    # process game PRs yet) — that gating lives in the role doc.
+    # Engine and game tasks are both enriched, and worker pickup honors the
+    # field for both repos — role-worker.md step 3's stackable-fallback tier
+    # covers engine and game identically; native stacks maintain the chain
+    # server-side either way.
     #
     # (The former filter (c) — the #2447 base-ancestry containment walk — was
     # retired with the native-stacked-PRs migration: a native stack self-heals
