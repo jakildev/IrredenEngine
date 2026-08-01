@@ -2,6 +2,7 @@
 paths:
   - "engine/script/**"
   - "engine/**/*_lua.hpp"
+  - "engine/**/lua_*_bindings.hpp"
   - "creations/**/*.{hpp,cpp,h,cc}"
 ---
 
@@ -174,6 +175,37 @@ detector's blind spot shut. `cpp-systems.md` can mirror its own detector scope
 because `system_<name>.hpp` is a mandated filename (`engine/prefabs/CLAUDE.md`
 §"File pattern"); the creation-side binding surface has no such spelling to
 lean on.
+
+**The invariant that argument implies: `paths:` must cover every file the hook
+sweeps.** Wherever detection reaches a file injection doesn't, the rule is
+enforced on an author it was never shown to — and the escape hatch above,
+which is the whole reason the wide creations scope is justified, cannot fire.
+That held on the creations side and *not* on the engine side: `**/lua_*_bindings.hpp`
+sweeps a binding header anywhere in the tree, while `engine/script/**` +
+`engine/**/*_lua.hpp` only inject under `engine/script/`. A file one directory
+over — `engine/prefabs/irreden/render/lua_ctrl_bindings.hpp` — was swept and
+never injected. `engine/**/lua_*_bindings.hpp` in the frontmatter closes it;
+with that entry the swept set is a subset of the injected set with nothing left
+over. Not widened to `engine/**/*.{hpp,cpp,h,cc}` (the sibling shape): that
+would inject a Lua-binding rule into every engine translation unit to reach a
+surface with a consistent, greppable spelling. The creations side needs the
+blunt glob because creation binding files have no mandated name; the engine
+side does not.
+
+Check the invariant, don't assume it — the two glob sets are edited
+independently:
+
+```
+# swept by the hook
+fleet-rules-sweep --files-only --pattern '.' --glob 'engine/script/**' \
+  --glob '**/*_lua.hpp' --glob '**/lua_*_bindings.hpp' \
+  --glob 'creations/**/lua_*.{hpp,cpp}' | sort > /tmp/detected
+# injected by paths:
+fleet-rules-sweep --files-only --pattern '.' --glob 'engine/script/**' \
+  --glob 'engine/**/*_lua.hpp' --glob 'engine/**/lua_*_bindings.hpp' \
+  --glob 'creations/**/*.{hpp,cpp,h,cc}' | sort > /tmp/injected
+comm -23 /tmp/detected /tmp/injected      # must be empty (81 vs 141 today)
+```
 
 A creation's `main*.cpp` is deliberately **not** in scope, `main_lua.cpp`
 included — its string compares are CLI-argv parses (three in
