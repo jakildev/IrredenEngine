@@ -11,6 +11,11 @@ IRGLFWWindow &getWindow();
 
 /// Signals the window to close on the next `World::gameLoop()` iteration.
 void closeWindow();
+/// True once a close has been requested (by @ref closeWindow or the window
+/// manager) and the loop has not yet exited. The read side of @ref closeWindow:
+/// a headless test that drives a QUIT control has no other way to observe that
+/// the click reached the engine, since the run ends before the next capture.
+bool isCloseRequested();
 /// Writes the current window size in logical pixels to @p size.
 /// Use @ref getFramebufferSize when you need the actual render target dimensions.
 void getWindowSize(IRMath::ivec2 &size);

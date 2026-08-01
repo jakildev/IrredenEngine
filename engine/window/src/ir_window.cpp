@@ -16,6 +16,10 @@ void closeWindow() {
     getWindow().setShouldClose();
 }
 
+bool isCloseRequested() {
+    return getWindow().shouldClose() != 0;
+}
+
 void getWindowSize(IRMath::ivec2 &size) {
     getWindow().getWindowSize(size.x, size.y);
 }

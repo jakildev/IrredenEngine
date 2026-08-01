@@ -221,6 +221,12 @@ enum SystemName {
     // (which clears the GUI canvas and owns the shared text GPU resources)
     // and BEFORE TRIXEL_TO_FRAMEBUFFER.
     HELP_OVERLAY,
+    // Settings menu (#2551): spawns one widget row per `C_SettingsRegistry`
+    // entry while the `C_SettingsMenuState` singleton is open, polls the
+    // widgets, and pushes edits back through each setting's setter. Register
+    // in INPUT, after the WIDGET_APPLY_* chain that produces the state it
+    // reads. Its widgets are drawn by the standard WIDGET_RENDER_* systems.
+    SETTINGS_MENU,
     ENTITY_CANVAS_TO_FRAMEBUFFER,
     WIDGET_INPUT,
     WIDGET_LUA_DISPATCH,

@@ -1593,6 +1593,14 @@ local w,  h  = IRRender.getGuiCanvasSize()            -- "gui" canvas size (trix
 - **`IRGui` / `IRRender` are extended, never replaced** (`if (!valid())`
   guard), so the render-glue `drawDisc`/`drawLine` and setters bound earlier
   survive.
+- **`makePanel`'s `zOrder` is clamped, not asserted.** It is the only
+  `zOrder`-taking factory Lua exposes, so the value is script data rather than
+  a programmer error: the binding clamps it below
+  `IRComponents::kWidgetDropdownOpenZBias` (warning when it bites) instead of
+  letting `C_Widget`'s ctor `IR_ASSERT` throw out into Lua. The clamp is plain
+  code, so it holds under `IR_RELEASE` where that assert compiles away — see
+  `engine/prefabs/irreden/render/CLAUDE.md` §"Trixel UI widget framework" for
+  what the bias protects.
 - **`getGuiCanvasSize` / `glyphStep`** are layout accessors so Lua lays out
   against the live GUI-canvas size + font metrics. `getGuiCanvasSize` raises a
   Lua error if no `"gui"` canvas exists.
