@@ -400,16 +400,23 @@ ivec3 pivotVerifyProbeHalfExtent() {
     return g_pivotVerifyBlock == "background-center" ? kPivotVerifyBackgroundProbeHalfExtent
                                                      : kPivotVerifyProbeHalfExtent;
 }
-// `[pivot-focus-assert]` tolerance, in world units: ONE iso-depth unit of
-// composite quantization, which is `1/3` per axis, i.e. `sqrt(3)/3 ~= 0.577`.
+// `[pivot-focus-assert]` tolerance, in world units, set to the residual the
+// derive inherently carries: ONE iso-depth unit, `1/3` per axis, i.e.
+// `sqrt(3)/3 ~= 0.5774`. It sits just above the measured max rather than at a
+// round 0.6 so the admitted band is the measurement, not a guess.
 //
-// The composite stores depth per TRIXEL at sub-voxel resolution and the derive
-// reads back a single framebuffer texel, which can resolve to the neighbouring
-// triangle of the view-center iso cell — so where the center ray grazes a
-// silhouette or cap edge, "the surface under the crosshair" is genuinely
-// ambiguous by one iso unit. Measured on macOS/Metal at zoom 4: background-center
-// 0.00 (exact fallback), center-depth 0.29, center-column 0.58 (its ray enters
-// through the probe's bottom cap, the ambiguous case).
+// That residual exists because `emitDeformedFace` stamps the emitting
+// (sub-)voxel's own anchor depth across every trixel its face paints: the
+// composite is a per-face SORT KEY, not the metric depth at this trixel, so the
+// reconstruction is off by however far the center ray crosses the face from its
+// anchor. Measured on macOS/Metal, identical at zoom 4 and 8: background-center
+// 0.00 (exact — it takes the d=0 fallback and reads no depth), center-depth
+// 0.289 (off-centre lateral crossing), center-column and center-axis 0.577
+// (both cross a camera-facing cap dead-centre, half the face's 2-unit depth
+// spread). Derivation + the ruled-out alternatives (notably that this is NOT a
+// neighbouring-triangle sampling ambiguity — that would be a fixed pixel
+// offset, and the bias is instead constant in WORLD units across zooms):
+// docs/design/camera-yaw-pivot.md §"Known deviations" 2, see #2641.
 //
 // The gate stays sharp — every failure this assert exists to catch is an order
 // of magnitude outside it: a regression to the pre-#2547 iso-depth-0 focus is
@@ -418,7 +425,7 @@ ivec3 pivotVerifyProbeHalfExtent() {
 //
 // Deliberately NOT measured in iso-depth units: `pos3DtoDistance` rounds to an
 // integer, which would hide exactly the sub-voxel disagreement being bounded.
-constexpr float kPivotFocusAssertToleranceWorld = 0.6f;
+constexpr float kPivotFocusAssertToleranceWorld = 0.58f;
 // cursor-latch's own tolerance: ONE world unit, i.e. one voxel.
 //
 // This block's focus is a `castVoxelRay` SURFACE hit — the marched point where

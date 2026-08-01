@@ -44,8 +44,11 @@ Two oracles, applied per block:
   gated only for the blocks in ``CENTROID_GATED_BLOCKS``: those rotate their
   probe about a point on the probe's own axis, so a correct pivot maps the
   silhouette onto itself. Every other block's deviation is measured and
-  reported but not gated. The SDF twin is exempt even on a gated block
-  (``SDF_GATED``, #2645) — no lattice, so no pin to hold.
+  reported but not gated. ``center-axis`` is gated at its own zoom-scaled
+  bound (``CENTROID_THRESHOLD_PX_PER_ZOOM``) rather than ``--max-deviation``,
+  because it consumes the derived focus and so carries the inherent #2641
+  residual — see that constant for the measurement. The SDF twin is exempt
+  even on a gated block (``SDF_GATED``, #2645) — no lattice, so no pin to hold.
 
 Why a block falls in one bucket or the other — and what the reported-but-not-
 gated deviations mean — is ``docs/design/camera-yaw-pivot.md`` §"Known
@@ -86,7 +89,8 @@ FOCUS_ASSERT_BLOCKS = DEFAULT_PIVOT_BLOCKS | {"cursor-latch"}
 # its probe about a point on the probe's own axis, so a correct pivot maps the
 # silhouette onto itself. For every other block the deviation is reported but
 # not gated — see the module docstring.
-CENTROID_GATED_BLOCKS = {"focus-ctr", "focus-off", "background-center"}
+CENTROID_GATED_BLOCKS = {"focus-ctr", "focus-off", "background-center",
+                         "center-axis"}
 # The SDF twin is a continuous-geometry A/B control, NOT a pin gate (#2645).
 # Its analytic silhouette has no voxel lattice to snap to, so its centroid is
 # quantized only by the destination pixel grid: dev_x measures exactly 2.00px
@@ -100,6 +104,21 @@ CENTROID_GATED_BLOCKS = {"focus-ctr", "focus-off", "background-center"}
 # keeps `focus-ctr` gated for its voxel pass while its SDF twin only reports,
 # even though the block itself is in CENTROID_GATED_BLOCKS.
 SDF_GATED = False
+# Blocks whose centroid gate is NOT `--max-deviation` but a measurement-derived
+# bound, in px per unit of camera zoom.
+#
+# `center-axis` rotates about a point on its probe's own axis, so it is a valid
+# centroid pin — but it consumes the derived focus, which carries the inherent
+# #2641 residual: the composite is a per-face sort key stamped at the face's
+# anchor, so the derive lands up to one iso-depth unit off the metric surface
+# (docs/design/camera-yaw-pivot.md §"Known deviations" 2). A fixed world-space
+# focus error produces a screen orbit that scales with zoom, so the bound scales
+# too. Measured on macOS/Metal: 12.00 px at zoom 4 (3.00 px/zoom) and 22.00 px
+# at zoom 8 (2.75 px/zoom). 3.25 clears the worse of the two (zoom 4) by ~8%
+# instead of landing exactly on it, and still fails any growth in the residual:
+# a regression to the pre-#2547 iso-depth-0 focus is 150 px at zoom 8, ~6x this
+# bound.
+CENTROID_THRESHOLD_PX_PER_ZOOM = {"center-axis": 3.25}
 # Frame indices of the cardinal yaws (0, pi/2, pi, 3pi/2) within the demo's
 # 9-yaw sweep table (`yaws[]` in creations/demos/shape_debug/main.cpp).
 CARDINAL_FRAME_INDICES = (0, 3, 5, 7)
@@ -249,10 +268,14 @@ def main(argv: list[str] | None = None) -> int:
                       file=sys.stderr)
 
         # Whole-silhouette oracle. Always measured; gated only where it is a
-        # valid pin (CENTROID_GATED_BLOCKS), and never for the SDF twin, whose
-        # continuous silhouette rides a destination-grid floor (SDF_GATED).
+        # valid pin (CENTROID_GATED_BLOCKS), at that block's own bound, and
+        # never for the SDF twin, whose continuous silhouette rides a
+        # destination-grid floor (SDF_GATED).
+        per_zoom = CENTROID_THRESHOLD_PX_PER_ZOOM.get(block)
+        max_deviation = (max(args.max_deviation, per_zoom * zoom)
+                         if per_zoom is not None else args.max_deviation)
         centroid, dev_x, dev_y, _ = _score_pass(probe_exe, frames,
-                                                args.max_deviation)
+                                                max_deviation)
         centroid_gated = (block in CENTROID_GATED_BLOCKS
                           and (SDF_GATED if sdf else True))
         if centroid_gated:
@@ -278,8 +301,9 @@ def main(argv: list[str] | None = None) -> int:
             failed += 1
     print()
     print("verdicts: PINNED = silhouette held (threshold "
-          f"{args.max_deviation}px) · FOCUS-OK = derived focus matched the "
-          "analytic pin; the silhouette deviation is reported, not gated "
+          f"{args.max_deviation}px, or a block's own zoom-scaled bound from "
+          "CENTROID_THRESHOLD_PX_PER_ZOOM) · FOCUS-OK = derived focus matched "
+          "the analytic pin; the silhouette deviation is reported, not gated "
           "· REPORT = SDF twin, measured but ungated (see the module "
           "docstring)")
     if failed:
