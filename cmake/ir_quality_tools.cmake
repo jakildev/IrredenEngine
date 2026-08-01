@@ -13,6 +13,7 @@ function(irreden_collect_quality_files out_var)
         "${PROJECT_SOURCE_DIR}/engine"
         "${PROJECT_SOURCE_DIR}/creations"
         "${PROJECT_SOURCE_DIR}/test"
+        "${PROJECT_SOURCE_DIR}/tools"
     )
 
     set(globbed_files "")
