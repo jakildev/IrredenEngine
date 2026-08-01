@@ -101,11 +101,10 @@ state_for() {
 case "$1 $2" in
     "issue view")
         issue_num="$3"
-        # #2586: the stack-base ancestry gate fetches the BASE issue's raw
-        # body via `--json body --jq .body` — distinct from every other
-        # issue-view call in this stub (which asks for state, or the full
-        # state,labels,body tuple). #9001 is the only base used below and
-        # carries no blockers, so the ancestry walk clears trivially.
+        # Raw-body lookups (`--json body --jq .body`) are distinct from every
+        # other issue-view call in this stub (which asks for state, or the
+        # full state,labels,body tuple). #9001 is the only base used below
+        # and carries no blockers.
         if [[ "$*" == *"--json body"* ]]; then
             case "$issue_num" in
                 9001) echo "**Blocked by:** (none)" ;;
@@ -280,8 +279,7 @@ assert_absent "$err" "must precede the subcommand" "reconcile's trailing --repo 
 # issue) can never be mistaken for a duplicate of the claimed issue.
 #
 # PR #9001 (branch claude/9001-base) is a deliberately-valid stack base for
-# both cases below: OPEN, no unsafe labels, non-empty diff, and its own issue
-# has no blockers (so the ancestry gate clears trivially) — see the gh stub.
+# both cases below: OPEN, no unsafe labels, non-empty diff — see the gh stub.
 
 # --- T11: claimed issue already has its OWN open PR → refused ---------------
 echo "T11: --stackable-on claim refused when the CLAIMED issue already has its own open PR"

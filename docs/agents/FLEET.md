@@ -50,7 +50,7 @@ The lane is deliberately narrow and re-verifies everything **live**
 - `fleet:approved` present, PR OPEN, base `master`, GitHub reports
   mergeable.
 - **Label allowlist, not blocklist** — any label outside
-  `fleet:approved` / `fleet:merger-cooldown` / `fleet:stacked-rebase` /
+  `fleet:approved` / `fleet:merger-cooldown` /
   `fleet:authored-on-*` / `fleet:verified-*` disqualifies. Every
   `human:*` label, `fleet:human-deferred`, `fleet:changes-made`,
   `fleet:needs-opus-recheck`, smoke labels, and any label added in the
@@ -294,8 +294,8 @@ is merged — with B's diff scoped to its own changes only.
 
 Cursor stacking is a lighter-weight pattern than fleet's
 `fleet-claim stack` mode: no molecules, no issue claims, no worktree
-claims, no `fleet:stacked` label. State is per-branch git config,
-so it survives across chat boundaries automatically.
+claims. State is per-branch git config, so it survives across chat
+boundaries automatically.
 
 Mechanics:
 
@@ -749,10 +749,10 @@ Two stacking modes exist in this fleet:
 3. Worker B reads `fleet-claim claim-base <Y>` → returns
    `claude/<X>-…` (not `master`). It fetches and branches off
    `origin/claude/<X>-…`, then opens PR #101 with
-   `--base claude/<X>-…`, adds `fleet:stacked`, and links #100→#101
-   into a native stack (the `native-stack-link.md` step). PR #101's
-   diff shows only #Y's changes; #X's commits are part of the base.
-4. **Reviewer** sees `fleet:stacked` on #101 (or the stack badge)
+   `--base claude/<X>-…` and links #100→#101 into a native stack
+   (the `native-stack-link.md` step). PR #101's diff shows only #Y's
+   changes; #X's commits are part of the base.
+4. **Reviewer** sees the stack badge on #101 (base != `master`)
    and checks #100's approval state. If #100 is not yet approved,
    the reviewer defers with `fleet:awaiting-upstream-review`. Once
    #100 is approved, the reviewer evaluates #101's delta only and
@@ -891,18 +891,15 @@ For the current issue in the stack (first `(pending)` row in
    commit-subject prefix is required; one issue per branch means the
    branch name IS the per-issue anchor.
 4. **Open the PR with `--base "$base"`, record it in the stack, and
-   link it natively.** When `$base` is a feature branch (not
-   `master`), add `--label "fleet:stacked"` so the merger and
-   reviewer can filter by label without an extra
-   `gh pr view --json baseRefName` call:
-   `gh pr create --base "$base" --title "<title> (#<N>)" --body "..." --label "fleet:wip" --label "fleet:stacked"`
+   link it natively:**
+   `gh pr create --base "$base" --title "<title> (#<N>)" --body "..." --label "fleet:wip"`
    `fleet-claim stack-set-pr <your-worktree-name> <issue-number> "$(git branch --show-current)" "<pr-url>"`
    Then run the
    [`native-stack-link.md`](../../.claude/skills/commit-and-push/procedures/native-stack-link.md)
    step so GitHub owns the chain. For the first issue in the chain
-   (`$base == master`), omit `fleet:stacked` and skip the link —
-   that PR merges into master normally (it becomes the stack's
-   bottom when the second PR links onto it).
+   (`$base == master`), skip the link — that PR merges into master
+   normally (it becomes the stack's bottom when the second PR links
+   onto it).
 
 **Stacked PR title + body format.** Use a descriptive title with the
 issue number in parentheses (standard GitHub convention) so reviewers
@@ -956,9 +953,9 @@ automatically when the PR merges:
 `gh pr create --title "<issue title> (#<N>)" --body "Claiming issue. Work in progress.\n\nCloses #<N>" --label "fleet:wip"`
 
 For a stackable-on claim (base is a feature branch), open with
-`--base <upstream-branch>`, add `fleet:stacked`, and link natively:
+`--base <upstream-branch>` and link natively:
 
-`gh pr create --base <upstream-branch> --title "<issue title> (#<N>)" --body "Work in progress.\n\nCloses #<N>" --label "fleet:wip" --label "fleet:stacked"`
+`gh pr create --base <upstream-branch> --title "<issue title> (#<N>)" --body "Work in progress.\n\nCloses #<N>" --label "fleet:wip"`
 
 Then run the
 [`native-stack-link.md`](../../.claude/skills/commit-and-push/procedures/native-stack-link.md)
@@ -966,10 +963,9 @@ step (parent = `<stackable_blocker_pr.number>`) so GitHub owns the
 chain from the start. No `Stacked on:` body line.
 
 > You don't have to get this exactly right by hand: **`commit-and-push`
-> resolves the base via `claim-base`, applies `fleet:stacked`, and runs
-> the native link automatically for single-task claims** (idempotent
-> edit-or-create), so a missed `--base`/label/link here is repaired
-> before review — see
+> resolves the base via `claim-base` and runs the native link
+> automatically for single-task claims** (idempotent edit-or-create),
+> so a missed `--base`/link here is repaired before review — see
 > [`commit-and-push/procedures/stackable-on.md`](../../.claude/skills/commit-and-push/procedures/stackable-on.md).
 
 ---

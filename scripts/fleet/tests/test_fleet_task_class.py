@@ -620,39 +620,31 @@ class SemanticConflictFeedbackExclusionIntegration(unittest.TestCase):
                              resolve(plain, "sonnet", False), label)
 
 
-class StackAncestryDispatchAB(unittest.TestCase):
-    """#2447 integration: the scout's ancestry guard is what flips the whole
-    dispatcher from a guaranteed-no-op dispatch to `defer`. On a slice whose
-    ONLY non-terminal entry rides a base missing a transitively-merged ancestor,
-    the enrichment must withhold `stackable_blocker_pr` so the entry becomes
-    terminal and resolve() goes quiet (the #1726/#1998 go-quiet gate). Flip the
-    containment verdict and the same slice dispatches. The A/B's sole delta is
-    the compare-API verdict — pinning the observable behavior, not a reason
-    string. Hermetic: the fetch seam is stubbed and the memo/PRS dirs redirect
-    into a TemporaryDirectory (scripts/fleet/CLAUDE.md)."""
+class StackOfferDispatch(unittest.TestCase):
+    """Stackable-offer → dispatch integration. A blocked task whose sole
+    blocker has a safe open PR gets `stackable_blocker_pr` and the dispatcher
+    dispatches on it. (The former #2447 ancestry A/B retired with the
+    native-stacked-PRs migration — a base missing a merged ancestor self-heals
+    via `gh stack sync`, so the offer is no longer withheld on containment.)
+    Hermetic: PRS dir redirects into a TemporaryDirectory
+    (scripts/fleet/CLAUDE.md)."""
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self._orig_prs_dir = _scout_mod.PRS_DIR
         _scout_mod.PRS_DIR = Path(self._tmp.name) / "prs"
-        self._orig_memo = _scout_mod.ANCESTRY_MEMO_FILE
-        _scout_mod.ANCESTRY_MEMO_FILE = Path(self._tmp.name) / "memo.json"
-        self._orig_fetch = _scout_mod._fetch_contains
         self._orig_log = _scout_mod.log
         _scout_mod.log = lambda _m: None
 
     def tearDown(self):
         _scout_mod.PRS_DIR = self._orig_prs_dir
-        _scout_mod.ANCESTRY_MEMO_FILE = self._orig_memo
-        _scout_mod._fetch_contains = self._orig_fetch
         _scout_mod.log = self._orig_log
         self._tmp.cleanup()
 
-    def _enriched_slice(self, contained):
+    def _enriched_slice(self):
         """Build the forensics-shaped state (candidate #40 → base #30's PR;
-        #30 blocked by merged #10 + open #20), enrich it with `contained` as
-        the containment verdict, and return the resolve() slice."""
-        _scout_mod._fetch_contains = lambda repo, oid, sha: contained
+        #30 blocked by merged #10 + open #20), enrich it, and return the
+        resolve() slice."""
         state = {
             "repos": {
                 "engine": {
@@ -673,7 +665,7 @@ class StackAncestryDispatchAB(unittest.TestCase):
                              "labels": ["fleet:approved"]}],
                     "recent_merged_prs": [
                         {"number": 100, "headRefName": "claude/10-m",
-                         "mergeCommitSha": "sha10", "mergedAt": "t"}],
+                         "mergedAt": "t"}],
                     "closed_fleet_queued": [],
                 },
                 "game": {"tasks": {"open": [], "in_progress": []}, "prs": [],
@@ -683,18 +675,10 @@ class StackAncestryDispatchAB(unittest.TestCase):
         _scout_mod.enrich_stackable_blocker_prs(state)
         return {"tasks_open": state["repos"]["engine"]["tasks"]["open"]}
 
-    def test_invalid_base_defers(self):
-        """Base head missing the merged ancestor → offer withheld → the sole
-        blocked task is terminal → resolve defers (go quiet)."""
-        slice_data = self._enriched_slice(contained=False)
-        self.assertNotIn("stackable_blocker_pr", slice_data["tasks_open"][0])
-        self.assertEqual(resolve(slice_data, "opus", fable_blocked=False),
-                         "defer")
-
-    def test_valid_base_dispatches(self):
-        """Base head contains the merged ancestor → offer stands → the blocked
-        task is claimable as a stack → resolve dispatches opus."""
-        slice_data = self._enriched_slice(contained=True)
+    def test_safe_base_offers_and_dispatches(self):
+        """Safe single-blocker base → offer stands → the blocked task is
+        claimable as a stack → resolve dispatches opus."""
+        slice_data = self._enriched_slice()
         self.assertIn("stackable_blocker_pr", slice_data["tasks_open"][0])
         out = resolve(slice_data, "opus", fable_blocked=False)
         self.assertTrue(out.startswith("opus "), out)

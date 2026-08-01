@@ -255,36 +255,6 @@
       "description": "Remaining work needs an OpenGL-4.5 host (Linux/Windows); macOS/Metal panes skip it (dispatcher filter, claim + amending-claim gates, feedback-tier skip). Human/architect triage signal."
     },
     {
-      "name": "fleet:stacked",
-      "scope": "pr",
-      "color": "c5def5",
-      "description": "PR's base is a feature branch (stacked PR)"
-    },
-    {
-      "name": "fleet:awaiting-base",
-      "scope": "pr",
-      "color": "c5def5",
-      "description": "Stacked PR; merger is waiting for base PR to merge"
-    },
-    {
-      "name": "fleet:needs-base-update",
-      "scope": "pr",
-      "color": "fbca04",
-      "description": "Stacked child PR; upstream force-pushed and cascade-rebase conflicted; author rebases manually"
-    },
-    {
-      "name": "fleet:fork-of-other-pr",
-      "scope": "pr",
-      "color": "c5def5",
-      "description": "Merger detected this PR's branch was forked from another open PR's branch (inherited commits); wait for the upstream PR to merge, then rebase --onto to drop them"
-    },
-    {
-      "name": "fleet:stacked-rebase",
-      "scope": "pr",
-      "color": "c5def5",
-      "description": "Stacked PR; base just merged, re-targeted to master, awaiting reviewer re-eval"
-    },
-    {
       "name": "fleet:awaiting-upstream-review",
       "scope": "pr",
       "color": "c5def5",
@@ -373,9 +343,7 @@
         "fleet:blocker",
         "fleet:has-nits",
         "fleet:needs-opus-recheck",
-        "fleet:awaiting-upstream-review",
-        "fleet:stacked-rebase",
-        "fleet:needs-base-update"
+        "fleet:awaiting-upstream-review"
       ],
       "add": [
         "fleet:approved"
@@ -390,9 +358,7 @@
         "fleet:needs-fix",
         "fleet:blocker",
         "fleet:needs-opus-recheck",
-        "fleet:awaiting-upstream-review",
-        "fleet:stacked-rebase",
-        "fleet:needs-base-update"
+        "fleet:awaiting-upstream-review"
       ],
       "add": [
         "fleet:approved",
@@ -409,9 +375,7 @@
         "fleet:blocker",
         "fleet:has-nits",
         "fleet:needs-opus-recheck",
-        "fleet:awaiting-upstream-review",
-        "fleet:stacked-rebase",
-        "fleet:needs-base-update"
+        "fleet:awaiting-upstream-review"
       ],
       "add": [
         "fleet:needs-fix"
@@ -427,9 +391,7 @@
         "fleet:needs-fix",
         "fleet:has-nits",
         "fleet:needs-opus-recheck",
-        "fleet:awaiting-upstream-review",
-        "fleet:stacked-rebase",
-        "fleet:needs-base-update"
+        "fleet:awaiting-upstream-review"
       ],
       "add": [
         "fleet:blocker"
@@ -441,9 +403,7 @@
       "scope": "pr",
       "owner": "reviewer",
       "remove": [
-        "fleet:awaiting-upstream-review",
-        "fleet:stacked-rebase",
-        "fleet:needs-base-update"
+        "fleet:awaiting-upstream-review"
       ],
       "add": [
         "fleet:needs-opus-recheck"

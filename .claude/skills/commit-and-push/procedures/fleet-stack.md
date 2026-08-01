@@ -24,7 +24,7 @@ fleet-claim stack-pr-state <your-worktree-name>
   fleet-claim stack-set-pr <agent> <task-id> <branch> <pr-url>
   ```
   Link step: [native-stack-link.md](native-stack-link.md), with `$base` from `stack-base` and the new PR number. GitHub then owns retarget-on-merge and cascade rebases for the chain; the PR header's stack badge is the chain navigation (no `Stacked on:` / `Full chain:` body lines — legacy markers went stale and misrouted review, #2231).
-- **Labels** include `fleet:stacked` whenever `--base != master` (i.e. every PR in the chain except the first). The merger reads `baseRefName` directly for routing decisions and skips native-stacked PRs; the label is a derived convenience for human visibility and cheap GitHub-side filtering during the migration.
+- **No stack label.** Stack membership is the native stack object (`baseRefName != "master"` + the PR header's stack badge); the legacy `fleet:stacked` label retired with the self-built machinery.
 - **Title** starts with a scope prefix per the commit-message style guide; the issue number goes in the `Closes #N` line so reviewers can trace the chain.
 
 ## After the PR opens

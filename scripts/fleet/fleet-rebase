@@ -14,11 +14,13 @@
 # Eligibility (deliberately conservative — tier-0 must never fight an
 # agent or human for a branch):
 #   - PR carries fleet:approved and none of the skip labels below.
-#   - Stacked PRs (base != master): rebase onto the updated base branch;
-#     when the base branch is verifiably gone AND a merged PR with that
-#     head exists, retarget the PR to master and rebase --onto master from
-#     the base PR's pre-merge head, dropping the now-squashed inherited
-#     prefix so only the child's own commits replay (#1690).
+#   - Stacked PRs (base != master): plain rebase onto the updated base
+#     branch only. Retargeting to master and the inherited-prefix drop
+#     were retired with the native-stacked-PRs migration — GitHub
+#     retargets and rebases native-stack children server-side when the
+#     parent merges (blocks preserved at the `pre-native-stacks` tag;
+#     see scripts/fleet/legacy/stacked-prs/README.md). A stacked PR
+#     whose base branch is gone goes to the LLM pass.
 #   - Conflicting PRs on master: attempt the rebase anyway — it's free;
 #     an actual conflict aborts cleanly and goes to the LLM pass.
 #
@@ -132,7 +134,7 @@ export FLEET_REBASE_SKIP_RE="$SKIP_LABEL_RE"
 # the human own everything else. Cap 3 per run: each merge flips the scout
 # hash and re-fires the merger, so a longer queue drains across wakes anyway.
 MERGE_PATH_RE='^\.fleet/plans/'
-MERGE_LABEL_ALLOW_RE='^fleet:(approved|merger-cooldown|stacked-rebase|authored-on-[a-z0-9-]+|verified-[a-z0-9-]+)$'
+MERGE_LABEL_ALLOW_RE='^fleet:(approved|merger-cooldown|authored-on-[a-z0-9-]+|verified-[a-z0-9-]+)$'
 export FLEET_MERGE_ALLOW_RE="$MERGE_LABEL_ALLOW_RE"
 MERGE_CAP=3
 MERGED=0
@@ -435,58 +437,21 @@ attempt_pr() {
         return 1
     fi
 
-    # Resolve the rebase target. A stacked PR retargets to master ONLY
-    # when the base is verifiably gone (not a transient fetch failure)
-    # AND a merged PR with that head exists — a parent closed WITHOUT
-    # merging is a human handoff (role-merger.md case iii), and folding
-    # its diff into the child via retarget would be wrong.
+    # Resolve the rebase target: always the PR's CURRENT base. Retargeting
+    # a stacked child to master is not tier-0 work anymore — GitHub does it
+    # server-side for native stacks, synchronously with the parent's merge
+    # (see docs/design/native-stacked-prs-migration.md). A stacked PR whose
+    # base branch is gone is either mid-native-retarget (transient) or an
+    # orphaned child (closed-unmerged parent) — both are LLM/human calls.
     local target="$base"
-    # Set when we retarget a squash-merged stacked child to master: the
-    # base PR's pre-merge head, i.e. the inherited-prefix boundary (#1690).
-    local rebase_boundary=""
     if [[ "$base" != "master" ]]; then
         if ! git -C "$wt" fetch origin "+refs/heads/$base:refs/remotes/origin/$base" 2>/dev/null; then
             if git -C "$wt" ls-remote --exit-code origin "refs/heads/$base" >/dev/null 2>&1; then
                 log "$repo_key#$pr: base '$base' exists but fetch failed (transient?); leaving for LLM"
                 return 1
             fi
-            # Distinguish branch-gone from remote-unreachable: probe a
-            # ref that must exist.
-            if ! git -C "$wt" ls-remote --exit-code origin refs/heads/master >/dev/null 2>&1; then
-                log "$repo_key#$pr: remote unreachable; leaving for LLM"
-                return 1
-            fi
-            # The squash-merged base PR's pre-merge head (gh still reports
-            # headRefOid after merge+branch-delete) is the inherited-prefix
-            # boundary: the child branched from it, so every commit beyond
-            # it is the child's own work. Captured here, consumed by the
-            # rebase --onto drop below (#1690). `last` over the
-            # number-sorted matches takes the most recent merged PR from
-            # this head; an empty result means no merged PR — a closed-
-            # unmerged parent handoff, left for the LLM.
-            local merged_tsv base_pr
-            merged_tsv=$(gh pr list --repo "$repo_slug" --head "$base" \
-                --state merged --json number,headRefOid \
-                --jq '(sort_by(.number) | last) as $p
-                      | if $p == null then "" else "\($p.number)\t\($p.headRefOid)" end' \
-                2>/dev/null) || merged_tsv=""
-            if [[ -z "$merged_tsv" ]]; then
-                log "$repo_key#$pr: base '$base' gone but no merged PR has that head (closed-unmerged parent?); leaving for LLM"
-                return 1
-            fi
-            IFS=$'\t' read -r base_pr rebase_boundary <<< "$merged_tsv"
-            log "$repo_key#$pr: base '$base' merged+deleted (PR #$base_pr) — retargeting PR to master"
-            if (( ! DRY_RUN )); then
-                gh pr edit "$pr" --repo "$repo_slug" --base master >/dev/null 2>&1 || {
-                    log "$repo_key#$pr: gh pr edit --base master failed; leaving for LLM"
-                    return 1
-                }
-            fi
-            target="master"
-            git -C "$wt" fetch origin "+refs/heads/master:refs/remotes/origin/master" 2>/dev/null || {
-                log "$repo_key#$pr: master fetch failed after retarget; leaving for LLM"
-                return 1
-            }
+            log "$repo_key#$pr: base '$base' gone (native retarget pending, or orphaned child); leaving for LLM"
+            return 1
         fi
     else
         git -C "$wt" fetch origin "+refs/heads/master:refs/remotes/origin/master" 2>/dev/null || {
@@ -517,69 +482,17 @@ attempt_pr() {
         return 1
     }
 
-    # Inherited-prefix drop (#1690): a stacked child we just retargeted to
-    # master still carries its base PR's pre-squash commits. Replaying them
-    # onto the squash that already holds their content is empty at best and
-    # a conflict at worst, and the changed-file-set guard below would read
-    # the dropped inherited files as drift — so today every such retarget
-    # bails to the (Opus) LLM pass even when the child's own commits are
-    # mechanically clean. Rebasing --onto the target from the inherited
-    # boundary replays only the child's own commits, exactly what the
-    # squash-merge lands. Guarded on the boundary being a real ancestor of
-    # the head we fetched; anything else falls back to the plain rebase.
-    local drop_boundary=""
-    if [[ -n "$rebase_boundary" ]]; then
-        if git -C "$wt" merge-base --is-ancestor "$rebase_boundary" "$head_sha" 2>/dev/null; then
-            drop_boundary="$rebase_boundary"
-            log "$repo_key#$pr: dropping inherited prefix at ${drop_boundary:0:12} (rebase --onto origin/$target)"
-        elif [[ -n "$base_pr" ]]; then
-            # Parent edited/amended during review AFTER the child forked: the
-            # recorded headRefOid ($rebase_boundary) is the parent's *final*
-            # pre-merge head — a sibling of, not an ancestor of, the child
-            # head — so the fast path above fails (#1824 / #1789-on-#1782).
-            # Fall back to the child's fork point, merge-base(child, parent),
-            # which IS on the child branch and is the top of the inherited
-            # prefix there. The parent head is usually not a local object
-            # after merge+branch-delete, so realize it from the retained pull
-            # ref first; the fetch is non-fatal (a failure leaves drop_boundary
-            # empty so the plain-rebase fallback still runs — no regression).
-            git -C "$wt" fetch origin "refs/pull/$base_pr/head" 2>/dev/null || true
-            local fork_point
-            fork_point=$(git -C "$wt" merge-base "$head_sha" "$rebase_boundary" 2>/dev/null) \
-                || fork_point=""
-            # Accept only a PROPER ancestor of the child head (non-empty and
-            # != head). A history-rewriting parent amend can land the
-            # merge-base below the true inherited boundary; the rebase --onto
-            # replay then conflicts or trips the changed-file-set drift guard
-            # and bails to the LLM exactly as today — never a bad push.
-            if [[ -n "$fork_point" && "$fork_point" != "$head_sha" ]] \
-                && git -C "$wt" merge-base --is-ancestor "$fork_point" "$head_sha" 2>/dev/null; then
-                drop_boundary="$fork_point"
-                log "$repo_key#$pr: parent edited post-fork; deriving inherited boundary from child fork point at ${drop_boundary:0:12} (rebase --onto origin/$target)"
-            fi
-        fi
-    fi
-
     # Changed-file-set snapshot: the PR's own files vs its target, before
     # and after. A clean rebase that changes WHICH files the PR touches
     # is not mechanical — bail to the LLM pass. (Residual risk: a 3-way
     # auto-merge can still mis-combine hunks WITHIN a file without
     # conflicting; that class of error is invisible to any mechanical
     # rebaser — including the LLM merger, which runs the same git rebase —
-    # and is caught by the build/CI gate before the human merges.) When an
-    # inherited prefix is being dropped, the "before" snapshot is taken
-    # from the boundary so it reflects only the child's own files.
-    local pre_files post_files file_base
-    file_base="${drop_boundary:-origin/$target}"
-    pre_files=$(git -C "$wt" diff --name-only "$file_base...$head_sha" | sort)
+    # and is caught by the build/CI gate before the human merges.)
+    local pre_files post_files
+    pre_files=$(git -C "$wt" diff --name-only "origin/$target...$head_sha" | sort)
 
-    if [[ -n "$drop_boundary" ]]; then
-        if ! git -C "$wt" rebase --onto "origin/$target" "$drop_boundary" >/dev/null 2>&1; then
-            git -C "$wt" rebase --abort >/dev/null 2>&1 || true
-            log "$repo_key#$pr: rebase --onto origin/$target (inherited-prefix drop) conflicts; leaving for LLM"
-            return 1
-        fi
-    elif ! git -C "$wt" rebase "origin/$target" >/dev/null 2>&1; then
+    if ! git -C "$wt" rebase "origin/$target" >/dev/null 2>&1; then
         git -C "$wt" rebase --abort >/dev/null 2>&1 || true
         log "$repo_key#$pr: rebase onto origin/$target conflicts; leaving for LLM"
         return 1
@@ -678,8 +591,9 @@ for pr in data.get("prs", []):
     elif any(skip_re.search(l) for l in labels):
         verdict = "skip-labels"
     elif {"fleet:needs-base-update", "fleet:awaiting-base"} & set(labels):
-        # Merger-set stack-coordination transients — the LLM pass owns
-        # these sequences; tier-0 must not push into the middle of one.
+        # Retired legacy stack-coordination labels — nothing sets them since
+        # the native-stacked-PRs migration, but a straggler PR still carrying
+        # one is mid-legacy-sequence; route it to the LLM pass, never tier-0.
         verdict = "llm-other"
     elif approved and (base != "master" or mergeable not in ("MERGEABLE", "UNKNOWN", "", None)):
         verdict = "attempt"

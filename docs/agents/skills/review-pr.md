@@ -117,9 +117,10 @@ Some PRs are stacked: their `--base` is another open PR's branch, not the
 default branch. The review is still per-PR; you don't re-review the parent.
 
 Quick detection from step-1 metadata: `baseRefName != <default-branch>` →
-stacked on that branch; a `Stacked on:` body line confirms it and gives the
-parent PR URL. If stacked, apply the **stacked-review procedure**, then
-return for step 1d. If standalone, continue to step 1d.
+stacked on that branch (native GitHub stack; a legacy `Stacked on:` body
+line on an old PR is confirmation only, never the signal). If stacked,
+apply the **stacked-review procedure**, then return for step 1d. If
+standalone, continue to step 1d.
 
 ### 1d. Churn audit when `mergeable == CONFLICTING`
 
@@ -287,9 +288,9 @@ run the verdict-label swap. A PR has exactly one verdict label
 (`fleet:approved` / `fleet:needs-fix` / `fleet:blocker`) at a time;
 `fleet:has-nits` is orthogonal and rides on top of `fleet:approved`. Always
 remove stale verdict labels before adding the new one, and clear the
-stacked-PR gates (`fleet:awaiting-upstream-review`, `fleet:stacked-rebase`,
-`fleet:needs-base-update`) in the same swap. The verdict label is the
-**primary signal** the human uses to decide what to merge.
+stacked-PR review gate (`fleet:awaiting-upstream-review`) in the same
+swap. The verdict label is the **primary signal** the human uses to
+decide what to merge.
 
 ### 5c. Tag for cross-host/backend smoke validation
 

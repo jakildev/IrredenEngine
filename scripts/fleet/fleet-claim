@@ -41,7 +41,6 @@
 #   fleet-claim molecule resume <agent>
 #   fleet-claim molecule advance <agent> <issue-number> <new-state> [--pr URL] [--commit SHA]
 #   fleet-claim molecule complete <agent>
-#   fleet-claim molecule rebase-downstream <agent> [issue-number]
 #   fleet-claim reserve <issue-number> <worktree> [branch]
 #   fleet-claim release-worktree <worktree>
 #   fleet-claim reservation-of <worktree>
@@ -1002,134 +1001,12 @@ sys.stdout.write(unsafe_base_reason(labels, files) or "")
                     echo "fleet-claim claim: $stackable_pr is not a stackable base ($stack_reject) — refusing claim" >&2
                     return 1
                 fi
-                # Ancestry gate (#2447): the label/diff check above never checks
-                # whether the base head actually CONTAINS the work of a blocker
-                # that merged after the base forked. Route the same walk the
-                # scout's offer filter uses (fleet_stack_base.missing_ancestor_reason)
-                # through live gh (base issue's blocker graph, merged-frontier
-                # shas) + git merge-base --is-ancestor (containment against the
-                # fetched base head), so offer and accept can't disagree. Fails
-                # CLOSED (refuse) on any unresolvable input — the safe direction
-                # for a claim, mirroring the base-safety check above.
-                local stack_anc_reject
-                if ! stack_anc_reject=$(BASE_PR="$stackable_pr" BASE_BRANCH="$pr_head" \
-                    REPO="$(repo_from_ns)" python3 <<'PYEOF'
-import json
-import os
-import subprocess
-import sys
-
-sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
-from fleet_blocked_by import blocker_refs
-from fleet_branch_match import branch_matches_issue, issue_from_branch
-from fleet_stack_base import missing_ancestor_reason
-
-repo = os.environ["REPO"]
-base_branch = os.environ["BASE_BRANCH"]
-base_pr = os.environ["BASE_PR"]
-
-
-def _run(cmd, timeout=15):
-    try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-    except (subprocess.SubprocessError, OSError):
-        return None
-    return r if r.returncode == 0 else None
-
-
-# Base issue: the base PR's own issue, whose Blocked-by is the ancestry root.
-base_issue = issue_from_branch(base_branch)
-if base_issue is None:
-    r = _run(["gh", "pr", "view", base_pr, "--repo", repo, "--json",
-              "closingIssuesReferences", "--jq",
-              ".closingIssuesReferences[0].number"])
-    if r and r.stdout.strip().isdigit():
-        base_issue = int(r.stdout.strip())
-if base_issue is None:
-    sys.stdout.write("ancestry undeterminable (base issue unresolvable)")
-    sys.exit(0)
-
-r = _run(["gh", "pr", "view", base_pr, "--repo", repo, "--json", "headRefOid",
-          "--jq", ".headRefOid"])
-base_oid = r.stdout.strip() if r else ""
-
-merged_prs = []
-r = _run(["gh", "pr", "list", "--repo", repo, "--state", "merged", "--limit",
-          "50", "--json", "number,headRefName,mergeCommit"])
-if r:
-    try:
-        merged_prs = json.loads(r.stdout)
-    except json.JSONDecodeError:
-        merged_prs = []
-
-_merged_sha = {}
-
-
-def get_blocker_refs(issue):
-    # gh failure → None (fail closed → refuse the claim on an unverifiable base).
-    # Cross-repo refs are dropped, not failed on: same-repo git containment can't
-    # evaluate them and a cross-repo dependency is never in this repo's git head.
-    r = _run(["gh", "issue", "view", str(issue), "--repo", repo, "--json",
-              "body", "--jq", ".body"])
-    if r is None:
-        return None
-    return [num for slug, num in blocker_refs(r.stdout, repo) if slug == repo]
-
-
-def ref_merged(ref):
-    for pr in merged_prs:
-        if branch_matches_issue(pr.get("headRefName", ""), ref, repo):
-            _merged_sha[ref] = (pr.get("mergeCommit") or {}).get("oid", "")
-            return True
-    r = _run(["gh", "issue", "view", ref, "--repo", repo, "--json", "state",
-              "--jq", ".state"])
-    if r is None:
-        return None
-    state = r.stdout.strip()
-    if state in ("CLOSED", "MERGED"):
-        return True   # merged but its PR fell outside the window → sha None → fail closed
-    if state == "OPEN":
-        return False
-    return None
-
-
-def merged_sha(ref):
-    return _merged_sha.get(ref) or None
-
-
-if base_oid:
-    _run(["git", "fetch", "origin", base_branch], timeout=30)
-_contains = {}
-
-
-def contains(sha):
-    if not base_oid or not sha:
-        return None
-    if sha in _contains:
-        return _contains[sha]
-    try:
-        r = subprocess.run(["git", "merge-base", "--is-ancestor", sha, base_oid],
-                           capture_output=True, text=True, timeout=15)
-    except (subprocess.SubprocessError, OSError):
-        _contains[sha] = None
-        return None
-    v = True if r.returncode == 0 else (False if r.returncode == 1 else None)
-    _contains[sha] = v
-    return v
-
-
-reason = missing_ancestor_reason(base_issue, get_blocker_refs, ref_merged,
-                                 merged_sha, contains)
-sys.stdout.write(reason or "")
-PYEOF
-                ); then
-                    echo "fleet-claim claim: base-ancestry check failed (Python error) — refusing to stack on an unverifiable base" >&2
-                    return 1
-                fi
-                if [[ -n "$stack_anc_reject" ]]; then
-                    echo "fleet-claim claim: $stackable_pr is not a stackable base ($stack_anc_reject) — refusing claim" >&2
-                    return 1
-                fi
+                # (The #2447 base-ancestry containment gate was retired with
+                # the native-stacked-PRs migration: a native stack self-heals
+                # a base missing a merged blocker via `gh stack sync` / the
+                # server-side cascade. Block preserved at the
+                # `pre-native-stacks` tag; see
+                # scripts/fleet/legacy/stacked-prs/README.md.)
                 stackable_branch="$pr_head"
                 ;;
             "")
@@ -3926,176 +3803,11 @@ cmd_molecule_complete() {
     cmd_release_stack "$agent"
 }
 
-__rebase_pause_chain() {
-    local pr_url="$1"
-    local body="$2"
-    [[ -z "$pr_url" ]] && return 0
-    gh pr comment "$pr_url" --body "$body" \
-        || echo "  warn: failed to comment fleet:blocker notice on $pr_url" >&2
-    gh pr edit "$pr_url" --add-label "fleet:blocker" \
-        || echo "  warn: failed to add fleet:blocker label to $pr_url" >&2
-}
-
-cmd_molecule_rebase_downstream() {
-    # Usage: fleet-claim molecule rebase-downstream <agent> [issue-num]
-    local agent="${1:-}"
-    local upstream_id="${2:-}"
-    if [[ -z "$agent" ]]; then
-        echo "usage: fleet-claim molecule rebase-downstream <agent> [issue-num]" >&2
-        return 2
-    fi
-    local explicit=1
-    if [[ -z "$upstream_id" ]]; then
-        explicit=0
-    fi
-
-    local stack_dir="$CLAIMS_DIR/_stack_${agent}"
-    if [[ ! -f "$stack_dir/tasks" ]]; then
-        echo "no stack claim for agent: $agent (nothing to rebase)" >&2
-        return 0
-    fi
-
-    # New branch convention is `claude/<N>-…`; legacy `claude/T-NNN-…` is
-    # grandfathered while in-flight branches drain (no resolution path
-    # (pass the issue explicitly via --issue for legacy T-NNN branches).
-    if [[ $explicit -eq 0 ]]; then
-        local current_branch
-        current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
-        if [[ "$current_branch" =~ ^claude/(game-)?([0-9]+) ]]; then
-            # Optional `game-` infix mirrors issue_from_branch / the shared
-            # matcher so legacy claude/game-<N>-… branches resolve too (#1425).
-            upstream_id="${BASH_REMATCH[2]}"
-            echo "auto-detected upstream issue: #${upstream_id} (from branch $current_branch)"
-        elif [[ "$current_branch" =~ ^claude/[Tt]-([0-9]+) ]]; then
-            echo "auto-detect: legacy claude/T-NNN branch ($current_branch) — pass the issue number explicitly" >&2
-            return 0
-        elif [[ "$current_branch" == claude/* && "$current_branch" =~ (^|[/-])issue-([0-9]+)(-|$) ]]; then
-            # Token fallback mirrors _token_issue in fleet_branch_match.py: a
-            # word-bounded issue-<N> token, reached only when the branch has no
-            # leading-number form (the first arm) and isn't a legacy T-NNN one,
-            # so the documented mirror doesn't drift from the widened shared
-            # matcher (#2419). bash ERE has no lookahead, so the `(-|$)` right
-            # boundary is spelled out; greedy `[0-9]+` captures the full number.
-            upstream_id="${BASH_REMATCH[2]}"
-            echo "auto-detected upstream issue: #${upstream_id} (from issue-<N> token in branch $current_branch)"
-        else
-            echo "could not auto-detect upstream issue from branch '$current_branch' (not on a claude/<N>-… branch); skipping" >&2
-            return 0
-        fi
-    fi
-
-    local upstream_branch=""
-    local found=0
-    local -a downstream_ids=()
-    local -a downstream_branches=()
-    local -a downstream_prs=()
-    while IFS= read -r t; do
-        [[ -z "$t" ]] && continue
-        if [[ $found -eq 1 ]]; then
-            downstream_ids+=("$t")
-            local b=""
-            local p=""
-            [[ -f "$stack_dir/${t}.branch" ]] && b=$(cat "$stack_dir/${t}.branch")
-            [[ -f "$stack_dir/${t}.pr" ]] && p=$(cat "$stack_dir/${t}.pr")
-            downstream_branches+=("$b")
-            downstream_prs+=("$p")
-            continue
-        fi
-        if [[ "$t" == "$upstream_id" ]]; then
-            found=1
-            [[ -f "$stack_dir/${t}.branch" ]] && upstream_branch=$(cat "$stack_dir/${t}.branch")
-        fi
-    done < "$stack_dir/tasks"
-
-    if [[ $found -eq 0 ]]; then
-        if [[ $explicit -eq 0 ]]; then
-            echo "#${upstream_id} not in agent $agent's stack (current branch isn't part of the active chain); skipping" >&2
-            return 0
-        fi
-        echo "fleet-claim molecule rebase-downstream: #${upstream_id} not in agent $agent's stack" >&2
-        return 1
-    fi
-    if [[ -z "$upstream_branch" ]]; then
-        echo "fleet-claim molecule rebase-downstream: upstream #${upstream_id} has no branch recorded (open its PR via stack-set-pr first)" >&2
-        return 1
-    fi
-    if [[ ${#downstream_ids[@]} -eq 0 ]]; then
-        echo "no downstream tasks for #${upstream_id} (already at the tail of the chain)"
-        return 0
-    fi
-
-    local original_branch
-    original_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
-
-    local -a fetch_refs=("$upstream_branch")
-    local b
-    for b in "${downstream_branches[@]}"; do
-        [[ -n "$b" ]] && fetch_refs+=("$b")
-    done
-    if ! git fetch origin "${fetch_refs[@]}" --quiet; then
-        echo "fleet-claim molecule rebase-downstream: failed to fetch one or more refs (${fetch_refs[*]})" >&2
-        return 1
-    fi
-
-    local rebased=0
-    local skipped=0
-    local conflicted=""
-
-    local i
-    for i in "${!downstream_ids[@]}"; do
-        local task_id="${downstream_ids[$i]}"
-        local branch="${downstream_branches[$i]}"
-        local pr_url="${downstream_prs[$i]}"
-        if [[ -z "$branch" ]]; then
-            echo "skip #${task_id}: no branch recorded (PR not opened yet)"
-            skipped=$((skipped + 1))
-            continue
-        fi
-
-        echo "rebasing #${task_id} ($branch) onto origin/$upstream_branch"
-
-        if ! git checkout -B "$branch" "origin/$branch" --quiet 2>&1; then
-            echo "  failed to checkout $branch — chain pauses" >&2
-            conflicted="$task_id"
-            __rebase_pause_chain "$pr_url" "Auto-rebase onto updated \`$upstream_branch\` could not check out \`$branch\` from origin. \`fleet:blocker\` applied — needs human resolution."
-            break
-        fi
-
-        if ! git rebase "origin/$upstream_branch" --quiet 2>&1; then
-            git rebase --abort 2>/dev/null || true
-            echo "  CONFLICT rebasing $branch onto origin/$upstream_branch — chain pauses here" >&2
-            conflicted="$task_id"
-            __rebase_pause_chain "$pr_url" "Auto-rebase onto updated \`$upstream_branch\` (upstream of #${task_id}) failed: conflict while replaying this branch's commits. Rebase aborted; the PR remains on the prior base. \`fleet:blocker\` applied — needs human resolution before the chain can advance."
-            break
-        fi
-
-        if ! git push --force-with-lease origin "$branch" --quiet 2>&1; then
-            echo "  failed to force-push $branch (lease violation? concurrent edit on origin?) — chain pauses" >&2
-            conflicted="$task_id"
-            __rebase_pause_chain "$pr_url" "Auto-rebase onto updated \`$upstream_branch\` succeeded locally but the force-push was rejected (\`--force-with-lease\` violation — concurrent edit on origin). \`fleet:blocker\` applied — needs human resolution."
-            break
-        fi
-
-        if [[ -n "$pr_url" ]]; then
-            gh pr comment "$pr_url" --body "Auto-rebased onto updated \`$upstream_branch\` tip after upstream review fix. Force-pushed with \`--force-with-lease\`." \
-                || echo "  warn: failed to comment success notice on $pr_url" >&2
-        fi
-
-        rebased=$((rebased + 1))
-    done
-
-    if [[ -n "$original_branch" && "$original_branch" != "HEAD" ]]; then
-        git checkout "$original_branch" --quiet 2>/dev/null || true
-    fi
-
-    if [[ -n "$conflicted" ]]; then
-        local remaining=$(( ${#downstream_ids[@]} - rebased - skipped - 1 ))
-        echo "rebase-downstream paused at #${conflicted}: $rebased rebased, $skipped skipped, $remaining downstream task(s) untouched"
-        return 1
-    fi
-    echo "rebase-downstream complete: $rebased rebased, $skipped skipped"
-    return 0
-}
+# (cmd_molecule_rebase_downstream and its __rebase_pause_chain helper were
+# retired with the native-stacked-PRs migration: in-molecule downstream
+# cascades are `gh stack sync` / GitHub's server-side rebase now. Block
+# preserved at the `pre-native-stacks` tag; see
+# scripts/fleet/legacy/stacked-prs/README.md.)
 
 # --- worktree reservations ------------------------------------------------
 
@@ -4585,7 +4297,7 @@ case "${1:-}" in
     molecule)
         sub="${2:-}"
         if [[ -z "$sub" ]]; then
-            echo "usage: fleet-claim molecule {list|show|resume|advance|complete|rebase-downstream} [args]" >&2
+            echo "usage: fleet-claim molecule {list|show|resume|advance|complete} [args]" >&2
             exit 2
         fi
         case "$sub" in
@@ -4621,16 +4333,9 @@ case "${1:-}" in
                 fi
                 cmd_molecule_complete "$3"
                 ;;
-            rebase-downstream)
-                if [[ -z "${3:-}" ]]; then
-                    echo "usage: fleet-claim molecule rebase-downstream <agent> [issue-number]" >&2
-                    exit 2
-                fi
-                cmd_molecule_rebase_downstream "$3" "${4:-}"
-                ;;
             *)
                 echo "unknown molecule subcommand: $sub" >&2
-                echo "usage: fleet-claim molecule {list|show|resume|advance|complete|rebase-downstream} [args]" >&2
+                echo "usage: fleet-claim molecule {list|show|resume|advance|complete} [args]" >&2
                 exit 2
                 ;;
         esac
@@ -4851,7 +4556,6 @@ molecule commands (crash-recovery state for stack claims):
   molecule resume <agent>                mark next pending → in-progress
   molecule advance <agent> <issue-number> <new-state> [pr=URL] [commit=SHA]
   molecule complete <agent>              archive + release-stack
-  molecule rebase-downstream <agent> [issue-number]
 
 Dependency gate:
   claim and stack read the issue body's `**Blocked by:**` field. Issue

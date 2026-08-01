@@ -65,7 +65,7 @@ Three modes, detected at the start in priority order:
    One PR per task, chained by `--base`. Detected via `<claim-tool>
    stack-pr-state <worktree>`. See the **procedures** `fleet-stack.md` for
    the deltas (issue-number-prefixed branch name, `stack-base` lookup,
-   stacked label, `stack-set-pr` + native-stack link after PR open).
+   `stack-set-pr` + native-stack link after PR open).
 2. **Cursor stack mode** — current branch has `branch.<name>.cursor-stack-base`
    git config (written by `start-next-task` when the human cued stacking).
    PRs target the parent branch instead of the default branch. See the
@@ -73,8 +73,7 @@ Three modes, detected at the start in priority order:
 3. **Single-task mode (default)** — neither stack signal. The base is
    resolved via `<claim-tool> claim-base <issue#>`: the default branch for a
    normal claim or a plain human PR, or the blocker's branch for an
-   opportunistic stackable claim (which also gets the stacked label). See
-   the **procedures** `stackable-on.md`.
+   opportunistic stackable claim. See the **procedures** `stackable-on.md`.
 
 The modes are mutually exclusive and checked in this order. In single-task
 mode ignore the stack-mode procedures; the PR-body template and the
@@ -282,10 +281,9 @@ common no-screenshot case.
 
 For the **single-task flow** (default), resolve the base via `<claim-tool>
 claim-base` — the **default branch** for a normal claim or plain human PR
-(common case below), or the blocker's branch for a stackable claim (also
-gets the stacked label). The idempotent edit-or-create and the post-open
-native-stack link live in the **procedures** `stackable-on.md` /
-`native-stack-link.md`. Common case:
+(common case below), or the blocker's branch for a stackable claim. The
+idempotent edit-or-create and the post-open native-stack link live in the
+**procedures** `stackable-on.md` / `native-stack-link.md`. Common case:
 
 ```bash
 pr_body="$(cat <<'EOF'
@@ -318,9 +316,8 @@ WIP PRs. Use the WIP label only in the fleet-worker lane (claim/early-work
 PRs until the author removes it for review pickup). Step 8b's host label is
 unrelated and still applies.
 
-**Fleet stack override** and **cursor stack override** apply their base +
-label + `Stack context` body deltas per the **procedures** `fleet-stack.md`
-/ `cursor-stack.md`.
+**Fleet stack override** and **cursor stack override** apply their base
+deltas per the **procedures** `fleet-stack.md` / `cursor-stack.md`.
 
 ### 8a. Cross-check `Closes #N` before PR creation
 

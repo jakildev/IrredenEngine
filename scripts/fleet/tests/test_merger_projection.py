@@ -227,11 +227,15 @@ class SignalSemantics(unittest.TestCase):
                                             mergeable="CONFLICTING")]))
         self.assertEqual(items[0]["signal"], "needs-resolve")
 
-    def test_approved_stacked_is_stacked_pending(self):
+    def test_approved_stacked_projects_nothing(self):
+        # Native-stacked-PRs migration: an approved MERGEABLE PR whose base
+        # is a feature branch is a native-stack child — GitHub owns its base
+        # management and the human merges it from the stack UI, so the
+        # merger has no action (the legacy "stacked-pending" signal retired).
         items = project_merger(_state([_pr(101, labels=[
-            "fleet:approved", "fleet:stacked",
+            "fleet:approved",
         ], base="claude/parent")]))
-        self.assertEqual(items[0]["signal"], "stacked-pending")
+        self.assertEqual(items, [])
 
     def test_unapproved_is_dropped(self):
         items = project_merger(_state([_pr(101, labels=[])]))
