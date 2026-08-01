@@ -201,8 +201,10 @@ _freshness_warn() {
     # standing signal — hence rewritten every tick past N, not stamped once at
     # it. Write-once would freeze count= at the escalation instant, and would
     # let a human triaging the alerts inbox silence a still-live condition
-    # forever (warns stay suppressed, so nothing recreates the file). Same shape
-    # as fleet-rebase's escalate_if_hung_lock (#2362).
+    # forever (warns stay suppressed, so nothing recreates the file). Only the
+    # flat one-line alert artifact is shared with fleet-rebase's
+    # `fleet-rebase-hung-lock` (#2362); the counter/quiet cycle around it is
+    # this function's own (see #2795).
     if (( count == n )); then
         echo "$msg" >&2
         echo "fleet-clone-freshness: ESCALATION — $root has skipped its advance $count consecutive times (reason=$reason branch='$branch') since $since. Wrote $alert. Remedy: $remedy. Suppressing further identical warns until the condition clears." >&2
