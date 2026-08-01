@@ -16,8 +16,8 @@
 // workgroup early-returns) when the compact classified zero feeders, so no
 // `feederSubCap_ > 0` guard is needed (feederSubCap() floors at cappedEffSub and
 // never returns 0). The visible twin is c_voxel_to_trixel_stage_1.glsl
-// (IR_FEEDER_PASS 0). Includes come BEFORE the body (non-recursive GLSL include
-// resolver); see the body file's header for the idiom.
+// (IR_FEEDER_PASS 0). Includes come BEFORE the body (the body declares no
+// #includes of its own); see the body file's header for the idiom.
 #version 450 core
 #define IR_FEEDER_PASS 1
 #define IR_STORE_WINNER_ELECTION 0

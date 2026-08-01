@@ -11,8 +11,11 @@
 // This is an include-FRAGMENT, not a standalone shader: the thin wrappers
 // supply the `#version`, the `#define IR_STORE_WINNER_ELECTION {0|1}`, and the
 // prerequisite includes, then `#include` this body. GLSL's include resolver is
-// non-recursive, so this file lists NO `#include`s of its own — each wrapper
-// MUST include, IN THIS ORDER and with the macro defined FIRST, before it:
+// now recursive with a visited-set cycle guard (mirroring Metal's
+// `loadAndPreprocessMetalSource`), so a fragment MAY now self-include its own
+// prerequisites — this file still lists NO `#include`s of its own (no churn
+// to the existing chain) and each wrapper MUST include, IN THIS ORDER and
+// with the macro defined FIRST, before it:
 //   #define IR_STORE_WINNER_ELECTION {0|1}
 //   #define IR_VOXEL_FOG_GRID_BINDING 3
 //   #include "ir_iso_common.glsl"

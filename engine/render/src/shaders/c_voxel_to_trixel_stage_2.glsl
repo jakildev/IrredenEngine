@@ -12,9 +12,9 @@
 // compiles the body with the cardinal winner guard textually absent, so this
 // is byte-for-byte master's stage-2 kernel — no runtime predication tax. The
 // winner-guarded twin is c_voxel_to_trixel_stage_2_winner.glsl (ELECTION 1).
-// Includes come BEFORE the body because GLSL's include resolver is
-// non-recursive (the body declares no #includes of its own). See the body
-// file's header for the idiom.
+// Includes come BEFORE the body because the body declares no #includes of its
+// own (the resolver is recursive since #2514; the chain is kept as-is to avoid
+// churn). See the body file's header for the idiom.
 #version 450 core
 #define IR_STORE_WINNER_ELECTION 0
 #include "ir_iso_common.glsl"

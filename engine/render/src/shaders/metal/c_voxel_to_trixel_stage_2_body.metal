@@ -11,8 +11,9 @@
 //     dispatch: every cardinal colour/entity-id tap additionally requires
 //     `perAxisWinnerIds[cell] == voxelIndex`, run in place of the default when
 //     the ticking pool's storeTiesPossible_ flag is set)
-// Metal's loadAndPreprocessMetalSource IS recursive, but the body is kept
-// include-free to mirror the (non-recursive) GLSL idiom.
+// Both resolvers are recursive (Metal's loadAndPreprocessMetalSource, and
+// GLSL's resolveShaderIncludes since #2514), but the body is kept include-free
+// to mirror the GLSL twin's wrapper-supplied chain.
 
 // Stage 2 of the voxel→trixel pipeline: each surviving voxel re-evaluates the
 // canvas distance scratch buffer (populated by stage 1) and, on a depth

@@ -305,8 +305,11 @@ this needs zero engine infra:
 
 1. **Extract the body** into `c_voxel_to_trixel_stage_1_body.{glsl,metal}` — an
    include-**fragment** (no `#version`, and on the GLSL side no `#include`s,
-   since the GLSL resolver is non-recursive; the body lists its prerequisites in
-   a header comment — the `ir_sun_shadow_sample.glsl` idiom).
+   since the GLSL resolver was non-recursive when this was written; the body
+   lists its prerequisites in a header comment — the `ir_sun_shadow_sample.glsl`
+   idiom). #2514 later made the resolver recursive with a visited-set cycle
+   guard, so the body *may* now self-include; it stays include-free to avoid
+   churn.
 2. **Two thin wrappers** supply the `#version` + `#define IR_FEEDER_PASS {0|1}` +
    the prerequisite includes, then `#include` the body:
    `c_voxel_to_trixel_stage_1.{glsl,metal}` (IR_FEEDER_PASS 0 = visible) and

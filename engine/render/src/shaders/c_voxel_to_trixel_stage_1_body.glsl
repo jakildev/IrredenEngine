@@ -11,10 +11,12 @@
 // include-FRAGMENT, not a standalone shader: the thin wrappers supply the
 // `#version`, the `#define IR_FEEDER_PASS {0|1}`, the
 // `#define IR_STORE_WINNER_ELECTION {0|1}`, and the prerequisite includes,
-// then `#include` this body. GLSL's include resolver is non-recursive
-// (opengl_shader.cpp `resolveShaderIncludes` pastes verbatim, no re-scan), so
-// this file lists NO `#include`s of its own — each wrapper MUST include, IN
-// THIS ORDER and with both macros defined FIRST, before it (the
+// then `#include` this body. GLSL's include resolver is now recursive with a
+// visited-set cycle guard (opengl_shader.cpp `resolveShaderIncludes`,
+// mirroring Metal's `loadAndPreprocessMetalSource`), so a fragment MAY now
+// self-include its own prerequisites — this file still lists NO `#include`s
+// of its own (no churn to the existing chain) and each wrapper MUST include,
+// IN THIS ORDER and with both macros defined FIRST, before it (the
 // ir_sun_shadow_sample.glsl idiom):
 //   #define IR_FEEDER_PASS {0|1}
 //   #define IR_STORE_WINNER_ELECTION {0|1}

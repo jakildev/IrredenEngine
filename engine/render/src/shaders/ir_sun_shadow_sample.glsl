@@ -7,8 +7,8 @@
 // sun-shadow consumers recompile and the SDF / voxel / scatter shaders keep
 // their cardinal-yaw byte-identity (same rationale as ir_per_axis_lighting.glsl).
 //
-// Requires ir_sun_projection.glsl included FIRST by the top-level shader (the
-// GLSL include resolver is non-recursive): the map-dim constants, the shared
+// Requires ir_sun_projection.glsl included FIRST by the top-level shader (this
+// file does not include it itself): the map-dim constants, the shared
 // sunSpaceProject basis, unpackSunDepth, and sunCascadeKernelInterior all
 // live there so the caster bake and this receiver lookup share one source
 // (#2083).

@@ -2,19 +2,24 @@
 #include <irreden/ir_utility.hpp>
 
 #include <irreden/render/ir_gl_api.hpp>
+#include <irreden/render/opengl/opengl_shader.hpp>
 #include <irreden/render/opengl/opengl_types.hpp>
 #include <irreden/render/shader.hpp>
 
 #include <filesystem>
 #include <sstream>
+#include <unordered_set>
 
 namespace IRRender {
 
 namespace detail {
 
-std::string resolveShaderIncludes(
+namespace {
+
+std::string resolveShaderIncludesRecursive(
     const std::string &source,
-    const std::filesystem::path &baseDir
+    const std::filesystem::path &baseDir,
+    std::unordered_set<std::string> &visited
 ) {
     std::istringstream stream(source);
     std::ostringstream result;
@@ -30,13 +35,38 @@ std::string resolveShaderIncludes(
             if (closeQuote != std::string::npos) {
                 std::string filename = trimmed.substr(10, closeQuote - 10);
                 std::filesystem::path includePath = baseDir / filename;
-                result << IRUtility::readFileAsString(includePath.string()) << "\n";
+                const std::string canonical =
+                    std::filesystem::weakly_canonical(includePath).string();
+                if (visited.count(canonical) == 0) {
+                    visited.insert(canonical);
+                    std::string includeSource = IRUtility::readFileAsString(includePath.string());
+                    result << resolveShaderIncludesRecursive(
+                                  includeSource,
+                                  includePath.parent_path(),
+                                  visited
+                              )
+                           << "\n";
+                }
                 continue;
             }
         }
         result << line << "\n";
     }
     return result.str();
+}
+
+} // namespace
+
+std::string resolveShaderIncludes(
+    const std::string &source,
+    const std::filesystem::path &baseDir,
+    const std::filesystem::path &sourceFilepath
+) {
+    std::unordered_set<std::string> visited;
+    if (!sourceFilepath.empty()) {
+        visited.insert(std::filesystem::weakly_canonical(sourceFilepath).string());
+    }
+    return resolveShaderIncludesRecursive(source, baseDir, visited);
 }
 
 } // namespace detail
@@ -53,7 +83,8 @@ class OpenGLShaderPipelineImpl final : public ShaderPipelineImpl {
             std::string rawSource = IRUtility::readFileAsString(stage.getFilepath());
             std::filesystem::path shaderDir =
                 std::filesystem::path(stage.getFilepath()).parent_path();
-            std::string source = detail::resolveShaderIncludes(rawSource, shaderDir);
+            std::string source =
+                detail::resolveShaderIncludes(rawSource, shaderDir, stage.getFilepath());
             const char *sourcePtr = source.c_str();
             ENG_API->glShaderSource(shader, 1, &sourcePtr, nullptr);
             ENG_API->glCompileShader(shader);
@@ -108,7 +139,8 @@ class OpenGLShaderPipelineImpl final : public ShaderPipelineImpl {
     GLuint m_handle = 0;
 };
 
-std::unique_ptr<ShaderPipelineImpl> createShaderPipelineImpl(const std::vector<ShaderStage> &stages) {
+std::unique_ptr<ShaderPipelineImpl>
+createShaderPipelineImpl(const std::vector<ShaderStage> &stages) {
     return std::make_unique<OpenGLShaderPipelineImpl>(stages);
 }
 

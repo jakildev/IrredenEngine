@@ -175,9 +175,12 @@ de-inline) to the sun axis: same dot-product basis everywhere, only the
 projection axis parameterizes. The depth pack/unpack pair
 (`packSunDepth`/`unpackSunDepth`) is co-located in the same include — before
 #2083 the pack lived in the bake and the unpack in the sample include,
-synced only by hand (a caster-vs-receiver drift channel). GLSL caveat: the
-include resolver is non-recursive, so top-level shaders include
-`ir_sun_projection.glsl` **before** `ir_sun_shadow_sample.glsl`.
+synced only by hand (a caster-vs-receiver drift channel). GLSL caveat (as of
+#2083): the include resolver was non-recursive, so top-level shaders include
+`ir_sun_projection.glsl` **before** `ir_sun_shadow_sample.glsl`. #2514 made the
+resolver recursive with a visited-set cycle guard; that ordering still holds,
+but as a chain convention (`ir_sun_shadow_sample.glsl` does not include its own
+prerequisite) rather than a resolver limit.
 
 ### Cascade coverage contract
 

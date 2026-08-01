@@ -13,8 +13,9 @@
 // this is byte-for-byte master's stage-1 kernel — no runtime `feederPass`
 // predication tax on the hottest kernel in the engine. The feeder twin is
 // c_voxel_to_trixel_stage_1_feeder.glsl (IR_FEEDER_PASS 1). Includes come
-// BEFORE the body because GLSL's include resolver is non-recursive (the body
-// declares no #includes of its own). See the body file's header for the idiom.
+// BEFORE the body because the body declares no #includes of its own (the
+// resolver is recursive since #2514; the chain is kept as-is to avoid churn).
+// See the body file's header for the idiom.
 #version 450 core
 #define IR_FEEDER_PASS 0
 #define IR_STORE_WINNER_ELECTION 0

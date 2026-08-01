@@ -17,7 +17,7 @@
 // twin of #2255's writeColorTapPerAxis guard. Dispatched in place of the
 // default stage 2 ONLY when the ticking pool's storeTiesPossible_ flag is set;
 // lattice scenes keep the default kernel. Includes come BEFORE the body
-// (non-recursive GLSL include resolver); see the body file's header.
+// (the body declares no #includes of its own); see the body file's header.
 #version 450 core
 #define IR_STORE_WINNER_ELECTION 1
 #include "ir_iso_common.glsl"
