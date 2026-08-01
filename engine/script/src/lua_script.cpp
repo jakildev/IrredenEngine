@@ -169,27 +169,69 @@ LuaFieldSchema buildFieldSchema(
     return s;
 }
 
-// Add a dynamic (Lua-registered / codegen'd) component to `entity` by
-// ComponentId and, when `overrides` is present, write its fields from the
-// table. Shared by the eager `IREntity.addLuaComponent` binding and the
-// deferred `IREntity.deferredCreate` attach path.
-void attachDynamicComponent(
-    IREntity::EntityManager &em,
+} // namespace
+
+std::string LuaScript::componentDisplayName(IREntity::ComponentId componentId) const {
+    auto it = m_componentLuaName.find(componentId);
+    if (it != m_componentLuaName.end()) {
+        return "'" + it->second + "'";
+    }
+    return "component id " + std::to_string(componentId);
+}
+
+void LuaScript::attachComponentFromLua(
     IREntity::EntityId entity,
     IREntity::ComponentId componentId,
     const sol::optional<sol::table> &overrides
 ) {
-    em.addComponentDynamic(entity, componentId);
-    if (!overrides) {
+    // C++-typed (codegen'd) component: the emitted factory default-
+    // constructs the struct, applies the overrides field-by-field, and
+    // attaches through the templated `setComponent<T>`. Checked first
+    // because a codegen'd component in coexistence mode is reachable under
+    // the same Lua name as its EVAL counterpart.
+    auto factory = m_componentAttachFactories.find(componentId);
+    if (factory != m_componentAttachFactories.end()) {
+        factory->second(entity, overrides);
         return;
     }
-    auto [data, row] = em.getComponentDataAndRow(entity, componentId);
-    IR_ASSERT(data != nullptr, "attachDynamicComponent: post-add lookup failed");
-    auto *typed = static_cast<IComponentDataLuaTyped *>(data);
-    typed->writeRowFromTable(row, *overrides);
+
+    // Lua-typed component: `IComponentDataLuaTyped` supports a default row,
+    // so the entity core can append one and the overrides write per field.
+    if (m_luaTypedComponentIds.find(componentId) != m_luaTypedComponentIds.end()) {
+        auto &em = IREntity::getEntityManager();
+        em.addComponentDynamic(entity, componentId);
+        if (!overrides) {
+            return;
+        }
+        auto [data, row] = em.getComponentDataAndRow(entity, componentId);
+        IR_ASSERT(data != nullptr, "attachComponentFromLua: post-add lookup failed");
+        auto *typed = static_cast<IComponentDataLuaTyped *>(data);
+        typed->writeRowFromTable(row, *overrides);
+        return;
+    }
+
+    throw sol::error{
+        "IREntity attach: " + componentDisplayName(componentId) +
+        " cannot be attached from Lua. Components declared with IRComponent.register attach "
+        "directly; codegen'd components require registerCodegenComponents() to have run first; "
+        "any other C++-bound component must be attached from C++ via the templated "
+        "setComponent<T>(entity, value)."
+    };
 }
 
-} // namespace
+void LuaScript::requireLuaTypedComponent(
+    IREntity::ComponentId componentId, const char *accessor
+) const {
+    if (m_luaTypedComponentIds.find(componentId) != m_luaTypedComponentIds.end()) {
+        return;
+    }
+    throw sol::error{
+        std::string{accessor} + ": " + componentDisplayName(componentId) +
+        " is a C++-typed component, not an IRComponent.register one — the Lua field accessors do "
+        "not support it. Read or write it from a system tick's archetype column view, or from "
+        "C++ via the templated getComponent<T> / setComponent<T>."
+    };
+}
 
 // lua_dofile runs a lua script. Global functions and variables
 // can be accessed via the lua stack.
@@ -477,6 +519,12 @@ void LuaScript::bindLuaDrivenEcs() {
             "isComponentRegistered check)",
             componentName.c_str()
         );
+        // The `IComponentDataLuaTyped` impl just registered is the only
+        // thing that makes the cast in the attach / field accessors sound.
+        // The coexistence carve-out deliberately never reaches here — it
+        // hands back an already-registered C++-typed handle.
+        m_luaTypedComponentIds.insert(componentId);
+        m_componentLuaName.emplace(componentId, componentName);
 
         sol::table handle = m_lua.create_table();
         handle["typeName"] = componentName;
@@ -546,12 +594,13 @@ void LuaScript::bindLuaDrivenEcs() {
                                                sol::optional<sol::table> overrides
                                            ) {
         const IREntity::ComponentId componentId = componentDef.get<lua_Integer>("componentId");
-        attachDynamicComponent(IREntity::getEntityManager(), entity.entity, componentId, overrides);
+        attachComponentFromLua(entity.entity, componentId, overrides);
     };
 
     m_lua["IREntity"]["getLuaComponent"] =
         [this](IRScript::LuaEntity entity, sol::table componentDef) -> sol::object {
         const IREntity::ComponentId componentId = componentDef.get<lua_Integer>("componentId");
+        requireLuaTypedComponent(componentId, "getLuaComponent");
         auto &em = IREntity::getEntityManager();
         auto [data, row] = em.getComponentDataAndRow(entity.entity, componentId);
         if (!data)
@@ -585,8 +634,13 @@ void LuaScript::bindLuaDrivenEcs() {
     // optional array of `{ componentDef, overridesTableOrNil }` entries:
     // `componentDef` is the table from `IRComponent.register` / a codegen'd
     // component binding (it carries `componentId`), and the optional overrides
-    // are applied exactly like `addLuaComponent`. Both Lua-registered and
-    // codegen'd components share the ComponentId space, so either attaches.
+    // are applied exactly like `addLuaComponent`. Lua-registered and codegen'd
+    // components attach through different mechanisms — a default row for the
+    // former, the #2446 attach factory for the latter — but both are routed by
+    // `attachComponentFromLua`, so either spelling attaches here. A component
+    // that is neither (a C++-bound type with no attach factory) is rejected at
+    // marshal time, naming the offending entry's index: the attach itself runs
+    // inside the flush drain, where a raise would have no Lua context.
     m_lua["IREntity"]["deferredCreate"] =
         [this](sol::optional<sol::table> componentList) -> IREntity::EntityId {
         auto &em = IREntity::getEntityManager();
@@ -601,17 +655,31 @@ void LuaScript::bindLuaDrivenEcs() {
             for (std::size_t i = 1; i <= count; ++i) {
                 sol::table entry = componentList->get<sol::table>(i);
                 sol::table componentDef = entry.get<sol::table>(1);
-                pending.emplace_back(
-                    componentDef.get<lua_Integer>("componentId"),
-                    entry.get<sol::optional<sol::table>>(2)
-                );
+                const IREntity::ComponentId componentId =
+                    componentDef.get<lua_Integer>("componentId");
+                if (!isLuaAttachable(componentId)) {
+                    throw sol::error{
+                        "IREntity.deferredCreate: componentList entry " + std::to_string(i) +
+                        " is " + componentDisplayName(componentId) +
+                        ", which cannot be attached from Lua. Components declared with "
+                        "IRComponent.register attach directly; codegen'd components require "
+                        "registerCodegenComponents() to have run first; any other C++-bound "
+                        "component must be attached from C++ via the templated "
+                        "setComponent<T>(entity, value)."
+                    };
+                }
+                pending.emplace_back(componentId, entry.get<sol::optional<sol::table>>(2));
             }
         }
         const IREntity::EntityId entity = em.createEntityDeferred();
-        em.stageStructuralChange([entity, pending = std::move(pending)]() {
-            auto &mgr = IREntity::getEntityManager();
+        // Capturing `this` is sound for the queue's whole lifetime: the queue
+        // is an EntityManager member and World declares m_lua ahead of
+        // m_entityManager, so the manager — and every lambda staged on it —
+        // is destroyed while the LuaScript is still alive. That member order
+        // is load-bearing; see the comment on it in world.hpp before moving it.
+        em.stageStructuralChange([this, entity, pending = std::move(pending)]() {
             for (const auto &[componentId, overrides] : pending) {
-                attachDynamicComponent(mgr, entity, componentId, overrides);
+                attachComponentFromLua(entity, componentId, overrides);
             }
         });
         return entity;
@@ -675,6 +743,7 @@ void LuaScript::bindLuaDrivenEcs() {
     m_lua["IREntity"]["getLuaField"] =
         [this](IRScript::LuaEntity entity, sol::table componentDef, int fieldIndex) -> sol::object {
         const IREntity::ComponentId componentId = componentDef.get<lua_Integer>("componentId");
+        requireLuaTypedComponent(componentId, "getLuaField");
         auto &em = IREntity::getEntityManager();
         auto [data, row] = em.getComponentDataAndRow(entity.entity, componentId);
         if (!data)
@@ -696,6 +765,7 @@ void LuaScript::bindLuaDrivenEcs() {
                                            sol::object value
                                        ) {
         const IREntity::ComponentId componentId = componentDef.get<lua_Integer>("componentId");
+        requireLuaTypedComponent(componentId, "setLuaField");
         auto &em = IREntity::getEntityManager();
         auto [data, row] = em.getComponentDataAndRow(entity.entity, componentId);
         if (!data)

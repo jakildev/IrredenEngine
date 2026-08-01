@@ -204,6 +204,173 @@ TEST_F(LuaComponentCodegenTest, LuaFieldAccessorReturnsValue) {
     EXPECT_EQ(max, 11);
 }
 
+// ---- #2446: Lua attach path for codegen'd components -----------------------
+
+TEST_F(LuaComponentCodegenTest, AddLuaComponentAttachesCodegenComponentWithOverrides) {
+    auto &lua = m_lua.lua();
+    const IREntity::EntityId e = IREntity::createEntity();
+    lua["testEntity"] = IRScript::LuaEntity{e};
+    auto result = lua.safe_script(R"lua(
+        IREntity.addLuaComponent(testEntity, IRComponent.CodegenHp, { current = 42 })
+    )lua");
+    ASSERT_TRUE(result.valid()) << sol::error{result}.what();
+
+    auto &hp = IREntity::getComponent<IRComponents::C_CodegenHp>(e);
+    EXPECT_EQ(hp.current_, 42);
+    // Untouched fields keep the schema default rather than a zeroed row.
+    EXPECT_EQ(hp.max_, 100);
+}
+
+TEST_F(LuaComponentCodegenTest, AddLuaComponentHonorsVec3Override) {
+    auto &lua = m_lua.lua();
+    const IREntity::EntityId e = IREntity::createEntity();
+    lua["testEntity"] = IRScript::LuaEntity{e};
+    auto result = lua.safe_script(R"lua(
+        IREntity.addLuaComponent(testEntity, IRComponent.CodegenTransform, {
+            position = { x = 1.25, y = 2.5, z = 3.75 },
+        })
+    )lua");
+    ASSERT_TRUE(result.valid()) << sol::error{result}.what();
+
+    auto &t = IREntity::getComponent<IRComponents::C_CodegenTransform>(e);
+    EXPECT_FLOAT_EQ(t.position_.x, 1.25f);
+    EXPECT_FLOAT_EQ(t.position_.y, 2.5f);
+    EXPECT_FLOAT_EQ(t.position_.z, 3.75f);
+    // The omitted ivec3 field keeps its schema default.
+    EXPECT_EQ(t.cell_.x, 4);
+    EXPECT_EQ(t.cell_.y, 5);
+    EXPECT_EQ(t.cell_.z, 6);
+}
+
+TEST_F(LuaComponentCodegenTest, AddLuaComponentWithNoOverridesUsesSchemaDefaults) {
+    auto &lua = m_lua.lua();
+    const IREntity::EntityId e = IREntity::createEntity();
+    lua["testEntity"] = IRScript::LuaEntity{e};
+    auto result = lua.safe_script("IREntity.addLuaComponent(testEntity, IRComponent.CodegenHp)");
+    ASSERT_TRUE(result.valid()) << sol::error{result}.what();
+
+    auto &hp = IREntity::getComponent<IRComponents::C_CodegenHp>(e);
+    EXPECT_EQ(hp.current_, 100);
+    EXPECT_EQ(hp.max_, 100);
+}
+
+TEST_F(LuaComponentCodegenTest, DeferredCreateMaterializesCodegenComponent) {
+    auto &lua = m_lua.lua();
+    auto result = lua.safe_script(R"lua(
+        return IREntity.deferredCreate({ { IRComponent.CodegenHp, { current = 30 } } })
+    )lua");
+    ASSERT_TRUE(result.valid()) << sol::error{result}.what();
+    const auto entity = result.get<IREntity::EntityId>();
+
+    m_entity_manager.flushStructuralChanges();
+
+    auto &hp = IREntity::getComponent<IRComponents::C_CodegenHp>(entity);
+    EXPECT_EQ(hp.current_, 30);
+    EXPECT_EQ(hp.max_, 100);
+}
+
+// Negative case with a positive control in the same test: a C++-bound
+// component with no attach factory must raise a Lua error naming the
+// supported path (not the raw `appendDefaultRow` engine assertion), while the
+// codegen'd control attaches in the same script.
+TEST_F(LuaComponentCodegenTest, AttachWithoutFactoryRaisesActionableLuaError) {
+    auto &lua = m_lua.lua();
+    const IREntity::EntityId e = IREntity::createEntity();
+    lua["testEntity"] = IRScript::LuaEntity{e};
+
+    // Positive control: the codegen'd component still attaches.
+    auto control =
+        lua.safe_script("IREntity.addLuaComponent(testEntity, IRComponent.CodegenScore)");
+    ASSERT_TRUE(control.valid()) << sol::error{control}.what();
+    EXPECT_EQ(IREntity::getComponent<IRComponents::C_CodegenScore>(e).value_, 0);
+
+    // A component id the LuaScript never saw — the shape a hand-written
+    // C++-bound component (no `registerComponentAttachFactory`) presents.
+    lua["unattachable"] = lua.create_table_with(
+        "typeName",
+        "NotAttachable",
+        "componentId",
+        static_cast<lua_Integer>(m_entity_manager.getComponentType<ArchetypeMoveCodegenMarker>())
+    );
+    auto result = lua.safe_script(
+        "IREntity.addLuaComponent(testEntity, unattachable)",
+        sol::script_pass_on_error
+    );
+    ASSERT_FALSE(result.valid());
+    const std::string message = sol::error{result}.what();
+    EXPECT_NE(message.find("setComponent<T>"), std::string::npos) << message;
+    EXPECT_EQ(message.find("appendDefaultRow"), std::string::npos)
+        << "the raw engine assertion should be unreachable from Lua: " << message;
+}
+
+// deferredCreate rejects an ineligible entry at the call site, naming the
+// entry index — a raise inside the flush drain would have no Lua context.
+TEST_F(LuaComponentCodegenTest, DeferredCreateRejectsIneligibleEntryAtCallSite) {
+    auto &lua = m_lua.lua();
+    lua["unattachable"] = lua.create_table_with(
+        "typeName",
+        "NotAttachable",
+        "componentId",
+        static_cast<lua_Integer>(m_entity_manager.getComponentType<ArchetypeMoveCodegenMarker>())
+    );
+    auto result = lua.safe_script(
+        R"lua(
+            return IREntity.deferredCreate({
+                { IRComponent.CodegenHp },
+                { unattachable },
+            })
+        )lua",
+        sol::script_pass_on_error
+    );
+    ASSERT_FALSE(result.valid());
+    const std::string message = sol::error{result}.what();
+    EXPECT_NE(message.find("entry 2"), std::string::npos) << message;
+
+    // The rejection happened before any structural change was staged.
+    m_entity_manager.flushStructuralChanges();
+}
+
+// The `IREntity.*Lua*` field accessors `static_cast` to IComponentDataLuaTyped;
+// reaching that cast with a codegen'd (C++-typed) component is UB. Each
+// accessor must raise instead.
+TEST_F(LuaComponentCodegenTest, FieldAccessorsRejectCodegenComponent) {
+    auto &lua = m_lua.lua();
+    const IREntity::EntityId e = IREntity::createEntity();
+    lua["testEntity"] = IRScript::LuaEntity{e};
+    ASSERT_TRUE(
+        lua.safe_script("IREntity.addLuaComponent(testEntity, IRComponent.CodegenHp)").valid()
+    );
+
+    for (const char *script :
+         {"IREntity.getLuaComponent(testEntity, IRComponent.CodegenHp)",
+          "IREntity.getLuaField(testEntity, IRComponent.CodegenHp, 0)",
+          "IREntity.setLuaField(testEntity, IRComponent.CodegenHp, 0, 5)"}) {
+        auto result = lua.safe_script(script, sol::script_pass_on_error);
+        ASSERT_FALSE(result.valid()) << script;
+        const std::string message = sol::error{result}.what();
+        EXPECT_NE(message.find("C++-typed component"), std::string::npos)
+            << script << ": " << message;
+    }
+}
+
+// removeLuaComponent / hasLuaComponent are id-generic (no cast), so they work
+// on a codegen'd component unchanged — verified rather than guarded.
+TEST_F(LuaComponentCodegenTest, RemoveLuaComponentDetachesCodegenComponent) {
+    auto &lua = m_lua.lua();
+    const IREntity::EntityId e = IREntity::createEntity();
+    lua["testEntity"] = IRScript::LuaEntity{e};
+    auto result = lua.safe_script(R"lua(
+        IREntity.addLuaComponent(testEntity, IRComponent.CodegenHp)
+        local attached = IREntity.hasLuaComponent(testEntity, IRComponent.CodegenHp)
+        IREntity.removeLuaComponent(testEntity, IRComponent.CodegenHp)
+        return attached, IREntity.hasLuaComponent(testEntity, IRComponent.CodegenHp)
+    )lua");
+    ASSERT_TRUE(result.valid()) << sol::error{result}.what();
+    auto [attached, stillAttached] = result.get<std::tuple<bool, bool>>();
+    EXPECT_TRUE(attached);
+    EXPECT_FALSE(stillAttached);
+}
+
 // ---- Schema-error coverage (subprocess invocation) -------------------------
 
 // #1403: CodegenDevice.kind defaults to CodegenDeviceType.SYNTH (0-based

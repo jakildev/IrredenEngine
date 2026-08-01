@@ -138,6 +138,32 @@ std::string escapeStringLiteral(std::string_view s) {
     return out;
 }
 
+// One field's override read inside an emitted attach factory. Scalars
+// read through `sol::optional<T>` so a missing key or a type-mismatched value
+// leaves the schema default in place — the same silently-ignore contract
+// `IComponentDataLuaTyped::writeRowFromTable` documents for the EVAL path.
+// Packed vec3 / ivec3 have no single `sol::optional` spelling (they accept an
+// { x, y, z } table or an IRMath userdata), so they test for a non-nil value
+// and hand it to the shared IRScript converter.
+void emitAttachFieldRead(std::ostream &os, const Field &f, const char *indent) {
+    const std::string key = escapeStringLiteral(f.name_);
+    if (f.type_ == FieldType::VEC3 || f.type_ == FieldType::IVEC3) {
+        const char *converter = f.type_ == FieldType::VEC3 ? "vec3FromLua" : "ivec3FromLua";
+        os << indent << "{\n";
+        os << indent << "    sol::object raw = fields->get<sol::object>(" << key << ");\n";
+        os << indent << "    if (raw.valid() && raw.get_type() != sol::type::lua_nil) {\n";
+        os << indent << "        value." << f.name_ << "_ = IRScript::" << converter << "(raw);\n";
+        os << indent << "    }\n";
+        os << indent << "}\n";
+        return;
+    }
+    const std::string cppType = fieldCppType(f.type_);
+    os << indent << "if (sol::optional<" << cppType << "> v = fields->get<sol::optional<"
+       << cppType << ">>(" << key << ")) {\n";
+    os << indent << "    value." << f.name_ << "_ = *v;\n";
+    os << indent << "}\n";
+}
+
 // Render a float as a valid C++ float literal — always with a decimal point
 // before the `f` suffix (`100f` is a parse error; `100.f` is fine).
 std::string renderFloatLiteral(float v) {
@@ -720,10 +746,12 @@ void writeOutput(
 
     os << "#include <cstdint>\n";
     os << "#include <string>\n";
+    os << "#include <utility>\n";
     os << "#include <vector>\n\n";
     os << "#include <irreden/ir_entity.hpp>\n";
     os << "#include <irreden/ir_math.hpp>\n";
     os << "#include <irreden/ir_system.hpp>\n";
+    os << "#include <irreden/script/ir_script_utils.hpp>\n";
     os << "#include <irreden/script/lua_binding_traits.hpp>\n";
     os << "#include <irreden/script/lua_script.hpp>\n";
     os << "#include <irreden/system/ir_system_types.hpp>\n";
@@ -808,6 +836,33 @@ void writeOutput(
             os << "        &" << structName << "::" << f.name_ << "_";
         }
         os << "\n    );\n";
+        // #2446: the Lua attach path for this component. `addComponentDynamic`
+        // refuses to append a default row for a C++-typed impl (some engine
+        // components have deleted default ctors), and applying the overrides
+        // table needs per-field typed writes that only the codegen — which
+        // knows the field set — can supply. So the factory owns both halves:
+        // default-construct, write whichever overrides are present, attach via
+        // the templated `setComponent<T>`. Registered here rather than in
+        // `registerCodegenComponents` because `bindLuaType<C_X>` is unique per
+        // component, and that registry function must stay small enough to
+        // inline.
+        os << "    luaScript.registerComponentAttachFactory(\n";
+        os << "        IREntity::getEntityManager().getComponentType<" << structName << ">(),\n";
+        // A fieldless component has nothing to read, so the overrides
+        // parameter goes unnamed rather than unused.
+        os << "        [](IREntity::EntityId entity, const sol::optional<sol::table> &"
+           << (c.fields_.empty() ? "" : "fields") << ") {\n";
+        os << "            " << structName << " value{};\n";
+        if (!c.fields_.empty()) {
+            os << "            if (fields) {\n";
+            for (const auto &f : c.fields_) {
+                emitAttachFieldRead(os, f, "                ");
+            }
+            os << "            }\n";
+        }
+        os << "            IREntity::setComponent(entity, std::move(value));\n";
+        os << "        }\n";
+        os << "    );\n";
         os << "}\n\n";
     }
     os << "} // namespace IRScript\n\n";
@@ -838,6 +893,20 @@ void writeOutput(
     // EntityManager (so its ComponentId is allocated up front, matching the
     // EVAL path's behaviour) and binds the Lua usertype via the trait. The
     // creation calls this once during init after `bindLuaDrivenEcs()`.
+    //
+    // Keep this body minimal — two statements per component. Every codegen run
+    // in a binary emits `IRScript::CodegenRegistry::registerCodegenComponents`
+    // under the same name, so the definitions only stay distinct as long as
+    // each stays small enough for the compiler to inline at its single call
+    // site. Grow it and the compiler emits an out-of-line `linkonce_odr` copy,
+    // the linker merges the runs, and every caller silently gets one arbitrary
+    // run's components (the engine test binary links three runs, so it breaks
+    // first). Per-component work belongs in the emitted `bindLuaType<C_X>`,
+    // whose name is unique — that is where the #2446 attach factory lives.
+    // That escape hatch holds only while component struct names are unique
+    // across the runs linked into one binary: `bindLuaType<C_X>` is emitted
+    // `template <> inline`, so two runs declaring the same component name
+    // merge the same way, swapping attach factories. #2609 owns the fix.
     os << "namespace IRScript::CodegenRegistry {\n\n";
     os << "inline void registerCodegenComponents(IRScript::LuaScript &luaScript) {\n";
     os << "    auto &em = IREntity::getEntityManager();\n";
