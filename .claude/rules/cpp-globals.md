@@ -70,6 +70,19 @@ matcher allows `constexpr` / `const` (including `inline static const`),
 are the module entry points `engine/*/include/irreden/ir_*.hpp` and
 `engine/include/irreden/ir_engine.hpp`.
 
+**Scope.** The header checks run over a *wider* file list than the style
+tools: `irreden_collect_quality_files(... INCLUDE_RENDER_BACKENDS)`
+(`cmake/ir_quality_tools.cmake`). `format` / `format-check` /
+`format-changed` / clang-tidy skip the generated GL wrapper
+(`engine/render/include/irreden/render/gl_wrap/`) and the Metal backend
+(`engine/render/{include/irreden/render,src}/metal/`) for style reasons;
+those 9 headers are first-party, so the ban — a correctness gate — must
+still see them. Only genuinely vendored code
+(`engine/render/third_party/metal-cpp/`, and anything under `build/` /
+`_deps/` / `third_party/`) is rejected in both scopes. **A new consumer of
+the executor must pass `INCLUDE_RENDER_BACKENDS`**: a gate handed the
+formatter's subset reports green over coverage it cannot reach (#2815).
+
 Two precision notes, both measured against the tree:
 
 - The `const` exemption is scoped to the **declaration head** (everything
@@ -96,3 +109,14 @@ This list mirrors `header_global_baseline` in
 `cmake/run_header_convention_checks.cmake` — update both together. The
 baseline is a ratchet: a file may leave it, never join it. Don't migrate a
 deviation in an unrelated PR — the issue carries the plan.
+
+The sibling **anonymous-namespace** ban (`.claude/rules/cpp-ecs.md`
+§"Naming", enforced by the same executor) carries its own ratchet,
+`anonymous_namespace_baseline`, with one entry:
+
+- `engine/render/include/irreden/render/gl_wrap/GLAPITrace.h` — generated
+  by `GetGLAPI.py`; its file-scope `namespace { GL4API apiHook; }` backs the
+  ~300 tracer bodies in the same header, which is included by exactly one TU
+  (`engine/render/src/gl_wrap/GLAPITrace.cpp`), so it is not a live ODR
+  hazard. Surfaced by #2815 when the checks stopped inheriting the
+  formatter's scope.

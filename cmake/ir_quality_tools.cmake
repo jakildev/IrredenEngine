@@ -8,7 +8,11 @@ if(APPLE)
     )
 endif()
 
+# `INCLUDE_RENDER_BACKENDS` keeps the generated / vendored graphics sources that
+# the style tools skip. See the reject chain below for which consumer wants what.
 function(irreden_collect_quality_files out_var)
+    cmake_parse_arguments(arg "INCLUDE_RENDER_BACKENDS" "" "" ${ARGN})
+
     set(search_roots
         "${PROJECT_SOURCE_DIR}/engine"
         "${PROJECT_SOURCE_DIR}/creations"
@@ -41,20 +45,28 @@ function(irreden_collect_quality_files out_var)
         if(normalized_path MATCHES "/engine/render/src/opengl/glad\\.c$")
             continue()
         endif()
-        if(normalized_path MATCHES "/engine/render/include/irreden/render/gl_wrap/")
-            continue()
-        endif()
-        if(normalized_path MATCHES "/engine/render/src/metal/")
-            continue()
-        endif()
-        if(normalized_path MATCHES "/engine/render/include/irreden/render/metal/")
-            continue()
-        endif()
         if(normalized_path MATCHES "/engine/render/third_party/metal-cpp/")
             continue()
         endif()
         if(normalized_path MATCHES "/engine/prefabs/irreden/render/systems/copilot_nonesense\\.cpp$")
             continue()
+        endif()
+        # The generated GL wrapper and the Metal backend are first-party, but
+        # the STYLE tools skip them: clang-format rewrites generated code and
+        # clang-tidy trips on metal-cpp idioms. That exemption is about style,
+        # so it must not reach a correctness gate — the header-convention checks
+        # pass INCLUDE_RENDER_BACKENDS to keep them in scope (see #2815).
+        # metal-cpp above is vendored and stays rejected in both scopes.
+        if(NOT arg_INCLUDE_RENDER_BACKENDS)
+            if(normalized_path MATCHES "/engine/render/include/irreden/render/gl_wrap/")
+                continue()
+            endif()
+            if(normalized_path MATCHES "/engine/render/src/metal/")
+                continue()
+            endif()
+            if(normalized_path MATCHES "/engine/render/include/irreden/render/metal/")
+                continue()
+            endif()
         endif()
         list(APPEND filtered_files "${normalized_path}")
     endforeach()
@@ -80,6 +92,16 @@ function(irreden_add_quality_targets)
         file(APPEND "${irreden_quality_file_list}" "    \"${file_path}\"\n")
     endforeach()
     file(APPEND "${irreden_quality_file_list}" ")\n")
+
+    # Second, wider list for the header-convention checks only (#2815).
+    irreden_collect_quality_files(irreden_header_check_files INCLUDE_RENDER_BACKENDS)
+    set(irreden_header_check_file_list
+        "${PROJECT_BINARY_DIR}/irreden_header_check_files.cmake")
+    file(WRITE "${irreden_header_check_file_list}" "set(QUALITY_FILES\n")
+    foreach(file_path IN LISTS irreden_header_check_files)
+        file(APPEND "${irreden_header_check_file_list}" "    \"${file_path}\"\n")
+    endforeach()
+    file(APPEND "${irreden_header_check_file_list}" ")\n")
 
     find_program(IRREDEN_CLANG_FORMAT_BIN NAMES clang-format HINTS ${IRREDEN_CLANG_TOOL_HINTS})
     if(IRREDEN_CLANG_FORMAT_BIN)
@@ -147,7 +169,7 @@ function(irreden_add_quality_targets)
     # exists only when find_program below succeeds.
     add_custom_target(header-checks
         COMMAND ${CMAKE_COMMAND}
-            -DQUALITY_FILE_LIST="${irreden_quality_file_list}"
+            -DQUALITY_FILE_LIST="${irreden_header_check_file_list}"
             -P "${PROJECT_SOURCE_DIR}/cmake/run_header_convention_checks.cmake"
         COMMENT "Running header convention checks"
         VERBATIM
@@ -163,7 +185,7 @@ function(irreden_add_quality_targets)
                 -DQUALITY_FILE_LIST="${irreden_quality_file_list}"
                 -P "${PROJECT_SOURCE_DIR}/cmake/run_clang_tidy.cmake"
             COMMAND ${CMAKE_COMMAND}
-                -DQUALITY_FILE_LIST="${irreden_quality_file_list}"
+                -DQUALITY_FILE_LIST="${irreden_header_check_file_list}"
                 -P "${PROJECT_SOURCE_DIR}/cmake/run_header_convention_checks.cmake"
             COMMENT "Running lint and header convention checks"
             VERBATIM

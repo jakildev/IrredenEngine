@@ -172,3 +172,5 @@ Calling `IREntity::*`, `IRRender::*`, `IRAudio::*` accessors **inline within a t
 | Header helpers    | nested `detail` namespace (not anonymous, not feature-named) |
 
 Prefer descriptive names over abbreviations (`viewCenterIso` not `vcIso`). Use a lowercase `detail` namespace for header-only helpers under the owning namespace (`IRSystem::detail`, `IRRender::detail`). Don't use anonymous namespaces in headers; keep them in `.cpp`.
+
+The anonymous-namespace and `*Detail`-namespace bans are **executed**, not hand-checked — `cmake/run_header_convention_checks.cmake`, via the `header-checks` / `lint` targets. Its scope and its one baselined deviation are documented in [`.claude/rules/cpp-globals.md` §"Detection"](cpp-globals.md); keep that file and the executor in sync.
