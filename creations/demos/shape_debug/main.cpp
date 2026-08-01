@@ -801,7 +801,8 @@ void initSystems() {
         {IRSystem::createSystem<IRSystem::LOD_UPDATE>(),
          IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
          IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>(),
-         IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS>()}
+         IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS>(),
+         IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS_IMPLICIT>()}
     );
     IRSystem::registerPipeline(
         IRTime::Events::INPUT,

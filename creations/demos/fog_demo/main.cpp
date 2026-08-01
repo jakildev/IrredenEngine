@@ -536,6 +536,7 @@ void initSystems() {
         IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
         IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>(),
         IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS>(),
+        IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS_IMPLICIT>(),
     };
     // --detached-edge adds the world-placed DETACHED_REVOXELIZE path (#2127):
     // PROPAGATE_CANVAS_ROTATION publishes worldPlaced_ + worldCellOffset_ onto the
