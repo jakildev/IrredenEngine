@@ -4,6 +4,7 @@
 #include <irreden/ir_input.hpp>
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_constants.hpp>
+#include <irreden/ir_platform.hpp>
 
 #include <irreden/render/rendering_rm.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
@@ -58,24 +59,23 @@ vec2 getEffectiveCameraIso() {
             visualYaw
         );
     }
-    // CAMERA_CENTER default — pivot Z-yaw about the EXACT z = 0 world point under
-    // screen center, held fixed across the yaw sweep so the scene rotates in
-    // place about what the player is looking at. The screen-center world point is
-    // `isoPixelToPos3D(viewCenterIso, 0)`, where `viewCenterIso = canvasSize/2 -
-    // trixelOriginOffsetZ1(canvasSize) - cameraIso` is the iso coordinate of the
-    // viewport center (derive: a world point W lands at screen center when
-    // `pos3DtoPos2DIso(W) + cameraIso == canvasCenterIso`, so `W =
-    // isoPixelToPos3D(canvasCenterIso - cameraIso, 0)`). `cameraYawPivotOffset`
-    // then drift-cancels so screen(F) is yaw-independent. At visualYaw == 0 it
-    // returns cameraIso, byte-identical to ORIGIN mode (the cardinal fast path).
-    // The DETACHED entity-canvas composite must place entities with
-    // getEffectiveCameraIso() (not the raw camera pos) so detached and GRID pivot
-    // together — see system_entity_canvas_to_framebuffer.hpp. See
-    // docs/design/camera-yaw-pivot.md (#1352, #1942, #1944).
-    const ivec2 canvasSize = getRenderManager().getMainCanvasSizeTriangles();
-    const vec2 viewCenterIso =
-        vec2(canvasSize) * 0.5f - vec2(IRMath::trixelOriginOffsetZ1(canvasSize)) - cameraIso;
-    const vec3 cameraFocusWorld = IRMath::isoPixelToPos3D(viewCenterIso, 0.0f);
+    // CAMERA_CENTER default — pivot Z-yaw about the content under the viewport
+    // center AT ITS RENDERED DEPTH (#2547), held fixed across the yaw sweep so
+    // the scene rotates in place about what the player is looking at. The focus
+    // is the latched depth-aware point (`RenderManager::
+    // updateDefaultRotationPivotFocus`, re-derived once per frame from a
+    // single-pixel composite-depth readback while yaw is settled); before the
+    // first derive, and whenever the center pixel reads background, it falls
+    // back to the ISO-DEPTH-0 point under the viewport center — the pre-#2547
+    // default. Note "iso depth 0" is the plane `x + y + z == 0`, NOT `z == 0`:
+    // `isoPixelToPos3D`'s third parameter is an iso depth (ir_math.hpp).
+    // `cameraYawPivotOffset` then drift-cancels so screen(F) is yaw-independent.
+    // At visualYaw == 0 it returns cameraIso, byte-identical to ORIGIN mode (the
+    // cardinal fast path). The DETACHED entity-canvas composite must place
+    // entities with getEffectiveCameraIso() (not the raw camera pos) so detached
+    // and GRID pivot together — see system_entity_canvas_to_framebuffer.hpp. See
+    // docs/design/camera-yaw-pivot.md (#1352, #1942, #1944, #2547).
+    const vec3 cameraFocusWorld = getRenderManager().getDefaultRotationPivotFocus();
     return IRMath::cameraYawPivotOffset(cameraIso, cameraFocusWorld, visualYaw);
 }
 vec2 getCameraZoom() {
@@ -92,6 +92,55 @@ ivec2 getOutputScaleFactor() {
 }
 bool readDefaultFramebuffer(int x, int y, int width, int height, void *rgbaData) {
     return device()->readDefaultFramebuffer(x, y, width, height, rgbaData);
+}
+CompositeDepthSample readbackCompositeDepth(ivec2 px) {
+    CompositeDepthSample sample;
+    sample.pixel_ = px;
+
+    const auto framebufferOpt = IREntity::getComponentOptional<C_TrixelCanvasFramebuffer>(
+        getRenderManager().getMainFramebuffer()
+    );
+    if (!framebufferOpt.has_value()) {
+        return sample;
+    }
+    const auto &framebuffer = *framebufferOpt.value();
+    const ivec2 resolution = framebuffer.getResolutionPlusBuffer();
+    if (px.x < 0 || px.y < 0 || px.x >= resolution.x || px.y >= resolution.y) {
+        return sample;
+    }
+
+    // The offscreen framebuffer depth texture is bottom-left origin on OpenGL,
+    // top-left on Metal; map the top-left screen pixel to the texel accordingly
+    // (mirrors readDefaultFramebuffer's GL row flip so a pixel picked from an
+    // auto-screenshot maps to the same texel on both backends).
+    const int texelY = IRPlatform::kIsOpenGL ? (resolution.y - 1 - px.y) : px.y;
+
+    // Flush so the readback sees this frame's committed composite. On Metal this
+    // is the mandatory commit+wait before getBytes (#1436); on OpenGL glFinish.
+    device()->finish();
+
+    // gl_FragDepth is written directly as window depth in [0, 1] on both
+    // backends (the shader stores `normalizeDistance(...)`), so the value read
+    // back IS the normalized distance — no NDC depth-range conversion needed.
+    float windowDepth = 1.0f;
+    framebuffer.getTextureDepth().getSubImage2D(
+        px.x,
+        texelY,
+        1,
+        1,
+        PixelDataFormat::DEPTH_COMPONENT,
+        PixelDataType::FLOAT32,
+        &windowDepth
+    );
+
+    sample.normDepth_ = windowDepth;
+    sample.rawDist_ = windowDepth * static_cast<float>(
+                                        IRConstants::kTrixelDistanceMaxDistance -
+                                        IRConstants::kTrixelDistanceMinDistance
+                                    ) +
+                      static_cast<float>(IRConstants::kTrixelDistanceMinDistance);
+    sample.valid_ = true;
+    return sample;
 }
 vec2 getMousePositionOutputView() {
     const vec2 raw = IRInput::getMousePosition();
@@ -255,6 +304,10 @@ bool hasRotationPivotFocus() {
 
 vec3 getRotationPivotFocus() {
     return getRenderManager().getRotationPivotFocus();
+}
+
+vec3 getDefaultRotationPivotFocus() {
+    return getRenderManager().getDefaultRotationPivotFocus();
 }
 
 void setVoxelRenderSubdivisions(int subdivisions) {

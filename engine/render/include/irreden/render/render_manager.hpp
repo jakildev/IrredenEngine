@@ -37,6 +37,9 @@ class RenderManager {
     }
 
     EntityId getCanvas(std::string canvasName);
+    inline EntityId getMainFramebuffer() const {
+        return m_mainFramebuffer;
+    }
     vec2 getCameraPosition2DIso() const;
     vec2 getCameraZoom() const;
     vec2 getTriangleStepSizeScreen() const;
@@ -58,6 +61,17 @@ class RenderManager {
     void clearRotationPivotFocus();
     bool hasRotationPivotFocus() const;
     vec3 getRotationPivotFocus() const;
+    // Focus the DEFAULT (no explicit override) CAMERA_CENTER pivot rotates
+    // about: the content under the viewport center at its rendered depth
+    // (#2547). The point is derived LIVE from the current camera position on
+    // every call; only the iso DEPTH is latched (re-derived by @ref
+    // updateDefaultRotationPivotFocus on the frames the policy admits, held
+    // otherwise). Depth 0 — before the first derive and whenever the center
+    // pixel reads background — is the pre-#2547 point exactly.
+    vec3 getDefaultRotationPivotFocus() const;
+    // Iso coordinate of the viewport center — the point a world position must
+    // project to (before the camera offset) to land at screen center.
+    vec2 getViewCenterIso() const;
     void setVoxelRenderSubdivisions(int subdivisions);
     int getVoxelRenderSubdivisions() const;
     int getVoxelRenderEffectiveSubdivisions() const;
@@ -116,6 +130,10 @@ class RenderManager {
     void beginFrame();
     void renderFrame();
     void presentFrame();
+    // Re-derive the depth-aware default pivot focus if this frame's camera
+    // state admits it. Called once from @ref beginFrame, ahead of the RENDER
+    // pipeline, so every stage in a frame reads ONE focus value.
+    void updateDefaultRotationPivotFocus();
     void printRenderInfo();
 
     VoxelPoolAllocation allocateVoxels(unsigned int size, std::string canvasName = "main");
@@ -165,6 +183,39 @@ class RenderManager {
     RotationPivotMode m_rotationPivotMode = RotationPivotMode::CAMERA_CENTER;
     vec3 m_rotationPivotFocus = vec3(0.0f);
     bool m_hasRotationPivotFocus = false;
+    // Per-frame delta of ABSOLUTE visualYaw at or below which the camera counts
+    // as not rotating, so the latch holds instead of re-deriving. Deliberately
+    // local rather than IRPrefab::Camera::kResidualYawDeadband: that constant is
+    // the one source for the *residual*-yaw predicate its four consumers share
+    // (per-axis allocation gate, render path-select, the FrameData UBO, the
+    // shadow bake), which is a different question, and borrowing it would
+    // silently couple this settle threshold to a value tuned for those.
+    // 1e-4 rad/frame is ~0.34 deg/s at 60 fps.
+    static constexpr float kPivotYawSettleDelta = 1e-4f;
+    // Depth-aware default-pivot latch (#2547). Only the iso DEPTH is latched —
+    // the focus POINT is re-derived from the live cameraIso on every read (see
+    // getDefaultRotationPivotFocus), which is what keeps
+    // IRMath::cameraMoveRelativeToYaw's pan identity true. NOT a dirty flag over
+    // caller-authored data: the derive costs a full GPU flush (single-pixel
+    // depth readback), and holding the depth WHILE yaw moves is the semantic
+    // requirement — re-deriving mid-rotation would chase the pivot across the
+    // very content it is pinning. See updateDefaultRotationPivotFocus.
+    float m_defaultRotationPivotIsoDepth = 0.0f;
+    bool m_hasDefaultRotationPivotIsoDepth = false;
+    // Camera state the PREVIOUS frame rendered with — the depth attachment the
+    // derive reads belongs to that frame, so a derive is only sound once this
+    // matches the live camera (see updateDefaultRotationPivotFocus). Stamped
+    // every frame in every pivot mode, so returning to CAMERA_CENTER cannot
+    // inherit a stale pose stamp.
+    float m_defaultPivotLastYaw = 0.0f;
+    vec2 m_defaultPivotRenderedCameraIso = vec2(0.0f);
+    // A live zoom is never 0, so this initialiser is the first-frame sentinel
+    // that makes the pose check fail by construction before anything has
+    // rendered — do not "tidy" it to a plausible default.
+    vec2 m_defaultPivotRenderedZoom = vec2(0.0f);
+    // Camera state the latched iso depth was derived from.
+    vec2 m_defaultPivotDerivedCameraIso = vec2(0.0f);
+    vec2 m_defaultPivotDerivedZoom = vec2(0.0f);
     bool m_hoveredTrixelVisible = true;
     int m_voxelRenderSubdivisions = 1;
     bool m_guiVisible = false;

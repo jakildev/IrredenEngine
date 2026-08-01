@@ -1103,6 +1103,20 @@ cameraYawPivotOffset(const vec2 cameraIso, const vec3 focusWorld, const float vi
 /// systems must use `isoDelta` unchanged (or pass `visualYaw = 0`) in that
 /// mode.
 ///
+/// **Precondition — the focus must track `cameraIso`.**  The identity above
+/// holds only because `getEffectiveCameraIso`'s focus is re-derived from the
+/// live camera every frame: with `F = Pinv(canvasCenterIso − cameraIso,
+/// depth)`, `d effCam / d cameraIso` is exactly `P(R_z(−yaw)·Pinv(Δ))` — the
+/// transform this helper inverts — **at any depth**, since `Pinv`'s depth
+/// parameter shifts along `(1,1,1)`, which projects to `(0,0)`.  Latch `F` as
+/// a fixed WORLD POINT and that derivative collapses to the identity, so this
+/// pre-compensation inverts a transform that no longer applies: at
+/// `yaw = π/2` a `(10, 0)` drag moves content `(20, 30)` and pops back the
+/// moment the focus is re-derived.  A depth-aware default pivot must therefore
+/// latch the iso DEPTH and derive the point live — see
+/// `RenderManager::getDefaultRotationPivotFocus` (#2547).  Guarded by
+/// `test/render/camera_pan_pivot_test.cpp`.
+///
 /// At `visualYaw == 0` returns @p isoDelta exactly (identity).  At
 /// `yaw = ±2π/3` the iso projection is geometrically degenerate
 /// (`det = 1 + 2·cos(yaw) ≈ 0`); the helper returns @p isoDelta unchanged.

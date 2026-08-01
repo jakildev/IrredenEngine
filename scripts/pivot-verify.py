@@ -13,19 +13,44 @@ Blocks (see ``g_pivotVerifyBlock`` in ``creations/demos/shape_debug/main.cpp``):
 - ``focus-ctr`` / ``focus-off`` — explicit ``setRotationPivotFocus`` on the
   probe center, probe at / off screen center.
 - ``center-column`` — default CAMERA_CENTER pivot, probe on the pinned
-  vertical column (the implemented contract).
-- ``center-depth`` — default pivot, probe AT the viewport center at z > 0
-  (the user-facing contract: what you are looking at stays put).
+  vertical column at z > 0.
+- ``center-depth`` — default pivot, probe AT the viewport center at z > 0.
+- ``background-center`` — default pivot, center pixel on BACKGROUND, so the
+  derive must take its iso-depth-0 fallback (epic #2544 Phase 3 criterion 2).
+- ``center-axis`` — default pivot, probe axis ON the viewport-center ray with
+  its near cap at the ray's entry step, so the derived surface point is the
+  probe's own axis point.
 
 ``focus-ctr`` additionally runs an SDF-probe twin (``--pivot-verify-sdf``)
 so the voxel-pool and SDF render paths' pivot conventions are compared A/B.
+
+Two oracles, applied per block:
+
+- **Pinned-point** — the demo's ``[pivot-focus-assert]`` line, which scores the
+  focus the engine derived from its live composite-depth readback against the
+  analytic ray/surface intersection over the probe's own carve constants. Every
+  default-pivot block carries it, and it must also hold the SAME value across
+  the whole sweep (the derive is latched). That last check requires the block to
+  hold the camera pan/zoom FIXED across its shots — the latch re-derives on any
+  pan/zoom change by design — so the demo reports ``view_held`` per shot and a
+  block that moves the view is flagged as misconfigured, not as a regression.
+- **Whole-silhouette temporal invariance** — ``jitter_probe --stationary``,
+  gated only for the blocks in ``CENTROID_GATED_BLOCKS``: those rotate their
+  probe about a point on the probe's own axis, so a correct pivot maps the
+  silhouette onto itself. Every other block's deviation is measured and
+  reported but not gated.
+
+Why a block falls in one bucket or the other — and what the reported-but-not-
+gated deviations mean — is ``docs/design/camera-yaw-pivot.md`` §"Known
+deviations" deviation 2.
 
 The harness asserts the CONTRACT, so it runs red while known pivot defects
 are open — each fix flips its block(s) to PINNED. The live defect list +
 fix chain is ``docs/design/camera-yaw-pivot.md`` §"Known deviations"
 (epic #2544).
 
-Exit: 0 = all requested passes PINNED; 1 = any DRIFT; 2 = harness error.
+Exit: 0 = every requested pass met its own gate; 1 = any failure;
+2 = harness error.
 
 Assumes this file lives at ``<repo>/scripts/pivot-verify.py``.
 """
@@ -39,11 +64,58 @@ from pathlib import Path
 
 import verify_common
 
-ALL_BLOCKS = ["focus-ctr", "focus-off", "center-column", "center-depth"]
+ALL_BLOCKS = ["focus-ctr", "focus-off", "center-column", "center-depth",
+              "background-center", "center-axis"]
 SDF_BLOCKS = ["focus-ctr"]
+# Blocks that derive their focus rather than taking an explicit
+# setRotationPivotFocus — the ones whose runs emit `[pivot-focus-assert]`.
+DEFAULT_PIVOT_BLOCKS = {"center-column", "center-depth", "background-center",
+                        "center-axis"}
+# Blocks whose whole-silhouette centroid is a valid PINNED gate: each rotates
+# its probe about a point on the probe's own axis, so a correct pivot maps the
+# silhouette onto itself. For every other block the deviation is reported but
+# not gated — see the module docstring.
+CENTROID_GATED_BLOCKS = {"focus-ctr", "focus-off", "background-center"}
 # Frame indices of the cardinal yaws (0, pi/2, pi, 3pi/2) within the demo's
 # 9-yaw sweep table (`yaws[]` in creations/demos/shape_debug/main.cpp).
 CARDINAL_FRAME_INDICES = (0, 3, 5, 7)
+# `[pivot-focus-assert] ... derived=(x,y,z) ... view_held=0|1 result=PASS|FAIL`
+FOCUS_ASSERT_RE = re.compile(
+    r"\[pivot-focus-assert\].*?derived=\(([^)]*)\).*?view_held=([01]).*?"
+    r"result=(PASS|FAIL)")
+
+
+def _score_focus_asserts(output: str) -> tuple[str, str]:
+    """Grade a pass's `[pivot-focus-assert]` lines.
+
+    Returns ``(verdict, detail)`` where verdict is ``OK`` / ``BAD`` / ``NONE``.
+    The derive is latched for the whole sweep, so a value that MOVES mid-sweep
+    is a failure even when every individual line reports PASS.
+
+    A block MUST hold the camera pan/zoom fixed across its shots — the latch
+    re-derives on any pan/zoom change by design, so a block that moves the view
+    breaks the moved-value check on correct behavior. ``view_held`` is checked
+    first so that misconfiguration is reported as itself rather than as a pivot
+    regression.
+    """
+    matches = FOCUS_ASSERT_RE.findall(output)
+    if not matches:
+        return "NONE", "no [pivot-focus-assert] lines in run output"
+    moved_view = [d for d, held, _ in matches if held == "0"]
+    if moved_view:
+        return "BAD", (
+            f"{len(moved_view)}/{len(matches)} shots moved the camera pan/zoom "
+            "mid-sweep — a default-pivot block must hold the view fixed (the "
+            "latch re-derives on pan/zoom by design). Fix the block's shot "
+            "table, not the gate; see logPivotFocusAssert in "
+            "creations/demos/shape_debug/main.cpp")
+    failed = [d for d, _, verdict in matches if verdict == "FAIL"]
+    if failed:
+        return "BAD", f"{len(failed)}/{len(matches)} shots off the analytic focus"
+    derived = {d for d, _, _ in matches}
+    if len(derived) > 1:
+        return "BAD", f"latched focus moved mid-sweep across {len(derived)} values"
+    return "OK", f"{len(matches)} shots at derived=({matches[0][0]})"
 
 
 def _score_pass(probe_exe: Path, frames: list[Path],
@@ -115,7 +187,7 @@ def main(argv: list[str] | None = None) -> int:
             if not args.skip_sdf and block in SDF_BLOCKS:
                 passes.append((block, True, zoom))
 
-    results: list[tuple[str, str, float, float, int]] = []
+    results: list[tuple[str, str, float, float, int, str]] = []
     for block, sdf, zoom in passes:
         label = (f"{block}{'-sdf' if sdf else ''}"
                  f"{'-card' if args.cardinals_only else ''}@z{zoom:g}")
@@ -124,42 +196,64 @@ def main(argv: list[str] | None = None) -> int:
                "--pivot-verify", block, "--zoom", f"{zoom:g}"]
         if sdf:
             cmd.append("--pivot-verify-sdf")
-        rc, _output, frames = verify_common.run_pass(cmd, cwd=worktree,
-                                                     shots_dir=shots_dir,
-                                                     timeout=args.timeout + 60)
+        rc, output, frames = verify_common.run_pass(cmd, cwd=worktree,
+                                                    shots_dir=shots_dir,
+                                                    timeout=args.timeout + 60)
         frames = [f for f in frames if "_crop_" not in f.name]
         if args.cardinals_only:
             frames = [frames[i] for i in CARDINAL_FRAME_INDICES if i < len(frames)]
         if rc != 0:
             print(f"[pivot-verify] ({label}) fleet-run exited {rc}", file=sys.stderr)
-            results.append((label, "CRASH", float("nan"), float("nan"), len(frames)))
+            results.append((label, "CRASH", float("nan"), float("nan"),
+                            len(frames), "-"))
             continue
         if len(frames) < 3:
             print(f"[pivot-verify] ({label}) only {len(frames)} frames captured",
                   file=sys.stderr)
             results.append((label, "NO-FRAMES", float("nan"), float("nan"),
-                            len(frames)))
+                            len(frames), "-"))
             continue
-        verdict, dev_x, dev_y, _ = _score_pass(probe_exe, frames,
-                                               args.max_deviation)
-        results.append((label, verdict, dev_x, dev_y, len(frames)))
 
+        # Pinned-point oracle. The SDF twin renders the probe through the
+        # analytic solver rather than the voxel carve the oracle mirrors, so
+        # it is scored by silhouette only.
+        focus = "-"
+        if block in DEFAULT_PIVOT_BLOCKS and not sdf:
+            focus, detail = _score_focus_asserts(output)
+            if focus != "OK":
+                print(f"[pivot-verify] ({label}) focus assert: {detail}",
+                      file=sys.stderr)
+
+        # Whole-silhouette oracle. Always measured; gated only where it is a
+        # valid pin (CENTROID_GATED_BLOCKS).
+        centroid, dev_x, dev_y, _ = _score_pass(probe_exe, frames,
+                                                args.max_deviation)
+        if block in CENTROID_GATED_BLOCKS:
+            verdict = centroid if focus in ("-", "OK") else "FOCUS-BAD"
+        else:
+            verdict = {"OK": "FOCUS-OK", "BAD": "FOCUS-BAD",
+                       "NONE": "NO-ASSERT"}[focus]
+        results.append((label, verdict, dev_x, dev_y, len(frames), focus))
+
+    passing = {"PINNED", "FOCUS-OK"}
     print()
     print(f"{'pass':<28} {'verdict':<10} {'dev_x(px)':>10} {'dev_y(px)':>10} "
-          f"{'frames':>7}")
+          f"{'frames':>7} {'focus':>7}")
     failed = 0
-    for label, verdict, dev_x, dev_y, nframes in results:
+    for label, verdict, dev_x, dev_y, nframes, focus in results:
         print(f"{label:<28} {verdict:<10} {dev_x:>10.2f} {dev_y:>10.2f} "
-              f"{nframes:>7}")
-        if verdict != "PINNED":
+              f"{nframes:>7} {focus:>7}")
+        if verdict not in passing:
             failed += 1
     print()
+    print("verdicts: PINNED = silhouette held (threshold "
+          f"{args.max_deviation}px) · FOCUS-OK = derived focus matched the "
+          "analytic pin; the silhouette deviation is reported, not gated "
+          "(see the module docstring)")
     if failed:
-        print(f"pivot-verify: {failed}/{len(results)} passes FAILED "
-              f"(threshold {args.max_deviation}px)")
+        print(f"pivot-verify: {failed}/{len(results)} passes FAILED")
         return 1
-    print(f"pivot-verify: all {len(results)} passes PINNED "
-          f"(threshold {args.max_deviation}px)")
+    print(f"pivot-verify: all {len(results)} passes met their gate")
     return 0
 
 

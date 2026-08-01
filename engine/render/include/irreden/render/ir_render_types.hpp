@@ -335,6 +335,76 @@ static_assert(
     "lowest-priority foreground tier must stay within the reserved band"
 );
 
+// ── Composite-depth readback decode (#1910 / #2547) ───────────────────────────
+// One decode for the partitioned composite `enc`, shared by every CPU consumer
+// of a main-framebuffer depth readback: the diagnostic depth probe + tier assert
+// (`IRPrefab::DepthProbe`) and the depth-aware CAMERA_CENTER pivot focus
+// (`getEffectiveCameraIso`). Keeping the partition in ONE place is what stops a
+// consumer from open-coding the #1960 N-tier layout and drifting from it.
+
+/// Single-pixel main-framebuffer composite-depth readback.
+/// @c normDepth_ is the raw window depth in [0, 1] stored by the depth-test
+/// winner across every render path; @c rawDist_ decodes it to the shared
+/// trixel-distance units via the exact inverse of @c f_trixel_to_framebuffer's
+/// @c normalizeDistance, so the same world point reads the same value
+/// regardless of which path produced it.
+struct CompositeDepthSample {
+    ivec2 pixel_{-1, -1};
+    float normDepth_ = 1.0f;
+    float rawDist_ = 0.0f;
+    bool valid_ = false;
+};
+
+/// @c normDepth_ at or above which a @ref CompositeDepthSample is BACKGROUND —
+/// the depth clear at the far plane (@c rawDist == @c kTrixelDistanceMaxDistance,
+/// i.e. @c normDepth == 1.0) rather than a surface the composite wrote. Any
+/// composite-written fragment reads well below it (the canvas_stress canary
+/// reads ~0.49), so 0.99 separates the two with wide margin and no dependence
+/// on the exact stored distance. Lives beside @ref CompositeDepthSample because
+/// every CPU consumer of a readback needs the same background test — the
+/// diagnostic probe's depth-write guard (@c IRPrefab::DepthProbe) and the
+/// depth-aware pivot derive (@c RenderManager) would otherwise each carry their
+/// own copy and drift.
+constexpr float kBackgroundNormDepthThreshold = 0.99f;
+
+/// Decoded composite `enc`. @c tier_ 0 is WORLD content (encoded as
+/// `iso·kDepthEncodeShift + flip·4 + face`, #2207 riser-polarity carrier at bit
+/// 2); a non-zero tier names the reserved foreground sub-range the fragment
+/// landed in (1..N-1, #1960) and @c iso_ is then the unit's tier-center-relative
+/// local model-frame iso depth.
+///
+/// @c iso_ is in SHARED FRAMEBUFFER depth units — `worldIsoDepth × effSub` — not
+/// world units: producers scale by the effective subdivision factor before the
+/// ×8 encode. Divide by @ref getVoxelRenderEffectiveSubdivisions to recover a
+/// world iso depth.
+struct DecodedCompositeDepth {
+    int enc_ = 0;
+    int tier_ = 0;
+    int iso_ = 0;
+    int face_ = 0;
+    int flip_ = 0;
+};
+
+/// Partition @p rawDist (a @ref CompositeDepthSample::rawDist_) into tier / iso /
+/// face / flip. Pure arithmetic over the constants above — no GPU access.
+inline DecodedCompositeDepth decodeCompositeDepth(float rawDist) {
+    DecodedCompositeDepth decoded;
+    decoded.enc_ = static_cast<int>(IRMath::roundHalfUp(rawDist));
+    if (decoded.enc_ <= kDepthForegroundCeil) {
+        const int slot =
+            (decoded.enc_ - IRConstants::kTrixelDistanceMinDistance) / kDepthForegroundTierWidth;
+        decoded.tier_ =
+            IRMath::clamp(kDepthForegroundTierCount - 1 - slot, 1, kDepthForegroundTierCount - 1);
+    }
+    const int encRel =
+        decoded.tier_ == 0 ? decoded.enc_ : decoded.enc_ - depthForegroundTierCenter(decoded.tier_);
+    const int lowBits = ((encRel % kDepthEncodeShift) + kDepthEncodeShift) % kDepthEncodeShift;
+    decoded.face_ = lowBits & 3;
+    decoded.flip_ = lowBits >> 2;
+    decoded.iso_ = (encRel - lowBits) / kDepthEncodeShift;
+    return decoded;
+}
+
 // ── Per-trixel priority carrier (#1960) ───────────────────────────────────────
 // The per-trixel tier travels voxel authoring → trixel raster → finalization in
 // the top K=2 bits of the 64-bit entity id stored in the `triangleEntityIds`

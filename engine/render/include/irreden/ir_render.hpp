@@ -187,6 +187,18 @@ ivec2 getOutputScaleFactor();
 /// Copy a rectangular region from the default framebuffer into @p rgbaData (RGBA8).
 /// Returns @c false on GL error. Used by the screenshot system.
 bool readDefaultFramebuffer(int x, int y, int width, int height, void *rgbaData);
+/// Read and decode the main framebuffer's composite depth at pixel @p px (#1910).
+/// Coordinates are in the MAIN FRAMEBUFFER's texture space (its
+/// resolution-plus-buffer), top-left origin on both backends — NOT window /
+/// screenshot pixels. Returns @c valid_ == false when @p px is outside the
+/// framebuffer or no main framebuffer exists yet.
+///
+/// Costs a full GPU flush (Metal commit+wait, GL glFinish), so it is strictly a
+/// debug / on-change primitive — never call it per frame on a hot path. Pure
+/// readback: it touches no shader and no render state, so a probed frame is
+/// byte-identical at the pixel level. @see IRPrefab::DepthProbe for the
+/// diagnostic + regression-guard wrappers built on this.
+CompositeDepthSample readbackCompositeDepth(ivec2 px);
 /// Mouse position in the output view (after upscaling), in pixels.
 vec2 getMousePositionOutputView();
 /// Logical game resolution before any output upscaling.
@@ -322,6 +334,17 @@ bool hasRotationPivotFocus();
 /// The explicit pivot focus world point. Meaningful only when
 /// @ref hasRotationPivotFocus is true.
 vec3 getRotationPivotFocus();
+/// The focus the DEFAULT pivot (CAMERA_CENTER with no explicit override)
+/// rotates about: the SURFACE point under the viewport center, at the depth the
+/// content there actually renders at (#2547). Latched — re-derived once per
+/// frame by @c RenderManager::updateDefaultRotationPivotFocus on the frames its
+/// policy admits, held otherwise; falls back to the iso-depth-0 point under the
+/// viewport center before the first derive and whenever the center pixel reads
+/// background. Meaningful only while @ref hasRotationPivotFocus is false and
+/// the mode is @c CAMERA_CENTER. Exposed so a verification harness can assert
+/// the derived focus against an analytic ray/surface intersection
+/// (`shape_debug --pivot-verify`, `scripts/pivot-verify.py`).
+vec3 getDefaultRotationPivotFocus();
 /// @}
 
 /// @{
