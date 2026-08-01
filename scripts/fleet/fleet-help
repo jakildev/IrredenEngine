@@ -209,6 +209,11 @@ Parallel-agent fleet (tmux + Claude)
   fleet-decisions [--repo …]     everything waiting on the human in one read:
                                  merge queue, parked decisions, plan sign-off
                                  holds, backlog cues, unread feedback
+  fleet-triage-sweep list --repo …   [--json]
+  fleet-triage-sweep apply --repo … <staging-file> [--dry-run]
+                                 architect-managed triage sweep: enumerate a
+                                 repo's untriaged issues, then apply only the
+                                 label sets the human confirmed (never closes)
   fleet-digest-tick              cron tick: refresh ~/.fleet/digest/latest.md
                                  and fleet-notify only when decisions changed
   fleet-notify <title> <body>    best-effort desktop notification on any

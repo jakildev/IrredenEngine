@@ -1,0 +1,359 @@
+#!/usr/bin/env bash
+# fleet-triage-sweep — the architect-managed half of the triage protocol.
+#
+# Enumerates a repo's untriaged issues for an architect session to judge,
+# then applies the label sets the human confirmed. Two subcommands:
+#
+#   list   read-only: the untriaged set (open issues with no fleet:/human:
+#          label), oldest-first, annotated with any prior verdict found in
+#          ~/.fleet/triage/.
+#   apply  the ONLY writing path: applies each confirmed entry's labels from
+#          a staging file. Refuses unless the human confirmed, skips issues
+#          that gained a state label since staging, and never closes an issue.
+#
+# Usage:
+#   fleet-triage-sweep list --repo engine
+#   fleet-triage-sweep list --repo game --json
+#   fleet-triage-sweep apply --repo game ~/.fleet/triage/game-sweep-2026-07-30.json
+#   fleet-triage-sweep apply --repo game <file> --dry-run
+#
+# Protocol: docs/agents/triage-protocol.md § Architect-managed sweep.
+# Source of truth: scripts/fleet/fleet-triage-sweep in the engine repo.
+# Installed to ~/bin/fleet-triage-sweep by scripts/fleet/install.sh.
+
+set -euo pipefail
+
+FLEET_HOME="${FLEET_HOME:-$HOME/.fleet}"
+TRIAGE_DIR="$FLEET_HOME/triage"
+
+REPO=""
+SUBCMD=""
+STAGING_FILE=""
+DRY_RUN=0
+AS_JSON=0
+
+usage() {
+    cat >&2 << 'EOF'
+Usage:
+  fleet-triage-sweep list  --repo engine|game|<owner/name> [--json]
+  fleet-triage-sweep apply --repo engine|game|<owner/name> <staging-file> [--dry-run]
+EOF
+    exit 1
+}
+
+resolve_repo() {
+    case "$1" in
+        engine) REPO="jakildev/IrredenEngine" ;;
+        game)   REPO="jakildev/irreden" ;;
+        "")     echo "fleet-triage-sweep: --repo needs a value" >&2; exit 1 ;;
+        *)      REPO="$1" ;;
+    esac
+}
+
+[[ $# -gt 0 ]] || usage
+case "$1" in
+    list|apply) SUBCMD="$1"; shift ;;
+    *) usage ;;
+esac
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --repo)     shift; resolve_repo "${1:-}"; shift ;;
+        --repo=*)   resolve_repo "${1#--repo=}"; shift ;;
+        --dry-run)  DRY_RUN=1; shift ;;
+        --json)     AS_JSON=1; shift ;;
+        -*)         usage ;;
+        *)
+            [[ -z "$STAGING_FILE" ]] || usage
+            STAGING_FILE="$1"
+            shift
+            ;;
+    esac
+done
+
+if [[ -z "$REPO" ]]; then
+    echo "fleet-triage-sweep: --repo is required (no default — a run targets exactly one repo)" >&2
+    exit 1
+fi
+
+# --- list -------------------------------------------------------------------
+
+if [[ "$SUBCMD" == "list" ]]; then
+    [[ -z "$STAGING_FILE" ]] || usage
+
+    issues_f=$(mktemp "${TMPDIR:-/tmp}/fleet-triage-sweep.XXXXXX")
+    trap 'rm -f "$issues_f"' EXIT
+
+    if ! gh issue list --repo "$REPO" --state open \
+            --json number,title,labels,url,createdAt --limit 200 > "$issues_f" 2>/dev/null; then
+        echo "fleet-triage-sweep: could not list issues for $REPO" >&2
+        exit 1
+    fi
+
+    PYTHONIOENCODING=utf-8 python3 - "$issues_f" "$TRIAGE_DIR" "$REPO" "$AS_JSON" << 'PYEOF'
+import json
+import os
+import sys
+
+issues_path, triage_dir, repo, as_json = sys.argv[1:5]
+
+with open(issues_path, encoding="utf-8") as f:
+    issues = json.load(f)
+
+
+def untriaged(issue):
+    """Open issue carrying no fleet:/human: label — the protocol's predicate."""
+    return not any(
+        label["name"].startswith(("fleet:", "human:"))
+        for label in issue.get("labels", [])
+    )
+
+
+# Prior verdicts: a rejected entry legitimately re-surfaces, so annotate it
+# rather than hiding it — the architect shouldn't re-spend judgment blind.
+prior = {}
+if os.path.isdir(triage_dir):
+    for name in sorted(os.listdir(triage_dir)):
+        if not name.endswith(".json"):
+            continue
+        try:
+            with open(os.path.join(triage_dir, name), encoding="utf-8") as f:
+                staged = json.load(f)
+        except (OSError, ValueError):
+            continue
+        if staged.get("repo") != repo:
+            continue
+        stamp = staged.get("generated_at", name)
+        for entry in staged.get("entries", []):
+            number = entry.get("number")
+            if number is not None:
+                prior[number] = (entry.get("verdict", "?"), stamp)
+
+rows = sorted(
+    (i for i in issues if untriaged(i)),
+    key=lambda i: (i.get("createdAt", ""), i["number"]),
+)
+
+if as_json == "1":
+    print(json.dumps([
+        {
+            "number": i["number"],
+            "title": i["title"],
+            "url": i.get("url", ""),
+            "createdAt": i.get("createdAt", ""),
+            "prior_verdict": prior.get(i["number"], (None, None))[0],
+            "prior_at": prior.get(i["number"], (None, None))[1],
+        }
+        for i in rows
+    ], indent=2))
+    sys.exit(0)
+
+print(f"fleet-triage-sweep: {len(rows)} untriaged issue(s) in {repo}")
+if not rows:
+    print("\n  nothing untriaged — the backlog is clear.")
+    sys.exit(0)
+
+print("")
+for i in rows:
+    created = (i.get("createdAt") or "")[:10]
+    print(f"  #{i['number']}\t{created}\t{i['title']}")
+    print(f"      {i.get('url', '')}")
+    if i["number"] in prior:
+        verdict, stamp = prior[i["number"]]
+        print(f"      prior verdict: {verdict} (staged {stamp[:10]}) — re-surfaced")
+
+print(
+    "\nJudge each per docs/agents/triage-protocol.md § Per-issue judgment, then\n"
+    "stage to ~/.fleet/triage/<repo>-sweep-<date>.json and confirm with the human\n"
+    "before `fleet-triage-sweep apply`."
+)
+PYEOF
+    exit 0
+fi
+
+# --- apply ------------------------------------------------------------------
+
+if [[ -z "$STAGING_FILE" ]]; then
+    echo "fleet-triage-sweep apply: a staging file argument is required" >&2
+    exit 1
+fi
+if [[ ! -f "$STAGING_FILE" ]]; then
+    echo "fleet-triage-sweep apply: staging file not found: $STAGING_FILE" >&2
+    exit 1
+fi
+
+# Gate on the confirmation markers BEFORE any gh call, so an unconfirmed file
+# costs nothing and can never half-apply.
+PYTHONIOENCODING=utf-8 python3 - "$STAGING_FILE" "$REPO" << 'PYEOF'
+import json
+import sys
+
+path, repo = sys.argv[1:3]
+
+try:
+    with open(path, encoding="utf-8") as f:
+        staged = json.load(f)
+except ValueError as exc:
+    sys.stderr.write(f"fleet-triage-sweep apply: staging file is not valid JSON: {exc}\n")
+    sys.exit(1)
+
+if not isinstance(staged, dict):
+    sys.stderr.write("fleet-triage-sweep apply: staging file must be a JSON object\n")
+    sys.exit(1)
+
+if staged.get("repo") and staged.get("repo") != repo:
+    sys.stderr.write(
+        "fleet-triage-sweep apply: staging file targets %s but --repo says %s — refusing\n"
+        % (staged.get("repo"), repo)
+    )
+    sys.exit(1)
+
+if staged.get("human_confirmed") is not True:
+    sys.stderr.write(
+        "fleet-triage-sweep apply: refusing — `human_confirmed` is not true.\n"
+        "  The sweep stages; the human confirms. Set human_confirmed=true and\n"
+        "  confirmed=true on each accepted entry only after the human says so\n"
+        "  (docs/agents/triage-protocol.md § Architect-managed sweep step 4).\n"
+    )
+    sys.exit(1)
+
+if not any(e.get("confirmed") is True for e in staged.get("entries", [])):
+    sys.stderr.write(
+        "fleet-triage-sweep apply: refusing — no entry is marked confirmed\n"
+    )
+    sys.exit(1)
+PYEOF
+
+# Race guard: an issue that gained a fleet:/human: label since staging was
+# acted on by a human or by ingest — leave it alone rather than stacking a
+# stale verdict's labels on top.
+live_f=$(mktemp "${TMPDIR:-/tmp}/fleet-triage-sweep-live.XXXXXX")
+plan_f=$(mktemp "${TMPDIR:-/tmp}/fleet-triage-sweep-plan.XXXXXX")
+trap 'rm -f "$live_f" "$plan_f"' EXIT
+
+if ! gh issue list --repo "$REPO" --state open \
+        --json number,labels --limit 200 > "$live_f" 2>/dev/null; then
+    echo "fleet-triage-sweep apply: could not re-fetch live labels for $REPO" >&2
+    exit 1
+fi
+
+rc=0
+PYTHONIOENCODING=utf-8 python3 - "$STAGING_FILE" "$live_f" "$plan_f" << 'PYEOF' || rc=$?
+import json
+import sys
+
+staged_path, live_path, plan_path = sys.argv[1:4]
+
+# Deliberately narrow. fleet:queued / fleet:task / verdict labels are
+# scout- and ingest-owned; pre-applying them is the anti-pattern
+# TASK-FILING.md bans.
+ALLOWED = {
+    "human:approved",
+    "human:no-plan",
+    "human:owned",
+    "fleet:sonnet",
+    "fleet:opus",
+    "fleet:fable",
+}
+
+with open(staged_path, encoding="utf-8") as f:
+    staged = json.load(f)
+with open(live_path, encoding="utf-8") as f:
+    live = json.load(f)
+
+live_labels = {
+    i["number"]: [label["name"] for label in i.get("labels", [])]
+    for i in live
+}
+
+plan = []
+skipped = []
+rejected = []
+
+for entry in staged.get("entries", []):
+    if entry.get("confirmed") is not True:
+        continue
+    number = entry.get("number")
+    labels = entry.get("labels") or []
+
+    bad = [label for label in labels if label not in ALLOWED]
+    if bad or not labels:
+        rejected.append((number, bad or ["(no labels staged)"]))
+        continue
+
+    if number not in live_labels:
+        skipped.append((number, "no longer open (or not found)"))
+        continue
+
+    current = live_labels[number]
+    gained = [label for label in current if label.startswith(("fleet:", "human:"))]
+    if gained:
+        skipped.append((number, "gained %s since staging" % ", ".join(sorted(gained))))
+        continue
+
+    plan.append({"number": number, "labels": labels})
+
+for number, bad in rejected:
+    print(f"  rejected  #{number}: label(s) outside the apply allowlist: {', '.join(bad)}")
+for number, why in skipped:
+    print(f"  skipped   #{number}: {why}")
+
+with open(plan_path, "w", encoding="utf-8") as f:
+    json.dump(plan, f)
+
+if rejected:
+    sys.exit(2)
+PYEOF
+if [[ $rc -ne 0 ]]; then
+    echo "fleet-triage-sweep apply: refusing — a confirmed entry stages a label outside the allowlist" >&2
+    exit 1
+fi
+
+[[ $DRY_RUN -eq 1 ]] || mkdir -p "$TRIAGE_DIR"
+
+applied=0
+while IFS=$'\t' read -r number labels label_json; do
+    [[ -n "$number" ]] || continue
+    if [[ $DRY_RUN -eq 1 ]]; then
+        echo "  would run: gh issue edit $number --repo $REPO $labels"
+    else
+        # shellcheck disable=SC2086 # $labels is a pre-built, allowlisted flag string
+        gh issue edit "$number" --repo "$REPO" $labels > /dev/null
+        echo "  applied   #$number: $labels"
+        printf '{"repo":"%s","issue":%s,"labels":%s}\n' \
+            "$REPO" "$number" "$label_json" >> "$TRIAGE_DIR/log.jsonl"
+    fi
+    applied=$((applied + 1))
+done < <(python3 -c '
+import json, sys
+with open(sys.argv[1], encoding="utf-8") as f:
+    for entry in json.load(f):
+        flags = " ".join("--add-label %s" % label for label in entry["labels"])
+        print("%s\t%s\t%s" % (entry["number"], flags, json.dumps(entry["labels"])))
+' "$plan_f")
+
+if [[ $DRY_RUN -eq 1 ]]; then
+    echo "fleet-triage-sweep apply: dry run — $applied issue(s) would be labeled, 0 closed"
+else
+    echo "fleet-triage-sweep apply: $applied issue(s) labeled, 0 closed"
+fi
+
+# recommend-close entries are reported, never executed — closing is the
+# human's act (docs/agents/triage-protocol.md § Architect-managed sweep step 5).
+PYTHONIOENCODING=utf-8 python3 - "$STAGING_FILE" "$REPO" << 'PYEOF'
+import json
+import sys
+
+path, repo = sys.argv[1:3]
+with open(path, encoding="utf-8") as f:
+    staged = json.load(f)
+
+closes = [
+    e for e in staged.get("entries", [])
+    if e.get("confirmed") is True and e.get("verdict") == "recommend-close"
+]
+if closes:
+    print("\nrecommend-close entries — run these yourself if you agree:")
+    for entry in closes:
+        print(f"  gh issue close {entry['number']} --repo {repo}")
+PYEOF
