@@ -4,13 +4,13 @@ name: Render Harness Tests
 # not CMake tests, so `ctest` never sees them — without this workflow nothing
 # executes them and a suite can go red silently (#2825).
 #
-# Standalone for the same reason fleet-tests.yml and header-checks.yml are:
-# the only other CI surface that would reach these (quality.yml's ruff/ctest
-# job) is disabled at the repo level, so a step added there is inert until it
-# is re-enabled (#2718). These suites need no compiler, no GL, and no CMake.
+# Standalone for the same reason fleet-tests.yml is: the only other CI surface
+# that would reach these (quality.yml's ruff/ctest job) is disabled at the repo
+# level, so a step added there is inert until it is re-enabled (#2718). These
+# suites need no compiler, no GL, and no CMake.
 #
-# Path-filtered to the **subjects** (scripts/*.py — where all ten dashed
-# harness scripts and the two shared modules they import live) as well as the
+# Path-filtered to the **subjects** (scripts/*.py — where every dashed harness
+# script and the shared modules they import live) as well as the
 # suites themselves, not just the suites' own directory. Filtering on the
 # suites' location alone is the shape #2810 records against fleet-tests.yml:
 # a PR that breaks a subject then skips the only coverage guarding it.
