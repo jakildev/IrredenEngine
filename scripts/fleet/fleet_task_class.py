@@ -109,6 +109,10 @@ FEEDBACK_BLOCKING_LABELS = {"human:needs-fix", "human:blocker", "fleet:needs-fix
 # and dispatching to it is a guaranteed no-op (#1998).
 GL_CAPABLE_HOSTS = {"linux", "windows"}
 
+# The raw label behind that scout field. PR records carry labels but no derived
+# `needs_gl_host`, so the feedback dimension of the gate matches on this.
+GL_HOST_LABEL = "fleet:needs-gl-host"
+
 
 def _current_host():
     # Canonical host key (mac | linux | windows | unknown), mirroring
@@ -132,10 +136,18 @@ def _current_host():
     return "unknown"
 
 
-def _host_incompatible(task, host):
-    # A `needs_gl_host` task on a non-GL host (macOS/Metal, or unknown) can
-    # never be built/run/verified here — terminally unclaimable, like inflight.
-    return bool(task.get("needs_gl_host")) and host not in GL_CAPABLE_HOSTS
+def _host_incompatible(item, host):
+    # A GL-only item on a non-GL host (macOS/Metal, or unknown) can never be
+    # built/run/verified here — terminally unclaimable, like inflight.
+    #
+    # Reads both record shapes the slice carries: the scout derives a
+    # `needs_gl_host` field on TASK records, while PR records
+    # (`_slice_pr_with_repo`) carry only raw `labels`, so a feedback PR is
+    # gated on the label directly. Checking both keeps one predicate for both
+    # dimensions and stays correct if the scout later stamps the field on PRs.
+    needs_gl = (bool(item.get("needs_gl_host"))
+                or GL_HOST_LABEL in (item.get("labels") or []))
+    return needs_gl and host not in GL_CAPABLE_HOSTS
 
 
 def _task_claimable(task, host):
@@ -182,9 +194,10 @@ def _terminally_unclaimable(task, host):
     )
 
 
-def _only_unclaimable_tasks(slice_data, host):
-    """True when tasks_open is non-empty and EVERY item is terminally
-    unclaimable (see `_terminally_unclaimable`).
+def _only_unclaimable_work(slice_data, host):
+    """True when the slice carries claimable-shaped work but EVERY item of it
+    is terminally unclaimable — tasks per `_terminally_unclaimable`, feedback
+    PRs per the host gate.
 
     Used to pick 'go quiet' (defer) over the lane-default dispatch fallthrough:
     in this shape a fresh worker can claim nothing, so a dispatch is a no-op.
@@ -192,9 +205,22 @@ def _only_unclaimable_tasks(slice_data, host):
     plus an owner-held or otherwise non-terminal task — on the '' fallthrough so
     reservation resumes and the like still get their dispatch. A genuinely
     stackable `blocked` task is NOT terminal (it carries `stackable_blocker_pr`)
-    and is elected as a candidate above, so it never reaches this gate."""
+    and is elected as a candidate above, so it never reaches this gate.
+
+    Feedback PRs must be folded in, or the `_candidates` host gate (#2696)
+    only relocates the churn it removes: a slice whose one item is a
+    host-locked feedback PR yields no candidate, and a tasks-only quiet check
+    then reports nothing-unclaimable and falls through to a lane-default
+    no-op — the #1726 shape again. Only `tasks_open` and `feedback_prs` are
+    consulted because reaching this point means every other source (semantic
+    conflicts, needs_plan) yielded nothing, and those two yield
+    unconditionally when non-empty."""
     tasks = slice_data.get("tasks_open") or []
-    return bool(tasks) and all(_terminally_unclaimable(t, host) for t in tasks)
+    feedback = slice_data.get("feedback_prs") or []
+    if not (tasks or feedback):
+        return False
+    return (all(_terminally_unclaimable(t, host) for t in tasks)
+            and all(_host_incompatible(pr, host) for pr in feedback))
 
 
 def feedback_pr_class(labels):
@@ -280,6 +306,17 @@ def _candidates(slice_data, lane_default, host, fable_blocked=False):
         return cls, task.get("effort") or CLASS_DEFAULT_EFFORT[cls]
 
     for pr in slice_data.get("feedback_prs", []) or []:
+        # Same #1998 host gate tasks get via `_task_claimable`: a
+        # `fleet:needs-gl-host` feedback PR has GL-only work left, so
+        # role-worker step 1 skips it on a Metal-only host and
+        # `amending-claim` refuses the claim outright (#2524). Counting it
+        # would inflate the elected class's claimable count on exactly the
+        # hosts that can't serve it — and since `feedback_pr_class` routes
+        # `fleet:design-unblocked` to opus, one phantom item is enough to win
+        # the class election every tick and starve the other lanes behind the
+        # concurrency cap (#2696).
+        if _host_incompatible(pr, host):
+            continue
         cls = feedback_pr_class(pr.get("labels", []))
         yield cls, CLASS_DEFAULT_EFFORT[cls], "work"
     # Step-1c work is opus+-only, so each conflict is one opus claimable item.
@@ -386,15 +423,16 @@ def resolve(slice_data, lane_default, fable_blocked, exclude=()):
     if skipped_fable or excluded_any:
         return "defer"
     # Nothing servable AND no cap-blocked fable. If the queue's only content is
-    # tasks already implemented by an open PR (every tasks_open item carries
-    # `inflight_pr`), a lane-default dispatch is a guaranteed no-op — a fresh
-    # worker refuses every one on sight — so the lane goes quiet (defer) instead
+    # work no fresh worker can claim — tasks already implemented by an open PR
+    # (`inflight_pr`), GL-only items on a Metal-only host, or host-locked
+    # feedback PRs — a lane-default dispatch is a guaranteed no-op, since a
+    # fresh worker refuses every one on sight, so the lane goes quiet instead
     # of churning that no-op every tick (#1726). Any other shape (a claimable
     # task would have been chosen above; a plain `blocked` host-compatible task
     # may still be stackable; an owned task, an empty/missing slice) returns ''
     # so the dispatcher's lane-default fallthrough keeps covering the stackable
     # tier, reservation resumes, and missing slices.
-    if _only_unclaimable_tasks(slice_data, host):
+    if _only_unclaimable_work(slice_data, host):
         return "defer"
     return ""
 

@@ -28,6 +28,14 @@ that matter:
   - a GL-only task (``needs_gl_host``) is unclaimable on a Metal-only host —
     terminal like `inflight_pr`, and the lane defers when it's the only
     work (#1998, the GL-vs-Metal host-capability gate);
+  - that same host gate covers **feedback PRs** (matched on the raw
+    ``fleet:needs-gl-host`` label, since PR records carry no derived field):
+    role-worker step 1 skips them on a Metal-only host and `amending-claim`
+    refuses the claim, so counting one inflated the elected class on exactly
+    the hosts that can't serve it — and via the design-unblocked→opus route
+    that phantom item won the election every tick and starved the other lanes
+    behind the concurrency cap. The quiet path widens with it, or the gate
+    only relocates the no-op it removes (#2696);
   - per-task **Effort:** overrides beat class defaults;
   - the output carries ``count`` = claimable items of the elected class,
     which the dispatcher uses to cap its idle-pane fan-out, and ``plan`` = 1
@@ -401,6 +409,119 @@ class GlHostGate(unittest.TestCase):
         out = self._resolve_on(
             "unknown", {"tasks_open": [_task("#1937", "opus", needs_gl_host=True)]})
         self.assertEqual(out, "defer")
+
+
+class FeedbackPrHostGate(unittest.TestCase):
+    """#2696: the #1998 host gate applies to feedback PRs too, not just tasks.
+
+    A `fleet:needs-gl-host` feedback PR has GL-only work left, so role-worker
+    step 1 skips it on a Metal-only host and `amending-claim` refuses the claim
+    (#2524). Counting it anyway inflated the elected class's claimable count on
+    exactly the hosts that can't serve it, and because `feedback_pr_class`
+    routes `fleet:design-unblocked` to opus, that phantom item won the class
+    election every tick and starved the other lanes behind the concurrency cap.
+    """
+
+    def setUp(self):
+        self._saved_host = os.environ.get("FLEET_TEST_HOST")
+
+    def tearDown(self):
+        if self._saved_host is None:
+            os.environ.pop("FLEET_TEST_HOST", None)
+        else:
+            os.environ["FLEET_TEST_HOST"] = self._saved_host
+
+    @staticmethod
+    def _fb(number, labels):
+        return {"number": number, "repo": "engine", "labels": labels}
+
+    def _resolve_on(self, host, slice_data, lane_default="opus"):
+        os.environ["FLEET_TEST_HOST"] = host
+        return resolve(slice_data, lane_default, fable_blocked=False)
+
+    # -- the gate itself -------------------------------------------------
+    def test_gl_gated_feedback_pr_not_counted_on_mac(self):
+        # The live #2475 shape: design-unblocked (opus-routed) AND GL-gated.
+        # On mac it must contribute nothing; the claimable sonnet task is what
+        # gets elected, so the count reflects only work this host can serve.
+        out = self._resolve_on("mac", {
+            "feedback_prs": [self._fb(2475, ["fleet:design-unblocked",
+                                             "fleet:needs-gl-host"])],
+            "tasks_open": [_task("#10", "sonnet")],
+        }, lane_default="sonnet")
+        self.assertEqual(out, "sonnet high 0 1 0")
+
+    def test_gl_gated_feedback_pr_counted_on_linux(self):
+        out = self._resolve_on("linux", {
+            "feedback_prs": [self._fb(2475, ["fleet:design-unblocked",
+                                             "fleet:needs-gl-host"])],
+        })
+        self.assertEqual(out, "opus xhigh 0 1 0")
+
+    def test_gl_gated_feedback_pr_counted_on_windows(self):
+        out = self._resolve_on("windows", {
+            "feedback_prs": [self._fb(2475, ["fleet:design-unblocked",
+                                             "fleet:needs-gl-host"])],
+        })
+        self.assertEqual(out, "opus xhigh 0 1 0")
+
+    def test_ungated_feedback_pr_unaffected_on_mac(self):
+        # Only the GL label is gated — an ordinary feedback PR still counts on
+        # every host (#2393 / game #321 shape).
+        out = self._resolve_on("mac", {
+            "feedback_prs": [self._fb(2393, ["fleet:design-unblocked",
+                                             "fleet:wip"])],
+        })
+        self.assertEqual(out, "opus xhigh 0 1 0")
+
+    def test_unknown_host_is_fail_closed(self):
+        out = self._resolve_on("unknown", {
+            "feedback_prs": [self._fb(2475, ["fleet:needs-fix",
+                                             "fleet:needs-gl-host"])],
+        })
+        self.assertEqual(out, "defer")
+
+    # -- the quiet path must follow the gate -----------------------------
+    def test_gl_gated_feedback_pr_alone_on_mac_defers(self):
+        # Gating `_candidates` alone would only relocate the churn: with no
+        # candidate yielded, a tasks-only quiet check reports
+        # nothing-unclaimable and falls through to '' -> a lane-default no-op
+        # dispatch, the same #1726 shape the gate exists to remove. The slice
+        # holds real work no host-compatible worker can claim -> defer.
+        out = self._resolve_on("mac", {
+            "feedback_prs": [self._fb(2475, ["fleet:design-unblocked",
+                                             "fleet:needs-gl-host"])],
+        })
+        self.assertEqual(out, "defer")
+
+    def test_gl_gated_feedback_plus_terminal_tasks_on_mac_defers(self):
+        out = self._resolve_on("mac", {
+            "feedback_prs": [self._fb(2475, ["fleet:design-unblocked",
+                                             "fleet:needs-gl-host"])],
+            "tasks_open": [_task("#1640", "opus", inflight_pr={"number": 1700})],
+        })
+        self.assertEqual(out, "defer")
+
+    def test_gl_gated_feedback_plus_owned_task_still_falls_through(self):
+        # An owner-held task is NOT terminal, so the '' fallthrough that covers
+        # reservation resumes survives the widened quiet check.
+        out = self._resolve_on("mac", {
+            "feedback_prs": [self._fb(2475, ["fleet:design-unblocked",
+                                             "fleet:needs-gl-host"])],
+            "tasks_open": [_task("#10", "opus", owner="worker-1")],
+        })
+        self.assertEqual(out, "")
+
+    def test_conflict_still_dispatches_when_feedback_host_locked(self):
+        # Step 1c is host-agnostic, so a conflict must still elect opus even
+        # when the only feedback item is GL-locked on this host.
+        out = self._resolve_on("mac", {
+            "feedback_prs": [self._fb(2475, ["fleet:design-unblocked",
+                                             "fleet:needs-gl-host"])],
+            "semantic_conflict_prs": [{"number": 2417, "repo": "engine",
+                                       "labels": ["fleet:semantic-conflict"]}],
+        })
+        self.assertEqual(out, "opus xhigh 0 1 0")
 
 
 class SemanticConflictDispatchPressure(unittest.TestCase):
