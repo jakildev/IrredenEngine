@@ -174,7 +174,7 @@ assert_exit "$actual" 1 "body **Model:** sonnet (annotated), opus role → exit 
 
 # --- T7: FLEET_ROLE_MODEL unset passes any task -----------------------------
 echo "T7: FLEET_ROLE_MODEL unset passes fleet:opus issue"
-actual=0; "$FLEET_CLAIM" claim 1001 test-agent 2>/dev/null || actual=$?
+actual=0; env -u FLEET_ROLE_MODEL "$FLEET_CLAIM" claim 1001 test-agent 2>/dev/null || actual=$?
 assert_exit "$actual" 0 "unset FLEET_ROLE_MODEL bypasses gate → exit 0"
 release_quiet 1001
 
