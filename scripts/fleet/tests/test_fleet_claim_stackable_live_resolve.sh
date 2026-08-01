@@ -150,6 +150,22 @@ case "$1 $2" in
                 # #101 OPEN with a PR → stacks on the remaining #101.
                 printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"},{"name":"fleet:sonnet"}],"body":"**Blocked by:** #100\n**Blocked by:** #101\n"}'
                 ;;
+            3006)
+                # #2523: the blocker ref names an issue-less open PR by its OWN
+                # number (#540). Neither the branch arm nor the Closes arm can
+                # resolve it — only the number arm can.
+                printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"},{"name":"fleet:sonnet"}],"body":"**Blocked by:** #540\n"}'
+                ;;
+            3007)
+                # #2523 negative control: a PR-shaped ref with no open PR of
+                # that number → still empty, the arm is not a wildcard.
+                printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"},{"name":"fleet:sonnet"}],"body":"**Blocked by:** #777\n"}'
+                ;;
+            3008)
+                # #2523: number-matched base is still subject to filter (b) —
+                # PR #541 carries fleet:wip.
+                printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"},{"name":"fleet:sonnet"}],"body":"**Blocked by:** #541\n"}'
+                ;;
             *)
                 printf '%s' '{"state":"OPEN","labels":[],"body":""}'
                 ;;
@@ -162,8 +178,13 @@ case "$1 $2" in
             exit 0
         fi
         if [[ "$pr_state" == "open" ]]; then
-            # Return one open PR for issue #101.
-            printf '%s\n' '[{"url":"https://github.com/jakildev/IrredenEngine/pull/536","headRefName":"claude/101-work-branch","author":{"login":"bot"},"number":536,"body":"Closes #101"}]'
+            # #536 is issue #101's PR (branch + Closes arms).
+            # #540 / #541 are ISSUE-LESS PRs (#2523): non-claude branch, no
+            # Closes ref — reachable only by the number arm. #541 is fleet:wip
+            # so filter (b) can be exercised on a number-matched base. Neither
+            # matches #101 (number, branch, and body all disagree), so the
+            # single-match contract of T1/T5 is unaffected.
+            printf '%s\n' '[{"url":"https://github.com/jakildev/IrredenEngine/pull/536","headRefName":"claude/101-work-branch","author":{"login":"bot"},"number":536,"body":"Closes #101"},{"url":"https://github.com/jakildev/IrredenEngine/pull/540","headRefName":"audit/stage-select-dedup","author":{"login":"jakildev"},"number":540,"body":"Audit-driven, no backing issue."},{"url":"https://github.com/jakildev/IrredenEngine/pull/541","headRefName":"audit/wip-thing","author":{"login":"jakildev"},"number":541,"body":"No backing issue.","labels":[{"name":"fleet:wip"}]}]'
             exit 0
         fi
         echo "[]"
@@ -254,6 +275,31 @@ else
     FAIL=$((FAIL + 1))
     echo "  FAIL: multi-line result does not include claude/101-work-branch"
 fi
+
+# --- #2523: `Blocked by: #<PR>` — the ref names an issue-less open PR --------
+# The blocker PR has no backing issue, so branch_matches_issue and
+# body_closes_issue are both False for it by construction; only the number arm
+# can resolve the ref. Before that arm the finder printed nothing and the task
+# was unpickable for the blocker's whole pre-merge window.
+echo "T9: blocker ref IS an issue-less open PR's own number (#540) → returns PR 540"
+result=$("$FLEET_CLAIM" find-stackable-blockers 3006 2>/dev/null || true)
+assert_nonempty "$result" "PR-number blocker ref returns a PR line"
+echo "  result: $result"
+if echo "$result" | grep -q "audit/stage-select-dedup"; then
+    PASS=$((PASS + 1))
+    echo "  ok: result includes audit/stage-select-dedup (PR #540)"
+else
+    FAIL=$((FAIL + 1))
+    echo "  FAIL: result does not include audit/stage-select-dedup"
+fi
+
+echo "T10: PR-number blocker ref with no open PR of that number (#777) → empty"
+result=$("$FLEET_CLAIM" find-stackable-blockers 3007 2>/dev/null || true)
+assert_output "$result" "" "unmatched PR-number ref → empty (arm is not a wildcard)"
+
+echo "T11: number-matched base still honors filter (b) — #541 is fleet:wip → empty"
+result=$("$FLEET_CLAIM" find-stackable-blockers 3008 2>/dev/null || true)
+assert_output "$result" "" "wip number-matched base → empty (offer/accept agree, #1751)"
 
 # --- #1751: claim --stackable-on rejects an OPEN-but-unsafe base -------------
 # The base re-verify runs before any blocker/model/reservation gate, so an

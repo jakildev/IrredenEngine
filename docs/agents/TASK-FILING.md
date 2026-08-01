@@ -229,11 +229,15 @@ Rules that make the stack actually stack:
   satisfied ref. (Live multi-blocker resolution is planned but not
   landed — track via the open scout/fleet-claim blocker-resolution
   issue.)
-- **Use issue numbers as blockers; PR numbers are unreliable.**
-  `fleet-claim` treats a `#N` ref as gate-blocked until CLOSED (issues
-  close when their PR merges), whereas a PR number left as blocker adds
-  ambiguity. To gate on a docs PR that has no backing issue, withhold
-  `human:approved` on the dependent task instead.
+- **Prefer issue numbers as blockers; a PR number is resolvable but
+  reserved for the issue-less case.** `fleet-claim` treats a `#N` ref as
+  gate-blocked until CLOSED (issues close when their PR merges), so an
+  issue ref stays the clearer form and is what `file-epic` emits. A ref
+  naming a **PR** now resolves too — both stacking surfaces match a PR by
+  its own number, and the merged-state fallback collapses the ref once it
+  lands (#2523) — but use it only when the blocker genuinely has no
+  backing issue (an audit- or review-driven PR filed directly). Filing a
+  PR ref where an issue exists just hides the dependency from the reader.
 
 Once filed correctly, the cascade is automatic: T1 claims plain and
 opens `claude/<T1>-*`; the scout enriches T2 with `stackable_blocker_pr`

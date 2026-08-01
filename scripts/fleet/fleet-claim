@@ -1275,8 +1275,9 @@ sys.exit(1)
 
 cmd_find_stackable_blockers() {
     # If the task's **Blocked by:** field resolves to exactly one unresolved
-    # blocker with exactly one matching open PR (head-branch `claude/<N>-*`
-    # or body `Closes #N`), print one tab-separated line:
+    # blocker with exactly one matching open PR (head-branch `claude/<N>-*`,
+    # body `Closes #N`, or the ref being that PR's own number — #2523),
+    # print one tab-separated line:
     #   <pr-url><TAB><headRefName><TAB><author-login><TAB><number>
     # Otherwise print nothing (and exit 0).
     #
@@ -1375,9 +1376,13 @@ PYEOF
 )
     [[ -z "$blocker" ]] && return 0
 
-    # Find an open PR whose head-branch starts with claude/<N>- OR whose
-    # body contains "Closes #N" (case-insensitive). Exactly one match
-    # qualifies; zero or multiple → empty output.
+    # Find an open PR whose head-branch starts with claude/<N>-, OR whose
+    # body contains "Closes #N" (case-insensitive), OR whose own number IS N
+    # (a `Blocked by: #<PR>` ref naming an issue-less blocker PR — #2523). The
+    # three arms are the same union the scout's enrich_stackable_blocker_prs
+    # offers, so the finder can't advertise a base the offer withholds, or vice
+    # versa (#1751). Exactly one match qualifies; zero or multiple → empty
+    # output.
 
     BLOCKER="$blocker" REPO="$repo" python3 <<'PYEOF'
 import json, os, subprocess, sys
@@ -1410,7 +1415,11 @@ matches = []
 for pr in prs:
     head = pr.get("headRefName", "") or ""
     body = pr.get("body", "") or ""
-    if branch_matches_issue(head, blocker, repo) or body_closes_issue(body, blocker):
+    if (
+        branch_matches_issue(head, blocker, repo)
+        or body_closes_issue(body, blocker)
+        or str(pr.get("number", "")) == blocker
+    ):
         matches.append(pr)
 if len(matches) != 1:
     sys.exit(0)

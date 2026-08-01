@@ -107,6 +107,35 @@ both the engine pass and the game pass. A `repo == game` stackable task is
 claimed with `--repo game`. Multi-blocker tasks are not eligible for stacking in
 v1 (`_single_blocker_issue` returns nothing for them).
 
+### The `Blocked by: #<PR>` form (#2523)
+
+A blocker ref matches an open PR by any of three arms: its head branch is
+`claude/<N>-*`, its body `Closes/Fixes/Resolves #N`, **or `N` is that PR's own
+number**. The third arm exists because a blocker PR can have no backing issue at
+all — an audit- or review-driven PR filed directly — in which case the first two
+arms are False by construction and there is no issue number to name instead.
+Before it, such a task was unpickable for the blocker's entire pre-merge window:
+the normal tier skipped it (`fleet:blocked`) and the stackable tier never offered
+a base, so it sat queued and approved until a human merged the blocker.
+
+The form is unambiguous: GitHub issues and PRs share one number namespace, so a
+ref equal to an open PR's number cannot also name a live issue. Resolution
+semantics follow the ref's state, and only the *open* window needed fixing —
+once the blocker PR merges, `gh issue view <N> --json state` reports `MERGED`
+and the existing satisfied-ref fallback in `check_blockers` /
+`_resolve_ref_satisfied` collapses the ref, unblocking the task normally.
+
+Both stacking surfaces carry the arm — the scout's offer
+(`enrich_stackable_blocker_prs`) and the live finder
+(`fleet-claim find-stackable-blockers`) — so the offer and the accept cannot
+disagree (#1751). The base-safety filters are unchanged: a number-matched base is
+still rejected when it carries a `NOT_STACKABLE_BASE_LABELS` label or overlaps
+the downstream task's file area. The arm widens *matching*, not the safety bar.
+
+The scout also logs every non-offer on this path (zero matches, or more than one)
+rather than skipping silently — the silence is what made #2523 take a source read
+to diagnose rather than a log line to spot (#2442's never-silent lesson).
+
 ## Why reconcile leaves these alone
 
 A `fleet:queued` + `fleet:blocked` task with no claim and no PR matches **no**
