@@ -24,6 +24,12 @@
 #   - Conflicting PRs on master: attempt the rebase anyway — it's free;
 #     an actual conflict aborts cleanly and goes to the LLM pass.
 #
+# Stale-label cleanup — two label shapes that no longer describe the PR they
+# sit on, and that would otherwise park it outside every automated lane
+# forever. Rationale for each lives on its cleanup_* function:
+#   - fleet:semantic-conflict on a MERGEABLE PR (#1654).
+#   - fleet:awaiting-base / fleet:needs-base-update on a base==master PR (#2764).
+#
 # Auto-merge lane (plan-file PRs only): an approved, MERGEABLE, master-based
 # PR whose diff touches ONLY .fleet/plans/** (steward rollups, close-outs,
 # umbrella plan filings) is squash-merged here — zero build/runtime surface,
@@ -312,6 +318,57 @@ cleanup_stale_conflict() {
     log "$repo_key#$pr: removed stale fleet:semantic-conflict (fail-then-succeed race, #1654)"
 }
 
+# Remove a retired stack-park label (fleet:awaiting-base /
+# fleet:needs-base-update) from a PR whose base IS master. The park is
+# provably discharged there — a PR cannot be waiting on a base branch that
+# is master — and nothing else will ever remove it. The sole remover is
+# merger step 2.5, whose candidate filter is `baseRefName != "master"`;
+# GitHub retargets a native-stack child to master synchronously with its
+# parent's merge, so the child leaves 2.5's candidate set at the very
+# moment 2.5 would have cleared the label. The slice triage and merger
+# step 3 then both hard-skip it, stranding an approved PR from every
+# automated lane (#2764). Live-reverified before touching: confirms OPEN,
+# base still master, and the label still present, so a PR retargeted back
+# off master between the scout tick and now is never cleared.
+cleanup_stale_base_park() {
+    local repo_key="$1" pr="$2"
+    local repo_slug
+    repo_slug=$(repo_slug_for "$repo_key")
+    if (( DRY_RUN )); then
+        log "$repo_key#$pr: retired stack-park label on a base=master PR — would remove (dry-run)"
+        return 0
+    fi
+    local tsv state base labels
+    tsv=$(gh pr view "$pr" --repo "$repo_slug" \
+        --json state,baseRefName,labels \
+        --jq '[.state, .baseRefName, ([.labels[].name] | join(","))] | @tsv' \
+        2>/dev/null) || {
+        log "$repo_key#$pr: preflight for stack-park cleanup failed; skipping"
+        return 0
+    }
+    IFS=$'\t' read -r state base labels <<< "$tsv"
+    if [[ "$state" != "OPEN" ]]; then
+        log "$repo_key#$pr: no longer open; skipping stack-park cleanup"
+        return 0
+    fi
+    if [[ "$base" != "master" ]]; then
+        log "$repo_key#$pr: base is now '$base'; skipping stack-park cleanup"
+        return 0
+    fi
+    local removed="" label
+    for label in "fleet:awaiting-base" "fleet:needs-base-update"; do
+        if printf '%s' "$labels" | grep -q "$label"; then
+            gh pr edit "$pr" --repo "$repo_slug" --remove-label "$label" >/dev/null 2>&1 || true
+            removed="${removed:+$removed }$label"
+        fi
+    done
+    if [[ -z "$removed" ]]; then
+        log "$repo_key#$pr: retired stack-park label already cleared; skipping"
+        return 0
+    fi
+    log "$repo_key#$pr: removed retired stack-park label(s) [$removed] — base is master, park discharged (#2764)"
+}
+
 # Auto-merge one plan-file PR. Returns 0 = merged (or would merge, dry-run),
 # 1 = not merged (stays on the human's click; counted like llm-other so the
 # re-arm behavior for approved+MERGEABLE PRs is unchanged from before this
@@ -530,12 +587,17 @@ fi
 
 # Triage the slice. One line per PR:
 #   <repo> <number> <head> <base> <verdict>
-# verdict: attempt | merge-candidate | skip-labels | llm-other
+# verdict: attempt | merge-candidate | stale-conflict | stale-base-park
+#          | skip-labels | llm-other
 # - attempt: approved, no skip labels, and either stacked (base!=master)
 #   or not cleanly MERGEABLE — tier-0 tries the rebase.
 # - merge-candidate: approved, MERGEABLE, base==master, and every label
 #   inside the auto-merge allowlist — attempt_merge live-verifies (including
 #   the pure-.fleet/plans diff check the slice can't answer) and merges.
+# - stale-conflict: fleet:semantic-conflict on a MERGEABLE PR — label
+#   cleanup only, no branch work (#1654).
+# - stale-base-park: a retired stack-park label on a base==master PR —
+#   label cleanup only, no branch work (#2764).
 # - skip-labels: parked with another agent/human; neither tier touches it.
 # - llm-other: any other merger-actionable state this script doesn't
 #   handle (merge-ready label upkeep, stack-coordination transients,
@@ -586,14 +648,28 @@ for pr in data.get("prs", []):
         and mergeable == "MERGEABLE"
         and not any(skip_re.search(l) for l in labels if l != "fleet:semantic-conflict")
     )
+    # Retired stack-park labels, still minted by the merger role doc.
+    # base == master proves the park is discharged — a PR cannot be waiting
+    # on a base branch that is master — so route it to cleanup rather than
+    # parking it (why nothing else ever clears it: cleanup_stale_base_park,
+    # #2764). Same guards as the stale-conflict case: approved, and no other
+    # skip label claiming the branch.
+    stack_park = {"fleet:needs-base-update", "fleet:awaiting-base"} & set(labels)
+    has_stale_base_park = (
+        stack_park
+        and base == "master"
+        and approved
+        and not any(skip_re.search(l) for l in labels if l not in stack_park)
+    )
     if has_stale_conflict:
         verdict = "stale-conflict"
+    elif has_stale_base_park:
+        verdict = "stale-base-park"
     elif any(skip_re.search(l) for l in labels):
         verdict = "skip-labels"
-    elif {"fleet:needs-base-update", "fleet:awaiting-base"} & set(labels):
-        # Retired legacy stack-coordination labels — nothing sets them since
-        # the native-stacked-PRs migration, but a straggler PR still carrying
-        # one is mid-legacy-sequence; route it to the LLM pass, never tier-0.
+    elif stack_park:
+        # base != master (or not approved): a straggler still anchored to a
+        # real base, mid-legacy-sequence. The LLM pass owns it, never tier-0.
         verdict = "llm-other"
     elif approved and (base != "master" or mergeable not in ("MERGEABLE", "UNKNOWN", "", None)):
         verdict = "attempt"
@@ -639,6 +715,11 @@ for line in "${PR_LINES[@]:-}"; do
             # re-enters the normal merge-ready flow without routing a worker
             # step-1c onto an already-clean branch.
             cleanup_stale_conflict "$repo_key" "$pr"
+            ;;
+        stale-base-park)
+            # Clear the discharged park label so the PR re-enters the normal
+            # verdict path on the next tick (#2764).
+            cleanup_stale_base_park "$repo_key" "$pr"
             ;;
         skip-labels)
             # Parked with another agent/human — neither tier-0 nor the
