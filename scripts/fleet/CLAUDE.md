@@ -61,6 +61,14 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   `require_fleet_lib_dir` in `lib_assert.sh` is the backstop for controls still
   run by hand — it fires automatically for suites that set `SCRIPT_DIR` before
   sourcing.
+- **A new `tests/test_*.sh` file needs its executable bit committed**
+  (`git update-index --chmod=+x` if `git add` didn't pick it up from your
+  filesystem's mode). `run_all.sh` invokes suites through an explicit
+  interpreter, so a `100644` one still *runs* in CI — but it returns 126
+  under the direct `./"$f"` form its shebang implies, and any `[[ -x "$f" ]]`
+  filter a future runner adds would skip it silently (#2725).
+  `test_suites_are_executable.sh` guards the convention for `test_*.sh`;
+  `test_*.py` suites are `100644` by convention (always run as `python3 "$f"`).
 - **Bash array footguns: guard the empty case and the paired case.** A
   `"${arr[@]}"` expansion under `set -u` where `arr` can legitimately be
   empty must pre-check `(( ${#arr[@]} > 0 ))` — or the script's declared
