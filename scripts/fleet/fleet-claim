@@ -1069,7 +1069,7 @@ sys.stdout.write(unsafe_base_reason(labels, files) or "")
         if [[ -n "$repo_for_pr_check" ]]; then
             local existing_pr
             existing_pr=$(gh pr list --repo "$repo_for_pr_check" --state open \
-                --json number,headRefName,body 2>/dev/null \
+                --json number,headRefName,body --limit 300 2>/dev/null \
                 | ISSUE_NUM="$issue_num" REPO_NS="$REPO_NS" python3 -c '
 import json, os, sys
 sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
