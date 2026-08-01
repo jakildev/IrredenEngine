@@ -528,27 +528,22 @@ path was `fleet:has-nits`. (The AMEND path already cleared
 approval is still valid; human tweaks and nit cleanups don't
 invalidate it.
 
-### Step g — propagate the upstream fix downstream
+### Step g — downstream propagation is automatic now
 
-Always run, after every feedback fix:
+No fleet-side action needed here. The `fleet-claim` downstream-rebase
+molecule subcommand was retired with the native-stacked-PRs migration (see
+[`docs/design/native-stacked-prs-migration.md`](../design/native-stacked-prs-migration.md)) —
+GitHub's native Stacked PRs now own cascading a fix to downstream branches:
+once the upstream PR merges, every remaining PR in the stack is retargeted
+and rebased onto trunk server-side, synchronously with the merge. There is
+nothing to run at this step.
 
-```
-fleet-claim molecule rebase-downstream <your-worktree-basename>
-```
-
-The subcommand auto-detects the upstream issue number from the current
-branch (`claude/<issue#>-…`) and is a graceful no-op if there's no
-active molecule, the current branch isn't in one, or the upstream
-is already the tail of the chain — so it is safe to invoke
-unconditionally.
-
-When it does apply: it fetches the new tip, rebases each downstream
-branch in molecule order, force-pushes with `--force-with-lease`,
-and comments on each downstream PR. A rebase conflict pauses the
-chain at that task: the affected PR gets `fleet:blocker` + a
-comment, remaining downstreams stay on the prior base, and the
-subcommand exits non-zero — surface the failure to the human and
-move on.
+If you want downstream branches to pick up this fix's commits immediately,
+*before* the upstream PR merges, use GitHub's own tooling rather than a
+fleet wrapper: the PR's "Rebase stack" button, or `gh stack sync` / `gh
+stack rebase` from the CLI. This is optional — correctness doesn't depend
+on it, since coupled merges + automatic retargeting guarantee downstream
+branches are consistent with trunk once the stack actually merges.
 
 ### Step h — release the amendment reservation
 
