@@ -1520,6 +1520,33 @@ worker_rearm_should_fire() {
     (( DISPATCH_DEFER == 0 )) && [[ -n "$DISPATCH_CLASS" ]]
 }
 
+# Host gate for the smoke lane (#2839). Returns 0 (dispatch) iff at least one PR
+# in the smoke-worker slice carries THIS host's pending smoke label, and sets
+# SMOKE_SERVABLE_PRS to those numbers (newline-separated) for the log line.
+#
+# Smoke is the one lane whose work is definitionally host-specific — only a
+# native-Windows host can clear `fleet:needs-windows-smoke` — while the scout's
+# projection is deliberately host-agnostic, because it is the cross-host record
+# of outstanding smoke debt that `platform-catchup` reads. So the host dimension
+# is applied here, at dispatch: the same layer `_host_incompatible` gates the
+# task (#1998) and feedback-PR (#2695) lanes at, and the symmetric counterpart of
+# `worker_rearm_should_fire` above, which exists for exactly this reason on the
+# worker lane.
+#
+# Shells out to fleet_task_class.py rather than importing it — that module is a
+# CLI seam from bash, the same way resolve_worker_class and plan_assign_for_pane
+# reach it. A missing, unreadable, or host-empty slice yields no numbers, i.e.
+# don't fire.
+SMOKE_SERVABLE_PRS=""
+smoke_worker_should_fire() {
+    local slice="$STATE_DIR/projections/smoke-worker.json"
+    SMOKE_SERVABLE_PRS=""
+    [[ -f "$slice" ]] || return 1
+    SMOKE_SERVABLE_PRS=$(python3 "$FLEET_LIB_DIR/fleet_task_class.py" \
+        --smoke-check "$slice" 2>/dev/null) || SMOKE_SERVABLE_PRS=""
+    [[ -n "$SMOKE_SERVABLE_PRS" ]]
+}
+
 dispatch_role() {
     local role="$1"
     local trigger_file="$TRIGGERS_DIR/$role"
@@ -1528,6 +1555,20 @@ dispatch_role() {
     LAST_ROLE_DISPATCH_COUNT=0
 
     if [[ ! -f "$trigger_file" ]]; then
+        return
+    fi
+
+    # Smoke-lane host gate (#2839). The scout's smoke projection is host-agnostic
+    # by design, so a standing trigger only means "SOME host owes smoke work" —
+    # on every other host, dispatching it is a guaranteed no-op iteration. The
+    # empty-exit backoff below does fire on that shape, but it only consumes the
+    # standing trigger, so the scout re-arms on the next projection change and
+    # the cycle repeats indefinitely. Consume the trigger here for the same
+    # reason the backoff does — the scout re-arms when the projection next
+    # changes, which is exactly when this host's own smoke debt would appear.
+    if [[ "$role" == "smoke-worker" ]] && ! smoke_worker_should_fire; then
+        rm -f "$trigger_file"
+        log "smoke-worker: no smoke work pending for this host; standing down — scout re-arms on new work"
         return
     fi
 
@@ -2400,6 +2441,18 @@ case "${1:-}" in
             echo "rearm class=$DISPATCH_CLASS"
         else
             echo "skip (defer=$DISPATCH_DEFER class=$DISPATCH_CLASS)"
+        fi
+        exit 0
+        ;;
+    --smoke-check)
+        # Test/debug: would the smoke lane dispatch on this host against the
+        # current smoke-worker projection? Prints "fire prs=<n1,n2,...>" when at
+        # least one pending PR carries this host's smoke label, else "quiet".
+        # Does NOT touch the trigger. Mirrors the live gate exactly (#2839).
+        if smoke_worker_should_fire; then
+            echo "fire prs=$(echo "$SMOKE_SERVABLE_PRS" | paste -sd, -)"
+        else
+            echo "quiet"
         fi
         exit 0
         ;;

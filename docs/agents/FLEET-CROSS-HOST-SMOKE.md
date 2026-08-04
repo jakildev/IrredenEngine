@@ -152,6 +152,20 @@ so no `cmd /c` hand-wrapping is needed. When no Windows fleet is online, the
 `platform-catchup` workflow (#1093) is the manual fallback for clearing
 `fleet:needs-windows-smoke`.
 
+This routing is also **enforced in code**, one layer above the protocol below
+(#2839): `fleet_task_class.HOST_SMOKE_LABELS` maps each host key to its own
+pending label, `fleet-up`'s boot predicate and `fleet-dispatcher`'s
+`smoke_worker_should_fire` filter the smoke projection through it, and a host
+with no smoke work of its own is never woken. (The map's key for macOS is
+`mac`, matching `_current_host()`; the label keeps the `macos` spelling, and the
+map is where the two vocabularies meet — #1383.) The scout's projection itself
+stays host-agnostic, so `state.json` remains the cross-host record of all
+outstanding smoke debt that `platform-catchup` reads. The gate is
+dispatch-side only: `fleet-claim review-claim` below has no host term, because
+it is shared with the reviewer lanes where a cross-host claim is legitimate — so
+the step-4 detection above is still the thing that stops a pane reached by
+another route from smoking another host's PR.
+
 ### Picking a PR
 
 From the cached `repos.engine.prs[]`, pick PRs whose `labels` array:
