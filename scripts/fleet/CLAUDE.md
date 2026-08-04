@@ -47,6 +47,20 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   `summarize` exit idiom — don't re-copy the helpers into a new test.
   Genuinely test-specific asserts (path existence, exit codes) stay local,
   built on `ok`/`bad`.
+- **Positive-control a new suite with `fleet-positive-control`, never by hand.**
+  `fleet-tests.yml` proves a suite is *green*; only a run against the pre-fix
+  ref proves it would have gone *red* on the bug, so a new suite's worth still
+  rests on that control. Don't hand-stage it: the wrappers dispatch to the
+  `fleet_*.py` modules beside them, so a partial stage aborts every invocation
+  on its lib-dir preflight and the suite scores those as ordinary assertion
+  failures — printing a **plausible but wrong tally** rather than an error
+  (#2713: a mis-stage read 2 passed / 21 failed where the truth was 14 / 9,
+  inflating the fix's apparent coverage). `fleet-positive-control <test-file>
+  <ref>` stages the whole directory with `git archive`, reports MEANINGFUL vs
+  VACUOUS, and emits the test-plan line with its arithmetic shown.
+  `require_fleet_lib_dir` in `lib_assert.sh` is the backstop for controls still
+  run by hand — it fires automatically for suites that set `SCRIPT_DIR` before
+  sourcing.
 - **Bash array footguns: guard the empty case and the paired case.** A
   `"${arr[@]}"` expansion under `set -u` where `arr` can legitimately be
   empty must pre-check `(( ${#arr[@]} > 0 ))` — or the script's declared

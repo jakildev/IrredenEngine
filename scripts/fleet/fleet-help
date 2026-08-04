@@ -353,6 +353,13 @@ Meta / housekeeping
                                  fleet:reviewing-<host>-<agent> claim on the PR
                                  (misroute guard); omit --agent for interactive
                                  human review
+  fleet-positive-control <test-file> <ref> [--include <pathspec>]...
+                                 stage <ref>'s scripts/fleet with git archive,
+                                 run your working-tree suite against it, and
+                                 report MEANINGFUL vs VACUOUS. Use this instead
+                                 of hand-staging a positive control: a partial
+                                 stage prints a plausible-but-wrong tally
+                                 rather than an error (#2713)
   fleet-feedback [--since …] …           digest ~/.fleet/feedback/*.md
   review-fleet-feedback {digest|apply|bump}
                                  closed-loop reviewer over fleet-feedback;
