@@ -129,6 +129,19 @@ parameter).
 Shader file paths are stored in `render/shader_names.hpp`. Update that
 header when you add or rename a shader.
 
+### Metal compute kernel threadgroup registry
+
+Every dispatchable Metal compute kernel (`engine/render/src/shaders/metal/c_*.metal`,
+excluding `*_body.metal` include-fragments) needs an entry in
+`threadgroupSizeForFunctionName` (`metal_pipeline.cpp`) supplying its real
+`threadsPerThreadgroup`. A kernel absent from that chain falls through to the
+`MTL::Size(1, 1, 1)` fallback with no error — GL is structurally immune (it
+reads `local_size` out of the GLSL source), so this is Metal-only. Unlike the
+prose reminders elsewhere near this registry, this one is **enforced**: the
+`header-checks` / `lint` CMake targets run
+`cmake/run_metal_kernel_registry_check.cmake`, which fails the build and
+names the kernel if a new `.metal` file has no matching entry (#2798).
+
 ### Metal AOT metallib build (opt-in, no runtime consumer)
 
 `engine/render/CMakeLists.txt` can precompile every `.metal` file into

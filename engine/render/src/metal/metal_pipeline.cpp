@@ -105,6 +105,12 @@ MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
     if (functionName == "c_propagate_light_volume") {
         return MTL::Size(8, 8, 4);
     }
+    // Per-axis dispatch-dim finalize (#2256): one thread per axis, dispatched
+    // (kAxisCount, 1, 1). Explicit entry rather than implicit-by-coincidence
+    // with the fallback below.
+    if (functionName == "c_per_axis_cell_finalize") {
+        return MTL::Size(1, 1, 1);
+    }
     return MTL::Size(1, 1, 1);
 }
 
