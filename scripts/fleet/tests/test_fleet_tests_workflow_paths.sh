@@ -2,13 +2,14 @@
 # Tests for .github/workflows/fleet-tests.yml's path filters (#2810).
 #
 # The workflow path-filters on scripts/fleet/** — the LOCATION of its
-# suites, not the SUBJECTS they test. Three suites test files that live
+# suites, not the SUBJECTS they test. Four suites test files that live
 # outside that path (test_format_changed_line_scoping.sh covers
 # cmake/run_clang_format_changed.cmake; test_ir_build_dir_resolution.sh
 # covers engine/tools/lib/concurrency_helpers.sh; test_fleet_transition.sh
-# covers docs/agents/fleet-state-machine.json), so a PR touching only one
-# of those subjects previously got no fleet-tests run at all — the only
-# regression coverage for that subject silently never fired.
+# covers docs/agents/fleet-state-machine.json; test_lint_rules_commands.py
+# covers every doc under .claude/rules/ and docs/agents/), so a PR touching
+# only one of those subjects previously got no fleet-tests run at all — the
+# only regression coverage for that subject silently never fired.
 #
 # This is deliberately a hardcoded ratchet, not a parse of each suite's
 # variable assignments (same shape as header_global_baseline in
@@ -32,11 +33,19 @@ fi
 
 # The out-of-tree subjects each suite actually needs triggered on. Extend
 # this list (and add the matching suite to scripts/fleet/tests/) whenever
-# a new suite tests a file outside scripts/fleet/.
+# a new suite tests a file outside scripts/fleet/. An entry is matched as a
+# literal substring of the block, so a subject whose suite covers a whole
+# directory is listed as the glob the workflow actually carries — the two
+# `**` entries below are test_lint_rules_commands.py's doc globs (#2823),
+# not single files. `docs/agents/**` subsumes fleet-state-machine.json;
+# the narrower entry stays so the ratchet keeps naming that subject even
+# if the glob is ever tightened.
 OUT_OF_TREE_SUBJECTS=(
     'cmake/run_clang_format_changed.cmake'
     'engine/tools/lib/concurrency_helpers.sh'
     'docs/agents/fleet-state-machine.json'
+    '.claude/rules/**'
+    'docs/agents/**'
 )
 
 # paths_block <file> <section> — the raw text of the named top-level `on:`
