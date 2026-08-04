@@ -11,8 +11,10 @@
 # (sonnet) merger iteration. The LLM pass is therefore only ever spent on
 # work that actually needs judgment.
 #
-# Eligibility (deliberately conservative — tier-0 must never fight an
-# agent or human for a branch):
+# Eligibility for the rebase pass (deliberately conservative — tier-0 must
+# never fight an agent or human for a branch). The stale-label cleanups
+# below are NOT bound by it: they do no branch work, so there is no branch
+# to fight over (#2840).
 #   - PR carries fleet:approved and none of the skip labels below.
 #   - Stacked PRs (base != master): plain rebase onto the updated base
 #     branch only. Retargeting to master and the inherited-prefix drop
@@ -85,7 +87,11 @@ for arg in "$@"; do
         --auto)          AUTO=1 ;;
         --rearm-trigger) REARM=1 ;;
         --dry-run)       DRY_RUN=1 ;;
-        -h|--help)       sed -n '2,31p' "$0"; exit 0 ;;
+        # Header end is derived from content (first non-# line), never a
+        # hardcoded range: the old `sed -n '2,31p'` silently dropped every
+        # section past the stale-label bullets — Usage included — and any
+        # header edit moved the cut (#2433's shape, re-hit in #2840).
+        -h|--help)       awk 'NR==1 {next} /^#/ {print; next} {exit}' "$0"; exit 0 ;;
         *) echo "fleet-rebase: unknown argument '$arg'" >&2; exit 2 ;;
     esac
 done
@@ -398,15 +404,19 @@ cleanup_stale_conflict() {
 # Remove a retired stack-park label (fleet:awaiting-base /
 # fleet:needs-base-update) from a PR whose base IS master. The park is
 # provably discharged there — a PR cannot be waiting on a base branch that
-# is master — and nothing else will ever remove it. The sole remover is
-# merger step 2.5, whose candidate filter is `baseRefName != "master"`;
-# GitHub retargets a native-stack child to master synchronously with its
-# parent's merge, so the child leaves 2.5's candidate set at the very
-# moment 2.5 would have cleared the label. The slice triage and merger
-# step 3 then both hard-skip it, stranding an approved PR from every
-# automated lane (#2764). Live-reverified before touching: confirms OPEN,
-# base still master, and the label still present, so a PR retargeted back
-# off master between the scout tick and now is never cleared.
+# is master — and nothing else will ever remove it.
+#
+# This function is the ONLY remover of these labels tree-wide — the loop
+# below is the sole `--remove-label` site for either one. Merger step 2.5
+# used to share the job; it retired with the native-stacked-PRs migration
+# (#2657, `role-merger.md` step 2.5), so there is nothing left to defer to
+# and no lane behind this one. That is why its triage gate is deliberately
+# permissive — no approved / skip-label guards; see has_stale_base_park
+# (#2764, #2840).
+#
+# Live-reverified before touching: confirms OPEN, base still master, and the
+# label still present, so a PR retargeted back off master between the scout
+# tick and now is never cleared.
 cleanup_stale_base_park() {
     local repo_key="$1" pr="$2"
     local repo_slug
@@ -725,19 +735,25 @@ for pr in data.get("prs", []):
         and mergeable == "MERGEABLE"
         and not any(skip_re.search(l) for l in labels if l != "fleet:semantic-conflict")
     )
-    # Retired stack-park labels, still minted by the merger role doc.
-    # base == master proves the park is discharged — a PR cannot be waiting
-    # on a base branch that is master — so route it to cleanup rather than
-    # parking it (why nothing else ever clears it: cleanup_stale_base_park,
-    # #2764). Same guards as the stale-conflict case: approved, and no other
-    # skip label claiming the branch.
+    # Retired stack-park labels (the minter died with #2657, so on a live PR
+    # these are pure residue). base == master proves the park is discharged —
+    # a PR cannot be waiting on a base branch that is master — so route it to
+    # cleanup rather than parking it (why nothing else ever clears it:
+    # cleanup_stale_base_park, #2764).
+    #
+    # Deliberately NOT guarded on `approved` or on other skip labels, unlike
+    # the stale-conflict case above — do not "unify" the two predicates
+    # (#2840). Those guards mean "don't touch a PR another agent owns", which
+    # is correct for every lane that does branch work; this verdict does none.
+    # It removes one retired label whose discharge base == master already
+    # proves, independent of who owns the branch, and a PR that is genuinely
+    # parked keeps its real park label and routes to skip-labels next tick.
+    # The guards also defeat each other here: the merger strips fleet:approved
+    # at the same moment it adds fleet:semantic-conflict, and that label leads
+    # SKIP_LABEL_RE — so a conflicted retargeted child fails both at once and
+    # lands on skip-labels, which no lane revisits.
     stack_park = {"fleet:needs-base-update", "fleet:awaiting-base"} & set(labels)
-    has_stale_base_park = (
-        stack_park
-        and base == "master"
-        and approved
-        and not any(skip_re.search(l) for l in labels if l not in stack_park)
-    )
+    has_stale_base_park = bool(stack_park) and base == "master"
     if has_stale_conflict:
         verdict = "stale-conflict"
     elif has_stale_base_park:
@@ -745,8 +761,10 @@ for pr in data.get("prs", []):
     elif any(skip_re.search(l) for l in labels):
         verdict = "skip-labels"
     elif stack_park:
-        # base != master (or not approved): a straggler still anchored to a
-        # real base, mid-legacy-sequence. The LLM pass owns it, never tier-0.
+        # base != master: a straggler still anchored to a real base,
+        # mid-legacy-sequence, so the park still describes the PR. The LLM
+        # pass owns it, never tier-0. (base == master can no longer reach
+        # here — it is the whole stale-base-park gate, #2840.)
         verdict = "llm-other"
     elif approved and (base != "master" or mergeable not in ("MERGEABLE", "UNKNOWN", "", None)):
         verdict = "attempt"
