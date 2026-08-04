@@ -54,6 +54,7 @@ file(STRINGS "${pipeline_cpp}" pipeline_lines)
 
 set(in_registry FALSE)
 set(found_registry FALSE)
+set(found_terminator FALSE)
 set(registered_kernels "")
 foreach(line IN LISTS pipeline_lines)
     if(NOT in_registry)
@@ -64,6 +65,7 @@ foreach(line IN LISTS pipeline_lines)
         continue()
     endif()
     if(line STREQUAL "}")
+        set(found_terminator TRUE)
         break()
     endif()
     string(REGEX MATCHALL "\"[A-Za-z0-9_]+\"" quoted_names "${line}")
@@ -78,6 +80,20 @@ if(NOT found_registry)
         "Metal kernel registry check could not locate "
         "threadgroupSizeForFunctionName's signature in ${pipeline_cpp} -- it "
         "may have been renamed or reformatted; update this checker's anchor."
+    )
+endif()
+
+# A run past the real terminator sweeps up every quoted string below the
+# function -- including functionUsesImageAtomicScratch's kernel names -- so a
+# truly unregistered kernel could read as registered: a silent false-clean.
+# Reaching EOF without the bare "}" line means the function moved into an
+# indented block or the namespace style changed; fail loudly instead.
+if(NOT found_terminator)
+    message(FATAL_ERROR
+        "Metal kernel registry check found threadgroupSizeForFunctionName's "
+        "signature but hit EOF before its closing-brace terminator (a line "
+        "that is exactly \"}\") in ${pipeline_cpp} -- the function may have "
+        "been indented or moved; update this checker's terminator."
     )
 endif()
 

@@ -138,9 +138,12 @@ excluding `*_body.metal` include-fragments) needs an entry in
 `MTL::Size(1, 1, 1)` fallback with no error — GL is structurally immune (it
 reads `local_size` out of the GLSL source), so this is Metal-only. Unlike the
 prose reminders elsewhere near this registry, this one is **enforced**: the
-`header-checks` / `lint` CMake targets run
-`cmake/run_metal_kernel_registry_check.cmake`, which fails the build and
-names the kernel if a new `.metal` file has no matching entry (#2798).
+header-checks CI workflow (via `cmake/run_header_checks_standalone.cmake`)
+and the `header-checks` / `lint` CMake targets all run
+`cmake/run_metal_kernel_registry_check.cmake`, which fails the run and
+names the kernel if a new `.metal` file has no matching entry (#2798). The
+check is pure text-scanning, so it fires on every PR — including GL-authored
+ones from hosts with no Metal toolchain.
 
 ### Metal AOT metallib build (opt-in, no runtime consumer)
 
