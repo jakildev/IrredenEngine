@@ -22,17 +22,17 @@ endif()
 function(_irreden_drop_gitignored_files file_list_var)
     find_program(IRREDEN_GIT_EXECUTABLE NAMES git)
     if(NOT IRREDEN_GIT_EXECUTABLE)
-        # No git at configure time — leave the candidate list as-is (the
-        # pre-fix behavior). git is required to obtain this source tree in
-        # the first place, so an absent git at configure time is not a
-        # realistic case on any supported host; there is no reject-chain
-        # regex fallback here on purpose — a path-substring match can't
-        # distinguish a nested checkout under a search root from the
-        # engine's own enclosing worktree path also matching the same
-        # substring (an agent worktree's own root is
+        # No git at configure time — leave the candidate list unfiltered
+        # (fail open; never over-filter). git is required to obtain this
+        # source tree in the first place, so an absent git at configure
+        # time is not a realistic case on any supported host; there is no
+        # reject-chain regex fallback here on purpose — a path-substring
+        # match can't distinguish a nested checkout under a search root
+        # from the engine's own enclosing worktree path also matching the
+        # same substring (an agent worktree's own root is
         # ".../.claude/worktrees/<name>", so a "/.claude/worktrees/" test
         # against the *absolute* path matches every file in the tree, not
-        # just nested ones — caught in review before this shipped).
+        # just nested ones).
         return()
     endif()
 
