@@ -1,0 +1,264 @@
+#!/usr/bin/env python3
+"""fleet-rules-sweep — run a `.claude/rules/` detector tree-wide without the
+ripgrep-walker false clean (#2739).
+
+    fleet-rules-sweep --pattern '<regex>' [--glob '<glob>']... [<scope>...]
+
+`rg` rooted *at* a directory that owns an ignore-then-negate block in
+`.gitignore` (`creations/`, `.claude/`) walks almost nothing and reports a
+clean pass — the parent's `creations/*` prunes each child directory before the
+`!creations/demos/` re-inclusion can apply. A detector scoped that way reads
+zero hits on a tree that has violations. This tool sidesteps the walker
+entirely: **git** resolves the file set (`git ls-files -co --exclude-standard`,
+the same matcher `git check-ignore` answers from), and the pattern is applied
+to that explicit list.
+
+The guard that makes a clean pass trustworthy: a scope that resolves to **zero
+files** exits 2, not 1. A sweep can no longer scope itself into the hole and
+report success.
+
+Exit codes (grep convention, plus the guard):
+
+    0   matches found
+    1   no matches, and coverage was non-zero — a real clean pass
+    2   usage error, or a named scope resolved to 0 files (coverage guard)
+
+Globs match the repo-relative path when they contain `/`, else the basename —
+`rg -g` semantics, so the `glob:` line in a rules file pastes in unchanged.
+Brace alternation (`*.{hpp,cpp}`) and leading-`!` negation are supported.
+Ignored files are excluded, so the private `creations/game` clone is never
+swept from the engine repo; sweep that repo from inside its own checkout.
+
+Source of truth: scripts/fleet/fleet-rules-sweep in the engine repo.
+Installed to ~/bin/fleet-rules-sweep by scripts/fleet/install.sh.
+"""
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+
+MAX_BYTES = 4 * 1024 * 1024
+
+
+def repo_root(start):
+    out = subprocess.run(
+        ["git", "-C", start, "rev-parse", "--show-toplevel"],
+        capture_output=True, text=True)
+    if out.returncode != 0:
+        return None
+    return out.stdout.strip()
+
+
+def expand_braces(glob):
+    """`*.{hpp,h}` -> [`*.hpp`, `*.h`]. Rules files write globs this way."""
+    m = re.search(r"\{([^{}]*)\}", glob)
+    if not m:
+        return [glob]
+    out = []
+    for alt in m.group(1).split(","):
+        out.extend(expand_braces(glob[:m.start()] + alt + glob[m.end():]))
+    return out
+
+
+def glob_to_regex(glob):
+    """Translate one brace-free glob to an anchored regex.
+
+    `**` crosses directory separators, `*`/`?` do not — the distinction that
+    makes `-g 'creations/**/*.cpp'` mean what a reader expects.
+    """
+    i, n, out = 0, len(glob), []
+    while i < n:
+        c = glob[i]
+        if glob.startswith("**/", i):
+            out.append("(?:.*/)?")
+            i += 3
+        elif glob.startswith("**", i):
+            out.append(".*")
+            i += 2
+        elif c == "*":
+            out.append("[^/]*")
+            i += 1
+        elif c == "?":
+            out.append("[^/]")
+            i += 1
+        else:
+            out.append(re.escape(c))
+            i += 1
+    return re.compile("^" + "".join(out) + "$")
+
+
+class GlobSet:
+    """rg -g semantics: last match wins, `!` negates, no-slash matches basename.
+
+    With only negative globs, a path that matches none of them is included —
+    the same way `rg -g '!vendor/**'` means "everything except vendor".
+    """
+
+    def __init__(self, globs):
+        self.rules = []
+        self.has_positive = False
+        for g in globs:
+            negated = g.startswith("!")
+            body = g[1:] if negated else g
+            if not negated:
+                self.has_positive = True
+            basename_only = "/" not in body
+            for variant in expand_braces(body):
+                self.rules.append(
+                    (negated, basename_only, glob_to_regex(variant)))
+
+    def matches(self, path):
+        if not self.rules:
+            return True
+        verdict = not self.has_positive
+        for negated, basename_only, rx in self.rules:
+            target = os.path.basename(path) if basename_only else path
+            if rx.match(target):
+                verdict = not negated
+        return verdict
+
+
+def resolve_files(root, scopes):
+    """Ground-truth file set for `scopes`, via git's own ignore matcher.
+
+    `-c` tracked + `-o --exclude-standard` untracked-but-visible is exactly
+    the set `git check-ignore` exits 1 on, which is what makes this immune to
+    the walker behaviour in #2739.
+    """
+    cmd = ["git", "-C", root, "ls-files", "-co", "--exclude-standard", "--"]
+    cmd.extend(scopes if scopes else ["."])
+    out = subprocess.run(cmd, capture_output=True, text=True)
+    if out.returncode != 0:
+        return None, out.stderr.strip()
+    return sorted(set(p for p in out.stdout.splitlines() if p)), None
+
+
+def search_file(abs_path, rx):
+    try:
+        if os.path.getsize(abs_path) > MAX_BYTES:
+            return []
+        with open(abs_path, "r", encoding="utf-8", errors="replace") as fh:
+            return [(n, line.rstrip("\n"))
+                    for n, line in enumerate(fh, 1) if rx.search(line)]
+    except OSError:
+        return []
+
+
+def main():
+    ap = argparse.ArgumentParser(
+        prog="fleet-rules-sweep",
+        description="Run a rules detector over a path scope, guarding against "
+                    "the ripgrep-walker false clean (#2739).")
+    ap.add_argument("scope", nargs="*", metavar="SCOPE",
+                    help="Path scope(s) relative to the repo root. "
+                         "Default: the whole repo.")
+    ap.add_argument("--pattern", required=True, metavar="REGEX",
+                    help="Python regex applied per line.")
+    ap.add_argument("--glob", action="append", default=[], metavar="GLOB",
+                    help="Path filter, rg -g semantics (repeatable).")
+    ap.add_argument("--repo-root", metavar="PATH",
+                    help="Repo to sweep. Default: the cwd's repo.")
+    ap.add_argument("--ignore-case", "-i", action="store_true")
+    ap.add_argument("--files-only", "-l", action="store_true",
+                    help="Print matching paths only.")
+    ap.add_argument("--count", "-c", action="store_true",
+                    help="Print `path:count` per matching file.")
+    ap.add_argument("--json", action="store_true",
+                    help="Machine-readable output (includes the coverage "
+                         "counts, so a clean pass is self-evidencing).")
+    args = ap.parse_args()
+
+    root = repo_root(args.repo_root or os.getcwd())
+    if root is None:
+        print("fleet-rules-sweep: not a git repository: %s"
+              % (args.repo_root or os.getcwd()), file=sys.stderr)
+        return 2
+
+    try:
+        rx = re.compile(args.pattern,
+                        re.IGNORECASE if args.ignore_case else 0)
+    except re.error as exc:
+        print("fleet-rules-sweep: bad --pattern: %s" % exc, file=sys.stderr)
+        return 2
+
+    walked, err = resolve_files(root, args.scope)
+    if walked is None:
+        print("fleet-rules-sweep: git ls-files failed: %s" % err,
+              file=sys.stderr)
+        return 2
+
+    # The #2739 guard. An empty scope is the exact shape of the false clean, so
+    # it can never share an exit code with a real "no matches" result.
+    if not walked:
+        scope_str = " ".join(args.scope) if args.scope else "(whole repo)"
+        print("fleet-rules-sweep: scope resolved to 0 files: %s" % scope_str,
+              file=sys.stderr)
+        print("fleet-rules-sweep: refusing to report a clean pass — check the "
+              "scope spelling, or that the path exists at the repo root (%s)."
+              % root, file=sys.stderr)
+        return 2
+
+    globs = GlobSet(args.glob)
+    scanned = [p for p in walked if globs.matches(p)]
+
+    hits = []
+    for rel in scanned:
+        for lineno, text in search_file(os.path.join(root, rel), rx):
+            hits.append({"path": rel, "line": lineno, "text": text})
+
+    n_files = len(set(h["path"] for h in hits))
+
+    # Same guard as the empty-scope case above: a --glob that admits nothing
+    # leaves the run with no coverage, so it must not exit 1 on either output
+    # path. Computed before the branch so --json can't route around it.
+    no_coverage = not scanned
+
+    if args.json:
+        print(json.dumps({
+            "root": root,
+            "scope": args.scope or ["."],
+            "pattern": args.pattern,
+            "globs": args.glob,
+            "files_walked": len(walked),
+            "files_scanned": len(scanned),
+            "files_matched": n_files,
+            "hits": hits,
+        }, indent=2))
+        if no_coverage:
+            print("fleet-rules-sweep: every file in scope was filtered out by "
+                  "--glob — no coverage, so this is not a clean pass.",
+                  file=sys.stderr)
+            return 2
+        return 0 if hits else 1
+
+    if args.count:
+        counts = {}
+        for h in hits:
+            counts[h["path"]] = counts.get(h["path"], 0) + 1
+        for path in sorted(counts):
+            print("%s:%d" % (path, counts[path]))
+    elif args.files_only:
+        for path in sorted(set(h["path"] for h in hits)):
+            print(path)
+    else:
+        for h in hits:
+            print("%s:%d:%s" % (h["path"], h["line"], h["text"]))
+
+    # Always printed: a bare "no output" is what a false clean looks like, so
+    # the coverage line is what makes a clean pass reportable as evidence.
+    print("-- swept %d file(s) (%d walked in scope), %d match(es) in %d file(s)"
+          % (len(scanned), len(walked), len(hits), n_files), file=sys.stderr)
+
+    if no_coverage:
+        print("fleet-rules-sweep: every file in scope was filtered out by "
+              "--glob — no coverage, so this is not a clean pass.",
+              file=sys.stderr)
+        return 2
+
+    return 0 if hits else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

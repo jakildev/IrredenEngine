@@ -4,6 +4,10 @@ paths:
   - "creations/**/*.{hpp,cpp,h,cc}"
 ---
 
+> **Sweeping for violations?** `paths:` is an injection scope, not a search
+> root. `rg`/`Grep` rooted at `creations/` reads a **false clean** (#2739) —
+> run detectors through `fleet-rules-sweep`. See [`README.md`](README.md).
+
 # ECS rules: getComponent in ticks, deferred entity ops, component method tiers
 
 ## The ECS footgun: never call getComponent inside a per-entity tick

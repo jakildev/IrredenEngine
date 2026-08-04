@@ -5,6 +5,10 @@ paths:
   - "creations/**/system_*.{hpp,cpp}"
 ---
 
+> **Sweeping for violations?** `paths:` is an injection scope, not a search
+> root. `rg`/`Grep` rooted at `creations/` reads a **false clean** (#2739) —
+> run detectors through `fleet-rules-sweep`. See [`README.md`](README.md).
+
 # System state lives on System<N> or in SystemParams, never function-local static
 
 Rule:

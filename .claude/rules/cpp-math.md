@@ -4,6 +4,10 @@ paths:
   - "creations/**/*.{hpp,cpp,h,cc}"
 ---
 
+> **Sweeping for violations?** `paths:` is an injection scope, not a search
+> root. `rg`/`Grep` rooted at `creations/` reads a **false clean** (#2739) —
+> run detectors through `fleet-rules-sweep`. See [`README.md`](README.md).
+
 # Math primitives go through IRMath, never glm:: or std::
 
 Rule, with zero exceptions outside `engine/math/`:
