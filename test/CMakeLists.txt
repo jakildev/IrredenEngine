@@ -55,6 +55,7 @@ add_executable(IrredenEngineTest
   math/ir_math_trixel_index_test.cpp
   math/ir_math_yaw_deformation_test.cpp
   math/sdf_test.cpp
+  render/camera_mouse_rotate_reset_test.cpp
   render/camera_pan_pivot_test.cpp
   render/camera_yaw_test.cpp
   render/detached_world_depth_test.cpp
@@ -64,6 +65,7 @@ add_executable(IrredenEngineTest
   render/metal_sticky_untrack_test.cpp
   render/opengl_shader_include_test.cpp
   render/per_canvas_light_scope_test.cpp
+  render/perf_stats_overlay_reset_test.cpp
   render/picking_aim_iso_pixel_test.cpp
   render/picking_face_normal_test.cpp
   render/sun_direction_test.cpp

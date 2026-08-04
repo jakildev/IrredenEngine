@@ -108,7 +108,21 @@ template <> struct System<CAMERA_MOUSE_ROTATE> {
         // boot-time FATAL in `validateAllPipelineGroups` instead of a
         // heisenbug. Not `Spawns`: T-225 lifted MUTATOR_IN_PARALLEL_GROUP, so
         // it would document the mutation without preventing it.
-        return registerSystem<CAMERA_MOUSE_ROTATE, C_Camera, MainThread>("CameraMouseRotate");
+        SystemId id =
+            registerSystem<CAMERA_MOUSE_ROTATE, C_Camera, MainThread>("CameraMouseRotate");
+        // pivotIndicator_ is not C_Persistent, so IREntity::resetGameplay()
+        // destroys it (destroyAllExceptPreserved destroys per-entity via
+        // destroyEntity, which fires this hook). Null the cached id so
+        // endTick's `pivotIndicator_ == kNullEntity` lazy-respawn guard
+        // rebuilds it on the next cursor-pivot drag instead of reaching
+        // through a dead handle.
+        auto *params = getSystemParams<System<CAMERA_MOUSE_ROTATE>>(id);
+        IREntity::getEntityManager().registerPreDestroyHook([params](IREntity::EntityId destroyed) {
+            if (params->pivotIndicator_ == destroyed) {
+                params->pivotIndicator_ = IREntity::kNullEntity;
+            }
+        });
+        return id;
     }
 };
 
