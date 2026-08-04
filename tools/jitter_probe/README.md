@@ -27,6 +27,7 @@ jitter_probe <frame_0.png> <frame_1.png> ... <frame_N.png>   # >=3, in capture o
     [--stationary]       assert the centroid does NOT move (pivot-pin check)
     [--max-deviation PX] PINNED verdict requires deviation <= this (default 1.50)
     [--verbose]          print the per-frame centroid + residual table
+    [--expect-frames N]  fail (exit 2) unless exactly N frames were passed
 ```
 
 Exit code: `0` = SMOOTH/PINNED, `1` = JITTER/DRIFT detected, `2` = argument / IO
@@ -55,6 +56,10 @@ Use an **isolated shape on a black field** so the centroid is uncontaminated.
 stability (per-frame jitter)"):
 
 ```bash
+# Wipe first — the dir is never auto-cleared and the engine numbers around
+# leftovers, so skipping this scores earlier runs too ("Wipe before every
+# capture" below has the why, and the two ways to get this line wrong):
+find save_files/screenshots -name '*.png' -delete
 # Pan jitter — camera pans at a fixed non-cardinal yaw:
 IRShapeDebug --spin-shape box --spin-shape-voxel --pan-sweep --yaw 0.785 --zoom 4 \
     --auto-screenshot 6
@@ -63,9 +68,52 @@ IRShapeDebug --spin-shape box --spin-shape-voxel --pan-sweep --yaw 0.785 --zoom 
 IRShapeDebug --spin-shape cylinder --spin-shape-voxel --yaw-sweep --zoom 4 \
     --auto-screenshot 6
 
-# Then point jitter_probe at the captured sequence (in order):
-build/tools/jitter_probe/jitter_probe save_files/screenshots/screenshot_0001*.png
+# Then point jitter_probe at the captured sequence (in order). The 6-digit glob
+# matches full frames ONLY; --expect-frames must equal the --auto-screenshot
+# count (see "Wipe before every capture" below for why both are load-bearing):
+build/tools/jitter_probe/jitter_probe --expect-frames 6 \
+    save_files/screenshots/screenshot_[0-9][0-9][0-9][0-9][0-9][0-9].png
 ```
+
+### Wipe before every capture
+
+`save_files/screenshots/` is **never** auto-cleared, and
+`VideoManager::reserveNextScreenshotIndex` deliberately numbers *around* files
+that are already there so runs don't collide. A second run therefore appends —
+it never replaces. Point a glob at that directory and you score this run's
+frames plus every earlier run's, plus any ROI crop files (crops share the
+`screenshot_<index>` prefix and append `_<label>__crop_<crop>.png`; a 128x128
+crop has no usable foreground).
+
+```bash
+find save_files/screenshots -name '*.png' -delete
+```
+
+Two things that recipe gets right and are easy to get wrong:
+
+- **End the path at `.../save_files/screenshots`.** A `find` rooted at the demo
+  build dir also deletes the staged runtime assets under `data/images/`, and the
+  next run dies on `Failed to load image file: .../irreden_engine_logo_v6_alpha.png`
+  — which reads as a crash your change caused. Recover by rebuilding the demo's
+  asset target: `fleet-build --target <Demo>Assets` (e.g. `IRShapeDebugAssets`).
+  That restores them — the target is an `add_custom_target` with no `OUTPUT`
+  (`cmake/ir_functions.cmake`), so an explicit build always re-runs its
+  `copy_directory` commands rather than short-circuiting on timestamps. Don't
+  hand-copy a single source dir: the staged `data/` is a *merge* of
+  `engine/render/data` and `engine/data`, and the file in the assert above
+  lives in the latter.
+- **Use `-delete`, not `rm -f <dir>/*.png`.** Under zsh an unmatched glob aborts
+  the entire `&&` chain, silently skipping everything after it.
+
+Scoring the wrong set does not fail — it produces a *confident* verdict.
+Measured during the #2469 investigation: a 24-frame sweep read against 52 files
+in the directory reported `max_residual=770.84px, verdict=JITTER`; the same
+sweep after wiping reported `0.57px`. `--expect-frames` exists because that
+failure is otherwise
+indistinguishable from a real regression: the scripted harnesses
+(`scripts/render-verify.py`, `cull-verify.py`, and `pivot-verify.py` via
+`verify_common.run_pass`) all `rmtree` the directory for exactly this reason,
+and a hand-run sweep gets no such protection.
 
 For a multi-shape scene with no isolation, pass `--color R,G,B,T` to lock onto
 one shape. A static-determinism check ("does it jitter after the camera stops?")

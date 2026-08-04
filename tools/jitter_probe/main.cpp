@@ -19,6 +19,7 @@
 //     [--stationary]       assert the centroid does NOT move (pivot-pin check)
 //     [--max-deviation PX] PINNED verdict requires deviation <= this (default 1.50)
 //     [--verbose]          print the per-frame centroid + residual table
+//     [--expect-frames N]  fail (exit 2) unless exactly N frames were passed
 //
 // Capture the sequence with an ISOLATED shape on a black field so the centroid
 // is clean — e.g. `shape_debug --spin-shape box --spin-shape-voxel --pan-sweep`
@@ -226,6 +227,11 @@ int main(int argc, char **argv) {
     parser.flag("--stationary", "Assert the centroid does NOT move (rotation-pivot pin check)");
     parser.number("--max-deviation", "PINNED verdict requires deviation <= this (px)", 1.50f);
     parser.flag("--verbose", "Print the per-frame centroid + residual table");
+    parser.integer(
+        "--expect-frames",
+        "Fail unless exactly this many frames were passed (omit to disable)",
+        0
+    );
     parser.variadic("frames", "Frame PNGs in capture order (>= 3)", 3);
     parser.parse(argc, argv);
 
@@ -241,10 +247,44 @@ int main(int argc, char **argv) {
         args.useColor_ = true;
         const std::string color = parser.getString("--color");
         if (std::sscanf(
-                color.c_str(), "%d,%d,%d,%d", &args.colorR_, &args.colorG_, &args.colorB_,
+                color.c_str(),
+                "%d,%d,%d,%d",
+                &args.colorR_,
+                &args.colorG_,
+                &args.colorB_,
                 &args.colorTol_
             ) != 4) {
             std::fprintf(stderr, "jitter_probe: --color expects R,G,B,T\n");
+            return 2;
+        }
+    }
+
+    // The capture dir is never cleared between runs and VideoManager numbers
+    // *around* leftovers, so a shell glob silently widens to earlier runs and to
+    // ROI crops. Scoring the wrong set does not fail — it produces a confident
+    // verdict, indistinguishable from a real regression. See README.md
+    // §"Wipe before every capture" for the measured case.
+    if (parser.wasProvided("--expect-frames")) {
+        const int expectArg = parser.getInt("--expect-frames");
+        if (expectArg < 0) {
+            std::fprintf(
+                stderr,
+                "jitter_probe: --expect-frames expects a non-negative count (got %d)\n",
+                expectArg
+            );
+            return 2;
+        }
+        const size_t expected = static_cast<size_t>(expectArg);
+        if (args.frames_.size() != expected) {
+            std::fprintf(
+                stderr,
+                "jitter_probe: expected %zu frames but got %zu — the glob picked up a "
+                "different set than the run produced (stale captures from an earlier run, "
+                "or ROI crop files). Wipe the screenshots dir before capturing and match "
+                "full frames only.\n",
+                expected,
+                args.frames_.size()
+            );
             return 2;
         }
     }
