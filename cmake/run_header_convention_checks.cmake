@@ -13,7 +13,7 @@ endif()
 # and this executor are meant to name the same set, so update both together.
 # Ratchet only: a file may leave this list, never join it.
 set(header_global_baseline
-    "creations/demos/lighting/common/lighting_demo_scene.hpp" # 16 globals, #2728
+    # Empty: lighting_demo_scene.hpp's 16 globals were migrated by #2726.
 )
 
 set(anonymous_namespace_failures "")

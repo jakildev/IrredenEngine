@@ -128,49 +128,55 @@ inline constexpr IRVideo::AutoScreenshotShot kShots[] = {
     {16.0f, vec2(0, 0), 0.0f, "zoom16_origin"},
 };
 
-inline int g_autoWarmupFrames = 0;
-inline int g_autoProfileFrames = 0;
-inline int g_autoProfileCount = 0;
-inline float g_initialZoom = 0.0f;
-// `--light-boundary-sweep` (see #2310): replaces kShots with a
-// runtime-computed series that pans the camera anchor away from the emissive
-// light in world-X steps, walking the light through the light-volume window
-// boundary. Exercises the boundary-seeding path: contribution must fade
-// continuously across the shots (in-window → clamped edge seed → out of
-// reach), never pop or band.
-inline bool g_lightBoundarySweep = false;
-inline IRVideo::IndexedSweepShots<48> g_boundarySweepShots;
-// `--light-domain-matrix` (V3, #2317): zoom x yaw x pan-distance shot matrix
-// over the same emissive-light-relative pan axis as the boundary sweep, for
-// light-verify.py's zoom/yaw/pan domain assertions.
-inline bool g_lightDomainMatrix = false;
-inline IRVideo::IndexedSweepShots<48> g_domainMatrixShots;
-// `--hover-sweep` (V3, #2317): see kHoverSweepHeights above.
-inline bool g_hoverSweep = false;
-inline IRVideo::IndexedSweepShots<32> g_hoverSweepShots;
-inline IRRender::DebugOverlayMode g_cliOverlay = IRRender::DebugOverlayMode::NONE;
-// CLI flag for `--no-ao` (or `--ao-off`). Applied after the demo's own
-// DemoConfig.aoEnabled_ so the flag wins. Lets validation runs flip AO
-// off without rebuilding.
-inline bool g_cliDisableAO = false;
+// Run state for the lighting demo family: CLI-derived config, the
+// runtime-built sweep shot tables, and the hover-sweep cube.
+//
+// `.claude/rules/cpp-globals.md` bans mutable namespace-scope state in a
+// header; the Meyers-singleton accessor below is the "process infrastructure
+// (… CLI args …)" row of its sanctioned-pattern table, which is what this
+// state is — one owner, one lifecycle, one access point.
+//
+// System ids do not belong here: resolve them at the read site with
+// `IRSystem::findSystem(SystemName)` (#2526), so nothing has to remember to
+// stash a handle at registration time.
+struct SceneState {
+    int autoWarmupFrames_ = 0;
+    int autoProfileFrames_ = 0;
+    int autoProfileCount_ = 0;
+    float initialZoom_ = 0.0f;
+    // `--light-boundary-sweep` (see #2310): replaces kShots with a
+    // runtime-computed series that pans the camera anchor away from the emissive
+    // light in world-X steps, walking the light through the light-volume window
+    // boundary. Exercises the boundary-seeding path: contribution must fade
+    // continuously across the shots (in-window → clamped edge seed → out of
+    // reach), never pop or band.
+    bool lightBoundarySweep_ = false;
+    IRVideo::IndexedSweepShots<48> boundarySweepShots_;
+    // `--light-domain-matrix` (V3, #2317): zoom x yaw x pan-distance shot matrix
+    // over the same emissive-light-relative pan axis as the boundary sweep, for
+    // light-verify.py's zoom/yaw/pan domain assertions.
+    bool lightDomainMatrix_ = false;
+    IRVideo::IndexedSweepShots<48> domainMatrixShots_;
+    // `--hover-sweep` (V3, #2317): see `kHoverSweepHeights`.
+    bool hoverSweep_ = false;
+    IRVideo::IndexedSweepShots<32> hoverSweepShots_;
+    EntityId hoverSweepCube_{};
+    IRRender::DebugOverlayMode cliOverlay_ = IRRender::DebugOverlayMode::NONE;
+    // CLI flag for `--no-ao` (or `--ao-off`). Applied after the demo's own
+    // DemoConfig.aoEnabled_ so the flag wins. Lets validation runs flip AO
+    // off without rebuilding.
+    bool cliDisableAO_ = false;
+    // The shot table actually wired into AutoScreenshotConfig this run (kShots or
+    // one of the runtime-built series: --light-boundary-sweep,
+    // --light-domain-matrix, --hover-sweep) — the DOMAIN-STATE hook only receives
+    // a shot index, so it needs this to recover the shot's label.
+    const IRVideo::AutoScreenshotShot *activeShots_ = nullptr;
+};
 
-// DOMAIN-STATE instrumentation (#2315, V1). The COMPUTE_LIGHT_VOLUME
-// SystemId, captured at pipeline registration, so the DOMAIN-STATE
-// emission hook can read back its per-light gather records
-// (`IRSystem::lightGatherRecords`) — the system stores that state on
-// itself (`engine/system/CLAUDE.md` "System-owned state"), not in a
-// globally-queryable component.
-inline IRSystem::SystemId g_computeLightVolumeSystemId = IRSystem::kNullSystemId;
-// BAKE_SUN_SHADOW_MAP SystemId (#2316, V2) — the culling minimap's caster
-// domain reads world-placed casters back via
-// `IRSystem::worldPlacedCasters(g_bakeSunShadowMapSystemId)`, mirroring
-// `g_computeLightVolumeSystemId` above.
-inline IRSystem::SystemId g_bakeSunShadowMapSystemId = IRSystem::kNullSystemId;
-// The shot table actually wired into AutoScreenshotConfig this run (kShots or
-// one of the runtime-built series: --light-boundary-sweep,
-// --light-domain-matrix, --hover-sweep) — the DOMAIN-STATE hook only receives
-// a shot index, so it needs this to recover the shot's label.
-inline const IRVideo::AutoScreenshotShot *g_activeShots = nullptr;
+inline SceneState &sceneState() {
+    static SceneState state;
+    return state;
+}
 
 inline void registerArgs() {
     IREngine::args().optionalInt("--auto-profile", "Run for N frames then exit (default 300)", 300);
@@ -201,19 +207,20 @@ inline void registerArgs() {
 }
 
 inline void readArgs() {
-    g_autoWarmupFrames = IREngine::args().autoScreenshotWarmupFrames();
+    sceneState().autoWarmupFrames_ = IREngine::args().autoScreenshotWarmupFrames();
     if (IREngine::args().wasProvided("--auto-profile"))
-        g_autoProfileFrames = IREngine::args().getInt("--auto-profile");
+        sceneState().autoProfileFrames_ = IREngine::args().getInt("--auto-profile");
     float zoom = IREngine::args().getFloat("--zoom");
     if (zoom > 0.0f)
-        g_initialZoom = zoom;
+        sceneState().initialZoom_ = zoom;
     std::string overlayStr = IREngine::args().getString("--debug-overlay");
     if (!overlayStr.empty())
-        g_cliOverlay = IRRender::debugOverlayModeFromString(overlayStr.c_str());
-    g_cliDisableAO = IREngine::args().getFlag("--no-ao") || IREngine::args().getFlag("--ao-off");
-    g_lightBoundarySweep = IREngine::args().getFlag("--light-boundary-sweep");
-    g_lightDomainMatrix = IREngine::args().getFlag("--light-domain-matrix");
-    g_hoverSweep = IREngine::args().getFlag("--hover-sweep");
+        sceneState().cliOverlay_ = IRRender::debugOverlayModeFromString(overlayStr.c_str());
+    sceneState().cliDisableAO_ =
+        IREngine::args().getFlag("--no-ao") || IREngine::args().getFlag("--ao-off");
+    sceneState().lightBoundarySweep_ = IREngine::args().getFlag("--light-boundary-sweep");
+    sceneState().lightDomainMatrix_ = IREngine::args().getFlag("--light-domain-matrix");
+    sceneState().hoverSweep_ = IREngine::args().getFlag("--hover-sweep");
 }
 
 inline EntityId createVoxelPoolShape(
@@ -337,7 +344,6 @@ inline constexpr ivec3 kHoverSweepVoxelHalfExtent{3, 3, 3};
 // x=0/y={0,kSdfRowY}; y=kSdfRowY*0.5 is the floor's own Y-center.
 inline constexpr vec2 kHoverSweepXY{-8.0f, kSdfRowY * 0.5f};
 inline constexpr float kHoverSweepHeights[] = {0.0f, 8.0f, 16.0f, 24.0f, 32.0f};
-inline EntityId g_hoverSweepCube{};
 
 // World Z is -up (see the row-case loop above: `kFloorTopZ - halfExtent.z`
 // lifts a shape off the floor), so hover height subtracts further.
@@ -346,7 +352,7 @@ inline float hoverSweepZ(float height) {
 }
 
 inline void createHoverSweepCube() {
-    g_hoverSweepCube = createVoxelPoolShape(
+    sceneState().hoverSweepCube_ = createVoxelPoolShape(
         vec3(kHoverSweepXY.x, kHoverSweepXY.y, hoverSweepZ(kHoverSweepHeights[0])),
         kHoverSweepShapeType,
         kHoverSweepShapeParams,
@@ -365,7 +371,7 @@ inline void createLights(const DemoConfig &config) {
     IRRender::setSunIntensity(config.sunIntensity_);
     IRRender::setSunAmbient(config.sunAmbient_);
     IRRender::setSunShadowsEnabled(config.sunShadowsEnabled_);
-    IRRender::setAOEnabled(config.aoEnabled_ && !g_cliDisableAO);
+    IRRender::setAOEnabled(config.aoEnabled_ && !sceneState().cliDisableAO_);
 
     if (config.addDirectional_) {
         IREntity::createEntity(
@@ -435,7 +441,7 @@ inline void initEntities(const DemoConfig &config) {
     } else {
         createGeometry();
     }
-    if (g_hoverSweep) {
+    if (sceneState().hoverSweep_) {
         createHoverSweepCube();
     }
     createLights(config);
@@ -450,7 +456,8 @@ inline void initEntities(const DemoConfig &config) {
     IRRender::setSkyColor(config.skyColor_);
 
     IRRender::setDebugOverlay(
-        g_cliOverlay == IRRender::DebugOverlayMode::NONE ? config.overlay_ : g_cliOverlay
+        sceneState().cliOverlay_ == IRRender::DebugOverlayMode::NONE ? config.overlay_
+                                                                     : sceneState().cliOverlay_
     );
 }
 
@@ -482,14 +489,17 @@ inline void initCommands() {
 // would need one call per canvas; none of the lighting demos have more than
 // the main canvas today.
 inline void logDomainState(int shotIndex) {
-    const char *label = (g_activeShots != nullptr) ? g_activeShots[shotIndex].label_ : "unknown";
+    const char *label = (sceneState().activeShots_ != nullptr)
+                            ? sceneState().activeShots_[shotIndex].label_
+                            : "unknown";
 
     const ivec3 anchor = IRRender::getLightAnchorFreeze().anchor_;
     const ivec3 windowLo = anchor - ivec3(kLightVolumeHalfExtent);
     const ivec3 windowHi = anchor + ivec3(kLightVolumeHalfExtent - 1);
 
     std::string lights = "[";
-    const auto &records = IRSystem::lightGatherRecords(g_computeLightVolumeSystemId);
+    const auto &records =
+        IRSystem::lightGatherRecords(IRSystem::findSystem(IRSystem::COMPUTE_LIGHT_VOLUME));
     for (std::size_t i = 0; i < records.size(); ++i) {
         const auto &r = records[i];
         const char *state = r.state_ == IRSystem::LightGatherState::SEEDED_FULL ? "SEEDED_FULL"
@@ -538,12 +548,12 @@ inline void logDomainState(int shotIndex) {
     // advance currentShot_ before it starts the next shot's settle window
     // (engine/video/src/auto_screenshot.cpp), so the move lands a full settle
     // window ahead of the next capture.
-    if (g_hoverSweep) {
+    if (sceneState().hoverSweep_) {
         constexpr int n = sizeof(kHoverSweepHeights) / sizeof(kHoverSweepHeights[0]);
         const int nextIndex = shotIndex + 1;
         if (nextIndex < n) {
             IREntity::setComponent(
-                g_hoverSweepCube,
+                sceneState().hoverSweepCube_,
                 C_LocalTransform{vec3(
                     kHoverSweepXY.x,
                     kHoverSweepXY.y,
@@ -578,15 +588,9 @@ inline void initSystems(const DemoConfig &config) {
             IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
             IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
             IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>(),
-            // Captured for the culling minimap's caster domain (#2316, V2) —
-            // see g_bakeSunShadowMapSystemId's doc comment above.
-            (g_bakeSunShadowMapSystemId = IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>()),
+            IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>(),
             IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>(),
-            // Captured for the DOMAIN-STATE emission hook (#2315, V1) — the hook
-            // reads this system's per-light gather records back via
-            // `IRSystem::lightGatherRecords(g_computeLightVolumeSystemId)`.
-            (g_computeLightVolumeSystemId =
-                 IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>()),
+            IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>(),
             IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>(),
         }
     );
@@ -611,33 +615,35 @@ inline void initSystems(const DemoConfig &config) {
     // the GPU timer queries are wall-clock), so leaving the overlay on during an
     // --auto-screenshot capture would pollute a render-verify baseline and flake
     // its pixel-diff run-to-run. Suppress it only while capturing; interactive
-    // and --auto-profile runs (g_autoWarmupFrames == 0) still get it. Mirrors
+    // and --auto-profile runs (sceneState().autoWarmupFrames_ == 0) still get it. Mirrors
     // fog_demo, which omits the overlay entirely.
-    if (g_autoWarmupFrames == 0) {
+    if (sceneState().autoWarmupFrames_ == 0) {
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::PERF_STATS_OVERLAY>());
     }
     renderPipeline.push_back(IRSystem::createSystem<IRSystem::TEXT_TO_TRIXEL>());
     renderPipeline.push_back(IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>());
     renderPipeline.push_back(
         IRSystem::System<IRSystem::DEBUG_CULLING_MINIMAP>::create({
-            .lightVolumeSystemId_ = g_computeLightVolumeSystemId,
-            .bakeSunShadowSystemId_ = g_bakeSunShadowMapSystemId,
+            // The minimap reads these systems' own state back — per-light
+            // gather records and world-placed casters (#2315/#2316).
+            .lightVolumeSystemId_ = IRSystem::findSystem(IRSystem::COMPUTE_LIGHT_VOLUME),
+            .bakeSunShadowSystemId_ = IRSystem::findSystem(IRSystem::BAKE_SUN_SHADOW_MAP),
         })
     );
     // Off during --auto-screenshot captures — the minimap is a live debug
     // aid, not part of the render-verify golden image (#2316, V2 plan
     // "Verification": map off during reference captures). Interactive runs
-    // (g_autoWarmupFrames == 0) default it visible; F11 toggles it either way.
-    IRRender::setCullingMinimapEnabled(g_autoWarmupFrames == 0);
+    // (sceneState().autoWarmupFrames_ == 0) default it visible; F11 toggles it either way.
+    IRRender::setCullingMinimapEnabled(sceneState().autoWarmupFrames_ == 0);
     renderPipeline.push_back(IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>());
 
-    if (g_autoProfileFrames > 0) {
+    if (sceneState().autoProfileFrames_ > 0) {
         IRSystem::SystemId autoProfileId = IRSystem::createSystem<C_Name>(
             "LightingAutoProfile",
             [](C_Name &) {},
             []() {
-                ++g_autoProfileCount;
-                if (g_autoProfileCount >= g_autoProfileFrames) {
+                ++sceneState().autoProfileCount_;
+                if (sceneState().autoProfileCount_ >= sceneState().autoProfileFrames_) {
                     IRWindow::closeWindow();
                 }
             }
@@ -645,15 +651,15 @@ inline void initSystems(const DemoConfig &config) {
         renderPipeline.push_back(autoProfileId);
     }
 
-    if (g_autoWarmupFrames > 0) {
+    if (sceneState().autoWarmupFrames_ > 0) {
         IRVideo::AutoScreenshotConfig screenshotConfig{};
-        screenshotConfig.warmupFrames_ = g_autoWarmupFrames;
+        screenshotConfig.warmupFrames_ = sceneState().autoWarmupFrames_;
         screenshotConfig.settleFrames_ = 3;
-        if (g_hoverSweep) {
+        if (sceneState().hoverSweep_) {
             constexpr std::size_t n = sizeof(kHoverSweepHeights) / sizeof(kHoverSweepHeights[0]);
             const vec2 hoverCameraIso =
                 -IRMath::pos3DtoPos2DIso(vec3(kHoverSweepXY.x, kHoverSweepXY.y, 0.0f));
-            g_hoverSweepShots.build(
+            sceneState().hoverSweepShots_.build(
                 n,
                 [&](std::size_t) {
                     return IRVideo::AutoScreenshotShot{4.0f, hoverCameraIso, 0.0f};
@@ -667,9 +673,10 @@ inline void initSystems(const DemoConfig &config) {
                     );
                 }
             );
-            screenshotConfig.shots_ = g_hoverSweepShots.shots_.data();
-            screenshotConfig.numShots_ = static_cast<int>(g_hoverSweepShots.shots_.size());
-        } else if (g_lightDomainMatrix) {
+            screenshotConfig.shots_ = sceneState().hoverSweepShots_.shots_.data();
+            screenshotConfig.numShots_ =
+                static_cast<int>(sceneState().hoverSweepShots_.shots_.size());
+        } else if (sceneState().lightDomainMatrix_) {
             // Zoom x yaw x pan-distance domain matrix. Pan reuses the boundary
             // sweep's calibration (see kSweepDistances below): in-window,
             // clamped-edge band, and out-of-reach. Bounded to 4x3x3 = 36 shots
@@ -683,7 +690,7 @@ inline void initSystems(const DemoConfig &config) {
             constexpr std::size_t kNumPans =
                 sizeof(kMatrixPanDistances) / sizeof(kMatrixPanDistances[0]);
             constexpr std::size_t kNumZooms = sizeof(kMatrixZooms) / sizeof(kMatrixZooms[0]);
-            g_domainMatrixShots.build(
+            sceneState().domainMatrixShots_.build(
                 kNumZooms * kNumYaws * kNumPans,
                 [&](std::size_t i) {
                     const std::size_t zoomIdx = i / (kNumYaws * kNumPans);
@@ -716,16 +723,17 @@ inline void initSystems(const DemoConfig &config) {
                     );
                 }
             );
-            screenshotConfig.shots_ = g_domainMatrixShots.shots_.data();
-            screenshotConfig.numShots_ = static_cast<int>(g_domainMatrixShots.shots_.size());
-        } else if (g_lightBoundarySweep) {
+            screenshotConfig.shots_ = sceneState().domainMatrixShots_.shots_.data();
+            screenshotConfig.numShots_ =
+                static_cast<int>(sceneState().domainMatrixShots_.shots_.size());
+        } else if (sceneState().lightBoundarySweep_) {
             // World-X distances from the emissive light to the camera anchor.
             // With the light's radius r and the volume half-extent 64:
             // 0/40 stay in-window (identical full-strength field), 70 seeds
             // the clamped edge at residual 1 − 6·step, 88 at 1 − 24·step,
             // and 110 is out of residual reach (correctly dark).
             constexpr float kSweepDistances[] = {0.0f, 40.0f, 70.0f, 88.0f, 110.0f};
-            g_boundarySweepShots.build(
+            sceneState().boundarySweepShots_.build(
                 sizeof(kSweepDistances) / sizeof(kSweepDistances[0]),
                 [&](std::size_t i) {
                     const vec3 anchorTarget =
@@ -745,8 +753,9 @@ inline void initSystems(const DemoConfig &config) {
                     );
                 }
             );
-            screenshotConfig.shots_ = g_boundarySweepShots.shots_.data();
-            screenshotConfig.numShots_ = static_cast<int>(g_boundarySweepShots.shots_.size());
+            screenshotConfig.shots_ = sceneState().boundarySweepShots_.shots_.data();
+            screenshotConfig.numShots_ =
+                static_cast<int>(sceneState().boundarySweepShots_.shots_.size());
         } else if (config.shots_ != nullptr) {
             // Per-demo shot table (e.g. the spot demo's yaw sweep, #2318).
             screenshotConfig.shots_ = config.shots_;
@@ -755,7 +764,7 @@ inline void initSystems(const DemoConfig &config) {
             screenshotConfig.shots_ = kShots;
             screenshotConfig.numShots_ = sizeof(kShots) / sizeof(kShots[0]);
         }
-        g_activeShots = screenshotConfig.shots_;
+        sceneState().activeShots_ = screenshotConfig.shots_;
         screenshotConfig.onCaptureFrame_ = &logDomainState;
         renderPipeline.push_back(IRVideo::createAutoScreenshotSystem(screenshotConfig));
     }
@@ -774,8 +783,8 @@ inline int run(int argc, char **argv, const DemoConfig &config) {
     detail::initSystems(config);
     detail::initCommands();
     detail::initEntities(config);
-    if (detail::g_initialZoom > 0.0f) {
-        IRRender::setCameraZoom(detail::g_initialZoom);
+    if (detail::sceneState().initialZoom_ > 0.0f) {
+        IRRender::setCameraZoom(detail::sceneState().initialZoom_);
     }
     IREngine::gameLoop();
     return 0;
