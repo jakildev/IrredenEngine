@@ -42,6 +42,18 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   `fleet-tests.yml` workflow calls the runner directly on every push and PR
   that touches `scripts/fleet/**`. That workflow is the only thing gating
   them; an unexecuted suite goes red silently (see #2712).
+- **A suite whose subject under test is missing must not report success.**
+  A guard shaped `if [[ ! -f "$SUBJECT" ]]; then echo "SKIP: ..."; exit 0;
+  fi` reports the same exit status as a real pass, so `run_all.sh` folds a
+  suite that verified nothing into its "N passed" tally — the vacuous-pass
+  failure mode #2712 wired execution to prevent, one level down (#2786).
+  Exit **3** instead — the shared skip status `run_all.sh` recognizes and
+  tallies separately as "skipped", never "passed". Reserve the `SKIP:`
+  stderr prefix for this case (an environment-dependency skip like "git not
+  available" can stay `exit 0`; only a missing *subject* is a #2786 case).
+  If the subject lives outside `scripts/fleet/**`, also add its path to
+  `fleet-tests.yml`'s `paths:` filter — otherwise a PR that moves or edits
+  only that file never runs the suite that would have caught the break.
 - **Bash tests source `tests/lib_assert.sh`** for the PASS/FAIL counters,
   `ok`/`bad`, `assert_eq`/`assert_contains`/`assert_absent`, and the
   `summarize` exit idiom — don't re-copy the helpers into a new test.

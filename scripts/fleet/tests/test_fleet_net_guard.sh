@@ -15,7 +15,7 @@ SHIM="$SCRIPT_DIR/timeout-shim.py"
 
 if [[ ! -f "$LIB" ]]; then
     echo "SKIP: lib not found at $LIB" >&2
-    exit 0
+    exit 3  # skip status — run_all.sh must not count this as a pass (#2786)
 fi
 
 PASS=0

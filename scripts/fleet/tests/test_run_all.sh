@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Tests for run_all.sh (#2712) — the runner that executes every fleet test
-# suite in this directory.
+# Tests for run_all.sh (#2712, #2786) — the runner that executes every
+# fleet test suite in this directory.
 #
 # Hermetic: every case copies run_all.sh into a temp dir alongside SYNTHETIC
 # fixture suites and runs it there. The runner discovers suites relative to
@@ -30,7 +30,10 @@ new_sandbox() {  # $1 = sandbox name -> echoes the dir
 }
 
 fixture_pass() { printf '#!/usr/bin/env bash\nexit 0\n' > "$1/test_$2.sh"; }
-fixture_fail() { printf '#!/usr/bin/env bash\necho "boom in %s"\nexit 3\n' "$2" > "$1/test_$2.sh"; }
+fixture_fail() { printf '#!/usr/bin/env bash\necho "boom in %s"\nexit 1\n' "$2" > "$1/test_$2.sh"; }
+# exit 3 is the shared skip status (#2786) — a distinct fixture so it's
+# never confused with fixture_fail's ordinary failure.
+fixture_skip() { printf '#!/usr/bin/env bash\necho "SKIP: %s subject missing" >&2\nexit 3\n' "$2" > "$1/test_$2.sh"; }
 
 echo "T1: all-passing suites exit 0 and are counted"
 d=$(new_sandbox t1)
@@ -39,7 +42,7 @@ fixture_pass "$d" beta
 printf 'import sys\nsys.exit(0)\n' > "$d/test_gamma.py"
 out=$(bash "$d/run_all.sh" 2>&1); rc=$?
 assert_eq "$rc" "0" "T1 exit 0 when every suite passes"
-assert_contains "$out" "3 suite(s) — 3 passed, 0 failed" "T1 summary counts all three"
+assert_contains "$out" "3 suite(s) — 3 passed, 0 failed, 0 skipped" "T1 summary counts all three"
 assert_contains "$out" "PASS  test_alpha.sh" "T1 per-suite PASS line"
 assert_contains "$out" "PASS  test_gamma.py" "T1 .py suite ran under python3"
 
@@ -49,9 +52,9 @@ fixture_pass "$d" alpha
 fixture_fail "$d" broken
 out=$(bash "$d/run_all.sh" 2>&1); rc=$?
 assert_eq "$rc" "1" "T2 exit 1 when a suite fails"
-assert_contains "$out" "FAIL  test_broken.sh (exit 3)" "T2 FAIL line carries the exit code"
+assert_contains "$out" "FAIL  test_broken.sh (exit 1)" "T2 FAIL line carries the exit code"
 assert_contains "$out" "boom in broken" "T2 failing suite's output is echoed for triage"
-assert_contains "$out" "1 passed, 1 failed" "T2 summary counts the failure"
+assert_contains "$out" "1 passed, 1 failed, 0 skipped" "T2 summary counts the failure"
 assert_contains "$out" "failed: test_broken.sh" "T2 names the failing suite"
 
 echo "T3: a failing .py suite is caught too"
@@ -139,5 +142,27 @@ fixture_pass "$d" alpha
 out=$(bash "$d/run_all.sh" --timeout 0 2>&1); rc=$?
 assert_eq "$rc" "0" "T11 --timeout 0 still runs suites"
 assert_contains "$out" "1 passed" "T11 --timeout 0 reports normally"
+
+# #2786: a suite whose subject under test is missing exits 3 (the shared
+# skip status), not 0 — a vacuous run must never be folded into "passed".
+echo "T12: a skipping suite (exit 3) is counted separately, not as a pass"
+d=$(new_sandbox t12)
+fixture_pass "$d" alpha
+fixture_skip "$d" skippy
+out=$(bash "$d/run_all.sh" 2>&1); rc=$?
+assert_eq "$rc" "0" "T12 exit 0 — a skip alone does not fail the run"
+assert_contains "$out" "2 suite(s) — 1 passed, 0 failed, 1 skipped" "T12 summary distinguishes skipped from passed"
+assert_contains "$out" "SKIP  test_skippy.sh" "T12 per-suite SKIP line"
+assert_contains "$out" "skipped: test_skippy.sh" "T12 names the skipped suite"
+assert_absent "$out" "PASS  test_skippy.sh" "T12 skip is never reported as PASS"
+
+echo "T13: a real failure still fails the run alongside a skip (negative control)"
+d=$(new_sandbox t13)
+fixture_fail "$d" broken
+fixture_skip "$d" skippy
+out=$(bash "$d/run_all.sh" 2>&1); rc=$?
+assert_eq "$rc" "1" "T13 exit 1 — a skip must not mask a real failure"
+assert_contains "$out" "0 passed, 1 failed, 1 skipped" "T13 summary counts failures and skips independently"
+assert_contains "$out" "failed: test_broken.sh" "T13 still names the real failure"
 
 summarize "run_all.sh tests"
