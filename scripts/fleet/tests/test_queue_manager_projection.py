@@ -210,6 +210,33 @@ class IngestProjectionFiresOnNewApprovedIssue(unittest.TestCase):
         self.assertEqual(out["pending_issues"], [],
                          "needs-human issue must be absent from pending_issues slice")
 
+    def test_gated_excluded_from_pending(self):
+        # fleet:gated parks an approved issue whose fix surface is gated
+        # self-config no worker class can push. Like fleet:needs-human it KEEPS
+        # human:approved, so without the skip the issue holds the projection hash
+        # non-zero forever and costs fleet-queue-ingest one live `gh issue view`
+        # every tick for as long as it stays parked (#2762). fleet-queue-ingest's
+        # own per-issue loop already refuses to stamp fleet:queued, so this is
+        # the projection-side half of that parity.
+        parked = [{"number": 2762, "title": "gated self-config edit",
+                   "labels": ["human:approved", "fleet:gated"]}]
+        h = stable_hash(project_queue_manager_ingest(_state(engine_human_approved=parked)))
+        self.assertEqual(h, stable_hash(project_queue_manager_ingest(_state())),
+                         "gated issue must not contribute to the ingest hash")
+        out = slice_queue_manager_ingest(_state(engine_human_approved=parked))
+        self.assertEqual(out["pending_issues"], [],
+                         "gated issue must be absent from pending_issues slice")
+
+    def test_gated_positive_control_present_without_label(self):
+        # Positive control for test_gated_excluded_from_pending: the same issue
+        # with fleet:gated removed MUST reach pending_issues, proving the
+        # exclusion is the label's doing and not an inert fixture.
+        live = [{"number": 2762, "title": "gated self-config edit",
+                 "labels": ["human:approved"]}]
+        out = slice_queue_manager_ingest(_state(engine_human_approved=live))
+        self.assertEqual([i["number"] for i in out["pending_issues"]], [2762],
+                         "issue must reach pending_issues once fleet:gated is gone")
+
     def test_revise_plan_overrides_skip_into_pending(self):
         # human:revise-plan is the human-added "change the posted plan" gate. It
         # lands on an issue mid-review (fleet:plan-review / human:review-plan,

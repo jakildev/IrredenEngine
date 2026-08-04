@@ -456,7 +456,8 @@ for issue in pending:
 
     if ('fleet:queued' in labels or 'fleet:scope-shipped' in labels
             or 'fleet:needs-human' in labels or 'fleet:needs-plan' in labels
-            or 'fleet:plan-review' in labels or 'human:review-plan' in labels):
+            or 'fleet:plan-review' in labels or 'human:review-plan' in labels
+            or 'fleet:gated' in labels):
         # fleet:plan-review (#1932): the plan is posted but a reviewer hasn't
         # vetted it yet — ingest holds off until the reviewer clears the label
         # (sound → removed; not sound → swapped to fleet:needs-plan).
@@ -466,6 +467,10 @@ for issue in pending:
         # stays in the pending set and survives re-ingest, like fleet:needs-human)
         # but ingest must NOT stamp fleet:queued while present — the human clears
         # the label to release it. See PLANNING-PROTOCOL.md §"High-stakes".
+        # fleet:gated (#2762): a worker parked the issue because the fix
+        # surface is gated self-config no class can push. Keeps
+        # human:approved (survives re-ingest) but must never get
+        # fleet:queued re-stamped — same shape as fleet:needs-human.
         skipped_already += 1
         continue
 

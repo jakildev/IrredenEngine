@@ -268,9 +268,9 @@
     },
     {
       "name": "fleet:gated",
-      "scope": "pr",
+      "scope": "issue+pr",
       "color": "b60205",
-      "description": "Conflict/fix surface is gated self-config; human-only; merger + all workers + reviewers skip"
+      "description": "Conflict/fix surface is gated self-config; human-only; on PRs merger + all workers + reviewers skip, on issues the scout's task-queue fetch + ingest's requeue hold skip"
     },
     {
       "name": "fleet:human-amending",

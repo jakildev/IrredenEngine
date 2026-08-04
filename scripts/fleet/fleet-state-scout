@@ -378,9 +378,16 @@ def sample_github_rate_limit():
             log(f"github rate-limit latch failed for {pool}: {e}")
 
 
-_ALREADY_QUEUED_LABELS = frozenset({"fleet:queued", "fleet:scope-shipped", "fleet:needs-human"})
-# fleet:needs-human included: parked issues must not re-enter the queue even if the
-# two-step add+remove call creates a TOCTOU window where fleet:queued is transiently absent.
+_ALREADY_QUEUED_LABELS = frozenset({
+    "fleet:queued",
+    "fleet:scope-shipped",
+    "fleet:needs-human",
+    "fleet:gated",
+})
+# fleet:needs-human / fleet:gated included: parked issues must not re-enter the queue
+# even if the two-step add+remove call creates a TOCTOU window where fleet:queued is
+# transiently absent. Both parks keep human:approved, so without this exclusion
+# fetch_human_approved returns them on every tick, forever (#2762).
 
 # Labels that mark issues the queue-manager role doc explicitly skips at
 # Step 5 — filter these out of the ingest projector/slicer so epics and
@@ -402,6 +409,11 @@ _INGEST_SKIP_LABELS = frozenset({
     "fleet:scope-shipped", # scope landed under a different issue; human should close
     "fleet:needs-human",   # parked: fleet can't do it autonomously, human must act;
                            # keeps human:approved but must NOT be re-queued
+    "fleet:gated",         # #2762: parked because the fix surface is gated self-config
+                           # no worker class can push. Same shape as fleet:needs-human —
+                           # keeps human:approved but must NOT be re-queued, so it must
+                           # also drop out of the ingest set or it holds the projection
+                           # hash non-zero and costs a live `gh issue view` every tick.
     "human:review-plan",   # #2011: worker-planned high-stakes issue holding for the
                            # human's approach sign-off; keeps human:approved but must
                            # NOT queue until the human clears it (surfaced separately
@@ -808,6 +820,15 @@ def fetch_task_queue(repo_slug):
         # fleet:plan-review marks tasks whose plan is posted and awaiting
         # human/architect approval — not yet pickable by autonomous workers.
         if "fleet:plan-review" in labels:
+            continue
+
+        # fleet:gated marks issues a worker parked because the fix surface
+        # is gated self-config no class can push (#2066). Skip for the same
+        # reason as fleet:needs-human above: without this, ingest re-stamps
+        # fleet:queued and every matching dispatch re-claims, re-hits the
+        # ungateable surface, and releases — an unbounded pane-burn loop
+        # (#2762).
+        if "fleet:gated" in labels:
             continue
 
         in_progress = "fleet:in-progress" in labels or owner != "free"
