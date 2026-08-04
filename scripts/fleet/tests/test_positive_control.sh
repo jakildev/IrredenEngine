@@ -348,6 +348,34 @@ assert_contains "$OUT" "MEANINGFUL: 2 of 6 assertions fail" "an error counts wit
 assert_contains "$OUT" "with **1** skipped. (3 + 2 + 1 = 6, the full suite.)" "the PR-body line accounts for the skip instead of calling it a pass"
 rm -f "$PYMIX"
 
+echo "--- unittest's tally: an unexpected success counts with the failures ---"
+PYUNEXP="$SCRIPT_DIR/tests/test_zz_tmp_unexpected_2848.py"
+STRAYS+=("$PYUNEXP")
+cat > "$PYUNEXP" <<'FIXTURE'
+import unittest
+
+
+class Control(unittest.TestCase):
+    def test_pass(self):
+        self.assertTrue(True)
+
+    def test_plain_failure(self):
+        self.assertEqual(1, 2)
+
+    @unittest.expectedFailure
+    def test_unexpectedly_passes(self):
+        self.assertEqual(1, 1)
+
+
+unittest.main()
+FIXTURE
+run "$WRAPPER" "$PYUNEXP" HEAD
+# 3 ran: 1 plain failure + 1 unexpected success (an expectedFailure test that
+# passed anyway — a real distinction between the trees) = 2 fail, 1 pass.
+# Exercises the `unittest_count 'unexpected successes' ...` branch.
+assert_contains "$OUT" "MEANINGFUL: 2 of 3 assertions fail" "an unexpected success counts with the failures"
+rm -f "$PYUNEXP"
+
 echo "--- a suite that runs zero assertions is a setup failure, not VACUOUS ---"
 PYEMPTY="$SCRIPT_DIR/tests/test_zz_tmp_empty_2848.py"
 STRAYS+=("$PYEMPTY")
