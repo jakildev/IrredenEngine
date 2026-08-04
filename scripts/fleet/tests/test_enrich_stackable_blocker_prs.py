@@ -282,6 +282,32 @@ class TestEnrichStackableBlockerPrs(unittest.TestCase):
         self.assertEqual(task["stackable_blocker_pr"]["headRefName"],
                          "claude/1308-per-axis-trixel-canvas-infra")
 
+    def test_single_ref_whose_prose_names_the_blockers_own_pr_enriched(self):
+        """#2783 — the prose ref is the blocker's OWN PR, i.e. the very base a
+        stacker should stack on, and counting it as a second blocker withheld
+        that offer for the blocker's whole pre-merge window.
+
+        Live shape at filing: engine #2780 blocked by "#2770 (PR #2772 — …)",
+        where PR #2772's head is claude/2770-witness-roster-empty."""
+        tasks = [_task("#2780", "#2770 (PR #2772 — lands the `_roster_warn` "
+                                "shape this generalizes; rebase on it)")]
+        prs = [_pr(2772, "claude/2770-witness-roster-empty", author="jakildev")]
+        state = _state(engine_tasks=tasks, engine_prs=prs)
+        enrich_stackable_blocker_prs(state)
+        task = state["repos"]["engine"]["tasks"]["open"][0]
+        self.assertIn("stackable_blocker_pr", task)
+        self.assertEqual(task["stackable_blocker_pr"]["number"], 2772)
+
+    def test_prose_ref_restating_a_dependency_still_blocks(self):
+        """#2783 must not become an evasion hole: prose carrying a blocker verb
+        is a real second blocker, so no offer (#1910's guard, reused)."""
+        tasks = [_task("#999", "#101 — also blocked by #102")]
+        prs = [_pr(1, "claude/101-x"), _pr(2, "claude/102-y")]
+        state = _state(engine_tasks=tasks, engine_prs=prs)
+        enrich_stackable_blocker_prs(state)
+        self.assertNotIn("stackable_blocker_pr",
+                         state["repos"]["engine"]["tasks"]["open"][0])
+
     # ---- #1751: non-stackable base-state rejection (offer side) -----------
 
     def _assert_no_offer(self, labels=None, cached_files="unset"):

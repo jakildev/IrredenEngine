@@ -97,6 +97,12 @@ _BLOCKER_VERB_RE = re.compile(
 )
 # Clause boundaries used to isolate the text introducing a single `#N`.
 _CLAUSE_SPLIT_RE = re.compile(r'[;,—–(]')
+# List separators between *declared* blockers (#2783). A `Blocked by:` value is
+# a list of refs — each optionally carrying its own parenthetical annotation
+# (`#100 (done), #101 (still open)`) — so the first ref of every segment is
+# declared and only later refs in the same segment are candidates for prose.
+# `and` is included because hand-written values spell the list both ways.
+_LIST_SPLIT_RE = re.compile(r',|\band\b', re.IGNORECASE)
 
 
 def _leads_with_none_sentinel(value):
@@ -124,6 +130,50 @@ def _ref_is_see_also(value, ref_start):
     if _BLOCKER_VERB_RE.search(clause):
         return False
     return bool(_SEE_ALSO_RE.search(clause))
+
+
+def ref_is_decorative(value, ref_start):
+    """True when the `#N` starting at `ref_start` sits in `value`'s explanatory
+    prose and no blocker verb introduces it — a decoration rather than a
+    dependency (#2783).
+
+    Answers "was this ref *declared*", NOT "does it gate" — the two questions
+    genuinely differ, so only ask this one where the declared count is what
+    matters (stackable eligibility). The blocking gate `blocker_refs` counts
+    every ref on purpose: a parenthetical PR ref is load-bearing there. #1281
+    taught the resolver to accept such a ref once the PR is MERGED — while it
+    is still OPEN the ref gates, which is what stops a claim on work whose
+    implementing PR hasn't landed. The common shape is the blocker's own PR —
+    `#2770 (PR #2772 — lands the shape this generalizes)` declares one blocker
+    and gates on two.
+
+    A ref is declared — never decorative — when it is the **first** in its list
+    segment, so `#100, #101` and the per-ref-annotated
+    `#100 (done), #101 (still open)` both keep every blocker. Only a *second*
+    ref inside one segment can be prose, and #1910's `_BLOCKER_VERB_RE` clause
+    scan rescues that one when the prose restates a real dependency
+    (`#100 — also blocked by #999`). The bias toward declared is deliberate:
+    dropping a genuine blocker would unblock work whose base has not merged,
+    far worse than the overcount it corrects.
+
+    Lives here rather than in the scout so the eligibility rule can't drift
+    from the gate it deliberately differs from — the #1749 reconciliation.
+    """
+    value = value or ""
+    # A leading-`none` value is #1910's territory: `is_no_blocker_value` already
+    # rules on it and deliberately keeps every unqualified ref as a blocker
+    # (the anti-evasion guard). Staying out keeps that corpus byte-identical —
+    # this fix is scoped to values that declare a real blocker list.
+    if _leads_with_none_sentinel(value):
+        return False
+    seg_start = 0
+    for sep in _LIST_SPLIT_RE.finditer(value[:ref_start]):
+        seg_start = sep.end()
+    preceding = value[seg_start:ref_start]
+    if not _REF_RE.search(preceding):
+        return False
+    clause = _CLAUSE_SPLIT_RE.split(preceding)[-1]
+    return not _BLOCKER_VERB_RE.search(clause)
 
 
 def is_no_blocker_value(value):
@@ -239,7 +289,14 @@ def blocker_refs(body, default_repo):
     """(slug, number) for every blocker `#N` declared in `body`, routing each
     cross-repo `[owner/]Repo#N` qualifier to its GitHub slug (#1522) and
     defaulting bare refs to `default_repo` (the issue's own repo). A
-    sentinel-only or unblocked body contributes nothing."""
+    sentinel-only or unblocked body contributes nothing.
+
+    Every ref counts here, prose included: this is the *blocking gate*, and a
+    parenthetical `(PR #200 must merge — …)` is load-bearing for it — #1281
+    resolves such a ref against PR state, so it stops gating only once that PR
+    is MERGED. Callers that need the narrower "how many blockers were actually
+    declared" question (stackable eligibility) filter with `ref_is_decorative`
+    instead; they must not widen this one (#2783)."""
     value = parse_blocked_by(body)
     return [(_ref_slug(m.group(1), default_repo), m.group(2))
             for m in _REF_RE.finditer(value)]

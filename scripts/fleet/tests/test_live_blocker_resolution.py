@@ -105,6 +105,28 @@ class TestResolveBlockedBy(unittest.TestCase):
             resolve_blocked_by(state)
         self.assertEqual(tasks[0]["blocked_by"], "#101")
 
+    def test_prose_ref_stashes_declared_only_view(self):
+        """#2783 — normalization throws the prose away, so the declared-only
+        view is captured alongside it for stackable eligibility. `blocked_by`
+        itself still carries both refs: the parenthetical PR gates the claim
+        (#1281), it just isn't a second *declared* blocker."""
+        tasks = [_task("#2780", "#2770 (PR #2772 — lands the shape this generalizes)")]
+        state = _state(engine_tasks=tasks)
+        with patch.object(_mod.subprocess, "run",
+                          _gh_state_stub({"2770": "OPEN", "2772": "OPEN"})):
+            resolve_blocked_by(state)
+        self.assertEqual(tasks[0]["blocked_by"], "#2770, #2772")
+        self.assertEqual(tasks[0]["blocked_by_declared"], "#2770")
+
+    def test_no_declared_field_when_prose_adds_nothing(self):
+        """The field is absent for the overwhelming majority of tasks — it
+        appears only where the prose actually inflated the count."""
+        tasks = [_task("#200", "#101")]
+        state = _state(engine_tasks=tasks)
+        with patch.object(_mod.subprocess, "run", _gh_state_stub({"101": "OPEN"})):
+            resolve_blocked_by(state)
+        self.assertNotIn("blocked_by_declared", tasks[0])
+
     def test_both_refs_closed_resolves_to_none(self):
         """Both refs closed → (none)."""
         tasks = [_task("#200", "#100, #102")]
@@ -219,6 +241,31 @@ class TestResolveAndEnrichIntegration(unittest.TestCase):
             resolve_blocked_by(state)
         enrich_stackable_blocker_prs(state)
         self.assertNotIn("stackable_blocker_pr", state["repos"]["engine"]["tasks"]["open"][0])
+
+    def test_declared_view_emptying_out_still_offers_the_gate_ref(self):
+        """#2783 — the declared-only narrowing may only ADD an offer.
+
+        The declared blocker (#100) closes while the decorative ref (#102) is
+        still open, so the declared view empties to "(none)" while the claim
+        gate still blocks on #102. Reading "(none)" in preference would leave
+        the task un-claimable AND un-stackable; enrich must fall back to
+        `blocked_by` and offer #102's PR."""
+        tasks = [_task("#300", "#100 (context: see #102)")]
+        open_prs = [_pr(536, "claude/102-decorative-work")]
+        state = _state(
+            engine_tasks=tasks,
+            engine_prs=open_prs,
+            closed=[_closed_issue(100)],
+        )
+        with patch.object(_mod.subprocess, "run", _gh_state_stub({"102": "OPEN"})):
+            resolve_blocked_by(state)
+        enrich_stackable_blocker_prs(state)
+        task = state["repos"]["engine"]["tasks"]["open"][0]
+        self.assertEqual(task["blocked_by"], "#102")
+        # The diagnostic field still records that nothing *declared* remains.
+        self.assertEqual(task["blocked_by_declared"], "(none)")
+        self.assertIn("stackable_blocker_pr", task)
+        self.assertEqual(task["stackable_blocker_pr"]["number"], 536)
 
 
 # ---------------------------------------------------------------------------

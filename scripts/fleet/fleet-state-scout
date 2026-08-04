@@ -52,7 +52,11 @@ if sys.platform == "win32" and not os.environ.get("PYTHONUTF8"):
 # scout is run directly or loaded by-path in the unit tests (#1425).
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import fleet_poll_topology
-from fleet_blocked_by import is_no_blocker_value, parse_blocked_by
+from fleet_blocked_by import (
+    is_no_blocker_value,
+    parse_blocked_by,
+    ref_is_decorative,
+)
 from fleet_branch_match import (
     PARKED_PR_LABELS,
     body_closed_issue_numbers,
@@ -1303,8 +1307,15 @@ EFFORT_LEVELS = frozenset({"low", "medium", "high", "xhigh", "max"})
 # is now CLOSED arrives here as one ref and qualifies.
 def _single_blocker_issue(blocked_by):
     """Return the sole blocker issue number (digits, no '#') when blocked_by
-    references exactly one issue, else None."""
-    refs = re.findall(r"#(\d+)", blocked_by or "")
+    references exactly one issue, else None.
+
+    Refs living in the value's prose don't count toward the total — the caller
+    (stackable eligibility, this function's only one) asks how many blockers
+    were *declared*, and `#2770 (PR #2772 — …)` declares one (#2783). Applied
+    here as well as via `blocked_by_declared` so the answer doesn't depend on
+    whether resolve_blocked_by has already normalized the value."""
+    refs = [m.group(1) for m in re.finditer(r"#(\d+)", blocked_by or "")
+            if not ref_is_decorative(blocked_by, m.start())]
     return refs[0] if len(refs) == 1 else None
 
 
@@ -1380,13 +1391,20 @@ _REPO_SLUG_MAP = {
 _REPO_NAME_TO_KEY = {"irredenengine": "engine", "irreden": "game"}
 
 
-def _parse_blocker_refs(raw, default_key):
+def _parse_blocker_refs(raw, default_key, declared_only=False):
     """(repo_key, number) for every #N in a raw **Blocked by:** value, routing
     each ref to the repo named by its optional `[owner/]Repo#N` qualifier. A
     bare ref or an unrecognized qualifier falls back to default_key — the
-    issue's own repo. (#1522)"""
+    issue's own repo. (#1522)
+
+    `declared_only` drops refs that live in the value's explanatory prose with
+    no blocker verb — the "how many blockers were declared" question stackable
+    eligibility asks (#2783). It is deliberately NOT the default: the blocking
+    gate counts every ref, matching fleet_blocked_by.blocker_refs and #1281."""
     refs = []
     for m in _BLOCKER_REF_RE.finditer(raw or ""):
+        if declared_only and ref_is_decorative(raw, m.start()):
+            continue
         name = m.group(1)
         key = _REPO_NAME_TO_KEY.get(name.lower(), default_key) if name else default_key
         refs.append((key, m.group(2)))
@@ -1452,6 +1470,13 @@ def resolve_blocked_by(state):
             refs = _parse_blocker_refs(raw, repo_key)
             if not refs:
                 continue  # free-text or PR-URL form — leave unchanged
+            # Which of those were actually *declared*, vs named only in the
+            # value's prose (#2783). Normalization discards the prose, so the
+            # distinction has to be captured while the raw value still exists —
+            # enrich_stackable_blocker_prs needs the declared count, while
+            # `blocked_by` keeps every ref for the blocking gate.
+            declared = {r for _, r in
+                        _parse_blocker_refs(raw, repo_key, declared_only=True)}
 
             unresolved = []
             for ref_key, ref in refs:
@@ -1475,6 +1500,14 @@ def resolve_blocked_by(state):
                 task["blocked_by"] = f"#{unresolved[0]}"
             else:
                 task["blocked_by"] = ", ".join(f"#{r}" for r in unresolved)
+
+            # Only when the prose inflated the count — a value whose refs were
+            # all declared needs no second field, so state.json stays as-is for
+            # the overwhelming majority of tasks (#2783).
+            declared_unresolved = [r for r in unresolved if r in declared]
+            if declared_unresolved != unresolved:
+                task["blocked_by_declared"] = (
+                    ", ".join(f"#{r}" for r in declared_unresolved) or "(none)")
 
 
 def resolve_human_approved_blockers(state):
@@ -1693,7 +1726,18 @@ def enrich_stackable_blocker_prs(state):
     for repo_key, repo_state in state["repos"].items():
         prs = repo_state.get("prs", [])
         for task in repo_state.get("tasks", {}).get("open", []):
-            blocked_by = (task.get("blocked_by") or "").strip()
+            # Prefer the declared-only view when resolve_blocked_by found the
+            # value's prose inflating the ref count (#2783) — eligibility asks
+            # "how many blockers were declared", not "what gates the claim".
+            # The narrowing may only ever ADD an offer, never withdraw one. Once
+            # every declared ref resolves while a decorative one has not, the
+            # declared view reads "(none)" while the gate still blocks on that
+            # decorative ref (#1281) — honoring it would leave the task with no
+            # claim AND no base to stack on. Fall back to the gate's own value.
+            declared_view = (task.get("blocked_by_declared") or "").strip()
+            if declared_view.lower().startswith("(none"):
+                declared_view = ""
+            blocked_by = (declared_view or task.get("blocked_by") or "").strip()
             issue_num = _single_blocker_issue(blocked_by)
             if not issue_num:
                 continue
