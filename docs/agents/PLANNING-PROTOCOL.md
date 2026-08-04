@@ -134,6 +134,14 @@ For each `fleet:needs-plan` issue:
      reframe it as an explicit **investigation spike** (the literal
      phrase in the title/body; see
      [`architect-protocol.md § Carve-offs`](architect-protocol.md)).
+     The same rule covers a fork phrased as an **instruction to the
+     implementer** rather than a self-describing punt — "check whether
+     the narrowed predicate should apply there as well or only to issue
+     claims; decide explicitly rather than by omission" reads as rigor,
+     not deferral, but hands the same undecided A-or-B choice downstream
+     (#2820, caught by the plan-review pass, not the lint, until #2824
+     widened `fleet-plan-lint`'s deferred-approach matcher to this
+     imperative/interrogative mood).
    - **Sibling + in-flight reconciliation.** Check the parent ticket's
      other carve-offs and every open PR touching the same surface — a
      plan that duplicates or contradicts an active PR or a sibling's

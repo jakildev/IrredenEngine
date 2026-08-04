@@ -95,6 +95,74 @@ verified current state via grep; one approach: edit foo.cpp
 
 ### Notes
 none'''
+# #2824: imperative-mood fork — a fork phrased as an instruction to the
+# implementer, matching none of the self-describing DEFER phrases. Pinned
+# verbatim from issue #2820's Gotchas section (the live instance that slipped
+# past the pre-#2824 matcher and had to be caught by the Opus plan-review pass
+# instead) — do not re-fetch #2820 live, it has since been replanned.
+FORK_WHETHER = GOOD.replace(
+    "### Gotchas\nnone",
+    "### Gotchas\n"
+    "- **`fleet:needs-gl-host` is valid on PRs too** (`fleet-claim` amending-claim\n"
+    "  path, #2524). Check whether the narrowed predicate should apply there as well\n"
+    "  or only to issue claims; decide explicitly rather than by omission.")
+# Negative fixture (acceptance criteria #3): a plain confirmation ("check
+# whether the build is green") names no alternative ("or Y") and must not fire.
+FORK_WHETHER_NEGATIVE = GOOD.replace(
+    "one approach: edit foo.cpp then bar.cpp",
+    "check whether the build is green; one approach: edit foo.cpp then bar.cpp")
+# investigation-spike downgrade must still apply to the new fork form (acceptance
+# criteria #4).
+FORK_WHETHER_SPIKE = FORK_WHETHER.replace(
+    "## Plan: good", "## Plan: investigation spike - fork")
+# either/or fork named in Approach, with a hedging modal ("could") signaling an
+# undecided choice -- must hard-fail.
+EITHER_OR_MODAL = GOOD.replace(
+    "one approach: edit foo.cpp then bar.cpp",
+    "the fix could either rewrite foo.cpp or patch bar.cpp instead")
+# either/or describing already-settled, declarative branches (no hedging modal)
+# -- corpus-measured false-positive shape (.fleet/plans/issue-2197.md,
+# issue-2540.md both hit a naive either/or check with no modal present) --
+# must NOT fire.
+EITHER_OR_DECLARATIVE = GOOD.replace(
+    "one approach: edit foo.cpp then bar.cpp",
+    "one approach: edit foo.cpp then bar.cpp. Either the reader retries or the "
+    "writer backs off, per the existing protocol")
+# either/or + modal outside Approach/Gotchas (in Acceptance) -- scoped out,
+# must NOT fire.
+EITHER_OR_ACCEPTANCE = GOOD.replace(
+    "### Acceptance criteria\nbuilds + tests",
+    "### Acceptance criteria\ntest could pass either the fast path or the slow path assertion")
+# The imperative-mood fork is scoped to Approach/Gotchas for the same reason,
+# pinned by the two false-positive shapes an unscoped scan hit:
+#   (1) a QA-style acceptance criterion naming a pass/fail alternative, the
+#       direct mirror of EITHER_OR_ACCEPTANCE above;
+FORK_WHETHER_ACCEPTANCE = GOOD.replace(
+    "### Acceptance criteria\nbuilds + tests",
+    "### Acceptance criteria\n"
+    "1. Check whether the fix resolves the crash or introduces a new regression.\n"
+    "2. Build is green.")
+#   (2) a settled decision tree stated outside Approach/Gotchas, pinned verbatim
+#       from `.fleet/plans/issue-1596.md`'s "Architect decision" section -- the
+#       "or" is a parenthetical sub-clause of the thing being checked and BOTH
+#       branches are already decided, so it is declarative, not a live fork.
+#       This is the corpus regression the pre-scoping matcher drifted PASS->FAIL
+#       on. It is also what makes the scoping an ALLOWLIST (fire only in
+#       Approach/Gotchas) rather than an Acceptance-only exclusion, which would
+#       leave this shape firing.
+FORK_WHETHER_OTHER_SECTION = GOOD.replace(
+    "### Gotchas\nnone",
+    "### Gotchas\nnone\n\n"
+    "### Architect decision\n"
+    "FIRST check whether a main-layout texture containing detached caster depth\n"
+    "already exists at BAKE time (or can be cheaply made available there). If yes,\n"
+    "bake that -- zero new resolve passes. If not, add ONE dedicated resolve.")
+# In-scope positive for the OTHER arm of the scope predicate: the #2820 fixture
+# above sits in Gotchas, so without this one the "approach" keyword arm ships
+# unexercised and a future narrowing of the keyword set goes uncaught.
+FORK_WHETHER_APPROACH = GOOD.replace(
+    "one approach: edit foo.cpp then bar.cpp",
+    "check whether the predicate should apply to foo.cpp as well or only to bar.cpp")
 # #2443 plan-exclusion guard: the mandatory "## Plan: <title>" heading is the
 # ONLY heading here that could match Approach -- Scope + Acceptance concepts are
 # present, no real Approach-shaped heading. "plan" is deliberately NOT an
@@ -139,6 +207,15 @@ F = {
   "112": {"title": "re-planned after bounce task", "comments": [
       {"body": SKELETAL_REPLAN_SEED}, {"body": REVIEW_BOUNCE}, {"body": GOOD}]},
   "113": {"title": "review only, no plan task", "comments": [{"body": REVIEW_ONLY}]},
+  "114": {"title": "imperative-mood fork task", "comments": [{"body": FORK_WHETHER}]},
+  "115": {"title": "whether-no-or negative control task", "comments": [{"body": FORK_WHETHER_NEGATIVE}]},
+  "116": {"title": "investigation spike for fork", "comments": [{"body": FORK_WHETHER_SPIKE}]},
+  "117": {"title": "either/or modal task", "comments": [{"body": EITHER_OR_MODAL}]},
+  "118": {"title": "either/or declarative task", "comments": [{"body": EITHER_OR_DECLARATIVE}]},
+  "119": {"title": "either/or in acceptance task", "comments": [{"body": EITHER_OR_ACCEPTANCE}]},
+  "120": {"title": "fork-whether in acceptance task", "comments": [{"body": FORK_WHETHER_ACCEPTANCE}]},
+  "121": {"title": "fork-whether outside approach/gotchas task", "comments": [{"body": FORK_WHETHER_OTHER_SECTION}]},
+  "122": {"title": "fork-whether in approach task", "comments": [{"body": FORK_WHETHER_APPROACH}]},
 }
 print(json.dumps(F.get(num, {"title": "missing", "comments": []})))
 PYEOF
@@ -192,6 +269,54 @@ case "$review_out" in *"missing core sections"*) bad "reviewed plan hard-failed 
 "$LINT" 113 >/dev/null 2>&1; assert_exit $? 1 "review present, no plan -> hard fail"
 review_only_out=$("$LINT" 113 2>&1 || true)
 case "$review_only_out" in *"no \`## Plan\` comment found"*) ok "review-only reports 'no ## Plan comment found', does not lint the review";; *) bad "review-only did not report the expected message: [$review_only_out]";; esac
+
+# #2824 — imperative-mood fork ("check whether X ... or Y" in one sentence),
+# pinned verbatim from the live #2820 instance that slipped past the
+# pre-#2824 matcher (acceptance criteria #1).
+"$LINT" 114 >/dev/null 2>&1; assert_exit $? 1 "imperative-mood fork (#2820-shaped) -> hard fail"
+fork_out=$("$LINT" 114 2>&1 || true)
+case "$fork_out" in *"imperative-mood fork"*) ok "imperative-mood fork names itself in the failure";; *) bad "imperative-mood fork message missing: [$fork_out]";; esac
+# Negative fixture (acceptance criteria #3): a plain confirmation with no
+# named alternative ("or Y") must not fire.
+"$LINT" 115 >/dev/null 2>&1; assert_exit $? 0 "'check whether the build is green' (no or-alternative) -> exit 0"
+neg_out=$("$LINT" 115 2>&1 || true)
+case "$neg_out" in *"imperative-mood fork"*) bad "whether-no-or negative control false-fired: [$neg_out]";; *) ok "whether-no-or negative control does not fire";; esac
+# investigation-spike downgrade still applies to the new fork form (acceptance
+# criteria #4).
+"$LINT" 116 >/dev/null 2>&1; assert_exit $? 0 "investigation spike: imperative-mood fork downgraded to warn -> exit 0"
+spike_fork_out=$("$LINT" 116 2>&1 || true)
+case "$spike_fork_out" in warn*"imperative-mood fork"*"investigation spike"*) ok "spike fork downgraded to warn, not silently dropped";; *) bad "spike fork warn missing or malformed: [$spike_fork_out]";; esac
+# either/or fork named in Approach with a hedging modal -> hard fail.
+"$LINT" 117 >/dev/null 2>&1; assert_exit $? 1 "either/or fork w/ modal in Approach -> hard fail"
+either_out=$("$LINT" 117 2>&1 || true)
+case "$either_out" in *"either/or fork"*) ok "either/or fork names itself in the failure";; *) bad "either/or fork message missing: [$either_out]";; esac
+# either/or describing already-settled, declarative branches (no hedging
+# modal) -- corpus-measured false-positive shape (issue-2197.md, issue-2540.md
+# both hit a naive either/or check with no modal present) -- must not fire.
+"$LINT" 118 >/dev/null 2>&1; assert_exit $? 0 "either/or declarative (no modal) -> exit 0 (corpus false-positive shape)"
+either_decl_out=$("$LINT" 118 2>&1 || true)
+case "$either_decl_out" in *"either/or fork"*) bad "either/or declarative false-fired: [$either_decl_out]";; *) ok "either/or declarative does not fire";; esac
+# either/or + modal outside Approach/Gotchas (in Acceptance) -- scoped out.
+"$LINT" 119 >/dev/null 2>&1; assert_exit $? 0 "either/or + modal in Acceptance -> exit 0 (scoped to Approach/Gotchas only)"
+either_acc_out=$("$LINT" 119 2>&1 || true)
+case "$either_acc_out" in *"either/or fork"*) bad "either/or in Acceptance false-fired: [$either_acc_out]";; *) ok "either/or in Acceptance correctly out of scope";; esac
+# The imperative-mood fork carries the same Approach/Gotchas scoping. Both
+# negatives below hard-failed before the scoping (measured), so each is a live
+# regression pin, not a restatement of the check's shape.
+"$LINT" 120 >/dev/null 2>&1; assert_exit $? 0 "imperative-mood fork in Acceptance -> exit 0 (scoped out; mirror of #119)"
+fork_acc_out=$("$LINT" 120 2>&1 || true)
+case "$fork_acc_out" in *"imperative-mood fork"*) bad "imperative-mood fork in Acceptance false-fired: [$fork_acc_out]";; *) ok "imperative-mood fork in Acceptance correctly out of scope";; esac
+# Corpus regression: the settled decision tree in issue-1596.md's "Architect
+# decision" section is neither Approach/Gotchas nor Acceptance, so only an
+# allowlist scoping clears it.
+"$LINT" 121 >/dev/null 2>&1; assert_exit $? 0 "imperative-mood fork outside Approach/Gotchas (issue-1596 corpus shape) -> exit 0"
+fork_other_out=$("$LINT" 121 2>&1 || true)
+case "$fork_other_out" in *"imperative-mood fork"*) bad "imperative-mood fork outside Approach/Gotchas false-fired (corpus regression): [$fork_other_out]";; *) ok "imperative-mood fork outside Approach/Gotchas correctly out of scope";; esac
+# ...but the scoping must not go so narrow it stops firing where forks belong:
+# in-scope via the "approach" keyword arm (the #114 fixture covers "gotcha").
+"$LINT" 122 >/dev/null 2>&1; assert_exit $? 1 "imperative-mood fork in Approach -> hard fail (scope predicate's approach arm)"
+fork_appr_out=$("$LINT" 122 2>&1 || true)
+case "$fork_appr_out" in *"imperative-mood fork"*) ok "imperative-mood fork still fires in Approach after scoping";; *) bad "imperative-mood fork stopped firing in Approach — scoping too narrow: [$fork_appr_out]";; esac
 set -e
 
 echo "================================"
