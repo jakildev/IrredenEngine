@@ -29,6 +29,11 @@ set -euo pipefail
 # does not care about clone freshness — disable the #1810 freshness gate.
 export FLEET_SKIP_CLONE_FRESHNESS=1
 
+# Every issue fixture below is fleet:sonnet, so an inherited FLEET_ROLE_MODEL
+# from the launching pane would fail T9's claim on the model-tag gate instead of
+# the base check it is grading (#2748 — a suite must not inherit its class).
+unset FLEET_ROLE_MODEL
+
 SCRIPT_DIR=$(cd "$(dirname "$0")/.." && pwd)
 FLEET_CLAIM="$SCRIPT_DIR/fleet-claim"
 
@@ -198,6 +203,10 @@ case "$1 $2" in
             902) printf '%s' '{"state":"OPEN","headRefName":"claude/902-empty","labels":[{"name":"fleet:queued"}]}' ;;
             903) printf '%s' '{"state":"OPEN","headRefName":"claude/903-clean","labels":[{"name":"fleet:queued"}]}' ;;
             904) printf '%s' '{"state":"OPEN","headRefName":"claude/904-difffail","labels":[{"name":"fleet:queued"}]}' ;;
+            # #2805: approved base whose ONLY formerly-disqualifying label is
+            # fleet:awaiting-base — the label is deliberately still present, so
+            # the accept is graded against a live carrier, not a cleaned-up one.
+            905) printf '%s' '{"state":"OPEN","headRefName":"claude/905-awaiting-base","labels":[{"name":"fleet:approved"},{"name":"fleet:awaiting-base"}]}' ;;
             *)   printf '%s' '{"state":"OPEN","headRefName":"claude/x","labels":[]}' ;;
         esac
         exit 0
@@ -209,6 +218,7 @@ case "$1 $2" in
             902) : ;;                                  # empty diff (claim-commit only)
             903) printf '%s\n' "engine/render/x.cpp" ;;  # real non-empty diff
             904) exit 1 ;;                             # fetch failure
+            905) printf '%s\n' "scripts/fleet/witness" ;;  # real non-empty diff
             *)   printf '%s\n' "engine/x.cpp" ;;
         esac
         exit 0
@@ -330,6 +340,26 @@ assert_refused 902 "not a stackable base (empty claim-commit)" "empty-claim base
 
 echo "T8: claim --stackable-on a base whose diff fetch fails (#904) → refused"
 assert_refused 904 "refusing to stack on an unverifiable base" "unverifiable base refused"
+
+# --- #2805: an approved base carrying only fleet:awaiting-base IS stackable ---
+# The merger mints fleet:awaiting-base on every stacked PR whose base is still
+# open, so rejecting it made depth-2+ stacking impossible. Claimed against a
+# base that still carries the label (this fix removes it from no PR). Runs last
+# because it is the only case here that leaves a claim behind.
+echo "T9: claim --stackable-on an approved fleet:awaiting-base base (#905) → accepted"
+t9_err="$TMPROOT/t9.err"
+if "$FLEET_CLAIM" claim 3004 worker-test --stackable-on 905 >/dev/null 2>"$t9_err"; then
+    PASS=$((PASS + 1))
+    echo "  ok: awaiting-base base accepted"
+else
+    FAIL=$((FAIL + 1))
+    echo "  FAIL: awaiting-base base refused:"
+    sed 's/^/        /' "$t9_err"
+fi
+# Not vacuous: prove the claim took the STACKABLE path, not a silent fallback
+# to master (claim-base reads the --stackable-on sidecar, #2703).
+t9_base=$("$FLEET_CLAIM" claim-base 3004 2>/dev/null || true)
+assert_output "$t9_base" "claude/905-awaiting-base" "claim recorded the awaiting-base PR as the stack base"
 
 echo ""
 echo "PASS: $PASS  FAIL: $FAIL"

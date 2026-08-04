@@ -50,9 +50,17 @@ exactly like `fleet_branch_match.py`.
 # be gone). If the eventual design answer reworks the base, the native stack
 # cascade (`gh stack sync` / server-side rebase) propagates it — the normal
 # stacked-PR maintenance path. So the frozen-design labels are deliberately
-# NOT rejected here. (fleet:awaiting-base / fleet:fork-of-other-pr below are
-# retired legacy labels — kept in the reject set as inert safety for any
-# straggler PR still carrying them.)
+# NOT rejected here.
+#
+# `fleet:awaiting-base` is NOT rejected either, for the same reason (#2805). It
+# states that the base's OWN base has not merged yet — a fact about the base's
+# base, not about its head diff, which is typically approved and parked.
+# `role-merger.md` mints it on every stacked PR whose base is still open, i.e.
+# on this tier's whole population for its entire pre-merge life, so rejecting
+# it forbids stacking deeper than one level — silently, since neither surface
+# reports a withheld offer (the task just projects free-and-unblocked, with no
+# base). Do not re-add it on a "retired / inert legacy label" reading: the
+# minting site is live.
 NOT_STACKABLE_BASE_LABELS = frozenset({
     # Work-in-progress / mid-amend — the head diff will move under the stack.
     "fleet:wip", "human:wip", "fleet:human-amending", "fleet:merger-cooldown",
@@ -63,8 +71,13 @@ NOT_STACKABLE_BASE_LABELS = frozenset({
     # Pending merger rebase — diff against master is meaningless until resolved;
     # stacking would create a two-rebase chain when the conflict is resolved.
     "fleet:semantic-conflict",
-    # Not yet rebaseable against its own base / not its own work.
-    "fleet:awaiting-base", "fleet:awaiting-upstream-review",
+    # Reviewer is holding the child's verdict until the upstream PR is approved,
+    # so the base can still be sent back for rework by that upstream verdict.
+    "fleet:awaiting-upstream-review",
+    # Not the author's own work: the branch carries commits inherited from
+    # another open PR, so a stack on it re-parents a foreign prefix the upstream
+    # author may rewrite. `role-merger.md` mints this one live too — it stays
+    # rejected on the grounds above, not as legacy safety (#2805).
     "fleet:fork-of-other-pr",
 })
 
