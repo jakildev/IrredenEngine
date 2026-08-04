@@ -1712,6 +1712,11 @@ def enrich_stackable_blocker_prs(state):
     #     filter (b): WIP / amending / design-unblocked / etc. (frozen-design
     #     bases ARE accepted; see fleet_stack_base)
     #   - downstream task's area files appear in the blocker PR diff (filter a)
+    #   - the task's OWN issue already has an open implementation PR
+    #     (`inflight_pr`, set by enrich_inflight_pr_tasks — which must run
+    #     first) — fleet-claim's duplicate-open-PR guard refuses every
+    #     `--stackable-on` claim such an offer would enable, so emitting it is
+    #     a dead affordance the worker pays a round-trip to discover (#2586)
     #
     # Engine and game tasks are both enriched, and worker pickup honors the
     # field for both repos — role-worker.md step 3's stackable-fallback tier
@@ -1740,6 +1745,14 @@ def enrich_stackable_blocker_prs(state):
             blocked_by = (declared_view or task.get("blocked_by") or "").strip()
             issue_num = _single_blocker_issue(blocked_by)
             if not issue_num:
+                continue
+            if task.get("inflight_pr"):
+                # #2586: the task's own issue already has an open PR, so
+                # fleet-claim's duplicate-open-PR guard refuses every
+                # `--stackable-on` claim this offer would enable — don't
+                # advertise a claim no worker can complete.
+                log(f"stackable offer suppressed: {repo_key} {task.get('id')} "
+                    f"already has inflight_pr #{task['inflight_pr'].get('number')}")
                 continue
             # _single_blocker_issue returns a digit string; closes_issues holds
             # ints — compare as int so "255" in [255] doesn't silently miss.
@@ -2993,6 +3006,12 @@ def tick_once():
         resolve_human_approved_blockers(state)
         resolve_needs_plan_blocked_by(state)
         resolve_epic_children(state)
+        # enrich_inflight_pr_tasks must run before enrich_stackable_blocker_prs
+        # — the stackable pass reads a task's `inflight_pr` field to suppress
+        # a doomed offer on a task whose own issue already has an open PR
+        # (#2775); neither pass reads pr["body"], so this ordering is safe
+        # relative to the body-pop below.
+        enrich_inflight_pr_tasks(state)
         enrich_stackable_blocker_prs(state)
         # Drop PR bodies so they don't bloat state.json or the per-role slices
         # — mirrors resolve_human_approved_blockers popping issue bodies. Safe
@@ -3004,7 +3023,6 @@ def tick_once():
         for _repo_state in state["repos"].values():
             for _pr in _repo_state.get("prs", []):
                 _pr.pop("body", None)
-        enrich_inflight_pr_tasks(state)
     write_atomic(STATE_FILE, json.dumps(state, indent=2, sort_keys=True) + "\n")
 
     if authoritative:

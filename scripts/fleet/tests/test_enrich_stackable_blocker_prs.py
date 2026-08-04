@@ -415,6 +415,35 @@ class TestEnrichStackableBlockerPrs(unittest.TestCase):
         self.assertIn("stackable_blocker_pr",
                       state["repos"]["engine"]["tasks"]["open"][0])
 
+    # ---- #2775: suppress the offer when the task's own issue has a PR -----
+
+    def test_own_inflight_pr_suppresses_offer(self):
+        """A task carrying `inflight_pr` (its own issue already has an open
+        PR) must not also get a `stackable_blocker_pr` offer — fleet-claim's
+        duplicate-open-PR guard refuses every claim such an offer would
+        enable (#2586), so emitting it advertises a claim no worker can
+        complete."""
+        task = _task("#2321", "#2385")
+        task["inflight_pr"] = {"number": 2393, "headRefName": "claude/2321-x",
+                                "parked": False}
+        prs = [_pr(2654, "claude/2385-sun-splat-coverage")]
+        state = _state(engine_tasks=[task], engine_prs=prs)
+        enrich_stackable_blocker_prs(state)
+        self.assertNotIn("stackable_blocker_pr",
+                         state["repos"]["engine"]["tasks"]["open"][0])
+
+    def test_no_inflight_pr_still_offered(self):
+        """Guard against over-suppression: a task with a stackable blocker
+        and no `inflight_pr` field still gets its offer (the game #287 /
+        #345 shape from #2775)."""
+        task = _task("#287", "#285")
+        prs = [_pr(339, "claude/285-x")]
+        state = _state(engine_tasks=[task], engine_prs=prs)
+        enrich_stackable_blocker_prs(state)
+        out = state["repos"]["engine"]["tasks"]["open"][0]
+        self.assertIn("stackable_blocker_pr", out)
+        self.assertEqual(out["stackable_blocker_pr"]["number"], 339)
+
     def test_closes_n_offer_survives_304_reuse(self):
         """#2442: the Closes-#N offer must survive the 304-reuse path. The
         prev list fetch_prs serves on a 304 is body-stripped (exactly what
