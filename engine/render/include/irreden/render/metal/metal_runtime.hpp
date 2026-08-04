@@ -149,9 +149,13 @@ bool wasMetalBufferEncoded(MTL::Buffer *buffer);
 // MetalPipelineStateProvider::usesImageAtomicScratch(), resolved from the
 // explicit kernel list in metal_pipeline.cpp. A new kernel that consumes
 // the scratch MUST be added to functionUsesImageAtomicScratch there — and
-// unlike the threadgroupSizeForFunctionName map (membership enforced by
-// cmake/run_metal_kernel_registry_check.cmake, #2798), this list does not
-// self-detect.
+// like the threadgroupSizeForFunctionName map (membership enforced by
+// cmake/run_metal_kernel_registry_check.cmake, #2798), that list is checked:
+// cmake/run_metal_scratch_consumer_check.cmake (#2878) fails the build's
+// header-checks / lint targets and the header-checks CI workflow if it drifts
+// from what the kernel sources actually declare at this slot. That checker
+// reads this constant's value rather than carrying its own copy of 16, so
+// re-slotting the scratch is a one-line change here.
 constexpr std::uint32_t kMetalImageAtomicScratchSlot = 16;
 MTL::Buffer *ensureImageAtomicScratchBuffer(MTL::Texture *texture);
 MTL::Buffer *lookupImageAtomicScratchBuffer(MTL::Texture *texture);

@@ -12,11 +12,23 @@
 # Covers:
 #   - a mutable namespace-scope global in a header  → exit 1, names the file
 #   - `constexpr` / `const` constants               → exit 0 (not state)
-#   - a clean fixture tree                          → exit 0, and the Metal
-#     kernel registry check ran (scanned 1 kernel; _body fragment excluded)
+#   - a clean fixture tree                          → exit 0, and both Metal
+#     checks ran (1 kernel scanned, _body fragment excluded as an entry point
+#     but still read through the wrapper's include chain)
 #   - an unregistered Metal compute kernel          → exit 1, names the kernel
 #   - a registry with no bare "}" terminator line   → exit 1 (EOF guard, not
 #     a silent scan past the function into unrelated string literals)
+#   - a scratch consumer absent from the list       → exit 1, names the kernel
+#   - a non-atomic decl at the scratch slot         → exit 0 (the #1619 params
+#     UBO shape must NOT be flagged — negative control)
+#   - a listed kernel that declares no scratch      → exit 1 (reverse drift:
+#     the sticky bind would clobber its slot, #1619)
+#   - a scratch list with no bare "}" terminator    → exit 1 (EOF guard)
+#   - an unresolvable `#include "…"`                → exit 1 (a dropped include
+#     would shrink a consumer's scanned source into a false clean)
+#   - no slot-attributed declaration anywhere       → exit 1 (the matcher broke;
+#     the slot is aliased and always has consumers)
+#   - an unreadable scratch-slot constant           → exit 1 (anchor guard)
 #   - a missing PROJECT_ROOT                        → exit 1 (usage guard)
 
 set -uo pipefail
@@ -38,19 +50,60 @@ fi
 TMPROOT=$(mktemp -d)
 trap 'rm -rf "$TMPROOT"' EXIT
 
+# Both Metal checks parse metal_pipeline.cpp, so the pipeline fixture is
+# parameterized: $2 is the space-separated kernel list for
+# threadgroupSizeForFunctionName, $3 the list for
+# functionUsesImageAtomicScratch. Arms that inject a new kernel must register
+# it in the former — otherwise the registry check (#2798) FATALs first and the
+# arm silently tests that checker instead of the one it names.
+write_pipeline_cpp() {
+    local root="$1" registry_names="$2" scratch_names="$3" name
+    local out="$root/engine/render/src/metal/metal_pipeline.cpp"
+    {
+        echo 'namespace IRRender {'
+        echo 'namespace {'
+        echo
+        echo 'MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {'
+        for name in $registry_names; do
+            echo "    if (functionName == \"$name\") {"
+            echo '        return MTL::Size(16, 16, 1);'
+            echo '    }'
+        done
+        echo '    return MTL::Size(1, 1, 1);'
+        echo '}'
+        echo
+        echo 'bool functionUsesImageAtomicScratch(const std::string &functionName) {'
+        echo '    return false'
+        for name in $scratch_names; do
+            echo "           || functionName == \"$name\""
+        done
+        echo '        ;'
+        echo '}'
+        echo
+        echo '}  // namespace'
+        echo '}  // namespace IRRender'
+    } > "$out"
+}
+
 # The checker only needs cmake/ to identify a tree as the repo root, plus one
-# of the globbed source roots to have headers in it. The Metal kernel registry
-# check rides the same entry point, so the fixture also carries one registered
-# kernel, one _body include-fragment (must be excluded from the scan), and a
-# registry function shaped like the real metal_pipeline.cpp one.
+# of the globbed source roots to have headers in it. Both Metal checks ride the
+# same entry point, so the fixture also carries one registered kernel, one
+# _body include-fragment, and the two registry functions shaped like the real
+# metal_pipeline.cpp ones. The scratch declaration lives in the _body fragment
+# on purpose: the fragment is excluded as a scan *entry point* (which the
+# registry check's count pins) yet must still be read through the wrapper's
+# include chain (which the scratch check's consumer count pins), and only
+# splitting them across the two files tests both properties at once.
 make_fixture() {
     local root="$1"
     mkdir -p "$root/cmake" "$root/engine/include/irreden" \
              "$root/engine/render/src/shaders/metal" \
-             "$root/engine/render/src/metal"
+             "$root/engine/render/src/metal" \
+             "$root/engine/render/include/irreden/render/metal"
     cp "$SCRIPT_DIR/cmake/ir_quality_tools.cmake" \
        "$SCRIPT_DIR/cmake/run_header_convention_checks.cmake" \
        "$SCRIPT_DIR/cmake/run_metal_kernel_registry_check.cmake" \
+       "$SCRIPT_DIR/cmake/run_metal_scratch_consumer_check.cmake" \
        "$CHECKER" "$root/cmake/"
     cat > "$root/engine/include/irreden/clean.hpp" <<'EOF'
 #pragma once
@@ -59,24 +112,24 @@ constexpr int kCleanConstant = 1;
 const char *const kCleanName = "clean";
 }
 EOF
-    echo '// fixture kernel' \
-        > "$root/engine/render/src/shaders/metal/c_fixture_kernel.metal"
-    echo '// fixture include-fragment' \
-        > "$root/engine/render/src/shaders/metal/c_fixture_kernel_body.metal"
-    cat > "$root/engine/render/src/metal/metal_pipeline.cpp" <<'EOF'
+    cat > "$root/engine/render/include/irreden/render/metal/metal_runtime.hpp" <<'EOF'
+#pragma once
 namespace IRRender {
-namespace {
-
-MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
-    if (functionName == "c_fixture_kernel") {
-        return MTL::Size(16, 16, 1);
-    }
-    return MTL::Size(1, 1, 1);
+constexpr std::uint32_t kMetalImageAtomicScratchSlot = 16;
 }
-
-}  // namespace
-}  // namespace IRRender
 EOF
+    cat > "$root/engine/render/src/shaders/metal/c_fixture_kernel.metal" <<'EOF'
+// fixture kernel
+#include "c_fixture_kernel_body.metal"
+EOF
+    cat > "$root/engine/render/src/shaders/metal/c_fixture_kernel_body.metal" <<'EOF'
+// fixture include-fragment
+kernel void IR_FIXTURE_KERNEL_NAME(
+    device atomic_int* distanceScratch [[buffer(16)]],
+    uint3 gid [[thread_position_in_grid]]
+) {}
+EOF
+    write_pipeline_cpp "$root" "c_fixture_kernel" "c_fixture_kernel"
 }
 
 run_checker() {
@@ -102,6 +155,17 @@ assert_absent "$clean_out" "scanned 0 header file(s)" \
 # pins the _body include-fragment exclusion.
 assert_contains "$clean_out" "Metal kernel registry check scanned 1 compute kernel(s)" \
     "metal registry check runs on the CI path and excludes _body fragments"
+
+# Same for the scratch-consumer check (#2878). The "(1 declare" half is the
+# load-bearing one: the fixture's scratch declaration lives ONLY in the _body
+# fragment, so a count of 1 can only come from resolving the wrapper's
+# #include chain. A checker that read entry-point files alone would report 0
+# here and still exit 0, since the fixture list would then agree with an empty
+# expected set.
+assert_contains "$clean_out" "Metal scratch-consumer check scanned 1 compute kernel(s)" \
+    "metal scratch-consumer check runs on the CI path"
+assert_contains "$clean_out" "(1 declare the image-atomic scratch at buffer slot 16)" \
+    "scratch check resolves the wrapper -> _body include chain"
 
 # --- an unregistered Metal kernel fails -------------------------------------
 METAL_DIRTY="$TMPROOT/metal-dirty"
@@ -138,6 +202,163 @@ indent_rc=$?
 assert_eq "1" "$indent_rc" "indented registry (no bare \"}\" line) exits 1"
 assert_contains "$indent_out" "closing-brace terminator" \
     "EOF-without-terminator failure explains itself"
+
+# --- a scratch consumer missing from the list fails --------------------------
+# Registered in threadgroupSizeForFunctionName so the #2798 check passes and
+# this arm actually reaches the #2878 one.
+SCRATCH_MISSING="$TMPROOT/scratch-missing"
+make_fixture "$SCRATCH_MISSING"
+cat > "$SCRATCH_MISSING/engine/render/src/shaders/metal/c_fixture_consumer.metal" <<'EOF'
+kernel void c_fixture_consumer(
+    device atomic_int* distanceScratch [[buffer(16)]],
+    uint3 gid [[thread_position_in_grid]]
+) {}
+EOF
+write_pipeline_cpp "$SCRATCH_MISSING" \
+    "c_fixture_kernel c_fixture_consumer" "c_fixture_kernel"
+scratch_missing_out=$(run_checker "$SCRATCH_MISSING")
+scratch_missing_rc=$?
+assert_eq "1" "$scratch_missing_rc" "unlisted scratch consumer makes the checker exit 1"
+assert_contains "$scratch_missing_out" "c_fixture_consumer" \
+    "failure names the unlisted scratch consumer"
+assert_contains "$scratch_missing_out" "absent from functionUsesImageAtomicScratch" \
+    "failure explains which direction drifted"
+
+# --- NEGATIVE CONTROL: a non-atomic declaration at the scratch slot ----------
+# c_revoxelize_detached's real shape — slot 16 as a params UBO, deliberately
+# NOT on the list (#1619). It must not be flagged, and the check must have
+# actually seen it: the kernel count rises to 2 while the consumer count stays
+# at 1. Without both halves this arm would also pass against a checker that
+# skipped the file entirely.
+SLOT_ALIAS="$TMPROOT/slot-alias"
+make_fixture "$SLOT_ALIAS"
+cat > "$SLOT_ALIAS/engine/render/src/shaders/metal/c_fixture_alias.metal" <<'EOF'
+struct FixtureParams { int a; };
+kernel void c_fixture_alias(
+    constant FixtureParams& params [[buffer(16)]],
+    uint3 gid [[thread_position_in_grid]]
+) {}
+EOF
+write_pipeline_cpp "$SLOT_ALIAS" \
+    "c_fixture_kernel c_fixture_alias" "c_fixture_kernel"
+alias_out=$(run_checker "$SLOT_ALIAS")
+alias_rc=$?
+assert_eq "0" "$alias_rc" "non-atomic decl at the scratch slot is not flagged"
+assert_contains "$alias_out" "Metal scratch-consumer check scanned 2 compute kernel(s)" \
+    "the alias kernel was actually scanned, not skipped"
+assert_contains "$alias_out" "(1 declare the image-atomic scratch at buffer slot 16)" \
+    "the alias kernel is not counted as a scratch consumer"
+
+# --- reverse drift: a listed kernel that declares no scratch fails -----------
+# The #1619 direction. A name on the list that does not declare the scratch
+# gets the sticky scratch bound over whatever it does declare at that slot.
+SCRATCH_STALE="$TMPROOT/scratch-stale"
+make_fixture "$SCRATCH_STALE"
+echo 'kernel void c_fixture_plain(uint3 gid [[thread_position_in_grid]]) {}' \
+    > "$SCRATCH_STALE/engine/render/src/shaders/metal/c_fixture_plain.metal"
+write_pipeline_cpp "$SCRATCH_STALE" \
+    "c_fixture_kernel c_fixture_plain" "c_fixture_kernel c_fixture_plain"
+scratch_stale_out=$(run_checker "$SCRATCH_STALE")
+scratch_stale_rc=$?
+assert_eq "1" "$scratch_stale_rc" "listed non-consumer makes the checker exit 1"
+assert_contains "$scratch_stale_out" "c_fixture_plain" \
+    "failure names the stale list entry"
+assert_contains "$scratch_stale_out" "#1619" \
+    "failure cites the regression the reverse direction reproduces"
+assert_absent "$scratch_stale_out" "absent from functionUsesImageAtomicScratch" \
+    "reverse drift is not reported as the forward direction"
+
+# --- a scratch list without its bare "}" terminator fails --------------------
+# Same EOF guard as the registry check's: a scan that ran past the terminator
+# would sweep up unrelated quoted strings and could read a genuinely absent
+# consumer as present.
+SCRATCH_INDENTED="$TMPROOT/scratch-indented"
+make_fixture "$SCRATCH_INDENTED"
+cat > "$SCRATCH_INDENTED/engine/render/src/metal/metal_pipeline.cpp" <<'EOF'
+namespace IRRender {
+namespace {
+
+MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
+    if (functionName == "c_fixture_kernel") {
+        return MTL::Size(16, 16, 1);
+    }
+    return MTL::Size(1, 1, 1);
+}
+
+}  // namespace
+
+namespace detail {
+    bool functionUsesImageAtomicScratch(const std::string &functionName) {
+        return functionName == "c_fixture_kernel";
+    }
+}  // namespace detail
+}  // namespace IRRender
+EOF
+scratch_indent_out=$(run_checker "$SCRATCH_INDENTED")
+scratch_indent_rc=$?
+assert_eq "1" "$scratch_indent_rc" "indented scratch list (no bare \"}\" line) exits 1"
+assert_contains "$scratch_indent_out" "signature but hit EOF before its closing-brace terminator" \
+    "scratch-list EOF-without-terminator failure explains itself"
+# Both Metal checks carry that wording, so pin which one fired — the registry
+# function is well-formed in this fixture and must have passed.
+assert_contains "$scratch_indent_out" "run_metal_scratch_consumer_check.cmake" \
+    "the scratch check is what rejected the indented list"
+assert_contains "$scratch_indent_out" "Metal kernel registry check scanned" \
+    "the registry check still passed on the same fixture"
+
+# --- an unresolvable #include fails, rather than shrinking the scanned source -
+# Dropping an include silently would make a real consumer read as "declares no
+# scratch" — a false clean in the direction this check exists to close.
+BAD_INCLUDE="$TMPROOT/bad-include"
+make_fixture "$BAD_INCLUDE"
+cat > "$BAD_INCLUDE/engine/render/src/shaders/metal/c_fixture_kernel.metal" <<'EOF'
+// fixture kernel
+#include "c_fixture_kernel_missing_body.metal"
+EOF
+bad_include_out=$(run_checker "$BAD_INCLUDE")
+bad_include_rc=$?
+assert_eq "1" "$bad_include_rc" "unresolvable #include exits 1"
+assert_contains "$bad_include_out" "could not resolve #include" \
+    "unresolvable-include failure explains itself"
+assert_contains "$bad_include_out" "c_fixture_kernel_missing_body.metal" \
+    "failure names the include it could not resolve"
+
+# --- a tree where nothing matches the slot attribute fails -------------------
+# The slot is aliased and always has consumers, so zero matches means the
+# attribute spelling drifted, not that the slot went unused. Without this the
+# forward direction would read clean on an expected set the matcher can no
+# longer populate.
+NO_SLOT="$TMPROOT/no-slot"
+make_fixture "$NO_SLOT"
+cat > "$NO_SLOT/engine/render/src/shaders/metal/c_fixture_kernel_body.metal" <<'EOF'
+// fixture include-fragment with no slot-attributed parameter
+kernel void IR_FIXTURE_KERNEL_NAME(uint3 gid [[thread_position_in_grid]]) {}
+EOF
+no_slot_out=$(run_checker "$NO_SLOT")
+no_slot_rc=$?
+assert_eq "1" "$no_slot_rc" "a tree with no slot-attributed declaration exits 1"
+assert_contains "$no_slot_out" "found no [[buffer(16)]] declaration anywhere" \
+    "empty-matcher failure explains itself rather than reporting a clean scan"
+assert_contains "$no_slot_out" "spelling changed" \
+    "empty-matcher failure names the likely cause"
+
+# --- an unreadable scratch-slot constant fails ------------------------------
+# The check parses the slot number out of kMetalImageAtomicScratchSlot rather
+# than hardcoding it; a rename must be loud, not silently scanned against a
+# stale literal.
+SLOT_RENAMED="$TMPROOT/slot-renamed"
+make_fixture "$SLOT_RENAMED"
+cat > "$SLOT_RENAMED/engine/render/include/irreden/render/metal/metal_runtime.hpp" <<'EOF'
+#pragma once
+namespace IRRender {
+constexpr std::uint32_t kMetalScratchSlotRenamed = 16;
+}
+EOF
+slot_out=$(run_checker "$SLOT_RENAMED")
+slot_rc=$?
+assert_eq "1" "$slot_rc" "unreadable scratch-slot constant exits 1"
+assert_contains "$slot_out" "could not read kMetalImageAtomicScratchSlot" \
+    "slot-constant anchor failure explains itself"
 
 # --- a banned mutable global fails ------------------------------------------
 DIRTY="$TMPROOT/dirty"
