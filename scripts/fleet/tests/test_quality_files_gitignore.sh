@@ -47,6 +47,7 @@ trap 'rm -rf "$WORKDIR"' EXIT
 FIXTURE="$WORKDIR/fixture"
 mkdir -p \
     "$FIXTURE/engine/foo" \
+    "$FIXTURE/engine/render/include/irreden/render/gl_wrap" \
     "$FIXTURE/creations/demos/bar" \
     "$FIXTURE/creations/game/.claude/worktrees/pool-1" \
     "$FIXTURE/test" \
@@ -63,6 +64,7 @@ creations/*
 GITIGNORE
 
 touch "$FIXTURE/engine/foo/real.hpp"
+touch "$FIXTURE/engine/render/include/irreden/render/gl_wrap/GL.h"
 touch "$FIXTURE/creations/demos/bar/demo.hpp"
 touch "$FIXTURE/creations/game/private.hpp"
 touch "$FIXTURE/creations/game/.claude/worktrees/pool-1/nested.hpp"
@@ -80,6 +82,10 @@ irreden_collect_quality_files(result)
 foreach(f IN LISTS result)
     message("FOUND: \${f}")
 endforeach()
+irreden_collect_quality_files(wide_result INCLUDE_RENDER_BACKENDS)
+foreach(f IN LISTS wide_result)
+    message("WIDE: \${f}")
+endforeach()
 DRIVER_EOF
 
 OUT=$(cmake -S "$DRIVER" -B "$WORKDIR/build" 2>&1) || {
@@ -96,5 +102,18 @@ assert_absent "$OUT" "FOUND: $FIXTURE/creations/game/private.hpp" \
     "gitignored creation content is dropped"
 assert_absent "$OUT" "FOUND: $FIXTURE/creations/game/.claude/worktrees/pool-1/nested.hpp" \
     "nested agent worktree content is dropped"
+
+# The filter runs inside irreden_collect_quality_files, below the reject
+# chain, so it applies to BOTH lists the function produces — including the
+# wider INCLUDE_RENDER_BACKENDS one that backs header-checks (#2815). That
+# list is a correctness gate, not a style one, so it needs its own lock:
+# without these, the filter could be made conditional on the narrow arm and
+# every assertion above would still pass.
+assert_absent "$OUT" "FOUND: $FIXTURE/engine/render/include/irreden/render/gl_wrap/GL.h" \
+    "generated GL wrapper stays out of the style-tool list"
+assert_contains "$OUT" "WIDE: $FIXTURE/engine/render/include/irreden/render/gl_wrap/GL.h" \
+    "INCLUDE_RENDER_BACKENDS widens the list back over the GL wrapper (#2815)"
+assert_absent "$OUT" "WIDE: $FIXTURE/creations/game/private.hpp" \
+    "gitignore filtering also applies to the widened header-check list"
 
 summarize "irreden_collect_quality_files gitignore filtering"
