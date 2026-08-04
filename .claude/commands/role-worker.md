@@ -307,8 +307,9 @@ Do the work, then exit cleanly:
     array contains `fleet:semantic-conflict` AND contains NONE of
     `fleet:wip`, `human:wip`, `human:needs-fix`, `human:blocker`,
     `fleet:awaiting-base`, `fleet:awaiting-upstream-review`,
-    `fleet:fork-of-other-pr`. The `awaiting-*` and `fork-*` exclusions
-    matter because those PRs aren't yet rebaseable against master.
+    `fleet:fork-of-other-pr`. `awaiting-upstream-review` PRs aren't
+    review-cleared yet; `awaiting-base` / `fork-*` are retired legacy
+    labels kept in the exclusion as inert straggler protection.
 
     **Stack-aware filter.** If a candidate's `baseRefName != master`
     (stacked PR), look up the base PR in the cached `prs[]` by its
@@ -401,20 +402,19 @@ Do the work, then exit cleanly:
        but never retarget its base or replay it onto master by hand:
        GitHub owns retarget-on-merge and cascade rebases for native
        stacks (see `docs/design/native-stacked-prs-migration.md`).
-    d'. **Inherited-prefix shortcut — check before resolving by hand.** If
-       every conflicted file is one your branch *inherited* from a parent PR
-       that has since merged (stale inherited copy vs master's now-merged
-       copy), do NOT resolve file-by-file — drop the inherited prefix:
+    d'. **Inherited-prefix conflicts should no longer exist.** Native
+       stacks replay a child's own commits server-side when the parent
+       merges, so a conflict set made entirely of files inherited from a
+       merged parent means something un-linked slipped through (a manual
+       branch-off-a-PR opened vs master — step a.6's fork case — or a
+       pre-migration straggler). Don't hand-resolve inherited hunks
+       file-by-file; drop the prefix:
        `git rebase --onto origin/master <child-fork-point>`
        where `<child-fork-point>` = `git merge-base HEAD origin/<parent-branch>`
-       (the parent's *pre-merge* head). That replays only your genuine
-       commits. `fleet-rebase` auto-drops this normally; do it by hand when it
-       silently doesn't fire (parent amended during review — why + mechanism:
+       (history + mechanism:
        [fleet-queue-stacking.md § Inherited-prefix drop (#1791)](../../docs/design/fleet-queue-stacking.md#inherited-prefix-drop-after-the-parent-merges-1791)).
-       After the drop lands the branch on master, check the PR body: a
-       leftover `Stacked on:` line is now stale (review-pr's stacked
-       detection reads it; base==master + `Stacked on:` is a contradiction,
-       #2231). Strip it in the same iteration:
+       If the PR body still carries a legacy `Stacked on:` line after the
+       drop lands the branch on master, strip it (stale marker, #2231):
        `gh pr view <N> --json body -q .body | sed '/^Stacked on:/d' > /tmp/pr-body-<N>.md`
        `gh pr edit <N> --body-file /tmp/pr-body-<N>.md`
     d''. **Gated-conflict guard — check before resolving.** List the

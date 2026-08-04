@@ -27,9 +27,8 @@ After applying these adjustments, return to `SKILL.md` step 1c (churn audit) and
 
 ## Label-clearing implication
 
-In `SKILL.md` step 5b, the verdict-label commands include `--remove-label "fleet:awaiting-upstream-review"` and `--remove-label "fleet:stacked-rebase"`. These removals matter for stacked PRs:
+In `SKILL.md` step 5b, the verdict-label commands include `--remove-label "fleet:awaiting-upstream-review"`:
 
-- `fleet:awaiting-upstream-review` — set by the merger when a stacked PR's parent isn't yet reviewed; cleared here as the review completes.
-- `fleet:stacked-rebase` — set when a parent PR retargeted to `master` and a downstream needs a re-eval; cleared here as the re-eval completes.
+- `fleet:awaiting-upstream-review` — set by the reviewer when a stacked PR's parent isn't yet approved; cleared here as the review completes. It is what keeps an approved child from pulling an unapproved parent in via a coupled native-stack merge.
 
-Both removals are already in the standard verdict-label commands; no additional steps required for stacked PRs.
+The removal is already in the standard verdict-label commands; no additional steps required for stacked PRs. (Post-retarget re-evals need no label at all — GitHub's server-side rebase is content-identical and the auto-rereview classifier preserves the verdict.)

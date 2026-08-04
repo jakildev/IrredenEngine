@@ -112,11 +112,19 @@ Specifically, **never pass these via `--label` when filing**:
   observed. Adding it at filing time excludes the issue from the ingest
   search (which looks for approved-but-not-yet-queued) and strands it.
   Let the scout/ingest path apply these.
-- `fleet:needs-info` — owned by **`fleet-queue-ingest`** as a triage state.
-  Set alongside `fleet:queued` when an issue lacks enough context for any
-  worker to start. Workers skip issues carrying this label; the human adds
-  the missing detail and removes it to re-enter normal pickup flow.
-  Don't add manually.
+- `fleet:needs-info` — two writers, one meaning ("a human must supply
+  something before this can move"), scoped by what it is attached to:
+  - **On an issue** — owned by **`fleet-queue-ingest`** as a triage state.
+    Set alongside `fleet:queued` when an issue lacks enough context for any
+    worker to start. Workers skip issues carrying this label; the human adds
+    the missing detail and removes it to re-enter normal pickup flow.
+    Don't add manually.
+  - **On a PR** — owned by the **merger**, which sets it for topology
+    problems it cannot resolve and no scout tick will heal: the step-a.6
+    accidental-fork case (link via `gh stack link` or re-scope). Once set,
+    the PR leaves the merger's queue until the human clears it. This is a
+    deliberate manual write by the merger — the "don't add manually" rule
+    above is about the issue-side triage state.
 - `fleet:needs-plan` — owned by **`fleet-queue-ingest`** as a triage state.
   Set (in place of `fleet:queued`) when an approved (`human:approved` or
   `fleet:agent-approved`) issue has no `## Plan` comment and is not opted

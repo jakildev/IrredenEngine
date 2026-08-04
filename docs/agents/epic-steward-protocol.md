@@ -263,11 +263,13 @@ unticked.
    an Events-only amendment is a ledger asserting something false
    (#2571).
    **Skip-guard:** defer re-validation while the next child's PR carries
-   `fleet:merger-cooldown` or `fleet:stacked-rebase` — the merger is
-   mid-cascade and the diff you'd validate against is still moving.
+   `fleet:merger-cooldown` — the merger is mid-rebase and the diff you'd
+   validate against is still moving. (The old `fleet:stacked-rebase` half
+   of this guard retired with the native-stacked-PRs migration; GitHub
+   cascade-rebases stack children server-side and sets no label.)
    Evaluate the skip-guard against the child PR's **live** labels
    (`gh pr view <PR> --json labels`) at the moment you write, never the
-   scout cache snapshot: the cascade you're deferring for is exactly
+   scout cache snapshot: the rebase you're deferring for is exactly
    what flips those transient labels (often → `fleet:semantic-conflict`)
    within minutes, so a snapshot read is routinely stale by the time
    the ledger commit lands (#2398).

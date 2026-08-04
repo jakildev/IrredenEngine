@@ -6,34 +6,8 @@ The role doc keeps each trigger and the `Write` → `gh pr comment
 it isn't reloaded into every merger dispatch. Substitute the
 `<angle-bracket>` fields; always keep the `— fleet merger` sign-off (the
 human-visible audit trail identifies merger comments by it). Short
-one-or-two-sentence bodies (awaiting-base, clean rebase, orphaned base)
-stay inline in the role doc — only the long templates live here.
-
-## § cascade-rebase-conflict (role-merger step 2.6 c, conflict branch)
-
-```
-Merger: cannot cascade-rebase onto updated base PR
-#<base-pr-number>. Its head ref `<baseRefName>` was force-
-pushed and the new tip conflicts with this PR's own
-commits.
-
-Resolution: the author of this PR (or the upstream author)
-rebases manually onto the new upstream tip:
-
-  git fetch origin
-  git rebase origin/<baseRefName>
-  # resolve conflicts, then:
-  git push --force-with-lease
-
-Labeled `fleet:needs-base-update` — the merger and the
-cascade-rebase pass skip this PR until the label clears.
-It clears automatically when the upstream merges (step
-2.5 re-targets to master and removes the label) or
-closes; otherwise the human or an opus+-class worker clears it
-after a manual rebase.
-
-— fleet merger
-```
+one-or-two-sentence bodies (e.g. the clean-rebase confirmation) stay
+inline in the role doc — only the long templates live here.
 
 ## § fork-of-other-pr (role-merger step 5a.6)
 
@@ -42,20 +16,24 @@ after a manual rebase.
 
 ```
 Merger: this PR's branch was forked from open PR #<upstream-N>
-(`<upstream-headRefName>`). Its diff carries inherited commits
-from that PR and cannot be cleanly rebased onto master until
-#<upstream-N> merges.
+(`<upstream-headRefName>`) but targets master. Its diff carries
+inherited commits from that PR — rebasing onto master would
+replay them and conflict.
 
-Resolution after #<upstream-N> merges:
-  git fetch origin
-  git rebase --onto origin/master <upstream-tip-sha> <this-headRefName>
-  git push --force-with-lease
+Two clean resolutions:
 
-This drops #<upstream-N>'s inherited commits and leaves only
-this PR's own changes on top of master.
+1. Make the dependency explicit — turn this into a native stack
+   (re-bases this PR onto #<upstream-N> so GitHub manages the
+   chain):
+     gh pr edit <N> --base <upstream-headRefName>
+     gh stack link <upstream-N> <N>
 
-Labeled `fleet:fork-of-other-pr` — the merger and worker
-skip this PR in their conflict-resolution sweeps.
+2. Or drop the inherited commits and stay independent:
+     git fetch origin
+     git rebase --onto origin/master <upstream-tip-sha> <this-headRefName>
+     git push --force-with-lease
+
+Labeled `fleet:needs-info` — the human picks the resolution.
 
 — fleet merger
 ```
