@@ -19,7 +19,7 @@ FLEET_CLAIM="$SCRIPT_DIR/fleet-claim"
 
 if [[ ! -x "$FLEET_CLAIM" ]]; then
     echo "SKIP: fleet-claim not found at $FLEET_CLAIM" >&2
-    exit 0
+    exit 3  # skip status — run_all.sh must not count this as a pass (#2786)
 fi
 
 PASS=0

@@ -23,7 +23,7 @@ SCRIPT="$SCRIPT_DIR/classify-auto-rereview.sh"
 
 if [[ ! -f "$SCRIPT" ]]; then
     echo "SKIP: script not found at $SCRIPT" >&2
-    exit 0
+    exit 3  # skip status — run_all.sh must not count this as a pass (#2786)
 fi
 if ! command -v git >/dev/null 2>&1; then
     echo "SKIP: git not available" >&2

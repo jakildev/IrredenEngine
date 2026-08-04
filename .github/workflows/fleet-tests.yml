@@ -10,7 +10,11 @@ name: Fleet Tests
 # CMake, so they have no reason to ride along with a build job anyway.
 #
 # Path-filtered to the fleet tooling surface — engine, shader, and asset
-# PRs skip this entirely (same convention as perf-gate.yml).
+# PRs skip this entirely (same convention as perf-gate.yml). Two suites
+# reach outside scripts/fleet/** for their subject under test
+# (test_format_changed_line_scoping.sh, test_ir_build_dir_resolution.sh) —
+# their subjects are listed explicitly below so a PR touching only one of
+# them still runs this workflow (#2786).
 
 on:
   push:
@@ -18,10 +22,14 @@ on:
     paths:
       - 'scripts/fleet/**'
       - '.github/workflows/fleet-tests.yml'
+      - 'cmake/run_clang_format_changed.cmake'
+      - 'engine/tools/lib/concurrency_helpers.sh'
   pull_request:
     paths:
       - 'scripts/fleet/**'
       - '.github/workflows/fleet-tests.yml'
+      - 'cmake/run_clang_format_changed.cmake'
+      - 'engine/tools/lib/concurrency_helpers.sh'
   workflow_dispatch:
 
 permissions:

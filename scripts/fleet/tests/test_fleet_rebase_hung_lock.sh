@@ -27,7 +27,7 @@ REBASE="$SCRIPT_DIR/fleet-rebase"
 
 if [[ ! -x "$REBASE" ]]; then
     echo "SKIP: fleet-rebase not found/executable at $REBASE" >&2
-    exit 0
+    exit 3  # skip status — run_all.sh must not count this as a pass (#2786)
 fi
 
 PASS=0

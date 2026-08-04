@@ -24,8 +24,13 @@
 #   --timeout <secs>    Per-suite timeout (default 120). 0 disables.
 #   -h, --help          Show this help.
 #
+# A suite that cannot find its subject under test should print
+# "SKIP: <reason>" to stderr and exit 3 — that is the shared skip status
+# this runner recognizes. Do not `exit 0` from a guard that never actually
+# exercised the subject; that counts as an unverified PASS (#2786).
+#
 # Exit status:
-#   0  every selected suite passed (or --list / --help)
+#   0  every selected suite passed or was skipped (or --list / --help)
 #   1  at least one suite failed, timed out, or none matched --only
 #   2  usage error
 #
@@ -101,6 +106,11 @@ cd "$TESTS_DIR" || exit 1
 
 passed=0
 failed_names=()
+skipped_names=()
+
+# Skip status: a suite whose subject under test is missing exits with this
+# code instead of 0, so a vacuous run is never folded into "passed" (#2786).
+SKIP_STATUS=3
 
 for f in "${suites[@]}"; do
     name=$(basename "$f")
@@ -109,11 +119,16 @@ for f in "${suites[@]}"; do
         *)    interp=(bash) ;;
     esac
 
-    if out=$($timeout_cmd "${interp[@]}" "$f" 2>&1); then
+    out=$($timeout_cmd "${interp[@]}" "$f" 2>&1)
+    rc=$?
+    if [[ "$rc" -eq 0 ]]; then
         passed=$((passed + 1))
         printf 'PASS  %s\n' "$name"
+    elif [[ "$rc" -eq "$SKIP_STATUS" ]]; then
+        skipped_names+=("$name")
+        printf 'SKIP  %s\n' "$name"
+        printf '%s\n' "$out" | sed 's/^/      | /'
     else
-        rc=$?
         failed_names+=("$name")
         # 124 is coreutils timeout's "killed on deadline" status.
         if [[ "$rc" -eq 124 ]]; then
@@ -126,7 +141,10 @@ for f in "${suites[@]}"; do
 done
 
 echo
-echo "$PROG: ${#suites[@]} suite(s) — $passed passed, ${#failed_names[@]} failed"
+echo "$PROG: ${#suites[@]} suite(s) — $passed passed, ${#failed_names[@]} failed, ${#skipped_names[@]} skipped"
+if [[ ${#skipped_names[@]} -gt 0 ]]; then
+    echo "$PROG: skipped: ${skipped_names[*]}"
+fi
 if [[ ${#failed_names[@]} -gt 0 ]]; then
     echo "$PROG: failed: ${failed_names[*]}" >&2
     exit 1

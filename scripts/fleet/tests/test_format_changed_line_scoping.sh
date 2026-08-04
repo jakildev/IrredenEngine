@@ -26,7 +26,7 @@ STYLE_FILE="$SCRIPT_DIR/.clang-format"
 
 if [[ ! -f "$CMAKE_SCRIPT" ]]; then
     echo "SKIP: script under test not found at $CMAKE_SCRIPT" >&2
-    exit 0
+    exit 3  # skip status — run_all.sh must not count this as a pass (#2786)
 fi
 for tool in cmake clang-format git; do
     if ! command -v "$tool" >/dev/null 2>&1; then
