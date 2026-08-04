@@ -90,6 +90,12 @@ prints ordered ``repo:number`` lines — the slice's ``needs_plan[]`` entries
 `_plan_class` matches ``<class>``. The dispatcher walks these attempting
 ``fleet-claim planning-claim`` until one is granted; that issue becomes the
 dispatch's pre-claimed planning assignment (#2197).
+
+A third CLI mode, ``--smoke-check <smoke-worker-slice.json>``, prints the PR
+numbers in the slice's ``smoke_pending_prs`` whose pending smoke label names
+THIS host (`HOST_SMOKE_LABELS` / `smoke_pr_for_host`). Empty output means this
+host owes no smoke work, and the dispatcher stands the lane down instead of
+spending a pane on another host's backlog (#2839).
 """
 
 import json
@@ -112,6 +118,54 @@ GL_CAPABLE_HOSTS = {"linux", "windows"}
 # The raw label behind that scout field. PR records carry labels but no derived
 # `needs_gl_host`, so the feedback dimension of the gate matches on this.
 GL_HOST_LABEL = "fleet:needs-gl-host"
+
+# Smoke validation is the one lane whose work is *definitionally* host-specific:
+# only a native-Windows host can clear `fleet:needs-windows-smoke`. The scout's
+# smoke projection is host-agnostic on purpose — it is the cross-host record of
+# outstanding smoke debt that `platform-catchup` reads — so the host dimension is
+# applied dispatch-side instead, the same layer `_host_incompatible` gates the
+# task (#1998) and feedback-PR (#2695) lanes at. Without it, a standing
+# Windows-pending set kept every non-Windows host dispatching no-op smoke panes
+# on every projection change (#2839).
+#
+# Keys are `_current_host()` host keys. #1383 reconciled the host *detectors*,
+# not the spelling, so the `mac` host key maps to a `macos` label; this map is
+# the single place the two vocabularies meet. An unrecognized host key resolves
+# to no label at all — fail-closed, matching `_host_incompatible`'s stance on
+# `unknown`.
+#
+# `fleet-state-scout`'s `_SMOKE_PENDING_LABELS` holds the same three labels as a
+# flat set — the host-agnostic half, which is what makes the projection readable
+# from any host. A new smoke host needs an entry in both.
+#
+# Keep in sync with the inlined copy in `fleet-up`'s bootstrap heredoc, which
+# cannot import this module (see `smoke_pr_for_host`).
+HOST_SMOKE_LABELS = {
+    "linux": "fleet:needs-linux-smoke",
+    "mac": "fleet:needs-macos-smoke",
+    "windows": "fleet:needs-windows-smoke",
+}
+
+
+def smoke_pr_for_host(labels, host):
+    """True when a smoke-pending PR's label names ``host``.
+
+    `fleet-up`'s bootstrap heredoc carries an inlined copy of this predicate
+    rather than importing it: that heredoc is a standalone `python3 - <<'PY'`
+    running under `|| true`, so an ImportError from sys.path plumbing would be
+    swallowed and kill the bootstrap trigger for *every* role at once — the
+    same reason `_current_host` above is itself inlined rather than imported
+    (#1578). `fleet-dispatcher` reaches this one through the
+    ``--smoke-check`` CLI arm in `main`, the seam it already uses for
+    ``--plan-pick``.
+    """
+    want = HOST_SMOKE_LABELS.get(host)
+    return bool(want) and want in (labels or [])
+
+
+def smoke_prs_for_host(prs, host):
+    """The subset of a smoke slice's ``smoke_pending_prs`` this host can serve."""
+    return [pr for pr in (prs or []) if smoke_pr_for_host(pr.get("labels"), host)]
 
 
 def _current_host():
@@ -458,6 +512,24 @@ def main(argv):
             return 0  # empty output -> nothing to assign
         for line in plan_pick(slice_data, argv[3], argv[4] == "1"):
             print(line)
+        return 0
+    if argv[1:2] == ["--smoke-check"]:
+        # --smoke-check <smoke-worker-slice.json>: print the PR numbers in the
+        # slice's `smoke_pending_prs` that THIS host can actually validate, one
+        # per line. Empty output = nothing servable here, i.e. don't dispatch.
+        # fleet-dispatcher's `smoke_worker_should_fire` shells out to this
+        # (see `smoke_pr_for_host` for why it is a CLI seam and not an import).
+        if len(argv) != 3:
+            print("usage: fleet_task_class.py --smoke-check <slice.json>",
+                  file=sys.stderr)
+            return 2
+        slice_data = _load_slice(argv[2])
+        if slice_data is None:
+            return 0  # empty output -> nothing servable
+        for pr in smoke_prs_for_host(slice_data.get("smoke_pending_prs"),
+                                     _current_host()):
+            if pr.get("number") is not None:
+                print(pr["number"])
         return 0
     # Optional 4th arg: comma-separated classes to exclude (the dispatcher's
     # cross-class fan-out re-resolve). Absent -> exclude nothing.

@@ -111,6 +111,18 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   at the definition site and inside the callee — an edit to one twin
   otherwise silently mis-maps every element past the imbalance point
   (#2454).
+- **`fleet-up`'s bootstrap heredoc cannot import — inline, and guard the
+  copy with a test.** That block is a standalone `python3 - <<'PY'` with no
+  path to `FLEET_LIB_DIR`, run under `|| true`: an `ImportError` from sys.path
+  plumbing is swallowed silently and takes the bootstrap trigger down for
+  *every* role at once, which is strictly worse than whatever the import was
+  buying. Copy the constant/predicate in (the precedent is
+  `fleet_task_class._current_host`, #1578), name the canonical copy in a
+  `keep in sync` comment, and ship a drift guard that lifts the heredoc's defs
+  and asserts they still agree — a duplicate with no guard is the whole cost of
+  inlining. `test_smoke_worker_projection.py`'s `TwoCopiesAgree` is the
+  reference shape. Bash reaches `fleet_task_class.py` the other way, through a
+  CLI arm (`--plan-pick`, `--smoke-check`), never an import.
 - **Concurrently-read state writers use `write_atomic`, never plain
   `write_text`.** A JSON/state/cache file that another process may read
   mid-write is persisted with the module's `write_atomic()` helper

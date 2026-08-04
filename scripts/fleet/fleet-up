@@ -1360,7 +1360,9 @@ fi
 if command -v python3 >/dev/null 2>&1; then
     python3 - <<'PY' || true
 import json
+import os
 import pathlib
+import platform
 
 proj_dir = pathlib.Path("~/.fleet/state/projections").expanduser()
 trig_dir = pathlib.Path("~/.fleet/state/triggers").expanduser()
@@ -1389,8 +1391,47 @@ def sonnet_reviewer_actionable(p):
 def opus_reviewer_actionable(p):
     return bool(p.get("flagged_prs"))
 
+# Host key + smoke-label map, INLINED from fleet_task_class.py
+# (_current_host / HOST_SMOKE_LABELS, the canonical copies) — keep in sync.
+# This bootstrap heredoc is a standalone `python3 -` with no path to
+# FLEET_LIB_DIR, and it runs under `|| true`: an ImportError from sys.path
+# plumbing would be swallowed silently and take the bootstrap trigger down for
+# ALL six roles at once, which is strictly worse than the churn this gate
+# removes. Same reason fleet_task_class's own _current_host is inlined rather
+# than imported (#1578).
+def _current_host():
+    override = os.environ.get("FLEET_TEST_HOST")
+    if override:
+        return override
+    sysname = platform.system()
+    if sysname == "Darwin":
+        return "mac"
+    if sysname == "Linux":
+        return "linux"
+    if sysname.startswith(("Windows", "MINGW", "MSYS", "CYGWIN")):
+        return "windows"
+    return "unknown"
+
+HOST_SMOKE_LABELS = {
+    "linux": "fleet:needs-linux-smoke",
+    "mac": "fleet:needs-macos-smoke",
+    "windows": "fleet:needs-windows-smoke",
+}
+
 def smoke_worker_actionable(p):
-    return bool(p.get("smoke_pending_prs"))
+    # Host-gated (#2839). Smoke work is definitionally host-specific — only a
+    # native-Windows host can clear fleet:needs-windows-smoke — while the
+    # scout's projection is host-agnostic by design (the cross-host record of
+    # outstanding smoke debt). This is the level-triggered half of the lane, so
+    # an unfiltered bool() boot-dispatches a pane for another host's backlog on
+    # every restart, and the empty-exit backoff can only suppress it until the
+    # next projection change. Fail-closed on an unknown host key: no label ⇒
+    # never actionable.
+    want = HOST_SMOKE_LABELS.get(_current_host())
+    if not want:
+        return False
+    return any(want in (pr.get("labels") or [])
+               for pr in (p.get("smoke_pending_prs") or []))
 
 def epic_steward_actionable(p):
     return bool(p.get("triggers"))
