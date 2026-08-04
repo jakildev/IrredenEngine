@@ -146,13 +146,14 @@ parses, plus a handful of asset-format tags and one UI-label compare. None are
 reachable from Lua, and none are this rule's to fix (#2745).
 
 Don't pin an exact census here. The wholesale count tracks unrelated creation
-churn, so it re-stales without this file being touched: it moved **30 → 36
-across a single base advance** while this rule sat unchanged (an unrelated
-`shape_debug/main.cpp` growth). Snapshot for scale only — 36 hits in 6 files
-as of `5824f71b`, of which 31 are CLI-argv, 4 asset-format tags, 1 UI label.
-The globs above are the surface this rule's prose actually names: 81 files,
-reporting **12 hits in 2 files**, every one of them classified below — and
-unlike the wholesale figure, those held steady across the same base advance.
+churn, so it re-stales without this file being touched: it moved **30 → 36 → 38
+across two base advances** while this rule sat unchanged — first an unrelated
+`shape_debug/main.cpp` growth, then an unrelated `perf_grid/main.cpp` one.
+Snapshot for scale only — 38 hits in 6 files as of `6e804773e`, of which 33 are
+CLI-argv, 4 asset-format tags, 1 UI label. The globs above are the surface this
+rule's prose actually names: 81 files, reporting **12 hits in 2 files**, every
+one of them classified below — and unlike the wholesale figure, those held
+steady across both base advances.
 
 The `creations/**/lua_*.{hpp,cpp}` glob is load-bearing. It covers the six real
 creation-side binding files — `lua_bindings.{hpp,cpp}` + `lua_component_pack.hpp`
@@ -235,14 +236,17 @@ re-deriving it.
 Cite these by **symbol**, not by line — `lua_script.cpp` grew ~70 lines in a
 single base advance under this PR, silently moving one of the ranges below off
 its target. Line numbers are an "as of" convenience; the symbol is the anchor.
+Anchor the "as of" to a **`master`** commit, never to one of the working
+branch's own shas: a rebase rewrites branch shas, orphaning the anchor and
+leaving a figure the reader cannot reproduce.
 
 - `engine/script/src/lua_script.cpp`, `parseExplicitTypeTag` (`:93-115` as of
-  `5824f71b`) — maps the Lua component schema's `type = "int"` / `"float"` /
+  `6e804773e`) — maps the Lua component schema's `type = "int"` / `"float"` /
   `"vec3"` / `"quat"` … tags onto `LuaFieldType` (`lua_component_data.hpp`,
   `enum class LuaFieldType`, 9 enumerators). **Genuine deviation, deferred.**
   No `IRComponent.FieldType` table is exposed.
 - `engine/script/src/lua_script.cpp`, the `mode` dispatch in
-  `IRSystem.registerSystem` (`:950-961` as of `5824f71b`) —
+  `IRSystem.registerSystem` (`:950-961` as of `6e804773e`) —
   `mode = "codegen"` / `"eval"` maps onto `EcsMode` (`ir_script_types.hpp`,
   `enum class EcsMode`). **Genuine deviation, deferred.** No Lua table is
   exposed.
