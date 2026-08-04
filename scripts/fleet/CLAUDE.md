@@ -68,6 +68,13 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   If the subject lives outside `scripts/fleet/**`, also add its path to
   `fleet-tests.yml`'s `paths:` filter — otherwise a PR that moves or edits
   only that file never runs the suite that would have caught the break.
+  **This is executed** — add the path to `OUT_OF_TREE_SUBJECTS` in
+  `tests/test_fleet_tests_workflow_paths.sh` in the same change, and the
+  ratchet asserts it appears in **both** `paths:` blocks (they are
+  hand-duplicated — GitHub Actions has no YAML anchors — so they drift
+  independently). The list is the ratchet's whole domain: a subject absent
+  from it is a subject nothing guards, however green the suite runs
+  (#2810).
 - **Bash tests source `tests/lib_assert.sh`** for the PASS/FAIL counters,
   `ok`/`bad`, `assert_eq`/`assert_contains`/`assert_absent`, and the
   `summarize` exit idiom — don't re-copy the helpers into a new test.
