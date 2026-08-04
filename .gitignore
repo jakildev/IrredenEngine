@@ -34,6 +34,9 @@ Thumbs.db
 .pr-body.md
 .merger-body.md
 .coding-improvement-body.md
+# run_header_checks_standalone.cmake's scratch file list; it cleans up on
+# success, but a FATAL_ERROR on a real violation leaves it behind.
+.header-checks-files.cmake
 __pycache__/
 
 # creations: keep demos, voxel editor scaffold, and top-level CLAUDE.md; ignore private tools

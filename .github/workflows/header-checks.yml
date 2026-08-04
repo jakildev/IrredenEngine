@@ -1,0 +1,64 @@
+name: Header Checks
+
+# The header convention checks (header-global ban, anonymous namespaces,
+# `*Detail` namespaces) from cmake/run_header_convention_checks.cmake.
+#
+# Standalone for the same reason fleet-tests.yml is: the only other caller of
+# these checks is the `lint` CMake target, which reaches CI solely through
+# quality.yml — disabled at the repo level, so a step added there is inert until
+# it is re-enabled (#2718). See #2794.
+#
+# Runs the checks through cmake/run_header_checks_standalone.cmake, which globs
+# the source tree directly — no configure, no FetchContent, no compiler, so this
+# stays a fast job on a bare runner with cmake.
+#
+# Path-filtered to the C/C++ surface the checks scan plus the cmake files that
+# implement them (same convention as perf-gate.yml and fleet-tests.yml). The two
+# path lists are duplicated because GitHub Actions does not support YAML
+# anchors — keep them in sync.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'engine/**'
+      - 'creations/**'
+      - 'test/**'
+      - 'tools/**'
+      - 'cmake/ir_quality_tools.cmake'
+      - 'cmake/run_header_convention_checks.cmake'
+      - 'cmake/run_header_checks_standalone.cmake'
+      - 'scripts/fleet/tests/test_header_checks_standalone.sh'
+      - '.github/workflows/header-checks.yml'
+  pull_request:
+    paths:
+      - 'engine/**'
+      - 'creations/**'
+      - 'test/**'
+      - 'tools/**'
+      - 'cmake/ir_quality_tools.cmake'
+      - 'cmake/run_header_convention_checks.cmake'
+      - 'cmake/run_header_checks_standalone.cmake'
+      - 'scripts/fleet/tests/test_header_checks_standalone.sh'
+      - '.github/workflows/header-checks.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  header-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # A green check run looks identical whether it scanned everything or
+      # nothing, so prove the detector still fires before trusting it.
+      - name: Positive-control the checker
+        run: bash scripts/fleet/tests/test_header_checks_standalone.sh
+
+      # cmake is preinstalled on ubuntu-latest. Nothing else is needed: the
+      # checks only glob and read text.
+      - name: Run header convention checks
+        run: cmake -DPROJECT_ROOT="$GITHUB_WORKSPACE" -P cmake/run_header_checks_standalone.cmake
