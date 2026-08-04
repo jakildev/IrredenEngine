@@ -173,8 +173,17 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   at N: once stderr goes quiet the file is the only standing signal, so a
   write-once alert freezes its `count=`/age at the escalation instant and —
   worse — lets a human triaging the alerts inbox silence a still-live
-  condition permanently (nothing would ever recreate it). `fleet-rebase`'s
-  `escalate_if_hung_lock` is the reference shape (#2363).
+  condition permanently (nothing would ever recreate it). The reference
+  implementation is `fleet-clone-freshness.sh`'s `_freshness_warn` +
+  `_freshness_all_clear` pair — it is the one that actually counts, keys,
+  escalates at N, and quiets, and `tests/test_clone_freshness.sh` T19–T22
+  is the matching test shape (every-tick loop, N sized in ticks).
+  `fleet-rebase`'s `escalate_if_hung_lock` + `hung_lock_all_clear` is the
+  same cycle for a **one-shot** tool the dispatcher re-invokes: the streak
+  counter lives on disk because there is no in-process loop to hold it, and
+  N is 1 because an age ceiling — not a tick count — does the sizing there
+  (#2363, #2795). Copy whichever matches your call cadence; don't invent a
+  third counter block by hand.
 - **Unattended daemons timeout-guard their network calls.** The host's
   connections to GitHub intermittently black-hole (silent TCP death), so a
   hung `git fetch` / `gh …` in a fleet daemon (dispatcher loop, `fleet-rebase`,

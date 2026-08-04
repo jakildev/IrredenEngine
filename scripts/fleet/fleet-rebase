@@ -156,6 +156,11 @@ LOCK_DIR="$STATE_DIR/fleet-rebase.lock.d"
 # tier-0 pass is seconds; anything near 30 min is wedged, not busy.
 FLEET_REBASE_LOCK_HUNG_SECS="${FLEET_REBASE_LOCK_HUNG_SECS:-1800}"
 ALERTS_DIR="${FLEET_ALERTS_DIR:-$HOME/.fleet/alerts}"
+HUNG_LOCK_ALERT="$ALERTS_DIR/fleet-rebase-hung-lock"
+# Streak counter behind the escalate-then-quiet cycle below. Lives beside the
+# lock, not inside it — the EXIT trap rm -rf's LOCK_DIR, which would erase the
+# streak every release.
+HUNG_LOCK_COUNTER="$STATE_DIR/.fleet-rebase-hung-lock-skip"
 
 # Stamp the lock we just created with our pid and acquisition time. The
 # `started` stamp powers the hung-lock escalation below; the EXIT trap removes
@@ -183,6 +188,20 @@ acquire_lock() {
     return 1
 }
 
+# Consecutive contended invocations past the age ceiling before the loud line
+# is suppressed. Defaults to 1 — unlike a per-minute daemon guard, the ceiling
+# has already done the sizing the rule asks for (see the escalate_if_hung_lock
+# header), and fleet-rebase's dispatcher-driven cadence is not fixed, so a
+# tick-count N here would be sized against an unknown wall clock. Overridable
+# for tests and for a host that wants a couple of confirmations first.
+hung_lock_escalate_n() {
+    local n="${FLEET_REBASE_HUNG_LOCK_ESCALATE_N:-1}"
+    if [[ ! "$n" =~ ^[0-9]+$ ]] || (( n < 1 )); then
+        n=1
+    fi
+    echo "$n"
+}
+
 # Hung-lock escalation (#2362): the benign "deferring to the LLM pass" message
 # below reads as ordinary concurrency, so a holder that is alive but wedged on a
 # black-holed network call (the outage that motivated this) went unseen for
@@ -191,8 +210,19 @@ acquire_lock() {
 # alive holder — a mid-rebase kill corrupts the scratch worktree (see the
 # acquire_lock rationale). With every net op now timeout-bounded this alert
 # should be rare-to-never; it exists to make the next silent wedge visible.
+#
+# Escalate-then-quiet (#2795), per scripts/fleet/CLAUDE.md: fleet-rebase is a
+# one-shot invocation, but the dispatcher re-invokes it, and the wedged holder
+# it reports persists until a human acts — so an unguarded `log` re-emits the
+# same line on every trigger until then. Keyed streak on the holder pid: a
+# *different* wedged holder is news again and re-escalates. N is 1 because the
+# ceiling above is the rate limit — reaching this point already means half an
+# hour of wedge, with no transient phase left to wait out. Past N the loud line
+# stops but the alert keeps being rewritten, so a triaged-away inbox re-arms
+# and `count=` stays honest. `hung_lock_all_clear` (the healthy pass, i.e. we
+# got the lock) clears both.
 escalate_if_hung_lock() {
-    local started now age holder
+    local started now age holder key n count first prev_key
     started=$(cat "$LOCK_DIR/started" 2>/dev/null || true)
     # Missing/garbage stamp (a pre-fix holder still running mid-rollout) → skip
     # the age check rather than guess an age.
@@ -200,13 +230,57 @@ escalate_if_hung_lock() {
     now=$(date +%s)
     age=$(( now - started ))
     (( age > FLEET_REBASE_LOCK_HUNG_SECS )) || return 0
-    holder=$(cat "$LOCK_DIR/pid" 2>/dev/null || echo unknown)
-    log "HUNG-LOCK: $LOCK_DIR held ${age}s by pid $holder (> ${FLEET_REBASE_LOCK_HUNG_SECS}s ceiling) — a wedged holder is starving tier-0 conflict rebasing; investigate (see #2362). Not auto-breaking an alive holder."
+    # Default once, at the read (acquire_lock's read has the same shape): `cat`
+    # on an *empty* stamp exits 0, so a trailing `|| echo unknown` defaults the
+    # key but leaves the log and alert lines below printing an empty holder.
+    holder=$(cat "$LOCK_DIR/pid" 2>/dev/null || true)
+    holder="${holder:-unknown}"
+    key="hung-lock|$holder"
+    n="$(hung_lock_escalate_n)"
+
+    count=0
+    first="$now"
+    prev_key=""
+    if [[ -f "$HUNG_LOCK_COUNTER" ]]; then
+        read -r count first prev_key < "$HUNG_LOCK_COUNTER" 2>/dev/null || true
+    fi
+    [[ "${count:-}" =~ ^[0-9]+$ ]] || count=0
+    [[ "${first:-}" =~ ^[0-9]+$ ]] || first="$now"
+    if [[ "${prev_key:-}" != "$key" ]]; then
+        count=0
+        first="$now"
+    fi
+    count=$(( count + 1 ))
+    # Best-effort throughout: a read-only $HOME must never break the defer path.
+    mkdir -p "$(dirname "$HUNG_LOCK_COUNTER")" 2>/dev/null || true
+    printf '%s %s %s\n' "$count" "$first" "$key" > "$HUNG_LOCK_COUNTER" 2>/dev/null || true
+
+    if (( count <= n )); then
+        log "HUNG-LOCK: $LOCK_DIR held ${age}s by pid $holder (> ${FLEET_REBASE_LOCK_HUNG_SECS}s ceiling) — a wedged holder is starving tier-0 conflict rebasing; investigate (see #2362). Not auto-breaking an alive holder."
+    fi
+    if (( count == n )); then
+        log "HUNG-LOCK: escalated after $count consecutive contended run(s) on holder pid $holder; wrote $HUNG_LOCK_ALERT and suppressing further identical lines until the lock clears (see #2795)."
+    fi
+    # count= and escalating_since_epoch= are what make a refreshed alert
+    # distinguishable from one frozen at the escalation instant; age_secs= and
+    # at= already carry the human-readable clock, so `first` ships as a raw
+    # epoch rather than pulling in a third copy of clone-freshness's BSD/GNU
+    # date shim (the two counter blocks still have no shared home — see #2795).
     mkdir -p "$ALERTS_DIR" 2>/dev/null || true
-    printf 'fleet-rebase hung lock: host=%s holder_pid=%s age_secs=%s at=%s\n' \
-        "$(hostname 2>/dev/null || echo '?')" "$holder" "$age" \
+    printf 'fleet-rebase hung lock: host=%s holder_pid=%s age_secs=%s count=%s escalating_since_epoch=%s at=%s\n' \
+        "$(hostname 2>/dev/null || echo '?')" "$holder" "$age" "$count" "$first" \
         "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
-        > "$ALERTS_DIR/fleet-rebase-hung-lock" 2>/dev/null || true
+        > "$HUNG_LOCK_ALERT" 2>/dev/null || true
+    return 0
+}
+
+# The condition cleared — we hold the lock, so no holder is wedged. Drop the
+# streak counter and any standing alert so the next wedge escalates from
+# scratch. Without this the alert outlives the outage it reported and the
+# counter never re-arms the loud line.
+hung_lock_all_clear() {
+    rm -f "$HUNG_LOCK_COUNTER" "$HUNG_LOCK_ALERT" 2>/dev/null || true
+    return 0
 }
 
 if ! acquire_lock; then
@@ -220,6 +294,9 @@ if ! acquire_lock; then
     exit 0
 fi
 trap 'rm -rf "$LOCK_DIR" 2>/dev/null || true' EXIT
+# We hold the lock, so nothing is wedged — retire any standing hung-lock signal.
+# After the trap, so the lock we just took is release-protected first.
+hung_lock_all_clear
 
 repo_path_for() {
     case "$1" in
