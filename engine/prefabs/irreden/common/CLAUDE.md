@@ -377,13 +377,13 @@ runtime work and architect-gated decisions.
   `IRCommand::registerBindings`, and both take an optional
   `BindingOverrides` for registration-time omit/remap —
   `registerCameraCommands({.omit_ = {CLOSE_WINDOW}})` is the shape a
-  creation that owns Escape wants instead of hand-copying the suite
-  (`creations/editors/voxel_editor` is the in-tree example). A creation
-  already on the camera-control bundle passes the same overrides through
-  the prefab wrapper instead —
+  creation that owns Escape wants instead of hand-copying the suite.
+  In-tree that shape always goes through the prefab wrapper —
   `IRPrefab::Camera::registerStandardKeyboardCommands({.omit_ =
-  {CLOSE_WINDOW}})`, which is how `creations/demos/shape_debug` frees
-  Escape for `IRPrefab::SettingsMenu` (#2551). Full semantics:
+  {CLOSE_WINDOW}})` — as both `creations/editors/voxel_editor` and
+  `creations/demos/shape_debug` (which frees Escape for
+  `IRPrefab::SettingsMenu`, #2551) do; outside that wrapper only the
+  manifest unit tests call the bare form. Full semantics:
   [`engine/command/CLAUDE.md`](../../../command/CLAUDE.md)
   §"Default-binding manifests (#2666)".
 
