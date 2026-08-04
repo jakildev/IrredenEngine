@@ -12,6 +12,10 @@
 #   - a wip-only PR appears in no decision bucket
 #   - cues: coding-improvement count, untriaged count, unread feedback roles
 #     (file newer than .last-reviewed counts, older does not)
+#   - drain thresholds: coding-improvement cue flips to OVERDUE at >= 12
+#     open (informational below); feedback cue flips to OVERDUE when the
+#     .last-reviewed marker is >= 14 days old or absent (informational when
+#     fresh) — both arms of each threshold exercised
 #   - headline decision count = merge queue + decisions
 #   - unreachable repo is skipped with a warning, not fatal
 #   - --repo=engine equals-form works; empty --repo= rejected (dual-spelling)
@@ -80,7 +84,7 @@ for arg in "$@"; do
 done
 case "$1 $2 $repo" in
     "pr list jakildev/IrredenEngine")    cat "$fixtures/engine-prs.json" ;;
-    "issue list jakildev/IrredenEngine") cat "$fixtures/engine-issues.json" ;;
+    "issue list jakildev/IrredenEngine") cat "${GH_STUB_ENGINE_ISSUES:-$fixtures/engine-issues.json}" ;;
     "pr list jakildev/irreden")          exit 1 ;;
     "issue list jakildev/irreden")       exit 1 ;;
     *) echo "gh stub: unexpected invocation: $*" >&2; exit 99 ;;
@@ -124,12 +128,96 @@ assert_contains "$out" "engine issue #201" "plan sign-off issue in decisions"
 assert_contains "$out" "engine issue #206" "triage-recommend issue in decisions"
 assert_contains "$out" "triage verdict to review" "triage tag rendered"
 assert_absent  "$out" "#105" "wip-only PR appears in no bucket"
-assert_contains "$out" "fleet:coding-improvement: 1 open" "coding-improvement cue with count"
+assert_contains "$out" "fleet:coding-improvement: 1 open — cue" "coding-improvement cue informational below drain threshold"
+assert_absent  "$out" "fleet:coding-improvement: 1 open — OVERDUE" "1 open never reads as overdue"
+assert_contains "$out" "stale threshold 14d" "ancient .last-reviewed marker flips feedback cue to OVERDUE"
 assert_contains "$out" "untriaged (no state labels): 1" "untriaged cue counts label-less issue"
 assert_contains "$out" "engine #203" "untriaged cue names the issue"
 assert_contains "$out" "merger" "feedback role newer than marker is unread"
 assert_absent  "$out" "role-worker" "feedback role older than marker is not unread"
 assert_contains "$out" "engine: 5 open PR(s) · 1 queued · 1 needs-plan" "status footer"
+
+# --- drain thresholds: both arms of each cue --------------------------------
+
+# Fresh marker (now), one feedback file made newer a second later: unread
+# but not stale — the feedback cue must render informational, not OVERDUE.
+touch "$TMP/fleet-home/feedback/.last-reviewed"
+sleep 1
+touch "$TMP/fleet-home/feedback/merger.md"
+
+status=$(run_decisions --repo=engine)
+out=$(cat "$TMP/out.txt")
+assert_eq "$status" "0" "fresh-marker run exits 0"
+assert_contains "$out" "merger" "feedback file newer than fresh marker is still unread"
+assert_contains "$out" "cue \`review-fleet-feedback\`" "fresh-marker feedback cue still points at the skill"
+assert_absent  "$out" "stale threshold" "fresh marker keeps the feedback cue informational"
+
+# 12 open coding-improvement tickets: the cue flips to OVERDUE.
+python3 - "$TMP/engine-issues-many.json" << 'PYEOF'
+import json
+import sys
+
+issues = [
+    {
+        "number": 300 + i,
+        "title": f"improvement: rule {i}",
+        "url": "u",
+        "labels": [{"name": "fleet:coding-improvement"}],
+    }
+    for i in range(12)
+]
+with open(sys.argv[1], "w", encoding="utf-8") as f:
+    json.dump(issues, f)
+PYEOF
+
+status=$(GH_STUB_ENGINE_ISSUES="$TMP/engine-issues-many.json" run_decisions --repo=engine)
+out=$(cat "$TMP/out.txt")
+assert_eq "$status" "0" "threshold run exits 0"
+assert_contains "$out" "fleet:coding-improvement: 12 open — OVERDUE" "12 open flips the cue to OVERDUE"
+assert_contains "$out" "drain threshold 12" "overdue cue names the threshold"
+
+# Restore the ancient marker layout for any later cases.
+touch -t 202401010000 "$TMP/fleet-home/feedback/role-worker.md"
+touch -t 202401020000 "$TMP/fleet-home/feedback/.last-reviewed"
+touch -t 202401030000 "$TMP/fleet-home/feedback/merger.md"
+
+# --- marker age under GNU stat ----------------------------------------------
+#
+# The marker-age read must try GNU's `-c %Y` before BSD's `-f %m`: GNU reads
+# `-f`'s argument as a path, so it emits a filesystem block on stdout that
+# poisons the captured mtime and aborts the digest under `set -e`. This stub
+# emulates GNU stat so a macOS host still exercises the Linux path.
+cat > "$TMP/bin/stat" << 'EOF'
+#!/usr/bin/env bash
+# Delegate to the host's real stat, trying both spellings (this stub runs on
+# macOS and Linux alike); the shim's job is only to mimic GNU's *interface*.
+real_mtime() {
+    /usr/bin/stat -c %Y "$1" 2>/dev/null || /usr/bin/stat -f %m "$1" 2>/dev/null
+}
+if [[ "$1" == "-c" && "$2" == "%Y" ]]; then
+    real_mtime "$3"
+    exit $?
+fi
+if [[ "$1" == "-f" ]]; then
+    # GNU: %m is not a format here, it's a path that does not exist.
+    echo "  File: \"$3\""
+    echo "Blocks: Total: 1  Free: 1  Available: 1"
+    echo "stat: cannot read file system information for '$2'" >&2
+    exit 1
+fi
+exit 1
+EOF
+chmod +x "$TMP/bin/stat"
+
+status=$(run_decisions --repo=engine)
+out=$(cat "$TMP/out.txt")
+assert_eq "$status" "0" "GNU-stat run exits 0"
+assert_contains "$out" "stale threshold 14d" \
+    "ancient marker still flips the feedback cue to OVERDUE under GNU stat"
+assert_absent "$out" "Blocks: Total" \
+    "GNU stat's filesystem block never leaks into the report"
+
+rm -f "$TMP/bin/stat"
 
 # --- --repo equals-form + dual-spelling validation --------------------------
 

@@ -54,7 +54,11 @@ shared fleet machinery and are used concretely below.
   (rare); the PR's code didn't change, so there is usually nothing to reflect
   on.
 - On explicit ask ("should this be a fleet rule?", "assess coding
-  improvement", "file a coding-improvement").
+  improvement", "file a coding-improvement"). Explicit-ask filings use the
+  same Step-4 body shape (Class / target artifact / proposed change /
+  occurrences) — the shape is what makes batch triage mechanical, and a
+  human-cued ticket that skips it forces the triage pass to reconstruct
+  those fields from context.
 
 Skip entirely if the only feedback was subjective preference or a pure
 one-off domain fix (Step 2 gates this).
@@ -200,6 +204,33 @@ auto-edit, so leaving it un-queued is what keeps the ticket safe: the human
 decides whether and how it gets worked.
 
 Then return to the feedback flow (there is nothing more to do on the PR).
+
+## Step 5 — Close the ticket yourself when the rule lands
+
+A filed ticket sometimes resolves before triage ever sees it: the proposed
+rule lands in the target artifact via a **merged** PR — your own AMEND, a
+sibling's, or a doc PR that wrote the rule for other reasons. A worker who
+verifies that landing may close the ticket directly (`gh issue close <M>
+--reason completed`) instead of leaving it to accrue triage budget, when
+**all three** hold:
+
+1. **The landing PR is merged** — an open PR is a plan, not a landing.
+2. **The rule lives in the ticket's named target artifact** (read the
+   file on `master` and cite the location). Landed somewhere *else* is a
+   placement question — triage's call, not yours.
+3. **The landed text covers the ticket's proposed change** — the same
+   rule, not an adjacent or narrower one. A partial landing gets a
+   comment, not a close.
+
+The closing comment cites the merged PR, the commit, and the landed
+location, so the triage pass's closed-loop check can treat it exactly
+like any other closed-as-completed ticket. When any of the three is
+arguable, comment "appears landed via #N — suggest closing" and leave the
+ticket open; triage adjudicates.
+
+(Why this exists: the first backlog drain found two of its 54 tickets
+already landed — each had a worker comment saying so, but no allowance to
+close, so both still cost sweep-and-verify budget.)
 
 ---
 

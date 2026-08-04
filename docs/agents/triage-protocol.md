@@ -235,6 +235,26 @@ ready-to-run `gh issue close` line; neither `list` nor `apply` ever closes
 an issue, confirmed or not. That keeps the one irreversible action out of
 agent hands entirely.
 
+### 6. Extended sweep — backlog drains
+
+Issue triage is one of three human-gated backlogs; the other two — the
+`fleet:coding-improvement` ticket pile and the `~/.fleet/feedback/`
+channel — have their own cue-only drain skills
+(`triage-coding-improvements`, `review-fleet-feedback`) because their
+verdicts and gated self-config edits need a human. Their gauges live in
+`fleet-decisions`, whose cues flip to OVERDUE past the drain thresholds
+(12 open coding-improvement tickets; a `.last-reviewed` marker 14+ days
+old or absent).
+
+After step 5, check `fleet-decisions` and continue into each drain whose
+cue shows — `triage-coding-improvements` with the present human answering
+the verdict round, then `review-fleet-feedback`. The human's sweep cue
+carries the drain cues; both skills stay cue-only in every other context,
+and the dispatched dry-run mode never runs them — its host reaches the
+gauges through the `fleet-decisions` digest instead. Issues run first:
+the per-issue pass is cheap and bounded, and the drains benefit from the
+fresher picture.
+
 ## Graduation (not in effect)
 
 Autonomous approval is earned, not assumed. The human audits verdict

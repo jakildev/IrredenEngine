@@ -46,12 +46,20 @@ channel and must agree on where rules live.
 
 - On explicit human cue only: "triage coding improvements", "absorb the
   coding-improvement backlog", "work through the coding-improvement tickets".
+  An architect-run interactive triage sweep counts as the cue
+  (`docs/agents/triage-protocol.md` §"Extended sweep") — the human who cued
+  the sweep is present for the verdict round.
 - Never proactively, never from an autonomous role loop. (A worker that
   notices a large backlog may *mention* it to the human; it must not run
   this.)
 
-A natural cue rhythm is when the open-ticket count reaches a handful, or
-before a stretch of fleet activity so the absorbed rules pay off immediately.
+Cue at **10–15 open tickets** — `fleet-decisions` flips its
+coding-improvement cue to OVERDUE at 12. The first drain ran at 54 and the
+overshoot had real costs: the batch consumed a full architect session, and
+filed rules sat unabsorbed while their mistakes kept recurring (one
+PR-body omission recurred four times with its one-line fix sitting in the
+backlog). Small batches also make the per-cluster verdict round genuinely
+answerable rather than a wholesale approve.
 
 ---
 
@@ -94,6 +102,9 @@ tickets. Before triage:
    - Closed-as-**completed** match → the rule already landed and the mistake
      **recurred anyway**. The surface didn't fire. Recommend
      **escalate placement** (see Step 3), not re-adding the same text.
+     This includes tickets the filing side self-closed under
+     `assess-coding-improvement` Step 5 (rule verifiably landed via a
+     merged PR) — they are ordinary closed-as-completed evidence here.
    - Closed-as-**not-planned** match → the human previously rejected this
      rule and it came back. Surface that history in the digest — recurrence
      of a rejected rule is evidence to reconsider, but the human decides.
