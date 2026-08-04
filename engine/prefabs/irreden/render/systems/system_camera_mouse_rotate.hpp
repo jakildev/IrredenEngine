@@ -8,6 +8,7 @@
 
 #include <irreden/render/camera.hpp>
 #include <irreden/render/components/component_camera.hpp>
+#include <irreden/render/cursor_pivot.hpp>
 
 using namespace IRComponents;
 using namespace IRMath;
@@ -23,11 +24,23 @@ namespace IRSystem {
 //                                   captured once at drag start; reverts to the
 //                                   screen-center default when the drag ends).
 // Middle drag without Ctrl falls through to CAMERA_MOUSE_PAN (unchanged).
+//
+// The cursor pivot latches the CLICKED SURFACE point at its true depth
+// (#2548, via IRPrefab::CursorPivot) and shows a marker there for the duration
+// of the drag. `latchByDefault_` swaps which chord gets the cursor latch, so a
+// demo can compare screen-center vs cursor-latched rotation live without a
+// restart; it is off by default, leaving the chords exactly as documented above.
 template <> struct System<CAMERA_MOUSE_ROTATE> {
     static constexpr float kPixelsPerRevolution = 1280.0f;
 
     bool dragging_ = false;
     bool cursorPivot_ = false;
+    // When set, a plain Ctrl+middle-drag latches the cursor pivot and
+    // Ctrl+Shift+middle-drag takes the screen-center default (the chords swap).
+    bool latchByDefault_ = false;
+    // Spawned on the first cursor-pivot drag, then reused and re-hidden —
+    // never respawned, so a drag costs no structural change after the first.
+    IREntity::EntityId pivotIndicator_ = IREntity::kNullEntity;
     vec2 dragStartMouse_ = vec2(0.0f);
     float dragStartYaw_ = 0.0f;
     float dragStartPitch_ = 0.0f;
@@ -47,12 +60,18 @@ template <> struct System<CAMERA_MOUSE_ROTATE> {
             dragStartMouse_ = IRInput::getMousePositionScreen();
             dragStartYaw_ = IRPrefab::Camera::getYaw();
             dragStartPitch_ = IRPrefab::Camera::getPitch();
-            // Cursor-pivot mode (Shift): pin the world point under the cursor —
-            // captured once, in the current view — so yaw rotates about it.
-            // Plain Ctrl-drag clears any focus so yaw rotates about screen center.
-            cursorPivot_ = shiftHeld;
+            // Cursor-pivot mode: pin the SURFACE point under the cursor at its
+            // true depth — captured once, on mouse-down — so yaw rotates about
+            // the feature that was clicked. The other chord clears any focus so
+            // yaw rotates about the screen-center default instead.
+            cursorPivot_ = (shiftHeld != latchByDefault_);
             if (cursorPivot_) {
-                IRRender::setRotationPivotFocus(IRRender::mouseWorldPos3DAtIsoDepth(0.0f));
+                const vec3 focusWorld = IRPrefab::CursorPivot::resolveFocusWorld(pivotIndicator_);
+                IRRender::setRotationPivotFocus(focusWorld);
+                if (pivotIndicator_ == IREntity::kNullEntity) {
+                    pivotIndicator_ = IRPrefab::CursorPivot::createIndicator();
+                }
+                IRPrefab::CursorPivot::showIndicator(pivotIndicator_, focusWorld);
             } else {
                 IRRender::clearRotationPivotFocus();
             }
@@ -68,8 +87,11 @@ template <> struct System<CAMERA_MOUSE_ROTATE> {
             IRPrefab::Camera::setYawPitch(dragStartYaw_ + yawDelta, dragStartPitch_ + pitchDelta);
         } else {
             if (dragging_ && cursorPivot_) {
-                // Drag ended: revert to the screen-center default.
+                // Drag ended: revert to the screen-center default and take the
+                // marker back down (hidden, not destroyed — the next drag
+                // reuses the same entity).
                 IRRender::clearRotationPivotFocus();
+                IRPrefab::CursorPivot::hideIndicator(pivotIndicator_);
                 cursorPivot_ = false;
             }
             dragging_ = false;
@@ -77,7 +99,16 @@ template <> struct System<CAMERA_MOUSE_ROTATE> {
     }
 
     static SystemId create() {
-        return registerSystem<CAMERA_MOUSE_ROTATE, C_Camera>("CameraMouseRotate");
+        // MainThread is load-bearing, not documentation: `endTick` spawns the
+        // indicator with an eager `IREntity::createEntity` and immediately
+        // `getComponent`s the id it got back. Both are main-thread-only (see
+        // engine/entity/CLAUDE.md) — a multi-system pipeline group fans every
+        // member out onto a worker via IRJob::parallelFor, `endTick` included,
+        // regardless of the system's own Concurrency. The tag makes that a
+        // boot-time FATAL in `validateAllPipelineGroups` instead of a
+        // heisenbug. Not `Spawns`: T-225 lifted MUTATOR_IN_PARALLEL_GROUP, so
+        // it would document the mutation without preventing it.
+        return registerSystem<CAMERA_MOUSE_ROTATE, C_Camera, MainThread>("CameraMouseRotate");
     }
 };
 

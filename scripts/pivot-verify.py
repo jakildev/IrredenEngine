@@ -20,6 +20,11 @@ Blocks (see ``g_pivotVerifyBlock`` in ``creations/demos/shape_debug/main.cpp``):
 - ``center-axis`` — default pivot, probe axis ON the viewport-center ray with
   its near cap at the ray's entry step, so the derived surface point is the
   probe's own axis point.
+- ``cursor-latch`` — CURSOR pivot (#2548): center-axis geometry, but the focus
+  is latched once from ``IRPrefab::CursorPivot::resolveFocusWorld`` (the real
+  ``castVoxelRay`` path) with a synthetic cursor on the viewport-center
+  anchor's pixel. Pinned-point oracle only, for the same reason as its
+  ``center-axis`` twin.
 
 ``focus-ctr`` additionally runs an SDF-probe twin (``--pivot-verify-sdf``)
 so the voxel-pool and SDF render paths' pivot conventions are compared A/B.
@@ -67,12 +72,16 @@ from pathlib import Path
 import verify_common
 
 ALL_BLOCKS = ["focus-ctr", "focus-off", "center-column", "center-depth",
-              "background-center", "center-axis"]
+              "background-center", "center-axis", "cursor-latch"]
 SDF_BLOCKS = ["focus-ctr"]
 # Blocks that derive their focus rather than taking an explicit
-# setRotationPivotFocus — the ones whose runs emit `[pivot-focus-assert]`.
+# setRotationPivotFocus.
 DEFAULT_PIVOT_BLOCKS = {"center-column", "center-depth", "background-center",
                         "center-axis"}
+# Blocks whose runs emit `[pivot-focus-assert]`: the derived-focus blocks plus
+# cursor-latch, whose focus is resolved at runtime from castVoxelRay and so is
+# equally unknown to the shot table.
+FOCUS_ASSERT_BLOCKS = DEFAULT_PIVOT_BLOCKS | {"cursor-latch"}
 # Blocks whose whole-silhouette centroid is a valid PINNED gate: each rotates
 # its probe about a point on the probe's own axis, so a correct pivot maps the
 # silhouette onto itself. For every other block the deviation is reported but
@@ -233,7 +242,7 @@ def main(argv: list[str] | None = None) -> int:
         # analytic solver rather than the voxel carve the oracle mirrors, so
         # it is scored by silhouette only.
         focus = "-"
-        if block in DEFAULT_PIVOT_BLOCKS and not sdf:
+        if block in FOCUS_ASSERT_BLOCKS and not sdf:
             focus, detail = _score_focus_asserts(output)
             if focus != "OK":
                 print(f"[pivot-verify] ({label}) focus assert: {detail}",

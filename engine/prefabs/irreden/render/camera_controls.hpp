@@ -58,6 +58,37 @@ inline void registerStandardKeyboardCommands(bool bindEscapeCloseWindow = true) 
     IRCommand::registerCameraCommands(bindEscapeCloseWindow);
 }
 
+/// Which middle-drag chord latches the cursor pivot (#2548).
+///
+/// Off (the default): Ctrl+Shift+middle-drag rotates about the clicked surface
+/// point, plain Ctrl+middle-drag rotates about the screen-center default. On:
+/// the two chords swap, so plain Ctrl+middle-drag latches the cursor. A demo
+/// binds this to a key to compare the two pivots live — the same drag gesture
+/// under both modes — instead of restarting between them.
+///
+/// No-op (and @ref cursorPivotByDefault reads false) when
+/// `CAMERA_MOUSE_ROTATE` was never registered, so a creation without the
+/// camera controls can call it unconditionally.
+/// @{
+inline void setCursorPivotByDefault(bool enabled) {
+    const IRSystem::SystemId system = IRSystem::findSystem(IRSystem::CAMERA_MOUSE_ROTATE);
+    if (system == IRSystem::kNullSystemId) {
+        return;
+    }
+    IRSystem::getSystemParams<IRSystem::System<IRSystem::CAMERA_MOUSE_ROTATE>>(system)
+        ->latchByDefault_ = enabled;
+}
+
+inline bool cursorPivotByDefault() {
+    const IRSystem::SystemId system = IRSystem::findSystem(IRSystem::CAMERA_MOUSE_ROTATE);
+    if (system == IRSystem::kNullSystemId) {
+        return false;
+    }
+    return IRSystem::getSystemParams<IRSystem::System<IRSystem::CAMERA_MOUSE_ROTATE>>(system)
+        ->latchByDefault_;
+}
+/// @}
+
 } // namespace IRPrefab::Camera
 
 #endif /* IR_PREFAB_CAMERA_CONTROLS_H */

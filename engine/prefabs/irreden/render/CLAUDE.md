@@ -465,6 +465,59 @@ gizmo interaction" above for the state machine, the press-locked
 iso-depth plane convention, and the anchor-routing rules used by the
 builders.
 
+## Cursor-latched rotation pivot (`cursor_pivot.hpp`)
+
+`IRPrefab::CursorPivot::` is the Pattern-B surface behind
+`System<CAMERA_MOUSE_ROTATE>`'s Ctrl+Shift+middle-drag (#2548, epic #2544
+Phase 4):
+
+- `resolveFocusWorld(exclude)` — the world point under the cursor at its TRUE
+  surface depth, via `IRPrefab::Picking::castVoxelRay`. A background click (no
+  hit) falls back to `IRRender::getDefaultRotationPivotFocus()`, so it behaves
+  exactly like the no-Shift default pivot. Pass the indicator entity as
+  `exclude` so the marker can't catch its own ray. Epic ledger D3: CPU picking
+  never applied the #2545 raster anchor shift, so `castVoxelRay` already agrees
+  with the raster at every cardinal — **do not** add a picking compensation.
+- `createIndicator()` / `showIndicator()` / `hideIndicator()` — the marker
+  entity drawn at the latched point. Spawned **lazily, on the first
+  cursor-pivot drag** (a creation that never uses the mode spawns nothing, so
+  its entity-id layout and existing captures are untouched), then reused and
+  re-hidden rather than destroyed. It sets `canvasEntity_ = kNullEntity`
+  deliberately so `SHAPES_TO_TRIXEL` resolves the canvas at RENDER time —
+  `C_ShapeDescriptor`'s ctor snapshot of the active canvas is right for a
+  scene-setup spawn but not for one built mid-frame from a per-frame system,
+  where "the active canvas" is whatever the last pass happened to leave set.
+
+The system holds the indicator id as a member (system-owned state), and
+`IRPrefab::Camera::setCursorPivotByDefault` (`camera_controls.hpp`) swaps which
+middle-drag chord latches the cursor, so a demo can key-toggle between the
+screen-center default and the cursor latch under the same gesture.
+
+**A marker spawned from a hook that runs AFTER `SHAPES_TO_TRIXEL` never
+renders** — the pass is done for the frame and the new entity reaches no
+archetype it reads (measured: zero pixels). What decides this is the spawner's
+order relative to `SHAPES_TO_TRIXEL`, **not** which pipeline it lives in: the
+real drag path (`CAMERA_MOUSE_ROTATE`, spliced by `standardControlSystems()`)
+is itself a **RENDER**-pipeline system and renders fine because it is
+registered before `SHAPES_TO_TRIXEL`. The capture-frame hooks
+(`onCaptureFrame_` / `onAssertFrame_`) are the ones past it — hence the
+`--pivot-verify cursor-latch` harness spawns its marker at scene setup instead.
+A creation that reorders camera controls after `SHAPES_TO_TRIXEL` breaks the
+drag path's marker; keep the controls ahead of it.
+
+`CAMERA_MOUSE_ROTATE` is registered with the `IRSystem::MainThread` tag for the
+same reason — the lazy spawn is an eager `IREntity::createEntity` followed
+immediately by `getComponent` on the returned id, and both are main-thread-only.
+A multi-system pipeline group dispatches every member onto a worker (`endTick`
+included, whatever the system's own `Concurrency`), so the tag turns that wiring
+mistake into a boot-time FATAL in `validateAllPipelineGroups` rather than a
+heisenbug. Keep the camera controls in singleton groups — the shape
+`registerPipeline` already produces.
+
+Gate: `python3 scripts/pivot-verify.py --blocks cursor-latch`; the ENABLED-path
+capture for the marker itself is
+`IRShapeDebug --pivot-verify cursor-latch --cursor-pivot-indicator`.
+
 ## Trixel UI widget framework
 
 `widgets.hpp` exposes `IRPrefab::Widget::make<kind>(...)` builders and

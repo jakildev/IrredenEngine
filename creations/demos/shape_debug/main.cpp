@@ -2,6 +2,7 @@
 #include <irreden/ir_engine.hpp>
 #include <irreden/ir_system.hpp>
 #include <irreden/ir_entity.hpp>
+#include <irreden/ir_input.hpp>
 #include <irreden/ir_video.hpp>
 #include <irreden/ir_window.hpp>
 #include <irreden/ir_render.hpp>
@@ -58,6 +59,7 @@
 #include <irreden/render/camera_controls.hpp>
 #include <irreden/common/settings_registry.hpp>
 #include <irreden/common/sim_clock.hpp>
+#include <irreden/render/cursor_pivot.hpp>
 #include <irreden/render/gui_test_assertions.hpp>
 #include <irreden/render/help_overlay.hpp>
 #include <irreden/render/settings_menu.hpp>
@@ -301,6 +303,22 @@ constexpr vec3 kPivotPillarCenter = vec3(8.0f, -8.0f, 10.0f);
 //                   twin of focus-ctr. It isolates how far the derive lands
 //                   from that axis: a regression to the pre-#2547 iso-depth-0
 //                   focus swings the probe about a point 8.5 world units away.
+//   cursor-latch  — CURSOR pivot (#2548): same geometry as center-axis, but
+//                   the focus comes from IRPrefab::CursorPivot::resolveFocusWorld
+//                   — the real castVoxelRay path — with a synthetic cursor
+//                   parked on the viewport-center anchor's screen pixel. The
+//                   latch is resolved ONCE (mirroring mouse-DOWN) and held for
+//                   the sweep. Because the resolved surface point sits on the
+//                   probe's own axis, this block carries BOTH oracles: the
+//                   whole-silhouette centroid gate AND a `[pivot-focus-assert]`
+//                   line against the same analytic oracle center-axis uses.
+//                   A regression to the pre-#2548 iso-depth-0 latch lands 8.5
+//                   world units off, an order of magnitude outside the gate.
+//                   Runs on the GUI-test cycler rather than the plain
+//                   auto-screenshot one: it needs synthetic cursor input and a
+//                   per-frame hook (the shot cycler clears the pivot focus at
+//                   every shot boundary, and the latched point is only known
+//                   at runtime so it cannot ride the shot table).
 //
 // Every DEFAULT-pivot block emits a per-shot `[pivot-focus-assert]` line: the
 // focus the engine derived from its live composite-depth readback against the
@@ -323,6 +341,10 @@ std::vector<std::array<char, 40>> g_pivotVerifyShotLabels;
 // (#2550). Flag-gated so the standing render-verify tables are untouched —
 // the overlay is default-hidden and this is the only run that opens it.
 bool g_guiTest = false;
+// cursor-latch runs the same poses through the GUI-test cycler; its shots wrap
+// g_pivotVerifyShots (whose labels this table's label_ pointers still target,
+// so both vectors must outlive the game loop).
+std::vector<IRVideo::GuiTestShot> g_cursorLatchShots;
 // Anchor of the DEFAULT-pivot blocks: an integer world point at iso depth 0
 // (x + y + z == 0) so `isoPixelToPos3D(viewCenterIso, 0)` — the default-pivot
 // focus derivation in getEffectiveCameraIso — recovers it EXACTLY when the pan
@@ -397,6 +419,22 @@ ivec3 pivotVerifyProbeHalfExtent() {
 // Deliberately NOT measured in iso-depth units: `pos3DtoDistance` rounds to an
 // integer, which would hide exactly the sub-voxel disagreement being bounded.
 constexpr float kPivotFocusAssertToleranceWorld = 0.6f;
+// cursor-latch's own tolerance: ONE world unit, i.e. one voxel.
+//
+// This block's focus is a `castVoxelRay` SURFACE hit — the marched point where
+// the ray first lands inside the winning voxel's unit cube — while the analytic
+// oracle predicts that voxel's CENTER. `castVoxelRay` accepts a sample when
+// `roundVec3HalfUp(sample - origin)` is the voxel's cell, so the hit is within
+// half a voxel of the center on every axis and the L2 gap is bounded by the
+// cube's half-diagonal, `sqrt(3)/2 ~= 0.87`. That bound is TIGHT here rather
+// than pessimistic: the iso ray runs along (1,1,1), so it enters through the
+// cell's near corner and the measured delta is exactly 0.87 (macOS/Metal,
+// zoom 4). Rounding the bound up to a whole voxel keeps the assert off a
+// knife-edge float comparison without blunting it — the regression this block
+// exists to catch, a revert to the pre-#2548 iso-depth-0 latch, lands ~8.5
+// world units off (see the center-axis note above, same probe geometry), so
+// the gate still has ~8x of margin.
+constexpr float kCursorLatchFocusToleranceWorld = 1.0f;
 // center-axis: the lattice step along the viewport-center ray at which that
 // block's probe places its near cap, centred on the ray, so the probe's axis
 // passes through the derived surface point.
@@ -432,7 +470,7 @@ vec3 pivotVerifyProbeCenter() {
             kPivotVerifyBackgroundProbeZ
         );
     }
-    if (g_pivotVerifyBlock == "center-axis") {
+    if (g_pivotVerifyBlock == "center-axis" || g_pivotVerifyBlock == "cursor-latch") {
         // Axis ON the viewport-center ray, near cap AT the ray's entry step: the
         // ray meets the cap dead centre, so the derived surface point is the
         // probe's own axis point. Offsetting the center by the grid's z
@@ -521,11 +559,33 @@ bool g_hasPivotFocusAssertView = false;
 // behavior. Emitting the precondition lets pivot-verify.py name that as a
 // misconfigured block instead of reporting a pivot regression, which is the
 // reading that would otherwise invite "fixing" it by loosening the gate.
+
+// --pivot-verify cursor-latch state: the focus the cursor latched, resolved
+// once from the real castVoxelRay path and held for the rest of the sweep (the
+// mouse-DOWN latch policy — a pivot that re-follows the live cursor would feed
+// back into the rotation it controls).
+vec3 g_cursorLatchFocus = vec3(0.0f);
+bool g_cursorLatchResolved = false;
+// --cursor-pivot-indicator: also spawn the drag marker at the latched point,
+// so the cursor-latch capture doubles as the indicator's ENABLED-path test
+// (engine/render/CLAUDE.md §"Default-off features need a positive enabled-path
+// test"). A headless run cannot synthesize the Ctrl+Shift+middle-drag chord —
+// GuiInputEvent carries no key modifiers — so this drives the same
+// IRPrefab::CursorPivot calls the drag makes, minus the button state machine.
+// Off by default: the marker is extra silhouette, and cursor-latch's reported
+// centroid deviation should measure the probe alone.
+bool g_cursorPivotIndicator = false;
+IREntity::EntityId g_cursorLatchIndicator = IREntity::kNullEntity;
+
 void logPivotFocusAssert(int shotIndex) {
-    if (!pivotVerifyIsDefaultBlock()) {
+    const bool cursorLatch = g_pivotVerifyBlock == "cursor-latch";
+    if (!pivotVerifyIsDefaultBlock() && !cursorLatch) {
         return;
     }
-    const vec3 derived = IRRender::getDefaultRotationPivotFocus();
+    const vec3 derived =
+        cursorLatch ? g_cursorLatchFocus : IRRender::getDefaultRotationPivotFocus();
+    const float tolerance =
+        cursorLatch ? kCursorLatchFocusToleranceWorld : kPivotFocusAssertToleranceWorld;
     const vec3 analytic = pivotVerifyAnalyticFocus();
     const float worldDelta = IRMath::length(derived - analytic);
     // Exactly the values RenderManager's latch guard compares, so this tracks the
@@ -551,10 +611,42 @@ void logPivotFocusAssert(int shotIndex) {
         analytic.y,
         analytic.z,
         worldDelta,
-        kPivotFocusAssertToleranceWorld,
+        tolerance,
         viewHeld ? 1 : 0,
-        worldDelta <= kPivotFocusAssertToleranceWorld ? "PASS" : "FAIL"
+        worldDelta <= tolerance ? "PASS" : "FAIL"
     );
+}
+
+// Per-frame hook for the cursor-latch block (GuiTestConfig::onAssertFrame_,
+// fired every frame a shot is live). Three jobs, in order:
+//
+//  1. Park the synthetic cursor on the viewport-center anchor's screen pixel.
+//     The pixel is derived from the live camera terms via
+//     worldPos3DToMouseScreenPx rather than hard-coded as "framebuffer / 2",
+//     so it survives retina scaling and letterboxing. The anchor is at iso
+//     depth 0 and is NOT the expected answer — the answer is the surface the
+//     ray through it first meets.
+//  2. Latch ONCE, on the first shot's capture frame: by then the injected
+//     cursor has landed and the scene has settled, so castVoxelRay sees what a
+//     real click would. Shot 0 is yaw 0, where the pivot correction is the
+//     identity, so nothing is mis-rendered before the latch exists.
+//  3. Re-assert the latched focus every frame — applyShotCameraState clears it
+//     at every shot boundary, and it cannot ride the shot table because the
+//     point is not known until runtime.
+void cursorLatchOnFrame(int shotIndex, bool isCaptureFrame) {
+    if (!g_cursorLatchResolved) {
+        IRInput::injectMouseMove(IRRender::worldPos3DToMouseScreenPx(kPivotVerifyDefaultAnchor));
+        if (!isCaptureFrame) {
+            return;
+        }
+        g_cursorLatchFocus = IRPrefab::CursorPivot::resolveFocusWorld();
+        g_cursorLatchResolved = true;
+        IRPrefab::CursorPivot::showIndicator(g_cursorLatchIndicator, g_cursorLatchFocus);
+    }
+    IRRender::setRotationPivotFocus(g_cursorLatchFocus);
+    if (isCaptureFrame) {
+        logPivotFocusAssert(shotIndex);
+    }
 }
 
 // --pan-sweep (#1944 diagnosis): hold yaw + zoom fixed and step the camera iso
@@ -632,19 +724,25 @@ void registerCliArgs() {
     args.enumValue(
         "--pivot-verify",
         "Rotation-pivot invariance sweep block "
-        "(off|focus-ctr|focus-off|center-column|center-depth|background-center|center-axis)",
+        "(off|focus-ctr|focus-off|center-column|center-depth|background-center|center-axis"
+        "|cursor-latch)",
         {"off",
          "focus-ctr",
          "focus-off",
          "center-column",
          "center-depth",
          "background-center",
-         "center-axis"},
+         "center-axis",
+         "cursor-latch"},
         "off"
     );
     args.flag(
         "--pivot-verify-sdf",
         "Render the --pivot-verify probe via the SDF solver instead of the voxel pool"
+    );
+    args.flag(
+        "--cursor-pivot-indicator",
+        "Show the cursor-pivot marker at the latched point (--pivot-verify cursor-latch)"
     );
     args.number("--zoom", "Initial camera zoom (snapped to nearest power of two)", 0.0f);
     args.string("--debug-overlay", "Debug overlay mode (e.g. none, depth, normals)", "none");
@@ -698,6 +796,7 @@ void readCliArgs() {
     g_pivotVerifyBlock = args.getEnum("--pivot-verify");
     g_pivotVerifySdf = args.getFlag("--pivot-verify-sdf");
     g_guiTest = args.getFlag("--gui-test");
+    g_cursorPivotIndicator = args.getFlag("--cursor-pivot-indicator");
 
     if (args.wasProvided("--zoom")) {
         const float zoom = args.getFloat("--zoom");
@@ -1524,6 +1623,10 @@ void initSystems() {
         IRVideo::AutoScreenshotConfig cfg{};
         cfg.warmupFrames_ = g_autoWarmupFrames;
         cfg.settleFrames_ = 3;
+        // Set by the one block that needs scripted cursor input + a per-frame
+        // hook (--pivot-verify cursor-latch); every other sweep stays on the
+        // plain auto-screenshot cycler.
+        bool useGuiTestCycler = false;
         if (g_cullValidate) {
             // Frozen-cull free-fly validation harness (#1438). Two phases over
             // the SAME pose list: (1) live cull, (2) cull frozen at a wide
@@ -1751,6 +1854,18 @@ void initSystems() {
             cfg.shots_ = g_pivotVerifyShots.data();
             cfg.numShots_ = static_cast<int>(g_pivotVerifyShots.size());
             cfg.onCaptureFrame_ = &logPivotFocusAssert;
+            // cursor-latch drives the SAME poses through the GUI-test cycler so
+            // it gets synthetic cursor input and a per-frame hook (see the
+            // block comment on g_pivotVerifyBlock). Its shots carry no scripted
+            // input table — cursorLatchOnFrame injects the cursor itself, from
+            // live camera terms it can only read at runtime.
+            useGuiTestCycler = g_pivotVerifyBlock == "cursor-latch";
+            if (useGuiTestCycler) {
+                g_cursorLatchShots.reserve(g_pivotVerifyShots.size());
+                for (const IRVideo::AutoScreenshotShot &shot : g_pivotVerifyShots) {
+                    g_cursorLatchShots.push_back(IRVideo::GuiTestShot{shot, nullptr, 0});
+                }
+            }
             const vec3 probeCenter = pivotVerifyProbeCenter();
             IR_LOG_INFO(
                 "Pivot-verify block '{}': {} yaw shots, pan ({},{}), probe ({},{},{}) at zoom={}",
@@ -1840,7 +1955,17 @@ void initSystems() {
             cfg.shots_ = kShots;
             cfg.numShots_ = sizeof(kShots) / sizeof(kShots[0]);
         }
-        renderPipeline.push_back(IRVideo::createAutoScreenshotSystem(cfg));
+        if (useGuiTestCycler) {
+            IRVideo::GuiTestConfig guiCfg{};
+            guiCfg.warmupFrames_ = cfg.warmupFrames_;
+            guiCfg.settleFrames_ = cfg.settleFrames_;
+            guiCfg.shots_ = g_cursorLatchShots.data();
+            guiCfg.numShots_ = static_cast<int>(g_cursorLatchShots.size());
+            guiCfg.onAssertFrame_ = &cursorLatchOnFrame;
+            renderPipeline.push_back(IRVideo::createGuiTestSystem(guiCfg));
+        } else {
+            renderPipeline.push_back(IRVideo::createAutoScreenshotSystem(cfg));
+        }
     }
 
     IRSystem::registerPipeline(IRTime::Events::RENDER, renderPipeline);
@@ -1874,6 +1999,19 @@ void initCommands() {
     IRPrefab::HelpOverlay::registerToggleCommand();
     // Escape opens the settings menu built from registerDemoSettings() (#2551).
     IRPrefab::SettingsMenu::registerToggleCommand();
+    // Rotation-pivot mode cycle (#2548): swap which Ctrl+middle-drag chord
+    // latches the clicked surface point, so the screen-center default and the
+    // cursor latch can be compared live under the SAME gesture instead of
+    // across a restart. F9 sits with the other F-key demo toggles.
+    IRCommand::createCommand(IRInput::KEY_MOUSE, IRInput::PRESSED, IRInput::kKeyButtonF9, []() {
+        const bool cursorLatched = !IRPrefab::Camera::cursorPivotByDefault();
+        IRPrefab::Camera::setCursorPivotByDefault(cursorLatched);
+        IR_LOG_INFO(
+            "[rotation-pivot] Ctrl+middle-drag now rotates about {}; "
+            "Ctrl+Shift+middle-drag takes the other.",
+            cursorLatched ? "the CURSOR-latched surface point" : "the SCREEN-CENTER default focus"
+        );
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -2330,6 +2468,19 @@ void initPivotVerifyScene() {
             Color{235, 235, 235, 255},
             pivotVerifyProbeHalfExtent()
         );
+    }
+    // Spawn the cursor-pivot marker up front, hidden — cursorLatchOnFrame only
+    // reveals it, once the latch resolves. It cannot be spawned from that hook:
+    // the hook runs inside the RENDER pipeline, past SHAPES_TO_TRIXEL, so a
+    // marker created there never reaches the render archetype (measured: zero
+    // pixels changed). The real drag path spawns from CAMERA_MOUSE_ROTATE — also
+    // a RENDER-pipeline system, but registered BEFORE SHAPES_TO_TRIXEL (this
+    // demo splices standardControlSystems() at the head of renderPipeline), so
+    // its spawn is visible to the pass the same frame. Ordering relative to
+    // SHAPES_TO_TRIXEL is what decides this, not which pipeline the spawner
+    // lives in.
+    if (g_cursorPivotIndicator) {
+        g_cursorLatchIndicator = IRPrefab::CursorPivot::createIndicator();
     }
     IR_LOG_INFO(
         "Pivot-verify scene: block '{}' probe {} cylinder at ({},{},{})",
