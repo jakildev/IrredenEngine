@@ -144,22 +144,45 @@ objection for the uniform box once the per-pixel lever (b) was proven unable
 to localise the fix, on the measured anchors. The radius is chosen at the
 **measured minimum**, not headroom:
 
+Original #2204 sweep, on the **pre-#2319 (acne-contaminated) oracle** —
+`shadow_overlay_floor` cube-cast, cardinal, frozen:
+
 | radius | hole_ratio | components | largest_frac | pass (≤8 comp, ≥0.9 frac) |
 |---|---|---|---|---|
 | 8 | 0.2026 | 6 | 0.9938 | ✓ (architect anchor) |
-| 6 | 0.2023 | **1** | **1.0** | ✓ (**chosen**) |
+| 6 | 0.2023 | **1** | **1.0** | ✓ (chosen at #2204) |
 | 5 | 0.1972 | 1 | 1.0 | ✓ |
 | 4 | 0.2101 | 5 | 0.9995 | ✓ (pass floor) |
 | 3 | 0.2588 | 119 | 0.9795 | ✗ (shatters) |
 | 2 | 0.5674 | 460 | 0.44 | ✗ |
 
-**r = 6** is the chosen value: cleanest result (single connected component),
-a solid margin above the r3 cliff, and ~41 % fewer atomics than the
-architect-sanctioned r8 — the smallest bounded radius that both clears the
-anchor with margin and honours the #2204 cost principle. A future
-density-gated firing (splat only where the local neighbourhood is sparse)
-could reclaim the remaining cost; deferred (lever (a)'s localisation attempt
-shows sparse-detection is subtle).
+**r = 6** was the #2204 choice on that oracle: cleanest result (single
+connected component), a solid margin above the r3 cliff, and ~41 % fewer
+atomics than the architect-sanctioned r8.
+
+**#2385 re-measured on the decontaminated baseline and moved the choice to
+r = 7** (2026-07-30, macOS/Metal, cast-ROI `1010,540,450,250`). S1's
+same-plane provenance fix (#2319) removed the coplanar floor contamination
+that the table above was measured through, and the residual genuine cast is
+still fragmented at r6:
+
+| radius | shadow_px | components | largest_frac |
+|---|---|---|---|
+| 0 (splat off) | 6936 | 91 | 0.3230 |
+| 6 | 31320 | 53 | 0.9203 |
+| **7** | **32144** | **47** | **0.9276** |
+
+r7 buys −11.3 % components for +2.6 % cast-ROI px — fill, not halo (the
+visual half of the guard is discharged on `revoxelize_solids` /
+`so3_offsnap_wide`: the newly-shadowed rim is 1–2 device px thick at full
+shadow luminance, i.e. a crisp one-cell edge shift, not a soft border).
+Cost stays inside the #2204 envelope: `(2·r+1)²` is 225 atomics at r7
+against 289 at the architect-sanctioned r8 anchor — **~22 % fewer than the
+waived ceiling** — and r7 is the nibble cap, so anything larger would need
+the displacement-encoding widen (#2385 Phase 1), which the measured minimum
+does not justify. A future density-gated firing (splat only where the local
+neighbourhood is sparse) could reclaim the remaining cost; deferred (lever
+(a)'s localisation attempt shows sparse-detection is subtle).
 
 ## Byte-identity regimes (the two invariants)
 
@@ -194,13 +217,14 @@ splat-displaced coplanar write, read at its origin as if it were a nearer caster
 - **Pack the displacement vector.** `packSunDepth(sunZ, splatOffset)` stores the
   quantized depth in the high 24 bits and this box texel's `(dx, dy)`
   displacement from its caster's own texel in the low byte (a two's-complement
-  nibble each; the r ≤ 6 cap fits `[-8, 7]`). A **direct** caster's-own-texel
-  write is `(0, 0)` ⇒ low byte 0 ⇒ `unpackSunDepth` (`>> 8`) recovers the depth
-  bit-exact vs a pre-#2319 `<< 8` single write, so every **radius-0** path
-  (per-axis / smooth-yaw / detached / saturated host) stays byte-identical — and
-  at equal quantized depth a direct write's 0 low byte wins `atomicMin` over any
-  splat's nonzero low byte, so a genuine caster's own depth always claims its
-  texel.
+  nibble each; the r ≤ 7 cap emits `[-7, 7]`, the range that round-trips — r8's
+  `dx = 8` aliases to `-8` on unpack and inverts the reconstructed origin). A
+  **direct** caster's-own-texel write is `(0, 0)` ⇒ low byte 0 ⇒
+  `unpackSunDepth` (`>> 8`) recovers the depth bit-exact vs a pre-#2319 `<< 8`
+  single write, so every **radius-0** path (per-axis / smooth-yaw / detached /
+  saturated host) stays byte-identical — and at equal quantized depth a direct
+  write's 0 low byte wins `atomicMin` over any splat's nonzero low byte, so a
+  genuine caster's own depth always claims its texel.
 - **Test the receiver plane at the reconstructed origin.** In
   `sampleCascadeShadow`, a **direct** tap keeps the pre-#2319 near-rejection
   verbatim; a **splat** tap reconstructs the write's origin texel
@@ -252,16 +276,38 @@ acne-free, splat-off-referenced gates, all evaluable on macOS/Metal
    **splat-off** capture (`kSunSplatMaxTexels = 0`, the uncontaminated genuine
    cast — byte-identical whether built off master or this branch, since radius 0
    is the pre-splat single write); cast-ROI structure (components / largest_frac)
-   no worse than that baseline. **Measured (this branch vs splat-off baseline):**
-   24400 px / 59 comp / 0.7705 frac ≥ 5056 px / 93 comp / 0.3418 frac — more
-   coverage *and* more coherent (the r6 splat legitimately fills genuine
-   cube-cast holes; the same-plane test drops only the coplanar floor
-   contamination). This is a **manual** A/B — `kSunSplatMaxTexels` has no runtime
-   flag — so it is not wired as a static manifest threshold.
-4. **`floor_selfshadow` ≥ 0.98** at π/6 (unchanged; measured hole_ratio 1.0) and
-   **per-axis `yaw30` / `yaw45` byte-identity** (structural: those paths bake at
-   radius 0, so every tap is a direct write on the verbatim pre-#2319
-   near-rejection).
+   no worse than that baseline. This is a **manual** A/B —
+   `kSunSplatMaxTexels` has no runtime flag — so it is not wired as a static
+   manifest threshold.
+
+   **Re-measured 2026-07-30 (#2385, macOS/Metal), same harness and ROI.** The
+   2026-07-14 row below it (24400 px / 59 comp / 0.7705 vs splat-off 5056 /
+   93 / 0.3418) is **superseded** — master's genuine cast improved materially
+   in the interval, so any acceptance threshold grounded on it is stale:
+
+   | config | shadow_px | components | largest_frac |
+   |---|---|---|---|
+   | r0 (splat off) | 6936 | 91 | 0.3230 |
+   | r6 (master) | 31320 | 53 | 0.9203 |
+   | r7 | 32144 | 47 | 0.9276 |
+
+   Both controls were run this pass and both pass: **A==A** (two runs of one
+   binary → byte-identical, so the metric is trustworthy under the freeze
+   flags on this host) and the **positive control** (r0 collapses the cast,
+   so the radius lever demonstrably reaches this observable). Run both before
+   quoting any radius comparison — a single-run A/B proves neither.
+4. **`floor_selfshadow` ≥ 0.98** at π/6 (unchanged; measured hole_ratio 1.0).
+   **Per-axis `yaw30` / `yaw45` byte-identity is structural for the per-axis
+   *resolve* path only** — it bakes at radius 0, so every tap is a direct write
+   on the verbatim pre-#2319 near-rejection. **The canvas_stress shots named
+   yaw30 / yaw45 (`so3_offsnap_wide` / `so3_offsnap_disc`) are NOT clean probes
+   of that path**: they also contain world-placed detached solids, and the
+   world-placed cast resolve (P4b-3) deliberately KEEPS the splat engaged, so
+   a radius change moves those solids' cast edges by design. Measured at r7
+   (#2385): all six default shots diff (99.80–99.84%, max_delta 60–64) against
+   a master control that is 100.0% / max_delta 0 on five of six. Cite the
+   per-axis path's radius-0 property, not those shots, when claiming
+   byte-identity for a radius change.
 5. **Linux smoke owed** — the GL twin is unbuilt on the macOS pane; a large Linux
    floor A/B vs master is a re-escalation signal (calibrated-host manifest
    re-check), not something to tune away.

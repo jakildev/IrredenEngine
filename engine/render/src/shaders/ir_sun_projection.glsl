@@ -47,9 +47,12 @@ vec3 sunSpaceProject(vec3 pos3D, vec3 uHat, vec3 vHat, vec3 sunDir) {
 // low BYTE carries the #2270 coverage-splat DISPLACEMENT VECTOR — a
 // two's-complement nibble each for dx (bits [7:4]) and dy (bits [3:0]), the
 // sun-texel offset of THIS write from its caster's own texel under the box
-// splat. The radius is capped at kSunSplatMaxTexels = 6
-// (system_bake_sun_shadow_map.hpp), so each component fits the nibble's
-// [-8, 7] range. A DIRECT (caster's-own-texel) write is (dx,dy) = (0,0):
+// splat. The radius is capped at kSunSplatMaxTexels = 7
+// (system_bake_sun_shadow_map.hpp) — r7 is the largest radius that ROUND-TRIPS:
+// r8 would emit dx = 8, which the nibble aliases to -8 on unpack, so the
+// receiver would reconstruct the origin texel on the WRONG SIDE of the caster.
+// A larger radius needs the displacement field widened past 8 bits
+// (#2385 Phase 1). A DIRECT (caster's-own-texel) write is (dx,dy) = (0,0):
 //   - low byte 0 ⇒ the recovered depth is bit-exact vs a pure `<< 8` of the
 //     pre-#2319 single-write pack, so the radius-0 per-axis / smooth-yaw /
 //     detached paths stay byte-identical;

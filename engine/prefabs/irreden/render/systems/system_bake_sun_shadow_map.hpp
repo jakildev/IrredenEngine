@@ -66,13 +66,19 @@ constexpr float kCascadeSplitRatio = 0.4f;
 // holes). Engaged for the cardinal main-canvas bake AND the world-placed cast
 // resolve (its cast has the same defect). The PER-AXIS resolve zeros it via
 // patchSunSplatRadius (structural byte-identity for invariant #1). Doubles as
-// the shader kill switch — 0 forces the exact single-write path. r=6 is the
-// measured minimum that reaches a single-component coherent
-// cast shadow on the affected host (shadow_overlay_floor: r6 -> 1 comp /
-// largest_frac 1.0; r4 is the pass floor, r3 shatters to 119 comp) while
-// staying well under the architect-waived r8 atomic cost (#2204). See
-// docs/design/sun-shadow-bake-coverage.md.
-constexpr int kSunSplatMaxTexels = 6;
+// the shader kill switch — 0 forces the exact single-write path. r is the
+// measured minimum on the decontaminated (post-#2319) genuine cast, and 7 is
+// also the nibble cap the displacement encoding can carry — a larger radius
+// needs the #2385 Phase-1 encoding widen. Radius sweeps + the #2204 atomic
+// cost rule: docs/design/sun-shadow-bake-coverage.md.
+//
+// Changing this radius is NOT output-neutral for world-placed detached
+// solids: the world-placed cast resolve (P4b-3) keeps the splat engaged, so
+// their cast EDGES move with r. Only the per-axis resolve is radius-0 and
+// therefore radius-invariant — the canvas_stress so3_* / revoxelize_* shots
+// contain world-placed content and WILL diff on any radius change. Re-bless
+// those references deliberately, never reflexively.
+constexpr int kSunSplatMaxTexels = 7;
 
 namespace detail {
 
