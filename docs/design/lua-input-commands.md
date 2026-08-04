@@ -298,6 +298,10 @@ generic `"C++ exception"`.
 
 ## Public Lua API
 
+> This is the surface T-193 locked, not a running inventory — later work
+> has added to it (`IRCommand.{Suite, suiteDefaults, registerSuite}`).
+> `engine/script/CLAUDE.md` §"Commands and input" is the living reference.
+
 ```lua
 -- Bind a prefab command (most common — replaces the C++ initCommands block):
 IRCommand.bindPrefab(

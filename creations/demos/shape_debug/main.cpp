@@ -956,7 +956,7 @@ constexpr IRVideo::GuiInputEvent kHelpCloseEvents[] = {
 };
 
 // Escape toggles the settings menu in this demo (#2551) — the camera suite is
-// registered with bindEscapeCloseWindow=false, so it no longer quits.
+// registered with `{.omit_ = {CLOSE_WINDOW}}`, so it no longer quits.
 constexpr IRVideo::GuiInputEvent kMenuOpenEvents[] = {
     {0,
      IRVideo::GuiInputEvent::Type::PRESS,
@@ -1974,8 +1974,11 @@ void initSystems() {
 void initCommands() {
     // Escape opens the settings menu instead of quitting (#2551); the menu's
     // QUIT button is the replacement exit, so quitting is two inputs away
-    // rather than one. Every other camera binding is unchanged.
-    IRPrefab::Camera::registerStandardKeyboardCommands(/*bindEscapeCloseWindow=*/false);
+    // rather than one. Omitting the one row leaves every other camera binding
+    // unchanged.
+    IRPrefab::Camera::registerStandardKeyboardCommands(
+        {.omit_ = {IRCommand::CLOSE_WINDOW}}
+    );
     IRCommand::registerCaptureCommands();
     // Interactive cull-freeze toggle (#1438): freeze the cull viewport at the
     // current camera pose, then free-fly (WASD pan / mouse drag / scroll zoom,

@@ -289,6 +289,140 @@ TEST_F(LuaCommandTest, BindPrefabAcceptsBitOrModifierMask) {
     );
 }
 
+// ---- IRCommand.Suite / suiteDefaults / registerSuite ----------------------
+
+TEST_F(LuaCommandTest, SuiteEnumIsAnIntegerTable) {
+    auto &lua = m_lua.lua();
+    auto result = lua.safe_script(
+        R"(
+        return type(IRCommand.Suite.CAMERA) == 'number'
+           and type(IRCommand.Suite.CAPTURE) == 'number'
+           and IRCommand.Suite.CAMERA ~= IRCommand.Suite.CAPTURE
+        )",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(result.valid()) << result.get<sol::error>().what();
+    EXPECT_TRUE(result.get<bool>());
+}
+
+TEST_F(LuaCommandTest, SuiteDefaultsRowsMatchTheCppManifest) {
+    auto &lua = m_lua.lua();
+    auto result = lua.safe_script(
+        R"(
+        local rows = IRCommand.suiteDefaults(IRCommand.Suite.CAMERA)
+        local released = 0
+        for _, row in ipairs(rows) do
+            if row.status == IRInput.ButtonStatus.RELEASED then released = released + 1 end
+        end
+        return #rows, released,
+               rows[1].command, rows[1].button, rows[1].inputType, rows[1].modifiers
+        )",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(result.valid()) << result.get<sol::error>().what();
+    EXPECT_EQ(result.get<int>(0), 11);
+    EXPECT_EQ(result.get<int>(1), 4);
+    EXPECT_EQ(result.get<int>(2), static_cast<int>(IRCommand::CLOSE_WINDOW));
+    EXPECT_EQ(result.get<int>(3), static_cast<int>(IRInput::kKeyButtonEscape));
+    EXPECT_EQ(result.get<int>(4), static_cast<int>(IRInput::KEY_MOUSE));
+    EXPECT_EQ(result.get<int>(5), static_cast<int>(IRInput::kModifierNone));
+}
+
+TEST_F(LuaCommandTest, SuiteDefaultsCaptureHasThreeRows) {
+    auto &lua = m_lua.lua();
+    auto result = lua.safe_script(
+        "return #IRCommand.suiteDefaults(IRCommand.Suite.CAPTURE)",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(result.valid()) << result.get<sol::error>().what();
+    EXPECT_EQ(result.get<int>(), 3);
+}
+
+TEST_F(LuaCommandTest, SuiteDefaultsRejectsAnOutOfRangeSuite) {
+    // Logs and returns an empty table rather than throwing — same contract as
+    // bindPrefab on an unimplemented command name.
+    auto &lua = m_lua.lua();
+    auto result = lua.safe_script("return #IRCommand.suiteDefaults(99)", sol::script_pass_on_error);
+    ASSERT_TRUE(result.valid()) << result.get<sol::error>().what();
+    EXPECT_EQ(result.get<int>(), 0);
+}
+
+TEST_F(LuaCommandTest, RegisterSuiteHonorsOmit) {
+    auto &lua = m_lua.lua();
+    auto result = lua.safe_script(
+        R"(
+        IRCommand.registerSuite(IRCommand.Suite.CAMERA,
+                                {omit = {IRCommand.CommandName.CLOSE_WINDOW}})
+        return true
+        )",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(result.valid()) << result.get<sol::error>().what();
+
+    const auto &regs = IRCommand::getCommandManager().getCommandRegistrations();
+    ASSERT_EQ(regs.size(), 6u); // 7 PRESSED camera rows minus CLOSE_WINDOW
+    for (const auto &reg : regs) {
+        EXPECT_NE(reg.button, IRInput::kKeyButtonEscape);
+    }
+}
+
+TEST_F(LuaCommandTest, RegisterSuiteHonorsRemapOntoKeypad) {
+    // Also covers the keypad additions to IRInput.Key — the remap target is
+    // only nameable from Lua because those entries now exist.
+    auto &lua = m_lua.lua();
+    auto result = lua.safe_script(
+        R"(
+        IRCommand.registerSuite(IRCommand.Suite.CAMERA, {
+            omit = {IRCommand.CommandName.CLOSE_WINDOW,
+                    IRCommand.CommandName.ZOOM_IN,
+                    IRCommand.CommandName.ZOOM_OUT},
+            remap = {{IRInput.Key.W, IRInput.Key.KP_8},
+                     {IRInput.Key.S, IRInput.Key.KP_2},
+                     {IRInput.Key.A, IRInput.Key.KP_4},
+                     {IRInput.Key.D, IRInput.Key.KP_6}},
+        })
+        return true
+        )",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(result.valid()) << result.get<sol::error>().what();
+
+    const auto &regs = IRCommand::getCommandManager().getCommandRegistrations();
+    ASSERT_EQ(regs.size(), 4u);
+    EXPECT_EQ(regs[0].button, IRInput::kKeyButtonKP8);
+    EXPECT_EQ(regs[1].button, IRInput::kKeyButtonKP2);
+    EXPECT_EQ(regs[2].button, IRInput::kKeyButtonKP4);
+    EXPECT_EQ(regs[3].button, IRInput::kKeyButtonKP6);
+}
+
+TEST_F(LuaCommandTest, RegisterSuiteWithNoOverridesBindsTheWholeSuite) {
+    auto &lua = m_lua.lua();
+    auto result = lua.safe_script(
+        "IRCommand.registerSuite(IRCommand.Suite.CAPTURE); return true",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(result.valid()) << result.get<sol::error>().what();
+    EXPECT_EQ(IRCommand::getCommandManager().getCommandRegistrations().size(), 3u);
+}
+
+TEST_F(LuaCommandTest, KeypadKeysAreNameable) {
+    auto &lua = m_lua.lua();
+    auto result = lua.safe_script(
+        R"(
+        return IRInput.Key.KP_0, IRInput.Key.KP_9, IRInput.Key.KP_ADD,
+               IRInput.Key.KP_ENTER, IRInput.Key.KP_DECIMAL, IRInput.Key.KP_EQUAL
+        )",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(result.valid()) << result.get<sol::error>().what();
+    EXPECT_EQ(result.get<int>(0), static_cast<int>(IRInput::kKeyButtonKP0));
+    EXPECT_EQ(result.get<int>(1), static_cast<int>(IRInput::kKeyButtonKP9));
+    EXPECT_EQ(result.get<int>(2), static_cast<int>(IRInput::kKeyButtonKPAdd));
+    EXPECT_EQ(result.get<int>(3), static_cast<int>(IRInput::kKeyButtonKPEnter));
+    EXPECT_EQ(result.get<int>(4), static_cast<int>(IRInput::kKeyButtonKPDecimal));
+    EXPECT_EQ(result.get<int>(5), static_cast<int>(IRInput::kKeyButtonKPEqual));
+}
+
 // ---- Idempotence ----------------------------------------------------------
 
 TEST_F(LuaCommandTest, BindLuaCommandsIsIdempotent) {

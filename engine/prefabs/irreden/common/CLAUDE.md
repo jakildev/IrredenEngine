@@ -362,9 +362,30 @@ runtime work and architect-gated decisions.
 
 ## Commands
 
-- `command_suite_camera.hpp` — registers `ZOOM_IN`, `ZOOM_OUT`,
-  `MOVE_CAMERA_*`, `CLOSE_WINDOW`. A convenience bundle creations pick
-  up en masse.
+- `command_suite_registry.hpp` — the engine's default keybindings **as
+  data**: `constexpr DefaultBinding kCameraSuite[]` (11 rows) and
+  `kCaptureSuite[]` (3 rows), plus `Suite` and
+  `suiteDefaults(Suite)` for enumeration. One definition site per
+  suite. Deliberately data-only (no `Command<NAME>` body includes), so
+  `engine/script` can expose the suites on the Lua surface without
+  dragging the render/video command headers in.
+- `command_suite_camera.hpp` / `command_suite_capture.hpp` —
+  registration entry points. `registerCameraCommands()` binds
+  `CLOSE_WINDOW`, `ZOOM_IN`/`ZOOM_OUT`, and the WASD
+  `MOVE_CAMERA_*_START`/`_END` pairs; `registerCaptureCommands()` binds
+  F7/F8/F9. Both are loops over their manifest via
+  `IRCommand::registerBindings`, and both take an optional
+  `BindingOverrides` for registration-time omit/remap —
+  `registerCameraCommands({.omit_ = {CLOSE_WINDOW}})` is the shape a
+  creation that owns Escape wants instead of hand-copying the suite.
+  In-tree that shape always goes through the prefab wrapper —
+  `IRPrefab::Camera::registerStandardKeyboardCommands({.omit_ =
+  {CLOSE_WINDOW}})` — as both `creations/editors/voxel_editor` and
+  `creations/demos/shape_debug` (which frees Escape for
+  `IRPrefab::SettingsMenu`, #2551) do; outside that wrapper only the
+  manifest unit tests call the bare form. Full semantics:
+  [`engine/command/CLAUDE.md`](../../../command/CLAUDE.md)
+  §"Default-binding manifests (#2666)".
 
 ## Gotchas
 

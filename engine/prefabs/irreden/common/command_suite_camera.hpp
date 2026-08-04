@@ -1,6 +1,13 @@
 #ifndef COMMAND_SUITE_CAMERA_H
 #define COMMAND_SUITE_CAMERA_H
 
+// The camera suite's bindings are declared as data in `kCameraSuite`
+// (`command_suite_registry.hpp`); this header is just the registration entry
+// point. The command-body headers below are what give `bindPrefabCommand` the
+// `Command<NAME>::create()` specializations it dispatches each manifest row to.
+
+#include <irreden/common/command_suite_registry.hpp>
+
 #include <irreden/input/commands/command_close_window.hpp>
 #include <irreden/render/commands/command_zoom_in.hpp>
 #include <irreden/render/commands/command_zoom_out.hpp>
@@ -8,72 +15,23 @@
 
 namespace IRCommand {
 
-/// Registers the standard camera keyboard bundle: WASD pan, +/- zoom, and
-/// Escape to close the window.
+/// Registers the engine's default camera controls, honoring @p overrides.
 ///
-/// @param bindEscapeCloseWindow Leave `true` (the default) for the historical
-///   behavior. Pass `false` when the creation wants Escape for something else
-///   — `IRPrefab::SettingsMenu` binds it to open the menu (#2551), and puts a
-///   QUIT button inside the menu so quitting stays two inputs away. Every
-///   other binding here is unaffected either way.
-inline void registerCameraCommands(bool bindEscapeCloseWindow = true) {
-    if (bindEscapeCloseWindow) {
-        createCommand<CLOSE_WINDOW>(
-            InputTypes::KEY_MOUSE,
-            ButtonStatuses::PRESSED,
-            KeyMouseButtons::kKeyButtonEscape
-        );
-    }
-    createCommand<ZOOM_IN>(
-        InputTypes::KEY_MOUSE,
-        ButtonStatuses::PRESSED,
-        KeyMouseButtons::kKeyButtonEqual
-    );
-    createCommand<ZOOM_OUT>(
-        InputTypes::KEY_MOUSE,
-        ButtonStatuses::PRESSED,
-        KeyMouseButtons::kKeyButtonMinus
-    );
-    createCommand<MOVE_CAMERA_UP_START>(
-        InputTypes::KEY_MOUSE,
-        ButtonStatuses::PRESSED,
-        KeyMouseButtons::kKeyButtonW
-    );
-    createCommand<MOVE_CAMERA_DOWN_START>(
-        InputTypes::KEY_MOUSE,
-        ButtonStatuses::PRESSED,
-        KeyMouseButtons::kKeyButtonS
-    );
-    createCommand<MOVE_CAMERA_LEFT_START>(
-        InputTypes::KEY_MOUSE,
-        ButtonStatuses::PRESSED,
-        KeyMouseButtons::kKeyButtonA
-    );
-    createCommand<MOVE_CAMERA_RIGHT_START>(
-        InputTypes::KEY_MOUSE,
-        ButtonStatuses::PRESSED,
-        KeyMouseButtons::kKeyButtonD
-    );
-    createCommand<MOVE_CAMERA_UP_END>(
-        InputTypes::KEY_MOUSE,
-        ButtonStatuses::RELEASED,
-        KeyMouseButtons::kKeyButtonW
-    );
-    createCommand<MOVE_CAMERA_DOWN_END>(
-        InputTypes::KEY_MOUSE,
-        ButtonStatuses::RELEASED,
-        KeyMouseButtons::kKeyButtonS
-    );
-    createCommand<MOVE_CAMERA_LEFT_END>(
-        InputTypes::KEY_MOUSE,
-        ButtonStatuses::RELEASED,
-        KeyMouseButtons::kKeyButtonA
-    );
-    createCommand<MOVE_CAMERA_RIGHT_END>(
-        InputTypes::KEY_MOUSE,
-        ButtonStatuses::RELEASED,
-        KeyMouseButtons::kKeyButtonD
-    );
+/// `registerCameraCommands({.omit_ = {CLOSE_WINDOW}})` binds everything except
+/// Escape — the shape a creation that owns its own Escape handling wants,
+/// instead of hand-copying the rest of the suite. `IRPrefab::SettingsMenu` is
+/// the in-engine case (#2551): it binds Escape to open the menu and puts a QUIT
+/// button inside, so quitting stays two inputs away.
+/// `registerCameraCommands({.remap_ = {{IRInput::kKeyButtonW, IRInput::kKeyButtonUp}, …}})`
+/// moves pan onto the arrow keys, carrying each key's PRESSED + RELEASED rows
+/// together. Exact matching semantics: @ref BindingOverrides.
+inline void registerCameraCommands(const BindingOverrides &overrides) {
+    registerBindings(kCameraSuite, overrides);
+}
+
+/// Registers the engine's default camera controls unmodified.
+inline void registerCameraCommands() {
+    registerBindings(kCameraSuite);
 }
 
 } // namespace IRCommand

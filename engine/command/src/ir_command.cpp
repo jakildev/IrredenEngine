@@ -32,6 +32,8 @@
 #include <irreden/voxel/commands/command_randomize_voxels.hpp>
 #include <irreden/voxel/commands/command_spawn_particle_mouse_position.hpp>
 
+#include <algorithm>
+
 namespace IRCommand {
 
 CommandManager *g_commandManager = nullptr;
@@ -42,6 +44,35 @@ CommandManager &getCommandManager() {
 
 void fire(CommandId id) {
     getCommandManager().fireUserCommand(id);
+}
+
+void registerBindings(std::span<const DefaultBinding> bindings, const BindingOverrides &overrides) {
+    for (const DefaultBinding &binding : bindings) {
+        if (std::ranges::find(overrides.omit_, binding.command_) != overrides.omit_.end()) {
+            continue;
+        }
+        // First matching pair wins, so a remap list never chains one
+        // substitution into another (W->A, A->Up leaves W on A).
+        int button = binding.button_;
+        const auto remap = std::ranges::find(overrides.remap_, button, &std::pair<int, int>::first);
+        if (remap != overrides.remap_.end()) {
+            button = remap->second;
+        }
+        const CommandId id = bindPrefabCommand(
+            binding.command_,
+            binding.inputType_,
+            binding.status_,
+            button,
+            binding.requiredModifiers_
+        );
+        // bindPrefabCommand already logged the specifics; assert so a manifest
+        // row whose command is missing from that switch fails loudly at
+        // registration instead of silently thinning the suite.
+        IR_ASSERT(
+            id != kInvalidCommandId,
+            "registerBindings: manifest row has no Command<NAME> specialization"
+        );
+    }
 }
 
 CommandId bindPrefabCommand(

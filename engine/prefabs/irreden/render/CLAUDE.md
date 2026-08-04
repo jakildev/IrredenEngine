@@ -378,7 +378,7 @@ inputPipeline.splice(inputPipeline.end(), IRPrefab::SettingsMenu::inputSystems()
 renderPipeline.splice(renderPipeline.end(), IRPrefab::SettingsMenu::renderSystems());
 
 // initCommands() — Escape opens the menu, so the camera suite must not quit on it:
-IRPrefab::Camera::registerStandardKeyboardCommands(/*bindEscapeCloseWindow=*/false);
+IRPrefab::Camera::registerStandardKeyboardCommands({.omit_ = {IRCommand::CLOSE_WINDOW}});
 IRPrefab::SettingsMenu::registerToggleCommand();
 
 // after initEntities() — one call per togglable mode:
@@ -392,10 +392,12 @@ IRPrefab::Settings::registerBool("CHECKERBOARD", getter, setter);
   `CommandManager`'s registry, which the overlay renders; the menu links to it
   with a one-line `CONTROLS: <key>` read back out of that registry rather than
   re-rendering the list.
-- **Escape is the toggle**, which is why `registerCameraCommands` grew a
-  defaulted `bindEscapeCloseWindow` opt-out. The default is unchanged, so every
-  non-adopting demo still quits on Escape; an adopting demo passes `false` and
-  gets a QUIT button in the panel instead.
+- **Escape is the toggle**, so an adopting demo drops that one row from the
+  camera suite with `registerStandardKeyboardCommands({.omit_ =
+  {IRCommand::CLOSE_WINDOW}})` (#2666's declarative manifest — see
+  `engine/command/CLAUDE.md` §"Default-binding manifests"). The no-argument
+  form is unchanged, so every non-adopting demo still quits on Escape; an
+  adopting demo gets a QUIT button in the panel instead.
 - **Zero-cost closed.** The menu owns no entities until it opens, so the widget
   systems iterate empty archetypes and existing captures stay byte-identical.
   Measured on `shape_debug`: +0.022 ms/frame against an 8.92 ms frame.

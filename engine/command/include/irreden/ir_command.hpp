@@ -7,6 +7,7 @@
 #include <irreden/command/command_manager.hpp>
 
 #include <iterator>
+#include <span>
 #include <string>
 #include <utility>
 
@@ -136,6 +137,23 @@ static_assert(
     commandInfoRowsAligned(),
     "kCommandInfo rows must appear in CommandNames declaration order — the table is indexed "
     "by enum value"
+);
+
+/// Register a declarative @ref DefaultBinding manifest, honoring @p overrides.
+///
+/// The one registration primitive behind the engine's default-key suites and
+/// any caller-authored binding table: filter by `overrides.omit`, substitute
+/// buttons per `overrides.remap`, then dispatch each surviving row through
+/// @ref bindPrefabCommand. Rows register in manifest order, so the debug help
+/// overlay (which lists `PRESSED` registrations in registration order) reads
+/// the same as the equivalent hand-written `createCommand<NAME>` sequence.
+///
+/// A row whose command has no `Command<NAME>` specialization logs an error via
+/// `bindPrefabCommand` and asserts in debug — a manifest naming a command that
+/// is missing from that switch must fail loudly at registration rather than
+/// silently thinning the suite.
+void registerBindings(
+    std::span<const DefaultBinding> bindings, const BindingOverrides &overrides = {}
 );
 
 /// Returns a short human-readable label for @p name (e.g. "ZOOM IN").
