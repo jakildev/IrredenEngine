@@ -43,11 +43,22 @@ if [[ -z "${1:-}" ]]; then
     exit 2
 fi
 
+case "$1" in
+    -h|--help)
+        sed -n '28,34p' "$0"
+        exit 0
+        ;;
+esac
+
 role="$1"
 
-# Sanity-check the role name: alphanumeric, dash, underscore only. No
-# slashes (which would escape the heartbeats dir) or shell metachars.
-if ! [[ "$role" =~ ^[A-Za-z0-9_-]+$ ]]; then
+# Sanity-check the role name: alphanumeric, dash, underscore only, and no
+# leading dash — a leading dash is always a flag typo (no real role name
+# starts with one: pool-1..pool-9, opus-architect, game-architect, merger,
+# sonnet-reviewer, opus-reviewer, epic-steward), so reject it here instead
+# of silently touching a file named after the flag. No slashes (which would
+# escape the heartbeats dir) or other shell metachars either.
+if ! [[ "$role" =~ ^[A-Za-z0-9_][A-Za-z0-9_-]*$ ]]; then
     echo "fleet-heartbeat: invalid role name '$role' — must match [A-Za-z0-9_-]+" >&2
     exit 2
 fi
