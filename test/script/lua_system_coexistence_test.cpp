@@ -51,10 +51,10 @@ class LuaSystemCoexistenceTest : public testing::Test {
         m_lua.setEcsDefaultMode(IRScript::CodegenRegistry::kDefaultEcsMode);
     }
 
-    // Path to the .lua fixture relative to the test binary's working dir.
-    // The fixture lives next to the test source; the build copies it into
-    // the binary tree via the `copy_all_lua_files` target wired in
-    // creations/template/CMakeLists.txt-equivalent (see test/CMakeLists.txt).
+    // Absolute source-tree path to the .lua fixture, supplied via the
+    // IR_LUA_COEXIST_FIXTURE_PATH compile definition (test/CMakeLists.txt)
+    // per test/CLAUDE.md's "Fixture paths reach the test through compile
+    // definitions, never a relative path."
     std::string fixturePath() const {
         return std::string{IR_LUA_COEXIST_FIXTURE_PATH};
     }
