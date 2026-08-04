@@ -111,9 +111,16 @@ fi
 # default raises on the report's em-dash / middle-dot glyphs).
 PYTHONIOENCODING=utf-8 python3 - "$manifest" "$feedback_f" "$marker_age_days" << 'PYEOF'
 import json
+import re
 import sys
 
 SHORT = {"jakildev/IrredenEngine": "engine", "jakildev/irreden": "game"}
+
+# An approved PR's title still carrying [WIP] with no fleet:wip label is a
+# desync the fleet's own labels never catch: GitHub squash-merge uses the
+# title as the commit subject, so this ships [WIP] into master's permanent
+# history (#2788) unless a human strips it before merging.
+WIP_TITLE_RE = re.compile(r"\[WIP\]")
 
 # Drain thresholds: past these, a backlog cue flips to OVERDUE. Values per
 # the 2026-07-30 triage retrospective — batches past ~a dozen tickets cost
@@ -155,7 +162,7 @@ def names(item):
     return [label["name"] for label in item.get("labels", [])]
 
 
-merge_queue = []   # (repo, item, has_nits, smoke_holds)
+merge_queue = []   # (repo, item, has_nits, smoke_holds, wip_title_mismatch)
 decisions = []     # (repo, kind, item, tags)
 coding_improvements = 0
 untriaged = []
@@ -170,7 +177,8 @@ for repo, prs, issues in repos:
                 label for label in labels
                 if label.startswith("fleet:needs-") and label.endswith("-smoke")
             ]
-            merge_queue.append((repo, pr, "fleet:has-nits" in labels, smoke))
+            wip_mismatch = bool(WIP_TITLE_RE.search(pr["title"])) and "fleet:wip" not in labels
+            merge_queue.append((repo, pr, "fleet:has-nits" in labels, smoke, wip_mismatch))
         tags = [DECISION_TAGS[label] for label in labels if label in DECISION_TAGS]
         if tags:
             decisions.append((repo, "PR", pr, tags))
@@ -193,11 +201,16 @@ print(f"fleet-decisions: {total} decision(s) waiting   [{scope}]")
 
 if merge_queue:
     print(f"\n## Merge queue ({len(merge_queue)})")
-    for repo, pr, has_nits, smoke in merge_queue:
+    for repo, pr, has_nits, smoke, wip_mismatch in merge_queue:
         nits = "+nits" if has_nits else ""
         print(f"  {repo} PR #{pr['number']}  {pr['title']}  [approved{nits}]")
         for label in smoke:
             print(f"      hold: {label} outstanding")
+        if wip_mismatch:
+            print(
+                "      warn: title still carries [WIP] with no fleet:wip label — "
+                "strip before merge (squash uses the title as the commit subject)"
+            )
 
 if decisions:
     print(f"\n## Decisions ({len(decisions)})")

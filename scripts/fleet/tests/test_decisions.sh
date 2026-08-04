@@ -8,6 +8,8 @@
 #
 # Covers:
 #   - merge queue: approved PR listed; +nits annotation; smoke-hold sub-line
+#   - merge queue: an approved PR whose title still carries [WIP] with no
+#     fleet:wip label gets a warn sub-line; clean approved PRs get none
 #   - decisions: gated / design-blocked PRs and human:review-plan issues
 #   - a wip-only PR appears in no decision bucket
 #   - cues: coding-improvement count, untriaged count, unread feedback roles
@@ -48,7 +50,9 @@ cat > "$TMP/engine-prs.json" << 'EOF'
   {"number": 104, "title": "render: needs design answer", "url": "u",
    "labels": [{"name": "fleet:design-blocked"}, {"name": "fleet:wip"}]},
   {"number": 105, "title": "engine: plain wip", "url": "u",
-   "labels": [{"name": "fleet:wip"}]}
+   "labels": [{"name": "fleet:wip"}]},
+  {"number": 106, "title": "engine: approved but title still says [WIP]", "url": "u",
+   "labels": [{"name": "fleet:approved"}]}
 ]
 EOF
 
@@ -114,12 +118,16 @@ err=$(cat "$TMP/err.txt")
 assert_eq "$status" "0" "default run exits 0 despite unreachable game repo"
 assert_contains "$err" "skipping jakildev/irreden" "unreachable repo warned on stderr"
 
-assert_contains "$out" "6 decision(s) waiting" "headline counts merge queue + decisions"
-assert_contains "$out" "Merge queue (2)" "merge queue counts both approved PRs"
+assert_contains "$out" "7 decision(s) waiting" "headline counts merge queue + decisions"
+assert_contains "$out" "Merge queue (3)" "merge queue counts all three approved PRs"
 assert_contains "$out" "engine PR #101" "clean approved PR listed"
 assert_contains "$out" "#102" "approved-with-nits PR listed"
 assert_contains "$out" "[approved+nits]" "has-nits annotated"
 assert_contains "$out" "hold: fleet:needs-linux-smoke outstanding" "smoke hold sub-line"
+assert_contains "$out" "engine PR #106" "approved PR with a stale [WIP] title is listed"
+assert_contains "$out" "warn: title still carries [WIP] with no fleet:wip label" "wip-title/label mismatch is flagged"
+warn_lines=$(grep -c "warn: title still carries \[WIP\]" "$TMP/out.txt")
+assert_eq "$warn_lines" "1" "only the mismatched PR gets the warn line, not #101/#102"
 assert_contains "$out" "Decisions (4)" "decision bucket counts gated + design-blocked + plan hold + triage verdict"
 assert_contains "$out" "engine PR #103" "gated PR in decisions"
 assert_contains "$out" "gated self-config edit" "gated tag rendered"
@@ -135,7 +143,7 @@ assert_contains "$out" "untriaged (no state labels): 1" "untriaged cue counts la
 assert_contains "$out" "engine #203" "untriaged cue names the issue"
 assert_contains "$out" "merger" "feedback role newer than marker is unread"
 assert_absent  "$out" "role-worker" "feedback role older than marker is not unread"
-assert_contains "$out" "engine: 5 open PR(s) · 1 queued · 1 needs-plan" "status footer"
+assert_contains "$out" "engine: 6 open PR(s) · 1 queued · 1 needs-plan" "status footer"
 
 # --- drain thresholds: both arms of each cue --------------------------------
 
