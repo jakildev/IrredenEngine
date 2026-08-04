@@ -40,6 +40,13 @@ struct MetalRuntimeState {
     MTL::PixelFormat colorPixelFormat_ = MTL::PixelFormatBGRA8Unorm;
     MTL::PixelFormat depthPixelFormat_ = MTL::PixelFormatInvalid;
 
+    // The one MTL::Texture * here that untrackMetalTexture does NOT scrub: the
+    // map key is cleared at its own site, releaseImageAtomicScratchBuffer,
+    // because the entry owns the mapped MTL::Buffer and has to release it
+    // rather than just drop the reference. ~MetalTexture2DImpl calls it; only
+    // 2D textures ever reach the map (ensureImageAtomicScratchBuffer's sole
+    // caller is the 2D bindAsImage path), so the 3D destructor is complete
+    // without it.
     std::unordered_map<MTL::Texture *, MTL::Buffer *> imageAtomicScratchBuffers_;
     MTL::Buffer *currentImageAtomicScratch_ = nullptr;
 
@@ -284,6 +291,15 @@ void untrackMetalTexture(MTL::Texture *texture) {
         if (runtime.imageTextures_[unit] == texture) {
             runtime.imageTextures_[unit] = nullptr;
         }
+    }
+    // The render-target pair is sticky the same way the bind slots are: only a
+    // later bind clears it, and no bind is reachable from a destructor. Fall
+    // back to the default target rather than nulling in place — a bare null
+    // leaves useDefaultRenderTarget_ false with no color attachment, and
+    // createRenderEncoder then returns nullptr for every later pass, silently
+    // rendering nothing. Same scrub MetalFramebufferImpl::unbind() performs.
+    if (runtime.colorTexture_ == texture || runtime.depthTexture_ == texture) {
+        bindMetalDefaultRenderTarget();
     }
 }
 
