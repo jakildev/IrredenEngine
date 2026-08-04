@@ -19,11 +19,15 @@
 # Checks (HARD => bounce):
 #   - no `## Plan` comment exists on the issue
 #   - a deferred-approach phrase ("decide during implementation", "option A or B",
-#     "TBD", "likely suspects", "decide explicitly rather than by omission", an
-#     imperative-mood fork ("check/decide/determine whether X ... or Y" in one
-#     sentence), or an either/or fork named in an Approach/Gotchas section, ...)
+#     "TBD", "likely suspects", "decide explicitly rather than by omission", ...)
 #     — the "one approach, picked" violation (relaxed to a warning when the
 #     plan is an explicit investigation spike)
+#   - a fork named in an Approach/Gotchas section — either an imperative-mood
+#     one ("check/decide/determine whether X ... or Y" in one sentence) or an
+#     either/or one carrying a hedging modal. Both are scoped to those sections
+#     so prose that names alternatives without deferring a design choice
+#     (acceptance criteria enumerating outcomes, a settled decision tree) does
+#     not bounce a sound plan.
 #   - >= 2 of the core sections (Scope / Approach / Acceptance) absent
 # Checks (WARN => Opus weighs, no auto-bounce):
 #   - exactly one core section absent (format variance, not necessarily broken)
@@ -93,9 +97,10 @@ title = data.get("title", "")
 
 def sections(body):
     """Yield (heading text, body text) for each markdown heading in body,
-    depth 1-4. Used to scope the either/or fork check to Approach/Gotchas
-    prose rather than firing on an unrelated section (e.g. Acceptance
-    criteria enumerating pass/fail outcomes)."""
+    depth 1-4. Used to scope BOTH fork checks (either/or and imperative-mood)
+    to Approach/Gotchas prose rather than firing on an unrelated section (e.g.
+    Acceptance criteria enumerating pass/fail outcomes, or an architect-decision
+    section spelling out a settled decision tree)."""
     heads = list(re.finditer(r"(?im)^\s*#{1,4}\s+(.*)$", body))
     for i, m in enumerate(heads):
         start = m.end()
@@ -171,43 +176,60 @@ if re.search(r"(?i)\btbd\b", plan):
 if "likely suspects" in low:
     hits.append("likely suspects")
 
+# Both fork checks below are scoped to Approach/Gotchas prose and require an
+# "or"-named alternative in the SAME sentence as their trigger phrase.
+#
 # Imperative/interrogative-mood fork (#2824): a fork phrased as an
 # instruction to the implementer ("check whether the narrowed predicate
 # should apply there as well or only to issue claims") matches none of the
 # self-describing DEFER phrases above and reads as rigor, not deferral —
-# but it hands the same undecided A-or-B choice downstream. Require "or" in
-# the SAME sentence as the whether-verb so a plain confirmation ("check
-# whether the build is green") — no named alternative — does not fire.
+# but it hands the same undecided A-or-B choice downstream. Two narrowings
+# keep it off prose that names alternatives without deferring anything: the
+# "or" requirement clears a plain confirmation ("check whether the build is
+# green"), and the section scoping clears both a QA-style acceptance
+# criterion ("Check whether the fix resolves the crash or introduces a new
+# regression") and a settled decision tree stated elsewhere — corpus-measured
+# on `.fleet/plans/issue-1596.md`'s "Architect decision" section, whose "or"
+# is a parenthetical sub-clause of the thing being checked and whose branches
+# are both already decided ("If yes, bake that ... If not, add ONE resolve").
 FORK_WHETHER_RE = re.compile(r"\b(?:check|decide|determine)\s+whether\b", re.IGNORECASE)
-for sentence in sentences(plan):
-    if FORK_WHETHER_RE.search(sentence) and re.search(r"\bor\b", sentence, re.IGNORECASE):
-        hits.append('imperative-mood fork ("...whether X ... or Y" in one sentence)')
-        break
 
-# either/or fork named in Approach/Gotchas prose — scoped to those sections
-# so an either/or naming test *outcomes* (e.g. in Acceptance criteria) does
-# not false-positive. Also requires a hedging modal ("should"/"could"/...) in
-# the same sentence: an either/or *describing already-settled branches* (a
-# decision tree with a defined follow-up per branch, or a rejected
-# alternative's downside in a "why not X" aside) is declarative, not a live
-# fork — corpus-measured false positives on `.fleet/plans/issue-2197.md`
-# ("this is either already-planned... or the re-plan state") and
-# `issue-2540.md` ("Either every parallel vector needs a phantom slot 0
-# ..., or every index site needs a -1 shift") had no modal; the genuine
-# #2820 defect reads "...should apply there as well or only to...".
+# either/or fork named in Approach/Gotchas prose. Also requires a hedging
+# modal ("should"/"could"/...) in the same sentence: an either/or *describing
+# already-settled branches* (a decision tree with a defined follow-up per
+# branch, or a rejected alternative's downside in a "why not X" aside) is
+# declarative, not a live fork — corpus-measured false positives on
+# `.fleet/plans/issue-2197.md` ("this is either already-planned... or the
+# re-plan state") and `issue-2540.md` ("Either every parallel vector needs a
+# phantom slot 0 ..., or every index site needs a -1 shift") had no modal;
+# the genuine #2820 defect reads "...should apply there as well or only to...".
 EITHER_OR_RE = re.compile(r"\beither\b", re.IGNORECASE)
 MODAL_RE = re.compile(r"\b(?:should|could|would|might|may|ought)\b", re.IGNORECASE)
-for heading, body in sections(plan):
+OR_RE = re.compile(r"\bor\b", re.IGNORECASE)
+
+
+def is_design_section(heading):
+    """True for the Approach/Design/Implementation/Gotchas prose where a live
+    design fork belongs — the only sections the fork checks read."""
     hl = heading.lower()
-    if any(k in hl for k in ("approach", "design", "implementation")) or "gotcha" in hl:
-        for sentence in sentences(body):
-            if (EITHER_OR_RE.search(sentence) and re.search(r"\bor\b", sentence, re.IGNORECASE)
-                    and MODAL_RE.search(sentence)):
-                hits.append("either/or fork named in Approach/Gotchas section")
-                break
-        else:
+    return any(k in hl for k in ("approach", "design", "implementation")) or "gotcha" in hl
+
+
+fork_whether_hit = either_or_hit = False
+for heading, body in sections(plan):
+    if not is_design_section(heading):
+        continue
+    for sentence in sentences(body):
+        if not OR_RE.search(sentence):
             continue
-        break
+        if FORK_WHETHER_RE.search(sentence):
+            fork_whether_hit = True
+        if EITHER_OR_RE.search(sentence) and MODAL_RE.search(sentence):
+            either_or_hit = True
+if fork_whether_hit:
+    hits.append('imperative-mood fork ("...whether X ... or Y" in one sentence)')
+if either_or_hit:
+    hits.append("either/or fork named in Approach/Gotchas section")
 
 if hits:
     msg = "deferred-approach phrase(s): " + ", ".join(sorted(set(hits)))
