@@ -797,6 +797,14 @@ struct FrameDataVoxelToCanvas {
     // partition block (offset 208) so every prior offset — and every prefix-
     // reading shader — is unchanged.
     ivec4 overflowScratchLayout_ = ivec4(0, 0, 0, 0);
+    // Overflow-entry canonical-sort step descriptor (#2479), read only by
+    // c_per_axis_overflow_sort between the mode-3 append and the overflow
+    // draw: .x = pass mode (0 sentinel-fill, 1 fused local sort, 2 global
+    // bitonic step, 3 fused local tail), .y = bitonic stage size k,
+    // .z = stride j (mode 2 only). std140-appended (offset 224) so every
+    // prior offset — and every prefix-declaring binding-7 shader — is
+    // unchanged.
+    ivec4 overflowSortStep_ = ivec4(0, 0, 0, 0);
 };
 
 struct FrameDataTrixelToTrixel {
@@ -1085,9 +1093,15 @@ static_assert(
     "stays unchanged"
 );
 static_assert(
-    sizeof(FrameDataVoxelToCanvas) == 224,
+    offsetof(FrameDataVoxelToCanvas, overflowSortStep_) == 224,
+    "FrameDataVoxelToCanvas::overflowSortStep_ (#2479) must land at offset 224 "
+    "(appended after the #2333 overflow layout) — c_per_axis_overflow_sort "
+    "declares it there and every prefix-reading shader stays unchanged"
+);
+static_assert(
+    sizeof(FrameDataVoxelToCanvas) == 240,
     "FrameDataVoxelToCanvas size must mirror its std140 GLSL block "
-    "(overflowScratchLayout_ ivec4 append: 208 + 16 = 224)"
+    "(overflowSortStep_ ivec4 append: 224 + 16 = 240)"
 );
 
 struct FrameDataSun {
