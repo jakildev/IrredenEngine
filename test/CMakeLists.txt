@@ -62,6 +62,7 @@ add_executable(IrredenEngineTest
   render/gpu_compute_dispatch_test.cpp
   render/opengl_shader_include_test.cpp
   render/per_canvas_light_scope_test.cpp
+  render/perf_stats_overlay_reset_test.cpp
   render/picking_aim_iso_pixel_test.cpp
   render/picking_face_normal_test.cpp
   render/sun_direction_test.cpp

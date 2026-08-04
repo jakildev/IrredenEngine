@@ -146,7 +146,19 @@ template <> struct System<PERF_STATS_OVERLAY> {
     }
 
     static SystemId create() {
-        return registerSystem<PERF_STATS_OVERLAY, C_PerfStatsOverlayTag>("PerfStatsOverlay");
+        SystemId id = registerSystem<PERF_STATS_OVERLAY, C_PerfStatsOverlayTag>("PerfStatsOverlay");
+        // textEntity_ is not C_Persistent, so IREntity::resetGameplay() destroys
+        // it (destroyAllExceptPreserved destroys per-entity via destroyEntity,
+        // which fires this hook). Null the cached id so the lazy-respawn guard
+        // in endTick rebuilds it on next use instead of reaching through a dead
+        // handle.
+        auto *params = getSystemParams<System<PERF_STATS_OVERLAY>>(id);
+        IREntity::getEntityManager().registerPreDestroyHook([params](IREntity::EntityId destroyed) {
+            if (params->textEntity_ == destroyed) {
+                params->textEntity_ = IREntity::kNullEntity;
+            }
+        });
+        return id;
     }
 
   private:
