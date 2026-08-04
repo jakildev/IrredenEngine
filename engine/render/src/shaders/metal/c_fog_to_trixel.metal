@@ -39,10 +39,13 @@ struct FogObserverData {
     // geometric cross-section cap needs no external occupancy source, so
     // the lane is unread (kept for the std140/Metal layout).
     int _fogObserverPad0;
-    // Per-circle height penalty (#2260), appended after the count so the
-    // existing fields keep their offsets (float4 re-aligns to 16). heights[i] =
-    // (observerZ, zCost, 0, 0); the reveal folds zCost * |z - observerZ| into
-    // the radial distance. zCost 0 (the default) → byte-identical to pre-#2260.
+    // Per-circle height penalty (#2260, generalized by #2557), appended after
+    // the count so the existing fields keep their offsets (float4 re-aligns to
+    // 16). heights[i] = (observerZ, zCostUp, zCostDown, freeBand); the reveal
+    // folds zCostUp * max(dzUp - freeBand, 0) + zCostDown *
+    // max(dzDown - freeBand, 0) into the radial distance, where
+    // dzUp = max(observerZ - z, 0) and dzDown = max(z - observerZ, 0). All-zero
+    // (the default) → byte-identical to pre-#2260.
     float4 visionCircleHeights[kMaxFogVisionCircles];
 };
 
@@ -147,15 +150,22 @@ kernel void c_fog_to_trixel(
         // per-pixel reveal here and the voxel-object edge there trace the same
         // analytic curve (#2102). worldPerPixel floors the rim at ~1 canvas px.
         for (int i = 0; i < fogObservers.visionCircleCount; ++i) {
-            // #2260 height-penalized reveal — mirror of the GLSL twin: fold this
-            // pixel's world-Z penalty (zCost * |z - observerZ|) into the radial
+            // #2260 height-penalized reveal, generalized to an asymmetric,
+            // penalty-free-banded curve by #2557 — mirror of the GLSL twin:
+            // fold this pixel's world-Z penalty (zCostUp * max(dzUp - freeBand,
+            // 0) + zCostDown * max(dzDown - freeBand, 0)) into the radial
             // distance so matter far above/below the observer's height reveals
-            // less at the same XY. The 2D reveal is inlined (not a shared
+            // less at the same XY, asymmetrically and with a free band around
+            // the observer's height. The 2D reveal is inlined (not a shared
             // ir_iso_common Z helper) to keep the cardinal fast path byte-
-            // identical (#1944). zCost 0 → distEff == the plain 2D length.
+            // identical (#1944). All-zero heights → distEff == the plain 2D
+            // length.
             const float4 heights = fogObservers.visionCircleHeights[i];
+            const float dzUp = max(heights.x - pos3D.z, 0.0f);
+            const float dzDown = max(pos3D.z - heights.x, 0.0f);
             const float distEff = length(pos3D.xy - fogObservers.visionCircles[i].xy) +
-                heights.y * abs(pos3D.z - heights.x);
+                heights.y * max(dzUp - heights.w, 0.0f) +
+                heights.z * max(dzDown - heights.w, 0.0f);
             const float aa = max(fogObservers.visionCircles[i].w, worldPerPixel);
             const float reveal = 1.0f - smoothstep(
                 fogObservers.visionCircles[i].z - aa,
