@@ -612,11 +612,11 @@ Do the work, then exit cleanly:
      jump straight to step 6 ("Work it"); the task is already claimed
      via the molecule. After committing, run
      `fleet-claim molecule advance <your-worktree-name> <issue-#> done pr=<PR-URL> commit=<sha>`
-     (add `--repo game` for game-side molecules — `--repo` is a
-     global flag parsed before the subcommand). For cross-repo
-     molecules, cd into your game twin worktree before
-     resuming so `commit-and-push` targets the right repo (see step
-     4 for the cd path).
+     (`--repo` is a no-op here — `advance` is keyed on `<agent>` alone;
+     see [`FLEET.md`](../../docs/agents/FLEET.md) § "Cross-repo molecules"
+     for the exact per-subcommand table). For cross-repo molecules, cd
+     into your game twin worktree before resuming so `commit-and-push`
+     targets the right repo (see step 4 for the cd path).
    - **Stdout is empty** — proceed with normal pickup below.
 
    **Normal pickup (no active molecule)** — pick from either queue.
@@ -722,7 +722,11 @@ Do the work, then exit cleanly:
    forms: see § Cross-repo model above. **Always pass the issue
    number**, and pass your worktree basename (`pool-1` … `pool-9`)
    as the agent name so it's visible in `fleet-claim list`. Mirror
-   `--repo game` in `release` / `release-stack` calls later.
+   `--repo game` in a plain `release` call later — it's load-bearing
+   there (`slugify` reads the flag directly). A `release-stack` call
+   auto-adopts the recorded namespace when `--repo` is omitted (see
+   [`FLEET.md`](../../docs/agents/FLEET.md) § "Cross-repo molecules"),
+   so passing it is optional but still matches the record.
 
    - **Exit 0** — you own it. Proceed.
    - **Exit 1 (already taken)** — go back to step 3, pick another.
