@@ -10,6 +10,14 @@
 # 14 / 9). These tests pin both halves of the fix: the guard makes a partial
 # stage abort with no tally, and the wrapper makes correct staging the easy path.
 #
+# The last block covers interpreter dispatch (#2848): the wrapper used to exec
+# the staged suite, which only works for a self-executing script. The 32
+# test_*.py suites carry no shebang — run_all.sh supplies python3 — so the shell
+# interpreted them and the first prose line of the module docstring came back as
+# a syntax error, reported as a *staging* failure, the one thing that had gone
+# right. Dispatch by extension needs a second tally parser, so those tests pin
+# unittest's arithmetic alongside it.
+#
 # Purely local: no network, no ~/.fleet, no gh.
 
 set -euo pipefail
@@ -241,5 +249,171 @@ run "$WRAPPER" "$NOTALLY" HEAD
 assert_eq "$RC" "2" "no tally exits 2 rather than inventing a result"
 assert_contains "$OUT" "printed no tally" "the no-tally error names the cause"
 rm -f "$NOTALLY"
+
+# --- interpreter dispatch: .sh under bash, .py under python3 (#2848) ---------
+echo "--- a .py suite runs under python3 and reports a real verdict ---"
+# Same untracked-marker discriminator as the bash MEANINGFUL fixture above, and
+# for the same reason: `git archive <ref>` only emits tracked content, so the
+# stage cannot hold it for any ref while the working tree always can.
+PYMARK="$SCRIPT_DIR/fleet-zz-tmp-added-by-fix-2848"
+STRAYS+=("$PYMARK")
+: > "$PYMARK"
+PYMEAN="$SCRIPT_DIR/tests/test_zz_tmp_meaningful_2848.py"
+STRAYS+=("$PYMEAN")
+cat > "$PYMEAN" <<'FIXTURE'
+"""A docstring whose first prose line carries (parentheses) and "quotes".
+
+That is the shape the shell choked on when this file was exec'd rather than
+handed to python3 — the #2848 symptom, reproduced deliberately.
+"""
+import unittest
+from pathlib import Path
+
+_FLEET = Path(__file__).parent.parent
+
+
+class Control(unittest.TestCase):
+    def test_marker_the_fix_adds_is_present(self):
+        self.assertTrue((_FLEET / "fleet-zz-tmp-added-by-fix-2848").is_file())
+
+    def test_non_regression_holds_on_both_refs(self):
+        self.assertEqual("kept", "kept")
+
+
+unittest.main()
+FIXTURE
+run "$WRAPPER" "$PYMEAN" HEAD
+assert_eq "$RC" "0" "a meaningful .py suite exits 0"
+assert_contains "$OUT" "Ran 2 tests" "the suite reaches python3 rather than the shell"
+assert_absent "$OUT" "syntax error" "the shell never interprets the Python file (#2848)"
+assert_contains "$OUT" "MEANINGFUL: 1 of 2 assertions fail" "unittest's trailer is parsed into real counts"
+assert_contains "$OUT" "(1 + 1 = 2, the full suite.)" "the PR-body line shows its own arithmetic"
+rm -f "$PYMEAN" "$PYMARK"
+
+echo "--- a .py suite that cannot distinguish the ref is reported VACUOUS ---"
+PYVAC="$SCRIPT_DIR/tests/test_zz_tmp_vacuous_2848.py"
+STRAYS+=("$PYVAC")
+cat > "$PYVAC" <<'FIXTURE'
+import unittest
+
+
+class Control(unittest.TestCase):
+    def test_tautology_holds_on_any_ref(self):
+        self.assertEqual("a", "a")
+
+
+unittest.main()
+FIXTURE
+run "$WRAPPER" "$PYVAC" HEAD
+assert_eq "$RC" "1" "a vacuous .py suite exits 1"
+assert_contains "$OUT" "VACUOUS" "the vacuous verdict names itself"
+rm -f "$PYVAC"
+
+echo "--- unittest's tally: errors are failures, skips and expected failures are not ---"
+PYMIX="$SCRIPT_DIR/tests/test_zz_tmp_tally_2848.py"
+STRAYS+=("$PYMIX")
+cat > "$PYMIX" <<'FIXTURE'
+import unittest
+
+
+class Control(unittest.TestCase):
+    def test_pass_a(self):
+        self.assertTrue(True)
+
+    def test_pass_b(self):
+        self.assertTrue(True)
+
+    def test_plain_failure(self):
+        self.assertEqual(1, 2)
+
+    def test_error(self):
+        raise RuntimeError("an exception distinguishes the trees too")
+
+    @unittest.skip("a skip neither passed nor failed")
+    def test_skipped(self):
+        pass
+
+    @unittest.expectedFailure
+    def test_expected_failure(self):
+        self.assertEqual(1, 2)
+
+
+unittest.main()
+FIXTURE
+run "$WRAPPER" "$PYMIX" HEAD
+# 6 ran: 1 failure + 1 error = 2 fail, 1 skip, and 3 pass (2 clean + the
+# expected failure). `expected failures=` ends in the same word as `failures=`,
+# so a needle without the wrapper's anchor scores that expected one as real.
+assert_contains "$OUT" "MEANINGFUL: 2 of 6 assertions fail" "an error counts with the failures, an expected failure does not"
+assert_contains "$OUT" "with **1** skipped. (3 + 2 + 1 = 6, the full suite.)" "the PR-body line accounts for the skip instead of calling it a pass"
+rm -f "$PYMIX"
+
+echo "--- unittest's tally: an unexpected success counts with the failures ---"
+PYUNEXP="$SCRIPT_DIR/tests/test_zz_tmp_unexpected_2848.py"
+STRAYS+=("$PYUNEXP")
+cat > "$PYUNEXP" <<'FIXTURE'
+import unittest
+
+
+class Control(unittest.TestCase):
+    def test_pass(self):
+        self.assertTrue(True)
+
+    def test_plain_failure(self):
+        self.assertEqual(1, 2)
+
+    @unittest.expectedFailure
+    def test_unexpectedly_passes(self):
+        self.assertEqual(1, 1)
+
+
+unittest.main()
+FIXTURE
+run "$WRAPPER" "$PYUNEXP" HEAD
+# 3 ran: 1 plain failure + 1 unexpected success (an expectedFailure test that
+# passed anyway — a real distinction between the trees) = 2 fail, 1 pass.
+# Exercises the `unittest_count 'unexpected successes' ...` branch.
+assert_contains "$OUT" "MEANINGFUL: 2 of 3 assertions fail" "an unexpected success counts with the failures"
+rm -f "$PYUNEXP"
+
+echo "--- a suite that runs zero assertions is a setup failure, not VACUOUS ---"
+PYEMPTY="$SCRIPT_DIR/tests/test_zz_tmp_empty_2848.py"
+STRAYS+=("$PYEMPTY")
+cat > "$PYEMPTY" <<'FIXTURE'
+import unittest
+
+unittest.main()
+FIXTURE
+run "$WRAPPER" "$PYEMPTY" HEAD
+assert_eq "$RC" "2" "zero assertions exits 2 rather than reporting a verdict"
+assert_contains "$OUT" "reported 0 assertions" "the empty-run error names the cause"
+assert_absent "$OUT" "VACUOUS" "an empty run never claims the suite failed to distinguish the refs"
+rm -f "$PYEMPTY"
+
+echo "--- the no-tally diagnostic names the interpreter it used ---"
+PYABORT="$SCRIPT_DIR/tests/test_zz_tmp_abort_2848.py"
+STRAYS+=("$PYABORT")
+cat > "$PYABORT" <<'FIXTURE'
+import this_module_does_not_exist_2848
+
+print(this_module_does_not_exist_2848)
+FIXTURE
+run "$WRAPPER" "$PYABORT" HEAD
+assert_eq "$RC" "2" "a .py suite that aborts before summarizing exits 2"
+assert_contains "$OUT" "Ran as: python3" "the diagnostic names the interpreter, so a dispatch fault is legible"
+assert_contains "$OUT" "needs --include" "the diagnostic lists the causes rather than pinning it on staging"
+rm -f "$PYABORT"
+
+echo "--- an unsupported suite type names itself, not the staging ---"
+WEIRD="$SCRIPT_DIR/tests/test_zz_tmp_unsupported_2848.rb"
+STRAYS+=("$WEIRD")
+echo 'puts "never reached"' > "$WEIRD"
+run "$WRAPPER" "$WEIRD" HEAD
+assert_eq "$RC" "2" "an unsupported suite type exits 2"
+assert_contains "$OUT" "unsupported suite type" "the error names the suite type as the cause"
+# The refusal lands before mktemp/git archive, so staging cannot be misread as
+# the culprit.
+assert_absent "$OUT" "staged scripts/fleet" "the refusal comes before staging, so staging is never implicated"
+rm -f "$WEIRD"
 
 summarize "fleet-positive-control tests"

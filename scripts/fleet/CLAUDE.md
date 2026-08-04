@@ -83,7 +83,12 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   (#2713: a mis-stage read 2 passed / 21 failed where the truth was 14 / 9,
   inflating the fix's apparent coverage). `fleet-positive-control <test-file>
   <ref>` stages the whole directory with `git archive`, reports MEANINGFUL vs
-  VACUOUS, and emits the test-plan line with its arithmetic shown.
+  VACUOUS, and emits the test-plan line with its arithmetic shown. It drives
+  both suite types — `.sh` under bash, `.py` under python3, dispatched on the
+  extension exactly as `run_all.sh` does, since neither carries a shebang
+  (#2848) — and reads each one's own summary line for the counts, so a suite
+  that prints none, or that runs zero assertions, is a setup failure rather
+  than a verdict.
   `require_fleet_lib_dir` in `lib_assert.sh` is the backstop for controls still
   run by hand — it fires automatically for suites that set `SCRIPT_DIR` before
   sourcing.
