@@ -829,9 +829,9 @@ Always exits 0 (safe to include in a parallel tool batch with
   It is now (or remains) marked `fleet:in-progress`. Skip normal
   issue pickup and jump straight to the role's work step. If the
   issue's PR is already open, `fleet-claim stack-pr-state
-  <your-worktree-name>` (add `--repo game` for game-side molecules
-  — `--repo` is a global flag parsed before the subcommand) shows
-  its URL and branch. Check out the issue's branch and continue
+  <your-worktree-name>` shows its URL and branch (this one keys on
+  `<agent>` alone — `--repo` changes nothing, see "Cross-repo
+  molecules" below). Check out the issue's branch and continue
   committing normally — one issue per branch means the branch
   itself is the per-issue anchor, so no special commit-subject
   prefix is required.
@@ -855,12 +855,30 @@ Always exits 0 (safe to include in a parallel tool batch with
   instead of `done` and surface the failure to the human before
   continuing.
 
-  **Cross-repo molecules**: if the in-flight molecule's issues live
-  in the game repo (claimed with `--repo game`), all
-  `fleet-claim molecule advance/complete` calls must include
-  `--repo game` too. Cd into your game twin worktree (same `pool-<N>`
-  basename under the game root) before
-  resuming so `commit-and-push` targets the right repo.
+  **Cross-repo molecules**: `fleet-claim stack` stamps its namespace
+  into the record it writes (`_stack_<agent>/ns` plus a `repo:` line in
+  the molecule, #2857), so you do **not** re-supply `--repo` to keep the
+  stack straight across iterations. `molecule resume` prints the
+  namespace on stderr — that is how a fresh context learns which repo a
+  bare issue id belongs to, since every game id is also a live engine
+  id. Then cd into that repo's twin worktree (same `pool-<N>` basename)
+  before resuming so `commit-and-push` targets the right repo.
+
+  Do not read the four no-op `--repo` cases as evidence the flag never
+  matters here — exactly one is load-bearing:
+
+  | subcommand | does `--repo` change anything? |
+  |---|---|
+  | `molecule resume` / `show` / `list`, `stack-pr-state` | **No** — keyed by `<agent>` alone |
+  | `molecule advance` | **No** — keyed by `<agent>`; warns if the flag contradicts the record |
+  | `molecule complete` → `release-stack` | **Yes** — it re-slugifies the claims to release |
+
+  `release-stack` adopts the recorded namespace when `--repo` is absent
+  and **refuses** (exit 2, releasing and archiving nothing) when an
+  explicit `--repo` contradicts the record. It has to refuse rather than
+  guess: the releases and the archive are the same call, so a wrong
+  namespace orphans every claim *and* destroys the record they could be
+  rebuilt from (#2857).
 
 - **Stdout is empty** — nothing to resume. Either no molecule exists
   for this agent (overwhelming common case) or a molecule exists but
@@ -868,8 +886,10 @@ Always exits 0 (safe to include in a parallel tool batch with
   you which: `"no molecule for agent: ..."` for the former, or
   `"molecule fully complete (no remaining tasks)"` for the latter.
   If the latter, also run
-  `fleet-claim molecule complete <your-worktree-name>` (add
-  `--repo game` for game-side) to archive it. The complete command
+  `fleet-claim molecule complete <your-worktree-name>` to archive it —
+  it resolves the namespace from the record, so `--repo game` is
+  optional on a game-side molecule and must not contradict it (see
+  "Cross-repo molecules" above). The complete command
   is itself idempotent (exits 0 with a stderr note if there's
   nothing to archive), so calling it speculatively after every
   empty resume is also safe. Either way, proceed with the normal

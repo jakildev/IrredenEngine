@@ -97,6 +97,16 @@ __remove_claim() {
 # Parsed BEFORE the subcommand so it doesn't collide with cleanup's own
 # `--repo <owner/repo>` flag (cleanup parses --repo args after its own
 # subcommand name, so they're scoped to that subcommand).
+#
+# `stack` STAMPS the namespace into its own record (`_stack_<agent>/ns` plus a
+# `repo:` line in the molecule), so the stack/molecule subcommands do not depend
+# on the caller re-passing --repo on every later invocation. `release-stack`
+# adopts the recorded namespace when --repo is absent and REFUSES on a
+# contradiction — before it releases or archives anything. Passing --repo to
+# `molecule advance` / `show` / `list` / `stack-pr-state` changes nothing (those
+# key on <agent> alone); advance warns when the flag contradicts the record.
+# Pre-#2857 records carry no namespace and keep the old caller-supplied
+# behavior.
 
 REPO_NS=""
 while [[ $# -gt 0 && "$1" == --* ]]; do
@@ -220,6 +230,15 @@ slugify() {
     else
         echo "$n"
     fi
+}
+
+# _ns_token
+#   Canonical on-disk spelling of the active namespace: the `--repo` token, or
+#   the literal "engine" for the default (unprefixed) namespace, which slugify
+#   leaves unprefixed. Spelling the default explicitly is what makes a recorded
+#   namespace distinguishable from a pre-#2857 record, which has no such field.
+_ns_token() {
+    echo "${REPO_NS:-engine}"
 }
 
 # --- cross-machine GitHub-label lock --------------------------------------
@@ -3554,6 +3573,9 @@ cmd_stack() {
     mkdir -p "$stack_dir"
     printf '%s\n' "${tasks[@]}" > "$stack_dir/tasks"
     date +%s > "$stack_dir/created"
+    # `tasks` holds RAW ids; the namespace lives only in the claim-dir slugs, so
+    # stamp it here too or release-stack has no way to rebuild them (#2857).
+    _ns_token > "$stack_dir/ns"
 
     molecule_write_initial "$agent" "${tasks[@]}"
 
@@ -3569,6 +3591,13 @@ cmd_release_stack() {
         echo "no stack claim for agent: $agent"
         molecule_archive "$agent"
         return 0
+    fi
+
+    # Resolve the namespace BEFORE the releases and the archive below: those two
+    # are the same call, so a wrong namespace here orphans every claim AND
+    # destroys the only record they could be rebuilt from (#2857).
+    if ! _adopt_recorded_ns release-stack "$agent"; then
+        return 2
     fi
 
     local released=0
@@ -3694,6 +3723,61 @@ molecule_file() {
     echo "$MOLECULES_DIR/$1.yml"
 }
 
+# _molecule_repo_ns <agent>
+#   Echo the namespace this agent's stack was claimed under, or "" when the
+#   record predates the field. The stack dir is authoritative (stamped at claim
+#   time); the molecule's `repo:` meta is the fallback for a stack dir already
+#   swept.
+#
+#   Why the namespace has to live in the RECORD (#2857): $MOLECULES_DIR and
+#   $CLAIMS_DIR/_stack_<agent>/tasks both key on RAW issue ids, so only
+#   $CLAIMS_DIR's slug carries the namespace. Every game id is also a live
+#   engine id, so a raw id never self-disambiguates — and release-stack's
+#   `cmd_release` re-slugifies from REPO_NS. A stack outlives the process that
+#   claimed it, so the namespace cannot be an argument the next caller supplies
+#   from memory.
+_molecule_repo_ns() {
+    local agent="$1"
+    local ns_file="$CLAIMS_DIR/_stack_${agent}/ns"
+    if [[ -f "$ns_file" ]]; then
+        head -1 "$ns_file"
+        return 0
+    fi
+    local mol
+    mol=$(molecule_file "$agent")
+    if [[ -f "$mol" ]]; then
+        sed -n 's/^repo:[[:space:]]*//p' "$mol" | head -1
+    fi
+}
+
+# _adopt_recorded_ns <cmd-name> <agent>
+#   Reconcile the caller's --repo against the namespace recorded for <agent>.
+#   Sets REPO_NS from the record when the caller passed nothing. Returns 2 on a
+#   genuine conflict so the caller can refuse before mutating anything.
+_adopt_recorded_ns() {
+    local cmd_name="$1" agent="$2"
+    local rec_ns
+    rec_ns=$(_molecule_repo_ns "$agent")
+    # No recorded namespace (pre-#2857 record) — keep legacy behavior exactly.
+    [[ -n "$rec_ns" ]] || return 0
+    [[ "$rec_ns" != "$(_ns_token)" ]] || return 0
+
+    if [[ -z "$REPO_NS" ]]; then
+        if [[ "$rec_ns" == "engine" ]]; then
+            REPO_NS=""
+        else
+            REPO_NS="$rec_ns"
+        fi
+        echo "fleet-claim ${cmd_name}: agent ${agent}'s stack was claimed under namespace '${rec_ns}'; adopting it (no --repo passed)" >&2
+        return 0
+    fi
+
+    local corrective="--repo ${rec_ns}"
+    [[ "$rec_ns" == "engine" ]] && corrective="no --repo flag"
+    echo "fleet-claim ${cmd_name}: refusing — agent ${agent}'s stack was claimed under namespace '${rec_ns}', but --repo says '$(_ns_token)'. Nothing released; the stack record and molecule are preserved. Re-run with ${corrective}." >&2
+    return 2
+}
+
 molecule_archive_dir() {
     echo "$MOLECULES_DIR/done"
 }
@@ -3716,6 +3800,7 @@ molecule_write_initial() {
         echo "agent: $agent"
         echo "created: $created"
         echo "branch: $branch"
+        echo "repo: $(_ns_token)"
         echo "tasks:"
         for tid in "${tasks[@]}"; do
             echo "  - id: $tid"
@@ -3806,7 +3891,9 @@ def parse(path):
 
 def emit(path, meta, tasks, notes):
     out = []
-    for k in ('name', 'agent', 'created', 'branch'):
+    # `repo` must survive every rewrite — it is the namespace release-stack
+    # resolves the claim slugs from when the caller omits --repo (#2857).
+    for k in ('name', 'agent', 'created', 'branch', 'repo'):
         if k in meta:
             out.append(f"{k}: {meta[k]}")
     out.append("tasks:")
@@ -3897,7 +3984,11 @@ cmd_molecule_list() {
         found=1
         local agent
         agent=$(basename "$file" .yml)
-        echo "molecule: $agent  ($file)"
+        # `load` drops meta rows below, so annotate the namespace here — the
+        # task ids it prints are raw and collide across repos (#2857).
+        local ns
+        ns=$(_molecule_repo_ns "$agent")
+        echo "molecule: $agent  [${ns:-namespace unrecorded}]  ($file)"
         local task_line
         while IFS= read -r line; do
             case "$line" in
@@ -3949,6 +4040,15 @@ cmd_molecule_resume() {
         echo "no molecule for agent: $agent (nothing to resume)" >&2
         return 0
     fi
+    # Stdout stays a bare issue id — authoring roles discriminate on it. The
+    # namespace goes to stderr, because a resumed cross-repo molecule otherwise
+    # hands a fresh context an id with no hint which repo it belongs to and
+    # every game id is also a live engine id (#2857).
+    local rec_ns
+    rec_ns=$(_molecule_repo_ns "$agent")
+    if [[ -n "$rec_ns" ]]; then
+        echo "molecule namespace: ${rec_ns} (pass $( [[ "$rec_ns" == engine ]] && echo "no --repo" || echo "--repo ${rec_ns}" ) to fleet-claim; cd to that repo's worktree)" >&2
+    fi
     molecule_python resume "$file"
 }
 
@@ -3962,6 +4062,15 @@ cmd_molecule_advance() {
     if [[ ! -f "$file" ]]; then
         echo "no molecule for agent: $agent" >&2
         return 2
+    fi
+    # advance keys on <agent> alone, so --repo cannot change what it writes.
+    # Say so when the caller passes one that contradicts the record, rather than
+    # letting them learn "the flag is decorative" and then drop it at
+    # `molecule complete`, where it IS load-bearing (#2857).
+    local rec_ns
+    rec_ns=$(_molecule_repo_ns "$agent")
+    if [[ -n "$REPO_NS" && -n "$rec_ns" && "$rec_ns" != "$(_ns_token)" ]]; then
+        echo "fleet-claim molecule advance: WARN --repo says '$(_ns_token)' but agent ${agent}'s stack is namespace '${rec_ns}'; advance is keyed by agent only, so the flag changes nothing here" >&2
     fi
     molecule_python advance "$file" "$task_id" "$new_state" "$@"
 }
