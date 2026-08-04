@@ -19,8 +19,11 @@
 # Checks (HARD => bounce):
 #   - no `## Plan` comment exists on the issue
 #   - a deferred-approach phrase ("decide during implementation", "option A or B",
-#     "TBD", "likely suspects", ...) — the "one approach, picked" violation
-#     (relaxed to a warning when the plan is an explicit investigation spike)
+#     "TBD", "likely suspects", "decide explicitly rather than by omission", an
+#     imperative-mood fork ("check/decide/determine whether X ... or Y" in one
+#     sentence), or an either/or fork named in an Approach/Gotchas section, ...)
+#     — the "one approach, picked" violation (relaxed to a warning when the
+#     plan is an explicit investigation spike)
 #   - >= 2 of the core sections (Scope / Approach / Acceptance) absent
 # Checks (WARN => Opus weighs, no auto-bounce):
 #   - exactly one core section absent (format variance, not necessarily broken)
@@ -88,6 +91,25 @@ data = json.loads(out)
 title = data.get("title", "")
 
 
+def sections(body):
+    """Yield (heading text, body text) for each markdown heading in body,
+    depth 1-4. Used to scope the either/or fork check to Approach/Gotchas
+    prose rather than firing on an unrelated section (e.g. Acceptance
+    criteria enumerating pass/fail outcomes)."""
+    heads = list(re.finditer(r"(?im)^\s*#{1,4}\s+(.*)$", body))
+    for i, m in enumerate(heads):
+        start = m.end()
+        end = heads[i + 1].start() if i + 1 < len(heads) else len(body)
+        yield m.group(1).strip(), body[start:end]
+
+
+def sentences(text):
+    # Split on ". "/"! "/"? " (punctuation + whitespace), NOT bare "." — a
+    # bare-period split would break mid-sentence on any inline filename
+    # ("foo.cpp"), which plan prose is full of.
+    return re.split(r"(?<=[.!?])\s+", text)
+
+
 def is_plan_heading(body):
     # The plan comment's first line is "## Plan" or "## Plan: <title>" —
     # anchored so a "## Plan review — ..." verdict comment (same leading
@@ -141,12 +163,52 @@ DEFER = [
     "decide during investigation", "confirm during investigation",
     "confirm during design", "decide later", "decide in the pr",
     "figure out during", "option a or b", "to be decided",
+    "decide explicitly rather than by omission",
 ]
 hits = [p for p in DEFER if p in low]
 if re.search(r"(?i)\btbd\b", plan):
     hits.append("TBD")
 if "likely suspects" in low:
     hits.append("likely suspects")
+
+# Imperative/interrogative-mood fork (#2824): a fork phrased as an
+# instruction to the implementer ("check whether the narrowed predicate
+# should apply there as well or only to issue claims") matches none of the
+# self-describing DEFER phrases above and reads as rigor, not deferral —
+# but it hands the same undecided A-or-B choice downstream. Require "or" in
+# the SAME sentence as the whether-verb so a plain confirmation ("check
+# whether the build is green") — no named alternative — does not fire.
+FORK_WHETHER_RE = re.compile(r"\b(?:check|decide|determine)\s+whether\b", re.IGNORECASE)
+for sentence in sentences(plan):
+    if FORK_WHETHER_RE.search(sentence) and re.search(r"\bor\b", sentence, re.IGNORECASE):
+        hits.append('imperative-mood fork ("...whether X ... or Y" in one sentence)')
+        break
+
+# either/or fork named in Approach/Gotchas prose — scoped to those sections
+# so an either/or naming test *outcomes* (e.g. in Acceptance criteria) does
+# not false-positive. Also requires a hedging modal ("should"/"could"/...) in
+# the same sentence: an either/or *describing already-settled branches* (a
+# decision tree with a defined follow-up per branch, or a rejected
+# alternative's downside in a "why not X" aside) is declarative, not a live
+# fork — corpus-measured false positives on `.fleet/plans/issue-2197.md`
+# ("this is either already-planned... or the re-plan state") and
+# `issue-2540.md` ("Either every parallel vector needs a phantom slot 0
+# ..., or every index site needs a -1 shift") had no modal; the genuine
+# #2820 defect reads "...should apply there as well or only to...".
+EITHER_OR_RE = re.compile(r"\beither\b", re.IGNORECASE)
+MODAL_RE = re.compile(r"\b(?:should|could|would|might|may|ought)\b", re.IGNORECASE)
+for heading, body in sections(plan):
+    hl = heading.lower()
+    if any(k in hl for k in ("approach", "design", "implementation")) or "gotcha" in hl:
+        for sentence in sentences(body):
+            if (EITHER_OR_RE.search(sentence) and re.search(r"\bor\b", sentence, re.IGNORECASE)
+                    and MODAL_RE.search(sentence)):
+                hits.append("either/or fork named in Approach/Gotchas section")
+                break
+        else:
+            continue
+        break
+
 if hits:
     msg = "deferred-approach phrase(s): " + ", ".join(sorted(set(hits)))
     if is_spike:
