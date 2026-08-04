@@ -10,11 +10,16 @@ name: Fleet Tests
 # CMake, so they have no reason to ride along with a build job anyway.
 #
 # Path-filtered to the fleet tooling surface — engine, shader, and asset
-# PRs skip this entirely (same convention as perf-gate.yml). Two suites
-# reach outside scripts/fleet/** for their subject under test
-# (test_format_changed_line_scoping.sh, test_ir_build_dir_resolution.sh) —
-# their subjects are listed explicitly below so a PR touching only one of
-# them still runs this workflow (#2786).
+# PRs skip this entirely (same convention as perf-gate.yml). Three suites
+# reach outside scripts/fleet/** for their subject under test — their
+# subjects are listed explicitly below so a PR touching only one of them
+# still runs this workflow (#2786, #2810):
+#   test_format_changed_line_scoping.sh -> cmake/run_clang_format_changed.cmake
+#   test_ir_build_dir_resolution.sh     -> engine/tools/lib/concurrency_helpers.sh
+#   test_fleet_transition.sh            -> docs/agents/fleet-state-machine.json
+# The two `paths:` blocks are duplicated because GitHub Actions has no YAML
+# anchors — keep them in sync (same note as header-checks.yml);
+# scripts/fleet/tests/test_fleet_tests_workflow_paths.sh ratchets that they do.
 
 on:
   push:
@@ -24,12 +29,14 @@ on:
       - '.github/workflows/fleet-tests.yml'
       - 'cmake/run_clang_format_changed.cmake'
       - 'engine/tools/lib/concurrency_helpers.sh'
+      - 'docs/agents/fleet-state-machine.json'
   pull_request:
     paths:
       - 'scripts/fleet/**'
       - '.github/workflows/fleet-tests.yml'
       - 'cmake/run_clang_format_changed.cmake'
       - 'engine/tools/lib/concurrency_helpers.sh'
+      - 'docs/agents/fleet-state-machine.json'
   workflow_dispatch:
 
 permissions:
