@@ -57,7 +57,13 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   (#2713: a mis-stage read 2 passed / 21 failed where the truth was 14 / 9,
   inflating the fix's apparent coverage). `fleet-positive-control <test-file>
   <ref>` stages the whole directory with `git archive`, reports MEANINGFUL vs
-  VACUOUS, and emits the test-plan line with its arithmetic shown.
+  VACUOUS, and emits the test-plan line with its arithmetic shown. It drives
+  both suite types, dispatching interpreter and tally parse by extension the
+  way `run_all.sh` does (#2848). One `.py`-only caveat: unittest imports the
+  module before running anything, so a suite that imports a symbol the fix
+  *adds* aborts with no tally against the pre-fix ref instead of scoring that
+  assertion as a failure — import it inside the test body to get a
+  per-assertion control.
   `require_fleet_lib_dir` in `lib_assert.sh` is the backstop for controls still
   run by hand — it fires automatically for suites that set `SCRIPT_DIR` before
   sourcing.
