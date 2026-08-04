@@ -24,11 +24,18 @@
 #   fleet-positive-control <test-file> <ref> [--include <pathspec>]...
 #
 #   <test-file>  the suite to run — your working-tree copy, which is the
-#                version under development and the thing being validated
+#                version under development and the thing being validated.
+#                `.sh` runs under bash, `.py` under python3, matching
+#                tests/run_all.sh; any other extension is refused
 #   <ref>        the pre-fix baseline (e.g. origin/master, or the sha the
 #                fix landed on top of)
 #   --include    stage an extra pathspec beside scripts/fleet (repeatable),
 #                for a suite that reads outside this directory
+#
+# The suite is driven by an interpreter, never by its own shebang — the
+# test_*.py suites carry none, and executing one hands a Python file to the
+# shell (#2848). Counts come from the suite's own summary line: summarize()'s
+# tally for bash, unittest's `Ran N tests` + OK/FAILED trailer for python.
 #
 # Output ends with a copy-pasteable line for the PR body's test plan, with the
 # arithmetic already checked — the #2708 nit was a miscounted fail count.
@@ -37,7 +44,8 @@
 #   0  control is meaningful — at least one assertion failed on the old code
 #   1  control is VACUOUS — the suite passes unchanged against the old code,
 #      so it does not test the fix
-#   2  usage error, bad ref, or the suite aborted as a setup failure
+#   2  usage error, bad ref, unsupported suite type, or the suite aborted as
+#      a setup failure (no summary line, or it ran zero assertions)
 
 set -euo pipefail
 
@@ -91,6 +99,17 @@ TEST_ABS=$(cd "$(dirname "$TEST_FILE")" && pwd)/$(basename "$TEST_FILE")
 TEST_REL=${TEST_ABS#"$REPO_ROOT"/}
 [[ "$TEST_REL" != "$TEST_ABS" ]] || die "test file is outside the repo: $TEST_FILE"
 
+# Dispatch by extension, exactly as tests/run_all.sh does. The suites carry no
+# shebang, so each is driven by an interpreter rather than executed — handing a
+# Python suite to the shell aborts on the first prose line of its docstring
+# (#2848). Resolved before staging, so an unsupported suite type is never
+# reported as a staging failure.
+case "$TEST_REL" in
+    *.sh) INTERP=(bash);    SUMMARY_FORM="summarize()'s \"passed: N  failed: M\" line" ;;
+    *.py) INTERP=(python3); SUMMARY_FORM="unittest's \"Ran N tests\" line and its OK/FAILED trailer" ;;
+    *)    die "unsupported suite type: $(basename "$TEST_FILE") — this tool drives .sh (bash) and .py (python3) suites, matching tests/run_all.sh" ;;
+esac
+
 STAGE=$(mktemp -d)
 cleanup() { [[ -n "${STAGE:-}" && -d "$STAGE" ]] && rm -rf "$STAGE"; }
 trap cleanup EXIT
@@ -102,42 +121,105 @@ git -C "$REPO_ROOT" archive "$REF" scripts/fleet "${INCLUDES[@]+"${INCLUDES[@]}"
 # Drop the working-tree suite over the old tree: new test, old code.
 mkdir -p "$STAGE/$(dirname "$TEST_REL")"
 cp "$TEST_ABS" "$STAGE/$TEST_REL"
-chmod +x "$STAGE/$TEST_REL"
 
 echo "positive control: $(basename "$TEST_FILE") vs $REF_LABEL"
 echo "  staged scripts/fleet${INCLUDES[*]+ + ${INCLUDES[*]}} into $STAGE"
 echo ""
 
 set +e
-"$STAGE/$TEST_REL" > "$STAGE/.out" 2>&1
+"${INTERP[@]}" "$STAGE/$TEST_REL" > "$STAGE/.out" 2>&1
 RC=$?
 set -e
 cat "$STAGE/.out"
 
-# summarize's own line is the authority on the counts — parsing it keeps this
-# wrapper honest about what the suite actually reported. The `|| true` matters:
-# no match is the no-tally case handled below, and under `set -o pipefail` it
-# would otherwise kill the script here with rc=1, which reads as "vacuous".
-TALLY=$(grep -E '^(passed: [0-9]+  failed: [0-9]+|.*: [0-9]+ passed, [0-9]+ failed)$' "$STAGE/.out" | tail -1 || true)
-if [[ -z "$TALLY" ]]; then
+# The suite's own summary line is the authority on the counts — parsing it keeps
+# this wrapper honest about what the suite actually reported, rather than reading
+# a verdict off its exit status. Each suite type has its own format, so the
+# parser is keyed by the same extension the interpreter was.
+no_tally() {
     echo ""
     echo "fleet-positive-control: the suite printed no tally (exit $RC)." >&2
-    echo "  It aborted before summarize — treat this as a setup failure, not a result." >&2
+    echo "  Ran as: ${INTERP[*]} <stage>/$TEST_REL" >&2
+    echo "  Expected $SUMMARY_FORM." >&2
+    echo "  The suite aborted before summarizing — treat this as a setup failure," >&2
+    echo "  not a result. The whole scripts/fleet tree was staged, so read the" >&2
+    echo "  suite's own output above first: an import or syntax error, an early" >&2
+    echo "  exit, or a path it reads that needs --include." >&2
     exit 2
+}
+
+# Pull `<key>=<n>` out of unittest's OK/FAILED parenthetical; 0 when absent. The
+# leading `(`-or-space anchor stops the `failures=` needle from also matching the
+# tail of `expected failures=`, which would score expected failures as real ones.
+unittest_count() {
+    local key="$1" line="$2" re
+    # Held in a variable: the keys contain spaces, and a space is not writable
+    # inline in a `[[ =~ ]]` right operand.
+    re="[( ]$key=([0-9]+)"
+    [[ "$line" =~ $re ]] && printf '%s' "${BASH_REMATCH[1]}" || printf '0'
+}
+
+# The `|| true` on each grep matters: no match is the no-tally case, and under
+# `set -o pipefail` it would otherwise kill the script here with rc=1 — which
+# reads as "vacuous".
+S=0
+if [[ "${INTERP[0]}" == bash ]]; then
+    TALLY=$(grep -E '^(passed: [0-9]+  failed: [0-9]+|.*: [0-9]+ passed, [0-9]+ failed)$' "$STAGE/.out" | tail -1 || true)
+    [[ -n "$TALLY" ]] || no_tally
+
+    if [[ "$TALLY" =~ ^passed:\ ([0-9]+)\ \ failed:\ ([0-9]+)$ ]]; then
+        P=${BASH_REMATCH[1]}; F=${BASH_REMATCH[2]}
+    else
+        [[ "$TALLY" =~ ([0-9]+)\ passed,\ ([0-9]+)\ failed$ ]] || die "could not parse tally: $TALLY"
+        P=${BASH_REMATCH[1]}; F=${BASH_REMATCH[2]}
+    fi
+    TOTAL=$((P + F))
+else
+    # unittest prints its trailer to stderr, which the run above folded into the
+    # same capture: `Ran N tests in Xs` then `OK`, `OK (skipped=1)`, or
+    # `FAILED (failures=2, errors=1)`.
+    # `NO TESTS RAN` is a third trailer, and matching it is what routes an empty
+    # suite to the 0-assertion error below rather than to the vaguer no-tally one.
+    RAN=$(grep -E '^Ran [0-9]+ tests? in ' "$STAGE/.out" | tail -1 || true)
+    VERDICT=$(grep -E '^(OK|FAILED)( \(.+\))?$|^NO TESTS RAN$' "$STAGE/.out" | tail -1 || true)
+    [[ -n "$RAN" && -n "$VERDICT" ]] || no_tally
+
+    ran_re='^Ran ([0-9]+) tests? in '
+    [[ "$RAN" =~ $ran_re ]] || die "could not parse tally: $RAN"
+    TOTAL=${BASH_REMATCH[1]}
+
+    # An expected failure is a pass, and its key ends in the word the failure
+    # needle matches — drop it before counting rather than out-clevering it.
+    COUNTS=$(sed -E 's/expected failures=[0-9]+//g' <<< "$VERDICT")
+    # The three tallies that make unittest report FAILED. An unexpected success
+    # belongs with them: the suite asserted the old code would fail here and it
+    # did not, which is a real distinction between the two trees.
+    F=$(( $(unittest_count 'failures' "$COUNTS")
+        + $(unittest_count 'errors' "$COUNTS")
+        + $(unittest_count 'unexpected successes' "$COUNTS") ))
+    S=$(unittest_count 'skipped' "$COUNTS")
+    P=$((TOTAL - F - S))
 fi
 
-if [[ "$TALLY" =~ ^passed:\ ([0-9]+)\ \ failed:\ ([0-9]+)$ ]]; then
-    P=${BASH_REMATCH[1]}; F=${BASH_REMATCH[2]}
-else
-    [[ "$TALLY" =~ ([0-9]+)\ passed,\ ([0-9]+)\ failed$ ]] || die "could not parse tally: $TALLY"
-    P=${BASH_REMATCH[1]}; F=${BASH_REMATCH[2]}
+# A suite that ran nothing is neither meaningful nor vacuous, and `Ran 0 tests`
+# would otherwise print as "all 0 assertions pass" — a VACUOUS verdict with no
+# evidence behind it.
+if [[ "$TOTAL" -eq 0 ]]; then
+    echo ""
+    echo "fleet-positive-control: the suite reported 0 assertions (exit $RC)." >&2
+    echo "  A control that runs nothing cannot distinguish the refs — treat this" >&2
+    echo "  as a setup failure, not a result." >&2
+    exit 2
 fi
-TOTAL=$((P + F))
 
 echo ""
 echo "--- positive control result ---"
 if [[ "$F" -eq 0 ]]; then
-    echo "VACUOUS: all $TOTAL assertions pass against $REF_LABEL."
+    if [[ "$S" -gt 0 ]]; then
+        echo "VACUOUS: no assertion fails against $REF_LABEL ($P pass, $S skipped)."
+    else
+        echo "VACUOUS: all $TOTAL assertions pass against $REF_LABEL."
+    fi
     echo "The suite does not distinguish the fix from the code it replaces."
     exit 1
 fi
@@ -146,5 +228,12 @@ echo "MEANINGFUL: $F of $TOTAL assertions fail against $REF_LABEL."
 echo ""
 echo "For the PR body's test plan:"
 echo "- [x] **Positive control**: the suite run against the pre-fix \`$REF\` (\`$REF_SHA\`)"
-echo "      fails **$F** assertions; the **$P** that still pass are the non-regression"
-echo "      assertions. ($P + $F = $TOTAL, the full suite.)"
+# A skipped test neither passed nor failed, so folding it into $P would put a
+# claim in the PR body the run does not support.
+if [[ "$S" -gt 0 ]]; then
+    echo "      fails **$F** assertions; the **$P** that still pass are the non-regression"
+    echo "      assertions, with **$S** skipped. ($P + $F + $S = $TOTAL, the full suite.)"
+else
+    echo "      fails **$F** assertions; the **$P** that still pass are the non-regression"
+    echo "      assertions. ($P + $F = $TOTAL, the full suite.)"
+fi
