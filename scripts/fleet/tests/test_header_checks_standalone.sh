@@ -12,6 +12,7 @@
 # Covers:
 #   - a mutable namespace-scope global in a header  → exit 1, names the file
 #   - `constexpr` / `const` constants               → exit 0 (not state)
+#   - the same global under a render-backend path   → exit 1 (scope, #2889)
 #   - a clean fixture tree                          → exit 0, and both Metal
 #     checks ran (1 kernel scanned, _body fragment excluded as an entry point
 #     but still read through the wrapper's include chain)
@@ -458,6 +459,42 @@ assert_contains "$dirty_out" "g_mutableGlobal" "failure names the declaration"
 
 # The clean fixture's constants must not be what tripped it.
 assert_absent "$dirty_out" "clean.hpp" "constexpr/const constants stay allowed"
+
+# --- the same global under a render-backend path fails (#2889) --------------
+# The style tools reject engine/render/**/gl_wrap/ and
+# engine/render/**/metal/ — clang-format rewrites the generated GL wrapper and
+# clang-tidy trips on metal-cpp idioms. That is a STYLE exemption, so the
+# correctness gate must not inherit it: irreden_collect_quality_files takes
+# INCLUDE_RENDER_BACKENDS to keep those 9 first-party headers in scope (#2815).
+#
+# This entry point is the only one CI runs, so the file set it collects IS the
+# merge gate. The arms above cannot pin that: they put their violation under
+# engine/include/, which the narrow and wide scopes both already reach. Hence a
+# fixture under each rejected path — these arms go red if the shim ever drops
+# INCLUDE_RENDER_BACKENDS (#2889).
+BACKEND="$TMPROOT/backend"
+make_fixture "$BACKEND"
+mkdir -p "$BACKEND/engine/render/include/irreden/render/metal" \
+         "$BACKEND/engine/render/include/irreden/render/gl_wrap"
+cat > "$BACKEND/engine/render/include/irreden/render/metal/metal_probe.hpp" <<'EOF'
+#pragma once
+namespace IRFixture {
+inline int g_metalBackendGlobal = 0;
+}
+EOF
+cat > "$BACKEND/engine/render/include/irreden/render/gl_wrap/gl_probe.h" <<'EOF'
+#pragma once
+namespace IRFixture {
+inline int g_glWrapBackendGlobal = 0;
+}
+EOF
+backend_out=$(run_checker "$BACKEND")
+backend_rc=$?
+assert_eq "1" "$backend_rc" "header global under a render-backend path exits 1"
+assert_contains "$backend_out" "metal_probe.hpp" "failure names the metal header"
+assert_contains "$backend_out" "g_metalBackendGlobal" "failure names the metal declaration"
+assert_contains "$backend_out" "gl_probe.h" "failure names the gl_wrap header"
+assert_contains "$backend_out" "g_glWrapBackendGlobal" "failure names the gl_wrap declaration"
 
 # --- usage guard ------------------------------------------------------------
 noroot_out=$(cmake -P "$CHECKER" 2>&1)
