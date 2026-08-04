@@ -75,7 +75,7 @@ while [[ $# -gt 0 ]]; do
     --no-scout) RUN_SCOUT=0; shift ;;
     --dry-run)  MODE="dry-run"; shift ;;
     --)         shift; PASSTHRU+=("$@"); break ;;
-    -h|--help)  sed -n '3,33p' "$0"; exit 0 ;;
+    -h|--help)  awk 'NR<=2 {next} /^#/ {print; next} {exit}' "$0"; exit 0 ;;
     *) echo "solo-architect: unknown argument '$1'" >&2; exit 2 ;;
   esac
 done
