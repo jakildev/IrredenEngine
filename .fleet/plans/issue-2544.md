@@ -192,9 +192,11 @@ suites green, pan/yaw jitter sweeps SMOOTH, clean exits.
 
 ## Steward ledger
 
-reconciled-through: PR #2585 merge (2026-08-01T04:43:21Z, master `4c4554d5`) —
-P3 (#2547) reconciled; #2669 adopted (flow c)
-proposal-pending: **OPEN** — `## STEWARD PROPOSAL 2026-08-01`
+reconciled-through: PR #2659 merge (2026-08-04T17:56:47Z, master `e640a5b1`) —
+P4 (#2548) reconciled. **#2669 is the sole open child**, and it is held on the
+pending ruling below, so that ruling is now the epic's only remaining child gate
+(the close-out Findings F2–F6 gate independently).
+proposal-pending: **OPEN** (label re-verified live 2026-08-04) — `## STEWARD PROPOSAL 2026-08-01`
 https://github.com/jakildev/IrredenEngine/issues/2544#issuecomment-5149886413
 (one question: #2669's default-pivot latch-update policy / contract amendment).
 `fleet:steward-proposal` applied to the umbrella; its removal is the re-fire
@@ -209,12 +211,22 @@ https://github.com/jakildev/IrredenEngine/issues/2544#issuecomment-5106383295
 | #2545 | merged | #2562 | plan | 2026-07-28 (PR #2562 merge) |
 | #2546 | merged | #2576 (`fleet:needs-windows-smoke` open) | plan | 2026-07-29 (PR #2576 merge) |
 | #2547 | merged | #2585 (`fleet:needs-windows-smoke` + `fleet:needs-human` open) | plan + A1–A2 | 2026-08-01 (PR #2585 merge) |
-| #2548 | open — PR #2659 in flight (`fleet:semantic-conflict`) | #2659 (open) | plan + A5 | 2026-08-01 (PR #2585 merge) |
-| #2669 | open — **adopted 2026-08-01 (flow c)**, blocked on the pending ruling | — | stub | 2026-08-01 (adoption) |
+| #2548 | merged | #2659 | epic §Phase 4 + A5 (no child file) | 2026-08-04 (PR #2659 merge) |
+| #2669 | open — **adopted 2026-08-01 (flow c)**, blocked on the pending ruling | — | stub + A1 | 2026-08-04 (PR #2659 merge) |
 
-A3 and A4 are epic-scope (the whole-epic verification bar) and are not listed per
-child; they bind every row above at close-out. A4 supersedes A3's block set and
-verdict vocabulary.
+A3, A4 and A6 are epic-scope (the whole-epic verification bar) and are not listed
+per child; they bind every row above at close-out. A4 supersedes A3's block set
+and verdict vocabulary; A6 supersedes A4's.
+
+**Plan column, #2545–#2548:** these four children have **no `issue-<N>.md` file**
+— their plan of record is §Phase 1–4 of *this* file, and their amendments (A1,
+A2, A5) are in this file's §Amendments. Earlier revisions of this row read
+`plan + A5`, which the protocol's ledger-backing rule
+(`docs/agents/epic-steward-protocol.md` §"Flow b — post-merge follow-up" step 4,
+#2571) reads as a claim that `.fleet/plans/issue-2548.md` exists with an `### A5`
+heading. It does not, and #2548 is now merged, so materializing a stub for a
+closed child would be noise — the column is restated instead. #2546 is the one
+exception: it has a worker-authored `.fleet/plans/issue-2546.md`.
 
 ### Decisions
 <!-- entries: D<n> (<YYYY-MM-DD>): <decision> — source: <link>  (numbered scheme per epic-steward-protocol.md §Decisions; escalation rules reference decisions by D-id) -->
@@ -291,6 +303,61 @@ verdict vocabulary.
   carried by a measurement, not a preference. Realized by A4. — source: PR #2585
   §"Contract ratified + gate re-grounded" (§"Deviation from the direction, with
   the measurement that forced it") and §Test plan.
+- D8 (2026-08-04): the Phase 4 **`cursor-latch`** block is scored on the
+  pinned-point `[pivot-focus-assert]` oracle, **not** the whole-silhouette
+  centroid — superseding A5's acceptance note, which put it in the `PINNED`
+  ≤1.5 px group on the reasoning that an explicit `setRotationPivotFocus` makes
+  it a `focus-ctr` twin. The refuting fact is what the latched focus *is*:
+  `castVoxelRay` returns a **surface** hit while the analytic oracle predicts the
+  winning voxel's **centre**, so the latched point sits off the probe's axis by up
+  to the cell half-diagonal `sqrt(3)/2 ≈ 0.87` — and on this geometry the iso ray
+  enters through the cell corner, so the bound is *tight* (0.87 measured against a
+  1.0-world-unit tolerance, not D7's 0.6). An off-axis pin has no bias-free
+  silhouette mapping, which is why the block first read DRIFT at 16 px under the
+  centroid gate while its on-axis `center-axis` twin reads 12 px for the
+  composite-depth-quantization reason A3 already records. Verified on master:
+  `scripts/pivot-verify.py` `FOCUS_ASSERT_BLOCKS = DEFAULT_PIVOT_BLOCKS | {"cursor-latch"}`
+  (line 84) and `CENTROID_GATED_BLOCKS = {"focus-ctr", "focus-off", "background-center"}`
+  (line 89). **Not an escalation** — same shape as D7: A5's *substance*
+  (`cursor-latch` proves the cursor resolves the right focus; the latched focus is
+  byte-identical across all 9 shots) is honored and only its scoring choice is
+  replaced, by a measurement rather than a preference. — source: PR #2659
+  §Verification ("Why `FOCUS-OK` and not `PINNED`" / "Tolerance is 1.0 world unit,
+  not 0.6").
+- D9 (2026-08-04): the **cursor** pivot latches a **world point**
+  (`IRRender::setRotationPivotFocus(CursorPivot::resolveFocusWorld(...))`,
+  `system_camera_mouse_rotate.hpp:70`), and **A5 item 2's "latch the iso DEPTH,
+  not the world point" does not extend to it.** A5's warning binds the *default*
+  pivot's continuously re-derived focus, whose staleness window spans arbitrary
+  camera motion (P3's `c883c9e1`); the cursor latch is **gesture-scoped** — taken
+  on the mouse-DOWN edge (`:67-70`) and cleared by `clearRotationPivotFocus()` on
+  release (`:93`) — and **no pan can begin inside that gesture**:
+  `System<CAMERA_MOUSE_PAN>` only starts on the `middlePressed` *edge* with Ctrl
+  not held (`system_camera_mouse_pan.hpp:29-32`), so even releasing Ctrl mid-drag
+  cannot open one. There is therefore no window in which the latched world point
+  can break `IRMath::cameraMoveRelativeToYaw`'s pan identity.
+  `test/render/camera_pan_pivot_test.cpp`'s `WorldPointLatchBreaksThePanIdentity`
+  remains the guard for the **default** path and is untouched by #2659. Standing
+  consequence for #2669 and any future pivot work: "world point vs latched depth"
+  is decided by **how long the focus is held across camera motion**, not by which
+  pivot source acquired it. — source: verified on `origin/master` at the four
+  cited call sites; A5 item 2; PR #2585 §"Post-review amendments".
+- D10 (2026-08-04): §Phase 4 bullet 2's parenthetical "**and a short fade after
+  release**" is **cut**, and acceptance 2's "despawns after release" is discharged
+  by **hide, not destroy** (`hideIndicator` clears `SHAPE_FLAG_VISIBLE`;
+  `SHAPES_TO_TRIXEL` skips a shape without that bit, so the marker renders zero
+  pixels and the next drag reuses the entity). The fade is not implementable as a
+  marker tweak on this render path, which is a fact about the shader rather than a
+  preference: the winning-fragment path stores opaquely
+  (`imageStore(triangleCanvasColors, canvasPixel, baseColor)`,
+  `engine/render/src/shaders/c_shapes_to_trixel.glsl:1047`) and the **only** alpha
+  blend in the pass is the hard-coded `kXrayOccludedAlpha = 0.25` on the branch
+  where an xray fragment *loses* the depth contest (`:99, 1053-1063`), so ramping
+  `C_ShapeDescriptor::color_.a` produces zero visible change for an unoccluded
+  marker. A real fade needs a new per-shape alpha-blend capability on the winning
+  path in **both** the GLSL and Metal twins plus backend-parity verification — a
+  render-pipeline feature, filed free-standing (see F6). — source: PR #2659
+  §"Acceptance evidence"; shader claim re-verified on `origin/master`.
 
 ### Events
 - 2026-07-22: filed via file-epic
@@ -453,15 +520,64 @@ verdict vocabulary.
   `fleet:stacked-rebase`, the two labels the guard names. Flagged on the umbrella
   anyway, because that PR is *in flight* and its author should read A5 before the
   next push. #2669's ruling is a live dependency on P4's own latch policy.
+- 2026-08-04: **#2548 (P4) merged via PR #2659** (2026-08-04T17:56:47Z, master
+  `e640a5b1`, base `master` — the #2585 stack dependency discharged itself when
+  the parent merged) — checklist ticked. **Every child except #2669 is now
+  closed.** Scope-drift audit, three deltas, **no Decision contradicted**; two
+  steward *amendment* clauses were deviated from, both with a measurement, both
+  recorded above:
+  - **A5 item 1 honored exactly.** The `castVoxelRay`-miss fallback is
+    `IRRender::getDefaultRotationPivotFocus()` (`cursor_pivot.hpp:66`) — the
+    `IRRender::` entry point A5 named, not a prefab-side re-derivation, so the
+    #1960 N-tier decode is not forked.
+  - **A5's `cursor-latch` scoring note superseded → D8.** The block ships on the
+    pinned-point oracle, not the silhouette gate, because a `castVoxelRay`
+    surface hit is off-axis by the cell half-diagonal. The author put it in
+    `CENTROID_GATED_BLOCKS` first, measured DRIFT at 16 px, and moved it — the
+    deviation arrives with the measurement that forced it.
+  - **A5 item 2's "latch the depth, not the world point" does not bind the cursor
+    path → D9.** The latch is gesture-scoped and no pan can start inside the
+    gesture, so the pan-identity window A5 was protecting does not exist here.
+    This is a scope correction to A5, not a defect in #2659.
+  - **§Phase 4 bullet 2's fade cut → D10**, with the shader fact that forces it;
+    the unowned capability is filed free-standing as **#2869** (see F6).
+  - **In scope, additive:** `IRPrefab::CursorPivot` (`cursor_pivot.hpp`, Pattern B
+    — nothing added to `RenderManager`), the `latchByDefault_` chord swap +
+    `shape_debug` F9 binding (§Phase 4 bullet 3), the `cursor-latch` harness
+    block, and `MainThread` on `registerSystem<CAMERA_MOUSE_ROTATE, ...>` (a
+    review nit: `endTick` creates an entity and immediately `getComponent`s it).
+    Review follow-up **#2681** (system-held indicator ids dangle across
+    `resetGameplay`) is open and covers the pre-existing
+    `system_perf_stats_overlay.hpp` twin as well — it is *not* a close-out gate
+    for this epic, which is why it is not in Findings.
+- 2026-08-04: **F1 discharged.** #2645 closed 2026-08-04T04:03:55Z via PR #2648,
+  and it closed with exactly the measurement F1 demanded rather than the
+  structural inference F1 refused to accept: `focus-ctr-sdf`'s `dev_x` is
+  **flat at 2.00 px across zoom 1→16** while the voxel twin tracks 0.94–0.99,
+  which rules out a rotation-anchor delta (a world-space offset must scale with
+  zoom) and identifies the destination-grid quantum (1280x720 into a 2560x1440
+  HiDPI framebuffer, `outputScaleFactor == 2`). Corroborated by the independent
+  #2469 `--yaw-sweep` measurement already in `engine/render/CLAUDE.md`. The twin
+  is now REPORTED, never gated (`SDF_GATED = False`, `pivot-verify.py:102`) —
+  which is a *decision*, not a green: close-out cites the ungating and its
+  measurement, not a PINNED verdict that will never exist for that block.
+- 2026-08-04: downstream sibling re-validated against PR #2659 → **A1 on
+  `.fleet/plans/issue-2669.md`**. #2669 is the only open child; it has no PR, so
+  the merger-cooldown skip-guard has nothing to evaluate. Its stub's "One
+  correction to carry into pickup" (`updateDefaultRotationPivotFocus`, not
+  `…Depth`) survives — #2659 touched no `render_manager` surface.
 
 ### Findings (close-out gate — beyond the checklist)
-- **F1 — #2645 is the only currently-red `pivot-verify` pass.** `focus-ctr-sdf`
-  DRIFT 2.00/2.00 px at both zooms while its voxel twin pins at 0.94/1.27.
-  §Closing criteria demands every pass green, so it gates close-out regardless of
-  attribution. **Its own body states that "pre-existing" is inferred from
-  structure (the explicit-focus path short-circuits the #2547 derive), not
-  measured against an `origin/master` build** — close-out must not cite it as
-  pre-existing without that measurement.
+- **F1 — DISCHARGED 2026-08-04 (#2645 closed via PR #2648).** Was: `focus-ctr-sdf`
+  is the only red pass, and its "pre-existing" attribution is inferred from
+  structure rather than measured. #2648 supplied the measurement — `dev_x` flat at
+  2.00 px across zoom 1→16 (a rotation-anchor delta must scale with zoom; a
+  destination-grid quantization floor cannot), corroborated by the independent
+  #2469 `--yaw-sweep` number in `engine/render/CLAUDE.md` — and un-gated the twin
+  (`SDF_GATED = False`). **What close-out must cite is that decision plus its
+  measurement, not a green verdict:** the 2.00 px reading is unchanged, so
+  §Closing criteria's literal "all passes PINNED" stays unreachable for this
+  block. A6 is the restatement of record.
 - **F2 — #2641 is a systematic derive bias with cross-backend risk.** The derive
   reads exactly one iso-depth unit deep on camera-facing cap entries
   (`center-column`, `center-axis`); the lateral entry is within half a unit and
@@ -474,16 +590,34 @@ verdict vocabulary.
 - **F3 — #2669 is unresolved and adopted.** See the proposal package. Note its
   last word on testing: the guard has to **move the camera between derives**,
   which no current `pivot-verify.py` block does — close-out must not accept a
-  green sweep as evidence on this question.
+  green sweep as evidence on this question. **Re-checked 2026-08-04 against the
+  new `cursor-latch` block: F3 stands.** That block parks a synthetic cursor on
+  one pixel, latches **once**, and holds the latch across a 9-yaw sweep with the
+  camera fixed — it proves the latch *holds*, which is the opposite of moving the
+  camera between derives. `test/render/camera_pan_pivot_test.cpp` remains the
+  closest existing vehicle.
 - **F4 (standing, unchanged) — the jitter residual still has no owner.** #2427
   closed COMPLETED on a SMOOTH criterion and #2346 is closed, yet §Verification
   (whole epic) / §Closing criteria still demand SMOOTH pan/yaw sweeps. Recorded
   2026-07-29; nothing this iteration changes it.
-- **F5 (standing, widened) — the OpenGL host has verified none of this.** Both
-  #2576 and now #2585 carry `fleet:needs-windows-smoke`; the GLSL twin of the
-  Phase-2 scatter fix and the Phase-3 composite-depth readback are unverified on
-  any OpenGL host. #2641 is where the backend question lands. Labels are applied,
-  so this is tracked, not invisible.
+- **F5 (standing, widened again 2026-08-04) — the OpenGL host has verified none of
+  this.** #2576, #2585 and now **#2659** all carry `fleet:needs-windows-smoke` —
+  every phase of this epic that touched a shader or a GPU readback is unverified
+  on any OpenGL host, and P4 adds the indicator's `SHAPE_FLAG_XRAY_OCCLUDED` path
+  (whose only alpha blend, per D10, is GLSL-side `kXrayOccludedAlpha`) to that
+  set. #2641 is where the backend question lands. Labels are applied, so this is
+  tracked, not invisible. §Closing criteria's "on both backends" is the binding
+  clause and **cannot be discharged from macOS** — a Windows/Linux smoke verdict
+  on all three PRs is a close-out input.
+- **F6 (new 2026-08-04) — the cursor-pivot indicator's release fade has no
+  implementation path, and now has an owner.** §Phase 4 bullet 2 asked for "a
+  short fade after release"; it is cut per **D10** because `SHAPES_TO_TRIXEL`
+  stores the winning fragment opaquely and exposes no per-shape alpha blend.
+  Filed free-standing (unlabeled, human-triage — it is a **new capability**, not
+  defect-shaped) as **#2869**. **Not a close-out gate:** the observable half of
+  acceptance 2 (marker gone after release) is met, and no closing criterion names
+  the fade. It is here so close-out records the criterion as *amended and owned*
+  rather than silently met.
 
 ## Amendments
 
@@ -699,3 +833,40 @@ verdict vocabulary.
   `engine/render/include/irreden/render/ir_render_types.hpp:390`,
   `engine/prefabs/irreden/render/depth_probe.hpp:37-44,59,77`; ledger D3, D6, D7
   and issue #2669 §"Decision surface".
+
+### A6 — 2026-08-04 — epic #2544 (whole-epic verification) — trigger: PR #2659 merged (P4 / #2548)
+
+- **Decision:** the whole-epic verification bar, restated for the block set and
+  verdict vocabulary as they ship after Phase 4. `python3 scripts/pivot-verify.py`
+  now runs **eight** blocks under **three** different gates, and "all passes
+  PINNED" names a verdict that four of them will never emit:
+
+  | block | gate as shipped | passing verdict |
+  |---|---|---|
+  | `focus-ctr`, `focus-off`, `background-center` | whole-silhouette centroid, ≤1.5 px (`CENTROID_GATED_BLOCKS`) | `PINNED` |
+  | `focus-ctr-sdf` | **ungated** (`SDF_GATED = False`, #2645/#2648) | `REPORT` |
+  | `center-column`, `center-depth`, `center-axis` | `[pivot-focus-assert]` pinned-point, 0.6 world units | `FOCUS-OK` |
+  | `cursor-latch` | `[pivot-focus-assert]` pinned-point, **1.0** world units (D8) | `FOCUS-OK` |
+
+  The epic is verified when **every block is green under the gate it ships with**,
+  at zoom 4 and 8, on **both** backends — plus the shape_debug and canvas_stress
+  `render-verify` suites green, pan/yaw jitter sweeps SMOOTH (F4 still owns that
+  clause), and clean exits. A silhouette number reported by an ungated or
+  pinned-point-gated block is **evidence, not a gate**; close-out cites the
+  decision that ungated it (D5/D7/D8, and #2648's zoom-invariance measurement for
+  the SDF twin) rather than a verdict string.
+- **Supersedes:** A4's block set and verdict table (adds `cursor-latch`; records
+  the SDF twin's ungating, which post-dates A4), and A5's acceptance note placing
+  `cursor-latch` in the `PINNED` ≤1.5 px group (D8). §Verification (whole epic)'s
+  "all passes PINNED at zoom 4 and 8 on both backends" and the umbrella body's
+  identical §Closing criteria sentence are the text this replaces — the umbrella
+  body is **not** edited (the steward's carve-out covers the `## Children`
+  checklist only), so this amendment is the restatement of record for close-out.
+- **Acceptance criteria:** unchanged in substance. The two clauses A4 left open
+  are unchanged and still bind: **both backends** (F5 — no OpenGL host has
+  verified any phase of this epic) and **SMOOTH jitter sweeps** (F4 — no open
+  issue owns the residual).
+- **By:** epic-steward — source: PR #2659 §Verification; PR #2648 §Summary
+  (zoom 1→16 table); verified on `origin/master` at `scripts/pivot-verify.py:75`
+  (block list), `:84` (`FOCUS_ASSERT_BLOCKS`), `:89` (`CENTROID_GATED_BLOCKS`),
+  `:102` (`SDF_GATED`); ledger D5, D7, D8.
