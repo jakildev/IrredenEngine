@@ -5,8 +5,10 @@
 // feederSubCap² micro-grid). The kernel name resolves to
 // c_voxel_to_trixel_stage_1_feeder (metalFunctionNameForStage keys off the file
 // stem) — it MUST be registered in metal_pipeline.cpp's threadgroupSizeForFunctionName
-// (2,3,8) and functionUsesImageAtomicScratch lists, or the second dispatch
-// launches wrong-shaped threadgroups / drops its atomic distance writes. The
+// (2,3,8) and functionUsesImageAtomicScratch lists. Omission from the former
+// fails CI naming the kernel (enforced by
+// cmake/run_metal_kernel_registry_check.cmake, #2798); omission from the latter
+// is silent and drops the second dispatch's atomic distance writes. The
 // visible twin is c_voxel_to_trixel_stage_1.metal.
 #include "ir_iso_common.metal"
 #include "ir_constants.metal"

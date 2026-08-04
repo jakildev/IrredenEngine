@@ -10,8 +10,10 @@
 // c_voxel_to_trixel_stage_1_winner_resolve (metalFunctionNameForStage keys off
 // the file stem) — it MUST be registered in metal_pipeline.cpp's
 // threadgroupSizeForFunctionName (2,3,8) and functionUsesImageAtomicScratch
-// lists, or the dispatch launches wrong-shaped threadgroups / reads a dangling
-// distance scratch. The visible twin is c_voxel_to_trixel_stage_1.metal.
+// lists. Omission from the former fails CI naming the kernel (enforced by
+// cmake/run_metal_kernel_registry_check.cmake, #2798); omission from the latter
+// is silent and leaves the dispatch reading a dangling distance scratch. The
+// visible twin is c_voxel_to_trixel_stage_1.metal.
 #include "ir_iso_common.metal"
 #include "ir_constants.metal"
 

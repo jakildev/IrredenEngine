@@ -9,8 +9,10 @@ using namespace metal;
 //
 // Dispatched as 3 threadgroups of 1 thread each — one thread per axis, registered
 // explicitly as (1,1,1) in threadgroupSizeForFunctionName. Every non-*_body
-// c_*.metal needs an entry there, enforced by
-// cmake/run_metal_kernel_registry_check.cmake (#2798). drawArgs is
+// c_*.metal in this directory needs an entry there, enforced by
+// cmake/run_metal_kernel_registry_check.cmake (#2798), whose glob is scoped to
+// this directory (test/render/shaders/metal/ kernels are outside it and
+// deliberately ride the 1x1x1 fallback). drawArgs is
 // bound via bindBase (the whole indirect buffer); each thread owns one axis's
 // 256-byte region (no atomics — one writer per region).
 constant uint kStrideUints = 64u;             // kPerAxisCellIndirectStrideBytes / 4
