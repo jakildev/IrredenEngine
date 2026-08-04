@@ -362,13 +362,20 @@ gh_release_label() {
 #   or a parse failure). Mirrors the events-API timestamp method
 #   cmd_cleanup_gh uses to age out stale labels; reconcile (R4a) uses it to
 #   keep the most-recently-applied of two contradictory labels.
+#
+#   The label reaches the filter through the environment, NOT through jq's
+#   `--arg`: `--arg` is a jq flag that `gh api` does not accept, and it exits
+#   1 on the unknown flag *before* issuing the request. Anything that makes
+#   this call fail is swallowed by the `2>/dev/null` below and reported as a
+#   permanent "age unknown", which every caller reads as "skip" — so a
+#   malformed invocation here disables the TTL sweeps fleet-wide in silence
+#   (#2781).
 label_added_epoch() {
     local repo="$1" target="$2" label="$3"
     command -v gh >/dev/null 2>&1 || { echo 0; return 0; }
     local added_at
-    added_at=$(gh api "repos/${repo}/issues/${target}/events" --paginate \
-        --arg lname "$label" \
-        --jq '.[] | select(.event=="labeled" and .label.name==$lname) | .created_at' \
+    added_at=$(FLEET_LABEL_NAME="$label" gh api "repos/${repo}/issues/${target}/events" --paginate \
+        --jq '.[] | select(.event=="labeled" and .label.name==env.FLEET_LABEL_NAME) | .created_at' \
         2>/dev/null | tail -n1 || true)
     [[ -z "$added_at" ]] && { echo 0; return 0; }
     ADDED_AT="$added_at" python3 -c '

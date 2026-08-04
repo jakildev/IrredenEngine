@@ -138,11 +138,14 @@ case "$1" in
         ;;
     api)
         # events endpoint; emulate --jq selecting created_at by label name.
-        # design-unblocked applied later than design-blocked.
-        if printf '%s ' "$@" | grep -q 'design-unblocked'; then
-            echo "2026-05-29T02:00:00Z"
-        elif printf '%s ' "$@" | grep -q 'design-blocked'; then
-            echo "2026-05-29T01:00:00Z"
+        # design-unblocked applied later than design-blocked. The label rides
+        # in $FLEET_LABEL_NAME, not argv: `gh api` has no --arg, so
+        # label_added_epoch passes it through the environment (#2781).
+        if printf '%s ' "$@" | grep -q 'events'; then
+            case "${FLEET_LABEL_NAME:-}" in
+                *design-unblocked) echo "2026-05-29T02:00:00Z" ;;
+                *design-blocked)   echo "2026-05-29T01:00:00Z" ;;
+            esac
         fi
         exit 0
         ;;

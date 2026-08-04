@@ -15,6 +15,20 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   `tempfile.TemporaryDirectory()` `cache_dir` instead. When migrating a
   fetcher's transport (e.g. `run_capture(gh)` → `conditional_get`), re-point
   *every* test mock at the new seam in the same PR.
+- **A CLI stub models the tool's argument parsing, not just its endpoint.**
+  A `gh` stub that matches a substring of `"$@"` and ignores flags accepts
+  arguments the real binary rejects, so the suite certifies a call that has
+  never once succeeded in production. `label_added_epoch` passed jq's
+  `--arg` to `gh api` — rejected before the request, swallowed by
+  `2>/dev/null`, permanently returning "age unknown" and silently disabling
+  every claim-label TTL sweep — while every suite covering it stayed
+  green (#2781).
+  Validate flags against the real tool's accepted set (transcribe it from
+  `--help`) and fail the way it fails; where the stub emulates `--jq`,
+  evaluate the program against fixture JSON instead of pre-baking the
+  filter's answer, and fail closed on a program shape you don't model.
+  Pair it with a fidelity assertion (the stub still rejects the flag the
+  bug used), or the next stub rewrite silently reopens the hole.
 - **Exercise every arm — dual spellings and defaulting chains alike.**
   A wrapper that accepts `--opt val` and `--opt=val` has two independent
   case arms: reject an empty `--opt=` exactly as the space form rejects a
