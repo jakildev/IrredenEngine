@@ -105,6 +105,12 @@ MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
     if (functionName == "c_propagate_light_volume") {
         return MTL::Size(8, 8, 4);
     }
+    // Per-axis dispatch-dim finalize (#2256): one thread per axis, dispatched
+    // (kAxisCount, 1, 1). Explicit entry rather than implicit-by-coincidence
+    // with the fallback below.
+    if (functionName == "c_per_axis_cell_finalize") {
+        return MTL::Size(1, 1, 1);
+    }
     return MTL::Size(1, 1, 1);
 }
 
@@ -114,9 +120,10 @@ MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
 // kBufferIndex_RevoxelizeDetachedParams for c_revoxelize_detached (the Metal
 // 0-30 table has no free index), and an unconditional bind clobbered that
 // params UBO on every encode after the first distance-image bind (#1619: the
-// fill read distance-clear words as its params and authored nothing). Like
-// threadgroupSizeForFunctionName above, this list does not self-detect: a new
-// kernel that consumes the scratch must be added here.
+// fill read distance-clear words as its params and authored nothing). Unlike
+// threadgroupSizeForFunctionName above — whose membership is enforced by
+// cmake/run_metal_kernel_registry_check.cmake (#2798) — this list does not
+// self-detect: a new kernel that consumes the scratch must be added here.
 bool functionUsesImageAtomicScratch(const std::string &functionName) {
     return functionName == "c_voxel_to_trixel_stage_1" ||
            functionName == "c_voxel_to_trixel_stage_1_feeder" ||

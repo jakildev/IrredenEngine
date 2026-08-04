@@ -9,9 +9,10 @@
 #   cmake -DPROJECT_ROOT=<repo-root> -P cmake/run_header_checks_standalone.cmake
 #
 # Deliberately a thin shim. It reuses irreden_collect_quality_files for the file
-# set and delegates every actual rule to run_header_convention_checks.cmake, so
-# the CI path and the `header-checks` / `lint` targets cannot drift into
-# checking different things — the drift #2727 was filed about.
+# set and delegates every actual rule to run_header_convention_checks.cmake and
+# run_metal_kernel_registry_check.cmake (#2798), so the CI path and the
+# `header-checks` / `lint` targets cannot drift into checking different things —
+# the drift #2727 was filed about.
 
 cmake_minimum_required(VERSION 3.20)
 
@@ -52,3 +53,5 @@ set(QUALITY_FILE_LIST "${quality_file_list}")
 include("${PROJECT_ROOT}/cmake/run_header_convention_checks.cmake")
 
 file(REMOVE "${quality_file_list}")
+
+include("${PROJECT_ROOT}/cmake/run_metal_kernel_registry_check.cmake")

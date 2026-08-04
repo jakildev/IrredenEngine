@@ -245,6 +245,9 @@ function(irreden_add_quality_targets)
         COMMAND ${CMAKE_COMMAND}
             -DQUALITY_FILE_LIST="${irreden_header_check_file_list}"
             -P "${PROJECT_SOURCE_DIR}/cmake/run_header_convention_checks.cmake"
+        COMMAND ${CMAKE_COMMAND}
+            -DPROJECT_ROOT="${PROJECT_SOURCE_DIR}"
+            -P "${PROJECT_SOURCE_DIR}/cmake/run_metal_kernel_registry_check.cmake"
         COMMENT "Running header convention checks"
         VERBATIM
     )
@@ -261,6 +264,9 @@ function(irreden_add_quality_targets)
             COMMAND ${CMAKE_COMMAND}
                 -DQUALITY_FILE_LIST="${irreden_header_check_file_list}"
                 -P "${PROJECT_SOURCE_DIR}/cmake/run_header_convention_checks.cmake"
+            COMMAND ${CMAKE_COMMAND}
+                -DPROJECT_ROOT="${PROJECT_SOURCE_DIR}"
+                -P "${PROJECT_SOURCE_DIR}/cmake/run_metal_kernel_registry_check.cmake"
             COMMENT "Running lint and header convention checks"
             VERBATIM
         )

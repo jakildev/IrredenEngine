@@ -86,8 +86,10 @@ world-pos by construction — no shadow acne at the cast/receive boundary.
   per-axis caster" from `BAKE` (the #1380 no-cast behavior) rather than garbage.
 - **GLSL / Metal parity.** Both backends ship the scatter + blit kernels. New
   Metal kernels **must** be added to `threadgroupSizeForFunctionName`
-  (`metal_pipeline.cpp`) — the default is `1×1×1`, which silently
-  under-dispatches a tiled compute pass to a few corner threads.
+  (`metal_pipeline.cpp`) — the default is `1×1×1`, which under-dispatches a
+  tiled compute pass to a few corner threads. That omission is not silent:
+  `cmake/run_metal_kernel_registry_check.cmake` fails CI naming the kernel
+  (#2798).
 - **One depth metric.** Resolve, bake, and receive all key by the un-yawed
   `pos3DtoDistance` of the cardinal-view-frame position (the same metric the
   cardinal main-canvas store uses).

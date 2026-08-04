@@ -326,9 +326,11 @@ this needs zero engine infra:
    floors at `cappedEffSub` so a `> 0` guard would be vacuous — `bindRange`-ing
    binding 26 onto struct 1; the visible dispatch keeps the original program.
    Metal bookkeeping: the feeder function name must be added to BOTH
-   `threadgroupSizeForFunctionName` (2,3,8) **and** `functionUsesImageAtomicScratch`
-   (both are explicit lists that do not self-detect — an omission silently
-   dispatches a 1×1×1 grid or drops the feeder's atomic distance writes).
+   `threadgroupSizeForFunctionName` (2,3,8) **and** `functionUsesImageAtomicScratch`.
+   Unlike `threadgroupSizeForFunctionName` — whose membership is enforced by
+   `cmake/run_metal_kernel_registry_check.cmake` (#2798), so an omission fails
+   CI naming the kernel — `functionUsesImageAtomicScratch` does not self-detect:
+   an omission there silently drops the feeder's atomic distance writes.
 
 **Measured result** (same-session A/B, macOS/Metal, `IRPerfGrid --auto-profile 120`):
 
