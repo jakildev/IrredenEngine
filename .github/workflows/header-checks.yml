@@ -1,7 +1,9 @@
 name: Header Checks
 
 # The header convention checks (header-global ban, anonymous namespaces,
-# `*Detail` namespaces) from cmake/run_header_convention_checks.cmake.
+# `*Detail` namespaces) from cmake/run_header_convention_checks.cmake, plus the
+# Metal threadgroup-registry membership check from
+# cmake/run_metal_kernel_registry_check.cmake.
 #
 # Standalone for the same reason fleet-tests.yml is: the only other caller of
 # these checks is the `lint` CMake target, which reaches CI solely through
