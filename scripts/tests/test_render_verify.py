@@ -22,6 +22,11 @@ import unittest
 from pathlib import Path
 
 _SCRIPTS = Path(__file__).resolve().parent.parent
+# render-verify.py does a bare `import verify_common` (#2461), which resolves
+# only if scripts/ is on sys.path. Without this the suite dies at import when
+# run on its own, and passes only when an alphabetically-earlier sibling in
+# this directory happens to insert the path first (#2825).
+sys.path.insert(0, str(_SCRIPTS))
 
 
 def _load(mod_name: str, file_name: str):

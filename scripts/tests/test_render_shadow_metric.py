@@ -14,6 +14,12 @@ import unittest
 from pathlib import Path
 
 _SCRIPTS = Path(__file__).resolve().parent.parent
+# Uniform with the other suites here: a subject that bare-imports a sibling
+# module (verify_common, render_metric_util) needs scripts/ on sys.path. This
+# file's subjects import neither today, so the line is latent rather than
+# load-bearing — kept so the convention holds across the directory (#2825).
+sys.path.insert(0, str(_SCRIPTS))
+
 _loader = importlib.machinery.SourceFileLoader(
     "render_shadow_metric", str(_SCRIPTS / "render-shadow-metric.py"))
 _spec = importlib.util.spec_from_loader("render_shadow_metric", _loader)

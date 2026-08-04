@@ -1,0 +1,57 @@
+name: Render Harness Tests
+
+# The render-verify harness's own unittest suites (scripts/tests/). They are
+# not CMake tests, so `ctest` never sees them — without this workflow nothing
+# executes them and a suite can go red silently (#2825).
+#
+# Standalone for the same reason fleet-tests.yml is: the only other CI surface
+# that would reach these (quality.yml's ruff/ctest job) is disabled at the repo
+# level, so a step added there is inert until it is re-enabled (#2718). These
+# suites need no compiler, no GL, and no CMake.
+#
+# Path-filtered to the **subjects** (scripts/*.py — where every dashed harness
+# script and the shared modules they import live) as well as the
+# suites themselves, not just the suites' own directory. Filtering on the
+# suites' location alone is the shape #2810 records against fleet-tests.yml:
+# a PR that breaks a subject then skips the only coverage guarding it.
+# `scripts/*` does not match across `/`, so scripts/fleet/** is excluded —
+# that tree has its own workflow. The two path lists are duplicated because
+# GitHub Actions does not support YAML anchors — keep them in sync.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'scripts/*.py'
+      - 'scripts/tests/**'
+      - '.github/workflows/render-harness-tests.yml'
+  pull_request:
+    paths:
+      - 'scripts/*.py'
+      - 'scripts/tests/**'
+      - '.github/workflows/render-harness-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  render-harness-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # The suites are hermetic — synthetic PNGs, no engine binary, no GL
+      # context, no committed references — so a plain checkout is the whole
+      # environment. python3 is preinstalled on ubuntu-latest.
+      #
+      # No separate "prove the gate still fires" step: run_all.sh's own
+      # negative controls ship as test_run_all.py and run as one of the
+      # suites below. It asserts the runner reports a failing suite, exits
+      # non-zero on an empty directory (so a glob that matches nothing cannot
+      # read as green), and — the #2825 lock — that a suite depending on a
+      # sibling's sys.path insert FAILS under the runner while passing under a
+      # shared-interpreter discover.
+      - name: Run render harness tests
+        run: bash scripts/tests/run_all.sh
