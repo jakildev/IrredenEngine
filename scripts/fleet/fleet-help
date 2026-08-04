@@ -82,7 +82,7 @@ fleet-heartbeat <agent-name>
 
 Touches ~/.fleet/heartbeats/<name> so witness knows the agent is alive.
 
-No --help flag. See scripts/fleet/fleet-heartbeat header.
+fleet-heartbeat -h|--help prints the script's usage block.
 EOF
             ;;
         witness)
