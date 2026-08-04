@@ -195,11 +195,18 @@ hand-waved table costs a review round-trip.
 
 Use the `commit-and-push` skill to push your work commits to the
 existing PR branch (commit-and-push uses cwd's git repo automatically).
-Then remove the WIP label and release the claim.
+Then remove the WIP label, strip any trailing `[WIP]` the claim-time
+title picked up, and release the claim. The `[WIP]` marker is a worker
+convention with no minting site to key on — only the label is load-bearing
+for the fleet's own tooling — but a squash-merge writes the PR *title* into
+master's commit history, so a stale trailing marker ships into permanent
+history if left on the title (#2788):
 
 ```
 # engine task
-gh pr edit <N> --remove-label "fleet:wip"
+title="$(gh pr view <N> --json title -q .title)"
+stripped_title="$(sed -E 's/[[:space:]]*\[WIP\][[:space:]]*$//' <<< "$title")"
+[[ -n "$stripped_title" ]] && gh pr edit <N> --remove-label "fleet:wip" --title "$stripped_title"
 fleet-claim release <issue-#>
 ```
 
@@ -210,7 +217,9 @@ so the right PR + the right slug are targeted:
 
 ```
 # game task
-gh pr edit <N> --repo jakildev/irreden --remove-label "fleet:wip"
+title="$(gh pr view <N> --repo jakildev/irreden --json title -q .title)"
+stripped_title="$(sed -E 's/[[:space:]]*\[WIP\][[:space:]]*$//' <<< "$title")"
+[[ -n "$stripped_title" ]] && gh pr edit <N> --repo jakildev/irreden --remove-label "fleet:wip" --title "$stripped_title"
 fleet-claim --repo game release <issue-#>
 ```
 
