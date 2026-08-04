@@ -8,6 +8,70 @@ if(APPLE)
     )
 endif()
 
+# Drop candidate paths the engine repo's own .gitignore excludes. The glob
+# in irreden_collect_quality_files walks the filesystem, not the repository,
+# so a gitignored nested checkout under a search root (e.g. a private
+# creation's own repo, or an agent worktree inside one) is on disk and would
+# otherwise be swept in — untracked content with no owner able to fix a
+# header-convention violation reported against it, and a `format` run would
+# rewrite files live in another agent's in-progress worktree.
+#
+# Batches the whole candidate list through one `git check-ignore --stdin`
+# call rather than a per-file execute_process (cheap for the ~2k-entry list
+# this function produces; per-file would be ~2k process spawns per configure).
+function(_irreden_drop_gitignored_files file_list_var)
+    find_program(IRREDEN_GIT_EXECUTABLE NAMES git)
+    if(NOT IRREDEN_GIT_EXECUTABLE)
+        # No git at configure time — leave the candidate list as-is (the
+        # pre-fix behavior). git is required to obtain this source tree in
+        # the first place, so an absent git at configure time is not a
+        # realistic case on any supported host; there is no reject-chain
+        # regex fallback here on purpose — a path-substring match can't
+        # distinguish a nested checkout under a search root from the
+        # engine's own enclosing worktree path also matching the same
+        # substring (an agent worktree's own root is
+        # ".../.claude/worktrees/<name>", so a "/.claude/worktrees/" test
+        # against the *absolute* path matches every file in the tree, not
+        # just nested ones — caught in review before this shipped).
+        return()
+    endif()
+
+    set(candidates "${${file_list_var}}")
+    list(LENGTH candidates candidate_count)
+    if(candidate_count EQUAL 0)
+        return()
+    endif()
+
+    set(stdin_file "${CMAKE_BINARY_DIR}/irreden_quality_files_check_ignore_input.txt")
+    string(REPLACE ";" "\n" stdin_contents "${candidates}")
+    file(WRITE "${stdin_file}" "${stdin_contents}\n")
+
+    execute_process(
+        COMMAND "${IRREDEN_GIT_EXECUTABLE}" -C "${PROJECT_SOURCE_DIR}" check-ignore --stdin
+        INPUT_FILE "${stdin_file}"
+        OUTPUT_VARIABLE ignored_out
+        RESULT_VARIABLE ignored_rc
+        ERROR_QUIET
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+    file(REMOVE "${stdin_file}")
+
+    # check-ignore exits 0 (some input matched) or 1 (none matched) on a
+    # normal run; anything higher means it errored (e.g. PROJECT_SOURCE_DIR
+    # isn't a git repository) — leave the candidate list untouched rather
+    # than trust a failed query's (empty) output.
+    if(ignored_rc GREATER 1)
+        return()
+    endif()
+    if(ignored_out STREQUAL "")
+        return()
+    endif()
+
+    string(REPLACE "\n" ";" ignored_list "${ignored_out}")
+    list(REMOVE_ITEM candidates ${ignored_list})
+    set(${file_list_var} "${candidates}" PARENT_SCOPE)
+endfunction()
+
 # `INCLUDE_RENDER_BACKENDS` keeps the generated / vendored graphics sources that
 # the style tools skip. See the reject chain below for which consumer wants what.
 function(irreden_collect_quality_files out_var)
@@ -81,6 +145,7 @@ function(irreden_collect_quality_files out_var)
     endforeach()
 
     list(REMOVE_DUPLICATES filtered_files)
+    _irreden_drop_gitignored_files(filtered_files)
     set(${out_var} "${filtered_files}" PARENT_SCOPE)
 endfunction()
 
