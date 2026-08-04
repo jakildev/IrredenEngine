@@ -39,7 +39,9 @@ name: Auto re-review on push to approved PR
 # This file and `scripts/fleet/classify-auto-rereview.sh` are kept
 # byte-identical between the engine repo (jakildev/IrredenEngine) and the game
 # repo (jakildev/irreden) so both repos share one re-review flow. Edit both
-# repos (and both files) when changing it.
+# repos (and both files) when changing it. Parity is checked by
+# `scripts/fleet/tests/test_cross_repo_shared_file_parity.sh` on any host
+# with both repos present (#2827) — a diverged edit here fails that suite.
 
 on:
   pull_request:
