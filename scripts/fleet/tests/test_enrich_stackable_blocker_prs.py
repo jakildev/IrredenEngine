@@ -409,6 +409,149 @@ class TestEnrichStackableBlockerPrs(unittest.TestCase):
         task = state["repos"]["engine"]["tasks"]["open"][0]
         self.assertIn("stackable_blocker_pr", task)
         self.assertEqual(task["stackable_blocker_pr"]["number"], 540)
+    # -----------------------------------------------------------------
+    # #2523 — `Blocked by: #<PR>`: the blocker ref names an issue-less open
+    # PR by its own number. Neither the branch arm nor the Closes arm can
+    # ever resolve that (the PR has no backing issue), so before the number
+    # arm the task was unpickable for its blocker's whole pre-merge window.
+    # -----------------------------------------------------------------
+
+    def test_pr_number_blocker_ref_offered(self):
+        """The blocker ref IS the open PR's own number: non-matching branch,
+        no Closes ref, no backing issue → still offered as a stackable base.
+        This is the #2523 specimen shape (#2513 → PR #2508). Fails before the
+        number arm, where both other arms are False and the offer is skipped."""
+        tasks = [_task("#2513", "#2508")]
+        prs = [_pr(2508, "claude/render-stage-select-dedup", author="jakildev")]
+        self._write_pr_cache("engine", 2508, ["engine/render/x.cpp"])
+        state = _state(engine_tasks=tasks, engine_prs=prs)
+        enrich_stackable_blocker_prs(state)
+        task = state["repos"]["engine"]["tasks"]["open"][0]
+        self.assertIn("stackable_blocker_pr", task)
+        self.assertEqual(task["stackable_blocker_pr"]["number"], 2508)
+        self.assertEqual(task["stackable_blocker_pr"]["headRefName"],
+                         "claude/render-stage-select-dedup")
+        self.assertEqual(task["stackable_blocker_pr"]["author"], "jakildev")
+
+    def test_pr_number_blocker_ref_wrong_number_not_matched(self):
+        """Negative control for the number arm: an open PR whose number is NOT
+        the blocker ref is not matched. Without this the arm could be passing
+        for a reason other than the number comparison."""
+        tasks = [_task("#2513", "#2508")]
+        prs = [_pr(2509, "claude/render-other-dedup")]
+        state = _state(engine_tasks=tasks, engine_prs=prs)
+        enrich_stackable_blocker_prs(state)
+        self.assertNotIn("stackable_blocker_pr",
+                         state["repos"]["engine"]["tasks"]["open"][0])
+
+    def test_pr_number_blocker_ref_respects_unsafe_base_labels(self):
+        """Filter (b) still applies to a number-matched base: a blocker PR
+        carrying a NOT_STACKABLE_BASE_LABELS label is not offered, exactly as
+        for a branch- or Closes-matched one. The new arm widens *matching*, not
+        the base-safety bar."""
+        for label in ("fleet:wip", "fleet:semantic-conflict"):
+            with self.subTest(label=label):
+                tasks = [_task("#2513", "#2508")]
+                prs = [_pr(2508, "claude/render-stage-select-dedup",
+                           labels=[label])]
+                state = _state(engine_tasks=tasks, engine_prs=prs)
+                enrich_stackable_blocker_prs(state)
+                self.assertNotIn("stackable_blocker_pr",
+                                 state["repos"]["engine"]["tasks"]["open"][0])
+
+    def test_pr_number_blocker_ref_survives_304_reuse(self):
+        """The number arm reads `number`, never `body`, so a body-stripped
+        304-reuse record (#2442) offers identically. Guards against a future
+        refactor routing the arm through the body."""
+        tasks = [_task("#2513", "#2508")]
+        prs = _strip_bodies([_pr(2508, "claude/render-stage-select-dedup")])
+        self.assertNotIn("body", prs[0])
+        self.assertEqual(prs[0]["closes_issues"], [])
+        state = _state(engine_tasks=tasks, engine_prs=prs)
+        enrich_stackable_blocker_prs(state)
+        self.assertEqual(
+            state["repos"]["engine"]["tasks"]["open"][0]
+            ["stackable_blocker_pr"]["number"], 2508)
+
+    def test_pr_number_blocker_ref_offered_game_side(self):
+        """The form is not engine-specific — game #349 → PR #348 is the live
+        specimen. Enrichment covers both repos, so the game arm is exercised."""
+        tasks = [_task("#349", "#348")]
+        prs = [_pr(348, "claude/game-docs-cast-timeline")]
+        state = _state(game_tasks=tasks, game_prs=prs)
+        enrich_stackable_blocker_prs(state)
+        self.assertEqual(
+            state["repos"]["game"]["tasks"]["open"][0]
+            ["stackable_blocker_pr"]["number"], 348)
+
+    # -----------------------------------------------------------------
+    # #2523 AC 3 — the non-offer path must not be silent (#2442's lesson).
+    # -----------------------------------------------------------------
+
+    def _capture_log(self):
+        """Swap _mod.log for a collector; restored via addCleanup."""
+        lines = []
+        orig = _mod.log
+        _mod.log = lines.append
+        self.addCleanup(lambda: setattr(_mod, "log", orig))
+        return lines
+
+    def test_zero_match_suppression_logs(self):
+        """0 open PRs match the blocker → the skip is logged with the task and
+        the blocker ref. This silent `continue` is what made #2523 need a
+        source read to diagnose."""
+        lines = self._capture_log()
+        tasks = [_task("#1112", "#1111")]
+        prs = [_pr(999, "claude/2000-unrelated")]
+        state = _state(engine_tasks=tasks, engine_prs=prs)
+        enrich_stackable_blocker_prs(state)
+        self.assertNotIn("stackable_blocker_pr",
+                         state["repos"]["engine"]["tasks"]["open"][0])
+        self.assertEqual(len(lines), 1, lines)
+        self.assertIn("#1112", lines[0])
+        self.assertIn("#1111", lines[0])
+        self.assertIn("engine", lines[0])
+
+    def test_multi_match_suppression_logs_candidates(self):
+        """>1 match → the skip is logged AND names the candidate PRs, so the
+        ambiguity is diagnosable from the log alone."""
+        lines = self._capture_log()
+        tasks = [_task("#1112", "#1111")]
+        prs = [_pr(536, "claude/1111-a"), _pr(537, "claude/1111-b")]
+        state = _state(engine_tasks=tasks, engine_prs=prs)
+        enrich_stackable_blocker_prs(state)
+        self.assertNotIn("stackable_blocker_pr",
+                         state["repos"]["engine"]["tasks"]["open"][0])
+        self.assertEqual(len(lines), 1, lines)
+        self.assertIn("#536", lines[0])
+        self.assertIn("#537", lines[0])
+
+    def test_successful_offer_does_not_log(self):
+        """Positive control for the logging pair: the log fires on suppression
+        only. Without this, a log() on every task would pass both tests above
+        while making the signal useless."""
+        lines = self._capture_log()
+        tasks = [_task("#2513", "#2508")]
+        prs = [_pr(2508, "claude/render-stage-select-dedup")]
+        state = _state(engine_tasks=tasks, engine_prs=prs)
+        enrich_stackable_blocker_prs(state)
+        self.assertIn("stackable_blocker_pr",
+                      state["repos"]["engine"]["tasks"]["open"][0])
+        self.assertEqual(lines, [])
+
+    def test_filter_b_suppression_is_not_logged_by_the_match_path(self):
+        """Scope guard on the new logging: a base rejected by filter (b) is a
+        *different* suppression than 'no match', and the match-path log must
+        not claim it. Filter (b)'s own reporting is out of this issue's scope —
+        this pins that the new line doesn't misattribute it."""
+        lines = self._capture_log()
+        tasks = [_task("#2513", "#2508")]
+        prs = [_pr(2508, "claude/render-stage-select-dedup", labels=["fleet:wip"])]
+        state = _state(engine_tasks=tasks, engine_prs=prs)
+        enrich_stackable_blocker_prs(state)
+        self.assertNotIn("stackable_blocker_pr",
+                         state["repos"]["engine"]["tasks"]["open"][0])
+        self.assertEqual(lines, [])
 
 
 class TestFetchPrs304Reuse(unittest.TestCase):

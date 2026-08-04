@@ -1623,13 +1623,21 @@ def enrich_stackable_blocker_prs(state):
     # whose other blockers have all closed is already collapsed to a single
     # `#NNN` by resolve_blocked_by() (runs first), so it reaches here eligible.
     #
-    # A PR "matches" the blocker when its head branch is `claude/<NNN>-…` OR its
+    # A PR "matches" the blocker when its head branch is `claude/<NNN>-…`, OR its
     # derived closes_issues (Closes/Fixes/Resolves #NNN, parsed at fetch time —
-    # see body_closed_issue_numbers) contains NNN — the same union fleet-claim's
-    # find-stackable-blockers uses, so the scout offers every base the live
-    # finder would (the Closes-#N form catches blocker PRs on non-standard /
-    # human branches). The Closes half reads the derived field, not pr["body"],
-    # which is body-stripped on 304 reuse ticks (#2442).
+    # see body_closed_issue_numbers) contains NNN, OR NNN IS that PR's own number
+    # — the same union fleet-claim's find-stackable-blockers uses, so the scout
+    # offers every base the live finder would (the Closes-#N form catches blocker
+    # PRs on non-standard / human branches). The Closes half reads the derived
+    # field, not pr["body"], which is body-stripped on 304 reuse ticks (#2442).
+    #
+    # The third arm covers a `Blocked by: #<PR>` ref — a blocker PR with no
+    # backing issue, which neither the branch nor the Closes arm can resolve.
+    # Without it such a task has no offerable base for its blocker's whole
+    # pre-merge window, and the normal tier skips it too (`fleet:blocked`), so
+    # nothing can pick it up. GitHub issues and PRs share one number namespace,
+    # so a ref equal to an open PR's number cannot also name a live issue — the
+    # match is unambiguous (#2523).
     #
     # The field is always omitted when:
     #   - blocked_by doesn't reference exactly one issue (multi-blocker,
@@ -1667,8 +1675,21 @@ def enrich_stackable_blocker_prs(state):
                 pr for pr in prs
                 if branch_matches_issue(pr.get("headRefName", ""), issue_num, repo_key)
                 or issue_num_int in (pr.get("closes_issues") or [])
+                or pr.get("number") == issue_num_int
             ]
             if len(matches) != 1:
+                # A suppressed offer states its reason (#2442) — otherwise the
+                # only way to learn why a queued task is unpickable is to read
+                # this function's source.
+                task_id = task.get("id") or "?"
+                if not matches:
+                    log(f"stackable: {repo_key} {task_id} blocked by "
+                        f"#{issue_num} — no open PR matches, no base to offer")
+                else:
+                    nums = ", ".join(f"#{m.get('number')}" for m in matches)
+                    log(f"stackable: {repo_key} {task_id} blocked by "
+                        f"#{issue_num} — {len(matches)} open PRs match "
+                        f"({nums}), can't pick a base safely")
                 continue
             pr = matches[0]
 
