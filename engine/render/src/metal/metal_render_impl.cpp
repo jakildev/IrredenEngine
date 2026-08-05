@@ -798,6 +798,55 @@ metalCurrentDepthPixelFormat(),
         }
     }
 
+    // Reverse of the clearTexImage scratch mirror above: copy the R32I
+    // image-atomic scratch back over the texture so a later sampler /
+    // access::read pass sees what the atomic passes wrote. Same geometry as
+    // that mirror blit, opposite direction. Textures with no paired scratch
+    // (every non-R32I format — the pairing happens in MetalTexture2DImpl's
+    // bindImage) return early, so this stays a no-op wherever it can't apply.
+    void resolveImageAtomicScratch(const Texture2D *textureWrapper) override {
+        if (textureWrapper == nullptr) {
+            return;
+        }
+        auto *texture = static_cast<MTL::Texture *>(textureWrapper->getNativeTexture());
+        MTL::Buffer *scratch = lookupImageAtomicScratchBuffer(texture);
+        if (scratch == nullptr) {
+            return;
+        }
+        auto *commandBuffer = metalCommandBuffer();
+        if (commandBuffer == nullptr) {
+            return;
+        }
+        const NS::UInteger width = texture->width();
+        const NS::UInteger height = texture->height();
+        if (width == 0 || height == 0) {
+            return;
+        }
+        // Sized to match by construction: ensureImageAtomicScratchBuffer
+        // (metal_runtime.cpp) allocates width * height * sizeof(int32) for the
+        // very texture it is keyed on, and the texture's destructor releases the
+        // entry, so a live scratch always spans its whole texture.
+        const std::size_t bytesPerRow = static_cast<std::size_t>(width) * sizeof(std::int32_t);
+        const std::size_t totalBytes = bytesPerRow * static_cast<std::size_t>(height);
+
+        // createBlitEncoder, never a raw blitCommandEncoder: sub-stage timing
+        // attribution (#2280) rides on it, and this blit runs inside the
+        // caller's GpuSubStageScope.
+        auto *blit = createBlitEncoder(commandBuffer);
+        blit->copyFromBuffer(
+            scratch,
+            0,
+            static_cast<NS::UInteger>(bytesPerRow),
+            static_cast<NS::UInteger>(totalBytes),
+            MTL::Size::Make(width, height, 1),
+            texture,
+            0,
+            0,
+            MTL::Origin::Make(0, 0, 0)
+        );
+        blit->endEncoding();
+    }
+
     void fillBuffer(const Buffer *buffer, std::size_t sizeBytes, std::uint8_t byteValue) override {
         if (buffer == nullptr || sizeBytes == 0) {
             return;

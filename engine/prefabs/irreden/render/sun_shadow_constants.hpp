@@ -96,6 +96,30 @@ inline IRMath::IsoBounds2D shadowFeederCullViewport(
     );
 }
 
+// True when the shadow-feeder sweep widens @p visible into a NON-EMPTY
+// off-screen ring — i.e. when off-screen casters exist that stage 2's #1740
+// depth-only skip will strip the colour taps from.
+//
+// Quantized exactly as VOXEL_TO_TRIXEL_STAGE_1 uploads the two boxes
+// (frameData_.cullIsoMin_/cullIsoMax_ vs visibleIsoBounds_): a sweep too small
+// to cross a texel boundary yields no ring texels, so the integer compare — not
+// the float one — is the honest predicate. Empty in three states, each
+// structural rather than incidental:
+//   - sun shadows off: frameShadowFeederParams() returns sweepDistance 0 and
+//     shadowFeederIsoBounds returns `visible` unchanged;
+//   - a detached canvas: both boxes are set to the full canvas span;
+//   - residual (non-cardinal) yaw: isShadowFeederIso (ir_iso_common.glsl)
+//     short-circuits on residualYaw != 0, so the compact classifies no feeders
+//     at all and nothing reaches the feeder dispatch.
+// Exposed here rather than open-coded at the call site so the ring-empty claim
+// is testable without a GPU (test/render/sun_shadow_feeder_ring_test.cpp).
+inline bool
+shadowFeederRingNonEmpty(const IRMath::IsoBounds2D &feeder, const IRMath::IsoBounds2D &visible) {
+    return IRMath::ivec2(IRMath::floor(feeder.min_)) !=
+               IRMath::ivec2(IRMath::floor(visible.min_)) ||
+           IRMath::ivec2(IRMath::ceil(feeder.max_)) != IRMath::ivec2(IRMath::ceil(visible.max_));
+}
+
 // Sun-UV bounding box of the iso-frustum depth slab [@p depthMin, @p depthMax]
 // over @p isoBounds, with every corner ALSO offset by @p sweep (world-frame,
 // = -sunDir * sweepDistance) so off-screen casters within shadow range are

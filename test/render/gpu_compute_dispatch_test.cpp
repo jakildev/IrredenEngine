@@ -309,6 +309,152 @@ TEST_F(MetalGpuComputeDispatchTest, SecondDispatchSeesFirstDispatchDistanceWrite
                                  "nor the clear sentinel.";
 }
 
+// #2488: RenderDevice::resolveImageAtomicScratch materializes the R32I
+// image-atomic scratch buffer into the texture it mirrors, so a later
+// sampler / access::read pass sees depth the atomic passes wrote. In the
+// pipeline that is what carries the shadow-feeder ring into trixelDistances
+// on Metal; here it is exercised directly against the scratch.
+//
+// bindAsImage on an R32I texture is what PAIRS the scratch
+// (MetalTexture2DImpl::bindImage -> ensureImageAtomicScratchBuffer), so the
+// bind below is a precondition of the test, not incidental setup. The seed
+// pattern is written straight into the scratch's shared-storage contents,
+// standing in for the atomic-min writes the stage-1 dispatches perform.
+TEST_F(MetalGpuComputeDispatchTest, ResolveImageAtomicScratchLandsScratchInTexture) {
+    using namespace IRRender;
+
+    Texture2D distances{TextureKind::TEXTURE_2D, kTexDim, kTexDim, TextureFormat::R32I};
+
+    // Pair the scratch, then clear the TEXTURE to the empty sentinel.
+    //
+    // The finish() is load-bearing, not tidiness. clearTexImage ENQUEUES two
+    // blits — one into the texture, one mirroring the clear into the scratch —
+    // and the CPU seed below writes shared-storage memory immediately. Without a
+    // sync the GPU runs the mirror after the seed and overwrites the pattern
+    // with sentinels, so the resolve faithfully copies sentinels back and the
+    // assertion fails for a reason that has nothing to do with the resolve.
+    // (Production never has this hazard: there the scratch is written by the
+    // stage-1 atomics, so producer and consumer are both on the command buffer
+    // in encoder order.)
+    distances.bindAsImage(0, TextureAccess::READ_WRITE, TextureFormat::R32I);
+    const std::int32_t clearValue = kEmptyDistanceEncoded;
+    device_->clearTexImage(&distances, 0, &clearValue);
+    device_->finish();
+
+    auto *scratch =
+        lookupImageAtomicScratchBuffer(static_cast<MTL::Texture *>(distances.getNativeTexture()));
+    ASSERT_NE(scratch, nullptr) << "bindAsImage on an R32I texture must pair a scratch buffer.";
+
+    // Distinguishable from both the clear sentinel (65535) and the -1/-2
+    // readback seeds, and distinct per texel so a partial blit is visible.
+    auto *scratchTexels = static_cast<std::int32_t *>(scratch->contents());
+    for (int i = 0; i < kTexelCount; ++i) {
+        scratchTexels[i] = i;
+    }
+
+    const std::vector<std::int32_t> outSeed(kTexelCount, -1);
+    Buffer output{
+        outSeed.data(),
+        outSeed.size() * sizeof(std::int32_t),
+        BUFFER_STORAGE_NONE,
+        BufferTarget::SHADER_STORAGE,
+        kOutputBinding
+    };
+
+    device_->resolveImageAtomicScratch(&distances);
+
+    const std::string readPath = std::string(IR_TEST_GPU_SHADER_DIR) + "/c_r32i_read.glsl";
+    ShaderProgram readProgram{std::vector{ShaderStage{readPath.c_str(), ShaderType::COMPUTE}}};
+    readProgram.use();
+    distances.bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
+    output.bindBase(BufferTarget::SHADER_STORAGE, kOutputBinding);
+    device_->dispatchCompute(kTexDim, kTexDim, 1);
+    device_->finish();
+
+    std::vector<std::int32_t> readback(kTexelCount, -2);
+    output.getSubData(0, readback.size() * sizeof(std::int32_t), readback.data());
+
+    std::size_t sentinelReads = 0; // the resolve never reached this texel.
+    std::size_t wrongReads = 0;    // neither the seeded value nor the sentinel.
+    for (int i = 0; i < kTexelCount; ++i) {
+        if (readback[i] == kEmptyDistanceEncoded) {
+            ++sentinelReads;
+        } else if (readback[i] != i) {
+            ++wrongReads;
+        }
+    }
+    EXPECT_EQ(sentinelReads, 0u)
+        << sentinelReads << " / " << kTexelCount
+        << " texels still read the clear sentinel — resolveImageAtomicScratch did not "
+           "materialize the scratch into the texture (#2488).";
+    EXPECT_EQ(wrongReads, 0u) << wrongReads
+                              << " texels read back neither their seeded "
+                                 "scratch value nor the clear sentinel.";
+}
+
+// Negative control for the test above, differing from it in exactly one line:
+// no resolveImageAtomicScratch call. The texture must still read back as the
+// clear sentinel despite the scratch holding the same pattern — i.e. the
+// assertion above CAN fail, and it is the resolve that makes it pass rather
+// than any incidental coupling between the scratch and the texture.
+//
+// It carries the same clear/seed finish() as its sibling for a specific reason:
+// without it the clear's mirror blit wipes the seed, and this control passes
+// because the scratch holds sentinels rather than because the resolve is
+// absent — a green control that is blind to the property it exists to pin.
+TEST_F(MetalGpuComputeDispatchTest, SeededScratchAloneDoesNotReachTheTexture) {
+    using namespace IRRender;
+
+    Texture2D distances{TextureKind::TEXTURE_2D, kTexDim, kTexDim, TextureFormat::R32I};
+
+    distances.bindAsImage(0, TextureAccess::READ_WRITE, TextureFormat::R32I);
+    const std::int32_t clearValue = kEmptyDistanceEncoded;
+    device_->clearTexImage(&distances, 0, &clearValue);
+    device_->finish();
+
+    auto *scratch =
+        lookupImageAtomicScratchBuffer(static_cast<MTL::Texture *>(distances.getNativeTexture()));
+    ASSERT_NE(scratch, nullptr) << "bindAsImage on an R32I texture must pair a scratch buffer.";
+
+    auto *scratchTexels = static_cast<std::int32_t *>(scratch->contents());
+    for (int i = 0; i < kTexelCount; ++i) {
+        scratchTexels[i] = i;
+    }
+
+    const std::vector<std::int32_t> outSeed(kTexelCount, -1);
+    Buffer output{
+        outSeed.data(),
+        outSeed.size() * sizeof(std::int32_t),
+        BUFFER_STORAGE_NONE,
+        BufferTarget::SHADER_STORAGE,
+        kOutputBinding
+    };
+
+    // No resolveImageAtomicScratch here — that is the whole control.
+
+    const std::string readPath = std::string(IR_TEST_GPU_SHADER_DIR) + "/c_r32i_read.glsl";
+    ShaderProgram readProgram{std::vector{ShaderStage{readPath.c_str(), ShaderType::COMPUTE}}};
+    readProgram.use();
+    distances.bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
+    output.bindBase(BufferTarget::SHADER_STORAGE, kOutputBinding);
+    device_->dispatchCompute(kTexDim, kTexDim, 1);
+    device_->finish();
+
+    std::vector<std::int32_t> readback(kTexelCount, -2);
+    output.getSubData(0, readback.size() * sizeof(std::int32_t), readback.data());
+
+    std::size_t nonSentinel = 0;
+    for (int i = 0; i < kTexelCount; ++i) {
+        if (readback[i] != kEmptyDistanceEncoded) {
+            ++nonSentinel;
+        }
+    }
+    EXPECT_EQ(nonSentinel, 0u)
+        << nonSentinel << " / " << kTexelCount
+        << " texels read back a non-sentinel value with no resolve call — the sibling "
+           "test's assertion would pass without resolveImageAtomicScratch doing anything.";
+}
+
 } // namespace
 
 #else // other backend (e.g. Vulkan)
