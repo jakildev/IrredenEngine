@@ -31,6 +31,7 @@ add_executable(IrredenEngineTest
   ecs/modifier_types_test.cpp
   ecs/modifier_vec3_runtime_test.cpp
   ecs/propagate_transform_test.cpp
+  ecs/rotation_mode_set_test.cpp
   ecs/rotation_target_test.cpp
   ecs/sort_archetype_relational_test.cpp
   ecs/store_tie_signal_test.cpp

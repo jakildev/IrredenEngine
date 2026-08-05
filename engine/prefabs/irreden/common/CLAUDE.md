@@ -39,7 +39,18 @@ in `update/`.
   `rotation_mode = IRComponent.RotationMode.DETACHED` in the prefab
   table — the enum value, not the string). Mutate at runtime with
   `IRPrefab::RotationMode::setMode(entity, newMode, name, size)` —
-  allocates or destroys the canvas as needed. Non-prefab entities
+  allocates or destroys the canvas as needed. **DETACHED and
+  DETACHED_REVOXELIZE are one canvas-owning family**, spelled once as
+  `IRPrefab::RotationMode::ownsEntityCanvas(mode)` and read by both
+  lifecycle sites (`setMode` and `spawnPrefab`); a swap between them
+  keeps the canvas, and only a move to/from GRID allocates or destroys.
+  Adding a mode means classifying it there; the enum's size is
+  static-asserted in `test/ecs/rotation_mode_set_test.cpp` so a new mode
+  cannot reach one site and miss the other (#2908). `setMode`'s
+  same-mode early return is gated on the canvas
+  matching the mode, not on the mode alone, so it doubles as the
+  documented recovery for an entity `spawnPrefab` tagged headlessly
+  without allocating. Non-prefab entities
   without the component are implicitly GRID — on the render side that
   default is carried by `REBUILD_GRID_VOXELS_IMPLICIT`, the
   `Exclude<C_RotationMode>` twin a creation must register alongside

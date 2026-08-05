@@ -4,6 +4,7 @@
 #include <irreden/asset/voxel_set_format.hpp>
 #include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/common/components/component_rotation_mode.hpp>
+#include <irreden/common/rotation_mode.hpp>
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_profile.hpp>
 #include <irreden/math/sdf.hpp>
@@ -279,8 +280,7 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
     // tear it down — the canvas is parented to mainFramebuffer (not the
     // spawned root), so destroying the root leaves it stranded otherwise.
     IREntity::EntityId detachedCanvasEntity = IREntity::kNullEntity;
-    if (rotationMode == IRComponents::RotationMode::DETACHED ||
-        rotationMode == IRComponents::RotationMode::DETACHED_REVOXELIZE) {
+    if (IRPrefab::RotationMode::ownsEntityCanvas(rotationMode)) {
         if (IRRender::g_renderManager != nullptr) {
             IRComponents::C_EntityCanvas wrapper =
                 IRPrefab::EntityCanvas::create(canvasName, canvasSize);
