@@ -238,9 +238,12 @@ namespace {
 // A v1 record: the pre-#2563 layout, i.e. everything except the anchor byte.
 // Hand-built rather than produced by an old writer, because the v1 writer no
 // longer exists — this IS the on-disk shape the migrator must accept.
-std::vector<std::uint8_t>
-makeV1Payload(IRMath::ivec3 size, IRMath::ivec3 boundsMin, IREntity::EntityId canvas,
-              const std::vector<C_Voxel> &voxels) {
+std::vector<std::uint8_t> makeV1Payload(
+    IRMath::ivec3 size,
+    IRMath::ivec3 boundsMin,
+    IREntity::EntityId canvas,
+    const std::vector<C_Voxel> &voxels
+) {
     IRAsset::MemoryBinaryWriter w;
     w.writeI32(size.x);
     w.writeI32(size.y);
@@ -267,8 +270,8 @@ TEST(VoxelSetSerialize, GroundAnchorRoundTripsIncludingItsFractionalOrigin) {
     const IRMath::ivec3 boundsMin{0, 0, 0};
     const std::vector<C_Voxel> voxels = makeVoxels(size.x * size.y * size.z);
 
-    C_VoxelSetNew set{
-        C_VoxelSetNew::StagedInit{}, size, boundsMin, voxels, 77, EntityAnchor::GROUND};
+    C_VoxelSetNew
+        set{C_VoxelSetNew::StagedInit{}, size, boundsMin, voxels, 77, EntityAnchor::GROUND};
     ASSERT_EQ(set.anchor_, EntityAnchor::GROUND);
 
     IRAsset::Result<C_VoxelSetNew> res;
@@ -358,8 +361,9 @@ TEST(VoxelSetSerialize, V1BytesReadAtCurrentLayoutDoNotRoundTrip) {
             }
         }
     }
-    EXPECT_FALSE(faithful)
-        << "v1 bytes decoded cleanly at the v2 layout — the migrator test proves nothing";
+    EXPECT_FALSE(
+        faithful
+    ) << "v1 bytes decoded cleanly at the v2 layout — the migrator test proves nothing";
 }
 
 // A corrupt / newer-writer anchor byte must fail the load rather than falling

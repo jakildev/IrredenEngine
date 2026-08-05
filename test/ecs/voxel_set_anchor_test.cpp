@@ -78,11 +78,17 @@ TEST_F(VoxelSetAnchorTest, AnchorOffsetMatchesTheConventionForAllThreeModes) {
     const ivec3 size(2, 2, 2);
 
     expectVec3Near(anchorOffset(EntityAnchor::CORNER, size), vec3(0.0f), "CORNER offset");
-    expectVec3Near(anchorOffset(EntityAnchor::CENTER, size), vec3(-0.5f, -0.5f, -0.5f),
-                   "CENTER offset");
+    expectVec3Near(
+        anchorOffset(EntityAnchor::CENTER, size),
+        vec3(-0.5f, -0.5f, -0.5f),
+        "CENTER offset"
+    );
     // GROUND: center XY (same as CENTER on x/y), bottom Z at -(size.z - 0.5).
-    expectVec3Near(anchorOffset(EntityAnchor::GROUND, size), vec3(-0.5f, -0.5f, -1.5f),
-                   "GROUND offset");
+    expectVec3Near(
+        anchorOffset(EntityAnchor::GROUND, size),
+        vec3(-0.5f, -0.5f, -1.5f),
+        "GROUND offset"
+    );
 }
 
 TEST_F(VoxelSetAnchorTest, AnchorLocalCenterIsTheOffsetPlusHalfTheCellExtent) {
@@ -90,8 +96,8 @@ TEST_F(VoxelSetAnchorTest, AnchorLocalCenterIsTheOffsetPlusHalfTheCellExtent) {
     // every mode — that identity is what lets a consumer swap a hard-coded
     // `(size - 1) * 0.5` for the helper without changing CORNER behavior.
     const ivec3 sizes[] = {ivec3(1, 1, 1), ivec3(2, 3, 4), ivec3(6, 6, 12), ivec3(5, 5, 5)};
-    const EntityAnchor anchors[] = {
-        EntityAnchor::CORNER, EntityAnchor::CENTER, EntityAnchor::GROUND};
+    const EntityAnchor anchors[] =
+        {EntityAnchor::CORNER, EntityAnchor::CENTER, EntityAnchor::GROUND};
 
     for (ivec3 size : sizes) {
         const vec3 halfCells((size.x - 1) * 0.5f, (size.y - 1) * 0.5f, (size.z - 1) * 0.5f);
@@ -103,11 +109,17 @@ TEST_F(VoxelSetAnchorTest, AnchorLocalCenterIsTheOffsetPlusHalfTheCellExtent) {
 
     // The values the migrated consumers rely on, spelled out.
     const ivec3 size(6, 6, 12);
-    expectVec3Near(anchorLocalCenter(EntityAnchor::CORNER, size), vec3(2.5f, 2.5f, 5.5f),
-                   "CORNER center");
+    expectVec3Near(
+        anchorLocalCenter(EntityAnchor::CORNER, size),
+        vec3(2.5f, 2.5f, 5.5f),
+        "CORNER center"
+    );
     expectVec3Near(anchorLocalCenter(EntityAnchor::CENTER, size), vec3(0.0f), "CENTER center");
-    expectVec3Near(anchorLocalCenter(EntityAnchor::GROUND, size), vec3(0.0f, 0.0f, -6.0f),
-                   "GROUND center");
+    expectVec3Near(
+        anchorLocalCenter(EntityAnchor::GROUND, size),
+        vec3(0.0f, 0.0f, -6.0f),
+        "GROUND center"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -155,9 +167,8 @@ TEST_F(VoxelSetAnchorTest, LegacyBoolCtorArmsMapToCornerAndCenter) {
     const IREntity::EntityId cornerObj = IREntity::createEntity(
         C_VoxelSetNew{ivec3(2, 2, 2), Color{10, 20, 30, 255}, false, canvas}
     );
-    const IREntity::EntityId centerObj = IREntity::createEntity(
-        C_VoxelSetNew{ivec3(2, 2, 2), Color{10, 20, 30, 255}, true, canvas}
-    );
+    const IREntity::EntityId centerObj =
+        IREntity::createEntity(C_VoxelSetNew{ivec3(2, 2, 2), Color{10, 20, 30, 255}, true, canvas});
 
     EXPECT_EQ(IREntity::getComponent<C_VoxelSetNew>(cornerObj).anchor_, EntityAnchor::CORNER);
     EXPECT_EQ(IREntity::getComponent<C_VoxelSetNew>(centerObj).anchor_, EntityAnchor::CENTER);

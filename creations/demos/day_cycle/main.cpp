@@ -244,7 +244,10 @@ void initEntities() {
     IREntity::createEntity(
         C_LocalTransform{vec3{0.0f, 0.0f, kFloorCenterZ}},
         C_VoxelSetNew{
-            IRMath::ivec3{48, 48, kFloorThicknessZ}, IRMath::Color{140, 140, 150, 255}, true}
+            IRMath::ivec3{48, 48, kFloorThicknessZ},
+            IRMath::Color{140, 140, 150, 255},
+            true
+        }
     );
     const IRMath::Color cubeColors[] = {
         IRMath::Color{200, 120, 90, 255},

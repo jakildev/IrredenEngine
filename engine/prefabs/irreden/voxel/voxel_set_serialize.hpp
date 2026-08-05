@@ -162,8 +162,7 @@ template <> struct SaveSerialize<IRComponents::C_VoxelSetNew> {
             // not become an out-of-range enum that `anchorOffset` then reads as
             // CORNER by falling through its switch (silently misplacing the set
             // rather than failing the load).
-            if (rawAnchor.value_ >
-                static_cast<std::uint8_t>(IRComponents::EntityAnchor::kLast)) {
+            if (rawAnchor.value_ > static_cast<std::uint8_t>(IRComponents::EntityAnchor::kLast)) {
                 return Res::error(
                     IRAsset::BinaryIOError::UnknownTag,
                     "C_VoxelSetNew: EntityAnchor value out of range"
@@ -205,14 +204,13 @@ template <> struct SaveSerialize<IRComponents::C_VoxelSetNew> {
 // v1 format had and this migrator deliberately reproduces rather than
 // silently "fixing" on load.
 template <> struct SaveMigration<IRComponents::C_VoxelSetNew> {
-    static std::vector<
-        std::pair<std::uint32_t, ColumnMigratorFn<IRComponents::C_VoxelSetNew>>>
+    static std::vector<std::pair<std::uint32_t, ColumnMigratorFn<IRComponents::C_VoxelSetNew>>>
     migrators() {
         return {
-            {1u,
-             [](IRAsset::BinaryReader &r) -> IRAsset::Result<IRComponents::C_VoxelSetNew> {
+            {1u, [](IRAsset::BinaryReader &r) -> IRAsset::Result<IRComponents::C_VoxelSetNew> {
                  return SaveSerialize<IRComponents::C_VoxelSetNew>::readVersioned(
-                     r, /*hasAnchor=*/false
+                     r,
+                     /*hasAnchor=*/false
                  );
              }},
         };

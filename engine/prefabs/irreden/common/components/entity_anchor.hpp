@@ -71,11 +71,7 @@ enum class EntityAnchor : std::uint8_t {
 constexpr IRMath::vec3 anchorOffset(EntityAnchor anchor, IRMath::ivec3 size) {
     switch (anchor) {
     case EntityAnchor::CENTER:
-        return IRMath::vec3(
-            -(size.x - 1) * 0.5f,
-            -(size.y - 1) * 0.5f,
-            -(size.z - 1) * 0.5f
-        );
+        return IRMath::vec3(-(size.x - 1) * 0.5f, -(size.y - 1) * 0.5f, -(size.z - 1) * 0.5f);
     case EntityAnchor::GROUND:
         return IRMath::vec3(
             -(size.x - 1) * 0.5f,
