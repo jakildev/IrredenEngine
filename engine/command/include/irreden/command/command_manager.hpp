@@ -80,6 +80,27 @@ class CommandManager {
     /// C++ or Lua, outside the regular input-driven dispatch loop.
     void fireUserCommand(CommandId id);
 
+    /// Reports whether a binding already exists for the (@p inputType,
+    /// @p triggerStatus, @p button) triple. Scans `m_userCommands`, not
+    /// `m_commandRegistrations` — the registry omits unnamed bindings and every
+    /// non-`PRESSED` one, so the camera suite's RELEASED `MOVE_CAMERA_*_END`
+    /// rows are invisible there but visible here.
+    ///
+    /// Modifier masks are deliberately ignored: a row carrying
+    /// `requiredModifiers` / `blockedModifiers` still counts as bound, so a
+    /// caller guarding an ad-hoc bind sees the key as taken whatever
+    /// combination sits behind it. Key-level granularity is the whole
+    /// contract — a modifier-aware overload can come later if a caller needs
+    /// one. This reports the *data*; collision **policy** stays with the
+    /// caller, and `createCommand` still appends unconditionally.
+    ///
+    /// MIDI note/CC bindings live in their own per-device registries and are
+    /// invisible to this scan, so `MIDI_NOTE` / `MIDI_CC` always report false.
+    ///
+    /// Cost: O(bindings) linear scan — an init/registration-time guard query,
+    /// not a per-tick call.
+    bool isButtonBound(InputTypes inputType, ButtonStatuses triggerStatus, int button) const;
+
     const std::vector<CommandRegistration> &getCommandRegistrations() const {
         return m_commandRegistrations;
     }

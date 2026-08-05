@@ -138,6 +138,92 @@ TEST_F(CommandRegistryTest, UnnamedAndNonPressedRegistrationsAreFilteredWithoutB
     EXPECT_EQ(m_commandManager.getRegistrationGeneration(), initial);
 }
 
+// `isButtonBound` (#2570) reads `m_userCommands`, NOT the registration map —
+// so the two row classes the registry filters out (unnamed, and non-PRESSED)
+// must both be visible to it. Those arms are what discriminate a correct
+// implementation: an `isButtonBound` written over `getCommandRegistrations()`
+// is structurally unable to pass either, since neither row is ever recorded
+// there. The registry emptiness assertions below are the proof that the rows
+// really are registry-invisible, so a passing arm can't be read as the
+// registry happening to carry them.
+TEST_F(CommandRegistryTest, IsButtonBoundSeesUnnamedAndReleasedBindings) {
+    // Unnamed PRESSED: the default shape of every ad-hoc lambda binding.
+    m_commandManager.createCommand(IRInput::KEY_MOUSE, IRInput::PRESSED, kTestButtonA, noopBody);
+    // Named RELEASED: mirrors the camera suite's MOVE_CAMERA_*_END rows.
+    m_commandManager.createCommand(
+        IRInput::KEY_MOUSE,
+        IRInput::RELEASED,
+        kTestButtonB,
+        noopBody,
+        IRInput::kModifierNone,
+        IRInput::kModifierNone,
+        "RELEASE HALF"
+    );
+
+    ASSERT_TRUE(m_commandManager.getCommandRegistrations().empty())
+        << "both bindings must be registry-invisible for this test to discriminate";
+
+    EXPECT_TRUE(m_commandManager.isButtonBound(IRInput::KEY_MOUSE, IRInput::PRESSED, kTestButtonA));
+    EXPECT_TRUE(
+        m_commandManager.isButtonBound(IRInput::KEY_MOUSE, IRInput::RELEASED, kTestButtonB)
+    );
+
+    // The same keys at the status they were NOT bound at: the scan matches on
+    // all three of (inputType, status, button), so neither cross-matches.
+    EXPECT_FALSE(
+        m_commandManager.isButtonBound(IRInput::KEY_MOUSE, IRInput::RELEASED, kTestButtonA)
+    );
+    EXPECT_FALSE(
+        m_commandManager.isButtonBound(IRInput::KEY_MOUSE, IRInput::PRESSED, kTestButtonB)
+    );
+
+    // A key nothing bound, and a bound key on a different device class.
+    EXPECT_FALSE(
+        m_commandManager.isButtonBound(IRInput::KEY_MOUSE, IRInput::PRESSED, IRInput::kKeyButtonF12)
+    );
+    EXPECT_FALSE(m_commandManager.isButtonBound(IRInput::GAMEPAD, IRInput::PRESSED, kTestButtonA));
+}
+
+// Modifier-blindness is the documented contract, not an oversight: a caller
+// guarding an ad-hoc bind wants "is this key taken", whatever mask sits behind
+// it. Locked so a later modifier-aware refinement has to be a deliberate
+// overload rather than a silent narrowing of this query.
+TEST_F(CommandRegistryTest, IsButtonBoundIgnoresModifierMasks) {
+    m_commandManager.createCommand(
+        IRInput::KEY_MOUSE,
+        IRInput::PRESSED,
+        kTestButtonA,
+        noopBody,
+        IRInput::kModifierControl,
+        IRInput::kModifierShift
+    );
+
+    EXPECT_TRUE(m_commandManager.isButtonBound(IRInput::KEY_MOUSE, IRInput::PRESSED, kTestButtonA));
+}
+
+// The `ir_command.hpp` free function is its own public surface — the module
+// entry point a C++ creation calls, resolving the manager through the
+// `g_commandManager` global rather than holding the instance. The fixture's
+// stack-local manager stamps that global in its ctor, so this covers the
+// forwarding path the Lua binding also rides.
+TEST_F(CommandRegistryTest, ModuleApiIsButtonBoundForwardsToTheActiveManager) {
+    EXPECT_FALSE(IRCommand::isButtonBound(IRInput::KEY_MOUSE, IRInput::PRESSED, kTestButtonA));
+
+    m_commandManager.createCommand(IRInput::KEY_MOUSE, IRInput::PRESSED, kTestButtonA, noopBody);
+
+    EXPECT_TRUE(IRCommand::isButtonBound(IRInput::KEY_MOUSE, IRInput::PRESSED, kTestButtonA));
+    EXPECT_FALSE(IRCommand::isButtonBound(IRInput::KEY_MOUSE, IRInput::PRESSED, kTestButtonB));
+}
+
+// An empty manager reports nothing bound — the "in a creation that never
+// registers the camera suite it returns false" half of the acceptance
+// criteria, at the C++ level.
+TEST_F(CommandRegistryTest, IsButtonBoundIsFalseOnAFreshManager) {
+    EXPECT_FALSE(
+        m_commandManager.isButtonBound(IRInput::KEY_MOUSE, IRInput::PRESSED, kTestButtonA)
+    );
+}
+
 // Completeness: no enum value may fall back to "UNKNOWN", and every value's
 // row must sit at its own index (the table is indexed by enum value).
 TEST(CommandCatalogTest, EveryCommandNameHasANonUnknownLabel) {

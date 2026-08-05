@@ -4,6 +4,8 @@
 #include <irreden/ir_entity.hpp>
 #include <irreden/script/lua_script.hpp>
 
+#include <string>
+
 namespace {
 
 // Owns the minimum slice needed to exercise the T-193 IRCommand /
@@ -421,6 +423,94 @@ TEST_F(LuaCommandTest, KeypadKeysAreNameable) {
     EXPECT_EQ(result.get<int>(3), static_cast<int>(IRInput::kKeyButtonKPEnter));
     EXPECT_EQ(result.get<int>(4), static_cast<int>(IRInput::kKeyButtonKPDecimal));
     EXPECT_EQ(result.get<int>(5), static_cast<int>(IRInput::kKeyButtonKPEqual));
+}
+
+// ---- IRCommand.isButtonBound / getRegisteredBindings (#2570) ---------------
+
+// The acceptance criterion: W is bound after the camera suite registers. The
+// RELEASED arm is the discriminator — `MOVE_CAMERA_UP_END` is
+// {KEY_MOUSE, RELEASED, W} in the manifest and is never recorded in the
+// registration map, so it is true iff the query scans the live user-command
+// list. An implementation reading `getRegisteredBindings()` fails it.
+TEST_F(LuaCommandTest, IsButtonBoundSeesCameraSuiteIncludingReleasedRows) {
+    auto &lua = m_lua.lua();
+    auto result = lua.safe_script(
+        R"(
+        IRCommand.registerSuite(IRCommand.Suite.CAMERA)
+        local KM = IRInput.InputType.KEY_MOUSE
+        return IRCommand.isButtonBound(KM, IRInput.ButtonStatus.PRESSED,  IRInput.Key.W),
+               IRCommand.isButtonBound(KM, IRInput.ButtonStatus.RELEASED, IRInput.Key.W),
+               IRCommand.isButtonBound(KM, IRInput.ButtonStatus.PRESSED,  IRInput.Key.ESCAPE),
+               IRCommand.isButtonBound(KM, IRInput.ButtonStatus.PRESSED,  IRInput.Key.F12),
+               IRCommand.isButtonBound(KM, IRInput.ButtonStatus.RELEASED, IRInput.Key.ESCAPE)
+        )",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(result.valid()) << result.get<sol::error>().what();
+    EXPECT_TRUE(result.get<bool>(0)) << "MOVE_CAMERA_UP_START binds PRESSED W";
+    EXPECT_TRUE(result.get<bool>(1)) << "MOVE_CAMERA_UP_END binds RELEASED W (registry-invisible)";
+    EXPECT_TRUE(result.get<bool>(2)) << "CLOSE_WINDOW binds PRESSED Escape";
+    EXPECT_FALSE(result.get<bool>(3)) << "F12 is in no suite";
+    EXPECT_FALSE(result.get<bool>(4)) << "Escape has no RELEASED half";
+}
+
+// The other half of the criterion: a creation that never registers the suite
+// sees false. The fixture builds a fresh CommandManager per test, so this is
+// the un-registered world. The trailing true arm proves the query is live
+// rather than stuck returning false — without it, a hard-coded `return false`
+// would pass this test.
+TEST_F(LuaCommandTest, IsButtonBoundIsFalseWithoutTheCameraSuite) {
+    auto &lua = m_lua.lua();
+    auto result = lua.safe_script(
+        R"(
+        local KM = IRInput.InputType.KEY_MOUSE
+        local before = IRCommand.isButtonBound(KM, IRInput.ButtonStatus.PRESSED, IRInput.Key.W)
+        IRCommand.createCommand(KM, IRInput.ButtonStatus.PRESSED, IRInput.Key.W, function() end)
+        local after = IRCommand.isButtonBound(KM, IRInput.ButtonStatus.PRESSED, IRInput.Key.W)
+        return before, after
+        )",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(result.valid()) << result.get<sol::error>().what();
+    EXPECT_FALSE(result.get<bool>(0)) << "no camera suite registered in this fixture";
+    EXPECT_TRUE(result.get<bool>(1)) << "an unnamed Lua command body still counts as bound";
+}
+
+TEST_F(LuaCommandTest, GetRegisteredBindingsReturnsTheNamedPressedRows) {
+    auto &lua = m_lua.lua();
+    auto result = lua.safe_script(
+        R"(
+        IRCommand.registerSuite(IRCommand.Suite.CAPTURE)
+        local rows = IRCommand.getRegisteredBindings()
+        local first = rows[1]
+        return #rows, first.name, first.description, first.button, first.status, first.modifiers
+        )",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(result.valid()) << result.get<sol::error>().what();
+    // Three named PRESSED rows; the camera suite's four RELEASED rows are
+    // absent by the registry's own filter, which is why `isButtonBound` above
+    // cannot be built on this surface.
+    EXPECT_EQ(result.get<int>(0), 3);
+    EXPECT_EQ(result.get<std::string>(1), IRCommand::commandNameToString(IRCommand::SCREENSHOT));
+    EXPECT_EQ(result.get<std::string>(2), IRCommand::commandDescription(IRCommand::SCREENSHOT));
+    EXPECT_EQ(result.get<int>(3), static_cast<int>(IRInput::kKeyButtonF8));
+    EXPECT_EQ(result.get<int>(4), static_cast<int>(IRInput::PRESSED));
+    EXPECT_EQ(result.get<int>(5), static_cast<int>(IRInput::kModifierNone));
+}
+
+TEST_F(LuaCommandTest, GetRegisteredBindingsIsEmptyBeforeAnyNamedRegistration) {
+    auto &lua = m_lua.lua();
+    auto result = lua.safe_script(
+        R"(
+        local KM = IRInput.InputType.KEY_MOUSE
+        IRCommand.createCommand(KM, IRInput.ButtonStatus.PRESSED, IRInput.Key.J, function() end)
+        return #IRCommand.getRegisteredBindings()
+        )",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(result.valid()) << result.get<sol::error>().what();
+    EXPECT_EQ(result.get<int>(), 0) << "an unnamed binding must stay out of the registry view";
 }
 
 // ---- Idempotence ----------------------------------------------------------

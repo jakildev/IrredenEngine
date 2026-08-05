@@ -472,6 +472,40 @@ inline void bindCommandFunctions(LuaScript &script) {
         IRCommand::registerBindings(IRCommand::suiteDefaults(suite), toBindingOverrides(overrides));
     };
 
+    // What is bound RIGHT NOW — the counterpart to `suiteDefaults` above,
+    // which reports what the engine *would* bind. Scans the live user-command
+    // list, so the RELEASED `MOVE_CAMERA_*_END` rows and unnamed ad-hoc
+    // bindings are both visible. Lets a creation guard its own key binds
+    // against the engine's registrations instead of mirroring them in a
+    // hand-maintained "reserved keys" list.
+    lua["IRCommand"]["isButtonBound"] =
+        [](lua_Integer inputType, lua_Integer triggerStatus, lua_Integer button) -> bool {
+        return IRCommand::isButtonBound(
+            static_cast<IRInput::InputTypes>(inputType),
+            static_cast<IRInput::ButtonStatuses>(triggerStatus),
+            static_cast<int>(button)
+        );
+    };
+
+    // The help overlay's rows, for Lua. Named PRESSED bindings only — the
+    // same filter `buildCommandListText()` renders — so this is the narrower
+    // view; `isButtonBound` above is the one that sees every binding.
+    lua["IRCommand"]["getRegisteredBindings"] = [](sol::this_state L) -> sol::table {
+        sol::state_view lua_view(L);
+        sol::table rows = lua_view.create_table();
+        for (const IRCommand::CommandRegistration &registration :
+             IRCommand::getCommandManager().getCommandRegistrations()) {
+            sol::table row = lua_view.create_table();
+            row["name"] = registration.name;
+            row["description"] = registration.description;
+            row["button"] = static_cast<lua_Integer>(registration.button);
+            row["status"] = static_cast<lua_Integer>(registration.triggerStatus);
+            row["modifiers"] = static_cast<lua_Integer>(registration.requiredModifiers);
+            rows.add(row);
+        }
+        return rows;
+    };
+
     lua["IRCommand"]["fire"] = [](lua_Integer commandId) {
         IRCommand::fire(static_cast<IRCommand::CommandId>(commandId));
     };

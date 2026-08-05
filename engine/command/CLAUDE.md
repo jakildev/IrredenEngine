@@ -107,6 +107,9 @@ Semantics worth knowing before you use it:
   only for *named PRESSED* binds — it cannot see the RELEASED
   `MOVE_CAMERA_*_END` rows. Enumerate defaults via
   `IRCommand::suiteDefaults(Suite)`, which reads the constexpr tables.
+  To ask what is bound **right now** rather than by default, use
+  `isButtonBound` (below) — it scans the live user-command list, so it
+  sees the rows the registration map filters out.
 
 Lua parity is `IRCommand.{Suite, suiteDefaults, registerSuite}` — see
 `engine/script/CLAUDE.md` §"Commands and input".
@@ -136,6 +139,38 @@ load-bearing: the pre-#2550 overlay built its text once (`if
 after the first visible frame never appeared. Bumping on a *filtered*
 registration would be equally wrong — it would turn "zero cost while hidden"
 into a per-frame rebuild.
+
+### Querying what is bound (`isButtonBound`, #2570)
+
+`isButtonBound(inputType, triggerStatus, button)` answers "is this key already
+taken" for creation code that wants to guard an ad-hoc bind against the
+engine's own registrations, instead of mirroring the engine's key list in a
+hand-maintained "reserved keys" table that drifts. Exposed on `CommandManager`,
+through `ir_command.hpp` as a free function, and to Lua as
+`IRCommand.isButtonBound`.
+
+**It scans `m_userCommands`, not the registration map** — and that choice is
+the whole design. The registry's two filters below make it structurally unable
+to back this query: an unnamed ad-hoc lambda and every non-`PRESSED` row (the
+camera suite's `MOVE_CAMERA_*_END` bindings) are never recorded there, so a
+registry-backed implementation reports "unbound" for keys that are very much
+bound. The regression locks in `test/common/command_registry_test.cpp` and
+`test/script/lua_command_test.cpp` pin exactly those rows.
+
+Three contract points, each deliberate:
+
+- **Modifier-blind.** A row with `requiredModifiers` / `blockedModifiers`
+  still counts as bound — the guard use case asks about the *key*. A
+  modifier-aware refinement would be a new overload, not a narrowing of this
+  one.
+- **Data, not policy.** `createCommand` still appends unconditionally;
+  stacking one key under different masks stays legal (existing creations do
+  it on purpose). Collision policy stays with the caller.
+- **MIDI is invisible.** Note/CC bindings live in their own per-device
+  registries, so `MIDI_NOTE` / `MIDI_CC` always report false.
+
+Cost is an O(bindings) linear scan — an init/registration-time query, not a
+per-tick call.
 
 Two filters keep the list readable, both intentional:
 

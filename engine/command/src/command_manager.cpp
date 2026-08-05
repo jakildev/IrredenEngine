@@ -109,6 +109,18 @@ void CommandManager::fireUserCommand(CommandId id) {
     m_userCommands[id].execute();
 }
 
+bool CommandManager::isButtonBound(
+    InputTypes inputType, ButtonStatuses triggerStatus, int button
+) const {
+    for (const CommandStruct<COMMAND_BUTTON> &command : m_userCommands) {
+        if (command.getType() == inputType && command.getTriggerStatus() == triggerStatus &&
+            command.getButton() == button) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void CommandManager::executeDeviceMidiNoteCommand(
     int device, CommandStruct<COMMAND_MIDI_NOTE> &command
 ) {

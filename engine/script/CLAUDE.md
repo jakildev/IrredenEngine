@@ -1470,6 +1470,31 @@ IRCommand.fireByName(CN.SCREENSHOT)
   RELEASED pair), applied at most once per row. Sugar over the same
   `IRCommand::registerBindings` primitive the C++ suites use — see
   `engine/command/CLAUDE.md` §"Default-binding manifests (#2666)".
+- `IRCommand.isButtonBound(inputType, status, button) -> boolean` (#2570) —
+  what is bound **right now**, the live counterpart to `suiteDefaults`'
+  by-default view. Scans the user-command list, so unnamed ad-hoc bindings
+  and the `RELEASED` `MOVE_CAMERA_*_END` rows are both visible — unlike
+  `getRegisteredBindings` below, which cannot see either. Lets a creation
+  guard its own key binds against the engine's registrations instead of
+  mirroring them in a hand-maintained "reserved keys" list that drifts.
+  **Modifier-blind by contract**: a row carrying required/blocked modifiers
+  still reports the key as bound. MIDI note/CC bindings live in separate
+  registries, so `MIDI_NOTE` / `MIDI_CC` always return false. It reports the
+  data only — `createCommand` still appends unconditionally and stacking one
+  key under different masks stays legal. O(bindings) scan: a
+  registration-time guard, not a per-tick call.
+- `IRCommand.getRegisteredBindings() -> {rows}` (#2570) — the help overlay's
+  rows, as `{name, description, button, status, modifiers}`. Named `PRESSED`
+  registrations only (the registry's own filter), so this is the narrower
+  view of the two.
+
+```lua
+-- Guard an ad-hoc bind against whatever the engine already took.
+local KM, BS, K = IRInput.InputType.KEY_MOUSE, IRInput.ButtonStatus, IRInput.Key
+if not IRCommand.isButtonBound(KM, BS.PRESSED, K.W) then
+    IRCommand.createCommand(KM, BS.PRESSED, K.W, function() ... end)
+end
+```
 
 ```lua
 -- Full camera controls minus Escape, with pan moved to the numpad.
