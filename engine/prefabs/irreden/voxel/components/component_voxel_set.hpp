@@ -250,10 +250,12 @@ struct C_VoxelSetNew {
         ivec3 size,
         ivec3 boundsMin,
         std::vector<C_Voxel> voxels,
-        IREntity::EntityId canvasEntity
+        IREntity::EntityId canvasEntity,
+        EntityAnchor anchor = EntityAnchor::CORNER
     )
         : numVoxels_{0}
         , size_{size}
+        , anchor_{anchor}
         , canvasEntity_{canvasEntity}
         , pendingVoxels_{std::move(voxels)}
         , pendingBoundsMin_{boundsMin} {}
@@ -294,7 +296,9 @@ struct C_VoxelSetNew {
             return;
         }
 
-        seedIntoPool(boundsMin, voxels, canvasEntity_);
+        // Dense-authored content is CORNER by construction — its origin IS the
+        // authored boundsMin — so the integer origin is exact here.
+        seedIntoPool(vec3(boundsMin), voxels, canvasEntity_);
         IRE_LOG_DEBUG("Allocated {} dense voxel(s) from voxel_ref", numVoxels_);
     }
 
@@ -633,7 +637,7 @@ struct C_VoxelSetNew {
         // corrupt render.
         std::vector<C_Voxel> staged = std::move(pendingVoxels_);
         pendingVoxels_.clear();
-        seedIntoPool(pendingBoundsMin_, staged, target);
+        seedIntoPool(stagedOrigin(), staged, target);
         if (numVoxels_ > 0) {
             IRPrefab::VoxelPool::queuePositionRange(
                 voxelStartIdx_,
@@ -643,19 +647,34 @@ struct C_VoxelSetNew {
         }
     }
 
+    // Local origin a staged set seeds at. CORNER keeps the authored integer
+    // `pendingBoundsMin_`; any other anchor derives its origin from the mode,
+    // because that origin is half-integer and `pendingBoundsMin_` is an
+    // `ivec3` that cannot carry it (#2563). Deriving is also strictly more
+    // robust than trusting a recovered origin: the anchor fixes the local
+    // layout by construction, so it survives a save taken while
+    // REBUILD_GRID_VOXELS has the span in a re-voxelized arrangement.
+    vec3 stagedOrigin() const {
+        return anchor_ == EntityAnchor::CORNER ? vec3(pendingBoundsMin_)
+                                               : anchorOffset(anchor_, size_);
+    }
+
     // int addVoxelSceneNode
 
   private:
     // Allocate a pool span on @p canvas and seed it from the dense box @p src
     // (row-major over `size_`), placing each local voxel position at
-    // `boundsMin + index`. Captures the four pool spans, resyncs the pool
+    // `origin + index`. @p origin is a `vec3`, not the authored `ivec3`
+    // boundsMin, because a non-CORNER anchor's local origin is half-integer
+    // (always so for GROUND, and on even axes for CENTER) — an integer origin
+    // cannot express it (#2563). Captures the four pool spans, resyncs the pool
     // active-mask from per-voxel alpha, and recomputes face occupancy — leaving
     // the set pool-resident (`numVoxels_ > 0`), or empty (`numVoxels_ == 0`) on
     // an allocation mismatch. `size_` must already be set and
     // `src.size() == product(size_)`. Shared by the dense-data ctor and the
     // post-load `attachToCanvas` seed pass (#2217, W-10) so the allocate +
     // seed + resync sequence lives in exactly one place.
-    void seedIntoPool(ivec3 boundsMin, std::span<const C_Voxel> src, IREntity::EntityId canvas) {
+    void seedIntoPool(vec3 origin, std::span<const C_Voxel> src, IREntity::EntityId canvas) {
         canvasEntity_ = canvas;
         const ivec3 extent = size_;
         const std::size_t requestedVoxels = src.size();
@@ -695,7 +714,7 @@ struct C_VoxelSetNew {
             return;
         }
 
-        const vec3 originOffset{boundsMin};
+        const vec3 originOffset{origin};
         for (int x = 0; x < extent.x; ++x) {
             for (int y = 0; y < extent.y; ++y) {
                 for (int z = 0; z < extent.z; ++z) {

@@ -13,8 +13,13 @@
 //                   local positions are `boundsMin + index`, so this plus the
 //                   colors fully reconstruct the geometry,
 //   - the per-voxel `C_Voxel` records (a fixed 12 B std430 POD — the same
-//     raw-image contract the primary template uses for POD components), and
-//   - the owning canvas EntityId, for post-load canvas resolution.
+//     raw-image contract the primary template uses for POD components),
+//   - the owning canvas EntityId, for post-load canvas resolution, and
+//   - `anchor_` (v2, #2563). For a non-CORNER set the anchor — NOT `boundsMin`
+//     — is what reconstructs the local origin on load: that origin is
+//     half-integer (always for GROUND, on even axes for CENTER) and the
+//     `ivec3` boundsMin cannot represent it. v1 records predate the field and
+//     read as CORNER via `SaveMigration<C_VoxelSetNew>` below.
 //
 // `read` reconstructs the set in STAGED mode (`numVoxels_ == 0`,
 // `pendingVoxels_` populated) via the zero-pool `C_VoxelSetNew::StagedInit`
@@ -32,6 +37,7 @@
 
 #include <irreden/voxel/components/component_voxel.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
+#include <irreden/world/save_migration.hpp>
 #include <irreden/world/save_serialize.hpp>
 
 #include <irreden/asset/binary_io.hpp>
@@ -69,6 +75,12 @@ template <> struct SaveSerialize<IRComponents::C_VoxelSetNew> {
 
         w.writeU64(static_cast<std::uint64_t>(set.canvasEntity_));
 
+        // v2 (#2563): the anchor. It is the ONLY record of a non-CORNER set's
+        // local origin that survives the round trip — the `boundsMin` above is
+        // an ivec3 and GROUND's z origin is half-integer for every size — so
+        // `read` reconstructs the origin from this rather than from boundsMin.
+        w.writeU8(static_cast<std::uint8_t>(set.anchor_));
+
         const std::size_t count = set.recordCount();
         w.writeVarUInt(count);
         // C_Voxel is a fixed 12 B std430 POD; write the raw image per record.
@@ -101,6 +113,15 @@ template <> struct SaveSerialize<IRComponents::C_VoxelSetNew> {
     }
 
     static IRAsset::Result<IRComponents::C_VoxelSetNew> read(IRAsset::BinaryReader &r) {
+        return readVersioned(r, /*hasAnchor=*/true);
+    }
+
+    // Shared body for the current layout and every retired one. `hasAnchor`
+    // is the only axis the v1 -> v2 bump moved, so the two readers differ by
+    // one field rather than by a copied function — a direct per-version
+    // reader per `save_migration.hpp`'s contract, not a v1 -> v2 chain.
+    static IRAsset::Result<IRComponents::C_VoxelSetNew>
+    readVersioned(IRAsset::BinaryReader &r, bool hasAnchor) {
         using Res = IRAsset::Result<IRComponents::C_VoxelSetNew>;
 
         IRAsset::Result<std::int32_t> sx = r.readI32();
@@ -131,6 +152,26 @@ template <> struct SaveSerialize<IRComponents::C_VoxelSetNew> {
         if (!canvas.ok()) {
             return Res::error(canvas.status_.code_, std::move(canvas.status_.message_));
         }
+        IRComponents::EntityAnchor anchor = IRComponents::EntityAnchor::CORNER;
+        if (hasAnchor) {
+            IRAsset::Result<std::uint8_t> rawAnchor = r.readU8();
+            if (!rawAnchor.ok()) {
+                return Res::error(rawAnchor.status_.code_, std::move(rawAnchor.status_.message_));
+            }
+            // Range-check before the cast — a corrupt or hand-edited byte must
+            // not become an out-of-range enum that `anchorOffset` then reads as
+            // CORNER by falling through its switch (silently misplacing the set
+            // rather than failing the load).
+            if (rawAnchor.value_ >
+                static_cast<std::uint8_t>(IRComponents::EntityAnchor::kLast)) {
+                return Res::error(
+                    IRAsset::BinaryIOError::UnknownTag,
+                    "C_VoxelSetNew: EntityAnchor value out of range"
+                );
+            }
+            anchor = static_cast<IRComponents::EntityAnchor>(rawAnchor.value_);
+        }
+
         IRAsset::Result<std::uint64_t> count = r.readVarUInt();
         if (!count.ok()) {
             return Res::error(count.status_.code_, std::move(count.status_.message_));
@@ -150,9 +191,31 @@ template <> struct SaveSerialize<IRComponents::C_VoxelSetNew> {
                 IRMath::ivec3(sx.value_, sy.value_, sz.value_),
                 IRMath::ivec3(bx.value_, by.value_, bz.value_),
                 std::move(voxels),
-                static_cast<IREntity::EntityId>(canvas.value_)
+                static_cast<IREntity::EntityId>(canvas.value_),
+                anchor
             }
         );
+    }
+};
+
+// v1 predates the anchor byte (#2563). Every v1 set was authored through the
+// bool ctor, so its origin is exactly the `boundsMin` the record already
+// carries and CORNER is the faithful reading — CENTER sets round-trip through
+// boundsMin as they always did, with the pre-existing even-size lossiness the
+// v1 format had and this migrator deliberately reproduces rather than
+// silently "fixing" on load.
+template <> struct SaveMigration<IRComponents::C_VoxelSetNew> {
+    static std::vector<
+        std::pair<std::uint32_t, ColumnMigratorFn<IRComponents::C_VoxelSetNew>>>
+    migrators() {
+        return {
+            {1u,
+             [](IRAsset::BinaryReader &r) -> IRAsset::Result<IRComponents::C_VoxelSetNew> {
+                 return SaveSerialize<IRComponents::C_VoxelSetNew>::readVersioned(
+                     r, /*hasAnchor=*/false
+                 );
+             }},
+        };
     }
 };
 

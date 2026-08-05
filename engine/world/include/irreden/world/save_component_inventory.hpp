@@ -220,7 +220,10 @@ IR_SAVE_OPT_OUT(IRComponents::C_RotationTarget)
 
 // Class E — C_VoxelSetNew: OPT-IN, flagged provisional (custom serializer is P2/W-3+; flip to
 // OPT-OUT is one line if the slice can't absorb it)
-IR_SAVE_OPT_IN(IRComponents::C_VoxelSetNew, 1)
+// v2 (#2563) appended the `anchor_` byte — a non-CORNER set's local origin is
+// half-integer and the record's ivec3 boundsMin cannot carry it. v1 reads via
+// SaveMigration<C_VoxelSetNew> in voxel/voxel_set_serialize.hpp (anchor CORNER).
+IR_SAVE_OPT_IN(IRComponents::C_VoxelSetNew, 2)
 
 // Class E — C_Skeleton: OPT-IN (authored rig topology; joint EntityIds round-trip under the
 // snapshot's id-stable contract)
