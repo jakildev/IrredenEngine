@@ -146,8 +146,8 @@ gh issue list --repo <repo> --label fleet:coding-improvement --state open \
   --json number,title,body
 ```
 
-- **Match** (an open ticket targets the same artifact / rule) → add an
-  occurrence instead of filing a new one:
+- **Open-ticket match** (an open ticket targets the same artifact / rule) → add
+  an occurrence instead of filing a new one:
   ```
   gh issue comment <M> --repo <repo> --body "Recurred: PR #<N>, <file:line> — \
   <one-line>. — <role-name>"
@@ -164,14 +164,14 @@ occurrence **only** for a **measured misfire**: a near-miss correctness/safety
 defect that fired in something you ran or observed — a wrong result, a
 false-clean pass, a real defect that would have shipped — not a failure mode
 predicted from reading source. Everything else needs a **second occurrence**
-first, made detectable by the **observations-ledger** (delta):
+first, made detectable by the **observations-ledger** (delta). Search the
+ledger issue's comments alongside the open-ticket dedup above:
 
-- Search the ledger issue's comments alongside the open-ticket dedup above. A
-  matching ledger entry means this IS the second occurrence: file the
-  standalone ticket with both occurrences in `## Occurrences`, and reply to
-  the ledger entry with `graduated → #<M>` so later matches point at the
-  ticket instead of re-recording.
-- No match → record, don't file. Append one comment to the ledger —
+- **Ledger match** → this IS the second occurrence: file the standalone ticket
+  with both occurrences in `## Occurrences`, and reply to the ledger entry with
+  `graduated → #<M>` so later matches point at the ticket instead of
+  re-recording.
+- **No ledger match** → record, don't file. Append one comment to the ledger —
   `Observation: <area>: <one-line rule> — PR #<N>, <file:line>, class A|B,
   target <path>. — <role>` — and move on. If the repo supplies no
   **observations-ledger** delta, skip recording (note the observation in the
@@ -182,8 +182,8 @@ Recording costs one comment, adds zero tickets to the backlog, and makes
 This is the anti-false-positive companion to the Step 2 one-off gate.
 Multi-occurrence and `Recurred:`-evidenced items always file.
 
-- **No match** (and the gate above passes — a measured misfire, or a
-  ledger-proven second occurrence) → file a new ticket,
+- **No open-ticket match** (and the gate above passes — a measured misfire, or
+  a ledger-proven second occurrence) → file a new ticket,
   tagging **only** `fleet:coding-improvement`
   (write the body to a worktree-local file and pass `--body-file` to avoid
   command-substitution hazards, mirroring `file-epic`; use
