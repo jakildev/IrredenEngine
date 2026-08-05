@@ -178,6 +178,46 @@ measurement finds the cap under real pressure.
 no per-axis canvas cell, and AO is a canvas-cell-resident quantity. No other
 drift from the cell-path lighting model.
 
+### Draw order is canonical — but only on flagged pools (#2479)
+
+The mode-3 append assigns entry indices with `atomicAdd`, and **entry index IS
+draw order** in the scatter's overflow branch (`v_peraxis_scatter.glsl` indexes
+by `gl_InstanceID * 3u`). Two entries whose `(cardPix, voxelDistance)` key ties
+therefore resolved their depth contest by run-variant arrival order — measured
+as 10 distinct rotated-shot hashes across 10 runs on the amplitude-5 displaced
+scene, and independently named as a run-variant class by the
+`kScatterCellTieStep` layout block in `ir_iso_common.glsl`.
+
+`c_per_axis_overflow_sort.{glsl,metal}` closes it: between the append and the
+indirect draw it canonically orders the appended entries by full record value
+(lexicographic `(packedCell, encodedDistance, colorPacked)` = entry words
+`(0, 2, 1)`), so draw order — and every equal-key winner — is a pure function
+of the appended **set**. The key spans all three words, so key-equality and
+record-equality coincide and equal records need no ordering at all.
+
+**The sort is gated on the pool's `storeTiesPossible_` flag** (#2346 — the same
+displaced-collision flag the cardinal winner election gates on, evaluated
+CPU-side so the sort semantics never fork by backend). An unflagged pool runs
+master's exact dispatch sequence: zero fill, zero network.
+
+**Residual class, deliberately accepted.** An unflagged pool keeps
+order-resolved **cross-cell 4-bit band-code ties**. This is acceptable because:
+
+- membership in the overflow list is deterministic (identical entry count every
+  run — verified at 66,690 on the amplitude-5 scene and 35,166 at amplitude 1);
+  only *order* was ever run-variant; and
+- **no measured repro exists for that class alone.** The amplitude-1 scene
+  (35,166 entries, unflagged-shaped content) was byte-identical run-to-run
+  *before* the sort existed. The class is documented in the
+  `kScatterCellTieStep` layout block as theoretically reachable, not observed.
+
+**Revisit trigger.** A measured repro on an *unflagged* pool means **widen the
+flag recompute** (`storeTiesPossible_` is a conservative predicate — see the
+"change-gated recompute must trigger on every input its function reads" rule in
+`.claude/rules/cpp-ecs.md`, whose worked example is this very flag). It does
+**not** mean un-gating the sort: the sort's cost is what forced the gate, and
+un-gating restores that cost on every rotating frame for every scene.
+
 ### #2207 / #2157 synergy
 
 The overflow entry's packed distance carries the same encoding the cell path

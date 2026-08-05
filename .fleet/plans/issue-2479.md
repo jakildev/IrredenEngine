@@ -330,3 +330,66 @@ recompute, never un-gate the sort.**
   already specified.
 - Screenshots, the doc updates in §5, and the widened-cap disclosure
   (addendum constraint 2) in the final PR body.
+
+---
+
+## Revision v3 — MEASURED OUTCOME (2026-08-05, macOS/Metal)
+
+A+B is implemented exactly as ruled. **Every criterion passes except 7a**, and
+7a fails by ~3x in a way that appears structural. Full evidence on the PR.
+
+| Criterion | Result |
+|---|---|
+| 1 — amp-5 rotated determinism | **PASS** — all 7 shots byte-identical 10/10 runs, against a live master control measured the same session (3 distinct hashes / 3 runs on each rotated shot) |
+| 2 — amp-0/1 controls | **PASS** — byte-identical 3/3 each |
+| 3 — cardinal shots | **PASS** — all 4 byte-identical to master, not merely stable |
+| 4 — jitter gate | **PASS (no regression)** — branch and master read digit-identical at zoom 2/4/8 (x residual 0.85 / 1.78 / 2.70 px). See the separate finding below: master itself now FAILS this gate's own 1.50 px bar at zoom 4/8, which is a pre-existing drift, not this PR's |
+| 5 — clean exits | **PASS** — `RESULT=CLEAN` on all 40+ runs |
+| 6 — content preservation | **PASS** — live `ctrl[1]` = 66,690 identical master vs branch; `ctrl[5]` = 0 both sides |
+| 7b — cardinal ~0 delta | **PASS** — byte-identical, stronger than "within noise" |
+| 7c — structurally zero dispatches when unflagged | **PASS** — `IRShapeDebug --spin-shape cylinder --spin-shape-voxel --yaw-sweep` reports `storeTiesPossible=false` → **0 dispatches**, while still carrying 72 live overflow entries (so the lane is active and the sort is provably absent, not vacuously untested) |
+| **7a — rotating frame delta < 8%** | **FAIL — +24.2%** (9.89 → 12.28 ms p50) |
+
+### The escalation's cost attribution was wrong, and that is the finding
+
+The escalation attributed the cost to Metal's ~40 us encoder-per-dispatch round
+trips, and the ruling approved fusion on that basis. Measured, 4 interleaved
+runs per arm, same session, each arm asserted to be the binary it claims:
+
+| arm | dispatches | frame p50 | vs master |
+|---|---|---|---|
+| A — master (no sort) | 0 | 9.89 ms | — |
+| U — unfused (this PR's prior head) | 67 | 13.89 ms | +40.5% |
+| B — fused + span-sized + gated | 18 (14 effective) | 12.28 ms | **+24.2%** |
+
+The fusion is real and worth keeping — it cut the *added* cost from +4.00 ms to
++2.39 ms, a 40% reduction. But it does not reach 8%, and three separate
+attributions were falsified by measurement along the way:
+
+1. **Dispatch count is not dominant.** 67 → 18 moved the added cost only 40%.
+2. **Memory traffic is not dominant.** Sizing the network to the live
+   population instead of the cap cut traffic 4x (214 MB → 53 MB/frame; only
+   12.7% of the cap was live) and moved frame time ~0.3 ms.
+3. **Threadgroup occupancy is not dominant.** 24 KB → 6 KB per threadgroup at
+   matched dispatch count and traffic moved nothing (3.02 → 3.34 ms GPU, i.e.
+   slightly worse from the extra dispatches).
+
+Fitting the three same-session variants gives a **~64 us fixed cost per
+dispatch** that no in-kernel change touches. That makes the gate arithmetic
+closed-form: 8% of a 9.89 ms frame is 0.79 ms ⇒ **at most ~12 dispatches, with
+zero budget for anything else**. A bitonic sort over the live population
+(nextPow2(66,690) = 131,072) at 2048-element workgroups needs **at least 14**.
+
+So the re-grounded criterion 7 is, at this scene, in the same shape criterion 7
+was before: **no correct implementation of the ruled mechanism can pass it.**
+That is the `engine/render/CLAUDE.md` vacuous-failure mirror a second time, one
+level down — and it is why this went back for a ruling rather than being tuned
+further.
+
+### Separate pre-existing finding (NOT this PR)
+
+The `engine/render/CLAUDE.md` #2469 accepted-residual table is stale. It records
+the voxel-cylinder yaw-sweep at x residual 0.57 px (zoom 4) and 1.25 px
+(zoom 8); **master now measures 1.78 px and 2.70 px**, so the canonical probe
+FAILS its own documented 1.50 px bar on master at both zooms. Branch and master
+are digit-identical, so this PR is neutral on it. Filed separately.

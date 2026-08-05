@@ -80,11 +80,22 @@ kernel void c_per_axis_overflow_sort(
     const uint liveCount = min(
         scratch[uint(frameData.overflowScratchLayout.y) + 1u], capEntries
     );
+    // The network's ACTIVE span — see the GLSL twin for the full rationale.
+    // Smallest power of two covering the live entries, floored at one fused
+    // block and capped at the entry cap; everything at or above it is a VIRTUAL
+    // sentinel, substituted in registers and never read from or written back.
+    // Derived GPU-side because the CPU cannot read ctrl[1] without a sync stall.
+    // Sizing the network to the CAP instead measured +31.8% frame time at the
+    // repro scene against a <8% gate — with 66,690 live under a 524,288 cap,
+    // 87% of every pass's traffic was shuffling sentinels.
+    uint span = kSortBlock;
+    while (span < liveCount) span <<= 1u;
+    span = min(span, capEntries);
 
     if (mode == 0u) {
-        // Sentinel fill of [liveCount, cap).
+        // Sentinel fill of [liveCount, span).
         const uint i = globalId.x;
-        if (i >= capEntries || i < liveCount) return;
+        if (i >= span || i < liveCount) return;
         const uint b = entriesBase + i * 3u;
         scratch[b] = kSortSentinelWord;
         scratch[b + 1u] = kSortSentinelWord;
@@ -102,10 +113,12 @@ kernel void c_per_axis_overflow_sort(
         // element index so these fused stages compose exactly with the
         // strided-slab steps below.
         const uint blockBase = g * kSortBlock;
-        if (blockBase >= liveCount) {
-            // Whole block is the just-filled sentinel; sorting a constant
-            // block is a no-op. Threadgroup-uniform, so the barriers below are
-            // reached by all threads or none.
+        if (blockBase >= span) {
+            // Wholly virtual block: every element is +inf and sorting a
+            // constant block is a no-op. Threadgroup-uniform, so the barriers
+            // below are reached by all threads or none. (span is a multiple of
+            // kSortBlock, so a block is wholly inside or wholly outside it —
+            // mode 1 needs no per-element guard.)
             return;
         }
         for (uint e = t; e < kSortBlock; e += kSortThreads) {
@@ -143,16 +156,27 @@ kernel void c_per_axis_overflow_sort(
     const uint slabElems = 1u << (pHi - pLo + 1u);
     const uint cBase = g * (kSortBlock / slabElems);
 
-    // NO whole-block-is-sentinel early-out here — see the GLSL twin. Mode 1
-    // runs against the PRE-network state where [liveCount, cap) is provably all
-    // sentinel; by any mode-2 pass the network's intermediate descending
-    // sub-sequences have migrated real records above liveCount, so skipping a
-    // high block drops them out of the sort (measured: 3 distinct rotated-shot
-    // hashes / 3 runs with the early-out in place).
+    // A stage wider than the active span is a no-op — see the GLSL twin.
+    if (k > span) return;
+    // Skip a threadgroup whose LOWEST element is already at or above the span
+    // (overflowExpandIndex is monotonic in c, so the minimum is at c = cBase,
+    // active 0). Threadgroup-uniform, so the barriers stay uniform.
+    if (overflowExpandIndex(cBase, 0u, pLo, pHi) >= span) return;
 
+    // The virtual-sentinel guard replaces the whole-block early-out this pass
+    // must NOT have: keying on liveCount is unsound here (the network migrates
+    // real records above it mid-sort — measured as 3 distinct rotated-shot
+    // hashes / 3 runs), while keying on `span` is sound because the reals
+    // provably never leave [0, span).
     for (uint e = t; e < kSortBlock; e += kSortThreads) {
         const uint i =
             overflowExpandIndex(cBase + (e / slabElems), e % slabElems, pLo, pHi);
+        if (i >= span) {
+            sW0[e] = kSortSentinelWord;
+            sW1[e] = kSortSentinelWord;
+            sW2[e] = kSortSentinelWord;
+            continue;
+        }
         const uint b = entriesBase + i * 3u;
         sW0[e] = scratch[b];
         sW1[e] = scratch[b + 1u];
@@ -182,6 +206,9 @@ kernel void c_per_axis_overflow_sort(
     for (uint e = t; e < kSortBlock; e += kSortThreads) {
         const uint i =
             overflowExpandIndex(cBase + (e / slabElems), e % slabElems, pLo, pHi);
+        // Never write back a virtual slot — that region stays untouched and is
+        // never read by the draw.
+        if (i >= span) continue;
         const uint b = entriesBase + i * 3u;
         scratch[b] = sW0[e];
         scratch[b + 1u] = sW1[e];

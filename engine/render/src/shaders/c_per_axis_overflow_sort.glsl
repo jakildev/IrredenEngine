@@ -134,6 +134,30 @@ uint liveEntryCount() {
     return min(scratch[uint(overflowScratchLayout.y) + 1u], capEntries());
 }
 
+// The network's ACTIVE span: the smallest power of two that covers the live
+// entries, floored at one fused block and capped at the entry cap. Everything
+// at or above it is treated as a VIRTUAL sentinel — substituted in registers,
+// never read from and never written back to memory.
+//
+// This is what makes the pass affordable, and it is derived GPU-side precisely
+// because the CPU cannot read ctrl[1] without a sync stall. Sizing the network
+// to the CAP instead measured +31.8% frame time at the repro scene (8.70 ->
+// 11.47 ms p50) against a <8% gate: with 66,690 live entries under a 524,288
+// cap, 87% of every pass's memory traffic was shuffling sentinels. Cutting the
+// dispatch count 67 -> 18 barely moved that number, which is what showed the
+// cost is traffic, not the encoder round-trips the escalation attributed it to.
+//
+// Correctness: the reals never leave [0, span) — a bitonic sort over the cap
+// with +inf above `span` is exactly a sort over [0, span), so the untouched
+// region above it can hold stale entries without ever reaching the draw (which
+// reads [0, ctrl[1]) and ctrl[1] <= span by construction).
+uint sortSpan() {
+    const uint live = liveEntryCount();
+    uint span = kBlock;
+    while (span < live) span <<= 1u;
+    return min(span, capEntries());
+}
+
 // Lexicographic (cell, distance, color) — words (0, 2, 1).
 bool recordLess(uint a0, uint a1, uint a2, uint b0, uint b1, uint b2) {
     if (a0 != b0) return a0 < b0;
@@ -163,10 +187,13 @@ void localCompareExchange(uint e, uint stride, bool ascending) {
 void main() {
     const uint mode = uint(overflowSortStep.x);
 
+    const uint span = sortSpan();
+
     if (mode == 0u) {
-        // Sentinel fill of [liveCount, cap).
+        // Sentinel fill of [liveCount, span). Slots at or above the span are
+        // virtual sentinels, so materializing them would be pure waste.
         const uint i = gl_GlobalInvocationID.x;
-        if (i >= capEntries() || i < liveEntryCount()) return;
+        if (i >= span || i < liveEntryCount()) return;
         const uint b = entriesBase() + i * 3u;
         scratch[b] = kSentinelWord;
         scratch[b + 1u] = kSentinelWord;
@@ -184,11 +211,10 @@ void main() {
         // element index so these fused stages compose exactly with the
         // strided-slab steps below.
         const uint blockBase = g * kBlock;
-        if (blockBase >= liveEntryCount()) {
-            // Pre-network state: every element of this block is the just-filled
-            // sentinel, and sorting a constant block is a no-op. Workgroup-
-            // uniform condition, so the barriers below stay in uniform control
-            // flow.
+        if (blockBase >= span) {
+            // Wholly virtual block: every element is +inf, and sorting a
+            // constant block is a no-op. Workgroup-uniform condition, so the
+            // barriers below stay in uniform control flow.
             return;
         }
         for (uint e = t; e < kBlock; e += kThreads) {
@@ -224,18 +250,32 @@ void main() {
     const uint slabElems = 1u << (pHi - pLo + 1u);
     const uint cBase = g * (kBlock / slabElems);
 
-    // NO whole-block-is-sentinel early-out here, even though pLo == 0 makes the
-    // slab contiguous and it looks like mode 1's. Mode 1 runs against the
-    // PRE-network state, where [liveCount, cap) is provably all sentinel; by the
-    // time any mode-2 pass runs, the network's intermediate descending
-    // sub-sequences have migrated real records above liveCount, so skipping a
-    // high block drops them out of the sort. Measured: with the early-out in
-    // place the rotated shots stayed run-variant (3 distinct hashes / 3 runs) —
-    // the exact defect this pass exists to close.
+    // A stage wider than the active span is a no-op: every pair it forms either
+    // sits entirely in the virtual region or straddles it, and a straddling pair
+    // is (real, +inf) in ascending order — the sorted prefix cannot move.
+    if (k > span) return;
+    // Skip a workgroup whose LOWEST element already sits at or above the span
+    // (expandIndex is monotonic in c, so the minimum is at c = cBase, active 0).
+    // Workgroup-uniform, so the barriers below stay in uniform control flow.
+    if (expandIndex(cBase, 0u, pLo, pHi) >= span) return;
 
+    // The virtual-sentinel guard below is what replaces the whole-block early-out
+    // this pass must NOT have. Mode 1 may skip high blocks because it runs against
+    // the PRE-network state; by the time any mode-2 pass runs, the network's
+    // intermediate descending sub-sequences have migrated real records above
+    // liveCount, so an early-out keyed on liveCount drops them out of the sort
+    // (measured: 3 distinct rotated-shot hashes / 3 runs). Keying on `span` is
+    // sound where keying on liveCount is not, because the reals provably never
+    // leave [0, span).
     for (uint e = t; e < kBlock; e += kThreads) {
         const uint i =
             expandIndex(cBase + (e / slabElems), e % slabElems, pLo, pHi);
+        if (i >= span) {
+            sW0[e] = kSentinelWord;
+            sW1[e] = kSentinelWord;
+            sW2[e] = kSentinelWord;
+            continue;
+        }
         const uint b = entriesBase() + i * 3u;
         sW0[e] = scratch[b];
         sW1[e] = scratch[b + 1u];
@@ -261,6 +301,9 @@ void main() {
     for (uint e = t; e < kBlock; e += kThreads) {
         const uint i =
             expandIndex(cBase + (e / slabElems), e % slabElems, pLo, pHi);
+        // Never write back a virtual slot — that region stays untouched and is
+        // never read by the draw.
+        if (i >= span) continue;
         const uint b = entriesBase() + i * 3u;
         scratch[b] = sW0[e];
         scratch[b + 1u] = sW1[e];
