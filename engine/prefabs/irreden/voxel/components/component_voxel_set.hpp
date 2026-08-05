@@ -4,6 +4,7 @@
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_constants.hpp>
 
+#include <irreden/common/components/entity_anchor.hpp>
 #include <irreden/voxel/components/component_voxel.hpp>
 #include <irreden/voxel/face_occupancy.hpp>
 #include <irreden/voxel/voxel_pool_api.hpp>
@@ -24,6 +25,18 @@ namespace IRComponents {
 struct C_VoxelSetNew {
     int numVoxels_;
     ivec3 size_;
+
+    // How this set's geometry attaches to the entity's translation (#2563).
+    // The offset it implies is BAKED into `positions_` at construction, so the
+    // rasterize / render / cull / occupancy / picking paths all consume it
+    // through those positions and need no anchor branch. It is stored anyway
+    // because a baked-and-discarded mode is unobservable: sites that
+    // reconstruct the body's center from `size_` (deformation pivots, particle
+    // emission) must ask `anchorLocalCenter(anchor_, size_)` instead of
+    // assuming a convention, and the serializer needs it to rebuild GROUND's
+    // half-integer origin, which an `ivec3` boundsMin cannot represent.
+    EntityAnchor anchor_ = EntityAnchor::CORNER;
+
     IREntity::EntityId canvasEntity_ = IREntity::kNullEntity;
     // TODO: Evaulate if we should store here or somewhere else.
     IREntity::EntityId ownerEntityId_ = IREntity::kNullEntity;
@@ -107,12 +120,20 @@ struct C_VoxelSetNew {
     // entity's per-entity canvas to render this set into that canvas.
     C_VoxelSetNew(
         ivec3 size,
-        Color color = IRColors::kGreen,
-        bool centerAroundOrigin = false,
+        Color color,
+        EntityAnchor anchor,
         IREntity::EntityId targetCanvas = IREntity::kNullEntity
     )
         : numVoxels_{size.x * size.y * size.z}
-        , size_{size} {
+        , size_{size}
+        , anchor_{anchor} {
+        // The usertype ctor path binds this overload directly and bypasses the
+        // schema range-check `prefab_api.cpp` applies to enum-typed prefab
+        // fields, so validate here — it covers the C++ and Lua callers alike.
+        IR_ASSERT(
+            anchor >= EntityAnchor::kFirst && anchor <= EntityAnchor::kLast,
+            "C_VoxelSetNew: EntityAnchor out of range"
+        );
         const int requestedVoxels = size.x * size.y * size.z;
         canvasEntity_ = targetCanvas != IREntity::kNullEntity
                             ? targetCanvas
@@ -156,9 +177,7 @@ struct C_VoxelSetNew {
             return;
         }
 
-        vec3 offset = centerAroundOrigin
-                          ? vec3(-(size.x - 1) * 0.5f, -(size.y - 1) * 0.5f, -(size.z - 1) * 0.5f)
-                          : vec3(0.0f);
+        vec3 offset = anchorOffset(anchor, size);
         for (int x = 0; x < size.x; x++) {
             for (int y = 0; y < size.y; y++) {
                 for (int z = 0; z < size.z; z++) {
@@ -180,6 +199,24 @@ struct C_VoxelSetNew {
         IRPrefab::Voxel::recomputeFaceOccupancy(voxels_, size_);
         IRE_LOG_DEBUG("Allocated {} voxel(s)", numVoxels_);
     }
+
+    // Back-compat sugar for the two legacy anchors. Kept as its own overload
+    // rather than a defaulted `EntityAnchor` parameter so the 78 in-tree
+    // `centerAroundOrigin` call sites keep compiling unchanged, and so
+    // `C_VoxelSetNew(size, color)` stays unambiguous — which is why the enum
+    // overload above deliberately does NOT default its anchor.
+    C_VoxelSetNew(
+        ivec3 size,
+        Color color = IRColors::kGreen,
+        bool centerAroundOrigin = false,
+        IREntity::EntityId targetCanvas = IREntity::kNullEntity
+    )
+        : C_VoxelSetNew(
+              size,
+              color,
+              centerAroundOrigin ? EntityAnchor::CENTER : EntityAnchor::CORNER,
+              targetCanvas
+          ) {}
 
     C_VoxelSetNew(int width, int height, int depth)
         : C_VoxelSetNew(ivec3(width, height, depth)) {}
