@@ -319,18 +319,24 @@ struct C_CanvasFogOfWar {
         // everywhere) for every default caller — get the order right.
         const float clampedUp = IRMath::max(zCostUp, 0.0f);
         const float resolvedDown = zCostDown < 0.0f ? clampedUp : IRMath::max(zCostDown, 0.0f);
-        // The clamps are load-bearing, not defensive hygiene: they are what
-        // keeps c_voxel_visibility_compact's z-FREE coarse cull a superset of
-        // stage 1's z-AWARE own-column drop. That holds only because both
-        // penalty terms are products of clamped->=0 costs with max(.,0) >= 0
-        // — freeBand only subtracts INSIDE max(.,0), so it can shrink a term
-        // toward 0 but never push it negative — so `distEff >= dist_xy`
-        // always, the penalized reveal is pointwise <= the z-free one, and the
-        // drop can only ever drop MORE. A negative cost or unclamped freeBand
-        // inverts it, and the compact pass culls voxels stage 1 would still
-        // render — matter silently missing, with no shader error. `observers_`
-        // is public, so a caller that writes visionCircleHeights_ directly
-        // owns this invariant itself.
+        // The two COST clamps are load-bearing, not defensive hygiene: they
+        // are what keeps c_voxel_visibility_compact's z-FREE coarse cull a
+        // superset of stage 1's z-AWARE own-column drop. That holds because
+        // both penalty terms are products of clamped->=0 costs with
+        // max(.,0) >= 0, so `distEff >= dist_xy` always, the penalized reveal
+        // is pointwise <= the z-free one, and the drop can only ever drop
+        // MORE. A negative COST inverts it, and the compact pass culls voxels
+        // stage 1 would still render — matter silently missing, with no
+        // shader error.
+        // The freeBand clamp carries NONE of that: freeBand only subtracts
+        // INSIDE max(.,0), so a negative band just makes the term
+        // `dz + |freeBand|` — larger, never negative — and `distEff >=
+        // dist_xy` survives an unclamped band intact. Its clamp is plain
+        // hygiene (a negative penalty-free band is meaningless as a
+        // semantic); it is the one clamp here that can be relaxed without
+        // re-deriving the cull argument. `observers_` is public, so a caller
+        // that writes visionCircleHeights_ directly owns this invariant
+        // itself.
         observers_.visionCircleHeights_[observers_.visionCircleCount_] =
             IRMath::vec4(observerZ, clampedUp, resolvedDown, IRMath::max(freeBand, 0.0f));
         ++observers_.visionCircleCount_;

@@ -380,13 +380,16 @@ constexpr IRVideo::AutoScreenshotShot kEdgeZCostShots[] = {
 // readout, each against its own achievable reach.
 //
 // The down side is deliberately SHORT, not a mirror of the up pillar's
-// length: at this camera pose the render cull's visible iso viewport is NOT
-// symmetric in Z — content extending "up" (toward smaller Z / the camera)
-// gets generous headroom, but content extending "down" (toward larger Z /
-// away from the camera) is culled past roughly 4 world units, independent of
-// the shadow-feeder sweep (which widens the cull only toward the sun —
-// (0,0,-1), the up side, here — so it isn't the mechanism). Reaching for the
-// same ~20-unit magnitude the up pillar uses would silently render as an
+// length: the render cull's usable reach is NOT symmetric in Z — content
+// extending "up" (toward smaller Z / the camera) gets generous headroom, but
+// content extending "down" (toward larger Z / away from the camera) is culled
+// past roughly 4 world units at this camera pose. The mechanism IS the
+// shadow-feeder sweep, and it is intended: `IRMath::shadowFeederIsoBounds`
+// widens the cull ONLY toward the sun, so this scene's straight-up sun
+// (0,0,-1) buys the up side `kSunShadowMaxDistance` (64) world units of extra
+// headroom and the down side exactly none — see #2900, which owns writing
+// that invariant into `engine/render/CLAUDE.md`. Reaching for the same
+// ~20-unit magnitude the up pillar uses would silently render as an
 // inert stub. `kEdgeZCostAsymDownXOffset` sits close enough to the disc
 // radius that the small achievable |Δz| still produces a measurable reveal
 // delta between the shipped low cost and a mirrored (zCostUp-equal) cost —
