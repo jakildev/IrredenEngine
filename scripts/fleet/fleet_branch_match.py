@@ -28,8 +28,8 @@ of the same #1425 duplicate-PR incident — workers improvised
 `claude/game-<worktree>-issue-<N>` branches the prefix-only matcher could not
 tie back to the issue, so the liveness sweep judged the live claim abandoned
 and a duplicate PR followed. The token boundaries are explicit
-(`(?:^|[-/])issue-(\\d+)(?=-|$)`) so the `fleet-claim` bash mirror can copy
-the spelling exactly.
+(`(?:^|[-/])issue-(\\d+)(?=-|$)`) — documented here since `_TOKEN_ISSUE_RE`
+below is the single source every caller imports.
 """
 
 import re
@@ -82,9 +82,10 @@ def _leading_issue(head_ref):
 
 # Word-bounded `issue-<N>` token: starts at a segment boundary (start, '/',
 # or '-') and the digits end at '-' or end-of-string, so `issue-25` does not
-# match #255 and `issue-255` does not match #25. The bash mirror in
-# `fleet-claim`'s stack-rebase auto-detect copies this spelling verbatim —
-# keep the two in sync.
+# match #255 and `issue-255` does not match #25. Single-sourced here — every
+# caller (`fleet-claim`, `fleet-reconcile-amendments`, `fleet-state-scout`,
+# `fleet_stack_base.py`) reaches this grammar through the module, and
+# `fleet-claim branch-check` is the shell entry point that shells into it.
 _TOKEN_ISSUE_RE = re.compile(r"(?:^|[-/])issue-(\d+)(?=-|$)")
 
 
