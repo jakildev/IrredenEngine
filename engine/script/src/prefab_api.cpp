@@ -188,8 +188,7 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
     if (sol::optional<bool> unboundedOpt = prefab["unbounded"]; unboundedOpt) {
         unbounded = *unboundedOpt;
     }
-    if (unbounded && rotationMode != IRComponents::RotationMode::DETACHED &&
-        rotationMode != IRComponents::RotationMode::DETACHED_REVOXELIZE) {
+    if (unbounded && !IRPrefab::RotationMode::ownsEntityCanvas(rotationMode)) {
         IRE_LOG_WARN(
             "Prefab.spawn('{}'): unbounded=true has no effect with "
             "rotation_mode=IRComponent.RotationMode.GRID.",
@@ -199,8 +198,7 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
 
     IRMath::ivec2 canvasSize{0};
     std::string canvasName;
-    if (rotationMode == IRComponents::RotationMode::DETACHED ||
-        rotationMode == IRComponents::RotationMode::DETACHED_REVOXELIZE) {
+    if (IRPrefab::RotationMode::ownsEntityCanvas(rotationMode)) {
         sol::optional<sol::table> sizeOpt = prefab["canvas_size"];
         if (!sizeOpt) {
             return makeError(
