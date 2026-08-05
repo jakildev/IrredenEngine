@@ -83,6 +83,7 @@ add_executable(IrredenEngineTest
   script/lua_debug_overlay_bindings_test.cpp
   script/lua_component_register_test.cpp
   script/lua_deferred_entity_test.cpp
+  script/lua_entity_anchor_test.cpp
   script/lua_enum_register_test.cpp
   script/lua_persistence_test.cpp
   script/lua_world_snapshot_test.cpp

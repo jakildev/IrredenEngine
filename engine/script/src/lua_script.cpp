@@ -5,6 +5,7 @@
 #include <irreden/ir_system.hpp>
 
 #include <irreden/common/components/component_rotation_mode.hpp>
+#include <irreden/common/components/entity_anchor.hpp>
 #include <irreden/common/modifier_field_registry.hpp>
 #include <irreden/script/lua_audio_bindings.hpp>
 #include <irreden/script/lua_collision_bindings.hpp>
@@ -557,6 +558,15 @@ void LuaScript::bindLuaDrivenEcs() {
     IR_BIND_ROTMODE(DETACHED_REVOXELIZE);
 #undef IR_BIND_ROTMODE
     m_lua["IRComponent"]["RotationMode"] = rotationModeTable;
+
+    sol::table entityAnchorTable = m_lua.create_table();
+#define IR_BIND_ANCHOR(name)                                                                       \
+    entityAnchorTable[#name] = static_cast<lua_Integer>(IRComponents::EntityAnchor::name)
+    IR_BIND_ANCHOR(CORNER);
+    IR_BIND_ANCHOR(CENTER);
+    IR_BIND_ANCHOR(GROUND);
+#undef IR_BIND_ANCHOR
+    m_lua["IRComponent"]["EntityAnchor"] = entityAnchorTable;
 
     // Shared detail::registerLuaEnum guarantees identical ordinals at build time and runtime.
     m_lua["IREnum"] = m_lua.create_table();
