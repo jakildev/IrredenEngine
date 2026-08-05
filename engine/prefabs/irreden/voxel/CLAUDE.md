@@ -85,10 +85,21 @@ is at its feet, so it would orbit rather than spin in place — that path
 assumes a centered solid), and `C_ColliderIso3DAABB` / SDF shapes /
 `C_EntityCanvas`, which migrate per the same enum when touched.
 
+The detached case is **unguarded today and silent** — `DetachedRevoxelize`'s
+per-voxel `halfCellAnchor` uniformity assert passes for a GROUND set (its z
+residual is a uniform `-0.5`), so the wrong pivot produces no diagnostic.
+**#2911** carries the guard, including the layering question its natural home
+(`IRPrefab::RotationMode::setMode`, in `common/`) raises: it would be the
+tree's first `common/` → `voxel/` include.
+
 Lua spells it `IRComponent.EntityAnchor.GROUND` (integers, never string
 names) and it is the **3-arg** `C_VoxelSetNew.new(size, color, anchor)`
 form; the legacy `bool` arm is deliberately not registered on the Lua
 surface — see `component_voxel_set_lua.hpp` for why. C++ keeps both.
+A **4-arg** form appends the ctor's `targetCanvas`, so a Lua caller (or a
+headless test) can allocate from a specific canvas instead of the active one;
+`test/script/lua_entity_anchor_test.cpp` uses it to assert the placement a Lua
+spawn actually produces.
 
 - `C_ShapeDescriptor` — SDF shape type + params + color + flags (visible,
   hollow, mirror). Rendered directly by the GPU; **does not allocate voxels**.
