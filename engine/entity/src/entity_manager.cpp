@@ -150,6 +150,21 @@ void EntityManager::markEntityForDeletion(EntityId &entity) {
 /* TODO: destroy entities in batch after each frame */
 void EntityManager::destroyEntity(EntityId entity) {
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
+    // Validate before the hooks fire: a bad id must not drive user callbacks,
+    // and a double-destroy must name itself here rather than surface later as
+    // a null-archetypeNode deref in unrelated code (#2565).
+    if (findRecord(entity) == nullptr) {
+        IR_ASSERT(
+            false,
+            "destroyEntity: no entity record for id={} (masked={}) — already "
+            "destroyed, or never allocated. The batch drains "
+            "(destroyMarkedEntities / destroyAllEntities) skip dead ids; a "
+            "direct destroyEntity call on one is a caller bug.",
+            entity,
+            entity & IR_ENTITY_ID_BITS
+        );
+        return;
+    }
     // Pre-destroy hooks run before component teardown so callbacks see
     // the entity (and its peers) in their final fully-valid state.
     // Hooks must not unregister hooks during this loop — see the
@@ -234,8 +249,17 @@ void EntityManager::destroyMarkedEntities() {
     // T-225: drain the legacy main-thread list first (callers that
     // bypass the per-worker buffer — pre-`World` startup, e.g. — still
     // funnel through this vector).
+    // The drain is set-semantics, not sequence-semantics: an id can be marked
+    // by two systems in one frame, or destroyed by a peer's pre-destroy hook
+    // between marking and draining. Skipping the already-dead ones keeps the
+    // drain idempotent (mirrors destroyAllEntities' contains() guard) so the
+    // named destroyEntity assert stays reserved for direct caller bugs.
     for (std::size_t i = 0; i < m_entitiesMarkedForDeletion.size(); ++i) {
-        this->destroyEntity(m_entitiesMarkedForDeletion.at(i));
+        const EntityId entity = m_entitiesMarkedForDeletion.at(i);
+        if (findRecord(entity) == nullptr) {
+            continue;
+        }
+        this->destroyEntity(entity);
     }
     m_entitiesMarkedForDeletion.clear();
     // Then per-worker buffers in workerId order. Deterministic order is
@@ -244,7 +268,11 @@ void EntityManager::destroyMarkedEntities() {
     // same workers must produce the same archetype-node row order.
     for (auto &staging : m_workerStaging) {
         for (std::size_t i = 0; i < staging.markedForDeletion_.size(); ++i) {
-            this->destroyEntity(staging.markedForDeletion_[i]);
+            const EntityId entity = staging.markedForDeletion_[i];
+            if (findRecord(entity) == nullptr) {
+                continue;
+            }
+            this->destroyEntity(entity);
         }
         staging.markedForDeletion_.clear();
     }
@@ -303,11 +331,16 @@ void EntityManager::flushStructuralChanges() {
         std::unordered_map<ComponentId, RemovalGroupsByNode> removalsByComponentAndNode;
 
         for (const auto &pendingRemoval : pendingComponentRemovals) {
-            if (!entityExists(pendingRemoval.entity_)) {
+            // A removal can outlive its entity (destroyed between queue and
+            // flush) and can name an id whose insert has not drained yet.
+            // Both are "no component to remove", not a crash — and neither
+            // may probe with `operator[]` (#2565).
+            EntityRecord *recordPtr = findRecord(pendingRemoval.entity_);
+            if (recordPtr == nullptr || recordPtr->archetypeNode == nullptr) {
                 continue;
             }
 
-            EntityRecord &record = getRecord(pendingRemoval.entity_);
+            EntityRecord &record = *recordPtr;
             ArchetypeNode *fromNode = record.archetypeNode;
             if (std::find(
                     fromNode->type_.begin(),
@@ -337,13 +370,15 @@ void EntityManager::flushStructuralChanges() {
                 });
 
                 for (EntityId entity : entities) {
-                    if (!entityExists(entity)) {
+                    // Re-resolve per entity: an earlier removal in this group
+                    // may have moved or destroyed this one.
+                    EntityRecord *recordPtr = findRecord(entity);
+                    if (recordPtr == nullptr || recordPtr->archetypeNode == nullptr) {
                         continue;
                     }
 
-                    EntityRecord &record = getRecord(entity);
-                    if (record.archetypeNode == fromNode) {
-                        removeComponentById(record, entity, componentType, fromNode, toNode);
+                    if (recordPtr->archetypeNode == fromNode) {
+                        removeComponentById(*recordPtr, entity, componentType, fromNode, toNode);
                         continue;
                     }
 
@@ -496,8 +531,42 @@ EntityId EntityManager::getSingletonByComponentIdOrNull(ComponentId componentTyp
     return it->second;
 }
 
+EntityRecord *EntityManager::findRecord(EntityId entity) {
+    auto it = m_entityIndex.find(entity & IR_ENTITY_ID_BITS);
+    return it == m_entityIndex.end() ? nullptr : &it->second;
+}
+
+const EntityRecord *EntityManager::findRecord(EntityId entity) const {
+    auto it = m_entityIndex.find(entity & IR_ENTITY_ID_BITS);
+    return it == m_entityIndex.end() ? nullptr : &it->second;
+}
+
 EntityRecord &EntityManager::getRecord(EntityId entity) {
-    return m_entityIndex[entity & IR_ENTITY_ID_BITS];
+    EntityRecord *record = findRecord(entity);
+    IR_ASSERT(
+        record != nullptr,
+        "getRecord: no entity record for id={} (masked={}) — the id was never "
+        "allocated, or has already been destroyed. Probe with entityExists / "
+        "findRecord before reading an id that may be dead.",
+        entity,
+        entity & IR_ENTITY_ID_BITS
+    );
+    IR_ASSERT(
+        record != nullptr && record->archetypeNode != nullptr,
+        "getRecord: entity id={} (masked={}) has an index record but no "
+        "archetype node (row={}) — {}",
+        entity,
+        entity & IR_ENTITY_ID_BITS,
+        record != nullptr ? record->row : 0,
+        (record != nullptr && record->row == -1)
+            ? "the id was allocated but not yet placed (a deferred-create or "
+              "batch-create window is being observed mid-flight)"
+            : "the record was corrupted after placement"
+    );
+    // Unreachable in debug — IR_ASSERT throws. In IR_RELEASE the asserts
+    // compile out and this derefs null: a hard crash at the offending access,
+    // and no write into m_entityIndex either way (see #2565).
+    return *record;
 }
 
 // TODO: make this a flag instead
@@ -643,23 +712,25 @@ void EntityManager::addComponentDynamic(EntityId entity, ComponentId componentTy
 std::pair<IComponentData *, int>
 EntityManager::getComponentDataAndRow(EntityId entity, ComponentId componentType) {
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
-    if (!entityExists(entity)) {
+    const EntityRecord *record = findRecord(entity);
+    if (record == nullptr || record->archetypeNode == nullptr) {
         return {nullptr, -1};
     }
-    EntityRecord &record = getRecord(entity);
-    ArchetypeNode *node = record.archetypeNode;
-    auto it = node->components_.find(componentType);
-    if (it == node->components_.end()) {
+    auto it = record->archetypeNode->components_.find(componentType);
+    if (it == record->archetypeNode->components_.end()) {
         return {nullptr, -1};
     }
-    return {it->second.get(), record.row};
+    return {it->second.get(), record->row};
 }
 
 bool EntityManager::hasComponent(EntityId entity, ComponentId componentType) {
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
-    if (!entityExists(entity))
+    // An honest `false` for a dead or not-yet-placed id, in one lookup.
+    const EntityRecord *record = findRecord(entity);
+    if (record == nullptr || record->archetypeNode == nullptr) {
         return false;
-    return getRecord(entity).archetypeNode->type_.contains(componentType);
+    }
+    return record->archetypeNode->type_.contains(componentType);
 }
 
 void EntityManager::pushCopyData(
@@ -760,17 +831,47 @@ void EntityManager::handleComponentRemove(
 void EntityManager::updateBackEntityPosition(ArchetypeNode *node, unsigned int newPos) {
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
     EntityId backEntity = node->entities_.back();
-    EntityRecord &backRecord = getRecord(backEntity);
-    backRecord.row = newPos;
+    // Swap-remove bookkeeping: a node's back entity must have an index record,
+    // because the node's entity list and the index are two views of the same
+    // placement. Probing it with `operator[]` would satisfy the write by
+    // MINTING one — a `{nullptr, row}` record that then answers `entityExists`
+    // with `true` and crashes every later reader (see #2565).
+    EntityRecord *backRecord = findRecord(backEntity);
+    IR_ASSERT(
+        backRecord != nullptr,
+        "updateBackEntityPosition: archetype node id={} holds entity id={} in "
+        "its back row with no index record — the node's entity list has "
+        "drifted from the entity index",
+        node->id_,
+        backEntity
+    );
+    if (backRecord != nullptr) {
+        backRecord->row = newPos;
+    }
     node->entities_[newPos] = node->entities_.back();
     node->entities_.pop_back();
     IRE_LOG_DEBUG("Entity={} moved to row={}", backEntity, newPos);
 }
 
 void EntityManager::updateRecord(EntityId entity, ArchetypeNode *node, unsigned int row) {
-    EntityRecord &record = getRecord(entity);
-    record.archetypeNode = node;
-    record.row = row;
+    // Placement writer: the record legitimately still carries a null
+    // archetypeNode here (allocateEntity / insertReservedEntity seed
+    // `{nullptr, -1}`), so this asserts existence only — not getRecord's
+    // stronger placed-ness contract.
+    EntityRecord *record = findRecord(entity);
+    IR_ASSERT(
+        record != nullptr,
+        "updateRecord: no index record for entity id={} (masked={}) — an "
+        "entity is being placed into an archetype node without having been "
+        "allocated through allocateEntity / insertReservedEntity",
+        entity,
+        entity & IR_ENTITY_ID_BITS
+    );
+    if (record == nullptr) {
+        return;
+    }
+    record->archetypeNode = node;
+    record->row = row;
 }
 
 } // namespace IREntity

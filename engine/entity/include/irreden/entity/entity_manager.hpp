@@ -73,6 +73,22 @@ class EntityManager {
     inline Archetype &getEntityArchetype(EntityId e) {
         return getRecord(e).archetypeNode->type_;
     }
+    /// Non-inserting record lookup: `nullptr` when `entity` has no index
+    /// entry (never allocated, or already destroyed). Every probe that must
+    /// tolerate a dead id goes through this — never `m_entityIndex[...]`,
+    /// whose `operator[]` mints a value-initialised `{nullptr, 0}` record on
+    /// a miss. That mint is what turned one bad-id read into store
+    /// corruption (#2565): the minted record makes `entityExists` answer
+    /// `true` for the dead id from then on, so the next path that guards
+    /// with `entityExists` and derefs `archetypeNode` crashes on an id it
+    /// had every reason to trust.
+    ///
+    /// A non-null return does NOT imply the entity is placed in an archetype
+    /// node — `allocateEntity` / `insertReservedEntity` seed
+    /// `{nullptr, -1}` before placement, so check `archetypeNode` too
+    /// wherever an unplaced record is reachable.
+    EntityRecord *findRecord(EntityId entity);
+    const EntityRecord *findRecord(EntityId entity) const;
     inline ArchetypeNode *findArchetypeNode(const Archetype &type) {
         return m_archetypeGraph.findArchetypeNode(type);
     }
@@ -137,6 +153,10 @@ class EntityManager {
     // backwards, since this session's infrastructure entities may already
     // sit above a cross-session saved watermark. Main-thread only.
     void advanceEntityIdWatermark(EntityId watermark);
+    /// Record lookup for read/mutate paths: asserts the entity has an index
+    /// record AND that the record is placed in an archetype node, naming the
+    /// offending id in both messages. Callers that legitimately reach an
+    /// unplaced or dead id use `findRecord` and answer honestly instead.
     EntityRecord &getRecord(EntityId entity);
     EntityId setFlags(EntityId entity, EntityId flags);
     bool isPureComponent(ComponentId component);
@@ -396,9 +416,15 @@ class EntityManager {
         // `removeComponentDeferred`).
         int slot = workerSlotForCurrentThread();
         m_workerStaging[slot].structuralChanges_.push_back([this, entity, component]() {
-            if (entityExists(entity)) {
-                setComponent<Component>(entity, component);
+            // `entityExists` alone is not enough: an id allocated but not yet
+            // placed in an archetype node reports `true` while its record is
+            // still `{nullptr, -1}`, and `setComponent` would deref that
+            // (#2565). Require a placed record.
+            const EntityRecord *record = findRecord(entity);
+            if (record == nullptr || record->archetypeNode == nullptr) {
+                return;
             }
+            setComponent<Component>(entity, component);
         });
     }
 
@@ -417,6 +443,12 @@ class EntityManager {
 
     template <typename Component> Component &getComponent(EntityId entity) {
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
+        IR_ASSERT(
+            entity != kNullEntity,
+            "getComponent<{}> called with kNullEntity — the caller is reading a "
+            "cleared or never-initialised EntityId field",
+            typeid(Component).name()
+        );
         const EntityRecord &record = getRecord(entity);
         ArchetypeNode *node = record.archetypeNode;
         Archetype archetype = node->type_;
@@ -441,8 +473,14 @@ class EntityManager {
             return std::nullopt;
         }
 
-        const EntityRecord &record = getRecord(entity);
-        ArchetypeNode *node = record.archetypeNode;
+        // A dead or not-yet-placed id is an honest `nullopt`, not a crash —
+        // and, crucially, not an `operator[]` probe that would mint a poison
+        // record for it (#2565).
+        const EntityRecord *record = findRecord(entity);
+        if (record == nullptr || record->archetypeNode == nullptr) {
+            return std::nullopt;
+        }
+        ArchetypeNode *node = record->archetypeNode;
         Archetype archetype = node->type_;
         ComponentId componentType = getComponentType<Component>();
 
@@ -451,7 +489,7 @@ class EntityManager {
         }
         IComponentDataImpl<Component> *data =
             castComponentDataPointer<Component>(node->components_[componentType].get());
-        return std::make_optional(&data->dataVector[record.row]);
+        return std::make_optional(&data->dataVector[record->row]);
     }
 
     template <typename Component> std::vector<Component> &getComponentData(ArchetypeNode *node) {
