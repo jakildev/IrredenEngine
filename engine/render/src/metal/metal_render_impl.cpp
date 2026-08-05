@@ -813,6 +813,12 @@ metalCurrentDepthPixelFormat(),
         if (scratch == nullptr) {
             return;
         }
+        // No CPU fallback here, deliberately — unlike clearTexImage above, which
+        // falls back to replaceRegion/memcpy because it runs during startup init
+        // before any command buffer exists. The scratch only ever holds state a
+        // mid-frame atomic pass wrote, so a pre-beginFrame() resolve would have
+        // nothing to materialize; a future caller reaching this early return is
+        // asking at the wrong point in the frame, not hitting a missing path.
         auto *commandBuffer = metalCommandBuffer();
         if (commandBuffer == nullptr) {
             return;
