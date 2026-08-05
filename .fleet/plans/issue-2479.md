@@ -240,3 +240,93 @@ only code phase.
    raises the append clamp (fewer drops → content change on drop-saturated
    scenes). State it explicitly so a later large-canvas content diff isn't
    mis-attributed to the sort.
+
+---
+
+## Revision v3 — architect ruling on the 2026-08-04T14:21Z design escalation
+
+The v2 mechanism (canonical-order the overflow entry list) shipped and proved
+correct — criteria 1-6 pass — but **criterion 7 failed as written**, and the
+escalation argued the criterion is itself unsatisfiable by any multi-dispatch
+design. The architect ruled **A+B** (2026-08-05T01:36Z, PR #2850 thread) and
+accepted the escalation's analysis in full. This revision folds that direction
+in; everything above stands except criterion 7, which is re-grounded below.
+
+### 1. Criterion 7 is a gate defect — re-grounded (supersedes criterion 7 above)
+
+A <5% budget on the 0.455 ms `voxelStage1` CPU row is a ~0.023 ms allowance
+≈ 2-3 Metal encoder round-trips, which excludes every multi-dispatch design
+including the plan's own committed mechanism. That is the
+`engine/render/CLAUDE.md` **vacuous-failure mirror** shape: re-ground the
+oracle rather than contort the mechanism. Replacement gate, measured at the
+dense repro scene (`IRPerfGrid` wave-freeze, amp 5, `--yaw 0.35
+--auto-profile`, the escalation's A/B protocol):
+
+- **7a** — rotating frame-time delta **< 8%** vs pre-fix;
+- **7b** — cardinal shots **~0** delta (within run-to-run noise);
+- **7c** — **structurally zero added dispatches** when the pool is unflagged
+  or the sort is otherwise gated off. Verify by **dispatch count / profile-row
+  absence**, not timing alone.
+
+### 2. (B) Gate the sort on `storeTiesPossible_`, backend-symmetric
+
+The gating decision is CPU-side against the #2346 recomputed displaced-collision
+flag — the same flag the cardinal winner election already gates on
+(`system_voxel_to_trixel.hpp`, the `cardinalElection` local). **Both backends
+take the same gate**, so the sort *semantics* never fork by backend. An
+unflagged pool runs master's exact dispatch sequence: zero fill, zero network.
+
+### 3. (A) Fuse where the cost lives — strided-slab shared memory
+
+The cost is encoder round-trips, not arithmetic (a 16-byte partial-`subData`
+variant measured identical). Fuse the network from 67 dispatches to **18** at
+the repro scene's p2 cap (524,288):
+
+- Fused block **2048 elements** (24 KB threadgroup: 2048 x 3 words x 4 B),
+  the largest power of two under the 32 KB floor both backends guarantee.
+  256 threads, 8 elements/thread for load+store, 4 compare-exchange pairs per
+  thread per stride.
+- **Generalized strided-slab pass.** A dispatch handles a *range* of stride
+  bit positions `[pLo, pHi]` with `pHi - pLo + 1 <= 11` over a 2048-element
+  slab closed under those strides. Compressed-index expansion:
+  `i = ((c >> pLo) << (pHi+1)) | (active << pLo) | (c & ((1<<pLo)-1))`, with
+  `c` the slab's index over all non-active bits. Workgroup count is
+  `cap / 2048` for **every** stride group, independent of the group width.
+  `pLo == 0, pHi == 10` degenerates to the contiguous-block case, so this one
+  mode subsumes v2's separate mode 3 (local tail).
+- **Resulting count** at cap `2^19`: 1 fill + 1 full local sort (stages
+  `k = 2..2048`) + 2 dispatches for each of the 8 remaining stages
+  (`k = 2^12..2^19`: top 11 stride positions, then the residual `s - 11 <= 8`)
+  = **18**. Estimated ~+0.7 ms/rotating frame (~+5-6% frame) at ~40 us/encoder.
+
+**Both backends get the fused network.** The ruling permits GL to keep the
+unfused form pending a GL-host measurement, but that is a *permission*, not a
+requirement: the fusion is a pass-structure change with identical semantics,
+and forking the structure by backend would leave two networks to keep in
+lockstep for no measured benefit (fewer barriers is not worse on GL either).
+One structure, both twins.
+
+### 4. Option C stays rejected
+
+A value-derived float tiebreak inside the depth test carries cross-backend
+float-identity risk and re-opens the zero-slack PRECONDITION ruling. Not
+blessed; do not revisit under this issue.
+
+### 5. Document the residual class, don't silently accept it
+
+Unflagged pools keep order-resolved cross-cell band-code ties. State in
+`docs/design/per-axis-trixel-canvas-rotation.md` §overflow lane: (a) the class
+and why it is acceptable — membership is deterministic, no measured repro
+exists (amp-1 / 35k entries was byte-identical pre-fix); and (b) the revisit
+trigger: **a measured repro on an unflagged pool means widen the flag
+recompute, never un-gate the sort.**
+
+### Re-scoped acceptance
+
+- Criteria 1-3 **re-verified post-fusion** on flagged pools.
+- An explicit **unflagged-pool A/B** showing zero added dispatches (7c).
+- Criterion 7 per the re-grounded gate (7a/7b/7c) above.
+- Criteria 4 (jitter gate), 5 (clean exits), 6 (content preservation) as
+  already specified.
+- Screenshots, the doc updates in §5, and the widened-cap disclosure
+  (addendum constraint 2) in the final PR body.

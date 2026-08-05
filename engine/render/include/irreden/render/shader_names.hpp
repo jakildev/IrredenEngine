@@ -49,6 +49,8 @@ const char *const kFileCompVoxelToTrixelStage1WinnerResolve =
 // #2479: canonical-order the view-visibility overflow entry list between the
 // mode-3 append and the overflow indirect draw, so equal-key entries resolve
 // their depth contest by record value instead of run-variant append order.
+// Dispatched only for pools whose storeTiesPossible_ flag is set — the same
+// #2346 gate the cardinal winner election takes, CPU-side on both backends.
 // Metal mirror in metal/c_per_axis_overflow_sort.metal (registered in
 // threadgroupSizeForFunctionName; NOT an image-atomic scratch consumer).
 const char *const kFileCompPerAxisOverflowSort = "shaders/c_per_axis_overflow_sort.glsl";

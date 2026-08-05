@@ -799,11 +799,11 @@ struct FrameDataVoxelToCanvas {
     ivec4 overflowScratchLayout_ = ivec4(0, 0, 0, 0);
     // Overflow-entry canonical-sort step descriptor (#2479), read only by
     // c_per_axis_overflow_sort between the mode-3 append and the overflow
-    // draw: .x = pass mode (0 sentinel-fill, 1 fused local sort, 2 global
-    // bitonic step, 3 fused local tail), .y = bitonic stage size k,
-    // .z = stride j (mode 2 only). std140-appended (offset 224) so every
-    // prior offset — and every prefix-declaring binding-7 shader — is
-    // unchanged.
+    // draw: .x = pass mode (0 sentinel-fill, 1 fused local sort, 2 fused
+    // strided slab), .y = bitonic stage size k, and for mode 2 the inclusive
+    // stride bit-position window .z = pLo / .w = pHi (at most one fused-slab
+    // width apart). std140-appended (offset 224) so every prior offset — and
+    // every prefix-declaring binding-7 shader — is unchanged.
     ivec4 overflowSortStep_ = ivec4(0, 0, 0, 0);
 };
 
