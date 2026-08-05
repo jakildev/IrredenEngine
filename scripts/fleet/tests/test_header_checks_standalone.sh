@@ -21,6 +21,12 @@
 #   - a scratch consumer absent from the list       → exit 1, names the kernel
 #   - a non-atomic decl at the scratch slot         → exit 0 (the #1619 params
 #     UBO shape must NOT be flagged — negative control)
+#   - a commented-out list entry                    → exit 1 (the runtime stops
+#     binding for it, so it must read as absent, not present)
+#   - a hand-wrapped scratch declaration            → exit 1 (the qualifier test
+#     reads the declaration window, not the attribute's line)
+#   - an atomic neighbour on the slot's line        → exit 0 (that qualifier
+#     belongs to the preceding parameter — negative control)
 #   - a listed kernel that declares no scratch      → exit 1 (reverse drift:
 #     the sticky bind would clobber its slot, #1619)
 #   - a scratch list with no bare "}" terminator    → exit 1 (EOF guard)
@@ -56,8 +62,12 @@ trap 'rm -rf "$TMPROOT"' EXIT
 # functionUsesImageAtomicScratch. Arms that inject a new kernel must register
 # it in the former — otherwise the registry check (#2798) FATALs first and the
 # arm silently tests that checker instead of the one it names.
+#
+# $4 (optional) is a list of scratch entries emitted COMMENTED OUT — the way a
+# developer disables one, rather than deleting it. bindComputeResources binds
+# off the live list, so those names must read as absent.
 write_pipeline_cpp() {
-    local root="$1" registry_names="$2" scratch_names="$3" name
+    local root="$1" registry_names="$2" scratch_names="$3" commented_names="${4:-}" name
     local out="$root/engine/render/src/metal/metal_pipeline.cpp"
     {
         echo 'namespace IRRender {'
@@ -76,6 +86,9 @@ write_pipeline_cpp() {
         echo '    return false'
         for name in $scratch_names; do
             echo "           || functionName == \"$name\""
+        done
+        for name in $commented_names; do
+            echo "        // || functionName == \"$name\""
         done
         echo '        ;'
         echo '}'
@@ -248,6 +261,74 @@ assert_contains "$alias_out" "Metal scratch-consumer check scanned 2 compute ker
     "the alias kernel was actually scanned, not skipped"
 assert_contains "$alias_out" "(1 declare the image-atomic scratch at buffer slot 16)" \
     "the alias kernel is not counted as a scratch consumer"
+
+# --- a commented-out list entry reads as absent, not present -----------------
+# bindComputeResources binds off the live list, so commenting an entry out stops
+# the bind exactly as deleting it would. A scan that harvests quoted names from
+# the raw line reads the entry as present and passes green while the consumer's
+# imageAtomicMin writes land nowhere — the forward direction, reached by two
+# slashes.
+SCRATCH_COMMENTED="$TMPROOT/scratch-commented"
+make_fixture "$SCRATCH_COMMENTED"
+write_pipeline_cpp "$SCRATCH_COMMENTED" "c_fixture_kernel" "" "c_fixture_kernel"
+scratch_commented_out=$(run_checker "$SCRATCH_COMMENTED")
+scratch_commented_rc=$?
+assert_eq "1" "$scratch_commented_rc" "commented-out scratch list entry exits 1"
+assert_contains "$scratch_commented_out" "c_fixture_kernel" \
+    "failure names the consumer whose entry was commented out"
+assert_contains "$scratch_commented_out" "absent from functionUsesImageAtomicScratch" \
+    "a commented-out entry is reported as absent, not present"
+
+# --- a hand-wrapped scratch declaration is still caught ----------------------
+# The qualifier test reads the parameter's declaration window, not the physical
+# line the slot attribute sits on. A line-scoped test reads this kernel as
+# declaring no scratch and exits 0 — the same false clean as an omission, on a
+# kernel that does declare it, reached by a line break alone. Only hand
+# authoring produces the wrap: .metal is not in irreden_collect_quality_files'
+# extension list, so no formatter can introduce or remove it.
+SCRATCH_WRAPPED="$TMPROOT/scratch-wrapped"
+make_fixture "$SCRATCH_WRAPPED"
+cat > "$SCRATCH_WRAPPED/engine/render/src/shaders/metal/c_fixture_wrapped.metal" <<'EOF'
+kernel void c_fixture_wrapped(
+    device atomic_int*
+        distanceScratch [[buffer(16)]],
+    uint3 gid [[thread_position_in_grid]]
+) {}
+EOF
+write_pipeline_cpp "$SCRATCH_WRAPPED" \
+    "c_fixture_kernel c_fixture_wrapped" "c_fixture_kernel"
+scratch_wrapped_out=$(run_checker "$SCRATCH_WRAPPED")
+scratch_wrapped_rc=$?
+assert_eq "1" "$scratch_wrapped_rc" "wrapped scratch declaration makes the checker exit 1"
+assert_contains "$scratch_wrapped_out" "c_fixture_wrapped" \
+    "failure names the kernel whose declaration wrapped"
+assert_contains "$scratch_wrapped_out" "(2 declare the image-atomic scratch at buffer slot 16)" \
+    "the wrapped declaration is counted, not read as absent"
+
+# --- NEGATIVE CONTROL: an atomic neighbour sharing the slot line -------------
+# The declaration window's other half. A line-scoped qualifier test sees the
+# atomic_int belonging to the PRECEDING parameter and reads this kernel as a
+# consumer — a false positive in the #1619 direction against a kernel whose
+# slot-16 parameter is a plain params UBO. The counts pin that it was scanned
+# and correctly excluded, not skipped.
+SLOT_NEIGHBOUR="$TMPROOT/slot-neighbour"
+make_fixture "$SLOT_NEIGHBOUR"
+cat > "$SLOT_NEIGHBOUR/engine/render/src/shaders/metal/c_fixture_neighbour.metal" <<'EOF'
+struct FixtureParams { int a; };
+kernel void c_fixture_neighbour(
+    device atomic_int* other [[buffer(3)]], constant FixtureParams& params [[buffer(16)]],
+    uint3 gid [[thread_position_in_grid]]
+) {}
+EOF
+write_pipeline_cpp "$SLOT_NEIGHBOUR" \
+    "c_fixture_kernel c_fixture_neighbour" "c_fixture_kernel"
+neighbour_out=$(run_checker "$SLOT_NEIGHBOUR")
+neighbour_rc=$?
+assert_eq "0" "$neighbour_rc" "an atomic neighbour on the slot line is not a consumer"
+assert_contains "$neighbour_out" "Metal scratch-consumer check scanned 2 compute kernel(s)" \
+    "the neighbour kernel was actually scanned, not skipped"
+assert_contains "$neighbour_out" "(1 declare the image-atomic scratch at buffer slot 16)" \
+    "an atomic at a different slot is not counted as a scratch declaration"
 
 # --- reverse drift: a listed kernel that declares no scratch fails -----------
 # The #1619 direction. A name on the list that does not declare the scratch

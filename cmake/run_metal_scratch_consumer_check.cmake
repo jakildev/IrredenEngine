@@ -124,24 +124,40 @@ endfunction()
 
 set(slot_attribute_regex "\\[\\[[ \t]*buffer\\([ \t]*${scratch_slot}[ \t]*\\)[ \t]*\\]\\]")
 
+# The qualifier test reads the whole parameter declaration, not the physical
+# line the slot attribute happens to sit on. A Metal kernel parameter is
+# delimited by its neighbours' commas and by the parameter list's own parens, so
+# the maximal run of non-delimiter characters ending at the slot attribute IS
+# that parameter's declaration head. Matching the window rather than the line
+# closes two opposite misreads a line-scoped test is open to:
+#
+#   * a hand-wrapped declaration (`device atomic_int*` on one line, the name and
+#     attribute on the next) reads as declaring no scratch -- the false clean
+#     this check exists to close, reached by a line break alone;
+#   * a NEIGHBOURING parameter's atomic_int on a shared line reads as this one's
+#     qualifier -- a false positive in the #1619 direction.
+set(slot_declaration_regex "[^,;(){}]*${slot_attribute_regex}")
+
 set(expected_consumers "")
 set(slot_declaration_sites 0)
 foreach(stem IN LISTS kernel_stems)
     ir_resolve_metal_include_closure("${kernel_dir}/${stem}.metal" closure)
     set(declares_scratch FALSE)
     foreach(source_file IN LISTS closure)
-        file(STRINGS "${source_file}" slot_lines REGEX "${slot_attribute_regex}")
-        foreach(line IN LISTS slot_lines)
-            # Comment-strip before classifying: the qualifier test must read the
-            # declaration itself, not a trailing comment that happens to say
-            # "atomic" (the same declaration-head-vs-whole-line precision note
-            # .claude/rules/cpp-globals.md carries for the header-global scan).
-            string(REGEX REPLACE "//.*" "" line "${line}")
-            if(NOT line MATCHES "${slot_attribute_regex}")
-                continue()
-            endif()
+        file(READ "${source_file}" source_text)
+        # Strip line comments while the newlines are still there, then collapse
+        # them. Both halves matter: the qualifier test must read the declaration
+        # itself and not a trailing comment that happens to say "atomic" (the
+        # declaration-head-vs-whole-line precision note .claude/rules/cpp-globals.md
+        # carries for the header-global scan), and stripping after the join would
+        # let one comment swallow the rest of the parameter list.
+        string(REGEX REPLACE "//[^\n]*" "" source_text "${source_text}")
+        string(REGEX REPLACE "[\r\n]" " " source_text "${source_text}")
+        string(REGEX MATCHALL "${slot_declaration_regex}" slot_declarations
+               "${source_text}")
+        foreach(declaration IN LISTS slot_declarations)
             math(EXPR slot_declaration_sites "${slot_declaration_sites} + 1")
-            if(line MATCHES "atomic_(int|uint)")
+            if(declaration MATCHES "atomic_(int|uint)")
                 set(declares_scratch TRUE)
             endif()
         endforeach()
@@ -193,6 +209,16 @@ foreach(line IN LISTS pipeline_lines)
         set(found_terminator TRUE)
         break()
     endif()
+    # Comment-strip before harvesting names, for the same reason the kernel-side
+    # scan does it. A commented-out entry is absent from the list as far as
+    # bindComputeResources is concerned, so reading it as present is a false
+    # clean in the forward direction: the consumer stops getting the scratch
+    # bound, its imageAtomicMin writes land nowhere, and this check stays green.
+    # Scope: line comments only. A `/* ... */` around an entry still reads as
+    # present, and the sibling run_metal_kernel_registry_check.cmake's identical
+    # scan strips neither form. Both are #2899 -- fixing one comment form in one
+    # of the two checkers here would leave the pair asymmetric for no gain.
+    string(REGEX REPLACE "//.*" "" line "${line}")
     string(REGEX MATCHALL "\"[A-Za-z0-9_]+\"" quoted_names "${line}")
     foreach(quoted_name IN LISTS quoted_names)
         string(REPLACE "\"" "" bare_name "${quoted_name}")
