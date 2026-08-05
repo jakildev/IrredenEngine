@@ -79,6 +79,12 @@ gh issue list --repo <repo> --label fleet:coding-improvement --state closed \
 count, so the `Recurred:` entries Step 2 needs are already in this output; no
 per-issue `gh issue view` pass is required.)
 
+The **observations-ledger** issue (see `assess-coding-improvement.md` Step 4;
+engine: #2903) is outside this sweep by construction — it carries `human:owned`,
+not `fleet:coding-improvement`, and is a recurrence memory, not a ticket. Don't
+triage it, but when a cluster's target artifact also has ungraduated ledger
+entries, you may count those as additional occurrence evidence.
+
 Each open ticket should carry (per the `assess-coding-improvement` body
 shape): a **Class** (A: missing rule / B: exists but didn't fire), a **target
 artifact** path, a one-line **proposed change**, and an **Occurrences** list.

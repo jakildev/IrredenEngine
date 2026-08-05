@@ -100,6 +100,19 @@ human triage as before:
 - **You verified the finding this session** — a repro you ran, output you
   observed, a source read you performed. A hunch, a "probably", or a
   feature idea is not eligible; those are the human's to shape.
+- **Fleet-infrastructure findings are held to a higher bar: a fired
+  incident, not a structural read.** When the fix surface is fleet
+  machinery — `scripts/fleet/`, the `docs/agents/` protocol and flow docs,
+  CI workflow glue, the `fleet-*` tools and their tests — a source read
+  alone does not qualify. The misbehavior must have **fired**: a live
+  incident you observed, or an execution you performed that demonstrates
+  the wrong behavior end-to-end. A defect established only by reading
+  source and reasoning about reachability files **unlabeled** for human
+  triage instead. Engine and creations code keep the ordinary bar above —
+  this carve exists because self-referential meta follow-ups (tooling
+  verifying tooling) were the majority of one week's lane inflow and are
+  precisely where "demonstrable by construction" is cheapest to claim and
+  least likely to matter.
 - **The work is defect-shaped**: fixing something that is wrong, stale,
   missing, or drifting. New capabilities, public-API additions, and
   design-direction changes are not.
