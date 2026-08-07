@@ -120,10 +120,17 @@ MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
 // kBufferIndex_RevoxelizeDetachedParams for c_revoxelize_detached (the Metal
 // 0-30 table has no free index), and an unconditional bind clobbered that
 // params UBO on every encode after the first distance-image bind (#1619: the
-// fill read distance-clear words as its params and authored nothing). Unlike
+// fill read distance-clear words as its params and authored nothing). Like
 // threadgroupSizeForFunctionName above — whose membership is enforced by
-// cmake/run_metal_kernel_registry_check.cmake (#2798) — this list does not
-// self-detect: a new kernel that consumes the scratch must be added here.
+// cmake/run_metal_kernel_registry_check.cmake (#2798) — this list is
+// hand-maintained but not un-checked:
+// cmake/run_metal_scratch_consumer_check.cmake (#2878) derives the expected
+// set from the kernels' own sources (an atomic parameter at
+// kMetalImageAtomicScratchSlot, reached through the wrapper → *_body.metal
+// include chain) and fails the same CI workflow and targets on drift in
+// either direction: a consumer missing here, or a name here that declares no
+// such parameter (the #1619 shape, since the bind would then land on
+// whatever it does declare).
 bool functionUsesImageAtomicScratch(const std::string &functionName) {
     return functionName == "c_voxel_to_trixel_stage_1" ||
            functionName == "c_voxel_to_trixel_stage_1_feeder" ||

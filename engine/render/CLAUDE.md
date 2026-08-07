@@ -136,14 +136,42 @@ excluding `*_body.metal` include-fragments) needs an entry in
 `threadgroupSizeForFunctionName` (`metal_pipeline.cpp`) supplying its real
 `threadsPerThreadgroup`. A kernel absent from that chain falls through to the
 `MTL::Size(1, 1, 1)` fallback with no error — GL is structurally immune (it
-reads `local_size` out of the GLSL source), so this is Metal-only. Unlike the
-prose reminders elsewhere near this registry, this one is **enforced**: the
-header-checks CI workflow (via `cmake/run_header_checks_standalone.cmake`)
-and the `header-checks` / `lint` CMake targets all run
-`cmake/run_metal_kernel_registry_check.cmake`, which fails the run and
-names the kernel if a new `.metal` file has no matching entry (#2798). The
-check is pure text-scanning, so it fires on every PR — including GL-authored
-ones from hosts with no Metal toolchain.
+reads `local_size` out of the GLSL source), so this is Metal-only. This
+registry is **enforced**: the header-checks CI workflow (via
+`cmake/run_header_checks_standalone.cmake`) and the `header-checks` / `lint`
+CMake targets all run `cmake/run_metal_kernel_registry_check.cmake`, which
+fails the run and names the kernel if a new `.metal` file has no matching
+entry (#2798). The check is pure text-scanning, so it fires on every PR —
+including GL-authored ones from hosts with no Metal toolchain.
+
+### Metal image-atomic scratch consumer list
+
+`metal_pipeline.cpp` carries a second hand-written kernel list,
+`functionUsesImageAtomicScratch`. It gates the per-kernel bind of the sticky
+R32I image-atomic scratch at `kMetalImageAtomicScratchSlot` (16) — a slot that
+doubles as `kBufferIndex_RevoxelizeDetachedParams`, because the Metal 0-30
+buffer table has no free index. **Both** directions of drift are silent
+correctness bugs: a consumer missing from the list never gets the scratch bound
+(its `imageAtomicMin` writes land nowhere), and a non-consumer wrongly on the
+list gets the scratch bound over whatever it declared at slot 16 — #1619, where
+`c_revoxelize_detached`'s params UBO was clobbered and the fill read
+distance-clear words as its params.
+
+Enforced the same way as the threadgroup registry, by
+`cmake/run_metal_scratch_consumer_check.cmake` (#2878), on the same three
+entry points. The expected set is derived, not declared: a kernel is a consumer
+iff its resolved source — its own file plus the transitive
+`#include "…"` closure, which is how the `*_body.metal` fragments reach their
+wrappers — declares an `atomic_int`/`atomic_uint` parameter at that slot. The
+atomic qualifier is what separates a real consumer from `c_revoxelize_detached`'s
+`constant RevoxelizeParams&` at the same slot, so **there is no allowlist to
+maintain**; the check reads the slot number out of the
+`kMetalImageAtomicScratchSlot` constant rather than hardcoding 16.
+
+Practical upshot when adding a Metal kernel: declare the scratch and the check
+tells you to add the name; don't declare it and adding the name is what the
+check rejects. Either way the answer comes from CI, not from remembering these
+two lists exist.
 
 ### Metal AOT metallib build (opt-in, no runtime consumer)
 

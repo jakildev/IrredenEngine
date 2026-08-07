@@ -327,10 +327,12 @@ this needs zero engine infra:
    binding 26 onto struct 1; the visible dispatch keeps the original program.
    Metal bookkeeping: the feeder function name must be added to BOTH
    `threadgroupSizeForFunctionName` (2,3,8) **and** `functionUsesImageAtomicScratch`.
-   Unlike `threadgroupSizeForFunctionName` — whose membership is enforced by
-   `cmake/run_metal_kernel_registry_check.cmake` (#2798), so an omission fails
-   CI naming the kernel — `functionUsesImageAtomicScratch` does not self-detect:
-   an omission there silently drops the feeder's atomic distance writes.
+   Both are explicit hand-written lists, and both memberships are enforced —
+   `cmake/run_metal_kernel_registry_check.cmake` (#2798) for the first,
+   `cmake/run_metal_scratch_consumer_check.cmake` (#2878) for the second — so an
+   omission from either fails CI naming the kernel instead of silently
+   dispatching a 1×1×1 grid or dropping the feeder's atomic distance writes.
+   The lists are still where the fix goes.
 
 **Measured result** (same-session A/B, macOS/Metal, `IRPerfGrid --auto-profile 120`):
 
