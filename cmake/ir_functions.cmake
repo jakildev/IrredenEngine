@@ -228,6 +228,12 @@ function(
     # re-create the collision this scheme exists to remove (two same-stem
     # `codegen.hpp` in different directories is the realistic way in), so it is a
     # configure-time error with REGISTRY_NAMESPACE named as the fix.
+    #
+    # Scoped to the target, while the collision domain is really the binary: two
+    # runs on separate targets that end up in one link slip past this check.
+    # Unreachable in-tree today (all four runs attach directly to executables), and
+    # the claim constants still catch the component-name half of it at link time.
+    # Widen this to the link closure if a codegen run ever moves onto a library.
     get_property(_ir_used_ns TARGET ${target} PROPERTY IR_LUA_CODEGEN_NAMESPACES)
     if(_registry_ns IN_LIST _ir_used_ns)
         message(FATAL_ERROR

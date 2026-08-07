@@ -1189,7 +1189,15 @@ int main(int argc, char **argv) {
         if (runIdWasDerived) {
             std::cerr << " (derived from the --out stem '" << outPath << "')";
         } else {
-            std::cerr << " (from --registry-namespace)";
+            // `ir_functions.cmake` passes --registry-namespace unconditionally so its
+            // duplicate check tests the identifier the header will actually carry.
+            // Every CMake-driven build therefore lands here rather than in the
+            // derived branch, and the flag alone cannot say whether the caller wrote
+            // REGISTRY_NAMESPACE or an OUTPUT_HPP whose stem sanitizes to a keyword —
+            // so name both origins instead of sending a CMake reader hunting for an
+            // argument they never wrote.
+            std::cerr << " (from --registry-namespace; under CMake that flag carries"
+                         " REGISTRY_NAMESPACE, or the OUTPUT_HPP stem when it is unset)";
         }
         std::cerr << ".\n  Pass an explicit id: --registry-namespace=<identifier>"
                      " (CMake: REGISTRY_NAMESPACE <identifier> on irreden_lua_codegen()).\n";
