@@ -7,8 +7,9 @@
 # fleet:state-drift, human:review-plan holds), backlog cues
 # (fleet:coding-improvement, untriaged issues), and unread feedback-channel
 # entries. Backlog cues flip to OVERDUE past their drain thresholds
-# (coding-improvement count, feedback-marker age) — the informational cue
-# alone let the coding-improvement backlog reach 54 before its first drain.
+# (coding-improvement count, untriaged count, feedback-marker age) — the
+# informational cue alone let the coding-improvement backlog reach 54 before
+# its first drain.
 # Read-only: changes no labels, writes no state.
 #
 # Usage:
@@ -127,6 +128,7 @@ WIP_TITLE_RE = re.compile(r"\[WIP\]")
 # a full architect session, and rules sit unabsorbed while their mistakes
 # recur (the acceptance-evidence omission recurred 4x with its fix filed).
 CI_DRAIN_THRESHOLD = 12
+UNTRIAGED_DRAIN_THRESHOLD = 12
 FEEDBACK_STALE_DAYS = 14
 
 # label -> human-readable decision tag; presence on an open PR/issue means
@@ -235,9 +237,16 @@ if untriaged:
     newest = ", ".join(
         f"{repo} #{issue['number']}" for repo, issue in untriaged[:5]
     )
-    cues.append(
-        f"untriaged (no state labels): {len(untriaged)} awaiting triage — {newest}"
-    )
+    if len(untriaged) >= UNTRIAGED_DRAIN_THRESHOLD:
+        cues.append(
+            f"untriaged (no state labels): {len(untriaged)} awaiting triage — "
+            f"OVERDUE (drain threshold {UNTRIAGED_DRAIN_THRESHOLD}): {newest} — "
+            "the human-cued triage sweep (docs/agents/triage-protocol.md) is the drain"
+        )
+    else:
+        cues.append(
+            f"untriaged (no state labels): {len(untriaged)} awaiting triage — {newest}"
+        )
 if unread_roles:
     unread = (
         f"feedback channel: {len(unread_roles)} role file(s) unread "
