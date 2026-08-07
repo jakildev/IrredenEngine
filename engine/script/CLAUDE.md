@@ -393,7 +393,12 @@ using namespace lua_perf_grid_codegen;   // ← the compat re-export
 
 The run id defaults to the `OUTPUT_HPP` stem; `irreden_lua_codegen`'s
 `REGISTRY_NAMESPACE` param overrides it, and two runs on one target
-resolving to the same id is a configure-time `FATAL_ERROR`.
+resolving to the same id is a configure-time `FATAL_ERROR`. A stem that
+sanitizes to a C++ keyword (`template.hpp` → `namespace template`) is
+rejected by the codegen tool with a message naming `REGISTRY_NAMESPACE` as
+the fix, on the derived and the overridden path alike — without that check
+the id reaches the generated header and fails it with `expected identifier
+or '{'`, pointing at generated code rather than at the call that named it.
 
 **Call sites don't change.** The using-directive re-exports the run, so
 `IRScript::CodegenRegistry::registerCodegenComponents(script)` keeps
@@ -425,9 +430,14 @@ const char C_Foo_declared_by_more_than_one_codegen_run_in_this_binary = 1;
 }
 ```
 
-A `duplicate symbol` link error naming one of these means two codegen runs
-in the binary declare the same component; rename one. Pre-#2609 that
-collision linked cleanly and silently swapped attach factories.
+A `duplicate symbol` link error naming one of these has **two** possible
+causes, and the symbol name only states the first: either two codegen runs in
+the binary declare the same component (rename one), or a single run's header
+is included by two translation units (include it from one — see the
+single-TU-per-target consequence below). Check the TU count first; it is the
+cheaper of the two to rule out, and a target with only one
+`irreden_lua_codegen()` call can only be hitting the second. Pre-#2609 the
+same-component collision linked cleanly and silently swapped attach factories.
 
 **Consequence: a generated header is single-TU-per-target.** Including one
 run's header from two translation units was legal-but-unused before; the

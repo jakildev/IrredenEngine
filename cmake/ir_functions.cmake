@@ -199,6 +199,12 @@ function(
     # tool's own stem derivation, so the duplicate check below is guaranteed to
     # be testing the same identifier the header will actually carry — two
     # derivations that agree today would drift apart silently.
+    #
+    # `deriveRunId` in cmake/lua_codegen/main.cpp mirrors the two REGEX lines
+    # below; keep them in step (`.hpp`, a leading-dot-only stem, is the input
+    # they diverge on). The checks here are deliberately syntax-only: the tool
+    # rejects an id that is a C++ keyword, on the derived and the override path
+    # alike, so that list lives in one place rather than in two languages.
     if(IRLC_REGISTRY_NAMESPACE)
         set(_registry_ns "${IRLC_REGISTRY_NAMESPACE}")
         if(NOT _registry_ns MATCHES "^[A-Za-z_][A-Za-z0-9_]*$")

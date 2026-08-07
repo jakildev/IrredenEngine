@@ -144,15 +144,22 @@ std::string escapeStringLiteral(std::string_view s) {
 // Derived from the `--out` stem only — never the resolved path, which is
 // host-specific and would make the generated header non-reproducible across
 // build trees. Non-identifier bytes become `_`; a leading digit gets a `run_`
-// prefix. A stem that sanitizes to a C++ keyword, or one two runs on a single
-// target share, is what `--registry-namespace` exists to resolve; CMake
-// catches the shared-stem half at configure time.
+// prefix. A stem two runs on a single target share is what
+// `--registry-namespace` exists to resolve; CMake catches that half at
+// configure time. A stem that sanitizes to a C++ keyword is rejected outright
+// — see `isReservedKeyword` and the check at the `--registry-namespace` read.
+//
+// This must agree byte-for-byte with the CMake-side derivation in
+// `cmake/ir_functions.cmake`, which strips the last extension with
+// `\.[^.]*$`. That regex takes a leading-dot-only stem (`.hpp`) down to empty,
+// so the strip here is unconditional rather than skipping a dot at position 0
+// — `.hpp` is the input the two spellings diverge on.
 std::string deriveRunId(std::string_view outPath) {
     const size_t slash = outPath.find_last_of("/\\");
     std::string_view stem =
         slash == std::string_view::npos ? outPath : outPath.substr(slash + 1);
     const size_t dot = stem.find_last_of('.');
-    if (dot != std::string_view::npos && dot != 0) {
+    if (dot != std::string_view::npos) {
         stem = stem.substr(0, dot);
     }
     std::string id;
@@ -186,6 +193,44 @@ bool isIdentifier(std::string_view s) {
         if (!ok) return false;
     }
     return true;
+}
+
+// `isIdentifier` cannot stand in for this: a keyword is identifier-shaped, so
+// it passes. A keyword run id emits `namespace template {` and fails the
+// *generated* header with "expected identifier or '{'" — a diagnostic naming
+// neither the flag nor the caller that chose the id.
+//
+// The tool owns the check for every entry point rather than mirroring it into
+// `ir_functions.cmake`: the tool is what emits the namespace, and it validates
+// the id CMake passes as well as one it derives itself, so one list covers the
+// CMake path, a manual invocation, and the override. A second ~90-entry list
+// in CMake would buy a configure-time error at the price of keeping two
+// language-specific copies in step.
+bool isReservedKeyword(std::string_view s) {
+    // C++20 keywords, including the alternative-token spellings (`and`, `compl`,
+    // …), which are equally unusable as a namespace name. Identifiers with
+    // special meaning (`final`, `override`, `import`, `module`) are contextual,
+    // not reserved, so they are legal here and deliberately absent.
+    static constexpr std::string_view kKeywords[] = {
+        "alignas", "alignof", "and", "and_eq", "asm", "auto", "bitand", "bitor",
+        "bool", "break", "case", "catch", "char", "char16_t", "char32_t",
+        "char8_t", "class", "co_await", "co_return", "co_yield", "compl",
+        "concept", "const", "const_cast", "consteval", "constexpr", "constinit",
+        "continue", "decltype", "default", "delete", "do", "double",
+        "dynamic_cast", "else", "enum", "explicit", "export", "extern", "false",
+        "float", "for", "friend", "goto", "if", "inline", "int", "long",
+        "mutable", "namespace", "new", "noexcept", "not", "not_eq", "nullptr",
+        "operator", "or", "or_eq", "private", "protected", "public",
+        "register", "reinterpret_cast", "requires", "return", "short", "signed",
+        "sizeof", "static", "static_assert", "static_cast", "struct", "switch",
+        "template", "this", "thread_local", "throw", "true", "try", "typedef",
+        "typeid", "typename", "union", "unsigned", "using", "virtual", "void",
+        "volatile", "wchar_t", "while", "xor", "xor_eq",
+    };
+    for (std::string_view kw : kKeywords) {
+        if (kw == s) return true;
+    }
+    return false;
 }
 
 // One field's override read inside an emitted attach factory. Scalars
@@ -1128,11 +1173,26 @@ int main(int argc, char **argv) {
         return 1;
     }
     std::string runId = parser.getString("--registry-namespace");
-    if (runId.empty()) {
+    const bool runIdWasDerived = runId.empty();
+    if (runIdWasDerived) {
         runId = deriveRunId(outPath);
     } else if (!isIdentifier(runId)) {
         std::cerr << "lua_codegen: --registry-namespace must be a bare C++ identifier (got '"
                   << runId << "')\n";
+        return 1;
+    }
+    // Outside the branch above deliberately: this applies to a derived id as
+    // well as an overridden one.
+    if (isReservedKeyword(runId)) {
+        std::cerr << "lua_codegen: registry namespace '" << runId
+                  << "' is a C++ keyword and cannot name a namespace";
+        if (runIdWasDerived) {
+            std::cerr << " (derived from the --out stem '" << outPath << "')";
+        } else {
+            std::cerr << " (from --registry-namespace)";
+        }
+        std::cerr << ".\n  Pass an explicit id: --registry-namespace=<identifier>"
+                     " (CMake: REGISTRY_NAMESPACE <identifier> on irreden_lua_codegen()).\n";
         return 1;
     }
 
