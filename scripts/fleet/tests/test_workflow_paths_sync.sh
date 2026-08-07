@@ -137,4 +137,68 @@ for f in "${covered_workflows[@]}"; do
         "$name: control fires — deleting a pull_request entry is reported as drift"
 done
 
+echo "T4: fleet-tests.yml triggers on every workflow this suite covers"
+# T1/T2 only run when CI runs this suite at all, and the only thing that
+# runs it is fleet-tests.yml — whose paths: filter keys on scripts/fleet/**,
+# the LOCATION of this file, not the workflows it inspects. So a covered
+# workflow absent from that filter is a workflow this suite silently never
+# checks: editing only header-checks.yml triggers no fleet-tests run, and
+# the push/pull_request drift this suite exists to catch ships green. That
+# is #2810's failure mode one level up, and it applies to this suite's own
+# subjects.
+#
+# Asserted from the derived covered set rather than a hardcoded list, so a
+# fifth workflow that declares both blocks fails here the moment it lands
+# instead of quietly costing itself its trigger. The mirror registry is
+# OUT_OF_TREE_SUBJECTS in test_fleet_tests_workflow_paths.sh.
+FLEET_TESTS_WORKFLOW="$WORKFLOWS_DIR/fleet-tests.yml"
+
+# missing_triggers <fleet-tests.yml> — one "<block> <path>" line per (block,
+# covered workflow) pair whose repo-relative path is absent from that block's
+# paths: list. Empty output means every covered workflow actually triggers
+# this suite. Pure check, no ok/bad — callers decide what output means.
+missing_triggers() {
+    local file="$1" block entries wf name
+    for block in push pull_request; do
+        entries=$(paths_list "$file" "$block")
+        for wf in "${covered_workflows[@]}"; do
+            name=$(basename "$wf")
+            printf '%s' "$entries" | grep -qF -- ".github/workflows/$name" \
+                || echo "$block .github/workflows/$name"
+        done
+    done
+}
+
+if [[ ! -f "$FLEET_TESTS_WORKFLOW" ]]; then
+    bad "fleet-tests.yml not found at $FLEET_TESTS_WORKFLOW — cannot verify this suite is ever triggered"
+else
+    real_missing_triggers=$(missing_triggers "$FLEET_TESTS_WORKFLOW")
+    assert_eq "$real_missing_triggers" "" \
+        "fleet-tests.yml paths: covers every covered workflow, in both blocks"
+
+    echo "T5: positive control — dropping a covered workflow from fleet-tests.yml paths: is reported"
+fi
+# Indexing [0] under set -u aborts on an empty array, and an empty covered
+# set is a real state (T0 reports it) rather than an impossible one.
+if [[ -f "$FLEET_TESTS_WORKFLOW" ]] && (( ${#covered_workflows[@]} > 0 )); then
+    control_target=$(basename "${covered_workflows[0]}")
+    CTL="$MUTATED/fleet-tests-trigger-control.yml"
+    grep -vF ".github/workflows/$control_target" "$FLEET_TESTS_WORKFLOW" > "$CTL"
+
+    ctl_missing=$(missing_triggers "$CTL")
+    assert_contains "$ctl_missing" "push .github/workflows/$control_target" \
+        "control fires: dropped workflow reported missing from push"
+    assert_contains "$ctl_missing" "pull_request .github/workflows/$control_target" \
+        "control fires: dropped workflow reported missing from pull_request"
+    # Isolate the control to the one dropped entry — looping the whole tail
+    # keeps that isolation complete as the covered set grows, where a
+    # single-index assert would leave every later workflow unexercised.
+    if (( ${#covered_workflows[@]} > 1 )); then
+        for wf in "${covered_workflows[@]:1}"; do
+            assert_absent "$ctl_missing" ".github/workflows/$(basename "$wf")" \
+                "control isolation: untouched $(basename "$wf") is not reported missing"
+        done
+    fi
+fi
+
 summarize "workflow push/pull_request paths: sync"
