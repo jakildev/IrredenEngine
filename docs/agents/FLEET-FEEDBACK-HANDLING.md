@@ -210,6 +210,41 @@ fix in Step i.)
   own host and reconcile before pushing. The authoritative handoff is the
   *pushed* PR head + the plan/comments, never the local working tree.
 
+### PARK — a `fleet:design-unblocked` PR nothing can verify (#2462)
+
+Before resuming, check whether the PR is actually *actionable on any host*. If
+the work is complete but cannot be built, run, or verified anywhere until some
+other issue lands, resuming it is a no-op that every pane repeats: R7 re-arms
+`fleet:design-unblocked` on a claimless WIP PR, so a bare label clear buys
+nothing and the PR comes straight back as an opus-tier feedback item. PR #2393
+absorbed **7** such pickups.
+
+Park it instead, in one `gh pr edit`:
+
+```
+gh pr edit <N> --remove-label "fleet:design-unblocked" --add-label "fleet:awaiting-infra"
+```
+
+then append a `Parked-until: #<blocker-issue>` line to the **PR body**
+(same-repo issue, on its own line — reconcile reads the last occurrence, so a
+re-park just appends), and comment the rationale. Keep `fleet:wip`, and release
+your claim: a parked PR is not yours to hold.
+
+Reconcile un-parks it automatically once the named blocker closes (R8), after
+which R7 re-surfaces it through this same path. Full semantics, and why an
+explicit marker is the only cross-host-correct signal:
+[`fleet-labels-reference.md`](fleet-labels-reference.md) §`fleet:awaiting-infra`.
+
+**Two cases need no park at all:**
+
+- **The backing issue already carries `fleet:blocked`.** R7 skips those outright
+  (#2462), so a plain `fleet:design-unblocked` clear is terminal — no marker, no
+  body edit. This is the common shape: the blocked state is already recorded by
+  the queue protocol.
+- **The residual is host-class-only, not blocked** (e.g. it needs a GL host and
+  you are on macOS). That is `fleet:needs-gl-host`, which the pickup filters
+  already honor — leave the PR alone and let a capable pane take it.
+
 ## AMEND vs ESCALATE (human-label paths only)
 
 For `human:needs-fix` / `human:blocker` only, choose a disposition.
@@ -653,5 +688,13 @@ mid-task design blocker and sets `fleet:design-blocked`; the
 architect responds and swaps the label to `fleet:design-unblocked`
 after updating the plan; any opus+-class worker iteration picks it
 back up via priority tier 4 above.
+
+**Infra-park cycle** (#2462): a worker resuming a `fleet:design-unblocked` PR
+finds the work complete but unverifiable on any host, swaps the label for
+`fleet:awaiting-infra` + a `Parked-until: #N` body line, and releases its claim
+→ reconcile R7/R2 skip the PR for as long as the park stands → reconcile R8
+removes the park label once #N closes → R7 re-arms `fleet:design-unblocked` at
+its usual threshold and the cycle above resumes. No worker action on the exit
+side. See the PARK section above.
 
 Address all flagged PRs before doing any other work.
