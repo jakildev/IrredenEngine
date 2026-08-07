@@ -282,7 +282,20 @@ template <> struct System<GIZMO_DRAG> {
     }
 
     static SystemId create() {
-        return registerSystem<GIZMO_DRAG, IRComponents::C_GizmoHandle>("GizmoDrag");
+        SystemId id = registerSystem<GIZMO_DRAG, IRComponents::C_GizmoHandle>("GizmoDrag");
+        // dragHandle_ / dragAnchor_ are not C_Persistent, so IREntity::resetGameplay()
+        // destroys them mid-drag (destroyAllExceptPreserved destroys per-entity via
+        // destroyEntity, which fires this hook). Abort the whole drag on either id's
+        // destruction so the next tick's `dragHandle_ == id` check simply stops
+        // matching instead of applyDrag() reaching through a dead dragAnchor_.
+        auto *params = getSystemParams<System<GIZMO_DRAG>>(id);
+        IREntity::getEntityManager().registerPreDestroyHook([params](IREntity::EntityId destroyed) {
+            if (params->dragHandle_ == destroyed || params->dragAnchor_ == destroyed) {
+                params->dragHandle_ = IREntity::kNullEntity;
+                params->dragAnchor_ = IREntity::kNullEntity;
+            }
+        });
+        return id;
     }
 
   private:

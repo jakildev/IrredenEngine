@@ -135,7 +135,28 @@ template <> struct System<SETTINGS_MENU> {
         IRPrefab::Widget::ensureThemeSingleton();
         const SystemId systemId =
             registerSystem<SETTINGS_MENU, IRComponents::C_SettingsMenuState>("SettingsMenu");
-        getSystemParams<System<SETTINGS_MENU>>(systemId)->params_ = initialParams;
+        auto *params = getSystemParams<System<SETTINGS_MENU>>(systemId);
+        params->params_ = initialParams;
+        // panel_ (and every other widget id below) is not C_Persistent, so
+        // IREntity::resetGameplay() destroys it mid-open (destroyAllExceptPreserved
+        // destroys per-entity via destroyEntity, which fires this hook) while
+        // C_SettingsMenuState::open_ survives as a preserved singleton. Key off
+        // panel_ — it exists whenever the menu is built, regardless of registry
+        // size — to reset the whole built state: null every cached widget id and
+        // clear rows_ (destroyMenu() never runs on this path, so rows_ would
+        // otherwise still hold stale entries the next buildMenu() appends onto),
+        // and drop built_ so the next endTick's `!built_` branch rebuilds instead
+        // of applyEdits() reaching getComponent through dead control_/label_ ids.
+        IREntity::getEntityManager().registerPreDestroyHook([params](IREntity::EntityId destroyed) {
+            if (params->panel_ != destroyed) {
+                return;
+            }
+            params->panel_ = IREntity::kNullEntity;
+            params->controlsLabel_ = IREntity::kNullEntity;
+            params->quitButton_ = IREntity::kNullEntity;
+            params->rows_.clear();
+            params->built_ = false;
+        });
         return systemId;
     }
 
