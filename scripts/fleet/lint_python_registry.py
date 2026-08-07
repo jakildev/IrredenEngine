@@ -20,6 +20,15 @@ Deliberately not a heuristic like `lint_state_mtime.py`'s co-occurrence
 ratchet — this is a straight set-equality check with no suppression
 mechanism, mirroring how `extend-include` itself works (an exhaustive list,
 not a best-effort scan).
+
+`_SCAN_ROOT` is all of `scripts/`, not `scripts/fleet/` — today every
+population member happens to live under `scripts/fleet/`, but nothing stops
+an extension-less Python executable landing at the top level or under
+`scripts/dev/` / `scripts/perf/`. That width is load-bearing on the CI side:
+`fleet-tests.yml` filters on `scripts/**` precisely so such a file triggers
+this ratchet, and `tests/test_fleet_tests_workflow_paths.sh` T4 asserts the
+filter still covers this constant. Widening `_SCAN_ROOT` past `scripts/`
+means widening that filter in the same change.
 """
 import re
 import subprocess
