@@ -46,7 +46,17 @@ in `update/`.
   keeps the canvas, and only a move to/from GRID allocates or destroys.
   Adding a mode means classifying it there; the enum's size is
   static-asserted in `test/ecs/rotation_mode_set_test.cpp` so a new mode
-  cannot reach one site and miss the other (#2908). `setMode`'s
+  cannot reach one site and miss the other (#2908). That guarantee
+  covers the two **lifecycle** sites only — `PROPAGATE_CANVAS_ROTATION`
+  (`../render/systems/system_propagate_canvas_rotation.hpp`) still
+  hand-spells the two detached modes and a new mode must be added there
+  by hand. It is left off the predicate for **layering weight, not an
+  include cycle** (there is none — that header is a leaf, included only
+  by demo `main.cpp`s): `rotation_mode.hpp` pulls in
+  `render/entity_canvas.hpp` solely for `setMode`, so routing a
+  render-system header through the predicate would drag that whole chain
+  in. Splitting `ownsEntityCanvas` into a header free of the render side
+  is the clean fix if this is revisited. `setMode`'s
   same-mode early return is gated on the canvas
   matching the mode, not on the mode alone, so it doubles as the
   documented recovery for an entity `spawnPrefab` tagged headlessly
