@@ -21,8 +21,14 @@ MTL::PixelFormat toMetalTextureFormat(TextureFormat format) {
             return MTL::PixelFormatR32Sint;
         case TextureFormat::RG32UI:
             return MTL::PixelFormatRG32Uint;
+        // Depth-only despite the enum name: the stencil aspect is unused
+        // engine-wide, and Metal disallows `getBytes` on a combined
+        // depth-stencil format — which the composite-depth readback behind
+        // the default camera pivot performs every frame. The depth aspect is
+        // 32-bit float either way, so precision is unchanged. (The enum name
+        // is GL's `GL_DEPTH24_STENCIL8` and was already approximate here.)
         case TextureFormat::DEPTH24_STENCIL8:
-            return MTL::PixelFormatDepth32Float_Stencil8;
+            return MTL::PixelFormatDepth32Float;
     }
     return MTL::PixelFormatRGBA8Unorm;
 }
