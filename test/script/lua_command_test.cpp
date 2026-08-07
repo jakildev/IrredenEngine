@@ -483,7 +483,8 @@ TEST_F(LuaCommandTest, GetRegisteredBindingsReturnsTheNamedPressedRows) {
         IRCommand.registerSuite(IRCommand.Suite.CAPTURE)
         local rows = IRCommand.getRegisteredBindings()
         local first = rows[1]
-        return #rows, first.name, first.description, first.button, first.status, first.modifiers
+        return #rows, first.name, first.description, first.button, first.status,
+               first.requiredModifiers, first.modifiers == nil
         )",
         sol::script_pass_on_error
     );
@@ -497,6 +498,11 @@ TEST_F(LuaCommandTest, GetRegisteredBindingsReturnsTheNamedPressedRows) {
     EXPECT_EQ(result.get<int>(3), static_cast<int>(IRInput::kKeyButtonF8));
     EXPECT_EQ(result.get<int>(4), static_cast<int>(IRInput::PRESSED));
     EXPECT_EQ(result.get<int>(5), static_cast<int>(IRInput::kModifierNone));
+    // The mask field is the *required* mask and says so — `CommandRegistration`
+    // carries no blocked mask, so a bare `modifiers` would over-promise. The
+    // nil arm pins the spelling: without it the row could carry both and the
+    // rename would be untested.
+    EXPECT_TRUE(result.get<bool>(6)) << "the mask ships as requiredModifiers only";
 }
 
 TEST_F(LuaCommandTest, GetRegisteredBindingsIsEmptyBeforeAnyNamedRegistration) {

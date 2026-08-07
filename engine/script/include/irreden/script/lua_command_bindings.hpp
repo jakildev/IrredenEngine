@@ -490,6 +490,13 @@ inline void bindCommandFunctions(LuaScript &script) {
     // The help overlay's rows, for Lua. Named PRESSED bindings only — the
     // same filter `buildCommandListText()` renders — so this is the narrower
     // view; `isButtonBound` above is the one that sees every binding.
+    //
+    // The mask field is spelled `requiredModifiers`, matching
+    // `CommandRegistration`'s own member: it carries the *required* mask only,
+    // and a bare `modifiers` would read as "the row's modifier state" when
+    // there is no blocked mask on this surface to report. The two row shapes
+    // do differ on the spelling — `suiteDefaults` says `modifiers` for the
+    // same required mask — so don't infer one from the other.
     lua["IRCommand"]["getRegisteredBindings"] = [](sol::this_state L) -> sol::table {
         sol::state_view lua_view(L);
         sol::table rows = lua_view.create_table();
@@ -500,7 +507,7 @@ inline void bindCommandFunctions(LuaScript &script) {
             row["description"] = registration.description;
             row["button"] = static_cast<lua_Integer>(registration.button);
             row["status"] = static_cast<lua_Integer>(registration.triggerStatus);
-            row["modifiers"] = static_cast<lua_Integer>(registration.requiredModifiers);
+            row["requiredModifiers"] = static_cast<lua_Integer>(registration.requiredModifiers);
             rows.add(row);
         }
         return rows;

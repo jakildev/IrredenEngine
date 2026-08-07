@@ -166,11 +166,28 @@ Three contract points, each deliberate:
 - **Data, not policy.** `createCommand` still appends unconditionally;
   stacking one key under different masks stays legal (existing creations do
   it on purpose). Collision policy stays with the caller.
-- **MIDI is invisible.** Note/CC bindings live in their own per-device
-  registries, so `MIDI_NOTE` / `MIDI_CC` always report false.
+- **MIDI is invisible.** Note/CC bindings are registered through
+  `registerMidiNoteCommand` / `registerMidiCCCommand` into their own
+  per-device maps, never into `m_userCommands`, so `MIDI_NOTE` / `MIDI_CC`
+  report false.
 
 Cost is an O(bindings) linear scan — an init/registration-time query, not a
 per-tick call.
+
+**The query is type-exact; the dispatcher is not.** `isButtonBound` matches on
+all three of `getType()`, status and button, but
+`executeUserKeyboardCommandsAll` — the only tick-path reader of
+`m_userCommands` — never consults `getType()`: it runs
+`IRInput::checkKeyMouseButton` over every row. So a row bound with a
+non-`KEY_MOUSE` input type would fire on the matching keyboard press while
+`isButtonBound(KEY_MOUSE, …)` calls it unbound. Latent, not live — every
+button binding in the tree registers `KEY_MOUSE` and there is no gamepad
+dispatch loop at all, so nothing misreports today. The same fact is why the
+MIDI carve-out above holds by *population* rather than by construction:
+`createCommand(MIDI_NOTE, …)` would land a button row like any other, it just
+never happens. The type check belongs to the query (it is what a `GAMEPAD`
+dispatch loop would need); the missing filter belongs to the dispatcher.
+`CommandRegistryTest.IsButtonBoundIsTypeExact` locks the query half.
 
 Two filters keep the list readable, both intentional:
 

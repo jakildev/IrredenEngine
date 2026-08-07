@@ -215,6 +215,28 @@ TEST_F(CommandRegistryTest, ModuleApiIsButtonBoundForwardsToTheActiveManager) {
     EXPECT_FALSE(IRCommand::isButtonBound(IRInput::KEY_MOUSE, IRInput::PRESSED, kTestButtonB));
 }
 
+// The type dimension, in the direction the sibling arms above don't cover: a
+// row bound under a non-`KEY_MOUSE` input type is invisible to a `KEY_MOUSE`
+// query. The `EXPECT_TRUE` is the was-seen arm — without it the `EXPECT_FALSE`
+// would also pass on a manager that never stored the row at all.
+//
+// Worth locking because it is exactly where the query and the dispatcher part
+// company: `executeUserKeyboardCommandsAll` ignores `getType()` and would fire
+// this row on a real F5 press. Nothing in the tree binds a non-`KEY_MOUSE`
+// button, so that gap is latent — but a future "simplification" that drops the
+// type check here would silently change what `isButtonBound` promises, and the
+// fix for the gap belongs on the dispatcher's side. See
+// `engine/command/CLAUDE.md` §"Querying what is bound".
+TEST_F(CommandRegistryTest, IsButtonBoundIsTypeExact) {
+    m_commandManager.createCommand(IRInput::GAMEPAD, IRInput::PRESSED, kTestButtonA, noopBody);
+
+    EXPECT_TRUE(m_commandManager.isButtonBound(IRInput::GAMEPAD, IRInput::PRESSED, kTestButtonA))
+        << "the row must exist for the negative arm below to mean anything";
+    EXPECT_FALSE(
+        m_commandManager.isButtonBound(IRInput::KEY_MOUSE, IRInput::PRESSED, kTestButtonA)
+    );
+}
+
 // An empty manager reports nothing bound — the "in a creation that never
 // registers the camera suite it returns false" half of the acceptance
 // criteria, at the C++ level.

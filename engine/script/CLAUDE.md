@@ -1479,14 +1479,21 @@ IRCommand.fireByName(CN.SCREENSHOT)
   mirroring them in a hand-maintained "reserved keys" list that drifts.
   **Modifier-blind by contract**: a row carrying required/blocked modifiers
   still reports the key as bound. MIDI note/CC bindings live in separate
-  registries, so `MIDI_NOTE` / `MIDI_CC` always return false. It reports the
+  registries, so `MIDI_NOTE` / `MIDI_CC` return false. It reports the
   data only — `createCommand` still appends unconditionally and stacking one
   key under different masks stays legal. O(bindings) scan: a
-  registration-time guard, not a per-tick call.
+  registration-time guard, not a per-tick call. The match is *type-exact*,
+  which is finer than the dispatcher's — see `engine/command/CLAUDE.md`
+  §"Querying what is bound" for the (latent) divergence that also makes the
+  MIDI answer a fact about the population rather than a guarantee.
 - `IRCommand.getRegisteredBindings() -> {rows}` (#2570) — the help overlay's
-  rows, as `{name, description, button, status, modifiers}`. Named `PRESSED`
-  registrations only (the registry's own filter), so this is the narrower
-  view of the two.
+  rows, as `{name, description, button, status, requiredModifiers}`. Named
+  `PRESSED` registrations only (the registry's own filter), so this is the
+  narrower view of the two. `requiredModifiers` is spelled in full because
+  that is all `CommandRegistration` carries — there is no blocked mask on
+  this surface. The two row shapes differ on the spelling: `suiteDefaults`
+  (#2666) says `modifiers` for the same required mask, so don't infer one
+  from the other.
 
 ```lua
 -- Guard an ad-hoc bind against whatever the engine already took.
