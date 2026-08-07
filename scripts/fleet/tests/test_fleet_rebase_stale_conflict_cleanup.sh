@@ -11,8 +11,12 @@
 # iteration on a branch that has no real conflict.
 #
 # The fix: fleet-rebase's triage detects fleet:semantic-conflict on a
-# MERGEABLE PR (no other skip labels, approved) and emits a "stale-conflict"
-# verdict that routes to cleanup_stale_conflict() instead of skip-labels.
+# MERGEABLE PR (no other skip labels) and emits a "stale-conflict" verdict
+# that routes to cleanup_stale_conflict() instead of skip-labels. The
+# predicate is deliberately NOT guarded on fleet:approved — the sole minter
+# of fleet:semantic-conflict strips fleet:approved in the same step it adds
+# the conflict label, so an approved guard would make this verdict unreachable
+# in exactly the state it exists to clear (#2874).
 #
 #   T1: MERGEABLE + fleet:semantic-conflict + fleet:approved → cleanup fires
 #       (dry-run: logs "would remove").
@@ -22,6 +26,11 @@
 #       not cleaned (WIP guard takes precedence).
 #   T4: fleet:semantic-conflict absent, MERGEABLE → normal llm-other path,
 #       no cleanup triggered.
+#   T5: MERGEABLE + fleet:semantic-conflict + fleet:merger-cooldown, NO
+#       fleet:approved → cleanup fires. This is the real #1654 end-state (the
+#       merger strips fleet:approved in the same step it adds the conflict
+#       label), and the one arm an approved guard routes to skip-labels
+#       instead — the regression lock for #2874.
 #
 # All run --auto --dry-run: the stale-conflict cleanup logs its intent but
 # does not call gh (which is gated behind DRY_RUN=0).
@@ -152,6 +161,21 @@ write_slice '[{
 T4=$(run_rebase)
 assert_absent "$T4" "would remove" \
     "T4 no stale label -> no cleanup"
+
+# === T5: real #1654 end-state — MERGEABLE + semantic-conflict + =============
+# === merger-cooldown, NO fleet:approved -> cleanup fires (#2874) ============
+echo "T5: MERGEABLE + semantic-conflict + merger-cooldown, no approved -> cleanup fires"
+write_slice '[{
+  "repo":"engine","number":304,
+  "headRefName":"feat-race","baseRefName":"master",
+  "mergeable":"MERGEABLE",
+  "labels":["fleet:semantic-conflict","fleet:merger-cooldown"]
+}]'
+T5=$(run_rebase)
+assert_contains "$T5" "would remove" \
+    "T5 cleanup fires on the real fail-then-succeed end-state with no fleet:approved (#2874)"
+assert_absent   "$T5" "llm_remaining=1" \
+    "T5 stale-conflict cleanup does not count toward LLM_REMAINING"
 
 # --- Summary ------------------------------------------------------------------
 summarize "fleet-rebase stale-conflict cleanup tests"
