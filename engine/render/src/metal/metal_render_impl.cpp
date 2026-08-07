@@ -773,8 +773,21 @@ metalCurrentDepthPixelFormat(),
 
             // Mirror the clear into the image atomic scratch buffer so atomic
             // image-min sees the same starting state as the texture itself.
+            //
+            // ensure, not lookup: bindAsImage creates the scratch lazily, and a
+            // canvas's tick clears its distance texture before it ever binds it,
+            // so a lookup finds nothing on the first tick and skips the mirror —
+            // leaving the freshly allocated scratch at its zero fill. Zero is the
+            // NEAREST depth, not the empty sentinel, so every atomicMin loses
+            // against it (stage 2's `scratch == depth` winner tap then matches
+            // nothing) and resolveImageAtomicScratch blits a solid nearest-depth
+            // surface over the whole texture. Ensuring the buffer here is what
+            // makes this mirror unconditional, which is what both consumers of
+            // that property already assume (#2488). No extra allocation in
+            // practice: every R32Sint texture cleared here is image-bound later
+            // in the same frame anyway, so it only moves the allocation earlier.
             if (pixelFormat == MTL::PixelFormatR32Sint) {
-                if (MTL::Buffer *scratch = lookupImageAtomicScratchBuffer(texture);
+                if (MTL::Buffer *scratch = ensureImageAtomicScratchBuffer(texture);
                     scratch != nullptr) {
                     auto *blit2 = createBlitEncoder(commandBuffer);
                     blit2->copyFromBuffer(clearBuf, 0, scratch, 0, totalBytes);
@@ -789,8 +802,11 @@ metalCurrentDepthPixelFormat(),
                 clearBuf->contents(),
                 static_cast<NS::UInteger>(width * bytesPerPixel)
             );
+            // Same ensure-not-lookup contract as the GPU blit path: a startup-init
+            // clear must leave the scratch holding the sentinel too, or the mirror
+            // is unconditional on only one of the two branches.
             if (pixelFormat == MTL::PixelFormatR32Sint) {
-                if (MTL::Buffer *scratch = lookupImageAtomicScratchBuffer(texture);
+                if (MTL::Buffer *scratch = ensureImageAtomicScratchBuffer(texture);
                     scratch != nullptr) {
                     std::memcpy(scratch->contents(), clearBuf->contents(), totalBytes);
                 }
@@ -802,8 +818,9 @@ metalCurrentDepthPixelFormat(),
     // image-atomic scratch back over the texture so a later sampler /
     // access::read pass sees what the atomic passes wrote. Same geometry as
     // that mirror blit, opposite direction. Textures with no paired scratch
-    // (every non-R32I format — the pairing happens in MetalTexture2DImpl's
-    // bindImage) return early, so this stays a no-op wherever it can't apply.
+    // (every non-R32I format — R32I pairs at whichever comes first, this
+    // clearTexImage or MetalTexture2DImpl's bindImage) return early, so this
+    // stays a no-op wherever it can't apply.
     void resolveImageAtomicScratch(const Texture2D *textureWrapper) override {
         if (textureWrapper == nullptr) {
             return;

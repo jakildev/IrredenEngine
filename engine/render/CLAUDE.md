@@ -1137,6 +1137,18 @@ parity with voxel-pool primary shapes.
   shadow-feeder dispatch, guarded on a non-empty feeder ring
   (`IRPrefab::SunShadow::shadowFeederRingNonEmpty`).
 
+  **What makes the whole-texture blit safe is that `clearTexImage` *ensures*
+  the scratch rather than looking it up.** A canvas clears its distance texture
+  before it ever image-binds it, so a lookup would find no scratch on the first
+  tick and skip the clear's mirror — and a freshly allocated scratch is
+  zero-filled, i.e. NEAREST depth, not the 65535 empty sentinel. The resolve
+  would then stamp a solid surface over the whole canvas for that frame (and
+  every `atomicMin` would lose against the zero, so stage 2's `scratch == depth`
+  winner tap matches nothing). Because the clear seeds it unconditionally,
+  untouched texels resolve their own clear value back onto themselves. A new
+  R32I texture that is resolved must therefore also be *cleared* through
+  `clearTexImage`, not merely bound.
+
   Two boundaries worth keeping straight. It is **not** a substitute for
   resolve-then-bake: that rule is about a foreign model-frame texture reaching a
   bake at all, and it stands unchanged. And it needs **no**

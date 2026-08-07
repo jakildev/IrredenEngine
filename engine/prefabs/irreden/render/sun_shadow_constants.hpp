@@ -117,7 +117,10 @@ inline IRMath::IsoBounds2D shadowFeederCullViewport(
 // guards is what makes that safe, not the predicate: the per-frame
 // clearTexImage mirrors the sentinel into the scratch unconditionally
 // (VOXEL_TO_TRIXEL_STAGE_1's canvasClear → metal_render_impl.cpp), so resolving
-// a ring nothing fed copies each texel's own clear value back onto itself. The
+// a ring nothing fed copies each texel's own clear value back onto itself.
+// "Unconditionally" is load-bearing and literal: that mirror *ensures* the
+// scratch rather than looking it up (#2488), so it holds on a canvas's first
+// tick too — when the clear precedes any bind that would have paired one. The
 // one caller reaches this only on the !skipSingleCanvasVoxels branch, which the
 // per-axis path already owns for the main canvas while the camera rotates — so
 // the superset costs at most one redundant blit on a SECOND (non-main,

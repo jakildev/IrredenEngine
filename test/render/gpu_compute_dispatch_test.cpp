@@ -315,11 +315,13 @@ TEST_F(MetalGpuComputeDispatchTest, SecondDispatchSeesFirstDispatchDistanceWrite
 // pipeline that is what carries the shadow-feeder ring into trixelDistances
 // on Metal; here it is exercised directly against the scratch.
 //
-// bindAsImage on an R32I texture is what PAIRS the scratch
-// (MetalTexture2DImpl::bindImage -> ensureImageAtomicScratchBuffer), so the
-// bind below is a precondition of the test, not incidental setup. The seed
-// pattern is written straight into the scratch's shared-storage contents,
-// standing in for the atomic-min writes the stage-1 dispatches perform.
+// An R32I texture pairs its scratch at whichever comes first, bindAsImage
+// (MetalTexture2DImpl::bindImage) or clearTexImage — both route through
+// ensureImageAtomicScratchBuffer. Binding FIRST is a precondition of this test,
+// not incidental setup: it fixes the order so the clear's mirror seeds the
+// sentinel baseline the CPU seed below then overwrites. The seed pattern is
+// written straight into the scratch's shared-storage contents, standing in for
+// the atomic-min writes the stage-1 dispatches perform.
 TEST_F(MetalGpuComputeDispatchTest, ResolveImageAtomicScratchLandsScratchInTexture) {
     using namespace IRRender;
 
@@ -453,6 +455,83 @@ TEST_F(MetalGpuComputeDispatchTest, SeededScratchAloneDoesNotReachTheTexture) {
         << nonSentinel << " / " << kTexelCount
         << " texels read back a non-sentinel value with no resolve call — the sibling "
            "test's assertion would pass without resolveImageAtomicScratch doing anything.";
+}
+
+// First-tick arm: replays the PRODUCTION order (clear -> bind -> resolve),
+// which is the reverse of the two tests above. They bind first, which pairs the
+// scratch before clearTexImage runs, so the clear's mirror establishes the
+// sentinel baseline they then assume — structurally unable to observe a canvas's
+// very first tick. The tick orders it the other way round: the per-frame clear
+// (clearCanvasAndDistances -> clearTexImage, system_voxel_to_trixel.hpp) runs
+// well before stage 1's first bindAsImage on the distance texture.
+//
+// This differs from ClearedTextureReadsBackAsClearSentinel by exactly one line —
+// the resolve call — so a failure here is attributable to the resolve reading a
+// scratch the clear never seeded, and nothing else. A freshly created scratch is
+// zero-filled (metal_runtime.cpp), and 0 encodes the NEAREST depth rather than
+// "empty", so an unseeded resolve would stamp a solid surface across the whole
+// canvas for that tick. What keeps it seeded is clearTexImage ensuring (not
+// merely looking up) the scratch, which is what makes the "mirrors the clear
+// unconditionally" claim at sun_shadow_constants.hpp hold on the first tick.
+TEST_F(MetalGpuComputeDispatchTest, ResolveOnFirstTickLeavesTheClearSentinel) {
+    using namespace IRRender;
+
+    Texture2D distances{TextureKind::TEXTURE_2D, kTexDim, kTexDim, TextureFormat::R32I};
+
+    // Production order: clear BEFORE any bindAsImage pairs a scratch.
+    const std::int32_t clearValue = kEmptyDistanceEncoded;
+    device_->clearTexImage(&distances, 0, &clearValue);
+
+    // Stage 1's first image bind on this texture. No dispatch follows it here —
+    // an atomic-min pass would only lower texels further, so the empty-canvas
+    // case is the one that isolates the clear's own baseline.
+    distances.bindAsImage(0, TextureAccess::READ_WRITE, TextureFormat::R32I);
+
+    // No finish() anywhere in this test, deliberately: unlike its two siblings
+    // there is no CPU seed to race, so every write is on the command buffer in
+    // encoder order exactly as production has it.
+    device_->resolveImageAtomicScratch(&distances);
+
+    const std::vector<std::int32_t> outSeed(kTexelCount, -1);
+    Buffer output{
+        outSeed.data(),
+        outSeed.size() * sizeof(std::int32_t),
+        BUFFER_STORAGE_NONE,
+        BufferTarget::SHADER_STORAGE,
+        kOutputBinding
+    };
+
+    const std::string readPath = std::string(IR_TEST_GPU_SHADER_DIR) + "/c_r32i_read.glsl";
+    ShaderProgram readProgram{std::vector{ShaderStage{readPath.c_str(), ShaderType::COMPUTE}}};
+    readProgram.use();
+    distances.bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
+    output.bindBase(BufferTarget::SHADER_STORAGE, kOutputBinding);
+    device_->dispatchCompute(kTexDim, kTexDim, 1);
+    device_->finish();
+
+    std::vector<std::int32_t> readback(kTexelCount, -2);
+    output.getSubData(0, readback.size() * sizeof(std::int32_t), readback.data());
+
+    std::size_t zeroReads = 0;   // the unseeded-scratch symptom: nearest depth.
+    std::size_t nonSentinel = 0; // any other departure from the clear value.
+    for (int i = 0; i < kTexelCount; ++i) {
+        if (readback[i] == kEmptyDistanceEncoded) {
+            continue;
+        }
+        ++nonSentinel;
+        if (readback[i] == 0) {
+            ++zeroReads;
+        }
+    }
+    EXPECT_EQ(zeroReads, 0u)
+        << zeroReads << " / " << kTexelCount
+        << " texels read back 0 (nearest depth) after a first-tick resolve — the clear "
+           "did not seed the scratch, so the resolve blitted a zero-filled buffer over "
+           "the 65535 sentinel (#2488).";
+    EXPECT_EQ(nonSentinel, 0u)
+        << nonSentinel << " / " << kTexelCount
+        << " texels departed from the clear sentinel after a resolve with no atomic "
+           "pass in between.";
 }
 
 } // namespace
