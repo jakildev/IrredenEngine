@@ -409,6 +409,58 @@ class ParseExtraRuns(unittest.TestCase):
         with self.assertRaises(SystemExit):
             _parse_extra_runs({"extra_runs": {"name": "x"}})
 
+    # ── per-pass structural_only guard ─────────────────────────────────
+    # Mirrors the top-level 'structural_only' guard: a label with no
+    # matching 'structural' entry for the same pass would be captured,
+    # never pixel-diffed, and never structurally gated either. See #2842.
+    def test_structural_only_with_matching_structural_entry_parses(self):
+        runs = _parse_extra_runs({"extra_runs": [{
+            "name": "compare",
+            "demo_args": ["--only", "compare"],
+            "shots": ["shotA"],
+            "structural": {"shotA": [{"metric": "shadow",
+                                      "min_largest_frac": 0.8}]},
+            "structural_only": ["shotA"],
+        }]})
+        self.assertEqual(runs[0]["structural_only"], {"shotA"})
+
+    def test_structural_only_with_no_structural_entry_raises(self):
+        # Same shape as the compliant case, minus the 'structural' entry.
+        # Pre-fix this was silent (0 rows, PASS).
+        with self.assertRaises(SystemExit) as cm:
+            _parse_extra_runs({"extra_runs": [{
+                "name": "compare",
+                "demo_args": ["--only", "compare"],
+                "shots": ["shotA"],
+                "structural_only": ["shotA"],
+            }]})
+        self.assertIn("compare", str(cm.exception))
+
+    def test_structural_only_unknown_shot_raises(self):
+        with self.assertRaises(SystemExit):
+            _parse_extra_runs({"extra_runs": [{
+                "name": "compare",
+                "demo_args": ["--only", "compare"],
+                "shots": ["shotA"],
+                "structural_only": ["nope"],
+            }]})
+
+    def test_structural_only_does_not_inherit_top_level_structural(self):
+        # 'structural' is a per-pass override that defaults to empty, not
+        # to the top-level manifest value — a top-level entry for the same
+        # label must not satisfy the per-pass guard.
+        with self.assertRaises(SystemExit):
+            _parse_extra_runs({
+                "structural": {"shotA": [{"metric": "shadow",
+                                          "min_largest_frac": 0.8}]},
+                "extra_runs": [{
+                    "name": "compare",
+                    "demo_args": ["--only", "compare"],
+                    "shots": ["shotA"],
+                    "structural_only": ["shotA"],
+                }],
+            })
+
 
 if __name__ == "__main__":
     unittest.main()

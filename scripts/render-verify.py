@@ -369,9 +369,14 @@ def _parse_extra_runs(manifest: dict[str, Any]) -> list[dict[str, Any]]:
       * ``capture_offset``       — index of the first gated shot in the pass's
                                    full capture list (default 0; negative =
                                    from the tail, for end-appended shots).
-      * ``warmup`` / ``thresholds`` / ``crops`` / ``structural`` /
-        ``structural_only`` — optional per-pass overrides; each defaults to
-        the top-level manifest value.
+      * ``warmup`` / ``thresholds`` — optional per-pass overrides; each
+        falls back to the top-level manifest value when unset.
+      * ``crops`` / ``structural`` / ``structural_only`` — optional
+        per-pass overrides; each defaults to **empty**, not to the
+        top-level manifest value — a pass that wants one of these gates
+        must declare it itself. A per-pass ``structural_only`` label must
+        have a matching per-pass ``structural`` entry, validated the same
+        way as the top-level block.
 
     A manifest with no ``extra_runs`` behaves exactly as before.
     """
@@ -408,6 +413,26 @@ def _parse_extra_runs(manifest: dict[str, Any]) -> list[dict[str, Any]]:
             raise SystemExit(
                 f"extra run '{name}': 'capture_offset' must be an integer"
             )
+        structural = entry.get("structural", {})
+        structural_only = set(entry.get("structural_only", []))
+        # Same captured-but-ungated hazard the top-level structural_only
+        # block guards against: a per-pass label with no per-pass
+        # structural entry is captured, never pixel-diffed, and never
+        # structurally gated either.
+        for label in structural_only:
+            if label not in shots:
+                raise SystemExit(
+                    f"extra run '{name}': 'structural_only' references "
+                    f"unknown shot '{label}' (not in this pass's 'shots')"
+                )
+            if label not in structural:
+                raise SystemExit(
+                    f"extra run '{name}': shot '{label}' is "
+                    f"'structural_only' but has no 'structural' gate for "
+                    f"this pass — it would be captured but never checked. "
+                    f"Add a structural entry or drop it from "
+                    f"structural_only."
+                )
         parsed.append({
             "name": name,
             "demo_args": demo_args,
@@ -416,8 +441,8 @@ def _parse_extra_runs(manifest: dict[str, Any]) -> list[dict[str, Any]]:
             "warmup": entry.get("warmup"),
             "thresholds": entry.get("thresholds"),
             "crops": entry.get("crops", {}),
-            "structural": entry.get("structural", {}),
-            "structural_only": set(entry.get("structural_only", [])),
+            "structural": structural,
+            "structural_only": structural_only,
         })
     return parsed
 
