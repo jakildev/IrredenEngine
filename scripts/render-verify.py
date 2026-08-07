@@ -6,7 +6,8 @@ a committed reference-image library under
 ``creations/demos/<demo>/test/references/<backend>/<label>.png``.
 
 Workflow:
-  1. Read `manifest.json` for the target demo.
+  1. Resolve the target's demo directory from the manifest that *declares*
+     it (`"target": "IR<Demo>"`), then read that `manifest.json`.
   2. Detect the active CMake preset (linux-debug / macos-debug / windows-debug).
   3. Build the target via `fleet-build`.
   4. Clear the demo's `save_files/screenshots/` directory.
@@ -52,6 +53,14 @@ crops) over the reference set for the current backend (after explicit
 confirmation unless ``--force`` is given). It blesses the default pass and
 every ``extra_runs`` pass, so a first run on a new host bootstraps all of them.
 
+``--all`` sweeps every demo whose manifest declares a ``target``, in one run
+with one aggregate tally. That is the first-class spelling of "verify the whole
+reference set": a hand-rolled shell loop over target names reports each demo
+separately, so a demo that drops out of the sweep leaves no hole in any single
+number (#2919 — the `lighting` demo went unverified across two review passes
+that way). The ``--all`` summary lists one row per demo and counts a demo that
+failed to run as ERROR rather than as zero checks.
+
 Assumes this file lives at ``<repo>/scripts/render-verify.py``.
 """
 
@@ -72,8 +81,98 @@ REPO_ROOT = SCRIPT_DIR.parent
 RENDER_COMPARE = SCRIPT_DIR / "render-compare.py"
 
 
+# One encoding of where a demo keeps its reference set. The per-demo path, the
+# backend reference dir, and the tree-wide glob all derive from these, so a
+# layout change can't leave the glob silently matching nothing.
+REFERENCES_SUBDIR = Path("test") / "references"
+MANIFEST_NAME = "manifest.json"
+MANIFEST_GLOB = f"*/{(REFERENCES_SUBDIR / MANIFEST_NAME).as_posix()}"
+
+
+def _demos_root(worktree: Path) -> Path:
+    return worktree / "creations" / "demos"
+
+
+def _manifest_path(demo_dir: Path) -> Path:
+    return demo_dir / REFERENCES_SUBDIR / MANIFEST_NAME
+
+
+def _declared_targets(worktree: Path) -> dict[str, str]:
+    """Map each committed manifest's declared ``target`` to its demo dir name.
+
+    The manifest is the authoritative statement of which CMake target a
+    reference set gates; ``_target_to_demo_name`` is only an inference over the
+    target *name*, and the tree has a demo where the two disagree
+    (``IRLightingSdfBlocker`` lives in ``creations/demos/lighting``). Reading
+    the declaration instead of re-deriving it is what keeps that demo reachable
+    without out-of-band knowledge (#2919).
+
+    Insertion order follows the glob's sort, so ``--all`` sweeps demos in a
+    stable, filesystem-independent order.
+    """
+    demos_root = _demos_root(worktree)
+    mapping: dict[str, str] = {}
+    for path in sorted(demos_root.glob(MANIFEST_GLOB)):
+        demo = path.relative_to(demos_root).parts[0]
+        try:
+            with path.open() as f:
+                data = json.load(f)
+        except (OSError, json.JSONDecodeError) as e:
+            # One malformed manifest must not make every *other* target
+            # unresolvable. If this is the manifest we actually needed,
+            # _load_manifest re-reads it and fails loudly with the same error.
+            print(f"[render-verify] warning: skipping unreadable manifest "
+                  f"{path}: {e}", file=sys.stderr)
+            continue
+        target = data.get("target")
+        if not isinstance(target, str) or not target:
+            continue
+        prev = mapping.get(target)
+        if prev is not None and prev != demo:
+            raise SystemExit(
+                f"two manifests declare target '{target}': "
+                f"creations/demos/{prev} and creations/demos/{demo} — a target "
+                f"must name exactly one reference set"
+            )
+        mapping[target] = demo
+    return mapping
+
+
+def _resolve_demo_dir(worktree: Path, target: str,
+                      explicit: str | None) -> Path:
+    """Locate the demo directory whose reference set gates ``target``.
+
+    Resolution order:
+      1. ``--demo`` — an explicit override always wins.
+      2. the manifest that declares ``"target": <target>`` (authoritative).
+      3. ``_target_to_demo_name`` inference over the target name — the
+         historical behavior, kept so a demo can still be run before its
+         manifest declares a target.
+    """
+    demos_root = _demos_root(worktree)
+    if explicit:
+        demo_dir = demos_root / explicit
+        if not demo_dir.exists():
+            raise SystemExit(f"demo dir not found: {demo_dir}")
+        return demo_dir
+
+    declared = _declared_targets(worktree).get(target)
+    if declared is not None:
+        return demos_root / declared
+
+    demo_dir = demos_root / _target_to_demo_name(target)
+    if not demo_dir.exists():
+        raise SystemExit(
+            f"no demo found for target '{target}': no manifest matching "
+            f"{demos_root}/{MANIFEST_GLOB} declares it, and the name-inferred "
+            f"fallback {demo_dir} does not exist. Pass --demo <dir> to name "
+            f"the directory explicitly."
+        )
+    return demo_dir
+
+
 def _load_manifest(demo_dir: Path) -> dict[str, Any]:
-    path = demo_dir / "test" / "references" / "manifest.json"
+    path = _manifest_path(demo_dir)
     if not path.exists():
         raise SystemExit(f"manifest not found: {path}")
     try:
@@ -539,48 +638,16 @@ def _write_references(*, captured: list[Path], shot_labels: list[str],
             print(f"[render-verify] updated {dest}")
 
 
-def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--target", default="IRShapeDebug",
-                    help="CMake target to build and run (default: IRShapeDebug).")
-    ap.add_argument("--demo", default=None,
-                    help="Demo directory name under creations/demos/ (default: "
-                         "inferred from target by stripping 'IR' prefix and "
-                         "lowercasing, so IRShapeDebug → shape_debug; override "
-                         "if the mapping doesn't hold).")
-    ap.add_argument("--build-dir", default=None,
-                    help="CMake build dir (default: <repo>/build).")
-    ap.add_argument("--warmup", type=int, default=None,
-                    help="Warmup frames before the first shot (default: 10, or "
-                         "manifest['warmup'] if set; CLI value always wins).")
-    ap.add_argument("--timeout", type=int, default=60,
-                    help="Per-run timeout in seconds (default: 60).")
-    ap.add_argument("--update-references", action="store_true",
-                    help="Overwrite the reference set with the captured shots.")
-    ap.add_argument("--force", action="store_true",
-                    help="Skip the --update-references confirmation prompt.")
-    ap.add_argument("--no-build", action="store_true",
-                    help="Skip `fleet-build`; assume the target is already built.")
-    ap.add_argument("--demo-arg", action="append", default=[], metavar="ARG",
-                    help="Extra argument passed through to the DEFAULT pass's "
-                         "demo run after --auto-screenshot (repeatable; "
-                         "manifest 'extra_runs' passes use their own declared "
-                         "demo_args). Use to prove a feature flag is output-"
-                         "neutral against the committed references — e.g. "
-                         "`--demo-arg --occlusion-cull` checks the voxel "
-                         "occlusion cull renders bit-identical to the cull-off "
-                         "baseline (#1294 child 3/3).")
-    args = ap.parse_args(argv)
+def _verify_one(*, args: argparse.Namespace, worktree: Path, build_dir: Path,
+                backend: str, target: str, demo_dir: Path) -> dict[str, Any]:
+    """Build, capture, and gate one target; return its tally.
 
-    worktree = verify_common.detect_worktree_root(Path.cwd())
-    build_dir = Path(args.build_dir) if args.build_dir else worktree / "build"
-    backend = verify_common.detect_backend(build_dir)
-
-    demo_name = args.demo or _target_to_demo_name(args.target)
-    demo_dir = worktree / "creations" / "demos" / demo_name
-    if not demo_dir.exists():
-        raise SystemExit(f"demo dir not found: {demo_dir}")
-
+    ``{target, demo, rc, checked, failed, skipped}``. ``rc`` is what a
+    single-target run exits with (0 pass, 1 fail/crash, 2 no references); the
+    counts are what ``--all`` aggregates. Everything a single-target run prints
+    is printed here — ``main`` adds output only when it is sweeping.
+    """
+    demo_name = demo_dir.name
     manifest = _load_manifest(demo_dir)
     shot_labels: list[str] = manifest["shots"]
     thresholds = manifest.get("thresholds", {})
@@ -604,8 +671,13 @@ def main(argv: list[str] | None = None) -> int:
     # CLI --warmup wins; manifest["warmup"] overrides the hardcoded default of 10.
     warmup: int = args.warmup if args.warmup is not None else manifest.get("warmup", 10)
 
+    def tally(rc: int, checked: int = 0, failed: int = 0,
+              skipped: int = 0) -> dict[str, Any]:
+        return {"target": target, "demo": demo_name, "rc": rc,
+                "checked": checked, "failed": failed, "skipped": skipped}
+
     print(
-        f"[render-verify] target={args.target} demo={demo_name} "
+        f"[render-verify] target={target} demo={demo_name} "
         f"backend={backend} warmup={warmup}"
     )
     print(f"[render-verify] {len(shot_labels)} shots: {', '.join(shot_labels)}")
@@ -615,11 +687,11 @@ def main(argv: list[str] | None = None) -> int:
               f"{', '.join(e['name'] for e in extra_runs)}")
 
     if not args.no_build:
-        verify_common.run(["fleet-build", "--target", args.target], cwd=worktree)
+        verify_common.run(["fleet-build", "--target", target], cwd=worktree)
 
-    exe = verify_common.find_exe(build_dir, args.target, demo_name)
+    exe = verify_common.find_exe(build_dir, target, demo_name)
     shots_dir = exe.parent / screenshot_subdir
-    ref_dir = demo_dir / "test" / "references" / backend
+    ref_dir = demo_dir / REFERENCES_SUBDIR / backend
     # Single-pass runs keep diffs in shots_dir/diffs (the original location,
     # cleared along with shots_dir each run). With extra_runs, each pass
     # rmtrees shots_dir on entry, so a diff written there by an earlier pass's
@@ -637,7 +709,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         if reply.strip().lower() not in ("y", "yes"):
             print("[render-verify] aborted.")
-            return 1
+            return tally(1)
 
     # ── Default pass ──────────────────────────────────────────────────────
     # `--auto-screenshot` fires `closeWindow()` after the last shot and exits
@@ -648,7 +720,7 @@ def main(argv: list[str] | None = None) -> int:
     # let it block a PASS verdict even when every shot compares clean.
     crashes: list[tuple[int, str]] = []
     crash_main = _run_capture(
-        worktree=worktree, target=args.target, shots_dir=shots_dir,
+        worktree=worktree, target=target, shots_dir=shots_dir,
         warmup=warmup, timeout=args.timeout, demo_args=args.demo_arg,
         pass_label="default")
     if crash_main is not None:
@@ -663,7 +735,7 @@ def main(argv: list[str] | None = None) -> int:
         # this is exactly how those references get blessed for the first time.
         for extra in extra_runs:
             crash = _run_capture(
-                worktree=worktree, target=args.target, shots_dir=shots_dir,
+                worktree=worktree, target=target, shots_dir=shots_dir,
                 warmup=extra["warmup"] if extra["warmup"] is not None else warmup,
                 timeout=args.timeout, demo_args=extra["demo_args"],
                 pass_label=extra["name"])
@@ -674,14 +746,14 @@ def main(argv: list[str] | None = None) -> int:
                     f"references not updated for this pass.",
                     file=sys.stderr,
                 )
-                return 1
+                return tally(1)
             all_caps = _collect_all_shots(shots_dir)
             sliced = _slice_capture(all_caps, extra["capture_offset"],
                                     len(extra["shots"]), extra["name"])
             _write_references(captured=sliced, shot_labels=extra["shots"],
                               ref_dir=ref_dir, crops_block=extra["crops"],
                               structural_only=extra["structural_only"])
-        return 0
+        return tally(0)
 
     # A reference set is only required when at least one shot is pixel-diffed.
     # An all-structural-only manifest (a pure analytic oracle) is backend-
@@ -696,7 +768,7 @@ def main(argv: list[str] | None = None) -> int:
             f"{ref_dir}. Run with --update-references to capture them.",
             file=sys.stderr,
         )
-        return 2
+        return tally(2)
 
     rows = evaluate_shots(
         captured=captured,
@@ -733,7 +805,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[render-verify] extra run '{extra['name']}': "
               f"{' '.join(extra['demo_args'])}")
         crash = _run_capture(
-            worktree=worktree, target=args.target, shots_dir=shots_dir,
+            worktree=worktree, target=target, shots_dir=shots_dir,
             warmup=extra["warmup"] if extra["warmup"] is not None else warmup,
             timeout=args.timeout, demo_args=extra["demo_args"],
             pass_label=extra["name"])
@@ -789,7 +861,7 @@ def main(argv: list[str] | None = None) -> int:
     skip_note = f" ({len(skipped)} skipped — references pending)" if skipped else ""
     if all_pass and not crashes:
         print(f"[render-verify] all {checked} checks PASS{skip_note}")
-        return 0
+        return tally(0, checked=checked, skipped=len(skipped))
 
     if not all_pass:
         print(f"[render-verify] {len(failures)} of {checked} checks FAIL{skip_note}")
@@ -803,7 +875,126 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[render-verify] demo crashed at shutdown (fleet-run exit={rc}); "
               f"failing the verify run even when shots match — see tail above.",
               file=sys.stderr)
-    return 1
+    return tally(1, checked=checked, failed=len(failures),
+                 skipped=len(skipped))
+
+
+def _print_sweep_summary(results: list[dict[str, Any]]) -> None:
+    """One row per demo plus a single aggregate tally.
+
+    The row for a demo that never produced checks says ERROR, not ``0 checks``
+    — the whole point of ``--all`` is that a demo dropping out of the sweep is
+    visible in the number, which is what a per-target shell loop cannot do
+    (#2919).
+    """
+    print()
+    print(f"[render-verify] --all summary over {len(results)} demo(s):")
+    for r in results:
+        if r["rc"] == 0:
+            verdict = "PASS"
+        elif r["checked"] == 0:
+            verdict = f"ERROR ({r.get('error') or 'exit ' + str(r['rc'])})"
+        else:
+            verdict = f"FAIL ({r['failed']} of {r['checked']})"
+        skip_note = f", {r['skipped']} skipped" if r["skipped"] else ""
+        print(f"  {r['target']:24} {r['demo']:20} "
+              f"{r['checked']:>3} checks{skip_note:16} {verdict}")
+    total = sum(r["checked"] for r in results)
+    failed = sum(r["failed"] for r in results)
+    skipped = sum(r["skipped"] for r in results)
+    errored = [r["target"] for r in results if r["rc"] != 0 and r["checked"] == 0]
+    print(f"[render-verify] total: {total} checks across {len(results)} demos, "
+          f"{failed} FAIL, {skipped} skipped")
+    if errored:
+        print(f"[render-verify] {len(errored)} demo(s) produced NO checks: "
+              f"{', '.join(errored)} — their coverage is missing from the "
+              f"total above.", file=sys.stderr)
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--target", default="IRShapeDebug",
+                    help="CMake target to build and run (default: IRShapeDebug).")
+    ap.add_argument("--all", action="store_true",
+                    help="Sweep every demo whose manifest declares a 'target', "
+                         "in one run with one aggregate tally. Ignores --target; "
+                         "incompatible with --demo.")
+    ap.add_argument("--demo", default=None,
+                    help="Demo directory name under creations/demos/ (default: "
+                         "the demo whose manifest declares this --target; "
+                         "falling back to the name inferred from the target by "
+                         "stripping 'IR' and snake_casing, so IRShapeDebug → "
+                         "shape_debug. Override when neither holds).")
+    ap.add_argument("--build-dir", default=None,
+                    help="CMake build dir (default: <repo>/build).")
+    ap.add_argument("--warmup", type=int, default=None,
+                    help="Warmup frames before the first shot (default: 10, or "
+                         "manifest['warmup'] if set; CLI value always wins).")
+    ap.add_argument("--timeout", type=int, default=60,
+                    help="Per-run timeout in seconds (default: 60).")
+    ap.add_argument("--update-references", action="store_true",
+                    help="Overwrite the reference set with the captured shots.")
+    ap.add_argument("--force", action="store_true",
+                    help="Skip the --update-references confirmation prompt.")
+    ap.add_argument("--no-build", action="store_true",
+                    help="Skip `fleet-build`; assume the target is already built.")
+    ap.add_argument("--demo-arg", action="append", default=[], metavar="ARG",
+                    help="Extra argument passed through to the DEFAULT pass's "
+                         "demo run after --auto-screenshot (repeatable; "
+                         "manifest 'extra_runs' passes use their own declared "
+                         "demo_args). Use to prove a feature flag is output-"
+                         "neutral against the committed references — e.g. "
+                         "`--demo-arg --occlusion-cull` checks the voxel "
+                         "occlusion cull renders bit-identical to the cull-off "
+                         "baseline (#1294 child 3/3).")
+    args = ap.parse_args(argv)
+
+    if args.all and args.demo:
+        raise SystemExit(
+            "--all sweeps every declaring manifest; --demo names one directory. "
+            "Pass one or the other."
+        )
+
+    worktree = verify_common.detect_worktree_root(Path.cwd())
+    build_dir = Path(args.build_dir) if args.build_dir else worktree / "build"
+    backend = verify_common.detect_backend(build_dir)
+
+    if not args.all:
+        demo_dir = _resolve_demo_dir(worktree, args.target, args.demo)
+        return _verify_one(args=args, worktree=worktree, build_dir=build_dir,
+                           backend=backend, target=args.target,
+                           demo_dir=demo_dir)["rc"]
+
+    declared = _declared_targets(worktree)
+    if not declared:
+        raise SystemExit(
+            f"--all found no manifest declaring a 'target' under "
+            f"{_demos_root(worktree)}/{MANIFEST_GLOB}"
+        )
+    print(f"[render-verify] --all: {len(declared)} demo(s) — "
+          f"{', '.join(declared)}")
+
+    results: list[dict[str, Any]] = []
+    for target, demo in declared.items():
+        print()
+        print("=" * 76)
+        # One broken demo must not truncate the sweep — that would silently
+        # shrink coverage, the exact failure this flag exists to make visible.
+        try:
+            results.append(_verify_one(
+                args=args, worktree=worktree, build_dir=build_dir,
+                backend=backend, target=target,
+                demo_dir=_demos_root(worktree) / demo))
+        except SystemExit as e:
+            print(f"[render-verify] {target}: {e}", file=sys.stderr)
+            results.append({"target": target, "demo": demo, "rc": 1,
+                            "checked": 0, "failed": 0, "skipped": 0,
+                            "error": str(e)})
+
+    # --update-references gates nothing, so it has no tally to summarize.
+    if not args.update_references:
+        _print_sweep_summary(results)
+    return 0 if all(r["rc"] == 0 for r in results) else 1
 
 
 def _target_to_demo_name(target: str) -> str:
