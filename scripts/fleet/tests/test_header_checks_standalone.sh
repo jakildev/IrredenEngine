@@ -41,9 +41,13 @@
 #     undocumented `void` reject exempted this mutable pointer)
 #   - `inline void f() {}`                          → exit 0 (already caught
 #     by the function-declaration guard; the `void` reject was redundant)
-#   - a declaration whose terminator wraps onto a    → exit 1 (#2916: the
-#     continuation line, as clang-format's 100-col     formatter-defeat case
-#     wrap produces                                    — see #2916 for repro)
+#   - a wrapped declaration terminator              → exit 1 (#2916: the
+#     formatter-defeat case the repo's own 100-col clang-format produces)
+#   - `inline const T *const p`                     → exit 0 (both ends const
+#     is a program constant, and the arm pins that the header entered the scan
+#     rather than passing by skipping the candidate gate)
+#   - `inline const T *p` / `inline T *const p`     → exit 1 (single-sided
+#     const is still unowned mutable state — #2726's `g_activeShots` shape)
 
 set -uo pipefail
 
@@ -551,6 +555,54 @@ wrapped_rc=$?
 assert_eq "1" "$wrapped_rc" "wrapped-declaration header global makes the checker exit 1"
 assert_contains "$wrapped_out" "g_wrappedRegistry" \
     "failure names the wrapped declaration"
+
+# --- a both-ends-const pointer is a program constant and stays exempt -------
+REALCONST="$TMPROOT/realconst"
+make_fixture "$REALCONST"
+cat > "$REALCONST/engine/include/irreden/realconst.hpp" <<'EOF'
+#pragma once
+namespace IRFixture {
+inline const char *const g_realConstName = "ok";
+}
+EOF
+realconst_out=$(run_checker "$REALCONST")
+realconst_rc=$?
+assert_eq "0" "$realconst_rc" "both-ends-const pointer stays exempt"
+
+# A header the scan never reached exits 0 too, so the count is what makes the
+# exemption a measurement, not just an exit code: the clean fixture scans 2
+# (clean.hpp plus the render-backend metal_runtime.hpp, in scope since #2889
+# widened the collector to INCLUDE_RENDER_BACKENDS), so this fixture must
+# scan 3. Both numbers are measured against make_fixture — re-measure them if
+# it grows a header, rather than assuming the delta.
+assert_contains "$realconst_out" "scanned 3 header file(s)" \
+    "the exempt header entered the scan rather than skipping the candidate gate"
+
+# --- single-sided const on a pointer is still a banned global ---------------
+# Both halves live in one header so the two failures prove the scan read this
+# file — which is what makes the third assertion (the both-ends form is NOT
+# named) evidence about the reject chain rather than about a skipped file.
+# This is the shape that hid a real `g_activeShots` violation through an entire
+# hand-grep pass (#2726), and .claude/rules/cpp-globals.md calls it out by name.
+HALFCONST="$TMPROOT/halfconst"
+make_fixture "$HALFCONST"
+cat > "$HALFCONST/engine/include/irreden/halfconst.hpp" <<'EOF'
+#pragma once
+namespace IRFixture {
+inline const char *const g_bothEndsConst = "ok";
+inline const char *g_pointeeConstOnly = "reseatable";
+inline char *const g_handleConstOnly = nullptr;
+}
+EOF
+halfconst_out=$(run_checker "$HALFCONST")
+halfconst_rc=$?
+assert_eq "1" "$halfconst_rc" "single-sided-const pointer globals exit 1"
+assert_contains "$halfconst_out" "g_pointeeConstOnly" \
+    "leading const alone leaves a reseatable pointer, still flagged"
+assert_contains "$halfconst_out" "g_handleConstOnly" \
+    "trailing const alone freezes the handle, not the data, still flagged"
+assert_absent "$halfconst_out" "g_bothEndsConst" \
+    "both-ends-const in that same scanned header is exempt"
 
 # --- usage guard ------------------------------------------------------------
 noroot_out=$(cmake -P "$CHECKER" 2>&1)
