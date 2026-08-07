@@ -123,6 +123,12 @@ Two precision notes, both measured against the tree:
   also banned. Only `inline const T *const p` is a program constant. A `*`
   inside a template argument (`std::array<const char *, N>`) belongs to the
   type argument, not the declarator, and does not make the object a pointer.
+- A candidate whose terminator (`;` / `=` / `{`) wraps onto a continuation
+  line — what the repo's own 100-col clang-format does to a long `inline`
+  declaration — is joined with the following lines (bounded lookahead) before
+  the reject chain runs. Scanning only the head line as the executor
+  originally did made the ban formatter-defeatable: `format`ting a violation
+  could turn a `FLAGGED` result into a clean pass with no other change (#2916).
 
 Keep the executor and this file in sync — a detection spec nothing runs
 drifts silently (see #2727).

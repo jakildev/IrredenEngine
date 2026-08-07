@@ -78,61 +78,95 @@ foreach(file_path IN LISTS QUALITY_FILES)
     if(NOT is_baselined)
         # CMake's regex engine has no lookahead, so the rule's negative
         # assertions are applied as per-line rejects below rather than inline.
-        file(STRINGS "${normalized_file_path}" candidate_lines REGEX "^[ \t]*(inline|extern)[ \t]")
-        foreach(line IN LISTS candidate_lines)
-            # `extern "C" {` — a linkage block, not a variable.
-            if(line MATCHES "^[ \t]*extern[ \t]+\"")
-                continue()
-            endif()
-            # Declaration head only — everything before the initializer or
-            # terminator. A whole-line scan would read a trailing comment's
-            # "const" as a qualifier and pass real globals as clean.
-            string(REGEX REPLACE "[=;{].*$" "" decl_head "${line}")
-            # `constexpr` always makes the declared object itself a constant.
-            if(decl_head MATCHES "(^|[ \t])constexpr[ \t]")
-                continue()
-            endif()
-            # Strip template argument lists before looking for a pointer
-            # declarator — a `*` inside `<...>` belongs to a type argument
-            # (`std::array<const char *, N>`), not to the declared object.
-            # Repeated to unwrap nesting; CMake has no loop-until-stable.
-            set(decl_core "${decl_head}")
-            foreach(unused_pass RANGE 3)
-                string(REGEX REPLACE "<[^<>]*>" "" decl_core "${decl_core}")
-            endforeach()
-            if(decl_core MATCHES "\\*")
-                # A pointer declaration is a program constant only when BOTH
-                # ends are const: `const T *const p`. A leading `const` alone
-                # freezes the pointee (`const T *p` is a mutable pointer —
-                # reseatable state), and a trailing `const` alone freezes the
-                # pointer to still-mutable data. Either way it is unowned
-                # process state, which is what this ban is about.
-                if(decl_core MATCHES "(^|[ \t])const[ \t]" AND
-                   decl_core MATCHES "\\*[ \t]*const([ \t]|$)")
+        #
+        # Read every line unfiltered (not REGEX-filtered) so a candidate whose
+        # terminator wraps onto a continuation line — exactly what the repo's
+        # own 100-col clang-format produces on a long `inline` declaration —
+        # can be joined back into one line before the reject chain runs.
+        # `file(STRINGS ... REGEX ...)` would have already discarded that
+        # continuation line, since it doesn't itself start with
+        # `inline`/`extern`.
+        file(STRINGS "${normalized_file_path}" all_lines)
+        list(LENGTH all_lines total_line_count)
+        if(total_line_count GREATER 0)
+            math(EXPR last_line_index "${total_line_count} - 1")
+            foreach(line_index RANGE ${last_line_index})
+                list(GET all_lines ${line_index} candidate_head)
+                if(NOT candidate_head MATCHES "^[ \t]*(inline|extern)[ \t]")
                     continue()
                 endif()
-            elseif(decl_core MATCHES "(^|[ \t])const[ \t]")
-                # Non-pointer `const` (incl. `extern const`, `inline static
-                # const`) and `const T &` references are program constants.
-                continue()
-            endif()
-            # A `(` before the initializer means a function declaration, which
-            # is what the rule's `[^(]*` guard drops.
-            if(line MATCHES "^[^;={]*\\(")
-                continue()
-            endif()
-            if(line MATCHES "(^|[ \t])void[ \t]")
-                continue()
-            endif()
-            if(NOT line MATCHES "[;={]")
-                continue()
-            endif()
-            string(STRIP "${line}" stripped_line)
-            # Escape the source line's `;` — CMake lists are `;`-delimited, so
-            # an unescaped one splits the entry and emits a blank bullet.
-            string(REPLACE ";" "\\;" stripped_line "${stripped_line}")
-            list(APPEND header_global_failures "${normalized_file_path}: ${stripped_line}")
-        endforeach()
+
+                # Join continuation lines onto the head until a terminator
+                # appears. Bounded lookahead so a candidate that never
+                # terminates (or a runaway match) can't scan the rest of the
+                # file; a real declaration wrap is one or two lines.
+                set(max_join_lookahead_lines 10)
+                set(line "${candidate_head}")
+                set(join_index ${line_index})
+                set(join_steps 0)
+                while(NOT line MATCHES "[;={]" AND join_steps LESS ${max_join_lookahead_lines} AND join_index LESS ${last_line_index})
+                    math(EXPR join_index "${join_index} + 1")
+                    list(GET all_lines ${join_index} next_line)
+                    string(APPEND line " ${next_line}")
+                    math(EXPR join_steps "${join_steps} + 1")
+                endwhile()
+
+                # `extern "C" {` — a linkage block, not a variable.
+                if(line MATCHES "^[ \t]*extern[ \t]+\"")
+                    continue()
+                endif()
+                # Declaration head only — everything before the initializer or
+                # terminator. A whole-line scan would read a trailing comment's
+                # "const" as a qualifier and pass real globals as clean.
+                string(REGEX REPLACE "[=;{].*$" "" decl_head "${line}")
+                # `constexpr` always makes the declared object itself a constant.
+                if(decl_head MATCHES "(^|[ \t])constexpr[ \t]")
+                    continue()
+                endif()
+                # Strip template argument lists before looking for a pointer
+                # declarator — a `*` inside `<...>` belongs to a type argument
+                # (`std::array<const char *, N>`), not to the declared object.
+                # Repeated to unwrap nesting; CMake has no loop-until-stable.
+                set(decl_core "${decl_head}")
+                foreach(unused_pass RANGE 3)
+                    string(REGEX REPLACE "<[^<>]*>" "" decl_core "${decl_core}")
+                endforeach()
+                if(decl_core MATCHES "\\*")
+                    # A pointer declaration is a program constant only when BOTH
+                    # ends are const: `const T *const p`. A leading `const` alone
+                    # freezes the pointee (`const T *p` is a mutable pointer —
+                    # reseatable state), and a trailing `const` alone freezes the
+                    # pointer to still-mutable data. Either way it is unowned
+                    # process state, which is what this ban is about.
+                    if(decl_core MATCHES "(^|[ \t])const[ \t]" AND
+                       decl_core MATCHES "\\*[ \t]*const([ \t]|$)")
+                        continue()
+                    endif()
+                elseif(decl_core MATCHES "(^|[ \t])const[ \t]")
+                    # Non-pointer `const` (incl. `extern const`, `inline static
+                    # const`) and `const T &` references are program constants.
+                    continue()
+                endif()
+                # A `(` before the initializer means a function declaration, which
+                # is what the rule's `[^(]*` guard drops. (No separate `void`
+                # reject: `inline void f() {}` is already caught here, and
+                # `inline void *g_x = ...;` is a banned mutable pointer, not an
+                # exemption.)
+                if(line MATCHES "^[^;={]*\\(")
+                    continue()
+                endif()
+                # Safety net: the bounded join above may not have found a
+                # terminator (genuinely multi-line signature, or EOF).
+                if(NOT line MATCHES "[;={]")
+                    continue()
+                endif()
+                string(STRIP "${line}" stripped_line)
+                # Escape the source line's `;` — CMake lists are `;`-delimited, so
+                # an unescaped one splits the entry and emits a blank bullet.
+                string(REPLACE ";" "\\;" stripped_line "${stripped_line}")
+                list(APPEND header_global_failures "${normalized_file_path}: ${stripped_line}")
+            endforeach()
+        endif()
     endif()
 endforeach()
 

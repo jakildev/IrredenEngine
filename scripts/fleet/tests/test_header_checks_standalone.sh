@@ -37,6 +37,13 @@
 #     the slot is aliased and always has consumers)
 #   - an unreadable scratch-slot constant           → exit 1 (anchor guard)
 #   - a missing PROJECT_ROOT                        → exit 1 (usage guard)
+#   - `inline void *g_x = ...;`                     → exit 1 (#2916: the old
+#     undocumented `void` reject exempted this mutable pointer)
+#   - `inline void f() {}`                          → exit 0 (already caught
+#     by the function-declaration guard; the `void` reject was redundant)
+#   - a declaration whose terminator wraps onto a    → exit 1 (#2916: the
+#     continuation line, as clang-format's 100-col     formatter-defeat case
+#     wrap produces                                    — see #2916 for repro)
 
 set -uo pipefail
 
@@ -495,6 +502,55 @@ assert_contains "$backend_out" "metal_probe.hpp" "failure names the metal header
 assert_contains "$backend_out" "g_metalBackendGlobal" "failure names the metal declaration"
 assert_contains "$backend_out" "gl_probe.h" "failure names the gl_wrap header"
 assert_contains "$backend_out" "g_glWrapBackendGlobal" "failure names the gl_wrap declaration"
+
+# --- a void-pointer global fails (#2916 Defect 2: the old undocumented
+# `void` reject exempted this mutable, unowned pointer) ---------------------
+VOIDPTR="$TMPROOT/voidptr"
+make_fixture "$VOIDPTR"
+cat > "$VOIDPTR/engine/include/irreden/voidptr.hpp" <<'EOF'
+#pragma once
+namespace IRFixture {
+inline void *g_metalDevice = nullptr;
+}
+EOF
+voidptr_out=$(run_checker "$VOIDPTR")
+voidptr_rc=$?
+assert_eq "1" "$voidptr_rc" "void-pointer header global makes the checker exit 1"
+assert_contains "$voidptr_out" "g_metalDevice" \
+    "failure names the void-pointer declaration"
+
+# --- a void function still passes (the deleted `void` reject was redundant
+# for this case — the function-declaration guard already catches it) -------
+VOIDFN="$TMPROOT/voidfn"
+make_fixture "$VOIDFN"
+cat > "$VOIDFN/engine/include/irreden/voidfn.hpp" <<'EOF'
+#pragma once
+namespace IRFixture {
+inline void doThing() {}
+}
+EOF
+voidfn_out=$(run_checker "$VOIDFN")
+voidfn_rc=$?
+assert_eq "0" "$voidfn_rc" "void function still passes without the void reject"
+
+# --- a declaration whose terminator wraps onto a continuation line fails
+# (#2916 Defect 1: the formatter-defeat case — the repo's own 100-col
+# clang-format wraps a long `inline` declaration exactly like this) ---------
+WRAPPED="$TMPROOT/wrapped"
+make_fixture "$WRAPPED"
+cat > "$WRAPPED/engine/include/irreden/wrapped.hpp" <<'EOF'
+#pragma once
+#include <unordered_map>
+namespace IRFixture {
+inline std::unordered_map<int, int>
+    g_wrappedRegistry;
+}
+EOF
+wrapped_out=$(run_checker "$WRAPPED")
+wrapped_rc=$?
+assert_eq "1" "$wrapped_rc" "wrapped-declaration header global makes the checker exit 1"
+assert_contains "$wrapped_out" "g_wrappedRegistry" \
+    "failure names the wrapped declaration"
 
 # --- usage guard ------------------------------------------------------------
 noroot_out=$(cmake -P "$CHECKER" 2>&1)
