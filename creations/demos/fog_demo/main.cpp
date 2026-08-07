@@ -380,17 +380,28 @@ constexpr IRVideo::AutoScreenshotShot kEdgeZCostShots[] = {
 // readout, each against its own achievable reach.
 //
 // The down side is deliberately SHORT, not a mirror of the up pillar's
-// length: the render cull's usable reach is NOT symmetric in Z — content
-// extending "up" (toward smaller Z / the camera) gets generous headroom, but
-// content extending "down" (toward larger Z / away from the camera) is culled
-// past roughly 4 world units at this camera pose. The mechanism IS the
-// shadow-feeder sweep, and it is intended: `IRMath::shadowFeederIsoBounds`
-// widens the cull ONLY toward the sun, so this scene's straight-up sun
-// (0,0,-1) buys the up side `kSunShadowMaxDistance` (64) world units of extra
-// headroom and the down side exactly none — see #2900, which owns writing
-// that invariant into `engine/render/CLAUDE.md`. Reaching for the same
-// ~20-unit magnitude the up pillar uses would silently render as an
-// inert stub. `kEdgeZCostAsymDownXOffset` sits close enough to the disc
+// length: at this camera pose the render cull's usable reach is NOT
+// symmetric in Z — content extending "up" (toward smaller Z / the camera)
+// gets generous headroom, but content extending "down" (toward larger Z /
+// away from the camera) is culled past roughly 4 world units. Reaching for
+// the same ~20-unit magnitude the up pillar uses would silently render as an
+// inert stub.
+//
+// The mechanism is NOT known, and the shadow-feeder sweep is NOT it. That
+// inference is tempting — the sweep really does widen the cull only toward
+// the sun, which for this scene's straight-up sun is the up side — but it is
+// ruled out twice over. (a) Measured: disabling sun shadows zeroes
+// `sweepDistance_` (`frameShadowFeederParams`), which returns
+// `shadowFeederIsoBounds` to the un-widened viewport and changes nothing else
+// about the cull — an isolating variant for the sweep alone — and the up
+// pillar still rendered in full. (b) By construction: the sweep widens cull
+// ADMISSION, not visibility; under #1740 stage 2 returns before the colour +
+// entity-id taps for any voxel in the widened region (`isShadowFeederIso`,
+// c_voxel_to_trixel_stage_2_body.glsl, on this scene's yaw-0 path), so a
+// feeder is never displayed and the widening cannot lengthen on-screen
+// geometry. #2900 tracks the open question — treat it as unanswered.
+//
+// `kEdgeZCostAsymDownXOffset` sits close enough to the disc
 // radius that the small achievable |Δz| still produces a measurable reveal
 // delta between the shipped low cost and a mirrored (zCostUp-equal) cost —
 // see #2557 for the positive-fire A/B this geometry was tuned against.
