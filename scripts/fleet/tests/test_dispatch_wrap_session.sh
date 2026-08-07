@@ -22,11 +22,29 @@
 #   - cleanup: finished/no-op (clean master) clears the sidecar
 #   - planning assignment (#2197): 7th plan= arg -> FLEET_PLAN_ISSUE export;
 #     absent/bare arg stays unset; a resume releases the pre-claim instead
+#   - hermeticity (#2836): the suite is immune to an inherited FLEET_PLAN_ISSUE
+#     (every planning-assigned worker iteration exports it, so any such
+#     iteration that runs this suite — e.g. while build-verifying a
+#     scripts/fleet PR — must not see a spurious 2-assertion red)
 
 set -uo pipefail
 SCRIPT_DIR=$(cd "$(dirname "$0")/.." && pwd)
 WRAP="$SCRIPT_DIR/fleet-dispatch-wrap"
 [[ -x "$WRAP" ]] || { echo "test setup: $WRAP not found"; exit 1; }
+
+# Hermeticity (#2836): fleet-dispatch-wrap only ever SETS FLEET_PLAN_ISSUE
+# (from its own 7th argv, when present) — it never unsets it when the arg is
+# absent. Every planning-assigned dispatch exports FLEET_PLAN_ISSUE, so this
+# suite's own process inherits it whenever it's run from inside such an
+# iteration, and T9's two absent-arg cases below would then see it leak
+# straight through into the wrap's launch. Scrub it once here, in this
+# process's own environment, before any dispatch call runs — the fix belongs
+# in the test harness, not the wrap, which has no way to distinguish "caller
+# wants no plan" from "caller's shell happens to have one lying around".
+# (Audited siblings: FLEET_ROLE_MODEL is always freshly exported by the wrap
+# itself regardless of argv, so it has no leak path; FLEET_ASSIGNED_WORKTREE
+# is not read by fleet-dispatch-wrap at all.)
+unset FLEET_PLAN_ISSUE
 
 PASS=0; FAIL=0
 ok()  { PASS=$((PASS+1)); echo "  ok: $1"; }
@@ -210,6 +228,28 @@ grep -q -- '^--repo game planning-release 7 worker-1$' "$FLEET_CLAIM_LOG" \
   || bad "resume: no planning-release call: $(cat "$FLEET_CLAIM_LOG")"
 unset FLEET_CLAIM_LOG
 rm -f "$SIDECAR"
+
+# --- hermeticity regression lock (#2836) -------------------------------------
+# T9 above only proves its absent-arg cases are clean in THIS process,
+# which is already running after the setup scrub. That alone doesn't lock the
+# scrub against removal — a future edit could delete the `unset
+# FLEET_PLAN_ISSUE` above and every case here would still pass, because none
+# of them re-introduce an ambient value once the process starts. Reproduce the
+# actual bug report's repro command instead: re-invoke this whole suite as a
+# child process with FLEET_PLAN_ISSUE ambiently exported (exactly
+# `FLEET_PLAN_ISSUE=engine:9999 bash test_dispatch_wrap_session.sh`, the
+# acceptance criterion's own repro form) and assert the child still exits 0.
+# The child hits the setup scrub before its own T9 run, so this fails iff
+# that scrub regresses. FLEET_TEST_SELFCHECK guards against a second level of
+# recursion — the child must not spawn a grandchild.
+if [[ -z "${FLEET_TEST_SELFCHECK:-}" ]]; then
+    echo "T10b: suite is hermetic against an ambient FLEET_PLAN_ISSUE (#2836 repro, regression lock)"
+    if FLEET_TEST_SELFCHECK=1 FLEET_PLAN_ISSUE="engine:9999" bash "$0" >"$TMPROOT/selfcheck.log" 2>&1; then
+        ok "suite exits 0 when launched with FLEET_PLAN_ISSUE ambiently set"
+    else
+        bad "suite fails under an ambient FLEET_PLAN_ISSUE (setup scrub regressed): $(tail -5 "$TMPROOT/selfcheck.log")"
+    fi
+fi
 
 # --- in-flight false positives + resume-loop breaker (worker-2, 07-09→07-14) --
 echo "T11: scratch branch is never in-flight — sidecar cleared even when dirty"
