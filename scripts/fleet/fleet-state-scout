@@ -146,6 +146,12 @@ FETCH_SUBMIT_GAP_SECONDS = 0.25
 # semantic-conflict lanes, and the in-flight/stackable enrichers all read it,
 # and a PR outside the window contributes no projection item at all, so its
 # later label edits produce no dispatch edge (#2743).
+#
+# Raising it costs requests: gh pages at 100, so one tick spends
+# ceil(min(limit, open_count) / 100) requests per repo — measured 2026-08-07
+# at limits 30/100/150/200/250 -> 1/1/2/2/3. At 200 that is 1 request while
+# the open set is under 100 and 2 above it. The guard below tells an operator
+# to raise this constant; that is the price of doing so.
 OPEN_PR_FETCH_LIMIT = 200
 
 TERMINATE = threading.Event()

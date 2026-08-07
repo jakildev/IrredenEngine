@@ -131,3 +131,23 @@ hazard), and the request count is measured directly rather than via the shared
 rate-limit bucket, which concurrent fleet daemons make unusable. Evidence is in
 the PR body.
 
+### Amendment (2026-08-07, review nit) — the rate-limit arm is vacuous too
+
+The review flagged that the rate-limit criterion was demonstrated single-shot
+rather than across the ~3 ticks specified, and asked that a future rate-limit
+regression on this path not be read as pre-cleared by it. Re-measured, and the
+gap is larger than the tick count: **at today's open-PR depth the arms cannot
+differ at all**, so neither form of the criterion — single-shot or 3-tick —
+discriminates.
+
+Measured 2026-08-07 against `jakildev/IrredenEngine`, counting `POST /graphql`
+under `GH_DEBUG=api`: gh pages at 100, spending
+`ceil(min(limit, available) / 100)` requests — limits 30/100/150/200/250 cost
+1/1/2/2/3. Both real arms (no `--limit`, and `--limit 200`) return **18 PRs in
+1 request**, because 18 and 30 sit on the same side of the first page boundary.
+
+So the honest claim is a *bound*, not a clearance: the fix costs **+0 requests
+per repo per tick while the open set is under 100, and +1 above it**, capped at
+2 by the 200 limit. That bound is now measured rather than predicted from gh's
+documented paging, and it is recorded at the constant in `fleet-state-scout` —
+the site the truncation guard points an operator at when it says to raise it.
