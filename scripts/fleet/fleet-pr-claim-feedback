@@ -68,7 +68,7 @@ fi
 # Help first so `--help` isn't mis-parsed as the positional pr-number.
 case "$1" in
     -h|--help)
-        sed -n '2,59p' "$0" | sed 's/^# \{0,1\}//'
+        awk 'NR==1 {next} /^#/ {print; next} {exit}' "$0" | sed 's/^# \{0,1\}//'
         exit 0
         ;;
 esac

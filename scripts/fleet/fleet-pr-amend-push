@@ -41,7 +41,7 @@ set -euo pipefail
 if [[ $# -gt 0 ]]; then
     case "$1" in
         -h|--help)
-            sed -n '2,38p' "$0" | sed 's/^# \{0,1\}//'
+            awk 'NR==1 {next} /^#/ {print; next} {exit}' "$0" | sed 's/^# \{0,1\}//'
             exit 0
             ;;
         *)

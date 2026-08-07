@@ -57,7 +57,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         -h|--help)
-            sed -n '2,26p' "$0"
+            awk 'NR==1 {next} /^#/ {print; next} {exit}' "$0"
             exit 0
             ;;
         *)

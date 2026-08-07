@@ -45,7 +45,7 @@ fi
 
 case "$1" in
     -h|--help)
-        sed -n '28,34p' "$0"
+        awk '/^# Usage:/ {f=1} f {if (/^#/) {print; next} else exit}' "$0"
         exit 0
         ;;
 esac
