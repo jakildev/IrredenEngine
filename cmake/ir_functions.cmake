@@ -104,7 +104,8 @@ endfunction()
 #   irreden_lua_codegen(<target>
 #       SOURCES <input1.lua> [input2.lua ...]
 #       OUTPUT_HPP <path/to/generated.hpp>
-#       [DEFAULT_MODE <CODEGEN|EVAL>]   # default CODEGEN
+#       [DEFAULT_MODE <CODEGEN|EVAL>]      # default CODEGEN
+#       [REGISTRY_NAMESPACE <identifier>]  # default: the OUTPUT_HPP stem
 #   )
 #
 # Behaviour:
@@ -127,6 +128,20 @@ endfunction()
 # (set in the creation's CMakeLists.txt or on the cmake command line)
 # takes precedence when DEFAULT_MODE is omitted.
 #
+# REGISTRY_NAMESPACE names the inner namespace the run's registry symbols are
+# emitted into (`IRScript::CodegenRegistry::<id>`), which is what keeps N runs
+# in one binary from merging (#2609). It defaults to the OUTPUT_HPP stem, so
+# every in-tree caller is zero-config; pass it explicitly when the stem is not
+# usable as an identifier (a C++ keyword) or when two runs on one target would
+# otherwise derive the same id — the latter is a configure-time FATAL_ERROR.
+# The emitted header re-exports the run via a using-directive, so call sites
+# keep the unqualified `IRScript::CodegenRegistry::X` spelling regardless.
+#
+# Each generated header is single-TU-per-target: the run also emits one
+# external-linkage claim constant per component under
+# `IRScript::CodegenClaims`, so both a second includer and a second run
+# declaring the same component name fail the link naming the component.
+#
 # All paths are resolved relative to the caller's CMAKE_CURRENT_SOURCE_DIR
 # unless absolute. The generated header is regenerated on Lua-source change
 # but not on tool-source change (the codegen tool target's link dependency
@@ -135,7 +150,7 @@ endfunction()
 function(
     irreden_lua_codegen target
 )
-    cmake_parse_arguments(IRLC "" "OUTPUT_HPP;DEFAULT_MODE" "SOURCES" ${ARGN})
+    cmake_parse_arguments(IRLC "" "OUTPUT_HPP;DEFAULT_MODE;REGISTRY_NAMESPACE" "SOURCES" ${ARGN})
     if(NOT IRLC_OUTPUT_HPP)
         message(FATAL_ERROR "irreden_lua_codegen: OUTPUT_HPP is required")
     endif()
@@ -178,6 +193,45 @@ function(
 
     get_filename_component(_output_dir "${IRLC_OUTPUT_HPP}" DIRECTORY)
 
+    # #2609: this run's registry namespace. Derived from the OUTPUT_HPP stem
+    # (unique per run for every in-tree caller) unless REGISTRY_NAMESPACE
+    # overrides it. Computed here and passed explicitly rather than left to the
+    # tool's own stem derivation, so the duplicate check below is guaranteed to
+    # be testing the same identifier the header will actually carry — two
+    # derivations that agree today would drift apart silently.
+    if(IRLC_REGISTRY_NAMESPACE)
+        set(_registry_ns "${IRLC_REGISTRY_NAMESPACE}")
+        if(NOT _registry_ns MATCHES "^[A-Za-z_][A-Za-z0-9_]*$")
+            message(FATAL_ERROR
+                "irreden_lua_codegen: REGISTRY_NAMESPACE must be a bare C++ identifier "
+                "(got '${_registry_ns}')"
+            )
+        endif()
+    else()
+        get_filename_component(_ns_stem "${IRLC_OUTPUT_HPP}" NAME)
+        string(REGEX REPLACE "\\.[^.]*$" "" _ns_stem "${_ns_stem}")
+        string(REGEX REPLACE "[^A-Za-z0-9_]" "_" _registry_ns "${_ns_stem}")
+        if(_registry_ns STREQUAL "")
+            set(_registry_ns "run_unnamed")
+        elseif(_registry_ns MATCHES "^[0-9]")
+            set(_registry_ns "run_${_registry_ns}")
+        endif()
+    endif()
+
+    # Two runs on one target resolving to the same namespace would silently
+    # re-create the collision this scheme exists to remove (two same-stem
+    # `codegen.hpp` in different directories is the realistic way in), so it is a
+    # configure-time error with REGISTRY_NAMESPACE named as the fix.
+    get_property(_ir_used_ns TARGET ${target} PROPERTY IR_LUA_CODEGEN_NAMESPACES)
+    if(_registry_ns IN_LIST _ir_used_ns)
+        message(FATAL_ERROR
+            "irreden_lua_codegen: target '${target}' already has a codegen run in namespace "
+            "'${_registry_ns}'. Two runs sharing a namespace collide exactly as they did "
+            "before #2609 — pass REGISTRY_NAMESPACE <unique-id> to disambiguate."
+        )
+    endif()
+    set_property(TARGET ${target} APPEND PROPERTY IR_LUA_CODEGEN_NAMESPACES "${_registry_ns}")
+
     # CMake 3.31+ added a CODEGEN positional keyword to add_custom_command;
     # any bare "CODEGEN" token in the call (even after variable expansion
     # inside COMMAND) trips its policy gate and aborts configure. Pass the
@@ -191,6 +245,7 @@ function(
         COMMAND $<TARGET_FILE:ir_lua_codegen>
             --out "${IRLC_OUTPUT_HPP}"
             "--default-mode=${_mode_lower}"
+            "--registry-namespace=${_registry_ns}"
             ${_resolved_sources}
         DEPENDS ir_lua_codegen ${_resolved_sources}
         COMMENT "lua_codegen [${_mode_lower}]: ${IRLC_OUTPUT_HPP}"

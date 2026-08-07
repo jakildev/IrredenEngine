@@ -372,21 +372,67 @@ since some engine components have deleted default ctors). Unknown override keys
 and type-mismatched values are ignored, matching the EVAL path's
 `writeRowFromTable` contract.
 
-> **Do not grow `registerCodegenComponents`.** Every codegen run in a binary
-> emits that function — plus `CodegenSystemIds`, `registerCodegenSystems`, and
-> `kDefaultEcsMode` — under the *same* name in the same namespace. Distinct
-> definitions survive only because each is small enough to inline at its single
-> call site. Grow one past the inline threshold and the compiler emits an
-> out-of-line `linkonce_odr` copy, the linker merges every run into one winner,
-> and callers silently get an arbitrary run's components. The engine test binary
-> links three codegen runs and is where this bites first. Per-component work
-> belongs in `bindLuaType<C_Name>`, whose name is unique — but only *while*
-> component struct names are unique across the runs linked into one binary.
-> `bindLuaType<C_Name>` is emitted `template <> inline`, so two runs declaring
-> a same-named component merge exactly the way `registerCodegenComponents`
-> does, and post-#2446 that silently swaps **attach factories**, not just
-> registrations. (The emitted structs would already collide in that case — a
-> wider symptom of the same root cause, which #2609 owns.)
+#### Per-run linkage (#2609)
+
+Every codegen run emits its registry surface —
+`registerCodegenComponents`, `CodegenSystemIds`, `registerCodegenSystems`,
+`kDefaultEcsMode`, `kEvalSystemNames`, and the per-system
+`createSystem_<NAME>()` functions — into an inner namespace named for that
+run:
+
+```cpp
+namespace IRScript::CodegenRegistry {
+namespace lua_perf_grid_codegen {   // ← the run id
+    inline void registerCodegenComponents(LuaScript &);
+    struct CodegenSystemIds { ... };
+    // ...
+}
+using namespace lua_perf_grid_codegen;   // ← the compat re-export
+}
+```
+
+The run id defaults to the `OUTPUT_HPP` stem; `irreden_lua_codegen`'s
+`REGISTRY_NAMESPACE` param overrides it, and two runs on one target
+resolving to the same id is a configure-time `FATAL_ERROR`.
+
+**Call sites don't change.** The using-directive re-exports the run, so
+`IRScript::CodegenRegistry::registerCodegenComponents(script)` keeps
+resolving ([namespace.qual] — qualified lookup unions using-directed
+namespaces when the enclosing namespace declares no such name). A TU that
+includes *two* runs' headers turns that spelling into a compile-time
+ambiguity naming both candidates; qualify with the run id to disambiguate.
+
+**`registerCodegenComponents` no longer has a size budget.** Before #2609
+every run emitted it under one name, so distinct definitions survived only
+while each stayed small enough to inline at its single call site — one
+out-of-line `linkonce_odr` copy merged every run into one arbitrary winner
+and callers silently got the wrong run's components (PR #2608 tripped
+exactly this: three `LuaSystemCoexistenceTest` cases started running the
+T-106 fixture's registry). Per-run mangled names carry that correctness
+now, not the optimizer. `bindLuaType<C_Name>` stays the home for
+per-component work as an organizational choice.
+
+**Component names are claimed at link time.** Three emitted surfaces are
+keyed on the user-authored component name, not the run — `IRComponents::C_X`,
+`bindLuaType<C_X>`, and the #2446 attach factory it registers — so
+namespacing cannot separate them. Each run therefore emits one
+external-linkage constant per component:
+
+```cpp
+namespace IRScript::CodegenClaims {
+extern const char C_Foo_declared_by_more_than_one_codegen_run_in_this_binary;
+const char C_Foo_declared_by_more_than_one_codegen_run_in_this_binary = 1;
+}
+```
+
+A `duplicate symbol` link error naming one of these means two codegen runs
+in the binary declare the same component; rename one. Pre-#2609 that
+collision linked cleanly and silently swapped attach factories.
+
+**Consequence: a generated header is single-TU-per-target.** Including one
+run's header from two translation units was legal-but-unused before; the
+claim constants make it a duplicate-symbol error too. Every in-tree run is
+included by exactly one TU.
 
 **CODEGEN supports:** `int32` / `float` / `bool` / `string` / `vec3` / `ivec3`
 field types and both the short form (`current = 100`) and the explicit-type
@@ -563,6 +609,7 @@ irreden_lua_codegen(MyCreation
     SOURCES schema.lua
     OUTPUT_HPP ${CMAKE_CURRENT_BINARY_DIR}/codegen/my_codegen.hpp
     DEFAULT_MODE EVAL          # optional; defaults to IR_LUA_ECS_DEFAULT_MODE or CODEGEN
+    REGISTRY_NAMESPACE my_run  # optional; defaults to the OUTPUT_HPP stem (#2609)
 )
 ```
 
@@ -611,9 +658,9 @@ verifies both modes register, both tick, EVAL is hot-reloadable,
 CODEGEN is not, and `IRComponent.register` is idempotent in the
 coexistence path.
 
-**Future-hook note.** The codegen tool emits a
+**Future-hook note.** The codegen tool emits a per-run
 `IRScript::CodegenRegistry::kEvalSystemNames[]` array carrying the
-names of every EVAL system declared in the codegen run. The intent
+names of every EVAL system declared in that codegen run. The intent
 is a runtime verification loop at script-eval boundary (each name
 must register, otherwise raise — catches typos / mode mismatches at
 startup rather than months later). The array is emitted today as a
