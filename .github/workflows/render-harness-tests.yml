@@ -16,7 +16,11 @@ name: Render Harness Tests
 # a PR that breaks a subject then skips the only coverage guarding it.
 # `scripts/*` does not match across `/`, so scripts/fleet/** is excluded —
 # that tree has its own workflow. The two path lists are duplicated because
-# GitHub Actions does not support YAML anchors — keep them in sync.
+# GitHub Actions does not support YAML anchors — keep them in sync **by hand**.
+# Generalizing the sync ratchet (scripts/fleet/tests/test_fleet_tests_workflow_paths.sh,
+# #2810) across every workflow is tracked as #2929; it is pinned to
+# fleet-tests.yml until that lands, so nothing executed checks the sync here.
+# Drop this note when #2929 lands.
 #
 # The demo manifests are a subject too (#2919): test_render_verify.py's
 # CommittedManifestsResolve asserts every committed
