@@ -783,9 +783,13 @@ metalCurrentDepthPixelFormat(),
             // nothing) and resolveImageAtomicScratch blits a solid nearest-depth
             // surface over the whole texture. Ensuring the buffer here is what
             // makes this mirror unconditional, which is what both consumers of
-            // that property already assume (#2488). No extra allocation in
-            // practice: every R32Sint texture cleared here is image-bound later
-            // in the same frame anyway, so it only moves the allocation earlier.
+            // that property already assume (#2488). Canvas distance textures
+            // cleared here are image-bound later in the same frame, so the
+            // ensure only moves their allocation earlier. The exception is the
+            // per-axis resolveDepth_, cleared at (yaw-gated) allocation but
+            // image-bound only when a consumer stage is registered — a rotating
+            // creation with neither consumer pays one main-canvas-sized scratch
+            // it never binds. Bounded, one-time, torn down with the texture.
             if (pixelFormat == MTL::PixelFormatR32Sint) {
                 if (MTL::Buffer *scratch = ensureImageAtomicScratchBuffer(texture);
                     scratch != nullptr) {

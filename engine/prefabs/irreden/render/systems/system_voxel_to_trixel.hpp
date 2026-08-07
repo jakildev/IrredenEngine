@@ -782,7 +782,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 // Redundant with the stage-1 image bind this loop makes before its
                 // dispatch: clearTexImage establishes the Metal atomic scratch
                 // itself, so the clear seeds the sentinel whether or not a bind has
-                // paired one yet (#2488). Removable with a rotating-path re-verify.
+                // paired one yet (#2488). Removable with a rotating-path
+                // re-verify — tracked as #2923.
                 distances->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
                 IRRender::device()->clearTexImage(distances, 0, &kDistanceClear);
                 colors->clear(PixelDataFormat::RGBA, PixelDataType::UNSIGNED_BYTE, &kColorClear[0]);
