@@ -852,13 +852,18 @@ contest by run-variant arrival order (10 distinct rotated-shot hashes / 10
 runs at wave amplitude 5). `c_per_axis_overflow_sort.{glsl,metal}` canonically
 orders the entries by full record value between the append and the indirect
 draw — **dispatched only when the ticking pool's `storeTiesPossible_` flag is
-set** (the #2346 gate the cardinal winner election already takes, decided
-CPU-side so the sort semantics never fork by backend). Unflagged pools keep
-order-resolved cross-cell band-code ties as a documented residual class; a
-measured repro there widens the flag recompute, it does **not** un-gate the
-sort. The sort is a bitonic network whose span is derived **GPU-side** from
-`ctrl[1]` (the CPU cannot read the live entry count without a sync stall), so
-its traffic scales with the live population rather than the entry cap.
+set AND the last completed frame's overflow list was nonempty** (#2479 (ii)).
+Both terms are decided CPU-side so the sort semantics never fork by backend;
+the count term is the retired-frame `ctrl[1]` readback the cap-drop warn
+already performs, so the common interactive case (flagged pool, empty list)
+pays zero dispatches with no added sync. Its one-frame lag scopes the
+determinism guarantee to **steady-state frames**: an empty→nonempty
+transition draws exactly one frame unsorted, self-healing next frame.
+Unflagged pools keep order-resolved cross-cell band-code ties as a documented
+residual class; a measured repro there widens the flag recompute, it does
+**not** un-gate the sort. The sort is a bitonic network whose span is derived
+**GPU-side** from `ctrl[1]` (a live read would sync-stall), so its traffic
+scales with the live population rather than the entry cap.
 Cost + the residual-class revisit trigger are in the design doc's §"Draw order
 is canonical" block.
 
@@ -1058,6 +1063,11 @@ parity with voxel-pool primary shapes.
   its instructions decode on every invocation even when never taken, taxing
   the kernel at all inputs. Prefer a `#if` specialization from one shared
   source body. See `docs/design/gpu-stage-timing-cost-model.md` §2.
+- **Budgeting a multi-dispatch Metal pass: count ~64 µs fixed cost per
+  compute dispatch** — measured on the #2479 overflow sort, invariant under
+  kernel fusion, memory traffic, and threadgroup occupancy; see
+  `docs/design/per-axis-trixel-canvas-rotation.md` §"Metal per-dispatch fixed
+  cost" for the three-arm numbers before trusting an encoder-cost model.
 - **Render mode × subdivision × zoom.** `SMOOTH` mode multiplies positions
   by `subdivisions × zoom`. Changing any of these mid-frame is a perf
   cliff and can desync chunk visibility.

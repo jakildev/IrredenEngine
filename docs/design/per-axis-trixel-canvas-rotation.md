@@ -195,10 +195,30 @@ indirect draw it canonically orders the appended entries by full record value
 of the appended **set**. The key spans all three words, so key-equality and
 record-equality coincide and equal records need no ordering at all.
 
-**The sort is gated on the pool's `storeTiesPossible_` flag** (#2346 — the same
-displaced-collision flag the cardinal winner election gates on, evaluated
-CPU-side so the sort semantics never fork by backend). An unflagged pool runs
-master's exact dispatch sequence: zero fill, zero network.
+**The sort is gated on `storeTiesPossible_ && laggedOverflowCount > 0`** — the
+#2346 displaced-collision flag the cardinal winner election gates on, AND a
+nonempty overflow list, both evaluated CPU-side per pool per frame so the sort
+semantics never fork by backend. An unflagged pool runs master's exact dispatch
+sequence: zero fill, zero network. A flagged pool whose list is empty —
+`IRPerfGrid --mode voxel_set` at wave amplitude 0 is the canonical case — also
+dispatches nothing (measured: 0 dispatches under the two-term predicate, where
+the flag-only gate paid 18 dispatches for 0 entries).
+
+**The count term is a frame-lagged read, and the determinism guarantee is
+scoped to steady-state frames.** The CPU cannot read the live `ctrl[1]` without
+a render-path sync stall, so the predicate reads the count written by the last
+COMPLETED rotating frame — the same retired-frame ctrl readback the #2333
+cap-drop warn has always performed (Metal completes every frame at present via
+`waitUntilCompleted`, so the read can never observe an in-flight append; GL's
+`getSubData` implicit-syncs any pending write; allocation seeds the ctrl block
+to zeros, so a fresh allocation reads 0, not garbage). Consequence: a pool
+whose overflow list transitions empty→nonempty draws that first frame
+unsorted — order-nondeterministic for exactly one frame, self-healing on the
+next. This is not a regression (master is nondeterministic on **every** such
+frame), and no automated gate covers the transition frame itself: the
+guarantee is **byte-identity on steady-state frames** (settled overflow
+population), which is what every capture-bearing acceptance criterion
+measures.
 
 **Residual class, deliberately accepted.** An unflagged pool keeps
 order-resolved **cross-cell 4-bit band-code ties**. This is acceptable because:
@@ -217,6 +237,47 @@ flag recompute** (`storeTiesPossible_` is a conservative predicate — see the
 `.claude/rules/cpp-ecs.md`, whose worked example is this very flag). It does
 **not** mean un-gating the sort: the sort's cost is what forced the gate, and
 un-gating restores that cost on every rotating frame for every scene.
+
+### Metal per-dispatch fixed cost — the measured model (#2479)
+
+Budgeting the sort was falsified three times by measurement before the fixed
+cost surfaced; the numbers are recorded here so the next person budgeting a
+multi-dispatch pass on this backend starts from measurement, not the encoder
+model. Three same-session variants at the dense stress scene (`IRPerfGrid`
+wave-freeze amp 5, `--yaw 0.35`, 524,288-entry cap, ~66,690 live entries),
+4 interleaved runs per arm, each arm runtime-asserted to be the binary it
+claims:
+
+| arm | dispatches | frame p50 | vs master |
+|---|---|---|---|
+| A — master (no sort) | 0 | 9.89 ms | — |
+| U — unfused network | 67 | 13.89 ms | +40.5% |
+| B — fused + span-sized + gated | 18 (14 effective) | 12.28 ms | +24.2% |
+
+Fitting the variants gives a **~64 µs fixed cost per compute dispatch** that
+no in-kernel change touches. Three plausible attributions falsified on the
+way:
+
+1. **Dispatch count is not dominant in-kernel** — fusing 67 → 18 moved the
+   added cost only 40%, not the ~4× an encoder-round-trip model predicts.
+2. **Memory traffic is not dominant** — span-sizing the network to the live
+   population cut traffic 4× (214 → 53 MB/frame); frame time moved ~0.3 ms.
+3. **Threadgroup occupancy is not dominant** — 24 KB → 6 KB per threadgroup
+   at matched dispatch count and traffic moved nothing (3.02 → 3.34 ms GPU).
+
+The accepted residual (#2479 ruling): flagged, **populated** pools pay the
+sort while rotating, bounded by the 7a′ gate at **≤ 3.0 ms** added
+rotating-frame cost at this deliberately extreme scene; with the empty-list
+predicate above, representative interactive content pays zero.
+
+**Zero-dispatch alternative, recorded for revisit:** a deterministic
+*integer* tiebreak inside the depth test would eliminate the sort entirely.
+Its blocker is narrower than the rejected value-derived float tiebreak
+(cross-backend float identity): the `kScatterCellTieStep` band has **zero
+spare bits** (its PRECONDITION brackets the band to exactly 16 steps), so the
+tiebreak is gated on a tie-step band re-encode — its own change with its own
+verification burden. Revisit only if the stress-scene budget ever matters in
+practice.
 
 ### #2207 / #2157 synergy
 

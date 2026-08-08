@@ -392,4 +392,67 @@ The `engine/render/CLAUDE.md` #2469 accepted-residual table is stale. It records
 the voxel-cylinder yaw-sweep at x residual 0.57 px (zoom 4) and 1.25 px
 (zoom 8); **master now measures 1.78 px and 2.70 px**, so the canonical probe
 FAILS its own documented 1.50 px bar on master at both zooms. Branch and master
-are digit-identical, so this PR is neutral on it. Filed separately.
+are digit-identical, so this PR is neutral on it. Filed separately (#2907).
+
+---
+
+## Revision v4 — architect ruling on the second (criterion-7a) escalation
+
+Ruled 2026-08-08 (PR #2850 thread): **(ii) + (i)**, per the escalation's own
+recommendation. The corrected cost model (the ~64 µs fixed per-dispatch Metal
+cost that falsified the encoder attribution) is accepted as the basis; the
+ruling's five points, folded in:
+
+1. **(ii) blessed — narrow the predicate.** Sort-enable becomes
+   `storeTiesPossible_ && laggedOverflowCount > 0`, backend-symmetric,
+   CPU-side per pool per frame. Contract for the lagged read: no CPU–GPU sync
+   stall on the render path; read a count written by a **completed** prior
+   frame; the one-frame empty→nonempty transition window is accepted and
+   documented — the determinism guarantee is scoped to **steady-state frames**
+   (settled overflow population), with no automated gate for the transition
+   frame itself. Named consequence to verify: the amp-0
+   `IRPerfGrid --mode voxel_set` case (flagged pool, empty list, previously 18
+   dispatches for 0 entries) must read **0 dispatches**.
+
+   *Implementation (this revision):* the count is stamped from the
+   retired-frame ctrl readback `warnOverflowDropsIfAny` already performs
+   unconditionally each rotating frame (Metal's `present()` waits each frame
+   to completion, so the read can never observe an in-flight append; GL's
+   `getSubData` implicit-syncs; `allocate()` seeds the ctrl block to zeros so
+   a fresh allocation reads 0). Zero new readback machinery; the predicate
+   costs nothing on the render path.
+
+2. **(i) — criterion 7a′ re-grounded, absolute and interleaved:** added
+   rotating-frame cost attributable to the sort — B-vs-A p50 delta,
+   same-session interleaved runs, runtime-asserted arms, at the canonical
+   dense stress scene (wave-freeze amp 5, `--yaw 0.35`, the plan's profile
+   protocol) — is **≤ 3.0 ms**. (Prior session measured 2.39 ms → ~25%
+   headroom.) 7b cardinal byte-identity and 7c structurally-zero dispatches
+   stand, 7c now covering the unflagged case AND the flagged-but-empty case,
+   both by dispatch count.
+
+3. **(iii) declined for this PR, recorded as the revisit path** in the design
+   doc's overflow-lane section: zero-dispatch integer tiebreak exists, gated
+   on a `kScatterCellTieStep` band re-encode; revisit only if the stress-scene
+   budget matters in practice. No ticket now.
+
+4. **(iv) absorbed, not adopted:** flagged, populated pools pay ≤ 3.0 ms while
+   rotating — the accepted residual, bounded by 7a′, paid only where
+   determinism is actually being bought.
+
+5. **Corrected cost model recorded:** ~64 µs fixed per-dispatch Metal cost
+   (invariant under fusion, traffic, occupancy) + the three-arm table now live
+   in `docs/design/per-axis-trixel-canvas-rotation.md` §"Metal per-dispatch
+   fixed cost", cross-referenced from `engine/render/CLAUDE.md`'s Metal
+   gotchas.
+
+6. The stale #2469 residual table stays out of this PR (filed as #2907).
+
+### Re-scoped acceptance (v4, final)
+
+- Criteria 1–3 re-verified with the new predicate (settled scenes,
+  expectations unchanged); 4–6 as already passed.
+- 7a′ ≤ 3.0 ms; 7b cardinal byte-identity; 7c zero dispatches by count for
+  BOTH the unflagged and the flagged-but-empty cases.
+- Finalization: screenshots, the §5 doc updates, the widened-cap disclosure
+  (addendum constraint 2) in the final PR body.

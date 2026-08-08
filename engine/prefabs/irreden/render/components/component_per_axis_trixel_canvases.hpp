@@ -123,6 +123,17 @@ struct C_PerAxisTrixelCanvases {
     int ctrlBaseUints_ = 0;
     int entriesBaseUints_ = 0;
     int overflowCap_ = 0;
+    // #2479: live overflow entry count (ctrl[1]) from the last COMPLETED
+    // rotating frame, stamped by the pre-reset ctrl readback in
+    // warnOverflowDropsIfAny. The canonical sort's enable predicate reads it,
+    // so a flagged pool whose overflow list was empty pays zero sort
+    // dispatches. One-frame lag is by design: an empty→nonempty transition
+    // draws exactly one frame unsorted, self-healing next frame — the
+    // determinism guarantee is scoped to steady-state frames (see
+    // docs/design/per-axis-trixel-canvas-rotation.md §"Draw order is
+    // canonical"). allocate() seeds the ctrl block to zeros, so a fresh
+    // allocation reads 0 (a transition frame, not garbage).
+    std::uint32_t laggedOverflowCount_ = 0;
 
     // Allocation state is the texture handles themselves — no separate bool to
     // drift out of sync (cf. the no-dirty-flags rule in .claude/rules/cpp-ecs.md).
@@ -255,6 +266,7 @@ struct C_PerAxisTrixelCanvases {
         ctrlBaseUints_ = 0;
         entriesBaseUints_ = 0;
         overflowCap_ = 0;
+        laggedOverflowCount_ = 0;
         size_ = ivec2{0, 0};
     }
 

@@ -409,9 +409,10 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     std::uint32_t lastOverflowCountLogged_ = 0xFFFFFFFFu;
     // #2479 acceptance 7c: the canonical sort's dispatch count for the rotating
     // frame, logged under the same env gate each time it changes. An unflagged
-    // pool must read 0 — the "structurally zero added dispatches" claim is
-    // verified by this count, not by timing (which cannot separate zero
-    // dispatches from cheap ones).
+    // pool — and, per the (ii) predicate, a flagged pool whose overflow list
+    // was empty last completed frame — must read 0. The "structurally zero
+    // added dispatches" claim is verified by this count, not by timing (which
+    // cannot separate zero dispatches from cheap ones).
     std::uint32_t lastOverflowSortDispatchesLogged_ = 0xFFFFFFFFu;
     // Last canvas whose position SSBO contents were written to
     // `voxelPosBuf_`. Positions are otherwise pushed at mutation time by
@@ -611,14 +612,20 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // Cap overflow must never be silent (#2333 acceptance): read LAST rotating
     // frame's ctrl block — written by a dispatch that already retired, so the
     // CPU read needs no fence (the same pattern as the cull-diagnostic
-    // readback in tick()) — and one-shot-warn when entries were dropped.
-    void warnOverflowDropsIfAny(const C_PerAxisTrixelCanvases &axes) {
+    // readback in tick(); Metal's present() waits each frame to completion, so
+    // the read can never observe an in-flight append, and GL's getSubData
+    // implicit-syncs any pending write) — and one-shot-warn when entries were
+    // dropped. Since #2479 (ii) the same read is load-bearing, not
+    // diagnostic-only: it stamps laggedOverflowCount_, the completed-frame
+    // live count the canonical sort's enable predicate reads.
+    void warnOverflowDropsIfAny(C_PerAxisTrixelCanvases &axes) {
         std::array<std::uint32_t, 8> ctrl{};
         axes.winnerIds_.second->getSubData(
             static_cast<std::ptrdiff_t>(axes.ctrlBaseUints_) * sizeof(std::uint32_t),
             sizeof(ctrl),
             ctrl.data()
         );
+        axes.laggedOverflowCount_ = ctrl[1];
         const std::uint32_t dropped = ctrl[5];
         if (dropped > 0 && dropped != lastOverflowDropWarned_) {
             IRE_LOG_WARN(
@@ -650,7 +657,10 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // flag: displaced voxels sharing a rounded cell are what produce the
     // equal-key overflow entries whose draw order the #2479 canonical sort
     // exists to pin. An unflagged pool cannot produce that tie class from the
-    // cardinal store, so it skips the sort entirely (acceptance 7c).
+    // cardinal store, so it skips the sort entirely (acceptance 7c). The flag
+    // is necessary but not sufficient — the dispatch site additionally
+    // requires a nonempty overflow list (#2479 (ii)), so a flagged pool at a
+    // pose that appends nothing also pays zero sort dispatches.
     void dispatchPerAxisCanvases(
         C_PerAxisTrixelCanvases &axes,
         C_CanvasFogOfWar *fog,
@@ -866,13 +876,22 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             // power-of-two cap. Dispatch counts derive from the cap CPU-side
             // (reading the live ctrl[1] per frame would sync-stall).
             //
-            // Gated on the pool's #2346 displaced-collision flag — the same
-            // gate the cardinal winner election takes, and CPU-side on both
-            // backends so the sort SEMANTICS never fork by backend. An
+            // Gated on the pool's #2346 displaced-collision flag AND a
+            // nonempty overflow list (#2479 (ii)) — both terms CPU-side on
+            // both backends so the sort SEMANTICS never fork by backend. An
             // unflagged pool runs master's exact dispatch sequence: no fill,
-            // no network, structurally zero added dispatches (acceptance 7c).
-            // The residual class this leaves — cross-cell band-code ties on
-            // unflagged pools — is documented in
+            // no network, structurally zero added dispatches (acceptance 7c)
+            // — and so does a flagged pool whose list was empty last
+            // completed frame (the amp-0 IRPerfGrid voxel_set case). The
+            // count term is the lagged ctrl[1] stamped by
+            // warnOverflowDropsIfAny above — a completed-prior-frame read, so
+            // the common interactive case is free without any sync stall. Its
+            // one-frame lag means an empty→nonempty transition draws exactly
+            // one frame unsorted (self-healing; master is nondeterministic on
+            // EVERY such frame, so the determinism guarantee is scoped to
+            // steady-state frames — settled overflow population).
+            // The residual class the flag gate leaves — cross-cell band-code
+            // ties on unflagged pools — is documented in
             // docs/design/per-axis-trixel-canvas-rotation.md §overflow lane;
             // a measured repro there widens the flag recompute, it does NOT
             // un-gate the sort.
@@ -884,8 +903,10 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             // — and on Metal, where one compute encoder per dispatch costs
             // ~40 us, the dispatch count WAS the cost. kBlockBits MUST match
             // the kernels' fused-slab constant.
+            const bool sortThisFrame =
+                sortOverflowEntries && axes.laggedOverflowCount_ > 0;
             std::uint32_t sortDispatches = 0;
-            if (sortOverflowEntries) {
+            if (sortThisFrame) {
                 IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
                 overflowSortProgram_->use();
                 constexpr std::uint32_t kBlockBits = 11;
@@ -938,9 +959,10 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 sortDispatches != lastOverflowSortDispatchesLogged_) {
                 IRE_LOG_INFO(
                     "[overflow-sort] canonical-sort dispatches this rotating frame: "
-                    "{} (storeTiesPossible={}, cap {}).",
+                    "{} (storeTiesPossible={}, laggedOverflowCount={}, cap {}).",
                     sortDispatches,
                     sortOverflowEntries,
+                    axes.laggedOverflowCount_,
                     axes.overflowCap_
                 );
                 lastOverflowSortDispatchesLogged_ = sortDispatches;
