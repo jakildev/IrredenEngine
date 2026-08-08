@@ -269,7 +269,7 @@ therefore includes re-blessing the affected reference PNGs.
   - **AC 7 two-host re-bless — NOT discharged.** A1 escalated this from "owed" to
     a **blocking co-requisite**; the PR re-blessed only `macos-debug`. Verified on
     master `28012d3cc`: the six `linux-debug/` `canvas_stress` references were
-    last written by `95355bde2` (PR #1595, 2026-06-30) and nothing has touched
+    last written by `95355bde2` (PR #1595, merged 2026-06-08) and nothing has touched
     that directory since PR #2654 merged, so the GL reference set is stale as of
     2026-08-04 and a clean-checkout `render-verify --target IRCanvasStress` on a
     Linux host fails its 6-shot gate for reasons unrelated to the change under

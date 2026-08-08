@@ -371,7 +371,7 @@ proposal-pending: **OPEN** — `## STEWARD PROPOSAL 2026-08-08` on this umbrella
     references stale alongside `macos-debug/`'s … not a routine post-merge
     smoke"). The PR re-blessed **only** `macos-debug`. Verified on master: the six
     `linux-debug/canvas_stress` references were last written by `95355bde2`
-    (PR #1595, 2026-06-30) and no commit has touched that directory since PR
+    (PR #1595, merged 2026-06-08) and no commit has touched that directory since PR
     #2654 merged, while the twinned GLSL is on master — so the GL reference set
     has been stale since 2026-08-04. Recorded as **F1** with its owner; not
     escalated as a contradiction, because nothing was lost: #2385 stayed open and
@@ -403,7 +403,7 @@ proposal-pending: **OPEN** — `## STEWARD PROPOSAL 2026-08-08` on this umbrella
   **A1** had escalated the two-host re-bless from "owed" to a **blocking
   co-requisite** before merge. Measured on master (`28012d3cc`): the six
   `creations/demos/canvas_stress/test/references/linux-debug/*.png` were last
-  written by `95355bde2` (PR #1595, **2026-06-30**), and `git log
+  written by `95355bde2` (PR #1595, merged **2026-06-08**), and `git log
   34c7f7f4..origin/master -- <that dir>` is **empty**. So a clean-checkout
   `render-verify --target IRCanvasStress` on a Linux/OpenGL host fails its 6-shot
   pixel gate for a reason unrelated to whatever change is under test — a false-red
