@@ -2651,7 +2651,9 @@ cmd_check_stale() {
 # auto-fix + R2 flag. C2 (#1357) adds R6 (fleet:queued+human:owned flag),
 # the periodic scout spawn (see fleet-state-scout), and the deduped
 # fleet:state-drift escalation issue for flag-only drift that persists
-# across N --apply ticks.
+# across N --apply ticks. #1516 adds R7 (heal a stranded WIP's missing
+# design-unblock); #2462 narrows R7 off provably-unactionable PRs and adds
+# R8, the exit half of the fleet:awaiting-infra park it introduces.
 
 # reconcile_fs_claims_json
 #   Emit the host-local FS claim set as a JSON array, one object per claim
@@ -2980,8 +2982,14 @@ for repo in repos:
             # awaiting re-adoption.) fleet:design-proposed parks the same way:
             # the steward released its claim and re-adoption is gated on the
             # umbrella's STEWARD PROPOSAL being answered, not a free pickup
-            # decision (#1663).
-            if "fleet:design-blocked" in labs or "fleet:design-proposed" in labs:
+            # decision (#1663). fleet:awaiting-infra parks the same way: a
+            # worker adjudicated the PR complete-but-unverifiable-on-any-host
+            # and released its claim, so claimless IS the correct state and
+            # re-adoption waits on the blocker named by the body's
+            # Parked-until: line, not on a pickup decision (#2462).
+            if ("fleet:design-blocked" in labs
+                    or "fleet:design-proposed" in labs
+                    or "fleet:awaiting-infra" in labs):
                 continue
             issue_labs = d["issue_labels"].get(issue_n, set())
             if (any(l.startswith("fleet:claim-") for l in issue_labs)
@@ -3024,6 +3032,17 @@ for repo in repos:
         issue_labs = d["issue_labels"].get(issue_n, set())
         if "fleet:queued" not in issue_labs:
             continue
+        # A fleet:blocked backing issue has nothing for the worker resume loop
+        # to act on: under the queue-all model (#1527) a blocked task keeps
+        # fleet:queued, so healing here re-arms a routing signal toward work
+        # that provably cannot proceed — the PR's own blocker is unlanded. Each
+        # such re-arm costs one opus dispatch that re-derives "still blocked"
+        # and puts the PR straight back down (#2462: PR #2393 absorbed 7).
+        # R2 deliberately still flags this state — it is flag-only and dedupes
+        # into one state-drift tracker, so a human keeps the visibility; only
+        # the auto-mutating rule is narrowed.
+        if "fleet:blocked" in issue_labs:
+            continue
         # Same claimless test R2 uses — no FS claim, claim-label, or reservation.
         if (any(l.startswith("fleet:claim-") for l in issue_labs)
                 or (repo, issue_n) in fs_by_task
@@ -3036,10 +3055,18 @@ for repo in repos:
             # fleet:design-proposed exempts the PR: it IS a routing signal
             # (steward distribution, not worker resume) — healing it to
             # design-unblocked would un-park every steward proposal within
-            # a few drift ticks (#1663).
+            # a few drift ticks (#1663). fleet:awaiting-infra exempts it for
+            # the same reason: it is an explicit worker adjudication that no
+            # host can verify the PR until the blocker in its Parked-until:
+            # line lands, and R8 below un-parks it when that issue closes
+            # (#2462). This marker is the ONLY deliberate-removal signal R7
+            # honors — a bare removal of fleet:design-unblocked stays
+            # re-heal-able, because R7 cannot distinguish it from a crashed
+            # worker whose claim was TTL-swept, and re-arming that IS its job.
             if ("fleet:design-blocked" in labs
                     or "fleet:design-unblocked" in labs
-                    or "fleet:design-proposed" in labs):
+                    or "fleet:design-proposed" in labs
+                    or "fleet:awaiting-infra" in labs):
                 continue
             # Amend-snapshot guard: if a local sidecar exists and is fresh
             # (written within 2×TTL), the PR was recently claimed for amend
@@ -3060,6 +3087,61 @@ for repo in repos:
                 "queued issue, wip PR, no claim, neither design label",
                 apply={"type": "heal_design_unblock", "pr": pr["number"],
                        "repo": repo, "issue": issue_n})
+
+# ---- R8 (auto-un-park): fleet:awaiting-infra PR whose blocker has closed ----
+# The exit half of the park R7/R2 above exempt (#2462). A worker parks an
+# orphaned WIP PR it has adjudicated complete-but-unverifiable-on-any-host by
+# adding fleet:awaiting-infra and naming the blocker in a `Parked-until: #N`
+# body line. R8 watches for that blocker closing and drops the label, after
+# which the PR is an ordinary stranded WIP again and the existing R7 machinery
+# re-surfaces it — no new resume path.
+#
+# Iterates the flat prs list rather than pr_by_issue for two reasons: a parked
+# PR need not have a resolvable backing-issue mapping, and pr_by_issue entries
+# carry only number+labels (the body, which holds the marker, is dropped).
+#
+# A parsable marker yields an apply-carrying finding, which reconcile_escalate_drift
+# skips — so a legitimately long park never files a state-drift tracker. A
+# missing/malformed marker yields a FLAG-ONLY finding, so it accrues normally
+# and escalates to a human: an un-parseable park is unrecoverable state, since
+# nothing can ever tell reconcile when it ends.
+# Trailing prose after the number is TOLERATED — "Parked-until: #2449 (the fmt
+# build wall)" parses — because writing the reason inline is the shape a worker
+# actually produces, and a `$`-anchored matcher would escalate that perfectly
+# good park to a human as malformed.
+#
+# What makes the leniency safe is that exactly ONE number is taken per line (the
+# first after the marker), never every #N on it. The sibling `Blocked by:`
+# parser is the cautionary case in the other direction: it collects every ref on
+# the line, so a parenthetical aside read as an extra blocker and stranded the
+# row (#2783). Widen the trailing match, never the capture.
+#
+# The line start stays anchored so a mention inside prose is not a marker.
+PARKED_UNTIL_RE = re.compile(r"^[ \t]*Parked-until:[ \t]*#(\d+)\b",
+                             re.IGNORECASE | re.MULTILINE)
+
+for repo in repos:
+    d = repo_data[repo]
+    for pr in d["prs"]:
+        if "fleet:awaiting-infra" not in labelset(pr):
+            continue
+        # Last occurrence wins: a re-park appends a fresh line rather than
+        # rewriting the body, so earlier markers are inert history.
+        marks = PARKED_UNTIL_RE.findall(pr.get("body", "") or "")
+        if not marks:
+            add("R8", repo, pr["number"], "pr", ["pr", "label"],
+                "fleet:awaiting-infra with no parsable 'Parked-until: #N' line "
+                "in the PR body; nothing can tell reconcile when the park ends "
+                "— add the line or drop the label",
+                "flag-only (R8)")
+            continue
+        blocker = int(marks[-1])
+        add("R8", repo, pr["number"], "pr", ["pr", "label"],
+            "parked behind #%d; remove fleet:awaiting-infra once that issue "
+            "closes (R7 then re-surfaces the PR)" % blocker,
+            "awaiting-infra PR with Parked-until: #%d" % blocker,
+            apply={"type": "unpark_infra", "pr": pr["number"], "repo": repo,
+                   "blocker": blocker})
 
 for f in findings:
     print(json.dumps(f))
@@ -3144,6 +3226,9 @@ PYEOF
                 # heal_design_unblock (R7) is deliberately NOT applied here — it
                 # is persistence-gated, handled by reconcile_heal_design_unblock
                 # below so a freshly-opened WIP PR is never healed prematurely.
+                # unpark_infra (R8) is also handled below, by
+                # reconcile_unpark_infra — it needs a live per-blocker issue
+                # lookup, which does not belong in this per-line dispatch.
             esac
         done < "$findings"
     fi
@@ -3155,6 +3240,17 @@ PYEOF
     # so a fresh WIP PR mid-claim-propagation is never touched. --apply only.
     if [[ $do_apply -eq 1 ]]; then
         reconcile_heal_design_unblock "$findings" "$state_dir" "${FLEET_RECONCILE_DRIFT_TICKS:-3}"
+    fi
+
+    # ---- auto-un-park of infra-parked PRs whose blocker closed (#2462) ----
+    # R8 marks a fleet:awaiting-infra PR whose body names its blocker.
+    # reconcile_unpark_infra checks that blocker live and drops the label once
+    # it closes, handing the PR back to R7's normal re-surfacing path.
+    # --apply only. Runs after the heal so a PR un-parked this tick starts its
+    # heal accrual on the NEXT tick — it is not both un-parked and healed in
+    # one pass.
+    if [[ $do_apply -eq 1 ]]; then
+        reconcile_unpark_infra "$findings"
     fi
 
     # ---- persistence-gated, deduped escalation of unfixable drift (C2) ----
@@ -3499,6 +3595,51 @@ PYEOF
             echo "  reconcile --apply: R7 failed to re-add fleet:design-unblocked on $repo #$pr (retries next tick)" >&2
         fi
     done <<< "$healable"
+}
+
+# reconcile_unpark_infra <findings-jsonl>
+#   Apply half of R8 (#2462). Consumes R8 findings carrying an apply action
+#   (type == unpark_infra): an open PR labelled fleet:awaiting-infra whose body
+#   names its blocker in a `Parked-until: #N` line. Verifies that blocker LIVE
+#   — the reconcile issue surface is fetched filtered to label:"fleet:queued",
+#   so a blocker that has closed (or was never queued) is simply absent from it
+#   and cannot be distinguished from "still open" without asking. When the
+#   blocker is CLOSED, remove fleet:awaiting-infra: the PR reverts to an
+#   ordinary stranded WIP and R7 re-arms fleet:design-unblocked after its usual
+#   threshold, so the worker resume loop adopts it through the existing path.
+#
+#   Deliberately NOT persistence-gated, unlike the R7 heal. The heal's gate
+#   exists because its trigger state (claim labels still propagating) is
+#   routinely transient; a closed issue is a durable, deliberate act. The bad
+#   case — blocker reopened just after an un-park — self-corrects: R7 re-arms,
+#   a worker re-adjudicates and re-parks.
+#
+#   Never edits PR bodies, so a stale earlier Parked-until: line stays inert
+#   (detection takes the last occurrence). Mutates a GH label, so cmd_reconcile
+#   calls it on --apply only.
+reconcile_unpark_infra() {
+    local findings="$1"
+    local line atype repo pr blocker state
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        atype=$(reconcile_apply_field "$line" type)
+        [[ "$atype" == "unpark_infra" ]] || continue
+        repo=$(reconcile_apply_field "$line" repo)
+        pr=$(reconcile_apply_field "$line" pr)
+        blocker=$(reconcile_apply_field "$line" blocker)
+        [[ -z "$repo" || -z "$pr" || -z "$blocker" ]] && continue
+        state=$(gh issue view "$blocker" --repo "$repo" --json state \
+            --jq '.state' 2>/dev/null || true)
+        # Anything other than a confirmed CLOSED (OPEN, or a lookup failure
+        # that yields an empty string) leaves the park standing; the finding
+        # recurs next tick, so a transient API failure costs nothing.
+        [[ "$state" == "CLOSED" ]] || continue
+        if gh_release_label "$repo" "$pr" "fleet:awaiting-infra"; then
+            echo "  reconcile --apply: R8 un-parked $repo #$pr — blocker #$blocker is closed; removed fleet:awaiting-infra"
+        else
+            echo "  reconcile --apply: R8 failed to remove fleet:awaiting-infra on $repo #$pr (retries next tick)" >&2
+        fi
+    done < "$findings"
 }
 
 cmd_stack() {
@@ -4819,10 +4960,18 @@ commands:
                                         recently-applied, remove the older;
                                   R4b   queued + in-progress with no claim
                                         (any host) + no open PR → remove the
-                                        stale fleet:in-progress.
+                                        stale fleet:in-progress;
+                                  R7    stranded fleet:wip PR on a queued,
+                                        unblocked issue with neither design
+                                        label → re-add fleet:design-unblocked
+                                        (persistence-gated over N ticks);
+                                  R8    fleet:awaiting-infra PR whose body
+                                        names a now-CLOSED Parked-until: #N
+                                        blocker → remove the park label.
                                 R2 (orphaned WIP/feedback PR with no claim;
-                                fleet:design-blocked / fleet:design-proposed
-                                PRs exempt — their no-claim state is
+                                fleet:design-blocked / fleet:design-proposed /
+                                fleet:awaiting-infra PRs exempt — their
+                                no-claim state is
                                 protocol-correct) is report-only. Cross-host
                                 is flag-only by
                                 construction — never auto-releases another
