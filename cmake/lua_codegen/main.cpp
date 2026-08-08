@@ -138,6 +138,101 @@ std::string escapeStringLiteral(std::string_view s) {
     return out;
 }
 
+// The per-run namespace identifier. Every symbol the registry block emits
+// lives in `IRScript::CodegenRegistry::<runId>`, so two codegen runs linked
+// into one binary get distinct mangled names instead of merging (#2609).
+// Derived from the `--out` stem only — never the resolved path, which is
+// host-specific and would make the generated header non-reproducible across
+// build trees. Non-identifier bytes become `_`; a leading digit gets a `run_`
+// prefix. A stem two runs on a single target share is what
+// `--registry-namespace` exists to resolve; CMake catches that half at
+// configure time. A stem that sanitizes to a C++ keyword is rejected outright
+// — see `isReservedKeyword` and the check at the `--registry-namespace` read.
+//
+// This must agree byte-for-byte with the CMake-side derivation in
+// `cmake/ir_functions.cmake`, which strips the last extension with
+// `\.[^.]*$`. That regex takes a leading-dot-only stem (`.hpp`) down to empty,
+// so the strip here is unconditional rather than skipping a dot at position 0
+// — `.hpp` is the input the two spellings diverge on.
+std::string deriveRunId(std::string_view outPath) {
+    const size_t slash = outPath.find_last_of("/\\");
+    std::string_view stem =
+        slash == std::string_view::npos ? outPath : outPath.substr(slash + 1);
+    const size_t dot = stem.find_last_of('.');
+    if (dot != std::string_view::npos) {
+        stem = stem.substr(0, dot);
+    }
+    std::string id;
+    id.reserve(stem.size() + 4);
+    for (char c : stem) {
+        const bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+                        || (c >= '0' && c <= '9') || c == '_';
+        id.push_back(ok ? c : '_');
+    }
+    if (id.empty()) {
+        return "run_unnamed";
+    }
+    if (id[0] >= '0' && id[0] <= '9') {
+        id.insert(0, "run_");
+    }
+    return id;
+}
+
+// A `--registry-namespace` override has to be a bare C++ identifier — it is
+// pasted straight into a `namespace <id> {` in the generated header, so a
+// qualified or punctuated value would surface as a syntax error in generated
+// code rather than as a diagnostic naming the flag.
+bool isIdentifier(std::string_view s) {
+    if (s.empty()) return false;
+    if (!((s[0] >= 'a' && s[0] <= 'z') || (s[0] >= 'A' && s[0] <= 'Z') || s[0] == '_')) {
+        return false;
+    }
+    for (char c : s.substr(1)) {
+        const bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+                        || (c >= '0' && c <= '9') || c == '_';
+        if (!ok) return false;
+    }
+    return true;
+}
+
+// `isIdentifier` cannot stand in for this: a keyword is identifier-shaped, so
+// it passes. A keyword run id emits `namespace template {` and fails the
+// *generated* header with "expected identifier or '{'" — a diagnostic naming
+// neither the flag nor the caller that chose the id.
+//
+// The tool owns the check for every entry point rather than mirroring it into
+// `ir_functions.cmake`: the tool is what emits the namespace, and it validates
+// the id CMake passes as well as one it derives itself, so one list covers the
+// CMake path, a manual invocation, and the override. A second ~90-entry list
+// in CMake would buy a configure-time error at the price of keeping two
+// language-specific copies in step.
+bool isReservedKeyword(std::string_view s) {
+    // C++20 keywords, including the alternative-token spellings (`and`, `compl`,
+    // …), which are equally unusable as a namespace name. Identifiers with
+    // special meaning (`final`, `override`, `import`, `module`) are contextual,
+    // not reserved, so they are legal here and deliberately absent.
+    static constexpr std::string_view kKeywords[] = {
+        "alignas", "alignof", "and", "and_eq", "asm", "auto", "bitand", "bitor",
+        "bool", "break", "case", "catch", "char", "char16_t", "char32_t",
+        "char8_t", "class", "co_await", "co_return", "co_yield", "compl",
+        "concept", "const", "const_cast", "consteval", "constexpr", "constinit",
+        "continue", "decltype", "default", "delete", "do", "double",
+        "dynamic_cast", "else", "enum", "explicit", "export", "extern", "false",
+        "float", "for", "friend", "goto", "if", "inline", "int", "long",
+        "mutable", "namespace", "new", "noexcept", "not", "not_eq", "nullptr",
+        "operator", "or", "or_eq", "private", "protected", "public",
+        "register", "reinterpret_cast", "requires", "return", "short", "signed",
+        "sizeof", "static", "static_assert", "static_cast", "struct", "switch",
+        "template", "this", "thread_local", "throw", "true", "try", "typedef",
+        "typeid", "typename", "union", "unsigned", "using", "virtual", "void",
+        "volatile", "wchar_t", "while", "xor", "xor_eq",
+    };
+    for (std::string_view kw : kKeywords) {
+        if (kw == s) return true;
+    }
+    return false;
+}
+
 // One field's override read inside an emitted attach factory. Scalars
 // read through `sol::optional<T>` so a missing key or a type-mismatched value
 // leaves the schema default in place — the same silently-ignore contract
@@ -692,7 +787,8 @@ toComponentSchemas(const std::vector<Component> &comps) {
 void writeOutput(
     const std::string &outPath,
     Capture &cap,
-    IRLuaCodegen::SystemMode defaultMode
+    IRLuaCodegen::SystemMode defaultMode,
+    const std::string &runId
 ) {
     std::ostringstream os;
     os << "// AUTO-GENERATED by cmake/lua_codegen — do not edit by hand.\n";
@@ -844,8 +940,10 @@ void writeOutput(
         // default-construct, write whichever overrides are present, attach via
         // the templated `setComponent<T>`. Registered here rather than in
         // `registerCodegenComponents` because `bindLuaType<C_X>` is unique per
-        // component, and that registry function must stay small enough to
-        // inline.
+        // component. That specialization is keyed on the component *name*, not
+        // on the codegen run, so cross-run uniqueness of component names is what
+        // keeps two runs' factories distinct — the `IRScript::CodegenClaims`
+        // constants enforce that at link time.
         os << "    luaScript.registerComponentAttachFactory(\n";
         os << "        IREntity::getEntityManager().getComponentType<" << structName << ">(),\n";
         // A fieldless component has nothing to read, so the overrides
@@ -883,10 +981,45 @@ void writeOutput(
     // #1616: the parse/emit pass ran earlier (so its required #includes could
     // be hoisted into the include block above); `systemsBuf` already holds the
     // emitted create-functions. Flush it here in its original output position.
+    //
+    // Opened inside the per-run namespace. Both `IRScript::CodegenRegistry`
+    // blocks must share one `runId`: `registerCodegenSystems()` calls
+    // `createSystem_<NAME>()` unqualified, so they have to land in the same
+    // enclosing namespace. The using-directive that re-exports the whole run is
+    // emitted once, at the end of the registry block.
     if (hasCodegenSystems) {
-        os << "namespace IRScript::CodegenRegistry {\n\n";
+        os << "namespace IRScript::CodegenRegistry {\nnamespace " << runId << " {\n\n";
         os << systemsBuf;
+        os << "} // namespace " << runId << "\n";
         os << "} // namespace IRScript::CodegenRegistry\n\n";
+    }
+
+    // Component-name claims. Everything below is namespaced per run, but three
+    // emitted surfaces are keyed on the *user-authored* component name and so
+    // live outside any per-run namespace by necessity: `IRComponents::C_<Name>`
+    // itself, `bindLuaType<C_<Name>>`, and the attach factory it registers
+    // (#2446). Two runs declaring the same component name merge those silently,
+    // swapping attach factories.
+    //
+    // One external-linkage constant per component turns that collision into a
+    // duplicate-symbol *link* error whose demangled name states the diagnosis
+    // and names the component. `const` (not mutable state) with an explicit
+    // `extern` declaration so it keeps external linkage — a bare namespace-scope
+    // `const` is internal-linkage in C++ and would never collide, making the
+    // guard silently dead.
+    //
+    // Consequence, documented in engine/script/CLAUDE.md: a generated header is
+    // now single-TU-per-target by contract. Including one run's header from two
+    // TUs was legal-but-unused before; it is a duplicate-symbol error now.
+    if (!cap.components_.empty()) {
+        os << "namespace IRScript::CodegenClaims {\n\n";
+        for (const auto &c : cap.components_) {
+            const std::string claim =
+                "C_" + c.name_ + "_declared_by_more_than_one_codegen_run_in_this_binary";
+            os << "extern const char " << claim << ";\n";
+            os << "const char " << claim << " = 1;\n";
+        }
+        os << "\n} // namespace IRScript::CodegenClaims\n\n";
     }
 
     // Registration helper: pre-registers each codegen'd component with the
@@ -894,20 +1027,19 @@ void writeOutput(
     // EVAL path's behaviour) and binds the Lua usertype via the trait. The
     // creation calls this once during init after `bindLuaDrivenEcs()`.
     //
-    // Keep this body minimal — two statements per component. Every codegen run
-    // in a binary emits `IRScript::CodegenRegistry::registerCodegenComponents`
-    // under the same name, so the definitions only stay distinct as long as
-    // each stays small enough for the compiler to inline at its single call
-    // site. Grow it and the compiler emits an out-of-line `linkonce_odr` copy,
-    // the linker merges the runs, and every caller silently gets one arbitrary
-    // run's components (the engine test binary links three runs, so it breaks
-    // first). Per-component work belongs in the emitted `bindLuaType<C_X>`,
-    // whose name is unique — that is where the #2446 attach factory lives.
-    // That escape hatch holds only while component struct names are unique
-    // across the runs linked into one binary: `bindLuaType<C_X>` is emitted
-    // `template <> inline`, so two runs declaring the same component name
-    // merge the same way, swapping attach factories. #2609 owns the fix.
-    os << "namespace IRScript::CodegenRegistry {\n\n";
+    // The per-run namespace gives each run its own mangled name for this
+    // function, so its body carries no size budget — correctness does not rest
+    // on the compiler choosing to inline it (#2609). `bindLuaType<C_X>` remains
+    // the home for per-component work as an organizational choice.
+    //
+    // The using-directive after the closing brace re-exports the whole run into
+    // `IRScript::CodegenRegistry`, so every `IRScript::CodegenRegistry::X` call
+    // site resolves unchanged ([namespace.qual] — qualified lookup unions
+    // using-directed namespaces when the namespace itself declares no such
+    // name). A TU that includes two runs' headers turns that spelling into a
+    // compile-time ambiguity naming both candidates; the per-run qualified name
+    // is the fix, and it is in the error text.
+    os << "namespace IRScript::CodegenRegistry {\nnamespace " << runId << " {\n\n";
     os << "inline void registerCodegenComponents(IRScript::LuaScript &luaScript) {\n";
     os << "    auto &em = IREntity::getEntityManager();\n";
     for (const auto &c : cap.components_) {
@@ -974,6 +1106,8 @@ void writeOutput(
     os << "    nullptr\n";
     os << "};\n\n";
 
+    os << "} // namespace " << runId << "\n\n";
+    os << "using namespace " << runId << ";\n\n";
     os << "} // namespace IRScript::CodegenRegistry\n";
 
     std::ofstream out(outPath, std::ios::binary | std::ios::trunc);
@@ -1015,6 +1149,14 @@ int main(int argc, char **argv) {
         "--default-mode", "Default mode for schemas without an explicit mode: codegen | eval",
         "codegen"
     );
+    // Per-run namespace id (#2609). Defaults to the --out stem, which is unique
+    // per run for every in-tree caller; the override exists for the cases stem
+    // derivation cannot serve (two same-stem outputs on one target, or a stem
+    // that sanitizes to a C++ keyword).
+    parser.string(
+        "--registry-namespace",
+        "Identifier for this run's registry namespace (default: the --out stem)", ""
+    );
     parser.variadic("inputs", "Lua schema files (.lua)", 1);
     parser.parse(argc, argv);
 
@@ -1028,6 +1170,37 @@ int main(int argc, char **argv) {
     }
     if (outPath.empty()) {
         std::cerr << "lua_codegen: --out <output.hpp> is required\n";
+        return 1;
+    }
+    std::string runId = parser.getString("--registry-namespace");
+    const bool runIdWasDerived = runId.empty();
+    if (runIdWasDerived) {
+        runId = deriveRunId(outPath);
+    } else if (!isIdentifier(runId)) {
+        std::cerr << "lua_codegen: --registry-namespace must be a bare C++ identifier (got '"
+                  << runId << "')\n";
+        return 1;
+    }
+    // Outside the branch above deliberately: this applies to a derived id as
+    // well as an overridden one.
+    if (isReservedKeyword(runId)) {
+        std::cerr << "lua_codegen: registry namespace '" << runId
+                  << "' is a C++ keyword and cannot name a namespace";
+        if (runIdWasDerived) {
+            std::cerr << " (derived from the --out stem '" << outPath << "')";
+        } else {
+            // `ir_functions.cmake` passes --registry-namespace unconditionally so its
+            // duplicate check tests the identifier the header will actually carry.
+            // Every CMake-driven build therefore lands here rather than in the
+            // derived branch, and the flag alone cannot say whether the caller wrote
+            // REGISTRY_NAMESPACE or an OUTPUT_HPP whose stem sanitizes to a keyword —
+            // so name both origins instead of sending a CMake reader hunting for an
+            // argument they never wrote.
+            std::cerr << " (from --registry-namespace; under CMake that flag carries"
+                         " REGISTRY_NAMESPACE, or the OUTPUT_HPP stem when it is unset)";
+        }
+        std::cerr << ".\n  Pass an explicit id: --registry-namespace=<identifier>"
+                     " (CMake: REGISTRY_NAMESPACE <identifier> on irreden_lua_codegen()).\n";
         return 1;
     }
 
@@ -1154,6 +1327,6 @@ int main(int argc, char **argv) {
         }
     }
 
-    writeOutput(outPath, cap, defaultMode);
+    writeOutput(outPath, cap, defaultMode, runId);
     return 0;
 }
