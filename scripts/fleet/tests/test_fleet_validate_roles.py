@@ -97,6 +97,46 @@ See [`docs/agents/{proto}`](../../docs/agents/{proto}).
     _write(Path(root) / ".claude" / "commands" / name, body)
 
 
+def _make_skill_flow(root, name, keys):
+    """Write a synthetic docs/agents/skills/<name> canonical flow doc."""
+    rows = "\n".join("| **%s** | desc |" % k for k in keys)
+    body = """\
+# Flow
+
+## Repo deltas this flow needs
+
+| Delta key | Description |
+|---|---|
+%s
+
+## Other section
+
+More text.
+""" % rows
+    _write(Path(root) / "docs" / "agents" / "skills" / name, body)
+
+
+def _make_skill_wrapper(root, stem, keys, extra_text=""):
+    """Write a synthetic .claude/skills/<stem>/SKILL.md wrapper."""
+    rows = "\n".join("| **%s** | value |" % k for k in keys)
+    body = """\
+---
+name: {stem}
+description: test
+---
+
+## Deltas (Test)
+
+| Delta key | Value |
+|---|---|
+{rows}
+
+## Responsibilities
+{extra}
+""".format(stem=stem, rows=rows, extra=extra_text)
+    _write(Path(root) / ".claude" / "skills" / stem / "SKILL.md", body)
+
+
 # ---------------------------------------------------------------------------
 # Group 1: passing tree
 # ---------------------------------------------------------------------------
@@ -251,6 +291,149 @@ class TestMissingDeltaKey(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(result["n_errors"], 0)
         self.assertEqual(result["n_warnings"], 1)
+
+    def test_multi_word_key_detected_as_missing(self):
+        # Pre-#2893, _DELTA_KEY_RE's character class excluded the space, so a
+        # multi-word key row like `**default branch**` was invisible to both
+        # extraction sides — this is the arm that discriminates the widened
+        # regex from a naive glob-only fix (which would leave this silent).
+        proto_keys = ["repo-slug", "default branch"]
+        _make_protocol(self.root, "test-protocol.md", proto_keys)
+        _make_wrapper(self.root, "role-test.md", "test-protocol.md", ["repo-slug"])
+        result = validate_roles([(self.root, "engine")])
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["n_errors"], 1)
+        errors = [
+            f for proto in result["protocols"]
+            for repo in proto["repos"]
+            for wr in repo["wrappers"]
+            for f in wr["findings"]
+            if f["severity"] == ERROR
+        ]
+        self.assertEqual(len(errors), 1)
+        self.assertIn("default branch", errors[0]["msg"])
+
+
+# ---------------------------------------------------------------------------
+# Group 2b: skill lane — stem pairing, false-pairing guard, baseline (#2893)
+# ---------------------------------------------------------------------------
+
+class TestSkillLane(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = self.tmp.name
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_skill_lane_missing_key_is_error_under_stem_pairing(self):
+        flow_keys = ["repo", "default branch"]
+        _make_skill_flow(self.root, "test-flow.md", flow_keys)
+        _make_skill_wrapper(self.root, "test-flow", ["repo"])
+        result = validate_roles([(self.root, "engine")])
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["n_errors"], 1)
+        errors = [
+            f for proto in result["protocols"]
+            for repo in proto["repos"]
+            for wr in repo["wrappers"]
+            for f in wr["findings"]
+            if f["severity"] == ERROR
+        ]
+        self.assertEqual(len(errors), 1)
+        self.assertIn("default branch", errors[0]["msg"])
+
+    def test_skill_wrapper_citing_sibling_flow_not_misvalidated(self):
+        # A wrapper citing a sibling flow's canonical doc in prose, while
+        # carrying its own ## Deltas table, must be validated ONLY against
+        # its own stem-paired flow — not the cited one. Reproduces the
+        # false-pairing shape that bounced #2893's first plan revision
+        # (assess-coding-improvement's wrapper cites review-pr.md in prose).
+        _make_skill_flow(self.root, "flow-a.md", ["key-a"])
+        _make_skill_flow(self.root, "flow-b.md", ["key-b1", "key-b2"])
+        body = """\
+---
+name: flow-a
+---
+
+See docs/agents/skills/flow-b.md for a related flow.
+
+## Deltas (Test)
+
+| Delta key | Value |
+|---|---|
+| **key-a** | value |
+"""
+        _write(Path(self.root) / ".claude" / "skills" / "flow-a" / "SKILL.md", body)
+        _make_skill_wrapper(self.root, "flow-b", ["key-b1", "key-b2"])
+        result = validate_roles([(self.root, "engine")])
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(result["n_errors"], 0)
+
+    def test_skill_lane_no_conforming_wrapper_is_warn(self):
+        _make_skill_flow(self.root, "orphan-flow.md", ["repo"])
+        result = validate_roles([(self.root, "engine")])
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["n_errors"], 0)
+        self.assertEqual(result["n_warnings"], 1)
+
+    def test_baseline_suppresses_known_missing_key(self):
+        _make_skill_flow(self.root, "flow-c.md", ["key-c1"])
+        _make_skill_wrapper(self.root, "flow-c", [])
+        baseline = {("flow-c", "key-c1"): 9999}
+        result = validate_roles([(self.root, "engine")],
+                                 skill_missing_key_baseline=baseline,
+                                 skill_no_wrapper_baseline={})
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["n_errors"], 0)
+
+    def test_baseline_does_not_silently_widen(self):
+        # A baselined (flow, key) pair must not suppress a DIFFERENT,
+        # non-baselined missing key on that same wrapper — the baseline
+        # names one tracked gap, not a blanket exemption.
+        _make_skill_flow(self.root, "flow-c.md", ["key-c1", "key-c2"])
+        _make_skill_wrapper(self.root, "flow-c", [])
+        baseline = {("flow-c", "key-c1"): 9999}
+        result = validate_roles([(self.root, "engine")],
+                                 skill_missing_key_baseline=baseline,
+                                 skill_no_wrapper_baseline={})
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["n_errors"], 1)
+        errors = [
+            f for proto in result["protocols"]
+            for repo in proto["repos"]
+            for wr in repo["wrappers"]
+            for f in wr["findings"]
+            if f["severity"] == ERROR
+        ]
+        self.assertEqual(len(errors), 1)
+        self.assertIn("key-c2", errors[0]["msg"])
+        self.assertNotIn("key-c1", errors[0]["msg"])
+
+    def test_baseline_no_wrapper_suppressed_under_strict(self):
+        # --strict promotes warns to errors; a baselined no-wrapper gap must
+        # not surface as a warning at all, or --strict would regress even
+        # though the default run stays green.
+        _make_skill_flow(self.root, "orphan-flow.md", ["repo"])
+        result = validate_roles([(self.root, "engine")],
+                                 skill_no_wrapper_baseline={"orphan-flow": 9999})
+        self.assertEqual(result["n_warnings"], 0)
+
+    def test_role_lane_key_count_unchanged_by_regex_widening(self):
+        engine_root = str(Path(__file__).parent.parent.parent.parent)
+        if not (Path(engine_root) / "docs" / "agents" / "architect-protocol.md").exists():
+            self.skipTest("architect-protocol.md not found — not running in engine repo")
+        result = validate_roles([(engine_root, "engine")])
+        role_protocols = [p for p in result["protocols"] if p.get("lane") == "role"]
+        self.assertEqual(len(role_protocols), 3)
+        self.assertEqual(sum(len(p["keys"]) for p in role_protocols), 31)
+        role_errors = sum(
+            wr["n_errors"]
+            for p in role_protocols
+            for repo in p["repos"]
+            for wr in repo["wrappers"]
+        )
+        self.assertEqual(role_errors, 0)
 
 
 # ---------------------------------------------------------------------------
