@@ -62,6 +62,7 @@ add_executable(IrredenEngineTest
   render/detached_world_depth_test.cpp
   render/per_axis_canvas_size_test.cpp
   render/frame_data_sun_layout_test.cpp
+  render/gizmo_drag_reset_test.cpp
   render/gpu_compute_dispatch_test.cpp
   render/metal_sticky_untrack_test.cpp
   render/opengl_shader_include_test.cpp
@@ -69,6 +70,7 @@ add_executable(IrredenEngineTest
   render/perf_stats_overlay_reset_test.cpp
   render/picking_aim_iso_pixel_test.cpp
   render/picking_face_normal_test.cpp
+  render/settings_menu_reset_test.cpp
   render/sun_direction_test.cpp
   render/sun_lighting_test.cpp
   render/sun_shadow_feeder_ring_test.cpp

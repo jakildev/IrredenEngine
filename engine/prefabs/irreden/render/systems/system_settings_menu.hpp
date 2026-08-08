@@ -8,6 +8,7 @@
 #include <irreden/ir_system.hpp>
 #include <irreden/ir_window.hpp>
 
+#include <irreden/common/components/component_sim_clock.hpp>
 #include <irreden/common/settings_registry.hpp>
 #include <irreden/common/sim_clock.hpp>
 #include <irreden/render/components/component_settings_menu.hpp>
@@ -135,7 +136,26 @@ template <> struct System<SETTINGS_MENU> {
         IRPrefab::Widget::ensureThemeSingleton();
         const SystemId systemId =
             registerSystem<SETTINGS_MENU, IRComponents::C_SettingsMenuState>("SettingsMenu");
-        getSystemParams<System<SETTINGS_MENU>>(systemId)->params_ = initialParams;
+        auto *params = getSystemParams<System<SETTINGS_MENU>>(systemId);
+        params->params_ = initialParams;
+        // panel_ (and every other widget id below) is not C_Persistent, so
+        // IREntity::resetGameplay() destroys it mid-open (destroyAllExceptPreserved
+        // destroys per-entity via destroyEntity, which fires this hook) while
+        // C_SettingsMenuState::open_ survives as a preserved singleton. Key off
+        // panel_ — it exists whenever the menu is built, regardless of registry
+        // size — and take the same non-destructive tail destroyMenu() takes, so
+        // the two paths cannot forget the built state differently: the widget ids
+        // and rows_ are dropped (destroyMenu() never runs on this path, so rows_
+        // would otherwise still hold stale entries the next buildMenu() appends
+        // onto), the paused sim clock is restored, and built_ falls so the next
+        // endTick's `!built_` branch rebuilds instead of applyEdits() reaching
+        // getComponent through dead control_/label_ ids.
+        IREntity::getEntityManager().registerPreDestroyHook([params](IREntity::EntityId destroyed) {
+            if (params->panel_ != destroyed) {
+                return;
+            }
+            params->forgetBuiltState();
+        });
         return systemId;
     }
 
@@ -255,14 +275,40 @@ template <> struct System<SETTINGS_MENU> {
             destroyIfLive(row.control_);
             destroyIfLive(row.label_);
         }
-        rows_.clear();
         destroyIfLive(panel_);
         destroyIfLive(controlsLabel_);
         destroyIfLive(quitButton_);
+        forgetBuiltState();
+    }
 
-        if (params_.pauseSimWhileOpen_) {
-            // Restore the scale that was running, not 1.0 — `IRSim::resume()`
-            // hard-resets to 1x and would silently discard a demo's custom rate.
+    // The non-destroying half of destroyMenu(): forgets the built state without
+    // touching entities, so the pre-destroy hook — which runs while the widgets
+    // are already being destroyed underneath it — can share it. Every teardown
+    // responsibility lives here rather than in destroyMenu(), so a path that
+    // performs only some of them cannot exist: dropping the widget ids while
+    // leaving the clock paused would make the next buildMenu() re-save a
+    // savedTimeScale_ of 0 and freeze the sim with no way back.
+    void forgetBuiltState() {
+        rows_.clear();
+        panel_ = IREntity::kNullEntity;
+        controlsLabel_ = IREntity::kNullEntity;
+        quitButton_ = IREntity::kNullEntity;
+
+        // Restore the scale that was running, not 1.0 — `IRSim::resume()` hard-
+        // resets to 1x and would silently discard a demo's custom rate.
+        //
+        // The no-create probe comes first because the pre-destroy hook shares
+        // this path: during `destroyAllEntities` the hook can fire *after* the
+        // clock singleton's own entity has already been destroyed, and
+        // `IRSim::setTimeScale` reaches the lazy-create accessor. That would
+        // mint a replacement C_SimClock the teardown's snapshot cannot see,
+        // which its trailing cache-clear then strands as a row
+        // `forEachComponent` still walks with no `singletonEntity` route back —
+        // the ghost the `engine/entity/CLAUDE.md` §"Pre-destroy hooks" ban
+        // exists to prevent. A clock that is already gone has nothing to
+        // restore, so skipping is also the right answer on the merits.
+        if (params_.pauseSimWhileOpen_ &&
+            IREntity::singletonOrNull<IRComponents::C_SimClock>() != nullptr) {
             IRSim::setTimeScale(savedTimeScale_);
         }
         built_ = false;
