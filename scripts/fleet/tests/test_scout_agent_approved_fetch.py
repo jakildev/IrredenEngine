@@ -32,7 +32,7 @@ def _issue(n, labels):
 def _by_label(responses):
     """Stub fetch_issues_by_label: route on the filter label, ignore the rest."""
     def _fetch(repo, filter_label, exclude_labels=None, with_body=False,
-               per_page=100):
+               per_page=100, max_pages=1):
         return responses[filter_label]
     return _fetch
 
@@ -86,7 +86,7 @@ class TestAgentApprovedFetchUnion(unittest.TestCase):
         seen = {}
 
         def _capture(repo, filter_label, exclude_labels=None, with_body=False,
-                     per_page=100):
+                     per_page=100, max_pages=1):
             seen[filter_label] = set(exclude_labels or ())
             return []
 

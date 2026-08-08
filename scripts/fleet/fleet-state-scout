@@ -453,7 +453,7 @@ def _ingest_skipped(labels):
 
 
 def fetch_issues_by_label(repo, filter_label, exclude_labels=None,
-                          with_body=False, per_page=100):
+                          with_body=False, per_page=100, max_pages=1):
     # with_body pulls the issue body too — the queue-manager-ingest projection
     # needs it to resolve each human:approved issue's `**Blocked by:**` chain
     # (resolve_human_approved_blockers); the cheaper label-only mapping is the
@@ -461,13 +461,15 @@ def fetch_issues_by_label(repo, filter_label, exclude_labels=None,
     # rides along on the REST response regardless; with_body only controls
     # whether it's kept in the summary.
     #
-    # per_page caps the window (REST /issues defaults to created&desc, matching
-    # gh's ordering). The default 100 fully captures the small label sets
-    # (needs-plan / plan-review / epics); human_approved passes 30 to reproduce
-    # gh's default --limit exactly (its raw set exceeds 30 before the
-    # exclude-labels filter), keeping the queue-ingest window unchanged.
+    # per_page * max_pages caps the window (REST /issues defaults to
+    # created&desc, matching gh's ordering). The default (100, 1 page) fully
+    # captures the small label sets (needs-plan / plan-review / epics);
+    # human_approved (#2856) pages out to 300 because its raw population
+    # already exceeds a single page and keeps growing — pagination via
+    # max_pages, not a larger per_page, since each page carries its own ETag
+    # and an unchanged multi-page set still costs zero quota.
     raw = _rest_list(repo, "issues", {"labels": filter_label, "state": "open"},
-                     per_page=per_page)
+                     per_page=per_page, max_pages=max_pages)
     if raw is None:
         return None
     issues = [
@@ -516,9 +518,17 @@ def fetch_human_approved(repo):
     # Exclude already-ingested issues to avoid re-triggering queue-manager.
     # with_body=True so resolve_human_approved_blockers can parse the
     # `**Blocked by:**` chain and keep blocked children out of the ingest set.
-    # per_page=30 mirrors gh's default --limit (the prior fetch had no explicit
-    # limit) so the queue-ingest set stays byte-for-byte the same across the
-    # REST cutover.
+    #
+    # per_page=100, max_pages=3 (a 300 cap, matching the `--limit 300` sibling
+    # `gh pr list`/`gh issue list` calls elsewhere in the fleet tooling) —
+    # NOT the per_page=30 this used to carry. That cap mirrored gh's old
+    # default --limit, but human_approved is a shared field with several
+    # consumers beyond the queue-ingest set (review_plan, epic-adopt
+    # candidates), and the live population already exceeds 30 and keeps
+    # growing: #2856 measured 67 fleet:agent-approved issues against a
+    # 30-item window, silently dropping repos.engine.review_plan to 4 of the
+    # true 12. Paginating via max_pages rather than raising per_page further
+    # keeps headroom instead of re-inheriting a new, still-fixed deadline.
     #
     # fleet:agent-approved is approval-EQUIVALENT: an agent-filed follow-up
     # carrying it enters the same ingest set with no human triage, and the
@@ -529,10 +539,11 @@ def fetch_human_approved(repo):
     # flap the ingest projection hash on transient errors.
     approved = fetch_issues_by_label(repo, "human:approved",
                                      _ALREADY_QUEUED_LABELS,
-                                     with_body=True, per_page=30)
+                                     with_body=True, per_page=100, max_pages=3)
     agent_approved = fetch_issues_by_label(repo, "fleet:agent-approved",
                                            _ALREADY_QUEUED_LABELS,
-                                           with_body=True, per_page=30)
+                                           with_body=True, per_page=100,
+                                           max_pages=3)
     if approved is None or agent_approved is None:
         return None
     seen = set()
