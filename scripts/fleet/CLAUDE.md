@@ -54,8 +54,11 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   iterating); discovery is by glob, so a new suite needs no registration.
   These are not CMake tests — `ctest` does not cover them, so the dedicated
   `fleet-tests.yml` workflow calls the runner directly on every push and PR
-  that touches `scripts/fleet/**`. That workflow is the only thing gating
-  them; an unexecuted suite goes red silently (see #2712).
+  that touches `scripts/**`. That workflow is the only thing gating
+  them; an unexecuted suite goes red silently (see #2712). The filter is the
+  whole of `scripts/`, not `scripts/fleet/`, because `lint_python_registry.py`
+  derives its population from that wider root (#2859) — it deliberately
+  overlaps `render-harness-tests.yml`'s `scripts/*.py`.
 - **A suite whose subject under test is missing must not report success.**
   A guard shaped `if [[ ! -f "$SUBJECT" ]]; then echo "SKIP: ..."; exit 0;
   fi` reports the same exit status as a real pass, so `run_all.sh` folds a
@@ -65,9 +68,11 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   tallies separately as "skipped", never "passed". Reserve the `SKIP:`
   stderr prefix for this case (an environment-dependency skip like "git not
   available" can stay `exit 0`; only a missing *subject* is a #2786 case).
-  If the subject lives outside `scripts/fleet/**`, also add its path to
+  If the subject lives outside `scripts/**`, also add its path to
   `fleet-tests.yml`'s `paths:` filter — otherwise a PR that moves or edits
   only that file never runs the suite that would have caught the break.
+  (A subject *inside* `scripts/` needs no entry: the filter's first glob
+  already covers it.)
   **This is executed** — add the path to `OUT_OF_TREE_SUBJECTS` in
   `tests/test_fleet_tests_workflow_paths.sh` in the same change, and the
   ratchet asserts it appears in **both** `paths:` blocks (they are
