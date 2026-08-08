@@ -155,6 +155,13 @@ quietly in the queue — visible, not claimable, not swept — until either a
 worker stacks on it or its blocker closes and the unblock pass clears the
 marker.
 
+Once such a task **does** have an open WIP PR, R7 leaves it alone too: its
+finding loop skips any backing issue carrying `fleet:blocked` (#2462). Healing
+there would re-arm `fleet:design-unblocked` toward work whose own blocker is
+still unlanded, and every re-arm costs an opus dispatch that re-derives "still
+blocked" and puts the PR straight back down. R2 still flags it — it is
+flag-only and dedupes into one tracker, so the human keeps the visibility.
+
 ## Acceptance invariants
 
 - A blocked, approved, non-skip task → `fleet:queued` + model + `fleet:blocked`;

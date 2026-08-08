@@ -128,6 +128,7 @@ LABELS=(
     "fleet:design-blocked|fbca04|Worker escalated for architectural input mid-task; architect should respond"
     "fleet:design-unblocked|c5def5|Architect responded; worker resumes per the architect comment + updated plan file"
     "fleet:design-proposed|fbca04|Epic-steward parked this design-blocked child; its question rides a STEWARD PROPOSAL upstream"
+    "fleet:awaiting-infra|fbca04|Complete-but-unverifiable PR parked until an infra blocker lands; body carries Parked-until: #N"
     "fleet:steward-proposal|fbca04|Umbrella has a pending STEWARD PROPOSAL; human answers inline + removes it (re-fires distribution)"
     "fleet:needs-linux-smoke|c5def5|Engine render PR awaiting Linux/OpenGL cross-host smoke validation"
     "fleet:needs-macos-smoke|c5def5|Engine render PR awaiting macOS/Metal cross-host smoke validation"

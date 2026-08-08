@@ -189,6 +189,12 @@
       "description": "Epic-steward parked this design-blocked epic-child PR; its novel question(s) ride a STEWARD PROPOSAL on the umbrella; reviewer/merger/reconcile skip until the proposal is answered"
     },
     {
+      "name": "fleet:awaiting-infra",
+      "scope": "pr",
+      "color": "fbca04",
+      "description": "Worker adjudicated this orphaned WIP PR complete-but-unverifiable-on-any-host; the PR body carries Parked-until: #N naming the infra blocker; reconcile R7/R2 skip it and R8 un-parks when that issue closes (#2462)"
+    },
+    {
       "name": "fleet:steward-proposal",
       "scope": "issue",
       "color": "fbca04",

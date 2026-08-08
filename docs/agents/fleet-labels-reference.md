@@ -551,6 +551,63 @@ Specifically, **never pass these via `--label` when filing**:
     are deliberately split: the PR-side label gives the projection a
     clean off-edge and the skip-lists a stable marker; the issue-side
     label is the pending-answer queue whose removal drives the cycle.
+- `fleet:awaiting-infra` — a **worker**-set park on a PR that is complete but
+  **unverifiable on any current host** (#2462). Coexists with `fleet:wip`; it is
+  a state qualifier, not a transfer of ownership.
+
+  **Why it exists, distinct from `fleet:design-blocked` and `fleet:gated`:**
+  those two name a *permission* or *judgment* wall — someone specific (architect,
+  human) must act. This one names a **sequencing** wall: the work is done and
+  correct, nothing needs deciding, and no agent of any class can verify it until
+  some other issue lands. Overloading `fleet:gated` for this is the #1990
+  label-overload thrash in reverse.
+
+  **Why it exists as a label at all**, rather than reconcile inferring the park:
+  R7 cannot distinguish a worker's deliberate removal of `fleet:design-unblocked`
+  from a crashed worker whose claim was TTL-swept — and re-arming the latter is
+  exactly R7's job. Only an *explicit, GitHub-visible* marker separates the two,
+  and only a GitHub-visible one is correct across hosts (a host-local sentinel
+  suppresses nothing on the other host). This is the same shape as the
+  `fleet:design-proposed` exemption above.
+
+  **Park protocol** (worker, on adjudicating an orphaned `fleet:wip` PR as
+  complete-but-unverifiable-on-any-host):
+
+  1. remove `fleet:design-unblocked` if present and add `fleet:awaiting-infra`;
+  2. append `Parked-until: #<blocker-issue>` to the **PR body** — on its own
+     line, starting the line. Reconcile reads the **last** occurrence, so a
+     re-park just appends and earlier lines are inert history. Trailing prose
+     after the number is fine (`Parked-until: #2449 (the fmt build wall)`
+     parses) — but only the **first** `#N` on the line is the blocker, so an
+     aside mentioning another issue is ignored rather than read as a second
+     one (the over-match that stranded a row on the sibling `Blocked by:`
+     field, #2783). **v1 is same-repo only:** a cross-repo
+     `owner/repo#N` spelling does not parse and surfaces as a malformed park
+     (flag-only → human), which is the intended loud failure, not silence;
+  3. comment the rationale on the PR.
+
+  **Un-park is automatic.** Reconcile R8 checks the named blocker each `--apply`
+  tick and removes `fleet:awaiting-infra` once that issue closes. The PR then
+  reverts to an ordinary stranded WIP, R7 re-arms `fleet:design-unblocked` after
+  its usual tick threshold, and the normal worker resume loop adopts it — there
+  is no separate resume path. Do **not** have anything add `design-unblocked`
+  directly on un-park; the threshold delay is the tested protection against
+  acting on a claim that is still propagating.
+
+  **A park with no parsable `Parked-until:` line is unrecoverable state** —
+  nothing can ever tell reconcile when it ends — so R8 emits it as a *flag-only*
+  finding that accrues to the deduped `fleet:state-drift` tracker for a human. A
+  well-formed park carries an apply action instead, which the drift accrual
+  skips, so a legitimately long park never files a tracker.
+
+  **Reconcile's R7 also skips any PR whose backing issue is `fleet:blocked`** —
+  no label or body marker needed. Under the queue-all model (#1527) a blocked
+  task legitimately keeps `fleet:queued`, and a blocked issue means there is by
+  definition nothing for a resumed worker to do. `fleet:awaiting-infra` covers
+  the disjoint case: blocked on infra with no `Blocked by:` field to record it.
+  R2 deliberately keeps flagging both (it is flag-only and dedupes into one
+  tracker, so a human retains the visibility); only the auto-mutating rule is
+  narrowed.
 - `human:owned` — a human de-queue marker on an **issue**. A human
   stamps it to take an issue out of fleet rotation; `fleet-queue-ingest`
   then never re-stamps `fleet:queued` onto it (even though it keeps
