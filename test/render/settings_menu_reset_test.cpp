@@ -2,6 +2,7 @@
 
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_system.hpp>
+#include <irreden/common/sim_clock.hpp>
 #include <irreden/entity/entity_manager.hpp>
 #include <irreden/render/systems/system_settings_menu.hpp>
 
@@ -56,6 +57,42 @@ TEST_F(SettingsMenuResetTest, PanelDangleIsClearedAcrossResetGameplayAndRowsAreD
         params->built_
     ) << "built_ must drop to false so the next endTick takes the rebuild "
          "branch rather than staying wedged in applyEdits()";
+}
+
+// The hook stands in for destroyMenu() on the reset path, and destroyMenu() has
+// two responsibilities, not one: forget the widget ids AND restore the sim clock
+// it paused. Dropping only the first is unrecoverable rather than merely
+// incomplete — `open_` is a preserved singleton, so the very next endTick takes
+// the `open_ && !built_` branch and buildMenu() re-saves savedTimeScale_ from a
+// clock that is still paused, i.e. 0. From then on every close restores 0.
+TEST_F(SettingsMenuResetTest, PausedSimClockIsRestoredAcrossResetGameplay) {
+    const auto sysId = IRSystem::createSystem<IRSystem::SETTINGS_MENU>();
+    auto *params =
+        m_system_manager.getSystemParams<IRSystem::System<IRSystem::SETTINGS_MENU>>(sysId);
+    ASSERT_NE(params, nullptr);
+    params->params_.pauseSimWhileOpen_ = true;
+
+    // A custom rate rather than 1.0, so a hook that restored via IRSim::resume()
+    // (hard 1x) would fail this arm too, not just one that restored nothing.
+    constexpr float kRunningTimeScale = 0.5f;
+    IRSim::setTimeScale(kRunningTimeScale);
+
+    // Stand in for buildMenu()'s pause block and its panel spawn — a GUI canvas
+    // isn't needed to reach the hook, only a live non-persistent panel_.
+    params->savedTimeScale_ = IRSim::timeScale();
+    IRSim::pause();
+    params->panel_ = IREntity::createEntity();
+    params->built_ = true;
+    ASSERT_TRUE(IRSim::isPaused()) << "arm is vacuous unless the clock starts paused";
+
+    IREntity::resetGameplay();
+
+    EXPECT_FALSE(params->built_) << "the hook must have fired at all — without this the "
+                                    "time-scale assertion below could pass vacuously";
+    EXPECT_FLOAT_EQ(IRSim::timeScale(), kRunningTimeScale)
+        << "the hook must take destroyMenu()'s whole tail, restoring the scale the "
+           "menu paused; leaving the clock at 0 freezes the sim permanently once "
+           "the next buildMenu() re-saves savedTimeScale_ from it";
 }
 
 TEST_F(SettingsMenuResetTest, UnrelatedEntityDestructionLeavesPanelIntact) {

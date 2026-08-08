@@ -142,20 +142,18 @@ template <> struct System<SETTINGS_MENU> {
         // destroys per-entity via destroyEntity, which fires this hook) while
         // C_SettingsMenuState::open_ survives as a preserved singleton. Key off
         // panel_ — it exists whenever the menu is built, regardless of registry
-        // size — to reset the whole built state: null every cached widget id and
-        // clear rows_ (destroyMenu() never runs on this path, so rows_ would
-        // otherwise still hold stale entries the next buildMenu() appends onto),
-        // and drop built_ so the next endTick's `!built_` branch rebuilds instead
-        // of applyEdits() reaching getComponent through dead control_/label_ ids.
+        // size — and take the same non-destructive tail destroyMenu() takes, so
+        // the two paths cannot forget the built state differently: the widget ids
+        // and rows_ are dropped (destroyMenu() never runs on this path, so rows_
+        // would otherwise still hold stale entries the next buildMenu() appends
+        // onto), the paused sim clock is restored, and built_ falls so the next
+        // endTick's `!built_` branch rebuilds instead of applyEdits() reaching
+        // getComponent through dead control_/label_ ids.
         IREntity::getEntityManager().registerPreDestroyHook([params](IREntity::EntityId destroyed) {
             if (params->panel_ != destroyed) {
                 return;
             }
-            params->panel_ = IREntity::kNullEntity;
-            params->controlsLabel_ = IREntity::kNullEntity;
-            params->quitButton_ = IREntity::kNullEntity;
-            params->rows_.clear();
-            params->built_ = false;
+            params->forgetBuiltState();
         });
         return systemId;
     }
@@ -276,10 +274,24 @@ template <> struct System<SETTINGS_MENU> {
             destroyIfLive(row.control_);
             destroyIfLive(row.label_);
         }
-        rows_.clear();
         destroyIfLive(panel_);
         destroyIfLive(controlsLabel_);
         destroyIfLive(quitButton_);
+        forgetBuiltState();
+    }
+
+    // The non-destroying half of destroyMenu(): forgets the built state without
+    // touching entities, so the pre-destroy hook — which runs while the widgets
+    // are already being destroyed underneath it — can share it. Every teardown
+    // responsibility lives here rather than in destroyMenu(), so a path that
+    // performs only some of them cannot exist: dropping the widget ids while
+    // leaving the clock paused would make the next buildMenu() re-save a
+    // savedTimeScale_ of 0 and freeze the sim with no way back.
+    void forgetBuiltState() {
+        rows_.clear();
+        panel_ = IREntity::kNullEntity;
+        controlsLabel_ = IREntity::kNullEntity;
+        quitButton_ = IREntity::kNullEntity;
 
         if (params_.pauseSimWhileOpen_) {
             // Restore the scale that was running, not 1.0 — `IRSim::resume()`
