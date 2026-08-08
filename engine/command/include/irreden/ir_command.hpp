@@ -54,6 +54,22 @@ CommandId bindPrefabCommand(
     IRInput::KeyModifierMask blockedModifiers = IRInput::kModifierNone
 );
 
+/// Reports whether the (@p inputType, @p triggerStatus, @p button) triple
+/// already has a binding. Forwards to @ref CommandManager::isButtonBound —
+/// see it for the scan target, the deliberate modifier-blindness, the MIDI
+/// carve-out, and the cost contract.
+///
+/// The point of the query is to let creation code guard an ad-hoc bind
+/// against what the engine already registered, instead of mirroring the
+/// engine's key list in a hand-maintained "reserved keys" table that drifts
+/// (`.claude/rules/cpp-ecs.md` §"System-owned invariants"). No dedup policy
+/// is imposed: @ref createCommand still appends unconditionally, and stacking
+/// one key under different modifier masks stays legal.
+inline bool
+isButtonBound(IRInput::InputTypes inputType, IRInput::ButtonStatuses triggerStatus, int button) {
+    return getCommandManager().isButtonBound(inputType, triggerStatus, button);
+}
+
 /// Sentinel returned by @ref bindPrefabCommand on a name that has no
 /// `Command<NAME>` specialization. `CommandId` is `uint32_t`, so the
 /// max-value spelling lets callers distinguish a real registration
