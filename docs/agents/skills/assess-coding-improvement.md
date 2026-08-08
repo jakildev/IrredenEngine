@@ -38,6 +38,7 @@ Wherever a step needs a repo-specific value it names a **delta key** in bold.
 | **convention surfaces** | The ordered set of docs/rules/checks that encode this repo's conventions — searched in Step 3 to decide whether a rule already exists. | the engine surfaces listed in the wrapper |
 | **automated-check surface** | Where a mechanically-detectable rule is *enforced* pre-commit (so the worker gets it right the first time). | the `simplify` skill + its `simplify-*` subagents |
 | **review checklist** | The repo's review criteria — a fallback enforcement surface when authoring keeps missing what review catches. | the `review-pr` wrapper's checklist |
+| **observations-ledger** | The repo's append-only single-occurrence ledger: one parked issue (`human:owned` only — never `fleet:coding-improvement`, so the triage drain and the untriaged-inbox query never see it) where below-bar first occurrences are recorded as comments (Step 4). A repo that supplies no ledger runs the gate report-only. | issue #2903 |
 
 The fleet label `fleet:coding-improvement` and the `gh issue` mechanics are
 shared fleet machinery and are used concretely below.
@@ -145,8 +146,8 @@ gh issue list --repo <repo> --label fleet:coding-improvement --state open \
   --json number,title,body
 ```
 
-- **Match** (an open ticket targets the same artifact / rule) → add an
-  occurrence instead of filing a new one:
+- **Open-ticket match** (an open ticket targets the same artifact / rule) → add
+  an occurrence instead of filing a new one:
   ```
   gh issue comment <M> --repo <repo> --body "Recurred: PR #<N>, <file:line> — \
   <one-line>. — <role-name>"
@@ -154,19 +155,35 @@ gh issue list --repo <repo> --label fleet:coding-improvement --state open \
   A second occurrence is the signal this is a real pattern worth the human
   prioritizing.
 
-Before filing on a **first (single) occurrence**, apply the **single-occurrence
-gate**: open a standalone ticket only if the pattern is (a) a near-miss
-correctness/safety bug (a real defect would have shipped), (b) mechanically
-detectable (it can become an automated-check-surface rule), or (c) a tightening
-or example of an **existing** convention surface (one bullet, no new surface).
-Otherwise it is not yet a demonstrated pattern — fix it in this PR and do **not**
-file; if the class recurs, the second occurrence (finding no match above) files
-it then. This is the anti-false-positive companion to the Step 2 one-off gate:
-it stops a single reviewer nit (a plan-doc note, a muscle-memory style rule with
-no existing surface) from accruing as a low-value ticket the triage pass would
-only reject. Multi-occurrence and `Recurred:`-evidenced items always file.
+Before filing on a **first (single) occurrence**, apply the
+**second-occurrence-or-measured-misfire gate**. (This replaces the earlier
+three-arm gate, whose "mechanically detectable" and "tightening an existing
+surface" arms passed nearly every fleet-tooling generalization — 68 filings in
+one week against a cue-only drain.) A standalone ticket files on a first
+occurrence **only** for a **measured misfire**: a near-miss correctness/safety
+defect that fired in something you ran or observed — a wrong result, a
+false-clean pass, a real defect that would have shipped — not a failure mode
+predicted from reading source. Everything else needs a **second occurrence**
+first, made detectable by the **observations-ledger** (delta). Search the
+ledger issue's comments alongside the open-ticket dedup above:
 
-- **No match** (and the single-occurrence gate passes) → file a new ticket,
+- **Ledger match** → this IS the second occurrence: file the standalone ticket
+  with both occurrences in `## Occurrences`, and reply to the ledger entry with
+  `graduated → #<M>` so later matches point at the ticket instead of
+  re-recording.
+- **No ledger match** → record, don't file. Append one comment to the ledger —
+  `Observation: <area>: <one-line rule> — PR #<N>, <file:line>, class A|B,
+  target <path>. — <role>` — and move on. If the repo supplies no
+  **observations-ledger** delta, skip recording (note the observation in the
+  final Report block only); do not create a ledger yourself.
+
+Recording costs one comment, adds zero tickets to the backlog, and makes
+"second occurrence" provable by citation rather than asserted from memory.
+This is the anti-false-positive companion to the Step 2 one-off gate.
+Multi-occurrence and `Recurred:`-evidenced items always file.
+
+- **No open-ticket match** (and the gate above passes — a measured misfire, or
+  a ledger-proven second occurrence) → file a new ticket,
   tagging **only** `fleet:coding-improvement`
   (write the body to a worktree-local file and pass `--body-file` to avoid
   command-substitution hazards, mirroring `file-epic`; use
@@ -238,7 +255,8 @@ close, so both still cost sweep-and-verify budget.)
 
 One short block back to the caller:
 - per checklist item: covered? generalizable?
-- for each generalizable item: class (A/B), target artifact, and whether you
-  filed `#<M>` or commented on an existing `#<M>`.
+- for each generalizable item: class (A/B), target artifact, and its
+  disposition — filed `#<M>`, commented on an existing `#<M>`, or recorded a
+  ledger observation.
 - if nothing qualified, say so explicitly ("all feedback was one-off /
   subjective; no coding-improvement filed").

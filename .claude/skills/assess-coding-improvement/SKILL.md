@@ -27,6 +27,7 @@ for why.
 | **convention surfaces** | searched in Step 3, in this order (see below) |
 | **automated-check surface** | the [`simplify`](../simplify/) skill + its `simplify-*` subagents in [`.claude/agents/`](../../agents/) |
 | **review checklist** | the engine checklist in [`.claude/skills/review-pr/SKILL.md`](../review-pr/SKILL.md) |
+| **observations-ledger** | issue [#2903](https://github.com/jakildev/IrredenEngine/issues/2903) (parked `human:owned`; game PRs use the game repo's own ledger delta, not this one) |
 
 ## Engine convention surfaces (Step 3 search order)
 
