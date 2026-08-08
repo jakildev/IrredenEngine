@@ -192,15 +192,24 @@ suites green, pan/yaw jitter sweeps SMOOTH, clean exits.
 
 ## Steward ledger
 
-reconciled-through: PR #2659 merge (2026-08-04T17:56:47Z, master `e640a5b1`) —
-P4 (#2548) reconciled. **#2669 is the sole open child**, and it is held on the
-pending ruling below, so that ruling is now the epic's only remaining child gate
-(the close-out Findings F2–F6 gate independently).
-proposal-pending: **OPEN** (label re-verified live 2026-08-04) — `## STEWARD PROPOSAL 2026-08-01`
+reconciled-through: ruling distribution 2026-08-08 (architect ruling
+2026-08-05T01:37:22Z on the 2026-08-01 package → **D11**, **A7**, and
+`issue-2669.md` **A2**). Code-side unchanged: PR #2659 merge
+(2026-08-04T17:56:47Z, master `e640a5b1`) — P4 (#2548) reconciled, and no child
+has merged since. **#2669 is the sole open child**; as of the ruling it is no
+longer design-blocked — it is a planned, implementable task whose only remaining
+gate is human triage (it carries **no labels**, so nothing queues it). The
+close-out Findings F2–F6 gate independently.
+proposal-pending: **none** — the 2026-08-01 package
 https://github.com/jakildev/IrredenEngine/issues/2544#issuecomment-5149886413
-(one question: #2669's default-pivot latch-update policy / contract amendment).
-`fleet:steward-proposal` applied to the umbrella; its removal is the re-fire
-edge. The **prior** package (2026-07-28) was answered by the architect ruling
+was **answered 2026-08-05** by the architect ruling
+https://github.com/jakildev/IrredenEngine/issues/2544#issuecomment-5186529073,
+`fleet:steward-proposal` removed at 2026-08-05T01:37:24Z (the re-fire edge), and
+**distributed 2026-08-08** as D11 + A7 here and A2 on `issue-2669.md`. The
+distribution lagged the answer by three days: the re-fire edge is defined over
+`design_prs[]`, and #2669 has no PR, so no projection trigger fires for an
+**issue-scoped** ruling. Fed back. The **prior** package (2026-07-28) was
+answered by the architect ruling
 https://github.com/jakildev/IrredenEngine/issues/2544#issuecomment-5106383295
 (package: issuecomment-5100516659) and distributed 2026-07-29 as A2/A3 + the
 `## Steward direction` on PR #2585.
@@ -209,10 +218,17 @@ https://github.com/jakildev/IrredenEngine/issues/2544#issuecomment-5106383295
 | Child | State | PR | Plan | Last validated |
 |---|---|---|---|---|
 | #2545 | merged | #2562 | plan | 2026-07-28 (PR #2562 merge) |
-| #2546 | merged | #2576 (`fleet:needs-windows-smoke` open) | plan | 2026-07-29 (PR #2576 merge) |
-| #2547 | merged | #2585 (`fleet:needs-windows-smoke` + `fleet:needs-human` open) | plan + A1–A2 | 2026-08-01 (PR #2585 merge) |
+| #2546 | merged | #2576 | plan | 2026-07-29 (PR #2576 merge) |
+| #2547 | merged | #2585 | plan + A1–A2 | 2026-08-01 (PR #2585 merge) |
 | #2548 | merged | #2659 | epic §Phase 4 + A5 (no child file) | 2026-08-04 (PR #2659 merge) |
-| #2669 | open — **adopted 2026-08-01 (flow c)**, blocked on the pending ruling | — | stub + A1 | 2026-08-04 (PR #2659 merge) |
+| #2669 | open — **adopted 2026-08-01 (flow c)**; ruling landed 2026-08-05, plan is real, **unlabeled → not queued** | — | plan (A2; was stub + A1) | 2026-08-08 (ruling distribution) |
+
+The PR column above was carrying `fleet:needs-windows-smoke` / `fleet:needs-human`
+on the #2546 and #2547 rows. Those are volatile merge/review labels, which
+`docs/agents/epic-steward-protocol.md` §"The Steward ledger" (#2398) excludes from
+this column; they are dropped here. The state they encoded is not lost — **F5**
+owns the "no OpenGL host has verified any phase of this epic" close-out gate and
+names all three PRs.
 
 A3, A4 and A6 are epic-scope (the whole-epic verification bar) and are not listed
 per child; they bind every row above at close-out. A4 supersedes A3's block set
@@ -358,6 +374,36 @@ exception: it has a worker-authored `.fleet/plans/issue-2546.md`.
   path in **both** the GLSL and Metal twins plus backend-parity verification — a
   render-pipeline feature, filed free-standing (see F6). — source: PR #2659
   §"Acceptance evidence"; shader claim re-verified on `origin/master`.
+- D11 (2026-08-05): **the default pivot's depth latch re-derives at rotation
+  start** — option 2 of #2669's decision surface, ratified. The latch keeps
+  #2585's pan/zoom-scoped derives and gains one more edge: the first frame yaw
+  changes, whose previous frame was still and so holds a valid depth attachment.
+  Three binding conditions: **gesture-start only** (no per-frame derives inside a
+  continuous rotation; if that one flush later measures objectionable it is a new
+  issue with its own measurement, not a re-litigation); **contract (A) is
+  amended** from "pan/zoom-scoped latch" to "pan/zoom-scoped latch +
+  rotation-start re-derive", with `docs/design/camera-yaw-pivot.md` naming both
+  consequences it resolves — (a) pan-settle pop, masked inside the rotation that
+  follows, and (b) post-rotate staleness, gone; and **verification must move the
+  camera between derives** (a green sweep of the existing `pivot-verify.py` blocks
+  is not evidence on this question — see F3). Grounds of record are the steward's
+  two, adopted verbatim: cost asymmetry against option 3 (`depth_probe.hpp`
+  documents the full-flush cost as the reason the probe stays single-pixel and
+  debug-gated, so an N-flush fixed-point loop would build a per-derive production
+  path on a primitive documented as too expensive for one), and pivot-source
+  consistency with **D4** — the cursor latch already re-acquires at gesture start,
+  so option 2 is that policy applied to the default pivot while option 1 would
+  leave the two sources with different staleness behaviour, the exact fork D4 was
+  chosen to avoid. This **supersedes D4's silence** on latch lifetime rather than
+  D4 itself: D4 fixed *what* the default pivot pins (the surface point under the
+  centre pixel); D11 fixes *when* that pin is refreshed. Consistent with **D9**
+  ("world point vs latched depth is decided by how long the focus is held across
+  camera motion"): shortening the default latch's lifetime to a gesture does not
+  license relaxing its iso-depth latch, because the pan/zoom window remains.
+  — source: architect ruling
+  https://github.com/jakildev/IrredenEngine/issues/2544#issuecomment-5186529073
+  (answers the 2026-08-01 STEWARD PROPOSAL); distributed as A7 here and A2 on
+  `.fleet/plans/issue-2669.md`.
 
 ### Events
 - 2026-07-22: filed via file-epic
@@ -566,6 +612,25 @@ exception: it has a worker-authored `.fleet/plans/issue-2546.md`.
   the merger-cooldown skip-guard has nothing to evaluate. Its stub's "One
   correction to carry into pickup" (`updateDefaultRotationPivotFocus`, not
   `…Depth`) survives — #2659 touched no `render_manager` surface.
+- 2026-08-08: **the 2026-08-01 proposal was answered on 2026-08-05 and sat
+  undistributed for three days.** The architect ratified option 2
+  (issuecomment-5186529073) and removed `fleet:steward-proposal` at
+  2026-08-05T01:37:24Z — the protocol's re-fire edge — but that edge is defined
+  over the projection's `design_prs[]`, and **#2669 has no PR**. An issue-scoped
+  ruling therefore fires no trigger at all: this umbrella's projection row read
+  `[4/5]` with zero pending triggers for three days while a ratified,
+  distributable answer sat on the thread. Found by reading `proposal-pending` in
+  this ledger against the umbrella's live labels, not by any trigger. Distributed
+  this iteration: **D11**, **A7**, and A2 on `.fleet/plans/issue-2669.md`; the
+  `## Plan status` line there flips STUB → PLANNED and the do-not-claim gate is
+  lifted. Fed back to `~/.fleet/feedback/epic-steward.md`.
+- 2026-08-08: **#2669 is now the epic's only child gate, and it is a *triage*
+  gate, not a design one.** With the ruling distributed it is an implementable
+  task with a real plan and five acceptance criteria — but it carries **no
+  labels at all** (filed 2026-07-30, unlabeled per `TASK-FILING.md`; adopted onto
+  the checklist 2026-08-01 without ever being triaged), so `fleet-queue-ingest`
+  never sees it and no worker can pick it. Nine days unlabeled. Raised on the
+  umbrella; the steward does not stamp `human:approved` or class labels.
 
 ### Findings (close-out gate — beyond the checklist)
 - **F1 — DISCHARGED 2026-08-04 (#2645 closed via PR #2648).** Was: `focus-ctr-sdf`
@@ -587,8 +652,16 @@ exception: it has a worker-authored `.fleet/plans/issue-2546.md`.
   configuration. Leading hypothesis is the trixel→framebuffer parity shift
   applied to the depth read on GL but not Metal, so §Closing criteria's "on both
   backends" is the binding clause.
-- **F3 — #2669 is unresolved and adopted.** See the proposal package. Note its
-  last word on testing: the guard has to **move the camera between derives**,
+- **F3 — RULED 2026-08-05 (D11 / A7); the *testing* clause survives as the
+  close-out gate, and it is now stronger than a steward note.** Was: #2669 is
+  unresolved and adopted. The design question is answered — option 2, re-derive at
+  rotation start — but the ruling **adopts this finding's testing clause as an
+  explicit close-out condition** ("no current `pivot-verify.py` block can observe
+  either failure mode, so a green existing sweep is not evidence on this
+  question"), so F3 does not discharge with the ruling. It discharges when a guard
+  that pans-then-rotates exists and passes. #2669 remains open and now carries
+  that guard as its acceptance criterion 4. Original text, still accurate: the
+  guard has to **move the camera between derives**,
   which no current `pivot-verify.py` block does — close-out must not accept a
   green sweep as evidence on this question. **Re-checked 2026-08-04 against the
   new `cursor-latch` block: F3 stands.** That block parks a synthetic cursor on
@@ -870,3 +943,52 @@ exception: it has a worker-authored `.fleet/plans/issue-2546.md`.
   (zoom 1→16 table); verified on `origin/master` at `scripts/pivot-verify.py:75`
   (block list), `:84` (`FOCUS_ASSERT_BLOCKS`), `:89` (`CENTROID_GATED_BLOCKS`),
   `:102` (`SDF_GATED`); ledger D5, D7, D8.
+
+### A7 — 2026-08-08 — epic #2544 (ratified contract + whole-epic verification) — trigger: proposal answered (architect ruling 2026-08-05)
+
+- **Decision:** the epic's ratified **contract (A)** is amended, and the
+  whole-epic verification bar gains one clause.
+
+  **Contract.** D4 ratified that the default `CAMERA_CENTER` pivot pins *the
+  surface point under the viewport-center pixel*. It said nothing about how long
+  that pin survives camera motion, and #2585 shipped a **pan/zoom-scoped latch**
+  by implementation choice rather than by ruling. Per **D11**, contract (A) now
+  reads: *pan/zoom-scoped latch **+ rotation-start re-derive*** — the latch
+  additionally re-derives on the first frame yaw changes. Gesture-start only; no
+  per-frame derives inside a continuous rotation.
+
+  **Verification.** §Verification (whole epic) / §Closing criteria gain a clause
+  that A6's eight-block table cannot express, because the ruling states it as a
+  property of the *harness* rather than of a block's verdict:
+
+  > A green `pivot-verify.py` sweep is **not evidence** on the latch-update
+  > question. Every block in that harness holds the camera fixed between derives,
+  > so none of them can observe either failure mode the contract amendment
+  > resolves. Before this epic closes, a guard must **pan** — changing the height
+  > under the crosshair — **then rotate**, and assert the pivot depth was
+  > re-derived at rotation start.
+
+  This is the ruling's own third condition, adopted verbatim as a close-out
+  condition, and it is the same clause **F3** has carried since 2026-08-01. F3
+  therefore does **not** discharge with the ruling; it discharges with the guard.
+  `test/render/camera_pan_pivot_test.cpp` is the closest existing vehicle; either
+  it or a new `pivot-verify.py` block is a **new** artifact — re-checked against
+  P4's `cursor-latch` block on 2026-08-04 and again here, no shipped block moves
+  the camera between derives.
+- **Supersedes:** D4's silence on latch lifetime, and §Phase 3 (B)'s / #2585's
+  implicit "pan/zoom-scoped" reading of contract (A) — both now read with D11's
+  rotation-start edge. A6's block table and verdict vocabulary are **untouched**
+  and still bind; this amendment adds a clause A6 does not contain rather than
+  restating it. The umbrella body is **not** edited (the carve-out covers the
+  `## Children` checklist only), so this amendment plus A6 are the restatement of
+  record for close-out.
+- **Acceptance criteria:** A6's are unchanged and still bind (both backends — F5;
+  SMOOTH jitter sweeps — F4). **Added:** the pan-then-rotate guard above (F3).
+  The child that carries it is **#2669**, whose acceptance criteria are now
+  enumerated in `.fleet/plans/issue-2669.md` **A2** — note that #2669 is
+  unlabeled and therefore unqueued, so this criterion currently has a plan and no
+  path to a worker.
+- **By:** epic-steward — source: architect ruling
+  https://github.com/jakildev/IrredenEngine/issues/2544#issuecomment-5186529073
+  §§"Conditions attached to the ruling" (all three); ledger D4, D9, D11; F3;
+  distributed to the child as `.fleet/plans/issue-2669.md` A2.

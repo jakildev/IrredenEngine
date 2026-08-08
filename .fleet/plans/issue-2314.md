@@ -62,8 +62,8 @@ independent heads.
 
 ## Steward ledger
 
-reconciled-through: flow-a triage of PR #2654 / #2385 Phase-0 (2026-07-30) — all questions derivable, `design-unblock` applied, child plan amended A1, no proposal package. Code-side: PR #2387 merge (2026-07-14 — S2 #2320 shadow-throw unify merged; V3 #2317 + S1 #2319 reconciled prior iterations) — no child has merged since.
-proposal-pending: none — this iteration's flow-a resolved entirely by citation (no `fleet:steward-proposal` added); the one epic-scope question it surfaced rides a **non-blocking** escalation comment on #2314 (2026-07-30, issuecomment-5134608422). Prior: STEWARD PROPOSAL 2026-07-14 (PR #2393 / S3 #2321) answered by opus-architect 2026-07-15 (issuecomment-4977022751) and distributed (D7–D9; child plan `issue-2321.md` A1; `## Steward direction` on PR #2393; `fleet-transition design-unblock 2393`; #2321 re-blocked on #2385; #2385 routed to the planning gate). Prior 2026-07-13 package (PR #2343 / S1 #2319) answered + distributed (D4–D6, `## Steward direction` on PR #2343).
+reconciled-through: **PR #2654 merge (2026-08-04T04:15:02Z, master `34c7f7f4`)** — #2385 Phase-0 (r7) shipped. Note the shape: the PR merged and **the child stayed open** (`[WIP]` in its own title; no `Closes #2385`), so no `rollup` trigger ever fired — the projection reported this epic as `[9/11]` with zero pending work for four days. Reconciled here by reading the ledger's own `#2385` row (which still said "PR #2654 open, wip, CONFLICTING") against the PR's live state. Prior: flow-a triage of PR #2654 / #2385 Phase-0 (2026-07-30) — all questions derivable, `design-unblock` applied, child plan amended A1, no proposal package; PR #2387 merge (2026-07-14 — S2 #2320 shadow-throw unify merged; V3 #2317 + S1 #2319 reconciled prior iterations).
+proposal-pending: **OPEN** — `## STEWARD PROPOSAL 2026-08-08` on this umbrella (https://github.com/jakildev/IrredenEngine/issues/2314#issuecomment-5227813732), one question (does r7 discharge D6, or does #2385 close as a partial with a successor child?), `fleet:steward-proposal` applied; its removal is the re-fire edge. This **re-raises, with a label, the question the 2026-07-30 escalation asked without one**: that comment (issuecomment-5134608422) was explicitly filed `non-blocking` and added no label, and it went unanswered for nine days while r7 shipped underneath it — the exact leak documented in `~/.fleet/feedback/epic-steward.md` (2026-08-08, "comment-only escalation paths have no Decisions-surface step"). The question is now blocking rather than advisory: r7 is on master, so "ship r7 and let D8's re-measure decide the rest" is no longer a recommendation about a future merge but a live choice about what closes #2385. Prior: STEWARD PROPOSAL 2026-07-14 (PR #2393 / S3 #2321) answered by opus-architect 2026-07-15 (issuecomment-4977022751) and distributed (D7–D9; child plan `issue-2321.md` A1; `## Steward direction` on PR #2393; `fleet-transition design-unblock 2393`; #2321 re-blocked on #2385; #2385 routed to the planning gate). Prior 2026-07-13 package (PR #2343 / S1 #2319) answered + distributed (D4–D6, `## Steward direction` on PR #2343).
 
 ### Children
 | Child | State | PR | Plan | Last validated |
@@ -75,10 +75,10 @@ proposal-pending: none — this iteration's flow-a resolved entirely by citation
 | #2318 | merged | #2337 | plan | 2026-07-13 |
 | #2319 | merged | #2343 | plan | 2026-07-14 (S1 same-plane provenance test; D6 genuine-cast residual → #2385; Linux/GL smoke owed) |
 | #2320 | merged | #2387 | plan | 2026-07-14 (S2 — receive window unified 24→64 feeder sweep; floating top-face wedge restored) |
-| #2321 | open — `fleet:blocked` on #2385 (design answered, deferred) | #2393 (open, wip) | plan (issue-2321.md, A1) | 2026-07-30 (scope-shipped false positive cleared; `fleet:blocked` restored per D7 — was 2026-07-15 flow-a distribute: lever (a) dropped measured-refuted, lever (b) retained, gate re-anchored on post-#2385 baseline) |
+| #2321 | open — `fleet:blocked` on #2385 (design answered, deferred) | #2393 | plan (issue-2321.md, A1 + **A2**) | 2026-08-08 (re-validated against PR #2654: D9's "first post-#2385 baseline capture" anchor pinned to master ≥ `34c7f7f4` — A2; `fleet:blocked` stands per D7, #2385 is still open) |
 | #2322 | merged | #2328 | plan | 2026-07-13 |
 | #2323 | merged | #2326 | plan | 2026-07-13 |
-| #2385 | open — in-progress, PR #2654 `fleet:wip` + `fleet:design-unblocked` (critical path) | #2654 (open, wip, CONFLICTING) | **plan** (v2 `## Plan` comment; `issue-2385.md` = pointer + **A1**) | 2026-07-30 (flow-a triage of PR #2654: Phase-0 r7 measured, both controls green; AC 5 scope + AC 1 grounding + skip-Phase-1 all answered by citation; AC 4 visual half and two-host re-bless owed) |
+| #2385 | open — **Phase-0 shipped, child NOT closed** (partial PR, no `Closes`); queued, `fleet:needs-gl-host`; still the critical path | #2654 **merged 2026-08-04** (master `34c7f7f4`) | **plan** (v2 `## Plan` comment; `issue-2385.md` = pointer + A1 + **A2**) | 2026-08-08 (post-merge audit: AC 4 visual half **discharged**; AC 7 two-host re-bless **not** discharged — only `macos-debug` re-blessed, see F1; residual = the linux re-bless + the pending Phase-1 ruling) |
 
 ### Decisions
 <!-- entries: D<n> (<YYYY-MM-DD>): <decision> — source: <link> -->
@@ -343,3 +343,103 @@ proposal-pending: none — this iteration's flow-a resolved entirely by citation
     #2548/#2321 and game #202/#295/#299–#305. All are legitimately queued,
     host-gated, blocked, or claimed-in-progress. No second parked false-free
     this iteration.
+- 2026-08-08 (flow b — **#2385 Phase-0 merged, child stayed open**): PR #2654
+  merged 2026-08-04T04:15:02Z (master `34c7f7f4`, base `master`, head
+  `claude/2385-sun-splat-coverage`). **No checkbox ticked and no rollup trigger
+  fired** — the PR is a partial (`[WIP]` in its own title, no `Closes #2385`), so
+  #2385 is still open and the projection kept reporting `[9/11]` with zero pending
+  work. The ledger's own `#2385` row ("PR #2654 open, wip, CONFLICTING") is what
+  surfaced it. Reconciled here; the checklist is untouched because the child is
+  correctly still open.
+  - **Scope-drift audit — in scope, and the two deltas both go the right way.**
+    Shipped: the r6→r7 radius bump in `system_bake_sun_shadow_map.hpp` and both
+    shader twins (`ir_sun_projection.glsl` / `.metal`, +6/−3 each — twinned, so
+    the GL side moves too), `docs/design/sun-shadow-bake-coverage.md`, the six
+    `macos-debug` `canvas_stress` references, the plan file, and the AC-4
+    screenshot set. Nothing outside #2385's plan; no recorded Decision
+    contradicted (D1–D9 stand).
+  - **AC 4 (halo guard, visual half) — DISCHARGED.** A1 made this
+    non-optional and named the two shots that could show a delta; the merged PR
+    carries `revoxelize_solids` and `so3_offsnap_wide` before/after/diff plus a
+    `revoxelize_solids_floorcrop3x` pair, and reports the newly-shadowed rim as
+    1–2 device px at full shadow luminance (85.5 vs deep shadow 77.3, lit floor
+    111.5), flat across distance, with the pre-existing r6 outermost ring at 88.8
+    — i.e. a crisp one-cell edge shift, not a soft band. Verdict fill, not halo,
+    on the instrument A1 specified.
+  - **AC 7 (two-host re-bless) — NOT discharged; this is the drift.** A1
+    escalated it from "owed" to a **blocking co-requisite** ("`linux-debug/`'s six
+    references stale alongside `macos-debug/`'s … not a routine post-merge
+    smoke"). The PR re-blessed **only** `macos-debug`. Verified on master: the six
+    `linux-debug/canvas_stress` references were last written by `95355bde2`
+    (PR #1595, 2026-06-30) and no commit has touched that directory since PR
+    #2654 merged, while the twinned GLSL is on master — so the GL reference set
+    has been stale since 2026-08-04. Recorded as **F1** with its owner; not
+    escalated as a contradiction, because nothing was lost: #2385 stayed open and
+    a pre-existing queued issue already owns the re-bless.
+  - **Sibling re-validation — #2321 (S3).** `fleet:blocked` on #2385 stands (D7).
+    D9's gate is anchored on "the FIRST post-#2385 baseline capture", and that
+    referent is now ambiguous: r7 is on master but #2385 is not closed. Amended
+    `issue-2321.md` **A2** with the one unambiguous half — any baseline capture is
+    valid only at master ≥ `34c7f7f4` — and left the "wait for more of #2385?"
+    half to the proposal below rather than guessing. No symbol #2321 cites was
+    renamed or removed by the merge, so nothing else in its plan is stale.
+    Skip-guard: not engaged — #2393 is #2321's own PR and carries no
+    `fleet:merger-cooldown` (checked live, not from the cache).
+  - **Proposal raised** (this iteration's one package): `## STEWARD PROPOSAL
+    2026-08-08`, re-asking the 2026-07-30 escalation's question **with**
+    `fleet:steward-proposal` this time. See `proposal-pending`.
+
+### Findings (close-out gate — beyond the checklist)
+
+<!-- Steward-owned. Items close-out must resolve that no checklist row tracks.
+     Same shape as the section in .fleet/plans/issue-2544.md. -->
+
+- **F1 (new 2026-08-08) — the `linux-debug` `canvas_stress` references have been
+  stale on master since r7 landed, and the debt survived only by luck.**
+  PR #2654 shipped the radius bump in **both** shader twins (`ir_sun_projection.glsl`
+  and `.metal`, +6/−3 each) and re-blessed **only** the six `macos-debug`
+  references. The PR's own commit message states the change "is therefore not
+  output-neutral for the six rotating shots", and `.fleet/plans/issue-2385.md`
+  **A1** had escalated the two-host re-bless from "owed" to a **blocking
+  co-requisite** before merge. Measured on master (`28012d3cc`): the six
+  `creations/demos/canvas_stress/test/references/linux-debug/*.png` were last
+  written by `95355bde2` (PR #1595, **2026-06-30**), and `git log
+  34c7f7f4..origin/master -- <that dir>` is **empty**. So a clean-checkout
+  `render-verify --target IRCanvasStress` on a Linux/OpenGL host fails its 6-shot
+  pixel gate for a reason unrelated to whatever change is under test — a false-red
+  trap for the next GL worker.
+  **Owner — pre-existing, do not file a new ticket.** #1969 ("refresh stale
+  canvas_stress linux-debug render-verify references", OPEN, `human:approved` +
+  `fleet:queued` + `fleet:sonnet` + `fleet:needs-gl-host`) already owns the
+  main-six refresh, and #2158 owns the two `compare_*` refs. #1969's rationale
+  predates r7 (it was filed for ~30 PRs of cumulative drift plus the #1942→#1953
+  revert), but blessing at current master discharges r7 as a side effect —
+  **provided the bless is taken at master ≥ `34c7f7f4`.** Close-out cites #1969's
+  completion at such a master, not #2385's closure.
+  **Why "by luck":** the co-requisite's only live carriers are #2385 staying open
+  (`fleet:needs-gl-host`) and #1969 existing. `fleet:needs-linux-smoke` on merged
+  PR #2654 does **not** carry it — that lane builds and smoke-runs `IRShapeDebug`
+  and never refreshes demo references (#1969's own body says so), so a
+  `platform-catchup` pass would flip that label to `fleet:verified-linux` with the
+  references still stale. If the proposal below closes #2385, this finding is what
+  keeps the obligation attached to the epic.
+- **F2 (new 2026-08-08) — F1's *class* is already filed; this is an engine
+  instance of it.** #2530 ("deferred acceptance criteria vanish at merge — no
+  needs-`<host>`-smoke gate when a PR defers verification to another host", OPEN,
+  **unlabeled**) describes exactly this shape and records two downstream-repo
+  instances. F1 is a third, in the engine, and a slightly worse one: the deferred
+  criterion here was not merely written in a PR body, it was an explicit steward
+  amendment (A1) that named it *blocking*, and it still merged undischarged.
+  Recorded as a comment on #2530 rather than a new ticket. Not a close-out gate
+  for this epic — F1 is; F2 exists so close-out records that the mechanism failure
+  has an owner and is not re-derived from scratch next time.
+- **F3 (standing) — no OpenGL host has verified the epic's shadow work.**
+  §"Cross-cutting acceptance requirement (every child)" demands verification at
+  cardinal **and** non-cardinal yaw on **both** backends, and **D3** repeats it as
+  a ruling. Every measurement in this ledger from S1 onward — including PR #2654's
+  r0/r6/r7 component counts — was taken on macOS/Metal. PR #2654 still carries
+  `fleet:needs-linux-smoke` post-merge, and the epic's two remaining children
+  (#2385, and #2321 behind it) both carry `fleet:needs-gl-host`. Tracked, not
+  invisible; but close-out cannot discharge the both-backends clause from a macOS
+  pane, and F1 means the GL host's own regression gate is currently red before it
+  starts.

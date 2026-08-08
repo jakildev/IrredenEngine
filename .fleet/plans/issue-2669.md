@@ -1,6 +1,6 @@
 # Plan — #2669: when may the default pivot's depth latch update?
 
-## Plan status: STUB — needs planning before claim
+## Plan status: PLANNED — the ruling landed 2026-08-05 (option 2 ratified); the plan of record is **A2** at the bottom of this file
 
 **Part of epic:** #2544 — see
 [`.fleet/plans/issue-2544.md`](issue-2544.md) for the epic plan, the Steward
@@ -9,6 +9,10 @@ ledger (D1–D7), and the amendment chain (A1–A5).
 **pending ruling** below.
 
 ## Why this is a stub and not a plan
+
+> **Superseded by A2 (2026-08-05 ruling).** This section explains why the file
+> *was* a stub; the ruling it was waiting for has landed and the plan of record is
+> now **A2** at the bottom. Kept for the audit trail — plans are append-only.
 
 This issue is a **contract amendment**, not an implementation task. Its own
 §Acceptance criteria lead with "a ruling is recorded on this issue selecting
@@ -22,6 +26,12 @@ epic-steward (flow c). `fleet-validate-stack 2544 --state all --check-checklist`
 passed with #2669 as the sole `missing-from-checklist` drift item.
 
 ## Pickup gate
+
+> **LIFTED — superseded by A2.** The ruling landed 2026-08-05 and
+> `fleet:steward-proposal` was removed from #2544; the do-not-claim gate below no
+> longer applies. Read **A2** for the ratified decision and the acceptance
+> criteria. (The one gate that *does* still apply is unrelated to design: this
+> issue carries no labels, so it is not queued.)
 
 The question is this iteration's **steward proposal package**:
 https://github.com/jakildev/IrredenEngine/issues/2544#issuecomment-5149886413 —
@@ -125,3 +135,91 @@ the issue names. Only the symbol name drifted.
 - **By:** epic-steward — source: PR #2659 §Summary and §Verification; verified on
   `origin/master` at the four cited call sites; epic #2544 ledger D9, A5 item 3,
   and Finding F3.
+
+### A2 — 2026-08-08 — trigger: proposal answered (architect ruling on umbrella #2544, 2026-08-05)
+
+- **Decision: option 2 is ratified — the default pivot's depth latch re-derives
+  at rotation start**, i.e. on the first frame yaw changes, whose previous frame
+  was still and therefore holds a valid depth attachment. This is *in addition
+  to* the pan/zoom-scoped derives #2585 shipped, not a replacement for them.
+  Three conditions ride the ruling and are binding:
+  1. **Gesture-start only.** No per-frame derives during continuous rotation.
+     The single flush at the first yaw-delta frame is the accepted cost. If that
+     stutter later measures objectionable, that is a **new** issue with its own
+     measurement — not a re-litigation of this ruling.
+  2. **Contract (A) is amended**, from "pan/zoom-scoped latch" to "pan/zoom-scoped
+     latch + rotation-start re-derive". `docs/design/camera-yaw-pivot.md` states
+     the amended contract and names both consequences it resolves: (a) pan-settle
+     pop, now masked inside the rotation that immediately follows it, and (b)
+     post-rotate staleness, now gone because every rotation pivots about a fresh
+     depth. Note the shape change from the stub's §"What any resolution must
+     carry": option 1's §"Known deviations" requirement does **not** apply — under
+     option 2 (a) and (b) are resolved, not documented as deviations.
+  3. **Verification must move the camera between derives.** Explicitly accepted as
+     a close-out condition of epic #2544: no current `pivot-verify.py` block can
+     observe either failure mode, so a green existing sweep is **not evidence on
+     this question**. A block must pan (changing the height under the crosshair),
+     then rotate, and assert the pivot depth was re-derived at rotation start.
+  Grounds of record are the steward's two, adopted verbatim by the architect:
+  the cost asymmetry against option 3 (`depth_probe.hpp` documents the full-flush
+  cost as the reason the probe stays single-pixel and debug-gated, so an N-flush
+  fixed-point loop would make a per-derive production path out of a primitive
+  documented as too expensive for one), and pivot-source consistency with D4 —
+  Phase 4's cursor latch already re-acquires depth at gesture start
+  (`system_camera_mouse_rotate.hpp:67-70`, re-verified in A1 item 2), so option 2
+  is that same policy applied to the default pivot, and option 1 would leave the
+  two pivot sources with different staleness behaviour, precisely the fork D4 was
+  chosen to avoid.
+- **Supersedes:**
+  - `## Plan status` — **STUB → PLANNED**. The stub's entire reason to be
+    (§"Why this is a stub and not a plan": "planning the implementation before the
+    ruling would be planning the wrong one two times out of three") is discharged;
+    the ruling picked one of the three products. The status line at the top of this
+    file is updated to point here, and this bullet is the record of that flip.
+  - §"Pickup gate" **in full** — the do-not-claim gate is **lifted**. The
+    `fleet:steward-proposal` label was removed from #2544 on 2026-08-05T01:37:24Z
+    (the re-fire edge), and this amendment is the distribution the gate was waiting
+    for. The "steward recommendation on record (not a decision)" framing is also
+    superseded: option 2 is now a ratified decision, epic ledger **D11**.
+  - A1's "the ruling is **still pending** … the do-not-claim gate stands unchanged".
+  - Options **1** and **3** are closed. Option 3 (iterate to the fixed point) is
+    rejected on the documented cost of the primitive it would call, and A1 item 2's
+    finding sharpens why: the cursor path's background-click fallback is
+    `IRRender::getDefaultRotationPivotFocus()` (`cursor_pivot.hpp:66`), so an
+    N-readback loop inside the derive would be paid on every background click of a
+    cursor-pivot drag as well.
+- **Acceptance criteria** (superseding the stub's "a ruling is recorded … selecting
+  option 1, 2, or 3"), which is now the criteria list a worker implements against:
+  1. `RenderManager::updateDefaultRotationPivotFocus` re-derives on the first frame
+     of a yaw change — the rotation-start edge — in addition to the existing
+     pan/zoom key. **Symbol note carried forward from §"One correction to carry into
+     pickup": the function is `updateDefaultRotationPivotFocus`
+     (`render_manager.cpp:310`, declared `render_manager.hpp:136`), not the
+     `…Depth` name the issue body quotes.** That correction was verified on master
+     and #2659 touched no `render_manager` surface, so it still holds — re-verify
+     against current master before editing.
+  2. **No per-frame derive during a continuous rotation** — condition 1 above. The
+     implementation must show the derive fires once per rotation gesture, not once
+     per frame of it.
+  3. `docs/design/camera-yaw-pivot.md` states the amended contract (A) explicitly,
+     including that a yaw rotation alone **does** now re-derive, and names (a) and
+     (b) as resolved by it.
+  4. A regression guard that **moves the camera between derives**: pan (changing
+     the height under the crosshair), then rotate, then assert the depth was
+     re-derived at rotation start. The stub's second-rotation case
+     ("a second rotation from a non-zero yaw pivots about the depth of the content
+     actually under the crosshair") is the natural companion assertion.
+     `test/render/camera_pan_pivot_test.cpp` (added by #2585) remains the closest
+     existing vehicle; a `pivot-verify.py` block is the alternative, but note that
+     no existing block — including P4's `cursor-latch`, re-checked in A1 — moves
+     the camera between derives, so this is a **new** block either way.
+  5. Epic-scope: this criterion is also epic #2544's Finding **F3** and a stated
+     close-out condition of the ruling. Close-out cites the guard, not a green
+     sweep of the pre-existing blocks.
+- **By:** epic-steward — source: architect ruling
+  https://github.com/jakildev/IrredenEngine/issues/2544#issuecomment-5186529073
+  ("## Architect ruling — depth-latch update policy", 2026-08-05T01:37:22Z),
+  answering the 2026-08-01 STEWARD PROPOSAL
+  (issuecomment-5149886413); `fleet:steward-proposal` removed from #2544 at
+  2026-08-05T01:37:24Z (verified live in the issue timeline). Epic-side record:
+  `.fleet/plans/issue-2544.md` **D11** and **A7**.
