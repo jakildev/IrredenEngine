@@ -115,6 +115,20 @@ rm -f "$FLAG"   # simulate the next dispatch's start-of-run clear
 claim_run "$S" release-worktree pool-7 >/dev/null 2>&1
 assert_stamped "release-worktree alone stamps (resume-without-acquire case)"
 
+echo "T3b: each release arm stamps, not just the one T2/T3 happened to use"
+# Coverage gap this closes: T2/T3 drive `release-worktree`, and passing there
+# says nothing about `release` / `release-stack` — different case arms with
+# different cmd_* bodies, any of which could exit before reaching the stamp.
+# Both are driven on state they do NOT hold, which is also the weaker case: a
+# no-op release still stamps, so the arms are reached unconditionally.
+for arm in "release 999999" "release-stack no-such-agent"; do
+    S=$(mktemp -d "$TMPROOT/s.XXXXXX")
+    rm -f "$FLAG"
+    # shellcheck disable=SC2086
+    claim_run "$S" $arm >/dev/null 2>&1
+    assert_stamped "release arm stamps: $arm"
+done
+
 echo "T4: read-only arms do not stamp"
 S=$(mktemp -d "$TMPROOT/s.XXXXXX")
 for arm in "reservation-of pool-7" "list" "list-reservations" "worktree-for-task 4242"; do

@@ -4920,6 +4920,14 @@ _stamp_dispatch_outcome() {
 # a full task's work while acquiring nothing — it already held the lock from
 # the prior iteration — and would otherwise record empty.
 #
+# The release arms carry a coupling worth knowing before you edit a role's
+# shutdown sequence: they are productive signals only because a starved
+# iteration never reaches one. `role-worker.md` exits a no-pick at step 3,
+# well before step 12's `release-worktree`. Making any shutdown step
+# unconditional would stamp every no-pick as productive and quietly kill the
+# backoff a second time — the same defect this marker exists to fix, arriving
+# through a role doc instead of through a heuristic.
+#
 # Deliberately EXCLUDED, because they act on *other* agents' state and would
 # make a starved iteration look productive:
 #   cleanup   — the sanctioned zero-pick move, so this is the common case
