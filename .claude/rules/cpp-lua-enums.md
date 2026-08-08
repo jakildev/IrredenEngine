@@ -1,8 +1,8 @@
 ---
 paths:
   - "engine/script/**"
-  - "engine/**/*_lua.hpp"
-  - "engine/**/lua_*_bindings.hpp"
+  - "**/*_lua.hpp"
+  - "**/lua_*_bindings.hpp"
   - "creations/**/*.{hpp,cpp,h,cc}"
 ---
 
@@ -121,8 +121,8 @@ Why:
 ## Audit hooks
 
 Open-coded `if (s == "FOO") ... else if (s == "BAR") ...` chains in
-`engine/script/**`, `engine/**/*_lua.hpp`, or creation Lua-binding
-code are a smell. Replace them with the binding-table + enum-cast
+`engine/script/**`, any `*_lua.hpp` / `lua_*_bindings.hpp`, or creation
+Lua-binding code are a smell. Replace them with the binding-table + enum-cast
 pattern above when you touch the surrounding code. (`engine/script/**`,
 not just its `src/`: one of the deviations below lives under
 `engine/script/include/`.)
@@ -192,14 +192,26 @@ which is the whole reason the wide creations scope is justified, cannot fire.
 **It holds today** — the swept set is a strict subset of the injected set
 (81 ⊆ 141), because every binding header currently lives under
 `engine/script/include/irreden/script/`, which `engine/script/**` already
-injects. The frontmatter's `engine/**/lua_*_bindings.hpp` is **forward-looking,
-not remedial**: the hook's `**/lua_*_bindings.hpp` glob matches a binding header
-*anywhere* in the tree, so the first one placed outside `engine/script/` would
-be swept while `engine/script/**` + `engine/**/*_lua.hpp` failed to inject it.
-The entry closes that hole before it opens; it changes no counts today. Not
-widened to `engine/**/*.{hpp,cpp,h,cc}` (the sibling shape): that
-would inject a Lua-binding rule into every engine translation unit to reach a
-surface with a consistent, greppable spelling. The creations side needs the
+injects. The frontmatter's `**/*_lua.hpp` and `**/lua_*_bindings.hpp` are
+**forward-looking, not remedial**: those are the hook's own spellings, and they
+match a binding header *anywhere* in the tree, so the first one placed outside
+`engine/script/` would otherwise be swept without being injected. The entries
+close that hole before it opens; they change no counts today.
+
+**Mirror the hook's spelling, not a prefixed form of it.** These two entries
+were originally written `engine/**/…`, which closed the hole on one lane and
+left it open on every other — `test/` and `tools/` are populated top-level
+directories (two of the four search roots `irreden_collect_quality_files()`
+globs in `cmake/ir_quality_tools.cmake`), so a binding header landing in either
+was swept and never injected (#2905). A prefix added to a `**/` glob is a
+silent narrowing: it satisfies the invariant for the lane you were looking at
+and no other. When the hook says *anywhere*, `paths:` has to say *anywhere*
+too.
+
+Not widened to `engine/**/*.{hpp,cpp,h,cc}` (the sibling shape): that would
+inject a Lua-binding rule into every engine translation unit to reach a surface
+with a consistent, greppable spelling. The tree-wide entries above stay scoped
+by *filename*, which is what keeps them cheap. The creations side needs the
 blunt glob because creation binding files have no mandated name; the engine
 side does not.
 
@@ -213,10 +225,27 @@ fleet-rules-sweep --files-only --pattern '.' --glob 'engine/script/**' \
   --glob 'creations/**/lua_*.{hpp,cpp}' | sort > /tmp/detected
 # injected by paths:
 fleet-rules-sweep --files-only --pattern '.' --glob 'engine/script/**' \
-  --glob 'engine/**/*_lua.hpp' --glob 'engine/**/lua_*_bindings.hpp' \
+  --glob '**/*_lua.hpp' --glob '**/lua_*_bindings.hpp' \
   --glob 'creations/**/*.{hpp,cpp,h,cc}' | sort > /tmp/injected
 comm -23 /tmp/detected /tmp/injected      # must be empty (81 vs 141 today)
 ```
+
+An empty `comm -23` is only evidence if it *can* be non-empty — today every
+binding header sits under `engine/script/`, so the check passes on a tree that
+exercises nothing. Drive it with probes outside the previously-covered lanes
+before trusting it:
+
+```
+printf '// probe\n' > test/lua_probe_bindings.hpp
+printf '// probe\n' > tools/lua_probe2_bindings.hpp
+# re-run both commands above, then:
+comm -23 /tmp/detected /tmp/injected      # still empty: 83 detected, 143 injected
+rm -f test/lua_probe_bindings.hpp tools/lua_probe2_bindings.hpp
+```
+
+Against the pre-#2905 `engine/**`-prefixed frontmatter the same probes come
+back in `comm -23` (detected 81 → 83, injected unmoved at 141), which is what
+makes this a control rather than a re-run.
 
 A creation's `main*.cpp` is deliberately **not** in scope, `main_lua.cpp`
 included — its string compares are CLI-argv parses (three in
