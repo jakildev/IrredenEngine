@@ -1,13 +1,16 @@
 """Tests for degraded-fetch handling in fleet-state-scout.
 
 Covers: failed fetch → last-known-good preserved + degraded marker;
-clean empty fetch → not degraded; no-previous-state first-run fallback.
+clean empty fetch → not degraded; no-previous-state first-run fallback;
+and the degraded SKIP in the two scout-spawned lanes leaving the projection
+edge intact (#2965).
 """
 import importlib.machinery
 import importlib.util
 import json
 import tempfile
 import unittest
+from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import patch
 
@@ -182,6 +185,126 @@ class TestScoutDegradedFetch(unittest.TestCase):
                 state = collect_state()
 
         self.assertNotIn("degraded", state)
+
+
+class TestDegradedSkipPreservesEdge(unittest.TestCase):
+    """#2965: the degraded skip must NOT consume the projection edge.
+
+    `queue-manager` (claim-cleanup) and `queue-manager-ingest` inline their own
+    hash compare instead of routing through update_role_trigger, precisely
+    because they are edge-triggered with no re-arm. Recording the seen-hash
+    before the degraded check therefore dropped the work permanently: the next
+    tick compared equal and skipped. Observed live as an agent-approved issue
+    left unqueued for 8h14m after a single degraded tick.
+    """
+
+    def _tick(self, tmp, projection, degraded, spawns):
+        """Run one tick_once() against a hermetic state dir.
+
+        `spawns` accumulates each subprocess.Popen argv so a caller can count
+        real spawns per lane. Returns nothing — assertions read `spawns` and
+        the seen-hash files under tmp.
+        """
+        state = {"generated_at": "2026-08-08T00:00:00Z", "repos": {}}
+        if degraded:
+            state["degraded"] = ["engine.tasks"]
+        # write_atomic keeps its temp beside the target, so every directory it
+        # writes into has to exist (production creates these at startup).
+        for sub in ("seen-hashes", "triggers", "projections"):
+            (Path(tmp) / sub).mkdir(exist_ok=True)
+
+        def _popen(argv, *a, **kw):
+            spawns.append(argv)
+            return None
+
+        # Both lanes are keyed on role name, so a two-entry PROJECTORS dict
+        # exercises exactly the branches under test and nothing else.
+        projectors = {
+            "queue-manager": lambda _s: projection,
+            "queue-manager-ingest": lambda _s: projection,
+        }
+        with ExitStack() as es:
+            p = es.enter_context
+            p(patch.object(_mod, "STATE_FILE", Path(tmp) / "state.json"))
+            p(patch.object(_mod, "SEEN_DIR", Path(tmp) / "seen-hashes"))
+            p(patch.object(_mod, "TRIGGERS_DIR", Path(tmp) / "triggers"))
+            p(patch.object(_mod, "PROJECTIONS_DIR", Path(tmp) / "projections"))
+            p(patch.object(_mod, "PROJECTORS", projectors))
+            p(patch.object(_mod, "SLICERS", {}))
+            p(patch.object(_mod, "GAME", Path(tmp) / "no-game"))
+            p(patch.object(_mod, "build_state", return_value=(state, False)))
+            p(patch.object(_mod.subprocess, "Popen", _popen))
+            for fn in ("_refresh_gh_token", "sample_github_rate_limit",
+                       "refresh_all_details", "_populate_done_tasks",
+                       "_populate_review_plan", "resolve_blocked_by",
+                       "resolve_human_approved_blockers",
+                       "resolve_needs_plan_blocked_by", "resolve_epic_children",
+                       "enrich_inflight_pr_tasks", "enrich_stackable_blocker_prs",
+                       "log"):
+                p(patch.object(_mod, fn))
+            _mod.tick_once()
+
+    @staticmethod
+    def _ingest_spawns(spawns):
+        return [a for a in spawns if any("fleet-queue-ingest" in str(x) for x in a)]
+
+    @staticmethod
+    def _cleanup_spawns(spawns):
+        # One claim-cleanup firing spawns several fleet-claim commands (cleanup
+        # --gh per repo + one reconcile); `reconcile` appears exactly once per
+        # firing, so it — not the fleet-claim count — is the per-tick unit.
+        return [a for a in spawns if any("reconcile" in str(x) for x in a)]
+
+    def _seen(self, tmp, role):
+        f = Path(tmp) / "seen-hashes" / role
+        return f.read_text().strip() if f.exists() else None
+
+    def test_degraded_skip_spawns_nothing_and_leaves_hash_unwritten(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            spawns = []
+            self._tick(tmp, ["issue-1"], degraded=True, spawns=spawns)
+
+            self.assertEqual(self._ingest_spawns(spawns), [])
+            self.assertEqual(self._cleanup_spawns(spawns), [])
+            # The edge must still be pending — an unwritten hash is what makes
+            # the next clean tick re-fire.
+            self.assertIsNone(self._seen(tmp, "queue-manager-ingest"))
+            self.assertIsNone(self._seen(tmp, "queue-manager"))
+
+    def test_edge_survives_degraded_tick_and_fires_on_recovery(self):
+        """The regression: SAME projection, degraded then clean → still fires."""
+        with tempfile.TemporaryDirectory() as tmp:
+            spawns = []
+            self._tick(tmp, ["issue-1"], degraded=True, spawns=spawns)
+            self.assertEqual(self._ingest_spawns(spawns), [])
+
+            self._tick(tmp, ["issue-1"], degraded=False, spawns=spawns)
+            self.assertEqual(len(self._ingest_spawns(spawns)), 1)
+            self.assertEqual(len(self._cleanup_spawns(spawns)), 1)
+            self.assertIsNotNone(self._seen(tmp, "queue-manager-ingest"))
+
+    def test_clean_change_spawns_and_writes_hash(self):
+        """Control: the non-degraded path is unchanged."""
+        with tempfile.TemporaryDirectory() as tmp:
+            spawns = []
+            self._tick(tmp, ["issue-1"], degraded=False, spawns=spawns)
+
+            self.assertEqual(len(self._ingest_spawns(spawns)), 1)
+            self.assertIsNotNone(self._seen(tmp, "queue-manager-ingest"))
+            # Unchanged projection on the next tick must NOT re-fire.
+            self._tick(tmp, ["issue-1"], degraded=False, spawns=spawns)
+            self.assertEqual(len(self._ingest_spawns(spawns)), 1)
+
+    def test_persistent_degradation_yields_exactly_one_spawn_on_recovery(self):
+        """N degraded ticks spawn nothing; recovery spawns once, not N times."""
+        with tempfile.TemporaryDirectory() as tmp:
+            spawns = []
+            for _ in range(3):
+                self._tick(tmp, ["issue-1"], degraded=True, spawns=spawns)
+            self.assertEqual(self._ingest_spawns(spawns), [])
+
+            self._tick(tmp, ["issue-1"], degraded=False, spawns=spawns)
+            self.assertEqual(len(self._ingest_spawns(spawns)), 1)
 
 
 if __name__ == "__main__":

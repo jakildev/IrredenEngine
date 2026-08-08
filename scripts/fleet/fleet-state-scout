@@ -3050,14 +3050,22 @@ def tick_once():
             except FileNotFoundError:
                 old_hash = ""
             if new_hash != old_hash:
-                write_atomic(seen_file, new_hash + "\n")
                 if state.get("degraded"):
                     # Skip reconcile/cleanup when fetch data is stale — comparing
                     # live claims against a potentially incomplete issue list would
                     # produce false-positive drift reports or unsafe auto-fixes.
+                    #
+                    # Leave the seen-hash UNWRITTEN. This lane and the ingest lane
+                    # below inline their own hash compare precisely because they
+                    # are edge-triggered with no re-arm (update_role_trigger's
+                    # docstring names the contract), so recording the hash here
+                    # would consume the edge and drop this sweep permanently — the
+                    # next tick compares equal and skips, however healthy the
+                    # freshly-stamped seen-hash looks (#2965).
                     log("queue-manager: skipping reconcile+cleanup (state degraded)")
                     triggers_fired.append("queue-manager(skipped-degraded)")
                     continue
+                write_atomic(seen_file, new_hash + "\n")
                 # cleanup --gh is GLOBAL stale-label reaping — run it only on
                 # the authoritative poller (leader, or a follower currently
                 # self-polling), else every follower re-multiplies the very
@@ -3113,11 +3121,15 @@ def tick_once():
             except FileNotFoundError:
                 old_hash = ""
             if new_hash != old_hash:
-                write_atomic(seen_file, new_hash + "\n")
                 if state.get("degraded"):
+                    # Seen-hash stays unwritten so the change survives the skip —
+                    # same edge-triggered no-rearm contract as the queue-manager
+                    # lane above; consuming it here strands the issue unqueued
+                    # for good (#2965).
                     log("queue-manager-ingest: skipping fleet-queue-ingest (state degraded)")
                     triggers_fired.append("queue-manager-ingest(skipped-degraded)")
                     continue
+                write_atomic(seen_file, new_hash + "\n")
                 try:
                     subprocess.Popen(
                         _fleet_script_argv(["fleet-queue-ingest"]),
