@@ -89,8 +89,32 @@ deferred API:
 - `stageStructuralChange(fn)` — queue an arbitrary `void()` mutation (the
   non-templated staging entry point the Lua `IREntity.deferredCreate` binding
   uses to marshal runtime-typed component attachment).
+- `destroyEntity(id)` — **the `IREntity::` free function** (not the eager
+  `EntityManager::` method of the same name): delegates to
+  `markEntityForDeletion`, so the entity stays fully live until
+  `destroyMarkedEntities` drains the mark list. See the note below.
 - `flushStructuralChanges()` — apply queued changes at a safe point (the
   frame boundary in most pipelines).
+
+> **`destroyEntity` names two functions with opposite timing.** The bare
+> spelling resolves to whichever one is in scope, so decide deliberately:
+>
+> | Spelling | Timing | Callable from |
+> |---|---|---|
+> | `IREntity::destroyEntity(id)` — free function | **Deferred.** Delegates to `markEntityForDeletion`; the entity is only *marked*, and stays fully queryable until `destroyMarkedEntities` runs | main thread or a `PARALLEL_FOR` worker (routes to the caller's staging slot) |
+> | `IREntity::getEntityManager().destroyEntity(id)` — manager method | **Eager.** Tears the entity down in place; runs the pre-destroy hooks and asserts on a dead id | main thread only |
+>
+> Creations reach the engine through the `ir_*.hpp` entry points
+> (`engine/CLAUDE.md` §"Module include discipline"), so the one a creation
+> writes is the **deferred** free function. Probing the id in the same tick
+> therefore still reports it alive — `entityExists` `true`, `hasComponent`
+> `true`, `getComponentOptional` returning a value. That is the
+> marked-but-not-yet-drained state working as designed, not the stale-record
+> corruption described in §"Record lookup". When the entity must be gone before
+> the next statement, call the manager method explicitly.
+>
+> Unqualified `destroyEntity` elsewhere in this file means the eager manager
+> method.
 
 ### Per-worker buffers + thread safety (T-225)
 
@@ -135,7 +159,10 @@ misuse only in debug builds):
 - `setComponent<C>(id, value)` — use `setComponentDeferred` instead
 - `removeComponent<C>(id)` — use `removeComponentDeferred` instead
 - `removeComponentById(id, componentId)`
-- `destroyEntity(id)` — use `markEntityForDeletion` instead
+- `EntityManager::destroyEntity(id)` — the **eager** teardown. Use
+  `markEntityForDeletion`, or the `IREntity::destroyEntity` free function that
+  wraps it, instead. Note the two spellings differ in semantics, not just in
+  reachability — see §"Deferred structural changes"
 - `setComponents(id, ...)` (multi-component overloads)
 - `insertNewComponent<C>(id, value)`
 - `createEntityBatch(...)` / `createEntitiesBatch(...)` — batch paths do not
