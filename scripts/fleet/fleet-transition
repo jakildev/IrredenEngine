@@ -97,7 +97,7 @@ while [[ $# -gt 0 ]]; do
             repo_slug="${1#--repo=}"; shift ;;
         --dry-run) dry_run=1; shift ;;
         -h|--help)
-            sed -n '2,44p' "$0" | sed 's/^# \{0,1\}//'
+            awk 'NR==1 {next} /^#/ {print; next} {exit}' "$0" | sed 's/^# \{0,1\}//'
             exit 0 ;;
         --) shift; break ;;
         -*)

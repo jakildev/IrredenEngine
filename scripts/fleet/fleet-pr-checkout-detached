@@ -58,7 +58,7 @@ fi
 # pr-number (and rejected by the integer check below).
 case "$1" in
     -h|--help)
-        sed -n '2,52p' "$0" | sed 's/^# \{0,1\}//'
+        awk 'NR==1 {next} /^#/ {print; next} {exit}' "$0" | sed 's/^# \{0,1\}//'
         exit 0
         ;;
 esac
