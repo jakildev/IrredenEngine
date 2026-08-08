@@ -39,8 +39,11 @@
 //
 // Mode is mutable at runtime via `IRPrefab::RotationMode::setMode`
 // (in `engine/prefabs/irreden/common/rotation_mode.hpp`) at a
-// re-allocation cost — switching to DETACHED allocates a new entity
-// canvas; switching to GRID destroys it. Don't mutate `mode_`
+// re-allocation cost — switching to a canvas-owning mode allocates a new
+// entity canvas; switching to GRID destroys it. DETACHED and
+// DETACHED_REVOXELIZE are one family for this purpose (the predicate is
+// `IRPrefab::RotationMode::ownsEntityCanvas`), so swapping between them
+// keeps the canvas rather than churning it. Don't mutate `mode_`
 // directly; the helper keeps `C_EntityCanvas` in sync.
 
 #include <cstdint>
