@@ -4,6 +4,7 @@
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_constants.hpp>
 
+#include <irreden/common/components/entity_anchor.hpp>
 #include <irreden/voxel/components/component_voxel.hpp>
 #include <irreden/voxel/face_occupancy.hpp>
 #include <irreden/voxel/voxel_pool_api.hpp>
@@ -24,6 +25,18 @@ namespace IRComponents {
 struct C_VoxelSetNew {
     int numVoxels_;
     ivec3 size_;
+
+    // How this set's geometry attaches to the entity's translation (#2563).
+    // The offset it implies is BAKED into `positions_` at construction, so the
+    // rasterize / render / cull / occupancy / picking paths all consume it
+    // through those positions and need no anchor branch. It is stored anyway
+    // because a baked-and-discarded mode is unobservable: sites that
+    // reconstruct the body's center from `size_` (deformation pivots, particle
+    // emission) must ask `anchorLocalCenter(anchor_, size_)` instead of
+    // assuming a convention, and the serializer needs it to rebuild GROUND's
+    // half-integer origin, which an `ivec3` boundsMin cannot represent.
+    EntityAnchor anchor_ = EntityAnchor::CORNER;
+
     IREntity::EntityId canvasEntity_ = IREntity::kNullEntity;
     // TODO: Evaulate if we should store here or somewhere else.
     IREntity::EntityId ownerEntityId_ = IREntity::kNullEntity;
@@ -107,12 +120,20 @@ struct C_VoxelSetNew {
     // entity's per-entity canvas to render this set into that canvas.
     C_VoxelSetNew(
         ivec3 size,
-        Color color = IRColors::kGreen,
-        bool centerAroundOrigin = false,
+        Color color,
+        EntityAnchor anchor,
         IREntity::EntityId targetCanvas = IREntity::kNullEntity
     )
         : numVoxels_{size.x * size.y * size.z}
-        , size_{size} {
+        , size_{size}
+        , anchor_{anchor} {
+        // The usertype ctor path binds this overload directly and bypasses the
+        // schema range-check `prefab_api.cpp` applies to enum-typed prefab
+        // fields, so validate here — it covers the C++ and Lua callers alike.
+        IR_ASSERT(
+            anchor >= EntityAnchor::kFirst && anchor <= EntityAnchor::kLast,
+            "C_VoxelSetNew: EntityAnchor out of range"
+        );
         const int requestedVoxels = size.x * size.y * size.z;
         canvasEntity_ = targetCanvas != IREntity::kNullEntity
                             ? targetCanvas
@@ -156,9 +177,7 @@ struct C_VoxelSetNew {
             return;
         }
 
-        vec3 offset = centerAroundOrigin
-                          ? vec3(-(size.x - 1) * 0.5f, -(size.y - 1) * 0.5f, -(size.z - 1) * 0.5f)
-                          : vec3(0.0f);
+        vec3 offset = anchorOffset(anchor, size);
         for (int x = 0; x < size.x; x++) {
             for (int y = 0; y < size.y; y++) {
                 for (int z = 0; z < size.z; z++) {
@@ -180,6 +199,24 @@ struct C_VoxelSetNew {
         IRPrefab::Voxel::recomputeFaceOccupancy(voxels_, size_);
         IRE_LOG_DEBUG("Allocated {} voxel(s)", numVoxels_);
     }
+
+    // Back-compat sugar for the two legacy anchors. Kept as its own overload
+    // rather than a defaulted `EntityAnchor` parameter so the 78 in-tree
+    // `centerAroundOrigin` call sites keep compiling unchanged, and so
+    // `C_VoxelSetNew(size, color)` stays unambiguous — which is why the enum
+    // overload above deliberately does NOT default its anchor.
+    C_VoxelSetNew(
+        ivec3 size,
+        Color color = IRColors::kGreen,
+        bool centerAroundOrigin = false,
+        IREntity::EntityId targetCanvas = IREntity::kNullEntity
+    )
+        : C_VoxelSetNew(
+              size,
+              color,
+              centerAroundOrigin ? EntityAnchor::CENTER : EntityAnchor::CORNER,
+              targetCanvas
+          ) {}
 
     C_VoxelSetNew(int width, int height, int depth)
         : C_VoxelSetNew(ivec3(width, height, depth)) {}
@@ -213,10 +250,12 @@ struct C_VoxelSetNew {
         ivec3 size,
         ivec3 boundsMin,
         std::vector<C_Voxel> voxels,
-        IREntity::EntityId canvasEntity
+        IREntity::EntityId canvasEntity,
+        EntityAnchor anchor = EntityAnchor::CORNER
     )
         : numVoxels_{0}
         , size_{size}
+        , anchor_{anchor}
         , canvasEntity_{canvasEntity}
         , pendingVoxels_{std::move(voxels)}
         , pendingBoundsMin_{boundsMin} {}
@@ -257,7 +296,9 @@ struct C_VoxelSetNew {
             return;
         }
 
-        seedIntoPool(boundsMin, voxels, canvasEntity_);
+        // Dense-authored content is CORNER by construction — its origin IS the
+        // authored boundsMin — so the integer origin is exact here.
+        seedIntoPool(vec3(boundsMin), voxels, canvasEntity_);
         IRE_LOG_DEBUG("Allocated {} dense voxel(s) from voxel_ref", numVoxels_);
     }
 
@@ -596,7 +637,7 @@ struct C_VoxelSetNew {
         // corrupt render.
         std::vector<C_Voxel> staged = std::move(pendingVoxels_);
         pendingVoxels_.clear();
-        seedIntoPool(pendingBoundsMin_, staged, target);
+        seedIntoPool(stagedOrigin(), staged, target);
         if (numVoxels_ > 0) {
             IRPrefab::VoxelPool::queuePositionRange(
                 voxelStartIdx_,
@@ -606,19 +647,34 @@ struct C_VoxelSetNew {
         }
     }
 
+    // Local origin a staged set seeds at. CORNER keeps the authored integer
+    // `pendingBoundsMin_`; any other anchor derives its origin from the mode,
+    // because that origin is half-integer and `pendingBoundsMin_` is an
+    // `ivec3` that cannot carry it (#2563). Deriving is also strictly more
+    // robust than trusting a recovered origin: the anchor fixes the local
+    // layout by construction, so it survives a save taken while
+    // REBUILD_GRID_VOXELS has the span in a re-voxelized arrangement.
+    vec3 stagedOrigin() const {
+        return anchor_ == EntityAnchor::CORNER ? vec3(pendingBoundsMin_)
+                                               : anchorOffset(anchor_, size_);
+    }
+
     // int addVoxelSceneNode
 
   private:
     // Allocate a pool span on @p canvas and seed it from the dense box @p src
     // (row-major over `size_`), placing each local voxel position at
-    // `boundsMin + index`. Captures the four pool spans, resyncs the pool
+    // `origin + index`. @p origin is a `vec3`, not the authored `ivec3`
+    // boundsMin, because a non-CORNER anchor's local origin is half-integer
+    // (always so for GROUND, and on even axes for CENTER) — an integer origin
+    // cannot express it (#2563). Captures the four pool spans, resyncs the pool
     // active-mask from per-voxel alpha, and recomputes face occupancy — leaving
     // the set pool-resident (`numVoxels_ > 0`), or empty (`numVoxels_ == 0`) on
     // an allocation mismatch. `size_` must already be set and
     // `src.size() == product(size_)`. Shared by the dense-data ctor and the
     // post-load `attachToCanvas` seed pass (#2217, W-10) so the allocate +
     // seed + resync sequence lives in exactly one place.
-    void seedIntoPool(ivec3 boundsMin, std::span<const C_Voxel> src, IREntity::EntityId canvas) {
+    void seedIntoPool(vec3 origin, std::span<const C_Voxel> src, IREntity::EntityId canvas) {
         canvasEntity_ = canvas;
         const ivec3 extent = size_;
         const std::size_t requestedVoxels = src.size();
@@ -658,7 +714,7 @@ struct C_VoxelSetNew {
             return;
         }
 
-        const vec3 originOffset{boundsMin};
+        const vec3 originOffset{origin};
         for (int x = 0; x < extent.x; ++x) {
             for (int y = 0; y < extent.y; ++y) {
                 for (int z = 0; z < extent.z; ++z) {

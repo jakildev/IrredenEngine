@@ -37,7 +37,11 @@ template <> struct System<VOXEL_SQUASH_STRETCH> {
                 }
 
                 const float dt = IRTime::deltaTime(IRTime::UPDATE);
-                const vec3 blockCenter = (vec3(voxelSet.size_) - vec3(1.0f)) * 0.5f;
+                // The deformation pivot is the body's center in LOCAL space,
+                // which depends on where the anchor put the local origin
+                // (#2563). The old `(size - 1) * 0.5` spelling hard-coded the
+                // CORNER answer and was already wrong for a CENTER set.
+                const vec3 blockCenter = anchorLocalCenter(voxelSet.anchor_, voxelSet.size_);
 
                 const float speed = length(velocity.velocity_);
                 vec3 velDir =

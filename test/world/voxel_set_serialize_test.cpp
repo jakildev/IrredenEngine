@@ -228,3 +228,162 @@ TEST(VoxelSetSerialize, TruncatedReadFails) {
     IRAsset::Result<C_VoxelSetNew> res = SaveSerialize<C_VoxelSetNew>::read(reader);
     EXPECT_FALSE(res.ok());
 }
+
+// ---------------------------------------------------------------------------
+// EntityAnchor persistence — v2 (#2563)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// A v1 record: the pre-#2563 layout, i.e. everything except the anchor byte.
+// Hand-built rather than produced by an old writer, because the v1 writer no
+// longer exists — this IS the on-disk shape the migrator must accept.
+std::vector<std::uint8_t> makeV1Payload(
+    IRMath::ivec3 size,
+    IRMath::ivec3 boundsMin,
+    IREntity::EntityId canvas,
+    const std::vector<C_Voxel> &voxels
+) {
+    IRAsset::MemoryBinaryWriter w;
+    w.writeI32(size.x);
+    w.writeI32(size.y);
+    w.writeI32(size.z);
+    w.writeI32(boundsMin.x);
+    w.writeI32(boundsMin.y);
+    w.writeI32(boundsMin.z);
+    w.writeU64(static_cast<std::uint64_t>(canvas));
+    // no anchor byte here — that is the whole point
+    w.writeVarUInt(voxels.size());
+    for (const C_Voxel &voxel : voxels) {
+        w.writeBytes(&voxel, sizeof(C_Voxel));
+    }
+    return w.buffer();
+}
+
+} // namespace
+
+// The anchor survives the round trip, and — the load-bearing half — the
+// reconstructed set's local ORIGIN comes back exactly, which `boundsMin`
+// alone cannot express: GROUND's z origin is half-integer for every size.
+TEST(VoxelSetSerialize, GroundAnchorRoundTripsIncludingItsFractionalOrigin) {
+    const IRMath::ivec3 size{2, 2, 3};
+    const IRMath::ivec3 boundsMin{0, 0, 0};
+    const std::vector<C_Voxel> voxels = makeVoxels(size.x * size.y * size.z);
+
+    C_VoxelSetNew
+        set{C_VoxelSetNew::StagedInit{}, size, boundsMin, voxels, 77, EntityAnchor::GROUND};
+    ASSERT_EQ(set.anchor_, EntityAnchor::GROUND);
+
+    IRAsset::Result<C_VoxelSetNew> res;
+    const C_VoxelSetNew out = serializeThenRead(set, res);
+    ASSERT_TRUE(res.ok());
+
+    EXPECT_EQ(out.anchor_, EntityAnchor::GROUND);
+    // The origin the post-load seed pass will place voxel (0,0,0) at.
+    const IRMath::vec3 origin = out.stagedOrigin();
+    const IRMath::vec3 expected = anchorOffset(EntityAnchor::GROUND, size);
+    EXPECT_FLOAT_EQ(origin.x, expected.x);
+    EXPECT_FLOAT_EQ(origin.y, expected.y);
+    EXPECT_FLOAT_EQ(origin.z, expected.z);
+    // Concretely: half-integer in z, which the ivec3 boundsMin cannot hold.
+    EXPECT_FLOAT_EQ(origin.z, -2.5f);
+}
+
+// CORNER is the anchor whose origin IS boundsMin, so it must keep reading
+// through boundsMin rather than through the mode — otherwise every
+// dense-authored set would silently move to the origin on load.
+TEST(VoxelSetSerialize, CornerAnchorStillSeedsFromBoundsMin) {
+    const IRMath::ivec3 size{2, 1, 3};
+    const IRMath::ivec3 boundsMin{-4, 7, 2};
+    const std::vector<C_Voxel> voxels = makeVoxels(6);
+
+    C_VoxelSetNew set{C_VoxelSetNew::StagedInit{}, size, boundsMin, voxels, 5};
+    IRAsset::Result<C_VoxelSetNew> res;
+    const C_VoxelSetNew out = serializeThenRead(set, res);
+    ASSERT_TRUE(res.ok());
+
+    EXPECT_EQ(out.anchor_, EntityAnchor::CORNER);
+    const IRMath::vec3 origin = out.stagedOrigin();
+    EXPECT_FLOAT_EQ(origin.x, static_cast<float>(boundsMin.x));
+    EXPECT_FLOAT_EQ(origin.y, static_cast<float>(boundsMin.y));
+    EXPECT_FLOAT_EQ(origin.z, static_cast<float>(boundsMin.z));
+}
+
+// A v1 record has no anchor byte. The migrator must read the shorter layout
+// and default to CORNER — reading v1 bytes at the v2 layout would consume the
+// first voxel record's leading byte as the anchor and shear every record.
+TEST(VoxelSetSerialize, V1MigratorReadsPreAnchorLayoutAsCorner) {
+    const IRMath::ivec3 size{2, 1, 3};
+    const IRMath::ivec3 boundsMin{-4, 7, 2};
+    const std::vector<C_Voxel> voxels = makeVoxels(6);
+    const std::vector<std::uint8_t> payload = makeV1Payload(size, boundsMin, 12345, voxels);
+
+    const auto migrators = IRWorld::SaveMigration<C_VoxelSetNew>::migrators();
+    ASSERT_EQ(migrators.size(), 1u);
+    ASSERT_EQ(migrators[0].first, 1u);
+
+    IRAsset::MemoryBinaryReader reader(payload.data(), payload.size(), "v1");
+    IRAsset::Result<C_VoxelSetNew> res = migrators[0].second(reader);
+    ASSERT_TRUE(res.ok());
+
+    const C_VoxelSetNew &out = res.value_;
+    EXPECT_EQ(out.anchor_, EntityAnchor::CORNER);
+    EXPECT_EQ(out.pendingBoundsMin_.x, boundsMin.x);
+    EXPECT_EQ(out.pendingBoundsMin_.z, boundsMin.z);
+    ASSERT_EQ(out.pendingVoxels_.size(), voxels.size());
+    // Byte-exact records prove the field stream did not shear by one byte.
+    for (std::size_t i = 0; i < voxels.size(); ++i) {
+        EXPECT_EQ(0, std::memcmp(&out.pendingVoxels_[i], &voxels[i], sizeof(C_Voxel)))
+            << "voxel record " << i << " sheared";
+    }
+}
+
+// Discrimination check for the test above: the SAME v1 bytes read at the
+// CURRENT layout must NOT come back clean. Without this, the migrator test
+// would pass even if v1 and v2 happened to be compatible.
+TEST(VoxelSetSerialize, V1BytesReadAtCurrentLayoutDoNotRoundTrip) {
+    const IRMath::ivec3 size{2, 1, 3};
+    const std::vector<C_Voxel> voxels = makeVoxels(6);
+    const std::vector<std::uint8_t> payload =
+        makeV1Payload(size, IRMath::ivec3{-4, 7, 2}, 12345, voxels);
+
+    IRAsset::MemoryBinaryReader reader(payload.data(), payload.size(), "v1-at-v2");
+    IRAsset::Result<C_VoxelSetNew> res = SaveSerialize<C_VoxelSetNew>::read(reader);
+
+    // Either the read fails outright, or it "succeeds" with sheared records.
+    // Both are the wrong answer; what must NOT happen is a faithful decode.
+    bool faithful = res.ok() && res.value_.pendingVoxels_.size() == voxels.size();
+    if (faithful) {
+        for (std::size_t i = 0; i < voxels.size(); ++i) {
+            if (std::memcmp(&res.value_.pendingVoxels_[i], &voxels[i], sizeof(C_Voxel)) != 0) {
+                faithful = false;
+                break;
+            }
+        }
+    }
+    EXPECT_FALSE(
+        faithful
+    ) << "v1 bytes decoded cleanly at the v2 layout — the migrator test proves nothing";
+}
+
+// A corrupt / newer-writer anchor byte must fail the load rather than falling
+// through anchorOffset's switch and silently placing the set at CORNER.
+TEST(VoxelSetSerialize, OutOfRangeAnchorByteFailsTheRead) {
+    const IRMath::ivec3 size{1, 1, 1};
+    const std::vector<C_Voxel> voxels = makeVoxels(1);
+    C_VoxelSetNew set{C_VoxelSetNew::StagedInit{}, size, IRMath::ivec3{0, 0, 0}, voxels, 1};
+
+    IRAsset::MemoryBinaryWriter writer;
+    SaveSerialize<C_VoxelSetNew>::write(writer, set);
+    std::vector<std::uint8_t> bytes = writer.buffer();
+
+    // The anchor byte sits right after 6 x i32 + 1 x u64.
+    constexpr std::size_t kAnchorOffset = 6u * sizeof(std::int32_t) + sizeof(std::uint64_t);
+    ASSERT_GT(bytes.size(), kAnchorOffset);
+    ASSERT_EQ(bytes[kAnchorOffset], static_cast<std::uint8_t>(EntityAnchor::CORNER));
+    bytes[kAnchorOffset] = static_cast<std::uint8_t>(0xEE);
+
+    IRAsset::MemoryBinaryReader reader(bytes.data(), bytes.size(), "bad-anchor");
+    IRAsset::Result<C_VoxelSetNew> res = SaveSerialize<C_VoxelSetNew>::read(reader);
+    EXPECT_FALSE(res.ok());
+}

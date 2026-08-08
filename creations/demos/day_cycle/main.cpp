@@ -232,16 +232,33 @@ void initEntities() {
     IRRender::setAOEnabled(true);
 
     // A flat floor for shadows to fall on, plus a few solid cubes to cast them.
+    // Named so the GROUND exemplar below can derive its stance from the floor
+    // rather than hard-coding a magic z.
+    constexpr float kFloorCenterZ = 6.0f;
+    constexpr int kFloorThicknessZ = 2;
+    // The floor is CENTER-anchored, so its body straddles its translation:
+    // cells span kFloorCenterZ +/- thickness/2. Iso +Z is down, so the TOP
+    // surface a standing entity rests on is the most-negative end.
+    constexpr float kFloorTopSurfaceZ = kFloorCenterZ - kFloorThicknessZ * 0.5f;
+
     IREntity::createEntity(
-        C_LocalTransform{vec3{0.0f, 0.0f, 6.0f}},
-        C_VoxelSetNew{IRMath::ivec3{48, 48, 2}, IRMath::Color{140, 140, 150, 255}, true}
+        C_LocalTransform{vec3{0.0f, 0.0f, kFloorCenterZ}},
+        C_VoxelSetNew{
+            IRMath::ivec3{48, 48, kFloorThicknessZ},
+            IRMath::Color{140, 140, 150, 255},
+            true
+        }
     );
     const IRMath::Color cubeColors[] = {
         IRMath::Color{200, 120, 90, 255},
         IRMath::Color{110, 190, 210, 255},
         IRMath::Color{210, 200, 110, 255},
     };
-    for (int i = 0; i < 3; ++i) {
+    // Controls: authored exactly as before this change — CENTER-anchored at
+    // z = -4, so their 12-tall bodies span z in [-10, 2] and hang 3 units
+    // clear of the floor's top face. Their transforms are untouched, which is
+    // what makes the exemplar's difference attributable.
+    for (int i : {0, 2}) {
         IREntity::createEntity(
             C_LocalTransform{
                 vec3{static_cast<float>(i * 12 - 12), static_cast<float>(i * 8 - 8), -4.0f}
@@ -249,6 +266,16 @@ void initEntities() {
             C_VoxelSetNew{IRMath::ivec3{6, 6, 12}, cubeColors[i], true}
         );
     }
+    // GROUND exemplar (#2563). Its translation IS the floor's top surface, with
+    // no half-height term: a GROUND-anchored body's ground-contact face sits
+    // exactly at translation.z for every size, so "stand this on the floor"
+    // is spelled `translation.z = kFloorTopSurfaceZ` and nothing else. The two
+    // control cubes above still carry the hand-computed z the CENTER anchor
+    // forces, and still float — that gap is the demonstration.
+    IREntity::createEntity(
+        C_LocalTransform{vec3{0.0f, 0.0f, kFloorTopSurfaceZ}},
+        C_VoxelSetNew{IRMath::ivec3{6, 6, 12}, cubeColors[1], EntityAnchor::GROUND}
+    );
 
     // Materialize the sim clock singleton, then the generic day cycle + a
     // quarter-day recurring timer. cycleFraction("day") starts at 0.5 (noon)

@@ -52,6 +52,55 @@ for single voxels and particles.
   `simplify-check-ecs` flags a hand-rolled `voxels_[i].activate()/.deactivate()`
   carve loop followed by `syncActiveMask()`/`recomputeFaceOccupancy()` and
   steers toward the API.
+### Entity anchor: where geometry attaches to the position (#2563)
+
+`C_VoxelSetNew::anchor_` (`IRComponents::EntityAnchor`, declared in
+`common/components/entity_anchor.hpp`) selects the offset baked into the
+set's local voxel positions at construction:
+
+| Mode | Local origin | Use |
+|---|---|---|
+| `CORNER` | `(0,0,0)` — translation is the min corner | legacy default; terrain-like / corner-authored content |
+| `CENTER` | `-(size-1)*0.5` per axis | legacy `centerAroundOrigin = true` |
+| `GROUND` | center XY, `-(size.z - 0.5)` in z | **new discrete-entity prefabs** |
+
+**The convention: a discrete entity's position is its GROUND anchor** — the
+center of its footprint in XY and the bottom of its body in Z (iso +Z is
+down). A GROUND entity at `translation.z == floorSurfaceZ` stands flush on
+that floor at every size, so fog reveal, perception ranges, arrival radii,
+spawn placement, and UI attachment all read the entity position directly
+with no per-consumer half-height offset. Adoption is per-prefab opt-in;
+flipping existing content is a deliberate change, never implicit.
+
+Because the offset is **baked into `positions_`**, the rasterize / render /
+cull / occupancy / picking paths consume the anchor for free and need no
+branch. The exception is any site that reconstructs the body's CENTER from
+`size_` — those must call `anchorLocalCenter(anchor_, size_)` rather than
+assume `(size-1)*0.5` (which is the CORNER answer). `VOXEL_SQUASH_STRETCH`
+and `CONTACT_NOTE_BURST` are the migrated examples.
+
+Two things GROUND does **not** yet reach: the detached-canvas path
+(`DETACHED_REVOXELIZE` rotates about the pool origin, which for a GROUND set
+is at its feet, so it would orbit rather than spin in place — that path
+assumes a centered solid), and `C_ColliderIso3DAABB` / SDF shapes /
+`C_EntityCanvas`, which migrate per the same enum when touched.
+
+The detached case is **unguarded today and silent** — `DetachedRevoxelize`'s
+per-voxel `halfCellAnchor` uniformity assert passes for a GROUND set (its z
+residual is a uniform `-0.5`), so the wrong pivot produces no diagnostic.
+**#2911** carries the guard, including the layering question its natural home
+(`IRPrefab::RotationMode::setMode`, in `common/`) raises: it would be the
+tree's first `common/` → `voxel/` include.
+
+Lua spells it `IRComponent.EntityAnchor.GROUND` (integers, never string
+names) and it is the **3-arg** `C_VoxelSetNew.new(size, color, anchor)`
+form; the legacy `bool` arm is deliberately not registered on the Lua
+surface — see `component_voxel_set_lua.hpp` for why. C++ keeps both.
+A **4-arg** form appends the ctor's `targetCanvas`, so a Lua caller (or a
+headless test) can allocate from a specific canvas instead of the active one;
+`test/script/lua_entity_anchor_test.cpp` uses it to assert the placement a Lua
+spawn actually produces.
+
 - `C_ShapeDescriptor` — SDF shape type + params + color + flags (visible,
   hollow, mirror). Rendered directly by the GPU; **does not allocate voxels**.
 - `C_Skeleton` — rig-root component holding an ordered vector of joint

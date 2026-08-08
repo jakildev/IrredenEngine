@@ -41,6 +41,7 @@ add_executable(IrredenEngineTest
   ecs/spatial_grid_test.cpp
   ecs/system_exclude_test.cpp
   ecs/voxel_bone_slot_seed_test.cpp
+  ecs/voxel_set_anchor_test.cpp
   ecs/voxel_set_edit_api_test.cpp
   ecs/voxel_set_target_canvas_test.cpp
   math/physics_test.cpp
@@ -82,6 +83,7 @@ add_executable(IrredenEngineTest
   script/lua_debug_overlay_bindings_test.cpp
   script/lua_component_register_test.cpp
   script/lua_deferred_entity_test.cpp
+  script/lua_entity_anchor_test.cpp
   script/lua_enum_register_test.cpp
   script/lua_persistence_test.cpp
   script/lua_world_snapshot_test.cpp
