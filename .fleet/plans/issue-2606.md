@@ -1,83 +1,94 @@
-## Plan: jitter_probe — per-axis excursion assertion for the rotation gate
+## Plan: jitter_probe rotation gate — derive the excursion bar on the `--pivot-origin` pinned sweep (measurement + docs, zero code)
 
 - **Issue:** #2606
 - **Model:** opus
 - **Date:** 2026-08-07
+- **Supersedes:** both prior `## Plan` comments (06:27Z — executed; its Phase 0 refuted the default-focus premise, see the 07:15Z bail. 07:52Z — bounced 10:57Z: its Phase 1 rebuilt a flag `--pivot-origin` already ships, with a provably identical effective camera). Both stay as audit trail; this plan follows the 10:57Z review's re-plan directions 1–4.
 
 ### Scope
 
-Close the scorer-model gap #2606 measures: `jitter_probe`'s default verdict cannot express "x stays pinned while y may translate", so a smooth systematic centroid migration (the `IR_PERAXIS_OVERFLOW_DISABLE=1` defect signature, +11.13px monotone on 2026-07-28) scores clean on the axis it corrupts. Add per-axis excursion assertions (`--max-excursion-x` / `--max-excursion-y`), make the excursion check the primary rotation-gate assertion in the docs, and lock the semantics with a hermetic synthetic test plus live positive-fire runs.
+Land the two ACs PR #2922 could not: a rotation gate on which the per-axis excursion assertion **fires on the defect and passes healthy runs** (AC2), and docs making that check the primary rotation-gate assertion with a published per-zoom bar (AC3). The re-anchor is the existing composition **`--yaw-sweep --pivot-origin`** — `RotationPivotMode::ORIGIN` removes the pivot-orbit term entirely, today, with zero new code. This task is **measurement + two doc surfaces only**; no flag ships (10:57Z direction 4: a `--yaw-sweep-pinned-focus` alias would reproduce `--pivot-origin` bit-for-bit, and ORIGIN's "no pivot term at all" dominates an explicit focus's "term that cancels to zero").
 
-Out of scope: the `--max-residual` bar, the #2469 accepted-residual table, and master's residual drift at zoom 4/8 — that is **#2907**'s (see Reconciliation).
+Out of scope: the residual criterion / `--max-residual` bar (#2907), the default-focus probe's composite redness (#2907), the pivot derive itself (#2641/#2758/#2548), and any change under `tools/`, `scripts/`, or demo sources.
 
-### Verified current state (2026-08-07, origin/master)
+### Verified current state (2026-08-07, origin/master + PR #2922 branch)
 
-- `tools/jitter_probe/main.cpp` (391 lines, read in full): default verdict = `reversals==0 && maxAbsResidual<=--max-residual` on **both** axes (`main.cpp:368-370`); `--stationary` = deviation-from-frame-0 ≤ `--max-deviation` on **both** axes (`main.cpp:337`). No per-axis-independent assertion exists anywhere in the scorer, and excursion (max−min of a centroid column) is computed nowhere — the negative claim is exhaustive over the tool's single source file.
-- The defect fixture exists on master: `IR_PERAXIS_OVERFLOW_DISABLE` presence-check at `engine/prefabs/irreden/render/systems/system_trixel_to_framebuffer.hpp:504`.
-- **The issue's AC2 phrase "using the same captured sequences above" is no longer satisfiable.** Those sequences were build-dir transients (`save_files/screenshots/`, wiped per the #2814 recipe) and are gone; all populations must be re-captured. Master has also drifted since 2026-07-28: **#2907** measures the same canonical probe's x residual at 0.85/1.78/2.70px (z2/z4/z8) vs the 1.50px bar — red at z4/z8 on the *residual* criterion. AC2's healthy-master leg is therefore re-anchored to fresh same-session captures (Phase 0), and the composite exit code at z4/z8 is decoupled from this task (Acceptance 3).
-- Output consumers audited (full `git grep -l jitter_probe` sweep, every hit classified): the ONLY stdout parser is `scripts/pivot-verify.py:155-157`, which regex-parses the `--stationary` summary's `x: max_deviation=…px` lines. Nothing parses the default-mode summary. All other hits are docs/comments/CMake registration (`camera_pan_pivot_test.cpp:18` and `ir_args.cpp:11` are comments).
+- **The composition chain, each link verified against origin/master** (the 10:57Z review derived it; re-checked here rather than inherited):
+  - `--pivot-origin` registered at `creations/demos/shape_debug/main.cpp:750`, read at `:817`, applied **once at setup** at `:898-902` → `IRRender::setRotationPivotMode(RotationPivotMode::ORIGIN)` plus the exact log string `RotationPivotMode: ORIGIN (--pivot-origin) — Z-yaw pivots about the world origin` (`:901`) — the ready-made per-run **arm-identity marker** (10:57Z direction 2; no new plumbing).
+  - `applyShotCameraState` (`engine/video/src/auto_screenshot.cpp:28-46`) sets/clears the *focus* only, never the *mode* — the yaw-sweep shots' `hasPivotFocus_=false` clear is harmless under ORIGIN.
+  - `getEffectiveCameraIso` (`engine/render/src/ir_render.cpp:46-49`) tests ORIGIN **before** the focus branch and returns `cameraIso` unmodified — no pivot term is ever computed.
+  - `updateDefaultRotationPivotFocus` early-returns unless `mode == CAMERA_CENTER` with no explicit focus (`engine/render/src/render_manager.cpp:310`, guard at ~`:343` with the comment "ORIGIN mode ignores the focus entirely") — ORIGIN pays no depth readback.
+- **Candidate-set closure, restated mechanism-free** (the axis the 10:57Z bounce corrected): the requirement is "remove the pivot *orbit*", and the candidate set is the `RotationPivotMode` enum — **exactly two members**, `ORIGIN = 0, CAMERA_CENTER = 1` (`engine/render/include/irreden/render/ir_render_types.hpp:840`) — plus the per-shot explicit focus (`pivotFocusWorld_`/`hasPivotFocus_`, #1921). ORIGIN is CLI-reachable today; explicit focus has no yaw-sweep CLI path and would merely cancel to the identical value (`cameraYawPivotOffset(cameraIso, vec3(0), yaw) == cameraIso` at every yaw, `ir_math.hpp:1106` — the 10:57Z identity). There is no third mechanism.
+- **The fixture was designed for ORIGIN**: `--spin-shape` spawns ONE shape at `vec3(0.0f, 0.0f, 0.0f)` on the voxel, SDF, and "figure" paths alike (`main.cpp:2623-2662`), with the spawn comment "Under camera Z-yaw-about-origin the shape stays screen-centred". The composition pins **because** the fixture is origin-centred — the doc recipe must bind the two (see Gotchas).
+- **Census, stated fully** (10:57Z non-blocking note absorbed): `git grep -- --yaw-sweep` code hits are shape_debug's own registration/comments, `creations/demos/fog_demo/main.cpp:637` (comment), and `tools/jitter_probe/main.cpp:26` (comment) — all inert; remaining hits are docs/skills/plan files. `git grep -- --pivot-origin` hits are shape_debug-only (registration `:750`, getFlag `:817`, apply+log `:898-902`, comments). No script drives either flag; the only jitter_probe stdout parser is `scripts/pivot-verify.py`, which parses `--stationary` output only. Composing the two flags cannot break any harness.
+- **Tool base**: `--max-excursion-x/-y` and the `excursion=` print are **not** on origin/master (`git grep -e --max-excursion-x origin/master -- tools/jitter_probe/main.cpp` → no match); they ship on PR **#2922** (`claude/2606-jitter-probe-excursion`, `fleet:approved`, MERGEABLE, open), which also rewrote the two doc sections this plan edits further: `engine/render/CLAUDE.md:549-577` ("**do not put a bar on this probe yet** … re-derive the bar here from a post-#2641 capture") plus the `:942-950` historical-columns note, and `tools/jitter_probe/README.md:160-200` (flags section + 2026-08-07 note).
+- **The "wait for #2641" path those texts close on is dead**: PR #2758 (Closes #2641, `fleet:approved`, open) rules the default derive's cap-entry orbit **inherent** — it gates the orbit's growth, it does not remove it. The default-focus probe can never carry an excursion bar; the pinned probe is the durable home.
+- **Defect fixture unchanged**: `IR_PERAXIS_OVERFLOW_DISABLE` presence check at `engine/prefabs/irreden/render/systems/system_trixel_to_framebuffer.hpp:504`.
 
 ### Approach
 
-**Phase 0 — premise probe: excursion still separates the populations on today's master.** The bar the docs will publish must be derived from *current* populations, not the dead 2026-07-28 captures (#2907 proves the tree moved). On one host/backend in one session, capture with the canonical recipe (`engine/render/CLAUDE.md` §"Verifying temporal stability": wipe → sweep → 6-digit glob → `--expect-frames`), archiving each population to its own directory immediately after capture:
+**Phase 0 — base + composition premise probe (bail-gated).**
+- Base: at branch time re-run the tool-base check above; if #2922 is unmerged, stack on `claude/2606-jitter-probe-excursion` (native stack). Never re-implement any tool piece.
+- Composition probe (10:57Z direction 1 — the statically-proven identity still gets its cheap measured confirmation): **one** capture, H4-pinned — canonical recipe + `--pivot-origin` (wipe → `IRShapeDebug --spin-shape cylinder --spin-shape-voxel --yaw-sweep --pivot-origin --zoom 4 --auto-screenshot 6` → 6-digit glob, `--expect-frames 24`), ORIGIN log line asserted. **Expected reading**: x excursion in the pinned regime, ~1–3px (explicit-focus blocks pin at 0.94/1.27px re-verified live 2026-08-07; the pre-orbit 2026-07-28 table read 1.26px @ z4) — an order of magnitude under the 38.18px unpinned reading. **Bail**: if it lands in the tens-of-px regime *with the ORIGIN line asserted*, the composition premise is refuted — stop, post the measurement here, cross-comment #2641, park `fleet:needs-human`. Do not build the dependent phases.
+- A Phase-0 capture taken under the full protocol (wipe, identity assert, archive) is retained as population H4.
 
-- H2/H4/H8 — healthy voxel cylinder `--yaw-sweep`, zoom 2/4/8.
-- S4/S8 — SDF cylinder control (omit `--spin-shape-voxel`), zoom 4/8.
-- D2/D4/D8 — `IR_PERAXIS_OVERFLOW_DISABLE=1` voxel cylinder `--yaw-sweep`, zoom 2/4/8.
+**Phase 1 — populations + bar.** One host/backend, one session; archive each population (frames + engine log) before the next capture. Arms:
+- **U4** — healthy voxel z4 **unpinned** (differential control; expect ~38px x excursion per the 08-07 table — proves the flag changes the regime).
+- **H2/H4/H8** — healthy voxel, pinned (`--yaw-sweep --pivot-origin`), zoom 2/4/8 (H4 from Phase 0).
+- **S4/S8** — SDF control, pinned (omit `--spin-shape-voxel`).
+- **D2/D4/D8** — `IR_PERAXIS_OVERFLOW_DISABLE=1`, voxel, pinned.
 
-Hand-measure per-axis excursion (max−min of the `--verbose` centroid columns) for every population. Derive the per-zoom x-bar by the committed rule: **bar(z) = the smallest half-integer ≥ 2.5 × the max healthy x excursion at that zoom (voxel and SDF both count as healthy), and it must be ≤ 0.5 × the defect x excursion at that zoom.** (2026-07-28 reference: healthy 1.26–2.83px, SDF 2.00px, defect 11.13px @ z4 → z4 bar would land at 5.0; expect the same order today.) The 2.5× margin absorbs run-to-run noise on a noise-dominated statistic; the 0.5× ceiling keeps ≥2× headroom to the defect.
+Assert arm identity **per run from the engine log, never the argv**: zoom as received; the voxel-fixture log line present iff a voxel arm; the ORIGIN line present iff a pinned arm; the `Yaw-sweep: 24 shots` line present. Read x/y excursion from the tool's `excursion=` print; hand-derive H4 from `--verbose` centroids as the ±0.01px instrument cross-check.
 
-*Bail path:* if any zoom has no value satisfying both bounds, the premise (excursion separates healthy from defect on current master) is refuted — stop, post the full measurement table on #2606 and cross-reference it on #2907, and flag #2606 for re-plan noting the likely resolution is `Blocked by:` #2907. Do not build the dependent phases.
+**Bar rule (committed — carried verbatim from the vetted 06:27Z plan and its review):** per zoom, `bar(z)` = the smallest half-integer ≥ 2.5 × the max healthy x excursion at that zoom (voxel and SDF both count as healthy), and it must be ≤ 0.5 × the defect x excursion at that zoom. **Per-zoom bail** (06:37Z binding constraint 1): publish bars only for zooms that separate; a non-separating zoom is omitted from the doc table with a one-line note and its measurement posted here. Expected regime (context, never controls): healthy pinned ~1–3px, defect ~11px @ z4 (2026-07-28, measured before the orbit landed).
 
-**Phase 1 — the flags** (`tools/jitter_probe/main.cpp`):
-- Compute per-axis excursion = max−min of the centroid column over the **same valid-frame mask the fit uses**, unconditionally; append `excursion=%.2fpx` to the two default-mode axis summary lines, and the provided bars to the thresholds line.
-- Add `--max-excursion-x <px>` / `--max-excursion-y <px>`, each independently optional, gated on `parser.wasProvided(...)` (not a sentinel default). When provided, AND `excursion ≤ bar` for that axis into the default-mode SMOOTH verdict.
-- Combining either flag with `--stationary` is an argument error (exit 2, message) — prevents a silently-ignored assertion, and keeps the `--stationary` output path byte-identical for `pivot-verify.py`.
+**Whole-task bail** only if **no** zoom separates: the premise is then refuted on the pinned family too — post the full table here, cross-comment #2641/#2907, park the issue `fleet:needs-human` recommending close-or-rescope. No PR ships (unlike the 07:15Z bail there is no tool piece left to salvage — #2922 already banked it). A second refutation is a human call, not a fourth plan.
 
-**Phase 2 — hermetic semantics test** (`test/tools/jitter_probe_excursion_test.sh`, new; mirrors `ir_run_exit_code_test.sh`'s staged-fixture form): binary from `$JITTER_PROBE_BIN` else the default build path, SKIP + exit 0 with a message when absent (nothing in CI runs `test/tools/` — this is a hand/review artifact). Fixtures: an inline `python3` heredoc writes two 8-frame sequences of 48×48 binary PPMs (stb_image reads PPM — no PNG encoder needed): (A) a 12×12 white square stepping +2px/frame in x, y fixed; (B) x fixed, +2px/frame in y. Five assertions, one probe invocation each:
-1. A, default flags + `--reversal-eps 0.8` → **exit 0** — pins the blind spot (the OFF arm of the discriminating pair).
-2. A + `--max-excursion-x 5` → **exit 1** — 14px migration; the gate's positive fire.
-3. B + `--max-excursion-x 5` → **exit 0** — the issue's exact contract: x pinned while y translates 14px.
-4. B + `--max-excursion-y 5` → **exit 1** — axis independence, and proves case 3's pass is non-vacuous (same frames, mirrored assertion, opposite verdict).
-5. `--stationary --max-excursion-x 5` → **exit 2**.
+**Phase 2 — acceptance runs** (same session, re-scoring the archived populations):
+- **Positive fire + attribution:** each D arm at a separating zoom under the canonical score flags + `--max-excursion-x bar(z)` → exit 1; an isolation arm adds `--max-residual 99` → **still** exit 1, so the failure is attributable to the excursion criterion by construction (the exact "caught by accident" failure mode this issue documents).
+- **Healthy pass:** H2/H4/H8 + S4/S8 print x excursion ≤ bar(z) — gated on the printed x-axis summary line, not the composite exit; if any healthy pinned arm is composite-red via the residual axis, record the residuals and cross-comment #2907 (pinned-probe residuals discriminate "orbit-inflated fit" from "true floor" — free evidence either way).
+- **Differential:** pinned H4 x excursion ≤ 0.25 × unpinned U4 x excursion (expect ~3px vs ~38px; proves the flag was live and the orbit was the dominating term).
 
-**Phase 3 — live acceptance runs** (re-score the archived Phase-0 populations with the built tool):
-- Cross-check the instrument: tool-printed x excursion on H4 must equal the Phase-0 hand-derived max−min to ±0.01px.
-- D4 and D8 under the canonical flags + `--max-excursion-x bar(z)` → exit 1; then an isolation run adding `--max-residual 99` → still exit 1, so the failure is attributable to the excursion criterion by construction (not caught "by accident" via another axis — the exact failure mode the issue documents).
-- H2/H4/H8 + S4/S8: printed x excursion ≤ bar(z) for every population. Composite exit codes recorded as-is: z2 expected 0; z4/z8 follow #2907's state (red today via the residual axis) — record the residuals and cross-comment them on #2907. If #2907 has landed by implementation time, expect composite 0 at all three zooms and say so.
-
-**Phase 4 — docs** (AC3):
-- `tools/jitter_probe/README.md`: usage block gains the flags; rewrite §"Accepted floors, and the model's blind spot (#2469)" — the false-negative half is closed by the excursion assertion (keep the reversal-eps history); drop the "until #2606… read excursion by hand" paragraph.
-- `engine/render/CLAUDE.md` §"Verifying temporal stability": the canonical rotation-gate recipe gains `--max-excursion-x <bar(zoom)>` with the measured per-zoom bar table (populations, values, date, host); flip the "does not fire on the `IR_PERAXIS_OVERFLOW_DISABLE=1` runtime control" bullet to its measured opposite (fires via excursion: value vs bar); replace the closing "principled fix is #2606" paragraph. Do **not** touch the #2469 accepted-residual table or `--max-residual` — #2907 owns those.
+**Phase 3 — docs (AC3).**
+- `engine/render/CLAUDE.md` §"Verifying temporal stability": the rotation-recipe line gains `--pivot-origin` (with a comment binding it to the origin-centred `--spin-shape` fixture); the scoring line gains `--max-excursion-x <bar(zoom)>`; the recipe's log-assert guidance gains the ORIGIN-line check; **replace** the `:549-577` "do not put a bar yet … post-#2641 capture" close: the orbit is inherent (#2758), the pinned `--pivot-origin` sweep is the canonical rotation gate, and the unpinned sweep keeps **no** excursion bar (one line: its excursion measures the inherent pivot orbit; that surface belongs to pivot-verify). Publish the per-zoom bar table (populations, x values, y excursions recorded, date, host/backend). Reword the `:942-950` historical note to point at the pinned table instead of "until a post-#2641 capture".
+- `tools/jitter_probe/README.md`: the canonical rotation recipe (~`:187`) gains `--pivot-origin`; the "no separating value" / 2026-08-07 passage points at the CLAUDE.md bar table (single home for the numbers — no duplicated table to drift).
+- Untouched: `--max-residual` / accepted-residual text (#2907's), pivot-verify docs, `camera-yaw-pivot.md` (#2758's).
 
 ### Affected files
 
-- `tools/jitter_probe/main.cpp` — excursion computation + print, two flags, verdict, stationary-combination guard
-- `tools/jitter_probe/README.md` — flags + blind-spot section rewrite
-- `engine/render/CLAUDE.md` — recipe + bar table + limitation-paragraph replacement
-- `test/tools/jitter_probe_excursion_test.sh` — new hermetic semantics test
-- `.fleet/plans/issue-2606.md` — this plan, first commit of the PR (#1932)
+- `engine/render/CLAUDE.md` — recipe + bar table + replace the wait-for-#2641 close
+- `tools/jitter_probe/README.md` — pinned recipe line + table pointer
+- `.fleet/plans/issue-2606.md` — replaced with this plan (first commit of the PR, #1932)
+
+**No code changes.** No new flag, no demo edit, nothing under `tools/`/`scripts/`.
 
 ### Acceptance criteria
 
-1. **AC1 as filed:** the per-axis flags exist and are independently usable (test cases 3/4 prove independence on identical frames).
-2. **AC2 re-anchored** (filed wording depends on dead captures + a since-drifted master, per Verified current state): D4 exits 1 with the excursion criterion attributably firing (isolation run), and every freshly captured healthy population (H2/H4/H8, S4/S8) passes the excursion criterion (printed x excursion ≤ bar(z)). z2 composite exit 0. z4/z8 composite recorded either way with residuals cross-commented on #2907.
-3. **AC3 as filed:** both docs updated as Phase 4, carrying the measured table.
-4. The synthetic test ships and passes 5/5 against the freshly built binary (run log in the PR body).
-5. `pivot-verify.py`'s parse surface is untouched by construction (`--stationary` output byte-identical; combination guard makes the new flags unreachable in that mode) — stated in the PR body.
+1. **Positive fire, attributable:** at every separating zoom the D arm exits 1 under `--max-excursion-x bar(z)` AND under the isolation pair (`+ --max-residual 99`). Fixture: `IR_PERAXIS_OVERFLOW_DISABLE` (exists on master).
+2. Every healthy pinned population (H2/H4/H8, S4/S8) prints x excursion ≤ bar(z); the U4 differential shows ≥ 4× pinned-vs-unpinned separation.
+3. Docs per Phase 3 carry the measured table (values, populations, date, host/backend); the published recipe is `--yaw-sweep --pivot-origin`; the unpinned probe explicitly keeps no bar.
+4. **Zero code:** the PR diff touches only the two doc files plus `.fleet/plans/issue-2606.md`.
+5. Every capture's arm identity is asserted from the engine log (zoom-as-received; voxel iff voxel arm; ORIGIN line iff pinned arm) and the run logs are archived with the populations; the PR body carries the full table including y excursions.
 
 ### Gotchas
 
-- `IR_PERAXIS_OVERFLOW_DISABLE` is a `getenv != nullptr` presence check — `VAR=` (empty) counts as SET. Fully `unset` it for healthy arms and verify with `env`.
-- Wipe the screenshots dir before **every** capture (exact `find … -delete` form in the CLAUDE.md block); archive each population before the next capture; `--expect-frames` must match the actual post-wipe file count. Note a live doc inconsistency: #2907/#2605 report 24-frame sweeps from `--auto-screenshot 6`, while the CLAUDE.md recipe comment says the guard should equal the auto-screenshot count and passes 6 — trust the actual file count (the guard exits 2 on a mismatch); if it is 24, fix the stale comment line in the Phase-4 docs pass.
-- `fleet-run --timeout 0` goes **before** the target token, and redirect `fleet-build` output to a file + check `$?` — piping through `grep`/`head` masks a failed build as green and a stale binary then "passes".
-- Capture all populations on ONE host/backend in one session; the published bar table names its host. The 2026-07-28 numbers are context, never controls.
-- Keep the #2907 seam clean: if #2907's PR is in flight against the same CLAUDE.md section, whoever rebases second reconciles only the shared §temporal-stability paragraphs — the two tasks change disjoint criteria.
+- `IR_PERAXIS_OVERFLOW_DISABLE` is a `getenv != nullptr` **presence** check — `VAR=` (empty) counts as SET; fully `unset` it for healthy arms and verify with `env`.
+- Wipe the screenshots dir before EVERY capture (exact `find … -delete` form in the recipe); `--expect-frames 24` (`--auto-screenshot N` is per-shot warmup, not the shot count); archive each population immediately after its capture.
+- zsh does not word-split an unquoted `$spec` (the 07:15Z pass's live precedent) — assert every arm from the engine log, never from the argv you think you passed.
+- jitter_probe silently drops frames under ~50 foreground px (per-frame centroid validity floor) and aborts under 3 valid frames — confirm 24/24 valid frames per run. Under ORIGIN the origin-centred shape stays screen-centred so this should hold; a sudden valid-frame drop means the arm is not what you think it is.
+- `--pivot-origin` is applied once at demo setup and covers every shot of the run — never mix pinned and unpinned populations in one run.
+- `fleet-run --timeout` goes BEFORE the target token; redirect `fleet-build` output to a file and check `$?` — piping through `grep` masks a failed build, and a stale binary then "passes".
+- If #2922 merges mid-task, rebase normally; the Phase-0 base check is branch-time-only. Never re-implement the tool pieces.
 
 ### Reconciliation (siblings / in-flight)
 
-- **#2907** (open, needs-plan): the *residual*-axis drift on the same probe — the opposite failure class, per its own "Not #2606" ruling. This plan deliberately leaves the residual criterion untouched and hands #2907 free evidence (fresh residual readings cross-commented).
-- **PR #2850 / #2479** (design-blocked): same render domain; measured digit-identical to master on this probe (#2907's ruled-out section) — no interaction.
-- **pivot-verify / #2553**: `--stationary` consumer, parse surface audited and preserved.
-- **Merged #2605** (reversal-eps recipe + limitation docs) and **#2814** (`--expect-frames`): extended, not contradicted — the limitation text #2605 added is exactly what Phase 4 replaces.
+- **PR #2922** (`fleet:approved`, open, MERGEABLE) — the base (stack while unmerged); ships the AC1/AC4/AC5 tool surface plus the doc text Phase 3 edits further. This plan is the residual AC2+AC3.
+- **PR #2758 / #2641** (`fleet:approved`, open, needs-gl-host) — supplies the orbit-is-inherent premise. With no demo edit here, the shared-`main.cpp` seam the 07:52Z plan reconciled is gone (10:57Z note). Even if the owed GL-host leg overturned the inherent ruling, the ORIGIN-pinned gate stays valid — no pivot term is stricter than any future default derive.
+- **#2907** (open, needs-plan; residual axis, default-focus probe) — criterion untouched here; receives pinned-probe residual readings via cross-comment, which its re-planner can use to judge whether the default-probe redness is orbit-inflated.
+- **PR #2850 / #2479** (`fleet:wip`) — same render domain, measured digit-identical to master on this probe (#2907's ruled-out section); no interaction.
+- **#2469 / #2605** — the eps history stays; #2922 already rewrote the limitation text; Phase 3 only replaces its wait-for-#2641 close.
+
+---
+
+Not high-stakes per the PLANNING-PROTOCOL step-3 checklist: single committed approach (zero-code, directed by the 10:57Z review), two doc files, one PR, no public-contract change — `fleet:plan-review` only, no `human:review-plan`.
 
