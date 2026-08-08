@@ -74,7 +74,24 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   hand-duplicated — GitHub Actions has no YAML anchors — so they drift
   independently). The list is the ratchet's whole domain: a subject absent
   from it is a subject nothing guards, however green the suite runs
-  (#2810).
+  (#2810). `OUT_OF_TREE_SUBJECTS` is `fleet-tests.yml`-scoped by design —
+  it is that one workflow's own subject-domain list, a different axis from
+  whether a workflow's `push:` and `pull_request:` blocks *agree* on
+  whatever they list. That second axis — the sync ratchet itself — is
+  **not** `fleet-tests.yml`-scoped: `tests/test_workflow_paths_sync.sh`
+  (#2929) derives the workflow population from a `.github/workflows/*.yml`
+  glob and checks every workflow that declares both blocks
+  (`header-checks.yml`, `perf-gate.yml`, `render-harness-tests.yml`, and
+  `fleet-tests.yml` today). Its *population* needs no registration step;
+  its *trigger* does. Those workflows live outside `scripts/fleet/**`, so
+  they are themselves out-of-tree subjects and carry entries in
+  `OUT_OF_TREE_SUBJECTS` beside the fixed-file ones — a workflow that
+  declares both blocks but is missing from `fleet-tests.yml`'s `paths:` is
+  one this suite inspects and CI never runs it for. That is the pair the
+  two ratchets have to agree on, and the derived side is the one a
+  hand-maintained list cannot follow, so `test_workflow_paths_sync.sh`'s T4
+  asserts the agreement directly off the glob: the fifth such workflow
+  fails a suite instead of silently costing itself its trigger.
 - **Bash tests source `tests/lib_assert.sh`** for the PASS/FAIL counters,
   `ok`/`bad`, `assert_eq`/`assert_contains`/`assert_absent`, and the
   `summarize` exit idiom — don't re-copy the helpers into a new test.
