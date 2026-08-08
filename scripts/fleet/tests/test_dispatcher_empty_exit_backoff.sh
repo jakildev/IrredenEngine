@@ -237,42 +237,54 @@ echo "T12: the verdict derived from a dispatch record"
 # The fold path itself needs tmux and a live pane; --derive-outcome exposes
 # just the decision. Without it the planning and legacy arms below would ship
 # on inspection alone.
-S=$(mktemp -d "$TMPROOT/s.XXXXXX")
-mkdir -p "$S/dispatch-claimed"
-rec="$S/pane-9.json"
-new_record() { printf '%s\n' "$1" > "$rec"; }
-BASE='{"role":"worker","pane":"%9","class":"opus","dispatched_at":"x","dispatched_epoch":1,"claim_marker":1}'
-PLAN='{"role":"worker","pane":"%9","class":"opus","dispatched_at":"x","dispatched_epoch":1,"claim_marker":1,"plan_issue":"engine:2698"}'
-LEGACY='{"role":"worker","pane":"%9","class":"opus","dispatched_at":"x","dispatched_epoch":1}'
+#
+# Probe for the hook by inspecting the subject rather than by invoking it:
+# fleet-dispatcher falls through to main() on an argument it doesn't
+# recognize, so a blind call against an older subject starts the DAEMON LOOP
+# and hangs the run forever. That is exactly what a positive control does
+# (it stages the pre-fix ref), so the guard is what makes this suite
+# controllable at all. A missing hook is a genuine failure, not a skip.
+if ! grep -q -- '--derive-outcome)' "$DISPATCHER"; then
+    FAIL=$((FAIL + 1))
+    echo "  FAIL: --derive-outcome hook absent from the subject (5 assertions not run)"
+else
+    S=$(mktemp -d "$TMPROOT/s.XXXXXX")
+    mkdir -p "$S/dispatch-claimed"
+    rec="$S/pane-9.json"
+    BASE='{"role":"worker","pane":"%9","class":"opus","dispatched_at":"x","dispatched_epoch":1,"claim_marker":1}'
+    PLAN='{"role":"worker","pane":"%9","class":"opus","dispatched_at":"x","dispatched_epoch":1,"claim_marker":1,"plan_issue":"engine:2698"}'
+    LEGACY='{"role":"worker","pane":"%9","class":"opus","dispatched_at":"x","dispatched_epoch":1}'
 
-new_record "$BASE"
-rm -f "$S/dispatch-claimed/pane-9"
-assert_eq "$(disp "$S" --derive-outcome "$rec" '%9')" "no" \
-    "no marker on disk -> empty (the diligent no-pick)"
-: > "$S/dispatch-claimed/pane-9"
-assert_eq "$(disp "$S" --derive-outcome "$rec" '%9')" "yes" \
-    "marker present -> claimed"
-# The pane key is derived from the pane id, so another pane's marker must not
-# be read as this one's.
-rm -f "$S/dispatch-claimed/pane-9"; : > "$S/dispatch-claimed/pane-8"
-assert_eq "$(disp "$S" --derive-outcome "$rec" '%9')" "no" \
-    "a different pane's marker is not borrowed"
-# A planning assignment is productive even though the pane never stamped:
-# the dispatcher took the planning-claim pre-launch (#2197).
-new_record "$PLAN"
-rm -f "$S/dispatch-claimed/pane-9"
-assert_eq "$(disp "$S" --derive-outcome "$rec" '%9')" "yes" \
-    "plan_issue with no marker -> claimed (pre-claimed planning assignment)"
-# A record from before this change has no claim_marker; its pane's wrapper
-# never exported the flag, so the verdict is unknown, not empty.
-new_record "$LEGACY"
-rm -f "$S/dispatch-claimed/pane-9"
-assert_eq "$(disp "$S" --derive-outcome "$rec" '%9')" "" \
-    "legacy record -> unknown (falls back to the duration heuristic)"
-# ...and unknown really does route to duration, not to a silent increment.
-S2=$(mktemp -d "$TMPROOT/s.XXXXXX")
-disp "$S2" --record-outcome worker 300 --class=opus
-assert_eq "$(disp "$S2" --empty-streak-check worker --class=opus)" "under 0" \
+    printf '%s\n' "$BASE" > "$rec"
+    rm -f "$S/dispatch-claimed/pane-9"
+    assert_eq "$(disp "$S" --derive-outcome "$rec" '%9')" "no" \
+        "no marker on disk -> empty (the diligent no-pick)"
+    : > "$S/dispatch-claimed/pane-9"
+    assert_eq "$(disp "$S" --derive-outcome "$rec" '%9')" "yes" \
+        "marker present -> claimed"
+    # The pane key is derived from the pane id, so another pane's marker must
+    # not be read as this one's.
+    rm -f "$S/dispatch-claimed/pane-9"; : > "$S/dispatch-claimed/pane-8"
+    assert_eq "$(disp "$S" --derive-outcome "$rec" '%9')" "no" \
+        "a different pane's marker is not borrowed"
+    # A planning assignment is productive even though the pane never stamped:
+    # the dispatcher took the planning-claim pre-launch (#2197).
+    printf '%s\n' "$PLAN" > "$rec"
+    rm -f "$S/dispatch-claimed/pane-9"
+    assert_eq "$(disp "$S" --derive-outcome "$rec" '%9')" "yes" \
+        "plan_issue with no marker -> claimed (pre-claimed planning assignment)"
+    # A record from before this change has no claim_marker; its pane's wrapper
+    # never exported the flag, so the verdict is unknown, not empty.
+    printf '%s\n' "$LEGACY" > "$rec"
+    rm -f "$S/dispatch-claimed/pane-9"
+    assert_eq "$(disp "$S" --derive-outcome "$rec" '%9')" "" \
+        "legacy record -> unknown (falls back to the duration heuristic)"
+fi
+# Unknown really does route to duration, not to a silent increment. Outside the
+# hook guard: it runs through --record-outcome, which every version has.
+S=$(mktemp -d "$TMPROOT/s.XXXXXX")
+disp "$S" --record-outcome worker 300 --class=opus
+assert_eq "$(disp "$S" --empty-streak-check worker --class=opus)" "under 0" \
     "unknown + long duration resets, exactly as before this change"
 
 echo "T13: --claimed / --class argument validation"
