@@ -2399,6 +2399,22 @@ PROJECTORS = {
     "epic-steward": project_epic_steward,
 }
 
+# Roles whose wake suppression is evaluated PER SUB-LANE instead of over the
+# whole projection (#2700). The whole-projection `if not projection:` test in
+# update_role_trigger is unreachable for a union lane: project_worker unions
+# four kinds and one of them (task) is structurally never empty, so every hash
+# change fires — including the dominant class of change, a pure REMOVAL (a task
+# claimed, a feedback label cleared, a merge closing an issue). Those provably
+# reduce available work, yet each fans out every idle pane.
+#
+# Explicit allowlist rather than "bucket by item shape": kind-carrying items are
+# NOT unique to the worker lane. project_opus_reviewer emits kind-less PR items
+# AND {kind: "plan_review"} issue items, and project_epic_steward's items all
+# carry kinds, so shape-keyed bucketing would silently change those roles'
+# suppression semantics. Every role outside this set keeps the bare-hash
+# whole-projection path byte-for-byte.
+PER_KIND_TRIGGER_ROLES = frozenset({"worker"})
+
 
 # ---------------------------------------------------------------------------
 # Per-role slices (full-record projections written to disk).
@@ -2687,11 +2703,91 @@ def read_json_retry(path, attempts=3, backoff=0.05):
     raise last
 
 
+def kind_hashes(projection):
+    """Bucket a projection's items by `kind` -> sorted list of per-item hashes.
+
+    Items without a `kind` (or non-dict items) fall into the "" bucket, so a
+    projector that grows a kind-less item shape degrades to whole-lane
+    behaviour for that bucket rather than raising.
+    """
+    kinds = {}
+    for item in projection:
+        kind = item.get("kind", "") if isinstance(item, dict) else ""
+        kinds.setdefault(kind, []).append(stable_hash(item))
+    return {kind: sorted(hashes) for kind, hashes in sorted(kinds.items())}
+
+
+def seen_kind_hashes(text):
+    """Parse a seen file's fmt-2 payload into its per-kind hash map.
+
+    A legacy bare-hex hash (or any unparseable content) yields {} — every kind
+    then reads as all-new, which fires ONCE on upgrade and settles on the next
+    tick. That direction is deliberate: the opposite error (treating unknown
+    state as "nothing new") is #561's permanently-idle role.
+    """
+    try:
+        data = json.loads(text)
+    except (ValueError, TypeError):
+        return {}
+    if not isinstance(data, dict) or data.get("fmt") != 2:
+        return {}
+    kinds = data.get("kinds")
+    return kinds if isinstance(kinds, dict) else {}
+
+
+def update_role_trigger_per_kind(role: str, projection) -> bool:
+    """Fire iff some kind's item set gained an item absent from its old set.
+
+    Pure removal from a still-non-empty lane suppresses; a modification
+    (same id, changed field) re-hashes as remove+add, so the new item is
+    absent from the old set and it fires. The whole-projection-empty case is
+    subsumed: no kind can hold a new item, so it suppresses as before.
+    """
+    new_kinds = kind_hashes(projection)
+    payload = json.dumps({"fmt": 2, "kinds": new_kinds},
+                         sort_keys=True, separators=(",", ":"))
+    seen_file = SEEN_DIR / role
+    suppressed_marker = SEEN_DIR / f"{role}.empty-suppressed"
+    try:
+        old_text = seen_file.read_text().strip()
+    except FileNotFoundError:
+        old_text = ""
+    # Compare the SERIALIZED fmt-2 payload, never a whole-projection hash: an
+    # unchanged projection must take the no-write early return, or the upgrade
+    # tick's format change re-fires forever against a stable lane.
+    if payload == old_text:
+        return False
+    old_kinds = seen_kind_hashes(old_text)
+    write_atomic(seen_file, payload + "\n")
+    added = {kind: len(set(hashes) - set(old_kinds.get(kind, ())))
+             for kind, hashes in new_kinds.items()}
+    added = {kind: n for kind, n in added.items() if n}
+    counts = ", ".join(f"{k or '<none>'}={len(v)}" for k, v in new_kinds.items())
+    if not added:
+        # This write was a suppression — record the marker. As on the legacy
+        # path, never clear it on the unchanged-payload early return above (no
+        # write happened there), or "last write" semantics silently drift.
+        write_atomic(suppressed_marker, stable_hash(payload) + "\n")
+        log(f"{role}: no new items in any kind ({counts}) — trigger not armed")
+        return False
+    (TRIGGERS_DIR / role).touch()
+    suppressed_marker.unlink(missing_ok=True)
+    gained = ", ".join(f"{kind or '<none>'}+{n}" for kind, n in added.items())
+    log(f"{role}: new items in {gained} ({counts}) — trigger armed")
+    return True
+
+
 def update_role_trigger(role: str, projection) -> bool:
+    if role in PER_KIND_TRIGGER_ROLES:
+        return update_role_trigger_per_kind(role, projection)
     new_hash = stable_hash(projection)
     seen_file = SEEN_DIR / role
     # Marker invariant: present iff the most recent hash *write* for this role
-    # was an empty-projection suppression. The on-disk state can't otherwise
+    # was a suppression. On this path that means an empty projection; on the
+    # per-kind path (PER_KIND_TRIGGER_ROLES) it widens to "no kind gained an
+    # item", which includes pure removals from a still-non-empty lane. The
+    # file name stays ".empty-suppressed" so `fleet-debug triggers` and the
+    # existing tests keep reading one marker. The on-disk state can't otherwise
     # distinguish "suppressed" (hash advanced, trigger deliberately skipped)
     # from "dispatched then consumed" (trigger touched, dispatcher rm'd it),
     # so `fleet-debug triggers` reads this marker for its suppression column.

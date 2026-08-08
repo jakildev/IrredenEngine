@@ -32,8 +32,14 @@ Subcommands
   triggers            Read-only dump of per-role fleet dispatch state: pending
                       trigger (+ mtime/content), last seen projection hash,
                       projection slice size + generated_at, and whether the last
-                      hash write was an empty-projection suppression (#2181).
-                      Never mutates any ~/.fleet/state file.
+                      hash write was a suppression (#2181). Never mutates any
+                      ~/.fleet/state file.
+                      seen= prints `fmt2[kind=N,...]` for roles using per-kind
+                      suppression (#2700) and a bare hash for the rest. Those
+                      roles also sit at trigger=pending far more often by
+                      design — the dispatcher now retains the trigger while
+                      claimable headroom is uncovered, so a standing worker
+                      trigger is normal, not a stuck one.
 
 Options
   --batch             Non-interactive crash triage: run immediately, then print
@@ -153,12 +159,30 @@ def _trigger_col(role):
 def _seen_col(role):
     path = SEEN_DIR / role
     try:
-        h = path.read_text().strip()
+        raw = path.read_text().strip()
     except FileNotFoundError:
         return "-"
     except OSError:
         return "unreadable"
-    return f"{h[:12]}({_mtime(path)})"
+    # Two on-disk formats. Legacy: a bare 16-hex whole-projection hash.
+    # fmt-2 (#2700, roles in the scout's PER_KIND_TRIGGER_ROLES): a
+    # {"fmt":2,"kinds":{<kind>:[<item-hash>,...]}} payload, because suppression
+    # for those roles is decided per sub-lane — collapsing it back to one hash
+    # would hide which lane actually moved. Show per-kind item counts instead.
+    if raw.startswith("{"):
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            data = None
+        if isinstance(data, dict) and data.get("fmt") == 2:
+            kinds = data.get("kinds")
+            if isinstance(kinds, dict):
+                body = ",".join(
+                    f"{kind or '<none>'}={len(hashes)}"
+                    for kind, hashes in sorted(kinds.items())
+                ) or "empty"
+                return f"fmt2[{body}]({_mtime(path)})"
+    return f"{raw[:12]}({_mtime(path)})"
 
 
 def _projection_col(role):
