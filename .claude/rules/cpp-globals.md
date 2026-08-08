@@ -64,6 +64,15 @@ cmake --build <build-dir> --target header-checks   # pure CMake, no external too
 cmake --build <build-dir> --target lint            # + clang-tidy
 ```
 
+…and, on every PR, via the script-mode entry point the `header-checks` CI
+workflow drives — the one path of the three that actually gates a merge
+(`lint` reaches CI only through `quality.yml`, disabled at the repo level,
+#2718):
+
+```
+cmake -DPROJECT_ROOT=<repo-root> -P cmake/run_header_checks_standalone.cmake
+```
+
 It reports the offending file and declaration and fails the target. The
 matcher allows `constexpr` / `const` (including `inline static const`),
 `extern "C"` linkage blocks, and function declarations; allowlisted paths
@@ -79,9 +88,29 @@ tools: `irreden_collect_quality_files(... INCLUDE_RENDER_BACKENDS)`
 those 9 headers are first-party, so the ban — a correctness gate — must
 still see them. Only genuinely vendored code
 (`engine/render/third_party/metal-cpp/`, and anything under `build/` /
-`_deps/` / `third_party/`) is rejected in both scopes. **A new consumer of
-the executor must pass `INCLUDE_RENDER_BACKENDS`**: a gate handed the
-formatter's subset reports green over coverage it cannot reach (#2815).
+`_deps/` / `third_party/`) is rejected in both scopes. **Every consumer of
+the executor must pass `INCLUDE_RENDER_BACKENDS`** — new *and* pre-existing:
+a gate handed the formatter's subset reports green over coverage it cannot
+reach (#2815). The collector has three call sites; the two that feed the
+header-convention executor must agree, and the third is deliberately narrow:
+
+| Call site | Backs | Scope |
+|---|---|---|
+| `cmake/ir_quality_tools.cmake` (`irreden_add_quality_targets`, the `irreden_header_check_files` list) | the `header-checks` / `lint` targets | **wide** |
+| `cmake/run_header_checks_standalone.cmake` | the `header-checks` CI workflow | **wide** |
+| `cmake/ir_quality_tools.cmake` (`irreden_add_quality_targets`, the `irreden_quality_files` list) | `format` / `format-check` / `format-changed` / clang-tidy | narrow, on purpose |
+
+All three are greppable in one pass — `rg -n 'irreden_collect_quality_files'
+cmake/` returns the function definition and those three call sites (plus a few
+comment mentions; the call sites are the lines with an open paren). A hit that
+feeds the header checks without `INCLUDE_RENDER_BACKENDS` is the bug; the
+style-tool list is the one legitimate bare call. Phrasing this as "a **new**
+consumer" is what let #2889 sit: the shim was a *pre-existing* consumer, so
+#2818 widened the targets and left the only CI-gating path on 564 headers
+against the targets' 573 — the ban enforced locally and unenforced on merge
+for the full render-backend set. Scope parity is part of the contract, not an
+optimization; the two paths agreeing on rules while disagreeing on the file
+set is the #2727 drift in a different dimension.
 
 Two precision notes, both measured against the tree:
 

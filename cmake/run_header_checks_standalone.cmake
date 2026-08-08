@@ -8,12 +8,22 @@
 #
 #   cmake -DPROJECT_ROOT=<repo-root> -P cmake/run_header_checks_standalone.cmake
 #
-# Deliberately a thin shim. It reuses irreden_collect_quality_files for the file
-# set and delegates every actual rule to run_header_convention_checks.cmake,
-# run_metal_kernel_registry_check.cmake (#2798), and
-# run_metal_scratch_consumer_check.cmake (#2878), so the CI path and the
-# `header-checks` / `lint` targets cannot drift into checking different things —
-# the drift #2727 was filed about.
+# Deliberately a thin shim. It delegates every actual rule to
+# run_header_convention_checks.cmake, run_metal_kernel_registry_check.cmake
+# (#2798) and run_metal_scratch_consumer_check.cmake (#2878), AND collects the
+# same file set the `header-checks` / `lint` targets collect —
+# irreden_collect_quality_files with INCLUDE_RENDER_BACKENDS, the sibling call
+# site being irreden_add_quality_targets in cmake/ir_quality_tools.cmake — so
+# the CI path and the targets cannot drift into checking different things.
+# Rules were the drift #2727 was filed about; the file set is the same failure
+# in the other dimension (#2889).
+#
+# The flag is load-bearing, not decoration. Without it this call inherits the
+# style tools' reject list and the scan silently loses the 9 first-party headers
+# under engine/render/**/{gl_wrap,metal}/. Since this entry point is the ONLY
+# one that runs in CI — `lint` reaches CI solely through quality.yml, disabled
+# at the repo level (#2718) — a narrow list here is a hole in the merge gate,
+# not a slower version of it (#2889).
 
 cmake_minimum_required(VERSION 3.20)
 
@@ -33,7 +43,7 @@ endif()
 set(PROJECT_SOURCE_DIR "${PROJECT_ROOT}")
 include("${PROJECT_ROOT}/cmake/ir_quality_tools.cmake")
 
-irreden_collect_quality_files(quality_files)
+irreden_collect_quality_files(quality_files INCLUDE_RENDER_BACKENDS)
 if(quality_files STREQUAL "")
     message(FATAL_ERROR "No files found under ${PROJECT_ROOT}.")
 endif()
