@@ -156,6 +156,48 @@ entities per session, sufficient for current workloads. Long-running
 sessions that approach the cap should switch to a tiered allocator —
 not yet needed.
 
+## Record lookup: `findRecord` to probe, `getRecord` to use
+
+`m_entityIndex` maps a masked `EntityId` to its `EntityRecord{archetypeNode,
+row}`. Two accessors, and the choice between them is a correctness decision,
+not a style one:
+
+- **`findRecord(id)` → `EntityRecord *`** — non-inserting; `nullptr` when the
+  id has no index entry. Every path that can legitimately reach a dead or
+  not-yet-placed id goes through this and answers honestly
+  (`getComponentOptional` → `nullopt`, `hasComponent` → `false`,
+  `getComponentDataAndRow` → `{nullptr, -1}`, the deferred-op flush → skip).
+- **`getRecord(id)` → `EntityRecord &`** — asserts the record exists **and**
+  that it is placed in an archetype node, naming the offending id. For paths
+  where a missing record is a caller bug (`getComponent`, `setComponent`,
+  `getEntityArchetype`, `setFlags`, a direct `destroyEntity`).
+
+> **Never reach into `m_entityIndex` with `operator[]`.** It value-initialises
+> `{nullptr, 0}` on a miss, so a *read* of a dead id silently mints a record
+> for it. From then on `entityExists` answers `true` for that id, and the next
+> path that guards with `entityExists` and then derefs `archetypeNode` crashes
+> — far from the bad access, in code that did nothing wrong. That failure mode
+> reads as accumulating store corruption, not as one bad lookup (#2565).
+
+A non-null `findRecord` does **not** imply placement. `allocateEntity` and
+`insertReservedEntity` seed `{nullptr, -1}` before the archetype-node insert,
+and `createEntitiesBatch` allocates every id in the batch before running its
+`updateRecord` loop — so during that window N entities report `entityExists ==
+true` with null nodes. Check `archetypeNode` too wherever that window is
+reachable; `row == -1` distinguishes "allocated, not yet placed" from a record
+corrupted after placement.
+
+The batch drains (`destroyMarkedEntities`, `destroyAllEntities`) are
+set-semantics and skip ids that are already gone, so double-marking an entity
+in one frame is safe. A **direct** `destroyEntity` on a dead id is a caller
+bug and asserts — before the pre-destroy hooks run, so a bogus id never
+reaches user callbacks.
+
+`creations/demos/reposition_stress/` is the headless harness for this surface:
+it repositions N voxel-set entities every tick through four different write
+paths (`--drive=none|column|lookup|node`, composable with `--churn`) and exits
+non-zero on any assert or store-invariant break.
+
 ## Pre-destroy hooks
 
 `EntityManager::registerPreDestroyHook(callback)` registers a

@@ -171,6 +171,146 @@ TEST_F(IREntityTest, UnregisterPreDestroyHookStopsFiring) {
     EXPECT_EQ(fireCount, 1);
 }
 
+// Dead-id contract. Probing a destroyed or never-allocated id must answer
+// honestly AND leave the entity index untouched. The second half is the
+// load-bearing one: a lookup implemented with `std::unordered_map::operator[]`
+// mints a `{nullptr, 0}` record on a miss, so the probe itself makes
+// `entityExists` answer `true` for a dead id from then on — arming a delayed
+// crash in innocent code that guards with `entityExists` and then derefs
+// `archetypeNode`. That reads as accumulating store corruption rather than as
+// one bad-id access, which is why it stayed hidden (see #2565).
+//
+// So every case below asserts `entityExists` is still false AFTER the probes.
+// A suite that checks only the nullopt/false returns passes unchanged against
+// an implementation that still pollutes the index.
+
+TEST_F(IREntityTest, DeadIdProbesAnswerHonestlyAndDoNotPoisonIndex) {
+    auto entity = IREntity::createEntity(TestMarker{}, TestPayload{5});
+    const auto markerType = m_entity_manager.getComponentType<TestMarker>();
+    ASSERT_TRUE(IREntity::entityExists(entity));
+
+    m_entity_manager.destroyEntity(entity);
+    ASSERT_FALSE(IREntity::entityExists(entity));
+
+    // Honest answers for a dead id...
+    EXPECT_FALSE(IREntity::getComponentOptional<TestMarker>(entity).has_value());
+    EXPECT_FALSE(IREntity::getComponentOptional<TestPayload>(entity).has_value());
+    EXPECT_FALSE(m_entity_manager.hasComponent(entity, markerType));
+    EXPECT_EQ(m_entity_manager.getComponentDataAndRow(entity, markerType).first, nullptr);
+    EXPECT_EQ(m_entity_manager.getComponentDataAndRow(entity, markerType).second, -1);
+
+    // ...and none of those probes may resurrect it in the index.
+    EXPECT_FALSE(IREntity::entityExists(entity))
+        << "a probe of a dead id minted a poison record — entityExists now lies "
+           "about it, which arms a delayed crash in code that trusts the answer";
+    EXPECT_EQ(m_entity_manager.findRecord(entity), nullptr);
+}
+
+TEST_F(IREntityTest, FindRecordIsNullForNeverAllocatedId) {
+    // A never-allocated id must probe cleanly too — the poison mint did not
+    // care whether the id had ever existed.
+    const IREntity::EntityId neverAllocated = IREntity::IR_MAX_ENTITIES - 1;
+    ASSERT_FALSE(IREntity::entityExists(neverAllocated));
+
+    EXPECT_EQ(m_entity_manager.findRecord(neverAllocated), nullptr);
+    EXPECT_FALSE(m_entity_manager.hasComponent(
+        neverAllocated,
+        m_entity_manager.getComponentType<TestMarker>()
+    ));
+    EXPECT_FALSE(IREntity::getComponentOptional<TestMarker>(neverAllocated).has_value());
+    EXPECT_FALSE(IREntity::entityExists(neverAllocated));
+}
+
+TEST_F(IREntityTest, FindRecordResolvesLiveEntityToItsPlacedRecord) {
+    // Positive control for the two nullptr expectations above: findRecord is
+    // not vacuously null-returning.
+    auto entity = IREntity::createEntity(TestMarker{});
+
+    const IREntity::EntityRecord *record = m_entity_manager.findRecord(entity);
+    ASSERT_NE(record, nullptr);
+    EXPECT_NE(record->archetypeNode, nullptr);
+    EXPECT_GE(record->row, 0);
+}
+
+TEST_F(IREntityTest, GetComponentOnDeadIdAssertsInsteadOfDerefingNull) {
+    auto entity = IREntity::createEntity(TestMarker{});
+    m_entity_manager.destroyEntity(entity);
+
+    // IR_ASSERT logs at critical and throws std::runtime_error; the test binary
+    // is built debug, so EXPECT_THROW is the right harness. Pre-hardening this
+    // was a null deref (SIGSEGV), not a throw.
+    EXPECT_THROW(IREntity::getComponent<TestMarker>(entity), std::runtime_error);
+    EXPECT_THROW(IREntity::getComponent<TestMarker>(IREntity::kNullEntity), std::runtime_error);
+
+    // Even the throwing path must not have poisoned the index.
+    EXPECT_FALSE(IREntity::entityExists(entity));
+}
+
+TEST_F(IREntityTest, DestroyEntityOnDeadIdAssertsAndFiresNoHooks) {
+    auto entity = IREntity::createEntity(TestMarker{});
+    m_entity_manager.destroyEntity(entity);
+
+    int hookFires = 0;
+    m_entity_manager.registerPreDestroyHook([&](IREntity::EntityId) { ++hookFires; });
+
+    // A direct destroy of an already-dead id is a caller bug and must name
+    // itself. The validation runs BEFORE the pre-destroy hooks so a bogus id
+    // never reaches user callbacks.
+    EXPECT_THROW(m_entity_manager.destroyEntity(entity), std::runtime_error);
+    EXPECT_EQ(hookFires, 0);
+    EXPECT_FALSE(IREntity::entityExists(entity));
+}
+
+TEST_F(IREntityTest, SetComponentDeferredOnDestroyedEntityIsDroppedAtFlush) {
+    auto entity = IREntity::createEntity(TestMarker{});
+
+    IREntity::setComponentDeferred(entity, TestPayload{42});
+    m_entity_manager.destroyEntity(entity);
+
+    // The queued op names a now-dead id. Flushing must drop it silently — and
+    // must not mint a record for it on the way past.
+    IREntity::flushStructuralChanges();
+
+    EXPECT_FALSE(IREntity::entityExists(entity));
+    EXPECT_EQ(m_entity_manager.findRecord(entity), nullptr);
+}
+
+TEST_F(IREntityTest, RemoveComponentDeferredOnDestroyedEntityIsDroppedAtFlush) {
+    auto entity = IREntity::createEntity(TestMarker{}, TestRemovable{});
+    auto survivor = IREntity::createEntity(TestMarker{}, TestRemovable{});
+
+    IREntity::removeComponentDeferred<TestRemovable>(entity);
+    IREntity::removeComponentDeferred<TestRemovable>(survivor);
+    m_entity_manager.destroyEntity(entity);
+
+    IREntity::flushStructuralChanges();
+
+    EXPECT_FALSE(IREntity::entityExists(entity));
+    EXPECT_EQ(m_entity_manager.findRecord(entity), nullptr);
+    // The live entity in the same removal group is still processed — the skip
+    // is per-entity, not a bail-out of the whole batch.
+    EXPECT_FALSE(IREntity::getComponentOptional<TestRemovable>(survivor).has_value());
+    EXPECT_TRUE(IREntity::getComponentOptional<TestMarker>(survivor).has_value());
+}
+
+TEST_F(IREntityTest, DestroyMarkedEntitiesToleratesDoubleMark) {
+    auto entity = IREntity::createEntity(TestMarker{});
+    auto other = IREntity::createEntity(TestMarker{});
+
+    // Two systems marking the same entity in one frame is a set operation, not
+    // a sequence — the drain must be idempotent rather than double-destroying.
+    IREntity::EntityId firstMark = entity;
+    IREntity::EntityId secondMark = entity;
+    m_entity_manager.markEntityForDeletion(firstMark);
+    m_entity_manager.markEntityForDeletion(secondMark);
+
+    m_entity_manager.destroyMarkedEntities();
+
+    EXPECT_FALSE(IREntity::entityExists(entity));
+    EXPECT_EQ(m_entity_manager.findRecord(entity), nullptr);
+    EXPECT_TRUE(IREntity::entityExists(other));
+}
+
 // Singleton-component API (T-162): one entity per component type, lazily
 // created on first access, cached by ComponentId in EntityManager.
 struct TestSingleton {
