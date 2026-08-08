@@ -15,7 +15,8 @@
 #   - cues: coding-improvement count, untriaged count, unread feedback roles
 #     (file newer than .last-reviewed counts, older does not)
 #   - drain thresholds: coding-improvement cue flips to OVERDUE at >= 12
-#     open (informational below); feedback cue flips to OVERDUE when the
+#     open (informational below); untriaged cue flips to OVERDUE at >= 12
+#     awaiting (informational below); feedback cue flips to OVERDUE when the
 #     .last-reviewed marker is >= 14 days old or absent (informational when
 #     fresh) — both arms of each threshold exercised
 #   - headline decision count = merge queue + decisions
@@ -141,6 +142,7 @@ assert_absent  "$out" "fleet:coding-improvement: 1 open — OVERDUE" "1 open nev
 assert_contains "$out" "stale threshold 14d" "ancient .last-reviewed marker flips feedback cue to OVERDUE"
 assert_contains "$out" "untriaged (no state labels): 1" "untriaged cue counts label-less issue"
 assert_contains "$out" "engine #203" "untriaged cue names the issue"
+assert_absent  "$out" "untriaged (no state labels): 1 awaiting triage — OVERDUE" "1 untriaged never reads as overdue"
 assert_contains "$out" "merger" "feedback role newer than marker is unread"
 assert_absent  "$out" "role-worker" "feedback role older than marker is not unread"
 assert_contains "$out" "engine: 6 open PR(s) · 1 queued · 1 needs-plan" "status footer"
@@ -183,6 +185,48 @@ out=$(cat "$TMP/out.txt")
 assert_eq "$status" "0" "threshold run exits 0"
 assert_contains "$out" "fleet:coding-improvement: 12 open — OVERDUE" "12 open flips the cue to OVERDUE"
 assert_contains "$out" "drain threshold 12" "overdue cue names the threshold"
+
+# 11 untriaged (label-less) issues: the cue stays informational, one under
+# the drain threshold.
+python3 - "$TMP/engine-issues-untriaged-11.json" << 'PYEOF'
+import json
+import sys
+
+issues = [
+    {"number": 400 + i, "title": f"idea: untriaged {i}", "url": "u", "labels": []}
+    for i in range(11)
+]
+with open(sys.argv[1], "w", encoding="utf-8") as f:
+    json.dump(issues, f)
+PYEOF
+
+status=$(GH_STUB_ENGINE_ISSUES="$TMP/engine-issues-untriaged-11.json" run_decisions --repo=engine)
+out=$(cat "$TMP/out.txt")
+assert_eq "$status" "0" "11-untriaged run exits 0"
+assert_contains "$out" "untriaged (no state labels): 11 awaiting triage — engine #400" \
+    "11 open renders informational, no OVERDUE marker"
+assert_absent  "$out" "OVERDUE" "11 untriaged never reads as overdue"
+
+# 12 untriaged issues: the cue flips to OVERDUE.
+python3 - "$TMP/engine-issues-untriaged-12.json" << 'PYEOF'
+import json
+import sys
+
+issues = [
+    {"number": 400 + i, "title": f"idea: untriaged {i}", "url": "u", "labels": []}
+    for i in range(12)
+]
+with open(sys.argv[1], "w", encoding="utf-8") as f:
+    json.dump(issues, f)
+PYEOF
+
+status=$(GH_STUB_ENGINE_ISSUES="$TMP/engine-issues-untriaged-12.json" run_decisions --repo=engine)
+out=$(cat "$TMP/out.txt")
+assert_eq "$status" "0" "12-untriaged run exits 0"
+assert_contains "$out" "untriaged (no state labels): 12 awaiting triage — OVERDUE" \
+    "12 open flips the untriaged cue to OVERDUE"
+assert_contains "$out" "drain threshold 12" "overdue untriaged cue names the threshold"
+assert_contains "$out" "triage-protocol.md" "overdue untriaged cue names the drain"
 
 # Restore the ancient marker layout for any later cases.
 touch -t 202401010000 "$TMP/fleet-home/feedback/role-worker.md"
