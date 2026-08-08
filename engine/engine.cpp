@@ -40,8 +40,8 @@ void warnIfAutoScreenshotNeverArmed() {
         IRE_LOG_WARN(
             "--auto-screenshot was provided but no capture system is registered; "
             "this creation will render indefinitely and never exit. The creation "
-            "must call IRVideo::createAutoScreenshotSystem before gameLoop() "
-            "(see engine/video/CLAUDE.md)."
+            "must call IRVideo::createAutoScreenshotSystem (or createGuiTestSystem "
+            "for the GUI-test path) before gameLoop() (see engine/video/CLAUDE.md)."
         );
     }
 }
