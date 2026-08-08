@@ -24,6 +24,12 @@ Copy the closest demo, rename targets, add
 `creations/CMakeLists.txt`. See `shape_debug/CMakeLists.txt` for the
 canonical CMake shape.
 
+A demo that joins the visual-regression harness also ships
+`test/references/manifest.json`, and that file's `"target"` field is what
+`render-verify --all` resolves the demo directory by — omit it and the demo is
+silently absent from every sweep (#2919). Schema + flow:
+[`.claude/skills/render-verify/SKILL.md`](../../.claude/skills/render-verify/SKILL.md).
+
 ## Conventions
 
 - **Self-contained.** A demo must build and run without any private
