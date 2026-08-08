@@ -353,6 +353,46 @@ def evaluate_shots(
     return rows
 
 
+def _validate_structural_only(structural_only: set[str], shots: list[str],
+                              structural: dict[str, Any],
+                              *, pass_name: str | None = None) -> None:
+    """Reject a ``structural_only`` label that would be captured-but-ungated.
+
+    A ``structural_only`` shot is captured (so the index→reference map stays
+    aligned) but skipped by the pixel-diff, so its *only* gate is its
+    ``structural`` entry. A label with no such entry produces zero result
+    rows and the run reports PASS — captured, never checked.
+
+    Called once per **resolved pass**, the top-level manifest counting as
+    one: ``main()`` passes ``pass_name=None``, ``_parse_extra_runs`` passes
+    the pass's name. Both lanes must route through here rather than inline
+    a copy — a check written into one lane reaches only that lane, which is
+    how ``extra_runs`` (where most ``structural_only`` shots live) went
+    unguarded (#2842).
+    """
+    # Message shaping is the only thing the two lanes disagree on: a per-pass
+    # failure has to name its pass and scope 'shots' / 'structural' to it.
+    where = "" if pass_name is None else f"extra run '{pass_name}': "
+    block = "manifest 'structural_only'" if pass_name is None else "'structural_only'"
+    shots_ref = "'shots'" if pass_name is None else "this pass's 'shots'"
+    gate_scope = "" if pass_name is None else " for this pass"
+    # sorted(): a set's iteration order varies with PYTHONHASHSEED, so an
+    # unsorted walk reports a different one of several bad labels per run.
+    for label in sorted(structural_only):
+        if label not in shots:
+            raise SystemExit(
+                f"{where}{block} references unknown shot '{label}' "
+                f"(not in {shots_ref})"
+            )
+        if label not in structural:
+            raise SystemExit(
+                f"{where}shot '{label}' is 'structural_only' but has no "
+                f"'structural' gate{gate_scope} — it would be captured but "
+                f"never checked. Add a structural entry or drop it from "
+                f"structural_only."
+            )
+
+
 def _parse_extra_runs(manifest: dict[str, Any]) -> list[dict[str, Any]]:
     """Validate + normalize the optional ``extra_runs`` manifest block.
 
@@ -369,9 +409,14 @@ def _parse_extra_runs(manifest: dict[str, Any]) -> list[dict[str, Any]]:
       * ``capture_offset``       — index of the first gated shot in the pass's
                                    full capture list (default 0; negative =
                                    from the tail, for end-appended shots).
-      * ``warmup`` / ``thresholds`` / ``crops`` / ``structural`` /
-        ``structural_only`` — optional per-pass overrides; each defaults to
-        the top-level manifest value.
+      * ``warmup`` / ``thresholds`` — optional per-pass overrides; each
+        falls back to the top-level manifest value when unset.
+      * ``crops`` / ``structural`` / ``structural_only`` — optional
+        per-pass overrides; each defaults to **empty**, not to the
+        top-level manifest value — a pass that wants one of these gates
+        must declare it itself. A per-pass ``structural_only`` label must
+        have a matching per-pass ``structural`` entry — enforced by the
+        same ``_validate_structural_only`` the top-level block runs.
 
     A manifest with no ``extra_runs`` behaves exactly as before.
     """
@@ -408,6 +453,10 @@ def _parse_extra_runs(manifest: dict[str, Any]) -> list[dict[str, Any]]:
             raise SystemExit(
                 f"extra run '{name}': 'capture_offset' must be an integer"
             )
+        structural = entry.get("structural", {})
+        structural_only = set(entry.get("structural_only", []))
+        _validate_structural_only(structural_only, shots, structural,
+                                  pass_name=name)
         parsed.append({
             "name": name,
             "demo_args": demo_args,
@@ -416,8 +465,8 @@ def _parse_extra_runs(manifest: dict[str, Any]) -> list[dict[str, Any]]:
             "warmup": entry.get("warmup"),
             "thresholds": entry.get("thresholds"),
             "crops": entry.get("crops", {}),
-            "structural": entry.get("structural", {}),
-            "structural_only": set(entry.get("structural_only", [])),
+            "structural": structural,
+            "structural_only": structural_only,
         })
     return parsed
 
@@ -543,20 +592,10 @@ def main(argv: list[str] | None = None) -> int:
     # index→reference alignment) but no full-frame pixel-diff and no committed
     # reference PNG. This is how an analytic-oracle scene gates the zoom regime
     # that pixel-diff excludes (epic #1766 T-4). Each must be a declared shot
-    # and must carry a structural gate, else it would be captured-but-ungated.
+    # and must carry a structural gate, else it would be captured-but-ungated —
+    # the same two arms `_parse_extra_runs` applies to each extra pass.
     structural_only: set[str] = set(manifest.get("structural_only", []))
-    for label in structural_only:
-        if label not in shot_labels:
-            raise SystemExit(
-                f"manifest 'structural_only' references unknown shot '{label}' "
-                f"(not in 'shots')"
-            )
-        if label not in structural_block:
-            raise SystemExit(
-                f"shot '{label}' is 'structural_only' but has no 'structural' "
-                f"gate — it would be captured but never checked. Add a "
-                f"structural entry or drop it from structural_only."
-            )
+    _validate_structural_only(structural_only, shot_labels, structural_block)
     # Optional second/third capture passes with their own demo args + gated
     # reference subset (e.g. canvas_stress `--only compare`). Empty for a
     # single-pass manifest, so the default path is untouched.
