@@ -185,12 +185,14 @@ repo would otherwise fork it.
 
 ### CI validation
 
-A lint check can assert that (a) every wrapper's `## Deltas` table answers
-every delta key its canonical flow names, and (b) every canonical flow has at
-least one wrapper. A grep over `docs/agents/skills/*.md` for bold
-`**delta keys**` cross-referenced against each `SKILL.md`'s Deltas table
-would catch an unanswered key after a flow gains a new one. Out of scope
-while the set is four skills; revisit when wrappers start missing keys.
+`fleet-validate-roles` (`scripts/fleet/fleet_validate_roles.py`, #2893) now
+enforces this, as the skill lane of the same lint `role-sharing.md` documents
+shipping at #1667: every canonical flow's `## Repo deltas this flow needs`
+table must have a stem-paired `.claude/skills/<stem>/SKILL.md` whose
+`## Deltas` table answers every declared key. Pre-existing gaps land in a
+ratchet baseline (`SKILL_WRAPPER_MISSING_KEY_BASELINE` /
+`SKILL_NO_WRAPPER_BASELINE`) rather than being repaired inline, since
+`.claude/skills/**/SKILL.md` is gated self-config no worker class can push.
 
 ### When to factor a new skill
 

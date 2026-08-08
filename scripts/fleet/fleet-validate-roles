@@ -75,39 +75,56 @@ def main():
     print()
 
     if result["empty"]:
-        print("No *-protocol.md files declare `## Repo deltas this flow needs` — "
-              "nothing to validate.")
+        print("No *-protocol.md / docs/agents/skills/*.md files declare "
+              "`## Repo deltas this flow needs` — nothing to validate.")
         print()
-        print("This is expected on a tree where no protocol has opt-ed in yet.")
+        print("This is expected on a tree where no flow has opt-ed in yet.")
         return 0
 
     root_labels = [label for root, label in repo_roots if Path(root).is_dir()]
 
+    protocols_by_lane = {}
     for proto in result["protocols"]:
-        keys_str = ", ".join("**%s**" % k for k in proto["keys"])
-        print("Protocol: %s  (%d key%s: %s)"
-              % (proto["name"], len(proto["keys"]),
-                 "" if len(proto["keys"]) == 1 else "s", keys_str))
+        protocols_by_lane.setdefault(proto.get("lane", "role"), []).append(proto)
 
-        for repo_info in proto["repos"]:
-            label = repo_info["label"]
-            if repo_info["no_wrapper"]:
-                for f in repo_info["findings"]:
-                    tag = "WARN" if f["severity"] == "warn" else "FAIL"
-                    print("  %-4s  [%s] %s" % (tag, label, f["msg"]))
-            else:
-                for wr in repo_info["wrappers"]:
-                    wp_name = Path(wr["path"]).name
-                    if wr["n_errors"] == 0 and wr["n_warnings"] == 0:
-                        print("  PASS  [%s] %s" % (label, wp_name))
-                    elif wr["n_errors"] > 0:
-                        print("  FAIL  [%s] %s" % (label, wp_name))
-                    else:
-                        print("  WARN  [%s] %s" % (label, wp_name))
-                    for f in wr["findings"]:
-                        tag = "WARN" if f["severity"] == "warn" else "ERR "
-                        print("          - [%s] %s" % (tag, f["msg"]))
+    for lane_info in result.get("lanes", []):
+        lane_label = lane_info["label"]
+        if lane_info["n_flows"] == 0:
+            print("WARN  lane=%s resolved to 0 flow(s) — check the glob path"
+                  % lane_label)
+        else:
+            print("Lane %s: %d flow(s), %d wrapper(s) covered."
+                  % (lane_label, lane_info["n_flows"], lane_info["n_wrappers"]))
         print()
+
+        for proto in protocols_by_lane.get(lane_label, []):
+            keys_str = ", ".join("**%s**" % k for k in proto["keys"])
+            print("Protocol: %s  (%d key%s: %s)"
+                  % (proto["name"], len(proto["keys"]),
+                     "" if len(proto["keys"]) == 1 else "s", keys_str))
+
+            for repo_info in proto["repos"]:
+                label = repo_info["label"]
+                if repo_info["no_wrapper"]:
+                    if not repo_info["findings"]:
+                        print("  BASE  [%s] %s (baselined no-wrapper gap)"
+                              % (label, proto["name"]))
+                    for f in repo_info["findings"]:
+                        tag = "WARN" if f["severity"] == "warn" else "FAIL"
+                        print("  %-4s  [%s] %s" % (tag, label, f["msg"]))
+                else:
+                    for wr in repo_info["wrappers"]:
+                        wp_name = Path(wr["path"]).name
+                        if wr["n_errors"] == 0 and wr["n_warnings"] == 0:
+                            print("  PASS  [%s] %s" % (label, wp_name))
+                        elif wr["n_errors"] > 0:
+                            print("  FAIL  [%s] %s" % (label, wp_name))
+                        else:
+                            print("  WARN  [%s] %s" % (label, wp_name))
+                        for f in wr["findings"]:
+                            tag = "WARN" if f["severity"] == "warn" else "ERR "
+                            print("          - [%s] %s" % (tag, f["msg"]))
+            print()
 
     n_proto = len(result["protocols"])
     n_err = result["n_errors"]
