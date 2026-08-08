@@ -20,6 +20,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 _SCRIPTS = Path(__file__).resolve().parent.parent
 # render-verify.py does a bare `import verify_common` (#2461), which resolves
@@ -48,6 +49,11 @@ _run_structural_metric = _rv._run_structural_metric
 _crop_capture_path = _rv._crop_capture_path
 _parse_extra_runs = _rv._parse_extra_runs
 _slice_capture = _rv._slice_capture
+# _validate_structural_only is deliberately NOT bound here: a module-scope
+# binding of a symbol the pre-fix tree lacks makes the whole suite
+# unimportable under the "swap in the old render-verify.py" positive control,
+# collapsing a per-test result into one ImportError. Resolved per call site
+# instead, so that control reports which arms actually discriminate.
 
 MAGENTA = (255, 0, 255)
 BLACK = (0, 0, 0)
@@ -408,6 +414,125 @@ class ParseExtraRuns(unittest.TestCase):
     def test_rejects_non_list_block(self):
         with self.assertRaises(SystemExit):
             _parse_extra_runs({"extra_runs": {"name": "x"}})
+
+    # ── per-pass structural_only guard ─────────────────────────────────
+    # Mirrors the top-level 'structural_only' guard: a label with no
+    # matching 'structural' entry for the same pass would be captured,
+    # never pixel-diffed, and never structurally gated either. See #2842.
+    def test_structural_only_with_matching_structural_entry_parses(self):
+        runs = _parse_extra_runs({"extra_runs": [{
+            "name": "compare",
+            "demo_args": ["--only", "compare"],
+            "shots": ["shotA"],
+            "structural": {"shotA": [{"metric": "shadow",
+                                      "min_largest_frac": 0.8}]},
+            "structural_only": ["shotA"],
+        }]})
+        self.assertEqual(runs[0]["structural_only"], {"shotA"})
+
+    def test_structural_only_with_no_structural_entry_raises(self):
+        # Same shape as the compliant case, minus the 'structural' entry.
+        # Pre-fix this was silent (0 rows, PASS).
+        with self.assertRaises(SystemExit) as cm:
+            _parse_extra_runs({"extra_runs": [{
+                "name": "compare",
+                "demo_args": ["--only", "compare"],
+                "shots": ["shotA"],
+                "structural_only": ["shotA"],
+            }]})
+        self.assertIn("compare", str(cm.exception))
+
+    def test_structural_only_unknown_shot_raises(self):
+        with self.assertRaises(SystemExit):
+            _parse_extra_runs({"extra_runs": [{
+                "name": "compare",
+                "demo_args": ["--only", "compare"],
+                "shots": ["shotA"],
+                "structural_only": ["nope"],
+            }]})
+
+    def test_structural_only_does_not_inherit_top_level_structural(self):
+        # 'structural' is a per-pass override that defaults to empty, not
+        # to the top-level manifest value — a top-level entry for the same
+        # label must not satisfy the per-pass guard.
+        with self.assertRaises(SystemExit):
+            _parse_extra_runs({
+                "structural": {"shotA": [{"metric": "shadow",
+                                          "min_largest_frac": 0.8}]},
+                "extra_runs": [{
+                    "name": "compare",
+                    "demo_args": ["--only", "compare"],
+                    "shots": ["shotA"],
+                    "structural_only": ["shotA"],
+                }],
+            })
+
+    def test_extra_runs_delegates_to_the_shared_validator(self):
+        # #2842's fix is one validator invoked per resolved pass, not one
+        # copy per lane. An inline re-copy in _parse_extra_runs would keep
+        # every behavioural test above green while re-opening the drift, so
+        # assert the delegation itself. The manifest below is the *violating*
+        # shape: with the stub in place it must parse (proving the raise came
+        # from the patched-out helper), and an inline copy would raise here.
+        with patch.object(_rv, "_validate_structural_only") as spy:
+            _parse_extra_runs({"extra_runs": [{
+                "name": "compare",
+                "demo_args": ["--only", "compare"],
+                "shots": ["shotA"],
+                "structural_only": ["shotA"],
+            }]})
+        spy.assert_called_once()
+        self.assertEqual(spy.call_args.kwargs, {"pass_name": "compare"})
+        self.assertEqual(spy.call_args.args[0], {"shotA"})
+
+
+class ValidateStructuralOnly(unittest.TestCase):
+    """The shared two-arm guard, driven on its top-level lane (#2842).
+
+    ``main()`` is the other caller, and its lane is otherwise reachable only
+    through a full CLI run against a demo dir — these arms cover it directly.
+    The per-pass lane's arms live in ParseExtraRuns above.
+    """
+
+    def test_top_level_compliant_shape_passes(self):
+        _rv._validate_structural_only({"shotA"}, ["shotA", "shotB"],
+                                  {"shotA": [{"metric": "shadow"}]})
+
+    def test_top_level_unknown_shot_raises(self):
+        with self.assertRaises(SystemExit) as cm:
+            _rv._validate_structural_only({"nope"}, ["shotA"], {})
+        # Manifest-scoped wording: no pass name, since the top level is not
+        # an extra run. Unchanged from before the helper extraction.
+        self.assertEqual(
+            str(cm.exception),
+            "manifest 'structural_only' references unknown shot 'nope' "
+            "(not in 'shots')")
+
+    def test_top_level_missing_structural_entry_raises(self):
+        with self.assertRaises(SystemExit) as cm:
+            _rv._validate_structural_only({"shotA"}, ["shotA"], {})
+        self.assertEqual(
+            str(cm.exception),
+            "shot 'shotA' is 'structural_only' but has no 'structural' gate "
+            "— it would be captured but never checked. Add a structural "
+            "entry or drop it from structural_only.")
+
+    def test_per_pass_lane_names_the_pass(self):
+        # Same violating shape, other lane: the message must name the pass
+        # (AC 1) and scope 'shots' / the gate to it.
+        with self.assertRaises(SystemExit) as cm:
+            _rv._validate_structural_only({"shotA"}, ["shotA"], {},
+                                      pass_name="compare")
+        self.assertEqual(
+            str(cm.exception),
+            "extra run 'compare': shot 'shotA' is 'structural_only' but has "
+            "no 'structural' gate for this pass — it would be captured but "
+            "never checked. Add a structural entry or drop it from "
+            "structural_only.")
+
+    def test_empty_block_is_a_no_op(self):
+        _rv._validate_structural_only(set(), [], {})
+        _rv._validate_structural_only(set(), [], {}, pass_name="compare")
 
 
 if __name__ == "__main__":
