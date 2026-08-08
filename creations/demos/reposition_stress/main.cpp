@@ -127,7 +127,10 @@ std::vector<IREntity::EntityId> g_churnEntities;
 // Ids of entities that are CONFIRMED dead, retained deliberately. The
 // --stale-probe arm re-probes these every tick: a creation that outlives its
 // entities holds exactly these, and probing one is what pre-#2565 turned into
-// delayed corruption.
+// delayed corruption. This is sound only because ids are never recycled
+// (entity_manager.hpp: monotonic `m_nextEntityId.fetch_add`, no recycle
+// pool) — under a recycling allocator a retained id could come back as a
+// live entity and this arm would report spurious failures.
 std::vector<IREntity::EntityId> g_staleEntities;
 
 // Ids marked for deletion but not yet drained. `IREntity::destroyEntity` is
@@ -547,10 +550,11 @@ void checkStoreInvariants() {
 //
 // The contract asserted here is engine/entity/CLAUDE.md §"Record lookup": a
 // dead id answers honestly through the optional/has/exists API, and probing it
-// must not mint an index record. `existsAfter` is the subtle half — checking
-// only the nullopt/false returns would miss index pollution, and it is the
-// pollution that turns one bad lookup into a delayed crash in unrelated code
-// that merely guarded with `entityExists`. See #2565.
+// must not mint an index record. On the actual #2565 regression, the first
+// three probes (existsBefore/optional/has) all answer honestly — the mint
+// happens DURING the probe, so those wrappers still return their negative
+// result before the poison record is observable. `existsAfter` is the only
+// term that fires; do not delete it as a redundant leading-terms simplification.
 void probeStaleIds() {
     promoteDrainedStale();
     const IREntity::ComponentId transformType = IREntity::getComponentType<C_LocalTransform>();
