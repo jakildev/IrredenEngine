@@ -75,7 +75,7 @@ foreach(line IN LISTS pipeline_lines)
     # forward direction this check exists to close. Handle both line (//) and
     # block (/* ... */) comments; the sibling scratch-consumer checker applies
     # the identical strip for the identical reason (#2899).
-    string(REGEX REPLACE "/\\*.*\\*/" "" line "${line}")
+    string(REGEX REPLACE "/\\*([^*]|\\*+[^*/])*\\*+/" "" line "${line}")
     string(REGEX REPLACE "//.*" "" line "${line}")
     string(REGEX MATCHALL "\"[A-Za-z0-9_]+\"" quoted_names "${line}")
     foreach(quoted_name IN LISTS quoted_names)

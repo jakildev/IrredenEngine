@@ -217,7 +217,7 @@ foreach(line IN LISTS pipeline_lines)
     # Handles both line (//) and block (/* ... */) comments; the sibling
     # run_metal_kernel_registry_check.cmake's identical scan applies the same
     # two-form strip (#2899).
-    string(REGEX REPLACE "/\\*.*\\*/" "" line "${line}")
+    string(REGEX REPLACE "/\\*([^*]|\\*+[^*/])*\\*+/" "" line "${line}")
     string(REGEX REPLACE "//.*" "" line "${line}")
     string(REGEX MATCHALL "\"[A-Za-z0-9_]+\"" quoted_names "${line}")
     foreach(quoted_name IN LISTS quoted_names)
