@@ -320,8 +320,11 @@ struct Voxel {
 
 // #2260 Z-cost twins of fogColumnReveal / fogColumnRevealNearest for the
 // OWN-COLUMN DROP only (the voxel's world Z is known there). They fold the
-// per-circle height penalty (zCost * |voxelZ - observerZ|) into the effective
-// radial distance so a boundary voxel clips consistently with FOG_TO_TRIXEL's
+// per-circle height penalty (#2557 generalizes #2260's symmetric
+// zCost * |voxelZ - observerZ| to zCostUp * max(dzUp - freeBand, 0) +
+// zCostDown * max(dzDown - freeBand, 0), where dzUp = max(observerZ - voxelZ,
+// 0) and dzDown = max(voxelZ - observerZ, 0)) into the effective radial
+// distance so a boundary voxel clips consistently with FOG_TO_TRIXEL's
 // per-pixel z reveal — a pillar top / pit floor far from the observer height
 // drops even with its XY column inside the disc. Mirror of the GLSL twins. These
 // live HERE rather than beside their z-free twins in ir_voxel_face_select.metal
@@ -331,8 +334,9 @@ struct Voxel {
 // cardinal-fast-path reason. The cut-face + keep-ring tests keep calling the
 // z-free twins in the shared include (best-case-z, keep a superset); only the
 // DROP metric and
-// nearest-Z DISTANCE carry the penalty, the keep-ring WIDTH stays z-free. zCost
-// 0 (the default) → these return bit-identically to the z-free twins.
+// nearest-Z DISTANCE carry the penalty, the keep-ring WIDTH stays z-free.
+// All-zero heights (the default) → these return bit-identically to the z-free
+// twins.
 static float fogColumnRevealZ(
     texture2d<float, access::read> fog, constant FogObserverData& obs, int2 col, float voxelZ
 ) {
@@ -350,8 +354,10 @@ static float fogColumnRevealZ(
     float reveal = 0.0f;
     for (int i = 0; i < obs.visionCircleCount; ++i) {
         const float4 h = obs.visionCircleHeights[i];
-        const float distEff =
-            length(float2(col) - obs.visionCircles[i].xy) + h.y * abs(voxelZ - h.x);
+        const float dzUp = max(h.x - voxelZ, 0.0f);
+        const float dzDown = max(voxelZ - h.x, 0.0f);
+        const float distEff = length(float2(col) - obs.visionCircles[i].xy) +
+            h.y * max(dzUp - h.w, 0.0f) + h.z * max(dzDown - h.w, 0.0f);
         const float a = max(obs.visionCircles[i].w, 0.0f);
         reveal = max(
             reveal,
@@ -383,8 +389,10 @@ static float fogColumnRevealNearestZ(
             float2(col) + kFogColumnCellHalf
         );
         const float4 h = obs.visionCircleHeights[i];
-        const float distEff =
-            length(nearest - obs.visionCircles[i].xy) + h.y * abs(voxelZ - h.x);
+        const float dzUp = max(h.x - voxelZ, 0.0f);
+        const float dzDown = max(voxelZ - h.x, 0.0f);
+        const float distEff = length(nearest - obs.visionCircles[i].xy) +
+            h.y * max(dzUp - h.w, 0.0f) + h.z * max(dzDown - h.w, 0.0f);
         // Keep-ring WIDTH stays z-free (a fixed geometric ring so the cut always
         // has matter to repaint); only the distance carries the z penalty.
         const float a = max(obs.visionCircles[i].w, kFogColumnKeepAa + kFogHiddenKeepCells);
@@ -500,8 +508,8 @@ kernel void IR_STAGE1_KERNEL_NAME(
     // (pillar top / pit floor far from the observer height) clips consistently
     // with FOG_TO_TRIXEL's per-pixel z reveal. Only the DROP takes the Z twins —
     // the cut-face test inside selectVoxelFace stays on the z-free
-    // fogColumnReveal (best-case-z keeps a superset). zCost 0 → identical to the
-    // 2D drop.
+    // fogColumnReveal (best-case-z keeps a superset). All-zero heights →
+    // identical to the 2D drop.
     const bool ownColumnHidden = frameData.isDetachedCanvas > 0.5f
         ? fogColumnRevealZ(canvasFogOfWar, fogObservers, sel.worldColumn, voxelPosition.z) <= 0.0f
         : fogColumnRevealNearestZ(
