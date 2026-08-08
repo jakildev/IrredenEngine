@@ -24,6 +24,8 @@ jitter_probe <frame_0.png> <frame_1.png> ... <frame_N.png>   # >=3, in capture o
     [--color R,G,B,T]    instead, foreground = pixels within T of color R,G,B
     [--reversal-eps PX]  per-frame deltas under this count as 0 (default 0.10)
     [--max-residual PX]  SMOOTH verdict requires residual <= this (default 1.50)
+    [--max-excursion-x PX]  SMOOTH also requires x excursion (max-min) <= this
+    [--max-excursion-y PX]  ... same for y; each flag is independently optional
     [--stationary]       assert the centroid does NOT move (pivot-pin check)
     [--max-deviation PX] PINNED verdict requires deviation <= this (default 1.50)
     [--verbose]          print the per-frame centroid + residual table
@@ -123,15 +125,21 @@ is a separate thing — capture the SAME pose twice and `img_diff` them (expect 
 
 ```
 jitter_probe: frames=24 (valid=24)  verdict=SMOOTH
-  x: reversals=0  max_residual=0.20px  delta_std=0.41  delta_max=1.00
-  y: reversals=0  max_residual=0.31px  delta_std=0.30  delta_max=0.51
+  x: reversals=0  max_residual=0.20px  excursion=1.26px  delta_std=0.41  delta_max=1.00
+  y: reversals=0  max_residual=0.31px  excursion=5.29px  delta_std=0.30  delta_max=0.51
+  (thresholds: reversals=0, max_residual<=1.50px)
 ```
 
 `reversals` is the count of per-frame direction flips (the jitter signature);
-`max_residual` is the worst deviation from the smooth straight-line motion.
+`max_residual` is the worst deviation from the smooth straight-line motion;
+`excursion` is how far the centroid travelled on that axis end to end (max-min).
 SMOOTH requires `reversals == 0` on both axes and `max_residual <= --max-residual`.
 A clean fix flips a JITTER verdict (high reversals, multi-px residual) to SMOOTH
 (0 reversals, sub-px residual).
+
+`excursion` is printed on every default-mode run but only *gates* when you pass
+a bar, and the `(thresholds: ...)` line lists exactly the bars in force — so a
+verdict always states what it asserted rather than leaving you to infer it.
 
 ## Accepted floors, and the model's blind spot (#2469)
 
@@ -148,18 +156,53 @@ that model is mis-specified on exactly that axis, in both directions:
   observed per-frame delta range.
 - **False negatives.** A large but *smooth* centroid migration is what the line
   fit calls correct. A known render defect (re-exposed via the engine's
-  `IR_PERAXIS_OVERFLOW_DISABLE=1` kill switch) migrates the x centroid by an
-  order of magnitude more than healthy master and still scores `reversals=0`
-  with a sub-pixel residual. Neither shipped axis fires on it.
+  `IR_PERAXIS_OVERFLOW_DISABLE=1` kill switch) migrated the x centroid by an
+  order of magnitude more than healthy master (measured 2026-07-28) and still
+  scored `reversals=0` with a sub-pixel residual. Neither shipped axis fires on
+  it. The *model gap* is real and permanent — a line fit cannot see a migration
+  it fits — and `--max-excursion-x/-y` below is the assertion that closes it.
+  The *specific defect/healthy ordering* in that measurement did not survive:
+  re-measured 2026-08-07 the kill-switch arm reads **lower** excursion than
+  healthy, because a much larger pivot-orbit term now dominates both (see the
+  bar note below).
 
 `--stationary` does not close the gap: it requires BOTH axes pinned, but on a
 yaw sweep the *other* axis legitimately translates — by more than the defect
 migrates — so `--stationary` reports DRIFT on every healthy run, including on
 the defect-free continuous-geometry control.
 
-Until **#2606** adds a per-axis excursion assertion, read per-axis excursion by
-hand from `--verbose` (max-min per centroid column) when a change touches the
-per-axis store, the scatter, or the camera-offset decomposition. Measured
-accepted floors and the full table live in
-[`engine/render/CLAUDE.md`](../../engine/render/CLAUDE.md) §"Accepted sub-pixel
-yaw-sweep centroid residual (voxel content) — #2469".
+## `--max-excursion-x` / `--max-excursion-y` — the per-axis assertion (#2606)
+
+The false-negative half above is what these close. Excursion is the peak-to-peak
+spread (max-min) of one centroid column: deliberately shape-blind, so a
+perfectly smooth migration registers at full size exactly where the line fit's
+residual reads ~0.
+
+Because each flag is independently optional, they can say the thing neither
+shipped criterion nor `--stationary` can — *this* axis is pinned, the other may
+translate:
+
+```bash
+# x must hold within 5px; y unconstrained.
+jitter_probe --reversal-eps 0.8 --expect-frames 24 --max-excursion-x 5 <frames>
+```
+
+Combining either flag with `--stationary` is an argument error (exit 2) rather
+than a silently ignored assertion — `--stationary` has its own verdict and
+output path, and that path stays byte-identical for its one stdout consumer,
+`scripts/pivot-verify.py`. Semantics are pinned by
+[`test/tools/jitter_probe_excursion_test.sh`](../../test/tools/jitter_probe_excursion_test.sh)
+against synthetic fixtures, so they do not drift with the render tree.
+
+**Picking a bar is per-probe, and the canonical rotation probe cannot carry one
+yet.** A bar is only meaningful when the axis it gates is actually pinned. On
+the canonical `--yaw-sweep` cylinder that is currently false: re-measured
+2026-08-07 on macOS/Metal, healthy x excursion is 19.97 / 38.18 / 76.81px at
+zoom 2/4/8 — dominated by the **default** pivot focus's residual orbit (#2547 →
+**#2641**), which is camera-level (the SDF control moves as far) and swamps the
+per-axis signal. The `IR_PERAXIS_OVERFLOW_DISABLE=1` arm even reads *lower* than
+healthy, so no one-sided bar separates them. Use the flags on a probe whose
+pivot you control until #2641 lands; the full table and the re-derivation note
+live in [`engine/render/CLAUDE.md`](../../engine/render/CLAUDE.md) §"Verifying
+temporal stability" and §"Accepted sub-pixel yaw-sweep centroid residual (voxel
+content) — #2469".

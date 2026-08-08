@@ -16,6 +16,8 @@
 //     [--color R,G,B,T]    instead, foreground = pixels within T of color R,G,B
 //     [--reversal-eps PX]  per-frame deltas under this are treated as 0 (default 0.10)
 //     [--max-residual PX]  SMOOTH verdict requires residual <= this (default 1.50)
+//     [--max-excursion-x PX] SMOOTH verdict also requires x excursion <= this
+//     [--max-excursion-y PX] ... same for y (each independently optional)
 //     [--stationary]       assert the centroid does NOT move (pivot-pin check)
 //     [--max-deviation PX] PINNED verdict requires deviation <= this (default 1.50)
 //     [--verbose]          print the per-frame centroid + residual table
@@ -25,6 +27,16 @@
 // is clean — e.g. `shape_debug --spin-shape box --spin-shape-voxel --pan-sweep`
 // (pan jitter) or `--yaw-sweep` (rotation jitter). For a multi-shape scene pass
 // --color to lock onto one shape. Frames MUST be given in capture order.
+//
+// --max-excursion-{x,y} answer a third question, per axis: how far did the
+// centroid travel on that axis, end to end (max-min), regardless of HOW it got
+// there. The line fit is blind to a perfectly smooth systematic migration — it
+// fits it and calls the residual clean — so on a probe where one axis is
+// supposed to stay PINNED while the other legitimately translates, the shipped
+// criteria cannot express the contract and the migration scores SMOOTH (#2606).
+// Because each flag is independently optional, "x stays pinned while y may
+// translate" is exactly `--max-excursion-x <bar>` with y unconstrained, which
+// --stationary (both axes pinned) cannot say.
 //
 // --stationary answers a different question than the default line-fit: the
 // default asserts SMOOTH LINEAR motion (a sweep translates the shape without
@@ -62,10 +74,22 @@ struct Args {
     int colorR_ = 0, colorG_ = 0, colorB_ = 0, colorTol_ = 0;
     double reversalEps_ = 0.10;
     double maxResidual_ = 1.50;
+    bool hasMaxExcursionX_ = false;
+    double maxExcursionX_ = 0.0;
+    bool hasMaxExcursionY_ = false;
+    double maxExcursionY_ = 0.0;
     bool stationary_ = false;
     double maxDeviation_ = 1.50;
     bool verbose_ = false;
 };
+
+// "%.2fpx" as a string. The thresholds line lists only the bars that were
+// actually provided, so it is assembled rather than formatted in one shot.
+std::string formatPx(double px) {
+    char buf[32];
+    std::snprintf(buf, sizeof(buf), "%.2fpx", px);
+    return buf;
+}
 
 // Foreground centroid (mean x,y of matching pixels) for one frame.
 // Returns false if too few pixels match (shape off-screen / empty frame).
@@ -170,6 +194,28 @@ double maxDeviationFromFirst(
     return maxDev;
 }
 
+// Peak-to-peak spread (max-min) of the valid samples — the excursion metric.
+// Deliberately shape-blind: it says how far the centroid travelled on this axis
+// end to end and nothing about how, so a perfectly smooth migration registers at
+// full size where the line fit's residual reads ~0.
+double excursion(const std::vector<double> &v, const std::vector<bool> &valid) {
+    double lo = 0.0, hi = 0.0;
+    bool haveRef = false;
+    for (size_t i = 0; i < v.size(); ++i) {
+        if (!valid[i])
+            continue;
+        if (!haveRef) {
+            lo = v[i];
+            hi = v[i];
+            haveRef = true;
+            continue;
+        }
+        lo = std::min(lo, v[i]);
+        hi = std::max(hi, v[i]);
+    }
+    return haveRef ? hi - lo : 0.0;
+}
+
 AxisStats analyze(
     const std::vector<double> &v,
     const std::vector<bool> &valid,
@@ -224,6 +270,16 @@ int main(int argc, char **argv) {
     parser.string("--color", "Foreground = pixels within T of color R,G,B (format: R,G,B,T)", "");
     parser.number("--reversal-eps", "Per-frame deltas under this (px) are treated as 0", 0.10f);
     parser.number("--max-residual", "SMOOTH verdict requires residual <= this (px)", 1.50f);
+    parser.number(
+        "--max-excursion-x",
+        "SMOOTH verdict also requires x excursion (max-min) <= this (px); omit to disable",
+        0.0f
+    );
+    parser.number(
+        "--max-excursion-y",
+        "SMOOTH verdict also requires y excursion (max-min) <= this (px); omit to disable",
+        0.0f
+    );
     parser.flag("--stationary", "Assert the centroid does NOT move (rotation-pivot pin check)");
     parser.number("--max-deviation", "PINNED verdict requires deviation <= this (px)", 1.50f);
     parser.flag("--verbose", "Print the per-frame centroid + residual table");
@@ -239,6 +295,12 @@ int main(int argc, char **argv) {
     args.threshold_ = parser.getInt("--threshold");
     args.reversalEps_ = parser.getFloat("--reversal-eps");
     args.maxResidual_ = parser.getFloat("--max-residual");
+    // Gate on wasProvided, not on a sentinel: 0.0 is a meaningful bar (assert the
+    // axis does not move at all), so a default value cannot double as "unset".
+    args.hasMaxExcursionX_ = parser.wasProvided("--max-excursion-x");
+    args.maxExcursionX_ = parser.getFloat("--max-excursion-x");
+    args.hasMaxExcursionY_ = parser.wasProvided("--max-excursion-y");
+    args.maxExcursionY_ = parser.getFloat("--max-excursion-y");
     args.stationary_ = parser.getFlag("--stationary");
     args.maxDeviation_ = parser.getFloat("--max-deviation");
     args.verbose_ = parser.getFlag("--verbose");
@@ -257,6 +319,22 @@ int main(int argc, char **argv) {
             std::fprintf(stderr, "jitter_probe: --color expects R,G,B,T\n");
             return 2;
         }
+    }
+
+    // --stationary takes a separate output path and verdict, so an excursion bar
+    // passed alongside it would be silently ignored — an assertion the caller
+    // believes is live but that can never fire. Reject the combination instead.
+    // (It also keeps the --stationary summary byte-identical for its one stdout
+    // parser, scripts/pivot-verify.py.)
+    if (args.stationary_ && (args.hasMaxExcursionX_ || args.hasMaxExcursionY_)) {
+        std::fprintf(
+            stderr,
+            "jitter_probe: --max-excursion-x/-y cannot be combined with --stationary "
+            "(--stationary asserts BOTH axes are pinned and uses its own verdict; the "
+            "excursion bars apply to the default smooth-motion verdict only). Drop "
+            "--stationary to assert one axis independently.\n"
+        );
+        return 2;
     }
 
     // The capture dir is never cleared between runs and VideoManager numbers
@@ -365,27 +443,45 @@ int main(int argc, char **argv) {
         }
     }
 
+    // Excursion is computed over the same valid-frame mask the fit uses, and
+    // printed unconditionally — a run that did not pass a bar still reports the
+    // number, so the by-hand reading the docs asked for stops being by hand.
+    const double excX = excursion(cx, valid);
+    const double excY = excursion(cy, valid);
+    const bool excursionOkX = !args.hasMaxExcursionX_ || excX <= args.maxExcursionX_;
+    const bool excursionOkY = !args.hasMaxExcursionY_ || excY <= args.maxExcursionY_;
+
     const bool smooth = sx.reversals_ == 0 && sy.reversals_ == 0 &&
                         sx.maxAbsResidual_ <= args.maxResidual_ &&
-                        sy.maxAbsResidual_ <= args.maxResidual_;
+                        sy.maxAbsResidual_ <= args.maxResidual_ && excursionOkX && excursionOkY;
+
+    std::string thresholds = "reversals=0, max_residual<=" + formatPx(args.maxResidual_);
+    if (args.hasMaxExcursionX_)
+        thresholds += ", max_excursion_x<=" + formatPx(args.maxExcursionX_);
+    if (args.hasMaxExcursionY_)
+        thresholds += ", max_excursion_y<=" + formatPx(args.maxExcursionY_);
 
     std::printf(
         "jitter_probe: frames=%zu (valid=%d)  verdict=%s\n"
-        "  x: reversals=%d  max_residual=%.2fpx  delta_std=%.2f  delta_max=%.2f\n"
-        "  y: reversals=%d  max_residual=%.2fpx  delta_std=%.2f  delta_max=%.2f\n"
-        "  (thresholds: reversals=0, max_residual<=%.2fpx)\n",
+        "  x: reversals=%d  max_residual=%.2fpx  excursion=%.2fpx  delta_std=%.2f  "
+        "delta_max=%.2f\n"
+        "  y: reversals=%d  max_residual=%.2fpx  excursion=%.2fpx  delta_std=%.2f  "
+        "delta_max=%.2f\n"
+        "  (thresholds: %s)\n",
         n,
         validCount,
         smooth ? "SMOOTH" : "JITTER",
         sx.reversals_,
         sx.maxAbsResidual_,
+        excX,
         sx.deltaStd_,
         sx.deltaMaxAbs_,
         sy.reversals_,
         sy.maxAbsResidual_,
+        excY,
         sy.deltaStd_,
         sy.deltaMaxAbs_,
-        args.maxResidual_
+        thresholds.c_str()
     );
     return smooth ? 0 : 1;
 }

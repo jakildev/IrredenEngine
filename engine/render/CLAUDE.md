@@ -530,11 +530,14 @@ Three checks, in order:
    # reversal criterion on these probes (see "the reversal criterion" below).
    # The 6-digit glob matches full frames ONLY — ROI crops share the prefix and
    # append _<label>__crop_<crop>.png, and a 128x128 crop has no usable
-   # foreground. --expect-frames must equal the --auto-screenshot count: it is
+   # foreground. --expect-frames must equal the count the sweep ACTUALLY writes,
+   # which is the sweep's own shot-table length, NOT the --auto-screenshot value
+   # (that is the per-shot warmup): --yaw-sweep --auto-screenshot 6 emits 24
+   # frames, and the engine logs the number ("Yaw-sweep: 24 shots"). The guard is
    # the only thing that catches a widened glob, since scoring the wrong set
    # still yields a confident verdict (measured during #2469 — see
    # tools/jitter_probe/README.md §"Wipe before every capture").
-   build/tools/jitter_probe/jitter_probe --reversal-eps 0.8 --expect-frames 6 \
+   build/tools/jitter_probe/jitter_probe --reversal-eps 0.8 --expect-frames 24 \
        <save_files>/screenshots/screenshot_[0-9][0-9][0-9][0-9][0-9][0-9].png
    ```
 
@@ -559,20 +562,47 @@ Three checks, in order:
    Two consequences to know before you lean on this gate:
 
    - **It does not fire on the `IR_PERAXIS_OVERFLOW_DISABLE=1` runtime control.**
-     That lever now presents as a *smooth* 11.13px x-centroid migration scoring
-     `reversals=0, max_residual=0.73px` — clean on both shipped axes. No eps
-     separates the populations (the control clears at 0.6, healthy master at
-     0.8), which is why the eps was not calibrated against it.
+     That lever presented (2026-07-28) as a *smooth* 11.13px x-centroid migration
+     scoring `reversals=0, max_residual=0.73px` — clean on both shipped axes. No
+     eps separates the populations (the control clears at 0.6, healthy master at
+     0.8), which is why the eps was not calibrated against it. The conclusion
+     still holds; the 11.13px figure does not — see the re-measure below, where
+     a pivot-orbit term now dominates both arms.
    - **The hard check is the residual axis against the analytic floor.** The
      pre-#2427 defect record (residual 2.93px, Δmax 5.37 at zoom 4) fails the
      1.50px bar by ~2×, so the original multi-pixel face-pop class is still
      caught. A *systematic migration* class is not.
 
-   The principled fix — a per-axis excursion assertion, so a probe can require
-   "x stays pinned while y may translate" — is **#2606**. Until it lands, check
-   per-axis excursion by hand (`--verbose`, max-min per column) when validating
-   a change to the per-axis store, the scatter, or the camera-offset
-   decomposition; healthy master reads 1.26–2.83px on the pinned axis.
+   The per-axis assertion that expresses "x stays pinned while y may translate"
+   now ships as `jitter_probe --max-excursion-x/-y` (#2606), and every default-mode
+   run prints `excursion=` per axis, so the by-hand max-min read is gone. **But do
+   not put a bar on this probe yet — there is no separating value to put.**
+   Re-measured on macOS/Metal 2026-08-07 (24-frame sweeps, same recipe, arm
+   identity asserted per run), x excursion:
+
+   | zoom | healthy voxel | SDF control | `IR_PERAXIS_OVERFLOW_DISABLE=1` |
+   |---|---|---|---|
+   | 2 | 19.97px | — | 13.75px |
+   | 4 | 38.18px | 44.00px | 27.92px |
+   | 8 | 76.81px | 82.00px | 54.63px |
+
+   Two things changed since the 2026-07-28 table below. Excursion on this probe
+   is now ~30x larger and scales linearly with zoom — a world-space offset
+   projected to screen, present on the **SDF control too**, so it is camera-level,
+   not the per-axis store. And the defect arm reads **lower** than healthy at
+   every zoom (0.63-0.69x), so no one-sided `excursion <= bar` can separate them
+   in the intended direction.
+
+   The dominating term is the **default** pivot focus's residual orbit — #2547's
+   depth-aware `CAMERA_CENTER` derive (landed 2026-07-31, after the 2026-07-28
+   table) with the 1-iso-unit cap-entry bias that **#2641** owns and measures
+   independently (12px at zoom 4 / 22px at zoom 8 on `--pivot-verify
+   center-axis`). `pivot-verify.py` is green throughout: its *explicit*-focus
+   blocks still pin at 0.94/1.27px. `--yaw-sweep` uses the *default* focus and
+   its probe is off the viewport-center ray, so it carries a larger orbit of the
+   same family. Until #2641 lands, this probe's excursion measures the pivot, not
+   the per-axis path — so use the flags on a probe whose pivot you control, and
+   re-derive the bar here from a post-#2641 capture.
 
 **Jitter is NOT the same as cardinal byte-identity.** Confirm yaw-0 / static
 frames stay byte-identical (`img_diff`) *and* that motion is jitter-free
@@ -936,6 +966,17 @@ drift. Measured on macOS/Metal, 2026-07-28 (24-frame sweeps, one quadrant):
 | voxel cylinder, zoom 4 | 1.26px | 5 | 0.57px | 5.29px | 0 | 0.19px |
 | voxel cylinder, zoom 8 | 2.83px | 5 | 1.25px | 10.79px | 0 | 0.18px |
 | **SDF cylinder** (continuous-geometry control), zoom 4 / 8 | 2.00px | 0 | 1.43px | 4.00 / 10.00px | 0 | 0.95px |
+
+> **The excursion columns above no longer reproduce (re-measured 2026-08-07,
+> #2606).** Same recipe, same host/backend: x excursion is 19.97 / 38.18 / 76.81px
+> at zoom 2/4/8, ~30x this table. The cause is the default pivot focus's residual
+> orbit (#2547 → **#2641**), which post-dates this table and is camera-level — the
+> SDF control moved by the same order, and `pivot-verify.py`'s explicit-focus
+> blocks still pin at 0.94/1.27px. The **residual** columns are unaffected by that
+> re-measure and still reproduce at zoom 2 (0.85px); at zoom 4/8 they read
+> 1.78/2.70px against the 1.50px bar, which is **#2907**'s finding, not this one.
+> Treat the excursion columns as historical until a post-#2641 capture replaces
+> them; see §"Verifying temporal stability" for the current numbers.
 
 Three findings ground the accept, each measured rather than asserted:
 
