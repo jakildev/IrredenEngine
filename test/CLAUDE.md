@@ -99,7 +99,7 @@ codegen fixtures (see below).
 
 `test/script/*.lua` fixtures feed the build-time codegen path and are wired
 through `irreden_lua_codegen(IrredenEngineTest SOURCES ... DEFAULT_MODE
-CODEGEN)` blocks in `CMakeLists.txt`. Two constraints there are deliberate:
+CODEGEN)` blocks in `CMakeLists.txt`. Three constraints there are deliberate:
 
 - **`DEFAULT_MODE CODEGEN` is pinned explicitly**, overriding the
   `IR_LUA_ECS_DEFAULT_MODE` cache variable. These tests exist to verify the
@@ -109,6 +109,14 @@ CODEGEN)` blocks in `CMakeLists.txt`. Two constraints there are deliberate:
   relative path. The engine `chdir`s to the executable directory at boot but
   the test binary does not, so a relative fixture path resolves differently
   under CTest than under a direct run.
+- **Component names stay distinct across the three runs** — the `Codegen*` /
+  `Sys*` / `Coexist*` prefixes. Registry symbols are namespaced per run, but
+  `IRComponents::C_<Name>`, `bindLuaType<C_<Name>>`, and the attach factory
+  are keyed on the component name, so a name declared by two runs would merge
+  those. Since #2609 that is a `duplicate symbol
+  'IRScript::CodegenClaims::C_<Name>_declared_by_more_than_one_codegen_run_in_this_binary'`
+  link error naming the offender — rename the fixture component, don't relax
+  the prefix convention.
 
 See [`engine/script/CLAUDE.md`](../engine/script/CLAUDE.md) for the binding
 surface itself and the CODEGEN-vs-EVAL split.
