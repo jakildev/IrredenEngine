@@ -1945,6 +1945,7 @@ dispatch_role() {
     if (( dispatched > 0 )) && empty_streak_over_cap "$role"; then
         rm -f "$trigger_file"
         reset_empty_streak "$role"
+        unset "CAP_DEFER_LOGGED[$role-uncovered]"
         log "$role: ${EMPTY_STREAK_CAP} consecutive fast exits (<${EMPTY_EXIT_SECONDS}s, no claim) — standing down; scout re-arms on new work"
         return
     fi
@@ -1954,6 +1955,7 @@ dispatch_role() {
     # per gap — regardless of how many fired this tick or the boot-window
     # state. This is what spreads the fleet-up burst to ~one launch per tick.
     if [[ -n "$gap_blocked" ]]; then
+        unset "CAP_DEFER_LOGGED[$role-uncovered]"
         if (( dispatched > 0 )); then
             log "$role: dispatched $dispatched; min-gap (${DISPATCH_MIN_GAP_SECONDS}s) deferring remaining idle panes — trigger kept"
         else
