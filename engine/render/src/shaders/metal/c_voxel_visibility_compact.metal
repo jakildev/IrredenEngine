@@ -141,11 +141,14 @@ constant uint kFaceOccludedMaskBits = 0xFCu;
 // c_chunk_occlusion_cull.metal (both = the encode scale).
 constant int kOcclusionDepthMargin = kDepthEncodeShift;
 
-// Per-voxel Hi-Z occlusion refine (#1812) — see the GLSL twin
-// (c_voxel_visibility_compact.glsl) for the full rationale: conservative,
-// off by default (occlusionCullMipCount == 0 -> no-op), shadow-feeder-safe
-// (only voxels inside the un-widened visibleIsoBounds are tested), background
-// sentinel keeps a voxel that still sees background, and the encoding
+// Per-voxel Hi-Z occlusion refine (#1812, domain widened #2298) — see the GLSL
+// twin (c_voxel_visibility_compact.glsl) for the full rationale: conservative,
+// off by default (occlusionCullMipCount == 0 -> no-op), tests the full
+// shadow-feeder-widened canvas gated by a Hi-Z canvas-COVERAGE guard (a
+// footprint fully inside [0, sz) is testable; one spilling off-canvas is kept),
+// sound because a voxel occluded at every canvas texel leaves no trace in
+// trixelDistances that either the visible resolve or the sun bake consumes;
+// background sentinel keeps a voxel that still sees background, and the encoding
 // (encodeDepthWithFace(pos3DtoDistance(voxelPos), 0)) matches
 // dispatchChunkOcclusion's cb.minDepth_ * kDepthEncodeShift exactly — routed
 // through the shared encode helper because #2207 changed the cardinal layout
@@ -160,10 +163,6 @@ static bool voxelOccludedByHiZ(
     int2 isoPos
 ) {
     if (fd.occlusionCullMipCount <= 0) {
-        return false;
-    }
-    if (isoPos.x < fd.visibleIsoBounds.x || isoPos.y < fd.visibleIsoBounds.y ||
-        isoPos.x > fd.visibleIsoBounds.z || isoPos.y > fd.visibleIsoBounds.w) {
         return false;
     }
     // stage 1's emit `base` at NONE (effectiveTrixelSubdivisionScale == 1).
@@ -200,11 +199,24 @@ static bool voxelOccludedByHiZ(
     const int2 loTexel = (base + int2(floor(loF)) - int2(1)) >> 1;
     const int2 hiTexel = (base + int2(ceil(hiF)) + int2(1)) >> 1;
     const int2 sz = int2(int(hiZLevel0.get_width()), int(hiZLevel0.get_height()));
+    // Canvas-coverage guard (#2298) — mirror of the GLSL twin: only cull a voxel
+    // whose full expanded footprint lies inside the Hi-Z texel extent [0, sz).
+    // c_build_distance_hiz ceil-sizes each level and writes every texel a real
+    // downsampled max (background sentinel 65535 where empty), so every read in
+    // [0, sz-1] is faithful. A footprint spilling PAST that extent has no data
+    // off-canvas; the former clamp folded such a tap onto the border texel,
+    // deflating hiZMax and risking a false cull of an edge voxel that sees
+    // background — keep those. Voxels fully inside the old visibleIsoBounds gate
+    // are a strict subset of this domain, so cull-off byte-identity is unchanged;
+    // the widening only ADDS the shadow-feeder ring. Guard holding ⇒ the read is
+    // provably in-bounds, so the former per-tap clamp is dead.
+    if (loTexel.x < 0 || loTexel.y < 0 || hiTexel.x >= sz.x || hiTexel.y >= sz.y) {
+        return false;
+    }
     int hiZMax = -2147483648;
     for (int ty = loTexel.y; ty <= hiTexel.y; ++ty) {
         for (int tx = loTexel.x; tx <= hiTexel.x; ++tx) {
-            const int2 c = clamp(int2(tx, ty), int2(0), sz - int2(1));
-            hiZMax = max(hiZMax, hiZLevel0.read(uint2(c)).x);
+            hiZMax = max(hiZMax, hiZLevel0.read(uint2(int2(tx, ty))).x);
         }
     }
     return encodeDepthWithFace(pos3DtoDistance(voxelPos), 0) > hiZMax + kOcclusionDepthMargin;
