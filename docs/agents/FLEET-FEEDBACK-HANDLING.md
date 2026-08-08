@@ -510,6 +510,24 @@ clone, the merger mid-rebase) — if the remote moved between the
 fetch in step a and the push here, the lease fails and the
 iteration exits clean for the next retry.
 
+**A second amend in the same checkout — the CI-came-back-red case.**
+A successful push spends the sentinel (it gains a third `consumed
+<iso8601>` line), so a plain second `fleet-pr-amend-push` refuses. That
+refusal is the *correct* place to be; land the follow-up commit with:
+
+```
+fleet-pr-amend-push --continue
+```
+
+`--continue` is fast-forward-only — it requires that HEAD descend
+`origin/<head-ref>` and then does a plain push, so it can never clobber.
+Do **not** answer that refusal by re-running `fleet-pr-checkout-detached`:
+that moves HEAD to the remote tip and would leave the commit you just made
+reachable from nothing. The wrapper now refuses to do so (#2734) and names
+the commits at risk; `--discard` is the opt-out, and it is the right answer
+only when the refusal reports every commit as `SUPERSEDED` (a merger rebase
+or force-push has since rewritten that branch).
+
 Do NOT invoke the `commit-and-push` skill here: it would try to
 `git push -u origin HEAD` (fails on detached HEAD) and then open a
 new PR (one already exists for this head ref). The wrapper handles

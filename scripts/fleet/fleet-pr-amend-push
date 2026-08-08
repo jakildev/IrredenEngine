@@ -13,9 +13,12 @@
 #
 # This wrapper reads the head ref name from the sentinel
 # `.git/fleet-amend-ref` (written by fleet-pr-checkout-detached) and
-# runs the push. On success it removes the sentinel so a subsequent
-# `commit-and-push` invocation in the same worktree falls back to
-# the normal (non-amend) flow.
+# runs the push. On success it MARKS the sentinel consumed (appends a
+# third `consumed <iso8601>` line) rather than deleting it, so a
+# subsequent `commit-and-push` invocation in the same worktree still
+# falls back to the normal (non-amend) flow — a consumed sentinel is
+# treated as absent by the routing path — while the head ref survives
+# for the diagnostic below.
 #
 # The `--force-with-lease` (vs plain `--force`) is the only safety
 # belt against a concurrent amendment from another worktree (another
@@ -24,13 +27,30 @@
 # fails, the wrapper exits non-zero, and the caller's role retries
 # on the next iteration.
 #
+# The second amend (#2734)
+# ------------------------
+# A follow-up amend in the same detached checkout — the common case
+# when CI comes back red on the first push — used to hit the
+# "sentinel missing" branch, which named the WRONG remedy: re-running
+# fleet-pr-checkout-detached moves HEAD to the remote tip and silently
+# orphans the commit just made. The consumed marker splits that
+# diagnostic (already-consumed vs never-ran) and `--continue` re-arms
+# the sentinel for exactly one more push on the strictly-safe path:
+# detached HEAD, HEAD descends origin/<head-ref>, PLAIN push. It is
+# never a force and never a lease, so there is nothing to clobber.
+#
 # Usage
 # -----
-#   fleet-pr-amend-push
+#   fleet-pr-amend-push [--continue]
+#
+#   --continue   land a follow-up amend on top of your own pushed tip
+#                (fast-forward only; refuses if HEAD does not descend
+#                origin/<head-ref>)
 #
 # Exit status:
-#   0  push succeeded; sentinel removed
-#   1  sentinel missing, push failed, or git in a bad state
+#   0  push succeeded; sentinel marked consumed
+#   1  sentinel missing or already consumed, push failed, or git in a
+#      bad state
 #   2  usage error
 #
 # Source of truth: scripts/fleet/fleet-pr-amend-push in the engine
@@ -38,18 +58,23 @@
 
 set -euo pipefail
 
-if [[ $# -gt 0 ]]; then
+continue_mode=0
+while [[ $# -gt 0 ]]; do
     case "$1" in
         -h|--help)
             awk 'NR==1 {next} /^#/ {print; next} {exit}' "$0" | sed 's/^# \{0,1\}//'
             exit 0
             ;;
+        --continue)
+            continue_mode=1
+            shift
+            ;;
         *)
-            echo "fleet-pr-amend-push: takes no arguments" >&2
+            echo "fleet-pr-amend-push: unknown argument '$1' (accepts: --continue, --help)" >&2
             exit 2
             ;;
     esac
-fi
+done
 
 git_dir=$(git rev-parse --git-dir 2>/dev/null || true)
 if [[ -z "$git_dir" ]]; then
@@ -78,16 +103,49 @@ fi
 
 sentinel="$git_dir/fleet-amend-ref"
 if [[ ! -f "$sentinel" ]]; then
-    echo "fleet-pr-amend-push: $sentinel missing — was fleet-pr-checkout-detached run in this worktree?" >&2
+    if [[ "$continue_mode" -eq 1 ]]; then
+        echo "fleet-pr-amend-push --continue: $sentinel missing — nothing to continue. Run fleet-pr-checkout-detached <N> first." >&2
+    else
+        echo "fleet-pr-amend-push: $sentinel missing — was fleet-pr-checkout-detached run in this worktree?" >&2
+    fi
     exit 1
 fi
 
 # Sentinel is two lines: head ref (line 1) + checkout-time base SHA (line 2;
 # absent on legacy sentinels written before the base-sha lease landed). The
-# base SHA is what makes the lease safe — see the push below.
-{ read -r head_ref; read -r base_sha; } < "$sentinel" 2>/dev/null || true
+# base SHA is what makes the lease safe — see the push below. A third
+# `consumed <iso8601>` line, written by mark_consumed on every success path,
+# means a prior push already spent this sentinel (#2734). The two-line reader
+# ignored it by construction, which is why legacy sentinels need no migration.
+{ read -r head_ref; read -r base_sha; read -r consumed_line; } < "$sentinel" 2>/dev/null || true
 if [[ -z "$head_ref" ]]; then
     echo "fleet-pr-amend-push: sentinel $sentinel is empty" >&2
+    exit 1
+fi
+
+consumed=0
+if [[ "${consumed_line:-}" =~ ^consumed([[:space:]]|$) ]]; then
+    consumed=1
+fi
+
+# mark_consumed — spend the sentinel without deleting it. The routing path
+# treats a consumed sentinel as absent (preserving the stale-routing hazard the
+# old `rm -f` existed for), but the retained head ref lets the branch below name
+# the real cause instead of sending the operator at fleet-pr-checkout-detached,
+# which discards the not-yet-pushed commit (#2734). base_sha may be empty on a
+# legacy sentinel — writing it back blank keeps the legacy-lease path intact.
+mark_consumed() {
+    printf '%s\n%s\nconsumed %s\n' \
+        "$head_ref" "$base_sha" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$sentinel"
+}
+
+if [[ "$consumed" -eq 1 && "$continue_mode" -eq 0 ]]; then
+    echo "fleet-pr-amend-push: sentinel already consumed by a successful push to origin/$head_ref ($consumed_line)." >&2
+    echo "  This is NOT a missing-setup error. Do NOT re-run fleet-pr-checkout-detached —" >&2
+    echo "  it moves HEAD to the remote tip and silently discards commits you have not" >&2
+    echo "  pushed yet (#2734)." >&2
+    echo "  To land a follow-up amend on top of your own pushed tip:" >&2
+    echo "      fleet-pr-amend-push --continue" >&2
     exit 1
 fi
 
@@ -102,6 +160,34 @@ if git symbolic-ref -q HEAD >/dev/null 2>&1; then
     echo "  expected: detached HEAD at origin/$head_ref (from fleet-pr-checkout-detached)" >&2
     echo "  if the sentinel is stale, remove it: rm $sentinel" >&2
     exit 1
+fi
+
+# --continue: re-arm a spent sentinel for exactly one more push, on the
+# strictly-safe branch only. Requires that HEAD descend origin/<head-ref>
+# post-fetch, then a PLAIN push — never a force, never a lease, so this adds no
+# push semantics over the fast-forward path below; it only re-opens the case
+# the header already documents as supported. The ancestor precondition is also
+# what stops a stale sentinel from routing a re-armed push to an unrelated ref,
+# so KEEP IT ADJACENT to the push — a later edit that separates them turns this
+# into a force.
+if [[ "$continue_mode" -eq 1 ]]; then
+    git fetch origin "$head_ref" >/dev/null 2>&1 || true
+    remote_tip=$(git rev-parse "origin/$head_ref" 2>/dev/null || echo "")
+    if [[ -z "$remote_tip" ]] || ! git merge-base --is-ancestor "$remote_tip" HEAD 2>/dev/null; then
+        echo "fleet-pr-amend-push --continue: REFUSING — HEAD does not descend origin/$head_ref, so this would not be a fast-forward." >&2
+        echo "  --continue only lands follow-up commits on top of a tip you already pushed." >&2
+        echo "  Preserve your work first, then re-base on the remote:" >&2
+        echo "      git branch amend-wip-\$(git rev-parse --short HEAD) HEAD" >&2
+        echo "      fleet-pr-checkout-detached <pr-number>   # safe once the commit is on a branch" >&2
+        exit 1
+    fi
+    if ! git push origin "HEAD:$head_ref"; then
+        echo "fleet-pr-amend-push --continue: fast-forward push failed (remote rejected)." >&2
+        exit 1
+    fi
+    mark_consumed
+    printf 'fleet-pr-amend-push: --continue fast-forwarded origin/%s (no force needed)\n' "$head_ref"
+    exit 0
 fi
 
 # Fast-forward fast path. Refresh the remote tip; if HEAD descends from it
@@ -119,7 +205,7 @@ if [[ -n "$remote_tip" ]] && git merge-base --is-ancestor "$remote_tip" HEAD 2>/
         echo "fleet-pr-amend-push: fast-forward push failed (remote rejected)." >&2
         exit 1
     fi
-    rm -f "$sentinel"
+    mark_consumed
     printf 'fleet-pr-amend-push: fast-forwarded origin/%s (no force needed)\n' "$head_ref"
     exit 0
 fi
@@ -143,9 +229,10 @@ if ! git push "$lease" origin "HEAD:$head_ref"; then
     exit 1
 fi
 
-# Clean up the sentinel so subsequent commit-and-push in this worktree
+# Spend the sentinel so subsequent commit-and-push in this worktree
 # falls back to the normal flow (or so a stale sentinel doesn't
-# accidentally route a future commit to the wrong ref).
-rm -f "$sentinel"
+# accidentally route a future commit to the wrong ref). Marked, not
+# removed — see mark_consumed.
+mark_consumed
 
 printf 'fleet-pr-amend-push: pushed HEAD to origin/%s\n' "$head_ref"

@@ -29,9 +29,29 @@
 # this sentinel to know where to push the amendment, so the LLM
 # doesn't have to remember or pass the head ref name across steps.
 #
+# The orphan guard (#2734)
+# ------------------------
+# `git checkout --detach` moves HEAD unconditionally. If the current
+# HEAD carries a commit that no branch and no remote ref reaches — the
+# state a worker is in after committing an amendment it has not pushed
+# yet — the checkout orphans it, and git's own "leaving N commits
+# behind" warning used to be discarded along with stdout, so the loss
+# was silent and exited 0. This wrapper now refuses BEFORE moving HEAD
+# whenever `git rev-list HEAD --not --branches --remotes` is non-empty,
+# names the at-risk SHAs, and says for each whether an equivalent patch
+# is already upstream (superseded by a merger rebase / force-push —
+# safe to drop) or the commit exists nowhere else. `--discard` is the
+# opt-out for the former.
+#
 # Usage
 # -----
-#   fleet-pr-checkout-detached <pr-number> [--repo <slug>]
+#   fleet-pr-checkout-detached <pr-number> [--repo <slug>] [--discard]
+#
+#   --discard    proceed even though HEAD carries commits reachable from
+#                nothing else. Correct when the guard names commits the
+#                merger force-pushed past or a merged-and-pruned branch
+#                left behind; never reach for it to silence a refusal
+#                naming work you have not pushed.
 #
 # Side effects in CWD:
 #   - fetches origin/<head-ref> (or `pull/<N>/head` if the head ref is
@@ -41,7 +61,8 @@
 #
 # Exit status:
 #   0  on success
-#   1  on resolution / fetch / checkout failure
+#   1  on resolution / fetch / checkout failure, or an orphan-guard
+#      refusal (HEAD unmoved)
 #   2  on usage error
 #
 # Source of truth: scripts/fleet/fleet-pr-checkout-detached in the
@@ -50,7 +71,7 @@
 set -euo pipefail
 
 if [[ $# -lt 1 ]]; then
-    echo "usage: fleet-pr-checkout-detached <pr-number> [--repo <slug>]" >&2
+    echo "usage: fleet-pr-checkout-detached <pr-number> [--repo <slug>] [--discard]" >&2
     exit 2
 fi
 
@@ -67,6 +88,7 @@ pr_number="$1"
 shift
 
 repo_slug=""
+discard=0
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --repo)
@@ -76,6 +98,18 @@ while [[ $# -gt 0 ]]; do
             fi
             repo_slug="$2"
             shift 2
+            ;;
+        --repo=*)
+            repo_slug="${1#--repo=}"
+            if [[ -z "$repo_slug" ]]; then
+                echo "fleet-pr-checkout-detached: --repo requires a value" >&2
+                exit 2
+            fi
+            shift
+            ;;
+        --discard)
+            discard=1
+            shift
             ;;
         *)
             echo "fleet-pr-checkout-detached: unknown arg '$1'" >&2
@@ -133,7 +167,122 @@ if ! git fetch origin "$head_ref" >/dev/null 2>&1; then
     exit 1
 fi
 
-if ! git checkout --detach "origin/$head_ref" >/dev/null 2>&1; then
+# Orphan guard (#2734). Runs AFTER the fetch above — a commit that was just
+# pushed is reachable from the refreshed remote-tracking ref, so pre-fetch this
+# would false-fire immediately after a successful amend push. This is git's own
+# "leaving N commits behind" computation, NOT `origin/$head_ref..HEAD`: the
+# latter counts how far HEAD is ahead of the ref being checked out, which is
+# non-zero on every routine cross-PR checkout (a pool worktree stays detached at
+# the last PR's tip across iterations) and would refuse with nothing at risk.
+# HEAD on a named branch is reachable from --branches, so the count is 0 by
+# construction and the guard cannot fire there.
+orphan_count=$(git rev-list --count HEAD --not --branches --remotes 2>/dev/null || echo "")
+if ! [[ "$orphan_count" =~ ^[0-9]+$ ]]; then
+    # Fail closed: an empty/non-numeric count (unborn HEAD, corrupt ref) tests
+    # as "not non-zero", which would silently permit the checkout in exactly
+    # the case the guard could not evaluate.
+    echo "fleet-pr-checkout-detached: REFUSING — could not evaluate the orphan-commit guard (git rev-list returned '$orphan_count')." >&2
+    echo "  HEAD is unmoved. Check the repo state, or pass --discard if you are sure nothing here is worth keeping." >&2
+    exit 1
+fi
+
+if [[ "$orphan_count" -gt 0 && "$discard" -eq 0 ]]; then
+    echo "fleet-pr-checkout-detached: REFUSING — HEAD carries $orphan_count commit(s) reachable from no branch and no remote ref." >&2
+    echo "  Checking out origin/$head_ref would leave them behind, recoverable only via reflog. HEAD is unmoved." >&2
+    # Classify each at-risk commit so the refusal is actionable — a refusal that
+    # names a commit the merger already rebased past, with no way to tell it
+    # from unpushed work, teaches the reader to reach for --discard reflexively.
+    #
+    # The discriminator is PATCH-EQUIVALENCE (`git cherry`, which marks a commit
+    # '-' when an equivalent patch is already present upstream), not reachability
+    # from origin/master. Reachability cannot work here: the at-risk set is
+    # defined as `HEAD --not --branches --remotes`, so anything origin/master
+    # reaches is excluded from it by construction — an ancestor-of-origin/master
+    # test is vacuous on this set and reports every superseded commit as
+    # unpushed. Measured: a tip superseded by a merger force-push scores
+    # ancestor-of-master NO and `git cherry` '-'.
+    #
+    # Upstreams worth asking: the ref being checked out, the ref this worktree
+    # was last parked against (the merger-rebase case rewrites THAT one, and the
+    # sentinel is the only record of which it was), and master. Sweeping every
+    # refs/remotes/* instead is a patch-id pass per ref — 1778 of them on this
+    # repo — to catch rewrites on refs this worktree never touched.
+    #
+    # So the classification is best-effort and the message below must stay
+    # actionable when it comes back empty: a squash-merge that collapsed several
+    # commits into one changes the patch, and a rewrite on a ref none of the
+    # three names is invisible here. "Unclassified" therefore prints as "at
+    # risk", never as a claim that the commit is unpushed.
+    superseded_shas=" "
+    collect_superseded() {
+        local upstream="$1" mark sha
+        [[ -n "$upstream" ]] || return 0
+        git rev-parse --verify --quiet "$upstream" >/dev/null 2>&1 || return 0
+        while read -r mark sha; do
+            if [[ "$mark" == "-" && -n "$sha" ]]; then
+                superseded_shas="$superseded_shas$sha "
+            fi
+        done < <(git cherry "$upstream" HEAD 2>/dev/null)
+    }
+    collect_superseded "origin/$head_ref"
+    collect_superseded "origin/master"
+    parked_ref=""
+    if [[ -f "$(git rev-parse --git-dir)/fleet-amend-ref" ]]; then
+        read -r parked_ref < "$(git rev-parse --git-dir)/fleet-amend-ref" || parked_ref=""
+    fi
+    if [[ -n "$parked_ref" && "$parked_ref" != "$head_ref" ]]; then
+        collect_superseded "origin/$parked_ref"
+    fi
+
+    superseded=0
+    unclassified=0
+    while read -r sha; do
+        [[ -n "$sha" ]] || continue
+        detail=$(git log -1 --format='%cr  %s' "$sha" 2>/dev/null || echo "")
+        if [[ "$superseded_shas" == *" $sha "* ]]; then
+            superseded=$((superseded + 1))
+            printf '    %s  SUPERSEDED — this patch is already upstream (%s)\n' "${sha:0:12}" "$detail" >&2
+        else
+            unclassified=$((unclassified + 1))
+            printf '    %s  AT RISK — no ref reaches it, no upstream patch matches (%s)\n' "${sha:0:12}" "$detail" >&2
+        fi
+    done < <(git rev-list HEAD --not --branches --remotes 2>/dev/null | head -20)
+    if [[ "$orphan_count" -gt 20 ]]; then
+        # Say so rather than letting a truncated list read as the whole set.
+        printf '    … listing the newest 20 of %s; the rest are unshown, not absent.\n' "$orphan_count" >&2
+    fi
+
+    # "Every commit" only when every commit was actually classified — with the
+    # list truncated, the unshown ones carry no verdict.
+    if [[ "$superseded" -gt 0 && "$unclassified" -eq 0 && "$orphan_count" -le 20 ]]; then
+        echo "  Every commit above is superseded — this worktree was parked at a tip a merger" >&2
+        echo "  rebase or force-push has since rewritten. Nothing is at risk; re-run with:" >&2
+        echo "      fleet-pr-checkout-detached $pr_number --discard" >&2
+        exit 1
+    fi
+
+    # Unclassified commits: the timestamps above are the discriminator the
+    # classification could not supply. Give both remedies rather than assuming
+    # which case this is — the superseded case is invisible to `git cherry`
+    # whenever the rewrite landed on a ref none of the three upstreams names.
+    echo "  If a commit above is work from this session, preserve it before checking anything out:" >&2
+    echo "      git branch amend-wip-\$(git rev-parse --short HEAD) HEAD" >&2
+    echo "  If it is a follow-up amend for the PR this worktree is already on, push it instead:" >&2
+    echo "      fleet-pr-amend-push --continue" >&2
+    echo "  If the timestamps show a stale park (a merger rebase, force-push or squash-merge has" >&2
+    echo "  since rewritten that branch), nothing above is at risk — re-run with:" >&2
+    echo "      fleet-pr-checkout-detached $pr_number --discard" >&2
+    if [[ "$superseded" -gt 0 ]]; then
+        echo "  (The SUPERSEDED commits are safe to drop; --discard covers them once anything" >&2
+        echo "   marked AT RISK is preserved.)" >&2
+    fi
+    exit 1
+fi
+
+# stdout is discarded but stderr is NOT — git's "Warning: you are leaving N
+# commits behind" is the belt to the guard's braces, and swallowing it is what
+# made the loss silent (#2734).
+if ! git checkout --detach "origin/$head_ref" >/dev/null; then
     echo "fleet-pr-checkout-detached: git checkout --detach origin/$head_ref failed" >&2
     exit 1
 fi
