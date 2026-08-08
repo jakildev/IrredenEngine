@@ -52,6 +52,17 @@ class FleetDebugTriggers(unittest.TestCase):
     def _write(self, path, text):
         path.write_text(text)
 
+    def _assert_suppressed(self, line, value):
+        # The two-space column separator is load-bearing here: "suppressed=yes"
+        # is a substring of "empty-suppressed=yes", so a bare assertIn on the
+        # short form matches either spelling and pins nothing. Anchoring on the
+        # separator, plus asserting the `empty-` form is absent, is what makes
+        # this discriminate — the column must NOT carry the `empty-` prefix,
+        # since for per-kind roles (#2700) a suppression does not imply an
+        # empty projection.
+        self.assertIn(f"  suppressed={value}", line)
+        self.assertNotIn("empty-suppressed=", line)
+
     def test_full_state_reports_every_role(self):
         # A pending trigger with content, a suppressed role, a dict projection.
         (self.triggers / "merger").write_text("llm\n")
@@ -72,16 +83,16 @@ class FleetDebugTriggers(unittest.TestCase):
                      "queue-manager-ingest"):
             self.assertIn(role, lines)
         # worker: suppressed marker present, 4 projection items, generated_at.
-        self.assertIn("empty-suppressed=yes", lines["worker"])
+        self._assert_suppressed(lines["worker"], "yes")
         self.assertIn("4 items @ 2026-07-02T06:00:00Z", lines["worker"])
         self.assertIn("caa618b4c02e", lines["worker"])
         # merger: pending trigger with content, no suppression.
         self.assertIn('pending(', lines["merger"])
         self.assertIn('"llm"', lines["merger"])
-        self.assertIn("empty-suppressed=no", lines["merger"])
+        self._assert_suppressed(lines["merger"], "no")
         # queue-manager(-ingest): never get triggers/markers -> n/a.
-        self.assertIn("empty-suppressed=n/a", lines["queue-manager"])
-        self.assertIn("empty-suppressed=n/a", lines["queue-manager-ingest"])
+        self._assert_suppressed(lines["queue-manager"], "n/a")
+        self._assert_suppressed(lines["queue-manager-ingest"], "n/a")
 
     def test_missing_and_torn_projections_degrade(self):
         # worker projection absent; sonnet-reviewer projection is torn JSON.
@@ -110,12 +121,17 @@ class FleetDebugTriggers(unittest.TestCase):
 
     def test_marker_file_is_not_listed_as_a_role(self):
         # `worker.empty-suppressed` must feed the worker's column, never appear
-        # as its own role line.
+        # as its own role line. The on-disk suffix carries the `empty-` prefix
+        # that the column label does not — a deliberate asymmetry, so this also
+        # pins that the file name is spelled `.empty-suppressed` while the
+        # column it feeds reads `suppressed=`.
         self._write(self.seen / "worker.empty-suppressed", "abc\n")
         r = self._run()
         self.assertEqual(r.returncode, 0, r.stderr)
         roles = [ln.split()[0] for ln in r.stdout.splitlines() if ln.strip()]
         self.assertNotIn("worker.empty-suppressed", roles)
+        lines = {ln.split()[0]: ln for ln in r.stdout.splitlines() if ln.strip()}
+        self._assert_suppressed(lines["worker"], "yes")
 
     def test_fmt2_seen_file_reports_per_kind_counts(self):
         # #2700: roles in the scout's PER_KIND_TRIGGER_ROLES write a per-kind
