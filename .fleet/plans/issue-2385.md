@@ -240,3 +240,62 @@ therefore includes re-blessing the affected reference PNGs.
   anchor); `creations/demos/canvas_stress/test/references/manifest.json` § notes
   (per-preset reference dirs). Distributed as `## Steward direction` on PR #2654
   (issuecomment-5134594811); `fleet-transition design-unblock 2654` applied.
+
+### A2 — 2026-08-08 — trigger: PR #2654 merged (Phase-0 r7 on master `34c7f7f4`, 2026-08-04)
+
+- **Decision (what shipped, and what this issue still owes).** Phase 0 landed:
+  the r6→r7 radius bump in `system_bake_sun_shadow_map.hpp` plus both shader
+  twins (`ir_sun_projection.glsl` / `.metal`), the design-doc update, the six
+  `macos-debug` `canvas_stress` references, and the AC-4 screenshot set. The PR
+  is a **partial** — `[WIP]` in its title, no `Closes #2385` — so this issue is
+  correctly still open. Its residual is exactly two items, and neither is the
+  code:
+  1. **The `linux-debug` re-bless** (AC 7). Still owed — see the next bullet.
+  2. **The Phase-1 ruling.** Whether r7 discharges **D6** or #2385 closes as a
+     partial with a successor child for the remaining fragmentation (47
+     components) is the open question on umbrella #2314, now raised as
+     `## STEWARD PROPOSAL 2026-08-08` with `fleet:steward-proposal` applied.
+     **Do not decide it by picking this issue up** — the answer determines
+     whether Phase 1's encoding widen + radius sweep is in scope at all.
+- **Decision (A1's two "still owed before merge" items, resolved).**
+  - **AC 4 visual half — DISCHARGED.** A1 required the halo guard on a shot that
+    actually shows the delta and named `revoxelize_solids` / `so3_offsnap_wide`
+    (`shadow_overlay_floor` measured zero change). The merged PR carries
+    before/after/diff for both of those, plus a `revoxelize_solids_floorcrop3x`
+    pair, and measures the newly-shadowed rim at 1–2 device px, full shadow
+    luminance (85.5 vs deep shadow 77.3 / lit floor 111.5), flat across distance,
+    with the pre-existing r6 outermost ring at 88.8. Fill, not halo, on the
+    instrument A1 specified.
+  - **AC 7 two-host re-bless — NOT discharged.** A1 escalated this from "owed" to
+    a **blocking co-requisite**; the PR re-blessed only `macos-debug`. Verified on
+    master `28012d3cc`: the six `linux-debug/` `canvas_stress` references were
+    last written by `95355bde2` (PR #1595, merged 2026-06-08) and nothing has touched
+    that directory since PR #2654 merged, so the GL reference set is stale as of
+    2026-08-04 and a clean-checkout `render-verify --target IRCanvasStress` on a
+    Linux host fails its 6-shot gate for reasons unrelated to the change under
+    test.
+- **The re-bless is NOT this issue's work to schedule.** #1969 (OPEN,
+  `human:approved` + `fleet:queued` + `fleet:sonnet` + `fleet:needs-gl-host`)
+  already owns the `linux-debug` main-six refresh, and #2158 owns the two
+  `compare_*` refs. Blessing at current master discharges r7 as a side effect,
+  **provided the bless is taken at master ≥ `34c7f7f4`.** Do not file a duplicate;
+  do not fold the re-bless into this issue's scope. Epic-side record: #2314
+  ledger **F1** (with F2 recording that the general mechanism failure — a
+  deferred acceptance criterion evaporating at merge — is already filed as
+  #2530).
+- **Supersedes:** A1's "still owed **before merge**" framing for both items —
+  the PR merged with only one of them discharged, so AC 7's status is now
+  "owed by #1969, tracked at the epic as F1", not "blocking this PR". Nothing
+  else in A1 changes: its AC 5 scope decision, its AC 1 re-grounding, and its
+  Phase-1 early-exit reading all stand as written.
+- **Acceptance criteria:** AC 1 / AC 4 / AC 5 **met** (AC 1 on A1's same-session
+  anchor; AC 4 as above; AC 5 as restated by A1). AC 7 **open**, owner #1969.
+  AC 2 / AC 3 / AC 6 unchanged. The *closing* criterion for this issue — whether
+  the D6 residual is discharged at r7 — is the pending ruling, not a measurement
+  a worker can take.
+- **By:** epic-steward — source: PR #2654 merge commit `34c7f7f4` (§commit
+  message, both squashed commits) and its file list; `git log
+  34c7f7f4..origin/master -- creations/demos/canvas_stress/test/references/linux-debug/`
+  (empty) and `git log -1 <that dir>` → `95355bde2` / PR #1595; live states of
+  #1969, #2158, #2530; epic #2314 ledger D6, D8, F1, F2 and the 2026-08-08 Events
+  entry.

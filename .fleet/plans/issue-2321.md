@@ -85,3 +85,41 @@ backends (D3), using the V3 light-verify harness (#2317).
   PROPOSAL 2026-07-14 thread
   (issuecomment-4977022751, 2026-07-15) answering the worker NEEDS-DESIGN on
   PR #2393; measurement table from the worker's Metal A/B in that NEEDS-DESIGN.
+
+### A2 — 2026-08-08 — trigger: PR #2654 merged (#2385 Phase-0 r7 on master `34c7f7f4`)
+
+- **Decision (narrow, and deliberately only half the question).** A1 re-anchored
+  this issue's gate to "a material, measured improvement in components /
+  largest_frac at zoom 1–2, numeric target from the **FIRST post-#2385 baseline
+  capture**". #2385's Phase-0 (the r7 radius bump) is now **on master**, but
+  #2385 itself is **still open**, so "post-#2385" has two possible referents. The
+  half that is unambiguous, and all this amendment claims: **any baseline capture
+  used to set this issue's numeric target is valid only if taken at master
+  ≥ `34c7f7f4`.** A capture from before that commit measures the pre-r7 honeycomb
+  and would re-calibrate the gate against exactly the contamination D7/D9 moved it
+  off.
+- **The other half is not decided here.** Whether more of #2385 must land before
+  the baseline is taken — i.e. whether r7 discharges **D6** or a successor child
+  follows — is the open question on umbrella #2314
+  (`## STEWARD PROPOSAL 2026-08-08`, `fleet:steward-proposal` applied). The
+  steward is not guessing it: this issue stays `fleet:blocked` on #2385 per **D7**,
+  and whoever distributes that ruling amends this file again with the referent
+  settled.
+- **Supersedes:** nothing — additive. A1's lever set is untouched: lever (a)
+  (zoom-aware near-cascade extent fit) stays DROPPED as measured-refuted, lever
+  (b) (3×3 PCF receive kernel) stays RETAINED, and S1's splat/bias surface stays
+  off-limits per **D4**. PR #2654 renamed and removed no symbol this plan cites
+  (it touched `system_bake_sun_shadow_map.hpp` and the two `ir_sun_projection`
+  twins; this plan's surfaces are the receive kernel and the cascade extents), so
+  no other part of the plan is stale.
+- **Acceptance criteria:** unchanged in substance; the baseline-capture clause
+  gains the `≥ 34c7f7f4` floor above. **D8** still reserves the "materially finer
+  on-screen shadows" architecture judgment (2048² map / 3rd cascade / content-fit
+  split retune) for the post-#2385 re-measure — that judgment is not this issue's
+  to make either, and if the post-r7 zoom 1–2 metric already reads clean, D8's own
+  instruction is to close the "finer resolution" want with a measurement citation
+  rather than build any of the three.
+- **By:** epic-steward — source: PR #2654 merge commit `34c7f7f4` and its file
+  list; epic #2314 ledger D7, D8, D9 and the 2026-08-08 Events entry; `#2321`
+  labels re-checked live (`fleet:blocked` present, no `fleet:merger-cooldown` on
+  PR #2393).
