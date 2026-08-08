@@ -398,6 +398,15 @@ kernel void IR_STAGE2_KERNEL_NAME(
     // feeder's stage-2 cost. visibleIsoBounds carries a +4-iso-px margin covering
     // the face footprint; with sun shadows off it equals cullIsoMin/Max so
     // nothing is skipped.
+    //
+    // That "stage 1 wrote its depth" premise is GL-authored, and on Metal it holds
+    // only because of #2488: stage 1's atomics land in the image-atomic scratch
+    // buffer (#1640), not the texture, and this very skip is what stops the
+    // winner tap below from ever materializing a feeder texel. The driver now
+    // calls RenderDevice::resolveImageAtomicScratch on the distance texture right
+    // after the feeder dispatch, so trixelDistances carries the ring by the time
+    // any texture reader runs. Keep the two together: dropping the resolve
+    // silently re-empties the ring for the bake, AO, and the distance Hi-Z.
     if (frameData.residualYaw == 0.0f && frameData.isDetachedCanvas < 0.5f) {
         int3 feederPos = roundHalfUp(voxelPosition.xyz);
         if (cardinalIndex != 0) {

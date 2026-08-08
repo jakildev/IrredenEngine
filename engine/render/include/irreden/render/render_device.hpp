@@ -80,6 +80,23 @@ class RenderDevice {
     fillBuffer(const Buffer *buffer, std::size_t sizeBytes, std::uint8_t byteValue) = 0;
     virtual void finish() = 0;
 
+    // Make @p texture's **level 0** contents reflect its image-atomic state. A
+    // no-op on backends whose image atomics write the texture directly (OpenGL's
+    // imageAtomicMin), a scratch-buffer -> texture materialization on Metal,
+    // whose atomics land in a sibling buffer instead (#1640,
+    // metal/metal_runtime.hpp). Call it wherever a later pass reads the
+    // texture through a plain sampler / access::read and must see depth an
+    // atomic pass wrote — the backends agree on the texture only after this.
+    // Idempotent and value-safe: texels the atomics never touched resolve
+    // their own clear value back onto themselves.
+    //
+    // Level 0 only, unlike clearTexImage's explicit @p level: the scratch is
+    // allocated per texture at its base dimensions (ensureImageAtomicScratchBuffer),
+    // so there is no per-level state to resolve. Every image-atomic texture in the
+    // engine is single-mip; a mipped one would need the scratch keyed by level
+    // first, not just a level argument here.
+    virtual void resolveImageAtomicScratch(const Texture2D *) {}
+
     virtual GpuTimestampHandle createTimestampPair() {
         return kInvalidGpuTimestampHandle;
     }

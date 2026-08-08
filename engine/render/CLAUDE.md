@@ -1149,6 +1149,39 @@ parity with voxel-pool primary shapes.
   texture as a bake/compute read input. Invariant: the sun-shadow bake only
   ever reads main-canvas-layout depth sources. The underlying backend gap is
   tracked as #1640; until it lands, resolve-then-bake is mandatory.
+
+  **The own-canvas half has a primitive: `RenderDevice::resolveImageAtomicScratch`
+  (#2488).** The rule above governs reading a *foreign* canvas's distances. The
+  separate, narrower problem is a canvas's OWN distances that no pass ever
+  materialized into the texture — on Metal the atomics land in the scratch
+  buffer, so a texel the stage-2 winner tap skips stays at the 65535 clear
+  sentinel in the texture even though the scratch holds real depth. Every
+  texture-reading consumer (`c_bake_sun_shadow_map`, `COMPUTE_VOXEL_AO`,
+  `COMPUTE_DISTANCE_HIZ`) then reads a hole GL does not have. Call
+  `IRRender::device()->resolveImageAtomicScratch(texture)` after the atomic
+  passes and before the first texture reader; it is a defaulted no-op on GL
+  (whose `imageAtomicMin` writes the texture directly) and a whole-texture blit
+  on Metal. `VOXEL_TO_TRIXEL_STAGE_1` is the reference call site — after the
+  shadow-feeder dispatch, guarded on a non-empty feeder ring
+  (`IRPrefab::SunShadow::shadowFeederRingNonEmpty`).
+
+  **What makes the whole-texture blit safe is that `clearTexImage` *ensures*
+  the scratch rather than looking it up.** A canvas clears its distance texture
+  before it ever image-binds it, so a lookup would find no scratch on the first
+  tick and skip the clear's mirror — and a freshly allocated scratch is
+  zero-filled, i.e. NEAREST depth, not the 65535 empty sentinel. The resolve
+  would then stamp a solid surface over the whole canvas for that frame (and
+  every `atomicMin` would lose against the zero, so stage 2's `scratch == depth`
+  winner tap matches nothing). Because the clear seeds it unconditionally,
+  untouched texels resolve their own clear value back onto themselves. A new
+  R32I texture that is resolved must therefore also be *cleared* through
+  `clearTexImage`, not merely bound.
+
+  Two boundaries worth keeping straight. It is **not** a substitute for
+  resolve-then-bake: that rule is about a foreign model-frame texture reaching a
+  bake at all, and it stands unchanged. And it needs **no**
+  `functionUsesImageAtomicScratch` entry — the resolve is a blit, not a kernel,
+  so the slot-16 alias (#1619) is untouched.
 - **Sampler and image binds are mutually exclusive per texture unit on Metal —
   the most recent bind wins (#2350/#2360; supersedes the #1812 workaround).**
   Metal flattens the sampler and image namespaces into ONE `setTexture` slot

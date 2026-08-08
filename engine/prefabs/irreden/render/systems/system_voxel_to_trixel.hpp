@@ -779,11 +779,11 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 Texture2D *distances = tex.distances_.second;
                 Texture2D *entityIds = tex.entityIds_.second;
 
-                // Bind the distance image first so its Metal atomic-scratch buffer
-                // exists before clearTexImage mirrors the clear value into it (a
-                // freshly allocated scratch is zero-initialised, which would
-                // otherwise reject every depth-matched color write on the first
-                // rotating frame).
+                // Redundant with the stage-1 image bind this loop makes before its
+                // dispatch: clearTexImage establishes the Metal atomic scratch
+                // itself, so the clear seeds the sentinel whether or not a bind has
+                // paired one yet (#2488). Removable with a rotating-path
+                // re-verify — tracked as #2923.
                 distances->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
                 IRRender::device()->clearTexImage(distances, 0, &kDistanceClear);
                 colors->clear(PixelDataFormat::RGBA, PixelDataType::UNSIGNED_BYTE, &kColorClear[0]);
@@ -1334,6 +1334,10 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // Read once up front: the world path uploads it as visibleIsoBounds_
         // and the (world-only) occlusion pre-pass below reuses it.
         const IsoBounds2D visibleVp = IRRender::getCullViewport().isoViewport(kGpuMargin);
+        // Whether this canvas has an off-screen shadow-feeder ring this frame —
+        // the condition for the Metal scratch resolve after the feeder dispatch
+        // below (#2488). Resolved here because both boxes are in scope only here.
+        bool shadowFeederRing = false;
         if (canvasLocalRotation.isDetached()) {
             // Model-space canvas domain (same rationale as the chunk mask
             // above): the camera-space per-voxel cull viewport does not apply
@@ -1361,6 +1365,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             // form reads above, so the two boxes are derived consistently.
             frameData_.visibleIsoBounds_ =
                 ivec4(ivec2(IRMath::floor(visibleVp.min_)), ivec2(IRMath::ceil(visibleVp.max_)));
+            shadowFeederRing = IRPrefab::SunShadow::shadowFeederRingNonEmpty(gpuVp, visibleVp);
         }
 
         // Occlusion cull gate (#1294 chunk pre-pass + #1812 per-voxel refine, off
@@ -1740,6 +1745,30 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                     kBufferIndex_IndirectDispatchParams
                 );
                 IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+                // #2488: on Metal both stage-1 dispatches atomic-min their depth
+                // into the texture's sibling scratch BUFFER, and the only pass
+                // that writes the distance TEXTURE — stage 2's winner tap — skips
+                // feeders (the #1740 depth-only skip). So ring texels stay at the
+                // 65535 clear sentinel in the texture, and every texture-reading
+                // consumer (BAKE_SUN_SHADOW_MAP, COMPUTE_VOXEL_AO,
+                // COMPUTE_DISTANCE_HIZ, and through it the #2298 per-voxel
+                // occlusion cull) loses the feeder ring that GL's imageAtomicMin
+                // writes straight to the texture. Materialize the scratch here to
+                // restore that parity. No-op on GL (defaulted virtual).
+                //
+                // Whole-canvas, not ring-only rects: at this point the scratch IS
+                // the distance state GL's texture holds, so visible-domain texels
+                // resolve to the identical values stage 2 is about to re-store
+                // (its winner test IS scratch equality), untouched texels resolve
+                // sentinel onto sentinel (clearTexImage mirrors the clear into the
+                // scratch), and only the texels GL has and Metal lacks change.
+                // Stage 2 is order-independent of this blit — it re-tests depth
+                // from the scratch, never from the texture.
+                if (shadowFeederRing) {
+                    IRRender::device()->resolveImageAtomicScratch(
+                        triangleCanvasTextures.getTextureDistances()
+                    );
+                }
             }
 
             // #2346 cardinal winner election — flagged (displaced-voxel) pools

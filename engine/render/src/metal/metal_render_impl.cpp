@@ -773,8 +773,25 @@ metalCurrentDepthPixelFormat(),
 
             // Mirror the clear into the image atomic scratch buffer so atomic
             // image-min sees the same starting state as the texture itself.
+            //
+            // ensure, not lookup: bindAsImage creates the scratch lazily, and a
+            // canvas's tick clears its distance texture before it ever binds it,
+            // so a lookup finds nothing on the first tick and skips the mirror —
+            // leaving the freshly allocated scratch at its zero fill. Zero is the
+            // NEAREST depth, not the empty sentinel, so every atomicMin loses
+            // against it (stage 2's `scratch == depth` winner tap then matches
+            // nothing) and resolveImageAtomicScratch blits a solid nearest-depth
+            // surface over the whole texture. Ensuring the buffer here is what
+            // makes this mirror unconditional, which is what both consumers of
+            // that property already assume (#2488). Canvas distance textures
+            // cleared here are image-bound later in the same frame, so the
+            // ensure only moves their allocation earlier. The exception is the
+            // per-axis resolveDepth_, cleared at (yaw-gated) allocation but
+            // image-bound only when a consumer stage is registered — a rotating
+            // creation with neither consumer pays one main-canvas-sized scratch
+            // it never binds. Bounded, one-time, torn down with the texture.
             if (pixelFormat == MTL::PixelFormatR32Sint) {
-                if (MTL::Buffer *scratch = lookupImageAtomicScratchBuffer(texture);
+                if (MTL::Buffer *scratch = ensureImageAtomicScratchBuffer(texture);
                     scratch != nullptr) {
                     auto *blit2 = createBlitEncoder(commandBuffer);
                     blit2->copyFromBuffer(clearBuf, 0, scratch, 0, totalBytes);
@@ -789,13 +806,72 @@ metalCurrentDepthPixelFormat(),
                 clearBuf->contents(),
                 static_cast<NS::UInteger>(width * bytesPerPixel)
             );
+            // Same ensure-not-lookup contract as the GPU blit path: a startup-init
+            // clear must leave the scratch holding the sentinel too, or the mirror
+            // is unconditional on only one of the two branches.
             if (pixelFormat == MTL::PixelFormatR32Sint) {
-                if (MTL::Buffer *scratch = lookupImageAtomicScratchBuffer(texture);
+                if (MTL::Buffer *scratch = ensureImageAtomicScratchBuffer(texture);
                     scratch != nullptr) {
                     std::memcpy(scratch->contents(), clearBuf->contents(), totalBytes);
                 }
             }
         }
+    }
+
+    // Reverse of the clearTexImage scratch mirror above: copy the R32I
+    // image-atomic scratch back over the texture so a later sampler /
+    // access::read pass sees what the atomic passes wrote. Same geometry as
+    // that mirror blit, opposite direction. Textures with no paired scratch
+    // (every non-R32I format — R32I pairs at whichever comes first, this
+    // clearTexImage or MetalTexture2DImpl's bindImage) return early, so this
+    // stays a no-op wherever it can't apply.
+    void resolveImageAtomicScratch(const Texture2D *textureWrapper) override {
+        if (textureWrapper == nullptr) {
+            return;
+        }
+        auto *texture = static_cast<MTL::Texture *>(textureWrapper->getNativeTexture());
+        MTL::Buffer *scratch = lookupImageAtomicScratchBuffer(texture);
+        if (scratch == nullptr) {
+            return;
+        }
+        // No CPU fallback here, deliberately — unlike clearTexImage above, which
+        // falls back to replaceRegion/memcpy because it runs during startup init
+        // before any command buffer exists. The scratch only ever holds state a
+        // mid-frame atomic pass wrote, so a pre-beginFrame() resolve would have
+        // nothing to materialize; a future caller reaching this early return is
+        // asking at the wrong point in the frame, not hitting a missing path.
+        auto *commandBuffer = metalCommandBuffer();
+        if (commandBuffer == nullptr) {
+            return;
+        }
+        const NS::UInteger width = texture->width();
+        const NS::UInteger height = texture->height();
+        if (width == 0 || height == 0) {
+            return;
+        }
+        // Sized to match by construction: ensureImageAtomicScratchBuffer
+        // (metal_runtime.cpp) allocates width * height * sizeof(int32) for the
+        // very texture it is keyed on, and the texture's destructor releases the
+        // entry, so a live scratch always spans its whole texture.
+        const std::size_t bytesPerRow = static_cast<std::size_t>(width) * sizeof(std::int32_t);
+        const std::size_t totalBytes = bytesPerRow * static_cast<std::size_t>(height);
+
+        // createBlitEncoder, never a raw blitCommandEncoder: sub-stage timing
+        // attribution (#2280) rides on it, and this blit runs inside the
+        // caller's GpuSubStageScope.
+        auto *blit = createBlitEncoder(commandBuffer);
+        blit->copyFromBuffer(
+            scratch,
+            0,
+            static_cast<NS::UInteger>(bytesPerRow),
+            static_cast<NS::UInteger>(totalBytes),
+            MTL::Size::Make(width, height, 1),
+            texture,
+            0,
+            0,
+            MTL::Origin::Make(0, 0, 0)
+        );
+        blit->endEncoding();
     }
 
     void fillBuffer(const Buffer *buffer, std::size_t sizeBytes, std::uint8_t byteValue) override {

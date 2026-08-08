@@ -96,6 +96,45 @@ inline IRMath::IsoBounds2D shadowFeederCullViewport(
     );
 }
 
+// True when the shadow-feeder sweep widens @p visible into a NON-EMPTY
+// off-screen ring — i.e. when off-screen casters exist that stage 2's #1740
+// depth-only skip will strip the colour taps from.
+//
+// Quantized exactly as VOXEL_TO_TRIXEL_STAGE_1 uploads the two boxes
+// (frameData_.cullIsoMin_/cullIsoMax_ vs visibleIsoBounds_): a sweep too small
+// to cross a texel boundary yields no ring texels, so the integer compare — not
+// the float one — is the honest predicate. Above that quantization floor it is
+// empty in exactly TWO states, both structural rather than incidental:
+//   - sun shadows off: frameShadowFeederParams() returns sweepDistance 0 and
+//     shadowFeederIsoBounds returns `visible` unchanged;
+//   - a detached canvas: both boxes are set to the full canvas span.
+//
+// Camera yaw is NOT a third one. Both boxes derive from the cull viewport and a
+// yaw-free sun sweep, so this returns the same answer at every yaw — while the
+// GPU's isShadowFeederIso (ir_iso_common.glsl) DOES short-circuit on
+// residualYaw != 0 and classifies zero feeders mid-rotation. The predicate is
+// therefore a superset of "a feeder was actually rastered", and the resolve it
+// guards is what makes that safe, not the predicate: the per-frame
+// clearTexImage mirrors the sentinel into the scratch unconditionally
+// (VOXEL_TO_TRIXEL_STAGE_1's canvasClear → metal_render_impl.cpp), so resolving
+// a ring nothing fed copies each texel's own clear value back onto itself.
+// "Unconditionally" is load-bearing and literal: that mirror *ensures* the
+// scratch rather than looking it up (#2488), so it holds on a canvas's first
+// tick too — when the clear precedes any bind that would have paired one. The
+// one caller reaches this only on the !skipSingleCanvasVoxels branch, which the
+// per-axis path already owns for the main canvas while the camera rotates — so
+// the superset costs at most one redundant blit on a SECOND (non-main,
+// non-detached) voxel-pool canvas, whose residualYaw_ tracks the same camera.
+//
+// Exposed here rather than open-coded at the call site so the ring-empty claim
+// is testable without a GPU (test/render/sun_shadow_feeder_ring_test.cpp).
+inline bool
+shadowFeederRingNonEmpty(const IRMath::IsoBounds2D &feeder, const IRMath::IsoBounds2D &visible) {
+    return IRMath::ivec2(IRMath::floor(feeder.min_)) !=
+               IRMath::ivec2(IRMath::floor(visible.min_)) ||
+           IRMath::ivec2(IRMath::ceil(feeder.max_)) != IRMath::ivec2(IRMath::ceil(visible.max_));
+}
+
 // Sun-UV bounding box of the iso-frustum depth slab [@p depthMin, @p depthMax]
 // over @p isoBounds, with every corner ALSO offset by @p sweep (world-frame,
 // = -sunDir * sweepDistance) so off-screen casters within shadow range are
