@@ -613,6 +613,20 @@ Three checks, in order:
    (recorded, not gated): healthy 0.21 / 0.11 / 0.06px, defect 2.64 / 5.27 /
    10.08px at zoom 2/4/8.
 
+   **At a zoom not in the table, re-derive — never interpolate, and never carry a
+   neighbouring row across.** z1 is omitted by the clause above, not by oversight:
+   healthy reads **0.93px** against **3.53px** for the defect arm, a separation of
+   only 3.8x against 10x/60x/363x at the published zooms, so the candidate bar
+   (smallest half-integer >= 2.5 x 0.93 = 2.5px) sits *above* its own ceiling
+   (0.5 x 3.53 = 1.765px) and no value satisfies the rule. Borrowing the adjacent
+   0.5px there **false-fires** — it exits 1 on a green z1 population (0.93 > 0.5),
+   reporting a healthy tree as a rotation regression. Upward is the harmless
+   direction: z16 healthy reads **0.04px**, 12x under that same 0.5px. The two
+   identical 0.5px rows are a rounding coincidence, not a plateau to read off.
+   (z1/z16 measured macOS/Metal 2026-08-08, same fixture and arm-identity
+   discipline as the table. The z16 pass is non-vacuous: `--max-excursion-x 0.03`
+   on those frames exits 1, so the flag is live on the population it clears.)
+
    **The bar belongs to the pinned probe only — the unpinned sweep carries no
    excursion bar.** Drop `--pivot-origin` and the same healthy z4 population reads
    **38.18px** instead of 0.18px (212x), because the **default** `CAMERA_CENTER`
