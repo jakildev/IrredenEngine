@@ -59,6 +59,12 @@ MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
         functionName == "c_light_overflow_faces") {
         return MTL::Size(64, 1, 1);
     }
+    // #2479 overflow canonical sort: 256 threads over a 2048-element fused
+    // slab (8 elements/thread). MUST match the GLSL local_size_x literal and
+    // the kSortThreads constant in both kernels.
+    if (functionName == "c_per_axis_overflow_sort") {
+        return MTL::Size(256, 1, 1);
+    }
     if (functionName == "c_trixel_to_trixel") {
         return MTL::Size(16, 16, 1);
     }

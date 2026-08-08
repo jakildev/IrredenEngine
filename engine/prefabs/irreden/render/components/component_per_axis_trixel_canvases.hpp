@@ -198,7 +198,16 @@ struct C_PerAxisTrixelCanvases {
         entriesBaseUints_ = ctrlBaseUints_ + kScratchAlignUints;
         // Bounded by view-visible faces ≈ O(screen cells); /4 is generous for the
         // missing subset, floored so small canvases keep synthetic-test headroom.
-        overflowCap_ = IRMath::max(axisCells / 4, 65536);
+        // Rounded up to a power of two so the #2479 canonical sort's bitonic
+        // network, the append clamp, the layout `.w`, and the allocation stay
+        // ONE value (never introduce a separate sort length that can drift).
+        // The 65,536 floor is already a power of two, so default-size canvases
+        // are byte-unchanged; a larger canvas grows the entries region <= 2x.
+        // Side effect on non-p2 large canvases: the rounding also raises the
+        // append clamp, so fewer entries drop on a drop-saturated scene.
+        overflowCap_ = static_cast<int>(
+            IRMath::nextPowerOfTwo(static_cast<std::uint32_t>(IRMath::max(axisCells / 4, 65536)))
+        );
         winnerIds_ = IRRender::createResource<Buffer>(
             nullptr,
             (static_cast<std::size_t>(entriesBaseUints_) +

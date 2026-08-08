@@ -1175,6 +1175,13 @@ struct FrameDataVoxelToTrixel {
     // c_voxel_to_trixel_stage_1 at resolveMode 0 (mask write, folded #2487) and
     // 3 (append).
     int4 overflowScratchLayout;
+    // Overflow-entry canonical-sort step descriptor (#2479), read only by
+    // c_per_axis_overflow_sort between the mode-3 append and the overflow
+    // draw: .x = pass mode (0 sentinel-fill, 1 fused local sort, 2 fused
+    // strided slab), .y = stage size k, .z/.w = the mode-2 inclusive stride
+    // bit-position window [pLo, pHi].
+    // Mirrors FrameDataVoxelToCanvas::overflowSortStep_ (offset 224).
+    int4 overflowSortStep;
 };
 
 // Smooth analytic vision-circle reveal for one fog disc, shared by

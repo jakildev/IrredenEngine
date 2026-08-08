@@ -902,6 +902,23 @@ carries exactly `viewVisible ∖ cardinalWinners`, gated off at cardinal
 §"Current contract — view-visibility overflow lane" for the two-set model,
 the pass sequence, the entry format, and the measured cap/cost numbers.
 
+**Overflow draw order is canonical on flagged pools only (#2479).** Entry
+index IS draw order in the scatter's overflow branch, and the append assigns
+indices with `atomicAdd`, so equal-key entries used to resolve their depth
+contest by run-variant arrival order (10 distinct rotated-shot hashes / 10
+runs at wave amplitude 5). `c_per_axis_overflow_sort.{glsl,metal}` canonically
+orders the entries by full record value between the append and the indirect
+draw — **dispatched only when the ticking pool's `storeTiesPossible_` flag is
+set** (the #2346 gate the cardinal winner election already takes, decided
+CPU-side so the sort semantics never fork by backend). Unflagged pools keep
+order-resolved cross-cell band-code ties as a documented residual class; a
+measured repro there widens the flag recompute, it does **not** un-gate the
+sort. The sort is a bitonic network whose span is derived **GPU-side** from
+`ctrl[1]` (the CPU cannot read the live entry count without a sync stall), so
+its traffic scales with the live population rather than the entry cap.
+Cost + the residual-class revisit trigger are in the design doc's §"Draw order
+is canonical" block.
+
 **Accepted near-cardinal corner drift (coarse cubes) — #1883, root fix in
 epic #1933.** The forward-scatter composite grows each cell to a conservative
 quad (`scatterConservativeDilation`, `ir_iso_common.glsl`): the per-edge margin

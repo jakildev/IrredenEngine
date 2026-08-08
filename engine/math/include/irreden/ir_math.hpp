@@ -12,6 +12,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstdint>
 #include <random>
@@ -423,6 +424,13 @@ inline float log2(float value) noexcept {
 /// re-derived as `pow(2, round(log2(x)))` at each mip/zoom-quantization site.
 inline float snapToPowerOfTwo(float value) noexcept {
     return pow(2.0f, static_cast<float>(std::round(log2(value))));
+}
+
+/// Smallest power of two >= @p value (integer form; snapToPowerOfTwo above is
+/// the float nearest-in-log-space variant). Wraps std::bit_ceil so the one
+/// subtle case — value 0, which bit_ceil maps to 1 — is decided in one place.
+inline std::uint32_t nextPowerOfTwo(std::uint32_t value) noexcept {
+    return std::bit_ceil(value);
 }
 
 /// Cube root of @p value (float). Wraps std::cbrt.
