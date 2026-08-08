@@ -17,7 +17,7 @@ section below for which files apply.
 | `issues/<repo>/<N>.json` | scout | `fleet-issue view` | Full issue detail (body + comments + labels + state). Cached for issues in `needs_plan` / `human_approved`. |
 | `repos.json` | `fleet-up` | reviewer / merger roles | One-shot owner/repo slug map: `{"engine": "jakildev/IrredenEngine", "game": "jakildev/irreden"}`. |
 | `triggers/<role>` | scout | `fleet-babysit` | Empty file touched whenever this role's projection changed. Drives `fleet-babysit`'s long-back-off wake-up. |
-| `seen-hashes/<role>` | scout | scout | Hash of the last projection — internal trigger-detection state. |
+| `seen-hashes/<role>` | scout | scout, `fleet-debug triggers` | Last-projection fingerprint — internal trigger-detection state. **Two formats:** a bare 16-hex whole-projection hash for most roles, and for the scout's `PER_KIND_TRIGGER_ROLES` (today: `worker`) a `{"fmt":2,"kinds":{<kind>:[<item-hash>,…]}}` payload, because that lane's suppression is decided per sub-lane (#2700). A new reader must handle both; an unparseable file reads as all-new and fires once rather than idling (#561). |
 
 `<repo>` keys: `engine`, `game`. Match the `repos.<key>` slots in
 `state.json`.

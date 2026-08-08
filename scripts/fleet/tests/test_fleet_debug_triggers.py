@@ -117,6 +117,49 @@ class FleetDebugTriggers(unittest.TestCase):
         roles = [ln.split()[0] for ln in r.stdout.splitlines() if ln.strip()]
         self.assertNotIn("worker.empty-suppressed", roles)
 
+    def test_fmt2_seen_file_reports_per_kind_counts(self):
+        # #2700: roles in the scout's PER_KIND_TRIGGER_ROLES write a per-kind
+        # payload instead of a bare hash. Collapsing it to one hash would hide
+        # which sub-lane moved, which is the whole point of the format.
+        self._write(self.seen / "worker", json.dumps({
+            "fmt": 2,
+            "kinds": {
+                "task": ["a" * 16, "b" * 16],
+                "pr": ["c" * 16],
+                "needs_plan": [],
+            },
+        }) + "\n")
+        r = self._run()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        lines = {ln.split()[0]: ln for ln in r.stdout.splitlines() if ln.strip()}
+        self.assertIn("fmt2[needs_plan=0,pr=1,task=2]", lines["worker"])
+        # The raw JSON must not leak into the column.
+        self.assertNotIn('"fmt"', lines["worker"])
+
+    def test_fmt2_empty_kinds_reports_empty(self):
+        self._write(self.seen / "worker",
+                    json.dumps({"fmt": 2, "kinds": {}}) + "\n")
+        r = self._run()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        lines = {ln.split()[0]: ln for ln in r.stdout.splitlines() if ln.strip()}
+        self.assertIn("fmt2[empty]", lines["worker"])
+
+    def test_legacy_bare_hash_still_reports_truncated_hash(self):
+        # The other roles keep the bare-hash format; both must render.
+        self._write(self.seen / "merger", "69f1c07810ac0000\n")
+        r = self._run()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        lines = {ln.split()[0]: ln for ln in r.stdout.splitlines() if ln.strip()}
+        self.assertIn("seen=69f1c07810ac(", lines["merger"])
+
+    def test_unparseable_json_seen_file_degrades(self):
+        # Starts with "{" but is not valid JSON — must not raise.
+        self._write(self.seen / "worker", "{ torn payload\n")
+        r = self._run()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        lines = {ln.split()[0]: ln for ln in r.stdout.splitlines() if ln.strip()}
+        self.assertIn("worker", lines)
+
     def test_read_only(self):
         (self.triggers / "worker").write_text("\n")
         self._write(self.seen / "worker", "caa618b4c02edc35\n")
