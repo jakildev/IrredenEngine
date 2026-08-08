@@ -2,6 +2,7 @@
 
 #include <irreden/ir_render.hpp>
 #include <irreden/ir_script.hpp>
+#include <irreden/ir_video.hpp>
 #include <irreden/render/voxel_pool_config.hpp>
 #include <irreden/input/systems/system_entity_hover_detect.hpp>
 
@@ -32,6 +33,17 @@ void applyPreInitLuaConfig(const char *configFile) {
 
 void clearEntityEventHandlers() {
     IRSystem::getEntityEventHandlers().clear();
+}
+
+void warnIfAutoScreenshotNeverArmed() {
+    if (args().wasProvided("--auto-screenshot") && !IRVideo::isAutoCaptureActive()) {
+        IRE_LOG_WARN(
+            "--auto-screenshot was provided but no capture system is registered; "
+            "this creation will render indefinitely and never exit. The creation "
+            "must call IRVideo::createAutoScreenshotSystem (or createGuiTestSystem "
+            "for the GUI-test path) before gameLoop() (see engine/video/CLAUDE.md)."
+        );
+    }
 }
 
 } // namespace IREngine::detail

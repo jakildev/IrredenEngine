@@ -98,9 +98,11 @@ callback** (`IREngine::registerLuaBindings`) must read the warmup count
 *inside that callback* instead — the callback fires from
 `World::setupLuaBindings` partway through `IREngine::init`, so a step-1 read
 placed after `init` returns lands after the pipeline is already built. The
-failure is silent and total: the `warmupFrames > 0` guard sees 0, no capture
-system is ever created, nothing calls `IRWindow::closeWindow()`, and the run
-hangs to the harness timeout with no screenshot and no error (#2502). A
+failure is total: the `warmupFrames > 0` guard sees 0, no capture system is
+ever created, nothing calls `IRWindow::closeWindow()`, and the run hangs to
+the harness timeout with no screenshot (#2502). It is no longer *silent* —
+`IREngine::gameLoop()` warns when `--auto-screenshot` was provided and
+nothing armed a capture (#2941), so the hang is greppable instead of mute. A
 creation that instead builds its pipeline in `main()` after `init` (the
 step-1–3 order above) is unaffected.
 

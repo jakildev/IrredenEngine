@@ -55,8 +55,9 @@ struct CyclingState {
     bool screenshotPending_ = false;
 };
 
-// Set true the first time createAutoScreenshotSystem runs this process, i.e. a
-// headless --auto-screenshot capture is active. Read by World via
+// Set true the first time either capture-system creator
+// (createAutoScreenshotSystem or createGuiTestSystem) runs this process,
+// i.e. a headless --auto-screenshot capture is active. Read by World via
 // isAutoCaptureActive() to switch the UPDATE loop to a deterministic fixed
 // step. Process-lifetime flag; capture is one-shot per process.
 bool g_autoCaptureActive = false;
