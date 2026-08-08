@@ -217,12 +217,11 @@ assert_eq "$(disp "$S" --empty-streak-check triage)" "under 0" \
     "NO_CLAIM_FABRIC_ROLES is overridable"
 
 echo "T11: every role family that can stand down is covered"
-# Binding constraint from plan review: the reviewer and steward lanes claim via
-# `review-claim` / `steward-claim`, arms the plan's stamping set originally
-# omitted. If a productive reviewer dispatch recorded `empty`, the reviewer
-# lane would stand down after EMPTY_STREAK_CAP *productive* dispatches — a
-# strictly-worse-than-today regression. These assert the fold treats them like
-# any other role once the claim signal says `yes`.
+# The reviewer and steward lanes claim via `review-claim` / `steward-claim`, so
+# they belong in the stamping set (#2698). If a productive reviewer dispatch
+# recorded `empty`, the reviewer lane would stand down after EMPTY_STREAK_CAP
+# *productive* dispatches — a strictly-worse-than-today regression. These assert
+# the fold treats them like any other role once the claim signal says `yes`.
 for role in sonnet-reviewer opus-reviewer epic-steward smoke-worker; do
     S=$(mktemp -d "$TMPROOT/s.XXXXXX")
     disp "$S" --record-outcome "$role" 300 --claimed=no

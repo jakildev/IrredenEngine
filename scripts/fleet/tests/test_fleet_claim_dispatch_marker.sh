@@ -4,9 +4,8 @@
 # fleet-dispatch-wrap exports FLEET_CLAIM_FLAG (pane-keyed) and clears it at
 # dispatch start; fleet-claim touches it on every arm that takes or releases a
 # fleet lock; fleet-dispatcher reads it back once the pane returns to a shell
-# and folds claimed-vs-empty into the empty-exit backoff streak. It replaces a
-# wall-clock heuristic that could not tell a real claim from a diligent
-# no-pick, which left the backoff dead for the worker role for 15 days.
+# and folds claimed-vs-empty into the empty-exit backoff streak. A wall-clock
+# heuristic cannot tell a real claim from a diligent no-pick; the marker can.
 #
 # The properties that matter, and why each is here rather than left to a live
 # observation:

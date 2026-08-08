@@ -444,14 +444,10 @@ fi
 #
 # "Claimed nothing" is a signal, not an inference (#2698). fleet-claim stamps a
 # pane-keyed marker on every acquire/release arm, so the answer is recorded
-# before the iteration exits. It originally *was* an inference — a return to the
-# shell in under EMPTY_EXIT_SECONDS — and that is why the mechanism sat dead for
-# the worker role for 15 days: a worker that walks both queues and correctly
-# declines also runs for minutes, so it landed in the long-run branch and RESET
-# the streak. The backoff could never engage for the one failure mode it was
-# written to bound. Duration cannot separate worked from walked-and-declined,
-# and raising the threshold does not help — the two occupy the same band, and
-# the band moves whenever a role doc's mandated walk changes.
+# before the iteration exits. Duration cannot separate worked from
+# walked-and-declined: a worker that walks both queues and correctly declines
+# also runs for minutes. Raising the threshold does not help — the two occupy
+# the same band, and the band moves whenever a role doc's mandated walk changes.
 #
 # EMPTY_EXIT_SECONDS survives as the fallback for dispatches whose outcome is
 # unknown (records written before this landed, and the roles below) and as a
