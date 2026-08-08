@@ -139,6 +139,21 @@ GH_TIMEOUT_SECONDS = 30
 FETCH_MAX_WORKERS = 2
 FETCH_SUBMIT_GAP_SECONDS = 0.25
 
+# `gh pr list` defaults to --limit 30 and truncates past it silently, keeping
+# the NEWEST 30 by number — so the oldest open PRs, exactly the long-lived
+# stalled ones, drop out first. This list is the fleet's authoritative
+# in-flight signal: every role's projection, the feedback and
+# semantic-conflict lanes, and the in-flight/stackable enrichers all read it,
+# and a PR outside the window contributes no projection item at all, so its
+# later label edits produce no dispatch edge (#2743).
+#
+# Raising it costs requests: gh pages at 100, so one tick spends
+# ceil(min(limit, open_count) / 100) requests per repo — measured 2026-08-07
+# at limits 30/100/150/200/250 -> 1/1/2/2/3. At 200 that is 1 request while
+# the open set is under 100 and 2 above it. The guard below tells an operator
+# to raise this constant; that is the price of doing so.
+OPEN_PR_FETCH_LIMIT = 200
+
 TERMINATE = threading.Event()
 
 
@@ -260,6 +275,7 @@ def _is_pull_request(issue):
 def _fetch_prs_graphql(repo):
     out = run_capture([
         "gh", "pr", "list", "--repo", repo, "--state", "open",
+        "--limit", str(OPEN_PR_FETCH_LIMIT),
         "--json",
         # headRefOid drives the per-PR diff-cache freshness check (a changed
         # head oid invalidates the cached detail/diff). It rides the same list
@@ -274,6 +290,13 @@ def _fetch_prs_graphql(repo):
     except json.JSONDecodeError as e:
         log(f"gh pr list {repo}: bad JSON: {e}")
         return None
+    # A result sitting exactly at the cap may itself be truncated — the same
+    # silent narrowing, one window wider. `>=` rather than `==` so the warn
+    # still fires if the constant is later lowered below the live open set.
+    if len(prs) >= OPEN_PR_FETCH_LIMIT:
+        log(f"gh pr list {repo}: returned {len(prs)} PRs at the "
+            f"{OPEN_PR_FETCH_LIMIT} cap — open-PR list may be truncated; "
+            f"raise OPEN_PR_FETCH_LIMIT")
     for pr in prs:
         pr["labels"] = sorted(label["name"] for label in pr.get("labels", []))
         pr["author"] = pr.get("author", {}).get("login", "")
