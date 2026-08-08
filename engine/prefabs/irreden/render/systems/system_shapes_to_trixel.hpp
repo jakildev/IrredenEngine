@@ -302,6 +302,19 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             shapeDescBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_ShapeDescriptors);
             canvasTextures.getTextureDistances()
                 ->bindAsImage(1, TextureAccess::READ_WRITE, TextureFormat::R32I);
+            // All three declared kernel slots are bound ahead of BOTH passes,
+            // even though pass 0 reads only distances: Metal validates every
+            // argument a kernel declares at each dispatch, and unit 0 still
+            // holds an R32I distance texture from an earlier pass, so leaving
+            // colors unbound for pass 0 aborts on a type mismatch under
+            // `MTL_DEBUG_LAYER=1`. Colors is READ_WRITE (not WRITE_ONLY) so the
+            // SHAPE_FLAG_GIZMO occluded-blend branch can imageLoad the existing
+            // canvas color and blend the gizmo silhouette on top at reduced
+            // alpha (T-164); non-gizmo writes are still pure stores.
+            canvasTextures.getTextureColors()
+                ->bindAsImage(0, TextureAccess::READ_WRITE, TextureFormat::RGBA8);
+            canvasTextures.getTextureEntityIds()
+                ->bindAsImage(2, TextureAccess::WRITE_ONLY, TextureFormat::RG32UI);
 
             shapesFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_ShapesFrameData);
 
