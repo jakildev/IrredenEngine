@@ -311,6 +311,19 @@ repo_from_ns() {
     esac
 }
 
+# repo_from_slug <slug>
+#   Map a $CLAIMS_DIR slug to its owning GitHub repo, independent of any
+#   caller-supplied --repo flag. Slug shape mirrors slugify(): bare "<N>" is
+#   always engine, "game-<N>" is always game. Routed through repo_from_ns
+#   (temporary REPO_NS override) rather than a fourth hardcoded owner/repo
+#   pair — see #2864, where cmd_cleanup's local walk trusted the caller's
+#   --repo for bare slugs and let the scout's game sweep delete engine locks.
+repo_from_slug() {
+    local slug="$1" ns="engine"
+    [[ "$slug" == game-* ]] && ns="game"
+    REPO_NS="$ns" repo_from_ns
+}
+
 # _refuse_if_closed <issue-number> <repo-slug> <context>
 #   CLOSED-issue gate (#2201). A stale scout cache can surface a closed issue
 #   in tasks.open[] / needs_plan[]; granting a lock on it strands a
@@ -1934,8 +1947,10 @@ cmd_cleanup() {
         repos=("jakildev/IrredenEngine")
     fi
 
-    # Walk every active claim and check if its linked issue is closed.
-    # Slug shape is "<N>" for engine and "<ns>-<N>" for namespaced repos.
+    # Walk every active claim and check if its linked issue is closed. The
+    # repo each claim is checked against comes from repo_from_slug (the slug
+    # itself), NOT from the caller's --repo flags above — those only pick
+    # which repos cmd_cleanup_gh's label sweep covers (#2864).
     local cleaned=0
     for dir in "$CLAIMS_DIR"/*/; do
         [[ -d "$dir" ]] || continue
@@ -1944,10 +1959,11 @@ cmd_cleanup() {
         case "$slug" in
             _stack_*) continue ;;
         esac
-        local issue_num="$slug" repo="${repos[0]}"
+        local issue_num="$slug"
+        local repo
+        repo=$(repo_from_slug "$slug")
         if [[ "$slug" == game-* ]]; then
             issue_num="${slug#game-}"
-            repo="jakildev/irreden"
         fi
         [[ "$issue_num" =~ ^[0-9]+$ ]] || continue
         local state=""
