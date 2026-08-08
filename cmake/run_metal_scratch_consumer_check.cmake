@@ -214,10 +214,10 @@ foreach(line IN LISTS pipeline_lines)
     # bindComputeResources is concerned, so reading it as present is a false
     # clean in the forward direction: the consumer stops getting the scratch
     # bound, its imageAtomicMin writes land nowhere, and this check stays green.
-    # Scope: line comments only. A `/* ... */` around an entry still reads as
-    # present, and the sibling run_metal_kernel_registry_check.cmake's identical
-    # scan strips neither form. Both are #2899 -- fixing one comment form in one
-    # of the two checkers here would leave the pair asymmetric for no gain.
+    # Handles both line (//) and block (/* ... */) comments; the sibling
+    # run_metal_kernel_registry_check.cmake's identical scan applies the same
+    # two-form strip (#2899).
+    string(REGEX REPLACE "/\\*.*\\*/" "" line "${line}")
     string(REGEX REPLACE "//.*" "" line "${line}")
     string(REGEX MATCHALL "\"[A-Za-z0-9_]+\"" quoted_names "${line}")
     foreach(quoted_name IN LISTS quoted_names)

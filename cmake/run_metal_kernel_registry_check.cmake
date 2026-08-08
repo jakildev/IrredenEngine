@@ -68,6 +68,15 @@ foreach(line IN LISTS pipeline_lines)
         set(found_terminator TRUE)
         break()
     endif()
+    # Strip comments before harvesting names. A commented-out entry never
+    # reaches the compiled binary, so the kernel it named silently falls
+    # through to the MTL::Size(1, 1, 1) fallback while this check reads the
+    # dead line and still sees it "registered" -- a false clean in the exact
+    # forward direction this check exists to close. Handle both line (//) and
+    # block (/* ... */) comments; the sibling scratch-consumer checker applies
+    # the identical strip for the identical reason (#2899).
+    string(REGEX REPLACE "/\\*.*\\*/" "" line "${line}")
+    string(REGEX REPLACE "//.*" "" line "${line}")
     string(REGEX MATCHALL "\"[A-Za-z0-9_]+\"" quoted_names "${line}")
     foreach(quoted_name IN LISTS quoted_names)
         string(REPLACE "\"" "" bare_name "${quoted_name}")
