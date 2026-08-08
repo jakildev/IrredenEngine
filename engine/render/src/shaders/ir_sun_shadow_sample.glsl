@@ -7,11 +7,15 @@
 // sun-shadow consumers recompile and the SDF / voxel / scatter shaders keep
 // their cardinal-yaw byte-identity (same rationale as ir_per_axis_lighting.glsl).
 //
-// Requires ir_sun_projection.glsl included FIRST by the top-level shader (this
-// file does not include it itself): the map-dim constants, the shared
-// sunSpaceProject basis, unpackSunDepth, and sunCascadeKernelInterior all
-// live there so the caster bake and this receiver lookup share one source
-// (#2083).
+// GLSL's include resolver is recursive with a visited-set cycle guard
+// (opengl_shader.cpp `resolveShaderIncludes`), so this fragment self-includes
+// ir_sun_projection.glsl below rather than relying solely on the top-level
+// shader including it first — a wrapper's earlier include of
+// ir_sun_projection.glsl makes this a suppressed duplicate. It supplies the
+// map-dim constants, the shared sunSpaceProject basis, unpackSunDepth, and
+// sunCascadeKernelInterior, so the caster bake and this receiver lookup
+// share one source (#2083).
+#include "ir_sun_projection.glsl"
 
 const float kShadowDarken = 0.45;
 const float kNormalBiasVoxels = 0.5;

@@ -188,6 +188,31 @@ TEST_F(GlslIncludeResolver, RecognizesIndentedDirectiveAndSkipsRepeats) {
     EXPECT_EQ(countOccurrences(resolved, "#include"), 0);
 }
 
+// A wrapper that includes A then B, where B also self-includes A, resolves
+// byte-identically to the same wrapper against a B that does not
+// self-include A. This is what makes it safe for a shared fragment to
+// self-include its own prerequisite — every existing wrapper already
+// includes that prerequisite first, so the canonical path is already in the
+// visited set when the fragment's own self-include is reached, and the
+// redundant directive is dropped as a no-op. See #2811.
+TEST_F(GlslIncludeResolver, SelfIncludedPrerequisiteIsANoOpWhenWrapperAlreadyIncludesIt) {
+    writeShader("prerequisite.glsl", "int prerequisiteSymbol = 1;\n");
+    writeShader("fragment_without_self_include.glsl", "int fragmentSymbol = 2;\n");
+    writeShader(
+        "fragment_with_self_include.glsl",
+        "#include \"prerequisite.glsl\"\nint fragmentSymbol = 2;\n"
+    );
+
+    const std::string withoutSelfInclude = resolve(
+        "#include \"prerequisite.glsl\"\n#include \"fragment_without_self_include.glsl\"\n"
+    );
+    const std::string withSelfInclude =
+        resolve("#include \"prerequisite.glsl\"\n#include \"fragment_with_self_include.glsl\"\n");
+
+    EXPECT_EQ(withSelfInclude, withoutSelfInclude);
+    EXPECT_EQ(countOccurrences(withSelfInclude, "int prerequisiteSymbol = 1;"), 1);
+}
+
 } // namespace
 
 #endif // IR_GRAPHICS_OPENGL

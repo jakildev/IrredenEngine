@@ -15,9 +15,12 @@
 // GLSL/MSL, which is why the functions were historically duplicated per stage.
 // Metal twin: metal/ir_voxel_face_select.metal — keep byte-identical math.
 // GLSL's include resolver is recursive with a visited-set cycle guard
-// (opengl_shader.cpp `resolveShaderIncludes`), so this fragment MAY now
-// self-include its own prerequisites instead of relying solely on the
-// wrapper chain above — kept as-is here to avoid churn.
+// (opengl_shader.cpp `resolveShaderIncludes`), so this fragment
+// self-includes its own prerequisites below rather than relying solely on
+// the wrapper chain above — the wrapper's earlier include of
+// ir_iso_common.glsl makes this a suppressed duplicate (the
+// ir_per_axis_lighting.metal idiom).
+#include "ir_iso_common.glsl"
 
 // Per-voxel analytic fog clip inputs (#2102), mirroring
 // c_voxel_visibility_compact + c_fog_to_trixel. The world fog canvas binds its

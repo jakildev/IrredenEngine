@@ -15,12 +15,12 @@
 // writes through. GLSL has no way to pass an SSBO as an argument, so the
 // scratch binding is a wrapper-supplied contract rather than a parameter —
 // the same reason the fog grid's image slot is a wrapper #define in
-// ir_voxel_face_select.glsl. The fragment includes nothing itself, so every
-// prerequisite must be pulled in by the wrapper ahead of this file. The
-// resolver is recursive with a visited-set cycle guard (#2514), so this
-// fragment MAY self-include its prerequisites instead — kept as-is to avoid
-// churn.
+// ir_voxel_face_select.glsl. The resolver is recursive with a visited-set
+// cycle guard (#2514), so this fragment self-includes ir_iso_common.glsl
+// below instead of relying solely on the wrapper chain — a wrapper's earlier
+// include of ir_iso_common.glsl makes this a suppressed duplicate.
 // Metal twin: metal/ir_resolve_cardinal_emit.metal — keep byte-identical math.
+#include "ir_iso_common.glsl"
 
 // Emit one micro-cell's two-pixel diamond region (#1724) into the resolve
 // scratch, in the MAIN-canvas cardinal distance layout.

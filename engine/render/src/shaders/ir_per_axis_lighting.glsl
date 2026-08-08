@@ -6,7 +6,13 @@
 // path (breaking the residualYaw == 0 byte-identity guarantee). Only the four
 // lighting compute shaders include this file, AFTER ir_iso_common.glsl (whose
 // helpers — trixelFrameOffset, trixelOriginOffsetZ1, isoPixelToPos3D,
-// effectiveTrixelSubdivisionScale — this builds on).
+// effectiveTrixelSubdivisionScale — this builds on). GLSL's include resolver
+// is recursive with a visited-set cycle guard (opengl_shader.cpp
+// `resolveShaderIncludes`), so this fragment self-includes ir_iso_common.glsl
+// below to resolve those helpers and stay self-contained; a wrapper's earlier
+// include of ir_iso_common.glsl makes this a suppressed duplicate (mirrors
+// ir_per_axis_lighting.metal).
+#include "ir_iso_common.glsl"
 
 // Reconstruct the world-unit surface position of a per-axis trixel canvas cell.
 // The per-axis store (#1458: base-resolution encoding) keys each cell by its
