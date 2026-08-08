@@ -197,6 +197,7 @@ set(in_list FALSE)
 set(found_list FALSE)
 set(found_terminator FALSE)
 set(listed_consumers "")
+set(in_block_comment FALSE)
 foreach(line IN LISTS pipeline_lines)
     if(NOT in_list)
         if(line MATCHES "bool[ \t]+functionUsesImageAtomicScratch\\(")
@@ -214,11 +215,29 @@ foreach(line IN LISTS pipeline_lines)
     # bindComputeResources is concerned, so reading it as present is a false
     # clean in the forward direction: the consumer stops getting the scratch
     # bound, its imageAtomicMin writes land nowhere, and this check stays green.
-    # Handles both line (//) and block (/* ... */) comments; the sibling
-    # run_metal_kernel_registry_check.cmake's identical scan applies the same
-    # two-form strip (#2899).
+    # Handles line (//) and BOTH block-comment shapes -- same-line /* ... */
+    # and a block that spans multiple lines (disabling a run of consecutive
+    # entries is the natural reason to reach for a block comment here, and
+    # that spans lines); the sibling run_metal_kernel_registry_check.cmake's
+    # identical scan applies the same strip (#2899).
+    if(in_block_comment)
+        if(line MATCHES "\\*/")
+            # Strip through the FIRST "*/" only -- CMake's regex engine has no
+            # lazy quantifier, so this reuses the same non-greedy-emulation
+            # trick as the same-line block-comment strip below rather than a
+            # greedy ".*\\*/" that would run past this "*/" to a later one.
+            string(REGEX REPLACE "^([^*]|\\*+[^*/])*\\*+/" "" line "${line}")
+            set(in_block_comment FALSE)
+        else()
+            set(line "")
+        endif()
+    endif()
     string(REGEX REPLACE "/\\*([^*]|\\*+[^*/])*\\*+/" "" line "${line}")
     string(REGEX REPLACE "//.*" "" line "${line}")
+    if(line MATCHES "/\\*")
+        string(REGEX REPLACE "/\\*.*$" "" line "${line}")
+        set(in_block_comment TRUE)
+    endif()
     string(REGEX MATCHALL "\"[A-Za-z0-9_]+\"" quoted_names "${line}")
     foreach(quoted_name IN LISTS quoted_names)
         string(REPLACE "\"" "" bare_name "${quoted_name}")

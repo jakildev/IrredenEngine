@@ -56,6 +56,7 @@ set(in_registry FALSE)
 set(found_registry FALSE)
 set(found_terminator FALSE)
 set(registered_kernels "")
+set(in_block_comment FALSE)
 foreach(line IN LISTS pipeline_lines)
     if(NOT in_registry)
         if(line MATCHES "MTL::Size[ \t]+threadgroupSizeForFunctionName\\(")
@@ -72,11 +73,30 @@ foreach(line IN LISTS pipeline_lines)
     # reaches the compiled binary, so the kernel it named silently falls
     # through to the MTL::Size(1, 1, 1) fallback while this check reads the
     # dead line and still sees it "registered" -- a false clean in the exact
-    # forward direction this check exists to close. Handle both line (//) and
-    # block (/* ... */) comments; the sibling scratch-consumer checker applies
-    # the identical strip for the identical reason (#2899).
+    # forward direction this check exists to close. Handle line (//) and BOTH
+    # block-comment shapes -- same-line /* ... */ and a block that spans
+    # multiple lines (the registry's real entries are multi-line `if`
+    # conditions, so a block comment disabling one spans lines too); the
+    # sibling scratch-consumer checker applies the identical strip for the
+    # identical reason (#2899).
+    if(in_block_comment)
+        if(line MATCHES "\\*/")
+            # Strip through the FIRST "*/" only -- CMake's regex engine has no
+            # lazy quantifier, so this reuses the same non-greedy-emulation
+            # trick as the same-line block-comment strip below rather than a
+            # greedy ".*\\*/" that would run past this "*/" to a later one.
+            string(REGEX REPLACE "^([^*]|\\*+[^*/])*\\*+/" "" line "${line}")
+            set(in_block_comment FALSE)
+        else()
+            set(line "")
+        endif()
+    endif()
     string(REGEX REPLACE "/\\*([^*]|\\*+[^*/])*\\*+/" "" line "${line}")
     string(REGEX REPLACE "//.*" "" line "${line}")
+    if(line MATCHES "/\\*")
+        string(REGEX REPLACE "/\\*.*$" "" line "${line}")
+        set(in_block_comment TRUE)
+    endif()
     string(REGEX MATCHALL "\"[A-Za-z0-9_]+\"" quoted_names "${line}")
     foreach(quoted_name IN LISTS quoted_names)
         string(REPLACE "\"" "" bare_name "${quoted_name}")

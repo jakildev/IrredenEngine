@@ -20,6 +20,9 @@
 #   - a line- or block-commented registry entry     → exit 1, names the kernel
 #     (a commented-out entry never reaches the compiled binary, so it must
 #     read as absent, not present — both comment forms, #2899)
+#   - a MULTI-LINE block-commented registry entry    → exit 1 (the registry's
+#     real entries are multi-line `if` conditions, so disabling one wraps
+#     several lines, not one — a same-line-only strip false-cleans this shape)
 #   - a registry with no bare "}" terminator line   → exit 1 (EOF guard, not
 #     a silent scan past the function into unrelated string literals)
 #   - a scratch consumer absent from the list       → exit 1, names the kernel
@@ -28,6 +31,9 @@
 #   - a line- or block-commented list entry         → exit 1 (the runtime stops
 #     binding for it, so it must read as absent, not present — both comment
 #     forms, #2899)
+#   - a MULTI-LINE block-commented list entry        → exit 1 (disabling a run
+#     of consecutive entries is the natural reason to reach for a block
+#     comment here, and that spans lines)
 #   - a hand-wrapped scratch declaration            → exit 1 (the qualifier test
 #     reads the declaration window, not the attribute's line)
 #   - an atomic neighbour on the slot's line        → exit 0 (that qualifier
@@ -246,6 +252,48 @@ assert_contains "$registry_commented_block_out" "c_registry_commented_block" \
 assert_contains "$registry_commented_block_out" "no entry in" \
     "a block-commented registry entry is reported as absent, not present"
 
+# --- a MULTI-LINE block-commented registry entry reads as absent -------------
+# The real registry's entries are multi-line `if` conditions
+# (metal_pipeline.cpp), so disabling one wraps the block comment across
+# several lines -- the shape write_pipeline_cpp's per-name single-line echo
+# can't express, hence the direct fixture write. A same-line-only strip reads
+# every interior line as still live (Opus recheck on #2959).
+REGISTRY_COMMENTED_BLOCK_MULTILINE="$TMPROOT/registry-commented-block-multiline"
+make_fixture "$REGISTRY_COMMENTED_BLOCK_MULTILINE"
+echo '// registry-commented-block-multiline fixture kernel' \
+    > "$REGISTRY_COMMENTED_BLOCK_MULTILINE/engine/render/src/shaders/metal/c_registry_commented_multiline.metal"
+cat > "$REGISTRY_COMMENTED_BLOCK_MULTILINE/engine/render/src/metal/metal_pipeline.cpp" <<'EOF'
+namespace IRRender {
+namespace {
+
+MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
+    if (functionName == "c_fixture_kernel") {
+        return MTL::Size(16, 16, 1);
+    }
+    /* if (functionName == "c_registry_commented_multiline") {
+        return MTL::Size(16, 16, 1);
+    } */
+    return MTL::Size(1, 1, 1);
+}
+
+bool functionUsesImageAtomicScratch(const std::string &functionName) {
+    return false
+           || functionName == "c_fixture_kernel"
+        ;
+}
+
+}  // namespace
+}  // namespace IRRender
+EOF
+registry_commented_block_multiline_out=$(run_checker "$REGISTRY_COMMENTED_BLOCK_MULTILINE")
+registry_commented_block_multiline_rc=$?
+assert_eq "1" "$registry_commented_block_multiline_rc" \
+    "multi-line block-commented-out registry entry exits 1"
+assert_contains "$registry_commented_block_multiline_out" "c_registry_commented_multiline" \
+    "failure names the kernel whose registry entry was multi-line block-commented out"
+assert_contains "$registry_commented_block_multiline_out" "no entry in" \
+    "a multi-line block-commented registry entry is reported as absent, not present"
+
 # --- a registry without its bare "}" terminator fails, not false-cleans ------
 # The function-body scan ends on a line that is exactly "}"; if the function
 # is ever indented (namespace style change, moved into a block), the scan
@@ -345,6 +393,54 @@ assert_contains "$scratch_commented_block_out" "c_fixture_kernel" \
     "failure names the consumer whose entry was block-commented out"
 assert_contains "$scratch_commented_block_out" "absent from functionUsesImageAtomicScratch" \
     "a block-commented entry is reported as absent, not present"
+
+# --- a MULTI-LINE block-commented list entry reads as absent -----------------
+# Disabling a run of consecutive entries at once is the natural reason to
+# reach for a block comment in this list, and that spans lines -- the shape
+# write_pipeline_cpp's per-name single-line echo can't express, hence the
+# direct fixture write (Opus recheck on #2959).
+SCRATCH_COMMENTED_BLOCK_MULTILINE="$TMPROOT/scratch-commented-block-multiline"
+make_fixture "$SCRATCH_COMMENTED_BLOCK_MULTILINE"
+cat > "$SCRATCH_COMMENTED_BLOCK_MULTILINE/engine/render/src/shaders/metal/c_scratch_commented_multiline.metal" <<'EOF'
+kernel void c_scratch_commented_multiline(
+    device atomic_int* distanceScratch [[buffer(16)]],
+    uint3 gid [[thread_position_in_grid]]
+) {}
+EOF
+cat > "$SCRATCH_COMMENTED_BLOCK_MULTILINE/engine/render/src/metal/metal_pipeline.cpp" <<'EOF'
+namespace IRRender {
+namespace {
+
+MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
+    if (functionName == "c_fixture_kernel") {
+        return MTL::Size(16, 16, 1);
+    }
+    if (functionName == "c_scratch_commented_multiline") {
+        return MTL::Size(16, 16, 1);
+    }
+    return MTL::Size(1, 1, 1);
+}
+
+bool functionUsesImageAtomicScratch(const std::string &functionName) {
+    return false
+           || functionName == "c_fixture_kernel"
+        /*
+        || functionName == "c_scratch_commented_multiline"
+        */
+        ;
+}
+
+}  // namespace
+}  // namespace IRRender
+EOF
+scratch_commented_block_multiline_out=$(run_checker "$SCRATCH_COMMENTED_BLOCK_MULTILINE")
+scratch_commented_block_multiline_rc=$?
+assert_eq "1" "$scratch_commented_block_multiline_rc" \
+    "multi-line block-commented-out scratch list entry exits 1"
+assert_contains "$scratch_commented_block_multiline_out" "c_scratch_commented_multiline" \
+    "failure names the consumer whose entry was multi-line block-commented out"
+assert_contains "$scratch_commented_block_multiline_out" "absent from functionUsesImageAtomicScratch" \
+    "a multi-line block-commented entry is reported as absent, not present"
 
 # --- a hand-wrapped scratch declaration is still caught ----------------------
 # The qualifier test reads the parameter's declaration window, not the physical
