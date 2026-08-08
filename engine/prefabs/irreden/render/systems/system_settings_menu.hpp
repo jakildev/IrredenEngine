@@ -8,6 +8,7 @@
 #include <irreden/ir_system.hpp>
 #include <irreden/ir_window.hpp>
 
+#include <irreden/common/components/component_sim_clock.hpp>
 #include <irreden/common/settings_registry.hpp>
 #include <irreden/common/sim_clock.hpp>
 #include <irreden/render/components/component_settings_menu.hpp>
@@ -293,9 +294,21 @@ template <> struct System<SETTINGS_MENU> {
         controlsLabel_ = IREntity::kNullEntity;
         quitButton_ = IREntity::kNullEntity;
 
-        if (params_.pauseSimWhileOpen_) {
-            // Restore the scale that was running, not 1.0 — `IRSim::resume()`
-            // hard-resets to 1x and would silently discard a demo's custom rate.
+        // Restore the scale that was running, not 1.0 — `IRSim::resume()` hard-
+        // resets to 1x and would silently discard a demo's custom rate.
+        //
+        // The no-create probe comes first because the pre-destroy hook shares
+        // this path: during `destroyAllEntities` the hook can fire *after* the
+        // clock singleton's own entity has already been destroyed, and
+        // `IRSim::setTimeScale` reaches the lazy-create accessor. That would
+        // mint a replacement C_SimClock the teardown's snapshot cannot see,
+        // which its trailing cache-clear then strands as a row
+        // `forEachComponent` still walks with no `singletonEntity` route back —
+        // the ghost the `engine/entity/CLAUDE.md` §"Pre-destroy hooks" ban
+        // exists to prevent. A clock that is already gone has nothing to
+        // restore, so skipping is also the right answer on the merits.
+        if (params_.pauseSimWhileOpen_ &&
+            IREntity::singletonOrNull<IRComponents::C_SimClock>() != nullptr) {
             IRSim::setTimeScale(savedTimeScale_);
         }
         built_ = false;

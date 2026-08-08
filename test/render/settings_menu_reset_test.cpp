@@ -95,6 +95,43 @@ TEST_F(SettingsMenuResetTest, PausedSimClockIsRestoredAcrossResetGameplay) {
            "the next buildMenu() re-saves savedTimeScale_ from it";
 }
 
+// The clock restore above puts an IRSim call inside a pre-destroy hook, and
+// engine/entity/CLAUDE.md §"Pre-destroy hooks" bans reaching the lazy-create
+// singleton accessor from one during a bulk teardown: destroyAllEntities()
+// walks an unordered snapshot and clears the singleton cache only at the end,
+// so a hook firing after C_SimClock's own entity died would mint a replacement
+// the snapshot cannot see, which the trailing clear then strands — a row
+// forEachComponent still walks with no singletonEntity route back. That
+// ordering is hash-order-dependent inside destroyAllEntities, so this arm
+// reproduces it deterministically: destroy the clock first, then the panel.
+TEST_F(SettingsMenuResetTest, ClockRestoreDoesNotResurrectADestroyedSimClock) {
+    const auto sysId = IRSystem::createSystem<IRSystem::SETTINGS_MENU>();
+    auto *params =
+        m_system_manager.getSystemParams<IRSystem::System<IRSystem::SETTINGS_MENU>>(sysId);
+    ASSERT_NE(params, nullptr);
+    params->params_.pauseSimWhileOpen_ = true;
+
+    IRSim::setTimeScale(0.5f);
+    params->savedTimeScale_ = IRSim::timeScale();
+    IRSim::pause();
+    params->panel_ = IREntity::createEntity();
+    params->built_ = true;
+
+    const auto clockEntity = IREntity::singletonEntity<IRComponents::C_SimClock>();
+    m_entity_manager.destroyEntity(clockEntity);
+    m_entity_manager.destroyEntity(params->panel_); // fires the hook
+
+    ASSERT_FALSE(params->built_) << "arm is vacuous unless the hook actually ran";
+    int clockRows = 0;
+    IREntity::forEachComponent<IRComponents::C_SimClock>([&clockRows](IRComponents::C_SimClock &) {
+        ++clockRows;
+    });
+    EXPECT_EQ(clockRows, 0)
+        << "the restore must probe with the no-create accessor; reaching "
+           "IRSim::setTimeScale here re-creates the destroyed clock singleton as "
+           "an unreachable ghost row";
+}
+
 TEST_F(SettingsMenuResetTest, UnrelatedEntityDestructionLeavesPanelIntact) {
     const auto sysId = IRSystem::createSystem<IRSystem::SETTINGS_MENU>();
     auto *params =
