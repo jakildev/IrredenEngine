@@ -133,6 +133,17 @@ class SkipLabelsRemovedFromProjection(unittest.TestCase):
         ])])
         self.assertEqual(_hash(empty), _hash(with_smoke))
 
+    def test_needs_windows_smoke_dropped(self):
+        # #2888: fleet:needs-windows-smoke was the orphaned third smoke
+        # label — must behave identically to linux/macos, not leak through
+        # as a merge-ready wake.
+        empty = _state([])
+        with_smoke = _state([_pr(101, labels=[
+            "fleet:approved", "fleet:needs-windows-smoke",
+        ])])
+        self.assertEqual(_hash(empty), _hash(with_smoke),
+                         "needs-windows-smoke PRs should be invisible to merger")
+
     def test_wip_dropped(self):
         empty = _state([])
         with_wip = _state([_pr(101, labels=[
