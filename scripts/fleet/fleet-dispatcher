@@ -1071,11 +1071,37 @@ record_dispatch_outcome() {
     fi
 }
 
+# Decide claimed-vs-empty for one completed dispatch from its record file.
+# Prints `yes`, `no`, or empty for "unknown" (a legacy record, see below).
+# Split out of cleanup_stale_dispatches so the decision is reachable from the
+# --derive-outcome hook: the fold path itself needs tmux and a live pane, so
+# without this seam the planning and legacy arms would ship untested.
+derive_dispatch_outcome() {
+    local file="$1" pane="$2" marker plan_issue claim_flag
+    # `claim_marker` is only present on records written by this version of the
+    # dispatcher. Its absence means the pane was launched by the previous
+    # version, whose wrapper never exported FLEET_CLAIM_FLAG, so the marker
+    # would read a spurious "no" — report unknown and let the caller fall back
+    # to the old duration heuristic. Self-clearing after one dispatch cycle.
+    marker=$(sed -n 's/.*"claim_marker":\([0-9]*\).*/\1/p' "$file" | head -n 1)
+    [[ -n "$marker" ]] || return 0
+    # A planning dispatch is productive by assignment: the dispatcher took its
+    # planning-claim pre-launch (#2197), where the pane's FLEET_CLAIM_FLAG did
+    # not yet exist to be stamped.
+    plan_issue=$(sed -n 's/.*"plan_issue":"\([^"]*\)".*/\1/p' "$file" | head -n 1)
+    claim_flag="$CLAIM_FLAG_DIR/$(pane_id_to_key "$pane")"
+    if [[ -f "$claim_flag" || -n "$plan_issue" ]]; then
+        printf 'yes\n'
+    else
+        printf 'no\n'
+    fi
+}
+
 cleanup_stale_dispatches() {
     if [[ ! -d "$DISPATCH_DIR" ]]; then
         return
     fi
-    local file role pane dispatched_epoch class plan_issue marker claim_flag claimed
+    local file role pane dispatched_epoch class claimed
     for file in "$DISPATCH_DIR"/*.json; do
         [[ -e "$file" ]] || continue
         role=$(sed -n 's/.*"role":"\([^"]*\)".*/\1/p' "$file" | head -n 1)
@@ -1093,28 +1119,8 @@ cleanup_stale_dispatches() {
         # recorded before the process exits — unlike a post-exit claim probe,
         # which reads empty for an iteration that released early, and unlike
         # wall-clock, which cannot tell a claim from a diligent no-pick.
-        #
-        # `claim_marker` is only present on records written by this version of
-        # the dispatcher. Its absence means the pane was launched by the
-        # previous version, whose wrapper never exported FLEET_CLAIM_FLAG, so
-        # the marker would read a spurious "no" — those fold on the old
-        # duration heuristic instead. Self-clearing after one dispatch cycle;
-        # same shape as the dispatched_epoch legacy guard below.
-        marker=$(sed -n 's/.*"claim_marker":\([0-9]*\).*/\1/p' "$file" | head -n 1)
-        claim_flag="$CLAIM_FLAG_DIR/$(pane_id_to_key "$pane")"
-        claimed=""
-        if [[ -n "$marker" ]]; then
-            # A planning dispatch is productive by assignment: the dispatcher
-            # took its planning-claim pre-launch (#2197), where the pane's
-            # FLEET_CLAIM_FLAG did not exist to be stamped.
-            plan_issue=$(sed -n 's/.*"plan_issue":"\([^"]*\)".*/\1/p' "$file" | head -n 1)
-            if [[ -f "$claim_flag" || -n "$plan_issue" ]]; then
-                claimed=yes
-            else
-                claimed=no
-            fi
-        fi
-        rm -f "$claim_flag"
+        claimed=$(derive_dispatch_outcome "$file" "$pane")
+        rm -f "$CLAIM_FLAG_DIR/$(pane_id_to_key "$pane")"
         # Fold the just-finished dispatch into the role's empty-exit streak.
         # Legacy records (pre-upgrade, no dispatched_epoch) skip this silently.
         dispatched_epoch=$(sed -n 's/.*"dispatched_epoch":\([0-9]*\).*/\1/p' "$file" | head -n 1)
@@ -2660,6 +2666,25 @@ case "${1:-}" in
             exit 2
         fi
         record_dispatch_outcome "$_ro_role" "$_ro_duration" "$_ro_class" "$_ro_claimed"
+        exit 0
+        ;;
+    --derive-outcome)
+        # Test/debug: print the claimed-vs-empty verdict for one dispatch
+        # record — `yes`, `no`, or empty for a legacy record with no
+        # claim_marker (which folds on the duration heuristic instead). Reads
+        # the marker under FLEET_STATE_DIR, so tests drive it against a
+        # scratch dir.
+        #
+        #   --derive-outcome <record-file> <pane-id>
+        if [[ -z "${2:-}" || -z "${3:-}" ]]; then
+            echo "usage: fleet-dispatcher --derive-outcome <record-file> <pane-id>" >&2
+            exit 2
+        fi
+        if [[ ! -f "$2" ]]; then
+            echo "fleet-dispatcher --derive-outcome: no such record file: $2" >&2
+            exit 2
+        fi
+        derive_dispatch_outcome "$2" "$3"
         exit 0
         ;;
     --empty-streak-check)
