@@ -582,6 +582,173 @@ class AmendingClaimBarsReviewerPickup(unittest.TestCase):
         self.assertEqual(len(self._opus([_pr(101, labels=["fleet:needs-fix"])])), 1)
 
 
+class ReviewClaimBarsWorkerFeedbackPickup(unittest.TestCase):
+    """The mirror image of AmendingClaimBarsReviewerPickup, which did not
+    exist until #2801: fleet:amending-* and fleet:reviewing-* are DISJOINT
+    claim namespaces, so they provide no mutual exclusion. The reviewer side
+    was guarded (REVIEW_SKIP_PREFIXES); the worker side was not, so whichever
+    lane claimed second won the right to invalidate the other's work.
+    --force-with-lease protects the branch, not the reviewer's work: the
+    reviewer reads head X, the worker force-pushes Y, and the verdict lands
+    on a diff nobody read. Observed on PR #2850 (2026-08-09), where
+    fleet-pr-claim-feedback granted the amend 26 s after the opus recheck
+    started.
+
+    fleet:needs-opus-recheck is the second, independent term: has-nits
+    stamped ALONGSIDE it is not a verdict (the sonnet reviewer sets none in
+    that case), so the pending opus pass owns the PR.
+
+    Every case asserts BOTH emit sites. A projection-only guard would leave
+    slice_worker's feedback_prs[] unfiltered, and that payload drives the
+    class election, the terminally-unclaimable quiet check, and fleet-up's
+    bootstrap trigger — FLEET-CACHE.md points roles at the slice.
+    """
+
+    def _proj_prs(self, prs):
+        return [i for i in project_worker(_state(prs)) if i["kind"] == "pr"]
+
+    def _slice_prs(self, prs):
+        return slice_worker(_state(prs))["feedback_prs"]
+
+    def _both(self, prs):
+        return self._proj_prs(prs), self._slice_prs(prs)
+
+    # --- 1. live review claim suppresses the fleet verdict tiers ---------
+
+    def test_reviewing_claim_drops_has_nits_pr_at_both_sites(self):
+        # The two-run delta IS the assertion: the defect was that LIVE and
+        # minus-fleet:reviewing-* produced byte-identical output, i.e. the
+        # review claim contributed exactly zero suppression.
+        held_proj, held_slice = self._both([
+            _pr(101, labels=["fleet:has-nits", "fleet:reviewing-mac-pool-9"])])
+        free_proj, free_slice = self._both([
+            _pr(101, labels=["fleet:has-nits"])])
+
+        self.assertEqual(held_proj, [], "review claim must suppress the projection item")
+        self.assertEqual(held_slice, [], "review claim must suppress the slice payload")
+        self.assertEqual(len(free_proj), 1)
+        self.assertEqual(len(free_slice), 1)
+
+    def test_reviewing_claim_drops_needs_fix_pr_at_both_sites(self):
+        held_proj, held_slice = self._both([
+            _pr(101, labels=["fleet:needs-fix", "fleet:reviewing-mac-pool-5"])])
+        self.assertEqual(held_proj, [])
+        self.assertEqual(held_slice, [])
+
+    def test_reviewing_claim_drops_design_unblocked_pr_at_both_sites(self):
+        # design-unblocked is a fleet-owned tier too (DESIGN_RESUME_LABELS is
+        # folded into _WORKER_SUPPRESSIBLE_LABELS), so a resume must not
+        # force-push out from under a live review either.
+        held_proj, held_slice = self._both([
+            _pr(101, labels=["fleet:design-unblocked", "fleet:reviewing-mac-pool-5"])])
+        self.assertEqual(held_proj, [])
+        self.assertEqual(held_slice, [])
+
+    # --- 2. needs-opus-recheck is not a verdict --------------------------
+
+    def test_needs_opus_recheck_drops_has_nits_pr_at_both_sites(self):
+        held_proj, held_slice = self._both([
+            _pr(101, labels=["fleet:has-nits", "fleet:needs-opus-recheck"])])
+        free_proj, free_slice = self._both([
+            _pr(101, labels=["fleet:has-nits"])])
+
+        self.assertEqual(held_proj, [])
+        self.assertEqual(held_slice, [])
+        self.assertEqual(len(free_proj), 1)
+        self.assertEqual(len(free_slice), 1)
+
+    def test_needs_opus_recheck_pr_still_reaches_the_opus_reviewer(self):
+        # The suppression ROUTES the PR, it does not park it: the lane that
+        # can actually finish the escalation still sees it. This is what
+        # makes the skip safe without any TTL/liveness logic.
+        flagged = project_opus_reviewer(_state([
+            _pr(101, labels=["fleet:has-nits", "fleet:needs-opus-recheck"])]))
+        self.assertEqual(len(flagged), 1)
+
+    # --- 3. the human tiers are never suppressed ------------------------
+
+    def test_human_needs_fix_still_emitted_under_review_claim(self):
+        # Pins the deliberate carve-out: human feedback outranks an in-flight
+        # fleet review (FLEET-FEEDBACK-HANDLING.md priority order). Widening
+        # the drop to all of _WORKER_RELEVANT_LABELS is the easy wrong turn
+        # and would park human feedback behind a reviewer's claim.
+        proj, sliced = self._both([
+            _pr(101, labels=["human:needs-fix", "fleet:reviewing-mac-pool-9"])])
+        self.assertEqual(len(proj), 1)
+        self.assertEqual(proj[0]["labels"], ["human:needs-fix"])
+        self.assertEqual(len(sliced), 1)
+
+    def test_human_blocker_still_emitted_under_needs_opus_recheck(self):
+        proj, sliced = self._both([
+            _pr(101, labels=["human:blocker", "fleet:needs-opus-recheck"])])
+        self.assertEqual(len(proj), 1)
+        self.assertEqual(proj[0]["labels"], ["human:blocker"])
+        self.assertEqual(len(sliced), 1)
+
+    def test_mixed_tiers_under_review_claim_emit_only_the_human_tier(self):
+        # The emitted labels list is the dispatch's tier hint, so a PR
+        # carrying both must advertise only the tier that is actionable now.
+        proj, sliced = self._both([_pr(101, labels=[
+            "human:needs-fix", "fleet:has-nits", "fleet:reviewing-mac-pool-9",
+        ])])
+        self.assertEqual(len(proj), 1)
+        self.assertEqual(proj[0]["labels"], ["human:needs-fix"])
+        self.assertEqual(len(sliced), 1)
+
+    # --- 4. the skip is not a new churn source --------------------------
+
+    def test_review_claim_does_not_flip_hash_for_a_human_only_pr(self):
+        # The invariant this whole file exists for: a label the decision
+        # logic does not key on (here: for a PR whose decision it cannot
+        # change) must not re-fire the lane.
+        before = project_worker(_state([_pr(101, labels=["human:needs-fix"])]))
+        after = project_worker(_state([_pr(101, labels=[
+            "human:needs-fix", "fleet:reviewing-mac-pool-9"])]))
+        self.assertEqual(before, after)
+        self.assertEqual(stable_hash(before), stable_hash(after))
+
+    # --- 5. release-valve linkage ---------------------------------------
+
+    def test_clearing_the_review_claim_re_enters_the_pr_at_both_sites(self):
+        # Suppression that never lifts would strand a feedback PR, so this is
+        # the load-bearing assertion — not the suppression itself. Production
+        # clears the label two ways: the reviewer's own review-release /
+        # verdict swap, and `fleet-claim cleanup --gh`'s orphan fast path for
+        # a dead reviewer. That second half is proved by
+        # tests/test_fleet_claim_prlabel_orphan_sweep.sh (fixture PR 902:
+        # same-host label, no liveness marker -> swept). Keep the two suites
+        # cited together; this one alone only shows the projection reacts to
+        # a label clearing, never that anything in production clears it.
+        held = _pr(101, labels=["fleet:has-nits", "fleet:reviewing-mac-pool-9"])
+        cleared = _pr(101, labels=["fleet:has-nits"])
+
+        self.assertEqual(self._proj_prs([held]), [])
+        self.assertEqual(self._slice_prs([held]), [])
+        self.assertEqual(len(self._proj_prs([cleared])), 1)
+        self.assertEqual(len(self._slice_prs([cleared])), 1)
+        self.assertNotEqual(stable_hash(project_worker(_state([held]))),
+                            stable_hash(project_worker(_state([cleared]))))
+
+    # --- the wrong turn: the conflict lane must NOT open ------------------
+
+    def test_review_claim_does_not_open_the_semantic_conflict_lane(self):
+        # _semantic_conflict_claimable deliberately tests the RAW
+        # _WORKER_RELEVANT_LABELS, not worker_feedback_labels(). Routing it
+        # through the helper "for consistency" would let a reviewer's live
+        # claim hand the PR to the conflict lane instead — and the resolver
+        # force-pushes too, so that is the identical hazard one lane over.
+        prs = [_sc_pr(101, labels=[
+            "fleet:semantic-conflict", "fleet:has-nits",
+            "fleet:reviewing-mac-pool-9",
+        ])]
+        self.assertEqual(
+            [i for i in project_worker(_state(prs))
+             if i["kind"] == "semantic_conflict"],
+            [],
+        )
+        self.assertEqual(slice_worker(_state(prs))["semantic_conflict_prs"], [])
+
+
 class HumanDeferredDropsFromReviewers(unittest.TestCase):
     """fleet:human-deferred and fleet:needs-human PRs must not surface in
     reviewer projections (#1996 Gap 2).
