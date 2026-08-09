@@ -124,9 +124,35 @@ when it can derive the layout itself (bare preset, or the
 creation-worktree detection above, which targets the *enclosing* clone),
 so a dir bound to a specific engine worktree must be configured by hand
 once as shown. There is no `--build-dir` flag — the `IRREDEN_BUILD_DIR`
-env var is the override knob. If the cache in `$ENG/build-game` goes
-stale (worktree renamed/migrated, preset change), reconfigure in place:
-`cmake -S "$ENG" -B "$ENG/build-game" -DIRREDEN_USER_PROJECTS="$GAME_WT"`.
+env var is the override knob.
+
+**Stale-cache remedy — the fix depends on *what* went stale.**
+`CMakeCache.txt` records `CMAKE_CACHEFILE_DIR` and `CMAKE_HOME_DIRECTORY`
+as absolute paths; CMake refuses to reconfigure a cache whose recorded
+paths disagree with the invocation. That refusal looks like this:
+
+```
+CMake Error: The current CMakeCache.txt directory
+  .../build-game/CMakeCache.txt is different than the directory
+  .../<old-worktree>/build-game where CMakeCache.txt was created.
+CMake Error: The source ".../CMakeLists.txt" does not match the
+  source ".../<old-worktree>/CMakeLists.txt" used to generate cache.
+  Re-run cmake with a different source directory.
+```
+
+- **Same worktree, only `IRREDEN_USER_PROJECTS` or the preset changed** —
+  the recorded paths still match, so the in-place reconfigure works:
+  `cmake -S "$ENG" -B "$ENG/build-game" -DIRREDEN_USER_PROJECTS="$GAME_WT"`.
+- **Worktree renamed or migrated** — the recorded paths no longer match
+  the current ones, and no flag makes CMake adopt a cache whose
+  `CMAKE_HOME_DIRECTORY` disagrees with the source dir it's pointed at.
+  The in-place reconfigure above **fails** with the error shown; remove
+  the stale dir and re-run the one-time configure fresh:
+  `rm -rf "$ENG/build-game" && cmake --preset <host>-debug -B "$ENG/build-game" -DIRREDEN_USER_PROJECTS="$GAME_WT"`.
+  If directory removal is blocked by a permission layer, fall back to a
+  fresh sibling dir instead (e.g. `$ENG/build-game-<agent>`) and point
+  `IRREDEN_BUILD_DIR` at that — the stale directory is simply abandoned,
+  not fixed.
 
 Target selection stays with the caller (pick the `IR<Project>All` target
 matching what the PR touches), as does the **never build `IRGameAll`**
