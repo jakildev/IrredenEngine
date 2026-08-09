@@ -543,8 +543,10 @@ Three checks, in order:
    # still yields a confident verdict (measured during #2469 — see
    # tools/jitter_probe/README.md §"Wipe before every capture").
    # --max-excursion-x is the primary rotation-gate assertion (#2606); the bar is
-   # per-zoom, from the table below. y is deliberately left unconstrained — on a
-   # yaw sweep it legitimately translates.
+   # per-zoom, from the table below, and applies to the pinned
+   # --yaw-sweep --pivot-origin population only — omit it when scoring
+   # --pan-sweep, where x translates by design. y is deliberately left
+   # unconstrained — on a yaw sweep it legitimately translates.
    build/tools/jitter_probe/jitter_probe --reversal-eps 0.8 --expect-frames 24 \
        --max-excursion-x <bar(zoom)> \
        <save_files>/screenshots/screenshot_[0-9][0-9][0-9][0-9][0-9][0-9].png
