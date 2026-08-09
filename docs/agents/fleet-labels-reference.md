@@ -291,6 +291,11 @@ Specifically, **never pass these via `--label` when filing**:
   The backstop trades recall for precision on purpose — a false positive
   wrongly skips a mac-runnable task, which is worse than a miss — so it never
   fires on a passing mention, on `.glsl`, or on `src/metal/`.
+  **Narrowed on issues by `fleet:backend-symmetric`** (#2820): the premise
+  above justifies refusing the GL half, not a whole task whose other half is
+  natively Metal-verifiable. See that entry below — and note the narrowing is
+  **issue-claim-only**, because on a PR this label describes the *remaining*
+  work rather than the task's shape.
   **Respected at three points:** the dispatcher's
   claimability filter (`fleet_task_class.py`) skips the item on a macOS pane
   — **both** dimensions, a labeled task and a labeled feedback PR (#2696) —
@@ -302,6 +307,35 @@ Specifically, **never pass these via `--label` when filing**:
   run it just means the work waits for a Linux/Windows pane — the correct
   behavior, not a loss. Once the GL task merges on a GL host, its blocked
   dependents resolve normally.
+- `fleet:backend-symmetric` — **issue/task label only** (#2820), the
+  discriminator that narrows `fleet:needs-gl-host` above. Marks a task that
+  must be fixed in both a `.glsl` and its `.metal` twin, so its Metal half is
+  natively verifiable on a macOS pane: that pane can author both backends,
+  compile-verify both (macOS builds the GL backend fine — it only cannot
+  *run* the 4.5 shaders), and build, run and visually verify the Metal one.
+  Paired with `fleet:needs-gl-host` it makes the **issue-claim** gate refuse
+  only on non-Metal, non-GL hosts; alone it does nothing.
+  **Residual routing:** the leftover GL *runtime* verification is not dropped
+  — it rides the reviewer-stamped `fleet:needs-{linux,windows}-smoke` lane
+  (`FLEET-CROSS-HOST-SMOKE.md`), the same mechanism macOS-authored render PRs
+  already use. The two labels coexisting on a PR is the normal, pre-existing
+  shape, not a conflict.
+  **Applied by the human/architect** at filing/triage (see
+  `architect-protocol.md`), with a precision-first scout **backstop**: the
+  body must cite both a real `.glsl` and a real `.metal` filename. That
+  inference is structurally disjoint from the `needs_gl_host` one, which
+  deliberately excludes `.glsl` and `src/metal/`, so no body can make the two
+  fight. Its polarity is the inverse, though — this one makes dispatch *more*
+  permissive, so `fleet-claim` honors the same backstop rather than matching
+  labels only; otherwise a label-less symmetric-bodied task would dispatch and
+  then be refused at claim, the exact churn the gate exists to prevent.
+  **Deliberately not scoped to PRs.** Symmetry is a property of the *task*,
+  whereas `fleet:needs-gl-host` on a PR is a claim about the *residual*
+  ("what's left needs GL"), stamped by whoever knows what remains. Narrowing
+  the PR path on a task-axis discriminator would be a category error and would
+  re-inflate the feedback-election phantom counts #2696 fixed — so
+  `amending-claim` still refuses a PR carrying both labels on a Metal host,
+  pinned by a test.
 - `fleet:in-progress` — generic "a worker has claimed this issue"
   marker. Today this is mostly superseded by the dynamic per-host
   `fleet:claim-<host>-<agent>` issue label (see below); the static
