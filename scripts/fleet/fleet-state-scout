@@ -177,16 +177,25 @@ def run_capture(cmd, cwd=None):
     return proc.stdout
 
 
-REVIEW_BODY_HEAD = 1024
-REVIEW_BODY_TAIL = 1024
+# Both constants are sized against the ONE predicate that reads a review body:
+# the opus reviewer's fixed-phrase test for "Opus recheck required"
+# (role-opus-reviewer.md). It matches a TRAILING line, so only the tail is
+# load-bearing — nothing reads the head, which is why it is small.
+#
+# The tail is sized from the measured live corpus: across the 8 review bodies
+# carrying the phrase, the distance from the phrase line's start to end-of-body
+# was [146, 150, 165, 181, 234, 261, 437, 539] B, so 640 covers the maximum with
+# ~19% headroom. Re-measure before lowering — a tail that clips the phrase
+# silently disables the recheck lane (the PR #1473 regression). See #2752.
+REVIEW_BODY_HEAD = 128
+REVIEW_BODY_TAIL = 640
 
 
 def _truncate_review_body(body):
-    # Reviewer roles only need enough of the body to filter on phrases like
-    # "Opus recheck required" (typically near the end) and skim the gist
-    # (typically at the start). Storing full bodies bloats state.json since
-    # every role re-reads the cache each iteration; cap at head + tail with
-    # an ellipsis between when oversized.
+    # Cap an oversized body at head + tail with an ellipsis between. Note this
+    # bounds each body individually; the AGGREGATE (n_PRs × n_reviews) is bounded
+    # separately, by retaining a body only on the latest review per PR — see
+    # _fetch_prs_graphql.
     if not body or len(body) <= REVIEW_BODY_HEAD + REVIEW_BODY_TAIL:
         return body
     return body[:REVIEW_BODY_HEAD] + "\n…[truncated]…\n" + body[-REVIEW_BODY_TAIL:]
@@ -300,14 +309,31 @@ def _fetch_prs_graphql(repo):
     for pr in prs:
         pr["labels"] = sorted(label["name"] for label in pr.get("labels", []))
         pr["author"] = pr.get("author", {}).get("login", "")
+        # #2752 — retain a body only on the LATEST review per PR. Exactly two
+        # consumers read this array: the sonnet reviewer tests reviews[].author
+        # (has any fleet review landed yet), and the opus reviewer tests the
+        # LATEST review's body for "Opus recheck required". No consumer reads an
+        # older review's body, and retaining them made `reviews` ~46% of
+        # state.json — enough to push the file past the 256 KB Read-tool cap that
+        # every role hits at startup. The schema is unchanged (older entries keep
+        # the key, valued ""), so neither predicate moves.
+        raw_reviews = pr.get("reviews", []) or []
+        latest_index = max(
+            range(len(raw_reviews)),
+            key=lambda i: (raw_reviews[i].get("submittedAt") or "", i),
+            default=-1,
+        )
         pr["reviews"] = [
             {
                 "author": rev.get("author", {}).get("login", ""),
-                "body": _truncate_review_body(rev.get("body", "")),
+                "body": (
+                    _truncate_review_body(rev.get("body", ""))
+                    if i == latest_index else ""
+                ),
                 "state": rev.get("state", ""),
                 "submittedAt": rev.get("submittedAt", ""),
             }
-            for rev in pr.get("reviews", [])
+            for i, rev in enumerate(raw_reviews)
         ]
         # Derive here, while body is live, so the signal survives both the
         # post-enrich body-pop and fetch_prs's 304 reuse of body-stripped
@@ -2702,6 +2728,108 @@ def write_atomic(path: Path, payload: str) -> None:
         raise
 
 
+# --- state.json size guard -------------------------------------------------
+#
+# Every fleet role reads state.json at startup through the Read tool, which HARD
+# ERRORS past 256 KB — so the file's size is a standing invariant on this writer,
+# not a statistic. Nothing watched it before, and the only symptom of the drift
+# past the cap was every role failing its own first step. This guard makes the
+# next drift operator-visible while there is still headroom. See #2752.
+STATE_SIZE_READ_CAP_BYTES = 256 * 1024
+# 7/8 of the cap (224 KB), expressed as a fraction so the two can't drift apart.
+# Sized against the MEASURED post-fix file (205.7 KB on a 46-open-PR tree), not a
+# round number: a threshold below that would fire on every tick from day one,
+# which is the same spam-hides-the-outage failure the escalate-then-quiet
+# machinery below exists to avoid.
+STATE_SIZE_WARN_BYTES = STATE_SIZE_READ_CAP_BYTES * 7 // 8
+# Loud on the tick that crosses, then only every Nth tick — the scout ticks every
+# ~30s and the condition persists until a human acts, so an unconditional warn is
+# spam that hides the outage (scripts/fleet/CLAUDE.md, escalate-then-quiet).
+STATE_SIZE_WARN_REPEAT_TICKS = 120
+
+_state_size_over_streak = 0
+
+
+def _alerts_dir() -> Path:
+    return Path(os.environ.get("FLEET_ALERTS_DIR") or (Path.home() / ".fleet" / "alerts"))
+
+
+def _state_size_alert_path() -> Path:
+    return _alerts_dir() / "state-scout-state-size"
+
+
+def check_state_size(size_bytes: int) -> None:
+    # Best-effort throughout: a read-only $HOME must never break the emit path
+    # this is guarding.
+    global _state_size_over_streak
+    kb = size_bytes / 1024.0
+    if size_bytes < STATE_SIZE_WARN_BYTES:
+        if _state_size_over_streak:
+            log(f"state.json back under the warn threshold ({kb:.1f} KB)")
+            try:
+                _state_size_alert_path().unlink()
+            except OSError:
+                pass
+        _state_size_over_streak = 0
+        return
+
+    _state_size_over_streak += 1
+    over_cap = size_bytes >= STATE_SIZE_READ_CAP_BYTES
+    if _state_size_over_streak == 1 or _state_size_over_streak % STATE_SIZE_WARN_REPEAT_TICKS == 0:
+        log(
+            f"state.json is {kb:.1f} KB — "
+            + (
+                "PAST the 256 KB Read-tool cap; every role's startup read now "
+                "hard-errors. Shrink the projection (see #2752)."
+                if over_cap else
+                f"over the {STATE_SIZE_WARN_BYTES // 1024} KB warn threshold and "
+                "approaching the 256 KB Read-tool cap. Shrink the projection."
+            )
+            + f" [tick {_state_size_over_streak}]"
+        )
+    # Rewritten every tick, not just at the escalation: once stderr goes quiet the
+    # file is the only standing signal, and a write-once alert would freeze its
+    # count and let a triage pass silence a still-live condition permanently.
+    try:
+        path = _state_size_alert_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        write_atomic(
+            path,
+            f"state.json size guard\n"
+            f"size_bytes={size_bytes}\n"
+            f"size_kb={kb:.1f}\n"
+            f"warn_threshold_kb={STATE_SIZE_WARN_BYTES // 1024}\n"
+            f"read_cap_kb={STATE_SIZE_READ_CAP_BYTES // 1024}\n"
+            f"past_read_cap={'yes' if over_cap else 'no'}\n"
+            f"consecutive_ticks={_state_size_over_streak}\n"
+            f"issue=#2752\n",
+        )
+    except OSError:
+        pass
+
+
+def emit_state(state) -> int:
+    """Serialize + atomically write `state.json`, returning its on-disk bytes.
+
+    This aggregate emits COMPACT, and must stay that way: it is the largest file
+    the scout writes and every role reads it through the Read tool's 256 KB cap,
+    where pretty-print whitespace alone costs ~90 KB. `sort_keys=True` stays — it
+    is what keeps a tick's diff proportional to what actually changed, which the
+    leader-bundle change detection relies on. Every consumer parses JSON
+    (audited: the scout's own read_json_retry sites, fleet-dispatcher's
+    generated_at parse, fleet-epic-status, the leader-bundle protocol; fleet-up
+    only tests existence), so there is no line-oriented reader to break, and
+    `python3 -m json.tool` / `jq .` reflate it on demand for debugging. The small
+    human-read caches (per-PR/issue details, role projections) keep indent=2.
+    See #2752 and docs/agents/FLEET-CACHE.md §"Size invariant".
+    """
+    payload = json.dumps(state, separators=(",", ":"), sort_keys=True) + "\n"
+    write_atomic(STATE_FILE, payload)
+    size = len(payload.encode("utf-8"))
+    check_state_size(size)
+    return size
+
+
 def read_json_retry(path, attempts=3, backoff=0.05):
     # Script-side cache readers can still lose the race against a concurrent
     # os.replace on a slow filesystem; one short retry recovers instead of
@@ -3057,7 +3185,7 @@ def tick_once():
         for _repo_state in state["repos"].values():
             for _pr in _repo_state.get("prs", []):
                 _pr.pop("body", None)
-    write_atomic(STATE_FILE, json.dumps(state, indent=2, sort_keys=True) + "\n")
+    emit_state(state)
 
     if authoritative:
         # Detail caches (prs/ diffs/ issues/) come from GitHub only on the

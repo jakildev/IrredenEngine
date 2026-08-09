@@ -10,7 +10,7 @@ section below for which files apply.
 
 | Path | Producer | Reader | Purpose |
 |---|---|---|---|
-| `state.json` | scout | every role | List-shape state: open PRs (with labels, reviews, mergeable), needs-plan / human-approved issues (number + title + labels + updatedAt), open `fleet:queued` issue rows. ~32 KB. |
+| `state.json` | scout | every role | List-shape state: open PRs (with labels, reviews, mergeable), needs-plan / human-approved issues (number + title + labels + updatedAt), open `fleet:queued` issue rows. **Must stay under the 256 KB Read-tool cap** — see the size invariant below. |
 | `projections/<role>.json` | scout (slicers) | the named role | Pre-filtered per-role slice with full records (e.g. the worker lane's `tasks_open` + `feedback_prs`). ~5 KB. **Prefer this over `state.json`** when you only need your own role's items. |
 | `prs/<repo>/<N>.json` | scout | `fleet-pr view`/`comments` | Full PR detail: body, conversation comments, review summaries, inline review threads, files-changed list. Refreshed only when the list query's `updatedAt` advances. |
 | `diffs/<repo>/<N>-<sha>.diff` | scout | `fleet-pr diff` | Raw `gh pr diff` output, keyed by head SHA. Refreshed on rebase only; old SHAs garbage-collected. |
@@ -28,6 +28,30 @@ When the cache is fresh, do **NOT** bypass it for `gh pr list` or
 `gh issue list --label …`.
 One Read replaces what used to be 3-6 fan-out gh/git calls per role
 per startup.
+
+### Size invariant: `state.json` must stay under 256 KB (#2752)
+
+Every role's startup step reads `state.json` with the **Read tool**, which
+hard-errors above **256 KB**. That is a standing invariant on the writer, not a
+point-in-time measurement: the file drifted from a documented "~32 KB" to
+476 KB unnoticed, and the only symptom was every role failing its own first
+step. Two things hold the line, and a change to the projection must keep both:
+
+- **The scout emits `state.json` compact** (`separators=(",", ":")`,
+  `sort_keys=True` retained for diffability). Only this aggregate is compact;
+  the small human-read caches (`prs/`, `issues/`, `projections/`) keep
+  `indent=2`. Reflate on demand with `python3 -m json.tool` or `jq .`.
+- **`prs[].reviews` retains a body only on the latest review per PR**, capped
+  at head + tail (`REVIEW_BODY_HEAD` / `REVIEW_BODY_TAIL`). The tail is sized
+  from the measured live corpus so the opus reviewer's `Opus recheck required`
+  phrase test keeps firing; do not lower it without re-measuring.
+
+The scout warns at **7/8 of the cap (224 KB)** and writes
+`${FLEET_ALERTS_DIR:-~/.fleet/alerts}/state-scout-state-size` for as long as
+the condition holds. Measured 2026-08-08 on a 46-open-PR tree, the file emits at
+**205.7 KB** (down from 510 KB), so there is ~18 KB of growth room before the
+first warning and ~50 KB before the hard cap. If you add a field to the
+projection, check that alert.
 
 `state.json` and `projections/<role>.json` carry an ISO-8601
 `generated_at` field. If it is more than ~5 minutes old, the scout
