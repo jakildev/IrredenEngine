@@ -161,13 +161,21 @@ kernel void c_per_axis_overflow_sort(
     // Skip a threadgroup whose LOWEST element is already at or above the span
     // (overflowExpandIndex is monotonic in c, so the minimum is at c = cBase,
     // active 0). Threadgroup-uniform, so the barriers stay uniform.
+    //
+    // This guard — not the per-element substitution in the loop below — is what
+    // replaces the whole-block early-out this pass must NOT have: keying on
+    // liveCount is unsound here (the network migrates real records above it
+    // mid-sort — measured as 3 distinct rotated-shot hashes / 3 runs), while
+    // keying on `span` is sound because the reals provably never leave
+    // [0, span). span and kSortBlock are both powers of two with
+    // span >= kSortBlock, so a threadgroup's element set is always wholly below
+    // or wholly at/above span — never straddling — which is exactly what makes
+    // this single threadgroup-uniform check decide the whole threadgroup.
     if (overflowExpandIndex(cBase, 0u, pLo, pHi) >= span) return;
 
-    // The virtual-sentinel guard replaces the whole-block early-out this pass
-    // must NOT have: keying on liveCount is unsound here (the network migrates
-    // real records above it mid-sort — measured as 3 distinct rotated-shot
-    // hashes / 3 runs), while keying on `span` is sound because the reals
-    // provably never leave [0, span).
+    // Per-element substitution below is defensive cover, not load-bearing: given
+    // the threadgroup-uniform guard above, every element that reaches this loop
+    // already has i < span, so the `i >= span` branch is dead code.
     for (uint e = t; e < kSortBlock; e += kSortThreads) {
         const uint i =
             overflowExpandIndex(cBase + (e / slabElems), e % slabElems, pLo, pHi);

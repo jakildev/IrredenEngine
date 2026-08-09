@@ -94,7 +94,7 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     int   _occlusionCullMipCount;
     int   _feederSubCap;
     int   _feederPassTailBase;
-    ivec4 overflowScratchLayout;   // .y ctrl base, .z entry base, .w cap
+    ivec4 overflowScratchLayout;   // .x view-mask base, .y ctrl base, .z entry base, .w cap
     ivec4 overflowSortStep;        // .x mode, .y stage k, .z pLo, .w pHi
 };
 
@@ -257,16 +257,23 @@ void main() {
     // Skip a workgroup whose LOWEST element already sits at or above the span
     // (expandIndex is monotonic in c, so the minimum is at c = cBase, active 0).
     // Workgroup-uniform, so the barriers below stay in uniform control flow.
+    //
+    // This guard — not the per-element substitution in the loop below — is what
+    // replaces the whole-block early-out this pass must NOT have. Mode 1 may skip
+    // high blocks because it runs against the PRE-network state; by the time any
+    // mode-2 pass runs, the network's intermediate descending sub-sequences have
+    // migrated real records above liveCount, so an early-out keyed on liveCount
+    // drops them out of the sort (measured: 3 distinct rotated-shot hashes / 3
+    // runs). Keying on `span` is sound where keying on liveCount is not, because
+    // the reals provably never leave [0, span). span and kBlock are both powers
+    // of two with span >= kBlock, so a workgroup's element set is always wholly
+    // below or wholly at/above span — never straddling — which is exactly what
+    // makes this single workgroup-uniform check decide the whole workgroup.
     if (expandIndex(cBase, 0u, pLo, pHi) >= span) return;
 
-    // The virtual-sentinel guard below is what replaces the whole-block early-out
-    // this pass must NOT have. Mode 1 may skip high blocks because it runs against
-    // the PRE-network state; by the time any mode-2 pass runs, the network's
-    // intermediate descending sub-sequences have migrated real records above
-    // liveCount, so an early-out keyed on liveCount drops them out of the sort
-    // (measured: 3 distinct rotated-shot hashes / 3 runs). Keying on `span` is
-    // sound where keying on liveCount is not, because the reals provably never
-    // leave [0, span).
+    // Per-element substitution below is defensive cover, not load-bearing: given
+    // the workgroup-uniform guard above, every element that reaches this loop
+    // already has i < span, so the `i >= span` branch is dead code.
     for (uint e = t; e < kBlock; e += kThreads) {
         const uint i =
             expandIndex(cBase + (e / slabElems), e % slabElems, pLo, pHi);
