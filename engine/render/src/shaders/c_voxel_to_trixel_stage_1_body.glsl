@@ -13,13 +13,21 @@
 // `#define IR_STORE_WINNER_ELECTION {0|1}`, and the prerequisite includes,
 // then `#include` this body. GLSL's include resolver is now recursive with a
 // visited-set cycle guard (opengl_shader.cpp `resolveShaderIncludes`,
-// mirroring Metal's `loadAndPreprocessMetalSource`), so fragments now
-// self-include their own prerequisites (ir_voxel_face_select.glsl,
+// mirroring Metal's `loadAndPreprocessMetalSource`), so a fragment may now
+// self-include a prerequisite that is MACRO-FREE: ir_iso_common.glsl and
+// ir_sun_projection.glsl carry no preprocessor directive at all, so where
+// they resolve can never cross a wrapper `#define`. That is what the four
+// self-including fragments do (ir_voxel_face_select.glsl,
 // ir_per_axis_lighting.glsl, ir_resolve_cardinal_emit.glsl,
-// ir_sun_shadow_sample.glsl) — this file still lists NO `#include`s of its
-// own because it has no fragment-level prerequisite beyond what the wrapper
-// chain below already supplies, and each wrapper MUST include, IN THIS
-// ORDER and with both macros defined FIRST, before it (the
+// ir_sun_shadow_sample.glsl). This body still lists NO `#include`s of its
+// own — not for want of prerequisites (it calls selectVoxelFace,
+// perAxisStoreFacePos, fogColumnReveal, pos3DtoPos2DIso below) but because
+// its prerequisite chain is macro-PARAMETERIZED: ir_voxel_face_select.glsl
+// reads the wrapper's IR_VOXEL_FOG_GRID_BINDING and this body reads
+// IR_FEEDER_PASS / IR_STORE_WINNER_ELECTION. Self-including them would lift
+// a macro-consuming include out of the ordered contract below, where a
+// future wrapper could resolve it above its own `#define`. Each wrapper MUST
+// include, IN THIS ORDER and with both macros defined FIRST, before it (the
 // ir_sun_shadow_sample.glsl idiom):
 //   #define IR_FEEDER_PASS {0|1}
 //   #define IR_STORE_WINNER_ELECTION {0|1}

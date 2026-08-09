@@ -129,6 +129,21 @@ parameter).
 Shader file paths are stored in `render/shader_names.hpp`. Update that
 header when you add or rename a shader.
 
+**A fragment may self-include only a MACRO-FREE prerequisite.** Both
+resolvers are recursive with a visited-set cycle guard scoped to the whole
+resolution (`resolveShaderIncludes`, `loadAndPreprocessMetalSource`), so a
+fragment that includes a prerequisite the wrapper already pulled in resolves
+to a suppressed duplicate rather than a second copy. That makes the
+self-include free **when the prerequisite reads no wrapper `#define`** —
+`ir_iso_common` and `ir_sun_projection` carry no preprocessor directive at
+all, so where they resolve can never cross one. A macro-parameterized
+fragment (`ir_voxel_face_select`, which reads the wrapper's
+`IR_VOXEL_FOG_GRID_BINDING`; the `c_voxel_to_trixel_stage_*_body` fragments,
+which read `IR_FEEDER_PASS` / `IR_STORE_WINNER_ELECTION`) stays in the
+wrapper's explicit ordered include list, so its position relative to the
+`#define`s remains something the wrapper states rather than something a
+transitive include decides.
+
 ### Metal compute kernel threadgroup registry
 
 Every dispatchable Metal compute kernel (`engine/render/src/shaders/metal/c_*.metal`,
