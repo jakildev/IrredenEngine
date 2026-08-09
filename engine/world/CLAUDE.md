@@ -578,6 +578,17 @@ same `config = { ... }` table — there is one source of truth per file.
   video recording until the first input arrives — used to keep capture
   clips from starting mid-loading-screen. If video recording is not
   starting, check these flags first.
+
+  **`m_waitForFirstUpdateInput` is force-disarmed under `--auto-screenshot`**
+  (see #2990). It is a live-operator affordance — it holds the sim at the
+  single priming `update()` until a real key press arrives — and a headless
+  capture has no input source, so the gate can never open. Left armed, the
+  whole capture window renders one frozen tick, silently defeating the
+  `enableFixedStep()` carve-out in the same `gameLoop()` block. The
+  auto-capture branch therefore clears the flag and logs the override at
+  INFO. `m_startRecordingOnFirstInput` is deliberately left armed:
+  `--auto-screenshot` is the screenshot path, not the video one, so there is
+  nothing for it to start.
 - **Release GPU/GL resources in `end()`, never in `~World()`.** `end()` runs
   during `gameLoop()` while the context is provably live, and is the canonical
   spot for device-resource teardown (it already drives `destroyAllEntities()`
