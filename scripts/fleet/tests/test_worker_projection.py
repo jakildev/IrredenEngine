@@ -717,6 +717,27 @@ class NeedsGlHostAnnotation(unittest.TestCase):
         self.assertEqual(len(result["open"]), 1)
         self.assertFalse(result["open"][0]["needs_gl_host"])
 
+    def test_backend_symmetric_true_when_labeled(self):
+        # #2820: the discriminator rides the same task record, so
+        # `_host_incompatible` can narrow the gate above without a second fetch.
+        result = self._fetch([self._issue(
+            2816, extra_labels=["fleet:needs-gl-host",
+                                "fleet:backend-symmetric"])])
+        self.assertEqual(len(result["open"]), 1)
+        self.assertTrue(result["open"][0]["needs_gl_host"])
+        self.assertTrue(result["open"][0]["backend_symmetric"])
+
+    def test_backend_symmetric_false_when_absent(self):
+        # The field must be present-and-False rather than missing: the
+        # dispatch predicate reads it with .get(), but a task row that omits
+        # it entirely would also silently omit it from state.json, where the
+        # worker role's census filters read it.
+        result = self._fetch([self._issue(1938,
+                                          extra_labels=["fleet:needs-gl-host"])])
+        self.assertEqual(len(result["open"]), 1)
+        self.assertIn("backend_symmetric", result["open"][0])
+        self.assertFalse(result["open"][0]["backend_symmetric"])
+
     def _issue_body(self, number, body):
         iss = self._issue(number)
         iss["body"] = body

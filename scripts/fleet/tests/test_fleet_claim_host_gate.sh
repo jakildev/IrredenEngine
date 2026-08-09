@@ -33,8 +33,17 @@ if [[ ! -x "$FLEET_CLAIM" ]]; then
     exit 1
 fi
 
-PASS=0
-FAIL=0
+# PASS/FAIL counters, ok/bad and the `summarize` exit idiom come from the
+# shared helper. This suite hand-rolled them until #2820: `summarize`'s
+# "passed: N  failed: M" line is the ONLY tally `fleet-positive-control`
+# parses, so a hand-rolled "PASS: n FAIL: m" made every control run on this
+# suite report "the suite printed no tally … treat this as a setup failure"
+# even though the real counts printed one line above. The plan for #2820 makes
+# the positive control load-bearing, so the migration is a prerequisite for it,
+# not cleanup.
+# shellcheck source=scripts/fleet/tests/lib_assert.sh
+source "$(dirname "$0")/lib_assert.sh"
+
 TMPROOT=""
 
 cleanup() {
@@ -45,11 +54,9 @@ trap cleanup EXIT
 assert_exit() {
     local actual_exit="$1" expected_exit="$2" msg="$3"
     if [[ "$actual_exit" -eq "$expected_exit" ]]; then
-        PASS=$((PASS + 1))
-        echo "  ok: $msg"
+        ok "$msg"
     else
-        FAIL=$((FAIL + 1))
-        echo "  FAIL: $msg"
+        bad "$msg"
         echo "        expected exit: $expected_exit"
         echo "        actual exit:   $actual_exit"
     fi
@@ -76,6 +83,15 @@ mkdir -p "$FLEET_CLAIMS_DIR" "$FLEET_RESERVATIONS_DIR"
 STUB_DIR="$TMPROOT/bin"
 mkdir -p "$STUB_DIR"
 
+# Shared fixture bodies, exported so the quoted stub heredoc reads them from
+# the environment (it cannot interpolate). SYMMETRIC_BODY is the #2727-class
+# drift pin: `test_scout_gl_host_backstop.py` asserts the SAME text against the
+# python `_body_backend_symmetric`, so the bash and python halves of one
+# predicate are pinned to one input rather than two hand-kept copies. Keep both
+# ASCII and quote-free — they are spliced into the stub's JSON.
+export SYMMETRIC_BODY="The CAST bridge drops the sub-cell frac in c_resolve_per_axis_screen_depth.glsl; the Metal twin c_resolve_per_axis_screen_depth.metal is identical."
+export GL_ONLY_BODY="The regression lives in src/opengl/opengl_render_impl.cpp and reproduces only under the GL backend."
+
 cat >"$STUB_DIR/gh" <<'GHSTUB'
 #!/usr/bin/env bash
 case "$1 $2" in
@@ -96,6 +112,18 @@ case "$1 $2" in
                 ;;
             3002)
                 echo '{"state":"OPEN","labels":[{"name":"fleet:wip"},{"name":"fleet:design-unblocked"}],"body":""}'
+                ;;
+            2004)
+                echo '{"state":"OPEN","labels":[{"name":"fleet:needs-gl-host"},{"name":"fleet:backend-symmetric"},{"name":"fleet:opus"},{"name":"fleet:queued"}],"body":""}'
+                ;;
+            2005)
+                echo '{"state":"OPEN","labels":[{"name":"fleet:needs-gl-host"},{"name":"fleet:opus"},{"name":"fleet:queued"}],"body":"'"$SYMMETRIC_BODY"'"}'
+                ;;
+            2006)
+                echo '{"state":"OPEN","labels":[{"name":"fleet:needs-gl-host"},{"name":"fleet:opus"},{"name":"fleet:queued"}],"body":"'"$GL_ONLY_BODY"'"}'
+                ;;
+            3003)
+                echo '{"state":"OPEN","labels":[{"name":"fleet:wip"},{"name":"fleet:needs-gl-host"},{"name":"fleet:backend-symmetric"}],"body":""}'
                 ;;
             *)
                 echo '{"state":"OPEN","labels":[],"body":""}'
@@ -190,6 +218,48 @@ echo "T9: mac host passes amending-claim on a PR without the label"
 actual=0; FLEET_TEST_HOST=mac FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" amending-claim 3002 test-agent 2>/dev/null || actual=$?
 assert_exit "$actual" 0 "mac + no host label PR → amending-claim exit 0"
 
-echo ""
-echo "PASS: $PASS  FAIL: $FAIL"
-[[ "$FAIL" -eq 0 ]]
+# --- #2820: the backend-symmetric narrowing ---------------------------------
+# The gate's premise justifies refusing the GL half, not a whole task whose
+# OTHER half is natively Metal-verifiable. These are the plan's T9-T13; they
+# land as T10-T14 because this suite already had a T9 before the change.
+
+# --- T10: mac claims a backend-symmetric GL task (plan T9) ------------------
+echo "T10: mac host claims a backend-symmetric fleet:needs-gl-host task"
+actual=0; FLEET_TEST_HOST=mac FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" claim 2004 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 0 "mac + gl-host + backend-symmetric label → exit 0"
+release_quiet 2004
+
+# --- T11: bash body backstop, no discriminator label (plan T10) -------------
+# Kills the claim->refuse->release churn: the scout infers backend_symmetric
+# from the body, so dispatch would offer this task; without the same backstop
+# here the claim would refuse it. Shares its body text with the scout suite's
+# python-side case so the two implementations of one predicate cannot drift.
+echo "T11: mac host claims on the body backstop alone (no discriminator label)"
+actual=0; FLEET_TEST_HOST=mac FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" claim 2005 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 0 "mac + gl-host + body cites .glsl and .metal → exit 0"
+release_quiet 2005
+
+# --- T12: opposite-direction lock at the claim layer (plan T11) -------------
+# The #2704/#2709 false-negative direction must not reopen: a body naming a
+# GL-only source path is NOT backend-symmetric, so mac still refuses.
+echo "T12: mac still refuses a GL-only-bodied task (opposite-direction lock)"
+actual=0; FLEET_TEST_HOST=mac FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" claim 2006 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 1 "mac + gl-host + GL-only body → exit 1"
+release_quiet 2006
+
+# --- T13: PR path is deliberately NOT narrowed (plan T12) -------------------
+# Pins the asymmetry itself. On a PR the gl-host label describes the REMAINING
+# work, so a task-axis discriminator says nothing about it. Without this, the
+# apparent inconsistency invites a future hand-fix that silently reopens #2696.
+echo "T13: mac still refuses amending-claim on a PR carrying BOTH labels"
+actual=0; FLEET_TEST_HOST=mac FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" amending-claim 3003 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 1 "mac + gl-host + backend-symmetric PR → amending-claim exit 1"
+
+# --- T14: fail-closed unknown host survives the narrowing (plan T13) --------
+# The discriminator opens only the mac door — asserted, not merely commented.
+echo "T14: unknown host still refused despite backend-symmetric"
+actual=0; FLEET_TEST_HOST=freebsd FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" claim 2004 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 1 "freebsd + gl-host + backend-symmetric → exit 1"
+release_quiet 2004
+
+summarize

@@ -880,10 +880,10 @@ PYEOF
 # --- host-capability gate -------------------------------------------------
 
 check_host_capability() {
-    # Refuse the claim if the issue requires an OpenGL-4.5 host (label
+    # Refuse the claim if the issue requires GL runtime verification (label
     # `fleet:needs-gl-host`) and this machine is not GL-capable. GL-capable
     # hosts are {linux, windows}; macOS GL is 4.1 (< the shaders' required
-    # 4.5), so a Metal host cannot build/run/verify the GL backend. Mirrors
+    # 4.5), so a Metal host cannot run/verify the GL backend. Mirrors
     # check_model_tag: read the issue's labels, soft no-op when gh is
     # unavailable or the issue can't be fetched.
     #
@@ -897,16 +897,30 @@ check_host_capability() {
     # (remaining work is GL-host-only — e.g. a design-unblocked resume whose
     # gates only run on GL), and PR numbers share the issues label namespace,
     # so the same fetch works unchanged.
+    #
+    # $2 = "issue" opts into the #2820 narrowing, and ONLY `cmd_claim` passes
+    # it. The premise above justifies refusing the GL half; it does not justify
+    # refusing a task whose OTHER half is natively Metal-verifiable. A
+    # `fleet:backend-symmetric` task must be fixed in both a `.glsl` and its
+    # `.metal` twin, so a mac pane can author and verify the Metal half here
+    # and route the GL runtime residual through the reviewer-stamped
+    # `fleet:needs-{linux,windows}-smoke` lane. The flag is deliberately a
+    # single boolean rather than a second predicate — claim and amending-claim
+    # must not drift into two host gates (this is their only divergence point).
+    # amending-claim stays flag-less because on a PR the gl-host label
+    # describes the *residual*, not the task's symmetry.
     local issue_num="$1"
+    local context="${2:-pr}"
 
     local info
     info=$(fetch_issue_info "$issue_num") || true
     [[ -z "$info" ]] && return 0
 
-    local labels=""
+    local labels="" body_b64=""
     while IFS=$'\t' read -r key value; do
         case "$key" in
             labels) labels="$value" ;;
+            body) body_b64="$value" ;;
         esac
     done <<< "$info"
 
@@ -921,8 +935,49 @@ check_host_capability() {
         linux|windows) return 0 ;;
     esac
 
+    if [[ "$context" == "issue" && "$host" == "mac" ]] \
+        && backend_symmetric_issue "$labels" "$body_b64"; then
+        return 0
+    fi
+
     echo "fleet-claim: refuse #${issue_num} — tagged [fleet:needs-gl-host], this host is [${host}]; needs an OpenGL-4.5 host (linux/windows)" >&2
     return 1
+}
+
+backend_symmetric_issue() {
+    # True when the issue carries `fleet:backend-symmetric`, or its body cites
+    # both a real `.glsl` and a real `.metal` filename (the label backstop).
+    #
+    # The body backstop is NOT optional. For `needs_gl_host` the body inference
+    # is dispatch-side only while this file matches labels only — a safe
+    # polarity, because dispatch is then stricter than claim. The discriminator
+    # FLIPS that: a body-inferred `backend_symmetric` makes *dispatch* more
+    # permissive, so without the same backstop here a label-less but
+    # symmetric-bodied task would dispatch and then be refused at claim — the
+    # exact claim->refuse->release churn the gate exists to prevent (#1998).
+    #
+    # Keep the two regexes in sync with `_GLSL_FILE_RE` / `_METAL_FILE_RE` in
+    # `fleet-state-scout` — a bash/python implementation pair for one predicate
+    # is a #2727-class drift risk, so the suites pin BOTH layers against the
+    # same fixture body text.
+    local labels="$1" body_b64="$2"
+
+    case " $labels " in
+        *" fleet:backend-symmetric "*) return 0 ;;
+    esac
+
+    [[ -z "$body_b64" ]] && return 1
+
+    printf '%s' "$body_b64" | python3 -c '
+import base64, re, sys
+try:
+    body = base64.b64decode(sys.stdin.read()).decode("utf-8", "replace")
+except Exception:
+    sys.exit(1)
+glsl = re.search(r"\b[\w.+-]+\.glsl\b", body, re.IGNORECASE)
+metal = re.search(r"\b[\w.+-]+\.metal\b", body, re.IGNORECASE)
+sys.exit(0 if (glsl and metal) else 1)
+'
 }
 
 # --- subcommands ----------------------------------------------------------
@@ -1079,8 +1134,11 @@ sys.stdout.write(unsafe_base_reason(labels, files) or "")
     fi
 
     # Host-capability gate: refuse a fleet:needs-gl-host claim from a
-    # Metal-only (macOS) host — it can't build/run/verify the GL backend.
-    if ! check_host_capability "$issue_num"; then
+    # Metal-only (macOS) host — it can't run/verify the GL backend. "issue"
+    # opts into the #2820 narrowing: a backend-symmetric task has a natively
+    # Metal-verifiable half, so a mac pane may claim it here (amending-claim
+    # deliberately does not pass the flag — see check_host_capability).
+    if ! check_host_capability "$issue_num" issue; then
         return 1
     fi
 
@@ -1739,6 +1797,12 @@ cmd_amending_claim() {
     # host — the pane can only burn the claim and release with zero commits.
     # The load-bearing fix is the pickup-side skip in
     # FLEET-FEEDBACK-HANDLING.md; this catches stale-docs / raced claims.
+    #
+    # Deliberately flag-less: the #2820 narrowing is issue-claim-only. On a PR
+    # `fleet:needs-gl-host` describes the REMAINING work, so "the task also has
+    # a Metal half" says nothing about whether what's left is GL-only —
+    # narrowing here on a task-axis discriminator would be a category error.
+    # Pinned by a test asserting a PR carrying BOTH labels is still refused.
     if [[ "${1:-}" =~ ^[0-9]+$ ]] && ! check_host_capability "$1"; then
         return 1
     fi

@@ -152,5 +152,96 @@ class TestEmptyBody(unittest.TestCase):
         self.assertFalse(requires_gl_host(""))
 
 
+# --- #2820: the backend-symmetric discriminator ----------------------------
+
+_backend_symmetric_impl = getattr(_mod, "_body_backend_symmetric", None)
+
+
+def backend_symmetric(body):
+    """`_body_backend_symmetric`, resolved lazily.
+
+    A module-level `_mod._body_backend_symmetric` lookup raises AttributeError
+    at IMPORT time against a pre-#2820 scout, so the suite would die before
+    unittest could print its `Ran N tests` line — and `fleet-positive-control`
+    reads exactly that line. The control would then report a setup failure
+    instead of a verdict, which is indistinguishable from a broken stage.
+    Deferring the lookup turns the missing predicate into ordinary test errors
+    that the control can score.
+    """
+    if _backend_symmetric_impl is None:
+        raise AssertionError(
+            "fleet-state-scout has no _body_backend_symmetric (pre-#2820 tree)")
+    return _backend_symmetric_impl(body)
+
+# The exact body `test_fleet_claim_host_gate.sh` exports as SYMMETRIC_BODY for
+# its T11 fixture. One predicate with a bash and a python implementation is a
+# #2727-class drift pair, so both layers are pinned against this single string
+# rather than two hand-kept copies. If you change it, change it in both files.
+SHARED_SYMMETRIC_BODY = (
+    "The CAST bridge drops the sub-cell frac in "
+    "c_resolve_per_axis_screen_depth.glsl; the Metal twin "
+    "c_resolve_per_axis_screen_depth.metal is identical."
+)
+
+# Likewise `GL_ONLY_BODY` — the #2704 shape, which must stay NOT symmetric.
+SHARED_GL_ONLY_BODY = (
+    "The regression lives in src/opengl/opengl_render_impl.cpp and "
+    "reproduces only under the GL backend."
+)
+
+
+class TestBackendSymmetric(unittest.TestCase):
+    """Both a real `.glsl` and a real `.metal` filename must be cited."""
+
+    def test_shared_fixture_body_is_symmetric(self):
+        # The bash/python drift pin. T11 in test_fleet_claim_host_gate.sh
+        # asserts fleet-claim reaches exit 0 on this same text.
+        self.assertTrue(backend_symmetric(SHARED_SYMMETRIC_BODY))
+
+    def test_both_extensions_required(self):
+        for body in (
+            "Fix ir_iso_common.glsl and c_resolve.metal together.",
+            "twins: a.glsl / a.metal",
+        ):
+            self.assertTrue(backend_symmetric(body), body)
+
+    def test_one_side_alone_is_not_symmetric(self):
+        # A false positive opens the gate wrongly, so a single-sided citation
+        # must not qualify — this is the precision half of the contract.
+        for body in (
+            "Only the GLSL side is wrong: ir_iso_common.glsl.",
+            "Only the Metal side is wrong: c_resolve.metal.",
+        ):
+            self.assertFalse(backend_symmetric(body), body)
+
+    def test_bare_extension_without_a_stem_does_not_trip(self):
+        # Same real-filename discipline as _GL_ONLY_SOURCE_PATH_RE: prose
+        # about shader languages is not a file citation.
+        for body in (
+            "The .glsl and .metal backends disagree.",
+            "Port the glsl to metal.",
+            "Both GLSL and Metal need the fix.",
+        ):
+            self.assertFalse(backend_symmetric(body), body)
+
+    def test_gl_only_body_is_not_symmetric(self):
+        # AC-2, the opposite-direction lock, executed at the scout layer: the
+        # #2704 shape must still project needs_gl_host=True while staying
+        # backend_symmetric=False, or narrowing the gate reopens #2709's hole.
+        self.assertTrue(requires_gl_host(SHARED_GL_ONLY_BODY))
+        self.assertFalse(backend_symmetric(SHARED_GL_ONLY_BODY))
+
+    def test_the_two_inferences_are_disjoint(self):
+        # _GL_ONLY_SOURCE_PATH_RE deliberately excludes .glsl and src/metal/,
+        # so no body can make the two backstops fight. Asserted rather than
+        # left to the comment block that claims it.
+        self.assertTrue(backend_symmetric(SHARED_SYMMETRIC_BODY))
+        self.assertFalse(requires_gl_host(SHARED_SYMMETRIC_BODY))
+
+    def test_none_and_empty(self):
+        self.assertFalse(backend_symmetric(None))
+        self.assertFalse(backend_symmetric(""))
+
+
 if __name__ == "__main__":
     unittest.main()

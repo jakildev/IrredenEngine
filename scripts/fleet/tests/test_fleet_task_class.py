@@ -55,7 +55,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from fleet_task_class import feedback_pr_class, plan_pick, resolve  # noqa: E402
+from fleet_task_class import _host_incompatible, feedback_pr_class, plan_pick, resolve  # noqa: E402
 
 # The scout's slice_worker is the pre-filter that feeds resolve(). Loaded here
 # (not only in test_worker_projection.py) to assert the cross-module contract:
@@ -71,10 +71,12 @@ slice_worker = _scout_mod.slice_worker
 
 
 def _task(issue, model=None, effort=None, owner="free", blocked=False,
-          inflight_pr=None, needs_gl_host=False, stackable_blocker_pr=None):
+          inflight_pr=None, needs_gl_host=False, stackable_blocker_pr=None,
+          backend_symmetric=False):
     return {"issue": issue, "model": model, "effort": effort,
             "owner": owner, "blocked": blocked, "inflight_pr": inflight_pr,
             "needs_gl_host": needs_gl_host,
+            "backend_symmetric": backend_symmetric,
             "stackable_blocker_pr": stackable_blocker_pr}
 
 
@@ -353,6 +355,41 @@ class GlHostGate(unittest.TestCase):
         out = self._resolve_on(
             "mac", {"tasks_open": [_task("#1937", "opus", needs_gl_host=True)]})
         self.assertEqual(out, "defer")
+
+    # --- #2820: the backend-symmetric narrowing ---------------------------
+
+    def test_backend_symmetric_task_is_claimable_on_mac(self):
+        # AC-1's claimable direction: the task's Metal half is natively
+        # verifiable here, so the pane dispatches instead of deferring.
+        out = self._resolve_on("mac", {"tasks_open": [
+            _task("#2816", "opus", needs_gl_host=True, backend_symmetric=True)]})
+        self.assertEqual(out, "opus xhigh 0 1 0")
+
+    def test_gl_only_task_still_defers_on_mac(self):
+        # AC-1's refusing direction, restated against the narrowed predicate:
+        # without the discriminator nothing changes for a GL-only task.
+        out = self._resolve_on("mac", {"tasks_open": [
+            _task("#1938", "opus", needs_gl_host=True, backend_symmetric=False)]})
+        self.assertEqual(out, "defer")
+
+    def test_unknown_host_refuses_despite_backend_symmetric(self):
+        # The discriminator opens ONLY the mac door. Fail-closed survives the
+        # narrowing — asserted, not left to METAL_CAPABLE_HOSTS' comment.
+        out = self._resolve_on("unknown", {"tasks_open": [
+            _task("#2816", "opus", needs_gl_host=True, backend_symmetric=True)]})
+        self.assertEqual(out, "defer")
+
+    def test_feedback_pr_dimension_ignores_a_backend_symmetric_label(self):
+        # The PR path is deliberately NOT narrowed: `_host_incompatible` reads
+        # the scout's task FIELD and never a PR's labels, because on a PR
+        # `fleet:needs-gl-host` describes the RESIDUAL, not the task's
+        # symmetry. A PR carrying both labels must still be host-incompatible
+        # on mac — narrowing here would re-inflate the #2696 phantom counts.
+        pr = {"number": 2475,
+              "labels": ["fleet:needs-gl-host", "fleet:backend-symmetric",
+                         "fleet:needs-fix"]}
+        self.assertTrue(_host_incompatible(pr, "mac"))
+        self.assertFalse(_host_incompatible(pr, "linux"))
 
     def test_gl_only_task_claimable_on_linux(self):
         out = self._resolve_on(

@@ -119,6 +119,18 @@ GL_CAPABLE_HOSTS = {"linux", "windows"}
 # `needs_gl_host`, so the feedback dimension of the gate matches on this.
 GL_HOST_LABEL = "fleet:needs-gl-host"
 
+# Hosts that can build/run/verify the Metal backend — the narrowing side of the
+# gate above (#2820). A `fleet:backend-symmetric` task must be fixed in both a
+# `.glsl` and its `.metal` twin, so a Metal host can author both halves,
+# compile-verify both, and natively run + visually verify the Metal one; the GL
+# runtime residual rides the reviewer-stamped `fleet:needs-{linux,windows}-smoke`
+# lane. The discriminator opens ONLY the mac door: an unrecognized host still
+# refuses, matching `_current_host`'s fail-closed stance.
+METAL_CAPABLE_HOSTS = {"mac"}
+
+# The raw label behind the scout's `backend_symmetric` TASK field.
+BACKEND_SYMMETRIC_LABEL = "fleet:backend-symmetric"
+
 # Smoke validation is the one lane whose work is *definitionally* host-specific:
 # only a native-Windows host can clear `fleet:needs-windows-smoke`. The scout's
 # smoke projection is host-agnostic on purpose — it is the cross-host record of
@@ -198,10 +210,22 @@ def _host_incompatible(item, host):
     # `needs_gl_host` field on TASK records, while PR records
     # (`_slice_pr_with_repo`) carry only raw `labels`, so a feedback PR is
     # gated on the label directly. Checking both keeps one predicate for both
-    # dimensions and stays correct if the scout later stamps the field on PRs.
+    # dimensions.
     needs_gl = (bool(item.get("needs_gl_host"))
                 or GL_HOST_LABEL in (item.get("labels") or []))
-    return needs_gl and host not in GL_CAPABLE_HOSTS
+    if not needs_gl:
+        return False
+    if host in GL_CAPABLE_HOSTS:
+        return False
+    # #2820 narrowing — TASK records only, and deliberately so. The scout
+    # stamps `backend_symmetric` on tasks and never on PRs, so this reads the
+    # field alone and NOT `item["labels"]`: symmetry is an axis of the *task*,
+    # while `fleet:needs-gl-host` on a PR is a claim about the *residual*
+    # ("what's left needs GL"), stamped by whoever knows what remains. Honoring
+    # the discriminator on a PR would be a category error and would re-inflate
+    # the feedback-election phantom counts #2696 fixed. Pinned by a test that
+    # asserts a PR carrying BOTH labels is still refused on mac.
+    return not (host in METAL_CAPABLE_HOSTS and bool(item.get("backend_symmetric")))
 
 
 def _task_claimable(task, host):
