@@ -17,6 +17,9 @@
 #     checks ran (1 kernel scanned, _body fragment excluded as an entry point
 #     but still read through the wrapper's include chain)
 #   - an unregistered Metal compute kernel          → exit 1, names the kernel
+#   - a registry entry inside a preprocessor #if    → exit 1, names the kernel
+#     (#2983 — a source-text scan can't evaluate which branch the build
+#     takes, so it must read as absent, not present, same as a comment)
 #   - a registry with no bare "}" terminator line   → exit 1 (EOF guard, not
 #     a silent scan past the function into unrelated string literals)
 #   - a scratch consumer absent from the list       → exit 1, names the kernel
@@ -24,6 +27,8 @@
 #     UBO shape must NOT be flagged — negative control)
 #   - a commented-out list entry                    → exit 1 (the runtime stops
 #     binding for it, so it must read as absent, not present)
+#   - a list entry inside a preprocessor #if        → exit 1, names the kernel
+#     (#2983, same reasoning as the registry-side arm)
 #   - a hand-wrapped scratch declaration            → exit 1 (the qualifier test
 #     reads the declaration window, not the attribute's line)
 #   - an atomic neighbour on the slot's line        → exit 0 (that qualifier
@@ -194,6 +199,52 @@ assert_contains "$metal_out" "c_unregistered_kernel" \
 assert_absent "$metal_out" "c_fixture_kernel" \
     "registered kernel is not flagged as missing"
 
+# --- a registry entry inside a preprocessor conditional reads as absent -----
+# threadgroupSizeForFunctionName is scanned as source text with no
+# preprocessor, so it cannot evaluate which #if/#ifdef/#ifndef branch the
+# build takes -- an entry that exists only inside one may never reach the
+# compiled binary. It must fail exactly like an omitted entry, the same
+# "read as absent" contract #2899 established for comments (#2983). Direct
+# fixture write, not write_pipeline_cpp, since that helper has no conditional
+# shape.
+REGISTRY_CONDITIONAL="$TMPROOT/registry-conditional"
+make_fixture "$REGISTRY_CONDITIONAL"
+echo '// registry-conditional fixture kernel' \
+    > "$REGISTRY_CONDITIONAL/engine/render/src/shaders/metal/c_registry_conditional.metal"
+cat > "$REGISTRY_CONDITIONAL/engine/render/src/metal/metal_pipeline.cpp" <<'EOF'
+namespace IRRender {
+namespace {
+
+MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
+    if (functionName == "c_fixture_kernel") {
+        return MTL::Size(16, 16, 1);
+    }
+#if 0
+    if (functionName == "c_registry_conditional") {
+        return MTL::Size(16, 16, 1);
+    }
+#endif
+    return MTL::Size(1, 1, 1);
+}
+
+bool functionUsesImageAtomicScratch(const std::string &functionName) {
+    return false
+           || functionName == "c_fixture_kernel"
+        ;
+}
+
+}  // namespace
+}  // namespace IRRender
+EOF
+registry_conditional_out=$(run_checker "$REGISTRY_CONDITIONAL")
+registry_conditional_rc=$?
+assert_eq "1" "$registry_conditional_rc" \
+    "registry entry inside a preprocessor conditional exits 1"
+assert_contains "$registry_conditional_out" "c_registry_conditional" \
+    "failure names the kernel whose registry entry is inside a conditional"
+assert_contains "$registry_conditional_out" "no entry in" \
+    "a conditional registry entry is reported as absent, not present"
+
 # --- a registry without its bare "}" terminator fails, not false-cleans ------
 # The function-body scan ends on a line that is exactly "}"; if the function
 # is ever indented (namespace style change, moved into a block), the scan
@@ -279,6 +330,58 @@ assert_contains "$scratch_commented_out" "c_fixture_kernel" \
     "failure names the consumer whose entry was commented out"
 assert_contains "$scratch_commented_out" "absent from functionUsesImageAtomicScratch" \
     "a commented-out entry is reported as absent, not present"
+
+# --- a scratch list entry inside a preprocessor conditional reads as absent --
+# Same reasoning as the registry-side arm above (#2983): functionUsesImage-
+# AtomicScratch is scanned as source text with no preprocessor, so an entry
+# that exists only inside #if/#ifdef/#ifndef must fail exactly like an
+# omitted entry. The kernel itself declares the scratch (so it would
+# otherwise be a genuine expected consumer) and is registered unconditionally
+# in threadgroupSizeForFunctionName -- only its list entry is conditional.
+# Direct fixture write, not write_pipeline_cpp, since that helper has no
+# conditional shape.
+SCRATCH_CONDITIONAL="$TMPROOT/scratch-conditional"
+make_fixture "$SCRATCH_CONDITIONAL"
+cat > "$SCRATCH_CONDITIONAL/engine/render/src/shaders/metal/c_scratch_conditional.metal" <<'EOF'
+kernel void c_scratch_conditional(
+    device atomic_int* distanceScratch [[buffer(16)]],
+    uint3 gid [[thread_position_in_grid]]
+) {}
+EOF
+cat > "$SCRATCH_CONDITIONAL/engine/render/src/metal/metal_pipeline.cpp" <<'EOF'
+namespace IRRender {
+namespace {
+
+MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
+    if (functionName == "c_fixture_kernel") {
+        return MTL::Size(16, 16, 1);
+    }
+    if (functionName == "c_scratch_conditional") {
+        return MTL::Size(16, 16, 1);
+    }
+    return MTL::Size(1, 1, 1);
+}
+
+bool functionUsesImageAtomicScratch(const std::string &functionName) {
+    return false
+           || functionName == "c_fixture_kernel"
+#if 0
+           || functionName == "c_scratch_conditional"
+#endif
+        ;
+}
+
+}  // namespace
+}  // namespace IRRender
+EOF
+scratch_conditional_out=$(run_checker "$SCRATCH_CONDITIONAL")
+scratch_conditional_rc=$?
+assert_eq "1" "$scratch_conditional_rc" \
+    "scratch list entry inside a preprocessor conditional exits 1"
+assert_contains "$scratch_conditional_out" "c_scratch_conditional" \
+    "failure names the consumer whose list entry is inside a conditional"
+assert_contains "$scratch_conditional_out" "absent from functionUsesImageAtomicScratch" \
+    "a conditional list entry is reported as absent, not present"
 
 # --- a hand-wrapped scratch declaration is still caught ----------------------
 # The qualifier test reads the parameter's declaration window, not the physical
