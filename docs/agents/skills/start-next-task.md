@@ -183,8 +183,9 @@ Default. `MODE=standard`, `BASE=<remote>/<default-branch>`. Proceed.
 ### 5. Derive a new branch name
 
 - **Fleet stack mode:** `<branch prefix><issue#>-<short-topic>`. Pull the
-  topic from the issue title (`fleet-issue view <issue#>`, falling back to
-  `gh issue view <issue#>`). Prefer a name the user already gave.
+  topic from the issue title (`fleet-issue view <issue#>` — it reads live and
+  falls back to the scout's cached snapshot only if `gh` is unreachable).
+  Prefer a name the user already gave.
 - **Cursor stack mode:** `<branch prefix><area>-<topic>`, no issue-number
   prefix. Derive from the conversation; the user usually names the next
   slice when cueing the stack. If not, ask. Example: a tuning slice stacked

@@ -82,7 +82,8 @@ For each `fleet:needs-plan` issue:
 
 1. **Read the full issue thread** — title, body, and every comment.
    The plan is often seeded in a comment, and the human may have left
-   scope refinements there too. Use the cache-aware wrapper:
+   scope refinements there too. Use the wrapper — it reads live, so the
+   `## Plan` comment that woke you is present:
    `fleet-issue view <N>` (engine; for game issues add `--repo game`).
    Do **not** use bare `gh issue view <N>` — it omits comments by
    default and silently drops context.

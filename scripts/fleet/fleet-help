@@ -260,7 +260,9 @@ Parallel-agent fleet (tmux + Claude)
                                  fleet-down --summary for coverage)
   witness [--once]               detect stale heartbeats (architects only)
   fleet-pr view|diff|comments <N> [--repo engine|game]
-                                 read scout's per-PR cache + gh fallback
+                                 comments: live gh read (cache only if gh
+                                 fails, warned on stderr); view/diff: scout's
+                                 per-PR snapshot, stamped on stderr
   fleet-pr-clear-feedback-labels <N> [--repo …] [--labels …]
                                  idempotently strip feedback labels from a PR
                                  (skips absent labels; one --remove-label per
@@ -283,7 +285,9 @@ Parallel-agent fleet (tmux + Claude)
                                  close open fleet:nit-of-pr issues whose
                                  addressing PR has merged (merger step 1.5)
   fleet-issue view <N> [--repo engine|game]
-                                 read scout's per-issue cache + gh fallback
+                                 live gh read of an issue + its comments; falls
+                                 back to scout's per-issue cache only if gh
+                                 fails, warned on stderr
   fleet-gh-poll <owner/repo> <path> [--param k=v]… [--accept MIME]
                                  conditional GitHub REST GET (If-None-Match +
                                  ETag cache); prints the body, exits 0=changed

@@ -157,7 +157,17 @@ fleet-pr comments <N>
 ```
 
 One wrapper call surfaces the timeline, review summaries, and
-inline comments. Build an explicit checklist with **one item per
+inline comments. `comments` is **live-first** (#2837): it fetches from
+GitHub at invocation, so the output is current as of the moment you
+run it — including the verdict review that stamped the label and woke
+you, which by construction postdates the scout's snapshot. If `gh` is
+unreachable it degrades to the cached snapshot and says so loudly on
+stderr (`serving cached snapshot from <time>; newer comments/reviews
+may be missing`). **Read that line if it appears** — it is the one case
+where the output can be incomplete, and the missing item is likely the
+one you were dispatched for.
+
+Build an explicit checklist with **one item per
 output line** — every `[comment …]`, `[review …]` summary, and
 `[path:line]` inline comment is a separate item. The human (or
 reviewer) may post several comments and several inline threads

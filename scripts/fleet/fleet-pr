@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""fleet-pr — read scout's per-PR cache, fall back to gh on cache miss.
+"""fleet-pr — per-PR reads: `comments` is live-first, `view`/`diff` are snapshots.
 
 Subcommands:
   view <N>      full PR detail (body + comments + reviews + inline review threads)
@@ -9,10 +9,21 @@ Subcommands:
 Repo selection:
   --repo {engine,game}  default: engine
 
-Cache miss policy: prints a single `fleet-pr: cache miss for <repo>#<N>;
-falling back to gh` line to stderr, then exec's the equivalent live `gh`
-call. Agents that prefer to know about cache misses can grep stderr;
-silent agents see normal stdout regardless.
+Cache policy (#2837):
+  `comments` fetches from GitHub at invocation. Its consumer — the feedback
+  lane's "one item per output line, none may be dropped" checklist — is woken
+  BY the review that postdates the scout's snapshot, so reading the cache there
+  is structurally guaranteed to drop the triggering item. On a `gh` failure it
+  serves the cached record with a loud stderr warning naming the snapshot time.
+  One live attempt, never a retry loop (#1394).
+
+  `view` and `diff` stay snapshot reads — their callers want the cheap cached
+  record — and each prints its snapshot stamp to stderr so a stale read is
+  never silent.
+
+Keep the cache-fallback wording in sync with fleet-issue: the two scripts are
+standalone by install design and share no code, so the policy is mirrored and
+pinned by tests/test_fleet_cache_reader_freshness.sh's parity assertion.
 
 Source of truth: scripts/fleet/fleet-pr in the engine repo.
 Installed to ~/bin/fleet-pr by scripts/fleet/install.sh.
@@ -36,6 +47,13 @@ DEFAULT_SLUGS = {
     "game": "jakildev/irreden",
 }
 
+# Mirrored verbatim in fleet-issue — see the module docstring.
+CACHE_FALLBACK_NOTE = (
+    "serving cached snapshot from {stamp}; "
+    "newer comments/reviews may be missing"
+)
+SNAPSHOT_HINT = "'comments' is the live subcommand"
+
 
 def repo_slug(repo_key):
     try:
@@ -47,6 +65,10 @@ def repo_slug(repo_key):
 
 def warn(msg):
     print(f"fleet-pr: {msg}", file=sys.stderr)
+
+
+def snapshot_stamp(detail):
+    return (detail or {}).get("_cached_at") or "unknown"
 
 
 def read_cached_pr(repo_key, pr_number):
@@ -68,6 +90,47 @@ def fallback_gh(args, gh_cmd):
     return subprocess.run(gh_cmd + ["--repo", slug]).returncode
 
 
+def run_gh_json(cmd):
+    """Run a JSON-emitting gh command. None on nonzero exit or bad JSON."""
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        sys.stderr.write(result.stderr)
+        return None
+    try:
+        return json.loads(result.stdout)
+    except json.JSONDecodeError as e:
+        warn(f"gh json output is corrupt: {e}")
+        return None
+
+
+def fetch_live_pr(slug, pr_number):
+    """Fetch conversation + reviews + inline threads, shaped like the cache.
+
+    Returns None when the conversation fetch itself fails, so the caller can
+    degrade to the snapshot. A failure of the inline endpoint alone is marked
+    rather than fatal — falling back to the whole snapshot there would trade a
+    fresh review away for an inline list that is empty on every cached record.
+    """
+    detail = run_gh_json([
+        "gh", "pr", "view", str(pr_number), "--repo", slug,
+        "--json", "number,comments,reviews",
+    ])
+    if detail is None:
+        return None
+
+    # Inline review comments live on a different endpoint than `gh pr view`'s
+    # comments/reviews fields; the scout merges both (fetch_pr_inline_comments)
+    # so the live path must too, or every [path:line] item silently vanishes
+    # from the one output the checklist contract calls complete.
+    inline = run_gh_json(["gh", "api", f"repos/{slug}/pulls/{pr_number}/comments"])
+    if inline is None:
+        detail["inlineComments"] = []
+        detail["_inline_unavailable"] = True
+    else:
+        detail["inlineComments"] = inline
+    return detail
+
+
 def cmd_view(args):
     detail = read_cached_pr(args.repo, args.pr_number)
     if detail is None:
@@ -75,6 +138,8 @@ def cmd_view(args):
         return fallback_gh(args, [
             "gh", "pr", "view", str(args.pr_number), "--comments",
         ])
+
+    warn(f"snapshot as of {snapshot_stamp(detail)}; {SNAPSHOT_HINT}")
 
     print(f"# PR #{detail['number']}: {detail.get('title', '')}")
     print()
@@ -125,6 +190,8 @@ def cmd_diff(args):
             reverse=True,
         )
         if candidates:
+            head_sha = candidates[0].stem.split("-", 1)[-1]
+            warn(f"snapshot diff for head {head_sha}; {SNAPSHOT_HINT}")
             sys.stdout.write(candidates[0].read_text())
             return 0
 
@@ -133,12 +200,30 @@ def cmd_diff(args):
 
 
 def cmd_comments(args):
-    detail = read_cached_pr(args.repo, args.pr_number)
+    slug = repo_slug(args.repo)
+    if slug is None:
+        warn(f"unknown repo key: {args.repo}")
+        return 2
+
+    detail = fetch_live_pr(slug, args.pr_number)
     if detail is None:
-        warn(f"cache miss for {args.repo}#{args.pr_number}; falling back to gh")
-        return fallback_gh(args, [
-            "gh", "pr", "view", str(args.pr_number), "--comments",
-        ])
+        # Offline / rate-limited: degrade to the snapshot rather than erroring
+        # the feedback lane — but never silently.
+        detail = read_cached_pr(args.repo, args.pr_number)
+        if detail is None:
+            warn(
+                f"live fetch failed and no cached record for "
+                f"{args.repo}#{args.pr_number}"
+            )
+            return 1
+        warn(CACHE_FALLBACK_NOTE.format(stamp=snapshot_stamp(detail)))
+    elif detail.pop("_inline_unavailable", False):
+        cached = read_cached_pr(args.repo, args.pr_number)
+        detail["inlineComments"] = (cached or {}).get("inlineComments", [])
+        warn(
+            f"inline-comment endpoint failed; inline items below are from the "
+            f"cached snapshot ({snapshot_stamp(cached)}) and may be incomplete"
+        )
 
     any_output = False
     for c in detail.get("comments", []):
@@ -168,14 +253,16 @@ def cmd_comments(args):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Read scout's per-PR cache.")
+    parser = argparse.ArgumentParser(
+        description="Per-PR reads: comments live-first, view/diff from cache.",
+    )
     sub = parser.add_subparsers(dest="cmd", required=True)
     for name, fn in [("view", cmd_view), ("diff", cmd_diff), ("comments", cmd_comments)]:
         sp = sub.add_parser(name)
         sp.add_argument("pr_number", type=int)
         sp.add_argument(
             "--repo", default="engine", choices=["engine", "game"],
-            help="Which cached repo to read (default: engine).",
+            help="Which repo to read (default: engine).",
         )
         sp.set_defaults(handler=fn)
     args = parser.parse_args()
