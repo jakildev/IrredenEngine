@@ -40,6 +40,12 @@ resolve_needs_plan_blocked_by = _mod.resolve_needs_plan_blocked_by
 _BLOCKED_ISSUE = 2330
 _BLOCKER = "2310"
 
+# Synthetic game-repo numbers (criterion 4: the resolver is repo-generic, not
+# engine-only) — deliberately far from any real issue so the fixture can't be
+# mistaken for another live incident.
+_GAME_BLOCKED_ISSUE = 91
+_GAME_BLOCKER = "77"
+
 
 class _GhStub:
     """Emulates `gh issue view <ref> --repo <slug> --json state --jq .state`.
@@ -86,6 +92,25 @@ def _state(blocked_by="#" + _BLOCKER, closed=(), merged_heads=()):
     }}}
 
 
+def _two_repo_state():
+    """Both engine and game carry a needs-plan issue whose blocker is CLOSED
+    live only — neither in-memory source covers it. Criterion 4 (#2986): the
+    game repo's lane must resolve exactly like engine's, not stay pinned
+    blocked=True because the fixture never exercised a non-engine repo_key.
+    """
+    state = _state()
+    state["repos"]["game"] = {
+        "closed_fleet_queued": [],
+        "recent_merged_prs": [],
+        "needs_plan": [{
+            "number": _GAME_BLOCKED_ISSUE,
+            "labels": ["human:approved", "fleet:needs-plan"],
+            "body": f"**Area:** gameplay\n**Blocked by:** #{_GAME_BLOCKER}\n",
+        }],
+    }
+    return state
+
+
 def _run(state, stub):
     with patch.object(_mod.subprocess, "run", stub):
         resolve_needs_plan_blocked_by(state)
@@ -107,6 +132,23 @@ class NeedsPlanLiveFallback(unittest.TestCase):
     def test_merged_blocker_unblocks(self):
         """A `Blocked by:` naming a PR number that MERGED is satisfied too."""
         self.assertFalse(_run(_state(), _GhStub({_BLOCKER: "MERGED"})))
+
+    def test_game_repo_closed_blocker_outside_inmemory_sources_unblocks(self):
+        """Criterion 4 (#2986), with an explicit fixture rather than relying on
+        the resolver being provably repo-generic: the live fallback fires for
+        the game repo too, resolving against its own slug (jakildev/irreden),
+        and engine's resolution in the same tick is unaffected.
+        """
+        state = _two_repo_state()
+        stub = _GhStub({_BLOCKER: "CLOSED", _GAME_BLOCKER: "CLOSED"})
+        with patch.object(_mod.subprocess, "run", stub):
+            resolve_needs_plan_blocked_by(state)
+        self.assertFalse(state["repos"]["engine"]["needs_plan"][0]["blocked"])
+        self.assertFalse(state["repos"]["game"]["needs_plan"][0]["blocked"])
+        self.assertEqual(sorted(stub.calls), sorted([
+            ("jakildev/IrredenEngine", _BLOCKER),
+            ("jakildev/irreden", _GAME_BLOCKER),
+        ]))
 
     def test_open_blocker_still_blocks(self):
         """NEGATIVE CONTROL — the fallback must not be a gate that cannot fire.
