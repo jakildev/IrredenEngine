@@ -1,0 +1,57 @@
+{
+  "target": "IRPerfGrid",
+  "matrix": "quick",
+  "frames": 300,
+  "git_sha": "cd52070a",
+  "git_dirty": false,
+  "run_name": "cd52070a-ci",
+  "started_at": "2026-08-09T05:17:13Z",
+  "cells": [
+    {
+      "id": "target=IRPerfGrid,zoom=1,sub_mode=full,sub_base=1",
+      "target": "IRPerfGrid",
+      "zoom": 1,
+      "sub_mode": "full",
+      "sub_base": 1,
+      "exit_status": 124,
+      "status": "no_report",
+      "report": "target=IRPerfGrid,zoom=1,sub_mode=full,sub_base=1.txt"
+    },
+    {
+      "id": "target=IRPerfGrid,zoom=4,sub_mode=full,sub_base=1",
+      "target": "IRPerfGrid",
+      "zoom": 4,
+      "sub_mode": "full",
+      "sub_base": 1,
+      "exit_status": 124,
+      "status": "no_report",
+      "report": "target=IRPerfGrid,zoom=4,sub_mode=full,sub_base=1.txt"
+    }
+  ],
+  "finished_at": "2026-08-09T05:20:16Z",
+  "calibration": {
+    "ref_ms": 104.955,
+    "ref_target_ms": 50,
+    "host_slug": "linux-x86_64-epyc-7763-64-unknown",
+    "host_fingerprint": {
+      "cpu": {
+        "cores": 2,
+        "mhz": 3242,
+        "model": "AMD EPYC 7763 64-Core Processor",
+        "threads": 4
+      },
+      "gpu": {
+        "model": "unknown"
+      },
+      "os": {
+        "distro": "Ubuntu 24.04.4 LTS",
+        "kernel": "Linux 6.17.0-1020-azure"
+      },
+      "ram": {
+        "gb": 15
+      },
+      "slug": "linux-x86_64-epyc-7763-64-unknown"
+    },
+    "math_sha": "bdc76f88ee25f372f63303dfd2501c9bcb698cad"
+  }
+}
