@@ -48,6 +48,9 @@
 #     rather than passing by skipping the candidate gate)
 #   - `inline const T *p` / `inline T *const p`     → exit 1 (single-sided
 #     const is still unowned mutable state — #2726's `g_activeShots` shape)
+#   - a wrapped declaration whose head line carries a trailing comment with
+#     a paren in it                                 → exit 1 (the comment's
+#     `(` must not read as a function-declaration guard hit)
 
 set -uo pipefail
 
@@ -603,6 +606,29 @@ assert_contains "$halfconst_out" "g_handleConstOnly" \
     "trailing const alone freezes the handle, not the data, still flagged"
 assert_absent "$halfconst_out" "g_bothEndsConst" \
     "both-ends-const in that same scanned header is exempt"
+
+# --- a paren inside a trailing comment on a wrapped head line still flags ---
+# The join buffer used to carry the raw head line verbatim, so a `(` inside
+# `// registry (id -> slot)` on the head of a wrapped declaration satisfied
+# the function-declaration guard and the global silently exempted itself.
+# Comments are now stripped before either the terminator test or the guard
+# see it.
+PARENCOMMENT="$TMPROOT/parencomment"
+make_fixture "$PARENCOMMENT"
+cat > "$PARENCOMMENT/engine/include/irreden/parencomment.hpp" <<'EOF'
+#pragma once
+#include <unordered_map>
+namespace IRFixture {
+inline std::unordered_map<int, int>  // registry (id -> slot)
+    g_parenCommentRegistry;
+}
+EOF
+parencomment_out=$(run_checker "$PARENCOMMENT")
+parencomment_rc=$?
+assert_eq "1" "$parencomment_rc" \
+    "a paren inside a wrapped head line's trailing comment does not exempt the global"
+assert_contains "$parencomment_out" "g_parenCommentRegistry" \
+    "failure names the paren-comment-wrapped declaration"
 
 # --- usage guard ------------------------------------------------------------
 noroot_out=$(cmake -P "$CHECKER" 2>&1)
