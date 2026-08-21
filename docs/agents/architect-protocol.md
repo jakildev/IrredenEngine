@@ -574,6 +574,22 @@ When working a `fleet:design-blocked` PR:
    (PR #2475 burned five opus iterations in 80 minutes this way). The
    GL-capable pane that finishes the gated work removes the label with
    its push.
+
+   **On an ISSUE, pair the gate with `fleet:backend-symmetric` when the fix
+   must land in both backends (#2820).** When you file or triage a shader
+   defect that has to be fixed in a `.glsl` *and* its `.metal` twin, add
+   `fleet:backend-symmetric` alongside `fleet:needs-gl-host`. A macOS pane
+   can author both halves, compile-verify both, and natively run and
+   visually verify the Metal one — so gating the whole task off that host
+   starves the lane for no gain, while the GL runtime residual still rides
+   the reviewer-stamped `fleet:needs-{linux,windows}-smoke` lane. Without
+   the pairing the claim gate refuses the whole task on Metal hosts.
+   The scout runs a precision-first body backstop (both a real `.glsl` and
+   a real `.metal` filename cited) for a label you forget, but the label is
+   the primary signal, as with `fleet:needs-gl-host` itself.
+   **Issue scope only** — do not add it to a PR: there `fleet:needs-gl-host`
+   describes the *remaining* work, so task symmetry says nothing about it,
+   and the PR path is deliberately not narrowed.
 6. **Self-heal stale resume-state (do this every unblock).** A worker that
    escalated typically released its claim and reset/parked the branch
    ("releasing the claim so any worker can resume"), but two pieces of stale

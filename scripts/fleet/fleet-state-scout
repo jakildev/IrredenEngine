@@ -771,6 +771,32 @@ def _body_requires_gl_host(body):
                 or _GL_ONLY_SOURCE_PATH_RE.search(body))
 
 
+# A backend-symmetric task must be fixed in both a `.glsl` and its `.metal`
+# twin, so its Metal half is natively verifiable on a macOS pane (#2820).
+# Same real-filename discipline as `_GL_ONLY_SOURCE_PATH_RE`: a bare extension
+# or a prose mention of "metal" is not a citation — require a stem.
+#
+# Structurally disjoint from the GL-only inference above, which deliberately
+# excludes BOTH `.glsl` and `src/metal/` (see that regex's comment block), so
+# no body can make the two backstops fight.
+#
+# Polarity note, and it is the inverse of `_body_requires_gl_host`'s: this
+# inference makes the gate MORE permissive, so a false positive degrades to
+# claimed-then-smoke-caught while a false negative degrades to today's
+# starvation. Still precision-first (both real filenames required), but the
+# stakes are lower than the #1969/#2704 direction.
+_GLSL_FILE_RE = re.compile(r"\b[\w.+-]+\.glsl\b", re.IGNORECASE)
+_METAL_FILE_RE = re.compile(r"\b[\w.+-]+\.metal\b", re.IGNORECASE)
+
+
+def _body_backend_symmetric(body):
+    """True when the task body cites both a real `.glsl` filename and a real
+    `.metal` filename — a backstop for a missing fleet:backend-symmetric label
+    (#2820)."""
+    body = body or ""
+    return bool(_GLSL_FILE_RE.search(body) and _METAL_FILE_RE.search(body))
+
+
 def _parse_epic_checklist(body):
     """[{number, checked}] for every `- [ ] #N` / `- [x] #N` row in an
     umbrella body, in document order. Indented sub-bullets count; lines
@@ -907,6 +933,15 @@ def fetch_task_queue(repo_slug):
             # for a label the filer forgot (see _body_requires_gl_host).
             "needs_gl_host": ("fleet:needs-gl-host" in labels
                               or _body_requires_gl_host(body)),
+            # #2820: the discriminator that narrows the gate above. A task
+            # fixing both a `.glsl` and its `.metal` twin has a natively
+            # Metal-verifiable half, so a mac pane may claim it; the GL runtime
+            # residual rides the reviewer-stamped needs-{linux,windows}-smoke
+            # lane. Stamped on TASK records only — symmetry is a property of
+            # the task, whereas the same label on a PR describes the RESIDUAL,
+            # which is why the PR path is deliberately not narrowed.
+            "backend_symmetric": ("fleet:backend-symmetric" in labels
+                                  or _body_backend_symmetric(body)),
             "issue": task_id,
             # `**Part of epic:** #U` back-ref (raw field value, e.g. "#1661").
             # The epic-steward adoption projection joins this against open
