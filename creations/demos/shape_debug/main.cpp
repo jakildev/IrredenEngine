@@ -409,13 +409,21 @@ ivec3 pivotVerifyProbeHalfExtent() {
 // (sub-)voxel's own anchor depth across every trixel its face paints: the
 // composite is a per-face SORT KEY, not the metric depth at this trixel, so the
 // reconstruction is off by however far the center ray crosses the face from its
-// anchor. Measured on macOS/Metal, identical at zoom 4 and 8: background-center
-// 0.00 (exact — it takes the d=0 fallback and reads no depth), center-depth
-// 0.289 (off-centre lateral crossing), center-column and center-axis 0.577
-// (both cross a camera-facing cap dead-centre, half the face's 2-unit depth
-// spread). Derivation + the ruled-out alternatives (notably that this is NOT a
-// neighbouring-triangle sampling ambiguity — that would be a fixed pixel
-// offset, and the bias is instead constant in WORLD units across zooms):
+// anchor. Measured on BOTH backends — macOS/Metal and Windows/OpenGL agree to
+// the printed digit: background-center 0.000 (exact — it takes the d=0 fallback
+// and reads no depth), center-column and center-axis 0.577 (both cross a
+// camera-facing cap dead-centre, half the face's 2-unit depth spread).
+//
+// Those two cap blocks are the ceiling, and they are zoom-INVARIANT:
+// center-axis prints 0.5773514 unchanged at zoom 1, 2, 4, 8 and 16.
+// center-depth's crossing is off-centre, so it reads a varying fraction UNDER
+// that ceiling rather than one fixed value (0.577 / 0.000 / 0.289 / 0.433 /
+// 0.505 at those same zooms) — the mechanism predicting itself: a dead-centre
+// cap crossing is half the spread by construction, an off-centre one depends on
+// where the ray meets the face. Derivation + the ruled-out alternatives
+// (notably that this is NOT a neighbouring-triangle sampling ambiguity — that
+// would be a fixed pixel offset, and the cap blocks' bias is instead constant
+// in WORLD units across a 16x zoom range):
 // docs/design/camera-yaw-pivot.md §"Known deviations" 2, see #2641.
 //
 // The gate stays sharp — every failure this assert exists to catch is an order

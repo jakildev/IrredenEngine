@@ -548,7 +548,8 @@ where the probe rotates about a point on its own axis, and the demo's
 ray/surface intersection — for the default-pivot blocks, whose silhouettes
 legitimately orbit the pin. The SDF twin is **reported, not gated** — with no
 voxel lattice to land on, its silhouette is quantized by the destination pixel
-grid alone, a flat 2.00px (one game-resolution pixel) at every zoom that no
+grid alone, a flat one game-resolution pixel at every zoom — 2.00px on a 2x
+(HiDPI) host, 1.00px on a 1x one, both measured — that no
 pivot fix can move (#2645). No reference images. Contract + known deviations:
 [`docs/design/camera-yaw-pivot.md`](../../docs/design/camera-yaw-pivot.md)
 (epic #2544).
