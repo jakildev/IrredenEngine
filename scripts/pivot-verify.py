@@ -93,13 +93,14 @@ CENTROID_GATED_BLOCKS = {"focus-ctr", "focus-off", "background-center",
                          "center-axis"}
 # The SDF twin is a continuous-geometry A/B control, NOT a pin gate (#2645).
 # Its analytic silhouette has no voxel lattice to snap to, so its centroid is
-# quantized only by the destination pixel grid: dev_x measures exactly 2.00px
-# at zoom 1, 2, 4, 8 AND 16 — flat over a 16x range. That 2.00px is one whole
-# game-resolution pixel (1280x720 game res rendered to a 2560x1440 HiDPI
-# framebuffer, so outputScaleFactor == 2), i.e. the smallest step the screen
-# can represent. A pivot-anchor error is a world-space offset and must scale
-# with zoom; a destination-grid quantization floor cannot, so no pivot fix can
-# move it and gating on it is a permanent false red. The voxel twin stays
+# quantized only by the destination pixel grid: dev_x measures one whole
+# game-resolution pixel at every zoom — 2.00px on a 2x (HiDPI) host, 1.00px on
+# a 1x one, both measured — flat over a 16x range (1280x720 game res rendered
+# to a 2560x1440 framebuffer on the 2x host, so outputScaleFactor == 2), i.e.
+# the smallest step the screen can represent. A pivot-anchor error is a
+# world-space offset and must scale with zoom; a destination-grid
+# quantization floor cannot, so no pivot fix can move it and gating on it is
+# a permanent false red. The voxel twin stays
 # gated and pins at <= 1.4px across the same sweep. This exemption is what
 # keeps `focus-ctr` gated for its voxel pass while its SDF twin only reports,
 # even though the block itself is in CENTROID_GATED_BLOCKS.
