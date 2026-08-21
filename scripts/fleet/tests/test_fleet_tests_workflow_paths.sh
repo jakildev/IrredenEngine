@@ -2,14 +2,16 @@
 # Tests for .github/workflows/fleet-tests.yml's path filters (#2810).
 #
 # The workflow path-filters on scripts/fleet/** — the LOCATION of its
-# suites, not the SUBJECTS they test. Four suites test files that live
+# suites, not the SUBJECTS they test. Five suites test files that live
 # outside that path (test_format_changed_line_scoping.sh covers
 # cmake/run_clang_format_changed.cmake; test_ir_build_dir_resolution.sh
 # covers engine/tools/lib/concurrency_helpers.sh; test_fleet_transition.sh
 # covers docs/agents/fleet-state-machine.json; test_lint_rules_commands.py
-# covers every doc under .claude/rules/ and docs/agents/), so a PR touching
-# only one of those subjects previously got no fleet-tests run at all — the
-# only regression coverage for that subject silently never fired.
+# covers every doc under .claude/rules/ and docs/agents/;
+# test_workflow_paths_sync.sh covers the other path-filtered
+# .github/workflows/*.yml files), so a PR touching only one of those
+# subjects previously got no fleet-tests run at all — the only regression
+# coverage for that subject silently never fired.
 #
 # This is deliberately a hardcoded ratchet, not a parse of each suite's
 # variable assignments (same shape as header_global_baseline in
@@ -40,12 +42,24 @@ fi
 # not single files. `docs/agents/**` subsumes fleet-state-machine.json;
 # the narrower entry stays so the ratchet keeps naming that subject even
 # if the glob is ever tightened.
+#
+# The three .github/workflows/ entries are test_workflow_paths_sync.sh's
+# subjects (#2929). They are the first members whose population is derived
+# rather than fixed — that suite globs .github/workflows/*.yml and covers
+# whichever files declare both a push: and a pull_request: paths: block, so
+# a fifth such workflow becomes its subject with no edit here. This list
+# cannot track that on its own; T4 in test_workflow_paths_sync.sh asserts
+# the two agree, so the gap fails a suite instead of silently costing the
+# new workflow its trigger.
 OUT_OF_TREE_SUBJECTS=(
     'cmake/run_clang_format_changed.cmake'
     'engine/tools/lib/concurrency_helpers.sh'
     'docs/agents/fleet-state-machine.json'
     '.claude/rules/**'
     'docs/agents/**'
+    '.github/workflows/header-checks.yml'
+    '.github/workflows/perf-gate.yml'
+    '.github/workflows/render-harness-tests.yml'
 )
 
 # paths_block <file> <section> — the raw text of the named top-level `on:`
