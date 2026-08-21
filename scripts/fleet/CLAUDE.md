@@ -174,8 +174,18 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   (`fleet:amending-*` vs `fleet:resolving-*`) provide **no** mutual
   exclusion — a PR matching two lanes' filters on one scout tick gets two
   panes force-pushing the same head branch, last writer wins (#2423: the
-  semantic-conflict lane had to learn to exclude feedback-owing PRs).
-  Check this whenever a lane is added or its label set widened.
+  semantic-conflict lane had to learn to exclude feedback-owing PRs;
+  #2801: the same for `fleet:reviewing-*` vs `fleet:amending-*`, where the
+  exclusion existed on the reviewer side only, so a worker could amend a PR
+  mid-review). Check this whenever a lane is added or its label set widened.
+  The exclusion is **directional** — closing one side leaves the hazard
+  live, and both lanes are woken by the same labels by design, so a
+  one-sided guard reads as complete while the race is untouched. A lane's
+  admission test must also be the **sole** one for that lane: an emit-site
+  filter that its `slice_<role>` twin doesn't share leaves every consumer
+  of the slice (class election, quiet check, `fleet-up`'s bootstrap
+  trigger) reading the unfiltered set (#2801 again — `project_worker` and
+  `slice_worker` now share `worker_feedback_labels()`).
 - **Path-containment checks normalize before the literal match.** A
   path-containment policy check (worktree guard, scope guard, allowlist)
   must normalize its input to canonical form *before* the literal match —

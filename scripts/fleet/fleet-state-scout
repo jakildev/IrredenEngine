@@ -1934,6 +1934,57 @@ def enrich_inflight_pr_tasks(state):
 # clears the stale label itself.
 _WORKER_RELEVANT_LABELS = FEEDBACK_LABELS | DESIGN_RESUME_LABELS
 
+# The worker-side counterpart to the reviewer's fleet:amending-* skip
+# (REVIEW_SKIP_PREFIXES). fleet:reviewing-* and fleet:amending-* are disjoint
+# claim namespaces, so neither lane's claim excludes the other's on its own —
+# each lane has to know the other's prefix. Without this side, whichever lane
+# claims second wins the right to invalidate the other's work: the amend path
+# force-pushes, and --force-with-lease protects the branch, not the reviewer's
+# work, so the reviewer reads head X, the worker rewrites to Y, and the
+# verdict lands on a diff nobody read. Same hazard scripts/fleet/CLAUDE.md
+# flags for amending-*/resolving-*, resolved the same way
+# _semantic_conflict_claimable resolves that pair (#2801).
+WORKER_SKIP_PREFIXES = ("fleet:reviewing-",)
+# fleet:has-nits stamped ALONGSIDE fleet:needs-opus-recheck is not a verdict:
+# REVIEWER-PROTOCOL.md has the sonnet reviewer set NO verdict label in that
+# case, and OPUS_REVIEWER_FLAG_LABELS documents the marker as the escalation
+# signal. The pending opus pass owns the PR; dispatching the author now buys
+# a guaranteed second nit round-trip. Suppression here ROUTES the PR (the
+# opus-reviewer lane still emits it), it does not park it.
+WORKER_SKIP_LABELS = frozenset({"fleet:needs-opus-recheck"})
+# Only the fleet-owned tiers are suppressible. human:needs-fix /
+# human:blocker outrank an in-flight fleet review (FLEET-FEEDBACK-HANDLING.md
+# puts the human tiers first in its priority order) and keep emitting under
+# every skip signal above.
+_WORKER_SUPPRESSIBLE_LABELS = frozenset({
+    "fleet:needs-fix", "fleet:has-nits",
+}) | DESIGN_RESUME_LABELS
+
+
+def worker_feedback_labels(labels):
+    """The worker-relevant tiers this PR is dispatchable on right now.
+
+    Empty => no worker feedback work. Sole admission test for BOTH
+    project_worker (the trigger) and slice_worker (the payload every
+    downstream consumer reads); keep them on this one helper — a
+    projection-only guard leaves the class election
+    (fleet_task_class._yield_work_candidates), the terminally-unclaimable
+    quiet check, and fleet-up's bootstrap trigger reading the unfiltered
+    set, and FLEET-CACHE.md points roles at the slice.
+
+    Suppress, never mutate: the fleet:reviewing-* label's lifecycle belongs
+    to the reviewer's release/verdict swap and to `fleet-claim cleanup
+    --gh`'s orphan sweep, which is what keeps this from stranding a PR.
+    """
+    relevant = _WORKER_RELEVANT_LABELS & labels
+    if not relevant:
+        return frozenset()
+    if (WORKER_SKIP_LABELS & labels) or any(
+        label.startswith(p) for label in labels for p in WORKER_SKIP_PREFIXES
+    ):
+        relevant -= _WORKER_SUPPRESSIBLE_LABELS
+    return relevant
+
 
 def _semantic_conflict_claimable(pr, labels, head_labels):
     """True when role-worker step 1c would pick this PR up right now, so it
@@ -1969,6 +2020,13 @@ def _semantic_conflict_claimable(pr, labels, head_labels):
     # feedback fix. Feedback comes first (this PR's own stated priority), so a
     # conflicted PR generates no conflict-resolution pressure until the
     # feedback/design-resume label clears. Mirror in role-worker.md step 1c.
+    #
+    # Deliberately the RAW set, not worker_feedback_labels(): this test means
+    # "this PR owes feedback work, so the conflict lane stands down." Routing
+    # it through the suppression helper would make a reviewer's live claim
+    # *open* the conflict lane — and the resolver force-pushes too, so that is
+    # the identical hazard one lane over. Making all three call sites
+    # "consistent" is the wrong turn here (#2801).
     if labels & _WORKER_RELEVANT_LABELS:
         return False
     # An active fleet:resolving-<host>-<agent> claim means a worker is
@@ -2045,9 +2103,10 @@ def project_worker(state):
                 repo, pr["number"]
             ):
                 continue
-            if labels & _WORKER_RELEVANT_LABELS:
+            worker_labels = worker_feedback_labels(labels)
+            if worker_labels:
                 items.append({"kind": "pr", "repo": repo, "pr": pr["number"],
-                              "labels": sorted(labels & _WORKER_RELEVANT_LABELS)})
+                              "labels": sorted(worker_labels)})
             # Distinct kind so the hash keys on presence only — resolution
             # (label removed / PR merged) or a fleet:resolving-* claim drops
             # the item; transient label churn on the PR doesn't re-flip it.
@@ -2536,7 +2595,11 @@ def slice_worker(state):
             # woken worker iteration doesn't even surface it as a candidate.
             if "fleet:gated" in labels:
                 continue
-            if labels & (FEEDBACK_LABELS | DESIGN_RESUME_LABELS):
+            # Same admission test as project_worker's emit site — one helper,
+            # both sites. A projection-only guard would leave this payload
+            # unfiltered, and FLEET-CACHE.md tells every role to prefer the
+            # slice over state.json (#2801).
+            if worker_feedback_labels(labels):
                 out["feedback_prs"].append(_slice_pr_with_repo(repo_key, pr))
             if _semantic_conflict_claimable(pr, labels, head_labels):
                 out["semantic_conflict_prs"].append(

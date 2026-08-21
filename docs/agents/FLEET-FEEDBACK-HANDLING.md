@@ -68,6 +68,41 @@ collected five such iterations in 80 minutes — #2524). `fleet-claim
 amending-claim` refuses these claims as a backstop, but skip pre-claim
 so the iteration goes to work you can actually do.
 
+**Skip** PRs carrying a `fleet:reviewing-*` label held by another agent
+— a reviewer is mid-review right now. The two lanes' claim namespaces
+(`fleet:amending-*` vs `fleet:reviewing-*`) are **disjoint**, so neither
+claim excludes the other on its own: each lane has to know the other's
+prefix, and this skip is the worker-side half (`REVIEW_SKIP_PREFIXES` is
+the reviewer's). Without it, whichever lane claims second wins the right
+to invalidate the other's work. The amend path force-pushes, and
+`--force-with-lease` protects the *branch*, not the reviewer's *work*:
+the reviewer reads head X, you rewrite to Y, and their verdict lands on
+a diff nobody read (#2801; observed on PR #2850, where the amending
+claim was granted 26 s after the opus recheck started). As with
+`fleet:needs-gl-host`, the pickup-side skip is the load-bearing half and
+`fleet-claim amending-claim` refuses as a backstop. The label cannot
+strand a PR: the reviewer's `review-release` / verdict swap clears it,
+and `fleet-claim cleanup --gh`'s orphan sweep clears an abandoned one.
+
+**Skip** PRs carrying `fleet:needs-opus-recheck` — `fleet:has-nits`
+stamped alongside it is **not a verdict**. The sonnet reviewer sets no
+verdict label when its pass ends "Opus recheck required:"
+(REVIEWER-PROTOCOL.md), so those nits are mid-escalation and the pending
+opus pass owns the PR; amending now buys a guaranteed second nit
+round-trip once that pass lands. The PR is not parked —
+`project_opus_reviewer` still emits it, so the suppression *routes* the
+work to the lane that can finish it. When the opus reviewer swaps its
+verdict the marker drops and the PR re-enters this lane normally.
+
+Both exclusions are enforced in `fleet-state-scout`'s
+`worker_feedback_labels()`, the single admission test behind **both** the
+worker projection (the dispatch trigger) and `slice_worker`'s
+`feedback_prs` payload — so a PR under either signal is absent from
+`projections/worker.json` as well, not just from the trigger hash.
+Neither exclusion touches the `human:needs-fix` / `human:blocker` tiers:
+human feedback outranks an in-flight fleet review and keeps dispatching
+under both signals.
+
 ## Step a — claim the PR atomically (before anything else)
 
 Feedback pickup fans out: the dispatcher can launch your role into
