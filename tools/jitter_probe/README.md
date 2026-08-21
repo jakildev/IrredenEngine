@@ -66,14 +66,18 @@ find save_files/screenshots -name '*.png' -delete
 IRShapeDebug --spin-shape box --spin-shape-voxel --pan-sweep --yaw 0.785 --zoom 4 \
     --auto-screenshot 6
 # Rotation jitter — camera yaws within one cardinal quadrant (use a vertical
-# cylinder: its silhouette is Z-yaw-invariant, so any centroid wobble is jitter):
-IRShapeDebug --spin-shape cylinder --spin-shape-voxel --yaw-sweep --zoom 4 \
-    --auto-screenshot 6
+# cylinder: its silhouette is Z-yaw-invariant, so any centroid wobble is jitter).
+# --pivot-origin pins the pivot; it is required to gate on excursion (see
+# "Picking a bar" below):
+IRShapeDebug --spin-shape cylinder --spin-shape-voxel --yaw-sweep --pivot-origin \
+    --zoom 4 --auto-screenshot 6
 
 # Then point jitter_probe at the captured sequence (in order). The 6-digit glob
-# matches full frames ONLY; --expect-frames must equal the --auto-screenshot
-# count (see "Wipe before every capture" below for why both are load-bearing):
-build/tools/jitter_probe/jitter_probe --expect-frames 6 \
+# matches full frames ONLY; --expect-frames must equal the sweep's own shot-table
+# length, which is NOT the --auto-screenshot value (that is the per-shot warmup)
+# — each sweep logs its count, e.g. "Yaw-sweep: 24 shots". Read it from the log
+# ("Wipe before every capture" below has why both are load-bearing):
+build/tools/jitter_probe/jitter_probe --expect-frames 24 \
     save_files/screenshots/screenshot_[0-9][0-9][0-9][0-9][0-9][0-9].png
 ```
 
@@ -194,15 +198,28 @@ output path, and that path stays byte-identical for its one stdout consumer,
 [`test/tools/jitter_probe_excursion_test.sh`](../../test/tools/jitter_probe_excursion_test.sh)
 against synthetic fixtures, so they do not drift with the render tree.
 
-**Picking a bar is per-probe, and the canonical rotation probe cannot carry one
-yet.** A bar is only meaningful when the axis it gates is actually pinned. On
-the canonical `--yaw-sweep` cylinder that is currently false: re-measured
-2026-08-07 on macOS/Metal, healthy x excursion is 19.97 / 38.18 / 76.81px at
-zoom 2/4/8 — dominated by the **default** pivot focus's residual orbit (#2547 →
-**#2641**), which is camera-level (the SDF control moves as far) and swamps the
-per-axis signal. The `IR_PERAXIS_OVERFLOW_DISABLE=1` arm even reads *lower* than
-healthy, so no one-sided bar separates them. Use the flags on a probe whose
-pivot you control until #2641 lands; the full table and the re-derivation note
-live in [`engine/render/CLAUDE.md`](../../engine/render/CLAUDE.md) §"Verifying
-temporal stability" and §"Accepted sub-pixel yaw-sweep centroid residual (voxel
-content) — #2469".
+**Picking a bar is per-probe, and the bar only means something on a probe whose
+pivot is pinned.** The canonical rotation probe therefore composes
+`--yaw-sweep --pivot-origin`:
+
+```bash
+IRShapeDebug --spin-shape cylinder --spin-shape-voxel --yaw-sweep \
+    --pivot-origin --zoom 4 --auto-screenshot 6
+```
+
+`--pivot-origin` selects `RotationPivotMode::ORIGIN`, and `--spin-shape` spawns
+its single fixture at the world origin — so the shape stays screen-centred and
+the centroid carries no pivot term. On the *default* focus it would: that derive
+carries a residual orbit (#2547 → #2641, root-caused as inherent by the open PR
+#2758) which is camera-level (the SDF control moves as far), reads ~200x the
+pinned value, and is *lower* on the `IR_PERAXIS_OVERFLOW_DISABLE=1` arm than on
+healthy — so no one-sided bar separates the populations there, and the unpinned
+sweep deliberately carries no excursion bar. ORIGIN does not merely bound that
+term, it removes it, so the pinned bar is valid however #2758 lands.
+
+The measured per-zoom bars for the pinned probe (macOS/Metal, 2026-08-08) live
+in **one** place — [`engine/render/CLAUDE.md`](../../engine/render/CLAUDE.md)
+§"Verifying temporal stability" — so there is no second copy to drift. Read the
+bar from there; §"Accepted sub-pixel yaw-sweep centroid residual (voxel content)
+— #2469" carries the historical pre-#2547 columns and says why they no longer
+describe a gate.

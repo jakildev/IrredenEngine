@@ -523,9 +523,14 @@ Three checks, in order:
    # pan jitter (voxel box, yaw 45, zoom 4):
    IRShapeDebug --spin-shape box --spin-shape-voxel --pan-sweep --yaw 0.785 \
        --zoom 4 --auto-screenshot 6
-   # rotation jitter (voxel cylinder, Z-yaw-invariant probe):
+   # rotation jitter (voxel cylinder, Z-yaw-invariant probe). --pivot-origin is
+   # load-bearing, not optional: it selects RotationPivotMode::ORIGIN so the yaw
+   # pivots about the world origin, which is exactly where --spin-shape spawns
+   # its single fixture — the shape stays screen-centred and the centroid carries
+   # no pivot-orbit term. Without it the default CAMERA_CENTER focus contributes
+   # an orbit that dominates the metric (see the bar table below).
    IRShapeDebug --spin-shape cylinder --spin-shape-voxel --yaw-sweep \
-       --zoom 4 --auto-screenshot 6
+       --pivot-origin --zoom 4 --auto-screenshot 6
    # then score the captured sequence (in order). --reversal-eps 0.8 retires the
    # reversal criterion on these probes (see "the reversal criterion" below).
    # The 6-digit glob matches full frames ONLY — ROI crops share the prefix and
@@ -537,9 +542,22 @@ Three checks, in order:
    # the only thing that catches a widened glob, since scoring the wrong set
    # still yields a confident verdict (measured during #2469 — see
    # tools/jitter_probe/README.md §"Wipe before every capture").
+   # --max-excursion-x is the primary rotation-gate assertion (#2606); the bar is
+   # per-zoom, from the table below, and applies to the pinned
+   # --yaw-sweep --pivot-origin population only — omit it when scoring
+   # --pan-sweep, where x translates by design. y is deliberately left
+   # unconstrained — on a yaw sweep it legitimately translates.
    build/tools/jitter_probe/jitter_probe --reversal-eps 0.8 --expect-frames 24 \
+       --max-excursion-x <bar(zoom)> \
        <save_files>/screenshots/screenshot_[0-9][0-9][0-9][0-9][0-9][0-9].png
    ```
+
+   **Assert the arm from the engine log, never from the argv you think you
+   passed.** The run logs `RotationPivotMode: ORIGIN (--pivot-origin) — Z-yaw
+   pivots about the world origin`; that line present (and `Spin-shape single
+   fixture: Cylinder (voxel-pool)` vs `(SDF)`, and `Yaw-sweep: 24 shots`, and the
+   zoom as *received*) is what makes a population what you labelled it. A silently
+   unpinned arm reads ~200x higher and looks like a real regression.
 
 3. **Read the verdict.** `jitter_probe` tracks the shape's centroid across the
    sequence and reports `SMOOTH` (0 direction-reversals, sub-pixel residual off
@@ -574,35 +592,61 @@ Three checks, in order:
      caught. A *systematic migration* class is not.
 
    The per-axis assertion that expresses "x stays pinned while y may translate"
-   now ships as `jitter_probe --max-excursion-x/-y` (#2606), and every default-mode
-   run prints `excursion=` per axis, so the by-hand max-min read is gone. **But do
-   not put a bar on this probe yet — there is no separating value to put.**
-   Re-measured on macOS/Metal 2026-08-07 (24-frame sweeps, same recipe, arm
-   identity asserted per run), x excursion:
+   ships as `jitter_probe --max-excursion-x/-y` (#2606), and every default-mode
+   run prints `excursion=` per axis, so the by-hand max-min read is gone. **On the
+   `--pivot-origin` pinned sweep it is the primary rotation-gate assertion, and
+   these are its bars** (macOS/Metal, 2026-08-08, 24-frame sweeps, one session,
+   arm identity asserted per run from the engine log):
 
-   | zoom | healthy voxel | SDF control | `IR_PERAXIS_OVERFLOW_DISABLE=1` |
-   |---|---|---|---|
-   | 2 | 19.97px | — | 13.75px |
-   | 4 | 38.18px | 44.00px | 27.92px |
-   | 8 | 76.81px | 82.00px | 54.63px |
+   | zoom | healthy voxel | SDF control | `IR_PERAXIS_OVERFLOW_DISABLE=1` | **bar** | separation |
+   |---|---|---|---|---|---|
+   | 2 | 0.62px | — | 6.23px | **2.0px** | 10x |
+   | 4 | 0.18px | 0.00px | 10.87px | **0.5px** | 60x |
+   | 8 | 0.06px | 0.00px | 21.79px | **0.5px** | 363x |
 
-   Two things changed since the 2026-07-28 table below. Excursion on this probe
-   is now ~30x larger and scales linearly with zoom — a world-space offset
-   projected to screen, present on the **SDF control too**, so it is camera-level,
-   not the per-axis store. And the defect arm reads **lower** than healthy at
-   every zoom (0.63-0.69x), so no one-sided `excursion <= bar` can separate them
-   in the intended direction.
+   Bar rule: the smallest half-integer >= 2.5x the max healthy x excursion at that
+   zoom (voxel and SDF both count as healthy), required to also be <= 0.5x the
+   defect excursion — so a published bar always has >=2.5x headroom below and
+   >=2x above. A zoom with no value satisfying both is omitted rather than
+   published thin; all three separate here by 10x or better. The defect arm fires
+   at every zoom, and *attributably*: re-running it with `--max-residual 99` still
+   exits 1, so the failure is the excursion criterion by construction rather than
+   another axis catching it by accident. y excursions for the same populations
+   (recorded, not gated): healthy 0.21 / 0.11 / 0.06px, defect 2.64 / 5.27 /
+   10.08px at zoom 2/4/8.
 
-   The dominating term is the **default** pivot focus's residual orbit — #2547's
-   depth-aware `CAMERA_CENTER` derive (landed 2026-07-31, after the 2026-07-28
-   table) with the 1-iso-unit cap-entry bias that **#2641** owns and measures
-   independently (12px at zoom 4 / 22px at zoom 8 on `--pivot-verify
-   center-axis`). `pivot-verify.py` is green throughout: its *explicit*-focus
-   blocks still pin at 0.94/1.27px. `--yaw-sweep` uses the *default* focus and
-   its probe is off the viewport-center ray, so it carries a larger orbit of the
-   same family. Until #2641 lands, this probe's excursion measures the pivot, not
-   the per-axis path — so use the flags on a probe whose pivot you control, and
-   re-derive the bar here from a post-#2641 capture.
+   **At a zoom not in the table, re-derive — never interpolate, and never carry a
+   neighbouring row across.** z1 is omitted by the clause above, not by oversight:
+   healthy reads **0.93px** against **3.53px** for the defect arm, a separation of
+   only 3.8x against 10x/60x/363x at the published zooms, so the candidate bar
+   (smallest half-integer >= 2.5 x 0.93 = 2.325 → 2.5px) sits *above* its own
+   ceiling (0.5 x 3.53 = 1.765px) and no value satisfies the rule. Borrowing the
+   adjacent 0.5px there **false-fires** — it exits 1 on a green z1 population
+   (0.93 > 0.5), reporting a healthy tree as a rotation regression. Upward is the
+   harmless direction: z16 healthy reads **0.04px**, 12x under that same 0.5px.
+   The two identical 0.5px rows are a rounding coincidence, not a plateau to read
+   off. (z1/z16 measured macOS/Metal 2026-08-08, same fixture and arm-identity
+   discipline as the table. The z16 pass is non-vacuous: `--max-excursion-x 0.03`
+   on those frames exits 1, so the flag is live on the population it clears.)
+
+   **The bar belongs to the pinned probe only — the unpinned sweep carries no
+   excursion bar.** Drop `--pivot-origin` and the same healthy z4 population reads
+   **38.18px** instead of 0.18px (212x), because the **default** `CAMERA_CENTER`
+   focus (#2547, landed 2026-07-31) contributes a residual orbit with a
+   1-iso-unit cap-entry bias — the surface `pivot-verify.py` owns, and it is green
+   throughout (explicit-focus blocks pin at 0.94/1.27px). #2641 → PR **#2758**
+   (open, in review) root-causes that bias as *inherent* to the derive: the
+   composite stores a per-face sort key, not the metric depth at the sampled
+   trixel. **The bar above does not rest on that ruling** — ORIGIN removes the
+   pivot term outright rather than bounding it (`getEffectiveCameraIso`,
+   `engine/render/src/ir_render.cpp:47-49`, tests ORIGIN before the focus branch
+   and returns `cameraIso` unmodified), so no pivot term is stricter than any
+   future default derive, whichever way #2758 lands.
+
+   Free evidence for **#2907** from the same session: the pinned probe's x
+   *residual* reads 0.41 / 0.08 / 0.03px at zoom 2/4/8, while the unpinned z4 arm
+   reproduces #2907's 1.78px exactly. The default-focus probe's residual redness
+   is therefore orbit-inflated, not a floor of the per-axis path.
 
 **Jitter is NOT the same as cardinal byte-identity.** Confirm yaw-0 / static
 frames stay byte-identical (`img_diff`) *and* that motion is jitter-free
@@ -989,16 +1033,19 @@ drift. Measured on macOS/Metal, 2026-07-28 (24-frame sweeps, one quadrant):
 | voxel cylinder, zoom 8 | 2.83px | 5 | 1.25px | 10.79px | 0 | 0.18px |
 | **SDF cylinder** (continuous-geometry control), zoom 4 / 8 | 2.00px | 0 | 1.43px | 4.00 / 10.00px | 0 | 0.95px |
 
-> **The excursion columns above no longer reproduce (re-measured 2026-08-07,
-> #2606).** Same recipe, same host/backend: x excursion is 19.97 / 38.18 / 76.81px
-> at zoom 2/4/8, ~30x this table. The cause is the default pivot focus's residual
-> orbit (#2547 → **#2641**), which post-dates this table and is camera-level — the
-> SDF control moved by the same order, and `pivot-verify.py`'s explicit-focus
-> blocks still pin at 0.94/1.27px. The **residual** columns are unaffected by that
-> re-measure and still reproduce at zoom 2 (0.85px); at zoom 4/8 they read
-> 1.78/2.70px against the 1.50px bar, which is **#2907**'s finding, not this one.
-> Treat the excursion columns as historical until a post-#2641 capture replaces
-> them; see §"Verifying temporal stability" for the current numbers.
+> **The excursion columns above are historical — they measure a probe the recipe
+> no longer uses (#2606).** This table predates #2547's default pivot focus
+> (landed 2026-07-31), whose residual orbit (#2641 → #2758, in review) dominates
+> the metric on an *unpinned* sweep: same recipe, same host/backend,
+> x excursion re-measured 19.97 / 38.18 / 76.81px at zoom 2/4/8 on 2026-08-07,
+> ~30x this table. The canonical rotation gate is now the **`--pivot-origin`
+> pinned** sweep, which removes the orbit rather than tolerating it and reads
+> 0.62 / 0.18 / 0.06px healthy — the live bar table lives in §"Verifying temporal
+> stability" and is the only place to read numbers for a gate. The **residual**
+> columns are unaffected by all of this and still reproduce at zoom 2 (0.85px);
+> at zoom 4/8 the unpinned probe reads 1.78/2.70px against the 1.50px bar, which
+> is **#2907**'s finding, not this one — and the pinned probe's 0.41/0.08/0.03px
+> says that redness is orbit-inflated.
 
 Three findings ground the accept, each measured rather than asserted:
 
