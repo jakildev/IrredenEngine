@@ -1022,8 +1022,14 @@ def fetch_pr_view(repo_slug, pr_number):
 def fetch_pr_inline_comments(repo_slug, pr_number):
     # Inline review comments live on a different endpoint than `gh pr view`'s
     # `comments`/`reviews` fields. Reviewers walking a flagged PR want both.
+    #
+    # per_page=100 + --paginate, not the REST default of 30 (same truncation
+    # class as #2856): past 30 inline comments the cache would hold a silently
+    # short list that fleet-pr then serves as complete. per_page=100 keeps the
+    # common PR at one request. Keep in sync with fleet-pr's fetch_live_pr.
     out = run_capture([
-        "gh", "api", f"repos/{repo_slug}/pulls/{pr_number}/comments",
+        "gh", "api", f"repos/{repo_slug}/pulls/{pr_number}/comments?per_page=100",
+        "--paginate",
     ])
     if out is None:
         return []

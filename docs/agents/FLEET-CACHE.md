@@ -12,9 +12,9 @@ section below for which files apply.
 |---|---|---|---|
 | `state.json` | scout | every role | List-shape state: open PRs (with labels, reviews, mergeable), needs-plan / human-approved issues (number + title + labels + updatedAt), open `fleet:queued` issue rows. **Must stay under the 256 KB Read-tool cap** — see the size invariant below. |
 | `projections/<role>.json` | scout (slicers) | the named role | Pre-filtered per-role slice with full records (e.g. the worker lane's `tasks_open` + `feedback_prs`). ~5 KB. **Prefer this over `state.json`** when you only need your own role's items. |
-| `prs/<repo>/<N>.json` | scout | `fleet-pr view`/`comments` | Full PR detail: body, conversation comments, review summaries, inline review threads, files-changed list. Refreshed only when the list query's `updatedAt` advances. |
+| `prs/<repo>/<N>.json` | scout | `fleet-pr view`; `fleet-pr comments` **only when `gh` fails** | Full PR detail: body, conversation comments, review summaries, inline review threads, files-changed list. Refreshed only when the list query's `updatedAt` advances. |
 | `diffs/<repo>/<N>-<sha>.diff` | scout | `fleet-pr diff` | Raw `gh pr diff` output, keyed by head SHA. Refreshed on rebase only; old SHAs garbage-collected. |
-| `issues/<repo>/<N>.json` | scout | `fleet-issue view` | Full issue detail (body + comments + labels + state). Cached for issues in `needs_plan` / `human_approved`. |
+| `issues/<repo>/<N>.json` | scout | `fleet-issue view` **only when `gh` fails** | Full issue detail (body + comments + labels + state). Cached for issues in `needs_plan` / `human_approved`. Since #2837 this is a **resilience layer**, not a primary reader — `fleet-issue view` fetches live and reaches for this only on a `gh` failure. |
 | `repos.json` | `fleet-up` | reviewer / merger roles | One-shot owner/repo slug map: `{"engine": "jakildev/IrredenEngine", "game": "jakildev/irreden"}`. |
 | `triggers/<role>` | scout | `fleet-babysit` | Empty file touched whenever this role's projection changed. Drives `fleet-babysit`'s long-back-off wake-up. |
 | `seen-hashes/<role>` | scout | scout | Hash of the last projection — internal trigger-detection state. |
@@ -63,16 +63,35 @@ cache and re-introduces the rate-limit burst).
 ## Per-item drill-ins
 
 Use the `fleet-pr` and `fleet-issue` wrappers for per-item lookups.
-Both read the corresponding cache file and fall back to live `gh`
-on cache miss (with a `cache miss for <repo>#<N>; falling back to
-gh` line on stderr so misses are visible in pane logs):
+They split into two policies, and the split is load-bearing (#2837):
 
-| Wrapper | Replaces |
-|---|---|
-| `fleet-pr view <N> [--repo engine\|game]` | `gh pr view <N> --comments` |
-| `fleet-pr diff <N> [--repo engine\|game]` | `gh pr diff <N>` |
-| `fleet-pr comments <N> [--repo engine\|game]` | `gh pr view <N> --comments` + `gh api repos/.../pulls/<N>/comments` + `gh api repos/.../pulls/<N>/reviews` (merged) |
-| `fleet-issue view <N> [--repo engine\|game]` | `gh issue view <N> --repo <slug> --json number,title,state,labels,body,comments` |
+- **Live-first** — `fleet-pr comments` and `fleet-issue view` fetch
+  from GitHub at invocation. Both are read by roles that were woken
+  **by** the event they need to see (the verdict review that stamps a
+  feedback label; the `## Plan` comment that stamps
+  `fleet:plan-review`), so the triggering item always postdates the
+  snapshot and a cache read there is *structurally* guaranteed to drop
+  it. On a `gh` failure they serve the cached record with a loud
+  `serving cached snapshot from <_cached_at>; newer comments/reviews
+  may be missing` line on stderr. One live attempt, never a retry loop
+  (#1394).
+- **Snapshot reads** — `fleet-pr view` and `fleet-pr diff` read the
+  cache as before (their callers want the cheap record), and each now
+  prints its snapshot stamp to stderr so a stale read is never silent.
+  A genuine cache miss still emits `cache miss for <repo>#<N>; falling
+  back to gh`.
+
+| Wrapper | Policy | Replaces |
+|---|---|---|
+| `fleet-pr view <N> [--repo engine\|game]` | snapshot | `gh pr view <N> --comments` |
+| `fleet-pr diff <N> [--repo engine\|game]` | snapshot | `gh pr diff <N>` |
+| `fleet-pr comments <N> [--repo engine\|game]` | live-first | `gh pr view <N> --json comments,reviews` + `gh api repos/.../pulls/<N>/comments` (merged) |
+| `fleet-issue view <N> [--repo engine\|game]` | live-first | `gh issue view <N> --repo <slug> --json number,title,state,labels,body,comments` |
+
+The two scripts are standalone by install design and share no code,
+so this policy is **mirrored, not factored**. `test_fleet_cache_reader_freshness.sh`
+pins the mirror with a parity assertion on the emitted fallback note;
+change one script's wording and that test fails.
 
 ### What stays direct
 
@@ -103,7 +122,11 @@ just the items that role works on:
 **opus-reviewer:** review bodies longer than 2 KB are stored as
 head + tail with an `…[truncated]…` separator (the verdict line
 typically lives in the tail); for full-body context fetch with
-`fleet-pr view <N>`.
+`fleet-pr comments <N>`, which prints full review bodies and is the
+live-first subcommand. Do **not** use `fleet-pr view <N>` here: it is a
+snapshot read, so the review body a reviewer is recovering — the one
+that triggered its own pickup — is exactly the item its snapshot
+predates (#2837).
 
 **Read the projection first.** It's ~5 KB vs. ~32 KB for full
 state.json — significant per-iteration token savings. Fall back to
