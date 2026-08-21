@@ -17,7 +17,9 @@ profiler, no per-cell stopwatch.
 | `engine/tools/bin/ir-perf-grid`       | Canonical perf-matrix runner — wraps `perf_grid_matrix.sh` in `ir-acquire benchmark` and splices `ref_ms` + host fingerprint into `manifest.json`. Calibrates on demand via `ir_ref_bench`. |
 | `scripts/perf/perf_grid_matrix.sh`    | The matrix loop — `IRPerfGrid` (or `IRLuaPerfGrid`, or both) across a zoom × subdivision matrix. Called via `ir-perf-grid` for CI/perf gating; raw call is fine for ad-hoc local diffs. |
 | `scripts/perf/perf_summary.py`        | One-screen markdown summary of a single run                                        |
-| `scripts/perf/compare_perf_runs.py`   | Diff two runs as a markdown table for the PR body. Fingerprint-aware: picks the per-host baseline under `docs/perf/baseline_latest/<slug>/`. |
+| `scripts/perf/compare_perf_runs.py`   | Diff two runs as a markdown table for the PR body. Fingerprint-aware: `resolve_baseline` picks `<baseline-root>/<slug>/` for the head's SKU, falling back to a legacy flat root. The root is an argument — in CI it comes from the `perf-baseline` branch, locally it is any directory you pass. |
+| `scripts/perf/ci_compare_step.sh`      | The perf gate's PR-path step, extracted from the workflow so it is testable outside Actions. |
+| `scripts/perf/tests/test_baseline_layouts.py` | Executed control for baseline resolution + the gate's exit mapping. Runs as the perf-gate job's first step. |
 | `scripts/perf/check_regression.py`    | CI gate — fingerprint-aware regression check. Same fingerprint → gates; different fingerprint or no baseline → informational. |
 | `scripts/perf/lua_cpp_parity.py`      | Lua-vs-C++ overhead table from a `--target both` run                               |
 
@@ -27,9 +29,9 @@ runs coexist without overwriting each other.
 
 ## Fingerprinted baselines
 
-Committed baselines live under `docs/perf/baseline_latest/<host-slug>/`
-(one subdirectory per host that has pushed a master-baseline). Each
-subdir contains:
+CI baselines live on the dedicated **`perf-baseline`** branch, under
+`docs/perf/baseline_latest/<host-slug>/` (one subdirectory per host SKU
+that has produced a baseline). Each subdir contains:
 
 - `manifest.json` — the canonical baseline run manifest (with
   `calibration` block written by `ir-perf-grid`)
@@ -37,10 +39,38 @@ subdir contains:
   produced the slug
 - one `<cell-id>.txt` per matrix cell
 
+Read one without checking the branch out:
+
+```bash
+git fetch origin perf-baseline
+git ls-tree -r --name-only FETCH_HEAD -- docs/perf/baseline_latest
+git show FETCH_HEAD:docs/perf/baseline_latest/<slug>/manifest.json
+```
+
+The branch is append-only history — never force-pushed — so a baseline's
+provenance stays diffable. `master` carries no CI baselines: it is
+protected ("changes must be made through a pull request"), so no workflow
+can commit one there (#2817).
+
 The CI gate at `.github/workflows/perf-gate.yml` reads the head run's
 slug from `manifest.json.calibration.host_slug` and looks up the
-matching baseline. Cross-host runs report informational only. New hosts
-seed their own subdirectory on the first master push.
+matching baseline. Cross-host runs report informational only.
+
+**Coverage is per-SKU, and the hosted runner pool is heterogeneous.**
+Measured over 39 baseline-producing runs (#2817): `epyc-7763` 49%,
+`epyc-9v74` 31%, `xeon-platinum-8573c` 18%, `xeon-6973p-c` 3%. A run
+whose SKU has no baseline is informational, not a failure — which is why
+every PR run echoes `perf-gate: head host_slug=<slug>` in its log and in
+the PR comment. Seed a missing SKU on demand:
+
+```bash
+gh workflow run perf-gate.yml --ref master     # repeat; SKU assignment is random
+```
+
+Expect the first comparisons against a fresh baseline to be noisy — a
+baseline is a single `--quick` matrix run, so run-to-run variance can
+read as a delta. Tuning `--regress-pct` once several SKUs have history
+is deliberate follow-up, not part of the gate's contract today.
 
 ## Canonical ritual: before/after a perf change
 
@@ -218,8 +248,13 @@ recent baseline. The older free-form file
 
 | Trigger | What it does |
 |---------|--------------|
-| Push to `master` (perf paths) | Runs `--quick` matrix, commits result to `docs/perf/baseline_latest/` |
-| PR touching perf paths | Runs `--quick` matrix, compares against `baseline_latest/`, posts a markdown table as a PR comment |
+| Push to `master` (perf paths) | Runs `--quick` matrix, appends the result to `docs/perf/baseline_latest/<slug>/` on the `perf-baseline` branch |
+| Manual `workflow_dispatch` | Same, on demand — how a missing host SKU gets seeded |
+| PR touching perf paths | Runs `--quick` matrix, fetches the baseline from `perf-baseline`, compares, posts a markdown table as a PR comment |
+
+The perf paths include the gate's own sources
+(`.github/workflows/perf-gate.yml`, `scripts/perf/**`), so a change to
+the gate is exercised by the gate.
 
 **Pass/fail rules:**
 
@@ -227,6 +262,18 @@ recent baseline. The older free-form file
   The author must justify or fix before merging.
 - Any cell that improves by **>5%** causes the `perf:improved` label to
   be added to the PR automatically.
+- Baseline resolution belongs to `compare_perf_runs.py:resolve_baseline`
+  alone — the workflow hands over a baseline *root* and never tests the
+  layout itself. A bash-side layout check is what silently retired the
+  gate when T-330 moved the writer to per-slug directories (#2817).
+- `check_regression.py` exit ≥ 2 means it could not compare at all. That
+  turns the step **red** and posts no comment: an infra failure must not
+  read as a perf verdict.
+
+`scripts/perf/tests/test_baseline_layouts.py` is the executed control for
+all of the above (layout resolution across empty / per-slug / legacy-flat
+roots, plus the exit mapping). It runs as the perf-gate job's first step,
+before the build.
 
 **Gate script (also usable locally):**
 
