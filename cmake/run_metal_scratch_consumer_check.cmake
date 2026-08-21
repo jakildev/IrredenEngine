@@ -197,6 +197,7 @@ set(in_list FALSE)
 set(found_list FALSE)
 set(found_terminator FALSE)
 set(listed_consumers "")
+set(conditional_depth 0)
 foreach(line IN LISTS pipeline_lines)
     if(NOT in_list)
         if(line MATCHES "bool[ \t]+functionUsesImageAtomicScratch\\(")
@@ -208,6 +209,27 @@ foreach(line IN LISTS pipeline_lines)
     if(line STREQUAL "}")
         set(found_terminator TRUE)
         break()
+    endif()
+    # A preprocessor conditional defeats this scan the same way it defeats the
+    # sibling run_metal_kernel_registry_check.cmake's scan: an entry inside
+    # #if/#ifdef/#ifndef may never reach the compiled binary, and a
+    # source-text pass has no preprocessor to evaluate which branch the build
+    # takes. Skip conditional lines entirely -- a disabled entry then reads as
+    # absent, the same way a commented-out entry reads (#2899), and falls
+    # through to the existing "absent from functionUsesImageAtomicScratch"
+    # failure below, which already names it.
+    if(line MATCHES "^[ \t]*#[ \t]*(if|ifdef|ifndef)([ \t(]|$)")
+        math(EXPR conditional_depth "${conditional_depth} + 1")
+        continue()
+    endif()
+    if(line MATCHES "^[ \t]*#[ \t]*endif([ \t]|$)")
+        if(conditional_depth GREATER 0)
+            math(EXPR conditional_depth "${conditional_depth} - 1")
+        endif()
+        continue()
+    endif()
+    if(conditional_depth GREATER 0)
+        continue()
     endif()
     # Comment-strip before harvesting names, for the same reason the kernel-side
     # scan does it. A commented-out entry is absent from the list as far as
