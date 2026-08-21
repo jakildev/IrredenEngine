@@ -2712,6 +2712,13 @@ case "${1:-}" in
         fi
         exit 0
         ;;
+    "")
+        # No argument — daemon boot path, handled after esac below.
+        ;;
+    *)
+        echo "usage: fleet-dispatcher: unrecognized argument: $1" >&2
+        exit 2
+        ;;
 esac
 
 main "$@"
