@@ -361,9 +361,12 @@ class MetalShaderPipelineImpl final : public ShaderPipelineImpl, public MetalPip
         colorAttachment->setDestinationRGBBlendFactor(MTL::BlendFactorOneMinusSourceAlpha);
         colorAttachment->setSourceAlphaBlendFactor(MTL::BlendFactorOne);
         colorAttachment->setDestinationAlphaBlendFactor(MTL::BlendFactorOneMinusSourceAlpha);
+        // Depth-only: stencil is unused engine-wide, so `createRenderEncoder`
+        // never sets a stencil attachment. Metal requires a pipeline state's
+        // stencil pixel format to stay `Invalid` while no stencil texture is
+        // attached, so declaring one here aborts under `MTL_DEBUG_LAYER=1`.
         if (depthPixelFormat != MTL::PixelFormatInvalid) {
             descriptor->setDepthAttachmentPixelFormat(depthPixelFormat);
-            descriptor->setStencilAttachmentPixelFormat(depthPixelFormat);
         }
 
         NS::Error *error = nullptr;

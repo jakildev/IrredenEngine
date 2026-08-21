@@ -36,7 +36,21 @@ struct FrameDataFramebuffer {
     mat4 mvpMatrix;
     vec2 textureOffset; // TODO: Update in texture scroll system and make
     // a frame data component as well or add as field for shader program
+    vec2 metalPad_;
 };
+
+// MSL rounds a constant-buffer struct up to its own 16-byte alignment and
+// validates the bound buffer's length against that rounded size, so
+// `sizeof(FrameDataFramebuffer)` must stay a multiple of 16 — `mat4 + vec2`
+// alone is 72 and binds short under `MTL_DEBUG_LAYER=1`. GL never checks UBO
+// sizes at draw, so only the validation layer sees a violation. Both the
+// allocation and the upload derive from `sizeof`, so the tail pad propagates
+// on its own; std140 offsets are unchanged because the pad is tail-only.
+static_assert(
+    sizeof(FrameDataFramebuffer) % 16 == 0,
+    "FrameDataFramebuffer size must be a multiple of 16 to match the size MSL "
+    "rounds its constant-buffer declaration to"
+);
 
 /// Per-frame UBO for the SPRITE_TO_SCREEN pass. The orthographic projection
 /// is computed CPU-side from the current viewport (one mat4 per frame, never
