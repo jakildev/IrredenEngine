@@ -36,6 +36,11 @@ FRAME_RE = re.compile(
 ENTITY_RE = re.compile(r"Entity count:\s+(\d+)\s+\((\d+)\s+archetypes\)")
 CULL_VISIBLE_RE = re.compile(r"^Visible\s+([\d.]+)\s+(\d+)\s+(\d+)")
 CULL_TOTAL_RE = re.compile(r"^Total\s+([\d.]+)\s+(\d+)\s+(\d+)")
+# The struct-1 shadow-feeder count (#2298). The report also prints a free-form
+# "Feeder ratio: cross-run only …" note right after the Ratio: line; like every
+# other cull regex this one is ^-anchored to its own row token, so that note
+# (and the "Ratio:" one) fall through it.
+CULL_FEEDER_RE = re.compile(r"^Feeder\s+([\d.]+)\s+(\d+)\s+(\d+)")
 CULL_RATIO_RE = re.compile(r"^Ratio:\s+([\d.]+)")
 SYSTEM_RE = re.compile(
     r"^(INPUT|UPDATE|RENDER)\s+(\S+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+"
@@ -81,6 +86,12 @@ class CullStats:
     max_total: int = 0
     samples: int = 0
     ratio: float = 0.0
+    # Feeder row (#2298). `has_feeder` distinguishes "row absent" (a report
+    # predating the row) from a measured 0 (sun shadows off ⇒ the compact
+    # classifies no feeders), so the table can print "—" for the former.
+    avg_feeder: float = 0.0
+    max_feeder: int = 0
+    has_feeder: bool = False
 
 
 @dataclass
@@ -186,6 +197,12 @@ def parse_report(path: Path, cell_id: str) -> CellReport:
             if m:
                 report.cull.avg_total = float(m.group(1))
                 report.cull.max_total = int(m.group(2))
+                continue
+            m = CULL_FEEDER_RE.match(s)
+            if m:
+                report.cull.avg_feeder = float(m.group(1))
+                report.cull.max_feeder = int(m.group(2))
+                report.cull.has_feeder = True
                 continue
             m = CULL_RATIO_RE.match(s)
             if m:
@@ -304,6 +321,27 @@ def format_frame_row(
     )
 
 
+def format_feeder_cell(base: CullStats, head: CullStats) -> str:
+    """The `avg feeder` column of the cull table.
+
+    The feeder cull ratio is cross-run by nature — the report has no in-run
+    denominator for it (see the "Feeder ratio:" note it prints) — so this
+    comparator, which is where two runs meet, is the place that ratio lives:
+    with a pv-off run as baseline and a pv-on run as head, the `(N×)` factor
+    is exactly "pv-on Avg / pv-off Avg", the number the #2298 acceptance gates
+    read. A side whose report predates the Feeder row shows "—", not 0 — a 0
+    is a real measurement (sun shadows off ⇒ no feeders classified).
+    """
+    if not base.has_feeder and not head.has_feeder:
+        return "—"
+    base_text = f"{base.avg_feeder:.0f}" if base.has_feeder else "—"
+    head_text = f"{head.avg_feeder:.0f}" if head.has_feeder else "—"
+    cell = f"{base_text} → {head_text}"
+    if base.has_feeder and head.has_feeder and base.avg_feeder > 0.0:
+        cell += f" ({head.avg_feeder / base.avg_feeder:.3f}×)"
+    return cell
+
+
 def collect_gpu_names(cells: Iterable[CellReport]) -> List[str]:
     names: List[str] = []
     seen = set()
@@ -347,8 +385,8 @@ def render_markdown(
         if has_cull:
             out.append("## voxel cull effectiveness (visible / total)")
             out.append("")
-            out.append("| cell | ratio (base→head) | avg visible | total |")
-            out.append("|------|-------------------|-------------|-------|")
+            out.append("| cell | ratio (base→head) | avg visible | total | avg feeder |")
+            out.append("|------|-------------------|-------------|-------|------------|")
             for cell_id in matched:
                 bc = base[cell_id].cull
                 hc = head[cell_id].cull
@@ -359,7 +397,8 @@ def render_markdown(
                     f"| `{cell_id}` "
                     f"| {bc.ratio:.3f} → {hc.ratio:.3f} ({ratio_delta_pp:+.1f}pp) "
                     f"| {bc.avg_visible:.0f} → {hc.avg_visible:.0f} "
-                    f"| {bc.avg_total:.0f} → {hc.avg_total:.0f} |"
+                    f"| {bc.avg_total:.0f} → {hc.avg_total:.0f} "
+                    f"| {format_feeder_cell(bc, hc)} |"
                 )
             out.append("")
 
