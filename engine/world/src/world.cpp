@@ -209,11 +209,15 @@ void World::gameLoop() {
             // (vsync-off) loop racing through the frame-counted capture window.
             m_timeManager.enableFixedStep();
             // ...and disarm `m_waitForFirstUpdateInput`. It holds the sim at
-            // the single priming tick until a real key press arrives, and a
-            // headless capture has no input source — so the gate can never
-            // open, and every frame of the capture window renders that one
-            // frozen tick, defeating the fixed step this block just armed.
-            // A live run keeps the gate.
+            // the single priming tick until a real key press arrives. Under
+            // `--auto-screenshot` there is no input source, so the gate can
+            // never open; under the GUI-test path (createGuiTestSystem also
+            // sets this flag and arms synthetic input) an input source does
+            // exist, but the sim should still advance deterministically
+            // rather than wait on the shot table's first injected press.
+            // Left armed in either case, every frame of the capture window
+            // renders that one frozen tick, defeating the fixed step this
+            // block just armed. A live run keeps the gate.
             //
             // This block must stay ABOVE the priming `update()` below.
             // `enableFixedStep()` zeroes the UPDATE lag accumulator, and

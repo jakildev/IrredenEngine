@@ -581,9 +581,14 @@ same `config = { ... }` table — there is one source of truth per file.
 
   **`m_waitForFirstUpdateInput` is force-disarmed under `--auto-screenshot`**
   (see #2990). It is a live-operator affordance — it holds the sim at the
-  single priming `update()` until a real key press arrives — and a headless
-  capture has no input source, so the gate can never open. Left armed, the
-  whole capture window renders one frozen tick, silently defeating the
+  single priming `update()` until a real key press arrives. Under
+  `--auto-screenshot` there is no input source, so the gate can never open;
+  under the GUI-test path (`createGuiTestSystem`, which also sets
+  `g_autoCaptureActive` and arms synthetic input via
+  `IRInput::beginSyntheticInput()`) an input source does exist, but the sim
+  should still advance deterministically rather than wait on the shot
+  table's first injected press. Left armed in either case, the whole capture
+  window renders one frozen tick, silently defeating the
   `enableFixedStep()` carve-out in the same `gameLoop()` block. The
   auto-capture branch therefore clears the flag and logs the override at
   INFO. `m_startRecordingOnFirstInput` is deliberately left armed:
