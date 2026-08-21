@@ -61,6 +61,7 @@ add_executable(IrredenEngineTest
   render/camera_pan_pivot_test.cpp
   render/camera_yaw_test.cpp
   render/detached_world_depth_test.cpp
+  render/fog_cross_section_test.cpp
   render/per_axis_canvas_size_test.cpp
   render/frame_data_sun_layout_test.cpp
   render/gizmo_drag_reset_test.cpp
@@ -143,10 +144,13 @@ target_link_libraries(IrredenEngineTest PUBLIC
 # shader source tree is engine/render/src/shaders/.
 #
 # IR_TEST_GPU_SHADER_DIR points at the test-local shader tree
-# (test/render/shaders/) holding the tiny purpose-built repro kernels the Metal
-# half of that test dispatches — the Metal pipeline resolves the `metal/`
-# subdir + `.metal` sibling from a `.glsl`-shaped path, exactly like the engine
-# shader dir, so no `.glsl` twin is needed for a Metal-only kernel.
+# (test/render/shaders/) holding the tiny purpose-built kernels the headless-GPU
+# tests dispatch: `metal/*.metal` repro kernels for the Metal half of that test,
+# and `*.glsl` probe kernels for GL-only harnesses such as
+# render/fog_cross_section_test.cpp. A Metal-only kernel needs no `.glsl` twin —
+# the Metal pipeline resolves the `metal/` subdir + `.metal` sibling from a
+# `.glsl`-shaped path, exactly like the engine shader dir. A GL probe reaches
+# the engine shaders it includes by relative path from this directory.
 target_compile_definitions(IrredenEngineTest PRIVATE
     IR_TEST_RENDER_SHADER_DIR="${CMAKE_SOURCE_DIR}/engine/render/src/shaders"
     IR_TEST_GPU_SHADER_DIR="${CMAKE_SOURCE_DIR}/test/render/shaders"
