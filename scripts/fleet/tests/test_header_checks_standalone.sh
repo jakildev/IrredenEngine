@@ -37,6 +37,20 @@
 #     the slot is aliased and always has consumers)
 #   - an unreadable scratch-slot constant           → exit 1 (anchor guard)
 #   - a missing PROJECT_ROOT                        → exit 1 (usage guard)
+#   - `inline void *g_x = ...;`                     → exit 1 (#2916: the old
+#     undocumented `void` reject exempted this mutable pointer)
+#   - `inline void f() {}`                          → exit 0 (already caught
+#     by the function-declaration guard; the `void` reject was redundant)
+#   - a wrapped declaration terminator              → exit 1 (#2916: the
+#     formatter-defeat case the repo's own 100-col clang-format produces)
+#   - `inline const T *const p`                     → exit 0 (both ends const
+#     is a program constant, and the arm pins that the header entered the scan
+#     rather than passing by skipping the candidate gate)
+#   - `inline const T *p` / `inline T *const p`     → exit 1 (single-sided
+#     const is still unowned mutable state — #2726's `g_activeShots` shape)
+#   - a wrapped declaration whose head line carries a trailing comment with
+#     a paren in it                                 → exit 1 (the comment's
+#     `(` must not read as a function-declaration guard hit)
 
 set -uo pipefail
 
@@ -495,6 +509,126 @@ assert_contains "$backend_out" "metal_probe.hpp" "failure names the metal header
 assert_contains "$backend_out" "g_metalBackendGlobal" "failure names the metal declaration"
 assert_contains "$backend_out" "gl_probe.h" "failure names the gl_wrap header"
 assert_contains "$backend_out" "g_glWrapBackendGlobal" "failure names the gl_wrap declaration"
+
+# --- a void-pointer global fails (#2916 Defect 2: the old undocumented
+# `void` reject exempted this mutable, unowned pointer) ---------------------
+VOIDPTR="$TMPROOT/voidptr"
+make_fixture "$VOIDPTR"
+cat > "$VOIDPTR/engine/include/irreden/voidptr.hpp" <<'EOF'
+#pragma once
+namespace IRFixture {
+inline void *g_metalDevice = nullptr;
+}
+EOF
+voidptr_out=$(run_checker "$VOIDPTR")
+voidptr_rc=$?
+assert_eq "1" "$voidptr_rc" "void-pointer header global makes the checker exit 1"
+assert_contains "$voidptr_out" "g_metalDevice" \
+    "failure names the void-pointer declaration"
+
+# --- a void function still passes (the deleted `void` reject was redundant
+# for this case — the function-declaration guard already catches it) -------
+VOIDFN="$TMPROOT/voidfn"
+make_fixture "$VOIDFN"
+cat > "$VOIDFN/engine/include/irreden/voidfn.hpp" <<'EOF'
+#pragma once
+namespace IRFixture {
+inline void doThing() {}
+}
+EOF
+voidfn_out=$(run_checker "$VOIDFN")
+voidfn_rc=$?
+assert_eq "0" "$voidfn_rc" "void function still passes without the void reject"
+
+# --- a declaration whose terminator wraps onto a continuation line fails
+# (#2916 Defect 1: the formatter-defeat case — the repo's own 100-col
+# clang-format wraps a long `inline` declaration exactly like this) ---------
+WRAPPED="$TMPROOT/wrapped"
+make_fixture "$WRAPPED"
+cat > "$WRAPPED/engine/include/irreden/wrapped.hpp" <<'EOF'
+#pragma once
+#include <unordered_map>
+namespace IRFixture {
+inline std::unordered_map<int, int>
+    g_wrappedRegistry;
+}
+EOF
+wrapped_out=$(run_checker "$WRAPPED")
+wrapped_rc=$?
+assert_eq "1" "$wrapped_rc" "wrapped-declaration header global makes the checker exit 1"
+assert_contains "$wrapped_out" "g_wrappedRegistry" \
+    "failure names the wrapped declaration"
+
+# --- a both-ends-const pointer is a program constant and stays exempt -------
+REALCONST="$TMPROOT/realconst"
+make_fixture "$REALCONST"
+cat > "$REALCONST/engine/include/irreden/realconst.hpp" <<'EOF'
+#pragma once
+namespace IRFixture {
+inline const char *const g_realConstName = "ok";
+}
+EOF
+realconst_out=$(run_checker "$REALCONST")
+realconst_rc=$?
+assert_eq "0" "$realconst_rc" "both-ends-const pointer stays exempt"
+
+# A header the scan never reached exits 0 too, so the count is what makes the
+# exemption a measurement, not just an exit code: the clean fixture scans 2
+# (clean.hpp plus the render-backend metal_runtime.hpp, in scope since #2889
+# widened the collector to INCLUDE_RENDER_BACKENDS), so this fixture must
+# scan 3. Both numbers are measured against make_fixture — re-measure them if
+# it grows a header, rather than assuming the delta.
+assert_contains "$realconst_out" "scanned 3 header file(s)" \
+    "the exempt header entered the scan rather than skipping the candidate gate"
+
+# --- single-sided const on a pointer is still a banned global ---------------
+# Both halves live in one header so the two failures prove the scan read this
+# file — which is what makes the third assertion (the both-ends form is NOT
+# named) evidence about the reject chain rather than about a skipped file.
+# This is the shape that hid a real `g_activeShots` violation through an entire
+# hand-grep pass (#2726), and .claude/rules/cpp-globals.md calls it out by name.
+HALFCONST="$TMPROOT/halfconst"
+make_fixture "$HALFCONST"
+cat > "$HALFCONST/engine/include/irreden/halfconst.hpp" <<'EOF'
+#pragma once
+namespace IRFixture {
+inline const char *const g_bothEndsConst = "ok";
+inline const char *g_pointeeConstOnly = "reseatable";
+inline char *const g_handleConstOnly = nullptr;
+}
+EOF
+halfconst_out=$(run_checker "$HALFCONST")
+halfconst_rc=$?
+assert_eq "1" "$halfconst_rc" "single-sided-const pointer globals exit 1"
+assert_contains "$halfconst_out" "g_pointeeConstOnly" \
+    "leading const alone leaves a reseatable pointer, still flagged"
+assert_contains "$halfconst_out" "g_handleConstOnly" \
+    "trailing const alone freezes the handle, not the data, still flagged"
+assert_absent "$halfconst_out" "g_bothEndsConst" \
+    "both-ends-const in that same scanned header is exempt"
+
+# --- a paren inside a trailing comment on a wrapped head line still flags ---
+# The join buffer used to carry the raw head line verbatim, so a `(` inside
+# `// registry (id -> slot)` on the head of a wrapped declaration satisfied
+# the function-declaration guard and the global silently exempted itself.
+# Comments are now stripped before either the terminator test or the guard
+# see it.
+PARENCOMMENT="$TMPROOT/parencomment"
+make_fixture "$PARENCOMMENT"
+cat > "$PARENCOMMENT/engine/include/irreden/parencomment.hpp" <<'EOF'
+#pragma once
+#include <unordered_map>
+namespace IRFixture {
+inline std::unordered_map<int, int>  // registry (id -> slot)
+    g_parenCommentRegistry;
+}
+EOF
+parencomment_out=$(run_checker "$PARENCOMMENT")
+parencomment_rc=$?
+assert_eq "1" "$parencomment_rc" \
+    "a paren inside a wrapped head line's trailing comment does not exempt the global"
+assert_contains "$parencomment_out" "g_parenCommentRegistry" \
+    "failure names the paren-comment-wrapped declaration"
 
 # --- usage guard ------------------------------------------------------------
 noroot_out=$(cmake -P "$CHECKER" 2>&1)
