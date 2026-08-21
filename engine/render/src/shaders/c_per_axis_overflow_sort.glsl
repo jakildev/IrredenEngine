@@ -48,7 +48,7 @@
 // the elements that compare against each other are exactly those differing
 // only in bits [pLo, pHi] — 2^n of them. `c` is the COMPRESSED index over
 // every OTHER bit of the global entry index, so
-//     i = ((c >> pLo) << (pHi + 1)) | (active << pLo) | (c & ((1 << pLo) - 1))
+//     i = ((c >> pLo) << (pHi + 1)) | (activeBits << pLo) | (c & ((1 << pLo) - 1))
 // reinserts the active window. A workgroup owns kBlock >> n consecutive
 // slabs, hence kBlock elements and cap/kBlock workgroups for EVERY stride
 // group regardless of its width. pLo == 0 degenerates to a contiguous block,
