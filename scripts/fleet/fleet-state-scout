@@ -2112,10 +2112,11 @@ def _merger_action_signal(labels, mergeable, base_ref):
     fired, toggled its cooldown, re-fired itself on the next scout tick.
     Observed live 2026-05-09 burning ~$2/10min on idle state.
 
-    `fleet:needs-linux-smoke` / `fleet:needs-macos-smoke` are also
-    skip signals — the merger isn't the agent that resolves those;
-    a smoke-runner clears them. Including them as merger candidates
-    just makes the merger fire repeatedly to find nothing to do.
+    `fleet:needs-linux-smoke` / `fleet:needs-macos-smoke` /
+    `fleet:needs-windows-smoke` are also skip signals — the merger
+    isn't the agent that resolves those; a smoke-runner clears them.
+    Including them as merger candidates just makes the merger fire
+    repeatedly to find nothing to do.
 
     `fleet:human-deferred` is intentionally NOT skipped. It marks a PR
     whose *human-review feedback* was deferred to a follow-up issue
@@ -2154,7 +2155,7 @@ def _merger_action_signal(labels, mergeable, base_ref):
         # design-blocked; design-unblock re-surfaces it (#1664).
         "fleet:design-proposed",
         "fleet:needs-info", "fleet:needs-linux-smoke",
-        "fleet:needs-macos-smoke",
+        "fleet:needs-macos-smoke", "fleet:needs-windows-smoke",
         # Blocked on a gated self-config edit no agent can push. The
         # conflict itself is in the gated file, so the merger can never
         # resolve or merge it — skip unconditionally (human-only). This is
