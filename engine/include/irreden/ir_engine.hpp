@@ -63,6 +63,14 @@ void applyPreInitLuaConfig(const char *configFile);
 // this deterministic clear prevents.
 void clearEntityEventHandlers();
 
+// Warns when --auto-screenshot was provided but no creation registered a
+// capture system, so the run would otherwise render indefinitely with no
+// diagnostic (#2941). Out-of-line in engine.cpp for the same reason as
+// clearEntityEventHandlers: the check reads IRVideo::isAutoCaptureActive(),
+// and inlining it would put ir_video.hpp in this header's include graph —
+// widening every includer of ir_engine.hpp to buy one log line.
+void warnIfAutoScreenshotNeverArmed();
+
 } // namespace detail
 
 // The process-global engine argument parser, pre-loaded with the engine-common
@@ -128,6 +136,7 @@ inline int entityCountOverride() {
 // process-exit destructor unrefs into nothing (#2572). Order matters: after
 // the reset the VM is gone and the unref is the crash itself.
 inline void gameLoop() {
+    detail::warnIfAutoScreenshotNeverArmed();
     getWorld().gameLoop();
     detail::clearEntityEventHandlers();
     g_world.reset();

@@ -138,7 +138,8 @@ template <std::size_t LabelSize = 40> struct IndexedSweepShots {
     }
 };
 
-/// True once @c createAutoScreenshotSystem has been called this run — i.e. the
+/// True once either capture-system creator (@c createAutoScreenshotSystem or
+/// @c createGuiTestSystem) has been called this run — i.e. the
 /// process is doing a headless auto-screenshot capture. @c World reads this to
 /// switch the UPDATE loop to a deterministic fixed step (one tick per render
 /// frame) so per-tick animation (AUTO_SPIN, etc.) advances reproducibly during
