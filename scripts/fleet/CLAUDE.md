@@ -147,6 +147,13 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   inlining. `test_smoke_worker_projection.py`'s `TwoCopiesAgree` is the
   reference shape. Bash reaches `fleet_task_class.py` the other way, through a
   CLI arm (`--plan-pick`, `--smoke-check`), never an import.
+- **`state.json` has a hard size ceiling; don't widen the projection without
+  checking it.** Every role reads it through the Read tool's 256 KB cap, so the
+  scout emits it **compact** and retains a review body only on the latest review
+  per PR — do not "tidy" either back. The scout warns and writes an alert past
+  7/8 of the cap. Invariant + the measured budget:
+  [`docs/agents/FLEET-CACHE.md`](../../docs/agents/FLEET-CACHE.md) §"Size
+  invariant".
 - **Concurrently-read state writers use `write_atomic`, never plain
   `write_text`.** A JSON/state/cache file that another process may read
   mid-write is persisted with the module's `write_atomic()` helper
