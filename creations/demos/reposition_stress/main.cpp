@@ -19,6 +19,15 @@
 //                    EVAL tick -> setPosition binding -> getComponent)
 //   --churn          additionally create + destroy transient entities every tick,
 //                    exercising swap-remove / flush bookkeeping alongside the moves
+//   --stale-probe    additionally re-probe DESTROYED ids every tick through the
+//                    honest-answer API, asserting a dead id answers false/nullopt
+//                    and that probing it mints no index record
+//
+// The arms differ in what they can detect. The four drive arms touch only
+// live, placed ids, so they are forward-looking locks on the reposition path.
+// `--stale-probe` is the discriminating one — it exercises the dead-id lookup
+// contract, so it fires on a store that mints a record for a dead id. See
+// probeStaleIds().
 //
 // Exit code is the whole result: 0 = the full tick horizon ran clean, 1 = an
 // engine assert fired (IR_ASSERT throws) or an invariant check failed. So
@@ -65,6 +74,7 @@
 #include <cstdio>
 #include <exception>
 #include <list>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -81,6 +91,7 @@ constexpr const char *kArgChurn = "--churn";
 constexpr const char *kArgTicks = "--ticks";
 constexpr const char *kArgSets = "--sets";
 constexpr const char *kArgChurnPerTick = "--churn-per-tick";
+constexpr const char *kArgStaleProbe = "--stale-probe";
 
 // One-voxel sets: the defect is about the number of SETS moved per tick, not
 // the voxel count, and a 1^3 set keeps the pool footprint trivial at 100+ sets.
@@ -89,8 +100,16 @@ constexpr int kLatticeStride = 2;
 constexpr int kLatticeWidth = 10;
 constexpr float kDriftAmplitude = 3.0f;
 
+// --stale-probe seeds this many entities, destroys them immediately, and keeps
+// their ids for the whole run, so the arm has dead ids to probe even without
+// --churn. Retired --churn ids fold in on top, bounded by kStaleRingCap so a
+// long horizon can't grow the probe set without limit.
+constexpr int kStaleSeedCount = 16;
+constexpr std::size_t kStaleRingCap = 256;
+
 Drive g_drive = Drive::COLUMN;
 bool g_churn = false;
+bool g_staleProbe = false;
 int g_tickHorizon = 3600;
 int g_setCount = 100;
 int g_churnPerTick = 8;
@@ -104,6 +123,49 @@ int g_failCount = 0;
 // iterating entity.
 std::vector<IREntity::EntityId> g_setEntities;
 std::vector<IREntity::EntityId> g_churnEntities;
+
+// Ids of entities that are CONFIRMED dead, retained deliberately. The
+// --stale-probe arm re-probes these every tick: a creation that outlives its
+// entities holds exactly these, and probing one is what pre-#2565 turned into
+// delayed corruption. This is sound only because ids are never recycled
+// (entity_manager.hpp: monotonic `m_nextEntityId.fetch_add`, no recycle
+// pool) — under a recycling allocator a retained id could come back as a
+// live entity and this arm would report spurious failures.
+std::vector<IREntity::EntityId> g_staleEntities;
+
+// Ids marked for deletion but not yet drained. `IREntity::destroyEntity` is
+// the DEFERRED free function (it calls markEntityForDeletion); the eager
+// destroy is the same-named EntityManager method. So an id marked here is
+// still fully alive until `destroyMarkedEntities` runs at the frame boundary,
+// and probing it in the same tick would assert against a live entity.
+std::vector<IREntity::EntityId> g_stalePending;
+
+// Push a confirmed-dead id onto the probe set, oldest-out once it is full.
+void retainStale(IREntity::EntityId entity) {
+    if (g_staleEntities.size() >= kStaleRingCap) {
+        g_staleEntities.erase(g_staleEntities.begin());
+    }
+    g_staleEntities.push_back(entity);
+}
+
+// Promote pending ids the engine has actually drained. Gating on "no longer
+// exists" rather than on a tick count keeps this correct without depending on
+// where `destroyMarkedEntities` sits relative to the UPDATE pipeline.
+//
+// Compacts in place: this runs every tick, so building a replacement vector
+// here would allocate per tick.
+void promoteDrainedStale() {
+    std::size_t keep = 0;
+    for (std::size_t i = 0; i < g_stalePending.size(); ++i) {
+        const IREntity::EntityId entity = g_stalePending[i];
+        if (IREntity::entityExists(entity)) {
+            g_stalePending[keep++] = entity;
+            continue;
+        }
+        retainStale(entity);
+    }
+    g_stalePending.resize(keep);
+}
 
 IRMath::vec3 driftFor(int index, int tick) {
     const float phase = static_cast<float>(index) * 0.37f + static_cast<float>(tick) * 0.05f;
@@ -126,6 +188,7 @@ void readArgs();
 void initSystems();
 void initEntities();
 void checkStoreInvariants();
+void probeStaleIds();
 
 int main(int argc, char **argv) {
     IR_LOG_INFO("Starting creation: reposition_stress");
@@ -137,12 +200,13 @@ int main(int argc, char **argv) {
     initEntities();
 
     IR_LOG_INFO(
-        "[reposition_stress] drive={} churn={} sets={} ticks={}",
+        "[reposition_stress] drive={} churn={} staleProbe={} sets={} ticks={}",
         g_drive == Drive::NONE
             ? "none"
             : (g_drive == Drive::COLUMN ? "column"
                                         : (g_drive == Drive::LOOKUP ? "lookup" : "node")),
         g_churn,
+        g_staleProbe,
         g_setCount,
         g_tickHorizon
     );
@@ -207,6 +271,11 @@ void registerArgs() {
         "column"
     );
     args.flag(kArgChurn, "Also create + destroy transient entities every tick");
+    args.flag(
+        kArgStaleProbe,
+        "Also re-probe destroyed entity ids every tick through the honest-answer "
+        "API, asserting the probe neither crashes nor mints an index record"
+    );
     args.integer(kArgTicks, "UPDATE ticks to run before exiting cleanly", 3600);
     args.integer(kArgSets, "Voxel-set entities spawned (and repositioned per tick)", 100);
     args.integer(kArgChurnPerTick, "Transient entities created per tick under --churn", 8);
@@ -225,6 +294,7 @@ void readArgs() {
         g_drive = Drive::NODE;
     }
     g_churn = args.getFlag(kArgChurn);
+    g_staleProbe = args.getFlag(kArgStaleProbe);
     g_tickHorizon = args.getInt(kArgTicks);
     g_setCount = args.getInt(kArgSets);
     g_churnPerTick = args.getInt(kArgChurnPerTick);
@@ -311,6 +381,14 @@ void initSystems() {
                     if (IREntity::entityExists(entity)) {
                         IREntity::destroyEntity(entity);
                     }
+                    if (g_staleProbe) {
+                        // Fresh corpses on top of the init seed: these died
+                        // while the store was live and busy, so they exercise
+                        // the swap-remove bookkeeping the seed ids do not.
+                        // Staged, not probed yet — the destroy above is
+                        // deferred, so they are still alive this tick.
+                        g_stalePending.push_back(entity);
+                    }
                 }
                 g_churnEntities.clear();
                 for (int i = 0; i < g_churnPerTick; ++i) {
@@ -335,6 +413,9 @@ void initSystems() {
         IRSystem::createSystem<C_VoxelPool>("reposition_stress_horizon", [](C_VoxelPool &) {
             ++g_tick;
             checkStoreInvariants();
+            if (g_staleProbe) {
+                probeStaleIds();
+            }
             if (g_tick % 300 == 0) {
                 IR_LOG_INFO(
                     "[reposition_stress] tick {}/{} liveEntities={}",
@@ -400,6 +481,31 @@ void initEntities() {
     g_setEntities =
         IREntity::getEntityManager().createEntitiesBatch(transforms, worldTransforms, sets);
     IR_LOG_INFO("[reposition_stress] spawned {} voxel-set entities", g_setEntities.size());
+
+    if (!g_staleProbe) {
+        return;
+    }
+    g_staleEntities.reserve(kStaleRingCap);
+    // Seed the probe set with ids that are dead before the loop starts, so the
+    // arm is meaningful on its own rather than only in combination with
+    // --churn. These are plain entities: the probe is about the record lookup,
+    // which is component-agnostic.
+    //
+    // The EAGER manager destroy, deliberately — `IREntity::destroyEntity` is
+    // the deferred free function, so it would leave these fully alive and the
+    // first probe would assert against a live entity. We are on the main
+    // thread outside the loop, which is exactly where the eager API is legal.
+    for (int i = 0; i < kStaleSeedCount; ++i) {
+        const IREntity::EntityId entity = IREntity::createEntity(
+            C_LocalTransform{IRMath::vec3{static_cast<float>(i), 0.0f, -16.0f}}
+        );
+        IREntity::getEntityManager().destroyEntity(entity);
+        retainStale(entity);
+    }
+    IR_LOG_INFO(
+        "[reposition_stress] seeded {} destroyed ids for --stale-probe",
+        g_staleEntities.size()
+    );
 }
 
 // Per-tick store audit. The defect's signature was a live handle whose record
@@ -435,5 +541,49 @@ void checkStoreInvariants() {
             IRWindow::closeWindow();
             return;
         }
+    }
+}
+
+// The discriminating arm: the only one that probes DEAD ids. The four drive
+// arms touch exclusively live, placed ids, so no store regression on the
+// dead-id lookup path can move them.
+//
+// The contract asserted here is engine/entity/CLAUDE.md §"Record lookup": a
+// dead id answers honestly through the optional/has/exists API, and probing it
+// must not mint an index record. On the actual #2565 regression, the first
+// three probes (existsBefore/optional/has) all answer honestly — the mint
+// happens DURING the probe, so those wrappers still return their negative
+// result before the poison record is observable. `existsAfter` is the only
+// term that fires; do not delete it as a redundant leading-terms simplification.
+void probeStaleIds() {
+    promoteDrainedStale();
+    const IREntity::ComponentId transformType = IREntity::getComponentType<C_LocalTransform>();
+    for (std::size_t i = 0; i < g_staleEntities.size(); ++i) {
+        const IREntity::EntityId entity = g_staleEntities[i];
+
+        const bool existsBefore = IREntity::entityExists(entity);
+        const std::optional<C_LocalTransform *> xform =
+            IREntity::getComponentOptional<C_LocalTransform>(entity);
+        const bool has = IREntity::getEntityManager().hasComponent(entity, transformType);
+        // Re-read AFTER the probes: this is the poison-mint lock.
+        const bool existsAfter = IREntity::entityExists(entity);
+
+        if (!existsBefore && !xform.has_value() && !has && !existsAfter) {
+            continue;
+        }
+        IR_LOG_ERROR(
+            "[reposition_stress] tick {}: destroyed entity {} answered dishonestly "
+            "(existsBefore={} optional={} hasComponent={} existsAfter={}) — a dead id must "
+            "answer false/nullopt, and probing it must not mint an index record (#2565)",
+            g_tick,
+            entity,
+            existsBefore,
+            xform.has_value(),
+            has,
+            existsAfter
+        );
+        ++g_failCount;
+        IRWindow::closeWindow();
+        return;
     }
 }
