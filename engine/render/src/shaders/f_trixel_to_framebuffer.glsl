@@ -118,6 +118,12 @@ void main() {
     // tier == depthPriorityMode and the output is byte-identical. The hover
     // read below uses originShifted and is gated on isMouseHovered separately
     // (twin of trixel_to_framebuffer.metal's sampleCoord / hoverCoord split).
+    // So a fragment that is BOTH prioritized and hovered fetches
+    // triangleEntityIds TWICE — once here at originRaw, once at originShifted
+    // below. The two reads want different texels, so the pair is not redundant:
+    // one shared fetch has to pick a single origin, and either choice
+    // reintroduces a parity-shifted read on the path that needs the other
+    // (#394, #442).
     int tier = depthPriorityMode;
     if (anyPerTrixelPriority != 0) {
         uvec2 sampleEntityId = textureLod(triangleEntityIds, originRaw / vec2(textureSize), 0).rg;

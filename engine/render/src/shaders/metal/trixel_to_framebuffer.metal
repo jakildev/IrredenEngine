@@ -132,7 +132,12 @@ fragment FragmentOut f_trixel_to_framebuffer(
     // the output is byte-identical. This read never feeds picking (the hover
     // read below uses the shifted hoverCoord and is gated on isMouseHovered
     // separately), so no `|| isMouseHovered` disjunct is needed — the GLSL twin
-    // carries the same sampleCoord/hoverCoord split.
+    // carries the same sampleCoord/hoverCoord split. So a fragment that is BOTH
+    // prioritized and hovered reads triangleEntityIds TWICE — once here at
+    // sampleCoord, once at hoverCoord below. The two reads want different
+    // texels, so the pair is not redundant: one shared fetch has to pick a
+    // single coord, and either choice reintroduces a parity-shifted read on the
+    // path that needs the other (#394, #442).
     int tier = frameData.depthPriorityMode;
     if (frameData.anyPerTrixelPriority != 0) {
         const uint2 sampleEntityId = triangleEntityIds.read(sampleCoord).rg;
