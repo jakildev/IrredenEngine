@@ -11,9 +11,10 @@
 
 #version 450 core
 
-// Sole consumer here is kScatterCellTie{Step,Band} — the same include the
-// sibling fragment gather (f_trixel_to_framebuffer.glsl) already uses, so the
-// tie band has exactly one GLSL definition site.
+// Consumed here: kScatterCellTie{Step,Band} and scatterAnalyticEdgeCoverage
+// (#1937) — the same include the sibling fragment gather
+// (f_trixel_to_framebuffer.glsl) already uses, so the tie band has exactly one
+// GLSL definition site.
 #include "ir_iso_common.glsl"
 
 flat in vec4 vColor;
@@ -33,6 +34,16 @@ flat in float vMarginDepthBias;
 // proportion to its own extrapolation excursion (the doubled top<->side sliver).
 flat in float vMarginYieldGradU;
 flat in float vMarginYieldGradV;
+// Interior-edge yield-slope floor + flat interior yield (#2428) — see
+// v_peraxis_scatter.glsl. A margin that penetrated an INTERIOR edge extends over
+// the ADJACENT visible face, so its yield slope is floored at the cross-face
+// divergence bound and it pays the flat (flip << 2) | slot key-span bias; a
+// boundary (silhouette) penetration keeps the tighter own-slope yield.
+flat in float vMarginYieldGradFloor;
+flat in float vMarginInteriorYieldBias;
+// Per-edge interior/boundary classification for the analytic coverage (#1937):
+// .x = u-low, .y = u-high, .z = v-low, .w = v-high; 1 = interior, 0 = silhouette.
+flat in vec4 vEdgeInterior;
 // Face-center iso-depth for per-face depth-color (#1697). Flat (constant across
 // the quad) — origin is the same for all 4 corners of a face instance, so
 // interpolation would be a no-op anyway and flat avoids shader-pipeline
@@ -62,6 +73,19 @@ void main() {
     if (vColor.a < 0.1) {
         discard;
     }
+    // Analytic edge-aware coverage (#1937, epic #1933 root fix). The visit-bound
+    // dilation now only guarantees this fragment was VISITED; the coverage DECISION
+    // is here, from the fragment's position in the true [0,1]^2 footprint
+    // (vQuadParam) and its per-edge interior/boundary flags. Hard-thresholded for
+    // the R32I/depth co-sort write (no alpha blend). This removes the #1883
+    // near-cardinal corner spikes and foreshortened-silhouette dashing at the
+    // source. fwidth() before any non-uniform discard so the derivative is valid
+    // (the alpha test above is on a flat varying — uniform across the instance).
+    const float coverage =
+        scatterAnalyticEdgeCoverage(vQuadParam, fwidth(vQuadParam), vEdgeInterior);
+    if (coverage < 0.5) {
+        discard;
+    }
     const bool inMargin = any(lessThan(vQuadParam, vec2(0.0))) ||
                           any(greaterThan(vQuadParam, vec2(1.0)));
     if (vDepthColorMode == -1) {
@@ -83,8 +107,27 @@ void main() {
     // yields the shared ridge to the neighbor face's exact footprint, while a
     // sub-pixel gap-fill yields almost nothing and still wins (#1883).
     const vec2 outside = max(max(-vQuadParam, vQuadParam - vec2(1.0)), vec2(0.0));
-    const float yieldBias =
-        vMarginDepthBias + outside.x * vMarginYieldGradU + outside.y * vMarginYieldGradV;
+    // Interior-edge yield floor (#2428): a margin that penetrated an INTERIOR
+    // edge is extending over the adjacent visible face — floor its yield slope
+    // at the cross-face divergence bound so it always loses to that face's exact
+    // fragments (see vMarginYieldGradFloor). The penetrated side is u/v-low when
+    // vQuadParam < 0, u/v-high when > 1; vEdgeInterior packs (u-low, u-high,
+    // v-low, v-high).
+    const float interiorU = (vQuadParam.x < 0.5) ? vEdgeInterior.x : vEdgeInterior.y;
+    const float interiorV = (vQuadParam.y < 0.5) ? vEdgeInterior.z : vEdgeInterior.w;
+    const float gradU = (interiorU > 0.5)
+        ? max(vMarginYieldGradU, vMarginYieldGradFloor)
+        : vMarginYieldGradU;
+    const float gradV = (interiorV > 0.5)
+        ? max(vMarginYieldGradV, vMarginYieldGradFloor)
+        : vMarginYieldGradV;
+    // The flat interior term (see vMarginInteriorYieldBias) covers the
+    // penetration-INDEPENDENT (flip<<2)|slot key gap between adjacent faces; the
+    // floored slope covers the penetration-proportional plane divergence.
+    const bool interiorPen =
+        (outside.x > 0.0 && interiorU > 0.5) || (outside.y > 0.0 && interiorV > 0.5);
+    const float yieldBias = vMarginDepthBias + outside.x * gradU + outside.y * gradV +
+        (interiorPen ? vMarginInteriorYieldBias : 0.0);
     // #2255: band-quantize + cell-code injection (see vCellTieOffset above).
     // Exact power-of-two float ops, so same-band fragments from different
     // cells land on bit-distinct, cell-ordered depths on every backend.

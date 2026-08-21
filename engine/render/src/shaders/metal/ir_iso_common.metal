@@ -859,8 +859,7 @@ inline void faceInPlaneIsoSteps(int faceId, thread int2& su, thread int2& sv) {
 // ONLY a rasterization visit-bound — f_peraxis_scatter now decides coverage
 // analytically from the true [0,1]^2 footprint, so this just has to be wide
 // enough (~1px) that every fragment the true footprint could touch gets visited.
-// The GL twin still carries the old coverage role; it ports to the visit-bound in
-// #1938.
+// The GL twin (ir_iso_common.glsl) carries the same visit-bound role.
 constant float kScatterDilateMarginPx = 0.85;
 
 // Depth penalty (xkDepthEncodeShift+slot key scale) a scatter fragment in the conservative-
@@ -954,8 +953,8 @@ constant float kScatterDetachedPitchFraction = 0.5;
 // the dilation only guarantees the rasterizer VISITS the fragments the true
 // footprint could touch. f_peraxis_scatter decides coverage analytically from
 // vQuadParam, which removes the #1883 corner-spike-vs-dashing trade-off at the
-// source. The #1538 miter geometry below is kept as the visit-bound shape. GL
-// twin (still the old per-axis coverage role) ports in #1938.
+// source. The #1538 miter geometry below is kept as the visit-bound shape. The GL
+// twin carries the same fixed visit-bound.
 //
 // MITER, not additive sum (#1538): the naive marginPx*(e1+e2) of the two edge
 // normals cancels at a sliver's acute corner (e1,e2 antiparallel -> sum ~0),
@@ -1007,7 +1006,7 @@ inline float2 scatterConservativeDilation(
 }
 
 // Analytic edge-aware coverage for the per-axis forward-scatter (#1937, the epic
-// #1933 root fix; Metal-lead, GL twin in #1938). `q` is the fragment's position in
+// #1933 root fix; hand-mirrored with the GL twin in ir_iso_common.glsl). `q` is the fragment's position in
 // the face's true [0,1]^2 footprint (the scatter's vQuadParam, with the
 // visit-bound dilation landing just outside the unit box); `fw = fwidth(q)`
 // converts a footprint-parameter distance to framebuffer pixels. `interior` flags
