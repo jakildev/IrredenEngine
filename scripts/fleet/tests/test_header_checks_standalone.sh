@@ -17,13 +17,23 @@
 #     checks ran (1 kernel scanned, _body fragment excluded as an entry point
 #     but still read through the wrapper's include chain)
 #   - an unregistered Metal compute kernel          → exit 1, names the kernel
+#   - a line- or block-commented registry entry     → exit 1, names the kernel
+#     (a commented-out entry never reaches the compiled binary, so it must
+#     read as absent, not present — both comment forms, #2899)
+#   - a MULTI-LINE block-commented registry entry    → exit 1 (the registry's
+#     real entries are multi-line `if` conditions, so disabling one wraps
+#     several lines, not one — a same-line-only strip false-cleans this shape)
 #   - a registry with no bare "}" terminator line   → exit 1 (EOF guard, not
 #     a silent scan past the function into unrelated string literals)
 #   - a scratch consumer absent from the list       → exit 1, names the kernel
 #   - a non-atomic decl at the scratch slot         → exit 0 (the #1619 params
 #     UBO shape must NOT be flagged — negative control)
-#   - a commented-out list entry                    → exit 1 (the runtime stops
-#     binding for it, so it must read as absent, not present)
+#   - a line- or block-commented list entry         → exit 1 (the runtime stops
+#     binding for it, so it must read as absent, not present — both comment
+#     forms, #2899)
+#   - a MULTI-LINE block-commented list entry        → exit 1 (disabling a run
+#     of consecutive entries is the natural reason to reach for a block
+#     comment here, and that spans lines)
 #   - a hand-wrapped scratch declaration            → exit 1 (the qualifier test
 #     reads the declaration window, not the attribute's line)
 #   - an atomic neighbour on the slot's line        → exit 0 (that qualifier
@@ -78,11 +88,17 @@ trap 'rm -rf "$TMPROOT"' EXIT
 # it in the former — otherwise the registry check (#2798) FATALs first and the
 # arm silently tests that checker instead of the one it names.
 #
-# $4 (optional) is a list of scratch entries emitted COMMENTED OUT — the way a
-# developer disables one, rather than deleting it. bindComputeResources binds
-# off the live list, so those names must read as absent.
+# $4 (optional) is a list of scratch entries emitted LINE-COMMENTED OUT (//) —
+# the way a developer disables one, rather than deleting it. bindComputeResources
+# binds off the live list, so those names must read as absent. $5 is the same
+# but BLOCK-COMMENTED (/* ... */) — the sibling comment form #2899 closes. $6
+# and $7 are the registry-side twins: kernel names whose
+# threadgroupSizeForFunctionName entry is emitted commented out, line-style and
+# block-style respectively.
 write_pipeline_cpp() {
-    local root="$1" registry_names="$2" scratch_names="$3" commented_names="${4:-}" name
+    local root="$1" registry_names="$2" scratch_names="$3" commented_names="${4:-}" \
+          commented_names_block="${5:-}" registry_commented_names="${6:-}" \
+          registry_commented_names_block="${7:-}" name
     local out="$root/engine/render/src/metal/metal_pipeline.cpp"
     {
         echo 'namespace IRRender {'
@@ -94,6 +110,12 @@ write_pipeline_cpp() {
             echo '        return MTL::Size(16, 16, 1);'
             echo '    }'
         done
+        for name in $registry_commented_names; do
+            echo "    // if (functionName == \"$name\") { return MTL::Size(16, 16, 1); }"
+        done
+        for name in $registry_commented_names_block; do
+            echo "    /* if (functionName == \"$name\") { return MTL::Size(16, 16, 1); } */"
+        done
         echo '    return MTL::Size(1, 1, 1);'
         echo '}'
         echo
@@ -104,6 +126,9 @@ write_pipeline_cpp() {
         done
         for name in $commented_names; do
             echo "        // || functionName == \"$name\""
+        done
+        for name in $commented_names_block; do
+            echo "        /* || functionName == \"$name\" */"
         done
         echo '        ;'
         echo '}'
@@ -208,6 +233,81 @@ assert_contains "$metal_out" "c_unregistered_kernel" \
 assert_absent "$metal_out" "c_fixture_kernel" \
     "registered kernel is not flagged as missing"
 
+# --- a line-commented (//) registry entry reads as absent, not present -------
+# A kernel absent from threadgroupSizeForFunctionName silently falls through to
+# the MTL::Size(1, 1, 1) fallback -- no assert, no log, no build error -- so a
+# commented-out entry must fail exactly like an omitted one.
+REGISTRY_COMMENTED="$TMPROOT/registry-commented"
+make_fixture "$REGISTRY_COMMENTED"
+echo '// registry-commented fixture kernel' \
+    > "$REGISTRY_COMMENTED/engine/render/src/shaders/metal/c_registry_commented.metal"
+write_pipeline_cpp "$REGISTRY_COMMENTED" "c_fixture_kernel" "c_fixture_kernel" "" "" \
+    "c_registry_commented"
+registry_commented_out=$(run_checker "$REGISTRY_COMMENTED")
+registry_commented_rc=$?
+assert_eq "1" "$registry_commented_rc" "line-commented-out registry entry exits 1"
+assert_contains "$registry_commented_out" "c_registry_commented" \
+    "failure names the kernel whose registry entry was commented out"
+assert_contains "$registry_commented_out" "no entry in" \
+    "a commented-out registry entry is reported as absent, not present"
+
+# --- a block-commented (/* */) registry entry reads as absent, not present ---
+REGISTRY_COMMENTED_BLOCK="$TMPROOT/registry-commented-block"
+make_fixture "$REGISTRY_COMMENTED_BLOCK"
+echo '// registry-commented-block fixture kernel' \
+    > "$REGISTRY_COMMENTED_BLOCK/engine/render/src/shaders/metal/c_registry_commented_block.metal"
+write_pipeline_cpp "$REGISTRY_COMMENTED_BLOCK" "c_fixture_kernel" "c_fixture_kernel" "" "" "" \
+    "c_registry_commented_block"
+registry_commented_block_out=$(run_checker "$REGISTRY_COMMENTED_BLOCK")
+registry_commented_block_rc=$?
+assert_eq "1" "$registry_commented_block_rc" "block-commented-out registry entry exits 1"
+assert_contains "$registry_commented_block_out" "c_registry_commented_block" \
+    "failure names the kernel whose registry entry was block-commented out"
+assert_contains "$registry_commented_block_out" "no entry in" \
+    "a block-commented registry entry is reported as absent, not present"
+
+# --- a MULTI-LINE block-commented registry entry reads as absent -------------
+# The real registry's entries are multi-line `if` conditions
+# (metal_pipeline.cpp), so disabling one wraps the block comment across
+# several lines -- the shape write_pipeline_cpp's per-name single-line echo
+# can't express, hence the direct fixture write. A same-line-only strip reads
+# every interior line as still live (Opus recheck on #2959).
+REGISTRY_COMMENTED_BLOCK_MULTILINE="$TMPROOT/registry-commented-block-multiline"
+make_fixture "$REGISTRY_COMMENTED_BLOCK_MULTILINE"
+echo '// registry-commented-block-multiline fixture kernel' \
+    > "$REGISTRY_COMMENTED_BLOCK_MULTILINE/engine/render/src/shaders/metal/c_registry_commented_multiline.metal"
+cat > "$REGISTRY_COMMENTED_BLOCK_MULTILINE/engine/render/src/metal/metal_pipeline.cpp" <<'EOF'
+namespace IRRender {
+namespace {
+
+MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
+    if (functionName == "c_fixture_kernel") {
+        return MTL::Size(16, 16, 1);
+    }
+    /* if (functionName == "c_registry_commented_multiline") {
+        return MTL::Size(16, 16, 1);
+    } */
+    return MTL::Size(1, 1, 1);
+}
+
+bool functionUsesImageAtomicScratch(const std::string &functionName) {
+    return false
+           || functionName == "c_fixture_kernel"
+        ;
+}
+
+}  // namespace
+}  // namespace IRRender
+EOF
+registry_commented_block_multiline_out=$(run_checker "$REGISTRY_COMMENTED_BLOCK_MULTILINE")
+registry_commented_block_multiline_rc=$?
+assert_eq "1" "$registry_commented_block_multiline_rc" \
+    "multi-line block-commented-out registry entry exits 1"
+assert_contains "$registry_commented_block_multiline_out" "c_registry_commented_multiline" \
+    "failure names the kernel whose registry entry was multi-line block-commented out"
+assert_contains "$registry_commented_block_multiline_out" "no entry in" \
+    "a multi-line block-commented registry entry is reported as absent, not present"
+
 # --- a registry without its bare "}" terminator fails, not false-cleans ------
 # The function-body scan ends on a line that is exactly "}"; if the function
 # is ever indented (namespace style change, moved into a block), the scan
@@ -293,6 +393,68 @@ assert_contains "$scratch_commented_out" "c_fixture_kernel" \
     "failure names the consumer whose entry was commented out"
 assert_contains "$scratch_commented_out" "absent from functionUsesImageAtomicScratch" \
     "a commented-out entry is reported as absent, not present"
+
+# --- a block-commented (/* */) list entry reads as absent, not present -------
+# The line-comment form above is fixed by #2886; this is the other comment
+# shape a developer reaches for to disable an entry (#2899).
+SCRATCH_COMMENTED_BLOCK="$TMPROOT/scratch-commented-block"
+make_fixture "$SCRATCH_COMMENTED_BLOCK"
+write_pipeline_cpp "$SCRATCH_COMMENTED_BLOCK" "c_fixture_kernel" "" "" "c_fixture_kernel"
+scratch_commented_block_out=$(run_checker "$SCRATCH_COMMENTED_BLOCK")
+scratch_commented_block_rc=$?
+assert_eq "1" "$scratch_commented_block_rc" "block-commented-out scratch list entry exits 1"
+assert_contains "$scratch_commented_block_out" "c_fixture_kernel" \
+    "failure names the consumer whose entry was block-commented out"
+assert_contains "$scratch_commented_block_out" "absent from functionUsesImageAtomicScratch" \
+    "a block-commented entry is reported as absent, not present"
+
+# --- a MULTI-LINE block-commented list entry reads as absent -----------------
+# Disabling a run of consecutive entries at once is the natural reason to
+# reach for a block comment in this list, and that spans lines -- the shape
+# write_pipeline_cpp's per-name single-line echo can't express, hence the
+# direct fixture write (Opus recheck on #2959).
+SCRATCH_COMMENTED_BLOCK_MULTILINE="$TMPROOT/scratch-commented-block-multiline"
+make_fixture "$SCRATCH_COMMENTED_BLOCK_MULTILINE"
+cat > "$SCRATCH_COMMENTED_BLOCK_MULTILINE/engine/render/src/shaders/metal/c_scratch_commented_multiline.metal" <<'EOF'
+kernel void c_scratch_commented_multiline(
+    device atomic_int* distanceScratch [[buffer(16)]],
+    uint3 gid [[thread_position_in_grid]]
+) {}
+EOF
+cat > "$SCRATCH_COMMENTED_BLOCK_MULTILINE/engine/render/src/metal/metal_pipeline.cpp" <<'EOF'
+namespace IRRender {
+namespace {
+
+MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
+    if (functionName == "c_fixture_kernel") {
+        return MTL::Size(16, 16, 1);
+    }
+    if (functionName == "c_scratch_commented_multiline") {
+        return MTL::Size(16, 16, 1);
+    }
+    return MTL::Size(1, 1, 1);
+}
+
+bool functionUsesImageAtomicScratch(const std::string &functionName) {
+    return false
+           || functionName == "c_fixture_kernel"
+        /*
+        || functionName == "c_scratch_commented_multiline"
+        */
+        ;
+}
+
+}  // namespace
+}  // namespace IRRender
+EOF
+scratch_commented_block_multiline_out=$(run_checker "$SCRATCH_COMMENTED_BLOCK_MULTILINE")
+scratch_commented_block_multiline_rc=$?
+assert_eq "1" "$scratch_commented_block_multiline_rc" \
+    "multi-line block-commented-out scratch list entry exits 1"
+assert_contains "$scratch_commented_block_multiline_out" "c_scratch_commented_multiline" \
+    "failure names the consumer whose entry was multi-line block-commented out"
+assert_contains "$scratch_commented_block_multiline_out" "absent from functionUsesImageAtomicScratch" \
+    "a multi-line block-commented entry is reported as absent, not present"
 
 # --- a hand-wrapped scratch declaration is still caught ----------------------
 # The qualifier test reads the parameter's declaration window, not the physical
