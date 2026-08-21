@@ -212,8 +212,8 @@ void World::gameLoop() {
             // the single priming tick until a real key press arrives. Under
             // `--auto-screenshot` there is no input source, so the gate can
             // never open; under the GUI-test path (createGuiTestSystem also
-            // sets this flag and arms synthetic input) an input source does
-            // exist, but the sim should still advance deterministically
+            // sets g_autoCaptureActive and arms synthetic input) an input
+            // source does exist, but the sim should still advance deterministically
             // rather than wait on the shot table's first injected press.
             // Left armed in either case, every frame of the capture window
             // renders that one frozen tick, defeating the fixed step this
