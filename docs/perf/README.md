@@ -166,10 +166,25 @@ What to look for:
   cell** is the no-regression baseline for any optimization PR that
   claims to improve culling — pre-PR vs post-PR ratios at the same
   cell.
+- **The `Feeder` row is the shadow-feeder cull population (#2298), and
+  its ratio is cross-run only.** `Feeder` is the struct-1 count — the
+  off-screen shadow-feeder voxels the compact tail-appended this frame
+  (the widened per-voxel occlusion cull's target population), read back
+  the same sync-free way as `Visible`. It has **no in-report
+  denominator**: the `Ratio:` line is visible/total only, and the report
+  prints the same caveat under the row. To read the feeder cull ratio,
+  run the same scene twice — `--occlusion-cull` (pv-on) and
+  `--occlusion-cull --no-per-voxel-occlusion` (pv-off) — and divide
+  pv-on Avg by pv-off Avg. `compare_perf_runs.py`'s cull table carries
+  an `avg feeder` column with that `head / base` factor, so a pv-off
+  baseline dir vs a pv-on head dir reads the ratio directly; a report
+  predating the row shows `—`, not 0 — a 0 is a real measurement (sun
+  shadows off ⇒ the compact classifies no feeders).
 
 Lua surface for ad-hoc inspection: `ir.render.getVoxelCullStats()`
-returns `{visible, total, samples, avgVisible, avgTotal, maxVisible,
-maxTotal}`.
+returns `{visible, total, feeder, samples, avgVisible, avgTotal,
+avgFeeder, maxVisible, maxTotal, maxFeeder}` — `feeder` / `avgFeeder` /
+`maxFeeder` are the `Feeder` row's live count / average / max.
 
 ## Lua-vs-C++ parity
 
