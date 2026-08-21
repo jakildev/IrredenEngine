@@ -214,6 +214,13 @@ void World::gameLoop() {
             // open, and every frame of the capture window renders that one
             // frozen tick, defeating the fixed step this block just armed.
             // A live run keeps the gate.
+            //
+            // This block must stay ABOVE the priming `update()` below.
+            // `enableFixedStep()` zeroes the UPDATE lag accumulator, and
+            // `endEvent<UPDATE>()` decrements it and bumps the tick counter
+            // unconditionally — so a priming tick running before the reset is
+            // never accounted for, and every captured frame would read
+            // `IRTime::tick()` one high.
             if (m_waitForFirstUpdateInput) {
                 m_waitForFirstUpdateInput = false;
                 IRE_LOG_INFO(
