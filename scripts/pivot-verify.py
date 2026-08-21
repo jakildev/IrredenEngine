@@ -44,8 +44,11 @@ Two oracles, applied per block:
   gated only for the blocks in ``CENTROID_GATED_BLOCKS``: those rotate their
   probe about a point on the probe's own axis, so a correct pivot maps the
   silhouette onto itself. Every other block's deviation is measured and
-  reported but not gated. The SDF twin is exempt even on a gated block
-  (``SDF_GATED``, #2645) — no lattice, so no pin to hold.
+  reported but not gated. ``center-axis`` is gated at its own zoom-scaled
+  bound (``CENTROID_BOUND_GAME_PX``) rather than ``--max-deviation``,
+  because it consumes the derived focus and so carries the inherent #2641
+  residual — see that constant for the measurement. The SDF twin is exempt
+  even on a gated block (``SDF_GATED``, #2645) — no lattice, so no pin to hold.
 
 Why a block falls in one bucket or the other — and what the reported-but-not-
 gated deviations mean — is ``docs/design/camera-yaw-pivot.md`` §"Known
@@ -86,20 +89,70 @@ FOCUS_ASSERT_BLOCKS = DEFAULT_PIVOT_BLOCKS | {"cursor-latch"}
 # its probe about a point on the probe's own axis, so a correct pivot maps the
 # silhouette onto itself. For every other block the deviation is reported but
 # not gated — see the module docstring.
-CENTROID_GATED_BLOCKS = {"focus-ctr", "focus-off", "background-center"}
+CENTROID_GATED_BLOCKS = {"focus-ctr", "focus-off", "background-center",
+                         "center-axis"}
 # The SDF twin is a continuous-geometry A/B control, NOT a pin gate (#2645).
 # Its analytic silhouette has no voxel lattice to snap to, so its centroid is
-# quantized only by the destination pixel grid: dev_x measures exactly 2.00px
-# at zoom 1, 2, 4, 8 AND 16 — flat over a 16x range. That 2.00px is one whole
-# game-resolution pixel (1280x720 game res rendered to a 2560x1440 HiDPI
-# framebuffer, so outputScaleFactor == 2), i.e. the smallest step the screen
-# can represent. A pivot-anchor error is a world-space offset and must scale
-# with zoom; a destination-grid quantization floor cannot, so no pivot fix can
-# move it and gating on it is a permanent false red. The voxel twin stays
+# quantized only by the destination pixel grid: dev_x measures one whole
+# game-resolution pixel at every zoom — 2.00px on a 2x (HiDPI) host, 1.00px on
+# a 1x one, both measured — flat over a 16x range (1280x720 game res rendered
+# to a 2560x1440 framebuffer on the 2x host, so outputScaleFactor == 2), i.e.
+# the smallest step the screen can represent. A pivot-anchor error is a
+# world-space offset and must scale with zoom; a destination-grid
+# quantization floor cannot, so no pivot fix can move it and gating on it is
+# a permanent false red. The voxel twin stays
 # gated and pins at <= 1.4px across the same sweep. This exemption is what
 # keeps `focus-ctr` gated for its voxel pass while its SDF twin only reports,
 # even though the block itself is in CENTROID_GATED_BLOCKS.
 SDF_GATED = False
+# Blocks whose centroid gate is NOT `--max-deviation` but a measurement-derived
+# bound, as `(px_per_zoom, floor_px)` in GAME-RESOLUTION pixels. Evaluated as
+# `scale * (px_per_zoom * zoom + floor_px)`, where `scale` is the run's own
+# outputScaleFactor read off the captured frame (`_output_scale_factor`).
+#
+# `center-axis` rotates about a point on its probe's own axis, so it is a valid
+# centroid pin — but it consumes the derived focus, which carries the inherent
+# #2641 residual: the composite is a per-face sort key stamped at the face's
+# anchor, so the derive lands up to one iso-depth unit off the metric surface
+# (docs/design/camera-yaw-pivot.md §"Known deviations" 2).
+#
+# The bound is AFFINE in zoom, not proportional, and stated in game px rather
+# than framebuffer px. Both shapes come from the same mechanism:
+#
+# - A fixed world-space focus error produces a screen orbit that scales with
+#   zoom — that is the `px_per_zoom` term. On top of it sits the SAME
+#   destination-grid quantization floor the `SDF_GATED` comment above
+#   documents: one whole game-resolution pixel, zoom-independent by
+#   construction. A deviation carrying both terms cannot be bounded with
+#   uniform margin by any single px/zoom constant — measured, the ratio falls
+#   monotonically from 2.00 to 1.375 px/zoom across zoom 1..16, so a constant
+#   that clears zoom 1 leaves ~45% slack at zoom 16 (see #2641).
+# - That floor is one GAME pixel, so every deviation this harness scores is
+#   `outputScaleFactor` framebuffer px per game px. The factor is a host
+#   DISPLAY property, not a backend one, so a bound calibrated in framebuffer
+#   px on one host silently mis-scales on the other.
+#
+# Calibrated over zoom 1, 2, 4, 8, 16 on both backends. Measured `center-axis`
+# dev_x, in game px — identical on both, which is what licenses the unit:
+#
+#     zoom      1     2     4     8    16
+#     dev_x  2.00  3.00  6.00 11.00 22.00
+#
+# macOS/Metal reads exactly 2x each cell (1280x720 game res in a 2560x1440
+# HiDPI framebuffer, factor 2); Windows/OpenGL reads them 1:1 (1280x720,
+# factor 1). `1.5 px/zoom + 1.0 px` clears every cell by 14-33% and still fails
+# any growth in the residual: a regression to the pre-#2547 iso-depth-0 focus
+# is 150 framebuffer px at zoom 4 on the 2x host, i.e. 75 game px, ~10x this
+# bound.
+CENTROID_BOUND_GAME_PX = {"center-axis": (1.5, 1.0)}
+# PNG IHDR width lives at bytes 16..20, right after the 8-byte signature and the
+# length/type of the first chunk. Deliberately a 24-byte header peek rather than
+# `render-compare.py`'s `read_png` — that one inflates and unfilters the whole
+# image to return pixels, which is orders of magnitude more work than reading one
+# integer, and it is reached as a subprocess (verify_common.compare), not as an
+# importable module.
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+GAME_RES_WIDTH_RE = re.compile(r"game_resolution_width\s*=\s*(\d+)")
 # Frame indices of the cardinal yaws (0, pi/2, pi, 3pi/2) within the demo's
 # 9-yaw sweep table (`yaws[]` in creations/demos/shape_debug/main.cpp).
 CARDINAL_FRAME_INDICES = (0, 3, 5, 7)
@@ -140,6 +193,33 @@ def _score_focus_asserts(output: str) -> tuple[str, str]:
     if len(derived) > 1:
         return "BAD", f"latched focus moved mid-sweep across {len(derived)} values"
     return "OK", f"{len(matches)} shots at derived=({matches[0][0]})"
+
+
+def _output_scale_factor(frame: Path, config: Path) -> float:
+    """Destination framebuffer px per game-resolution px, for one capture.
+
+    Every deviation this harness scores is measured on the captured
+    FRAMEBUFFER, but the quantum those deviations land on is one
+    GAME-RESOLUTION pixel (see ``SDF_GATED``). The ratio between the two is a
+    host display property — 2 on a HiDPI macOS host, 1 on Windows/Linux at 1x
+    — so a bound stated in game px has to be scaled by it before it reaches
+    ``jitter_probe``, which only speaks framebuffer px.
+
+    Read from the frame itself rather than assumed, so the same constant is
+    correct on every host without a per-host table to keep in sync.
+    """
+    header = frame.read_bytes()[:24]
+    if header[:8] != PNG_SIGNATURE:
+        raise SystemExit(f"not a PNG (bad signature): {frame}")
+    framebuffer_width = int.from_bytes(header[16:20], "big")
+    match = GAME_RES_WIDTH_RE.search(config.read_text(encoding="utf-8"))
+    if not match:
+        raise SystemExit(f"no game_resolution_width in {config}")
+    game_width = int(match.group(1))
+    if framebuffer_width <= 0 or game_width <= 0:
+        raise SystemExit(f"nonsensical widths: framebuffer {framebuffer_width}, "
+                         f"game {game_width} ({frame})")
+    return framebuffer_width / game_width
 
 
 def _score_pass(probe_exe: Path, frames: list[Path],
@@ -196,6 +276,7 @@ def main(argv: list[str] | None = None) -> int:
     worktree = verify_common.detect_worktree_root(Path.cwd())
     build_dir = worktree / "build"
     demo_name = "shape_debug"
+    config_path = worktree / "creations" / "demos" / demo_name / "config.lua"
     shots_dir = (build_dir / "creations" / "demos" / demo_name /
                  "save_files" / "screenshots")
 
@@ -249,10 +330,18 @@ def main(argv: list[str] | None = None) -> int:
                       file=sys.stderr)
 
         # Whole-silhouette oracle. Always measured; gated only where it is a
-        # valid pin (CENTROID_GATED_BLOCKS), and never for the SDF twin, whose
-        # continuous silhouette rides a destination-grid floor (SDF_GATED).
+        # valid pin (CENTROID_GATED_BLOCKS), at that block's own bound, and
+        # never for the SDF twin, whose continuous silhouette rides a
+        # destination-grid floor (SDF_GATED).
+        bound = CENTROID_BOUND_GAME_PX.get(block)
+        max_deviation = args.max_deviation
+        if bound is not None:
+            px_per_zoom, floor_px = bound
+            scale = _output_scale_factor(frames[0], config_path)
+            max_deviation = max(max_deviation,
+                                scale * (px_per_zoom * zoom + floor_px))
         centroid, dev_x, dev_y, _ = _score_pass(probe_exe, frames,
-                                                args.max_deviation)
+                                                max_deviation)
         centroid_gated = (block in CENTROID_GATED_BLOCKS
                           and (SDF_GATED if sdf else True))
         if centroid_gated:
@@ -278,8 +367,9 @@ def main(argv: list[str] | None = None) -> int:
             failed += 1
     print()
     print("verdicts: PINNED = silhouette held (threshold "
-          f"{args.max_deviation}px) · FOCUS-OK = derived focus matched the "
-          "analytic pin; the silhouette deviation is reported, not gated "
+          f"{args.max_deviation}px, or a block's own zoom-scaled bound from "
+          "CENTROID_BOUND_GAME_PX) · FOCUS-OK = derived focus matched "
+          "the analytic pin; the silhouette deviation is reported, not gated "
           "· REPORT = SDF twin, measured but ungated (see the module "
           "docstring)")
     if failed:

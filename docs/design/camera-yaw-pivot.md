@@ -222,15 +222,17 @@ closes:
    - `cursor-latch` — `center-axis` geometry, but the focus comes from
      `IRPrefab::CursorPivot::resolveFocusWorld` (the real `castVoxelRay` path)
      with a synthetic cursor parked on the viewport-center anchor's screen
-     pixel, latched once and held for the sweep. Same routing as `center-axis`
-     — pinned-point oracle, silhouette reported not gated (16 px at zoom 4, the
+     pixel, latched once and held for the sweep. Pinned-point oracle like
+     `center-axis` (which is itself centroid-gated at a zoom-scaled bound);
+     cursor-latch's silhouette is reported, not gated (16 px at zoom 4 on the
+     2x host, 9 px on a 1x one — see the destination-grid note below; the
      same residual model plus the half-voxel offset below). It runs on the
      GUI-test cycler rather than the plain auto-screenshot one, because it needs
      scripted cursor input and a per-frame hook: the shot cycler clears the
      pivot focus at every shot boundary and the latched point is only known at
      runtime, so it cannot ride the shot table.
 
-     Its tolerance is a whole world unit rather than 0.6, and the reason is
+     Its tolerance is a whole world unit rather than 0.58, and the reason is
      geometric, not slack: the cursor latch reports a `castVoxelRay` SURFACE hit
      — the marched point where the ray first lands inside the winning voxel's
      unit cube — while the analytic oracle predicts that voxel's CENTER. The L2
@@ -241,28 +243,111 @@ closes:
      exists to catch (a revert to the pre-#2548 iso-depth-0 latch lands ~8.5
      world units off on this geometry).
 
-   **Residual: composite-depth quantization (accepted, measured).** The derive
-   consumes what the composite reports, which is quantized per trixel at
-   sub-voxel resolution. Against the probe's voxel lattice the readback lands
-   within one iso-depth unit — measured on macOS/Metal at zoom 4:
-   `background-center` 0.00 (exact), `center-depth` +0.5 iso (lateral-surface
-   entry), `center-column` and `center-axis` +1.0 iso (both enter through a
-   camera-facing cap). A 1-iso-unit bias displaces `F` by (1/3, 1/3, 1/3) world
-   units, whose xy part leaves a residual orbit: `center-axis` measures 12 px at
-   zoom 4 and 22 px at zoom 8, which is that model to within the read. This is
-   ~12x better than the pre-#2547 focus in the same configuration (150 px at
-   zoom 4) but is not exact; whether the cap-entry case can report the geometric
-   surface rather than a neighbouring trixel's depth is **#2641**, and
-   `--pivot-verify center-axis` is its repro. That issue also carries the
-   cross-backend risk: the trixel→framebuffer parity shift applies to the depth
-   read on GL but not on Metal, so the bias may differ per host (measured on
-   macOS/Metal only).
+   **Residual: the composite is a per-face SORT KEY, not a metric surface depth
+   — INHERENT (#2641, root-caused).** The derive consumes what the composite
+   reports. Measured: `background-center` 0.00 (exact — no depth read at all),
+   `center-column` and `center-axis` +1.0 iso (both enter through a
+   camera-facing cap), `center-depth` up to +1.0 iso (lateral-surface entry;
+   +0.5 at zoom 4). The two cap blocks are the ceiling and hold it
+   **zoom-invariantly** — `center-axis` reports `world_delta` 0.5773514 at zoom
+   1, 2, 4, 8 and 16, byte-identical across a 16x range — while `center-depth`'s
+   off-centre crossing wanders below it with zoom (0.577 / 0.000 / 0.289 /
+   0.433 / 0.505 at those zooms). That split is the mechanism predicting itself,
+   not noise: see the anchor-stamp explanation below. A 1-iso-unit bias
+   displaces `F` by (1/3, 1/3, 1/3) world units, whose xy part leaves a residual
+   orbit: `center-axis` measures 12 px at zoom 4 and 22 px at zoom 8 on the 2x
+   host — ~12x better than the pre-#2547 focus (150 px at zoom 4), but not
+   exact.
 
-   The `[pivot-focus-assert]` tolerance (0.6 world units) is set to admit
-   exactly that one-iso-unit quantization and nothing more: a regression to the
-   pre-#2547 iso-depth-0 focus is 3.46 world units off on `center-column` and
-   12.1 on `center-depth`, and electing the far surface instead of the near one
-   is 10.0 off on `center-depth`.
+   The cause is **not** a sampling / ray-pairing error. `emitDeformedFace`
+   (`c_voxel_to_trixel_stage_1_body.glsl`) stamps ONE `encodeDepthWithFace`
+   value — the emitting (sub-)voxel's own `pos3DtoDistance` anchor — across
+   every trixel that face paints. So the value a trixel carries is the depth of
+   its face's ANCHOR, while the metric depth of the surface *at that trixel*
+   varies across the face's footprint (spread: 2 iso units for a unit voxel
+   face). `isoPixelToPos3D(viewCenterIso, storedDepth)` pairs the center's exact
+   2D coordinate with that anchor depth, so the reconstruction is off by however
+   far the center ray crosses the face from its anchor. That predicts exactly
+   what the blocks measure: both cap-entry blocks are constructed so the ray
+   hits the cap dead-centre and both read exactly +1.0 (half the 2-unit spread),
+   while `center-depth`'s off-centre lateral crossing reads +0.5.
+
+   Three measurements rule out the alternatives (macOS/Metal, `--pivot-verify`
+   + a per-row composite-depth scan around the center texel):
+
+   - **Not the trixel→framebuffer parity shift / a neighbouring-ray read.** That
+     is a fixed *pixel* offset, so its world error would halve from zoom 4 to
+     zoom 8. The measured bias is a constant 1.0 world iso unit at both, i.e.
+     4 framebuffer rows at `effSub` 4 and 8 rows at `effSub` 8.
+   - **Not a fixed sampling offset in any direction.** The analytic depth sits
+     4 rows ABOVE the sampled center row on the cap blocks and 4 rows BELOW it
+     on `center-depth` — opposite signs, because the two surfaces' depth-vs-row
+     slopes have opposite signs. No single corrected sample row fixes both.
+   - **Not a constant per-face encode offset** correctable from the decoded
+     `face_` bits: the offset is where the ray crosses the face, which is
+     content geometry, not a property of the face type.
+
+   Recovering the metric depth would need the winning face's anchor cell — which
+   the composite does not carry (only depth / face / flip) — i.e. a CPU inverse
+   of `emitDeformedFace`'s footprint, including the residual-yaw deform and
+   riser flip. The forward option instead of that inverse is to stop consuming
+   the sort key for this purpose and cast a CPU ray
+   (`IRPrefab::Picking::castVoxelRay`, exact surface hit, no GPU flush) — the
+   same primitive #2548 latches the cursor pivot with. That is a design change
+   to the derive's source of truth, not a residual fix, so it is out of #2641's
+   scope; #2548's landing is the natural point to weigh it.
+
+   The `[pivot-focus-assert]` tolerance is therefore set to the residual that
+   remains (0.58 world units, just over the measured max `sqrt(3)/3` = 0.5774)
+   rather than to a round 0.6, and `center-axis` is centroid-gated at a bound
+   AFFINE in zoom — `1.5 px/zoom + 1.0 px` of game resolution, scaled by the
+   run's own `outputScaleFactor` (`CENTROID_BOUND_GAME_PX` in
+   `scripts/pivot-verify.py`) — so the inherent orbit is admitted but any growth
+   in it fails. Affine rather than proportional because the deviation carries
+   two terms: the world-space orbit, which scales with zoom, plus the
+   one-game-pixel destination-grid floor documented under deviation 2 below,
+   which cannot. A purely proportional bound therefore holds no uniform margin
+   (the measured ratio falls monotonically from 2.00 to 1.375 px/zoom over zoom
+   1..16) and false-fails at zoom 1. Calibrated over zoom 1, 2, 4, 8, 16 on both
+   backends; clears every cell by 14-33% and still separates a pre-#2547-class
+   regression by ~10x. The gate still separates every failure
+   it exists to catch by an order of magnitude: a regression to the pre-#2547
+   iso-depth-0 focus is 3.46 world units off on `center-column` and 12.1 on
+   `center-depth`, and electing the far surface instead of the near one is 10.0
+   off on `center-depth`.
+
+   **Cross-backend: CONFIRMED (#2641 criterion 4).** Re-measured on
+   Windows/OpenGL (mingw64, `windows-debug`) against the same sweeps. The
+   GL-only row flip in `readbackCompositeDepth` (`resolution.y - 1 - y`,
+   `engine/render/src/ir_render.cpp:116`) does **not** perturb the derive: every
+   derived focus is byte-identical to the Metal value — `background-center`
+   `(12,-12,0)` / 0.0, `center-column` `(14.333333,-9.666667,2.333333)` /
+   0.5773497, `center-axis` `(18.333334,-5.666666,6.333334)` / 0.5773514, all 9
+   shots, `view_held=1` throughout. `center-depth` agrees at zoom 4
+   (0.28867403) and lands on a different sub-voxel step at zoom 8 (0.4330127) —
+   still under tolerance, and expected for the off-centre crossing described
+   above rather than a backend disagreement.
+
+   The **centroid** deviations do differ between hosts, in unit rather than in
+   kind: `center-axis` reads 2 / 3 / 6 / 11 / 22 px at zoom 1 / 2 / 4 / 8 / 16
+   on Windows against 4 / 6 / 12 / 22 / 44 px on macOS — exactly 2x at every
+   cell, because macOS renders the 1280x720 game resolution into a 2560x1440
+   HiDPI framebuffer and Windows into a 1280x720 one. Same reason the SDF
+   destination-grid floor above reads 1.00 px here against 2.00 px there,
+   confirming that entry's own prediction. This is why the `center-axis`
+   centroid gate is stated in **game-resolution px** and scaled by the run's
+   measured `outputScaleFactor` (`CENTROID_BOUND_GAME_PX` /
+   `_output_scale_factor` in `scripts/pivot-verify.py`): in game px the two
+   hosts report the same numbers, so one calibration covers both.
+
+   That 2x relation holds for `center-axis` and for the SDF floor, but **not**
+   for `focus-ctr`, `focus-off` and `background-center` — those three read
+   1.73 / 1.73 / 1.59 px at zoom 4 on the 1x host against a scale-adjusted
+   ~0.47 px predicted from Metal, and grow with zoom, so their divergence is a
+   real GL-side silhouette difference rather than a unit artefact. They exceed
+   the harness's default 1.5 px bound on a GL host on master-equivalent frames.
+   Tracked separately as **#3008**; it is not a #2641 residual and nothing in
+   this section depends on it.
 3. **Per-axis registration offset — FIXED (#2546).** With (1) compensated,
    every residual-yaw frame rendered the voxel scene a constant ≈1 iso px
    (per axis, zoom-scaled) off the cardinal frames. Root cause: the
