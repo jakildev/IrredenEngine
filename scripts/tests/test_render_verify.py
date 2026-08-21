@@ -1,4 +1,5 @@
-"""Tests for render-verify.py — the ROI-crop + structural-metric gate (T-2).
+"""Tests for render-verify.py — the ROI-crop + structural-metric gate (T-2)
+and the manifest-driven demo resolution (#2919).
 
 Proves the gate wiring added in epic #1766 T-2 without a GL/Metal build:
 
@@ -11,14 +12,26 @@ Proves the gate wiring added in epic #1766 T-2 without a GL/Metal build:
   * misconfigurations (unknown shot, missing reference, un-captured crop,
     unimplemented metric, threshold-less gate) are surfaced loudly.
 
+Plus the resolution + sweep layer (#2919):
+
+  * a target is resolved from the manifest that *declares* it, so a demo
+    whose directory name doesn't match its target stays reachable;
+  * the committed tree round-trips — every manifest resolves back to its own
+    directory, so no demo can silently drop out of an --all sweep;
+  * a demo that produces no checks reads as ERROR in the sweep summary
+    rather than as a quietly smaller total.
+
 Synthetic PNGs only — no engine, no committed references. Import the
 dashed-name scripts via importlib, matching test_render_shadow_metric.py.
 """
 import importlib.machinery
 import importlib.util
+import io
+import json
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
@@ -54,6 +67,14 @@ _slice_capture = _rv._slice_capture
 # unimportable under the "swap in the old render-verify.py" positive control,
 # collapsing a per-test result into one ImportError. Resolved per call site
 # instead, so that control reports which arms actually discriminate.
+_declared_targets = _rv._declared_targets
+_resolve_demo_dir = _rv._resolve_demo_dir
+_target_to_demo_name = _rv._target_to_demo_name
+_print_sweep_summary = _rv._print_sweep_summary
+
+# The subject's own notion of the repo root, so a mis-rooted harness fails the
+# tree-level guard below rather than being papered over by a local re-derivation.
+REPO_ROOT = _rv.REPO_ROOT
 
 MAGENTA = (255, 0, 255)
 BLACK = (0, 0, 0)
@@ -533,6 +554,193 @@ class ValidateStructuralOnly(unittest.TestCase):
     def test_empty_block_is_a_no_op(self):
         _rv._validate_structural_only(set(), [], {})
         _rv._validate_structural_only(set(), [], {}, pass_name="compare")
+
+
+class DemoResolution(unittest.TestCase):
+    """Manifest-declared target -> demo dir (#2919).
+
+    The pre-fix harness inferred the directory from the target name, which is
+    wrong for any demo whose directory doesn't echo its target. These build a
+    synthetic demo tree so the cases are exercised without the real manifests.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.worktree = Path(self._tmp.name)
+        self.demos = self.worktree / "creations" / "demos"
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _demo(self, name: str, target: str | None, *, raw: str | None = None):
+        d = self.demos / name
+        refs = d / "test" / "references"
+        refs.mkdir(parents=True, exist_ok=True)
+        body = raw if raw is not None else json.dumps(
+            {"demo": name, "target": target, "shots": ["s0"]})
+        (refs / "manifest.json").write_text(body)
+        return d
+
+    # ── _declared_targets ────────────────────────────────────────────────
+    def test_maps_every_declaring_manifest(self):
+        self._demo("shape_debug", "IRShapeDebug")
+        self._demo("lighting", "IRLightingSdfBlocker")
+        self.assertEqual(_declared_targets(self.worktree),
+                         {"IRLightingSdfBlocker": "lighting",
+                          "IRShapeDebug": "shape_debug"})
+
+    def test_manifest_without_target_is_ignored_not_fatal(self):
+        self._demo("legacy", None)          # "target": null
+        self._demo("lighting", "IRLightingSdfBlocker")
+        self.assertEqual(_declared_targets(self.worktree),
+                         {"IRLightingSdfBlocker": "lighting"})
+
+    def test_unreadable_manifest_is_skipped_with_a_warning(self):
+        # One malformed manifest must not make every OTHER target
+        # unresolvable — the sibling still resolves, and the skip is announced.
+        self._demo("broken", None, raw="{not json")
+        self._demo("lighting", "IRLightingSdfBlocker")
+        err = io.StringIO()
+        with redirect_stderr(err):
+            got = _declared_targets(self.worktree)
+        self.assertEqual(got, {"IRLightingSdfBlocker": "lighting"})
+        self.assertIn("broken", err.getvalue())
+
+    def test_two_manifests_declaring_one_target_raises(self):
+        self._demo("a", "IRDup")
+        self._demo("b", "IRDup")
+        with self.assertRaises(SystemExit) as cm:
+            _declared_targets(self.worktree)
+        self.assertIn("IRDup", str(cm.exception))
+
+    # ── _resolve_demo_dir ────────────────────────────────────────────────
+    def test_declaration_beats_name_inference(self):
+        # IRLightingSdfBlocker infers `lighting_sdf_blocker`, which does not
+        # exist; the manifest says `lighting`, and the manifest wins.
+        self._demo("lighting", "IRLightingSdfBlocker")
+        self.assertEqual(_target_to_demo_name("IRLightingSdfBlocker"),
+                         "lighting_sdf_blocker")   # the inference is still wrong
+        got = _resolve_demo_dir(self.worktree, "IRLightingSdfBlocker", None)
+        self.assertEqual(got, self.demos / "lighting")
+
+    def test_matching_demo_is_unchanged(self):
+        self._demo("shape_debug", "IRShapeDebug")
+        got = _resolve_demo_dir(self.worktree, "IRShapeDebug", None)
+        self.assertEqual(got, self.demos / "shape_debug")
+
+    def test_explicit_demo_overrides_the_declaration(self):
+        self._demo("lighting", "IRLightingSdfBlocker")
+        self._demo("other", "IROther")
+        got = _resolve_demo_dir(self.worktree, "IRLightingSdfBlocker", "other")
+        self.assertEqual(got, self.demos / "other")
+
+    def test_explicit_demo_that_does_not_exist_raises(self):
+        self._demo("lighting", "IRLightingSdfBlocker")
+        with self.assertRaises(SystemExit) as cm:
+            _resolve_demo_dir(self.worktree, "IRLightingSdfBlocker", "nope")
+        self.assertIn("demo dir not found", str(cm.exception))
+
+    def test_falls_back_to_inference_when_nothing_declares_the_target(self):
+        # A demo dir that exists but whose manifest names no target still
+        # resolves the old way, so pre-declaration demos keep working.
+        self._demo("fog_demo", None)
+        got = _resolve_demo_dir(self.worktree, "IRFogDemo", None)
+        self.assertEqual(got, self.demos / "fog_demo")
+
+    def test_unknown_target_names_both_attempts(self):
+        self._demo("lighting", "IRLightingSdfBlocker")
+        with self.assertRaises(SystemExit) as cm:
+            _resolve_demo_dir(self.worktree, "IRNoSuchThing", None)
+        msg = str(cm.exception)
+        self.assertIn("manifest.json", msg)      # where it looked for a decl
+        self.assertIn("no_such_thing", msg)      # what it inferred
+        self.assertIn("--demo", msg)             # how to fix it
+
+
+class CommittedManifestsResolve(unittest.TestCase):
+    """Coverage guard against the real tree — no build, no demo run.
+
+    #2919's damage was a demo silently dropping out of a multi-target sweep.
+    The property that prevents it is that every committed manifest is
+    reachable from its own declared target with no `--demo` override, so this
+    asserts the round-trip over whatever manifests the tree currently ships
+    rather than pinning a demo list that would need editing on every addition.
+    """
+
+    def _manifests(self):
+        return sorted((REPO_ROOT / "creations" / "demos")
+                      .glob(_rv.MANIFEST_GLOB))
+
+    def test_every_committed_manifest_declares_a_target(self):
+        missing = [str(p.relative_to(REPO_ROOT)) for p in self._manifests()
+                   if not json.loads(p.read_text()).get("target")]
+        self.assertEqual(missing, [], "manifests with no 'target' are "
+                                      "unreachable from --all")
+
+    def test_every_committed_manifest_round_trips(self):
+        declared = _declared_targets(REPO_ROOT)
+        self.assertEqual(len(declared), len(self._manifests()),
+                         "a committed manifest dropped out of --all's demo set")
+        for target, demo in declared.items():
+            with self.subTest(target=target):
+                self.assertEqual(
+                    _resolve_demo_dir(REPO_ROOT, target, None),
+                    REPO_ROOT / "creations" / "demos" / demo)
+
+    def test_the_tree_still_contains_a_demo_inference_gets_wrong(self):
+        # If this ever fails because every demo dir matches its target, the
+        # inference fallback is no longer load-bearing — but the failure must
+        # be read, not silenced: it means the fixture for this bug is gone.
+        declared = _declared_targets(REPO_ROOT)
+        mismatched = {t: d for t, d in declared.items()
+                      if _target_to_demo_name(t) != d}
+        self.assertIn("IRLightingSdfBlocker", mismatched)
+        self.assertEqual(mismatched["IRLightingSdfBlocker"], "lighting")
+
+
+class SweepSummary(unittest.TestCase):
+    def _summary(self, results):
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            _print_sweep_summary(results)
+        return out.getvalue(), err.getvalue()
+
+    def _row(self, target, demo, rc, checked, failed=0, skipped=0, error=None):
+        r = {"target": target, "demo": demo, "rc": rc, "checked": checked,
+             "failed": failed, "skipped": skipped}
+        if error:
+            r["error"] = error
+        return r
+
+    def test_total_sums_every_demo(self):
+        out, err = self._summary([
+            self._row("IRShapeDebug", "shape_debug", 0, 24),
+            self._row("IRLightingSdfBlocker", "lighting", 1, 5, failed=4),
+        ])
+        self.assertIn("total: 29 checks across 2 demos, 4 FAIL", out)
+        self.assertEqual(err, "")
+
+    def test_a_demo_that_produced_no_checks_reads_as_error(self):
+        # The #2919 failure mode, one level up: a demo contributing zero must
+        # not look like a demo that simply had less to check. It is named on
+        # stderr AND its row says ERROR, so a smaller total can't pass as a
+        # complete sweep.
+        out, err = self._summary([
+            self._row("IRShapeDebug", "shape_debug", 0, 24),
+            self._row("IRLightingSdfBlocker", "lighting", 1, 0,
+                      error="demo dir not found"),
+        ])
+        self.assertIn("ERROR (demo dir not found)", out)
+        self.assertIn("produced NO checks", err)
+        self.assertIn("IRLightingSdfBlocker", err)
+
+    def test_clean_sweep_says_nothing_on_stderr(self):
+        out, err = self._summary([
+            self._row("IRShapeDebug", "shape_debug", 0, 24),
+            self._row("IRFogDemo", "fog_demo", 0, 15),
+        ])
+        self.assertIn("total: 39 checks across 2 demos, 0 FAIL", out)
+        self.assertEqual(err, "")
 
 
 if __name__ == "__main__":

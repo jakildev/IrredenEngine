@@ -64,6 +64,15 @@ Shots are mapped to screenshots by **order** (Nth shot → Nth numbered
 screenshot), so the manifest must list them in the same order the demo's
 shot table.
 
+The `"target"` field is **authoritative** for which demo directory a
+`--target` resolves to. The harness scans every
+`creations/demos/*/test/references/manifest.json`, matches on that field,
+and only falls back to inferring the directory from the target name
+(strip `IR`, snake_case) when no manifest declares it. That is what keeps
+`IRLightingSdfBlocker` → `creations/demos/lighting` reachable without
+`--demo` (#2919). A manifest that omits `target` is invisible to `--all`
+and to the lookup — always declare it.
+
 ## Running the harness
 
 One command, from the worktree root:
@@ -74,7 +83,8 @@ python3 scripts/render-verify.py --target IRShapeDebug
 
 The driver:
 
-1. Reads `creations/demos/shape_debug/test/references/manifest.json`.
+1. Resolves `IRShapeDebug` to `creations/demos/shape_debug` via the
+   declaring manifest, and reads that `manifest.json`.
 2. Detects the backend from `build/CMakeCache.txt`.
 3. Runs `fleet-build --target IRShapeDebug`.
 4. Clears `<exe_dir>/save_files/screenshots/`.
@@ -118,6 +128,36 @@ zoom2_origin                    FAIL     98.9423      214    24.12
 The diff PNG is an 8-bit-per-channel visualization of the per-byte delta,
 boosted 4x for contrast. Bright pixels = regression hotspots.
 
+## Sweeping the whole reference set
+
+```
+python3 scripts/render-verify.py --all
+```
+
+`--all` runs every demo whose manifest declares a `target` and prints one
+aggregate tally:
+
+```
+[render-verify] --all summary over 5 demo(s):
+  IRAnalyticOracle         analytic_oracle        1 checks                 PASS
+  IRCanvasStress           canvas_stress         10 checks                 PASS
+  IRFogDemo                fog_demo              15 checks                 FAIL (9 of 15)
+  IRLightingSdfBlocker     lighting               5 checks                 FAIL (4 of 5)
+  IRShapeDebug             shape_debug           24 checks                 FAIL (17 of 24)
+[render-verify] total: 55 checks across 5 demos, 30 FAIL, 0 skipped
+```
+
+**Prefer this over a hand-rolled shell loop over target names.** A loop
+reports each demo separately, so a demo that fails to start leaves no hole
+in any single number — which is how `lighting` went unverified through two
+review passes on PR #2898 (a "5-demo" sweep that actually covered 4 and
+tallied 50 instead of 55, #2919). `--all` counts a demo that produced no
+checks as **ERROR**, names it on stderr, and exits non-zero, so a shrunken
+total cannot read as a complete sweep.
+
+`--all` ignores `--target` and rejects `--demo` (which names exactly one
+directory).
+
 ## Updating references
 
 When a render change intentionally alters output (new lighting pass,
@@ -157,7 +197,10 @@ the captured PNGs.
 1. Implement `--auto-screenshot` in the demo's `main.cpp` with a shot
    table (follow `shape_debug/main.cpp`).
 2. Create `creations/demos/<demo>/test/references/manifest.json` listing
-   the shots in the same order, plus thresholds.
+   the shots in the same order, plus thresholds — and a `"target"` field
+   naming the CMake target. Without it the demo is unreachable from
+   `--all` and only resolves if its directory name happens to match the
+   inference.
 3. Build and run the demo to capture a reference set:
    `python3 scripts/render-verify.py --target IR<Demo> --update-references --force`
 4. Commit the `test/references/<backend>/` PNGs alongside the manifest.
