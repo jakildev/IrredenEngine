@@ -578,6 +578,38 @@ same `config = { ... }` table — there is one source of truth per file.
   video recording until the first input arrives — used to keep capture
   clips from starting mid-loading-screen. If video recording is not
   starting, check these flags first.
+
+  **`m_waitForFirstUpdateInput` is force-disarmed under `--auto-screenshot`**
+  (see #2990). It is a live-operator affordance — it holds the sim at the
+  single priming `update()` until a real key press arrives. Under
+  `--auto-screenshot` there is no input source, so the gate can never open;
+  under the GUI-test path (`createGuiTestSystem`, which also sets
+  `g_autoCaptureActive` and arms synthetic input via
+  `IRInput::beginSyntheticInput()`) an input source does exist, but the sim
+  should still advance deterministically rather than wait on the shot
+  table's first injected press. Left armed in either case, the whole capture
+  window renders one frozen tick, silently defeating the
+  `enableFixedStep()` carve-out in the same `gameLoop()` block. The
+  auto-capture branch therefore clears the flag and logs the override at
+  INFO. `m_startRecordingOnFirstInput` is deliberately left armed:
+  `--auto-screenshot` is the screenshot path, not the video one, so there is
+  nothing for it to start.
+
+  **The auto-capture block must stay above the priming `update()`.**
+  `enableFixedStep()` zeroes the UPDATE lag accumulator
+  (`TimeManager::enableFixedStep` → `EventProfiler<UPDATE>::resetLag`), and
+  `endEvent<UPDATE>()` decrements that accumulator and bumps `m_fixedStepCount`
+  **unconditionally** — it never checks that lag was accumulated first. A
+  priming tick executed *before* the reset is therefore an uncompensated tick:
+  the loop enters one ahead and every captured frame reads `IRTime::tick()` one
+  high — the same off-by-one `resetLag()` exists to prevent (see
+  [`engine/time/CLAUDE.md`](../time/CLAUDE.md) §"`enableFixedStep()` decouples
+  UPDATE from wall-clock"). The constraint is on the block as a whole, not on
+  the order of the two statements inside it: moving only the disarm below the
+  priming call self-cancels (the priming tick drives lag to `-1` period, frame 1
+  restores it to `0`, and the per-shot tick count is unchanged). A refactor that
+  hoists the priming call above `enableFixedStep()`, or sinks this block below
+  it, is the one that breaks the capture contract, and no test covers it.
 - **Release GPU/GL resources in `end()`, never in `~World()`.** `end()` runs
   during `gameLoop()` while the context is provably live, and is the canonical
   spot for device-resource teardown (it already drives `destroyAllEntities()`

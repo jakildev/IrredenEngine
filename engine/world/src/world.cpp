@@ -208,6 +208,30 @@ void World::gameLoop() {
             // etc.) is deterministic and not starved by the uncapped
             // (vsync-off) loop racing through the frame-counted capture window.
             m_timeManager.enableFixedStep();
+            // ...and disarm `m_waitForFirstUpdateInput`. It holds the sim at
+            // the single priming tick until a real key press arrives. Under
+            // `--auto-screenshot` there is no input source, so the gate can
+            // never open; under the GUI-test path (createGuiTestSystem also
+            // sets g_autoCaptureActive and arms synthetic input) an input
+            // source does exist, but the sim should still advance deterministically
+            // rather than wait on the shot table's first injected press.
+            // Left armed in either case, every frame of the capture window
+            // renders that one frozen tick, defeating the fixed step this
+            // block just armed. A live run keeps the gate.
+            //
+            // This block must stay ABOVE the priming `update()` below.
+            // `enableFixedStep()` zeroes the UPDATE lag accumulator, and
+            // `endEvent<UPDATE>()` decrements it and bumps the tick counter
+            // unconditionally — so a priming tick running before the reset is
+            // never accounted for, and every captured frame would read
+            // `IRTime::tick()` one high.
+            if (m_waitForFirstUpdateInput) {
+                m_waitForFirstUpdateInput = false;
+                IRE_LOG_INFO(
+                    "Auto-capture active: ignoring start_updates_on_first_key_press so the "
+                    "sim advances during the capture window."
+                );
+            }
         }
         if (m_waitForFirstUpdateInput) {
             // Prime render-facing state so paused mode shows initialized voxels.
