@@ -237,6 +237,19 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   N is 1 because an age ceiling — not a tick count — does the sizing there
   (#2363, #2795). Copy whichever matches your call cadence; don't invent a
   third counter block by hand.
+- **A skip must never consume an edge-triggered lane's edge.** The scout's
+  two self-spawned lanes (`queue-manager` claim-cleanup,
+  `queue-manager-ingest`) compare their own projection hash inline instead of
+  routing through `update_role_trigger`, precisely because nothing re-arms
+  them — no watchdog, no periodic sweep. The seen-hash write therefore belongs
+  **after** every early-`continue` guard, never before it: recording the hash
+  and then skipping discards the change permanently, since the next tick
+  compares equal and skips too. A degraded tick swallowed an agent-approved
+  issue's ingest exactly this way, and the freshly-stamped seen-hash mtime —
+  the strongest available "this lane is healthy" signal — was the bug's own
+  fingerprint (#2965). Adding a guard to a hash-self-managing lane means
+  placing it above the write and covering the skip in
+  `tests/test_scout_degraded_fetch.py`.
 - **Unattended daemons timeout-guard their network calls.** The host's
   connections to GitHub intermittently black-hole (silent TCP death), so a
   hung `git fetch` / `gh …` in a fleet daemon (dispatcher loop, `fleet-rebase`,
