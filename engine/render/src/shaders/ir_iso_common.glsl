@@ -541,14 +541,15 @@ int trixelOriginModifier(ivec2 trixelCanvasOffsetZ1, vec2 frameCanvasOffset) {
 // `pos2DIsoToTriangleIndex` (ir_math.cpp) — the picking/hover path reuses it so
 // GPU and CPU agree on which trixel the mouse is over.
 //
-// GL applies this shift to the color/depth/id reads; Metal reads color/depth
-// from the raw origin, because its negated clip-Y (top-left target vs GL's
-// bottom-left framebuffer) already lands the raw sample on the correct row.
-// Both backends read the CORRECT trixel for their own raster convention.
-// Picking is the shared exception: BOTH backends shift the hover coordinate,
-// because it must match CPU `pos2DIsoToTriangleIndex` (raster-Y-independent),
-// even though only GL shifts the color/depth gather. See #442;
-// docs/design/trixel-parity-shift-442-investigation.md.
+// This shift feeds the HOVER coordinate ONLY, on both backends. The
+// color/depth/tier reads sample the raw origin: both vertex twins build
+// identical V-flipped TexCoords, so both backends interpolate the same canvas
+// position for the same screen pixel, and the raw sample already lands on the
+// correct trixel row. Applying the shift to the color/depth reads produces a
+// 1px sawtooth on every iso-diagonal and vertical silhouette plus a garbage
+// top-canvas-row line (`origin.y - 1` underflow at row 0) — the #394 Metal
+// regression, and the same defect the GL gather carried until 2026-08. See
+// #442; docs/design/trixel-parity-shift-442-investigation.md.
 vec2 trixelFramebufferSamplePosition(vec2 origin, int originModifier) {
     vec2 originFlooredComp = floor(origin);
     vec2 fractComp = fract(origin);
