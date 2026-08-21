@@ -183,14 +183,19 @@ promoted to `docs/agents/skills/procedures/` and referenced the same way.
 Out of scope for the first pass — promote a procedure only once a second
 repo would otherwise fork it.
 
-### CI validation
+### Lint enforcement
 
-A lint check can assert that (a) every wrapper's `## Deltas` table answers
-every delta key its canonical flow names, and (b) every canonical flow has at
-least one wrapper. A grep over `docs/agents/skills/*.md` for bold
-`**delta keys**` cross-referenced against each `SKILL.md`'s Deltas table
-would catch an unanswered key after a flow gains a new one. Out of scope
-while the set is four skills; revisit when wrappers start missing keys.
+`fleet-validate-roles` (`scripts/fleet/fleet_validate_roles.py`, #2893) now
+checks this as its **skill lane** — the same lint whose **role lane**
+`role-sharing.md` documents shipping at #1667. Every canonical flow's
+`## Repo deltas this flow needs` table must have a stem-paired
+`.claude/skills/<stem>/SKILL.md` whose `## Deltas` table answers every
+declared key. As on the role lane, nothing runs it automatically today — no
+CI job, hook, or install step invokes it — so it stays a cue-driven check,
+not a merge gate. Pre-existing gaps land in a
+ratchet baseline (`SKILL_WRAPPER_MISSING_KEY_BASELINE` /
+`SKILL_NO_WRAPPER_BASELINE`) rather than being repaired inline, since
+`.claude/skills/**/SKILL.md` is gated self-config no worker class can push.
 
 ### When to factor a new skill
 
