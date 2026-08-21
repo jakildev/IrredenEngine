@@ -208,6 +208,12 @@ void writeProfileReport(const ProfileReport &report, const char *outputPath) {
             "Ratio:       %14.4f (visible/total — 1.0 = no cull, 0.0 = all culled)\n",
             ratio
         );
+        std::fprintf(
+            f,
+            "Feeder ratio: cross-run only — this report's Avg is one config's feeder count, "
+            "not a total to divide by. Compute pv-on Avg / pv-off Avg from two separate "
+            "--occlusion-cull on/off invocations of the same scene.\n"
+        );
         std::fprintf(f, "\n");
     }
 

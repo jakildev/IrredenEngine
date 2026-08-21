@@ -147,8 +147,10 @@ constant int kOcclusionDepthMargin = kDepthEncodeShift;
 // shadow-feeder-widened canvas gated by a Hi-Z canvas-COVERAGE guard (a
 // footprint fully inside [0, sz) is testable; one spilling off-canvas is kept),
 // sound because a voxel occluded at every canvas texel leaves no trace in
-// trixelDistances that either the visible resolve or the sun bake consumes;
-// background sentinel keeps a voxel that still sees background, and the encoding
+// trixelDistances that either the visible resolve or the sun bake consumes —
+// against the frame the Hi-Z was built from; a stale-lag false cull costs a
+// feeder its shadow for one frame, same class as #1812's one-frame hole.
+// Background sentinel keeps a voxel that still sees background, and the encoding
 // (encodeDepthWithFace(pos3DtoDistance(voxelPos), 0)) matches
 // dispatchChunkOcclusion's cb.minDepth_ * kDepthEncodeShift exactly — routed
 // through the shared encode helper because #2207 changed the cardinal layout

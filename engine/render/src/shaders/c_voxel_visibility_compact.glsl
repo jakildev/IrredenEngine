@@ -254,7 +254,9 @@ void writeDispatchDims(uint base, uint microSliceCount) {
 //     voxel conservatively occluded at every canvas texel it can raster to leaves
 //     no trace in trixelDistances, and BOTH the visible resolve and the
 //     sun-shadow bake consume trixelDistances (never voxels) — so dropping it is
-//     bit-identical for the shadow it would have cast too. This supersedes the
+//     bit-identical for the shadow it would have cast too, against the frame the
+//     Hi-Z was built from; a stale-lag false cull costs a feeder its shadow for
+//     one frame, same class as #1812's one-frame hole. This supersedes the
 //     #1812 "never cull a shadow-feeder" mitigation (correct only while the test
 //     domain was assumed visible-only).
 //   * A footprint that still sees background keeps the voxel (empty texels carry
