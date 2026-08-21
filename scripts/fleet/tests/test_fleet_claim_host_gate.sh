@@ -136,6 +136,7 @@ case "$1 $2" in
                 ;;
             3005)
                 echo '{"state":"OPEN","labels":[{"name":"fleet:has-nits"},{"name":"fleet:reviewing-linux-pool-2"}],"body":""}'
+                ;;
             2004)
                 echo '{"state":"OPEN","labels":[{"name":"fleet:needs-gl-host"},{"name":"fleet:backend-symmetric"},{"name":"fleet:opus"},{"name":"fleet:queued"}],"body":""}'
                 ;;

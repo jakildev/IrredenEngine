@@ -125,11 +125,11 @@ GL_HOST_LABEL = "fleet:needs-gl-host"
 # compile-verify both, and natively run + visually verify the Metal one; the GL
 # runtime residual rides the reviewer-stamped `fleet:needs-{linux,windows}-smoke`
 # lane. The discriminator opens ONLY the mac door: an unrecognized host still
-# refuses, matching `_current_host`'s fail-closed stance.
+# refuses, matching `_current_host`'s fail-closed stance. Deliberately no
+# `BACKEND_SYMMETRIC_LABEL` constant mirroring `GL_HOST_LABEL`:
+# `_host_incompatible` matches the scout-stamped `backend_symmetric` task
+# field, never the raw label on a record.
 METAL_CAPABLE_HOSTS = {"mac"}
-
-# The raw label behind the scout's `backend_symmetric` TASK field.
-BACKEND_SYMMETRIC_LABEL = "fleet:backend-symmetric"
 
 # Smoke validation is the one lane whose work is *definitionally* host-specific:
 # only a native-Windows host can clear `fleet:needs-windows-smoke`. The scout's
