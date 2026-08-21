@@ -178,7 +178,7 @@ Engine build / run (everyday dev)
       lldb/gdb. Use --batch to run once and print all thread backtraces.
   fleet-debug triggers
       Read-only per-role dispatch-state dump (trigger / seen-hash / projection
-      slice / empty-suppression #2181). See "Parallel-agent fleet" below.
+      slice / suppression #2181). See "Parallel-agent fleet" below.
 
   fleet-run [--build-dir <dir>] [--timeout N] <exe-name> [args...]
       Finds the built binary under build/, cd's beside data/shaders/scripts.
@@ -230,8 +230,10 @@ Parallel-agent fleet (tmux + Claude)
   fleet-debug triggers           read-only per-role dispatch-state dump: pending
                                  trigger + mtime/content, last seen projection
                                  hash, projection slice size + generated_at, and
-                                 whether the last hash write was an empty-
-                                 projection suppression (#2181). Diagnoses why a
+                                 whether the last hash write was a suppression
+                                 — an empty projection, widening to "no kind
+                                 gained an item" for the per-kind roles
+                                 (#2181, #2700). Diagnoses why a
                                  role woke / didn't wake without hand-reading
                                  ~/.fleet/state/{triggers,seen-hashes,projections}
   fleet-dispatcher               transient-claude dispatcher (worker panes)

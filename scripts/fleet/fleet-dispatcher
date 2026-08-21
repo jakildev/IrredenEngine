@@ -1945,6 +1945,7 @@ dispatch_role() {
     if (( dispatched > 0 )) && empty_streak_over_cap "$role"; then
         rm -f "$trigger_file"
         reset_empty_streak "$role"
+        unset "CAP_DEFER_LOGGED[$role-uncovered]"
         log "$role: ${EMPTY_STREAK_CAP} consecutive fast exits (<${EMPTY_EXIT_SECONDS}s, no claim) — standing down; scout re-arms on new work"
         return
     fi
@@ -1954,6 +1955,7 @@ dispatch_role() {
     # per gap — regardless of how many fired this tick or the boot-window
     # state. This is what spreads the fleet-up burst to ~one launch per tick.
     if [[ -n "$gap_blocked" ]]; then
+        unset "CAP_DEFER_LOGGED[$role-uncovered]"
         if (( dispatched > 0 )); then
             log "$role: dispatched $dispatched; min-gap (${DISPATCH_MIN_GAP_SECONDS}s) deferring remaining idle panes — trigger kept"
         else
@@ -1988,9 +1990,19 @@ dispatch_role() {
             log "$role: dispatched class=$DISPATCH_CLASS; other classes still queued — trigger kept"
             return
         fi
-        # Steady state (or boot window with cap saturated): at least
-        # one pane took the work and headroom is filled, consume the
-        # trigger.
+        # Steady state (or boot window with cap saturated): at least one pane
+        # took the work. Consume the trigger only if this tick's launches
+        # actually COVERED the claimable headroom — see
+        # should_retain_trigger_for_coverage for why `dispatched > 0` alone
+        # does not mean they did.
+        if should_retain_trigger_for_coverage "$dispatched" "$claim_headroom"; then
+            if [[ -z "${CAP_DEFER_LOGGED[$role-uncovered]+x}" ]]; then
+                log "$role: dispatched $dispatched of $claim_headroom claimable; trigger kept for freed panes"
+                CAP_DEFER_LOGGED["$role-uncovered"]=1
+            fi
+            return
+        fi
+        unset "CAP_DEFER_LOGGED[$role-uncovered]"
         rm -f "$trigger_file"
     else
         # Every idle pane already had a record (still settling in
@@ -2014,6 +2026,36 @@ should_retain_trigger_for_fanout_race() {
     local role="$1" active="$2"
     local cap="${ROLE_CONCURRENCY[$role]:-0}"
     if (( cap > 0 && SECONDS < BOOT_FANOUT_WINDOW_SECONDS && active < cap )); then
+        return 0
+    fi
+    return 1
+}
+
+# Decide whether to retain a per-role trigger after a steady-state dispatch
+# tick because this tick's launches did not cover the claimable headroom
+# (#2700). Returns 0 (retain) when the lane is claim-counted and
+# `dispatched < claim_headroom`; 1 (consume) otherwise, which includes every
+# uncapped lane (claim_headroom<0 — non-worker roles and the legacy
+# fallthrough), so only claim-counted lanes change behaviour.
+#
+# `dispatched > 0` does NOT imply the headroom was covered: the fan-out loop
+# also exits on idle-pane exhaustion, so 1 launch against 8 claimable items
+# reaches the steady-state branch. Consuming there is only safe while something
+# re-arms the trigger as panes free up, and per-kind suppression (#2700) removes
+# that pump — the scout no longer fires on the claim that empties a task slot.
+# The remaining rescue, the periodic rearm, requires ZERO active workers, so one
+# long-running task would stall re-dispatch of every freed pane for its whole
+# duration. Retention is what replaces the pump.
+#
+# A retained trigger is cheap and already bounded: with no idle pane
+# dispatch_role returns above the resolver, and the empty-exit backoff still
+# consumes it on a no-pick streak.
+#
+# Extracted so the dispatcher's trigger tests can drive the decision without
+# spinning up the full main loop.
+should_retain_trigger_for_coverage() {
+    local dispatched="$1" claim_headroom="$2"
+    if (( claim_headroom >= 0 && dispatched < claim_headroom )); then
         return 0
     fi
     return 1
@@ -2479,6 +2521,25 @@ case "${1:-}" in
             exit 2
         fi
         if should_retain_trigger_for_fanout_race "$2" "$3"; then
+            echo "retain"
+        else
+            echo "consume"
+        fi
+        exit 0
+        ;;
+    --coverage-retain-check)
+        # Test/debug: print `retain` or `consume` for a steady-state tick that
+        # dispatched <n> panes against <claim-headroom> claimable items (#2700).
+        # A negative headroom is the uncapped lane and always consumes.
+        if [[ -z "${2:-}" || -z "${3:-}" ]]; then
+            echo "usage: fleet-dispatcher --coverage-retain-check <dispatched> <claim-headroom>" >&2
+            exit 2
+        fi
+        if ! [[ "$2" =~ ^[0-9]+$ && "$3" =~ ^-?[0-9]+$ ]]; then
+            echo "fleet-dispatcher --coverage-retain-check: <dispatched> must be a non-negative integer and <claim-headroom> an integer" >&2
+            exit 2
+        fi
+        if should_retain_trigger_for_coverage "$2" "$3"; then
             echo "retain"
         else
             echo "consume"

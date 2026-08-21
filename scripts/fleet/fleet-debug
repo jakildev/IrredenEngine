@@ -32,8 +32,21 @@ Subcommands
   triggers            Read-only dump of per-role fleet dispatch state: pending
                       trigger (+ mtime/content), last seen projection hash,
                       projection slice size + generated_at, and whether the last
-                      hash write was an empty-projection suppression (#2181).
-                      Never mutates any ~/.fleet/state file.
+                      hash write was a suppression (#2181). Never mutates any
+                      ~/.fleet/state file.
+                      suppressed= is yes iff the last hash write deliberately
+                      skipped arming the trigger. The rule is per-role: an empty
+                      projection on the bare-hash path, widening for the
+                      per-kind roles to "no kind gained an item", which includes
+                      a pure removal from a still-non-empty lane (#2700). For
+                      those roles it does NOT mean the projection was empty —
+                      read seen= to tell which rule applied.
+                      seen= prints `fmt2[kind=N,...]` for roles using per-kind
+                      suppression (#2700) and a bare hash for the rest. Those
+                      roles also sit at trigger=pending far more often by
+                      design — the dispatcher now retains the trigger while
+                      claimable headroom is uncovered, so a standing worker
+                      trigger is normal, not a stuck one.
 
 Options
   --batch             Non-interactive crash triage: run immediately, then print
@@ -65,7 +78,8 @@ USAGE
 
 # `fleet-debug triggers` — read-only dump of per-role dispatch state
 # (pending trigger, last seen projection hash, projection slice size, and
-# whether the last hash write was an empty-projection suppression, #2181).
+# whether the last hash write was a suppression — an empty projection on the
+# bare-hash path, or no kind gaining an item on the per-kind path, #2181/#2700).
 # A subcommand, not a build target: every build target is IR*-named, so
 # `triggers` can't collide with one. Anything else falls through to the
 # debugger-launcher path below. State dir resolves from $HOME so tests can
@@ -84,7 +98,7 @@ PROJECTIONS_DIR = STATE / "projections"
 # Canonical dispatch roles. Sync sources: fleet-state-scout PROJECTORS and
 # fleet-dispatcher DISPATCHED_ROLES. queue-manager / queue-manager-ingest
 # spawn inline non-LLM subprocesses and never get a trigger file or an
-# empty-suppression marker, so those two columns read n/a for them.
+# suppression marker, so those two columns read n/a for them.
 CANONICAL = [
     "worker",
     "sonnet-reviewer",
@@ -153,12 +167,30 @@ def _trigger_col(role):
 def _seen_col(role):
     path = SEEN_DIR / role
     try:
-        h = path.read_text().strip()
+        raw = path.read_text().strip()
     except FileNotFoundError:
         return "-"
     except OSError:
         return "unreadable"
-    return f"{h[:12]}({_mtime(path)})"
+    # Two on-disk formats. Legacy: a bare 16-hex whole-projection hash.
+    # fmt-2 (#2700, roles in the scout's PER_KIND_TRIGGER_ROLES): a
+    # {"fmt":2,"kinds":{<kind>:[<item-hash>,...]}} payload, because suppression
+    # for those roles is decided per sub-lane — collapsing it back to one hash
+    # would hide which lane actually moved. Show per-kind item counts instead.
+    if raw.startswith("{"):
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            data = None
+        if isinstance(data, dict) and data.get("fmt") == 2:
+            kinds = data.get("kinds")
+            if isinstance(kinds, dict):
+                body = ",".join(
+                    f"{kind or '<none>'}={len(hashes)}"
+                    for kind, hashes in sorted(kinds.items())
+                ) or "empty"
+                return f"fmt2[{body}]({_mtime(path)})"
+    return f"{raw[:12]}({_mtime(path)})"
 
 
 def _projection_col(role):
@@ -179,6 +211,13 @@ def _projection_col(role):
 
 
 def _suppressed_col(role):
+    # Column reads `suppressed=`, not `empty-suppressed=`: on the per-kind path
+    # (#2700) the marker means "no kind gained an item", so a pure removal from
+    # a still-non-empty lane sets it on a lane that is never empty. The on-disk
+    # file name keeps the `.empty-suppressed` suffix on purpose, so existing
+    # markers and both readers stay valid — fleet-state-scout's marker-invariant
+    # comment owns that rationale. The two spellings differ deliberately; don't
+    # reconcile them by renaming the file.
     if role in NO_TRIGGER:
         return "n/a"
     marker = SEEN_DIR / f"{role}{SUPPRESS_SUFFIX}"
@@ -197,7 +236,7 @@ for role in roles:
         f"trigger={_trigger_col(role)}  "
         f"seen={_seen_col(role)}  "
         f"proj={_projection_col(role)}  "
-        f"empty-suppressed={_suppressed_col(role)}"
+        f"suppressed={_suppressed_col(role)}"
     )
 PYEOF
 fi
