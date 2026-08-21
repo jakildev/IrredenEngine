@@ -15,6 +15,15 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   `tempfile.TemporaryDirectory()` `cache_dir` instead. When migrating a
   fetcher's transport (e.g. `run_capture(gh)` → `conditional_get`), re-point
   *every* test mock at the new seam in the same PR.
+  The same duty applies when a function **acquires** its first network call
+  rather than changing an existing one: every suite already covering it was
+  written network-free and silently starts reaching live GitHub, so its
+  verdicts become a function of production state. Re-point those suites in the
+  same PR — and prefer fixtures that are obviously synthetic, since the tell is
+  easy to miss when the fixture uses plausible real IDs (#2986 added a live
+  fallback to `resolve_needs_plan_blocked_by`; the pre-existing suite's "open
+  blocker" fixture was a real issue number that had since closed, so the suite
+  failed on live state rather than on the code under test).
 - **A CLI stub models the tool's argument parsing, not just its endpoint.**
   A `gh` stub that matches a substring of `"$@"` and ignores flags accepts
   arguments the real binary rejects, so the suite certifies a call that has

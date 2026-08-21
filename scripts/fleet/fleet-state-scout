@@ -1477,14 +1477,18 @@ def _closed_issue_numbers(repo_state):
     }
 
 
-def resolve_blocked_by(state):
+def resolve_blocked_by(state, ref_cache=None):
     """Resolve blocked_by fields for all open tasks.
 
     Uses already-fetched closed_fleet_queued and recent_merged_prs for
     in-memory resolution; falls back to live gh issue view for refs not
     covered by either. Mutates state in place.
+
+    `ref_cache` lets the caller share one `_resolve_ref_satisfied` cache
+    across the resolvers that run in the same tick, so a ref appearing in
+    both this lane and the needs-plan lane costs one live call, not two.
     """
-    per_tick_cache: dict = {}
+    per_tick_cache: dict = {} if ref_cache is None else ref_cache
 
     for repo_key, repo_state in state["repos"].items():
         repo_slug = _REPO_SLUG_MAP.get(repo_key)
@@ -1559,9 +1563,20 @@ def resolve_human_approved_blockers(state):
     tasks.open-sourced _ingest_unblock_candidates, not off this flag.
 
     Resolution is in-memory only (closed_fleet_queued + merged `claude/<N>-*`
-    heads), mirroring resolve_blocked_by()'s cheap path — NO live gh here, so
-    the per-tick projection stays fast. `body` is popped after parsing so it
-    never bloats state.json or the per-role slices.
+    heads) — NO live gh here, so the per-tick projection stays fast. `body` is
+    popped after parsing so it never bloats state.json or the per-role slices.
+
+    This lane deliberately does NOT take the live `_resolve_ref_satisfied`
+    fallback its two siblings use (#2986). The distinction is what the flag
+    gates: resolve_blocked_by feeds pickup and resolve_needs_plan_blocked_by
+    feeds the planner dispatch, so a false positive there strands real work,
+    whereas this flag has gated nothing since #1527 (see the paragraph above)
+    and is read only for state.json visibility. Spending a live call per novel
+    unresolved ref, every tick, on a display-only field is the wrong trade for
+    a polling daemon built around conditional GETs. The visible cost is that an
+    entry here can read `blocked: true` after its blocker closed outside the
+    closed_fleet_queued window; the ingest path rechecks live and is unaffected.
+    If this flag ever regains a gating consumer, it needs the fallback too.
     """
     for repo_key, repo_state in state["repos"].items():
         closed_nums = _closed_issue_numbers(repo_state)
@@ -1600,19 +1615,34 @@ def resolve_human_approved_blockers(state):
                 break
 
 
-def resolve_needs_plan_blocked_by(state):
+def resolve_needs_plan_blocked_by(state, ref_cache=None):
     """Annotate each fleet:needs-plan issue with `blocked` — True when its
     `**Blocked by:**` predecessor is still open (#2287).
 
-    Mirrors resolve_human_approved_blockers(): in-memory only
-    (closed_fleet_queued + merged `claude/<N>-*` heads), no live gh, so the
-    per-tick projection stays fast. `body` is popped after parsing so it
-    never bloats state.json or the per-role slices. Without this, a
-    needs-plan issue explicitly parked behind an open blocker (e.g. #2258
-    held for #2280) kept projecting as plannable, firing a planner dispatch
-    every tick that found nothing to do on arrival.
+    In-memory first (closed_fleet_queued + merged `claude/<N>-*` heads), then
+    the same live `_resolve_ref_satisfied` fallback resolve_blocked_by() uses
+    for refs neither source covers (#2986). The fallback is NOT optional here:
+    `blocked` is a hard gate in two places — project_worker drops the issue so
+    it never wakes a planner dispatch, and the role slice drops it so it can
+    never be assigned as FLEET_PLAN_ISSUE. A false positive is therefore
+    permanent and silent, with no tier that still lists the issue.
+
+    Why the in-memory sources are not sufficient on their own: closed_fleet_queued
+    is both **windowed** (fetch_closed_fleet_queued takes a single page — 100
+    against a live population of 820) and **label-scoped** (`fleet:queued` only).
+    The second is the binding one — #2986's incident blocker #2310 carries no
+    labels at all, so it is absent from that set at *any* window size. Widening
+    the window (what #2856 did for fetch_human_approved) does not fix this lane.
+
+    `body` is popped after parsing so it never bloats state.json or the
+    per-role slices. Without the blocked flag at all, a needs-plan issue
+    explicitly parked behind an open blocker (e.g. #2258 held for #2280) kept
+    projecting as plannable, firing a planner dispatch every tick that found
+    nothing to do on arrival.
     """
+    per_tick_cache: dict = {} if ref_cache is None else ref_cache
     for repo_key, repo_state in state["repos"].items():
+        repo_slug = _REPO_SLUG_MAP.get(repo_key)
         closed_nums = _closed_issue_numbers(repo_state)
         merged_heads = [
             pr.get("headRefName", "") or ""
@@ -1641,11 +1671,20 @@ def resolve_needs_plan_blocked_by(state):
                     continue
                 if any(branch_matches_issue(h, ref, repo_key) for h in merged_heads):
                     continue
+                # Live fallback for the residual (#2986). Reached only by refs
+                # both in-memory sources missed, so it costs a call per *novel*
+                # unresolved ref per tick, shared with resolve_blocked_by's
+                # cache. _resolve_ref_satisfied fails closed (False on any gh
+                # error/timeout), so a flaky call leaves the issue blocked —
+                # the same conservative direction as before this fallback.
+                if repo_slug and _resolve_ref_satisfied(
+                        repo_slug, ref, per_tick_cache):
+                    continue
                 issue["blocked"] = True
                 break
 
 
-def resolve_epic_children(state):
+def resolve_epic_children(state, ref_cache=None):
     """Annotate each epic for the steward projection (#1664). Mutates state
     in place before the state write, mirroring resolve_blocked_by, so both
     project_epic_steward and slice_epic_steward stay pure functions of the
@@ -1669,8 +1708,12 @@ def resolve_epic_children(state):
     - else the rare _resolve_ref_satisfied live fallback (per-tick cached) —
       only unchecked children invisible to every list fetch land here (e.g.
       filed but not yet approved/queued).
+
+    `ref_cache` shares the tick's `_resolve_ref_satisfied` cache with the
+    blocked-by resolvers (#2986) — an epic child that is also some task's
+    blocker is then one live call for the tick, not two.
     """
-    per_tick_cache: dict = {}
+    per_tick_cache: dict = {} if ref_cache is None else ref_cache
     for repo_key, repo_state in state["repos"].items():
         repo_slug = _REPO_SLUG_MAP.get(repo_key)
         epics = repo_state.get("epics", [])
@@ -3036,10 +3079,14 @@ def tick_once():
             log(f"state degraded: {state['degraded']} — reconcile disabled this tick")
         _populate_done_tasks(state)
         _populate_review_plan(state)
-        resolve_blocked_by(state)
+        # One shared _resolve_ref_satisfied cache across every resolver in the
+        # tick, so a ref named by more than one of them (a task blocker that is
+        # also an epic child) costs a single live call (#2986).
+        ref_cache: dict = {}
+        resolve_blocked_by(state, ref_cache)
         resolve_human_approved_blockers(state)
-        resolve_needs_plan_blocked_by(state)
-        resolve_epic_children(state)
+        resolve_needs_plan_blocked_by(state, ref_cache)
+        resolve_epic_children(state, ref_cache)
         # enrich_inflight_pr_tasks must run before enrich_stackable_blocker_prs
         # — the stackable pass reads a task's `inflight_pr` field to suppress
         # a doomed offer on a task whose own issue already has an open PR
