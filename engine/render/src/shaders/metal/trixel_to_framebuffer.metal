@@ -97,14 +97,13 @@ fragment FragmentOut f_trixel_to_framebuffer(
     const float2 textureSize = float2(triangleColors.get_width(), triangleColors.get_height());
     const int2 z1 = trixelOriginOffsetZ1(int2(textureSize));
 
-    // Color / depth read at the RAW interpolated canvas position: Metal's negated
-    // clip-Y (top-left target vs GL's bottom-left) already lands the raw sample on
-    // the correct trixel row, so — unlike GL — no parity-row shift is applied here.
-    // The shifted index IS still computed (`originShifted` below) and used for
-    // hover entity-id readback, so it stays in lockstep with CPU-side
-    // `mouseTrixelPositionWorld()` (same `pos2DIsoToTriangleIndex` formula). See
-    // trixelFramebufferSamplePosition in ir_iso_common.metal; #442,
-    // docs/design/trixel-parity-shift-442-investigation.md.
+    // Color / depth read at the RAW interpolated canvas position — the raw
+    // sample already lands on the correct trixel row (same convention as the
+    // GLSL twin). The shifted index IS still computed (`originShifted` below)
+    // and used for hover entity-id readback, so it stays in lockstep with
+    // CPU-side `mouseTrixelPositionWorld()` (same `pos2DIsoToTriangleIndex`
+    // formula). See trixelFramebufferSamplePosition in ir_iso_common.metal;
+    // #442, docs/design/trixel-parity-shift-442-investigation.md.
     const float2 originRaw = in.texCoords * textureSize;
     const int originModifier = trixelOriginModifier(z1, frameData.canvasOffset);
     const float2 originShifted =
@@ -130,10 +129,10 @@ fragment FragmentOut f_trixel_to_framebuffer(
     // SAME texel its color/depth came from — sampleCoord, the raw position) only
     // when the canvas carries a per-trixel priority. When it doesn't,
     // decodePriority of an unread id would be 0, so tier == depthPriorityMode and
-    // the output is byte-identical. Unlike the GLSL twin this read never feeds
-    // picking (the hover read below uses the shifted hoverCoord and is left
-    // untouched + already gated on isMouseHovered), so no `|| isMouseHovered`
-    // disjunct is needed here.
+    // the output is byte-identical. This read never feeds picking (the hover
+    // read below uses the shifted hoverCoord and is gated on isMouseHovered
+    // separately), so no `|| isMouseHovered` disjunct is needed — the GLSL twin
+    // carries the same sampleCoord/hoverCoord split.
     int tier = frameData.depthPriorityMode;
     if (frameData.anyPerTrixelPriority != 0) {
         const uint2 sampleEntityId = triangleEntityIds.read(sampleCoord).rg;

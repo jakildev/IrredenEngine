@@ -233,7 +233,7 @@ framebuffer-Y origins: OpenGL's default framebuffer is **bottom-left** origin
 quad pass, mirror this negate on the Metal side or the image renders
 upside-down.
 
-### Trixel→framebuffer parity shift (GL-only)
+### Trixel→framebuffer hover parity shift
 
 The `TRIXEL_TO_FRAMEBUFFER` gather samples the canvas at
 `origin = TexCoords * textureSize`. Each iso texel-cell holds two triangles
@@ -242,23 +242,24 @@ split along a diagonal; `trixelFramebufferSamplePosition`
 conditionally decrementing **`origin.y`** by one row (parity bit + a sub-pixel
 `fract` test, byte-identical to CPU `IRMath::pos2DIsoToTriangleIndex`).
 
-**GL applies that shift to the color/depth/id reads; Metal reads color/depth
-from the raw origin.** Both backends build identical per-vertex `TexCoords`, but
-per the "Metal negates clip `position.y`" note above they rasterize that quad
-under **opposite framebuffer-Y origins**: GL's raw sample lands on the row that
-needs the shift, while Metal's flipped raster already lands the raw sample on the
-correct row (the equivalent one-row correction, applied implicitly). Both read
-the *correct* trixel for their own raster convention — not a latent bug, so the
-asymmetry is kept, not reconciled. **Picking is the one shared exception:** both
-backends apply the shift to the *hover* coordinate, because it must match CPU
-`mouseTrixelPositionWorld()` → `pos2DIsoToTriangleIndex` (computed independently
-of GPU raster-Y), even though only GL applies it to the color/depth gather.
+**That shift feeds the hover/pick coordinate ONLY, on both backends.** The
+color/depth/tier reads sample the **raw** origin: both vertex twins build
+identical V-flipped `TexCoords`, and Metal's clip-Y negate (the note above) is
+cancelled by its own negate in the final blit, so both backends interpolate
+the same canvas position for the same screen pixel — the raw sample lands on
+the correct trixel row on both. The hover coordinate is shifted because it
+must match CPU `mouseTrixelPositionWorld()` → `pos2DIsoToTriangleIndex`; both
+gathers keep the two coordinates separate (raw sampleCoord / shifted
+hoverCoord). Applying the shift to the color/depth reads is the known
+regression shape — a 1px sawtooth on every iso-diagonal and vertical
+silhouette plus a garbage top-canvas-row line (#394 on Metal; the GL gather
+carried the same defect until 2026-08).
 
 Before editing either `f_trixel_to_framebuffer` shader or
 `trixelFramebufferSamplePosition`, read
 [`docs/design/trixel-parity-shift-442-investigation.md`](../../docs/design/trixel-parity-shift-442-investigation.md)
-— it carries the #394/#438/#442 timeline, the ruled-out X-axis/rounding
-candidates, and the keep-and-document decision.
+— it carries the #394/#438/#442 timeline, the corrected raster/texcoord
+accounting, the defect signature, and the ruled-out candidates.
 
 ## What belongs in engine/render/ vs engine/prefabs/irreden/render/
 
