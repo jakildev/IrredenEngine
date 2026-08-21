@@ -1016,27 +1016,42 @@ scales with the live population rather than the entry cap.
 Cost + the residual-class revisit trigger are in the design doc's §"Draw order
 is canonical" block.
 
-**Accepted near-cardinal corner drift (coarse cubes) — #1883, root fix in
-epic #1933.** The forward-scatter composite grows each cell to a conservative
-quad (`scatterConservativeDilation`, `ir_iso_common.glsl`): the per-edge margin
-`C ≈ 0.5·|n|` carries foreshortened-silhouette coverage (anti-dashing) and a
-miter limit `kScatterMiterLimit` (`M = 2.0`) caps the corner extension. At
-near-cardinal poses (≈84° per-axis) on **coarse** cubes this leaves visible
-convex-corner **spikes** — a silhouette-tip cell whose dilation quad
-over-extends into background by ≈ `M·C`. There is **no local (non-neighbour)
-scalar fix**: crisp corners need `M·C ≲ 2px`, but `C` is forced to ≈ half the
-on-screen cell pitch to bridge the inter-cell coverage gap on foreshortened
-faces, and those two bounds are mutually exclusive — no `(margin-ceiling,
-miter-limit)` pair satisfies both (every scalar tried either re-dashes the
-silhouette or keeps the spikes). The defect scales **inversely with cell
-density** — negligible on normal/fine cubes — so it is accepted as intentional
-drift. The neighbour-aware dilation that *would* fix it geometrically was
-rejected on cost (2–4 extra `triangleColors` texel fetches per scatter vertex
-on the hot per-cell path). The principled root fix — hardware **conservative
-rasterization / MSAA** on the scatter pass, which removes the sub-pixel
-rasterization dropout at the source so no manual dilation/margin is needed
-(killing spikes and silhouette dashing together) — is deferred to epic
-**#1933** (fits #935/#937).
+**Near-cardinal corner spikes on coarse cubes (#1883) — fixed by the epic
+#1933 analytic coverage, now on both backends.** Historically the
+forward-scatter composite let the *dilation* decide coverage: each cell grew
+to a conservative quad whose per-edge margin `C ≈ 0.5·|n|` carried
+foreshortened-silhouette coverage (anti-dashing), capped by
+`kScatterMiterLimit` (`M = 2.0`). That made crisp corners and gap-free
+foreshortened faces mutually exclusive — crisp corners need `M·C ≲ 2px` while
+bridging the inter-cell gap forces `C` to ≈ half the on-screen cell pitch — so
+near-cardinal poses (≈84° per-axis) on **coarse** cubes showed convex-corner
+**spikes** over-extending into background by ≈ `M·C`, and no scalar
+`(margin-ceiling, miter-limit)` pair fixed both.
+
+The resolution was to **split the two jobs**. `scatterConservativeDilation` is
+now only a *visit-bound*: a fixed `kScatterDilateMarginPx` (~1px) per edge,
+just wide enough that the rasterizer visits every fragment the true footprint
+could touch. Coverage is decided per-fragment in `f_peraxis_scatter` by
+`scatterAnalyticEdgeCoverage` (`ir_iso_common.{glsl,metal}`), from the
+fragment's position in the true `[0,1]^2` footprint plus a per-edge
+interior/boundary classification: interior edges fill solid (closing the
+inter-cell seam), boundary edges get exact sub-pixel box coverage (crisp
+corners, no dashing). The neighbour taps the old note recorded as
+*rejected on cost* are what pay for the classification — but two per vertex,
+not 4: each axis's polarity-interior edge is interior unconditionally and
+skips its tap.
+
+Landed Metal-first (#1937), then GL (#1938); the two shaders are hand-mirrored,
+so keep them in lockstep. Measured on the canonical coarse-cube probe
+(`IRShapeDebug --spin-shape box --spin-shape-voxel --yaw-sweep --pivot-origin
+--zoom 4`, 24 frames, Windows/GL, 2026-08-21): before **JITTER**, x excursion
+1.92px against the 0.50px zoom-4 bar; after **SMOOTH**, 0.01px.
+
+Still open: **#1939 (C3)** retires the residual margin / miter / yield tower
+now that neither backend needs it to decide coverage. Hardware conservative
+rasterization / MSAA remains unused — the analytic model was chosen precisely
+because Metal exposes no conservative-raster API, so do **not** reach for
+`GL_NV_conservative_raster` on the GL side (it would fork the two backends).
 
 **Accepted sub-pixel yaw-sweep centroid residual (voxel content) — #2469.**
 On the canonical Z-yaw-invariant probe (voxel cylinder, `--yaw-sweep`) the
@@ -1088,9 +1103,11 @@ Three findings ground the accept, each measured rather than asserted:
    zooms; the pre-#2427 overflow defect measured 2.93px residual / 5.37 Δmax at
    zoom 4, ~2-5x this floor.
 
-There is no local fix: the residual is content plus the sampling floor, so the
-principled root fix is the same conservative-rasterization / MSAA direction
-already deferred to epic **#1933** (as for the #1883 corner drift above).
+There is no local fix: the residual is content plus the sampling floor. Note
+this is **not** addressed by the #1933 analytic coverage that fixed the #1883
+corner spikes above — that changed which fragments a face claims, not the
+content anisotropy or the destination sampling grid. The remaining direction
+would be hardware MSAA on the scatter pass, which nothing schedules today.
 
 **The `reversals == 0` criterion misfires on these probes — see the gate recipe
 in §"Verifying temporal stability" for the shipped flags and the limitation
