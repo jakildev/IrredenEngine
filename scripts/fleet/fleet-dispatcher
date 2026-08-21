@@ -435,17 +435,45 @@ fi
 # Observed on the native-Windows host with a stale boot trigger the scout
 # never re-armed (its projection had gone empty for this host's class).
 #
-# The fix: treat a dispatch that returns to a shell in under EMPTY_EXIT_SECONDS
-# as "claimed nothing" (a genuine claim runs for minutes — build / test / PR).
-# Count consecutive empty exits per role; once the streak reaches
-# EMPTY_STREAK_CAP, consume the trigger after the tick's probe dispatches (all
-# idle panes for the role) instead of retaining it. The scout re-arms on the
-# next real projection change, and a genuine long-running claim resets the
-# streak (cleanup_stale_dispatches). Net: at most one wasted probe-fan-out per
-# armed trigger instead of an unbounded loop.
+# The fix: count consecutive dispatches that claimed nothing, per (role, class);
+# once the streak reaches EMPTY_STREAK_CAP, consume the trigger after the tick's
+# probe dispatches (all idle panes for the role) instead of retaining it. The
+# scout re-arms on the next real projection change, and a dispatch that claimed
+# work resets the streak (cleanup_stale_dispatches). Net: at most one wasted
+# probe-fan-out per armed trigger instead of an unbounded loop.
+#
+# "Claimed nothing" is a signal, not an inference (#2698). fleet-claim stamps a
+# pane-keyed marker on every acquire/release arm, so the answer is recorded
+# before the iteration exits. Duration cannot separate worked from
+# walked-and-declined: a worker that walks both queues and correctly declines
+# also runs for minutes. Raising the threshold does not help — the two occupy
+# the same band, and the band moves whenever a role doc's mandated walk changes.
+#
+# EMPTY_EXIT_SECONDS survives as the fallback for dispatches whose outcome is
+# unknown (records written before this landed, and the roles below) and as a
+# test knob; the stale-boot-trigger case it was built for is now covered by the
+# marker, since a pane that never claims stamps nothing however fast it exits.
+#
+# Roles for which duration is STILL the right proxy. The marker assumes a
+# role's productive work goes through fleet-claim — true for everything that
+# claims from a queue: worker (claim/reserve/release), the reviewers and
+# smoke-worker (review-claim), the epic steward (steward-claim). The merger is
+# the deliberate exception: it does not consult or take fleet-claim locks at
+# all (`role-merger.md` — `--force-with-lease` is its concurrency control), so
+# under the marker it would stamp nothing on a *successful* merge run and
+# stand its own lane down after EMPTY_STREAK_CAP productive dispatches.
+#
+# Duration stays sound for exactly these roles, for the mirror of the reason it
+# broke elsewhere: it failed for the worker because that role doc mandates a
+# multi-minute queue walk before a legitimate decline. A role with no such walk
+# still exits fast when idle and runs long when busy.
+NO_CLAIM_FABRIC_ROLES="${FLEET_DISPATCHER_NO_CLAIM_FABRIC_ROLES:-merger}"
 EMPTY_EXIT_SECONDS="${FLEET_DISPATCHER_EMPTY_EXIT_SECONDS:-60}"
 EMPTY_STREAK_CAP="${FLEET_DISPATCHER_EMPTY_STREAK_CAP:-3}"
 EMPTY_STREAK_DIR="$STATE_DIR/empty-streak"
+# Where fleet-dispatch-wrap exports FLEET_CLAIM_FLAG and fleet-claim stamps a
+# pane's productive-work marker (#2698). Keep in sync with fleet-dispatch-wrap.
+CLAIM_FLAG_DIR="$STATE_DIR/dispatch-claimed"
 # Validate-and-clamp both overrides the same way BOOT_FANOUT_WINDOW_SECONDS is
 # guarded above — a non-numeric value would emit arithmetic errors every tick
 # or kill the daemon under `set -u`.
@@ -883,7 +911,11 @@ write_dispatch_record() {
     epoch=$(date +%s)   # read back by cleanup_stale_dispatches for the empty-exit streak
     [[ -n "$plan_issue" ]] && extra=$(printf ',"plan_issue":"%s"' "$plan_issue")
     mkdir -p "$DISPATCH_DIR"
-    printf '{"role":"%s","pane":"%s","class":"%s","dispatched_at":"%s","dispatched_epoch":%s%s}\n' \
+    # claim_marker:1 asserts this dispatch's wrapper exports FLEET_CLAIM_FLAG,
+    # so cleanup_stale_dispatches may trust the marker's absence as "claimed
+    # nothing" (#2698). Records without it predate the change and fold on the
+    # old duration heuristic.
+    printf '{"role":"%s","pane":"%s","class":"%s","dispatched_at":"%s","dispatched_epoch":%s,"claim_marker":1%s}\n' \
         "$role" "$pane_id" "$class" "$ts" "$epoch" "$extra" >"$(dispatch_record "$pane_id")"
 }
 
@@ -896,6 +928,19 @@ class_of_model() {
         "$SONNET_MODEL") echo "sonnet" ;;
         *)               echo "opus" ;;
     esac
+}
+
+# The model class a dispatch of $1 is stamped and counted under: the class this
+# tick elected when the role is class-routed, else the class of the role's
+# static default model.
+#
+# Single source of truth on purpose. The write site (write_dispatch_record) and
+# the empty-exit consume site (dispatch_role) must agree with what the fold
+# site reads back out of the record, or the streak is written under one key and
+# read under another — a counter that never reaches the cap, which is #2698's
+# own failure mode reintroduced one level down.
+dispatch_class_key() {
+    printf '%s\n' "${DISPATCH_CLASS:-$(class_of_model "${ROLE_MODEL[$1]:-sonnet}")}"
 }
 
 # Count in-flight dispatches of a model class across ALL panes/roles. A
@@ -942,45 +987,109 @@ count_recent_active_for_class() {
 }
 
 # --- Empty-exit streak bookkeeping -----------------------------------------
-# Per-role counter of consecutive dispatches that returned to a shell without
-# claiming work (see the EMPTY_EXIT_SECONDS config block). One small file per
-# role under $EMPTY_STREAK_DIR holding a non-negative integer.
+# Per-(role, class) counter of consecutive dispatches that returned to a shell
+# without claiming work (see the EMPTY_EXIT_SECONDS config block). One small
+# file per counter under $EMPTY_STREAK_DIR holding a non-negative integer.
+#
+# The class qualifier (#2698) keeps one class's real work from clearing
+# another's starvation streak: on a mixed fleet a busy sonnet lane would
+# otherwise reset the counter a structurally-starved opus/macOS lane is
+# accumulating, so the cap was effectively unreachable.
+#
+# The counter is already per-HOST by construction — EMPTY_STREAK_DIR hangs off
+# STATE_DIR ($HOME/.fleet/state by default) and each host runs its own
+# dispatcher daemon against its own $HOME — so no host component is needed.
+# (The issue body's "one counter is shared by every host" is not accurate; if
+# state dirs are ever shared, `fleet-claim host` is the canonical host tag.)
+#
+# Pre-#2698 files use the bare `<role>` name. They are stale artifacts, not
+# something to migrate: the counter is ephemeral by design and a missing file
+# already reads 0.
 
 empty_streak_file() {
-    printf '%s\n' "$EMPTY_STREAK_DIR/$1"
+    # $1 = role, $2 = model class. Roles that aren't class-routed (and the
+    # unqualified test hooks) collapse to `all`.
+    printf '%s\n' "$EMPTY_STREAK_DIR/$1__${2:-all}"
 }
 
 read_empty_streak() {
     local f n
-    f=$(empty_streak_file "$1")
+    f=$(empty_streak_file "$1" "${2:-}")
     n=$(cat "$f" 2>/dev/null || printf '0')
     [[ "$n" =~ ^[0-9]+$ ]] || n=0
     printf '%s\n' "$n"
 }
 
-# 0 (true) when the role's streak has reached the cap — caller should consume
-# the trigger rather than retain it.
+# 0 (true) when the (role, class) streak has reached the cap — caller should
+# consume the trigger rather than retain it.
 empty_streak_over_cap() {
     local n
-    n=$(read_empty_streak "$1")
+    n=$(read_empty_streak "$1" "${2:-}")
     (( n >= EMPTY_STREAK_CAP ))
 }
 
 reset_empty_streak() {
-    rm -f "$(empty_streak_file "$1")"
+    rm -f "$(empty_streak_file "$1" "${2:-}")"
 }
 
-# Fold one completed dispatch's wall-clock duration into the role's streak: a
-# fast exit (no claim) bumps it, a long-running one (real work) resets it.
+# Fold one completed dispatch into its (role, class) streak.
+#
+# $4 is the verdict derived from the claim marker fleet-claim stamps
+# (`yes`/`no`); empty means "unknown", which only happens for the legacy
+# positional test hook and for dispatch records written before this change
+# landed, and falls back to the original wall-clock heuristic.
+#
+# Duration is NOT consulted once the verdict is known — see the
+# EMPTY_EXIT_SECONDS config block above for why it cannot be.
+#
 # Shared by cleanup_stale_dispatches and the --record-outcome test hook.
 record_dispatch_outcome() {
-    local role="$1" duration="$2"
+    local role="$1" duration="$2" class="${3:-}" claimed="${4:-}" empty=""
     [[ "$duration" =~ ^[0-9]+$ ]] || return 0
-    if (( duration < EMPTY_EXIT_SECONDS )); then
+    # A role outside the claim fabric never stamps the marker, so its verdict
+    # carries no information — discard it and fall back to duration, which is
+    # still valid for those roles (see NO_CLAIM_FABRIC_ROLES).
+    case " $NO_CLAIM_FABRIC_ROLES " in
+        *" $role "*) claimed="" ;;
+    esac
+    case "$claimed" in
+        yes) empty="" ;;
+        no)  empty=1 ;;
+        # Unknown: pre-#2698 record or the legacy two-arg hook.
+        *)   if (( duration < EMPTY_EXIT_SECONDS )); then empty=1; fi ;;
+    esac
+    if [[ -n "$empty" ]]; then
         mkdir -p "$EMPTY_STREAK_DIR"
-        printf '%s\n' "$(( $(read_empty_streak "$role") + 1 ))" > "$(empty_streak_file "$role")"
+        printf '%s\n' "$(( $(read_empty_streak "$role" "$class") + 1 ))" \
+            > "$(empty_streak_file "$role" "$class")"
     else
-        reset_empty_streak "$role"
+        reset_empty_streak "$role" "$class"
+    fi
+}
+
+# Decide claimed-vs-empty for one completed dispatch from its record file.
+# Prints `yes`, `no`, or empty for "unknown" (a legacy record, see below).
+# Split out of cleanup_stale_dispatches so the decision is reachable from the
+# --derive-outcome hook: the fold path itself needs tmux and a live pane, so
+# without this seam the planning and legacy arms would ship untested.
+derive_dispatch_outcome() {
+    local file="$1" pane="$2" marker plan_issue claim_flag
+    # `claim_marker` is only present on records written by this version of the
+    # dispatcher. Its absence means the pane was launched by the previous
+    # version, whose wrapper never exported FLEET_CLAIM_FLAG, so the marker
+    # would read a spurious "no" — report unknown and let the caller fall back
+    # to the old duration heuristic. Self-clearing after one dispatch cycle.
+    marker=$(sed -n 's/.*"claim_marker":\([0-9]*\).*/\1/p' "$file" | head -n 1)
+    [[ -n "$marker" ]] || return 0
+    # A planning dispatch is productive by assignment: the dispatcher took its
+    # planning-claim pre-launch (#2197), where the pane's FLEET_CLAIM_FLAG did
+    # not yet exist to be stamped.
+    plan_issue=$(sed -n 's/.*"plan_issue":"\([^"]*\)".*/\1/p' "$file" | head -n 1)
+    claim_flag="$CLAIM_FLAG_DIR/$(pane_id_to_key "$pane")"
+    if [[ -f "$claim_flag" || -n "$plan_issue" ]]; then
+        printf 'yes\n'
+    else
+        printf 'no\n'
     fi
 }
 
@@ -988,7 +1097,7 @@ cleanup_stale_dispatches() {
     if [[ ! -d "$DISPATCH_DIR" ]]; then
         return
     fi
-    local file role pane dispatched_epoch
+    local file role pane dispatched_epoch class claimed
     for file in "$DISPATCH_DIR"/*.json; do
         [[ -e "$file" ]] || continue
         role=$(sed -n 's/.*"role":"\([^"]*\)".*/\1/p' "$file" | head -n 1)
@@ -1000,13 +1109,22 @@ cleanup_stale_dispatches() {
         if pane_is_occupied "$pane"; then
             continue
         fi
+        class=$(sed -n 's/.*"class":"\([^"]*\)".*/\1/p' "$file" | head -n 1)
+        # Did this iteration do productive work? fleet-claim stamps the
+        # pane-keyed marker on every acquire/release arm, so the answer is
+        # recorded before the process exits — unlike a post-exit claim probe,
+        # which reads empty for an iteration that released early, and unlike
+        # wall-clock, which cannot tell a claim from a diligent no-pick.
+        claimed=$(derive_dispatch_outcome "$file" "$pane")
+        rm -f "$CLAIM_FLAG_DIR/$(pane_id_to_key "$pane")"
         # Fold the just-finished dispatch into the role's empty-exit streak.
         # Legacy records (pre-upgrade, no dispatched_epoch) skip this silently.
         dispatched_epoch=$(sed -n 's/.*"dispatched_epoch":\([0-9]*\).*/\1/p' "$file" | head -n 1)
         if [[ -n "$dispatched_epoch" ]]; then
-            record_dispatch_outcome "$role" "$(( $(date +%s) - dispatched_epoch ))"
+            record_dispatch_outcome "$role" "$(( $(date +%s) - dispatched_epoch ))" \
+                "$class" "$claimed"
         fi
-        log "dispatch for $role on $pane completed (pane returned to shell)"
+        log "dispatch for $role on $pane completed (pane returned to shell${claimed:+, outcome=$claimed})"
         rm -f "$file"
     done
 }
@@ -1922,8 +2040,7 @@ dispatch_role() {
             fi
             continue
         fi
-        write_dispatch_record "$role" "$pane_id" \
-            "${DISPATCH_CLASS:-$(class_of_model "${ROLE_MODEL[$role]:-sonnet}")}" "$plan_arg"
+        write_dispatch_record "$role" "$pane_id" "$(dispatch_class_key "$role")" "$plan_arg"
         LAST_DISPATCH_EPOCH=$now_epoch
         dispatched=$((dispatched + 1))
     done <<< "$idle_panes"
@@ -1942,10 +2059,12 @@ dispatch_role() {
     # genuine projection change; a real long-running claim resets the streak in
     # cleanup_stale_dispatches. Guarded on dispatched>0 so a tick that sent
     # nothing leaves the existing min-gap/retry semantics untouched.
-    if (( dispatched > 0 )) && empty_streak_over_cap "$role"; then
+    local _streak_class
+    _streak_class=$(dispatch_class_key "$role")
+    if (( dispatched > 0 )) && empty_streak_over_cap "$role" "$_streak_class"; then
         rm -f "$trigger_file"
-        reset_empty_streak "$role"
-        log "$role: ${EMPTY_STREAK_CAP} consecutive fast exits (<${EMPTY_EXIT_SECONDS}s, no claim) — standing down; scout re-arms on new work"
+        reset_empty_streak "$role" "$_streak_class"
+        log "$role: ${EMPTY_STREAK_CAP} consecutive dispatches claimed nothing (class=$_streak_class) — standing down; scout re-arms on new work"
         return
     fi
 
@@ -2507,34 +2626,89 @@ case "${1:-}" in
         exit 0
         ;;
     --record-outcome)
-        # Test/debug: fold one dispatch outcome into a role's empty-exit
-        # streak. <duration> is the dispatch's wall-clock seconds; under
-        # EMPTY_EXIT_SECONDS bumps the streak, at/over it resets. Honors
-        # FLEET_DISPATCHER_EMPTY_EXIT_SECONDS / _EMPTY_STREAK_CAP and writes
-        # under FLEET_STATE_DIR, so tests drive it against a scratch dir.
+        # Test/debug: fold one dispatch outcome into a (role, class) empty-exit
+        # streak. Honors FLEET_DISPATCHER_EMPTY_EXIT_SECONDS / _EMPTY_STREAK_CAP
+        # and writes under FLEET_STATE_DIR, so tests drive it against a scratch
+        # dir.
+        #
+        #   --record-outcome <role> <duration> [--class=<c>] [--claimed=yes|no]
+        #
+        # --claimed is the production signal (#2698): yes resets the streak, no
+        # increments it, and <duration> is not consulted. Omitting it keeps the
+        # original two-arg behavior — under EMPTY_EXIT_SECONDS bumps, at/over
+        # resets — which is what the pre-#2698 fixtures exercise.
         if [[ -z "${2:-}" || -z "${3:-}" ]]; then
-            echo "usage: fleet-dispatcher --record-outcome <role> <duration-seconds>" >&2
+            echo "usage: fleet-dispatcher --record-outcome <role> <duration-seconds> [--class=<c>] [--claimed=yes|no]" >&2
             exit 2
         fi
         if ! [[ "$3" =~ ^[0-9]+$ ]]; then
             echo "fleet-dispatcher --record-outcome: <duration-seconds> must be a non-negative integer (got: $3)" >&2
             exit 2
         fi
-        record_dispatch_outcome "$2" "$3"
+        _ro_role="$2"; _ro_duration="$3"; _ro_class=""; _ro_claimed=""
+        shift 3
+        for _ro_arg in "$@"; do
+            case "$_ro_arg" in
+                --class=*)   _ro_class="${_ro_arg#--class=}" ;;
+                --claimed=*) _ro_claimed="${_ro_arg#--claimed=}" ;;
+                *)
+                    echo "fleet-dispatcher --record-outcome: unknown argument '$_ro_arg'" >&2
+                    exit 2
+                    ;;
+            esac
+        done
+        if [[ -n "$_ro_claimed" && "$_ro_claimed" != "yes" && "$_ro_claimed" != "no" ]]; then
+            echo "fleet-dispatcher --record-outcome: --claimed must be 'yes' or 'no' (got: $_ro_claimed)" >&2
+            exit 2
+        fi
+        record_dispatch_outcome "$_ro_role" "$_ro_duration" "$_ro_class" "$_ro_claimed"
+        exit 0
+        ;;
+    --derive-outcome)
+        # Test/debug: print the claimed-vs-empty verdict for one dispatch
+        # record — `yes`, `no`, or empty for a legacy record with no
+        # claim_marker (which folds on the duration heuristic instead). Reads
+        # the marker under FLEET_STATE_DIR, so tests drive it against a
+        # scratch dir.
+        #
+        #   --derive-outcome <record-file> <pane-id>
+        if [[ -z "${2:-}" || -z "${3:-}" ]]; then
+            echo "usage: fleet-dispatcher --derive-outcome <record-file> <pane-id>" >&2
+            exit 2
+        fi
+        if [[ ! -f "$2" ]]; then
+            echo "fleet-dispatcher --derive-outcome: no such record file: $2" >&2
+            exit 2
+        fi
+        derive_dispatch_outcome "$2" "$3"
         exit 0
         ;;
     --empty-streak-check)
         # Test/debug: print `over` (streak >= cap → consume the trigger) or
-        # `under` (still retain) for a role, plus the current count. Reads the
-        # streak files under FLEET_STATE_DIR seeded by --record-outcome.
+        # `under` (still retain) for a (role, class), plus the current count.
+        # Reads the streak files under FLEET_STATE_DIR seeded by
+        # --record-outcome. Omitting --class reads the `all` counter.
+        #
+        #   --empty-streak-check <role> [--class=<c>]
         if [[ -z "${2:-}" ]]; then
-            echo "usage: fleet-dispatcher --empty-streak-check <role>" >&2
+            echo "usage: fleet-dispatcher --empty-streak-check <role> [--class=<c>]" >&2
             exit 2
         fi
-        if empty_streak_over_cap "$2"; then
-            echo "over $(read_empty_streak "$2")"
+        _esc_role="$2"; _esc_class=""
+        shift 2
+        for _esc_arg in "$@"; do
+            case "$_esc_arg" in
+                --class=*) _esc_class="${_esc_arg#--class=}" ;;
+                *)
+                    echo "fleet-dispatcher --empty-streak-check: unknown argument '$_esc_arg'" >&2
+                    exit 2
+                    ;;
+            esac
+        done
+        if empty_streak_over_cap "$_esc_role" "$_esc_class"; then
+            echo "over $(read_empty_streak "$_esc_role" "$_esc_class")"
         else
-            echo "under $(read_empty_streak "$2")"
+            echo "under $(read_empty_streak "$_esc_role" "$_esc_class")"
         fi
         exit 0
         ;;

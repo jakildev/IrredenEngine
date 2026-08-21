@@ -4511,6 +4511,7 @@ fi
 # `--repo <owner/repo>` scoped after their name. Exact/prefix token match (not
 # substring) so a --stackable-on <url> value containing "repo" isn't misflagged.
 _subcmd="${1:-}"
+_subsubcmd="${2:-}"   # `molecule <sub>` — read back by the outcome stamp below
 if [[ "$_subcmd" != "cleanup" && "$_subcmd" != "reconcile" ]]; then
     for _arg in "$@"; do
         if [[ "$_arg" == "--repo" || "$_arg" == --repo=* ]]; then
@@ -5045,5 +5046,79 @@ USAGE
         echo "fleet-claim: unknown command '$1'" >&2
         echo "run 'fleet-claim help' for usage." >&2
         exit 2
+        ;;
+esac
+
+# --- Dispatch-outcome marker (#2698) ---------------------------------------
+#
+# The dispatcher's empty-exit backoff needs to know whether a finished
+# iteration actually did work; wall-clock duration cannot tell it (rationale
+# at the EMPTY_EXIT_SECONDS config block in fleet-dispatcher).
+#
+# fleet-claim IS the enforced mutex: it is the only sanctioned way to take a
+# fleet lock, so stamping here covers every claim path *structurally*,
+# rather than as a prose obligation in a role doc that an early-exit path
+# can skip. fleet-dispatch-wrap exports FLEET_CLAIM_FLAG (pane-keyed, the
+# same shape as FLEET_THROTTLE_FLAG) and clears it at dispatch start;
+# fleet-dispatcher reads it back once the pane returns to a shell.
+#
+# Two properties this placement buys:
+#   - Success-only. `set -euo pipefail` aborts the script the moment a cmd_*
+#     returns non-zero, so a *losing* claim never reaches here and a starved
+#     pane that tried and lost still records empty.
+#   - Release-early-safe. The marker is a separate artifact from
+#     $CLAIMS_DIR, which __remove_claim is the only thing that touches, so an
+#     iteration that claims, works, and releases before exiting still reads
+#     claimed. That is the case duration and a claim-liveness probe both get
+#     wrong.
+_stamp_dispatch_outcome() {
+    [[ -n "${FLEET_CLAIM_FLAG:-}" ]] || return 0
+    # Best-effort throughout: a read-only or full $HOME must never turn a
+    # successful claim into a failed one just because bookkeeping failed.
+    mkdir -p "$(dirname "$FLEET_CLAIM_FLAG")" 2>/dev/null || return 0
+    : > "$FLEET_CLAIM_FLAG" 2>/dev/null || true
+    return 0
+}
+
+# Enumerated from the live `case` block above, not from memory. Acquire arms
+# AND release arms: a step-0.5 reservation resume (or a molecule resume) does
+# a full task's work while acquiring nothing — it already held the lock from
+# the prior iteration — and would otherwise record empty.
+#
+# The release arms carry a coupling worth knowing before you edit a role's
+# shutdown sequence: they are productive signals only because a starved
+# iteration never reaches one. `role-worker.md` exits a no-pick at step 3,
+# well before step 12's `release-worktree`. Making any shutdown step
+# unconditional would stamp every no-pick as productive and quietly kill the
+# backoff a second time — the same defect this marker exists to fix, arriving
+# through a role doc instead of through a heuristic.
+#
+# Deliberately EXCLUDED, because they act on *other* agents' state and would
+# make a starved iteration look productive:
+#   cleanup   — the sanctioned zero-pick move, so this is the common case
+#   reconcile, clear-all, reset-sweep-host-claims — fleet-wide sweeps
+# Also excluded: every read-only arm (claim-base, check, list, host,
+# branch-check, find-stackable-blockers, stack-base, stack-pr-state,
+# check-stale, reservation-of, worktree-for-task, list-reservations,
+# reservation-role, molecule list|show) and `reclaim`, a removed stub.
+#
+# planning-claim/-release are included deliberately: the dispatcher takes the
+# pre-claim itself (#2197) with FLEET_CLAIM_FLAG unset, so the stamp is a
+# no-op there, but a planning iteration that posts its plan and releases is
+# productive and should say so on its own rather than resting solely on the
+# dispatch record's plan_issue backstop.
+case "$_subcmd" in
+    claim|stack|reserve|\
+    review-claim|resolving-claim|amending-claim|steward-claim|planning-claim|\
+    release|release-stack|release-worktree|\
+    review-release|resolving-release|amending-release|steward-release|planning-release)
+        _stamp_dispatch_outcome
+        ;;
+    molecule)
+        # `resume` is a query that legitimately returns nothing — only the
+        # arms that record progress on a held stack count as work.
+        case "$_subsubcmd" in
+            advance|complete) _stamp_dispatch_outcome ;;
+        esac
         ;;
 esac

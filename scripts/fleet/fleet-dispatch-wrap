@@ -61,6 +61,7 @@ unset _plan_arg
 # config change in one place propagates to both scripts.
 STATE_DIR="${FLEET_STATE_DIR:-$HOME/.fleet/state}"
 RATE_LIMIT_DIR="$STATE_DIR/rate-limit"
+CLAIM_FLAG_DIR="$STATE_DIR/dispatch-claimed"   # keep in sync with fleet-dispatcher
 
 # Install-symlink freshness (#2262): a tool/role-cmd merged WHILE the fleet is
 # running only reaches ~/bin when install.sh re-links — otherwise it's
@@ -127,6 +128,20 @@ unset _tag
 mkdir -p "$RATE_LIMIT_DIR"
 export FLEET_THROTTLE_FLAG="$RATE_LIMIT_DIR/$PANE_KEY.throttle-seen"
 rm -f "$FLEET_THROTTLE_FLAG"
+
+# Dispatch-outcome marker (#2698). fleet-claim touches this whenever the
+# iteration takes or releases a fleet lock — i.e. whenever it did productive
+# work — and fleet-dispatcher reads it back in cleanup_stale_dispatches to
+# decide claimed-vs-empty for the empty-exit streak.
+#
+# Cleared HERE, at dispatch start, and NOT at the end like the throttle flag:
+# the dispatcher only folds the outcome once the pane has returned to a shell,
+# which is after this script exits, so the marker has to outlive it. A stale
+# marker from this pane's previous dispatch would mask a genuine no-pick,
+# which is exactly the failure the backoff exists to catch.
+mkdir -p "$CLAIM_FLAG_DIR"
+export FLEET_CLAIM_FLAG="$CLAIM_FLAG_DIR/$PANE_KEY"
+rm -f "$FLEET_CLAIM_FLAG"
 
 # --- Session-id persistence + interrupted-session resume (dispatched roles) ---
 #
