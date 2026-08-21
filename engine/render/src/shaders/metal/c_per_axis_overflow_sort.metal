@@ -38,8 +38,9 @@ inline bool overflowRecordLess(
 }
 
 // Reinsert the active-bit window into a compressed slab index.
-inline uint overflowExpandIndex(uint c, uint active, uint pLo, uint pHi) {
-    return ((c >> pLo) << (pHi + 1u)) | (active << pLo) | (c & ((1u << pLo) - 1u));
+// (`activeBits` mirrors the GLSL twin, where the bare word is reserved.)
+inline uint overflowExpandIndex(uint c, uint activeBits, uint pLo, uint pHi) {
+    return ((c >> pLo) << (pHi + 1u)) | (activeBits << pLo) | (c & ((1u << pLo) - 1u));
 }
 
 // Compare-exchange the threadgroup records at e and e+stride toward @p

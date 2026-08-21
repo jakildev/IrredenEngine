@@ -48,7 +48,7 @@
 // the elements that compare against each other are exactly those differing
 // only in bits [pLo, pHi] — 2^n of them. `c` is the COMPRESSED index over
 // every OTHER bit of the global entry index, so
-//     i = ((c >> pLo) << (pHi + 1)) | (active << pLo) | (c & ((1 << pLo) - 1))
+//     i = ((c >> pLo) << (pHi + 1)) | (activeBits << pLo) | (c & ((1 << pLo) - 1))
 // reinserts the active window. A workgroup owns kBlock >> n consecutive
 // slabs, hence kBlock elements and cap/kBlock workgroups for EVERY stride
 // group regardless of its width. pLo == 0 degenerates to a contiguous block,
@@ -166,8 +166,10 @@ bool recordLess(uint a0, uint a1, uint a2, uint b0, uint b1, uint b2) {
 }
 
 // Reinsert the active-bit window into a compressed slab index.
-uint expandIndex(uint c, uint active, uint pLo, uint pHi) {
-    return ((c >> pLo) << (pHi + 1u)) | (active << pLo) | (c & ((1u << pLo) - 1u));
+// (`activeBits`, not `active` — GLSL reserves the bare word and NVIDIA
+// rejects it at compile; the Metal twin mirrors the name for parity.)
+uint expandIndex(uint c, uint activeBits, uint pLo, uint pHi) {
+    return ((c >> pLo) << (pHi + 1u)) | (activeBits << pLo) | (c & ((1u << pLo) - 1u));
 }
 
 // Compare-exchange the shared-memory records at elements e and e+stride
