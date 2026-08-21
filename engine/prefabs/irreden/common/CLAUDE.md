@@ -39,7 +39,28 @@ in `update/`.
   `rotation_mode = IRComponent.RotationMode.DETACHED` in the prefab
   table — the enum value, not the string). Mutate at runtime with
   `IRPrefab::RotationMode::setMode(entity, newMode, name, size)` —
-  allocates or destroys the canvas as needed. Non-prefab entities
+  allocates or destroys the canvas as needed. **DETACHED and
+  DETACHED_REVOXELIZE are one canvas-owning family**, spelled once as
+  `IRPrefab::RotationMode::ownsEntityCanvas(mode)` and read by both
+  lifecycle sites (`setMode` and `spawnPrefab`); a swap between them
+  keeps the canvas, and only a move to/from GRID allocates or destroys.
+  Adding a mode means classifying it there; the enum's size is
+  static-asserted in `test/ecs/rotation_mode_set_test.cpp` so a new mode
+  cannot reach one site and miss the other (#2908). That guarantee
+  covers the two **lifecycle** sites only — `PROPAGATE_CANVAS_ROTATION`
+  (`../render/systems/system_propagate_canvas_rotation.hpp`) still
+  hand-spells the two detached modes and a new mode must be added there
+  by hand. It is left off the predicate for **layering weight, not an
+  include cycle** (there is none — that header is a leaf, included only
+  by demo `main.cpp`s): `rotation_mode.hpp` pulls in
+  `render/entity_canvas.hpp` solely for `setMode`, so routing a
+  render-system header through the predicate would drag that whole chain
+  in. Splitting `ownsEntityCanvas` into a header free of the render side
+  is the clean fix if this is revisited. `setMode`'s
+  same-mode early return is gated on the canvas
+  matching the mode, not on the mode alone, so it doubles as the
+  documented recovery for an entity `spawnPrefab` tagged headlessly
+  without allocating. Non-prefab entities
   without the component are implicitly GRID — on the render side that
   default is carried by `REBUILD_GRID_VOXELS_IMPLICIT`, the
   `Exclude<C_RotationMode>` twin a creation must register alongside
