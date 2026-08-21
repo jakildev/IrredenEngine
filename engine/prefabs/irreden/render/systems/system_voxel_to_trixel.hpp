@@ -332,6 +332,11 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     Buffer *chunkVisBuf_ = nullptr;
     Buffer *indirectBuf_ = nullptr;
     Buffer *compactedBuf_ = nullptr;
+    // Gates the cull-stat readback, which reads the PRIOR frame's counts out of
+    // indirectBuf_. That read is only defined once this system has zeroed the
+    // buffer at least once — a fresh allocation carries no prior value, and
+    // nothing guarantees it reads back as zero (see #2298).
+    bool cullReadbackPrimed_ = false;
     // Chunk-occlusion HZB pre-pass (#1294 child 2/3, off by default). The query
     // buffer is bound transiently on kBufferIndex_CompactedVoxelIndices (25) for
     // the pre-pass and the compacted-index buffer restored afterward — the Metal
@@ -1648,9 +1653,9 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // reading it here — before we zero it for this frame's compact pass —
         // requires no explicit fence: the driver serializes the CPU read
         // against the prior frame's already-retired compact write.
-        // Frame N+1 reads frame N's value; the first frame reports 0,
-        // contributing a 1/N bias to the running average — negligible
-        // over typical measurement runs.
+        // Frame N+1 reads frame N's value; the first frame has no prior value
+        // to read, so `cullReadbackPrimed_` drops that one sample rather than
+        // recording whatever the fresh allocation happened to contain.
         //
         // The source depends on the path the prior frame's compact took. The
         // single-canvas (cardinal) compact appends survivors into indirectBuf_,
@@ -1663,7 +1668,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // sum counts face-routings (≥ the unique visible-voxel count): the
         // "how much work the per-axis path does" cull-effectiveness signal the
         // overlay wants, not a strict voxel count comparable 1:1 to cardinal.
-        if (gpuStageTiming().enabled_) {
+        if (gpuStageTiming().enabled_ && cullReadbackPrimed_) {
             std::uint32_t visible = 0;
             std::uint32_t feeder = 0;
             if (skipSingleCanvasVoxels && perAxisIndirectBuf_ != nullptr) {
@@ -1716,6 +1721,9 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             sizeof(VoxelIndirectDispatchParams),
             &zeroed
         );
+        // Both structs now hold a value this system wrote, so the next tick's
+        // prior-frame read is well-defined.
+        cullReadbackPrimed_ = true;
 
         // Per-axis store list-walk split (#1739). For exactly the main-canvas-
         // rotating compact (whose voxels the per-axis dispatch consumes, and
