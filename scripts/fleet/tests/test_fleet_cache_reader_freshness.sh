@@ -13,6 +13,11 @@
 # master by construction, because master never invokes `gh` when the cached
 # record parses.
 #
+# Two review nits from PR #2998 are covered here too: the inline fetch must
+# page past the REST default window (the `gh` shim only serves its second page
+# when `--paginate` is passed), and the inline-degradation warning must not
+# name a "cached snapshot (unknown)" when no cached record exists at all.
+#
 # Hermetic: HOME is a mktemp dir (both scripts compute
 # `Path.home() / ".fleet" / "state"` at import, and neither honors a
 # FLEET_STATE_DIR override), and `gh` is a PATH shim. No network, no live
@@ -99,10 +104,27 @@ if [[ "${1:-}" == "api" ]]; then
         echo "gh: shim inline failure" >&2
         exit 1
     fi
-    cat <<'JSON'
+    # Model the REST window rather than pre-baking the answer: the endpoint
+    # serves one page by default, and only --paginate reaches the second.
+    # Without the flag the caller comes back short — the truncation the flag
+    # exists to prevent — so an unflagged call cannot pass the assertions.
+    paginate=0
+    for arg in "$@"; do
+        [[ "$arg" == "--paginate" ]] && paginate=1
+    done
+    if (( paginate )); then
+        cat <<'JSON'
+[{"path": "engine/render/src/foo.cpp", "line": 42,
+  "user": {"login": "jakildev"}, "body": "LIVE_INLINE_ITEM"},
+ {"path": "engine/render/src/bar.cpp", "line": 7,
+  "user": {"login": "jakildev"}, "body": "LIVE_INLINE_PAGE2_ITEM"}]
+JSON
+    else
+        cat <<'JSON'
 [{"path": "engine/render/src/foo.cpp", "line": 42,
   "user": {"login": "jakildev"}, "body": "LIVE_INLINE_ITEM"}]
 JSON
+    fi
     exit 0
 fi
 
@@ -158,6 +180,8 @@ assert_absent "$out" "STALE_APPROVE_REVIEW" \
     "the superseded cached approve is not served alongside the live verdict"
 assert_contains "$out" "[engine/render/src/foo.cpp:42]" \
     "inline [path:line] items render on the live path (the fallback used to drop them)"
+assert_contains "$out" "LIVE_INLINE_PAGE2_ITEM" \
+    "the inline fetch pages past the REST default window (an unpaginated call truncates)"
 
 echo "fleet-pr comments — gh failure degrades to the snapshot, loudly"
 out=$(run_reader fail "$FLEET_PR" comments 2683)
@@ -175,6 +199,20 @@ assert_contains "$out" "LIVE_TRIGGERING_REVIEW" \
     "a failed inline endpoint does not throw away the fresh conversation"
 assert_contains "$err" "inline-comment endpoint failed" \
     "the inline degradation is announced rather than silent"
+assert_contains "$err" "cached snapshot ($STAMP)" \
+    "the inline degradation names the snapshot its items actually came from"
+
+echo "fleet-pr comments — inline fails with no cached record ⇒ names no phantom snapshot"
+out=$(run_reader inline-fail "$FLEET_PR" comments 9999)
+rc=$?
+err=$(cat "$ERRFILE")
+assert_eq "$rc" "0" "comments exits 0 when only the inline endpoint fails"
+assert_contains "$out" "LIVE_TRIGGERING_REVIEW" \
+    "the fresh conversation still renders with no cached record to fall back on"
+assert_contains "$err" "no cached record exists" \
+    "the no-cache inline degradation says the cache is absent"
+assert_absent "$err" "cached snapshot (unknown)" \
+    "it does not report an unresolved snapshot timestamp for a cache that does not exist"
 
 echo "fleet-pr comments — no live, no cache ⇒ nonzero"
 out=$(run_reader fail "$FLEET_PR" comments 9999)

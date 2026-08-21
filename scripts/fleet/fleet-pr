@@ -122,7 +122,16 @@ def fetch_live_pr(slug, pr_number):
     # comments/reviews fields; the scout merges both (fetch_pr_inline_comments)
     # so the live path must too, or every [path:line] item silently vanishes
     # from the one output the checklist contract calls complete.
-    inline = run_gh_json(["gh", "api", f"repos/{slug}/pulls/{pr_number}/comments"])
+    #
+    # per_page=100 + --paginate, not the REST default of 30: a truncated inline
+    # list is the same silent drop this script exists to prevent (same class as
+    # #2856). `gh --paginate` merges JSON array pages into one array, so
+    # run_gh_json still parses a single document. Keep in sync with the scout's
+    # fetch_pr_inline_comments.
+    inline = run_gh_json([
+        "gh", "api", f"repos/{slug}/pulls/{pr_number}/comments?per_page=100",
+        "--paginate",
+    ])
     if inline is None:
         detail["inlineComments"] = []
         detail["_inline_unavailable"] = True
@@ -220,10 +229,20 @@ def cmd_comments(args):
     elif detail.pop("_inline_unavailable", False):
         cached = read_cached_pr(args.repo, args.pr_number)
         detail["inlineComments"] = (cached or {}).get("inlineComments", [])
-        warn(
-            f"inline-comment endpoint failed; inline items below are from the "
-            f"cached snapshot ({snapshot_stamp(cached)}) and may be incomplete"
-        )
+        if cached is None:
+            # No snapshot to degrade to, so don't imply one: naming a
+            # "cached snapshot (unknown)" here reads as an unresolved
+            # timestamp rather than "no cache exists".
+            warn(
+                "inline-comment endpoint failed and no cached record exists; "
+                "no inline items are shown below"
+            )
+        else:
+            warn(
+                f"inline-comment endpoint failed; inline items below are from "
+                f"the cached snapshot ({snapshot_stamp(cached)}) and may be "
+                f"incomplete"
+            )
 
     any_output = False
     for c in detail.get("comments", []):
