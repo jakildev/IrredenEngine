@@ -166,8 +166,10 @@ bool recordLess(uint a0, uint a1, uint a2, uint b0, uint b1, uint b2) {
 }
 
 // Reinsert the active-bit window into a compressed slab index.
-uint expandIndex(uint c, uint active, uint pLo, uint pHi) {
-    return ((c >> pLo) << (pHi + 1u)) | (active << pLo) | (c & ((1u << pLo) - 1u));
+// (`activeBits`, not `active` — GLSL reserves the bare word and NVIDIA
+// rejects it at compile; the Metal twin mirrors the name for parity.)
+uint expandIndex(uint c, uint activeBits, uint pLo, uint pHi) {
+    return ((c >> pLo) << (pHi + 1u)) | (activeBits << pLo) | (c & ((1u << pLo) - 1u));
 }
 
 // Compare-exchange the shared-memory records at elements e and e+stride
