@@ -291,6 +291,9 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // the off-screen shadow feeders (struct 1), so the visible stage-1 program
     // carries none of the feeder branches (no runtime predication tax).
     ShaderProgram *stage1FeederProgram_ = nullptr;
+    // #2479: canonical-orders the view-visibility overflow entry list between
+    // the mode-3 append and the overflow indirect draw (rotating frames only).
+    ShaderProgram *overflowSortProgram_ = nullptr;
     ShaderProgram *stage2Program_ = nullptr;
     // #2346 cardinal winner election: the IR_STORE_WINNER_ELECTION 1
     // specializations of the shared stage-1/stage-2 bodies. Dispatched in the
@@ -404,6 +407,13 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // once at system construction. lastOverflowCountLogged_ de-dups identical poses.
     bool overflowCountLogEnabled_ = std::getenv("IR_OVERFLOW_COUNT_LOG") != nullptr;
     std::uint32_t lastOverflowCountLogged_ = 0xFFFFFFFFu;
+    // #2479 acceptance 7c: the canonical sort's dispatch count for the rotating
+    // frame, logged under the same env gate each time it changes. An unflagged
+    // pool — and, per the (ii) predicate, a flagged pool whose overflow list
+    // was empty last completed frame — must read 0. The "structurally zero
+    // added dispatches" claim is verified by this count, not by timing (which
+    // cannot separate zero dispatches from cheap ones).
+    std::uint32_t lastOverflowSortDispatchesLogged_ = 0xFFFFFFFFu;
     // Last canvas whose position SSBO contents were written to
     // `voxelPosBuf_`. Positions are otherwise pushed at mutation time by
     // `UPDATE_VOXEL_SET_CHILDREN`; we still need a per-canvas full
@@ -602,14 +612,20 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // Cap overflow must never be silent (#2333 acceptance): read LAST rotating
     // frame's ctrl block — written by a dispatch that already retired, so the
     // CPU read needs no fence (the same pattern as the cull-diagnostic
-    // readback in tick()) — and one-shot-warn when entries were dropped.
-    void warnOverflowDropsIfAny(const C_PerAxisTrixelCanvases &axes) {
+    // readback in tick(); Metal's present() waits each frame to completion, so
+    // the read can never observe an in-flight append, and GL's getSubData
+    // implicit-syncs any pending write) — and one-shot-warn when entries were
+    // dropped. Since #2479 (ii) the same read is load-bearing, not
+    // diagnostic-only: it stamps laggedOverflowCount_, the completed-frame
+    // live count the canonical sort's enable predicate reads.
+    void warnOverflowDropsIfAny(C_PerAxisTrixelCanvases &axes) {
         std::array<std::uint32_t, 8> ctrl{};
         axes.winnerIds_.second->getSubData(
             static_cast<std::ptrdiff_t>(axes.ctrlBaseUints_) * sizeof(std::uint32_t),
             sizeof(ctrl),
             ctrl.data()
         );
+        axes.laggedOverflowCount_ = ctrl[1];
         const std::uint32_t dropped = ctrl[5];
         if (dropped > 0 && dropped != lastOverflowDropWarned_) {
             IRE_LOG_WARN(
@@ -637,7 +653,19 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         }
     }
 
-    void dispatchPerAxisCanvases(C_PerAxisTrixelCanvases &axes, C_CanvasFogOfWar *fog) {
+    // @p sortOverflowEntries is the ticking pool's #2346 storeTiesPossible_
+    // flag: displaced voxels sharing a rounded cell are what produce the
+    // equal-key overflow entries whose draw order the #2479 canonical sort
+    // exists to pin. An unflagged pool cannot produce that tie class from the
+    // cardinal store, so it skips the sort entirely (acceptance 7c). The flag
+    // is necessary but not sufficient — the dispatch site additionally
+    // requires a nonempty overflow list (#2479 (ii)), so a flagged pool at a
+    // pose that appends nothing also pays zero sort dispatches.
+    void dispatchPerAxisCanvases(
+        C_PerAxisTrixelCanvases &axes,
+        C_CanvasFogOfWar *fog,
+        bool sortOverflowEntries
+    ) {
         IR_PROFILE_SCOPE("vs1_per_axis");
         // Fog cut-face / own-column-clip input for the per-axis rotation route
         // (#2128): the real 256² fog grid on the main world canvas, else the 1×1
@@ -759,7 +787,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
 
         // Dispatch order per rotating frame (#2333; view mask folded into the
         // store by #2487): store + view mask (mode 0) ×3 → barrier → overflow
-        // append (mode 3) ×3 → barrier → per axis {election (mode 1) → stage 2}.
+        // append (mode 3) ×3 → barrier → overflow canonical sort (#2479) →
+        // barrier → per axis {election (mode 1) → stage 2}.
         // The mask must be complete across ALL axes before any mode-3 test (view
         // visibility competes across axes) — the store phase now writes all three
         // axes' masks, so the barrier after it satisfies that; mode 3 reads each
@@ -832,6 +861,105 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                     perAxisIndirectBuf_,
                     indirectOffsetBytes
                 );
+            }
+            // #2479: canonical-order the appended entries so the indirect
+            // draw's entry order — and therefore every equal-key depth-test
+            // winner — is a pure function of the appended SET, not the
+            // run-variant atomicAdd append sequence. Sentinel-fill
+            // [liveCount, cap), then an in-place bitonic network over the
+            // power-of-two cap. Dispatch counts derive from the cap CPU-side
+            // (reading the live ctrl[1] per frame would sync-stall).
+            //
+            // Gated on the pool's #2346 displaced-collision flag AND a
+            // nonempty overflow list (#2479 (ii)) — both terms CPU-side on
+            // both backends so the sort SEMANTICS never fork by backend. An
+            // unflagged pool runs master's exact dispatch sequence: no fill,
+            // no network, structurally zero added dispatches (acceptance 7c)
+            // — and so does a flagged pool whose list was empty last
+            // completed frame (the amp-0 IRPerfGrid voxel_set case). The
+            // count term is the lagged ctrl[1] stamped by
+            // warnOverflowDropsIfAny above — a completed-prior-frame read, so
+            // the common interactive case is free without any sync stall. Its
+            // one-frame lag means an empty→nonempty transition draws exactly
+            // one frame unsorted (self-healing; master is nondeterministic on
+            // EVERY such frame, so the determinism guarantee is scoped to
+            // steady-state frames — settled overflow population).
+            // The residual class the flag gate leaves — cross-cell band-code
+            // ties on unflagged pools — is documented in
+            // docs/design/per-axis-trixel-canvas-rotation.md §overflow lane;
+            // a measured repro there widens the flag recompute, it does NOT
+            // un-gate the sort.
+            //
+            // Pass structure: one fused local phase (stages k <= kBlock), then
+            // per remaining stage the strides fused kBlockBits at a time by
+            // the kernels' strided-slab addressing. That is 18 dispatches at
+            // the 524,288-entry repro cap where the un-fused network needed 67
+            // — and on Metal, where one compute encoder per dispatch costs
+            // ~40 us, the dispatch count WAS the cost. kBlockBits MUST match
+            // the kernels' fused-slab constant.
+            const bool sortThisFrame =
+                sortOverflowEntries && axes.laggedOverflowCount_ > 0;
+            std::uint32_t sortDispatches = 0;
+            if (sortThisFrame) {
+                IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+                overflowSortProgram_->use();
+                constexpr std::uint32_t kBlockBits = 11;
+                constexpr std::uint32_t kBlock = 1u << kBlockBits;
+                constexpr std::uint32_t kThreads = 256;
+                const std::uint32_t cap = static_cast<std::uint32_t>(axes.overflowCap_);
+                const int fillGroups = static_cast<int>(IRMath::divCeil(cap, kThreads));
+                // Every stride group covers kBlock elements per workgroup,
+                // whatever its width — so one group count serves all of them.
+                const int slabGroups = static_cast<int>(cap / kBlock);
+                auto sortStep = [&](int mode,
+                                    std::uint32_t k,
+                                    std::uint32_t pLo,
+                                    std::uint32_t pHi,
+                                    int groups) {
+                    frameData_.overflowSortStep_ = ivec4(
+                        mode,
+                        static_cast<int>(k),
+                        static_cast<int>(pLo),
+                        static_cast<int>(pHi)
+                    );
+                    // Partial upload of just the step descriptor — the rest of
+                    // the frame data is unchanged across the network steps.
+                    frameDataBuf_->subData(
+                        static_cast<std::ptrdiff_t>(
+                            offsetof(FrameDataVoxelToCanvas, overflowSortStep_)
+                        ),
+                        sizeof(ivec4),
+                        &frameData_.overflowSortStep_
+                    );
+                    IRRender::device()->dispatchCompute(groups, 1, 1);
+                    IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+                    ++sortDispatches;
+                };
+                sortStep(0, 0, 0, 0, fillGroups);
+                sortStep(1, 0, 0, 0, slabGroups);
+                // Stage k = 2^stageBits has its compare-exchange strides at bit
+                // positions stageBits-1 .. 0; take them top-down in runs of at
+                // most kBlockBits, which is what one slab can hold.
+                std::uint32_t stageBits = kBlockBits + 1;
+                for (std::uint32_t k = kBlock * 2; k <= cap; k <<= 1, ++stageBits) {
+                    for (std::uint32_t remaining = stageBits; remaining > 0;) {
+                        const std::uint32_t width = IRMath::min(remaining, kBlockBits);
+                        sortStep(2, k, remaining - width, remaining - 1, slabGroups);
+                        remaining -= width;
+                    }
+                }
+            }
+            if (overflowCountLogEnabled_ &&
+                sortDispatches != lastOverflowSortDispatchesLogged_) {
+                IRE_LOG_INFO(
+                    "[overflow-sort] canonical-sort dispatches this rotating frame: "
+                    "{} (storeTiesPossible={}, laggedOverflowCount={}, cap {}).",
+                    sortDispatches,
+                    sortOverflowEntries,
+                    axes.laggedOverflowCount_,
+                    axes.overflowCap_
+                );
+                lastOverflowSortDispatchesLogged_ = sortDispatches;
             }
             // Entry + instanceCount writes feed the overflow indirect draw in
             // TRIXEL_TO_FRAMEBUFFER — barrier both the storage reads and the
@@ -1866,7 +1994,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // stays byte-identical to master.
         if (entity == perAxisCanvasEntity_ && perAxisCanvases_ != nullptr &&
             perAxisCanvases_->isAllocated()) {
-            dispatchPerAxisCanvases(*perAxisCanvases_, fog);
+            dispatchPerAxisCanvases(*perAxisCanvases_, fog, voxelPool.storeTiesPossible_);
             // #2256: compact each per-axis canvas's occupied cells NOW (the axis
             // distance canvases were just fully written above), so the downstream
             // per-axis compute stages (AO / sun-shadow / lighting / resolve) and
@@ -2016,6 +2144,13 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         IRRender::createNamedResource<ShaderProgram>(
             "PerAxisCellFinalizeProgram",
             std::vector{ShaderStage{IRRender::kFileCompPerAxisCellFinalize, ShaderType::COMPUTE}}
+        );
+        // #2479: overflow-entry canonical sort — dispatched after the mode-3
+        // append so the overflow draw's entry order is a pure function of the
+        // appended set (see the kernel header for the pass structure).
+        IRRender::createNamedResource<ShaderProgram>(
+            "PerAxisOverflowSortProgram",
+            std::vector{ShaderStage{IRRender::kFileCompPerAxisOverflowSort, ShaderType::COMPUTE}}
         );
         // Detached re-voxelize GPU scatter compute + its per-frame params UBO
         // (#1556). The resident locals SSBO is owned per-canvas by
@@ -2226,6 +2361,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         p->stage1Program_ = IRRender::getNamedResource<ShaderProgram>("SingleVoxelProgram1");
         p->stage1FeederProgram_ =
             IRRender::getNamedResource<ShaderProgram>("SingleVoxelProgram1Feeder");
+        p->overflowSortProgram_ =
+            IRRender::getNamedResource<ShaderProgram>("PerAxisOverflowSortProgram");
         p->stage2Program_ = IRRender::getNamedResource<ShaderProgram>("SingleVoxel2");
         p->stage1WinnerResolveProgram_ =
             IRRender::getNamedResource<ShaderProgram>("SingleVoxelWinnerResolve");
