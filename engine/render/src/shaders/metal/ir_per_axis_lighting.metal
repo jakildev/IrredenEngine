@@ -30,10 +30,28 @@ inline float3 perAxisCellToWorld3D(
     return isoPixelToPos3D(isoPix.x, isoPix.y, float(rawDepth));
 }
 
+// The encoding's three 4-bit sub-cell offsets, decoded and re-centred to
+// signed world-unit fractions along the face's own (e_u, e_v, n) basis —
+// mirrors ir_per_axis_lighting.glsl. Single definition of the centring
+// convention: the recovery below composes it in the WORLD frame, the per-axis
+// sun-shadow CAST bridge (c_resolve_per_axis_screen_depth.metal) composes it
+// against the same basis already rotated into the cardinal VIEW frame, and
+// both read the layout from here so the two seams cannot drift (#2816).
+inline float3 perAxisSubCellFrac(int encoded) {
+    // The shared ir_iso_common decode helpers own the frac-field bit layout —
+    // the same decode peraxis_scatter.metal uses.
+    return float3(
+        float(decodeUFrac4PerAxis(encoded)) / 16.0f - 0.5f,
+        float(decodeVFrac4PerAxis(encoded)) / 16.0f - 0.5f,
+        float(decodeWFrac4PerAxis(encoded)) / 16.0f - 0.5f
+    );
+}
+
 // Sub-cell variant — mirrors ir_per_axis_lighting.glsl. Lattice recovery plus
-// the encoding's 4-bit in-plane frac offset (the same reconstruction the
+// the encoding's 4-bit frac offset (the same reconstruction the
 // scatter draws), so absolute-position lighting consumers (light volume,
-// sun-shadow receive, overflow relight) sample the surface where it is
+// sun-shadow receive, overflow relight, and the sun-shadow CAST bridge —
+// #2816) sample the surface where it is
 // actually rendered. Fractional-positioned content carries up to half a world
 // cell here (see #2251); integer content encodes frac 8/8 → zero offset,
 // bit-identical to the lattice form.
@@ -45,19 +63,12 @@ inline float3 perAxisCellToWorld3DSubCell(
         cell, decodeDepthPerAxis(encoded), faceId,
         canvasSize, frameCanvasOffset, voxelRenderOptions
     );
-    // The shared ir_iso_common decode helpers own the frac-field layout —
-    // the same decode peraxis_scatter.metal uses, so lighting recovers
-    // exactly the plane the scatter draws.
-    const int uFrac4 = decodeUFrac4PerAxis(encoded);
-    const int vFrac4 = decodeVFrac4PerAxis(encoded);
-    const int wFrac4 = decodeWFrac4PerAxis(encoded);
+    const float3 frac = perAxisSubCellFrac(encoded);
     float3 eu;
     float3 ev;
     faceInPlaneUnitAxes(faceId >> 1, eu, ev);
-    return origin
-        + eu * (float(uFrac4) / 16.0f - 0.5f)
-        + ev * (float(vFrac4) / 16.0f - 0.5f)
-        + faceOutOfPlaneUnitAxis(faceId >> 1) * (float(wFrac4) / 16.0f - 0.5f);
+    return origin + eu * frac.x + ev * frac.y +
+           faceOutOfPlaneUnitAxis(faceId >> 1) * frac.z;
 }
 
 #endif // IR_PER_AXIS_LIGHTING_METAL_INCLUDED

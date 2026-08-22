@@ -337,8 +337,17 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         // shader change, just a second source texture. This is what fixed the
         // #1380 cross-face self-occlusion: the per-screen-pixel flattening the
         // raw face-local store lacked. The per-axis RECEIVE
-        // (COMPUTE_SUN_SHADOW, perAxisCellToWorld3D) recovers the same world
-        // origin (isoPixelToPos3D), so cast and receive agree. If the
+        // (COMPUTE_SUN_SHADOW, perAxisCellToWorld3DSubCell) recovers the
+        // lattice origin PLUS the encoding's sub-cell frac, so the resolve
+        // applies that same frac before it emits (#2816) — but the agreement is
+        // only as fine as the destination layout: the resolve deposits into an
+        // INTEGER cardinal layout at effSub resolution, so the frac survives to
+        // 1/effSub of a world cell and at effSub == 1 it is quantized away
+        // entirely. Fractionally-positioned per-axis content at effSub == 1
+        // therefore still casts from its lattice cell while receiving at its
+        // true sub-cell position — a residual bounded by half a world cell,
+        // documented in docs/design/per-axis-sun-shadow-resolve.md, not a
+        // regression this dispatch can close without a finer layout. If the
         // resolve stage is not registered, resolveDepth_ stays cleared to the
         // empty sentinel (component allocate) so this dispatch casts nothing —
         // graceful no-op, not corruption. Cardinal (residualYaw == 0) is

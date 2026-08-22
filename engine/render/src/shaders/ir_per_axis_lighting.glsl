@@ -34,8 +34,31 @@ vec3 perAxisCellToWorld3D(
     return isoPixelToPos3D(isoPix.x, isoPix.y, float(rawDepth));
 }
 
+// The encoding's three 4-bit sub-cell offsets, decoded and re-centred to
+// signed world-unit fractions along the face's own (e_u, e_v, n) basis —
+// x/y in-plane (faceInPlaneUnitAxes), z out-of-plane
+// (faceOutOfPlaneUnitAxis). Each component lands in [-0.5, +7/16]; integer-
+// positioned content encodes 8/8/8 and yields exactly (0,0,0).
+//
+// This is the single definition of the frac layout's CENTRING convention, and
+// it is deliberately basis-free: the sub-cell recovery below composes it in
+// the WORLD frame, while the per-axis sun-shadow CAST bridge
+// (c_resolve_per_axis_screen_depth) composes it against the same basis already
+// rotated into the cardinal VIEW frame. Rotation is linear, so both reach the
+// same surface — and both read the layout from here, so the two seams cannot
+// drift the way an inlined copy of the recovery did (#2816).
+vec3 perAxisSubCellFrac(int encoded) {
+    // The shared ir_iso_common decode helpers own the frac-field bit layout —
+    // the same decode v_peraxis_scatter uses.
+    return vec3(
+        float(decodeUFrac4PerAxis(encoded)) / 16.0 - 0.5,
+        float(decodeVFrac4PerAxis(encoded)) / 16.0 - 0.5,
+        float(decodeWFrac4PerAxis(encoded)) / 16.0 - 0.5
+    );
+}
+
 // Sub-cell variant: the lattice recovery above plus the encoding's 4-bit
-// in-plane frac offset — the SAME reconstruction v_peraxis_scatter draws, so
+// frac offset — the SAME reconstruction v_peraxis_scatter draws, so
 // lighting samples the surface where it is actually rendered. The frac is not
 // a sub-pixel nicety: fractional-positioned content (a voxel mid-glide, the
 // roundHalfUp tie convention placing half-integer content at cell − 0.5)
@@ -45,7 +68,8 @@ vec3 perAxisCellToWorld3D(
 // it is bit-identical to the lattice recovery. Consumers whose output
 // provably cancels the in-plane offset (AO's outward-normal height dot) may
 // keep the cheaper lattice form; absolute-position consumers (light volume,
-// sun-shadow receive, overflow relight) must use this one.
+// sun-shadow receive, overflow relight, and the sun-shadow CAST bridge —
+// #2816) must recover with the frac applied.
 vec3 perAxisCellToWorld3DSubCell(
     ivec2 cell, int encoded, int faceId,
     ivec2 canvasSize, vec2 frameCanvasOffset, ivec2 voxelRenderOptions
@@ -54,16 +78,9 @@ vec3 perAxisCellToWorld3DSubCell(
         cell, decodeDepthPerAxis(encoded), faceId,
         canvasSize, frameCanvasOffset, voxelRenderOptions
     );
-    // The shared ir_iso_common decode helpers own the frac-field layout —
-    // the same decode v_peraxis_scatter uses, so lighting recovers exactly
-    // the plane the scatter draws.
-    const int uFrac4 = decodeUFrac4PerAxis(encoded);
-    const int vFrac4 = decodeVFrac4PerAxis(encoded);
-    const int wFrac4 = decodeWFrac4PerAxis(encoded);
+    const vec3 frac = perAxisSubCellFrac(encoded);
     vec3 eu, ev;
     faceInPlaneUnitAxes(faceId >> 1, eu, ev);
-    return origin
-        + eu * (float(uFrac4) / 16.0 - 0.5)
-        + ev * (float(vFrac4) / 16.0 - 0.5)
-        + faceOutOfPlaneUnitAxis(faceId >> 1) * (float(wFrac4) / 16.0 - 0.5);
+    return origin + eu * frac.x + ev * frac.y +
+           faceOutOfPlaneUnitAxis(faceId >> 1) * frac.z;
 }
