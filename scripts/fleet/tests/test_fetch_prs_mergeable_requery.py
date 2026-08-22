@@ -65,6 +65,17 @@ class MergeableUnknownRequery(unittest.TestCase):
         self.assertEqual(_mod._mergeable_requery_ticks.get(_REPO), 0,
                          "a settled list clears the budget")
 
+    def test_304_with_unknown_requeries_graphql_settles_to_mergeable(self):
+        prev = [_pr(1, "UNKNOWN"), _pr(2, "MERGEABLE")]
+        settled = [_pr(1, "MERGEABLE"), _pr(2, "MERGEABLE")]
+        with patch.object(_mod, "conditional_get", _not_changed), \
+             patch.object(_mod, "_fetch_prs_graphql", self._graphql(settled)):
+            out = _mod.fetch_prs(_REPO, prev=prev)
+        self.assertEqual(self.calls, 1, "UNKNOWN on a 304 must re-ask GraphQL")
+        self.assertEqual(out[0]["mergeable"], "MERGEABLE")
+        self.assertEqual(_mod._mergeable_requery_ticks.get(_REPO), 0,
+                         "a settled list clears the budget")
+
     def test_304_without_unknown_reuses_prev(self):
         prev = [_pr(1, "CONFLICTING"), _pr(2, "MERGEABLE")]
         with patch.object(_mod, "conditional_get", _not_changed), \
