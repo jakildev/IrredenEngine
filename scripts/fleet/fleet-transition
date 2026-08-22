@@ -143,8 +143,13 @@ if [[ -z "$edge" ]]; then
 fi
 
 scope=$(jq -r '.scope' <<<"$edge")
-mapfile -t want_remove < <(jq -r '.remove[]?' <<<"$edge")
-mapfile -t want_add    < <(jq -r '.add[]?'    <<<"$edge")
+# Native jq on Windows (MSYS2) emits CRLF, not LF; mapfile only strips the
+# trailing \n, leaving an embedded \r on every element. Strip it here, at
+# the source, so every downstream consumer (the unknown-label check,
+# has_label lookups, edit_args, the summary line) sees clean values. No-op
+# on Linux/macOS, where jq -r already emits LF. (#3029)
+mapfile -t want_remove < <(jq -r '.remove[]?' <<<"$edge" | tr -d '\r')
+mapfile -t want_add    < <(jq -r '.add[]?'    <<<"$edge" | tr -d '\r')
 
 # Typo protection: every label the edge names must be a real node.
 unknown=()

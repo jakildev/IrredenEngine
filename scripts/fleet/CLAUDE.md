@@ -278,3 +278,12 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   connections exhaust the ephemeral port range and every network call dies
   instantly with EADDRNOTAVAIL ("Can't assign requested address") — that is
   not GitHub being down; run `fleet-net-doctor` (exit 2 ⇒ reboot the host).
+- **Native `jq` on Windows (MSYS2) emits CRLF, not LF.** `mapfile` only
+  strips the trailing `\n` delimiter, so `mapfile -t arr < <(jq -r '...')`
+  leaves an embedded `\r` on every element on that host — silently breaking
+  any later string comparison against LF-clean data (`fleet-transition`'s
+  label-validation loop misreported every edge's labels as unknown node
+  names, #3029). Pipe through `tr -d '\r'` (or equivalent) at the `mapfile`
+  source, not just at the first comparison site — the array is usually
+  reused by more than one downstream consumer. Defensive, not
+  host-conditional: a no-op on Linux/macOS, where `jq -r` already emits LF.
