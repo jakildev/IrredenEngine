@@ -358,8 +358,8 @@ vertex VertexOut v_peraxis_scatter(
     // the rasterizer VISITS every fragment the true footprint could touch. The
     // coverage DECISION moved to f_peraxis_scatter (analytic, from quadParam +
     // edgeInterior), so the old per-axis continuous margin (#1883) that *decided*
-    // coverage is retired here. The GL twin (v_peraxis_scatter.glsl) still carries
-    // that old coverage role; it ports to this visit-bound in #1938.
+    // coverage is retired here. The GL twin (v_peraxis_scatter.glsl) carries the
+    // same visit-bound.
     const float2 dilNdc = scatterConservativeDilation(
         su, sv, sign(in.position), kScatterDilateMarginPx, ndcPerPx
     );

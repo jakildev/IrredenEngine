@@ -104,6 +104,23 @@ flat out float vMarginDepthBias;
 // (the doubled top<->side sliver) while a sub-pixel gap-fill barely yields.
 flat out float vMarginYieldGradU;
 flat out float vMarginYieldGradV;
+// Interior-edge yield-slope floor (#2428), vDepth units per unit quad-param
+// penetration. The per-axis slopes above are the OWN plane's depth gradients —
+// near zero along a foreshortened axis — but a margin that penetrates an INTERIOR
+// edge extends over the ADJACENT visible face, whose plane can diverge from the
+// extrapolation at up to 2*sqrt(2)*encScale per world unit. At fractional offsets
+// the sub-pixel phase then tips the near-balanced margin-vs-exact contest per
+// pixel — the #2428 shared-edge fringe. Flooring the slope at
+// kScatterMarginYieldGradScale * encScale (>= the divergence bound) for
+// interior-edge penetration makes such margins always lose to the adjacent face's
+// exact fragments; they keep only their gap-fill job. Boundary (silhouette)
+// penetrations keep the tighter own-slope yield.
+flat out float vMarginYieldGradFloor;
+// Flat interior-edge yield (#2428): covers the constant (flip << 2) | slot
+// key-tiebreak span between adjacent faces' planes — the penetration-independent
+// advantage a sub-pixel interior margin can hold over the adjacent face's exact
+// fragments (see kScatterMarginInteriorBiasKey in ir_iso_common.glsl).
+flat out float vMarginInteriorYieldBias;
 // Face-center iso-depth for per-face depth-color (#1697). Flat (constant across
 // the quad) — origin is the same for all 4 corners of a face instance, so
 // interpolation would be a no-op anyway and flat avoids shader-pipeline
@@ -125,6 +142,14 @@ flat out float vDepthColorExtent;
 // layout, the per-class separation argument, and the two-sided band
 // precondition.
 flat out float vCellTieOffset;
+// Per-edge interior/boundary classification for analytic coverage (#1937) —
+// .x = u-low, .y = u-high, .z = v-low, .w = v-high (in the face's eu/ev basis);
+// 1 = interior (fill solid / close seam), 0 = true silhouette (crisp trim). An
+// edge is interior if the face continues to its same-axis in-plane neighbour OR
+// it points toward a visible perpendicular face (a convex cube edge shared with
+// another visible face — see main()). Flat: classified once per instance,
+// constant across its quad.
+flat out vec4 vEdgeInterior;
 
 // Composite-instrumentation overlay modes (#1457) — raw DebugOverlayMode
 // values (ir_render_enums.hpp). Both modes recolor the scattered quad and
@@ -161,6 +186,37 @@ vec3 hueWheel(float t) {
 // old per-faceId +1) double-shifts POS faces one cell past the plane: the
 // #1310 back-face seam (a ~1px dark gap between the POS face and its neighbors
 // at cardinals 1/2/3). cornerSel in {0,1}^2.
+// Occupancy of a per-axis canvas cell at pixel `p`, for the #1937 interior/
+// boundary edge classification. The bound `triangleColors` holds ONLY this axis's
+// faces (each axis binds its own textures — system_trixel_to_framebuffer.hpp), so
+// a non-empty neighbour means this face continues to its in-plane neighbour
+// (interior edge); an empty or out-of-bounds neighbour is a silhouette (boundary).
+float occupiedNeighbor(ivec2 p, ivec2 size) {
+    if (p.x < 0 || p.y < 0 || p.x >= size.x || p.y >= size.y) {
+        return 0.0;
+    }
+    return (texelFetch(triangleColors, p, 0).a >= 0.1) ? 1.0 : 0.0;
+}
+
+// Polarity (+1 / -1) of the visible face for world axis `axisIdx` (0=x,1=y,2=z),
+// from the visible-triplet, for the #1937 cross-axis edge classification. The
+// camera sees exactly one polarity per axis; an in-plane edge of the current face
+// that points toward that visible side face is a CONVEX CUBE EDGE shared with
+// another VISIBLE face (in a different per-axis canvas, so the same-axis occupancy
+// tap above can't see it). Such an edge is an inter-face seam to CLOSE
+// (conservative overlap), not a silhouette to trim — only the opposite,
+// background-facing edges are true silhouettes. Returns 0 if the axis has no
+// visible face in the triplet (degenerate).
+int visiblePolarityForAxis(int axisIdx) {
+    for (int s = 0; s < 3; ++s) {
+        const int fid = visibleFaceIds[s];
+        if ((fid >> 1) == axisIdx) {
+            return ((fid & 1) == 1) ? 1 : -1;
+        }
+    }
+    return 0;
+}
+
 vec3 faceSpanCorner(int axis, vec3 origin, vec2 cornerSel) {
     if (axis == 0) return origin + vec3(0.0, cornerSel.x, cornerSel.y); // X face: span y,z
     if (axis == 1) return origin + vec3(cornerSel.x, 0.0, cornerSel.y); // Y face: span x,z
@@ -205,6 +261,7 @@ void main() {
         vQuadParam = vec2(0.5);
         vMarginDepthBias = 0.0;
         vCellTieOffset = 0.0;
+        vEdgeInterior = vec4(0.0);
         return;
     }
     // Per-axis fractional encoding (#1458, flip carrier #2207) — decode via the
@@ -244,6 +301,43 @@ void main() {
         + eu * (float(uFrac4) / 16.0 - 0.5)
         + ev * (float(vFrac4) / 16.0 - 0.5)
         + faceOutOfPlaneUnitAxis(axis) * (float(wFrac4) / 16.0 - 0.5);
+
+    // Interior/boundary classification for the analytic coverage (#1937). An edge
+    // is INTERIOR (fill solid, close the seam) if EITHER:
+    //  (1) the face continues to its same-axis in-plane neighbour — a unit in-plane
+    //      world step projects to the integer iso offset pos3DtoPos2DIso(eu/ev)
+    //      (linear, so the cell's per-axis pixel is ij ± step); tap THIS axis's
+    //      colour texture there, OR
+    //  (2) the edge points toward the VISIBLE perpendicular face — a convex cube
+    //      edge shared with another visible face in a different per-axis canvas
+    //      (the same-axis tap can't see it). Exactly one of the ±eu / ±ev edges
+    //      faces each visible side face; the opposite, background-facing edges
+    //      stay BOUNDARY and get crisply trimmed (true silhouette, no #1883 spike).
+    // The polarity-interior edge of each axis SKIPS its occupancy tap — it is
+    // interior unconditionally, so the tap result is irrelevant (max with 1.0).
+    // That halves the per-vertex texture reads (2 taps, not 4) on this hot per-cell
+    // path while staying output-identical to the max(tap, polarity) form.
+    if (overflowMode != 0) {
+        // #2333: overflow entries are isolated revealed slivers, and the bound
+        // triangleColors is whichever axis drew last (the overflow draw is
+        // axis-agnostic), so the same-axis occupancy taps below would read a
+        // foreign axis's cells. Classify every edge as boundary: the analytic
+        // coverage then trims the exact footprint, which tiles gap-free against
+        // neighbouring faces' exact footprints in world space.
+        vEdgeInterior = vec4(0.0);
+    } else {
+        const ivec2 stepU = pos3DtoPos2DIso(ivec3(eu));
+        const ivec2 stepV = pos3DtoPos2DIso(ivec3(ev));
+        const int euAxis = (eu.x != 0.0) ? 0 : ((eu.y != 0.0) ? 1 : 2);
+        const int evAxis = (ev.x != 0.0) ? 0 : ((ev.y != 0.0) ? 1 : 2);
+        const int euPol = visiblePolarityForAxis(euAxis);
+        const int evPol = visiblePolarityForAxis(evAxis);
+        vEdgeInterior = vec4(
+            (euPol < 0) ? 1.0 : occupiedNeighbor(ij - stepU, canvasSize),  // u-low  (-eu)
+            (euPol > 0) ? 1.0 : occupiedNeighbor(ij + stepU, canvasSize),  // u-high (+eu)
+            (evPol < 0) ? 1.0 : occupiedNeighbor(ij - stepV, canvasSize),  // v-low  (-ev)
+            (evPol > 0) ? 1.0 : occupiedNeighbor(ij + stepV, canvasSize)); // v-high (+ev)
+    }
 
     // Project the selected face corner under the continuous yaw
     // (pos3DtoPos2DIsoYawed is linear, so this IS P(theta)*corner — the true
@@ -293,14 +387,12 @@ void main() {
     vec2 quadEv = vec2(isoEv.x / float(canvasSize.x), -isoEv.y / float(canvasSize.y));
     vec2 su = (mpMatrix * vec4(quadEu, 0.0, 0.0)).xy * pxPerNdc;
     vec2 sv = (mpMatrix * vec4(quadEv, 0.0, 0.0)).xy * pxPerNdc;
-    // Per-axis continuous conservative margin (#1883). The helper derives a
-    // per-edge margin from each axis's own on-screen extent (floored at
-    // kScatterDilateMarginPx), so the collapsing axis grows to bridge the band
-    // gap while the long silhouette edge stays tight. Replaces the anisotropic
-    // max(suLen,svLen) + hard degenSin gate that over-grew the long axis and
-    // dashed the foreshortened silhouette edge. The margin-depth bias still keeps
-    // any grown margin yielding to a real exact footprint (interior overlap is
-    // harmless; only genuine inter-sliver gaps fill).
+    // Visit-bound dilation (#1937, Metal-lead). scatterConservativeDilation
+    // grows each edge by a FIXED kScatterDilateMarginPx (~1px) — just enough
+    // that the rasterizer VISITS every fragment the true footprint could touch. The
+    // coverage DECISION moved to f_peraxis_scatter (analytic, from vQuadParam +
+    // vEdgeInterior), so the per-axis continuous margin (#1883) that *decided*
+    // coverage is retired here.
     const vec2 dilNdc = scatterConservativeDilation(
         su, sv, sign(aPos), kScatterDilateMarginPx, ndcPerPx);
     clipCorner.xy += dilNdc;
@@ -409,4 +501,16 @@ void main() {
     // margin's extrapolation-proportional yield. Folds in kScatterMarginYieldGradScale.
     vMarginYieldGradU = kScatterMarginYieldGradScale * abs(kU) / depthRange;
     vMarginYieldGradV = kScatterMarginYieldGradScale * abs(kV) / depthRange;
+    // Interior-edge floor (#2428): 3 * encScale >= the 2*sqrt(2)*encScale
+    // worst-case cross-face divergence per world unit (quadParam is in world units
+    // on the base-resolution store), so an interior-edge margin always yields past
+    // the adjacent face's exact fragments.
+    vMarginYieldGradFloor = kScatterMarginYieldGradScale * encScale / depthRange;
+    // Flat interior-edge yield (#2428): the composite key carries the constant
+    // (flip << 2) | slot tiebreak (up to 7 key units), so a margin whose slot ranks
+    // lower sits a CONSTANT ~key-scale distance nearer than the adjacent face
+    // across the whole shared edge — a sub-pixel penetration times any slope can
+    // never repay it (the #2428 fringe's dominant term). Bracket + asserts:
+    // ir_iso_common.glsl and ir_render_types.hpp.
+    vMarginInteriorYieldBias = kScatterMarginInteriorBiasKey / depthRange;
 }

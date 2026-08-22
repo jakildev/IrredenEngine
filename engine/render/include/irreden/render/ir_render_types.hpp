@@ -568,8 +568,8 @@ static_assert(
 // farther gap-fill targets (>> 1 cell) still win. But there is no headroom here
 // — treat the bias as forced, not as a knob.
 //
-// Mirror of `kScatterMarginInteriorBiasKey` in `metal/ir_iso_common.metal`
-// (Metal-lead; the GL twin keeps pre-#2428 behavior until the #1938 port).
+// Mirror of `kScatterMarginInteriorBiasKey` in `metal/ir_iso_common.metal` and
+// `ir_iso_common.glsl` (Metal-lead).
 constexpr int kScatterMarginInteriorBiasKey = 8;
 /// Worst-case constant low-bits advantage between two adjacent faces' planes:
 /// `max(flip << 2 | slot)` over the field width `encodeDepthWithFace` reserves.
