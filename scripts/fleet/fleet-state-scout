@@ -347,6 +347,25 @@ def _fetch_prs_graphql(repo):
     return prs
 
 
+# GraphQL `mergeable` is UNKNOWN while GitHub computes it, and the computation
+# is kicked off lazily by the query itself and invalidated whenever the base
+# advances. On a repo whose master moves constantly, every ETag-flip refetch
+# lands mid-recompute, caches UNKNOWN, and the 304 gate below never re-asks —
+# so engine PRs sat at UNKNOWN for weeks while `gh` reported CONFLICTING, and
+# the merger (which correctly treats UNKNOWN as "not computed") never saw a
+# conflict (#3038). While any reused PR still reads UNKNOWN, re-query GraphQL
+# past the gate for up to this many consecutive ticks; a real change (200)
+# resets the budget, and a settled list clears it. The cap bounds the cost if
+# GitHub never settles a PR (a pathologically stale head) — after it, the gate
+# owns the cadence again until the next open-set change.
+MERGEABLE_UNKNOWN_REQUERY_CAP = 6
+_mergeable_requery_ticks = {}  # repo -> consecutive UNKNOWN-driven refetches
+
+
+def _unknown_mergeable_count(prs):
+    return sum(1 for p in prs if p.get("mergeable") == "UNKNOWN")
+
+
 def fetch_prs(repo, prev=None):
     # The open-PR list is the one read that STAYS on GraphQL — it needs reviews
     # + mergeable, which the REST list omits. So gate it: a cheap conditional
@@ -356,14 +375,13 @@ def fetch_prs(repo, prev=None):
     #
     # The detector's ETag flips on every list-level change we care about: a new
     # review or a label edit bumps a PR's updated_at (→ new body → new ETag), and
-    # a merge/close removes the PR from the open set (→ new ETag). mergeable can
-    # go stale only if master advances without the PR moving — but master only
-    # advances by merging a PR, which itself changes the open set → refetch. On a
-    # detector error conditional_get returns (True, None) → changed=True → we
-    # fall through to GraphQL, so a failed detector degrades to today's behavior.
-    # per_page=100 so the detector's single page covers every open PR (REST
-    # defaults to 30); sort=updated keeps the freshest PRs on page 1 if the set
-    # ever nears the cap.
+    # a merge/close removes the PR from the open set (→ new ETag). What it does
+    # NOT cover is `mergeable` settling from UNKNOWN after such a refetch — that
+    # is the bounded re-query below. On a detector error conditional_get returns
+    # (True, None) → changed=True → we fall through to GraphQL, so a failed
+    # detector degrades to today's behavior. per_page=100 so the detector's
+    # single page covers every open PR (REST defaults to 30); sort=updated keeps
+    # the freshest PRs on page 1 if the set ever nears the cap.
     changed, _body = conditional_get(repo, "pulls", params={
         "state": "open", "sort": "updated", "direction": "desc", "per_page": "100",
     })
@@ -375,7 +393,25 @@ def fetch_prs(repo, prev=None):
     # empty prev is True (an empty open-PR set needs no refetch).
     if (not changed and prev is not None
             and all("closes_issues" in p for p in prev)):
+        unknown = _unknown_mergeable_count(prev)
+        used = _mergeable_requery_ticks.get(repo, 0)
+        if unknown and used < MERGEABLE_UNKNOWN_REQUERY_CAP:
+            _mergeable_requery_ticks[repo] = used + 1
+            if used == 0:
+                log(f"{repo}: {unknown} open PR(s) still report mergeable=UNKNOWN "
+                    f"— re-querying GraphQL past the 304 gate (up to "
+                    f"{MERGEABLE_UNKNOWN_REQUERY_CAP} ticks, #3038)")
+            fresh = _fetch_prs_graphql(repo)
+            if fresh is None:
+                # A failed re-query is not a reason to degrade a valid cache —
+                # keep the reused list; the budget already advanced so this
+                # cannot spin.
+                return prev
+            if not _unknown_mergeable_count(fresh):
+                _mergeable_requery_ticks[repo] = 0
+            return fresh
         return prev
+    _mergeable_requery_ticks[repo] = 0
     return _fetch_prs_graphql(repo)
 
 
