@@ -1071,7 +1071,7 @@ Three findings ground the accept, each measured rather than asserted:
    an odd-size (9³) origin-centred grid, so every active voxel sits on the exact
    integer lattice: `fracInCell ≡ 0` after `snapNearIntegerVoxelPosition`, and
    `fracToFrac4` encodes exactly 8/8/8, for which the scatter's decoded origin
-   adjustment (`peraxis_scatter.metal:281-284`, `v_peraxis_scatter.glsl:243-246`)
+   adjustment (`peraxis_scatter.metal:286-289`, `v_peraxis_scatter.glsl:248-251`)
    evaluates to exactly `0.0`. Staging a diagnostic scatter shader with that
    adjustment deleted produced **`img_diff` = 0 on all 24 frames at both zoom 4
    and zoom 8**, with bit-identical probe metrics. A lane pinned at its zero
@@ -1105,14 +1105,36 @@ caused #1380's cross-face self-occlusion). Invariant + the cast/receive
 agreement + the Metal `threadgroupSizeForFunctionName` requirement:
 [`docs/design/per-axis-sun-shadow-resolve.md`](../../docs/design/per-axis-sun-shadow-resolve.md).
 
-Per-axis lighting **receive** recovery: an absolute-position consumer of the
-per-axis store (light-volume sample, sun-shadow receive, overflow relight)
-must recover positions via `perAxisCellToWorld3DSubCell`
-(`ir_per_axis_lighting.{glsl,metal}`) — the lattice-only
-`perAxisCellToWorld3D` drops the encoding's sub-cell frac and lands up to
-half a world cell inside the solid for fractional-positioned content (see
-#2251). Relative-position consumers whose math provably cancels the in-plane
-offset (AO's outward-normal height dot) keep the cheaper lattice form.
+Per-axis **absolute-position** recovery: a consumer that turns a per-axis store
+cell into a world position — light-volume sample, sun-shadow receive, overflow
+relight, **and the sun-shadow CAST bridge** — must apply the encoding's sub-cell
+frac. The lattice-only `perAxisCellToWorld3D` drops it and lands up to half a
+world cell inside the solid for fractional-positioned content (see #2251).
+Relative-position consumers whose math provably cancels the in-plane offset
+(AO's outward-normal height dot) keep the cheaper lattice form — and say so
+in-source, which is what makes the sweep for undischarged sites finite.
+
+Two shapes discharge the obligation, both reading one decode
+(`perAxisSubCellFrac`, `ir_per_axis_lighting.{glsl,metal}`):
+
+- **Receivers** recover in the world frame — call
+  `perAxisCellToWorld3DSubCell` and use the `vec3` directly.
+- **The cast bridge** (`c_resolve_per_axis_screen_depth.{glsl,metal}`) deposits
+  into the integer cardinal layout, so it quantizes the frac to subdivision
+  units **in the face-local frame** and composes it against the already-rotated
+  basis. Quantizing after the rotation would make the deposit cell depend on
+  the yaw quadrant (`rotateCardinalZ` negates axes; `roundHalfUp` is not
+  symmetric about zero) and would break the `effSub == 1` byte-identity.
+
+**Counting an obligation's discharge sites is a real audit, and this one had a
+hole for two releases.** The docstring above named three consumers; a fourth —
+the cast bridge — carried an *inlined copy* of the lattice recovery, so it was
+invisible to a grep for `perAxisCellToWorld3D` call sites and drifted the moment
+#2251 moved receive to the sub-cell form. Three separate in-source comments went
+on asserting "cast and receive agree by construction" against a premise that had
+stopped being true (#2816). When a rule names its consumers in prose, enumerate
+the X's and the Y's and subtract — and prefer a shared helper over an inlined
+copy, because only the helper makes the enumeration greppable.
 
 ## SDF (`SHAPES_TO_TRIXEL`) vs voxel-pool (`VOXEL_TO_TRIXEL_*`) parity
 

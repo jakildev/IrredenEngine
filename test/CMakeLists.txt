@@ -62,6 +62,7 @@ add_executable(IrredenEngineTest
   render/camera_yaw_test.cpp
   render/detached_world_depth_test.cpp
   render/per_axis_canvas_size_test.cpp
+  render/per_axis_cast_subcell_test.cpp
   render/frame_data_sun_layout_test.cpp
   render/gizmo_drag_reset_test.cpp
   render/gpu_compute_dispatch_test.cpp
