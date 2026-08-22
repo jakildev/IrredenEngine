@@ -196,6 +196,14 @@ bake and AO then read. Consequences:
   not just the visible viewport — the same widening `buildChunkVisibilityMask`
   already applies.** A chunk inside the swept region is never occlusion-culled
   unless the Hi-Z over the *swept* footprint covers it.
+
+  > **Superseded for the per-voxel refine by #2298 — see "Domain widening" in
+  > the lessons below.** The mitigation above reads as "don't cull feeders";
+  > the correct rule is "cull a feeder only on evidence that covers it." The
+  > two differ because this paragraph conflates *Hi-Z data coverage* with the
+  > *test domain*: the Hi-Z always downsample-maxed the whole distance canvas,
+  > feeder ring included, so the data was never the visible viewport — only the
+  > gate was.
 - **AO.** AO samples a 3-pixel neighborhood; a one-frame-lag hole at a moving
   silhouette produces a one-frame AO shimmer at that edge. Acceptable, same
   class as the color pop.
@@ -306,7 +314,9 @@ labels.
 
 - **Shadow-feeder coverage** — the #1 correctness hazard above. The Hi-Z and
   the chunk-AABB projection must both use the shadow-feeder-widened bounds, or
-  sun shadows lose off-screen casters.
+  sun shadows lose off-screen casters. For the **per-voxel** refine this is now
+  a coverage guard rather than a keep-the-ring rule (#2298, below); the
+  chunk-AABB half is unchanged.
 - **Pool-chunk spatial coherence** — if per-chunk cull rate is poor, the fix is
   tighter spatial chunking of the pool, not per-voxel testing. That is a larger,
   separate change (pool layout).
@@ -349,6 +359,62 @@ durable lessons:
   namespaces) — a Metal-only defect a GL-only smoke will miss. The same
   mechanism latently corrupts the #1294 chunk cull's fine Hi-Z levels on Metal.
 
+## Domain widening: the trace invariant (#2298)
+
+#1812 shipped the per-voxel test gated to the visible viewport — a
+`visibleIsoBounds` early-return in `voxelOccludedByHiZ`. That left the
+shadow-feeder ring untested, and the ring is the dominant residual once the
+visible domain is culled: at `voxel_set` zoom 8 the ring was **45,987 voxels,
+21.5 % of the widened survivor set**, and ~71 % of what survived the shipped
+cull. The pv marginal measured identical shadows-ON vs shadows-OFF (Δ35
+voxels) — proof the gate provably could not touch the ring.
+
+**The invariant that makes culling a feeder sound.** A voxel conservatively
+occluded (expanded-footprint Hi-Z max, strict-behind margin) at *every canvas
+texel it can raster to* leaves no trace in `trixelDistances`. Both consumers —
+the visible resolve and the sun-shadow bake — read `trixelDistances`, never
+voxels. So dropping such a voxel is bit-identical for the shadow it would have
+cast, not just for the pixel it would have drawn. A
+camera-occluded-everywhere feeder already casts nothing.
+
+This is why the "never cull a shadow-feeder" mitigation in "The one real
+hazard" above was correct only while the test domain was assumed visible-only.
+The replacement is a **canvas-coverage guard**, not a viewport box: a voxel is
+tested iff its expanded footprint lies fully inside the Hi-Z texel extent. A
+footprint spilling past that extent is **kept, never clamped** — a clamped tap
+reads a border texel, i.e. data for a different position, which can deflate the
+footprint max and false-cull an edge voxel that actually sees background.
+Exclude, don't clamp; that is the correctness cliff of the whole change.
+
+**Realized capture** (PR #2475, GL / Windows native / NVIDIA; dense frozen
+harness, sun shadows ON, 300 frames per config):
+
+| zoom | visible pv-off → pv-on | feeder pv-off → pv-on (**ring capture**) |
+|---|---|---|
+| 4  | 255,275 → 29,589.3 (88%) | 4,108 → 1,136.0 (**72%**) |
+| 8  | 167,426 → 16,240.3 (90%) | 47,995 → 8,595.2 (**82%**) |
+| 16 | 67,567 → 8,028.8 (88%) | 83,922 → 12,135.9 (**86%**) |
+
+Ring capture is non-zero at every zoom (lesson (i)'s positive-fire gate) while
+every cardinal shot stayed md5-identical with shadows ON (the identity gate).
+Because the bake path is now *in* the test domain, the shadows-**ON** A/B is
+the load-bearing identity gate here — the #1812-era gate ran shadows-off and
+structurally could not observe a bake regression.
+
+Two operational notes this change surfaced, both worth carrying forward:
+
+- **The cull readback needs priming.** The stats read the prior frame's counts
+  out of `indirectBuf_` before zeroing it; on the first tick there is no prior
+  value, and a fresh allocation does **not** read back as zero on GL/NVIDIA
+  (observed: 6.36 M "visible" against a 262,144-voxel pool, and a saturated
+  4,294,967,295 feeder count). One junk sample swamped a 300-sample average —
+  the pv-off feeder mean came out 14.4 M instead of 47,995. `cullReadbackPrimed_`
+  drops that sample.
+- **Metal numbers are not carried over.** #2475's gates ran on GL. The
+  pre-#2898 Metal baseline measured exactly **0** ring capture (the sentinel-ring
+  gap), and that framing is stale now that #2898 has merged — the Metal side
+  needs re-measuring on the resolved baseline before any Metal claim is made.
+
 ---
 
 ## See also
@@ -361,4 +427,5 @@ durable lessons:
   shadow path that reads `trixelDistances`
 - Issue #1290 (this design), #1294 (gated implementation follow-up), #1050
   (clear cost), #1161 (UPDATE-dominated profile), #1278 / #1288 (in-flight
-  rasterization rework)
+  rasterization rework), #1812 (per-voxel refine), #2298 (domain widening to
+  the shadow-feeder ring)
