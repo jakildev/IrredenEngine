@@ -230,6 +230,9 @@ enum SpawnGroup : std::uint32_t {
     kGroupInterpenetrate = 1u << 7,
     kGroupSmallZoom = 1u << 8,
     kGroupOrbitSwap = 1u << 9,
+    kGroupReceiveProbe = 1u << 10,
+    kGroupReceiveProbeRot = 1u << 11,
+    kGroupReceiveProbeSolo = 1u << 12,
 };
 
 // 0.5 degrees per frame → full revolution in ~720 frames (~12 s at 60 fps)
@@ -407,6 +410,18 @@ bool orbitSwapGroupRequested() {
     return (g_settings.onlyGroups_ & kGroupOrbitSwap) != 0u;
 }
 
+// #2327 receive-vs-cast camera-yaw probe is OPT-IN only, so the default scene
+// and every manifest shot stay byte-identical. Three variants:
+//   receiveprobe     — receiver + caster (the measurement)
+//   receiveproberot  — same, receiver seeded off-cardinal (doc §4.2's literal
+//                      "rotated detached entity" wording)
+//   receiveprobesolo — receiver ONLY (the no-caster control: whatever this
+//                      scene shows on the receiver is self-shadow, not cast)
+bool receiveProbeGroupRequested() {
+    return (g_settings.onlyGroups_ &
+            (kGroupReceiveProbe | kGroupReceiveProbeRot | kGroupReceiveProbeSolo)) != 0u;
+}
+
 std::uint32_t parseSpawnGroups(const char *arg) {
     struct GroupName {
         const char *name_;
@@ -423,6 +438,9 @@ std::uint32_t parseSpawnGroups(const char *arg) {
         {"interpenetrate", kGroupInterpenetrate},
         {"smallzoom", kGroupSmallZoom},
         {"orbitswap", kGroupOrbitSwap},
+        {"receiveprobe", kGroupReceiveProbe},
+        {"receiveproberot", kGroupReceiveProbeRot},
+        {"receiveprobesolo", kGroupReceiveProbeSolo},
     };
     std::uint32_t bits = 0u;
     const std::string list{arg};
@@ -968,6 +986,109 @@ void spawnPerEntityPrioritySwap() {
     spawnPerEntityPriorityUnit(1, vec3(6.0f, 6.0f, 6.0f), Color{235, 80, 80, 255}, 1, true);
 }
 
+// ── #2327 receive-vs-cast camera-yaw probe (THROWAWAY, opt-in) ──────────────
+// Confirms or refutes `docs/design/detached-so3-shadow-projection.md` §4.2: a
+// world-placed DETACHED_REVOXELIZE entity RECEIVES the world sun-shadow through
+// a translation-only recovery (rasterYaw forced 0), so the band received ON the
+// entity should drift as camera yaw departs cardinal 0, while the shadow the
+// same entity CASTS onto the floor (camera-cardinal-compensated) stays put.
+//
+// The probe overrides the demo's sun. kSunDirection's shadow ray runs within ~8°
+// of the iso view axis (1,1,1) — measured, not assumed: the ray's per-unit iso
+// displacement is only (0.20, 0.09) — so any caster placed to shadow the
+// receiver lands on top of the receiver on screen and hides its own band. The
+// probe sun throws ~1.56 iso units per world unit of ray instead, which puts the
+// caster's iso footprint (x ∈ [18, 30]) fully clear of the receiver's top face
+// (x ∈ [-12, 12]). §4.2's error term is R_camera⁻¹, independent of the sun
+// basis, so the substitution does not weaken the observation.
+constexpr vec3 kProbeSunDirection = vec3(-0.6f, 0.4f, -0.7f);
+// Receiver: a 24³ world-placed re-voxelize box, bottom at z = 0 (on the #1587
+// floor), top face at z = -24. Deliberately NOT the shared 12³
+// spawnDetachedReVoxelizeSolid body: at 12³ the top face is ~115 px across at
+// the probe zoom, and the ~5×5-world shadow patch on it cannot be localized to a
+// quadrant by eye — which is the entire measurement. Pool spans the rotated AABB
+// (24√3 ≈ 41.6) and the canvas keeps the shared helper's 140 px : 22 cell
+// footprint ratio so the composite scale matches the rest of the demo.
+//
+// Identity rotation is deliberate — §4.2's error term is independent of
+// R_entity, so drift on an unrotated receiver is unambiguously the camera term.
+constexpr vec3 kProbeReceiverWorld{0.0f, 0.0f, -12.0f};
+constexpr ivec2 kProbeCanvasSize{280, 280};
+constexpr ivec3 kProbePoolSize{44, 44, 44};
+constexpr ivec3 kProbeReceiverSize{24, 24, 24};
+// Saturated blue, not a neutral: the analysis segments the receiver out of the
+// grey floor by hue (blue − red), which survives every lighting factor down to
+// ambient-only, where a brightness threshold would not.
+constexpr Color kProbeReceiverColor{70, 100, 235, 255};
+// Caster: a small static GRID cube ~24 sun-ray units up-sun of the receiver's
+// top face, so its thrown shadow lands ON that face. 24 ≪ the 64-voxel
+// kSunShadowMaxDistance throw window, and the receiver's own floor shadow
+// (ray ≈ 37) clears it too.
+//
+// Sized and aimed for an OFF-CENTRE patch, not a centred band. §4.2's predicted
+// error is `(R_camera⁻¹ − I)` about the receiver's own centre, so a mis-recovered
+// receive rotates the shadowed set on the top face about that centre. Under iso
+// (screen.x = −x+y, screen.y = −x−y+2z) receiver-local (+5,+5) sits above the
+// rhombus centre, and its qZ(±90°) images (+5,−5) / (−5,+5) sit left and right
+// of it — so a cardinal error walks the patch quadrant-to-quadrant, a read no
+// centred band can express.
+//
+// 6³ is a floor, not a preference: a 3³ caster here is ~25 px on screen at the
+// probe zoom, and its sun-map writes are too sparse to survive as a solid
+// shadow (the #1717 caster-scatter class) — it landed as a handful of stray
+// texels. 6³ casts solidly and the resulting ≈ 11×9 patch is under a fifth of
+// the 24×24 face, so it localizes cleanly without saturating it.
+constexpr vec3 kProbeCasterWorld{-9.5f, 14.5f, -41.0f};
+constexpr ivec3 kProbeCasterSize{6, 6, 6};
+constexpr Color kProbeCasterColor{235, 120, 90, 255};
+// Off-cardinal seed for the `receiveproberot` variant.
+constexpr vec3 kProbeReceiverRotAxis{0.3f, 0.7f, 1.0f};
+constexpr float kProbeReceiverRotAngle = IRMath::kPi / 5.0f;
+// Sweep shots are pinned to zoom 1.0 by construction, which is far too coarse
+// here. The probe overrides that zoom and crops the result: `probe` holds the
+// whole scene across the cardinal sweep (the default CAMERA_CENTER pivot orbits
+// it slightly per yaw), `probetight` frames the receiver for the patch read.
+// Camera stays at (0,0) — zoom is safe, a PAN would cull every detached canvas.
+constexpr float kProbeSweepZoom = 2.0f;
+constexpr IRVideo::RoiCrop kProbeCrops[]{
+    {280, 120, 720, 480, "probe"},
+    {440, 200, 400, 320, "probetight"},
+};
+
+void spawnReceiveProbe(bool rotatedReceiver, bool withCaster) {
+    const vec4 receiverRotation =
+        rotatedReceiver ? IRMath::quatAxisAngle(
+                              IRMath::normalize(kProbeReceiverRotAxis),
+                              kProbeReceiverRotAngle
+                          )
+                        : vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    // World-placed (never screen-locked): the screen-locked path skips the
+    // lighting archetype entirely (#2322 D1), so a screen-locked receiver
+    // receives nothing and the probe would read as a false REFUTED.
+    C_EntityCanvas canvas = IRPrefab::EntityCanvas::createWithVoxelPool(
+        "receiveprobe_canvas",
+        kProbeCanvasSize,
+        kProbePoolSize
+    );
+    IREntity::createEntity(
+        C_LocalTransform{vec3(0.0f)},
+        C_VoxelSetNew{kProbeReceiverSize, kProbeReceiverColor, true, canvas.canvasEntity_}
+    );
+    IREntity::createEntity(
+        C_LocalTransform{kProbeReceiverWorld, receiverRotation},
+        C_RotationMode{RotationMode::DETACHED_REVOXELIZE},
+        canvas
+    );
+    if (!withCaster) {
+        return;
+    }
+    IREntity::createEntity(
+        C_LocalTransform{kProbeCasterWorld},
+        C_RotationMode{RotationMode::GRID},
+        C_VoxelSetNew{kProbeCasterSize, kProbeCasterColor, true}
+    );
+}
+
 Color gridColor(int x, int y, int gridSize) {
     const float denom = static_cast<float>(IRMath::max(gridSize - 1, 1));
     return Color{
@@ -1064,7 +1185,7 @@ void registerArgs() {
     args.string(
         "--only",
         "Spawn only the named entity groups (comma-separated: maingrid,gridspin,canary,revox,"
-        "orbit,floor,compare,interpenetrate,smallzoom,orbitswap)",
+        "orbit,floor,compare,interpenetrate,smallzoom,orbitswap,receiveprobe,receiveproberot)",
         ""
     );
     args.numbers(
@@ -1403,6 +1524,15 @@ void initSystems() {
             const int totalSweepShots = IRMath::max(g_settings.sweepYawCount_, 0) +
                                         IRMath::max(g_settings.sweepFramesCount_, 0);
             g_sweepShotLabels.reserve(totalSweepShots);
+            // #2327 probe only — every other sweep caller keeps zoom 1.0 and
+            // nullptr crops, so their captures are unchanged.
+            const float sweepZoom = receiveProbeGroupRequested() ? kProbeSweepZoom : 1.0f;
+            const IRVideo::RoiCrop *sweepCrops =
+                receiveProbeGroupRequested() ? kProbeCrops : nullptr;
+            const int sweepNumCrops =
+                receiveProbeGroupRequested()
+                    ? static_cast<int>(sizeof(kProbeCrops) / sizeof(kProbeCrops[0]))
+                    : 0;
             for (int i = 0; i < g_settings.sweepYawCount_; ++i) {
                 const float t =
                     g_settings.sweepYawCount_ > 1
@@ -1411,7 +1541,14 @@ void initSystems() {
                 const float yaw = g_settings.sweepYawFrom_ +
                                   t * (g_settings.sweepYawTo_ - g_settings.sweepYawFrom_);
                 g_sweepShotLabels.push_back("sweep_yaw_" + std::to_string(i));
-                g_allShots.push_back({1.0f, vec2(0.0f), yaw, g_sweepShotLabels.back().c_str()});
+                g_allShots.push_back(
+                    {sweepZoom,
+                     vec2(0.0f),
+                     yaw,
+                     g_sweepShotLabels.back().c_str(),
+                     sweepCrops,
+                     sweepNumCrops}
+                );
             }
             for (int i = 0; i < g_settings.sweepFramesCount_; ++i) {
                 g_sweepShotLabels.push_back("sweep_frame_" + std::to_string(i));
@@ -1541,6 +1678,19 @@ void initEntities() {
             );
             IREntity::setComponent(floor, C_LightBlocker{false, false, 0.0f});
         }
+    }
+
+    // #2327 receive-vs-cast camera-yaw probe — OPT-IN only, throwaway. Run as
+    // `--only receiveprobe,floor --no-spin --debug-overlay shadow
+    //  --sweep-yaw <from> <to> <n> --auto-screenshot 10`.
+    if (receiveProbeGroupRequested()) {
+        if (!g_settings.noLighting_) {
+            IRRender::setSunDirection(kProbeSunDirection);
+        }
+        spawnReceiveProbe(
+            (g_settings.onlyGroups_ & kGroupReceiveProbeRot) != 0u,
+            (g_settings.onlyGroups_ & kGroupReceiveProbeSolo) == 0u
+        );
     }
 
     // #1960 / #2023 per-trixel priority interpenetration demo — OPT-IN only
