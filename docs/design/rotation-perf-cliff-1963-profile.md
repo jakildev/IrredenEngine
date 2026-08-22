@@ -227,6 +227,11 @@ class of accepted per-axis non-determinism the re-voxelize path documents
 (round-to-cell speckle), and it is **self-resolving**: C3 #1939 retires the
 dilation-margin tower entirely, removing the tie source.
 
+> **Update (#1939):** the margin/miter/yield tower was *not* retired —
+> analytic coverage fills interior edges unconditionally, so margin fragments
+> (and this tie source) persist by design. See `engine/render/CLAUDE.md`
+> §#1939. The residual remains accepted on the measured thresholds above.
+
 ## Repro
 
 ```bash

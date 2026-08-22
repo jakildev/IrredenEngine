@@ -1073,10 +1073,10 @@ scope did not anticipate:
 - `kScatterDilateMarginPx` is the visit-bound itself.
 
 The epic's own acceptance allowed this outcome ("retired **or** reduced to a
-documented minimal visit-bound"), and #1937/#1938 already delivered the hot-path
-change the epic was after — the continuous `0.5·|n|` growth that *decided*
-coverage. What remains is a correctness tie-break tower that #2428 extended;
-treat "these constants look like leftovers" as answered here.
+documented minimal visit-bound"), and #1937/#1938 already delivered the
+change the epic was after: **removing** the continuous `0.5·|n|` growth that
+used to *decide* coverage. What remains is a correctness tie-break tower that
+#2428 extended; treat "these constants look like leftovers" as answered here.
 
 Hardware conservative rasterization / MSAA remains unused — the analytic model
 was chosen precisely because Metal exposes no conservative-raster API, so do
