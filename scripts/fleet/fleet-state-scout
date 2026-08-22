@@ -2878,6 +2878,92 @@ def check_state_size(size_bytes: int) -> None:
         pass
 
 
+# --- Self-spawned-lane spawn failures (#2972) ------------------------------
+#
+# The two lanes below (`queue-manager` claim-cleanup, `queue-manager-ingest`)
+# write their seen-hash only once the spawn actually succeeded, so a failed
+# spawn leaves the edge pending and the lane retries on the NEXT tick. A
+# persistent failure therefore re-enters here every tick — the shape
+# scripts/fleet/CLAUDE.md's escalate-then-quiet rule exists for, since a plain
+# per-tick warn would re-emit identically forever and hide the outage it
+# reports. Hence the streak counter + alert pair.
+#
+# N is sized against the outage, not rounded: the scout ticks every ~30s, so 10
+# ≈ 5 min. That rides out the transient shapes this retry exists for — a fork
+# refused under many-pane load (EAGAIN), and an install/upgrade window where
+# _fleet_script_argv's target is briefly absent, both seconds-scale — while
+# still surfacing a genuinely stuck lane long before it looks healthy.
+SPAWN_FAIL_ESCALATE_N = 10
+
+# lane -> (key, consecutive_count). In-process, like _state_size_over_streak:
+# the scout is a loop, so there is no need for the on-disk counter fleet-rebase
+# keeps for one-shot tools.
+_spawn_fail_streak = {}
+
+
+def _spawn_alert_path(lane: str) -> Path:
+    return _alerts_dir() / f"state-scout-spawn-{lane}"
+
+
+def _spawn_failed(lane: str, reason: str, detail: str) -> None:
+    """Record a failed lane spawn, escalating-then-quieting on repetition.
+
+    Keyed on `<reason>|<lane>` so a CHANGED failure mode restarts the count — a
+    different condition is news again. Mirrors fleet-clone-freshness.sh's
+    _freshness_warn, which scripts/fleet/CLAUDE.md names as the reference shape
+    for an in-loop guard (fleet-rebase's is the one-shot form). Best-effort
+    throughout: a read-only $HOME must never break the spawn path this guards.
+    """
+    key = f"{reason}|{lane}"
+    prev_key, count = _spawn_fail_streak.get(lane, ("", 0))
+    count = count + 1 if prev_key == key else 1
+    _spawn_fail_streak[lane] = (key, count)
+
+    if count < SPAWN_FAIL_ESCALATE_N:
+        log(detail)
+        return
+    if count == SPAWN_FAIL_ESCALATE_N:
+        log(detail)
+        log(f"{lane}: ESCALATION — spawn has failed {count} consecutive ticks "
+            f"(reason={reason}). No work is lost: the seen-hash is deliberately "
+            f"unwritten, so the lane keeps retrying. Wrote "
+            f"{_spawn_alert_path(lane)}. Suppressing further identical warns "
+            f"until a spawn succeeds.")
+    # Rewritten every tick past N, not stamped once at it: stderr is quiet from
+    # here on, so this file is the only standing signal. A write-once alert
+    # would freeze count= at the escalation instant and let a human triaging the
+    # alerts inbox delete a still-live condition permanently.
+    try:
+        path = _spawn_alert_path(lane)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        write_atomic(
+            path,
+            f"state-scout self-spawned lane failure\n"
+            f"lane={lane}\n"
+            f"reason={reason}\n"
+            f"consecutive_ticks={count}\n"
+            f"detail={detail}\n"
+            f"effect=seen-hash left unwritten; lane retries every tick (no work lost)\n"
+            f"issue=#2972\n",
+        )
+    except OSError:
+        pass
+
+
+def _spawn_ok(lane: str) -> None:
+    """A spawn succeeded: clear the streak and any standing alert."""
+    prev = _spawn_fail_streak.pop(lane, None)
+    if prev is not None and prev[1] >= SPAWN_FAIL_ESCALATE_N:
+        log(f"{lane}: spawn recovered after {prev[1]} consecutive failures")
+    # Unconditional, not gated on `prev`: a scout restart clears the in-process
+    # streak but leaves the on-disk alert, so keying the unlink on the streak
+    # would strand the file past the recovery it is meant to outlive.
+    try:
+        _spawn_alert_path(lane).unlink()
+    except OSError:
+        pass
+
+
 def emit_state(state) -> int:
     """Serialize + atomically write `state.json`, returning its on-disk bytes.
 
@@ -3297,7 +3383,6 @@ def tick_once():
                     log("queue-manager: skipping reconcile+cleanup (state degraded)")
                     triggers_fired.append("queue-manager(skipped-degraded)")
                     continue
-                write_atomic(seen_file, new_hash + "\n")
                 # cleanup --gh is GLOBAL stale-label reaping — run it only on
                 # the authoritative poller (leader, or a follower currently
                 # self-polling), else every follower re-multiplies the very
@@ -3321,6 +3406,18 @@ def tick_once():
                              "--gh", "--repo", "jakildev/irreden"])
                     reconcile_cmd += ["--repo", "jakildev/irreden"]
                 sweep_cmds.append(reconcile_cmd)
+                # Partial-failure rule, stated rather than implied (#2972): this
+                # lane fires SEVERAL commands, and the seen-hash below is written
+                # only when every one of them spawned. If any fails, the hash
+                # stays unwritten and the next tick re-runs the WHOLE set — safe,
+                # because `cleanup --gh` and `reconcile --apply` are both
+                # idempotent sweeps. Re-running one that already succeeded costs a
+                # redundant pass; consuming the edge drops a stale-lock sweep with
+                # no retry at all, which is the failure being fixed here.
+                # First failure breaks: the common causes (fork refused under
+                # load, argv target missing mid-install) fail the remaining spawns
+                # identically, and the retry re-runs them anyway.
+                spawn_failure = None
                 for sweep_cmd in sweep_cmds:
                     try:
                         subprocess.Popen(
@@ -3330,7 +3427,19 @@ def tick_once():
                             start_new_session=True,
                         )
                     except Exception as e:
-                        log(f"queue-manager: sweep failed to spawn {sweep_cmd[0]}: {e}")
+                        spawn_failure = (type(e).__name__, sweep_cmd[0], e)
+                        break
+                if spawn_failure is not None:
+                    _reason, _cmd0, _err = spawn_failure
+                    _spawn_failed(
+                        "queue-manager", _reason,
+                        f"queue-manager: sweep failed to spawn {_cmd0}: {_err} — "
+                        f"seen-hash left unwritten, retrying next tick")
+                    triggers_fired.append("queue-manager(spawn-failed)")
+                    continue
+                # Every spawn succeeded — only NOW consume the edge (#2972).
+                write_atomic(seen_file, new_hash + "\n")
+                _spawn_ok("queue-manager")
                 _swept = "cleanup + reconcile" if authoritative else "reconcile"
                 log(f"queue-manager: spawned {_swept} (projection changed)")
                 triggers_fired.append("queue-manager(claim-cleanup)")
@@ -3361,7 +3470,6 @@ def tick_once():
                     log("queue-manager-ingest: skipping fleet-queue-ingest (state degraded)")
                     triggers_fired.append("queue-manager-ingest(skipped-degraded)")
                     continue
-                write_atomic(seen_file, new_hash + "\n")
                 try:
                     subprocess.Popen(
                         _fleet_script_argv(["fleet-queue-ingest"]),
@@ -3369,10 +3477,21 @@ def tick_once():
                         stderr=subprocess.DEVNULL,
                         start_new_session=True,
                     )
-                    log("queue-manager-ingest: spawned fleet-queue-ingest (projection changed)")
-                    triggers_fired.append("queue-manager-ingest(spawn)")
                 except Exception as e:
-                    log(f"queue-manager-ingest: failed to spawn fleet-queue-ingest: {e}")
+                    # Seen-hash stays unwritten so the edge survives the failed
+                    # spawn and the next tick retries — the same no-rearm
+                    # contract the degraded skip honors (#2972).
+                    _spawn_failed(
+                        "queue-manager-ingest", type(e).__name__,
+                        f"queue-manager-ingest: failed to spawn fleet-queue-ingest: "
+                        f"{e} — seen-hash left unwritten, retrying next tick")
+                    triggers_fired.append("queue-manager-ingest(spawn-failed)")
+                    continue
+                # Spawn succeeded — only NOW consume the edge (#2972).
+                write_atomic(seen_file, new_hash + "\n")
+                _spawn_ok("queue-manager-ingest")
+                log("queue-manager-ingest: spawned fleet-queue-ingest (projection changed)")
+                triggers_fired.append("queue-manager-ingest(spawn)")
         elif update_role_trigger(role, projection):
             triggers_fired.append(role)
 
