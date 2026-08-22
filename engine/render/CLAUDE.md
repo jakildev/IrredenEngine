@@ -1071,7 +1071,7 @@ Three findings ground the accept, each measured rather than asserted:
    an odd-size (9³) origin-centred grid, so every active voxel sits on the exact
    integer lattice: `fracInCell ≡ 0` after `snapNearIntegerVoxelPosition`, and
    `fracToFrac4` encodes exactly 8/8/8, for which the scatter's decoded origin
-   adjustment (`peraxis_scatter.metal:281-284`, `v_peraxis_scatter.glsl:243-246`)
+   adjustment (`peraxis_scatter.metal:286-289`, `v_peraxis_scatter.glsl:248-251`)
    evaluates to exactly `0.0`. Staging a diagnostic scatter shader with that
    adjustment deleted produced **`img_diff` = 0 on all 24 frames at both zoom 4
    and zoom 8**, with bit-identical probe metrics. A lane pinned at its zero

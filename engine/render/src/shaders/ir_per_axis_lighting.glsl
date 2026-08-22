@@ -3,9 +3,13 @@
 // ir_iso_common.glsl — so adding it does not recompile the SDF / voxel / scatter
 // shaders that share ir_iso_common, which would perturb their floating-point
 // instruction scheduling and drift a few SDF-edge pixels at the cardinal fast
-// path (breaking the residualYaw == 0 byte-identity guarantee). Only the four
-// lighting compute shaders include this file, AFTER ir_iso_common.glsl (whose
-// helpers — trixelFrameOffset, trixelOriginOffsetZ1, isoPixelToPos3D,
+// path (breaking the residualYaw == 0 byte-identity guarantee). Six shaders
+// include this file — the five lighting compute passes (c_compute_voxel_ao,
+// c_bake_sun_shadow_map, c_compute_sun_shadow, c_lighting_to_trixel,
+// c_light_overflow_faces) plus the per-axis sun-shadow cast/resolve bridge
+// (c_resolve_per_axis_screen_depth) — and that set IS the blast radius of
+// editing it. All include it AFTER ir_iso_common.glsl (whose helpers —
+// trixelFrameOffset, trixelOriginOffsetZ1, isoPixelToPos3D,
 // effectiveTrixelSubdivisionScale — this builds on). GLSL's include resolver
 // is recursive with a visited-set cycle guard (opengl_shader.cpp
 // `resolveShaderIncludes`), so this fragment self-includes ir_iso_common.glsl
