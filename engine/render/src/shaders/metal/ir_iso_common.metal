@@ -935,12 +935,6 @@ constant float kScatterMarginYieldGradScale = 3.0;
 // constant in ir_iso_common.glsl.
 constant float kScatterMiterLimit = 2.0;
 
-// Pitch-proportional coverage fraction for the DETACHED forward-scatter (#1538).
-// Mirror of the GLSL constant in ir_iso_common.glsl — a margin floor set to this
-// fraction of the on-screen cell pitch closes the detached seam gap at every
-// scale without blobbing small cubes.
-constant float kScatterDetachedPitchFraction = 0.5;
-
 // Screen-space visit-bound dilation for the per-axis forward-scatter (#1494,
 // #1538, #1937). At off-snap residual poses a per-cell deformed rhombus
 // foreshortens toward a sub-pixel-thin sliver that slips between fragment centers

@@ -1047,11 +1047,41 @@ so keep them in lockstep. Measured on the canonical coarse-cube probe
 --zoom 4`, 24 frames, Windows/GL, 2026-08-21): before **JITTER**, x excursion
 1.92px against the 0.50px zoom-4 bar; after **SMOOTH**, 0.01px.
 
-Still open: **#1939 (C3)** retires the residual margin / miter / yield tower
-now that neither backend needs it to decide coverage. Hardware conservative
-rasterization / MSAA remains unused — the analytic model was chosen precisely
-because Metal exposes no conservative-raster API, so do **not** reach for
-`GL_NV_conservative_raster` on the GL side (it would fork the two backends).
+**#1939 (C3), the epic's last child: the margin/yield tower STAYS — do not
+re-attempt the retire.** C3 was scoped to "retire the residual margin / miter /
+yield tower now that neither backend decides coverage with it". Measured against
+the code as it stands after C1/C2, only ONE symbol was actually dead:
+`kScatterDetachedPitchFraction` (#1538), which lost its last reader when
+#1937/#1938 made the visit-bound a fixed `minMarginPx` — retired on both
+backends. Every other symbol in that tower is load-bearing, for a reason the C3
+scope did not anticipate:
+
+- **Margin fragments still exist, by design.** `scatterAnalyticEdgeCoverage`
+  returns coverage `1.0` *unconditionally* on an **interior** edge, so a fragment
+  outside the true `[0,1]²` footprint survives the coverage threshold whenever the
+  edge it crossed is interior. That over-fill IS the inter-cell seam bridge (the
+  job the #1494 margin was added for) — the analytic model moved the coverage
+  *decision* off the dilation, it did not remove over-fill. So the
+  margin-vs-exact-owner arbitration is still required:
+  `kScatterMarginDepthBiasKey` (#1457), `kScatterMarginYieldGradScale` (#1883),
+  and the interior slope floor + `kScatterMarginInteriorBiasKey` (#2428, which
+  post-dates the C3 scope and *added* to the tower).
+- **The miter and `kScatterMiterLimit` are the visit-bound's shape, not a
+  coverage heuristic.** An un-grown acute tip is a fragment the rasterizer never
+  visits, and analytic coverage cannot fill what was never rasterized — dropping
+  the miter reopens the #1538 lattice-aligned cracks + interior speckle.
+- `kScatterDilateMarginPx` is the visit-bound itself.
+
+The epic's own acceptance allowed this outcome ("retired **or** reduced to a
+documented minimal visit-bound"), and #1937/#1938 already delivered the
+change the epic was after: **removing** the continuous `0.5·|n|` growth that
+used to *decide* coverage. What remains is a correctness tie-break tower that
+#2428 extended; treat "these constants look like leftovers" as answered here.
+
+Hardware conservative rasterization / MSAA remains unused — the analytic model
+was chosen precisely because Metal exposes no conservative-raster API, so do
+**not** reach for `GL_NV_conservative_raster` on the GL side (it would fork the
+two backends).
 
 **Accepted sub-pixel yaw-sweep centroid residual (voxel content) — #2469.**
 On the canonical Z-yaw-invariant probe (voxel cylinder, `--yaw-sweep`) the

@@ -1119,21 +1119,6 @@ const float kScatterMarginYieldGradScale = 3.0;
 // still letting every corner move outward enough to close the inter-cell cracks.
 const float kScatterMiterLimit = 2.0;
 
-// Pitch-proportional coverage fraction for the DETACHED forward-scatter (#1538).
-// The detached cubes leave black seams between adjacent cells / where the
-// visible faces meet under an off-snap residual — a real gap (measured 2-6px on
-// a ~5-8px-pitch cube) that scales with the on-screen cell PITCH (the projected
-// unit-axis length), not a fixed sub-pixel crack. Closing it with a fixed margin
-// needs a few px, which over-grows SMALL on-screen cubes into blobs (observed).
-// A margin set to this fraction of the cell pitch instead tracks the gap at
-// every scale — it closes the seam on a large cube where the gap is widest and
-// shrinks to a sliver on a tiny cube where the fixed kScatterDilateMarginPx
-// floor takes over, so small cubes never blob. Used as a floor against
-// kScatterDilateMarginPx in the detached scatter only (camera-path scatter keeps
-// the fixed margin — its world canvas isn't the small-cube regime this
-// addresses). CPU has no mirror (shader-only).
-const float kScatterDetachedPitchFraction = 0.5;
-
 // Screen-space visit-bound dilation for the per-axis forward-scatter (#1494,
 // #1538, #1937). Each non-empty cell scatters one deformed face rhombus; at
 // off-snap residual poses the rhombus foreshortens toward a sub-pixel-thin sliver
