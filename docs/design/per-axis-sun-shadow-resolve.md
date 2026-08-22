@@ -49,7 +49,9 @@ since Metal has no portable image-atomic syntax):
 1. **scatter** (`c_resolve_per_axis_screen_depth`, dispatched once per axis):
    read each face-local cell, recover the face origin
    (`isoPixelToPos3D`, the same exact iso inverse
-   `perAxisCellToWorld3D` uses), rotate it into the cardinal view frame
+   `perAxisCellToWorld3D` uses) plus the encoding's sub-cell frac
+   (`perAxisSubCellFrac`, shared with the receive-side recovery — #2816),
+   rotate it into the cardinal view frame
    (`rotateCardinalZ` + `cardinalLowerCornerShift × subdivisionScale`,
    mirroring `c_voxel_to_trixel_stage_1`'s cardinal store), and
    `imageAtomicMin` the encoded iso-depth into a screen-space scratch SSBO
@@ -70,10 +72,42 @@ runs strictly before `BAKE` rebinds slot 28.
 
 `BAKE`'s per-axis dispatch recovers world-pos from the resolve texture via the
 cardinal `trixelCanvasPixelToWorld3D`. `COMPUTE_SUN_SHADOW`'s per-axis receive
-recovers world-pos via the face-local `perAxisCellToWorld3D`. Both derive from
-the **identical** `isoPixelToPos3D` origin, so cast and receive agree on
-world-pos by construction — no shadow acne at the cast/receive boundary.
-`COMPUTE_SUN_SHADOW` is therefore unchanged.
+recovers world-pos via the face-local `perAxisCellToWorld3DSubCell`. Both derive
+from the **identical** `isoPixelToPos3D` lattice origin **and apply the same
+sub-cell frac** on top of it, so cast and receive agree on world-pos to the
+resolve layout's own resolution.
+
+### The sub-cell half, and its quantization floor (#2816)
+
+The store packs each face's sub-cell offset as three 4-bit fracs (see
+"Encoding" below). Both sides must apply it: the receive side has since #2251,
+and the CAST bridge since #2816. Before that, this section's agreement claim
+rested on the **lattice** `perAxisCellToWorld3D` on both sides — true when it
+was written, stale from #2251 on, and the reason no test guarded the seam. The
+resolve had an inlined copy of the lattice recovery, so nothing tied it to the
+function receive actually moved to.
+
+Two properties of how the bridge applies it are load-bearing:
+
+- **Quantize in the face-local frame, then rotate.** `roundHalfUp` is not
+  symmetric about zero and `rotateCardinalZ` negates axes at cardinals 1/2/3,
+  so quantizing after the rotation would make the deposit cell depend on the
+  yaw quadrant. Quantizing first makes the displacement a property of the
+  content alone.
+- **The agreement is only as fine as the destination.** The resolve deposits
+  into an INTEGER cardinal layout at `effSub` resolution, so the frac survives
+  to `1/effSub` of a world cell. At `effSub == 1` it quantizes away entirely
+  (`roundHalfUp` maps the whole `[-0.5, +7/16]` frac range to 0), leaving a
+  cast/receive residual bounded by **half a world cell** — the layout's limit,
+  not a tunable. That also makes the `effSub == 1` emit byte-identical to the
+  pre-#2816 one by construction.
+
+Both properties, plus the integer-content negative control, are pinned by
+`test/render/per_axis_cast_subcell_test.cpp` — a hermetic host-side harness
+(no GL/Metal context) that ports both recoveries through the IRMath CPU
+mirrors. It is the enabled-path evidence for this seam: the shipped demos'
+rotating content is lattice-aligned (frac ≡ 8/8/8), so a screenshot A/B is
+byte-identical and proves only that the OFF path is inert.
 
 ## Invariants
 
@@ -98,9 +132,12 @@ world-pos by construction — no shadow acne at the cast/receive boundary.
 
 Migrating AO + light-volume + sun onto a single screen-space resolve is the
 issue's stated north star but triples scope/risk. AO and light-volume keep
-their working face-local `perAxisCellToWorld3D` reconstruction (they don't cast
-into a shared map, so no self-occlusion). Folded into the detached-canvas
-lighting planning family (#1375 / #1376).
+their working **face-local** reconstruction (they don't cast into a shared map,
+so no self-occlusion) — AO on the lattice `perAxisCellToWorld3D`, which it is
+documented-exempt for (its outward-normal height dot cancels the in-plane
+offset; the carve-out is stated in-source at `c_compute_voxel_ao.glsl:177`),
+and light-volume on `perAxisCellToWorld3DSubCell` since #2251. Folded into the
+detached-canvas lighting planning family (#1375 / #1376).
 
 ## Verification vehicle
 
@@ -138,15 +175,32 @@ Two bounded exceptions, both tracked elsewhere:
 ### Accepted residual: ~1-cell per-axis cast-silhouette looseness
 
 The resolve deliberately emits the **cardinal (un-deformed)** face footprint
-so `BAKE`'s recovery stays the exact inverse (cast == receive, #1380-safe).
-The store packs a sub-cell fractional offset (`encodeDepthWithFaceFrac` bits
-[9:2]) that the bake quantizes away, so at residual yaw the cast silhouette
-can read up to ~1 cell looser than the visible (deformed) silhouette.
-Threading the frac through resolve→bake was considered and **rejected**
-(#2082 ruling): it is in direct tension with the exact-inverse cardinal-layout
-invariant above. This is accepted drift, mirroring the #1883 precedent —
-revisit only if a deterministic capture shows it objectionable in a real
-scene.
+so `BAKE`'s recovery stays the exact inverse (cast == receive, #1380-safe), so
+at residual yaw the cast silhouette can read up to ~1 cell looser than the
+visible (deformed) silhouette. This is accepted drift, mirroring the #1883
+precedent — revisit only if a deterministic capture shows it objectionable in
+a real scene.
+
+> **The frac clause of this section was superseded by #2816.** As written
+> through 2026-08, it also said the bake quantizes the sub-cell frac away
+> entirely and that *"threading the frac through resolve→bake was considered
+> and **rejected** (#2082 ruling): it is in direct tension with the
+> exact-inverse cardinal-layout invariant."*
+>
+> #2816 threads it, and the #2082 tension does not bind the formulation it
+> uses: the frac is quantized to **subdivision units** and applied as an
+> integer cell displacement, so the deposit remains an exact cardinal-layout
+> cell and `trixelCanvasPixelToWorld3D` remains its exact inverse. What #2082
+> rejected — carrying a sub-cell position the integer layout cannot represent
+> — is still rejected, and is why the quantize exists.
+>
+> The un-deformed-footprint residual above is a **separate** effect (cardinal
+> vs deformed silhouette shape) and is unchanged by #2816.
+>
+> Recorded rather than silently rewritten: #2082's ruling is real and this
+> supersedes only its frac clause. If the reconciliation above is judged wrong,
+> the fix to revert is the sub-cell block in
+> `c_resolve_per_axis_screen_depth.{glsl,metal}`.
 
 ### Shadow-metric acceptance gates require a deterministic pose
 

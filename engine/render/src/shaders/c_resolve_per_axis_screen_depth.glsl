@@ -22,6 +22,9 @@
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
 #include "ir_iso_common.glsl"
+// perAxisSubCellFrac — the shared sub-cell frac decode this bridge composes in
+// the VIEW frame and the per-axis RECEIVE composes in the world frame (#2816).
+#include "ir_per_axis_lighting.glsl"
 
 // Per-axis-only shader; canvas clears to INT_MAX per #1458 encoding.
 const int kEmptyDistanceEncoded = 0x7FFFFFFF;
@@ -99,13 +102,16 @@ void main() {
     const int faceId = visibleFaceIds[slot] ^ flip;
     const int axis = faceId >> 1;
 
-    // Recover the face-plane origin — the exact iso inverse perAxisCellToWorld3D
-    // / v_peraxis_scatter use (no trig, no 2cos(yaw)+1 singularity, since the
-    // store index is un-yawed). The store filed this face at
+    // Recover the face-plane LATTICE origin — the exact iso inverse
+    // perAxisCellToWorld3D / v_peraxis_scatter use (no trig, no 2cos(yaw)+1
+    // singularity, since the store index is un-yawed). The store filed this face at
     // `perAxisBase + pos3DtoPos2DIso(facePos)` (ir_per_axis_lighting.glsl).
     // Whole-iso base anchor (#1944) — must match the store/recovery anchor.
     // (The re-projection `scale` below stays density-scaled: it maps the recovered
     // base-resolution origin into the SUBDIVIDED main-canvas cardinal layout.)
+    // The encoding's sub-cell frac rides separately, folded into `viewPos` in
+    // the view frame below (#2816) — rounding it in here would quantize it away
+    // before the layout that can carry it is reached.
     const ivec2 perAxisBase = trixelOriginOffsetZ1(perAxisSize) + ivec2(floor(frameCanvasOffset));
     const ivec2 isoPix = cell - perAxisBase;
     const ivec3 origin = roundHalfUp(isoPixelToPos3D(isoPix.x, isoPix.y, float(rawDepth)));
@@ -116,8 +122,10 @@ void main() {
     // lower-corner shift (scaled to subdivision units), key by un-yawed iso
     // depth, and place at the un-yawed iso pixel. The BAKE recovery
     // (trixelCanvasPixelToWorld3D with this rasterYaw) is the exact inverse, so
-    // the recovered world-pos matches the per-axis RECEIVE (perAxisCellToWorld3D)
-    // by construction — cast and receive agree.
+    // the recovered world-pos matches the per-axis RECEIVE
+    // (perAxisCellToWorld3DSubCell — the SUB-CELL form, not the lattice one)
+    // up to the destination layout's own quantization; see the sub-cell block
+    // below (#2816).
     const int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
     const int scale = effectiveTrixelSubdivisionScale(voxelRenderOptions);
     // origin is in world units (#1458); scale up to subdivision units for the
@@ -149,6 +157,44 @@ void main() {
     faceInPlaneUnitAxes(axis, eu, ev);
     const ivec3 stepU = rotateCardinalZ(ivec3(eu), cardinalIndex);
     const ivec3 stepV = rotateCardinalZ(ivec3(ev), cardinalIndex);
+    // Out-of-plane view-frame unit step — the third basis the wFrac rides.
+    const ivec3 stepW = rotateCardinalZ(ivec3(faceOutOfPlaneUnitAxis(axis)), cardinalIndex);
+
+    // Sub-cell displacement (#2816). This bridge is an ABSOLUTE-POSITION
+    // consumer of the per-axis store — it converts a store cell into the world
+    // position BAKE_SUN_SHADOW_MAP deposits as a shadow CASTER — so it owes the
+    // ir_per_axis_lighting obligation the RECEIVE side discharges with
+    // perAxisCellToWorld3DSubCell. A lattice-only recovery lands the caster up
+    // to half a world cell off the surface the receiver samples, so a
+    // fractionally-positioned face reads its own cast at the wrong depth.
+    //
+    // The frac is quantized to SUBDIVISION units in the FACE-LOCAL frame (where
+    // every component sits in [-0.5, +7/16] by construction), and only then
+    // composed against the already-rotated basis. Two properties follow, and
+    // both are load-bearing:
+    //
+    //  - Cardinal-independence. rotateCardinalZ NEGATES axes at cardinals 1/2/3,
+    //    and roundHalfUp is not symmetric about zero, so rounding AFTER the
+    //    rotation would make the deposit cell depend on the yaw quadrant — the
+    //    same content at the same sub-cell offset would land differently at
+    //    each cardinal.
+    //  - Byte-identity with the lattice-only emit at scale == 1, structurally.
+    //    roundHalfUp maps the whole [-0.5, +7/16] frac range to 0, so the
+    //    displacement is exactly zero. (Rounding after the rotation does NOT
+    //    have this property: a frac4 of 0 is exactly -0.5, which a negated
+    //    axis turns into +0.5 and roundHalfUp carries to +1.)
+    //
+    // At scale == 1 the destination genuinely cannot represent the frac — the
+    // layout has no resolution finer than the world cell — so the cast/receive
+    // seam keeps a residual bounded by half a world cell there. That is the
+    // layout's limit, stated rather than silently absorbed; see
+    // docs/design/per-axis-sun-shadow-resolve.md.
+    // Folded into viewPos rather than added per micro-cell: the displacement is
+    // constant across the scale² sweep, so the loop body stays exactly the
+    // pre-fix expression.
+    const ivec3 subCellSteps = roundHalfUp(perAxisSubCellFrac(rawDist) * float(scale));
+    viewPos += stepU * subCellSteps.x + stepV * subCellSteps.y + stepW * subCellSteps.z;
+
     for (int v = 0; v < scale; ++v) {
         for (int u = 0; u < scale; ++u) {
             const ivec3 microView = viewPos + stepU * u + stepV * v;

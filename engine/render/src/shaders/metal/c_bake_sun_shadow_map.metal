@@ -116,6 +116,14 @@ kernel void c_bake_sun_shadow_map(
     // face-locally; the single canvas stores the cardinal-snapped iso pixel.
     float3 pos3D;
     if (frameData.perAxisRoute != 0) {
+        // LATTICE recovery, deliberately (#2816) — mirrors GLSL. Per-axis
+        // content never arrives here: the C++ driver casts per-axis canvases
+        // through RESOLVE_PER_AXIS_SCREEN_DEPTH into a CARDINAL-layout resolve
+        // texture and bakes that with `perAxisRoute` at 0, and that resolve
+        // bridge is where the sub-cell frac is applied. The branch survives as
+        // the direct-bake path #1435 replaced; if a future change ever routes a
+        // raw per-axis canvas into this bake, it must recover with
+        // perAxisCellToWorld3DSubCell.
         pos3D = perAxisCellToWorld3D(
             pixel, rawDepth, frameData.visibleFaceIds[decodeSlot(encoded)], size,
             frameData.frameCanvasOffset, frameData.voxelRenderOptions

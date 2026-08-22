@@ -278,6 +278,11 @@ vertex VertexOut v_peraxis_scatter(
     // within the face plane; w moves the plane itself along the face axis —
     // without it every fractionally-positioned face snaps to the integer
     // lattice plane and the entity's faces stop meeting at shared edges.
+    // Mirror of perAxisSubCellFrac (ir_per_axis_lighting.metal) — this scatter
+    // is the PRODUCER that DEFINES the `/16 - 0.5` centring convention the
+    // lighting consumers decode; kept inline (not routed through the helper)
+    // because pulling ir_per_axis_lighting into this TU is exactly the
+    // FP-scheduling perturbation that fragment is separated to avoid (#2816).
     const float3 origin = baseOrigin
         + eu * (float(uFrac4) / 16.0f - 0.5f)
         + ev * (float(vFrac4) / 16.0f - 0.5f)

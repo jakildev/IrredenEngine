@@ -132,6 +132,17 @@ void main() {
     // face-locally; the single canvas stores the cardinal-snapped iso pixel.
     vec3 pos3D;
     if (perAxisRoute != 0) {
+        // LATTICE recovery, deliberately (#2816). This branch looks like an
+        // undischarged absolute-position consumer of the per-axis store, but
+        // per-axis content never arrives here: the C++ driver casts per-axis
+        // canvases through RESOLVE_PER_AXIS_SCREEN_DEPTH into a CARDINAL-layout
+        // resolve texture and bakes that with `perAxisRoute` at 0
+        // (system_bake_sun_shadow_map.hpp — the per-axis resolve dispatch reads
+        // the main canvas's resident frame, whose route STAGE_1 resets to 0
+        // before BAKE runs). That resolve bridge is where the sub-cell frac is
+        // applied. The branch survives as the direct-bake path #1435 replaced;
+        // if a future change ever routes a raw per-axis canvas into this bake,
+        // it must recover with perAxisCellToWorld3DSubCell.
         pos3D = perAxisCellToWorld3D(
             pixel, rawDepth, visibleFaceIds[decodeSlot(encoded)], size,
             frameCanvasOffset, voxelRenderOptions

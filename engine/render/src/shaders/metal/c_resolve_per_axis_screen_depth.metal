@@ -2,6 +2,9 @@
 #include <metal_atomic>
 // The cardinal-layout micro-cell emit shared with c_resolve_world_placed_depth.
 #include "ir_resolve_cardinal_emit.metal"
+// perAxisSubCellFrac — the shared sub-cell frac decode this bridge composes in
+// the VIEW frame and the per-axis RECEIVE composes in the world frame (#2816).
+#include "ir_per_axis_lighting.metal"
 
 // Mirrors shaders/c_resolve_per_axis_screen_depth.glsl. Re-projects one
 // face-local per-axis voxel canvas into a screen-space front-most iso-depth
@@ -57,10 +60,13 @@ kernel void c_resolve_per_axis_screen_depth(
     const int faceId = frameData.visibleFaceIds[slot] ^ flip;
     const int axis = faceId >> 1;
 
-    // Recover the face-plane origin (canvas-native units) — exact integer
+    // Recover the face-plane LATTICE origin (canvas-native units) — exact integer
     // inverse, identical to perAxisCellToWorld3D / peraxis_scatter.metal.
     // Whole-iso base anchor (#1944) — must match the store/recovery anchor; the
     // re-projection `scale` below stays density-scaled (subdivided main layout).
+    // The encoding's sub-cell frac rides separately, folded into `viewPos` in
+    // the view frame below (#2816) — rounding it in here would quantize it away
+    // before the layout that can carry it is reached.
     const int2 perAxisBase =
         trixelOriginOffsetZ1(perAxisSize) + int2(floor(frameData.frameCanvasOffset));
     // Un-yawed iso recovery: the store filed this face at
@@ -72,7 +78,9 @@ kernel void c_resolve_per_axis_screen_depth(
     // Re-project into the MAIN-canvas cardinal distance layout, mirroring
     // c_voxel_to_trixel_stage_1.metal's cardinal store, so the BAKE cardinal
     // recovery (trixelCanvasPixelToWorld3D) inverts it exactly and agrees with
-    // the per-axis RECEIVE (perAxisCellToWorld3D) by construction.
+    // the per-axis RECEIVE (perAxisCellToWorld3DSubCell — the SUB-CELL form,
+    // not the lattice one) up to the destination layout's own quantization;
+    // see the sub-cell block below (#2816).
     const int cardinalIndex = rasterYawCardinalIndex(frameData.rasterYaw);
     const int scale = effectiveTrixelSubdivisionScale(frameData.voxelRenderOptions);
     // origin is in world units (#1458); scale up to subdivision units for the
@@ -107,6 +115,27 @@ kernel void c_resolve_per_axis_screen_depth(
     faceInPlaneUnitAxes(axis, eu, ev);
     const int3 stepU = rotateCardinalZ(int3(eu), cardinalIndex);
     const int3 stepV = rotateCardinalZ(int3(ev), cardinalIndex);
+    // Out-of-plane view-frame unit step — the third basis the wFrac rides.
+    const int3 stepW = rotateCardinalZ(int3(faceOutOfPlaneUnitAxis(axis)), cardinalIndex);
+
+    // Sub-cell displacement (#2816) — mirrors the GLSL twin; see
+    // c_resolve_per_axis_screen_depth.glsl for the full rationale. This bridge
+    // is an ABSOLUTE-POSITION consumer of the per-axis store (it produces a
+    // shadow CASTER position), so it owes the ir_per_axis_lighting obligation
+    // the RECEIVE side discharges with perAxisCellToWorld3DSubCell. The frac is
+    // quantized to SUBDIVISION units in the FACE-LOCAL frame and only then
+    // composed against the already-rotated basis: rounding after the rotation
+    // would make the deposit cell depend on the yaw quadrant (rotateCardinalZ
+    // negates axes, roundHalfUp is not symmetric about zero) and would break
+    // the scale-1 byte-identity, since a frac4 of 0 is exactly -0.5 and a
+    // negated axis carries it to +1. Quantizing first maps the whole
+    // [-0.5, +7/16] range to 0 at scale 1, so that path is unchanged.
+    // Folded into viewPos rather than added per micro-cell: the displacement is
+    // constant across the scale² sweep, so the loop body stays exactly the
+    // pre-fix expression.
+    const int3 subCellSteps = roundHalfUp(perAxisSubCellFrac(rawDist) * float(scale));
+    viewPos += stepU * subCellSteps.x + stepV * subCellSteps.y + stepW * subCellSteps.z;
+
     for (int v = 0; v < scale; ++v) {
         for (int u = 0; u < scale; ++u) {
             const int3 microView = viewPos + stepU * u + stepV * v;

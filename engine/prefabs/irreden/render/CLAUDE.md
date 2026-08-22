@@ -64,7 +64,12 @@ the ECS surface.
   (the wFrac carrier; without it every fractionally-positioned face snaps
   to the integer lattice plane) — so the forward scatter can shift each
   face quad onto its true plane without overflowing the base-resolution
-  canvas.
+  canvas. The scatter is not the only consumer: **every absolute-position
+  reader of the store owes the frac** (lighting receive since #2251, the
+  sun-shadow CAST bridge since #2816), through the shared
+  `perAxisSubCellFrac` decode. See `engine/render/CLAUDE.md`
+  §"Per-axis **absolute-position** recovery" for the discharge rule and the
+  one documented lattice-only carve-out (AO).
   The canvas IS still sized at base-resolution (not `world × subPerAxis`);
   the per-axis dispatch still uses the capped density from
   `IRPrefab::PerAxisCanvas::subdivisionDensity()` for how many work-groups
