@@ -8,6 +8,16 @@ dispatch every tick that found nothing to do on arrival.
 Mirrors test_queue_manager_projection.py's IngestHonorsBlockedBy, which
 covers the analogous resolve_human_approved_blockers() — in-memory only
 (closed_fleet_queued + merged claude/<N>-* heads), no live gh.
+
+Since #2986 the subject also takes a live `_resolve_ref_satisfied` fallback
+for refs neither in-memory source covers, so these cases must stub that seam
+or they reach the network — this suite's fixtures use real issue numbers
+(#2280 as the "open" predecessor), and #2280 has since closed, which turned
+`test_open_blocker_marks_issue_blocked` into a test of live GitHub state.
+The stub models "no ref resolves live", reproducing exactly the pre-#2986
+treatment of an unresolved ref, so every case below keeps its original
+meaning. Coverage of the fallback itself — including that the in-memory hits
+never reach it — lives in test_scout_needs_plan_live_fallback.py.
 """
 import importlib.machinery
 import importlib.util
@@ -40,6 +50,16 @@ def _state(*, needs_plan=None, closed=None, merged=None):
 
 
 class ResolveNeedsPlanBlockedBy(unittest.TestCase):
+
+    def setUp(self):
+        # Close the network seam (#2986). Replacing the helper outright means
+        # there is no path left to `gh`, so a fixture this suite does not model
+        # cannot silently fall through to live GitHub state.
+        self._orig_resolve = _mod._resolve_ref_satisfied
+        _mod._resolve_ref_satisfied = lambda repo_slug, ref, cache: False
+
+    def tearDown(self):
+        _mod._resolve_ref_satisfied = self._orig_resolve
 
     def _resolved(self, *, needs_plan, closed=None, merged=None):
         st = _state(needs_plan=needs_plan, closed=closed, merged=merged)
