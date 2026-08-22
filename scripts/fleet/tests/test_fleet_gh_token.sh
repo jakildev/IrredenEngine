@@ -97,10 +97,10 @@ rm -f "$CURL_STUB_ARGS"
 set +e; out=$(run_ght "$sd" 2>/dev/null); rc=$?; set -e
 assert_eq "$out" "ghs_MINTED" "cache miss -> mints and prints token"
 assert_eq "$rc" "0" "cache miss -> exit 0"
-cached=$(python3 -c "import json;print(json.load(open('$sd/gh-app-token.json'))['token'])")
+cached=$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['token'])" "$sd/gh-app-token.json")
 assert_eq "$cached" "ghs_MINTED" "cache miss -> writes minted token to cache"
 want_epoch=$(python3 -c "import calendar,time;print(calendar.timegm(time.strptime('2099-01-01T00:00:00Z','%Y-%m-%dT%H:%M:%SZ')))")
-got_epoch=$(python3 -c "import json;print(json.load(open('$sd/gh-app-token.json'))['expires_at'])")
+got_epoch=$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['expires_at'])" "$sd/gh-app-token.json")
 assert_eq "$got_epoch" "$want_epoch" "cache miss -> stores parsed epoch expiry"
 # JWT shape from the recorded Authorization header.
 jwt=$(grep -m1 '^Authorization: Bearer ' "$CURL_STUB_ARGS" | sed 's/^Authorization: Bearer //')

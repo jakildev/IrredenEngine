@@ -77,18 +77,21 @@ _cached_token() {
     # caller treats that as "mint a fresh one." The don't-block fallback passes
     # margin 0 to accept any token that hasn't truly expired yet.
     local margin="${1:-$STALE_MARGIN_SECONDS}"
+    # Cache path + margin via argv, not embedded in the -c source: mingw64
+    # python3 on a native-Windows host can't open an MSYS `/c/...` string,
+    # and MSYS converts paths only at the argv boundary (#3030).
     python3 -c "
 import json, sys, time
 try:
-    with open('$CACHE_FILE') as f:
+    with open(sys.argv[1]) as f:
         data = json.load(f)
-    if time.time() < data['expires_at'] - $margin:
+    if time.time() < data['expires_at'] - float(sys.argv[2]):
         print(data['token'])
     else:
         sys.exit(1)
 except Exception:
     sys.exit(1)
-" 2>/dev/null
+" "$CACHE_FILE" "$margin" 2>/dev/null
 }
 
 if _cached_token; then

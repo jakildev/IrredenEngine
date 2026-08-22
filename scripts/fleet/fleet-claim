@@ -2579,16 +2579,18 @@ replay_orphans() {
         [[ -f "$sentinel" ]] || continue
 
         local fields
+        # Sentinel path via argv, not embedded in the -c source (mingw64
+        # python3 can't open an MSYS path string on native Windows; #3030).
         fields=$(python3 -c "
 import json, sys
 try:
-    d = json.load(open('$sentinel'))
+    d = json.load(open(sys.argv[1]))
     print(d.get('repo',''))
     print(d.get('issue',''))
     print(d.get('label',''))
 except Exception:
     pass
-" 2>/dev/null || echo "")
+" "$sentinel" 2>/dev/null || echo "")
 
         local repo issue label
         repo=$(echo "$fields"  | sed -n '1p')

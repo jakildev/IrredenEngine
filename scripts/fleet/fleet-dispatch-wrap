@@ -214,7 +214,10 @@ worktree_in_flight() {
     return 1
 }
 
-_read_sidecar() { python3 -c "import json;print(json.load(open('$SIDECAR')).get('$1',''))" 2>/dev/null || true; }
+# Sidecar path + key travel via argv (not embedded in the -c source): mingw64
+# python3 on a native-Windows host cannot open an MSYS `/c/...` string, and
+# MSYS only converts paths at the argv boundary (#3030).
+_read_sidecar() { python3 -c "import json,sys;print(json.load(open(sys.argv[1])).get(sys.argv[2],''))" "$SIDECAR" "$1" 2>/dev/null || true; }
 
 RESUMED=0
 RESUME_ID=""
@@ -367,7 +370,7 @@ if (( _resume_role )); then
                 rm -f "$SIDECAR"
                 echo "fleet-dispatch-wrap: resume of $worktree_name failed twice (rc=$rc) — clearing sidecar; next dispatch goes fresh" >&2
             else
-                python3 -c "import json;p='$SIDECAR';d=json.load(open(p));d['resume_failures']=int(d.get('resume_failures') or 0)+1;json.dump(d,open(p,'w'))" 2>/dev/null \
+                python3 -c "import json,sys;p=sys.argv[1];d=json.load(open(p));d['resume_failures']=int(d.get('resume_failures') or 0)+1;json.dump(d,open(p,'w'))" "$SIDECAR" 2>/dev/null \
                     || rm -f "$SIDECAR"
             fi
         fi
@@ -385,7 +388,7 @@ if (( _resume_role )); then
                 echo "fleet-dispatch-wrap: resumed session exited clean twice with the worktree still in-flight — clearing sidecar; next dispatch goes fresh" >&2
             else
                 # A clean resumed exit also ends any transient-failure streak.
-                python3 -c "import json;p='$SIDECAR';d=json.load(open(p));d['resumes']=int(d.get('resumes') or 0)+1;d['resume_failures']=0;json.dump(d,open(p,'w'))" 2>/dev/null \
+                python3 -c "import json,sys;p=sys.argv[1];d=json.load(open(p));d['resumes']=int(d.get('resumes') or 0)+1;d['resume_failures']=0;json.dump(d,open(p,'w'))" "$SIDECAR" 2>/dev/null \
                     || rm -f "$SIDECAR"
             fi
         fi

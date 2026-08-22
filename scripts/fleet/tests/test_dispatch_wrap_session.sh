@@ -116,14 +116,14 @@ out=$(cd "$WT" && FLEET_DISPATCH_PRINT_LAUNCH=1 "$WRAP" pane-3 "claude-opus-4-8[
 [[ "$out" == *"--session-id "* ]] && ok "fresh: passes --session-id" || bad "fresh missing --session-id: $out"
 [[ "$out" == *"/role-worker live"* ]] && ok "fresh: runs /role-worker" || bad "fresh prompt: $out"
 [[ -f "$SIDECAR" ]] && ok "fresh: sidecar written" || bad "fresh: sidecar NOT written"
-python3 -c "import json;d=json.load(open('$SIDECAR'));assert d['role']=='worker' and d['model']=='claude-opus-4-8[1m]' and d['effort']=='xhigh'" 2>/dev/null \
+python3 -c "import json,sys;d=json.load(open(sys.argv[1]));assert d['role']=='worker' and d['model']=='claude-opus-4-8[1m]' and d['effort']=='xhigh'" "$SIDECAR" 2>/dev/null \
   && ok "fresh: sidecar records role/model/effort" || bad "fresh: sidecar fields wrong"
 
 echo "T2: merger is resume-eligible — fresh dispatch writes a sidecar"
 rm -f "$FLEET_SESSIONS_DIR/worker-1.session.json"
 out=$(cd "$WT" && FLEET_DISPATCH_PRINT_LAUNCH=1 "$WRAP" pane-3 sonnet high merger "" live 2>/dev/null)
 [[ "$out" == resumed=0* ]] && ok "merger: resumed=0" || bad "merger resumed: $out"
-python3 -c "import json;d=json.load(open('$SIDECAR'));assert d['role']=='merger'" 2>/dev/null \
+python3 -c "import json,sys;d=json.load(open(sys.argv[1]));assert d['role']=='merger'" "$SIDECAR" 2>/dev/null \
   && ok "merger: sidecar written (crash recovery)" || bad "merger: no/wrong sidecar"
 rm -f "$SIDECAR"
 
@@ -162,7 +162,7 @@ echo "T5: cleanup — one failed resume is tolerated (transient), the second cle
 printf '{"session_id":"SID-9","role":"worker","model":"sonnet","effort":"high","created_epoch":1}\n' > "$SIDECAR"
 STUB_CLAUDE_RC=1 run_wrap sonnet high worker
 [[ -f "$SIDECAR" ]] && ok "1st failed resume kept the sidecar (one retry)" || bad "1st failed resume cleared the sidecar"
-python3 -c "import json;d=json.load(open('$SIDECAR'));assert d.get('resume_failures')==1" 2>/dev/null \
+python3 -c "import json,sys;d=json.load(open(sys.argv[1]));assert d.get('resume_failures')==1" "$SIDECAR" 2>/dev/null \
   && ok "failure streak recorded (resume_failures=1)" || bad "failure streak missing: $(cat "$SIDECAR" 2>/dev/null)"
 STUB_CLAUDE_RC=1 run_wrap sonnet high worker
 [[ ! -f "$SIDECAR" ]] && ok "2nd failed resume cleared the sidecar (poisoned session)" || bad "2nd failed resume left the sidecar"
@@ -171,14 +171,14 @@ echo "T5b: quota exit (rc=2) on a resume keeps the sidecar untouched"
 printf '{"session_id":"SID-Q","role":"worker","model":"sonnet","effort":"high","created_epoch":1}\n' > "$SIDECAR"
 STUB_CLAUDE_RC=2 run_wrap sonnet high worker
 [[ -f "$SIDECAR" ]] && ok "quota failure kept the sidecar" || bad "quota failure cleared the sidecar"
-python3 -c "import json;d=json.load(open('$SIDECAR'));assert not d.get('resume_failures')" 2>/dev/null \
+python3 -c "import json,sys;d=json.load(open(sys.argv[1]));assert not d.get('resume_failures')" "$SIDECAR" 2>/dev/null \
   && ok "quota failure did not count against the streak" || bad "quota failure bumped resume_failures"
 
 echo "T5c: short-window 429 (throttle flag) on a resume keeps the sidecar untouched"
 printf '{"session_id":"SID-T","role":"worker","model":"sonnet","effort":"high","created_epoch":1}\n' > "$SIDECAR"
 STUB_TOUCH_THROTTLE=1 STUB_CLAUDE_RC=1 run_wrap sonnet high worker
 [[ -f "$SIDECAR" ]] && ok "throttled failure kept the sidecar" || bad "throttled failure cleared the sidecar"
-python3 -c "import json;d=json.load(open('$SIDECAR'));assert not d.get('resume_failures')" 2>/dev/null \
+python3 -c "import json,sys;d=json.load(open(sys.argv[1]));assert not d.get('resume_failures')" "$SIDECAR" 2>/dev/null \
   && ok "throttled failure did not count against the streak" || bad "throttled failure bumped resume_failures"
 rm -f "$SIDECAR"
 
@@ -274,7 +274,7 @@ printf '{"session_id":"SID-LOOP","role":"worker","model":"sonnet","effort":"high
 # 1st resumed clean exit, genuinely in-flight (task branch + tracked dirty): kept, resumes=1.
 STUB_BRANCH="claude/123-foo" STUB_DIRTY=1 STUB_CLAUDE_RC=0 run_wrap sonnet high worker
 [[ -f "$SIDECAR" ]] && ok "1st clean resume kept the sidecar" || bad "1st clean resume cleared too early"
-python3 -c "import json;d=json.load(open('$SIDECAR'));assert d.get('resumes')==1" 2>/dev/null \
+python3 -c "import json,sys;d=json.load(open(sys.argv[1]));assert d.get('resumes')==1" "$SIDECAR" 2>/dev/null \
   && ok "resume counter recorded (resumes=1)" || bad "resume counter missing/wrong: $(cat "$SIDECAR" 2>/dev/null)"
 # 2nd resumed clean exit, still in-flight: breaker fires, sidecar cleared.
 STUB_BRANCH="claude/123-foo" STUB_DIRTY=1 STUB_CLAUDE_RC=0 run_wrap sonnet high worker
@@ -283,7 +283,7 @@ STUB_BRANCH="claude/123-foo" STUB_DIRTY=1 STUB_CLAUDE_RC=0 run_wrap sonnet high 
 echo "T15: a clean resumed exit resets the transient-failure streak"
 printf '{"session_id":"SID-OK","role":"worker","model":"sonnet","effort":"high","created_epoch":1,"resume_failures":1}\n' > "$SIDECAR"
 STUB_BRANCH="claude/123-foo" STUB_DIRTY=1 STUB_CLAUDE_RC=0 run_wrap sonnet high worker
-python3 -c "import json;d=json.load(open('$SIDECAR'));assert d.get('resume_failures')==0 and d.get('resumes')==1" 2>/dev/null \
+python3 -c "import json,sys;d=json.load(open(sys.argv[1]));assert d.get('resume_failures')==0 and d.get('resumes')==1" "$SIDECAR" 2>/dev/null \
   && ok "clean resume zeroed resume_failures (and bumped resumes)" || bad "streak not reset: $(cat "$SIDECAR" 2>/dev/null)"
 rm -f "$SIDECAR"
 
