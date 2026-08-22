@@ -17,8 +17,9 @@ blocks) and the work is decomposed into the 3-PR stack in
 per-entity world-placement (screen-locked overlay stays the default; #1576
 **stacks on** #1583), **shared** world maps for receive, **second bake dispatch**
 for cast (phased last), depth offset = world iso depth on the GRID
-`trixelDistances` convention. **P4b-1 (depth composite) + P4b-2 (receive) landed;
-P4b-3 (cast) is the remaining phase.**
+`trixelDistances` convention. **All three phases landed** — P4b-1 (depth
+composite), P4b-2 (receive), P4b-3 (cast); the cast's residual is Metal
+delivery only (#2091 — see the Phase 0 verification in § Phasing below).
 
 ## Goal
 
@@ -266,6 +267,35 @@ Each phase is its own PR, stacks on the previous, and is independently verifiabl
    (the z=±42 column solids sit ~84 sun-Z voxels from the floor, past the
    `kMaxShadowDepthRange = 24` receive cutoff, so they can never demonstrate cast — the
    #1591 lesson applied to detached casters).
+
+   **Phase 0 GL verification (#2091, measured 2026-08-21 — `windows-debug`, OpenGL).**
+   #2091 reported the world-placed cast producing no Metal output and, on the #1640
+   premise, read it as a shared backend gap. That premise is retired (Q2 REVISED
+   above), so this measurement is what settles which side of P4b-3's "visible shadow
+   on both backends" definition-of-done is actually outstanding. Method: the
+   `canvas_stress` `shadow_overlay_floor` capture (`g_allShots` index 8 — the 9th
+   screenshot) under `--no-spin --no-auto-rotate --debug-overlay shadow
+   --auto-screenshot 120`, scored with `scripts/render-shadow-metric.py` over the
+   floor band just below the grounded caster (`--roi 555,300,165,35`; the ROI is
+   specific to this shot's zoom 0.55 / camera (0,0) framing).
+
+   | `--only …` | scene | floor-ROI `shadow_px` | full-frame `shadow_px` |
+   |---|---|---|---|
+   | `revox,floor` | world-placed re-voxelize casters + floor | **1189** (3 comp, largest 0.998) | 2728 |
+   | `floor` | floor alone, zero casters | 0 | 0 |
+   | `revox,floor --screen-lock-detached` | same solids, world placement OFF | 0 | 0 |
+   | `revox` | world-placed casters, no floor | 55 (10 comp, largest 0.527) | 1668 |
+   | `gridspin,floor` | GRID casters + floor (positive control) | — | 4574 (2 comp, largest 0.9996) |
+
+   The floor is present in the first three rows, so the caster-free 0 px and the
+   world-placement-off 0 px bracket the 1189 px **single**-component patch as a
+   genuine cast onto the plate — not floor self-shadow, and not the caster's own
+   receive, which the no-floor row leaves at 55 scattered edge px in the same band.
+   **Verdict: the GL half of P4b-3 works end-to-end.** #2091's residual is
+   macOS/Metal-only. A resuming worker should start from the world-placed resolve
+   path's frame-data state (`c_resolve_world_placed_depth` → `BAKE_SUN_SHADOW_MAP`)
+   measured against the working per-axis resolve — **not** from backend read
+   visibility, which #2307 already cleared.
 
 Each PR carries its own render-verify references (GL + Metal). Default-path
 (screen-locked) references must stay byte-identical through all three phases —
