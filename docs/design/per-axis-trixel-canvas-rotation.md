@@ -772,6 +772,10 @@ confirmed it: the single-canvas trixel raster lives on the **even-parity iso
 sublattice** (`(iso.x + iso.y) & 1 == 0` — the set integer voxels project to;
 see the SDF/voxel parity note in `engine/render/CLAUDE.md`), and the gather
 de-tiling (`trixelFramebufferSamplePosition`) assumes a single global parity.
+(Historical note: as of 2026-08 that de-tile no longer runs on the gather's
+color/depth path — the shift is hover-only, see
+`trixel-parity-shift-442-investigation.md` — but the T3-era sweep that
+motivated this decision ran against the then-shifted gather.)
 T2's per-voxel continuous reposition lands centers on **mixed-parity** cells,
 which the gather cannot de-tile → the #1256 checkerboard / lattice artifact.
 
@@ -903,11 +907,15 @@ under `--auto-screenshot`, so the smooth-rotation visual is verified at P5 /
 > **not** "resolve" the per-axis canvases back into the entity's single trixel
 > canvas and reuse the unchanged `ENTITY_CANVAS_TO_FRAMEBUFFER` blit. That blit
 > is `CanvasToFramebufferProgram` = `f_trixel_to_framebuffer.glsl`, whose
-> `main()` de-tiles via `trixelFramebufferSamplePosition` — the
-> **single-global-parity gather**. A smooth resolve writes continuous
+> `main()` at decision time de-tiled via `trixelFramebufferSamplePosition` —
+> the **single-global-parity gather**. A smooth resolve writes continuous
 > `pos3DtoPos2DIsoRotated` centers (mixed parity) into a trixel canvas; reading
-> them back through that gather re-introduces the #1256 stripe. The blit cannot
-> be both *unchanged* and *smooth*. Forward-scatter to the framebuffer (above)
+> them back through that gather re-introduced the #1256 stripe. The blit cannot
+> be both *unchanged* and *smooth*. (The 2026-08 hover-only parity revision —
+> `trixel-parity-shift-442-investigation.md` — removes that specific de-tile
+> from the color path, but the mixed-parity store itself remains unverified
+> through the raw gather; the rejection stands on the shipped Option-4 grounds,
+> not only this mechanism.) Forward-scatter to the framebuffer (above)
 > is parity-correct by construction — no gather inverse, no single-parity
 > assumption — exactly as the camera path's T3 decision (`## Implementation
 > decision` above) established.

@@ -19,8 +19,9 @@ next worker on this surface doesn't re-derive it.
 ## Why it holds — the two paths must agree
 
 Both the main world canvas and a detached canvas reach the framebuffer through
-the **same** de-tile gather (`f_trixel_to_framebuffer` + the parity
-reconstruction `trixelFramebufferSamplePosition` in `ir_iso_common`). The gather
+the **same** gather (`f_trixel_to_framebuffer`; since 2026-08 the parity
+reconstruction `trixelFramebufferSamplePosition` feeds only its hover
+coordinate — see `trixel-parity-shift-442-investigation.md`). The gather
 is density-agnostic: it works in canvas-texel units and assumes one texel ≈ one
 iso-brick at whatever density the canvas was rastered. The two callers must
 therefore set up the quad scale and the gather's parity anchor **consistently**
