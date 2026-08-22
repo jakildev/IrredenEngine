@@ -211,6 +211,38 @@ foreach(line IN LISTS pipeline_lines)
         set(found_terminator TRUE)
         break()
     endif()
+    # Comment-strip runs BEFORE the conditional check below -- reordered to
+    # match run_metal_kernel_registry_check.cmake's order exactly
+    # (comment-strip first there). Running the conditional check on the raw,
+    # un-stripped line let a #if/#ifdef/#ifndef-shaped line sitting inside a
+    # comment be misread as a live preprocessor directive: if the comment
+    # didn't also contain a balancing #endif, conditional_depth got stuck
+    # above zero for the rest of the function body and every subsequent real,
+    # uncommented, non-conditional list entry was silently skipped -- read as
+    # absent, the same way a commented-out entry reads (#2899). Handles line
+    # (//) and BOTH block-comment shapes -- same-line /* ... */ and a block
+    # that spans multiple lines (disabling a run of consecutive entries is the
+    # natural reason to reach for a block comment here, and that spans lines);
+    # the sibling run_metal_kernel_registry_check.cmake's identical scan
+    # applies the same strip (#2899).
+    if(in_block_comment)
+        if(line MATCHES "\\*/")
+            # Strip through the FIRST "*/" only -- CMake's regex engine has no
+            # lazy quantifier, so this reuses the same non-greedy-emulation
+            # trick as the same-line block-comment strip below rather than a
+            # greedy ".*\\*/" that would run past this "*/" to a later one.
+            string(REGEX REPLACE "^([^*]|\\*+[^*/])*\\*+/" "" line "${line}")
+            set(in_block_comment FALSE)
+        else()
+            set(line "")
+        endif()
+    endif()
+    string(REGEX REPLACE "/\\*([^*]|\\*+[^*/])*\\*+/" "" line "${line}")
+    string(REGEX REPLACE "//.*" "" line "${line}")
+    if(line MATCHES "/\\*")
+        string(REGEX REPLACE "/\\*.*$" "" line "${line}")
+        set(in_block_comment TRUE)
+    endif()
     # A preprocessor conditional defeats this scan the same way it defeats the
     # sibling run_metal_kernel_registry_check.cmake's scan: an entry inside
     # #if/#ifdef/#ifndef may never reach the compiled binary, and a
@@ -231,34 +263,6 @@ foreach(line IN LISTS pipeline_lines)
     endif()
     if(conditional_depth GREATER 0)
         continue()
-    endif()
-    # Comment-strip before harvesting names, for the same reason the kernel-side
-    # scan does it. A commented-out entry is absent from the list as far as
-    # bindComputeResources is concerned, so reading it as present is a false
-    # clean in the forward direction: the consumer stops getting the scratch
-    # bound, its imageAtomicMin writes land nowhere, and this check stays green.
-    # Handles line (//) and BOTH block-comment shapes -- same-line /* ... */
-    # and a block that spans multiple lines (disabling a run of consecutive
-    # entries is the natural reason to reach for a block comment here, and
-    # that spans lines); the sibling run_metal_kernel_registry_check.cmake's
-    # identical scan applies the same strip (#2899).
-    if(in_block_comment)
-        if(line MATCHES "\\*/")
-            # Strip through the FIRST "*/" only -- CMake's regex engine has no
-            # lazy quantifier, so this reuses the same non-greedy-emulation
-            # trick as the same-line block-comment strip below rather than a
-            # greedy ".*\\*/" that would run past this "*/" to a later one.
-            string(REGEX REPLACE "^([^*]|\\*+[^*/])*\\*+/" "" line "${line}")
-            set(in_block_comment FALSE)
-        else()
-            set(line "")
-        endif()
-    endif()
-    string(REGEX REPLACE "/\\*([^*]|\\*+[^*/])*\\*+/" "" line "${line}")
-    string(REGEX REPLACE "//.*" "" line "${line}")
-    if(line MATCHES "/\\*")
-        string(REGEX REPLACE "/\\*.*$" "" line "${line}")
-        set(in_block_comment TRUE)
     endif()
     string(REGEX MATCHALL "\"[A-Za-z0-9_]+\"" quoted_names "${line}")
     foreach(quoted_name IN LISTS quoted_names)

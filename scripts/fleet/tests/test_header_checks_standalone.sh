@@ -39,6 +39,10 @@
 #     comment here, and that spans lines)
 #   - a list entry inside a preprocessor #if        → exit 1, names the kernel
 #     (#2983, same reasoning as the registry-side arm)
+#   - a #if literal inside a comment, followed by   → exit 0, entry recognized
+#     a real uncommented list entry                   (#2983 follow-up: the
+#     conditional check must run AFTER the comment-strip, or a commented-out
+#     #if starves conditional_depth and every entry after it reads as absent)
 #   - a hand-wrapped scratch declaration            → exit 1 (the qualifier test
 #     reads the declaration window, not the attribute's line)
 #   - an atomic neighbour on the slot's line        → exit 0 (that qualifier
@@ -560,6 +564,63 @@ assert_contains "$scratch_conditional_out" "c_scratch_conditional" \
 assert_contains "$scratch_conditional_out" "absent from functionUsesImageAtomicScratch" \
     "a conditional list entry is reported as absent, not present"
 
+# --- a #if literal inside a comment must not starve a later real entry -------
+# The bug this arm pins (#2983 follow-up): the conditional check originally
+# ran BEFORE the comment-strip, so a #if-shaped line sitting inside a /* */
+# comment was misread as a live preprocessor directive. Since the comment's
+# own "*/" line never reaches the #endif branch either (it gets skipped by
+# the still-elevated conditional_depth before the comment-strip can close
+# in_block_comment), conditional_depth got stuck above zero for the rest of
+# the function body and every subsequent real, uncommented, non-conditional
+# entry was silently dropped. c_scratch_after_comment_conditional is a
+# genuine consumer (declares the atomic scratch, registered unconditionally)
+# whose list entry sits right after such a comment -- it must be recognized,
+# not read as absent.
+SCRATCH_AFTER_COMMENT_CONDITIONAL="$TMPROOT/scratch-after-comment-conditional"
+make_fixture "$SCRATCH_AFTER_COMMENT_CONDITIONAL"
+cat > "$SCRATCH_AFTER_COMMENT_CONDITIONAL/engine/render/src/shaders/metal/c_scratch_after_comment_conditional.metal" <<'EOF'
+kernel void c_scratch_after_comment_conditional(
+    device atomic_int* distanceScratch [[buffer(16)]],
+    uint3 gid [[thread_position_in_grid]]
+) {}
+EOF
+cat > "$SCRATCH_AFTER_COMMENT_CONDITIONAL/engine/render/src/metal/metal_pipeline.cpp" <<'EOF'
+namespace IRRender {
+namespace {
+
+MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
+    if (functionName == "c_fixture_kernel") {
+        return MTL::Size(16, 16, 1);
+    }
+    if (functionName == "c_scratch_after_comment_conditional") {
+        return MTL::Size(16, 16, 1);
+    }
+    return MTL::Size(1, 1, 1);
+}
+
+bool functionUsesImageAtomicScratch(const std::string &functionName) {
+    return false
+           || functionName == "c_fixture_kernel"
+        /*
+        #if OLD_APPROACH_NOTE
+        */
+        || functionName == "c_scratch_after_comment_conditional"
+        ;
+}
+
+}  // namespace
+}  // namespace IRRender
+EOF
+scratch_after_comment_conditional_out=$(run_checker "$SCRATCH_AFTER_COMMENT_CONDITIONAL")
+scratch_after_comment_conditional_rc=$?
+assert_eq "0" "$scratch_after_comment_conditional_rc" \
+    "a #if literal inside a comment does not starve a later real list entry"
+assert_contains "$scratch_after_comment_conditional_out" \
+    "Metal scratch-consumer check scanned 2 compute kernel(s)" \
+    "the post-comment kernel was actually scanned, not skipped"
+assert_absent "$scratch_after_comment_conditional_out" \
+    "absent from functionUsesImageAtomicScratch" \
+    "the entry after the comment is recognized, not read as absent"
 
 # --- a hand-wrapped scratch declaration is still caught ----------------------
 # The qualifier test reads the parameter's declaration window, not the physical
