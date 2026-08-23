@@ -500,6 +500,12 @@ def _load_slice(slice_path):
 
 
 def main(argv):
+    # Every CLI mode prints line-oriented output that bash consumers parse
+    # (`mapfile`, `while read`, `=~ ^[0-9]+$` gates). A native-Windows
+    # python3 translates "\n" to "\r\n" on a text stdout by default, which
+    # fails those gates on every line but the last (#3022). Pin LF.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(newline="\n")
     if argv[1:2] == ["--plan-pick"]:
         # --plan-pick <slice.json> <class> <fable-blocked 0|1>: print the
         # ordered repo:number planning candidates for <class> (see plan_pick).

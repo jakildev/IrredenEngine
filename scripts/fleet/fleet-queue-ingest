@@ -79,14 +79,19 @@ trap 'rmdir "$LOCK_DIR" 2>/dev/null; true' EXIT INT TERM
 # (issue ingested / fleet:blocked removed, dropped out of the set). On a
 # post-action drop-out both work lists are empty.
 if [[ -f "$PROJECTION_FILE" ]]; then
+    # The path goes in via argv, never embedded in the program text: on a
+    # native-Windows host python3 is the mingw64 build, and MSYS converts
+    # POSIX paths only at the argv/env boundary — a `/c/Users/...` string
+    # inside `-c` source is unopenable there and every ingest exited
+    # "empty projection" (#3030).
     counts=$(python3 -c "
 import json, sys
 try:
-    data = json.load(open('$PROJECTION_FILE'))
+    data = json.load(open(sys.argv[1]))
     print(len(data.get('pending_issues', [])), len(data.get('unblock_issues', [])))
 except Exception:
     print(0, 0)
-")
+" "$PROJECTION_FILE")
     read -r pending_count unblock_count <<< "$counts"
     if [[ "${pending_count:-0}" == "0" && "${unblock_count:-0}" == "0" ]]; then
         log "no pending or unblock issues — empty projection, exiting"

@@ -1589,6 +1589,12 @@ plan_assign_for_pane() {
     [[ -n "$picks" ]] || return 0
     local line repo num rc
     while IFS= read -r line; do
+        # Native-Windows python3 emits CRLF on stdout; without the strip the
+        # trailing \r fails the numeric gate below on every line but the last
+        # (which has no newline), so only the LAST candidate was ever claimed
+        # and the whole engine needs-plan lane was unreachable (#3022). The
+        # producer also pins LF (fleet_task_class.py), so this is the backstop.
+        line="${line%$'\r'}"
         [[ -n "$line" ]] || continue
         repo="${line%%:*}"
         num="${line##*:}"
