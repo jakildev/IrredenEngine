@@ -26,6 +26,9 @@
 #   - a registry entry inside a preprocessor #if    → exit 1, names the kernel
 #     (#2983 — a source-text scan can't evaluate which branch the build
 #     takes, so it must read as absent, not present, same as a comment)
+#   - a registry entry inside #ifdef/#ifndef        → exit 1, same reasoning
+#     (pins the #ifdef/#ifndef spellings the doc comments claim are
+#     symmetric with #if — #if 0 was the only spelling covered until now)
 #   - a registry with no bare "}" terminator line   → exit 1 (EOF guard, not
 #     a silent scan past the function into unrelated string literals)
 #   - a scratch consumer absent from the list       → exit 1, names the kernel
@@ -362,6 +365,51 @@ assert_contains "$registry_conditional_out" "c_registry_conditional" \
     "failure names the kernel whose registry entry is inside a conditional"
 assert_contains "$registry_conditional_out" "no entry in" \
     "a conditional registry entry is reported as absent, not present"
+
+# --- the same reads as absent under #ifdef/#ifndef, not just #if -----------
+# Both .cmake checkers' doc comments claim symmetry across all three
+# preprocessor-conditional spellings (#if/#ifdef/#ifndef), but until now the
+# suite only ever exercised #if 0 (nit carried across three reviews on
+# #2984). Pin the #ifdef spelling on the registry checker; the underlying
+# regex is `^[ \t]*#[ \t]*(if|ifdef|ifndef)([ \t(]|$)`, shared verbatim by
+# the scratch-consumer checker, so one arm covers both.
+REGISTRY_CONDITIONAL_IFDEF="$TMPROOT/registry-conditional-ifdef"
+make_fixture "$REGISTRY_CONDITIONAL_IFDEF"
+echo '// registry-conditional-ifdef fixture kernel' \
+    > "$REGISTRY_CONDITIONAL_IFDEF/engine/render/src/shaders/metal/c_registry_conditional_ifdef.metal"
+cat > "$REGISTRY_CONDITIONAL_IFDEF/engine/render/src/metal/metal_pipeline.cpp" <<'EOF'
+namespace IRRender {
+namespace {
+
+MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
+    if (functionName == "c_fixture_kernel") {
+        return MTL::Size(16, 16, 1);
+    }
+#ifdef IR_OLD_METAL_PATH
+    if (functionName == "c_registry_conditional_ifdef") {
+        return MTL::Size(16, 16, 1);
+    }
+#endif
+    return MTL::Size(1, 1, 1);
+}
+
+bool functionUsesImageAtomicScratch(const std::string &functionName) {
+    return false
+           || functionName == "c_fixture_kernel"
+        ;
+}
+
+}  // namespace
+}  // namespace IRRender
+EOF
+registry_conditional_ifdef_out=$(run_checker "$REGISTRY_CONDITIONAL_IFDEF")
+registry_conditional_ifdef_rc=$?
+assert_eq "1" "$registry_conditional_ifdef_rc" \
+    "registry entry inside an #ifdef conditional exits 1"
+assert_contains "$registry_conditional_ifdef_out" "c_registry_conditional_ifdef" \
+    "failure names the kernel whose registry entry is inside an #ifdef"
+assert_contains "$registry_conditional_ifdef_out" "no entry in" \
+    "an #ifdef-guarded registry entry is reported as absent, not present"
 
 
 # --- a registry without its bare "}" terminator fails, not false-cleans ------
