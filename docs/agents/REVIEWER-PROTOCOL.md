@@ -277,11 +277,25 @@ conditions for game-repo and non-render PRs.
 
 ## Nits vs needs-fix — the bright line
 
-- **Approve with nits** is fine for genuinely-optional improvements
-  (naming, wording, formatting, optional asserts, follow-up refactor
-  opportunities). Add `fleet:has-nits` so the author worker cleans
-  them up before the human merges. The author treats `fleet:has-nits`
-  as actionable, so put real nits in the `### Nits` section freely.
+- **Wording-tier nits are follow-up material, not amend requests.**
+  Comment phrasing, wording in non-canon docs, naming preferences,
+  optional asserts, refactor opportunities: record them under a
+  `### Nits (follow-up)` heading in the review body and do **not** add
+  `fleet:has-nits` for them. The author folds them into their next PR
+  touching that surface, or a `fleet:nit-of-pr` issue when they're
+  worth tracking — never an amend to an approved PR. Measured: the
+  nit→amend→re-review loop was the fleet's largest single
+  review-waste generator (engine #2991: eight review passes and ~41k
+  chars of review text over three consecutive comment-wording nits,
+  ended only by the final Opus pass ordering "do not amend for
+  anything in this review").
+- **Approve with nits (`fleet:has-nits`) means the nits are worth one
+  amend push.** Reserve the label for borderline-substantive items — a
+  misleading comment on tricky code, a missing assert on a real
+  invariant, a test named after the wrong behavior. The author batches
+  every labeled nit into a **single** push, and the re-verify on that
+  push is delta-scoped (§ Re-review economics below), not a fresh full
+  review.
 - **The contradiction "approve, but please fix X before merge" is
   forbidden.** If a finding is described as "must resolve before
   merge", "safe to merge once X is resolved", "pre-merge ask", "the
@@ -294,12 +308,49 @@ conditions for game-repo and non-render PRs.
   synchronization, performance regressions, unsafe API use, missing
   tests for non-trivial logic, or any nit that is actually a
   pre-merge requirement.
-- When in doubt about a borderline finding, prefer `fleet:has-nits`
-  over `fleet:needs-fix`. The author addresses nits aggressively
-  now, so genuinely-borderline items still get cleaned up without
-  the round-trip cost of a full re-review. Reviewer budget — especially
-  Opus — is expensive; don't spend it requesting a full re-review
-  round over a renamed variable.
+- When in doubt about a borderline finding, prefer the follow-up list
+  over `fleet:has-nits`, and `fleet:has-nits` over `fleet:needs-fix`.
+  Reviewer budget — especially Opus — is expensive; don't spend a
+  re-review round on a renamed variable.
+
+---
+
+## Re-review economics — delta passes, the recheck cap, light lanes
+
+PR-trail measurement (2026-09, last 40 merged PRs per repo, 29 deep
+trails): roughly two-thirds of review rounds produced **no change**,
+and the actionable findings concentrated almost entirely in the
+**first** Sonnet pass and the **first** Opus recheck. First passes are
+for finding; re-passes are for confirming. The rules:
+
+- **A re-review after a `fleet:has-nits` / needs-fix push is
+  delta-scoped.** Verify the push addresses the named findings and
+  that nothing else changed — read the delta, not the whole PR again —
+  and post a short confirmation, not a fresh structured review. Never
+  mint new wording-tier nits on unchanged lines during a re-verify
+  pass; a fresh substantive defect you happen to see still counts, a
+  new opinion about old wording does not.
+- **One Opus recheck per PR.** The opus-reviewer takes at most one
+  recheck pass on a PR. A later push re-triggers Opus only when it
+  (i) changes executable code beyond the fixes that recheck asked for,
+  or (ii) carries a fresh explicit `Opus recheck required:` escalation
+  from Sonnet. Wording and docs deltas after an Opus recheck never
+  re-trigger it — every sampled second-and-later Opus pass was
+  wording-only or empty (#3005, #2932, #2945, #2991×3, #3011, #2976).
+- **A mechanical rebase is not a review candidate.** The auto-rereview
+  workflow's patch-id classifier keeps `fleet:approved` across
+  byte-identical rebases and retargets, and keeps it across docs-only
+  deltas (plans, screenshots, non-canon markdown). If one reaches you
+  anyway — a stale label, a manual ping — restore the label state;
+  don't write a rebase-confirmation review.
+- **Docs-light lane.** A PR whose entire diff is `.fleet/plans/**`,
+  `docs/pr-screenshots/**`, steward-ledger updates, or non-canon
+  markdown gets a single light Sonnet pass — scope sanity plus a
+  spot-check, no independent re-verification of every citation, no
+  Opus recheck. **Canon design docs are the exception** (engine
+  `docs/design/**`, the game's GDD and design-doc tiers): their
+  accuracy is the product and first-pass doc review catches real
+  defects there (#376) — they keep the full pass.
 
 ---
 

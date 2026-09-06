@@ -249,6 +249,9 @@ Body shape:
 ### Nits
 - <path:line> — <nit>
 
+### Nits (follow-up)
+- <path:line> — <wording-tier nit; no amend, no `fleet:has-nits`>
+
 ### Praise
 - <non-obvious good decision, if any>
 
@@ -286,7 +289,10 @@ is always the user's call.
 **Immediately after** the `gh pr review` call — your very next bash call —
 run the verdict-label swap. A PR has exactly one verdict label
 (`fleet:approved` / `fleet:needs-fix` / `fleet:blocker`) at a time;
-`fleet:has-nits` is orthogonal and rides on top of `fleet:approved`. Always
+`fleet:has-nits` is orthogonal and rides on top of `fleet:approved` — and
+it covers only the `### Nits` section's amend-worthy items. Wording-tier
+nits belong under `### Nits (follow-up)` and set **no** label: they ride
+the author's next PR (REVIEWER-PROTOCOL § Nits vs needs-fix). Always
 remove stale verdict labels before adding the new one, and clear the
 stacked-PR review gate (`fleet:awaiting-upstream-review`) in the same
 swap. The verdict label is the **primary signal** the human uses to

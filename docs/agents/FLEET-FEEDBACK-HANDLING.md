@@ -212,8 +212,12 @@ comment that each was covered. (Coverage is re-checked after the
 fix in Step i.)
 
 - **For `fleet:has-nits`**: focus on the latest review's `### Nits`
-  section. Treat it like a checklist. Address every nit unless
-  it's purely subjective preference.
+  section. Treat it like a checklist, and land every fix in **one**
+  batched push (each extra push costs a re-verify round). Items the
+  reviewer listed under `### Nits (follow-up)` are NOT amend
+  material — leave them; they ride your next PR on that surface
+  (REVIEWER-PROTOCOL § Nits vs needs-fix). Address every labeled nit
+  unless it's purely subjective preference.
 - **Verify a cited `file:line` correction — and any concrete VALUE the
   reviewer supplies as the fix — before applying it.** When a nit
   asserts a specific line ("actual: 128-132") or a precedent location, confirm

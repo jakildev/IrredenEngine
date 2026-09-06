@@ -9,9 +9,14 @@
 #       -> mechanical (the headline bug: this must NOT strip fleet:approved)
 #   T2  in-place catch-up rebase onto an advanced master, child diff unchanged
 #       -> mechanical (must stay correct — the case the old logic handled)
-#   T3  real content change (amended tip commit) -> re-review
+#   T3  real content change (amended tip commit) -> re-review, not docs-only
 #   T4  BEFORE commit unavailable (orphaned, unfetchable) -> re-review (safe)
 #   T5  plain force-push, identical tree, new SHA -> mechanical
+#   T6  net delta touches only a non-canon .md -> docs_only=true (keep approval)
+#   T7  net delta touches a canon design doc (docs/design/**) -> docs_only=false
+#   T8  net delta mixes a .md with a code file -> docs_only=false
+#   T9  net delta touches only .fleet/plans/** -> docs_only=true, and rebase
+#       noise from an advanced master does not pollute the changed-file set
 #
 # Hermetic: no live GitHub, no origin remote, no ~/.fleet. The script's
 # best-effort `git fetch origin` fails closed to the local objects we build.
@@ -113,7 +118,8 @@ BEFORE=$(git -C "$R" rev-parse HEAD)
 ( cd "$R" && echo "edited content" > child2.txt && git add child2.txt \
     && git commit -q --amend -m c2 )                 # genuine edit to the tip
 AFTER=$(git -C "$R" rev-parse HEAD)
-expect "T3" "$(classify "$R" "$BEFORE" "$AFTER" "$BASE_SHA")" "rebase_only=false"
+expect "T3" "$(classify "$R" "$BEFORE" "$AFTER" "$BASE_SHA")" \
+    "rebase_only=false"$'\n'"docs_only=false"
 
 # --- T4: BEFORE unavailable (orphaned, unfetchable) --------------------------
 echo "T4: before commit unavailable -> rebase_only=false (conservative)"
@@ -123,7 +129,8 @@ git -C "$R" checkout -q -b feature
 add "$R" child1.txt c1
 AFTER=$(git -C "$R" rev-parse HEAD)
 BEFORE=0000000000000000000000000000000000000000       # not a real object
-expect "T4" "$(classify "$R" "$BEFORE" "$AFTER" "$BASE_SHA")" "rebase_only=false"
+expect "T4" "$(classify "$R" "$BEFORE" "$AFTER" "$BASE_SHA")" \
+    "rebase_only=false"$'\n'"docs_only=false"
 
 # --- T5: plain force-push, identical tree, new SHA ---------------------------
 echo "T5: no-op force-push (same tree, new SHA) -> rebase_only=true"
@@ -140,6 +147,73 @@ GIT_COMMITTER_DATE="2026-02-02T00:00:00 +0000" \
 AFTER=$(git -C "$R" rev-parse HEAD)
 [[ "$AFTER" != "$BEFORE" ]] || fail "T5 setup: AFTER SHA should differ from BEFORE"
 expect "T5" "$(classify "$R" "$BEFORE" "$AFTER" "$BASE_SHA")" "rebase_only=true"
+
+# add_at: commit content to an arbitrary (possibly nested) path.
+add_at() {  # $1 = repo  $2 = path  $3 = content  $4 = msg
+    ( cd "$1" && mkdir -p "$(dirname "$2")" && echo "$3" > "$2" \
+        && git add "$2" && git commit -qm "$4" )
+}
+
+# --- T6: docs-only amend (non-canon .md) -> docs_only=true -------------------
+echo "T6: net delta touches only a non-canon .md -> docs_only=true"
+R=$(new_repo t6)
+BASE_SHA=$(git -C "$R" rev-parse master)
+git -C "$R" checkout -q -b feature
+add_at "$R" "docs/agents/notes.md" "v1" doc
+add "$R" child1.txt c1
+BEFORE=$(git -C "$R" rev-parse HEAD)
+add_at "$R" "docs/agents/notes.md" "v2 wording tweak" doc-amend
+AFTER=$(git -C "$R" rev-parse HEAD)
+expect "T6" "$(classify "$R" "$BEFORE" "$AFTER" "$BASE_SHA")" \
+    "rebase_only=false"$'\n'"docs_only=true"
+
+# --- T7: canon design doc (docs/design/**) -> docs_only=false ----------------
+echo "T7: net delta touches a canon design doc -> docs_only=false"
+R=$(new_repo t7)
+BASE_SHA=$(git -C "$R" rev-parse master)
+git -C "$R" checkout -q -b feature
+add_at "$R" "docs/design/feature.md" "v1" design
+BEFORE=$(git -C "$R" rev-parse HEAD)
+add_at "$R" "docs/design/feature.md" "v2 changed intent" design-amend
+AFTER=$(git -C "$R" rev-parse HEAD)
+expect "T7" "$(classify "$R" "$BEFORE" "$AFTER" "$BASE_SHA")" \
+    "rebase_only=false"$'\n'"docs_only=false"
+
+# --- T8: mixed .md + code delta -> docs_only=false ---------------------------
+echo "T8: net delta mixes docs and code -> docs_only=false"
+R=$(new_repo t8)
+BASE_SHA=$(git -C "$R" rev-parse master)
+git -C "$R" checkout -q -b feature
+add_at "$R" "docs/agents/notes.md" "v1" doc
+add "$R" child1.txt c1
+BEFORE=$(git -C "$R" rev-parse HEAD)
+( cd "$R" && echo "v2" > docs/agents/notes.md && echo "edited" > child1.txt \
+    && git add docs/agents/notes.md child1.txt && git commit -qm mixed-amend )
+AFTER=$(git -C "$R" rev-parse HEAD)
+expect "T8" "$(classify "$R" "$BEFORE" "$AFTER" "$BASE_SHA")" \
+    "rebase_only=false"$'\n'"docs_only=false"
+
+# --- T9: plans-only force-push delta + rebase noise -> docs_only=true --------
+# A catch-up rebase (count-preserving force-push) plus an AMEND to the plan
+# commit: the docs-only decision compares NET diffs per file, so master
+# advancing a code file between the two anchors (rebase noise) must not count
+# as a net-changed code path. This exercises the BEFORE~N recovery arm of the
+# docs decision (T6/T8 exercise the fast-forward arm).
+echo "T9: plans-only amend atop a catch-up rebase -> docs_only=true"
+R=$(new_repo t9)
+git -C "$R" checkout -q -b feature
+add_at "$R" ".fleet/plans/issue-42.md" "plan v1" plan
+BEFORE=$(git -C "$R" rev-parse HEAD)
+git -C "$R" checkout -q master
+add "$R" master_code.txt m1                          # master advances (code)
+BASE_SHA=$(git -C "$R" rev-parse master)
+git -C "$R" checkout -q feature
+git -C "$R" rebase -q master >/dev/null
+( cd "$R" && echo "plan v2 amended" > .fleet/plans/issue-42.md \
+    && git add .fleet/plans/issue-42.md && git commit -q --amend -m plan )
+AFTER=$(git -C "$R" rev-parse HEAD)
+expect "T9" "$(classify "$R" "$BEFORE" "$AFTER" "$BASE_SHA")" \
+    "rebase_only=false"$'\n'"docs_only=true"
 
 echo
 echo "PASS=$PASS FAIL=$FAIL"
