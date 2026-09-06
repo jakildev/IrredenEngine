@@ -2611,7 +2611,7 @@ for issue in issues:
         name = (l or {}).get("name", "") if isinstance(l, dict) else ""
         if name.startswith(prefix):
             print(f"{n}\t{name}")
-' 2>/dev/null || echo "")
+' 2>/dev/null | tr -d '\r' || echo "")
 
         [[ -z "$open_claim_plan" ]] && continue
 

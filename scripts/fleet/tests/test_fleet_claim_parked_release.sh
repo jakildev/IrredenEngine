@@ -22,6 +22,11 @@
 #           and go stale at different times; clearing the label under the
 #           survivor advertises an owned task as free.
 #
+#   #3060  — the `reset-sweep-host-claims` boot sweep CR-strips its
+#           python3-piped work list before the label name is captured, so a
+#           native-Windows producer cannot feed `gh issue edit --remove-label`
+#           a `\r`-suffixed name (Phase 2d, hermetic CRLF stub).
+#
 # `gh` is stubbed so the label/PR surfaces are canned JSON. Host is pinned to
 # `mac` via FLEET_TEST_HOST so claim-label construction is deterministic.
 
@@ -313,6 +318,60 @@ assert_removed_absent  $'730\tfleet:claim-linux-pool-2' "host sweep left #730 fo
 assert_removed_absent  $'730\tfleet:in-progress' "host sweep KEPT #730 fleet:in-progress (foreign claim live)"
 assert_removed_contains $'731\tfleet:claim-mac-opus-worker-1' "host sweep removed #731 own-host claim"
 assert_removed_contains $'731\tfleet:in-progress' "host sweep cleared #731 fleet:in-progress (no claim left)"
+
+# =========================================================================
+echo "=== Phase 2d: reset-sweep-host-claims under a CRLF-emitting python3 producer (#3060) ==="
+# =========================================================================
+# Native python3 on Windows (MSYS2) CRLF-terminates every print() to stdout
+# (scripts/fleet/CLAUDE.md), so this pass's `while IFS=$'\t' read -r issue_num
+# label_name` loop keeps a trailing \r on label_name and the final
+# `gh issue edit --remove-label "$label_name"` names a label that does not
+# exist — this host's own stale claim labels then survive every fleet-up boot
+# sweep. Shadow python3 on PATH to CRLF-terminate only this pass's work-list
+# producer (matched by its HOST_PREFIX literal) so the Windows byte stream is
+# reproduced hermetically on every host.
+#
+# Two host quirks shaped the assert, both observed while proving this phase
+# fires on native Windows (where the real bug lives):
+#   - the LAST work-list line reaches the read loop with its CR already
+#     stripped (the `$(...)` trailing-newline trim takes the CR with it), so a
+#     one-line fixture is vacuous there — hence two issues, asserted on the
+#     FIRST, whose CR survives on every host;
+#   - GNU grep on MSYS2 / Git-for-Windows strips CRs from text files before
+#     matching, so `grep -x` / Phase 2c's substring asserts pass either way —
+#     hence a byte-exact binary read of the removal log instead of grep.
+: > "$REMOVED_FILE"
+REAL_PYTHON3="$(command -v python3)"; export REAL_PYTHON3
+cat > "$STUB_DIR/python3" <<'PYSTUB'
+#!/usr/bin/env bash
+if [[ "${1:-}" == "-c" && "${2:-}" == *'HOST_PREFIX'* ]]; then
+    "$REAL_PYTHON3" "$@" | sed 's/$/\r/'
+else
+    exec "$REAL_PYTHON3" "$@"
+fi
+PYSTUB
+chmod +x "$STUB_DIR/python3"
+cat > "$ISSUES_JSON" <<'JSON'
+[
+  {"number":732,"state":"OPEN","labels":[{"name":"fleet:queued"},{"name":"fleet:claim-mac-opus-worker-1"},{"name":"fleet:in-progress"}]},
+  {"number":733,"state":"OPEN","labels":[{"name":"fleet:queued"},{"name":"fleet:claim-mac-opus-worker-1"},{"name":"fleet:in-progress"}]}
+]
+JSON
+SWEEP_OUT=$("$FLEET_CLAIM" reset-sweep-host-claims 2>&1); echo "$SWEEP_OUT" | sed 's/^/    /'
+rm -f "$STUB_DIR/python3"
+# REMOVED_FILE rides in the environment (exported above) rather than argv so
+# a native python3 gets a path it can open (the same reason the gh stub reads
+# ISSUES_JSON from the environment).
+if python3 -c '
+import os, sys
+data = open(os.environ["REMOVED_FILE"], "rb").read()
+sys.exit(0 if b"732\tfleet:claim-mac-opus-worker-1\n" in data and b"\r" not in data else 1)
+'; then
+    ok "host sweep removed #732 own-host claim by its exact CR-free name under a CRLF producer"
+else
+    bad "CRLF-tainted label name reached gh issue edit (removed log bytes: $(python3 -c 'import os; print(repr(open(os.environ["REMOVED_FILE"], "rb").read()))'))"
+fi
+assert_removed_contains $'733\tfleet:claim-mac-opus-worker-1' "host sweep still removed #733 own-host claim (second line)"
 
 echo
 echo "================================"

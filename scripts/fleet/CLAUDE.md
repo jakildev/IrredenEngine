@@ -327,4 +327,9 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   site, the same discipline as the `jq -r` gotcha — since a plan/label-name
   string is usually reused by more than one downstream consumer. Defensive,
   not host-conditional: a no-op on Linux/macOS, where `python3` never emits
-  CRLF regardless of stream type.
+  CRLF regardless of stream type. Guard the fix with a **byte-level** check,
+  never grep: GNU grep on MSYS2 strips CRs from text input before matching,
+  and `$(...)` trims a trailing CR along with the trailing newline, so a grep
+  assert — or a one-line fixture — reads clean on the very host that has the
+  bug (`tests/test_fleet_claim_parked_release.sh` Phase 2d is the reference
+  shape: two-line fixture, assert on the first line, binary read).

@@ -285,7 +285,7 @@ echo "T7c: a FRESH same-host no-marker label is spared by the grace (claim/marke
 if grep -q -- "--remove-label fleet:planning-mac-fresh" "$REMOVE_LOG"; then bad "fresh no-marker label reaped inside the grace"; else ok "fresh no-marker label spared by the grace"; fi
 unset FLEET_CLAIM_STALE_SECS_PLANNING
 
-echo "T11: CRLF-emitting python3 stub (regression guard for #3060) — vouched claim still kept"
+echo "T7d: CRLF-emitting python3 stub (regression guard for #3060) — vouched claim still kept"
 # Native python3 on Windows (MSYS2) CRLF-terminates every print() to stdout,
 # same class of bug as native jq (#3029): `while IFS=$'\t' read -r n label`
 # strips only the trailing \n, so the CR rides along on `label`. POSIX python3
