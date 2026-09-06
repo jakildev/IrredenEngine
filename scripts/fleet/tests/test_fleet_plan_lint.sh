@@ -164,11 +164,12 @@ FORK_WHETHER_APPROACH = GOOD.replace(
     "one approach: edit foo.cpp then bar.cpp",
     "check whether the predicate should apply to foo.cpp as well or only to bar.cpp")
 # #2443 plan-exclusion guard: the mandatory "## Plan: <title>" heading is the
-# ONLY heading here that could match Approach -- Scope + Acceptance concepts are
-# present, no real Approach-shaped heading. "plan" is deliberately NOT an
-# Approach synonym, so Approach must report missing (single missing core -> warn,
-# exit 0), never vacuously match. Guards a future synonym-set edit that re-adds
-# "plan" to Approach (which would silently satisfy it for every plan comment).
+# ONLY heading here that could match the Decisions concept -- Scope + Acceptance
+# concepts are present, no Decisions/Approach-shaped heading. "plan" is
+# deliberately NOT a Decisions synonym, so Decisions must report missing (single
+# missing core -> warn, exit 0), never vacuously match. Guards a future
+# synonym-set edit that re-adds "plan" (which would silently satisfy the concept
+# for every plan comment).
 PLAN_ONLY_NO_APPROACH = '''## Plan: plan-heading only
 
 - **Model:** sonnet
@@ -262,6 +263,36 @@ FORK_IN_LONG_FENCE = GOOD.replace(
     "### Approach\nverified current state via grep; one approach: edit foo.cpp then bar.cpp",
     "### Approach\nverified current state via grep; one approach: edit foo.cpp then bar.cpp\n\n"
     "````\ncheck whether the predicate should apply to foo.cpp as well or only to bar.cpp\n````")
+# Intent-plan shape (PLANNING-PROTOCOL step 2): Decisions instead of Approach,
+# no Approach sketch at all. Must pass with NO missing-core warn — Decisions
+# satisfies the middle core concept.
+INTENT_PLAN = '''## Plan: intent shape
+
+- **Model:** opus
+
+### Scope
+make the resolve loop cheap
+
+### Verified current state
+measured via the existing per-system timer rows
+
+### Decisions
+public name stays FooBar; bar.cpp rewrite is out of scope (rejected: too broad)
+
+### Affected files
+- foo.cpp
+
+### Acceptance criteria
+perf probe fires with count > 0
+
+### Gotchas
+none'''
+# A live fork hiding in the intent template's own Decisions section must still
+# hard-fail — the fork matchers' scope includes the plural "decisions" heading
+# (but NOT the singular: see the issue-1596 "Architect decision" pin at #121).
+FORK_IN_DECISIONS = INTENT_PLAN.replace(
+    "public name stays FooBar; bar.cpp rewrite is out of scope (rejected: too broad)",
+    "check whether the predicate should apply to foo.cpp as well or only to bar.cpp")
 F = {
   "100": {"title": "sound task", "comments": [{"body": GOOD}]},
   "101": {"title": "defer task", "comments": [{"body": DEFER}]},
@@ -295,10 +326,24 @@ F = {
   "128": {"title": "unbalanced backtick task", "comments": [{"body": UNBALANCED_BACKTICK}]},
   "129": {"title": "fork in fence task", "comments": [{"body": FORK_IN_FENCE}]},
   "130": {"title": "fork in long fence task", "comments": [{"body": FORK_IN_LONG_FENCE}]},
+  "131": {"title": "intent-plan shape task", "comments": [{"body": INTENT_PLAN}]},
+  "132": {"title": "fork in decisions task", "comments": [{"body": FORK_IN_DECISIONS}]},
 }
 print(json.dumps(F.get(num, {"title": "missing", "comments": []})))
 PYEOF
 chmod +x "$TMPROOT/bin/gh"
+# Native-Windows twin: fleet-plan-lint invokes `gh` from PYTHON (subprocess),
+# and a native-Windows python3 (os.name == "nt", the mingw64 build the windows
+# fleet host ships) cannot exec an extensionless shebang script — PATH lookup
+# falls through to the REAL gh.exe and the test silently lints live GitHub
+# issues (measured: 22 baseline failures, every one "no ## Plan comment
+# found"). A .bat twin is what Windows PATH resolution finds; MSYS converts
+# $TMPROOT/bin to a Windows PATH entry when exec'ing native binaries. Inert on
+# POSIX hosts (nothing resolves *.bat).
+cat > "$TMPROOT/bin/gh.bat" <<'BATEOF'
+@echo off
+python3 "%~dp0gh" %*
+BATEOF
 export PATH="$TMPROOT/bin:$PATH"
 
 echo "fleet-plan-lint tests"
@@ -328,14 +373,14 @@ case "$cited_out" in *"mechanism-lever language"*) bad "mechanism-lever warn sho
 # ...but a plan genuinely missing two core concepts still hard-fails.
 "$LINT" 109 >/dev/null 2>&1; assert_exit $? 1 "missing scope + acceptance concepts -> hard fail (negative control)"
 # #2443 plan-exclusion guard — the mandatory "## Plan:" heading must NOT
-# vacuously satisfy Approach (that is why "plan" is excluded from its synonym
-# set). Scope + Acceptance present, no Approach-shaped heading -> single missing
-# core -> warn (exit 0) that names Approach. If a future edit re-adds "plan" to
-# the Approach synonyms, that heading would match, missing_core would go empty,
-# and the warn below would vanish -> this test fails.
-"$LINT" 110 >/dev/null 2>&1; assert_exit $? 0 "plan-only (no Approach heading) -> exit 0 (single missing core = warn)"
+# vacuously satisfy the Decisions concept (that is why "plan" is excluded from
+# its synonym set). Scope + Acceptance present, no Decisions/Approach-shaped
+# heading -> single missing core -> warn (exit 0) that names Decisions. If a
+# future edit re-adds "plan" to the synonyms, that heading would match,
+# missing_core would go empty, and the warn below would vanish -> this test fails.
+"$LINT" 110 >/dev/null 2>&1; assert_exit $? 0 "plan-only (no Decisions heading) -> exit 0 (single missing core = warn)"
 plan_excl_out=$("$LINT" 110 2>&1 || true)
-case "$plan_excl_out" in *"core section absent"*"Approach"*) ok "Approach reported missing (## Plan: heading does not vacuously satisfy it)";; *) bad "Approach not reported missing — did 'plan' leak into the Approach synonym set? [$plan_excl_out]";; esac
+case "$plan_excl_out" in *"core section absent"*"Decisions"*) ok "Decisions reported missing (## Plan: heading does not vacuously satisfy it)";; *) bad "Decisions not reported missing — did 'plan' leak into the synonym set? [$plan_excl_out]";; esac
 # #2707 — a "## Plan review" comment must never shadow the plan it reviews.
 "$LINT" 111 >/dev/null 2>&1; assert_exit $? 0 "reviewed plan (plan + review comment) -> exit 0 (review not selected)"
 review_out=$("$LINT" 111 2>&1 || true)
@@ -429,6 +474,16 @@ case "$unbalanced_out" in *"deferred-approach phrase"*) ok "deferred phrase afte
 # raw prose (fixture 122).
 "$LINT" 129 >/dev/null 2>&1; assert_exit $? 0 "imperative-mood fork inside a 3-backtick fence -> exit 0"
 "$LINT" 130 >/dev/null 2>&1; assert_exit $? 0 "imperative-mood fork inside a 4-backtick fence -> exit 0 (run-length-aware fence matcher)"
+# Intent-plan shape (Decisions core, no Approach at all) -> pass, no
+# missing-core warn.
+"$LINT" 131 >/dev/null 2>&1; assert_exit $? 0 "intent-plan shape (Decisions, no Approach) -> exit 0"
+intent_out=$("$LINT" 131 2>&1 || true)
+case "$intent_out" in *"core section absent"*) bad "intent-plan shape flagged a missing core section: [$intent_out]";; *) ok "Decisions satisfies the middle core concept (no missing-core warn)";; esac
+# A live fork inside the intent template's own Decisions section must still
+# hard-fail — the plural "decisions" heading is in the fork matchers' scope.
+"$LINT" 132 >/dev/null 2>&1; assert_exit $? 1 "imperative-mood fork in Decisions -> hard fail"
+fork_dec_out=$("$LINT" 132 2>&1 || true)
+case "$fork_dec_out" in *"imperative-mood fork"*) ok "imperative-mood fork fires in a Decisions section";; *) bad "fork in Decisions not caught: [$fork_dec_out]";; esac
 set -e
 
 echo "================================"

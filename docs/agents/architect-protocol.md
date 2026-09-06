@@ -308,8 +308,10 @@ parent. Flat siblings all go claimable the moment the parent closes and get
 worked in parallel on the same files — the #1370 trio produced three
 conflicting, all design-blocked PRs exactly this way (#1456 Gap 2).
 The `## Plan` comment (not the issue body) is what must (1) name a
-**confirmed repro** of the symptom against the actual code path, (2) **pick one
-approach** rather than hand the choice to the worker, and (3) **reconcile
+**confirmed repro** of the symptom against the actual code path, (2) **lock
+the load-bearing decisions** rather than hand a live design fork to the
+worker (the implementation path itself is the worker's — PLANNING-PROTOCOL.md
+step 2's intent-plan rule), and (3) **reconcile
 siblings + in-flight PRs** on the same surface (a carve-off's fix often
 duplicates or contradicts an active PR or a sibling ticket's recorded
 conclusion — e.g. #1440's planned approach was the one #1420 had already proved

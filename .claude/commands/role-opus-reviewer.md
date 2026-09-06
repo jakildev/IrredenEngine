@@ -159,8 +159,8 @@ cheap-first / Opus-for-judgment split the PR path uses):
 
 1. **Lint (deterministic, no LLM):** `fleet-plan-lint <N>` (add `--repo game`
    for game). It mechanically checks structure — a `## Plan` comment exists, the
-   core sections (Scope / Approach / Acceptance) are present, and there is no
-   deferred-approach phrase ("decide during implementation", "option A or B",
+   core sections (Scope / Decisions / Acceptance) are present, and there is no
+   deferred-decision phrase ("decide during implementation", "option A or B",
    "TBD", "likely suspects", …). **Exit 1 (hard fail) →** the plan is not sound;
    go straight to the **Not sound** bounce below and quote the lint output as the
    gaps — do **not** spend the Opus judgment on what the lint already decided.
@@ -171,15 +171,29 @@ cheap-first / Opus-for-judgment split the PR path uses):
    [PLANNING-PROTOCOL.md](../../docs/agents/PLANNING-PROTOCOL.md) step-2 rigor —
    the things structure can't prove: is the **verified current state actually
    verified** (did they read the real code path, not the issue's guess; were
-   negative/gap claims checked across the full candidate set), is the **single
-   approach actually correct** (not merely present), is the **sibling + in-flight
+   negative/gap claims checked across the full candidate set), are the **locked
+   decisions actually right** (not merely present — and no live fork handed to
+   the implementer), is the **sibling + in-flight
    reconciliation** right, is the **cross-system audit** complete where one
    is required, does any phase **assume an unmeasured mechanism** (a cited
    measurement or phase-0 probe is required), and are the named acceptance
-   tests **positive-fire**?
+   tests **positive-fire**? When the plan's load-bearing measurements can be
+   re-run cheaply (a grep census, a symbol count, a config read), **execute
+   them** rather than reading them for plausibility — re-running a plan's own
+   claimed measurements is the highest-yield review move. A plan is NOT
+   unsound for lacking a step-by-step Approach: the intent-plan rule makes
+   the implementation path the worker's; judge the decisions and the
+   acceptance criteria.
 
 - **Sound →** remove the label: `gh issue edit <N> --repo <repo> --remove-label
   "fleet:plan-review"`. The scout queues it on its next pass.
+- **Sound with corrections →** bounded fixes that change no locked decision
+  (a wrong path, a stale line reference, a corrected measurement): post a
+  comment whose first line is `## Plan corrections` listing them, then remove
+  the label exactly as for Sound. The implementer folds corrections into the
+  committed plan file (PLANNING-PROTOCOL.md steps 4-5). Prefer this gear over
+  a bounce — `fleet:needs-plan` costs a full re-plan round for what one line
+  fixes; bounce only when a locked decision itself is wrong.
 - **Not sound →** swap the label back: `gh issue edit <N> --repo <repo>
   --remove-label "fleet:plan-review" --add-label "fleet:needs-plan"`, and
   comment the specific gaps. Leave the stale `## Plan` comment in place as

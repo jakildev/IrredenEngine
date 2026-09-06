@@ -18,20 +18,25 @@
 #
 # Checks (HARD => bounce):
 #   - no `## Plan` comment exists on the issue
-#   - a deferred-approach phrase ("decide during implementation", "option A or B",
+#   - a deferred-decision phrase ("decide during implementation", "option A or B",
 #     "TBD", "likely suspects", "decide explicitly rather than by omission", ...)
-#     — the "one approach, picked" violation (relaxed to a warning when the
-#     plan is an explicit investigation spike). Read from PROSE only: fenced
+#     — a live design fork handed to the implementer (relaxed to a warning when
+#     the plan is an explicit investigation spike). Read from PROSE only: fenced
 #     blocks and inline-code spans are stripped first, so a plan that NAMES a
 #     phrase as data (a test-corpus row, a quoted rejected alternative) does
-#     not hard-fail on it (#2989).
-#   - a fork named in an Approach/Gotchas section — either an imperative-mood
-#     one ("check/decide/determine whether X ... or Y" in one sentence) or an
-#     either/or one carrying a hedging modal. Both are scoped to those sections
-#     so prose that names alternatives without deferring a design choice
-#     (acceptance criteria enumerating outcomes, a settled decision tree) does
-#     not bounce a sound plan.
-#   - >= 2 of the core sections (Scope / Approach / Acceptance) absent
+#     not hard-fail on it (#2989). Note the intent-plan rule
+#     (PLANNING-PROTOCOL.md step 2): the plan locks DECISIONS; the
+#     implementation path is the worker's, and an advisory `Approach sketch`
+#     is optional — the lint polices unlocked decisions, never missing steps.
+#   - a fork named in a Decisions/Approach/Gotchas section — either an
+#     imperative-mood one ("check/decide/determine whether X ... or Y" in one
+#     sentence) or an either/or one carrying a hedging modal. Both are scoped
+#     to those sections so prose that names alternatives without deferring a
+#     design choice (acceptance criteria enumerating outcomes, a settled
+#     decision tree) does not bounce a sound plan.
+#   - >= 2 of the core sections (Scope / Decisions / Acceptance) absent —
+#     Approach/Design/Implementation-style headings satisfy Decisions, so
+#     pre-intent-plan plans keep passing
 # Checks (WARN => Opus weighs, no auto-bounce):
 #   - exactly one core section absent (format variance, not necessarily broken)
 #   - no `### Affected files` / `### Gotchas` section
@@ -45,6 +50,7 @@ set -euo pipefail
 exec python3 - "$@" <<'PY'
 import json
 import re
+import shutil
 import subprocess
 import sys
 
@@ -85,9 +91,15 @@ if issue is None or repo_ns not in REPO_SLUGS:
     usage(2)
 repo = REPO_SLUGS[repo_ns]
 
+# Resolve gh through PATH ourselves: on a native-Windows python (os.name ==
+# "nt") CreateProcess appends only ".exe" to a bare name, so a PATH-shim
+# `gh`/`gh.bat` earlier in PATH is silently skipped in favor of the real
+# gh.exe — shutil.which honors PATH order and PATHEXT, and is a no-op
+# passthrough on POSIX.
+GH = shutil.which("gh") or "gh"
 try:
     out = subprocess.run(
-        ["gh", "issue", "view", issue, "--repo", repo, "--json", "comments,title"],
+        [GH, "issue", "view", issue, "--repo", repo, "--json", "comments,title"],
         capture_output=True, text=True, check=True,
     ).stdout
 except subprocess.CalledProcessError as e:
@@ -170,13 +182,15 @@ prose_low = prose.lower()
 # Core sections (heading at any depth, case-insensitive), matched by CONCEPT
 # rather than requiring the heading to *begin* with the literal token — a
 # sound plan that words its headings naturally (e.g. "Files / modules" for
-# Scope, "Committed approach" for Approach) must not hard-fail (#2443).
-# "plan" is deliberately excluded from the Approach synonym set: every plan
-# comment's first heading is "## Plan: <title>", which would otherwise
-# vacuously satisfy Approach for every comment.
+# Scope, "Committed approach" for Decisions) must not hard-fail (#2443).
+# The middle concept is DECISIONS (the intent-plan shape); the legacy
+# approach/design/implementation headings satisfy it too, so pre-intent-plan
+# plans keep passing. "plan" is deliberately excluded from its synonym set:
+# every plan comment's first heading is "## Plan: <title>", which would
+# otherwise vacuously satisfy the concept for every comment.
 CORE = {
     "Scope": ("scope", "files", "modules", "affected"),
-    "Approach": ("approach", "design", "implementation"),
+    "Decisions": ("decision", "decisions", "approach", "design", "implementation"),
     "Acceptance": ("acceptance", "verification", "tests", "done"),
 }
 missing_core = [
@@ -191,7 +205,7 @@ if len(missing_core) >= 2:
 elif missing_core:
     warn.append(f"core section absent (format variance?): {missing_core[0]}")
 
-# Deferred-approach smells — the "one approach, picked" violation.
+# Deferred-decision smells — a live design fork handed to the implementer.
 DEFER = [
     "decide during implementation", "decide while implementing",
     "decide during investigation", "confirm during investigation",
@@ -238,10 +252,15 @@ OR_RE = re.compile(r"\bor\b", re.IGNORECASE)
 
 
 def is_design_section(heading):
-    """True for the Approach/Design/Implementation/Gotchas prose where a live
-    design fork belongs — the only sections the fork checks read."""
+    """True for the Decisions/Approach/Design/Implementation/Gotchas prose
+    where a live design fork belongs — the only sections the fork checks
+    read. The Decisions keyword is the PLURAL only: the singular appears in
+    corpus-measured declarative headings ("Architect decision",
+    `.fleet/plans/issue-1596.md`) whose settled decision trees false-fired
+    the pre-scoping matcher — that pin (#121 in the test file) must hold."""
     hl = heading.lower()
-    return any(k in hl for k in ("approach", "design", "implementation")) or "gotcha" in hl
+    return (any(k in hl for k in ("decisions", "approach", "design", "implementation"))
+            or "gotcha" in hl)
 
 
 fork_whether_hit = either_or_hit = False
