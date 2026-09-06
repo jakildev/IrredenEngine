@@ -31,7 +31,10 @@
 // Not yet interpreted by `C_ColliderIso3DAABB`, SDF shapes, or
 // `C_EntityCanvas`; those migrate per this enum when touched (#2563
 // follow-ups). The detached-canvas path does not support GROUND — its
-// extent measurement is `abs()`-about-origin and assumes CENTER.
+// extent measurement is `abs()`-about-origin and assumes CENTER. That is
+// guarded at the re-voxelize consumer: `SYSTEM_REBUILD_DETACHED_VOXELS`
+// asserts the pool is origin-centered, so GROUND and CORNER both fire there
+// instead of silently orbiting their anchor (see #2911).
 
 #include <irreden/ir_math.hpp>
 
