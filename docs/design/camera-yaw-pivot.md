@@ -328,26 +328,60 @@ closes:
    still under tolerance, and expected for the off-centre crossing described
    above rather than a backend disagreement.
 
-   The **centroid** deviations do differ between hosts, in unit rather than in
-   kind: `center-axis` reads 2 / 3 / 6 / 11 / 22 px at zoom 1 / 2 / 4 / 8 / 16
-   on Windows against 4 / 6 / 12 / 22 / 44 px on macOS — exactly 2x at every
-   cell, because macOS renders the 1280x720 game resolution into a 2560x1440
-   HiDPI framebuffer and Windows into a 1280x720 one. Same reason the SDF
-   destination-grid floor above reads 1.00 px here against 2.00 px there,
-   confirming that entry's own prediction. This is why the `center-axis`
-   centroid gate is stated in **game-resolution px** and scaled by the run's
-   measured `outputScaleFactor` (`CENTROID_BOUND_GAME_PX` /
-   `_output_scale_factor` in `scripts/pivot-verify.py`): in game px the two
-   hosts report the same numbers, so one calibration covers both.
+   The **centroid** deviations are scored on the captured FRAMEBUFFER but land
+   on a GAME-resolution quantum, so the raw readings differ by the host's
+   `outputScaleFactor`: macOS renders the 1280x720 game resolution into a
+   2560x1440 HiDPI framebuffer (factor 2), Windows into a 1280x720 one
+   (factor 1). Same reason the SDF destination-grid floor above reads 1.00 px
+   here against 2.00 px there, confirming that entry's own prediction. This is
+   why the `center-axis` centroid gate is stated in **game-resolution px** and
+   scaled by the run's measured `outputScaleFactor` (`CENTROID_BOUND_GAME_PX` /
+   `_output_scale_factor` in `scripts/pivot-verify.py`): the game-px figures are
+   directly comparable across hosts, so one calibration covers both.
 
-   That 2x relation holds for `center-axis` and for the SDF floor, but **not**
-   for `focus-ctr`, `focus-off` and `background-center` — those three read
+   `center-axis` dev_x, in game px, by zoom:
+
+   | host | 1 | 2 | 4 | 8 | 16 |
+   |---|---|---|---|---|---|
+   | macOS/Metal — 2026-08-21 (#2758) | 2.00 | 3.00 | 6.00 | 11.00 | 22.00 |
+   | Windows/GL — 2026-09-06, post-#1938 | 1.00 | 2.00 | 4.00 | 10.00 | 20.00 |
+
+   The two hosts read identically while both rows were taken pre-#1938; the GL
+   analytic-coverage port (`fbad3ac4`) then moved GL's silhouette and left it
+   uniformly **below** Metal. The Metal row is unchanged by that port by
+   construction — its Metal-side diff is comment-only — but has not been
+   re-measured since. The `1.5 px/zoom + 1.0 px` bound is calibrated on the
+   larger (Metal) row and clears every GL cell by 25-150%, so one calibration
+   still covers both; "identical on both" no longer does. Whether a faithful
+   parity port should have converged the two exactly is open, needs a Metal
+   host to answer, and nothing gates on the difference.
+
+   **The GL divergence in `focus-ctr` / `focus-off` / `background-center` is
+   RESOLVED — #3008.** When this section was written those three read
    1.73 / 1.73 / 1.59 px at zoom 4 on the 1x host against a scale-adjusted
-   ~0.47 px predicted from Metal, and grow with zoom, so their divergence is a
-   real GL-side silhouette difference rather than a unit artefact. They exceed
-   the harness's default 1.5 px bound on a GL host on master-equivalent frames.
-   Tracked separately as **#3008**; it is not a #2641 residual and nothing in
-   this section depends on it.
+   ~0.47 px predicted from Metal, and grew with zoom — a real GL-side
+   silhouette difference rather than a unit artefact, exceeding the harness's
+   default 1.5 px bound. `fbad3ac4` (#1938, the GL port of the analytic scatter
+   coverage) fixed it, landing the day after this section did. Bisected on
+   Windows/OpenGL 2026-09-06 with `scripts/pivot-verify.py`, the `jitter_probe`
+   binary and `shape_debug` held byte-identical across all three arms, so the
+   engine render code is the only variable:
+
+   | engine tree | `focus-ctr` z4/z8 | `focus-off` z4/z8 | `background-center` z4/z8 |
+   |---|---|---|---|
+   | `7d236f28` — neither fix | 1.73 / 3.58 | 1.73 / 3.58 | 1.59 / 3.24 |
+   | `ab494b21` — #3011 only | 1.73 / 3.58 | 1.73 / 3.58 | 1.59 / 3.24 |
+   | `f3e79a54` — master | **0.47 / 0.48** | **0.47 / 0.48** | **0.46 / 0.47** |
+
+   All three now PIN at the default 1.5 px bound on a GL host, matching the
+   ~0.47 px the 2x-host figures predict, and `python3 scripts/pivot-verify.py
+   --zoom 4 --zoom 8` exits 0 there. The pre-fix deviation was proportional to
+   zoom (x2.07 across z4 -> z8) — the signature of the pre-#1938 GL scatter's
+   continuous `0.5*|n|` coverage margin, which scaled with the on-screen cell
+   pitch, not of a pivot-anchor error. #3011's fixed 1 px parity shift is
+   visibly NOT the cause: it moved only `center-axis` (6.00 -> 4.00 at zoom 4)
+   and left these three untouched. None of it was ever a #2641 residual, and
+   nothing in this section depends on it.
 3. **Per-axis registration offset — FIXED (#2546).** With (1) compensated,
    every residual-yaw frame rendered the voxel scene a constant ≈1 iso px
    (per axis, zoom-scaled) off the cardinal frames. Root cause: the
