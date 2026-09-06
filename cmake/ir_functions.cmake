@@ -110,8 +110,10 @@ endfunction()
 #
 # Behaviour:
 #   - Adds a custom command that runs `ir_lua_codegen` whenever any of the
-#     SOURCES change, regenerating OUTPUT_HPP.
-#   - Adds OUTPUT_HPP to <target>'s sources so CMake tracks the dependency.
+#     SOURCES change, regenerating OUTPUT_HPP and its companion claims .cpp
+#     (`<OUTPUT_HPP stem>_claims.cpp`, alongside it).
+#   - Adds both generated files to <target>'s sources — the header so CMake
+#     tracks the dependency, the .cpp because it must actually be compiled.
 #   - Adds OUTPUT_HPP's parent directory to <target>'s include path.
 #   - The custom command's DEPENDS list already includes ir_lua_codegen, so
 #     the codegen binary is built first on a clean tree without a separate
@@ -137,10 +139,11 @@ endfunction()
 # The emitted header re-exports the run via a using-directive, so call sites
 # keep the unqualified `IRScript::CodegenRegistry::X` spelling regardless.
 #
-# Each generated header is single-TU-per-target: the run also emits one
-# external-linkage claim constant per component under
-# `IRScript::CodegenClaims`, so both a second includer and a second run
-# declaring the same component name fail the link naming the component.
+# The run also emits one external-linkage claim constant per component under
+# `IRScript::CodegenClaims`, so a second run declaring the same component name
+# fails the link naming the component. The header carries only the `extern`
+# declarations and the companion .cpp the single definition, so a target may
+# include the generated header from any number of TUs (#3091).
 #
 # All paths are resolved relative to the caller's CMAKE_CURRENT_SOURCE_DIR
 # unless absolute. The generated header is regenerated on Lua-source change
@@ -192,6 +195,16 @@ function(
     endforeach()
 
     get_filename_component(_output_dir "${IRLC_OUTPUT_HPP}" DIRECTORY)
+
+    # #3091: the companion TU holding this run's claim definitions. Derived from
+    # the OUTPUT_HPP *basename* (so a dot in a parent directory never eats the
+    # filename) and passed explicitly, for the same reason REGISTRY_NAMESPACE is
+    # — add_custom_command has to declare the exact path the tool writes, and two
+    # derivations that agree today would drift apart silently.
+    # `deriveClaimsCppPath` in cmake/lua_codegen/main.cpp mirrors this.
+    get_filename_component(_output_name "${IRLC_OUTPUT_HPP}" NAME)
+    string(REGEX REPLACE "\\.[^.]*$" "" _output_stem "${_output_name}")
+    set(_output_cpp "${_output_dir}/${_output_stem}_claims.cpp")
 
     # #2609: this run's registry namespace. Derived from the OUTPUT_HPP stem
     # (unique per run for every in-tree caller) unless REGISTRY_NAMESPACE
@@ -252,10 +265,11 @@ function(
     string(TOLOWER "${IRLC_DEFAULT_MODE}" _mode_lower)
 
     add_custom_command(
-        OUTPUT "${IRLC_OUTPUT_HPP}"
+        OUTPUT "${IRLC_OUTPUT_HPP}" "${_output_cpp}"
         COMMAND ${CMAKE_COMMAND} -E make_directory "${_output_dir}"
         COMMAND $<TARGET_FILE:ir_lua_codegen>
             --out "${IRLC_OUTPUT_HPP}"
+            --out-cpp "${_output_cpp}"
             "--default-mode=${_mode_lower}"
             "--registry-namespace=${_registry_ns}"
             ${_resolved_sources}
@@ -264,7 +278,7 @@ function(
         VERBATIM
     )
 
-    target_sources(${target} PRIVATE "${IRLC_OUTPUT_HPP}")
+    target_sources(${target} PRIVATE "${IRLC_OUTPUT_HPP}" "${_output_cpp}")
     target_include_directories(${target} PRIVATE "${_output_dir}")
 endfunction()
 

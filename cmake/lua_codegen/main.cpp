@@ -138,6 +138,26 @@ std::string escapeStringLiteral(std::string_view s) {
     return out;
 }
 
+// The `<dir>/` prefix of a path, empty when the path names a bare file.
+std::string_view pathDirPrefix(std::string_view path) {
+    const size_t slash = path.find_last_of("/\\");
+    return slash == std::string_view::npos ? std::string_view{} : path.substr(0, slash + 1);
+}
+
+// A path's basename with its last extension stripped. Both `--out`-derived
+// names below are built from this, and both must agree byte-for-byte with the
+// CMake-side derivations in `cmake/ir_functions.cmake`, which strip the
+// extension off `get_filename_component(... NAME)` with `\.[^.]*$` — hence the
+// basename-only scope here, so a dot in a parent directory can never eat the
+// filename. That regex takes a leading-dot-only stem (`.hpp`) down to empty, so
+// the strip is unconditional rather than skipping a dot at position 0; `.hpp`
+// is the input the two spellings would otherwise diverge on.
+std::string_view pathStem(std::string_view path) {
+    std::string_view stem = path.substr(pathDirPrefix(path).size());
+    const size_t dot = stem.find_last_of('.');
+    return dot == std::string_view::npos ? stem : stem.substr(0, dot);
+}
+
 // The per-run namespace identifier. Every symbol the registry block emits
 // lives in `IRScript::CodegenRegistry::<runId>`, so two codegen runs linked
 // into one binary get distinct mangled names instead of merging (#2609).
@@ -148,20 +168,8 @@ std::string escapeStringLiteral(std::string_view s) {
 // `--registry-namespace` exists to resolve; CMake catches that half at
 // configure time. A stem that sanitizes to a C++ keyword is rejected outright
 // — see `isReservedKeyword` and the check at the `--registry-namespace` read.
-//
-// This must agree byte-for-byte with the CMake-side derivation in
-// `cmake/ir_functions.cmake`, which strips the last extension with
-// `\.[^.]*$`. That regex takes a leading-dot-only stem (`.hpp`) down to empty,
-// so the strip here is unconditional rather than skipping a dot at position 0
-// — `.hpp` is the input the two spellings diverge on.
 std::string deriveRunId(std::string_view outPath) {
-    const size_t slash = outPath.find_last_of("/\\");
-    std::string_view stem =
-        slash == std::string_view::npos ? outPath : outPath.substr(slash + 1);
-    const size_t dot = stem.find_last_of('.');
-    if (dot != std::string_view::npos) {
-        stem = stem.substr(0, dot);
-    }
+    const std::string_view stem = pathStem(outPath);
     std::string id;
     id.reserve(stem.size() + 4);
     for (char c : stem) {
@@ -176,6 +184,21 @@ std::string deriveRunId(std::string_view outPath) {
         id.insert(0, "run_");
     }
     return id;
+}
+
+// The per-component link-time claim symbol (#2609). Spelled once so the
+// header's declaration and the companion .cpp's definition cannot drift apart
+// — the symbol name IS the diagnostic a duplicate-symbol link error prints.
+std::string claimSymbol(const std::string &componentName) {
+    return "C_" + componentName + "_declared_by_more_than_one_codegen_run_in_this_binary";
+}
+
+// Fallback path for the companion claims .cpp when `--out-cpp` is absent: the
+// `--out` path with its last extension replaced by `_claims.cpp`. Under CMake
+// the flag is always passed explicitly (same reason `--registry-namespace` is),
+// so this only has to match `cmake/ir_functions.cmake` for a direct CLI run.
+std::string deriveClaimsCppPath(std::string_view outPath) {
+    return std::string{pathDirPrefix(outPath)} + std::string{pathStem(outPath)} + "_claims.cpp";
 }
 
 // A `--registry-namespace` override has to be a bare C++ identifier — it is
@@ -784,8 +807,47 @@ toComponentSchemas(const std::vector<Component> &comps) {
     return out;
 }
 
+void writeFile(const std::string &path, const std::string &contents) {
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    if (!out) {
+        std::cerr << "lua_codegen: failed to open output '" << path << "'\n";
+        std::exit(2);
+    }
+    out << contents;
+}
+
+// The companion translation unit for the run's component-name claims (#3091).
+// Emitted unconditionally, even with no components: `irreden_lua_codegen()`
+// declares it as an add_custom_command OUTPUT, and CMake requires every
+// declared OUTPUT to actually appear.
+//
+// It includes the generated header rather than re-declaring the symbols, which
+// buys two things: the compiler checks the definitions against the header's
+// declarations, and every codegen run has a permanent second includer of its
+// own header, so no target can quietly acquire a single-TU-only header again.
+void writeClaimsCpp(const std::string &cppPath, const std::string &headerPath, Capture &cap) {
+    const size_t slash = headerPath.find_last_of("/\\");
+    const std::string headerName =
+        slash == std::string::npos ? headerPath : headerPath.substr(slash + 1);
+
+    std::ostringstream os;
+    os << "// AUTO-GENERATED by cmake/lua_codegen — do not edit by hand.\n";
+    os << "// Companion TU for " << headerName << ": holds the single definition of\n";
+    os << "// each component-name claim the header declares (#3091).\n\n";
+    os << "#include \"" << headerName << "\"\n\n";
+    if (!cap.components_.empty()) {
+        os << "namespace IRScript::CodegenClaims {\n\n";
+        for (const auto &c : cap.components_) {
+            os << "const char " << claimSymbol(c.name_) << " = 1;\n";
+        }
+        os << "\n} // namespace IRScript::CodegenClaims\n";
+    }
+    writeFile(cppPath, os.str());
+}
+
 void writeOutput(
     const std::string &outPath,
+    const std::string &cppPath,
     Capture &cap,
     IRLuaCodegen::SystemMode defaultMode,
     const std::string &runId
@@ -1008,16 +1070,18 @@ void writeOutput(
     // `const` is internal-linkage in C++ and would never collide, making the
     // guard silently dead.
     //
-    // Consequence, documented in engine/script/CLAUDE.md: a generated header is
-    // now single-TU-per-target by contract. Including one run's header from two
-    // TUs was legal-but-unused before; it is a duplicate-symbol error now.
+    // Only the *declarations* live here (#3091). The matching definitions go
+    // into the companion .cpp `irreden_lua_codegen()` adds to the target's
+    // sources, so exactly one definition per run reaches the link no matter how
+    // many TUs include this header — while two runs still emit two definitions
+    // of the same symbol into one binary, which is the collision this guard is
+    // for. Defining here instead would also reject a target that legitimately
+    // includes the header from two TUs, under a symbol name naming the wrong
+    // cause.
     if (!cap.components_.empty()) {
         os << "namespace IRScript::CodegenClaims {\n\n";
         for (const auto &c : cap.components_) {
-            const std::string claim =
-                "C_" + c.name_ + "_declared_by_more_than_one_codegen_run_in_this_binary";
-            os << "extern const char " << claim << ";\n";
-            os << "const char " << claim << " = 1;\n";
+            os << "extern const char " << claimSymbol(c.name_) << ";\n";
         }
         os << "\n} // namespace IRScript::CodegenClaims\n\n";
     }
@@ -1110,12 +1174,8 @@ void writeOutput(
     os << "using namespace " << runId << ";\n\n";
     os << "} // namespace IRScript::CodegenRegistry\n";
 
-    std::ofstream out(outPath, std::ios::binary | std::ios::trunc);
-    if (!out) {
-        std::cerr << "lua_codegen: failed to open output '" << outPath << "'\n";
-        std::exit(2);
-    }
-    out << os.str();
+    writeFile(outPath, os.str());
+    writeClaimsCpp(cppPath, outPath, cap);
 }
 
 bool parseModeArg(const std::string &val, IRLuaCodegen::SystemMode &out) {
@@ -1145,6 +1205,16 @@ int main(int argc, char **argv) {
         IRArgs::Common::NONE
     );
     parser.string("--out", "Output .hpp path (required)", "");
+    // #3091: the claim definitions live in a companion TU, not the header, so a
+    // target may include the header from as many TUs as it likes. CMake passes
+    // this explicitly (its add_custom_command has to declare the same path as an
+    // OUTPUT); a direct CLI run gets `deriveClaimsCppPath`'s default.
+    parser.string(
+        "--out-cpp",
+        "Output .cpp path for the component-name claim definitions "
+        "(default: the --out path with '_claims.cpp' for its extension)",
+        ""
+    );
     parser.string(
         "--default-mode", "Default mode for schemas without an explicit mode: codegen | eval",
         "codegen"
@@ -1171,6 +1241,10 @@ int main(int argc, char **argv) {
     if (outPath.empty()) {
         std::cerr << "lua_codegen: --out <output.hpp> is required\n";
         return 1;
+    }
+    std::string cppPath = parser.getString("--out-cpp");
+    if (cppPath.empty()) {
+        cppPath = deriveClaimsCppPath(outPath);
     }
     std::string runId = parser.getString("--registry-namespace");
     const bool runIdWasDerived = runId.empty();
@@ -1327,6 +1401,6 @@ int main(int argc, char **argv) {
         }
     }
 
-    writeOutput(outPath, cap, defaultMode, runId);
+    writeOutput(outPath, cppPath, cap, defaultMode, runId);
     return 0;
 }
