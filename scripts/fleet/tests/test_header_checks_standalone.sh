@@ -23,6 +23,12 @@
 #   - a MULTI-LINE block-commented registry entry    → exit 1 (the registry's
 #     real entries are multi-line `if` conditions, so disabling one wraps
 #     several lines, not one — a same-line-only strip false-cleans this shape)
+#   - a registry entry inside a preprocessor #if    → exit 1, names the kernel
+#     (#2983 — a source-text scan can't evaluate which branch the build
+#     takes, so it must read as absent, not present, same as a comment)
+#   - a registry entry inside #ifdef/#ifndef        → exit 1, same reasoning
+#     (pins the #ifdef/#ifndef spellings the doc comments claim are
+#     symmetric with #if — #if 0 was the only spelling covered until now)
 #   - a registry with no bare "}" terminator line   → exit 1 (EOF guard, not
 #     a silent scan past the function into unrelated string literals)
 #   - a scratch consumer absent from the list       → exit 1, names the kernel
@@ -34,6 +40,12 @@
 #   - a MULTI-LINE block-commented list entry        → exit 1 (disabling a run
 #     of consecutive entries is the natural reason to reach for a block
 #     comment here, and that spans lines)
+#   - a list entry inside a preprocessor #if        → exit 1, names the kernel
+#     (#2983, same reasoning as the registry-side arm)
+#   - a #if literal inside a comment, followed by   → exit 0, entry recognized
+#     a real uncommented list entry                   (#2983 follow-up: the
+#     conditional check must run AFTER the comment-strip, or a commented-out
+#     #if starves conditional_depth and every entry after it reads as absent)
 #   - a hand-wrapped scratch declaration            → exit 1 (the qualifier test
 #     reads the declaration window, not the attribute's line)
 #   - an atomic neighbour on the slot's line        → exit 0 (that qualifier
@@ -308,6 +320,98 @@ assert_contains "$registry_commented_block_multiline_out" "c_registry_commented_
 assert_contains "$registry_commented_block_multiline_out" "no entry in" \
     "a multi-line block-commented registry entry is reported as absent, not present"
 
+# --- a registry entry inside a preprocessor conditional reads as absent -----
+# threadgroupSizeForFunctionName is scanned as source text with no
+# preprocessor, so it cannot evaluate which #if/#ifdef/#ifndef branch the
+# build takes -- an entry that exists only inside one may never reach the
+# compiled binary. It must fail exactly like an omitted entry, the same
+# "read as absent" contract #2899 established for comments (#2983). Direct
+# fixture write, not write_pipeline_cpp, since that helper has no conditional
+# shape.
+REGISTRY_CONDITIONAL="$TMPROOT/registry-conditional"
+make_fixture "$REGISTRY_CONDITIONAL"
+echo '// registry-conditional fixture kernel' \
+    > "$REGISTRY_CONDITIONAL/engine/render/src/shaders/metal/c_registry_conditional.metal"
+cat > "$REGISTRY_CONDITIONAL/engine/render/src/metal/metal_pipeline.cpp" <<'EOF'
+namespace IRRender {
+namespace {
+
+MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
+    if (functionName == "c_fixture_kernel") {
+        return MTL::Size(16, 16, 1);
+    }
+#if 0
+    if (functionName == "c_registry_conditional") {
+        return MTL::Size(16, 16, 1);
+    }
+#endif
+    return MTL::Size(1, 1, 1);
+}
+
+bool functionUsesImageAtomicScratch(const std::string &functionName) {
+    return false
+           || functionName == "c_fixture_kernel"
+        ;
+}
+
+}  // namespace
+}  // namespace IRRender
+EOF
+registry_conditional_out=$(run_checker "$REGISTRY_CONDITIONAL")
+registry_conditional_rc=$?
+assert_eq "1" "$registry_conditional_rc" \
+    "registry entry inside a preprocessor conditional exits 1"
+assert_contains "$registry_conditional_out" "c_registry_conditional" \
+    "failure names the kernel whose registry entry is inside a conditional"
+assert_contains "$registry_conditional_out" "no entry in" \
+    "a conditional registry entry is reported as absent, not present"
+
+# --- the same reads as absent under #ifdef/#ifndef, not just #if -----------
+# Both .cmake checkers' doc comments claim symmetry across all three
+# preprocessor-conditional spellings (#if/#ifdef/#ifndef), but until now the
+# suite only ever exercised #if 0 (nit carried across three reviews on
+# #2984). Pin the #ifdef spelling on the registry checker; the underlying
+# regex is `^[ \t]*#[ \t]*(if|ifdef|ifndef)([ \t(]|$)`, shared verbatim by
+# the scratch-consumer checker, so one arm covers both.
+REGISTRY_CONDITIONAL_IFDEF="$TMPROOT/registry-conditional-ifdef"
+make_fixture "$REGISTRY_CONDITIONAL_IFDEF"
+echo '// registry-conditional-ifdef fixture kernel' \
+    > "$REGISTRY_CONDITIONAL_IFDEF/engine/render/src/shaders/metal/c_registry_conditional_ifdef.metal"
+cat > "$REGISTRY_CONDITIONAL_IFDEF/engine/render/src/metal/metal_pipeline.cpp" <<'EOF'
+namespace IRRender {
+namespace {
+
+MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
+    if (functionName == "c_fixture_kernel") {
+        return MTL::Size(16, 16, 1);
+    }
+#ifdef IR_OLD_METAL_PATH
+    if (functionName == "c_registry_conditional_ifdef") {
+        return MTL::Size(16, 16, 1);
+    }
+#endif
+    return MTL::Size(1, 1, 1);
+}
+
+bool functionUsesImageAtomicScratch(const std::string &functionName) {
+    return false
+           || functionName == "c_fixture_kernel"
+        ;
+}
+
+}  // namespace
+}  // namespace IRRender
+EOF
+registry_conditional_ifdef_out=$(run_checker "$REGISTRY_CONDITIONAL_IFDEF")
+registry_conditional_ifdef_rc=$?
+assert_eq "1" "$registry_conditional_ifdef_rc" \
+    "registry entry inside an #ifdef conditional exits 1"
+assert_contains "$registry_conditional_ifdef_out" "c_registry_conditional_ifdef" \
+    "failure names the kernel whose registry entry is inside an #ifdef"
+assert_contains "$registry_conditional_ifdef_out" "no entry in" \
+    "an #ifdef-guarded registry entry is reported as absent, not present"
+
+
 # --- a registry without its bare "}" terminator fails, not false-cleans ------
 # The function-body scan ends on a line that is exactly "}"; if the function
 # is ever indented (namespace style change, moved into a block), the scan
@@ -455,6 +559,116 @@ assert_contains "$scratch_commented_block_multiline_out" "c_scratch_commented_mu
     "failure names the consumer whose entry was multi-line block-commented out"
 assert_contains "$scratch_commented_block_multiline_out" "absent from functionUsesImageAtomicScratch" \
     "a multi-line block-commented entry is reported as absent, not present"
+
+# --- a scratch list entry inside a preprocessor conditional reads as absent --
+# Same reasoning as the registry-side arm above (#2983): functionUsesImage-
+# AtomicScratch is scanned as source text with no preprocessor, so an entry
+# that exists only inside #if/#ifdef/#ifndef must fail exactly like an
+# omitted entry. The kernel itself declares the scratch (so it would
+# otherwise be a genuine expected consumer) and is registered unconditionally
+# in threadgroupSizeForFunctionName -- only its list entry is conditional.
+# Direct fixture write, not write_pipeline_cpp, since that helper has no
+# conditional shape.
+SCRATCH_CONDITIONAL="$TMPROOT/scratch-conditional"
+make_fixture "$SCRATCH_CONDITIONAL"
+cat > "$SCRATCH_CONDITIONAL/engine/render/src/shaders/metal/c_scratch_conditional.metal" <<'EOF'
+kernel void c_scratch_conditional(
+    device atomic_int* distanceScratch [[buffer(16)]],
+    uint3 gid [[thread_position_in_grid]]
+) {}
+EOF
+cat > "$SCRATCH_CONDITIONAL/engine/render/src/metal/metal_pipeline.cpp" <<'EOF'
+namespace IRRender {
+namespace {
+
+MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
+    if (functionName == "c_fixture_kernel") {
+        return MTL::Size(16, 16, 1);
+    }
+    if (functionName == "c_scratch_conditional") {
+        return MTL::Size(16, 16, 1);
+    }
+    return MTL::Size(1, 1, 1);
+}
+
+bool functionUsesImageAtomicScratch(const std::string &functionName) {
+    return false
+           || functionName == "c_fixture_kernel"
+#if 0
+           || functionName == "c_scratch_conditional"
+#endif
+        ;
+}
+
+}  // namespace
+}  // namespace IRRender
+EOF
+scratch_conditional_out=$(run_checker "$SCRATCH_CONDITIONAL")
+scratch_conditional_rc=$?
+assert_eq "1" "$scratch_conditional_rc" \
+    "scratch list entry inside a preprocessor conditional exits 1"
+assert_contains "$scratch_conditional_out" "c_scratch_conditional" \
+    "failure names the consumer whose list entry is inside a conditional"
+assert_contains "$scratch_conditional_out" "absent from functionUsesImageAtomicScratch" \
+    "a conditional list entry is reported as absent, not present"
+
+# --- a #if literal inside a comment must not starve a later real entry -------
+# The bug this arm pins (#2983 follow-up): the conditional check originally
+# ran BEFORE the comment-strip, so a #if-shaped line sitting inside a /* */
+# comment was misread as a live preprocessor directive. Since the comment's
+# own "*/" line never reaches the #endif branch either (it gets skipped by
+# the still-elevated conditional_depth before the comment-strip can close
+# in_block_comment), conditional_depth got stuck above zero for the rest of
+# the function body and every subsequent real, uncommented, non-conditional
+# entry was silently dropped. c_scratch_after_comment_conditional is a
+# genuine consumer (declares the atomic scratch, registered unconditionally)
+# whose list entry sits right after such a comment -- it must be recognized,
+# not read as absent.
+SCRATCH_AFTER_COMMENT_CONDITIONAL="$TMPROOT/scratch-after-comment-conditional"
+make_fixture "$SCRATCH_AFTER_COMMENT_CONDITIONAL"
+cat > "$SCRATCH_AFTER_COMMENT_CONDITIONAL/engine/render/src/shaders/metal/c_scratch_after_comment_conditional.metal" <<'EOF'
+kernel void c_scratch_after_comment_conditional(
+    device atomic_int* distanceScratch [[buffer(16)]],
+    uint3 gid [[thread_position_in_grid]]
+) {}
+EOF
+cat > "$SCRATCH_AFTER_COMMENT_CONDITIONAL/engine/render/src/metal/metal_pipeline.cpp" <<'EOF'
+namespace IRRender {
+namespace {
+
+MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
+    if (functionName == "c_fixture_kernel") {
+        return MTL::Size(16, 16, 1);
+    }
+    if (functionName == "c_scratch_after_comment_conditional") {
+        return MTL::Size(16, 16, 1);
+    }
+    return MTL::Size(1, 1, 1);
+}
+
+bool functionUsesImageAtomicScratch(const std::string &functionName) {
+    return false
+           || functionName == "c_fixture_kernel"
+        /*
+        #if OLD_APPROACH_NOTE
+        */
+        || functionName == "c_scratch_after_comment_conditional"
+        ;
+}
+
+}  // namespace
+}  // namespace IRRender
+EOF
+scratch_after_comment_conditional_out=$(run_checker "$SCRATCH_AFTER_COMMENT_CONDITIONAL")
+scratch_after_comment_conditional_rc=$?
+assert_eq "0" "$scratch_after_comment_conditional_rc" \
+    "a #if literal inside a comment does not starve a later real list entry"
+assert_contains "$scratch_after_comment_conditional_out" \
+    "Metal scratch-consumer check scanned 2 compute kernel(s)" \
+    "the post-comment kernel was actually scanned, not skipped"
+assert_absent "$scratch_after_comment_conditional_out" \
+    "absent from functionUsesImageAtomicScratch" \
+    "the entry after the comment is recognized, not read as absent"
 
 # --- a hand-wrapped scratch declaration is still caught ----------------------
 # The qualifier test reads the parameter's declaration window, not the physical

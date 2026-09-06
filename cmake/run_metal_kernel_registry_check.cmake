@@ -57,6 +57,7 @@ set(found_registry FALSE)
 set(found_terminator FALSE)
 set(registered_kernels "")
 set(in_block_comment FALSE)
+set(conditional_depth 0)
 foreach(line IN LISTS pipeline_lines)
     if(NOT in_registry)
         if(line MATCHES "MTL::Size[ \t]+threadgroupSizeForFunctionName\\(")
@@ -96,6 +97,26 @@ foreach(line IN LISTS pipeline_lines)
     if(line MATCHES "/\\*")
         string(REGEX REPLACE "/\\*.*$" "" line "${line}")
         set(in_block_comment TRUE)
+    endif()
+    # A preprocessor conditional defeats this scan the same way a comment
+    # does: an entry inside #if/#ifdef/#ifndef may never reach the compiled
+    # binary, and a source-text pass has no preprocessor to evaluate which
+    # branch the build takes. Skip conditional lines entirely -- a disabled
+    # entry then reads as absent, the same way a commented-out entry reads
+    # (#2899), and falls through to the existing "no entry in ..." failure
+    # below, which already names it.
+    if(line MATCHES "^[ \t]*#[ \t]*(if|ifdef|ifndef)([ \t(]|$)")
+        math(EXPR conditional_depth "${conditional_depth} + 1")
+        continue()
+    endif()
+    if(line MATCHES "^[ \t]*#[ \t]*endif([ \t]|$)")
+        if(conditional_depth GREATER 0)
+            math(EXPR conditional_depth "${conditional_depth} - 1")
+        endif()
+        continue()
+    endif()
+    if(conditional_depth GREATER 0)
+        continue()
     endif()
     string(REGEX MATCHALL "\"[A-Za-z0-9_]+\"" quoted_names "${line}")
     foreach(quoted_name IN LISTS quoted_names)
