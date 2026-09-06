@@ -375,8 +375,9 @@ closes:
    versus an SDF-side rotation-anchor delta #2545 did not cover — #2645 settled
    it on the first by zoom sweep: the deviation is flat at exactly 2.00 px over
    a 16x zoom range, which a world-space anchor delta cannot be. The twin is
-   reported rather than gated; see §"Not a deviation: the SDF twin's flat
-   2.00px floor (#2645)" below.
+   therefore gated at that floor plus the standard budget (`SDF_BOUND_GAME_PX`,
+   #2851) rather than at `--max-deviation`; see §"Not a deviation: the SDF
+   twin's flat 2.00px floor (#2645)" below.
 
 Fix chain and acceptance gates: epic #2544 (P1 #2545 → P2 #2546 → P3 #2547 →
 P4 #2548, cursor-pivot true-depth latch + indicator). Each child flips its
@@ -388,11 +389,21 @@ This section shrinks as they land.
 ### Not a deviation: the SDF twin's flat 2.00px floor (#2645)
 
 `focus-ctr`'s SDF twin (`--pivot-verify-sdf`) draws a DRIFT verdict from
-`jitter_probe` at 2.00px while the voxel twin on the same explicit focus pins
-at ~1px. This is **not** a pivot defect and no pivot fix can move it — it is
-the SDF path's rasterization quantum, so the twin is **reported, not gated**
-(`SDF_GATED` in `scripts/pivot-verify.py`) and the harness prints it as
-`REPORT` rather than failing the run.
+`jitter_probe` at 2.00px against the default 1.5px threshold, while the voxel
+twin on the same explicit focus pins at ~1px. This is **not** a pivot defect
+and no pivot fix can move it — it is the SDF path's rasterization quantum. So
+the twin is gated at **its own floor-aware bound** rather than at
+`--max-deviation`: `SDF_BOUND_GAME_PX` in `scripts/pivot-verify.py`, one whole
+game-resolution pixel of floor plus the same 1.5px budget every gated voxel
+pass gets (#2851). The bound is stated in game px and scaled by the run's own
+`outputScaleFactor`, so the 2x and 1x host readings below are the same figure.
+
+Between #2648 and #2851 the twin was **ungated** instead — dropped from the
+exit code entirely. That over-shot: it made the twin the only pass in the
+harness that could not fail at any deviation, so nothing machine-checked the
+SDF path's pivot convention. Bounding the floor meets #2648's objective (the
+harness's red means an open pivot defect, not this quantum) without the blind
+spot.
 
 The discriminator is zoom. A rotation-anchor delta of Δ world units projects to
 Δ·zoom screen px, so it must scale with zoom; a destination-grid quantization
@@ -421,9 +432,11 @@ pixel and the one game-pixel step next to it).
 
 Because the quantum is one *game-resolution* pixel, the framebuffer figure is
 host-dependent: on a 1x (non-HiDPI) host the same floor should read ~1.00px and
-fall under the 1.5px threshold on its own. A Linux/GL re-measure that reports
-~1.00px is therefore agreeing with this entry, not contradicting it — the
-un-gating is keyed on the floor being a floor, not on the specific number.
+fall under the 1.5px threshold on its own. A Linux/GL or Windows/GL re-measure
+that reports ~1.00px is therefore agreeing with this entry, not contradicting
+it — the bound is keyed on the floor being a floor, not on the specific
+framebuffer number, which is why `SDF_BOUND_GAME_PX` is stated in game px and
+multiplied by the run's measured `outputScaleFactor`.
 
 The voxel twin has a lattice of its own to land on: its cells sit on exact
 integer world positions, so its silhouette re-forms identically at each yaw and
@@ -444,9 +457,10 @@ Closing it would mean resolving the silhouette below one destination pixel —
 supersampling / conservative rasterization on the SDF path, which is the same
 principled root fix already deferred to epic **#1933** for the #1883 corner
 drift and the #2469 centroid residual. It is not reachable by any change to the
-pivot math, which is what this harness exists to gate. The twin keeps running
-because the A/B against the voxel path is the useful signal; only its
-contribution to the exit code is dropped.
+pivot math, which is what this harness exists to gate. So the twin keeps
+running with the A/B against the voxel path as its diagnostic, and its gate is
+raised past the floor rather than removed — the exit-code contribution stays,
+which is what still catches an SDF-side pivot regression (#2851).
 
 ## History
 

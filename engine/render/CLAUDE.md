@@ -682,11 +682,14 @@ that is valid for it: `jitter_probe --stationary` whole-silhouette invariance
 where the probe rotates about a point on its own axis, and the demo's
 `[pivot-focus-assert]` pinned-point check — derived focus vs the analytic
 ray/surface intersection — for the default-pivot blocks, whose silhouettes
-legitimately orbit the pin. The SDF twin is **reported, not gated** — with no
-voxel lattice to land on, its silhouette is quantized by the destination pixel
-grid alone, a flat one game-resolution pixel at every zoom — 2.00px on a 2x
-(HiDPI) host, 1.00px on a 1x one, both measured — that no
-pivot fix can move (#2645). No reference images. Contract + known deviations:
+legitimately orbit the pin. The SDF twin is gated at **its own floor-aware
+bound** (`SDF_BOUND_GAME_PX`) rather than at `--max-deviation` — with no voxel
+lattice to land on, its silhouette is quantized by the destination pixel grid
+alone, a flat one game-resolution pixel at every zoom — 2.00px on a 2x (HiDPI)
+host, 1.00px on a 1x one, both measured — that no pivot fix can move (#2645),
+so the bound is that floor plus the standard 1.5px budget, in game px scaled by
+the run's own `outputScaleFactor` (#2851). No reference images. Contract +
+known deviations:
 [`docs/design/camera-yaw-pivot.md`](../../docs/design/camera-yaw-pivot.md)
 (epic #2544).
 
