@@ -51,6 +51,12 @@ set -euo pipefail
 
 die() { echo "fleet-positive-control: $*" >&2; exit 2; }
 
+# --- Shared helpers (canonicalize_path_spelling) ---
+_FLEET_COMMON_SH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/fleet-common.sh"
+[[ -f "$_FLEET_COMMON_SH" ]] || die "missing fleet-common.sh (expected next to fleet-positive-control)"
+# shellcheck source=fleet-common.sh
+source "$_FLEET_COMMON_SH"
+
 TEST_FILE=""
 REF=""
 INCLUDES=()
@@ -84,6 +90,11 @@ done
 [[ -f "$TEST_FILE" ]] || die "test file not found: $TEST_FILE"
 
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || die "not inside a git working tree"
+# Native-Windows/MSYS2 spells the same tree two ways (`git` prints `C:/Users/x`,
+# `pwd` prints `/c/Users/x`); normalize both sides to one spelling before the
+# TEST_REL prefix-strip below, or the strip is a no-op for every suite and every
+# test file reads as "outside the repo" (#3047). Inert on macOS/Linux.
+REPO_ROOT=$(canonicalize_path_spelling "$REPO_ROOT")
 git -C "$REPO_ROOT" rev-parse --verify --quiet "$REF^{commit}" >/dev/null \
     || die "not a commit-ish: $REF"
 REF_SHA=$(git -C "$REPO_ROOT" rev-parse --short "$REF^{commit}")
@@ -92,8 +103,10 @@ REF_SHA=$(git -C "$REPO_ROOT" rev-parse --short "$REF^{commit}")
 REF_LABEL="$REF"
 [[ "$REF_SHA" == "$REF"* ]] || REF_LABEL="$REF ($REF_SHA)"
 
-# Absolute, so the copy below is immune to the cd into the staged tree.
-TEST_ABS=$(cd "$(dirname "$TEST_FILE")" && pwd)/$(basename "$TEST_FILE")
+# Absolute, so the copy below is immune to the cd into the staged tree. Same
+# spelling as REPO_ROOT above (canonicalize_path_spelling), so the containment
+# strip below matches instead of misreading a same-tree path as outside it.
+TEST_ABS=$(canonicalize_path_spelling "$(cd "$(dirname "$TEST_FILE")" && pwd)")/$(basename "$TEST_FILE")
 # Where the suite sits relative to the repo, so it lands in the same spot in
 # the staged tree and its own $(dirname $0)/.. resolution still works.
 TEST_REL=${TEST_ABS#"$REPO_ROOT"/}

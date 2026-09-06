@@ -31,6 +31,8 @@ LIB_ASSERT="$SCRIPT_DIR/tests/lib_assert.sh"
 
 # shellcheck source=lib_assert.sh
 source "$LIB_ASSERT"
+# shellcheck source=../fleet-common.sh
+source "$SCRIPT_DIR/fleet-common.sh"
 
 TMPROOT=""
 STRAYS=()
@@ -99,6 +101,45 @@ mkdir -p "$PYONLY"
 touch "$PYONLY/fleet_branch_match.py"
 probe_guard "$PYONLY"
 assert_eq "$RC" "0" "modules-without-wrappers does not trip the guard"
+
+# --- containment computation survives mixed Windows path spellings (#3047) --
+# `git rev-parse --show-toplevel` yields REPO_ROOT in the Windows drive form
+# (C:/Users/x) while `cd ... && pwd` yields TEST_ABS in the MSYS2 POSIX drive
+# form (/c/Users/x) on the same native-Windows host. A raw prefix-strip of one
+# off the other is a no-op for every suite, so every test file reads as
+# "outside the repo" (pre-fix, measured). Mirrors the wrapper's own
+# REPO_ROOT/TEST_ABS/TEST_REL derivation (fleet-positive-control) against
+# literal path strings — hermetic, no live git spelling dependence, so this
+# runs red-then-green on every host regardless of which spelling git and pwd
+# happen to agree on there.
+test_rel() {
+    local root_raw="$1" test_dir_raw="$2" test_base="$3"
+    local root test_abs test_rel
+    root=$(canonicalize_path_spelling "$root_raw")
+    test_abs=$(canonicalize_path_spelling "$test_dir_raw")/$test_base
+    test_rel=${test_abs#"$root"/}
+    if [[ "$test_rel" == "$test_abs" ]]; then
+        printf 'OUTSIDE'
+    else
+        printf '%s' "$test_rel"
+    fi
+}
+
+echo "--- the containment computation matches across mixed root/suite spellings ---"
+assert_eq "$(test_rel 'C:/Users/evinj/src/IrredenEngine' \
+                       '/c/Users/evinj/src/IrredenEngine/scripts/fleet/tests' \
+                       'test_derive_host.sh')" \
+          "scripts/fleet/tests/test_derive_host.sh" \
+          "Windows-form root + MSYS-form suite dir -> relative path (was OUTSIDE)"
+# reverse spelling (defensive symmetry): MSYS-form root + Windows-form suite dir
+assert_eq "$(test_rel '/c/Users/evinj/src/IrredenEngine' \
+                       'C:/Users/evinj/src/IrredenEngine/scripts/fleet/tests' \
+                       'test_derive_host.sh')" \
+          "scripts/fleet/tests/test_derive_host.sh" \
+          "MSYS-form root + Windows-form suite dir -> relative path"
+# a genuinely outside suite still reports OUTSIDE, same-spelling or not
+assert_eq "$(test_rel 'C:/Users/evinj/src/IrredenEngine' '/c/somewhere/else' 'test_x.sh')" \
+          "OUTSIDE" "an unrelated suite dir still reads as outside the repo"
 
 # --- the wrapper: fleet-positive-control ------------------------------------
 echo "--- usage errors exit 2 ---"
