@@ -145,8 +145,12 @@ inline vec4 lightGatherStateColor(IRSystem::LightGatherState state, float residu
         return vec4(0.0f, 1.0f, 0.0f, 0.9f);
     case IRSystem::LightGatherState::BOUNDARY_DISCOUNTED:
         return vec4(1.0f, 1.0f, 0.0f, IRMath::clamp(residual, 0.15f, 0.9f));
+    case IRSystem::LightGatherState::BOUNDARY_RELOCATED:
+        return vec4(0.0f, 1.0f, 1.0f, IRMath::clamp(residual, 0.15f, 0.9f));
     case IRSystem::LightGatherState::SKIPPED:
         return vec4(1.0f, 0.0f, 0.0f, 0.7f);
+    case IRSystem::LightGatherState::SKIPPED_OCCLUDED:
+        return vec4(1.0f, 0.5f, 0.0f, 0.7f);
     }
     return vec4(1.0f, 0.0f, 1.0f, 0.9f); // unreachable — magenta flags a new enum value
 }

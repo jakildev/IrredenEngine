@@ -71,7 +71,13 @@ named lookup. Holds shaders, buffers, textures, VAOs, etc.
 │        residual alpha (exact under the Manhattan metric), so     │
 │        contribution fades continuously instead of popping; only  │
 │        lights whose residual can't reach the window are skipped  │
-│        (seeded/eligible counts on the perf HUD). SDF blockers    │
+│        (seeded/eligible counts on the perf HUD).                 │
+│        #2330: a clamped cell that lands inside solid geometry is │
+│        relocated to the nearest unoccluded window-face cell      │
+│        (never an interior cell) rather than seeding a cell the   │
+│        propagate gate would trap; a light with no reachable cell │
+│        within its own residual budget is skipped                 │
+│        (SKIPPED_OCCLUDED). SDF blockers                          │
 │        (`C_ShapeDescriptor + C_LightBlocker(blocksLOS_=true)`    │
 │        entities) are CPU-rasterized into a second bitfield in    │
 │        the same SSBO; the propagate shader OR's both bitfields   │
