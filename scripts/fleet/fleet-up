@@ -340,17 +340,36 @@ fi
 # True when a minimal print-mode call to $1 succeeds. Costs one tiny
 # request (~a cent, ~5-15 s). Portable timeout: stock macOS has no
 # coreutils `timeout`, so background the probe and watchdog-kill it.
+#
+# Side effect: on success, RESOLVED_MODEL_ID holds the concrete model id
+# the CLI resolved $1 to (empty when unparsable). The class table stores
+# tier ALIASES, which resolve per the installed CLI — so this is the one
+# place the fleet can see which release a class actually landed on; a
+# stale CLI otherwise pins last month's model silently.
 probe_model() {
-    local model="$1" pid watchdog rc=1
-    claude --model "$model" -p 'Reply with exactly: ok' >/dev/null 2>&1 &
+    local model="$1" pid watchdog rc=1 out
+    out=$(mktemp "${TMPDIR:-/tmp}/fleet-model-probe.XXXXXX")
+    RESOLVED_MODEL_ID=""
+    claude --model "$model" -p 'Reply with exactly: ok' \
+        --output-format json >"$out" 2>/dev/null &
     pid=$!
     ( sleep "${FLEET_MODEL_PROBE_TIMEOUT:-90}"; kill "$pid" 2>/dev/null || true ) &
     watchdog=$!
     if wait "$pid"; then rc=0; fi
     kill "$watchdog" 2>/dev/null || true
     wait "$watchdog" 2>/dev/null || true
+    if [[ "$rc" -eq 0 ]]; then
+        # First key of the result's "modelUsage" object = the model billed.
+        RESOLVED_MODEL_ID=$(sed -n 's/.*"modelUsage":{"\([^"]*\)".*/\1/p' "$out" | head -n 1)
+    fi
+    rm -f "$out"
     return "$rc"
 }
+
+# Resolved-id record per class, threaded into the end-of-run summary.
+FLEET_RESOLVED_FABLE=""
+FLEET_RESOLVED_OPUS=""
+FLEET_RESOLVED_SONNET=""
 
 # Walk FABLE_MODEL_CANDIDATES; first model that answers wins. The probe
 # is what makes the Fable->Opus failover automatic when the plan loses
@@ -375,7 +394,8 @@ else
         printf 'fleet-up: probing %s ... ' "$_candidate"
         if probe_model "$_candidate"; then
             FLEET_MODEL_FABLE="$_candidate"
-            echo "ok — fable class -> $FLEET_MODEL_FABLE"
+            FLEET_RESOLVED_FABLE="$RESOLVED_MODEL_ID"
+            echo "ok — fable class -> $FLEET_MODEL_FABLE${FLEET_RESOLVED_FABLE:+ (resolves to $FLEET_RESOLVED_FABLE)}"
             break
         fi
         echo "unavailable"
@@ -385,6 +405,22 @@ fi
 
 FLEET_MODEL_OPUS="${FLEET_MODEL_OPUS:-$OPUS_CLASS_DEFAULT}"
 FLEET_MODEL_SONNET="${FLEET_MODEL_SONNET:-$SONNET_CLASS_DEFAULT}"
+
+# Resolve what the opus/sonnet aliases land on and say so. The aliases
+# mean "newest of tier per the installed CLI", so the resolved id is the
+# only boot-time signal that the CLI itself has gone stale (see the
+# FLEET.md "Model split" currency note). Two extra probe calls, cold
+# boot only; FLEET_MODEL_PROBE=0 skips them along with the fable ladder.
+if [[ "${FLEET_MODEL_PROBE:-1}" != "0" ]]; then
+    if probe_model "$FLEET_MODEL_OPUS"; then
+        FLEET_RESOLVED_OPUS="$RESOLVED_MODEL_ID"
+        echo "fleet-up: opus class -> $FLEET_MODEL_OPUS${FLEET_RESOLVED_OPUS:+ (resolves to $FLEET_RESOLVED_OPUS)}"
+    fi
+    if probe_model "$FLEET_MODEL_SONNET"; then
+        FLEET_RESOLVED_SONNET="$RESOLVED_MODEL_ID"
+        echo "fleet-up: sonnet class -> $FLEET_MODEL_SONNET${FLEET_RESOLVED_SONNET:+ (resolves to $FLEET_RESOLVED_SONNET)}"
+    fi
+fi
 
 # Dispatch models for the bounded fixed-model roles. Merger work is
 # mechanical-first (fleet-rebase clears clean rebases for zero tokens;
@@ -1871,10 +1907,10 @@ attach with:  tmux attach -t ${SESSION}
 model classes (resolved this run — tasks route by class via the
 fleet:fable / fleet:opus / fleet:sonnet labels and Model:/Effort: fields;
 the dispatcher launches each worker iteration with its task's class):
-  fable  — ${FLEET_MODEL_FABLE}  (architects; needs-plan planning; fleet:fable tasks)
+  fable  — ${FLEET_MODEL_FABLE}${FLEET_RESOLVED_FABLE:+ = ${FLEET_RESOLVED_FABLE}}  (architects; needs-plan planning; fleet:fable tasks)
            dispatched-iteration fallback: ${FLEET_FABLE_FALLBACK:-none}
-  opus   — ${FLEET_MODEL_OPUS}  (default task class; final reviewer)
-  sonnet — ${FLEET_MODEL_SONNET}  (sonnet tasks, first-pass review, smoke, merger)
+  opus   — ${FLEET_MODEL_OPUS}${FLEET_RESOLVED_OPUS:+ = ${FLEET_RESOLVED_OPUS}}  (default task class; final reviewer)
+  sonnet — ${FLEET_MODEL_SONNET}${FLEET_RESOLVED_SONNET:+ = ${FLEET_RESOLVED_SONNET}}  (sonnet tasks, first-pass review, smoke, merger)
   pin classes with FLEET_MODEL_FABLE / _OPUS / _SONNET in
   ~/.fleet/fleet-up.conf (pinning fable skips the probe); cap concurrent
   fable iterations with FLEET_CONCURRENCY_MODEL_FABLE (default 1).

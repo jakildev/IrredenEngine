@@ -3,7 +3,7 @@
 # (--resolve-class, backed by resolve_worker_class + fleet_task_class.py).
 #
 # Covers:
-#   - fable task resolves to the fable model at xhigh
+#   - fable task resolves to the fable model at effort high (work default)
 #   - fable cap reached -> lane serves the next non-fable task (more=1)
 #   - only cap-blocked fable work -> defer (keep trigger, no dispatch)
 #   - per-task Effort: override threads through to the dispatch
@@ -77,12 +77,12 @@ resolve() {
     "$DISPATCHER" --resolve-class "$1"
 }
 
-# --- T1: fable task -> fable model at xhigh ---------------------------------
+# --- T1: fable task -> fable model at the high work default -----------------
 echo "T1: fable task resolves to fable model"
 write_slice worker '{"tasks_open":[{"issue":"#10","model":"fable","effort":null,"owner":"free","blocked":false}],"feedback_prs":[],"needs_plan":[]}'
 assert_eq "$(resolve worker)" \
-    "class=fable model=claude-fable-5[1m] effort=xhigh more=0 defer=0 count=1 plan=0" \
-    "uncapped fable task dispatches on fable at xhigh"
+    "class=fable model=claude-fable-5[1m] effort=high more=0 defer=0 count=1 plan=0" \
+    "uncapped fable task dispatches on fable at the high work default"
 
 # --- T2: fable cap reached -> next non-fable task ---------------------------
 echo "T2: fable cap diverts to the next class"
@@ -90,7 +90,7 @@ write_slice worker '{"tasks_open":[{"issue":"#10","model":"fable","effort":null,
 printf '{"role":"worker","pane":"%%9","class":"fable","dispatched_at":"x"}\n' \
     > "$FLEET_STATE_DIR/dispatch/pane-9.json"
 assert_eq "$(resolve worker)" \
-    "class=opus model=claude-opus-4-8[1m] effort=xhigh more=0 defer=0 count=1 plan=0" \
+    "class=opus model=claude-opus-4-8[1m] effort=high more=0 defer=0 count=1 plan=0" \
     "capped fable skipped; opus task served; cap-blocked fable does NOT hold the trigger (more=0)"
 
 # --- T3: only capped fable work -> defer -------------------------------------
@@ -131,7 +131,7 @@ assert_eq "$(resolve merger)" "class= model= effort= more=0 defer=0 count= plan=
 echo "T8: --resolve-class <role> <exclude> serves the next class"
 write_slice worker '{"tasks_open":[{"issue":"#10","model":"opus","effort":null,"owner":"free","blocked":false},{"issue":"#11","model":"sonnet","effort":null,"owner":"free","blocked":false}],"feedback_prs":[],"needs_plan":[]}'
 assert_eq "$("$DISPATCHER" --resolve-class worker)" \
-    "class=opus model=claude-opus-4-8[1m] effort=xhigh more=1 defer=0 count=1 plan=0" \
+    "class=opus model=claude-opus-4-8[1m] effort=high more=1 defer=0 count=1 plan=0" \
     "no exclude -> opus elected, sonnet is 'more'"
 assert_eq "$("$DISPATCHER" --resolve-class worker opus)" \
     "class=sonnet model=sonnet effort=high more=0 defer=0 count=1 plan=0" \
@@ -245,7 +245,7 @@ esac
 echo "T18: semantic-conflict-only slice dispatches opus (step-1c pressure)"
 write_slice worker '{"tasks_open":[],"feedback_prs":[],"needs_plan":[],"semantic_conflict_prs":[{"number":2417,"repo":"engine","labels":["fleet:semantic-conflict"]}]}'
 assert_eq "$(resolve worker)" \
-    "class=opus model=claude-opus-4-8[1m] effort=xhigh more=0 defer=0 count=1 plan=0" \
+    "class=opus model=claude-opus-4-8[1m] effort=high more=0 defer=0 count=1 plan=0" \
     "conflicted PR alone elects opus with count=1"
 
 # --- T19: FLEET_MODEL_* unset -> fleet-common.sh alias-default fallback -------
@@ -264,10 +264,10 @@ resolve_unpinned() { # $1 = task model class
         -u OPUS_MODEL -u SONNET_MODEL "$DISPATCHER" --resolve-class worker
 }
 assert_eq "$(resolve_unpinned fable)" \
-    "class=fable model=fable[1m] effort=xhigh more=0 defer=0 count=1 plan=0" \
+    "class=fable model=fable[1m] effort=high more=0 defer=0 count=1 plan=0" \
     "unpinned fable resolves to FLEET_FABLE_CANDIDATES_DEFAULT[0]=fable[1m]"
 assert_eq "$(resolve_unpinned opus)" \
-    "class=opus model=opus[1m] effort=xhigh more=0 defer=0 count=1 plan=0" \
+    "class=opus model=opus[1m] effort=high more=0 defer=0 count=1 plan=0" \
     "unpinned opus resolves to FLEET_OPUS_CLASS_DEFAULT=opus[1m]"
 assert_eq "$(resolve_unpinned sonnet)" \
     "class=sonnet model=sonnet effort=high more=0 defer=0 count=1 plan=0" \

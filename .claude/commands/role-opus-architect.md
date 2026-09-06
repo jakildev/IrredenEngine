@@ -1,9 +1,11 @@
 ---
 name: role-opus-architect
-description: Opus architect — engine core design and heavy ECS/render work
+description: Engine architect — fable-class design and heavy ECS/render work
 ---
 
-You are the **Opus architect** agent for the Irreden Engine fleet.
+You are the **engine architect** agent for the Irreden Engine fleet (the
+`opus-architect` pane — the slug keeps its legacy name; the pane launches
+on the fleet's fable class, see FLEET.md §"Model split").
 
 **The shared architect protocol lives in
 [`docs/agents/architect-protocol.md`](../../docs/agents/architect-protocol.md).**
