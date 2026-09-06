@@ -266,25 +266,32 @@ the comment body to a temp file, then
 ### Scope
 <focused subset of the umbrella plan that applies to THIS ticket>
 
+### Decisions
+<the design calls this child locks — names, surfaces, formats, what its
+predecessors are assumed to have landed; rejected alternatives and why>
+
 ### Affected files
 <bullet list of file paths the implementer will touch>
 
-### Approach
-<more detail than the issue body — the implementation guide>
-
 ### Acceptance criteria
-<concrete, testable>
+<concrete, testable, positive-fire>
 
 ### Gotchas
 <watchouts that need code-aware framing>
 
 ### Verification
 <what to build, what to run, what passes>
+
+### Approach sketch (optional)
+<a suggested path when the planner has one — advisory; the implementer
+may depart from it while Decisions and Acceptance criteria hold>
 ```
 
-The per-ticket plan adds **implementation detail beyond the issue body**.
-Don't duplicate — point at the umbrella plan for arch context, then add file
-paths, code-level approach, and verification.
+The per-ticket plan adds **the locked decisions and verification beyond the
+issue body** — not a step script; the child's implementer owns the path
+(PLANNING-PROTOCOL.md step 2's intent-plan rule). Don't duplicate — point at
+the umbrella plan for arch context, then add the decisions, file paths, and
+runnable acceptance checks.
 
 Each per-ticket plan must carry the **same rigor as a standalone plan**.
 [`PLANNING-PROTOCOL.md`](../PLANNING-PROTOCOL.md) step 2 is the **canonical
@@ -293,10 +300,11 @@ the bar can't drift out of sync (it has before: #2012's gate and the
 cross-system-audit requirement landed in PLANNING-PROTOCOL but not here). At
 minimum a child plan must: state the **verified current state** of the code
 this child touches (with a **confirmed repro against the actual code path**
-when the child fixes a defect); commit to **one approach** — never a "confirm
-during investigation/design" hand-off to the worker; and **reconcile siblings
-+ in-flight PRs** on the same surface (including the epic's other children: say
-what this child assumes its predecessors have landed).
+when the child fixes a defect); **lock its decisions** — never a "confirm
+during investigation/design" hand-off of a live design fork to the worker;
+and **reconcile siblings + in-flight PRs** on the same surface (including the
+epic's other children: say what this child assumes its predecessors have
+landed).
 
 Two step-2 requirements bite epic children specifically, because an epic child
 is **usually a migration or a shared-resource change**:

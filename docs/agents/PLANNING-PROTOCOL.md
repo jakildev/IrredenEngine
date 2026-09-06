@@ -126,14 +126,16 @@ For each `fleet:needs-plan` issue:
      body-side, measured dispatch-bound), #2256/#2271/#2273 (parallel efforts
      on mutually-invalidated premises), #2278 (vacuous gate), #2321
      (unverified singleton / same-shape premise).
-   - **One approach, picked.** Step-by-step: which files, what order,
-     key decisions — and the plan **commits to a single approach**.
-     Deferring the choice to the worker ("confirm during
-     investigation/design", "option A or B, decide while implementing")
-     is forbidden: if the approach can't be picked yet, the issue isn't
-     plannable — keep `fleet:needs-plan` on and say what's missing, or
-     reframe it as an explicit **investigation spike** (the literal
-     phrase in the title/body; see
+   - **Decisions locked; the path belongs to the implementer.** The plan
+     **locks every load-bearing design decision** — public names and
+     surfaces, formats, ownership boundaries, architectural splits, what
+     is deliberately out of scope — with rejected alternatives recorded
+     so the worker doesn't re-derive them. Leaving a live design fork to
+     the worker ("confirm during investigation/design", "option A or B,
+     decide while implementing") is forbidden: if a decision can't be
+     made yet, the issue isn't plannable — keep `fleet:needs-plan` on and
+     say what's missing, or reframe it as an explicit **investigation
+     spike** (the literal phrase in the title/body; see
      [`architect-protocol.md § Carve-offs`](architect-protocol.md)).
 
      **Park it when no later planner could do better (#3034).** Leaving
@@ -162,9 +164,21 @@ For each `fleet:needs-plan` issue:
      the narrowed predicate should apply there as well or only to issue
      claims; decide explicitly rather than by omission" reads as rigor,
      not deferral, but hands the same undecided A-or-B choice downstream
-     (#2820, caught by the plan-review pass, not the lint, until #2824
-     widened `fleet-plan-lint`'s deferred-approach matcher to this
-     imperative/interrogative mood).
+     (#2820/#2824 — `fleet-plan-lint`'s fork matchers enforce this).
+
+     What the plan does **not** do is choreograph the implementation.
+     File-by-file step lists, paste-ready code, and line-number anchors
+     do the implementer's thinking for it and go stale before the claim;
+     the current model generation does its best work from a clear goal,
+     locked decisions, hard constraints, and runnable acceptance
+     criteria — an **intent plan** — not from a script. An
+     `### Approach sketch` is welcome where the planner has one, and it
+     is **advisory**: the implementer may depart from it freely while
+     the Decisions and Acceptance criteria hold, recording the departure
+     in the committed plan file's implementation notes (no re-plan
+     needed). Investigation already done during planning is recorded as
+     *facts* — in Verified current state and Decisions — never re-cast
+     as steps.
    - **Sibling + in-flight reconciliation.** Check the parent ticket's
      other carve-offs and every open PR touching the same surface — a
      plan that duplicates or contradicts an active PR or a sibling's
@@ -205,25 +219,36 @@ For each `fleet:needs-plan` issue:
 
    - **Issue:** #N
    - **Model:** fable | opus | sonnet — pick deliberately per
-     FLEET.md §"Model split": fable for novel algorithm/stage design
-     (especially render-pipeline), sonnet when the plan above is concrete
-     enough that implementation is bounded, opus for the middle
+     FLEET.md §"Model split": fable for novel algorithm/stage design and
+     complex long-horizon implementation, sonnet when the remaining work
+     is bounded and mechanical, opus for the middle
    - **Date:** YYYY-MM-DD
 
    ### Scope
-   <what this task achieves>
+   <the goal and why — what "done" means, in a sentence or two>
 
-   ### Approach
-   <step-by-step: which files, what order, key decisions>
+   ### Verified current state
+   <measured facts with their sources; the confirmed repro for a defect>
+
+   ### Decisions
+   <the design calls this plan locks: names, public surfaces, formats,
+   ownership boundaries, what is deliberately out of scope — with
+   rejected alternatives and why. Everything NOT locked here is the
+   implementer's call.>
 
    ### Affected files
-   - `path/to/file.hpp` — <what changes>
+   - `path/to/file.hpp` — <what changes>  (best-known set, not a contract)
 
    ### Acceptance criteria
-   <concrete checks>
+   <runnable, positive-fire checks — the definition of done>
 
    ### Gotchas
-   <pitfalls the worker should watch for>
+   <invariants the implementation must not violate; pitfalls>
+
+   ### Approach sketch (optional)
+   <a suggested path when the planner has one — advisory; the
+   implementer may depart from it while Decisions and Acceptance
+   criteria hold>
    ```
 
    **New-creation registration:** when the affected-files list includes a new
@@ -305,14 +330,30 @@ For each `fleet:needs-plan` issue:
    the issue it is **not** queue-ready — `fleet-queue-ingest` skips it. A plan
    reviewer (the architect, or the opus reviewer loop) reads the `## Plan`
    comment and judges it *as a plan* against the step-2 rigor — verified current
-   state, a single committed approach, sibling/in-flight reconciliation, a
-   cross-system audit where one is required, no phase assuming an unmeasured
-   mechanism (a cited measurement or phase-0 probe is required), and
-   positive-fire acceptance tests:
+   state, every load-bearing decision locked (no live fork handed downstream),
+   sibling/in-flight reconciliation, a cross-system audit where one is required,
+   no phase assuming an unmeasured mechanism (a cited measurement or phase-0
+   probe is required), and positive-fire acceptance tests. When the plan's
+   load-bearing measurements can be re-run cheaply (a grep census, a symbol
+   count, a config read), **execute them** rather than reading them for
+   plausibility — re-running a plan's own claimed measurements is the
+   highest-yield review move; a clean structural lint proves nothing about a
+   wrong regex or a miscounted census:
    - **Sound →** remove `fleet:plan-review`. The issue is queue-ready **unless**
      it also carries `human:review-plan` (a high-stakes hold) — in that case it
      stays held for the human's approach sign-off; the scout queues it only once
      the human removes that label too.
+   - **Sound with corrections →** the plan is sound except for specific,
+     bounded fixes that do **not** change a locked decision (a wrong path, a
+     stale line reference, a missing gotcha, a corrected measurement). Post a
+     comment whose first line is `## Plan corrections` listing each fix, then
+     remove `fleet:plan-review` exactly as for Sound. Corrections are **part
+     of the plan**: the implementer reads the newest `## Plan` comment plus
+     every later `## Plan corrections` comment and folds both into the
+     committed plan file. Use this gear instead of bouncing — a bounce to
+     `fleet:needs-plan` costs a full re-plan round for something one line
+     fixes, and that lane can sit near-zero-dispatch for days. Bounce only
+     when a locked decision itself is wrong.
    - **Not sound →** swap `fleet:plan-review` → `fleet:needs-plan` and comment
      the specific gaps. The next planning pass revises the `## Plan` comment.
 
@@ -325,11 +366,18 @@ For each `fleet:needs-plan` issue:
    `## Plan` comment, and has none of `fleet:needs-plan`, `fleet:plan-review`, or
    `human:review-plan` (the high-stakes human gate, when it was set), the scout
    stamps `fleet:queued` + the model label. The implementing worker:
-   - reads the plan from the `## Plan` comment (`fleet-issue view <N>`),
-   - writes it to `.fleet/plans/issue-<N>.md` as the **first commit** of the
-     implementation branch (an at-rest repo record that lands with the code),
+   - reads the plan from the newest `## Plan` comment **plus any later
+     `## Plan corrections` comments** (`fleet-issue view <N>` shows both —
+     corrections are authoritative amendments from plan review, step 4),
+   - writes it, corrections folded in, to `.fleet/plans/issue-<N>.md` as the
+     **first commit** of the implementation branch (an at-rest repo record
+     that lands with the code),
    - then implements and opens **one** PR (`Closes #<N>`) — one review, one
-     merge. No separate plan-doc PR exists at any point.
+     merge. No separate plan-doc PR exists at any point. Where the
+     implementation departs from an `### Approach sketch`, record the
+     departure in the plan file's implementation notes; a departure that
+     violates a **Decision** or an acceptance criterion is not a departure,
+     it's a re-plan.
 
 **If you disagree with the issue's direction** (at planning time), comment with
 your concerns, leave `fleet:needs-plan` on, **add `fleet:needs-human`**, release
