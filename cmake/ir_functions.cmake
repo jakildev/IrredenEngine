@@ -287,6 +287,30 @@ function(
     endif()
 endfunction()
 
+# irreden_stage_runtime_dlls — POST_BUILD-copy <target>'s own runtime DLLs
+# next to its own executable (inert off-Windows). WIN32 (not IR_isWindows):
+# the latter is set PARENT_SCOPE only in scopes that called
+# IrredenEngine_setSystemCompileDefinitions, so it is unreliable inside a
+# standalone helper. COMMAND_EXPAND_LISTS expands the DLL generator-list.
+#
+# Split out of irreden_bundle_assets so a group of executables that share one
+# asset-staging target (the lighting demos' one-primary/many-consumers shape,
+# creations/demos/lighting/CMakeLists.txt) can each still get their own DLL
+# copy: the asset directories are staged once via <primary>Assets, but
+# $<TARGET_RUNTIME_DLLS:...> is per-executable and never fires for a target
+# that never itself builds — only depends on the primary's Assets target
+# (#3075).
+function(irreden_stage_runtime_dlls target)
+    if(WIN32)
+        add_custom_command(
+            TARGET ${target}
+            POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy -t $<TARGET_FILE_DIR:${target}> $<TARGET_RUNTIME_DLLS:${target}>
+            COMMAND_EXPAND_LISTS
+        )
+    endif()
+endfunction()
+
 # irreden_bundle_assets — populate the exe-relative runtime asset layout that
 # every creation needs (the engine resolves data/, shaders/, scripts/ from the
 # executable's directory; see IREngine::init). Factors the per-demo asset-copy
@@ -306,26 +330,16 @@ endfunction()
 #   scripts/<f> for each SCRIPTS file (resolved from the caller's source dir)
 #   <dst>/   for each EXTRA_DIRS (src dst) pair
 # On Windows it also POST_BUILD-copies $<TARGET_RUNTIME_DLLS:target> next to the
-# exe (inert off-Windows). Defines a `<target>Assets` custom target carrying the
-# directory/script copies and wires add_dependencies(<target> <target>Assets);
-# the layout matches the hand-written per-demo blocks byte-for-byte.
+# exe via irreden_stage_runtime_dlls (inert off-Windows). Defines a
+# `<target>Assets` custom target carrying the directory/script copies and wires
+# add_dependencies(<target> <target>Assets); the layout matches the
+# hand-written per-demo blocks byte-for-byte.
 function(irreden_bundle_assets target)
     cmake_parse_arguments(IRBA "" "" "SCRIPTS;EXTRA_DIRS" ${ARGN})
 
     set(_exedir "$<TARGET_FILE_DIR:${target}>")
 
-    # Windows runtime DLLs next to the exe. WIN32 (not IR_isWindows): the
-    # latter is set PARENT_SCOPE only in scopes that called
-    # IrredenEngine_setSystemCompileDefinitions, so it is unreliable inside a
-    # standalone helper. COMMAND_EXPAND_LISTS expands the DLL generator-list.
-    if(WIN32)
-        add_custom_command(
-            TARGET ${target}
-            POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy -t ${_exedir} $<TARGET_RUNTIME_DLLS:${target}>
-            COMMAND_EXPAND_LISTS
-        )
-    endif()
+    irreden_stage_runtime_dlls(${target})
 
     # Asset directories: merge engine/render/data + engine/data into data/, and
     # the shader source tree into shaders/. copy_directory (not _if_different)
