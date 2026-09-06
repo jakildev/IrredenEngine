@@ -11,15 +11,17 @@
 #   - semantic-conflict-only slice -> opus dispatch (step-1c pressure, #2417)
 #   - empty slice -> lane-default fallthrough (class empty)
 #   - non-worker role is a no-op (class empty)
-#   - planning pre-claim (#2197): plan=1 election, --plan-assign claim walk
+#   - planning pre-claim (#2197): plan=1 election, --assign claim walk
 #     (grant / held-fallthrough / exit-3 --replan / all-held / game --repo
 #     namespacing / dry-run+review-only gating) against a stubbed fleet-claim
 #   - FLEET_MODEL_* unset -> standalone alias-default fallback resolves each
 #     class to its fleet-common.sh default (fable[1m]/opus[1m]/sonnet)
-#   - class fairness floor (#2699, T20+): negative control, positive fire,
-#     disable/clamp of the threshold, single-class no-op, the vanished-
-#     alternative give-back, three-class rotation (rank 3 must not starve
-#     behind ranks 1-2 trading turns), and a cap-saturated yield target
+#   - assignment before launch (T20+): whole --dispatch-role ticks against a
+#     stubbed tmux — a launch carries its pre-claimed target, a refused head
+#     yields to the next class in the same tick (what retired the #2699
+#     fairness floor), all-refused stands the lane down, one launch per
+#     claimable item, in-flight dedup, every lane kind's claim arm, the
+#     reviewer lane's one-pane-per-PR fan-out, and dry-run's claim-free path
 #
 # The fable in-flight count comes from dispatch records under
 # $FLEET_STATE_DIR/dispatch, same records --count-active reads.
@@ -35,27 +37,17 @@ if [[ ! -x "$DISPATCHER" ]]; then
     exit 1
 fi
 
-PASS=0
-FAIL=0
+# PASS/FAIL, ok/bad, assert_eq and `summarize` come from the shared helper:
+# its "passed: N  failed: M" line is what fleet-positive-control scores, and
+# the hand-rolled "PASS: n FAIL: m" tally this replaces read as an aborted run.
+# shellcheck source=scripts/fleet/tests/lib_assert.sh
+source "$(dirname "$0")/lib_assert.sh"
 TMPROOT=""
 
 cleanup() {
     [[ -n "$TMPROOT" && -d "$TMPROOT" ]] && rm -rf "$TMPROOT"
 }
 trap cleanup EXIT
-
-assert_eq() {
-    local actual="$1" expected="$2" msg="$3"
-    if [[ "$actual" == "$expected" ]]; then
-        PASS=$((PASS + 1))
-        echo "  ok: $msg"
-    else
-        FAIL=$((FAIL + 1))
-        echo "  FAIL: $msg"
-        echo "        expected: $expected"
-        echo "        actual:   $actual"
-    fi
-}
 
 TMPROOT=$(mktemp -d)
 export FLEET_STATE_DIR="$TMPROOT/state"
@@ -144,8 +136,8 @@ assert_eq "$("$DISPATCHER" --resolve-class worker opus,sonnet)" \
 # --- T9+: planning pre-claim (#2197) ------------------------------------------
 # The dispatcher takes the planning-claim label lock itself (under the target
 # pane's worktree basename) BEFORE dispatching, and hands the assignment to the
-# dispatch. Exercised via the --plan-assign hook, which runs the same
-# resolve + plan_assign_for_pane path a live tick does. fleet-claim is stubbed
+# dispatch. Exercised via the --assign hook, which runs the same
+# resolve + assign_for_pane path a live tick does. fleet-claim is stubbed
 # (hermetic — scripts/fleet/CLAUDE.md): grant/held/planned sets come from env,
 # every invocation is logged for argv assertions.
 export FLEET_CLAIM_LOG="$TMPROOT/fleet-claim.log"
@@ -159,11 +151,22 @@ sub="${1:-}"; num="${2:-}"
 replan=""
 [[ "${4:-}" == "--replan" ]] && replan=1
 key="$repo:$num"
-[[ "$sub" == "planning-release" ]] && exit 0
-if [[ "$sub" == "reservation-role" ]]; then
-    printf '%s\n' "${STUB_RESERVATION_ROLE:-}"
-    exit 0
-fi
+case "$sub" in
+    *-release|release) exit 0 ;;
+    reservation-role)
+        printf '%s\n' "${STUB_RESERVATION_ROLE:-}"
+        exit 0
+        ;;
+    planning-claim) ;;
+    *)
+        # Every other lane claim (claim / amending-claim / resolving-claim /
+        # review-claim) is granted unless STUB_REFUSE names its key — the
+        # assignment tests below drive refusal explicitly, and the fairness
+        # ticks (T20+) need every pane's task claim to succeed.
+        [[ " ${STUB_REFUSE:-} " == *" $key "* ]] && exit 1
+        exit 0
+        ;;
+esac
 if [[ -n "$replan" ]]; then
     [[ " ${STUB_REPLAN_GRANT:-} " == *" $key "* ]] && exit 0
     exit 2
@@ -177,7 +180,7 @@ export PATH="$STUB_BIN:$PATH"
 
 plan_assign() {
     : > "$FLEET_CLAIM_LOG"
-    "$DISPATCHER" --plan-assign worker worker-9
+    "$DISPATCHER" --assign worker worker-9
 }
 
 echo "T9: needs-plan slice resolves plan=1 on the elected class"
@@ -187,33 +190,33 @@ assert_eq "$(resolve worker)" \
     "untagged needs-plan elects fable with plan=1"
 
 echo "T10: assignment granted on the first candidate, claimed under the agent"
-assert_eq "$(STUB_GRANT='engine:99' plan_assign)" "plan=engine:99" \
+assert_eq "$(STUB_GRANT='engine:99' plan_assign)" "target=plan:engine:99" \
     "first candidate claim granted -> assigned"
 grep -q '^planning-claim 99 worker-9$' "$FLEET_CLAIM_LOG" \
     && { PASS=$((PASS+1)); echo "  ok: claim ran under the pane worktree basename"; } \
     || { FAIL=$((FAIL+1)); echo "  FAIL: claim argv wrong: $(cat "$FLEET_CLAIM_LOG")"; }
 
 echo "T11: held candidate falls through to the next line (lost race != burned dispatch)"
-assert_eq "$(STUB_GRANT='engine:120' plan_assign)" "plan=engine:120" \
+assert_eq "$(STUB_GRANT='engine:120' plan_assign)" "target=plan:engine:120" \
     "engine:99 held elsewhere (exit 1) -> engine:120 assigned"
 
 echo "T12: exit-3 + live needs-plan retries with --replan and assigns"
-assert_eq "$(STUB_PLANNED='engine:99' STUB_REPLAN_GRANT='engine:99' plan_assign)" "plan=engine:99" \
+assert_eq "$(STUB_PLANNED='engine:99' STUB_REPLAN_GRANT='engine:99' plan_assign)" "target=plan:engine:99" \
     "stale-slice/plan-review re-plan state -> assigned via --replan"
 grep -q '^planning-claim 99 worker-9 --replan$' "$FLEET_CLAIM_LOG" \
     && { PASS=$((PASS+1)); echo "  ok: --replan retry issued"; } \
     || { FAIL=$((FAIL+1)); echo "  FAIL: no --replan retry: $(cat "$FLEET_CLAIM_LOG")"; }
 
 echo "T13: exit-3 then replan exit-2 (genuinely done) -> next line"
-assert_eq "$(STUB_PLANNED='engine:99' STUB_GRANT='engine:120' plan_assign)" "plan=engine:120" \
+assert_eq "$(STUB_PLANNED='engine:99' STUB_GRANT='engine:120' plan_assign)" "target=plan:engine:120" \
     "already-planned candidate skipped; next line assigned"
 
 echo "T14: all candidates held/planned -> no assignment"
-assert_eq "$(plan_assign)" "plan=" \
-    "every claim refused -> plan= (dispatch_role shrinks the headroom)"
+assert_eq "$(plan_assign)" "target=" \
+    "every claim refused -> target= (the lane stands down)"
 
 echo "T15: game-repo candidate claims with --repo game before the subcommand"
-assert_eq "$(STUB_GRANT='game:7' plan_assign)" "plan=game:7" \
+assert_eq "$(STUB_GRANT='game:7' plan_assign)" "target=plan:game:7" \
     "engine lines held -> game line assigned"
 grep -q -- '^--repo game planning-claim 7 worker-9$' "$FLEET_CLAIM_LOG" \
     && { PASS=$((PASS+1)); echo "  ok: game claim namespaced with --repo game"; } \
@@ -221,25 +224,25 @@ grep -q -- '^--repo game planning-claim 7 worker-9$' "$FLEET_CLAIM_LOG" \
 
 echo "T16: dry-run / review-only never pre-claim"
 printf 'dry-run\n' > "$FLEET_STATE_DIR/dispatch-mode"
-assert_eq "$(STUB_GRANT='engine:99' plan_assign)" "plan=" \
+assert_eq "$(STUB_GRANT='engine:99' plan_assign)" "target=" \
     "dry-run mode -> no assignment"
 [[ ! -s "$FLEET_CLAIM_LOG" ]] \
     && { PASS=$((PASS+1)); echo "  ok: no fleet-claim call in dry-run"; } \
     || { FAIL=$((FAIL+1)); echo "  FAIL: dry-run still called fleet-claim: $(cat "$FLEET_CLAIM_LOG")"; }
 printf 'review-only\n' > "$FLEET_STATE_DIR/dispatch-mode"
-assert_eq "$(STUB_GRANT='engine:99' plan_assign)" "plan=" \
+assert_eq "$(STUB_GRANT='engine:99' plan_assign)" "target=" \
     "review-only mode -> no assignment"
 rm -f "$FLEET_STATE_DIR/dispatch-mode"
 
-echo "T17: a plan-carrying dispatch command appends the 7th plan= arg"
+echo "T17: a target-carrying dispatch command appends the 7th target= arg"
 # build_dispatch_command is exercised via --print-dispatch-command for the
 # 6-arg (no assignment) shape; the 7-arg shape is asserted through the log of
-# a live-shaped assignment (T10) + the wrap-side export test
-# (test_dispatch_wrap_session.sh). Here: no assignment -> 6 args, no plan=.
+# a live-shaped assignment (T20) + the wrap-side export test
+# (test_dispatch_wrap_session.sh). Here: no assignment -> 6 args, no target=.
 out=$("$DISPATCHER" --print-dispatch-command worker pane-3)
 case "$out" in
-    *" plan="*) FAIL=$((FAIL+1)); echo "  FAIL: unassigned dispatch carries plan=: $out" ;;
-    *) PASS=$((PASS+1)); echo "  ok: unassigned dispatch has no plan= arg" ;;
+    *" target="*) FAIL=$((FAIL+1)); echo "  FAIL: unassigned dispatch carries target=: $out" ;;
+    *) PASS=$((PASS+1)); echo "  ok: unassigned dispatch has no target= arg" ;;
 esac
 
 # --- T18: semantic-conflict-only slice dispatches opus -----------------------
@@ -278,29 +281,26 @@ assert_eq "$(resolve_unpinned sonnet)" \
     "class=sonnet model=sonnet effort=high more=0 defer=0 count=1 plan=0" \
     "unpinned sonnet resolves to FLEET_SONNET_CLASS_DEFAULT=sonnet"
 
-# --- T20+: class fairness floor (#2699) ---------------------------------------
-#
-# The measured defect shape: the elected class's claimable items are ones every
-# worker REFUSES, so they never leave tasks_open, while the workers that walked
-# and declined them age past CLAIM_SETTLE_SECONDS and stop counting as racing.
-# `claim_headroom = DISPATCH_COUNT - class_racing` therefore stays permanently
-# positive and the `serving next class` fan-out at the saturation branch is
-# unreachable — 57 opus / 0 sonnet / 0 fable dispatches over 2h in the wild.
-#
-# Reproduced here by pinning CLAIM_SETTLE_SECONDS=0 (nothing is ever "recent",
-# so class_racing is always 0 — the same end state as every record aging out)
-# against a slice with more opus items than the tick can cover. The assertions
-# below run whole dispatch_role ticks via --dispatch-role, not just the
-# resolver, so the positive case observes a non-elected class ACTUALLY
-# DISPATCHED rather than merely a counter incrementing.
+# --- T20+: assignment before launch — whole dispatch_role ticks ---------------
+# The dispatcher binds each launched pane to ONE pre-claimed item
+# (assign_for_pane): a pane launches only behind a granted lane claim, two
+# panes never share an item, an elected class whose candidates are all refused
+# yields to the next class in the SAME tick (the #2699 monopoly, caught at the
+# claim instead of bounded by a turn count), and a lane with nothing claimable
+# consumes its trigger instead of fanning out. These run whole ticks via
+# --dispatch-role against a stubbed tmux (five idle pool panes) and the
+# fleet-claim stub above, which grants every lane claim unless STUB_REFUSE
+# names the key.
 export FLEET_RESERVATIONS_DIR="$TMPROOT/reservations"; mkdir -p "$FLEET_RESERVATIONS_DIR"
-export FLEET_DISPATCH_MIN_GAP_SECONDS=0     # no stagger between the ticks
+export FLEET_DISPATCH_MIN_GAP_SECONDS=0     # no stagger between panes/ticks
 export FLEET_DISPATCHER_CLAIM_SETTLE_SECONDS=0
-export FLEET_CONCURRENCY_WORKER=5           # > the tick count, so the role cap never gates
+export FLEET_CONCURRENCY_WORKER=5           # > the pane count, so the role cap never gates
 export FLEET_SESSION="fleet-test-$$"
 
-# Five idle pool panes, each on its own worktree (count_active_for_role dedupes
-# by worktree). pgrep exits 1 so no pane reads as running a wrapper.
+# Five idle pool panes, each on its own worktree. pgrep exits 1 so no pane
+# reads as running a wrapper. send-keys records what each pane was sent, so
+# the target= arg of every launch is assertable.
+export SEND_LOG="$TMPROOT/send-keys.log"
 cat > "$STUB_BIN/tmux" <<'TMUXEOF'
 #!/usr/bin/env bash
 sub="$1"; shift
@@ -326,7 +326,7 @@ case "$sub" in
         fi
         exit 0
         ;;
-    send-keys) exit 0 ;;
+    send-keys) printf '%s\n' "$*" >> "$SEND_LOG"; exit 0 ;;
     *) exit 0 ;;
 esac
 TMUXEOF
@@ -337,278 +337,165 @@ exit 1
 PGREPEOF
 chmod +x "$STUB_BIN/pgrep"
 
-# One opus task (the refused-but-permanently-counted head) + one sonnet task
-# (the starved lane). DISPATCH_COUNT=1 with class_racing pinned to 0 makes
-# claim_headroom permanently 1 — positive, so the saturation fan-out never
-# fires — while capping each tick's fan-out at a single pane, which is what
-# makes ticks countable in the assertions below.
-MONOPOLY_SLICE='{"tasks_open":[
-  {"issue":"#10","model":"opus","effort":null,"owner":"free","blocked":false},
-  {"issue":"#13","model":"sonnet","effort":null,"owner":"free","blocked":false}],
- "feedback_prs":[],"needs_plan":[]}'
-OPUS_ONLY_SLICE='{"tasks_open":[
-  {"issue":"#10","model":"opus","effort":null,"owner":"free","blocked":false}],
+TWO_CLASS_SLICE='{"tasks_open":[
+  {"issue":"#10","model":"opus","effort":null,"owner":"free","blocked":false,"repo":"engine"},
+  {"issue":"#13","model":"sonnet","effort":null,"owner":"free","blocked":false,"repo":"engine"}],
  "feedback_prs":[],"needs_plan":[]}'
 
-# Run <count> consecutive worker ticks from a clean dispatch dir + fresh
+# Run <count> consecutive <role> ticks from a clean dispatch dir + fresh
 # trigger, and print the dispatcher log (stderr) for assertion.
-run_ticks() { # $1 = tick count, rest = env assignments
+tick() { # $1 = role, $2 = tick count, rest = env assignments
+    local role="$1" n="$2"; shift 2
     rm -f "$FLEET_STATE_DIR/dispatch"/*.json
+    : > "$FLEET_CLAIM_LOG"; : > "$SEND_LOG"
     mkdir -p "$FLEET_STATE_DIR/triggers"
-    : > "$FLEET_STATE_DIR/triggers/worker"
-    write_slice worker "$MONOPOLY_SLICE"
-    local n="$1"; shift
-    env "$@" "$DISPATCHER" --dispatch-role worker "$n" 2>&1 >/dev/null
+    : > "$FLEET_STATE_DIR/triggers/$role"
+    env "$@" "$DISPATCHER" --dispatch-role "$role" "$n" 2>&1 >/dev/null
 }
+count_dispatches() { printf '%s\n' "$1" | grep -c 'dispatching '; }
 
-echo "T20: negative control — a single tick still dispatches the elected class"
-# Scoped to ONE tick deliberately: the floor yields on turn count, so a
-# multi-tick soak would (correctly) yield and read as a regression. One tick is
-# the shape that pins "the settle-window intent at fleet-dispatcher:470-481 is
-# preserved — a healthy elected class is served, not withheld".
-out=$(run_ticks 1)
+echo "T20: a launch carries its pre-claimed target; the claim precedes send-keys"
+write_slice worker "$TWO_CLASS_SLICE"
+out=$(tick worker 1)
 case "$out" in
-    *"dispatching worker -> %1 [class=opus"*)
-        PASS=$((PASS+1)); echo "  ok: elected opus dispatched on the first tick" ;;
-    *) FAIL=$((FAIL+1)); echo "  FAIL: first tick did not dispatch opus:"; printf '%s\n' "$out" ;;
+    *"dispatching worker -> %1 [class=opus effort=high target=task:engine:10]"*)
+        PASS=$((PASS+1)); echo "  ok: opus elected, task:engine:10 assigned to the first pane" ;;
+    *) FAIL=$((FAIL+1)); echo "  FAIL: no target-bound opus dispatch:"; printf '%s\n' "$out" ;;
+esac
+grep -q '^claim 10 pool-1$' "$FLEET_CLAIM_LOG" \
+    && { PASS=$((PASS+1)); echo "  ok: claim taken under the pane's worktree basename"; } \
+    || { FAIL=$((FAIL+1)); echo "  FAIL: claim argv wrong: $(cat "$FLEET_CLAIM_LOG")"; }
+grep -q 'target=task:engine:10' "$SEND_LOG" \
+    && { PASS=$((PASS+1)); echo "  ok: the pane command carries target=task:engine:10"; } \
+    || { FAIL=$((FAIL+1)); echo "  FAIL: send-keys lacks the target: $(cat "$SEND_LOG")"; }
+grep -q '"target":"task:engine:10"' "$FLEET_STATE_DIR/dispatch/pane-1.json" \
+    && { PASS=$((PASS+1)); echo "  ok: dispatch record stamped with the target"; } \
+    || { FAIL=$((FAIL+1)); echo "  FAIL: record lacks target: $(cat "$FLEET_STATE_DIR"/dispatch/*.json)"; }
+
+echo "T21: a refused head yields to the next class in the SAME tick"
+out=$(tick worker 1 STUB_REFUSE='engine:10')
+case "$out" in
+    *"class=opus has no claimable candidate left; serving next class"*)
+        PASS=$((PASS+1)); echo "  ok: re-election logged" ;;
+    *) FAIL=$((FAIL+1)); echo "  FAIL: no re-election line:"; printf '%s\n' "$out" ;;
 esac
 case "$out" in
-    *"fairness floor"*) FAIL=$((FAIL+1)); echo "  FAIL: floor fired on the first tick" ;;
-    *) PASS=$((PASS+1)); echo "  ok: no yield before the run threshold" ;;
+    *"dispatching worker -> %1 [class=sonnet effort=high target=task:engine:13]"*)
+        PASS=$((PASS+1)); echo "  ok: sonnet served on the first tick, not after a turn count" ;;
+    *) FAIL=$((FAIL+1)); echo "  FAIL: sonnet not dispatched:"; printf '%s\n' "$out" ;;
+esac
+assert_eq "$(count_dispatches "$out")" "1" "exactly one launch"
+grep -q '^claim 10 pool-1$' "$FLEET_CLAIM_LOG" && grep -q '^claim 13 pool-1$' "$FLEET_CLAIM_LOG" \
+    && { PASS=$((PASS+1)); echo "  ok: the refused claim was attempted before the granted one"; } \
+    || { FAIL=$((FAIL+1)); echo "  FAIL: claim sequence wrong: $(cat "$FLEET_CLAIM_LOG")"; }
+
+echo "T22: every candidate refused -> no launch, trigger consumed"
+out=$(tick worker 1 STUB_REFUSE='engine:10 engine:13')
+assert_eq "$(count_dispatches "$out")" "0" "nothing launched"
+case "$out" in
+    *"no candidate could be claimed"*"standing down"*)
+        PASS=$((PASS+1)); echo "  ok: stand-down logged" ;;
+    *) FAIL=$((FAIL+1)); echo "  FAIL: no stand-down line:"; printf '%s\n' "$out" ;;
+esac
+[[ ! -f "$FLEET_STATE_DIR/triggers/worker" ]] \
+    && { PASS=$((PASS+1)); echo "  ok: trigger consumed (no per-tick claim re-walk)"; } \
+    || { FAIL=$((FAIL+1)); echo "  FAIL: trigger left standing"; }
+
+echo "T23: one launch per claimable item — five idle panes, two opus tasks"
+write_slice worker '{"tasks_open":[
+  {"issue":"#10","model":"opus","effort":null,"owner":"free","blocked":false,"repo":"engine"},
+  {"issue":"#11","model":"opus","effort":null,"owner":"free","blocked":false,"repo":"engine"}],
+ "feedback_prs":[],"needs_plan":[]}'
+out=$(tick worker 1)
+assert_eq "$(count_dispatches "$out")" "2" "two launches for two items (not five for five panes)"
+case "$out" in
+    *"target=task:engine:10]"*"target=task:engine:11]"*)
+        PASS=$((PASS+1)); echo "  ok: distinct targets" ;;
+    *) FAIL=$((FAIL+1)); echo "  FAIL: targets not distinct:"; printf '%s\n' "$out" ;;
 esac
 
-echo "T21: positive fire — the 4th tick dispatches the NON-elected class"
-out=$(run_ticks 4)
-case "$out" in
-    *"dispatching worker -> "*"[class=sonnet"*)
-        PASS=$((PASS+1)); echo "  ok: sonnet (never elected) actually dispatched" ;;
-    *) FAIL=$((FAIL+1)); echo "  FAIL: no sonnet dispatch in 4 ticks:"; printf '%s\n' "$out" ;;
-esac
-case "$out" in
-    *"class=opus elected 3 consecutive ticks with other classes queued; yielding one pass (fairness floor)"*)
-        PASS=$((PASS+1)); echo "  ok: yield logged with class and run length" ;;
-    *) FAIL=$((FAIL+1)); echo "  FAIL: fairness-yield log line missing:"; printf '%s\n' "$out" ;;
-esac
-# The headroom-based fan-out must NOT be what produced it — that branch is
-# exactly the one the defect makes unreachable in this slice shape.
-case "$out" in
-    *"serving next class"*)
-        FAIL=$((FAIL+1)); echo "  FAIL: saturation fan-out fired; the defect shape is not reproduced" ;;
-    *) PASS=$((PASS+1)); echo "  ok: sonnet came from the floor, not the (unreachable) headroom fan-out" ;;
-esac
-assert_eq "$(printf '%s\n' "$out" | grep -c 'dispatching worker -> .*class=opus')" "3" \
-    "opus served exactly its 3 turns before the yield"
-
-echo "T22: FLEET_DISPATCHER_CLASS_FAIRNESS_RUN=0 disables the floor"
-out=$(run_ticks 5 FLEET_DISPATCHER_CLASS_FAIRNESS_RUN=0)
-case "$out" in
-    *"[class=sonnet"*) FAIL=$((FAIL+1)); echo "  FAIL: floor fired while disabled" ;;
-    *) PASS=$((PASS+1)); echo "  ok: run=0 restores the pre-#2699 headroom-only behaviour" ;;
-esac
-
-echo "T23: a non-numeric threshold falls back to 3 instead of killing the daemon"
-out=$(run_ticks 4 FLEET_DISPATCHER_CLASS_FAIRNESS_RUN=banana)
-case "$out" in
-    *"CLASS_FAIRNESS_RUN=banana is not a non-negative integer; falling back to 3"*)
-        PASS=$((PASS+1)); echo "  ok: invalid override warned and clamped" ;;
-    *) FAIL=$((FAIL+1)); echo "  FAIL: no clamp warning:"; printf '%s\n' "$out" ;;
-esac
-case "$out" in
-    *"[class=sonnet"*) PASS=$((PASS+1)); echo "  ok: clamped default still yields on the 4th tick" ;;
-    *) FAIL=$((FAIL+1)); echo "  FAIL: clamped-to-3 floor did not fire" ;;
-esac
-
-echo "T24: single-class slice never accumulates a run (more=0 resets it)"
-write_slice worker "$OPUS_ONLY_SLICE"
+echo "T24: an in-flight target is never handed to a second pane"
+write_slice worker '{"tasks_open":[
+  {"issue":"#10","model":"opus","effort":null,"owner":"free","blocked":false,"repo":"engine"}],
+ "feedback_prs":[],"needs_plan":[]}'
 rm -f "$FLEET_STATE_DIR/dispatch"/*.json
-: > "$FLEET_STATE_DIR/triggers/worker"
-out=$("$DISPATCHER" --dispatch-role worker 5 2>&1 >/dev/null)
-case "$out" in
-    *"fairness floor"*) FAIL=$((FAIL+1)); echo "  FAIL: floor fired with no other class to serve" ;;
-    *) PASS=$((PASS+1)); echo "  ok: opus-only slice serves opus indefinitely — no monopoly to break" ;;
-esac
+printf '{"role":"worker","pane":"%%9","class":"opus","dispatched_at":"x","dispatched_epoch":1,"claim_marker":1,"target":"task:engine:10"}\n' \
+    > "$FLEET_STATE_DIR/dispatch/pane-9.json"
+: > "$FLEET_CLAIM_LOG"; : > "$FLEET_STATE_DIR/triggers/worker"
+out=$("$DISPATCHER" --dispatch-role worker 1 2>&1 >/dev/null)
+assert_eq "$(count_dispatches "$out")" "0" "the only item is in flight -> nothing launched"
+[[ ! -s "$FLEET_CLAIM_LOG" ]] \
+    && { PASS=$((PASS+1)); echo "  ok: no claim attempted on an in-flight item"; } \
+    || { FAIL=$((FAIL+1)); echo "  FAIL: claim attempted: $(cat "$FLEET_CLAIM_LOG")"; }
+rm -f "$FLEET_STATE_DIR/dispatch/pane-9.json"
 
-echo "T25: the floor never turns a servable tick into a deferred one"
-# The class the run accrued against is gone by the time the yield fires (its
-# task got claimed between ticks — the scout rewrites the slice constantly, so
-# this is a live daemon state, not a contrived one). The yield must drop its
-# own exclusion and serve the elected class anyway rather than defer the tick.
-# Simulated at the send-keys seam: the 3rd dispatch is when "another worker
-# claimed the sonnet task", so the stub rewrites the slice to drop it.
-export STUB_SLICE_AFTER_3="$TMPROOT/slice-after-3.json"
-printf '%s\n' "$OPUS_ONLY_SLICE" > "$STUB_SLICE_AFTER_3"
-export STUB_SEND_COUNT="$TMPROOT/send-count"
-cat > "$STUB_BIN/tmux" <<'TMUXEOF'
-#!/usr/bin/env bash
-sub="$1"; shift
-case "$sub" in
-    has-session) exit 0 ;;
-    list-panes)
-        for i in 1 2 3 4 5; do printf '%%%s|pool|zsh\n' "$i"; done
-        exit 0
-        ;;
-    display-message)
-        pane=""; fmt=""
-        while [[ $# -gt 0 ]]; do
-            case "$1" in
-                -t) pane="$2"; shift 2 ;;
-                -p) fmt="$2"; shift 2 ;;
-                *)  shift ;;
-            esac
-        done
-        if [[ "$fmt" == *pane_current_path* ]]; then
-            echo "/fake/worktrees/pool-${pane#%}"
-        elif [[ "$fmt" == *pane_pid* ]]; then
-            echo "1"
-        fi
-        exit 0
-        ;;
-    send-keys)
-        # Optional world-changes-under-us seam (T25): after N dispatches,
-        # swap in a slice where the other class's work is gone.
-        if [[ -n "${STUB_SLICE_AFTER_3:-}" && -n "${STUB_SEND_COUNT:-}" ]]; then
-            n=$(( $(cat "$STUB_SEND_COUNT" 2>/dev/null || echo 0) + 1 ))
-            printf '%s' "$n" > "$STUB_SEND_COUNT"
-            (( n >= 3 )) && cp "$STUB_SLICE_AFTER_3" "$FLEET_STATE_DIR/projections/worker.json"
-        fi
-        exit 0
-        ;;
-    *) exit 0 ;;
-esac
-TMUXEOF
-chmod +x "$STUB_BIN/tmux"
-rm -f "$FLEET_STATE_DIR/dispatch"/*.json "$STUB_SEND_COUNT"
-: > "$FLEET_STATE_DIR/triggers/worker"
-write_slice worker "$MONOPOLY_SLICE"
-out=$("$DISPATCHER" --dispatch-role worker 4 2>&1 >/dev/null)
-case "$out" in
-    *"fairness yield of class=opus found no other servable class; serving it after all"*)
-        PASS=$((PASS+1)); echo "  ok: vanished alternative detected, exclusion dropped" ;;
-    *) FAIL=$((FAIL+1)); echo "  FAIL: no fallback log line:"; printf '%s\n' "$out" ;;
-esac
-assert_eq "$(printf '%s\n' "$out" | grep -c 'dispatching worker -> .*class=opus')" "4" \
-    "all four ticks dispatched opus — the yield degraded to serving it, not to a defer"
-case "$out" in
-    *"deferring trigger"*|*"no claimable work"*)
-        FAIL=$((FAIL+1)); echo "  FAIL: the yield deferred a servable tick" ;;
-    *) PASS=$((PASS+1)); echo "  ok: no tick deferred" ;;
-esac
-unset STUB_SLICE_AFTER_3 STUB_SEND_COUNT
+echo "T25: every lane kind claims through its own fleet-claim arm (--assign)"
+assign() { : > "$FLEET_CLAIM_LOG"; "$DISPATCHER" --assign "$1" pool-3; }
+write_slice worker '{"tasks_open":[{"issue":"#7","model":"opus","owner":"free","blocked":false,"repo":"game"}],"feedback_prs":[],"needs_plan":[]}'
+assert_eq "$(assign worker)" "target=task:game:7" "game task -> task:game:7"
+grep -q -- '^--repo game claim 7 pool-3$' "$FLEET_CLAIM_LOG" \
+    && { PASS=$((PASS+1)); echo "  ok: game claim namespaced with --repo game"; } \
+    || { FAIL=$((FAIL+1)); echo "  FAIL: game claim argv: $(cat "$FLEET_CLAIM_LOG")"; }
+write_slice worker '{"tasks_open":[{"issue":"#344","model":"sonnet","owner":"free","blocked":true,"repo":"engine","stackable_blocker_pr":{"number":397,"headRefName":"claude/324-x"}}],"feedback_prs":[],"needs_plan":[]}'
+assert_eq "$(assign worker)" "target=stack:engine:344:397" "stackable blocked task -> stack target with its base PR"
+grep -q -- '^claim 344 pool-3 --stackable-on 397$' "$FLEET_CLAIM_LOG" \
+    && { PASS=$((PASS+1)); echo "  ok: stack claim passes --stackable-on <base>"; } \
+    || { FAIL=$((FAIL+1)); echo "  FAIL: stack claim argv: $(cat "$FLEET_CLAIM_LOG")"; }
+write_slice worker '{"tasks_open":[],"feedback_prs":[{"number":50,"repo":"engine","labels":["fleet:approved","fleet:has-nits"]}],"needs_plan":[]}'
+assert_eq "$(assign worker)" "target=feedback:engine:50" "feedback PR -> feedback target"
+grep -q '^amending-claim 50 pool-3$' "$FLEET_CLAIM_LOG" \
+    && { PASS=$((PASS+1)); echo "  ok: feedback claims via amending-claim"; } \
+    || { FAIL=$((FAIL+1)); echo "  FAIL: feedback claim argv: $(cat "$FLEET_CLAIM_LOG")"; }
+write_slice worker '{"tasks_open":[],"feedback_prs":[],"needs_plan":[],"semantic_conflict_prs":[{"number":2417,"repo":"engine","labels":["fleet:semantic-conflict"]}]}'
+assert_eq "$(assign worker)" "target=conflict:engine:2417" "conflicted PR -> conflict target"
+grep -q '^resolving-claim 2417 pool-3$' "$FLEET_CLAIM_LOG" \
+    && { PASS=$((PASS+1)); echo "  ok: conflict claims via resolving-claim"; } \
+    || { FAIL=$((FAIL+1)); echo "  FAIL: conflict claim argv: $(cat "$FLEET_CLAIM_LOG")"; }
+write_slice worker '{"tasks_open":[],"feedback_prs":[],"needs_plan":[{"number":99,"repo":"engine","labels":[]}]}'
+assert_eq "$(STUB_GRANT='engine:99' assign worker)" "target=plan:engine:99" "needs-plan issue -> plan target (the #2197 lane)"
+write_slice sonnet-reviewer '{"candidate_prs":[{"number":3074,"repo":"engine","labels":[]},{"number":12,"repo":"game","labels":[]}]}'
+assert_eq "$(assign sonnet-reviewer)" "target=review:engine:3074" "sonnet-reviewer -> review target"
+grep -q '^review-claim 3074 pool-3$' "$FLEET_CLAIM_LOG" \
+    && { PASS=$((PASS+1)); echo "  ok: reviewer claims via review-claim"; } \
+    || { FAIL=$((FAIL+1)); echo "  FAIL: review claim argv: $(cat "$FLEET_CLAIM_LOG")"; }
+assert_eq "$(STUB_REFUSE='engine:3074' assign sonnet-reviewer)" "target=review:game:12" \
+    "held PR -> the next candidate, namespaced"
+write_slice opus-reviewer '{"flagged_prs":[],"plan_review":[{"number":605,"repo":"engine","labels":[]}]}'
+assert_eq "$(assign opus-reviewer)" "target=planreview:engine:605" "opus-reviewer plan-review issue -> planreview target"
+grep -q '^review-claim 605 pool-3$' "$FLEET_CLAIM_LOG" \
+    && { PASS=$((PASS+1)); echo "  ok: plan review claims the issue via review-claim"; } \
+    || { FAIL=$((FAIL+1)); echo "  FAIL: planreview claim argv: $(cat "$FLEET_CLAIM_LOG")"; }
+assert_eq "$(assign merger)" "target=" "merger is not target-bound (legacy batch pass)"
 
-echo "T27: three claimable classes — the lowest-ranked one is not starved"
-# T21/T25 are both TWO-class slices, and the defect they cannot see lives one
-# rank down. A single-class yield excludes only CLASS_ELECTION_LAST, so the
-# yield tick always lands on rank 2; the bookkeeping then records rank 2 as
-# LAST with RUN=1, the monopolist re-elects on the next tick, and rank 3 is
-# never reached — unbounded starvation, the same shape #2699 was filed
-# against. Measured in the wild as the fable planning lane (17/17 claimable,
-# zero dispatches) sitting behind opus+sonnet.
-#
-# The yield is therefore a SET: every class served more recently than the
-# longest-unserved one is excluded, so the resolver walks down the candidate
-# order until it reaches a class that has actually gone unserved.
-# Both T27 and T28 soak across more ticks than there are panes, so panes have
-# to free up as their iterations finish — otherwise the run dies on the role
-# concurrency cap long before the assertion window. Modelled at the list-panes
-# seam, which the dispatcher calls at tick start, BEFORE the class election
-# (the send-keys seam T25 uses is too late: write_dispatch_record runs after
-# it). `pane-seed.json` is deliberately exempt — T28 needs one dispatch to stay
-# in flight across ticks.
-cat > "$STUB_BIN/tmux" <<'TMUXEOF'
-#!/usr/bin/env bash
-sub="$1"; shift
-case "$sub" in
-    has-session) exit 0 ;;
-    list-panes)
-        # The previous tick's workers finished and returned to a shell.
-        for f in "$FLEET_STATE_DIR"/dispatch/pane-*.json; do
-            if [[ -f "$f" && "$f" != *pane-seed.json ]]; then rm -f "$f"; fi
-        done
-        for i in 1 2 3 4 5; do printf '%%%s|pool|zsh\n' "$i"; done
-        exit 0
-        ;;
-    display-message)
-        pane=""; fmt=""
-        while [[ $# -gt 0 ]]; do
-            case "$1" in
-                -t) pane="$2"; shift 2 ;;
-                -p) fmt="$2"; shift 2 ;;
-                *)  shift ;;
-            esac
-        done
-        if [[ "$fmt" == *pane_current_path* ]]; then
-            echo "/fake/worktrees/pool-${pane#%}"
-        elif [[ "$fmt" == *pane_pid* ]]; then
-            echo "1"
-        fi
-        exit 0
-        ;;
-    send-keys) exit 0 ;;
-    *) exit 0 ;;
-esac
-TMUXEOF
-chmod +x "$STUB_BIN/tmux"
-THREE_CLASS_SLICE='{"tasks_open":[
-  {"issue":"#10","model":"opus","effort":null,"owner":"free","blocked":false},
-  {"issue":"#13","model":"sonnet","effort":null,"owner":"free","blocked":false}],
- "feedback_prs":[],
- "needs_plan":[{"number":99,"repo":"engine","labels":[]}]}'
-rm -f "$FLEET_STATE_DIR/dispatch"/*.json
-: > "$FLEET_STATE_DIR/triggers/worker"
-write_slice worker "$THREE_CLASS_SLICE"
-out=$(STUB_GRANT='engine:99' "$DISPATCHER" --dispatch-role worker 16 2>&1 >/dev/null)
-# >=2 rather than >=1 deliberately: a single dispatch is also what a one-shot
-# walk that then re-locks onto ranks 1-2 would produce. Two proves the yield
-# target keeps rotating. The machine is fully deterministic here (settle=0
-# pins class_racing to 0 and the stub frees every pane each tick), so the
-# measured 12 opus / 2 sonnet / 2 fable is stable, not timing-dependent.
-for _cls in opus sonnet fable; do
-    _n=$(printf '%s\n' "$out" | grep -c "class=$_cls effort" || true)
-    if (( _n >= 2 )); then
-        PASS=$((PASS+1)); echo "  ok: $_cls dispatched $_n times in 16 ticks"
-    else
-        FAIL=$((FAIL+1)); echo "  FAIL: $_cls dispatched $_n times in 16 ticks (want >=2):"
-        printf '%s\n' "$out"
-    fi
-done
-
-echo "T28: a cap-saturated yield target does not idle the lane"
-# fleet-dispatcher's fairness comment claims the floor "can never turn a
-# servable tick into a deferred one". The drop-and-retry backing that claim
-# fires only on RESOLVER defer; the cap-saturation defer further down was not
-# covered. Shape: the yielded-TO class resolves fine (more=0, defer=0) but has
-# no claim headroom, so the tick returns "already covered" with the fairness
-# exclusion still applied — while the yielded class had headroom and would
-# have been served without the floor. Worse, the return is above the
-# bookkeeping, so CLASS_ELECTION_RUN stays at the threshold and EVERY
-# subsequent tick re-yields and re-defers until the records age out.
-#
-# Reproduced with the MONOPOLY_SLICE shape (opus fan-out of 1/tick, so ticks
-# stay countable) plus a live settle window and one pre-seeded in-flight sonnet
-# record, so claim_headroom(sonnet) == 0 while opus still has room.
-#
-# Reuses the pane-freeing stub installed above T27; `pane-seed.json` survives
-# its sweep, so sonnet stays saturated while opus's own records never
-# accumulate against it.
-rm -f "$FLEET_STATE_DIR/dispatch"/*.json
-: > "$FLEET_STATE_DIR/triggers/worker"
-write_slice worker "$MONOPOLY_SLICE"
-# The sonnet lane's only claimable slot, already in flight and still inside the
-# settle window — claim_headroom(sonnet) == 0 on the yield tick.
-printf '{"role":"worker","pane":"%%99","class":"sonnet","dispatched_at":"%s","dispatched_epoch":%s}\n' \
-    "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$(date +%s)" \
-    > "$FLEET_STATE_DIR/dispatch/pane-seed.json"
-out=$(FLEET_DISPATCHER_CLAIM_SETTLE_SECONDS=90 \
-    "$DISPATCHER" --dispatch-role worker 4 2>&1 >/dev/null)
+echo "T25b: a reviewer lane fans out one pane per candidate and goes quiet on an empty slice"
+write_slice sonnet-reviewer '{"candidate_prs":[{"number":3074,"repo":"engine","labels":[]},{"number":3080,"repo":"engine","labels":[]}]}'
+out=$(tick sonnet-reviewer 1)
+assert_eq "$(count_dispatches "$out")" "2" "two candidate PRs -> two launches (five panes idle)"
 case "$out" in
-    *"already covered by"*"deferring trigger"*|*"no claimable work"*)
-        FAIL=$((FAIL+1)); echo "  FAIL: the yield deferred a tick the elected class could serve:"
-        printf '%s\n' "$out" ;;
-    *)  PASS=$((PASS+1)); echo "  ok: no tick deferred while opus had headroom" ;;
+    *"[target=review:engine:3074]"*"[target=review:engine:3080]"*)
+        PASS=$((PASS+1)); echo "  ok: each launch carries its own PR" ;;
+    *) FAIL=$((FAIL+1)); echo "  FAIL: review targets:"; printf '%s\n' "$out" ;;
 esac
-assert_eq "$(printf '%s\n' "$out" | grep -c 'dispatching worker -> .*class=opus')" "4" \
-    "all four ticks served opus — the saturated yield target degraded to serving, not deferring"
-rm -f "$FLEET_STATE_DIR/dispatch/pane-seed.json"
+write_slice sonnet-reviewer '{"candidate_prs":[]}'
+out=$(tick sonnet-reviewer 1)
+assert_eq "$(count_dispatches "$out")" "0" "empty candidate list -> no launch (the 96-no-op night)"
+[[ ! -f "$FLEET_STATE_DIR/triggers/sonnet-reviewer" ]] \
+    && { PASS=$((PASS+1)); echo "  ok: trigger consumed"; } \
+    || { FAIL=$((FAIL+1)); echo "  FAIL: trigger left standing"; }
+
+echo "T25c: dry-run launches the standby path without a claim or a target"
+write_slice worker "$TWO_CLASS_SLICE"
+printf 'dry-run\n' > "$FLEET_STATE_DIR/dispatch-mode"
+out=$(tick worker 1)
+rm -f "$FLEET_STATE_DIR/dispatch-mode"
+[[ ! -s "$FLEET_CLAIM_LOG" ]] \
+    && { PASS=$((PASS+1)); echo "  ok: no claim in dry-run"; } \
+    || { FAIL=$((FAIL+1)); echo "  FAIL: dry-run claimed: $(cat "$FLEET_CLAIM_LOG")"; }
+if grep -q 'target=' "$SEND_LOG"; then
+    FAIL=$((FAIL+1)); echo "  FAIL: dry-run launch carries a target: $(cat "$SEND_LOG")"
+else
+    PASS=$((PASS+1)); echo "  ok: dry-run launch carries no target"
+fi
 
 echo "T26: --dispatch-role argument validation"
 "$DISPATCHER" --dispatch-role >/dev/null 2>&1 \
@@ -679,7 +566,7 @@ write_slice worker '{"tasks_open":[],"feedback_prs":[],"needs_plan":[{"number":9
 echo "T32: candidate at the cap is parked and the next line assigned"
 rm -rf "$COUNTS_DIR"; mkdir -p "$COUNTS_DIR"; : > "$GH_LOG"
 printf '2' > "$COUNTS_DIR/engine-99"
-assert_eq "$(FLEET_PLAN_DISPATCH_CAP=2 STUB_GRANT='engine:120' plan_assign)" "plan=engine:120" \
+assert_eq "$(FLEET_PLAN_DISPATCH_CAP=2 STUB_GRANT='engine:120' plan_assign)" "target=plan:engine:120" \
     "engine:99 at cap -> parked, engine:120 assigned"
 # #3034 park semantics: ADD fleet:needs-human only — fleet:needs-plan stays
 # on (still true; re-entry = the human removing the park label).
@@ -698,9 +585,9 @@ grep -q 'issue comment 99 ' "$GH_LOG" \
 
 echo "T33: a granted assignment increments the per-issue counter"
 rm -rf "$COUNTS_DIR"; : > "$GH_LOG"
-assert_eq "$(STUB_GRANT='engine:99' plan_assign)" "plan=engine:99" "assignment granted"
+assert_eq "$(STUB_GRANT='engine:99' plan_assign)" "target=plan:engine:99" "assignment granted"
 assert_eq "$(cat "$COUNTS_DIR/engine-99" 2>/dev/null)" "1" "counter recorded one dispatch"
-assert_eq "$(STUB_GRANT='engine:99' plan_assign)" "plan=engine:99" "second assignment granted"
+assert_eq "$(STUB_GRANT='engine:99' plan_assign)" "target=plan:engine:99" "second assignment granted"
 assert_eq "$(cat "$COUNTS_DIR/engine-99" 2>/dev/null)" "2" "counter incremented"
 [[ ! -s "$GH_LOG" ]] \
     && { PASS=$((PASS+1)); echo "  ok: no gh call below the cap"; } \
@@ -709,13 +596,11 @@ assert_eq "$(cat "$COUNTS_DIR/engine-99" 2>/dev/null)" "2" "counter incremented"
 echo "T34: FLEET_PLAN_DISPATCH_CAP=0 disables the breaker"
 rm -rf "$COUNTS_DIR"; mkdir -p "$COUNTS_DIR"; : > "$GH_LOG"
 printf '99' > "$COUNTS_DIR/engine-99"
-assert_eq "$(FLEET_PLAN_DISPATCH_CAP=0 STUB_GRANT='engine:99' plan_assign)" "plan=engine:99" \
+assert_eq "$(FLEET_PLAN_DISPATCH_CAP=0 STUB_GRANT='engine:99' plan_assign)" "target=plan:engine:99" \
     "cap=0 -> assignment proceeds regardless of count"
 [[ ! -s "$GH_LOG" ]] \
     && { PASS=$((PASS+1)); echo "  ok: cap=0 never parks"; } \
     || { FAIL=$((FAIL+1)); echo "  FAIL: cap=0 still called gh: $(cat "$GH_LOG")"; }
 rm -rf "$COUNTS_DIR"
 
-echo
-echo "PASS: $PASS  FAIL: $FAIL"
-[[ "$FAIL" -eq 0 ]]
+summarize "fleet-dispatcher class-dispatch tests"

@@ -114,14 +114,19 @@ if [[ -f "$FLEET_LIB_DIR/fleet-clone-freshness.sh" ]]; then
 else
     advance_main_clone() { :; }  # helper not installed yet — no-op
 fi
-# Shared fleet-claim helpers (fleet_planning_release_assignment). A missing
-# file degrades the error-path release to a no-op — the 1-hour planning TTL
-# reaper covers the leaked claim, same failure budget as the wrap's copy.
+# Shared fleet-claim helpers (fleet_release_assignment). A missing file
+# degrades the error-path release to a no-op — each lane claim's TTL reaper
+# covers the leaked lock, same failure budget as the wrap's copy.
 if [[ -f "$FLEET_LIB_DIR/fleet-common.sh" ]]; then
     # shellcheck source=/dev/null
     source "$FLEET_LIB_DIR/fleet-common.sh"
 else
-    fleet_planning_release_assignment() { :; }
+    # Without the target grammar no lane can be assigned: every claim_target
+    # refuses, the target-bound lanes stand down, and the log says why.
+    fleet_release_assignment() { :; }
+    fleet_parse_target() { return 1; }
+    fleet_repo_ns() { FLEET_NS=(); }
+    declare -A FLEET_TARGET_CLAIM=() FLEET_TARGET_RELEASE=()
 fi
 
 # --- Per-role concurrency cap config ---------------------------------------
@@ -537,69 +542,12 @@ if ! [[ "$CLAIM_SETTLE_SECONDS" =~ ^[0-9]+$ ]]; then
     CLAIM_SETTLE_SECONDS=90
 fi
 
-# Class fairness floor. The cross-class fan-out serves another class only when
-# the elected one is fully covered (headroom 0), which inherits the settle
-# window's premise above: a claimed task leaves tasks_open, so coverage is
-# eventually reached. An item every worker REFUSES — host-gated, design-parked,
-# content-declined — breaks that: it is never claimed, so it counts toward
-# DISPATCH_COUNT forever, while the workers that walked it and declined age out
-# of CLAIM_SETTLE_SECONDS. Headroom stays permanently positive and the fan-out
-# is unreachable, letting one class hold the lane indefinitely (observed: 39h,
-# see #2699).
-#
-# So bound the monopoly by turns as well: after this many consecutive ticks
-# electing the same class while ANOTHER class is claimable, yield one pass
-# regardless of coverage. The yield goes to the LEAST RECENTLY SERVED claimable
-# class, not simply the next one in candidate order — with three classes live,
-# yielding to rank 2 every time leaves rank 3 unserved forever (rank 2 is
-# recorded as the last-elected class with a run of 1, so the monopolist
-# re-elects on the very next tick and the pair just alternates). That is the
-# same unbounded starvation this floor exists to prevent, one rank down.
-# Turn count is a deliberately weaker signal than "workers claimed nothing"
-# (that needs the per-(role, class, host) empty-exit streak, #2698) — this
-# bounds how long a monopoly can last, it does not detect one.
-# 0 disables the floor, leaving coverage the only yield.
-# Validated-and-clamped like the overrides above: a non-numeric value would
-# emit arithmetic errors every tick or kill the daemon under `set -u`.
-CLASS_FAIRNESS_RUN="${FLEET_DISPATCHER_CLASS_FAIRNESS_RUN:-3}"
-if ! [[ "$CLASS_FAIRNESS_RUN" =~ ^[0-9]+$ ]]; then
-    printf '[%s dispatcher] CLASS_FAIRNESS_RUN=%q is not a non-negative integer; falling back to 3\n' \
-        "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$CLASS_FAIRNESS_RUN" >&2
-    CLASS_FAIRNESS_RUN=3
-fi
-# Per-role bookkeeping for the floor: the class elected on the previous tick
-# that reached an election, and how many consecutive such ticks elected it with
-# another class still claimable. In-memory / daemon-lifetime, like
-# CAP_DEFER_LOGGED — a restart forgives the run, which is the right default for
-# a fairness heuristic (no state file to go stale or leak).
-declare -A CLASS_ELECTION_LAST=()
-declare -A CLASS_ELECTION_RUN=()
-# Per-(role, class) recency: the value of CLASS_ELECTION_TICKS at that class's
-# last election, 0 for never-served. A single-class yield only ever reaches
-# rank 2 — the yielded-to class is recorded as LAST with RUN=1, the monopolist
-# re-elects next tick, and rank 3 is never served at all. Recency is what lets
-# the yield walk PAST an already-recently-served class to the genuinely starved
-# one (the 3-class defect found on #2705).
-declare -A CLASS_ELECTION_SERVED=()
-declare -A CLASS_ELECTION_TICKS=()
-# The worker model classes, for the recency scan. Not derived from the slice:
-# a class absent from this tick's slice must still read as starved, or it could
-# never be walked to once it reappears.
-WORKER_CLASS_NAMES=(opus fable sonnet)
-
-# Lowest CLASS_ELECTION_SERVED value across all worker classes for a role —
-# i.e. how recently the LEAST recently served class ran. A never-served class
-# pins this at 0, which is what makes it the yield walk's target.
-class_min_served() {
-    local role="$1" cls served min=""
-    for cls in "${WORKER_CLASS_NAMES[@]}"; do
-        served="${CLASS_ELECTION_SERVED["$role:$cls"]:-0}"
-        if [[ -z "$min" ]] || (( served < min )); then
-            min="$served"
-        fi
-    done
-    printf '%s\n' "${min:-0}"
-}
+# (The #2699 class-fairness floor — a turn-count yield that bounded how long
+# one class could hold the lane when its head item was one every worker
+# refused — retired with assignment-before-launch. A refused item is now
+# refused at the claim, in the dispatcher, before any pane launches, and the
+# lane re-elects without that class in the same tick; see the
+# "no claimable candidate left; serving next class" branch in dispatch_role.)
 
 # Roles this dispatcher is responsible for. Architects are excluded
 # (kept on fleet-babysit). Panes are a generic pool, so this list — not
@@ -928,13 +876,19 @@ dispatch_record() {
 write_dispatch_record() {
     # $3 = model class of the dispatch (fable|opus|sonnet) — counted by
     # count_active_for_class for the fable concurrency cap.
-    # $4 = optional pre-claimed planning assignment ("<repo>:<N>", #2197),
-    # stamped as `plan_issue` for fleet-debug observability.
-    local role="$1" pane_id="$2" class="${3:-}" plan_issue="${4:-}"
+    # $4 = optional pre-claimed dispatch target ("<kind>:<repo>:<N>[:x]"),
+    # stamped as `target` — read back by assign_for_pane's dedup (no two panes
+    # after one item) and derive_dispatch_outcome (productive by
+    # assignment). A `plan` target is also stamped as the #2197
+    # `plan_issue` for readers that predate targets.
+    local role="$1" pane_id="$2" class="${3:-}" target="${4:-}"
     local ts epoch extra=""
     ts=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
     epoch=$(date +%s)   # read back by cleanup_stale_dispatches for the empty-exit streak
-    [[ -n "$plan_issue" ]] && extra=$(printf ',"plan_issue":"%s"' "$plan_issue")
+    if [[ -n "$target" ]]; then
+        extra=$(printf ',"target":"%s"' "$target")
+        [[ "$target" == plan:* ]] && extra+=$(printf ',"plan_issue":"%s"' "${target#plan:}")
+    fi
     mkdir -p "$DISPATCH_DIR"
     # claim_marker:1 asserts this dispatch's wrapper exports FLEET_CLAIM_FLAG,
     # so cleanup_stale_dispatches may trust the marker's absence as "claimed
@@ -1157,10 +1111,11 @@ derive_dispatch_outcome() {
     # to the old duration heuristic. Self-clearing after one dispatch cycle.
     marker=$(sed -n 's/.*"claim_marker":\([0-9]*\).*/\1/p' "$file" | head -n 1)
     [[ -n "$marker" ]] || return 0
-    # A planning dispatch is productive by assignment: the dispatcher took its
-    # planning-claim pre-launch (#2197), where the pane's FLEET_CLAIM_FLAG did
-    # not yet exist to be stamped.
-    plan_issue=$(sed -n 's/.*"plan_issue":"\([^"]*\)".*/\1/p' "$file" | head -n 1)
+    # A target-bound dispatch is productive by assignment: the dispatcher took
+    # the lane claim pre-launch, where the pane's FLEET_CLAIM_FLAG did not yet
+    # exist to be stamped. `plan_issue` is the #2197 spelling of the same
+    # fact on records written before targets.
+    plan_issue=$(sed -n 's/.*"target":"\([^"]*\)".*/\1/p;s/.*"plan_issue":"\([^"]*\)".*/\1/p' "$file" | head -n 1)
     claim_flag="$CLAIM_FLAG_DIR/$(pane_id_to_key "$pane")"
     if [[ -f "$claim_flag" || -n "$plan_issue" ]]; then
         printf 'yes\n'
@@ -1547,13 +1502,13 @@ build_dispatch_command() {
     # on command lines, so the eaten space is harmless.
     # $3/$4 = optional model/effort overrides from per-task class
     # resolution (resolve_worker_class); empty -> the role defaults.
-    # $5 = optional pre-claimed planning assignment ("<repo>:<N>", #2197);
-    # non-empty appends a 7th `plan=<repo>:<N>` arg that fleet-dispatch-wrap
-    # exports as FLEET_PLAN_ISSUE.
+    # $5 = optional pre-claimed dispatch target ("<kind>:<repo>:<N>[:x]");
+    # non-empty appends a 7th `target=…` arg that fleet-dispatch-wrap exports
+    # as FLEET_DISPATCH_TARGET (+ FLEET_PLAN_ISSUE for a `plan` target).
     local role="$1" pane_key="$2"
     local model="${3:-${ROLE_MODEL[$role]:-sonnet}}"
     local effort="${4:-${ROLE_EFFORT[$role]:-high}}"
-    local plan="${5:-}"
+    local target="${5:-}"
     # Fable-class dispatches carry the fallback chain so claude degrades
     # per-iteration (--fallback-model, print-mode only) if Fable stops
     # being available mid-session. Other classes get no fallback:
@@ -1566,10 +1521,10 @@ build_dispatch_command() {
     # which role mode to run — `/role-<role> <mode>` — so a dry-run boot runs the
     # standby path, not a live task-pickup iteration. Live → "live", identical to
     # the prior hard-coded behavior.
-    if [[ -n "$plan" ]]; then
+    if [[ -n "$target" ]]; then
         printf ' fleet-dispatch-wrap %q %q %q %q %q %q %q\n' \
             "$pane_key" "$model" "$effort" "$role" "$fallback" \
-            "${DISPATCH_MODE:-live}" "plan=$plan"
+            "${DISPATCH_MODE:-live}" "target=$target"
     else
         printf ' fleet-dispatch-wrap %q %q %q %q %q %q\n' \
             "$pane_key" "$model" "$effort" "$role" "$fallback" "${DISPATCH_MODE:-live}"
@@ -1590,17 +1545,19 @@ resolve_worker_class() {
     local exclude="${2:-}"
     DISPATCH_CLASS="" DISPATCH_MODEL="" DISPATCH_EFFORT=""
     DISPATCH_MORE=0 DISPATCH_DEFER=0 DISPATCH_COUNT="" DISPATCH_PLAN=0
+    DISPATCH_FABLE_BLOCKED=0
     local lane_default="${WORKER_LANE_DEFAULT_CLASS[$role]:-}"
     [[ -n "$lane_default" ]] || return 0
     local slice="$STATE_DIR/projections/$role.json"
     [[ -f "$slice" ]] || return 0
-    local fable_blocked=0
+    # Published (not local): assign_for_pane's pick walk needs the same
+    # answer and must not rescan the dispatch records to re-derive it.
     if (( $(count_active_for_class fable) >= FABLE_CONCURRENCY_CAP )); then
-        fable_blocked=1
+        DISPATCH_FABLE_BLOCKED=1
     fi
     local out
     out=$(python3 "$FLEET_LIB_DIR/fleet_task_class.py" \
-        "$slice" "$lane_default" "$fable_blocked" "$exclude" 2>/dev/null) || out=""
+        "$slice" "$lane_default" "$DISPATCH_FABLE_BLOCKED" "$exclude" 2>/dev/null) || out=""
     if [[ "$out" == "defer" ]]; then
         DISPATCH_DEFER=1
         return 0
@@ -1616,9 +1573,9 @@ resolve_worker_class() {
     # Older slices / the '' fallthrough leave it empty (uncapped). Validate so a
     # malformed value can't corrupt the cap arithmetic under `set -u`.
     [[ "$count" =~ ^[0-9]+$ ]] && DISPATCH_COUNT="$count"
-    # The elected class's count includes its needs-plan yield: dispatch_role
-    # pre-claims a specific issue (plan_assign_for_pane) and hands the
-    # assignment to the dispatch (#2197). Validated like `count`. Explicit
+    # The elected class's count includes its needs-plan yield (`plan=1`) —
+    # kept for the --resolve-class print; assign_for_pane derives the planning
+    # candidates itself from the slice. Validated like `count`. Explicit
     # `if` — a `[[ ]] &&` here would fail the function on plan=0 and, as its
     # last command, abort the whole daemon under `set -e`.
     if [[ "$plan" == "1" ]]; then
@@ -1628,20 +1585,51 @@ resolve_worker_class() {
 
 # --- Planning pre-claim (#2197) --------------------------------------------
 #
-# Assignment IS the claim: when the elected class's claimable count includes a
-# needs-plan yield (DISPATCH_PLAN=1), the dispatcher takes the existing
-# planning-claim label lock itself — under the target pane's worktree
-# basename — BEFORE dispatching, and hands the assignment into the iteration
-# as `plan=<repo>:<N>` (FLEET_PLAN_ISSUE). A planning dispatch therefore only
-# exists after a successful sole-holder claim, so two concurrent planning
-# dispatches can never target the same issue; contenders drop from N panes x
-# M hosts to the M dispatchers plus the interactive architect, and a lost
-# cross-host race just assigns the NEXT candidate line instead of burning a
-# worker iteration on post-hoc arbitration.
+# Assignment IS the claim. Every live dispatch of a target-bound role
+# (ROLE_TARGET_BOUND) is sent after ONE item: the dispatcher walks the lane's
+# ordered candidates (`fleet_task_class.py --pick` / `--pick-role`), takes each
+# item's lane claim itself — under the target pane's worktree basename — until
+# one is granted, and hands that item into the iteration as `target=…`
+# (FLEET_DISPATCH_TARGET). A dispatch therefore only exists behind a held
+# sole-holder claim: no two panes after one item, no pane launched with
+# nothing claimable, no in-iteration discovery. The target grammar and the
+# kind → claim/release table live in fleet-common.sh (FLEET_TARGET_CLAIM);
+# the rationale and the measurement behind it in docs/agents/FLEET.md § "Who
+# takes the claim". Planning (#2197) was the first lane on this shape.
 
-# Result of the most recent plan_assign_for_pane call: "<repo>:<N>" when a
-# claim was granted, empty otherwise.
-PLAN_ASSIGNMENT=""
+# Result of the most recent assign_for_pane call: the granted target, else
+# empty (the function's exit status says why).
+ASSIGNMENT=""
+
+# Roles the dispatcher binds to a target before launch. The merger runs a
+# batch pass (fleet-rebase first, one LLM pass over every conflicted PR) and
+# the epic steward budgets several epics per iteration under its own claim
+# etiquette; both keep the legacy discover-in-iteration flow.
+declare -A ROLE_TARGET_BOUND=(
+    [worker]=1 [sonnet-reviewer]=1 [opus-reviewer]=1 [smoke-worker]=1
+)
+
+# Candidate cache for one dispatch_role call: the ordered picks for a
+# (role, class) are identical for every pane launched that tick, so the
+# python producer runs once per class, not once per pane.
+PICKS_CACHE_KEY=""
+PICKS_CACHE=""
+
+# A claim fleet-claim refused inside the last CLAIM_REFUSE_TTL_SECONDS is not
+# re-attempted: a refusal is almost always "held elsewhere" or "blocked
+# live", which does not clear inside a tick, and each attempt is several gh
+# round trips. Daemon-lifetime, like CAP_DEFER_LOGGED.
+declare -A CLAIM_REFUSED_AT=()
+CLAIM_REFUSE_TTL_SECONDS="${FLEET_DISPATCHER_CLAIM_REFUSE_TTL:-120}"
+[[ "$CLAIM_REFUSE_TTL_SECONDS" =~ ^[0-9]+$ ]] || CLAIM_REFUSE_TTL_SECONDS=120
+
+# Bound on claim attempts per dispatch_role call: every attempt is network,
+# and the walk sits inline in the 10 s control loop — an unbounded walk over a
+# long queue of held candidates would stall heartbeats and every other lane
+# behind it. Leftover candidates wait for the next tick (the trigger is kept).
+CLAIM_ATTEMPTS_PER_TICK="${FLEET_DISPATCHER_CLAIM_ATTEMPTS_PER_TICK:-8}"
+[[ "$CLAIM_ATTEMPTS_PER_TICK" =~ ^[0-9]+$ ]] || CLAIM_ATTEMPTS_PER_TICK=8
+CLAIM_ATTEMPTS_LEFT=0
 
 # --- Planning circuit breaker ----------------------------------------------
 #
@@ -1713,80 +1701,150 @@ park_unplannable_issue() {  # $1 = repo  $2 = issue number  $3 = dispatch count
     fi
 }
 
-# Attempt to pre-claim one needs-plan issue of the elected class for the pane
-# about to be dispatched. $1 = role, $2 = the pane's worktree basename (the
-# claim agent name — see pane_worktree_basename). Never pre-claims outside
-# live mode: dry-run/review-only iterations skip planning, so a claim there
-# would only strand a label for the TTL reaper.
-plan_assign_for_pane() {
-    local role="$1" agent="$2"
-    PLAN_ASSIGNMENT=""
-    [[ "$DISPATCH_MODE" == "live" ]] || return 0
-    [[ -n "$DISPATCH_CLASS" ]] || return 0
-    local slice="$STATE_DIR/projections/$role.json"
-    [[ -f "$slice" ]] || return 0
-    local fable_blocked=0
-    if (( $(count_active_for_class fable) >= FABLE_CONCURRENCY_CAP )); then
-        fable_blocked=1
+# Take the planning-claim for one needs-plan issue under <agent>. Exit 0 =
+# granted. $1 = repo, $2 = issue number, $3 = agent.
+claim_plan_target() {
+    local repo="$1" num="$2" agent="$3" rc plan_count
+    fleet_repo_ns "$repo"
+    # Circuit breaker: a candidate that has already burned the cap's worth of
+    # planning dispatches on this host is parked for the human instead of
+    # assigned again (see the breaker block above).
+    if (( PLAN_DISPATCH_CAP > 0 )); then
+        plan_count=$(plan_dispatch_count "$repo" "$num")
+        if (( plan_count >= PLAN_DISPATCH_CAP )); then
+            park_unplannable_issue "$repo" "$num" "$plan_count"
+            return 1
+        fi
     fi
-    local picks
-    picks=$(python3 "$FLEET_LIB_DIR/fleet_task_class.py" --plan-pick \
-        "$slice" "$DISPATCH_CLASS" "$fable_blocked" 2>/dev/null) || picks=""
-    [[ -n "$picks" ]] || return 0
-    local line repo num rc plan_count
-    while IFS= read -r line; do
-        # Native-Windows python3 emits CRLF on stdout; without the strip the
-        # trailing \r fails the numeric gate below on every line but the last
-        # (which has no newline), so only the LAST candidate was ever claimed
-        # and the whole engine needs-plan lane was unreachable (#3022). The
-        # producer also pins LF (fleet_task_class.py), so this is the backstop.
-        line="${line%$'\r'}"
-        [[ -n "$line" ]] || continue
-        repo="${line%%:*}"
-        num="${line##*:}"
-        [[ "$num" =~ ^[0-9]+$ ]] || continue
-        # Circuit breaker: a candidate that has already burned the cap's worth
-        # of planning dispatches on this host is parked for the human instead
-        # of assigned again (see the breaker block above).
-        if (( PLAN_DISPATCH_CAP > 0 )); then
-            plan_count=$(plan_dispatch_count "$repo" "$num")
-            if (( plan_count >= PLAN_DISPATCH_CAP )); then
-                park_unplannable_issue "$repo" "$num" "$plan_count"
-                continue
-            fi
-        fi
-        # exit 0 = sole holder (assigned); 1 = a cross-host dispatcher or the
-        # architect holds it (next line); 3 = a `## Plan` comment already
-        # exists — either a stale slice (already planned + queued) or the
-        # re-plan state (plan-review bounce / stale-queued flip re-entered it
-        # into needs_plan). Disambiguate with --replan, which gates on a LIVE
-        # fleet:needs-plan label: exit 0 = assigned as a re-plan, exit 2 = the
-        # label is gone, genuinely done — next line.
+    # exit 0 = sole holder (assigned); 1 = a cross-host dispatcher or the
+    # architect holds it (next line); 3 = a `## Plan` comment already exists —
+    # either a stale slice (already planned + queued) or the re-plan state
+    # (plan-review bounce / stale-queued flip re-entered it into needs_plan).
+    # Disambiguate with --replan, which gates on a LIVE fleet:needs-plan
+    # label: exit 0 = assigned as a re-plan, exit 2 = the label is gone,
+    # genuinely done — next line.
+    rc=0
+    fleet-claim ${FLEET_NS[@]+"${FLEET_NS[@]}"} planning-claim "$num" "$agent" >/dev/null 2>&1 || rc=$?
+    if (( rc == 3 )); then
         rc=0
-        if [[ "$repo" == "game" ]]; then
-            fleet-claim --repo game planning-claim "$num" "$agent" >/dev/null 2>&1 || rc=$?
+        fleet-claim ${FLEET_NS[@]+"${FLEET_NS[@]}"} planning-claim "$num" "$agent" --replan >/dev/null 2>&1 || rc=$?
+    fi
+    (( rc == 0 )) || return 1
+    plan_dispatch_note "$repo" "$num"
+    return 0
+}
+
+# Take the lane claim for one dispatch target under <agent>. Exit 0 =
+# granted; anything else (held elsewhere, blocked live, wrong class, a dup
+# PR, gh down) = not this item, try the next. The kind → subcommand table is
+# fleet-common.sh's FLEET_TARGET_CLAIM; the two arms that need more than the
+# subcommand (a task claim's class gate and stack base, planning's circuit
+# breaker + --replan) are spelled out here.
+claim_target() {
+    local target="$1" agent="$2"
+    fleet_parse_target "$target" || return 1
+    fleet_repo_ns "$FLEET_TARGET_REPO"
+    case "$FLEET_TARGET_KIND" in
+        task|stack)
+            local -a stack_args=()
+            if [[ "$FLEET_TARGET_KIND" == stack ]]; then
+                [[ -n "$FLEET_TARGET_EXTRA" ]] || return 1
+                stack_args=(--stackable-on "$FLEET_TARGET_EXTRA")
+            fi
+            # fleet-claim's model-tag gate reads the claimant's class from
+            # FLEET_ROLE_MODEL — the same class the pane's wrapper exports.
+            FLEET_ROLE_MODEL="$DISPATCH_CLASS" fleet-claim ${FLEET_NS[@]+"${FLEET_NS[@]}"} \
+                claim "$FLEET_TARGET_NUM" "$agent" ${stack_args[@]+"${stack_args[@]}"} >/dev/null 2>&1
+            ;;
+        plan) claim_plan_target "$FLEET_TARGET_REPO" "$FLEET_TARGET_NUM" "$agent" ;;
+        *)
+            fleet-claim ${FLEET_NS[@]+"${FLEET_NS[@]}"} "${FLEET_TARGET_CLAIM[$FLEET_TARGET_KIND]}" \
+                "$FLEET_TARGET_NUM" "$agent" >/dev/null 2>&1
+            ;;
+    esac
+}
+
+# Bind the pane about to be dispatched to one target: walk the lane's
+# ordered candidates and take the first claim that is granted. $1 = role,
+# $2 = the pane's worktree basename (the claim agent name — see
+# pane_worktree_basename; the iteration releases under its own basename, so
+# any other name would make that release a no-op). Sets ASSIGNMENT and
+# returns 0 (assigned), 1 (nothing claimable — every candidate held, in
+# flight, refused, or none listed), 2 (no projection slice for the role — the
+# scout may not have written it yet; the caller keeps the legacy plain
+# launch), or 3 (this tick's claim budget ran out mid-walk — the caller keeps
+# the trigger). Never claims outside live mode: dry-run/review-only
+# iterations do no lane work, so a claim there would only strand a lock.
+assign_for_pane() {
+    local role="$1" agent="$2"
+    ASSIGNMENT=""
+    [[ "$DISPATCH_MODE" == "live" ]] || return 1
+    [[ -n "${ROLE_TARGET_BOUND[$role]+x}" ]] || return 1
+    local slice="$STATE_DIR/projections/$role.json"
+    [[ -f "$slice" ]] || return 2
+    local key="$role:$DISPATCH_CLASS"
+    if [[ "$PICKS_CACHE_KEY" != "$key" ]]; then
+        PICKS_CACHE_KEY="$key"
+        PICKS_CACHE=""
+        if [[ "$role" == "worker" ]]; then
+            [[ -n "$DISPATCH_CLASS" ]] || return 1
+            PICKS_CACHE=$(python3 "$FLEET_LIB_DIR/fleet_task_class.py" --pick "$slice" \
+                "$DISPATCH_CLASS" "$DISPATCH_FABLE_BLOCKED" \
+                "${WORKER_LANE_DEFAULT_CLASS[$role]:-opus}" 2>/dev/null) || PICKS_CACHE=""
         else
-            fleet-claim planning-claim "$num" "$agent" >/dev/null 2>&1 || rc=$?
+            PICKS_CACHE=$(python3 "$FLEET_LIB_DIR/fleet_task_class.py" --pick-role \
+                "$slice" "$role" 2>/dev/null) || PICKS_CACHE=""
         fi
-        if (( rc == 0 )); then
-            PLAN_ASSIGNMENT="$line"
-            plan_dispatch_note "$repo" "$num"
+        # Native-Windows python3 emits CRLF on stdout; a trailing \r would
+        # fail every numeric gate but the last line's (#3022). The producer
+        # also pins LF; this is the backstop.
+        PICKS_CACHE="${PICKS_CACHE//$'\r'/}"
+    fi
+    [[ -n "$PICKS_CACHE" ]] || return 1
+    # In-flight targets, read once per walk. A record is written for every
+    # launch before the next pane is considered, so the records alone are the
+    # dedup; the one launch path without a record (send-keys failed) releases
+    # its claim, so the item legitimately re-enters.
+    local inflight
+    inflight=$(grep -ho '"target":"[^"]*"' "$DISPATCH_DIR"/*.json 2>/dev/null || true)
+    local line now
+    now=$(date +%s)
+    while IFS= read -r line; do
+        [[ -n "$line" ]] || continue
+        [[ "$inflight" == *"\"target\":\"$line\""* ]] && continue
+        if [[ -n "${CLAIM_REFUSED_AT[$line]+x}" ]] \
+            && (( now - CLAIM_REFUSED_AT[$line] < CLAIM_REFUSE_TTL_SECONDS )); then
+            continue
+        fi
+        (( CLAIM_ATTEMPTS_LEFT > 0 )) || return 3
+        CLAIM_ATTEMPTS_LEFT=$(( CLAIM_ATTEMPTS_LEFT - 1 ))
+        if claim_target "$line" "$agent"; then
+            ASSIGNMENT="$line"
+            unset "CLAIM_REFUSED_AT[$line]"
             return 0
         fi
-        if (( rc == 3 )); then
-            rc=0
-            if [[ "$repo" == "game" ]]; then
-                fleet-claim --repo game planning-claim "$num" "$agent" --replan >/dev/null 2>&1 || rc=$?
-            else
-                fleet-claim planning-claim "$num" "$agent" --replan >/dev/null 2>&1 || rc=$?
-            fi
-            if (( rc == 0 )); then
-                PLAN_ASSIGNMENT="$line"
-                plan_dispatch_note "$repo" "$num"
-                return 0
-            fi
-        fi
-    done <<< "$picks"
+        CLAIM_REFUSED_AT[$line]=$now
+    done <<< "$PICKS_CACHE"
+    return 1
+}
+
+# Re-elect the worker lane without its current class: append DISPATCH_CLASS
+# to the election loop's exclusion set (`_sat_excluded`, a dispatch_role
+# local reached by dynamic scope), re-resolve, and recompute the new class's
+# claim headroom into `claim_headroom` (likewise). Exit 0 with a new concrete
+# class, 1 when nothing else is servable. $1 = role, $2 = the reason for the
+# log line.
+elect_next_class() {
+    local role="$1" reason="$2"
+    _sat_excluded="${_sat_excluded:+$_sat_excluded,}$DISPATCH_CLASS"
+    log "$role: class=$DISPATCH_CLASS $reason; serving next class"
+    resolve_worker_class "$role" "$_sat_excluded"
+    [[ -n "$DISPATCH_CLASS" ]] && (( ! DISPATCH_DEFER )) || return 1
+    claim_headroom=-1
+    if [[ "$DISPATCH_COUNT" =~ ^[0-9]+$ ]]; then
+        claim_headroom=$(( DISPATCH_COUNT - $(count_recent_active_for_class "$DISPATCH_CLASS" "$CLAIM_SETTLE_SECONDS") ))
+        (( claim_headroom < 0 )) && claim_headroom=0
+    fi
     return 0
 }
 
@@ -1841,7 +1899,7 @@ worker_rearm_should_fire() {
 # worker lane.
 #
 # Shells out to fleet_task_class.py rather than importing it — that module is a
-# CLI seam from bash, the same way resolve_worker_class and plan_assign_for_pane
+# CLI seam from bash, the same way resolve_worker_class and assign_for_pane
 # reach it. A missing, unreadable, or host-empty slice yields no numbers, i.e.
 # don't fire.
 SMOKE_SERVABLE_PRS=""
@@ -1926,22 +1984,20 @@ dispatch_role() {
         role_headroom=$(( cap - active ))
     fi
 
-    # Fan out across every idle pane serving this role (its own tag or
+    # Fan out across the idle panes serving this role (its own tag or
     # the generic "pool" tag), skipping any that already have an
     # in-flight dispatch record. Any role gets concurrent iterations
     # this way, bounded by role_headroom above; the original design
     # single-flighted each role because the dispatch record was keyed
     # by role name and only the first idle pane was ever picked.
     #
-    # TASK coordination stays claim-side: each iteration runs the same
-    # role command, and the role-doc logic uses fleet-claim to
-    # atomically claim work — only one pane can claim a given task,
-    # the others find nothing actionable and exit. If there are fewer
-    # actionable items than idle panes, the surplus panes simply
-    # iterate-and-exit cheaply. PLANNING is the exception: the
-    # dispatcher pre-claims a specific needs-plan issue and hands the
-    # assignment to exactly one pane (#2197, see plan_assign_for_pane),
-    # so planning dispatches never contend for the same issue.
+    # Coordination is dispatcher-side for the target-bound roles
+    # (ROLE_TARGET_BOUND): each launched pane carries one item whose
+    # lane claim the dispatcher already holds under that pane's basename
+    # (assign_for_pane), so no two panes are ever sent after the same
+    # item and a pane is never launched when nothing is claimable — the
+    # fan-out stops at the first pane that cannot be assigned. The merger
+    # and epic steward still coordinate iteration-side via fleet-claim.
     local idle_panes
     idle_panes=$(find_idle_panes_for_role "$role")
     if [[ -z "$idle_panes" ]]; then
@@ -1964,59 +2020,9 @@ dispatch_role() {
     # three (opus|fable|sonnet), so the loop runs a handful of times then either
     # finds a class with headroom, hits the uncapped path, or defers.
     local claim_headroom=-1   # -1 = uncapped
-    local _excluded="" _sat_excluded="" _passes=0
-    # Fairness floor (#2699): the headroom test below can never fire when the
-    # elected class's claimable items are ones every worker refuses, so bound
-    # the monopoly by turns as well. `_fair_yield` is a comma list, not a single
-    # class: yielding only the monopolist reaches rank 2 and no further, so with
-    # three classes live the bottom one starves anyway. It is kept separate from
-    # the saturation exclusions (`_sat_excluded`) so it can be given back on its
-    # own — one entry at a time — when the yield has nothing left to yield TO.
-    # `_fair_min` snapshots the least-recently-served class at yield time; the
-    # walk below uses it as the target, and `_fair_walked` keeps that walk
-    # one-directional so a give-back cannot re-add what it just released.
-    local _fair_yield="" _fair_walked=0 _fair_min=0
-    if (( CLASS_FAIRNESS_RUN > 0 )) \
-        && [[ -n "${CLASS_ELECTION_LAST[$role]:-}" ]] \
-        && (( ${CLASS_ELECTION_RUN[$role]:-0} >= CLASS_FAIRNESS_RUN )); then
-        _fair_yield="${CLASS_ELECTION_LAST[$role]}"
-        _fair_min=$(class_min_served "$role")
-        log "$role: class=$_fair_yield elected ${CLASS_ELECTION_RUN[$role]} consecutive ticks with other classes queued; yielding one pass (fairness floor)"
-    fi
+    local _sat_excluded="" _passes=0
     while : ; do
-        _excluded="$_sat_excluded"
-        [[ -n "$_fair_yield" ]] && _excluded="$_fair_yield${_excluded:+,$_excluded}"
-        resolve_worker_class "$role" "$_excluded"
-        # The yielded class(es) were claimable when the run accumulated; by this
-        # tick the OTHERS may not be. Give back one exclusion at a time — the
-        # most recently added first — so an overshooting walk (below) falls back
-        # to the class it just skipped rather than all the way to the
-        # monopolist. Saturation exclusions are kept throughout; they are still
-        # true. Once the fairness set empties, serve the monopolist after all,
-        # so the floor can never turn a servable tick into a deferred one.
-        if [[ -n "$_fair_yield" ]] && (( DISPATCH_DEFER )); then
-            if [[ "$_fair_yield" == *,* ]]; then
-                _fair_yield="${_fair_yield%,*}"
-                _fair_walked=1   # stop walking, or we would re-add what we just gave back
-                continue
-            fi
-            log "$role: fairness yield of class=$_fair_yield found no other servable class; serving it after all"
-            _fair_yield=""
-            CLASS_ELECTION_RUN["$role"]=0
-            continue
-        fi
-        # Walk down to the genuinely starved class. The elected one may itself
-        # have been served more recently than some other class — yielding to it
-        # would just rotate between ranks 1 and 2 forever while rank 3 starves.
-        # Bounded: each pass excludes one more of the three classes, and
-        # `_fair_walked` makes the walk one-directional.
-        if [[ -n "$_fair_yield" ]] && (( ! _fair_walked )) && [[ -n "$DISPATCH_CLASS" ]] \
-            && (( ${CLASS_ELECTION_SERVED["$role:$DISPATCH_CLASS"]:-0} > _fair_min )) \
-            && [[ ",$_fair_yield," != *",$DISPATCH_CLASS,"* ]]; then
-            _fair_yield="$_fair_yield,$DISPATCH_CLASS"
-            log "$role: class=$DISPATCH_CLASS also served recently; yielding further down the class order"
-            continue
-        fi
+        resolve_worker_class "$role" "$_sat_excluded"
         if (( DISPATCH_DEFER )); then
             # Nothing a fresh worker can claim right now: cap-blocked fable only,
             # the queue's only items already have open PRs (inflight_pr, #1726),
@@ -2068,19 +2074,6 @@ dispatch_role() {
             log "$role: class=$DISPATCH_CLASS covered ($class_racing in-flight >= $DISPATCH_COUNT claimable); serving next class"
             continue
         fi
-        # Saturated, and the fairness yield is what steered us here: the class
-        # we yielded AWAY from may still have headroom, so serving it beats
-        # idling the lane. Symmetric with the resolver-defer give-back above,
-        # and needed for the same invariant — without it the tick dispatches
-        # nothing, and because this `return` sits above the bookkeeping,
-        # CLASS_ELECTION_RUN stays at the threshold and every following tick
-        # re-yields and re-defers until the racing records settle out.
-        if [[ -n "$_fair_yield" ]]; then
-            log "$role: fairness yield target class=$DISPATCH_CLASS is cap-saturated; dropping the yield and re-resolving rather than idling the lane"
-            _fair_yield=""
-            CLASS_ELECTION_RUN["$role"]=0
-            continue
-        fi
         # Saturated with no other claimable class — keep the trigger; a later
         # tick re-evaluates once the racing workers claim or settle out.
         if [[ -z "${CAP_DEFER_LOGGED[$role-claimcap]+x}" ]]; then
@@ -2091,35 +2084,16 @@ dispatch_role() {
     done
     unset "CAP_DEFER_LOGGED[$role-noclaim]" "CAP_DEFER_LOGGED[$role-claimcap]"
 
-    # Fairness-floor bookkeeping (#2699). Deliberately here, after the election
-    # settled and before the fan-out: every return path above (no trigger, role
-    # cap, no idle pane, defer) skips it, so a quiet or fully-busy fleet cannot
-    # accumulate a run it never actually served and then yield spuriously.
-    # `DISPATCH_CLASS` is empty on the uncapped/lane-default path and for
-    # non-worker roles, which is what keeps this worker-lane-only.
-    if [[ -n "$DISPATCH_CLASS" ]]; then
-        if (( ! DISPATCH_MORE )); then
-            # Sole servable class — there is nothing to be fair to, so serving
-            # it again is not a monopoly. Reset rather than accumulate, or a
-            # single-class stretch would bank a run and yield the moment a
-            # second class appeared.
-            CLASS_ELECTION_RUN["$role"]=0
-        elif [[ "${CLASS_ELECTION_LAST[$role]:-}" == "$DISPATCH_CLASS" ]]; then
-            CLASS_ELECTION_RUN["$role"]=$(( ${CLASS_ELECTION_RUN[$role]:-0} + 1 ))
-        else
-            CLASS_ELECTION_RUN["$role"]=1
-        fi
-        CLASS_ELECTION_LAST["$role"]="$DISPATCH_CLASS"
-        # Recency stamp for the yield walk. Counts ticks that actually reached
-        # an election (same guard as the run counter above), so it advances on
-        # the same clock the fairness threshold is expressed in.
-        CLASS_ELECTION_TICKS["$role"]=$(( ${CLASS_ELECTION_TICKS[$role]:-0} + 1 ))
-        CLASS_ELECTION_SERVED["$role:$DISPATCH_CLASS"]="${CLASS_ELECTION_TICKS[$role]}"
-    fi
-
-    local dispatched=0
+    local dispatched=0 dispatched_class=0
     local gap_blocked=""
-    local plan_attempted=""
+    # assign_exhausted: the lane's candidates were all held elsewhere, in
+    # flight, or refused live — nothing else is claimable this tick, so the
+    # fan-out stops and the trigger is consumed below rather than re-walked
+    # every 10 s. assign_budget_hit: the walk stopped on the per-tick claim
+    # budget with candidates left — the trigger is kept instead.
+    local assign_exhausted="" assign_budget_hit="" assign_rc=0
+    PICKS_CACHE_KEY=""
+    CLAIM_ATTEMPTS_LEFT=$CLAIM_ATTEMPTS_PER_TICK
     while IFS= read -r pane_id; do
         [[ -n "$pane_id" ]] || continue
         # Role-cap headroom: stop once this tick's launches have consumed the
@@ -2128,10 +2102,12 @@ dispatch_role() {
         if (( role_headroom >= 0 && dispatched >= role_headroom )); then
             break
         fi
-        # Claimable-count cap: stop once this tick's launches have filled the
-        # class's remaining claimable headroom. Extra idle panes would only
-        # no-op claim. claim_headroom<0 is the uncapped (legacy) path.
-        if (( claim_headroom >= 0 && dispatched >= claim_headroom )); then
+        # Claimable-count cap: stop once this tick's launches OF THE CURRENT
+        # CLASS have filled that class's remaining claimable headroom (the
+        # counter restarts when a re-election below changes the class — the
+        # headroom is per class). Extra idle panes would only no-op claim.
+        # claim_headroom<0 is the uncapped (legacy) path.
+        if (( claim_headroom >= 0 && dispatched_class >= claim_headroom )); then
             break
         fi
         # Skip panes that already have an in-flight dispatch record.
@@ -2167,48 +2143,49 @@ dispatch_role() {
             gap_blocked=1
             break
         fi
-        # Planning pre-claim (#2197): the first pane launched on a live-mode
-        # planning tick carries a pre-claimed needs-plan assignment. Attempted
-        # here — after every skip/stagger gate above — so a claim is never
-        # taken for a pane that then doesn't launch this tick.
-        local plan_arg=""
-        if (( DISPATCH_PLAN )) && [[ -z "$plan_attempted" && "$DISPATCH_MODE" == "live" ]]; then
-            local pane_basename
-            if pane_basename=$(pane_worktree_basename "$pane_id"); then
-                plan_attempted=1
-                plan_assign_for_pane "$role" "$pane_basename"
-                if [[ -n "$PLAN_ASSIGNMENT" ]]; then
-                    plan_arg="$PLAN_ASSIGNMENT"
-                    unset "CAP_DEFER_LOGGED[$role-planheld]"
-                else
-                    # Every candidate is held by another dispatcher/architect
-                    # or already planned: the planning slot in DISPATCH_COUNT
-                    # is not claimable this tick. Shrink the headroom by that
-                    # slot; when planning was the only remaining claimable
-                    # item, skip the dispatch entirely — a worker without an
-                    # assignment does no planning, so it would only
-                    # iterate-and-exit. The trigger stays: a posted plan or a
-                    # released claim re-fires the projection.
-                    (( claim_headroom > 0 )) && claim_headroom=$((claim_headroom - 1))
-                    if (( claim_headroom >= 0 && dispatched >= claim_headroom )); then
-                        if (( dispatched == 0 )); then
-                            if [[ -z "${CAP_DEFER_LOGGED[$role-planheld]+x}" ]]; then
-                                log "$role: class=$DISPATCH_CLASS planning candidates all held elsewhere or already planned; nothing else claimable — trigger kept"
-                                CAP_DEFER_LOGGED["$role-planheld"]=1
-                            fi
-                            return
-                        fi
-                        break
-                    fi
-                fi
+        # Assignment before launch: a live dispatch of a target-bound role
+        # carries exactly one pre-claimed item. Attempted here — after every
+        # skip/stagger gate above — so a claim is never taken for a pane that
+        # then doesn't launch this tick. A worker pane whose worktree is
+        # reserved resumes its own interrupted task instead (step 0.5 — the
+        # reservation IS its assignment); every other pane launches only
+        # behind a granted claim, and when no candidate can be claimed the
+        # fan-out stops here.
+        local target_arg="" pane_basename=""
+        if [[ -n "${ROLE_TARGET_BOUND[$role]+x}" && "$DISPATCH_MODE" == "live" ]]; then
+            if ! pane_basename=$(pane_worktree_basename "$pane_id"); then
+                continue
+            fi
+            if [[ "$role" != "worker" ]] || ! worktree_is_reserved "$pane_basename"; then
+                assign_for_pane "$role" "$pane_basename" && assign_rc=0 || assign_rc=$?
+                # The elected class has no claimable candidate left (every one
+                # held elsewhere, in flight, or refused by its claim gate
+                # live) while ANOTHER class is claimable: re-elect without it
+                # and serve that class instead — the claim-time counterpart of
+                # the saturation fan-out above, and what keeps one class's
+                # unclaimable head from holding the lane (the #2699 monopoly,
+                # caught at the claim). The election's exclusion set bounds
+                # this to one pass per class.
+                while (( assign_rc == 1 && DISPATCH_MORE )) \
+                    && [[ "$role" == "worker" && -n "$DISPATCH_CLASS" ]] \
+                    && elect_next_class "$role" "has no claimable candidate left"; do
+                    dispatched_class=0
+                    assign_for_pane "$role" "$pane_basename" && assign_rc=0 || assign_rc=$?
+                done
+                case "$assign_rc" in
+                    0) target_arg="$ASSIGNMENT" ;;
+                    2) ;;   # no slice yet — the legacy plain launch
+                    3) assign_budget_hit=1; break ;;
+                    *) assign_exhausted=1; break ;;
+                esac
             fi
         fi
         local cmd
-        cmd=$(build_dispatch_command "$role" "$pane_key" "$DISPATCH_MODEL" "$DISPATCH_EFFORT" "$plan_arg")
+        cmd=$(build_dispatch_command "$role" "$pane_key" "$DISPATCH_MODEL" "$DISPATCH_EFFORT" "$target_arg")
         if [[ -n "$DISPATCH_CLASS" ]]; then
-            log "dispatching $role -> $pane_id [class=$DISPATCH_CLASS effort=$DISPATCH_EFFORT${plan_arg:+ plan=$plan_arg}]"
+            log "dispatching $role -> $pane_id [class=$DISPATCH_CLASS effort=$DISPATCH_EFFORT${target_arg:+ target=$target_arg}]"
         else
-            log "dispatching $role -> $pane_id"
+            log "dispatching $role -> $pane_id${target_arg:+ [target=$target_arg]}"
         fi
         # Reset the input line with C-u (kill-line) before sending the
         # dispatch command. Catches any partial input the human may have
@@ -2238,22 +2215,51 @@ dispatch_role() {
         if ! dispatch_send_keys -t "$pane_id" C-u "$cmd" C-m; then
             log "send-keys timeout/failed for $role -> $pane_id; trying next idle pane"
             # Error-path release: the launch failed AFTER a successful
-            # planning pre-claim. Release under the same basename (any other
-            # name would no-op) and let the next pane re-attempt the claim.
-            if [[ -n "$plan_arg" ]]; then
-                fleet_planning_release_assignment "$plan_arg" "$pane_basename"
-                plan_attempted=""
+            # pre-claim. Release under the same basename (any other name
+            # would no-op) and let the next pane re-attempt the claim.
+            if [[ -n "$target_arg" ]]; then
+                fleet_release_assignment "$target_arg" "$pane_basename"
             fi
             continue
         fi
-        write_dispatch_record "$role" "$pane_id" "$(dispatch_class_key "$role")" "$plan_arg"
+        write_dispatch_record "$role" "$pane_id" "$(dispatch_class_key "$role")" "$target_arg"
         LAST_DISPATCH_EPOCH=$now_epoch
         dispatched=$((dispatched + 1))
+        dispatched_class=$((dispatched_class + 1))
     done <<< "$idle_panes"
 
     # Publish this call's pane count for the dry-run gate in main(). `dispatched`
     # is final here; every post-loop return path below carries this value.
     LAST_ROLE_DISPATCH_COUNT=$dispatched
+
+    # Assignment exhausted: every remaining candidate is held elsewhere,
+    # already in flight, or refused by its claim gate live. Nothing a fresh
+    # pane could take, so consume the trigger — retaining it would re-walk the
+    # claims (a gh round-trip per candidate) every tick. The scout re-arms on
+    # the next projection change, which is exactly when a candidate frees up,
+    # and the periodic worker re-arm covers the quiet corner.
+    if [[ -n "$assign_budget_hit" ]]; then
+        if [[ -z "${CAP_DEFER_LOGGED[$role-claimbudget]+x}" ]]; then
+            log "$role: claim budget (${CLAIM_ATTEMPTS_PER_TICK}/tick) spent with candidates left; trigger kept for the next tick"
+            CAP_DEFER_LOGGED["$role-claimbudget"]=1
+        fi
+        return
+    fi
+    unset "CAP_DEFER_LOGGED[$role-claimbudget]"
+    if [[ -n "$assign_exhausted" ]]; then
+        rm -f "$trigger_file"
+        # Pace the periodic re-arm too: an unchanged slice of held or refused
+        # candidates must not be re-walked (a gh round trip each) every 5 min.
+        note_standdown "$role" "$(dispatch_class_key "$role")"
+        if (( dispatched > 0 )); then
+            log "$role: dispatched $dispatched; remaining candidates could not be claimed — standing down; scout re-arms on change"
+        elif [[ -z "${CAP_DEFER_LOGGED[$role-unassignable]+x}" ]]; then
+            log "$role: no candidate could be claimed${DISPATCH_CLASS:+ (class=$DISPATCH_CLASS)}; standing down — scout re-arms on change"
+            CAP_DEFER_LOGGED["$role-unassignable"]=1
+        fi
+        return
+    fi
+    unset "CAP_DEFER_LOGGED[$role-unassignable]"
 
     # Empty-exit backoff. If this role's recent dispatches kept returning to a
     # shell within EMPTY_EXIT_SECONDS (no task claimed) EMPTY_STREAK_CAP times
@@ -2744,12 +2750,11 @@ case "${1:-}" in
         ;;
     --dispatch-role)
         # Test/debug: run <count> (default 1) consecutive dispatch_role ticks
-        # and exit, without starting the daemon loop. The ticks deliberately
-        # share one process — the class fairness floor's run counter is
-        # daemon-lifetime, so a multi-tick monopoly and the yield that ends it
-        # are only observable within a single process. Everything a tick touches
-        # is env-redirectable (FLEET_STATE_DIR, tmux/pgrep on PATH), so this
-        # stays hermetic; assert on the log lines, which go to stderr.
+        # and exit, without starting the daemon loop. The ticks share one
+        # process, so daemon-lifetime state (the once-per-window log guards)
+        # behaves as it does live. Everything a tick touches is
+        # env-redirectable (FLEET_STATE_DIR, tmux/pgrep/fleet-claim on PATH),
+        # so this stays hermetic; assert on the log lines, which go to stderr.
         # Usage: --dispatch-role <role> [count]
         if [[ -z "${2:-}" ]]; then
             echo "usage: fleet-dispatcher --dispatch-role <role> [count]" >&2
@@ -2784,24 +2789,23 @@ case "${1:-}" in
         echo "class=$DISPATCH_CLASS model=$DISPATCH_MODEL effort=$DISPATCH_EFFORT more=$DISPATCH_MORE defer=$DISPATCH_DEFER count=$DISPATCH_COUNT plan=$DISPATCH_PLAN"
         exit 0
         ;;
-    --plan-assign)
-        # Test/debug: run the class resolution + planning pre-claim exactly as
-        # a live dispatch tick would for <role>, claiming under <agent>.
-        # Resolves DISPATCH_MODE from the boot sentinel first (the same gate
-        # dispatch_role applies — dry-run/review-only never pre-claim). Prints
-        # "plan=<repo>:<N>" when a claim was granted, "plan=" otherwise.
-        # Invokes `fleet-claim` from PATH — tests stub it (hermetic, per
-        # scripts/fleet/CLAUDE.md).
+    --assign)
+        # Test/debug: run the class resolution + pre-claim exactly as a live
+        # dispatch tick would for <role>, claiming under <agent>. Resolves
+        # DISPATCH_MODE from the boot sentinel first (the same gate
+        # dispatch_role applies — dry-run/review-only never pre-claim).
+        # Prints "target=<kind>:<repo>:<N>[:x]" (empty when nothing was
+        # granted). Invokes `fleet-claim` from PATH — tests stub it
+        # (hermetic, per scripts/fleet/CLAUDE.md).
         if [[ -z "${2:-}" || -z "${3:-}" ]]; then
-            echo "usage: fleet-dispatcher --plan-assign <role> <agent>" >&2
+            echo "usage: fleet-dispatcher --assign <role> <agent>" >&2
             exit 2
         fi
         DISPATCH_MODE="$(read_dispatch_mode)"
         resolve_worker_class "$2"
-        if (( DISPATCH_PLAN )); then
-            plan_assign_for_pane "$2" "$3"
-        fi
-        echo "plan=$PLAN_ASSIGNMENT"
+        CLAIM_ATTEMPTS_LEFT=$CLAIM_ATTEMPTS_PER_TICK
+        assign_for_pane "$2" "$3" || true
+        echo "target=$ASSIGNMENT"
         exit 0
         ;;
     --rearm-check)

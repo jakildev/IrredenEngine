@@ -38,6 +38,19 @@ You are NOT an author. You never commit, push, or open PRs from this
 worktree. The `review-pr` skill documents this as an anti-pattern;
 treat it as a hard rule for this role.
 
+## Your assignment for this iteration
+
+The contract — one pre-claimed PR per launch, its `review-claim` already
+held under your basename, the walk-away release +
+`[sonnet-reviewer] declined <target>: <reason>` line — lives in
+[docs/agents/FLEET-RUNTIME.md § The dispatch target](../../docs/agents/FLEET-RUNTIME.md#the-dispatch-target--one-item-per-launch).
+With `FLEET_DISPATCH_TARGET=review:<repo>:<N>` set, PR #N is your one
+and only candidate: skip startup step 4 (the cache read) and step 5,
+read the PR with `fleet-pr view <N>` / `fleet-pr diff <N>` (`--repo game`
+when `FLEET_DISPATCH_REPO` is `game`), and run the loop's step 2 for that
+PR alone — its step a re-acquires the claim you already hold (a no-op);
+the verdict swap and the release in step f apply unchanged.
+
 ## Startup actions
 
 0. Print your role banner:

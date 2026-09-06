@@ -12,9 +12,66 @@ per-iteration shutdown). It still shares the **startup cache read** and
 
 ---
 
+## The dispatch target — one item per launch
+
+A live dispatch of a target-bound role (worker, both reviewers,
+smoke-worker) carries **one pre-claimed item** in its environment:
+
+| variable | value |
+|---|---|
+| `FLEET_DISPATCH_TARGET` | `<kind>:<repo>:<N>[:<extra>]` — the whole target (`stack` carries its base PR as `<extra>`) |
+| `FLEET_DISPATCH_KIND` / `_REPO` / `_NUMBER` | its parts; `repo` is `engine` or `game` |
+| `FLEET_DISPATCH_REASON` | the human-readable form, e.g. `task engine#1969` |
+| `FLEET_PLAN_ISSUE` | `<repo>:<N>`, set for a `plan` target only (the #2197 spelling the planning steps read) |
+| `FLEET_ROLE` | the dispatched role name |
+
+The dispatcher took that item's lane claim **under your worktree
+basename** before launching you, so a launch only exists behind a
+granted sole-holder claim and no other pane is on this item
+([`FLEET.md` § "Who takes the claim"](FLEET.md)). Read the variable first
+(`echo $FLEET_DISPATCH_TARGET`). When it is set:
+
+- **That item is the whole iteration.** Skip the cache read below and
+  every candidate scan in your role file; jump to the step your role's
+  kind table names. Do not claim anything else, and do not pick
+  something else if this item falls through — the dispatcher elects the
+  next item, you do not.
+- **Re-taking your own label claim is a no-op.** A lane step that
+  claims by label (`fleet-pr-claim-feedback`, `review-claim`)
+  re-acquires the label you already hold and wins. A `fleet-claim claim`
+  on the task you were assigned would **fail** (its FS lock is already
+  yours), which is why the worker's kind table skips that step.
+- **Release as the lane's steps say**, under your basename — the claim
+  was taken under it, so the release Just Works.
+- **If you cannot work it** — the body needs a host you are not on, the
+  labels moved under you, a `Blocked by:` is live again, the verdict is
+  already standing — release the lane's claim (table below), print
+  `[<role>] declined <target>: <reason>`, and exit through your shutdown
+  step.
+
+| kind | the dispatcher ran | you release with |
+|---|---|---|
+| `task` | `claim <N> <basename>` — FS lock, `fleet:claim-*` label, and a fresh worktree reservation with no branch yet | `release <N>` |
+| `stack` | `claim <N> <basename> --stackable-on <base>` (base recorded for `claim-base`) | `release <N>` |
+| `feedback` | `amending-claim <N> <basename>` | `amending-release <N> <basename>` |
+| `conflict` | `resolving-claim <N> <basename>` | `resolving-release <N> <basename>` |
+| `plan` | `planning-claim <N> <basename>` | `planning-release <N> <basename>` |
+| `review`, `smoke`, `planreview` | `review-claim <N> <basename>` (on the PR; on the issue for `planreview`) | `review-release <N> <basename>` |
+
+Add `--repo game` before the subcommand when `FLEET_DISPATCH_REPO` is
+`game`. This table is the doc-side view of `FLEET_TARGET_CLAIM` /
+`FLEET_TARGET_RELEASE` in `scripts/fleet/fleet-common.sh` — that is the
+definition; keep this in step with it.
+
+**Target unset** — a manual `/role-<role>`, a `dry-run` / `review-only`
+boot, or a reserved worktree resuming its own task (the reservation
+check below) — run your role's discovery flow as written, starting with
+the cache read.
+
 ## Startup — shared fleet state cache read
 
-Every role's startup reads the scout's cache before doing anything else.
+Every target-less role startup reads the scout's cache before doing
+anything else.
 The *which slice* differs by role — most read the full
 `~/.fleet/state/state.json`; the dispatcher's class routing reads the
 worker projection slice `~/.fleet/state/projections/worker.json`;
@@ -85,8 +142,13 @@ fleet-claim reservation-of <your-worktree-basename>
 
 - **Empty output** — no reservation; proceed normally to step 1.
 - **Non-empty output (an issue number, e.g. `163`)** — this worktree is
-  reserved for an in-flight task from a previous interrupted iteration.
-  Resume it:
+  reserved for an in-flight task, and the dispatcher launched you
+  without a target precisely so you can resume it. A reservation whose
+  `branch` is **empty** is a dispatcher pre-claim (`fleet-claim claim`
+  writes one) whose iteration died before branching: the claim is yours,
+  held under your basename, so treat that issue as your `task`
+  assignment (the kind table above — resolve the base, branch, work it).
+  One that names a `branch` is a previous iteration's mid-task state:
 
   1. Use the Read tool on `~/.fleet/reservations/<your-worktree-basename>.json`
      and extract the `branch` field.

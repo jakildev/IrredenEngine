@@ -95,6 +95,26 @@ closed issue as a historical "who worked on this" record.
 Abandoned claims (no matching open `claude/<N>-*` PR + age > TTL)
 are swept by `fleet-claim cleanup --gh`.
 
+**Who takes the claim: the dispatcher, before launch.** For the
+target-bound roles (worker, both reviewers, smoke-worker) the claim is
+no longer the iteration's first act — `fleet-dispatcher` walks the
+lane's ordered candidates (`fleet_task_class.py --pick` / `--pick-role`),
+takes each item's claim itself under the target pane's worktree basename
+(`claim` / `amending-claim` / `resolving-claim` / `planning-claim` /
+`review-claim`, by kind), and launches the pane only once one is
+granted, with `FLEET_DISPATCH_TARGET=<kind>:<repo>:<N>` in its
+environment. The same atomicity rules apply — the dispatcher is just one
+more claimant — but a launch now exists only behind a held claim: no two
+panes are ever sent after the same item, no pane is launched into a lane
+with nothing claimable, and the iteration skips discovery (the
+`state.json` read, the queue walk, the candidate race) and goes straight
+to the work. The role's own release is unchanged, since the claim was
+taken under its basename. A pane whose worktree is reserved resumes its
+own interrupted task instead (the reservation is its assignment); the
+merger and epic steward keep claiming iteration-side. Measured before
+this landed: 173 of 309 transient iterations in one night claimed
+nothing.
+
 ### Multi-host fleet coordination
 
 When running fleets on two or more hosts simultaneously, the following

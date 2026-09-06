@@ -72,12 +72,10 @@ Output protocol (one line on stdout, consumed by fleet-dispatcher):
                                   the dispatcher can cap its fan-out at one
                                   worker per claimable item instead of one per
                                   idle pane; ``plan`` is 1 when that count
-                                  includes the class's needs-plan yield — the
-                                  dispatcher then pre-claims a specific issue
-                                  (via ``--plan-pick`` + ``fleet-claim
-                                  planning-claim``) and hands the assignment to
-                                  the dispatch, so planning dispatches never
-                                  contend for the same issue (#2197).
+                                  includes the class's needs-plan yield (kept
+                                  for the --resolve-class print; the
+                                  dispatcher takes every claim through
+                                  ``--pick`` now, #2197 planning included).
   ``defer``                     — queue isn't empty but nothing is claimable
                                   right now (only cap-blocked fable, tasks with
                                   an open implementation PR, a `blocked` task
@@ -89,12 +87,14 @@ Output protocol (one line on stdout, consumed by fleet-dispatcher):
                                   (this path covers reservation resumes and
                                   a missing/stale slice).
 
-A second CLI mode, ``--plan-pick <slice.json> <class> <fable-blocked 0|1>``,
-prints ordered ``repo:number`` lines — the slice's ``needs_plan[]`` entries
-(already human-gate-filtered by the scout, engine-first / oldest-first) whose
-`_plan_class` matches ``<class>``. The dispatcher walks these attempting
-``fleet-claim planning-claim`` until one is granted; that issue becomes the
-dispatch's pre-claimed planning assignment (#2197).
+A second CLI mode, ``--pick <slice.json> <class> <fable-blocked 0|1>
+[lane-default]``, prints the ordered dispatch targets for one worker class —
+``<kind>:<repo>:<N>[:<extra>]`` lines, every claimable work item of that class
+in pickup order, then its planning candidates (``plan:<repo>:<N>``). Its
+sibling ``--pick-role <slice.json> <role>`` does the same for the reviewer and
+smoke lanes from their own slices. The dispatcher walks these taking each
+item's lane claim until one is granted; that item becomes the dispatch's
+target (fleet-dispatcher assign_for_pane).
 
 A third CLI mode, ``--smoke-check <smoke-worker-slice.json>``, prints the PR
 numbers in the slice's ``smoke_pending_prs`` whose pending smoke label names
@@ -183,7 +183,7 @@ def smoke_pr_for_host(labels, host):
     same reason `_current_host` above is itself inlined rather than imported
     (#1578). `fleet-dispatcher` reaches this one through the
     ``--smoke-check`` CLI arm in `main`, the seam it already uses for
-    ``--plan-pick``.
+    ``--pick``.
     """
     want = HOST_SMOKE_LABELS.get(host)
     return bool(want) and want in (labels or [])
@@ -391,7 +391,7 @@ def _candidates(slice_data, lane_default, host, fable_blocked=False):
     `fleet:sonnet`-tagged (mechanical) needs-plan issue is a light plan the
     sonnet lane authors; everything else is architect-tier design planning
     (fable, or opus when the fable cap is saturated). The dispatcher turns the
-    per-class yield into a single pre-claimed assignment (`--plan-pick` +
+    per-class yield into a single pre-claimed assignment (`--pick` +
     `fleet-claim planning-claim` before launch), so same-class planning
     dispatches never contend for one issue. Iteration order is
     oldest-within-each-repo, engine-repo-first — not a true global sort by
@@ -420,33 +420,96 @@ def _candidates(slice_data, lane_default, host, fable_blocked=False):
         if _host_incompatible(pr, host):
             continue
         cls = feedback_pr_class(pr.get("labels", []))
-        yield cls, CLASS_DEFAULT_EFFORT[cls], "work"
+        yield cls, CLASS_DEFAULT_EFFORT[cls], "work", _target("feedback", pr)
     # Step-1c work is opus+-only, so each conflict is one opus claimable item.
     # The scout already filtered the slice (CONFLICTING-gated per #1654,
     # step-1c label exclusions, no fleet:resolving-* claim, stacked children
     # deferred to their base), so no re-filtering here. No host gate either:
     # step 1c build-verifies IRShapeDebug, which every fleet host builds
     # natively, unlike the GL-locked tasks below.
-    for _pr in slice_data.get("semantic_conflict_prs", []) or []:
-        yield "opus", CLASS_DEFAULT_EFFORT["opus"], "work"
+    for pr in slice_data.get("semantic_conflict_prs", []) or []:
+        yield "opus", CLASS_DEFAULT_EFFORT["opus"], "work", _target("conflict", pr)
     tasks = slice_data.get("tasks_open", []) or []
     for task in tasks:
         if _task_claimable(task, host) and not task.get("blocked"):
-            yield (*_class_effort(task), "work")
+            yield (*_class_effort(task), "work", _target("task", task))
     for task in tasks:
         if _task_claimable(task, host) and task.get("blocked"):
-            yield (*_class_effort(task), "work")
+            base = (task.get("stackable_blocker_pr") or {}).get("number")
+            yield (*_class_effort(task), "work", _target("stack", task, base))
     seen_plan_classes = set()
     for issue in slice_data.get("needs_plan") or []:
         pcls = _plan_class(issue, fable_blocked)
         if pcls in seen_plan_classes:
             continue
         seen_plan_classes.add(pcls)
-        yield pcls, PLAN_EFFORT[pcls], "plan"
+        yield pcls, PLAN_EFFORT[pcls], "plan", None
+
+
+# Dispatch targets: `<kind>:<repo>:<N>[:<extra>]`, one item of one lane. The
+# vocabulary and each kind's claim/release pair live in fleet-common.sh
+# (FLEET_TARGET_CLAIM / FLEET_TARGET_RELEASE); this module only produces the
+# lines the dispatcher walks (fleet-dispatcher assign_for_pane).
+def _target(kind, record, extra=None):
+    """`<kind>:<repo>:<N>[:<extra>]` for a slice record (a PR, task, or issue
+    record carrying `repo` from the scout's `_slice_*_with_repo`), or None
+    when the record carries no number to name."""
+    number = record.get("number")
+    if number is None:
+        number = str(record.get("issue") or "").lstrip("#") or None
+    if number is None:
+        return None
+    line = f"{kind}:{record.get('repo') or 'engine'}:{number}"
+    return f"{line}:{extra}" if extra is not None else line
+
+
+# A PR another agent is mid-review on. Every reviewer skips these in-iteration
+# from the cached labels at zero cost; the dispatcher's claim walk must too,
+# or each held PR costs a real `review-claim` round trip before it is refused.
+def _held_for_review(pr):
+    return any(str(label).startswith("fleet:reviewing-")
+               for label in pr.get("labels") or [])
+
+
+def pick(slice_data, cls, fable_blocked, lane_default="opus"):
+    """Ordered dispatch targets for one worker class: every claimable work
+    item of that class in `_candidates` pickup order (feedback, conflict,
+    task, stack), then the class's planning candidates (`plan_pick`)."""
+    if lane_default not in CLASS_DEFAULT_EFFORT:
+        lane_default = "opus"
+    host = _current_host()
+    picks = [target for item_cls, _effort, kind, target in _candidates(
+                 slice_data, lane_default, host, fable_blocked)
+             if kind != "plan" and item_cls == cls and target is not None]
+    return picks + plan_pick(slice_data, cls, fable_blocked)
+
+
+def pick_role(slice_data, role):
+    """Ordered dispatch targets for a non-worker lane, from that role's own
+    projection slice: reviewers get one `review:<repo>:<N>` per candidate PR
+    not already under another agent's review claim (the opus reviewer also
+    `planreview:<repo>:<N>` per plan-review issue), the smoke worker one
+    `smoke:engine:<N>` per PR THIS host can validate. Slice order is the role
+    doc's pickup order (engine first, oldest first)."""
+    picks = []
+    if role == "sonnet-reviewer":
+        picks = [_target("review", pr) for pr in slice_data.get("candidate_prs") or []
+                 if not _held_for_review(pr)]
+    elif role == "opus-reviewer":
+        picks = [_target("review", pr) for pr in slice_data.get("flagged_prs") or []
+                 if not _held_for_review(pr)]
+        picks += [_target("planreview", issue)
+                  for issue in slice_data.get("plan_review") or []
+                  if not _held_for_review(issue)]
+    elif role == "smoke-worker":
+        picks = [_target("smoke", pr) for pr in smoke_prs_for_host(
+            slice_data.get("smoke_pending_prs"), _current_host())
+            if not _held_for_review(pr)]
+    return [p for p in picks if p is not None]
 
 
 def plan_pick(slice_data, cls, fable_blocked):
-    """Ordered ``repo:number`` planning candidates for one class.
+    """Ordered ``plan:<repo>:<N>`` planning targets for one class.
 
     The slice's ``needs_plan[]`` entries whose `_plan_class` routes to ``cls``,
     in slice order (engine-first, oldest-first within repo — the priority the
@@ -456,15 +519,9 @@ def plan_pick(slice_data, cls, fable_blocked):
     to the next, so a lost race assigns the *next* issue instead of burning
     the dispatch (#2197).
     """
-    picks = []
-    for issue in slice_data.get("needs_plan") or []:
-        if _plan_class(issue, fable_blocked) != cls:
-            continue
-        number = issue.get("number")
-        if number is None:
-            continue
-        picks.append(f"{issue.get('repo') or 'engine'}:{number}")
-    return picks
+    picks = [_target("plan", issue) for issue in slice_data.get("needs_plan") or []
+             if _plan_class(issue, fable_blocked) == cls]
+    return [p for p in picks if p is not None]
 
 
 def resolve(slice_data, lane_default, fable_blocked, exclude=()):
@@ -490,8 +547,8 @@ def resolve(slice_data, lane_default, fable_blocked, exclude=()):
     servable_classes = set()
     class_counts = {}
     plan_classes = set()
-    for cls, effort, kind in _candidates(slice_data, lane_default, host,
-                                         fable_blocked):
+    for cls, effort, kind, _target_line in _candidates(
+            slice_data, lane_default, host, fable_blocked):
         if cls in exclude:
             excluded_any = True
             continue
@@ -554,17 +611,32 @@ def main(argv):
     # fails those gates on every line but the last (#3022). Pin LF.
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(newline="\n")
-    if argv[1:2] == ["--plan-pick"]:
-        # --plan-pick <slice.json> <class> <fable-blocked 0|1>: print the
-        # ordered repo:number planning candidates for <class> (see plan_pick).
-        if len(argv) != 5:
-            print("usage: fleet_task_class.py --plan-pick <slice.json> "
-                  "<class> <fable-blocked 0|1>", file=sys.stderr)
+    if argv[1:2] == ["--pick"]:
+        # --pick <slice.json> <class> <fable-blocked 0|1> [lane-default]: the
+        # ordered dispatch targets for one worker class (see pick). The
+        # dispatcher's assign_for_pane walks these taking the lane's claim.
+        if len(argv) not in (5, 6):
+            print("usage: fleet_task_class.py --pick <slice.json> <class> "
+                  "<fable-blocked 0|1> [lane-default]", file=sys.stderr)
             return 2
         slice_data = _load_slice(argv[2])
         if slice_data is None:
             return 0  # empty output -> nothing to assign
-        for line in plan_pick(slice_data, argv[3], argv[4] == "1"):
+        lane_default = argv[5] if len(argv) == 6 else "opus"
+        for line in pick(slice_data, argv[3], argv[4] == "1", lane_default):
+            print(line)
+        return 0
+    if argv[1:2] == ["--pick-role"]:
+        # --pick-role <slice.json> <role>: the ordered dispatch targets for a
+        # non-worker lane (see pick_role).
+        if len(argv) != 4:
+            print("usage: fleet_task_class.py --pick-role <slice.json> <role>",
+                  file=sys.stderr)
+            return 2
+        slice_data = _load_slice(argv[2])
+        if slice_data is None:
+            return 0
+        for line in pick_role(slice_data, argv[3]):
             print(line)
         return 0
     if argv[1:2] == ["--smoke-check"]:

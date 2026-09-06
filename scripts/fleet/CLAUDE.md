@@ -171,7 +171,7 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   and asserts they still agree — a duplicate with no guard is the whole cost of
   inlining. `test_smoke_worker_projection.py`'s `TwoCopiesAgree` is the
   reference shape. Bash reaches `fleet_task_class.py` the other way, through a
-  CLI arm (`--plan-pick`, `--smoke-check`), never an import.
+  CLI arm (`--pick`, `--pick-role`, `--smoke-check`), never an import.
 - **`state.json` has a hard size ceiling; don't widen the projection without
   checking it.** Every role reads it through the Read tool's 256 KB cap, so the
   scout emits it **compact** and retains a review body only on the latest review

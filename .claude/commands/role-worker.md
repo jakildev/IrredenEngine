@@ -48,6 +48,26 @@ Class-conditional duties at a glance ("opus+" = opus or fable):
 | 8 — escalation | re-tag one class up | design-blocked flow / re-tag to fable |
 | 10 — optimize | only hot-path changes | almost always |
 
+## Your assignment for this iteration
+
+The contract — one pre-claimed item per launch, its claim already held
+under your basename, the walk-away release + `[worker] declined <target>:
+<reason>` line, and what each kind's claim/release is — lives in
+[docs/agents/FLEET-RUNTIME.md § The dispatch target](../../docs/agents/FLEET-RUNTIME.md#the-dispatch-target--one-item-per-launch).
+With `FLEET_DISPATCH_TARGET` set: run steps 0 and 0.5, skip startup step
+3 (the cache read) and steps 4–5, skip every scan in steps 1, 1b, 1c,
+and 3, and jump by kind. For a `game` target, `cd` into your game twin
+worktree first and use `--repo game` / `--repo jakildev/irreden` exactly
+as the lane's steps say.
+
+| `FLEET_DISPATCH_KIND` | go to |
+|---|---|
+| `task` | step 4 **without its claim** (`claim` is what the dispatcher ran): `cd` for a game task, resolve the base with `claim-base`, branch, then step 5. The reservation `claim` wrote has no branch yet — step 0.5 has nothing to resume. |
+| `stack` | step 4 as above; `claim-base` returns the recorded base branch |
+| `feedback` | step 1 for PR #N per FLEET-FEEDBACK-HANDLING.md — its step a re-runs `fleet-pr-claim-feedback` for the detached checkout, a no-op re-acquire of your own claim |
+| `conflict` | step 1c for PR #N, from step b (skip b′) |
+| `plan` | step 2 (`FLEET_PLAN_ISSUE` is set too) |
+
 ## Bash tool rules
 
 See [docs/agents/CLAUDE-BASELINE.md § Bash tool rules](../../docs/agents/CLAUDE-BASELINE.md#bash-tool-rules).

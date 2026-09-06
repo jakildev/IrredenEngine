@@ -1974,7 +1974,7 @@ cmd_planning_claim() {
     # worker pickup already honor the label, but honoring it there is not enough:
     # the dispatcher pre-claims BEFORE any of that runs, so without a refusal here
     # the lane head is re-assigned every tick. Exit 1 = "refuse this candidate",
-    # the same code _refuse_if_closed uses, so plan_assign_for_pane falls through
+    # the same code _refuse_if_closed uses, so assign_for_pane falls through
     # to the next pick (only 0 assigns and 3 retries with --replan). Fails OPEN on
     # `unknown`: a gh outage must not wedge every planning claim on the host.
     if [[ "$gates_live" -eq 1 ]] \

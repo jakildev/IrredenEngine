@@ -47,9 +47,11 @@ WRAP="$SCRIPT_DIR/fleet-dispatch-wrap"
 # is not read by fleet-dispatch-wrap at all.)
 unset FLEET_PLAN_ISSUE
 
-PASS=0; FAIL=0
-ok()  { PASS=$((PASS+1)); echo "  ok: $1"; }
-bad() { FAIL=$((FAIL+1)); echo "  FAIL: $1"; }
+# PASS/FAIL, ok/bad and `summarize` come from the shared helper: its
+# "passed: N  failed: M" line is what fleet-positive-control scores, and the
+# hand-rolled "PASS: n FAIL: m" tally this replaces read as an aborted run.
+# shellcheck source=scripts/fleet/tests/lib_assert.sh
+source "$(dirname "$0")/lib_assert.sh"
 TMPROOT=""; cleanup(){ [[ -n "$TMPROOT" && -d "$TMPROOT" ]] && rm -rf "$TMPROOT"; }
 trap cleanup EXIT
 TMPROOT=$(mktemp -d)
@@ -203,30 +205,86 @@ rm -f "$SIDECAR"
 STUB_BRANCH="master" STUB_DIRTY="" STUB_CLAUDE_RC=0 run_wrap "claude-opus-4-8[1m]" xhigh worker
 [[ ! -f "$SIDECAR" ]] && ok "done/no-op worker cleared the sidecar (fresh next)" || bad "done: sidecar wrongly kept"
 
-# --- planning assignment (#2197): 7th arg -> FLEET_PLAN_ISSUE ---------------
-echo "T8: plan=<repo>:<N> 7th arg exports FLEET_PLAN_ISSUE on a fresh dispatch"
+# --- dispatch targets: 7th arg target=<kind>:<repo>:<N>[:x] ------------------
+echo "T8: the legacy plan=<repo>:<N> spelling (#2197) is the plan target"
+# An older dispatcher mid rolling-upgrade may still pass it; it parses as
+# target=plan:<repo>:<N>, so T10b-T10d below cover it through the one grammar.
 rm -f "$SIDECAR"
 out=$(cd "$WT" && FLEET_DISPATCH_PRINT_LAUNCH=1 "$WRAP" pane-3 "claude-fable-5[1m]" xhigh worker "" live "plan=engine:2197" 2>/dev/null)
-[[ "$out" == *" plan=engine:2197 "* ]] && ok "fresh: FLEET_PLAN_ISSUE=engine:2197" || bad "fresh plan export: $out"
-rm -f "$SIDECAR"
-
-echo "T9: absent or bare 'plan=' 7th arg -> FLEET_PLAN_ISSUE stays unset"
+[[ "$out" == *" target=plan:engine:2197 reason=plan engine#2197 plan=engine:2197 prompt="* ]] \
+  && ok "plan=engine:2197 -> target plan:engine:2197 + FLEET_PLAN_ISSUE" || bad "legacy plan= alias: $out"
 rm -f "$SIDECAR"
 out=$(cd "$WT" && FLEET_DISPATCH_PRINT_LAUNCH=1 "$WRAP" pane-3 sonnet high worker "" live 2>/dev/null)
-[[ "$out" == *" plan= prompt="* ]] && ok "absent arg: no FLEET_PLAN_ISSUE" || bad "absent-arg plan leak: $out"
+[[ "$out" == *" target= reason= plan= prompt="* ]] && ok "absent 7th arg: nothing exported" || bad "absent-arg leak: $out"
 rm -f "$SIDECAR"
 out=$(cd "$WT" && FLEET_DISPATCH_PRINT_LAUNCH=1 "$WRAP" pane-3 sonnet high worker "" live "plan=" 2>/dev/null)
-[[ "$out" == *" plan= prompt="* ]] && ok "bare plan=: not exported (dual-spelling guard)" || bad "bare plan= leaked: $out"
+[[ "$out" == *" target= reason= plan= prompt="* ]] && ok "bare plan=: not exported (dual-spelling guard)" || bad "bare plan= leaked: $out"
 rm -f "$SIDECAR"
 
-echo "T10: resume discards the assignment — released, not exported"
-printf '{"session_id":"SID-77","role":"worker","model":"sonnet","effort":"high","created_epoch":1}\n' > "$SIDECAR"
+echo "T10b: target= exports FLEET_DISPATCH_TARGET and its parts; a plan target keeps FLEET_PLAN_ISSUE"
+rm -f "$SIDECAR"
+out=$(cd "$WT" && FLEET_DISPATCH_PRINT_LAUNCH=1 "$WRAP" pane-3 sonnet high worker "" live "target=task:engine:1969" 2>/dev/null)
+[[ "$out" == *" target=task:engine:1969 reason=task engine#1969 plan= prompt="* ]] \
+  && ok "task target: FLEET_DISPATCH_TARGET + REASON exported, no FLEET_PLAN_ISSUE" \
+  || bad "task target export: $out"
+rm -f "$SIDECAR"
+out=$(cd "$WT" && FLEET_DISPATCH_PRINT_LAUNCH=1 "$WRAP" pane-3 "claude-fable-5[1m]" xhigh worker "" live "target=plan:game:7" 2>/dev/null)
+[[ "$out" == *" target=plan:game:7 reason=plan game#7 plan=game:7 prompt="* ]] \
+  && ok "plan target: FLEET_PLAN_ISSUE=game:7 also exported (the #2197 spelling)" \
+  || bad "plan target export: $out"
+rm -f "$SIDECAR"
+out=$(cd "$WT" && FLEET_DISPATCH_PRINT_LAUNCH=1 "$WRAP" pane-3 sonnet high sonnet-reviewer "" live "target=review:game:12" 2>/dev/null)
+[[ "$out" == *" target=review:game:12 reason=review game#12 plan= prompt="* ]] \
+  && ok "review target on a reviewer dispatch" || bad "review target export: $out"
+rm -f "$SIDECAR"
+# The parts are exported individually too — the role docs key on
+# FLEET_DISPATCH_KIND. The wrap exports into the claude process, so assert
+# through a claude stub that prints its environment, then restore the plain
+# stub for the suites below.
+cat > "$BIN/claude" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$CLAUDE_ARGV_LOG"
+printf 'ENV kind=%s repo=%s num=%s target=%s reason=%s\n' \
+  "${FLEET_DISPATCH_KIND:-}" "${FLEET_DISPATCH_REPO:-}" "${FLEET_DISPATCH_NUMBER:-}" \
+  "${FLEET_DISPATCH_TARGET:-}" "${FLEET_DISPATCH_REASON:-}" >> "$CLAUDE_ARGV_LOG"
+exit "${STUB_CLAUDE_RC:-0}"
+EOF
+chmod +x "$BIN/claude"
+: > "$CLAUDE_ARGV_LOG"
+(cd "$WT" && "$WRAP" pane-3 sonnet high worker "" live "target=stack:engine:344:397" >/dev/null 2>&1)
+grep -q '^ENV kind=stack repo=engine num=344 target=stack:engine:344:397 reason=stack engine#344$' "$CLAUDE_ARGV_LOG" \
+  && ok "stack target: KIND/REPO/NUMBER parts reach the claude process" \
+  || bad "stack target parts: $(grep '^ENV' "$CLAUDE_ARGV_LOG")"
+cat > "$BIN/claude" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$CLAUDE_ARGV_LOG"
+exit "${STUB_CLAUDE_RC:-0}"
+EOF
+chmod +x "$BIN/claude"
+rm -f "$SIDECAR"
+
+echo "T10c: a malformed target exports nothing (dual-spelling guard)"
+for bad_arg in "target=" "target=bogus:engine:1" "target=task:engine:abc" "target=task:other:1" "target=task" "target=:engine:1"; do
+  rm -f "$SIDECAR"
+  out=$(cd "$WT" && FLEET_DISPATCH_PRINT_LAUNCH=1 "$WRAP" pane-3 sonnet high worker "" live "$bad_arg" 2>/dev/null)
+  [[ "$out" == *" target= reason= plan= prompt="* ]] && ok "'$bad_arg' -> nothing exported" || bad "'$bad_arg' leaked: $out"
+done
+rm -f "$SIDECAR"
+
+echo "T10d: a resume releases the target through its lane's own release arm"
+printf '{"session_id":"SID-78","role":"worker","model":"sonnet","effort":"high","created_epoch":1}\n' > "$SIDECAR"
 export FLEET_CLAIM_LOG="$TMPROOT/wrap-claim.log"; : > "$FLEET_CLAIM_LOG"
-out=$(cd "$WT" && FLEET_DISPATCH_PRINT_LAUNCH=1 "$WRAP" pane-3 sonnet high worker "" live "plan=game:7" 2>/dev/null)
-[[ "$out" == resumed=1* && "$out" == *" plan= prompt="* ]] && ok "resume: assignment dropped from env" || bad "resume plan handling: $out"
-grep -q -- '^--repo game planning-release 7 worker-1$' "$FLEET_CLAIM_LOG" \
-  && ok "resume: pre-claim released under the worktree basename (--repo game form)" \
-  || bad "resume: no planning-release call: $(cat "$FLEET_CLAIM_LOG")"
+out=$(cd "$WT" && FLEET_DISPATCH_PRINT_LAUNCH=1 "$WRAP" pane-3 sonnet high worker "" live "target=task:game:7" 2>/dev/null)
+[[ "$out" == resumed=1* && "$out" == *" target= reason= plan= prompt="* ]] && ok "resume: target dropped from env" || bad "resume target handling: $out"
+grep -q -- '^--repo game release 7$' "$FLEET_CLAIM_LOG" \
+  && ok "resume: task target released with a plain release (drops lock, label, reservation)" \
+  || bad "resume: no task release call: $(cat "$FLEET_CLAIM_LOG")"
+printf '{"session_id":"SID-79","role":"sonnet-reviewer","model":"sonnet","effort":"high","created_epoch":1}\n' > "$SIDECAR"
+: > "$FLEET_CLAIM_LOG"
+out=$(cd "$WT" && FLEET_DISPATCH_PRINT_LAUNCH=1 "$WRAP" pane-3 sonnet high sonnet-reviewer "" live "target=review:engine:3074" 2>/dev/null)
+grep -q -- '^review-release 3074 worker-1$' "$FLEET_CLAIM_LOG" \
+  && ok "resume: review target released via review-release under the basename" \
+  || bad "resume: no review-release call: $(cat "$FLEET_CLAIM_LOG")"
 unset FLEET_CLAIM_LOG
 rm -f "$SIDECAR"
 
@@ -288,6 +346,4 @@ python3 -c "import json,sys;d=json.load(open(sys.argv[1]));assert d.get('resume_
   && ok "clean resume zeroed resume_failures (and bumped resumes)" || bad "streak not reset: $(cat "$SIDECAR" 2>/dev/null)"
 rm -f "$SIDECAR"
 
-echo
-echo "PASS: $PASS  FAIL: $FAIL"
-[[ "$FAIL" -eq 0 ]]
+summarize "fleet-dispatch-wrap session tests"

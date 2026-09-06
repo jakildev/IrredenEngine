@@ -43,7 +43,10 @@ For each `fleet:needs-plan` issue:
    pre-claims one specific needs-plan issue (`fleet-claim planning-claim`,
    under the target pane's worktree basename) *before* launching the
    iteration, and hands it over as `FLEET_PLAN_ISSUE=<repo>:<N>` in the
-   environment.
+   environment. (Every worker lane is dispatched this way now — the
+   planning assignment is the `plan` kind of `FLEET_DISPATCH_TARGET`, and
+   `FLEET_PLAN_ISSUE` is its #2197 spelling, kept so these steps read
+   unchanged; see `role-worker.md` § Your assignment.)
    - **`FLEET_PLAN_ISSUE` set** — that issue is yours, already locked. It can
      have gone stale between claim and read (the human closed it, the
      architect planned it out-of-band), so first verify `fleet:needs-plan` is
