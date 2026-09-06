@@ -613,8 +613,13 @@ class TestFetchPrs304Reuse(unittest.TestCase):
     """#2442 Phase 3: fetch_prs's 304 fast path must not reuse a prev whose
     records predate the closes_issues field (the first tick after the deploy
     that added it) — that would re-strand every Closes-only stack base until an
-    unrelated ETag flip, re-creating the exact defect. A missing key ⇒ cache
+    unrelated ETag flip, re-creating the exact defect. A stale record ⇒ cache
     desync ⇒ fall through to a fresh fetch.
+
+    The guard is now the pr["schema"] version marker (#3037), which subsumes
+    that key-presence test: a record predating closes_issues also predates the
+    marker, so the #2442 case still refetches. The generalization's own cases
+    (a shape change that adds no key) live in test_state_projection_size.py.
 
     Hermetic: both network seams (conditional_get, _fetch_prs_graphql) are
     stubbed so no live GitHub call fires (scripts/fleet/CLAUDE.md)."""
@@ -627,23 +632,27 @@ class TestFetchPrs304Reuse(unittest.TestCase):
         _mod.conditional_get = lambda *a, **k: (False, None)
         # Sentinel identifies a fall-through to the fresh GraphQL fetch.
         self._sentinel = [{"number": 1, "headRefName": "claude/1-x",
-                           "closes_issues": []}]
+                           "closes_issues": [],
+                           "schema": _mod.PR_RECORD_SCHEMA}]
         _mod._fetch_prs_graphql = lambda repo: self._sentinel
 
     def tearDown(self):
         _mod.conditional_get = self._orig_cget
         _mod._fetch_prs_graphql = self._orig_graphql
 
-    def test_reuses_prev_that_has_closes_issues(self):
-        """A prev whose records already carry closes_issues is reused verbatim
-        on a 304 — the fast path still works, no needless refetch."""
-        prev = [{"number": 9, "headRefName": "claude/9-x", "closes_issues": [9]}]
+    def test_reuses_prev_at_the_current_schema(self):
+        """A prev whose records carry the current projection's marker (and so
+        closes_issues, by construction) is reused verbatim on a 304 — the fast
+        path still works, no needless refetch."""
+        prev = [{"number": 9, "headRefName": "claude/9-x", "closes_issues": [9],
+                 "schema": _mod.PR_RECORD_SCHEMA}]
         self.assertIs(_mod.fetch_prs("repo", prev=prev), prev)
 
     def test_refetches_when_prev_lacks_closes_issues(self):
-        """A prev predating the field (no closes_issues key) is cache desync:
-        fetch_prs ignores it and fires the fresh fetch despite the 304. Fails on
-        master, which returns prev unconditionally on a 304."""
+        """A prev predating the field (no closes_issues key, and so no schema
+        marker either) is cache desync: fetch_prs ignores it and fires the fresh
+        fetch despite the 304. Fails on pre-#2442 master, which returned prev
+        unconditionally on a 304."""
         prev = [{"number": 9, "headRefName": "claude/9-x"}]  # pre-field record
         self.assertIs(_mod.fetch_prs("repo", prev=prev), self._sentinel)
 

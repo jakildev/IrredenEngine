@@ -46,6 +46,16 @@ step. Two things hold the line, and a change to the projection must keep both:
   from the measured live corpus so the opus reviewer's `Opus recheck required`
   phrase test keeps firing; do not lower it without re-measuring.
 
+Changing the shape of a `prs[]` record — a new, removed or renamed key, or a
+narrower value like the trim above — also means **bumping `PR_RECORD_SCHEMA`**
+in `fleet-state-scout`. `fetch_prs` skips the GraphQL list query on a 304 from
+its change-detector and reuses the records seeded from the *on-disk*
+`state.json`, which after a deploy the previous projection produced: without the
+version bump the old shape stays live until an unrelated open-PR-list change
+flips that repo's ETag, which on a quiet repo is unbounded. The review-body trim
+shipped that way and put `state.json` at 348 KB — past the cap it exists to hold
+— on tick 1 of every deploy+restart (#3037).
+
 The scout warns at **7/8 of the cap (224 KB)** and writes
 `${FLEET_ALERTS_DIR:-~/.fleet/alerts}/state-scout-state-size` for as long as
 the condition holds. Measured 2026-08-08 on a 46-open-PR tree, the file emits at

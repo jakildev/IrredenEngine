@@ -281,6 +281,25 @@ def _is_pull_request(issue):
 # drift from the claim/sweep side that shares it (#2419).
 
 
+# Version of the per-PR record shape _fetch_prs_graphql emits. fetch_prs's 304
+# fast path reuses records seeded from the ON-DISK state.json, which after a
+# deploy were produced by the PREVIOUS version of this function — so any change
+# to the record shape is invisible to the reuse path until an unrelated
+# list-level change flips the repo's ETag, which on a quiet repo is unbounded.
+# #2442 caught that for one added key by testing for its presence; #3037 caught
+# it again for a change that added no key (the #2752 review-body trim), where a
+# key-presence test cannot help: the stale records carried a 2 KB body on EVERY
+# review, so state.json emitted at 348 KB — past the Read-tool cap the trim
+# exists to stay under — from tick 1 of every deploy+restart.
+#
+# BUMP THIS whenever the shape of a record below changes (a new/removed/renamed
+# key, or a changed value shape such as a narrower truncation): a mismatch makes
+# fetch_prs fall through to a live fetch exactly as a missing key did, so the
+# new shape is in effect on tick 1. Cost is ~12 B per open PR against the
+# state.json size budget (docs/agents/FLEET-CACHE.md §"Size invariant").
+PR_RECORD_SCHEMA = 2
+
+
 def _fetch_prs_graphql(repo):
     out = run_capture([
         "gh", "pr", "list", "--repo", repo, "--state", "open",
@@ -341,6 +360,9 @@ def _fetch_prs_graphql(repo):
         pr["closes_issues"] = sorted(
             set(body_closed_issue_numbers(pr.get("body", "") or ""))
         )
+        # The reuse marker fetch_prs gates the 304 fast path on. Stamped last so
+        # a record only claims the current shape once every field above is set.
+        pr["schema"] = PR_RECORD_SCHEMA
     # gh's PR ordering is not stable run-to-run; sort by number so the
     # projection hash stays quiescent when nothing has actually changed.
     prs.sort(key=lambda pr: pr.get("number", 0))
@@ -385,14 +407,14 @@ def fetch_prs(repo, prev=None):
     changed, _body = conditional_get(repo, "pulls", params={
         "state": "open", "sort": "updated", "direction": "desc", "per_page": "100",
     })
-    # Reuse the prior list only when it carries the derived closes_issues field
-    # (added by _fetch_prs_graphql). On the first tick after a deploy that
-    # introduced the field, prev predates it — reusing it would re-strand every
-    # Closes-only stack base until an unrelated ETag flip, re-creating #2442. A
-    # missing key ⇒ cache desync ⇒ fall through to a fresh fetch. all() on an
-    # empty prev is True (an empty open-PR set needs no refetch).
+    # Reuse the prior list only when every record was produced by the CURRENT
+    # per-record projection — see PR_RECORD_SCHEMA for why a stale prev is a
+    # cache desync rather than a valid cache. A mismatch ⇒ fall through to a
+    # fresh fetch. The marker subsumes the key-presence test #2442 used here: a
+    # record at the current schema carries closes_issues by construction. all()
+    # on an empty prev is True (an empty open-PR set needs no refetch).
     if (not changed and prev is not None
-            and all("closes_issues" in p for p in prev)):
+            and all(p.get("schema") == PR_RECORD_SCHEMA for p in prev)):
         unknown = _unknown_mergeable_count(prev)
         used = _mergeable_requery_ticks.get(repo, 0)
         if unknown and used < MERGEABLE_UNKNOWN_REQUERY_CAP:

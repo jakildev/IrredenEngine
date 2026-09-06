@@ -23,6 +23,13 @@ Two things are being guarded, and they need different kinds of test:
   scout's own comment documents. Each predicate arm ships a positive control
   that flips the input and asserts the predicate stops firing.
 
+- **The trim must actually be in effect after a deploy.** TestReuseGuardSchemaMarker
+  (#3037) covers `fetch_prs`'s 304 fast path, which reuses records seeded from the
+  on-disk `state.json` — i.e. records the PREVIOUS projection produced. Shipping
+  the trim without a version marker on the record left the pre-trim shape live
+  from tick 1 of every deploy+restart, so the two arms above were green while the
+  emitted file sat at 348 KB.
+
 Against the pre-fix `origin/master` the suite splits three ways, and the split is
 the honest read of its worth: **3 arms FAIL behaviourally** (the two
 latest-review-retention arms, which run against master's own
@@ -408,6 +415,152 @@ class TestSizeGuard(unittest.TestCase):
             _mod.STATE_SIZE_WARN_BYTES, measured_post_fix_bytes,
             "warn threshold must sit above the measured post-fix size or the "
             "guard is permanently tripped")
+
+
+class TestReuseGuardSchemaMarker(unittest.TestCase):
+    """#3037: the 304 fast path must not carry a PRE-TRIM projection forward.
+
+    `fetch_prs` seeds `prev` from the ON-DISK state.json, so after a deploy those
+    records were produced by the previous projection. #2442's guard tested for
+    the PRESENCE of `closes_issues`, which the pre-#2752 records already carried
+    — so the trim never ran until an unrelated ETag flip, and state.json emitted
+    at 348 KB (past the Read-tool cap the trim exists to stay under) from tick 1
+    of every deploy+restart. `pr["schema"]` is the durable form: a version, not a
+    key-presence probe, so it also catches a shape change that adds no key.
+
+    Hermetic: the detector (`conditional_get`) is stubbed to a 304 and the
+    GraphQL fetch runs through the fail-closed `_fake_gh` stub — no live call.
+    """
+
+    # The pre-#2752 truncation, reproduced so the fixture carries the shape
+    # MEASURED on the live host: HEAD 1024 + the 15-char marker + TAIL 1024.
+    _PRE_FIX_HEAD = 1024
+    _PRE_FIX_TAIL = 1024
+    _LIVE_STALE_BODY_LEN = 2063
+
+    def setUp(self):
+        _mod._mergeable_requery_ticks.clear()
+        self.graphql_calls = 0
+
+    def _counting_gh(self, argv, cwd=None):
+        self.graphql_calls += 1
+        return _fake_gh(argv, cwd=cwd)
+
+    def _stale_body(self):
+        raw = _body(with_phrase=True)
+        return (raw[:self._PRE_FIX_HEAD] + "\n…[truncated]…\n"
+                + raw[-self._PRE_FIX_TAIL:])
+
+    def _stale_record(self, n):
+        """A record as the PRE-#2752 projection emitted it: a truncated body on
+        EVERY review, `closes_issues` present, no schema marker."""
+        body = self._stale_body()
+        return {
+            "number": n,
+            "title": f"render: some change {n}",
+            "headRefName": f"claude/{n - 500}-some-task",
+            "headRefOid": f"{n:040d}",
+            "baseRefName": "master",
+            "author": "jakildev",
+            "labels": ["fleet:approved"],
+            "mergeable": "MERGEABLE",
+            "isDraft": False,
+            "reviews": [
+                {"author": "jakildev", "body": body, "state": "COMMENTED",
+                 "submittedAt": f"2026-08-{1 + i:02d}T00:00:00Z"}
+                for i in range(_REVIEWS_PER_PR)
+            ],
+            "updatedAt": "2026-08-08T00:00:00Z",
+            "closes_issues": [],
+        }
+
+    def _fetch_on_304(self, prev):
+        with patch.object(_mod, "conditional_get",
+                          side_effect=lambda *a, **k: (False, None)), \
+                patch.object(_mod, "run_capture", side_effect=self._counting_gh):
+            return _mod.fetch_prs(_REPO, prev=prev)
+
+    def test_fixture_matches_the_measured_live_stale_shape(self):
+        # Without this the suite could be modelling a body the pre-fix code
+        # never produced, and the refetch arm below would prove nothing.
+        self.assertEqual(len(self._stale_body()), self._LIVE_STALE_BODY_LEN)
+
+    def test_shipped_projection_stamps_the_current_schema(self):
+        for pr in _project([_pr(_FIRST_PR), _pr(_FIRST_PR + 1)]):
+            self.assertEqual(pr["schema"], _mod.PR_RECORD_SCHEMA)
+
+    def test_current_schema_implies_closes_issues(self):
+        # The subsumption claim #2442's guard is retired on: a record at the
+        # current schema carries closes_issues by construction.
+        for pr in _project([_pr(_FIRST_PR)]):
+            self.assertEqual(pr["schema"], _mod.PR_RECORD_SCHEMA)
+            self.assertIn("closes_issues", pr)
+
+    def test_pre_trim_prev_is_refetched_and_comes_back_trimmed(self):
+        """Acceptance 1: stale records + 304 ⇒ fall through, trimmed output."""
+        prev = [self._stale_record(n)
+                for n in range(_FIRST_PR, _FIRST_PR + _PR_COUNT)]
+        # The fixture really is the harm: every review carries a body today.
+        self.assertTrue(all(r["body"] for p in prev for r in p["reviews"]))
+        out = self._fetch_on_304(prev)
+        self.assertEqual(self.graphql_calls, 1,
+                         "a pre-trim prev must not be reused on a 304")
+        self.assertIsNot(out, prev)
+        for pr in out:
+            bodies = [r["body"] for r in pr["reviews"]]
+            self.assertTrue(bodies[-1], "the latest review must keep its body")
+            self.assertEqual(bodies[:-1], [""] * (len(bodies) - 1),
+                             "older reviews must emit an empty body")
+            self.assertLessEqual(
+                len(bodies[-1]),
+                _mod.REVIEW_BODY_HEAD + _mod.REVIEW_BODY_TAIL + 16,
+                "the retained body must be capped at head+tail+marker")
+
+    def test_current_schema_prev_is_reused_without_a_graphql_call(self):
+        """Acceptance 2: the fast path is preserved — a wrong guard here would
+        re-fetch both repos every 30 s on every host."""
+        prev = _project([_pr(n) for n in range(_FIRST_PR, _FIRST_PR + 3)])
+        out = self._fetch_on_304(prev)
+        self.assertIs(out, prev, "an up-to-date prev must be reused verbatim")
+        self.assertEqual(self.graphql_calls, 0,
+                         "reuse must spend no GraphQL quota")
+
+    def test_an_older_schema_value_refetches_even_with_every_key_present(self):
+        """The generalization over #2442: a projection change that adds no key
+        (the #2752 trim) is invisible to key presence but not to a version."""
+        prev = _project([_pr(_FIRST_PR)])
+        for pr in prev:
+            pr["schema"] = _mod.PR_RECORD_SCHEMA - 1
+        self._fetch_on_304(prev)
+        self.assertEqual(self.graphql_calls, 1,
+                         "an older schema value is cache desync")
+
+    def test_one_stale_record_among_current_ones_refetches_the_list(self):
+        # The reuse decision is list-wide (the projection is emitted per tick,
+        # not per record), so a single laggard must not be carried forward.
+        prev = _project([_pr(n) for n in range(_FIRST_PR, _FIRST_PR + 3)])
+        del prev[1]["schema"]
+        self._fetch_on_304(prev)
+        self.assertEqual(self.graphql_calls, 1)
+
+    def test_empty_prev_is_still_reused(self):
+        # all() over an empty list is True: an empty open-PR set needs no
+        # refetch, and spending a GraphQL call on it every tick would be a
+        # regression of its own.
+        prev = []
+        self.assertIs(self._fetch_on_304(prev), prev)
+        self.assertEqual(self.graphql_calls, 0)
+
+    def test_marker_cost_is_negligible_against_the_size_budget(self):
+        # The fix pays bytes into the very budget it protects; pin the order of
+        # magnitude so a later marker redesign can't quietly eat the headroom.
+        prs = _project([_pr(n) for n in range(_FIRST_PR, _FIRST_PR + _PR_COUNT)])
+        with_marker = len(json.dumps(prs, separators=(",", ":")).encode("utf-8"))
+        for pr in prs:
+            del pr["schema"]
+        without = len(json.dumps(prs, separators=(",", ":")).encode("utf-8"))
+        self.assertLess((with_marker - without) / _PR_COUNT, 16,
+                        "the schema marker must cost well under 16 B per PR")
 
 
 if __name__ == "__main__":
