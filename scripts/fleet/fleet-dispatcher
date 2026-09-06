@@ -1568,6 +1568,76 @@ resolve_worker_class() {
 # claim was granted, empty otherwise.
 PLAN_ASSIGNMENT=""
 
+# --- Planning circuit breaker ----------------------------------------------
+#
+# A needs-plan issue that keeps electing planning dispatches without a plan
+# ever landing is a sink for the fleet's most expensive iterations (measured:
+# 41 fable/xhigh planning dispatches on one issue, roughly one per 8 minutes,
+# each re-affirming "unplannable" — invisible on the issue thread). Every
+# granted assignment increments a per-issue counter under
+# $STATE_DIR/plan-dispatch-counts/; a candidate at the cap is PARKED with the
+# #3034 planner's park (ADD fleet:needs-human, KEEP fleet:needs-plan — the
+# same label contract PLANNING-PROTOCOL step 2 gives the planner, so the
+# scout's projection gate and planning-claim's refusal honor it identically)
+# plus a comment, and skipped. This is the MECHANICAL backstop for the #3034
+# park: a compliant planner parks an unplannable issue itself on the first
+# verdict; the breaker catches the planner that keeps releasing without
+# parking. Re-entry is the human removing fleet:needs-human. The counter is
+# per-host (one dispatcher each), cleared on park, and a stale counter
+# expires via mtime TTL. FLEET_PLAN_DISPATCH_CAP=0 disables the breaker.
+PLAN_DISPATCH_CAP="${FLEET_PLAN_DISPATCH_CAP:-5}"
+PLAN_DISPATCH_COUNT_TTL="${FLEET_PLAN_DISPATCH_COUNT_TTL:-604800}"
+
+plan_dispatch_count_file() {  # $1 = repo  $2 = issue number
+    echo "$STATE_DIR/plan-dispatch-counts/$1-$2"
+}
+
+plan_dispatch_count() {  # $1 = repo  $2 = issue number -> echoes TTL-aware count
+    local f now age
+    f=$(plan_dispatch_count_file "$1" "$2")
+    if [[ ! -f "$f" ]]; then echo 0; return; fi
+    now=$(date +%s)
+    age=$(( now - $(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null || echo "$now") ))
+    if (( age > PLAN_DISPATCH_COUNT_TTL )); then echo 0; return; fi
+    cat "$f" 2>/dev/null || echo 0
+}
+
+plan_dispatch_note() {  # $1 = repo  $2 = issue number — count one granted dispatch
+    (( PLAN_DISPATCH_CAP > 0 )) || return 0
+    local f n
+    f=$(plan_dispatch_count_file "$1" "$2")
+    mkdir -p "${f%/*}" 2>/dev/null || true
+    n=$(plan_dispatch_count "$1" "$2")
+    echo $(( n + 1 )) > "$f" 2>/dev/null || true
+}
+
+plan_repo_slug() {  # $1 = engine|game -> the gh --repo slug
+    local slug=""
+    if [[ -f "$STATE_DIR/repos.json" ]]; then
+        slug=$(sed -n 's/.*"'"$1"'": *"\([^"]*\)".*/\1/p' "$STATE_DIR/repos.json" | head -n 1)
+    fi
+    if [[ -z "$slug" ]]; then
+        case "$1" in
+            game) slug="jakildev/irreden" ;;
+            *)    slug="jakildev/IrredenEngine" ;;
+        esac
+    fi
+    echo "$slug"
+}
+
+park_unplannable_issue() {  # $1 = repo  $2 = issue number  $3 = dispatch count
+    local slug
+    slug=$(plan_repo_slug "$1")
+    if gh issue edit "$2" --repo "$slug" \
+        --add-label "fleet:needs-human" >/dev/null 2>&1; then
+        gh issue comment "$2" --repo "$slug" --body "Planning circuit breaker: $3 planning dispatches on this host without a landed plan — parking for human routing with \`fleet:needs-human\` (the #3034 park; \`fleet:needs-plan\` stays on). Close it, add a \`**Blocked by:** #N\`, revise the direction, or — if it is plannable after all — remove \`fleet:needs-human\` to resume planning." >/dev/null 2>&1 || true
+        log "planning circuit breaker: parked $1:$2 after $3 dispatches (added fleet:needs-human, kept fleet:needs-plan)"
+        rm -f "$(plan_dispatch_count_file "$1" "$2")"
+    else
+        log "planning circuit breaker: $1:$2 at cap ($3) but the gh label add failed; skipping the candidate this tick"
+    fi
+}
+
 # Attempt to pre-claim one needs-plan issue of the elected class for the pane
 # about to be dispatched. $1 = role, $2 = the pane's worktree basename (the
 # claim agent name — see pane_worktree_basename). Never pre-claims outside
@@ -1588,7 +1658,7 @@ plan_assign_for_pane() {
     picks=$(python3 "$FLEET_LIB_DIR/fleet_task_class.py" --plan-pick \
         "$slice" "$DISPATCH_CLASS" "$fable_blocked" 2>/dev/null) || picks=""
     [[ -n "$picks" ]] || return 0
-    local line repo num rc
+    local line repo num rc plan_count
     while IFS= read -r line; do
         # Native-Windows python3 emits CRLF on stdout; without the strip the
         # trailing \r fails the numeric gate below on every line but the last
@@ -1600,6 +1670,16 @@ plan_assign_for_pane() {
         repo="${line%%:*}"
         num="${line##*:}"
         [[ "$num" =~ ^[0-9]+$ ]] || continue
+        # Circuit breaker: a candidate that has already burned the cap's worth
+        # of planning dispatches on this host is parked for the human instead
+        # of assigned again (see the breaker block above).
+        if (( PLAN_DISPATCH_CAP > 0 )); then
+            plan_count=$(plan_dispatch_count "$repo" "$num")
+            if (( plan_count >= PLAN_DISPATCH_CAP )); then
+                park_unplannable_issue "$repo" "$num" "$plan_count"
+                continue
+            fi
+        fi
         # exit 0 = sole holder (assigned); 1 = a cross-host dispatcher or the
         # architect holds it (next line); 3 = a `## Plan` comment already
         # exists — either a stale slice (already planned + queued) or the
@@ -1615,6 +1695,7 @@ plan_assign_for_pane() {
         fi
         if (( rc == 0 )); then
             PLAN_ASSIGNMENT="$line"
+            plan_dispatch_note "$repo" "$num"
             return 0
         fi
         if (( rc == 3 )); then
@@ -1626,11 +1707,26 @@ plan_assign_for_pane() {
             fi
             if (( rc == 0 )); then
                 PLAN_ASSIGNMENT="$line"
+                plan_dispatch_note "$repo" "$num"
                 return 0
             fi
         fi
     done <<< "$picks"
     return 0
+}
+
+# True when any standing reservation belongs to this role — the one case the
+# '' lane-default fallthrough must still dispatch into (a paused task pinned
+# to a worktree, waiting to resume).
+role_has_reservation() {
+    local role="$1" rfile rrole
+    [[ -d "$RESERVATIONS_DIR" ]] || return 1
+    for rfile in "$RESERVATIONS_DIR"/*.json; do
+        [[ -e "$rfile" ]] || continue
+        rrole=$(fleet-claim reservation-role "$(basename "$rfile" .json)" 2>/dev/null || true)
+        [[ "$rrole" == "$role" ]] && return 0
+    done
+    return 1
 }
 
 # Returns 0 (should re-arm) iff the resolver would dispatch a CONCRETE class for
@@ -1850,6 +1946,23 @@ dispatch_role() {
         # Uncapped (older slice / '' lane-default fallthrough / non-worker role):
         # no per-class headroom gate — preserve the legacy fan-out-to-all-panes.
         if [[ -z "$DISPATCH_CLASS" || -z "$DISPATCH_COUNT" ]]; then
+            # Idle-fallthrough gate: a worker lane whose slice EXISTS but routed
+            # nothing ('' — e.g. every task owned or the projection is empty)
+            # has nothing a fresh worker could claim, so the lane-default
+            # fan-out is a guaranteed fleet-wide no-op UNLESS a reservation is
+            # waiting to resume (the one legitimate '' dispatch). Measured as
+            # runs of consecutive fully-idle wake-ups fanning claude out to
+            # every idle pane. A MISSING slice keeps the legacy fan-out — the
+            # scout may simply not have written it yet. Consume the trigger
+            # like the smoke-lane gate does: the scout re-arms on the next
+            # projection change, which is exactly when claimable work appears.
+            if [[ -n "${WORKER_LANE_DEFAULT_CLASS[$role]+x}" ]] \
+                && [[ -f "$STATE_DIR/projections/$role.json" ]] \
+                && ! role_has_reservation "$role"; then
+                rm -f "$trigger_file"
+                log "$role: slice routed no claimable work and no reservation pending; standing down — scout re-arms on new work"
+                return
+            fi
             claim_headroom=-1
             break
         fi

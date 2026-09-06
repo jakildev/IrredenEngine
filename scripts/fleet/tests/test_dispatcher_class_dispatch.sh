@@ -159,6 +159,10 @@ replan=""
 [[ "${4:-}" == "--replan" ]] && replan=1
 key="$repo:$num"
 [[ "$sub" == "planning-release" ]] && exit 0
+if [[ "$sub" == "reservation-role" ]]; then
+    printf '%s\n' "${STUB_RESERVATION_ROLE:-}"
+    exit 0
+fi
 if [[ -n "$replan" ]]; then
     [[ " ${STUB_REPLAN_GRANT:-} " == *" $key "* ]] && exit 0
     exit 2
@@ -612,6 +616,104 @@ echo "T26: --dispatch-role argument validation"
 "$DISPATCHER" --dispatch-role worker 0 >/dev/null 2>&1 \
     && { FAIL=$((FAIL+1)); echo "  FAIL: count=0 exited zero"; } \
     || { PASS=$((PASS+1)); echo "  ok: non-positive count exits non-zero"; }
+
+# --- T29+: idle-fallthrough gate --------------------------------------------
+# A worker slice that EXISTS but routes '' (here: the only task is owned by
+# another worker) must stand the lane down instead of fanning the lane
+# default out to every idle pane — unless a reservation is waiting (T31), or
+# the slice file is missing entirely (T30, the scout-not-up shape).
+OWNED_SLICE='{"tasks_open":[{"issue":"#10","model":"opus","effort":null,"owner":"pool-9","blocked":false}],"feedback_prs":[],"needs_plan":[]}'
+
+echo "T29: existing slice, nothing claimable, no reservation -> stand down"
+rm -f "$FLEET_STATE_DIR/dispatch"/*.json
+: > "$FLEET_STATE_DIR/triggers/worker"
+write_slice worker "$OWNED_SLICE"
+out=$("$DISPATCHER" --dispatch-role worker 1 2>&1 >/dev/null)
+case "$out" in
+    *"dispatching worker"*) FAIL=$((FAIL+1)); echo "  FAIL: idle lane still dispatched: $out" ;;
+    *) PASS=$((PASS+1)); echo "  ok: no dispatch on an unclaimable slice" ;;
+esac
+case "$out" in
+    *"standing down"*) PASS=$((PASS+1)); echo "  ok: stand-down logged" ;;
+    *) FAIL=$((FAIL+1)); echo "  FAIL: stand-down log line missing: $out" ;;
+esac
+[[ ! -f "$FLEET_STATE_DIR/triggers/worker" ]] \
+    && { PASS=$((PASS+1)); echo "  ok: trigger consumed (scout re-arms on new work)"; } \
+    || { FAIL=$((FAIL+1)); echo "  FAIL: trigger left standing"; }
+
+echo "T30: missing slice keeps the legacy lane-default fan-out"
+rm -f "$FLEET_STATE_DIR/dispatch"/*.json "$FLEET_STATE_DIR/projections/worker.json"
+: > "$FLEET_STATE_DIR/triggers/worker"
+out=$("$DISPATCHER" --dispatch-role worker 1 2>&1 >/dev/null)
+case "$out" in
+    *"dispatching worker"*) PASS=$((PASS+1)); echo "  ok: missing slice still dispatches (scout may not be up yet)" ;;
+    *) FAIL=$((FAIL+1)); echo "  FAIL: missing slice no longer dispatches: $out" ;;
+esac
+
+echo "T31: a standing worker reservation keeps the '' dispatch (resume path)"
+rm -f "$FLEET_STATE_DIR/dispatch"/*.json
+: > "$FLEET_STATE_DIR/triggers/worker"
+write_slice worker "$OWNED_SLICE"
+mkdir -p "$FLEET_RESERVATIONS_DIR"
+printf '{"task":"#10","role":"worker"}\n' > "$FLEET_RESERVATIONS_DIR/pool-2.json"
+out=$(STUB_RESERVATION_ROLE=worker "$DISPATCHER" --dispatch-role worker 1 2>&1 >/dev/null)
+case "$out" in
+    *"dispatching worker"*) PASS=$((PASS+1)); echo "  ok: reservation resume still dispatches through the gate" ;;
+    *) FAIL=$((FAIL+1)); echo "  FAIL: reservation resume was gated off: $out" ;;
+esac
+rm -f "$FLEET_RESERVATIONS_DIR/pool-2.json"
+
+# --- T32+: planning circuit breaker (#94-shaped sink) -------------------------
+# gh is stubbed so park_unplannable_issue's label swap + comment are observable.
+export GH_LOG="$TMPROOT/gh.log"
+cat > "$STUB_BIN/gh" <<'GHEOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$GH_LOG"
+exit 0
+GHEOF
+chmod +x "$STUB_BIN/gh"
+COUNTS_DIR="$FLEET_STATE_DIR/plan-dispatch-counts"
+write_slice worker '{"tasks_open":[],"feedback_prs":[],"needs_plan":[{"number":99,"repo":"engine","labels":[]},{"number":120,"repo":"engine","labels":[]}]}'
+
+echo "T32: candidate at the cap is parked and the next line assigned"
+rm -rf "$COUNTS_DIR"; mkdir -p "$COUNTS_DIR"; : > "$GH_LOG"
+printf '2' > "$COUNTS_DIR/engine-99"
+assert_eq "$(FLEET_PLAN_DISPATCH_CAP=2 STUB_GRANT='engine:120' plan_assign)" "plan=engine:120" \
+    "engine:99 at cap -> parked, engine:120 assigned"
+# #3034 park semantics: ADD fleet:needs-human only — fleet:needs-plan stays
+# on (still true; re-entry = the human removing the park label).
+grep -q 'issue edit 99 .*--add-label fleet:needs-human' "$GH_LOG" \
+    && { PASS=$((PASS+1)); echo "  ok: parked by adding fleet:needs-human"; } \
+    || { FAIL=$((FAIL+1)); echo "  FAIL: park label add missing: $(cat "$GH_LOG")"; }
+grep -q -- '--remove-label fleet:needs-plan' "$GH_LOG" \
+    && { FAIL=$((FAIL+1)); echo "  FAIL: park stripped fleet:needs-plan (must stay per #3034): $(cat "$GH_LOG")"; } \
+    || { PASS=$((PASS+1)); echo "  ok: fleet:needs-plan kept (the #3034 contract)"; }
+grep -q 'issue comment 99 ' "$GH_LOG" \
+    && { PASS=$((PASS+1)); echo "  ok: park comment posted"; } \
+    || { FAIL=$((FAIL+1)); echo "  FAIL: park comment missing: $(cat "$GH_LOG")"; }
+[[ ! -f "$COUNTS_DIR/engine-99" ]] \
+    && { PASS=$((PASS+1)); echo "  ok: parked issue's counter cleared"; } \
+    || { FAIL=$((FAIL+1)); echo "  FAIL: counter left after park"; }
+
+echo "T33: a granted assignment increments the per-issue counter"
+rm -rf "$COUNTS_DIR"; : > "$GH_LOG"
+assert_eq "$(STUB_GRANT='engine:99' plan_assign)" "plan=engine:99" "assignment granted"
+assert_eq "$(cat "$COUNTS_DIR/engine-99" 2>/dev/null)" "1" "counter recorded one dispatch"
+assert_eq "$(STUB_GRANT='engine:99' plan_assign)" "plan=engine:99" "second assignment granted"
+assert_eq "$(cat "$COUNTS_DIR/engine-99" 2>/dev/null)" "2" "counter incremented"
+[[ ! -s "$GH_LOG" ]] \
+    && { PASS=$((PASS+1)); echo "  ok: no gh call below the cap"; } \
+    || { FAIL=$((FAIL+1)); echo "  FAIL: gh called below the cap: $(cat "$GH_LOG")"; }
+
+echo "T34: FLEET_PLAN_DISPATCH_CAP=0 disables the breaker"
+rm -rf "$COUNTS_DIR"; mkdir -p "$COUNTS_DIR"; : > "$GH_LOG"
+printf '99' > "$COUNTS_DIR/engine-99"
+assert_eq "$(FLEET_PLAN_DISPATCH_CAP=0 STUB_GRANT='engine:99' plan_assign)" "plan=engine:99" \
+    "cap=0 -> assignment proceeds regardless of count"
+[[ ! -s "$GH_LOG" ]] \
+    && { PASS=$((PASS+1)); echo "  ok: cap=0 never parks"; } \
+    || { FAIL=$((FAIL+1)); echo "  FAIL: cap=0 still called gh: $(cat "$GH_LOG")"; }
+rm -rf "$COUNTS_DIR"
 
 echo
 echo "PASS: $PASS  FAIL: $FAIL"
