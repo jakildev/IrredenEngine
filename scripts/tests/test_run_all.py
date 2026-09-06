@@ -23,6 +23,8 @@ from pathlib import Path
 _SCRIPTS = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_SCRIPTS))
 
+import verify_common  # noqa: E402  (needs the sys.path insert above)
+
 _RUN_ALL = Path(__file__).resolve().parent / "run_all.sh"
 
 _TRIVIAL_CASE = """
@@ -41,7 +43,7 @@ if __name__ == "__main__":
 
 def _run_runner(directory: Path) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["bash", str(_RUN_ALL), str(directory)],
+        [verify_common.resolve_bash(), str(_RUN_ALL), str(directory)],
         capture_output=True, text=True)
 
 
