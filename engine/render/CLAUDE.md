@@ -594,12 +594,51 @@ Three checks, in order:
    **The reversal criterion, and what this gate does NOT catch (#2469).** On both
    canonical probes one axis is near-**pinned** while the other translates, so
    `reversals == 0` counts sign flips of sub-pixel coverage noise and is
-   unsatisfiable on healthy master — measured 2026-07-28 at zoom 2/4/8 on the
-   yaw sweep AND on the pan-sweep twin. `--reversal-eps 0.8` zeroes those deltas
-   and makes the gate effectively **residual-axis only**; the `--max-residual`
-   default (1.50px) is unchanged and is the live assertion. Do not read the eps
-   as a calibrated floor — it sits at the top of the observed per-frame delta
-   range precisely because the criterion is being retired for these probes.
+   unsatisfiable on healthy master — measured 2026-07-28 (macOS/Metal) at zoom
+   2/4/8 on the yaw sweep AND on the pan-sweep twin. `--reversal-eps 0.8` zeroes
+   those deltas and makes the gate effectively **residual-axis only**; the
+   `--max-residual` default (1.50px) is unchanged and is still the live residual
+   assertion — but it is a bar **on the pinned `--pivot-origin` sweep only**
+   (floors re-measured 2026-09-06, table below). The unpinned sweep carries
+   neither bar: its residual is orbit-inflated and is not a tree property at all
+   (#2907). Do not read the eps as a calibrated floor — it sits at the top of the
+   observed per-frame delta range precisely because the criterion is being
+   retired for these probes.
+
+   **Units: every px in this section is a *framebuffer* pixel** — a captured-PNG
+   pixel, which is `outputScaleFactor` game pixels (`floor(viewport /
+   gameResolution)` in FIT mode, `render_manager.cpp`): **2 on the macOS HiDPI
+   host, 1 on Windows/Linux**. `jitter_probe` has no host-scale normalization, so
+   a bar calibrated on one host carries twice (or half) the game-px headroom on
+   the other, and a number quoted without its host is unusable. Read the factor
+   off a capture — PNG IHDR width ÷ `game_resolution_width`, the recipe
+   `scripts/pivot-verify.py` `_output_scale_factor` uses — and record it with any
+   figure you publish. Both tables below name their host and factor.
+
+   **The 2:1 scale relation is measured, but it is not a general conversion
+   factor — do not halve or double a published number to move it between hosts.**
+   It holds on the *post*-#2547 arms that have the **same quantity on record for
+   both hosts** (#2907): pinned voxel residual, unpinned SDF residual, kill-switch
+   excursion, unpinned voxel excursion all land at **1.99–2.05:1**, on every pair
+   above the 0.01px reporting quantum. Three things it does **not** cover:
+
+   - The *unpinned voxel residual* — the pair the section below quotes — spans
+     **1.96:1 (z8) to 2.25:1 (z4)**, so the arm this whole section is about is
+     the one the relation fits worst.
+   - The *pre*-#2547 content/sampling floor obeys it not at all (see the
+     provenance note under the residual table).
+   - The pinned voxel z8 pair (0.01px at 1x vs 0.03px at 2x) sits at the
+     reporting quantum and resolves nothing either way.
+
+   **No same-tree cross-host capture exists.** The 1x readings below are
+   2026-09-06 on this tree; the 2x readings are 2026-08-05 → 2026-08-08 on a
+   then-master ~30 render commits behind it. Confirming the relation on one tree
+   (a macOS pane re-running the arms here) is **outstanding**, not done.
+
+   Retiring this hazard properly — state the unit, normalize to
+   `outputScaleFactor`, calibrate across the range — is **#3009**; **#3008** is
+   the live symptom on the GL side, where three centroid-gated pivot-verify
+   blocks exceed the 1.5px default gate on a 1x host.
 
    Two consequences to know before you lean on this gate:
 
@@ -619,8 +658,12 @@ Three checks, in order:
    ships as `jitter_probe --max-excursion-x/-y` (#2606), and every default-mode
    run prints `excursion=` per axis, so the by-hand max-min read is gone. **On the
    `--pivot-origin` pinned sweep it is the primary rotation-gate assertion, and
-   these are its bars** (macOS/Metal, 2026-08-08, 24-frame sweeps, one session,
-   arm identity asserted per run from the engine log):
+   these are its bars** (macOS/Metal, `outputScaleFactor` **2**, 2026-08-08,
+   24-frame sweeps, one session, arm identity asserted per run from the engine
+   log). **These bars are 2x-calibrated**: on a 1x host (Windows/Linux) they gate
+   ~2x looser in game px, so a green run there is weaker evidence than the same
+   run on macOS. Re-deriving them per host-scale is #3009's job, not something to
+   do inline — see §"Units" above before quoting any number here.
 
    | zoom | healthy voxel | SDF control | `IR_PERAXIS_OVERFLOW_DISABLE=1` | **bar** | separation |
    |---|---|---|---|---|---|
@@ -659,18 +702,55 @@ Three checks, in order:
    focus (#2547, landed 2026-07-31) contributes a residual orbit with a
    1-iso-unit cap-entry bias — the surface `pivot-verify.py` owns, and it is green
    throughout (explicit-focus blocks pin at 0.94/1.27px). #2641 → PR **#2758**
-   (open, in review) root-causes that bias as *inherent* to the derive: the
+   (merged 2026-08-21) root-caused that bias as *inherent* to the derive: the
    composite stores a per-face sort key, not the metric depth at the sampled
-   trixel. **The bar above does not rest on that ruling** — ORIGIN removes the
+   trixel, and the harness there is gated to the measurement rather than to a
+   fix. **The bar above does not rest on that ruling** — ORIGIN removes the
    pivot term outright rather than bounding it (`getEffectiveCameraIso`,
    `engine/render/src/ir_render.cpp:47-49`, tests ORIGIN before the focus branch
    and returns `cameraIso` unmodified), so no pivot term is stricter than any
-   future default derive, whichever way #2758 lands.
+   default derive #2758 leaves in place.
 
-   Free evidence for **#2907** from the same session: the pinned probe's x
-   *residual* reads 0.41 / 0.08 / 0.03px at zoom 2/4/8, while the unpinned z4 arm
-   reproduces #2907's 1.78px exactly. The default-focus probe's residual redness
-   is therefore orbit-inflated, not a floor of the per-axis path.
+   **That orbit is what made the unpinned probe's *residual* look red, and it
+   brackets to `4c4554d5` (#2547) on measurement (#2907).** Same fixture, same
+   flags, arm A (unpinned voxel) on Windows/OpenGL 1x: x excursion reads
+   **1.67px** at `4c4554d5^` against **18.77px** on master at zoom 4 (11x), and
+   3.11 → 37.45px at zoom 8 (12x). `dce3d104^` — **20 commits earlier**, covering
+   the whole 2026-07-28 → #2547 window, including the render-surface commit
+   `9d5905e9` (#2341) — reads *bit-identical* to `4c4554d5^`, so nothing in that
+   window moved it.
+
+   **The bracket is one-sided**, and the isolation of `4c4554d5` rests on a
+   second leg rather than on the two readings. The captures are
+   `[4c4554d5^, master]`, not `[4c4554d5^, 4c4554d5]`, so ~30 render commits sit
+   inside the measured interval; what excludes them is that the derive is
+   **unchanged from `4c4554d5` to master** — `git log -L
+   :getDefaultRotationPivotFocus:engine/render/src/render_manager.cpp
+   4c4554d5..HEAD` is empty. With that identity, #2547 is the only change to the
+   default pivot focus between the 2026-07-28 baseline and master.
+
+   A line fit has to absorb that orbit's chord, which is what inflates the
+   residual: pinning the same population drops x residual to 0.04px at z4 (20x)
+   and 0.01px at z8 (138x). **The per-axis path did not regress** — pinned, it
+   reads *below* the 2026-07-28 accepted values at every zoom, and that holds
+   under *either* scaling convention, which is why it survives the caveat in
+   §"Units": 0.20 / 0.04 / 0.01px at 1x, against that table's 0.85 / 0.57 /
+   1.25px as recorded at 2x, or 0.43 / 0.29 / 0.63px if you halve them. Below on
+   both readings, so the conclusion does not depend on the conversion.
+
+   The unpinned residual is therefore not a property of the tree, and must not
+   be gated: whether it crosses 1.50px depends on the host's
+   `outputScaleFactor`, because the orbit's chord is a camera-space length that
+   doubles in framebuffer px on a 2x host. Unpinned x residual at z4/z8 reads
+   **1.78 / 2.70px** on macOS/Metal (2x, RED — #2907's filing measurement,
+   2026-08-05, reproduced independently 2026-08-07) and **0.79 / 1.38px** on
+   Windows/OpenGL (1x, both green — 2026-09-06, this tree). Those are two
+   *different* trees ~30 render commits apart; the same-tree cross-host capture
+   has not been taken. The verdict flip is still attributable to output scale
+   rather than to the code in between, on two legs that do not need it: the
+   derive is byte-stable across that window (`getDefaultRotationPivotFocus`,
+   above), and pinning collapses the residual on **both** hosts. Read a residual
+   number off the **pinned** arm or not at all.
 
 **Jitter is NOT the same as cardinal byte-identity.** Confirm yaw-0 / static
 frames stay byte-identical (`img_diff`) *and* that motion is jitter-free
@@ -1093,32 +1173,76 @@ was chosen precisely because Metal exposes no conservative-raster API, so do
 **not** reach for `GL_NV_conservative_raster` on the GL side (it would fork the
 two backends).
 
-**Accepted sub-pixel yaw-sweep centroid residual (voxel content) — #2469.**
-On the canonical Z-yaw-invariant probe (voxel cylinder, `--yaw-sweep`) the
-per-axis path leaves a sub-pixel centroid residual that scales with zoom. It is
-**content + sampling, not a positioning defect**, and is accepted as intentional
-drift. Measured on macOS/Metal, 2026-07-28 (24-frame sweeps, one quadrant):
+**Accepted sub-pixel yaw-sweep centroid residual (voxel content) — #2469, re-grounded #2907.**
+On the canonical Z-yaw-invariant probe (voxel cylinder) the per-axis path leaves
+a sub-pixel centroid residual. It is **content + sampling, not a positioning
+defect**, and is accepted as intentional drift. These are the live floors,
+measured on the **pinned** (`--yaw-sweep --pivot-origin`) probe the canonical
+gate uses — Windows/OpenGL, `outputScaleFactor` **1**, 2026-09-06, 24-frame
+sweeps, one quadrant, arm identity asserted per run from the engine log:
 
-| probe | x excursion | x rev | x residual | y excursion | y rev | y residual |
-|---|---|---|---|---|---|---|
-| voxel cylinder, zoom 2 | 1.68px | 3 | 0.85px | 2.69px | 2 | 0.21px |
-| voxel cylinder, zoom 4 | 1.26px | 5 | 0.57px | 5.29px | 0 | 0.19px |
-| voxel cylinder, zoom 8 | 2.83px | 5 | 1.25px | 10.79px | 0 | 0.18px |
-| **SDF cylinder** (continuous-geometry control), zoom 4 / 8 | 2.00px | 0 | 1.43px | 4.00 / 10.00px | 0 | 0.95px |
+| arm | x residual z2 / z4 / z8 | x excursion z2 / z4 / z8 | y residual z2 / z4 / z8 |
+|---|---|---|---|
+| **voxel cylinder** (the gated arm) | **0.20 / 0.04 / 0.01px** | 0.31 / 0.09 / 0.03px | 0.05 / 0.03 / 0.02px |
+| **SDF cylinder** (continuous-geometry control) | 0.00 / 0.00 / 0.00px | 0.00 / 0.00 / 0.00px | 0.00 / 0.00 / 0.00px |
+| `IR_PERAXIS_OVERFLOW_DISABLE=1` (recorded, **not** a bar source) | 0.29 / 0.26 / 0.49px | 3.11 / 5.44 / 10.90px | 0.17 / 0.39 / 0.74px |
+| **bar** (`--max-residual`, tool default) | 1.50 / 1.50 / 1.50px | *(excursion bars live in §"Verifying temporal stability")* | — |
 
-> **The excursion columns above are historical — they measure a probe the recipe
-> no longer uses (#2606).** This table predates #2547's default pivot focus
-> (landed 2026-07-31), whose residual orbit (#2641 → #2758, in review) dominates
-> the metric on an *unpinned* sweep: same recipe, same host/backend,
-> x excursion re-measured 19.97 / 38.18 / 76.81px at zoom 2/4/8 on 2026-08-07,
-> ~30x this table. The canonical rotation gate is now the **`--pivot-origin`
-> pinned** sweep, which removes the orbit rather than tolerating it and reads
-> 0.62 / 0.18 / 0.06px healthy — the live bar table lives in §"Verifying temporal
-> stability" and is the only place to read numbers for a gate. The **residual**
-> columns are unaffected by all of this and still reproduce at zoom 2 (0.85px);
-> at zoom 4/8 the unpinned probe reads 1.78/2.70px against the 1.50px bar, which
-> is **#2907**'s finding, not this one — and the pinned probe's 0.41/0.08/0.03px
-> says that redness is orbit-inflated.
+**Bar decision: `--max-residual` stays at the 1.50 fb-px tool default, and no
+per-zoom residual bars are published.** The healthy maximum (0.20px, voxel z2)
+sits 7x under it, so there is headroom to spare — but the bar rule's other half
+("<= 0.5x the defect excursion") has nothing to evaluate here: the only live
+defect arm, the `IR_PERAXIS_OVERFLOW_DISABLE=1` kill switch, reads **0.49px** —
+under the bar, and it is the *excursion* criterion that catches it (10.90px
+against a 0.5px bar at z8). The pre-#2427 face-pop that originally grounded 1.50
+is fixed on master. This is an **extension** of the omission clause at the
+excursion table above, not a direct application of it: that clause is written
+for a criterion with a firing defect arm supplying the ceiling, and this
+criterion has none — so nothing thinner than the default is published rather
+than inventing a ceiling.
+
+> **History — the unpinned sweep, which is NOT a gate.** The original #2469
+> table measured the *unpinned* probe on macOS/Metal (2x) on 2026-07-28: voxel x
+> residual 0.85 / 0.57 / 1.25px, x excursion 1.68 / 1.26 / 2.83px; SDF control
+> 1.43px residual / 2.00px excursion at z4 and z8. Those numbers are preserved
+> here so #2469's and #2907's threads stay findable, and for nothing else.
+>
+> Post-#2547 the same unpinned arm reads **1.78 / 2.70px** residual at z4/z8 on
+> macOS/Metal (2x, over the bar — #2907's filing measurement 2026-08-05,
+> reproduced independently 2026-08-07) and **0.47 / 0.79 / 1.38px** on
+> Windows/OpenGL (1x, green — 2026-09-06). Its SDF twin reads 2.37 / 3.26px (2x)
+> and 0.83 / 1.19 / 1.63px (1x), and that twin's **z8 1x reading (1.63px) is over
+> the 1.50px default and exits 1** — so 1x is not a blanket green for the
+> unpinned sweep; the *voxel* arm is the one that clears at every zoom. **The 2x
+> and 1x readings are from different trees** (~30 render commits apart), not one
+> tree measured twice — see §"Units".
+>
+> **Provenance of the change, measured (#2907).** #2547's depth-aware default
+> `CAMERA_CENTER` focus landed 2026-07-31 as `4c4554d5` and gave the *unpinned*
+> probe a pivot orbit: x excursion 1.67 → 18.77px at z4 on Windows/OpenGL across
+> `[4c4554d5^, master]`, 11x, with `dce3d104^` — 20 commits earlier — reading
+> bit-identical to `4c4554d5^` (nothing in that window moved it). The bracket is
+> one-sided; what isolates `4c4554d5` inside it is that the derive is byte-stable
+> from `4c4554d5` to master (see the attribution paragraph in §"Verifying
+> temporal stability"). A line fit absorbs that orbit's chord, which inflates
+> the residual — and the chord is a camera-space length, so it doubles in
+> framebuffer px on a 2x host. That, not a per-axis
+> regression, is why the unpinned probe crosses 1.50px on macOS and not on
+> Windows. **The unpinned residual is host-scale-dependent and is not a gate
+> quantity**; #2606 re-pointed the canonical gate onto the pinned probe, and the
+> table above is the pinned floor.
+>
+> **The pre-#2547 residual is backend-dependent and does not transfer either.**
+> At `4c4554d5^` the unpinned arm reads 1.26 / 2.12px on Windows/OpenGL (1x)
+> against the 2026-07-28 macOS/Metal table's 0.57 / 1.25px (2x) — neither equal
+> nor 2:1, unlike the post-#2547 arms that have the same quantity on record for
+> both hosts (1.99–2.05:1, §"Units"). So the content/sampling floor genuinely
+> differs between the two **host/backend pairs** — macOS+Metal+HiDPI against
+> Windows+OpenGL+1x, and nothing measured here separates those three variables —
+> by an amount the 2:1 scale does not explain. #2907's macOS-measured "growth"
+> (0.57 → 1.78px at z4) has no counterpart on OpenGL, where the same window runs
+> *downward* (1.26 → 0.79px).
+> One more reason to read residuals off the pinned arm only.
 
 Three findings ground the accept, each measured rather than asserted:
 
@@ -1132,10 +1256,20 @@ Three findings ground the accept, each measured rather than asserted:
    and zoom 8**, with bit-identical probe metrics. A lane pinned at its zero
    point cannot produce a yaw-varying wobble. (`emitDeformedFace` is likewise
    off-path: the per-axis store writes one cell per face centre.)
-2. **The voxel path's residual is LOWER than the defect-free control's.** The
-   SDF twin — continuous geometry, no voxel store — reads 1.43px at zoom 4 and 8,
-   above the voxel path at every zoom. The residual is a floor the probe itself
-   carries, not a per-axis excess.
+2. **The voxel path's residual sits far under the bar — and the SDF control is
+   recorded beside it, not used as an upper bound.** Pinned, the voxel arm reads
+   0.20 / 0.04 / 0.01px against the 1.50px bar: >=7x of headroom at every zoom.
+   The continuous-geometry SDF twin reads 0.00px throughout, i.e. *below* the
+   voxel arm — the reverse of the ordering the original accept leaned on, which
+   was measured on the unpinned probe where a shared pivot orbit dominated both
+   twins. Do not restore that argument. The 0.00 is not a contradiction of the
+   twin's documented one-game-pixel quantization floor (#2645): that quantum
+   only bites when the silhouette *translates* across the destination grid, and
+   pinned at the origin it does not move at all. Which is the point — the twin's
+   residual is set by how far the probe drags it, not by the per-axis path, so
+   it bounds nothing in either direction. The voxel residual is a floor the
+   probe itself carries, and the claim that grounds the accept is the
+   bar-relative headroom above, not a comparison between the twins.
 3. **The scaling fits content anisotropy, not a pixel-domain defect.** A voxelized
    cylinder is only 4-fold symmetric — only the *continuous* cylinder is
    Z-yaw-invariant, so the rotating staircase's true silhouette legitimately

@@ -145,6 +145,19 @@ A clean fix flips a JITTER verdict (high reversals, multi-px residual) to SMOOTH
 a bar, and the `(thresholds: ...)` line lists exactly the bars in force — so a
 verdict always states what it asserted rather than leaving you to infer it.
 
+**Every `px` above is a *framebuffer* pixel — a pixel of the PNG you passed in.**
+That is `outputScaleFactor` game pixels, `floor(viewport / gameResolution)`:
+**2 on the macOS HiDPI host, 1 on Windows/Linux**. This tool reads PNGs and has
+no idea which host produced them, so it cannot normalize, and a bound calibrated
+on one host mis-scales by ~2x on the other — the unpinned yaw sweep reads 1.78px
+x residual on macOS/Metal at 2x (RED) against 0.79px on Windows/OpenGL at 1x
+(green), same fixture and flags, and the derive between the two recordings is
+byte-stable (#2907). Read the factor off a capture (PNG IHDR width ÷
+`game_resolution_width`; `scripts/pivot-verify.py` `_output_scale_factor` is the
+recipe), and state host + factor beside any figure you record. The ~2x is not a
+conversion factor to apply by hand — measured pairs span 1.96:1 to 2.25:1 on
+that very arm; normalizing it properly is **#3009**.
+
 ## Accepted floors, and the model's blind spot (#2469)
 
 The default verdict models **linear** motion. On a probe where one axis is
@@ -156,8 +169,13 @@ that model is mis-specified on exactly that axis, in both directions:
   `reversals == 0` at zoom 2, 4 and 8 on the yaw sweep, and on the `--pan-sweep`
   twin. The canonical recipe therefore passes `--reversal-eps 0.8`, which
   retires the criterion for these probes and leaves `--max-residual` as the live
-  assertion. That eps is not a calibrated floor — it sits at the top of the
-  observed per-frame delta range.
+  assertion — **on the pinned `--yaw-sweep --pivot-origin` probe**, whose
+  floors are tabulated in
+  [`engine/render/CLAUDE.md`](../../engine/render/CLAUDE.md) §"Accepted
+  sub-pixel yaw-sweep centroid residual". Scored on the *unpinned* sweep the
+  residual is dominated by the default `CAMERA_CENTER` pivot orbit and is not a
+  tree property at all (#2907) — do not gate on it. That eps is not a calibrated
+  floor — it sits at the top of the observed per-frame delta range.
 - **False negatives.** A large but *smooth* centroid migration is what the line
   fit calls correct. A known render defect (re-exposed via the engine's
   `IR_PERAXIS_OVERFLOW_DISABLE=1` kill switch) migrated the x centroid by an
@@ -210,16 +228,19 @@ IRShapeDebug --spin-shape cylinder --spin-shape-voxel --yaw-sweep \
 `--pivot-origin` selects `RotationPivotMode::ORIGIN`, and `--spin-shape` spawns
 its single fixture at the world origin — so the shape stays screen-centred and
 the centroid carries no pivot term. On the *default* focus it would: that derive
-carries a residual orbit (#2547 → #2641, root-caused as inherent by the open PR
-#2758) which is camera-level (the SDF control moves as far), reads ~200x the
-pinned value, and is *lower* on the `IR_PERAXIS_OVERFLOW_DISABLE=1` arm than on
-healthy — so no one-sided bar separates the populations there, and the unpinned
-sweep deliberately carries no excursion bar. ORIGIN does not merely bound that
-term, it removes it, so the pinned bar is valid however #2758 lands.
+carries a residual orbit (#2547 → #2641, root-caused as inherent by PR #2758,
+merged 2026-08-21) which is camera-level (the SDF control moves as far), reads
+~200x the pinned value, and is *lower* on the `IR_PERAXIS_OVERFLOW_DISABLE=1`
+arm than on healthy — so no one-sided bar separates the populations there, and
+the unpinned sweep deliberately carries no excursion bar. ORIGIN does not merely
+bound that term, it removes it, so the pinned bar is valid however #2758 lands.
 
-The measured per-zoom bars for the pinned probe (macOS/Metal, 2026-08-08) live
-in **one** place — [`engine/render/CLAUDE.md`](../../engine/render/CLAUDE.md)
-§"Verifying temporal stability" — so there is no second copy to drift. Read the
-bar from there; §"Accepted sub-pixel yaw-sweep centroid residual (voxel content)
-— #2469" carries the historical pre-#2547 columns and says why they no longer
-describe a gate.
+The measured numbers for the pinned probe live in **one** place —
+[`engine/render/CLAUDE.md`](../../engine/render/CLAUDE.md) — so there is no
+second copy to drift. Read them from there: §"Verifying temporal stability"
+carries the per-zoom `--max-excursion-x` bars (macOS/Metal, 2026-08-08), and
+§"Accepted sub-pixel yaw-sweep centroid residual (voxel content) — #2469,
+re-grounded #2907" carries the pinned residual floors (Windows/OpenGL,
+2026-09-06) plus the unpinned history and why it no longer describes a gate.
+Both state their host and `outputScaleFactor`; see the unit note above for why
+that is load-bearing.
