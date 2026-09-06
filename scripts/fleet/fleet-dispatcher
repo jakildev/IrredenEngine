@@ -492,6 +492,30 @@ elif (( EMPTY_STREAK_CAP < 1 )); then
     EMPTY_STREAK_CAP=3
 fi
 
+# Standdown backoff for the periodic worker re-arm. The empty-exit streak
+# consumes the trigger, but the safety re-arm (rearm_periodic_meta_triggers)
+# re-fires on the SAME unchanged slice every PERIODIC_REARM_INTERVAL_SECONDS
+# whenever the resolver still elects a class — and an item every worker
+# refuses (a host-pinned task the projection cannot see through, a
+# design-parked issue) keeps electing forever. Measured 2026-09-06: two panes
+# re-dispatched every ~7 minutes all night against the same two refused tasks.
+# So after a standdown the re-arm waits BASE seconds, doubling per consecutive
+# standdown up to MAX; any productive dispatch (a claim) clears it, and a real
+# projection change still fires the scout's own trigger immediately — only the
+# unchanged-slice re-arm is paced. 0 disables the backoff.
+REARM_STANDDOWN_BASE_SECONDS="${FLEET_DISPATCHER_REARM_STANDDOWN_BASE:-900}"
+REARM_STANDDOWN_MAX_SECONDS="${FLEET_DISPATCHER_REARM_STANDDOWN_MAX:-7200}"
+if ! [[ "$REARM_STANDDOWN_BASE_SECONDS" =~ ^[0-9]+$ ]]; then
+    printf '[%s dispatcher] REARM_STANDDOWN_BASE_SECONDS=%q is not a non-negative integer; falling back to 900\n' \
+        "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$REARM_STANDDOWN_BASE_SECONDS" >&2
+    REARM_STANDDOWN_BASE_SECONDS=900
+fi
+if ! [[ "$REARM_STANDDOWN_MAX_SECONDS" =~ ^[0-9]+$ ]]; then
+    printf '[%s dispatcher] REARM_STANDDOWN_MAX_SECONDS=%q is not a non-negative integer; falling back to 7200\n' \
+        "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$REARM_STANDDOWN_MAX_SECONDS" >&2
+    REARM_STANDDOWN_MAX_SECONDS=7200
+fi
+
 # Claimable-count fan-out cap (worker lane). The class resolver
 # (fleet_task_class.py) reports how many items of the elected class a fresh
 # worker could claim right now (`count`). The dispatcher caps its idle-pane
@@ -1013,12 +1037,17 @@ empty_streak_file() {
     printf '%s\n' "$EMPTY_STREAK_DIR/$1__${2:-all}"
 }
 
-read_empty_streak() {
-    local f n
-    f=$(empty_streak_file "$1" "${2:-}")
-    n=$(cat "$f" 2>/dev/null || printf '0')
+# A non-negative integer read from a one-line counter file; missing or
+# malformed reads 0. Shared by the streak and standdown counters below.
+read_counter_file() {
+    local n
+    n=$(cat "$1" 2>/dev/null || printf '0')
     [[ "$n" =~ ^[0-9]+$ ]] || n=0
     printf '%s\n' "$n"
+}
+
+read_empty_streak() {
+    read_counter_file "$(empty_streak_file "$1" "${2:-}")"
 }
 
 # 0 (true) when the (role, class) streak has reached the cap — caller should
@@ -1031,6 +1060,49 @@ empty_streak_over_cap() {
 
 reset_empty_streak() {
     rm -f "$(empty_streak_file "$1" "${2:-}")"
+}
+
+# --- Standdown backoff bookkeeping (see REARM_STANDDOWN_BASE_SECONDS) -------
+# A second counter beside the streak file — same path convention, `.standdown`
+# suffix — holding the number of CONSECUTIVE standdowns for (role, class); its
+# mtime is when the last one happened (the same count-plus-mtime shape as
+# plan-dispatch-counts). Bumped when dispatch_role stands a lane down; cleared
+# with the streak when a dispatch claims work (record_dispatch_outcome), which
+# is the only reset — the standdown branch resets the streak alone, so the
+# count accumulates across standdowns.
+
+standdown_file() {
+    printf '%s.standdown\n' "$(empty_streak_file "$1" "${2:-}")"
+}
+
+note_standdown() {
+    local f
+    f=$(standdown_file "$1" "${2:-}")
+    mkdir -p "$EMPTY_STREAK_DIR"
+    printf '%s\n' "$(( $(read_counter_file "$f") + 1 ))" > "$f"
+}
+
+# Seconds the periodic re-arm must still wait for (role, class), or 0 when no
+# standdown is in force. Backoff = BASE * 2^(count-1), capped at MAX.
+standdown_backoff_remaining() {
+    (( REARM_STANDDOWN_BASE_SECONDS > 0 )) || { printf '0\n'; return 0; }
+    local f n at now backoff
+    f=$(standdown_file "$1" "${2:-}")
+    [[ -f "$f" ]] || { printf '0\n'; return 0; }
+    n=$(read_counter_file "$f")
+    (( n > 20 )) && n=20   # keep the shift in range; MAX caps it long before
+    (( n < 1 )) && n=1
+    backoff=$(( REARM_STANDDOWN_BASE_SECONDS << (n - 1) ))
+    if (( REARM_STANDDOWN_MAX_SECONDS > 0 && backoff > REARM_STANDDOWN_MAX_SECONDS )); then
+        backoff=$REARM_STANDDOWN_MAX_SECONDS
+    fi
+    now=$(date +%s)
+    at=$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null || echo "$now")
+    if (( now - at >= backoff )); then
+        printf '0\n'
+    else
+        printf '%s\n' "$(( backoff - (now - at) ))"
+    fi
 }
 
 # Fold one completed dispatch into its (role, class) streak.
@@ -1064,7 +1136,10 @@ record_dispatch_outcome() {
         printf '%s\n' "$(( $(read_empty_streak "$role" "$class") + 1 ))" \
             > "$(empty_streak_file "$role" "$class")"
     else
-        reset_empty_streak "$role" "$class"
+        # A productive dispatch clears the streak AND the standdown backoff:
+        # the lane is demonstrably serving work, so the re-arm may run at full
+        # cadence again. The only place the standdown counter is reset.
+        rm -f "$(empty_streak_file "$role" "$class")" "$(standdown_file "$role" "$class")"
     fi
 }
 
@@ -1736,9 +1811,20 @@ role_has_reservation() {
 # dispatch decision: a `defer` verdict (nothing claimable) or the '' lane-default
 # fallthrough (reservation resume / missing slice) does NOT re-arm; only a routed
 # class does. Sets DISPATCH_* as a side effect (resolve_worker_class).
+# Seconds of standdown backoff still holding the elected class, set by
+# worker_rearm_should_fire so its two callers (the live re-arm loop and the
+# --rearm-check hook) read one decision instead of re-deriving it.
+DISPATCH_STANDDOWN_REMAINING=0
+
 worker_rearm_should_fire() {
     resolve_worker_class "$1"
-    (( DISPATCH_DEFER == 0 )) && [[ -n "$DISPATCH_CLASS" ]]
+    DISPATCH_STANDDOWN_REMAINING=0
+    (( DISPATCH_DEFER == 0 )) && [[ -n "$DISPATCH_CLASS" ]] || return 1
+    # Standdown backoff: the slice the resolver just elected from is the same
+    # unchanged one the lane stood down on, so wait it out rather than
+    # re-dispatch the refusal (see REARM_STANDDOWN_BASE_SECONDS).
+    DISPATCH_STANDDOWN_REMAINING=$(standdown_backoff_remaining "$1" "$DISPATCH_CLASS")
+    (( DISPATCH_STANDDOWN_REMAINING == 0 ))
 }
 
 # Host gate for the smoke lane (#2839). Returns 0 (dispatch) iff at least one PR
@@ -2184,6 +2270,9 @@ dispatch_role() {
     if (( dispatched > 0 )) && empty_streak_over_cap "$role" "$_streak_class"; then
         rm -f "$trigger_file"
         reset_empty_streak "$role" "$_streak_class"
+        # After the reset (which clears it): pace the periodic re-arm so an
+        # unchanged, unclaimable slice cannot re-fire this lane every interval.
+        note_standdown "$role" "$_streak_class"
         unset "CAP_DEFER_LOGGED[$role-uncovered]"
         log "$role: ${EMPTY_STREAK_CAP} consecutive dispatches claimed nothing (class=$_streak_class) — standing down; scout re-arms on new work"
         return
@@ -2468,8 +2557,14 @@ PY
         # interval on GL-host tasks a Metal pane can never claim — the #1969
         # idle-churn shape).
         if worker_rearm_should_fire "$_role"; then
+            unset "CAP_DEFER_LOGGED[$_role-standdown]"
             touch "$TRIGGERS_DIR/$_role"
             log "worker-rearm: re-armed $_role (class=$DISPATCH_CLASS claimable, no active iteration)"
+        elif (( DISPATCH_STANDDOWN_REMAINING > 0 )) \
+            && [[ -z "${CAP_DEFER_LOGGED[$_role-standdown]+x}" ]]; then
+            # Logged once per backoff window.
+            log "worker-rearm: $_role class=$DISPATCH_CLASS in standdown backoff (${DISPATCH_STANDDOWN_REMAINING}s left); not re-arming on an unchanged slice"
+            CAP_DEFER_LOGGED["$_role-standdown"]=1
         fi
     done
 }
@@ -2720,8 +2815,45 @@ case "${1:-}" in
         fi
         if worker_rearm_should_fire "$2"; then
             echo "rearm class=$DISPATCH_CLASS"
+        elif (( DISPATCH_STANDDOWN_REMAINING > 0 )); then
+            echo "skip (standdown backoff class=$DISPATCH_CLASS)"
         else
             echo "skip (defer=$DISPATCH_DEFER class=$DISPATCH_CLASS)"
+        fi
+        exit 0
+        ;;
+    --note-standdown|--standdown-check)
+        # Test/debug: the standdown-backoff bookkeeping behind --rearm-check.
+        #   --note-standdown <role> [--class=<c>]   record one standdown now
+        #   --standdown-check <role> [--class=<c>]  print `backoff <seconds>`
+        #                                           or `clear`
+        # Honors FLEET_DISPATCHER_REARM_STANDDOWN_BASE / _MAX and writes under
+        # FLEET_STATE_DIR, so tests drive it against a scratch dir.
+        _sd_hook="$1"
+        if [[ -z "${2:-}" ]]; then
+            echo "usage: fleet-dispatcher $_sd_hook <role> [--class=<c>]" >&2
+            exit 2
+        fi
+        _sd_role="$2"; _sd_class=""
+        shift 2
+        for _sd_arg in "$@"; do
+            case "$_sd_arg" in
+                --class=*) _sd_class="${_sd_arg#--class=}" ;;
+                *)
+                    echo "fleet-dispatcher $_sd_hook: unknown argument '$_sd_arg'" >&2
+                    exit 2
+                    ;;
+            esac
+        done
+        if [[ "$_sd_hook" == "--note-standdown" ]]; then
+            note_standdown "$_sd_role" "$_sd_class"
+        else
+            _sd_left=$(standdown_backoff_remaining "$_sd_role" "$_sd_class")
+            if (( _sd_left > 0 )); then
+                echo "backoff $_sd_left"
+            else
+                echo "clear"
+            fi
         fi
         exit 0
         ;;

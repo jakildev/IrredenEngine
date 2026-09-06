@@ -126,7 +126,9 @@ class TestGlOnlySourcePaths(unittest.TestCase):
             self.assertFalse(requires_gl_host(body), body)
 
     def test_metal_paths_do_not_trip(self):
-        # The inverse (Metal-host) gate is a separate design call.
+        # The inverse (Metal-host) gate is a separate design call. (The OS-
+        # pinning `needs_host` field is that call's narrow form — see
+        # TestRequiredHost — and it reads declarations, never paths.)
         for body in (
             "Edit engine/render/src/metal/metal_pipeline.cpp.",
             "metal_render_impl.cpp drops the binding.",
@@ -150,6 +152,84 @@ class TestEmptyBody(unittest.TestCase):
     def test_none_and_empty(self):
         self.assertFalse(requires_gl_host(None))
         self.assertFalse(requires_gl_host(""))
+
+
+# --- `needs_host`: the OS a body pins the task to -------------------------
+
+_required_host_impl = getattr(_mod, "_body_required_host", None)
+
+
+def required_host(body):
+    """`_body_required_host`, resolved lazily — same reason as
+    `backend_symmetric` below: a pre-change scout must fail these as ordinary
+    test errors, not kill the suite at import."""
+    if _required_host_impl is None:
+        raise AssertionError(
+            "fleet-state-scout has no _body_required_host (pre-needs_host tree)")
+    return _required_host_impl(body)
+
+
+# The live #1969 sentence: `needs_gl_host` reads it as "a GL host", which a
+# Windows pane satisfies, so the dispatcher elected the task there every tick
+# and each worker refused it (23 identical no-op iterations on 2026-09-06).
+ISSUE_1969_BODY = (
+    "This must run on a Linux host — references are per-backend (HiDPI "
+    "macos-debug refs captured on a Mac do not compare against linux-debug)."
+)
+
+
+class TestRequiredHost(unittest.TestCase):
+
+    def test_issue_1969_body_pins_linux(self):
+        self.assertTrue(requires_gl_host(ISSUE_1969_BODY),
+                        "the GL gate still fires — this is the coarse half")
+        self.assertEqual(required_host(ISSUE_1969_BODY), "linux")
+
+    def test_verb_form_per_os(self):
+        self.assertEqual(required_host("must run on a Linux host"), "linux")
+        self.assertEqual(required_host("It must be run on the Windows host."),
+                         "windows")
+        self.assertEqual(required_host("This only builds on a linux-debug host."),
+                         "linux")
+        self.assertEqual(required_host("must run on a macOS host"), "mac")
+        self.assertEqual(required_host("only runs on a mac host"), "mac")
+
+    def test_adjective_form_per_os(self):
+        self.assertEqual(required_host("Linux-host only."), "linux")
+        self.assertEqual(required_host("windows host only"), "windows")
+        self.assertEqual(required_host("macOS-host-only work"), "mac")
+
+    def test_host_field_wins_over_prose(self):
+        body = "**Host:** windows\n\nmust run on a Linux host (old note)."
+        self.assertEqual(required_host(body), "windows")
+        self.assertEqual(required_host("**Host:** macos"), "mac")
+        self.assertEqual(required_host("**Host:** Linux (linux-debug preset)"),
+                         "linux")
+
+    def test_unrecognized_host_field_falls_through_to_prose(self):
+        self.assertEqual(required_host("**Host:** any\n\nmust run on a Linux host"),
+                         "linux")
+        self.assertIsNone(required_host("**Host:** any"))
+
+    def test_opengl_is_a_backend_not_an_os(self):
+        # The GL gate owns this shape; no OS is pinned.
+        body = "It must be run on an OpenGL host."
+        self.assertTrue(requires_gl_host(body))
+        self.assertIsNone(required_host(body))
+        self.assertIsNone(required_host("GL host only."))
+
+    def test_passing_mention_does_not_pin(self):
+        for body in (
+            "Tested on a Linux host, but the fix is backend-agnostic.",
+            "Reproduced on Windows; the Metal path is unaffected.",
+            "linux-debug is the fleet preset.",
+            "Captured on a Mac.",
+        ):
+            self.assertIsNone(required_host(body), body)
+
+    def test_none_and_empty(self):
+        self.assertIsNone(required_host(None))
+        self.assertIsNone(required_host(""))
 
 
 # --- #2820: the backend-symmetric discriminator ----------------------------

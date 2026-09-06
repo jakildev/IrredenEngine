@@ -156,7 +156,10 @@ fleet-claim release-worktree <your-worktree-basename>
 
 Order matters — release BEFORE any scratch-reset / next-task step means
 an interruption between the two leaves the worktree in a known "free"
-state, not pinned to dead work (issue #521).
+state, not pinned to dead work (issue #521). The call is idempotent, and
+a call that finds no reservation is a no-op in every sense: it does not
+stamp the dispatcher's productive-work marker, so an iteration that
+claimed nothing still counts toward the empty-exit backoff.
 
 **3. Land on a fresh branch off `origin/master`.** Workers and authors
 invoke the `start-next-task` skill (lands on a fresh feature branch in
