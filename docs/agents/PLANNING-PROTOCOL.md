@@ -135,6 +135,28 @@ For each `fleet:needs-plan` issue:
      reframe it as an explicit **investigation spike** (the literal
      phrase in the title/body; see
      [`architect-protocol.md § Carve-offs`](architect-protocol.md)).
+
+     **Park it when no later planner could do better (#3034).** Leaving
+     `fleet:needs-plan` on is correct when the gap is *more planning
+     thought* — a fresh pass may well succeed. It is the wrong ending
+     when the blocker is one **no planner can resolve without a human
+     action**: the premise is refuted, the target code is not on master,
+     the parent is `fleet:design-blocked`, or the issue is superseded. The
+     issue then sits at the head of its class's lane and is re-assigned
+     every tick, and each dispatch re-derives the identical verdict —
+     game #94 burned 13 opus/fable iterations that way before this park
+     existed. In that case, **also add `fleet:needs-human`** in the same
+     pass (keep `fleet:needs-plan`, keep `human:approved`), comment
+     exactly what the human must do — close it, add a
+     `**Blocked by:** #N`, or revise the direction — and then
+     `planning-release` as usual. The scout's planning projection drops a
+     parked issue and `fleet-claim planning-claim` refuses it, so the lane
+     advances to the next candidate instead of re-spending on this one.
+     **Re-entry needs no special handling:** the human removes
+     `fleet:needs-human`, `fleet:needs-plan` is still there, and the issue
+     re-enters the planning projection to be planned against the new
+     state. Nothing queues unplanned in the meantime — `fleet:needs-plan`
+     is itself an ingest-skip label.
      The same rule covers a fork phrased as an **instruction to the
      implementer** rather than a self-describing punt — "check whether
      the narrowed predicate should apply there as well or only to issue
@@ -310,8 +332,13 @@ For each `fleet:needs-plan` issue:
      merge. No separate plan-doc PR exists at any point.
 
 **If you disagree with the issue's direction** (at planning time), comment with
-your concerns, leave `fleet:needs-plan` on, release the planning claim, and let
-the human decide.
+your concerns, leave `fleet:needs-plan` on, **add `fleet:needs-human`**, release
+the planning claim, and let the human decide. The park is what makes "let the
+human decide" a terminal state rather than a loop: without it the issue is
+re-assigned on the next tick and the next planner reaches — and re-posts — the
+same disagreement. Same re-entry as step 2's park: the human removes
+`fleet:needs-human` once they have ruled, `fleet:needs-plan` is still on, and the
+issue is re-planned against the decision.
 
 ### Human: requesting plan changes (`human:revise-plan`)
 

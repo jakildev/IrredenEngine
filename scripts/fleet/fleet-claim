@@ -1836,16 +1836,35 @@ _issue_has_plan_comment() {
     [[ "${cnt:-0}" =~ ^[0-9]+$ && "${cnt:-0}" -gt 0 ]]
 }
 
+# Tri-state label probe: echoes `true`, `false`, or `unknown` (lookup failed or
+# returned something that is neither). Every label gate on the planning path goes
+# through this one call shape, so a new gate cannot drift into a second one.
+#
+# `unknown` is a distinct answer on purpose: each caller decides whether a gh
+# outage should fail open or closed for *its* gate, at the call site, instead of
+# inheriting whichever way a shared boolean happened to collapse.
+_issue_label_probe() {
+    local repo="$1" issue="$2" label="$3" out
+    if ! out=$(gh issue view "$issue" --repo "$repo" --json labels \
+        --jq "any(.labels[]; .name == \"$label\")" 2>/dev/null); then
+        printf 'unknown\n'
+        return 0
+    fi
+    case "$out" in
+        true|false) printf '%s\n' "$out" ;;
+        *) printf 'unknown\n' ;;
+    esac
+}
+
 # True iff the issue currently carries fleet:needs-plan. The --replan re-plan
 # path gates on this: a worker flips fleet:queued -> fleet:needs-plan before
 # re-claiming, so its presence is the signal that a deliberate re-plan was
 # requested — and its absence stops --replan from grabbing a freshly-planned or
-# never-re-flagged issue nobody asked to re-plan (#1999).
+# never-re-flagged issue nobody asked to re-plan (#1999). Fails CLOSED (unknown
+# is not true, so --replan refuses) — a re-plan is an explicit operator request
+# and is safe to make the caller retry.
 _issue_has_needs_plan() {
-    local repo="$1" issue="$2" present
-    present=$(gh issue view "$issue" --repo "$repo" --json labels \
-        --jq 'any(.labels[]; .name == "fleet:needs-plan")' 2>/dev/null || echo false)
-    [[ "$present" == "true" ]]
+    [[ "$(_issue_label_probe "$1" "$2" "fleet:needs-plan")" == "true" ]]
 }
 cmd_planning_claim() {
     # planning-claim <issue> <agent> [--replan]
@@ -1877,6 +1896,29 @@ cmd_planning_claim() {
         return 1
     fi
 
+    # Label gates share the closed gate's preamble: skip on a non-numeric target
+    # (the dispatcher below reports that as exit 2), and skip when gh is
+    # unavailable so offline / library-sourced paths behave as they always have.
+    local gates_live=0
+    if [[ "$issue" =~ ^[0-9]+$ ]] && command -v gh >/dev/null 2>&1 && [[ -n "$repo" ]]; then
+        gates_live=1
+    fi
+
+    # PARK gate (#3034), both branches. fleet:needs-human means a human must act
+    # before any planner can proceed; a planner that reached an unplannable
+    # verdict parks the issue with it and keeps fleet:needs-plan. Ingest and
+    # worker pickup already honor the label, but honoring it there is not enough:
+    # the dispatcher pre-claims BEFORE any of that runs, so without a refusal here
+    # the lane head is re-assigned every tick. Exit 1 = "refuse this candidate",
+    # the same code _refuse_if_closed uses, so plan_assign_for_pane falls through
+    # to the next pick (only 0 assigns and 3 retries with --replan). Fails OPEN on
+    # `unknown`: a gh outage must not wedge every planning claim on the host.
+    if [[ "$gates_live" -eq 1 ]] \
+        && [[ "$(_issue_label_probe "$repo" "$issue" "fleet:needs-human")" == "true" ]]; then
+        echo "planning-claim: issue#$issue is parked fleet:needs-human; a human must route it before it can be planned (refusing)" >&2
+        return 1
+    fi
+
     if [[ "$replan" -eq 1 ]]; then
         # A deliberate RE-plan of a stale committed plan. SKIP the
         # `## Plan`-comment dedup early-out — a re-plan EXPECTS a prior plan, so
@@ -1889,16 +1931,32 @@ cmd_planning_claim() {
         # must be CURRENTLY present (the worker flips fleet:queued ->
         # fleet:needs-plan before claiming), so --replan can't grab a
         # freshly-planned/queued issue nobody re-flagged.
-        if [[ "$issue" =~ ^[0-9]+$ ]] && command -v gh >/dev/null 2>&1 && [[ -n "$repo" ]]; then
+        if [[ "$gates_live" -eq 1 ]]; then
             if ! _issue_has_needs_plan "$repo" "$issue"; then
                 echo "planning-claim --replan: issue#$issue is not flagged fleet:needs-plan; flip fleet:queued -> fleet:needs-plan before re-planning (refusing)" >&2
                 return 2
             fi
         fi
     else
+        # STALE-CANDIDATE gate (#3034): the first-plan path never checked that
+        # fleet:needs-plan is present at all — only --replan did — so a
+        # dispatcher walking a projection built before the flag was cleared
+        # pre-claims an issue nobody asked to plan, and the worker's own step-2
+        # re-check is the first thing that notices, a whole dispatch later.
+        # Refuse before the dedup probe below: the already-planned-but-unflagged
+        # shape then exits 1 (fall through to the next pick) instead of exiting 3
+        # and costing a --replan retry the guard above would refuse anyway. Fails
+        # OPEN on `unknown` — an outage must not wedge planning — which is why
+        # this reads the tri-state directly rather than going through the
+        # fail-closed _issue_has_needs_plan.
+        if [[ "$gates_live" -eq 1 ]] \
+            && [[ "$(_issue_label_probe "$repo" "$issue" "fleet:needs-plan")" == "false" ]]; then
+            echo "planning-claim: issue#$issue is not flagged fleet:needs-plan; the candidate is stale (refusing)" >&2
+            return 1
+        fi
         # First-time plan claim: refuse an already-planned issue via the cheap
         # `## Plan`-comment dedup early-out.
-        if [[ "$issue" =~ ^[0-9]+$ ]] && command -v gh >/dev/null 2>&1 && [[ -n "$repo" ]] && _issue_has_plan_comment "$repo" "$issue"; then
+        if [[ "$gates_live" -eq 1 ]] && _issue_has_plan_comment "$repo" "$issue"; then
             echo "planning-claim: issue#$issue already has a ## Plan comment; skipping (already planned). Pass --replan to race-guard a deliberate re-plan."
             return 3
         fi

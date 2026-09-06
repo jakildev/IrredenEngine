@@ -55,20 +55,46 @@ REMOVE_LOG="$TMPROOT/remove.log"; : > "$REMOVE_LOG"
 
 # Stateful gh stub. STUB_HOLDERS = planning labels already on the issue; the
 # POST echoes those + the just-posted label. STUB_PLAN_COMMENTS is the count
-# `_issue_has_plan_comment`'s --jq returns (the dedup probe). STUB_NEEDS_PLAN is
-# the literal true/false `_issue_has_needs_plan`'s --jq returns (the --replan
-# needs-plan-present guard). The two issue-view probes are disambiguated by
-# their --json arg. issue-edit calls are logged for self-removal / release.
+# `_issue_has_plan_comment`'s --jq returns (the dedup probe). STUB_LABELS is the
+# issue's label set, which the `--json labels` arm answers *by evaluating the
+# --jq program against* rather than by returning a canned boolean. The two
+# issue-view probes are disambiguated by their --json arg. issue-edit calls are
+# logged for self-removal / release.
+#
+# Three gates now share the `--json labels` call shape (--replan's
+# fleet:needs-plan guard, the first-plan stale-candidate guard, and the
+# fleet:needs-human park — #3034), so the old single STUB_NEEDS_PLAN boolean
+# would certify whichever gate it was written for while silently answering the
+# others wrong. Modelling the program instead is the scripts/fleet/CLAUDE.md
+# rule ("evaluate the program against fixture JSON … fail closed on a program
+# shape you don't model"); STUB_LABELS_FAIL simulates a gh lookup failure so the
+# fail-open policy on `unknown` is exercised rather than assumed.
 STUB_HOLDERS=""
 STUB_PLAN_COMMENTS=0
-STUB_NEEDS_PLAN=false
+STUB_LABELS=""
+STUB_LABELS_FAIL=0
 gh() {
     case "${1:-}" in
         issue)
             case "${2:-}" in
                 view)
                     if printf '%s ' "$@" | grep -q -- "--json labels"; then
-                        printf '%s\n' "${STUB_NEEDS_PLAN:-false}"   # needs-plan guard (--replan)
+                        [[ "${STUB_LABELS_FAIL:-0}" -eq 1 ]] && return 1
+                        local jq_prog="" prev="" a
+                        for a in "$@"; do
+                            [[ "$prev" == "--jq" ]] && jq_prog="$a"
+                            prev="$a"
+                        done
+                        local label_re='^any\(\.labels\[\]; \.name == "(.+)"\)$'
+                        if [[ ! "$jq_prog" =~ $label_re ]]; then
+                            echo "gh stub: unmodelled --json labels --jq program: $jq_prog" >&2
+                            return 1
+                        fi
+                        local want="${BASH_REMATCH[1]}" l found=false
+                        for l in $STUB_LABELS; do
+                            [[ "$l" == "$want" ]] && found=true
+                        done
+                        printf '%s\n' "$found"
                     else
                         printf '%s\n' "${STUB_PLAN_COMMENTS:-0}"    # dedup probe (--json comments)
                     fi
@@ -92,19 +118,19 @@ gh() {
 echo "== planning-claim / planning-release wrappers (gh stub) =="
 
 echo "T1: no ## Plan comment + sole holder → planning-claim acquires (exit 0), issue-worded"
-STUB_HOLDERS=""; STUB_PLAN_COMMENTS=0
+STUB_HOLDERS=""; STUB_PLAN_COMMENTS=0; STUB_LABELS="fleet:needs-plan"
 rc=0; out=$(cmd_planning_claim 740 worker 2>&1) || rc=$?
 assert_exit "$rc" 0 "no plan comment, no holder → exit 0"
 case "$out" in *"issue#740"*) ok "acquire message names the target as an issue" ;; *) bad "acquire message should say issue#740, got: $out" ;; esac
 
 echo "T2: a ## Plan comment already exists → dedup early-out (exit 3, already planned)"
-STUB_HOLDERS=""; STUB_PLAN_COMMENTS=1
+STUB_HOLDERS=""; STUB_PLAN_COMMENTS=1; STUB_LABELS="fleet:needs-plan"
 rc=0; out=$(cmd_planning_claim 740 worker 2>&1) || rc=$?
 assert_exit "$rc" 3 "## Plan comment present → exit 3 (skip, already planned)"
 case "$out" in *"already planned"*) ok "dedup message explains the skip" ;; *) bad "expected 'already planned', got: $out" ;; esac
 
 echo "T3: another host already planning (no plan comment) → yield (exit 1) + self-remove"
-STUB_HOLDERS="$OTHER"; STUB_PLAN_COMMENTS=0; : > "$REMOVE_LOG"
+STUB_HOLDERS="$OTHER"; STUB_PLAN_COMMENTS=0; STUB_LABELS="fleet:needs-plan"; : > "$REMOVE_LOG"
 rc=0; cmd_planning_claim 740 worker >/dev/null 2>&1 || rc=$?
 assert_exit "$rc" 1 "persistent planning holder → exit 1 (never a co-win)"
 if grep -q -- "--remove-label $MINE" "$REMOVE_LOG"; then ok "losing claimant self-removed its planning label"; else bad "losing claimant did not self-remove (log: $(cat "$REMOVE_LOG"))"; fi
@@ -127,7 +153,7 @@ echo "T5b: the claim/release pair maintains the same-host liveness marker (#2711
 # planner on every host — and `fleet-claim list` cannot tell the two apart
 # because a planning claim writes no task-claim lock at all.
 MARKER="$FLEET_CLAIMS_DIR/_prlabel-planning-worker"
-rm -f "$MARKER"; STUB_HOLDERS=""; STUB_PLAN_COMMENTS=0
+rm -f "$MARKER"; STUB_HOLDERS=""; STUB_PLAN_COMMENTS=0; STUB_LABELS="fleet:needs-plan"
 cmd_planning_claim 741 worker >/dev/null 2>&1
 if [[ -f "$MARKER" ]]; then ok "planning-claim wrote the liveness marker"; else bad "planning-claim wrote no marker at $MARKER"; fi
 if [[ "$(cat "$MARKER" 2>/dev/null)" == "741" ]]; then ok "marker content is the claimed issue number"; else bad "marker content should be 741, got '$(cat "$MARKER" 2>/dev/null)'"; fi
@@ -137,22 +163,67 @@ if [[ ! -f "$MARKER" ]]; then ok "planning-release removed the liveness marker";
 echo "== --replan re-plan path (#1999): bypass dedup, gate on needs-plan present =="
 
 echo "T8: --replan with a ## Plan comment AND fleet:needs-plan present → acquires (exit 0), bypassing dedup"
-STUB_HOLDERS=""; STUB_PLAN_COMMENTS=1; STUB_NEEDS_PLAN=true
+STUB_HOLDERS=""; STUB_PLAN_COMMENTS=1; STUB_LABELS="fleet:needs-plan"
 rc=0; out=$(cmd_planning_claim 740 worker --replan 2>&1) || rc=$?
 assert_exit "$rc" 0 "--replan + plan comment + needs-plan present → exit 0 (re-plan lock armed, not exit 3)"
 case "$out" in *"issue#740"*) ok "re-plan acquire names the target as an issue" ;; *) bad "expected acquire message naming issue#740, got: $out" ;; esac
 
 echo "T9: --replan WITHOUT fleet:needs-plan present → refuses (exit 2, misuse)"
-STUB_HOLDERS=""; STUB_PLAN_COMMENTS=1; STUB_NEEDS_PLAN=false
+STUB_HOLDERS=""; STUB_PLAN_COMMENTS=1; STUB_LABELS=""
 rc=0; out=$(cmd_planning_claim 740 worker --replan 2>&1) || rc=$?
 assert_exit "$rc" 2 "--replan with needs-plan absent → exit 2"
 case "$out" in *"not flagged fleet:needs-plan"*) ok "refusal explains the missing needs-plan label" ;; *) bad "expected 'not flagged fleet:needs-plan', got: $out" ;; esac
 
 echo "T10: --replan loser path (another host already holds fleet:planning-*) → yield (exit 1) + self-remove"
-STUB_HOLDERS="$OTHER"; STUB_PLAN_COMMENTS=1; STUB_NEEDS_PLAN=true; : > "$REMOVE_LOG"
+STUB_HOLDERS="$OTHER"; STUB_PLAN_COMMENTS=1; STUB_LABELS="fleet:needs-plan"; : > "$REMOVE_LOG"
 rc=0; cmd_planning_claim 740 worker --replan >/dev/null 2>&1 || rc=$?
 assert_exit "$rc" 1 "--replan with a persistent planning holder → exit 1 (never a co-win)"
 if grep -q -- "--remove-label $MINE" "$REMOVE_LOG"; then ok "losing re-plan claimant self-removed its planning label"; else bad "losing re-plan claimant did not self-remove (log: $(cat "$REMOVE_LOG"))"; fi
+
+echo "== #3034: the fleet:needs-human park and the first-plan stale-candidate gate =="
+
+echo "T11: parked fleet:needs-human → planning-claim refuses (exit 1) and takes no lock"
+# The park is the planner's terminal state for an unplannable issue. Before this
+# gate the label was honored by ingest and worker pickup but not by the claim, so
+# the dispatcher's pre-claim still succeeded and the lane head was re-dispatched
+# every tick (game #94: 13 dispatches, then 2 more after the park was applied).
+rm -f "$MARKER"; STUB_HOLDERS=""; STUB_PLAN_COMMENTS=0
+STUB_LABELS="fleet:needs-plan fleet:needs-human"
+rc=0; out=$(cmd_planning_claim 742 worker 2>&1) || rc=$?
+assert_exit "$rc" 1 "parked issue → exit 1 (dispatcher falls through to the next pick)"
+case "$out" in *"parked fleet:needs-human"*) ok "refusal names the park" ;; *) bad "expected 'parked fleet:needs-human', got: $out" ;; esac
+if [[ -f "$MARKER" ]]; then bad "refused claim still wrote a liveness marker"; else ok "refused claim took no lock"; fi
+
+echo "T12: the park outranks --replan (exit 1, not the re-plan path)"
+# A re-plan of a parked issue is still unplannable — routing precedes replanning.
+STUB_HOLDERS=""; STUB_PLAN_COMMENTS=1
+STUB_LABELS="fleet:needs-plan fleet:needs-human"
+rc=0; out=$(cmd_planning_claim 742 worker --replan 2>&1) || rc=$?
+assert_exit "$rc" 1 "--replan on a parked issue → exit 1"
+case "$out" in *"parked fleet:needs-human"*) ok "--replan hits the same park refusal" ;; *) bad "expected the park refusal, got: $out" ;; esac
+
+echo "T13: first-plan with fleet:needs-plan ABSENT → exit 1 (stale candidate), not the exit-3 dedup"
+# The exact game #94 shape: needs-plan cleared, a ## Plan comment present, and
+# the dispatcher's pre-claim granted anyway — only the worker's own step-2
+# re-check caught it, a whole opus dispatch later. Exiting 1 here (rather than
+# falling to the dedup's 3) also saves the --replan retry that 3 provokes, which
+# the --replan guard would refuse anyway.
+rm -f "$MARKER"; STUB_HOLDERS=""; STUB_PLAN_COMMENTS=1; STUB_LABELS=""
+rc=0; out=$(cmd_planning_claim 743 worker 2>&1) || rc=$?
+assert_exit "$rc" 1 "needs-plan absent on the first-plan path → exit 1"
+case "$out" in *"candidate is stale"*) ok "refusal names the stale candidate" ;; *) bad "expected 'candidate is stale', got: $out" ;; esac
+if [[ -f "$MARKER" ]]; then bad "stale candidate still wrote a liveness marker"; else ok "stale candidate took no lock"; fi
+
+echo "T14: a failed label lookup fails OPEN — both new gates let the claim through"
+# _issue_label_probe returns `unknown` when gh fails, and neither new gate treats
+# that as a refusal: a GitHub outage must not wedge every planning claim on the
+# host. Pinning it so a future "tighten the guard" edit has to argue with a test.
+rm -f "$MARKER"; STUB_HOLDERS=""; STUB_PLAN_COMMENTS=0; STUB_LABELS=""; STUB_LABELS_FAIL=1
+rc=0; out=$(cmd_planning_claim 744 worker 2>&1) || rc=$?
+assert_exit "$rc" 0 "label lookup failure → claim still acquires"
+case "$out" in *"issue#744"*) ok "fail-open path still reaches the acquire" ;; *) bad "expected acquire naming issue#744, got: $out" ;; esac
+STUB_LABELS_FAIL=0
+cmd_planning_release 744 worker >/dev/null 2>&1 || true
 
 echo "== cleanup --gh fourth pass: stale planning sweep over fleet:needs-plan =="
 NOW_EPOCH=$(date +%s)

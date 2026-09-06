@@ -192,13 +192,28 @@ class PlanReviewWakesPane(unittest.TestCase):
         self.assertEqual(items[0]["issue"], 50)
 
     def test_human_held_plan_review_skipped(self):
-        for held in ("human:owned", "human:wip", "human:no-plan"):
+        # fleet:needs-human joined this set in #3034. The park was added for the
+        # planning lane, but _HUMAN_GATE_LABELS backs plan_review too, so the
+        # reviewer lane moves with it — asserted here deliberately rather than
+        # left as an undocumented side effect. It is the behaviour we want: a
+        # parked plan should not be vetted, because the routing decision the
+        # park is waiting on precedes the question of whether the plan is sound.
+        for held in ("human:owned", "human:wip", "human:no-plan",
+                     "fleet:needs-human"):
             empty = _state_pr_plan(plan_review=[])
             held_state = _state_pr_plan(
                 plan_review=[_issue(50, labels=["fleet:plan-review", held])])
             self.assertEqual(
                 _hash(empty), _hash(held_state),
                 f"{held} plan-review issue must be invisible to the pane")
+
+    def test_needs_human_park_dropped_from_slice(self):
+        # The slice half of the gate above: a woken reviewer must not even
+        # surface the parked issue as a candidate to vet. Pre-#3034 the parked
+        # issue is present and this list has length 1.
+        out = slice_opus_reviewer(_state_pr_plan(plan_review=[
+            _issue(50, labels=["fleet:plan-review", "fleet:needs-human"])]))
+        self.assertEqual(out["plan_review"], [])
 
     def test_cleared_plan_review_drops(self):
         # The reviewer verdict removed fleet:plan-review -> the issue leaves the
