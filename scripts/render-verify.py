@@ -309,7 +309,7 @@ def _run_structural_metric(image: Path, entry: dict[str, Any],
         raise SystemExit(
             f"structural entry for shot '{shot_label}' is missing a 'metric' key"
         )
-    threshold_keys = [k for k in entry if k not in ("metric", "roi")]
+    threshold_keys = [k for k in entry if k not in ("metric", "roi", "roi_at")]
     if not threshold_keys:
         raise SystemExit(
             f"structural '{metric}' gate on shot '{shot_label}' declares no "
@@ -325,6 +325,21 @@ def _run_structural_metric(image: Path, entry: dict[str, Any],
     cmd = [sys.executable, str(script), str(image)]
     roi = entry.get("roi")
     if roi is not None:
+        roi_at = entry.get("roi_at")
+        if roi_at is not None:
+            # `roi` was measured against a capture of size `roi_at` (e.g. a
+            # macOS HiDPI 2x framebuffer); scale it proportionally to this
+            # capture's actual size so the gate stays backend-agnostic across
+            # DPI scales (#3016 — a 1x windows-debug/linux-debug capture is
+            # half the pixel dimensions of the 2x macos-debug capture the ROI
+            # was originally calibrated against).
+            actual_w, actual_h = verify_common.png_dimensions(image)
+            ref_w, ref_h = roi_at
+            rx, ry, rw, rh = roi
+            roi = (
+                round(rx * actual_w / ref_w), round(ry * actual_h / ref_h),
+                round(rw * actual_w / ref_w), round(rh * actual_h / ref_h),
+            )
         cmd.extend(["--roi", ",".join(str(v) for v in roi)])
     for key in threshold_keys:
         cmd.extend([f"--{key.replace('_', '-')}", str(entry[key])])

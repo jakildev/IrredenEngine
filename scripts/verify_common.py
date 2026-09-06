@@ -22,6 +22,7 @@ import platform
 import re
 import shlex
 import shutil
+import struct
 import subprocess
 import sys
 from pathlib import Path
@@ -99,6 +100,24 @@ def platform_launch_argv(cmd: list[str]) -> list[str]:
     if platform.system() != "Windows":
         return cmd
     return [resolve_bash(), "-lc", " ".join(shlex.quote(c) for c in cmd)]
+
+
+def png_dimensions(path: Path) -> tuple[int, int]:
+    """Read (width, height) from a PNG's IHDR chunk without decoding pixels.
+
+    IHDR is always the first chunk, so this is a fixed 24-byte header peek —
+    far cheaper than a full ``render-compare.read_png`` decode when the only
+    thing needed is the frame size. Used by render-verify.py's structural-gate
+    ``roi_at`` scaling; pivot-verify.py's ``_output_scale_factor`` implements
+    the same peek independently rather than importing this (unconsolidated
+    sibling, not yet migrated).
+    """
+    with open(path, "rb") as f:
+        header = f.read(24)
+    if header[:8] != b"\x89PNG\r\n\x1a\n" or header[12:16] != b"IHDR":
+        raise ValueError(f"{path}: not a PNG or missing IHDR")
+    width, height = struct.unpack(">II", header[16:24])
+    return width, height
 
 
 def run(cmd: list[str], cwd: Path | None = None, check: bool = True,
