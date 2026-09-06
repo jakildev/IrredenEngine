@@ -19,6 +19,8 @@
 #       → exit 2, no edits
 #   T10: verdict-needs-opus-recheck → adds fleet:needs-opus-recheck,
 #        clears awaiting-upstream-review, leaves other labels intact
+#   T11: CRLF-emitting jq stub (regression guard for #3029) → delta still
+#        computed correctly despite \r-terminated jq -r output
 
 set -euo pipefail
 
@@ -212,6 +214,33 @@ assert_eq "$(run verdict-needs-opus-recheck 105)" "0" "T10 exits 0"
 assert_eq "$(get_labels pr 105)" "fleet:needs-opus-recheck fleet:wip" \
     "T10 awaiting-upstream-review removed, needs-opus-recheck added, wip preserved"
 assert_eq "$(edit_calls)" "1" "T10 exactly one edit call"
+
+# === T11: CRLF-emitting jq (regression guard for #3029) ==================
+# Native jq on Windows (MSYS2) CRLF-terminates `-r` array output; mapfile
+# only strips the trailing \n, so want_remove/want_add retained an embedded
+# \r that never matched a real node name (#3029). This stub reproduces that
+# host behavior for exactly the two filters fleet-transition mapfiles from
+# (.remove[]?, .add[]?) and passes every other jq call through untouched, so
+# dropping the `tr -d '\r'` fix would make this test fail even though the
+# suite itself runs on a real-LF (non-Windows) jq.
+echo "T11: CRLF-emitting jq (regression guard for #3029) — labels still resolve"
+reset_log
+REAL_JQ="$(command -v jq)"
+cat >"$BIN/jq" <<JQEOF
+#!/usr/bin/env bash
+if [[ "\$1" == "-r" && ( "\$2" == ".remove[]?" || "\$2" == ".add[]?" ) ]]; then
+    "$REAL_JQ" "\$@" | sed 's/\$/\r/'
+else
+    exec "$REAL_JQ" "\$@"
+fi
+JQEOF
+chmod +x "$BIN/jq"
+set_labels pr 106 fleet:needs-fix fleet:wip
+assert_eq "$(run verdict-approve 106)" "0" "T11 applies cleanly despite CRLF-corrupted jq -r output"
+assert_eq "$(get_labels pr 106)" "fleet:approved fleet:wip" \
+    "T11 needs-fix removed, approved added — no stray \\r-suffixed label"
+assert_eq "$(edit_calls)" "1" "T11 exactly one edit call (delta computed correctly under CRLF)"
+rm -f "$BIN/jq"   # restore real jq on PATH for anything after this test
 
 echo ""
 echo "PASS: $PASS  FAIL: $FAIL"
