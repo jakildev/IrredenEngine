@@ -21,11 +21,18 @@
 // Path is added to the include search list by irreden_lua_codegen().
 #include "lua_component_codegen_fixtures.hpp"
 
+// #3091: the sibling TU that includes the generated header independently of
+// this one. Declares only plain types, so it does not re-share the include.
+#include "lua_component_codegen_second_tu.hpp"
+
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
+#include <sstream>
 #include <string>
 #include <type_traits>
+#include <typeinfo>
 
 // MSVC names the POSIX pipe-spawn helpers with a leading underscore.
 #ifdef _WIN32
@@ -381,6 +388,84 @@ TEST_F(LuaComponentCodegenTest, EnumMemberResolvesAsFieldDefaultDuringCodegen) {
     static_assert(std::is_same_v<decltype(IRComponents::C_CodegenDevice::kind_), std::int32_t>);
     IRComponents::C_CodegenDevice d;
     EXPECT_EQ(d.kind_, 1);
+}
+
+// ---- #3091: the generated header is includable from more than one TU -------
+
+// The link itself is the primary assertion — `lua_component_codegen_second_tu.cpp`
+// includes the same generated header this file does, which only links because
+// the run's `IRScript::CodegenClaims::C_*` constants are *declared* in the
+// header and *defined* once in the companion `_claims.cpp`. These cases add the
+// second half of the bar: both TUs see the SAME `IRComponents::C_*` type, not
+// two structurally identical ones.
+TEST(LuaComponentCodegenTwoTu, BothTusSeeOneComponentType) {
+    EXPECT_TRUE(IRTestCodegenSecondTu::hpTypeId() == typeid(IRComponents::C_CodegenHp));
+    EXPECT_EQ(IRTestCodegenSecondTu::hpSize(), sizeof(IRComponents::C_CodegenHp));
+}
+
+TEST(LuaComponentCodegenTwoTu, ValuesBuiltInTheOtherTuReadBackHere) {
+    int current = 0;
+    int max = 0;
+    IRTestCodegenSecondTu::makeHp(37, 91, current, max);
+    EXPECT_EQ(current, 37);
+    EXPECT_EQ(max, 91);
+
+    // …and a default built here still matches the schema, so the second TU is
+    // not shadowing the type with a differently-defaulted one.
+    const IRComponents::C_CodegenHp hp;
+    EXPECT_EQ(hp.current_, 100);
+    EXPECT_EQ(hp.max_, 100);
+}
+
+// The two cases above hold only for this binary's own generated header; this
+// one pins the emitter itself, so a change that moves the definitions back into
+// the header fails an assertion here rather than a downstream creation's link.
+// Runs the tool directly with no `--out-cpp`, which also exercises the
+// `deriveClaimsCppPath` fallback the CMake helper's explicit flag normally
+// masks.
+TEST(LuaComponentCodegenTwoTu, ClaimDefinitionsAreEmittedIntoTheCompanionCpp) {
+    const std::filesystem::path dir =
+        std::filesystem::temp_directory_path() / "ir_lua_codegen_3091";
+    std::filesystem::remove_all(dir);
+    std::filesystem::create_directories(dir);
+    const std::filesystem::path hppPath = dir / "claims_probe.hpp";
+    const std::filesystem::path cppPath = dir / "claims_probe_claims.cpp";
+
+    const std::string cmd = std::string{IR_LUA_CODEGEN_BINARY} + " --out " + hppPath.string() +
+                            " " + IR_LUA_CODEGEN_COMPONENT_FIXTURE + " 2>&1";
+    FILE *pipe = ir_popen(cmd.c_str(), "r");
+    ASSERT_NE(pipe, nullptr) << "failed to spawn ir_lua_codegen";
+    std::string output;
+    char buf[256];
+    while (std::fgets(buf, sizeof(buf), pipe) != nullptr) {
+        output += buf;
+    }
+    ASSERT_EQ(ir_pclose(pipe), 0) << "codegen tool failed; output: " << output;
+
+    ASSERT_TRUE(std::filesystem::exists(hppPath));
+    ASSERT_TRUE(std::filesystem::exists(cppPath))
+        << "companion claims .cpp not written next to --out";
+
+    const auto slurp = [](const std::filesystem::path &p) {
+        std::ifstream in{p, std::ios::binary};
+        std::ostringstream ss;
+        ss << in.rdbuf();
+        return ss.str();
+    };
+    const std::string hpp = slurp(hppPath);
+    const std::string cpp = slurp(cppPath);
+
+    const std::string claim = "C_CodegenHp_declared_by_more_than_one_codegen_run_in_this_binary";
+    EXPECT_NE(hpp.find("extern const char " + claim + ";"), std::string::npos)
+        << "header should still DECLARE the claim (the cross-run guard)";
+    EXPECT_EQ(hpp.find("const char " + claim + " = 1;"), std::string::npos)
+        << "header must not DEFINE the claim — that is what made it single-TU";
+    EXPECT_NE(cpp.find("const char " + claim + " = 1;"), std::string::npos)
+        << "companion .cpp should hold the single definition";
+    EXPECT_NE(cpp.find("#include \"claims_probe.hpp\""), std::string::npos)
+        << "companion .cpp should include its header so decl/def are checked";
+
+    std::filesystem::remove_all(dir);
 }
 
 // Runs the codegen binary on a fixture that uses the explicit

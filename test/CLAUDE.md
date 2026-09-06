@@ -116,7 +116,14 @@ CODEGEN)` blocks in `CMakeLists.txt`. Three constraints there are deliberate:
   those. Since #2609 that is a `duplicate symbol
   'IRScript::CodegenClaims::C_<Name>_declared_by_more_than_one_codegen_run_in_this_binary'`
   link error naming the offender — rename the fixture component, don't relax
-  the prefix convention.
+  the prefix convention. Since #3091 that is the error's *only* cause: the
+  claim definitions moved out of the generated header into the companion
+  `_claims.cpp`, so including one run's header from several TUs is fine.
+
+`script/lua_component_codegen_second_tu.cpp` is the #3091 regression lock — a
+second TU including `lua_component_codegen_fixtures.hpp` alongside
+`lua_component_codegen_test.cpp`. It exists to be *linked*: pre-#3091 the pair
+did not. Don't fold its bodies back into the test file.
 
 See [`engine/script/CLAUDE.md`](../engine/script/CLAUDE.md) for the binding
 surface itself and the CODEGEN-vs-EVAL split.

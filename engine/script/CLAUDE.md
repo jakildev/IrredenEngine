@@ -424,25 +424,38 @@ namespacing cannot separate them. Each run therefore emits one
 external-linkage constant per component:
 
 ```cpp
+// <run>.hpp — declaration only
 namespace IRScript::CodegenClaims {
 extern const char C_Foo_declared_by_more_than_one_codegen_run_in_this_binary;
-const char C_Foo_declared_by_more_than_one_codegen_run_in_this_binary = 1;
 }
+
+// <run>_claims.cpp — the run's single definition
+const char IRScript::CodegenClaims::
+    C_Foo_declared_by_more_than_one_codegen_run_in_this_binary = 1;
 ```
 
-A `duplicate symbol` link error naming one of these has **two** possible
-causes, and the symbol name only states the first: either two codegen runs in
-the binary declare the same component (rename one), or a single run's header
-is included by two translation units (include it from one — see the
-single-TU-per-target consequence below). Check the TU count first; it is the
-cheaper of the two to rule out, and a target with only one
-`irreden_lua_codegen()` call can only be hitting the second. Pre-#2609 the
-same-component collision linked cleanly and silently swapped attach factories.
+**The definition lives in a companion TU, not the header (#3091).**
+`irreden_lua_codegen()` emits `<OUTPUT_HPP stem>_claims.cpp` beside the header
+and adds it to the target's sources, so one run contributes exactly one
+definition however many TUs include its header. Two runs still contribute two,
+so the cross-run diagnostic below is unchanged — what the split removes is a
+second, unintended constraint a header-side definition also imposed.
 
-**Consequence: a generated header is single-TU-per-target.** Including one
-run's header from two translation units was legal-but-unused before; the
-claim constants make it a duplicate-symbol error too. Every in-tree run is
-included by exactly one TU.
+A `duplicate symbol` link error naming one of these therefore has exactly one
+cause, the one the symbol name states: two codegen runs in the binary declare
+the same component. Rename one, or give the fixture/creation a distinct
+component prefix.
+
+Until #3091 it had a second, unnamed cause — a single run's header included
+from two TUs — and the tree carried a "generated headers are
+single-TU-per-target" contract to match. That contract is retired; nothing
+enforced it, and it broke a downstream creation whose registry calls and
+binding code legitimately lived in two TUs, with the claim symbol pointing
+that author at the wrong diagnosis entirely.
+Include a generated header from as many TUs as the target wants. The
+codegen's own companion .cpp is itself a second includer of every run's
+header, and `test/script/lua_component_codegen_second_tu.cpp` locks the
+in-tree case.
 
 **CODEGEN supports:** `int32` / `float` / `bool` / `string` / `vec3` / `ivec3`
 field types and both the short form (`current = 100`) and the explicit-type
