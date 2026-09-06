@@ -249,6 +249,26 @@ class RenderVerifyHarness(unittest.TestCase):
                        "max_hole_ratio": 0.05}]})
         self.assertFalse(self._row(rows, "shotA:shadow")["pass"])
 
+    def test_structural_roi_at_scales_oversized_reference_roi_into_bounds(self):
+        # `roi` was calibrated against a 64x64 reference capture (`roi_at`);
+        # this capture is only 32x32 (e.g. a 1x backend vs. the 2x HiDPI
+        # reference #3016 hit). Applied literally, roi=(48,0,16,64) sits
+        # partly outside a 32x32 frame and render-shadow-metric.py raises
+        # (the pre-#3011 crash this scaling fixes) — proportional scaling
+        # to (24,0,8,32) brings it back in bounds. That scaled region falls
+        # entirely in the BLACK (hole) right half, so the gate still fires,
+        # proving the scaled roi is what actually got measured rather than
+        # a silently-clamped or ignored one.
+        self._ref("shotA.png")
+        self._ref("shotB.png")
+        _write(self.frames[0], 32, 32, lambda x, y: MAGENTA if x < 16 else BLACK)
+        rows = self._eval(structural={
+            "shotA": [{"metric": "shadow", "roi": [48, 0, 16, 64],
+                       "roi_at": [64, 64], "max_hole_ratio": 0.05}]})
+        struct = self._row(rows, "shotA:shadow")
+        self.assertEqual(struct["kind"], "struct")
+        self.assertFalse(struct["pass"])
+
     def test_structural_unimplemented_metric_raises(self):
         # shadow/coverage/silhouette/clip are implemented; an unknown metric
         # name must still fail loudly (no render-<metric>-metric.py script).
