@@ -8,8 +8,13 @@
 
 LoggerSpd::LoggerSpd() {
     auto consoleSink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
-    // consoleSink->
-    // consoleSink->set_pattern("[%Y-%m-%d %H:%M:%S.%e] %^[%l] [%n] %v%$");
+    // Explicit pattern reproduces the default "%+" layout byte-for-byte but
+    // compiles to per-flag formatters instead of full_formatter, avoiding
+    // full_formatter's unconditional spdlog::mdc::get_context() call. mdc's
+    // thread_local std::map is the only destructor-bearing TLS object in the
+    // dependency set, and mingw's emutls teardown runs the destructor after
+    // the slot is already freed on thread exit.
+    consoleSink->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%n] [%^%l%$] %v");
 
     /* add more sinks here */
     std::vector<spdlog::sink_ptr> sinks{consoleSink};

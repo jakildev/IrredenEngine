@@ -343,6 +343,23 @@ builds work there unconditionally. Never tell the user "something is
 wrong with your GCC" based on a Bash-tool-only failure on
 Windows-native — first verify with the PATH prefix.
 
+### Debugging under gdb (Windows only)
+
+Any process started under `gdb` on this host runs with the Windows debug
+heap enabled, which is not the case for a direct launch. If you hit a
+mingw emutls-shaped crash (a `thread_local` object's destructor faulting
+during `DLL_THREAD_DETACH`, e.g. inside a vendored DLL) only under the
+debugger and not when running the exe directly, pass
+`_NO_DEBUG_HEAP=1` in the debuggee's environment — it disables the debug
+heap and lets the same stale-but-intact memory the non-debugger run
+tolerates go unnoticed, so you can reach whatever bug you were actually
+chasing. Known instance already fixed at the source (spdlog's MDC
+`thread_local` map vs. mingw's `tls_atexit` ordering, `engine/profile/`):
+if a *new* emutls-shaped crash shows up, `_NO_DEBUG_HEAP=1` is a
+diagnostic workaround, not a fix — the underlying use-after-free is real
+and will eventually bite a non-debugger run too, once the freed block
+gets reused instead of surviving intact.
+
 ### Running the fleet on native Windows
 
 The full bash+tmux fleet runs natively on Windows as a co-equal host (key

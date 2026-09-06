@@ -118,3 +118,13 @@ reads both sides to render CPU+GPU per-stage ms in the HUD.
 - **easy_profiler has overhead.** Leaving profile blocks enabled in a
   production build costs real cycles. Either gate them with `IR_RELEASE`
   or call `setEnabled(false)` at startup.
+- **Never let a console sink fall back to spdlog's default `%+` pattern
+  on Windows.** `LoggerSpd::LoggerSpd()` (`src/logger_spd.cpp`) sets an
+  explicit pattern that reproduces `%+`'s layout without routing through
+  `full_formatter`, which unconditionally instantiates
+  `spdlog::mdc::get_context()`'s `thread_local std::map`. That map is the
+  only destructor-bearing TLS object in the dependency set, and mingw's
+  emutls teardown runs its destructor after the slot is already freed on
+  thread exit — every logging thread's exit segfaults under a debugger
+  (Windows debug heap). Adding a new sink or logger here must reuse the
+  explicit pattern, not `%+`.
