@@ -322,6 +322,14 @@ def main(argv: list[str] | None = None) -> int:
             f"--adequacy-pad must be positive (got {args.adequacy_pad}); a non-positive "
             "pad does not promote band feeders and cannot test margin adequacy."
         )
+    if args.subdivision_mode != "none":
+        print(
+            f"[feeder-margin-verify] WARNING: --subdivision-mode {args.subdivision_mode} is an "
+            "unmeasured regime — the shadow-neutral premise (feederSubCap == subdivisions) only "
+            "holds at 'none', so a FAIL here may reflect subdivision-density drift rather than an "
+            "inadequate margin (#3010 out-of-scope).",
+            file=sys.stderr,
+        )
 
     worktree = verify_common.detect_worktree_root(Path.cwd())
     build_dir = Path(args.build_dir) if args.build_dir else worktree / "build"
