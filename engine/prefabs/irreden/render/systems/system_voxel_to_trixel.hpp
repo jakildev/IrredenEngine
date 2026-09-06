@@ -392,6 +392,22 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     FrameDataVoxelToCanvas frameData_{};
     // Resolved once per frame in beginTick; read by the per-entity tick.
     IRPrefab::SunShadow::ShadowFeederParams shadowFeederParams_{};
+    // #3010 gate instrument — a TEST-ONLY iso-texel pad on
+    // frameData_.visibleIsoBounds_ and nothing else. Widening it (positive)
+    // promotes off-screen shadow feeders in the [visible+kGpuMargin,
+    // visible+kGpuMargin+pad) band to visibles; shrinking it (negative)
+    // demotes on-screen winners to feeders. Default 0 ⇒ every uploaded byte
+    // matches a build without the knob. Written through
+    // IRPrefab::SunShadow::setFeederClassifyPadIso; the gate that drives it is
+    // scripts/feeder-margin-verify.py.
+    int feederClassifyPadIso_ = 0;
+    // Non-vacuity witness for that gate's adequacy arm: OR of
+    // shadowFeederRingNonEmpty over every non-detached canvas this frame, at
+    // the UNPADDED boxes. False means there were no off-screen survivors for a
+    // widened classify box to promote, so a "0 changed pixels" adequacy result
+    // is tautological rather than evidence. Reset in beginTick; read through
+    // IRPrefab::SunShadow::feederClassifyRingNonEmpty.
+    bool frameShadowFeederRingNonEmpty_ = false;
     // Log-throttle state — emit the render-mode log line only when
     // mode or effective subdivisions change.
     int previousRenderMode_ = -1;
@@ -1493,6 +1509,22 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             frameData_.visibleIsoBounds_ =
                 ivec4(ivec2(IRMath::floor(visibleVp.min_)), ivec2(IRMath::ceil(visibleVp.max_)));
             shadowFeederRing = IRPrefab::SunShadow::shadowFeederRingNonEmpty(gpuVp, visibleVp);
+            frameShadowFeederRingNonEmpty_ |= shadowFeederRing;
+            // #3010 gate instrument: the test-only classify pad, applied AFTER
+            // the floor/ceil and to THIS box only. `gpuVp` (the cull box), the
+            // Hi-Z window, and the `shadowFeederRingNonEmpty` guard above all
+            // keep reading the unpadded values, which is what makes the pad
+            // shadow-neutral: at SubdivisionMode::NONE `feederSubCap ==
+            // subdivisions == 1`, so a voxel's stage-1 depth is identical on
+            // either side of the classification and only stage 2's colour /
+            // entity-id tap can change. Default 0 ⇒ this whole block is a
+            // no-op and the frame data is bit-identical to a build without it.
+            // Negative pads shrink the box and manufacture feeders out of
+            // on-screen winners — the harness's liveness arm.
+            if (feederClassifyPadIso_ != 0) {
+                const int pad = feederClassifyPadIso_;
+                frameData_.visibleIsoBounds_ += ivec4(-pad, -pad, pad, pad);
+            }
         }
 
         // Occlusion cull gate (#1294 chunk pre-pass + #1812 per-voxel refine, off
@@ -1955,9 +1987,13 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 triangleCanvasTextures.getTextureDistances()
                     ->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
                 // Struct 0 ONLY — deliberate symmetry: stage 2 itself
-                // dispatches only struct 0, and feeder-won pixels are never
-                // colour-tapped (#1740's margin guarantees no on-screen pixel
-                // is a feeder), so there is no feeder election dispatch.
+                // dispatches only struct 0, and no on-screen pixel resolves
+                // from a feeder at the shipped kGpuMargin, so there is no
+                // feeder election dispatch. That is a MEASURED property of the
+                // margin vs the cardinal NONE-path emit hull, not a proof —
+                // see the stage-2 skip's own comment
+                // (c_voxel_to_trixel_stage_2_body.glsl) for the derivation and
+                // scripts/feeder-margin-verify.py for the gate that holds it.
                 IRRender::device()->dispatchComputeIndirect(indirectBuf_, 0);
                 // The winner SSBO writes must land before stage 2's guard reads.
                 IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
@@ -2036,6 +2072,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // reads the cached value instead of scanning C_LightSource
         // once per voxel-pool-canvas pair.
         shadowFeederParams_ = IRPrefab::SunShadow::frameShadowFeederParams();
+        // Re-accumulated across this frame's canvases by the per-canvas tick.
+        frameShadowFeederRingNonEmpty_ = false;
 
         IREntity::EntityId backgroundCanvas = IRRender::getCanvas("background");
         auto background =
@@ -2444,5 +2482,68 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
 };
 
 } // namespace IRSystem
+
+namespace IRPrefab::SunShadow {
+
+// #3010 gate instrument — the shadow-feeder CLASSIFY pad.
+//
+// These live here rather than in `sun_shadow_constants.hpp` (which owns the
+// rest of `IRPrefab::SunShadow`) because that header is INCLUDED by this one:
+// resolving `System<VOXEL_TO_TRIXEL_STAGE_1>` from the constants header would
+// close an include cycle. `engine/prefabs/CLAUDE.md` §"Component method rules"
+// names this case, and the in-tree shape for a findSystem-resolved handle is
+// the `IRPrefab::<Feature>::` block at the bottom of the system's own header —
+// `IRPrefab::VoxelTransform::allocator()` (system_update_voxel_positions_gpu.hpp)
+// and `IRPrefab::JointTransform::system()` (system_update_joint_matrices.hpp).
+//
+// The pad is DIAGNOSTIC-ONLY: it exists so `scripts/feeder-margin-verify.py`
+// can positive-fire the #1740 depth-only-feeder skip, which is otherwise
+// unobservable at the shipped margin. Default 0 ⇒ no render behaviour changes.
+namespace detail {
+
+// The VOXEL_TO_TRIXEL_STAGE_1 params instance, or nullptr when the system was
+// never created (#2526: registration self-wires the SystemName -> SystemId
+// registry, so there is no setter to forget). Callers treat nullptr as
+// "nothing to configure / nothing to report".
+inline IRSystem::System<IRSystem::VOXEL_TO_TRIXEL_STAGE_1> *voxelToTrixelStage1() {
+    const IRSystem::SystemId systemId = IRSystem::findSystem(IRSystem::VOXEL_TO_TRIXEL_STAGE_1);
+    if (systemId == IRSystem::kNullSystemId) {
+        return nullptr;
+    }
+    return IRSystem::getSystemParams<IRSystem::System<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>>(systemId);
+}
+
+} // namespace detail
+
+// Sets the test-only iso-texel pad applied to the shadow-feeder classify box
+// (`frameData_.visibleIsoBounds_`) and to nothing else. Positive widens the
+// box (off-screen feeders in the widened band become visibles); negative
+// shrinks it (on-screen winners become feeders). 0 restores shipped behaviour.
+// Call AFTER the system has been created — the id resolves through
+// `IRSystem::findSystem`, so there is nothing to bind to before that.
+inline void setFeederClassifyPadIso(int padIso) {
+    if (auto *p = detail::voxelToTrixelStage1()) {
+        p->feederClassifyPadIso_ = padIso;
+    }
+}
+
+inline int feederClassifyPadIso() {
+    auto *p = detail::voxelToTrixelStage1();
+    return p ? p->feederClassifyPadIso_ : 0;
+}
+
+// True when the LAST rendered frame classified against a non-empty off-screen
+// shadow-feeder ring on at least one non-detached canvas, measured at the
+// UNPADDED boxes (so it reads the same in every pad arm). This is the
+// non-vacuity witness for a widened-pad adequacy measurement: with an empty
+// ring there are no feeders to promote, so "0 changed pixels" says nothing
+// about whether the margin is adequate. False when the system was never
+// created.
+inline bool feederClassifyRingNonEmpty() {
+    auto *p = detail::voxelToTrixelStage1();
+    return p != nullptr && p->frameShadowFeederRingNonEmpty_;
+}
+
+} // namespace IRPrefab::SunShadow
 
 #endif /* SYSTEM_VOXEL_TO_TRIXEL_H */

@@ -387,8 +387,21 @@ void main() {
     // picked. Stage 1 already wrote its full-resolution depth (the sun-shadow
     // bake + AO read ONLY trixelDistances), so skipping its colour + entity-id
     // taps here is byte-identical in rendered output and removes the feeder's
-    // entire stage-2 cost. The +4-iso-px margin baked into visibleIsoBounds
-    // covers the voxel face footprint, so no on-screen pixel is ever a feeder.
+    // entire stage-2 cost.
+    //
+    // Why no on-screen pixel resolves from a feeder (#3010, measured — not a
+    // proof): on this route stage 1 emits each voxel through emitDeformedFace
+    // with identity D and n == 1, so its whole write set is
+    // base + {0,1} x {0,1,2} — reach +1 texel in x and +2 in y from the
+    // classify centre, and 0 toward -x/-y. The +4-iso-px margin baked into
+    // visibleIsoBounds (kGpuMargin, system_voxel_to_trixel.hpp) covers that
+    // footprint with 2-3 texels of slack on the two sides the reach points
+    // into the viewport. KEEP IN SYNC: widening the emit hull past that reach —
+    // or narrowing kGpuMargin — reopens the gap, exactly like the emit hull's
+    // existing obligation toward voxelOccludedByHiZ's window.
+    // scripts/feeder-margin-verify.py is the executed gate: it promotes the
+    // band with a classify pad and requires zero changed pixels, with a
+    // shrink arm proving the instrument fires.
     // When sun shadows are off visibleIsoBounds == cullIsoMin/Max, so nothing is
     // skipped — byte-identical. Matches the compact cull's cardinal projection
     // (c_voxel_visibility_compact.glsl) so the classification agrees.

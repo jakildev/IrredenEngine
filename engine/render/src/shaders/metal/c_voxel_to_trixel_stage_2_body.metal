@@ -395,9 +395,17 @@ kernel void IR_STAGE2_KERNEL_NAME(
     // sun shadows via stage 1's distance bake and is never displayed/lit/picked.
     // Stage 1 wrote its full-res depth (the bake + AO read only trixelDistances),
     // so skipping its colour/entity-id taps is byte-identical and removes the
-    // feeder's stage-2 cost. visibleIsoBounds carries a +4-iso-px margin covering
-    // the face footprint; with sun shadows off it equals cullIsoMin/Max so
-    // nothing is skipped.
+    // feeder's stage-2 cost. With sun shadows off visibleIsoBounds equals
+    // cullIsoMin/Max so nothing is skipped.
+    //
+    // Why no on-screen pixel resolves from a feeder (#3010, measured on the GL
+    // twin — not a proof): on this route stage 1's write set per voxel is
+    // base + {0,1} x {0,1,2}, i.e. reach +1 texel in x and +2 in y from the
+    // classify centre and 0 toward -x/-y, and visibleIsoBounds carries a
+    // +4-iso-px margin (kGpuMargin) that covers it with 2-3 texels of slack.
+    // KEEP IN SYNC: widening the emit hull past that reach — or narrowing
+    // kGpuMargin — reopens the gap. scripts/feeder-margin-verify.py is the
+    // executed gate (GL host; this shader is the unmodified mirror).
     //
     // That "stage 1 wrote its depth" premise is GL-authored, and on Metal it holds
     // only because of #2488: stage 1's atomics land in the image-atomic scratch
