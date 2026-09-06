@@ -247,6 +247,7 @@ printf '%s\n' "$*" >> "$CLAUDE_ARGV_LOG"
 printf 'ENV kind=%s repo=%s num=%s target=%s reason=%s\n' \
   "${FLEET_DISPATCH_KIND:-}" "${FLEET_DISPATCH_REPO:-}" "${FLEET_DISPATCH_NUMBER:-}" \
   "${FLEET_DISPATCH_TARGET:-}" "${FLEET_DISPATCH_REASON:-}" >> "$CLAUDE_ARGV_LOG"
+printf 'RESULT %s\n' "${FLEET_ITERATION_RESULT:-}" >> "$CLAUDE_ARGV_LOG"
 exit "${STUB_CLAUDE_RC:-0}"
 EOF
 chmod +x "$BIN/claude"
@@ -255,6 +256,11 @@ chmod +x "$BIN/claude"
 grep -q '^ENV kind=stack repo=engine num=344 target=stack:engine:344:397 reason=stack engine#344$' "$CLAUDE_ARGV_LOG" \
   && ok "stack target: KIND/REPO/NUMBER parts reach the claude process" \
   || bad "stack target parts: $(grep '^ENV' "$CLAUDE_ARGV_LOG")"
+# The iteration-result path is pane-keyed under the state dir, the way the
+# claim marker is — the dispatcher derives the same key at its exit fold.
+grep -q "^RESULT $FLEET_STATE_DIR/iteration-results/.*\.json$" "$CLAUDE_ARGV_LOG" \
+  && ok "FLEET_ITERATION_RESULT exported under <state>/iteration-results/" \
+  || bad "iteration-result export: $(grep '^RESULT' "$CLAUDE_ARGV_LOG")"
 cat > "$BIN/claude" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$CLAUDE_ARGV_LOG"

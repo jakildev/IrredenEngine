@@ -73,6 +73,7 @@ else
     # unparseable target exports nothing, so the role runs its discovery flow.
     fleet_release_assignment() { :; }
     fleet_parse_target() { return 1; }
+    fleet_iteration_result_path() { printf '%s/iteration-results/%s.json\n' "$1" "$2"; }
     fleet_model_tag() { printf '%s' "$1"; }  # raw-id label fallback
     fleet_main_clone_root() { :; }  # game-worktree in-flight check degrades off
 fi
@@ -166,6 +167,12 @@ rm -f "$FLEET_THROTTLE_FLAG"
 mkdir -p "$CLAIM_FLAG_DIR"
 export FLEET_CLAIM_FLAG="$CLAIM_FLAG_DIR/$PANE_KEY"
 rm -f "$FLEET_CLAIM_FLAG"
+# The iteration's result record — cost / turns / duration from claude's final
+# result event, written by fleet-claude-stream and folded by the dispatcher at
+# the same exit fold as the marker above, so it too is cleared here.
+FLEET_ITERATION_RESULT="$(fleet_iteration_result_path "$STATE_DIR" "$PANE_KEY")"
+export FLEET_ITERATION_RESULT
+rm -f "$FLEET_ITERATION_RESULT"
 
 # --- Session-id persistence + interrupted-session resume (dispatched roles) ---
 #

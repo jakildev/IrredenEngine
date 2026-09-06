@@ -214,6 +214,12 @@ declare -A FLEET_TARGET_LABEL=(
 # (dispatch counts, abandonment, decline memory, salvage, handoff).
 fleet_target_key() { printf '%s\n' "${1//:/-}"; }
 
+# The iteration's result record — cost / turns / duration from claude's final
+# result event. fleet-claude-stream writes it, fleet-dispatch-wrap exports the
+# path, fleet-dispatcher folds it at the exit fold. $1 = state dir, $2 = the
+# pane key the wrap was launched with.
+fleet_iteration_result_path() { printf '%s/iteration-results/%s.json\n' "$1" "$2"; }
+
 # The worktrees a pane basename owns — the engine one and its game twin —
 # one per line, existing ones only. $1 = basename, $2 = engine root
 # (detected when omitted).

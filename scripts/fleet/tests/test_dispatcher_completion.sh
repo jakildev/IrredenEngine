@@ -228,4 +228,39 @@ out=$(complete)
 assert_eq "$(cat "$GH_LOG")" "" "no target -> no gh call"
 assert_absent "$out" "verdict=" "no verdict logged"
 
+echo "T12: the iteration's result record rides the completion line and the ledger"
+LEDGER="$HOME/.fleet/logs/iterations.jsonl"
+mkdir -p "$FLEET_STATE_DIR/iteration-results"
+printf '{"subtype": "success", "turns": 17, "cost_usd": 1.234568, "duration_s": 4.3, "session_id": "abc", "finished_at": 1700000000}\n' \
+    > "$FLEET_STATE_DIR/iteration-results/pane-1.json"   # pane_id_to_key %1, the key the wrap was launched with
+rm -f "$LEDGER"
+record 1 task:engine:42
+out=$(complete)
+assert_contains "$out" "verdict=finished, cost=\$1.234568 turns=17 dur=4.3s success" "log line carries cost / turns / duration"
+ledger=$(cat "$LEDGER" 2>/dev/null || true)
+assert_contains "$ledger" "{\"role\":\"worker\",\"pane\":\"%1\",\"class\":\"opus\",\"dispatched_at\":\"x\",\"dispatched_epoch\":$DISPATCHED,\"claim_marker\":1,\"target\":\"task:engine:42\",\"agent\":\"pool-3\",\"finished_at\":1700000000,\"verdict\":\"finished\",\"outcome\":\"yes\"" \
+    "ledger line is the dispatch record plus what the fold learned"
+assert_contains "$ledger" '"session_id":"abc","subtype":"success","turns":17,"cost_usd":1.234568,"duration_s":4.3}' \
+    "cost fields typed, not quoted"
+assert_eq "$(ls "$FLEET_STATE_DIR/iteration-results" | wc -l | tr -d ' ')" "0" "result record consumed"
+record 1 task:engine:42
+out=$(complete)
+assert_absent "$out" "cost=" "no record -> no cost figures on the line"
+assert_eq "$(grep -c '"turns":null,"cost_usd":null,"duration_s":null}' "$LEDGER")" "1" "ledger line still written, cost fields null"
+
+echo "T13: a quiet fleet says so on the transition, then on the interval"
+rm -f "$FLEET_STATE_DIR/dispatch"/*.json "$FLEET_STATE_DIR/idle-logged-at"
+mkdir -p "$FLEET_STATE_DIR/triggers"
+assert_contains "$("$DISPATCHER" --idle-tick 2>&1)" "idle: no triggers, nothing in flight" "first quiet tick logs the transition"
+assert_absent "$("$DISPATCHER" --idle-tick 2>&1)" "idle:" "the next quiet tick is silent"
+printf '%s\n' "$(( $(date +%s) - 700 ))" > "$FLEET_STATE_DIR/idle-logged-at"
+assert_contains "$("$DISPATCHER" --idle-tick 2>&1)" "idle: still quiet" "past the interval it says so again"
+: > "$FLEET_STATE_DIR/triggers/worker"
+assert_absent "$("$DISPATCHER" --idle-tick 2>&1)" "idle:" "a standing trigger is not quiet"
+[[ ! -f "$FLEET_STATE_DIR/idle-logged-at" ]] && ok "activity resets the idle clock" || bad "idle stamp survived a standing trigger"
+rm -f "$FLEET_STATE_DIR/triggers/worker"
+record 1 task:engine:42
+assert_absent "$("$DISPATCHER" --idle-tick 2>&1)" "idle:" "a dispatch in flight is not quiet"
+rm -f "$FLEET_STATE_DIR/dispatch"/*.json
+
 summarize "fleet-dispatcher completion-contract tests"
