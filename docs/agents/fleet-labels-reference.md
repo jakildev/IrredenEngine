@@ -167,7 +167,7 @@ Specifically, **never pass these via `--label` when filing**:
   scout's ingest set" the whole time the label is on, so *removing* it is not a
   set change and never fires ingest). The
   reviewer judges the `## Plan` comment *as a plan* (per PLANNING-PROTOCOL.md
-  step-2 rigor — verified state, single committed approach, sibling
+  step-2 rigor — verified state, decisions locked, sibling
   reconciliation, cross-system audit): sound → remove the label (the membership
   flips out→in, the scout fires ingest, and it queues on the next pass); not
   sound → swap back to
