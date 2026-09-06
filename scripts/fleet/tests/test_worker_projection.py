@@ -401,6 +401,20 @@ class SliceWorkerSkipsGatedNeedsPlan(unittest.TestCase):
             [],
         )
 
+    def test_needs_human_park_dropped_but_siblings_survive(self):
+        # #3034: the planner's park for an issue no later planner can make
+        # progress on. It KEEPS fleet:needs-plan (still true), so only this gate
+        # takes it out of rotation — and the sibling proves the gate is
+        # per-issue, not a whole-repo drop. Pre-fix this returns [94, 222].
+        self.assertEqual(
+            self._np([
+                {"number": 94, "labels": ["fleet:needs-plan",
+                                          "fleet:needs-human"]},
+                {"number": 222, "labels": ["fleet:needs-plan"]},
+            ]),
+            [222],
+        )
+
     def test_plain_needs_plan_surfaces(self):
         # Regression: a genuinely plannable issue must still reach the worker.
         self.assertEqual(
@@ -456,6 +470,18 @@ class ProjectWorkerSkipsGatedNeedsPlan(unittest.TestCase):
                 {"number": 301, "labels": ["fleet:needs-plan", "human:owned"]},
                 {"number": 302, "labels": ["fleet:needs-plan", "human:wip"]},
             ]),
+            [],
+        )
+
+    def test_needs_human_park_does_not_surface(self):
+        # #3034: the wake half. The slice fix alone would stop a woken worker
+        # from *planning* a parked issue, but the dispatcher diffs THIS
+        # projection to decide whether to wake at all — and a park that still
+        # flips the hash re-fires the pane every tick, which is the 13-dispatch
+        # loop the issue was filed from. Pre-fix this returns [94].
+        self.assertEqual(
+            self._np([{"number": 94, "labels": ["fleet:needs-plan",
+                                                "fleet:needs-human"]}]),
             [],
         )
 

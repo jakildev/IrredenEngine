@@ -66,19 +66,42 @@ Specifically, **never pass these via `--label` when filing**:
   the landing PR; not added if the comment call fails (safe retry on
   next tick). Don't add manually unless you've verified a merged PR
   covers the scope.
-- `fleet:needs-human` — owned by the **author worker**.
-  Set when a queued task can only be completed by a step the fleet
-  can't perform autonomously — most often a gated self-config edit
-  (`.claude/commands/role-*.md`, `.claude/agents/*`). The worker
-  comments naming what the human must apply, removes `fleet:queued`,
-  adds this label, and releases its claim. **`human:approved` is
-  KEPT** — it is the human's durable approval, not the worker's to
-  strip. Like `fleet:scope-shipped`, this label is in the scout's
-  `_INGEST_SKIP_LABELS` and the ingest's stamping skip, so the ingest
-  does NOT re-stamp `fleet:queued` while it's present (removing
-  `human:approved` used to be the only way to defeat that re-stamp —
-  this label replaces that workaround). Clears when the human applies
-  the change (the ingest then re-queues the issue) or closes it.
+- `fleet:needs-human` — owned by the **author worker or the planner**.
+  Set when work can only proceed via a step the fleet can't perform
+  autonomously. Two lanes apply it:
+  - **Execution lane (author worker).** A queued task whose remaining
+    step is one no worker class can do — most often a gated self-config
+    edit (`.claude/commands/role-*.md`, `.claude/agents/*`). The worker
+    comments naming what the human must apply, removes `fleet:queued`,
+    adds this label, and releases its claim.
+  - **Planning lane (planner, #3034).** A `fleet:needs-plan` issue whose
+    *unplannability* no later planner can resolve — the premise is
+    refuted, the target code is absent from master, the parent is
+    design-blocked, or the direction needs a human call. The planner
+    comments the verdict and what the human must do, adds this label,
+    **keeps `fleet:needs-plan`** (which is still true — the issue does
+    need a plan, just not one any planner can write yet), and releases
+    its planning claim. See
+    [`PLANNING-PROTOCOL.md`](PLANNING-PROTOCOL.md) § "The flow" step 2.
+
+  **`human:approved` is KEPT** on both paths — it is the human's durable
+  approval, not the agent's to strip. Like `fleet:scope-shipped`, this
+  label is in the scout's `_INGEST_SKIP_LABELS` and the ingest's stamping
+  skip, so the ingest does NOT re-stamp `fleet:queued` while it's present
+  (removing `human:approved` used to be the only way to defeat that
+  re-stamp — this label replaces that workaround). It is also in
+  `_HUMAN_GATE_LABELS`, so the worker's planning projection and the
+  reviewer's plan-review projection both drop it, and
+  `fleet-claim planning-claim` refuses it outright as the backstop —
+  without those two the park was honored by ingest and pickup only, and
+  the dispatcher re-assigned the lane head every tick (game #94 absorbed
+  13 planning dispatches, then 2 more after the park was applied by hand).
+  Note the consequence on a plan mid-vet: `fleet:plan-review` is itself an
+  ingest-skip label, so an issue parked while awaiting plan review is
+  neither vetted nor queued until the human clears the park — intended,
+  since the routing decision precedes the rigor question. Clears when the
+  human acts (the ingest then re-queues, or the issue re-enters the
+  planning projection with its `fleet:needs-plan` intact) or closes it.
 - `fleet:coding-improvement` — owned by the **author worker**, applied by the
   `assess-coding-improvement` skill at the end of a feedback AMEND. When a fix
   reveals a *generalizable* convention or footgun (not a one-off), the worker

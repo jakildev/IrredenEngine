@@ -520,12 +520,28 @@ _INGEST_OVERRIDE_LABELS = frozenset({"human:revise-plan"})
 
 # Gate labels that take an issue out of fleet *planning/dispatch* rotation:
 # human:owned (de-queued), human:wip (human is on it), human:no-plan and its
-# agent-applied twin fleet:no-plan (queue directly, never plan). A needs-plan or
-# plan-review issue carrying any of these is not worker-actionable, so the worker
-# slice and the review projections drop it rather than waking a no-op iteration
-# on it.
+# agent-applied twin fleet:no-plan (queue directly, never plan), and
+# fleet:needs-human (parked: the fleet cannot proceed until a human acts). A
+# needs-plan or plan-review issue carrying any of these is not worker-actionable,
+# so the worker slice and the review projections drop it rather than waking a
+# no-op iteration on it.
+#
+# fleet:needs-human is the planner's park (#3034). An issue whose *unplannability*
+# no later planner can resolve — premise refuted, target code absent from master,
+# parent design-blocked, direction disagreement — keeps fleet:needs-plan (which is
+# still true) and gains this label, so the human routes it. Without the gate the
+# lane head is re-dispatched every tick: game #94 absorbed 13 planning dispatches
+# reaching the identical verdict, and 2 more *after* the park was applied by hand,
+# because the label was already honored by _ALREADY_QUEUED_LABELS and
+# _INGEST_SKIP_LABELS but not here. fetch_needs_plan deliberately still returns a
+# parked issue — state.json stays the full cross-host record and the projections
+# do the filtering, mirroring the smoke lane.
+#
+# Consequence, intended: the set also gates plan_review (project_opus_reviewer /
+# slice_opus_reviewer), so an issue parked mid-vet leaves that lane too. A parked
+# plan should not be vetted — the routing decision precedes the rigor question.
 _HUMAN_GATE_LABELS = frozenset({"human:owned", "human:wip", "human:no-plan",
-                                "fleet:no-plan"})
+                                "fleet:no-plan", "fleet:needs-human"})
 
 
 def _ingest_skipped(labels):
