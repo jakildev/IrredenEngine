@@ -39,6 +39,8 @@
 #include <irreden/ir_math.hpp>
 #include <irreden/common/components/component_world_transform.hpp>
 
+#include <utility>
+
 namespace IRPrefab::GridRotation {
 
 /// Returns true when the SQT carries no rotation and no scale (identity).
@@ -108,6 +110,46 @@ inline IRMath::vec3 sourceCellForWorldCell(
     const IRMath::vec3 rotated = IRMath::vec3(worldCell) - wt.translation_;
     const IRMath::vec3 scaled = IRMath::rotateVectorByQuat(rotated, inverseRotation);
     return scaled / wt.scale_;
+}
+
+/// Per-axis `(min + max)` of a pool's composed locals over slots `[0, n)` —
+/// twice the body's center relative to the pool origin. Zero on every axis iff
+/// the pool origin IS the body center: the precondition the detached
+/// re-voxelize resample (`DetachedRevoxelize::seedResidentLocals`) and
+/// `SYSTEM_REBUILD_DETACHED_VOXELS`' origin-centered cull bound both assume
+/// (see #2911).
+/// @p composedAt returns `local + offset` for slot i — the operand the GPU
+/// rotates. Taken as a callable rather than a span so this header stays
+/// render-neutral (`IRRender::VoxelGpuPosition` lives in `engine/render/`).
+/// `n <= 0` measures as perfectly centered: an empty pool is off-center by
+/// nothing, and the rebuild tick already returns before this on an empty pool.
+template <typename ComposedAt>
+inline IRMath::vec3 poolOriginAsymmetry(int n, ComposedAt &&composedAt) {
+    if (n <= 0) {
+        return IRMath::vec3(0.0f);
+    }
+    IRMath::vec3 minComposed = composedAt(0);
+    IRMath::vec3 maxComposed = minComposed;
+    for (int i = 1; i < n; ++i) {
+        const IRMath::vec3 composed = composedAt(i);
+        minComposed = IRMath::min(minComposed, composed);
+        maxComposed = IRMath::max(maxComposed, composed);
+    }
+    return minComposed + maxComposed;
+}
+
+/// True when every axis of @ref poolOriginAsymmetry is within @p tolerance of
+/// zero. The 0.5 default is a separation, not an epsilon: a CENTER-authored set
+/// measures exactly 0 on every axis (the `-(s-1)/2` offset is symmetric and
+/// every value is a multiple of 0.5), while the nearest violators measure ±1 —
+/// GROUND at `size.z == 1` and CORNER at `size == 2`. Anything >= 1 would pass
+/// both.
+template <typename ComposedAt>
+inline bool poolIsOriginCentered(int n, ComposedAt &&composedAt, float tolerance = 0.5f) {
+    const IRMath::vec3 asymmetry =
+        poolOriginAsymmetry(n, std::forward<ComposedAt>(composedAt));
+    const IRMath::vec3 magnitude = IRMath::abs(asymmetry);
+    return magnitude.x <= tolerance && magnitude.y <= tolerance && magnitude.z <= tolerance;
 }
 
 } // namespace IRPrefab::GridRotation

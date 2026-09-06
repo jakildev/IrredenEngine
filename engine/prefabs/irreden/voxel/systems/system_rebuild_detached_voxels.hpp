@@ -41,9 +41,15 @@
 // INVARIANT: one centered voxel set per private pool. The conservative bound is
 // origin-centered, matching the demo's centered authoring
 // (`C_VoxelSetNew(..., centerAroundOrigin=true, ...)`); an off-origin solid would
-// need an offset bound. See voxel/CLAUDE.md.
+// need an offset bound. The invariant is ENFORCED, not assumed: the
+// once-per-pool bound-seed block below asserts (debug only, like every engine
+// diagnostic) that the pool's composed locals are symmetric about the origin,
+// so a GROUND- or CORNER-anchored set allocated into a DETACHED_REVOXELIZE
+// canvas fires instead of silently orbiting its anchor. See voxel/CLAUDE.md
+// and #2911.
 
 #include <irreden/ir_math.hpp>
+#include <irreden/ir_profile.hpp>
 #include <irreden/ir_system.hpp>
 
 #include <irreden/render/components/component_canvas_local_rotation.hpp>
@@ -99,10 +105,33 @@ template <> struct System<REBUILD_DETACHED_VOXELS> {
         // its farthest point at |h|), so the bound contains the solid under ANY
         // rotation.
         if (!pool.hasStaticReVoxelizeBound()) {
+            // Both the bound below and the GPU inverse-resample rotate about the
+            // POOL ORIGIN and assume it is the body's center. A GROUND- or
+            // CORNER-anchored C_VoxelSetNew bakes an asymmetric offset into its
+            // composed locals, so it orbits its anchor instead of spinning in
+            // place — and the per-voxel halfCellAnchor uniformity assert in
+            // seedResidentLocals stays silent, because anchor uniformity is not
+            // what breaks (#2911). Checked once per pool lifetime, before the
+            // seed, so a failing pool is never given a bound.
+            const auto composedAt = [&](int i) {
+                return localPositions[i].pos_ + localOffsets[i];
+            };
+            IR_ASSERT(
+                IRPrefab::GridRotation::poolIsOriginCentered(safeCount, composedAt),
+                "REBUILD_DETACHED_VOXELS: re-voxelize pool is not origin-centered — "
+                "per-axis (min + max) of composed locals = ({},{},{}). A GROUND- or "
+                "CORNER-anchored C_VoxelSetNew was allocated into a DETACHED_REVOXELIZE "
+                "canvas; the resample rotates about the pool origin, so this solid "
+                "would orbit its anchor instead of spinning in place. Author the set "
+                "CENTER (#2911).",
+                IRPrefab::GridRotation::poolOriginAsymmetry(safeCount, composedAt).x,
+                IRPrefab::GridRotation::poolOriginAsymmetry(safeCount, composedAt).y,
+                IRPrefab::GridRotation::poolOriginAsymmetry(safeCount, composedAt).z
+            );
+
             IRMath::vec3 halfExtents(0.0f);
             for (int i = 0; i < safeCount; ++i) {
-                const IRMath::vec3 composed = localPositions[i].pos_ + localOffsets[i];
-                halfExtents = IRMath::max(halfExtents, IRMath::abs(composed));
+                halfExtents = IRMath::max(halfExtents, IRMath::abs(composedAt(i)));
             }
             pool.setStaticReVoxelizeBound(halfExtents);
         }

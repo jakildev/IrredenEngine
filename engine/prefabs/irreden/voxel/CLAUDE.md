@@ -85,12 +85,30 @@ is at its feet, so it would orbit rather than spin in place — that path
 assumes a centered solid), and `C_ColliderIso3DAABB` / SDF shapes /
 `C_EntityCanvas`, which migrate per the same enum when touched.
 
-The detached case is **unguarded today and silent** — `DetachedRevoxelize`'s
-per-voxel `halfCellAnchor` uniformity assert passes for a GROUND set (its z
-residual is a uniform `-0.5`), so the wrong pivot produces no diagnostic.
-**#2911** carries the guard, including the layering question its natural home
-(`IRPrefab::RotationMode::setMode`, in `common/`) raises: it would be the
-tree's first `common/` → `voxel/` include.
+The detached case is **guarded** (#2911). `SYSTEM_REBUILD_DETACHED_VOXELS`
+asserts, once per pool in the same block that seeds the conservative cull bound
+(and *before* seeding it), that the pool's composed locals are symmetric about
+the origin — per-axis `min + max` within 0.5 of zero. The message reports that
+per-axis asymmetry. It fires on **any** non-centered pool, not on the GROUND
+enum alone: CORNER orbits its min corner by the identical mechanism and the
+bound is equally wrong for it. CENTER measures exactly zero on every axis and
+is silent; a 1-cell CORNER set is genuinely centered and also passes. Like
+every engine diagnostic it is a debug assert and a no-op under `IR_RELEASE`.
+
+`DetachedRevoxelize`'s own per-voxel `halfCellAnchor` uniformity assert does
+**not** catch this and never did — a GROUND set's z residual is a uniform
+`-0.5`, so anchor uniformity holds; what breaks is the pivot, not the anchor.
+
+The guard sits at the consumer rather than at the authoring site because
+`IRPrefab::RotationMode::setMode` and `Prefab::spawnPrefab` — the two homes the
+issue proposed — never bind a voxel set to a pool: both allocate the canvas
+through `EntityCanvas::create` (textures, size, name), and the DENSE
+`C_VoxelSetNew` attaches afterwards from the *active* canvas. A check there
+would compare `anchor_` against a canvas the set never renders through. The
+rebuild tick, by contrast, owns the pool and gates on `reVoxelize_`, so every
+authoring path (C++ `targetCanvas`, the Lua 4-arg ctor, the post-load
+`attachToCanvas` seed) converges on it. That also moots the layering question
+the issue raised — no `common/` → `voxel/` include is needed.
 
 Lua spells it `IRComponent.EntityAnchor.GROUND` (integers, never string
 names) and it is the **3-arg** `C_VoxelSetNew.new(size, color, anchor)`
