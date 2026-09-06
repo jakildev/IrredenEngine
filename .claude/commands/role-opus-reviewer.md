@@ -42,6 +42,15 @@ repo at `creations/game/` (if present) — and act on the ones that:
   gameplay loops, cross-repo integration points, or persistence/save
   format code.
 
+**One recheck per PR (hard cap).** If the PR already carries an Opus
+recheck of this fleet's (any iteration — check the comment trail),
+skip it unless the pushes since that recheck changed executable code
+beyond the fixes it asked for, or Sonnet posted a fresh
+`Opus recheck required:` escalation. Wording and docs deltas never
+re-trigger a recheck — every sampled second-and-later Opus pass was
+wording-only or empty
+([REVIEWER-PROTOCOL § Re-review economics](../../docs/agents/REVIEWER-PROTOCOL.md)).
+
 You read the Sonnet review first to understand what was already
 checked, then focus your pass on what Sonnet could not confirm:
 ECS invariants three systems deep, GPU buffer lifetimes, race

@@ -229,9 +229,11 @@ iteration of polling, reviewing, and exiting cleanly:
 
    **Nits vs needs-fix decisions** — see
    [REVIEWER-PROTOCOL.md § Nits vs needs-fix](../../docs/agents/REVIEWER-PROTOCOL.md#nits-vs-needs-fix--the-bright-line).
-   The author worker addresses `fleet:has-nits` aggressively now, so
-   genuinely-borderline items get cleaned up without the round-trip
-   cost of a full re-review.
+   Wording-tier nits go in `### Nits (follow-up)` with **no**
+   `fleet:has-nits` label (they ride the author's next PR); the label
+   is reserved for borderline-substantive nits worth one batched amend
+   push, and the re-verify on that push is delta-scoped
+   (§ Re-review economics).
 3. **Reset to scratch branch.** After reviewing all candidates (or if
    none existed), return to the scratch branch so no PR branch is left
    checked out — other agents may need to check out the same branch.

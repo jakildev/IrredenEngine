@@ -36,6 +36,15 @@ name: Auto re-review on push to approved PR
 #   test suite at `scripts/fleet/tests/test_classify_auto_rereview.sh`) so it
 #   is unit-testable against a git sandbox rather than buried in a `run:` block.
 #
+# Why the docs-only class (the `docs_only` output):
+#   A real content change whose net-changed files are ALL non-canon
+#   documentation (.fleet/plans/**, docs/pr-screenshots/**, markdown outside
+#   the design tiers) keeps fleet:approved with an audit comment instead of
+#   burning a full re-review round — PR-trail measurement showed ~2/3 of
+#   re-review rounds changed nothing, with wording amends the largest single
+#   generator. Canon design docs (engine docs/design/**, game GDD/design
+#   tiers) re-review like code: their accuracy is the product.
+#
 # This file and `scripts/fleet/classify-auto-rereview.sh` are kept
 # byte-identical between the engine repo (jakildev/IrredenEngine) and the game
 # repo (jakildev/irreden) so both repos share one re-review flow. Edit both
@@ -73,8 +82,24 @@ jobs:
           # to $GITHUB_OUTPUT); its diagnostics go to stderr (the Actions log).
           bash scripts/fleet/classify-auto-rereview.sh >> "$GITHUB_OUTPUT"
 
+      # Docs-only delta (rebase_only=false, docs_only=true): every file whose
+      # NET content changed is non-canon documentation (plans, screenshots,
+      # markdown outside the design tiers). Keep fleet:approved — measured
+      # evidence showed ~2/3 of re-review rounds produced no change, with
+      # wording amends to approved PRs the largest single generator — but
+      # leave an audit comment so the kept approval is visible.
+      - name: Keep approval on a docs-only delta
+        if: steps.classify.outputs.rebase_only != 'true' && steps.classify.outputs.docs_only == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh pr comment "$PR" --repo "$REPO" \
+            --body "Docs-only delta pushed after fleet approval (plans / screenshots / non-canon markdown). Approval kept — the delta reaches no executable code and no canon design doc."
+
       - name: Swap fleet:approved → human:re-review
-        if: steps.classify.outputs.rebase_only != 'true'
+        if: steps.classify.outputs.rebase_only != 'true' && steps.classify.outputs.docs_only != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR: ${{ github.event.pull_request.number }}
