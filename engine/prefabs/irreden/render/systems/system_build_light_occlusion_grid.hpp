@@ -140,8 +140,23 @@ struct LightOcclusionGridView {
     const std::vector<std::uint32_t> *voxel_ = nullptr;
     const std::vector<std::uint32_t> *blocker_ = nullptr;
     ivec3 origin_{};
+    /// True only when the producer repopulated the mirror on the frame this
+    /// view was handed out. Fail-closed (`false`) by default so a view that
+    /// nobody stamped reads invalid rather than answering from stale bits.
+    ///
+    /// The pointers alone are NOT a liveness test: `occlusionView()` always
+    /// returns both, so a pointer-only `valid()` is true before the grid has
+    /// ever been built AND after the producer has stopped building it. The
+    /// never-built case is harmless (an all-zero bitfield reads unoccluded,
+    /// i.e. today's behaviour), but the *stopped-being-built* case is not —
+    /// BUILD and `COMPUTE_LIGHT_VOLUME` filter different archetypes
+    /// (`C_VoxelPool` vs `C_CanvasLightVolume`), so a scene where COMPUTE
+    /// matches and BUILD does not is reachable, and the view would keep
+    /// answering from an arbitrarily old `(origin_, bitfield)` pair — long
+    /// enough to relocate a seed off a wall that no longer exists.
+    bool populated_ = false;
 
-    bool valid() const { return voxel_ != nullptr && blocker_ != nullptr; }
+    bool valid() const { return voxel_ != nullptr && blocker_ != nullptr && populated_; }
 
     bool occluded(const ivec3 &world) const {
         return gridGetBit(*voxel_, world.x, world.y, world.z, origin_) ||
@@ -270,15 +285,47 @@ template <> struct System<BUILD_LIGHT_OCCLUSION_GRID> {
     /// archetype this frame (defensive — the system normally runs
     /// once per frame on the main canvas).
     bool ranThisFrame_ = false;
+    /// Whether the per-entity tick repopulated the mirror on the CURRENT
+    /// frame. Cleared in `beginTick` (which fires every frame even when the
+    /// archetype is empty) and set by `tick`, so it stays true for the rest
+    /// of the frame — unlike `ranThisFrame_`, which `endTick` clears before
+    /// any later system could read it. Stamped into
+    /// `LightOcclusionGridView::populated_`; see that field for why a
+    /// pointer-only validity test is not enough.
+    bool gridLiveThisFrame_ = false;
 
-    /// Read-side occupancy query for a same-pipeline-group consumer (#2330:
+    /// Read-side occupancy query for a LATER-pipeline-group consumer (#2330:
     /// `COMPUTE_LIGHT_VOLUME`'s occlusion-aware boundary-seed relocation).
-    /// The blocker half is current-frame only while BUILD and the consumer
-    /// stay in separate pipeline groups (true for every registration site
-    /// today, per `endTick`'s doc comment above) — grouping them together
-    /// would make it one frame stale, not wrong-forever.
+    ///
+    /// **`BUILD_LIGHT_OCCLUSION_GRID` must stay in its own pipeline group,
+    /// ordered ahead of every consumer of this view.** Co-scheduling it with
+    /// a consumer in one multi-system group is a **data race**, not a
+    /// one-frame staleness: `executePipeline` dispatches a group's members
+    /// across the worker pool via `IRJob::parallelFor` at grain 1
+    /// (`engine/system/src/system_manager.cpp`), so a co-scheduled consumer
+    /// would call `occluded()` — reading `voxelBitfield_`, `blockerBitfield_`
+    /// and `origin_` — while this system's `tick` is `std::fill`-ing
+    /// `voxelBitfield_` and reassigning `origin_`. That is a torn read of the
+    /// bitfield and a mismatched `(origin_, bitfield)` pair.
+    ///
+    /// **The pipeline-group validator cannot catch this.**
+    /// `validateAllPipelineGroups` composes its conflict test from the
+    /// *component* access descriptor (`system_access.hpp`; `AlsoReads<C>` /
+    /// `AlsoWrites<C>` widen it to foreign entities' components, and that is
+    /// the whole vocabulary). A
+    /// `getSystemParams<System<BUILD_LIGHT_OCCLUSION_GRID>>(...)` read of
+    /// another system's `SystemParams` is not expressible in that descriptor,
+    /// so the pair validates clean. This comment is the only thing standing
+    /// where the validator would be — do not treat a green validate as
+    /// permission to group them.
+    ///
+    /// Every registration site is safe today: all of them go through
+    /// `createPipeline` / `registerPipeline`, which emit one singleton group
+    /// per system, so this system's `endTick` (where the blocker half is
+    /// rasterized) completes before any consumer ticks.
     detail::LightOcclusionGridView occlusionView() const {
-        return detail::LightOcclusionGridView{&voxelBitfield_, &blockerBitfield_, origin_};
+        return detail::LightOcclusionGridView{
+            &voxelBitfield_, &blockerBitfield_, origin_, gridLiveThisFrame_};
     }
 
     void tick(IREntity::EntityId, C_VoxelPool &pool, const C_TrixelCanvasRenderBehavior &behavior) {
@@ -321,9 +368,17 @@ template <> struct System<BUILD_LIGHT_OCCLUSION_GRID> {
         }
 
         ranThisFrame_ = true;
+        gridLiveThisFrame_ = true;
     }
 
     void beginTick() {
+        // Clear before the per-entity ticks, never in endTick: consumers read
+        // occlusionView() later in the SAME frame, so the liveness stamp has
+        // to survive until the frame ends (see gridLiveThisFrame_). beginTick
+        // fires even when the archetype is empty, which is exactly the case
+        // this guards — a scene that stops matching BUILD's filter leaves the
+        // flag false instead of pinning it true at the last frame it ran.
+        gridLiveThisFrame_ = false;
         ssbo_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_LightOcclusionGrid);
     }
 

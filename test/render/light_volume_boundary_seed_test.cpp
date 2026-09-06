@@ -64,8 +64,21 @@ class LightVolumeBoundarySeedTest : public testing::Test {
         IRSystem::detail::gridSetBit(m_blockerBits, wx, wy, wz, kGridOrigin);
     }
 
+    /// A view as the producer hands it out on a frame it actually populated
+    /// the mirror. `populated_` is fail-closed, so it is passed explicitly —
+    /// see `staleView()` for the other half.
     IRSystem::detail::LightOcclusionGridView view() const {
-        return IRSystem::detail::LightOcclusionGridView{&m_voxelBits, &m_blockerBits, kGridOrigin};
+        return IRSystem::detail::LightOcclusionGridView{
+            &m_voxelBits, &m_blockerBits, kGridOrigin, true};
+    }
+
+    /// A view over the same bits with the liveness stamp clear — what a
+    /// consumer gets on a frame where BUILD_LIGHT_OCCLUSION_GRID's archetype
+    /// did not match (it filters C_VoxelPool; the consumer filters
+    /// C_CanvasLightVolume, so the two can diverge).
+    IRSystem::detail::LightOcclusionGridView staleView() const {
+        return IRSystem::detail::LightOcclusionGridView{
+            &m_voxelBits, &m_blockerBits, kGridOrigin, false};
     }
 
     // Seed C_WorldTransform directly — no PROPAGATE_TRANSFORM is running to
@@ -170,6 +183,37 @@ TEST_F(LightVolumeBoundarySeedTest, OccludedClampRelocatesToNearestFaceCell) {
     EXPECT_EQ(static_cast<int>(result.out_[0].trueOriginVoxel_.x), 70);
     EXPECT_EQ(static_cast<int>(result.out_[0].trueOriginVoxel_.y), 0);
     EXPECT_EQ(static_cast<int>(result.out_[0].trueOriginVoxel_.z), 0);
+}
+
+// A view whose liveness stamp is clear must be treated as absent, not as an
+// occupancy oracle. BUILD_LIGHT_OCCLUSION_GRID filters `C_VoxelPool` while
+// COMPUTE_LIGHT_VOLUME filters `C_CanvasLightVolume`, so a scene where the
+// consumer matches and the producer does not is reachable — and the mirror
+// then holds an arbitrarily old `(origin_, bitfield)` pair. Answering from it
+// would relocate a seed off a wall that may no longer exist; falling back to
+// the no-view path degrades to today's behaviour instead. Same bits as
+// `OccludedClampRelocatesToNearestFaceCell`, opposite outcome.
+TEST_F(LightVolumeBoundarySeedTest, StaleViewIsIgnoredAndFallsBackToTodaysPath) {
+    const IREntity::EntityId canvas = IREntity::createEntity();
+    makeLight(vec3(70.0f, 0.0f, 0.0f), 32);
+    occludeVoxel(kWindowMax, 0, 0);
+
+    const IRSystem::detail::LightOcclusionGridView stale = staleView();
+    EXPECT_FALSE(stale.valid());
+    const GatherResult result = gather(canvas, &stale);
+    const GatherResult withoutView = gather(canvas, nullptr);
+
+    ASSERT_EQ(result.count_, 1u);
+    // No relocation: the seed stays on the clamped cell, exactly as it does
+    // with no view at all.
+    EXPECT_EQ(seedCell(result.out_[0]), ivec3(kWindowMax, 0, 0));
+    ASSERT_EQ(result.states_.size(), 1u);
+    EXPECT_EQ(result.states_[0].state_, IRSystem::LightGatherState::BOUNDARY_DISCOUNTED);
+    ASSERT_EQ(withoutView.count_, 1u);
+    EXPECT_EQ(
+        std::memcmp(&result.out_[0], &withoutView.out_[0], sizeof(IRRender::GPULightSource)),
+        0
+    );
 }
 
 // Parity with the propagate gate: it rejects a neighbour on
