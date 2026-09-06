@@ -164,6 +164,62 @@ small AO margin. They never sample canvas pixels outside that range.
 Off-visible-region canvas pixels are read by **only** the sun bake.
 Feeders write there; nobody else cares. The split is safe.
 
+#### Is the margin actually wide enough? — measured 2026-09-06 (#3010)
+
+The table above assumes the visible-region readers never *resolve from* a
+feeder. That is a property of `kGpuMargin` (4 iso texels) versus stage 1's
+emit hull, and until #3010 it was asserted in three places and guarded in
+none. Measured on Windows / OpenGL / NVIDIA at `origin/master @ f3e79a54`,
+with the #2298 dense frozen scene:
+
+```
+IRPerfGrid --mode voxel_set --no-overlay --subdivision-mode none \
+  --wave-freeze --wave-amplitude 5 --occlusion-cull --auto-screenshot 10
+```
+
+The instrument is a runtime pad on `frameData_.visibleIsoBounds_` **only** —
+the cull box, the Hi-Z window and the #2488 ring guard keep reading the
+unpadded values, and at `SubdivisionMode::NONE` (`feederSubCap ==
+subdivisions == 1`) a voxel's stage-1 depth is identical on either side of
+the classification, so a pixel can move only through stage 2's colour /
+entity-id tap:
+
+| pad on `visibleIsoBounds_` | meaning | `zoom4_pan` changed px | other cardinal shots |
+|---|---|---|---|
+| **+12** | classify box 12 texels wider: band feeders become visibles | **0** | `fit_grid` 0, `zoom1_origin` 0, `profiler_overlay` 0 |
+| **−16** | box 12 texels *inside* the viewport: on-screen winners become feeders | **103,168** — a band along the top / right / bottom edges where the grid reaches the frame; 0 on the left, which the grid never reaches | `fit_grid` 0, `zoom1_origin` 0, `profiler_overlay` 0 |
+
+The **+12** row is the answer: nothing on screen resolves from a depth-only
+feeder at the shipped margin, so there is no colour-tap gap. The **−16** row
+is what makes that meaningful — it proves the instrument fires when
+feeder-won on-screen pixels *do* exist. The arithmetic behind it: on the
+cardinal `NONE` route stage 1's write set per voxel is
+`base + {0,1} × {0,1,2}` (reach +1 texel in x, +2 in y, 0 toward −x/−y), and
+the 4-texel margin covers that with 2–3 texels of slack on the two sides the
+reach points into the viewport.
+
+**Do not use a force-cull probe to re-ask this question.** Dropping the
+struct-1 tail-append removes each feeder's stage-1 **depth**, not just its
+colour tap, so the sun bake loses every off-screen caster and the diff is
+dominated by lost shadow throw. #3010's original 4,128-pixel observation was
+that probe: 48 % of its changed pixels sit more than 16 px from the frame
+edge (y reaching 571), orders beyond any 2-texel footprint reach. The pad
+probe is the shadow-neutral instrument.
+
+**Scope.** Cardinal, non-detached, `SubdivisionMode::NONE`. The skip is
+structurally inert at `residualYaw != 0` and on detached canvases (the
+predicate's own route terms), so that is the only regime where the question
+is live. Subdivided-mode adequacy holds by construction — positions and
+margin both scale by `subdivisions` — but is unmeasured; the harness takes a
+`--subdivision-mode` passthrough so a later ticket can run the same arms.
+
+**The gate:** `python3 scripts/feeder-margin-verify.py` (GL host). It runs
+the three arms and fails on any of: the liveness arm not firing (*vacuous
+instrument*), the pad-0 arm reporting an empty feeder ring (*vacuous
+adequacy arm* — with sun shadows off there is nothing to promote and the
++12 zero is tautological), or the adequacy arm moving a pixel (*feeder-won
+on-screen pixels*).
+
 ---
 
 ## Sun-shadow correctness invariant (preserved)

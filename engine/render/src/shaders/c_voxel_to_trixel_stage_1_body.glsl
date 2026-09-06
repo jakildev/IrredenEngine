@@ -392,6 +392,15 @@ void overflowAppendTap(
 // resolveWinnerTap, so the election dispatch's footprint equals the store's by
 // construction — a missed site would leave winner == 0xFFFFFFFF at a tapped
 // pixel and stage 2's guard would reject ALL writers there (a colour hole).
+// KEEP IN SYNC (#3010) with kGpuMargin, the shadow-feeder classify margin in
+// system_voxel_to_trixel.hpp: stage 2's #1740 depth-only skip is safe only
+// because this write set stays INSIDE that margin. On the cardinal world route
+// (identity D, n == 1) the set is base + {0,1}x{0,1,2} — reach +1 texel in x,
+// +2 in y, 0 toward -x/-y — against a 4-texel margin. Same "widen the hull,
+// widen the window" obligation as the voxelOccludedByHiZ one above; the
+// difference is that overrunning THIS bound makes an on-screen pixel resolve
+// from a voxel whose colour tap stage 2 skipped. Gate:
+// scripts/feeder-margin-verify.py.
 void emitDeformedFace(
     const ivec2 base, const mat2 D, const int voxelDistance, const int faceId,
     const bool reVoxelize

@@ -398,6 +398,29 @@ void logRampPose(int shotIndex) {
         residualDeg
     );
 }
+
+// onCaptureFrame_ hook (sibling of logRampPose), installed only when
+// --feeder-classify-pad is provided. Emits one greppable line per captured shot
+// carrying the arm's pad and the engine's own non-vacuity witness for that
+// frame. `ring_non_empty=0` on the pad-0 arm means there were no off-screen
+// shadow-feeder survivors for a widened pad to promote, which makes a
+// "0 changed pixels" adequacy result tautological rather than evidence —
+// feeder-margin-verify.py fails that as its own verdict. Logging only; no pixel
+// effect on any arm.
+void logFeederClassify(int shotIndex) {
+    const char *label =
+        (shotIndex >= 0 && shotIndex < static_cast<int>(sizeof(kShots) / sizeof(kShots[0])))
+            ? kShots[shotIndex].label_
+            : "?";
+    IR_LOG_INFO(
+        "FEEDER-CLASSIFY idx={} label={} pad={} ring_non_empty={}",
+        shotIndex,
+        label,
+        IRPrefab::SunShadow::feederClassifyPadIso(),
+        IRPrefab::SunShadow::feederClassifyRingNonEmpty() ? 1 : 0
+    );
+}
+
 int g_autoProfileFrames = 0;
 int g_autoProfileCount = 0;
 int g_autoWarmupFrames = 0;
@@ -440,6 +463,21 @@ IRRender::DebugOverlayMode g_debugOverlay = IRRender::DebugOverlayMode::NONE;
 // (it drops zero visible voxels; the 2×2 isolation E2==A proved it). No-op
 // without --occlusion-cull.
 bool g_noPerVoxelOcclusion = false;
+// --feeder-classify-pad (#3010): a DIAGNOSTIC iso-texel pad on the shadow-feeder
+// classify box (`frameData_.visibleIsoBounds_`) and nothing else. It is the only
+// way to positive-fire stage 2's #1740 depth-only-feeder skip: at the shipped
+// +4-iso-px margin no on-screen pixel resolves from a feeder, so the skip is
+// invisible in every capture and a "byte-identical" result proves nothing.
+// A POSITIVE pad promotes off-screen feeders in the widened band to visibles
+// (the adequacy arm — must change no pixel); a NEGATIVE pad demotes on-screen
+// winners to feeders (the liveness arm — must change pixels, else the
+// instrument is vacuous). Shadow-neutral by construction at
+// `--subdivision-mode none`, where `feederSubCap == subdivisions == 1` makes a
+// voxel's stage-1 depth identical on either side of the classification, so only
+// stage 2's colour / entity-id tap can move. 0 (the default, and the flagless
+// path) is byte-identical to master. Driven by scripts/feeder-margin-verify.py.
+int g_feederClassifyPad = 0;
+bool g_feederClassifyPadSet = false;
 // --wave-freeze (#2332): bake each per-cell wave's phase-0 offset into the
 // cell's spawn position instead of attaching C_PeriodicIdle. The wave-scene
 // geometry (WaveMode::PerCell's per-cell (x+y+z) phase gradient) is the only
@@ -630,6 +668,14 @@ void registerCliArgs() {
         "With --occlusion-cull, disable only the #1812 per-voxel Hi-Z refine (keep the #1294 chunk "
         "cull) — the marginal-gate isolation"
     );
+    args.integer(
+        "--feeder-classify-pad",
+        "Diagnostic iso-texel pad on the shadow-feeder classify box only (#3010). "
+        "Positive promotes off-screen feeders to visibles, negative demotes "
+        "on-screen winners to feeders; 0 (default) is byte-identical to master. "
+        "Drives scripts/feeder-margin-verify.py",
+        0
+    );
     args.flag(
         "--wave-freeze",
         "Bake each cell's wave phase-0 offset into its spawn position instead of "
@@ -700,6 +746,8 @@ void readCliArgs() {
     g_debugOverlay = IRRender::debugOverlayModeFromString(args.getEnum("--debug-overlay").c_str());
     g_noPerVoxelOcclusion = args.getFlag("--no-per-voxel-occlusion");
     g_waveFreeze = args.getFlag("--wave-freeze");
+    g_feederClassifyPadSet = args.wasProvided("--feeder-classify-pad");
+    g_feederClassifyPad = args.getInt("--feeder-classify-pad");
 
     if (args.wasProvided("--mode")) {
         g_cliOverrides.mode_ = parseMode(args.getString("--mode"));
@@ -1213,6 +1261,20 @@ int main(int argc, char **argv) {
         );
     }
 
+    // #3010: after initSystems(), so VOXEL_TO_TRIXEL_STAGE_1 exists for the
+    // setter's IRSystem::findSystem resolution (before that there is nothing to
+    // bind to and the call is a silent no-op).
+    if (g_feederClassifyPad != 0) {
+        IRPrefab::SunShadow::setFeederClassifyPadIso(g_feederClassifyPad);
+        IR_LOG_WARN(
+            "Shadow-feeder CLASSIFY pad set to {} iso texels (--feeder-classify-pad, "
+            "#3010). DIAGNOSTIC ONLY: this moves band voxels between the feeder and "
+            "visible classifications so the #1740 depth-only skip can be positive-fired. "
+            "Captures from this run are NOT comparable to a reference set.",
+            g_feederClassifyPad
+        );
+    }
+
     IRRender::setCameraPosition2DIso(vec2(0.0f, 0.0f));
     IRRender::setCameraZoom(g_settings.initialZoom_);
     IRRender::setCameraVisualYaw(g_settings.initialYaw_);
@@ -1407,6 +1469,12 @@ void initSystems() {
         } else {
             cfg.shots_ = kShots;
             cfg.numShots_ = sizeof(kShots) / sizeof(kShots[0]);
+            // #3010: report the classify arm + its non-vacuity witness per shot,
+            // but only for a run that asked for the diagnostic — a flagless run
+            // keeps the empty hook it has always had.
+            if (g_feederClassifyPadSet) {
+                cfg.onCaptureFrame_ = &logFeederClassify;
+            }
         }
         renderPipeline.push_back(IRVideo::createAutoScreenshotSystem(cfg));
     }
