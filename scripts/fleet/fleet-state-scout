@@ -2826,10 +2826,13 @@ def write_atomic(path: Path, payload: str) -> None:
     # is only atomic within one filesystem, so a /tmp temp would silently degrade
     # to a non-atomic cross-device copy. fsync is durability insurance — the rename
     # is the reader-visibility barrier, not the fsync.
+    # Binary mode, not "w": a text-mode handle on Windows translates the
+    # payload's trailing "\n" to "\r\n", so the on-disk file lands one byte
+    # over whatever a caller computed from payload.encode("utf-8") (#3061).
     fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix="." + path.name + ".", suffix=".tmp")
     try:
-        with os.fdopen(fd, "w") as f:
-            f.write(payload)
+        with os.fdopen(fd, "wb") as f:
+            f.write(payload.encode("utf-8"))
             f.flush()
             os.fsync(f.fileno())
         os.replace(tmp, path)
