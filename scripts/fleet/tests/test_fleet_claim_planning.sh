@@ -285,6 +285,31 @@ echo "T7c: a FRESH same-host no-marker label is spared by the grace (claim/marke
 if grep -q -- "--remove-label fleet:planning-mac-fresh" "$REMOVE_LOG"; then bad "fresh no-marker label reaped inside the grace"; else ok "fresh no-marker label spared by the grace"; fi
 unset FLEET_CLAIM_STALE_SECS_PLANNING
 
+echo "T7d: CRLF-emitting python3 stub (regression guard for #3060) — vouched claim still kept"
+# Native python3 on Windows (MSYS2) CRLF-terminates every print() to stdout,
+# same class of bug as native jq (#3029): `while IFS=$'\t' read -r n label`
+# strips only the trailing \n, so the CR rides along on `label`. POSIX python3
+# emits LF, so T7 above is a vacuous pass on Linux/macOS CI whether or not the
+# `tr -d '\r'` fix is in place — this stub reproduces the Windows byte stream
+# hermetically so the regression is visible on every host. It CRLF-terminates
+# only the planning sweep's JSON-extraction script (matched by the
+# "fleet:planning-" substring literal in its source) and passes every other
+# python3 -c call (e.g. label_added_epoch's epoch parse) through untouched.
+REAL_PYTHON3="$(command -v python3)"
+python3() {
+    if [[ "${1:-}" == "-c" && "${2:-}" == *'fleet:planning-'* ]]; then
+        "$REAL_PYTHON3" "$@" | sed 's/$/\r/'
+    else
+        "$REAL_PYTHON3" "$@"
+    fi
+}
+: > "$REMOVE_LOG"; export FLEET_CLAIM_STALE_SECS_PLANNING=999999
+printf '80\n' > "$FLEET_CLAIMS_DIR/_prlabel-planning-worker"
+cmd_cleanup_gh "jakildev/IrredenEngine" >/dev/null 2>&1
+if grep -q -- "--remove-label fleet:planning-" "$REMOVE_LOG"; then bad "vouched label swept under CRLF-corrupted producer (log: $(cat "$REMOVE_LOG"))"; else ok "vouched claim survives a CRLF-corrupted producer; nothing swept"; fi
+unset -f python3
+unset FLEET_CLAIM_STALE_SECS_PLANNING
+
 echo
 echo "================================"
 echo "  PASS: $PASS    FAIL: $FAIL"

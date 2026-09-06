@@ -312,3 +312,24 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   source, not just at the first comparison site — the array is usually
   reused by more than one downstream consumer. Defensive, not
   host-conditional: a no-op on Linux/macOS, where `jq -r` already emits LF.
+- **Native `python3` on Windows CRLF-terminates every `print()` to stdout,
+  same as native `jq -r`.** A `while IFS=$'\t' read -r a b` loop consuming a
+  `python3 -c '... print(f"{n}\t{name}")'` producer strips only the trailing
+  `\n`, so the CR rides along on the *last* field of every line — on
+  `cmd_cleanup_gh`'s label sweeps (and `cmd_reset_sweep_host_claims`, which
+  shares the producer shape) that field is the label name, and it feeds
+  both a same-host liveness-marker path lookup (`$CLAIMS_DIR/_prlabel-<tag>-
+  <agent>\r` never matches the real marker file, so a live claim reads as a
+  confirmed orphan and gets swept) and the final `gh issue edit --remove-label
+  "$label_name"` call (#3060: `cmd_cleanup_gh`'s planning-sweep pass, #2711's
+  marker vouching). Pipe the producer through `tr -d '\r'` before the value is
+  captured — at the `python3 -c` invocation itself, not the first comparison
+  site, the same discipline as the `jq -r` gotcha — since a plan/label-name
+  string is usually reused by more than one downstream consumer. Defensive,
+  not host-conditional: a no-op on Linux/macOS, where `python3` never emits
+  CRLF regardless of stream type. Guard the fix with a **byte-level** check,
+  never grep: GNU grep on MSYS2 strips CRs from text input before matching,
+  and `$(...)` trims a trailing CR along with the trailing newline, so a grep
+  assert — or a one-line fixture — reads clean on the very host that has the
+  bug (`tests/test_fleet_claim_parked_release.sh` Phase 2d is the reference
+  shape: two-line fixture, assert on the first line, binary read).
