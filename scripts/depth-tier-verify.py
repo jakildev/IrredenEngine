@@ -37,6 +37,8 @@ import argparse
 import re
 import subprocess
 
+import verify_common
+
 # Pattern: [depth-probe-assert] pixel=(x,y) normDepth=… rawDist=… enc=…
 #          tier=N expected=M result=PASS|FAIL
 _ASSERT_RE = re.compile(
@@ -63,15 +65,15 @@ _DEFAULT_ONLY = "interpenetrate"
 def _run(cmd: list[str]) -> int:
     """Run a command, streaming output to the terminal; return its exit code."""
     print("+ " + " ".join(cmd), flush=True)
-    return subprocess.run(cmd).returncode
+    return subprocess.run(verify_common.platform_launch_argv(cmd)).returncode
 
 
 def _run_capture(cmd: list[str]) -> tuple[int, str]:
     """Run a command, tee output to the terminal, and return (exit_code, text)."""
     print("+ " + " ".join(cmd), flush=True)
     proc = subprocess.Popen(
-        cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-        text=True, errors="replace",
+        verify_common.platform_launch_argv(cmd), stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT, text=True, errors="replace",
     )
     lines: list[str] = []
     if proc.stdout is None:

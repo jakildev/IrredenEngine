@@ -72,6 +72,20 @@ def collect_full_frames(shots_dir: Path) -> list[Path]:
                   if FULL_FRAME_RE.fullmatch(p.name))
 
 
+def resolve_bash() -> str:
+    """Full path to a POSIX-capable bash.
+
+    Bare ``"bash"`` resolves fine via PATH on Linux/macOS. On Windows,
+    ``CreateProcess``'s own PATH search can land on the WSL launcher stub in
+    System32 instead of Git/MSYS bash — its filesystem namespace can't open
+    a native Windows path (#3052). ``shutil.which`` walks the same PATH
+    order Python trusts and lands on the right one.
+    """
+    if platform.system() != "Windows":
+        return "bash"
+    return shutil.which("bash") or r"C:\Program Files\Git\bin\bash.exe"
+
+
 def platform_launch_argv(cmd: list[str]) -> list[str]:
     """Rewrite an argv list so Windows's ``CreateProcess`` can launch it.
 
@@ -84,8 +98,7 @@ def platform_launch_argv(cmd: list[str]) -> list[str]:
     """
     if platform.system() != "Windows":
         return cmd
-    bash = shutil.which("bash") or r"C:\Program Files\Git\bin\bash.exe"
-    return [bash, "-lc", " ".join(shlex.quote(c) for c in cmd)]
+    return [resolve_bash(), "-lc", " ".join(shlex.quote(c) for c in cmd)]
 
 
 def run(cmd: list[str], cwd: Path | None = None, check: bool = True,
