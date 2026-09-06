@@ -22,6 +22,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+source "$(dirname "$0")/lib_preflight.sh"
 HEARTBEAT="$SCRIPT_DIR/fleet-heartbeat"
 
 if [[ ! -x "$HEARTBEAT" ]]; then

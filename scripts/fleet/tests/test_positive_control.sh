@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Tests for fleet-positive-control and lib_assert.sh's require_fleet_lib_dir
-# guard (#2713).
+# Tests for fleet-positive-control, lib_preflight.sh's require_fleet_lib_dir
+# guard (#2713), and the tree-wide ratchet on that guard's adoption (#2845).
 #
 # A positive control stages a pre-fix tree and runs the new suite against it.
 # Staging only the script under test leaves the fleet-* wrappers unable to find
@@ -23,9 +23,11 @@
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")/.." && pwd)
+source "$(dirname "$0")/lib_preflight.sh"
 REPO_ROOT=$(cd "$SCRIPT_DIR/../.." && pwd)
 WRAPPER="$SCRIPT_DIR/fleet-positive-control"
 LIB_ASSERT="$SCRIPT_DIR/tests/lib_assert.sh"
+LIB_PREFLIGHT="$SCRIPT_DIR/tests/lib_preflight.sh"
 
 [[ -x "$WRAPPER" ]] || { echo "test setup: fleet-positive-control not found at $WRAPPER" >&2; exit 2; }
 
@@ -53,7 +55,8 @@ run() { set +e; OUT=$("$@" 2>&1); RC=$?; set -e; }
 
 # --- the guard: require_fleet_lib_dir ---------------------------------------
 # Driven through a fresh bash that sources lib_assert with SCRIPT_DIR set, which
-# is exactly how the 23 conforming suites reach the auto-fire.
+# exercises the preflight's SCRIPT_DIR belt against a tree other than its own
+# location.
 probe_guard() {
     local dir="$1" driver="$TMPROOT/driver.sh"
     cat > "$driver" <<DRIVER
@@ -71,6 +74,10 @@ PARTIAL="$TMPROOT/partial/scripts/fleet"
 mkdir -p "$PARTIAL/tests"
 cp "$SCRIPT_DIR/fleet-claim" "$PARTIAL/fleet-claim"
 cp "$LIB_ASSERT" "$PARTIAL/tests/lib_assert.sh"
+# lib_assert.sh sources lib_preflight.sh from beside itself, so a stage holding
+# only the former is partial in a second, uninteresting way — stage both, and
+# the missing-modules discriminator stays the thing under test (#2845).
+cp "$LIB_PREFLIGHT" "$PARTIAL/tests/lib_preflight.sh"
 probe_guard "$PARTIAL"
 assert_eq "$RC" "2" "partial stage exits 2 (setup failure, not a result)"
 assert_contains "$OUT" "test setup: incomplete fleet script tree" "the abort names itself as a setup failure"
@@ -101,6 +108,166 @@ mkdir -p "$PYONLY"
 touch "$PYONLY/fleet_branch_match.py"
 probe_guard "$PYONLY"
 assert_eq "$RC" "0" "modules-without-wrappers does not trip the guard"
+
+echo "--- a stage carrying lib_assert.sh without lib_preflight.sh is a setup error ---"
+HALF="$TMPROOT/halflib/scripts/fleet"
+mkdir -p "$HALF/tests"
+cp "$SCRIPT_DIR/fleet-claim" "$HALF/fleet-claim"
+cp "$SCRIPT_DIR"/fleet_branch_match.py "$HALF/"
+cp "$LIB_ASSERT" "$HALF/tests/lib_assert.sh"
+cat > "$TMPROOT/halfdriver.sh" <<DRIVER
+set -euo pipefail
+source "$HALF/tests/lib_assert.sh"
+echo "REACHED-BODY"
+DRIVER
+run bash "$TMPROOT/halfdriver.sh"
+assert_eq "$RC" "2" "lib_assert without lib_preflight beside it exits 2"
+assert_contains "$OUT" "lib_preflight.sh missing beside lib_assert.sh" "the abort names the missing half"
+assert_absent "$OUT" "REACHED-BODY" "the driver body never runs"
+
+# --- the guard reaches suites that reach it by neither route (#2845) --------
+# One suite per shape a SCRIPT_DIR-conditional guard inside lib_assert.sh could
+# not see, since those are the shapes a regression would silently restore:
+#
+#   test_fleet_claim_model_gate.sh        never sources lib_assert.sh at all
+#   test_fleet_queue_ingest_plan_race.sh  sources it two lines before assigning
+#                                          SCRIPT_DIR, so such a guard would
+#                                          have had nothing to validate
+#
+# Measured on the same stage recipe without the preflight: model-gate exits 1
+# printing `PASS: 4  FAIL: 7` where the truth is `PASS: 11  FAIL: 0`. The tally
+# is the defect — a plausible number with nothing marking the run bogus — so the
+# assertions below pin the abort AND the absence of any tally to copy.
+echo "--- a partial stage aborts suites in both formerly-uncovered lanes ---"
+LANE_COMPLETE="$TMPROOT/lanes-complete"
+LANE_PARTIAL="$TMPROOT/lanes-partial"
+mkdir -p "$LANE_COMPLETE" "$LANE_PARTIAL"
+git -C "$REPO_ROOT" archive HEAD scripts/fleet | tar -x -C "$LANE_COMPLETE"
+git -C "$REPO_ROOT" archive HEAD scripts/fleet | tar -x -C "$LANE_PARTIAL"
+rm -f "$LANE_PARTIAL"/scripts/fleet/fleet_*.py
+
+for LANE_SUITE in test_fleet_claim_model_gate.sh test_fleet_queue_ingest_plan_race.sh; do
+    run bash "$LANE_PARTIAL/scripts/fleet/tests/$LANE_SUITE"
+    assert_eq "$RC" "2" "$LANE_SUITE: a partial stage exits 2, not a result"
+    assert_contains "$OUT" "test setup: incomplete fleet script tree" "$LANE_SUITE: the abort names itself a setup failure"
+    assert_absent "$OUT" "PASS:" "$LANE_SUITE: a partial stage prints NO tally"
+    assert_absent "$OUT" "passed:" "$LANE_SUITE: ... in either tally spelling"
+done
+
+echo "--- a complete stage leaves both lanes running normally ---"
+# The no-false-abort half. Only model-gate's tally is pinned: it is green on
+# every host, whereas asserting a second suite's pass state here would couple
+# this file to that suite's health rather than to the guard's behaviour.
+run bash "$LANE_COMPLETE/scripts/fleet/tests/test_fleet_claim_model_gate.sh"
+assert_eq "$RC" "0" "model-gate: a complete stage exits 0"
+assert_absent "$OUT" "incomplete fleet script tree" "model-gate: the guard stays quiet on a complete stage"
+assert_contains "$OUT" "FAIL: 0" "model-gate: a complete stage reports its truth tally"
+assert_absent "$OUT" "PASS: 0" "model-gate: the truth tally is a real run, not an empty one"
+
+run bash "$LANE_COMPLETE/scripts/fleet/tests/test_fleet_queue_ingest_plan_race.sh"
+assert_absent "$OUT" "incomplete fleet script tree" "plan-race: the guard stays quiet on a complete stage"
+assert_contains "$OUT" "FAIL:" "plan-race: the suite runs to its own tally"
+
+# --- the adoption ratchet ----------------------------------------------------
+# A guard is worth exactly its reach, and an opt-in one reaches whoever
+# remembered it. So the invariant is checked here instead: a suite that resolves
+# a fleet-* wrapper without sourcing the preflight above it fails CI the same
+# way the mis-stage it guards against would have (#2845).
+#
+# The hazard predicate matches any $VAR-rooted path resolving a fleet-* wrapper
+# or fleet_*.py module, with intervening segments allowed. It is deliberately
+# NOT anchored to "$SCRIPT_DIR/fleet-": the tree already carries
+# $SCRIPT_DIR/../fleet-rules-sweep, and scoping a matcher to the dominant
+# spelling rather than to the hazard is the exact mistake being fixed.
+HAZARD_RE='\$\{?[A-Za-z_][A-Za-z0-9_]*\}?[A-Za-z0-9_./-]*/fleet[-_]'
+GUARD_RE='^[[:space:]]*(source|\.)[[:space:]].*lib_(preflight|assert)\.sh'
+
+# preflight_adoption <file> — N/A | OK:<guard>:<hazard> | UNGUARDED:<hazard>
+#                                 | LATE:<guard>:<hazard>
+# Takes a path rather than scanning inline so the fixtures below can drive it
+# directly: a ratchet with no positive control can go vacuous unnoticed, which
+# is the same failure class as the hole it closes.
+preflight_adoption() {
+    local file="$1" hz gd
+    hz=$(grep -nE "$HAZARD_RE" "$file" 2>/dev/null | head -1 | cut -d: -f1 || true)
+    [[ -n "$hz" ]] || { echo "N/A"; return 0; }
+    gd=$(grep -nE "$GUARD_RE" "$file" 2>/dev/null | head -1 | cut -d: -f1 || true)
+    [[ -n "$gd" ]] || { echo "UNGUARDED:$hz"; return 0; }
+    if (( gd < hz )); then echo "OK:$gd:$hz"; else echo "LATE:$gd:$hz"; fi
+}
+
+echo "--- the adoption ratchet's own positive control ---"
+FIXDIR="$TMPROOT/ratchet"
+mkdir -p "$FIXDIR"
+
+cat > "$FIXDIR/unguarded.sh" <<'FIXTURE'
+set -euo pipefail
+SCRIPT_DIR=$(cd "$(dirname "$0")/.." && pwd)
+FLEET_CLAIM="$SCRIPT_DIR/fleet-claim"
+FIXTURE
+assert_contains "$(preflight_adoption "$FIXDIR/unguarded.sh")" "UNGUARDED" \
+    "a wrapper resolved with no preflight source anywhere is flagged"
+
+# The spelling a $SCRIPT_DIR/fleet- anchored matcher would miss; it exists on
+# master (test_fleet_rules_sweep.sh), so this is a live shape, not a hypothetical.
+cat > "$FIXDIR/dotdot.sh" <<'FIXTURE'
+set -euo pipefail
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+SWEEP="$SCRIPT_DIR/../fleet-rules-sweep"
+FIXTURE
+assert_contains "$(preflight_adoption "$FIXDIR/dotdot.sh")" "UNGUARDED" \
+    "the \$SCRIPT_DIR/../fleet-* spelling is a hazard the ratchet sees"
+
+cat > "$FIXDIR/late.sh" <<'FIXTURE'
+set -euo pipefail
+SCRIPT_DIR=$(cd "$(dirname "$0")/.." && pwd)
+FLEET_CLAIM="$SCRIPT_DIR/fleet-claim"
+source "$(dirname "$0")/lib_preflight.sh"
+FIXTURE
+assert_contains "$(preflight_adoption "$FIXDIR/late.sh")" "LATE" \
+    "a preflight source BELOW the wrapper reference is flagged, not accepted"
+
+cat > "$FIXDIR/adopted.sh" <<'FIXTURE'
+set -euo pipefail
+SCRIPT_DIR=$(cd "$(dirname "$0")/.." && pwd)
+source "$(dirname "$0")/lib_preflight.sh"
+FLEET_CLAIM="$SCRIPT_DIR/fleet-claim"
+FIXTURE
+assert_contains "$(preflight_adoption "$FIXDIR/adopted.sh")" "OK" \
+    "the adopted shape passes — the ratchet is not flagging everything"
+
+cat > "$FIXDIR/viaassert.sh" <<'FIXTURE'
+set -euo pipefail
+SCRIPT_DIR=$(cd "$(dirname "$0")/.." && pwd)
+source "$(dirname "$0")/lib_assert.sh"
+FLEET_CLAIM="$SCRIPT_DIR/fleet-claim"
+FIXTURE
+assert_contains "$(preflight_adoption "$FIXDIR/viaassert.sh")" "OK" \
+    "sourcing lib_assert.sh above the reference satisfies it too (it pulls the preflight in)"
+
+cat > "$FIXDIR/nohazard.sh" <<'FIXTURE'
+set -euo pipefail
+echo "this suite resolves no wrapper at all"
+FIXTURE
+assert_eq "$(preflight_adoption "$FIXDIR/nohazard.sh")" "N/A" \
+    "a suite that resolves no wrapper is out of the ratchet's domain"
+
+echo "--- every hazard-bearing suite in the tree has adopted the preflight ---"
+UNADOPTED=()
+for f in "$SCRIPT_DIR"/tests/test_*.sh; do
+    VERDICT=$(preflight_adoption "$f")
+    case "$VERDICT" in
+        "N/A"|OK:*) ;;
+        *) UNADOPTED+=("$(basename "$f") $VERDICT") ;;
+    esac
+done
+if (( ${#UNADOPTED[@]} == 0 )); then
+    ok "no suite resolves a fleet-* wrapper without the preflight above it"
+else
+    bad "no suite resolves a fleet-* wrapper without the preflight above it"
+    echo "        add: source \"\$(dirname \"\$0\")/lib_preflight.sh\" after the SCRIPT_DIR assignment"
+    printf '        %s\n' "${UNADOPTED[@]}"
+fi
 
 # --- containment computation survives mixed Windows path spellings (#3047) --
 # `git rev-parse --show-toplevel` yields REPO_ROOT in the Windows drive form

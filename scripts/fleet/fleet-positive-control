@@ -16,8 +16,9 @@
 # coverage with nothing to signal the number was bogus (#2713).
 #
 # Staging the whole directory with `git archive` puts that failure mode out of
-# reach. `require_fleet_lib_dir` in tests/lib_assert.sh is the backstop for
-# controls still run by hand.
+# reach. `tests/lib_preflight.sh` is the backstop for controls still run by
+# hand: every hazard-bearing suite sources it above its first wrapper
+# reference, and tests/test_positive_control.sh ratchets that adoption (#2845).
 #
 # Usage
 # -----

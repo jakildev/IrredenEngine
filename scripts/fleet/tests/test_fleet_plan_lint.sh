@@ -10,6 +10,7 @@
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")/.." && pwd)
+source "$(dirname "$0")/lib_preflight.sh"
 LINT="$SCRIPT_DIR/fleet-plan-lint"
 [[ -x "$LINT" ]] || { echo "test setup: fleet-plan-lint not executable at $LINT" >&2; exit 1; }
 

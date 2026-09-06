@@ -29,6 +29,7 @@
 
 set -uo pipefail
 SCRIPT_DIR=$(cd "$(dirname "$0")/.." && pwd)
+source "$(dirname "$0")/lib_preflight.sh"
 WRAP="$SCRIPT_DIR/fleet-dispatch-wrap"
 [[ -x "$WRAP" ]] || { echo "test setup: $WRAP not found"; exit 1; }
 

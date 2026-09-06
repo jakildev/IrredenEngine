@@ -51,6 +51,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+source "$(dirname "$0")/lib_preflight.sh"
 REBASE="$SCRIPT_DIR/fleet-rebase"
 
 if [[ ! -x "$REBASE" ]]; then

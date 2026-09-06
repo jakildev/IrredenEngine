@@ -24,6 +24,7 @@
 set -uo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")/.." && pwd)
+source "$(dirname "$0")/lib_preflight.sh"
 DISPATCHER="$SCRIPT_DIR/fleet-dispatcher"
 [[ -x "$DISPATCHER" ]] || { echo "test setup: fleet-dispatcher not found at $DISPATCHER" >&2; exit 1; }
 

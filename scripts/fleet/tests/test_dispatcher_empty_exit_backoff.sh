@@ -18,6 +18,7 @@
 set -uo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")/.." && pwd)
+source "$(dirname "$0")/lib_preflight.sh"
 DISPATCHER="$SCRIPT_DIR/fleet-dispatcher"
 
 if [[ ! -e "$DISPATCHER" ]]; then

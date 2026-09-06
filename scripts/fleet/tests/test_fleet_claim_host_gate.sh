@@ -37,6 +37,7 @@ set -euo pipefail
 export FLEET_SKIP_CLONE_FRESHNESS=1
 
 SCRIPT_DIR=$(cd "$(dirname "$0")/.." && pwd)
+source "$(dirname "$0")/lib_preflight.sh"
 FLEET_CLAIM="$SCRIPT_DIR/fleet-claim"
 
 # PASS/FAIL counters, ok/bad, and the summarize exit idiom (scripts/fleet's

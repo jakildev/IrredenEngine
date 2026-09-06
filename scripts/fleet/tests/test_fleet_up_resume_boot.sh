@@ -17,6 +17,7 @@
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")/.." && pwd)
+source "$(dirname "$0")/lib_preflight.sh"
 FLEET_UP="$SCRIPT_DIR/fleet-up"
 [[ -x "$FLEET_UP" ]] || { echo "test setup: fleet-up not found at $FLEET_UP" >&2; exit 1; }
 

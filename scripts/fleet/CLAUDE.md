@@ -127,9 +127,20 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   (#2848) — and reads each one's own summary line for the counts, so a suite
   that prints none, or that runs zero assertions, is a setup failure rather
   than a verdict.
-  `require_fleet_lib_dir` in `lib_assert.sh` is the backstop for controls still
-  run by hand — it fires automatically for suites that set `SCRIPT_DIR` before
-  sourcing.
+  `tests/lib_preflight.sh` is the backstop for controls still run by hand, and
+  a bash suite adopts it with one line after its `SCRIPT_DIR` assignment:
+  `source "$(dirname "$0")/lib_preflight.sh"`. Sourcing `lib_assert.sh` pulls
+  it in too, but only from that line down — put the preflight source **above
+  the first line that builds a path to a `fleet-*` wrapper**, which is what
+  `test_positive_control.sh`'s adoption ratchet checks. Don't scope a guard
+  like this to the file it happens to live in: the previous form fired only
+  for suites that sourced `lib_assert.sh` with `SCRIPT_DIR` already set —
+  49 of 91 hazard-bearing suites were uncovered, its documented
+  "call `require_fleet_lib_dir` explicitly" escape hatch collected zero takers
+  in two weeks, and a mis-staged lane-3 suite reported `PASS: 4  FAIL: 7`
+  against a truth of 11/11 (#2845). The ratchet is the durable half: adoption
+  is enforced tree-wide, not remembered, so a new suite that forgets the line
+  goes red instead of reporting a plausible-but-wrong tally.
 - **A new `tests/test_*.sh` file needs its executable bit committed**
   (`git update-index --chmod=+x` if `git add` didn't pick it up from your
   filesystem's mode). `run_all.sh` invokes suites through an explicit

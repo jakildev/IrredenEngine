@@ -11,6 +11,7 @@
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")/.." && pwd)
+source "$(dirname "$0")/lib_preflight.sh"
 FLEET_CLAIM="$SCRIPT_DIR/fleet-claim"
 source "$(dirname "$0")/lib_assert.sh"
 
