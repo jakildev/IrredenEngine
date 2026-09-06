@@ -3,7 +3,7 @@
 #
 # Covers the FLEET_EFFORT_<ROLE> override mechanism that mirrors the
 # concurrency-cap pattern:
-#   - built-in defaults (heavy roles xhigh, the rest high)
+#   - built-in defaults (implementation/review lanes high; epic-steward xhigh)
 #   - per-role env var override
 #   - per-role conf-file override
 #   - env var beats conf
@@ -65,7 +65,7 @@ unset FLEET_EFFORT FLEET_EFFORT_WORKER \
 # --- Test 1: built-in defaults ---------------------------------------------
 echo "T1: effort defaults (no conf, no env)"
 rm -f "$FLEET_CONF"
-assert_eq "$("$DISPATCHER" --print-effort worker)"          "xhigh" "worker lane defaults to xhigh"
+assert_eq "$("$DISPATCHER" --print-effort worker)"          "high"  "worker lane defaults to high (Claude 5-family work default)"
 assert_eq "$("$DISPATCHER" --print-effort opus-reviewer)"   "high"  "opus-reviewer defaults to high"
 assert_eq "$("$DISPATCHER" --print-effort merger)"          "high"  "merger defaults to high"
 assert_eq "$("$DISPATCHER" --print-effort sonnet-reviewer)" "high"  "sonnet-reviewer defaults to high"
@@ -95,8 +95,8 @@ rm -f "$FLEET_CONF"
 
 # --- Test 4b: deprecated per-lane effort is honored as a fallthrough -------
 echo "T4b: deprecated FLEET_EFFORT_OPUS_WORKER still tunes the worker lane"
-assert_eq "$(FLEET_EFFORT_OPUS_WORKER=high "$DISPATCHER" --print-effort worker)" \
-    "high"  "FLEET_EFFORT_OPUS_WORKER falls through to the worker lane"
+assert_eq "$(FLEET_EFFORT_OPUS_WORKER=medium "$DISPATCHER" --print-effort worker)" \
+    "medium" "FLEET_EFFORT_OPUS_WORKER falls through to the worker lane"
 assert_eq "$(FLEET_EFFORT_WORKER=xhigh FLEET_EFFORT_OPUS_WORKER=high "$DISPATCHER" --print-effort worker)" \
     "xhigh" "FLEET_EFFORT_WORKER wins over the deprecated fallthrough"
 
@@ -104,8 +104,8 @@ assert_eq "$(FLEET_EFFORT_WORKER=xhigh FLEET_EFFORT_OPUS_WORKER=high "$DISPATCHE
 echo "T5: global FLEET_EFFORT applies when no per-role value is set"
 assert_eq "$(FLEET_EFFORT=xhigh "$DISPATCHER" --print-effort opus-reviewer)" \
     "xhigh" "global FLEET_EFFORT lifts opus-reviewer"
-assert_eq "$(FLEET_EFFORT=high "$DISPATCHER" --print-effort worker)" \
-    "high"  "global FLEET_EFFORT lowers the worker lane"
+assert_eq "$(FLEET_EFFORT=low "$DISPATCHER" --print-effort worker)" \
+    "low"   "global FLEET_EFFORT tunes the worker lane"
 
 # --- Test 6: per-role beats global -----------------------------------------
 echo "T6: per-role value wins over global FLEET_EFFORT"

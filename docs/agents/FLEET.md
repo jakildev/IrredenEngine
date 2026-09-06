@@ -418,8 +418,12 @@ each task (`fleet:fable` / `fleet:opus` / `fleet:sonnet` label, set by
 ingest from the `**Model:**` body field). The dispatcher launches each
 worker iteration with the class of the task it's serving, so one worker
 lane runs different models on different tasks. Tasks may also carry an
-optional `**Effort:** low|medium|high|xhigh|max` line; when absent the
-class default applies (fable/opus → xhigh, sonnet → high).
+optional `**Effort:** low|medium|high|xhigh|max` line; when absent, work
+dispatches default to `high` for every class — the Claude 5-family models
+are tuned for `high`, and xhigh buys measurable gains only on
+design-shaped work. Planning dispatches and the architect panes run
+`xhigh` (plans are the fleet's design surface). Tag `**Effort:** xhigh`
+on the rare implementation task that has earned the extra depth.
 
 Class names are the stable queue vocabulary; the concrete model strings
 live in `scripts/fleet/fleet-common.sh`'s class defaults (consumed by
@@ -433,13 +437,19 @@ degrade to the Opus floor automatically; dispatched fable iterations
 also carry `--fallback-model` for mid-session resilience. Freeze a
 class on a specific release by pinning `FLEET_MODEL_FABLE` /
 `FLEET_MODEL_OPUS` / `FLEET_MODEL_SONNET` in `~/.fleet/fleet-up.conf`.
+Alias resolution is only as fresh as the installed claude CLI, so
+`fleet-up` logs the concrete model id each class resolved to at boot —
+when a resolved id lags a release you know shipped, update the CLI
+(`claude update`) and re-run `fleet-up`; architect sessions resume in
+place on the new resolution (`fleet-babysit` re-passes `--model` on
+every `--resume`).
 
-**fable — design-tier work.** Budget is the scarce resource;
-`FLEET_CONCURRENCY_MODEL_FABLE` (default 1) caps concurrent fable
-iterations fleet-wide. Fable is the *default* for the fleet's design
-surfaces — the architect panes launch on it, and `fleet:needs-plan`
-planning elects it (falling back to opus while the cap is saturated) —
-and *opt-in* per task via `Model: fable` for:
+**fable — design-tier work and the hardest implementation.** Budget is
+the scarce resource; `FLEET_CONCURRENCY_MODEL_FABLE` (default 1) caps
+concurrent fable iterations fleet-wide. Fable is the *default* for the
+fleet's design surfaces — the architect panes launch on it, and
+`fleet:needs-plan` planning elects it (falling back to opus while the
+cap is saturated) — and *opt-in* per task via `Model: fable` for:
 
 - Novel render-pipeline algorithm/stage design — a new compositing or
   lighting stage, a coordinate-space change, cross-backend (GL↔Metal)
@@ -448,6 +458,12 @@ and *opt-in* per task via `Model: fable` for:
   is the historically highest-re-attempt category in this repo.
 - Hard algorithmic problems elsewhere with the same shape — multiple
   failed attempts, or the solution space is genuinely open.
+- Complex, long-horizon implementation — multi-system work whose path
+  can't honestly be pre-planned (a lighting-pipeline overhaul, an
+  engine-wide performance target, a large cross-cutting migration). Tag
+  it fable **at filing time** with an intent-shaped plan (goal, locked
+  decisions, acceptance criteria) and let the worker own the path;
+  don't reserve fable for after cheaper classes have burned attempts.
 - Epic decomposition and design-blocked resolutions.
 - Gnarly cross-cutting refactors where long-range invariant reasoning is
   the whole job.

@@ -653,14 +653,15 @@ declare -A WORKER_LANE_DEFAULT_CLASS=(
 # caller env FLEET_EFFORT_<ROLE> > conf FLEET_EFFORT_<ROLE> > global
 # FLEET_EFFORT > built-in default. The effort here is only the lane
 # fallthrough — per-task Effort: and class resolution override it in
-# resolve_worker_class. Defaults: the heavy-reasoning worker lane (plus
-# the architects, launched by fleet-babysit, not dispatched) runs xhigh;
-# everything else runs high. opus-reviewer and merger run high (not
-# xhigh): their reasoning is bounded by the diff in front of them, so the
-# extra budget buys little. The deprecated FLEET_EFFORT_OPUS_WORKER is
+# resolve_worker_class. Defaults: implementation and review lanes run
+# high — the Claude 5-family default; xhigh is reserved for design
+# surfaces (planning dispatches via PLAN_EFFORT in fleet_task_class.py,
+# the architects launched by fleet-babysit, and the epic steward's
+# plan-amendment work). A task that has earned more carries its own
+# `**Effort:**` field. The deprecated FLEET_EFFORT_OPUS_WORKER is
 # honored as a fallthrough so a pre-P2 conf still tunes the lane.
 declare -A ROLE_EFFORT=(
-    ["worker"]="${_env_effort_worker:-${FLEET_EFFORT_WORKER:-${_env_effort_opus_worker:-${FLEET_EFFORT_OPUS_WORKER:-${FLEET_EFFORT:-xhigh}}}}}"
+    ["worker"]="${_env_effort_worker:-${FLEET_EFFORT_WORKER:-${_env_effort_opus_worker:-${FLEET_EFFORT_OPUS_WORKER:-${FLEET_EFFORT:-high}}}}}"
     ["sonnet-reviewer"]="${_env_effort_sonnet_reviewer:-${FLEET_EFFORT_SONNET_REVIEWER:-${FLEET_EFFORT:-high}}}"
     ["opus-reviewer"]="${_env_effort_opus_reviewer:-${FLEET_EFFORT_OPUS_REVIEWER:-${FLEET_EFFORT:-high}}}"
     ["merger"]="${_env_effort_merger:-${FLEET_EFFORT_MERGER:-${FLEET_EFFORT:-high}}}"

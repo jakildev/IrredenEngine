@@ -42,7 +42,12 @@ Resolution order mirrors the worker role docs' pickup priority:
                       never stalls behind a long fable implementation iteration.
 
 Effort: the task's ``**Effort:**`` field when present (scout validates it),
-else the class default below.
+else the class default below. Work dispatches (feedback, conflicts, tasks)
+default to ``high`` for every class — the Claude 5-family models are tuned
+for ``high``; opt a task up via ``**Effort:**`` only where the extra depth
+has earned it. Planning dispatches keep ``xhigh`` (``PLAN_EFFORT``): plans
+are the fleet's design surface, the same reason the architect panes run
+xhigh.
 
 The fable concurrency cap is enforced here by *skipping* fable items when
 the cap is reached — the lane then serves its next non-fable item instead
@@ -103,7 +108,16 @@ import os
 import platform
 import sys
 
-CLASS_DEFAULT_EFFORT = {"fable": "xhigh", "opus": "xhigh", "sonnet": "high"}
+# Work-dispatch effort defaults — `high` across the board. The Claude
+# 5-family models default to effort `high`, and xhigh buys measurable gains
+# only on design-shaped work; a task that needs more carries its own
+# `**Effort:**` field (validated by the scout, honored in `_class_effort`).
+CLASS_DEFAULT_EFFORT = {"fable": "high", "opus": "high", "sonnet": "high"}
+
+# Planning-dispatch effort. Plan authoring is the fleet's design surface
+# (the same reason the architect panes run xhigh), so fable/opus planning
+# keeps xhigh; the sonnet light-plan lane is mechanical by construction.
+PLAN_EFFORT = {"fable": "xhigh", "opus": "xhigh", "sonnet": "high"}
 
 # Review-severity labels that make a feedback fix opus-class. Nits-only
 # feedback (fleet:has-nits) stays sonnet.
@@ -394,7 +408,7 @@ def _candidates(slice_data, lane_default, host, fable_blocked=False):
         if pcls in seen_plan_classes:
             continue
         seen_plan_classes.add(pcls)
-        yield pcls, CLASS_DEFAULT_EFFORT[pcls], "plan"
+        yield pcls, PLAN_EFFORT[pcls], "plan"
 
 
 def plan_pick(slice_data, cls, fable_blocked):
