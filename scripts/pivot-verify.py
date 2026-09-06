@@ -28,7 +28,9 @@ Blocks (see ``g_pivotVerifyBlock`` in ``creations/demos/shape_debug/main.cpp``):
 
 ``focus-ctr`` additionally runs an SDF-probe twin (``--pivot-verify-sdf``)
 so the voxel-pool and SDF render paths' pivot conventions are compared A/B.
-The twin is REPORTED, never gated — see ``SDF_GATED`` (#2645).
+The twin is gated at its own floor-aware bound (``SDF_BOUND_GAME_PX``, #2851),
+so the SDF path's pivot convention is machine-checked against the same
+invariance contract; the printed voxel/SDF rows stay the A/B diagnostic.
 
 Two oracles, applied per block:
 
@@ -47,8 +49,11 @@ Two oracles, applied per block:
   reported but not gated. ``center-axis`` is gated at its own zoom-scaled
   bound (``CENTROID_BOUND_GAME_PX``) rather than ``--max-deviation``,
   because it consumes the derived focus and so carries the inherent #2641
-  residual — see that constant for the measurement. The SDF twin is exempt
-  even on a gated block (``SDF_GATED``, #2645) — no lattice, so no pin to hold.
+  residual — see that constant for the measurement. The SDF twin has no voxel
+  lattice to land on, so its centroid rides a destination-grid floor; it is
+  gated at ``SDF_BOUND_GAME_PX`` — that floor plus the same budget every gated
+  voxel pass gets — rather than at ``--max-deviation`` (#2645 measured the
+  floor, #2851 bounded it).
 
 Why a block falls in one bucket or the other — and what the reported-but-not-
 gated deviations mean — is ``docs/design/camera-yaw-pivot.md`` §"Known
@@ -91,20 +96,39 @@ FOCUS_ASSERT_BLOCKS = DEFAULT_PIVOT_BLOCKS | {"cursor-latch"}
 # not gated — see the module docstring.
 CENTROID_GATED_BLOCKS = {"focus-ctr", "focus-off", "background-center",
                          "center-axis"}
-# The SDF twin is a continuous-geometry A/B control, NOT a pin gate (#2645).
-# Its analytic silhouette has no voxel lattice to snap to, so its centroid is
-# quantized only by the destination pixel grid: dev_x measures one whole
-# game-resolution pixel at every zoom — 2.00px on a 2x (HiDPI) host, 1.00px on
-# a 1x one, both measured — flat over a 16x range (1280x720 game res rendered
-# to a 2560x1440 framebuffer on the 2x host, so outputScaleFactor == 2), i.e.
-# the smallest step the screen can represent. A pivot-anchor error is a
-# world-space offset and must scale with zoom; a destination-grid
-# quantization floor cannot, so no pivot fix can move it and gating on it is
-# a permanent false red. The voxel twin stays
-# gated and pins at <= 1.4px across the same sweep. This exemption is what
-# keeps `focus-ctr` gated for its voxel pass while its SDF twin only reports,
-# even though the block itself is in CENTROID_GATED_BLOCKS.
-SDF_GATED = False
+# The SDF twin's centroid gate, in GAME-RESOLUTION pixels — the same unit and
+# the same runtime `scale * bound` evaluation as CENTROID_BOUND_GAME_PX below,
+# with the zoom coefficient at zero (#2851).
+#
+# The twin is a continuous-geometry A/B control: its analytic silhouette has no
+# voxel lattice to snap to, so its centroid is quantized only by the
+# destination pixel grid. `dev_x` measures one whole game-resolution pixel at
+# every zoom — 2.00px on a 2x (HiDPI) host, 1.00px on a 1x one, both measured —
+# flat over a 16x range (1280x720 game res rendered to a 2560x1440 framebuffer
+# on the 2x host, so outputScaleFactor == 2), i.e. the smallest step the screen
+# can represent. A pivot-anchor error is a world-space offset and must scale
+# with zoom; a destination-grid quantization floor cannot, so no pivot fix can
+# move that floor and gating AT it would be a permanent false red (#2645). The
+# voxel twin has its own lattice and pins at <= 1.4px across the same sweep.
+#
+# So the bound is that floor (1.0 game px) PLUS the same 1.5px budget every
+# gated voxel pass gets from `--max-deviation` — measured from the twin's floor
+# instead of from zero. Zoom-invariant because the floor it clears is
+# zoom-invariant by construction, which is what the flat reading over z1..16
+# measures; separation from a real regression comes from the same
+# discriminator, since an anchor error of d world units reads d*zoom px and at
+# the default zoom 4 clears this bound severalfold (a pre-#2547-class focus
+# error is ~75 game px at z4). The floor gets a BOUND rather than an exemption:
+# dropping the twin from the exit code instead — #2648's remedy — makes it a
+# pass no incorrect implementation can fail, which is the inverse defect and
+# leaves the SDF path's pivot convention unchecked by anything (#2851).
+#
+# Stated in game px for the reason CENTROID_BOUND_GAME_PX gives below:
+# outputScaleFactor is a host DISPLAY property, so a framebuffer-px constant
+# calibrated on one host silently mis-scales on the other — a flat 3.5
+# framebuffer px would leave a 2x host 0.75 game px of margin over the floor
+# and a 1x host 2.5.
+SDF_BOUND_GAME_PX = 2.5
 # Blocks whose centroid gate is NOT `--max-deviation` but a measurement-derived
 # bound, as `(px_per_zoom, floor_px)` in GAME-RESOLUTION pixels. Evaluated as
 # `scale * (px_per_zoom * zoom + floor_px)`, where `scale` is the run's own
@@ -121,7 +145,7 @@ SDF_GATED = False
 #
 # - A fixed world-space focus error produces a screen orbit that scales with
 #   zoom — that is the `px_per_zoom` term. On top of it sits the SAME
-#   destination-grid quantization floor the `SDF_GATED` comment above
+#   destination-grid quantization floor the `SDF_BOUND_GAME_PX` comment above
 #   documents: one whole game-resolution pixel, zoom-independent by
 #   construction. A deviation carrying both terms cannot be bounded with
 #   uniform margin by any single px/zoom constant — measured, the ratio falls
@@ -200,10 +224,10 @@ def _output_scale_factor(frame: Path, config: Path) -> float:
 
     Every deviation this harness scores is measured on the captured
     FRAMEBUFFER, but the quantum those deviations land on is one
-    GAME-RESOLUTION pixel (see ``SDF_GATED``). The ratio between the two is a
-    host display property — 2 on a HiDPI macOS host, 1 on Windows/Linux at 1x
-    — so a bound stated in game px has to be scaled by it before it reaches
-    ``jitter_probe``, which only speaks framebuffer px.
+    GAME-RESOLUTION pixel (see ``SDF_BOUND_GAME_PX``). The ratio between the
+    two is a host display property — 2 on a HiDPI macOS host, 1 on
+    Windows/Linux at 1x — so a bound stated in game px has to be scaled by it
+    before it reaches ``jitter_probe``, which only speaks framebuffer px.
 
     Read from the frame itself rather than assumed, so the same constant is
     correct on every host without a per-host table to keep in sync.
@@ -271,6 +295,26 @@ def main(argv: list[str] | None = None) -> int:
     for block in blocks:
         if block not in ALL_BLOCKS:
             raise SystemExit(f"unknown block '{block}' (choose from {ALL_BLOCKS})")
+        # Every pass has to reach a gate. A block in NEITHER classification set
+        # scores no oracle at all; before #2851 it fell through to an ungated
+        # verdict, so a 200px drift on it exited 0. Fail here, before any
+        # capture runs, rather than at the verdict lookup below (#2851 §4).
+        if block not in CENTROID_GATED_BLOCKS | FOCUS_ASSERT_BLOCKS:
+            raise SystemExit(
+                f"block '{block}' is in neither CENTROID_GATED_BLOCKS "
+                f"{sorted(CENTROID_GATED_BLOCKS)} nor FOCUS_ASSERT_BLOCKS "
+                f"{sorted(FOCUS_ASSERT_BLOCKS)} — no oracle would gate it. "
+                "Classify it in one (or both) before adding it to ALL_BLOCKS.")
+    # An SDF twin skips the focus oracle by construction (the `not sdf` guard
+    # below), so the centroid is its ONLY gate. A classified-but-not-
+    # centroid-gated SDF block clears the per-block check above and would then
+    # fall through the verdict lookup — loud, but only after its captures had
+    # already run. Assert the containment up front instead.
+    ungated_sdf = sorted(set(SDF_BLOCKS) - CENTROID_GATED_BLOCKS)
+    if ungated_sdf:
+        raise SystemExit(
+            f"SDF_BLOCKS {ungated_sdf} are not in CENTROID_GATED_BLOCKS — an "
+            "SDF twin runs no focus oracle, so its centroid is its only gate.")
     zooms = args.zoom if args.zoom else [4.0]
 
     worktree = verify_common.detect_worktree_root(Path.cwd())
@@ -329,33 +373,37 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"[pivot-verify] ({label}) focus assert: {detail}",
                       file=sys.stderr)
 
-        # Whole-silhouette oracle. Always measured; gated only where it is a
-        # valid pin (CENTROID_GATED_BLOCKS), at that block's own bound, and
-        # never for the SDF twin, whose continuous silhouette rides a
-        # destination-grid floor (SDF_GATED).
-        bound = CENTROID_BOUND_GAME_PX.get(block)
+        # Whole-silhouette oracle. Always measured; gated where it is a valid
+        # pin (CENTROID_GATED_BLOCKS), at that pass's own bound. The SDF twin
+        # takes the flat, floor-aware SDF_BOUND_GAME_PX; a voxel pass takes its
+        # block's zoom-scaled CENTROID_BOUND_GAME_PX entry if it has one. The
+        # two branches are disjoint — a twin never consults the block-keyed
+        # table, so neither bound can silently displace the other.
         max_deviation = args.max_deviation
-        if bound is not None:
-            px_per_zoom, floor_px = bound
+        if sdf:
             scale = _output_scale_factor(frames[0], config_path)
-            max_deviation = max(max_deviation,
-                                scale * (px_per_zoom * zoom + floor_px))
+            max_deviation = max(max_deviation, scale * SDF_BOUND_GAME_PX)
+        else:
+            bound = CENTROID_BOUND_GAME_PX.get(block)
+            if bound is not None:
+                px_per_zoom, floor_px = bound
+                scale = _output_scale_factor(frames[0], config_path)
+                max_deviation = max(max_deviation,
+                                    scale * (px_per_zoom * zoom + floor_px))
         centroid, dev_x, dev_y, _ = _score_pass(probe_exe, frames,
                                                 max_deviation)
-        centroid_gated = (block in CENTROID_GATED_BLOCKS
-                          and (SDF_GATED if sdf else True))
-        if centroid_gated:
+        if block in CENTROID_GATED_BLOCKS:
             verdict = centroid if focus in ("-", "OK") else "FOCUS-BAD"
-        elif focus == "-":
-            # Neither oracle gates this pass — the SDF twin (#2645). Its real
-            # numbers still print; it just cannot fail the run.
-            verdict = "REPORT"
         else:
+            # Not centroid-gated, so the focus oracle is this pass's only gate.
+            # The up-front classification check guarantees `focus` is scored
+            # here, so the lookup cannot miss; if it ever does, KeyError is the
+            # right loud failure (#2851 §4).
             verdict = {"OK": "FOCUS-OK", "BAD": "FOCUS-BAD",
                        "NONE": "NO-ASSERT"}[focus]
         results.append((label, verdict, dev_x, dev_y, len(frames), focus))
 
-    passing = {"PINNED", "FOCUS-OK", "REPORT"}
+    passing = {"PINNED", "FOCUS-OK"}
     print()
     print(f"{'pass':<28} {'verdict':<10} {'dev_x(px)':>10} {'dev_y(px)':>10} "
           f"{'frames':>7} {'focus':>7}")
@@ -367,11 +415,11 @@ def main(argv: list[str] | None = None) -> int:
             failed += 1
     print()
     print("verdicts: PINNED = silhouette held (threshold "
-          f"{args.max_deviation}px, or a block's own zoom-scaled bound from "
-          "CENTROID_BOUND_GAME_PX) · FOCUS-OK = derived focus matched "
-          "the analytic pin; the silhouette deviation is reported, not gated "
-          "· REPORT = SDF twin, measured but ungated (see the module "
-          "docstring)")
+          f"{args.max_deviation}px, or the pass's own bound in game px — "
+          "a block's zoom-scaled CENTROID_BOUND_GAME_PX entry, or "
+          f"SDF_BOUND_GAME_PX ({SDF_BOUND_GAME_PX:g}) for the SDF twin) "
+          "· FOCUS-OK = derived focus matched the analytic pin; the "
+          "silhouette deviation is reported, not gated")
     if failed:
         print(f"pivot-verify: {failed}/{len(results)} passes FAILED")
         return 1
