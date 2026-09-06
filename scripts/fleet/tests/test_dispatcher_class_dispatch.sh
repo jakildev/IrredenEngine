@@ -551,8 +551,8 @@ case "$out" in
 esac
 rm -f "$FLEET_RESERVATIONS_DIR/pool-2.json"
 
-# --- T32+: planning circuit breaker (#94-shaped sink) -------------------------
-# gh is stubbed so park_unplannable_issue's label swap + comment are observable.
+# --- T32+: per-target dispatch cap (the planning circuit breaker, generalized)
+# gh is stubbed so park_target's label add + comment are observable.
 export GH_LOG="$TMPROOT/gh.log"
 cat > "$STUB_BIN/gh" <<'GHEOF'
 #!/usr/bin/env bash
@@ -560,47 +560,61 @@ printf '%s\n' "$*" >> "$GH_LOG"
 exit 0
 GHEOF
 chmod +x "$STUB_BIN/gh"
-COUNTS_DIR="$FLEET_STATE_DIR/plan-dispatch-counts"
+COUNTS_DIR="$FLEET_STATE_DIR/target-dispatch-counts"
 write_slice worker '{"tasks_open":[],"feedback_prs":[],"needs_plan":[{"number":99,"repo":"engine","labels":[]},{"number":120,"repo":"engine","labels":[]}]}'
 
 echo "T32: candidate at the cap is parked and the next line assigned"
 rm -rf "$COUNTS_DIR"; mkdir -p "$COUNTS_DIR"; : > "$GH_LOG"
-printf '2' > "$COUNTS_DIR/engine-99"
-assert_eq "$(FLEET_PLAN_DISPATCH_CAP=2 STUB_GRANT='engine:120' plan_assign)" "target=plan:engine:120" \
-    "engine:99 at cap -> parked, engine:120 assigned"
+printf '2' > "$COUNTS_DIR/plan-engine-99"
+assert_eq "$(FLEET_TARGET_DISPATCH_CAP=2 STUB_GRANT='engine:120' plan_assign)" "target=plan:engine:120" \
+    "plan:engine:99 at cap -> parked, engine:120 assigned"
 # #3034 park semantics: ADD fleet:needs-human only — fleet:needs-plan stays
-# on (still true; re-entry = the human removing the park label).
-grep -q 'issue edit 99 .*--add-label fleet:needs-human' "$GH_LOG" \
+# on (re-entry = the human removing the park label).
+grep -q 'api repos/jakildev/IrredenEngine/issues/99/labels --method POST -f labels\[\]=fleet:needs-human' "$GH_LOG" \
     && { PASS=$((PASS+1)); echo "  ok: parked by adding fleet:needs-human"; } \
     || { FAIL=$((FAIL+1)); echo "  FAIL: park label add missing: $(cat "$GH_LOG")"; }
-grep -q -- '--remove-label fleet:needs-plan' "$GH_LOG" \
-    && { FAIL=$((FAIL+1)); echo "  FAIL: park stripped fleet:needs-plan (must stay per #3034): $(cat "$GH_LOG")"; } \
+grep -q 'needs-plan' "$GH_LOG" \
+    && { FAIL=$((FAIL+1)); echo "  FAIL: park touched fleet:needs-plan (must stay per #3034): $(cat "$GH_LOG")"; } \
     || { PASS=$((PASS+1)); echo "  ok: fleet:needs-plan kept (the #3034 contract)"; }
-grep -q 'issue comment 99 ' "$GH_LOG" \
-    && { PASS=$((PASS+1)); echo "  ok: park comment posted"; } \
+grep -q 'api repos/jakildev/IrredenEngine/issues/99/comments -f body=Dispatch circuit breaker: 2 dispatches of `plan:engine:99`' "$GH_LOG" \
+    && { PASS=$((PASS+1)); echo "  ok: park comment posted, naming the target and count"; } \
     || { FAIL=$((FAIL+1)); echo "  FAIL: park comment missing: $(cat "$GH_LOG")"; }
-[[ ! -f "$COUNTS_DIR/engine-99" ]] \
-    && { PASS=$((PASS+1)); echo "  ok: parked issue's counter cleared"; } \
+[[ ! -f "$COUNTS_DIR/plan-engine-99" ]] \
+    && { PASS=$((PASS+1)); echo "  ok: parked target's counter cleared"; } \
     || { FAIL=$((FAIL+1)); echo "  FAIL: counter left after park"; }
 
-echo "T33: a granted assignment increments the per-issue counter"
+echo "T33: a granted assignment increments the per-target counter"
 rm -rf "$COUNTS_DIR"; : > "$GH_LOG"
 assert_eq "$(STUB_GRANT='engine:99' plan_assign)" "target=plan:engine:99" "assignment granted"
-assert_eq "$(cat "$COUNTS_DIR/engine-99" 2>/dev/null)" "1" "counter recorded one dispatch"
+assert_eq "$(cat "$COUNTS_DIR/plan-engine-99" 2>/dev/null)" "1" "counter recorded one dispatch"
 assert_eq "$(STUB_GRANT='engine:99' plan_assign)" "target=plan:engine:99" "second assignment granted"
-assert_eq "$(cat "$COUNTS_DIR/engine-99" 2>/dev/null)" "2" "counter incremented"
+assert_eq "$(cat "$COUNTS_DIR/plan-engine-99" 2>/dev/null)" "2" "counter incremented"
 [[ ! -s "$GH_LOG" ]] \
     && { PASS=$((PASS+1)); echo "  ok: no gh call below the cap"; } \
     || { FAIL=$((FAIL+1)); echo "  FAIL: gh called below the cap: $(cat "$GH_LOG")"; }
 
-echo "T34: FLEET_PLAN_DISPATCH_CAP=0 disables the breaker"
+echo "T34: FLEET_TARGET_DISPATCH_CAP=0 disables the breaker"
 rm -rf "$COUNTS_DIR"; mkdir -p "$COUNTS_DIR"; : > "$GH_LOG"
-printf '99' > "$COUNTS_DIR/engine-99"
-assert_eq "$(FLEET_PLAN_DISPATCH_CAP=0 STUB_GRANT='engine:99' plan_assign)" "target=plan:engine:99" \
+printf '99' > "$COUNTS_DIR/plan-engine-99"
+assert_eq "$(FLEET_TARGET_DISPATCH_CAP=0 STUB_GRANT='engine:99' plan_assign)" "target=plan:engine:99" \
     "cap=0 -> assignment proceeds regardless of count"
 [[ ! -s "$GH_LOG" ]] \
     && { PASS=$((PASS+1)); echo "  ok: cap=0 never parks"; } \
     || { FAIL=$((FAIL+1)); echo "  FAIL: cap=0 still called gh: $(cat "$GH_LOG")"; }
+
+echo "T35: a task target is capped the same way — parked on its issue, the next task assigned"
+rm -rf "$COUNTS_DIR"; mkdir -p "$COUNTS_DIR"; : > "$GH_LOG"
+write_slice worker '{"tasks_open":[{"issue":"#7","model":"opus","owner":"free","blocked":false,"repo":"game"},{"issue":"#8","model":"opus","owner":"free","blocked":false,"repo":"game"}],"feedback_prs":[],"needs_plan":[]}'
+printf '3' > "$COUNTS_DIR/task-game-7"
+assert_eq "$(FLEET_TARGET_DISPATCH_CAP=3 assign worker)" "target=task:game:8" \
+    "task:game:7 at cap -> parked, task:game:8 assigned"
+grep -q 'api repos/jakildev/irreden/issues/7/labels --method POST -f labels\[\]=fleet:needs-human' "$GH_LOG" \
+    && { PASS=$((PASS+1)); echo "  ok: task parked on its own repo's issue"; } \
+    || { FAIL=$((FAIL+1)); echo "  FAIL: task park label add missing: $(cat "$GH_LOG")"; }
+grep -q -- '--repo game claim 7 pool-3' "$FLEET_CLAIM_LOG" \
+    && { FAIL=$((FAIL+1)); echo "  FAIL: capped task was still claimed: $(cat "$FLEET_CLAIM_LOG")"; } \
+    || { PASS=$((PASS+1)); echo "  ok: capped task never reaches fleet-claim"; }
+assert_eq "$(cat "$COUNTS_DIR/task-game-8" 2>/dev/null)" "1" "the assigned task's counter started"
 rm -rf "$COUNTS_DIR"
 
 summarize "fleet-dispatcher class-dispatch tests"

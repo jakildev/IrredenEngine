@@ -198,6 +198,33 @@ declare -A FLEET_TARGET_RELEASE=(
     [feedback]=amending-release [conflict]=resolving-release [plan]=planning-release
     [review]=review-release [planreview]=review-release [smoke]=review-release
 )
+# The lane claim LABEL prefix each kind's claim writes (`<prefix><host>-<agent>`)
+# — what fleet-claim's claim arms compose (task/stack: cmd_claim's
+# `fleet:claim-`; the rest: their _cmd_pr_label_claim prefix). The
+# dispatcher's completion contract hands the composed label to
+# fleet_completion.py, so the python holds no kind vocabulary.
+# test_fleet_common_targets.sh pins this table against the fleet-claim source.
+declare -A FLEET_TARGET_LABEL=(
+    [task]="fleet:claim-" [stack]="fleet:claim-" [feedback]="fleet:amending-"
+    [conflict]="fleet:resolving-" [plan]="fleet:planning-"
+    [review]="fleet:reviewing-" [planreview]="fleet:reviewing-" [smoke]="fleet:reviewing-"
+)
+
+# `task:engine:1969` -> `task-engine-1969`: the one per-target file key
+# (dispatch counts, abandonment, decline memory, salvage, handoff).
+fleet_target_key() { printf '%s\n' "${1//:/-}"; }
+
+# The worktrees a pane basename owns — the engine one and its game twin —
+# one per line, existing ones only. $1 = basename, $2 = engine root
+# (detected when omitted).
+fleet_pane_worktrees() {
+    local base="$1" engine="${2:-}" wt
+    [[ -n "$engine" ]] || engine="$(detect_engine_root)"
+    for wt in "$engine/.claude/worktrees/$base" "$engine/creations/game/.claude/worktrees/$base"; do
+        [[ -d "$wt" ]] && printf '%s\n' "$wt"
+    done
+    return 0
+}
 
 # fleet_parse_target <target> — split into FLEET_TARGET_KIND / _REPO / _NUM /
 # _EXTRA. Exit 1 on anything malformed (unknown kind, a repo other than

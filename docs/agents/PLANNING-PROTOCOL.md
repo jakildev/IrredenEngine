@@ -391,19 +391,14 @@ same disagreement. Same re-entry as step 2's park: the human removes
 `fleet:needs-human` once they have ruled, `fleet:needs-plan` is still on, and the
 issue is re-planned against the decision.
 
-**Planning circuit breaker (dispatcher-enforced backstop to the #3034
-park).** The park above relies on the planner *reaching and recording* the
-unplannable verdict. An issue whose dispatches keep releasing without either
-a plan or a park is the residual failure mode, and it is a sink for the
-fleet's most expensive iterations (one issue measured 41 fable/xhigh
-dispatches, each re-affirming the same verdict). After
-`FLEET_PLAN_DISPATCH_CAP` granted planning dispatches on a host (default 5)
-with `fleet:needs-plan` still live, the dispatcher applies the **same #3034
-park mechanically** — adds `fleet:needs-human`, keeps `fleet:needs-plan`,
-comments — instead of assigning again. Re-entry is identical to the
-planner's park: the human removes `fleet:needs-human`, and the per-issue
-counter (cleared at park, TTL `FLEET_PLAN_DISPATCH_COUNT_TTL`, default 7
-days) starts fresh.
+**Mechanical backstop to the #3034 park.** The park above relies on the
+planner *reaching and recording* the unplannable verdict; an issue whose
+dispatches keep releasing without either a plan or a park is caught by the
+dispatcher's per-target dispatch cap (`FLEET_TARGET_DISPATCH_CAP`,
+[`FLEET.md` § "How a launch ends"](FLEET.md)), which applies the same park
+— adds `fleet:needs-human`, keeps `fleet:needs-plan`, comments — after the
+cap's worth of `plan` dispatches on a host. Re-entry is identical: the human
+removes `fleet:needs-human`.
 
 ### Human: requesting plan changes (`human:revise-plan`)
 

@@ -76,8 +76,7 @@ Don't re-check these — wasted Opus budget. Spend the pass on the
 ## Your assignment for this iteration
 
 The contract — one pre-claimed item per launch, its `review-claim`
-already held under your basename, the walk-away release +
-`[opus-reviewer] declined <target>: <reason>` line — lives in
+already held under your basename, the `fleet-claim decline` walk-away — lives in
 [docs/agents/FLEET-RUNTIME.md § The dispatch target](../../docs/agents/FLEET-RUNTIME.md#the-dispatch-target--one-item-per-launch).
 With `FLEET_DISPATCH_TARGET` set, skip startup step 4 (the cache read)
 and step 5, and act on that item alone:

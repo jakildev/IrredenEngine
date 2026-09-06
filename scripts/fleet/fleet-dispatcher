@@ -126,7 +126,9 @@ else
     fleet_release_assignment() { :; }
     fleet_parse_target() { return 1; }
     fleet_repo_ns() { FLEET_NS=(); }
-    declare -A FLEET_TARGET_CLAIM=() FLEET_TARGET_RELEASE=()
+    fleet_target_key() { printf '%s\n' "${1//:/-}"; }
+    fleet_pane_worktrees() { :; }
+    declare -A FLEET_TARGET_CLAIM=() FLEET_TARGET_RELEASE=() FLEET_TARGET_LABEL=()
 fi
 
 # --- Per-role concurrency cap config ---------------------------------------
@@ -881,12 +883,15 @@ write_dispatch_record() {
     # after one item) and derive_dispatch_outcome (productive by
     # assignment). A `plan` target is also stamped as the #2197
     # `plan_issue` for readers that predate targets.
-    local role="$1" pane_id="$2" class="${3:-}" target="${4:-}"
+    # $5 = the pane's worktree basename the claim was taken under — the
+    # completion contract at exit needs it to name the claim label.
+    local role="$1" pane_id="$2" class="${3:-}" target="${4:-}" agent="${5:-}"
     local ts epoch extra=""
     ts=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
     epoch=$(date +%s)   # read back by cleanup_stale_dispatches for the empty-exit streak
     if [[ -n "$target" ]]; then
         extra=$(printf ',"target":"%s"' "$target")
+        [[ -n "$agent" ]] && extra+=$(printf ',"agent":"%s"' "$agent")
         [[ "$target" == plan:* ]] && extra+=$(printf ',"plan_issue":"%s"' "${target#plan:}")
     fi
     mkdir -p "$DISPATCH_DIR"
@@ -1020,7 +1025,7 @@ reset_empty_streak() {
 # A second counter beside the streak file — same path convention, `.standdown`
 # suffix — holding the number of CONSECUTIVE standdowns for (role, class); its
 # mtime is when the last one happened (the same count-plus-mtime shape as
-# plan-dispatch-counts). Bumped when dispatch_role stands a lane down; cleared
+# target-dispatch-counts). Bumped when dispatch_role stands a lane down; cleared
 # with the streak when a dispatch claims work (record_dispatch_outcome), which
 # is the only reset — the standdown branch resets the streak alone, so the
 # count accumulates across standdowns.
@@ -1124,11 +1129,150 @@ derive_dispatch_outcome() {
     fi
 }
 
+# --- Completion contract (fleet_completion.py) -------------------------------
+#
+# For a target-bound dispatch, cleanup asks the TARGET whether the iteration
+# discharged it — never the pane: `declined` (a `declined:` comment from this
+# pane since dispatch, written by `fleet-claim decline`), `abandoned` (the
+# lane's claim label for this pane still standing with no record — for a
+# task, with no open PR referencing it), or `finished`. Read off GitHub: the
+# issue itself (labels + updated_at; the issues endpoint serves PRs too), its
+# comments since dispatch, and — for the kinds whose claim label rides a PR,
+# the ones FLEET_TARGET_RELEASE releases with plain `release` — the repo's
+# open-PR list, fetched at most once per cleanup pass. `unknown` when gh
+# cannot answer, which keeps the marker verdict.
+HOST_KEY=""
+host_key() {  # this host's claim-label key (mac|linux|windows), derived once
+    [[ -n "$HOST_KEY" ]] || HOST_KEY=$(fleet-claim host 2>/dev/null || echo unknown)
+    printf '%s\n' "$HOST_KEY"
+}
+
+ASSESS_TMP=""
+ASSESS_PRS_PATH=""
+declare -A ASSESS_PRS=()
+assess_pass_begin() { ASSESS_TMP=$(mktemp -d 2>/dev/null || true); ASSESS_PRS=(); }
+assess_pass_end() {
+    [[ -n "$ASSESS_TMP" ]] && rm -rf "$ASSESS_TMP"
+    ASSESS_TMP=""
+    ASSESS_PRS=()
+}
+
+# Sets ASSESS_PRS_PATH to the pass-cached open-PR list for repo slug $1
+# (empty when gh could not list). A variable, not stdout: a command
+# substitution would fork away the cache.
+assess_prs_file() {
+    if [[ -z "${ASSESS_PRS[$1]+x}" ]]; then
+        local f="$ASSESS_TMP/prs-${1//\//-}.json"
+        gh pr list --repo "$1" --state open --json number,headRefName,body,labels \
+            --limit 300 > "$f" 2>/dev/null || { rm -f "$f"; f=""; }
+        ASSESS_PRS[$1]="$f"
+    fi
+    ASSESS_PRS_PATH="${ASSESS_PRS[$1]}"
+}
+
+# Sets ASSESS_LINE to `<verdict>\t<updated_at>\t<detail>`: verdict finished|
+# declined|abandoned, or `unknown` with the rest empty. A variable rather
+# than stdout so the caller stays in this shell and the pass cache persists.
+# $1 = target, $2 = agent (the worktree basename the claim was taken
+# under), $3 = dispatch epoch.
+ASSESS_LINE=""
+assess_target_completion() {
+    local target="$1" agent="$2" since="$3"
+    ASSESS_LINE=$'unknown\t\t'
+    fleet_parse_target "$target" || return 0
+    command -v gh >/dev/null 2>&1 || return 0
+    [[ -n "$ASSESS_TMP" ]] || assess_pass_begin
+    local slug key since_iso out
+    local -a prs_arg=()
+    slug=$(plan_repo_slug "$FLEET_TARGET_REPO")
+    key=$(fleet_target_key "$target")
+    since_iso=$(date -u -d "@$since" '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null \
+        || date -u -r "$since" '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || echo "1970-01-01T00:00:00Z")
+    if ! gh api "repos/$slug/issues/$FLEET_TARGET_NUM" > "$ASSESS_TMP/$key.issue.json" 2>/dev/null \
+        || ! gh api -X GET "repos/$slug/issues/$FLEET_TARGET_NUM/comments" \
+            -f "since=$since_iso" -f per_page=100 > "$ASSESS_TMP/$key.comments.json" 2>/dev/null; then
+        return 0
+    fi
+    if [[ "${FLEET_TARGET_RELEASE[$FLEET_TARGET_KIND]:-}" == release ]]; then
+        assess_prs_file "$slug"
+        [[ -n "$ASSESS_PRS_PATH" ]] && prs_arg=(--prs-json "$ASSESS_PRS_PATH")
+    fi
+    out=$(python3 "$FLEET_LIB_DIR/fleet_completion.py" assess \
+        --claim-label "${FLEET_TARGET_LABEL[$FLEET_TARGET_KIND]:-fleet:claim-}$(host_key)-$agent" \
+        --host-agent "$(host_key)-$agent" --since "$since" \
+        --number "$FLEET_TARGET_NUM" --repo "$FLEET_TARGET_REPO" \
+        --issue-json "$ASSESS_TMP/$key.issue.json" \
+        --comments-json "$ASSESS_TMP/$key.comments.json" \
+        ${prs_arg[@]+"${prs_arg[@]}"} 2>/dev/null) || out=""
+    case "${out%%$'\t'*}" in
+        finished|declined|abandoned) ASSESS_LINE="$out" ;;
+    esac
+}
+
+# The decline memory the resolver reads (fleet_task_class._declined): the
+# item's updated_at as fetched AFTER the iteration's comment and release
+# bumped it — the value the scout's next poll carries — so this host skips
+# the item until it changes. $1 = target, $2 = updated_at, $3 = detail.
+remember_decline() {
+    local f
+    f="$STATE_DIR/declined/$(fleet_target_key "$1")"
+    [[ -n "$2" ]] || return 0
+    mkdir -p "${f%/*}" 2>/dev/null || true
+    printf '%s\n%s\n' "$2" "$3" > "$f" 2>/dev/null || true
+}
+
+# An abandoned target: the pane exited with its claim label standing and no
+# record of why. The first time, log and leave it — the item is still the
+# pane's (its next dispatch re-grants the claim under the same basename, and
+# a hard-killed session resumes through the wrap's sidecar). The second time
+# (within the same TTL as the dispatch counter) the claim is released, the
+# pane's worktrees are salvaged to patches under $STATE_DIR/salvage/, a
+# handoff note names them for the next claimant (FLEET-RUNTIME.md § The
+# dispatch target), and the session sidecar is cleared so the next launch
+# goes fresh. $1 = target, $2 = agent.
+handle_abandoned_target() {
+    local target="$1" agent="$2"
+    local key f n
+    key=$(fleet_target_key "$target")
+    f="$STATE_DIR/abandoned/$key"
+    mkdir -p "$STATE_DIR/abandoned" 2>/dev/null || true
+    n=$(( $(ttl_counter_read "$f" "$TARGET_DISPATCH_COUNT_TTL") + 1 ))
+    echo "$n" > "$f" 2>/dev/null || true
+    if (( n < 2 )); then
+        log "$target: abandoned by $agent (claim standing, no record); retrying once — a hard-killed session resumes via its sidecar"
+        return 0
+    fi
+    local salvage="" wt which patch stamp
+    stamp=$(date -u '+%Y-%m-%dT%H-%M-%SZ')
+    mkdir -p "$STATE_DIR/salvage" "$STATE_DIR/handoff" 2>/dev/null || true
+    while IFS= read -r wt; do
+        [[ -n "$wt" ]] || continue
+        [[ -n "$(git -C "$wt" status --porcelain 2>/dev/null)" ]] || continue
+        case "$wt" in */creations/game/*) which=game ;; *) which=engine ;; esac
+        patch="$STATE_DIR/salvage/$key-$which-$stamp.patch"
+        git -C "$wt" add -A --intent-to-add >/dev/null 2>&1 || true
+        if git -C "$wt" diff HEAD > "$patch" 2>/dev/null; then
+            salvage="${salvage:+$salvage }$patch"
+            git -C "$wt" reset --hard HEAD >/dev/null 2>&1 || true
+            git -C "$wt" clean -fd >/dev/null 2>&1 || true
+        else
+            rm -f "$patch"
+        fi
+    done < <(fleet_pane_worktrees "$agent" "$ENGINE")
+    fleet_release_assignment "$target" "$agent"
+    rm -f "${FLEET_SESSIONS_DIR:-$HOME/.fleet/sessions}/$agent.session.json"
+    printf '# Handoff — %s\n\n- abandoned twice by %s on this host (%s); claim released\n- salvage: %s\n\nApply the patch onto a fresh branch for this target (`git apply <path>`), then delete this file — it is consumed once.\n' \
+        "$target" "$agent" "$stamp" "${salvage:-none (worktrees were clean)}" \
+        > "$STATE_DIR/handoff/$key.md" 2>/dev/null || true
+    rm -f "$f"
+    log "$target: abandoned twice by $agent — claim released, worktrees salvaged (${salvage:-nothing dirty}), handoff at $STATE_DIR/handoff/$key.md"
+}
+
 cleanup_stale_dispatches() {
     if [[ ! -d "$DISPATCH_DIR" ]]; then
         return
     fi
-    local file role pane dispatched_epoch class claimed
+    local file role pane dispatched_epoch class claimed target agent verdict updated detail
     for file in "$DISPATCH_DIR"/*.json; do
         [[ -e "$file" ]] || continue
         role=$(sed -n 's/.*"role":"\([^"]*\)".*/\1/p' "$file" | head -n 1)
@@ -1141,23 +1285,41 @@ cleanup_stale_dispatches() {
             continue
         fi
         class=$(sed -n 's/.*"class":"\([^"]*\)".*/\1/p' "$file" | head -n 1)
-        # Did this iteration do productive work? fleet-claim stamps the
-        # pane-keyed marker on every acquire/release arm, so the answer is
-        # recorded before the process exits — unlike a post-exit claim probe,
-        # which reads empty for an iteration that released early, and unlike
-        # wall-clock, which cannot tell a claim from a diligent no-pick.
+        dispatched_epoch=$(sed -n 's/.*"dispatched_epoch":\([0-9]*\).*/\1/p' "$file" | head -n 1)
+        # Did this iteration do productive work? For a target-bound dispatch
+        # the completion contract answers off the target itself; otherwise the
+        # pane-keyed marker fleet-claim stamps on every acquire/release arm
+        # does — recorded before the process exits, unlike a post-exit claim
+        # probe (empty for an iteration that released early) or wall-clock
+        # (cannot tell a claim from a diligent no-pick).
         claimed=$(derive_dispatch_outcome "$file" "$pane")
         rm -f "$CLAIM_FLAG_DIR/$(pane_id_to_key "$pane")"
+        target=$(sed -n 's/.*"target":"\([^"]*\)".*/\1/p' "$file" | head -n 1)
+        agent=$(sed -n 's/.*"agent":"\([^"]*\)".*/\1/p' "$file" | head -n 1)
+        verdict=""
+        if [[ -n "$target" && -n "$agent" && -n "$dispatched_epoch" ]]; then
+            assess_target_completion "$target" "$agent" "$dispatched_epoch"
+            IFS=$'\t' read -r verdict updated detail <<< "$ASSESS_LINE"
+            case "$verdict" in
+                finished)  claimed=yes; target_complete "$target" ;;
+                declined)
+                    claimed=no
+                    remember_decline "$target" "$updated" "$detail"
+                    rm -f "$STATE_DIR/abandoned/$(fleet_target_key "$target")"
+                    ;;
+                abandoned) claimed=no; handle_abandoned_target "$target" "$agent" ;;
+            esac
+        fi
         # Fold the just-finished dispatch into the role's empty-exit streak.
         # Legacy records (pre-upgrade, no dispatched_epoch) skip this silently.
-        dispatched_epoch=$(sed -n 's/.*"dispatched_epoch":\([0-9]*\).*/\1/p' "$file" | head -n 1)
         if [[ -n "$dispatched_epoch" ]]; then
             record_dispatch_outcome "$role" "$(( $(date +%s) - dispatched_epoch ))" \
                 "$class" "$claimed"
         fi
-        log "dispatch for $role on $pane completed (pane returned to shell${claimed:+, outcome=$claimed})"
+        log "dispatch for $role on $pane completed (pane returned to shell${claimed:+, outcome=$claimed}${target:+, target=$target}${verdict:+, verdict=$verdict})"
         rm -f "$file"
     done
+    assess_pass_end
 }
 
 # --- Rate-limit cooldown ---------------------------------------------------
@@ -1556,7 +1718,7 @@ resolve_worker_class() {
         DISPATCH_FABLE_BLOCKED=1
     fi
     local out
-    out=$(python3 "$FLEET_LIB_DIR/fleet_task_class.py" \
+    out=$(FLEET_STATE_DIR="$STATE_DIR" python3 "$FLEET_LIB_DIR/fleet_task_class.py" \
         "$slice" "$lane_default" "$DISPATCH_FABLE_BLOCKED" "$exclude" 2>/dev/null) || out=""
     if [[ "$out" == "defer" ]]; then
         DISPATCH_DEFER=1
@@ -1631,47 +1793,55 @@ CLAIM_ATTEMPTS_PER_TICK="${FLEET_DISPATCHER_CLAIM_ATTEMPTS_PER_TICK:-8}"
 [[ "$CLAIM_ATTEMPTS_PER_TICK" =~ ^[0-9]+$ ]] || CLAIM_ATTEMPTS_PER_TICK=8
 CLAIM_ATTEMPTS_LEFT=0
 
-# --- Planning circuit breaker ----------------------------------------------
+# --- Per-target dispatch cap (the planning circuit breaker, generalized) ----
 #
-# A needs-plan issue that keeps electing planning dispatches without a plan
-# ever landing is a sink for the fleet's most expensive iterations (measured:
-# 41 fable/xhigh planning dispatches on one issue, roughly one per 8 minutes,
-# each re-affirming "unplannable" — invisible on the issue thread). Every
-# granted assignment increments a per-issue counter under
-# $STATE_DIR/plan-dispatch-counts/; a candidate at the cap is PARKED with the
-# #3034 planner's park (ADD fleet:needs-human, KEEP fleet:needs-plan — the
-# same label contract PLANNING-PROTOCOL step 2 gives the planner, so the
-# scout's projection gate and planning-claim's refusal honor it identically)
-# plus a comment, and skipped. This is the MECHANICAL backstop for the #3034
-# park: a compliant planner parks an unplannable issue itself on the first
-# verdict; the breaker catches the planner that keeps releasing without
-# parking. Re-entry is the human removing fleet:needs-human. The counter is
-# per-host (one dispatcher each), cleared on park, and a stale counter
-# expires via mtime TTL. FLEET_PLAN_DISPATCH_CAP=0 disables the breaker.
-PLAN_DISPATCH_CAP="${FLEET_PLAN_DISPATCH_CAP:-5}"
-PLAN_DISPATCH_COUNT_TTL="${FLEET_PLAN_DISPATCH_COUNT_TTL:-604800}"
+# An item that keeps being assigned without ever completing is a sink for
+# iterations. Measured first on planning — 41 fable/xhigh dispatches on one
+# unplannable issue, roughly one per 8 minutes, each re-affirming
+# "unplannable" and invisible on the thread — and the same shape exists for
+# every kind now that assignment makes each launch a granted claim: a task
+# every worker declines after reading the body, a PR whose feedback no class
+# can apply. Every granted assignment increments a per-target counter under
+# $STATE_DIR/target-dispatch-counts/; a candidate at the cap is PARKED with
+# fleet:needs-human plus a comment and skipped (for a plan target this is the
+# #3034 park — fleet:needs-plan stays on, so the scout's projection gate and
+# planning-claim's refusal honor it identically; a compliant planner parks an
+# unplannable issue itself, the breaker catches the one that keeps releasing
+# without parking). Re-entry is the human removing fleet:needs-human. The
+# counter is per host (one dispatcher each), cleared when the target
+# completes (the completion contract's `finished`) or parks, and expires by
+# mtime TTL. FLEET_TARGET_DISPATCH_CAP=0 disables it.
+TARGET_DISPATCH_CAP="${FLEET_TARGET_DISPATCH_CAP:-5}"
+TARGET_DISPATCH_COUNT_TTL="${FLEET_TARGET_DISPATCH_COUNT_TTL:-604800}"
 
-plan_dispatch_count_file() {  # $1 = repo  $2 = issue number
-    echo "$STATE_DIR/plan-dispatch-counts/$1-$2"
-}
-
-plan_dispatch_count() {  # $1 = repo  $2 = issue number -> echoes TTL-aware count
-    local f now age
-    f=$(plan_dispatch_count_file "$1" "$2")
-    if [[ ! -f "$f" ]]; then echo 0; return; fi
+# A counter file that expires: its count while younger than $2 seconds, else 0.
+ttl_counter_read() {  # $1 = file  $2 = ttl seconds
+    local now age
+    [[ -f "$1" ]] || { echo 0; return; }
     now=$(date +%s)
-    age=$(( now - $(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null || echo "$now") ))
-    if (( age > PLAN_DISPATCH_COUNT_TTL )); then echo 0; return; fi
-    cat "$f" 2>/dev/null || echo 0
+    age=$(( now - $(stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null || echo "$now") ))
+    (( age > $2 )) && { echo 0; return; }
+    read_counter_file "$1"
 }
 
-plan_dispatch_note() {  # $1 = repo  $2 = issue number — count one granted dispatch
-    (( PLAN_DISPATCH_CAP > 0 )) || return 0
-    local f n
-    f=$(plan_dispatch_count_file "$1" "$2")
+target_dispatch_count_file() { echo "$STATE_DIR/target-dispatch-counts/$(fleet_target_key "$1")"; }
+
+target_dispatch_count() { ttl_counter_read "$(target_dispatch_count_file "$1")" "$TARGET_DISPATCH_COUNT_TTL"; }
+
+target_dispatch_note() {  # $1 = target  $2 = its count before this grant
+    (( TARGET_DISPATCH_CAP > 0 )) || return 0
+    local f
+    f=$(target_dispatch_count_file "$1")
     mkdir -p "${f%/*}" 2>/dev/null || true
-    n=$(plan_dispatch_count "$1" "$2")
-    echo $(( n + 1 )) > "$f" 2>/dev/null || true
+    echo $(( $2 + 1 )) > "$f" 2>/dev/null || true
+}
+
+target_dispatch_clear() { rm -f "$(target_dispatch_count_file "$1")"; }
+
+# The target completed on this host: every per-target ledger starts fresh.
+target_complete() {
+    target_dispatch_clear "$1"
+    rm -f "$STATE_DIR/abandoned/$(fleet_target_key "$1")"
 }
 
 plan_repo_slug() {  # $1 = engine|game -> the gh --repo slug
@@ -1688,52 +1858,26 @@ plan_repo_slug() {  # $1 = engine|game -> the gh --repo slug
     echo "$slug"
 }
 
-park_unplannable_issue() {  # $1 = repo  $2 = issue number  $3 = dispatch count
+# Park a target at the dispatch cap: fleet:needs-human plus a comment, on
+# the issue or the PR (both live on the issues endpoint). $1 = target, $2 =
+# the count.
+park_target() {
+    fleet_parse_target "$1" || return 0
     local slug
-    slug=$(plan_repo_slug "$1")
-    if gh issue edit "$2" --repo "$slug" \
-        --add-label "fleet:needs-human" >/dev/null 2>&1; then
-        gh issue comment "$2" --repo "$slug" --body "Planning circuit breaker: $3 planning dispatches on this host without a landed plan — parking for human routing with \`fleet:needs-human\` (the #3034 park; \`fleet:needs-plan\` stays on). Close it, add a \`**Blocked by:** #N\`, revise the direction, or — if it is plannable after all — remove \`fleet:needs-human\` to resume planning." >/dev/null 2>&1 || true
-        log "planning circuit breaker: parked $1:$2 after $3 dispatches (added fleet:needs-human, kept fleet:needs-plan)"
-        rm -f "$(plan_dispatch_count_file "$1" "$2")"
+    slug=$(plan_repo_slug "$FLEET_TARGET_REPO")
+    if gh api "repos/$slug/issues/$FLEET_TARGET_NUM/labels" --method POST \
+            -f 'labels[]=fleet:needs-human' >/dev/null 2>&1; then
+        gh api "repos/$slug/issues/$FLEET_TARGET_NUM/comments" \
+            -f "body=Dispatch circuit breaker: $2 dispatches of \`$1\` on this host without it completing — parking for human routing with \`fleet:needs-human\`. Close it, fix what every iteration walked away from (the \`declined:\` comments above say why), revise the direction, or remove \`fleet:needs-human\` to resume." >/dev/null 2>&1 || true
+        log "dispatch circuit breaker: parked $1 after $2 dispatches (added fleet:needs-human)"
+        target_dispatch_clear "$1"
     else
-        log "planning circuit breaker: $1:$2 at cap ($3) but the gh label add failed; skipping the candidate this tick"
+        log "dispatch circuit breaker: $1 at cap ($2) but the gh label add failed; skipping the candidate this tick"
     fi
 }
 
 # Take the planning-claim for one needs-plan issue under <agent>. Exit 0 =
 # granted. $1 = repo, $2 = issue number, $3 = agent.
-claim_plan_target() {
-    local repo="$1" num="$2" agent="$3" rc plan_count
-    fleet_repo_ns "$repo"
-    # Circuit breaker: a candidate that has already burned the cap's worth of
-    # planning dispatches on this host is parked for the human instead of
-    # assigned again (see the breaker block above).
-    if (( PLAN_DISPATCH_CAP > 0 )); then
-        plan_count=$(plan_dispatch_count "$repo" "$num")
-        if (( plan_count >= PLAN_DISPATCH_CAP )); then
-            park_unplannable_issue "$repo" "$num" "$plan_count"
-            return 1
-        fi
-    fi
-    # exit 0 = sole holder (assigned); 1 = a cross-host dispatcher or the
-    # architect holds it (next line); 3 = a `## Plan` comment already exists —
-    # either a stale slice (already planned + queued) or the re-plan state
-    # (plan-review bounce / stale-queued flip re-entered it into needs_plan).
-    # Disambiguate with --replan, which gates on a LIVE fleet:needs-plan
-    # label: exit 0 = assigned as a re-plan, exit 2 = the label is gone,
-    # genuinely done — next line.
-    rc=0
-    fleet-claim ${FLEET_NS[@]+"${FLEET_NS[@]}"} planning-claim "$num" "$agent" >/dev/null 2>&1 || rc=$?
-    if (( rc == 3 )); then
-        rc=0
-        fleet-claim ${FLEET_NS[@]+"${FLEET_NS[@]}"} planning-claim "$num" "$agent" --replan >/dev/null 2>&1 || rc=$?
-    fi
-    (( rc == 0 )) || return 1
-    plan_dispatch_note "$repo" "$num"
-    return 0
-}
-
 # Take the lane claim for one dispatch target under <agent>. Exit 0 =
 # granted; anything else (held elsewhere, blocked live, wrong class, a dup
 # PR, gh down) = not this item, try the next. The kind → subcommand table is
@@ -1741,8 +1885,16 @@ claim_plan_target() {
 # subcommand (a task claim's class gate and stack base, planning's circuit
 # breaker + --replan) are spelled out here.
 claim_target() {
-    local target="$1" agent="$2"
+    local target="$1" agent="$2" rc=0 n
     fleet_parse_target "$target" || return 1
+    # Dispatch cap: a target that has already burned the cap's worth of
+    # dispatches on this host without completing is parked for the human
+    # instead of assigned again (see the breaker block above).
+    n=$(target_dispatch_count "$target")
+    if (( TARGET_DISPATCH_CAP > 0 && n >= TARGET_DISPATCH_CAP )); then
+        park_target "$target" "$n"
+        return 1
+    fi
     fleet_repo_ns "$FLEET_TARGET_REPO"
     case "$FLEET_TARGET_KIND" in
         task|stack)
@@ -1754,14 +1906,31 @@ claim_target() {
             # fleet-claim's model-tag gate reads the claimant's class from
             # FLEET_ROLE_MODEL — the same class the pane's wrapper exports.
             FLEET_ROLE_MODEL="$DISPATCH_CLASS" fleet-claim ${FLEET_NS[@]+"${FLEET_NS[@]}"} \
-                claim "$FLEET_TARGET_NUM" "$agent" ${stack_args[@]+"${stack_args[@]}"} >/dev/null 2>&1
+                claim "$FLEET_TARGET_NUM" "$agent" ${stack_args[@]+"${stack_args[@]}"} >/dev/null 2>&1 || rc=$?
             ;;
-        plan) claim_plan_target "$FLEET_TARGET_REPO" "$FLEET_TARGET_NUM" "$agent" ;;
+        plan)
+            # exit 0 = sole holder (assigned); 1 = a cross-host dispatcher or
+            # the architect holds it (next line); 3 = a `## Plan` comment
+            # already exists — a stale slice (already planned + queued) or
+            # the re-plan state. --replan disambiguates on a LIVE
+            # fleet:needs-plan label: 0 = assigned as a re-plan, 2 = the
+            # label is gone, genuinely done — next line.
+            fleet-claim ${FLEET_NS[@]+"${FLEET_NS[@]}"} planning-claim \
+                "$FLEET_TARGET_NUM" "$agent" >/dev/null 2>&1 || rc=$?
+            if (( rc == 3 )); then
+                rc=0
+                fleet-claim ${FLEET_NS[@]+"${FLEET_NS[@]}"} planning-claim \
+                    "$FLEET_TARGET_NUM" "$agent" --replan >/dev/null 2>&1 || rc=$?
+            fi
+            ;;
         *)
             fleet-claim ${FLEET_NS[@]+"${FLEET_NS[@]}"} "${FLEET_TARGET_CLAIM[$FLEET_TARGET_KIND]}" \
-                "$FLEET_TARGET_NUM" "$agent" >/dev/null 2>&1
+                "$FLEET_TARGET_NUM" "$agent" >/dev/null 2>&1 || rc=$?
             ;;
     esac
+    (( rc == 0 )) || return "$rc"
+    target_dispatch_note "$target" "$n"
+    return 0
 }
 
 # Bind the pane about to be dispatched to one target: walk the lane's
@@ -1788,11 +1957,13 @@ assign_for_pane() {
         PICKS_CACHE=""
         if [[ "$role" == "worker" ]]; then
             [[ -n "$DISPATCH_CLASS" ]] || return 1
-            PICKS_CACHE=$(python3 "$FLEET_LIB_DIR/fleet_task_class.py" --pick "$slice" \
+            PICKS_CACHE=$(FLEET_STATE_DIR="$STATE_DIR" \
+                python3 "$FLEET_LIB_DIR/fleet_task_class.py" --pick "$slice" \
                 "$DISPATCH_CLASS" "$DISPATCH_FABLE_BLOCKED" \
                 "${WORKER_LANE_DEFAULT_CLASS[$role]:-opus}" 2>/dev/null) || PICKS_CACHE=""
         else
-            PICKS_CACHE=$(python3 "$FLEET_LIB_DIR/fleet_task_class.py" --pick-role \
+            PICKS_CACHE=$(FLEET_STATE_DIR="$STATE_DIR" \
+                python3 "$FLEET_LIB_DIR/fleet_task_class.py" --pick-role \
                 "$slice" "$role" 2>/dev/null) || PICKS_CACHE=""
         fi
         # Native-Windows python3 emits CRLF on stdout; a trailing \r would
@@ -2222,7 +2393,7 @@ dispatch_role() {
             fi
             continue
         fi
-        write_dispatch_record "$role" "$pane_id" "$(dispatch_class_key "$role")" "$target_arg"
+        write_dispatch_record "$role" "$pane_id" "$(dispatch_class_key "$role")" "$target_arg" "$pane_basename"
         LAST_DISPATCH_EPOCH=$now_epoch
         dispatched=$((dispatched + 1))
         dispatched_class=$((dispatched_class + 1))
@@ -2859,6 +3030,40 @@ case "${1:-}" in
                 echo "clear"
             fi
         fi
+        exit 0
+        ;;
+    --assess-target)
+        # Test/debug: the completion contract's line for one finished
+        # dispatch — `<verdict>\t<updated_at>\t<detail>`, verdict finished /
+        # declined / abandoned / unknown — exactly as cleanup_stale_dispatches
+        # reads it. gh and fleet-claim come from PATH (tests stub them).
+        if [[ -z "${2:-}" || -z "${3:-}" || -z "${4:-}" ]]; then
+            echo "usage: fleet-dispatcher --assess-target <target> <agent> <dispatch-epoch>" >&2
+            exit 2
+        fi
+        assess_target_completion "$2" "$3" "$4"
+        printf '%s\n' "$ASSESS_LINE"
+        assess_pass_end
+        exit 0
+        ;;
+    --handle-abandoned)
+        # Test/debug: fold one `abandoned` verdict for <target> by <agent> —
+        # the first is a logged retry, the second releases, salvages the
+        # pane's worktrees (under FLEET_ENGINE_ROOT and its game twin) and
+        # writes the handoff. Ledgers, salvage and handoff live under
+        # FLEET_STATE_DIR.
+        if [[ -z "${2:-}" || -z "${3:-}" ]]; then
+            echo "usage: fleet-dispatcher --handle-abandoned <target> <agent>" >&2
+            exit 2
+        fi
+        handle_abandoned_target "$2" "$3"
+        exit 0
+        ;;
+    --complete-dispatches)
+        # Test/debug: one pass of cleanup_stale_dispatches over the dispatch
+        # records under FLEET_STATE_DIR — the exit fold (marker verdict,
+        # completion contract, empty-exit streak) without the daemon loop.
+        cleanup_stale_dispatches
         exit 0
         ;;
     --smoke-check)

@@ -107,6 +107,7 @@ import json
 import os
 import platform
 import sys
+import time
 
 # Work-dispatch effort defaults — `high` across the board. The Claude
 # 5-family models default to effort `high`, and xhigh buys measurable gains
@@ -419,6 +420,8 @@ def _candidates(slice_data, lane_default, host, fable_blocked=False):
         # concurrency cap (#2696).
         if _host_incompatible(pr, host):
             continue
+        if _declined("feedback", pr):
+            continue
         cls = feedback_pr_class(pr.get("labels", []))
         yield cls, CLASS_DEFAULT_EFFORT[cls], "work", _target("feedback", pr)
     # Step-1c work is opus+-only, so each conflict is one opus claimable item.
@@ -428,17 +431,26 @@ def _candidates(slice_data, lane_default, host, fable_blocked=False):
     # step 1c build-verifies IRShapeDebug, which every fleet host builds
     # natively, unlike the GL-locked tasks below.
     for pr in slice_data.get("semantic_conflict_prs", []) or []:
-        yield "opus", CLASS_DEFAULT_EFFORT["opus"], "work", _target("conflict", pr)
+        if not _declined("conflict", pr):
+            yield "opus", CLASS_DEFAULT_EFFORT["opus"], "work", _target("conflict", pr)
+    # A work item this host declined at its current updatedAt is not
+    # claimable here: it neither counts toward the election nor reaches the
+    # dispatcher's claim walk. (A numberless record still counts — the
+    # dispatcher simply has nothing to claim for it, target None.)
     tasks = slice_data.get("tasks_open", []) or []
     for task in tasks:
-        if _task_claimable(task, host) and not task.get("blocked"):
+        if (_task_claimable(task, host) and not task.get("blocked")
+                and not _declined("task", task)):
             yield (*_class_effort(task), "work", _target("task", task))
     for task in tasks:
-        if _task_claimable(task, host) and task.get("blocked"):
+        if (_task_claimable(task, host) and task.get("blocked")
+                and not _declined("stack", task)):
             base = (task.get("stackable_blocker_pr") or {}).get("number")
             yield (*_class_effort(task), "work", _target("stack", task, base))
     seen_plan_classes = set()
     for issue in slice_data.get("needs_plan") or []:
+        if _declined("plan", issue):
+            continue
         pcls = _plan_class(issue, fable_blocked)
         if pcls in seen_plan_classes:
             continue
@@ -450,13 +462,64 @@ def _candidates(slice_data, lane_default, host, fable_blocked=False):
 # vocabulary and each kind's claim/release pair live in fleet-common.sh
 # (FLEET_TARGET_CLAIM / FLEET_TARGET_RELEASE); this module only produces the
 # lines the dispatcher walks (fleet-dispatcher assign_for_pane).
+
+# Decline memory. One file per declined target under
+# $FLEET_STATE_DIR/declined/, named `<kind>-<repo>-<N>` (fleet_target_key),
+# written by fleet-dispatcher on the completion contract's `declined` verdict
+# (`fleet-claim decline` posts the record; the dispatcher reads it at exit);
+# its first line is the target's post-release `updated_at`. An item declined at that
+# stamp is not offered again on this host until the item CHANGES — a new
+# comment, a label, a push — or the file ages past the TTL; without this the
+# claim-time gate cannot see a refusal the iteration only discovers by reading
+# the body (the #1969 shape, once assignment made every launch a claim).
+DECLINE_TTL_SECONDS = 7 * 24 * 3600
+
+
+def _declined_dir():
+    state = (os.environ.get("FLEET_STATE_DIR")
+             or os.path.join(os.path.expanduser("~"), ".fleet", "state"))
+    return os.path.join(state, "declined")
+
+
+def _record_number(record):
+    number = record.get("number")
+    if number is None:
+        number = str(record.get("issue") or "").lstrip("#") or None
+    return number
+
+
+def _declined(kind, record):
+    """True when this host declined the record and it has not changed since.
+
+    fleet-dispatcher writes `<state>/declined/<kind>-<repo>-<N>` on the
+    completion contract's `declined` verdict, line 1 the item's `updated_at`
+    as fetched AFTER the iteration's comment and release bumped it. The
+    record is skipped while its own `updatedAt` is not newer than that stamp
+    — `<=`, not `==`, so a projection the scout has not refreshed since the
+    release (still carrying the pre-release stamp) cannot re-elect the item
+    in the gap. A record without `updatedAt` cannot be compared and is
+    offered (fail open); the memory expires by mtime after DECLINE_TTL_SECONDS.
+    """
+    number = _record_number(record)
+    current = record.get("updatedAt") or ""
+    if number is None or not current:
+        return False
+    path = os.path.join(_declined_dir(), f"{kind}-{record.get('repo') or 'engine'}-{number}")
+    try:
+        if time.time() - os.stat(path).st_mtime > DECLINE_TTL_SECONDS:
+            return False
+        with open(path, encoding="utf-8") as handle:
+            stored = handle.readline().strip()
+    except OSError:
+        return False
+    return bool(stored) and current <= stored
+
+
 def _target(kind, record, extra=None):
     """`<kind>:<repo>:<N>[:<extra>]` for a slice record (a PR, task, or issue
     record carrying `repo` from the scout's `_slice_*_with_repo`), or None
     when the record carries no number to name."""
-    number = record.get("number")
-    if number is None:
-        number = str(record.get("issue") or "").lstrip("#") or None
+    number = _record_number(record)
     if number is None:
         return None
     line = f"{kind}:{record.get('repo') or 'engine'}:{number}"
@@ -494,17 +557,17 @@ def pick_role(slice_data, role):
     picks = []
     if role == "sonnet-reviewer":
         picks = [_target("review", pr) for pr in slice_data.get("candidate_prs") or []
-                 if not _held_for_review(pr)]
+                 if not _held_for_review(pr) and not _declined("review", pr)]
     elif role == "opus-reviewer":
         picks = [_target("review", pr) for pr in slice_data.get("flagged_prs") or []
-                 if not _held_for_review(pr)]
+                 if not _held_for_review(pr) and not _declined("review", pr)]
         picks += [_target("planreview", issue)
                   for issue in slice_data.get("plan_review") or []
-                  if not _held_for_review(issue)]
+                  if not _held_for_review(issue) and not _declined("planreview", issue)]
     elif role == "smoke-worker":
         picks = [_target("smoke", pr) for pr in smoke_prs_for_host(
             slice_data.get("smoke_pending_prs"), _current_host())
-            if not _held_for_review(pr)]
+            if not _held_for_review(pr) and not _declined("smoke", pr)]
     return [p for p in picks if p is not None]
 
 
@@ -520,7 +583,7 @@ def plan_pick(slice_data, cls, fable_blocked):
     the dispatch (#2197).
     """
     picks = [_target("plan", issue) for issue in slice_data.get("needs_plan") or []
-             if _plan_class(issue, fable_blocked) == cls]
+             if _plan_class(issue, fable_blocked) == cls and not _declined("plan", issue)]
     return [p for p in picks if p is not None]
 
 

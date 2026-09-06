@@ -115,6 +115,30 @@ merger and epic steward keep claiming iteration-side. Measured before
 this landed: 173 of 309 transient iterations in one night claimed
 nothing.
 
+**How a launch ends: the completion contract.** When a target-bound
+pane returns to its shell, the dispatcher asks the *target* — never the
+pane — what became of it (`scripts/fleet/fleet_completion.py`, handed
+the target's labels, its comments since dispatch, and the lane's claim
+label to look for): **finished** (the label is released, or a task's PR
+is open and the label rides it), **declined** (the iteration posted a
+`declined: <role>/<class> @<host>-<agent> <reason>` comment since
+dispatch — `fleet-claim decline` writes it and releases the claim), or
+**abandoned** (the label still stands with no record of why). On
+`declined` the dispatcher remembers the item under
+`~/.fleet/state/declined/<kind>-<repo>-<N>` with its post-release
+`updated_at`, so this host does not re-elect it until it changes. A
+declined or abandoned exit counts as an empty one for the lane's
+stand-down backoff. The first abandonment of an item is a logged retry —
+a hard-killed session resumes through its sidecar — and the second
+releases the claim, salvages the pane's dirty worktrees to
+`~/.fleet/state/salvage/`, writes
+`~/.fleet/state/handoff/<kind>-<repo>-<N>.md` for the next claimant, and
+clears the sidecar. Every granted assignment also counts toward a
+per-target dispatch cap (`FLEET_TARGET_DISPATCH_CAP`, default 5, cleared
+on `finished`); at the cap the item is parked with `fleet:needs-human`
+and a comment instead of being dispatched again — the planning circuit
+breaker, generalized to every kind.
+
 ### Multi-host fleet coordination
 
 When running fleets on two or more hosts simultaneously, the following

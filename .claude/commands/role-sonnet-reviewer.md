@@ -41,8 +41,7 @@ treat it as a hard rule for this role.
 ## Your assignment for this iteration
 
 The contract — one pre-claimed PR per launch, its `review-claim` already
-held under your basename, the walk-away release +
-`[sonnet-reviewer] declined <target>: <reason>` line — lives in
+held under your basename, the `fleet-claim decline` walk-away — lives in
 [docs/agents/FLEET-RUNTIME.md § The dispatch target](../../docs/agents/FLEET-RUNTIME.md#the-dispatch-target--one-item-per-launch).
 With `FLEET_DISPATCH_TARGET=review:<repo>:<N>` set, PR #N is your one
 and only candidate: skip startup step 4 (the cache read) and step 5,
