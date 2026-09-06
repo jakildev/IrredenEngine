@@ -10,10 +10,21 @@ name: Fleet Tests
 # CMake, so they have no reason to ride along with a build job anyway.
 #
 # Path-filtered to the fleet tooling surface — engine, shader, and asset
-# PRs skip this entirely (same convention as perf-gate.yml). Five suites
-# reach outside scripts/fleet/** for their subject under test — their
-# subjects are listed explicitly below so a PR touching only one of them
-# still runs this workflow (#2786, #2810, #2823, #2929):
+# PRs skip this entirely (same convention as perf-gate.yml).
+#
+# The first filter is scripts/** and not scripts/fleet/**: the suites live
+# under scripts/fleet/tests/, but test_lint_python_registry.py derives its
+# population from ALL of scripts/ (lint_python_registry.py's _SCAN_ROOT), so
+# an extension-less Python executable landing anywhere under scripts/ — the
+# top level, scripts/dev/, scripts/perf/ — changes that suite's subject
+# without touching scripts/fleet/**. test_fleet_tests_workflow_paths.sh T4
+# ratchets this filter against that constant. This deliberately overlaps
+# render-harness-tests.yml's scripts/*.py — the two workflows run disjoint
+# suites, and narrowing either back to buy the non-overlap reopens #2859.
+#
+# Six suites reach outside scripts/ entirely for their subject under test —
+# their subjects are listed explicitly below so a PR touching only one of
+# them still runs this workflow (#2786, #2810, #2823, #2859, #2929):
 #   test_format_changed_line_scoping.sh -> cmake/run_clang_format_changed.cmake
 #   test_ir_build_dir_resolution.sh     -> engine/tools/lib/concurrency_helpers.sh
 #   test_fleet_transition.sh            -> docs/agents/fleet-state-machine.json
@@ -21,6 +32,7 @@ name: Fleet Tests
 #   test_workflow_paths_sync.sh         -> the other path-filtered workflows
 #                                          (header-checks, perf-gate,
 #                                          render-harness-tests)
+#   test_lint_python_registry.py        -> ruff.toml
 # test_lint_rules_commands.py's subjects are globs rather than single files
 # — it checks every rules/protocol doc's fenced Detection/command blocks, so
 # a PR that edits only a rules or protocol doc must still trigger this
@@ -41,7 +53,7 @@ on:
   push:
     branches: [master]
     paths:
-      - 'scripts/fleet/**'
+      - 'scripts/**'
       - '.claude/rules/**'
       - 'docs/agents/**'
       - '.github/workflows/fleet-tests.yml'
@@ -51,9 +63,10 @@ on:
       - 'cmake/run_clang_format_changed.cmake'
       - 'engine/tools/lib/concurrency_helpers.sh'
       - 'docs/agents/fleet-state-machine.json'
+      - 'ruff.toml'
   pull_request:
     paths:
-      - 'scripts/fleet/**'
+      - 'scripts/**'
       - '.claude/rules/**'
       - 'docs/agents/**'
       - '.github/workflows/fleet-tests.yml'
@@ -63,6 +76,7 @@ on:
       - 'cmake/run_clang_format_changed.cmake'
       - 'engine/tools/lib/concurrency_helpers.sh'
       - 'docs/agents/fleet-state-machine.json'
+      - 'ruff.toml'
   workflow_dispatch:
 
 permissions:
