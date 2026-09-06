@@ -607,11 +607,32 @@ Three checks, in order:
    the other, and a number quoted without its host is unusable. Read the factor
    off a capture — PNG IHDR width ÷ `game_resolution_width`, the recipe
    `scripts/pivot-verify.py` `_output_scale_factor` uses — and record it with any
-   figure you publish. Both tables below name their host and factor. Measured
-   cross-host on the same tree (2026-09-06, #2907): every *post*-#2547 arm agrees
-   between macOS/Metal 2x and Windows/OpenGL 1x at **exactly 2:1**, so the scale
-   relation is real and not a fudge factor; the *pre*-#2547 content/sampling
-   floor does **not** obey it (see the provenance note under the residual table).
+   figure you publish. Both tables below name their host and factor.
+
+   **The 2:1 scale relation is measured, but it is not a general conversion
+   factor — do not halve or double a published number to move it between hosts.**
+   It holds on the *post*-#2547 arms that have the **same quantity on record for
+   both hosts** (#2907): pinned voxel residual, unpinned SDF residual, kill-switch
+   excursion, unpinned voxel excursion all land at **1.99–2.05:1**, on every pair
+   above the 0.01px reporting quantum. Three things it does **not** cover:
+
+   - The *unpinned voxel residual* — the pair the section below quotes — spans
+     **1.96:1 (z8) to 2.25:1 (z4)**, so the arm this whole section is about is
+     the one the relation fits worst.
+   - The *pre*-#2547 content/sampling floor obeys it not at all (see the
+     provenance note under the residual table).
+   - The pinned voxel z8 pair (0.01px at 1x vs 0.03px at 2x) sits at the
+     reporting quantum and resolves nothing either way.
+
+   **No same-tree cross-host capture exists.** The 1x readings below are
+   2026-09-06 on this tree; the 2x readings are 2026-08-05 → 2026-08-08 on a
+   then-master ~30 render commits behind it. Confirming the relation on one tree
+   (a macOS pane re-running the arms here) is **outstanding**, not done.
+
+   Retiring this hazard properly — state the unit, normalize to
+   `outputScaleFactor`, calibrate across the range — is **#3009**; **#3008** is
+   the live symptom on the GL side, where three centroid-gated pivot-verify
+   blocks exceed the 1.5px default gate on a 1x host.
 
    Two consequences to know before you lean on this gate:
 
@@ -631,8 +652,12 @@ Three checks, in order:
    ships as `jitter_probe --max-excursion-x/-y` (#2606), and every default-mode
    run prints `excursion=` per axis, so the by-hand max-min read is gone. **On the
    `--pivot-origin` pinned sweep it is the primary rotation-gate assertion, and
-   these are its bars** (macOS/Metal, 2026-08-08, 24-frame sweeps, one session,
-   arm identity asserted per run from the engine log):
+   these are its bars** (macOS/Metal, `outputScaleFactor` **2**, 2026-08-08,
+   24-frame sweeps, one session, arm identity asserted per run from the engine
+   log). **These bars are 2x-calibrated**: on a 1x host (Windows/Linux) they gate
+   ~2x looser in game px, so a green run there is weaker evidence than the same
+   run on macOS. Re-deriving them per host-scale is #3009's job, not something to
+   do inline — see §"Units" above before quoting any number here.
 
    | zoom | healthy voxel | SDF control | `IR_PERAXIS_OVERFLOW_DISABLE=1` | **bar** | separation |
    |---|---|---|---|---|---|
@@ -684,25 +709,42 @@ Three checks, in order:
    brackets to `4c4554d5` (#2547) on measurement (#2907).** Same fixture, same
    flags, arm A (unpinned voxel) on Windows/OpenGL 1x: x excursion reads
    **1.67px** at `4c4554d5^` against **18.77px** on master at zoom 4 (11x), and
-   3.11 → 37.45px at zoom 8 (12x). `dce3d104^` — one commit earlier, before
-   #2546 P2 — reads *bit-identical* to `4c4554d5^`, so nothing else in the
-   window moved it, and #2547 is the only change to the default pivot focus
-   between the 2026-07-28 baseline and master. A line fit has to absorb that
-   orbit's chord, which is what inflates the residual: pinning the same
-   population drops x residual to 0.04px at z4 (20x) and 0.01px at z8 (138x).
-   **The per-axis path did not regress** — pinned, it reads *below* the
-   2026-07-28 accepted values at every zoom, on either scaling convention (0.20 /
-   0.04 / 0.01px at 1x, against that table's 0.85 / 0.57 / 1.25px at 2x, i.e.
-   0.43 / 0.29 / 0.63px if halved to 1x).
+   3.11 → 37.45px at zoom 8 (12x). `dce3d104^` — **20 commits earlier**, covering
+   the whole 2026-07-28 → #2547 window, including the render-surface commit
+   `9d5905e9` (#2341) — reads *bit-identical* to `4c4554d5^`, so nothing in that
+   window moved it.
+
+   **The bracket is one-sided**, and the isolation of `4c4554d5` rests on a
+   second leg rather than on the two readings. The captures are
+   `[4c4554d5^, master]`, not `[4c4554d5^, 4c4554d5]`, so ~30 render commits sit
+   inside the measured interval; what excludes them is that the derive is
+   **unchanged from `4c4554d5` to master** — `git log -L
+   :getDefaultRotationPivotFocus:engine/render/src/render_manager.cpp
+   4c4554d5..HEAD` is empty. With that identity, #2547 is the only change to the
+   default pivot focus between the 2026-07-28 baseline and master.
+
+   A line fit has to absorb that orbit's chord, which is what inflates the
+   residual: pinning the same population drops x residual to 0.04px at z4 (20x)
+   and 0.01px at z8 (138x). **The per-axis path did not regress** — pinned, it
+   reads *below* the 2026-07-28 accepted values at every zoom, and that holds
+   under *either* scaling convention, which is why it survives the caveat in
+   §"Units": 0.20 / 0.04 / 0.01px at 1x, against that table's 0.85 / 0.57 /
+   1.25px as recorded at 2x, or 0.43 / 0.29 / 0.63px if you halve them. Below on
+   both readings, so the conclusion does not depend on the conversion.
 
    The unpinned residual is therefore not a property of the tree, and must not
    be gated: whether it crosses 1.50px depends on the host's
    `outputScaleFactor`, because the orbit's chord is a camera-space length that
-   doubles in framebuffer px on a 2x host. The same master tree reads x residual
-   **1.78 / 2.70px** unpinned at z4/z8 on macOS/Metal (2x, RED, #2907's filing
-   measurement) and **0.79 / 1.38px** on Windows/OpenGL (1x, both green) — one
-   tree, two verdicts, no code difference. Read a residual number off the
-   **pinned** arm or not at all.
+   doubles in framebuffer px on a 2x host. Unpinned x residual at z4/z8 reads
+   **1.78 / 2.70px** on macOS/Metal (2x, RED — #2907's filing measurement,
+   2026-08-05, reproduced independently 2026-08-07) and **0.79 / 1.38px** on
+   Windows/OpenGL (1x, both green — 2026-09-06, this tree). Those are two
+   *different* trees ~30 render commits apart; the same-tree cross-host capture
+   has not been taken. The verdict flip is still attributable to output scale
+   rather than to the code in between, on two legs that do not need it: the
+   derive is byte-stable across that window (`getDefaultRotationPivotFocus`,
+   above), and pinning collapses the residual on **both** hosts. Read a residual
+   number off the **pinned** arm or not at all.
 
 **Jitter is NOT the same as cardinal byte-identity.** Confirm yaw-0 / static
 frames stay byte-identical (`img_diff`) *and* that motion is jitter-free
@@ -1154,19 +1196,28 @@ than inventing a ceiling.
 > table measured the *unpinned* probe on macOS/Metal (2x) on 2026-07-28: voxel x
 > residual 0.85 / 0.57 / 1.25px, x excursion 1.68 / 1.26 / 2.83px; SDF control
 > 1.43px residual / 2.00px excursion at z4 and z8. Those numbers are preserved
-> here so #2469's and #2907's threads stay findable, and for nothing else. On
-> master the same unpinned arm reads **1.78 / 2.70px** residual at z4/z8 on
-> macOS/Metal (2x, over the bar — #2907's filing measurement, reproduced
-> independently 2026-08-07) and **0.47 / 0.79 / 1.38px** on Windows/OpenGL (1x,
-> green); its SDF twin reads 2.37 / 3.26px (2x) and 0.83 / 1.19 / 1.63px (1x).
+> here so #2469's and #2907's threads stay findable, and for nothing else.
+>
+> Post-#2547 the same unpinned arm reads **1.78 / 2.70px** residual at z4/z8 on
+> macOS/Metal (2x, over the bar — #2907's filing measurement 2026-08-05,
+> reproduced independently 2026-08-07) and **0.47 / 0.79 / 1.38px** on
+> Windows/OpenGL (1x, green — 2026-09-06). Its SDF twin reads 2.37 / 3.26px (2x)
+> and 0.83 / 1.19 / 1.63px (1x), and that twin's **z8 1x reading (1.63px) is over
+> the 1.50px default and exits 1** — so 1x is not a blanket green for the
+> unpinned sweep; the *voxel* arm is the one that clears at every zoom. **The 2x
+> and 1x readings are from different trees** (~30 render commits apart), not one
+> tree measured twice — see §"Units".
 >
 > **Provenance of the change, measured (#2907).** #2547's depth-aware default
 > `CAMERA_CENTER` focus landed 2026-07-31 as `4c4554d5` and gave the *unpinned*
 > probe a pivot orbit: x excursion 1.67 → 18.77px at z4 on Windows/OpenGL across
-> `[4c4554d5^, master]`, 11x, with `dce3d104^` reading bit-identical to
-> `4c4554d5^` (nothing else in the window moved it). A line fit absorbs that
-> orbit's chord, which inflates the residual — and the chord is a camera-space
-> length, so it doubles in framebuffer px on a 2x host. That, not a per-axis
+> `[4c4554d5^, master]`, 11x, with `dce3d104^` — 20 commits earlier — reading
+> bit-identical to `4c4554d5^` (nothing in that window moved it). The bracket is
+> one-sided; what isolates `4c4554d5` inside it is that the derive is byte-stable
+> from `4c4554d5` to master (see the attribution paragraph in §"Verifying
+> temporal stability"). A line fit absorbs that orbit's chord, which inflates
+> the residual — and the chord is a camera-space length, so it doubles in
+> framebuffer px on a 2x host. That, not a per-axis
 > regression, is why the unpinned probe crosses 1.50px on macOS and not on
 > Windows. **The unpinned residual is host-scale-dependent and is not a gate
 > quantity**; #2606 re-pointed the canonical gate onto the pinned probe, and the
@@ -1175,10 +1226,13 @@ than inventing a ceiling.
 > **The pre-#2547 residual is backend-dependent and does not transfer either.**
 > At `4c4554d5^` the unpinned arm reads 1.26 / 2.12px on Windows/OpenGL (1x)
 > against the 2026-07-28 macOS/Metal table's 0.57 / 1.25px (2x) — neither equal
-> nor 2:1, unlike every post-#2547 arm, which agrees across the two hosts at
-> exactly 2:1. So the content/sampling floor genuinely differs between the
-> backends, and #2907's macOS-measured "growth" (0.57 → 1.78px at z4) has no
-> counterpart on OpenGL, where the same window runs *downward* (1.26 → 0.79px).
+> nor 2:1, unlike the post-#2547 arms that have the same quantity on record for
+> both hosts (1.99–2.05:1, §"Units"). So the content/sampling floor genuinely
+> differs between the two **host/backend pairs** — macOS+Metal+HiDPI against
+> Windows+OpenGL+1x, and nothing measured here separates those three variables —
+> by an amount the 2:1 scale does not explain. #2907's macOS-measured "growth"
+> (0.57 → 1.78px at z4) has no counterpart on OpenGL, where the same window runs
+> *downward* (1.26 → 0.79px).
 > One more reason to read residuals off the pinned arm only.
 
 Three findings ground the accept, each measured rather than asserted:
