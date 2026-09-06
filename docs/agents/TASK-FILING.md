@@ -46,6 +46,20 @@ Optional, when the work serves a standing objective
   reads it; the architect's objectives sweep and the human use it to
   attribute shipped work to the objective's progress ledger.
 
+Optional, when the task can only be done on one operating system (a
+`linux-debug` reference bless, a Windows DLL-staging check, a Metal-only
+capture):
+
+- **Host:** `linux` | `windows` | `macos` — the scout projects it as
+  `needs_host` and the dispatcher never elects the task on another host.
+  Finer than the `fleet:needs-gl-host` label, which only says "a GL
+  host" and lets linux and windows stand in for each other. A body
+  sentence of the form "must run on a Linux host" is read the same way
+  as a backstop; the field is the recommended form. It is a
+  dispatch-side routing signal: unlike the GL label, `fleet-claim` does
+  not enforce it, so a hand-picked claim on the wrong host is refused by
+  nobody — the pane's own read of the body is the last line there.
+
 The issue sits in the backlog until the **human triages and adds
 `human:approved`**. Only then does the scout ingest it.
 

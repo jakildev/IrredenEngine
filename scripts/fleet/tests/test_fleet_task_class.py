@@ -74,10 +74,11 @@ slice_worker = _scout_mod.slice_worker
 
 def _task(issue, model=None, effort=None, owner="free", blocked=False,
           inflight_pr=None, needs_gl_host=False, stackable_blocker_pr=None,
-          backend_symmetric=False):
+          backend_symmetric=False, needs_host=None):
     return {"issue": issue, "model": model, "effort": effort,
             "owner": owner, "blocked": blocked, "inflight_pr": inflight_pr,
             "needs_gl_host": needs_gl_host,
+            "needs_host": needs_host,
             "backend_symmetric": backend_symmetric,
             "stackable_blocker_pr": stackable_blocker_pr}
 
@@ -330,13 +331,10 @@ class EmptySlice(unittest.TestCase):
         self.assertEqual(out, "")
 
 
-class GlHostGate(unittest.TestCase):
-    """#1998: a `needs_gl_host` task can't be built/run/verified on a
-    Metal-only (macOS) host. The dispatcher's claimability filter skips it
-    there — so a mac slice whose only open work is GL-only defers (goes
-    quiet) instead of churning a lane-default no-op, while a Linux/Windows
-    slice claims it normally. Host comes from `_current_host()`, driven here
-    via the FLEET_TEST_HOST seam (same seam fleet-claim's derive_host uses)."""
+class HostSeamCase(unittest.TestCase):
+    """Base for every host-gated case: saves/restores the FLEET_TEST_HOST seam
+    (the same seam fleet-claim's derive_host uses) and resolves a slice as
+    seen from a given host."""
 
     def setUp(self):
         self._saved_host = os.environ.get("FLEET_TEST_HOST")
@@ -347,9 +345,18 @@ class GlHostGate(unittest.TestCase):
         else:
             os.environ["FLEET_TEST_HOST"] = self._saved_host
 
-    def _resolve_on(self, host, slice_data, fable_blocked=False):
+    def _resolve_on(self, host, slice_data, lane_default="opus",
+                    fable_blocked=False):
         os.environ["FLEET_TEST_HOST"] = host
-        return resolve(slice_data, "opus", fable_blocked=fable_blocked)
+        return resolve(slice_data, lane_default, fable_blocked=fable_blocked)
+
+
+class GlHostGate(HostSeamCase):
+    """#1998: a `needs_gl_host` task can't be built/run/verified on a
+    Metal-only (macOS) host. The dispatcher's claimability filter skips it
+    there — so a mac slice whose only open work is GL-only defers (goes
+    quiet) instead of churning a lane-default no-op, while a Linux/Windows
+    slice claims it normally."""
 
     def test_gl_only_task_alone_on_mac_defers(self):
         # The #1937 churn shape: a GL-backend task is the only open work and
@@ -365,7 +372,10 @@ class GlHostGate(unittest.TestCase):
         # verifiable here, so the pane dispatches instead of deferring.
         out = self._resolve_on("mac", {"tasks_open": [
             _task("#2816", "opus", needs_gl_host=True, backend_symmetric=True)]})
-        self.assertEqual(out, "opus xhigh 0 1 0")
+        # Work dispatches default to effort `high` for every class (#3055);
+        # this expectation still carried the pre-#3055 `xhigh` and was the
+        # one red assertion in this suite on master.
+        self.assertEqual(out, "opus high 0 1 0")
 
     def test_gl_only_task_still_defers_on_mac(self):
         # AC-1's refusing direction, restated against the narrowed predicate:
@@ -450,7 +460,62 @@ class GlHostGate(unittest.TestCase):
         self.assertEqual(out, "defer")
 
 
-class FeedbackPrHostGate(unittest.TestCase):
+class RequiredHostGate(HostSeamCase):
+    """A task whose body pins it to ONE OS (`needs_host`, scout-derived) is
+    claimable on that host only. The #1969 shape: "must run on a Linux host"
+    sets `needs_gl_host` (linux is GL-capable), so the GL gate passed it on a
+    Windows pane and the dispatcher elected it every tick — 23 identical
+    worker no-ops on 2026-09-06, each re-reading the body and refusing."""
+
+    def test_linux_only_task_defers_on_windows(self):
+        out = self._resolve_on("windows", {"tasks_open": [
+            _task("#1969", "sonnet", needs_gl_host=True, needs_host="linux")]})
+        self.assertEqual(out, "defer")
+
+    def test_linux_only_task_dispatches_on_linux(self):
+        out = self._resolve_on("linux", {"tasks_open": [
+            _task("#1969", "sonnet", needs_gl_host=True, needs_host="linux")]})
+        self.assertEqual(out, "sonnet high 0 1 0")
+
+    def test_windows_only_task_dispatches_on_windows_only(self):
+        slice_data = {"tasks_open": [_task("#1", "opus", needs_host="windows")]}
+        self.assertEqual(self._resolve_on("windows", slice_data), "opus high 0 1 0")
+        self.assertEqual(self._resolve_on("linux", slice_data), "defer")
+
+    def test_mac_only_task_gates_off_linux_and_windows(self):
+        # The symmetric half the GL gate deliberately lacks: a mac-pinned task
+        # is not a GL task, so `needs_gl_host` is False and only `needs_host`
+        # keeps it off the GL hosts.
+        slice_data = {"tasks_open": [_task("#2", "opus", needs_host="mac")]}
+        self.assertEqual(self._resolve_on("mac", slice_data), "opus high 0 1 0")
+        self.assertEqual(self._resolve_on("linux", slice_data), "defer")
+        self.assertEqual(self._resolve_on("windows", slice_data), "defer")
+
+    def test_unknown_host_is_fail_closed(self):
+        out = self._resolve_on("unknown", {"tasks_open": [
+            _task("#1969", "sonnet", needs_host="linux")]})
+        self.assertEqual(out, "defer")
+
+    def test_unpinned_task_is_unaffected(self):
+        # `needs_host` absent (pre-change slices) or None: today's behavior.
+        task = _task("#3", "opus")
+        del task["needs_host"]
+        self.assertEqual(self._resolve_on("windows", {"tasks_open": [task]}),
+                         "opus high 0 1 0")
+        self.assertFalse(_host_incompatible(_task("#4", "opus"), "mac"))
+
+    def test_host_pinned_head_does_not_starve_claimable_work(self):
+        # The #1969 slice as the Windows host saw it: two linux-pinned sonnet
+        # tasks at the head. A claimable sibling behind them must still be
+        # elected, and the pinned pair must not inflate its count.
+        out = self._resolve_on("windows", {"tasks_open": [
+            _task("#1969", "sonnet", needs_gl_host=True, needs_host="linux"),
+            _task("#2158", "sonnet", needs_gl_host=True, needs_host="linux"),
+            _task("#2200", "sonnet")]})
+        self.assertEqual(out, "sonnet high 0 1 0")
+
+
+class FeedbackPrHostGate(HostSeamCase):
     """#2696: the #1998 host gate applies to feedback PRs too, not just tasks.
 
     A `fleet:needs-gl-host` feedback PR has GL-only work left, so role-worker
@@ -461,22 +526,9 @@ class FeedbackPrHostGate(unittest.TestCase):
     election every tick and starved the other lanes behind the concurrency cap.
     """
 
-    def setUp(self):
-        self._saved_host = os.environ.get("FLEET_TEST_HOST")
-
-    def tearDown(self):
-        if self._saved_host is None:
-            os.environ.pop("FLEET_TEST_HOST", None)
-        else:
-            os.environ["FLEET_TEST_HOST"] = self._saved_host
-
     @staticmethod
     def _fb(number, labels):
         return {"number": number, "repo": "engine", "labels": labels}
-
-    def _resolve_on(self, host, slice_data, lane_default="opus"):
-        os.environ["FLEET_TEST_HOST"] = host
-        return resolve(slice_data, lane_default, fable_blocked=False)
 
     # -- the gate itself -------------------------------------------------
     def test_gl_gated_feedback_pr_not_counted_on_mac(self):
@@ -563,7 +615,7 @@ class FeedbackPrHostGate(unittest.TestCase):
         self.assertEqual(out, "opus high 0 1 0")
 
 
-class SemanticConflictDispatchPressure(unittest.TestCase):
+class SemanticConflictDispatchPressure(HostSeamCase):
     """Semantic-conflict PRs are opus-class claimable work slotted between
     feedback and task pickup (role-worker step 1c, opus+-classes-only). This
     tier is what gives the label dispatch pressure at all: before it, a
@@ -573,15 +625,6 @@ class SemanticConflictDispatchPressure(unittest.TestCase):
     no-op'd). The scout pre-filters the slice (CONFLICTING-gated per #1654,
     step-1c exclusions, resolving-claims, stacked children), so the resolver
     counts every entry as-is."""
-
-    def setUp(self):
-        self._saved_host = os.environ.get("FLEET_TEST_HOST")
-
-    def tearDown(self):
-        if self._saved_host is None:
-            os.environ.pop("FLEET_TEST_HOST", None)
-        else:
-            os.environ["FLEET_TEST_HOST"] = self._saved_host
 
     @staticmethod
     def _sc(num):

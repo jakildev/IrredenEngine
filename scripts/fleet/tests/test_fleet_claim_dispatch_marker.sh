@@ -104,6 +104,21 @@ assert_stamped "marker outlives release-worktree"
 assert_eq "$(claim_run "$S" reservation-of pool-7 2>/dev/null)" "" \
     "…and the reservation really is gone (the marker is not just a stale lock)"
 
+echo "T2b: release-worktree with NO reservation does not stamp"
+# Every role's shutdown ceremony calls `release-worktree` unconditionally
+# (FLEET-RUNTIME.md step 2) — including the diligent no-pick's. On master this
+# arm stamped regardless, so every no-pick read `claimed`, the empty-exit
+# streak reset on each one, and the periodic worker re-arm re-fired the same
+# unclaimable slice every 5 minutes overnight (62 of 151 worker dispatches on
+# 2026-09-06 claimed nothing; the standdown fired twice). A no-op release is
+# not productive work.
+S=$(mktemp -d "$TMPROOT/s.XXXXXX")
+rm -f "$FLAG"
+claim_run "$S" release-worktree pool-7 >/dev/null 2>&1
+rc=$?
+assert_eq "$rc" "0" "release-worktree with no reservation still exits 0 (idempotent)"
+assert_not_stamped "release-worktree with no reservation does not stamp"
+
 echo "T3: a release arm stamps on its own"
 # Load-bearing for the step-0.5 reservation resume and the molecule resume: a
 # full task's work while acquiring nothing, because the lock was taken in a

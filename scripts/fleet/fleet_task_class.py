@@ -217,6 +217,16 @@ def _current_host():
 
 
 def _host_incompatible(item, host):
+    # An item the body pins to ONE OS (`needs_host`, scout-derived on task
+    # records) is unclaimable everywhere else. Finer than the GL gate below,
+    # which treats linux and windows alike: the #1969 shape — "must run on a
+    # Linux host" to bless linux-debug references — passed the GL gate on a
+    # Windows pane, so the dispatcher elected it every tick and each worker
+    # read the body, refused, and exited. Fail-closed on `unknown`, like the
+    # GL gate.
+    required_host = item.get("needs_host")
+    if required_host and host != required_host:
+        return True
     # A GL-only item on a non-GL host (macOS/Metal, or unknown) can never be
     # built/run/verified here — terminally unclaimable, like inflight.
     #

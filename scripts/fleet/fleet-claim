@@ -4560,6 +4560,11 @@ PYEOF
     fi
 }
 
+# Set by cmd_release_worktree when a reservation was actually removed; read by
+# the dispatch-outcome stamp at the bottom of this script (see the
+# "unconditional shutdown step" hazard in its comment block).
+RELEASE_WORKTREE_RELEASED=0
+
 cmd_release_worktree() {
     local worktree="$1"
     if [[ -z "$worktree" ]]; then
@@ -4574,6 +4579,7 @@ cmd_release_worktree() {
         task_id=$(reservation_task_id "$worktree")
         rm -f "$file"
         rm -f "$RESERVATIONS_DIR/$worktree.escalated"
+        RELEASE_WORKTREE_RELEASED=1
         echo "released reservation: $worktree (was: #${task_id})"
     else
         echo "no reservation for worktree: $worktree" >&2
@@ -5295,9 +5301,20 @@ _stamp_dispatch_outcome() {
 case "$_subcmd" in
     claim|stack|reserve|\
     review-claim|resolving-claim|amending-claim|steward-claim|planning-claim|\
-    release|release-stack|release-worktree|\
+    release|release-stack|\
     review-release|resolving-release|amending-release|steward-release|planning-release)
         _stamp_dispatch_outcome
+        ;;
+    release-worktree)
+        # The one release arm every role calls unconditionally at shutdown
+        # (FLEET-RUNTIME.md step 2) — the hazard above, realized: every no-pick
+        # stamped `yes` here and the backoff never engaged. Stamp only when a
+        # reservation was actually released (the step-0.5 resume case).
+        # Explicit `if`, not `(( )) &&`: this case is the script's last
+        # statement, so a failing arithmetic test would become its exit status.
+        if (( RELEASE_WORKTREE_RELEASED )); then
+            _stamp_dispatch_outcome
+        fi
         ;;
     molecule)
         # `resume` is a query that legitimately returns nothing — only the

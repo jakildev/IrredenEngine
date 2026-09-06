@@ -789,14 +789,26 @@ _EPIC_CHECKLIST_RE = re.compile(
 # OpenGL host") and the very common "<GL|OpenGL|Linux|Windows>-host only" /
 # "GL host only" adjective form (#2107: "It is GL-host only and cannot be
 # authored/validated on a macOS/Metal host" — missed by the verb form alone).
-_GL_HOST_REQUIRED_RE = re.compile(
-    r"\b(?:"
-    r"(?:must\s+(?:be\s+)?run\s+on|only\s+(?:runs?|builds?)\s+on)\s+"
-    r"(?:an?\s+|the\s+)?(?:linux|windows|opengl)[\w/+-]*\s+host"
-    r"|(?:gl|opengl|linux|windows)[\s-]?host[\s-]?only"
-    r")\b",
-    re.IGNORECASE,
-)
+#
+# One grammar, two instantiations: the backend gate below and the OS-pin
+# gate (`_HOST_REQUIRED_RE`) differ only in which host words they accept, so
+# they share the phrase skeleton the way the GL source-path forms share
+# `_GL_ONLY_SOURCE_EXT` — a phrasing added to one cannot silently miss the
+# other. The named groups carry the matched host word for the OS-pin caller;
+# the GL caller only tests for a match.
+def _host_requirement_re(verb_hosts, adj_hosts):
+    return re.compile(
+        r"\b(?:"
+        r"(?:must\s+(?:be\s+)?run\s+on|only\s+(?:runs?|builds?)\s+on)\s+"
+        rf"(?:an?\s+|the\s+)?(?P<verb_os>{verb_hosts})[\w/+-]*\s+host"
+        rf"|(?P<adj_os>{adj_hosts})[\s-]?host[\s-]?only"
+        r")\b",
+        re.IGNORECASE,
+    )
+
+
+_GL_HOST_REQUIRED_RE = _host_requirement_re(
+    "linux|windows|opengl", "gl|opengl|linux|windows")
 
 
 # #2704: `_GL_HOST_REQUIRED_RE` only fires on a *declaration*, so a task that
@@ -847,6 +859,41 @@ def _body_requires_gl_host(body):
     body = body or ""
     return bool(_GL_HOST_REQUIRED_RE.search(body)
                 or _GL_ONLY_SOURCE_PATH_RE.search(body))
+
+
+# The OS a task's body pins it to, as a dispatch-host key. `needs_gl_host`
+# above answers "which BACKEND" (GL vs Metal) and treats linux and windows as
+# interchangeable — correct for a GL task, wrong for one that names an OS: the
+# #1969 body says "must run on a Linux host" to bless `linux-debug` reference
+# images, which a Windows pane (GL-capable, so `needs_gl_host` passes) can
+# never do. The dispatcher kept electing it there every tick; each worker read
+# the body, refused, and exited (23 identical no-op iterations on 2026-09-06).
+#
+# Same grammar and precision-first contract as `_GL_HOST_REQUIRED_RE` (one
+# builder, see above): only the strong requirement phrasings match, plus an
+# explicit `**Host:**` body field — the recommended form, parsed ahead of the
+# prose. `opengl` is a backend, not an OS, so it yields no host here. Keys
+# match `fleet_task_class._current_host` (`mac`, not `macos`); a mac
+# declaration DOES gate the task off linux/windows — that is the symmetric
+# half `_GL_HOST_REQUIRED_RE` deliberately leaves out, because there the
+# consequence was self-gating a mac task off its only host.
+_HOST_REQUIRED_RE = _host_requirement_re(
+    "linux|windows|mac(?:os)?", "linux|windows|mac(?:os)?")
+_HOST_KEYS = {"linux": "linux", "windows": "windows", "mac": "mac",
+              "macos": "mac"}
+
+
+def _body_required_host(body):
+    """`linux` | `windows` | `mac` when the body pins the task to one OS, else
+    None. An explicit `**Host:**` field wins over the prose forms."""
+    body = body or ""
+    field = _parse_issue_field(body, "Host").lower().split(None, 1)
+    if field and field[0] in _HOST_KEYS:
+        return _HOST_KEYS[field[0]]
+    m = _HOST_REQUIRED_RE.search(body)
+    if not m:
+        return None
+    return _HOST_KEYS[(m.group("verb_os") or m.group("adj_os")).lower()]
 
 
 # A backend-symmetric task must be fixed in both a `.glsl` and its `.metal`
@@ -1011,6 +1058,11 @@ def fetch_task_queue(repo_slug):
             # for a label the filer forgot (see _body_requires_gl_host).
             "needs_gl_host": ("fleet:needs-gl-host" in labels
                               or _body_requires_gl_host(body)),
+            # The OS the body pins the task to (`linux` | `windows` | `mac`),
+            # or None. Finer than `needs_gl_host`, which treats every
+            # GL-capable host alike: a "must run on a Linux host" task is
+            # unclaimable on Windows too (see _body_required_host).
+            "needs_host": _body_required_host(body),
             # #2820: the discriminator that narrows the gate above. A task
             # fixing both a `.glsl` and its `.metal` twin has a natively
             # Metal-verifiable half, so a mac pane may claim it; the GL runtime
@@ -1026,6 +1078,14 @@ def fetch_task_queue(repo_slug):
             # umbrellas' checklists (#1664).
             "epic": _parse_issue_field(body, "Part of epic") or None,
         }
+
+        # A macOS pin plus a GL-host need is unsatisfiable: the OS pin refuses
+        # linux/windows and the GL gate refuses mac, so no fleet host can
+        # claim the task and it would vanish from every lane without a trace.
+        # Keep both (the filing is wrong, not the gates) but say so.
+        if task["needs_host"] == "mac" and task["needs_gl_host"]:
+            log(f"{repo_slug}#{number}: body pins the task to macOS but it "
+                "also needs a GL host — no fleet host can claim it; fix the filing")
 
         if status == "~":
             sections["in_progress"].append(task)
