@@ -25,6 +25,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+source "$(dirname "$0")/lib_preflight.sh"
 WRAPPER="$SCRIPT_DIR/fleet-transition"
 STATE_MACHINE="$SCRIPT_DIR/../../docs/agents/fleet-state-machine.json"
 

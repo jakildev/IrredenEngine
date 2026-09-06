@@ -26,6 +26,7 @@
 set -uo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")/.." && pwd)
+source "$(dirname "$0")/lib_preflight.sh"
 FLEET_DECISIONS="$SCRIPT_DIR/fleet-decisions"
 source "$(dirname "$0")/lib_assert.sh"
 

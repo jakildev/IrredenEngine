@@ -19,6 +19,7 @@
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")/.." && pwd)
+source "$(dirname "$0")/lib_preflight.sh"
 DOCTOR="$SCRIPT_DIR/fleet-net-doctor"
 source "$(dirname "$0")/lib_assert.sh"
 

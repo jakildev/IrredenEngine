@@ -21,6 +21,7 @@
 set -uo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")/.." && pwd)
+source "$(dirname "$0")/lib_preflight.sh"
 SWEEP="$SCRIPT_DIR/fleet-triage-sweep"
 source "$(dirname "$0")/lib_assert.sh"
 

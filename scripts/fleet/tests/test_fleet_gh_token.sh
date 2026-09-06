@@ -16,6 +16,7 @@
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")/.." && pwd)
+source "$(dirname "$0")/lib_preflight.sh"
 GHT="$SCRIPT_DIR/fleet-gh-token"
 [[ -x "$GHT" ]] || { echo "test setup: fleet-gh-token not executable at $GHT" >&2; exit 1; }
 

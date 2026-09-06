@@ -17,6 +17,7 @@
 set -uo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")/.." && pwd)
+source "$(dirname "$0")/lib_preflight.sh"
 FLEET_NOTIFY="$SCRIPT_DIR/fleet-notify"
 source "$(dirname "$0")/lib_assert.sh"
 

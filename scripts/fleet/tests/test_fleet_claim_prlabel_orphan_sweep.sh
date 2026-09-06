@@ -15,6 +15,7 @@
 
 set -uo pipefail
 SCRIPT_DIR=$(cd "$(dirname "$0")/.." && pwd)
+source "$(dirname "$0")/lib_preflight.sh"
 FLEET_CLAIM="$SCRIPT_DIR/fleet-claim"
 [[ -x "$FLEET_CLAIM" ]] || { echo "test setup: fleet-claim not found"; exit 1; }
 

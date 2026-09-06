@@ -28,6 +28,7 @@
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")/.." && pwd)
+source "$(dirname "$0")/lib_preflight.sh"
 FLEET_UP="$SCRIPT_DIR/fleet-up"
 
 if [[ ! -f "$FLEET_UP" ]]; then

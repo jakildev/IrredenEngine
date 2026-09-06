@@ -31,6 +31,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+source "$(dirname "$0")/lib_preflight.sh"
 WRAPPER="$SCRIPT_DIR/fleet-review-verdict"
 
 if [[ ! -x "$WRAPPER" ]]; then
