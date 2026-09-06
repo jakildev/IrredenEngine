@@ -21,7 +21,10 @@
 #   - a deferred-approach phrase ("decide during implementation", "option A or B",
 #     "TBD", "likely suspects", "decide explicitly rather than by omission", ...)
 #     — the "one approach, picked" violation (relaxed to a warning when the
-#     plan is an explicit investigation spike)
+#     plan is an explicit investigation spike). Read from PROSE only: fenced
+#     blocks and inline-code spans are stripped first, so a plan that NAMES a
+#     phrase as data (a test-corpus row, a quoted rejected alternative) does
+#     not hard-fail on it (#2989).
 #   - a fork named in an Approach/Gotchas section — either an imperative-mood
 #     one ("check/decide/determine whether X ... or Y" in one sentence) or an
 #     either/or one carrying a hedging modal. Both are scoped to those sections
@@ -138,6 +141,32 @@ plan = plans[-1]
 low = plan.lower()
 is_spike = "investigation spike" in low or "investigation spike" in title.lower()
 
+# CommonMark fences are 3-OR-MORE backtick/tilde chars, closed by a run of the
+# same character >= that length: a plan embedding a fence-syntax code sample
+# (e.g. a snippet of this very lint) must open with a longer fence than the
+# sample, and a hardcoded exactly-3 matcher misses that case entirely (#2989).
+FENCE_RE = re.compile(r"(?ms)^[ \t]*(?P<f>`{3,}|~{3,}).*?^[ \t]*(?P=f)[`~]*[ \t]*$")
+# CommonMark code-span rule: a run of N backticks closes on the next run of N,
+# so a double-backtick span containing single backticks pairs correctly. Content
+# may cross a soft line break but never a blank line, which bounds the damage an
+# unbalanced backtick can do to one paragraph.
+INLINE_RE = re.compile(r"(?s)(`+)((?:(?!\n[ \t]*\n).)+?)\1")
+
+
+def strip_code(text):
+    """Plan text with fenced blocks and inline-code spans replaced by a space,
+    for the phrase-shaped checks: a plan that NAMES a deferral phrase as data (a
+    test-corpus row, a quoted rejected alternative, a literal it commits to
+    detecting) is the opposite of a deferred decision (#2989). Fences are
+    stripped first so a fence's own backtick runs cannot pair with prose
+    backticks. Regions become a single space, never empty, so removal cannot
+    glue two words into a matching phrase."""
+    return INLINE_RE.sub(" ", FENCE_RE.sub(" ", text))
+
+
+prose = strip_code(plan)
+prose_low = prose.lower()
+
 # Core sections (heading at any depth, case-insensitive), matched by CONCEPT
 # rather than requiring the heading to *begin* with the literal token — a
 # sound plan that words its headings naturally (e.g. "Files / modules" for
@@ -170,10 +199,10 @@ DEFER = [
     "figure out during", "option a or b", "to be decided",
     "decide explicitly rather than by omission",
 ]
-hits = [p for p in DEFER if p in low]
-if re.search(r"(?i)\btbd\b", plan):
+hits = [p for p in DEFER if p in prose_low]
+if re.search(r"(?i)\btbd\b", prose):
     hits.append("TBD")
-if "likely suspects" in low:
+if "likely suspects" in prose_low:
     hits.append("likely suspects")
 
 # Both fork checks below are scoped to Approach/Gotchas prose and require an
@@ -216,7 +245,7 @@ def is_design_section(heading):
 
 
 fork_whether_hit = either_or_hit = False
-for heading, body in sections(plan):
+for heading, body in sections(prose):
     if not is_design_section(heading):
         continue
     for sentence in sentences(body):
