@@ -191,6 +191,77 @@ REVIEW_PASS = "## Plan review — #111 (opus-reviewer)\n\nfleet-plan-lint PASS. 
 REVIEW_BOUNCE = "## Plan review — not sound, back to `fleet:needs-plan`\n\nMissing acceptance criteria."
 SKELETAL_REPLAN_SEED = "## Plan: skeletal re-plan seed\n\nwe should do it somehow"
 REVIEW_ONLY = "## Plan review — #113 (opus-reviewer)\n\nfleet-plan-lint PASS. Looks sound."
+
+# #2989: the deferred-approach phrase checks (DEFER list, TBD, "likely
+# suspects") and the fork checks must read PROSE, not raw text — a plan that
+# NAMES one of these phrases as data (a test-corpus row, a rejected
+# alternative, a fenced-block literal) is the opposite of a deferred decision.
+#
+# 123 — the live #2833 regression, pinned VERBATIM from its "## Plan"
+# comment's Acceptance section (do not re-fetch #2833 live; its plan may be
+# replanned or closed by the time this suite runs). This exact text is what
+# the fleet-plan-lint 2833 repro hard-FAILs on today (raw TBD scan) and must
+# exit 0 once the phrase checks read code-stripped prose. It also carries the
+# real-world shape of the fix's hardest case: a code span crossing a soft
+# line break ("`either opus or\n  sonnet`") immediately before the single-line
+# span containing the placeholder literal ("`TBD`") -- the soft-line-break
+# desync that a naive per-line stripper fails to resolve (plan-review
+# correction 2: the desync, not a double-backtick span, is what defeats the
+# naive form on this exact text).
+CODE_SPAN_LITERAL = GOOD.replace(
+    "### Acceptance criteria\nbuilds + tests",
+    "### Acceptance criteria\n"
+    "- **Corpus file `test_model_field.py`**, modeled on `test_blocked_by.py`, with\n"
+    "  at least these ten rows and their expected `declared_class`: plain →\n"
+    "  `sonnet`; backticked → `sonnet`; bracketed → `sonnet`; list-item → `sonnet`;\n"
+    "  suggested-alias → `sonnet`; qualified (`sonnet (escalate to opus …)`) →\n"
+    "  `sonnet`; plain-fable → `fable`; absent → `None`; prose-two (`either opus or\n"
+    "  sonnet`) → `opus`; no-token (`TBD`) → `None`.")
+# 124/125/126 are word-identical twins of the same DEFER phrase, differing
+# only in markup, so the arms isolate markup-stripping from phrase-matching.
+DEFER_IN_FENCE = GOOD.replace(
+    "### Approach\nverified current state via grep; one approach: edit foo.cpp then bar.cpp",
+    "### Approach\nverified current state via grep; one approach: edit foo.cpp then bar.cpp\n\n"
+    "```\nwe will decide later once we know more\n```")
+DEFER_IN_BACKTICKS = GOOD.replace(
+    "### Approach\nverified current state via grep; one approach: edit foo.cpp then bar.cpp",
+    "### Approach\nverified current state via grep; one approach: edit foo.cpp then bar.cpp\n\n"
+    "See `we will decide later once we know more` for the rejected alternative.")
+DEFER_PROSE_CONTROL = GOOD.replace(
+    "### Approach\nverified current state via grep; one approach: edit foo.cpp then bar.cpp",
+    "### Approach\nverified current state via grep; one approach: edit foo.cpp then bar.cpp\n\n"
+    "we will decide later once we know more, in running prose with no code markup.")
+# 127 — the placeholder literal inside a double-backtick span that itself
+# contains single-backtick spans: the property a naive stripper (that does
+# not implement CommonMark's run-length closing rule) gets wrong.
+DOUBLE_BACKTICK_SPAN = GOOD.replace(
+    "### Approach\nverified current state via grep; one approach: edit foo.cpp then bar.cpp",
+    "### Approach\nverified current state via grep; one approach: edit foo.cpp then bar.cpp\n\n"
+    "The empty case maps via `` `TBD` maps to `None` `` in the lookup table.")
+# 128 — one stray, unpartnered backtick followed by a blank line, then a real
+# deferred phrase in running prose, then a normal code span further on. Pins
+# the blank-line bound: without it, a lazy unbounded pairing could swallow
+# everything (including the deferred phrase) between the stray backtick and
+# the next real backtick, making every plan PASS regardless of content.
+UNBALANCED_BACKTICK = GOOD.replace(
+    "### Approach\nverified current state via grep; one approach: edit foo.cpp then bar.cpp",
+    "### Approach\nverified current state via grep; one approach: edit foo.cpp then bar.cpp\n\n"
+    "This uses a single ` stray backtick with no partner on this line.\n\n"
+    "We will decide later once results come in. See `foo.cpp` for reference.")
+# 129/130 — the same imperative-mood fork sentence (word-identical to the
+# #122 hard-fail arm) inside a fenced code block, so the fork-check seam must
+# also read code-stripped prose. 130 uses a 4-backtick fence to pin the
+# run-length-aware FENCE_RE (plan-review correction 1): a fence matcher
+# hardcoded to exactly 3 backticks fails to close a 4+ backtick fence and
+# would leave this arm hard-failing.
+FORK_IN_FENCE = GOOD.replace(
+    "### Approach\nverified current state via grep; one approach: edit foo.cpp then bar.cpp",
+    "### Approach\nverified current state via grep; one approach: edit foo.cpp then bar.cpp\n\n"
+    "```\ncheck whether the predicate should apply to foo.cpp as well or only to bar.cpp\n```")
+FORK_IN_LONG_FENCE = GOOD.replace(
+    "### Approach\nverified current state via grep; one approach: edit foo.cpp then bar.cpp",
+    "### Approach\nverified current state via grep; one approach: edit foo.cpp then bar.cpp\n\n"
+    "````\ncheck whether the predicate should apply to foo.cpp as well or only to bar.cpp\n````")
 F = {
   "100": {"title": "sound task", "comments": [{"body": GOOD}]},
   "101": {"title": "defer task", "comments": [{"body": DEFER}]},
@@ -216,6 +287,14 @@ F = {
   "120": {"title": "fork-whether in acceptance task", "comments": [{"body": FORK_WHETHER_ACCEPTANCE}]},
   "121": {"title": "fork-whether outside approach/gotchas task", "comments": [{"body": FORK_WHETHER_OTHER_SECTION}]},
   "122": {"title": "fork-whether in approach task", "comments": [{"body": FORK_WHETHER_APPROACH}]},
+  "123": {"title": "code-span literal task", "comments": [{"body": CODE_SPAN_LITERAL}]},
+  "124": {"title": "defer in fence task", "comments": [{"body": DEFER_IN_FENCE}]},
+  "125": {"title": "defer in backticks task", "comments": [{"body": DEFER_IN_BACKTICKS}]},
+  "126": {"title": "defer prose control task", "comments": [{"body": DEFER_PROSE_CONTROL}]},
+  "127": {"title": "double backtick span task", "comments": [{"body": DOUBLE_BACKTICK_SPAN}]},
+  "128": {"title": "unbalanced backtick task", "comments": [{"body": UNBALANCED_BACKTICK}]},
+  "129": {"title": "fork in fence task", "comments": [{"body": FORK_IN_FENCE}]},
+  "130": {"title": "fork in long fence task", "comments": [{"body": FORK_IN_LONG_FENCE}]},
 }
 print(json.dumps(F.get(num, {"title": "missing", "comments": []})))
 PYEOF
@@ -317,6 +396,39 @@ case "$fork_other_out" in *"imperative-mood fork"*) bad "imperative-mood fork ou
 "$LINT" 122 >/dev/null 2>&1; assert_exit $? 1 "imperative-mood fork in Approach -> hard fail (scope predicate's approach arm)"
 fork_appr_out=$("$LINT" 122 2>&1 || true)
 case "$fork_appr_out" in *"imperative-mood fork"*) ok "imperative-mood fork still fires in Approach after scoping";; *) bad "imperative-mood fork stopped firing in Approach — scoping too narrow: [$fork_appr_out]";; esac
+
+# #2989 — phrase-shaped checks (DEFER/TBD/likely-suspects) and the fork
+# checks must read code-stripped prose, not raw text.
+#
+# Acceptance 1 (positive-fire): the live #2833 regression, pinned verbatim.
+"$LINT" 123 >/dev/null 2>&1; assert_exit $? 0 "TBD as a corpus-row code-span literal (#2833 regression, verbatim) -> exit 0"
+code_span_out=$("$LINT" 123 2>&1 || true)
+case "$code_span_out" in *"TBD"*) bad "code-span TBD literal false-fired: [$code_span_out]";; *) ok "code-span TBD literal does not fire";; esac
+# Acceptance 3: fixtures 124/125 prove the fix covers the whole DEFER phrase
+# set (not just the TBD literal), in both fenced and inline-backtick markup.
+"$LINT" 124 >/dev/null 2>&1; assert_exit $? 0 "DEFER phrase inside a fenced block -> exit 0"
+"$LINT" 125 >/dev/null 2>&1; assert_exit $? 0 "DEFER phrase inside inline backticks -> exit 0"
+# Acceptance 2: the word-identical twin in running prose (no markup) still
+# hard-fails -- the narrowing is not a blanket disable.
+"$LINT" 126 >/dev/null 2>&1; assert_exit $? 1 "DEFER phrase in running prose (word-identical control) -> hard fail"
+defer_control_out=$("$LINT" 126 2>&1 || true)
+case "$defer_control_out" in *"deferred-approach phrase"*) ok "DEFER prose control still names the phrase";; *) bad "DEFER prose control did not fire: [$defer_control_out]";; esac
+# Acceptance 4: the placeholder literal inside a double-backtick span that
+# itself contains single-backtick spans -- the run-length CommonMark property
+# a naive stripper gets wrong.
+"$LINT" 127 >/dev/null 2>&1; assert_exit $? 0 "placeholder literal inside a double-backtick span -> exit 0"
+# Acceptance 4: one unpartnered backtick must not swallow the rest of the
+# plan across a blank line -- the real deferred phrase after it must still
+# hard-fail.
+"$LINT" 128 >/dev/null 2>&1; assert_exit $? 1 "unbalanced backtick does not swallow a later deferred phrase across a blank line -> hard fail"
+unbalanced_out=$("$LINT" 128 2>&1 || true)
+case "$unbalanced_out" in *"deferred-approach phrase"*) ok "deferred phrase after a stray backtick still fires";; *) bad "stray backtick swallowed the deferred phrase (blank-line bound broken): [$unbalanced_out]";; esac
+# Acceptance 5: the fork-check seam reads the same stripped prose. 129 pins a
+# 3-backtick fence; 130 pins a 4-backtick fence (run-length-aware FENCE_RE,
+# plan-review correction 1) -- both must clear a sentence that hard-fails in
+# raw prose (fixture 122).
+"$LINT" 129 >/dev/null 2>&1; assert_exit $? 0 "imperative-mood fork inside a 3-backtick fence -> exit 0"
+"$LINT" 130 >/dev/null 2>&1; assert_exit $? 0 "imperative-mood fork inside a 4-backtick fence -> exit 0 (run-length-aware fence matcher)"
 set -e
 
 echo "================================"
