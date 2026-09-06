@@ -178,7 +178,11 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   per PR — do not "tidy" either back. The scout warns and writes an alert past
   7/8 of the cap. Invariant + the measured budget:
   [`docs/agents/FLEET-CACHE.md`](../../docs/agents/FLEET-CACHE.md) §"Size
-  invariant".
+  invariant". **A change to the per-PR record shape bumps `PR_RECORD_SCHEMA`**
+  in the same commit, or `fetch_prs`'s 304 fast path keeps serving the pre-change
+  shape out of the on-disk `state.json` after the deploy — for an unbounded
+  number of ticks on a quiet repo. The trim above shipped that way and emitted
+  348 KB on tick 1 of every restart with the trim code live (#3037).
 - **Concurrently-read state writers use `write_atomic`, never plain
   `write_text`.** A JSON/state/cache file that another process may read
   mid-write is persisted with the module's `write_atomic()` helper

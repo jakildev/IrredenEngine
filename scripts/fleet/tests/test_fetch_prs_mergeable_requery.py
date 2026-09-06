@@ -31,8 +31,11 @@ _REPO = "jakildev/IrredenEngine"
 
 
 def _pr(n, mergeable):
-    # closes_issues present ⇒ the reuse gate's cache-desync marker is satisfied.
-    return {"number": n, "mergeable": mergeable, "closes_issues": []}
+    # schema at the current PR_RECORD_SCHEMA ⇒ the reuse gate's cache-desync
+    # marker is satisfied (#3037; closes_issues rides along, as the shipped
+    # projection emits both together).
+    return {"number": n, "mergeable": mergeable, "closes_issues": [],
+            "schema": _mod.PR_RECORD_SCHEMA}
 
 
 def _not_changed(*_a, **_k):
