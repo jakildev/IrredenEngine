@@ -117,6 +117,38 @@ gridSetBit(std::vector<std::uint32_t> &bitfield, int wx, int wy, int wz, const i
     bitfield[flat >> 5u] |= (1u << (flat & 31u));
 }
 
+/// Read-side mirror of `gridSetBit` — out-of-range reads `false`, the same
+/// answer `c_propagate_light_volume`'s bit lookups give for a coordinate
+/// outside the 256^3 window (#2330).
+inline bool
+gridGetBit(const std::vector<std::uint32_t> &bitfield, int wx, int wy, int wz, const ivec3 &origin) {
+    if (!gridInBounds(wx, wy, wz, origin))
+        return false;
+    const std::size_t flat = gridFlatIndex(wx, wy, wz, origin);
+    return (bitfield[flat >> 5u] >> (flat & 31u)) & 1u;
+}
+
+/// Read-only view over one frame's occlusion mirror, indexed with the
+/// producer's own origin (`System<BUILD_LIGHT_OCCLUSION_GRID>::origin_`) —
+/// never the light volume's, which agrees with it every frame today but is
+/// a distinct value (#2330 plan gotcha). `occluded()` ORs the voxel and
+/// blocker bitfields, mirroring `c_propagate_light_volume`'s neighbor gate
+/// (`voxelOcclusionGetBit || lightBlockerGetBit`) exactly — this struct IS
+/// the parity invariant between the CPU seed-relocation search and the GPU
+/// propagate pass.
+struct LightOcclusionGridView {
+    const std::vector<std::uint32_t> *voxel_ = nullptr;
+    const std::vector<std::uint32_t> *blocker_ = nullptr;
+    ivec3 origin_{};
+
+    bool valid() const { return voxel_ != nullptr && blocker_ != nullptr; }
+
+    bool occluded(const ivec3 &world) const {
+        return gridGetBit(*voxel_, world.x, world.y, world.z, origin_) ||
+               gridGetBit(*blocker_, world.x, world.y, world.z, origin_);
+    }
+};
+
 /// Rasterize one `C_ShapeDescriptor` into the light-blocker bitfield. The
 /// AABB is clipped to the camera-anchored window, then each integer cell
 /// inside the AABB is tested against the SDF. Cells with
@@ -238,6 +270,16 @@ template <> struct System<BUILD_LIGHT_OCCLUSION_GRID> {
     /// archetype this frame (defensive — the system normally runs
     /// once per frame on the main canvas).
     bool ranThisFrame_ = false;
+
+    /// Read-side occupancy query for a same-pipeline-group consumer (#2330:
+    /// `COMPUTE_LIGHT_VOLUME`'s occlusion-aware boundary-seed relocation).
+    /// The blocker half is current-frame only while BUILD and the consumer
+    /// stay in separate pipeline groups (true for every registration site
+    /// today, per `endTick`'s doc comment above) — grouping them together
+    /// would make it one frame stale, not wrong-forever.
+    detail::LightOcclusionGridView occlusionView() const {
+        return detail::LightOcclusionGridView{&voxelBitfield_, &blockerBitfield_, origin_};
+    }
 
     void tick(IREntity::EntityId, C_VoxelPool &pool, const C_TrixelCanvasRenderBehavior &behavior) {
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);

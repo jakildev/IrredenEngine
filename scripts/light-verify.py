@@ -20,15 +20,30 @@ auto-screenshot series, parses each shot's DOMAIN-STATE log line (emitted by
      rather than fails (render-verify precedent) — hover-sweep in particular
      has no DOMAIN-STATE-derived assertion of its own (the camera never
      moves), so its correctness is entirely image-diff driven.
+  5. Per-target expected gather states (``EXPECTED_LIGHT_STATES``): a fixture
+     demo built to exercise one specific gather outcome asserts that outcome
+     by shot label. A listed shot whose DOMAIN-STATE line parsed *no* light
+     entry fails rather than passing vacuously — that is the
+     ``_LIGHT_ENTRY_RE`` whitelist trap (an unrecognised state token drops
+     the light silently) made loud. An expectation pattern that matches no
+     shot at all also fails, so a stale or mistyped key can't sit green.
 
-Mutation test (the acceptance gate a reviewer runs to confirm this harness
-is load-bearing, not just green-by-construction): locally force every seed
-to look boundary-clamped by editing the early-out at
-``engine/prefabs/irreden/render/systems/system_compute_light_volume.hpp``
-(the ``if (seedAlpha <= 0.0f)`` branch around line 271) to unconditionally
-skip, e.g. ``if (true) {``. Rerun this script — assertion 1 goes red because
-every domain-matrix "inwin" shot now reports SKIPPED instead of
-SEEDED_FULL. Revert the edit before committing anything.
+Mutation tests (the acceptance gates a reviewer runs to confirm this harness
+is load-bearing, not just green-by-construction). Revert each edit before
+committing anything.
+
+  * Assertion 1: locally force every seed to look boundary-clamped by editing
+    the early-out at
+    ``engine/prefabs/irreden/render/systems/system_compute_light_volume.hpp``
+    (the ``if (seedAlpha <= 0.0f)`` branch) to unconditionally skip, e.g.
+    ``if (true) {``. Rerun — assertion 1 goes red because every domain-matrix
+    "inwin" shot now reports SKIPPED instead of SEEDED_FULL.
+  * Assertion 5: pass ``nullptr`` for ``occlusion`` in
+    ``System<COMPUTE_LIGHT_VOLUME>::tick`` (or comment out the relocation
+    block in ``gatherLightSources``). Rerun with
+    ``--target IRLightingOccludedBoundary`` — ``light_boundary_d070`` and
+    every ``domain_z*_yaw*_band`` shot go red, because the occluded clamp
+    reverts to ``BOUNDARY_DISCOUNTED``.
 
 DOMAIN-STATE is versioned leniently: only the fields this script parses
 (shot, anchor, lights, casters) are matched; unrecognized keys the V1/V2
@@ -48,6 +63,7 @@ Assumes this file lives at ``<repo>/scripts/light-verify.py``.
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import re
 import shutil
 import sys
@@ -82,6 +98,23 @@ LIGHT_VERIFY_THRESHOLDS: dict[str, Any] = {
     "psnr_db": 28.0,
 }
 
+# Assertion 5. Per-target, per-shot-label-glob expected gather state. A fixture
+# demo exists to make one gather outcome fire, so the outcome is the gate — the
+# image half only locks whatever that outcome renders as. Keys are fnmatch
+# globs against the DOMAIN-STATE `shot=` label; every pattern must match at
+# least one shot across the run's passes or the run fails.
+EXPECTED_LIGHT_STATES: dict[str, dict[str, str]] = {
+    # #2330: the d070 sweep shot's per-axis-clamped seed cell lands inside the
+    # demo's wall slab, so the gather must relocate it to the nearest free cell
+    # on the clamped window face. d088 clamps to a free cell and must stay on
+    # the untouched path. The domain-matrix "band" shots share d070's anchor.
+    "IRLightingOccludedBoundary": {
+        "light_boundary_d070": "BOUNDARY_RELOCATED",
+        "light_boundary_d088": "BOUNDARY_DISCOUNTED",
+        "domain_z*_yaw*_band": "BOUNDARY_RELOCATED",
+    },
+}
+
 _DOMAIN_STATE_RE = re.compile(
     r"DOMAIN-STATE\s+"
     r"shot=(\S+)\s+"
@@ -91,8 +124,18 @@ _DOMAIN_STATE_RE = re.compile(
     r"feeder=(-?[\d.]+),(-?[\d.]+)\.\.(-?[\d.]+),(-?[\d.]+)\s+"
     r"casters=(\d+)"
 )
-# One light entry inside the DOMAIN-STATE lights=[...] list: entity:STATE:residual
-_LIGHT_ENTRY_RE = re.compile(r"(\d+):(SEEDED_FULL|BOUNDARY_DISCOUNTED|SKIPPED):([\d.]+)")
+# One light entry inside the DOMAIN-STATE lights=[...] list: entity:STATE:residual.
+# The state alternation is a WHITELIST — a light reporting a token missing from
+# it is dropped from the parsed shot entirely, and the downstream checks then
+# skip that shot instead of failing. Every `LightGatherState` value in
+# system_compute_light_volume.hpp must appear here; assertion 5 is what makes a
+# forgotten one loud instead of vacuous. Order matters: SKIPPED_OCCLUDED before
+# SKIPPED, or the shorter prefix wins the alternation and truncates the token.
+_LIGHT_ENTRY_RE = re.compile(
+    r"(\d+):"
+    r"(SEEDED_FULL|BOUNDARY_DISCOUNTED|BOUNDARY_RELOCATED|SKIPPED_OCCLUDED|SKIPPED):"
+    r"([\d.]+)"
+)
 
 
 def _parse_domain_state(output: str) -> list[dict[str, Any]]:
@@ -131,9 +174,12 @@ def _check_domain_matrix(shots: list[dict[str, Any]]) -> list[str]:
         anchor_by_category.setdefault(cat, set()).add(s["anchor"])
         if cat in ("inwin", "band"):
             for light in s["lights"]:
-                if light["state"] == "SKIPPED":
+                # Both skip outcomes are defects here: residual-exhausted
+                # (SKIPPED) and occluded-with-no-reachable-face-cell
+                # (SKIPPED_OCCLUDED, #2330).
+                if light["state"].startswith("SKIPPED"):
                     failures.append(
-                        f"{s['shot']}: light {light['entity']} reports SKIPPED but pan "
+                        f"{s['shot']}: light {light['entity']} reports {light['state']} but pan "
                         f"category {cat!r} should intersect the viewport"
                     )
         elif cat == "beyond":
@@ -173,6 +219,34 @@ def _check_boundary_sweep(shots: list[dict[str, Any]]) -> list[str]:
                 f"{prev_residual:.3f} — boundary fade must be non-increasing"
             )
         prev_residual, prev_label = residual, s["shot"]
+    return failures
+
+
+def _check_expected_states(
+    target: str, shots: list[dict[str, Any]], matched_patterns: set[str]
+) -> list[str]:
+    """Assertion 5 (see module docstring). Records matched patterns in-place."""
+    expectations = EXPECTED_LIGHT_STATES.get(target)
+    if not expectations:
+        return []
+    failures: list[str] = []
+    for s in shots:
+        for pattern, expected in expectations.items():
+            if not fnmatch.fnmatch(s["shot"], pattern):
+                continue
+            matched_patterns.add(pattern)
+            if not s["lights"]:
+                failures.append(
+                    f"{s['shot']}: expected a light in state {expected}, but the DOMAIN-STATE "
+                    "line parsed no light entries — an unrecognised state token would look "
+                    "exactly like this (see _LIGHT_ENTRY_RE)"
+                )
+                continue
+            states = [light["state"] for light in s["lights"]]
+            if expected not in states:
+                failures.append(
+                    f"{s['shot']}: expected a light in state {expected}, got {states}"
+                )
     return failures
 
 
@@ -227,6 +301,16 @@ def main(argv: list[str] | None = None) -> int:
     all_image_results: list[tuple[str, str, dict[str, Any]]] = []  # (pass, label, result)
     any_run_crashed = False
     any_baselines_missing = False
+    matched_state_patterns: set[str] = set()
+
+    # Non-default targets get their own baseline subtree: the per-pass path is
+    # keyed by CLI flag alone, so a second demo run through the same pass would
+    # otherwise compare against the default target's geometry and fail on the
+    # scene rather than on the light. DEFAULT_TARGET's path is left byte-for-byte
+    # where it is so the committed references stay valid.
+    baseline_root = demo_dir / "test" / "references" / backend / "light-verify"
+    if args.target != DEFAULT_TARGET:
+        baseline_root = baseline_root / args.target
 
     for flag in PASSES:
         print(f"\n[light-verify] === pass: --{flag} ===")
@@ -254,10 +338,15 @@ def main(argv: list[str] | None = None) -> int:
             all_assertion_failures.extend(_check_domain_matrix(domain_states))
         elif flag == "light-boundary-sweep":
             all_assertion_failures.extend(_check_boundary_sweep(domain_states))
-        # hover-sweep has no DOMAIN-STATE-derived assertion (see module
-        # docstring) — image comparison below is its only correctness gate.
+        # hover-sweep has no DOMAIN-STATE-derived assertion of its own (see
+        # module docstring) — image comparison below is its only correctness
+        # gate. Assertion 5 runs on every pass: its patterns are shot labels,
+        # not pass names.
+        all_assertion_failures.extend(
+            _check_expected_states(args.target, domain_states, matched_state_patterns)
+        )
 
-        baseline_dir = demo_dir / "test" / "references" / backend / "light-verify" / flag
+        baseline_dir = baseline_root / flag
         if args.update_baselines:
             if not args.force:
                 reply = input(
@@ -295,6 +384,23 @@ def main(argv: list[str] | None = None) -> int:
                 image, reference, diff_dir / f"{label}.diff.png", LIGHT_VERIFY_THRESHOLDS
             )
             all_image_results.append((flag, label, result))
+
+    expectations = EXPECTED_LIGHT_STATES.get(args.target, {})
+    if expectations:
+        print()
+        print(f"[light-verify] assertion 5 — expected gather states for {args.target}:")
+        for pattern, expected in expectations.items():
+            hit = pattern in matched_state_patterns
+            print(f"  {'checked' if hit else 'NO MATCH'}  {pattern:28} -> {expected}")
+        # A pattern that matched nothing is a stale or mistyped key, which would
+        # otherwise read as a silent pass — the same vacuity the regex whitelist
+        # produced (#2330).
+        for pattern in expectations:
+            if pattern not in matched_state_patterns:
+                all_assertion_failures.append(
+                    f"expected-state pattern {pattern!r} matched no shot label in any pass "
+                    f"for target {args.target}"
+                )
 
     print()
     print(f"{'pass':22} {'shot':30} {'result':8} {'match%':>8} {'max_d':>6} {'psnr':>8}")

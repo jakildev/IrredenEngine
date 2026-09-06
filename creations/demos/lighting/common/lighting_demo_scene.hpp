@@ -505,6 +505,10 @@ inline void logDomainState(int shotIndex) {
         const char *state = r.state_ == IRSystem::LightGatherState::SEEDED_FULL ? "SEEDED_FULL"
                             : r.state_ == IRSystem::LightGatherState::BOUNDARY_DISCOUNTED
                                 ? "BOUNDARY_DISCOUNTED"
+                            : r.state_ == IRSystem::LightGatherState::BOUNDARY_RELOCATED
+                                ? "BOUNDARY_RELOCATED"
+                            : r.state_ == IRSystem::LightGatherState::SKIPPED_OCCLUDED
+                                ? "SKIPPED_OCCLUDED"
                                 : "SKIPPED";
         char entry[64];
         std::snprintf(

@@ -57,6 +57,16 @@
 // as the camera pans away instead of popping at a window margin. Lights
 // whose discounted residual is ≤ 0 cannot reach the window and are skipped;
 // the gathered/eligible counts surface on the perf HUD's CULL block.
+//
+// #2330: a per-axis-clamped boundary cell is not automatically safe to seed
+// — if it lands inside solid geometry, `c_propagate_light_volume`'s
+// neighbor occlusion gate traps the seed there and the light pops off
+// instead of fading. `gatherLightSources` checks the clamped cell against
+// the same CPU occlusion mirror `BUILD_LIGHT_OCCLUSION_GRID` maintains and,
+// when occluded, relocates the seed to the nearest unoccluded cell on the
+// window face the clamp touched (never an interior cell), or skips the
+// light explicitly when no such cell exists within its remaining residual
+// reach. See `LightGatherState::BOUNDARY_RELOCATED` / `SKIPPED_OCCLUDED`.
 
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
@@ -72,6 +82,7 @@
 #include <irreden/render/components/component_light_source.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/render/detail/camera_anchor.hpp>
+#include <irreden/render/systems/system_build_light_occlusion_grid.hpp>
 
 #include <chrono>
 #include <cstdint>
@@ -86,15 +97,22 @@ namespace IRSystem {
 // Per-light gather outcome (#2315, V1 DOMAIN-STATE instrumentation).
 // `SEEDED_FULL` — origin fell inside the camera-anchored window, no
 // boundary clamp. `BOUNDARY_DISCOUNTED` — origin clamped to the window
-// edge; `residual_` is the seed alpha the clamp survived at. `SKIPPED` —
-// the discounted residual was ≤ 0 (light cannot reach the window);
-// `residual_` is 0. Public (not `detail`) — the DOMAIN-STATE emission hook
-// in a lighting demo's `main.cpp` reads these back via `lightGatherRecords()`
-// below.
+// edge, and the clamped cell is free; `residual_` is the seed alpha the
+// clamp survived at. `BOUNDARY_RELOCATED` (#2330) — the clamped cell was
+// occluded (voxel or light-blocker bit set), so the seed moved to the
+// nearest unoccluded cell on a window face the clamp touched; `residual_`
+// includes the extra relocation distance's falloff. `SKIPPED` — the
+// discounted residual was ≤ 0 (light cannot reach the window); `residual_`
+// is 0. `SKIPPED_OCCLUDED` (#2330) — the clamped cell was occluded and no
+// unoccluded cell exists within the light's remaining reach; `residual_` is
+// 0. Public (not `detail`) — the DOMAIN-STATE emission hook in a lighting
+// demo's `main.cpp` reads these back via `lightGatherRecords()` below.
 enum class LightGatherState : std::uint8_t {
     SEEDED_FULL,
     BOUNDARY_DISCOUNTED,
+    BOUNDARY_RELOCATED,
     SKIPPED,
+    SKIPPED_OCCLUDED,
 };
 
 struct LightGatherRecord {
@@ -166,6 +184,70 @@ inline ivec3 roundedLightOrigin(const C_WorldTransform &transform) {
     return IRMath::roundVec3HalfUp(transform.translation_);
 }
 
+// #2330: relocate an occluded per-axis-clamped boundary seed to the nearest
+// unoccluded cell on a window face the clamp touched. `clampedAxis[a]` marks
+// which axes the caller actually clamped (a light whose origin overshoots
+// only one axis has one candidate face to search; a corner clamp has two or
+// three). Only candidates on a touched face are considered — never an
+// interior cell, which would place the seed as if the straight-line path
+// crossed the in-window wall the propagate gate itself models (light-
+// through-wall, strictly worse than the pop this relocation removes).
+//
+// Enumeration is nearest-first and deterministic: for each ring distance
+// (1..maxDist), each touched face is walked in axis order (x, then y, then
+// z), and within a face the two in-face offsets are walked in a fixed order
+// (lower axis first, negative direction first). This makes the pick stable
+// frame-to-frame for equidistant free cells — required because
+// render-verify compares captured pixels and the light/geometry involved
+// are both world-fixed, so a pan can never flip which candidate wins.
+//
+// `maxDist` is the light's own remaining residual reach (the caller derives
+// it from `stepFalloff`), not a separate constant — any farther cell would
+// seed at alpha <= 0 and be dropped by the propagate pass regardless.
+inline bool relocateOccludedBoundarySeed(
+    const LightOcclusionGridView &view,
+    const ivec3 &volumeOrigin,
+    const ivec3 &clamped,
+    const bool clampedAxis[3],
+    int maxDist,
+    ivec3 &outClamped,
+    int &outExtraDist
+) {
+    constexpr int kWindowMin = -kLightVolumeHalfExtent;
+    constexpr int kWindowMax = kLightVolumeHalfExtent - 1;
+    for (int dist = 1; dist <= maxDist; ++dist) {
+        for (int axis = 0; axis < 3; ++axis) {
+            if (!clampedAxis[axis]) {
+                continue;
+            }
+            const int u = (axis + 1) % 3;
+            const int v = (axis + 2) % 3;
+            for (int du = -dist; du <= dist; ++du) {
+                const int extent = dist - IRMath::abs(du);
+                for (int sign = -1; sign <= 1; sign += 2) {
+                    if (extent == 0 && sign == 1) {
+                        continue; // single candidate at the ring's extremes
+                    }
+                    ivec3 candidate = clamped;
+                    candidate[u] += du;
+                    candidate[v] += sign * extent;
+                    if (candidate[0] < kWindowMin || candidate[0] > kWindowMax ||
+                        candidate[1] < kWindowMin || candidate[1] > kWindowMax ||
+                        candidate[2] < kWindowMin || candidate[2] > kWindowMax) {
+                        continue;
+                    }
+                    if (!view.occluded(volumeOrigin + candidate)) {
+                        outClamped = candidate;
+                        outExtraDist = dist;
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    return false;
+}
+
 // Gathers all lights with positions into the supplied buffer (capped
 // at `kLightVolumeMaxSources`). Returns the count actually written.
 // Per-tick allocation is bounded by the buffer's reserved capacity.
@@ -210,6 +292,10 @@ inline ivec3 roundedLightOrigin(const C_WorldTransform &transform) {
 // `outHasSpot` is set true when at least one SPOT light is actually seeded this
 // frame; it gates the consumer's winning-light-ID read so no-spot scenes stay
 // byte-identical (#2318).
+// `occlusion` (#2330), when non-null and valid, gates a boundary-clamped seed
+// against the current frame's voxel/light-blocker occupancy and relocates it
+// off an occluded clamp cell — see `relocateOccludedBoundarySeed`. `nullptr`
+// reproduces today's behavior exactly (byte-identical `GPULightSource`).
 inline std::uint32_t gatherLightSources(
     std::vector<GPULightSource> &out,
     IREntity::EntityId currentCanvas,
@@ -217,7 +303,8 @@ inline std::uint32_t gatherLightSources(
     int &outMaxRadius,
     std::uint32_t &outEligible,
     bool &outHasSpot,
-    std::vector<LightGatherRecord> *outStates = nullptr
+    std::vector<LightGatherRecord> *outStates = nullptr,
+    const LightOcclusionGridView *occlusion = nullptr
 ) {
     out.clear();
     outMaxRadius = 0;
@@ -293,40 +380,70 @@ inline std::uint32_t gatherLightSources(
             // The seedable window is rel ∈ [−halfExtent, halfExtent−1] per
             // axis (texel index = rel + halfExtent ∈ [0, gridSize)).
             ivec3 clamped = rel;
+            bool clampedAxis[3] = {false, false, false};
             int boundaryDist = 0;
             for (int axis = 0; axis < 3; ++axis) {
                 const int c =
                     IRMath::clamp(rel[axis], -kLightVolumeHalfExtent, kLightVolumeHalfExtent - 1);
                 boundaryDist += IRMath::abs(rel[axis] - c);
+                clampedAxis[axis] = (c != rel[axis]);
                 clamped[axis] = c;
             }
-            const float seedAlpha = 1.0f - static_cast<float>(boundaryDist) * stepFalloff;
+            float seedAlpha = 1.0f - static_cast<float>(boundaryDist) * stepFalloff;
             if (seedAlpha <= 0.0f) {
                 if (outStates != nullptr) {
                     outStates->push_back({node->entities_[i], LightGatherState::SKIPPED, 0.0f});
                 }
                 continue;
             }
+            // #2330: the clamped boundary cell is not automatically safe. If
+            // it lands inside solid geometry (an occupied voxel or an SDF
+            // C_LightBlocker), `c_propagate_light_volume`'s symmetric
+            // occlusion gate traps the seed's alpha at that cell and the
+            // light silently drops instead of fading. Relocate to the
+            // nearest unoccluded cell on a window face the clamp touched
+            // (never an interior cell — see `relocateOccludedBoundarySeed`);
+            // when no such cell exists within the light's own remaining
+            // residual reach, skip the light explicitly rather than seed a
+            // cell the propagate pass will never light past.
+            LightGatherState state = boundaryDist == 0 ? LightGatherState::SEEDED_FULL
+                                                        : LightGatherState::BOUNDARY_DISCOUNTED;
+            if (boundaryDist > 0 && occlusion != nullptr && occlusion->valid() &&
+                occlusion->occluded(volumeOriginVoxel + clamped)) {
+                const int reach =
+                    outMaxRadius > 0 ? outMaxRadius : kLightVolumePropagateIterations;
+                const int maxDist = reach - boundaryDist - 1;
+                ivec3 relocated{};
+                int extraDist = 0;
+                if (!relocateOccludedBoundarySeed(
+                        *occlusion,
+                        volumeOriginVoxel,
+                        clamped,
+                        clampedAxis,
+                        maxDist,
+                        relocated,
+                        extraDist
+                    )) {
+                    if (outStates != nullptr) {
+                        outStates->push_back(
+                            {node->entities_[i], LightGatherState::SKIPPED_OCCLUDED, 0.0f}
+                        );
+                    }
+                    continue;
+                }
+                clamped = relocated;
+                boundaryDist += extraDist;
+                seedAlpha = 1.0f - static_cast<float>(boundaryDist) * stepFalloff;
+                state = LightGatherState::BOUNDARY_RELOCATED;
+            }
             // This light is actually seeded — flag SPOTs so the consumer only
             // pays the winning-light-ID read when a cone can exist (#2318).
+            // Must stay below the occlusion block: a SKIPPED_OCCLUDED spot
+            // never seeded and must not arm the consumer's winning-ID read.
             if (lights[i].type_ == LightType::SPOT) {
                 outHasSpot = true;
             }
-            // Known residual (#2330, lighting epic #1717): the clamped
-            // boundary cell is NOT tested against occlusion. If the clamp
-            // lands inside solid geometry (an occupied voxel or an SDF
-            // C_LightBlocker), the seed is still emitted here, but
-            // `c_propagate_light_volume`'s symmetric occlusion gate traps
-            // its alpha at that cell, so the light silently drops instead of
-            // fading. Benign — a missing light, never light-through-wall —
-            // and fundamental to the finite window. An occlusion-aware seed
-            // (queryable against the CPU mirror BUILD_LIGHT_OCCLUSION_GRID
-            // already maintains, which runs before this system) is deferred
-            // to #2330 rather than shipped silently.
             if (outStates != nullptr) {
-                const LightGatherState state = boundaryDist == 0
-                                                   ? LightGatherState::SEEDED_FULL
-                                                   : LightGatherState::BOUNDARY_DISCOUNTED;
                 outStates->push_back({node->entities_[i], state, seedAlpha});
             }
             out.push_back(toGpuLight(lights[i], volumeOriginVoxel + clamped, origin, seedAlpha));
@@ -364,6 +481,14 @@ static_assert(
 static_assert(
     LightVolumeParams{}.halfExtent_ == kLightVolumeHalfExtent,
     "LightVolumeParams::halfExtent_ default must equal kLightVolumeHalfExtent"
+);
+// #2330: the occlusion-aware relocation search indexes the light-occlusion
+// grid with light-volume window coordinates directly (no separate bounds
+// check beyond the window itself), which is only sound while the window is
+// no larger than the grid it queries.
+static_assert(
+    kLightVolumeHalfExtent <= kMaxLightOcclusionGridSideVoxels / 2,
+    "light volume window must fit inside the light-occlusion grid"
 );
 
 template <> struct System<COMPUTE_LIGHT_VOLUME> {
@@ -457,6 +582,20 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
             int maxRadius = 0;
             std::uint32_t eligible = 0;
             bool hasSpot = false;
+            // #2330: resolved once per tick, never cached across frames —
+            // params pointers are not stable across a system re-create
+            // (`.claude/rules/cpp-systems.md`). `findSystem` returns
+            // `kNullSystemId` when BUILD_LIGHT_OCCLUSION_GRID isn't
+            // registered; an invalid view reproduces today's behavior
+            // exactly (this system's own `create()` already asserts the
+            // buffer BUILD produces exists, so the branch below is
+            // defensive, not a supported configuration).
+            const SystemId buildOcclusionId = IRSystem::findSystem(BUILD_LIGHT_OCCLUSION_GRID);
+            const detail::LightOcclusionGridView occlusion =
+                buildOcclusionId == kNullSystemId
+                    ? detail::LightOcclusionGridView{}
+                    : getSystemParams<System<BUILD_LIGHT_OCCLUSION_GRID>>(buildOcclusionId)
+                          ->occlusionView();
             const std::uint32_t count = detail::gatherLightSources(
                 lightStaging_,
                 canvasEntity,
@@ -464,7 +603,8 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
                 maxRadius,
                 eligible,
                 hasSpot,
-                &lightGatherRecords_
+                &lightGatherRecords_,
+                &occlusion
             );
             anyCanvasSeededSpot_ |= hasSpot;
             // worldOriginVoxel_.w carries the has-SPOT flag (#2318): the

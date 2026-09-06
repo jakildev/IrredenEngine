@@ -67,6 +67,7 @@ add_executable(IrredenEngineTest
   render/frame_data_sun_layout_test.cpp
   render/gizmo_drag_reset_test.cpp
   render/gpu_compute_dispatch_test.cpp
+  render/light_volume_boundary_seed_test.cpp
   render/metal_sticky_untrack_test.cpp
   render/opengl_shader_include_test.cpp
   render/per_canvas_light_scope_test.cpp
