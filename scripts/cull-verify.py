@@ -146,7 +146,8 @@ def main(argv: list[str] | None = None) -> int:
         "--cull-validate", "--auto-screenshot", str(args.warmup),
     ]
     print("+ " + " ".join(run_cmd), flush=True)
-    proc = subprocess.run(run_cmd, cwd=str(worktree), capture_output=True, text=True)
+    proc = subprocess.run(verify_common.platform_launch_argv(run_cmd), cwd=str(worktree),
+                          capture_output=True, text=True)
     run_crash: tuple[int, str] | None = None
     if proc.returncode != 0:
         print(

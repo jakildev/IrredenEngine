@@ -593,8 +593,8 @@ def _run_capture(*, worktree: Path, target: str, shots_dir: Path, warmup: int,
     # non-UTF-8 bytes (e.g. a Mac-Roman curly apostrophe in "Robert's iPhone").
     # The captured output is only used for the crash tail below, never parsed,
     # so decode tolerantly instead of letting a stray byte abort the whole run.
-    proc = subprocess.run(run_cmd, cwd=str(worktree), capture_output=True,
-                          text=True, errors="replace")
+    proc = subprocess.run(verify_common.platform_launch_argv(run_cmd), cwd=str(worktree),
+                          capture_output=True, text=True, errors="replace")
     if proc.returncode != 0:
         print(f"[render-verify] ({pass_label}) fleet-run exited "
               f"{proc.returncode}; tail of output follows (screenshot count "

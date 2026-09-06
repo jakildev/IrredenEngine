@@ -20,6 +20,7 @@ import json
 import os
 import platform
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -71,11 +72,27 @@ def collect_full_frames(shots_dir: Path) -> list[Path]:
                   if FULL_FRAME_RE.fullmatch(p.name))
 
 
+def platform_launch_argv(cmd: list[str]) -> list[str]:
+    """Rewrite an argv list so Windows's ``CreateProcess`` can launch it.
+
+    ``fleet-run`` / ``fleet-build`` are extensionless bash scripts on PATH;
+    native-Windows Python resolves an argv[0] with no extension only via an
+    implicit ``.exe`` append, so a bare ``subprocess.Popen(["fleet-run", ...])``
+    dies ``FileNotFoundError: [WinError 2]`` before the demo even starts
+    (#3007). Routing the same command line through bash sidesteps that —
+    verified as a throwaway workaround on PR #2758. A no-op everywhere else.
+    """
+    if platform.system() != "Windows":
+        return cmd
+    bash = shutil.which("bash") or r"C:\Program Files\Git\bin\bash.exe"
+    return [bash, "-lc", " ".join(shlex.quote(c) for c in cmd)]
+
+
 def run(cmd: list[str], cwd: Path | None = None, check: bool = True,
         env: dict[str, str] | None = None, timeout: int | None = None) -> int:
     print("+ " + " ".join(cmd), flush=True)
-    proc = subprocess.run(cmd, cwd=str(cwd) if cwd else None, env=env,
-                          timeout=timeout)
+    proc = subprocess.run(platform_launch_argv(cmd), cwd=str(cwd) if cwd else None,
+                          env=env, timeout=timeout)
     if check and proc.returncode != 0:
         raise SystemExit(f"command failed ({proc.returncode}): {' '.join(cmd)}")
     return proc.returncode
@@ -93,7 +110,7 @@ def run_capture(cmd: list[str], cwd: Path | None = None,
     # screenshot paths), so replacing an undecodable byte with U+FFFD is loss-
     # free for our purposes.
     proc = subprocess.Popen(
-        cmd, cwd=str(cwd) if cwd else None,
+        platform_launch_argv(cmd), cwd=str(cwd) if cwd else None,
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         text=True, encoding="utf-8", errors="replace",
     )
