@@ -2213,7 +2213,7 @@ for pr in prs:
         name = (l or {}).get("name", "") if isinstance(l, dict) else ""
         if name.startswith("fleet:reviewing-") or name.startswith("fleet:resolving-") or name.startswith("fleet:amending-"):
             print(f"{n}\t{name}")
-' 2>/dev/null || echo "")
+' 2>/dev/null | tr -d '\r' || echo "")
 
         [[ -z "$pr_review_plan" ]] && continue
 
@@ -2319,7 +2319,7 @@ for issue in issues:
         name = (l or {}).get("name", "") if isinstance(l, dict) else ""
         if name.startswith("fleet:claim-"):
             print(f"{n}\t{name}")
-' 2>/dev/null || echo "")
+' 2>/dev/null | tr -d '\r' || echo "")
 
         [[ -z "$open_claim_plan" ]] && continue
 
@@ -2424,7 +2424,7 @@ for issue in issues:
         name = (l or {}).get("name", "") if isinstance(l, dict) else ""
         if name.startswith("fleet:stewarding-"):
             print(f"{n}\t{name}")
-' 2>/dev/null || echo "")
+' 2>/dev/null | tr -d '\r' || echo "")
 
         [[ -z "$steward_plan" ]] && continue
 
@@ -2473,7 +2473,7 @@ for issue in issues:
         name = (l or {}).get("name", "") if isinstance(l, dict) else ""
         if name.startswith("fleet:planning-"):
             print(f"{n}\t{name}")
-' 2>/dev/null || echo "")
+' 2>/dev/null | tr -d '\r' || echo "")
 
         [[ -z "$planning_plan" ]] && continue
 
