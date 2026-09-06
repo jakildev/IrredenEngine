@@ -98,6 +98,39 @@ class TestWriteAtomic(unittest.TestCase):
         write_atomic(target, new_payload)
         self.assertEqual(json.loads(target.read_text()), {"new": True, "n": 42})
 
+    def test_write_atomic_disables_newline_translation(self):
+        # #3061: a plain text-mode handle ("w") lets Windows translate the
+        # payload's "\n" to "\r\n", so the on-disk file lands one byte over
+        # what a caller computed from payload.encode("utf-8") (emit_state's
+        # `size`). The real CRLF-vs-LF divergence only reproduces on an
+        # actual Windows host, so — to make the regression visible on every
+        # CI host, not just Windows — this checks the open() call shape
+        # (binary mode, or newline="" if text mode is kept) rather than the
+        # emergent OS behavior: it fails against the pre-fix mode="w" call
+        # on Linux/macOS too, exactly the "invisible to CI" gap #3061 named.
+        target = self.tmp / "state.json"
+        payload = "line one\nline two\n"
+        captured = {}
+        real_fdopen = _mod.os.fdopen
+
+        def spy_fdopen(fd, mode, *args, **kwargs):
+            captured["mode"] = mode
+            captured["newline"] = kwargs.get("newline")
+            return real_fdopen(fd, mode, *args, **kwargs)
+
+        with patch.object(_mod.os, "fdopen", side_effect=spy_fdopen):
+            write_atomic(target, payload)
+
+        is_binary = "b" in captured["mode"]
+        disables_translation = captured["newline"] == ""
+        self.assertTrue(
+            is_binary or disables_translation,
+            f"write_atomic opened with mode={captured['mode']!r} "
+            f"newline={captured['newline']!r} — a plain text-mode handle lets "
+            "the OS translate \\n to \\r\\n on Windows, making the on-disk "
+            "file larger than len(payload.encode('utf-8')) (#3061)")
+        self.assertEqual(target.read_bytes(), payload.encode("utf-8"))
+
     def test_error_path_cleans_up_temp_and_keeps_old_file(self):
         target = self.tmp / "state.json"
         write_atomic(target, json.dumps({"keep": "me"}) + "\n")
