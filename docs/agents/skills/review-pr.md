@@ -249,6 +249,9 @@ Body shape:
 ### Nits
 - <path:line> — <nit>
 
+### Nits (follow-up)
+- <path:line> — <wording-tier nit; no amend, no `fleet:has-nits`>
+
 ### Praise
 - <non-obvious good decision, if any>
 
