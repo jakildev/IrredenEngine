@@ -8,7 +8,9 @@
 # build-<creation>-<agent>/ and ir-build auto-configures that dir with
 # -DIRREDEN_USER_PROJECTS=<worktree>. These tests pin the pure path
 # resolution (ir_enclosing_engine_root / ir_creation_worktree_engine_root /
-# ir_default_build_dir) against a fake directory layout — no git, no cmake.
+# ir_default_build_dir) against a fake directory layout — no cmake. T4 does
+# a local `git init` (no network) to reproduce #3046's spelling split; every
+# other test is pure filesystem, no git.
 #
 # Covers:
 #   - engine checkout (presets at root) → <root>/build (unchanged)
@@ -19,6 +21,8 @@
 #   - presets-less dir under the engine but NOT under creations/ →
 #     <root>/build (no false-positive creation detection)
 #   - ir_enclosing_engine_root walk-up and miss cases
+#   - mixed Windows-drive vs POSIX-drive spelling of the same worktree root
+#     does not break detection or build-dir derivation (#3046)
 
 set -euo pipefail
 
@@ -111,6 +115,26 @@ assert_eq "$(ir_default_build_dir "$NON_CREATION")" "$NON_CREATION/build" \
     "non-creation repo under the engine builds in-tree"
 assert_eq "$(ir_default_build_dir "$OUTSIDE")" "$OUTSIDE/build" \
     "repo outside the engine tree builds in-tree"
+
+# --- T4: mixed-spelling regression (#3046) -----------------------------------
+# On native Windows, `git rev-parse --show-toplevel` (the real source of
+# ir_worktree_root's input) yields Windows-drive form (C:/Users/x), while
+# `mktemp -d` above and ir_enclosing_engine_root's `cd ... && pwd` walk both
+# yield the POSIX-drive form (/c/Users/x) — the exact spelling split #3046
+# hit. Reproduce it by asking git for ITS OWN spelling of the same real $ENG
+# directory: on MSYS2/Git-Bash that comes back Windows-drive form (a
+# genuinely different string from $ENG), on Linux/macOS it normally comes
+# back byte-identical to $ENG, so this degrades to a harmless repeat of T2
+# there rather than a skip — the assertion is meaningful wherever the split
+# actually exists and inert everywhere else.
+echo "T4: ir_creation_worktree_engine_root under a mixed path spelling (#3046)"
+git -C "$ENG" init -q
+GIT_SPELLED_ENG="$(git -C "$ENG" rev-parse --show-toplevel)"
+CREATION_WT_GITSPELL="$GIT_SPELLED_ENG/creations/game/.claude/worktrees/agent-1"
+assert_eq "$(ir_creation_worktree_engine_root "$CREATION_WT_GITSPELL")" "$GIT_SPELLED_ENG" \
+    "creation worktree detected under git's own toplevel spelling, whether or not it matches \$ENG's"
+assert_eq "$(ir_default_build_dir "$CREATION_WT_GITSPELL")" "$GIT_SPELLED_ENG/build-game-agent-1" \
+    "build dir derived in the same spelling as the input, not \$ENG's mktemp spelling"
 
 # --- Summary ------------------------------------------------------------------
 echo
