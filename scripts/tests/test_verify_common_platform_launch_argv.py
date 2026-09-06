@@ -115,5 +115,25 @@ class TestWindowsWrapsThroughBash(unittest.TestCase):
         self.assertEqual(shlex.split(got[2]), _PLAIN_ARGV)
 
 
+class TestResolveBash(unittest.TestCase):
+    """Direct coverage of ``resolve_bash`` (#3052) — ``platform_launch_argv``
+    only exercises it through the Windows branch above, leaving the
+    non-Windows early return unpinned."""
+
+    def test_non_windows_returns_bare_bash(self):
+        with mock.patch("platform.system", return_value="Linux"):
+            self.assertEqual(verify_common.resolve_bash(), "bash")
+
+    def test_windows_uses_bash_found_on_path(self):
+        with mock.patch("platform.system", return_value="Windows"), \
+             mock.patch("shutil.which", return_value=_FAKE_BASH):
+            self.assertEqual(verify_common.resolve_bash(), _FAKE_BASH)
+
+    def test_windows_falls_back_to_git_bash_when_not_on_path(self):
+        with mock.patch("platform.system", return_value="Windows"), \
+             mock.patch("shutil.which", return_value=None):
+            self.assertEqual(verify_common.resolve_bash(), _FALLBACK_BASH)
+
+
 if __name__ == "__main__":
     unittest.main()
