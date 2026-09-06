@@ -133,16 +133,23 @@ SDF_GATED = False
 #   px on one host silently mis-scales on the other.
 #
 # Calibrated over zoom 1, 2, 4, 8, 16 on both backends. Measured `center-axis`
-# dev_x, in game px — identical on both, which is what licenses the unit:
+# dev_x, in GAME px:
 #
-#     zoom      1     2     4     8    16
-#     dev_x  2.00  3.00  6.00 11.00 22.00
+#     zoom                          1     2     4     8    16
+#     macOS/Metal (2026-08-21)   2.00  3.00  6.00 11.00 22.00
+#     Windows/GL  (2026-09-06)   1.00  2.00  4.00 10.00 20.00
 #
-# macOS/Metal reads exactly 2x each cell (1280x720 game res in a 2560x1440
-# HiDPI framebuffer, factor 2); Windows/OpenGL reads them 1:1 (1280x720,
-# factor 1). `1.5 px/zoom + 1.0 px` clears every cell by 14-33% and still fails
-# any growth in the residual: a regression to the pre-#2547 iso-depth-0 focus
-# is 150 framebuffer px at zoom 4 on the 2x host, i.e. 75 game px, ~10x this
+# The unit is what licenses one calibration for both hosts: macOS reads exactly
+# 2x each cell on the framebuffer (1280x720 game res in a 2560x1440 HiDPI
+# framebuffer, factor 2) while Windows/OpenGL reads 1:1 (1280x720, factor 1),
+# so only the game-px figures above are comparable. The two rows were identical
+# until #1938's GL analytic-coverage port (`fbad3ac4`) moved GL's silhouette;
+# GL now reads uniformly BELOW Metal, so the bound stays calibrated on the
+# larger Metal row (unchanged by that port — its Metal-side diff is
+# comment-only — but not re-measured since). `1.5 px/zoom + 1.0 px` clears
+# every Metal cell by 14-33% and every GL cell by 25-150%, and still fails any
+# growth in the residual: a regression to the pre-#2547 iso-depth-0 focus is
+# 150 framebuffer px at zoom 4 on the 2x host, i.e. 75 game px, ~10x this
 # bound.
 CENTROID_BOUND_GAME_PX = {"center-axis": (1.5, 1.0)}
 # PNG IHDR width lives at bytes 16..20, right after the 8-byte signature and the
