@@ -45,9 +45,18 @@ granted sole-holder claim and no other pane is on this item
   was taken under it, so the release Just Works.
 - **If you cannot work it** — the body needs a host you are not on, the
   labels moved under you, a `Blocked by:` is live again, the verdict is
-  already standing — release the lane's claim (table below), print
-  `[<role>] declined <target>: <reason>`, and exit through your shutdown
-  step.
+  already standing — run
+  `fleet-claim [--repo game] decline $FLEET_DISPATCH_KIND $FLEET_DISPATCH_NUMBER <basename> --reason "<why>"`
+  and exit through your shutdown step — it posts the `declined:` record
+  and releases the lane's claim through the table below
+  ([`FLEET.md` § "How a launch ends"](FLEET.md) has the rest). Never
+  release by hand and leave silently: a claim left standing with no
+  record counts as **abandoned**, and the second abandonment of an item
+  releases it and salvages your worktree to a patch for the next
+  claimant.
+- **Inherit a handoff.** Before starting, check
+  `~/.fleet/state/handoff/<kind>-<repo>-<N>.md` for your target and
+  follow it (it names a salvage patch from an earlier iteration).
 
 | kind | the dispatcher ran | you release with |
 |---|---|---|

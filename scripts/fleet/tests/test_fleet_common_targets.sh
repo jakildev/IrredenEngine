@@ -57,6 +57,43 @@ for kind in "${!FLEET_TARGET_CLAIM[@]}"; do
 done
 assert_eq "${#FLEET_TARGET_CLAIM[@]}" "${#FLEET_TARGET_RELEASE[@]}" "claim and release tables are the same size"
 
+# On a pre-fix tree the table is absent; declare it empty so the assertions
+# below fail rather than abort on an unbound subscript (positive control).
+declare -p FLEET_TARGET_LABEL >/dev/null 2>&1 || declare -A FLEET_TARGET_LABEL=()
+echo "T2b: the label table names the prefix each kind's claim arm actually writes"
+# fleet_completion.py is handed `<prefix><host>-<agent>` composed from this
+# table, so a drift from fleet-claim's own prefixes would read every exit as
+# `finished`. Lift each claim arm's prefix from the fleet-claim source.
+FLEET_CLAIM_SRC="$SCRIPT_DIR/fleet-claim"
+claim_arm_prefix() {  # $1 = claim subcommand -> the `fleet:<x>-` its arm writes
+    if [[ "$1" == claim ]]; then
+        # cmd_claim composes the task label inline rather than via _cmd_pr_label_claim.
+        sed -n '/^cmd_claim()/,/^}/p' "$FLEET_CLAIM_SRC" | grep -o 'fleet:claim-' | head -n 1
+    else
+        sed -n "/^cmd_${1//-/_}()/,/^}/p" "$FLEET_CLAIM_SRC" | grep -o '"fleet:[a-z]*-"' | head -n 1 | tr -d '"'
+    fi
+}
+for kind in "${!FLEET_TARGET_CLAIM[@]}"; do
+    [[ -n "${FLEET_TARGET_LABEL[$kind]+x}" ]] \
+        && ok "kind '$kind' has a label prefix" || bad "kind '$kind' has no label prefix"
+    assert_eq "${FLEET_TARGET_LABEL[$kind]:-}" "$(claim_arm_prefix "${FLEET_TARGET_CLAIM[$kind]}")" \
+        "kind '$kind': label prefix matches fleet-claim's ${FLEET_TARGET_CLAIM[$kind]} arm"
+done
+
+echo "T2c: fleet_target_key and fleet_pane_worktrees"
+assert_eq "$(fleet_target_key task:engine:1969)" "task-engine-1969" "target key"
+assert_eq "$(fleet_target_key stack:game:344:397)" "stack-game-344-397" "stack key keeps the base"
+WT_ROOT=$(mktemp -d)
+mkdir -p "$WT_ROOT/.claude/worktrees/pool-3" "$WT_ROOT/creations/game/.claude/worktrees/pool-3" \
+    "$WT_ROOT/.claude/worktrees/pool-4"
+assert_eq "$(fleet_pane_worktrees pool-3 "$WT_ROOT" | tr '\n' ' ')" \
+    "$WT_ROOT/.claude/worktrees/pool-3 $WT_ROOT/creations/game/.claude/worktrees/pool-3 " \
+    "engine worktree then its game twin"
+assert_eq "$(fleet_pane_worktrees pool-4 "$WT_ROOT" | tr '\n' ' ')" \
+    "$WT_ROOT/.claude/worktrees/pool-4 " "engine-only pane lists one"
+assert_eq "$(fleet_pane_worktrees pool-9 "$WT_ROOT")" "" "unknown pane lists nothing (exit 0)"
+rm -rf "$WT_ROOT"
+
 echo "T3: malformed targets are refused with every part left empty"
 for bad_target in "" "bogus:engine:1" "task:other:1" "task:engine:abc" "task:engine:" "task" ":engine:1" "task::1"; do
     if fleet_parse_target "$bad_target"; then

@@ -43,8 +43,7 @@ See [docs/agents/FLEET-RUNTIME.md § Exit protocol](../../docs/agents/FLEET-RUNT
 ## Your assignment for this iteration
 
 The contract — one pre-claimed PR per launch, its `review-claim` already
-held under your basename, the walk-away release +
-`[smoke-worker] declined <target>: <reason>` line — lives in
+held under your basename, the `fleet-claim decline` walk-away — lives in
 [docs/agents/FLEET-RUNTIME.md § The dispatch target](../../docs/agents/FLEET-RUNTIME.md#the-dispatch-target--one-item-per-launch).
 With `FLEET_DISPATCH_TARGET=smoke:engine:<N>` set (the dispatcher only
 elects PRs whose pending smoke label names THIS host), skip startup

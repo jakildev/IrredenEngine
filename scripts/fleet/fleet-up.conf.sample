@@ -106,17 +106,19 @@
 # FLEET_MODEL_PROBE_TIMEOUT caps each probe call in seconds. Default 90.
 # FLEET_MODEL_PROBE_TIMEOUT=90
 #
-# Planning circuit breaker: after this many granted planning dispatches on
-# this host without a plan landing, the dispatcher applies the #3034 park
-# mechanically (ADD fleet:needs-human, KEEP fleet:needs-plan, comment)
-# instead of assigning the issue again — the backstop for a planner that
-# keeps releasing without parking; a planning sink otherwise burns the
-# fleet's most expensive iterations invisibly (measured: 41 on one issue).
-# 0 disables. Per-issue counter files live in
-# ~/.fleet/state/plan-dispatch-counts/ and expire after
-# FLEET_PLAN_DISPATCH_COUNT_TTL seconds (default 7 days).
-# FLEET_PLAN_DISPATCH_CAP=5
-# FLEET_PLAN_DISPATCH_COUNT_TTL=604800
+# Dispatch circuit breaker: after this many granted dispatches of one
+# target (`<kind>:<repo>:<N>` — a task, a PR's feedback, a plan, a review)
+# on this host without it completing, the dispatcher parks the item
+# (ADD fleet:needs-human + comment; for a plan target fleet:needs-plan is
+# KEPT, the #3034 park) instead of assigning it again. First measured on
+# planning — 41 dispatches on one unplannable issue, invisible on the
+# thread — the same sink exists for any item every iteration walks away
+# from. The counter clears when the target completes (the completion
+# contract's `finished`) or parks. 0 disables. Per-target counter files
+# live in ~/.fleet/state/target-dispatch-counts/ and expire after
+# FLEET_TARGET_DISPATCH_COUNT_TTL seconds (default 7 days).
+# FLEET_TARGET_DISPATCH_CAP=5
+# FLEET_TARGET_DISPATCH_COUNT_TTL=604800
 
 # --- Per-role concurrency caps ----------------------------------------------
 #

@@ -624,6 +624,43 @@ class DispatchTargets(HostSeamCase):
         task["repo"] = "engine"
         self.assertEqual(self._pick_on("linux", {"tasks_open": [task]}, "opus"), [])
 
+    def test_declined_target_is_skipped_until_the_item_changes(self):
+        # The #1969 shape after assignment: the claim is granted, the worker
+        # reads the body, refuses, `fleet-claim decline` posts the record and
+        # the dispatcher's exit fold remembers the item's post-release
+        # updatedAt. A record not newer than the stamp -> not offered (and
+        # not counted) — including one the scout has not refreshed since the
+        # release; a newer stamp -> offered again; no stamp -> offered.
+        with tempfile.TemporaryDirectory() as state_dir:
+            os.environ["FLEET_STATE_DIR"] = state_dir
+            try:
+                os.makedirs(os.path.join(state_dir, "declined"))
+                task = _task("#1969", "sonnet")
+                task["repo"] = "engine"
+                task["updatedAt"] = "2026-09-06T12:00:00Z"
+                with open(os.path.join(state_dir, "declined", "task-engine-1969"), "w") as handle:
+                    handle.write("2026-09-06T12:00:00Z\nneeds a linux host\n")
+                self.assertEqual(self._pick_on("linux", {"tasks_open": [task]}, "sonnet"), [])
+                self.assertEqual(self._resolve_on("linux", {"tasks_open": [task]}, "sonnet"),
+                                 "")
+                task["updatedAt"] = "2026-09-06T11:00:00Z"   # stale projection
+                self.assertEqual(self._pick_on("linux", {"tasks_open": [task]}, "sonnet"), [])
+                task["updatedAt"] = "2026-09-06T13:00:00Z"
+                self.assertEqual(self._pick_on("linux", {"tasks_open": [task]}, "sonnet"),
+                                 ["task:engine:1969"])
+                task["updatedAt"] = ""
+                self.assertEqual(self._pick_on("linux", {"tasks_open": [task]}, "sonnet"),
+                                 ["task:engine:1969"])
+                # Other kinds and repos are separate memories.
+                pr = {"number": 1969, "repo": "engine", "updatedAt": "2026-09-06T12:00:00Z"}
+                self.assertEqual(pick_role({"candidate_prs": [pr]}, "sonnet-reviewer"),
+                                 ["review:engine:1969"])
+                with open(os.path.join(state_dir, "declined", "review-engine-1969"), "w") as handle:
+                    handle.write("2026-09-06T12:00:00Z\nverdict already standing\n")
+                self.assertEqual(pick_role({"candidate_prs": [pr]}, "sonnet-reviewer"), [])
+            finally:
+                os.environ.pop("FLEET_STATE_DIR", None)
+
     def test_prs_under_another_review_claim_are_not_targets(self):
         # The reviewers skip these from cached labels at zero cost; the
         # dispatcher's walk must too, or each costs a real review-claim round

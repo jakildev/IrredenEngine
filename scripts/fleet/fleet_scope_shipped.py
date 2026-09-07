@@ -151,7 +151,8 @@ _FENCED_CODE = re.compile(r'```.*?```', re.DOTALL)
 _INLINE_CODE = re.compile(r'`[^`]*`')
 
 
-def _strip_code_spans(s):
+def strip_code_spans(s):
+    """Blank fenced blocks and inline code spans — quoted grammar never counts."""
     return _INLINE_CODE.sub(' ', _FENCED_CODE.sub(' ', s))
 
 
@@ -298,7 +299,7 @@ def pr_references_issue(title, body, n, files=None):
         r'\b(?:' + _CLOSING_VERB + r')\b' + _VERB_TO_REF_GAP + ref,
         re.IGNORECASE,
     )
-    return bool(body_re.search(_strip_code_spans(body or '')))
+    return bool(body_re.search(strip_code_spans(body or '')))
 
 
 def select_shipped_pr(prs, n):

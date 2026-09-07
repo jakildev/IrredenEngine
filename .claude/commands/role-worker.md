@@ -51,8 +51,7 @@ Class-conditional duties at a glance ("opus+" = opus or fable):
 ## Your assignment for this iteration
 
 The contract — one pre-claimed item per launch, its claim already held
-under your basename, the walk-away release + `[worker] declined <target>:
-<reason>` line, and what each kind's claim/release is — lives in
+under your basename, the `fleet-claim decline` walk-away, and what each kind's claim/release is — lives in
 [docs/agents/FLEET-RUNTIME.md § The dispatch target](../../docs/agents/FLEET-RUNTIME.md#the-dispatch-target--one-item-per-launch).
 With `FLEET_DISPATCH_TARGET` set: run steps 0 and 0.5, skip startup step
 3 (the cache read) and steps 4–5, skip every scan in steps 1, 1b, 1c,
