@@ -124,10 +124,16 @@ just the items that role works on:
 
 | Role | Slice keys |
 |---|---|
-| worker | `tasks_open` (all classes, both repos), `needs_plan`, `feedback_prs` |
+| worker | `tasks_open` (all classes, both repos), `needs_plan`, `feedback_prs`, `semantic_conflict_prs` |
 | sonnet-reviewer | `candidate_prs` (review-skip filter applied) |
 | opus-reviewer | `flagged_prs` (`fleet:has-nits` / `fleet:needs-fix` / `fleet:needs-opus-recheck`), `plan_review` (`fleet:plan-review` issues awaiting a plan verdict, both repos) |
+| smoke-worker | `smoke_pending_prs` (host-agnostic; the dispatcher applies the host) |
 | merger | `prs` (engine + game, approved or non-MERGEABLE only; each tagged with its `repo`) |
+
+**The slice is the dispatcher's input first.** For the target-bound
+lanes it is where `fleet-dispatcher` picks the one item each launch is
+bound to ([`FLEET.md` § "Who takes the claim"](FLEET.md)); the reads
+below are for the merger and epic steward, and for a target-less run.
 
 **opus-reviewer:** review bodies longer than 2 KB are stored as
 head + tail with an `…[truncated]…` separator (the verdict line

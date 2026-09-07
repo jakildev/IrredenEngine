@@ -41,10 +41,11 @@ that matter:
     ``xhigh`` (``PLAN_EFFORT`` — plans are the fleet's design surface);
   - the output carries ``count`` = claimable items of the elected class,
     which the dispatcher uses to cap its idle-pane fan-out, and ``plan`` = 1
-    when that count includes the class's needs-plan yield (the dispatcher's
-    cue to pre-claim a specific issue via ``--plan-pick``, #2197);
-  - ``plan_pick`` lists the class's planning candidates as ordered
-    ``repo:number`` lines in slice order (engine-first, oldest-first);
+    when that count includes the class's needs-plan yield (#2197);
+  - ``pick`` / ``pick_role`` list a lane's ordered dispatch targets
+    (``<kind>:<repo>:<N>[:<extra>]``) for the dispatcher's claim walk, and
+    ``plan_pick`` the class's planning targets in slice order (engine-first,
+    oldest-first);
   - an empty/unroutable slice falls through to the lane default (covers
     reservation resumes and missing slices).
 """
@@ -57,7 +58,27 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
+import fleet_task_class  # noqa: E402
 from fleet_task_class import _host_incompatible, feedback_pr_class, plan_pick, resolve  # noqa: E402
+
+
+def pick(*args, **kwargs):
+    """`fleet_task_class.pick`, resolved lazily — a module-level import
+    raises ImportError against a pre-target resolver and kills the suite
+    before unittest prints its `Ran N tests` line, which is exactly the line
+    `fleet-positive-control` scores. Deferred, a missing function is an
+    ordinary test error the control can count."""
+    impl = getattr(fleet_task_class, "pick", None)
+    if impl is None:
+        raise AssertionError("fleet_task_class has no pick (pre-target tree)")
+    return impl(*args, **kwargs)
+
+
+def pick_role(*args, **kwargs):
+    impl = getattr(fleet_task_class, "pick_role", None)
+    if impl is None:
+        raise AssertionError("fleet_task_class has no pick_role (pre-target tree)")
+    return impl(*args, **kwargs)
 
 # The scout's slice_worker is the pre-filter that feeds resolve(). Loaded here
 # (not only in test_worker_projection.py) to assert the cross-module contract:
@@ -515,6 +536,144 @@ class RequiredHostGate(HostSeamCase):
         self.assertEqual(out, "sonnet high 0 1 0")
 
 
+class DispatchTargets(HostSeamCase):
+    """`pick` / `pick_role`: the ordered `<kind>:<repo>:<N>[:<extra>]` lines
+    the dispatcher walks, taking each item's lane claim until one is granted
+    (assign_for_pane). Order is the worker's pickup order — feedback,
+    conflict, task, stack, then the class's planning candidates — filtered
+    to the elected class and host-gated exactly as `resolve` counts them,
+    so what is elected is what gets assigned."""
+
+    def _pick_on(self, host, slice_data, cls, fable_blocked=False):
+        os.environ["FLEET_TEST_HOST"] = host
+        return pick(slice_data, cls, fable_blocked)
+
+    def test_worker_pickup_order_and_kinds(self):
+        slice_data = {
+            "feedback_prs": [{"number": 50, "repo": "engine",
+                              "labels": ["fleet:approved", "fleet:has-nits"]}],
+            "semantic_conflict_prs": [{"number": 2417, "repo": "engine",
+                                       "labels": ["fleet:semantic-conflict"]}],
+            "tasks_open": [
+                _task("#344", "sonnet", blocked=True,
+                      stackable_blocker_pr={"number": 397, "headRefName": "x"}),
+                _task("#10", "opus"),
+                _task("#13", "sonnet"),
+            ],
+            "needs_plan": [{"number": 99, "repo": "engine", "labels": ["fleet:sonnet"]}],
+        }
+        for task in slice_data["tasks_open"]:
+            task["repo"] = "engine"
+        self.assertEqual(self._pick_on("linux", slice_data, "sonnet"), [
+            "feedback:engine:50", "task:engine:13", "stack:engine:344:397",
+            "plan:engine:99"])
+        self.assertEqual(self._pick_on("linux", slice_data, "opus"),
+                         ["conflict:engine:2417", "task:engine:10"])
+        self.assertEqual(self._pick_on("linux", slice_data, "fable"), [])
+
+    def test_host_gate_and_owner_filter_apply(self):
+        # A pinned or owned item never becomes a target on the wrong host —
+        # the same predicate that keeps it out of the class election.
+        tasks = [_task("#1969", "sonnet", needs_gl_host=True, needs_host="linux"),
+                 _task("#1", "sonnet", owner="pool-4"),
+                 _task("#2", "sonnet", inflight_pr={"number": 5}),
+                 _task("#3", "sonnet")]
+        for task in tasks:
+            task["repo"] = "game"
+        self.assertEqual(self._pick_on("windows", {"tasks_open": tasks}, "sonnet"),
+                         ["task:game:3"])
+        self.assertEqual(self._pick_on("linux", {"tasks_open": tasks}, "sonnet"),
+                         ["task:game:1969", "task:game:3"])
+
+    def test_untagged_task_follows_the_lane_default(self):
+        task = _task("#7")
+        task["repo"] = "engine"
+        os.environ["FLEET_TEST_HOST"] = "linux"
+        self.assertEqual(pick({"tasks_open": [task]}, "opus", False, "opus"),
+                         ["task:engine:7"])
+        self.assertEqual(pick({"tasks_open": [task]}, "sonnet", False, "sonnet"),
+                         ["task:engine:7"])
+        self.assertEqual(pick({"tasks_open": [task]}, "sonnet", False, "opus"), [])
+
+    def test_capped_fable_plan_routes_to_opus(self):
+        slice_data = {"needs_plan": [{"number": 99, "repo": "engine", "labels": []}]}
+        self.assertEqual(self._pick_on("linux", slice_data, "fable"), ["plan:engine:99"])
+        self.assertEqual(self._pick_on("linux", slice_data, "opus"), [])
+        self.assertEqual(self._pick_on("linux", slice_data, "opus", fable_blocked=True),
+                         ["plan:engine:99"])
+
+    def test_reviewer_and_smoke_lanes(self):
+        self.assertEqual(pick_role({"candidate_prs": [
+            {"number": 3074, "repo": "engine"}, {"number": 12, "repo": "game"}]},
+            "sonnet-reviewer"), ["review:engine:3074", "review:game:12"])
+        self.assertEqual(pick_role({
+            "flagged_prs": [{"number": 3080, "repo": "engine"}],
+            "plan_review": [{"number": 605, "repo": "engine"}]},
+            "opus-reviewer"), ["review:engine:3080", "planreview:engine:605"])
+        os.environ["FLEET_TEST_HOST"] = "windows"
+        smoke = {"smoke_pending_prs": [
+            {"number": 3087, "labels": ["fleet:needs-windows-smoke"]},
+            {"number": 3082, "labels": ["fleet:needs-macos-smoke"]}]}
+        self.assertEqual(pick_role(smoke, "smoke-worker"), ["smoke:engine:3087"])
+        self.assertEqual(pick_role(smoke, "merger"), [])
+
+    def test_record_without_a_number_is_dropped(self):
+        self.assertEqual(pick_role({"candidate_prs": [{"repo": "engine"}]},
+                                   "sonnet-reviewer"), [])
+        task = _task("#", "opus")
+        task["repo"] = "engine"
+        self.assertEqual(self._pick_on("linux", {"tasks_open": [task]}, "opus"), [])
+
+    def test_declined_target_is_skipped_until_the_item_changes(self):
+        # The #1969 shape after assignment: the claim is granted, the worker
+        # reads the body, refuses, `fleet-claim decline` posts the record and
+        # the dispatcher's exit fold remembers the item's post-release
+        # updatedAt. A record not newer than the stamp -> not offered (and
+        # not counted) — including one the scout has not refreshed since the
+        # release; a newer stamp -> offered again; no stamp -> offered.
+        with tempfile.TemporaryDirectory() as state_dir:
+            os.environ["FLEET_STATE_DIR"] = state_dir
+            try:
+                os.makedirs(os.path.join(state_dir, "declined"))
+                task = _task("#1969", "sonnet")
+                task["repo"] = "engine"
+                task["updatedAt"] = "2026-09-06T12:00:00Z"
+                with open(os.path.join(state_dir, "declined", "task-engine-1969"), "w") as handle:
+                    handle.write("2026-09-06T12:00:00Z\nneeds a linux host\n")
+                self.assertEqual(self._pick_on("linux", {"tasks_open": [task]}, "sonnet"), [])
+                self.assertEqual(self._resolve_on("linux", {"tasks_open": [task]}, "sonnet"),
+                                 "")
+                task["updatedAt"] = "2026-09-06T11:00:00Z"   # stale projection
+                self.assertEqual(self._pick_on("linux", {"tasks_open": [task]}, "sonnet"), [])
+                task["updatedAt"] = "2026-09-06T13:00:00Z"
+                self.assertEqual(self._pick_on("linux", {"tasks_open": [task]}, "sonnet"),
+                                 ["task:engine:1969"])
+                task["updatedAt"] = ""
+                self.assertEqual(self._pick_on("linux", {"tasks_open": [task]}, "sonnet"),
+                                 ["task:engine:1969"])
+                # Other kinds and repos are separate memories.
+                pr = {"number": 1969, "repo": "engine", "updatedAt": "2026-09-06T12:00:00Z"}
+                self.assertEqual(pick_role({"candidate_prs": [pr]}, "sonnet-reviewer"),
+                                 ["review:engine:1969"])
+                with open(os.path.join(state_dir, "declined", "review-engine-1969"), "w") as handle:
+                    handle.write("2026-09-06T12:00:00Z\nverdict already standing\n")
+                self.assertEqual(pick_role({"candidate_prs": [pr]}, "sonnet-reviewer"), [])
+            finally:
+                os.environ.pop("FLEET_STATE_DIR", None)
+
+    def test_prs_under_another_review_claim_are_not_targets(self):
+        # The reviewers skip these from cached labels at zero cost; the
+        # dispatcher's walk must too, or each costs a real review-claim round
+        # trip before being refused.
+        held = {"number": 3074, "repo": "engine", "labels": ["fleet:reviewing-mac-pool-2"]}
+        free = {"number": 3080, "repo": "engine", "labels": ["fleet:changes-made"]}
+        self.assertEqual(pick_role({"candidate_prs": [held, free]}, "sonnet-reviewer"),
+                         ["review:engine:3080"])
+        self.assertEqual(pick_role({"flagged_prs": [held], "plan_review": [
+            {"number": 605, "repo": "engine", "labels": ["fleet:reviewing-linux-pool-1"]}]},
+            "opus-reviewer"), [])
+
+
 class FeedbackPrHostGate(HostSeamCase):
     """#2696: the #1998 host gate applies to feedback PRs too, not just tasks.
 
@@ -750,7 +909,7 @@ class PlanFlag(unittest.TestCase):
 
 
 class PlanPick(unittest.TestCase):
-    """`plan_pick` — the ordered repo:number candidate lines the dispatcher
+    """`plan_pick` — the ordered `plan:<repo>:<N>` targets the dispatcher
     walks with `fleet-claim planning-claim` until one is granted (#2197)."""
 
     SLICE = {"needs_plan": [
@@ -765,21 +924,21 @@ class PlanPick(unittest.TestCase):
         # plan_pick preserves it; the sonnet-tagged mechanical issue is not a
         # fable candidate.
         self.assertEqual(plan_pick(self.SLICE, "fable", False),
-                         ["engine:99", "engine:120", "game:7"])
+                         ["plan:engine:99", "plan:engine:120", "plan:game:7"])
 
     def test_sonnet_class_picks_only_mechanical(self):
-        self.assertEqual(plan_pick(self.SLICE, "sonnet", False), ["engine:90"])
+        self.assertEqual(plan_pick(self.SLICE, "sonnet", False), ["plan:engine:90"])
 
     def test_fable_cap_degrades_design_tier_to_opus(self):
         # fable_blocked routes design-tier planning to opus (same `_plan_class`
         # degrade `resolve` applies), so the opus pick set is the fable set.
         self.assertEqual(plan_pick(self.SLICE, "opus", True),
-                         ["engine:99", "engine:120", "game:7"])
+                         ["plan:engine:99", "plan:engine:120", "plan:game:7"])
         self.assertEqual(plan_pick(self.SLICE, "opus", False), [])
 
     def test_missing_repo_defaults_engine_and_missing_number_skipped(self):
         s = {"needs_plan": [{"number": 5}, {"labels": []}]}
-        self.assertEqual(plan_pick(s, "fable", False), ["engine:5"])
+        self.assertEqual(plan_pick(s, "fable", False), ["plan:engine:5"])
 
     def test_empty_slice_yields_no_picks(self):
         self.assertEqual(plan_pick({}, "fable", False), [])

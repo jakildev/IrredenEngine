@@ -179,20 +179,95 @@ fleet_install_refresh() {
     touch "$stamp" 2>/dev/null || true
 }
 
-# fleet_planning_release_assignment "<repo>:<N>" <agent> — release a
-# planning-claim label taken under <agent> for a dispatcher planning
-# assignment (#2197). Shared by fleet-dispatcher (launch failed after a
-# successful pre-claim) and fleet-dispatch-wrap (a session-resume discards
-# the fresh assignment). Best-effort by design: both callers sit on discard
-# paths where a failed release only means the claim waits for the 1-hour
-# TTL reaper instead.
-fleet_planning_release_assignment() {
-    local line="$1" agent="$2"
-    local repo="${line%%:*}" num="${line##*:}"
-    if [[ "$repo" == "game" ]]; then
-        fleet-claim --repo game planning-release "$num" "$agent" >/dev/null 2>&1 || true
+# --- Dispatch targets ---------------------------------------------------------
+#
+# A dispatch target names one item of one lane, `<kind>:<repo>:<N>[:<extra>]`
+# (`stack` carries its base PR number as <extra>). The kind vocabulary and each
+# kind's fleet-claim acquire/release pair live HERE, once: fleet-dispatcher
+# takes the claim (claim_target), fleet-dispatch-wrap parses and exports the
+# target (FLEET_DISPATCH_*), fleet_task_class.py produces the lines, and the
+# role docs' kind tables (FLEET-RUNTIME.md § The dispatch target) mirror this
+# table. Rationale: docs/agents/FLEET.md § "Who takes the claim".
+declare -A FLEET_TARGET_CLAIM=(
+    [task]=claim [stack]=claim
+    [feedback]=amending-claim [conflict]=resolving-claim [plan]=planning-claim
+    [review]=review-claim [planreview]=review-claim [smoke]=review-claim
+)
+declare -A FLEET_TARGET_RELEASE=(
+    [task]=release [stack]=release
+    [feedback]=amending-release [conflict]=resolving-release [plan]=planning-release
+    [review]=review-release [planreview]=review-release [smoke]=review-release
+)
+# The lane claim LABEL prefix each kind's claim writes (`<prefix><host>-<agent>`)
+# — what fleet-claim's claim arms compose (task/stack: cmd_claim's
+# `fleet:claim-`; the rest: their _cmd_pr_label_claim prefix). The
+# dispatcher's completion contract hands the composed label to
+# fleet_completion.py, so the python holds no kind vocabulary.
+# test_fleet_common_targets.sh pins this table against the fleet-claim source.
+declare -A FLEET_TARGET_LABEL=(
+    [task]="fleet:claim-" [stack]="fleet:claim-" [feedback]="fleet:amending-"
+    [conflict]="fleet:resolving-" [plan]="fleet:planning-"
+    [review]="fleet:reviewing-" [planreview]="fleet:reviewing-" [smoke]="fleet:reviewing-"
+)
+
+# `task:engine:1969` -> `task-engine-1969`: the one per-target file key
+# (dispatch counts, abandonment, decline memory, salvage, handoff).
+fleet_target_key() { printf '%s\n' "${1//:/-}"; }
+
+# The worktrees a pane basename owns — the engine one and its game twin —
+# one per line, existing ones only. $1 = basename, $2 = engine root
+# (detected when omitted).
+fleet_pane_worktrees() {
+    local base="$1" engine="${2:-}" wt
+    [[ -n "$engine" ]] || engine="$(detect_engine_root)"
+    for wt in "$engine/.claude/worktrees/$base" "$engine/creations/game/.claude/worktrees/$base"; do
+        [[ -d "$wt" ]] && printf '%s\n' "$wt"
+    done
+    return 0
+}
+
+# fleet_parse_target <target> — split into FLEET_TARGET_KIND / _REPO / _NUM /
+# _EXTRA. Exit 1 on anything malformed (unknown kind, a repo other than
+# engine|game, a non-numeric N), with all four left EMPTY: a caller must never
+# act on a partial parse (the dual-spelling lesson, scripts/fleet/CLAUDE.md).
+fleet_parse_target() {
+    FLEET_TARGET_KIND="" FLEET_TARGET_REPO="" FLEET_TARGET_NUM="" FLEET_TARGET_EXTRA=""
+    local kind repo num extra
+    IFS=: read -r kind repo num extra <<< "${1:-}"
+    [[ -n "$kind" && -n "${FLEET_TARGET_CLAIM[$kind]+x}" ]] || return 1
+    [[ "$repo" == engine || "$repo" == game ]] || return 1
+    [[ "$num" =~ ^[0-9]+$ ]] || return 1
+    FLEET_TARGET_KIND="$kind" FLEET_TARGET_REPO="$repo"
+    FLEET_TARGET_NUM="$num" FLEET_TARGET_EXTRA="$extra"
+}
+
+# fleet_repo_ns <repo> — set FLEET_NS to fleet-claim's global namespace flag
+# for <repo> (`--repo game`, which must precede the subcommand), or to nothing
+# for engine. Expand it as ${FLEET_NS[@]+"${FLEET_NS[@]}"} — safe under `set -u`
+# on every bash the fleet runs.
+fleet_repo_ns() {
+    FLEET_NS=()
+    [[ "${1:-}" == game ]] && FLEET_NS=(--repo game)
+    return 0
+}
+
+# fleet_release_assignment <target> <agent> — release the lane claim the
+# dispatcher took under <agent> for a target that will not be worked:
+# fleet-dispatcher's launch failed after a successful pre-claim, or
+# fleet-dispatch-wrap resumed a prior session and discarded the fresh
+# assignment. Best-effort by design: both callers sit on discard paths where
+# a failed release only means the claim waits for its TTL reaper instead.
+fleet_release_assignment() {
+    local target="$1" agent="$2"
+    fleet_parse_target "$target" || return 0
+    fleet_repo_ns "$FLEET_TARGET_REPO"
+    local sub="${FLEET_TARGET_RELEASE[$FLEET_TARGET_KIND]}"
+    if [[ "$sub" == release ]]; then
+        # A task release takes no agent; it drops the FS lock, the claim
+        # label, and the worktree reservation `claim` auto-wrote.
+        fleet-claim ${FLEET_NS[@]+"${FLEET_NS[@]}"} release "$FLEET_TARGET_NUM" >/dev/null 2>&1 || true
     else
-        fleet-claim planning-release "$num" "$agent" >/dev/null 2>&1 || true
+        fleet-claim ${FLEET_NS[@]+"${FLEET_NS[@]}"} "$sub" "$FLEET_TARGET_NUM" "$agent" >/dev/null 2>&1 || true
     fi
 }
 

@@ -73,6 +73,19 @@ unless you spot a blatant miss while reading the diff:
 Don't re-check these — wasted Opus budget. Spend the pass on the
 **Opus-only items** in `review-pr/SKILL.md` step 4.
 
+## Your assignment for this iteration
+
+The contract — one pre-claimed item per launch, its `review-claim`
+already held under your basename, the `fleet-claim decline` walk-away — lives in
+[docs/agents/FLEET-RUNTIME.md § The dispatch target](../../docs/agents/FLEET-RUNTIME.md#the-dispatch-target--one-item-per-launch).
+With `FLEET_DISPATCH_TARGET` set, skip startup step 4 (the cache read)
+and step 5, and act on that item alone:
+
+| `FLEET_DISPATCH_KIND` | go to |
+|---|---|
+| `review` | the loop's step 2 for PR #N (`fleet-pr view` / `diff` / `comments`, `--repo game` when `FLEET_DISPATCH_REPO` is `game`); its step a re-acquires the claim you already hold (a no-op); the verdict swap and the release in step h apply unchanged |
+| `planreview` | the plan-review pass below for issue #N (`fleet-plan-lint`, then judge the `## Plan` comment); release with `review-release <N> <basename>` once the verdict is posted |
+
 ## Startup actions
 
 0. Print your role banner:

@@ -1095,6 +1095,10 @@ def fetch_task_queue(repo_slug):
             "backend_symmetric": ("fleet:backend-symmetric" in labels
                                   or _body_backend_symmetric(body)),
             "issue": task_id,
+            # The issue's last-modified stamp. The dispatcher's decline memory
+            # keys on it: a target declined at one updatedAt is not re-elected
+            # until the item changes (fleet_task_class._declined).
+            "updatedAt": issue.get("updated_at", "") or "",
             # `**Part of epic:** #U` back-ref (raw field value, e.g. "#1661").
             # The epic-steward adoption projection joins this against open
             # umbrellas' checklists (#1664).

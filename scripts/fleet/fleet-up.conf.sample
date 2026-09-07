@@ -106,17 +106,19 @@
 # FLEET_MODEL_PROBE_TIMEOUT caps each probe call in seconds. Default 90.
 # FLEET_MODEL_PROBE_TIMEOUT=90
 #
-# Planning circuit breaker: after this many granted planning dispatches on
-# this host without a plan landing, the dispatcher applies the #3034 park
-# mechanically (ADD fleet:needs-human, KEEP fleet:needs-plan, comment)
-# instead of assigning the issue again — the backstop for a planner that
-# keeps releasing without parking; a planning sink otherwise burns the
-# fleet's most expensive iterations invisibly (measured: 41 on one issue).
-# 0 disables. Per-issue counter files live in
-# ~/.fleet/state/plan-dispatch-counts/ and expire after
-# FLEET_PLAN_DISPATCH_COUNT_TTL seconds (default 7 days).
-# FLEET_PLAN_DISPATCH_CAP=5
-# FLEET_PLAN_DISPATCH_COUNT_TTL=604800
+# Dispatch circuit breaker: after this many granted dispatches of one
+# target (`<kind>:<repo>:<N>` — a task, a PR's feedback, a plan, a review)
+# on this host without it completing, the dispatcher parks the item
+# (ADD fleet:needs-human + comment; for a plan target fleet:needs-plan is
+# KEPT, the #3034 park) instead of assigning it again. First measured on
+# planning — 41 dispatches on one unplannable issue, invisible on the
+# thread — the same sink exists for any item every iteration walks away
+# from. The counter clears when the target completes (the completion
+# contract's `finished`) or parks. 0 disables. Per-target counter files
+# live in ~/.fleet/state/target-dispatch-counts/ and expire after
+# FLEET_TARGET_DISPATCH_COUNT_TTL seconds (default 7 days).
+# FLEET_TARGET_DISPATCH_CAP=5
+# FLEET_TARGET_DISPATCH_COUNT_TTL=604800
 
 # --- Per-role concurrency caps ----------------------------------------------
 #
@@ -280,18 +282,24 @@
 # lower it if you want freed slots refilled faster. Default 90.
 # FLEET_DISPATCHER_CLAIM_SETTLE_SECONDS=90
 #
-# FLEET_DISPATCHER_CLASS_FAIRNESS_RUN bounds how long one model class can hold
-# the worker lane. The cap above yields to another class only once the elected
-# one is fully covered — which never happens when its queued items are ones
-# every worker refuses (host-gated, design-parked, content-declined): those are
-# counted forever but never claimed, so one class can hold the lane for days
-# (#2699). This is the backstop: after this many consecutive ticks electing the
-# same class while another class is claimable, the lane yields one pass
-# regardless of coverage — to the least recently served claimable class, so a
-# third class cannot starve behind the top two trading turns. Raise it to favor
-# throughput on the busiest class, lower it for a tighter round-robin, 0 to
-# disable. Default 3.
-# FLEET_DISPATCHER_CLASS_FAIRNESS_RUN=3
+# FLEET_DISPATCHER_CLAIM_REFUSE_TTL is how many seconds a refused claim is
+# remembered before the dispatcher re-attempts it. A refusal is almost always
+# "held elsewhere" or "blocked live" — neither of which clears inside a tick —
+# and every attempt costs several gh round trips, so re-walking the same held
+# candidates each tick is pure latency in the control loop. Raise it when the
+# queue is long and mostly held (fewer wasted attempts, slower to notice a
+# candidate freeing up); lower it when claims turn over fast and you want them
+# picked up sooner. Default 120.
+# FLEET_DISPATCHER_CLAIM_REFUSE_TTL=120
+#
+# FLEET_DISPATCHER_CLAIM_ATTEMPTS_PER_TICK bounds how many claims one role's
+# dispatch pass will attempt per tick. Every attempt is network, and the walk
+# sits inline in the 10 s control loop, so an unbounded walk over a long queue
+# of held candidates would stall heartbeats and every other lane behind it.
+# Leftover candidates wait for the next tick (the trigger is kept), so lowering
+# this trades fan-out speed for loop responsiveness; raise it to fill many idle
+# panes in one tick on a fast link. Default 8.
+# FLEET_DISPATCHER_CLAIM_ATTEMPTS_PER_TICK=8
 #
 # FLEET_DISPATCHER_RATE429_DELAY is the per-pane cooldown applied after a
 # short-window 429 *failure* (claude exhausted its internal retries). It is

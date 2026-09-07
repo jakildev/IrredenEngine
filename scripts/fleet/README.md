@@ -15,7 +15,11 @@ fleet workflow.
   architect panes auto-launch `claude`; pool panes sit at bash and
   `fleet-dispatcher` routes transient roles (worker, reviewers,
   merger, smoke-worker, epic-steward) into whichever pool pane is
-  idle, bounded by per-role `FLEET_CONCURRENCY_<ROLE>` caps. Default mode is `dry-run` (startup + stand-by);
+  idle, bounded by per-role `FLEET_CONCURRENCY_<ROLE>` caps. The
+  worker, reviewer, and smoke lanes are target-bound: the dispatcher
+  pre-claims one item per launch and hands it in as
+  `FLEET_DISPATCH_TARGET`, so a pane never launches with nothing to
+  claim (`docs/agents/FLEET.md` § "Who takes the claim"). Default mode is `dry-run` (startup + stand-by);
   `fleet-up live` skips dry-run, goes straight to the normal loop, and
   auto-attaches the tmux session. `fleet-up review-only` runs the
   loop but tells worker / queue-manager roles to skip new task

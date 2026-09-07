@@ -134,7 +134,7 @@ unset _fleet_claim_self
 # python3's ModuleNotFoundError propagating through a pipefail command substitution.
 # A missing module would otherwise fail OPEN in the --stackable-on guard below
 # (empty reason -> claim proceeds), so fail loud here instead.
-for _fleet_lib in fleet_branch_match.py fleet_stack_base.py fleet_blocked_by.py; do
+for _fleet_lib in fleet_branch_match.py fleet_stack_base.py fleet_blocked_by.py fleet-common.sh; do
     if [[ ! -f "$FLEET_LIB_DIR/$_fleet_lib" ]]; then
         echo "fleet-claim: $_fleet_lib not found in FLEET_LIB_DIR=$FLEET_LIB_DIR" >&2
         echo "             Ensure fleet-claim's real script dir is scripts/fleet/ in the engine repo." >&2
@@ -142,6 +142,11 @@ for _fleet_lib in fleet_branch_match.py fleet_stack_base.py fleet_blocked_by.py;
     fi
 done
 unset _fleet_lib
+# The dispatch-target vocabulary (FLEET_TARGET_CLAIM / FLEET_TARGET_RELEASE)
+# — `decline` releases through the same kind table the dispatcher claimed
+# with. Plain definitions only; sourcing has no side effects.
+# shellcheck source=/dev/null
+source "$FLEET_LIB_DIR/fleet-common.sh"
 
 # Main-clone freshness helper (#1810). fleet-claim imports its blocked_by parser
 # + stack-base resolver from the main clone's working tree via FLEET_LIB_DIR; if
@@ -1974,7 +1979,7 @@ cmd_planning_claim() {
     # worker pickup already honor the label, but honoring it there is not enough:
     # the dispatcher pre-claims BEFORE any of that runs, so without a refusal here
     # the lane head is re-assigned every tick. Exit 1 = "refuse this candidate",
-    # the same code _refuse_if_closed uses, so plan_assign_for_pane falls through
+    # the same code _refuse_if_closed uses, so assign_for_pane falls through
     # to the next pick (only 0 assigns and 3 retries with --replan). Fails OPEN on
     # `unknown`: a gh outage must not wedge every planning claim on the host.
     if [[ "$gates_live" -eq 1 ]] \
@@ -2028,6 +2033,60 @@ cmd_planning_claim() {
     _cmd_pr_label_claim "fleet:planning-" "planning-claim" "$issue" "$agent" "issue"
 }
 cmd_planning_release() { _cmd_pr_label_release "fleet:planning-" "planning-release" "${1:-}" "${2:-unknown}" "issue"; }
+
+# decline <kind> <N> [<agent>] --reason "<why>" — the honest exit for a
+# dispatch target the iteration cannot work. Posts the `declined: <role>/
+# <class> @<host>-<agent> <reason>` record FIRST (the dispatcher's completion
+# contract, fleet_completion.py, reads it and remembers the item off that
+# verdict so this host does not re-elect it until it changes), then releases
+# the lane's claim through FLEET_TARGET_RELEASE — the kind table the
+# dispatcher claimed with. Comment before release: a crash between the two
+# leaves a labelled target over a readable record for the TTL reaper, never
+# a silent release. Not a dispatch-outcome stamp: a decline is the diligent
+# no-pick. <agent> defaults to the cwd's basename — the pane's worktree.
+cmd_decline() {
+    local kind="${1:-}" num="${2:-}"
+    shift 2 2>/dev/null || true
+    local agent
+    agent=$(basename "$PWD")
+    if [[ "${1:-}" != --* && $# -ge 1 ]]; then
+        agent="$1"
+        shift
+    fi
+    local reason=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --reason)   reason="${2:-}"; shift 2 ;;
+            --reason=*) reason="${1#--reason=}"; shift ;;
+            *) echo "fleet-claim decline: unknown flag '$1'" >&2; return 2 ;;
+        esac
+    done
+    local sub="${FLEET_TARGET_RELEASE[$kind]:-}"
+    if [[ -z "$kind" || -z "$sub" ]]; then
+        echo "fleet-claim decline: unknown target kind '${kind}' (known: ${!FLEET_TARGET_RELEASE[*]})" >&2
+        return 2
+    fi
+    if [[ ! "$num" =~ ^[0-9]+$ ]]; then
+        echo "usage: fleet-claim [--repo <ns>] decline <kind> <number> [<agent>] --reason \"<why>\"" >&2
+        return 2
+    fi
+    if [[ -z "$reason" ]]; then
+        echo "fleet-claim decline: --reason is required — the comment IS the record" >&2
+        return 2
+    fi
+    local repo host who
+    repo=$(repo_from_ns)
+    host=$(derive_host)
+    who="${FLEET_ROLE:-unknown}/${FLEET_ROLE_MODEL:-unknown}"
+    if [[ -n "$repo" ]] && command -v gh >/dev/null 2>&1; then
+        gh api "repos/${repo}/issues/${num}/comments" \
+            -f "body=declined: ${who} @${host}-${agent} ${reason}" >/dev/null 2>&1 \
+            || echo "fleet-claim decline: WARN could not post the declined: comment on ${repo}#${num}" >&2
+    fi
+    # cmd_release reads only the number; the label arms take the agent too.
+    "cmd_${sub//-/_}" "$num" "$agent"
+    echo "declined: ${kind}#${num} (${who} @${host}-${agent}): ${reason}"
+}
 
 cmd_check() {
     # Exit 0 = free, exit 1 = claimed.
@@ -4749,6 +4808,14 @@ case "${1:-}" in
         fi
         cmd_release "$2"
         ;;
+    decline)
+        if [[ -z "${2:-}" || -z "${3:-}" ]]; then
+            echo "usage: fleet-claim [--repo <ns>] decline <kind> <number> [<agent>] --reason \"<why>\"" >&2
+            exit 2
+        fi
+        shift
+        cmd_decline "$@"
+        ;;
     check)
         if [[ -z "${2:-}" ]]; then
             echo "usage: fleet-claim check <issue-number>" >&2
@@ -5029,6 +5096,14 @@ commands:
                                 line:
                                 <url><TAB><headRefName><TAB><author><TAB><number>.
                                 Empty stdout means no eligible blocker.
+  decline <kind> <number> [agent] --reason "<why>"
+                                the honest exit for a dispatch target
+                                (FLEET_DISPATCH_TARGET) the iteration
+                                cannot work: posts the `declined:`
+                                record on the target, then releases the
+                                lane's claim via FLEET_TARGET_RELEASE
+                                (fleet-common.sh). Agent defaults to the
+                                cwd basename.
   release <issue-number>        release a claim (FS lock + worktree
                                 reservation + --stackable-on .meta
                                 sidecar). Issue-side `fleet:claim-*`

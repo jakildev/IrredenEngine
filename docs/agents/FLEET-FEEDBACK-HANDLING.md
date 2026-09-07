@@ -126,6 +126,14 @@ fleet-pr-claim-feedback <N> <your-worktree-basename>
 (Add `--repo jakildev/irreden` for game PRs; the wrapper maps the slug
 to the `fleet-claim` namespace internally.)
 
+A **dispatched** `feedback` target (`FLEET_DISPATCH_TARGET=feedback:<repo>:<N>`,
+`role-worker.md` § Your assignment) arrives with this claim already held
+under your basename — the dispatcher took `amending-claim` before
+launching you, which is what closed the #1336 race at its source. Run
+the command anyway for the detached checkout: re-acquiring your own
+label is a no-op (you are the sole `fleet:amending-*` holder), and the
+exit codes below keep their meaning.
+
 - **Exit 0** — you own this PR's feedback handling AND the PR is checked
   out in detached HEAD (the `.git/fleet-amend-ref` sentinel is written, so
   step b goes straight to the label work). The `fleet:amending-<host>-<agent>`

@@ -47,16 +47,9 @@ case "$_mode_arg" in
     *) ROLE_MODE="live" ;;
 esac
 unset _mode_arg
-# Optional 7th arg (#2197): the dispatcher's pre-claimed planning assignment,
-# `plan=<repo>:<N>`. Require the full `plan=`-prefixed non-empty form — a bare
-# `plan=` (or garbage) must NOT export an empty FLEET_PLAN_ISSUE that
-# downstream `[[ -n ]]` guards would misread (the dual-spelling lesson,
-# scripts/fleet/CLAUDE.md).
-_plan_arg="${7:-}"
-if [[ "$_plan_arg" == plan=?* ]]; then
-    export FLEET_PLAN_ISSUE="${_plan_arg#plan=}"
-fi
-unset _plan_arg
+# The optional 7th arg — the dispatcher's pre-claimed dispatch target — is
+# parsed below, after fleet-common.sh (which owns the target grammar) is
+# sourced.
 # Track fleet-dispatcher's STATE_DIR via the same env-var override so a
 # config change in one place propagates to both scripts.
 STATE_DIR="${FLEET_STATE_DIR:-$HOME/.fleet/state}"
@@ -75,13 +68,44 @@ if [[ -f "$_FLEET_COMMON_SH" ]]; then
     source "$_FLEET_COMMON_SH"
 else
     fleet_install_maybe_refresh() { :; }  # helpers not installed yet — no-op
-    # No-op release degrades a discarded planning assignment (#2197) to the
-    # 1-hour TTL reaper — the same failure budget as the dispatcher's copy.
-    fleet_planning_release_assignment() { :; }
+    # No-op release degrades a discarded dispatch target to its claim's TTL
+    # reaper — the same failure budget as the dispatcher's copy; an
+    # unparseable target exports nothing, so the role runs its discovery flow.
+    fleet_release_assignment() { :; }
+    fleet_parse_target() { return 1; }
     fleet_model_tag() { printf '%s' "$1"; }  # raw-id label fallback
     fleet_main_clone_root() { :; }  # game-worktree in-flight check degrades off
 fi
 unset _FLEET_COMMON_SH
+
+# Optional 7th arg: the dispatcher's pre-claimed dispatch target,
+# `target=<kind>:<repo>:<N>[:<extra>]` — the one item this iteration works,
+# whose lane claim the dispatcher already holds under this pane's worktree
+# basename (fleet-dispatcher assign_for_pane). Exported whole as
+# FLEET_DISPATCH_TARGET plus its parts (FLEET_DISPATCH_KIND / _REPO / _NUMBER)
+# and a human-readable FLEET_DISPATCH_REASON; a `plan` target also exports
+# the #2197 spelling, FLEET_PLAN_ISSUE=<repo>:<N>, which the planning steps
+# still read. The legacy `plan=<repo>:<N>` form (an older dispatcher mid
+# rolling upgrade) is accepted as `target=plan:<repo>:<N>`. Anything
+# fleet_parse_target rejects exports NOTHING — an empty or malformed value
+# would slip past downstream `[[ -n ]]` guards (the dual-spelling lesson,
+# scripts/fleet/CLAUDE.md). FLEET_ROLE names the dispatched role for the
+# iteration's own records (a `declined:` comment, for one).
+export FLEET_ROLE="$ROLE"
+_target_arg="${7:-}"
+case "$_target_arg" in
+    target=?*) _target="${_target_arg#target=}" ;;
+    plan=?*)   _target="plan:${_target_arg#plan=}" ;;
+    *)         _target="" ;;
+esac
+if [[ -n "$_target" ]] && fleet_parse_target "$_target"; then
+    export FLEET_DISPATCH_TARGET="$_target"
+    export FLEET_DISPATCH_KIND="$FLEET_TARGET_KIND" FLEET_DISPATCH_REPO="$FLEET_TARGET_REPO" \
+        FLEET_DISPATCH_NUMBER="$FLEET_TARGET_NUM"
+    export FLEET_DISPATCH_REASON="$FLEET_TARGET_KIND $FLEET_TARGET_REPO#$FLEET_TARGET_NUM"
+    [[ "$FLEET_TARGET_KIND" == plan ]] && export FLEET_PLAN_ISSUE="$FLEET_TARGET_REPO:$FLEET_TARGET_NUM"
+fi
+unset _target_arg _target
 
 # Expose the iteration's model class so fleet-claim can enforce the
 # model-tag gate. Classes are literal — fable | opus | sonnet — and the
@@ -248,14 +272,15 @@ if (( _resume_role )) && [[ -f "$SIDECAR" ]]; then
 fi
 
 # A resume reloads the prior session and discards this dispatch's fresh config
-# — including any planning assignment (#2197). Release the pre-claim now,
-# under the same worktree basename the dispatcher claimed with, rather than
-# stranding the label for the 1-hour TTL reaper; the issue re-enters
-# assignment on a later tick once this resumed iteration finishes.
-if (( RESUMED )) && [[ -n "${FLEET_PLAN_ISSUE:-}" ]]; then
-    fleet_planning_release_assignment "$FLEET_PLAN_ISSUE" "$worktree_name"
-    echo "fleet-dispatch-wrap: resume discards planning assignment $FLEET_PLAN_ISSUE — released" >&2
-    unset FLEET_PLAN_ISSUE
+# — including the dispatch target. Release the pre-claim now, under the same
+# worktree basename the dispatcher claimed with, rather than stranding the
+# lock for its TTL reaper; the item re-enters assignment on a later tick once
+# this resumed iteration finishes.
+if (( RESUMED )) && [[ -n "${FLEET_DISPATCH_TARGET:-}" ]]; then
+    fleet_release_assignment "$FLEET_DISPATCH_TARGET" "$worktree_name"
+    echo "fleet-dispatch-wrap: resume discards dispatch target $FLEET_DISPATCH_TARGET — released" >&2
+    unset FLEET_DISPATCH_TARGET FLEET_DISPATCH_KIND FLEET_DISPATCH_REPO \
+        FLEET_DISPATCH_NUMBER FLEET_DISPATCH_REASON FLEET_PLAN_ISSUE
 fi
 
 # --fallback-model only exists in print mode, which is exactly this path. When
@@ -285,8 +310,9 @@ fi
 # claude (mirrors fleet-babysit's FLEET_BABYSIT_PRINT_LAUNCH). `plan=` mirrors
 # the FLEET_PLAN_ISSUE export (empty when no assignment / discarded by resume).
 if [[ -n "${FLEET_DISPATCH_PRINT_LAUNCH:-}" ]]; then
-    printf 'resumed=%s plan=%s prompt=%s argv=claude %s\n' \
-        "$RESUMED" "${FLEET_PLAN_ISSUE:-}" "$PROMPT" "${CLAUDE_ARGS[*]}"
+    printf 'resumed=%s target=%s reason=%s plan=%s prompt=%s argv=claude %s\n' \
+        "$RESUMED" "${FLEET_DISPATCH_TARGET:-}" "${FLEET_DISPATCH_REASON:-}" \
+        "${FLEET_PLAN_ISSUE:-}" "$PROMPT" "${CLAUDE_ARGS[*]}"
     exit 0
 fi
 

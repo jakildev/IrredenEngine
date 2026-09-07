@@ -40,6 +40,17 @@ See [docs/agents/FLEET-RUNTIME.md § Exit protocol](../../docs/agents/FLEET-RUNT
   not polled here; the `platform-catchup` workflow (#1093) remains the manual
   fallback for clearing Windows smoke when no Windows fleet is online.
 
+## Your assignment for this iteration
+
+The contract — one pre-claimed PR per launch, its `review-claim` already
+held under your basename, the `fleet-claim decline` walk-away — lives in
+[docs/agents/FLEET-RUNTIME.md § The dispatch target](../../docs/agents/FLEET-RUNTIME.md#the-dispatch-target--one-item-per-launch).
+With `FLEET_DISPATCH_TARGET=smoke:engine:<N>` set (the dispatcher only
+elects PRs whose pending smoke label names THIS host), skip startup
+steps 5–6 and Step 1 (re-running the claim is a no-op) and go from Step
+0 straight to Step 2 with `<N>` = `FLEET_DISPATCH_NUMBER`; Steps 5–7
+apply unchanged.
+
 ---
 
 ## Startup actions (do these immediately, in order)
