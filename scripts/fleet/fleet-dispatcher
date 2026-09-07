@@ -1825,12 +1825,15 @@ _dispatch_gate_alert_path() {
     echo "${FLEET_ALERTS_DIR:-$HOME/.fleet/alerts}/dispatch-gate-$1"
 }
 
-# note_gate_block <role> <reason> — log once per role (existing CAP_DEFER_LOGGED
-# quiet-until-cleared idiom) and, once the SAME reason has held for 3
-# consecutive calls, keep a standing alert file so a persistent block (e.g. a
-# stuck Codex cooldown, a misconfigured review-policy default) is visible
-# outside the daemon's own log, not just as one line that then goes quiet
-# forever. A changed reason restarts the streak — it is news again.
+# note_gate_block <role> <reason> — log once per reason (the CAP_DEFER_LOGGED
+# quiet-until-cleared idiom, re-armed whenever the reason changes) and, once the
+# SAME reason has held for 3 consecutive calls, keep a standing alert file so a
+# persistent block (e.g. a stuck Codex cooldown, a misconfigured review-policy
+# default) is visible outside the daemon's own log, not just as one line that
+# then goes quiet forever. A changed reason restarts the streak AND re-arms the
+# log: quieting per role rather than per reason would report whichever cause
+# blocked the lane first for as long as the lane stayed blocked — the
+# indistinguishable-cause misreport this helper exists to end (#3098).
 note_gate_block() {
     local role="$1" reason="${2:-claim-budget-spent}" count
     local prev="${DISPATCH_GATE_STREAK[$role]:-}"
@@ -1839,6 +1842,13 @@ note_gate_block() {
         count=$(( count + 1 ))
     else
         count=1
+        # New cause ⇒ news. Re-arm the one-line log, and drop the standing
+        # alert, which still names the cause that just stopped being true —
+        # it is rewritten below once the new cause reaches the threshold.
+        unset "CAP_DEFER_LOGGED[$role-claimbudget]"
+        if [[ -n "$prev" ]]; then
+            rm -f "$(_dispatch_gate_alert_path "$role")" 2>/dev/null || true
+        fi
     fi
     DISPATCH_GATE_STREAK["$role"]="$reason:$count"
     if [[ -z "${CAP_DEFER_LOGGED[$role-claimbudget]+x}" ]]; then
@@ -3362,6 +3372,58 @@ case "${1:-}" in
             echo "over $(read_empty_streak "$_esc_role" "$_esc_class")"
         else
             echo "under $(read_empty_streak "$_esc_role" "$_esc_class")"
+        fi
+        exit 0
+        ;;
+    --gate-block-check)
+        # Test/debug: drive the dispatch-gate escalate-then-quiet cycle over a
+        # sequence of ticks and print what an operator would actually see. The
+        # streak lives in a process-local associative array (no on-disk counter,
+        # unlike the empty-streak files), so the whole sequence has to run in
+        # ONE invocation — hence a reason list rather than a single tick.
+        #
+        #   --gate-block-check <role> <reason|-> [<reason|-> ...]
+        #
+        # `-` calls clear_gate_block (a healthy pass). An empty reason is a
+        # legal tick — assign_budget_hit fires with ASSIGN_BLOCK_REASON unset on
+        # the plain claim-budget path — so the arity check counts arguments
+        # rather than testing $3 for emptiness. Each tick prints
+        # `tick <n> <reason> log=<yes|no>`; the final line is the standing alert
+        # file's contents, or `alert: none`.
+        if (( $# < 3 )); then
+            echo "usage: fleet-dispatcher --gate-block-check <role> <reason|-> [<reason|-> ...]" >&2
+            exit 2
+        fi
+        _gbc_role="$2"
+        shift 2
+        # Count real log() emissions rather than inferring them from the quiet
+        # marker: note_gate_block re-arms that marker internally on a reason
+        # change, so a probe taken before the call reports `no` for the one
+        # transition this hook exists to expose.
+        _gbc_logs=0
+        log() { _gbc_logs=$(( _gbc_logs + 1 )); printf '[gate-block] %s\n' "$*" >&2; }
+        _gbc_tick=0
+        for _gbc_reason in "$@"; do
+            _gbc_tick=$(( _gbc_tick + 1 ))
+            if [[ "$_gbc_reason" == "-" ]]; then
+                clear_gate_block "$_gbc_role"
+                echo "tick $_gbc_tick cleared log=no"
+                continue
+            fi
+            _gbc_before="$_gbc_logs"
+            note_gate_block "$_gbc_role" "$_gbc_reason"
+            if (( _gbc_logs > _gbc_before )); then
+                _gbc_logged=yes
+            else
+                _gbc_logged=no
+            fi
+            echo "tick $_gbc_tick ${_gbc_reason:-<empty>} log=$_gbc_logged"
+        done
+        _gbc_alert="$(_dispatch_gate_alert_path "$_gbc_role")"
+        if [[ -f "$_gbc_alert" ]]; then
+            printf 'alert: %s\n' "$(cat "$_gbc_alert")"
+        else
+            echo "alert: none"
         fi
         exit 0
         ;;
