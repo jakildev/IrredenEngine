@@ -82,7 +82,21 @@ TMUXEOF
 chmod +x "$STUB_BIN/tmux"
 printf '#!/usr/bin/env bash\nexit 1\n' > "$STUB_BIN/pgrep"
 chmod +x "$STUB_BIN/pgrep"
+# Assignment-before-launch added a claim call to this formerly read-only test.
+# A mock miss must fail closed, never reach the installed fleet-claim or gh.
+export FLEET_CLAIMS_DIR="$TMPROOT/claims"
+export FLEET_SESSIONS_DIR="$TMPROOT/sessions"
+cat > "$STUB_BIN/fleet-claim" <<'CLAIMEOF'
+#!/usr/bin/env bash
+case "$*" in
+    "review-claim 101 pool-1") exit 0 ;;
+    *) echo "unexpected test claim: $*" >&2; exit 99 ;;
+esac
+CLAIMEOF
+printf '#!/usr/bin/env bash\nexit 99\n' > "$STUB_BIN/gh"
+chmod +x "$STUB_BIN/fleet-claim" "$STUB_BIN/gh"
 export PATH="$STUB_BIN:$PATH"
+unset FLEET_RUNTIMES FLEET_CROSS_PROVIDER_REVIEW FLEET_WORKER_RUNTIME
 
 SLICE="$FLEET_STATE_DIR/projections/smoke-worker.json"
 TRIGGER="$FLEET_STATE_DIR/triggers/smoke-worker"

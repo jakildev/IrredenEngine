@@ -33,7 +33,7 @@
       "Bash(bash scripts/dev/canvas-stress-capture:*)",
       "Bash(bash scripts/dev/perf-grid-rotate-sweep:*)",
 
-      "Bash(fleet-claim:*)", "Bash(fleet-build:*)", "Bash(fleet-debug:*)",
+      "Bash(fleet-runtime:*)", "Bash(fleet-claim:*)", "Bash(fleet-build:*)", "Bash(fleet-debug:*)",
       "Bash(fleet-run:*)", "Bash(fleet-run-targets:*)", "Bash(fleet-help:*)",
       "Bash(fleet-heartbeat:*)", "Bash(fleet-issue:*)", "Bash(fleet-pr:*)",
       "Bash(fleet-pr-clear-feedback-labels:*)",

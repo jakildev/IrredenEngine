@@ -236,7 +236,9 @@ Parallel-agent fleet (tmux + Claude)
                                  (#2181, #2700). Diagnoses why a
                                  role woke / didn't wake without hand-reading
                                  ~/.fleet/state/{triggers,seen-hashes,projections}
-  fleet-dispatcher               transient-claude dispatcher (worker panes)
+  fleet-dispatcher               assigned-job dispatcher (generic worker pool)
+  fleet-codex --help             Codex worker/architect launch and permission checks
+  fleet-runtime --help           provider routing and PR author provenance
   fleet-dispatch-wrap <pane> <model> <effort> <role> [fallback] [mode]
                                  runs one transient-role claude iteration;
                                  records rate-limit exits for fleet-dispatcher's

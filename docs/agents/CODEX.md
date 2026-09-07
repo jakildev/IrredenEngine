@@ -1,0 +1,158 @@
+# Codex fleet adapter
+
+Codex and Claude share project conventions, intent plans, role responsibilities,
+claims, acceptance checks, and host-smoke requirements. Runtime-specific
+launching, permissions, event parsing, and conversation IDs belong to the
+adapter. A model name does not confer a role or permission.
+
+## Instruction and tool compatibility
+
+Read the root `AGENTS.md`, then the assigned role file and its linked protocols.
+Role files under `.claude/commands/` are ordinary instructions for Codex, not
+slash commands. `Read`, `Grep`, `Glob`, `Write`, and `Bash` refer to equivalent
+available tools; use `rg`, explicit command working directories, and file
+patches. Bash restrictions motivated solely by Claude's harness belong to
+Claude sessions; preserve their underlying rules about quoting, worktree
+ownership, and explicit repository selection in both runtimes.
+
+The legacy queue classes `fable`, `opus`, and `sonnet` describe task complexity.
+`FLEET_ROLE_MODEL` carries that class independently of the actual model.
+Codex design work uses Astra with `xhigh` effort; substantial implementation
+and final review use Sol; bounded implementation uses Terra. Luna is suitable
+for mechanical tasks when selected explicitly. Keep delegation bounded by
+available fleet capacity; do not enable Ultra implicitly inside every worker.
+
+Use the actual model/runtime in authorship and review records. Never imply
+that a Claude session implemented or reviewed work performed by Codex.
+
+## Rendering conversations
+
+Before rendering work, read the relevant render module instructions and
+the [render-trixel-pipeline](../../.claude/skills/render-trixel-pipeline/SKILL.md),
+[render-debug-loop](../../.claude/skills/render-debug-loop/SKILL.md), and
+[render-verify](../../.claude/skills/render-verify/SKILL.md) skills. Use
+[attach-screenshots](../../.claude/skills/attach-screenshots/SKILL.md) for PR
+evidence and [backend-parity](../../.claude/skills/backend-parity/SKILL.md)
+with the [cross-host smoke protocol](FLEET-CROSS-HOST-SMOKE.md).
+
+Use Codex's `view_image` for image reads, including every ROI crop.
+Inspect actual captured images before describing visual results. Generated
+illustrations are not renderer evidence. Record the commit, host/GPU/backend,
+scene, camera, viewport, entity/light counts, rotation, shadow settings, and
+capture command. Use matching before/after settings; retain full frames and
+detail crops when discussing shadow edges or rotation artifacts with the human.
+
+A target above 100 FPS means a frame budget below 10 ms, but a meaningful
+criterion also names hardware, resolution, scene population, visible geometry,
+lighting/shadow settings, and frame-time statistics. Measure CPU and GPU work
+separately with warmup and controlled presentation settings. A screenshot proves
+appearance, not throughput; an average FPS number does not prove stable pacing.
+Check open issues and PRs before proposing a competing rendering change.
+
+## Planning and review
+
+Use [intent plans](PLANNING-PROTOCOL.md): outcome, locked decisions, constraints,
+evidence, runnable acceptance, and explicit escalation conditions. Workers own
+implementation choices inside that contract. Both providers may author any
+class of work; prefer the other provider for code review. Review the actual
+head commit, form an initial assessment independently, then reconcile earlier
+findings. Evidence and tests settle disagreements; model agreement is not a
+substitute for acceptance checks or cross-host rendering validation.
+
+## Permissions
+
+Sandbox boundaries and command approvals are separate. A trusted repository
+does not make protected configuration or Git metadata writable. Unattended
+sessions need preconfigured permissions for the assigned worktree, required
+Git metadata, fleet state, build/test tools, and GitHub operations. They must
+not depend on a human responding to a prompt mid-iteration. A blocked command
+must produce a recoverable failure, never a claim-and-retry loop.
+
+Keep authoring and reviewer capabilities distinct, and retain the human merge
+boundary. Do not copy Claude's broad interpreter permissions into unsandboxed
+Codex rules. Run interpreters and tests inside the workspace sandbox; approve
+specific external operations separately. Do not silently switch from a saved
+subscription login to API billing.
+
+Official references: [instructions](https://learn.chatgpt.com/docs/agent-configuration/agents-md),
+[skills](https://learn.chatgpt.com/docs/build-skills),
+[non-interactive execution](https://learn.chatgpt.com/docs/non-interactive-mode),
+[permissions](https://learn.chatgpt.com/docs/sandboxing), and
+[models](https://learn.chatgpt.com/docs/models).
+
+## Host setup and rollout
+
+Install the fleet scripts with the existing `scripts/fleet/install.sh`.
+Authenticate the Codex CLI with `codex login` using ChatGPT, then confirm
+`codex login status`. The adapter forces ChatGPT login and removes inherited
+API-key overrides. Subscription usage is shared with interactive Codex use;
+recorded token counts are telemetry, not a remaining-subscription estimate.
+
+Open and trust the project in Codex once on each host; project-local rules
+load only from a trusted configuration layer. From each dedicated worktree, run `fleet-codex --role worker --check`.
+This prepares `.codex/rules/fleet.rules` and checks command decisions with
+the installed CLI. Repeat with reviewer roles when qualifying a host.
+Keep personal rules in separate files: regeneration refuses a manually
+modified generated policy. No blanket unsandboxed Python/Bash rule is added.
+The launcher writes the role policy before starting the unattended process,
+which uses workspace-write, network access, and approval policy `never`.
+Unknown or blocked commands return failures rather than waiting for approval.
+Policy checks verify command matching; qualify actual build, GitHub, screenshot,
+and filesystem access on each OS before enabling its pool.
+
+Workers can edit their assigned checkout, Git metadata, matching downstream
+worktree if present, and the necessary fleet state directories. The main
+checkout is not an additional writable source directory. Command rules help
+prevent common workflow mistakes, including merge, force-push, and reviewer
+push; they are not a security boundary against arbitrary shell programs using
+the same GitHub credentials. Keep GitHub branch protection as the merge boundary.
+
+Set the following in `~/.fleet/fleet-up.conf` after qualifying the host, then
+restart the dispatcher:
+
+```bash
+FLEET_RUNTIMES="claude,codex"
+FLEET_CROSS_PROVIDER_REVIEW=1
+FLEET_WORKER_RUNTIME="balanced"
+```
+
+Create the four runtime/author labels using `fleet-labels` on each participating
+repository before enabling stamping. Include the actual `fleet:author-*` label in
+`gh pr create --label ...` so provenance is present when the PR first appears. `fleet:runtime-codex` or
+`fleet:runtime-claude` pins an issue/PR. Without a pin, balanced selection hashes
+the assignment across that host's available providers. It does not guarantee
+equal subscription consumption. All hosts must enable cross-provider review;
+a Claude-only host declares `FLEET_RUNTIMES="claude"` and waits when the
+required reviewer is Codex. Unstamped PRs wait for explicit provenance; stamp known legacy authors before
+enabling the review policy. Do not infer authorship merely from missing labels.
+A PR last amended by Codex goes to Claude; one amended by Claude goes to Codex.
+
+The existing claim protocol remains the cross-host authority; provider choice
+happens before claiming and launching. Reservations resume the original Codex
+target, model, effort, and class. No target-bearing projection means no fresh
+live worker. GitHub quota gates both providers; Claude usage gates only Claude.
+Codex quota/rate failures start a 15-minute host-local cooldown. Model/auth
+failures still use the existing dispatch failure and target circuit breakers.
+
+Current host claim identities use OS keys. Mac, Linux, and Windows retain
+their existing shared claim and smoke behavior. Multiple machines with the
+same OS need a separate stable machine identity before that topology is safe;
+do not repurpose OS smoke labels or a test-only host override as a workaround.
+That migration must cover claims, cleanup, heartbeats, and reservations together.
+
+## Interactive Astra architect
+
+Use a dedicated architect worktree at `.claude/worktrees/<architect-name>`,
+outside the transient pool. From it:
+
+```bash
+fleet-codex --interactive --role opus-architect --model gpt-6-astra --effort xhigh
+```
+
+The session starts with the shared architect instructions and rendering-skill
+references, then waits for the human to choose the problem. Interactive
+approvals remain on-request so a new rendering/capture capability can be
+qualified before adding it to unattended permissions. Resume a known session
+with `fleet-codex --interactive --resume <session-id>`; the CLI also retains
+its normal session history. Architect sessions are not dispatched or claimed
+as pool jobs.

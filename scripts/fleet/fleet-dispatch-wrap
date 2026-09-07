@@ -111,7 +111,11 @@ unset _target_arg _target
 # model-tag gate. Classes are literal — fable | opus | sonnet — and the
 # gate exact-matches against the task's fleet:<class> label / Model:
 # field, so a fable iteration can't claim opus tasks and vice versa.
-if [[ "$MODEL" == *fable* ]]; then
+export FLEET_RUNTIME="${8:-claude}"
+case "$FLEET_RUNTIME" in claude|codex) ;; *) echo "invalid runtime" >&2; exit 1 ;; esac
+if [[ -n "${9:-}" ]]; then
+    case "$9" in fable|opus|sonnet) export FLEET_ROLE_MODEL="$9" ;; *) exit 1 ;; esac
+elif [[ "$MODEL" == *fable* ]]; then
     export FLEET_ROLE_MODEL=fable
 elif [[ "$MODEL" == *opus* ]]; then
     export FLEET_ROLE_MODEL=opus
@@ -254,7 +258,12 @@ if (( _resume_role )) && [[ -f "$SIDECAR" ]]; then
     # launch fresh otherwise (the fresh launch overwrites the stale
     # sidecar below; resume is a best-effort optimization, not state).
     _srole=$(_read_sidecar role)
-    if [[ -n "$_srole" && "$_srole" != "$ROLE" ]]; then
+    _sruntime=$(_read_sidecar runtime)
+    _starget=$(_read_sidecar target)
+    if [[ "${_sruntime:-claude}" != "$FLEET_RUNTIME" ]] \
+        || [[ "$FLEET_RUNTIME" == codex && "$_starget" != "${FLEET_DISPATCH_TARGET:-}" ]]; then
+        echo "fleet-dispatch-wrap: different runtime or target; launching fresh" >&2
+    elif [[ -n "$_srole" && "$_srole" != "$ROLE" ]]; then
         echo "fleet-dispatch-wrap: sidecar for $worktree_name belongs to role '$_srole' (this dispatch: '$ROLE') — launching fresh" >&2
     else
         RESUME_ID=$(_read_sidecar session_id)
@@ -276,7 +285,7 @@ fi
 # worktree basename the dispatcher claimed with, rather than stranding the
 # lock for its TTL reaper; the item re-enters assignment on a later tick once
 # this resumed iteration finishes.
-if (( RESUMED )) && [[ -n "${FLEET_DISPATCH_TARGET:-}" ]]; then
+if (( RESUMED )) && [[ "$FLEET_RUNTIME" == claude && -n "${FLEET_DISPATCH_TARGET:-}" ]]; then
     fleet_release_assignment "$FLEET_DISPATCH_TARGET" "$worktree_name"
     echo "fleet-dispatch-wrap: resume discards dispatch target $FLEET_DISPATCH_TARGET — released" >&2
     unset FLEET_DISPATCH_TARGET FLEET_DISPATCH_KIND FLEET_DISPATCH_REPO \
@@ -301,8 +310,11 @@ else
     fi
     PROMPT="/role-$ROLE $ROLE_MODE"
     if (( _resume_role )); then
-        printf '{"session_id":"%s","role":"%s","model":"%s","effort":"%s","created_epoch":%s}\n' \
-            "$SESSION_ID" "$ROLE" "$MODEL" "$EFFORT" "$(date +%s)" > "$SIDECAR"
+        [[ "$FLEET_RUNTIME" == codex ]] && SESSION_ID=""
+        _sidecar_tmp=$(mktemp "$SESSIONS_DIR/.session.XXXXXX")
+        printf '{"session_id":"%s","role":"%s","model":"%s","effort":"%s","runtime":"%s","target":"%s","class":"%s","created_epoch":%s}\n' \
+            "$SESSION_ID" "$ROLE" "$MODEL" "$EFFORT" "$FLEET_RUNTIME" "${FLEET_DISPATCH_TARGET:-}" "$FLEET_ROLE_MODEL" "$(date +%s)" > "$_sidecar_tmp"
+        mv -f "$_sidecar_tmp" "$SIDECAR"
     fi
 fi
 
@@ -310,6 +322,10 @@ fi
 # claude (mirrors fleet-babysit's FLEET_BABYSIT_PRINT_LAUNCH). `plan=` mirrors
 # the FLEET_PLAN_ISSUE export (empty when no assignment / discarded by resume).
 if [[ -n "${FLEET_DISPATCH_PRINT_LAUNCH:-}" ]]; then
+    if [[ "$FLEET_RUNTIME" == codex ]]; then
+        printf "resumed=%s target=%s argv=codex model=%s effort=%s class=%s\n"             "$RESUMED" "${FLEET_DISPATCH_TARGET:-}" "$MODEL" "$EFFORT" "$FLEET_ROLE_MODEL"
+        exit 0
+    fi
     printf 'resumed=%s target=%s reason=%s plan=%s prompt=%s argv=claude %s\n' \
         "$RESUMED" "${FLEET_DISPATCH_TARGET:-}" "${FLEET_DISPATCH_REASON:-}" \
         "${FLEET_PLAN_ISSUE:-}" "$PROMPT" "${CLAUDE_ARGS[*]}"
@@ -330,11 +346,24 @@ fleet_install_maybe_refresh || true
 # starting with /role- from conversion; inert on macOS/Linux.
 export MSYS2_ARG_CONV_EXCL="${MSYS2_ARG_CONV_EXCL:+$MSYS2_ARG_CONV_EXCL;}/role-"
 
-claude "${CLAUDE_ARGS[@]}" "$PROMPT" | fleet-claude-stream
-
-rc="${PIPESTATUS[0]}"
+if [[ "$FLEET_RUNTIME" == codex ]]; then
+    _runtime_self="${BASH_SOURCE[0]}"
+    while [[ -L "$_runtime_self" ]]; do
+        _runtime_dir="$(cd "$(dirname "$_runtime_self")" && pwd)"
+        _runtime_self="$(readlink "$_runtime_self")"
+        [[ "$_runtime_self" = /* ]] || _runtime_self="$_runtime_dir/$_runtime_self"
+    done
+    _runtime_dir="$(cd "$(dirname "$_runtime_self")" && pwd)"
+    export FLEET_CODEX_SIDECAR="$SIDECAR"
+    python3 "$_runtime_dir/fleet_codex.py" --role "$ROLE" --model "$MODEL" \
+        --effort "$EFFORT" --mode "$ROLE_MODE" --resume "$RESUME_ID"
+    rc=$?
+else
+    claude "${CLAUDE_ARGS[@]}" "$PROMPT" | fleet-claude-stream
+    rc="${PIPESTATUS[0]}"
+fi
 TRIGGERS_DIR="${FLEET_STATE_DIR:-$HOME/.fleet/state}/triggers"
-if [[ "$rc" == "2" ]]; then
+if [[ "$FLEET_RUNTIME" == claude && "$rc" == "2" ]]; then
     # Usage-limit (quota) exit — long cooldown via the .ts marker.
     date +%s > "$RATE_LIMIT_DIR/$PANE_KEY.ts"
 elif [[ "$rc" != "0" && -f "$FLEET_THROTTLE_FLAG" ]]; then

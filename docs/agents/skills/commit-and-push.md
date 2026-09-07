@@ -405,6 +405,17 @@ See the **procedures** `host-label.md` for the shell snippet and scope
 rules (applies to all PRs; the host label tells the reviewer which backend
 the author already implicitly validated).
 
+### 8c. Record implementation provider
+
+Include `--label fleet:author-<claude|codex>` in the PR creation command.
+After creating or pushing changes to a PR, and before handing it to review,
+run `fleet-runtime stamp <PR> --repo <repo> --runtime <claude|codex>`.
+Use the provider that actually made this implementation, including amendment
+passes. The mutually exclusive `fleet:author-*` labels let the dispatcher
+choose the other provider for review. This is independent of the host-smoke
+label. Attribute the commit and PR to the real tool; do not copy a
+Claude co-author trailer for Codex-authored work.
+
 ### 9. Report the result
 
 **Fix-push convention:** if pushing a fix in response to a needs-fix review,

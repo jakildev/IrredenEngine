@@ -346,4 +346,16 @@ python3 -c "import json,sys;d=json.load(open(sys.argv[1]));assert d.get('resume_
   && ok "clean resume zeroed resume_failures (and bumped resumes)" || bad "streak not reset: $(cat "$SIDECAR" 2>/dev/null)"
 rm -f "$SIDECAR"
 
+
+echo "T16: Codex resumes only the same target and retains its class"
+printf '{"session_id":"codex-sid","role":"worker","runtime":"codex","target":"task:engine:910","model":"gpt-6-astra","effort":"xhigh","class":"fable"}' > "$SIDECAR"
+out=$(cd "$WT" && FLEET_DISPATCH_PRINT_LAUNCH=1 "$WRAP" pane-3 gpt-5.6-sol high worker "" live target=task:engine:910 codex fable 2>/dev/null)
+assert_contains "$out" "resumed=1 target=task:engine:910" "same Codex assignment resumes"
+assert_contains "$out" "model=gpt-6-astra effort=xhigh class=fable" "original model and task class retained"
+out=$(cd "$WT" && FLEET_DISPATCH_PRINT_LAUNCH=1 "$WRAP" pane-3 gpt-5.6-sol high worker "" live target=task:engine:911 codex opus 2>/dev/null)
+assert_contains "$out" "resumed=0 target=task:engine:911" "different target starts fresh"
+out=$(cd "$WT" && FLEET_DISPATCH_PRINT_LAUNCH=1 "$WRAP" pane-3 sonnet high worker "" live target=task:engine:911 claude sonnet 2>/dev/null)
+assert_contains "$out" "resumed=0" "provider switch never resumes the other CLI session"
+rm -f "$SIDECAR"
+
 summarize "fleet-dispatch-wrap session tests"

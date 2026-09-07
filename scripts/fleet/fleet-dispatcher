@@ -62,6 +62,7 @@ export PYTHONUTF8="${PYTHONUTF8:-1}"
 
 FLEET_SESSION="${FLEET_SESSION:-fleet}"
 STATE_DIR="${FLEET_STATE_DIR:-$HOME/.fleet/state}"
+export FLEET_STATE_DIR="$STATE_DIR"
 TRIGGERS_DIR="$STATE_DIR/triggers"
 DISPATCH_DIR="$STATE_DIR/dispatch"
 RATE_LIMIT_DIR="$STATE_DIR/rate-limit"
@@ -184,10 +185,26 @@ _env_model_merger="${FLEET_MODEL_MERGER:-}"
 _env_model_opus_reviewer="${FLEET_MODEL_OPUS_REVIEWER:-}"
 _env_model_epic_steward="${FLEET_MODEL_EPIC_STEWARD:-}"
 _env_fable_cap="${FLEET_CONCURRENCY_MODEL_FABLE:-}"
+# Preserve explicit environment overrides while exporting config to the adapters.
+declare -A _runtime_env=()
+_runtime_keys=(FLEET_RUNTIMES FLEET_CROSS_PROVIDER_REVIEW FLEET_WORKER_RUNTIME
+    FLEET_CODEX_MODEL_FABLE FLEET_CODEX_MODEL_OPUS FLEET_CODEX_MODEL_SONNET
+    FLEET_CODEX_EFFORT_FABLE FLEET_CODEX_EFFORT_OPUS FLEET_CODEX_EFFORT_SONNET
+    FLEET_CODEX_EFFORT_REVIEW)
+for _key in "${_runtime_keys[@]}"; do
+    [[ -v "$_key" ]] && _runtime_env[$_key]="${!_key}"
+done
 if [[ -f "$FLEET_CONF" ]]; then
     # shellcheck disable=SC1090
     source "$FLEET_CONF"
 fi
+for _key in "${_runtime_keys[@]}"; do
+    if [[ -v "_runtime_env[$_key]" ]]; then
+        printf -v "$_key" "%s" "${_runtime_env[$_key]}"
+    fi
+    [[ -v "$_key" ]] && export "$_key"
+done
+unset _runtime_env _runtime_keys _key
 FLEET_MODEL_FABLE="${_env_model_fable:-${FLEET_MODEL_FABLE:-}}"
 FLEET_MODEL_OPUS="${_env_model_opus:-${FLEET_MODEL_OPUS:-}}"
 FLEET_MODEL_SONNET="${_env_model_sonnet:-${FLEET_MODEL_SONNET:-}}"
@@ -1370,7 +1387,7 @@ pane_in_rate_limit_cooldown() {
 # without adding a shell dep. Same pattern rearm_periodic_meta_triggers
 # uses below.
 usage_gate_status() {
-    USAGE_DIR="$USAGE_DIR" \
+    FLEET_USAGE_RUNTIME="${1:-all}" USAGE_DIR="$USAGE_DIR" \
     USAGE_STALE_SECONDS="$USAGE_STALE_SECONDS" \
     RESET_GRACE_SECONDS="$RESET_GRACE_SECONDS" \
     python3 - <<'PY'
@@ -1443,6 +1460,12 @@ for path in sorted(usage_dir.glob("*.json")):
     try:
         data = json.loads(path.read_text())
     except (OSError, json.JSONDecodeError):
+        continue
+    scope = os.environ.get("FLEET_USAGE_RUNTIME", "all")
+    is_github = str(data.get("rateLimitType", path.stem)).startswith("github")
+    if scope == "shared" and not is_github:
+        continue
+    if scope == "claude" and is_github:
         continue
     util = data.get("utilization")
     if not isinstance(util, (int, float)):
@@ -1522,7 +1545,7 @@ PY
 # repeat-on-every-tick spam.
 usage_gate_open() {
     local status
-    status=$(usage_gate_status)
+    status=$(usage_gate_status "${FLEET_USAGE_RUNTIME:-all}")
     if [[ "$status" == closed:* ]]; then
         if [[ -z "$USAGE_GATE_CLOSED_LOGGED" ]]; then
             log "usage gate ${status}; deferring all dispatches"
@@ -1683,7 +1706,12 @@ build_dispatch_command() {
     # which role mode to run — `/role-<role> <mode>` — so a dry-run boot runs the
     # standby path, not a live task-pickup iteration. Live → "live", identical to
     # the prior hard-coded behavior.
-    if [[ -n "$target" ]]; then
+    if [[ -n "${ASSIGN_RUNTIME:-}" ]]; then
+        [[ "$ASSIGN_RUNTIME" == codex ]] && fallback=""
+        printf ' fleet-dispatch-wrap %q %q %q %q %q %q %q %q %q\n' \
+            "$pane_key" "$ASSIGN_MODEL" "$ASSIGN_EFFORT" "$role" "$fallback" \
+            "${DISPATCH_MODE:-live}" "target=$target" "$ASSIGN_RUNTIME" "$ASSIGN_CLASS"
+    elif [[ -n "$target" ]]; then
         printf ' fleet-dispatch-wrap %q %q %q %q %q %q %q\n' \
             "$pane_key" "$model" "$effort" "$role" "$fallback" \
             "${DISPATCH_MODE:-live}" "target=$target"
@@ -1947,6 +1975,7 @@ claim_target() {
 assign_for_pane() {
     local role="$1" agent="$2"
     ASSIGNMENT=""
+    ASSIGN_RUNTIME="" ASSIGN_MODEL="" ASSIGN_EFFORT="" ASSIGN_CLASS=""
     [[ "$DISPATCH_MODE" == "live" ]] || return 1
     [[ -n "${ROLE_TARGET_BOUND[$role]+x}" ]] || return 1
     local slice="$STATE_DIR/projections/$role.json"
@@ -1978,7 +2007,7 @@ assign_for_pane() {
     # its claim, so the item legitimately re-enters.
     local inflight
     inflight=$(grep -ho '"target":"[^"]*"' "$DISPATCH_DIR"/*.json 2>/dev/null || true)
-    local line now
+    local line now runtime_blocked=0
     now=$(date +%s)
     while IFS= read -r line; do
         [[ -n "$line" ]] || continue
@@ -1986,6 +2015,24 @@ assign_for_pane() {
         if [[ -n "${CLAIM_REFUSED_AT[$line]+x}" ]] \
             && (( now - CLAIM_REFUSED_AT[$line] < CLAIM_REFUSE_TTL_SECONDS )); then
             continue
+        fi
+        if [[ -n "${FLEET_RUNTIMES:-}" || "${FLEET_CROSS_PROVIDER_REVIEW:-0}" == 1 ]]; then
+            local route
+            route=$(python3 "$FLEET_LIB_DIR/fleet_runtime.py" route "$slice" "$line" \
+                "$role" "$DISPATCH_CLASS" "${DISPATCH_MODEL:-${ROLE_MODEL[$role]}}" \
+                "${DISPATCH_EFFORT:-${ROLE_EFFORT[$role]}}") || {
+                    runtime_blocked=1; continue;
+                }
+            route="${route//$'\r'/}"
+            read -r ASSIGN_RUNTIME ASSIGN_CLASS ASSIGN_MODEL ASSIGN_EFFORT <<< "$route"
+            if [[ "$ASSIGN_RUNTIME" == claude ]]; then
+                [[ "$(usage_gate_status claude)" == open* ]] || { runtime_blocked=1; continue; }
+            else
+                command -v codex >/dev/null 2>&1 || { runtime_blocked=1; continue; }
+                python3 "$FLEET_LIB_DIR/fleet_runtime.py" ready "$STATE_DIR" || {
+                    runtime_blocked=1; continue;
+                }
+            fi
         fi
         (( CLAIM_ATTEMPTS_LEFT > 0 )) || return 3
         CLAIM_ATTEMPTS_LEFT=$(( CLAIM_ATTEMPTS_LEFT - 1 ))
@@ -1996,6 +2043,7 @@ assign_for_pane() {
         fi
         CLAIM_REFUSED_AT[$line]=$now
     done <<< "$PICKS_CACHE"
+    (( runtime_blocked )) && return 3
     return 1
 }
 
@@ -2323,6 +2371,7 @@ dispatch_role() {
         # behind a granted claim, and when no candidate can be claimed the
         # fan-out stops here.
         local target_arg="" pane_basename=""
+        ASSIGN_RUNTIME="" ASSIGN_MODEL="" ASSIGN_EFFORT="" ASSIGN_CLASS=""
         if [[ -n "${ROLE_TARGET_BOUND[$role]+x}" && "$DISPATCH_MODE" == "live" ]]; then
             if ! pane_basename=$(pane_worktree_basename "$pane_id"); then
                 continue
@@ -2337,7 +2386,7 @@ dispatch_role() {
                 # unclaimable head from holding the lane (the #2699 monopoly,
                 # caught at the claim). The election's exclusion set bounds
                 # this to one pass per class.
-                while (( assign_rc == 1 && DISPATCH_MORE )) \
+                while (( (assign_rc == 1 || (assign_rc == 3 && CLAIM_ATTEMPTS_LEFT > 0)) && DISPATCH_MORE )) \
                     && [[ "$role" == "worker" && -n "$DISPATCH_CLASS" ]] \
                     && elect_next_class "$role" "has no claimable candidate left"; do
                     dispatched_class=0
@@ -2345,11 +2394,27 @@ dispatch_role() {
                 done
                 case "$assign_rc" in
                     0) target_arg="$ASSIGNMENT" ;;
-                    2) ;;   # no slice yet — the legacy plain launch
+                    2) assign_budget_hit=1; break ;; # wait for a target-bearing projection
                     3) assign_budget_hit=1; break ;;
                     *) assign_exhausted=1; break ;;
                 esac
+            else
+                # A reservation belongs to its original provider and target.
+                # Never hand a Codex conversation to Claude during recovery.
+                local resume_route resume_rc
+                resume_route=$(python3 "$FLEET_LIB_DIR/fleet_runtime.py" resume-route                     "${FLEET_SESSIONS_DIR:-$HOME/.fleet/sessions}/$pane_basename.session.json")                     && resume_rc=0 || resume_rc=$?
+                if (( resume_rc == 0 )); then
+                    read -r ASSIGN_RUNTIME ASSIGN_CLASS ASSIGN_MODEL ASSIGN_EFFORT target_arg <<< "$resume_route"
+                    if ! command -v codex >/dev/null 2>&1                         || ! python3 "$FLEET_LIB_DIR/fleet_runtime.py" ready "$STATE_DIR"; then
+                        assign_budget_hit=1; break
+                    fi
+                elif (( resume_rc != 2 )); then
+                    assign_budget_hit=1; continue
+                fi
             fi
+        fi
+        if [[ -z "${ASSIGN_RUNTIME:-}" && "${FLEET_RUNTIMES:-claude}" == *codex* ]]; then
+            [[ "$(usage_gate_status claude)" == open* ]] || { assign_budget_hit=1; break; }
         fi
         local cmd
         cmd=$(build_dispatch_command "$role" "$pane_key" "$DISPATCH_MODEL" "$DISPATCH_EFFORT" "$target_arg")
@@ -2811,6 +2876,11 @@ main() {
         # entirely; triggers stay in place for next tick. The
         # rearm_periodic_meta_triggers above still runs so the trigger
         # set stays accurate for when the gate re-opens.
+        if [[ "${FLEET_RUNTIMES:-claude}" == *codex* ]]; then
+            FLEET_USAGE_RUNTIME=shared
+        else
+            FLEET_USAGE_RUNTIME=all
+        fi
         if session_exists && usage_gate_open; then
             for role in "${DISPATCHED_ROLES[@]}"; do
                 # Dry-run: each role gets ONE standby iteration, then idles.
