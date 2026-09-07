@@ -53,12 +53,20 @@ def rules(worktree, role):
     return "\n".join(lines) + "\n"
 
 
+def _is_fleet_generated(text):
+    # Structural check, not byte-equality against a fresh regeneration: a
+    # settings.json/rules() change must not read as hand-authored.
+    lines = text.splitlines()
+    if not lines or lines[0] != HEADER.rstrip():
+        return False
+    return all(line.startswith("prefix_rule(") for line in lines[1:] if line)
+
+
 def prepare(worktree, role):
     path = worktree / ".codex/rules/fleet.rules"
     if path.is_symlink():
         raise ValueError("refusing to overwrite a symlinked fleet policy")
-    known = {rules(worktree, name) for name in ("worker", *REVIEW_ROLES)}
-    if path.exists() and path.read_text() not in known:
+    if path.exists() and not _is_fleet_generated(path.read_text()):
         raise ValueError(f"hand-authored policy at {path}; move it before preparing")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(rules(worktree, role))

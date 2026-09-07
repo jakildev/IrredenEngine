@@ -88,6 +88,17 @@ class Transport(unittest.TestCase):
                 policy.prepare(root, "worker")
             self.assertTrue(path.read_text().endswith("# my custom edit\n"))
 
+    def test_policy_regenerates_after_upstream_rule_shape_changes(self):
+        # A settings.json allow-list change alters rules() output for every
+        # role at once; that must not read as hand-authored (see #3098).
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp).resolve()
+            path = policy.prepare(root, "worker")
+            stale = path.read_text() + 'prefix_rule(pattern=["fleet-retired-tool"], decision="allow")\n'
+            path.write_text(stale)
+            policy.prepare(root, "worker")  # must not raise "hand-authored"
+            self.assertNotIn("fleet-retired-tool", path.read_text())
+
     def test_architect_waits_for_human(self):
         self.assertIn("Wait for the human", codex.prompt("opus-architect", "live", ""))
 

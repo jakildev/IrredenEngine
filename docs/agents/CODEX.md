@@ -101,11 +101,21 @@ Policy checks verify command matching; qualify actual build, GitHub, screenshot,
 and filesystem access on each OS before enabling its pool.
 
 Workers can edit their assigned checkout, Git metadata, matching downstream
-worktree if present, and the necessary fleet state directories. The main
-checkout is not an additional writable source directory. Command rules help
-prevent common workflow mistakes, including merge, force-push, and reviewer
-push; they are not a security boundary against arbitrary shell programs using
-the same GitHub credentials. Keep GitHub branch protection as the merge boundary.
+worktree if present, and the necessary fleet state directories. "Git
+metadata" is wider than the worktree's own `.git` file: a worktree's history
+lives in the main checkout's `.git` (`git rev-parse --git-common-dir`), so the
+writable set includes that directory's `hooks/`, `config`, and
+`refs/heads/master` too — git genuinely needs most of that reach to operate a
+worktree at all. The main checkout is not an additional writable *source*
+directory (no reading or editing its working tree), but its `.git` is
+reachable through this path. Command rules help prevent common workflow
+mistakes, including merge, force-push, and reviewer push; they are not a
+security boundary against arbitrary shell programs using the same GitHub
+credentials — including a filesystem write straight to
+`.git/refs/heads/master` or `.git/hooks/pre-commit` in the main checkout,
+which no command rule can see. Keep GitHub branch protection as the merge
+boundary, and treat this posture — not a hardened sandbox — as what you are
+accepting by enabling a Codex worker on a host.
 
 Set the following in `~/.fleet/fleet-up.conf` after qualifying the host, then
 restart the dispatcher:

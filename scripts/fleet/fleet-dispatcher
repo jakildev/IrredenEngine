@@ -1813,6 +1813,55 @@ declare -A CLAIM_REFUSED_AT=()
 CLAIM_REFUSE_TTL_SECONDS="${FLEET_DISPATCHER_CLAIM_REFUSE_TTL:-120}"
 [[ "$CLAIM_REFUSE_TTL_SECONDS" =~ ^[0-9]+$ ]] || CLAIM_REFUSE_TTL_SECONDS=120
 
+# Why the last "claim budget spent" tick actually stalled: route-failed,
+# claude-quota-closed, codex-unavailable, codex-cooldown, resume-route-failed,
+# no-projection-slice, or the mundane claim-attempts-exhausted. Set by
+# assign_for_pane and its dispatch_role callers before every assign_budget_hit;
+# consumed by note_gate_block so the log names the real cause (see #3098).
+ASSIGN_BLOCK_REASON=""
+declare -A DISPATCH_GATE_STREAK=()
+
+_dispatch_gate_alert_path() {
+    echo "${FLEET_ALERTS_DIR:-$HOME/.fleet/alerts}/dispatch-gate-$1"
+}
+
+# note_gate_block <role> <reason> — log once per role (existing CAP_DEFER_LOGGED
+# quiet-until-cleared idiom) and, once the SAME reason has held for 3
+# consecutive calls, keep a standing alert file so a persistent block (e.g. a
+# stuck Codex cooldown, a misconfigured review-policy default) is visible
+# outside the daemon's own log, not just as one line that then goes quiet
+# forever. A changed reason restarts the streak — it is news again.
+note_gate_block() {
+    local role="$1" reason="${2:-claim-budget-spent}" count
+    local prev="${DISPATCH_GATE_STREAK[$role]:-}"
+    if [[ "$prev" == "$reason:"* ]]; then
+        count="${prev#*:}"
+        count=$(( count + 1 ))
+    else
+        count=1
+    fi
+    DISPATCH_GATE_STREAK["$role"]="$reason:$count"
+    if [[ -z "${CAP_DEFER_LOGGED[$role-claimbudget]+x}" ]]; then
+        log "$role: claim budget (${CLAIM_ATTEMPTS_PER_TICK}/tick) spent with candidates left ($reason); trigger kept for the next tick"
+        CAP_DEFER_LOGGED["$role-claimbudget"]=1
+    fi
+    if (( count >= 3 )); then
+        local alert; alert="$(_dispatch_gate_alert_path "$role")"
+        mkdir -p "$(dirname "$alert")" 2>/dev/null || true
+        printf 'dispatch gate block: role=%s reason=%s count=%s\n' "$role" "$reason" "$count" \
+            > "$alert" 2>/dev/null || true
+    fi
+}
+
+# clear_gate_block <role> — the lane is no longer stuck: drop the streak and
+# any standing alert so the next block, whatever it is, escalates from zero.
+clear_gate_block() {
+    local role="$1"
+    unset "DISPATCH_GATE_STREAK[$role]"
+    rm -f "$(_dispatch_gate_alert_path "$role")" 2>/dev/null || true
+    unset "CAP_DEFER_LOGGED[$role-claimbudget]"
+}
+
 # Bound on claim attempts per dispatch_role call: every attempt is network,
 # and the walk sits inline in the 10 s control loop — an unbounded walk over a
 # long queue of held candidates would stall heartbeats and every other lane
@@ -2009,6 +2058,7 @@ assign_for_pane() {
     inflight=$(grep -ho '"target":"[^"]*"' "$DISPATCH_DIR"/*.json 2>/dev/null || true)
     local line now runtime_blocked=0
     now=$(date +%s)
+    ASSIGN_BLOCK_REASON=""
     while IFS= read -r line; do
         [[ -n "$line" ]] || continue
         [[ "$inflight" == *"\"target\":\"$line\""* ]] && continue
@@ -2016,25 +2066,37 @@ assign_for_pane() {
             && (( now - CLAIM_REFUSED_AT[$line] < CLAIM_REFUSE_TTL_SECONDS )); then
             continue
         fi
-        if [[ -n "${FLEET_RUNTIMES:-}" || "${FLEET_CROSS_PROVIDER_REVIEW:-0}" == 1 ]]; then
+        # FLEET_RUNTIMES is the sole gate for whether routing runs at all.
+        # FLEET_CROSS_PROVIDER_REVIEW's default lives in exactly one place —
+        # fleet_runtime.choose_runtime's kind=="review" check (enforced ON,
+        # per CODEX.md "All hosts must enable cross-provider review") — never
+        # duplicated here (see #3098).
+        if [[ -n "${FLEET_RUNTIMES:-}" ]]; then
             local route
             route=$(python3 "$FLEET_LIB_DIR/fleet_runtime.py" route "$slice" "$line" \
                 "$role" "$DISPATCH_CLASS" "${DISPATCH_MODEL:-${ROLE_MODEL[$role]}}" \
                 "${DISPATCH_EFFORT:-${ROLE_EFFORT[$role]}}") || {
-                    runtime_blocked=1; continue;
+                    ASSIGN_BLOCK_REASON="route-failed"; runtime_blocked=1; continue;
                 }
             route="${route//$'\r'/}"
             read -r ASSIGN_RUNTIME ASSIGN_CLASS ASSIGN_MODEL ASSIGN_EFFORT <<< "$route"
             if [[ "$ASSIGN_RUNTIME" == claude ]]; then
-                [[ "$(usage_gate_status claude)" == open* ]] || { runtime_blocked=1; continue; }
+                [[ "$(usage_gate_status claude)" == open* ]] || {
+                    ASSIGN_BLOCK_REASON="claude-quota-closed"; runtime_blocked=1; continue;
+                }
             else
-                command -v codex >/dev/null 2>&1 || { runtime_blocked=1; continue; }
+                command -v codex >/dev/null 2>&1 || {
+                    ASSIGN_BLOCK_REASON="codex-unavailable"; runtime_blocked=1; continue;
+                }
                 python3 "$FLEET_LIB_DIR/fleet_runtime.py" ready "$STATE_DIR" || {
-                    runtime_blocked=1; continue;
+                    ASSIGN_BLOCK_REASON="codex-cooldown"; runtime_blocked=1; continue;
                 }
             fi
         fi
-        (( CLAIM_ATTEMPTS_LEFT > 0 )) || return 3
+        if (( CLAIM_ATTEMPTS_LEFT <= 0 )); then
+            ASSIGN_BLOCK_REASON="claim-attempts-exhausted"
+            return 3
+        fi
         CLAIM_ATTEMPTS_LEFT=$(( CLAIM_ATTEMPTS_LEFT - 1 ))
         if claim_target "$line" "$agent"; then
             ASSIGNMENT="$line"
@@ -2394,8 +2456,8 @@ dispatch_role() {
                 done
                 case "$assign_rc" in
                     0) target_arg="$ASSIGNMENT" ;;
-                    2) assign_budget_hit=1; break ;; # wait for a target-bearing projection
-                    3) assign_budget_hit=1; break ;;
+                    2) ASSIGN_BLOCK_REASON="no-projection-slice"; assign_budget_hit=1; break ;; # wait for a target-bearing projection
+                    3) assign_budget_hit=1; break ;; # ASSIGN_BLOCK_REASON already set by assign_for_pane
                     *) assign_exhausted=1; break ;;
                 esac
             else
@@ -2406,15 +2468,17 @@ dispatch_role() {
                 if (( resume_rc == 0 )); then
                     read -r ASSIGN_RUNTIME ASSIGN_CLASS ASSIGN_MODEL ASSIGN_EFFORT target_arg <<< "$resume_route"
                     if ! command -v codex >/dev/null 2>&1                         || ! python3 "$FLEET_LIB_DIR/fleet_runtime.py" ready "$STATE_DIR"; then
-                        assign_budget_hit=1; break
+                        ASSIGN_BLOCK_REASON="codex-unavailable"; assign_budget_hit=1; break
                     fi
                 elif (( resume_rc != 2 )); then
-                    assign_budget_hit=1; continue
+                    ASSIGN_BLOCK_REASON="resume-route-failed"; assign_budget_hit=1; continue
                 fi
             fi
         fi
         if [[ -z "${ASSIGN_RUNTIME:-}" && "${FLEET_RUNTIMES:-claude}" == *codex* ]]; then
-            [[ "$(usage_gate_status claude)" == open* ]] || { assign_budget_hit=1; break; }
+            [[ "$(usage_gate_status claude)" == open* ]] || {
+                ASSIGN_BLOCK_REASON="claude-quota-closed"; assign_budget_hit=1; break;
+            }
         fi
         local cmd
         cmd=$(build_dispatch_command "$role" "$pane_key" "$DISPATCH_MODEL" "$DISPATCH_EFFORT" "$target_arg")
@@ -2475,13 +2539,10 @@ dispatch_role() {
     # the next projection change, which is exactly when a candidate frees up,
     # and the periodic worker re-arm covers the quiet corner.
     if [[ -n "$assign_budget_hit" ]]; then
-        if [[ -z "${CAP_DEFER_LOGGED[$role-claimbudget]+x}" ]]; then
-            log "$role: claim budget (${CLAIM_ATTEMPTS_PER_TICK}/tick) spent with candidates left; trigger kept for the next tick"
-            CAP_DEFER_LOGGED["$role-claimbudget"]=1
-        fi
+        note_gate_block "$role" "$ASSIGN_BLOCK_REASON"
         return
     fi
-    unset "CAP_DEFER_LOGGED[$role-claimbudget]"
+    clear_gate_block "$role"
     if [[ -n "$assign_exhausted" ]]; then
         rm -f "$trigger_file"
         # Pace the periodic re-arm too: an unchanged slice of held or refused
