@@ -54,6 +54,12 @@ USAGE_DIR = pathlib.Path(
     os.environ.get("FLEET_STATE_DIR", str(pathlib.Path.home() / ".fleet" / "state"))
 ) / "usage"
 
+# The iteration's result record. fleet-dispatch-wrap sets FLEET_ITERATION_RESULT
+# to a pane-keyed path under the state dir; fleet-dispatcher folds it into the
+# completion log line and the iterations ledger when the pane returns to its
+# shell. Unset (a hand-run stream) → nothing written.
+ITERATION_RESULT = os.environ.get("FLEET_ITERATION_RESULT")
+
 
 def emit(s):
     sys.stdout.write(s)
@@ -126,6 +132,39 @@ def handle_result(event):
     emit(f"\n{color}[done {subtype} turns={turns} ${cost:.4f} {dur_s:.1f}s]{RESET}\n")
     if is_err and event.get("result"):
         emit(f"{RED}{event['result']}{RESET}\n")
+    record_iteration_result(event)
+
+
+def record_iteration_result(event):
+    """Write the final result event's cost / turns / duration (and the
+    session id + finish time the dispatcher's ledger joins on) to
+    ITERATION_RESULT. `is_error` is `subtype != "success"` — not repeated."""
+    if not ITERATION_RESULT:
+        return
+    _write_json_atomic(pathlib.Path(ITERATION_RESULT), {
+        "subtype": event.get("subtype", "?"),
+        "turns": event.get("num_turns", 0) or 0,
+        "cost_usd": round(event.get("total_cost_usd", 0) or 0, 6),
+        "duration_s": round((event.get("duration_ms", 0) or 0) / 1000, 1),
+        "session_id": event.get("session_id") or "",
+        "finished_at": int(time.time()),
+    })
+
+
+def _write_json_atomic(target, payload):
+    """Temp file + fsync + replace, every error swallowed: a state-dir mishap
+    (unwritable, full) must never take down the pane's live render."""
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            "w", dir=target.parent, prefix=f".{target.name}.", suffix=".tmp", delete=False
+        ) as tmp:
+            json.dump(payload, tmp)
+            tmp.flush()
+            os.fsync(tmp.fileno())
+        os.replace(tmp.name, target)
+    except OSError:
+        return
 
 
 def latch_usage_observation(rl_type, info):
@@ -164,20 +203,7 @@ def latch_usage_observation(rl_type, info):
         "resetsAt": info.get("resetsAt"),
         "observed_at": int(time.time()),
     }
-    try:
-        USAGE_DIR.mkdir(parents=True, exist_ok=True)
-        target = USAGE_DIR / f"{safe_type}.json"
-        with tempfile.NamedTemporaryFile(
-            "w", dir=USAGE_DIR, prefix=f".{safe_type}.", suffix=".tmp", delete=False
-        ) as tmp:
-            json.dump(payload, tmp)
-            tmp.flush()
-            os.fsync(tmp.fileno())
-            tmp_path = pathlib.Path(tmp.name)
-        os.replace(tmp_path, target)
-    except OSError:
-        # State-dir not writable, etc. Don't crash the stream renderer.
-        return
+    _write_json_atomic(USAGE_DIR / f"{safe_type}.json", payload)
 
 
 # Known-benign claude stderr warnings — claude prints these AFTER the

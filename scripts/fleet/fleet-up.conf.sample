@@ -301,6 +301,12 @@
 # panes in one tick on a fast link. Default 8.
 # FLEET_DISPATCHER_CLAIM_ATTEMPTS_PER_TICK=8
 #
+# FLEET_DISPATCHER_IDLE_LOG_INTERVAL is how often, in seconds, a quiet fleet
+# (no trigger standing, nothing in flight) writes its `idle:` line after the
+# first one on the busy→quiet transition — so a silent log means a wedged
+# daemon, never a quiet one. Default 600.
+# FLEET_DISPATCHER_IDLE_LOG_INTERVAL=600
+#
 # FLEET_DISPATCHER_RATE429_DELAY is the per-pane cooldown applied after a
 # short-window 429 *failure* (claude exhausted its internal retries). It is
 # deliberately much shorter than FLEET_DISPATCHER_LIMIT_DELAY (the usage /

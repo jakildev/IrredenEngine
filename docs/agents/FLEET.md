@@ -133,7 +133,12 @@ a hard-killed session resumes through its sidecar — and the second
 releases the claim, salvages the pane's dirty worktrees to
 `~/.fleet/state/salvage/`, writes
 `~/.fleet/state/handoff/<kind>-<repo>-<N>.md` for the next claimant, and
-clears the sidecar. Every granted assignment also counts toward a
+clears the sidecar. Each completion lands one
+line in `~/.fleet/logs/iterations.jsonl` — the dispatch record plus the
+verdict, the outcome, and the cost / turns / duration from claude's
+final result event — beside the dispatcher log whose completion line
+carries the same figures; a quiet fleet says so there (`idle:` lines)
+rather than going silent. Every granted assignment also counts toward a
 per-target dispatch cap (`FLEET_TARGET_DISPATCH_CAP`, default 5, cleared
 on `finished`); at the cap the item is parked with `fleet:needs-human`
 and a comment instead of being dispatched again — the planning circuit

@@ -51,21 +51,21 @@ Class-conditional duties at a glance ("opus+" = opus or fable):
 ## Your assignment for this iteration
 
 The contract — one pre-claimed item per launch, its claim already held
-under your basename, the `fleet-claim decline` walk-away, and what each kind's claim/release is — lives in
+under your basename, the `fleet-claim decline` walk-away, and what each
+kind's claim/release is — lives in
 [docs/agents/FLEET-RUNTIME.md § The dispatch target](../../docs/agents/FLEET-RUNTIME.md#the-dispatch-target--one-item-per-launch).
-With `FLEET_DISPATCH_TARGET` set: run steps 0 and 0.5, skip startup step
-3 (the cache read) and steps 4–5, skip every scan in steps 1, 1b, 1c,
-and 3, and jump by kind. For a `game` target, `cd` into your game twin
-worktree first and use `--repo game` / `--repo jakildev/irreden` exactly
-as the lane's steps say.
+With `FLEET_DISPATCH_TARGET` set: skip the discovery steps (marked
+below and in loop § B), and run loop § A, the one § B step your kind's
+row names, and § C. For a `game` target, `cd` into your game twin
+worktree first and use `--repo game` / `--repo jakildev/irreden`
+exactly as the lane's steps say.
 
 | `FLEET_DISPATCH_KIND` | go to |
 |---|---|
-| `task` | step 4 **without its claim** (`claim` is what the dispatcher ran): `cd` for a game task, resolve the base with `claim-base`, branch, then step 5. The reservation `claim` wrote has no branch yet — step 0.5 has nothing to resume. |
-| `stack` | step 4 as above; `claim-base` returns the recorded base branch |
-| `feedback` | step 1 for PR #N per FLEET-FEEDBACK-HANDLING.md — its step a re-runs `fleet-pr-claim-feedback` for the detached checkout, a no-op re-acquire of your own claim |
-| `conflict` | step 1c for PR #N, from step b (skip b′) |
-| `plan` | step 2 (`FLEET_PLAN_ISSUE` is set too) |
+| `task`, `stack` | § C, its "assigned entry" paragraph |
+| `feedback` | § B step 1 for PR #N — the handling, not the scan |
+| `conflict` | § B step 1c for PR #N, from step b (skip b′) |
+| `plan` | § B step 2 (`FLEET_PLAN_ISSUE` is set too) |
 
 ## Bash tool rules
 
@@ -177,7 +177,7 @@ fleet-claim --repo game claim 45 pool-1
 ## Startup actions (do these immediately, in order)
 
 0. Print your role banner:
-   `[worker] Executes <class>-class tasks from engine + game issue queues; plans fleet:needs-plan issues at opus class+. This iteration: class=$FLEET_ROLE_MODEL, plan-assignment=${FLEET_PLAN_ISSUE:-none}. Transient — re-fires when scout sees actionable state (each iteration runs in fresh context).`
+   `[worker] Executes <class>-class tasks from engine + game issue queues; plans fleet:needs-plan issues at opus class+. This iteration: class=$FLEET_ROLE_MODEL, target=${FLEET_DISPATCH_TARGET:-none}. Transient — re-fires when scout sees actionable state (each iteration runs in fresh context).`
 1. `pwd` and confirm you are in an engine pool worktree
    (`basename $PWD` = `pool-<N>`, not the architect's worktree). The
    directory basename (`pool-1` … `pool-9`) is your **agent name** —
@@ -201,6 +201,9 @@ fleet-claim --repo game claim 45 pool-1
    `start-next-task`'s task-boundary closeout step. The fetch above restores the
    *refs*; this restores the *context* (decisions just made, PRs in flight) the
    fresh context dropped.
+   Steps 3–7 are discovery: skip them when `FLEET_DISPATCH_TARGET` is
+   set — the dispatcher ran these scans before launching you.
+
 3. **Read the shared fleet state cache** with the Read tool:
    `~/.fleet/state/state.json`. One Read replaces what used to be
    six `gh` / `git` calls here:
@@ -259,18 +262,29 @@ file you're reading right now.
 
 Do the work, then exit cleanly:
 
+### A. Entry — every iteration
+
 0. **Heartbeat.** See [docs/agents/FLEET-RUNTIME.md § Heartbeat](../../docs/agents/FLEET-RUNTIME.md#heartbeat--step-0).
    Your worktree basename (`pool-1` … `pool-9`, from `pwd` at
    startup) is the helper argument. Re-touch before `fleet-build`,
    `optimize`, `simplify`, and `commit-and-push`.
 
-0.5. **Reservation check.** See [docs/agents/FLEET-RUNTIME.md § Reservation check](../../docs/agents/FLEET-RUNTIME.md#reservation-check--step-05-workers-and-authors-only).
+0.5. **Reservation check** *(target unset only — an assigned iteration's
+   reservation has no branch yet, nothing to resume)*. See [docs/agents/FLEET-RUNTIME.md § Reservation check](../../docs/agents/FLEET-RUNTIME.md#reservation-check--step-05-workers-and-authors-only).
    If `fleet-claim reservation-of <your-worktree-basename>` returns an
    issue number, run steps 1, 1b, and 2 normally (feedback, smoke,
    planning still apply within your class), then skip task pickup at
-   step 3, skip the claim at step 4, and jump directly to **step 5
-   (read the plan file)** with the reserved issue number. The PR from
-   the previous iteration is still open; do NOT open a new one.
+   step 3 and the claim at step 4, and enter § C at **step 5 (read the
+   plan file)** with the reserved issue number. The PR from the
+   previous iteration is still open; do NOT open a new one.
+
+### B. Discovery and lane handling — scans only when the target is unset
+
+Skip this section when `FLEET_DISPATCH_TARGET` is set, except the one
+step your kind's row in § "Your assignment for this iteration" names —
+the dispatcher ran these scans before launching you. (The A/B/C
+partition is worker-only: the reviewer and smoke role docs keep
+step-number routing because their loops are short.)
 
 1. **Check for feedback labels on open PRs across both repos.**
    Re-Read `~/.fleet/state/state.json` if its contents are no
@@ -789,6 +803,16 @@ Do the work, then exit cleanly:
    command, base-branching, claim commit, and PR-creation snippets
    (covers both the `master`-base and stackable-on cases).
 
+### C. Work the item — both paths
+
+**Assigned `task` / `stack` entry.** The dispatcher's `claim` (what it
+ran for you) already holds the FS lock, the `fleet:claim-*` label, and
+a branchless reservation under your basename, so do step 4's mechanics
+without its claim: `cd` into your game twin for a `game` target,
+resolve the base with `fleet-claim [--repo game] claim-base <N>` (a
+`stack` target's recorded base comes back), branch, then continue
+here. A discovery iteration arrives from step 4 with the same state.
+
 5. **Read the plan file (if it exists).** Only read the **specific
    file** for your task — never `ls` the plans directory and never
    read other files there. The valid filenames are:
@@ -964,7 +988,7 @@ Do the work, then exit cleanly:
 The Mode argument at the top of this file is one of `dry-run`, `live`,
 or `review-only` (passed by `fleet-dispatcher` from `fleet-up`'s mode arg).
 
-- **`live`** (full operation): each iteration runs steps 0–12 above,
+- **`live`** (full operation): each iteration runs loop § A–C above,
   then exits. fleet-dispatcher launches a fresh claude when scout sees actionable state.
 
 - **`dry-run`** (default): do startup actions only. Do not plan or
@@ -981,7 +1005,7 @@ or `review-only` (passed by `fleet-dispatcher` from `fleet-up`'s mode arg).
   - Step 3 **molecule-resume only** — call
     `fleet-claim molecule resume <your-worktree-name>`. If stdout
     returns an issue number, that's an in-flight stack you started
-    earlier; continue with steps 4–12 to finish that task (in-flight
+    earlier; continue with step 4 and then § C to finish that task (in-flight
     work IS in scope). If stdout is empty, **exit cleanly** — do NOT
     fall through to "Normal pickup".
 

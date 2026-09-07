@@ -68,6 +68,9 @@ RATE_LIMIT_DIR="$STATE_DIR/rate-limit"
 USAGE_DIR="$STATE_DIR/usage"
 RESERVATIONS_DIR="${FLEET_RESERVATIONS_DIR:-$HOME/.fleet/reservations}"
 LOG_FILE="$HOME/.fleet/logs/dispatcher.log"
+# One line per completed dispatch — history, not state, so it lives beside
+# the log whose completion lines carry the same figures (cleanup_stale_dispatches).
+ITERATIONS_LEDGER="${LOG_FILE%/*}/iterations.jsonl"
 PID_FILE="$STATE_DIR/dispatcher.pid"
 LOCK_DIR="$STATE_DIR/dispatcher.lock.d"
 SHUTDOWN_FLAG="$HOME/.fleet/shutdown-in-progress"
@@ -128,6 +131,7 @@ else
     fleet_repo_ns() { FLEET_NS=(); }
     fleet_target_key() { printf '%s\n' "${1//:/-}"; }
     fleet_pane_worktrees() { :; }
+    fleet_iteration_result_path() { printf '%s/iteration-results/%s.json\n' "$1" "$2"; }
     declare -A FLEET_TARGET_CLAIM=() FLEET_TARGET_RELEASE=() FLEET_TARGET_LABEL=()
 fi
 
@@ -1268,15 +1272,39 @@ handle_abandoned_target() {
     log "$target: abandoned twice by $agent — claim released, worktrees salvaged (${salvage:-nothing dirty}), handoff at $STATE_DIR/handoff/$key.md"
 }
 
+# One JSON field out of a one-object file — the dispatcher's own printf'd
+# records and the stream's json.dump'd ones alike (`"k":v` and `"k": v`).
+# Strings come back unquoted, numbers as written, absent -> empty.
+json_str_field() { sed -n 's/.*"'"$2"'": *"\([^"]*\)".*/\1/p' "$1" | head -n 1; }
+json_num_field() { sed -n 's/.*"'"$2"'": *\([0-9.]*\).*/\1/p' "$1" | head -n 1; }
+
+# The iteration's result record — fleet-claude-stream writes it from claude's
+# final result event to the pane-keyed path the wrap exported. Sets the ITER_*
+# fields (all empty when absent: a legacy wrap, a pane killed before the
+# result event) and consumes the file. $1 = pane id.
+read_iteration_result() {
+    local f
+    f=$(fleet_iteration_result_path "$STATE_DIR" "$(pane_id_to_key "$1")")
+    ITER_COST=""; ITER_TURNS=""; ITER_DURATION=""; ITER_SUBTYPE=""; ITER_SESSION=""; ITER_FINISHED=""
+    [[ -f "$f" ]] || return 0
+    ITER_COST=$(json_num_field "$f" cost_usd)
+    ITER_TURNS=$(json_num_field "$f" turns)
+    ITER_DURATION=$(json_num_field "$f" duration_s)
+    ITER_FINISHED=$(json_num_field "$f" finished_at)
+    ITER_SUBTYPE=$(json_str_field "$f" subtype)
+    ITER_SESSION=$(json_str_field "$f" session_id)
+    rm -f "$f"
+}
+
 cleanup_stale_dispatches() {
     if [[ ! -d "$DISPATCH_DIR" ]]; then
         return
     fi
-    local file role pane dispatched_epoch class claimed target agent verdict updated detail
+    local file role pane dispatched_epoch class claimed target agent verdict updated detail now record
     for file in "$DISPATCH_DIR"/*.json; do
         [[ -e "$file" ]] || continue
-        role=$(sed -n 's/.*"role":"\([^"]*\)".*/\1/p' "$file" | head -n 1)
-        pane=$(sed -n 's/.*"pane":"\([^"]*\)".*/\1/p' "$file" | head -n 1)
+        role=$(json_str_field "$file" role)
+        pane=$(json_str_field "$file" pane)
         if [[ -z "$pane" ]]; then
             rm -f "$file"
             continue
@@ -1284,8 +1312,8 @@ cleanup_stale_dispatches() {
         if pane_is_occupied "$pane"; then
             continue
         fi
-        class=$(sed -n 's/.*"class":"\([^"]*\)".*/\1/p' "$file" | head -n 1)
-        dispatched_epoch=$(sed -n 's/.*"dispatched_epoch":\([0-9]*\).*/\1/p' "$file" | head -n 1)
+        class=$(json_str_field "$file" class)
+        dispatched_epoch=$(json_num_field "$file" dispatched_epoch)
         # Did this iteration do productive work? For a target-bound dispatch
         # the completion contract answers off the target itself; otherwise the
         # pane-keyed marker fleet-claim stamps on every acquire/release arm
@@ -1294,8 +1322,8 @@ cleanup_stale_dispatches() {
         # (cannot tell a claim from a diligent no-pick).
         claimed=$(derive_dispatch_outcome "$file" "$pane")
         rm -f "$CLAIM_FLAG_DIR/$(pane_id_to_key "$pane")"
-        target=$(sed -n 's/.*"target":"\([^"]*\)".*/\1/p' "$file" | head -n 1)
-        agent=$(sed -n 's/.*"agent":"\([^"]*\)".*/\1/p' "$file" | head -n 1)
+        target=$(json_str_field "$file" target)
+        agent=$(json_str_field "$file" agent)
         verdict=""
         if [[ -n "$target" && -n "$agent" && -n "$dispatched_epoch" ]]; then
             assess_target_completion "$target" "$agent" "$dispatched_epoch"
@@ -1312,14 +1340,63 @@ cleanup_stale_dispatches() {
         fi
         # Fold the just-finished dispatch into the role's empty-exit streak.
         # Legacy records (pre-upgrade, no dispatched_epoch) skip this silently.
+        now=$(date +%s)
         if [[ -n "$dispatched_epoch" ]]; then
-            record_dispatch_outcome "$role" "$(( $(date +%s) - dispatched_epoch ))" \
-                "$class" "$claimed"
+            record_dispatch_outcome "$role" "$(( now - dispatched_epoch ))" "$class" "$claimed"
         fi
-        log "dispatch for $role on $pane completed (pane returned to shell${claimed:+, outcome=$claimed}${target:+, target=$target}${verdict:+, verdict=$verdict})"
+        read_iteration_result "$pane"
+        # The ledger line: the dispatch record's own serialization plus what
+        # the fold learned. Numbers stay numbers; absent ones are null.
+        mkdir -p "${ITERATIONS_LEDGER%/*}" 2>/dev/null || true
+        record=$(<"$file")
+        printf '%s,"finished_at":%s,"verdict":"%s","outcome":"%s","session_id":"%s","subtype":"%s","turns":%s,"cost_usd":%s,"duration_s":%s}\n' \
+            "${record%\}}" "${ITER_FINISHED:-$now}" "$verdict" "$claimed" "$ITER_SESSION" "$ITER_SUBTYPE" \
+            "${ITER_TURNS:-null}" "${ITER_COST:-null}" "${ITER_DURATION:-null}" \
+            >> "$ITERATIONS_LEDGER" 2>/dev/null || true
+        log "dispatch for $role on $pane completed (pane returned to shell${claimed:+, outcome=$claimed}${target:+, target=$target}${verdict:+, verdict=$verdict}${ITER_COST:+, cost=\$$ITER_COST turns=$ITER_TURNS dur=${ITER_DURATION}s}${ITER_SUBTYPE:+ $ITER_SUBTYPE})"
         rm -f "$file"
     done
     assess_pass_end
+}
+
+# --- Idle tick line ------------------------------------------------------------
+#
+# A quiet fleet used to leave the log silent — indistinguishable from a wedged
+# daemon, and the reason the overnight no-op night was only reconstructed
+# afterwards from dispatch lines. One line on the busy→quiet transition, then
+# one every IDLE_LOG_INTERVAL_SECONDS while no trigger stood this tick, none
+# stands now, and nothing is in flight. Activity resets the clock silently —
+# the dispatch lines already say what happened. The clock is a stamp file so
+# it survives a restart and the --idle-tick hook can drive both arms.
+IDLE_LOG_INTERVAL_SECONDS="${FLEET_DISPATCHER_IDLE_LOG_INTERVAL:-600}"
+IDLE_STAMP_FILE="$STATE_DIR/idle-logged-at"   # epoch of the last idle line; absent = busy
+TICK_TRIGGER_STOOD=0                          # set by dispatch_role when its trigger existed
+
+fleet_is_quiet() {  # no trigger stood this tick, none stands, no dispatch record
+    (( TICK_TRIGGER_STOOD == 0 )) || return 1
+    local f
+    for f in "$TRIGGERS_DIR"/* "$DISPATCH_DIR"/*.json; do
+        [[ -e "$f" ]] && return 1
+    done
+    return 0
+}
+
+tick_idle_line() {
+    local now last
+    if ! fleet_is_quiet; then
+        [[ -e "$IDLE_STAMP_FILE" ]] && rm -f "$IDLE_STAMP_FILE"
+        return 0
+    fi
+    now=$(date +%s)
+    last=$(read_counter_file "$IDLE_STAMP_FILE")
+    if (( last == 0 )); then
+        log "idle: no triggers, nothing in flight"
+    elif (( now - last >= IDLE_LOG_INTERVAL_SECONDS )); then
+        log "idle: still quiet (no triggers, nothing in flight)"
+    else
+        return 0
+    fi
+    printf '%s\n' "$now" > "$IDLE_STAMP_FILE" 2>/dev/null || true
 }
 
 # --- Rate-limit cooldown ---------------------------------------------------
@@ -2093,6 +2170,7 @@ dispatch_role() {
     if [[ ! -f "$trigger_file" ]]; then
         return
     fi
+    TICK_TRIGGER_STOOD=1   # a trigger that this pass consumes still made the tick busy
 
     # Smoke-lane host gate (#2839). The scout's smoke projection is host-agnostic
     # by design, so a standing trigger only means "SOME host owes smoke work" —
@@ -2811,6 +2889,7 @@ main() {
         # entirely; triggers stay in place for next tick. The
         # rearm_periodic_meta_triggers above still runs so the trigger
         # set stays accurate for when the gate re-opens.
+        TICK_TRIGGER_STOOD=0
         if session_exists && usage_gate_open; then
             for role in "${DISPATCHED_ROLES[@]}"; do
                 # Dry-run: each role gets ONE standby iteration, then idles.
@@ -2830,6 +2909,7 @@ main() {
                 fi
             done
         fi
+        tick_idle_line
 
         tick_count=$((tick_count + 1))
 
@@ -3062,8 +3142,16 @@ case "${1:-}" in
     --complete-dispatches)
         # Test/debug: one pass of cleanup_stale_dispatches over the dispatch
         # records under FLEET_STATE_DIR — the exit fold (marker verdict,
-        # completion contract, empty-exit streak) without the daemon loop.
+        # completion contract, empty-exit streak, iteration ledger) without
+        # the daemon loop.
         cleanup_stale_dispatches
+        exit 0
+        ;;
+    --idle-tick)
+        # Test/debug: one tick_idle_line evaluation against FLEET_STATE_DIR
+        # (triggers, dispatch records, the idle-logged-at stamp); the idle
+        # line, when due, goes to the log (stderr).
+        tick_idle_line
         exit 0
         ;;
     --smoke-check)
