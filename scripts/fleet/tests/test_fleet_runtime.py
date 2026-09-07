@@ -2,6 +2,7 @@
 
 import io
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -46,7 +47,13 @@ class Routing(unittest.TestCase):
                 runtime.resume_route(path, {"FLEET_RUNTIMES": "claude"})
             # Run the executable too, with no network or production-state access.
             wrapper = Path(__file__).resolve().parents[1] / "fleet-runtime"
-            result = subprocess.run([str(wrapper), "resume-route", str(path)],
+            # Windows' CreateProcess searches System32 (the legacy WSL bash.exe
+            # stub, a different filesystem namespace) before PATH, so a bare
+            # "bash" can resolve to the wrong interpreter regardless of PATH
+            # order; shutil.which walks PATH itself and finds the real
+            # MSYS2/Git-Bash.
+            bash = shutil.which("bash") or "bash"
+            result = subprocess.run([bash, str(wrapper), "resume-route", str(path)],
                                     env={**runtime.os.environ, **self.env},
                                     capture_output=True, text=True, timeout=15)
             self.assertEqual(result.returncode, 0, result.stderr)
@@ -119,7 +126,8 @@ class Routing(unittest.TestCase):
                 self.assertTrue(runtime.ready(temp))
 
     def test_stamp_has_exact_provider_and_no_live_network(self):
-        with patch.object(runtime.subprocess, "run") as run:
+        with patch.dict(runtime.os.environ, {}, clear=True), \
+                patch.object(runtime.subprocess, "run") as run:
             runtime.stamp("123", "example/test", "codex")
             self.assertIn("fleet:author-codex", run.call_args.args[0])
             self.assertIn("fleet:author-claude", run.call_args.args[0])

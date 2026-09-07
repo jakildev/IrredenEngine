@@ -2,6 +2,7 @@
 
 import io
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -64,7 +65,12 @@ class Transport(unittest.TestCase):
 
     def test_wrapper_help(self):
         wrapper = Path(__file__).resolve().parents[1] / "fleet-codex"
-        result = subprocess.run([str(wrapper), "--help"], capture_output=True,
+        # Windows' CreateProcess searches System32 (the legacy WSL bash.exe stub,
+        # a different filesystem namespace) before PATH, so a bare "bash" can
+        # resolve to the wrong interpreter regardless of PATH order; shutil.which
+        # walks PATH itself and finds the real MSYS2/Git-Bash.
+        bash = shutil.which("bash") or "bash"
+        result = subprocess.run([bash, str(wrapper), "--help"], capture_output=True,
                                 text=True, timeout=15)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("--check", result.stdout)

@@ -74,16 +74,15 @@ def writable_roots(worktree, state):
                              "--path-format=absolute", "--git-common-dir"],
                             check=True, capture_output=True, text=True, timeout=10).stdout.strip()
     roots = [str(worktree), str(Path(common).resolve()), str(state)]
-    fleet_home = Path.home() / ".fleet"
     for name in ("sessions", "reservations", "claims", "molecules", "locks",
                  "feedback", "plans", "logs", "alerts", "heartbeats",
                  "iteration-summaries", "amend-snapshots", "orphans"):
         key = "FLEET_" + name.upper().replace("-", "_") + "_DIR"
-        roots.append(str(Path(os.environ.get(key, str(fleet_home / name))).resolve()))
+        roots.append(str(Path(os.environ.get(key) or str(Path.home() / ".fleet" / name)).resolve()))
     for key in ("FLEET_CODEX_SIDECAR",):
         if os.environ.get(key):
             roots.append(str(Path(os.environ[key]).resolve().parent))
-    cache = Path(os.environ.get("XDG_CACHE_HOME", str(Path.home() / ".cache")))
+    cache = Path(os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache"))
     roots.append(str(cache / "irreden"))
     if os.environ.get("IR_LOCK_ROOT"):
         roots.append(str(Path(os.environ["IR_LOCK_ROOT"]).resolve()))
@@ -133,7 +132,7 @@ def run(args):
     worktree = Path.cwd().resolve()
     if worktree.parent.name != "worktrees" or worktree.parent.parent.name != ".claude":
         raise ValueError("Codex fleet sessions require a dedicated fleet worktree")
-    state = Path(os.environ.get("FLEET_STATE_DIR", str(Path.home() / ".fleet/state"))).resolve()
+    state = Path(os.environ.get("FLEET_STATE_DIR") or str(Path.home() / ".fleet/state")).resolve()
     if args.prepare or args.check:
         policy = prepare(worktree, args.role)
         if args.check:
