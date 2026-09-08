@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Provider routing and author provenance shared by fleet roles.
+set -euo pipefail
+self="${BASH_SOURCE[0]}"
+while [[ -L "$self" ]]; do
+    dir="$(cd "$(dirname "$self")" && pwd)"
+    self="$(readlink "$self")"
+    [[ "$self" = /* ]] || self="$dir/$self"
+done
+exec python3 "$(dirname "$self")/fleet_runtime.py" "$@"

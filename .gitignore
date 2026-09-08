@@ -60,3 +60,6 @@ creations/editors/font_maker
 !.claude/agents/
 !.claude/agents/**
 !.claude/settings.json
+
+# Per-worktree generated Codex command policy
+.codex/rules/fleet.rules

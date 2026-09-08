@@ -363,3 +363,20 @@
 # FLEET_EPIC_STEWARD=0
 # FLEET_CONCURRENCY_EPIC_STEWARD=1
 # FLEET_EFFORT_EPIC_STEWARD=xhigh   # umbrella triage needs heavier reasoning
+
+# --- Mixed Claude / Codex workers (opt in after host preflight) --------------
+# These settings are read/exported by fleet-dispatcher. Restart the dispatcher
+# after changing them. Every participating host must set the review policy;
+# use FLEET_RUNTIMES=claude on a host without Codex access.
+# FLEET_RUNTIMES="claude,codex"
+# FLEET_CROSS_PROVIDER_REVIEW=1
+# FLEET_WORKER_RUNTIME="balanced"
+# Model classes remain provider-neutral scheduling/capacity classes.
+# FLEET_CODEX_MODEL_FABLE="gpt-6-astra"
+# FLEET_CODEX_MODEL_OPUS="gpt-5.6-sol"
+# FLEET_CODEX_MODEL_SONNET="gpt-5.6-terra"
+# FLEET_CODEX_EFFORT_FABLE="xhigh"
+# FLEET_CODEX_EFFORT_OPUS="medium"
+# FLEET_CODEX_EFFORT_SONNET="medium"
+# FLEET_CODEX_EFFORT_REVIEW="high"
+# See docs/agents/CODEX.md for permission checks and architect launch.

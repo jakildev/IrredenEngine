@@ -27,6 +27,7 @@
 # $FLEET_STATE_DIR/dispatch, same records --count-active reads.
 
 set -euo pipefail
+unset FLEET_RUNTIMES FLEET_CROSS_PROVIDER_REVIEW FLEET_WORKER_RUNTIME
 
 SCRIPT_DIR=$(cd "$(dirname "$0")/.." && pwd)
 source "$(dirname "$0")/lib_preflight.sh"
@@ -529,13 +530,13 @@ esac
     && { PASS=$((PASS+1)); echo "  ok: trigger consumed (scout re-arms on new work)"; } \
     || { FAIL=$((FAIL+1)); echo "  FAIL: trigger left standing"; }
 
-echo "T30: missing slice keeps the legacy lane-default fan-out"
+echo "T30: missing slice waits for an assignment"
 rm -f "$FLEET_STATE_DIR/dispatch"/*.json "$FLEET_STATE_DIR/projections/worker.json"
 : > "$FLEET_STATE_DIR/triggers/worker"
 out=$("$DISPATCHER" --dispatch-role worker 1 2>&1 >/dev/null)
 case "$out" in
-    *"dispatching worker"*) PASS=$((PASS+1)); echo "  ok: missing slice still dispatches (scout may not be up yet)" ;;
-    *) FAIL=$((FAIL+1)); echo "  FAIL: missing slice no longer dispatches: $out" ;;
+    *"dispatching worker"*) FAIL=$((FAIL+1)); echo "  FAIL: launched without assignment data" ;;
+    *) PASS=$((PASS+1)); echo "  ok: waits for assignment data" ;;
 esac
 
 echo "T31: a standing worker reservation keeps the '' dispatch (resume path)"
@@ -616,5 +617,39 @@ grep -q -- '--repo game claim 7 pool-3' "$FLEET_CLAIM_LOG" \
     || { PASS=$((PASS+1)); echo "  ok: capped task never reaches fleet-claim"; }
 assert_eq "$(cat "$COUNTS_DIR/task-game-8" 2>/dev/null)" "1" "the assigned task's counter started"
 rm -rf "$COUNTS_DIR"
+
+
+echo "T36: a Codex pin launches only after claim, with its actual model"
+cat > "$STUB_BIN/codex" <<'EOF'
+#!/usr/bin/env bash
+echo "test stub must never launch a model" >&2
+exit 99
+EOF
+chmod +x "$STUB_BIN/codex"
+export FLEET_RUNTIMES=claude,codex
+write_slice worker '{"tasks_open":[{"issue":"#910","model":"fable","owner":"free","blocked":false,"labels":["fleet:runtime-codex"]}]}'
+out=$(tick worker 1)
+assert_contains "$(cat "$SEND_LOG")" "gpt-6-astra xhigh worker" "Astra receives design-class work"
+assert_contains "$(cat "$SEND_LOG")" "target=task:engine:910 codex fable" "target, provider and class reach wrapper"
+assert_contains "$(cat "$FLEET_CLAIM_LOG")" "claim 910" "concrete job claimed first"
+
+echo "T37: Codex cooldown preserves the trigger without taking a claim"
+mkdir -p "$FLEET_STATE_DIR/runtime-cooldown"
+printf '{"until":9999999999}' > "$FLEET_STATE_DIR/runtime-cooldown/codex.json"
+out=$(tick worker 1)
+[[ ! -s "$SEND_LOG" && ! -s "$FLEET_CLAIM_LOG" && -f "$FLEET_STATE_DIR/triggers/worker" ]]     && ok "unavailable provider neither claims nor consumes the edge"     || bad "cooldown lost the trigger or claimed work"
+
+echo "T37b: a quota-blocked class yields to available work on the other provider"
+write_slice worker '{"tasks_open":[{"issue":"#910","model":"fable","owner":"free","blocked":false,"labels":["fleet:runtime-codex"]},{"issue":"#911","model":"sonnet","owner":"free","blocked":false,"labels":["fleet:runtime-claude"]}]}'
+out=$(tick worker 1)
+assert_contains "$(cat "$SEND_LOG")" "target=task:engine:911 claude sonnet" "Codex quota does not starve Claude work"
+write_slice worker '{"tasks_open":[{"issue":"#910","model":"fable","owner":"free","blocked":false,"labels":["fleet:runtime-codex"]}]}'
+rm -f "$FLEET_STATE_DIR/runtime-cooldown/codex.json"
+
+echo "T38: Claude-only mixed-fleet host honors a Codex pin"
+export FLEET_RUNTIMES=claude
+out=$(tick worker 1)
+[[ ! -s "$SEND_LOG" && ! -s "$FLEET_CLAIM_LOG" ]]     && ok "pin is not silently replaced by Claude" || bad "pin bypassed"
+unset FLEET_RUNTIMES
 
 summarize "fleet-dispatcher class-dispatch tests"

@@ -123,9 +123,11 @@ For each `fleet:needs-plan` issue:
      the premise, and the bail path if it is refuted (stop; comment the
      measurement on the issue; design-block or flag for re-plan — never build
      the dependent phases on a refuted premise). Phase 0 verifies the premise
-     of the **already-picked** approach — it is not approach-deferral: a
-     refuted premise routes to design-block/re-plan, never to a
-     mid-implementation choice between approaches. Recurrences: #2258 (assumed
+     of the advisory approach sketch. If refuted, record the measurement
+     and stop the dependent work. The implementer may choose another mechanism
+     when the locked Decisions, constraints, and Acceptance criteria still
+     hold; record the change in implementation notes. A change to those
+     contracts routes to design-block/re-plan. Recurrences: #2258 (assumed
      body-side, measured dispatch-bound), #2256/#2271/#2273 (parallel efforts
      on mutually-invalidated premises), #2278 (vacuous gate), #2321
      (unverified singleton / same-shape premise).

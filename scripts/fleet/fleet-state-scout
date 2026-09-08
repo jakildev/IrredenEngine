@@ -1061,6 +1061,8 @@ def fetch_task_queue(repo_slug):
             "id": task_id,
             "model": model,
             "effort": effort,
+            "labels": sorted(x for x in labels
+                             if x.startswith(("fleet:runtime-", "fleet:author-"))),
             "owner": owner,
             "area": area,
             "blocked_by": blocked_by,
