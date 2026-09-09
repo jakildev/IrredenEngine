@@ -62,8 +62,31 @@ independent heads.
 
 ## Steward ledger
 
-reconciled-through: **PR #2654 merge (2026-08-04T04:15:02Z, master `34c7f7f4`)** — #2385 Phase-0 (r7) shipped. Note the shape: the PR merged and **the child stayed open** (`[WIP]` in its own title; no `Closes #2385`), so no `rollup` trigger ever fired — the projection reported this epic as `[9/11]` with zero pending work for four days. Reconciled here by reading the ledger's own `#2385` row (which still said "PR #2654 open, wip, CONFLICTING") against the PR's live state. Prior: flow-a triage of PR #2654 / #2385 Phase-0 (2026-07-30) — all questions derivable, `design-unblock` applied, child plan amended A1, no proposal package; PR #2387 merge (2026-07-14 — S2 #2320 shadow-throw unify merged; V3 #2317 + S1 #2319 reconciled prior iterations).
-proposal-pending: **OPEN** — `## STEWARD PROPOSAL 2026-08-08` on this umbrella (https://github.com/jakildev/IrredenEngine/issues/2314#issuecomment-5227813732), one question (does r7 discharge D6, or does #2385 close as a partial with a successor child?), `fleet:steward-proposal` applied; its removal is the re-fire edge. This **re-raises, with a label, the question the 2026-07-30 escalation asked without one**: that comment (issuecomment-5134608422) was explicitly filed `non-blocking` and added no label, and it went unanswered for nine days while r7 shipped underneath it — the exact leak documented in `~/.fleet/feedback/epic-steward.md` (2026-08-08, "comment-only escalation paths have no Decisions-surface step"). The question is now blocking rather than advisory: r7 is on master, so "ship r7 and let D8's re-measure decide the rest" is no longer a recommendation about a future merge but a live choice about what closes #2385. Prior: STEWARD PROPOSAL 2026-07-14 (PR #2393 / S3 #2321) answered by opus-architect 2026-07-15 (issuecomment-4977022751) and distributed (D7–D9; child plan `issue-2321.md` A1; `## Steward direction` on PR #2393; `fleet-transition design-unblock 2393`; #2321 re-blocked on #2385; #2385 routed to the planning gate). Prior 2026-07-13 package (PR #2343 / S1 #2319) answered + distributed (D4–D6, `## Steward direction` on PR #2343).
+reconciled-through: **2026-09-09 live audit** — no child merged and no PR
+closed a child in this window, so no `rollup` trigger fired; what moved is
+child-issue *state* (#2385 parked) and an epic-lineage spike closing with a
+CONFIRMED finding that gates the cross-cutting acceptance clause (#2327 → #3023,
+new **F4**). Found by re-reading `proposal-pending` and the umbrella's own
+comment thread against live GitHub, which is the only reader that sees either.
+Prior: **PR #2654 merge (2026-08-04T04:15:02Z, master `34c7f7f4`)** — #2385 Phase-0 (r7) shipped. Note the shape: the PR merged and **the child stayed open** (`[WIP]` in its own title; no `Closes #2385`), so no `rollup` trigger ever fired — the projection reported this epic as `[9/11]` with zero pending work for four days. Reconciled here by reading the ledger's own `#2385` row (which still said "PR #2654 open, wip, CONFLICTING") against the PR's live state. Prior: flow-a triage of PR #2654 / #2385 Phase-0 (2026-07-30) — all questions derivable, `design-unblock` applied, child plan amended A1, no proposal package; PR #2387 merge (2026-07-14 — S2 #2320 shadow-throw unify merged; V3 #2317 + S1 #2319 reconciled prior iterations).
+proposal-pending: **OPEN, and re-audited 2026-09-09 — 32 days unanswered, the
+question is unchanged and its price is now measured.** Decay check per the
+protocol's own rule that a pending package ages invisibly: the subject did **not**
+resolve itself by merge (nothing has merged against #2385 since PR #2654), the
+recommendation has **not** evaporated (option (a) still turns on #1969, still
+OPEN and unclaimed), and the question is therefore still the right one. What *has*
+changed is the cost — see the 2026-09-09 Events entry: four opus dispatches
+(pool-1 and pool-4 on 08-04, pool-5 on 08-08, pool-3 on 08-21) each claimed #2385,
+re-derived that the residual is this ruling, and released; the fourth parked it
+`fleet:queued` → `fleet:needs-human` to stop the loop, which is the instruction
+the 2026-08-08 note gave. Two follow-on asks are now attached to the answer and
+must not be lost with it: **(1)** drop `fleet:needs-human` from #2385 when the
+ruling lands — the steward's re-fire on `fleet:steward-proposal` removal does not
+clear it; **(2)** `fleet:needs-gl-host` on #2385 is now gating the wrong panes —
+it was added 2026-08-04 for AC 7, AC 7 was reassigned to #1969 the next comment,
+and the residual that remains needs no host at all, so the label admits GL panes
+and excludes macOS ones for a question neither needs. Package: `## STEWARD
+PROPOSAL 2026-08-08` on this umbrella (https://github.com/jakildev/IrredenEngine/issues/2314#issuecomment-5227813732), one question (does r7 discharge D6, or does #2385 close as a partial with a successor child?), `fleet:steward-proposal` applied; its removal is the re-fire edge. This **re-raises, with a label, the question the 2026-07-30 escalation asked without one**: that comment (issuecomment-5134608422) was explicitly filed `non-blocking` and added no label, and it went unanswered for nine days while r7 shipped underneath it — the exact leak documented in `~/.fleet/feedback/epic-steward.md` (2026-08-08, "comment-only escalation paths have no Decisions-surface step"). The question is now blocking rather than advisory: r7 is on master, so "ship r7 and let D8's re-measure decide the rest" is no longer a recommendation about a future merge but a live choice about what closes #2385. Prior: STEWARD PROPOSAL 2026-07-14 (PR #2393 / S3 #2321) answered by opus-architect 2026-07-15 (issuecomment-4977022751) and distributed (D7–D9; child plan `issue-2321.md` A1; `## Steward direction` on PR #2393; `fleet-transition design-unblock 2393`; #2321 re-blocked on #2385; #2385 routed to the planning gate). Prior 2026-07-13 package (PR #2343 / S1 #2319) answered + distributed (D4–D6, `## Steward direction` on PR #2343).
 
 ### Children
 | Child | State | PR | Plan | Last validated |
@@ -78,7 +101,7 @@ proposal-pending: **OPEN** — `## STEWARD PROPOSAL 2026-08-08` on this umbrella
 | #2321 | open — `fleet:blocked` on #2385 (design answered, deferred) | #2393 | plan (issue-2321.md, A1 + **A2**) | 2026-08-08 (re-validated against PR #2654: D9's "first post-#2385 baseline capture" anchor pinned to master ≥ `34c7f7f4` — A2; `fleet:blocked` stands per D7, #2385 is still open) |
 | #2322 | merged | #2328 | plan | 2026-07-13 |
 | #2323 | merged | #2326 | plan | 2026-07-13 |
-| #2385 | open — **Phase-0 shipped, child NOT closed** (partial PR, no `Closes`); queued, `fleet:needs-gl-host`; still the critical path | #2654 **merged 2026-08-04** (master `34c7f7f4`) | **plan** (v2 `## Plan` comment; `issue-2385.md` = pointer + A1 + **A2**) | 2026-08-08 (post-merge audit: AC 4 visual half **discharged**; AC 7 two-host re-bless **not** discharged — only `macos-debug` re-blessed, see F1; residual = the linux re-bless + the pending Phase-1 ruling) |
+| #2385 | open — **Phase-0 shipped, child NOT closed** (partial PR, no `Closes`); **PARKED 2026-08-21** out of the pickup set (`fleet:queued` → `fleet:needs-human`, `human:approved` kept) after four opus dispatches each re-derived that the residual is the pending ruling; still the critical path | #2654 **merged 2026-08-04** (master `34c7f7f4`) | **plan** (v2 `## Plan` comment; `issue-2385.md` = pointer + A1 + **A2**) | 2026-08-08 (post-merge audit: AC 4 visual half **discharged**; AC 7 two-host re-bless **not** discharged — only `macos-debug` re-blessed, see F1; residual = the linux re-bless + the pending Phase-1 ruling) |
 
 ### Decisions
 <!-- entries: D<n> (<YYYY-MM-DD>): <decision> — source: <link> -->
@@ -389,6 +412,50 @@ proposal-pending: **OPEN** — `## STEWARD PROPOSAL 2026-08-08` on this umbrella
     2026-08-08`, re-asking the 2026-07-30 escalation's question **with**
     `fleet:steward-proposal` this time. See `proposal-pending`.
 
+- 2026-09-09 (**live audit — no trigger fired, and none could**): two things
+  happened on this epic since the last reconcile, both keyed on a child *issue*
+  rather than on a PR-close, so every projection trigger kind stayed silent and
+  the umbrella has read `[9/11]` with zero pending work for 32 days.
+  - **2026-08-21 — #2385 parked out of the pickup set.** A pool-3 opus dispatch
+    (Windows/GL) claimed it as the top unblocked opus row, found — as the three
+    passes before it — that the entire residual is the pending ruling, and flipped
+    `fleet:queued` → `fleet:needs-human` with `human:approved` kept, releasing the
+    claim (issuecomment on #2314, 2026-08-21T23:43:44Z; detail on
+    #2385#issuecomment-5376524035). **This is the failure the 2026-08-08 note
+    could not prevent by being a note:** #2385 held `fleet:queued` +
+    `human:approved` + `fleet:opus` with `Blocked by: (none)` and no open PR,
+    which is exactly the scout's definition of the top unblocked opus pick, so
+    the "do not decide the ruling yourself" instruction could only be read after
+    an iteration had already been spent reaching it. Four iterations paid that
+    price (pool-1 and pool-4 on 08-04, pool-5 on 08-08, pool-3 on 08-21). The
+    ledger's #2385 row is corrected above; the two label asks the parking raises
+    are folded into `proposal-pending` so they ride the answer.
+  - **2026-08-22 — #2327's GL probe closed CONFIRMED, and it opened a close-out
+    gate this ledger did not have.** #2327 (spike, follow-on of child **#2323**,
+    the D3 SO(3) investigation) ran `docs/design/detached-so3-shadow-projection.md`
+    §4.2's one static-analysis inference on native Windows/OpenGL at master
+    `816efbd5` and reproduced it: a world-placed `DETACHED_REVOXELIZE` receiver's
+    received shadow is pinned in the entity's own raster frame across camera yaw,
+    sitting ~13.9 units off at camera 180° on a face of half-extent 12, while
+    **cast is correct in the same frames** — the asymmetry §4.2 predicted. The
+    probe also found something the doc's §7 T1 sketch does not cover and which is
+    the larger of the two errors: the uncompensated `worldNormal` at
+    `c_lighting_to_trixel.glsl:183` feeds `lambert` as well as
+    `worldSunShadowFactor`, so a world-placed detached solid's **plain
+    directional shading** is pinned to its raster frame and reproduces with sun
+    shadows off. Recorded as **F4**. T1 is filed as **#3023** — unlabeled, hence
+    unqueued, the same invisible-triage shape as #2669 on epic #2544.
+- 2026-09-09: **F1 re-verified, unchanged and now 36 days old** — see F1's
+  re-check note. **F3 amended for precision** — a GL host has now produced
+  measurements on this epic's lineage, which its original wording denies.
+- 2026-09-09: no new proposal package raised on this epic. The 2026-08-08 package
+  is still open with `fleet:steward-proposal` applied, so the ask already has its
+  re-fire edge; this iteration's one package went to epic #2544. A decay audit of
+  the pending package is recorded in `proposal-pending` above and posted to the
+  umbrella thread as `## Steward audit 2026-09-09`
+  (https://github.com/jakildev/IrredenEngine/issues/2314#issuecomment-5597114371),
+  which also carries F4 and the F1/F3 re-checks.
+
 ### Findings (close-out gate — beyond the checklist)
 
 <!-- Steward-owned. Items close-out must resolve that no checklist row tracks.
@@ -423,6 +490,19 @@ proposal-pending: **OPEN** — `## STEWARD PROPOSAL 2026-08-08` on this umbrella
   `platform-catchup` pass would flip that label to `fleet:verified-linux` with the
   references still stale. If the proposal below closes #2385, this finding is what
   keeps the obligation attached to the epic.
+  **Re-verified 2026-09-09 — unchanged in every particular.** The six
+  `creations/demos/canvas_stress/test/references/linux-debug/*.png` are still last
+  written by `95355bde2` (PR #1595, **2026-06-07**), and `git log
+  34c7f7f4..origin/master -- <that dir>` is still **empty** — 36 days stale now.
+  #1969 is still OPEN and unclaimed (`human:approved` + `fleet:queued` +
+  `fleet:sonnet` + `fleet:needs-gl-host`), as is #2158 for the two `compare_*`
+  refs. One thing did move in the finding's favour: **#3007 is closed** — the
+  verify-harness family could not launch `fleet-run` on native Windows at all
+  (`subprocess.Popen` on an extensionless bash script → `WinError 2`), which
+  silently blocked every `fleet:needs-gl-host` harness run on that host, so the
+  bless #1969 asks for is now *runnable* where it previously was not. The finding
+  does not discharge on that; it discharges when #1969 blesses at master
+  ≥ `34c7f7f4`.
 - **F2 (new 2026-08-08) — F1's *class* is already filed; this is an engine
   instance of it.** #2530 ("deferred acceptance criteria vanish at merge — no
   needs-`<host>`-smoke gate when a PR defers verification to another host", OPEN,
@@ -443,3 +523,48 @@ proposal-pending: **OPEN** — `## STEWARD PROPOSAL 2026-08-08` on this umbrella
   invisible; but close-out cannot discharge the both-backends clause from a macOS
   pane, and F1 means the GL host's own regression gate is currently red before it
   starts.
+  **Amended 2026-09-09 for precision — the headline sentence is now too strong,
+  and an overstated finding is as unusable at close-out as a missing one.** A GL
+  host *has* produced measurements on this epic's lineage since F3 was written:
+  **#2327** ran the detached-receive yaw probe on native Windows/OpenGL at master
+  `816efbd5` (see F4), with per-pose numbers and captures. What F3 actually
+  protects is narrower and still entirely true: **no OpenGL host has verified the
+  S-series sun-shadow bake/receive work** — every measurement behind #2319 (S1),
+  #2320 (S2), #2321 (S3) and #2385's r0/r6/r7 component counts was taken on
+  macOS/Metal, PR #2654 still carries `fleet:needs-linux-smoke`, and the
+  `linux-debug` reference set those runs would be scored against is stale (F1).
+  Close-out must cite that narrower sentence. Note also that the newly-runnable
+  harness (#3007 closed) removes the mechanical excuse for the gap without
+  closing the gap itself.
+
+- **F4 (new 2026-09-09) — detached world-receive has no camera-cardinal
+  compensation, no checklist child owns it, and its owner ticket is unlabeled.**
+  §"Cross-cutting acceptance requirement (every child)" demands verification at
+  cardinal AND non-cardinal yaw on both backends, and **D3** repeats it as a
+  ruling. #2327's GL probe establishes that **detached content cannot satisfy that
+  clause on either backend today**, because the failure is in the recovery rather
+  than in a per-pose tuning: a world-placed `DETACHED_REVOXELIZE` receiver's
+  received shadow is pinned in the entity's own raster frame across camera yaw
+  (~13.9 units off at camera 180° on a face of half-extent 12) while cast is
+  correct in the same frames, and the same uncompensated `worldNormal`
+  (`c_lighting_to_trixel.glsl:183`) breaks **plain Lambert** as well — that half
+  reproduces with sun shadows off entirely and is the larger of the two errors.
+  The detached path is in this epic's scope by descent: child **#2323** was the
+  D3 SO(3) spike, #2327 is its follow-on, and the probe's own report was posted
+  **on this umbrella** claiming precisely this clause.
+  **Owner — #3023** (T1, receive camera-cardinal compensation, doc §5-B option
+  Ra), filed 2026-08-22 and **unlabeled**, therefore never seen by
+  `fleet-queue-ingest` and unpickable by any worker; T2 (residual-yaw
+  generalization) is blocked behind it, T3/T4 (cast side) are unaffected. **Do
+  not file a new ticket.** This is the second unlabeled-owner instance the fleet
+  is carrying on an epic close-out gate — #2669 on epic #2544 is the other, at 40
+  days — and both are the same shape: a correctly-filed, correctly-planned issue
+  that no surface can queue because `TASK-FILING.md` files unlabeled and nothing
+  guarantees a triage pass follows.
+  **Why this is not folded into the 2026-08-08 proposal:** that package asks what
+  closes #2385 (an S-series question); F4 is a D3-lineage gate on a different code
+  path. Recording it here keeps it attached to close-out without widening a
+  package that has already waited 32 days for an answer.
+  **Reproduction vehicle:** branch `claude/2327-gl-receive-yaw-probe` — a spike
+  artifact with no PR, explicitly not for merge; it is to be deleted once #3023
+  lands, so close-out should not cite it as standing evidence.
