@@ -77,18 +77,46 @@ comment first, then every amendment below, newest wins where they conflict.
   caster canvas's distances are never materialized out of the Metal
   image-atomic scratch. `resolveImageAtomicScratch` has exactly one call site
   outside the backend (`system_voxel_to_trixel.hpp:1949` — the 2026-08-22 comment
-  cites `:1917`; re-resolved against this PR's base), and it resolves the
-  canvas *currently being ticked*; the world-placed scatter reads a **different**
-  canvas — the detached caster's own model-frame distance texture
-  (`c_resolve_world_placed_depth.metal:19`). This is the *own-canvas* half of the
-  #2488 rule, narrower than the #1640 foreign-read gap this thread circled, and
-  it post-dates every prior investigation here. First probe: call
+  cites `:1917`; re-resolved against this PR's base); it resolves the canvas
+  *currently being ticked*, and it is guarded on a non-empty shadow-feeder ring
+  (`:1948`), so a detached re-voxelize caster pool's own distance texture is
+  never materialized at all. Meanwhile the world-placed **resolve scatter**
+  reads a *different* canvas — the detached caster's model-frame distance
+  texture, bound at `system_bake_sun_shadow_map.hpp:454-455` and read by
+  `c_resolve_world_placed_depth.metal:19`. So on Metal the resolve scatters from
+  a texture that still holds the 65535 clear sentinel. This is the *own-canvas*
+  half of the #2488 rule, narrower than the #1640 foreign-read gap this thread
+  circled, and it post-dates every prior investigation here.
+- **Boundary — this leaves resolve-then-bake untouched. Read this before acting
+  on the probe.** `engine/render/CLAUDE.md:1495-1497` requires that *the
+  sun-shadow bake only ever reads main-canvas-layout depth sources*, and
+  `c_resolve_world_placed_depth` **is** the sanctioned resolve that makes that
+  true — it is Pass 1 of the block (`system_bake_sun_shadow_map.hpp:433`,
+  "scatter each caster into the shared scratch"), so its foreign model-frame
+  read is the *resolve's* input, not a bake input; the shader states the
+  invariant in its own header (`c_resolve_world_placed_depth.glsl:14-17`). The
+  bake consumes `worldPlacedResolveDepth_`, a main-canvas-sized texture
+  (`system_bake_sun_shadow_map.hpp:212`) that Pass 2 blits from the scratch
+  (`:484`) and Pass 3 binds READ_ONLY as the bake's only depth input (`:503-504`,
+  "ONE extra bake of the main-layout resolve texture", `:489`).
+  A1 therefore proposes **no** new foreign read, and does **not** offer the
+  #2488 primitive as a substitute for resolve-then-bake — which
+  `engine/render/CLAUDE.md:1526-1530` forbids explicitly. It makes the caster's
+  OWN distances present in its OWN texture so the sanctioned resolve has real
+  data to scatter: the doc's prescribed use, "after the atomic passes and before
+  the first texture reader" (`:1499-1512`), where the first reader here is the
+  resolve scatter.
+- **First probe:** call
   `IRRender::device()->resolveImageAtomicScratch(caster.textures_->getTextureDistances())`
-  per caster immediately before the scatter loop at
-  `system_bake_sun_shadow_map.hpp:443`, then re-run the #2090 side-by-side. It is
-  a no-op on GL by construction, so the measured-green GL side stays identical.
-  If the cast does not appear, check next whether the caster canvas's stage-2
-  winner tap runs at all for a detached re-voxelize pool.
+  per caster inside the existing Pass-1 loop at
+  `system_bake_sun_shadow_map.hpp:443`, immediately before the image bind at
+  `:454`, then re-run the #2090 side-by-side. It is a no-op on GL by
+  construction, so the measured-green GL side stays identical. The blit's safety
+  precondition holds: `engine/render/CLAUDE.md:1514-1524` requires a resolved
+  R32I texture be *cleared* through `clearTexImage`, and every canvas distance
+  texture is, every frame (`system_voxel_to_trixel.hpp:94`). If the cast does not
+  appear, check next whether the caster canvas's stage-2 winner tap runs at all
+  for a detached re-voxelize pool.
 - **Routing (the reason this issue is parked, not queued):** `fleet:needs-gl-host`
   was correctly **removed** 2026-08-21 by the pane that finished the GL-gated
   slice — leaving it would tell macOS panes to skip the one host that can now
