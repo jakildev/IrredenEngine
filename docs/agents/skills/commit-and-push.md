@@ -310,7 +310,10 @@ EOF
 # If the screenshot skill ran this pass, fold its markdown snippet in here:
 #   pr_body="${pr_body}"$'\n\n'"<the screenshot skill's markdown snippet>"
 pr_body="${pr_body//<sha-pin token>/$(git rev-parse HEAD)}"   # no-op when the token is absent
-gh pr create --base <default-branch> --title "<scope>: <title>" --body "$pr_body"
+# --label fleet:author-<runtime> is step 8c's provenance stamp; a PR opened
+# without it cannot be routed for review while cross-provider review is on.
+gh pr create --base <default-branch> --title "<scope>: <title>" --body "$pr_body" \
+    --label fleet:author-<claude|codex>
 ```
 
 **`Closes #N` line** (required when the task has an `Issue:` field) is what

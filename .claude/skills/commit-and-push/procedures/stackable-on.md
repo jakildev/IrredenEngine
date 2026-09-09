@@ -41,11 +41,11 @@ claim-time open missed them:
 
 ```bash
 branch=$(git branch --show-current)
-labels=(--label "fleet:wip")
+labels=(--label "fleet:wip" --label "fleet:author-<claude|codex>")   # step 8c's provenance stamp
 
 existing=$(gh pr list --head "$branch" --state open --json url -q '.[0].url')
 if [[ -n "$existing" ]]; then
-    gh pr edit "$existing" --base "$base"                       # no-op when already correct
+    gh pr edit "$existing" --base "$base" "${labels[@]:2}"       # no-op when already correct
 else
     gh pr create --base "$base" "${labels[@]}" \
         --title "<scope>: <title> (#<N>)" \

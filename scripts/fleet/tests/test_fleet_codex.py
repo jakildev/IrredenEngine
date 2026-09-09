@@ -53,12 +53,19 @@ class Transport(unittest.TestCase):
             root = Path(temp).resolve()
             worktree = root / "repo/.claude/worktrees/pool-1"
             common = root / "repo/.git"
+            gitdir = common / "worktrees/pool-1"
+            # `git rev-parse --absolute-git-dir --git-common-dir` prints one path
+            # per line; the linked worktree's own gitdir comes first.
+            rev_parse = Mock(stdout=f"{gitdir}\n{common}\n")
             with patch.object(codex.Path, "home", return_value=root), \
-                    patch.object(codex.subprocess, "run", return_value=Mock(stdout=str(common))), \
+                    patch.object(codex.subprocess, "run", return_value=rev_parse), \
                     patch.dict(codex.os.environ, {}, clear=True):
                 roots = codex.writable_roots(worktree, root / ".fleet/state")
             self.assertIn(str(worktree), roots)
             self.assertIn(str(common), roots)
+            # The sandbox protects the resolved gitdir of a linked worktree even
+            # when its parent .git is a writable root; it must be named itself.
+            self.assertIn(str(gitdir), roots)
             self.assertNotIn(str(root / "repo"), roots)
             for name in ("claims", "heartbeats", "molecules", "iteration-summaries"):
                 self.assertIn(str(root / ".fleet" / name), roots)
@@ -94,7 +101,8 @@ class Transport(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp).resolve()
             path = policy.prepare(root, "worker")
-            stale = path.read_text() + 'prefix_rule(pattern=["fleet-retired-tool"], decision="allow")\n'
+            stale = path.read_text() + (
+                'prefix_rule(pattern=["fleet-retired-tool"], decision="allow")\n')
             path.write_text(stale)
             policy.prepare(root, "worker")  # must not raise "hand-authored"
             self.assertNotIn("fleet-retired-tool", path.read_text())

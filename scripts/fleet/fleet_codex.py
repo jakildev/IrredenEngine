@@ -69,11 +69,27 @@ def command(model, effort, worktree, writable, task_prompt, resume="", interacti
     return args
 
 
+def _git_dirs(checkout):
+    """(per-worktree gitdir, common gitdir) for a checkout, both absolute.
+
+    The sandbox carves every `.git` path out of a writable root as read-only
+    unless an explicit root names that exact path, and for a linked worktree
+    it resolves the `.git` pointer file and protects the resolved gitdir
+    (`.git/worktrees/<name>`) too. Listing only the common dir therefore
+    still leaves `index.lock` / `FETCH_HEAD` unwritable — every git write
+    from the worktree fails with "Operation not permitted" — so both
+    directories are named explicitly.
+    """
+    out = subprocess.run(["git", "-C", str(checkout), "rev-parse", "--path-format=absolute",
+                          "--absolute-git-dir", "--git-common-dir"],
+                         check=True, capture_output=True, text=True, timeout=10).stdout.split()
+    gitdir, common = (out + [""])[:2] if len(out) >= 2 else (out[0], out[0])
+    return str(Path(gitdir).resolve()), str(Path(common or gitdir).resolve())
+
+
 def writable_roots(worktree, state):
-    common = subprocess.run(["git", "-C", str(worktree), "rev-parse",
-                             "--path-format=absolute", "--git-common-dir"],
-                            check=True, capture_output=True, text=True, timeout=10).stdout.strip()
-    roots = [str(worktree), str(Path(common).resolve()), str(state)]
+    gitdir, common = _git_dirs(worktree)
+    roots = [str(worktree), gitdir, common, str(state)]
     for name in ("sessions", "reservations", "claims", "molecules", "locks",
                  "feedback", "plans", "logs", "alerts", "heartbeats",
                  "iteration-summaries", "amend-snapshots", "orphans"):
@@ -92,11 +108,7 @@ def writable_roots(worktree, state):
     twin = Path(common).parent / "creations/game/.claude/worktrees" / worktree.name
     if twin.is_dir():
         roots.append(str(twin.resolve()))
-        gitdir = subprocess.run(["git", "-C", str(twin), "rev-parse",
-                                 "--path-format=absolute", "--git-common-dir"],
-                                check=True, capture_output=True,
-                                text=True, timeout=10).stdout.strip()
-        roots.append(gitdir)
+        roots.extend(_git_dirs(twin))
     return roots
 
 

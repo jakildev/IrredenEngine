@@ -106,7 +106,14 @@ metadata" is wider than the worktree's own `.git` file: a worktree's history
 lives in the main checkout's `.git` (`git rev-parse --git-common-dir`), so the
 writable set includes that directory's `hooks/`, `config`, and
 `refs/heads/master` too — git genuinely needs most of that reach to operate a
-worktree at all. The main checkout is not an additional writable *source*
+worktree at all. Both git directories are named as explicit roots — the
+linked worktree's own gitdir (`.git/worktrees/<pool>`, `git rev-parse
+--absolute-git-dir`) and the common dir — because the sandbox carves every
+`.git` path out of a writable root as read-only unless a root names that
+exact path, and it protects a linked worktree's resolved gitdir separately.
+With the common dir alone every git write from the pool (`index.lock`,
+`FETCH_HEAD`) fails with "Operation not permitted", so a Codex worker cannot
+branch and a Codex reviewer cannot check the PR out. The main checkout is not an additional writable *source*
 directory (no reading or editing its working tree), but its `.git` is
 reachable through this path. Command rules help prevent common workflow
 mistakes, including merge, force-push, and reviewer push; they are not a
