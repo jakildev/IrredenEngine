@@ -125,7 +125,8 @@ standalone, continue to step 1d.
 ### 1d. Churn audit when `mergeable == CONFLICTING`
 
 A CONFLICTING PR has a stale branch that can silently carry reverted hunks.
-When `mergeable` is `CONFLICTING`, run `gh pr diff <N> --stat` and apply:
+When `mergeable` is `CONFLICTING`, read the per-file `additions` and `deletions`
+from `gh pr view <N> --json files` and apply:
 
 1. **Oversized churn** — any file with ≥100 added+deleted lines the body
    doesn't mention. Flag **Needs-fix** (escalate to **Blocker** if it
@@ -144,6 +145,11 @@ skip this step.
 ```bash
 gh pr checkout <N>
 ```
+
+Confirm the command succeeded, then compare `git rev-parse HEAD` with the PR's
+`headRefOid` from `gh pr view <N> --json headRefOid`. A failed checkout leaves the
+previous source tree in place: do not test that tree and report its results as
+PR validation. Report the exact blocker through the assigned completion contract.
 
 You still have full read access to the rest of the repo for cross-reference.
 Do **not** commit or push from this worktree — you are a reader.
