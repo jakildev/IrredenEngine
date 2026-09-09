@@ -63,6 +63,8 @@
 # empty trigger (another tier-0 pass, zero tokens) only when the auto-merge
 # cap deferred an eligible plan PR — progress is guaranteed there, so the
 # self-re-arm cannot loop.
+# Cooldown and young-UNKNOWN deferrals persist their next eligibility epoch
+# in state/merger-retry-at; the dispatcher wakes tier-0 once at that deadline.
 #
 # Usage:
 #   fleet-rebase --auto [--rearm-trigger] [--dry-run]
@@ -769,6 +771,7 @@ cooldown_secs = int(os.environ.get("FLEET_MERGER_COOLDOWN_SECONDS", "600"))
 # role-merger.md step 3: UNKNOWN counts only once GitHub has had 5 minutes.
 UNKNOWN_GRACE_SECS = 300
 now = datetime.datetime.now(datetime.timezone.utc)
+retry_deadlines = []
 
 
 def age_seconds(pr):
@@ -797,11 +800,14 @@ def llm_verdict(labels, mergeable, pr):
     age = age_seconds(pr)
     if mergeable == "CONFLICTING":
         pass
-    elif mergeable == "UNKNOWN" and (age is None or age >= UNKNOWN_GRACE_SECS):
-        pass
+    elif mergeable == "UNKNOWN":
+        if age is not None and age < UNKNOWN_GRACE_SECS:
+            retry_deadlines.append(int(now.timestamp() + UNKNOWN_GRACE_SECS - age) + 1)
+            return None
     else:
         return None
     if "fleet:merger-cooldown" in labels and age is not None and age < cooldown_secs:
+        retry_deadlines.append(int(now.timestamp() + cooldown_secs - age) + 1)
         return "cooling"
     return "llm-other"
 
@@ -894,6 +900,8 @@ for pr in data.get("prs", []):
     else:
         verdict = llm_verdict(labels, mergeable, pr) or "human"
     print(f"{repo} {number} {head} {base} {verdict}")
+if retry_deadlines:
+    print(f"engine 0 - - retry:{min(retry_deadlines)}")
 PYEOF
 )
 
@@ -903,10 +911,14 @@ LLM_REMAINING=0
 HUMAN_REMAINING=0
 COOLING=0
 DEFERRED=0
+RETRY_AT=0
 for line in "${PR_LINES[@]:-}"; do
     [[ -n "$line" ]] || continue
     read -r repo_key pr head base verdict <<< "$line"
     case "$verdict" in
+        retry:*)
+            RETRY_AT="${verdict#retry:}"
+            ;;
         attempt)
             ATTEMPTED=$((ATTEMPTED + 1))
             if attempt_pr "$repo_key" "$pr" "$head" "$base"; then
@@ -959,6 +971,18 @@ for line in "${PR_LINES[@]:-}"; do
             ;;
     esac
 done
+
+# Time passing cannot change the scout's stable projection hash. Persist one
+# deadline so the dispatcher can wake tier-0 once when a deferred PR is eligible.
+if (( REARM )); then
+    if (( RETRY_AT > 0 )); then
+        _retry_tmp=$(mktemp "$STATE_DIR/.merger-retry.XXXXXX")
+        printf '%s\n' "$RETRY_AT" > "$_retry_tmp"
+        mv "$_retry_tmp" "$STATE_DIR/merger-retry-at"
+    else
+        rm -f "$STATE_DIR/merger-retry-at"
+    fi
+fi
 
 log "done: attempted=$ATTEMPTED cleared=$CLEARED merged=$MERGED llm_remaining=$LLM_REMAINING human_remaining=$HUMAN_REMAINING cooling=$COOLING deferred=$DEFERRED"
 

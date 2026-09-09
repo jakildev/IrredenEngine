@@ -75,7 +75,7 @@ TMPROOT=$(mktemp -d)
 run_fleet_up_bootstrap_only() {
     local conf_path="$1"
     PATH=/usr/bin:/bin FLEET_CONF="$conf_path" \
-        "$FLEET_UP" >/dev/null 2>&1 || true
+        "$BASH" "$FLEET_UP" >/dev/null 2>&1 || true
 }
 
 # --- Test 1: bootstrap creates the conf when absent -----------------------

@@ -2751,6 +2751,28 @@ release_dispatcher_lock() {
     fi
 }
 
+rearm_due_merger() {
+    local deadline claimed pending="$STATE_DIR/merger-retry-at"
+    [[ -f "$pending" ]] || return 0
+    claimed=$(mktemp "$STATE_DIR/.merger-deadline.XXXXXX") || return 0
+    # Claim before reading: tier-0 may publish a newer deadline concurrently.
+    if ! mv "$pending" "$claimed" 2>/dev/null; then
+        rm -f "$claimed"
+        return 0
+    fi
+    deadline=$(cat "$claimed")
+    if [[ "$deadline" =~ ^[0-9]+$ ]] && (( $(date +%s) >= deadline )) \
+        && mkdir -p "$STATE_DIR/triggers" && touch "$STATE_DIR/triggers/merger"; then
+        # touch preserves an LLM request already pending at the deadline.
+        log "merger: deferred eligibility deadline reached; re-armed tier-0"
+    else
+        # A hard link restores the same file atomically without replacing a
+        # newer projection's deadline. Both paths are on the state filesystem.
+        ln "$claimed" "$pending" 2>/dev/null || true
+    fi
+    rm -f "$claimed"
+}
+
 rearm_periodic_meta_triggers() {
     # Scout-watchdog safety net + periodic worker safety rearm.
     # Scout-watchdog half: with merger's projection now tightened
@@ -2939,6 +2961,8 @@ main() {
             advance_main_clone "$GAME"
         fi
 
+        rearm_due_merger
+
         # Scout-watchdog safety net + periodic worker safety rearm.
         # Runs first so any rearm-written triggers are picked up by
         # the normal dispatch_role pass on the same tick.
@@ -3126,6 +3150,11 @@ case "${1:-}" in
         CLAIM_ATTEMPTS_LEFT=$CLAIM_ATTEMPTS_PER_TICK
         assign_for_pane "$2" "$3" || true
         echo "target=$ASSIGNMENT"
+        exit 0
+        ;;
+    --rearm-merger-due)
+        # Deterministic test/operator hook; uses the same one-shot path as a tick.
+        rearm_due_merger
         exit 0
         ;;
     --rearm-check)

@@ -166,7 +166,7 @@ assert_absent "$OUT" "PASS: 0" "model-gate: the truth tally is a real run, not a
 
 run bash "$LANE_COMPLETE/scripts/fleet/tests/test_fleet_queue_ingest_plan_race.sh"
 assert_absent "$OUT" "incomplete fleet script tree" "plan-race: the guard stays quiet on a complete stage"
-assert_contains "$OUT" "FAIL:" "plan-race: the suite runs to its own tally"
+assert_contains "$OUT" "9 passed, 0 failed" "plan-race: a complete stage reports its truth tally"
 
 # --- the adoption ratchet ----------------------------------------------------
 # A guard is worth exactly its reach, and an opt-in one reaches whoever

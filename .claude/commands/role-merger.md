@@ -588,6 +588,10 @@ The merger has TWO tiers of "don't touch this PR again":
    comment can only delay a retry, never a clearing), and it strips the
    label itself, for zero tokens, from any MERGEABLE base==master PR so a
    clean push does not leave it lingering until the next conflict wakes you.
+   Tier-0 records the next cooldown/UNKNOWN eligibility deadline in
+   `state/merger-retry-at`. The dispatcher consumes that deadline once and
+   wakes tier-0 to re-evaluate the current slice; time passing does not change
+   the scout's stable projection hash, so it cannot provide this wakeup itself.
 
 Semantic conflicts always need a **durable** label, never cooldown alone —
 without it every iteration re-classifies and re-comments.

@@ -87,6 +87,13 @@ assert_trigger_absent() {
 assert_trigger_llm() {
     if [[ -f "$TRIGGER" && "$(cat "$TRIGGER")" == "llm" ]]; then ok "$1"; else bad "$1 (trigger: '$(cat "$TRIGGER" 2>/dev/null || echo MISSING)')"; fi
 }
+dispatch_due() {
+    if "$SCRIPT_DIR/fleet-dispatcher" --rearm-merger-due >/dev/null; then
+        ok "dispatcher deadline hook succeeds"
+    else
+        bad "dispatcher deadline hook must succeed"
+    fi
+}
 
 # === T1 ======================================================================
 echo "T1: approved + MERGEABLE + disqualifying label -> human, no re-arm"
@@ -200,5 +207,59 @@ for st in UNSTABLE BEHIND; do
     assert_contains "$T10" "llm_remaining=0 human_remaining=1" "T10 $st is not counted as llm_remaining"
     assert_trigger_absent "T10 $st writes no trigger"
 done
+
+echo "T11: deferred cooldown gets a one-shot dispatcher wakeup"
+reset_stub
+write_slice "[{\"repo\":\"engine\",\"number\":505,\"headRefName\":\"claude/505-x\",\"baseRefName\":\"master\",\"mergeable\":\"CONFLICTING\",\"updatedAt\":\"$(iso_ago 30)\",\"labels\":[\"fleet:merger-cooldown\"]}]"
+run_rebase >/dev/null
+deadline=$(cat "$FLEET_STATE_DIR/merger-retry-at" 2>/dev/null || true)
+if [[ "$deadline" =~ ^[0-9]+$ ]] && (( deadline > $(date +%s) )); then
+    ok "cooldown writes a future eligibility deadline"
+else
+    bad "cooldown must write a future eligibility deadline"
+fi
+dispatch_due
+assert_trigger_absent "future deadline does not wake the merger early"
+printf '1\n' > "$FLEET_STATE_DIR/merger-retry-at"
+dispatch_due
+if [[ -f "$TRIGGER" && ! -s "$TRIGGER" && ! -f "$FLEET_STATE_DIR/merger-retry-at" ]]; then
+    ok "elapsed deadline creates one empty tier-0 trigger and consumes the timer"
+else
+    bad "elapsed deadline must create one empty tier-0 trigger and consume the timer"
+fi
+printf 'llm\n' > "$TRIGGER"
+printf '1\n' > "$FLEET_STATE_DIR/merger-retry-at"
+dispatch_due
+assert_trigger_llm "deadline preserves an already pending LLM request"
+reset_stub
+write_slice '[]'
+printf '1\n' > "$FLEET_STATE_DIR/merger-retry-at"
+run_rebase >/dev/null
+if [[ ! -f "$FLEET_STATE_DIR/merger-retry-at" ]]; then
+    ok "a new empty projection cancels an obsolete deadline"
+else
+    bad "a new empty projection must cancel an obsolete deadline"
+fi
+
+echo "T12: deadline publication during consumption survives"
+export FLEET_TEST_REAL_CAT
+FLEET_TEST_REAL_CAT=$(command -v cat)
+cat > "$TMPROOT/bin/cat" <<'CATSTUB'
+#!/usr/bin/env bash
+case "${1:-}" in
+    */.merger-deadline.*|*/merger-retry-at)
+        value=$("$FLEET_TEST_REAL_CAT" "$@")
+        printf '4102444800\n' > "$FLEET_STATE_DIR/merger-retry-at"
+        printf '%s\n' "$value"
+        exit 0
+        ;;
+esac
+exec "$FLEET_TEST_REAL_CAT" "$@"
+CATSTUB
+chmod +x "$TMPROOT/bin/cat"
+printf '1\n' > "$FLEET_STATE_DIR/merger-retry-at"
+dispatch_due
+assert_eq "$("$FLEET_TEST_REAL_CAT" "$FLEET_STATE_DIR/merger-retry-at" 2>/dev/null || true)" \
+    "4102444800" "a concurrent replacement is not deleted by the dispatcher"
 
 summarize "fleet-rebase LLM re-arm predicate tests"
