@@ -790,8 +790,12 @@ def llm_verdict(labels, mergeable, pr):
     """
     if any(skip_re.search(l) for l in labels):
         return None
+    # Exactly the role's two candidate states. UNSTABLE / BEHIND are
+    # mergeStateStatus values the scout folds into its needs-resolve signal,
+    # but the LLM pass filters on `mergeable` and skips them — re-arming for
+    # them would be the no-op loop this predicate exists to end.
     age = age_seconds(pr)
-    if mergeable in ("CONFLICTING", "UNSTABLE", "BEHIND"):
+    if mergeable == "CONFLICTING":
         pass
     elif mergeable == "UNKNOWN" and (age is None or age >= UNKNOWN_GRACE_SECS):
         pass

@@ -191,4 +191,14 @@ assert_contains "$T9" "llm_remaining=0 human_remaining=4 cooling=0 deferred=0" "
 assert_absent "$T9" "re-armed merger trigger" "T9 no re-arm logged"
 assert_trigger_absent "T9 no trigger written"
 
+# === T10 =====================================================================
+echo "T10: UNSTABLE / BEHIND are not LLM candidates (role step 3 admits only CONFLICTING + stale UNKNOWN)"
+for st in UNSTABLE BEHIND; do
+    reset_stub
+    write_slice "[{\"repo\":\"engine\",\"number\":504,\"headRefName\":\"claude/504-x\",\"baseRefName\":\"master\",\"mergeable\":\"$st\",\"updatedAt\":\"$(iso_ago 3600)\",\"labels\":[]}]"
+    T10=$(run_rebase)
+    assert_contains "$T10" "llm_remaining=0 human_remaining=1" "T10 $st is not counted as llm_remaining"
+    assert_trigger_absent "T10 $st writes no trigger"
+done
+
 summarize "fleet-rebase LLM re-arm predicate tests"
