@@ -256,6 +256,13 @@ Parallel-agent fleet (tmux + Claude)
   fleet-net-doctor [--kill-hung] TCP socket / ephemeral-port pressure report
                                  (EADDRNOTAVAIL forensics) + hung git/ssh/gh
                                  reaper; exit 0 OK / 1 WARN / 2 CRITICAL
+  fleet-health [--since boot|24h|7d|ISO] [--json]
+                                 read-only health report: per-role dispatch
+                                 outcomes (productive vs no-op, durations,
+                                 claude/codex split), trigger arms by source,
+                                 the tier-0 -> LLM merger ladder, provider
+                                 readiness + unstamped PRs, standing alerts,
+                                 iterations in flight; exit 0 OK / 1 WARN
   fleet-claude-stream            format claude stream-json for tmux
   fleet-heartbeat <agent>        bump heartbeat mtime
   fleet-iteration-summary <agent> "<text>"

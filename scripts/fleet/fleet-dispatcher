@@ -903,11 +903,15 @@ write_dispatch_record() {
     # $5 = the pane's worktree basename the claim was taken under — the
     # completion contract at exit needs it to name the claim label.
     local role="$1" pane_id="$2" class="${3:-}" target="${4:-}" agent="${5:-}"
+    # $6 = provider the iteration launches on (claude | codex), so the
+    # completion line and fleet-health can attribute work per runtime.
+    local runtime="${6:-claude}"
     local ts epoch extra=""
     ts=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
     epoch=$(date +%s)   # read back by cleanup_stale_dispatches for the empty-exit streak
+    extra=$(printf ',"runtime":"%s"' "$runtime")
     if [[ -n "$target" ]]; then
-        extra=$(printf ',"target":"%s"' "$target")
+        extra+=$(printf ',"target":"%s"' "$target")
         [[ -n "$agent" ]] && extra+=$(printf ',"agent":"%s"' "$agent")
         [[ "$target" == plan:* ]] && extra+=$(printf ',"plan_issue":"%s"' "${target#plan:}")
     fi
@@ -1289,7 +1293,7 @@ cleanup_stale_dispatches() {
     if [[ ! -d "$DISPATCH_DIR" ]]; then
         return
     fi
-    local file role pane dispatched_epoch class claimed target agent verdict updated detail
+    local file role pane dispatched_epoch class claimed target agent verdict updated detail runtime
     for file in "$DISPATCH_DIR"/*.json; do
         [[ -e "$file" ]] || continue
         role=$(sed -n 's/.*"role":"\([^"]*\)".*/\1/p' "$file" | head -n 1)
@@ -1313,6 +1317,7 @@ cleanup_stale_dispatches() {
         rm -f "$CLAIM_FLAG_DIR/$(pane_id_to_key "$pane")"
         target=$(sed -n 's/.*"target":"\([^"]*\)".*/\1/p' "$file" | head -n 1)
         agent=$(sed -n 's/.*"agent":"\([^"]*\)".*/\1/p' "$file" | head -n 1)
+        runtime=$(sed -n 's/.*"runtime":"\([^"]*\)".*/\1/p' "$file" | head -n 1)
         verdict=""
         if [[ -n "$target" && -n "$agent" && -n "$dispatched_epoch" ]]; then
             assess_target_completion "$target" "$agent" "$dispatched_epoch"
@@ -1333,7 +1338,7 @@ cleanup_stale_dispatches() {
             record_dispatch_outcome "$role" "$(( $(date +%s) - dispatched_epoch ))" \
                 "$class" "$claimed"
         fi
-        log "dispatch for $role on $pane completed (pane returned to shell${claimed:+, outcome=$claimed}${target:+, target=$target}${verdict:+, verdict=$verdict})"
+        log "dispatch for $role on $pane completed (pane returned to shell${claimed:+, outcome=$claimed}${target:+, target=$target}${verdict:+, verdict=$verdict}${runtime:+, runtime=$runtime})"
         rm -f "$file"
     done
     assess_pass_end
@@ -2492,10 +2497,13 @@ dispatch_role() {
         fi
         local cmd
         cmd=$(build_dispatch_command "$role" "$pane_key" "$DISPATCH_MODEL" "$DISPATCH_EFFORT" "$target_arg")
+        # `runtime=` trails the bracket so the bracketed form stays exactly
+        # what existing log consumers match on.
+        local launch_runtime="${ASSIGN_RUNTIME:-claude}"
         if [[ -n "$DISPATCH_CLASS" ]]; then
-            log "dispatching $role -> $pane_id [class=$DISPATCH_CLASS effort=$DISPATCH_EFFORT${target_arg:+ target=$target_arg}]"
+            log "dispatching $role -> $pane_id [class=$DISPATCH_CLASS effort=$DISPATCH_EFFORT${target_arg:+ target=$target_arg}] runtime=$launch_runtime"
         else
-            log "dispatching $role -> $pane_id${target_arg:+ [target=$target_arg]}"
+            log "dispatching $role -> $pane_id${target_arg:+ [target=$target_arg]} runtime=$launch_runtime"
         fi
         # Reset the input line with C-u (kill-line) before sending the
         # dispatch command. Catches any partial input the human may have
@@ -2532,7 +2540,7 @@ dispatch_role() {
             fi
             continue
         fi
-        write_dispatch_record "$role" "$pane_id" "$(dispatch_class_key "$role")" "$target_arg" "$pane_basename"
+        write_dispatch_record "$role" "$pane_id" "$(dispatch_class_key "$role")" "$target_arg" "$pane_basename" "$launch_runtime"
         LAST_DISPATCH_EPOCH=$now_epoch
         dispatched=$((dispatched + 1))
         dispatched_class=$((dispatched_class + 1))

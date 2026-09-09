@@ -578,9 +578,16 @@ The merger has TWO tiers of "don't touch this PR again":
 2. **`fleet:merger-cooldown`** — short-lived, self-managed. Added after a
    *non-durable* outcome (clean rebase, whitespace-only, or merged-base
    re-target with clean rebase — all already pushed, no handoff needed).
-   Step 1 of the next iteration clears it unconditionally, so the 10-minute
-   loop interval IS the cooldown. Do NOT gate cooldown on `updatedAt`:
-   reviewer comments refresh that timestamp and prevent predictable clearing.
+   Step 1 of the next iteration clears it unconditionally. Do NOT gate the
+   clearing on `updatedAt`: reviewer comments refresh that timestamp and
+   would prevent predictable clearing.
+   Under the dispatcher there is no 10-minute loop, so the *retry* side of
+   the cooldown lives in tier-0 `fleet-rebase`: it re-arms this LLM pass for
+   a CONFLICTING PR only once the label is older than
+   `FLEET_MERGER_COOLDOWN_SECONDS` (600, measured against `updatedAt` — a
+   comment can only delay a retry, never a clearing), and it strips the
+   label itself, for zero tokens, from any MERGEABLE base==master PR so a
+   clean push does not leave it lingering until the next conflict wakes you.
 
 Semantic conflicts always need a **durable** label, never cooldown alone —
 without it every iteration re-classifies and re-comments.

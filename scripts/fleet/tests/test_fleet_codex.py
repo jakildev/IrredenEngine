@@ -94,7 +94,8 @@ class Transport(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp).resolve()
             path = policy.prepare(root, "worker")
-            stale = path.read_text() + 'prefix_rule(pattern=["fleet-retired-tool"], decision="allow")\n'
+            stale = path.read_text() + (
+                'prefix_rule(pattern=["fleet-retired-tool"], decision="allow")\n')
             path.write_text(stale)
             policy.prepare(root, "worker")  # must not raise "hand-authored"
             self.assertNotIn("fleet-retired-tool", path.read_text())

@@ -6,10 +6,20 @@
 # eligible PR in a detached scratch worktree. A clean rebase is verified
 # (same changed-file set before and after) and force-with-lease pushed to
 # the PR branch — no claude process anywhere. Anything that conflicts, or
-# any merger-actionable state this script doesn't handle, re-arms the
-# merger trigger with content "llm" so fleet-dispatcher runs the normal
-# (sonnet) merger iteration. The LLM pass is therefore only ever spent on
-# work that actually needs judgment.
+# any other PR the LLM merger would act on, re-arms the merger trigger
+# with content "llm" so fleet-dispatcher runs the normal (sonnet) merger
+# iteration. The LLM pass is therefore only ever spent on work that
+# actually needs judgment.
+#
+# LLM re-arm rule — the re-arm predicate is role-merger.md step 3's own
+# candidate rule, evaluated here per PR: mergeable CONFLICTING (or UNKNOWN
+# and last updated > 5 min ago), no skip label, and any fleet:merger-cooldown
+# older than FLEET_MERGER_COOLDOWN_SECONDS (600). A PR the LLM pass would
+# skip does NOT re-arm it. In particular an approved + MERGEABLE PR sitting
+# on the human's merge click (a non-plan diff, a label outside the auto-merge
+# allowlist) is human_remaining, never llm_remaining: waking the LLM for it
+# spends a full iteration that walks both repos to report "0 candidates", on
+# every scout tick that touches any PR label.
 #
 # Eligibility for the rebase pass (deliberately conservative — tier-0 must
 # never fight an agent or human for a branch). The stale-label cleanups
@@ -31,6 +41,9 @@
 # forever. Rationale for each lives on its cleanup_* function:
 #   - fleet:semantic-conflict on a MERGEABLE PR (#1654).
 #   - fleet:awaiting-base / fleet:needs-base-update on a base==master PR (#2764).
+#   - fleet:merger-cooldown on a MERGEABLE, base==master PR: the LLM pass
+#     strips these at the start of its iterations, but it wakes only for
+#     conflict work, so after a clean push the label would otherwise linger.
 #
 # Auto-merge lane (plan-file PRs only): an approved, MERGEABLE, master-based
 # PR whose diff touches ONLY .fleet/plans/** (steward rollups, close-outs,
@@ -46,6 +59,10 @@
 # Trigger protocol (shared with fleet-dispatcher's merger interception):
 #   empty trigger  -> dispatcher spawns this script and consumes the trigger
 #   content "llm"  -> dispatcher runs the LLM merger pass
+# This script writes "llm" only when llm_remaining > 0, and re-touches an
+# empty trigger (another tier-0 pass, zero tokens) only when the auto-merge
+# cap deferred an eligible plan PR — progress is guaranteed there, so the
+# self-re-arm cannot loop.
 #
 # Usage:
 #   fleet-rebase --auto [--rearm-trigger] [--dry-run]
@@ -113,6 +130,27 @@ rearm_llm() {
         log "re-armed merger trigger for the LLM pass"
     fi
 }
+
+# Re-arm tier-0 itself (an EMPTY trigger — the dispatcher spawns this script
+# again, no LLM). Only for the auto-merge cap: every such run merged
+# MERGE_CAP PRs, so the sequence is finite. Never overwrite a pending "llm".
+rearm_tier0() {
+    if (( REARM )); then
+        mkdir -p "$TRIGGERS_DIR"
+        if [[ "$(cat "$TRIGGERS_DIR/merger" 2>/dev/null)" == "llm" ]]; then
+            return 0
+        fi
+        : > "$TRIGGERS_DIR/merger"
+        log "re-armed merger trigger for another tier-0 pass (auto-merge cap deferred work)"
+    fi
+}
+
+# fleet:merger-cooldown's meaning under the dispatcher: "the LLM pass just
+# tried this PR; don't retry until this long has elapsed" (role-merger.md
+# § How the cooldown label works — the old 10-minute loop interval WAS the
+# cooldown). Measured against the PR's updatedAt, which the label add bumps.
+MERGER_COOLDOWN_SECONDS="${FLEET_MERGER_COOLDOWN_SECONDS:-600}"
+export FLEET_MERGER_COOLDOWN_SECONDS="$MERGER_COOLDOWN_SECONDS"
 
 # Labels that park a PR away from tier-0 entirely (no rebase, no LLM
 # re-arm on their account — another agent or the human owns the next
@@ -362,17 +400,20 @@ preflight_pr() {
     return 0
 }
 
-# Remove a stale fleet:semantic-conflict (and fleet:merger-cooldown) left
-# behind when a second concurrent merger pass succeeded after the first one
-# conflicted (#1654). Live-reverified before touching: confirms OPEN,
-# MERGEABLE, and label still present so a genuine conflict that GitHub
-# recomputed CONFLICTING between the scout tick and now is never cleared.
-cleanup_stale_conflict() {
-    local repo_key="$1" pr="$2"
+# Strip a label from a PR that is provably no longer in the state the label
+# describes. Live-reverified before touching: confirms OPEN, MERGEABLE, and
+# the label still present, so a PR that GitHub recomputed CONFLICTING between
+# the scout tick and now is never cleared. Shared skeleton of the two
+# MERGEABLE-gated cleanups below; the base==master cleanup has its own gate.
+#   $1 repo key, $2 PR, $3 label to strip, $4 reason for the done-log,
+#   $5.. companion labels stripped alongside (best-effort).
+cleanup_mergeable_label() {
+    local repo_key="$1" pr="$2" label="$3" reason="$4"
+    shift 4
     local repo_slug
     repo_slug=$(repo_slug_for "$repo_key")
     if (( DRY_RUN )); then
-        log "$repo_key#$pr: stale fleet:semantic-conflict on MERGEABLE PR — would remove (dry-run)"
+        log "$repo_key#$pr: stale $label on MERGEABLE PR — would remove (dry-run)"
         return 0
     fi
     local tsv state mergeable labels
@@ -380,25 +421,46 @@ cleanup_stale_conflict() {
         --json state,mergeable,labels \
         --jq '[.state, .mergeable, ([.labels[].name] | join(","))] | @tsv' \
         2>/dev/null) || {
-        log "$repo_key#$pr: preflight for stale-conflict cleanup failed; skipping"
+        log "$repo_key#$pr: preflight for stale $label cleanup failed; skipping"
         return 0
     }
     IFS=$'\t' read -r state mergeable labels <<< "$tsv"
     if [[ "$state" != "OPEN" ]]; then
-        log "$repo_key#$pr: no longer open; skipping stale-conflict cleanup"
+        log "$repo_key#$pr: no longer open; skipping stale $label cleanup"
         return 0
     fi
     if [[ "$mergeable" != "MERGEABLE" ]]; then
-        log "$repo_key#$pr: no longer MERGEABLE ($mergeable); skipping stale-conflict cleanup"
+        log "$repo_key#$pr: no longer MERGEABLE ($mergeable); skipping stale $label cleanup"
         return 0
     fi
-    if ! printf '%s' "$labels" | grep -q "fleet:semantic-conflict"; then
-        log "$repo_key#$pr: fleet:semantic-conflict already cleared; skipping"
+    if ! printf '%s' "$labels" | grep -q "$label"; then
+        log "$repo_key#$pr: $label already cleared; skipping"
         return 0
     fi
-    gh pr edit "$pr" --repo "$repo_slug" --remove-label "fleet:semantic-conflict" >/dev/null 2>&1 || true
-    gh pr edit "$pr" --repo "$repo_slug" --remove-label "fleet:merger-cooldown"   >/dev/null 2>&1 || true
-    log "$repo_key#$pr: removed stale fleet:semantic-conflict (fail-then-succeed race, #1654)"
+    local companion
+    for companion in "$label" "$@"; do
+        gh pr edit "$pr" --repo "$repo_slug" --remove-label "$companion" >/dev/null 2>&1 || true
+    done
+    log "$repo_key#$pr: removed stale $label ($reason)"
+}
+
+# A fleet:semantic-conflict (and its fleet:merger-cooldown) left behind when
+# a second concurrent merger pass succeeded after the first one conflicted
+# (#1654).
+cleanup_stale_conflict() {
+    cleanup_mergeable_label "$1" "$2" "fleet:semantic-conflict" \
+        "fail-then-succeed race, #1654" "fleet:merger-cooldown"
+}
+
+# Remove a fleet:merger-cooldown left on a MERGEABLE, base==master PR. The
+# LLM pass adds it after every attempt (role-merger.md step 5) and strips it
+# at the start of its next iteration — which, since only conflict work wakes
+# that pass, may be hours away on a quiet fleet. On a MERGEABLE PR the label
+# describes nothing (the attempt it
+# followed succeeded), it is not a merger projection input, and no other lane
+# removes it, so tier-0 tidies it for zero tokens.
+cleanup_stale_cooldown() {
+    cleanup_mergeable_label "$1" "$2" "fleet:merger-cooldown" "clean push already landed"
 }
 
 # Remove a retired stack-park label (fleet:awaiting-base /
@@ -457,9 +519,9 @@ cleanup_stale_base_park() {
 }
 
 # Auto-merge one plan-file PR. Returns 0 = merged (or would merge, dry-run),
-# 1 = not merged (stays on the human's click; counted like llm-other so the
-# re-arm behavior for approved+MERGEABLE PRs is unchanged from before this
-# lane existed). Every gate re-verifies LIVE via REST — the slice is a scout
+# 1 = not merged (stays on the human's click — counted as human_remaining,
+# which does NOT re-arm the LLM pass), 2 = deferred by the per-run cap (a
+# tier-0 re-arm picks it up). Every gate re-verifies LIVE via REST — the slice is a scout
 # tick old and labels churn faster than the cache refreshes; REST rather
 # than `gh pr view` (GraphQL) because the GraphQL quota exhausts
 # independently under fleet load.
@@ -470,7 +532,7 @@ attempt_merge() {
 
     if (( MERGED >= MERGE_CAP )); then
         log "$repo_key#$pr: auto-merge cap ($MERGE_CAP) reached this run; next wake picks it up"
-        return 1
+        return 2
     fi
 
     # Live state + label gate. REST `mergeable` is true/false/null (null =
@@ -675,7 +737,7 @@ fi
 # Triage the slice. One line per PR:
 #   <repo> <number> <head> <base> <verdict>
 # verdict: attempt | merge-candidate | stale-conflict | stale-base-park
-#          | skip-labels | llm-other
+#          | stale-cooldown | skip-labels | cooling | llm-other | human
 # - attempt: approved, no skip labels, and either stacked (base!=master)
 #   or not cleanly MERGEABLE — tier-0 tries the rebase.
 # - merge-candidate: approved, MERGEABLE, base==master, and every label
@@ -685,15 +747,59 @@ fi
 #   cleanup only, no branch work (#1654).
 # - stale-base-park: a retired stack-park label on a base==master PR —
 #   label cleanup only, no branch work (#2764).
+# - stale-cooldown: fleet:merger-cooldown on a MERGEABLE base==master PR —
+#   label cleanup only, no branch work (see cleanup_stale_cooldown).
 # - skip-labels: parked with another agent/human; neither tier touches it.
-# - llm-other: any other merger-actionable state this script doesn't
-#   handle (merge-ready label upkeep, stack-coordination transients,
-#   malformed/duplicate records) — preserved for the LLM pass.
+# - cooling: a PR the LLM pass would otherwise act on, but its
+#   fleet:merger-cooldown is younger than the cooldown — no re-arm yet.
+# - llm-other: a PR the LLM merger's step-3 candidate rule admits and no
+#   tier-0 lane handles (unapproved conflicts, stack stragglers,
+#   malformed/duplicate records in a conflict state) — re-arms the LLM pass.
+# - human: every remaining state, all of it on the human's click (an
+#   approved MERGEABLE PR with a non-plan diff or a disqualifying label, an
+#   unapproved MERGEABLE PR). The LLM pass would skip these, so they must
+#   not wake it.
 mapfile -t PR_LINES < <(python3 - "$SLICE" <<'PYEOF'
+import datetime
 import json, os, re, sys
 
 skip_re = re.compile(os.environ["FLEET_REBASE_SKIP_RE"])
 merge_allow_re = re.compile(os.environ["FLEET_MERGE_ALLOW_RE"])
+cooldown_secs = int(os.environ.get("FLEET_MERGER_COOLDOWN_SECONDS", "600"))
+# role-merger.md step 3: UNKNOWN counts only once GitHub has had 5 minutes.
+UNKNOWN_GRACE_SECS = 300
+now = datetime.datetime.now(datetime.timezone.utc)
+
+
+def age_seconds(pr):
+    ts = pr.get("updatedAt") or ""
+    try:
+        t = datetime.datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if t.tzinfo is None:
+        t = t.replace(tzinfo=datetime.timezone.utc)
+    return (now - t).total_seconds()
+
+
+def llm_verdict(labels, mergeable, pr):
+    """role-merger.md step 3's candidate rule, as the LLM pass applies it.
+
+    Returns "llm-other" (re-arm), "cooling" (candidate under cooldown, no
+    re-arm yet), or None (the LLM pass would skip this PR).
+    """
+    if any(skip_re.search(l) for l in labels):
+        return None
+    age = age_seconds(pr)
+    if mergeable in ("CONFLICTING", "UNSTABLE", "BEHIND"):
+        pass
+    elif mergeable == "UNKNOWN" and (age is None or age >= UNKNOWN_GRACE_SECS):
+        pass
+    else:
+        return None
+    if "fleet:merger-cooldown" in labels and age is not None and age < cooldown_secs:
+        return "cooling"
+    return "llm-other"
 
 try:
     with open(sys.argv[1]) as f:
@@ -713,13 +819,13 @@ for pr in data.get("prs", []):
     # the space-separated columns downstream — leave it for the LLM pass.
     if (not repo or number in ("", None) or not head
             or any(c.isspace() for c in f"{head}{base}")):
-        print(f"{repo or 'engine'} {number or 0} - - llm-other")
+        print(f"{repo or 'engine'} {number or 0} - - {llm_verdict(labels, mergeable, pr) or 'human'}")
         continue
     # Two PRs sharing one head branch (same head, different bases) would
     # make tier-0 flip-flop the branch — attempt the first record only.
     key = (repo, head)
     if key in seen_heads:
-        print(f"{repo} {number} {head} {base} llm-other")
+        print(f"{repo} {number} {head} {base} {llm_verdict(labels, mergeable, pr) or 'human'}")
         continue
     seen_heads.add(key)
     approved = "fleet:approved" in labels
@@ -765,10 +871,11 @@ for pr in data.get("prs", []):
         verdict = "skip-labels"
     elif stack_park:
         # base != master: a straggler still anchored to a real base,
-        # mid-legacy-sequence, so the park still describes the PR. The LLM
-        # pass owns it, never tier-0. (base == master can no longer reach
-        # here — it is the whole stale-base-park gate, #2840.)
-        verdict = "llm-other"
+        # mid-legacy-sequence, so the park still describes the PR. Never
+        # tier-0; the LLM pass owns it when it is a candidate. (base ==
+        # master can no longer reach here — it is the whole stale-base-park
+        # gate, #2840.)
+        verdict = llm_verdict(labels, mergeable, pr) or "human"
     elif approved and (base != "master" or mergeable not in ("MERGEABLE", "UNKNOWN", "", None)):
         verdict = "attempt"
     elif (approved and base == "master" and mergeable == "MERGEABLE"
@@ -777,8 +884,11 @@ for pr in data.get("prs", []):
         # PRs with any label outside the allowlist never cost gh calls;
         # attempt_merge re-verifies everything live, plus the diff surface.
         verdict = "merge-candidate"
+    elif ("fleet:merger-cooldown" in labels and mergeable == "MERGEABLE"
+            and base == "master"):
+        verdict = "stale-cooldown"
     else:
-        verdict = "llm-other"
+        verdict = llm_verdict(labels, mergeable, pr) or "human"
     print(f"{repo} {number} {head} {base} {verdict}")
 PYEOF
 )
@@ -786,6 +896,9 @@ PYEOF
 ATTEMPTED=0
 CLEARED=0
 LLM_REMAINING=0
+HUMAN_REMAINING=0
+COOLING=0
+DEFERRED=0
 for line in "${PR_LINES[@]:-}"; do
     [[ -n "$line" ]] || continue
     read -r repo_key pr head base verdict <<< "$line"
@@ -799,13 +912,27 @@ for line in "${PR_LINES[@]:-}"; do
             fi
             ;;
         merge-candidate)
-            # Not-merged candidates count toward LLM_REMAINING — before this
-            # lane existed every approved+MERGEABLE PR was llm-other, so a
-            # candidate that fails the live verify (or isn't a pure plan-file
-            # diff) re-arms the LLM pass exactly as it always did.
-            if ! attempt_merge "$repo_key" "$pr"; then
-                LLM_REMAINING=$((LLM_REMAINING + 1))
-            fi
+            # A candidate the live verify (or the diff-surface gate) refuses
+            # is on the human's click — the LLM pass never merges and skips
+            # MERGEABLE PRs, so it must not be woken for one. The cap case is
+            # different: eligible work this run could not take, so tier-0
+            # (not the LLM) re-arms itself.
+            attempt_merge "$repo_key" "$pr" && _merge_rc=0 || _merge_rc=$?
+            case "$_merge_rc" in
+                0) ;;
+                2) DEFERRED=$((DEFERRED + 1)) ;;
+                *) HUMAN_REMAINING=$((HUMAN_REMAINING + 1)) ;;
+            esac
+            ;;
+        stale-cooldown)
+            cleanup_stale_cooldown "$repo_key" "$pr"
+            ;;
+        cooling)
+            COOLING=$((COOLING + 1))
+            log "$repo_key#$pr: fleet:merger-cooldown younger than ${MERGER_COOLDOWN_SECONDS}s; not re-arming the LLM pass yet"
+            ;;
+        human)
+            HUMAN_REMAINING=$((HUMAN_REMAINING + 1))
             ;;
         stale-conflict)
             # Second concurrent pass succeeded but left the first pass's
@@ -829,8 +956,10 @@ for line in "${PR_LINES[@]:-}"; do
     esac
 done
 
-log "done: attempted=$ATTEMPTED cleared=$CLEARED merged=$MERGED llm_remaining=$LLM_REMAINING"
+log "done: attempted=$ATTEMPTED cleared=$CLEARED merged=$MERGED llm_remaining=$LLM_REMAINING human_remaining=$HUMAN_REMAINING cooling=$COOLING deferred=$DEFERRED"
 
 if (( LLM_REMAINING > 0 )); then
     rearm_llm
+elif (( DEFERRED > 0 )); then
+    rearm_tier0
 fi

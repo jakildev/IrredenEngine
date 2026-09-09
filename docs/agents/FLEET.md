@@ -1144,6 +1144,23 @@ dispatch` are also emitted to the dispatcher log on each transition
 (once per transition — not per tick); a GitHub-pool breach logs the
 same way (`rateLimitType` is `github_core` / `github_graphql`).
 
+**Fleet-wide health:** `fleet-health` (read-only) is the first read after
+a stretch of autonomous running. It pairs every `dispatching` line with
+its `completed` line in the dispatcher log and reports, per role, how
+many iterations claimed or finished work versus walked the queue and
+found nothing (with durations and the claude/codex split — the
+dispatcher stamps `runtime=` on both lines and in the dispatch record),
+who armed each trigger (scout projection change, tier-0 `fleet-rebase`
+re-arm, periodic worker re-arm) and every stand-down, the merger
+ladder's tier-0 runs and LLM hand-offs, provider readiness (config,
+`codex` on PATH, cooldown, routing problems, and the open PRs with no
+`fleet:author-*` stamp, which cross-provider review cannot route), the
+standing `~/.fleet/alerts/`, and the iterations in flight. A role whose
+completed dispatches were mostly no-ops, or a tier-0 pass that keeps
+re-arming an LLM merger that then finds nothing, is a WARN line and exit
+1. `--since 24h` / `7d` / ISO widens the window from the current
+dispatcher boot; `--json` for scripting.
+
 The canonical implementation lives in
 [`scripts/fleet/fleet-dispatcher`](../../scripts/fleet/fleet-dispatcher)
 (see the "Usage gate" header comment block and `usage_gate_status()`).
