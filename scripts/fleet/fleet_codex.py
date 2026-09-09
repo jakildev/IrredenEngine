@@ -11,6 +11,7 @@ import tempfile
 import time
 from pathlib import Path
 
+from fleet_codex_doctor import probe
 from fleet_codex_policy import check, prepare
 from fleet_runtime import CODEX_MODELS, atomic_json
 
@@ -82,9 +83,10 @@ def _git_dirs(checkout):
     """
     out = subprocess.run(["git", "-C", str(checkout), "rev-parse", "--path-format=absolute",
                           "--absolute-git-dir", "--git-common-dir"],
-                         check=True, capture_output=True, text=True, timeout=10).stdout.split()
-    gitdir, common = (out + [""])[:2] if len(out) >= 2 else (out[0], out[0])
-    return str(Path(gitdir).resolve()), str(Path(common or gitdir).resolve())
+                         check=True, capture_output=True, text=True, timeout=10).stdout.splitlines()
+    if len(out) != 2 or not all(out):
+        raise ValueError(f"expected worktree and common Git directories for {checkout}")
+    return tuple(str(Path(path).resolve()) for path in out)
 
 
 def writable_roots(worktree, state):
@@ -99,7 +101,9 @@ def writable_roots(worktree, state):
         if os.environ.get(key):
             roots.append(str(Path(os.environ[key]).resolve().parent))
     cache = Path(os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache"))
-    roots.append(str(cache / "irreden"))
+    roots.append(str((cache / "irreden").resolve()))
+    if os.environ.get("IRREDEN_BUILD_DIR"):
+        roots.append(str(Path(os.environ["IRREDEN_BUILD_DIR"]).resolve()))
     if os.environ.get("IR_LOCK_ROOT"):
         roots.append(str(Path(os.environ["IR_LOCK_ROOT"]).resolve()))
     elif os.environ.get("XDG_RUNTIME_DIR"):
@@ -109,7 +113,9 @@ def writable_roots(worktree, state):
     if twin.is_dir():
         roots.append(str(twin.resolve()))
         roots.extend(_git_dirs(twin))
-    return roots
+        # ir_default_build_dir puts a creation's build outside its source tree.
+        roots.append(str((Path(common).parent / f"build-game-{worktree.name}").resolve()))
+    return list(dict.fromkeys(roots))
 
 
 def observe(event, sidecar, state, model):
@@ -145,6 +151,12 @@ def run(args):
     if worktree.parent.name != "worktrees" or worktree.parent.parent.name != ".claude":
         raise ValueError("Codex fleet sessions require a dedicated fleet worktree")
     state = Path(os.environ.get("FLEET_STATE_DIR") or str(Path.home() / ".fleet/state")).resolve()
+    if args.doctor:
+        policy = prepare(worktree, args.role)
+        count = check(policy, args.role)
+        checks = probe(worktree, writable_roots(worktree, state))
+        print(json.dumps({"policy_checks": count, "sandbox_writes": checks}, indent=2))
+        return 0
     if args.prepare or args.check:
         policy = prepare(worktree, args.role)
         if args.check:
@@ -164,6 +176,18 @@ def run(args):
     if not shutil.which("codex"):
         raise ValueError("codex CLI is not installed")
     prepare(worktree, args.role)
+    if not args.interactive:
+        try:
+            probe(worktree, writable_roots(worktree, state))
+        except (ValueError, OSError, subprocess.SubprocessError) as exc:
+            # The dispatcher already respects the provider cooldown and the
+            # wrapper preserves resumable sessions for exit 2. Fail before
+            # spending a model iteration discovering the same host defect.
+            atomic_json(state / "runtime-cooldown/codex.json",
+                        {"until": int(time.time()) + 900, "kind": "permissions",
+                         "worktree": str(worktree), "reason": str(exc)})
+            print(f"fleet-codex: preflight blocked; no model launched: {exc}", file=sys.stderr)
+            return 2
     env = dict(os.environ, FLEET_RUNTIME="codex", FLEET_ROLE=args.role,
                FLEET_ASSIGNED_WORKTREE=str(worktree))
     # Saved CLI subscription login is intentional; never inherit an API billing override.
@@ -220,6 +244,8 @@ def main(argv=None):
     parser.add_argument("--prepare", action="store_true",
                         help="write this worktree's role permissions")
     parser.add_argument("--check", action="store_true", help="prepare and verify command decisions")
+    parser.add_argument("--doctor", action="store_true",
+                        help="check policy and actual sandbox writes without a model call")
     try:
         return run(parser.parse_args(argv))
     except (ValueError, OSError, subprocess.SubprocessError) as exc:

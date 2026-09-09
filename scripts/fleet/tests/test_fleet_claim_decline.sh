@@ -17,9 +17,9 @@
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")/.." && pwd)
-FLEET_CLAIM="$SCRIPT_DIR/fleet-claim"
 # shellcheck source=lib_assert.sh
 source "$SCRIPT_DIR/tests/lib_assert.sh"
+FLEET_CLAIM="$SCRIPT_DIR/fleet-claim"
 
 if [[ ! -x "$FLEET_CLAIM" ]]; then
     echo "test setup: fleet-claim not found at $FLEET_CLAIM" >&2

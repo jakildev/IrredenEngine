@@ -20,9 +20,9 @@
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")/.." && pwd)
-DISPATCHER="$SCRIPT_DIR/fleet-dispatcher"
 # shellcheck source=scripts/fleet/tests/lib_assert.sh
 source "$(dirname "$0")/lib_assert.sh"
+DISPATCHER="$SCRIPT_DIR/fleet-dispatcher"
 
 TMPROOT=$(mktemp -d)
 trap 'rm -rf "$TMPROOT"' EXIT
