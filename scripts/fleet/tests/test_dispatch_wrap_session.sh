@@ -63,6 +63,12 @@ mkdir -p "$FLEET_SESSIONS_DIR" "$FLEET_STATE_DIR"
 # --- stubs ---------------------------------------------------------------
 BIN="$TMPROOT/bin"; mkdir -p "$BIN"
 export CLAUDE_ARGV_LOG="$TMPROOT/claude-argv.log"; : > "$CLAUDE_ARGV_LOG"
+export CODEX_ARGV_LOG="$TMPROOT/codex-argv.log"; : > "$CODEX_ARGV_LOG"
+cat > "$BIN/codex" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$CODEX_ARGV_LOG"
+exit 1
+EOF
 cat > "$BIN/claude" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$CLAUDE_ARGV_LOG"
@@ -143,6 +149,21 @@ out=$(cd "$WT" && FLEET_DISPATCH_PRINT_LAUNCH=1 "$WRAP" pane-3 sonnet high worke
 [[ "$out" == *"--resume SID-123"* ]] && ok "resume: --resume <stored id>" || bad "resume id: $out"
 [[ "$out" == *"--model claude-opus-4-8[1m] --effort xhigh"* ]] && ok "resume: uses STORED model/effort" || bad "resume config: $out"
 [[ "$out" == *"--session-id"* ]] && bad "resume: should NOT pass --session-id" || ok "resume: no --session-id"
+
+echo "T3a: dry-run preserves interrupted work without launching either provider"
+cp "$SIDECAR" "$TMPROOT/saved-sidecar.json"
+cp "$CLAUDE_ARGV_LOG" "$TMPROOT/saved-argv.log"
+cp "$CODEX_ARGV_LOG" "$TMPROOT/saved-codex-argv.log"
+for runtime in claude codex; do
+    cp "$TMPROOT/saved-sidecar.json" "$SIDECAR"
+    cp "$TMPROOT/saved-argv.log" "$CLAUDE_ARGV_LOG"
+    out=$(cd "$WT" && "$WRAP" pane-3 sonnet high worker "" dry-run "" "$runtime" 2>/dev/null)
+    assert_eq "$?" "0" "$runtime dry-run exits cleanly"
+    assert_contains "$out" "no agent launched" "$runtime dry-run skips the agent"
+    cmp -s "$SIDECAR" "$TMPROOT/saved-sidecar.json" && ok "$runtime dry-run preserves recovery bytes" || bad "$runtime dry-run changed recovery record"
+    cmp -s "$CLAUDE_ARGV_LOG" "$TMPROOT/saved-argv.log" && ok "$runtime dry-run never calls Claude" || bad "$runtime dry-run called Claude"
+    cmp -s "$CODEX_ARGV_LOG" "$TMPROOT/saved-codex-argv.log" && ok "$runtime dry-run never calls Codex" || bad "$runtime dry-run called Codex"
+done
 
 echo "T3b: role-mismatched sidecar (pool pane) -> fresh launch, not a cross-role resume"
 # Pool panes host every transient role: a hard-killed reviewer's sidecar
