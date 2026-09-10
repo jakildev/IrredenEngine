@@ -239,7 +239,16 @@ chmod +x "$TMPROOT/bin"/*
 SANDBOX_PATH="$TMPROOT/bin":"$(dirname "$BASH")":/usr/bin:/bin:/usr/sbin:/sbin
 
 # wait_for <file> <fixed-string> <seconds> — poll rather than sleep a flat
-# worst case, so the suite stays well inside run_all.sh's 120s per-suite cap.
+# worst case.
+#
+# Every limit is 12s, and the budget is deliberate: run_all.sh kills a suite at
+# 120s, and there are 8 waits, so generous per-wait limits sum past the cap and
+# a TOTAL regression comes back as "timed out after 120s" instead of naming the
+# assertions that failed — the diagnostic is worth more than the headroom.
+# 8 x 12 = 96s worst case. The daemons tick at 1s and a reload needs two ticks
+# (debounce) plus the exec, observed at ~2-3s, so 12s is ~4x headroom; the
+# happy path returns as soon as the condition holds and the whole suite runs
+# in ~12s.
 wait_for() {
     local file="$1" needle="$2" limit="$3" waited=0
     while (( waited < limit )); do
@@ -282,7 +291,7 @@ env -i HOME="$SANDBOX_HOME" PATH="$SANDBOX_PATH" \
 DISP_PID=$!
 DAEMON_PIDS+=("$DISP_PID")
 
-if wait_for "$DLOG" "started (pid=" 20; then
+if wait_for "$DLOG" "started (pid=" 12; then
     ok "T17: sandboxed dispatcher booted"
 else
     bad "T17: sandboxed dispatcher booted"
@@ -294,14 +303,14 @@ boot_rev=$(started_revs "$DLOG" | head -1)
 # the one #2668 landed inert on.
 echo "# reload probe" >>"$STAGE/fleet-common.sh"
 
-if wait_for "$DLOG" "reloading: source surface advanced" 25; then
+if wait_for "$DLOG" "reloading: source surface advanced" 12; then
     ok "T18: dispatcher logs the reload after a surface edit"
 else
     bad "T18: dispatcher logs the reload after a surface edit"
     echo "        log (tail):"; tail -15 "$DLOG" | sed 's/^/          | /' 
 fi
 
-if wait_for_boots "$DLOG" 2 25; then
+if wait_for_boots "$DLOG" 2 12; then
     ok "T19: dispatcher printed a second 'started' line (it re-exec'd)"
 else
     bad "T19: dispatcher printed a second 'started' line (it re-exec'd)"
@@ -345,7 +354,7 @@ env -i HOME="$SCOUT_HOME" PATH="$SANDBOX_PATH" \
 SCOUT_PID=$!
 DAEMON_PIDS+=("$SCOUT_PID")
 
-if wait_for "$SLOG" "started (pid=" 25; then
+if wait_for "$SLOG" "started (pid=" 12; then
     ok "T21: sandboxed scout booted"
 else
     bad "T21: sandboxed scout booted"
@@ -358,7 +367,7 @@ fi
 # daemon's cache to agree — that equality IS the diagnostic, and it is exactly
 # what breaks when the running scout is stale.
 SCOUT_STATE="$SCOUT_HOME/.fleet/state/state.json"
-if wait_for "$SCOUT_STATE" "scout_source_rev" 25; then
+if wait_for "$SCOUT_STATE" "scout_source_rev" 12; then
     ok "T21b: sandboxed scout stamped scout_source_rev into state.json"
 else
     bad "T21b: sandboxed scout stamped scout_source_rev into state.json"
@@ -371,14 +380,14 @@ assert_eq "$state_rev" "$boot_agg" "T21c: state.json rev equals --print-surface 
 # _source_surface()'s sys.modules derivation exists to cover.
 echo "# reload probe" >>"$STAGE/fleet_stack_base.py"
 
-if wait_for "$SLOG" "reloading: source surface advanced" 30; then
+if wait_for "$SLOG" "reloading: source surface advanced" 12; then
     ok "T22: scout logs the reload after a closure-module edit"
 else
     bad "T22: scout logs the reload after a closure-module edit"
     echo "        log (tail):"; tail -15 "$SLOG" | sed 's/^/          | /' 
 fi
 
-wait_for_boots "$SLOG" 2 25
+wait_for_boots "$SLOG" 2 12
 scout_pids=$(started_pids "$SLOG" | sort -u | wc -l | tr -d ' ')
 scout_boots=$(started_pids "$SLOG" | wc -l | tr -d ' ')
 if [[ "$scout_pids" == "1" && "$scout_boots" -ge 2 ]]; then
@@ -398,7 +407,7 @@ if [[ "$reload_agg" != "$boot_agg" ]]; then
 else
     bad "T24a: editing a closure module moved the on-disk aggregate"
 fi
-if wait_for "$SCOUT_STATE" "$reload_agg" 25; then
+if wait_for "$SCOUT_STATE" "$reload_agg" 12; then
     ok "T24b: the reloaded scout republished the new rev into state.json"
 else
     bad "T24b: the reloaded scout republished the new rev into state.json"
