@@ -211,41 +211,6 @@ if [[ -f "$FLEET_CONF" ]]; then
     # shellcheck disable=SC1090
     source "$FLEET_CONF"
 fi
-
-# --- Self-reload source surface (#2768) ------------------------------------
-#
-# Every file whose contents this process bound ONCE and can only re-read by
-# re-exec'ing: the script itself (bash parses a function body at exec and never
-# re-parses it while it runs) plus each `source`d file above. Sibling
-# executables (fleet-claim, fleet-labels, fleet-rebase) and the python class
-# resolver (fleet_task_class.py) are deliberately ABSENT — those are spawned
-# fresh per call, so they already pick up merged fixes and a reload on them
-# would be spurious. test_daemon_reload.sh ratchets this both directions.
-#
-# INVARIANT: one entry per `source` line above, plus DAEMON_SELF. Adding a
-# `source` without adding its path here reintroduces exactly the silent
-# merged-but-inert no-op this array exists to close; the parity assertion in
-# test_daemon_reload.sh counts `^\s*source ` lines against this array and fails
-# when they drift.
-#
-# $FLEET_CONF is listed UNCONDITIONALLY even when absent — fleet_surface_hash
-# digests a missing entry as a distinct MISSING token, so an operator creating
-# or deleting the conf registers as a source change rather than as no change.
-DAEMON_SOURCE_SURFACE=(
-    "$DAEMON_SELF"
-    "$FLEET_LIB_DIR/fleet-net.sh"
-    "$FLEET_LIB_DIR/fleet-clone-freshness.sh"
-    "$FLEET_LIB_DIR/fleet-common.sh"
-    "$FLEET_CONF"
-)
-# Aggregate captured AFTER sourcing completes, so it describes the image
-# actually running. Empty ⇒ self-reload is unavailable (no digest tool, or
-# fleet-common.sh was missing at boot); the tick check reports that once and
-# stands down rather than looping on a hash that can never move.
-DAEMON_SURFACE_HASH="$(fleet_surface_hash "${DAEMON_SOURCE_SURFACE[@]}" 2>/dev/null || true)"
-# Oscillation cap: at most <MAX-1> reloads per window (see fleet_reload_gate).
-RELOAD_MAX="${FLEET_RELOAD_MAX:-3}"
-RELOAD_WINDOW_SECONDS="${FLEET_RELOAD_WINDOW_SECONDS:-900}"
 for _key in "${_runtime_keys[@]}"; do
     if [[ -v "_runtime_env[$_key]" ]]; then
         printf -v "$_key" "%s" "${_runtime_env[$_key]}"
@@ -734,6 +699,44 @@ unset _env_effort_worker _env_effort_opus_worker _env_effort_sonnet_author \
       _env_effort_sonnet_reviewer _env_effort_opus_reviewer \
       _env_effort_merger _env_effort_smoke_worker \
       _env_effort_epic_steward
+
+# --- Self-reload source surface (#2768) ------------------------------------
+#
+# Every file whose contents this process bound ONCE and can only re-read by
+# re-exec'ing: the script itself (bash parses a function body at exec and never
+# re-parses it while it runs) plus each `source`d file up top. Sibling
+# executables (fleet-claim, fleet-labels, fleet-rebase) and the python class
+# resolver (fleet_task_class.py) are deliberately ABSENT — those are spawned
+# fresh per call, so they already pick up merged fixes and a reload on them
+# would be spurious. test_daemon_reload.sh ratchets this both directions.
+#
+# INVARIANT: one entry per `source` line in this file, plus DAEMON_SELF.
+# (It sits below the conf/env-precedence block rather than beside the
+# `source` lines so that block stays contiguous; the ratchet, not proximity,
+# is what couples them.) Adding a
+# `source` without adding its path here reintroduces exactly the silent
+# merged-but-inert no-op this array exists to close; the parity assertion in
+# test_daemon_reload.sh counts `^\s*source ` lines against this array and fails
+# when they drift.
+#
+# $FLEET_CONF is listed UNCONDITIONALLY even when absent — fleet_surface_hash
+# digests a missing entry as a distinct MISSING token, so an operator creating
+# or deleting the conf registers as a source change rather than as no change.
+DAEMON_SOURCE_SURFACE=(
+    "$DAEMON_SELF"
+    "$FLEET_LIB_DIR/fleet-net.sh"
+    "$FLEET_LIB_DIR/fleet-clone-freshness.sh"
+    "$FLEET_LIB_DIR/fleet-common.sh"
+    "$FLEET_CONF"
+)
+# Aggregate captured AFTER sourcing completes, so it describes the image
+# actually running. Empty ⇒ self-reload is unavailable (no digest tool, or
+# fleet-common.sh was missing at boot); the tick check reports that once and
+# stands down rather than looping on a hash that can never move.
+DAEMON_SURFACE_HASH="$(fleet_surface_hash "${DAEMON_SOURCE_SURFACE[@]}" 2>/dev/null || true)"
+# Oscillation cap: at most <MAX-1> reloads per window (see fleet_reload_gate).
+RELOAD_MAX="${FLEET_RELOAD_MAX:-3}"
+RELOAD_WINDOW_SECONDS="${FLEET_RELOAD_WINDOW_SECONDS:-900}"
 
 # Tracks which panes have already had their cooldown logged this cycle so
 # the "in rate-limit cooldown" message fires once per pane per cooldown
