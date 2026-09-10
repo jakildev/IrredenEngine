@@ -289,6 +289,33 @@ Specifically, **never pass these via `--label` when filing**:
   **smoking agent** on a successful smoke run (Windows: a native-Windows
   smoke worker, or `platform-catchup` as fallback). Permanent audit trail;
   not used by the merge gate. Don't add to issues.
+- `fleet:author-codex` / `fleet:author-claude` — **PR** provenance: which
+  provider most recently *implemented* on this PR. Applied by the authoring
+  role (included in `gh pr create --label ...` so it is present the moment the
+  PR appears) and re-stamped on each amend by `fleet_runtime.stamp()`, which
+  swaps the pair in one `gh pr edit` so the two can never both be set. That
+  function **refuses to run under a reviewer role** (`sonnet-reviewer`,
+  `opus-reviewer`, `smoke-worker`) — reviewing a PR must not rewrite its
+  provenance. Read by `choose_runtime()` when `FLEET_CROSS_PROVIDER_REVIEW=1`
+  to route the review to the *other* provider; an unstamped PR is a hard error
+  (`unstamped PR: record implementation provider before review`) rather than a
+  default, so provenance is never inferred from absence — stamp legacy authors
+  before enabling the policy. Two author labels at once is also a hard error.
+  Don't add to issues.
+- `fleet:runtime-codex` / `fleet:runtime-claude` — **issue/task and PR**
+  provider *pin*: dispatch this item to the named provider. Applied by a human
+  or a role that needs a specific provider; it is an instruction, not a record
+  (that is the `fleet:author-*` pair). `choose_runtime()` honours it ahead of
+  every other signal for non-review dispatch, and two pins at once is a hard
+  error. Without a pin the order is: **feedback and conflict** dispatches
+  follow the PR's existing `fleet:author-*` stamp (so an amend goes back to the
+  provider that wrote it), otherwise `FLEET_WORKER_RUNTIME` decides — a literal
+  provider name pins globally, and `balanced` hashes the dispatch target with
+  SHA-256 so the split is stable across hosts and restarts. Balanced spreads
+  *assignments*, and explicitly not subscription consumption. A host declaring
+  only `FLEET_RUNTIMES="claude"` **waits** for a Codex-bound item rather than
+  substituting a provider. See [`CODEX.md`](CODEX.md) §"Enabling mixed-provider
+  dispatch" for the environment flags that activate both families.
 - `fleet:needs-gl-host` — **issue/task and PR** label marking work that
   needs an OpenGL-4.5 host (`{linux, windows}`). macOS GL is 4.1, so
   a Metal-only pane genuinely cannot build/run/verify the GL backend.

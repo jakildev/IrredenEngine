@@ -237,6 +237,30 @@
       "description": "PR was opened from a Windows host; covers the OpenGL tier — reviewer adds only Metal (macOS) smoke"
     },
     {
+      "name": "fleet:author-codex",
+      "scope": "pr",
+      "color": "0075ca",
+      "description": "Provenance: Codex was the most recent implementation provider on this PR. Stamped at `gh pr create` time and re-stamped on each amend; cross-provider review routing reads it (a PR last amended by Codex is reviewed by Claude). Never inferred from absence \u2014 an unstamped PR waits for explicit provenance"
+    },
+    {
+      "name": "fleet:author-claude",
+      "scope": "pr",
+      "color": "d4c5f9",
+      "description": "Provenance: Claude was the most recent implementation provider on this PR. Counterpart of fleet:author-codex; a PR last amended by Claude is reviewed by Codex when FLEET_CROSS_PROVIDER_REVIEW is on"
+    },
+    {
+      "name": "fleet:runtime-codex",
+      "scope": "issue+pr",
+      "color": "0075ca",
+      "description": "Provider pin: dispatch this issue/PR to Codex. Applied by a human or a role that needs a specific provider; without a pin, balanced selection hashes the assignment across the host's available providers (FLEET_WORKER_RUNTIME=balanced)"
+    },
+    {
+      "name": "fleet:runtime-claude",
+      "scope": "issue+pr",
+      "color": "d4c5f9",
+      "description": "Provider pin: dispatch this issue/PR to Claude. Counterpart of fleet:runtime-codex; a host declaring only FLEET_RUNTIMES=\"claude\" waits rather than substituting a provider"
+    },
+    {
       "name": "fleet:verified-linux",
       "scope": "pr",
       "color": "0e8a16",
