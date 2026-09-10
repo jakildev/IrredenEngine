@@ -188,6 +188,13 @@ transform until the next frame. This matches the existing "structural
 changes during iteration" rule — defer the relation change to a frame
 boundary if the visual must update the same frame.
 
+**A RENDER-phase writer of `C_LocalTransform` writes `C_WorldTransform`
+too.** `PROPAGATE_TRANSFORM` has already run for the frame, so a
+local-only write from a RENDER system or helper (picking highlight,
+gizmo handle, hover marker) renders one frame stale and no
+settled-frame capture sees it. Worked example:
+`../render/systems/system_voxel_picking.hpp` (#2682).
+
 **Auto-attach + caller-supplied conflict.** `createEntity(...)`
 auto-attaches default `C_LocalTransform` and `C_WorldTransform`
 alongside `C_PositionGlobal3D`. The free function detects when the

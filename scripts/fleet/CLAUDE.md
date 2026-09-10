@@ -162,6 +162,9 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   against a truth of 11/11 (#2845). The ratchet is the durable half: adoption
   is enforced tree-wide, not remembered, so a new suite that forgets the line
   goes red instead of reporting a plausible-but-wrong tally.
+  Same for **before/after** evidence: report **coverage** beside the drift
+  count — an input rejected at the entry guard agrees on both revisions,
+  vacuously (#2875: `drifted: 0` was 41 of 166 linted).
 - **A new `tests/test_*.sh` file needs its executable bit committed**
   (`git update-index --chmod=+x` if `git add` didn't pick it up from your
   filesystem's mode). `run_all.sh` invokes suites through an explicit
@@ -221,6 +224,9 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   count/enumeration and any enumerating docstring update in the same
   change (#2467: `cmd_cleanup_gh` grew a 5th sweep while its banner said
   "four" and its docstring said "Three-pass").
+  The sweep covers operator-facing siblings in other files
+  (`fleet-up.conf.sample`, `fleet-help`'s index, printed column labels), both
+  ways: the retired name gone *and* its replacement documented (#3094).
 - **A new consumer of a PR label excludes PRs claimable by other lanes
   with disjoint claim namespaces.** Disjoint claim-label namespaces
   (`fleet:amending-*` vs `fleet:resolving-*`) provide **no** mutual
@@ -257,6 +263,8 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   `git status --porcelain` tracked-dirty check *before* the fetch/merge,
   and the guard covers **every** branch path, not just the off-master arm
   (#2378: the on-master arm fell through to an unguarded ff-advance).
+  Generally: an unattended mutation of shared state gates on **liveness**, not
+  recoverability — one fail-closed predicate on every mutating path (#2668).
 - **Config-file generators preserve hand-edits under every emitted key.**
   A generator that wholesale-rewrites a config file (`fleet-up`'s
   `write_worktree_settings` → `settings.local.json`) must carry
@@ -280,6 +288,11 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   Mutating git wrappers (`fleet-pr-amend-push`, `fleet-review-verdict --agent`)
   call `fleet-assert-worktree`; scout / ingest / claim / rebase legitimately run
   from the main clone and are deliberately NOT asserted.
+- **A `continue` that withholds a worker-visible affordance — a stackable
+  offer, a claim candidate, a queue row — must `log()` its reason.** The
+  symptom lands a whole pipeline away from the cause (#2760: 3 silent arms).
+  `log()` is the run's stdout trace, not a stderr warn — a skip that *persists*
+  is the next bullet's escalate-then-quiet case.
 - **An every-tick guard that warns must escalate-then-quiet.** A skip
   condition in an unattended loop (`advance_main_clone`, the dispatcher's
   per-tick guards) persists until a human acts, so a plain `echo … >&2`
@@ -341,6 +354,14 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   connections exhaust the ephemeral port range and every network call dies
   instantly with EADDRNOTAVAIL ("Can't assign requested address") — that is
   not GitHub being down; run `fleet-net-doctor` (exit 2 ⇒ reboot the host).
+- **Shell portability: GNU spelling first, no BSD-only flag forms.** Both arms
+  of `$(a || b)` write the capture, so a failing first arm poisons it (GNU
+  `stat -f` prints a filesystem block `2>/dev/null` can't catch, #2686). Prefer
+  one portable spelling: `mktemp -d "${TMPDIR:-/tmp}/p.XXXXXX"`, not `-t p`.
+- **A REST *list* fetch paginates or it silently truncates.** On a collection
+  endpoint pass an explicit `per_page` **and** page it (`gh --paginate`;
+  `_rest_list`'s `max_pages`): the 30-item default returns with no error, so a
+  bare `per_page` reads as handled (#2856: `human_approved` was 4 of 12).
 - **Native `jq` on Windows (MSYS2) emits CRLF, not LF.** `mapfile` only
   strips the trailing `\n` delimiter, so `mapfile -t arr < <(jq -r '...')`
   leaves an embedded `\r` on every element on that host — silently breaking

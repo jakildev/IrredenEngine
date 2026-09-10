@@ -226,22 +226,26 @@ fix in Step i.)
   material — leave them; they ride your next PR on that surface
   (REVIEWER-PROTOCOL § Nits vs needs-fix). Address every labeled nit
   unless it's purely subjective preference.
-- **Verify a cited `file:line` correction — and any concrete VALUE the
-  reviewer supplies as the fix — before applying it.** When a nit
-  asserts a specific line ("actual: 128-132") or a precedent location, confirm
-  it against `git show origin/master:<path>` first — reviewer citations drift
-  from intermediate `master` merges or off-by-N arithmetic, and applying a
-  wrong "correction" injects a wrong citation (#1832: the suggested 128-132
-  pointed at `private:`/comment lines; the original 136-141 was correct.
-  #1725: a cited line was past the end of an 81-line file). The same
-  applies to suggested coordinates, constants, and replacement
-  expressions: re-derive them against the constraints the reviewer had
-  no reason to check — a correct diagnosis does not make the suggested
-  remedy correct, and a drifted value is worse than a drifted citation
-  because it lands in running code (#2618: reviewer-suggested totem
-  coordinates were 30 px off a 1284 px framebuffer — walk-corridor
-  arithmetic checked, framebuffer-width arithmetic not). If the value
-  does not hold, say so in the summary comment and take the reviewer's
+- **Verify what the reviewer supplies — citation, value, explanation —
+  before applying it.** A correct diagnosis doesn't make the supplied
+  remedy correct, and you are the last reader before it lands:
+  - *A `file:line` or precedent citation* — resolve it against the **head
+    under review** (`fleet-pr-claim-feedback` left you on it), not
+    `origin/master`: the PR's own hunks moving the line is the commonest
+    drift, and master is the one ref where the stale number still reads
+    correct (#2977, #1832). Use master only for a precedent outside the diff.
+  - *A concrete value* — re-derive coordinates, constants and replacement
+    expressions against constraints the reviewer had no reason to check;
+    a drifted value lands in running code (#2618). For a **measurement**,
+    replaying the digits proves nothing — a convention-dependent figure
+    reproduces exactly; require the method that re-derives it (author
+    side: `AUTHOR-PIPELINE.md` § "Acceptance evidence" step 2).
+  - *An explanation* — a causal account you transcribe into a PR body, doc
+    or comment **is** the deliverable and no gate reads it again. Verify
+    the consequence, not the cited mechanism: run it where anything can,
+    else trace it — a true mechanism can be masked by one that fires
+    first (#2914).
+  If it doesn't hold, say so in the summary comment and take the reviewer's
   alternative or propose one.
 - **For `fleet:design-unblocked`** (opus+ classes only): also re-read
   the architect's plan file at `~/.fleet/plans/issue-<N>.md` (current
@@ -590,6 +594,10 @@ Do NOT invoke the `commit-and-push` skill here: it would try to
 new PR (one already exists for this head ref). The wrapper handles
 the right push semantics for amendments.
 
+**Reconcile the PR body in the same pass** — re-read `## Summary` /
+`## Test plan` / `## Acceptance evidence` and re-derive every quoted count
+from *this* run; the amend invalidated them and no gate re-reads them (#2894).
+
 ### Step e — swap the in-progress label, then release the claim
 
 First the per-path label swap. Do this **before** releasing the claim
@@ -609,8 +617,11 @@ review via `RECHECK_LABELS`.
   ```
   gh pr edit <N> --add-label "fleet:changes-made"
   ```
-- **`fleet:has-nits`** — no response label needed; the existing
-  `fleet:approved` stays valid (cleanups don't invalidate approval).
+- **`fleet:has-nits`** — no response label needed, and **expect
+  `fleet:approved` to be gone after your push**: `auto-rereview.yml` swaps
+  it for `human:re-review` on any push that is neither a mechanical rebase
+  nor a docs-only delta (#2680). That is the correct terminal state — never
+  re-add the label yourself.
 - **`fleet:design-unblocked`** — no response label needed; the PR
   re-enters the normal review flow once you push (sonnet-reviewer
   picks it up via `fleet:changes-made` / no-fleet-review criteria,
@@ -629,14 +640,13 @@ Then post a summary comment regardless of which path:
 gh pr comment <N> --body "Addressed feedback: <bullet list of what changed>"
 ```
 
-### Step f — keep `fleet:approved` for the nits path
+### Step f — leave the verdict label to the reviewer
 
-Remove stale fleet review labels (`fleet:needs-fix`,
-`fleet:blocker`) if present — but **keep `fleet:approved`** if the
-path was `fleet:has-nits`. (The AMEND path already cleared
-`fleet:approved` in step b for `human:needs-fix`.) The fleet's
-approval is still valid; human tweaks and nit cleanups don't
-invalidate it.
+Remove stale fleet review labels (`fleet:needs-fix`, `fleet:blocker`) if
+present. Do **not** stamp `fleet:approved` on any path — an author restoring
+their own approval defeats review. If clearing the feedback label would leave
+the PR with **no** verdict label, add `fleet:changes-made` so it re-enters
+review instead of matching no picker's criteria and going invisible (#2948).
 
 ### Step g — downstream propagation is automatic now
 

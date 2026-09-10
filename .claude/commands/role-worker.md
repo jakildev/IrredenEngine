@@ -280,16 +280,12 @@ Do the work, then exit cleanly:
    `fleet:has-nits` — plus `fleet:design-unblocked` **at opus+
    classes only** (resuming a design-unblocked PR means absorbing an
    architect's design reply; that judgment is opus-tier, and the
-   class routing already sends those PRs to an opus+ dispatch). Skip
-   any PR already carrying a `fleet:amending-*` label (another
-   worker holds the atomic feedback claim and is handling it; step a
-   will reject your claim anyway). Also skip any feedback PR carrying
-   `fleet:needs-gl-host` unless this host is GL-capable
-   (`{linux, windows}`) — its remaining work needs a GL host, and
-   `amending-claim` refuses the claim as a backstop (#2524).
+   class routing already sends those PRs to an opus+ dispatch).
 
    Follow [`docs/agents/FLEET-FEEDBACK-HANDLING.md`](../../docs/agents/FLEET-FEEDBACK-HANDLING.md) —
-   it owns the priority order, the detached-HEAD checkout flow,
+   it owns the priority order **and every pickup skip** (apply all of
+   them before you pick — an inline copy here had fallen behind that
+   stanza, #2996), the detached-HEAD checkout flow,
    AMEND-vs-ESCALATE decision, the AMEND-path step sequence (a–h),
    label cycles, and the game-side `cd` + `--repo jakildev/irreden`
    wrinkle. Reserve the worktree on the `human:needs-fix` /
@@ -508,6 +504,11 @@ Do the work, then exit cleanly:
        measured in step g. (Negative claims are the dangerous ones: a
        scary-but-false drift warning left standing misleads everyone
        reading the merged history, and no build gate catches it, #2536.)
+       **Sweep the auto-merged files too, not just the conflicted ones**:
+       `git diff origin/master...HEAD --name-only | xargs grep -n "#<your
+       Closes N>"` — a register master edited in a different line range
+       merges clean, so the PR can ship "OPEN (#N)" above its own
+       resolution (#2648).
        **If the PR also carries `fleet:human-deferred`, drop it.** Your
        push added new commits, so the deferral — which covered the diff
        as it stood at defer time — no longer holds. Dropping it re-enters
@@ -656,9 +657,10 @@ Do the work, then exit cleanly:
    - **Issue is NOT in-flight via any PR** in **the same repo**. Three
      checks, not one (#2507 — title/branch match alone let two panes
      re-implement shipped work):
-     - Not referenced in any open PR's **title or branch name**
-       (cross-check against the same repo's `prs[]` array from the
-       cache).
+     - No `inflight_pr` field on the cached task row — the scout
+       already matches every open PR's branch to its issue
+       (`enrich_inflight_pr_tasks`, #1726), so read the field rather
+       than hand-rolling a title/branch grep over `prs[]`.
      - No **open PR's body** carries `Closes #<N>` — a body-only link
        is invisible to the title/branch check:
        `gh pr list --repo <slug> --state open --json number,body --jq '.[] | select(.body | test("(Closes|Fixes|Resolves) #<N>\\b"; "i")) | .number'`

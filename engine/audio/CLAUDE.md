@@ -74,6 +74,11 @@ over miniaudio's **high-level engine** (`ma_engine` / `ma_sound` /
 - **No device = silent, never a crash.** If `ma_engine_init` fails (no
   playback device, e.g. a headless box) `AudioPlayback` stays uninitialised:
   every `play*` returns `kInvalidSoundHandle` and the setters no-op.
+  **Every degrade path ships with a `test/audio/` arm** driving each public
+  method through the uninitialised state (`test/audio/audio_playback_test.cpp`
+  is the shape). On a dev box with a device the doctrine is unobservable, so
+  review and CI both read green — `MidiIn`/`MidiOut`'s degrade (#2559) landed
+  without one.
 - **Forward seams (depth is #207/#208, not built here).** `playSoundAt` +
   `setListenerPosition` drive the one built-in `ma_engine` listener and a
   sound's world position — #207 layers occlusion / biome ambience on this

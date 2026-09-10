@@ -15,11 +15,21 @@ nothing about a log format string on this path.
 
 ```
 Grep tool with:
-  pattern: '(IR_LOG_|IRE_LOG_|IRE_GL_LOG_)[A-Z]+\("[^"]*%[-+#0-9.]*(d|i|u|s|f|g|e|x|X|o|c|p|z[ud]|l[ud]|ll[ud])'
+  pattern: '(IR_LOG_|IRE_LOG_|IRE_GL_LOG_)[A-Z]+\(\s*"[^"]*%[-+#0-9.]*(d|i|u|s|f|g|e|x|X|o|c|p|z[ud]|l[ud]|ll[ud])'
   glob:    '**/*.{hpp,cpp,h,cc,tpp}'
   output_mode: 'content'
+  multiline: true
   -n: true
 ```
+
+`\(\s*"` plus `multiline` is load-bearing, not tidiness: clang-format wraps
+a long call so the format string lands on the **next** line, and a pattern
+requiring `("` adjacent sees nothing there. Four live sites in
+`creations/editors/voxel_editor/main.cpp` (`"Frame: %d / %d …"`,
+`"Symmetry: X=%s …"`, `"Playback: %s …"`, `"Loop mode: %s"`) were invisible
+to the single-line form for exactly that reason (#3113). Shell equivalent:
+`rg -U '<pattern>'`; without `-U`, `grep -A1` the macro name and read the
+following line too.
 
 Discard hits whose only `%`s are `%%` (literal percent) — a line carrying
 both `%%` and a real conversion is still a hit. Keep the conversion-flag class

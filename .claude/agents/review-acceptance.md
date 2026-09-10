@@ -43,7 +43,10 @@ For **each** criterion in the plan, assign one grade:
 - **unverifiable** — demonstrating it needs a host/backend/runtime neither
   the author nor you can run (the author's `unverifiable on <host>: <reason>`
   rows land here). Carry the reason forward; note which lane (cross-host
-  smoke, a GL host, a game build) should pick it up.
+  smoke, a GL host, a game build) should pick it up. If the reason names a
+  tracked fleet issue, check it (`gh issue view <N> --json state`) before you
+  grade: a limitation master has since fixed makes the finding "rebase and
+  re-run", not unmet (#3079).
 
 **Plausibility audit** — evidence is a claim, not a fact:
 
@@ -54,6 +57,12 @@ For **each** criterion in the plan, assign one grade:
   check's source if the claimed output looks pasted or generic.
 - The command must run against the shipped tree: evidence rows citing
   files or flags the diff then removed or renamed are stale.
+- A check that **quantifies over a set** is under-tested at |set| = 2.
+  When the criterion turns on *which* element is chosen or covered —
+  fairness, rotation, priority, eviction, retry order, "the other one" —
+  two-element evidence grades **unmet** unless the criterion is scoped to
+  two: at 2, next-in-order / least-recently-used / round-robin /
+  any-other are indistinguishable. Ask for the three-element case (#2705).
 
 Cheap commands only (grep, file reads, `git log`, `gh`). Do not build or
 run executables — if only a build/run could settle a criterion, grade it

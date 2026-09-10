@@ -288,7 +288,12 @@ conditions for game-repo and non-render PRs.
   review-waste generator (engine #2991: eight review passes and ~41k
   chars of review text over three consecutive comment-wording nits,
   ended only by the final Opus pass ordering "do not amend for
-  anything in this review").
+  anything in this review"). Same routing for a nit with **no
+  agent-applicable disposition** — its whole fix surface is gated
+  self-config, or an open `fleet:nit-of-pr` issue already tracks it:
+  report it as prose and use `verdict-approve`. `fleet:has-nits` is
+  tier 3 of the worker loop, so re-arming it over an unfixable nit set
+  costs one opus dispatch per mechanical rebase, indefinitely (#2657).
 - **Approve with nits (`fleet:has-nits`) means the nits are worth one
   amend push.** Reserve the label for borderline-substantive items — a
   misleading comment on tricky code, a missing assert on a real

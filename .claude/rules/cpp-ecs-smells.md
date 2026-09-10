@@ -139,3 +139,8 @@ In any system `tick` function:
   attaches, and a system whose archetype requires it just never matches.
   Adding a factory means extending the C++ registration's template arity in
   the same change.
+  The **return** is sol2 container userdata, not a table: iterate with `#` /
+  `[i]`, never `ipairs` (the vendored LuaJIT has no 5.2 compat and throws
+  `table expected, got userdata`). A test stub for one of these bindings
+  must return userdata too (`newproxy(true)` with `__index`/`__len`) — a
+  plain-table stub passes every arm over a line that cannot run for real.

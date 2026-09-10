@@ -143,10 +143,10 @@ reused.
 | 4 | [location-reference comment narration](checks/check-04-location-narration-comments.md) | any C++ change in the diff | auto-fix |
 | 5 | [non-C++ text hygiene (final newline; Lua dead locals)](checks/check-05-non-cpp-text-hygiene.md) | the diff touches `.cmake`, `.md`, `.lua`, `.txt`, or `CMakeLists.txt` files | auto-fix |
 | 6 | [hand-rolled demo asset-copy blocks](checks/check-06-demo-asset-copy.md) | the diff touches `creations/demos/*/CMakeLists.txt` | report |
-| 7 | [task-reference comments / motivation prose](checks/check-07-reference-comments.md) | the diff adds comments in C++ or shader files | auto-fix |
+| 7 | [task-reference comments / motivation prose](checks/check-07-reference-comments.md) | the diff adds comments in C++, shader, build (`.cmake`/`CMakeLists.txt`) or tooling (`.sh`/`.py`/extensionless `scripts/**`) files | auto-fix |
 | 8 | [unreplaced scaffold placeholder sentinels](checks/check-08-scaffold-sentinels.md) | the diff touches `creations/**` (especially a new creation) | auto-fix |
 | 9 | [template functions added with no instantiation](checks/check-09-uninstantiated-templates.md) | the diff adds a `template <...>` function or member | report |
-| 10 | [new fleet tool / workflow logic with no test](checks/check-10-fleet-tool-tests.md) | the diff adds an executable under `scripts/fleet/` or non-trivial logic in a workflow `run:` block | report |
+| 10 | [new fleet tool / workflow logic with no test](checks/check-10-fleet-tool-tests.md) | the diff adds an executable under `scripts/fleet/`, a function to an already-tested `scripts/**` module, or non-trivial logic in a workflow `run:` block | report |
 | 11 | [mutable namespace-scope variables in headers](checks/check-11-header-globals.md) | the diff touches `.hpp`/`.h` files | report |
 | 12 | [printf-style conversions in fmt log macros](checks/check-12-printf-in-log-macros.md) | the diff adds `IR_LOG_*` / `IRE_LOG_*` / `IRE_GL_LOG_*` calls | auto-fix |
 | 13 | [added constant duplicating an existing definition](checks/check-13-duplicate-constants.md) | the diff adds a `constexpr` / `const` named constant | report |
@@ -156,6 +156,8 @@ reused.
 | 17 | [invariant guard with no firing test](checks/check-17-guard-needs-test.md) | the diff adds an `IR_ASSERT` in a non-test file, or deletes a member/flag/special-case with a stated defensive purpose | report |
 | 18 | [raw `assert()` instead of the engine convention](checks/check-18-raw-assert.md) | the diff adds a raw `assert(` call | auto-fix |
 | 19 | [citations resolve at base, via the right resolver](checks/check-19-citation-resolution.md) | added lines carry `docs/**.md` paths, `§<id>` section citations, or bare `#<N>` GitHub references (any changed file type) | fix or report |
+| 20 | [added daemon warn with no escalate-then-quiet](checks/check-20-daemon-warn-escalation.md) | the diff adds a log/warn emission to a `scripts/fleet/**` file containing an unattended repeat loop | report |
+| 21 | [`cmake --preset` snippets name their source dir](checks/check-21-preset-snippet-source-dir.md) | the diff adds a fenced block containing `cmake --preset` to any `.md` | report |
 
 ### 2c. Serialized-struct version-bump check
 
@@ -412,16 +414,9 @@ The engine's style preferences are simple and worth applying inline:
 ### 9. Doc-side checks (always run)
 
 Doc upkeep is part of the reviewer-facing bar, in both directions:
-
-- **9a — Doc → code drift.** When the diff includes markdown,
-  check the doc still describes reality (existing API examples,
-  cited file paths, internal consistency).
-- **9b — Code → doc drift.** When the diff includes non-doc files,
-  check whether the nearest `CLAUDE.md` (or relevant role / skill
-  doc) should be updated to reflect a new or removed pattern.
-
-Run whichever sub-checks apply. Pure formatter-only diffs can skip
-both.
+**9a** (markdown in the diff) checks the doc still describes reality;
+**9b** (non-doc files in the diff) checks the docs that describe them.
+Run whichever applies. Pure formatter-only diffs can skip both.
 
 #### 9a. Doc → code drift (when the diff includes markdown)
 
@@ -431,39 +426,46 @@ top-level `CLAUDE.md` and module-level `CLAUDE.md` files.
 
 - **Stale cross-references.** A file path, label name, role name,
   task ID, PR number, or skill name cited in the prose now refers
-  to something that no longer exists or means something different.
-  Common triggers: a renamed file, a removed label, a role that
-  got merged into another, a GitHub issue number that already shipped.
-  Grep the cited identifiers against the current tree and fix what
-  drifted.
+  to something that no longer exists or means something different — a
+  renamed file, a removed label, a merged-away role, an issue that
+  already shipped. Grep the cited identifiers against the current tree
+  and fix what drifted.
 - **Retired-entity paraphrase sweep.** When the diff *retires* a named
   entity (a label, flag, script, body marker), grep the tree for **prose
   paraphrases** of it, not just the literal token (`fleet:stacked` →
   `stacked label|stack label`) — and check the docs that **delegate** to
-  the changed files ("see `<file>` for the deltas"), not only the files
-  in the diff. The delegating summary is the more load-bearing copy and
-  the one a token grep reports clean (#2656 left four "stacked label"
-  sites in the summary doc that delegates to the two procedure files the
-  PR rewrote). Code-side literal values: §2b Check 15.
+  the changed files ("see `<file>` for the deltas"). The delegating
+  summary is the more load-bearing copy and the one a token grep reports
+  clean (#2656 left four "stacked label" sites in it). Code-side literal
+  values: §2b Check 15.
 - **Stale restatements of a corrected claim.** When the diff corrects a
   claim — in markdown *or in a C++ doc comment*: this bullet runs even
-  when no markdown is in the diff — take the distinctive phrase of the
-  superseded claim and grep the **module subtree** (the changed file plus
-  its nearest `CLAUDE.md`) for surviving copies. A module `CLAUDE.md`
-  restating a contract the code states is the *predictable* second home,
-  not a coincidence, and the surviving copy is usually the more
-  load-bearing one — attached to the symbol readers actually use (three
-  occurrences on PR #2594 alone, two crossing the doc/code pair). (#2614)
+  when no markdown is in the diff — grep the distinctive phrase of the
+  superseded claim across the **module subtree** (the changed file plus
+  its nearest `CLAUDE.md`). A module `CLAUDE.md` restating a contract the
+  code states is the *predictable* second home, and the surviving copy is
+  usually the more load-bearing one, attached to the symbol readers
+  actually use (three occurrences on PR #2594 alone). (#2614)
 - **Examples that drifted from the current API.** A doc shows a
   code snippet using `IRRender::makeCanvas()` but the API is now
   `IRRender::createCanvas()`. Same for shell snippets that use
   removed scripts or outdated flags.
+- **Claims about a named artifact — check the claim, not the
+  spelling.** Every bullet above tests a citation's *validity*, never
+  its *truth*, and a claim the diff **introduces** has no superseded
+  phrase to key on. Prose asserting that a path uses a form, a command
+  has an effect, a test enforces an invariant, a step fires a label, or
+  a count matches: run the grep, command, or step that would refute it,
+  at the PR's **current head** — a `path:N-M` exact when authored rots
+  as the base advances (re-anchor on the symbol; "as of `<sha>`").
+  #2683 (attribution), #2814 (efficacy), #2812 (coverage), #2657
+  (reachability), #2746 (stale at head): all shipped clean past every
+  bullet above.
 - **Change-narration prose** (markdown analog of the code rule):
-  paragraphs that describe what *was changed* in the current PR
-  rather than what the doc covers — "Updated this section to
-  reflect the new flow", "Removed the old explanation of X". The
-  commit message is the place for change history; doc bodies
-  describe the current state.
+  paragraphs describing what *was changed* in this PR rather than what
+  the doc covers — "Updated this section to reflect the new flow". The
+  commit message is the place for change history; doc bodies describe
+  the current state.
 - **Redundant prose.** A paragraph that re-says the previous
   paragraph in different words. Pick the clearer one, drop the
   other. Same for two bullet items that say the same thing with
@@ -526,25 +528,30 @@ auto-fix — these need human judgment on scope):
 
 #### 9b. Code → doc drift (when the diff includes non-doc files)
 
-For each non-doc file in the diff, walk up the directory tree to
-locate the nearest `CLAUDE.md`. De-dupe so each `CLAUDE.md` is
-considered once. For each one, ask whether the current change
-introduces something the doc would reasonably want to mention, or
-invalidates something it currently asserts. The intent is to keep
-each module's `CLAUDE.md` representative of the current state — not
-to grow them with every change.
+For each non-doc file in the diff, walk up to the nearest `CLAUDE.md`
+— the start of the target set, not all of it. Key the sweep on the
+*subject* (the tool, the rule), not the file the diff happened to
+touch: also the changed file's own prose (`--help` / USAGE heredoc,
+`argparse description=`, header comment block), the other half of a
+`fleet_<x>.py` / `fleet-<x>` pair, `docs/**` references that name it,
+and a fleet rule's mirrors across `.claude/rules/` ↔ `.claude/agents/`
+↔ `.claude/skills/` ↔ `docs/agents/` ↔ `.claude/commands/role-*.md`.
+Stated in N places, corrected in N; and "what changed" includes the
+tool's *coverage* — a new lane, mode, target set, or input glob — not
+only a count (#2765, #2688). De-dupe, then for each target ask whether
+the change introduces something it would want to mention or
+invalidates something it asserts — keeping it representative, not
+growing it with every change.
 
 Flag (don't auto-edit — the "doc-worthy?" call belongs to the
 author):
 
 - **New pattern, file, or convention.** The diff adds a system,
   component, prefab, shader, helper namespace, debug toggle, build
-  preset, label, role, skill, or any other piece of vocabulary the
-  doc establishes. If the doc enumerates the category (e.g.
-  `engine/render/CLAUDE.md` describes the pipeline stages, or a
-  module `CLAUDE.md` lists "common patterns"), the new entry
-  belongs in the list — or the list needs to stop claiming to be
-  exhaustive.
+  preset, label, role, skill, or other vocabulary the doc establishes.
+  If the doc enumerates the category (e.g. `engine/render/CLAUDE.md`'s
+  pipeline stages), the new entry belongs in the list — or the list
+  needs to stop claiming to be exhaustive.
 - **Removed or renamed thing the doc cites.** The diff deletes or
   renames a symbol, file, helper, label, or skill that the doc
   body references by name. Grep the doc for the old name; if it
@@ -561,16 +568,25 @@ author):
 - **A convention the doc warned about that no longer applies.**
   The diff removes the constraint; the warning in the doc is now
   noise.
+- **Enforcing a convention — or closing an issue — falsifies prose
+  outside the diff.** Making a documented-only rule *executed* (a
+  checker, lint rule, CI step, `static_assert`), or carrying `Closes
+  #<N>`, falsifies sentences in files the diff never opened, past the
+  walk above. Root the sweep at the **token** — `fleet-rules-sweep
+  --pattern '<enforced symbol>'` / `--pattern '#<N>'` — and give
+  **every** hit a disposition (*fixed* / *not stale* / *out of scope*,
+  each with why) reconciled against the sweep's own match count: a hit
+  in no bucket is invisible in a report listing only the corrected set
+  (#2868 took three token-aware passes; #3027 left a `docs/design/`
+  claim keyed to the issue it closed).
 - **The diff's own code vs. the rule it writes.** When the diff adds or
   edits a rule statement in a `CLAUDE.md` / rules file, re-read the rest
   of *the same diff* against that rule. The diff that writes a rule is
   the diff most likely to violate it — the author is thinking about the
-  site that motivated the rule, not its siblings, and an exemplar that
-  contradicts the rule it establishes is the worst place for the
-  violation to land (PR #2594 wrote the one-fault-one-message rule and
-  shipped a two-fault single-message assert in the rule's own reference
-  file, in the same commit). This is 9b's inverse direction: doc → the
-  diff's own code. (#2629)
+  site that motivated the rule, not its siblings (PR #2594 wrote the
+  one-fault-one-message rule and shipped a two-fault single-message
+  assert in the rule's own reference file, same commit). This is 9b's
+  inverse direction: doc → the diff's own code. (#2629)
 
 Skip 9b when:
 
@@ -578,12 +594,12 @@ Skip 9b when:
   removed symbol, no new file, no new build target.
 - The touched directory has no relevant `CLAUDE.md` upstream
   (test fixture, generated artifact, third-party vendor tree).
-- The change is purely a typo, formatting, or comment edit.
+- The change is purely a typo, formatting, or comment edit — except
+  the corrective sweep above, whose fix *is* a comment edit.
 
-Report format — one line per `CLAUDE.md` that may need attention,
-with the specific gap and a one-line suggestion. Don't speculate
-about wording; let the author decide whether and how to update.
-Example:
+Report format — one line per target that may need attention, with the
+specific gap and a one-line suggestion. Don't speculate about wording;
+let the author decide whether and how to update. Example:
 
 ```
   reported 1 doc-drift finding:

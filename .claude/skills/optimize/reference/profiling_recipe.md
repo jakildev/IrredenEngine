@@ -86,6 +86,20 @@ Regression threshold defaults: ≥10% slower flagged with `⚠`, ≥5%
 faster flagged with `↓`. Pass `--regress-pct N --improve-pct M` to
 override.
 
+## Establish the cell's own noise floor before believing a delta
+
+A per-cell delta is signal only if it clears that cell's run-to-run spread
+on an **unchanged** binary — re-run head 2-3x on the cell first. Measured
+(Windows/GL, `--quick`, 300 frames, `zoom=1,sub_mode=full`, same binary):
+38.49 / 36.87 / 29.99 ms avg against a 32.13 ms baseline, so run 1 alone
+reads as a "+19.8% regression" over a two-statement diff. `p95`/`p99` are
+tail-dominated; weigh `p50`/avg and re-run before believing a `⚠`.
+
+**The matrix has no yaw axis** — every cell runs at yaw 0, so a path gated off
+at cardinal by design (per-axis scatter) reports a clean 0% delta over code
+that never ran. Drive it by hand: `fleet-run IRPerfGrid --yaw 0.785
+--auto-profile 400`, ≥3 samples per arm (#3019).
+
 ## When the demo is too slow to finish in the per-cell timeout
 
 The script's `--timeout` flag defaults to 90s per cell. At extreme

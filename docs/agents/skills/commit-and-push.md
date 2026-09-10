@@ -318,7 +318,9 @@ gh pr create --base <default-branch> --title "<scope>: <title>" --body "$pr_body
 
 **`Closes #N` line** (required when the task has an `Issue:` field) is what
 makes the tracker auto-close the originating issue on merge. Omit only when
-the `Issue:` field is `(none)` (cleanup PRs, fleet-tooling PRs). See
+the `Issue:` field is `(none)` (cleanup PRs, fleet-tooling PRs). Downgrade it
+to `Refs #N` when your own `## Acceptance evidence` table grades a criterion
+as not shipped — an honest partial must not auto-close its issue (#2981). See
 **procedures** `pr-body.md` for the full template and the stack-mode
 exceptions (cursor-stack non-leaf PRs deliberately drop it).
 
@@ -359,8 +361,11 @@ fetch the body and comments and look for acceptance criteria **anywhere**
 `**Acceptance criteria**` line in the issue body — the `fleet:no-plan`
 agent-approved lane puts them in the body by construction, #2521). If the
 issue states criteria and the drafted body has no `## Acceptance evidence`
-section, **stop and fill the table** before `gh pr create` — reviewers
-grade criteria from that table, and its absence has cost a review
+section — **or carries one with fewer rows than the issue has criteria** —
+**stop and fill the table** before `gh pr create`. Count the rows against the
+criteria list: a freehand table looks complete while omitting the criterion
+that had nothing to say, and the omitted rows skew toward the unmet ones
+(#2906; the mechanical row check is #3126). Its absence has cost a review
 round-trip four separate times.
 
 **Test-plan boxes are records, not to-dos (same moment):** `## Test plan`
@@ -401,6 +406,13 @@ A hit means a diagnostic block annotated "remove when #N closes" is about
 to ship to the default branch as dead code in the very PR that closes #N.
 Remove the block (new commit) before opening the PR; if it must outlive
 this PR, re-point the annotation at a live follow-up issue instead.
+
+**Open-PR overlap check (same trigger):** intersect this branch's changed
+files with open PRs' (`gh pr list --state open --json number,files`) and
+trial-merge each hit — `git merge-tree --write-tree <this> <other>` prints
+the true conflict set; a hunk-region eyeball misses cross-file overlap
+(#2892; the scripted check is #3124). A hit on `docs/agents/**` or
+`.claude/**` stops the open.
 
 ### 8b. Tag the host the PR was authored on
 

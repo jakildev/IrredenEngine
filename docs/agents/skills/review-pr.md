@@ -179,7 +179,13 @@ Two cross-cutting rules for the findings themselves:
   cited precedent. A miscited precedent is worse than a vague nit: an
   author who trusts it implements against a phantom API or propagates the
   misattribution into comments. If unverified, phrase the nit as a
-  question, not an assertion.
+  question, not an assertion. **The mirror holds for absence**: before
+  asserting something does *not* exist — no tracking issue, no such
+  label or flag, no in-tree precedent for a cited guideline — run the
+  command that enumerates that namespace (`gh issue list --search` in
+  **both** fleet repos; `gh label list`; a grep for the guideline's own
+  idiom) and say what you searched. An unsearched absence never softens
+  a finding a documented rule already covers.
 - **Cross-check "remove when #X" annotations against the PR's `Closes`
   list.** Grep the diff for `remove when #`, `TODO`, `FIXME` markers
   referencing an issue this PR's body closes — those blocks must be gone
