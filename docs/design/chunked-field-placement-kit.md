@@ -243,7 +243,7 @@ constexpr int kMaxClearanceCells = 1024;   // domain ceiling, in cells
 | Parameter | Domain | Enforced at |
 |---|---|---|
 | `maxClearance` (per field) | `[1, kMaxClearanceCells]` | `PlacementField` construction |
-| `minSpacing` (D6) | `[0, kMaxClearanceCells]` | `queryPlacements` param validation |
+| `minSpacing` (D6) | `[1, kMaxClearanceCells]` | `queryPlacements` param validation |
 | query radius `c` (D6) | `[0, maxClearance]` | `queryPlacements` param validation |
 
 `1024`, not `46,340`: a ceiling set at the representational limit is a ceiling
@@ -260,6 +260,23 @@ different question than the caller asked; letting it through returns `false` for
 cells that genuinely have that clearance — a false negative indistinguishable
 from "no space anywhere", which is the failure mode a caller cannot debug.
 Rejecting turns it into a caught precondition.
+
+**`minSpacing = 0` is rejected too, for a different reason.** Zero is not a
+weaker spacing constraint — on an integer lattice it is not a constraint at all,
+because two *distinct* cells are already `>= 1` cell apart. `minSpacing = 1` is
+therefore the unconstrained draw, and `0` adds no expressive power over it. What
+it does add is a degenerate D6 annulus: candidates are rejection-sampled from
+`[minSpacing, 2*minSpacing]`, which at zero is the single offset `(0, 0)` — the
+anchor itself. A distinct-sample implementation can never leave the anchor, so
+the query returns at most one hit over an arbitrarily free field, and the caller
+reads that shortfall as "no space anywhere" (D6 has no failure sentinel). Rather
+than define a zero-spacing candidate path that would duplicate `minSpacing = 1`,
+the domain excludes zero.
+
+The asymmetry with `c` is deliberate: `clearance = 0` **is** valid, because
+`c*c = 0` makes the clearance predicate `0 <= clearanceSq`, vacuously true for
+every present cell — genuinely "no clearance requirement". Zero is a meaningful
+relaxation for `c` and a degenerate spelling for `minSpacing`.
 
 **Intermediates are `std::int64_t`; only the stored representation is int32.**
 The domain bound above is necessary but *not* sufficient, because the F–H 1-D
@@ -332,9 +349,11 @@ Bridson Poisson-disk sampling, all-integer:
 
 - Candidates are integer cell offsets **rejection-sampled from the annulus**
   `[minSpacing, 2·minSpacing]` — no `sin`/`cos`, no libm anywhere in the draw
-  path.
-- Background acceleration grid at `max(1, floor(minSpacing * 0.7071f))` (the
-  `r/√2` cell that makes each grid cell hold at most one sample).
+  path. `minSpacing >= 1` by D4's domain, so the annulus is never degenerate.
+- Background acceleration grid at `gridWidth(minSpacing)` — the `r/√2` cell that
+  makes each grid cell hold at most one sample, computed **in integers**. The
+  width is part of the contract, not an implementation detail; see "The
+  background-grid width" below.
 - Spacing checks in integer squared distance.
 - **Seeded at the anchor cell**, with an early-out at K. That early-out is where
   the near-anchor bias comes from — Bridson's active-list frontier grows
@@ -349,6 +368,56 @@ Bridson Poisson-disk sampling, all-integer:
 > therefore not an independently falsifiable property under a fixed seed — the
 > test that asserts it is really re-asserting determinism. Do not let a future
 > reader take it for a measured guarantee.
+
+#### The background-grid width — integer-only, and pinned by value
+
+The width must satisfy `w <= r / √2` (`r = minSpacing`): a grid cell of side `w`
+has diagonal `w√2`, and `w√2 <= r` is exactly the condition under which two
+samples sharing a cell would violate the spacing rule — i.e. the condition that
+makes "at most one sample per grid cell" true. The contract locks the **largest**
+such `w`, with no floating point anywhere:
+
+```cpp
+// largest w with w <= r / sqrt(2), i.e. with 2*w*w <= r*r
+int gridWidth(int r) {                     // r == minSpacing, in [1, kMaxClearanceCells]
+    const std::int64_t w =
+        IRMath::isqrt(static_cast<std::int64_t>(r) * r / 2);
+    return static_cast<int>(w < 1 ? 1 : w);
+}
+```
+
+`IRMath::isqrt(x)` is the exact integer square root — the largest `n` with
+`n*n <= x`, computed by bit-halving: no `std::sqrt`, no libm. It is a general
+primitive, not a field kernel, so it lands in
+`engine/math/include/irreden/ir_math.hpp` (C5). The identity `floor(r/√2) == isqrt(floor(r²/2))` holds
+because for integer `w`, `w² <= r²/2` and `w² <= floor(r²/2)` are the same
+statement; it was checked exhaustively over the whole domain `r ∈ [1, 1024]`
+against a `floor(r/√2)` reference — **0 disagreements**.
+
+**Why not the obvious `r * 0.7071f`.** A truncated decimal is not `1/√2`:
+`floor(r * 0.7071)` disagrees with `floor(r/√2)` at exactly **five** points in
+the domain — `r = 338, 577, 676, 915, 1014` — each one cell short (`238` vs
+`239` at `r = 338`). The divergence belongs to the constant, not to the float
+width: `float` and `double` agree with *each other* at every `r`, and
+`r * (1/√2)` in *either* width agrees with the exact value at every `r`. So that
+spelling admits two conforming readings — the written literal, and the `1/√2` it
+is meant to stand for — which disagree at five in-domain values, in a draw D7
+requires to be byte-identical across platforms. And the reading that is *right*
+is the one this document's own cross-cutting rule forbids ("no `sqrt` and no
+libm transcendental on any path in D4 or D6"). An exact integer form is the only
+spelling that is both permitted and unambiguous.
+
+A conservative rational (`(r * 7071) / 10000`) satisfies "integer-only" without
+fixing this: measured over the same domain it reproduces **the same five
+undershoots**, being the same truncated constant with the float removed.
+
+**The `w < 1` clamp fires at exactly one input**, `r = 1`, where
+`floor(1/√2) = 0` and a zero-width grid is meaningless. At `r = 1` the clamped
+`w = 1` does *not* satisfy `2w² <= r²`, and it is safe there for a lattice
+reason rather than the diagonal one: a grid cell of side 1 covers exactly one
+lattice cell, so it holds at most one sample by construction. That is the only
+input for which the diagonal argument is not the one doing the work — which is
+why the clamp is stated as a contract case rather than left as defensive code.
 
 ### D7 — determinism
 
@@ -384,7 +453,7 @@ struct PlacementQueryStats {
 struct PlacementParams {
     IRMath::ivec2 anchor_{};
     int           k_          = 0;   // hits wanted; early-out at K (D6)
-    int           minSpacing_ = 0;   // cells, [0, kMaxClearanceCells]
+    int           minSpacing_ = 1;   // cells, [1, cap]; 1 == unconstrained (D4)
     int           clearance_  = 0;   // "c", cells, [0, field.maxClearance()]
     bool          sameRegionAsAnchor_ = false;
     std::uint64_t seed_       = 0;   // D7
@@ -450,7 +519,7 @@ per-candidate foreign-read footgun unreachable from script.
 
 | Lives in | What |
 |---|---|
-| `engine/math/` | field-layout-agnostic kernels: `Pcg32`, the 1-D squared-EDT pass over a `std::span`. Header-only, gtest-covered per kernel. |
+| `engine/math/` | field-layout-agnostic kernels: `Pcg32`, `isqrt` (exact integer square root, D6), the 1-D squared-EDT pass over a `std::span`. Header-only, gtest-covered per kernel. |
 | `engine/prefabs/irreden/spatial/` | everything chunk-aware: storage, windowed EDT driver, region stitching, the draw, the query. Header-only per prefab convention — no CMake registration. |
 
 The split is the reusability line: a 1-D squared-EDT pass over a span is useful
@@ -525,7 +594,7 @@ edits and carry a value ⇒ this kit.
 | **C2** (#3160) | `chunked_field.hpp` — `ChunkedField2D<T>`, summaries, dirty tracking, `FieldChunkKey` (D2, D3) | not started |
 | **C3** (#3161) | `IRMath` 1-D squared-EDT kernel + `field_clearance.hpp` — capped windowed F–H (D4, D10) | not started |
 | **C4** (#3162) | `field_regions.hpp` — per-chunk CCL + seam-stitch union-find (D5) | not started |
-| **C5** (#3163) | `IRMath::Pcg32` + `field_placement.hpp` — draw, `PlacementField`, `queryPlacements` + stats (D6, D7, D8); flips this table to shipped | not started |
+| **C5** (#3163) | `IRMath::Pcg32` + `IRMath::isqrt` + `field_placement.hpp` — draw, `PlacementField`, `queryPlacements` + stats (D6, D7, D8); flips this table to shipped | not started |
 
 Each child is `**Blocked by:**` its predecessor. Tests live in **`test/ecs/`**,
 beside `spatial_grid_test.cpp` — the kit's composing sibling — and every new
@@ -580,9 +649,18 @@ default-passes:
   the valid count; **pruning fires** — `PlacementQueryStats` reports
   `chunksPruned_ > 0` and `chunksConsidered_ <` the resident chunk total on a
   mostly-low-clearance fixture; **out-of-domain params are rejected** at each
-  boundary — `minSpacing = kMaxClearanceCells + 1` and `c = maxClearance + 1`
-  rejected, the adjacent in-domain values `kMaxClearanceCells` and
-  `maxClearance` accepted (both arms); and one end-to-end fixture builds
+  boundary — `minSpacing = 0`, `minSpacing = kMaxClearanceCells + 1` and
+  `c = maxClearance + 1` rejected, the adjacent in-domain values
+  `minSpacing = 1`, `kMaxClearanceCells` and `maxClearance` accepted (both arms,
+  so the check cannot pass by rejecting everything); **the background-grid width
+  is pinned by value** (D6) — `gridWidth(r)` asserted equal to an independent
+  `floor(r / sqrt(2))` reference for every `r` in `[1, kMaxClearanceCells]` (the
+  reference may use `double` — `test/**` is outside the no-libm rule, the kit is
+  not), `r = 1` asserted to clamp to `1`, and `r` in
+  `{338, 577, 676, 915, 1014}` — the inputs where a truncated `0.7071` constant
+  is one cell short — asserted to give `{239, 408, 478, 647, 717}`, so any
+  truncated-constant spelling fails rather than passing quietly;
+  and one end-to-end fixture builds
   occupancy → `update()` → query and gets K chunk-qualified hits honouring
   clearance, spacing, region and anchor under a fixed seed.
 
@@ -591,7 +669,8 @@ Cross-cutting, for any reviewer of C2–C5:
 - No `glm::*` and no `std::` math outside `engine/math/` (`.claude/rules/cpp-math.md`);
   kit code in prefabs goes through `IRMath::`. `test/**` is outside that rule's
   scope.
-- No `sqrt` and no libm transcendental on any path in D4 or D6.
+- No `sqrt` and no libm transcendental on any path in D4 or D6. `IRMath::isqrt`
+  is the sanctioned integer form where a square root is unavoidable (D6).
 - Every squared-distance intermediate is `std::int64_t`; `std::int32_t` appears
   only as the stored representation, where saturation bounds it (D4).
 - No `std::uniform_*_distribution` anywhere (D7).

@@ -173,10 +173,16 @@ only the pieces that are useful without a chunk grid live here.
 | `edt.hpp` | 1-D **squared** Euclidean distance transform over a `std::span` (Felzenszwalb–Huttenlocher lower-envelope pass, O(n)). Integer in, integer out — no `sqrt` anywhere; 2D/3D is this kernel run per axis. |
 | `rng_pcg32.hpp` | `IRMath::Pcg32` — explicitly seeded, no thread-local state, raw-word range mapping. The deterministic-sampling generator; **not** a replacement for `threadRng()` in gameplay randomness. |
 
+The kit also relies on `IRMath::isqrt` — the exact integer square root, largest
+`n` with `n*n <= x`, no `std::sqrt` — which is a general primitive rather than a
+field kernel and so lives in `ir_math.hpp`, not in a header above. `D6` needs it
+for the placement draw's background-grid width, which is contractually
+`floor(r/√2)` and must be reached without floating point.
+
 Which of those exist yet is tracked in the doc's "Migration status" table, not
-here. Locked contract for both:
+here. Locked contract for all of them:
 [`docs/design/chunked-field-placement-kit.md`](../../docs/design/chunked-field-placement-kit.md)
-(decisions `D4`, `D7`, `D10`).
+(decisions `D4`, `D6`, `D7`, `D10`).
 
 ## Gotchas
 

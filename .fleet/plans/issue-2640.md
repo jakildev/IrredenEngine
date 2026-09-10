@@ -135,8 +135,12 @@ reviewable doc; children C2–C5 implement them):
 - **D6 — placement draw.** Bridson Poisson-disk, all-integer: candidates
   are integer cell offsets rejection-sampled from the annulus
   `[minSpacing, 2·minSpacing]` (no libm transcendentals anywhere in the
-  draw path), background grid at `max(1, floor(minSpacing·0.7071f))`,
-  spacing checks in integer squared distance. Seeded at the anchor cell —
+  draw path), background grid at `gridWidth(r) = max(1, isqrt(r²/2))` —
+  exactly `floor(r/√2)`, computed in integers via a new `IRMath::isqrt`
+  kernel — **not** a float `r·0.7071f` (a truncated decimal is not
+  `1/√2` and undershoots at five in-domain values),
+  spacing checks in integer squared distance. `minSpacing` is bounded
+  **below by 1**: at 0 the annulus collapses to the anchor offset alone. Seeded at the anchor cell —
   early-out at K yields the near-anchor bias the consumer shape needs
   without a weight function (weighted bias recorded in the doc as a future
   extension, not built). Validity per candidate: cell present,
@@ -263,8 +267,14 @@ not a default-pass.
   fires** — on a mostly-low-clearance fixture, `PlacementQueryStats`
   reports `chunksPruned > 0` and `chunksConsidered <` total resident
   chunks (the cost-proportionality observable); out-of-domain params
-  rejected at each boundary — `minSpacing` 1025 and `c` = maxClearance+1
-  rejected, adjacent in-domain 1024 and maxClearance accepted (both arms);
+  rejected at each boundary — `minSpacing` 0, `minSpacing` 1025 and
+  `c` = maxClearance+1 rejected, adjacent in-domain `minSpacing` 1, 1024
+  and maxClearance accepted (both arms); background-grid width pinned by
+  value — `gridWidth(r)` equals a `floor(r/sqrt(2))` reference (the test
+  may use libm; the kit may not) for every `r` in `[1, 1024]`, clamps to 1
+  at `r = 1`, and gives `{239, 408, 478, 647, 717}` at
+  `r ∈ {338, 577, 676, 915, 1014}` — the inputs where a truncated
+  `0.7071` constant is one cell short, so that form fails;
   end-to-end — build
   occupancy → `update()` → query returns K chunk-qualified hits honoring
   clearance + spacing + region + anchor bias under a fixed seed.
@@ -277,6 +287,8 @@ not a default-pass.
 - The squared representation has a **bounded domain**:
   `kMaxClearanceCells = 1024` caps `maxClearance`, `minSpacing` and the
   query radius `c`, because int32 `n²` overflows at n = 46,341.
+  `minSpacing`'s domain starts at **1**, not 0 (a zero annulus cannot
+  leave the anchor); `c`'s starts at 0, which is a real relaxation.
   Separately, every EDT intermediate is int64 — the F-H
   parabola term `f[q] + q²` is bounded by the *window row length*, not by
   the clearance cap, so the cap alone does not make the pass safe. Seeding
