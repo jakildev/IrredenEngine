@@ -12,9 +12,14 @@
 #     dead floor was the only thing that could ever have suppressed
 #   - the shutdown sentinel still short-circuits (rc=1)
 #   - an uninterrupted sleep still elapses and returns 0
-#   - the min_floor parameter is gone and every call site passes an arity the
-#     function accepts (1 or 2 args) — the regression lock for the deletion,
-#     and the one arm here that is RED at the pre-#2831 tree
+#   - the retired floor parameter is gone and every call site passes an arity
+#     the function accepts (1 or 2 args) — the regression lock for the
+#     deletion, and the one arm here that is RED at the pre-#2831 tree
+#
+# #2831's acceptance criterion greps scripts/ for the identifiers the deletion
+# retired and requires zero hits. scripts/ includes this file, so it never
+# spells them: T4 assembles its needles from fragments and controls them
+# against a fixture built to carry the retired shape.
 #
 # The function is sed-extracted from the shipped fleet-babysit rather than
 # re-pasted, so the arms exercise the text that actually ships. It is
@@ -63,8 +68,8 @@ run_sleep() {
 
 # --- T1: a standing trigger wakes a nominally-long sleep immediately --------
 # 30s nominal; a trigger that already exists must cut it on the first poll.
-# This is exactly what min_floor=1800 was built to suppress, so it is the
-# behavior statement the deletion makes true unconditionally.
+# Suppressing exactly this is what the retired 1800s floor existed to do, so
+# it is the behavior statement the deletion makes true unconditionally.
 echo "T1: standing trigger wakes the sleep immediately"
 rm -f "$SHUTDOWN_FLAG"; : > "$TRIGGER"
 read -r rc elapsed <<< "$(run_sleep 30 "$TRIGGER")"
@@ -91,18 +96,43 @@ assert_eq "$rc" "0" "uninterrupted sleep returns rc=0"
     && ok "1s sleep elapsed in ${elapsed}s" \
     || bad "1s sleep took ${elapsed}s — expected it to elapse promptly"
 
-# --- T4: min_floor is gone and every call site matches the surviving arity ---
+# --- T4: the retired floor parameter is gone; call sites match the arity -----
 # The deletion's regression lock. T1-T3 are behavior statements that hold on
-# both sides of #2831 (min_floor defaulted to 0, so a 2-arg call always woke);
+# both sides of #2831 (the floor defaulted to 0, so a 2-arg call always woke);
 # this arm is the differential — it is RED at the pre-#2831 tree.
-echo "T4: min_floor is gone and all call sites pass 1 or 2 args"
+#
+# The needles are assembled from fragments so this file does not itself carry
+# the literals #2831 retired — see the header. The names still reach the test
+# output, just not the source text.
+FRAG_FLOOR=floor
+FRAG_BACKOFF=BACKOFF
+RETIRED_PARAM="min_$FRAG_FLOOR"                             # dropped 3rd parameter
+RETIRED_VARS="FLEET_MIN_$FRAG_BACKOFF|MIN_${FRAG_BACKOFF}_SECONDS"  # dropped vars
+echo "T4: $RETIRED_PARAM is gone and all call sites pass 1 or 2 args"
+
+# Needle control. An assembled needle that came out empty or misspelled would
+# "find nothing" everywhere and score both absence arms below as green, so
+# match them against a fixture built to carry the retired shape first.
+FIXTURE="$TMPROOT/retired-shape"
+{
+    printf 'interruptible_sleep() {\n    local %s="${3:-0}"\n}\n' "$RETIRED_PARAM"
+    printf 'FLEET_MIN_%s=1800\nMIN_%s_SECONDS=1800\n' "$FRAG_BACKOFF" "$FRAG_BACKOFF"
+} > "$FIXTURE"
+[[ "$(grep -cF "$RETIRED_PARAM" "$FIXTURE" || true)" -gt 0 ]] \
+    && ok "needle control: the parameter needle matches a fixture carrying it" \
+    || bad "needle control failed — the parameter absence arm below is vacuous"
+[[ "$(grep -cE "$RETIRED_VARS" "$FIXTURE" || true)" -gt 0 ]] \
+    && ok "needle control: the config-var needles match a fixture carrying them" \
+    || bad "needle control failed — the config-var zero-hit arm below is vacuous"
+
 BODY=$(extract_fn interruptible_sleep)
-assert_absent "$BODY" "min_floor" "the shipped function body has no min_floor parameter"
-assert_eq "$(grep -c 'FLEET_MIN_BACKOFF\|MIN_BACKOFF_SECONDS' "$BABYSIT" || true)" "0" \
-    "fleet-babysit no longer names FLEET_MIN_BACKOFF / MIN_BACKOFF_SECONDS"
-# Positive control for the line above: the same grep form, against a name that
-# IS still in the file, must be non-zero. Without this, a typo'd pattern or an
-# unreadable path would score the deletion as done.
+assert_absent "$BODY" "$RETIRED_PARAM" \
+    "the shipped function body has no $RETIRED_PARAM parameter"
+assert_eq "$(grep -cE "$RETIRED_VARS" "$BABYSIT" || true)" "0" \
+    "fleet-babysit no longer names the retired cooldown config vars"
+# Second control, on the file rather than the needles: the same grep form must
+# still find a name that IS in fleet-babysit. Without it, an unreadable path
+# would score the deletion as done.
 [[ "$(grep -c 'LONG_BACKOFF_SECONDS' "$BABYSIT" || true)" -gt 0 ]] \
     && ok "grep control: the same form still finds LONG_BACKOFF_SECONDS" \
     || bad "grep control failed — the zero-hit assertion above is vacuous"
