@@ -1,4 +1,21 @@
 <!--
+Closeout note (PR-4, the bird + tree slice). Two steps of PR-4 below did not
+land as written, both for reasons the slice measured rather than chose:
+
+- "set the FPS slider" — the SessionBuilder has no widget-drag op, so the
+  editor's sliders are unreachable from a recipe. Filed as #3149; the bird's
+  META carries the editor's default 12 FPS.
+- "TREE session: trunk line-fills, foliage box-fills + carve" — a line or box
+  fill needs BOTH its corners aimable, and a drag up the trunk's z axis cannot
+  aim its far corner (the anchor does not exist until the tier below is
+  placed). The trunk is a tier-per-drag climb instead, and the canopy is carved
+  out of a solid column rather than grown outward, because nothing can be
+  placed below or beside standing geometry in mid-air (#3148).
+
+Both are recorded in docs/design/editor-authoring-friction.md §2g.
+-->
+
+<!--
 Plan file for #766 (per #1932 — committed as the first commit of the
 implementer's PR). This is the `## Plan` comment posted on issue #766 on
 2026-07-15 and cleared `fleet:plan-review` SOUND the same day (fleet-plan-lint

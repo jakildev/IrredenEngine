@@ -12,8 +12,12 @@
 #include <irreden/asset/voxel_set_format.hpp>
 #include <irreden/voxel/dense_bridge.hpp>
 
+#include <algorithm>
 #include <array>
+#include <cctype>
 #include <cstdio>
+#include <cstdlib>
+#include <filesystem>
 #include <numbers>
 #include <string>
 #include <vector>
@@ -205,9 +209,120 @@ bool g_initialYawSet = false;
 // an arc. Off by default so the demo exercises the shipped default.
 bool g_pivotOrigin = false;
 IRRender::DebugOverlayMode g_debugOverlay = IRRender::DebugOverlayMode::NONE;
-// --load-vxs <path>: load a DENSE-mode .vxs and render frame 0 alongside the
-// built-in shape fixtures. Empty = not requested.
+// --load-vxs <path>: load a DENSE-mode .vxs and render it alongside the built-in
+// shape fixtures. Empty = not requested. When the path names one file of a
+// `<base>_frame_<N>.vxs` set (what the voxel editor writes for a multi-frame
+// animation, #766 F-1.6), every sibling frame loads and the set plays back.
 std::string g_loadVxsPath;
+// --vxs-frame <N>: pin a multi-frame set to frame N instead of playing it back,
+// so a screenshot names the pose it captured. Negative = play back.
+int g_vxsFrame = -1;
+
+// The loaded animation's frames and the entity they swap into. A single-frame
+// asset holds exactly one entry and never registers the playback system, so its
+// render path is byte-identical to the pre-animation one.
+std::vector<std::vector<IRComponents::C_Voxel>> g_vxsFrames;
+IREntity::EntityId g_vxsEntity = IREntity::kNullEntity;
+// Playback rate, read from frame 0's `fps` META entry (the editor writes it
+// from its FPS slider). The editor's own default when the key is absent.
+float g_vxsFps = 12.0f;
+// Ticks elapsed since the playback system started, so the cadence is counted in
+// engine ticks rather than wall time. File-scope rather than a tick-local
+// static, per .claude/rules/cpp-systems.md.
+int g_vxsPlaybackTick = 0;
+
+// Sibling frame files of a `<base>_frame_<N>.vxs` path, frame-ordered and
+// contiguous from 0. A path without that suffix — or one whose frame 0 sibling
+// is missing — resolves to just itself, so a single-file asset loads exactly as
+// it did before multi-frame support.
+//
+// The `_frame_<N>` shape is the voxel editor's, written by
+// `creations/editors/voxel_editor/scene_io.hpp` `detail::framePath` — this is
+// the only reader of it outside that editor, and the two have to agree. The
+// convention is not lifted into a shared header because there is exactly one
+// writer and one reader; a rename on either side is a two-file edit, which the
+// back-pointers here and at framePath are meant to make findable.
+std::vector<std::string> resolveVxsFramePaths(const std::string &path) {
+    namespace fs = std::filesystem;
+    const fs::path given(path);
+    const std::string stem = given.stem().string(); // drops the ".vxs"
+    const std::string marker = "_frame_";
+    const std::size_t markerAt = stem.rfind(marker);
+    if (markerAt == std::string::npos)
+        return {path};
+    const std::string index = stem.substr(markerAt + marker.size());
+    if (index.empty() || !std::all_of(index.begin(), index.end(), [](unsigned char c) {
+            return std::isdigit(c) != 0;
+        }))
+        return {path};
+
+    const fs::path dir = given.parent_path();
+    const std::string base = stem.substr(0, markerAt);
+    std::vector<std::string> frames;
+    for (int frame = 0;; ++frame) {
+        const fs::path candidate =
+            dir / (base + marker + std::to_string(frame) + given.extension().string());
+        if (!fs::exists(candidate))
+            break;
+        frames.push_back(candidate.string());
+    }
+    // A set that does not start at frame 0 (the caller pointed at frame 3 of a
+    // set whose earlier files are absent) is not an animation this can play, so
+    // fall back to the single file the caller actually named.
+    return frames.empty() ? std::vector<std::string>{path} : frames;
+}
+
+// Advance the loaded animation one step every `kVxsFramesPerStep` ticks. The
+// engine drives a fixed-step UPDATE under --auto-screenshot (isAutoCaptureActive
+// pins one tick per render frame), so a tick-counted cadence steps the same way
+// on every host instead of drifting with the frame time.
+void tickVxsPlayback();
+
+// Swap frame `index`'s voxels into the loaded set: a span copy over the
+// already-allocated pool records, no reallocation.
+//
+// The copy writes the raw `voxels_` span, so it closes with
+// `resyncAfterRawEdits()` (engine/prefabs/irreden/voxel/CLAUDE.md). The
+// load-bearing half is the pool's active mask: it mirrors `color_.alpha_ != 0`,
+// it is what `c_voxel_visibility_compact` reads *instead of* alpha (T-287), and
+// it lives in the pool rather than in the voxel records — so copying records
+// updates alpha and leaves the mask describing the frame that just left, and
+// the swap renders a blend of the two poses. Same call, same reason, as the
+// editor's own loadFrameToLive.
+void showVxsFrame(int index) {
+    if (g_vxsEntity == IREntity::kNullEntity || g_vxsFrames.empty())
+        return;
+    const std::vector<IRComponents::C_Voxel> &frame =
+        g_vxsFrames[static_cast<std::size_t>(index) % g_vxsFrames.size()];
+    auto &set = IREntity::getComponent<IRComponents::C_VoxelSetNew>(g_vxsEntity);
+    if (frame.size() != set.voxels_.size())
+        return;
+    std::copy(frame.begin(), frame.end(), set.voxels_.begin());
+    set.resyncAfterRawEdits();
+    // ...and evict the pool's cached chunk bounds. Those are the cull inputs and
+    // they are built by skipping voxels whose alpha is zero, so a swap that
+    // changes WHICH cells are active invalidates them — but nothing in
+    // resyncAfterRawEdits marks them, because the pool's own eviction points are
+    // all position changes (allocate / free / move). Without this the arriving
+    // pose renders culled against the departing pose's bounds and captures as a
+    // genuine mixture of the two (measured on the bird: of the 32880 pixels
+    // where the poses differ, 10680 drew the old pose and 16856 the new).
+    if (auto pool = IREntity::getComponentOptional<IRComponents::C_VoxelPool>(set.canvasEntity_)) {
+        pool.value()->markChunkBoundsDirty();
+        pool.value()->markChunkWorldBoundsDirty();
+    }
+}
+
+void tickVxsPlayback() {
+    if (g_vxsFrames.size() <= 1)
+        return;
+    const int ticksPerStep =
+        IRMath::max(1, static_cast<int>(static_cast<float>(IRConstants::kFPS) / g_vxsFps));
+    ++g_vxsPlaybackTick;
+    if (g_vxsPlaybackTick % ticksPerStep != 0)
+        return;
+    showVxsFrame(g_vxsPlaybackTick / ticksPerStep);
+}
 
 // --spin-yaw [deg/sec] (#1271): drive the camera's Z-yaw at a constant
 // rate so the cardinal/residual rebracket can be eyeballed (live) or sampled
@@ -766,8 +881,15 @@ void registerCliArgs() {
     args.flag("--cull-validate", "Frozen-cull free-fly validation sweep (#1438)");
     args.string(
         "--load-vxs",
-        "Path to a DENSE-mode .vxs to load and render alongside fixtures",
+        "Path to a DENSE-mode .vxs to load and render alongside fixtures (a "
+        "<base>_frame_<N>.vxs path loads the whole animation)",
         ""
+    );
+    args.number(
+        "--vxs-frame",
+        "Pin the loaded .vxs animation to this frame instead of playing "
+        "it back (#766)",
+        -1.0f
     );
     args.optionalInt(
         "--spin-yaw",
@@ -833,6 +955,9 @@ void readCliArgs() {
     g_cullValidate = args.getFlag("--cull-validate");
     if (args.wasProvided("--load-vxs")) {
         g_loadVxsPath = args.getString("--load-vxs");
+    }
+    if (args.wasProvided("--vxs-frame")) {
+        g_vxsFrame = static_cast<int>(args.getFloat("--vxs-frame"));
     }
     // --spin-yaw: 0 (disabled) when absent, else the rate (30 if bare). The
     // optional value reads as an int — fractional deg/sec is truncated.
@@ -1503,14 +1628,39 @@ void onHelpOverlayAssertFrame(int shotIndex, bool isCaptureFrame) {
 } // namespace
 
 void initSystems() {
-    IRSystem::registerPipeline(
-        IRTime::Events::UPDATE,
-        {IRSystem::createSystem<IRSystem::LOD_UPDATE>(),
-         IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
-         IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>(),
-         IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS>(),
-         IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS_IMPLICIT>()}
-    );
+    std::list<IRSystem::SystemId> updatePipeline{
+        IRSystem::createSystem<IRSystem::LOD_UPDATE>(),
+        IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
+        IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>(),
+        IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS>(),
+        IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS_IMPLICIT>()
+    };
+    // --load-vxs animation playback (#766 F-1.6): swap the next frame's voxels
+    // into the loaded set on a fixed tick cadence derived from the asset's own
+    // FPS. Registered whenever a set was requested for playback — the entity
+    // does not exist yet (initEntities runs after this), so the frame count is
+    // not knowable here; the tick no-ops for a single-frame asset.
+    //
+    // Pushed to the FRONT: the swap has to land before UPDATE_VOXEL_SET_CHILDREN
+    // and the grid rebuilds run, so everything downstream sees one pose for the
+    // whole tick. Appended at the end instead, the frame that swaps renders the
+    // arriving colours against the departing pose's uploaded state and captures
+    // as a blend of the two.
+    //
+    // The swap targets one known entity, so it runs in beginTick rather than a
+    // per-entity tick (.claude/rules/cpp-ecs.md, alternative 3). C_VoxelSetNew
+    // is the archetype filter only because the system needs SOME filter; the
+    // per-entity function is deliberately empty.
+    if (!g_loadVxsPath.empty() && g_vxsFrame < 0) {
+        updatePipeline.push_front(
+            IRSystem::createSystem<IRComponents::C_VoxelSetNew>(
+                "ShapeDebugVxsPlayback",
+                [](const IRComponents::C_VoxelSetNew &) {},
+                []() { tickVxsPlayback(); }
+            )
+        );
+    }
+    IRSystem::registerPipeline(IRTime::Events::UPDATE, updatePipeline);
     // Settings menu (#2551) rides the INPUT pipeline: its widget chain needs
     // the cursor state INPUT_KEY_MOUSE publishes, and polling the widgets in
     // INPUT means a toggle applies before the same frame renders.
@@ -2851,26 +3001,73 @@ void initEntities() {
         C_LightSource{LightType::EMISSIVE, Color{80, 200, 255, 255}, 2.0f, static_cast<uint8_t>(30)}
     );
 
-    // --load-vxs: load a DENSE-mode .vxs file (frame 0) and place the voxel
-    // set at the origin so it can be compared against the procedural shapes.
+    // --load-vxs: load a DENSE-mode .vxs file and place the voxel set at the
+    // origin so it can be compared against the procedural shapes. A
+    // `<base>_frame_<N>.vxs` path brings in every sibling frame; frame 0 seeds
+    // the entity and the rest are kept for the playback swap (#766 F-1.6).
     if (!g_loadVxsPath.empty()) {
-        auto loaded = IRAsset::loadDenseVoxelSet(g_loadVxsPath);
-        if (!loaded.ok()) {
-            IR_LOG_ERROR("--load-vxs: could not load '{}'", g_loadVxsPath);
-        } else if (loaded.value_.dense_.voxels_.size() != loaded.value_.dense_.voxelCount()) {
-            IR_LOG_ERROR("--load-vxs: voxel count mismatch in '{}'", g_loadVxsPath);
+        const std::vector<std::string> framePaths = resolveVxsFramePaths(g_loadVxsPath);
+        std::size_t expectedVoxels = 0;
+        bool loadFailed = false;
+        for (const std::string &framePath : framePaths) {
+            auto loaded = IRAsset::loadDenseVoxelSet(framePath);
+            if (!loaded.ok()) {
+                IR_LOG_ERROR("--load-vxs: could not load '{}'", framePath);
+                loadFailed = true;
+                break;
+            }
+            const IRAsset::DenseVoxelSet &dense = loaded.value_.dense_;
+            if (dense.voxels_.size() != dense.voxelCount()) {
+                IR_LOG_ERROR("--load-vxs: voxel count mismatch in '{}'", framePath);
+                loadFailed = true;
+                break;
+            }
+            auto voxelSet = IRPrefab::DenseVoxel::toComponent(dense);
+            if (g_vxsEntity == IREntity::kNullEntity) {
+                expectedVoxels = voxelSet.voxels_.size();
+                // Frame 0's META carries the animation's playback rate.
+                for (const IRAsset::MetaEntry &entry : dense.meta_) {
+                    // A hand-edited or foreign sidecar can carry anything here,
+                    // and a throw would take down a demo run over a playback
+                    // rate — keep the editor's default instead.
+                    if (entry.key_ != "fps")
+                        continue;
+                    const float fps = std::strtof(entry.value_.c_str(), nullptr);
+                    if (fps > 0.0f)
+                        g_vxsFps = fps;
+                }
+                g_vxsEntity = IREntity::createEntity(
+                    C_LocalTransform{vec3(-20.0f, -8.0f, 0.0f)},
+                    IRComponents::C_VoxelSetNew{voxelSet}
+                );
+            } else if (voxelSet.voxels_.size() != expectedVoxels) {
+                // A set whose frames disagree on size cannot be swapped in
+                // place, and a partial animation would play a stutter nobody
+                // asked for — refuse the whole set rather than the odd frame.
+                IR_LOG_ERROR(
+                    "--load-vxs: frame '{}' has {} voxels, frame 0 has {} — not an animation",
+                    framePath,
+                    voxelSet.voxels_.size(),
+                    expectedVoxels
+                );
+                loadFailed = true;
+                break;
+            }
+            g_vxsFrames.emplace_back(voxelSet.voxels_.begin(), voxelSet.voxels_.end());
+        }
+        if (loadFailed) {
+            g_vxsFrames.clear();
         } else {
-            auto voxelSet = IRPrefab::DenseVoxel::toComponent(loaded.value_.dense_);
-            EntityId vxsEntity = IREntity::createEntity(
-                C_LocalTransform{vec3(-20.0f, -8.0f, 0.0f)},
-                std::move(voxelSet)
-            );
             IR_LOG_INFO(
-                "--load-vxs: loaded '{}' -> entity {} ({} voxels)",
+                "--load-vxs: loaded '{}' -> entity {} ({} voxels, {} frame(s) at {} FPS)",
                 g_loadVxsPath,
-                vxsEntity,
-                loaded.value_.dense_.voxelCount()
+                g_vxsEntity,
+                expectedVoxels,
+                g_vxsFrames.size(),
+                g_vxsFps
             );
+            if (g_vxsFrame >= 0)
+                showVxsFrame(g_vxsFrame);
         }
     }
 

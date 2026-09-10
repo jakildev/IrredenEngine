@@ -13,6 +13,7 @@
 #include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 #include <irreden/voxel/components/component_voxel.hpp>
+#include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/voxel/components/component_joint.hpp>
 #include <irreden/voxel/components/component_joint_name.hpp>
@@ -85,6 +86,10 @@
 
 #include "editor_layer_manager.hpp"
 
+// Paint palette colours + the GUI-canvas geometry of the swatch grid, shared
+// with the session builder so a scripted swatch click aims at the live layout.
+#include "palette.hpp"
+
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
@@ -145,31 +150,6 @@ inline vec3 deriveSceneOrigin(ivec3 size) {
 }
 ivec3 g_editableSceneSize = kDefaultEditableSceneSize;
 vec3 g_editableSceneOrigin = deriveSceneOrigin(kDefaultEditableSceneSize);
-constexpr int kPaletteCount = 16;
-
-// 16 distinct palette colors. Indexed in row-major order across the
-// 4×4 panel grid. Colors are picked to span hue and value so the
-// active-swatch indicator (theme.borderFocused_ outline) reads against
-// every cell.
-constexpr Color kPaletteColors[kPaletteCount] = {
-    Color{220, 80, 80, 255},
-    Color{220, 140, 60, 255},
-    Color{220, 200, 60, 255},
-    Color{120, 200, 60, 255},
-    Color{60, 200, 120, 255},
-    Color{60, 200, 200, 255},
-    Color{60, 140, 220, 255},
-    Color{80, 80, 220, 255},
-    Color{140, 60, 220, 255},
-    Color{220, 60, 200, 255},
-    Color{200, 200, 200, 255},
-    Color{140, 140, 140, 255},
-    Color{60, 60, 60, 255},
-    Color{220, 180, 140, 255},
-    Color{120, 80, 60, 255},
-    Color{240, 240, 240, 255},
-};
-
 // Per-bone display colors for the bone selector panel (F-2.7 / #1608).
 // Index 0 = identity / unrigged (neutral gray). Indices 1..7 cycle through
 // distinct hues so painted bone assignments read clearly against each other.
@@ -576,6 +556,13 @@ void onSessionAssertFrame(int shotIndex, bool isCaptureFrame) {
     for (const Session::AimFixup &aim : segment.aims_) {
         segment.events_[static_cast<std::size_t>(aim.eventIndex_)].screenPx_ =
             IRRender::worldPos3DToMouseScreenPx(aim.worldPoint_);
+    }
+    // Widget aims resolve through the GUI-canvas mapping instead — the canvas is
+    // sized from the live framebuffer, so a swatch's screen pixel is no more
+    // bakeable at recipe-build time than a scene voxel's is.
+    for (const Session::GuiAimFixup &aim : segment.guiAims_) {
+        segment.events_[static_cast<std::size_t>(aim.eventIndex_)].screenPx_ =
+            IRRender::guiTrixelToScreenPx(aim.guiTrixel_);
     }
     IRPrefab::GuiTest::onFrame(
         g_guiAssertLatch,
@@ -1148,6 +1135,32 @@ void loadFrameToLive(int idx) {
         C_Voxel blank{Color{0, 0, 0, 0}};
         std::fill(vs.voxels_.begin(), vs.voxels_.end(), blank);
     }
+    // Both branches write the raw `voxels_` span, so the set's derived state has
+    // to be rebuilt for the arriving frame — the same contract every edit path
+    // here already honours through commitStroke / undoOne
+    // (engine/prefabs/irreden/voxel/CLAUDE.md).
+    //
+    // The load-bearing half is the pool's active mask. It mirrors
+    // `color_.alpha_ != 0`, it is what `c_voxel_visibility_compact` reads
+    // *instead of* alpha (T-287), and it lives in the pool rather than in the
+    // voxel records — so copying records updates alpha and leaves the mask
+    // describing the frame that just left. A step then renders a blend of the
+    // two poses: cells the departing frame had inactive stay culled however live
+    // the arriving frame says they are. Every alpha-reading check still passes,
+    // which is why the bird session asserts the mask directly (#766 F-1.6,
+    // found authoring the two-frame flap: frame 1 drew a bird with no wings).
+    vs.resyncAfterRawEdits();
+    // The pool's cached chunk bounds are the cull inputs, and they are built by
+    // skipping voxels whose alpha is zero — so a swap that changes WHICH cells
+    // are active invalidates them too. resyncAfterRawEdits does not evict them
+    // (the pool's own eviction points are all position changes), so the swap
+    // sites do it by hand; measured on the same bird, a step that skipped this
+    // rendered a genuine mixture of the two poses. Same pair of calls as
+    // shape_debug's --load-vxs playback swap.
+    if (auto pool = IREntity::getComponentOptional<C_VoxelPool>(vs.canvasEntity_)) {
+        pool.value()->markChunkBoundsDirty();
+        pool.value()->markChunkWorldBoundsDirty();
+    }
 }
 
 // Snapshot the live voxels into the active frame, then load frame
@@ -1418,12 +1431,44 @@ bool evaluateOccupancyCheck(const void *context, std::string &actual) {
         actual = where + " unallocated";
         return false;
     }
+    if (check.source_ == Session::CheckSource::POOL_ACTIVE_MASK) {
+        // The pool-side mirror of alpha, and what the compact shader actually
+        // reads (T-287). Read through the same slot arithmetic the pool uses.
+        auto poolOpt = IREntity::getComponentOptional<IRComponents::C_VoxelPool>(set.canvasEntity_);
+        if (!poolOpt.has_value()) {
+            actual = where + " no-pool";
+            return false;
+        }
+        const std::vector<std::uint32_t> &mask = poolOpt.value()->getActiveMask();
+        const std::size_t slot = set.voxelStartIdx_ + flat;
+        const std::size_t word = slot / IRComponents::kVoxelActiveMaskBits;
+        if (word >= mask.size()) {
+            actual = where + " slot-out-of-mask";
+            return false;
+        }
+        const bool active = (mask[word] >> (slot % IRComponents::kVoxelActiveMaskBits) & 1u) != 0u;
+        actual = where + " poolActive=" + (active ? "yes" : "no") +
+                 " want=" + (check.expectOccupied_ ? "yes" : "no");
+        return active == check.expectOccupied_;
+    }
     // Active = non-zero alpha, the same liveness test the picker and the GPU
     // pipeline use (C_Voxel::activate / deactivate).
-    const bool occupied = set.voxels_[flat].color_.alpha_ != 0;
+    const Color color = set.voxels_[flat].color_;
+    const bool occupied = color.alpha_ != 0;
     actual = where + " occupied=" + (occupied ? "yes" : "no") +
              " want=" + (check.expectOccupied_ ? "yes" : "no");
-    return occupied == check.expectOccupied_;
+    if (!check.expectColor_)
+        return occupied == check.expectOccupied_;
+    // Palette check (expectVoxelColor): RGB only — alpha is the occupancy
+    // channel, already covered above.
+    const Color want = *check.expectColor_;
+    const auto rgb = [](Color c) {
+        return "rgb(" + std::to_string(c.red_) + "," + std::to_string(c.green_) + "," +
+               std::to_string(c.blue_) + ")";
+    };
+    actual += " color=" + rgb(color) + " wantColor=" + rgb(want);
+    return occupied && color.red_ == want.red_ && color.green_ == want.green_ &&
+           color.blue_ == want.blue_;
 }
 
 } // namespace Session
@@ -1468,8 +1513,8 @@ int main(int argc, char **argv) {
     IREngine::args().enumValue(
         "--gui-session",
         "replay an authoring session's scripted gestures: none | drag_probe | rock | mushroom | "
-        "ant",
-        {"none", "drag_probe", "rock", "mushroom", "ant"},
+        "ant | bird | tree",
+        {"none", "drag_probe", "rock", "mushroom", "ant", "bird", "tree"},
         "none"
     );
     IREngine::init(argc, argv);
@@ -3401,35 +3446,31 @@ void initEntities() {
     // below the iso scene render and never covers the edit target.
     // Sized to fit a 4×4 grid of 22-trixel swatches inside a
     // ~115×165-trixel panel — small enough not to crowd the workspace.
-    constexpr ivec2 kPanelPos{4, 240};
-    constexpr ivec2 kPanelSize{120, 175};
-    constexpr int kSwatchSize = 20;
-    constexpr int kSwatchGap = 4;
-    constexpr int kSwatchOriginX = kPanelPos.x + 8;
-    constexpr int kSwatchOriginY = kPanelPos.y + 48;
-    constexpr int kGridCols = 4;
-
-    g_editor.palettePanel_ = IRPrefab::Widget::makePanel(kPanelPos, kPanelSize, "PALETTE");
+    g_editor.palettePanel_ = IRPrefab::Widget::makePanel(
+        IRVoxelEditor::kPalettePanelPos,
+        IRVoxelEditor::kPalettePanelSize,
+        "PALETTE"
+    );
     // makePanel skips C_HitBox2DGui so it doesn't consume mouse hover. Add it
     // manually so clicks on the panel background (title bar, label gap, padding)
     // are blocked from falling through to the scene picker.
-    IREntity::setComponent(g_editor.palettePanel_, IRComponents::C_HitBox2DGui{kPanelSize});
+    IREntity::setComponent(
+        g_editor.palettePanel_,
+        IRComponents::C_HitBox2DGui{IRVoxelEditor::kPalettePanelSize}
+    );
     // Left-align the hint to the panel padding so it doesn't overflow the
     // right edge ("CLICK A SWATCH" is ~111 trixels; the panel interior is ~116).
-    IRPrefab::Widget::makeLabel(ivec2(kPanelPos.x + 4, kPanelPos.y + 36), "CLICK A SWATCH");
+    IRPrefab::Widget::makeLabel(
+        ivec2(IRVoxelEditor::kPalettePanelPos.x + 4, IRVoxelEditor::kPalettePanelPos.y + 36),
+        "CLICK A SWATCH"
+    );
 
     g_editor.paletteSwatches_.reserve(IRVoxelEditor::kPaletteCount);
     for (int i = 0; i < IRVoxelEditor::kPaletteCount; ++i) {
-        const int row = i / kGridCols;
-        const int col = i % kGridCols;
-        const ivec2 pos(
-            kSwatchOriginX + col * (kSwatchSize + kSwatchGap),
-            kSwatchOriginY + row * (kSwatchSize + kSwatchGap)
-        );
         g_editor.paletteSwatches_.push_back(
             IRPrefab::Widget::makeColorSwatch(
-                pos,
-                ivec2(kSwatchSize, kSwatchSize),
+                IRVoxelEditor::paletteSwatchPos(i),
+                ivec2(IRVoxelEditor::kPaletteSwatchSize),
                 IRVoxelEditor::kPaletteColors[i],
                 i == 0
             )
