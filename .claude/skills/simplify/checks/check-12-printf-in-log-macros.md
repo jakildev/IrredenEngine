@@ -28,8 +28,11 @@ requiring `("` adjacent sees nothing there. Four live sites in
 `creations/editors/voxel_editor/main.cpp` (`"Frame: %d / %d …"`,
 `"Symmetry: X=%s …"`, `"Playback: %s …"`, `"Loop mode: %s"`) were invisible
 to the single-line form for exactly that reason (#3113). Shell equivalent:
-`rg -U '<pattern>'`; without `-U`, `grep -A1` the macro name and read the
-following line too.
+`rg -U '<pattern>'`. No `-U`-less fallback is offered on purpose: both
+sanctioned tools take the multiline form directly (the Grep tool via
+`multiline: true` above, `rg` via `-U`), and Bash `grep` — the obvious way
+to bolt a context line onto the single-line form — is banned outright
+(`CLAUDE-BASELINE.md` §"Bash tool rules").
 
 Discard hits whose only `%`s are `%%` (literal percent) — a line carrying
 both `%%` and a real conversion is still a hit. Keep the conversion-flag class
