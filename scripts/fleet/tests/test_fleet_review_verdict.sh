@@ -111,7 +111,7 @@ if [[ "${1:-}" == "api" ]]; then
     [[ "$path" =~ /pulls/([0-9]+)/reviews$ ]] || exit 2
     file="$STORE/reviews-${BASH_REMATCH[1]}"
     [[ -f "$file" ]] || exit 1
-    while read -r commit_id state submitted_at; do
+    while read -r commit_id state _submitted_at; do
         [[ -n "$commit_id" && "$state" != "PENDING" ]] && printf '%s\n' "$commit_id"
     done < "$file"
     exit 0
@@ -240,6 +240,8 @@ grep -q -- "--repo jakildev/irreden" "$FT_LOG" && grep -q -- "--dry-run" "$FT_LO
 grep -q -- "pr view 104 --repo jakildev/irreden" "$GH_LOG" && \
     { PASS=$((PASS+1)); echo "  ok: T6 claim read used --repo"; } || \
     { FAIL=$((FAIL+1)); echo "  FAIL: T6 claim read used --repo"; }
+assert_eq "$(find "$FLEET_CLAIMS_DIR" -name '_review-verdict-*' -print | wc -l | tr -d ' ')" "0" \
+    "T6 dry-run records no release marker"
 
 # === T7: fleet-transition failure propagates (exec) ======================
 echo "T7: fleet-transition non-zero exit propagates"
@@ -248,6 +250,8 @@ set_labels 105 fleet:reviewing-mac-worker-2
 set_review_data 105 head-105 head-105 COMMENTED 2026-01-02T00:00:00Z
 FT_RC=1 assert_eq "$(FT_RC=1 run verdict-needs-fix 105 --agent worker-2)" "1" \
     "T7 propagates fleet-transition's exit code"
+assert_eq "$(find "$FLEET_CLAIMS_DIR" -name '_review-verdict-*' -print | wc -l | tr -d ' ')" "0" \
+    "T7 failed transition records no release marker"
 
 # === T8: PR not found under --agent → exit 1, no delegation ==============
 echo "T8: PR not found (gh view fails) under --agent → exit 1"

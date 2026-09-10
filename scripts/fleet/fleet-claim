@@ -1866,10 +1866,10 @@ cmd_review_release() {
     done
 
     # Normal reviewer completion requires a verdict stamped during THIS claim.
-    # A live verdict label alone is insufficient: #3102 released over a stale
-    # fleet:needs-fix label after posting an unrelated review body. The verdict
-    # wrapper writes this marker only after fleet-transition succeeds, and the
-    # next review-claim clears it. No-verdict exits (bail/stack gates, smoke,
+    # A live verdict label may predate the current claim, so it cannot prove
+    # this pass stamped a verdict. The wrapper writes this marker only after
+    # fleet-transition succeeds; the next review-claim clears it. No-verdict
+    # exits (bail/stack gates, smoke,
     # and plan review) intentionally omit --require-verdict.
     if [[ "$require_verdict" -eq 1 ]]; then
         local verdict_marker="$CLAIMS_DIR/_review-verdict-${agent}"
