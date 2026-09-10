@@ -424,7 +424,11 @@ workers after `human:approved` triage.
 
 ## Steward ledger
 
-reconciled-through: **2026-09-10 close-out re-audit** (second steward claim, 57
+reconciled-through: **2026-09-10 flow-c adoption of #3137** (third steward claim,
+same day as the second). No child moved and no criterion moved; what moved is
+*membership* — the re-audit's own follow-up became a tracked child, which also
+retires the false `closeout` trigger this epic had been emitting. Prior:
+**2026-09-10 close-out re-audit** (second steward claim, 57
 days after the first). No child moved — all nine were already shipped and
 verified in 2026-07-15. What moved is the *park*: its recommended action was
 re-measured and found broken (**F1**), a defect was filed for it (**#3137**), and
@@ -444,9 +448,10 @@ recommendation inside it.
 
 ### Children
 
-All nine verified shipped: closing PR `state=MERGED` **and** the deliverable
+Nine of ten verified shipped: closing PR `state=MERGED` **and** the deliverable
 confirmed present on `origin/master` (`state=CLOSED/COMPLETED` alone was not
-treated as evidence).
+treated as evidence). The tenth, #3137, is open and unstarted — adopted
+2026-09-10, see D6.
 
 | Child | State | PR | Plan | Last validated |
 |---|---|---|---|---|
@@ -459,6 +464,7 @@ treated as evidence).
 | #1073 | merged | #1205 | — | 2026-07-15 |
 | #1195 | merged | #1203 | — | 2026-07-15 |
 | #1196 | merged | #1212 | — | 2026-07-15 |
+| #3137 | open | — | — (no stub, deliberate — see D7) | 2026-09-10 |
 
 ### Decisions
 
@@ -496,6 +502,36 @@ treated as evidence).
   2026-05-24T01:14:01Z, three days *before* the report that deferred to it
   merged (PR #1203, 2026-05-27). The measurement is unblocked and simply was
   never run; no committed report supersedes the deferral.
+
+- D6 (2026-09-10): **#3137 is a member of this epic and is now on the checklist.**
+  Flow-c's skip-guard asks whether a child is un-adopted *deliberately* — whether
+  its necessity is itself the epic's open close-out question. Here it is not: F1
+  records #3137 as "real work under **every** option including accept-and-close",
+  so its membership does not turn on the criterion-2 ruling and adopting it
+  pre-empts nothing the human owns. Adoption also fixes a live projection defect:
+  with a 9/9 checklist this umbrella emitted a `closeout` trigger every iteration
+  (it did so again on 2026-09-10) even though the 2026-07-15 park exists precisely
+  so that trigger would not re-fire as a no-op. An open child makes the trigger
+  structurally unable to fire. Source: `### Findings` F1 (this ledger) and #3137's
+  own `**Part of epic:** #226` back-ref.
+- D7 (2026-09-10): **No plan stub was written for #3137, deviating from flow-c
+  step 3.** The step's stated purpose is that the stub "keeps workers from claiming
+  an unplanned child while making the gap visible." For this child it would do the
+  opposite. `fleet-queue-ingest::_plan_exists()` is a content-blind existence probe
+  — it tests `.fleet/plans/issue-<n>.md` on the default branch (or the planner-host
+  staging copy) and never reads the file — and the planning gate that consumes it
+  (`fleet-queue-ingest`, "Planning gate (#1456, re-keyed by #1932)") is what would
+  otherwise bounce #3137 to `fleet:needs-plan` and route it through
+  PLANNING-PROTOCOL.md. #3137 carries **no labels at all**, so the
+  `fleet:needs-plan` live-label skip guard that protects an already-bounced child
+  is not available to it: a committed stub would make the gate read #3137 as
+  planned the moment a human stamps `human:approved`, and a worker would claim an
+  unplanned task citing a file whose first line says it is not a plan. Leaving the
+  file absent lets ingest's own gate do the protection the stub was meant to
+  provide. The gap stays visible in the checklist row and in this table's Plan
+  column. Source: `scripts/fleet/fleet-queue-ingest` `_plan_exists()` (pure
+  `os.path.exists` + `gh api contents` probe, no content read) and the planning
+  gate's `has_plan` branch.
 
 ### Events
 
@@ -539,6 +575,30 @@ treated as evidence).
   *literally true* — T-221 wired the engine, not the demo. Recorded because a
   ledger that asserts a false verification is worse than one that is silent: the
   next reader would have taken "axis is live" as settled. See **F1**.
+- 2026-09-10 (flow c — adoption, third claim): adopted **#3137** into the
+  `## Children` checklist as the tenth member (D6). The epic had been emitting a
+  `closeout` trigger on a 9/9 checklist while an open child declaring
+  `**Part of epic:** #226` sat outside it — the child the *previous* claim filed
+  six hours earlier. Nothing surfaced it: #3137 is unlabeled, so the projection's
+  `adoptable[]` (label-derived) was empty, and the re-audit that filed it was
+  reading close-out state, not adoption state. Found by a hand back-ref sweep over
+  all 203 open engine issues, which is the only reader that sees this shape.
+- 2026-09-10 (flow c step 1 — machine-field normalization on #3137): the child
+  failed `fleet-validate-stack` with `missing standalone **Model:** ... line` —
+  its header block was a markdown bullet list with backticked values
+  (``- **Model:** `opus` ``). Rewrote the three header lines to the standalone
+  template form; `fleet-validate-stack 226 --state all --check-checklist` now
+  reports `OK: all 10 child issue(s)` with no checklist drift. **The validator's
+  error text was wrong about the consequence, and that is filed** — per **#2833**
+  ("four unsynchronized `**Model:**` parsers"), all three live consumers
+  (`fleet-state-scout`, `fleet-queue-ingest`, `fleet-claim`) read the bulleted and
+  backticked forms correctly; `fleet-queue-ingest` would have stamped
+  `fleet:opus` from `` `opus` `` via its substring test. So the body was never at
+  risk of mis-routing — but flow-c step 4 forbids adopting a stack the validator
+  rejects, so a documented false positive was a hard adoption block until the line
+  was normalized. Normalizing was cheaper than overriding step 4, and #2833
+  (open, `fleet:queued`) already owns the fix; nothing re-filed.
+- 2026-09-10: no plan stub written for the adopted child — deliberate, see **D7**.
 
 ### Findings (close-out gate — beyond the checklist)
 
@@ -575,6 +635,11 @@ treated as evidence).
   work under **every** option including accept-and-close. **It is unlabeled, so
   no surface will queue it until the human stamps `human:approved`** — the same
   invisible-follow-up shape this ledger should expect, not a filing error.
+  *Updated 2026-09-10 (third claim):* #3137 is now checklist member 10 of 10
+  (**D6**), so the epic no longer emits a false `closeout` trigger and the gap is
+  visible from the umbrella body rather than only from this finding. It is still
+  unlabeled and still needs the `human:approved` stamp to queue; adoption does not
+  substitute for that, and no plan stub was written (**D7**).
   **Discharge:** F1 discharges when criterion 2 is either measured (option 1,
   after #3137) or re-anchored (option 2) or withdrawn (option 3). It does *not*
   require #3137 to land — only the ruling.
