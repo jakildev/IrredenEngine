@@ -49,7 +49,10 @@ constexpr std::uint8_t kFaceOccludedMask = kFaceOccludedNegX | kFaceOccludedPosX
 /// per-trixel priority tier (#1960/#2023). Bit 2 (`kRotatedEmit`) marks a voxel
 /// whose render-frame CELL positions are a ROTATED re-voxelization
 /// (`REBUILD_GRID_VOXELS` for GRID-mode sets; the detached path uses the
-/// `visibleFaceIds.w` re-voxelize uniform instead). The voxel→trixel raster reads
+/// `visibleFaceIds.w` re-voxelize uniform instead). Bit 3
+/// (`kFogWholeBodyExempt`) marks a set governed by one entity-anchor fog
+/// verdict, so its live voxels bypass per-column fog rejection. The
+/// voxel→trixel raster reads
 /// it to enable the silhouette-riser face selection — emit the exposed
 /// opposite-polarity face that the convex visible-triplet (#1278) drops on a
 /// rotated staircase's grazing edge. Non-rotated voxels never set it, so the
@@ -57,6 +60,7 @@ constexpr std::uint8_t kFaceOccludedMask = kFaceOccludedNegX | kFaceOccludedPosX
 namespace VoxelReserved {
 constexpr std::uint32_t kPriorityMask = 0x3u;   // bits[1:0]
 constexpr std::uint32_t kRotatedEmit = 1u << 2; // bit 2
+constexpr std::uint32_t kFogWholeBodyExempt = 1u << 3; // bit 3
 } // namespace VoxelReserved
 
 /// Per-voxel record. 12 B std430 layout — matches the v2 entity-editor record
@@ -71,7 +75,8 @@ constexpr std::uint32_t kRotatedEmit = 1u << 2; // bit 2
 ///                         the trailing uint32 4-byte aligned
 ///   [8:11] reserved_      bits[1:0] = per-trixel priority tier carrier (#1960);
 ///                         bit 2 = kRotatedEmit (rotated re-voxelize, see
-///                         VoxelReserved); bits[31:3] reserved
+///                         VoxelReserved); bit 3 = kFogWholeBodyExempt;
+///                         bits[31:4] reserved
 ///
 /// The compute shaders (`c_voxel_to_trixel_stage_*`) read `color_` from
 /// offset 0; `flags_` is consumed by stage 1 to skip occluded faces;

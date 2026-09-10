@@ -503,6 +503,8 @@ kernel void IR_STAGE1_KERNEL_NAME(
     faceId = sel.faceId;
     const int riserFlip = sel.riserFlip;
     const bool bothPolaritiesExposed = sel.bothPolaritiesExposed;
+    const bool fogWholeBodyExempt =
+        (voxels[voxelIndex].reserved & (1u << 3u)) != 0u;
 
     // Per-voxel analytic fog clip (#2102 + #2126 P2 + #2127; per-axis split
     // #2128) — STAGE-1-ONLY (stage 2 never repeats it: with the distances
@@ -521,7 +523,8 @@ kernel void IR_STAGE1_KERNEL_NAME(
         ? fogColumnRevealZ(canvasFogOfWar, fogObservers, sel.worldColumn, voxelPosition.z) <= 0.0f
         : fogColumnRevealNearestZ(
               canvasFogOfWar, fogObservers, sel.worldColumn, voxelPosition.z) <= 0.0f;
-    if (sel.fogActive && frameData.perAxisRoute == 0 && ownColumnHidden) {
+    if (!fogWholeBodyExempt && sel.fogActive &&
+        frameData.perAxisRoute == 0 && ownColumnHidden) {
         return;
     }
 
@@ -551,7 +554,7 @@ kernel void IR_STAGE1_KERNEL_NAME(
         // penalty into whole world-Z steps AND disagree with c_fog_to_trixel's
         // per-pixel reveal, which penalizes against the unrounded `pos3D.z`.
         // Same split as the single-canvas route above. Mirror of the GLSL twin.
-        if (fogObservers.visionCircleCount > 0 &&
+        if (!fogWholeBodyExempt && fogObservers.visionCircleCount > 0 &&
             fogColumnRevealZ(
                 canvasFogOfWar, fogObservers, roundHalfUp(voxelPosition.xyz).xy, voxelPosition.z
             ) <= 0.0f) {

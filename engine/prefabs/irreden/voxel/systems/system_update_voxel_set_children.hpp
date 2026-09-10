@@ -110,7 +110,7 @@ template <> struct System<UPDATE_VOXEL_SET_CHILDREN> {
         C_VoxelSetNew &voxelSet,
         const C_WorldTransform &worldTransform
     ) {
-        if (voxelSet.numVoxels_ <= 0) {
+        if (!voxelSet.visible_ || voxelSet.numVoxels_ <= 0) {
             return;
         }
 

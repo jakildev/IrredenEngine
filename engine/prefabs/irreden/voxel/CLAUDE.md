@@ -206,6 +206,14 @@ spawn actually produces.
   `C_RotationMode::GRID` must register `REBUILD_GRID_VOXELS` in their
   UPDATE pipeline after `UPDATE_VOXEL_SET_CHILDREN`; omitting it produces
   silent no-ops.
+
+`C_VoxelSetNew::visible_` is a transient whole-set render gate. A hidden set's
+pool active-mask span is cleared without changing voxel alpha; showing it calls
+`resyncActiveMaskFromColors` so authored holes return exactly. Both
+`UPDATE_VOXEL_SET_CHILDREN` and the explicit/implicit grid-rebuild arms skip
+hidden sets. `VoxelReserved::kFogWholeBodyExempt` (bit 3) is orthogonal to the
+bit-2 rotated-riser marker and is preserved in `rotationSourceVoxels_` by the
+fog tag helper.
 - `REBUILD_GRID_VOXELS_IMPLICIT` (UPDATE pipeline, #2376) — the twin query
   arm of `REBUILD_GRID_VOXELS` for entities that carry **no**
   `C_RotationMode`. `component_rotation_mode.hpp` documents absence as

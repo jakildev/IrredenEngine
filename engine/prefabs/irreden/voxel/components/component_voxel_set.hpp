@@ -26,6 +26,10 @@ struct C_VoxelSetNew {
     int numVoxels_;
     ivec3 size_;
 
+    // Transient render gate. Fog-governed entities flip this once per entity;
+    // the pool mask carries the corresponding per-voxel GPU visibility.
+    bool visible_ = true;
+
     // How this set's geometry attaches to the entity's translation (#2563).
     // The offset it implies is BAKED into `positions_` at construction, so the
     // rasterize / render / cull / occupancy / picking paths all consume it

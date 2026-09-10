@@ -11,11 +11,45 @@
 #include <irreden/ir_render.hpp>
 
 #include <irreden/render/components/component_canvas_fog_of_war.hpp>
+#include <irreden/render/components/component_fog_revealed.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
+#include <irreden/voxel/components/component_voxel.hpp>
+#include <irreden/voxel/components/component_voxel_set.hpp>
 
 #include <cstdint>
 
 namespace IRPrefab::Fog {
+
+/// CPU mirror of the shader's analytic reveal curve. Screen-space antialiasing
+/// remains a pixel concern; gameplay uses the authored world-space edge.
+inline float
+evalVisionReveal(const IRComponents::FrameDataFogObservers &observers, IRMath::vec3 worldPosition) {
+    float reveal = 0.0f;
+    for (int i = 0; i < observers.visionCircleCount_; ++i) {
+        const IRMath::vec4 circle = observers.visionCircles_[i];
+        const IRMath::vec4 height = observers.visionCircleHeights_[i];
+        const IRMath::vec2 delta = IRMath::vec2(worldPosition) - IRMath::vec2(circle);
+        const float edge = IRMath::max(circle.w, 0.0f);
+        const float keepRadius = circle.z + edge;
+        if (IRMath::dot(delta, delta) > keepRadius * keepRadius) {
+            continue;
+        }
+
+        const float dzUp = IRMath::max(height.x - worldPosition.z, 0.0f);
+        const float dzDown = IRMath::max(worldPosition.z - height.x, 0.0f);
+        const float distanceEffective = IRMath::length(delta) +
+                                        height.y * IRMath::max(dzUp - height.w, 0.0f) +
+                                        height.z * IRMath::max(dzDown - height.w, 0.0f);
+        if (edge <= 0.0f) {
+            reveal = IRMath::max(reveal, distanceEffective <= circle.z ? 1.0f : 0.0f);
+            continue;
+        }
+        const float t =
+            IRMath::clamp((distanceEffective - (circle.z - edge)) / (2.0f * edge), 0.0f, 1.0f);
+        reveal = IRMath::max(reveal, 1.0f - t * t * (3.0f - 2.0f * t));
+    }
+    return reveal;
+}
 
 namespace detail {
 
@@ -139,6 +173,57 @@ inline void attachToCanvas(IREntity::EntityId canvas, int revealRadius = 0) {
         if (auto opt = IREntity::getComponentOptional<IRComponents::C_CanvasFogOfWar>(canvas))
             (*opt)->revealRadius(0, 0, revealRadius);
     }
+}
+
+/// Opt a grid-canvas voxel entity into whole-body fog reveal. Tagging starts
+/// hidden so an entity outside every circle cannot flash before its first eval.
+inline void setEntityRevealGoverned(IREntity::EntityId entity, bool governed = true) {
+    auto setOpt = IREntity::getComponentOptional<IRComponents::C_VoxelSetNew>(entity);
+    if (!setOpt.has_value()) {
+        return;
+    }
+    IRComponents::C_VoxelSetNew *voxelSet = *setOpt;
+    const IREntity::EntityId activeCanvas = IRRender::getActiveCanvasEntityOrNull();
+    const IREntity::EntityId canvas =
+        voxelSet->canvasEntity_ == IREntity::kNullEntity ? activeCanvas : voxelSet->canvasEntity_;
+    IR_ASSERT(
+        canvas == activeCanvas,
+        "whole-body fog reveal currently supports only the active grid canvas"
+    );
+
+    for (IRComponents::C_Voxel &voxel : voxelSet->voxels_) {
+        if (governed) {
+            voxel.reserved_ |= IRComponents::VoxelReserved::kFogWholeBodyExempt;
+        } else {
+            voxel.reserved_ &= ~IRComponents::VoxelReserved::kFogWholeBodyExempt;
+        }
+    }
+    for (IRComponents::C_Voxel &voxel : voxelSet->rotationSourceVoxels_) {
+        if (governed) {
+            voxel.reserved_ |= IRComponents::VoxelReserved::kFogWholeBodyExempt;
+        } else {
+            voxel.reserved_ &= ~IRComponents::VoxelReserved::kFogWholeBodyExempt;
+        }
+    }
+
+    if (governed) {
+        voxelSet->visible_ = false;
+        IRPrefab::VoxelPool::markRangeInactive(
+            voxelSet->voxelStartIdx_,
+            voxelSet->numVoxels_,
+            canvas
+        );
+        IREntity::setComponent(entity, IRComponents::C_FogRevealed{});
+        return;
+    }
+
+    voxelSet->visible_ = true;
+    IRPrefab::VoxelPool::resyncRangeFromColors(
+        voxelSet->voxelStartIdx_,
+        voxelSet->numVoxels_,
+        canvas
+    );
+    IREntity::removeComponent<IRComponents::C_FogRevealed>(entity);
 }
 
 } // namespace IRPrefab::Fog

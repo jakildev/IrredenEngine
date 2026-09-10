@@ -64,6 +64,7 @@ add_executable(IrredenEngineTest
   render/camera_yaw_test.cpp
   render/detached_world_depth_test.cpp
   render/fog_cross_section_test.cpp
+  render/fog_reveal_eval_test.cpp
   render/per_axis_canvas_size_test.cpp
   render/per_axis_cast_subcell_test.cpp
   render/frame_data_sun_layout_test.cpp
@@ -101,6 +102,7 @@ add_executable(IrredenEngineTest
   script/lua_world_snapshot_test.cpp
   script/lua_pipeline_register_test.cpp
   script/lua_render_bindings_test.cpp
+  script/lua_fog_revealed_test.cpp
   script/lua_script_utils_test.cpp
   script/lua_local_transform_lua_test.cpp
   script/lua_rotation_target_lua_test.cpp
