@@ -16,13 +16,17 @@ The harness captures two phases in a single run:
 For each i in 0..N-1, live_i is compared against frozen_i.  A mismatch means
 the live cull dropped on-screen geometry that the frozen cull retained.
 
+The assertion is relative by design — live_i vs frozen_i from the same capture.
+There is no committed cross-run baseline: absolute render drift on shape_debug
+is render-verify's job (see docs/design/cull-validation-harness.md
+"Cross-run contract"), and this harness must never grow a reference set it does
+not read (#2955).
+
 Usage::
 
     python3 scripts/cull-verify.py                    # verify (build + run + compare)
     python3 scripts/cull-verify.py --no-build         # skip build (exe already fresh)
     python3 scripts/cull-verify.py --warmup 20        # more warmup frames
-    python3 scripts/cull-verify.py --update-baselines # commit frozen shots as baselines
-    python3 scripts/cull-verify.py --update-baselines --force
 
 Assumes this file lives at ``<repo>/scripts/cull-verify.py``.
 """
@@ -63,7 +67,6 @@ TOTAL_SHOTS = POSES_PER_PHASE * 2 + 2  # live + freeze-ref + frozen + unfreeze
 
 # Live shot i (offset from LIVE_START) pairs with frozen shot i (offset from FROZEN_START).
 LIVE_LABELS = [f"cv_live_{i:03d}" for i in range(POSES_PER_PHASE)]
-FROZEN_LABELS = [f"cv_frozen_{i:03d}" for i in range(POSES_PER_PHASE)]
 
 # Thresholds calibrated to the P1 harness finding (issue #1438):
 # at non-cardinal yaw the frozen and live passes differ in AO/light-volume shading
@@ -110,14 +113,6 @@ def main(argv: list[str] | None = None) -> int:
                     help="Per-run timeout in seconds (default: 120).")
     ap.add_argument("--no-build", action="store_true",
                     help="Skip fleet-build; assume the target is already built.")
-    ap.add_argument(
-        "--update-baselines", action="store_true",
-        help="Copy the frozen shots to the committed baseline directory "
-             "(creations/demos/shape_debug/test/references/<backend>/cull-verify/) "
-             "instead of running a live/frozen comparison.",
-    )
-    ap.add_argument("--force", action="store_true",
-                    help="Skip the --update-baselines confirmation prompt.")
     args = ap.parse_args(argv)
 
     # Fast-fail on a misconfigured checkout before the build+run cycle.
@@ -127,7 +122,6 @@ def main(argv: list[str] | None = None) -> int:
     worktree = verify_common.detect_worktree_root(Path.cwd())
     build_dir = Path(args.build_dir) if args.build_dir else worktree / "build"
     backend = verify_common.detect_backend(build_dir)
-    demo_dir = worktree / "creations" / "demos" / DEMO_NAME
 
     print(f"[cull-verify] target={TARGET}  backend={backend}")
     print(f"[cull-verify] {POSES_PER_PHASE} poses/phase × 2 + 2 markers = {TOTAL_SHOTS} shots")
@@ -170,24 +164,6 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 1
-
-    if args.update_baselines:
-        baseline_dir = demo_dir / "test" / "references" / backend / "cull-verify"
-        if not args.force:
-            reply = input(
-                f"[cull-verify] About to write {POSES_PER_PHASE} frozen baselines to "
-                f"{baseline_dir}. Continue? [y/N] "
-            )
-            if reply.strip().lower() not in ("y", "yes"):
-                print("[cull-verify] aborted.")
-                return 1
-        baseline_dir.mkdir(parents=True, exist_ok=True)
-        for shot, label in zip(frozen_shots, FROZEN_LABELS):
-            dest = baseline_dir / f"{label}.png"
-            shutil.copy2(shot, dest)
-            print(f"[cull-verify] wrote baseline {dest.name}")
-        print(f"[cull-verify] {POSES_PER_PHASE} baselines written to {baseline_dir}")
-        return 0
 
     diff_dir = shots_dir / "cull_diffs"
     diff_dir.mkdir(exist_ok=True)
