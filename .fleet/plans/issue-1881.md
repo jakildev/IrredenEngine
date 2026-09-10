@@ -194,9 +194,16 @@ firing is therefore a **false positive** — it was reading a checklist that was
 missing 70% of the epic. Two claims in the 2026-07-13/14 ledger and park are
 corrected below (**F3**, **F4**). Prior: 2026-07-13 (first steward claim — heal
 + close-out-readiness assessment), 2026-07-14 (park).
-proposal-pending: none. The umbrella's open question is no longer a steward
-proposal — it is **work on #1923**, which the human holds (`human:owned`). See
-the `## Steward membership re-heal — 2026-09-10` comment on the umbrella.
+proposal-pending: **`## Steward membership re-heal — 2026-09-10`** on the
+umbrella, `fleet:steward-proposal` applied. The open question is not a design
+question — it is **work on #1923**, which the human holds (`human:owned`) —
+but it still needs a re-fire edge, which `fleet:needs-human` alone does not
+give it. Options: (a) work #1923 / (b) release it to the queue (drop
+`human:owned`, add `fleet:queued`) / (c) close it and re-file its residual
+scope free-standing. **Recommendation: (b)** — the scope is written and the
+sequencing blocker is 78 days stale, so it costs two label edits. **No-rule
+fallback dated 2026-10-08** → take (c), so the umbrella stops being blocked on
+an item nobody is working.
 
 ### Children
 
