@@ -3,10 +3,9 @@
 # catalog in scripts/fleet/fleet-labels 1:1 with the node set in
 # docs/agents/fleet-state-machine.json.
 #
-# Why this suite exists (#3205): the guard was green-by-inspection only. No
-# suite ran it, so the catalog drifted four labels ahead of the JSON
-# (fleet:author-* / fleet:runtime-*) and `--check` sat red on master until a
-# reviewer happened to run it by hand. A guard nothing executes is not a gate.
+# The catalog and the node set are two hand-maintained lists whose agreement
+# nothing else enforces, so that agreement needs an executed gate rather than a
+# documented command: a guard no suite runs is not a gate (#3205).
 #
 # The first arm reads this checkout's own catalog and state machine rather
 # than a fixture, because that is the regression the issue asks for: the next
@@ -69,11 +68,10 @@ run_check() {  # run_check <script> [env assignments via caller]
 }
 
 # --- T1: the live tree is green -------------------------------------------
-# This is the regression arm #3205 asks for. It runs the branch's own script,
-# which resolves the state machine from its own location — so it measures this
-# worktree even when a ~/bin/fleet-labels symlink into the main clone is on
-# PATH (invoking the wrapper by name reports on master, not on the branch,
-# which is how the drift stayed invisible through a review).
+# The regression arm. It invokes the script BY PATH, never by name: `--check`
+# resolves both of its inputs from the script's own location, so a
+# ~/bin/fleet-labels symlink on PATH measures the main clone rather than this
+# worktree.
 echo "T1: fleet-labels --check is green over this checkout"
 run_check bash "$FLEET_LABELS" --check
 assert_eq "$CHECK_RC" "0" "--check exits 0 over the real catalog + state machine"
@@ -83,7 +81,7 @@ assert_contains "$CHECK_OUT" "$STATE_MACHINE" \
 
 # --- T2: the #3205 labels are nodes and are documented ---------------------
 # T1 subsumes the node half, but only as part of a 60-label aggregate; naming
-# the four keeps the failure legible if they are ever dropped again.
+# the four keeps the failure legible if any of them is dropped.
 echo "T2: the four author-*/runtime-* labels are nodes and documented"
 NODE_NAMES=$(jq -r '.labels[].name' "$STATE_MACHINE")
 for label in fleet:author-claude fleet:author-codex fleet:runtime-claude fleet:runtime-codex; do
@@ -93,9 +91,9 @@ for label in fleet:author-claude fleet:author-codex fleet:runtime-claude fleet:r
 done
 
 # --- T3: control — a catalog label with no node ----------------------------
-# The exact shape of the #3205 defect: the catalog gains a label, the JSON
-# does not. Drop a node instead of adding a catalog entry so the control drives
-# the real script rather than a copy of it.
+# The shape `--check` exists to catch: the catalog gains a label, the JSON
+# does not. Drop a node rather than adding a catalog entry so the control
+# drives the real script rather than a copy of it.
 echo "T3: control — catalog label with no node is caught"
 jq 'del(.labels[] | select(.name == "fleet:author-claude"))' \
     "$STATE_MACHINE" > "$TMP/missing-node.json"
