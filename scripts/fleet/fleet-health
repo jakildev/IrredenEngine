@@ -1,0 +1,660 @@
+#!/usr/bin/env python3
+"""fleet-health — read-only report on whether the fleet is spending panes on work.
+
+Answers, from the fleet's own logs and state, the questions a human asks after
+a stretch of autonomous running:
+
+  * Is every dispatch doing something? Per role: how many iterations launched,
+    how many claimed / finished work, how many walked the queue and found
+    nothing, and how long each kind ran.
+  * Who keeps waking a role? Trigger arms per source (scout projection
+    change, tier-0 fleet-rebase re-arm, periodic worker re-arm) against the
+    dispatches they produced, plus every stand-down the dispatcher logged.
+  * Is the merger ladder wasting the LLM pass? Tier-0 runs, merges, and how
+    often tier-0 re-armed the LLM merger versus how many of those LLM
+    iterations then reported doing nothing.
+  * Are both providers being used? FLEET_RUNTIMES / cross-provider review /
+    worker policy from the conf, whether `codex` is on PATH and out of
+    cooldown, the per-runtime dispatch split, standing routing problems, and
+    the open PRs that carry no `fleet:author-*` stamp (their reviews cannot
+    route while cross-provider review is on — CODEX.md).
+  * Standing alerts, empty-exit streaks / stand-down backoffs, and the
+    iterations running right now.
+
+Sources (all read-only; nothing here mutates fleet state):
+  ~/.fleet/logs/dispatcher.log, fleet-rebase.log, state-scout.log
+  ~/.fleet/state/{dispatcher.pid,scout.pid,dispatch-mode,dispatch/,
+                  empty-streak/,runtime-cooldown/,runtime-problems/,state.json}
+  ~/.fleet/sessions/*.session.json, ~/.fleet/alerts/, ~/.fleet/fleet-up.conf
+
+The window defaults to the current dispatcher boot (the last `started (pid=`
+line in dispatcher.log); `--since 24h` / `7d` / `<ISO-8601>` widens it.
+
+Exit status: 0 healthy, 1 at least one WARN, 2 usage error. `--json` emits the
+same facts machine-readably (a `warnings` list plus each section).
+
+Source of truth: scripts/fleet/fleet-health in the engine repo.
+Installed to ~/bin/fleet-health by scripts/fleet/install.sh.
+"""
+
+import argparse
+import datetime as dt
+import json
+import os
+import re
+import shutil
+import statistics
+import sys
+import time
+from pathlib import Path
+
+RE_LOG = re.compile(r"^\[(\S+) (dispatcher|fleet-rebase|state-scout)\] (.*)$")
+RE_DISPATCH = re.compile(
+    r"^dispatching (\S+) -> (%\d+)(?: \[(.*?)\])?(?: runtime=(\S+))?$"
+)
+RE_COMPLETE = re.compile(
+    r"^dispatch for (\S+) on (%\d+) completed \(pane returned to shell(.*)\)$"
+)
+RE_STARTED = re.compile(r"^started \(pid=(\d+)")
+RE_STANDDOWN = re.compile(r"^(\S+?): .*standing down")
+RE_TRIGGERED = re.compile(r"^triggered: (.*)$")
+RE_REBASE_DONE = re.compile(r"^done: (.*)$")
+RE_KV = re.compile(r"(\w+)=(\S+)")
+
+ROLE_CLASS_RE = re.compile(r"class=(\S+)")
+TARGET_RE = re.compile(r"target=(\S+?)(?:[,\]]|$)")
+
+WINDOW_UNITS = {"m": 60, "h": 3600, "d": 86400}
+
+
+def parse_ts(text):
+    try:
+        return dt.datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def parse_since(text, log_lines):
+    """`boot` (default), `<N>[mhd]`, or an ISO-8601 timestamp -> aware datetime."""
+    if text in (None, "", "boot"):
+        started = None
+        for ts, source, msg in log_lines:
+            if source == "dispatcher" and RE_STARTED.match(msg):
+                started = ts
+        return started or (dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=24))
+    m = re.fullmatch(r"(\d+)([mhd])", text)
+    if m:
+        return dt.datetime.now(dt.timezone.utc) - dt.timedelta(
+            seconds=int(m.group(1)) * WINDOW_UNITS[m.group(2)])
+    ts = parse_ts(text)
+    if ts is None:
+        raise ValueError(f"--since: expected boot, <N>[mhd], or ISO-8601, got {text!r}")
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=dt.timezone.utc)
+    return ts
+
+
+def read_log(path):
+    """Yield (ts, source, message) for every well-formed line; skip the rest."""
+    out = []
+    try:
+        with open(path, errors="replace") as f:
+            for line in f:
+                m = RE_LOG.match(line.rstrip("\n"))
+                if not m:
+                    continue
+                ts = parse_ts(m.group(1))
+                if ts is None:
+                    continue
+                out.append((ts, m.group(2), m.group(3)))
+    except OSError:
+        pass
+    return out
+
+
+def kv(text):
+    return dict(RE_KV.findall(text))
+
+
+def pid_alive(path):
+    try:
+        pid = int(Path(path).read_text().strip())
+    except (OSError, ValueError):
+        return None, False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return pid, False
+    except PermissionError:
+        return pid, True
+    return pid, True
+
+
+def load_conf(path):
+    """The bash-sourceable conf, reduced to its plain `KEY=value` assignments."""
+    conf = {}
+    try:
+        for line in Path(path).read_text().splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            m = re.fullmatch(r"(?:export\s+)?([A-Z_][A-Z0-9_]*)=(.*)", line)
+            if not m:
+                continue
+            val = m.group(2).strip()
+            if len(val) >= 2 and val[0] == val[-1] and val[0] in "\"'":
+                val = val[1:-1]
+            conf[m.group(1)] = val
+    except OSError:
+        pass
+    return conf
+
+
+# --- Dispatch pairing ---------------------------------------------------------
+
+def collect_dispatches(log_lines, since, sessions_dir, dispatch_dir):
+    """Pair `dispatching` with `completed` per (role, pane), FIFO.
+
+    Runtime attribution prefers the log's own `runtime=` (dispatcher records it
+    on both lines). A dispatch older than that field falls back to the session
+    sidecar fleet-dispatch-wrap writes per pool worktree: first the one named
+    by the live dispatch record's `agent`, then any sidecar whose role and
+    launch epoch match; else `unknown`.
+    """
+    sidecars = {}
+    for p in Path(sessions_dir).glob("*.session.json"):
+        try:
+            d = json.loads(p.read_text())
+        except (OSError, ValueError):
+            continue
+        sidecars[p.name.split(".")[0]] = d
+    sidecars_by_role = {}
+    for d in sidecars.values():
+        sidecars_by_role.setdefault(d.get("role"), []).append(d)
+    live_records = {}
+    for p in Path(dispatch_dir).glob("*.json"):
+        try:
+            d = json.loads(p.read_text())
+        except (OSError, ValueError):
+            continue
+        live_records[d.get("pane", "")] = d
+
+    open_ = {}
+    rows = []
+    for ts, source, msg in log_lines:
+        if source != "dispatcher":
+            continue
+        m = RE_DISPATCH.match(msg)
+        if m:
+            role, pane, bracket, runtime = m.groups()
+            bracket = bracket or ""
+            cm = ROLE_CLASS_RE.search(bracket)
+            tm = TARGET_RE.search(bracket)
+            open_.setdefault((role, pane), []).append({
+                "started": ts, "role": role, "pane": pane,
+                "class": cm.group(1) if cm else "",
+                "target": tm.group(1) if tm else "",
+                "runtime": runtime or "",
+            })
+            continue
+        m = RE_COMPLETE.match(msg)
+        if m:
+            role, pane, rest = m.groups()
+            queue = open_.get((role, pane)) or []
+            if not queue:
+                continue
+            rec = queue.pop(0)
+            fields = kv(rest.replace(",", " "))
+            rec["completed"] = ts
+            rec["outcome"] = fields.get("outcome", "")
+            rec["verdict"] = fields.get("verdict", "")
+            rec["target"] = rec["target"] or fields.get("target", "")
+            rec["runtime"] = rec["runtime"] or fields.get("runtime", "")
+            rec["seconds"] = (ts - rec["started"]).total_seconds()
+            rows.append(rec)
+    for queue in open_.values():
+        for rec in queue:
+            live = live_records.get(rec["pane"])
+            rec["completed"] = None
+            rec["outcome"] = "running" if live and live.get("role") == rec["role"] else "lost"
+            rec["seconds"] = (dt.datetime.now(dt.timezone.utc) - rec["started"]).total_seconds()
+            if live and not rec["runtime"]:
+                rec["runtime"] = live.get("runtime", "")
+            rows.append(rec)
+    for rec in rows:
+        if rec["runtime"]:
+            continue
+        rec["runtime"] = "unknown"
+        live = live_records.get(rec["pane"]) or {}
+        agent_sidecar = sidecars.get(live.get("agent", ""))
+        if (agent_sidecar and live.get("role") == rec["role"]
+                and agent_sidecar.get("role") == rec["role"]):
+            rec["runtime"] = agent_sidecar.get("runtime") or "unknown"
+            continue
+        for d in sidecars_by_role.get(rec["role"], []):
+            created = d.get("created_epoch")
+            if not isinstance(created, (int, float)):
+                continue
+            if abs(created - rec["started"].timestamp()) <= 120:
+                rec["runtime"] = d.get("runtime", "unknown") or "unknown"
+                break
+    rows = [r for r in rows if r["started"] >= since]
+    rows.sort(key=lambda r: r["started"])
+    return rows
+
+
+def summarize_roles(rows):
+    roles = {}
+    for r in rows:
+        s = roles.setdefault(r["role"], {
+            "dispatches": 0, "productive": 0, "no_op": 0, "unknown": 0,
+            "running": 0, "lost": 0, "targeted": 0,
+            "runtimes": {}, "seconds": [], "no_op_seconds": [],
+        })
+        s["dispatches"] += 1
+        s["runtimes"][r["runtime"]] = s["runtimes"].get(r["runtime"], 0) + 1
+        if r["target"]:
+            s["targeted"] += 1
+        oc = r["outcome"]
+        if oc == "yes":
+            s["productive"] += 1
+        elif oc == "no":
+            s["no_op"] += 1
+            s["no_op_seconds"].append(r["seconds"])
+        elif oc in ("running", "lost"):
+            s[oc] += 1
+        else:
+            s["unknown"] += 1
+        if r["completed"] is not None:
+            s["seconds"].append(r["seconds"])
+    for s in roles.values():
+        for key in ("seconds", "no_op_seconds"):
+            vals = s.pop(key)
+            s[key.replace("seconds", "median_s")] = round(statistics.median(vals)) if vals else None
+            s[key.replace("seconds", "max_s")] = round(max(vals)) if vals else None
+    return roles
+
+
+# --- Triggers / merger ladder ---------------------------------------------------
+
+def collect_triggers(log_lines, since):
+    scout = {}
+    standdowns = {}
+    tier0_spawns = 0
+    worker_rearms = 0
+    for ts, source, msg in log_lines:
+        if ts < since:
+            continue
+        if source == "state-scout":
+            m = RE_TRIGGERED.match(msg)
+            if m:
+                for part in m.group(1).split(","):
+                    role = re.sub(r"\(.*\)", "", part).strip()
+                    if role:
+                        scout[role] = scout.get(role, 0) + 1
+        elif source == "dispatcher":
+            m = RE_STANDDOWN.match(msg)
+            if m:
+                standdowns[m.group(1)] = standdowns.get(m.group(1), 0) + 1
+            elif msg.startswith("merger: spawned tier-0"):
+                tier0_spawns += 1
+            elif msg.startswith("worker-rearm: re-armed"):
+                worker_rearms += 1
+    return {"scout": scout, "standdowns": standdowns,
+            "tier0_spawns": tier0_spawns, "worker_rearms": worker_rearms}
+
+
+def collect_rebase(log_lines, since):
+    runs = 0
+    totals = {}
+    llm_rearms = 0
+    tier0_rearms = 0
+    for ts, source, msg in log_lines:
+        if source != "fleet-rebase" or ts < since:
+            continue
+        m = RE_REBASE_DONE.match(msg)
+        if m:
+            runs += 1
+            for k, v in kv(m.group(1)).items():
+                if v.isdigit():
+                    totals[k] = totals.get(k, 0) + int(v)
+        elif msg.startswith("re-armed merger trigger for the LLM pass"):
+            llm_rearms += 1
+        elif msg.startswith("re-armed merger trigger for another tier-0"):
+            tier0_rearms += 1
+    return {"runs": runs, "totals": totals, "llm_rearms": llm_rearms,
+            "tier0_rearms": tier0_rearms}
+
+
+# --- Runtimes --------------------------------------------------------------------
+
+def collect_runtimes(conf, state_dir, alerts_dir, state_json, rows):
+    runtimes = [x.strip() for x in conf.get("FLEET_RUNTIMES", "claude").split(",") if x.strip()]
+    cross = conf.get("FLEET_CROSS_PROVIDER_REVIEW", "1") == "1"
+    policy = conf.get("FLEET_WORKER_RUNTIME", "balanced")
+    codex_path = shutil.which("codex")
+    cooldown_until = None
+    cd = Path(state_dir) / "runtime-cooldown" / "codex.json"
+    try:
+        until = json.loads(cd.read_text()).get("until", 0)
+        if until > time.time():
+            cooldown_until = int(until)
+    except (OSError, ValueError):
+        pass
+    problems = []
+    for p in sorted((Path(state_dir) / "runtime-problems").glob("*.json")):
+        try:
+            d = json.loads(p.read_text())
+            problems.append({"key": d.get("key"), "reason": d.get("reason"),
+                             "count": d.get("count")})
+        except (OSError, ValueError):
+            continue
+    gate_alerts = sorted(p.name for p in Path(alerts_dir).glob("dispatch-gate-*"))
+    split = {}
+    for r in rows:
+        split[r["runtime"]] = split.get(r["runtime"], 0) + 1
+    unstamped = []
+    stamped = 0
+    try:
+        st = json.loads(Path(state_json).read_text())
+        for repo, rs in (st.get("repos") or {}).items():
+            for pr in rs.get("prs") or []:
+                labels = {x["name"] if isinstance(x, dict) else x for x in pr.get("labels") or []}
+                if any(name.startswith("fleet:author-") for name in labels):
+                    stamped += 1
+                else:
+                    unstamped.append(f"{repo}#{pr.get('number')}")
+    except (OSError, ValueError):
+        pass
+    return {
+        "configured": runtimes, "cross_provider_review": cross, "worker_policy": policy,
+        "codex_on_path": bool(codex_path), "codex_cooldown_until": cooldown_until,
+        "problems": problems, "gate_alerts": gate_alerts,
+        "dispatch_split": split, "open_prs_stamped": stamped, "open_prs_unstamped": unstamped,
+    }
+
+
+# --- Misc state ------------------------------------------------------------------
+
+def collect_alerts(alerts_dir):
+    now = time.time()
+    out = []
+    for p in sorted(Path(alerts_dir).glob("*")):
+        if not p.is_file():
+            continue
+        try:
+            first = p.read_text(errors="replace").strip().splitlines()
+            first = first[0] if first else ""
+            # lint: state-mtime-ok display age of an alert file, not scout-cache freshness
+            age = int(now - p.stat().st_mtime)
+        except OSError:
+            continue
+        out.append({"name": p.name, "age_s": age, "line": first[:160]})
+    return out
+
+
+def collect_streaks(state_dir):
+    out = []
+    d = Path(state_dir) / "empty-streak"
+    for p in sorted(d.glob("*")):
+        try:
+            out.append({"counter": p.name, "value": p.read_text().strip()})
+        except OSError:
+            continue
+    return out
+
+
+def collect_live(dispatch_dir, sessions_dir):
+    now = time.time()
+    out = []
+    for p in sorted(Path(dispatch_dir).glob("*.json")):
+        try:
+            d = json.loads(p.read_text())
+        except (OSError, ValueError):
+            continue
+        epoch = d.get("dispatched_epoch")
+        runtime = d.get("runtime", "")
+        if not runtime and d.get("agent"):
+            # Pre-`runtime` record: the pane's sidecar names the provider.
+            try:
+                sc = json.loads((Path(sessions_dir) / f"{d['agent']}.session.json").read_text())
+                if sc.get("role") == d.get("role"):
+                    runtime = sc.get("runtime", "")
+            except (OSError, ValueError):
+                pass
+        out.append({"pane": d.get("pane"), "role": d.get("role"), "class": d.get("class"),
+                    "target": d.get("target", ""), "runtime": runtime or "unknown",
+                    "age_s": int(now - epoch) if isinstance(epoch, (int, float)) else None})
+    return out
+
+
+# --- Warnings ----------------------------------------------------------------
+
+NO_OP_MIN_SAMPLE = 3
+NO_OP_RATIO = 0.5
+
+
+def derive_warnings(roles, triggers, rebase, runtimes, daemons, alerts):
+    w = []
+    if not daemons["dispatcher"]["alive"]:
+        w.append("dispatcher is not running")
+    if not daemons["scout"]["alive"]:
+        w.append("state-scout is not running")
+    for role, s in sorted(roles.items()):
+        done = s["productive"] + s["no_op"]
+        if done >= NO_OP_MIN_SAMPLE and s["no_op"] / done >= NO_OP_RATIO:
+            w.append(f"{role}: {s['no_op']} of {done} completed dispatches did no work")
+    merger = roles.get("merger", {})
+    m_done = merger.get("productive", 0) + merger.get("no_op", 0)
+    if rebase["llm_rearms"] and m_done and merger.get("productive", 0) == 0:
+        w.append(
+            f"merger ladder: tier-0 re-armed the LLM pass {rebase['llm_rearms']}x; "
+            f"all {m_done} LLM merger iterations reported nothing to do "
+            f"(llm_remaining sum={rebase['totals'].get('llm_remaining', 0)})")
+    if "codex" in runtimes["configured"]:
+        if not runtimes["codex_on_path"]:
+            w.append("FLEET_RUNTIMES includes codex but `codex` is not on PATH")
+        if runtimes["codex_cooldown_until"]:
+            w.append("codex provider is in cooldown")
+        if runtimes["cross_provider_review"] and runtimes["open_prs_unstamped"]:
+            n = len(runtimes["open_prs_unstamped"])
+            w.append(f"{n} open PR(s) carry no fleet:author-* label; cross-provider "
+                     f"review routing refuses them until stamped")
+    for pr in runtimes["problems"]:
+        w.append(f"runtime routing problem: {pr['key']}: {pr['reason']} (x{pr['count']})")
+    for name in runtimes["gate_alerts"]:
+        w.append(f"standing dispatch-gate alert: {name}")
+    return w
+
+
+# --- Rendering ---------------------------------------------------------------
+
+def fmt_age(s):
+    if s is None:
+        return "?"
+    if s < 90:
+        return f"{s}s"
+    if s < 5400:
+        return f"{s // 60}m"
+    if s < 172800:
+        return f"{s // 3600}h"
+    return f"{s // 86400}d"
+
+
+def render_text(report):
+    o = []
+    win = report["window"]
+    o.append(f"fleet-health — window since {win['since']} ({win['label']})")
+    d = report["daemons"]
+    o.append("")
+    o.append("## Daemons")
+    for name in ("dispatcher", "scout"):
+        x = d[name]
+        o.append(f"  {name:11s} pid={x['pid'] or '-'} {'alive' if x['alive'] else 'DEAD'}")
+    o.append(f"  mode        {d['mode']}")
+    o.append("")
+    o.append("## Dispatches (per role)")
+    roles = report["roles"]
+    if not roles:
+        o.append("  (none in window)")
+    for role, s in sorted(roles.items()):
+        rt = " ".join(f"{k}={v}" for k, v in sorted(s["runtimes"].items()))
+        line = (f"  {role:16s} launched={s['dispatches']:3d} productive={s['productive']:3d} "
+                f"no-op={s['no_op']:3d}")
+        if s["unknown"]:
+            line += f" unknown={s['unknown']}"
+        if s["running"]:
+            line += f" running={s['running']}"
+        if s["lost"]:
+            line += f" lost={s['lost']}"
+        line += f" targeted={s['targeted']}  runtime[{rt}]"
+        if s["median_s"] is not None:
+            line += f"  dur median={s['median_s']}s max={s['max_s']}s"
+        if s["no_op_median_s"] is not None:
+            line += f"  no-op median={s['no_op_median_s']}s"
+        o.append(line)
+    t = report["triggers"]
+    o.append("")
+    o.append("## Trigger arms")
+    if t["scout"]:
+        o.append("  scout:      " + " ".join(f"{k}={v}" for k, v in sorted(t["scout"].items())))
+    else:
+        o.append("  scout:      (none)")
+    o.append(f"  dispatcher: tier-0 spawns={t['tier0_spawns']} worker-rearms={t['worker_rearms']}")
+    if t["standdowns"]:
+        o.append("  stand-downs: "
+                 + " ".join(f"{k}={v}" for k, v in sorted(t["standdowns"].items())))
+    r = report["rebase"]
+    o.append("")
+    o.append("## Merger ladder (tier-0 fleet-rebase)")
+    tot = " ".join(f"{k}={v}" for k, v in sorted(r["totals"].items()))
+    o.append(f"  runs={r['runs']} llm-rearms={r['llm_rearms']} "
+             f"tier0-rearms={r['tier0_rearms']}  {tot}")
+    u = report["runtimes"]
+    o.append("")
+    o.append("## Runtimes")
+    o.append(f"  configured={','.join(u['configured'])} "
+             f"cross-provider-review={'on' if u['cross_provider_review'] else 'off'} "
+             f"worker-policy={u['worker_policy']}")
+    cd = ("until " + dt.datetime.fromtimestamp(u["codex_cooldown_until"], dt.timezone.utc)
+          .strftime("%H:%M:%SZ")) if u["codex_cooldown_until"] else "none"
+    o.append(f"  codex on PATH={'yes' if u['codex_on_path'] else 'NO'} cooldown={cd}")
+    split = " ".join(f"{k}={v}" for k, v in sorted(u["dispatch_split"].items())) or "(none)"
+    o.append(f"  dispatches by runtime: {split}")
+    o.append(f"  open PRs stamped fleet:author-*: {u['open_prs_stamped']}; unstamped: "
+             f"{len(u['open_prs_unstamped'])}"
+             + (f" [{' '.join(u['open_prs_unstamped'][:12])}"
+                + (" …" if len(u["open_prs_unstamped"]) > 12 else "") + "]"
+                if u["open_prs_unstamped"] else ""))
+    for p in u["problems"]:
+        o.append(f"  routing problem: {p['key']}: {p['reason']} (x{p['count']})")
+    live = report["live"]
+    o.append("")
+    o.append("## Running now")
+    if not live:
+        o.append("  (no iteration in flight)")
+    for x in live:
+        o.append(f"  {x['pane']:5s} {x['role']:16s} {x['runtime']:7s} "
+                 f"{x['target'] or '-':28s} {fmt_age(x['age_s'])}")
+    st = report["streaks"]
+    if st:
+        o.append("")
+        o.append("## Empty-exit streaks / stand-down backoffs")
+        for x in st:
+            o.append(f"  {x['counter']}={x['value']}")
+    al = report["alerts"]
+    o.append("")
+    o.append("## Standing alerts")
+    if not al:
+        o.append("  (none)")
+    for x in al:
+        o.append(f"  {x['name']:32s} {fmt_age(x['age_s']):>4s}  {x['line']}")
+    o.append("")
+    if report["warnings"]:
+        o.append("## WARN")
+        for x in report["warnings"]:
+            o.append(f"  - {x}")
+    else:
+        o.append("OK — no warnings")
+    return "\n".join(o) + "\n"
+
+
+def build_report(args):
+    fleet_dir = Path(args.fleet_dir)
+    state_dir = Path(os.environ.get("FLEET_STATE_DIR") or fleet_dir / "state")
+    logs_dir = Path(args.logs_dir) if args.logs_dir else fleet_dir / "logs"
+    sessions_dir = Path(os.environ.get("FLEET_SESSIONS_DIR") or fleet_dir / "sessions")
+    alerts_dir = Path(os.environ.get("FLEET_ALERTS_DIR") or fleet_dir / "alerts")
+    conf_path = Path(os.environ.get("FLEET_CONF") or fleet_dir / "fleet-up.conf")
+    dispatch_dir = state_dir / "dispatch"
+
+    log_lines = []
+    for name in ("dispatcher.log", "fleet-rebase.log", "state-scout.log"):
+        log_lines.extend(read_log(logs_dir / name))
+    log_lines.sort(key=lambda x: x[0])
+
+    since = parse_since(args.since, log_lines)
+    rows = collect_dispatches(log_lines, since, sessions_dir, dispatch_dir)
+    roles = summarize_roles(rows)
+    triggers = collect_triggers(log_lines, since)
+    rebase = collect_rebase(log_lines, since)
+    conf = load_conf(conf_path)
+    runtimes = collect_runtimes(conf, state_dir, alerts_dir, state_dir / "state.json", rows)
+    dpid, dalive = pid_alive(state_dir / "dispatcher.pid")
+    spid, salive = pid_alive(state_dir / "scout.pid")
+    try:
+        mode = (state_dir / "dispatch-mode").read_text().strip()
+    except OSError:
+        mode = "?"
+    daemons = {"dispatcher": {"pid": dpid, "alive": dalive},
+               "scout": {"pid": spid, "alive": salive}, "mode": mode}
+    alerts = collect_alerts(alerts_dir)
+    report = {
+        "window": {"since": since.strftime("%Y-%m-%dT%H:%M:%SZ"), "label": args.since or "boot"},
+        "daemons": daemons,
+        "roles": roles,
+        "dispatches": [
+            {**r, "started": r["started"].strftime("%Y-%m-%dT%H:%M:%SZ"),
+             "completed": r["completed"].strftime("%Y-%m-%dT%H:%M:%SZ") if r["completed"] else None,
+             "seconds": round(r["seconds"])}
+            for r in rows
+        ],
+        "triggers": triggers,
+        "rebase": rebase,
+        "runtimes": runtimes,
+        "live": collect_live(dispatch_dir, sessions_dir),
+        "streaks": collect_streaks(state_dir),
+        "alerts": alerts,
+    }
+    report["warnings"] = derive_warnings(roles, triggers, rebase, runtimes, daemons, alerts)
+    return report
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(
+        prog="fleet-health",
+        description="Read-only fleet health report: dispatch outcomes per role, trigger "
+                    "churn, the merger ladder, provider usage, standing alerts.")
+    ap.add_argument("--since", default="boot",
+                    help="window start: boot (default, the current dispatcher boot), "
+                         "<N>m|h|d, or an ISO-8601 timestamp")
+    ap.add_argument("--json", action="store_true", help="machine-readable output")
+    ap.add_argument("--fleet-dir", default=os.environ.get("FLEET_DIR", str(Path.home() / ".fleet")),
+                    help="fleet root (default ~/.fleet; FLEET_STATE_DIR / FLEET_SESSIONS_DIR / "
+                         "FLEET_ALERTS_DIR / FLEET_CONF override the individual pieces)")
+    ap.add_argument("--logs-dir", default=None, help="override <fleet-dir>/logs")
+    args = ap.parse_args(argv)
+    try:
+        report = build_report(args)
+    except ValueError as e:
+        print(f"fleet-health: {e}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+    else:
+        sys.stdout.write(render_text(report))
+    return 1 if report["warnings"] else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

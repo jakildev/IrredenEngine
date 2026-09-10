@@ -53,6 +53,12 @@ trap cleanup EXIT
 TMPROOT=$(mktemp -d)
 export FLEET_STATE_DIR="$TMPROOT/state"
 export FLEET_CONF="$TMPROOT/fleet-up.conf"
+# Sandbox the session sidecars too: T31's reservation-resume path reads
+# <sessions>/<pane>.session.json, and without this it read the LIVE
+# ~/.fleet/sessions — a hermeticity hole that surfaced the first time a real
+# Codex iteration held pool-2 (the suite then failed on production state).
+export FLEET_SESSIONS_DIR="$TMPROOT/sessions"
+mkdir -p "$FLEET_SESSIONS_DIR"
 mkdir -p "$FLEET_STATE_DIR/projections" "$FLEET_STATE_DIR/dispatch"
 touch "$FLEET_CONF"
 
@@ -372,6 +378,17 @@ grep -q 'target=task:engine:10' "$SEND_LOG" \
 grep -q '"target":"task:engine:10"' "$FLEET_STATE_DIR/dispatch/pane-1.json" \
     && { PASS=$((PASS+1)); echo "  ok: dispatch record stamped with the target"; } \
     || { FAIL=$((FAIL+1)); echo "  FAIL: record lacks target: $(cat "$FLEET_STATE_DIR"/dispatch/*.json)"; }
+# Provider attribution: FLEET_RUNTIMES is unset in this harness, so routing
+# never runs and the launch defaults to claude — the log line and the record
+# both say so, which is what fleet-health's per-runtime tally reads.
+case "$out" in
+    *"target=task:engine:10] runtime=claude"*)
+        PASS=$((PASS+1)); echo "  ok: dispatch line names the runtime" ;;
+    *) FAIL=$((FAIL+1)); echo "  FAIL: dispatch line lacks runtime=:"; printf '%s\n' "$out" ;;
+esac
+grep -q '"runtime":"claude"' "$FLEET_STATE_DIR/dispatch/pane-1.json" \
+    && { PASS=$((PASS+1)); echo "  ok: dispatch record stamped with the runtime"; } \
+    || { FAIL=$((FAIL+1)); echo "  FAIL: record lacks runtime: $(cat "$FLEET_STATE_DIR"/dispatch/*.json)"; }
 
 echo "T21: a refused head yields to the next class in the SAME tick"
 out=$(tick worker 1 STUB_REFUSE='engine:10')

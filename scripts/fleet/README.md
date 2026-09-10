@@ -71,6 +71,15 @@ fleet workflow.
   resulting executable under `build/`, changes to its runtime directory,
   and launches it under `lldb` or `gdb`. Use `--batch` for non-interactive
   crash triage that runs once and prints all thread backtraces.
+- **`fleet-health`** — read-only report on whether the fleet is spending
+  its panes on work. Per role: dispatches launched vs productive vs no-op
+  (with durations and the claude/codex split), who armed each trigger
+  (scout, tier-0 `fleet-rebase`, periodic worker re-arm), the merger
+  ladder's tier-0 → LLM hand-offs, provider readiness plus the open PRs
+  still missing a `fleet:author-*` stamp, standing alerts, and the
+  iterations in flight. Window defaults to the current dispatcher boot
+  (`--since 24h`, `7d`, or an ISO timestamp to widen); `--json` for
+  scripting; exit 1 when it has a WARN line.
 - **`fleet-edit`** — exact string replacement CLI (Python3). Takes a
   target file, an old-text file, and a new-text file; replaces exactly
   one occurrence (or all with `--replace-all`). Use for tasks that need

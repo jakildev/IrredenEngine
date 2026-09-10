@@ -9,7 +9,8 @@
 # and checks the diff surface via the pulls/<N>/files endpoint.
 #
 #   T1: pure .fleet/plans diff, benign labels → squash-merged.
-#   T2: mixed diff (plan file + engine source) → not merged, llm-other count.
+#   T2: mixed diff (plan file + engine source) → not merged, human_remaining
+#       (no LLM re-arm — the PR is on the human's click).
 #   T3: slice label outside the allowlist (fleet:human-deferred) → never a
 #       merge candidate; zero gh calls for it.
 #   T4: slice labels clean but LIVE labels drifted (human:needs-fix appeared
@@ -18,8 +19,8 @@
 #       live verify refuses, not merged.
 #   T6: --dry-run on a pure plan PR → logs "would squash-merge", gh pr merge
 #       never invoked.
-#   T7: four eligible plan PRs → cap merges 3, defers the 4th, re-arms via
-#       llm_remaining.
+#   T7: four eligible plan PRs → cap merges 3, defers the 4th, re-arms
+#       TIER-0 (empty trigger) via deferred=1 — never the LLM pass.
 #
 # The gh stub serves canned per-PR REST responses from $GH_STUB_DIR and
 # records every invocation to $GH_STUB_LOG — no live GitHub anywhere.
@@ -150,7 +151,8 @@ stub_files 400 ".fleet/plans/issue-1394.md" "engine/render/ir_render_canvas.cpp"
 T2=$(run_rebase)
 assert_contains "$T2" "diff not pure .fleet/plans (engine/render/ir_render_canvas.cpp)" \
     "T2 names the offending path"
-assert_contains "$T2" "merged=0 llm_remaining=1" "T2 not merged, counted for re-arm"
+assert_contains "$T2" "merged=0 llm_remaining=0 human_remaining=1" \
+    "T2 not merged, human-owned, no LLM re-arm"
 assert_absent "$(cat "$GH_STUB_LOG")" "pr merge" "T2 gh pr merge never invoked"
 
 # === T3: slice label outside allowlist → never a candidate ====================
@@ -163,7 +165,7 @@ write_slice '[{
   "labels":["fleet:approved","fleet:human-deferred"]
 }]'
 T3=$(run_rebase)
-assert_contains "$T3" "merged=0 llm_remaining=1" "T3 stays llm-other"
+assert_contains "$T3" "merged=0 llm_remaining=0 human_remaining=1" "T3 stays on the human's click"
 assert_absent "$(cat "$GH_STUB_LOG")" "pulls/401" "T3 zero gh calls for the PR"
 
 # === T4: live labels drifted since the scout tick ==============================
@@ -207,8 +209,26 @@ for n in 410 411 412 413; do
 done
 write_slice "${slice%,}]"
 T7=$(run_rebase)
-assert_contains "$T7" "merged=3 llm_remaining=1" "T7 cap merges 3, defers 1"
+assert_contains "$T7" "merged=3 llm_remaining=0 human_remaining=0 cooling=0 deferred=1" \
+    "T7 cap merges 3, defers 1 to tier-0"
 assert_contains "$T7" "auto-merge cap (3) reached this run" "T7 cap log line"
+# The deferred 4th PR re-arms TIER-0 (an empty trigger), never the LLM pass:
+# the LLM merger cannot merge, so an "llm" trigger here would spend a full
+# iteration to find nothing.
+reset_stub
+for n in 410 411 412 413; do
+    stub_pr "$n" open master true "fleet:approved"
+    stub_files "$n" ".fleet/plans/issue-$n.md"
+done
+rm -f "$FLEET_STATE_DIR/triggers/merger"
+T7b=$("$REBASE" --auto --rearm-trigger 2>&1 || true)
+assert_contains "$T7b" "re-armed merger trigger for another tier-0 pass" "T7 cap re-arms tier-0"
+assert_absent "$T7b" "re-armed merger trigger for the LLM pass" "T7 cap does not re-arm the LLM pass"
+if [[ -f "$FLEET_STATE_DIR/triggers/merger" && ! -s "$FLEET_STATE_DIR/triggers/merger" ]]; then
+    PASS=$((PASS + 1)); echo "  ok: T7 trigger file present and empty (tier-0 protocol)"
+else
+    FAIL=$((FAIL + 1)); echo "  FAIL: T7 trigger file missing or non-empty"
+fi
 
 # === T8: live fetch returns no head SHA -> refused =============================
 echo "T8: null head SHA in live fetch -> refused (nothing to pin the merge to)"
