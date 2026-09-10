@@ -57,6 +57,9 @@ TEST(SaveTrait, RepresentativeGameplayDataOptsIn) {
 
     EXPECT_TRUE(shouldSave<C_SimClock>());
     EXPECT_GE(saveVersion<C_SimClock>(), 1u);
+
+    EXPECT_TRUE(shouldSave<C_Locked>());
+    EXPECT_EQ(saveVersion<C_Locked>(), 1u);
 }
 
 // Class E — the two explicit-call opt-ins and the deprecated shim opt-out.
@@ -95,15 +98,6 @@ TEST(SaveTrait, FoldInvariantsHoldAcrossInventory) {
     EXPECT_TRUE((allFoldInvariantsHold<AllEngineComponents>(
         std::make_index_sequence<std::tuple_size_v<AllEngineComponents>>{}
     )));
-}
-
-// Completeness backstop — adding a component to the engine without adding
-// a matching IR_SAVE_OPT_IN/OPT_OUT + AllEngineComponents entry fails this
-// test (the compile-time gate in save_component_inventory.hpp would also
-// have caught a missing *decision*; this catches a missing *tuple entry*
-// for a component that does have one, e.g. a copy-paste line drop).
-TEST(SaveTrait, InventoryIsComplete) {
-    EXPECT_EQ(std::tuple_size_v<AllEngineComponents>, kExpectedEngineComponentCount);
 }
 
 } // namespace

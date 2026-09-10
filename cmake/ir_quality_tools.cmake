@@ -251,6 +251,9 @@ function(irreden_add_quality_targets)
         COMMAND ${CMAKE_COMMAND}
             -DPROJECT_ROOT="${PROJECT_SOURCE_DIR}"
             -P "${PROJECT_SOURCE_DIR}/cmake/run_metal_scratch_consumer_check.cmake"
+        COMMAND ${CMAKE_COMMAND}
+            -DPROJECT_ROOT="${PROJECT_SOURCE_DIR}"
+            -P "${PROJECT_SOURCE_DIR}/cmake/run_save_inventory_population_check.cmake"
         COMMENT "Running header convention checks"
         VERBATIM
     )
@@ -273,6 +276,9 @@ function(irreden_add_quality_targets)
             COMMAND ${CMAKE_COMMAND}
                 -DPROJECT_ROOT="${PROJECT_SOURCE_DIR}"
                 -P "${PROJECT_SOURCE_DIR}/cmake/run_metal_scratch_consumer_check.cmake"
+            COMMAND ${CMAKE_COMMAND}
+                -DPROJECT_ROOT="${PROJECT_SOURCE_DIR}"
+                -P "${PROJECT_SOURCE_DIR}/cmake/run_save_inventory_population_check.cmake"
             COMMENT "Running lint and header convention checks"
             VERBATIM
         )
