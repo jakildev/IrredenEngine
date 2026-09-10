@@ -624,4 +624,198 @@ assert_contains "$OUT" "unsupported suite type" "the error names the suite type 
 assert_absent "$OUT" "staged scripts/fleet" "the refusal comes before staging, so staging is never implicated"
 rm -f "$WEIRD"
 
+# --- the bash tally grammar (#2917) -----------------------------------------
+# 41 of 92 bash suites keep their own PASS/FAIL counters and print them in a
+# spelling summarize() never emits, so the matcher rejected them and the tool
+# exited 2 as a *setup failure* — no verdict obtainable through the one path
+# scripts/fleet/CLAUDE.md mandates. The grammar below is the closed set that
+# replaced it; `--parse-tally` is its single executor, shared with the
+# population ratchet in test_suite_tally_forms.sh so there is one copy.
+#
+# This table IS the spec: a sixth bespoke form must fail here rather than
+# silently becoming uncontrollable.
+parse_tally() {
+    local body="$1" f="$TMPROOT/tally.txt"
+    printf '%s\n' "$body" > "$f"
+    run "$WRAPPER" --parse-tally "$f"
+}
+
+echo "--- --parse-tally reads every accepted tally form ---"
+parse_tally 'passed: 8  failed: 0'
+assert_eq "$RC" "0" "summarize()'s bare form is accepted"
+assert_eq "$OUT" "8 0" "summarize()'s bare form yields its counts"
+
+parse_tally 'fleet-claim acquire tests: 25 passed, 0 failed'
+assert_eq "$OUT" "25 0" "summarize()'s labelled form yields its counts"
+
+# The extraction rule is "the last two integers on the line", so a label
+# carrying its own number must not be mistaken for the pass count.
+parse_tally 'T12 tests: 5 passed, 0 failed'
+assert_eq "$OUT" "5 0" "a label with digits does not displace the count pair"
+
+parse_tally 'PASS: 41  FAIL: 0'
+assert_eq "$OUT" "41 0" "the bare legacy form is accepted"
+
+parse_tally '  PASS: 9    FAIL: 0'
+assert_eq "$OUT" "9 0" "the indented legacy form is accepted"
+
+parse_tally 'PASS: 3    FAIL: 1'
+assert_eq "$OUT" "3 1" "a wider run between the tokens is accepted"
+
+parse_tally 'pass: 2  fail: 0'
+assert_eq "$OUT" "2 0" "the lowercase legacy form is accepted"
+
+parse_tally 'PASS=5 FAIL=0'
+assert_eq "$OUT" "5 0" "the equals legacy form is accepted"
+
+# `tail -1` is load-bearing: a suite prints fixture tallies mid-run and its own
+# summary last. A reorder here would silently score a fixture's numbers.
+parse_tally 'PASS: 1  FAIL: 1
+passed: 7  failed: 0'
+assert_eq "$OUT" "7 0" "the LAST tally-shaped line wins, not the first"
+
+# 0/0 is a legal parse — the 0-assertion refusal belongs to the staged run, not
+# to the grammar, and the ratchet's renderer depends on parsing any pair.
+parse_tally 'PASS: 0  FAIL: 0'
+assert_eq "$OUT" "0 0" "a zero tally parses; rejecting it is the run's job"
+
+echo "--- --parse-tally rejects everything else, and says which kind of wrong ---"
+# The whole point of the #2917 split: a suite that RAN and printed a tally must
+# never be reported as one that aborted before summarizing.
+parse_tally 'Passed=5 Failed=0'
+assert_eq "$RC" "2" "a bespoke spelling exits 2"
+assert_contains "$OUT" "does not recognize" "a bespoke spelling is named as unrecognized"
+assert_contains "$OUT" "Passed=5 Failed=0" "the offending line is quoted back"
+assert_absent "$OUT" "aborted before summarizing" "a suite that ran is never called a setup failure"
+
+parse_tally 'PASS: 5
+FAIL: 0'
+assert_eq "$RC" "2" "counts split across two lines exit 2"
+assert_contains "$OUT" "does not recognize" "a split tally is unrecognized, not a setup failure"
+assert_contains "$OUT" "PASS: 5" "the split tally's first half is quoted back"
+assert_contains "$OUT" "FAIL: 0" "the split tally's second half is quoted back"
+assert_absent "$OUT" "aborted before summarizing" "a split tally never claims the suite aborted"
+
+# Both halves on ONE line but in the reverse order: the same code path, with the
+# two lookups landing on the same line. Pins that it is quoted once, and that
+# reaching it does not abort the wrapper.
+parse_tally 'FAIL: 0  PASS: 5'
+assert_eq "$RC" "2" "a reversed one-line tally exits 2"
+assert_contains "$OUT" "does not recognize" "a reversed one-line tally is unrecognized"
+assert_eq "$(printf '%s\n' "$OUT" | grep -c 'FAIL: 0  PASS: 5')" "1" "the reversed line is quoted exactly once"
+
+# run_all.sh's own summary shares summarize()'s word order; the `$` anchor is
+# what keeps it out of the accepted set.
+parse_tally 'run_all.sh: 3 suite(s) - 3 passed, 0 failed, 0 skipped'
+assert_eq "$RC" "2" "run_all.sh's summary is not a suite tally"
+assert_absent "$OUT" "aborted before summarizing" "a runner summary is unrecognized, not an abort"
+
+: > "$TMPROOT/tally.txt"
+run "$WRAPPER" --parse-tally "$TMPROOT/tally.txt"
+assert_eq "$RC" "2" "an empty file exits 2"
+assert_contains "$OUT" "printed no tally" "no tally at all is named as such"
+assert_contains "$OUT" "aborted before summarizing" "no tally at all keeps the setup-failure text"
+assert_absent "$OUT" "does not recognize" "no tally at all never claims an unreadable spelling"
+
+# A suite that died mid-run still prints lib_assert's `ok:`/`PASS  T1` lines;
+# those must not be mistaken for a tally, or the setup-failure arm is unreachable.
+parse_tally 'T1: does the thing
+  ok: it did the thing
+bash: line 4: boom: command not found'
+assert_eq "$RC" "2" "an aborted run with assertion output exits 2"
+assert_contains "$OUT" "aborted before summarizing" "assertion output alone is not a tally"
+assert_absent "$OUT" "does not recognize" "assertion output alone does not trip the unrecognized arm"
+
+echo "--- --parse-tally's two argument spellings behave identically ---"
+run "$WRAPPER" --parse-tally
+assert_eq "$RC" "2" "--parse-tally with no file exits 2"
+assert_contains "$OUT" "needs a file" "the space form names the missing value"
+
+run "$WRAPPER" --parse-tally=
+assert_eq "$RC" "2" "--parse-tally= with an empty file exits 2"
+assert_contains "$OUT" "needs a file" "the equals form names the missing value"
+
+printf 'PASS: 4  FAIL: 2\n' > "$TMPROOT/tally.txt"
+run "$WRAPPER" "--parse-tally=$TMPROOT/tally.txt"
+assert_eq "$OUT" "4 2" "the equals form reads the same file identically"
+
+run "$WRAPPER" --parse-tally "$TMPROOT/does-not-exist.txt"
+assert_eq "$RC" "2" "--parse-tally on a missing file exits 2"
+assert_contains "$OUT" "file not found" "the missing-file error names the cause"
+# No ref, no staging — the mode short-circuits before git rev-parse/mktemp, so a
+# caller with no ref in hand (the ratchet) can use it.
+assert_absent "$OUT" "staged scripts/fleet" "--parse-tally never stages anything"
+
+# The two modes are exclusive; passing both means the caller misread one.
+run "$WRAPPER" --parse-tally "$TMPROOT/tally.txt" "$SCRIPT_DIR/tests/test_positive_control.sh" HEAD
+assert_eq "$RC" "2" "--parse-tally plus <test-file>/<ref> is refused, not silently ignored"
+assert_contains "$OUT" "takes no" "the mode-mixing error names the cause"
+
+run "$WRAPPER" --parse-tally "$TMPROOT/tally.txt" --include docs
+assert_eq "$RC" "2" "--parse-tally plus --include is refused (nothing is staged)"
+
+# --- own-tally suites reach a verdict end-to-end (#2917) ---------------------
+# The grammar tables above pin the parser; these pin the whole pipeline for a
+# suite that never calls summarize — the population that could not be
+# controlled at all before this change.
+echo "--- an own-tally suite that distinguishes the ref is reported MEANINGFUL ---"
+OWNMARK="$SCRIPT_DIR/fleet-zz-tmp-added-by-fix-2917"
+STRAYS+=("$OWNMARK")
+: > "$OWNMARK"
+OWNMEAN="$SCRIPT_DIR/tests/test_zz_tmp_own_meaningful_2917.sh"
+STRAYS+=("$OWNMEAN")
+cat > "$OWNMEAN" <<'FIXTURE'
+#!/usr/bin/env bash
+set -euo pipefail
+SCRIPT_DIR=$(cd "$(dirname "$0")/.." && pwd)
+PASS=0; FAIL=0
+if [[ -f "$SCRIPT_DIR/fleet-zz-tmp-added-by-fix-2917" ]]; then
+    echo "  ok: the file the fix adds is present in this tree"; PASS=$((PASS + 1))
+else
+    echo "  BAD: the file the fix adds is present in this tree"; FAIL=$((FAIL + 1))
+fi
+echo "  ok: a non-regression assertion that holds on both refs"; PASS=$((PASS + 1))
+echo "PASS: $PASS  FAIL: $FAIL"
+FIXTURE
+chmod +x "$OWNMEAN"
+run "$WRAPPER" "$OWNMEAN" HEAD
+assert_eq "$RC" "0" "an own-tally suite reaches a verdict (was exit 2, no verdict)"
+assert_contains "$OUT" "MEANINGFUL: 1 of 2 assertions fail" "the own-tally verdict reports the real counts"
+assert_contains "$OUT" "(1 + 1 = 2, the full suite.)" "the PR-body line shows its own arithmetic"
+rm -f "$OWNMEAN" "$OWNMARK"
+
+echo "--- an own-tally suite that cannot distinguish the ref is reported VACUOUS ---"
+OWNVAC="$SCRIPT_DIR/tests/test_zz_tmp_own_vacuous_2917.sh"
+STRAYS+=("$OWNVAC")
+cat > "$OWNVAC" <<'FIXTURE'
+#!/usr/bin/env bash
+set -euo pipefail
+PASS=0; FAIL=0
+echo "  ok: a tautology holds on any ref"; PASS=$((PASS + 1))
+  echo "  PASS: $PASS    FAIL: $FAIL"
+FIXTURE
+chmod +x "$OWNVAC"
+run "$WRAPPER" "$OWNVAC" HEAD
+assert_eq "$RC" "1" "an own-tally vacuous suite exits 1"
+assert_contains "$OUT" "VACUOUS: all 1 assertions pass" "the indented legacy form is read end-to-end"
+rm -f "$OWNVAC"
+
+echo "--- an own-tally suite that ran nothing is still a setup failure ---"
+# The widening must not turn an empty run into a verdict: 0/0 parses, and the
+# 0-assertion refusal is what stops it becoming "all 0 assertions pass".
+OWNEMPTY="$SCRIPT_DIR/tests/test_zz_tmp_own_empty_2917.sh"
+STRAYS+=("$OWNEMPTY")
+cat > "$OWNEMPTY" <<'FIXTURE'
+#!/usr/bin/env bash
+set -euo pipefail
+PASS=0; FAIL=0
+echo "PASS: $PASS  FAIL: $FAIL"
+FIXTURE
+chmod +x "$OWNEMPTY"
+run "$WRAPPER" "$OWNEMPTY" HEAD
+assert_eq "$RC" "2" "an own-tally 0/0 run exits 2 rather than reporting a verdict"
+assert_contains "$OUT" "reported 0 assertions" "the empty-run error names the cause"
+assert_absent "$OUT" "VACUOUS" "an empty own-tally run never claims the suite failed to distinguish"
+rm -f "$OWNEMPTY"
+
 summarize "fleet-positive-control tests"

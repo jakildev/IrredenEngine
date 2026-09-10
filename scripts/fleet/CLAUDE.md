@@ -110,7 +110,14 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   `ok`/`bad`, `assert_eq`/`assert_contains`/`assert_absent`, and the
   `summarize` exit idiom — don't re-copy the helpers into a new test.
   Genuinely test-specific asserts (path existence, exit codes) stay local,
-  built on `ok`/`bad`.
+  built on `ok`/`bad`. **End a new suite with `summarize`**, never a private
+  `echo "PASS: $PASS  FAIL: $FAIL"` — the wrapper below reads that line for
+  its counts, and a bespoke spelling made 41 of 92 suites un-controllable
+  (#2917). **This is executed**: `tests/test_suite_tally_forms.sh` is the
+  ratchet. Its `OWN_TALLY_BASELINE` names the 45 suites that predate the rule
+  and is shrink-only — an entry leaves when its suite migrates, none may be
+  added. The suite also refuses a local `summarize()` redefinition, which
+  would print anything it liked while passing the population check.
 - **Positive-control a new suite with `fleet-positive-control`, never by hand.**
   `fleet-tests.yml` proves a suite is *green*; only a run against the pre-fix
   ref proves it would have gone *red* on the bug, so a new suite's worth still
@@ -127,6 +134,20 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   (#2848) — and reads each one's own summary line for the counts, so a suite
   that prints none, or that runs zero assertions, is a setup failure rather
   than a verdict.
+  For bash that summary line is a **closed grammar of seven forms**:
+  `summarize()`'s two (`passed: N  failed: M`, `<label>: N passed, M failed`)
+  plus four legacy `PASS`/`pass` × `FAIL`/`fail` colon spellings and
+  `PASS=N FAIL=M`, whitespace-flexible and anchored at both ends (which is what
+  keeps `run_all.sh`'s own `… N passed, M failed, K skipped` summary out of the
+  set). `--parse-tally <file>` applies that grammar standalone and prints
+  `<passed> <failed>` — it is the **single executor**, called by
+  `tests/test_positive_control.sh`'s accept/reject tables and by the
+  `tests/test_suite_tally_forms.sh` ratchet, so the grammar has one copy and
+  nothing to drift from. A suite that ran and printed a tally the grammar
+  rejects gets its own diagnostic naming the offending line; only a suite that
+  printed *nothing* is reported as having aborted before summarizing. Both exit
+  2 — the split is in the text, and the tests assert on each arm's wording *and*
+  the absence of the other's (#2917).
   `tests/lib_preflight.sh` is the backstop for controls still run by hand, and
   a bash suite adopts it with one line after its `SCRIPT_DIR` assignment:
   `source "$(dirname "$0")/lib_preflight.sh"`. Sourcing `lib_assert.sh` pulls

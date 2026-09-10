@@ -391,6 +391,11 @@ Meta / housekeeping
                                  of hand-staging a positive control: a partial
                                  stage prints a plausible-but-wrong tally
                                  rather than an error (#2713)
+  fleet-positive-control --parse-tally <file>
+                                 read <file> with the bash tally grammar and
+                                 print "<passed> <failed>"; the single executor
+                                 tests/test_suite_tally_forms.sh pins the suite
+                                 population against (#2917)
   fleet-feedback [--since …] …           digest ~/.fleet/feedback/*.md
   review-fleet-feedback {digest|apply|bump}
                                  closed-loop reviewer over fleet-feedback;

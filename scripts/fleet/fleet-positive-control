@@ -23,6 +23,7 @@
 # Usage
 # -----
 #   fleet-positive-control <test-file> <ref> [--include <pathspec>]...
+#   fleet-positive-control --parse-tally <file>
 #
 #   <test-file>  the suite to run — your working-tree copy, which is the
 #                version under development and the thing being validated.
@@ -32,11 +33,35 @@
 #                fix landed on top of)
 #   --include    stage an extra pathspec beside scripts/fleet (repeatable),
 #                for a suite that reads outside this directory
+#   --parse-tally  read <file> with the bash tally grammar below and print
+#                "<passed> <failed>", or exit 2 with the same diagnostic the
+#                staged run prints. No ref, no staging — this is the single
+#                executor tests/test_suite_tally_forms.sh and
+#                tests/test_positive_control.sh call, so the grammar has one
+#                copy and nothing to drift from.
 #
 # The suite is driven by an interpreter, never by its own shebang — the
 # test_*.py suites carry none, and executing one hands a Python file to the
-# shell (#2848). Counts come from the suite's own summary line: summarize()'s
-# tally for bash, unittest's `Ran N tests` + OK/FAILED trailer for python.
+# shell (#2848). Counts come from the suite's own summary line: for bash one of
+# the accepted tally forms below, for python unittest's `Ran N tests` + the
+# OK/FAILED trailer.
+#
+# Accepted bash tally forms
+# -------------------------
+# Whitespace is the only generalisation (leading indent, and the run between
+# the two tokens); PASS/pass and FAIL/fail vary independently, so the colon
+# form covers four spellings — seven in all with summarize()'s two:
+#
+#   passed: <n>  failed: <n>          summarize
+#   <label>: <n> passed, <n> failed   summarize "<label>"
+#   PASS: <n>  FAIL: <n>              legacy own-tally
+#   pass: <n>  fail: <n>              legacy own-tally, lowercase
+#   PASS=<n> FAIL=<n>                 legacy own-tally, equals form
+#
+# The legacy four are frozen, not an invitation: a NEW bash suite ends with
+# `summarize` from tests/lib_assert.sh. tests/test_suite_tally_forms.sh is the
+# ratchet that enforces that — its baseline of own-tally suites may shrink as
+# they migrate, never grow (#2917).
 #
 # Output ends with a copy-pasteable line for the PR body's test plan, with the
 # arithmetic already checked — the #2708 nit was a miscounted fail count.
@@ -61,6 +86,7 @@ source "$_FLEET_COMMON_SH"
 TEST_FILE=""
 REF=""
 INCLUDES=()
+PARSE_TALLY=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -71,6 +97,13 @@ while [[ $# -gt 0 ]]; do
             spec="${1#--include=}"
             [[ -n "$spec" ]] || die "--include= needs a pathspec"
             INCLUDES+=("$spec"); shift ;;
+        --parse-tally)
+            [[ -n "${2:-}" ]] || die "--parse-tally needs a file"
+            PARSE_TALLY="$2"; shift 2 ;;
+        --parse-tally=*)
+            spec="${1#--parse-tally=}"
+            [[ -n "$spec" ]] || die "--parse-tally= needs a file"
+            PARSE_TALLY="$spec"; shift ;;
         -h|--help)
             # The whole header comment, minus the shebang — a line range would
             # silently truncate the moment the header grows.
@@ -86,6 +119,119 @@ while [[ $# -gt 0 ]]; do
             shift ;;
     esac
 done
+
+# --- Bash tally grammar -----------------------------------------------------
+# The accepted forms, as one ERE — keep in sync with the header's table above,
+# the accept/reject tables in tests/test_positive_control.sh, and the ratchet in
+# tests/test_suite_tally_forms.sh. Anchoring both ends is what keeps run_all.sh's
+# own summary (`… N passed, M failed, K skipped`) out of the accepted set.
+BASH_TALLY_RE='^[[:space:]]*(.*: [0-9]+ passed, [0-9]+ failed|passed: [0-9]+  failed: [0-9]+|(PASS|pass): [0-9]+[[:space:]]+(FAIL|fail): [0-9]+|PASS=[0-9]+ FAIL=[0-9]+)[[:space:]]*$'
+# Deliberately loose, and used for nothing but telling "printed a tally we
+# cannot read" apart from "printed no tally at all" — the two halves of the
+# exit-2 diagnostic. Never used to extract counts. Both word orders, because
+# the two live families spell them opposite ways (`PASS: 5` vs `5 passed`);
+# matched case-insensitively, so these cover PASS/Passed/pass. Requiring the
+# count *adjacent* to its word is what keeps a mid-run `PASS  T1: …` assertion
+# line out of the set — an aborted suite must still reach the setup-failure arm.
+BASH_PASSISH_RE='(pass[a-z]*[:=]? *[0-9]+|[0-9]+ *pass[a-z]*)'
+BASH_FAILISH_RE='(fail[a-z]*[:=]? *[0-9]+|[0-9]+ *fail[a-z]*)'
+BASH_TALLYISH_RE="$BASH_PASSISH_RE.*$BASH_FAILISH_RE"
+BASH_SUMMARY_FORM='a recognized tally line — summarize()'"'"'s, or one of the legacy `PASS: N  FAIL: M` forms the ratchet pins'
+
+# Scalars rather than array/`$RC` reads, so the diagnostics below are safe under
+# `set -u` in --parse-tally mode, where nothing has been staged or run. The main
+# path fills them in just before the suite runs.
+RAN_AS=""
+RC_NOTE=""
+SUMMARY_FORM=""
+
+accepted_bash_forms() {
+    echo "  Accepted forms (whitespace-flexible; PASS/pass and FAIL/fail vary independently):" >&2
+    echo "      passed: <n>  failed: <n>          summarize" >&2
+    echo "      <label>: <n> passed, <n> failed   summarize \"<label>\"" >&2
+    echo "      PASS: <n>  FAIL: <n>              legacy own-tally" >&2
+    echo "      pass: <n>  fail: <n>              legacy own-tally, lowercase" >&2
+    echo "      PASS=<n> FAIL=<n>                 legacy own-tally, equals form" >&2
+}
+
+no_tally() {
+    echo ""
+    echo "fleet-positive-control: the suite printed no tally${RC_NOTE}." >&2
+    [[ -z "$RAN_AS" ]] || echo "  Ran as: $RAN_AS" >&2
+    echo "  Expected $SUMMARY_FORM." >&2
+    echo "  The suite aborted before summarizing — treat this as a setup failure," >&2
+    echo "  not a result." >&2
+    if [[ -n "$RAN_AS" ]]; then
+        echo "  The whole scripts/fleet tree was staged, so read the suite's own" >&2
+        echo "  output above first: an import or syntax error, an early exit, or a" >&2
+        echo "  path it reads that needs --include." >&2
+    fi
+    exit 2
+}
+
+# The other half of the split (#2917): the suite ran to completion and printed
+# its counts, in a spelling the grammar does not accept. Sending that reader
+# hunting a staging problem is what made 41 of 92 suites read as un-controllable.
+unrecognized_tally() {
+    echo ""
+    echo "fleet-positive-control: the suite printed a tally this tool does not recognize${RC_NOTE}:" >&2
+    local line
+    for line in "$@"; do echo "      $line" >&2; done
+    [[ -z "$RAN_AS" ]] || echo "  Ran as: $RAN_AS" >&2
+    accepted_bash_forms
+    echo "  End the suite with \`summarize\` from tests/lib_assert.sh — see the" >&2
+    echo "  positive-control bullet in scripts/fleet/CLAUDE.md." >&2
+    exit 2
+}
+
+# Sets P and F from <file>, or exits 2 down whichever diagnostic arm fits.
+parse_bash_tally() {
+    local out="$1" tally tallyish
+    # The `|| true` matters: no match is a diagnostic case, and under
+    # `set -o pipefail` grep's rc=1 would otherwise kill the script here —
+    # which reads as "vacuous".
+    tally=$(grep -E "$BASH_TALLY_RE" "$out" | tail -1 || true)
+    if [[ -z "$tally" ]]; then
+        # Both counts on one line — a bespoke spelling of a real tally.
+        tallyish=$(grep -iE "$BASH_TALLYISH_RE" "$out" | tail -1 || true)
+        [[ -z "$tallyish" ]] || unrecognized_tally "$tallyish"
+        # Counts split across two lines. The suite still ran to completion and
+        # still reported; routing that to "aborted before summarizing" is the
+        # misdirection this split exists to end (#2917), so name both lines.
+        local p f
+        p=$(grep -iE "$BASH_PASSISH_RE" "$out" | tail -1 || true)
+        f=$(grep -iE "$BASH_FAILISH_RE" "$out" | tail -1 || true)
+        if [[ -n "$p" && -n "$f" ]]; then
+            # Both halves on one line in the other order (`FAIL: 0  PASS: 5`)
+            # reaches here too — quote it once, not twice. An `&&` shorthand
+            # here would abort the script under `set -e` whenever they differ.
+            if [[ "$p" == "$f" ]]; then
+                unrecognized_tally "$p"
+            fi
+            unrecognized_tally "$p" "$f"
+        fi
+        no_tally
+    fi
+    # One extraction rule for all seven forms: the last two integers on the
+    # matched line. `$`-anchored, so a label carrying digits (summarize "T12
+    # tests") still yields the final pair rather than the label's number.
+    [[ "$tally" =~ ([0-9]+)[^0-9]+([0-9]+)[^0-9]*$ ]] || die "could not parse tally: $tally"
+    P=${BASH_REMATCH[1]}; F=${BASH_REMATCH[2]}
+}
+
+# --parse-tally is the grammar's standalone entry point — no ref, no staging, so
+# it short-circuits everything below.
+if [[ -n "$PARSE_TALLY" ]]; then
+    # Refuse the staged-run arguments rather than silently ignoring them — a
+    # caller passing both has misread one of the two modes.
+    [[ -z "$TEST_FILE" && -z "$REF" && ${#INCLUDES[@]} -eq 0 ]] \
+        || die "--parse-tally takes no <test-file>/<ref>/--include arguments"
+    [[ -f "$PARSE_TALLY" ]] || die "file not found: $PARSE_TALLY"
+    SUMMARY_FORM="$BASH_SUMMARY_FORM"
+    parse_bash_tally "$PARSE_TALLY"
+    printf '%s %s\n' "$P" "$F"
+    exit 0
+fi
 
 [[ -n "$TEST_FILE" && -n "$REF" ]] || die "usage: fleet-positive-control <test-file> <ref> [--include <pathspec>]..."
 [[ -f "$TEST_FILE" ]] || die "test file not found: $TEST_FILE"
@@ -119,7 +265,7 @@ TEST_REL=${TEST_ABS#"$REPO_ROOT"/}
 # (#2848). Resolved before staging, so an unsupported suite type is never
 # reported as a staging failure.
 case "$TEST_REL" in
-    *.sh) INTERP=(bash);    SUMMARY_FORM="summarize()'s \"passed: N  failed: M\" line" ;;
+    *.sh) INTERP=(bash);    SUMMARY_FORM="$BASH_SUMMARY_FORM" ;;
     *.py) INTERP=(python3); SUMMARY_FORM="unittest's \"Ran N tests\" line and its OK/FAILED trailer" ;;
     *)    die "unsupported suite type: $(basename "$TEST_FILE") — this tool drives .sh (bash) and .py (python3) suites, matching tests/run_all.sh" ;;
 esac
@@ -146,21 +292,16 @@ RC=$?
 set -e
 cat "$STAGE/.out"
 
+# From here on the diagnostics can name how the suite was run and what it
+# exited with; in --parse-tally mode both stay empty and those lines are
+# omitted rather than printed as blanks.
+RAN_AS="${INTERP[*]} <stage>/$TEST_REL"
+RC_NOTE=" (exit $RC)"
+
 # The suite's own summary line is the authority on the counts — parsing it keeps
 # this wrapper honest about what the suite actually reported, rather than reading
 # a verdict off its exit status. Each suite type has its own format, so the
 # parser is keyed by the same extension the interpreter was.
-no_tally() {
-    echo ""
-    echo "fleet-positive-control: the suite printed no tally (exit $RC)." >&2
-    echo "  Ran as: ${INTERP[*]} <stage>/$TEST_REL" >&2
-    echo "  Expected $SUMMARY_FORM." >&2
-    echo "  The suite aborted before summarizing — treat this as a setup failure," >&2
-    echo "  not a result. The whole scripts/fleet tree was staged, so read the" >&2
-    echo "  suite's own output above first: an import or syntax error, an early" >&2
-    echo "  exit, or a path it reads that needs --include." >&2
-    exit 2
-}
 
 # Pull `<key>=<n>` out of unittest's OK/FAILED parenthetical; 0 when absent. The
 # leading `(`-or-space anchor stops the `failures=` needle from also matching the
@@ -178,15 +319,7 @@ unittest_count() {
 # reads as "vacuous".
 S=0
 if [[ "${INTERP[0]}" == bash ]]; then
-    TALLY=$(grep -E '^(passed: [0-9]+  failed: [0-9]+|.*: [0-9]+ passed, [0-9]+ failed)$' "$STAGE/.out" | tail -1 || true)
-    [[ -n "$TALLY" ]] || no_tally
-
-    if [[ "$TALLY" =~ ^passed:\ ([0-9]+)\ \ failed:\ ([0-9]+)$ ]]; then
-        P=${BASH_REMATCH[1]}; F=${BASH_REMATCH[2]}
-    else
-        [[ "$TALLY" =~ ([0-9]+)\ passed,\ ([0-9]+)\ failed$ ]] || die "could not parse tally: $TALLY"
-        P=${BASH_REMATCH[1]}; F=${BASH_REMATCH[2]}
-    fi
+    parse_bash_tally "$STAGE/.out"
     TOTAL=$((P + F))
 else
     # unittest prints its trailer to stderr, which the run above folded into the
