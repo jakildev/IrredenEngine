@@ -1387,6 +1387,16 @@ parity with voxel-pool primary shapes.
 - **Hardcoded uniform-buffer bind points.** Indices like
   `kBufferIndex_FrameDataVoxelToCanvas = 7` appear in both C++ and GLSL. A
   mismatch is silent — wrong uniforms, no error.
+- **`getNamedResource` asserts on a miss; it never returns null.** The
+  assert compiles out under `IR_RELEASE`, so an unregistered name is a throw
+  in debug and an end-iterator dereference in release — a null check on the
+  result is dead code in both configs and cannot implement a "no-op when the
+  resource is absent" contract. A caller whose behaviour genuinely depends on
+  a resource being optional (one created by a system the creation may not
+  have registered) uses `getNamedResourceOrNull`, which returns null in every
+  build. Pick by intent: an absent resource is a pipeline-configuration error
+  for almost every consumer, and the assert is the right answer there
+  (see #2627).
 - **GPU buffer bind-point budget is full (0–30).** Every `kBufferIndex_*`
   (`ir_render_types.hpp`) is occupied and Metal has no free buffer index
   past 30. A change that needs a new SSBO/UBO while the voxel/per-axis path

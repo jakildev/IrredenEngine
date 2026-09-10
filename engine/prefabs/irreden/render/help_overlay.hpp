@@ -51,16 +51,23 @@ inline constexpr int kDefaultToggleButton = IRInput::kKeyButtonF1;
 //   renderPipeline.push_back(IRSystem::createSystem<IRSystem::TEXT_TO_TRIXEL>());
 //   renderPipeline.splice(renderPipeline.end(), IRPrefab::HelpOverlay::systems());
 //
-// This deliberately does NOT auto-detect and prepend `TEXT_TO_TRIXEL`: both
-// available probes are unsound. `IRRender::getNamedResource` asserts on a
-// missing name rather than returning null (and the assert compiles out under
-// `IR_RELEASE`, leaving an end-iterator dereference), and
-// `IRSystem::findSystem`'s "never registered" answer is `kNullEntity` == 0,
-// which is also a legitimate first-system id (#2540). Registering
-// `TEXT_TO_TRIXEL` twice re-creates its named GPU resources, so a wrong guess
-// is fatal — an explicit precondition is cheaper than an unsound probe. The
-// list form is kept (rather than returning the bare id) so the overlay can
-// grow a second system without touching any adopter.
+// This deliberately does NOT auto-detect and prepend `TEXT_TO_TRIXEL`: no
+// available probe answers the question that matters. Both are sound about
+// *existence* — `getNamedResourceOrNull` reports a missing name as null (see
+// #2627) and `IRSystem::findSystem` reports an unregistered system as the
+// unreachable `kNullSystemId` (see #2540) — but `systems()` runs while the
+// adopter is still assembling its RENDER pipeline. A negative answer there
+// cannot distinguish "this creation has no text stage" from "its text stage is
+// about to be spliced in", and a positive answer says nothing about ORDER,
+// which is the actual precondition. Registering `TEXT_TO_TRIXEL` twice
+// re-creates its named GPU resources, so a wrong guess is fatal — an explicit
+// precondition is cheaper than a probe that cannot see the pipeline being built
+// around it. The list form is kept (rather than returning the bare id) so the
+// overlay can grow a second system without touching any adopter.
+//
+// A mis-ordered adopter draws nothing rather than crashing: `dispatchGuiText`
+// probes with `getNamedResourceOrNull` and no-ops when the text stage is
+// absent (see #2627).
 inline std::list<IRSystem::SystemId> systems() {
     return {IRSystem::System<IRSystem::HELP_OVERLAY>::create()};
 }

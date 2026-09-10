@@ -336,11 +336,12 @@ as they register through a named path.
 - **Ordering is a hard invariant.** `TEXT_TO_TRIXEL` clears the GUI canvas and
   owns `TextToTrixelProgram` / `GlyphDrawCommandBuffer`, which the overlay's
   `dispatchGuiText` reuses — same contract every `WIDGET_RENDER_*` system has.
-  `systems()` deliberately does **not** auto-prepend it: `getNamedResource`
-  asserts rather than returning null on a miss, and `findSystem`'s
-  "unregistered" answer collides with a valid first-system id (#2540), so both
-  available probes are unsound and a wrong guess double-creates named GPU
-  resources.
+  `systems()` deliberately does **not** auto-prepend it. The probes answer
+  existence soundly (`getNamedResourceOrNull` → null, `findSystem` →
+  `kNullSystemId`), but `systems()` runs while the adopter is still assembling
+  its RENDER pipeline, so "absent" and "about to be spliced in" look identical
+  and "present" says nothing about order — and a wrong guess double-creates
+  named GPU resources.
 - **Visibility is a singleton component**, `C_HelpOverlayState`, flipped by
   `Command<TOGGLE_HELP_OVERLAY>` — not a `RenderManager` field
   (`.claude/rules/cpp-globals.md`; `m_guiVisible` is a pre-existing deviation,
@@ -414,8 +415,8 @@ IRPrefab::Settings::registerBool("CHECKERBOARD", getter, setter);
 - **Same no-probe precondition as the overlay.** `inputSystems()` needs
   `INPUT_KEY_MOUSE` already registered ahead of it and `renderSystems()` needs
   `TEXT_TO_TRIXEL`; neither auto-detects, because a duplicate `WIDGET_INPUT`
-  would double-fire every click and the available probes can't tell "absent"
-  from "registered as id 0" (#2540).
+  would double-fire every click and a probe run at pipeline-assembly time can't
+  tell "absent" from "about to be spliced in".
 - **Settings are read at open**, so one registered after the menu is already
   open appears at the next open — register during init.
 - **Headless coverage:** `liveRowCount()` / `rowWidget(i)` /
