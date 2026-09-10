@@ -190,6 +190,11 @@ _witness_all_clear() {
     return 0
 }
 
+_witness_clear_artifacts() {
+    rm -f "$2"
+    _witness_all_clear "$1"
+}
+
 run_one_pass() {
     local now_str now stale_count tracked
     now_str=$(date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -198,11 +203,17 @@ run_one_pass() {
     tracked=0
 
     for hb_file in "$HEARTBEAT_DIR"/*; do
+        # Heartbeat files persist for the fleet-state lifetime. An entry absent
+        # before glob expansion identifies no agent to clear, and no in-tree
+        # path removes one, so that state-reset case is outside this pass.
         [[ -f "$hb_file" ]] || continue
         local agent threshold mtime age age_min thr_min msg
         agent=$(basename "$hb_file")
         threshold=$(threshold_for_agent "$agent")
-        [[ "$threshold" -eq 0 ]] && continue
+        if [[ "$threshold" -eq 0 ]]; then
+            _witness_clear_artifacts "stale-$agent" "$ALERT_DIR/$agent.stuck"
+            continue
+        fi
         tracked=$((tracked + 1))
 
         mtime=$(file_mtime "$hb_file")
@@ -221,8 +232,7 @@ run_one_pass() {
                 "Wrote $ALERT_DIR/$agent.stuck, refreshed every pass. Remedy: check the $agent pane — it is alive but not looping, or it died without clearing its heartbeat."
             echo "$now_str $agent age=${age_min}m threshold=${thr_min}m" > "$ALERT_DIR/$agent.stuck"
         else
-            rm -f "$ALERT_DIR/$agent.stuck"
-            _witness_all_clear "stale-$agent"
+            _witness_clear_artifacts "stale-$agent" "$ALERT_DIR/$agent.stuck"
         fi
     done
 
@@ -245,8 +255,7 @@ run_one_pass() {
                 "Wrote $ALERT_DIR/fleet-dispatcher.stuck, refreshed every pass. Remedy: rerun fleet-up to relaunch the dispatcher."
             echo "$now_str dispatcher pid=$dispatcher_pid not running" > "$ALERT_DIR/fleet-dispatcher.stuck"
         else
-            rm -f "$ALERT_DIR/fleet-dispatcher.stuck"
-            _witness_all_clear "stale-dispatcher"
+            _witness_clear_artifacts "stale-dispatcher" "$ALERT_DIR/fleet-dispatcher.stuck"
         fi
     else
         # No pidfile: nothing asserts a dead dispatcher, so neither artifact
@@ -254,8 +263,7 @@ run_one_pass() {
         # otherwise survive its removal, and the .stuck alert — the only
         # standing signal once the warn goes quiet past N — would become a
         # file no pass can ever rewrite or clear.
-        rm -f "$ALERT_DIR/fleet-dispatcher.stuck"
-        _witness_all_clear "stale-dispatcher"
+        _witness_clear_artifacts "stale-dispatcher" "$ALERT_DIR/fleet-dispatcher.stuck"
     fi
 
     if [[ "$tracked" -eq 0 ]]; then

@@ -12,8 +12,9 @@
 # Every condition witness warns on holds until a human acts, so each warning
 # must escalate-then-quiet rather than re-emit every 60 s forever (see
 # scripts/fleet/CLAUDE.md §"An every-tick guard that warns must
-# escalate-then-quiet"). Cases (d)-(g) pin that rate-limiting on all three
-# branches: roster-empty (#2770), stale agent and dead dispatcher (#2780).
+# escalate-then-quiet"). Cases (d)-(h) pin that rate-limiting on all three
+# branches: roster-empty (#2770), stale agent and dead dispatcher (#2780),
+# including cleanup when a stale agent leaves the monitored roster (#2803).
 #
 # Hermetic: HOME points at a temp dir per case, and the FLEET_* overrides
 # witness honours are scrubbed from the caller's environment, so no live
@@ -40,6 +41,8 @@
 #   (g) a dead dispatcher pid => same shape on .witness-stale-dispatcher-skip,
 #       a new dead pid restarts the streak (the pid is the subject), and a
 #       live pid clears counter + alert
+#   (h) a stale agent removed from the roster => its counter + alert clear,
+#       so a later stale outage after rejoining starts loudly from pass one
 
 set -uo pipefail
 
@@ -359,5 +362,55 @@ assert_absent "$out_g_nopid" "STALE: fleet-dispatcher" \
 [[ -f "$alert_g" ]] \
     && bad "removed pidfile: alert cleared" \
     || ok "removed pidfile: alert cleared"
+
+# --- (h) stale agent removed from roster: artifacts clear -------------------
+
+home_h="$TMP/home-off-roster"
+mkdir -p "$home_h/.fleet/heartbeats"
+touch -t 202401010000 "$home_h/.fleet/heartbeats/game-architect"
+counter_h="$home_h/.fleet/state/.witness-stale-game-architect-skip"
+alert_h="$home_h/.fleet/alerts/game-architect.stuck"
+witness_off_roster="$TMP/witness-off-roster"
+sed \
+    -e 's/readonly ROSTER=(opus-architect game-architect)/readonly ROSTER=(opus-architect)/' \
+    -e 's/opus-architect|game-architect)/opus-architect)/' \
+    "$WITNESS" > "$witness_off_roster"
+chmod +x "$witness_off_roster"
+assert_contains "$(grep '^readonly ROSTER=' "$witness_off_roster")" \
+    "readonly ROSTER=(opus-architect)" \
+    "off-roster: precondition — generated witness drops game-architect"
+assert_absent "$(grep -A4 '^threshold_for_agent()' "$witness_off_roster")" \
+    "game-architect" \
+    "off-roster: precondition — generated threshold returns zero for game-architect"
+
+run_witness "$home_h" 2
+run_witness "$home_h" 2
+assert_contains "$(cat "$home_h/out.txt")" "STALE ESCALATION" \
+    "off-roster: precondition — stale agent reached the quieted streak"
+[[ -f "$counter_h" && -f "$alert_h" ]] \
+    && ok "off-roster: precondition — counter and alert both on disk" \
+    || bad "off-roster: precondition — counter and alert both on disk"
+
+touch "$home_h/.fleet/heartbeats/game-architect"
+WITNESS="$witness_off_roster" run_witness "$home_h" 2
+out_h_off=$(cat "$home_h/out.txt")
+assert_absent "$out_h_off" "STALE: game-architect" \
+    "off-roster: recovered unmonitored agent is not reported stale"
+[[ -f "$counter_h" ]] \
+    && bad "off-roster: stale counter cleared" \
+    || ok "off-roster: stale counter cleared"
+[[ -f "$alert_h" ]] \
+    && bad "off-roster: stuck alert cleared" \
+    || ok "off-roster: stuck alert cleared"
+
+touch -t 202401010000 "$home_h/.fleet/heartbeats/game-architect"
+run_witness "$home_h" 2
+out_h_again=$(cat "$home_h/out.txt")
+assert_contains "$out_h_again" "STALE: game-architect" \
+    "re-rostered outage: first pass is loud"
+assert_absent "$out_h_again" "ESCALATION" \
+    "re-rostered outage: streak restarted, not resumed"
+assert_eq "$(awk '{print $1}' "$counter_h" 2>/dev/null || echo "")" "1" \
+    "re-rostered outage: counter restarts at 1"
 
 summarize "witness roster tests"
