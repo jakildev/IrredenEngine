@@ -1341,6 +1341,11 @@ else
     fi
     mkdir -p "$HOME/.fleet/state" "$HOME/.fleet/logs"
     scout_log="$HOME/.fleet/logs/state-scout.log"
+    # Persistent daemon: it binds its modules at import, so it self-reloads at
+    # its tick boundary when its own source surface advances (#2768) rather
+    # than running merged fixes inert until someone restarts it here. Its
+    # revision is in state.json's `scout_source_rev`; see
+    # docs/agents/FLEET-CACHE.md §"Daemon source staleness".
     nohup "$scout_cmd" >>"$scout_log" 2>&1 &
     disown
     echo "fleet-up: launched fleet-state-scout (pid $!, log $scout_log)"
@@ -1567,6 +1572,11 @@ else
     # on every boot so it can't go stale.
     printf '%s\n' "$MODE" > "$HOME/.fleet/state/dispatch-mode"
     dispatcher_log="$HOME/.fleet/logs/dispatcher.log"
+    # Persistent daemon: bash parses its function bodies once at exec, so it
+    # self-reloads at its tick boundary when its own source surface advances
+    # (#2768) rather than running merged fixes inert until someone restarts it
+    # here. `rev=` on each `started (pid=…)` line is the running image's
+    # revision; see docs/agents/FLEET-CACHE.md §"Daemon source staleness".
     nohup "$dispatcher_cmd" >>"$dispatcher_log" 2>&1 &
     disown
     echo "fleet-up: launched fleet-dispatcher (pid $!, log $dispatcher_log)"

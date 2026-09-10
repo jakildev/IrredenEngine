@@ -132,3 +132,57 @@ claim` refuses while `fresh` is false (`assert_clone_fresh`;
 `FLEET_SKIP_CLONE_FRESHNESS=1` opts out). A persistently false value means
 the clone is off-master, dirty, or diverged:
 `git -C ~/src/IrredenEngine merge --ff-only origin/master`.
+
+### Daemon source staleness
+
+A fresh clone does not imply a fresh daemon. `fleet-dispatcher` is bash —
+a function body is parsed once at exec — and `fleet-state-scout` binds its
+modules once at import; `fleet-up` launches both under `nohup` and they
+live for days, so a merged fix can sit inert on the running fleet with
+nothing to indicate it. Both daemons self-reload at the tick boundary:
+each hashes its own load-time source surface once per tick — the script
+itself plus, for the dispatcher, its `source`d files and `$FLEET_CONF`;
+for the scout, its import closure derived from `sys.modules` — and `exec`s
+itself in place when that hash moves. `exec` keeps the pid, so pid files,
+the dispatcher's singleton lock (adopted back from its own previous
+image), and the tmux pane survive; daemon-lifetime counters (run window,
+dispatch counts, cap-defer state) reset, because they describe the old
+image.
+
+Three gates stand between a moved surface and the `exec`: a two-tick
+debounce (a torn read taken mid-`git checkout` never re-execs a
+half-written file), a syntax gate (`bash -n` / `compile()` under the
+*running* interpreter, so a broken file cannot replace a working image
+with one that dies at parse), and an oscillation cap.
+`FLEET_RELOAD_MAX` (default 3) is the number of attempts **permitted**
+per `FLEET_RELOAD_WINDOW_SECONDS` (default 900) — 3 allows three reloads
+and refuses the fourth, 1 allows one, `0` disables self-reload entirely —
+and a refused attempt still counts toward the window, so a surface that
+keeps moving holds the cap shut until the window drains. A refusal is
+reported once per distinct surface hash and re-arms when the surface
+moves again.
+
+Only the load-time surface reloads. Sibling executables (`fleet-claim`,
+`fleet-labels`, `fleet-rebase`) and `fleet_task_class.py` are spawned
+fresh per call, so they already pick up merged fixes and are deliberately
+in neither surface. `exec` preserves the environment, so a change to the
+`$FLEET_CONF` **file** hot-reloads while an env-var-only override still
+needs a `fleet-up` restart. The scout does not fetch its own source — new
+code reaches its disk only via the dispatcher's `advance_main_clone` or a
+human pull, so a dispatcher-down fleet does not self-heal.
+
+To check what a daemon is actually running, compare its revision against
+the on-disk source:
+
+```bash
+fleet-dispatcher --print-surface     # per-file + aggregate hash, on-disk truth
+fleet-state-scout --print-surface
+grep 'started (pid=' ~/.fleet/logs/dispatcher.log | tail -1   # rev= of the running image
+```
+
+The dispatcher stamps `rev=` into every `started (pid=…)` line, so
+consecutive `started` lines with the **same pid and different revs** are
+the reload audit trail. The scout publishes the same aggregate as a
+top-level `scout_source_rev` in `state.json`; if that differs from
+`fleet-state-scout --print-surface`'s aggregate, the running scout has not
+loaded what is on disk.

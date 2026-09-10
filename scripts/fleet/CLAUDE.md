@@ -399,6 +399,26 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   asserts the row is in the candidate list **and** absent from every section
   (`tests/test_scout_task_queue_plan_gated.py`); asserting only the former
   passes with the capture moved back below a `continue`.
+- **A persistent daemon's load-time source surface is a registry, not a
+  comment.** `fleet-dispatcher` (bash, function bodies parsed once at exec)
+  and `fleet-state-scout` (python, modules bound at import) are the only two
+  daemons `fleet-up` `nohup`s, and both self-reload by `exec`ing themselves
+  when their own source surface moves (#2768). Adding a `source` line to the
+  dispatcher means adding its path to `DAEMON_SOURCE_SURFACE` **in the same
+  change** — a `source`d file outside the surface is a file whose merged fixes
+  run inert forever, silently, which is the exact failure this closed. The
+  scout needs no equivalent edit: `_source_surface()` derives the closure from
+  `sys.modules` at call time, so a new import joins the surface by
+  construction (a *function-local* import joins one tick after it first runs).
+  `tests/test_daemon_reload.sh` ratchets the dispatcher half — it counts
+  `^\s*source ` lines against the array — and its corpus assertions ratchet
+  the other direction too: `fleet_task_class.py` must stay out of BOTH
+  surfaces, since a subprocess-spawned sibling already picks up merged fixes
+  and reloading on it is spurious churn. Syntax-gate a reload with the
+  **running** interpreter (`"$BASH" -n`, not a bare `bash`): on macOS a bare
+  `bash` is /bin/bash 3.2, which cannot parse the dispatcher's own bash-4
+  source, so the gate would refuse every reload forever on exactly the hosts
+  it protects.
 - **Unattended daemons timeout-guard their network calls.** The host's
   connections to GitHub intermittently black-hole (silent TCP death), so a
   hung `git fetch` / `gh …` in a fleet daemon (dispatcher loop, `fleet-rebase`,

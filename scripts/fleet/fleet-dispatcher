@@ -86,6 +86,13 @@ while [[ -L "$_fleet_dispatcher_self" ]]; do
     _fleet_dispatcher_self="$(readlink "$_fleet_dispatcher_self")"
 done
 FLEET_LIB_DIR="${FLEET_LIB_DIR:-$(cd "$(dirname "$_fleet_dispatcher_self")" && pwd)}"
+# Absolute, symlink-resolved path to THIS file — the self-reload `exec` target
+# and the first entry of the source surface (#2768). Deliberately not $0:
+# under a ~/bin symlink launch $0 is the link, and re-exec'ing the link would
+# work but would hash a different path than the one advance_main_clone
+# updates. FLEET_LIB_DIR is env-overridable (tests point it at a sandbox);
+# this is not, because it must name the running image.
+DAEMON_SELF="$(cd "$(dirname "$_fleet_dispatcher_self")" && pwd)/$(basename "$_fleet_dispatcher_self")"
 unset _fleet_dispatcher_self
 
 # Network-call timeout guard (#2362). Source this BEFORE fleet-clone-freshness.sh
@@ -130,6 +137,11 @@ else
     fleet_target_key() { printf '%s\n' "${1//:/-}"; }
     fleet_pane_worktrees() { :; }
     declare -A FLEET_TARGET_CLAIM=() FLEET_TARGET_RELEASE=() FLEET_TARGET_LABEL=()
+    # Self-reload (#2768) degrades to DISABLED, not to "surface never moves":
+    # returning 1 makes check_source_reload bail, where an empty-string hash
+    # would compare equal forever and silently pretend the check was running.
+    fleet_surface_hash() { return 1; }
+    fleet_reload_gate() { return 1; }
 fi
 
 # --- Per-role concurrency cap config ---------------------------------------
@@ -199,6 +211,41 @@ if [[ -f "$FLEET_CONF" ]]; then
     # shellcheck disable=SC1090
     source "$FLEET_CONF"
 fi
+
+# --- Self-reload source surface (#2768) ------------------------------------
+#
+# Every file whose contents this process bound ONCE and can only re-read by
+# re-exec'ing: the script itself (bash parses a function body at exec and never
+# re-parses it while it runs) plus each `source`d file above. Sibling
+# executables (fleet-claim, fleet-labels, fleet-rebase) and the python class
+# resolver (fleet_task_class.py) are deliberately ABSENT — those are spawned
+# fresh per call, so they already pick up merged fixes and a reload on them
+# would be spurious. test_daemon_reload.sh ratchets this both directions.
+#
+# INVARIANT: one entry per `source` line above, plus DAEMON_SELF. Adding a
+# `source` without adding its path here reintroduces exactly the silent
+# merged-but-inert no-op this array exists to close; the parity assertion in
+# test_daemon_reload.sh counts `^\s*source ` lines against this array and fails
+# when they drift.
+#
+# $FLEET_CONF is listed UNCONDITIONALLY even when absent — fleet_surface_hash
+# digests a missing entry as a distinct MISSING token, so an operator creating
+# or deleting the conf registers as a source change rather than as no change.
+DAEMON_SOURCE_SURFACE=(
+    "$DAEMON_SELF"
+    "$FLEET_LIB_DIR/fleet-net.sh"
+    "$FLEET_LIB_DIR/fleet-clone-freshness.sh"
+    "$FLEET_LIB_DIR/fleet-common.sh"
+    "$FLEET_CONF"
+)
+# Aggregate captured AFTER sourcing completes, so it describes the image
+# actually running. Empty ⇒ self-reload is unavailable (no digest tool, or
+# fleet-common.sh was missing at boot); the tick check reports that once and
+# stands down rather than looping on a hash that can never move.
+DAEMON_SURFACE_HASH="$(fleet_surface_hash "${DAEMON_SOURCE_SURFACE[@]}" 2>/dev/null || true)"
+# Oscillation cap: at most <MAX-1> reloads per window (see fleet_reload_gate).
+RELOAD_MAX="${FLEET_RELOAD_MAX:-3}"
+RELOAD_WINDOW_SECONDS="${FLEET_RELOAD_WINDOW_SECONDS:-900}"
 for _key in "${_runtime_keys[@]}"; do
     if [[ -v "_runtime_env[$_key]" ]]; then
         printf -v "$_key" "%s" "${_runtime_env[$_key]}"
@@ -2866,6 +2913,17 @@ acquire_dispatcher_lock() {
     fi
     local owner_pid
     owner_pid=$(cat "$LOCK_DIR/pid" 2>/dev/null || true)
+    # Self-reload adoption (#2768). `exec` keeps the pid and does NOT run the
+    # EXIT trap, so after a reload the lock dir is still here and its recorded
+    # owner is US. Without this arm the liveness probe below asks `kill -0 $$`
+    # — which a running process always answers yes to — and the freshly
+    # exec'd image would log "another dispatcher is already running" and exit,
+    # i.e. the first live reload would kill the daemon. The image changed; the
+    # process did not, so the lock is ours to keep.
+    if [[ -n "$owner_pid" && "$owner_pid" == "$$" ]]; then
+        printf '%d\n' "$$" >"$LOCK_DIR/pid"
+        return 0
+    fi
     if [[ -n "$owner_pid" ]] && kill -0 "$owner_pid" 2>/dev/null; then
         return 1
     fi
@@ -2876,6 +2934,69 @@ acquire_dispatcher_lock() {
         return 0
     fi
     return 1
+}
+
+# --- Self-reload at the tick boundary (#2768) ------------------------------
+#
+# Called once per tick, immediately AFTER advance_main_clone (so the hash sees
+# the clone this tick just fast-forwarded) and never from inside a dispatch
+# path (so no in-flight dispatch is ever interrupted). On success this function
+# does not return — it `exec`s, which keeps the pid, the pid file, the lock dir
+# (adopted above), and the tmux pane process, giving a reload exactly the
+# semantics of the manual restart an operator performs today.
+#
+# Three gates stand between "the surface moved" and the exec:
+#   debounce     — the same new hash on two consecutive ticks, so a torn read
+#                  taken mid-`git checkout` never re-execs a half-written file.
+#   syntax       — `bash -n` on every surface entry; a broken source file must
+#                  not replace a working image with one that dies at parse.
+#   oscillation  — fleet_reload_gate, so a source file changing every tick
+#                  cannot turn the daemon into an exec loop.
+# A refusal is reported ONCE per distinct surface hash and then goes quiet,
+# re-arming when the surface moves again — the escalate-then-quiet convention
+# the rest of this daemon's warnings use.
+_reload_pending_hash=""     # hash seen on the previous tick (debounce)
+_reload_quiet_hash=""       # hash already refused + reported (quiet marker)
+
+check_source_reload() {
+    [[ -n "$DAEMON_SURFACE_HASH" ]] || return 0   # self-reload unavailable
+    local current
+    current="$(fleet_surface_hash "${DAEMON_SOURCE_SURFACE[@]}" 2>/dev/null || true)"
+    if [[ -z "$current" || "$current" == "$DAEMON_SURFACE_HASH" ]]; then
+        _reload_pending_hash=""
+        return 0
+    fi
+    if [[ "$current" != "$_reload_pending_hash" ]]; then
+        _reload_pending_hash="$current"
+        return 0
+    fi
+    [[ "$current" == "$_reload_quiet_hash" ]] && return 0
+
+    # "$BASH", never a bare `bash`: the gate has to be parsed by the SAME
+    # interpreter that will run the reloaded image. This daemon needs bash 4
+    # (`[[ -v ]]`, `declare -A`), and on macOS a bare `bash` resolves to
+    # /bin/bash 3.2, which rejects the dispatcher's own current source — the
+    # gate would then refuse every reload forever, silently, on exactly the
+    # hosts it was meant to protect.
+    local f
+    for f in "${DAEMON_SOURCE_SURFACE[@]}"; do
+        [[ -f "$f" ]] || continue
+        if ! "$BASH" -n "$f" 2>/dev/null; then
+            log "reload refused: $f does not parse; staying on the loaded image (re-checks when the surface moves again)"
+            _reload_quiet_hash="$current"
+            return 0
+        fi
+    done
+
+    if ! fleet_reload_gate "$STATE_DIR/dispatcher-reload-history" \
+            "$RELOAD_MAX" "$RELOAD_WINDOW_SECONDS"; then
+        log "reload refused: oscillation cap ($RELOAD_MAX attempts / ${RELOAD_WINDOW_SECONDS}s) reached; staying on the loaded image"
+        _reload_quiet_hash="$current"
+        return 0
+    fi
+
+    log "reloading: source surface advanced (${DAEMON_SURFACE_HASH:0:12} -> ${current:0:12}); daemon-lifetime counters reset"
+    exec "$DAEMON_SELF" ${DAEMON_ARGV[@]+"${DAEMON_ARGV[@]}"}
 }
 
 release_dispatcher_lock() {
@@ -3050,6 +3171,10 @@ PY
 }
 
 main() {
+    # Preserved for the self-reload exec (#2768) so a reloaded daemon keeps the
+    # arguments it was launched with. The daemon boot path passes none; the
+    # `${x[@]+...}` guard is what makes expanding the empty array safe.
+    DAEMON_ARGV=("$@")
     mkdir -p "$(dirname "$LOG_FILE")" "$STATE_DIR" "$TRIGGERS_DIR" "$DISPATCH_DIR" "$RATE_LIMIT_DIR" "$USAGE_DIR"
 
     if ! acquire_dispatcher_lock; then
@@ -3058,7 +3183,14 @@ main() {
     fi
 
     write_pid_file
-    log "started (pid=$$, interval=${POLL_INTERVAL_SECONDS}s, rearm=${PERIODIC_REARM_INTERVAL_SECONDS}s, timeout_cmd=${TIMEOUT_CMD:-none})"
+    # `rev=` is the source-surface aggregate this image is running (#2768) —
+    # the answer to "is the daemon executing the code that is on disk?", which
+    # before the self-reload landed could only be inferred from process start
+    # time vs merge time. It reappears on every reload, so consecutive
+    # `started` lines with the same pid and different revs ARE the reload
+    # audit trail. `rev=none` means self-reload is unavailable on this host.
+    local started_rev="${DAEMON_SURFACE_HASH:0:12}"
+    log "started (pid=$$, interval=${POLL_INTERVAL_SECONDS}s, rearm=${PERIODIC_REARM_INTERVAL_SECONDS}s, timeout_cmd=${TIMEOUT_CMD:-none}, rev=${started_rev:-none})"
     if [[ -z "$TIMEOUT_CMD" ]]; then
         log "WARNING: timeout/gtimeout not found; send-keys is unguarded (install coreutils to fix)"
     fi
@@ -3097,6 +3229,14 @@ main() {
         if [[ -d "$GAME/.git" ]]; then
             advance_main_clone "$GAME"
         fi
+
+        # ...and then actually LOAD it (#2768). Ordering is load-bearing:
+        # this must run AFTER the clone advance above, so the surface hash
+        # sees the tree that advance just fast-forwarded rather than lagging
+        # it by a tick. It must also stay at the tick top and outside the
+        # dispatch pass — it `exec`s on success, so anything after it in this
+        # tick is skipped, and no in-flight dispatch may be interrupted.
+        check_source_reload
 
         rearm_due_merger
 
@@ -3605,6 +3745,28 @@ case "${1:-}" in
         else
             echo "alert: none"
         fi
+        exit 0
+        ;;
+    --print-surface)
+        # Operator/test hook: the load-time source surface this daemon watches
+        # for self-reload (#2768), one `<path>\t<hash>` line per entry
+        # followed by `aggregate\t<hash>`. Answers "which files does a reload
+        # depend on" without reading the array out of the source, and pairs
+        # with the `rev=` field in the daemon's `started` log line: if the two
+        # aggregates differ, the running daemon has not loaded what is on disk.
+        #
+        # The per-entry column is fleet_surface_hash over that one file — an
+        # aggregate of one, not a bare content digest. That is deliberate: the
+        # column then uses the same function, and therefore the same
+        # missing-file semantics, as the aggregate it decomposes.
+        for _ps_entry in "${DAEMON_SOURCE_SURFACE[@]}"; do
+            if [[ -f "$_ps_entry" ]]; then
+                printf '%s\t%s\n' "$_ps_entry" "$(fleet_surface_hash "$_ps_entry")"
+            else
+                printf '%s\tMISSING\n' "$_ps_entry"
+            fi
+        done
+        printf 'aggregate\t%s\n' "$(fleet_surface_hash "${DAEMON_SOURCE_SURFACE[@]}")"
         exit 0
         ;;
     "")
