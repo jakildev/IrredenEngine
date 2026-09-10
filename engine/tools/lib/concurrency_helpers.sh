@@ -27,6 +27,11 @@ _IR_HELPERS_LOADED=1
 # ir_enclosing_engine_root <dir> — nearest ancestor (including <dir>) that
 # looks like an engine checkout (CMakePresets.json + engine/). Returns 1
 # when no ancestor matches.
+#
+# The `cd ... && pwd` normalization is load-bearing, not incidental: it puts
+# <dir> in POSIX-drive form (/c/...) on MSYS2, which is what lets the "/"
+# sentinel terminate the walk. Drop it and this loop inherits the drive-root
+# fixed point documented on ir_creation_worktree_engine_root below.
 ir_enclosing_engine_root() {
     local here="$1"
     [[ -d "$here" ]] || return 1
@@ -97,11 +102,18 @@ ir_worktree_root() {
 # matters downstream too: ir_default_build_dir prefix-strips <worktree-root>
 # with this return value, and ir-build feeds it straight into `cmake -S`
 # under cmd.exe, which cannot resolve a POSIX-style path.
+#
+# The walk terminates on a `dirname` fixed point, NOT on "." / "/" sentinels:
+# MSYS2/Git-Bash `dirname` is idempotent at a bare Windows drive root
+# ("C:" -> "C:", "C:/" -> "C:/"), so a Windows-drive-form <worktree-root> with
+# no engine-root ancestor never reaches either sentinel. Regression: T5 in
+# scripts/fleet/tests/test_ir_build_dir_resolution.sh.
 ir_creation_worktree_engine_root() {
     local root="$1"
     [[ -f "$root/CMakePresets.json" ]] && return 1
-    local candidate="$root"
-    while [[ "$candidate" != "." && "$candidate" != "/" ]]; do
+    local candidate="$root" prev=""
+    while [[ "$candidate" != "$prev" ]]; do
+        prev="$candidate"
         candidate="$(dirname "$candidate")"
         if [[ -f "$candidate/CMakePresets.json" && -d "$candidate/engine" ]]; then
             case "$root" in
