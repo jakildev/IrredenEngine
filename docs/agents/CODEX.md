@@ -97,8 +97,18 @@ modified generated policy. No blanket unsandboxed Python/Bash rule is added.
 The launcher writes the role policy before starting the unattended process,
 which uses workspace-write, network access, and approval policy `never`.
 Unknown or blocked commands return failures rather than waiting for approval.
-Policy checks verify command matching; qualify actual build, GitHub, screenshot,
-and filesystem access on each OS before enabling its pool.
+`--check` verifies command matching only. Run `fleet-codex --role worker --doctor`
+to verify actual create/rename/delete access inside the installed CLI's sandbox,
+without a model call. It creates missing configured state directories and removes
+its temporary probes. Each unattended launch repeats the filesystem probe before
+starting a model. A failed probe records the exact paths/errors in
+`state/runtime-cooldown/codex.json`, returns exit 2 to preserve an existing resume
+sidecar, and pauses Codex dispatch for 15 minutes using the existing provider gate.
+Claude remains eligible. Correct the host configuration, run the doctor again,
+and let the cooldown expire; no automatic broadening of permissions occurs.
+Qualify actual build, GitHub, and screenshot access on each OS before enabling its
+pool: filesystem probes do not certify GPU/display access, authentication, or
+project-rule trust. See [capability qualification](#capability-qualification).
 
 Workers can edit their assigned checkout, Git metadata, matching downstream
 worktree if present, and the necessary fleet state directories. "Git
@@ -106,7 +116,14 @@ metadata" is wider than the worktree's own `.git` file: a worktree's history
 lives in the main checkout's `.git` (`git rev-parse --git-common-dir`), so the
 writable set includes that directory's `hooks/`, `config`, and
 `refs/heads/master` too — git genuinely needs most of that reach to operate a
-worktree at all. The main checkout is not an additional writable *source*
+worktree at all. Both git directories are named as explicit roots — the
+linked worktree's own gitdir (`.git/worktrees/<pool>`, `git rev-parse
+--absolute-git-dir`) and the common dir — because the sandbox carves every
+`.git` path out of a writable root as read-only unless a root names that
+exact path, and it protects a linked worktree's resolved gitdir separately.
+With the common dir alone every git write from the pool (`index.lock`,
+`FETCH_HEAD`) fails with "Operation not permitted", so a Codex worker cannot
+branch and a Codex reviewer cannot check the PR out. The main checkout is not an additional writable *source*
 directory (no reading or editing its working tree), but its `.git` is
 reachable through this path. Command rules help prevent common workflow
 mistakes, including merge, force-push, and reviewer push; they are not a
@@ -116,6 +133,56 @@ credentials — including a filesystem write straight to
 which no command rule can see. Keep GitHub branch protection as the merge
 boundary, and treat this posture — not a hardened sandbox — as what you are
 accepting by enabling a Codex worker on a host.
+
+The matching downstream build directory (`build-game-<worktree>`) and an explicit
+`IRREDEN_BUILD_DIR` are writable build outputs too. They follow
+`engine/tools/lib/concurrency_helpers.sh`'s build routing; neither requires making
+the main source checkout writable. Set build/cache/lock overrides in the host's
+launch environment before the session starts; changing a shell variable within
+a worker cannot retroactively change its sandbox roots.
+
+## Capability qualification
+
+Claude's `Bash(...)` allowlist and tool hooks are not Codex permissions. Ordinary
+Python, Bash, CMake, test runners, and file operations run inside Codex's sandbox.
+An absent prefix allow-rule does not itself mean those commands are unavailable.
+The generated command policy imports the curated fleet-wrapper entries; it does
+not grant unrestricted interpreters. Verify these workflows from an idle,
+dedicated checkout on every host and after upgrading Codex:
+
+| Workflow | Qualification | Boundary |
+|---|---|---|
+| Checkout, branch, index, stash | `--doctor`, then disposable branch/index operations in a qualification checkout | Both resolved Git directories; GitHub branch protection still owns merge authority |
+| Claims and shutdown | `--doctor`; inspect a real assigned iteration's claim/release and summary | Configured fleet state roots |
+| Build and tests | `fleet-build --target <configured-target>` and the project's test command | Worktree build, matching downstream build, cache and lock paths |
+| Screenshots and ROI inspection | The linked rendering skills, `fleet-run` auto-capture, then `view_image` for full frame and crop | Real display/GPU session plus writable capture destination; generated images are not evidence |
+| GitHub review and PR publication | Read-only `gh pr view`; confirm a real assigned review or publication succeeds | Login, network and trusted project rules are separate from filesystem access |
+| Skills and helpers | Read the named `SKILL.md` and its procedures; use equivalent Codex tools | Claude hooks/slash commands do not automatically execute in Codex |
+
+After a failed checkout, never validate the old checkout and attribute those test
+results to the PR. Verify `git rev-parse HEAD` against the PR's `headRefOid` before
+running tests. Report a blocked checkout through the assigned completion contract.
+
+### Approval and resume transport
+
+The current unattended transport is `codex exec --json` with approvals `never`.
+Its stdout event log is observability, not a bidirectional approval channel. Merely
+changing approvals to `on-request` does not connect a worker's request to the human
+running the fleet. Use the interactive architect launcher for a human-attended
+approval session; permissions granted in one session do not rewrite every pool's
+filesystem roots.
+
+A fleet-wide approval inbox needs an app-server client that receives approval
+requests, records command/cwd/worktree/target and request IDs durably, delivers the
+human decision to that exact pending request, and preserves reservations and
+heartbeats while waiting. It must also handle denial, timeout, host restart and
+dispatcher capacity without claiming that work completed. That transport is not
+implemented here. Preconfigured capabilities and the deterministic preflight are
+the supported unattended path. See the official
+[sandbox/approval distinction](https://learn.chatgpt.com/docs/sandboxing) and
+[app-server protocol](https://learn.chatgpt.com/docs/app-server).
+
+## Enabling mixed-provider dispatch
 
 Set the following in `~/.fleet/fleet-up.conf` after qualifying the host, then
 restart the dispatcher:
