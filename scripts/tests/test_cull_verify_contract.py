@@ -8,9 +8,7 @@ committed reference set, and the reason is spelled out in
 That section is prose. These tests are the same contract encoded in code
 (CLAUDE-BASELINE "Encode contracts in code, not in comments"), so a future
 "let's commit references for cull-verify" has to delete a test — and read the
-rationale — rather than silently re-create an unread reference set. The set
-#2955 deleted arrived exactly that way, and stayed green while going stale
-because nothing read it; the doc section carries that history.
+rationale — rather than silently re-create an unread reference set.
 
 Hermetic — filenames and argparse only. No engine, no build, no GL/Metal, no
 demo launch. Import the dashed-name script via importlib, matching

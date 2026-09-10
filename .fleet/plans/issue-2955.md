@@ -138,4 +138,3 @@ Also, in §"The automated sweep" after the `render-compare.py` snippet, one line
 - PR #2945 (merged) — the render-verify re-bless this issue forked from; untouched by this plan.
 - #3007 (Windows harness launch), #3016 (no GL-tier `shape_debug` render-verify set), #2361 (occlusion-cull render-verify baseline), #3042 (#2298 cull gates on Metal) — all about *other* gates' baselines; none reads `cull-verify/`, none is blocked or unblocked by this.
 - Open PRs: none touch `scripts/cull-verify.py`, `scripts/tests/`, `docs/design/cull-validation-harness.md`, or `shape_debug/test/references/` (checked against the 10 open engine PRs in the fleet cache; `gh pr list --search cull-verify` returns only #3041, whose files are `.fleet/plans/issue-2298.md` + `docs/design/voxel-occlusion-culling.md`).
-
