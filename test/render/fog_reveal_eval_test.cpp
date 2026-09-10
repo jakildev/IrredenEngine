@@ -63,10 +63,12 @@ TEST(FogRevealEvalTest, RejectsOutsideBoundingRadiusBeforeExactCurve) {
 }
 
 TEST(FogRevealEvalTest, HysteresisAndStaggerControlEntityVerdict) {
+    C_VoxelPool pool{IRMath::ivec3(1)};
     IRSystem::System<IRSystem::FOG_REVEAL_EVAL> system;
     system.pendingByWorker_.resize(1);
     system.fogAttached_ = true;
     system.activeCanvas_ = IREntity::kNullEntity;
+    system.activePool_ = &pool;
     system.settings_.showThreshold_ = 0.6f;
     system.settings_.hideThreshold_ = 0.3f;
     system.settings_.staggerPeriod_ = 2;
@@ -95,6 +97,23 @@ TEST(FogRevealEvalTest, HysteresisAndStaggerControlEntityVerdict) {
     system.frameCounter_ = 5;
     system.tick(entity, revealed, transform, voxelSet);
     EXPECT_FALSE(revealed.shown_);
+}
+
+TEST(FogRevealEvalTest, MissingPoolDoesNotLatchAnUnappliedTransition) {
+    IRSystem::System<IRSystem::FOG_REVEAL_EVAL> system;
+    system.pendingByWorker_.resize(1);
+    system.fogAttached_ = false;
+    system.activeCanvas_ = IREntity::kNullEntity;
+
+    IREntity::EntityId entity = 1;
+    C_FogRevealed revealed{};
+    C_WorldTransform transform{};
+    C_VoxelSetNew voxelSet{};
+    system.tick(entity, revealed, transform, voxelSet);
+
+    EXPECT_FLOAT_EQ(revealed.revealFactor_, 1.0f);
+    EXPECT_FALSE(revealed.shown_);
+    EXPECT_TRUE(system.pendingByWorker_[0].empty());
 }
 
 TEST(FogRevealEvalTest, ActiveMaskHideAndRestoreAreAlphaPreserving) {

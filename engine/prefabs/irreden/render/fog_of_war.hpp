@@ -175,8 +175,9 @@ inline void attachToCanvas(IREntity::EntityId canvas, int revealRadius = 0) {
     }
 }
 
-/// Opt a grid-canvas voxel entity into whole-body fog reveal. Tagging starts
-/// hidden so an entity outside every circle cannot flash before its first eval.
+/// Opt a grid-canvas voxel entity into whole-body fog reveal. A missing
+/// C_VoxelSetNew is a no-op. Tagging starts hidden so an entity outside every
+/// circle cannot flash before its first eval.
 inline void setEntityRevealGoverned(IREntity::EntityId entity, bool governed = true) {
     auto setOpt = IREntity::getComponentOptional<IRComponents::C_VoxelSetNew>(entity);
     if (!setOpt.has_value()) {
@@ -206,6 +207,8 @@ inline void setEntityRevealGoverned(IREntity::EntityId entity, bool governed = t
         }
     }
 
+    // Structural component changes migrate the entity's archetype, so keep
+    // them last: every preceding access through voxelSet must finish first.
     if (governed) {
         voxelSet->visible_ = false;
         IRPrefab::VoxelPool::markRangeInactive(

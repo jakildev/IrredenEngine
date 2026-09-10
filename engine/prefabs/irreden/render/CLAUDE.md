@@ -313,7 +313,8 @@ cleaned up.
 ## Entity-anchored fog reveal
 
 `C_FogRevealed` opts a grid-canvas voxel entity into one reveal verdict at its
-`C_WorldTransform.translation_` ground anchor. `FOG_REVEAL_EVAL` snapshots the
+`C_WorldTransform.translation_` (the ground anchor for `EntityAnchor::GROUND`
+sets). `FOG_REVEAL_EVAL` snapshots the
 active canvas's analytic observers once per frame, writes the continuous
 `revealFactor_`, and applies the binary render transition through the pool
 active mask in `endTick`; place it after `PROPAGATE_TRANSFORM` and before

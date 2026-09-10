@@ -61,11 +61,8 @@ template <> struct System<FOG_REVEAL_EVAL> {
         if (pendingByWorker_.size() < slots) {
             pendingByWorker_.resize(slots);
         }
-        const std::size_t transitionsPerWorker =
-            (static_cast<std::size_t>(IREntity::getLiveEntityCount()) + slots - 1u) / slots;
         for (std::vector<PendingTransition> &worker : pendingByWorker_) {
             worker.clear();
-            worker.reserve(transitionsPerWorker);
         }
     }
 
@@ -93,6 +90,11 @@ template <> struct System<FOG_REVEAL_EVAL> {
             shown = false;
         }
         if (shown == revealed.shown_) {
+            return;
+        }
+        // Commit the verdict only when endTick can apply the matching mask and
+        // visibility transition; otherwise the next frame must retry it.
+        if (activePool_ == nullptr) {
             return;
         }
         revealed.shown_ = shown;

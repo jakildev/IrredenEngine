@@ -67,6 +67,8 @@
 #include <irreden/render/components/component_detached_canvas.hpp>
 #include <irreden/render/components/component_detached_revoxelize_buffer.hpp>
 #include <irreden/render/components/component_entity_canvas.hpp>
+#include <irreden/render/components/component_fog_reveal_settings.hpp>
+#include <irreden/render/components/component_fog_revealed.hpp>
 #include <irreden/render/components/component_frame_data_trixel_to_framebuffer.hpp>
 #include <irreden/render/components/component_geometric_shape.hpp>
 #include <irreden/render/components/component_gizmo_handle.hpp>
@@ -174,6 +176,11 @@ IR_SAVE_OPT_OUT(IRComponents::C_CanvasLocalRotation)
 IR_SAVE_OPT_OUT(IRComponents::C_LayoutState)
 IR_SAVE_OPT_OUT(IRComponents::C_LayoutLeaf)
 IR_SAVE_OPT_OUT(IRComponents::C_ResolvedFields)
+// Fog governance and its thresholds are recreated by creation setup. The
+// factor/verdict are derived each eval tick and must not outlive their render
+// visibility state, which is intentionally transient on C_VoxelSetNew.
+IR_SAVE_OPT_OUT(IRComponents::C_FogRevealed)
+IR_SAVE_OPT_OUT(IRComponents::C_FogRevealSettings)
 
 // Class C — transient per-frame events / device input
 IR_SAVE_OPT_OUT(IRComponents::C_ContactEvent)
@@ -412,6 +419,8 @@ using AllEngineComponents = std::tuple<
     IRComponents::C_LayoutState,
     IRComponents::C_LayoutLeaf,
     IRComponents::C_ResolvedFields,
+    IRComponents::C_FogRevealed,
+    IRComponents::C_FogRevealSettings,
     IRComponents::C_ContactEvent,
     IRComponents::C_OverlapContactBatch,
     IRComponents::C_CursorPosition,
@@ -561,7 +570,7 @@ using AllEngineComponents = std::tuple<
     IRSystem::C_PerfStatsOverlayTag,
     IRComponents::C_SystemEvent<IRSystem::TICK>>;
 
-inline constexpr std::size_t kExpectedEngineComponentCount = 168;
+inline constexpr std::size_t kExpectedEngineComponentCount = 172;
 
 static_assert(
     detail::allExplicit<AllEngineComponents>(),
