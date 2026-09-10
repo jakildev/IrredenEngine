@@ -322,22 +322,9 @@ struct C_VoxelSetNew {
         // never touches the pool — so this guard skips exactly the cases
         // that have nothing to release.
         if (numVoxels_ > 0) {
-            // Release this set's per-trixel-priority contribution (#2155) before
-            // the span goes back to the pool, so a canvas whose only priority
-            // voxels lived in a destroyed set drops back to the fast path.
-            if (perTrixelPriorityVoxelCount_ > 0) {
-                IRPrefab::VoxelPool::adjustPerTrixelPriorityVoxelCount(
-                    -static_cast<int>(perTrixelPriorityVoxelCount_),
-                    canvasEntity_
-                );
-                perTrixelPriorityVoxelCount_ = 0;
-            }
-            IRPrefab::VoxelPool::deallocate(
-                voxelStartIdx_,
-                static_cast<size_t>(numVoxels_),
-                canvasEntity_
-            );
-            IRE_LOG_DEBUG("Deallocated {} voxels", numVoxels_);
+            const int released = numVoxels_;
+            releaseSpanToPool();
+            IRE_LOG_DEBUG("Deallocated {} voxels", released);
         }
     }
 
@@ -760,23 +747,8 @@ struct C_VoxelSetNew {
         pendingBoundsMin_ = localOriginMin();
         pendingVoxels_.assign(authored.begin(), authored.end());
 
-        // Release in `onDestroy()`'s order: the per-trixel-priority aggregate
-        // first, then the span (`deallocateVoxels` clears the pool's active
-        // mask for the range, so no separate markRangeInactive is needed).
-        if (perTrixelPriorityVoxelCount_ > 0) {
-            IRPrefab::VoxelPool::adjustPerTrixelPriorityVoxelCount(
-                -static_cast<int>(perTrixelPriorityVoxelCount_),
-                canvasEntity_
-            );
-            perTrixelPriorityVoxelCount_ = 0;
-        }
-        IRPrefab::VoxelPool::deallocate(
-            voxelStartIdx_,
-            static_cast<std::size_t>(numVoxels_),
-            canvasEntity_
-        );
+        releaseSpanToPool();
 
-        numVoxels_ = 0;
         voxelStartIdx_ = 0;
         positions_ = {};
         positionOffsets_ = {};
@@ -862,6 +834,32 @@ struct C_VoxelSetNew {
             IRPrefab::VoxelPool::resyncRangeFromColors(voxelStartIdx_, numVoxels_, canvasEntity_);
         }
         IRPrefab::Voxel::recomputeFaceOccupancy(voxels_, extent);
+    }
+
+    // Everything the pool must be told when this set stops owning its span:
+    // drop the per-trixel-priority contribution (#2155) so a canvas whose only
+    // priority voxels lived here falls back to the fast path, then return the
+    // span (`deallocateVoxels` clears the pool's active mask for the range, so
+    // no separate markRangeInactive is needed). Leaves `numVoxels_` at 0, which
+    // is what keeps a later `onDestroy()` from double-releasing a re-staged set.
+    //
+    // Both release paths — `onDestroy()` and `restageFromPool()` — route through
+    // here, so a future pool-side obligation is added once rather than in one of
+    // the two. Caller guarantees `numVoxels_ > 0`.
+    void releaseSpanToPool() {
+        if (perTrixelPriorityVoxelCount_ > 0) {
+            IRPrefab::VoxelPool::adjustPerTrixelPriorityVoxelCount(
+                -static_cast<int>(perTrixelPriorityVoxelCount_),
+                canvasEntity_
+            );
+            perTrixelPriorityVoxelCount_ = 0;
+        }
+        IRPrefab::VoxelPool::deallocate(
+            voxelStartIdx_,
+            static_cast<std::size_t>(numVoxels_),
+            canvasEntity_
+        );
+        numVoxels_ = 0;
     }
 
     // Single home for the resync order the bulk mutators run inline after a
