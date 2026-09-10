@@ -186,15 +186,42 @@ per-ticket plans + the #1881 / #1885 comments.
 
 ## Steward ledger
 
-reconciled-through: 2026-07-13 (all three direct children closed COMPLETED; checklist healed on first steward claim)
-proposal-pending: none
+reconciled-through: **2026-09-10 membership re-heal** (second steward claim, 59
+days after the first). No child moved. What moved is **membership**: the
+2026-07-13 heal recorded 3 children; the epic actually has **10**, and one of
+them (**#1923**) is **OPEN**. The `closeout` trigger this umbrella has been
+firing is therefore a **false positive** — it was reading a checklist that was
+missing 70% of the epic. Two claims in the 2026-07-13/14 ledger and park are
+corrected below (**F3**, **F4**). Prior: 2026-07-13 (first steward claim — heal
++ close-out-readiness assessment), 2026-07-14 (park).
+proposal-pending: none. The umbrella's open question is no longer a steward
+proposal — it is **work on #1923**, which the human holds (`human:owned`). See
+the `## Steward membership re-heal — 2026-09-10` comment on the umbrella.
 
 ### Children
+
+Ten members. Six were invisible to the 2026-07-13 heal because they declare
+membership with the **non-canonical token** `**Part of:** epic #1881` instead of
+the machine-parsed `**Part of epic:** #1881`; #1983 was invisible for a
+different reason (see F2). Adopted to the umbrella checklist 2026-09-10.
+
 | Child | State | PR | Plan | Last validated |
 |---|---|---|---|---|
-| #1882 | closed COMPLETED — cardinal coverage loss fixed (`Camera::computeYawSplit` deadband + render-path-aware harness) | #1885 | .fleet/plans/issue-1882.md | 2026-06-19 (Metal: 4 cardinals path=single, coverage 1.0) |
-| #1883 | closed COMPLETED — per-axis bands + face-alignment seams; corner-spike residual forked to #1933 | #1907 | .fleet/plans/issue-1883.md | 2026-06-21 |
-| #1884 | closed COMPLETED — depth/clipping unified across render types; perf-cliff forked to #1961/#1963 (+ #1983) | — | .fleet/plans/issue-1884.md | 2026-06-24 |
+| #1882 | closed COMPLETED — cardinal coverage loss fixed (`Camera::computeYawSplit` deadband + render-path-aware harness) | #1885 | `issue-1882.md` | 2026-06-19 (Metal: 4 cardinals path=single, coverage 1.0) |
+| #1883 | closed COMPLETED — per-axis bands + face-alignment seams; corner-spike residual forked to #1933 | #1907 | `issue-1883.md` | 2026-06-21 |
+| #1884 | closed COMPLETED — depth/clipping unified across render types; perf-cliff forked to #1961/#1963 (+ #1983) | — | `issue-1884.md` | 2026-06-24 |
+| #1910 | closed COMPLETED — GPU depth-readback probe (declared "tooling prerequisite for child #1884") | — | `issue-1910.md` | 2026-09-10 (adopted) |
+| #1920 | closed NOT_PLANNED — SDF analytical-solver temporal jitter; re-scoped 2026-06-23: depth-ordering verified correct, "shimmer" reclassified to a stylization ticket | — | `issue-1920.md` | 2026-09-10 (adopted; close rationale verified) |
+| #1921 | closed COMPLETED — camera Z-yaw pivots about the point-of-interest | — | `issue-1921.md` | 2026-09-10 (adopted) |
+| #1922 | closed COMPLETED — jitter-free rotation validation harness (all canvas types) | — | `issue-1922.md` | 2026-09-10 (adopted) |
+| #1923 | **OPEN** — consolidate CPU↔GPU rounding & iso math; `human:owned` + `human:approved` + `fleet:opus` | — | `issue-1923.md` | 2026-09-10 (adopted) |
+| #1954 | closed COMPLETED — jitter-validation harness extended to canvas_stress | — | `issue-1954.md` | 2026-09-10 (adopted) |
+| #1983 | closed COMPLETED — 32-bit shared composite depth spike (follow-on #1884) | — | — (no plan file; closed, so no stub — flow c step 3 exists to gate *claims*) | 2026-09-10 (adopted) |
+
+Correctly **not** a member: **#2010** — it carries `**Part of:** epic #1717`
+(shadow & lighting quality), not #1881. The 2026-07-13 heal reached the right
+verdict on it for the wrong stated reason ("no `Part of epic:` line" — it has
+one, pointing elsewhere).
 
 ### Decisions
 - 2026-06-17: #1882's original "single-canvas cardinal gather" premise was a
@@ -215,7 +242,12 @@ proposal-pending: none
   on BOTH Metal + OpenGL) is not steward-verifiable (steward writes docs only;
   macOS host cannot build the GL backend). Source: closing comments on #1883
   (PR #1907 → corner-spike follow-on) and #1884 (perf-track-refined comment
-  2026-06-22).
+  2026-06-22). **Half of the parenthetical is refuted — see F3.**
+- D4 (2026-09-10): **membership is the ten rows above**, and the umbrella is
+  **not close-out-ready**: #1923 is open. Source: each member's own body line,
+  read directly (`**Part of:** epic #1881` for the six, `**Part of epic:**
+  #1881` for #1882/#1883/#1884/#1983). The checklist — not the back-ref sweep —
+  remains the authority going forward, which is the point of adopting them.
 
 ### Events
 - 2026-06-16: filed via file-epic; plans committed to repo retroactively (the stale global ~/.claude/skills/file-epic ran and skipped step 6.5).
@@ -229,3 +261,76 @@ proposal-pending: none
   closing this iteration — the whole-epic acceptance sweep is unrun and residual
   quality lives in open follow-on epics #1933/#2331. Close-out is the human's call
   (run the both-backend sweep and close, or close-as-forked).
+- 2026-07-14: parked with `fleet:needs-human` — "close-out is the human's call",
+  framed as a ruling on a 3/3-complete epic.
+- 2026-09-09: a sweep note on the umbrella flagged that the heal had dropped
+  #1920/#1921/#1923 over the non-canonical membership token, and that #1923 is
+  open. This iteration re-audited **all seven** rejected candidates against both
+  token spellings and found the gap is wider than three (F1), plus a second,
+  independent gap (F2).
+- 2026-09-10: second steward claim — membership re-heal. Seven members adopted
+  to the checklist (#1910/#1920/#1921/#1922/#1923/#1954/#1983); the umbrella's
+  `## Children` trailing note corrected from "All three direct children merged &
+  closed COMPLETED" to the real 10-member / 9-closed / 1-open state. Two prior
+  ledger claims corrected (F3, F4). Both discovery gaps filed free-standing as
+  **#3141**. No child moved, no code touched, nothing closed.
+
+### Findings (close-out gate — beyond the checklist)
+
+- **F1 (2026-09-10) — the heal's rejection list was wrong on six of seven.**
+  Re-reading each rejected candidate's body line directly:
+  #1910, #1920, #1921, #1922, #1923, #1954 all carry
+  `**Part of:** epic #1881` — a real membership declaration in a non-canonical
+  spelling, not an absent one. Only #2010 is genuinely not a member (it points
+  at #1717). The 2026-07-13 rejection reason as written — "no `Part of epic:`
+  line" — is literally true of all six and yet led to the opposite of the right
+  conclusion, because the token it tested for is narrower than the token the
+  fleet actually writes.
+- **F2 (2026-09-10) — `fleet-validate-stack`'s default state filter hides
+  closed children, and its empty result reads as "nothing to check."** `fleet-
+  validate-stack 1881` prints *"0 child issue(s) … No children found via `Part
+  of epic:` / `Epic:` body reference to #1881"* — for an epic whose #1882/#1883/
+  #1884 carry the canonical line verbatim. `--state` defaults to **open**
+  (`fleet-validate-stack:105-106`) and all three are closed. With `--state all` it
+  prints `4 child issue(s)` and `OK: all 4 … carry the required structured
+  fields` — surfacing **#1983**, canonically declared and — until this
+  iteration adopted it — *absent from the checklist*. Controlled against #1394, which reproduces identically (0 with the
+  default, its four closed children being the reason). This matters to the
+  protocol directly: flow c step 4 says *"never adopt a stack the validator
+  rejects"*, and the default invocation returns a message that reads like an
+  empty epic rather than a wrong state filter. **Always pass `--state all` when
+  validating an epic for close-out.** Filed 2026-09-10 as **#3141** (covers
+  both this and F1's token gap).
+- **F3 (2026-09-10) — correction to the 2026-07-13 D-fork entry: "macOS host
+  cannot build the GL backend" is false.** macOS **can** compile and unit-test
+  the GL backend via an explicit
+  `-DIRREDEN_GRAPHICS_BACKEND=OPENGL` configure — the explicit-backend block in
+  `engine/render/CMakeLists.txt:54-58` runs after, and overrides, the Darwin
+  default at `:39-47`;
+  `macos-debug` merely pins METAL as a *preset* choice. What macOS cannot do is
+  **run** it (GL 4.1, no compute shaders). The ledger's operative conclusion
+  survives — `perf-grid-rotate-sweep` needs a live GL context, so the OpenGL
+  half of the acceptance sweep still needs a Linux host — but the stated reason
+  was wrong, and it is the kind of reason that gets copied onto the next ticket.
+  Same refutation as the correction already posted on #2514 and #2704; cite it,
+  don't re-derive it.
+- **F4 (2026-09-10) — correction to the 2026-07-14 park: this epic is not
+  awaiting a ruling on a finished epic.** The park framed close-out as a human
+  *decision* between "close as resolved" and "close as superseded/forked" on a
+  3/3-complete epic. With #1923 open, the epic is **9/10** and the pending item
+  is **work**, not a verdict. #1923 is fully specified (`Model: opus`,
+  `human:approved`, acceptance criteria written), its `**Blocked by:** (none)`
+  line notes only #1881's one-at-a-time sequencing rule against #1883/#1884 —
+  both of which landed 2026-06-21 / 2026-06-24, so that sequencing constraint
+  cleared **78 days ago**. It carries `human:owned`, i.e. the human deliberately
+  took it out of the queue; the steward does not touch `human:*` labels, so the
+  ask is restated on the umbrella instead.
+- **F5 (2026-09-10) — the acceptance sweep is still unrun on both backends.**
+  Unchanged from 2026-07-13 and independent of F1–F4: `bash
+  scripts/dev/perf-grid-rotate-sweep build dense 60` has no recorded run against
+  current master on either backend since the three fixes landed (the per-child
+  validations of 2026-06-19/21/24 are narrower than the whole-epic gate). The
+  Metal half is runnable on a macOS pane; the OpenGL half needs a Linux host.
+  Deliberately not run this iteration: the epic has an open child, so a green
+  sweep now would not make it close-out-ready and a red one would be attributed
+  to the wrong cause.
