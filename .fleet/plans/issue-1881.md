@@ -201,9 +201,12 @@ but it still needs a re-fire edge, which `fleet:needs-human` alone does not
 give it. Options: (a) work #1923 / (b) release it to the queue (drop
 `human:owned`, add `fleet:queued`) / (c) close it and re-file its residual
 scope free-standing. **Recommendation: (b)** — the scope is written and the
-sequencing blocker is 78 days stale, so it costs two label edits. **No-rule
-fallback dated 2026-10-08** → take (c), so the umbrella stops being blocked on
-an item nobody is working.
+sequencing blocker is 78 days stale, so it costs two label edits. The
+recommendation is advisory: #1923 stays open and `human:owned`, and this
+umbrella stays open, until a human or architect answers on the umbrella thread
+and removes `fleet:steward-proposal`. That removal is the sole re-fire edge
+(protocol §Flow a) — elapsed time is not one, and no steward may take a branch
+on its own.
 
 ### Children
 

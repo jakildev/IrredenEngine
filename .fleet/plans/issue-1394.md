@@ -67,10 +67,14 @@ adds "the App created/configured" on top of the umbrella's three acceptance
 criteria — does that extra still gate an umbrella whose own three criteria are
 now evidenced met? Options (a) close now and re-file App adoption free-standing
 / (b) hold open for the App / (c) close and drop the App. **Recommendation:
-(a).** **No-rule fallback dated 2026-09-24** → take (a): post the close-out
-summary with the F1–F3 evidence, close #1394, and file App adoption as a
-free-standing issue (which is how `docs/agents/FLEET.md` already describes it —
-"Once the fleet moves to a GitHub App token (**tracked separately**)").
+(a)** — post the close-out summary with the F1–F3 evidence, close #1394, and
+file App adoption as a free-standing issue (which is how `docs/agents/FLEET.md`
+already describes it — "Once the fleet moves to a GitHub App token
+(**tracked separately**)"). That is advisory only: #1394 stays open and the
+plan's *Closing criteria* line stays as written until a human or architect
+answers on the umbrella thread and removes `fleet:steward-proposal`. That
+removal is the sole re-fire edge (protocol §Flow a) — elapsed time is not one,
+and no steward may take a branch on its own.
 
 ### Children
 
@@ -93,8 +97,10 @@ D3 (2026-07-03): Q3 gates ON by default at 0.90 for core/graphql; search surface
   Its three acceptance criteria are evidenced met (F1–F3), but the plan's
   *Closing criteria* line adds a fourth item the steward cannot satisfy or
   retire — retiring a stated closing criterion is an umbrella-goal change and
-  belongs to the human (protocol §Escalation rules). Recorded as a proposal
-  with a dated fallback rather than acted on.
+  belongs to the human (protocol §Escalation rules). Recorded as a pending
+  proposal with a recommendation, and left for the responder — the steward
+  neither acts on it nor schedules an action for a later steward to take on
+  silence.
 
 ### Events
 - 2026-07-04: children #2219–#2222 filed with plans; `fleet-validate-stack 1394` PASS (4/4); all children human:approved.
