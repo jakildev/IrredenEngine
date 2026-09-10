@@ -131,11 +131,14 @@ inline IRCommand::CommandId registerToggleCommand(int button = kDefaultToggleBut
 // `isOpen()` (from the component header) answers "did the toggle fire". These
 // answer "did the menu actually materialize", which a flag alone cannot prove.
 // Both resolve the running system through the `SystemName` registry (#2526)
-// and read a clean negative when it is not registered.
+// and read a clean negative when it is not registered — against
+// `IRSystem::kNullSystemId`, the miss sentinel #2540 moved off `kNullEntity`
+// because 0 is a live system id. See `HelpOverlay::systemOrNull()` for why the
+// wrong sentinel fails in both directions.
 
 inline const IRSystem::System<IRSystem::SETTINGS_MENU> *systemOrNull() {
     const IRSystem::SystemId id = IRSystem::findSystem(IRSystem::SETTINGS_MENU);
-    if (id == IREntity::kNullEntity) {
+    if (id == IRSystem::kNullSystemId) {
         return nullptr;
     }
     return IRSystem::getSystemParams<IRSystem::System<IRSystem::SETTINGS_MENU>>(id);

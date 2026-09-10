@@ -91,13 +91,18 @@ inline IRCommand::CommandId registerToggleCommand(int button = kDefaultToggleBut
 // glyph commands it batched on the last frame. Both resolve the running system
 // through the `SystemName` registry (#2526) and degrade to empty / 0 when it
 // isn't registered, so a creation without the overlay reads a clean negative
-// instead of dereferencing null.
+// instead of dereferencing null. The miss sentinel is `IRSystem::kNullSystemId`
+// — NOT `IREntity::kNullEntity`, which #2540 retired precisely because 0 is a
+// live id (the first system a process registers gets it). Comparing against the
+// wrong one breaks the probe both ways: a genuine miss walks past the guard into
+// an out-of-range `getSystemParams`, and a system registered as id 0 reads as
+// absent (`prefab_system_probe_test.cpp` pins both directions).
 //
 // Not a per-frame surface — one hash lookup per call. Intended for
 // `IRPrefab::GuiTest::predicate` bodies and diagnostics.
 inline const IRSystem::System<IRSystem::HELP_OVERLAY> *systemOrNull() {
     const IRSystem::SystemId id = IRSystem::findSystem(IRSystem::HELP_OVERLAY);
-    if (id == IREntity::kNullEntity) {
+    if (id == IRSystem::kNullSystemId) {
         return nullptr;
     }
     return IRSystem::getSystemParams<IRSystem::System<IRSystem::HELP_OVERLAY>>(id);
