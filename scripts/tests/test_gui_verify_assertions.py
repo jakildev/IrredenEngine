@@ -31,13 +31,22 @@ def _assert_line(shot: int) -> str:
     )
 
 
+def _coverage_line(shot: int, assertion_count: int) -> str:
+    return (
+        f"GUI-ASSERT-COVERAGE shot={shot} label=shot-{shot} "
+        f"assertions={assertion_count}\n"
+    )
+
+
 class ReportGuiAssertsTest(unittest.TestCase):
     def test_reports_announced_shot_with_no_assertions(self) -> None:
         output = (
             "GuiTest 1/3: first (zoom=4, cam=(0,0), yaw=0, inputs=0)\n"
-            + _assert_line(1)
+            + _coverage_line(0, 1)
+            + _assert_line(0)
             + "GuiTest 2/3: second (zoom=4, cam=(0,0), yaw=0, inputs=0)\n"
-            + _assert_line(2)
+            + _coverage_line(1, 1)
+            + _assert_line(1)
         )
 
         with redirect_stdout(io.StringIO()) as captured:
@@ -48,13 +57,14 @@ class ReportGuiAssertsTest(unittest.TestCase):
         self.assertEqual(len(assertions), 2)
         self.assertFalse(hung)
         self.assertEqual(failures, [])
-        self.assertEqual(missing, [3])
-        self.assertIn("shots with zero GUI-ASSERT lines: 3", captured.getvalue())
+        self.assertEqual(missing, [2])
+        self.assertIn("shots with zero GUI-ASSERT lines: 2", captured.getvalue())
 
     def test_complete_table_has_no_coverage_gap(self) -> None:
         output = "".join(
-            f"GuiTest {shot}/30: shot-{shot}\n{_assert_line(shot)}"
-            for shot in range(1, 31)
+            f"GuiTest {shot + 1}/15: shot-{shot}\n"
+            f"{_coverage_line(shot, 2)}{_assert_line(shot)}{_assert_line(shot)}"
+            for shot in range(15)
         )
 
         with redirect_stdout(io.StringIO()) as captured:
@@ -64,6 +74,35 @@ class ReportGuiAssertsTest(unittest.TestCase):
         self.assertEqual(failures, [])
         self.assertEqual(missing, [])
         self.assertIn("30/30 assertions passed", captured.getvalue())
+
+    def test_assertion_free_editor_shots_are_covered(self) -> None:
+        assertion_counts = {
+            shot: 2 if shot < 7 else 1
+            for shot in range(4, 15)
+        }
+        output = "".join(
+            f"GuiTest {shot + 1}/17: editor-{shot}\n"
+            + "".join(_assert_line(shot)
+                      for _ in range(assertion_counts.get(shot, 0)))
+            + _coverage_line(shot, assertion_counts.get(shot, 0))
+            for shot in range(17)
+        )
+
+        assertions = verify_common.parse_gui_asserts(output)
+
+        self.assertEqual(len(assertions), 14)
+        self.assertEqual(
+            verify_common.missing_gui_assert_shots(output, assertions), []
+        )
+
+    def test_truncated_table_reports_zero_based_missing_shot(self) -> None:
+        output = "GuiTest 1/2: first\n" + _assert_line(0)
+
+        assertions = verify_common.parse_gui_asserts(output)
+
+        self.assertEqual(
+            verify_common.missing_gui_assert_shots(output, assertions), [1]
+        )
 
 
 class GuiVerifyEmptyPolicyTest(unittest.TestCase):
@@ -98,7 +137,7 @@ class GuiVerifyEmptyPolicyTest(unittest.TestCase):
         )
 
         self.assertEqual(exit_code, 1)
-        self.assertIn("shots with zero GUI-ASSERT lines: 1, 2", output)
+        self.assertIn("shots with zero GUI-ASSERT lines: 0, 1", output)
 
 
 if __name__ == "__main__":

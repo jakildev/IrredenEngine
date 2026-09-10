@@ -251,7 +251,9 @@ inline bool evaluateOne(const Assertion &assertion, const LatchState &latch, std
     return false;
 }
 
-// Evaluate every assertion for a shot, emitting one machine-readable line each:
+// Mark the shot as evaluated, then evaluate every assertion, emitting one
+// machine-readable line each:
+//   GUI-ASSERT-COVERAGE shot=<i> label=<shot> assertions=<N>
 //   GUI-ASSERT shot=<i> label=<shot> kind=<KIND> target=<eid> name=<tag>
 //              result=PASS|FAIL actual=<observed>
 inline void evaluate(
@@ -276,6 +278,12 @@ inline void evaluate(
             actual
         );
     }
+    IR_LOG_INFO(
+        "GUI-ASSERT-COVERAGE shot={} label={} assertions={}",
+        shotIndex,
+        shotLabel != nullptr ? shotLabel : "",
+        count
+    );
 }
 
 // Per-frame driver wired to GuiTestConfig::onAssertFrame_. Latches one-frame
@@ -289,6 +297,11 @@ inline void onFrame(
     const Assertion *assertions,
     int count
 ) {
+    if (count == 0) {
+        if (isCaptureFrame)
+            evaluate(latch, shotIndex, shotLabel, assertions, count);
+        return;
+    }
     detail::latchFires(latch);
     if (!isCaptureFrame)
         return;

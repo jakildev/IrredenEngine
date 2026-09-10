@@ -577,8 +577,6 @@ void onSessionAssertFrame(int shotIndex, bool isCaptureFrame) {
         segment.events_[static_cast<std::size_t>(aim.eventIndex_)].screenPx_ =
             IRRender::worldPos3DToMouseScreenPx(aim.worldPoint_);
     }
-    if (segment.assertions_.empty())
-        return;
     IRPrefab::GuiTest::onFrame(
         g_guiAssertLatch,
         shotIndex,
@@ -614,8 +612,6 @@ void onGuiAssertFrame(int shotIndex, bool isCaptureFrame) {
         g_probeMapMoves[cellIndex].screenPx_ = IRRender::worldPos3DToMouseScreenPx(worldCenter);
     }
     const auto &assertions = g_shotAssertions[shotIndex];
-    if (assertions.empty())
-        return; // shots without assertions (idle / zoom framings) skip latch+eval
     IRPrefab::GuiTest::onFrame(
         g_guiAssertLatch,
         shotIndex,

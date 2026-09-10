@@ -48,6 +48,10 @@ GUI_ASSERT_RE = re.compile(
     r"actual=(.*)"
 )
 
+# One line emitted when a GUI-test shot reaches its evaluation frame, including
+# shots whose assertion table is intentionally empty.
+GUI_ASSERT_COVERAGE_RE = re.compile(r"GUI-ASSERT-COVERAGE\s+shot=(\d+)\b")
+
 # One line emitted when a GUI-test shot starts. The denominator announces the
 # complete table even when a later shot exits before producing an assertion.
 GUI_TEST_SHOT_RE = re.compile(r"GuiTest\s+(\d+)/(\d+):")
@@ -172,15 +176,17 @@ def parse_gui_asserts(output: str) -> list[dict[str, str]]:
 
 def missing_gui_assert_shots(output: str,
                              assertions: list[dict[str, str]]) -> list[int]:
-    """Shot indices announced by a GUI table that emitted no assertions."""
+    """Zero-based shot indices that never reached assertion evaluation."""
     announcements = [tuple(map(int, m.groups()))
                      for m in GUI_TEST_SHOT_RE.finditer(output)]
     if not announcements:
         return []
     shot_count = max(total for _, total in announcements)
-    asserted_shots = {int(row["shot"]) for row in assertions
-                      if row["shot"].isdigit()}
-    return sorted(set(range(1, shot_count + 1)) - asserted_shots)
+    covered_shots = {int(row["shot"]) for row in assertions
+                     if row["shot"].isdigit()}
+    covered_shots.update(int(m.group(1))
+                         for m in GUI_ASSERT_COVERAGE_RE.finditer(output))
+    return sorted(set(range(shot_count)) - covered_shots)
 
 
 def print_assert_table(assertions: list[dict[str, str]]) -> None:
