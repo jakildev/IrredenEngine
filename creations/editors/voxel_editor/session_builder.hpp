@@ -8,6 +8,7 @@
 #include <irreden/render/gui_test_assertions.hpp>
 #include <irreden/render/picking.hpp>
 
+#include "palette.hpp"
 #include "symmetry.hpp"
 
 #include <deque>
@@ -304,14 +305,37 @@ struct AimFixup {
     IRMath::vec3 worldPoint_ = IRMath::vec3(0.0f);
 };
 
+// One cursor MOVE onto a GUI-canvas widget, resolved at shot-run time the same
+// way an AimFixup is. The GUI canvas is sized from the live framebuffer
+// (setGuiCanvasFullResolution), so a widget's screen pixel is no more bakeable
+// at recipe-build time than a scene voxel's is.
+struct GuiAimFixup {
+    int eventIndex_ = 0;
+    IRMath::vec2 guiTrixel_ = IRMath::vec2(0.0f);
+};
+
 // Occupancy expectation evaluated against the real editable set at a shot's
 // capture frame. This is what makes a session positive-fire: a recipe that
 // silently no-ops (click swallowed by a widget, aim occluded by scene furniture,
 // gesture never reaching the place path) fails here instead of quietly saving
 // an empty asset.
+// Which copy of "is this cell live" a check reads. The per-voxel alpha is the
+// CPU-side truth; the pool's active mask is the GPU-side mirror the compact
+// shader reads *instead of* alpha (T-287), and it is pool state rather than
+// voxel-record state — so a raw write to a set's `voxels_` span updates one and
+// not the other. A recipe that steps animation frames asserts BOTH: the two
+// disagreeing is exactly the shape of a missing resyncAfterRawEdits (#766).
+enum class CheckSource { VOXEL_ALPHA, POOL_ACTIVE_MASK };
+
 struct OccupancyCheck {
     IRMath::ivec3 localCell_ = IRMath::ivec3(0);
     bool expectOccupied_ = false;
+    CheckSource source_ = CheckSource::VOXEL_ALPHA;
+    // Set only by expectVoxelColor: the RGB the cell's voxel must carry on top
+    // of being occupied. Alpha is deliberately not compared — it is the
+    // occupancy channel (layer visibility drives it), which expectOccupied_
+    // already covers.
+    std::optional<IRMath::Color> expectColor_;
     std::string name_;
 };
 
@@ -322,6 +346,7 @@ struct Segment {
     float zoom_ = kSessionZoom;
     std::vector<IRVideo::GuiInputEvent> events_;
     std::vector<AimFixup> aims_;
+    std::vector<GuiAimFixup> guiAims_;
     std::vector<IRPrefab::GuiTest::Assertion> assertions_;
 };
 
@@ -528,6 +553,52 @@ class Builder {
         tapKey(IRInput::kKeyButtonH);
     }
 
+    // Click palette swatch @p index to make its colour the active paint colour.
+    // The only op that aims at a GUI widget rather than the scene: the cursor
+    // goes to the swatch's centre on the GUI canvas, so the click lands on the
+    // widget's hitbox wherever the panel is laid out.
+    void selectPaletteSwatch(int index) {
+        if (index < 0 || index >= kPaletteCount) {
+            recordError(
+                "palette swatch " + std::to_string(index) + " out of range [0," +
+                std::to_string(kPaletteCount) + ") in segment " + m_current.label_
+            );
+            return;
+        }
+        emitGuiMove(paletteSwatchCenterGuiTrixel(index));
+        emitButton(IRVideo::GuiInputEvent::Type::PRESS, IRInput::kMouseButtonLeft);
+        emitButton(IRVideo::GuiInputEvent::Type::RELEASE, IRInput::kMouseButtonLeft);
+    }
+
+    // Duplicate the active animation frame (D) and select the copy. The editor
+    // snapshots the live voxels into the source frame first, so the duplicate
+    // starts as an exact copy — which is why the shadow model can simply be
+    // cloned rather than re-derived.
+    //
+    // D is also the camera-right binding (no modifier guard, P0-4), so the
+    // caller must open a new segment afterwards to re-apply the camera before
+    // aiming anything.
+    void duplicateFrame() {
+        tapKey(IRInput::kKeyButtonD);
+        m_frameModels.insert(m_frameModels.begin() + m_activeFrame, m_model);
+        ++m_activeFrame;
+    }
+
+    // Step the active frame back / forward (Left / Right arrow). The editor
+    // snapshots the live voxels into the departing frame and loads the arriving
+    // one; the shadow model follows the same swap, so aiming stays valid on
+    // either side of a step (unlike reload(), which repopulates from disk).
+    // Stepping past either end is a no-op in the editor (switchToFrame clamps),
+    // so the recipe is rejected rather than silently diverging from the live
+    // set.
+    void prevFrame() {
+        stepFrame(-1);
+    }
+
+    void nextFrame() {
+        stepFrame(1);
+    }
+
     void save() {
         chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonS);
     }
@@ -543,7 +614,63 @@ class Builder {
     // settles — i.e. after every event in the segment has fired, not at this
     // call's position in the op sequence (see segment()).
     void expectOccupancy(IRMath::ivec3 local, bool expectOccupied, std::string name) {
-        m_recipe.checks_.push_back(OccupancyCheck{local, expectOccupied, std::move(name)});
+        m_recipe.checks_.push_back(
+            OccupancyCheck{
+                local,
+                expectOccupied,
+                CheckSource::VOXEL_ALPHA,
+                std::nullopt,
+                std::move(name)
+            }
+        );
+        const OccupancyCheck &check = m_recipe.checks_.back();
+        m_current.assertions_.push_back(
+            IRPrefab::GuiTest::predicate(&evaluateOccupancyCheck, &check, check.name_.c_str())
+        );
+    }
+
+    // Assert the POOL's active-mask bit for the cell, rather than the voxel
+    // record's alpha. The two are the same fact stored twice — CPU-side and
+    // GPU-side — and they can only disagree when something wrote the raw
+    // `voxels_` span without resyncing the pool. Pair it with an
+    // expectOccupancy on the same cell: alpha alone passes on a set that would
+    // render the wrong pose, because the compact shader never reads alpha.
+    void expectPoolActive(IRMath::ivec3 local, bool expectActive, std::string name) {
+        m_recipe.checks_.push_back(
+            OccupancyCheck{
+                local,
+                expectActive,
+                CheckSource::POOL_ACTIVE_MASK,
+                std::nullopt,
+                std::move(name)
+            }
+        );
+        const OccupancyCheck &check = m_recipe.checks_.back();
+        m_current.assertions_.push_back(
+            IRPrefab::GuiTest::predicate(&evaluateOccupancyCheck, &check, check.name_.c_str())
+        );
+    }
+
+    // Assert the cell is occupied AND carries palette colour @p paletteIndex —
+    // the positive fire for selectPaletteSwatch. Occupancy alone cannot tell a
+    // swatch click that landed from one swallowed by the panel background: the
+    // voxel is placed either way, just in the previously-active colour.
+    void expectVoxelColor(IRMath::ivec3 local, int paletteIndex, std::string name) {
+        if (paletteIndex < 0 || paletteIndex >= kPaletteCount) {
+            recordError(
+                "palette swatch " + std::to_string(paletteIndex) + " out of range in check " + name
+            );
+            return;
+        }
+        m_recipe.checks_.push_back(
+            OccupancyCheck{
+                local,
+                true,
+                CheckSource::VOXEL_ALPHA,
+                kPaletteColors[paletteIndex],
+                std::move(name)
+            }
+        );
         const OccupancyCheck &check = m_recipe.checks_.back();
         m_current.assertions_.push_back(
             IRPrefab::GuiTest::predicate(&evaluateOccupancyCheck, &check, check.name_.c_str())
@@ -589,6 +716,41 @@ class Builder {
         m_frame += kFramesPerClickStep;
     }
 
+    // Cursor MOVE onto a point on the GUI canvas. Same deferred-pixel scheme as
+    // emitMove, through the GUI mapping instead of the world one.
+    void emitGuiMove(IRMath::vec2 guiTrixel) {
+        IRVideo::GuiInputEvent event{};
+        event.frameOffset_ = m_frame;
+        event.type_ = IRVideo::GuiInputEvent::Type::MOVE;
+        m_current.guiAims_.push_back(
+            GuiAimFixup{static_cast<int>(m_current.events_.size()), guiTrixel}
+        );
+        m_current.events_.push_back(event);
+        m_frame += kFramesPerClickStep;
+    }
+
+    // Shared body of prevFrame / nextFrame. The shadow model is swapped exactly
+    // as switchToFrame swaps the live voxels, so aiming survives a frame step.
+    void stepFrame(int delta) {
+        const int target = m_activeFrame + delta;
+        if (target < 0 || target >= static_cast<int>(m_frameModels.size()) + 1) {
+            recordError(
+                "frame step to " + std::to_string(target) + " is out of range [0," +
+                std::to_string(m_frameModels.size() + 1) + ") in segment " + m_current.label_ +
+                " — switchToFrame clamps, so the live editor would stay put"
+            );
+            return;
+        }
+        tapKey(delta < 0 ? IRInput::kKeyButtonLeft : IRInput::kKeyButtonRight);
+        // m_frameModels holds every frame BUT the active one, which lives in
+        // m_model (the editor's hot slot). Park the departing frame back in the
+        // list at its own index and take the arriving one out.
+        m_frameModels.insert(m_frameModels.begin() + m_activeFrame, m_model);
+        m_model = m_frameModels[static_cast<std::size_t>(target)];
+        m_frameModels.erase(m_frameModels.begin() + target);
+        m_activeFrame = target;
+    }
+
     void emitButton(IRVideo::GuiInputEvent::Type type, IRInput::KeyMouseButtons button) {
         IRVideo::GuiInputEvent event{};
         event.frameOffset_ = m_frame;
@@ -625,6 +787,12 @@ class Builder {
     }
 
     OccupancyModel m_model;
+    // The animation's non-active frames, indexed as the editor indexes them
+    // with the active frame removed — m_model IS frame m_activeFrame, mirroring
+    // the editor's hot-slot/cold-storage split (animation.hpp). Empty until a
+    // recipe duplicates a frame, so single-frame sessions carry no extra state.
+    std::vector<OccupancyModel> m_frameModels;
+    int m_activeFrame = 0;
     Recipe m_recipe;
     Segment m_current;
     int m_frame = 0;

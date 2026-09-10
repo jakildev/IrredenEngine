@@ -535,6 +535,139 @@ Findings:
   14 × 18 × 3). A recipe that scales its geometry off `sceneSize` should state
   the bound it actually needs rather than trusting the caller's `--scene-size`.
 
+### 2g — BIRD + TREE, and the close of F-1.6 (LANDED)
+
+The plan's PR-4: the last two entities, the multi-frame playback the bird's
+acceptance needs, and the close-out. Two capabilities the earlier four entities
+never needed had to be built — a **palette click** (the first gesture aimed at a
+widget rather than at the scene) and **animation frames** in the recipe
+vocabulary (`D` duplicate, `Left` / `Right` step, and a per-frame shadow model
+that mirrors the editor's own hot-slot/cold-storage split). Both are in
+`SessionBuilder`; no editor capability was added for them.
+
+- **BIRD** (default 16³, two frames): X-mirrored body + head in one palette
+  colour, a wing pair in another, authored level in frame 0 and stepped up in
+  frame 1. `author-entity.py bird` → **28/28 GUI-ASSERT PASS**, both frames
+  byte-identical across two runs, committed as
+  `assets/voxel/entities/bird_frame_{0,1}.vxs`.
+- **TREE** (`--scene-size 16 16 26`): a 22-tier column on a 4×4 root pad, carved
+  down to a 2×2 trunk for its lower 16 tiers so a 4×4 canopy is left standing,
+  plus four foliage bumps and a rounded crown. **27/27 PASS**, deterministic,
+  committed as `assets/voxel/entities/tree.vxs`.
+- `IRShapeDebug --load-vxs` now resolves a `<base>_frame_<N>.vxs` path to the
+  whole set, plays it back on a tick cadence taken from frame 0's `fps` META,
+  and takes `--vxs-frame N` to pin one pose for a screenshot. Playback is
+  deterministic: two runs are byte-identical across all 28 captures, and every
+  capture matches exactly one of the two pinned poses.
+
+Two defects came out of the bird's frame stepping, both of them derived state
+left stale behind a raw span write, and both invisible to every assertion the
+harness had (F-2g-2, F-2g-3, F-2g-7).
+
+Findings:
+
+- **F-2g-1 — nothing can be drawn *below* standing geometry, and that decides
+  both entities' shapes.** The picker exposes a voxel's `-x`, `-y` and `-z`
+  faces only, so every placement grows toward smaller x, y or z from an anchor
+  that already exists. Growing *down* is not a gesture the editor has, at any
+  camera yaw: rotating swaps which side faces the viewer but never lifts the
+  top-down component of the iso view. Two consequences, both visible in the
+  committed assets. The bird's flap is authored **level → raised**, not
+  up → down: the pose a human would draw first (wings drooping below the body)
+  cannot be drawn at all, so frame 0 holds the level wing and frame 1 adds the
+  upstroke. The tree is **additive-then-subtractive**: a canopy wider than the
+  trunk holding it up cannot be drawn in mid-air, so the recipe grows a solid
+  4×4 column off the root pad and then erases the trunk's shell. Filed as
+  **#3148** (a design call — four options recorded there, including "accept it
+  and document the grain").
+- **F-2g-2 — a frame swap that writes the raw `voxels_` span leaves the pool's
+  active mask on the departing frame.** `loadFrameToLive` copied the arriving
+  frame's records over the live span and stopped there. The per-voxel alpha is
+  therefore correct, but the pool's active mask — the GPU-side mirror of
+  `alpha != 0`, which `c_voxel_visibility_compact` reads *instead of* alpha
+  (T-287) — is pool state, not voxel-record state, and was left describing the
+  frame that just left. The visible result is that a frame step renders a blend
+  of the two poses: cells the departing frame had inactive stay culled however
+  live the arriving frame says they are. Authoring the bird, this showed up as
+  frame 1 drawing a bird with no wings. One line (`resyncAfterRawEdits()`, the
+  documented escape hatch for exactly this — `engine/prefabs/irreden/voxel/CLAUDE.md`)
+  fixes it; `shape_debug`'s own frame swap carries the same call for the same
+  reason. Present since frames shipped (F-1.4).
+- **F-2g-3 — every assertion this harness had was blind to it.** F-2g-2 is the
+  more useful finding in its general form: through four entities the whole
+  vocabulary — `expectOccupancy`, `expectPick`, and the palette check added this
+  slice — read CPU-side state, and a session can pass all of it while rendering
+  something else entirely. The remedy is `expectPoolActive`, which reads the
+  *pool's* bit for a cell rather than the voxel's alpha. The two are the same
+  fact stored twice, so asserting both makes the divergence itself the failure.
+  Negative-controlled: with `resyncAfterRawEdits()` removed, `bird` runs
+  **26/28** — the two failures are the `frame_back` pool-mask checks
+  (`poolActive=no want=yes` on the level wing tip, `poolActive=yes want=no` on
+  the raised one) and **every alpha check still passes**. Note also that only
+  the `frame_back` arm discriminates: stepping *forward* lands on the pose the
+  stale mask already described, so a one-direction frame test would have read
+  clean. A state check needs an arm where the stale value and the wanted value
+  disagree.
+- **F-2g-4 — the widest solid a single erase drag can hollow is 4 cells.** An
+  erase drag targets the voxels it *hits*, and in a solid block a cell is hit
+  only when the cell one step along the `(1,1,1)` march is empty — i.e. only the
+  min-x wall, the min-y wall and the top tier are reachable. At 4×4 the shell is
+  exactly the ring outside a 2×2 core, so the tree's whole 16-tier trunk carve is
+  two mirrored drags spanning the full height. At 6×6 the same carve would have
+  to peel one shell at a time. The tree's proportions are a consequence of the
+  tool, not a design choice, which is the kind of thing this proof exists to
+  surface.
+- **F-2g-5 — the palette needed a second aiming space, and its own
+  discriminator.** `selectPaletteSwatch` is the first gesture that aims at the
+  GUI canvas (`guiTrixelToScreenPx`) rather than at a world voxel, so
+  `Segment` grew a parallel `guiAims_` fixup list resolved at shot-run time for
+  the same reason the world aims are: the GUI canvas is sized from the live
+  framebuffer. The swatch geometry moved to `palette.hpp` so the editor's layout
+  and the session's aim derive from one description — a session that hardcoded a
+  screen pixel would start silently clicking the panel background the first time
+  the panel moved. Occupancy alone cannot check the result (the voxel is placed
+  either way, just in the previously-active colour), so `expectVoxelColor` reads
+  the placed cell's RGB, and each recipe asserts that the *earlier* geometry
+  **keeps its own** colour — picking a swatch must change what the next edit
+  paints, not repaint what is already there.
+- **F-2g-6 — the animation frames the recipe can reach are not the whole
+  animation UI.** `D`, `Left` and `Right` are keys and inject cleanly; the FPS
+  slider and the frame scrubber are drag targets, and the builder has no
+  widget-drag op — `selectPaletteSwatch` is a click, not a drag. So the bird's
+  `.vxs.json` carries the editor's default 12 FPS rather than a rate the session
+  chose, and the scrubber path is unexercised by any recipe. This is the same
+  gap the plan's "set the FPS slider" step assumed away, and it is the last
+  widget class the harness cannot drive (text entry being the other, from the
+  no-char-injection gap). Filed as **#3149**.
+
+- **F-2g-7 — the swap needed a *second* eviction the documented API does not do,
+  and it renders a blend of both poses without it (#2830).** `resyncAfterRawEdits()`
+  fixes the pool's active mask; it does not evict the pool's cached **chunk
+  bounds**, which are the cull inputs and are built by skipping voxels whose
+  alpha is zero. The pool's own eviction points are all *position* changes
+  (allocate / free / move), so an in-place activation change leaves the cull
+  culling the arriving pose against the departing pose's bounds. Measured on the
+  bird, comparing a playback capture against each pose captured alone: of the
+  32 880 pixels where the two poses differ, 10 680 drew the old pose and 16 856
+  the new, 5 344 neither — a stable, deterministic blend confined to the
+  entity's own bounding box (so not a lighting settle). Adding
+  `markChunkBoundsDirty()` + `markChunkWorldBoundsDirty()` at the swap site
+  takes the same run to every capture matching exactly one pose. Both swap sites
+  (`shape_debug`'s `--load-vxs` playback and the editor's `loadFrameToLive`)
+  hand-roll the pair; the eviction arguably belongs inside
+  `resyncDerivedState`, but putting it there makes every `editVoxels` / `carve`
+  call evict the cull caches and that is a hot-path judgement this task had no
+  basis to make. Already filed as **#2830** ("markChunkBoundsDirty() has zero
+  callers"); the measurement is posted there. The two swap sites duplicating
+  the copy → resync → evict sequence is left standing on purpose rather than
+  extracted into a shared helper: the duplication IS #2830's symptom, and once
+  the eviction moves inside `resyncDerivedState` both sites collapse to a copy
+  and one call, so a helper introduced now would be engine surface added for two
+  consumers and retired by the fix. Note the compounding shape with
+  F-2g-3: **two** distinct pieces of derived state went stale behind the same
+  raw span write, the alpha assertions saw neither, and the second one was only
+  found because the first fix left the render still wrong.
+
 ### M-2 — `-y`-face single-click place no-ops at the cardinal (yaw-0) camera (#2575)
 
 *ID note — `M-` tags a **mechanism** limitation: one that lives in the shared

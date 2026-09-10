@@ -44,6 +44,8 @@ enum class Id {
     ROCK,
     MUSHROOM,
     ANT,
+    BIRD,
+    TREE,
 };
 
 // CLI name -> id. The accepted set is declared to IRArgs as an enum arg, so an
@@ -59,6 +61,10 @@ inline Id idFromName(const std::string &name) {
         return Id::MUSHROOM;
     if (name == "ant")
         return Id::ANT;
+    if (name == "bird")
+        return Id::BIRD;
+    if (name == "tree")
+        return Id::TREE;
     return Id::NONE;
 }
 
@@ -630,6 +636,403 @@ inline Recipe buildAnt(IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin) {
     return builder.finish();
 }
 
+// Wing colour and body colour, as palette-grid indices (palette.hpp). The bird
+// is the first recipe to paint with more than one swatch, so the two are named
+// rather than spelled as bare indices at their four use sites.
+inline constexpr int kBirdBodySwatch = 6;  // blue
+inline constexpr int kBirdWingSwatch = 15; // near-white
+
+// The bird — the plan's PR-4 and the first two-frame entity (#766 F-1.6). A
+// small X-mirrored body with a wing pair authored twice: frame 0 holds the
+// wings level, frame 1 raises them into a stepped upstroke, so stepping the two
+// frames is a flap. Runs at the default 16 cubed.
+//
+// It is also the first recipe to click the palette (selectPaletteSwatch) and the
+// first to touch the animation frames, so it carries the positive fires for
+// both: a body cell and a wing cell are asserted to hold *different* palette
+// colours, and each frame is asserted to hold the other frame's wing pose as
+// EMPTY. A duplicate that never diverged, or a frame step that silently stayed
+// put, reads as one pose in both frames and fails.
+//
+// Sequence: (1) X mirror on and clear the seeded slab down to the belly
+// footprint, (2) pick the body swatch and build body + head, (3) pick the wing
+// swatch and run the wings out level, (4) `D` to duplicate the frame, (5) on the
+// copy, erase the outer wing and step it up and out, (6) `Left` back to frame 0
+// and `Right` forward again, asserting each pose in place, (7) save.
+//
+// Every wing cell grows in `-x` or `-z` from the cell before it: a voxel's `-y`
+// face does not reliably place its `-y` neighbour at the cardinal camera
+// (#2575, friction log M-2), so the wing's y depth is two rows authored
+// independently rather than one row widened. The upstroke is built tier by
+// tier rather than chain by chain for the same reason the ant interleaves its
+// legs: finishing the y==7 chain first would put its outermost voxel in front
+// of the y==8 chain's next anchor, and the aim would be occluded.
+//
+// The pose that reads as "wings down" is authored as frame 0's LEVEL wing, not
+// as a droop: the picker exposes only the -x / -y / -z faces, so no gesture can
+// place a voxel BELOW standing geometry (see the friction log). Frame 1 adds
+// the raised pose on top, which is the direction the tool set actually affords.
+inline Recipe buildBird(IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin) {
+    using IRMath::ivec3;
+    Builder builder("bird", sceneSize, sceneOrigin);
+
+    const int gz = sceneSize.z - 1;     // seeded ground plane (local z)
+    const int lx = sceneSize.x / 2 - 1; // low-x cell adjacent to the mirror plane
+    const int cy = sceneSize.y / 2;
+    const auto mirrorX = [&](int x) { return sceneSize.x - 1 - x; };
+
+    // Body rows along y, and how far the wing reaches out in -x. Both bound the
+    // scene the bird fits in, so the guard below derives from them.
+    const int bodyLoY = cy - 2;
+    const int bodyHiY = cy + 1;
+    const int wingReach = 3;
+    const int wingRows[2] = {cy - 1, cy};
+
+    // A scene too small clips the wing or the body and saves the result anyway,
+    // so refuse it outright rather than authoring a smaller animal (F-2f-5).
+    // The upstroke's tip sits four tiers above the ground plane, so the scene
+    // needs five z slices; anything less clips the wing and saves it clipped.
+    const int wingLift = 4;
+    if (lx < wingReach + 1 || bodyLoY < 1 || bodyHiY > sceneSize.y - 2 || gz < wingLift) {
+        builder.recordError(
+            "bird needs a scene at least " + std::to_string((wingReach + 2) * 2) + " x " +
+            std::to_string(bodyHiY - bodyLoY + 3) + " x " + std::to_string(wingLift + 1) +
+            "; got " + std::to_string(sceneSize.x) + " x " + std::to_string(sceneSize.y) + " x " +
+            std::to_string(sceneSize.z)
+        );
+        return builder.finish();
+    }
+
+    // --- Clear the seeded slab down to the belly footprint ------------------
+    // With the X mirror on, each low-x erase drag clears its own strip and the
+    // reflection clears the matching high-x one (F-2f-1), so the whole plane is
+    // framed from three gestures. Runs first, while the plane is flat and every
+    // corner face is exposed.
+    builder.segment("clear_ground");
+    builder.enableSymmetry(true, false, false);
+    builder.toggleEraseMode();
+    builder.dragBox(ivec3(0, 0, gz), ivec3(lx, bodyLoY - 1, gz));
+    builder.dragBox(ivec3(0, bodyHiY + 1, gz), ivec3(lx, sceneSize.y - 1, gz));
+    builder.dragBox(ivec3(0, bodyLoY, gz), ivec3(lx - 1, bodyHiY, gz));
+    builder.toggleEraseMode();
+    builder.expectOccupancy(ivec3(lx, bodyLoY, gz), true, "belly_footprint_kept");
+    builder.expectOccupancy(ivec3(mirrorX(lx), bodyHiY, gz), true, "belly_mirror_kept");
+    builder.expectOccupancy(ivec3(lx - 1, cy, gz), false, "belly_side_cleared");
+    builder.expectOccupancy(ivec3(0, 0, gz), false, "ground_corner_lo_cleared");
+    builder.expectOccupancy(
+        ivec3(sceneSize.x - 1, sceneSize.y - 1, gz),
+        false,
+        "ground_corner_hi_cleared"
+    );
+
+    // --- Body + head, in the body swatch ------------------------------------
+    // The swatch click is a GUI-canvas gesture, not a scene one, so it is the
+    // one op in the recipe whose aim resolves through guiTrixelToScreenPx.
+    builder.segment("body");
+    builder.selectPaletteSwatch(kBirdBodySwatch);
+    builder.dragBox(ivec3(lx, bodyLoY, gz - 1), ivec3(lx, bodyHiY, gz - 1));
+    builder.click(ivec3(lx, bodyHiY, gz - 2)); // head, over the front of the body
+    builder.expectVoxelColor(ivec3(lx, wingRows[0], gz - 1), kBirdBodySwatch, "body_takes_swatch");
+    builder.expectOccupancy(ivec3(mirrorX(lx), bodyHiY, gz - 2), true, "head_mirror_placed");
+    builder.expectOccupancy(ivec3(lx, bodyLoY, gz - 2), false, "body_stays_one_tier");
+
+    // --- Wings, level (frame 0), in the wing swatch -------------------------
+    // Each click anchors on the one before it, so the chain is what walks the
+    // wing outward; the mirror builds the opposite wing at the same time.
+    builder.segment("wings_level");
+    builder.selectPaletteSwatch(kBirdWingSwatch);
+    for (int row : wingRows)
+        for (int step = 1; step <= wingReach; ++step)
+            builder.click(ivec3(lx - step, row, gz - 1));
+    const ivec3 levelTip(lx - wingReach, wingRows[0], gz - 1);
+    builder.expectVoxelColor(levelTip, kBirdWingSwatch, "wing_takes_second_swatch");
+    // The discriminator for the second swatch click: picking a new colour must
+    // change what the NEXT edit paints, not repaint what is already placed.
+    builder.expectVoxelColor(
+        ivec3(lx, wingRows[0], gz - 1),
+        kBirdBodySwatch,
+        "body_keeps_first_swatch"
+    );
+    builder
+        .expectOccupancy(ivec3(mirrorX(levelTip.x), levelTip.y, gz - 1), true, "wing_mirror_tip");
+
+    // --- Duplicate the frame ------------------------------------------------
+    // D is also the camera-right binding (P0-4), so the duplicate closes its
+    // segment and the next one re-applies the camera before anything is aimed.
+    builder.segment("duplicate");
+    builder.duplicateFrame();
+
+    // --- Wings, raised (frame 1) --------------------------------------------
+    // Erase the outer level wing, then step what is left up and out. Frame 0
+    // keeps its level wing: the edit lands in the duplicate only.
+    builder.segment("wings_raise_clear");
+    builder.toggleEraseMode();
+    builder.dragBox(
+        ivec3(lx - wingReach, wingRows[0], gz - 1),
+        ivec3(lx - wingReach + 1, wingRows[1], gz - 1)
+    );
+    builder.toggleEraseMode();
+    builder.expectOccupancy(levelTip, false, "level_tip_erased_on_copy");
+    builder.expectOccupancy(ivec3(lx - 1, wingRows[0], gz - 1), true, "wing_shoulder_kept");
+
+    // A staircase, not a diagonal: only the -x and -z faces place, so each step
+    // out has to be followed by a step up rather than combined with it. Tier by
+    // tier, not chain by chain — the y==7 chain's outermost voxel would occlude
+    // the y==8 chain's next anchor if each row were finished in turn.
+    //
+    // The last step is a bare lift, so the tip clears the body's tier by three
+    // rather than two. Two was enough for the occupancy asserts and not enough
+    // for the render: under a yawed camera the body drew over the wing and the
+    // upstroke read as a bird with no wings at all.
+    builder.segment("wings_raise");
+    for (int row : wingRows)
+        builder.click(ivec3(lx - 1, row, gz - 2));
+    for (int row : wingRows)
+        builder.click(ivec3(lx - 2, row, gz - 2));
+    for (int row : wingRows)
+        builder.click(ivec3(lx - 2, row, gz - 3));
+    for (int row : wingRows)
+        builder.click(ivec3(lx - 3, row, gz - 3));
+    for (int row : wingRows)
+        builder.click(ivec3(lx - 3, row, gz - 4));
+    const ivec3 raisedTip(lx - 3, wingRows[0], gz - 4);
+    builder.expectVoxelColor(raisedTip, kBirdWingSwatch, "raised_tip_keeps_wing_swatch");
+    builder.expectOccupancy(
+        ivec3(mirrorX(raisedTip.x), raisedTip.y, raisedTip.z),
+        true,
+        "raised_tip_mirror"
+    );
+
+    // --- Step the frames and read each pose in place ------------------------
+    // The two-frame positive fire. Each frame must hold its own wing pose AND
+    // NOT the other's: a duplicate whose copy never diverged, or a step that
+    // silently stayed put, passes the "present" half and fails the "absent" one.
+    builder.segment("frame_back");
+    builder.prevFrame();
+    builder.expectOccupancy(levelTip, true, "frame0_holds_level_wing");
+    builder.expectOccupancy(raisedTip, false, "frame0_has_no_raised_wing");
+    builder.expectOccupancy(ivec3(lx, wingRows[0], gz - 1), true, "frame0_body_intact");
+    // The pool's active mask must have followed the swap. It is the copy the
+    // compact shader reads, and it is pool state rather than voxel-record
+    // state, so a frame load that writes the raw span without resyncing leaves
+    // it on the departing frame — every alpha check above still passes while
+    // the arriving pose renders as the one it replaced. These two are the
+    // positive fire for that resync.
+    builder.expectPoolActive(levelTip, true, "frame0_pool_mask_holds_level_wing");
+    builder.expectPoolActive(raisedTip, false, "frame0_pool_mask_drops_raised_wing");
+
+    builder.segment("frame_forward");
+    builder.nextFrame();
+    builder.expectOccupancy(raisedTip, true, "frame1_holds_raised_wing");
+    builder.expectOccupancy(levelTip, false, "frame1_has_no_level_wing");
+    builder.expectOccupancy(ivec3(lx, wingRows[0], gz - 1), true, "frame1_body_intact");
+    builder.expectPoolActive(raisedTip, true, "frame1_pool_mask_holds_raised_wing");
+    builder.expectPoolActive(levelTip, false, "frame1_pool_mask_drops_level_wing");
+
+    // --- Save + reload round-trip -------------------------------------------
+    // Ctrl+S writes one .vxs per frame; the reload reads both back, so the
+    // round-trip check covers the multi-frame path the single-frame entities
+    // never exercised.
+    builder.segment("save");
+    builder.save();
+    builder.expectOccupancy(raisedTip, true, "scene_intact_after_save");
+
+    builder.segment("reload");
+    builder.reload();
+    builder.expectOccupancy(ivec3(lx, bodyHiY, gz - 2), true, "head_survives_reload");
+    builder.expectOccupancy(ivec3(mirrorX(lx), bodyLoY, gz), true, "belly_mirror_survives_reload");
+
+    return builder.finish();
+}
+
+// Trunk and foliage colours, as palette-grid indices (palette.hpp).
+inline constexpr int kTreeTrunkSwatch = 14;  // brown
+inline constexpr int kTreeFoliageSwatch = 3; // green
+
+// How many tiers the tree stands: a 2x2 trunk carved out of a 4x4 column, then
+// a 4x4 canopy left solid on top. Both bound the scene the tree fits in, so the
+// precondition derives from them rather than restating literals.
+inline constexpr int kTreeTrunkTiers = 16;
+inline constexpr int kTreeCanopyTiers = 6;
+
+// The tree — the plan's PR-4 taller-than-wide case (#766 F-1.6), authored at
+// `--scene-size 16 16 26`. A 22-tier column on a 4x4 root pad, carved down to a
+// 2x2 trunk for its lower 16 tiers so a 4x4 canopy is left standing on top,
+// with four foliage bumps hung off the canopy's sides and its top corners
+// rounded off.
+//
+// Additive-then-subtractive, and that order is forced rather than stylistic.
+// The picker exposes only a voxel's -x / -y / -z faces, so every placement
+// grows from an anchor that already exists: a canopy wider than what holds it
+// up cannot be drawn in mid-air, and nothing can be drawn BELOW standing
+// geometry at all. Growing the full 4x4 column off the root pad and then
+// removing the trunk's shell is the shape the tool set actually affords (see
+// docs/design/editor-authoring-friction.md).
+//
+// The carve is two erase drags, not thirty-two. An erase drag targets the
+// voxels it HITS, and in a 4x4 column every shell cell is hit directly (a cell
+// is occluded only when the cell one step along the (1,1,1) march is filled,
+// which for a 4-wide column means only its 2x2 core is hidden) — so one drag
+// can span the trunk's whole height in a single gesture. That the core is
+// exactly what the recipe wants to KEEP is what makes the column width load-
+// bearing: at 6x6 the ring would need peeling one shell at a time.
+inline Recipe buildTree(IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin) {
+    using IRMath::ivec3;
+    Builder builder("tree", sceneSize, sceneOrigin);
+
+    const int gz = sceneSize.z - 1; // seeded ground plane (local z)
+    const int cx = sceneSize.x / 2; // X mirror plane sits between cx-1 and cx
+    const int cy = sceneSize.y / 2;
+    const auto mirrorX = [&](int x) { return sceneSize.x - 1 - x; };
+    const auto mirrorY = [&](int y) { return sceneSize.y - 1 - y; };
+
+    // The authored quadrant of the 4x4 column: the X+Y mirrors turn
+    // [loX,cx-1] x [loY,cy-1] into [loX, mirrorX(loX)] x [loY, mirrorY(loY)].
+    const int loX = cx - 2;
+    const int loY = cy - 2;
+    const int coreX = cx - 1; // the 2x2 trunk's quadrant cell
+    const int coreY = cy - 1;
+    const int trunkBottomZ = gz - 1;
+    const int trunkTopZ = gz - kTreeTrunkTiers;
+    const int canopyTopZ = trunkTopZ - kTreeCanopyTiers;
+
+    // A scene too short clips the canopy and a scene too narrow clips the
+    // foliage bumps; either authors a different tree and saves it anyway
+    // (F-2f-5), so refuse rather than scale down silently.
+    if (loX < 2 || loY < 1 || canopyTopZ < 1) {
+        builder.recordError(
+            "tree needs a scene at least 8 x 6 x " +
+            std::to_string(kTreeTrunkTiers + kTreeCanopyTiers + 3) + "; got " +
+            std::to_string(sceneSize.x) + " x " + std::to_string(sceneSize.y) + " x " +
+            std::to_string(sceneSize.z)
+        );
+        return builder.finish();
+    }
+
+    // --- Clear the seeded slab down to the 4x4 root pad ---------------------
+    // Two erase drags under the X+Y mirrors clear all four quadrants of the
+    // plane (F-2f-1). Runs first, while the plane is flat and every corner face
+    // is exposed.
+    builder.segment("clear_ground");
+    builder.enableSymmetry(true, true, false);
+    builder.toggleEraseMode();
+    builder.dragBox(ivec3(0, 0, gz), ivec3(cx - 1, loY - 1, gz));   // low-y strip
+    builder.dragBox(ivec3(0, loY, gz), ivec3(loX - 1, cy - 1, gz)); // low-x strip
+    builder.toggleEraseMode();
+    builder.expectOccupancy(ivec3(loX, loY, gz), true, "root_pad_corner_kept");
+    builder.expectOccupancy(ivec3(mirrorX(loX), mirrorY(loY), gz), true, "root_pad_mirror_kept");
+    builder.expectOccupancy(ivec3(loX - 1, coreY, gz), false, "root_pad_side_cleared");
+    builder.expectOccupancy(ivec3(0, 0, gz), false, "ground_corner_lo_cleared");
+    builder.expectOccupancy(
+        ivec3(sceneSize.x - 1, sceneSize.y - 1, gz),
+        false,
+        "ground_corner_hi_cleared"
+    );
+
+    // --- Grow the 4x4 column, one tier per drag -----------------------------
+    // A drag cannot span z: its far corner would have to be aimed at a face
+    // that only exists once the tier below it is placed. So the column is a
+    // tier-per-gesture climb, each anchored on the -z face of the one beneath.
+    builder.segment("trunk_column");
+    builder.selectPaletteSwatch(kTreeTrunkSwatch);
+    for (int z = trunkBottomZ; z >= trunkTopZ; --z)
+        builder.dragBox(ivec3(loX, loY, z), ivec3(coreX, coreY, z));
+    builder
+        .expectVoxelColor(ivec3(coreX, coreY, trunkTopZ), kTreeTrunkSwatch, "trunk_takes_swatch");
+    builder.expectOccupancy(
+        ivec3(mirrorX(loX), mirrorY(loY), trunkTopZ),
+        true,
+        "column_top_mirror_filled"
+    );
+    builder.expectOccupancy(ivec3(loX, loY, canopyTopZ), false, "canopy_space_still_empty");
+
+    // --- Canopy: the same column, continued on its own layer in green -------
+    builder.addLayer();
+    builder.segment("canopy");
+    builder.selectPaletteSwatch(kTreeFoliageSwatch);
+    for (int z = trunkTopZ - 1; z >= canopyTopZ; --z)
+        builder.dragBox(ivec3(loX, loY, z), ivec3(coreX, coreY, z));
+    builder.expectVoxelColor(
+        ivec3(coreX, coreY, canopyTopZ),
+        kTreeFoliageSwatch,
+        "canopy_takes_swatch"
+    );
+    // The discriminator for the second swatch click: the trunk keeps its own
+    // colour, so picking green changed what the next edit paints rather than
+    // repainting the column.
+    builder.expectVoxelColor(
+        ivec3(coreX, coreY, trunkTopZ),
+        kTreeTrunkSwatch,
+        "trunk_keeps_its_swatch"
+    );
+    builder.expectOccupancy(ivec3(mirrorX(loX), loY, canopyTopZ), true, "canopy_mirror_filled");
+
+    // --- Carve the trunk out of the column's lower tiers --------------------
+    // Two erase drags spanning the trunk's full height; the mirrors turn them
+    // into the whole ring, leaving the 2x2 core. The canopy tiers are above the
+    // drags' z range and stay solid.
+    builder.segment("carve_trunk");
+    builder.toggleEraseMode();
+    builder.dragBox(ivec3(loX, loY, trunkBottomZ), ivec3(loX, coreY, trunkTopZ));
+    builder.dragBox(ivec3(coreX, loY, trunkBottomZ), ivec3(coreX, loY, trunkTopZ));
+    builder.toggleEraseMode();
+    // The ring is gone on both sides of both mirror planes, the core survives
+    // its whole height, and the canopy above the carve is untouched.
+    builder.expectOccupancy(ivec3(loX, loY, gz - 3), false, "trunk_ring_carved");
+    builder.expectOccupancy(
+        ivec3(mirrorX(loX), mirrorY(loY), gz - 3),
+        false,
+        "trunk_ring_mirror_carved"
+    );
+    builder.expectOccupancy(ivec3(coreX, loY, gz - 3), false, "trunk_ring_edge_carved");
+    builder.expectOccupancy(ivec3(coreX, coreY, gz - 3), true, "trunk_core_kept");
+    builder
+        .expectOccupancy(ivec3(mirrorX(coreX), coreY, trunkTopZ), true, "trunk_core_mirror_kept");
+    builder.expectOccupancy(ivec3(loX, loY, trunkTopZ - 1), true, "canopy_survives_carve");
+    builder.expectOccupancy(ivec3(loX, loY, gz), true, "root_pad_survives_carve");
+
+    // --- Foliage bumps + rounded crown --------------------------------------
+    // Four bumps hung off the canopy's -x face (one per mirror quadrant), then
+    // the crown's corners knocked off, so the canopy does not read as a box.
+    builder.segment("foliage_clusters");
+    builder.selectPaletteSwatch(kTreeFoliageSwatch);
+    const int bumpZ = canopyTopZ + 2;
+    builder.click(ivec3(loX - 1, loY, bumpZ));
+    builder.click(ivec3(loX - 1, coreY, bumpZ));
+    builder.expectOccupancy(ivec3(loX - 1, loY, bumpZ), true, "foliage_bump_placed");
+    builder.expectOccupancy(
+        ivec3(mirrorX(loX - 1), mirrorY(loY), bumpZ),
+        true,
+        "foliage_bump_mirror_placed"
+    );
+
+    builder.segment("crown_round");
+    builder.toggleEraseMode();
+    builder.click(ivec3(loX, loY, canopyTopZ));
+    builder.toggleEraseMode();
+    builder.expectOccupancy(ivec3(loX, loY, canopyTopZ), false, "crown_corner_carved");
+    builder.expectOccupancy(
+        ivec3(mirrorX(loX), mirrorY(loY), canopyTopZ),
+        false,
+        "crown_corner_mirror_carved"
+    );
+    builder.expectOccupancy(ivec3(coreX, coreY, canopyTopZ), true, "crown_centre_kept");
+
+    // --- Save + reload round-trip -------------------------------------------
+    builder.segment("save");
+    builder.save();
+    builder.expectOccupancy(ivec3(coreX, coreY, trunkTopZ), true, "scene_intact_after_save");
+
+    builder.segment("reload");
+    builder.reload();
+    builder.expectOccupancy(ivec3(coreX, coreY, gz - 3), true, "trunk_survives_reload");
+    builder.expectOccupancy(ivec3(loX, loY, gz - 3), false, "carve_survives_reload");
+    builder
+        .expectOccupancy(ivec3(mirrorX(loX - 1), loY, bumpZ), true, "foliage_bump_survives_reload");
+
+    return builder.finish();
+}
+
 } // namespace detail
 
 // Build the named session's recipe against the live scene dimensions. Returns
@@ -645,6 +1048,10 @@ inline Recipe build(Id id, IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin) {
         return detail::buildMushroom(sceneSize, sceneOrigin);
     case Id::ANT:
         return detail::buildAnt(sceneSize, sceneOrigin);
+    case Id::BIRD:
+        return detail::buildBird(sceneSize, sceneOrigin);
+    case Id::TREE:
+        return detail::buildTree(sceneSize, sceneOrigin);
     case Id::NONE:
         break;
     }
