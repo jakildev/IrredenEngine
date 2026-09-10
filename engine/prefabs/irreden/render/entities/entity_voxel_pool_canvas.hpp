@@ -4,6 +4,7 @@
 #include <irreden/ir_entity.hpp>
 
 #include <irreden/voxel/components/component_voxel_pool.hpp>
+#include <irreden/voxel/voxel_pool_teardown.hpp>
 #include <irreden/render/components/component_canvas_local_rotation.hpp>
 #include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
 #include <irreden/render/components/component_detached_revoxelize_buffer.hpp>
@@ -22,6 +23,11 @@ template <> struct Prefab<PrefabTypes::kVoxelPoolCanvas> {
         ivec2 triangleCanvasSize,
         EntityId framebuffer = kNullEntity
     ) {
+        // Arm the canvas-teardown sweep before the pool exists to depend on
+        // (#2913). Every path that gives a canvas a `C_VoxelPool` arms it, so
+        // no creation carries a "remember to register" contract; the call is
+        // idempotent per world.
+        IRPrefab::VoxelPool::ensureCanvasTeardownHook();
         EntityId canvas = createEntity(
             C_VoxelPool{voxelPoolSize},
             C_SizeTriangles{triangleCanvasSize},

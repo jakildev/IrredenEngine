@@ -43,6 +43,7 @@
 #include <irreden/asset/binary_io.hpp>
 
 #include <cstdint>
+#include <span>
 #include <utility>
 #include <vector>
 
@@ -55,20 +56,13 @@ template <> struct SaveSerialize<IRComponents::C_VoxelSetNew> {
         w.writeI32(size.y);
         w.writeI32(size.z);
 
-        // boundsMin: the local origin of voxel index (0,0,0). A staged set keeps
-        // it verbatim; a pool-resident set recovers it from its seeded local
-        // position (`positions_[0].pos_ == boundsMin` for a dense box). Integer
-        // origins — every dense-authored / size-ctor set — round-trip exactly.
-        const bool staged = !set.pendingVoxels_.empty();
-        IRMath::ivec3 boundsMin = set.pendingBoundsMin_;
-        if (!staged && set.numVoxels_ > 0) {
-            const IRMath::vec3 origin = set.positions_[0].pos_;
-            boundsMin = IRMath::ivec3(
-                IRMath::roundHalfUp(origin.x),
-                IRMath::roundHalfUp(origin.y),
-                IRMath::roundHalfUp(origin.z)
-            );
-        }
+        // boundsMin: the local origin of voxel index (0,0,0), staged verbatim or
+        // recovered from the resident span's seeded local position. The
+        // component names that recovery (`C_VoxelSetNew::localOriginMin`), so
+        // the save path and the canvas-teardown re-stage (#2913) cannot drift
+        // apart on what "the origin" means. Integer origins — every
+        // dense-authored / size-ctor set — round-trip exactly.
+        const IRMath::ivec3 boundsMin = set.localOriginMin();
         w.writeI32(boundsMin.x);
         w.writeI32(boundsMin.y);
         w.writeI32(boundsMin.z);
@@ -81,34 +75,18 @@ template <> struct SaveSerialize<IRComponents::C_VoxelSetNew> {
         // `read` reconstructs the origin from this rather than from boundsMin.
         w.writeU8(static_cast<std::uint8_t>(set.anchor_));
 
-        const std::size_t count = set.recordCount();
-        w.writeVarUInt(count);
+        // `authoredRecords()` picks the pool-independent source: the staging
+        // vector, or — for a GRID-mode set saved mid-rotation, whose pool span
+        // REBUILD_GRID_VOXELS has rearranged into dest-cell order with colors
+        // duplicated across covered cells — the authored `rotationSourceVoxels_`
+        // snapshot, else the span. Both are dense-box-index ordered, so `read()`
+        // (which rebuilds geometry from `boundsMin + index`) restores
+        // identically either way. Its size is `recordCount()` by construction.
+        const std::span<const IRComponents::C_Voxel> records = set.authoredRecords();
+        w.writeVarUInt(records.size());
         // C_Voxel is a fixed 12 B std430 POD; write the raw image per record.
-        if (staged) {
-            for (const IRComponents::C_Voxel &voxel : set.pendingVoxels_) {
-                w.writeBytes(&voxel, sizeof(IRComponents::C_Voxel));
-            }
-        } else {
-            // A GRID-mode set saved mid-rotation has a DERIVED pool span:
-            // REBUILD_GRID_VOXELS rearranges `voxels_` into dest-cell order with
-            // colors duplicated wherever one source voxel covers several dest
-            // cells, and stashes the authored per-voxel records in
-            // `rotationSourceVoxels_` (see that system + the component header's
-            // `rotationSourceVoxels_` contract). The authored snapshot — not the
-            // resampled span — is the pool-independent truth, so a `saveWorld()`
-            // that lands while an entity is spinning round-trips the source
-            // arrangement instead of the frame's derived colors. Both are
-            // dense-box-index ordered, so `read()` (which rebuilds geometry from
-            // `boundsMin + index`) restores identically either way. The snapshot
-            // is non-empty only while rotating and holds `numVoxels_` records
-            // then; fall back to the span if the sizes ever diverge (a rare
-            // span-clamp) rather than risk a mixed/short read.
-            const bool rotated = set.rotationSourceVoxels_.size() == count;
-            for (std::size_t i = 0; i < count; ++i) {
-                const IRComponents::C_Voxel &voxel =
-                    rotated ? set.rotationSourceVoxels_[i] : set.voxels_[i];
-                w.writeBytes(&voxel, sizeof(IRComponents::C_Voxel));
-            }
+        for (const IRComponents::C_Voxel &voxel : records) {
+            w.writeBytes(&voxel, sizeof(IRComponents::C_Voxel));
         }
     }
 
