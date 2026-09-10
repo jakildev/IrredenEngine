@@ -6,6 +6,14 @@
   foreign-entity read surface — there is; see "What already ships").
 - **Owning subsystem:** `engine/prefabs/irreden/` (a prefab system + singleton
   component), **not** engine core.
+- **Sibling contract:** [`chunked-field-placement-kit.md`](chunked-field-placement-kit.md)
+  — this doc answers *"which **entities** are near P"*; that one answers *"where
+  is valid **space** near P"* (clearance, region reachability, min-spacing
+  placement over a chunked cell field). They compose — spacing against
+  already-placed entities is a `queryRadius` job, spacing against cells drawn in
+  the same query is the placement kit's — and neither subsumes the other. Rule
+  of thumb: entities exist and move ⇒ here; cells are static between edits and
+  carry a value ⇒ there.
 
 ---
 

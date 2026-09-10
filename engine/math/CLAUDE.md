@@ -155,6 +155,29 @@ from IRJob workers do not race. Threads default to a seed of `0`;
 enkiTS id so cross-run determinism holds for a fixed worker count.
 Non-job threads can seed explicitly via `IRMath::seedThreadRng(seed)`.
 
+**`threadRng()` is not usable where cross-platform reproducibility is the
+requirement.** Two reasons, both structural: its state is `thread_local`, so a
+result depends on which worker ran the call; and `std::uniform_*_distribution`
+is not implementation-portable even on top of a standard-specified `mt19937`
+word stream. Code that must reproduce byte-for-byte across platforms takes an
+explicit seed and maps raw generator words itself — see `IRMath::Pcg32` below.
+
+## Field kernels (chunked-field placement kit)
+
+Layout-agnostic kernels backing the chunked occupancy-field + placement-query
+kit. The chunk-aware composition lives in `engine/prefabs/irreden/spatial/`;
+only the pieces that are useful without a chunk grid live here.
+
+| Header | What |
+|---|---|
+| `edt.hpp` | 1-D **squared** Euclidean distance transform over a `std::span` (Felzenszwalb–Huttenlocher lower-envelope pass, O(n)). Integer in, integer out — no `sqrt` anywhere; 2D/3D is this kernel run per axis. |
+| `rng_pcg32.hpp` | `IRMath::Pcg32` — explicitly seeded, no thread-local state, raw-word range mapping. The deterministic-sampling generator; **not** a replacement for `threadRng()` in gameplay randomness. |
+
+Which of those exist yet is tracked in the doc's "Migration status" table, not
+here. Locked contract for both:
+[`docs/design/chunked-field-placement-kit.md`](../../docs/design/chunked-field-placement-kit.md)
+(decisions `D4`, `D7`, `D10`).
+
 ## Gotchas
 
 - **Don't mix 3D and iso coordinates without a helper.** Raw arithmetic on

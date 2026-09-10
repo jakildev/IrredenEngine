@@ -27,6 +27,24 @@ Full design contract for Epic E (world streaming) is at
 [`docs/design/world-streaming.md`](../../../../docs/design/world-streaming.md).
 Topic 1 covers chunk identity; Topic 2 covers the residency manager API.
 
+### A "chunk" here is not the only chunk in tree
+
+Three unrelated 32-or-256 groupings share the word, and mixing them up is the
+cheapest bug to write in this directory:
+
+| Name | Tiles | Owner |
+|---|---|---|
+| `IRConstants::kChunkSize` (32³) — **this directory's** | 3D **voxel** space | `ChunkResidencyManager` |
+| `kFieldChunkEdge` (32²) — *field chunk* | 2D **cell** space | a `PlacementField` ([`docs/design/chunked-field-placement-kit.md`](../../../../docs/design/chunked-field-placement-kit.md)) |
+| `IRRender::kVoxelChunkSize` (256) | nothing spatial — a GPU dispatch/pool bucket | the voxel pool |
+
+The field kit deliberately does **not** hook the residency manager (there is no
+resident/evict observer surface to hook, and the manager is creation-constructed
+rather than `World`-owned). A creation that wants a field to follow streaming
+polls `isResident` / `forEachChunk` itself. If a residency observer surface is
+ever added here, that doc's "Relationship to residency chunks" section is the
+first thing to revisit.
+
 ## What this directory deliberately does NOT own
 
 - The residency manager (`IRWorld::ChunkResidencyManager`). It lives in
