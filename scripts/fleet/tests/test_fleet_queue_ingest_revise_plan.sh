@@ -2,14 +2,11 @@
 # Test that fleet-queue-ingest reconciles human:revise-plan issues back to
 # fleet:needs-plan for a re-plan (the human-add-one-label affordance).
 #
-# A plan posted for a high-stakes issue sits in fleet:plan-review +
-# human:review-plan awaiting agent + human sign-off. When the human wants the
-# approach changed they add human:revise-plan (and a comment) — and NOTHING
-# else. ingest must then, in one edit: add fleet:needs-plan, remove
+# A posted plan sits in fleet:plan-review awaiting the plan reviewer. When the
+# human wants the approach changed they add human:revise-plan (and a comment) —
+# and NOTHING else. ingest must then, in one edit: add fleet:needs-plan, remove
 # human:revise-plan and the now-stale fleet:plan-review, and KEEP human:approved
-# + human:review-plan (so the human's approach gate persists across the re-plan
-# and the issue can't queue behind the human's back). It must NOT stamp
-# fleet:queued. A normal human:approved issue in the same batch must still be
+# (the original triage). It must NOT stamp fleet:queued. A normal human:approved issue in the same batch must still be
 # stamped, proving the harness can stamp and the reconcile is meaningful.
 #
 # HOME is redirected to a temp dir so the script's hardcoded projection/log/lock
@@ -61,7 +58,7 @@ case "$1" in
         case "$2" in
             view)
                 case "$3" in
-                    830) echo '{"title":"t","body":"**Model:** opus\n**Blocked by:** (none)","labels":[{"name":"fleet:task"},{"name":"human:approved"},{"name":"fleet:plan-review"},{"name":"human:review-plan"},{"name":"human:revise-plan"}],"comments":[{"body":"## Plan\nstep 1"}]}' ;;
+                    830) echo '{"title":"t","body":"**Model:** opus\n**Blocked by:** (none)","labels":[{"name":"fleet:task"},{"name":"human:approved"},{"name":"fleet:plan-review"},{"name":"human:revise-plan"}],"comments":[{"body":"## Plan\nstep 1"}]}' ;;
                     831) echo '{"title":"t","body":"**Model:** opus\n**Blocked by:** (none)","labels":[{"name":"human:approved"}],"comments":[{"body":"## Plan\nstep 1"}]}' ;;
                     *)   echo '{"title":"","body":"","labels":[],"comments":[]}' ;;
                 esac
@@ -111,9 +108,6 @@ else
     [[ "$line_830" != *"fleet:queued"* ]] \
         && ok "#830 never stamped fleet:queued" \
         || bad "#830 was stamped fleet:queued (must not queue on re-plan): $line_830"
-    [[ "$line_830" != *"--remove-label human:review-plan"* ]] \
-        && ok "#830 kept human:review-plan (human's approach gate persists)" \
-        || bad "#830 removed human:review-plan (must persist): $line_830"
     [[ "$line_830" != *"--remove-label human:approved"* ]] \
         && ok "#830 kept human:approved (original triage)" \
         || bad "#830 removed human:approved: $line_830"

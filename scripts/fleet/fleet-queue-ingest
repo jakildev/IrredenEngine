@@ -35,9 +35,6 @@
 # Approval sources: the pending set is scout-built from human:approved AND
 # fleet:agent-approved (the agent-filed follow-up lane, TASK-FILING.md §"Agent-
 # approved follow-up lane") — everything below treats the two identically.
-# human:review-plan (#2011) is a second, human-owned hold: a worker-planned
-# HIGH-STAKES issue waits on the human's approach sign-off before it can queue
-# (kept alongside human:approved, like fleet:needs-human).
 # Carve-offs queued without planning made the worker the first to open the code,
 # and it design-blocked on claim (the #1370 → #1414/#1431/#1435 pattern).
 #
@@ -349,12 +346,11 @@ for issue in pending:
     # issue back to the planning state and consumes the marker — the human only
     # ever *adds* one label, the fleet manages the rest. Sits before the
     # already-labeled skip below precisely because the issue it lands on is
-    # usually in fleet:plan-review / human:review-plan (which that block skips).
+    # usually in fleet:plan-review (which that block skips).
     # We add fleet:needs-plan so an opus+ worker re-plans (reading the human's
     # comment per PLANNING-PROTOCOL.md step 1), strip the now-stale stage labels,
-    # and remove human:revise-plan. We KEEP human:approved (original triage) and
-    # human:review-plan (the human's approach gate persists across the re-plan;
-    # the re-planner re-asserts it on high-stakes work anyway). Scope is the
+    # and remove human:revise-plan. We KEEP human:approved (original triage).
+    # Scope is the
     # pre-queue stages (the pending set); an already-queued plan uses the
     # race-guarded stale-replan flow (PLANNING-PROTOCOL.md §"Re-planning").
     if 'human:revise-plan' in labels:
@@ -375,7 +371,7 @@ for issue in pending:
             continue
         revise_reconciled += 1
         print(f'INFO issue {repo}#{n}: human:revise-plan → reset to fleet:needs-plan '
-              f'for re-plan (kept human:approved + any human:review-plan)', file=sys.stderr)
+              f'for re-plan (kept human:approved)', file=sys.stderr)
         continue
 
     # Opt-out detection (computed here so the late-opt-out reconcile below and
@@ -433,14 +429,8 @@ for issue in pending:
     # *swaps* plan-review → needs-plan (PLANNING-PROTOCOL.md), and the
     # human:revise-plan reconcile above removes plan-review when it adds
     # needs-plan — so nothing in the protocol produces both on purpose.
-    # fleet:needs-plan + human:review-plan, by contrast, is legitimate (a
-    # bounced plan on a high-stakes issue keeps the human's approach gate) and
-    # must NOT be touched. Stripping only needs-plan leaves the issue held by
-    # the plan-review arm of the skip guard, which is the correct state.
-    # No protocol path produces all three (the bounce that adds needs-plan is
-    # the same one that removes plan-review), but the triple state is inert if
-    # it is ever reached: the strip leaves plan-review AND human:review-plan,
-    # and the skip guard below holds on either — so the issue stays held.
+    # Stripping only needs-plan leaves the issue held by the plan-review arm
+    # of the skip guard, which is the correct state.
     if 'fleet:needs-plan' in labels and 'fleet:plan-review' in labels:
         er = subprocess.run(
             ['gh', 'issue', 'edit', str(n), '--repo', repo,
@@ -461,17 +451,11 @@ for issue in pending:
 
     if ('fleet:queued' in labels or 'fleet:scope-shipped' in labels
             or 'fleet:needs-human' in labels or 'fleet:needs-plan' in labels
-            or 'fleet:plan-review' in labels or 'human:review-plan' in labels
+            or 'fleet:plan-review' in labels
             or 'fleet:gated' in labels):
         # fleet:plan-review (#1932): the plan is posted but a reviewer hasn't
         # vetted it yet — ingest holds off until the reviewer clears the label
         # (sound → removed; not sound → swapped to fleet:needs-plan).
-        # human:review-plan (#2011): a worker-planned HIGH-STAKES issue holds
-        # for the human's approach sign-off before implementation (distinct from
-        # fleet:plan-review's agent vetting). It keeps human:approved (so it
-        # stays in the pending set and survives re-ingest, like fleet:needs-human)
-        # but ingest must NOT stamp fleet:queued while present — the human clears
-        # the label to release it. See PLANNING-PROTOCOL.md §"High-stakes".
         # fleet:gated (#2762): a worker parked the issue because the fix
         # surface is gated self-config no class can push. Keeps
         # human:approved (survives re-ingest) but must never get

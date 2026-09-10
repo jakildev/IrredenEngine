@@ -239,13 +239,13 @@ class IngestProjectionFiresOnNewApprovedIssue(unittest.TestCase):
 
     def test_revise_plan_overrides_skip_into_pending(self):
         # human:revise-plan is the human-added "change the posted plan" gate. It
-        # lands on an issue mid-review (fleet:plan-review / human:review-plan,
-        # both skip labels), so it must OVERRIDE the skip — re-entering the
+        # lands on an issue mid-review (fleet:plan-review, a skip label), so it
+        # must OVERRIDE the skip — re-entering the
         # ingest set so adding it flips the hash (fires ingest) and surfaces it
         # in pending_issues for fleet-queue-ingest to reset to fleet:needs-plan.
         revise = [{"number": 2043, "title": "revise me",
                    "labels": ["human:approved", "fleet:plan-review",
-                              "human:review-plan", "human:revise-plan"]}]
+                              "human:revise-plan"]}]
         h = stable_hash(project_queue_manager_ingest(_state(engine_human_approved=revise)))
         self.assertNotEqual(h, stable_hash(project_queue_manager_ingest(_state())),
                             "human:revise-plan must re-enter the ingest set so ingest fires")
@@ -258,8 +258,7 @@ class IngestProjectionFiresOnNewApprovedIssue(unittest.TestCase):
         # Guard the override is narrow: a plain mid-review plan (no revise-plan)
         # stays out of the ingest set exactly as before.
         review = [{"number": 2044, "title": "in review",
-                   "labels": ["human:approved", "fleet:plan-review",
-                              "human:review-plan"]}]
+                   "labels": ["human:approved", "fleet:plan-review"]}]
         out = slice_queue_manager_ingest(_state(engine_human_approved=review))
         self.assertEqual(out["pending_issues"], [],
                          "plan-review issue without revise-plan must stay excluded")

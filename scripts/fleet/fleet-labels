@@ -151,7 +151,6 @@ LABELS=(
     "fleet:human-amending|c5def5|Worker is amending this PR with the human:needs-fix fixes; hold merge until fleet:changes-made"
     "human:owned|5319e7|Human took this issue out of the queue; ingest never re-stamps fleet:queued (reconcile flags both)"
     "human:no-plan|5319e7|Human opt-out at filing: skip planning, queue directly; [no-plan] honored; agents use fleet:no-plan"
-    "human:review-plan|5319e7|High-stakes worker-planned issue held for human approach sign-off; human removes to queue"
     "human:revise-plan|5319e7|Human wants the posted plan changed; ingest resets to fleet:needs-plan for re-plan"
     "human:wip|5319e7|Human is editing the PR directly; agents stand off"
     "human:approved|0e8a16|Human approved the PR (overrides agent verdict)"

@@ -105,7 +105,6 @@ OWN_TALLY_BASELINE=(
     test_fleet_queue_ingest_human_owned.sh
     test_fleet_queue_ingest_late_no_plan.sh
     test_fleet_queue_ingest_plan_gate.sh
-    test_fleet_queue_ingest_review_plan.sh
     test_fleet_queue_ingest_revise_plan.sh
     test_fleet_rebase_hung_lock.sh
     test_fleet_rebase_plan_automerge.sh

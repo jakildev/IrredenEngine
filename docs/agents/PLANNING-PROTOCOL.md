@@ -95,7 +95,14 @@ For each `fleet:needs-plan` issue:
    comment is the canonical plan — its first heading must **start with**
    `## Plan` so the queue gate and the implementing worker can find it. The
    gate matches the `## Plan` prefix, so the `## Plan: <issue title>` form in
-   the template below is accepted. Cover:
+   the template below is accepted.
+
+   **A plan is a contract, not a script.** Three sections carry the
+   contract — **Scope** (what done means), **Decisions** (what is locked),
+   and **Acceptance criteria** (runnable, positive-fire validation goals).
+   Everything else is context the implementer may depart from. Keep it to
+   about a page: the implementer chooses the path, the plan fixes the goal
+   and the checks that prove it. Cover:
    - What files/modules are involved
    - **Verified current state + confirmed repro.** For a defect ticket,
      name the repro you actually ran **against the actual code path** —
@@ -294,38 +301,13 @@ For each `fleet:needs-plan` issue:
    the planning claim on **every** exit path — including the
    "disagree with the direction" branch below — so the lock is never orphaned.
 
-   **High-stakes? Also add `human:review-plan` (the human approach gate, #2011).**
-   When the issue is high-stakes (checklist below), add `human:review-plan` in
-   the **same** `gh issue edit` (alongside the `fleet:plan-review` swap). It is a
-   second, **human-owned** hold, distinct from `fleet:plan-review`: the agent
-   plan review (step 4) vets the plan's *rigor*; `human:review-plan` holds for a
-   human to sign off on the *approach* before implementation. Both are
-   queue-blocks (`fleet-queue-ingest` skips the issue while either is present),
-   so the issue queues only once the agent has cleared `fleet:plan-review` **and**
-   the human has removed `human:review-plan`. The order is independent. Use:
-   ```
-   gh issue edit <N> --repo <owner/repo> \
-     --remove-label "fleet:needs-plan" \
-     --add-label "fleet:plan-review" --add-label "human:review-plan"
-   ```
-   An issue is **high-stakes** if ANY of these hold — otherwise it is low-stakes
-   and queues on agent plan-review alone (no `human:review-plan`):
-   - **Ambiguous approach** — more than one materially different implementation
-     strategy is viable and the choice has lasting consequences.
-   - **Cross-cutting** — touches ≥3 modules, or changes a shared subsystem
-     (ECS core, the render pipeline, fleet infra/protocol).
-   - **Expensive or hard to reverse** — more than one PR's worth of work, or a
-     change that is costly to undo once shipped.
-   - **Changes a public contract** — the public `ir_*.hpp` API surface, a Lua
-     binding signature, an on-disk/serialized format, or fleet label/protocol
-     semantics.
-
-   Prefer the checklist over vibes: if none of the four apply, do not add
-   `human:review-plan` — the gate is for genuinely high-stakes work, not a
-   default hold. `human:review-plan` is a **fallback** that only applies on the
-   worker-planning path; architect-filed-with-plan work (see
-   [`architect-protocol.md § Filing tasks`](architect-protocol.md)) skips
-   planning entirely and never hits this gate.
+   **There is no human approach gate.** The `human:review-plan` hold
+   (#2011) was retired 2026-09: the plan reviewer's step-4 verdict is the
+   only pre-queue gate on a worker-planned issue, and a plan that meets
+   step 2 — decisions locked, positive-fire acceptance criteria — is the
+   human's validation contract. The human steers with `human:approved`
+   at triage, `human:revise-plan` on a posted plan (below),
+   `fleet:needs-human` when a planner needs a decision, and PR review.
 
    You may optionally stage a local copy at `~/.fleet/plans/issue-<N>.md` for
    your own reference, but it is not required and nothing reads it — the `## Plan`
@@ -344,10 +326,8 @@ For each `fleet:needs-plan` issue:
    plausibility — re-running a plan's own claimed measurements is the
    highest-yield review move; a clean structural lint proves nothing about a
    wrong regex or a miscounted census:
-   - **Sound →** remove `fleet:plan-review`. The issue is queue-ready **unless**
-     it also carries `human:review-plan` (a high-stakes hold) — in that case it
-     stays held for the human's approach sign-off; the scout queues it only once
-     the human removes that label too.
+   - **Sound →** remove `fleet:plan-review`. The issue is queue-ready; the
+     scout stamps `fleet:queued` on its next pass.
    - **Sound with corrections →** the plan is sound except for specific,
      bounded fixes that do **not** change a locked decision (a wrong path, a
      stale line reference, a missing gotcha, a corrected measurement). Post a
@@ -363,14 +343,11 @@ For each `fleet:needs-plan` issue:
      the specific gaps. The next planning pass revises the `## Plan` comment.
 
    This is a review of the *plan*, distinct from the code review the
-   implementation PR later gets. The plan reviewer does not add or remove
-   `human:review-plan` — that human-owned gate is the planner's to set (step 3)
-   and the human's to clear.
+   implementation PR later gets.
 
 5. **Queue and implement.** Once the issue is `human:approved`, carries a
-   `## Plan` comment, and has none of `fleet:needs-plan`, `fleet:plan-review`, or
-   `human:review-plan` (the high-stakes human gate, when it was set), the scout
-   stamps `fleet:queued` + the model label. The implementing worker:
+   `## Plan` comment, and has neither `fleet:needs-plan` nor `fleet:plan-review`,
+   the scout stamps `fleet:queued` + the model label. The implementing worker:
    - reads the plan from the newest `## Plan` comment **plus any later
      `## Plan corrections` comments** (`fleet-issue view <N>` shows both —
      corrections are authoritative amendments from plan review, step 4),
@@ -405,7 +382,7 @@ removes `fleet:needs-human`.
 ### Human: requesting plan changes (`human:revise-plan`)
 
 When the human reviewing a posted plan (step 4, while it sits in
-`fleet:plan-review` / `human:review-plan`) wants the **approach** reworked, they
+`fleet:plan-review`) wants the **approach** reworked, they
 do **not** swap labels by hand. They **add one label, `human:revise-plan`**,
 plus a comment describing the change. On the next scout tick `fleet-queue-ingest`
 reconciles the issue for them:
@@ -415,14 +392,12 @@ reconciles the issue for them:
 - strips the now-stale stage labels (`fleet:plan-review`, and any model /
   `fleet:blocked` label),
 - consumes `human:revise-plan`,
-- **keeps** `human:approved` (the original triage) and `human:review-plan` (the
-  human's approach gate persists across the re-plan — the issue cannot queue
-  until the human clears it on the revised plan).
+- **keeps** `human:approved` (the original triage).
 
 The re-planner then revises the `## Plan` comment and swaps back to
-`fleet:plan-review` (re-asserting `human:review-plan` for high-stakes work). The
-human reviews the new plan and clears `human:review-plan` when satisfied. Net:
-the human only ever *adds* a label — the fleet manages every other transition.
+`fleet:plan-review`; the plan reviewer vets the revision and the issue queues.
+Net: the human only ever *adds* a label — the fleet manages every other
+transition.
 (The scout pulls a `human:revise-plan` issue back into the ingest set even though
 its stage labels would otherwise exclude it; see `_ingest_skipped`.) This affords
 the **pre-queue** stages only; an already-queued plan that has gone stale uses
@@ -515,8 +490,7 @@ plan-review pass. For those, the **sonnet lane light-plans and self-queues**.
 **Eligibility is a human/architect signal, not a heuristic.** The issue must
 carry the `fleet:sonnet` label on top of `fleet:needs-plan`. Applying
 `fleet:sonnet` to a needs-plan issue is the human's (or architect's) judgment
-that the task is mechanical and bounded — the same judgment `human:review-plan`
-inverts for high-stakes work. Do **not** self-tag an issue `fleet:sonnet` to
+that the task is mechanical and bounded. Do **not** self-tag an issue `fleet:sonnet` to
 take this path; if it isn't already tagged, it plans on the default (opus+)
 flow. The dispatcher routes a `fleet:sonnet`-tagged needs-plan issue to the
 sonnet lane automatically (`fleet_task_class._plan_class`).
@@ -578,8 +552,7 @@ tag is a starting hypothesis, not a one-way door.
 not pick from the cached `needs_plan[]` arrays — an iteration without an
 assignment does no planning. Cross-repo: a `game:` assignment takes
 `--repo game` on `fleet-issue` / `gh issue edit` / `fleet-claim`. You post the
-`## Plan` comment and swap to `fleet:plan-review`; for **high-stakes** issues
-(step 3 checklist) also add `human:review-plan` in the same edit. The
+`## Plan` comment and swap to `fleet:plan-review`. The
 implementation step (later, possibly a cheaper-class worker on another host)
 reads the comment and commits the plan file into its own PR.
 

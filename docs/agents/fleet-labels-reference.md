@@ -179,21 +179,6 @@ Specifically, **never pass these via `--label` when filing**:
   filer-authored plan is vetted by the same reviewer pass before the issue
   can queue (the label-lifecycle equivalent of the planner's step-3 swap;
   ingest needs no new state to distinguish "not yet vetted" from "vetted").
-- `human:review-plan` — owned by the **human** as a release gate; **set by an
-  opus+ planner** (worker or architect) when a worker-planned issue is
-  **high-stakes** (#2011). Added alongside `fleet:plan-review` in the same edit
-  (PLANNING-PROTOCOL.md step 3). It is a *second*, human-owned hold distinct from
-  `fleet:plan-review`: `fleet:plan-review` is the **agent** vetting the plan's
-  rigor; `human:review-plan` holds for a **human** to sign off on the *approach*
-  before implementation. Both are queue-blocks — `fleet-queue-ingest` skips the
-  issue while either is present and the scout surfaces it as
-  `repos.<repo>.review_plan` — so the issue queues only once the agent clears
-  `fleet:plan-review` **and** the human removes `human:review-plan`. Keeps
-  `human:approved` and survives re-ingest (like `fleet:needs-human`). Only the
-  human removes it. High-stakes = ambiguous approach / cross-cutting / expensive
-  or hard to reverse / changes a public contract (PLANNING-PROTOCOL.md step 3
-  checklist); low-stakes worker-planned issues queue on agent plan-review alone.
-  Architect-filed-with-plan work skips planning and never reaches this gate.
 - `human:revise-plan` — owned by the **human** as a re-plan request; **added by
   the human** (and nothing else) to a posted plan in review when the *approach*
   needs reworking, alongside a comment describing the change. The human never
@@ -201,8 +186,7 @@ Specifically, **never pass these via `--label` when filing**:
   — adds `fleet:needs-plan` (an opus+ planner re-plans, reading the comment),
   strips the now-stale stage labels (`fleet:plan-review`, any model /
   `fleet:blocked` label), consumes `human:revise-plan`, and **keeps**
-  `human:approved` + any `human:review-plan` (the approach gate persists so the
-  issue can't queue behind the human's back). The scout pulls the issue back
+  `human:approved`. The scout pulls the issue back
   into the ingest set via `_ingest_skipped` even though its stage labels would
   otherwise exclude it, so adding the label both fires ingest and surfaces it in
   `pending_issues`. Pre-queue stages only — an already-queued stale plan uses the
@@ -398,6 +382,14 @@ Specifically, **never pass these via `--label` when filing**:
   #1654 race — generates no dispatch), none of step 1c's own exclusion
   labels, no active `fleet:resolving-*` claim, and stacked children
   defer to their conflicted base.
+- **Retired plan gate** — `human:review-plan` (#2011, the human approach
+  sign-off on a high-stakes worker-planned issue) retired 2026-09: plans are
+  lightweight intent plans whose locked decisions and positive-fire
+  acceptance criteria are the validation contract, and the plan reviewer's
+  `fleet:plan-review` verdict is the only pre-queue gate. The label is
+  deleted from the repo; a straggler carrying it is inert — ingest does not
+  hold on it. The human steers with `human:revise-plan`, `fleet:needs-human`,
+  and PR review.
 - **Retired stacking labels** — `fleet:stacked`, `fleet:awaiting-base`,
   `fleet:needs-base-update`, `fleet:stacked-rebase`, and
   `fleet:fork-of-other-pr` retired with the native-stacked-PRs

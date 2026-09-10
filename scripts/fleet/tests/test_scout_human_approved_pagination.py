@@ -1,7 +1,7 @@
 """Regression test for #2856: fetch_human_approved's per_page=30 (no
 pagination) silently truncated to the newest 30 issues per label, so any
 older issue past that window never reached repos.<repo>.human_approved —
-and derived surfaces (review_plan, the ingest pending set) inherited the
+and derived surfaces (the ingest pending set) inherited the
 drop with no warning.
 
 The fix pages `human:approved` / `fleet:agent-approved` out via `_rest_list`'s
@@ -32,7 +32,6 @@ _mod = importlib.util.module_from_spec(_spec)
 _loader.exec_module(_mod)
 
 fetch_human_approved = _mod.fetch_human_approved
-_populate_review_plan = _mod._populate_review_plan
 slice_queue_manager_ingest = _mod.slice_queue_manager_ingest
 
 _REPO = "jakildev/IrredenEngine"
@@ -40,8 +39,9 @@ _REPO = "jakildev/IrredenEngine"
 # Population sized past a single 100-item page (not just past the old 30-item
 # one) so the test exercises real multi-page pagination, not merely a bigger
 # per_page. Issue #1 is the oldest — REST's created&desc ordering puts it on
-# page 2 — and carries human:review-plan so it also probes the review_plan
-# and ingest-pending derived surfaces in one population.
+# page 2 — and carries fleet:plan-review (an ingest-skip label that is NOT
+# in _ALREADY_QUEUED_LABELS, so the fetch still returns it) so it also probes
+# the ingest-pending derived surface in the same population.
 _POPULATION = 130
 _OLDEST = 1
 
@@ -74,7 +74,7 @@ def _stub_conditional_get(repo_slug, path, params=None, **_kwargs):
     start = (page - 1) * per_page
     window = all_numbers[start:start + per_page]
     body = [
-        _rest_issue(n, extra_labels=("human:review-plan",) if n == _OLDEST else ())
+        _rest_issue(n, extra_labels=("fleet:plan-review",) if n == _OLDEST else ())
         for n in window
     ]
     return (True, json.dumps(body))
@@ -97,15 +97,8 @@ class TestHumanApprovedPagination(unittest.TestCase):
                       "pagination, not just the newest-30/newest-100 window")
         self.assertEqual(len(numbers), _POPULATION)
 
-    def test_issue_past_old_window_reaches_review_plan(self):
-        state = {"repos": {"engine": {"path": "/tmp",
-                                       "human_approved": fetch_human_approved(_REPO)}}}
-        _populate_review_plan(state)
-        review_numbers = {i["number"] for i in state["repos"]["engine"]["review_plan"]}
-        self.assertIn(_OLDEST, review_numbers)
-
     def test_ingest_pending_set_gains_zero_rows(self):
-        # human:review-plan is an _INGEST_SKIP_LABELS entry — the newly
+        # fleet:plan-review is an _INGEST_SKIP_LABELS entry — the newly
         # reachable issue must NOT flip into the ingest pending set just
         # because pagination surfaced it (the fix must be
         # behaviour-preserving for the ingest lane, per #2856's own
