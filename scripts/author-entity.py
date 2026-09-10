@@ -84,12 +84,12 @@ def check_assertions(output: str, run_rc: int, timeout: int | None = None) -> li
     Unlike gui-verify, an assertion-less run is always a failure here — the
     session exists to run its recipe, so no GUI-ASSERT means the recipe never
     fired (a build / session-name / scene-size problem)."""
-    assertions, hung, failures = verify_common.report_gui_asserts(
+    assertions, hung, failures, missing_shots = verify_common.report_gui_asserts(
         output, "[author-entity] ", timeout=timeout)
     if not assertions:
         raise SystemExit("[author-entity] no GUI-ASSERT lines — the session never "
                          "ran its recipe (build/session-name/scene-size issue?)")
-    if failures or run_rc != 0 or hung:
+    if failures or missing_shots or run_rc != 0 or hung:
         raise SystemExit("[author-entity] session did not pass — asset not committed")
     return assertions
 

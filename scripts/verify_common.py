@@ -48,6 +48,10 @@ GUI_ASSERT_RE = re.compile(
     r"actual=(.*)"
 )
 
+# One line emitted when a GUI-test shot starts. The denominator announces the
+# complete table even when a later shot exits before producing an assertion.
+GUI_TEST_SHOT_RE = re.compile(r"GuiTest\s+(\d+)/(\d+):")
+
 # Full-frame captures are ``screenshot_<6-digit-index>.png``. ROI crop files
 # share that prefix but append ``_<shotLabel>__crop_<crop>.png`` and land in the
 # same directory (see VideoManager::writePendingRoiCrops). A bare
@@ -166,6 +170,19 @@ def parse_gui_asserts(output: str) -> list[dict[str, str]]:
     return rows
 
 
+def missing_gui_assert_shots(output: str,
+                             assertions: list[dict[str, str]]) -> list[int]:
+    """Shot indices announced by a GUI table that emitted no assertions."""
+    announcements = [tuple(map(int, m.groups()))
+                     for m in GUI_TEST_SHOT_RE.finditer(output)]
+    if not announcements:
+        return []
+    shot_count = max(total for _, total in announcements)
+    asserted_shots = {int(row["shot"]) for row in assertions
+                      if row["shot"].isdigit()}
+    return sorted(set(range(1, shot_count + 1)) - asserted_shots)
+
+
 def print_assert_table(assertions: list[dict[str, str]]) -> None:
     """Print the aligned pass/fail table both GUI harnesses render."""
     widths = dict(shot=6, label=30, kind=14, name=26, result=8)
@@ -183,26 +200,30 @@ def print_assert_table(assertions: list[dict[str, str]]) -> None:
 
 
 def report_gui_asserts(output: str, prefix: str = "",
-                        timeout: int | None = None) -> tuple[list[dict[str, str]],
-                                                              bool, list[dict[str, str]]]:
+                       timeout: int | None = None) -> tuple[list[dict[str, str]],
+                                                             bool,
+                                                             list[dict[str, str]],
+                                                             list[int]]:
     """Parse a captured run, print the pass/fail table + summary, and return
-    ``(assertions, hung, failures)``.
+    ``(assertions, hung, failures, missing_shots)``.
 
     Shared by every GUI harness (gui-verify, author-entity) so the
     parse → table → count → failure-list flow lives in one place. Each caller
-    keeps its own policy for the empty-assertion case and its own exit message
-    — those genuinely differ (gui-verify tolerates an assertion-less run that
-    exited 0; author-entity treats it as a failed session). ``timeout``, when
-    passed, is the caller's ``--timeout`` value in seconds, echoed into the
-    hung message for diagnosis."""
+    keeps its own policy for the empty-assertion case. ``timeout``, when passed,
+    is the caller's ``--timeout`` value in seconds, echoed into the hung message
+    for diagnosis."""
     hung = "RESULT=ALIVE-TIMEOUT" in output
     if hung:
         at = f" at --timeout {timeout}s" if timeout is not None else ""
         print(f"{prefix}run hung: watchdog killed it{at} before the shot table completed")
     assertions = parse_gui_asserts(output)
+    missing_shots = missing_gui_assert_shots(output, assertions)
     print()
     if not assertions:
-        return assertions, hung, []
+        if missing_shots:
+            missing = ", ".join(map(str, missing_shots))
+            print(f"{prefix}shots with zero GUI-ASSERT lines: {missing}")
+        return assertions, hung, [], missing_shots
     print_assert_table(assertions)
     failures = [a for a in assertions if a["result"] == "FAIL"]
     print(f"\n{prefix}{len(assertions) - len(failures)}/{len(assertions)} assertions passed")
@@ -210,7 +231,10 @@ def report_gui_asserts(output: str, prefix: str = "",
         print("\nFailing assertions:")
         for a in failures:
             print(f"  shot={a['shot']} name={a['name']} kind={a['kind']} actual={a['actual']}")
-    return assertions, hung, failures
+    if missing_shots:
+        missing = ", ".join(map(str, missing_shots))
+        print(f"\n{prefix}shots with zero GUI-ASSERT lines: {missing}")
+    return assertions, hung, failures, missing_shots
 
 
 def detect_worktree_root(start: Path) -> Path:
