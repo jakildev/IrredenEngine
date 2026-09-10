@@ -129,6 +129,14 @@ REPO_KEY_TO_SLUG = {
 POLL_SECONDS_DEFAULT = 30
 GH_TIMEOUT_SECONDS = 30
 
+# Stale claim labels become eligible for reaping after 30 minutes. Sweep often
+# enough that an abandoned label cannot remain stranded behind an unchanged
+# queue projection for hours, while leaving ample room for one sweep to finish
+# before the next starts. The timestamp is recorded only after every requested
+# cleanup process spawns, so a failed spawn retries on the next scout tick.
+CLAIM_CLEANUP_INTERVAL_SECONDS = 5 * 60
+CLAIM_CLEANUP_MARKER_NAME = "claim-cleanup.last-run"
+
 # Cap concurrent gh calls and stagger their submission to avoid GitHub's
 # secondary rate limit on private repos. The first tick used to fire all
 # 8 fetches in parallel against a cold token, which on private-repo
@@ -3113,10 +3121,11 @@ def check_state_size(size_bytes: int) -> None:
 
 # --- Self-spawned-lane spawn failures (#2972) ------------------------------
 #
-# The two lanes below (`queue-manager` claim-cleanup, `queue-manager-ingest`)
-# write their seen-hash only once the spawn actually succeeded, so a failed
-# spawn leaves the edge pending and the lane retries on the NEXT tick. A
-# persistent failure therefore re-enters here every tick — the shape
+# The queue-manager reconcile lane and queue-manager-ingest write their
+# seen-hash only once the spawn actually succeeded. Periodic claim cleanup uses
+# the same rule for its last-run marker. A failed spawn therefore leaves the
+# edge or deadline pending and retries on the NEXT tick. A persistent failure
+# re-enters here every tick — the shape
 # scripts/fleet/CLAUDE.md's escalate-then-quiet rule exists for, since a plain
 # per-tick warn would re-emit identically forever and hide the outage it
 # reports. Hence the streak counter + alert pair.
@@ -3195,6 +3204,21 @@ def _spawn_ok(lane: str) -> None:
         _spawn_alert_path(lane).unlink()
     except OSError:
         pass
+
+
+def _claim_cleanup_marker_path() -> Path:
+    return SEEN_DIR / CLAIM_CLEANUP_MARKER_NAME
+
+
+def _claim_cleanup_due(now: int | None = None) -> bool:
+    """Return whether the authoritative stale-claim sweep is due."""
+    if now is None:
+        now = int(time.time())
+    try:
+        last_run = int(_claim_cleanup_marker_path().read_text().strip())
+    except (FileNotFoundError, ValueError):
+        return True
+    return now - last_run >= CLAIM_CLEANUP_INTERVAL_SECONDS
 
 
 def emit_state(state) -> int:
@@ -3661,27 +3685,27 @@ def tick_once():
             log(f"projector {role} failed: {e}")
             continue
         if role == "queue-manager":
-            # Run fleet-claim cleanup on projection change to reap stale
-            # lock entries. (fleet-stale-sweep removed in #1233.)
+            # Reconcile projection changes, and independently run the global
+            # stale-label reap on a fixed cadence. A projection edge cannot
+            # represent the passage of a TTL, so tying cleanup to this hash
+            # strands abandoned labels whenever queue state is quiet.
             new_hash = stable_hash(projection)
             seen_file = SEEN_DIR / role
             try:
                 old_hash = seen_file.read_text().strip()
             except FileNotFoundError:
                 old_hash = ""
-            if new_hash != old_hash:
+            projection_changed = new_hash != old_hash
+            cleanup_due = authoritative and _claim_cleanup_due()
+            if projection_changed or cleanup_due:
                 if state.get("degraded"):
                     # Skip reconcile/cleanup when fetch data is stale — comparing
                     # live claims against a potentially incomplete issue list would
                     # produce false-positive drift reports or unsafe auto-fixes.
                     #
-                    # Leave the seen-hash UNWRITTEN. This lane and the ingest lane
-                    # below inline their own hash compare precisely because they
-                    # are edge-triggered with no re-arm (update_role_trigger's
-                    # docstring names the contract), so recording the hash here
-                    # would consume the edge and drop this sweep permanently — the
-                    # next tick compares equal and skips, however healthy the
-                    # freshly-stamped seen-hash looks (#2965).
+                    # Leave both the seen-hash and periodic marker unwritten.
+                    # The next healthy tick must retry whichever work is pending;
+                    # recording either marker here would discard it (#2965).
                     log("queue-manager: skipping reconcile+cleanup (state degraded)")
                     triggers_fired.append("queue-manager(skipped-degraded)")
                     continue
@@ -3695,19 +3719,20 @@ def tick_once():
                 # flags). All backgrounded so their gh calls never stall the 30s
                 # tick or race a live pane.
                 sweep_cmds = []
-                if authoritative:
+                if cleanup_due:
                     sweep_cmds.append(
                         ["fleet-claim", "cleanup", "--gh",
                          "--repo", "jakildev/IrredenEngine"])
                 reconcile_cmd = ["fleet-claim", "reconcile", "--apply",
                                  "--repo", "jakildev/IrredenEngine"]
                 if (GAME / ".git").exists():
-                    if authoritative:
+                    if cleanup_due:
                         sweep_cmds.append(
                             ["fleet-claim", "--repo", "game", "cleanup",
                              "--gh", "--repo", "jakildev/irreden"])
                     reconcile_cmd += ["--repo", "jakildev/irreden"]
-                sweep_cmds.append(reconcile_cmd)
+                if projection_changed:
+                    sweep_cmds.append(reconcile_cmd)
                 # Partial-failure rule, stated rather than implied (#2972): this
                 # lane fires SEVERAL commands, and the seen-hash below is written
                 # only when every one of them spawned. If any fails, the hash
@@ -3736,14 +3761,22 @@ def tick_once():
                     _spawn_failed(
                         "queue-manager", _reason,
                         f"queue-manager: sweep failed to spawn {_cmd0}: {_err} — "
-                        f"seen-hash left unwritten, retrying next tick")
+                        f"progress markers left unwritten, retrying next tick")
                     triggers_fired.append("queue-manager(spawn-failed)")
                     continue
-                # Every spawn succeeded — only NOW consume the edge (#2972).
-                write_atomic(seen_file, new_hash + "\n")
+                # Every spawn succeeded — only NOW consume the edge/deadline.
+                if projection_changed:
+                    write_atomic(seen_file, new_hash + "\n")
+                if cleanup_due:
+                    write_atomic(_claim_cleanup_marker_path(),
+                                 f"{int(time.time())}\n")
                 _spawn_ok("queue-manager")
-                _swept = "cleanup + reconcile" if authoritative else "reconcile"
-                log(f"queue-manager: spawned {_swept} (projection changed)")
+                _actions = []
+                if cleanup_due:
+                    _actions.append("cleanup")
+                if projection_changed:
+                    _actions.append("reconcile")
+                log(f"queue-manager: spawned {' + '.join(_actions)}")
                 triggers_fired.append("queue-manager(claim-cleanup)")
         elif role == "queue-manager-ingest":
             # ingest (human:approved → fleet:queued) is a GLOBAL label mutation

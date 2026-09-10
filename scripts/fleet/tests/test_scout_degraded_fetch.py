@@ -2,8 +2,8 @@
 
 Covers: failed fetch → last-known-good preserved + degraded marker;
 clean empty fetch → not degraded; no-previous-state first-run fallback;
-and the degraded SKIP in the two scout-spawned lanes leaving the projection
-edge intact (#2965).
+the degraded SKIP in the scout-spawned lanes leaving pending work intact
+(#2965); and periodic claim cleanup independent of queue projection changes.
 """
 import importlib.machinery
 import importlib.util
@@ -265,10 +265,7 @@ class _ScoutTickHarness:
 
     @staticmethod
     def _cleanup_spawns(spawns):
-        # One claim-cleanup firing spawns several fleet-claim commands (cleanup
-        # --gh per repo + one reconcile); `reconcile` appears exactly once per
-        # firing, so it — not the fleet-claim count — is the per-tick unit.
-        return [a for a in spawns if any("reconcile" in str(x) for x in a)]
+        return [a for a in spawns if any("cleanup" in str(x) for x in a)]
 
     def _seen(self, tmp, role):
         f = Path(tmp) / "seen-hashes" / role
@@ -282,11 +279,11 @@ class _ScoutTickHarness:
 class TestDegradedSkipPreservesEdge(_ScoutTickHarness, unittest.TestCase):
     """#2965: the degraded skip must NOT consume the projection edge.
 
-    `queue-manager` (claim-cleanup) and `queue-manager-ingest` inline their own
-    hash compare instead of routing through update_role_trigger, precisely
-    because they are edge-triggered with no re-arm. Recording the seen-hash
-    before the degraded check therefore dropped the work permanently: the next
-    tick compared equal and skipped. Observed live as an agent-approved issue
+    `queue-manager` reconcile and `queue-manager-ingest` inline their own hash
+    compare instead of routing through update_role_trigger. Recording the
+    seen-hash before the degraded check therefore dropped the work permanently:
+    the next tick compared equal and skipped. Periodic cleanup has the same
+    contract for its deadline marker. Observed live as an agent-approved issue
     left unqueued for 8h14m after a single degraded tick.
     """
 
@@ -336,6 +333,30 @@ class TestDegradedSkipPreservesEdge(_ScoutTickHarness, unittest.TestCase):
 
             self._tick(tmp, ["issue-1"], degraded=False, spawns=spawns)
             self.assertEqual(len(self._ingest_spawns(spawns)), 1)
+
+
+class TestPeriodicClaimCleanup(_ScoutTickHarness, unittest.TestCase):
+    """#2476: cleanup must not depend on a queue-manager projection edge."""
+
+    def test_unchanged_projection_reaps_again_after_interval(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            spawns = []
+            self._tick(tmp, ["issue-1"], degraded=False, spawns=spawns)
+            self.assertEqual(len(self._cleanup_spawns(spawns)), 1)
+
+            self._tick(tmp, ["issue-1"], degraded=False, spawns=spawns)
+            self.assertEqual(len(self._cleanup_spawns(spawns)), 1)
+
+            marker = Path(tmp) / "seen-hashes" / _mod.CLAIM_CLEANUP_MARKER_NAME
+            marker.write_text(
+                f"{int(marker.read_text()) - _mod.CLAIM_CLEANUP_INTERVAL_SECONDS}\n"
+            )
+            self._tick(tmp, ["issue-1"], degraded=False, spawns=spawns)
+
+            self.assertEqual(
+                len(self._cleanup_spawns(spawns)), 2,
+                "elapsed cleanup cadence must fire with an unchanged projection",
+            )
 
 
 def _raising_popen(attempts, exc=None):
@@ -390,6 +411,8 @@ class TestSpawnFailurePreservesEdge(_ScoutTickHarness, unittest.TestCase):
             # The edge must still be pending for BOTH lanes.
             self.assertIsNone(self._seen(tmp, "queue-manager-ingest"))
             self.assertIsNone(self._seen(tmp, "queue-manager"))
+            self.assertIsNone(
+                self._seen(tmp, _mod.CLAIM_CLEANUP_MARKER_NAME))
 
     def test_edge_survives_failed_spawn_and_fires_once_on_recovery(self):
         """The regression: SAME projection, failing then healthy → still fires,
@@ -436,15 +459,19 @@ class TestSpawnFailurePreservesEdge(_ScoutTickHarness, unittest.TestCase):
 
             # The non-failing command did start...
             self.assertTrue(spawns)
-            # ...but the failing one means the edge stays pending.
-            self.assertEqual(self._cleanup_spawns(spawns), [])
+            self.assertEqual(len(self._cleanup_spawns(spawns)), 1)
+            # ...but the failing one means both progress markers stay pending.
             self.assertIsNone(self._seen(tmp, "queue-manager"))
+            self.assertIsNone(
+                self._seen(tmp, _mod.CLAIM_CLEANUP_MARKER_NAME))
 
             spawns.clear()
             self._tick(tmp, ["issue-1"], degraded=False, spawns=spawns)
             # Whole set re-runs, reconcile included.
             self.assertEqual(len(self._cleanup_spawns(spawns)), 1)
             self.assertIsNotNone(self._seen(tmp, "queue-manager"))
+            self.assertIsNotNone(
+                self._seen(tmp, _mod.CLAIM_CLEANUP_MARKER_NAME))
 
     def test_persistent_failure_escalates_then_quiets(self):
         """The escalate-then-quiet contract: N ticks emit ONE loud line and one
