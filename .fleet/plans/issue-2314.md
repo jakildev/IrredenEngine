@@ -75,11 +75,12 @@ and the projection read `[9/11]` with zero pending work for four days.
 proposal-pending: **`## STEWARD PROPOSAL 2026-09-10`**
 (https://github.com/jakildev/IrredenEngine/issues/2314#issuecomment-5613956380),
 `fleet:steward-proposal` applied; three questions, all on S3 #2321 / PR #2393.
-Carries a **no-rule fallback dated 2026-09-24** — the first package on this
-umbrella to have one, written because its predecessor waited 32 days. Fallback
-branch (the only one reachable without amending a recorded Decision): D4 stays
-closed, lever (b) drops, #2321 closes measured-refuted on both levers, and the
-gate re-spec files as a free-standing child.
+Each carries a steward **recommendation**, which is advisory only: the package
+stays pending, PR #2393 stays parked `fleet:design-proposed`, and #2321 stays
+open until a human or architect answers on the umbrella thread and removes
+`fleet:steward-proposal`. That removal is the sole re-fire edge — elapsed time
+is not one, and no steward may take a branch on its own. Its predecessor waited
+32 days, which is a fleet-protocol problem, not a licence to self-answer.
 
 **Predecessor RESOLVED.** The `## STEWARD PROPOSAL 2026-08-08` was answered
 2026-09-10T05:11:43Z (issuecomment-5613520991) after **32 days** —
@@ -511,9 +512,9 @@ being labels on a now-closed issue.
   classified **NOVEL** (Q1 would amend D4; Q2 is Q1's complement and its only
   citation is misapplied; Q3 contradicts D9's own gate). Parked
   `fleet-transition design-propose 2393`; aggregated `## STEWARD PROPOSAL
-  2026-09-10` posted (issuecomment-5613956380) with a **no-rule fallback dated
-  2026-09-24**; `fleet:steward-proposal` re-applied to the umbrella; pointer
-  comment on the PR (issuecomment-5613961439).
+  2026-09-10` posted (issuecomment-5613956380) with a recommendation per
+  question and no autonomous fallback; `fleet:steward-proposal` re-applied to
+  the umbrella; pointer comment on the PR (issuecomment-5613961439).
 - 2026-09-10 (correction recorded against the NEEDS-DESIGN, not against the
   worker): the report cites **D8** to license dropping lever (b). D8's `(a)(b)(c)`
   are the *finer-resolution architecture* options (2048 sun map / 3rd cascade /
@@ -699,7 +700,8 @@ being labels on a now-closed issue.
   raises (b) was posted 44 minutes *after* the ruling, so the architect did not
   have it. Recorded so that fact is visible rather than inferred.
   **Owner: unassigned — this is question 3 of `## STEWARD PROPOSAL 2026-09-10`.**
-  If the package's no-rule fallback executes on 2026-09-24, F5 becomes a
-  free-standing child and A1's acceptance criteria are superseded to pin an ROI.
-  Until then no checklist row tracks it: #2321's row tracks the lever, not the
-  oracle the lever would be scored against.
+  The steward's recommendation there is to file the oracle re-spec as a
+  free-standing child and supersede A1's acceptance criteria to pin an ROI, but
+  that is advisory: it happens only if the responder rules for it. Until then no
+  checklist row tracks it — #2321's row tracks the lever, not the oracle the
+  lever would be scored against.

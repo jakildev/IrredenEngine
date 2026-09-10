@@ -428,18 +428,19 @@ reconciled-through: **2026-09-10 close-out re-audit** (second steward claim, 57
 days after the first). No child moved — all nine were already shipped and
 verified in 2026-07-15. What moved is the *park*: its recommended action was
 re-measured and found broken (**F1**), a defect was filed for it (**#3137**), and
-the ask was restated with a re-fire edge and a dated fallback. Prior: 2026-07-15
+the ask was restated with a re-fire edge. Prior: 2026-07-15
 (first steward claim — heal + close-out audit; umbrella had carried no
 `## Children` checklist since filing 2026-04-19).
 proposal-pending: **`## Steward close-out re-audit — 2026-09-10`**
 (https://github.com/jakildev/IrredenEngine/issues/226#issuecomment-5614036806),
 `fleet:steward-proposal` applied. One question — criterion 2: run it (needs
 #3137 first) / re-anchor / accept-and-close. **Recommendation: option 2
-(re-anchor).** **No-rule fallback dated 2026-10-08** → take option 2, amend
-criterion 2 to the delivered result, post the close-out summary and close,
-leaving #3137 open so the ≥2× question stays askable. The 2026-07-15 park used
-`fleet:needs-human` alone, which has no re-fire edge; that is why this sat 57
-days with a broken recommendation inside it.
+(re-anchor)** — a recommendation only; the epic stays open and criterion 2 stays
+as written until a human or architect answers on the umbrella thread and removes
+`fleet:steward-proposal`. That removal is the sole re-fire edge, and no elapsed
+time substitutes for it. The 2026-07-15 park used `fleet:needs-human` alone,
+which has no re-fire edge at all; that is why this sat 57 days with a broken
+recommendation inside it.
 
 ### Children
 
@@ -525,8 +526,8 @@ treated as evidence).
   since 2026-05-24 (the deferral is now 15 weeks expired), `perf-gate.yml` still
   has no `thread` / `worker_threads` reference, 9/9 children still shipped. So
   criterion 2 remains the sole close-out gate. Not closed; ask restated with
-  `fleet:steward-proposal` (a re-fire edge the 2026-07-15 park lacked) and a
-  no-rule fallback dated 2026-10-08.
+  `fleet:steward-proposal` (a re-fire edge the 2026-07-15 park lacked), and left
+  pending that answer.
 - 2026-09-10 (correction to the 2026-07-15 doc-drift entry — the ledger asserted
   something false): that entry called `perf_grid_matrix.sh:104-106` stale on the
   grounds that "the axis is live — the exe consumes it

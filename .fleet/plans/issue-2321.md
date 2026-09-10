@@ -184,10 +184,12 @@ backends (D3), using the V3 light-verify harness (#2317).
   and still binding regardless of how it lands: **D5** (zero-caster flat floor
   stays 0 shadow px) is the primary gate — it is what refuted arm B; **D4**
   (keep S1 splat/bias untouched) unless question 1 opens it; **D3** (cardinal +
-  ~30 deg + 45 deg yaw on both backends) via the V3 harness (#2317). If the
-  package's **no-rule fallback executes on 2026-09-24**, this child closes as
-  measured-refuted on both levers, citing the baseline and the three-arm
-  control above.
+  ~30 deg + 45 deg yaw on both backends) via the V3 harness (#2317). The
+  package recommends dropping lever (b) and closing this child as
+  measured-refuted on both levers, citing the baseline and the three-arm control
+  above — but that is a recommendation to the responder, not a scheduled action:
+  this child stays open, and its criteria stay held, until the package is
+  answered and `fleet:steward-proposal` is removed from #2314.
 - **What survives either ruling:** the zoom-matrix shadow framings, the
   constant-derived kernel-interior gate (`kSunPcfTapMin/Max` +
   `kSunCascadeCasterMarginTexels` in `ir_sun_projection.{glsl,metal}`, which
