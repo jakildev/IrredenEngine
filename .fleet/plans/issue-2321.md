@@ -123,3 +123,79 @@ backends (D3), using the V3 light-verify harness (#2317).
   list; epic #2314 ledger D7, D8, D9 and the 2026-08-08 Events entry; `#2321`
   labels re-checked live (`fleet:blocked` present, no `fleet:merger-cooldown` on
   PR #2393).
+
+### A3 — 2026-09-10 — trigger: #2385 closed `completed` (architect ruling, D10) → #2321 unblocked, lever (b) measured-refuted on PR #2393
+
+- **Decision:**
+  - **Unblocked.** `Blocked by: #2385` is discharged — #2385 closed
+    2026-09-10T05:11:45Z on the ruling that r7 discharges D6 (ledger **D10**).
+    #2321 now carries `fleet:task` + `human:approved` + `fleet:queued` +
+    `fleet:opus`. A2's baseline floor is satisfied: master `7567858e5` has
+    `34c7f7f4` as an ancestor, so any capture at current master is a valid
+    post-#2385 baseline.
+  - **A1's lever findings STAND — do not re-derive them.** Lever (a) is still
+    measured-refuted (the cascade geometry and the zoom/texel table A1 records
+    are untouched by anything that has merged since). Do NOT re-attempt the
+    near-cascade extent fit.
+  - **Lever (b) is now IMPLEMENTED and MEASURED-REFUTED ON D5 — but the
+    refutation is CONDITIONAL, so lever (b) is not yet dropped.** The 3x3
+    separable PCF receive kernel was built (GLSL + Metal twinned) and pushed as
+    evidence on PR #2393 (`e6b0c48e0`). Three-arm measurement at z2: arm A
+    (master 2x2) `49256 px / 157 comp / 0.2073`, arm B (widened 3x3)
+    `65388 / 226 / 0.1710`, arm D (control: same tap set, outer taps
+    zero-weighted) `49256 / 157 / 0.2073`. **Arm D is byte-identical to arm A**
+    (`sha256 aebac301a0cf4d1f`; arm B differs) — a properly-armed negative
+    control that isolates the regression to the outer taps alone. On a
+    caster-free ROI arm B puts **216 shadow px across 27 specks** where master
+    puts **0** — that is D5's primary gate ("zero-caster flat floor stays 0
+    shadow px") failing, in all six framings and all three D3 yaws.
+    The mechanism (diagnosed, not measured to the arithmetic): the DIRECT tap
+    branch tests against the receiver's own `sunZ` with **no receiver-plane
+    extrapolation** (`ir_sun_shadow_sample.glsl:107`), while the SPLAT branch has
+    carried exactly that extrapolation since #2319
+    (`:121`, `expectedZ = sunZ + dot(gradUV, originUV - sunUV)`). At Chebyshev
+    tap distance `d <= 1` the 2-texel bias covers the plane-depth change; at
+    `d = 2` it does not, so the receiver's own surface occludes itself.
+  - **Why this is not a drop yet.** Both remedies are closed off by recorded
+    Decisions, so the refutation is conditional on a ruling, not final:
+    per-tap threshold widening is measured-refuted (D4, and the shader says so
+    at `ir_sun_shadow_sample.glsl:64`), and extending #2319's plane
+    extrapolation to the DIRECT branch is S1's bias surface, which **D4** fences
+    and **D9** repeats ("keep S1 splat/bias untouched per D4"). Question 1 of
+    `## STEWARD PROPOSAL 2026-09-10` asks whether D4 opens for that one change.
+  - **CORRECTION for any reader reaching for D8 here.** D8's options `(a)(b)(c)`
+    (2048 sun map / 3rd cascade / content-fit split retune) are the
+    *finer-resolution architecture* set. This plan's levers `(a)(b)`
+    (zoom-aware extent fit / 3x3 PCF) are a *different* lettered set. D8 does
+    **not** license dropping this plan's lever (b); D9 explicitly retained it.
+- **Supersedes:** **A1's acceptance criteria**, in one specific respect — the
+  instruction to "re-derive the target from the clean (post-#2385) oracle" is
+  not executable, because the oracle cannot express the deliverable and carries
+  no ROI convention (ledger **F5**). Concretely: `c_lighting_to_trixel.glsl:228`
+  emits the SHADOW overlay as `shadow >= 0.999 ? black : magenta`, and
+  `render-shadow-metric.py:62-63` re-thresholds that image, so the pipeline
+  binarizes **twice** and a wider penumbra *raises* `components` by
+  construction. Nothing else in A1 is superseded; A1's lever findings and its
+  D3/D4/D5 carry-forwards all stand.
+- **Acceptance criteria:** **HELD pending `## STEWARD PROPOSAL 2026-09-10`** —
+  do not re-derive a numeric target against the binary metric, and do not treat
+  A1's "material, measured improvement in components / largest_frac" as
+  actionable. The gate is re-specified by that package's question 3. Unchanged
+  and still binding regardless of how it lands: **D5** (zero-caster flat floor
+  stays 0 shadow px) is the primary gate — it is what refuted arm B; **D4**
+  (keep S1 splat/bias untouched) unless question 1 opens it; **D3** (cardinal +
+  ~30 deg + 45 deg yaw on both backends) via the V3 harness (#2317). If the
+  package's **no-rule fallback executes on 2026-09-24**, this child closes as
+  measured-refuted on both levers, citing the baseline and the three-arm
+  control above.
+- **What survives either ruling:** the zoom-matrix shadow framings, the
+  constant-derived kernel-interior gate (`kSunPcfTapMin/Max` +
+  `kSunCascadeCasterMarginTexels` in `ir_sun_projection.{glsl,metal}`, which
+  keeps #2083's in-bounds guarantee from being silently outrun by a future
+  widening), and the three-arm post-#2385 baseline are additive and correct.
+- **By:** epic-steward — source: architect ruling on the #2314 STEWARD PROPOSAL
+  2026-08-08 thread (issuecomment-5613520991, 2026-09-10T05:11:43Z) for the
+  unblock and D10; worker `## NEEDS-DESIGN` on PR #2393
+  (issuecomment-5613882288, 2026-09-10T05:55:55Z) for the lever-(b) measurement,
+  with every cited shader line and the A/D control hash re-verified by the
+  steward against master `7567858e5` and head `e6b0c48e0`.

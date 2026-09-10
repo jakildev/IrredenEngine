@@ -424,8 +424,22 @@ workers after `human:approved` triage.
 
 ## Steward ledger
 
-reconciled-through: 2026-07-15 (first steward claim — heal + close-out audit)
-proposal-pending: none
+reconciled-through: **2026-09-10 close-out re-audit** (second steward claim, 57
+days after the first). No child moved — all nine were already shipped and
+verified in 2026-07-15. What moved is the *park*: its recommended action was
+re-measured and found broken (**F1**), a defect was filed for it (**#3137**), and
+the ask was restated with a re-fire edge and a dated fallback. Prior: 2026-07-15
+(first steward claim — heal + close-out audit; umbrella had carried no
+`## Children` checklist since filing 2026-04-19).
+proposal-pending: **`## Steward close-out re-audit — 2026-09-10`**
+(https://github.com/jakildev/IrredenEngine/issues/226#issuecomment-5614036806),
+`fleet:steward-proposal` applied. One question — criterion 2: run it (needs
+#3137 first) / re-anchor / accept-and-close. **Recommendation: option 2
+(re-anchor).** **No-rule fallback dated 2026-10-08** → take option 2, amend
+criterion 2 to the delivered result, post the close-out summary and close,
+leaving #3137 open so the ≥2× question stays askable. The 2026-07-15 park used
+`fleet:needs-human` alone, which has no re-fire edge; that is why this sat 57
+days with a broken recommendation inside it.
 
 ### Children
 
@@ -504,3 +518,62 @@ treated as evidence).
   enkiTS". T-221 (#1068) landed 2026-05-23 and the axis is live — the exe
   consumes it (`creations/demos/perf_grid/main.cpp:758`) and `WorldConfig::
   worker_thread_count` feeds the pool (`engine/world/src/world.cpp:32`).
+- 2026-09-10 (flow d — close-out re-audit, second claim): re-measured all four
+  of the 2026-07-15 audit's claims against master `7567858e5` rather than
+  re-reporting them. **All four hold**: no new report in `docs/perf-reports/`
+  (still exactly the three threading reports), #1100 still CLOSED/COMPLETED
+  since 2026-05-24 (the deferral is now 15 weeks expired), `perf-gate.yml` still
+  has no `thread` / `worker_threads` reference, 9/9 children still shipped. So
+  criterion 2 remains the sole close-out gate. Not closed; ask restated with
+  `fleet:steward-proposal` (a re-fire edge the 2026-07-15 park lacked) and a
+  no-rule fallback dated 2026-10-08.
+- 2026-09-10 (correction to the 2026-07-15 doc-drift entry — the ledger asserted
+  something false): that entry called `perf_grid_matrix.sh:104-106` stale on the
+  grounds that "the axis is live — the exe consumes it
+  (`creations/demos/perf_grid/main.cpp:758`)". **The exe does not consume it.**
+  `main.cpp:758` is the `--grid-size` handler; the `--worker-threads` handler is
+  at `:809-814` and writes `g_cliOverrides.workerThreads_`, which has exactly two
+  occurrences in the demo (declaration `:169`, assignment `:814`) and **no read
+  site**. The script comment the entry flagged as drift is therefore still
+  *literally true* — T-221 wired the engine, not the demo. Recorded because a
+  ledger that asserts a false verification is worse than one that is silent: the
+  next reader would have taken "axis is live" as settled. See **F1**.
+
+### Findings (close-out gate — beyond the checklist)
+
+<!-- Steward-owned. Items close-out must resolve that no checklist row tracks. -->
+
+- **F1 (new 2026-09-10) — criterion 2 is not merely unmeasured, it is currently
+  UNMEASURABLE, and the park's own recommended remedy would have produced a false
+  negative.** The 2026-07-15 park told the human *"One command decides it:
+  `scripts/perf/perf_grid_matrix.sh --threading-baseline --frames 300`"*. Two
+  independent reasons it cannot:
+  **(a) The sweep axis is inert.** `perf_grid_matrix.sh:247` passes
+  `--worker-threads "$TW"` and `:241` labels the cell with it; the demo parses it
+  at `main.cpp:809-814` into `g_cliOverrides.workerThreads_` and never reads that
+  field. There is no CLI → `WorldConfig` path anywhere: `worker_thread_count` is
+  declared at `engine/world/include/irreden/world/config.hpp:166` (default `-1`)
+  and populated only from the Lua `config` table, and `"--worker-threads"` is
+  registered only in `perf_grid`, never under `engine/`. All nine cells therefore
+  run at the same auto-resolved worker count and differ only by label — a run
+  would report ~parity across the axis **by construction** and read as "≥2×
+  refuted".
+  **(b) The gate's denominator arm cannot exist.** The gate is
+  "hw-2 vs `worker_threads = 0`"; `JobManager::resolveWorkerCount` clamps with
+  `IRMath::max(1, requested)` (`job_manager.cpp:92`) and `workerCount()`'s doc
+  says "Will be at least 1", so a requested `0` resolves to 1 worker. No serial
+  arm is expressible today.
+  **The committed reports are NOT invalidated** — `threading_baseline.md` was
+  captured before T-221 landed, when no pool existed, so those numbers genuinely
+  were serial. The defect is forward-looking: the same command can no longer
+  reproduce a serial arm.
+  **Owner — #3137** (filed 2026-09-10, unlabeled, `**Part of epic:** #226`,
+  `Model: opus`): wire the flag through, resolve the serial-arm design call, and
+  fix the four stale strings (`main.cpp:711` help text, `main.cpp:809-811`
+  comment, `perf_grid_matrix.sh:104-106`). Filed separately because it is real
+  work under **every** option including accept-and-close. **It is unlabeled, so
+  no surface will queue it until the human stamps `human:approved`** — the same
+  invisible-follow-up shape this ledger should expect, not a filing error.
+  **Discharge:** F1 discharges when criterion 2 is either measured (option 1,
+  after #3137) or re-anchored (option 2) or withdrawn (option 3). It does *not*
+  require #3137 to land — only the ruling.

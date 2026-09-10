@@ -299,3 +299,42 @@ therefore includes re-blessing the affected reference PNGs.
   (empty) and `git log -1 <that dir>` → `95355bde2` / PR #1595; live states of
   #1969, #2158, #2530; epic #2314 ledger D6, D8, F1, F2 and the 2026-08-08 Events
   entry.
+
+### A3 — 2026-09-10 — trigger: architect ruling on the #2314 STEWARD PROPOSAL 2026-08-08 — this child is CLOSED
+
+- **Decision:** **#2385 is closed `completed`** (2026-09-10T05:11:45Z). The
+  2026-08-08 package asked whether r7 discharges D6 or whether this child closes
+  as a partial with a successor; the answer is **option (a): r7 (PR #2654)
+  discharges D6**. Recorded as **D10** in the epic ledger. Reasoning given: r7 is
+  monotone-improving inside the #2204 cost ceiling, its plan's early exit fired,
+  and D8 already reserves the fragmentation question for a post-#2385 re-measure.
+  **No successor child is filed for the Phase-1 residual** — that was the
+  alternative the ruling declined.
+- **Terminal amendment.** This plan is closed for planning purposes; nothing
+  below should be picked up as work. It is retained as the audit trail for a
+  child that outlived its own PR by **34 days**: PR #2654 shipped the work
+  2026-08-04 as a partial with no `Closes`, so no `rollup` trigger could fire and
+  the child's closure ultimately came by ruling rather than by merge.
+- **Supersedes:** A2's framing of the remaining work as "the linux re-bless + the
+  pending Phase-1 ruling". The ruling is answered, and **the linux re-bless does
+  not belong to this child** — see below.
+- **What did NOT close with this child — read this before citing #2385 as done:**
+  - **AC 7's two-host re-bless is reassigned to #1969**, by name, in the ruling.
+    Only the six `macos-debug` `canvas_stress` references were re-blessed when r7
+    landed; the six `linux-debug` ones are still last written by `95355bde2`
+    (PR #1595). #1969 is OPEN and unclaimed, and its body was given a
+    `**Host:** linux` line in the same sweep so a Linux pane elects it. Epic
+    close-out cites **#1969's completion at master >= `34c7f7f4`**, not this
+    child's closure. Tracked as ledger **F1**, which is now the sole carrier of
+    that obligation — this child staying open used to be the other one.
+  - **The post-#2385 baseline is any capture at master >= `34c7f7f4`.** Verified:
+    `34c7f7f4` is an ancestor of master `7567858e5`.
+  - The two rider asks the 2026-08-08 package attached to the answer (drop
+    `fleet:needs-human` from this issue; re-scope its `fleet:needs-gl-host`) are
+    **moot** on a closed issue, as the ruling states. Do not re-file them.
+- **Acceptance criteria:** discharged per the ruling. AC 4's visual half was
+  discharged at the 2026-08-08 post-merge audit; AC 7 is reassigned as above.
+- **By:** epic-steward — source: architect answer on the #2314 STEWARD PROPOSAL
+  2026-08-08 thread (issuecomment-5613520991, 2026-09-10T05:11:43Z), answering
+  after 32 days; distribution side-claims verified live by the steward before
+  recording.
