@@ -139,3 +139,45 @@ comment first, then every amendment below, newest wins where they conflict.
   title; PR #3020 file list and merge state; `git ls-tree origin/master
   creations/demos/canvas_stress/test/references/`; `gh label list --repo
   jakildev/IrredenEngine`.
+
+### A2 — 2026-09-10 — trigger: proposal answered (architect ruling on umbrella #1717, 2026-09-10)
+
+- **Decision:** **Run Phase 1 on a macOS/Metal host. No partial close.** The 2026-09-09
+  package asked how this issue's Metal residual gets routed (macOS pane / inverse host
+  gate / close #1717 partial); the architect took **option 1**. The designated first
+  probe is the already-written line at `system_bake_sun_shadow_map.hpp:443` — verified on
+  master, that is the per-caster loop head `for (const auto &caster : worldPlacedCasters_) {`
+  at `engine/prefabs/irreden/render/systems/system_bake_sun_shadow_map.hpp:443`. Note the
+  path: `engine/prefabs/irreden/render/`, **not** `engine/render/`.
+- **Supersedes:** **A1's candidate framing.** A1 recorded the FrameData-staleness
+  hypothesis as refuted (still true, and still the reason not to start there) and offered
+  D5's #2488 own-canvas `resolveImageAtomicScratch` gap as *"the live candidate"*. The
+  ruling closes off **both** prior lines: *"D4 and D5 are dead ends — do not re-chase
+  them."* A1's refutation stands as the audit trail; A1's forward-looking candidate does
+  not. Start at the probe above. Everything else in A1 — the discharged
+  `**Blocked by:** #1640` gate, the resolve/bake boundary statement, the acceptance
+  re-audit — is unchanged and still binds.
+- **Acceptance criteria:** unchanged. The Metal cast and the both-backend
+  `render-verify` reference shot remain the two open criteria (GL cast and
+  no-GRID-regression were discharged by PR #3020's Phase 0). Recorded in A1: the
+  reference-shot criterion is unreachable from a Windows host —
+  `creations/demos/canvas_stress/test/references/` carries `macos-debug/` and
+  `linux-debug/` and **no `windows-debug/`** set — which is a second, independent reason
+  the work lands on the macOS pane.
+- **Also on this issue, and not a scope change:** `fleet:scope-shipped` was applied to
+  #2091 by `fleet-queue-ingest` at 2026-09-10T05:13:58Z — 64 seconds after the ruling
+  un-parked it — dequeuing it again. The stamp is **measured false** (the matched PR
+  #3020 is a one-file `docs/`-only diff that explicitly declines to close this issue);
+  the defect is filed as **#3145** and the epic ledger records the measurement as
+  **D7**. Contained by hand: `fleet:scope-shipped` removed, `fleet:queued` restored, so
+  the label set is what it was before the 2026-08-22 park. **A future reader should not
+  treat that stamp as evidence about this issue's scope.**
+- **By:** epic-steward — source: architect ruling
+  https://github.com/jakildev/IrredenEngine/issues/1717#issuecomment-5613529971
+  ("## Architect ruling — steward proposal 2026-09-09", 2026-09-10T05:12:52Z), answering
+  the 2026-09-09 STEWARD PROPOSAL (issuecomment-5604759627);
+  `fleet:steward-proposal` removed from #1717 at 2026-09-10T05:12:54Z (verified live in
+  the issue timeline); probe line re-verified on master. Epic-side record:
+  `.fleet/plans/issue-1717.md` **D6** and **D7**. Distributed to this issue as the
+  `## Steward direction` comment
+  https://github.com/jakildev/IrredenEngine/issues/2091#issuecomment-5614435566.

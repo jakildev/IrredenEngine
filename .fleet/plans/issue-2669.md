@@ -223,3 +223,32 @@ the issue names. Only the symbol name drifted.
   (issuecomment-5149886413); `fleet:steward-proposal` removed from #2544 at
   2026-08-05T01:37:24Z (verified live in the issue timeline). Epic-side record:
   `.fleet/plans/issue-2544.md` **D11** and **A7**.
+
+### A3 — 2026-09-10 — trigger: proposal answered (architect ruling on umbrella #2544, 2026-09-10)
+
+- **Decision:** **This issue is triaged and there is no remaining gate on it.** The
+  2026-09-09 steward package on #2544 asked whether the epic's sole open child gets
+  triaged or the epic closes as a partial with F3 re-filed; the architect took option
+  **(a) — triage #2669**. Verified live: the issue carries `human:approved`,
+  `fleet:opus` and `fleet:queued`, its committed plan was re-posted as the `## Plan`
+  comment at 2026-09-10T05:07:57Z, and the projected task row reads `blocked: false`,
+  `blocked_by: "(none)"`, `owner: "free"`, `model: opus`. It is planned, unblocked and
+  pickable; what remains is ordinary execution.
+- **Supersedes:** the parenthetical in §"Pickup gate"'s **LIFTED** banner — *"(The one
+  gate that does still apply is unrelated to design: this issue carries no labels, so it
+  is not queued.)"* That was true when written (the issue had been unlabeled for 40 days)
+  and is false now. Nothing else in the file changes: **A2 remains the plan of record**,
+  and its five acceptance criteria are unchanged.
+- **Acceptance criteria:** unchanged — A2's five criteria stand verbatim. Restating the
+  one most easily lost, because it is also epic ledger **F3** and the 2026-08-05 ruling
+  adopted it as a close-out condition: the regression guard **must move the camera
+  between derives**. A green `scripts/pivot-verify.py` sweep is not evidence on this
+  question — re-verified on master 2026-09-09, `ALL_BLOCKS` is unchanged at seven
+  entries and no block moves the camera between derives. With this issue triaged, F3
+  discharges through this child's guard rather than being re-filed free-standing.
+- **By:** epic-steward — source: architect ruling
+  https://github.com/jakildev/IrredenEngine/issues/2544#issuecomment-5613521935; live
+  label, comment and task-row state read 2026-09-10; epic ledger D11 (the ratified
+  option-2 contract), D13 (this ruling), A8 (the restated close-out bar), F3.
+  Distributed to this issue as the `## Steward direction` comment
+  https://github.com/jakildev/IrredenEngine/issues/2669#issuecomment-5614471328.

@@ -192,27 +192,35 @@ suites green, pan/yaw jitter sweeps SMOOTH, clean exits.
 
 ## Steward ledger
 
-reconciled-through: ruling distribution 2026-08-08 (architect ruling
-2026-08-05T01:37:22Z on the 2026-08-01 package → **D11**, **A7**, and
-`issue-2669.md` **A2**). Code-side unchanged: PR #2659 merge
-(2026-08-04T17:56:47Z, master `e640a5b1`) — P4 (#2548) reconciled, and no child
-has merged since. **#2669 is the sole open child**; as of the ruling it is no
-longer design-blocked — it is a planned, implementable task whose only remaining
-gate is human triage (it carries **no labels**, so nothing queues it). The
-close-out Findings F2–F6 gate independently.
-proposal-pending: **none** — the 2026-08-01 package
-https://github.com/jakildev/IrredenEngine/issues/2544#issuecomment-5149886413
-was **answered 2026-08-05** by the architect ruling
-https://github.com/jakildev/IrredenEngine/issues/2544#issuecomment-5186529073,
-`fleet:steward-proposal` removed at 2026-08-05T01:37:24Z (the re-fire edge), and
-**distributed 2026-08-08** as D11 + A7 here and A2 on `issue-2669.md`. The
-distribution lagged the answer by three days: the re-fire edge is defined over
-`design_prs[]`, and #2669 has no PR, so no projection trigger fires for an
-**issue-scoped** ruling. Fed back. The **prior** package (2026-07-28) was
-answered by the architect ruling
+reconciled-through: ruling distribution 2026-09-10 (architect ruling
+2026-09-10T05:11:51Z on the 2026-09-09 package -> **D13** here and **A3** on
+`issue-2669.md`). Code-side unchanged: PR #2659 merge (2026-08-04T17:56:47Z,
+master `e640a5b1`) - P4 (#2548) reconciled, and no child has merged since.
+**#2669 is the sole open child**, and as of this ruling its last gate is
+discharged: it is triaged, and its projected task row reads `blocked: false`,
+`blocked_by: "(none)"`, `owner: "free"`, `model: opus` - planned, unblocked and
+pickable. What remains is ordinary worker execution, not an administrative
+wait. The close-out Findings F1 and F3-F6 gate independently (F2 discharged by
+D12).
+proposal-pending: **none** - the 2026-09-09 package
+https://github.com/jakildev/IrredenEngine/issues/2544#issuecomment-5597103876
+was **answered 2026-09-10** by the architect ruling
+https://github.com/jakildev/IrredenEngine/issues/2544#issuecomment-5613521935,
+`fleet:steward-proposal` removed at 2026-09-10T05:11:53Z (the re-fire edge), and
+**distributed the same day** as D13 here, A3 on `issue-2669.md`, and the
+`## Steward direction` comment
+https://github.com/jakildev/IrredenEngine/issues/2669#issuecomment-5614471328.
+Distribution lag this time was under two hours, against three days for the
+2026-08-05 ruling - but the structural cause is unchanged and unfixed: the
+re-fire edge is defined over `design_prs[]`, #2669 has no PR, so **no projection
+trigger fires for an issue-scoped ruling**. This pass found it by re-reading
+`proposal-pending` against live GitHub, which is the only method that works.
+The **2026-08-01** package was answered 2026-08-05
+(https://github.com/jakildev/IrredenEngine/issues/2544#issuecomment-5186529073)
+and distributed 2026-08-08 as D11 + A7 + `issue-2669.md` A2; the **2026-07-28**
+package was answered by
 https://github.com/jakildev/IrredenEngine/issues/2544#issuecomment-5106383295
-(package: issuecomment-5100516659) and distributed 2026-07-29 as A2/A3 + the
-`## Steward direction` on PR #2585.
+and distributed 2026-07-29 as A2/A3 + the `## Steward direction` on PR #2585.
 
 ### Children
 | Child | State | PR | Plan | Last validated |
@@ -221,7 +229,7 @@ https://github.com/jakildev/IrredenEngine/issues/2544#issuecomment-5106383295
 | #2546 | merged | #2576 | plan | 2026-07-29 (PR #2576 merge) |
 | #2547 | merged | #2585 | plan + A1–A2 | 2026-08-01 (PR #2585 merge) |
 | #2548 | merged | #2659 | epic §Phase 4 + A5 (no child file) | 2026-08-04 (PR #2659 merge) |
-| #2669 | open — **adopted 2026-08-01 (flow c)**; ruling landed 2026-08-05, plan is real, **unlabeled → not queued** | — | plan (A2; was stub + A1) | 2026-08-08 (ruling distribution) |
+| #2669 | open - **triaged 2026-09-10** (option (a); the 40-day administrative gate is discharged, task row `blocked: false` / `owner: free`) | - | plan (A3; was A2, A1, stub) | 2026-09-10 (ruling distribution) |
 
 The PR column above was carrying `fleet:needs-windows-smoke` / `fleet:needs-human`
 on the #2546 and #2547 rows. Those are volatile merge/review labels, which
@@ -404,6 +412,27 @@ exception: it has a worker-authored `.fleet/plans/issue-2546.md`.
   https://github.com/jakildev/IrredenEngine/issues/2544#issuecomment-5186529073
   (answers the 2026-08-01 STEWARD PROPOSAL); distributed as A7 here and A2 on
   `.fleet/plans/issue-2669.md`.
+
+- D13 (2026-09-10): **#2669 is triaged; the epic's last administrative gate is
+  discharged and close-out proceeds on A8's restated bar.** The 2026-09-09
+  package asked whether the epic's sole open child gets triaged or #2544 closes
+  as a partial with F3 re-filed; the architect took option **(a)**. Verified
+  live rather than transcribed: #2669 carries `human:approved` + `fleet:opus`
+  **and** `fleet:queued` (ingest has already run), its committed plan was
+  re-posted as the `## Plan` comment at 2026-09-10T05:07:57Z, and #3023 (epic
+  #2314's F4) was stamped in the same sweep. Two checks the ruling does not
+  itself assert, both clean: the re-post is faithful to the **amended** plan
+  (225 committed lines under a 5-line header, `### A1` and `### A2` both
+  present), so the plan of record a worker reads is A2's ratified option-2
+  decision and not the superseded stub text above it; and the child is pickable
+  rather than merely labelled - `**Blocked by:** #2547` resolves to nothing
+  (#2547 merged via PR #2585) and carries no parenthetical, so the scout parses
+  one blocker and clears it. **F3 is now owned and discharges with #2669's
+  guard** rather than needing a free-standing re-file. - source: architect
+  ruling
+  https://github.com/jakildev/IrredenEngine/issues/2544#issuecomment-5613521935;
+  live label/comment state on #2669 and #3023 read 2026-09-10; ledger A8 (the
+  restated close-out bar), F3. Recorded as #2669 amendment A3.
 
 ### Events
 - 2026-07-22: filed via file-epic
@@ -631,6 +660,18 @@ exception: it has a worker-authored `.fleet/plans/issue-2546.md`.
   the checklist 2026-08-01 without ever being triaged), so `fleet-queue-ingest`
   never sees it and no worker can pick it. Nine days unlabeled. Raised on the
   umbrella; the steward does not stamp `human:approved` or class labels.
+
+- 2026-09-10: **the 2026-09-09 package was answered and distributed the same
+  day.** Architect ruling 05:11:51Z (option (a) - triage #2669);
+  `fleet:steward-proposal` removed 05:11:53Z. Distributed as **D13** here, **A3**
+  on `issue-2669.md`, and a `## Steward direction` comment on #2669. No trigger
+  surfaced this - the epic's projection entry showed zero pending triggers
+  throughout, because every trigger kind keys on a child *issue* state and an
+  issue-scoped ruling changes none of them. Found by re-reading
+  `proposal-pending` against live GitHub. Scope-drift audit: none - the ruling is
+  purely administrative and changes no child's scope. Downstream siblings: none
+  open. **The epic is now 4/5 with its last child planned, queued and pickable;
+  the remaining close-out gates are the Findings, not the checklist.**
 
 ### Findings (close-out gate — beyond the checklist)
 - **F1 — DISCHARGED 2026-08-04 (#2645 closed via PR #2648).** Was: `focus-ctr-sdf`
