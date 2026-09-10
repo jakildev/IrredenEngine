@@ -327,3 +327,26 @@ task:
 - File **C2–C5** as agent-approved follow-ups chained by `**Blocked by:**`.
 - Close #2640 with **C5**.
 - Do not attempt a single PR.
+
+### As filed (2026-09-10)
+
+| Child | Issue | Blocked by | Deliverable |
+|---|---|---|---|
+| C1 | — (this PR) | — | contract doc + cross-references + this plan file |
+| C2 | #3160 | #3159 | `chunked_field.hpp` — storage, summaries, dirty set (D1–D3, D10) |
+| C3 | #3161 | #3160 | `edt.hpp` + `field_clearance.hpp` — capped windowed EDT (D4, D10) |
+| C4 | #3162 | #3161 | `field_regions.hpp` — per-chunk CCL + seam stitch (D5) |
+| C5 | #3163 | #3162 | `rng_pcg32.hpp` + `field_placement.hpp` — draw + query (D6–D9); **carries `Closes #2640`** |
+
+Each child is `fleet:task` + `fleet:agent-approved` (approval-equivalent, so no
+second human triage pass) and carries its plan in the issue body rather than a
+`## Plan` comment — the decisions were already pinned by the umbrella plan above
+and re-stated per child, so there is nothing left for a planner to derive.
+
+**Blocker form.** Every `**Blocked by:**` is a bare `#N`, including C2's
+reference to the C1 *pull request*. A raw PR URL is gated by `fleet-claim`
+(which greps `pull/\d+` out of the field) but is invisible to the scout, whose
+`_BLOCKER_REF_RE` matches `#N` only — so the URL form would gate the claim while
+projecting the issue as *available* in the queue. Both tools resolve a PR number
+through `gh issue view`; a merged PR reports `MERGED`, which is in both accept
+sets. Verified against merged PR #2850 before filing.

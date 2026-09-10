@@ -364,10 +364,10 @@ edits and carry a value ⇒ this kit.
 | Child | Deliverable | Status |
 |---|---|---|
 | **C1** | this doc + the cross-references (`engine/prefabs/irreden/spatial/CLAUDE.md`, `engine/math/CLAUDE.md`, the relationship line in `lua-world-space-neighbour-query.md`) | **landing** |
-| **C2** | `chunked_field.hpp` — `ChunkedField2D<T>`, summaries, dirty tracking, `FieldChunkKey` (D2, D3) | not started |
-| **C3** | `IRMath` 1-D squared-EDT kernel + `field_clearance.hpp` — capped windowed F–H (D4, D10) | not started |
-| **C4** | `field_regions.hpp` — per-chunk CCL + seam-stitch union-find (D5) | not started |
-| **C5** | `IRMath::Pcg32` + `field_placement.hpp` — draw, `PlacementField`, `queryPlacements` + stats (D6, D7, D8); flips this table to shipped | not started |
+| **C2** (#3160) | `chunked_field.hpp` — `ChunkedField2D<T>`, summaries, dirty tracking, `FieldChunkKey` (D2, D3) | not started |
+| **C3** (#3161) | `IRMath` 1-D squared-EDT kernel + `field_clearance.hpp` — capped windowed F–H (D4, D10) | not started |
+| **C4** (#3162) | `field_regions.hpp` — per-chunk CCL + seam-stitch union-find (D5) | not started |
+| **C5** (#3163) | `IRMath::Pcg32` + `field_placement.hpp` — draw, `PlacementField`, `queryPlacements` + stats (D6, D7, D8); flips this table to shipped | not started |
 
 Each child is `**Blocked by:**` its predecessor. Tests live in **`test/ecs/`**,
 beside `spatial_grid_test.cpp` — the kit's composing sibling — and every new
