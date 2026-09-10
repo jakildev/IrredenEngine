@@ -584,6 +584,7 @@ class AmendingClaimBarsReviewerPickup(unittest.TestCase):
         self.assertEqual(len(self._sonnet([
             _pr(101, labels=["fleet:changes-made"])])), 1)
 
+
 class ReviewClaimBarsWorkerFeedbackPickup(unittest.TestCase):
     """The mirror image of AmendingClaimBarsReviewerPickup, which did not
     exist until #2801: fleet:amending-* and fleet:reviewing-* are DISJOINT
