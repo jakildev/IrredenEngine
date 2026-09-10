@@ -828,7 +828,7 @@ split.
 
 The per-entity smooth-rotation mechanism the section above defers to —
 **detached canvases** — is itself generalized onto this same three-per-axis
-split by epic #1444 (see that issue's durable `## Plan` comment). Where the
+split by epic #1444 (see that issue's durable `## Epic execution plan` comment). Where the
 camera path has
 **one global** Z-yaw split into a cardinal + a residual in `[−π/4, π/4]`, a
 rotating detached entity has its **own SO(3)** rotation split into an

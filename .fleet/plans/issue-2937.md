@@ -14,6 +14,8 @@ paths, and no fleet reader treats a legacy flat path as authoritative.
 - Migrate legacy files with a dry-run-by-default CLI. Resolve unique issue
   numbers directly, use a plan-title match only for cross-repo collisions, and
   leave every inconclusive file unmoved.
+- Treat an existing scoped destination as a conflict; never overwrite it from
+  a legacy flat file.
 - Never auto-migrate from `fleet-up`; report legacy files until a human runs
   the apply mode.
 - Leave gated role/skill-wrapper edits for a human and list them in the PR.
@@ -34,7 +36,9 @@ paths, and no fleet reader treats a legacy flat path as authoritative.
 - The ingest harness proves a game issue cannot use an engine-scoped plan, a
   game-scoped plan works, and a flat legacy file is inert.
 - CLI coverage exercises path output, dry-run and apply migration, ambiguous
-  and `T-*` no-guess behavior, idempotence, and clean checks.
+  and `T-*` no-guess behavior, destination conflicts, idempotence, and clean
+  checks. `check` ignores manual-only `T-*` files but remains nonzero while a
+  flat `issue-*` file still needs migration or manual placement.
 - Install completeness, the full fleet suite, and ruff pass.
 - Living documentation uses the scoped path or `fleet-plans path`; explicit
   legacy warnings are the only remaining flat-path references.

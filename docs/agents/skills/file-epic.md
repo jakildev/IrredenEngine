@@ -34,7 +34,7 @@ mechanism.
 | **epic label** | Marks the umbrella so the queue-manager skips it. | `fleet:epic` |
 | **task label** | Marks each child as a queue-ingestable task. | `fleet:task` |
 | **architect plans dir** | Where the approved architect draft lives. | `~/.claude/plans/<slug>.md` |
-| **plans dir** | Local staging for the plan, pre-commit (umbrella only). | `~/.fleet/plans/<repo>/issue-<N>.md` (print with `fleet-plans path <N> [--repo game]`) |
+| **plans dir** | Local staging directory for the plan, pre-commit (umbrella only). | `~/.fleet/plans/<repo>/` (derive from `fleet-plans path <N> [--repo game]`) |
 | **repo-side plan path** | Committed, authoritative plan workers read from master (umbrella only). | `<repo>/.fleet/plans/issue-<N>.md` |
 | **validate-stack command** | Asserts every child carries the structured fields. | `fleet-validate-stack` |
 | **title area vocabulary** | `<area>` tokens for child titles. | `engine`, `render`, `game`, module names |

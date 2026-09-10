@@ -17,13 +17,18 @@ import fleet_plans
 def _issue_titles() -> dict[str, dict[int, str]]:
     titles: dict[str, dict[int, str]] = {}
     for key, slug in fleet_plans.REPO_SLUGS.items():
-        result = subprocess.run(
-            ["gh", "issue", "list", "--repo", slug, "--state", "all",
-             "--limit", "5000", "--json", "number,title"],
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
+        try:
+            result = subprocess.run(
+                ["gh", "issue", "list", "--repo", slug, "--state", "all",
+                 "--limit", "5000", "--json", "number,title"],
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+        except subprocess.TimeoutExpired:
+            print(f"fleet-plans: timed out listing {key} issues",
+                  file=sys.stderr)
+            raise SystemExit(2) from None
         if result.returncode != 0:
             print(f"fleet-plans: could not list {key} issues: "
                   f"{result.stderr.strip()}", file=sys.stderr)
@@ -39,11 +44,14 @@ def _cmd_path(args: argparse.Namespace) -> int:
 
 
 def _cmd_check(_args: argparse.Namespace) -> int:
-    legacy = fleet_plans.legacy_flat_files()
-    if not legacy:
+    legacy_issues = [
+        path for path in fleet_plans.legacy_flat_files()
+        if fleet_plans.issue_number(path) is not None
+    ]
+    if not legacy_issues:
         return 0
-    print(f"fleet-plans: {len(legacy)} legacy flat plan file(s); "
-          "run fleet-plans migrate --apply")
+    print(f"fleet-plans: {len(legacy_issues)} legacy flat issue plan file(s) "
+          "need migration or manual placement; inspect with fleet-plans migrate")
     return 1
 
 
@@ -57,14 +65,19 @@ def _cmd_migrate(args: argparse.Namespace) -> int:
     unresolved = 0
     for source in legacy:
         key, reason = fleet_plans.resolve_legacy_file(source, titles)
-        verdict = key if key else reason
-        print(f"{source.name} -> {verdict}")
         if key is None:
+            print(f"{source.name} -> {reason}")
             unresolved += 1
             continue
+        destination = fleet_plans.plan_path(key, fleet_plans.issue_number(source))
+        if destination.exists():
+            print(f"{source.name} -> CONFLICT (destination exists: "
+                  f"{destination})")
+            unresolved += 1
+            continue
+        print(f"{source.name} -> {key} ({reason})")
         if not args.apply:
             continue
-        destination = fleet_plans.plan_path(key, fleet_plans.issue_number(source))
         destination.parent.mkdir(parents=True, exist_ok=True)
         os.replace(source, destination)
 
@@ -92,7 +105,7 @@ def _parser() -> argparse.ArgumentParser:
     migrate_parser.set_defaults(run=_cmd_migrate)
 
     check_parser = subparsers.add_parser(
-        "check", help="fail when legacy flat plan files remain",
+        "check", help="fail when legacy flat issue plan files remain",
     )
     check_parser.set_defaults(run=_cmd_check)
     return parser
