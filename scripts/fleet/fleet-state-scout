@@ -193,7 +193,7 @@ def log(msg: str) -> None:
 # diagnostic: docs/agents/FLEET-CACHE.md §"Daemon source staleness".
 
 _SELF = Path(__file__).resolve()
-# Attempt ceiling per window, not success ceiling — see _reload_gate.
+# Attempts PERMITTED per window (the next one is refused) — see _reload_gate.
 RELOAD_MAX = int(os.environ.get("FLEET_RELOAD_MAX", "3"))
 RELOAD_WINDOW_SECONDS = int(os.environ.get("FLEET_RELOAD_WINDOW_SECONDS", "900"))
 _reload_pending_hash = ""   # hash seen on the previous tick (debounce)
@@ -253,10 +253,14 @@ def _surface_hash(paths) -> str:
 def _reload_gate(state_file: Path, max_attempts: int, window: int) -> bool:
     """Oscillation cap. Record this reload ATTEMPT, return True to allow it.
 
-    The attempt is counted before the comparison, so `max_attempts=3` permits
-    two reloads per window and refuses the third. Mirrors fleet_reload_gate in
-    fleet-common.sh; a clock or filesystem failure allows the reload rather
-    than wedging the daemon on the old image.
+    `max_attempts` is the number of attempts PERMITTED per window: 3 allows
+    three reloads and refuses the fourth, 1 allows one, 0 disables reloading.
+    The attempt is counted before the comparison, so the comparison must be
+    `<=` — a `<` leaves `max_attempts=1` permitting none (#3192). A refused
+    attempt is still recorded, so the window drains from the last attempt
+    either way. Mirrors fleet_reload_gate in fleet-common.sh; a clock or
+    filesystem failure allows the reload rather than wedging the daemon on the
+    old image.
     """
     now = int(time.time())
     cutoff = now - window
@@ -274,7 +278,7 @@ def _reload_gate(state_file: Path, max_attempts: int, window: int) -> bool:
         state_file.write_text("".join(f"{ts}\n" for ts in kept))
     except OSError:
         pass
-    return len(kept) < max_attempts
+    return len(kept) <= max_attempts
 
 
 def check_source_reload() -> None:

@@ -112,17 +112,31 @@ class TestSurfaceHash(unittest.TestCase):
 
 
 class TestReloadGate(unittest.TestCase):
-    def test_counts_the_attempt_then_suppresses(self):
+    def test_permits_max_attempts_then_suppresses(self):
         with tempfile.TemporaryDirectory() as d:
             state = Path(d) / "history"
             results = [_mod._reload_gate(state, 3, 900) for _ in range(4)]
-            self.assertEqual(results, [True, True, False, False])
+            self.assertEqual(results, [True, True, True, False])
+
+    def test_max_one_permits_one_attempt(self):
+        # `max_attempts` is the count PERMITTED, so the documented floor still
+        # permits a reload. The `<` spelling this pins against made
+        # FLEET_RELOAD_MAX=1 refuse every reload, with no runtime signal
+        # distinguishing that from a quiet source surface (#3192).
+        with tempfile.TemporaryDirectory() as d:
+            state = Path(d) / "history"
+            results = [_mod._reload_gate(state, 1, 900) for _ in range(2)]
+            self.assertEqual(results, [True, False])
 
     def test_window_drains(self):
         with tempfile.TemporaryDirectory() as d:
             state = Path(d) / "history"
-            _mod._reload_gate(state, 3, 900)
-            _mod._reload_gate(state, 3, 900)
+            # Spend the whole budget first, so a live window would refuse the
+            # next call — otherwise the pruning this asserts is inert and the
+            # test passes with the drain removed.
+            for _ in range(3):
+                self.assertTrue(_mod._reload_gate(state, 3, 900))
+            self.assertFalse(_mod._reload_gate(state, 3, 900))
             # A zero-width window prunes every prior entry, re-arming the cap.
             self.assertTrue(_mod._reload_gate(state, 3, 0))
 

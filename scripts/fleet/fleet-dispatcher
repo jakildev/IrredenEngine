@@ -734,7 +734,7 @@ DAEMON_SOURCE_SURFACE=(
 # fleet-common.sh was missing at boot); the tick check reports that once and
 # stands down rather than looping on a hash that can never move.
 DAEMON_SURFACE_HASH="$(fleet_surface_hash "${DAEMON_SOURCE_SURFACE[@]}" 2>/dev/null || true)"
-# Oscillation cap: at most <MAX-1> reloads per window (see fleet_reload_gate).
+# Oscillation cap: at most <MAX> reloads per window (see fleet_reload_gate).
 RELOAD_MAX="${FLEET_RELOAD_MAX:-3}"
 RELOAD_WINDOW_SECONDS="${FLEET_RELOAD_WINDOW_SECONDS:-900}"
 

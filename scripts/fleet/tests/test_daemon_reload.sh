@@ -115,7 +115,28 @@ gate_calls=""
 for _ in 1 2 3 4; do
     if fleet_reload_gate "$GATE" 3 900; then gate_calls+="A"; else gate_calls+="S"; fi
 done
-assert_eq "$gate_calls" "AASS" "T5: max=3 allows two attempts then suppresses (attempt is counted)"
+assert_eq "$gate_calls" "AAAS" "T5: max=3 permits three attempts then suppresses the fourth"
+
+# <max> is the count PERMITTED, so the smallest meaningful cap still permits
+# one reload. The `<` spelling this pins against made FLEET_RELOAD_MAX=1 refuse
+# every reload — an operator setting the documented floor got no reloads at all
+# (#3192), and no runtime signal distinguishes that from a quiet surface.
+GATE1="$TMPROOT/gate-history-max1"
+gate_calls=""
+for _ in 1 2; do
+    if fleet_reload_gate "$GATE1" 1 900; then gate_calls+="A"; else gate_calls+="S"; fi
+done
+assert_eq "$gate_calls" "AS" "T5b: max=1 permits one attempt, not zero"
+
+# ...and 0 is therefore the operator's kill switch, under both spellings of the
+# comparison. Pinned so the documented disable value can't drift into meaning
+# "one reload" on a later edit of this gate.
+GATE0="$TMPROOT/gate-history-max0"
+if fleet_reload_gate "$GATE0" 0 900; then
+    bad "T5c: max=0 permits nothing (documented kill switch)"
+else
+    ok "T5c: max=0 permits nothing (documented kill switch)"
+fi
 
 # A zero-width window prunes every prior entry, so the cap re-arms — the
 # drain half of the oscillation cap, without making the test sleep 15 minutes.
@@ -295,7 +316,7 @@ if wait_for "$DLOG" "started (pid=" 12; then
     ok "T17: sandboxed dispatcher booted"
 else
     bad "T17: sandboxed dispatcher booted"
-    echo "        log (tail):"; tail -15 "$DLOG" | sed 's/^/          | /' 
+    echo "        log (tail):"; tail -15 "$DLOG" | sed 's/^/          | /'
 fi
 boot_rev=$(started_revs "$DLOG" | head -1)
 
@@ -307,7 +328,7 @@ if wait_for "$DLOG" "reloading: source surface advanced" 12; then
     ok "T18: dispatcher logs the reload after a surface edit"
 else
     bad "T18: dispatcher logs the reload after a surface edit"
-    echo "        log (tail):"; tail -15 "$DLOG" | sed 's/^/          | /' 
+    echo "        log (tail):"; tail -15 "$DLOG" | sed 's/^/          | /'
 fi
 
 if wait_for_boots "$DLOG" 2 12; then
@@ -358,7 +379,7 @@ if wait_for "$SLOG" "started (pid=" 12; then
     ok "T21: sandboxed scout booted"
 else
     bad "T21: sandboxed scout booted"
-    echo "        log (tail):"; tail -15 "$SLOG" | sed 's/^/          | /' 
+    echo "        log (tail):"; tail -15 "$SLOG" | sed 's/^/          | /'
 fi
 
 # The published-revision half (#2768): a consumer must be able to compare the
@@ -384,7 +405,7 @@ if wait_for "$SLOG" "reloading: source surface advanced" 12; then
     ok "T22: scout logs the reload after a closure-module edit"
 else
     bad "T22: scout logs the reload after a closure-module edit"
-    echo "        log (tail):"; tail -15 "$SLOG" | sed 's/^/          | /' 
+    echo "        log (tail):"; tail -15 "$SLOG" | sed 's/^/          | /'
 fi
 
 wait_for_boots "$SLOG" 2 12

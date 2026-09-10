@@ -366,14 +366,18 @@ fleet_surface_hash() {
 #
 # Records this reload ATTEMPT in <state-file> (one epoch second per line,
 # entries outside the window pruned), then reports whether the attempt count
-# inside the window has reached <max>. Returns 0 to allow the reload, 1 to
+# inside the window is still within <max>. Returns 0 to allow the reload, 1 to
 # suppress it.
 #
-# Because the attempt itself is counted before the comparison, `<max> 3` allows
-# two reloads per window and refuses the third — the cap is a ceiling on
-# attempts, not on successes. That is the conservative reading: a daemon
-# thrashing against a source file that keeps moving stops re-execing while the
-# operator is still mid-edit, and re-arms once the window drains.
+# <max> is the number of attempts PERMITTED per window: 3 allows three reloads
+# and refuses the fourth, 1 allows one, 0 disables reloading. The attempt is
+# counted before the comparison, so the comparison must be `<=` — a `<` spends
+# one of the operator's permitted reloads and leaves `<max> 1` with none, with
+# no runtime signal to distinguish that from a quiet source surface (#3192).
+#
+# A refused attempt is still recorded, so a source file that keeps moving holds
+# the cap shut while the operator is mid-edit; the window drains from the last
+# attempt, refused or not.
 fleet_reload_gate() {
     local state_file="$1" max="$2" window="$3"
     local now cutoff count=0 kept="" ts
@@ -391,5 +395,5 @@ fleet_reload_gate() {
     count=$((count + 1))
     mkdir -p "$(dirname "$state_file")" 2>/dev/null || true
     printf '%s' "$kept" >"$state_file" 2>/dev/null || true
-    (( count < max ))
+    (( count <= max ))
 }
