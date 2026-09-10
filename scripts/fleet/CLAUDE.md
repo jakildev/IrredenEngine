@@ -330,6 +330,24 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   the per-tick log spam that rule forbids. Adding a guard — or a new fallible
   action — to a hash-self-managing lane means placing it above the write and
   covering it in `tests/test_scout_degraded_fetch.py`.
+- **An ingest round-trip's candidate set is captured above the section
+  filters, never derived from `tasks.open`.** The remove-half of a
+  `fleet-queue-ingest` round-trip (`_ingest_unblock_candidates`,
+  `_ingest_retract_candidates`) needs the population its predicate targets —
+  and `fetch_task_queue` `continue`s on `fleet:plan-review`, `fleet:needs-human`
+  and `fleet:gated` **before** the task dict is built, then splits what
+  survives into `open` vs `in_progress` by claim state. So a candidate derived
+  from `tasks.open` is silently blind to three label populations and to every
+  claimed issue. #2740's own plan proposed exactly that and would have shipped
+  covering one of its two gate arms; the fix captures into a flat
+  `tasks.plan_gated` list inside the loop, above the `continue`s. This is the
+  same reachability class as the defect such a round-trip usually exists to
+  fix — the input-set builder filtering the target before the detector runs —
+  so it is worth re-deriving from the raw issue list rather than reusing a
+  section that already looks close enough. Pin the placement with a test that
+  asserts the row is in the candidate list **and** absent from every section
+  (`tests/test_scout_task_queue_plan_gated.py`); asserting only the former
+  passes with the capture moved back below a `continue`.
 - **Unattended daemons timeout-guard their network calls.** The host's
   connections to GitHub intermittently black-hole (silent TCP death), so a
   hung `git fetch` / `gh …` in a fleet daemon (dispatcher loop, `fleet-rebase`,

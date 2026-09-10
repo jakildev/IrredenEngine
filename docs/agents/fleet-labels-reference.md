@@ -158,6 +158,12 @@ Specifically, **never pass these via `--label` when filing**:
   posts the `## Plan` comment and swaps this label for `fleet:plan-review`.
   Workers skip issues carrying this label and never self-select one to plan.
   Don't add manually.
+  Both planning queue-blocks are **retracting** gates (#2740): if one lands on
+  an issue that already carries `fleet:queued` — the normal ordering for a
+  plan-shape-2 filing, and what a reviewer's plan bounce produces — the next
+  ingest tick removes `fleet:queued` (never the gate label) so the issue leaves
+  the worker-pickup set, and `fleet-claim claim` refuses it in the meantime.
+  Clearing the gate re-queues the issue through the normal add path.
 - `fleet:plan-review` — owned by the **planner** (sets it, swapping out
   `fleet:needs-plan`, once the `## Plan` comment is posted) and the **plan
   reviewer** (the architect, or the opus-reviewer loop — clears it). While

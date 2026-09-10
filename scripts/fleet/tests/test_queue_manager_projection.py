@@ -27,11 +27,13 @@ project_queue_manager_ingest = _mod.project_queue_manager_ingest
 slice_queue_manager_ingest = _mod.slice_queue_manager_ingest
 resolve_human_approved_blockers = _mod.resolve_human_approved_blockers
 _ingest_unblock_candidates = _mod._ingest_unblock_candidates
+_ingest_retract_candidates = _mod._ingest_retract_candidates
 stable_hash = _mod.stable_hash
 
 
 def _state(*, engine_merged=None, engine_done=None, engine_human_approved=None,
-           engine_closed=None, engine_tasks_open=None):
+           engine_closed=None, engine_tasks_open=None,
+           engine_tasks_plan_gated=None):
     """Build a minimal scout-state dict with the fields the projection reads."""
     return {
         "repos": {
@@ -39,7 +41,8 @@ def _state(*, engine_merged=None, engine_done=None, engine_human_approved=None,
                 "needs_plan": [],
                 "human_approved": engine_human_approved or [],
                 "tasks": {"open": engine_tasks_open or [],
-                          "in_progress": [], "done": engine_done or []},
+                          "in_progress": [], "done": engine_done or [],
+                          "plan_gated": engine_tasks_plan_gated or []},
                 "closed_fleet_queued": engine_closed or [],
                 "recent_merged_prs": engine_merged or [],
             },
@@ -442,6 +445,67 @@ class IngestUnblockRemovePath(unittest.TestCase):
             stable_hash(project_queue_manager_ingest(unblocked)),
             stable_hash(project_queue_manager_ingest(cleared)),
             "clearing the marker flips the hash once more, then the set quiesces")
+
+
+class IngestRetractPath(unittest.TestCase):
+    """#2740 retract-half: a planning queue-block (fleet:needs-plan /
+    fleet:plan-review) landing on an issue that ALREADY carries fleet:queued
+    holds ingest but not worker pickup. The candidate flips the ingest hash so
+    fleet-queue-ingest re-fires and strips fleet:queued, then disappears the
+    next tick (the issue no longer matches the fleet:queued query).
+
+    The candidate list is `tasks.plan_gated`, which fetch_task_queue fills from
+    the RAW issue list — NOT from tasks.open. That distinction is the whole
+    reachability argument: fetch_task_queue `continue`s on fleet:plan-review
+    before a task row exists, and a claimed issue routes to tasks.in_progress,
+    so a tasks.open-derived source would miss both arms. `test_scout_plan_gated_
+    capture` in test_scout_task_queue_plan_gated.py pins the capture itself."""
+
+    def test_gated_issue_is_candidate(self):
+        st = _state(engine_tasks_plan_gated=[2734])
+        self.assertEqual(_ingest_retract_candidates(st["repos"]["engine"]), [2734])
+
+    def test_no_gated_issues_is_empty(self):
+        st = _state(engine_tasks_open=[
+            {"id": "#811", "issue": "#811", "owner": "free", "blocked": False,
+             "blocked_by": "(none)"}])
+        self.assertEqual(_ingest_retract_candidates(st["repos"]["engine"]), [])
+
+    def test_candidate_in_projection_and_slice(self):
+        st = _state(engine_tasks_plan_gated=[2734])
+        self.assertIn({"repo": "engine", "issue": 2734, "op": "retract"},
+                      project_queue_manager_ingest(st))
+        self.assertEqual(slice_queue_manager_ingest(st)["retract_issues"],
+                         [{"number": 2734, "repo": "engine"}])
+
+    def test_gate_landing_flips_hash(self):
+        before = _state(engine_tasks_plan_gated=[])
+        after = _state(engine_tasks_plan_gated=[2734])
+        self.assertNotEqual(
+            stable_hash(project_queue_manager_ingest(before)),
+            stable_hash(project_queue_manager_ingest(after)),
+            "a gate landing on a queued issue must flip the ingest hash — "
+            "without the edge, ingest never fires and fleet:queued stands")
+
+    def test_retract_settles_hash(self):
+        gated = _state(engine_tasks_plan_gated=[2734])
+        retracted = _state(engine_tasks_plan_gated=[])
+        self.assertNotEqual(
+            stable_hash(project_queue_manager_ingest(gated)),
+            stable_hash(project_queue_manager_ingest(retracted)),
+            "removing fleet:queued drops the issue from the fleet:queued query, "
+            "flipping the hash once more; the set then quiesces")
+
+    def test_retract_and_unblock_ops_are_distinct(self):
+        # Same issue number in both candidate lists must yield two distinct
+        # projector items — an op collision would silently merge the edges.
+        st = _state(
+            engine_tasks_open=[{"id": "#811", "issue": "#811", "owner": "free",
+                                "blocked": True, "blocked_by": "(none)"}],
+            engine_tasks_plan_gated=[811])
+        items = project_queue_manager_ingest(st)
+        self.assertIn({"repo": "engine", "issue": 811, "op": "unblock"}, items)
+        self.assertIn({"repo": "engine", "issue": 811, "op": "retract"}, items)
 
 
 if __name__ == "__main__":
