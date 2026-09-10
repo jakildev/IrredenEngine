@@ -19,12 +19,14 @@
 #include <cstdlib>
 #include <filesystem>
 #include <numbers>
+#include <span>
 #include <string>
 #include <vector>
 // COMPONENTS
 #include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
+#include <irreden/voxel/voxel_pool_api.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 #include <irreden/voxel/components/component_joint.hpp>
 #include <irreden/voxel/components/component_skeleton.hpp>
@@ -3007,8 +3009,38 @@ void initEntities() {
     // the entity and the rest are kept for the playback swap (#766 F-1.6).
     if (!g_loadVxsPath.empty()) {
         const std::vector<std::string> framePaths = resolveVxsFramePaths(g_loadVxsPath);
-        std::size_t expectedVoxels = 0;
+
+        // Decode, translate and validate EVERY frame into CPU-owned vectors
+        // before any of them reaches a C_VoxelSetNew, then build exactly one
+        // set — the one the entity takes ownership of.
+        //
+        // The ordering is load-bearing. By this point the render canvas exists,
+        // so C_VoxelSetNew's dense ctor takes the pooled path and reserves a
+        // canvas voxel-pool span; the span comes back only in onDestroy(), which
+        // the ECS calls for a component an entity owns. There is no destructor,
+        // so a per-frame local strands a whole frame's worth of pool slots for
+        // the process lifetime — invisible in a capture, and it scales with
+        // animation length until the pool runs out. Building the one set after
+        // the loop is also what makes the refusal total: a malformed frame N
+        // leaves no entity and no reservation.
+        std::vector<std::vector<IRComponents::C_Voxel>> frames;
+        ivec3 frameBoundsMin{0};
+        ivec3 frameBoundsMax{0};
+        float framesFps = g_vxsFps;
         bool loadFailed = false;
+
+        // Pool high-water mark, sampled either side of the load so the run log
+        // states how many slots the whole set actually reserved. Zero when the
+        // canvas has no pool component.
+        const auto poolLiveVoxelCount = []() -> int {
+            const IREntity::EntityId canvas = IRPrefab::VoxelPool::activeCanvasEntityOrNull();
+            if (canvas == IREntity::kNullEntity)
+                return 0;
+            auto pool = IREntity::getComponentOptional<IRComponents::C_VoxelPool>(canvas);
+            return pool ? pool.value()->getLiveVoxelCount() : 0;
+        };
+        const int poolLiveBefore = poolLiveVoxelCount();
+
         for (const std::string &framePath : framePaths) {
             auto loaded = IRAsset::loadDenseVoxelSet(framePath);
             if (!loaded.ok()) {
@@ -3022,9 +3054,10 @@ void initEntities() {
                 loadFailed = true;
                 break;
             }
-            auto voxelSet = IRPrefab::DenseVoxel::toComponent(dense);
-            if (g_vxsEntity == IREntity::kNullEntity) {
-                expectedVoxels = voxelSet.voxels_.size();
+            std::vector<IRComponents::C_Voxel> frameVoxels = IRPrefab::DenseVoxel::toVoxels(dense);
+            if (frames.empty()) {
+                frameBoundsMin = dense.boundsMin_;
+                frameBoundsMax = dense.boundsMax_;
                 // Frame 0's META carries the animation's playback rate.
                 for (const IRAsset::MetaEntry &entry : dense.meta_) {
                     // A hand-edited or foreign sidecar can carry anything here,
@@ -3034,37 +3067,85 @@ void initEntities() {
                         continue;
                     const float fps = std::strtof(entry.value_.c_str(), nullptr);
                     if (fps > 0.0f)
-                        g_vxsFps = fps;
+                        framesFps = fps;
                 }
-                g_vxsEntity = IREntity::createEntity(
-                    C_LocalTransform{vec3(-20.0f, -8.0f, 0.0f)},
-                    IRComponents::C_VoxelSetNew{voxelSet}
-                );
-            } else if (voxelSet.voxels_.size() != expectedVoxels) {
+            } else if (frameVoxels.size() != frames.front().size()) {
                 // A set whose frames disagree on size cannot be swapped in
                 // place, and a partial animation would play a stutter nobody
                 // asked for — refuse the whole set rather than the odd frame.
                 IR_LOG_ERROR(
                     "--load-vxs: frame '{}' has {} voxels, frame 0 has {} — not an animation",
                     framePath,
-                    voxelSet.voxels_.size(),
-                    expectedVoxels
+                    frameVoxels.size(),
+                    frames.front().size()
                 );
                 loadFailed = true;
                 break;
             }
-            g_vxsFrames.emplace_back(voxelSet.voxels_.begin(), voxelSet.voxels_.end());
+            frames.push_back(std::move(frameVoxels));
         }
+
+        // `toVoxels` returns empty on a malformed record block; frame 0 empty
+        // would seed nothing and every later frame would then be rejected for
+        // disagreeing with it, so refuse the set outright and say why.
+        if (!loadFailed && (frames.empty() || frames.front().empty())) {
+            IR_LOG_ERROR("--load-vxs: '{}' decoded to zero voxels", g_loadVxsPath);
+            loadFailed = true;
+        }
+
+        if (!loadFailed) {
+            g_vxsFps = framesFps;
+            g_vxsEntity = IREntity::createEntity(
+                C_LocalTransform{vec3(-20.0f, -8.0f, 0.0f)},
+                IRComponents::C_VoxelSetNew{
+                    frameBoundsMin,
+                    frameBoundsMax,
+                    std::span<const IRComponents::C_Voxel>{frames.front()}
+                }
+            );
+            g_vxsFrames = std::move(frames);
+        }
+
+        // Refusing the set has to be total. Checking the entity before the pool
+        // count means a regression that moves entity creation back inside the
+        // loop reports the live entity rather than the pool-count symptom it
+        // also produces.
         if (loadFailed) {
             g_vxsFrames.clear();
-        } else {
+            IR_ASSERT(
+                g_vxsEntity == IREntity::kNullEntity,
+                "--load-vxs refused '{}' but left voxel-set entity {} live",
+                g_loadVxsPath,
+                g_vxsEntity
+            );
+        }
+
+        // One frame's worth of slots for the whole set, however many frames it
+        // has — and nothing at all when the set was refused. Compared with `<=`
+        // because the pool hands a recycled free span back without moving the
+        // high-water mark, so the delta can only under-report a reservation,
+        // never invent one: the bound fails on exactly the leak it guards and
+        // has no false-positive branch.
+        const std::size_t expectedVoxels = g_vxsFrames.empty() ? 0u : g_vxsFrames.front().size();
+        const int poolReserved = poolLiveVoxelCount() - poolLiveBefore;
+        IR_ASSERT(
+            poolReserved <= static_cast<int>(expectedVoxels),
+            "--load-vxs reserved {} pool voxels for {} frame(s); one entity-owned set is {}",
+            poolReserved,
+            g_vxsFrames.size(),
+            expectedVoxels
+        );
+
+        if (!loadFailed) {
             IR_LOG_INFO(
-                "--load-vxs: loaded '{}' -> entity {} ({} voxels, {} frame(s) at {} FPS)",
+                "--load-vxs: loaded '{}' -> entity {} ({} voxels, {} frame(s) at {} FPS, {} pool "
+                "voxels reserved)",
                 g_loadVxsPath,
                 g_vxsEntity,
                 expectedVoxels,
                 g_vxsFrames.size(),
-                g_vxsFps
+                g_vxsFps,
+                poolReserved
             );
             if (g_vxsFrame >= 0)
                 showVxsFrame(g_vxsFrame);
