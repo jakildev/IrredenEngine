@@ -200,20 +200,19 @@ iteration of polling, reviewing, and exiting cleanly:
       mechanics. **The review body MUST end with** exactly one of
       `Opus recheck not required.` or `Opus recheck required:
       <reason>` per the same section.
-   e. **Set the verdict label IMMEDIATELY after posting the review.**
-      This is the single most-skipped step in the loop. Use the
-      split remove + add + retry-and-verify pattern in
-      [REVIEWER-PROTOCOL.md § Verdict label-swap commands](../../docs/agents/REVIEWER-PROTOCOL.md#verdict-label-swap-commands)
-      (add `--repo <game-repo>` for game PRs). Your VERY NEXT bash
-      calls after `gh pr review` MUST be the removes (`|| true`),
-      the `--add-label`, and the verify re-query — in that order.
-      A review without a verdict label is invisible to the human's
-      merge queue.
+   e. **Set the verdict label.** Your VERY NEXT bash call after
+      `gh pr review` MUST be `fleet-review-verdict verdict-<verdict>
+      <N> --agent <your-worktree-name>` (add `--repo <game-repo>` for
+      game PRs), per
+      [REVIEWER-PROTOCOL.md § Verdict label-swap commands](../../docs/agents/REVIEWER-PROTOCOL.md#verdict-label-swap-commands).
+      It refuses a PR you did not claim (exit 4) and a current head whose
+      review body did not land (exit 5). On exit 5, post the missing review
+      body and retry; do not stamp around the guard or release the claim.
 
       The `review-pr` skill (invoked for engine single-task PRs)
-      writes its own label per the same rules, but if you find a PR
-      you reviewed without a label after the skill returns, run the
-      `gh pr edit` yourself immediately. Don't assume the skill did it.
+      writes its own label through the same wrapper. If the label is absent
+      after the skill returns, run the wrapper immediately; never fall back
+      to a raw `gh pr edit`.
 
       **Special case — Verdict approve + "Opus recheck required"** →
       do NOT set a verdict label (`fleet:approved` is opus-reviewer's
@@ -228,13 +227,15 @@ iteration of polling, reviewing, and exiting cleanly:
       when its pass completes.
 
       ```
-      gh pr edit <N> --add-label "fleet:needs-opus-recheck"
+      fleet-review-verdict verdict-needs-opus-recheck <N> --agent <your-worktree-name>
       ```
       (Add `--repo <game-repo>` for game PRs.) See
       [REVIEWER-PROTOCOL.md § Verdict label-swap commands](../../docs/agents/REVIEWER-PROTOCOL.md#verdict-label-swap-commands).
-   f. **Release the review claim** immediately after the verdict
-      label-swap (or after a no-verdict skip path — broken stack,
-      gated upstream-not-yet-approved, "Opus recheck required"). See
+   f. **Release the review claim** immediately after a verdict
+      label-swap with `fleet-claim review-release <N>
+      <your-worktree-name> --require-verdict`. No-verdict skip paths
+      (broken stack, gated upstream-not-yet-approved, or "Opus recheck
+      required") omit `--require-verdict`. See
       [REVIEWER-PROTOCOL.md § Acquiring / releasing the review claim](../../docs/agents/REVIEWER-PROTOCOL.md#acquiring--releasing-the-review-claim).
    g. **Cross-host smoke tagging (engine render PRs only).** See
       [FLEET-CROSS-HOST-SMOKE.md § Reviewer side: tagging](../../docs/agents/FLEET-CROSS-HOST-SMOKE.md#reviewer-side-tagging).
