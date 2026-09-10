@@ -339,9 +339,16 @@ Incremental update relabels only dirty chunks locally, then rebuilds the
 union-find and the global remap — `O(#chunks + #seam segments)`, cheap by
 construction, so there is no incremental-stitch subtlety to get wrong.
 
+**Ids are assigned in a canonical order**: ascending packed `FieldChunkKey`
+(D3), then row-major local index within a chunk. Discovery order over the
+chunk map would do just as well *on one machine* and differ on the next, since
+that map is a `std::unordered_map` — see D7's "No hash-container iteration
+order is ever observable".
+
 > **Global region ids are NOT stable across `update()`.** They are epoch-scoped.
 > A consumer that caches a label across an update and compares it to a fresh one
-> is a bug. Compare labels only within one update epoch.
+> is a bug. Compare labels only within one update epoch. Within an epoch the
+> canonical order above makes them the same ids on every platform.
 
 ### D6 — placement draw
 
@@ -350,17 +357,22 @@ Bridson Poisson-disk sampling, all-integer:
 - Candidates are integer cell offsets **rejection-sampled from the annulus**
   `[minSpacing, 2·minSpacing]` — no `sin`/`cos`, no libm anywhere in the draw
   path. `minSpacing >= 1` by D4's domain, so the annulus is never degenerate.
+  How many words an attempt consumes, and in what order, is D7's to lock — the
+  rejection loop is where an unspecified draw silently forks the stream.
 - Background acceleration grid at `gridWidth(minSpacing)` — the `r/√2` cell that
   makes each grid cell hold at most one sample, computed **in integers**. The
   width is part of the contract, not an implementation detail; see "The
   background-grid width" below.
 - Spacing checks in integer squared distance.
-- **Seeded at the anchor cell**, with an early-out at K. That early-out is where
+- **Seeded at the anchor cell** — which is a *sample* whether or not it is a
+  *hit* (D7) — with an early-out at K. That early-out is where
   the near-anchor bias comes from — Bridson's active-list frontier grows
   outward, so stopping at K yields anchor-proximate results without a weight
   function. Weighted bias is a recorded future extension, **not built**.
 - Per-candidate validity: the cell is present, `clearanceSq >= c*c`, and
-  (optional flag) its region label equals the anchor's.
+  (optional flag) its region label equals the anchor's. A candidate that fails
+  is discarded rather than kept as an obstacle — D7 states what that means for
+  the frontier.
 - Fewer than K reachable valid candidates ⇒ the query returns what it found. The
   caller reads `out.size()`; there is no failure sentinel.
 
@@ -430,9 +442,152 @@ The draw takes an explicit `std::uint64_t seed` and uses a kit-local
   standard-specified, but the distributions are *not* implementation-portable.
   The kit maps raw PCG32 words to ranges itself.
 
-Same seed + same field state ⇒ **byte-identical** results on every platform. The
-C5 suite locks the PCG32 stream itself against reference values, so a stream
-change is caught as a stream change rather than as a mysterious placement diff.
+Same seed + same field state ⇒ **byte-identical** results on every platform:
+the same hits, in the same order. The C5 suite locks the PCG32 stream itself
+against reference values, so a stream change is caught as a stream change rather
+than as a mysterious placement diff.
+
+#### Locking the stream is necessary and not sufficient
+
+A locked word stream only makes the draw reproducible if *which* word goes
+*where* is fixed too. Two implementations can agree on the stream to the word
+and still return different hit lists, because Bridson's skeleton leaves three
+choices that the algorithm's description does not make for you: how a raw word
+becomes a bounded value, how many words a rejected candidate consumes, and which
+active sample is extended next. Each is a fork in the candidate sequence, so
+each is contract rather than implementation detail.
+
+The complete word-consuming skeleton — **every** RNG call site in the draw
+appears here, and each consumes **exactly one word**:
+
+```cpp
+constexpr int kPlacementAttempts = 30;   // Bridson's k — NOT PlacementParams::k_
+
+// Bounded draw: one word in, a value in [0, n) out, no rejection at this layer.
+std::uint32_t uniformBelow(IRMath::Pcg32 &rng, std::uint32_t n) {   // n >= 1
+    return static_cast<std::uint32_t>(
+        (static_cast<std::uint64_t>(rng.nextWord()) * n) >> 32);
+}
+
+// One attempt == two words, dx then dy. A rejected attempt consumes its two
+// words and the loop draws the next two.
+IRMath::ivec2 drawAnnulusOffset(IRMath::Pcg32 &rng, int r) {
+    for (;;) {
+        const int dx = static_cast<int>(uniformBelow(rng, 4 * r + 1)) - 2 * r;
+        const int dy = static_cast<int>(uniformBelow(rng, 4 * r + 1)) - 2 * r;
+        const std::int64_t d2 = std::int64_t{dx} * dx + std::int64_t{dy} * dy;
+        const std::int64_t rr = std::int64_t{r} * r;
+        if (d2 >= rr && d2 <= 4 * rr) { return {dx, dy}; }
+    }
+}
+
+// active_ is a std::vector<ivec2> — an ordered container, never a set.
+active_ = { params.anchor_ };                    // the anchor is a sample
+gridInsert(params.anchor_);
+if (isValid(params.anchor_)) { out.push_back(hitFor(params.anchor_)); }
+
+while (!active_.empty() && static_cast<int>(out.size()) < params.k_) {
+    const std::uint32_t i =
+        uniformBelow(rng, static_cast<std::uint32_t>(active_.size()));
+    const IRMath::ivec2 s = active_[i];
+    bool extended = false;
+    for (int attempt = 0; attempt < kPlacementAttempts; ++attempt) {
+        const IRMath::ivec2 cand = s + drawAnnulusOffset(rng, params.minSpacing_);
+        if (!spacingOk(cand) || !isValid(cand)) { continue; }
+        gridInsert(cand);
+        active_.push_back(cand);
+        out.push_back(hitFor(cand));
+        extended = true;
+        break;                                   // first success ends the round
+    }
+    if (!extended) {
+        active_[i] = active_.back();             // swap-and-pop — the resulting
+        active_.pop_back();                      // list order is contract
+    }
+}
+```
+
+**It is measured, not merely specified.** Run against a reference PCG32 on a
+64×64 fixture (`anchor = (32, 32)`, `K = 8`, `minSpacing = 4`, `c = 2`,
+`seed = 12345`), the skeleton terminates, returns 8 hits with the anchor first,
+places the closest pair *exactly* at `minSpacing²` — so the spacing constraint
+binds rather than being incidentally satisfied — and reproduces on a rerun.
+Either of the two spellings C5 requires to differ moves the list from the
+**second** hit onward and moves `candidatesDrawn_` (15 as specified, 19 under
+`word % n`, 18 under LIFO selection), which is what makes those must-differ
+arms a property of this skeleton rather than an assumption about it.
+
+What each line pins, and why that spelling:
+
+- **`uniformBelow` is multiply-shift, and it never rejects.** One word per
+  bounded value, unconditionally, so the stream position after a call is a pure
+  function of the *number* of calls — which is what removes "how is a rejected
+  word handled" as a question at this layer entirely. The map is not exactly
+  uniform: source-word counts per output differ by at most one, a relative bias
+  of `n / 2^32`, which at the largest `n` the kit ever passes
+  (`4r + 1 = 4097`, at `r = kMaxClearanceCells`) is under `1e-6`. A debiasing
+  rejection loop would buy that back at the cost of a data-dependent word count;
+  the fixed count is worth more here than the last `1e-6` of uniformity. `%` is
+  **not** an accepted substitute: it is equally portable and equally
+  deterministic, but it is a *different map*, so it yields a different candidate
+  sequence from the same stream.
+- **The annulus is rejection-sampled, two words per attempt, `dx` then `dy`.**
+  This is the draw's only rejection loop, and it is unbounded by design:
+  acceptance is `>= 0.48` at every `r` in `[1, kMaxClearanceCells]` — worst
+  case at `r = 1`, where 12 of the 25 offsets in `[-2, 2]²` land in the annulus
+  — rising to `3π/16 ≈ 0.589` as `r` grows, so the expected cost is under 2.1
+  attempts and the tail is geometric. (Counted exactly over the whole domain,
+  cross-checked against brute force at `r ∈ {1, 2, 3, 7, 16, 33}`.)
+- **The next sample to extend is drawn, not popped.** Uniform over the active
+  list — Bridson's own rule, one word. A stack or a queue would be cheaper and
+  just as deterministic, but each grows a visibly different frontier, and the
+  "Bridson" in the References is the random-selection algorithm.
+- **Exhausted samples leave by swap-and-pop.** That reorders the active list, so
+  the *choice* of removal is observable through every later
+  `uniformBelow(active_.size())` draw. Erase-and-shift is equally deterministic
+  and gives a different sequence; swap-and-pop is the locked one.
+- **`kPlacementAttempts` is 30, and it is contract.** It is Bridson's `k`, and
+  it is unrelated to `PlacementParams::k_` (hits wanted) despite the name the
+  literature uses. Changing it moves both the hit list and the point at which a
+  sample is abandoned.
+- **Only accepted candidates become samples.** A candidate failing `spacingOk`
+  or D6's validity predicate is discarded outright — it enters neither the
+  background grid nor the active list — so the frontier spreads only through
+  cells the query would accept. The anchor is the single exception: it seeds the
+  active list and the grid **unconditionally**, because anchoring on an occupied
+  cell ("place near this building") is the ordinary case, and a geometric seed
+  that is not itself a hit is what makes it work. The anchor reaches `out` only
+  if it passes the same validity predicate — which is why D4 describes
+  `minSpacing = 0`'s degenerate annulus as returning "at most one hit" rather
+  than exactly one.
+- **`out` is in acceptance order**, anchor first when the anchor is a hit.
+  "Byte-identical results" means the same vector, not the same set.
+
+#### No hash-container iteration order is ever observable
+
+`ChunkedField2D`'s chunk map is a `std::unordered_map` and its dirty set is a
+set of the same keys (D2). Hash-container iteration order is
+implementation-defined and does differ between libstdc++, libc++ and MSVC, so
+anything downstream of it varies by platform *by construction* — the exact
+failure this section exists to prevent, and the one no amount of seed discipline
+catches.
+
+The draw is safe here by construction: it is anchored and reaches chunks by
+**keyed lookup only**, never by enumeration, so no chunk order can reach its
+word stream. The wholesale passes are where the rule has to be applied:
+
+- **Region-label numbering (D5) is order-dependent and must not be.** Labels
+  assigned in discovery order over an unordered map get different *numbers* on
+  different standard libraries for the same field. Assign them in **ascending
+  packed `FieldChunkKey`** (D3) and, within a chunk, row-major local index.
+  Placement itself would survive a different numbering — `sameRegionAsAnchor_`
+  only compares labels for equality — but a C4 test that pins label values
+  would not, nor would any comparison of one epoch's ids across two machines.
+  (D5 already forbids caching an id *across* an `update()`; this is the
+  orthogonal axis, one epoch across two standard libraries.)
+- **Any enumeration added later** — a debug dump, a serializer, a whole-field
+  statistic — uses that same canonical order. `PlacementQueryStats`' fields are
+  counts rather than sequences, so they are already order-free.
 
 ### D8 — composition and API shape
 
@@ -640,7 +795,11 @@ default-passes:
   to an `int64` reference.
 - **C4** — an L-shaped free region spanning ≥3 chunks gets one label; a wall
   splitting it yields two, with the wall's chunks re-stitched correctly;
-  incremental relabel ≡ full relabel over seeded mutations.
+  incremental relabel ≡ full relabel over seeded mutations; **the ids
+  themselves are pinned by value** on a fixed multi-chunk fixture, against a
+  literal reference — an equality-only assertion passes under any numbering, so
+  it cannot see a discovery-order labelling that renumbers on the next standard
+  library (D5, D7).
 - **C5** — the PCG32 stream is locked against reference values; same seed ⇒
   byte-identical hit lists across two independent field rebuilds; all pairwise
   hit distances ≥ `minSpacing` (integer squared check); every hit satisfies
@@ -660,6 +819,20 @@ default-passes:
   `{338, 577, 676, 915, 1014}` — the inputs where a truncated `0.7071` constant
   is one cell short — asserted to give `{239, 408, 478, 647, 717}`, so any
   truncated-constant spelling fails rather than passing quietly;
+  **the draw order is pinned against a committed reference** (D7) — over a
+  fixture built by deterministic construction (no RNG in the fixture itself)
+  under a fixed seed and fixed params, the **complete** `out` — every
+  `cell_`/`chunk_` pair, *in order* — is asserted against a literal reference
+  list committed in the test, and `PlacementQueryStats::candidatesDrawn_`
+  against a reference count, so a divergent retry or rejection policy fails even
+  when it happens to land the same hits; two rebuilds of the same binary cannot
+  observe a platform-varying order, and a committed literal is the only form
+  that crosses hosts. Two **must-differ** arms keep that reference pinned to the
+  *specified* order rather than to whatever the implementation reached for: a
+  `word % n` range map and a LIFO active-list selection are each asserted to
+  produce a **different** hit list from the same seed (without them the
+  reference is self-consistent with any single implementation, which is how a
+  fork in the candidate sequence passes as a locked one);
   and one end-to-end fixture builds
   occupancy → `update()` → query and gets K chunk-qualified hits honouring
   clearance, spacing, region and anchor under a fixed seed.
@@ -674,6 +847,12 @@ Cross-cutting, for any reviewer of C2–C5:
 - Every squared-distance intermediate is `std::int64_t`; `std::int32_t` appears
   only as the stored representation, where saturation bounds it (D4).
 - No `std::uniform_*_distribution` anywhere (D7).
+- Every RNG call site in the draw is one of D7's three — `uniformBelow` for a
+  bounded value, the two-word annulus attempt, the active-list index. A fourth
+  call site, or a `%` where `uniformBelow` is specified, is a contract change.
+- Nothing observable is derived from `unordered_map` iteration order (D7);
+  whole-field passes enumerate in ascending packed `FieldChunkKey`, then
+  row-major local index.
 
 ## References
 

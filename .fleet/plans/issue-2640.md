@@ -151,7 +151,18 @@ reviewable doc; children C2–C5 implement them):
   a kit-local `IRMath::Pcg32` (new, ~20-line header in `engine/math/`) —
   never `threadRng()` (thread-coupled) and never `std::*_distribution`
   (non-portable). Same seed + same field state ⇒ byte-identical results on
-  every platform; a reproducibility test locks the PCG32 stream itself.
+  every platform — the same hits, in the same order. A locked stream is
+  necessary and **not sufficient**, so D7 also pins *which word goes where*:
+  a multiply-shift `uniformBelow` (one word per bounded value, no rejection at
+  that layer, so `%` is not a substitute), two words per annulus attempt
+  (`dx` then `dy`, a rejected attempt consuming both), a uniform draw for the
+  active-list index with swap-and-pop removal, `kPlacementAttempts = 30`,
+  only-accepted-candidates-become-samples with the anchor as the one
+  unconditional seed, and `out` in acceptance order. Plus the negative rule:
+  nothing observable may derive from `unordered_map` iteration order — region
+  ids are numbered in ascending packed `FieldChunkKey`, then row-major local
+  index (D5). A reproducibility test locks the PCG32 stream itself; a
+  committed reference hit list locks the order the stream is spent in.
 - **D8 — composition + API shape.** `IRPrefab::Spatial::PlacementField`
   owns the three layers (occupancy `ChunkedField2D<uint8_t>`, clearanceSq
   `ChunkedField2D<int32_t>`, labels) + `update()` (EDT + relabel over the
@@ -257,7 +268,10 @@ not a default-pass.
   regardless of the clearance cap).
 - **C4**: an L-shaped free region spanning ≥ 3 chunks gets one label; a
   wall splitting it yields two labels with the wall's chunks re-stitched
-  correctly; incremental relabel ≡ full relabel over seeded mutations.
+  correctly; incremental relabel ≡ full relabel over seeded mutations; the ids
+  themselves pinned by value against a literal reference (equality-only
+  assertions pass under any numbering, so they cannot see a discovery-order
+  labelling that renumbers on the next standard library).
 - **C5**: PCG32 stream locked against reference values; same seed ⇒
   byte-identical hit list across two independent field rebuilds; all
   pairwise hit distances ≥ minSpacing (squared-integer check); every hit
@@ -275,6 +289,12 @@ not a default-pass.
   at `r = 1`, and gives `{239, 408, 478, 647, 717}` at
   `r ∈ {338, 577, 676, 915, 1014}` — the inputs where a truncated
   `0.7071` constant is one cell short, so that form fails;
+  draw order pinned against a committed reference (D7) — the complete `out`
+  (every cell/chunk pair, in order) and `candidatesDrawn_` asserted against
+  literal reference values on a deterministically-built fixture, plus
+  must-differ arms for a `word % n` range map and a LIFO active-list
+  selection, since two rebuilds of one binary cannot observe a
+  platform-varying order;
   end-to-end — build
   occupancy → `update()` → query returns K chunk-qualified hits honoring
   clearance + spacing + region + anchor bias under a fixed seed.

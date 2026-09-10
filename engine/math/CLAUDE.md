@@ -171,7 +171,7 @@ only the pieces that are useful without a chunk grid live here.
 | Header | What |
 |---|---|
 | `edt.hpp` | 1-D **squared** Euclidean distance transform over a `std::span` (Felzenszwalb–Huttenlocher lower-envelope pass, O(n)). Integer in, integer out — no `sqrt` anywhere; 2D/3D is this kernel run per axis. |
-| `rng_pcg32.hpp` | `IRMath::Pcg32` — explicitly seeded, no thread-local state, raw-word range mapping. The deterministic-sampling generator; **not** a replacement for `threadRng()` in gameplay randomness. |
+| `rng_pcg32.hpp` | `IRMath::Pcg32` — explicitly seeded, no thread-local state. Raw-word range mapping is **multiply-shift** (`(uint64(word) * n) >> 32`), one word per bounded value and no rejection, so a call's stream cost is fixed; `%` is portable but is a *different* map and forks the sequence. The deterministic-sampling generator; **not** a replacement for `threadRng()` in gameplay randomness. |
 
 The kit also relies on `IRMath::isqrt` — the exact integer square root, largest
 `n` with `n*n <= x`, no `std::sqrt` — which is a general primitive rather than a

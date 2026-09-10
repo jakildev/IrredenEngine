@@ -133,8 +133,12 @@ Four things to know before editing any of them:
 - **Everything is integer, inside a bounded domain.** Clearance is *squared*
   cell distance capped at `maxClearance²`; the Poisson draw rejection-samples an
   integer annulus. No `sqrt`, no libm transcendental, no
-  `std::uniform_*_distribution` (not portable across standard libraries) — that
-  is what makes results byte-identical across platforms under a fixed seed.
+  `std::uniform_*_distribution` (not portable across standard libraries). That
+  discipline is **necessary and not sufficient** for byte-identical results
+  under a fixed seed — it fixes the word *stream*, not which word goes *where*,
+  and it says nothing about `unordered_map` iteration order. The draw's word
+  consumption and every canonical traversal order are locked in doc §D7; treat
+  a change to either as a contract change, not an implementation detail.
   `maxClearance`, `minSpacing` and the query radius `c` are bounded by
   `kMaxClearanceCells = 1024`, because int32 `n²` overflows at `n = 46,341`; and
   every EDT intermediate is `int64` regardless, since the F–H term `f[q] + q²`
