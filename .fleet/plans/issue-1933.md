@@ -219,29 +219,107 @@ regime (`kScatterDetachedPitchFraction`) and camera regime
 - `engine/render/CLAUDE.md` — convex-corner drift note (#1917) + bind-point
   budget gotcha.
 
+## Amendments
+
+### A1 — 2026-09-09 — trigger: PR #3017 (#1938 C2) + PR #3027 (#1939 C3) merged
+- **Decision:** the epic's coverage-model change shipped on both backends, but
+  the C3 **retirement** resolved to *one* dead symbol, not six.
+  `kScatterDetachedPitchFraction` (#1538) was retired from both backends;
+  `kScatterDilateMarginPx` (#1494), `kScatterMiterLimit` (#1538),
+  `kScatterMarginDepthBiasKey` (#1457), `kScatterMarginYieldGradScale` (#1883)
+  and the post-dating `kScatterMarginInteriorBiasKey` (#2428) are **kept and
+  documented as load-bearing**. Cause: this plan's §"The coverage model" premise
+  ("with analytic coverage authoritative, the fragment-side margin-vs-interior
+  machinery becomes redundant — every surviving fragment is interior") does not
+  hold *against the coverage model this same plan specifies* —
+  **interior** edges "fill **conservatively**", and
+  `scatterAnalyticEdgeCoverage` accordingly returns coverage `1.0`
+  unconditionally on an interior edge, so over-fill fragments still survive the
+  `coverage < 0.5` discard and still need arbitration against their
+  exact-footprint owner. That over-fill *is* the inter-cell seam bridge, by
+  design. The analytic model moved the coverage **decision** off the dilation;
+  it did not remove over-fill.
+- **Supersedes:**
+  - §"The coverage model" final paragraph — the "margin machinery becomes
+    redundant / every surviving fragment is interior" premise.
+  - §"Cross-system audit (consumers of the symbols C3 retires)" — "All consumers
+    are **shader-side only** … there is **no CPU-side uniform plumbing** to
+    migrate (`grep` over `engine/**/*.{hpp,cpp}` finds none)". **False on
+    master:** `engine/render/include/irreden/render/ir_render_types.hpp` carries
+    `kScatterMarginDepthBiasKeyInv` (:504) and two `static_assert`s (:512, :531)
+    that bracket the margin-vs-exact tie band against that shader constant, and
+    documents `kScatterMarginInteriorBiasKey`'s own two-sided bracket (:496,
+    :546). Any future retire or re-tune pass must move the CPU-side asserts in
+    lockstep with the shader constants — they are designed to fail the build
+    when the bracket moves, so they are a real consumer, not commentary.
+  - §"Cross-system audit" closing sentence — "The detached regime
+    (`kScatterDetachedPitchFraction`) and camera regime
+    (`kScatterDilateMarginPx` floor) both route through the same
+    `scatterConservativeDilation`, so both are covered by the same retirement."
+    Only the detached constant was retirable; the camera floor **is** the
+    visit-bound and stays.
+- **Acceptance criteria:** unchanged. The epic-level criterion already reads
+  "The manual margin/miter/yield tower is retired **(or reduced to a documented
+  minimal visit-bound)**", which the shipped outcome satisfies — see the
+  ledger's Decisions D3/D4 and the umbrella's close-out comment.
+- **By:** epic-steward — source: PR #3027 body §"Why the rest is not retirable";
+  `engine/render/CLAUDE.md:1149-1161` ("Margin fragments still exist, by
+  design"); `ir_render_types.hpp:502-537` read on `origin/master` (`c375dbd25`);
+  per-symbol tree-wide `git grep -F` over `engine/**` — only
+  `kScatterDetachedPitchFraction` is absent from both shader backends (it
+  survives solely as a historical mention in `engine/render/CLAUDE.md`).
+
 ## Steward ledger
 
-reconciled-through: PR #2013 merge (2026-07-13)
+reconciled-through: PR #3027 merge (2026-08-22); epic closed 2026-09-09
 proposal-pending: none
 
 ### Children
 | Child | State | PR | Plan | Last validated |
 |---|---|---|---|---|
-| #1937 | merged | #2013 | plan (stale header — see note) | 2026-07-13 |
-| #1938 | open | — | plan (amended A1) | 2026-07-13 |
-| #1939 | open | — | plan (amended A1) | 2026-07-13 |
+| #1937 | merged | #2013 | plan (stale header — see 2026-07-13 drift note) | 2026-07-13 |
+| #1938 | merged | #3017 | plan + A1 | 2026-09-09 |
+| #1939 | merged | #3027 | plan + A1, A2 | 2026-09-09 |
 
 ### Decisions
 - D1 (2026-06-21): approach picked = portable analytic edge-aware coverage; HW
   conservative raster (no Metal API; GL extension non-portable on the WSL 4.5
-  floor) and MSAA (integer R32I/depth resolve + 4–8× memory) ruled out by the
+  floor) and MSAA (integer R32I/depth resolve + 4-8x memory) ruled out by the
   source-verified capability audit.
 - D2 (2026-07-13): C1 lead backend = **Metal** (#1937, PR #2013); C2 = **GL**
-  parity (#1938). The GL→Metal lead order was flipped after planning — the child
+  parity (#1938). The GL->Metal lead order was flipped after planning — the child
   titles were updated but the plan files were not; #1938/#1939 amended (A1) to
   match. The approach (D1) is unchanged — this is a sequencing flip, not an
   approach change. source: PR #2013 (metal shaders) + updated child titles +
-  in-code note `metal/peraxis_scatter.metal:282-283`.
+  in-code note `metal/peraxis_scatter.metal:361-367` ("Visit-bound dilation
+  (#1937, Metal-lead) … The GL twin (v_peraxis_scatter.glsl) carries the same
+  visit-bound") — re-anchored 2026-09-09; the original `:282-283` anchor drifted
+  off this note when PR #3017 edited the file, and now lands on the unrelated
+  `/16 - 0.5` centring-convention comment.
+- D3 (2026-09-09): the C3 retirement is **one** symbol, not six —
+  `kScatterDetachedPitchFraction` retired on both backends; the remaining
+  margin/miter/yield constants are a **correctness tie-break tower**, kept and
+  documented, because interior-edge over-fill is specified behaviour (the seam
+  bridge) rather than a leftover of the old coverage margin. Recorded as a
+  **scope outcome, not scope drift**: the epic's acceptance criterion already
+  admitted "or reduced to a documented minimal visit-bound", and the hot-path
+  change the epic existed for (removing the continuous `0.5*|n|` growth that
+  *decided* coverage) shipped in #1937/#1938. See A1 for the superseded plan
+  sentences. source: PR #3027 body §"Why the rest is not retirable";
+  `engine/render/CLAUDE.md:1149-1161`.
+- D4 (2026-09-09): the "both backends at parity" criterion is discharged despite
+  the open `fleet:needs-macos-smoke` labels on #3017/#3027. The **functional**
+  Metal analytic coverage shipped and was validated on macOS in #1937/PR #2013;
+  every later Metal edit is non-functional — #3017 is comment-only in the Metal
+  twins (3 hunks in `metal/ir_iso_common.metal`, 1 in
+  `metal/peraxis_scatter.metal`, correcting now-false "the GL twin still carries
+  the old coverage role" notes) and #3027 deletes one `constant` with zero
+  readers. Master's Metal *behaviour* is therefore unchanged from the validated
+  state, so the smoke labels are routine platform hygiene owned by the
+  smoke-worker / `platform-catchup` sweep, not an epic gate. source:
+  `git show fbad3ac4f -- engine/render/src/shaders/metal/` (6 insertions, 7
+  deletions, all comments) and `git show 2b4a6c0d1 -- .../metal/` (6 deletions,
+  the dead constant).
 
 ### Events
 - 2026-06-21: filed via file-epic (planning of #1933).
@@ -257,3 +335,30 @@ proposal-pending: none
   plan is left as-is; the authoritative issue title + PR #2013 record the truth.
   The umbrella checklist descriptions were realigned to the current issue titles
   during the tick (heal-shape).
+- 2026-08-22: **#1938 (C2) merged via PR #3017** — analytic edge-aware coverage
+  ported to GL (`v_peraxis_scatter.glsl`, `f_peraxis_scatter.glsl`,
+  `ir_iso_common.glsl`), carrying the visit-bound dilation, the per-edge
+  interior/boundary classification (2 taps, not 4), the hard 0.5 coverage
+  threshold, and the #2428 interior yield floor. Also rewrote
+  `engine/render/CLAUDE.md`'s #1883 accepted-drift block (now ":1109 — fixed by
+  the epic #1933 analytic coverage, now on both backends") and corrected the
+  #2469 block's stale cross-reference. **Issue filed by this PR's work:** #3019
+  (`perf_grid_matrix.sh` is yaw-0 only, a vacuous gate for non-cardinal-only
+  render paths) — OPEN, `fleet:coding-improvement`; a harness gap, not an epic
+  acceptance gate (C3 used `IRPerfGrid --yaw` + `perf-grid-rotate-sweep`
+  instead).
+- 2026-08-22: **#1939 (C3) merged via PR #3027** — one dead constant retired on
+  both backends in lockstep; the rest of the tower documented as load-bearing in
+  `engine/render/CLAUDE.md`. Evidence: 24-frame A/B byte-identity (base vs
+  branch, `diff -r --brief` clean) plus `scripts/dev/perf-grid-rotate-sweep
+  build dense 80` — both coverage and zoom passes `CARDINAL CHECK: PASS`, all 24
+  near-cardinal residual frames `coverage=1.0000 hole=0.0000`, worst seam-signal
+  perimeter ratio 21.58 / 21.56.
+- 2026-09-09: **rollup + close-out.** Checklist ticked 3/3. Scope audit recorded
+  as D3 + A1 (the retire list resolved to one symbol) and the CPU-side-plumbing
+  correction; parity reading recorded as D4. All five epic acceptance criteria
+  evidenced — see the umbrella's close-out comment. Epic closed.
+- 2026-09-09: **Orphaned-label note (record-only):** closed child #1938 still
+  carries `fleet:claim-windows-pool-5` and closed #1939 still carries
+  `fleet:blocked`. Cosmetic on closed issues and **not** hand-edited —
+  `fleet-claim cleanup --gh` owns stale claim release.

@@ -101,3 +101,63 @@ Consumers: `v_peraxis_scatter.glsl:211,217-218`, `f_peraxis_scatter.glsl`,
 - **Acceptance criteria:** unchanged.
 - **By:** epic-steward — source: PR #2013 (merged Metal shaders); updated child
   issue titles #1937/#1938.
+
+### A2 — 2026-09-09 — trigger: PR #3027 merged (this child)
+- **Decision:** the retire list in this plan is **wrong about five of its six
+  symbols**, and the shipped outcome is the correction. Retired:
+  `kScatterDetachedPitchFraction` only — zero readers on either backend once
+  #1937/#1938 made the visit-bound a fixed `minMarginPx`. **Kept and documented
+  as load-bearing:** `kScatterDilateMarginPx` (the visit-bound itself),
+  `kScatterMiterLimit` (the visit-bound's *shape* — an un-grown acute tip is a
+  fragment the rasterizer never visits, and analytic coverage cannot fill what
+  was never rasterized, so dropping it reopens the #1538 lattice cracks +
+  speckle), `kScatterMarginDepthBiasKey` and `kScatterMarginYieldGradScale` (the
+  margin-vs-exact-owner arbitration), plus `kScatterMarginInteriorBiasKey`
+  (#2428, which post-dates this plan and *added* to the tower).
+- **Supersedes:**
+  - §"Verified current state" — the six-row retire table, and its parenthetical
+    "all shader-side `const`/`constant`; **no CPU-side uniform plumbing** —
+    `grep` over `engine/**/*.{hpp,cpp}` finds none". Both halves are now false:
+    five rows are not retirable, and
+    `engine/render/include/irreden/render/ir_render_types.hpp` carries
+    `kScatterMarginDepthBiasKeyInv` (:504) behind two `static_assert`s (:512,
+    :531) that bracket the margin-vs-exact tie band, plus
+    `kScatterMarginInteriorBiasKey`'s own bracket (:496, :546). A retire or
+    re-tune pass must move those asserts in lockstep — they fail the build by
+    design when the bracket moves.
+  - §"Gotchas" — "Don't half-retire — all six symbols are defined in **both**
+    backends". The lockstep rule itself **stands** and was honoured (the one
+    retirement landed in `ir_iso_common.glsl` *and* `ir_iso_common.metal` in the
+    same commit); what is superseded is only the premise that all six were
+    candidates.
+  - §"Acceptance criteria" — "No dangling references to retired symbols (`grep`
+    clean)" now scopes to the single retired symbol, which is grep-clean across
+    `engine/` (it survives only as a historical mention in
+    `engine/render/CLAUDE.md` and in the `.fleet/plans/` text).
+  - A1's sentence "this child still removes the six `kScatter*` margin/miter/
+    yield symbols from **both** … in lockstep" — superseded on the *count*, not
+    on the lockstep requirement.
+- **Root cause, for anyone tempted to re-attempt the retire:** the epic plan's
+  premise "with no over-fill margin, every surviving fragment is interior" is
+  incompatible with the coverage model the epic actually chose.
+  `scatterAnalyticEdgeCoverage` returns coverage `1.0` **unconditionally** on an
+  interior edge, so fragments outside the true `[0,1]^2` footprint still survive
+  the `coverage < 0.5` discard whenever the edge they crossed is interior — and
+  that over-fill *is* the inter-cell seam bridge the epic specified ("interior
+  edges fill **conservatively** … so the cracks the #1494 margin was added to
+  close stay closed"). Margin fragments therefore still exist and still need
+  arbitration. The tower is a correctness tie-break, not a coverage heuristic.
+  `engine/render/CLAUDE.md` §"Margin fragments still exist, by design"
+  (:1149-1161) is the standing record.
+- **Acceptance criteria:** unchanged in substance — the epic-level criterion
+  reads "retired **(or reduced to a documented minimal visit-bound)**", and the
+  documented-visit-bound branch is what shipped. Verification delivered: 24-frame
+  A/B byte-identity base vs branch, and `perf-grid-rotate-sweep build dense 80`
+  with `CARDINAL CHECK: PASS` on both the coverage and zoom passes. The #1922
+  jitter score was **not** re-run (`tools/jitter_probe` is permission-gated on
+  the authoring host); byte-identity subsumes it — identical pixel sequences give
+  identical centroid series, and the base measured SMOOTH / 0.01px on this probe.
+- **By:** epic-steward — source: PR #3027 body §"Why the rest is not retirable"
+  + its Acceptance-evidence table; the worker's 2026-08-22 comment on this issue;
+  `ir_render_types.hpp:502-537` and `engine/render/CLAUDE.md:1109,1149-1161` read
+  on `origin/master` (`c375dbd25`); per-symbol tree-wide `git grep -F`.
