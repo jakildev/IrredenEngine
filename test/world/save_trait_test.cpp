@@ -35,6 +35,7 @@ TEST(SaveTrait, ClassABearersOptOut) {
 // world snapshot.
 TEST(SaveTrait, SafetyCriticalOptOuts) {
     EXPECT_FALSE(shouldSave<C_LambdaModifiers>());
+    EXPECT_FALSE(shouldSave<C_EntityEventHandlers>());
     EXPECT_FALSE(shouldSave<C_ContactEvent>());
     EXPECT_FALSE(shouldSave<C_SpatialIndex>());
     EXPECT_FALSE(shouldSave<C_VoxelPool>());

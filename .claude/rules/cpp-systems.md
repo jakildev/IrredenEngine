@@ -103,17 +103,36 @@ in a separate tracking file (see #2733).
 Don't add new violations. Migrate when you're already touching one of these
 files for other reasons; don't delay other work to migrate aggressively.
 
-**Measured 2026-07-31** over the `paths:` globs above (134 tracked files) —
-16 sites in 7 files. Re-measure when you edit this list; a stamp that drifts
-from the tree is what made the previous register useless. Paths below are
-relative to `engine/prefabs/irreden/`.
+**Measured 2026-09-10** over the `paths:` globs above (138 tracked files) —
+**13 sites in 6 files**, down from 16 in 7: #2582 retired all three
+`system_entity_hover_detect.hpp` rows at once (the registry became the
+`C_EntityEventHandlers` singleton component; `previousHoveredEntity` and
+`logCounter` became `System<ENTITY_HOVER_DETECT>` members). Re-measure when you
+edit this list; a stamp that drifts from the tree is what made the previous
+register useless. Paths below are relative to `engine/prefabs/irreden/`.
+
+Sweep the two shapes separately — a single `\bstatic\b` pattern is drowned by
+`static SystemId create()` / `static constexpr`, and the indent-anchored form
+below misses the `static const T *p` class, which sits at function scope inside
+a namespace-scope `inline` accessor:
+
+```
+fleet-rules-sweep --pattern '^\s{8,}static\s+(?!constexpr\b|const\b|void\b|auto\b)' \
+  --glob 'engine/prefabs/**/system_*.{hpp,cpp}' --glob 'engine/system/**' \
+  --glob 'creations/**/system_*.{hpp,cpp}' .
+fleet-rules-sweep --pattern 'static\s+const\s+.*\*\s*\w+\s*=' \
+  --glob 'engine/prefabs/**/system_*.{hpp,cpp}' --glob 'creations/**/system_*.{hpp,cpp}' .
+```
+
+`fleet-rules-sweep` compiles the pattern with Python `re`, **not** POSIX: a
+`[[:alnum:]]`-style class silently degrades to a nested-set `FutureWarning` and
+a **0-match false clean** at exit 0. Both sweeps above carry a known positive
+control (`system_gravity.hpp:17`, `system_modifier_resolve_global.hpp:35`) —
+if either is absent from the output, the pattern is broken, not the tree.
 
 | Site | Shape |
 |---|---|
 | `common/systems/system_modifier_resolve_global.hpp:35,40,45` | 3 `static const T *p = nullptr;` frame caches, handed out by non-const reference so `beginTick` can reassign them. Spelled `const`, but mutable — see the Allowed clause. Keeps `MODIFIER_RESOLVE_GLOBAL` pinned `SERIAL`. |
-| `input/systems/system_entity_hover_detect.hpp:132` | `static EntityEventHandlers instance;` — tracked separately in **#2582** (migrating to a singleton component). |
-| `input/systems/system_entity_hover_detect.hpp:140` | `static IREntity::EntityId previousHoveredEntity`. |
-| `input/systems/system_entity_hover_detect.hpp:182` | `static int logCounter` — log throttle. |
 | `input/systems/system_hitbox_mouse_test.hpp:26-30` | 5 statics declared in `create()` and captured by the tick lambda (`s_mouseCanvas`, `s_cameraIso`, `s_cameraZoom`, `s_fbResHalf`, `s_cardinalIndex`). |
 | `render/systems/system_debug_overlay.hpp:87-88` | 2 static vertex vectors declared **inside the tick body**. |
 | `update/systems/system_action_animation.hpp:24` | `static std::unordered_map<...> clipCache` in `create()`. |
@@ -123,11 +142,14 @@ relative to `engine/prefabs/irreden/`.
 Each should move to the member-on-`System<N>` form (preferred) or `SystemParams`.
 
 **Not deviations** (allowed per the Allowed clause, listed so the next sweep
-doesn't re-flag them): `render/systems/system_shapes_to_trixel.hpp:446` and
+doesn't re-flag them): `render/systems/system_shapes_to_trixel.hpp:459` and
 `render/systems/system_voxel_to_trixel.hpp:58` — `static thread_local` scratch
 buffers, both reset on entry.
 
-**Retired entries** — fixed, do not re-add: `system_entity_canvas_to_framebuffer.hpp`
+**Retired entries** — fixed, do not re-add: all three
+`input/systems/system_entity_hover_detect.hpp` rows (`:132` registry, `:140`
+`previousHoveredEntity`, `:182` `logCounter` — migrated by #2582),
+`system_entity_canvas_to_framebuffer.hpp`
 (migrated to an `instances_` member by #1520) and `system_animation_color.hpp:25-26`
 (the clip caches no longer exist there; the surviving one is
 `system_action_animation.hpp:24`, listed above).

@@ -332,6 +332,13 @@ ctor-tail seam.
 - #2834 is still **open** — `SaveTrait.InventoryIsComplete` stays red on
   master and this PR stays delta-neutral on it.
 
+**One plan option declined.** Approach step 3 offers `setName(...,
+"entityEventHandlers")` as an optional diagnostic on the seeded row. Dropped:
+`destroyEntity` does not touch `m_namedEntities`, and only
+`destroyAllExceptPreserved` prunes it — so after `destroyAllEntities()` the
+name would resolve to a dead id and assert at the next `getEntityByName`. No
+consumer reads it, so the seed is an unnamed `IREntity::singleton<...>()` call.
+
 **Shape refinement forced by the addendum's acceptance criterion.** The
 criterion is behavioural ("fires no `onEntityUnhovered`"), but `beginTick()` as
 the plan describes it resolves `currentHovered` through
