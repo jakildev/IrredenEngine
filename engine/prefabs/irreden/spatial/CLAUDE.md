@@ -130,11 +130,26 @@ Four things to know before editing any of them:
   `IRRender::kVoxelChunkSize` is a GPU bucket that is not spatial at all. They
   share the number 32 for cognitive alignment and nothing else. Say "field
   chunk" in code and comments, never bare "chunk".
-- **Everything is integer.** Clearance is *squared* cell distance capped at
-  `maxClearance²`; the Poisson draw rejection-samples an integer annulus. No
-  `sqrt`, no libm transcendental, no `std::uniform_*_distribution` (not portable
-  across standard libraries) — that is what makes results byte-identical across
-  platforms under a fixed seed.
+- **Everything is integer, inside a bounded domain.** Clearance is *squared*
+  cell distance capped at `maxClearance²`; the Poisson draw rejection-samples an
+  integer annulus. No `sqrt`, no libm transcendental, no
+  `std::uniform_*_distribution` (not portable across standard libraries) — that
+  is what makes results byte-identical across platforms under a fixed seed.
+  `maxClearance`, `minSpacing` and the query radius `c` are bounded by
+  `kMaxClearanceCells = 1024`, because int32 `n²` overflows at `n = 46,341`; and
+  every EDT intermediate is `int64` regardless, since the F–H term `f[q] + q²`
+  is bounded by the *window row length*, not by the cap (doc §D4).
+- **Cell → field chunk is floor division, not truncating division.**
+  `cell >> 5` / `cell & 31` — which in C++23 is exactly floor-divide with a
+  non-negative remainder, so cell `(-1, -1)` is chunk `(-1, -1)` local
+  `(31, 31)`. `cell / 32` would say chunk `0` local `-1` and index a dense array
+  out of bounds. Same rule the voxel-side residency helper documents at
+  `engine/prefabs/irreden/world/chunk_coord.hpp:38` (doc §D2).
+- **Presence is map membership, not allocation.** `clear()` makes a field chunk
+  logically *absent* (D4 then reads its cells as **occupied**) while its dense
+  buffer goes to a free list for reuse — that is how Pattern B and D4 coexist.
+  A present all-zero chunk means "all free" and is the *opposite* state; never
+  evict one because `nonZeroCount_ == 0` (doc §D2).
 - **Region labels are epoch-scoped.** Global ids are *not* stable across
   `update()`. Caching a label across an update and comparing it later is a bug.
 

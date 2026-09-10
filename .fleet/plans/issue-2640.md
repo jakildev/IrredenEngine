@@ -226,7 +226,18 @@ not a default-pass.
 
 - **C2**: per-chunk nonzero/min/max match a brute-force recount after
   randomized `setCell` sequences (seeded); dirty set is exactly the
-  mutated chunks; bucket capacity retained across `clear()` (Pattern B).
+  mutated chunks; bucket capacity retained across `clear()` (Pattern B);
+  negative-cell mapping — cells -33/-32/-1/0/31 map to the D2 chunk+local
+  table, `setCell` at (-1,-1) reads back through chunk (-1,-1) local
+  (31,31), and a truncating-division reference mapping is asserted to
+  *differ* on the negative arm (the positive half-space alone cannot
+  distinguish the two spellings); presence/`clear()` both halves — after
+  `clear()` no touched key is present via lookup *and* iteration, and a
+  refill reuses retained buffers with no new allocation; a present all-zero
+  chunk is never evicted and still reads free; dirty lifecycle — no-op
+  `setCell` does not dirty, a value change does, `clear()` of a live chunk
+  reports that key dirty, `update()` clears the set, a later mutation
+  re-dirties it.
 - **C3**: the issue's named cross-boundary test — an occupied cell in a
   *neighboring* chunk within radius r shrinks clearance at this chunk's
   edge (asserted as a strict decrease vs. the empty-neighbor control);
@@ -234,7 +245,12 @@ not a default-pass.
   as an occupied one does; cap — clearanceSq saturates at
   `maxClearance²` on an empty field (asserted equal, not ≤); incremental ≡
   full — randomized mutation sequences (seeded), dirty-window recompute
-  byte-equals a from-scratch rebuild.
+  byte-equals a from-scratch rebuild; numeric domain (D4) — a field at
+  `maxClearance = kMaxClearanceCells` (1024) saturates at exactly 1,048,576,
+  construction accepts 1 and 1024 and rejects 0 and 1025 (both arms), and
+  the 1-D pass over a window row longer than 46,340 cells equals an int64
+  reference (the row length at which an int32 intermediate would overflow
+  regardless of the clearance cap).
 - **C4**: an L-shaped free region spanning ≥ 3 chunks gets one label; a
   wall splitting it yields two labels with the wall's chunks re-stitched
   correctly; incremental relabel ≡ full relabel over seeded mutations.
@@ -246,7 +262,10 @@ not a default-pass.
   fewer than K valid cells returns exactly the valid count; **pruning
   fires** — on a mostly-low-clearance fixture, `PlacementQueryStats`
   reports `chunksPruned > 0` and `chunksConsidered <` total resident
-  chunks (the cost-proportionality observable); end-to-end — build
+  chunks (the cost-proportionality observable); out-of-domain params
+  rejected at each boundary — `minSpacing` 1025 and `c` = maxClearance+1
+  rejected, adjacent in-domain 1024 and maxClearance accepted (both arms);
+  end-to-end — build
   occupancy → `update()` → query returns K chunk-qualified hits honoring
   clearance + spacing + region + anchor bias under a fixed seed.
 
@@ -255,6 +274,13 @@ not a default-pass.
 - `std::uniform_*_distribution` is not portable across standard libraries —
   the kit maps raw PCG32/mt19937 words itself (D7). No libm (`sin`/`cos`)
   in the draw path — rejection-sample the annulus (D6).
+- The squared representation has a **bounded domain**:
+  `kMaxClearanceCells = 1024` caps `maxClearance`, `minSpacing` and the
+  query radius `c`, because int32 `n²` overflows at n = 46,341.
+  Separately, every EDT intermediate is int64 — the F-H
+  parabola term `f[q] + q²` is bounded by the *window row length*, not by
+  the clearance cap, so the cap alone does not make the pass safe. Seeding
+  free cells with `INT32_MAX` is the classic form of this bug.
 - The D4 ring widths are the classic off-by-one: compute window =
   2·maxClearance ring, write-back = 1·maxClearance ring. Writing back the
   full window corrupts apron cells whose true nearest obstacle lies

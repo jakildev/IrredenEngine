@@ -98,20 +98,108 @@ exists would lock a shape nobody has exercised.
 **dense 32×32 cell chunks** (`kFieldChunkEdge = 32`, compile-time, so cell↔chunk
 indexing is shift/mask, never divide).
 
+**Cell → chunk is floor division; shift/mask is how it is spelled.** Cells are
+signed (D1, D3), so the mapping has to be stated rather than left to the
+reader's default:
+
+```cpp
+constexpr int kFieldChunkEdge      = 32;
+constexpr int kFieldChunkShift     = 5;    // log2(kFieldChunkEdge)
+constexpr int kFieldChunkLocalMask = 31;   // kFieldChunkEdge - 1
+
+// cell -> owning chunk coord, and the cell's index within that chunk
+chunk.x = cell.x >> kFieldChunkShift;      // arithmetic shift
+local.x = cell.x &  kFieldChunkLocalMask;
+```
+
+In C++23 (the engine's standard — `CMakeLists.txt:16`) both halves are
+**defined**, not implementation-defined: `E1 >> E2` on a negative signed `E1`
+yields `floor(E1 / 2^E2)`, and `&` reads the mandated two's-complement
+representation. So shift/mask *is* floor-divide with a non-negative remainder,
+for negative cells exactly as for positive ones. The boundary cases C2 pins:
+
+| cell | chunk | local | that chunk owns cells |
+|---|---|---|---|
+| `-33` | `-2` | `31` | `[-64, -33]` |
+| `-32` | `-1` | `0`  | `[-32, -1]` |
+| `-1`  | `-1` | `31` | `[-32, -1]` |
+| `0`   | `0`  | `0`  | `[0, 31]` |
+| `31`  | `0`  | `31` | `[0, 31]` |
+
+**Truncating division is the wrong answer, and it is the one a reader reaches
+for.** `-1 / 32` is `0` and `-1 % 32` is `-1`, so cell `(-1, -1)` would claim
+chunk `(0, 0)` at local index `(-1, -1)` — a negative index into a dense 32×32
+array, and a disagreement with the shift form at **every** negative chunk
+boundary. Two implementations that each map cells to chunks the "obvious" way
+agree perfectly over the positive half-space and silently disagree over the
+negative one, which is why C2 asserts the truncating form *differs* rather than
+only asserting the shift form's results.
+
+The voxel-side residency helper documents this same requirement —
+`engine/prefabs/irreden/world/chunk_coord.hpp:38`, "for negative numerators we
+need floor (toward -infinity) so a world voxel at -1 lands in chunk -1, not
+chunk 0" — and reaches it with an explicit correcting divide. The rule is
+identical; only the spelling differs. Both must agree, because a caller
+straddling the two spaces (see "Relationship to residency chunks") converts
+between them.
+
+
 Per-chunk summary, maintained beside the cells:
 
 | Field | Maintenance |
 |---|---|
 | `min_`, `max_` | refreshed by whole-chunk passes (a `setCell` cannot cheaply repair a `min`) |
 | `nonZeroCount_` | incremental on every `setCell` |
-| `dirty_` | set on any `setCell` that changes a value; cleared by `update()` |
+| `dirty_` | set on any `setCell` that changes a value **and on any `clear()` of a live chunk**; cleared by `update()` |
 
 Allocation discipline is `SpatialGrid`'s **allocation Pattern B**
 (`spatial_grid.hpp:13-20`): buckets retain capacity across rebuilds, `clear()`
-empties touched chunks without freeing them, and queries write into
-**caller-owned** out-vectors. ("Pattern B" is overloaded in tree — the *API
+releases touched chunks without freeing their buffers (see below), and queries
+write into **caller-owned** out-vectors. ("Pattern B" is overloaded in tree — the *API
 shape* sense in `engine/prefabs/irreden/render/CLAUDE.md` is a different thing.
 Always say *allocation* Pattern B and cite `spatial_grid.hpp:13`.)
+
+**When the summaries are current.** `min_`/`max_` are refreshed by
+`PlacementField::update()`, for every chunk in the dirty set, as part of the
+same pass that recomputes clearance and labels — and nowhere else. They are
+therefore authoritative immediately after `update()` and may be stale for any
+chunk mutated since. D8's chunk-first pruning reads them, so querying a field
+with a non-empty dirty set is a **precondition violation, not a stale-but-safe
+read**: a stale `max_` prunes a chunk that now holds valid cells, and the query
+returns too few hits with nothing to indicate why.
+
+#### Presence vs. retained storage — what `clear()` means
+
+D4 reads a cell outside any **present** chunk as *occupied*, so "present" is a
+semantic state, not an allocation detail — while allocation Pattern B retains
+buffers across rebuilds. Those two facts collide unless presence and allocation
+are tracked separately. They are:
+
+| | Meaning | Where it lives |
+|---|---|---|
+| **present** | this chunk's cells are authoritative; D4 reads them | membership in the `unordered_map` |
+| **retained** | a dense 32×32 buffer kept for reuse, owned by no key | a free list of detached buffers |
+
+- **`clear()` makes touched chunks logically ABSENT**, detaching their buffers
+  to the free list rather than freeing them. The next chunk created at any key
+  takes a buffer off that list, so capacity survives (Pattern B) while presence
+  does not.
+- **There is no present-but-stale chunk.** Presence *is* map membership, so
+  lookup and iteration cannot observe a retained buffer — iteration walks the
+  map, never the pool. That is the whole point of the split: a zero-filled chunk
+  left logically present would read as *all free* under D4, the exact inverse of
+  the absent rule, silently turning a conservative region permissive.
+- **`nonZeroCount_ == 0` does not imply absence, and must never trigger
+  eviction.** In the occupancy layer a present all-zero chunk means "every cell
+  here is free" — a legitimate, load-bearing state and the exact *opposite* of
+  absent, which D4 reads as all-occupied. Dropping it "to save memory" flips
+  those cells to occupied. `ChunkedField2D` is generic storage and cannot know
+  a layer's zero semantics, so the rule is stated at the storage level: nothing
+  but an explicit `clear()` ever removes a chunk.
+- **Clearing a live chunk marks it dirty.** Its key stays in the dirty set even
+  though the chunk is gone — C3's recompute window must cover it, because
+  removing a chunk raises its neighbours' clearance exactly as removing
+  obstacles does (D4).
 
 ### D3 — key packing
 
@@ -137,6 +225,59 @@ boundary at ±2^31 cells, past any addressable world.
 
 Clearance is stored as `std::int32_t` **squared** cell distance to the nearest
 occupied cell, **saturated at `maxClearance²`** (a per-field cap in cells).
+
+#### The numeric domain — because `std::int32_t` squared is not unbounded
+
+"Exact, byte-identical" holds only inside a declared domain, and that domain has
+to be enforced or the guarantee is void. `std::int32_t` tops out at
+`2,147,483,647`, so `n²` is exact up to `n = 46,340` and **overflows at
+46,341** — signed overflow, i.e. UB, not wraparound. An unbounded
+`maxClearance` therefore makes the *saturation constant itself*
+(`maxClearance²`) undefined, and an unbounded query radius does the same to the
+`c*c` on the query side. All three parameters are bounded:
+
+```cpp
+constexpr int kMaxClearanceCells = 1024;   // domain ceiling, in cells
+```
+
+| Parameter | Domain | Enforced at |
+|---|---|---|
+| `maxClearance` (per field) | `[1, kMaxClearanceCells]` | `PlacementField` construction |
+| `minSpacing` (D6) | `[0, kMaxClearanceCells]` | `queryPlacements` param validation |
+| query radius `c` (D6) | `[0, maxClearance]` | `queryPlacements` param validation |
+
+`1024`, not `46,340`: a ceiling set at the representational limit is a ceiling
+in name only. `1024² = 1,048,576` leaves ~2048× headroom under `INT32_MAX`, and
+D4's incremental window is a `2·maxClearance` ring — at 1024 that is already 64
+chunks per side, well past the point where a full rebuild is the cheaper call.
+The bound that keeps the arithmetic exact and the bound that keeps the window
+sane are the same bound.
+
+**`c > maxClearance` is rejected, not clamped.** Saturation means a stored
+`maxClearance²` reads "at least the cap", never "exactly the cap", so the field
+cannot answer a question posed beyond its own cap. Clamping would answer a
+different question than the caller asked; letting it through returns `false` for
+cells that genuinely have that clearance — a false negative indistinguishable
+from "no space anywhere", which is the failure mode a caller cannot debug.
+Rejecting turns it into a caught precondition.
+
+**Intermediates are `std::int64_t`; only the stored representation is int32.**
+The domain bound above is necessary but *not* sufficient, because the F–H 1-D
+pass's parabola intersection
+
+```
+s = ((f[q] + q²) − (f[v] + v²)) / (2q − 2v)
+```
+
+uses `q`, `v` as coordinates **along the window row**, bounded by the window's
+cell extent — not by `kMaxClearanceCells`. A window row need only exceed 46,340
+cells for `q²` alone to overflow int32, independent of the clearance cap. So the
+pass computes in `int64`, seeds free cells with an `int64` sentinel (the classic
+F–H bug is seeding `INT32_MAX` and then evaluating `f[q] + q²`), and narrows
+only on write-back, where saturation guarantees the value is
+`≤ maxClearance² ≤ 1,048,576`. `int64` covers any window a machine can allocate:
+`q ≤ 2^31` gives `q² ≤ 2^62`.
+
 
 - **All integer, no `sqrt`, ever.** Queries compare `c*c <= clearanceSq`.
   Felzenszwalb–Huttenlocher's two separable 1-D passes are exact for squared
@@ -240,11 +381,23 @@ struct PlacementQueryStats {
     int candidatesDrawn_  = 0;
 };
 
+struct PlacementParams {
+    IRMath::ivec2 anchor_{};
+    int           k_          = 0;   // hits wanted; early-out at K (D6)
+    int           minSpacing_ = 0;   // cells, [0, kMaxClearanceCells]
+    int           clearance_  = 0;   // "c", cells, [0, field.maxClearance()]
+    bool          sameRegionAsAnchor_ = false;
+    std::uint64_t seed_       = 0;   // D7
+};
+
 class PlacementField {                       // owns the three layers
     ChunkedField2D<std::uint8_t> occupancy_;
-    ChunkedField2D<std::int32_t> clearanceSq_;
+    ChunkedField2D<std::int32_t> clearanceSq_;   // saturated at maxClearance²
     /* region labels */
+    int maxClearance_ = 0;                       // [1, kMaxClearanceCells]
   public:
+    explicit PlacementField(int maxClearance);   // rejects out-of-domain (D4)
+    int  maxClearance() const { return maxClearance_; }
     void update();   // EDT + relabel over the occupancy dirty set, then clear it
 };
 
@@ -259,6 +412,11 @@ void queryPlacements(
 
 - **Chunk-first pruning**: a chunk whose summary `max_ < c*c` in the clearance
   layer cannot contain a valid cell and is skipped without touching a cell.
+- **Domain validation is a precondition check, not a silent clamp** —
+  `queryPlacements` rejects a `PlacementParams` outside D4's domain table
+  rather than clamping into it, for the reason D4 gives: a clamped query
+  answers a question the caller did not ask, and its false negatives are
+  indistinguishable from "no space anywhere".
 - **The stats out-struct is not a nicety** — it is what makes pruning and
   cost-proportionality *observable*, and therefore testable. Without it, "cost
   is proportional to touched chunks" is an unfalsifiable claim.
@@ -382,14 +540,35 @@ default-passes:
 
 - **C2** — per-chunk `nonZeroCount_`/`min_`/`max_` match a brute-force recount
   after seeded randomized `setCell` sequences; the dirty set is *exactly* the
-  mutated chunks; bucket capacity survives `clear()` (allocation Pattern B).
+  mutated chunks; bucket capacity survives `clear()` (allocation Pattern B);
+  **negative-cell mapping** — cells `-33 / -32 / -1 / 0 / 31` map to D2's
+  chunk+local table, a `setCell` at `(-1, -1)` is read back through chunk
+  `(-1, -1)` local `(31, 31)`, and a truncating-division reference mapping is
+  asserted to **differ** on the negative arm (without that arm the test passes
+  on the positive half-space alone, which is exactly how the two spellings
+  agree for the wrong reason); **presence/`clear()` both halves** — after
+  `clear()` no touched key is present (lookup and iteration both observe
+  absence, so D4 reads those cells as occupied) *and* a refill reuses the
+  retained buffers with no new allocation (a capacity-only assertion passes
+  while stale zero-filled chunks stay logically present, which is the bug);
+  a present all-zero chunk survives `update()` un-evicted and still reads
+  *free*, distinguishing it from absent; **dirty lifecycle** — a no-op
+  `setCell` does not dirty, a value-changing one does, `clear()`ing a live
+  chunk reports that key as dirty, `update()` clears the set, and a later
+  mutation re-dirties it.
 - **C3** — an occupied cell in a **neighbouring** chunk within radius r shrinks
   clearance at this chunk's edge (asserted as a strict decrease against an
   empty-neighbour control, not merely as a bound); an **absent** neighbour chunk
   clamps edge clearance exactly as an occupied one does (the conservatism rule);
   `clearanceSq` saturates *equal to* `maxClearance²` on an empty field;
   incremental recompute **byte-equals** a from-scratch rebuild over seeded
-  mutation sequences.
+  mutation sequences; **numeric domain (D4)** — a `PlacementField` at
+  `maxClearance = kMaxClearanceCells` saturates at exactly `1,048,576` with no
+  overflow, construction accepts `1` and `kMaxClearanceCells` and rejects `0`
+  and `kMaxClearanceCells + 1` (both arms, so the check cannot pass by
+  rejecting everything), and the 1-D pass is run over a window row long enough
+  that an int32 intermediate would overflow (> 46,340 cells) and asserted equal
+  to an `int64` reference.
 - **C4** — an L-shaped free region spanning ≥3 chunks gets one label; a wall
   splitting it yields two, with the wall's chunks re-stitched correctly;
   incremental relabel ≡ full relabel over seeded mutations.
@@ -400,9 +579,12 @@ default-passes:
   anchor's region on a two-region fixture; a K-shortfall fixture returns exactly
   the valid count; **pruning fires** — `PlacementQueryStats` reports
   `chunksPruned_ > 0` and `chunksConsidered_ <` the resident chunk total on a
-  mostly-low-clearance fixture; and one end-to-end fixture builds occupancy →
-  `update()` → query and gets K chunk-qualified hits honouring clearance,
-  spacing, region and anchor under a fixed seed.
+  mostly-low-clearance fixture; **out-of-domain params are rejected** at each
+  boundary — `minSpacing = kMaxClearanceCells + 1` and `c = maxClearance + 1`
+  rejected, the adjacent in-domain values `kMaxClearanceCells` and
+  `maxClearance` accepted (both arms); and one end-to-end fixture builds
+  occupancy → `update()` → query and gets K chunk-qualified hits honouring
+  clearance, spacing, region and anchor under a fixed seed.
 
 Cross-cutting, for any reviewer of C2–C5:
 
@@ -410,6 +592,8 @@ Cross-cutting, for any reviewer of C2–C5:
   kit code in prefabs goes through `IRMath::`. `test/**` is outside that rule's
   scope.
 - No `sqrt` and no libm transcendental on any path in D4 or D6.
+- Every squared-distance intermediate is `std::int64_t`; `std::int32_t` appears
+  only as the stored representation, where saturation bounds it (D4).
 - No `std::uniform_*_distribution` anywhere (D7).
 
 ## References
