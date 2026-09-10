@@ -7,7 +7,7 @@ carried by its children; this file exists to hold the ledger).
 ## Steward ledger
 
 reconciled-through: 2026-09-10 (first steward claim — heal-on-first-claim)
-proposal-pending: STEWARD PROPOSAL 2026-09-10 on #608
+proposal-pending: https://github.com/jakildev/IrredenEngine/issues/608#issuecomment-5619958711
 
 ### Children
 
