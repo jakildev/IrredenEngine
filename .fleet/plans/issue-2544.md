@@ -192,7 +192,15 @@ suites green, pan/yaw jitter sweeps SMOOTH, clean exits.
 
 ## Steward ledger
 
-reconciled-through: ruling distribution 2026-09-10 (architect ruling
+reconciled-through: design-block triage of PR #3170 (2026-09-10, second pass
+of the day). Code-side still unchanged: PR #2659 merge (2026-08-04T17:56:47Z,
+master `e640a5b1`) is the last child merge. What moved is that **#2669's work
+now exists** — PR #3170 implements D11 in full and measures the ratified policy
+non-idempotent at non-zero yaw; it is parked `fleet:design-proposed` pending a
+ruling (F7). The morning entry stands below and is superseded only on the point
+that "what remains is ordinary worker execution": it is not — see F7.
+
+Prior marker (2026-09-10 morning): ruling distribution (architect ruling
 2026-09-10T05:11:51Z on the 2026-09-09 package -> **D13** here and **A3** on
 `issue-2669.md`). Code-side unchanged: PR #2659 merge (2026-08-04T17:56:47Z,
 master `e640a5b1`) - P4 (#2548) reconciled, and no child has merged since.
@@ -202,7 +210,18 @@ discharged: it is triaged, and its projected task row reads `blocked: false`,
 pickable. What remains is ordinary worker execution, not an administrative
 wait. The close-out Findings F1 and F3-F6 gate independently (F2 discharged by
 D12).
-proposal-pending: **none** - the 2026-09-09 package
+proposal-pending: **LIVE — the 2026-09-10 package**
+https://github.com/jakildev/IrredenEngine/issues/2544#issuecomment-5619423836
+(four novel questions from PR #3170's `## NEEDS-DESIGN`, plus a correction to
+**D11's own grounds of record**; `fleet:steward-proposal` applied). **No timed
+fallback is attached and none will be** — this ask has exactly one resolution
+edge, the responder answering it and removing the label (#3152). Re-audit this
+marker against live GitHub before any future rollup: this epic's own history is
+the argument for it (see the note on issue-scoped rulings below), and a pending
+package decays — its subject PR can merge or its recommended option evaporate
+while nobody looks.
+
+History: the **2026-09-09** package
 https://github.com/jakildev/IrredenEngine/issues/2544#issuecomment-5597103876
 was **answered 2026-09-10** by the architect ruling
 https://github.com/jakildev/IrredenEngine/issues/2544#issuecomment-5613521935,
@@ -229,7 +248,7 @@ and distributed 2026-07-29 as A2/A3 + the `## Steward direction` on PR #2585.
 | #2546 | merged | #2576 | plan | 2026-07-29 (PR #2576 merge) |
 | #2547 | merged | #2585 | plan + A1–A2 | 2026-08-01 (PR #2585 merge) |
 | #2548 | merged | #2659 | epic §Phase 4 + A5 (no child file) | 2026-08-04 (PR #2659 merge) |
-| #2669 | open - **triaged 2026-09-10** (option (a); the 40-day administrative gate is discharged, task row `blocked: false` / `owner: free`) | - | plan (A3; was A2, A1, stub) | 2026-09-10 (ruling distribution) |
+| #2669 | open — triaged 2026-09-10 (option (a)); **implemented and design-blocked the same day** — PR #3170 carries the full A2/D11 change and is parked `fleet:design-proposed` pending the 2026-09-10 ruling (F7) | #3170 | plan (A4; was A3, A2, A1, stub) | 2026-09-10 (PR #3170 triage) |
 
 The PR column above was carrying `fleet:needs-windows-smoke` / `fleet:needs-human`
 on the #2546 and #2547 rows. Those are volatile merge/review labels, which
@@ -673,6 +692,34 @@ exception: it has a worker-authored `.fleet/plans/issue-2546.md`.
   open. **The epic is now 4/5 with its last child planned, queued and pickable;
   the remaining close-out gates are the Findings, not the checklist.**
 
+
+- 2026-09-10 (second pass): **#2669's implementation arrived and immediately
+  design-blocked.** PR #3170 (worker, pool-1/macOS) implements A2/D11 in full —
+  the `IRRender::DefaultPivotLatch` extraction, the rotation-start edge, an
+  11-arm headless guard with two negative controls, and the
+  `camera-yaw-pivot.md` amendment — and measures the **ratified policy**
+  non-idempotent at non-zero yaw: `pivot-verify.py --zoom 4 --zoom 8` goes
+  **16/16 on master → 10/16 on the branch**, arm-to-arm on one macOS/Metal host
+  in one session. All four `## NEEDS-DESIGN` questions classify NOVEL (each asks
+  whether to change what D11 ratified), so the flow-a novel path ran:
+  `fleet-transition design-propose 3170`, package posted
+  (https://github.com/jakildev/IrredenEngine/issues/2544#issuecomment-5619423836),
+  `fleet:steward-proposal` applied, `## Steward — parked pending ruling` on
+  #3170. Recorded as **F7**, per the escalation rule for a trigger that
+  contradicts a recorded Decision. Scope-drift audit: none — the branch is
+  in-scope for A2's five criteria and delivers criterion 4's guard; it is the
+  *policy* that is in question, not the diff. Downstream siblings: none open.
+  Two things this pass added beyond triage, both re-derived from the tree:
+  **D11's cost ground for closing option 3 is misread** (see F7), and
+  `pivot-verify.py`'s constant-focus gate is the *idempotence oracle*, not a
+  stale pre-amendment artifact — which reprices the "accept the walk" option
+  from "redesign the harness" to "delete the only check that sees the defect".
+  Also posted a `## Steward note — do not claim this yet` on #2669
+  (https://github.com/jakildev/IrredenEngine/issues/2669#issuecomment-5619432534):
+  the issue was still `fleet:queued` / `owner: free` / `blocked: false` with its
+  own solution sitting parked, because flow a's park marks the PR and nothing
+  marks the issue.
+
 ### Findings (close-out gate — beyond the checklist)
 - **F1 — DISCHARGED 2026-08-04 (#2645 closed via PR #2648).** Was: `focus-ctr-sdf`
   is the only red pass, and its "pre-existing" attribution is inferred from
@@ -732,6 +779,67 @@ exception: it has a worker-authored `.fleet/plans/issue-2546.md`.
   acceptance 2 (marker gone after release) is met, and no closing criterion names
   the fade. It is here so close-out records the criterion as *amended and owned*
   rather than silently met.
+
+- **F7 (new 2026-09-10) — D11 is contradicted by its own implementation's
+  measurement, and D11's recorded *ground* is separately misread.** Two
+  independent defects, both from PR #3170; open, gating close-out, and the
+  subject of the live 2026-09-10 package.
+
+  **(i) The ratified policy is not idempotent at non-zero yaw.**
+  `getDefaultRotationPivotFocus()` is `isoPixelToPos3D(getViewCenterIso(),
+  latchedDepth)` — an expression with **no yaw term**
+  (`engine/math/include/irreden/ir_math.hpp:321-326`), which
+  `render_manager.cpp:292-307` documents as load-bearing: the depth-only latch is
+  what keeps `d getEffectiveCameraIso() / d cameraIso` equal to the transform
+  `IRMath::cameraMoveRelativeToYaw` pre-compensates a pan by. So a depth read at
+  yaw != 0 pins a point that is not the one under the crosshair; that shifts
+  `effCam`, which changes what the next derive reads. #2669's body already said
+  *"only `yaw == 0` is a fixed point of that map"* — what D11 did not carry
+  forward is the interaction with derive **frequency**. The pre-amendment policy
+  derives once and eats the error once; a derive per rotation start **iterates**
+  a map that is not a contraction. Measured: `pivot-verify.py --zoom 4 --zoom 8`
+  **16/16 → 10/16**, the focus walking `(19.17,-4.83,7.17)` → `(13.5,-10.5,1.5)`
+  → `(12,-12,0)` (the depth-0 background fallback,
+  `render_manager.cpp:376-391`). **Steward corroboration, independent of the
+  worker's narrative:** the failure count is *predicted* by the stated cause —
+  `ALL_BLOCKS` is 7 and `SDF_BLOCKS` is 1 (`scripts/pivot-verify.py:82-84`), so
+  two zooms is 16 passes (the "16" and A8's "7 blocks" agree; no discrepancy for
+  a later reader to chase), and the 6 reds are exactly the three derived-focus
+  blocks that *can* walk × 2 zooms, with `background-center` (always depth 0)
+  and `cursor-latch` (explicit focus) unable to walk and measured unaffected.
+
+  **(ii) The ground on which D11 closed option 3 does not survive reading its
+  own citation.** D11 records, verbatim from the steward's 2026-08-01 package,
+  that `depth_probe.hpp` "documents the full-flush cost as the reason the probe
+  stays single-pixel and **debug-gated**, so an N-flush fixed-point loop would
+  build a **per-derive production path** on a primitive documented as too
+  expensive for one." The same header contradicts that at
+  `engine/prefabs/irreden/render/depth_probe.hpp:37-40`: *"The readback + `enc`
+  decode themselves live in `IRRender::` … **engine/render's own depth-aware
+  camera pivot consumes them**, and it sits upstream of this layer."* The
+  "strictly debug-gated" instruction (`:33-35`) scopes the **prefab-side debug
+  vocabulary** (`IRPrefab::DepthProbe`'s log line and its two regression
+  guards), not the `IRRender::` primitive — which `render_manager.cpp:376`
+  already calls unconditionally from `beginFrame`, at a rate
+  `render_manager.cpp:350-358` states outright: "on **every motion-stop frame of
+  a real drag**, not once at startup." The real comparison is N flushes per
+  rotation-gesture-start against 1 flush per motion-stop frame *already paid*,
+  at a strictly lower event rate. **This does not make option 3 cheap** — PR
+  #3170's shots 3–8 are evidence the map may not converge under iteration at
+  all, which is a better ground for the same conclusion. It does mean a Decision
+  is resting on a citation its own source contradicts, which is why the package
+  asks rather than quietly re-grounding it.
+
+  **What close-out must not do with this.** F7 is *not* discharged by the ruling
+  alone: whichever option is taken, close-out cites the option **and the sweep
+  result under it**. The pre-amendment 16/16 is not evidence for a policy that
+  changed, and — per the package's Q3 — a green sweep obtained by *re-speccing
+  the constant-focus oracle* is not evidence either, since that gate is the only
+  check in the tree that can observe (i). **F3 is unaffected and effectively
+  discharged**: its guard is `test/render/default_pivot_latch_test.cpp` (11 arms,
+  headless, host-independent), which survives every option on the table because
+  only `observeFrame`'s rotation-start clause is in question. Recording that
+  here rather than leaving it resting on an open PR's body.
 
 ## Amendments
 

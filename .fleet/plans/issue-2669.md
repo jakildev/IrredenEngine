@@ -252,3 +252,51 @@ the issue names. Only the symbol name drifted.
   option-2 contract), D13 (this ruling), A8 (the restated close-out bar), F3.
   Distributed to this issue as the `## Steward direction` comment
   https://github.com/jakildev/IrredenEngine/issues/2669#issuecomment-5614471328.
+
+### A4 — 2026-09-10 — trigger: PR #3170 design-blocked (flow-a triage, same day as A3)
+
+- **Decision:** **This plan is HELD, not open for re-implementation.** A2's ratified
+  option-2 policy has been implemented in full by **PR #3170** and the implementation
+  measured it **non-idempotent at non-zero yaw**: `scripts/pivot-verify.py --zoom 4
+  --zoom 8` goes **16/16 on `master` → 10/16 on the branch**, arm-to-arm on one
+  macOS/Metal host in one session, with the derived focus walking
+  `(19.17,-4.83,7.17)` → `(13.5,-10.5,1.5)` → `(12,-12,0)` across the sweep's eight
+  discrete rotation starts. All four of the PR's `## NEEDS-DESIGN` questions ask
+  whether to change what D11 ratified, so all four classify **NOVEL**: the PR is
+  parked `fleet:design-proposed` and the questions ride the 2026-09-10 steward
+  package on #2544
+  (https://github.com/jakildev/IrredenEngine/issues/2544#issuecomment-5619423836).
+  **A resuming worker should not re-derive this.** The extraction
+  (`IRRender::DefaultPivotLatch`), the 11-arm headless guard and the doc amendment on
+  #3170 survive every option on the table; only `observeFrame`'s rotation-start clause
+  and the doc's OPEN block are in question. The author to resume is #3170's author.
+- **Supersedes:** A3's closing clause — *"It is planned, unblocked and pickable; what
+  remains is ordinary execution."* That was accurate when written at 05:11Z and stopped
+  being accurate at 13:16Z the same day. It is **not** superseded as a statement about
+  triage (the issue is triaged, and A3's correction to the §"Pickup gate" banner
+  stands); it is superseded as a statement about what a claimant would find. Note that
+  the issue's *labels* still read `human:approved` / `fleet:queued` / `fleet:opus` and
+  its task row still reads `owner: free`, `blocked: false` — flow a's park marks the
+  **PR**, and nothing in the fleet marks the backing issue. The only signal available
+  to the role is a comment, posted at
+  https://github.com/jakildev/IrredenEngine/issues/2669#issuecomment-5619432534.
+- **Acceptance criteria:** **unchanged** — A2's five criteria stand verbatim, and PR
+  #3170's acceptance table evidences 1–5 against them. Criterion 4's guard (the one
+  that is also epic ledger **F3**) is delivered: `test/render/default_pivot_latch_test.cpp`
+  moves the camera between derives — pan-then-rotate with and without an intervening
+  still frame, rotate-twice, continuous rotation, paused drag, residual wobble, and the
+  non-default-pivot mode gate — and it is headless and host-independent, so it
+  discharges F3 on any host. What is *not* satisfied is the issue body's separate
+  `pivot-verify.py` criterion, and that is the design question, not a wiring defect.
+  **Whatever the ruling decides, close-out cites the option and the sweep result under
+  it**; the pre-amendment 16/16 is not evidence for a policy that changed.
+- **By:** epic-steward — source: PR #3170's `## NEEDS-DESIGN`
+  https://github.com/jakildev/IrredenEngine/pull/3170#issuecomment-5619289134 and its
+  measured arm-to-arm table; premises re-derived from the tree rather than transcribed
+  (`engine/math/include/irreden/ir_math.hpp:321-326` — no yaw term in the focus
+  expression; `engine/render/src/render_manager.cpp:292-307` — why it must not gain
+  one; `scripts/pivot-verify.py:82-84,223-226` — 7+1 blocks × 2 zooms = the 16, and the
+  constant-focus gate); epic ledger **F7** (which also records that D11's *ground* for
+  closing option 3 misreads `depth_probe.hpp`). Parked via
+  `fleet-transition design-propose 3170`; `## Steward — parked pending ruling` posted
+  on the PR.
