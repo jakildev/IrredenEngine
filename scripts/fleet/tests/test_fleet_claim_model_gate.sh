@@ -98,6 +98,12 @@ case "$1 $2" in
             1006)
                 exit 1
                 ;;
+            1007)
+                printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Model:** `sonnet`\n"}'
+                ;;
+            1008)
+                printf '%s' '{"state":"OPEN","labels":[],"body":"**Model:** [fable]\n"}'
+                ;;
             *)
                 echo '{"state":"OPEN","labels":[],"body":""}'
                 ;;
@@ -200,6 +206,26 @@ assert_exit "$actual" 2 "T-NNN form → exit 2 (migration hint)"
 echo "T11: garbage input rejected"
 actual=0; "$FLEET_CLAIM" claim "not-an-issue" test-agent 2>/dev/null || actual=$?
 assert_exit "$actual" 2 "garbage input → exit 2"
+
+# --- T12: decorated body fallback is resolved and gated --------------------
+echo "T12: opus role rejects backticked body **Model:** sonnet"
+actual=0; FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" claim 1007 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 1 "backticked body **Model:** sonnet, opus role → exit 1"
+
+# --- T13: reservation-role uses the same decorated-field reader ------------
+echo "T13: reservation-role resolves a bracketed body model"
+cat >"$FLEET_RESERVATIONS_DIR/test-agent.json" <<'JSON'
+{"task_id":"1008","branch":"claude/1008-test"}
+JSON
+actual_role=$("$FLEET_CLAIM" reservation-role test-agent)
+if [[ "$actual_role" == "worker" ]]; then
+    PASS=$((PASS + 1))
+    echo "  ok: bracketed body model maps reservation to worker"
+else
+    FAIL=$((FAIL + 1))
+    echo "  FAIL: bracketed body model did not map reservation to worker"
+    echo "        actual role: $actual_role"
+fi
 
 echo ""
 echo "PASS: $PASS  FAIL: $FAIL"

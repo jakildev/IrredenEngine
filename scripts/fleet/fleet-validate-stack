@@ -3,7 +3,7 @@
 
 Given an umbrella (epic) issue number, finds its child issues and asserts each
 body carries the structured fields the queue machinery actually reads — a
-standalone ``**Model:** opus|sonnet`` line, a standalone ``**Part of epic:**
+resolvable ``**Model:**`` field, a standalone ``**Part of epic:**
 #<umbrella>`` line, and (for every non-head child) a single-ref standalone
 ``**Blocked by:** #N`` line. Exits non-zero and prints each failure if any
 child is malformed.
@@ -197,8 +197,8 @@ def main():
         print(msg)
         return 0
     print("FAILED: %d of %d child issue(s) malformed (%d error(s), %d "
-          "warning(s)) — fix the bodies before `human:approved` (the queue "
-          "parsers cannot read prose / multi-ref forms)."
+          "warning(s)) — fix the bodies before `human:approved`; each "
+          "finding above names the affected consumer behavior."
           % (failed_children, n, result["n_errors"], result["n_warnings"]))
     return 1
 

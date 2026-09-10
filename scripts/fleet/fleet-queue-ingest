@@ -217,6 +217,7 @@ import json, os, re, subprocess, sys
 # scripts/fleet dir the module ships in (same pattern as the SCOPE_PY block).
 sys.path.insert(0, os.path.dirname(os.path.realpath(os.environ['INGEST_SELF'])))
 from fleet_blocked_by import blocker_refs, has_blocked_by_field
+from fleet_model_field import declared_class
 
 REPO_SLUGS = {"engine": "jakildev/IrredenEngine", "game": "jakildev/irreden"}
 
@@ -228,11 +229,6 @@ except Exception:
     print('0,0,0,0')
     sys.exit(0)
 
-# Body-field parsers mirror fleet-state-scout._parse_issue_field so we
-# label issues by the same fields the scout reads back out. (The `Blocked by:`
-# regexes + cross-repo ref routing now live in fleet_blocked_by.py — imported
-# above — so ingest, the scout, and fleet-claim share one parser; #1749.)
-MODEL_RE = re.compile(r'\*\*(?:Suggested\s+)?Model:\*\*\s*(.+?)(?:\n|$)', re.IGNORECASE)
 # Planning-gate escape hatch (#1456): an issue whose title or body names an
 # explicit "investigation spike" is worker-investigates-first by design and
 # queues without a plan file (architect-protocol.md §"Carve-offs are unplanned
@@ -531,17 +527,11 @@ for issue in pending:
     # and each maps to its own label. fable is opt-in for the genuinely
     # hard work (see FLEET.md "Model split"); the missing/unrecognized
     # default is fleet:opus, the workhorse class.
-    model_match = MODEL_RE.search(body)
-    model_text = (model_match.group(1).strip().lower() if model_match else '')
-    if 'fable' in model_text:
-        model_label = 'fleet:fable'
-    elif 'opus' in model_text:
-        model_label = 'fleet:opus'
-    elif 'sonnet' in model_text:
-        model_label = 'fleet:sonnet'
-    else:
-        model_label = 'fleet:opus'
+    model = declared_class(body)
+    if model is None:
+        model = 'opus'
         print(f'WARN issue {repo}#{n}: **Model:** field missing or unrecognized; defaulting to fleet:opus', file=sys.stderr)
+    model_label = f'fleet:{model}'
 
     if not has_blocked_by_field(body):
         print(f'WARN issue {repo}#{n}: **Blocked by:** field missing; scout will treat as unblocked', file=sys.stderr)

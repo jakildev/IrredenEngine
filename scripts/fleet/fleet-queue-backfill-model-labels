@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # fleet-queue-backfill-model-labels — one-time backfill of fleet:opus /
-# fleet:sonnet labels on existing fleet:queued open issues.
+# fleet:fable / fleet:opus / fleet:sonnet labels on existing queued issues.
 #
-# Reads each open `fleet:queued` issue's body for `**Model:** opus/sonnet`
+# Reads each open `fleet:queued` issue's body for its `**Model:**` field
 # and adds the corresponding label. Idempotent — skips issues that already
 # have a model-affinity label.
 #
@@ -44,8 +44,11 @@ issues=$(gh issue list --repo "$REPO" --label "fleet:queued" --state open \
     exit 1
 }
 
-python3 - "$issues" "$REPO" "$DRY_RUN" << 'PYEOF'
-import json, re, subprocess, sys
+BACKFILL_SELF="${BASH_SOURCE[0]}" python3 - "$issues" "$REPO" "$DRY_RUN" << 'PYEOF'
+import json, os, subprocess, sys
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(os.environ["BACKFILL_SELF"])))
+from fleet_model_field import declared_class
 
 issues = json.loads(sys.argv[1])
 repo = sys.argv[2]
@@ -63,10 +66,11 @@ for issue in issues:
         skipped += 1
         continue
 
-    # Classes are literal (fable | opus | sonnet), each with its own label;
-    # mirrors fleet-queue-ingest.
-    m = re.search(r'\*\*(?:Suggested\s+)?Model:\*\*\s*(opus|sonnet|fable)', body, re.IGNORECASE)
-    model = m.group(1).lower() if m else "opus"
+    # The shared reader keeps this minter aligned with fleet-queue-ingest.
+    model = declared_class(body)
+    if model is None:
+        model = "opus"
+        print(f"WARN issue {repo}#{num}: **Model:** field missing or unrecognized; defaulting to fleet:opus", file=sys.stderr)
     label = f"fleet:{model}"
 
     if dry_run:

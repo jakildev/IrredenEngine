@@ -6,7 +6,7 @@ an umbrella issue plus one child per phase, each child chaining
 ``fleet-claim``'s ``find-stackable-blockers`` predicate only read the
 **standalone** structured lines the template prescribes (SKILL.md step 5):
 
-    **Model:** <opus|sonnet>
+    **Model:** <fable|opus|sonnet>
     **Part of epic:** #<umbrella>
     **Blocked by:** #<prior>            # non-root children only
 
@@ -19,6 +19,10 @@ whether ``#A, #B`` on one line or several ``**Blocked by:**`` lines — are
 supported (#1296): the gate unions every ref and find-stackable-blockers
 live-resolves them. This module is the pure predicate half of
 ``fleet-validate-stack``; the executable supplies the ``gh`` I/O.
+
+The shared model-field reader also accepts decorated, list-item, suggested,
+and inline-metadata forms used by the live queue.  A second class token is
+qualifier prose and produces a warning while the first token controls routing.
 
 Severity split — a finding is an ``error`` only when it is an unambiguous
 template violation (no false-positive possible); it is a ``warn`` when the
@@ -35,6 +39,7 @@ import subprocess
 import sys
 
 import fleet_blocked_by
+from fleet_model_field import class_tokens
 
 # A child belongs to umbrella N if a body line *starts* with either the
 # canonical ``**Part of epic:**`` field or the condensed ``**Epic:**`` header
@@ -47,7 +52,6 @@ _EPIC_MEMBERSHIP_TMPL = r"^\*\*(?:Part of epic|Epic):\*\*\s+#{n}(?!\d)"
 _PART_OF_EPIC_TMPL = r"^\*\*Part of epic:\*\*\s+#{n}(?!\d)"
 _EPIC_HEADER_TMPL = r"^\*\*Epic:\*\*\s+#{n}(?!\d)"
 
-_MODEL_RE = re.compile(r"^\*\*Model:\*\* (fable|opus|sonnet)\b", re.MULTILINE)
 # Optional per-task effort override; when the line is present its value
 # must be one the dispatcher understands (scout drops invalid values).
 _EFFORT_LINE_RE = re.compile(r"^\*\*Effort:\*\*\s*(\S+)", re.MULTILINE)
@@ -109,8 +113,15 @@ def validate_child(body, umbrella, is_head):
     def warn(msg):
         findings.append({"severity": WARN, "msg": msg})
 
-    if not _MODEL_RE.search(b):
-        err("missing standalone `**Model:** fable|opus|sonnet` line")
+    model_tokens = class_tokens(b)
+    model = model_tokens[0] if model_tokens else None
+    if model is None:
+        err("missing or unrecognized `**Model:**` field (ingest will WARN and "
+            "default to `fleet:opus`; the scout leaves it untagged)")
+    elif len(model_tokens) > 1:
+        warn("`**Model:**` contains multiple class tokens; consumers read the "
+             "leading token `%s`, and later class tokens are qualifier prose"
+             % model)
 
     effort_m = _EFFORT_LINE_RE.search(b)
     if effort_m and effort_m.group(1).lower() not in _EFFORT_LEVELS:
