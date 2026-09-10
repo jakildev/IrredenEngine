@@ -119,7 +119,7 @@ Which of those exist yet is tracked in **one** place — the doc's "Migration
 status" table. Don't mirror per-file status here; two owners of the same
 status is how a file table starts lying.
 
-Four things to know before editing any of them:
+Before editing any of them:
 
 - **Not a system.** No `SystemName` entry, no component, no pipeline wiring —
   plain types and free functions, like `IRMath::SDF::evaluateGrid`. A field is
@@ -142,7 +142,14 @@ Four things to know before editing any of them:
   `maxClearance`, `minSpacing` and the query radius `c` are bounded by
   `kMaxClearanceCells = 1024`, because int32 `n²` overflows at `n = 46,341`; and
   every EDT intermediate is `int64` regardless, since the F–H term `f[q] + q²`
-  is bounded by the *window row length*, not by the cap (doc §D4).
+  is bounded by the *window row length*, not by the cap (doc §D4). **Every**
+  parameter has a domain row, the hits-wanted `k` included —
+  `[1, kMaxPlacementHits]`, bounded for a different reason (nothing about `k`
+  is squared), with `k ≤ 0` *rejected* rather than answered: absent a failure
+  sentinel, an accepted `k = 0` returns the same empty vector as a genuinely
+  full field. `PlacementParams`' `k_ = 0` default is out of domain on purpose,
+  so a default-constructed params object is a caught precondition, not a
+  query.
 - **Cell → field chunk is floor division, not truncating division.**
   `cell >> 5` / `cell & 31` — which in C++23 is exactly floor-divide with a
   non-negative remainder, so cell `(-1, -1)` is chunk `(-1, -1)` local
@@ -158,7 +165,12 @@ Four things to know before editing any of them:
   `update()`. Caching a label across an update and comparing it later is a bug.
 
 Allocation discipline is the same *allocation* Pattern B as `spatial_grid.hpp`
-(see above): chunks retain capacity, queries fill a caller-owned out-vector.
+(see above): chunks retain capacity, queries fill a caller-owned out-vector —
+and, as there, a query **clears that vector on entry** before it validates
+anything, so a rejected query leaves it empty and never appends to the previous
+call's results. `queryPlacements` additionally counts its own progress as
+`out.size()`, which only reads as "hits found this call" because of that clear;
+it is what bounds a result at `k` (doc §D6).
 
 Tests live in `test/ecs/`, beside `spatial_grid_test.cpp`, and each new `.cpp`
 must be added to the explicit `add_executable(IrredenEngineTest …)` list in

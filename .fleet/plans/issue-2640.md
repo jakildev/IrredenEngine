@@ -146,7 +146,14 @@ reviewable doc; children C2–C5 implement them):
   extension, not built). Validity per candidate: cell present,
   `clearanceSq ≥ c²`, and (optional flag) same region label as the anchor.
   Fewer than K reachable candidates → returns what it found; caller reads
-  `out.size()`.
+  `out.size()`. **K itself is bounded `[1, kMaxPlacementHits]`** — `k ≤ 0` is
+  rejected like `minSpacing = 0`, because with no failure sentinel an accepted
+  `k = 0` returns the same empty vector as a genuinely full field; the struct's
+  `k_ = 0` default is out of domain on purpose, so "forgot to set K" is caught
+  rather than silently answered. **`out` is cleared on entry, before
+  validation** (matching the composing sibling `SpatialGrid::queryRadius`), so a
+  rejected query leaves it empty and `out.size()` means "hits found this call" —
+  which is what makes the `out.size() ≤ k` bound hold.
 - **D7 — determinism.** The draw takes an explicit `uint64_t seed` and uses
   a kit-local `IRMath::Pcg32` (new, ~20-line header in `engine/math/`) —
   never `threadRng()` (thread-coupled) and never `std::*_distribution`
@@ -158,7 +165,11 @@ reviewable doc; children C2–C5 implement them):
   (`dx` then `dy`, a rejected attempt consuming both), a uniform draw for the
   active-list index with swap-and-pop removal, `kPlacementAttempts = 30`,
   only-accepted-candidates-become-samples with the anchor as the one
-  unconditional seed, and `out` in acceptance order. Plus the negative rule:
+  unconditional seed, and `out` in acceptance order. The skeleton's prologue is
+  contract too: clear `out`, then validate, then seed the anchor — validating
+  before seeding keeps a rejected query from mutating the active list and grid,
+  and clearing before validating makes "empty `out`" the one post-state of every
+  failed query under any spelling of "rejects". Plus the negative rule:
   nothing observable may derive from `unordered_map` iteration order — region
   ids are numbered in ascending packed `FieldChunkKey`, then row-major local
   index (D5). A reproducibility test locks the PCG32 stream itself; a
@@ -201,15 +212,15 @@ Child breakdown (each `Blocked by:` its predecessor; all `[opus]`):
   and one relationship line in `lua-world-space-neighbour-query.md`
   ("entities near P" ↔ "valid space near P").
 - **C2 — storage.** `chunked_field.hpp` (`ChunkedField2D<T>`, summaries,
-  dirty tracking, `FieldChunkKey`) + `test/spatial/chunked_field_test.cpp`.
+  dirty tracking, `FieldChunkKey`) + `test/ecs/chunked_field_test.cpp`.
 - **C3 — clearance.** `IRMath` 1-D squared-EDT kernel +
   `field_clearance.hpp` (capped windowed F–H per D4) +
-  `test/spatial/field_clearance_test.cpp`.
+  `test/ecs/field_clearance_test.cpp`.
 - **C4 — regions.** `field_regions.hpp` (per-chunk CCL + seam-stitch
-  union-find per D5) + `test/spatial/field_regions_test.cpp`.
+  union-find per D5) + `test/ecs/field_regions_test.cpp`.
 - **C5 — placement.** `IRMath::Pcg32` + `field_placement.hpp` (D6–D8:
   draw, composed `PlacementField`, query + stats) +
-  `test/spatial/field_placement_test.cpp` (including the end-to-end
+  `test/ecs/field_placement_test.cpp` (including the end-to-end
   acceptance fixture) + doc status flip in the C1 doc.
 
 ### Affected files
@@ -225,9 +236,9 @@ Child breakdown (each `Blocked by:` its predecessor; all `[opus]`):
 - `engine/math/include/irreden/math/edt.hpp` — new 1-D kernel (C3)
 - `engine/math/include/irreden/math/rng_pcg32.hpp` — new (C5)
 - `engine/math/include/irreden/ir_math.hpp` — include the two new headers (C3, C5)
-- `test/spatial/chunked_field_test.cpp`, `test/spatial/field_clearance_test.cpp`,
-  `test/spatial/field_regions_test.cpp`, `test/spatial/field_placement_test.cpp`
-  — new (C2–C5)
+- `test/ecs/chunked_field_test.cpp`, `test/ecs/field_clearance_test.cpp`,
+  `test/ecs/field_regions_test.cpp`, `test/ecs/field_placement_test.cpp`
+  — new (C2–C5), beside the composing sibling `test/ecs/spatial_grid_test.cpp`
 - `test/CMakeLists.txt` — add each new test file to the explicit
   `add_executable(IrredenEngineTest ...)` source list (C2–C5; a file not
   listed silently never builds)
@@ -281,11 +292,22 @@ not a default-pass.
   fires** — on a mostly-low-clearance fixture, `PlacementQueryStats`
   reports `chunksPruned > 0` and `chunksConsidered <` total resident
   chunks (the cost-proportionality observable); out-of-domain params
-  rejected at each boundary — `minSpacing` 0, `minSpacing` 1025 and
-  `c` = maxClearance+1 rejected, adjacent in-domain `minSpacing` 1, 1024
-  and maxClearance accepted (both arms); background-grid width pinned by
-  value — `gridWidth(r)` equals a `floor(r/sqrt(2))` reference (the test
-  may use libm; the kit may not) for every `r` in `[1, 1024]`, clamps to 1
+  rejected at each boundary — `minSpacing` 0, `minSpacing` 1025,
+  `c` = maxClearance+1, `k` 0, `k` -1 and `k` = kMaxPlacementHits+1 rejected,
+  adjacent in-domain `minSpacing` 1, 1024, maxClearance, `k` 1 and
+  `k` = kMaxPlacementHits accepted (both arms), and a default-constructed
+  `PlacementParams` asserted rejected (its `k_ = 0` is the mistake the default
+  invites); caller-output discipline — `out` pre-seeded with sentinels holds
+  none of them after a successful query, after a rejected one, and after a
+  query that finds nothing, and pre-seeding with `k` sentinels does **not**
+  suppress the draw (the arm that fails when `out.size()` is read as a progress
+  counter on an uncleared vector); no result exceeds K — `out.size() ≤ k` on the
+  shortfall and reach-K fixtures, plus `k = 1` over a valid anchor giving
+  exactly one hit and `candidatesDrawn_ == 0` (a bound alone passes on an
+  implementation that draws the whole frontier and truncates);
+  background-grid width pinned by value — `gridWidth(r)` equals a
+  `floor(r/sqrt(2))` reference (the test may use libm; the kit may not) for
+  every `r` in `[1, 1024]`, clamps to 1
   at `r = 1`, and gives `{239, 408, 478, 647, 717}` at
   `r ∈ {338, 577, 676, 915, 1014}` — the inputs where a truncated
   `0.7071` constant is one cell short, so that form fails;
@@ -336,9 +358,17 @@ not a default-pass.
 
 ### Sibling / in-flight reconciliation
 
-- No open engine PR touches `engine/prefabs/irreden/spatial/`,
-  `engine/math/`, or `test/spatial/` (checked against the live open-PR
-  set at planning time).
+- **In-flight set as of 2026-09-10**, scoped to the directories the children
+  actually write (`test/ecs/`, per correction 2 — not the `test/spatial/` an
+  earlier scoping named, where the answer is trivially "none"). No open engine
+  PR touches `engine/prefabs/irreden/spatial/` or `engine/math/`. Two touch
+  `test/ecs/`: #3157 and #3155, each adding new test files **and** editing
+  `test/CMakeLists.txt`'s explicit `add_executable(IrredenEngineTest ...)`
+  source list, which C2–C5 also edit one line each. Same shape as correction
+  1's `ir_math.hpp` collision — mechanical, expected on rebase, no design
+  overlap (no shared file beyond the source list; the new filenames are
+  distinct). A snapshot either way: C2–C5 re-derive their own in-flight set at
+  claim time.
 - #2564 (entity-anchored fog reveal, in planning concurrently) lives in
   the render fog surface (`C_CanvasFogOfWar`) — no file overlap; its cell
   grid is a *potential future consumer* of `ChunkedField2D`, not a
@@ -363,12 +393,15 @@ not a default-pass.
    **Status 2026-09-10: #2850 is MERGED, so the collision is retired.** C3/C5
    re-derive their own in-flight set at claim time rather than inheriting this
    line.
-2. **Test directory placement.** The plan minted a new `test/spatial/` while the
-   existing spatial coverage lives at `test/ecs/spatial_grid_test.cpp`
-   (registered at `test/CMakeLists.txt:43`). **Resolved: the kit's tests go in
-   `test/ecs/`**, next to the sibling they compose with — a second top-level
-   home for "spatial" tests costs a future reader a tree survey. Every
-   `test/spatial/…` path in the child breakdown above reads `test/ecs/…`.
+2. **Test directory placement — applied above, not pending.** The kit's tests
+   go in **`test/ecs/`**, beside the sibling they compose with
+   (`test/ecs/spatial_grid_test.cpp`, registered at `test/CMakeLists.txt:43`);
+   a second top-level home for "spatial" tests costs a future reader a tree
+   survey. The child breakdown and affected-files list above are written in
+   that spelling directly, so there is one current instruction and nothing to
+   translate at pickup time. Recorded here for the reasoning, not as pending
+   work: a correction note is not a safe thing to copy deliverables from, so
+   the literals it corrects do not get to stay standing beside it.
 
 Small note for C5 (not a gap): the acceptance bullet "honoring … anchor bias"
 is the one criterion that is not independently falsifiable — Bridson's

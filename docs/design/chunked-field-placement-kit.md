@@ -112,7 +112,8 @@ chunk.x = cell.x >> kFieldChunkShift;      // arithmetic shift
 local.x = cell.x &  kFieldChunkLocalMask;
 ```
 
-In C++23 (the engine's standard — `CMakeLists.txt:16`) both halves are
+In C++23 (the engine's standard — `set(CMAKE_CXX_STANDARD 23)` in the
+top-level `CMakeLists.txt`) both halves are
 **defined**, not implementation-defined: `E1 >> E2` on a negative signed `E1`
 yields `floor(E1 / 2^E2)`, and `&` reads the mandated two's-complement
 representation. So shift/mask *is* floor-divide with a non-negative remainder,
@@ -238,6 +239,7 @@ to be enforced or the guarantee is void. `std::int32_t` tops out at
 
 ```cpp
 constexpr int kMaxClearanceCells = 1024;   // domain ceiling, in cells
+constexpr int kMaxPlacementHits  = 65536;  // domain ceiling for K (D6)
 ```
 
 | Parameter | Domain | Enforced at |
@@ -245,6 +247,7 @@ constexpr int kMaxClearanceCells = 1024;   // domain ceiling, in cells
 | `maxClearance` (per field) | `[1, kMaxClearanceCells]` | `PlacementField` construction |
 | `minSpacing` (D6) | `[1, kMaxClearanceCells]` | `queryPlacements` param validation |
 | query radius `c` (D6) | `[0, maxClearance]` | `queryPlacements` param validation |
+| hits wanted `k` (D6) | `[1, kMaxPlacementHits]` | `queryPlacements` param validation |
 
 `1024`, not `46,340`: a ceiling set at the representational limit is a ceiling
 in name only. `1024² = 1,048,576` leaves ~2048× headroom under `INT32_MAX`, and
@@ -277,6 +280,38 @@ The asymmetry with `c` is deliberate: `clearance = 0` **is** valid, because
 `c*c = 0` makes the clearance predicate `0 <= clearanceSq`, vacuously true for
 every present cell — genuinely "no clearance requirement". Zero is a meaningful
 relaxation for `c` and a degenerate spelling for `minSpacing`.
+
+**`k <= 0` is rejected, and `PlacementParams`' default is deliberately out of
+domain.** `k` is the number of hits wanted, so zero asks the query to do
+nothing — and D6 gives the query no failure sentinel, meaning the caller reads
+the result only through `out.size()`. An accepted `k = 0` therefore returns the
+same empty vector as a genuinely full field, which is the exact ambiguity that
+gets `c > maxClearance` and `minSpacing = 0` rejected two paragraphs up. A
+negative `k` has no reading at all. One rule, `k >= 1`, covers both.
+
+That makes the struct's `k_ = 0` default *invalid by construction*, which is the
+point rather than an oversight: there is no meaningful default number of hits,
+and "forgot to set K" is the mistake the default invites. Under rejection that
+mistake names itself at the call site. The two alternatives both hide it: a
+skeleton that seeds the anchor before consulting `k` answers the default with
+**one** hit, and an early-return-empty arm answers it with **zero**, neither
+distinguishable from a field that had that much room.
+
+The cost is that a caller whose K is computed (`itemsRemaining`, say) must
+branch on zero rather than passing it through. That is one `if` at the call
+site, against an ambiguous empty vector everywhere downstream — the same trade
+D4 already takes for `c` and `minSpacing`, and taking it consistently is worth
+more than the branch.
+
+`kMaxPlacementHits = 65536` is a guard, not a working limit, and its bound is a
+different kind from `kMaxClearanceCells`' — nothing about `k` is squared, so
+there is no overflow to head off. It exists so that D8's "rejects a
+`PlacementParams` outside D4's domain table" covers every field of the struct,
+and so `static_cast<int>(out.size())` in D7's loop condition is provably in
+range whatever the caller passes. Any real draw terminates on active-list
+exhaustion long before it, and a caller wanting more than 65536
+anchor-proximate placements from a single seeded draw wants a whole-field bake
+instead of this query.
 
 **Intermediates are `std::int64_t`; only the stored representation is int32.**
 The domain bound above is necessary but *not* sufficient, because the F–H 1-D
@@ -369,6 +404,18 @@ Bridson Poisson-disk sampling, all-integer:
   the near-anchor bias comes from — Bridson's active-list frontier grows
   outward, so stopping at K yields anchor-proximate results without a weight
   function. Weighted bias is a recorded future extension, **not built**.
+- **`out` is cleared before anything else, and holds at most K hits.**
+  `queryPlacements` writes a caller-owned vector and clears it as its first
+  statement — not a new convention, the composing sibling does the same
+  (`spatial_grid.hpp:79`, `:108`). It is load-bearing here for a reason the
+  sibling does not have: D7's loop counts progress as `out.size()`, which only
+  means "hits found this call" on a vector that started empty. Without the
+  clear, a reused non-empty `out` either suppresses the draw outright
+  (`out.size() >= k` on entry) or overshoots K. With it, `out.size() <= k`
+  follows from the skeleton — the anchor contributes at most one, and the loop
+  tests before each of its at-most-one pushes per round. Where the clear sits
+  relative to param validation is D7's to lock, for the same reason the word
+  order is.
 - Per-candidate validity: the cell is present, `clearanceSq >= c*c`, and
   (optional flag) its region label equals the anchor's. A candidate that fails
   is discarded rather than kept as an obstacle — D7 states what that means for
@@ -481,6 +528,14 @@ IRMath::ivec2 drawAnnulusOffset(IRMath::Pcg32 &rng, int r) {
     }
 }
 
+// Clear first, then validate: a rejected query leaves `out` empty rather than
+// holding the previous call's hits, and everything below can read `out.size()`
+// as "hits found this call". (D6; `spatial_grid.hpp:79` does the same.)
+out.clear();
+validateOrReject(params);                        // D4 domain table — in
+                                                 // particular k_ >= 1, so there
+                                                 // is no zero-K path past here
+
 // active_ is a std::vector<ivec2> — an ordered container, never a set.
 active_ = { params.anchor_ };                    // the anchor is a sample
 gridInsert(params.anchor_);
@@ -560,6 +615,15 @@ What each line pins, and why that spelling:
   if it passes the same validity predicate — which is why D4 describes
   `minSpacing = 0`'s degenerate annulus as returning "at most one hit" rather
   than exactly one.
+- **The clear and the validation both precede the anchor seed, in that order.**
+  Two orderings that look like housekeeping are observable. Validating *before*
+  seeding is what stops an out-of-domain query from mutating the active list and
+  the background grid on its way to being rejected. Clearing *before* validating
+  is what makes "empty `out`" the single post-state of every failed query,
+  under any spelling of "rejects" — an assert, a returned status, or a no-op
+  return — which is why the contract can stay agnostic about which one D8 picks.
+  Because `k >= 1` is enforced here, the unconditional anchor seed below is
+  always seeding a draw that wants at least one hit.
 - **`out` is in acceptance order**, anchor first when the anchor is a hit.
   "Byte-identical results" means the same vector, not the same set.
 
@@ -607,7 +671,9 @@ struct PlacementQueryStats {
 
 struct PlacementParams {
     IRMath::ivec2 anchor_{};
-    int           k_          = 0;   // hits wanted; early-out at K (D6)
+    int           k_          = 0;   // hits wanted, [1, kMaxPlacementHits];
+                                     // early-out at K (D6). The default is
+                                     // out of domain on purpose (D4)
     int           minSpacing_ = 1;   // cells, [1, cap]; 1 == unconstrained (D4)
     int           clearance_  = 0;   // "c", cells, [0, field.maxClearance()]
     bool          sameRegionAsAnchor_ = false;
@@ -640,7 +706,13 @@ void queryPlacements(
   `queryPlacements` rejects a `PlacementParams` outside D4's domain table
   rather than clamping into it, for the reason D4 gives: a clamped query
   answers a question the caller did not ask, and its false negatives are
-  indistinguishable from "no space anywhere".
+  indistinguishable from "no space anywhere". The table covers **every** field
+  the caller sets, `k_` included; a default-constructed `PlacementParams` is
+  rejected, because `k_ = 0` is out of domain (D4).
+- **`out` is caller-owned and cleared on entry**, before validation, so a
+  rejected query leaves it empty and a successful one holds between zero and
+  `k_` hits (D6). Matches `SpatialGrid::queryRadius`/`queryAabb`
+  (`spatial_grid.hpp:79`, `:108`), the composing sibling.
 - **The stats out-struct is not a nicety** — it is what makes pruning and
   cost-proportionality *observable*, and therefore testable. Without it, "cost
   is proportional to touched chunks" is an unfalsifiable claim.
@@ -808,10 +880,26 @@ default-passes:
   the valid count; **pruning fires** — `PlacementQueryStats` reports
   `chunksPruned_ > 0` and `chunksConsidered_ <` the resident chunk total on a
   mostly-low-clearance fixture; **out-of-domain params are rejected** at each
-  boundary — `minSpacing = 0`, `minSpacing = kMaxClearanceCells + 1` and
-  `c = maxClearance + 1` rejected, the adjacent in-domain values
-  `minSpacing = 1`, `kMaxClearanceCells` and `maxClearance` accepted (both arms,
-  so the check cannot pass by rejecting everything); **the background-grid width
+  boundary — `minSpacing = 0`, `minSpacing = kMaxClearanceCells + 1`,
+  `c = maxClearance + 1`, `k = 0`, `k = -1` and `k = kMaxPlacementHits + 1`
+  rejected, the adjacent in-domain values `minSpacing = 1`,
+  `kMaxClearanceCells`, `maxClearance`, `k = 1` and `k = kMaxPlacementHits`
+  accepted (both arms, so the check cannot pass by rejecting everything), and a
+  **default-constructed `PlacementParams`** asserted rejected, since its
+  `k_ = 0` is the mistake the default invites (D4);
+  **the caller's output vector is cleared, not appended to** — `out` pre-seeded
+  with sentinel hits and asserted to contain none of them after a successful
+  query, after a *rejected* one (the clear precedes validation, D7 — so
+  "`k = 0` leaves `out` empty" holds even though zero is rejected rather than
+  early-returned), and after a query that finds nothing; and pre-seeding `out`
+  with `k` sentinels asserted **not** to suppress the draw, which is the arm
+  that fails if `out.size()` is read as a progress counter on an uncleared
+  vector; **no result exceeds K** — `out.size() <= k` asserted on the
+  K-shortfall fixture and on a free-field fixture that reaches K, plus the
+  sharp arm at `k = 1` over a fixture whose anchor is itself valid: exactly one
+  hit **and `candidatesDrawn_ == 0`**, since the early-out has to fire before
+  the loop draws its first word (an `out.size() <= k` bound alone passes on an
+  implementation that draws the whole frontier and truncates); **the background-grid width
   is pinned by value** (D6) — `gridWidth(r)` asserted equal to an independent
   `floor(r / sqrt(2))` reference for every `r` in `[1, kMaxClearanceCells]` (the
   reference may use `double` — `test/**` is outside the no-libm rule, the kit is
