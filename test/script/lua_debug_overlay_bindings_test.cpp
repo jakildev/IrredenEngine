@@ -321,9 +321,11 @@ TEST_F(LuaDebugOverlayBindingsTest, NonVectorArgumentRaisesInsteadOfDrawingAtOri
 
 // A WRONG-shaped vector userdata is the subtler half of the same contract.
 // `is<sol::table>()` is true for userdata, so a table-first shape check admits
-// every userdata; the mismatch then reaches `*FromLua`'s table branch and dies
-// indexing a metatable-less userdata. It raises either way — so these assert on
-// the MESSAGE, which is the part the contract actually promises.
+// every userdata — and past this guard the mismatch reaches `*FromLua`, which
+// returns its zero-default and draws silently at the origin. These assert on
+// the MESSAGE rather than merely that something raised: the message is the part
+// the contract promises, and it is what distinguishes this guard firing from an
+// error thrown somewhere downstream. See #2673.
 TEST_F(LuaDebugOverlayBindingsTest, WrongVectorUserdataTypeRaisesNamingTheArgument) {
     auto &lua = m_lua.lua();
     lua["v2"] = IRMath::vec2(1.0f, 2.0f);
@@ -359,6 +361,20 @@ TEST_F(LuaDebugOverlayBindingsTest, WrongVectorUserdataTypeRaisesNamingTheArgume
     // rejecting all userdata.
     run("IRDebug.drawLineScreen(v2, {3, 4}, 1, 0, 0)");
     EXPECT_EQ(IRDebug::getScreenLines().size(), 1u);
+}
+
+// `points` is validated as a CONTAINER, so it never goes through the per-type
+// `requireVecShape` above. `is<sol::table>()` is true for userdata, so a
+// table-first check here would let a userdata argument past this binding's own
+// message and die later on the `#` call instead. Assert the message, which is
+// what distinguishes the two. See #2673.
+TEST_F(LuaDebugOverlayBindingsTest, UserdataPathRaisesNamingTheArgument) {
+    m_lua.lua()["v3"] = vec3(1.0f, 2.0f, 3.0f);
+    EXPECT_TRUE(raisesWith(
+        "IRDebug.drawPath3D(v3, 1, 1, 1)",
+        "IRDebug.drawPath3D: 'points' must be an array table of vec3"
+    ));
+    EXPECT_TRUE(IRDebug::getLines().empty());
 }
 
 TEST_F(LuaDebugOverlayBindingsTest, NonTablePathRaises) {

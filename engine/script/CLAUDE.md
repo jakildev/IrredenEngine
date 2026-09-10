@@ -1849,6 +1849,13 @@ a table-first check returns early for every userdata and makes the
 per-type validation inert (#2610 — both reviewers misread the broken
 guard as discriminating).
 
+The `*FromLua` helpers above follow the same ordering internally (#2673), so
+a wrong-typed userdata now reaches their documented default instead of
+raising `attempt to index a userdata value` (metatable-less userdata) or
+silently reading the wrong vector's components through the registered
+usertype's `__index`. That is the contract, not a bad-type *error* — a
+binding that needs the caller told off still validates at the callsite.
+
 **`vec4FromLua` vs `quatFromLua`** read the same `IRMath::vec4` storage but
 default differently: `vec4FromLua` zero-defaults per the `vec3FromLua` contract,
 while `quatFromLua` identity-defaults (`w = 1`) because a zero quat is

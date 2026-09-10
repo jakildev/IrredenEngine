@@ -69,13 +69,13 @@ namespace IRScript::detail {
 //   1. The userdata check is per-vector-type. A shared any-IRMath-vector
 //      predicate admits a `vec2` where a `vec3` is wanted, and `vec3FromLua`'s
 //      userdata branch tests only `is<vec3>()`, so the mismatch falls through
-//      to that helper's table branch.
+//      to that helper's zero-default and draws silently at the origin.
 //   2. `sol::object::is<sol::table>()` is TRUE for userdata as well — sol2
-//      treats userdata as table-like. So a table-FIRST check admits every
-//      userdata regardless of (1), and the wrong-typed vector reaches
-//      `*FromLua`'s table branch, where indexing a metatable-less userdata
-//      raises a bare "attempt to index a userdata value" from inside the
-//      helper. Loud, but it names neither the argument nor the expected type.
+//      treats userdata as table-like — so a table-FIRST check here would admit
+//      every userdata regardless of (1), and the wrong-typed vector would reach
+//      `*FromLua` and come back as that helper's zero-default: a silent draw at
+//      the origin. The helpers carry the same ordering internally, for the same
+//      reason (see #2673).
 //
 // Hence: match the concrete usertype first, then the EXACT Lua table type.
 //
@@ -193,7 +193,7 @@ inline void bindDebugOverlay(LuaScript &script) {
     // deliberately not cached (bindings hold no cross-frame state).
     debug["drawPath3D"] =
         [](sol::object points, float r, float g, float b, sol::optional<float> a) {
-            if (!points.is<sol::table>()) {
+            if (points.get_type() != sol::type::table) {
                 throw sol::error{"IRDebug.drawPath3D: 'points' must be an array table of vec3"};
             }
             sol::table pointTable = points.as<sol::table>();

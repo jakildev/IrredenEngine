@@ -390,6 +390,67 @@ TEST_F(LuaComponentTest, Vec4AndQuatFieldsStoreAsNativeColumnAndRoundTrip) {
     EXPECT_FLOAT_EQ(t["w"].get<float>(), 0.4f);
 }
 
+// Every `writeFieldAt` arm leaves its column UNCHANGED when the incoming value
+// is the wrong type — that is how the int / float / string arms behave. The
+// vector arms must match the usertype BEFORE the table type to hold that line:
+// `is<sol::table>()` is TRUE for userdata, so a table-first test makes the
+// `|| is<IRMath::vec3>()` half dead and hands any userdata straight to the
+// helper, where a `vec4` written to a vec3 field silently overwrites the
+// column. Asserting the stored value SURVIVES is the only assertion that
+// catches it — such a write neither raises nor changes the column's type.
+// See #2673.
+TEST_F(LuaComponentTest, VectorFieldWriteIgnoresWrongTypedUserdata) {
+    auto &lua = m_lua.lua();
+    // Registered so the wrong-typed userdata has a metatable that answers
+    // x/y/z — the silent-coercion shape, not the raising one.
+    lua.new_usertype<IRMath::vec4>(
+        "vec4",
+        sol::constructors<IRMath::vec4(float, float, float, float)>(),
+        "x",
+        &IRMath::vec4::x,
+        "y",
+        &IRMath::vec4::y,
+        "z",
+        &IRMath::vec4::z,
+        "w",
+        &IRMath::vec4::w
+    );
+    ASSERT_TRUE(lua.safe_script(
+                       "C_WrongType = IRComponent.register('WrongTypeBody', {\n"
+                       "    pos = { type = 'vec3', default = { 10, 20, 30 } },\n"
+                       "})"
+    )
+                    .valid());
+    const IREntity::ComponentId componentId =
+        m_entity_manager.getComponentTypeByName("WrongTypeBody");
+
+    IREntity::EntityId e = IREntity::createEntity();
+    m_entity_manager.addComponentDynamic(e, componentId);
+    auto [data, row] = m_entity_manager.getComponentDataAndRow(e, componentId);
+    ASSERT_NE(data, nullptr);
+    auto *typed = static_cast<IRScript::IComponentDataLuaTyped *>(data);
+
+    const int posField = typed->findFieldIndex("pos");
+    const auto *vec3Col = std::get_if<std::vector<IRMath::vec3>>(&typed->columnAt(posField));
+    ASSERT_NE(vec3Col, nullptr);
+    ASSERT_EQ((*vec3Col)[row], IRMath::vec3(10.0f, 20.0f, 30.0f));
+
+    typed->writeFieldAt(row, posField, sol::make_object(lua, IRMath::vec4(1, 2, 3, 4)));
+    EXPECT_EQ((*vec3Col)[row], IRMath::vec3(10.0f, 20.0f, 30.0f)) << "wrong-typed write landed";
+
+    // The accepted shapes still write, so the guard discriminates rather than
+    // rejecting everything.
+    typed->writeFieldAt(
+        row,
+        posField,
+        sol::make_object(lua, lua.create_table_with("x", 4.0, "y", 5.0, "z", 6.0))
+    );
+    EXPECT_EQ((*vec3Col)[row], IRMath::vec3(4.0f, 5.0f, 6.0f));
+
+    typed->writeFieldAt(row, posField, sol::make_object(lua, IRMath::vec3(7.0f, 8.0f, 9.0f)));
+    EXPECT_EQ((*vec3Col)[row], IRMath::vec3(7.0f, 8.0f, 9.0f));
+}
+
 TEST_F(LuaComponentTest, Vec4FieldsAreNotModifierTargetable) {
     auto &lua = m_lua.lua();
     auto result = lua.safe_script(
