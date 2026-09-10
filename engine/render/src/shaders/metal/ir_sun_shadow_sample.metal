@@ -44,6 +44,23 @@ struct FrameDataSun {
     float sunMaxShadowThrow;
 };
 
+// Separable per-axis PCF weight for tap `k` (kSunPcfTapMin..kSunPcfTapMax) at
+// sub-texel position `f` (#2321 lever b). The kernel is the pre-#2321 bilinear
+// pair convolved with a 3-texel box, giving [(1-f)/3, 1/3, 1/3, f/3]. Two
+// properties matter, and both are why the box is NOT applied to a rounded base
+// texel instead:
+//   * they sum to 1 for every f, so a fully-occluded receiver still accumulates
+//     exactly 1.0 and the kShadowDarken floor is unchanged;
+//   * each is continuous in f, so a receiver crossing a texel boundary does not
+//     pop — an equal-weight 3x3 box on round(sunPxF) would snap.
+// Widening is receive-side only: bias, nearReject, gradUV and both tap-regime
+// tests below are untouched, so S1's splat/bias math is byte-identical (D4).
+inline float sunPcfAxisWeight(int k, float f) {
+    if (k == kSunPcfTapMin) return (1.0f - f) * (1.0f / 3.0f);
+    if (k == kSunPcfTapMax) return f * (1.0f / 3.0f);
+    return 1.0f / 3.0f;
+}
+
 inline float sampleCascadeShadow(
     float2 sunUV, float sunZ, float3 normal, float3 sunDir, float3 uHat, float3 vHat,
     float2 origin, float2 texelSz, int bufferOffset,
@@ -74,16 +91,16 @@ inline float sampleCascadeShadow(
     int2 base = int2(floor(sunPxF));
     float2 frac = sunPxF - float2(base);
     float shadowAccum = 0.0;
-    for (int dy = 0; dy < 2; ++dy) {
-        for (int dx = 0; dx < 2; ++dx) {
+    for (int dy = kSunPcfTapMin; dy <= kSunPcfTapMax; ++dy) {
+        float weightY = sunPcfAxisWeight(dy, frac.y);
+        for (int dx = kSunPcfTapMin; dx <= kSunPcfTapMax; ++dx) {
             int2 px = base + int2(dx, dy);
             if (px.x < 0 || px.x >= kSunShadowMapDim ||
                 px.y < 0 || px.y >= kSunShadowMapDim) continue;
             uint stored = sunDepthBuf[bufferOffset + px.y * kSunShadowMapDim + px.x];
             if (stored == 0xFFFFFFFFu) continue;
             float nearestZ = unpackSunDepth(stored);
-            float weight = mix(1.0f - frac.x, frac.x, float(dx))
-                         * mix(1.0f - frac.y, frac.y, float(dy));
+            float weight = sunPcfAxisWeight(dx, frac.x) * weightY;
             // Far shadow-throw window — raw sun-Z gap, the pre-#2319 form on BOTH
             // tap regimes. maxShadowThrow == the feeder / bake sweep
             // (kSunShadowMaxDistance) so a baked caster is receivable at its full
