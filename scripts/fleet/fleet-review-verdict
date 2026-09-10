@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # fleet-review-verdict — apply a reviewer VERDICT transition to a PR, but
-# only if this agent actually holds the reviewing claim on that PR.
+# only if this agent actually holds the reviewing claim on that PR and a
+# submitted review body exists for the PR's current head.
 #
 # This is a thin guard in FRONT of fleet-transition. fleet-transition is
 # the sole state-machine mechanism (it computes the effective label delta
-# and applies it idempotently); this wrapper adds ONE precondition to the
+# and applies it idempotently); this wrapper adds two preconditions to the
 # reviewer-verdict lane: refuse to stamp a verdict onto a PR the agent
-# never claimed for review.
+# never claimed for review, or whose review body did not land.
 #
 # Why this exists:
 #   The reviewer already takes an atomic fleet:reviewing-<host>-<agent>
@@ -28,7 +29,7 @@
 #
 # Usage:
 #   fleet-review-verdict <verdict-transition> <pr-number> \
-#       [--agent <name>] [--repo <slug>] [--dry-run]
+#       [--agent <name>] [--repo <slug>] [--no-review-check] [--dry-run]
 #
 # Options:
 #   --agent <name>  The reviewing agent (worktree basename passed to
@@ -45,6 +46,10 @@
 #   --repo <slug>   Target repo (e.g. jakildev/IrredenEngine or
 #                   jakildev/irreden). Threaded through to fleet-transition
 #                   and the claim-label read. Default: the current git remote.
+#   --no-review-check
+#                   Skip the current-head review-body check. Reserved for the
+#                   label-fixup lane fenced by REVIEWER-PROTOCOL.md; ordinary
+#                   reviewer verdicts must never pass this flag.
 #   --dry-run       Print what would happen; make no changes. Passed through
 #                   to fleet-transition. The claim check still runs.
 #   -h, --help      Show this help.
@@ -56,6 +61,8 @@
 #      missing --agent value) — no writes performed
 #   4  MISROUTE GUARD: --agent given but this agent does not hold the
 #      reviewing claim on the PR — no writes performed
+#   5  REVIEW-BODY GUARD: no submitted review pins the PR's current head —
+#      no writes performed
 #
 # Source of truth: scripts/fleet/fleet-review-verdict in the engine repo.
 # Installed to ~/bin/ by scripts/fleet/install.sh.
@@ -76,6 +83,7 @@ number=""
 agent=""
 repo_slug=""
 dry_run=0
+review_check=1
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -104,6 +112,7 @@ while [[ $# -gt 0 ]]; do
             repo_slug="$2"; shift 2 ;;
         --repo=*)
             repo_slug="${1#--repo=}"; shift ;;
+        --no-review-check) review_check=0; shift ;;
         --dry-run) dry_run=1; shift ;;
         -h|--help)
             awk 'NR==1 {next} /^#/ {print; next} {exit}' "$0" | sed 's/^# \{0,1\}//'
@@ -121,7 +130,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "$transition" || -z "$number" ]]; then
-    echo "$PROG: usage: $PROG <verdict-transition> <pr-number> [--agent <name>] [--repo <slug>] [--dry-run]" >&2
+    echo "$PROG: usage: $PROG <verdict-transition> <pr-number> [--agent <name>] [--repo <slug>] [--no-review-check] [--dry-run]" >&2
     exit 2
 fi
 if ! [[ "$number" =~ ^[0-9]+$ ]]; then
@@ -187,12 +196,57 @@ if [[ -n "$agent" ]]; then
 fi
 
 # ----------------------------------------------------------------------
+# Require a submitted review on the exact head being stamped. A timestamp
+# comparison is insufficient: old-authored commits and clock skew can both
+# make chronology disagree with code coverage. GitHub records the reviewed
+# commit directly in reviews[].commit_id, so match that identity instead.
+# ----------------------------------------------------------------------
+if [[ "$review_check" -eq 1 ]]; then
+    if ! head_oid="$(gh pr view "$number" "${repo_args[@]}" --json headRefOid --jq '.headRefOid' 2>/dev/null)" || [[ -z "$head_oid" ]]; then
+        echo "$PROG: could not read the current head for PR #$number (not found, or gh/auth error)." >&2
+        exit 1
+    fi
+
+    reviews_path="repos/{owner}/{repo}/pulls/${number}/reviews"
+    [[ -n "$repo_slug" ]] && reviews_path="repos/${repo_slug}/pulls/${number}/reviews"
+    submitted_commits=""
+    for attempt in 1 2; do
+        if ! submitted_commits="$(gh api "$reviews_path" --paginate --jq '.[] | select(.state != "PENDING") | .commit_id' 2>/dev/null)"; then
+            echo "$PROG: could not verify submitted reviews for PR #$number (gh/auth error)." >&2
+            exit 1
+        fi
+        if printf '%s\n' "$submitted_commits" | grep -Fxq -- "$head_oid"; then
+            break
+        fi
+        if [[ "$attempt" -eq 1 ]]; then
+            sleep 2
+        fi
+    done
+
+    if ! printf '%s\n' "$submitted_commits" | grep -Fxq -- "$head_oid"; then
+        echo "$PROG: refusing verdict '$transition' on #$number: no submitted review pins current head $head_oid." >&2
+        echo "$PROG: (review-body guard) post the review body for the current head, then retry the verdict." >&2
+        exit 5
+    fi
+fi
+
+# ----------------------------------------------------------------------
 # Guard passed (or carved out): delegate to the state-machine mechanism.
-# fleet-transition owns idempotency + verify + the effective delta.
-# exec propagates its exit code unchanged.
+# fleet-transition owns idempotency + verify + the effective delta. A fleet
+# reviewer records the successful stamp for review-release --require-verdict;
+# the next review-claim clears this marker, so stale labels cannot satisfy it.
 # ----------------------------------------------------------------------
 delegate_args=("$transition" "$number")
 [[ -n "$repo_slug" ]] && delegate_args+=(--repo "$repo_slug")
 [[ "$dry_run" -eq 1 ]] && delegate_args+=(--dry-run)
 
-exec fleet-transition "${delegate_args[@]}"
+fleet-transition "${delegate_args[@]}"
+
+if [[ -n "$agent" && "$dry_run" -eq 0 ]]; then
+    claims_dir="${FLEET_CLAIMS_DIR:-$HOME/.fleet/claims}"
+    mkdir -p "$claims_dir"
+    if ! printf '%s\n' "$number" >"$claims_dir/_review-verdict-${agent}"; then
+        echo "$PROG: verdict applied, but could not record the guarded release marker." >&2
+        exit 1
+    fi
+fi

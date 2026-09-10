@@ -25,7 +25,7 @@
 #   fleet-claim cleanup [--repo <owner/repo>] [--gh] ...
 #   fleet-claim reconcile [--apply] [--repo <owner/repo>] ...
 #   fleet-claim review-claim <pr-number> <agent>
-#   fleet-claim review-release <pr-number> <agent>
+#   fleet-claim review-release <pr-number> <agent> [--require-verdict]
 #   fleet-claim resolving-claim <pr-number> <agent>
 #   fleet-claim resolving-release <pr-number> <agent>
 #   fleet-claim amending-claim <pr-number> <agent>
@@ -1811,6 +1811,9 @@ _cmd_pr_label_claim() {
             mkdir -p "$CLAIMS_DIR"
             local _tag="${prefix#fleet:}"; _tag="${_tag%-}"
             printf '%s\n' "$pr" > "$CLAIMS_DIR/_prlabel-${_tag}-${agent}" 2>/dev/null || true
+            if [[ "$prefix" == "fleet:reviewing-" ]]; then
+                rm -f "$CLAIMS_DIR/_review-verdict-${agent}" 2>/dev/null || true
+            fi
             ;;
     esac
 
@@ -1847,8 +1850,41 @@ _cmd_pr_label_release() {
     gh_release_label "$repo" "$pr" "$label"
 }
 
-cmd_review_claim()   { _cmd_pr_label_claim   "fleet:reviewing-" "review-claim"   "$@"; }
-cmd_review_release() { _cmd_pr_label_release "fleet:reviewing-" "review-release" "$@"; }
+cmd_review_claim() { _cmd_pr_label_claim "fleet:reviewing-" "review-claim" "$@"; }
+cmd_review_release() {
+    local pr="$1" agent="$2" require_verdict=0
+    shift 2
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --require-verdict) require_verdict=1 ;;
+            *)
+                echo "fleet-claim review-release: unknown option '$1'" >&2
+                return 2
+                ;;
+        esac
+        shift
+    done
+
+    # Normal reviewer completion requires a verdict stamped during THIS claim.
+    # A live verdict label alone is insufficient: #3102 released over a stale
+    # fleet:needs-fix label after posting an unrelated review body. The verdict
+    # wrapper writes this marker only after fleet-transition succeeds, and the
+    # next review-claim clears it. No-verdict exits (bail/stack gates, smoke,
+    # and plan review) intentionally omit --require-verdict.
+    if [[ "$require_verdict" -eq 1 ]]; then
+        local verdict_marker="$CLAIMS_DIR/_review-verdict-${agent}"
+        if [[ ! -f "$verdict_marker" ]] || [[ "$(cat "$verdict_marker" 2>/dev/null)" != "$pr" ]]; then
+            echo "fleet-claim review-release: refusing to release PR#$pr without a verdict stamped during this review claim." >&2
+            echo "fleet-claim review-release: stamp the verdict, then retry with --require-verdict." >&2
+            return 5
+        fi
+    fi
+
+    local rc=0
+    _cmd_pr_label_release "fleet:reviewing-" "review-release" "$pr" "$agent" || rc=$?
+    rm -f "$CLAIMS_DIR/_review-verdict-${agent}" 2>/dev/null || true
+    return "$rc"
+}
 cmd_resolving_claim()   { _cmd_pr_label_claim   "fleet:resolving-" "resolving-claim"   "$@"; }
 cmd_resolving_release() { _cmd_pr_label_release "fleet:resolving-" "resolving-release" "$@"; }
 cmd_amending_claim() {
@@ -4894,10 +4930,10 @@ case "${1:-}" in
         ;;
     review-release)
         require_agent_token "review-release" "${3:-}" || {
-            echo "usage: fleet-claim [--repo <ns>] review-release <pr-number> <agent>" >&2
+            echo "usage: fleet-claim [--repo <ns>] review-release <pr-number> <agent> [--require-verdict]" >&2
             exit 2
         }
-        cmd_review_release "$2" "$3"
+        cmd_review_release "$2" "$3" "${@:4}"
         ;;
     resolving-claim)
         require_agent_token "resolving-claim" "${3:-}" || {
@@ -5181,7 +5217,9 @@ commands:
   review-claim <pr> <agent>     atomically claim a PR for review/smoke
                                 work via a
                                 fleet:reviewing-<host>-<agent> label.
-  review-release <pr> <agent>   release a review claim.
+  review-release <pr> <agent> [--require-verdict]
+                                release a review claim; normal reviewer
+                                completion requires the verdict guard.
   resolving-claim <pr> <agent>  atomically claim a PR for semantic-
                                 conflict resolution.
   resolving-release <pr> <agent>

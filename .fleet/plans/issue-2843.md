@@ -20,6 +20,7 @@
 3. Update `docs/agents/REVIEWER-PROTOCOL.md` and `docs/agents/skills/review-pr.md` to route the verdict edge through the wrapper.
 4. Update both reviewer role docs and `.claude/skills/review-pr/SKILL.md` consistently. Commit gated role files and skill files separately so a commit-time self-config gate can be handed off precisely if it blocks.
 5. Re-run the live head-pinning census for verdict-labeled open PRs in both repositories and report it in the PR body.
+6. Fold in duplicate occurrence #3102: add an opt-in `review-release --require-verdict` guard for normal reviewer completion, while leaving explicit no-verdict, smoke, and plan-review releases unchecked.
 
 ## Acceptance criteria
 
@@ -27,6 +28,7 @@
 2. Without `--no-review-check`, the wrapper refuses with exit 5 and performs no delegation or writes when no submitted review pins the current head, on both fleet and interactive paths. Review-read errors fail closed with exit 1, and the bypass restores the prior fenced behavior.
 3. T1-T12 remain green and T13-T17 cover the new gate, including a positive control showing stale-head fixtures fail against the pre-change implementation.
 4. `bash scripts/fleet/tests/test_fleet_review_verdict.sh` and `env -u FLEET_PLAN_ISSUE bash scripts/fleet/tests/run_all.sh` produce no new failures compared with a same-host master baseline.
+5. A normal reviewer release without a verdict exits 5 and retains both the GitHub claim label and local liveness marker; the same release succeeds once a verdict exists.
 
 ## Escalation conditions
 
