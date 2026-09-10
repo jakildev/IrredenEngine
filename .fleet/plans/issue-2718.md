@@ -362,12 +362,51 @@ author-side arms proving each step's checker actually fires:
 | `ruff check scripts/` @ 0.15.20 | unused `import os` in `scripts/fleet/lint_state_mtime.py` | non-zero, `F401` reported | exit 0 |
 | `lint_state_mtime.py` | a `os.stat("state.json").st_mtime` read in a new `scripts/fleet/` file | non-zero, "1 unsuppressed state.json st_mtime read(s) found" | exit 0 |
 
+### The defect the first CI run surfaced
+
+The plan said to carry the ruff step over from `quality.yml`. Doing so
+verbatim reproduced a latent defect in it.
+
+`astral-sh/ruff-action@v3` runs `ruff <args> <src>`, and its `src` input
+defaults to `${{ github.workspace }}` (read from the action's own
+`action.yml`). The step `quality.yml` carried —
+
+```yaml
+uses: astral-sh/ruff-action@v3
+with:
+  version: "0.15.20"
+  args: "check scripts/"
+```
+
+— therefore expands to `ruff check scripts/ .` and lints the **whole repo**.
+The first run of `python-lint.yml` went red on vendored
+`engine/render/third_party/metal-cpp/SingleHeader/MakeSingleHeader.py` (tabs,
+bare `except`, `F821 reload`) and on `engine/tools/py/ir_hardware_probe.py`,
+neither of which `ruff.toml` scopes.
+
+That step has been red by construction since the day it was added, and no one
+could have known: `quality.yml` never executed a single run. **The author-side
+probe cannot catch this either** — `ruff check scripts/` run by hand is the
+correct invocation; only the action's argument wiring is wrong, so the local
+step-0 probe passes exactly as it did here. A CI run was the only possible
+detector, which is the issue's own thesis arriving as a concrete instance.
+
+Fixed in the PR's second commit: `args: "check"` + `src: "scripts/"`, the
+canonical invocation `ruff.toml` documents. The negative control below
+confirms the narrowed scope — the planted violation produces exactly **one**
+finding, none outside `scripts/`.
+
+One genuine finding from the accidentally-wide run is **left unfixed and
+noted on the PR**: `engine/tools/py/ir_hardware_probe.py:24:8: F401 'sys'
+imported but unused`. `engine/tools/py/` sits outside `ruff.toml`'s declared
+scope, so widening the gate is a scope decision rather than this phase's work.
+
 ### Phase A acceptance criteria — status at PR-open
 
 | # | criterion | status |
 |---|---|---|
-| 1 | `python-lint.yml` run appears on the PR and is green | pending — observed on the PR |
-| 2 | negative control observed in CI (deliberate ruff violation reds the run, dropping it greens it) | pending — observed on the PR |
+| 1 | `python-lint.yml` run appears on the PR and is green | **met** — run 34502289274, `pass` in 12s |
+| 2 | negative control observed in CI (deliberate ruff violation reds the run, dropping it greens it) | **met** — run 34502646210 red on `scripts/fleet/lint_state_mtime.py:126:8: F401`; force-pushed away, back to pass |
 | 3 | `gh workflow list --all` no longer lists Quality; `quality.yml` absent from `origin/master` | pending merge; the file is deleted in this diff |
 | 4 | post-merge `fleet-rules-sweep --pattern 'quality\.yml'` finds only `.fleet/plans/` records | pending merge; pre-merge sweep of the branch verifies it |
 | 5 | follow-ups B/C/D exist with the recorded decisions and `Blocked by:` lines | **done** — #3187 (B), #3188 (C), #3189 (D) |
