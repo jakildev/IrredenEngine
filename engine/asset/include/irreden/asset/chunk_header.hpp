@@ -17,9 +17,9 @@
 /// tag" lookup is the only path. `findChunk()` returns the first match.
 
 #include <irreden/asset/binary_io.hpp>
+#include <irreden/ir_profile.hpp>
 
 #include <array>
-#include <cassert>
 #include <cstdint>
 #include <span>
 #include <string>
@@ -66,7 +66,7 @@ struct LoadedChunk {
 
 // Silent zero-pad or truncation creates tag collisions — asserts on wrong-length input.
 inline std::array<char, 4> makeTag(std::string_view s) {
-    assert(s.size() == 4 && "makeTag: input must be exactly 4 characters");
+    IR_ASSERT(s.size() == 4, "makeTag: input must be exactly 4 characters");
     std::array<char, 4> out{};
     for (std::size_t i = 0; i < 4; ++i) {
         out[i] = s[i];
