@@ -9,7 +9,13 @@ When a label is added, removed, or its ownership changes: update this file,
 **and** `docs/agents/fleet-state-machine.json` (the machine-readable node set
 `fleet-transition` reads) in the same commit so all three stay in 1:1
 correspondence. `fleet-labels --check` diffs the catalog against the JSON node
-set and fails on drift — run it (or wire it into CI) to catch a forgotten edit.
+set and fails on drift. **This check is executed** — `scripts/fleet/tests/test_fleet_labels_check.sh`
+runs it over the real tree on every `fleet-tests.yml` run, so a forgotten edit
+fails CI rather than waiting for someone to run it by hand (it sat red on
+master for exactly that reason, #3205). Invoke it as
+`bash scripts/fleet/fleet-labels --check` when checking a branch: the script
+resolves both inputs from its own location, so calling it by name through the
+`~/bin` symlink reports on the main clone instead.
 
 ---
 
