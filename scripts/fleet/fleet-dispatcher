@@ -264,6 +264,16 @@ LIMIT_DELAY="${FLEET_DISPATCHER_LIMIT_DELAY:-900}"
 # claude exits non-zero AND fleet-claude-stream flagged a throttle error.
 RATE429_DELAY="${FLEET_DISPATCHER_RATE429_DELAY:-90}"
 
+# A PID can be recycled after a crashed wrapper leaves its dispatch record
+# behind. Trust the portable kill probe only while the record is recent, then
+# fall through to the pane-scoped tmux and pgrep signals.
+WRAPPER_PID_TRUST_SECONDS="${FLEET_DISPATCHER_WRAPPER_PID_TRUST_SECONDS:-21600}"
+if [[ ! "$WRAPPER_PID_TRUST_SECONDS" =~ ^[0-9]+$ ]]; then
+    printf '[%s dispatcher] WRAPPER_PID_TRUST_SECONDS=%q is not a non-negative integer; falling back to 21600\n' \
+        "$(date '+%Y-%m-%d %H:%M:%S')" "$WRAPPER_PID_TRUST_SECONDS" >&2
+    WRAPPER_PID_TRUST_SECONDS=21600
+fi
+
 # Minimum wall-clock gap between any two claude launches, across ALL roles and
 # panes. The dispatcher otherwise fires every idle pane in a single tick — at
 # fleet-up that's ~8 cold `claude` cold-starts (each doing a large state.json
@@ -764,12 +774,16 @@ pane_has_running_wrapper() {
 # launches the runtime. This is the portable occupancy signal: kill is a bash
 # builtin on every fleet host, while pgrep is an optional MSYS2 package.
 dispatch_record_has_live_wrapper() {
-    local pane_id="$1" record record_json wrapper_pid
+    local pane_id="$1" record record_json wrapper_pid dispatched_epoch age
     record=$(dispatch_record "$pane_id")
     [[ -f "$record" ]] || return 1
     record_json=$(<"$record")
     [[ "$record_json" =~ \"wrapper_pid\":([1-9][0-9]*) ]] || return 1
     wrapper_pid="${BASH_REMATCH[1]}"
+    [[ "$record_json" =~ \"dispatched_epoch\":([0-9]+) ]] || return 1
+    dispatched_epoch="${BASH_REMATCH[1]}"
+    age=$(( $(date +%s) - 10#$dispatched_epoch ))
+    (( age >= 0 && age < WRAPPER_PID_TRUST_SECONDS )) || return 1
     kill -0 "$wrapper_pid" 2>/dev/null
 }
 
