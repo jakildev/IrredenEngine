@@ -1492,20 +1492,11 @@ REVIEW_SKIP_LABELS = frozenset({
 REVIEW_SKIP_PREFIXES = ("fleet:amending-",)
 RECHECK_LABELS = frozenset({"human:re-review", "fleet:changes-made"})
 
-# Labels that wake the opus-reviewer pane. fleet:needs-opus-recheck is the
-# explicit escalation the sonnet-reviewer stamps when its first-pass review
-# approves but ends "Opus recheck required:" — that case sets NO verdict
-# label, so before this marker existed the projection had no label-shaped
-# signal for it and the opus pane only woke coincidentally on some OTHER PR's
-# has-nits/needs-fix transition. PR #1473 sat un-rechecked for exactly this
-# reason (approve + recheck-required + no nits → zero flag labels → no
-# trigger). has-nits / needs-fix stay in the set: they already woke the pane
-# and a flagged PR may still warrant an Opus pass. opus-reviewer removes
-# fleet:needs-opus-recheck as part of its verdict label-swap (whatever the
-# verdict), so a handled escalation drops back out of the projection.
-OPUS_REVIEWER_FLAG_LABELS = frozenset({
-    "fleet:has-nits", "fleet:needs-fix", "fleet:needs-opus-recheck",
-})
+# Only an explicit escalation wakes the opus-reviewer for PR work. Author-facing
+# verdict labels belong to the feedback lane, while ordinary re-reviews belong
+# to the sonnet lane via RECHECK_LABELS. The opus reviewer clears this marker in
+# its verdict swap, so a handled escalation drops back out of the projection.
+OPUS_REVIEWER_FLAG_LABELS = frozenset({"fleet:needs-opus-recheck"})
 
 
 def _review_skipped(labels):

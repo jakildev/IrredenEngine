@@ -126,7 +126,7 @@ just the items that role works on:
 |---|---|
 | worker | `tasks_open` (all classes, both repos), `needs_plan`, `feedback_prs`, `semantic_conflict_prs` |
 | sonnet-reviewer | `candidate_prs` (review-skip filter applied) |
-| opus-reviewer | `flagged_prs` (`fleet:has-nits` / `fleet:needs-fix` / `fleet:needs-opus-recheck`), `plan_review` (`fleet:plan-review` issues awaiting a plan verdict, both repos) |
+| opus-reviewer | `flagged_prs` (`fleet:needs-opus-recheck`), `plan_review` (`fleet:plan-review` issues awaiting a plan verdict, both repos) |
 | smoke-worker | `smoke_pending_prs` (host-agnostic; the dispatcher applies the host) |
 | merger | `prs` (engine + game, approved or non-MERGEABLE only; each tagged with its `repo`) |
 

@@ -5,16 +5,13 @@ this projection's hash flips. The regression these tests lock in:
 
   fleet:needs-opus-recheck — the explicit escalation the sonnet-reviewer
   stamps on an "approve + Opus recheck required" first pass — MUST be a
-  trigger signal. Before it was added (PR #1473), the projection keyed only
-  on fleet:has-nits / fleet:needs-fix, so an approve-and-escalate PR carried
-  no flag label, the hash never flipped, and the opus pane never woke for it
-  (it only fired coincidentally on some OTHER PR's has-nits/needs-fix
-  transition).
+  trigger signal.
 
 This harness pins:
   - needs-opus-recheck appearing flips the hash (wakes the pane).
   - needs-opus-recheck on a PR with no other flag label still appears.
-  - has-nits / needs-fix remain trigger signals (no regression).
+  - has-nits / needs-fix alone do not wake a reviewer while awaiting an author.
+  - changes-made routes an amended needs-fix PR through the sonnet lane.
   - skip labels (semantic-conflict, wip, amending-*) drop the PR entirely,
     so the escalation lies dormant until the PR is reviewable again.
   - removing the label (opus consumed it) drops the PR from the projection.
@@ -31,6 +28,7 @@ _spec = importlib.util.spec_from_loader("fleet_state_scout", _loader)
 _mod = importlib.util.module_from_spec(_spec)
 _loader.exec_module(_mod)
 project_opus_reviewer = _mod.project_opus_reviewer
+project_sonnet_reviewer = _mod.project_sonnet_reviewer
 slice_opus_reviewer = _mod.slice_opus_reviewer
 stable_hash = _mod.stable_hash
 
@@ -87,7 +85,7 @@ class RecheckLabelWakesPane(unittest.TestCase):
         self.assertEqual(len(items), 1)
         self.assertEqual(
             items[0]["labels"],
-            ["fleet:has-nits", "fleet:needs-opus-recheck"],
+            ["fleet:needs-opus-recheck"],
         )
 
     def test_recheck_removed_drops_from_projection(self):
@@ -99,20 +97,27 @@ class RecheckLabelWakesPane(unittest.TestCase):
         self.assertEqual(items, [])
 
 
-class ExistingSignalsUnchanged(unittest.TestCase):
-    """has-nits / needs-fix must remain trigger signals (no regression)."""
+class AuthorVerdictsDoNotWakeOpus(unittest.TestCase):
+    """Author-facing verdicts do not create no-op Opus iterations."""
 
-    def test_has_nits_still_triggers(self):
-        items = project_opus_reviewer(_state([
-            _pr(101, labels=["fleet:has-nits"]),
-        ]))
-        self.assertEqual(len(items), 1)
+    def test_worker_verdicts_match_empty_projection(self):
+        empty = _state([])
+        recheck = _state([_pr(102, labels=["fleet:needs-opus-recheck"])])
+        for label in ("fleet:has-nits", "fleet:needs-fix"):
+            with self.subTest(label=label):
+                verdict = _state([_pr(101, labels=[label])])
+                self.assertEqual(project_opus_reviewer(verdict), [])
+                self.assertEqual(_hash(verdict), _hash(empty))
+        self.assertNotEqual(_hash(recheck), _hash(empty))
 
-    def test_needs_fix_still_triggers(self):
-        items = project_opus_reviewer(_state([
-            _pr(101, labels=["fleet:needs-fix"]),
-        ]))
-        self.assertEqual(len(items), 1)
+    def test_amended_needs_fix_routes_to_sonnet_only(self):
+        state = _state([_pr(101, labels=[
+            "fleet:needs-fix", "fleet:changes-made",
+        ])])
+        self.assertEqual(project_opus_reviewer(state), [])
+        sonnet_items = project_sonnet_reviewer(state)
+        self.assertEqual(len(sonnet_items), 1)
+        self.assertEqual(sonnet_items[0]["pr"], 101)
 
 
 class SkipLabelsGateTheEscalation(unittest.TestCase):

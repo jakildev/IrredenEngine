@@ -244,9 +244,8 @@ The exact remove/add set behind each edge lives in `fleet-state-machine.json`
 required"** → do NOT set a verdict label (`fleet:approved` is the
 opus-reviewer's to set). Instead stamp the explicit escalation so the
 scout's opus-reviewer projection wakes the pane — the review-body text
-alone is invisible to that projection, so without this label the opus
-pane only fires coincidentally on another PR's has-nits/needs-fix
-transition (PR #1473 sat un-rechecked for exactly this reason):
+alone is invisible to that projection, and author-facing verdict labels do not
+wake the Opus lane without this explicit label:
 
 ```
 fleet-review-verdict verdict-needs-opus-recheck <N> --agent <your-worktree-name>
