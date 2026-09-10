@@ -66,13 +66,13 @@
       "name": "fleet:opus",
       "scope": "issue",
       "color": "1d76db",
-      "description": "Model-affinity tag set by fleet-queue-ingest; opus-class workers pick tasks with this label"
+      "description": "Model-affinity tag set by fleet-queue-ingest; a worker's step-8a re-tag or reconcile R9 (design-parked PR on a fleet:sonnet issue) moves a task up into it; opus-class workers pick tasks with this label"
     },
     {
       "name": "fleet:sonnet",
       "scope": "issue",
       "color": "1d76db",
-      "description": "Model-affinity tag set by fleet-queue-ingest; sonnet-class workers pick tasks with this label"
+      "description": "Model-affinity tag set by fleet-queue-ingest; a worker's step-8a re-tag or reconcile R9 (design-parked PR) moves a task one class up out of it; sonnet-class workers pick tasks with this label"
     },
     {
       "name": "fleet:blocked",
@@ -512,6 +512,18 @@
         "fleet:verified-macos"
       ],
       "note": "macOS/Metal cross-host smoke passed. FLEET-CROSS-HOST-SMOKE.md."
+    },
+    {
+      "name": "escalate-class-sonnet-opus",
+      "scope": "issue",
+      "owner": "reconcile",
+      "remove": [
+        "fleet:sonnet"
+      ],
+      "add": [
+        "fleet:opus"
+      ],
+      "note": "Reconcile R9 (#2939): a design-parked PR (design-blocked / -unblocked / -proposed) on a fleet:sonnet backing issue is unreachable — the design-resume tier is opus+-only (FLEET-FEEDBACK-HANDLING.md tier 4) — so the backing task moves one class up, the same re-tag role-worker.md step 8a sanctions on a worker's own task. Reconcile applies this exact delta directly (a single gh issue edit, the R4/R7/R8 convention); this edge is the vocabulary record and the human/architect-invocable form. Never de-escalates."
     },
     {
       "name": "smoke-verify-windows",

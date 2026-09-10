@@ -407,17 +407,27 @@ the question to the architect and resume cleanly:
    decisions, swaps `fleet:design-blocked` → `fleet:design-unblocked`.
    (The direction rides in that comment — the architect doesn't push to
    the worker's branch, and doesn't rewrite the issue's `## Plan`.)
-3. Worker (any worker — not necessarily the original one) sees the
-   `fleet:design-unblocked` PR via its feedback-PR loop on the next
+3. Worker (any **opus+** worker — not necessarily the original one) sees
+   the `fleet:design-unblocked` PR via its feedback-PR loop on the next
    iteration, reads the architect's comment plus the issue's `## Plan`
    comment and any `## Plan corrections`, addresses the direction,
    removes the label, pushes via `commit-and-push`. PR re-enters normal
    review flow.
 
+**The invariant: a design-parked PR has an opus+ backing task.** Tier 4 of
+the feedback loop is opus+-only (absorbing an architect's design reply is
+opus-tier work), and `feedback_pr_class` pins a `fleet:design-unblocked` PR
+to opus. So a `fleet:sonnet` backing task in the design lane would be
+unreachable by *every* class — opus is the only class dispatched, and it
+must decline on the class gate. `fleet-claim reconcile` **R9** holds the
+invariant: while any of an issue's PRs carries a design-lane label, a
+`fleet:sonnet` backing issue is re-tagged `fleet:opus` — the same
+one-class-up move step 8a sanctions on a worker's own task (#2939).
+
 **The handoff is the PR, not the worker's claim.** The escalating worker
 releases its `fleet-claim` (and any worktree reservation) when it parks
 the PR design-blocked: resolution can take the architect a while, and
-when the PR returns as `fleet:design-unblocked` ANY worker — not
+when the PR returns as `fleet:design-unblocked` any OPUS+ worker — not
 necessarily the original one — must be able to resume it cleanly.
 Everything the resumer needs rides on the PR and its backing issue: the
 pushed WIP commit, the `## NEEDS-DESIGN` comment plus the architect's

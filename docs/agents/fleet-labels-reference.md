@@ -222,8 +222,12 @@ Specifically, **never pass these via `--label` when filing**:
   the dispatcher launches each worker iteration with its task's class
   and the fleet-claim gate exact-matches it. A reviewer may also add
   `fleet:fable` to a PR to route an approach-is-wrong feedback fix onto
-  the fable class. `fleet-queue-list` groups by these; see FLEET.md
-  "Model split".
+  the fable class. Two mechanisms move a task UP the ladder after ingest
+  stamps it, and neither ever moves it down: a worker's own step-8a re-tag
+  on its claimed task, and `fleet-claim reconcile` **R9**, which re-tags a
+  `fleet:sonnet` backing issue to `fleet:opus` while any of its PRs is
+  parked in the design lane (#2939). `fleet-queue-list` groups by these;
+  see FLEET.md "Model split".
 - `fleet:blocked` — owned by **`fleet-queue-ingest`**. Since #1527 the
   ingest queues *every* approved, non-skip task up front (full queue
   visibility) instead of one child at a time; a task whose
@@ -577,6 +581,11 @@ Specifically, **never pass these via `--label` when filing**:
   `design-blocked` (re-escalation). The two labels are mutually
   exclusive: a PR never carries both, or it would be re-picked as
   unblocked while actually re-blocked.
+  **Backing-class invariant:** the resume tier these labels feed is
+  opus+-only, so a PR in the design lane must have an opus+ backing task;
+  reconcile R9 re-tags a `fleet:sonnet` backing issue one class up while
+  the PR is parked, which is what keeps a sonnet-backed resume from being
+  unreachable by every class (#2939).
   Coexist with `fleet:wip` — they're qualifiers, not transfers of
   ownership. Distinct from `fleet:needs-fix` because the worker
   isn't fixing a defect, they're following architectural direction
@@ -717,7 +726,10 @@ mismatch, R4 contradictory/orphaned labels) plus the persistence-gated
 R7 auto-heal (re-adds `fleet:design-unblocked` to a half-executed
 design-unblock — a stranded `fleet:wip` PR carrying neither design
 label on a `fleet:queued` issue — after `FLEET_RECONCILE_DRIFT_TICKS`
-ticks), and leaves ambiguous drift (R2/R6) flag-only. It runs at
+ticks) and the ungated R9 class-escalate (re-tags a `fleet:sonnet` backing
+issue to `fleet:opus` while any of its PRs carries a design-lane label, so
+the opus+-only resume tier has a class it can dispatch — #2939), and
+leaves ambiguous drift (R2/R6) flag-only. It runs at
 **boot** (`fleet-up`, before the dispatcher launches) and
 **periodically** — the scout backgrounds a
 single multi-repo `reconcile --apply` alongside `cleanup --gh` on every

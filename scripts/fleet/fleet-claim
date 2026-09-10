@@ -3011,6 +3011,9 @@ cmd_check_stale() {
 # across N --apply ticks. #1516 adds R7 (heal a stranded WIP's missing
 # design-unblock); #2462 narrows R7 off provably-unactionable PRs and adds
 # R8, the exit half of the fleet:awaiting-infra park it introduces.
+# #2939 adds R9 (class-escalate a fleet:sonnet backing issue while any of its
+# PRs is parked in the design lane, so the opus+-only resume tier has a
+# permitted class to dispatch).
 
 # reconcile_fs_claims_json
 #   Emit the host-local FS claim set as a JSON array, one object per claim
@@ -3141,7 +3144,7 @@ cmd_reconcile() {
         > "$findings" <<'PYEOF'
 import sys, os, json, re
 sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
-from fleet_branch_match import issue_from_branch
+from fleet_branch_match import issue_from_branch, PARKED_PR_LABELS
 
 work, host, now_s, ttl_s = sys.argv[1:5]
 repos = sys.argv[5].split() if sys.argv[5] else []
@@ -3321,6 +3324,22 @@ for repo in repos:
 
 # ---- R2 (flag only): orphaned WIP/feedback PR ----
 reserved_tasks = set(r["task_id"] for r in reservations)
+
+
+def claimless(repo, issue_n, issue_labs):
+    """True when nothing anywhere says a pane is working on this issue.
+
+    The three surfaces are an issue-side `fleet:claim-*` label, a host-local FS
+    claim, and a worktree reservation. R2, R7 and R9 all gate on exactly this;
+    keeping one definition is what stops a fourth rule from getting it subtly
+    wrong. NOTE the axis: this sees ISSUE claims only. A pane amending a PR
+    holds a PR-axis `fleet:amending-*` label and is invisible here — see R9's
+    header for why that is safe there.
+    """
+    return not (any(l.startswith("fleet:claim-") for l in issue_labs)
+                or (repo, issue_n) in fs_by_task
+                or str(issue_n) in reserved_tasks)
+
 for repo in repos:
     d = repo_data[repo]
     for issue_n, prlist in d["pr_by_issue"].items():
@@ -3349,9 +3368,7 @@ for repo in repos:
                     or "fleet:awaiting-infra" in labs):
                 continue
             issue_labs = d["issue_labels"].get(issue_n, set())
-            if (any(l.startswith("fleet:claim-") for l in issue_labs)
-                    or (repo, issue_n) in fs_by_task
-                    or str(issue_n) in reserved_tasks):
+            if not claimless(repo, issue_n, issue_labs):
                 continue
             kind = "WIP" if "fleet:wip" in labs else "feedback"
             add("R2", repo, pr["number"], "pr", ["pr", "label"],
@@ -3400,10 +3417,7 @@ for repo in repos:
         # the auto-mutating rule is narrowed.
         if "fleet:blocked" in issue_labs:
             continue
-        # Same claimless test R2 uses — no FS claim, claim-label, or reservation.
-        if (any(l.startswith("fleet:claim-") for l in issue_labs)
-                or (repo, issue_n) in fs_by_task
-                or str(issue_n) in reserved_tasks):
+        if not claimless(repo, issue_n, issue_labs):
             continue
         for pr in prlist:
             labs = pr["labels"]
@@ -3500,6 +3514,71 @@ for repo in repos:
             apply={"type": "unpark_infra", "pr": pr["number"], "repo": repo,
                    "blocker": blocker})
 
+# ---- R9 (auto-escalate): design-parked PR on a fleet:sonnet backing issue ---
+# The design-resume tier is opus+-ONLY (FLEET-FEEDBACK-HANDLING.md tier 4;
+# role-worker.md's step-1 class table), and feedback_pr_class pins a
+# fleet:design-unblocked PR to opus from the PR's labels alone
+# (fleet_task_class.py, the #1885 pin). When the BACKING task is fleet:sonnet
+# those two facts close a loop: the dispatcher only ever launches an opus pane
+# for the PR, and that pane correctly declines because the class gate is a hard
+# rule ("never claim outside your class"). No class is left that can serve the
+# resume, so the work is unreachable by EVERY class — permanently, and silently
+# once the design label is cleared (#2939).
+#
+# R9 holds the invariant the resume tier already assumes: a PR parked in the
+# design lane has an opus+ backing task. It re-tags the backing issue one class
+# up — the same sonnet -> opus move role-worker.md step 8a sanctions on a
+# worker's own task, and the outcome step 8c already prescribes ("a task that
+# needs design input usually needs the heavier class for execution too"). The
+# resolver's opus pin is then CORRECT rather than contradictory: the dispatched
+# opus worker finds an opus backing issue and proceeds. No routing code changes.
+#
+# Keyed on PARKED_PR_LABELS imported from fleet_branch_match rather than a local
+# copy, so this rule and the scout's inflight_pr.parked can never disagree.
+#
+# NOT persistence-gated (the R4b/R8 stance, unlike R7's heal). The trigger is a
+# durable, deliberate label a worker/architect/steward put on the PR, not a
+# claim still propagating. Note the claimless test below is ISSUE-axis
+# (fleet:claim-*, fs_by_task, reserved_tasks) while a pane amending a
+# design-parked PR holds a PR-axis fleet:amending-* claim — so it does NOT keep
+# R9 off a pane mid-amend, and the safety does not rest on it. What makes
+# ungated firing safe is that the delta is idempotent and both orderings
+# converge: worker-first, R9's --remove-label fleet:sonnet errors on an
+# already-absent label and the finding stops reproducing anyway (the class
+# flipped); R9-first, the worker's own step-8a re-tag becomes the redundant one.
+# R9 firing alongside an amending pane is the DESIRABLE ordering, not a hazard.
+#
+# R9 never de-escalates, by design — the same permanence as step 8a's
+# worker-side re-tag. Once the PR leaves the design lane there is no finding, so
+# a human re-tagging back down by hand is never fought.
+for repo in repos:
+    d = repo_data[repo]
+    for issue_n, prlist in sorted(d["pr_by_issue"].items()):
+        issue_labs = d["issue_labels"].get(issue_n, set())
+        if "fleet:sonnet" not in issue_labs:
+            continue
+        # A live sonnet claim means a pane is still mid-edit on the issue
+        # itself; R9 fires on the next tick after release. A parked PR is
+        # claimless by protocol (role-worker.md step 8c releases the claim), so
+        # this can never make R9 structurally dead.
+        if not claimless(repo, issue_n, issue_labs):
+            continue
+        parked = next((pr for pr in prlist if pr["labels"] & PARKED_PR_LABELS),
+                      None)
+        if parked is None:
+            continue
+        # One finding per ISSUE (first parked PR in list order wins) so the
+        # report/persistence keys stay stable across ticks.
+        add("R9", repo, issue_n, "issue", ["label", "pr"],
+            "design-parked PR #%d on a fleet:sonnet backing issue — the "
+            "design-resume tier is opus+-only, so no class can serve the "
+            "resume (#2939); escalate the issue's class sonnet -> opus"
+            % parked["number"],
+            "design-lane PR + fleet:sonnet backing issue, no claim",
+            apply={"type": "escalate_design_class", "repo": repo,
+                   "issue": issue_n, "pr": parked["number"],
+                   "from": "fleet:sonnet", "to": "fleet:opus"})
+
 for f in findings:
     print(json.dumps(f))
 PYEOF
@@ -3579,6 +3658,49 @@ PYEOF
                     p_repo=$(reconcile_apply_field "$line" repo)
                     gh_release_label "$p_repo" "$p_issue" "fleet:in-progress" || true
                     echo "  reconcile --apply: R4b removed stale fleet:in-progress on $p_repo #$p_issue"
+                    ;;
+                escalate_design_class)
+                    # R9 (#2939). One ATOMIC gh call carrying both flags — a
+                    # split into two edits re-creates the half-executed-swap
+                    # hazard fleet-transition exists to remove (the incident
+                    # architect-protocol.md step 5 records). gh resolves the delta
+                    # client-side and sends it in one request; the classifier
+                    # established `fleet:sonnet` is present one step earlier, so
+                    # the --remove-label-of-an-absent-label error cannot fire on
+                    # a fresh finding.
+                    #
+                    # Applied with a direct gh call rather than by shelling out
+                    # to `fleet-transition escalate-class-sonnet-opus`, matching
+                    # every other reconcile mutation (R1/R3/R4a/R4b via
+                    # gh_release_label, R7 via gh issue edit, R8 via
+                    # gh_release_label). Reconcile runs in the daemon path (scout
+                    # background spawn, fleet-up boot by absolute path) and today
+                    # depends on gh + the python lib dir only; fleet-transition
+                    # would be its first sibling-executable dependency, resolved
+                    # through ~/bin/PATH, and would pull its own live label read
+                    # into every hermetic reconcile suite's gh stub grammar for no
+                    # gain. The named edge is registered in
+                    # docs/agents/fleet-state-machine.json as the vocabulary
+                    # record and the human/architect-invocable form.
+                    local e_issue e_repo e_pr
+                    e_issue=$(reconcile_apply_field "$line" issue)
+                    e_repo=$(reconcile_apply_field "$line" repo)
+                    e_pr=$(reconcile_apply_field "$line" pr)
+                    if gh issue edit "$e_issue" --repo "$e_repo" \
+                            --remove-label "fleet:sonnet" \
+                            --add-label "fleet:opus" >/dev/null 2>&1; then
+                        # A failed comment after a successful edit is NOT retried:
+                        # the label is the state, and the finding stops
+                        # reproducing once it flips. The comment is explanation,
+                        # not mechanism.
+                        gh issue comment "$e_issue" --repo "$e_repo" --body \
+"Escalated from sonnet → opus by \`fleet-claim reconcile\` R9: PR #$e_pr is parked in the design lane and the design-resume tier is opus+-only (FLEET-FEEDBACK-HANDLING.md tier 4), so a sonnet-class backing task is unreachable by every class (#2939). The label is authoritative; a \`**Model:** sonnet\` body field, if present, is now stale. — fleet-claim reconcile" \
+                            >/dev/null 2>&1 || \
+                            echo "  reconcile --apply: R9 escalated $e_repo #$e_issue but its explanatory comment failed (not retried)" >&2
+                        echo "  reconcile --apply: R9 escalated $e_repo #$e_issue sonnet → opus (design-parked PR #$e_pr)"
+                    else
+                        echo "  reconcile --apply: R9 failed to escalate $e_repo #$e_issue sonnet → opus (retries next tick)" >&2
+                    fi
                     ;;
                 # heal_design_unblock (R7) is deliberately NOT applied here — it
                 # is persistence-gated, handled by reconcile_heal_design_unblock
@@ -5356,7 +5478,13 @@ commands:
                                         (persistence-gated over N ticks);
                                   R8    fleet:awaiting-infra PR whose body
                                         names a now-CLOSED Parked-until: #N
-                                        blocker → remove the park label.
+                                        blocker → remove the park label;
+                                  R9    design-parked PR (design-blocked /
+                                        -unblocked / -proposed) on a
+                                        fleet:sonnet backing issue → re-tag
+                                        the issue fleet:sonnet → fleet:opus
+                                        (the design-resume tier is opus+-
+                                        only, so no class could serve it).
                                 R2 (orphaned WIP/feedback PR with no claim;
                                 fleet:design-blocked / fleet:design-proposed /
                                 fleet:awaiting-infra PRs exempt — their

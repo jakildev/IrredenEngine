@@ -342,6 +342,16 @@ def feedback_pr_class(labels):
     # this resolver routes it to sonnet, and the dispatched sonnet worker
     # refuses tier 4 — a no-op every tick, with opus needs_plan starved behind
     # it (engine #1885).
+    #
+    # Reading the PR's labels alone is CORRECT here, not a shortcut: the
+    # backing task's class is a task-axis fact that does not belong on a PR
+    # record (#2820's commitment), and the invariant this pin assumes — a PR
+    # parked in the design lane has an opus+ backing task — is held on the
+    # issue side by `fleet-claim reconcile` R9, which re-tags a fleet:sonnet
+    # backing issue one class up while any of its PRs carries a design-lane
+    # label (#2939). Without R9 a fleet:sonnet-backed design resume was
+    # unreachable by EVERY class: this pin dispatches only opus, and the opus
+    # pane correctly declines on the class gate.
     if "fleet:design-unblocked" in label_set:
         return "opus"
     if label_set & FEEDBACK_BLOCKING_LABELS:

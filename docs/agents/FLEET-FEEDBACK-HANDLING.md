@@ -39,7 +39,13 @@ Address one PR per iteration, oldest within each tier:
    comment plus the issue's `## Plan` (and any `## Plan
    corrections`), just like a normal feedback fix. **Opus+ classes
    only**; sonnet-class iterations skip this tier (absorbing an
-   architect's design reply is opus-tier work).
+   architect's design reply is opus-tier work). The matching invariant —
+   *a PR parked in the design lane has an opus+ backing task* — is held by
+   `fleet-claim reconcile` **R9**, which re-tags a `fleet:sonnet` backing
+   issue up to `fleet:opus` while any of its PRs is design-parked. Without
+   it a sonnet-backed resume is dispatchable only to opus (the resolver's
+   pin) and refusable only by opus (the class gate): unreachable by every
+   class (#2939).
 
 **Skip** PRs labeled `human:wip` — the human is working on the PR
 directly.
