@@ -1206,8 +1206,10 @@ else
     echo "          (run scripts/fleet/install.sh to install it)"
 fi
 
-# Ensure the plans directory exists for worker panes and architect to write to.
-mkdir -p "$HOME/.fleet/plans"
+# Ensure each repository has an unambiguous staging directory. Legacy flat
+# files remain in place until a human reviews the dry-run migration table.
+mkdir -p "$HOME/.fleet/plans/engine" "$HOME/.fleet/plans/game"
+fleet-plans check || true
 
 # Ensure witness directories exist before the witness pane starts.
 mkdir -p "$HOME/.fleet/heartbeats"

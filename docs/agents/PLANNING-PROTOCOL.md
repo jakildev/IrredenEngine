@@ -309,9 +309,10 @@ For each `fleet:needs-plan` issue:
    at triage, `human:revise-plan` on a posted plan (below),
    `fleet:needs-human` when a planner needs a decision, and PR review.
 
-   You may optionally stage a local copy at `~/.fleet/plans/issue-<N>.md` for
-   your own reference, but it is not required and nothing reads it — the `## Plan`
-   comment is the source of truth.
+   You may optionally stage a local copy at the repository-scoped path printed
+   by `fleet-plans path <N> [--repo game]`. It is not required; only
+   `fleet-queue-ingest`'s repository-scoped planning-gate fast path reads it —
+   the `## Plan` comment is the source of truth.
 
 4. **Plan review (the gate the redesign adds).** While `fleet:plan-review` is on
    the issue it is **not** queue-ready — `fleet-queue-ingest` skips it. A plan

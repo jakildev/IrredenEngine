@@ -318,6 +318,11 @@ Parallel-agent fleet (tmux + Claude)
                                  phrasing / missing core sections — the cheap
                                  pre-pass before the Opus plan-review
                                  soundness judgment
+  fleet-plans path <issue-number> [--repo engine|game]
+  fleet-plans migrate [--apply] | check
+                                 print scoped staging paths, dry-run/apply the
+                                 one-time legacy migration, or reject remaining
+                                 flat plan files
   fleet-validate-stack <umbrella> [--repo engine|game] [--children N…] [--strict]
                                  [--check-checklist]
                                  pre-approval check that an epic's child issues

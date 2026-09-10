@@ -291,6 +291,10 @@ durable, actionable observations belong here, not per-iteration status.
 
 ## Plan-file Read pattern (workers only)
 
+The committed copy below is already repository-scoped. For optional host-local
+staging, use `fleet-plans path <N> [--repo game]`; never infer a repository from
+the legacy flat `~/.fleet/plans/issue-<N>.md` form.
+
 When reading plan files from the repo's `.fleet/plans/` directory, use:
 
 ```

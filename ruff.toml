@@ -39,6 +39,7 @@ extend-include = [
     "scripts/fleet/fleet-gh-poll",
     "scripts/fleet/fleet-health",
     "scripts/fleet/fleet-issue",
+    "scripts/fleet/fleet-plans",
     "scripts/fleet/fleet-pr",
     "scripts/fleet/fleet-reconcile-amendments",
     "scripts/fleet/fleet-rules-sweep",

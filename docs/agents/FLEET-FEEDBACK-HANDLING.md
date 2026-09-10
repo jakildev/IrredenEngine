@@ -243,12 +243,15 @@ fix in Step i.)
   arithmetic checked, framebuffer-width arithmetic not). If the value
   does not hold, say so in the summary comment and take the reviewer's
   alternative or propose one.
-- **For `fleet:design-unblocked`** (opus+ classes only): also re-read
-  the architect's plan file at `~/.fleet/plans/issue-<N>.md` (current
-  naming, keyed to the issue number; some older plans use `T-<NNN>.md`
-  — check both, prefer the `issue-` form). This is REQUIRED reading
-  before you resume — it is the architect's design for the task and
-  carries the decision + decomposition the latest comment summarizes.
+- **For `fleet:design-unblocked`** (opus+ classes only): re-read the plan in
+  this order: the latest `## Plan` issue comment (`fleet-issue view <N>`, with
+  `--repo game` for a game PR), the PR branch's committed
+  `.fleet/plans/issue-<N>.md`, then the scoped host-local staging file printed
+  by `fleet-plans path <N> [--repo game]`. Some older plans use `T-<NNN>.md`.
+  The flat `~/.fleet/plans/issue-<N>.md` form is legacy and ambiguous; never
+  read it for a game PR. This is REQUIRED reading before you resume — it is
+  the architect's design for the task and carries the decision + decomposition
+  the latest comment summarizes.
   Because a design-blocked task releases its owner (you may be resuming
   someone else's escalation), the plan file + the PR are your only
   handoff context — do not assume in-conversation memory of it. The
