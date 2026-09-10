@@ -254,7 +254,7 @@ Everything under `scripts/` — the fleet automation plus the render / perf /
 gui harnesses — is linted by **ruff**, the Python analogue of
 `clang-format`/`clang-tidy`. After touching any Python script, run the
 canonical check before committing (the CI `Python lint` step in
-`.github/workflows/quality.yml` gates it on every PR):
+`.github/workflows/python-lint.yml` gates it on every PR):
 
 ```bash
 ruff check scripts/          # PEP8 + import-order + unused + bare-assert

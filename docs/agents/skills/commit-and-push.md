@@ -169,7 +169,7 @@ the analogue of the C++ `format-changed`/`lint` targets:
 
 ```bash
 ruff check --fix scripts/   # autofix import-order / unused imports
-ruff check scripts/         # must exit 0 — gated in CI (quality.yml)
+ruff check scripts/         # must exit 0 — gated in CI (python-lint.yml)
 ```
 
 Resolve any remaining findings (line-length, ambiguous names, bare asserts)

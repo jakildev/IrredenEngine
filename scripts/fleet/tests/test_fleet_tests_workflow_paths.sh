@@ -53,14 +53,14 @@ fi
 # fleet-state-machine.json; the narrower entry stays so the ratchet keeps
 # naming that subject even if the glob is ever tightened.
 #
-# The three .github/workflows/ entries are test_workflow_paths_sync.sh's
-# subjects (#2929). They are the first members whose population is derived
+# The four .github/workflows/ entries are test_workflow_paths_sync.sh's
+# subjects (#2929). They are the only members whose population is derived
 # rather than fixed — that suite globs .github/workflows/*.yml and covers
-# whichever files declare both a push: and a pull_request: paths: block, so
-# a fifth such workflow becomes its subject with no edit here. This list
-# cannot track that on its own; T4 in test_workflow_paths_sync.sh asserts
-# the two agree, so the gap fails a suite instead of silently costing the
-# new workflow its trigger.
+# whichever files declare both a push: and a pull_request: paths: block, so a
+# new such workflow becomes its subject with no edit here. This list cannot
+# track that on its own; T4 in test_workflow_paths_sync.sh asserts the two
+# agree, so the gap fails a suite instead of silently costing the new workflow
+# its trigger.
 OUT_OF_TREE_SUBJECTS=(
     'cmake/run_clang_format_changed.cmake'
     'engine/tools/lib/concurrency_helpers.sh'
@@ -69,6 +69,7 @@ OUT_OF_TREE_SUBJECTS=(
     'docs/agents/**'
     '.github/workflows/header-checks.yml'
     '.github/workflows/perf-gate.yml'
+    '.github/workflows/python-lint.yml'
     '.github/workflows/render-harness-tests.yml'
     'ruff.toml'
 )

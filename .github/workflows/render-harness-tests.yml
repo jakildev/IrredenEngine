@@ -5,9 +5,10 @@ name: Render Harness Tests
 # executes them and a suite can go red silently (#2825).
 #
 # Standalone for the same reason fleet-tests.yml is: the only other CI surface
-# that would reach these (quality.yml's ruff/ctest job) is disabled at the repo
-# level, so a step added there is inert until it is re-enabled (#2718). These
-# suites need no compiler, no GL, and no CMake.
+# that would reach these was the umbrella quality.yml's ruff/ctest job, and that
+# workflow is retired (#2718) — it was disabled at the repo level for months
+# first, so a step added there was inert either way. These suites need no
+# compiler, no GL, and no CMake.
 #
 # Path-filtered to the **subjects** (scripts/*.py — where every dashed harness
 # script and the shared modules they import live) as well as the
@@ -16,11 +17,9 @@ name: Render Harness Tests
 # a PR that breaks a subject then skips the only coverage guarding it.
 # `scripts/*` does not match across `/`, so scripts/fleet/** is excluded —
 # that tree has its own workflow. The two path lists are duplicated because
-# GitHub Actions does not support YAML anchors — keep them in sync **by hand**.
-# Generalizing the sync ratchet (scripts/fleet/tests/test_fleet_tests_workflow_paths.sh,
-# #2810) across every workflow is tracked as #2929; it is pinned to
-# fleet-tests.yml until that lands, so nothing executed checks the sync here.
-# Drop this note when #2929 lands.
+# GitHub Actions does not support YAML anchors — keep them in sync;
+# scripts/fleet/tests/test_workflow_paths_sync.sh (#2929) ratchets that they do,
+# for this workflow as for every other path-filtered one.
 #
 # The demo manifests are a subject too (#2919): test_render_verify.py's
 # CommittedManifestsResolve asserts every committed

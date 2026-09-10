@@ -4,7 +4,7 @@
 # growing body of Python that the C++-only quality surface (clang-format + the
 # simplify-* subagents) never covered, so PEP8 / import-order nits slipped
 # through to review. Ruff is the Python analogue: one fast single-binary pass
-# over scripts/, gated in CI (.github/workflows/quality.yml) and run
+# over scripts/, gated in CI (.github/workflows/python-lint.yml) and run
 # author-side before commit.
 #
 # Canonical invocation: `ruff check scripts/` (this file pins the rules and the

@@ -1,0 +1,74 @@
+name: Python Lint
+
+# The repo's two Python-surface gates: `ruff check scripts/` and the
+# state.json-mtime freshness ratchet. Both were steps in quality.yml, which
+# was `disabled_manually` at the repo level and — across all 32 retained
+# runs — never once concluded green, so neither step has ever executed in CI
+# (both were added months after the disable). #2718 retires that workflow and
+# rehomes its gates one per workflow; this is the Python one.
+#
+# Standalone rather than one umbrella job, for the reason the umbrella failed:
+# quality.yml gated ruff, clang-format, clang-tidy and ctest behind a single
+# Windows `Configure` step (`cmake --preset windows-debug`, MinGW Makefiles,
+# with no MinGW toolchain installed), so one broken leg took every check down
+# with it. Same shape as fleet-tests.yml (#2712), header-checks.yml (#2794)
+# and render-harness-tests.yml (#2825), each of which went standalone after a
+# step added to quality.yml turned out to be inert.
+#
+# Linux, not Windows: both gates are pure Python and need no compiler, no GL
+# and no CMake, so a bare ubuntu runner is the whole environment. Windows
+# build coverage is not lost with quality.yml — it never worked there — and
+# lives in the fleet's native Windows host lane (fleet:needs-windows-smoke /
+# platform-catchup), which builds windows-debug against a real MSYS2
+# toolchain.
+#
+# Path-filtered to this gate's subjects: all of scripts/ (ruff's scope, and
+# lint_state_mtime.py's) plus ruff.toml, which pins both the rule set and the
+# extension-less file set. The two `paths:` blocks are duplicated because
+# GitHub Actions has no YAML anchors — keep them in sync;
+# scripts/fleet/tests/test_workflow_paths_sync.sh ratchets that they do, and
+# its T4 ratchets that fleet-tests.yml triggers on this file.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'scripts/**'
+      - 'ruff.toml'
+      - '.github/workflows/python-lint.yml'
+  pull_request:
+    paths:
+      - 'scripts/**'
+      - 'ruff.toml'
+      - '.github/workflows/python-lint.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  python-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Python analogue of clang-format/clang-tidy for the repo's Python
+      # surface (all of scripts/: fleet automation + render/perf/gui
+      # harnesses). Pinned so the gate is stable across ruff releases;
+      # ruff.toml at the repo root pins the rules + the extension-less file
+      # set. Bumping the pin is its own change — a ruff release that adds a
+      # rule must not red an unrelated PR.
+      - name: Python lint (ruff)
+        uses: astral-sh/ruff-action@v3
+        with:
+          version: "0.15.20"
+          args: "check scripts/"
+
+      # Cross-line pattern ruff has no native rule for: an st_mtime freshness
+      # read on the scout cache (must derive from generated_at instead;
+      # #2231/#2267). Best-effort ratchet — legit reads opt out with an inline
+      # `# lint: state-mtime-ok` comment. python3 is preinstalled on
+      # ubuntu-latest.
+      - name: State-mtime freshness lint (best-effort ratchet)
+        run: python3 scripts/fleet/lint_state_mtime.py scripts/fleet/
