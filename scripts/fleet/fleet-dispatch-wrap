@@ -53,6 +53,7 @@ unset _mode_arg
 # Track fleet-dispatcher's STATE_DIR via the same env-var override so a
 # config change in one place propagates to both scripts.
 STATE_DIR="${FLEET_STATE_DIR:-$HOME/.fleet/state}"
+DISPATCH_DIR="$STATE_DIR/dispatch"
 RATE_LIMIT_DIR="$STATE_DIR/rate-limit"
 CLAIM_FLAG_DIR="$STATE_DIR/dispatch-claimed"   # keep in sync with fleet-dispatcher
 
@@ -122,6 +123,34 @@ elif [[ "$MODEL" == *opus* ]]; then
 else
     export FLEET_ROLE_MODEL=sonnet
 fi
+
+# Stamp this shell's PID into the dispatcher-created record before any
+# potentially long setup or runtime launch. The same-directory rename keeps
+# cleanup_stale_dispatches from observing a partially rewritten JSON record.
+record_wrapper_pid() {
+    local record="$DISPATCH_DIR/$PANE_KEY.json" record_json updated tmp
+    [[ -f "$record" ]] || return 0
+    record_json=$(<"$record")
+    case "$record_json" in
+        *'"wrapper_pid":0'*)
+            updated="${record_json/\"wrapper_pid\":0/\"wrapper_pid\":$$}"
+            ;;
+        *'"wrapper_pid":'*)
+            return 0
+            ;;
+        *'}')
+            updated="${record_json%?},\"wrapper_pid\":$$}"
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+    tmp=$(mktemp "$DISPATCH_DIR/.$PANE_KEY.wrapper.XXXXXX") || return 1
+    printf '%s\n' "$updated" > "$tmp"
+    mv -f "$tmp" "$record"
+}
+
+record_wrapper_pid || echo "fleet-dispatch-wrap: could not record wrapper PID for $PANE_KEY" >&2
 
 # GitHub App token (#1394 Q4): guarded per-iteration refresh so every claude
 # iteration starts with a fresh token (cache makes this a cheap file read

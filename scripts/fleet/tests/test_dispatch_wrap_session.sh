@@ -45,7 +45,8 @@ WRAP="$SCRIPT_DIR/fleet-dispatch-wrap"
 # (Audited siblings: FLEET_ROLE_MODEL is always freshly exported by the wrap
 # itself regardless of argv, so it has no leak path; FLEET_ASSIGNED_WORKTREE
 # is not read by fleet-dispatch-wrap at all.)
-unset FLEET_PLAN_ISSUE
+unset FLEET_PLAN_ISSUE FLEET_DISPATCH_TARGET FLEET_DISPATCH_KIND \
+  FLEET_DISPATCH_REPO FLEET_DISPATCH_NUMBER FLEET_DISPATCH_REASON
 
 # PASS/FAIL, ok/bad and `summarize` come from the shared helper: its
 # "passed: N  failed: M" line is what fleet-positive-control scores, and the
@@ -378,5 +379,14 @@ assert_contains "$out" "resumed=0 target=task:engine:911" "different target star
 out=$(cd "$WT" && FLEET_DISPATCH_PRINT_LAUNCH=1 "$WRAP" pane-3 sonnet high worker "" live target=task:engine:911 claude sonnet 2>/dev/null)
 assert_contains "$out" "resumed=0" "provider switch never resumes the other CLI session"
 rm -f "$SIDECAR"
+
+echo "T17: a launched wrapper records its PID in the pane dispatch record"
+mkdir -p "$FLEET_STATE_DIR/dispatch"
+printf '{"role":"queue-manager","pane":"%%3","wrapper_pid":0,"sentinel":"kept"}\n' \
+  > "$FLEET_STATE_DIR/dispatch/pane-3.json"
+run_wrap sonnet high queue-manager >/dev/null
+python3 -c "import json,sys;d=json.load(open(sys.argv[1]));assert d['wrapper_pid'] > 0 and d['sentinel'] == 'kept'" \
+  "$FLEET_STATE_DIR/dispatch/pane-3.json" 2>/dev/null \
+  && ok "wrapper PID stamped without losing record fields" || bad "wrapper PID missing or record fields changed"
 
 summarize "fleet-dispatch-wrap session tests"

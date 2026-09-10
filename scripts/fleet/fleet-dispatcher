@@ -734,8 +734,10 @@ list_pane_state() {
 # lane (the four worker panes) gets concurrent iterations. The previous
 # singular form picked the first idle pane and dropped the rest, which
 # silently single-flighted multi-pane roles.
-# Returns 0 (true) when a fleet-dispatch-wrap is currently running as a
-# direct child of the pane's shell. Used to disambiguate tmux's
+# Returns 0 (true) when a fleet-dispatch-wrap is currently running for the
+# pane. The dispatch-record PID is the portable primary signal; the direct
+# child probe preserves detection for record-less, hand-launched wrappers.
+# Used to disambiguate tmux's
 # pane_current_command, which reports "bash" while fleet-dispatch-wrap
 # (a `#!/usr/bin/env bash` script) runs its `claude | fleet-claude-stream`
 # pipeline — the wrapper's bash interpreter is the process-group leader,
@@ -749,10 +751,26 @@ list_pane_state() {
 # leaving the master state stale across iterations.
 pane_has_running_wrapper() {
     local pane_id="$1"
+    if dispatch_record_has_live_wrapper "$pane_id"; then
+        return 0
+    fi
     local pane_pid
     pane_pid=$(tmux display-message -t "$pane_id" -p '#{pane_pid}' 2>/dev/null || true)
     [[ -n "$pane_pid" ]] || return 1
     pgrep -P "$pane_pid" -f fleet-dispatch-wrap >/dev/null 2>&1
+}
+
+# The wrapper records its own PID in the pane-keyed dispatch record before it
+# launches the runtime. This is the portable occupancy signal: kill is a bash
+# builtin on every fleet host, while pgrep is an optional MSYS2 package.
+dispatch_record_has_live_wrapper() {
+    local pane_id="$1" record record_json wrapper_pid
+    record=$(dispatch_record "$pane_id")
+    [[ -f "$record" ]] || return 1
+    record_json=$(<"$record")
+    [[ "$record_json" =~ \"wrapper_pid\":([1-9][0-9]*) ]] || return 1
+    wrapper_pid="${BASH_REMATCH[1]}"
+    kill -0 "$wrapper_pid" 2>/dev/null
 }
 
 # True when a pane's tag serves a role: an exact role tag (a pinned pane,
@@ -920,7 +938,7 @@ write_dispatch_record() {
     # so cleanup_stale_dispatches may trust the marker's absence as "claimed
     # nothing" (#2698). Records without it predate the change and fold on the
     # old duration heuristic.
-    printf '{"role":"%s","pane":"%s","class":"%s","dispatched_at":"%s","dispatched_epoch":%s,"claim_marker":1%s}\n' \
+    printf '{"role":"%s","pane":"%s","class":"%s","dispatched_at":"%s","dispatched_epoch":%s,"wrapper_pid":0,"claim_marker":1%s}\n' \
         "$role" "$pane_id" "$class" "$ts" "$epoch" "$extra" >"$(dispatch_record "$pane_id")"
 }
 
@@ -2530,8 +2548,12 @@ dispatch_role() {
         #
         # The leading-space sacrificial char in build_dispatch_command
         # remains as defense-in-depth.
+        # Publish the record before send-keys so the wrapper can stamp its PID
+        # immediately; writing it afterward races a fast-starting pane.
+        write_dispatch_record "$role" "$pane_id" "$(dispatch_class_key "$role")" "$target_arg" "$pane_basename" "$launch_runtime"
         if ! dispatch_send_keys -t "$pane_id" C-u "$cmd" C-m; then
             log "send-keys timeout/failed for $role -> $pane_id; trying next idle pane"
+            rm -f "$(dispatch_record "$pane_id")"
             # Error-path release: the launch failed AFTER a successful
             # pre-claim. Release under the same basename (any other name
             # would no-op) and let the next pane re-attempt the claim.
@@ -2540,7 +2562,6 @@ dispatch_role() {
             fi
             continue
         fi
-        write_dispatch_record "$role" "$pane_id" "$(dispatch_class_key "$role")" "$target_arg" "$pane_basename" "$launch_runtime"
         LAST_DISPATCH_EPOCH=$now_epoch
         dispatched=$((dispatched + 1))
         dispatched_class=$((dispatched_class + 1))
