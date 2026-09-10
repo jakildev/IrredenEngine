@@ -504,11 +504,17 @@ Do the work, then exit cleanly:
        measured in step g. (Negative claims are the dangerous ones: a
        scary-but-false drift warning left standing misleads everyone
        reading the merged history, and no build gate catches it, #2536.)
-       **Sweep the auto-merged files too, not just the conflicted ones**:
-       `git diff origin/master...HEAD --name-only | xargs grep -n "#<your
-       Closes N>"` — a register master edited in a different line range
-       merges clean, so the PR can ship "OPEN (#N)" above its own
-       resolution (#2648).
+       **Sweep the auto-merged files too, not just the conflicted ones** —
+       a register master edited in a different line range merges clean, so
+       the PR can ship "OPEN (#N)" above its own resolution (#2648). Two
+       separate calls, never a pipeline: `CLAUDE-BASELINE.md` §"Bash tool
+       rules" forbids `cmd1 | cmd2` and Bash `grep`, so the one-liner form
+       cannot be run by the agent this step directs. First list the changed
+       paths — `git diff origin/master...HEAD --name-only` — then read that
+       output and search those explicit paths for your own `Closes` number:
+       `fleet-rules-sweep --pattern '#<your Closes N>' <the paths>`
+       (the Grep tool scoped to the same paths works too). The sweep prints
+       its coverage, so a zero-hit result is evidence it actually looked.
        **If the PR also carries `fleet:human-deferred`, drop it.** Your
        push added new commits, so the deferral — which covered the diff
        as it stood at defer time — no longer holds. Dropping it re-enters

@@ -27,10 +27,32 @@ answer it mechanically:
   all, because the routing lives in the surrounding prose:
 
 ```bash
-rg -n -g '*.md' 'cmake --preset' . | grep -E '\-B |\$ENG' | grep -v -- '-S '
+fleet-rules-sweep --pattern 'cmake --preset.*(-B |\$ENG)|(-B |\$ENG).*cmake --preset' --glob '*.md'
 ```
 
-Zero hits tree-wide at HEAD; one at `38bfadb52^`, the `build-game` recipe.
+One command, because the canonical Bash rules
+([`CLAUDE-BASELINE.md`](../../../../docs/agents/CLAUDE-BASELINE.md) § "Bash
+tool rules") forbid both `cmd1 | cmd2` pipelines and Bash `grep` — an
+`rg | grep | grep` recipe is not executable by the agents this check governs.
+The regex carries both flag orders (`--preset` before or after the
+engine-rooted flag). Apply the `-S` exclusion by **reading the returned
+lines**: a hit whose command already carries `-S` is clean, one without it is
+the finding. Prefer `fleet-rules-sweep` over a bare `rg` — it resolves the
+file set through `git ls-files` and prints its coverage, so a zero-hit result
+is reportable as evidence rather than a possible false clean
+([`.claude/rules/README.md`](../../../rules/README.md), #2739).
+
+At HEAD the sweep returns exactly one raw hit — **this file's own recipe line
+above**, which necessarily contains the pattern it searches for. Discard it:
+the check is diff-triggered on a fenced block *added by the subject diff*, and
+this line is the detector, not a snippet anyone runs `cmake` from. That leaves
+**zero findings tree-wide**.
+
+The positive control is `38bfadb52^`: the same pattern returns the
+`build-game` recipe (`BUILD.md:116`), which carries no `-S` and no engine-root
+`cd` — a true finding. Run it before trusting a zero-hit pass, so a clean
+result is distinguishable from a pattern that matches nothing.
+
 A bare `cmake --preset <host>-debug` in a fence with no `cd` and no
 engine-rooted path is **not** a finding — its implied CWD is the engine
 root, the documented default. Nine such snippets stand at HEAD (`README.md`,

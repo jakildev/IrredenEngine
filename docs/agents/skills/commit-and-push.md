@@ -266,16 +266,26 @@ Use `gh pr create`. Body template: **procedures** `pr-body.md`.
 > Before calling `gh pr create`, complete step 8a (Closes-crosscheck) if the
 > drafted body contains a `Closes #N` line.
 
+**Assemble the body into a file, not a shell variable.** Write the drafted
+body with the **Write** tool to the worktree-local `.pr-body.md` (gitignored,
+alongside the reviewer's `.review-body.md`), then pass it with `--body-file`.
+`--body "$var"` is the forbidden form: an unset or half-assembled variable
+opens the PR with an **empty** body and nothing reports the failure, and a
+`$(cat <<'EOF' …)` capture trips the shell-substitution gate on backticks
+(REVIEWER-PROTOCOL.md § "Posting the review body"). Do not route the assembly
+through `printf … > file` either — the Bash tool blocks `>` redirects
+regardless of destination (CLAUDE-BASELINE.md § "Bash tool rules"); the Write
+tool is the mechanism that honors both rules at once.
+
 **Substitute the sha-pin token.** If the **screenshot skill** ran earlier in
 this pass, its markdown snippet embeds the **sha-pin token** in place of a
 commit SHA (the screenshots were staged before a commit existed to pin to).
-Capture the drafted body into a variable, fold the skill's snippet in, and —
-immediately before calling `gh pr create` — replace every **sha-pin token**
-occurrence with the just-pushed commit, then pass that variable as the body
-(the example below is already wired this way). `HEAD` at this point is the
-commit created in step 6 and pushed in step 7, so the substituted SHA is the
-one whose tree actually contains the screenshots under the **screenshot
-skill**'s output path. The substitution is a no-op when the body has no
+Fold the skill's snippet into the drafted body and — as you Write
+`.pr-body.md` — replace every **sha-pin token** occurrence with the
+just-pushed commit, read once via `git rev-parse HEAD`. `HEAD` at this point
+is the commit created in step 6 and pushed in step 7, so the substituted SHA
+is the one whose tree actually contains the screenshots under the **screenshot
+skill**'s output path. There is nothing to substitute when the body carries no
 **sha-pin token** (no screenshots this pass), so the same wiring serves the
 common no-screenshot case.
 
@@ -285,8 +295,9 @@ claim-base` — the **default branch** for a normal claim or plain human PR
 idempotent edit-or-create and the post-open native-stack link live in the
 **procedures** `stackable-on.md` / `native-stack-link.md`. Common case:
 
-```bash
-pr_body="$(cat <<'EOF'
+Write `.pr-body.md` (Write tool):
+
+```markdown
 ## Summary
 - <bullet>
 
@@ -301,20 +312,24 @@ pr_body="$(cat <<'EOF'
 Closes #<issue-N>
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
-EOF
-)"
-# ## Acceptance evidence is conditional: required whenever the issue in
-# `Closes #N` states acceptance criteria ANYWHERE — a `## Plan` comment
-# OR the issue body (fleet:no-plan follow-ups carry them in the body).
-# Omit the section otherwise. Template + rules: procedures/pr-body.md.
-# If the screenshot skill ran this pass, fold its markdown snippet in here:
-#   pr_body="${pr_body}"$'\n\n'"<the screenshot skill's markdown snippet>"
-pr_body="${pr_body//<sha-pin token>/$(git rev-parse HEAD)}"   # no-op when the token is absent
-# --label fleet:author-<runtime> is step 8c's provenance stamp; a PR opened
-# without it cannot be routed for review while cross-provider review is on.
-gh pr create --base <default-branch> --title "<scope>: <title>" --body "$pr_body" \
-    --label fleet:author-<claude|codex>
 ```
+
+`## Acceptance evidence` is conditional: required whenever the issue in
+`Closes #N` states acceptance criteria ANYWHERE — a `## Plan` comment OR the
+issue body (fleet:no-plan follow-ups carry them in the body). Omit the section
+otherwise. Template + rules: **procedures** `pr-body.md`. If the screenshot
+skill ran this pass, append its markdown snippet to the body before you write
+the file, with the **sha-pin token** already substituted.
+
+Then open the PR against that file:
+
+```bash
+gh pr create --base <default-branch> --title "<scope>: <title>" \
+    --body-file .pr-body.md --label fleet:author-<claude|codex>
+```
+
+`--label fleet:author-<runtime>` is step 8c's provenance stamp; a PR opened
+without it cannot be routed for review while cross-provider review is on.
 
 **`Closes #N` line** (required when the task has an `Issue:` field) is what
 makes the tracker auto-close the originating issue on merge. Omit only when

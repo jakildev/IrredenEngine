@@ -540,15 +540,33 @@ Fetch the current body first so the append doesn't clobber it, and write
 back with `--body-file` — never `gh pr edit --body "$pr_body"`, whose
 shell substitution blanks the whole PR body when the variable is empty
 (the shell-substitution hazard REVIEWER-PROTOCOL.md § Posting the review
-body uses `--body-file` to avoid):
+body uses `--body-file` to avoid). Three separate calls, because the
+canonical Bash rules forbid `>` redirects to any destination and the
+sandbox blocks writes outside the worktree — so assemble the file with the
+**Write** tool, not `printf … > /tmp/…` (CLAUDE-BASELINE.md § "Bash tool
+rules"; REVIEWER-PROTOCOL.md § "Posting the review body" for why the path
+is worktree-local):
 
-```bash
-pr_body="$(gh pr view <N> --json body -q .body)"                # existing body — do not clobber
-pr_body="${pr_body}"$'\n\n'"<the attach-screenshots --two-ref markdown snippet>"
-pr_body="${pr_body//@COMMIT_SHA@/$(git rev-parse HEAD)}"        # pin to the post-amend commit
-printf '%s\n' "$pr_body" > /tmp/pr-body-<N>.md
-gh pr edit <N> --body-file /tmp/pr-body-<N>.md
-```
+1. Read the existing body and the post-amend commit:
+
+   ```bash
+   gh pr view <N> --json body -q .body
+   ```
+
+   ```bash
+   git rev-parse HEAD
+   ```
+
+2. **Write** `.pr-body.md` (worktree-local, gitignored) containing that
+   body, then a blank line, then the `attach-screenshots --two-ref`
+   markdown snippet with every `@COMMIT_SHA@` replaced by the SHA from
+   step 1 — the post-amend HEAD, not the `--two-ref` "after" capture ref.
+
+3. Push the body back:
+
+   ```bash
+   gh pr edit <N> --body-file .pr-body.md
+   ```
 
 ### Step d — push the fixes
 

@@ -48,13 +48,15 @@ if [[ -n "$existing" ]]; then
     gh pr edit "$existing" --base "$base" --add-label "$author_label"
 else
     gh pr create --base "$base" --label "fleet:wip" --label "$author_label" \
-        --title "<scope>: <title> (#<N>)" \
-        --body "$(cat <<EOF
-<single-task body — procedures/pr-body.md>
-EOF
-)"
+        --title "<scope>: <title> (#<N>)" --body-file .pr-body.md
 fi
 ```
+
+Write `.pr-body.md` (single-task body per [pr-body.md](pr-body.md)) with the
+**Write** tool before this fence runs — same worktree-local, gitignored file
+the main step 8 flow uses. `--body "$(cat <<EOF …)"` is not an alternative
+here: an empty variable opens the PR with a blank body, and the `$(…)` capture
+trips the shell-substitution gate on backticks.
 
 When `base != master`, link the PR into the native GitHub stack — run the
 [native-stack-link.md](native-stack-link.md) step with `$base` and the PR
