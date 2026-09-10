@@ -1,0 +1,107 @@
+#!/usr/bin/env python3
+"""Inspect and migrate repository-scoped host-local fleet plan staging."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+
+import fleet_plans
+
+
+def _issue_titles() -> dict[str, dict[int, str]]:
+    titles: dict[str, dict[int, str]] = {}
+    for key, slug in fleet_plans.REPO_SLUGS.items():
+        result = subprocess.run(
+            ["gh", "issue", "list", "--repo", slug, "--state", "all",
+             "--limit", "5000", "--json", "number,title"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if result.returncode != 0:
+            print(f"fleet-plans: could not list {key} issues: "
+                  f"{result.stderr.strip()}", file=sys.stderr)
+            raise SystemExit(2)
+        rows = json.loads(result.stdout)
+        titles[key] = {int(row["number"]): row["title"] for row in rows}
+    return titles
+
+
+def _cmd_path(args: argparse.Namespace) -> int:
+    print(fleet_plans.plan_path(args.repo, args.issue))
+    return 0
+
+
+def _cmd_check(_args: argparse.Namespace) -> int:
+    legacy = fleet_plans.legacy_flat_files()
+    if not legacy:
+        return 0
+    print(f"fleet-plans: {len(legacy)} legacy flat plan file(s); "
+          "run fleet-plans migrate --apply")
+    return 1
+
+
+def _cmd_migrate(args: argparse.Namespace) -> int:
+    legacy = fleet_plans.legacy_flat_files()
+    if not legacy:
+        print("fleet-plans: no legacy flat plan files")
+        return 0
+
+    titles = _issue_titles()
+    unresolved = 0
+    for source in legacy:
+        key, reason = fleet_plans.resolve_legacy_file(source, titles)
+        verdict = key if key else reason
+        print(f"{source.name} -> {verdict}")
+        if key is None:
+            unresolved += 1
+            continue
+        if not args.apply:
+            continue
+        destination = fleet_plans.plan_path(key, fleet_plans.issue_number(source))
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        os.replace(source, destination)
+
+    if not args.apply:
+        print("dry run; pass --apply to move resolved files")
+    return 1 if unresolved else 0
+
+
+def _parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="manage repository-scoped host-local fleet plans",
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    path_parser = subparsers.add_parser("path", help="print a staged plan path")
+    path_parser.add_argument("issue", type=int)
+    path_parser.add_argument("--repo", choices=fleet_plans.REPO_KEYS,
+                             default="engine")
+    path_parser.set_defaults(run=_cmd_path)
+
+    migrate_parser = subparsers.add_parser(
+        "migrate", help="classify and optionally move legacy flat plans",
+    )
+    migrate_parser.add_argument("--apply", action="store_true")
+    migrate_parser.set_defaults(run=_cmd_migrate)
+
+    check_parser = subparsers.add_parser(
+        "check", help="fail when legacy flat plan files remain",
+    )
+    check_parser.set_defaults(run=_cmd_check)
+    return parser
+
+
+def main() -> int:
+    args = _parser().parse_args()
+    return args.run(args)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

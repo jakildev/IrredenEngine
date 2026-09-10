@@ -27,7 +27,7 @@
 #
 # Planning gate (#1456, re-keyed by #1932): an approved issue with no plan — no
 # `## Plan` issue comment (canonical since #1932), no committed/staged plan file
-# (.fleet/plans/issue-<N>.md or ~/.fleet/plans/issue-<N>.md) — is bounced to
+# (.fleet/plans/issue-<N>.md or ~/.fleet/plans/<repo>/issue-<N>.md) — is bounced to
 # fleet:needs-plan unless opted out (`[no-plan]` / `human:no-plan` /
 # `fleet:no-plan` / investigation spike). fleet:plan-review holds ingest until a
 # reviewer vets the posted plan.
@@ -110,8 +110,9 @@ import json, os, subprocess, sys
 # scripts/fleet/ copy, where fleet_scope_shipped.py lives next to this script.
 sys.path.insert(0, os.path.dirname(os.path.realpath(os.environ['INGEST_SELF'])))
 from fleet_scope_shipped import select_shipped_pr
+import fleet_plans
 
-REPO_SLUGS = {"engine": "jakildev/IrredenEngine", "game": "jakildev/irreden"}
+REPO_SLUGS = fleet_plans.REPO_SLUGS
 
 proj_path = os.environ['FLEET_PROJ_FILE']
 try:
@@ -217,8 +218,9 @@ import json, os, re, subprocess, sys
 # scripts/fleet dir the module ships in (same pattern as the SCOPE_PY block).
 sys.path.insert(0, os.path.dirname(os.path.realpath(os.environ['INGEST_SELF'])))
 from fleet_blocked_by import blocker_refs, has_blocked_by_field
+import fleet_plans
 
-REPO_SLUGS = {"engine": "jakildev/IrredenEngine", "game": "jakildev/irreden"}
+REPO_SLUGS = fleet_plans.REPO_SLUGS
 
 proj_path = os.environ['FLEET_PROJ_FILE']
 try:
@@ -245,9 +247,6 @@ NO_PLAN_RE = re.compile(r'\[no-plan\]', re.IGNORECASE)
 # #1932 PR2: the canonical plan is now a `## Plan` issue comment (no longer a
 # committed/staged plan file). Match a Markdown heading line "## Plan…".
 PLAN_COMMENT_RE = re.compile(r'^\s{0,3}#{2,}\s+Plan\b', re.MULTILINE)
-PLANS_DIR = os.path.expanduser('~/.fleet/plans')
-
-
 def _blocker_open(repo, ref, cache):
     """True when predecessor #ref is still open (state not CLOSED/MERGED).
     Per-run cache dedupes repeated refs across the batch. An unreadable state
@@ -269,12 +268,12 @@ def _blocker_open(repo, ref, cache):
 
 def _plan_exists(repo, n, cache):
     """True when a plan file exists for issue n — the planner-host staging
-    copy (~/.fleet/plans/issue-<n>.md) or the committed repo-side copy on the
-    default branch (live `gh api` contents probe, host-independent). Only a
-    confirmed 404 reads as missing; any other probe failure fails OPEN
+    copy (~/.fleet/plans/<repo>/issue-<n>.md) or the committed repo-side copy
+    on the default branch (live `gh api` contents probe, host-independent).
+    Only a confirmed 404 reads as missing; any other probe failure fails OPEN
     (treated as present) so a transient API error never bounces a planned
     issue back to fleet:needs-plan."""
-    if os.path.exists(os.path.join(PLANS_DIR, f'issue-{n}.md')):
+    if fleet_plans.plan_path(repo, n).exists():
         return True
     key = (repo, n)
     if key in cache:
@@ -485,10 +484,13 @@ for issue in pending:
     has_plan = (_has_plan_comment(view.get('comments', []))
                 or _plan_exists(repo, n, plan_cache))
     if not opted_out and not has_plan:
+        plan_repo = fleet_plans.repo_key(repo)
         comment = (
             f"Planning gate: this issue has no `## Plan` comment (the canonical "
             f"plan per #1932) and no committed/staged plan file "
-            f"(`.fleet/plans/issue-{n}.md`), and it is not opted out "
+            f"(`.fleet/plans/issue-{n}.md` or "
+            f"`~/.fleet/plans/{plan_repo}/issue-{n}.md`), and it is not "
+            f"opted out "
             f"(`human:no-plan` / `fleet:no-plan` / `[no-plan]` / investigation "
             f"spike). Unplanned carve-offs design-block on claim (#1456), so "
             f"adding `fleet:needs-plan` to route it through PLANNING-PROTOCOL.md "

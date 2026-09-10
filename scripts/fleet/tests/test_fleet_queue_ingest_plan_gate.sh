@@ -2,8 +2,9 @@
 # Test the fleet-queue-ingest planning gate (#1456).
 #
 # An approved issue with no `## Plan` issue comment (canonical since #1932) and
-# no plan file (neither planner-host staging ~/.fleet/plans/issue-<N>.md nor the
-# committed repo-side copy .fleet/plans/issue-<N>.md, probed via `gh api`) must
+# no plan file (neither scoped planner-host staging
+# ~/.fleet/plans/<repo>/issue-<N>.md nor the committed repo-side copy
+# .fleet/plans/issue-<N>.md, probed via `gh api`) must
 # be bounced to fleet:needs-plan (never stamped fleet:queued), with an explanatory
 # comment. Escape hatches: a `## Plan` comment, a local plan file, a committed
 # plan file, an explicit "investigation spike" in the title/body, the `[no-plan]`
@@ -37,13 +38,16 @@ TMPROOT=$(mktemp -d)
 export HOME="$TMPROOT/home"
 mkdir -p "$HOME/.fleet/state/projections" "$HOME/.fleet/logs"
 
-# Local staging plan for #741 only — the same-host fast path.
-mkdir -p "$HOME/.fleet/plans"
-echo "# Plan: stub" > "$HOME/.fleet/plans/issue-741.md"
+# Local staging plans exercise both repository namespaces. The flat #753 file
+# is deliberately inert because its repository cannot be known from its path.
+mkdir -p "$HOME/.fleet/plans/engine" "$HOME/.fleet/plans/game"
+echo "# Plan: stub" > "$HOME/.fleet/plans/engine/issue-741.md"
+echo "# Plan: stub" > "$HOME/.fleet/plans/game/issue-752.md"
+echo "# Plan: ambiguous" > "$HOME/.fleet/plans/issue-753.md"
 
 PROJ="$HOME/.fleet/state/projections/queue-manager-ingest.json"
 # #740 = no plan anywhere, not a spike            → bounce to fleet:needs-plan
-# #741 = local ~/.fleet/plans/issue-741.md exists → stamp
+# #741 = local engine-scoped issue-741 plan exists → stamp
 # #742 = committed repo-side plan (gh api 200)    → stamp
 # #743 = no plan, body declares investigation spike → stamp
 # #744 = plan probe fails WITHOUT a 404 (network) → fail open, stamp
@@ -54,10 +58,14 @@ PROJ="$HOME/.fleet/state/projections/queue-manager-ingest.json"
 # #749 = fleet:agent-approved + fleet:no-plan (follow-up lane) → stamp
 # #750 = fleet:agent-approved, no plan, no opt-out  → bounce to fleet:needs-plan
 # #751 = fleet:agent-approved + filed plan + fleet:plan-review → early-skip
+# game #741 = only engine-scoped plan exists → bounce
+# game #752 = game-scoped plan exists → stamp
+# engine #753 = flat legacy plan exists → bounce
 cat > "$PROJ" <<'JSON'
 {"pending_issues":[
   {"number":740,"repo":"engine"},
   {"number":741,"repo":"engine"},
+  {"number":741,"repo":"game"},
   {"number":742,"repo":"engine"},
   {"number":743,"repo":"engine"},
   {"number":744,"repo":"engine"},
@@ -67,7 +75,9 @@ cat > "$PROJ" <<'JSON'
   {"number":748,"repo":"engine"},
   {"number":749,"repo":"engine"},
   {"number":750,"repo":"engine"},
-  {"number":751,"repo":"engine"}
+  {"number":751,"repo":"engine"},
+  {"number":752,"repo":"game"},
+  {"number":753,"repo":"engine"}
 ],"unblock_issues":[]}
 JSON
 
@@ -95,6 +105,8 @@ case "$1" in
                     749) echo '{"title":"render: stale baseline follow-up","body":"**Model:** sonnet\n**Blocked by:** (none)","labels":[{"name":"fleet:agent-approved"},{"name":"fleet:no-plan"}]}' ;;
                     750) echo '{"title":"render: verified defect, fix unknown","body":"**Model:** opus\n**Blocked by:** (none)","labels":[{"name":"fleet:agent-approved"}]}' ;;
                     751) echo '{"title":"render: follow-up filed with plan","body":"**Model:** sonnet\n**Blocked by:** (none)","labels":[{"name":"fleet:agent-approved"},{"name":"fleet:plan-review"}],"comments":[{"body":"## Plan: filed by the finder\n\nstep one"}]}' ;;
+                    752) echo '{"title":"game: locally planned task","body":"**Model:** opus\n**Blocked by:** (none)","labels":[{"name":"human:approved"}]}' ;;
+                    753) echo '{"title":"render: legacy flat plan","body":"**Model:** opus\n**Blocked by:** (none)","labels":[{"name":"human:approved"}]}' ;;
                     *)   echo '{"title":"","body":"","labels":[]}' ;;
                 esac
                 exit 0 ;;
@@ -129,7 +141,11 @@ export PATH="$STUB_DIR:$PATH"
 
 # Per-issue edit-log line (gh issue edit <N> ...) for assertions. Tolerates
 # no-match (empty) without tripping `set -e` / pipefail.
-edit_line() { grep -E "(^| )edit ${1}( |$)" "$EDIT_LOG" | head -1 || true; }
+edit_line() {
+    local issue=$1 repo=${2:-jakildev/IrredenEngine}
+    grep -E "(^| )edit ${issue}( |$).*--repo ${repo}( |$)" "$EDIT_LOG" \
+        | head -1 || true
+}
 
 echo "=== run fleet-queue-ingest over planned/unplanned approved issues ==="
 bash "$INGEST" >/dev/null 2>&1 || true
@@ -158,9 +174,30 @@ fi
 # #741 (local staging plan) → stamped fleet:queued, no bounce.
 l741=$(edit_line 741)
 if [[ -n "$l741" && "$l741" == *"fleet:queued"* && "$l741" != *"fleet:needs-plan"* ]]; then
-    ok "#741 (local ~/.fleet/plans plan) stamped fleet:queued"
+    ok "#741 (local engine-scoped plan) stamped fleet:queued"
 else
     bad "#741 mis-stamped despite local plan: '$l741'"
+fi
+
+l741_game=$(edit_line 741 jakildev/irreden)
+if [[ -n "$l741_game" && "$l741_game" == *"fleet:needs-plan"* && "$l741_game" != *"fleet:queued"* ]]; then
+    ok "game #741 ignores engine-scoped plan and bounces"
+else
+    bad "game #741 trusted engine-scoped plan: '$l741_game'"
+fi
+
+l752_game=$(edit_line 752 jakildev/irreden)
+if [[ -n "$l752_game" && "$l752_game" == *"fleet:queued"* && "$l752_game" != *"fleet:needs-plan"* ]]; then
+    ok "game #752 trusts its game-scoped plan"
+else
+    bad "game #752 ignored its scoped plan: '$l752_game'"
+fi
+
+l753=$(edit_line 753)
+if [[ -n "$l753" && "$l753" == *"fleet:needs-plan"* && "$l753" != *"fleet:queued"* ]]; then
+    ok "engine #753 ignores ambiguous flat legacy plan"
+else
+    bad "engine #753 trusted ambiguous flat plan: '$l753'"
 fi
 
 # #742 (committed repo-side plan, api 200) → stamped.
