@@ -514,8 +514,7 @@ _INGEST_SKIP_LABELS = frozenset({
                            # so the reviewer REMOVING plan-review — the queue trigger —
                            # is not a membership change → no hash flip → no ingest fire
                            # → the issue strands approved-but-unqueued until an unrelated
-                           # approval/unblock sweeps the set. Symmetric with the
-                           # human:review-plan hold below.
+                           # approval/unblock sweeps the set.
     "fleet:needs-info",
     "fleet:scope-shipped", # scope landed under a different issue; human should close
     "fleet:needs-human",   # parked: fleet can't do it autonomously, human must act;
@@ -525,16 +524,12 @@ _INGEST_SKIP_LABELS = frozenset({
                            # keeps human:approved but must NOT be re-queued, so it must
                            # also drop out of the ingest set or it holds the projection
                            # hash non-zero and costs a live `gh issue view` every tick.
-    "human:review-plan",   # #2011: worker-planned high-stakes issue holding for the
-                           # human's approach sign-off; keeps human:approved but must
-                           # NOT queue until the human clears it (surfaced separately
-                           # as repos.<repo>.review_plan, see _populate_review_plan).
 })
 
 # Labels that PULL an issue back into the ingest set even though it also carries
 # a skip label. human:revise-plan is the human-added "change the posted plan"
-# gate: it lands on an issue that is mid-review (fleet:plan-review /
-# human:review-plan, both skip labels), so without this override adding it would
+# gate: it lands on an issue that is mid-review (fleet:plan-review, a skip
+# label), so without this override adding it would
 # neither flip the membership hash (no ingest fire) nor surface the issue in
 # pending_issues (no reconcile). Letting it override both means the human only
 # ever ADDS one label — fleet-queue-ingest resets it to fleet:needs-plan.
@@ -646,10 +641,11 @@ def fetch_human_approved(repo):
     # `gh pr list`/`gh issue list` calls elsewhere in the fleet tooling) —
     # NOT the per_page=30 this used to carry. That cap mirrored gh's old
     # default --limit, but human_approved is a shared field with several
-    # consumers beyond the queue-ingest set (review_plan, epic-adopt
-    # candidates), and the live population already exceeds 30 and keeps
-    # growing: #2856 measured 67 fleet:agent-approved issues against a
-    # 30-item window, silently dropping repos.engine.review_plan to 4 of the
+    # consumers beyond the queue-ingest set (epic-adopt candidates; the
+    # review_plan read-out it also fed retired with human:review-plan), and
+    # the live population already exceeds 30 and keeps growing: #2856
+    # measured 67 fleet:agent-approved issues against a 30-item window,
+    # silently dropping the then-live repos.engine.review_plan to 4 of the
     # true 12. Paginating via max_pages rather than raising per_page further
     # keeps headroom instead of re-inheriting a new, still-fixed deadline.
     #
@@ -2543,7 +2539,7 @@ def project_queue_manager_ingest(state):
 
     - **Add path** — every `human:approved` issue not yet stamped
       `fleet:queued` and not in a skip category (epic, needs-plan, plan-review,
-      needs-info, needs-human, scope-shipped, human:review-plan). Since #1527 a
+      needs-info, needs-human, scope-shipped). Since #1527 a
       `**Blocked by:**`-blocked
       issue is NO LONGER excluded: it enters the set, ingest stamps
       `fleet:queued` + a model label + `fleet:blocked`, and it drops out
@@ -3503,20 +3499,6 @@ def _populate_done_tasks(state):
         tasks["done"] = _populate_tasks_done(repo_state)
 
 
-def _populate_review_plan(state):
-    """Surface human:review-plan issues to the human (#2011), parallel to how
-    needs_plan is surfaced. A worker-planned high-stakes issue holds on
-    human:review-plan for the human's approach sign-off before it can queue.
-    Derived from human_approved (no extra fetch): such issues keep
-    human:approved and human:review-plan is NOT in _ALREADY_QUEUED_LABELS, so
-    fetch_human_approved still returns them. _INGEST_SKIP_LABELS keeps them out
-    of the ingest pending set; this list is the human-facing read-out."""
-    for repo_key, repo_state in state["repos"].items():
-        repo_state["review_plan"] = [
-            issue for issue in repo_state.get("human_approved", [])
-            if "human:review-plan" in issue.get("labels", [])
-        ]
-
 
 # --- Poll topology (#1394 Q2) — leader / follower state acquisition --------
 #
@@ -3636,7 +3618,6 @@ def tick_once():
         if state.get("degraded"):
             log(f"state degraded: {state['degraded']} — reconcile disabled this tick")
         _populate_done_tasks(state)
-        _populate_review_plan(state)
         # One shared _resolve_ref_satisfied cache across every resolver in the
         # tick, so a ref named by more than one of them (a task blocker that is
         # also an epic child) costs a single live call (#2986).

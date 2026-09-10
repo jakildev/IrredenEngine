@@ -252,7 +252,7 @@ class _ScoutTickHarness:
             p(patch.object(_mod, "log", _log))
             for fn in ("_refresh_gh_token", "sample_github_rate_limit",
                        "refresh_all_details", "_populate_done_tasks",
-                       "_populate_review_plan", "resolve_blocked_by",
+                       "resolve_blocked_by",
                        "resolve_human_approved_blockers",
                        "resolve_needs_plan_blocked_by", "resolve_epic_children",
                        "enrich_inflight_pr_tasks", "enrich_stackable_blocker_prs"):

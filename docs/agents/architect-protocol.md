@@ -255,9 +255,9 @@ issue is bounced to `fleet:needs-plan` and a worker re-plans what you already
 shaped, sometimes re-looping you for plan review (observed on #2008/#2009 and
 game #211). Posting the comment makes it **queue directly** — no worker re-plan,
 no return trip — since the human was already in the planning loop. Leave plan-less
-filing for mechanical tasks (the worker plans those; a high-stakes worker-planned
-issue then holds on `human:review-plan` for your sign-off — see
-[`PLANNING-PROTOCOL.md`](PLANNING-PROTOCOL.md) step 3).
+filing for mechanical tasks (the worker plans those and the plan reviewer vets
+the plan — there is no human approach gate; see
+[`PLANNING-PROTOCOL.md`](PLANNING-PROTOCOL.md)).
 
 **If you'll queue it yourself, attach the plan — even for mechanical tickets.**
 The rule above draws the line at "planned with the human," but the sharper

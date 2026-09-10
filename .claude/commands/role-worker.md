@@ -595,8 +595,8 @@ Do the work, then exit cleanly:
      not), read the full thread (`fleet-issue view <N>`, add `--repo game`
      for game), post the structured `## Plan` comment per
      [docs/agents/PLANNING-PROTOCOL.md](../../docs/agents/PLANNING-PROTOCOL.md),
-     swap `fleet:needs-plan` → `fleet:plan-review` (leaving `human:approved`;
-     add `human:review-plan` when the plan is high-stakes), and release
+     swap `fleet:needs-plan` → `fleet:plan-review` (leaving `human:approved`),
+     and release
      (`fleet-claim planning-release`). Sonnet light-plan mechanics are
      unchanged past the claim step: thin `## Plan` comment, `fleet-plan-lint
      <N>`, on pass **remove `fleet:needs-plan`** to self-queue (no

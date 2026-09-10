@@ -60,7 +60,7 @@ fleet-decisions: 3 decision(s) waiting   [engine+game]
   engine PR #101  a thing  [approved]
 
 ## Decisions (2)
-  engine issue #201  hold  [plan approach sign-off]
+  engine issue #201  hold  [needs human]
 
 ## Status
   engine: 5 open PR(s) · 1 queued · 1 needs-plan
@@ -91,7 +91,7 @@ fleet-decisions: 3 decision(s) waiting   [engine+game]
   engine PR #101  a thing  [approved]
 
 ## Decisions (2)
-  engine issue #201  hold  [plan approach sign-off]
+  engine issue #201  hold  [needs human]
 
 ## Status
   engine: 9 open PR(s) · 4 queued · 2 needs-plan

@@ -407,17 +407,10 @@ for the human gates:
 
 - A child **queues directly** once the human stamps `human:approved` on it —
   no worker re-plan round, because the plan is already posted.
-- A child does **not** hit the worker-planning `human:review-plan` fallback.
-  That gate (#2012) holds a *worker-authored* plan for a human's approach
-  sign-off; an epic filed from a design conversation already had the human in
-  the planning loop, and their approval of the umbrella plan **is** the
-  approach sign-off. So **do not pre-stamp `human:review-plan`** on children.
-- **Exception the human owns:** if one child is independently high-stakes
-  (PLANNING-PROTOCOL.md step 3 checklist — ambiguous approach, cross-cutting,
-  expensive/hard-to-reverse, or changes a public contract) *beyond* what the
-  umbrella plan settled, the human may add `human:review-plan` to that child
-  for a separate per-child hold. It is a queue-block until they clear it. This
-  is a human action, not something this flow applies by default.
+- There is no per-child plan sign-off hold: the human's approval of the
+  umbrella plan **is** the approach sign-off (the `human:review-plan` gate,
+  #2012, was retired 2026-09). A child the human wants reworked takes
+  `human:revise-plan` (below); one they want held takes `fleet:needs-human`.
 
 What the human still owns regardless: **per-child `human:approved` triage.**
 The `fleet:task` label means "ready for human triage" — the queue-manager
@@ -446,7 +439,7 @@ Reply with: the umbrella issue URL + epic-label confirmation; the child
 issue URLs; the umbrella plan-file path; the per-child `## Plan` comment links; the
 validate-stack result (must pass); and what the user still must do
 (triage each child individually with `human:approved` — the queue-manager
-won't auto-approve; do not pre-stamp `human:review-plan`, per step 7.6).
+won't auto-approve).
 
 ---
 
@@ -473,9 +466,6 @@ won't auto-approve; do not pre-stamp `human:review-plan`, per step 7.6).
   children change a shared resource (retire a helper, change a public API,
   migrate every consumer); a plan that doesn't enumerate every consumer +
   per-consumer migration is a stub (step 6, PLANNING-PROTOCOL.md step 2).
-- ❌ Pre-stamping `human:review-plan` on children. They're file-with-plan, so
-  the umbrella-plan approval is the approach sign-off (step 7.6, #2012). The
-  human adds that label only for a child that's high-stakes beyond the umbrella.
 - ❌ Skipping the umbrella summary comment — the umbrella↔children
   cross-reference then isn't visible from the umbrella's own thread.
 - ❌ Filing an epic for changes that are really one ticket. If the scope

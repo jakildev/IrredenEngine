@@ -94,9 +94,8 @@ no `## Plan` comment and the ingest bounces it to `fleet:needs-plan` for a
 worker to plan (the safety net). For a genuinely trivial change, the human can
 opt out at filing with `human:no-plan` / a `[no-plan]` tag and it queues with no
 plan at all. The choice: planned-with-the-human → post `## Plan` (queues
-directly); mechanical → leave it (worker plans, and if **high-stakes** the
-worker holds it on `human:review-plan` for your approach sign-off — see
-[`PLANNING-PROTOCOL.md § The flow`](PLANNING-PROTOCOL.md) step 3); trivial →
+directly); mechanical → leave it (a worker plans it and the plan reviewer vets the
+plan — see [`PLANNING-PROTOCOL.md § The flow`](PLANNING-PROTOCOL.md)); trivial →
 `human:no-plan`.
 
 ### Agent-approved follow-up lane (no human triage)
@@ -157,16 +156,12 @@ command, observed output, suspected window, what was ruled out), plus
    the root cause in context — write it down instead of making a planner
    re-derive it. The plan reviewer vets your plan like any other
    (sound → clears the label, queues; unsound → bounces to
-   `fleet:needs-plan`). Apply the step-3 high-stakes checklist yourself:
-   if any item trips, also add `human:review-plan` — that human approach
-   gate is the one pre-merge human touch this lane keeps.
+   `fleet:needs-plan`).
    This shape is three non-atomic steps and the planning gate keys on the
    `## Plan` **comment**, so an ingest tick landing before you post it
    stamps `fleet:needs-plan` on top of your `fleet:plan-review`. You don't
    need to hand-strip it — ingest reconciles the pair on its next tick
-   (#2701). `fleet:needs-plan` alongside `human:review-plan` is a
-   different, legitimate state (a reviewer bounced the plan) and is left
-   alone.
+   (#2701).
 3. **You verified the defect but not the fix** → add neither. Ingest
    bounces it to `fleet:needs-plan` and the autonomous planning lane
    takes it from there.

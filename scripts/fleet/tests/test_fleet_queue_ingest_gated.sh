@@ -9,7 +9,7 @@
 # matching dispatch re-claims, re-hits the ungateable surface, and releases
 # (an unbounded pane-burn loop). A normal human:approved issue in the same
 # batch must still be stamped, which proves the harness can stamp and the
-# skip is meaningful (same shape as the human:owned / human:review-plan
+# skip is meaningful (same shape as the human:owned / fleet:needs-human
 # regression tests).
 #
 # HOME is redirected to a temp dir so the script's hardcoded projection/log/lock

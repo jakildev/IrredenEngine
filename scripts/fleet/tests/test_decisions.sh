@@ -10,7 +10,7 @@
 #   - merge queue: approved PR listed; +nits annotation; smoke-hold sub-line
 #   - merge queue: an approved PR whose title still carries [WIP] with no
 #     fleet:wip label gets a warn sub-line; clean approved PRs get none
-#   - decisions: gated / design-blocked PRs and human:review-plan issues
+#   - decisions: gated / design-blocked PRs and fleet:needs-human issues
 #   - a wip-only PR appears in no decision bucket
 #   - cues: coding-improvement count, untriaged count, unread feedback roles
 #     (file newer than .last-reviewed counts, older does not)
@@ -60,8 +60,8 @@ EOF
 
 cat > "$TMP/engine-issues.json" << 'EOF'
 [
-  {"number": 201, "title": "task: high-stakes plan hold", "url": "u",
-   "labels": [{"name": "human:review-plan"}, {"name": "human:approved"}]},
+  {"number": 201, "title": "task: parked for a human decision", "url": "u",
+   "labels": [{"name": "fleet:needs-human"}, {"name": "human:approved"}]},
   {"number": 202, "title": "improvement: rule tweak", "url": "u",
    "labels": [{"name": "fleet:coding-improvement"}]},
   {"number": 203, "title": "idea: untriaged thing", "url": "u", "labels": []},
@@ -130,11 +130,11 @@ assert_contains "$out" "engine PR #106" "approved PR with a stale [WIP] title is
 assert_contains "$out" "warn: title still carries [WIP] with no fleet:wip label" "wip-title/label mismatch is flagged"
 warn_lines=$(grep -c "warn: title still carries \[WIP\]" "$TMP/out.txt")
 assert_eq "$warn_lines" "1" "only the mismatched PR gets the warn line, not #101/#102"
-assert_contains "$out" "Decisions (4)" "decision bucket counts gated + design-blocked + plan hold + triage verdict"
+assert_contains "$out" "Decisions (4)" "decision bucket counts gated + design-blocked + needs-human + triage verdict"
 assert_contains "$out" "engine PR #103" "gated PR in decisions"
 assert_contains "$out" "gated self-config edit" "gated tag rendered"
 assert_contains "$out" "engine PR #104" "design-blocked PR in decisions"
-assert_contains "$out" "engine issue #201" "plan sign-off issue in decisions"
+assert_contains "$out" "engine issue #201" "needs-human issue in decisions"
 assert_contains "$out" "engine issue #206" "triage-recommend issue in decisions"
 assert_contains "$out" "triage verdict to review" "triage tag rendered"
 assert_absent  "$out" "#105" "wip-only PR appears in no bucket"

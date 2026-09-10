@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
-# Test that fleet-queue-ingest skips human:review-plan issues (#2011).
+# Test that a straggler human:review-plan label is INERT to fleet-queue-ingest.
 #
-# A worker that plans a HIGH-STAKES needs-plan issue adds human:review-plan so
-# the issue holds for the human's approach sign-off before implementation
-# (distinct from fleet:plan-review's agent vetting). Because it keeps
-# human:approved, it stays in the ingest pending set — so ingest must explicitly
-# NOT re-stamp fleet:queued onto it until the human clears the label. A normal
-# human:approved issue in the same batch must still be stamped, which proves the
-# harness can stamp and the skip is meaningful (same shape as the human:owned
-# regression test).
+# human:review-plan (#2011) was the human approach-sign-off hold on a
+# high-stakes worker-planned issue; it was retired 2026-09 (the plan
+# reviewer's fleet:plan-review verdict is the only pre-queue gate now, and the
+# label is deleted from the repo). An issue that still carries the label — a
+# straggler re-applied by hand, or one that predates the deletion — must queue
+# exactly like any other approved, planned issue: ingest must NOT hold on it.
+# A normal human:approved issue in the same batch is the stamp control.
 #
 # HOME is redirected to a temp dir so the script's hardcoded projection/log/lock
 # paths land in the sandbox, and `gh` is stubbed to canned issue/PR surfaces.
@@ -24,13 +23,11 @@ if [[ ! -x "$INGEST" ]]; then
     exit 1
 fi
 
-PASS=0
-FAIL=0
+source "$(dirname "$0")/lib_assert.sh"
+
 TMPROOT=""
 cleanup() { [[ -n "$TMPROOT" && -d "$TMPROOT" ]] && rm -rf "$TMPROOT"; }
 trap cleanup EXIT
-ok()  { PASS=$((PASS + 1)); echo "  ok: $1"; }
-bad() { FAIL=$((FAIL + 1)); echo "  FAIL: $1"; }
 
 TMPROOT=$(mktemp -d)
 export HOME="$TMPROOT/home"
@@ -54,7 +51,7 @@ case "$1" in
     issue)
         case "$2" in
             view)
-                # #820 carries human:review-plan (held for human sign-off, has a
+                # #820 carries a straggler human:review-plan (retired label; has a
                 # ## Plan comment already); #821 is a normal approved issue.
                 case "$3" in
                     820) echo '{"body":"**Model:** opus\n**Blocked by:** (none)","labels":[{"name":"human:approved"},{"name":"human:review-plan"}],"comments":[{"body":"## Plan\nstep 1"}]}' ;;
@@ -79,7 +76,7 @@ GHSTUB
 chmod +x "$STUB_DIR/gh"
 export PATH="$STUB_DIR:$PATH"
 
-echo "=== run fleet-queue-ingest over a batch with one human:review-plan issue ==="
+echo "=== run fleet-queue-ingest over a batch with one straggler human:review-plan issue ==="
 bash "$INGEST" >/dev/null 2>&1 || true
 
 # #821 (normal approved) must be stamped fleet:queued.
@@ -94,15 +91,12 @@ else
     bad "#821 stamp missing fleet:queued"
 fi
 
-# #820 (human:review-plan) must NOT be touched at all.
-if grep -qE '(^| )820( |$)' "$EDIT_LOG"; then
-    bad "human:review-plan #820 was edited (should have been skipped): $(grep 820 "$EDIT_LOG")"
+# #820 (straggler human:review-plan) must be stamped like any planned issue.
+line_820=$(grep -E '(^| )820( |$)' "$EDIT_LOG" || true)
+if [[ -n "$line_820" && "$line_820" == *"fleet:queued"* ]]; then
+    ok "straggler human:review-plan #820 was stamped fleet:queued — the retired label is inert"
 else
-    ok "human:review-plan #820 was skipped — never re-stamped fleet:queued"
+    bad "straggler human:review-plan #820 was NOT stamped fleet:queued (retired label still holds ingest): ${line_820:-<no edit>}"
 fi
 
-echo
-echo "================================"
-echo "  PASS: $PASS    FAIL: $FAIL"
-echo "================================"
-[[ "$FAIL" -eq 0 ]]
+summarize "fleet-queue-ingest retired human:review-plan is inert"

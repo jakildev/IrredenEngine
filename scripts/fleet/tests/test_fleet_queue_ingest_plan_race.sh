@@ -10,10 +10,10 @@
 # re-examined the issue. Ingest now strips the stale needs-plan and leaves the
 # issue held by the plan-review arm of the guard.
 #
-# The discriminator is the label PAIR, not plan presence: fleet:needs-plan +
-# human:review-plan is a LEGITIMATE state (a reviewer bounced the plan on a
-# high-stakes issue; the human's approach gate persists) and must be left
-# alone — observed live on #2698.
+# The discriminator is the label PAIR, not plan presence: fleet:needs-plan
+# alone after a reviewer bounce (plan-review swapped out, a stale ## Plan
+# comment still present) is a LEGITIMATE state and must be left alone —
+# observed live on #2698.
 #
 # HOME is redirected to a temp sandbox; gh is stubbed to canned surfaces and
 # every `gh issue edit` is logged for assertions.
@@ -39,7 +39,7 @@ mkdir -p "$HOME/.fleet/state/projections" "$HOME/.fleet/logs"
 
 PROJ="$HOME/.fleet/state/projections/queue-manager-ingest.json"
 # #770 = needs-plan + plan-review (the race)     → strip needs-plan, still held
-# #771 = needs-plan + human:review-plan          → legitimate bounce, untouched
+# #771 = needs-plan after a reviewer bounce      → legitimate, untouched
 # #772 = needs-plan alone                        → left for planning (untouched)
 # #773 = plan-review alone                       → already correct, untouched
 cat > "$PROJ" <<'JSON'
@@ -62,7 +62,7 @@ case "$1" in
             view)
                 case "$3" in
                     770) echo '{"title":"fleet: raced filing","body":"**Model:** opus\n**Blocked by:** (none)","labels":[{"name":"fleet:agent-approved"},{"name":"fleet:needs-plan"},{"name":"fleet:plan-review"}],"comments":[{"body":"## Plan\n\nstep one"}]}' ;;
-                    771) echo '{"title":"fleet: bounced high-stakes plan","body":"**Model:** opus\n**Blocked by:** (none)","labels":[{"name":"fleet:agent-approved"},{"name":"fleet:needs-plan"},{"name":"human:review-plan"}],"comments":[{"body":"## Plan\n\nstep one"}]}' ;;
+                    771) echo '{"title":"fleet: bounced plan","body":"**Model:** opus\n**Blocked by:** (none)","labels":[{"name":"fleet:agent-approved"},{"name":"fleet:needs-plan"}],"comments":[{"body":"## Plan\n\nstep one"}]}' ;;
                     772) echo '{"title":"fleet: genuinely needs a plan","body":"**Model:** opus\n**Blocked by:** (none)","labels":[{"name":"human:approved"},{"name":"fleet:needs-plan"}],"comments":[]}' ;;
                     773) echo '{"title":"fleet: plan awaiting vetting","body":"**Model:** opus\n**Blocked by:** (none)","labels":[{"name":"human:approved"},{"name":"fleet:plan-review"}],"comments":[{"body":"## Plan\n\nstep one"}]}' ;;
                     *)   echo '{"title":"","body":"","labels":[],"comments":[]}' ;;
@@ -95,9 +95,9 @@ assert_absent "$(edits_for 770)" "fleet:plan-review" \
 assert_absent "$(edits_for 770)" "fleet:queued" \
     "#770 not queued — still held by the plan-review guard"
 
-# --- #771: needs-plan + human:review-plan is legitimate → untouched -----------
+# --- #771: needs-plan after a reviewer bounce is legitimate → untouched -------
 assert_absent "$(edits_for 771)" "--remove-label fleet:needs-plan" \
-    "#771 kept fleet:needs-plan (reviewer bounce on a high-stakes issue)"
+    "#771 kept fleet:needs-plan (reviewer bounce, plan comment present)"
 assert_absent "$(edits_for 771)" "fleet:queued" \
     "#771 not queued (correctly skipped at the needs-plan guard)"
 

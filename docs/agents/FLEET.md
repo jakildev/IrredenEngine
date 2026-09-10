@@ -222,13 +222,10 @@ coordination mechanisms prevent duplicate work:
   - **Planless filing → worker plans (the fallback).** An unplanned
     approved issue is bounced to `fleet:needs-plan`; an opus+ worker
     plans it and swaps to `fleet:plan-review` (agent vetting), and ingest skips
-    it while that label is present. For a **high-stakes** worker-planned issue
-    (ambiguous / cross-cutting / expensive / public-contract — see
-    [`PLANNING-PROTOCOL.md`](PLANNING-PROTOCOL.md) step 3) the planner also adds
-    `human:review-plan`, a human-owned hold for approach sign-off; the issue
-    queues only once **both** `fleet:plan-review` (agent) and `human:review-plan`
-    (human) are cleared. Low-stakes worker-planned issues queue on agent
-    plan-review alone.
+    it while that label is present; once the plan reviewer clears it the
+    issue queues. There is no human approach gate on worker-planned issues
+    (the `human:review-plan` hold, #2011, was retired 2026-09) — the human
+    steers via `human:revise-plan`, `fleet:needs-human`, and PR review.
 
   There is **no separate plan-doc PR** — the plan rides in the implementation PR
   as its first commit, so plan + code land in one merge.
@@ -1246,8 +1243,8 @@ waiting-on-you set into one read-only report:
   `fleet:needs-<host>-smoke` label).
 - **Decisions** — PRs and issues parked on a human-only label:
   `fleet:needs-human`, `fleet:gated`, `fleet:human-deferred`,
-  `fleet:design-blocked`, `fleet:steward-proposal`, `fleet:state-drift`,
-  and `human:review-plan` plan sign-off holds.
+  `fleet:design-blocked`, `fleet:steward-proposal`, and
+  `fleet:state-drift`.
 - **Cues** — the `fleet:coding-improvement` backlog count (cue
   `triage-coding-improvements`), untriaged issues with no state labels
   (awaiting `human:approved`), and feedback-channel role files newer

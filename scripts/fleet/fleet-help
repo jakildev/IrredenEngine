@@ -207,8 +207,8 @@ Parallel-agent fleet (tmux + Claude)
   fleet-queue-list [--repo …] [--json]
                                  human-readable task queue from GitHub Issues
   fleet-decisions [--repo …]     everything waiting on the human in one read:
-                                 merge queue, parked decisions, plan sign-off
-                                 holds, backlog cues, unread feedback
+                                 merge queue, parked decisions, backlog cues,
+                                 unread feedback
   fleet-triage-sweep list --repo …   [--json]
   fleet-triage-sweep apply --repo … <staging-file> [--dry-run]
                                  architect-managed triage sweep: enumerate a

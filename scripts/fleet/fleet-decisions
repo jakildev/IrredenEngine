@@ -4,7 +4,7 @@
 # Consolidates the fleet's human-pull surfaces into a single decision-first
 # report: the merge queue (verdict labels + smoke holds), parked decisions
 # (fleet:needs-human, fleet:gated, fleet:design-blocked, fleet:steward-proposal,
-# fleet:state-drift, human:review-plan holds), backlog cues
+# fleet:state-drift), backlog cues
 # (fleet:coding-improvement, untriaged issues), and unread feedback-channel
 # entries. Backlog cues flip to OVERDUE past their drain thresholds
 # (coding-improvement count, untriaged count, feedback-marker age) — the
@@ -140,7 +140,6 @@ DECISION_TAGS = {
     "fleet:design-blocked": "design answer needed",
     "fleet:steward-proposal": "steward proposal to answer",
     "fleet:state-drift": "state drift to reconcile",
-    "human:review-plan": "plan approach sign-off",
     "fleet:triage-recommend": "triage verdict to review",
 }
 
