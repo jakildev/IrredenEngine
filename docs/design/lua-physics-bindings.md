@@ -130,8 +130,9 @@ Mouse-driven point-vs-rectangle tests with callback dispatch.
   (`system_entity_hover_detect.hpp`) — dispatches
   `onHovered` / `onUnhovered` / `onClicked` / `onRightClick`
   handlers. The handler table at
-  `IRSystem::getEntityEventHandlers()` stores
-  `sol::protected_function` and fires Lua-style with handler-id
+  `IRSystem::getEntityEventHandlers()` — the `C_EntityEventHandlers`
+  singleton component since #2582 — stores `sol::protected_function`
+  and fires Lua-style with handler-id
   bookkeeping — but the **C++ entry points
   `addOnHovered` / `addOnClicked` / etc. are not bound to Lua
   yet**. A creation can't subscribe without dropping to a custom

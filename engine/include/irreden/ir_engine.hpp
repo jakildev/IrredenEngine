@@ -54,19 +54,10 @@ namespace detail {
 // `engine/world/CLAUDE.md` "Init-affecting runtime params".
 void applyPreInitLuaConfig(const char *configFile);
 
-// Releases the prefab-layer Lua handler references held by the
-// process-lifetime IRSystem::EntityEventHandlers static, called at the
-// gameLoop() tail while the World's Lua VM is still alive. Out-of-line in
-// engine.cpp for the same reason as applyPreInitLuaConfig: the prefab header
-// pulls in sol2 + ir_render, and inlining the call would transitively widen
-// every includer of ir_engine.hpp. See #2572 for the __cxa_finalize crash
-// this deterministic clear prevents.
-void clearEntityEventHandlers();
-
 // Warns when --auto-screenshot was provided but no creation registered a
 // capture system, so the run would otherwise render indefinitely with no
 // diagnostic (#2941). Out-of-line in engine.cpp for the same reason as
-// clearEntityEventHandlers: the check reads IRVideo::isAutoCaptureActive(),
+// applyPreInitLuaConfig: the check reads IRVideo::isAutoCaptureActive(),
 // and inlining it would put ir_video.hpp in this header's include graph —
 // widening every includer of ir_engine.hpp to buy one log line.
 void warnIfAutoScreenshotNeverArmed();
@@ -131,14 +122,15 @@ inline int entityCountOverride() {
 // Engine access after gameLoop() returns is unsupported: getWorld() and every
 // IR<Module>::get*Manager() accessor assert on the cleared global in debug.
 //
-// The prefab-layer EntityEventHandlers static holds Lua handler references; it
-// is cleared here — before g_world.reset() destroys the Lua VM — so its own
-// process-exit destructor unrefs into nothing (#2572). Order matters: after
-// the reset the VM is gone and the unref is the crash itself.
+// Lua handler references need no release hook here, and adding one would be
+// redundant: the registry is a singleton component, so its
+// sol::protected_functions ride an archetype column that World::end()'s
+// destroyAllEntities() drops during gameLoop(), and World declares m_lua
+// before the manager block (T-100 / #2446) so column teardown always unrefs
+// against a live lua_State (#2572, #2582).
 inline void gameLoop() {
     detail::warnIfAutoScreenshotNeverArmed();
     getWorld().gameLoop();
-    detail::clearEntityEventHandlers();
     g_world.reset();
 }
 

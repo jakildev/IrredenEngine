@@ -4,7 +4,6 @@
 #include <irreden/ir_script.hpp>
 #include <irreden/ir_video.hpp>
 #include <irreden/render/voxel_pool_config.hpp>
-#include <irreden/input/systems/system_entity_hover_detect.hpp>
 
 namespace IREngine::detail {
 
@@ -29,10 +28,6 @@ void applyPreInitLuaConfig(const char *configFile) {
             );
         }
     }
-}
-
-void clearEntityEventHandlers() {
-    IRSystem::getEntityEventHandlers().clear();
 }
 
 void warnIfAutoScreenshotNeverArmed() {

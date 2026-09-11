@@ -23,6 +23,17 @@ systems that populate button state. The underlying polling lives in
   press/release frame counts.
 - `C_MouseScroll` — ephemeral per-scroll event (`C_Lifetime{1}`).
 - `C_GLFWGamepadState` — 15 button states + 6 axes.
+- `C_EntityEventHandlers` — the world's registry of Lua
+  `onHovered`/`onUnhovered`/`onClicked`/`onRightClick` callbacks, reached
+  via `IRSystem::getEntityEventHandlers()`. A **singleton component**
+  (#2582), not a process static: it is world-scoped state, so it
+  **survives `resetGameplay()`** like every singleton — handlers
+  registered before a scene transition are still registered after it —
+  and **dies at `destroyAllEntities()`**, which `World::end()` runs while
+  the Lua VM is still open. That ordering is what retired #2572's manual
+  "the engine tail must call `clear()`" contract; `clear()` remains as
+  the explicit unsubscribe-everything verb. `World`'s ctor seeds the row
+  so no later registration can eager-create an entity mid-tick.
 
 ## Key systems
 
@@ -41,7 +52,7 @@ systems that populate button state. The underlying polling lives in
   emit shaders' `faceDeform[]`), so no inverse rotation step is
   needed.
 - `SYSTEM_ENTITY_HOVER_DETECT` (INPUT pipeline) — dispatches
-  `onHovered`/`onUnhovered`/`onClicked`/`onRightClicked` callbacks for
+  `onHovered`/`onUnhovered`/`onClicked`/`onRightClick` callbacks for
   entities whose hover state changed. Resolves the hovered entity from
   three sources in priority order: **GUI > world > trixel**. The two
   hitbox sources are scanned once per frame via `forEachComponent` (no
@@ -104,5 +115,11 @@ and falls through to the next priority tier.
 - **Hover callbacks are Lua-only.** `SYSTEM_ENTITY_HOVER_DETECT` stores
   `sol::protected_function`. C++ callers need to round-trip through a
   Lua registration path, or you have to add a new handler type.
+- **An unhover for a `resetGameplay()`-destroyed entity is suppressed,
+  not delivered.** `previousHoveredEntity_` is an event payload, and a
+  `System<N>` member survives the reset (systems are never destroyed), so
+  the system registers a pre-destroy hook that nulls the id. Handlers see
+  no `onUnhovered` for an entity the scene transition took — by design;
+  the alternative was firing with a destroyed id (#2582).
 - **`C_GLFWGamepadState::updateState()` must run once per frame.**
   Calling it twice swallows transitions.

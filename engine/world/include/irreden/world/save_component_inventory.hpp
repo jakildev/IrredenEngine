@@ -43,6 +43,7 @@
 #include <irreden/common/settings_registry.hpp>
 #include <irreden/demo/components/component_example.hpp>
 #include <irreden/input/components/component_cursor_position.hpp>
+#include <irreden/input/components/component_entity_event_handlers.hpp>
 #include <irreden/input/components/component_glfw_gamepad_state.hpp>
 #include <irreden/input/components/component_glfw_joystick.hpp>
 #include <irreden/input/components/component_hitbox_2d.hpp>
@@ -201,6 +202,13 @@ IR_SAVE_OPT_OUT(IRComponents::C_NoGlobalModifiers)
 IR_SAVE_OPT_OUT(IRComponents::C_GlobalModifiers)
 IR_SAVE_OPT_OUT(IRComponents::C_LambdaModifiers)
 IR_SAVE_OPT_OUT(IRComponents::C_Modifiers)
+
+// C_EntityEventHandlers holds sol::protected_function refs into the World's
+// Lua VM — the same non-serializable shape as C_LambdaModifiers above, and
+// session-local by construction: a ref into a closed lua_State has no honest
+// on-disk form. Never write a serializer that substitutes defaults for these;
+// a load would silently drop every registered handler and report success.
+IR_SAVE_OPT_OUT(IRComponents::C_EntityEventHandlers)
 
 // C_LerpEntity holds a std::function member — same non-serializable shape
 // as C_LambdaModifiers above, so it opts out too.
@@ -428,6 +436,7 @@ using AllEngineComponents = std::tuple<
     IRComponents::C_GlobalModifiers,
     IRComponents::C_LambdaModifiers,
     IRComponents::C_Modifiers,
+    IRComponents::C_EntityEventHandlers,
     IRComponents::C_VoxelSetNew,
     IRComponents::C_Skeleton,
     IRComponents::C_JointHierarchy,
@@ -552,7 +561,7 @@ using AllEngineComponents = std::tuple<
     IRSystem::C_PerfStatsOverlayTag,
     IRComponents::C_SystemEvent<IRSystem::TICK>>;
 
-inline constexpr std::size_t kExpectedEngineComponentCount = 167;
+inline constexpr std::size_t kExpectedEngineComponentCount = 168;
 
 static_assert(
     detail::allExplicit<AllEngineComponents>(),

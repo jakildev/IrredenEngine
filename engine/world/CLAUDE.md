@@ -427,10 +427,12 @@ same change. Four consequences for authors:
   so the clamp can fire on a corrupt file but never on a live component).
 - **A component whose state cannot honestly round-trip opts OUT**, with a
   comment saying why. The current class is callback-bearing state:
-  `C_LambdaModifiers`, `C_LerpEntity`, and — since #2242 — `C_GotoEasing3D`
+  `C_LambdaModifiers`, `C_LerpEntity`, since #2242 `C_GotoEasing3D`
   and `C_RotationTarget`, which keep a resolved `GLMEasingFunction`
   (`std::function`) rather than the `IREasingFunctions` enum they were built
-  from, so the authored curve is unrecoverable at save time. Do **not** write a
+  from, so the authored curve is unrecoverable at save time — and since #2582
+  `C_EntityEventHandlers`, whose `sol::protected_function` refs point into a
+  specific `lua_State` and are session-local by construction. Do **not** write a
   serializer that substitutes a default on load; that is a silent behavior
   change wearing a round-trip's clothes.
 - **Any TU that builds a registry must include `save_component_inventory.hpp`.**

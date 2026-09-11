@@ -7,6 +7,7 @@
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/profile/profile_report.hpp>
 #include <irreden/video/auto_screenshot.hpp>
+#include <irreden/input/components/component_entity_event_handlers.hpp>
 
 #include <irreden/world.hpp>
 
@@ -89,6 +90,19 @@ World::World(const char *configFileName)
     // slots 1..N are IRJob worker threads, so the total is
     // `workerCount() + 1`.
     m_entityManager.resizeWorkerStaging(static_cast<std::size_t>(m_jobManager.workerCount() + 1));
+    // Materialize the Lua entity-event handler registry before any script can
+    // run. `IREntity::singleton<T>()` lazy-creates through the eager
+    // main-thread `createEntity`, so a *first* registration arriving from a Lua
+    // callback inside a system tick would be a structural change mid-iteration
+    // — the silent address-invalidation footgun. Seeding here makes every later
+    // accessor call a pure lookup. Pre-loop entity creation is the established
+    // pattern (creation entity builders, the modifier framework's globals
+    // row). See #2582.
+    // Deliberately unnamed: setName would survive destroyAllEntities (which
+    // prunes no names — only destroyAllExceptPreserved does), leaving a stale
+    // name -> dead-id entry that asserts on the next getEntityByName. The
+    // plan listed naming as optional; nothing reads it.
+    IREntity::singleton<IRComponents::C_EntityEventHandlers>();
     IR_PROFILE_MAIN_THREAD;
     IRE_LOG_INFO("Initalized game world");
 }

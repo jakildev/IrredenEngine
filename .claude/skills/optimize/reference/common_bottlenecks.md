@@ -47,13 +47,30 @@ session uncovers lands here in the same PR as the fix.
 
 - **Pattern**: `static std::vector<T>& getX() { static std::vector<T> x; return x; }`
   or any function-local non-`constexpr` static inside a system file.
-- **Where**: `engine/prefabs/irreden/render/systems/system_entity_canvas_to_framebuffer.hpp:41-43`
-  (active known violation).
+- **Where**: `engine/prefabs/irreden/input/systems/system_hitbox_mouse_test.hpp:26-30`
+  (5 statics captured by the tick lambda) and
+  `engine/prefabs/irreden/update/systems/system_action_animation.hpp:24`.
+  **Don't cite an example from memory** — the live set is the register in
+  `.claude/rules/cpp-systems.md` §"Live deviations", which is re-measured
+  on edit. This entry previously pointed at
+  `system_entity_canvas_to_framebuffer.hpp:41-43`, migrated by #1520 and
+  retired from the register long before anyone noticed the catalog still
+  called it active.
 - **Symptom**: Not directly a hotspot, but blocks future SIMD batching
   and breaks `SystemParams` lifecycle. Often surfaces only when the
   system gets recreated mid-run.
-- **Fix**: Move to `SystemParams` field. Full rule:
-  `.claude/rules/cpp-systems.md` §"Canonical SystemParams pattern".
+- **Fix**: Move to a member on the `System<N>` specialization
+  (`registerSystem` form, preferred) or a `SystemParams` field. Full rule:
+  `.claude/rules/cpp-systems.md`.
+- **Perf note when the static was an accessor** (`static X &getX()`): the
+  static-init guard is an acquire load on *every* call, so a per-frame
+  accessor pays it per frame. Replacing it with a singleton-component
+  read is only a win if the read is **gated behind an early-out** — an
+  unconditional `singletonOrNull` per frame trades one guard load for two
+  hash probes and is a regression. #2582's `ENTITY_HOVER_DETECT` is the
+  worked example: the lookup sits behind the
+  `currentHovered == previousHoveredEntity_` early return, so the steady
+  state does zero lookups where the static did one guard load.
 
 ### 4. Per-frame buffer upload without push-at-mutation
 
