@@ -426,7 +426,7 @@ See docs/agents/skills/flow-b.md for a related flow.
         result = validate_roles([(engine_root, "engine")])
         role_protocols = [p for p in result["protocols"] if p.get("lane") == "role"]
         self.assertEqual(len(role_protocols), 3)
-        self.assertEqual(sum(len(p["keys"]) for p in role_protocols), 31)
+        self.assertEqual(sum(len(p["keys"]) for p in role_protocols), 29)
         role_errors = sum(
             wr["n_errors"]
             for p in role_protocols

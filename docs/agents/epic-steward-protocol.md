@@ -25,8 +25,8 @@ labor:
   ledger, plan re-validation and amendments, derivable design unblocks,
   proposal aggregation, close-out.
 
-The steward writes only **docs artifacts** — plan files, umbrella bodies
-and comments, labels. It never pushes code.
+The steward writes only **issue artifacts** — umbrella bodies, comments,
+labels. It never pushes code.
 
 > Supporting machinery (the `steward-claim` lock class, the scout's
 > epic-steward projection, dispatcher/pane registration) lands via epic
@@ -46,8 +46,6 @@ and comments, labels. It never pushes code.
 | **role-name** | The role's name for banners and feedback (e.g. `epic-steward`). Not the `fleet-claim` agent id — that is the worktree basename. |
 | **role-banner** | The one-line banner printed at startup. |
 | **claim-tool-flags** | Per-repo namespace flags for `fleet-claim` (e.g. none for the primary repo, `--repo game` for the downstream repo — global flags, BEFORE the subcommand). |
-| **plans-path** | Where plan files live: the repo copy (synced from master) and the local staging dir. |
-| **ledger-branch-prefix** | Branch prefix for the iteration's batched docs PR (e.g. `claude/epic-steward-`). |
 | **escalation-target** | The role that answers proposal packages when the human routes them onward (e.g. `opus-architect`). |
 | **feedback-file** | This role's end-of-iteration feedback file under `~/.fleet/feedback/`. |
 
@@ -87,8 +85,8 @@ file, or proposal answer suggests:
   `**Part of epic:**`, `**Blocked by:**`) and only when
   `fleet-validate-stack` flags them. Re-scoping a child is the human's or
   the architect's call.
-- **Never commit to master.** All plan/ledger writes ride the iteration's
-  batched docs PR.
+- **Never commit anything.** Every ledger and amendment write is an issue
+  comment or an umbrella body edit.
 - **Never touch `human:*` labels.** Those are the human's signals.
 - **Never answer non-epic design blocks.** A `fleet:design-blocked` PR
   whose backing issue is not on a claimed umbrella's checklist is the
@@ -119,8 +117,8 @@ file, or proposal answer suggests:
 
 The umbrella issue body's `## Children` checklist (`- [ ] #N` /
 `- [x] #N`, one child per line) is the **source of truth** for epic
-membership. Plan files, summary comments, and `Part of epic:` back-refs
-are inputs to healing, never the authority.
+membership. Summary comments and `Part of epic:` back-refs are inputs to
+healing, never the authority.
 
 **Heal-on-first-claim.** Pre-protocol epics may have no checklist (or a
 stale one). On first `steward-claim` of an umbrella: build the union of
@@ -139,8 +137,8 @@ describe (tick, append, heal).
 ## Loop behavior
 
 Each invocation is one iteration in a fresh process. Durable state lives
-in GitHub (labels, umbrella bodies/comments) and repo-committed plan
-files — never in a session.
+entirely in GitHub — labels, umbrella bodies, and the `## Steward ledger`
+/ `## Plan corrections` comments. Never in a session, never in the repo.
 
 0. **Heartbeat.** See [`FLEET-RUNTIME.md § Heartbeat`](FLEET-RUNTIME.md#heartbeat--step-0)
    (the helper argument is your **worktree basename**, from
@@ -155,12 +153,12 @@ files — never in a session.
    part of flow d). Same sole-holder lex-min tie-break as
    `fleet:reviewing-*`; stale claims TTL out via the cleanup pass.
 2. **Work the claimed epic's flows in priority order** (a → d below).
-3. **Batch all file writes into ONE docs-only PR per repo per
-   iteration** — branch `<ledger-branch-prefix><iteration-stamp>`, opened
-   via `commit-and-push`. Plan amendments, ledger updates, plan stubs,
-   and heal commits all ride this PR. Urgent signals do NOT wait on it:
-   label flips, PR/issue comments, and issue closes are immediate; the
-   docs PR is the durable record.
+3. **Write nothing to the repo.** Every steward output is an issue edit
+   or a comment: checklist ticks and heals edit the umbrella body, the
+   ledger is one `## Steward ledger` comment on the umbrella edited in
+   place, and a plan amendment is a `## Plan corrections` comment on the
+   child. Label flips, comments, and closes are immediate; the umbrella
+   thread is the durable record.
 4. **Shutdown** per [`FLEET-RUNTIME.md § Per-iteration shutdown`](FLEET-RUNTIME.md#per-iteration-shutdown--final-step):
    release steward claims, iteration summary, feedback entry to
    **feedback-file**, exit cleanly.
@@ -173,7 +171,7 @@ budget to "finish up."
 For a **downstream-repo epic**: cd into **downstream-worktree-path**
 before any git operation, add `--repo <downstream-repo-slug>` to every
 `gh` call, and prefix `fleet-claim` subcommands with the downstream
-**claim-tool-flags**. Ledger/amendment commits for a downstream epic go
+**claim-tool-flags**. Ledger/amendment comments for a downstream epic go
 to the downstream repo only (see Hard rules).
 
 ### Flow a — design-block triage
@@ -193,8 +191,8 @@ classify **every question** independently:
 - **NOVEL** — anything else.
 
 **All questions derivable** → resolve it yourself:
-1. Amend the child's plan file (append-only `## Amendments` entry, format
-   below) with the decision and its source citations.
+1. Amend the child's plan (a `## Plan corrections` comment, format below)
+   with the decision and its source citations.
 2. Post a `## Steward direction` comment on the PR: per question, the
    answer and the cited deciding sentence(s), plus the plan-amendment
    pointer.
@@ -249,19 +247,14 @@ unticked.
    record it in Decisions and handle per the escalation rules.
 4. **Re-validate downstream siblings' plans** against what merged. Stale
    = the plan references a symbol, file, or decision the merge renamed,
-   removed, or superseded. Amend stale plans (append-only `## Amendments`
-   entry citing the merged PR) — never rewrite plan history in place.
-   **Ledger claims are backed by the child's own plan file:** before
-   committing a ledger update that marks a child's Plan column
-   `plan + A<n>`, confirm the staged tree actually contains
-   `<plans-path>/issue-<child>.md` with the new `### A<n>` heading. If
-   the child has no plan file yet (its plan lives only as an issue
-   comment), materialize the file first — the same stub mechanism as
-   flow c step 3 — then append the amendment to it. Never record the
-   amendment only in the umbrella's own Events prose: a worker resuming
-   the child reads the child's plan file, not the umbrella's ledger, so
-   an Events-only amendment is a ledger asserting something false
-   (#2571).
+   removed, or superseded. Amend stale plans (a `## Plan corrections`
+   comment citing the merged PR) — never edit the original plan comment.
+   **Ledger claims are backed by the child's own thread:** before marking a
+   child's Plan column `plan + A<n>`, the `## Plan corrections` comment
+   carrying `### A<n>` must already be posted on the child. Never record
+   the amendment only in the umbrella's Events prose: a worker resuming
+   the child reads the child's thread, not the umbrella's ledger, so an
+   Events-only amendment is a ledger asserting something false.
    **Skip-guard:** defer re-validation while the next child's PR carries
    `fleet:merger-cooldown` — the merger is mid-rebase and the diff you'd
    validate against is still moving. (The old `fleet:stacked-rebase` half
@@ -283,11 +276,10 @@ absent from the umbrella's checklist (filed mid-epic).
    `fleet-validate-stack`; fix only those lines if flagged (the
    out-of-scope rule above).
 2. Append `- [ ] #K` to the `## Children` checklist.
-3. If the child has no plan file, commit a stub at
-   `<plans-path>/issue-<K>.md` containing
-   `## Plan status: STUB — needs planning before claim` plus the epic
-   back-pointer — the stub keeps workers from claiming an unplanned
-   child while making the gap visible.
+3. If the child has no `## Plan` comment, leave it unplanned: ingest
+   bounces it to `fleet:needs-plan` and the planning lane plans it. Never
+   post a placeholder `## Plan` comment — the queue gate would read it as
+   a plan.
 4. Re-run `fleet-validate-stack` on the umbrella. **Never adopt a stack
    the validator rejects** — post the validator output on the umbrella
    and leave the child unadopted for the human.
@@ -303,13 +295,10 @@ each child's state, not the cache.
    confirm, and do NOT close this iteration.
    **A merged PR only counts as the child's closing PR if it contains an
    implementation artifact** — check `gh pr view <PR> --json files`. A PR
-   whose entire file list sits under `<plans-path>/` (or is otherwise
-   docs-only) closed the child *prematurely*: search for the re-filed
+   that is docs-only closed the child *prematurely*: search for the re-filed
    implementation ticket (`gh issue list --search "#<child>"`, or the
    child's own timeline cross-references) and record the *re-filed issue
-   → its shipping PR* in the ledger instead of the docs-only PR. This is
-   the standing exposure of every pre-#1932 child — plans then landed as
-   standalone `.fleet/plans/` PRs that could carry `Closes #N` (#2583).
+   → its shipping PR* in the ledger.
 2. Audit the umbrella's closing criteria (acceptance criteria in the
    umbrella body/plan) and collect evidence per criterion.
 3. Post the closure summary comment: a phase/child/PR/outcome table,
@@ -319,9 +308,15 @@ each child's state, not the cache.
 
 ## The Steward ledger
 
-Lives as a `## Steward ledger` section **appended to the umbrella's own
-plan file** `<plans-path>/issue-<U>.md` — never a separate file (the
-plans dirs allow only `issue-<N>.md`). `reconciled-through` makes
+Lives as **one `## Steward ledger` comment on the umbrella issue**, posted
+on first need and edited in place afterwards:
+
+```
+gh api -X PATCH repos/<slug>/issues/comments/<comment-id> -F body=@<file>
+```
+
+Find it by its heading among the umbrella's comments (`gh issue view <U>
+--json comments`); never post a second one. `reconciled-through` makes
 fresh-context iterations idempotent: everything at or before the marker
 is already reflected below it.
 
@@ -334,7 +329,7 @@ proposal-pending: <none | link to the umbrella's STEWARD PROPOSAL comment>
 ### Children
 | Child | State | PR | Plan | Last validated |
 |---|---|---|---|---|
-| #<N> | open / in-progress / merged / closed-other | #<PR> or — | plan / stub / — | <date or trigger> |
+| #<N> | open / in-progress / merged / closed-other | #<PR> or — | plan / plan + A<n> / — | <date or trigger> |
 
 The PR column carries the PR reference **only** — never a volatile
 review/merge label (`approved` / `needs-fix` / `merger-cooldown` /
@@ -352,10 +347,10 @@ already lives in the monotonic State column (#2398).
 
 ## Plan amendments (append-only)
 
-Plan files are amended, never rewritten — history is the audit trail.
-This formalizes the existing ad-hoc re-plan pattern (see
-`.fleet/plans/issue-1457.md`'s "Architect RE-plan v3" entries). Format,
-appended under a `## Amendments` heading at the bottom of the child plan:
+A plan is amended by comment, never by editing the original `## Plan`
+comment — the thread is the audit trail. Each amendment is a
+`## Plan corrections` comment on the child (the same form the plan reviewer
+uses, so implementers already fold them in), whose body is:
 
 ```markdown
 ### A<n> — <YYYY-MM-DD> — trigger: <event, e.g. "PR #N merged" / "proposal answered">
@@ -402,16 +397,13 @@ own schedule) and move on.
 See [`CLAUDE-BASELINE.md § Hard rules for autonomous fleet roles`](CLAUDE-BASELINE.md#hard-rules-for-autonomous-fleet-roles),
 plus:
 
-- **One docs PR per repo per iteration.** Never commit to master; never
-  open per-epic PRs.
+- **The steward commits nothing.** Every write is an umbrella body edit or
+  a comment; it never opens a PR.
 - **Downstream isolation.** A downstream epic's ledger and amendments
   commit only to the downstream repo. Primary-repo artifacts reference
   downstream work by number only (e.g. `game#N`) — no downstream feature
   names in primary-repo docs. Read the downstream repo's own wrapper and
   `CLAUDE.md` before acting on a downstream epic.
-- **Plans dirs hold task plans only** — `issue-<N>.md` is the only valid
-  filename; the ledger is a section inside the umbrella's plan file, not
-  a new file shape.
 - **The design label pair moves only via `fleet-transition`**
   (`design-unblock`, `design-propose`, `design-block`) — single atomic
   edges, no hand-typed multi-flag `gh pr edit` swaps.

@@ -51,8 +51,8 @@ Specifically, **never pass these via `--label` when filing**:
   After filing, the **epic-steward** owns the umbrella: the body
   checklist is the steward-maintained membership ledger (it ticks
   `- [x] #N` as children close, adopts mid-epic issues filed with
-  `**Part of epic:** #N`, and appends a `## Steward ledger` to the
-  umbrella's plan file), and **closure is the steward's close-out
+  `**Part of epic:** #N`, and keeps a `## Steward ledger` comment on
+  the umbrella, edited in place), and **closure is the steward's close-out
   flow** — every child verified closed with evidence, a closure
   summary comment, then the umbrella closes. There is no automatic
   close. See [`epic-steward-protocol.md`](epic-steward-protocol.md).
@@ -201,7 +201,7 @@ Specifically, **never pass these via `--label` when filing**:
 - `human:no-plan` — owned by the **human**, applied at filing to a simple,
   self-contained issue to skip planning entirely. `fleet-queue-ingest` then
   stamps `fleet:queued` directly — no `## Plan` comment required — and the
-  worker opens a code-only PR with no `.fleet/plans/` file. The literal
+  worker goes straight to a code PR. The literal
   `[no-plan]` title/body token is honored the same way (and so is the existing
   `investigation spike` phrase). `human:*`-prefixed by convention (a human
   signal, like `human:approved`); a fleet agent applies `fleet:no-plan`

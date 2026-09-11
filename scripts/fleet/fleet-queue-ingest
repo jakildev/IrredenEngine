@@ -25,10 +25,8 @@
 # hand-built projection). Claimability is unchanged — fleet-claim's own
 # Blocked-by gate still refuses a plain claim; see docs/design/fleet-queue-stacking.md.
 #
-# Planning gate (#1456, re-keyed by #1932): an approved issue with no plan — no
-# `## Plan` issue comment (canonical since #1932), no committed/staged plan file
-# (.fleet/plans/issue-<N>.md or ~/.fleet/plans/issue-<N>.md) — is bounced to
-# fleet:needs-plan unless opted out (`[no-plan]` / `human:no-plan` /
+# Planning gate: an approved issue with no `## Plan` issue comment is bounced
+# to fleet:needs-plan unless opted out (`[no-plan]` / `human:no-plan` /
 # `fleet:no-plan` / investigation spike). fleet:plan-review holds ingest until a
 # reviewer vets the posted plan.
 #
@@ -250,17 +248,16 @@ except Exception:
 
 # Planning-gate escape hatch (#1456): an issue whose title or body names an
 # explicit "investigation spike" is worker-investigates-first by design and
-# queues without a plan file (architect-protocol.md §"Carve-offs are unplanned
+# queues without a plan (architect-protocol.md §"Carve-offs are unplanned
 # tickets" is where the phrase is defined).
 SPIKE_RE = re.compile(r'investigation\s+spike', re.IGNORECASE)
 # #1932 PR2: the `[no-plan]` opt-out tag — the label-light twin of the
 # human:no-plan label (and its agent-applied twin fleet:no-plan), honored the
 # same way as the investigation-spike phrase.
 NO_PLAN_RE = re.compile(r'\[no-plan\]', re.IGNORECASE)
-# #1932 PR2: the canonical plan is now a `## Plan` issue comment (no longer a
-# committed/staged plan file). Match a Markdown heading line "## Plan…".
+# The canonical plan is a `## Plan` issue comment: match a Markdown heading
+# line "## Plan…".
 PLAN_COMMENT_RE = re.compile(r'^\s{0,3}#{2,}\s+Plan\b', re.MULTILINE)
-PLANS_DIR = os.path.expanduser('~/.fleet/plans')
 
 
 def _blocker_open(repo, ref, cache):
@@ -282,40 +279,10 @@ def _blocker_open(repo, ref, cache):
     return is_open
 
 
-def _plan_exists(repo, n, cache):
-    """True when a plan file exists for issue n — the planner-host staging
-    copy (~/.fleet/plans/issue-<n>.md) or the committed repo-side copy on the
-    default branch (live `gh api` contents probe, host-independent). Only a
-    confirmed 404 reads as missing; any other probe failure fails OPEN
-    (treated as present) so a transient API error never bounces a planned
-    issue back to fleet:needs-plan."""
-    if os.path.exists(os.path.join(PLANS_DIR, f'issue-{n}.md')):
-        return True
-    key = (repo, n)
-    if key in cache:
-        return cache[key]
-    r = subprocess.run(
-        ['gh', 'api', f'repos/{repo}/contents/.fleet/plans/issue-{n}.md',
-         '--jq', '.path'],
-        capture_output=True, text=True, timeout=15,
-    )
-    if r.returncode == 0:
-        present = True
-    elif '404' in (r.stderr or ''):
-        present = False
-    else:
-        present = True
-        print(f'WARN issue {repo}#{n}: plan probe failed '
-              f'({(r.stderr or "").strip()}); failing open as plan-present',
-              file=sys.stderr)
-    cache[key] = present
-    return present
-
 
 def _has_plan_comment(comments):
-    """True when any issue comment is a `## Plan` comment — the canonical plan
-    in the redesigned flow (#1932 PR2). `comments` is the list returned by
-    `gh issue view --json comments` (each item a dict carrying a 'body')."""
+    """True when any issue comment is a `## Plan` comment. `comments` is the
+    list returned by `gh issue view --json comments` (dicts carrying 'body')."""
     for c in comments or []:
         body = c.get('body', '') if isinstance(c, dict) else ''
         if body and PLAN_COMMENT_RE.search(body):
@@ -330,7 +297,6 @@ blocked_marked = 0
 plan_bounced = 0
 failed = 0
 blocker_cache = {}
-plan_cache = {}
 
 for issue in pending:
     n = issue.get('number', 0)
@@ -487,23 +453,18 @@ for issue in pending:
         print(f'INFO issue {repo}#{n}: human:owned — skipping ingest (human de-queued)', file=sys.stderr)
         continue
 
-    # Planning gate (#1456, re-keyed by #1932): refuse to queue an issue that
-    # never passed through planning. The canonical plan is now a `## Plan`
-    # issue comment (#1932); a committed/staged plan file still counts
-    # (backward compat for pre-redesign issues). `opted_out` (computed above —
+    # Planning gate: refuse to queue an issue that never passed through
+    # planning. The plan is the `## Plan` issue comment. `opted_out` (computed above —
     # investigation spike, the `[no-plan]` tag, or the human:no-plan label)
     # skips the gate. Without a plan or an opt-out the claiming worker is the
     # first to open the code and design-blocks, so bounce to fleet:needs-plan
     # (routes through PLANNING-PROTOCOL.md; the label also drops the issue out of
     # the ingest pending set via the live-label skip guard). Sits before the
     # blocker probes so a bounced issue costs no per-blocker API calls.
-    has_plan = (_has_plan_comment(view.get('comments', []))
-                or _plan_exists(repo, n, plan_cache))
+    has_plan = _has_plan_comment(view.get('comments', []))
     if not opted_out and not has_plan:
         comment = (
-            f"Planning gate: this issue has no `## Plan` comment (the canonical "
-            f"plan per #1932) and no committed/staged plan file "
-            f"(`.fleet/plans/issue-{n}.md`), and it is not opted out "
+            f"Planning gate: this issue has no `## Plan` comment, and it is not opted out "
             f"(`human:no-plan` / `fleet:no-plan` / `[no-plan]` / investigation "
             f"spike). Unplanned carve-offs design-block on claim (#1456), so "
             f"adding `fleet:needs-plan` to route it through PLANNING-PROTOCOL.md "
@@ -524,7 +485,7 @@ for issue in pending:
             print(f'WARN issue {repo}#{n}: add fleet:needs-plan failed: {er.stderr.strip()}', file=sys.stderr)
             continue
         plan_bounced += 1
-        print(f'WARN issue {repo}#{n}: no ## Plan comment, no plan file, and not '
+        print(f'WARN issue {repo}#{n}: no ## Plan comment and not '
               f'opted out ([no-plan] / human:no-plan / fleet:no-plan / spike) — '
               f'bounced to fleet:needs-plan', file=sys.stderr)
         continue

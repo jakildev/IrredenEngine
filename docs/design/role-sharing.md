@@ -80,7 +80,7 @@ not engine-specific. What is genuinely per-repo, and therefore a delta:
 ### Baseline delta-key set
 
 Every role protocol declares at least these keys (a protocol may add
-role-specific ones, e.g. the steward's **ledger-branch-prefix** or the
+role-specific ones, e.g. the steward's **escalation-target** or the
 architect's **core-area-paths**):
 
 | Delta key | Meaning |

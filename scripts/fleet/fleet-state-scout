@@ -658,6 +658,7 @@ def fetch_epics(repo):
     for epic in epics:
         body = epic.pop("body", "") or ""
         epic["checklist"] = _parse_epic_checklist(body)
+        epic["managed"] = _epic_is_managed(body)
     return epics
 
 
@@ -967,6 +968,15 @@ def _body_backend_symmetric(body):
     (#2820)."""
     body = body or ""
     return bool(_GLSL_FILE_RE.search(body) and _METAL_FILE_RE.search(body))
+
+
+_EPIC_CHILDREN_HEADING_RE = re.compile(r"^\s{0,3}#{2,}\s+Children\b", re.MULTILINE)
+
+
+def _epic_is_managed(body):
+    """A steward-managed umbrella carries a `## Children` heading, even when
+    its checklist is still empty."""
+    return bool(_EPIC_CHILDREN_HEADING_RE.search(body or ""))
 
 
 def _parse_epic_checklist(body):
@@ -1933,11 +1943,8 @@ def resolve_epic_children(state, ref_cache=None):
     project_epic_steward and slice_epic_steward stay pure functions of the
     annotated state (no live gh inside a projector).
 
-    Per epic: `plan_path` (repo-relative) and `plan_exists` (cheap local
-    Path.exists() against the repo checkout — staleness only delays the
-    normalize bootstrap by one pull; never add git fetches here). Per
-    checklist entry: `closed`, resolved from the already-fetched open/closed
-    sets:
+    Per checklist entry: `closed`, resolved from the already-fetched
+    open/closed sets:
 
     - visible-open union (tasks open/in_progress, human_approved, needs_plan,
       epics) → open
@@ -1976,14 +1983,7 @@ def resolve_epic_children(state, ref_cache=None):
                 visible_open.add(str(issue["number"]))
         closed_nums = _closed_issue_numbers(repo_state)
 
-        repo_path = repo_state.get("path", "")
         for epic in epics:
-            number = epic.get("number")
-            plan_rel = f".fleet/plans/issue-{number}.md"
-            epic["plan_path"] = plan_rel
-            epic["plan_exists"] = bool(
-                repo_path and (Path(repo_path) / plan_rel).exists()
-            )
             for entry in epic.get("checklist", []):
                 child = str(entry.get("number", ""))
                 if child in visible_open:
@@ -2753,9 +2753,9 @@ def project_epic_steward(state):
     lesson), and each disappears as a direct consequence of the steward
     acting on it:
 
-    - normalize  — managed epic (repo-side plan file exists) with no body
-                   checklist; gone when the steward heals the checklist in.
-                   Legacy checklist-less epics without plan files emit
+    - normalize  — managed epic (its body carries a `## Children` heading)
+                   whose checklist is empty; gone when the steward heals the
+                   checklist in. Legacy epics without the heading emit
                    nothing (no perma-trigger).
     - rollup     — unchecked checklist child that is closed; gone when the
                    steward ticks the box.
@@ -2777,7 +2777,7 @@ def project_epic_steward(state):
             number = epic.get("number")
             checklist = epic.get("checklist", [])
             if not checklist:
-                if epic.get("plan_exists"):
+                if epic.get("managed"):
                     items.append({"kind": "normalize", "repo": repo,
                                   "epic": number})
                 continue

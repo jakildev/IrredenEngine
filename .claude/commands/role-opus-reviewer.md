@@ -212,8 +212,8 @@ cheap-first / Opus-for-judgment split the PR path uses):
 - **Sound with corrections →** bounded fixes that change no locked decision
   (a wrong path, a stale line reference, a corrected measurement): post a
   comment whose first line is `## Plan corrections` listing them, then remove
-  the label exactly as for Sound. The implementer folds corrections into the
-  committed plan file (PLANNING-PROTOCOL.md steps 4-5). Prefer this gear over
+  the label exactly as for Sound. The implementer folds corrections in when it
+  reads the thread (PLANNING-PROTOCOL.md step 5). Prefer this gear over
   a bounce — `fleet:needs-plan` costs a full re-plan round for what one line
   fixes; bounce only when a locked decision itself is wrong.
 - **Not sound →** swap the label back: `gh issue edit <N> --repo <repo>

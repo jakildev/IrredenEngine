@@ -1206,9 +1206,6 @@ else
     echo "          (run scripts/fleet/install.sh to install it)"
 fi
 
-# Ensure the plans directory exists for worker panes and architect to write to.
-mkdir -p "$HOME/.fleet/plans"
-
 # Ensure witness directories exist before the witness pane starts.
 mkdir -p "$HOME/.fleet/heartbeats"
 mkdir -p "$HOME/.fleet/alerts"

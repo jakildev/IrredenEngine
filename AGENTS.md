@@ -9,7 +9,9 @@ automatically load descendant instructions. A nested project's own
 instructions apply in its scope.
 
 Use [the architecture reference](docs/agents/AGENTS-ARCHITECTURE.md) for
-engine structure and [BUILD.md](docs/agents/BUILD.md) for validation.
+engine structure, [BUILD.md](docs/agents/BUILD.md) for build setup, and
+[VALIDATION.md](docs/agents/VALIDATION.md) for the validators that prove a
+change.
 Fleet sessions also read [FLEET-RUNTIME.md](docs/agents/FLEET-RUNTIME.md)
 and [the Codex adapter](docs/agents/CODEX.md). Follow the assigned role
 and target; an interactive conversation does not imply autonomous queue pickup.

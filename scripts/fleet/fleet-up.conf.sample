@@ -347,8 +347,8 @@
 # fleet's epic bookkeeper: a transient, dispatcher-driven role that
 # maintains `fleet:epic` umbrella `## Children` checklists, triages
 # design-blocked epic children, aggregates proposal packages for the
-# architect, and drives epic close-out. It writes only docs artifacts
-# (plan files, umbrella comments, labels) — never pushes code. The pool
+# architect, and drives epic close-out. It writes only issue artifacts
+# (umbrella bodies, comments, labels) — never pushes code. The pool
 # pane's cwd is its engine worktree; it cds to the same-named game
 # worktree for game epics.
 #

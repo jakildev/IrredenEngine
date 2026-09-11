@@ -19,8 +19,8 @@ This repo runs a parallel-agent workflow. The rules:
    It resets the worktree to a fresh branch off `origin/master`. Do not keep
    adding unrelated commits to the same PR branch.
 4. **A separate reviewer agent** (running the `review-pr` skill in its own
-   worktree) looks at each PR. The user merges — with one carve-out for
-   pure plan-file PRs; see "Who merges" below.
+   worktree) looks at each PR. The user merges — the one carve-out, for
+   pure plan-file PRs, is dormant; see "Who merges" below.
 5. **Never `--force` push to `master`.** Never use `--no-verify` to skip hooks
    unless the user explicitly asks.
 6. **Shared task queue lives in GitHub Issues.** Pick the next unblocked
@@ -36,13 +36,15 @@ exact commit/PR/review flows.
 
 ### Who merges
 
-Every PR is merged by the human, with exactly one carve-out: **tier-0
-`fleet-rebase` squash-merges plan-file PRs** — steward rollups,
-close-outs, and umbrella plan filings whose diff touches only
-`.fleet/plans/**`. These have zero build/runtime surface, still pass
-through fleet review (`fleet:approved` is required), and are the PRs
-most likely to conflict with their own siblings while queued for a
-human click.
+Every PR is merged by the human. The one carve-out — **tier-0
+`fleet-rebase` squash-merging plan-file PRs**, whose diff touches only
+`.fleet/plans/**` — is **dormant**: plans live as the issue's `## Plan`
+comment now, nothing is committed under `.fleet/plans/`, so no PR
+matches the lane. The lane stays in `fleet-rebase` and stays described
+here pending a decision to widen it to some other zero-build-surface
+diff shape; it is the fleet's only mechanical auto-merge path, and
+re-deriving its safety conditions from scratch later would be the
+expensive part.
 
 The lane is deliberately narrow and re-verifies everything **live**
 (REST, not the scout cache) immediately before merging:
@@ -403,23 +405,24 @@ the question to the architect and resume cleanly:
    pick a different unblocked issue next iteration.
 2. Architect reads the comment, posts a PR comment with concrete
    decisions, swaps `fleet:design-blocked` → `fleet:design-unblocked`.
-   (The plan file `.fleet/plans/issue-<N>.md` already rides on the PR
-   branch; the resuming worker folds the direction into it — the
-   architect doesn't push to the worker's branch.)
+   (The direction rides in that comment — the architect doesn't push to
+   the worker's branch, and doesn't rewrite the issue's `## Plan`.)
 3. Worker (any worker — not necessarily the original one) sees the
    `fleet:design-unblocked` PR via its feedback-PR loop on the next
-   iteration, reads the architect's comment, updates the branch's plan
-   file, addresses the direction, removes the label, pushes via
-   `commit-and-push`. PR re-enters normal review flow.
+   iteration, reads the architect's comment plus the issue's `## Plan`
+   comment and any `## Plan corrections`, addresses the direction,
+   removes the label, pushes via `commit-and-push`. PR re-enters normal
+   review flow.
 
 **The handoff is the PR, not the worker's claim.** The escalating worker
 releases its `fleet-claim` (and any worktree reservation) when it parks
 the PR design-blocked: resolution can take the architect a while, and
 when the PR returns as `fleet:design-unblocked` ANY worker — not
 necessarily the original one — must be able to resume it cleanly.
-Everything the resumer needs rides on the PR: the pushed WIP commit, the
-`## NEEDS-DESIGN` comment plus the architect's reply, the plan file on
-the branch, and the label itself. Holding the claim through the block is
+Everything the resumer needs rides on the PR and its backing issue: the
+pushed WIP commit, the `## NEEDS-DESIGN` comment plus the architect's
+reply, the label itself, and the issue's `## Plan` comment (plus any
+`## Plan corrections`). Holding the claim through the block is
 what let two workers race the #1310 resume and force-push over each
 other.
 
@@ -551,8 +554,8 @@ opus list.
 - Nits-only feedback fixes (`fleet:has-nits`).
 - The **merger LLM pass** — and most merger wakes never reach an LLM at
   all: `fleet-rebase` (tier-0) clears clean rebases of approved stacked
-  or behind PRs mechanically for zero tokens, auto-merges pure
-  plan-file PRs (see "Who merges"), and only re-arms the
+  or behind PRs mechanically for zero tokens, carries the dormant
+  plan-file auto-merge lane (see "Who merges"), and only re-arms the
   sonnet pass when conflicts or unhandled states remain. The
   `fleet:semantic-conflict` handoff to an opus+-class worker/human is unchanged.
 

@@ -36,7 +36,9 @@ and `fleet-claim`'s blocker gate parse them):
 - **Area:** e.g. `engine/render`, `engine/math`, `docs`
 - **Model:** `opus` or `sonnet`
 - **Blocked by:** `(none)` or `#NNN`
-- **Acceptance criteria** — concrete check (build passes, test X works)
+- **Acceptance criteria** — the definition of done: one line per criterion,
+  each naming the validator that proves it ([`VALIDATION.md`](VALIDATION.md))
+  and the reading it must show
 - **Context** — why this matters, what you observed
 
 Optional, when the work serves a standing objective
@@ -229,7 +231,7 @@ header bullet ("Blocked on T1 + docs PR #1306") are NOT parsed — the
 child projects as Available, no `--stackable-on` claim fires, and the
 chain doesn't stack. Hand-filing reliably produces this drift.
 `file-epic` enforces the template (umbrella `fleet:epic` + one
-`fleet:task` child per phase + per-ticket plan files + a standalone
+`fleet:task` child per phase + a per-ticket `## Plan` comment + a standalone
 `**Blocked by:** #<prior>` chain).
 
 **If you must hand-file a stack** (one-off, plan not yet written), each

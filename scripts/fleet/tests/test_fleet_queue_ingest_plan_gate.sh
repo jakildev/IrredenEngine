@@ -1,13 +1,10 @@
 #!/usr/bin/env bash
 # Test the fleet-queue-ingest planning gate (#1456).
 #
-# An approved issue with no `## Plan` issue comment (canonical since #1932) and
-# no plan file (neither planner-host staging ~/.fleet/plans/issue-<N>.md nor the
-# committed repo-side copy .fleet/plans/issue-<N>.md, probed via `gh api`) must
-# be bounced to fleet:needs-plan (never stamped fleet:queued), with an explanatory
-# comment. Escape hatches: a `## Plan` comment, a local plan file, a committed
-# plan file, an explicit "investigation spike" in the title/body, the `[no-plan]`
-# tag, the `human:no-plan` label, the `fleet:plan-review` early-skip, and a
+# An approved issue with no `## Plan` issue comment must be bounced to
+# fleet:needs-plan (never stamped fleet:queued), with an explanatory comment.
+# Escape hatches: a `## Plan` comment, an explicit "investigation spike" in the
+# title/body, the `[no-plan]` tag, the `human:no-plan` label, the `fleet:plan-review` early-skip, and a
 # non-404 probe failure (fail open — a transient API error must never bounce a
 # planned issue).
 #
@@ -37,16 +34,10 @@ TMPROOT=$(mktemp -d)
 export HOME="$TMPROOT/home"
 mkdir -p "$HOME/.fleet/state/projections" "$HOME/.fleet/logs"
 
-# Local staging plan for #741 only — the same-host fast path.
-mkdir -p "$HOME/.fleet/plans"
-echo "# Plan: stub" > "$HOME/.fleet/plans/issue-741.md"
 
 PROJ="$HOME/.fleet/state/projections/queue-manager-ingest.json"
 # #740 = no plan anywhere, not a spike            → bounce to fleet:needs-plan
-# #741 = local ~/.fleet/plans/issue-741.md exists → stamp
-# #742 = committed repo-side plan (gh api 200)    → stamp
 # #743 = no plan, body declares investigation spike → stamp
-# #744 = plan probe fails WITHOUT a 404 (network) → fail open, stamp
 # #745 = `## Plan` issue comment, no file (#1932)  → stamp (the canonical path)
 # #746 = `[no-plan]` opt-out tag in title (#1932)  → stamp
 # #747 = human:no-plan opt-out label (#1932)       → stamp
@@ -57,10 +48,7 @@ PROJ="$HOME/.fleet/state/projections/queue-manager-ingest.json"
 cat > "$PROJ" <<'JSON'
 {"pending_issues":[
   {"number":740,"repo":"engine"},
-  {"number":741,"repo":"engine"},
-  {"number":742,"repo":"engine"},
   {"number":743,"repo":"engine"},
-  {"number":744,"repo":"engine"},
   {"number":745,"repo":"engine"},
   {"number":746,"repo":"engine"},
   {"number":747,"repo":"engine"},
@@ -84,10 +72,7 @@ case "$1" in
             view)
                 case "$3" in
                     740) echo '{"title":"render: fix residual","body":"**Model:** opus\n**Blocked by:** (none)","labels":[{"name":"human:approved"}]}' ;;
-                    741) echo '{"title":"render: planned task","body":"**Model:** opus\n**Blocked by:** (none)","labels":[{"name":"human:approved"}]}' ;;
-                    742) echo '{"title":"render: epic child","body":"**Model:** sonnet\n**Blocked by:** (none)","labels":[{"name":"human:approved"}]}' ;;
                     743) echo '{"title":"render: probe the culling path","body":"**Model:** opus\n**Blocked by:** (none)\n\nExplicit investigation spike: report findings, no fix expected.","labels":[{"name":"human:approved"}]}' ;;
-                    744) echo '{"title":"render: planned elsewhere","body":"**Model:** opus\n**Blocked by:** (none)","labels":[{"name":"human:approved"}]}' ;;
                     745) echo '{"title":"render: planned via comment","body":"**Model:** opus\n**Blocked by:** (none)","labels":[{"name":"human:approved"}],"comments":[{"body":"## Plan: do the thing\n\nstep one"}]}' ;;
                     746) echo '{"title":"render: tiny tweak [no-plan]","body":"**Model:** sonnet\n**Blocked by:** (none)","labels":[{"name":"human:approved"}]}' ;;
                     747) echo '{"title":"render: human said skip","body":"**Model:** opus\n**Blocked by:** (none)","labels":[{"name":"human:approved"},{"name":"human:no-plan"}]}' ;;
@@ -110,16 +95,6 @@ case "$1" in
         case "$2" in
             list) echo '[]'; exit 0 ;;   # scope-shipped: no merged coverage
             *) exit 0 ;;
-        esac ;;
-    api)
-        # Repo-side plan probe: gh api repos/<slug>/contents/.fleet/plans/issue-<N>.md
-        case "$2" in
-            repos/jakildev/IrredenEngine/contents/.fleet/plans/issue-742.md)
-                echo '.fleet/plans/issue-742.md'; exit 0 ;;
-            repos/jakildev/IrredenEngine/contents/.fleet/plans/issue-744.md)
-                echo "connect: network is unreachable" >&2; exit 1 ;;
-            *)
-                echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;
         esac ;;
     *) exit 0 ;;
 esac
@@ -155,22 +130,6 @@ else
 fi
 
 # --- Escape hatches --------------------------------------------------------
-# #741 (local staging plan) → stamped fleet:queued, no bounce.
-l741=$(edit_line 741)
-if [[ -n "$l741" && "$l741" == *"fleet:queued"* && "$l741" != *"fleet:needs-plan"* ]]; then
-    ok "#741 (local ~/.fleet/plans plan) stamped fleet:queued"
-else
-    bad "#741 mis-stamped despite local plan: '$l741'"
-fi
-
-# #742 (committed repo-side plan, api 200) → stamped.
-l742=$(edit_line 742)
-if [[ -n "$l742" && "$l742" == *"fleet:queued"* && "$l742" != *"fleet:needs-plan"* ]]; then
-    ok "#742 (committed repo-side plan) stamped fleet:queued"
-else
-    bad "#742 mis-stamped despite committed plan: '$l742'"
-fi
-
 # #743 (explicit investigation spike, no plan) → stamped.
 l743=$(edit_line 743)
 if [[ -n "$l743" && "$l743" == *"fleet:queued"* && "$l743" != *"fleet:needs-plan"* ]]; then
@@ -179,19 +138,12 @@ else
     bad "#743 spike escape hatch failed: '$l743'"
 fi
 
-# #744 (probe failed without 404) → fail open, stamped.
-l744=$(edit_line 744)
-if [[ -n "$l744" && "$l744" == *"fleet:queued"* && "$l744" != *"fleet:needs-plan"* ]]; then
-    ok "#744 (non-404 probe failure) failed open and stamped"
-else
-    bad "#744 transient probe failure wrongly bounced: '$l744'"
-fi
 
 # --- #1932: comment-based plan + opt-outs -----------------------------------
-# #745 (`## Plan` issue comment, no file) → stamped (the canonical redesign path).
+# #745 (`## Plan` issue comment) → stamped (the canonical path).
 l745=$(edit_line 745)
 if [[ -n "$l745" && "$l745" == *"fleet:queued"* && "$l745" != *"fleet:needs-plan"* ]]; then
-    ok "#745 (## Plan comment, no file) stamped fleet:queued"
+    ok "#745 (## Plan comment) stamped fleet:queued"
 else
     bad "#745 comment-based plan mis-handled: '$l745'"
 fi

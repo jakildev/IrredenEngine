@@ -97,8 +97,7 @@ See [docs/agents/FLEET-RUNTIME.md § Exit protocol](../../docs/agents/FLEET-RUNT
   post the structured plan as a `## Plan` comment, then swap
   `fleet:needs-plan` → `fleet:plan-review` for a reviewer to vet, and release
   (`fleet-claim planning-release`). With `FLEET_PLAN_ISSUE` unset, do no
-  planning. The plan lands in `.fleet/plans/` as the
-  first commit of the implementer's PR — not a separate plan-doc PR (#1932).
+  planning. The plan stays on the issue as that comment.
 - Handle tasks escalated from a lower class (look for an `escalated
   from <class>` note in the issue body or a recent issue comment).
 
@@ -217,13 +216,6 @@ fleet-claim --repo game claim 45 pool-1
    fall back to direct `gh`/`git` calls; see "Shared fleet state
    cache" above.
 
-   For plan files (still on disk, not in cache), list with
-   `git -C <repo> ls-tree -r origin/master --name-only -- .fleet/plans/`
-   and read individual entries with
-   `git -C <repo> show origin/master:.fleet/plans/<file>`.
-   See [docs/agents/FLEET-RUNTIME.md § Plan-file Read pattern](../../docs/agents/FLEET-RUNTIME.md#plan-file-read-pattern-workers-only)
-   for the rationale (the `git checkout origin/master -- ...` form
-   stages files and breaks later `git checkout -b`).
 4. Review both queues from the `tasks.open[]` arrays you just
    loaded; cross-check the `prs[]` arrays for what is already
    in flight under another agent (the live "is this task already
@@ -254,7 +246,7 @@ Each invocation of this role is **one task iteration in a fresh
 new actionable state, with an empty
 conversation each time. Don't try to "remember" anything from the
 prior iteration; everything you need lives in the GitHub issue queue,
-the open-PR list, plan files under `~/.fleet/plans/`, and the role
+the open-PR list, the issues' `## Plan` comments, and the role
 file you're reading right now.
 
 Do the work, then exit cleanly:
@@ -269,7 +261,7 @@ Do the work, then exit cleanly:
    issue number, run steps 1, 1b, and 2 normally (feedback, smoke,
    planning still apply within your class), then skip task pickup at
    step 3, skip the claim at step 4, and jump directly to **step 5
-   (read the plan file)** with the reserved issue number. The PR from
+   (read the plan)** with the reserved issue number. The PR from
    the previous iteration is still open; do NOT open a new one.
 
 1. **Check for feedback labels on open PRs across both repos.**
@@ -614,8 +606,7 @@ Do the work, then exit cleanly:
    - **`FLEET_PLAN_ISSUE` unset** — skip planning entirely (no claim
      attempts, no needs-plan scanning) and move on to step 3.
 
-   The plan file is committed by the
-   implementer as the first commit of its PR (#1932). If the work decomposes
+   If the work decomposes
    into a stack,
    [PLANNING-PROTOCOL.md](../../docs/agents/PLANNING-PROTOCOL.md) routes you
    to `file-epic` via
@@ -698,9 +689,7 @@ Do the work, then exit cleanly:
    Do NOT defer to free-form "directives", "recommendations", "fleet
    notes", or any prose hint suggesting another agent should handle
    the task. If a task is genuinely reserved for another agent, that
-   agent must hold the `fleet-claim` lock — period. A directive file
-   sitting in `~/.fleet/plans/` is NOT a reservation; it's stale
-   prose. The architects run interactively (no `/loop`) and do not
+   agent must hold the `fleet-claim` lock — period. The architects run interactively (no `/loop`) and do not
    autonomously claim tasks, so "reserved for opus-architect" or
    "reserved for game-architect" in any file other than `fleet-claim`
    means the work would never get done. Pick it up.
@@ -797,19 +786,11 @@ Do the work, then exit cleanly:
    command, base-branching, claim commit, and PR-creation snippets
    (covers both the `master`-base and stackable-on cases).
 
-5. **Read the plan file (if it exists).** Only read the **specific
-   file** for your task — never `ls` the plans directory and never
-   read other files there. The valid filenames are:
-   - `.fleet/plans/issue-<N>.md` (repo copy, synced from master)
-   - `~/.fleet/plans/issue-<N>.md` (local staging, pre-commit)
-
-   If your issue number is `1238`, you read `issue-1238.md` — that's
-   it. Anything else in `~/.fleet/plans/` is not yours and not
-   authoritative (stale prose, drafts, abandoned files). If neither
-   file exists, read the **full issue thread** (body + every comment —
-   the plan is often posted as a comment, and the human may have left
-   scope refinements there too) via the same wrapper used in step 2:
-   `fleet-issue view <N>` (engine; for game issues add `--repo game`).
+5. **Read the plan.** Read the full issue thread via `fleet-issue view
+   <N>` (engine; for game issues add `--repo game`): the newest `## Plan`
+   comment is the plan, every later `## Plan corrections` comment amends
+   it, and the human may have left scope refinements too. Nothing on disk
+   is a plan.
    Do **not** fall back to bare `gh issue view <N>` — it omits comments
    by default and silently drops the plan.
 
@@ -1025,13 +1006,9 @@ pool pane observed what.
 
 See [`docs/agents/CLAUDE-BASELINE.md §"Hard rules for autonomous fleet roles"`](../../docs/agents/CLAUDE-BASELINE.md#hard-rules-for-autonomous-fleet-roles).
 
-- **Never write plan files during task execution.** Plan files are written
-  only during the planning step (step 2) for `fleet:needs-plan` issues.
-- **`~/.fleet/plans/` and `.fleet/plans/` are for task plans only.**
-  The only valid filename is `issue-<N>.md` (one per GitHub issue).
-  Other files in those directories — directives, fleet notes, ad-hoc
-  prose — are NOT authoritative and must NOT influence task pickup.
-  Read only the file matching your issue number. Authority for "who
+- **Never write plan files.** A plan is the `## Plan` comment on its
+  issue; nothing under `~/.fleet/` or in the repo is a plan, and no file
+  influences task pickup. Authority for "who
   works on what" lives in the issue's `fleet:claim-*` label and
   `fleet-claim` locks; nothing else.
 - **Never claim outside your class.** `FLEET_ROLE_MODEL` plus the

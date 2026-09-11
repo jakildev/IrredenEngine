@@ -108,7 +108,7 @@ per-worktree, overwritten each boundary;
 - **In flight / owed** — open PRs, follow-up issues filed, anything blocked-on.
 - **Durable decisions / lessons** — anything that should outlive the task, each
   with a **pointer** to its durable home (a `docs/design/` doc, the feedback
-  file, or `~/.fleet/plans/issue-<N>.md`) — never duplicated inline.
+  file, or the issue's `## Plan` comment) — never duplicated inline.
 - **Drop list** — the prior context now safe to forget (tool dumps, resolved
   escalations, superseded drafts).
 

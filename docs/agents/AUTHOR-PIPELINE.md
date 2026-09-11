@@ -154,12 +154,15 @@ claims to satisfy them. Criteria are authored at plan time under
 finished tree instead of silently trusted.
 
 Skip only when the work has no originating issue (`Issue:` field
-`(none)`) or the issue has no `## Plan` comment / plan file — then
-there are no authored criteria to grade.
+`(none)`) or the issue carries neither a `## Plan` comment nor an
+`**Acceptance criteria**` block in its body — then there are no
+authored criteria to grade.
 
-1. **Re-read the plan's `### Acceptance criteria`** — from
-   `.fleet/plans/issue-<N>.md` if the branch carries it, else the
-   issue's `## Plan` comment (`gh issue view <N> --comments`).
+1. **Re-read the authored acceptance criteria** — the newest `## Plan`
+   comment's `### Acceptance criteria`, as amended by any later
+   `## Plan corrections` comment (`fleet-issue view <N>` shows both);
+   for a no-plan issue, the `**Acceptance criteria**` block in the
+   issue body.
 2. **Run each named check NOW, on the final tree.** Evidence from an
    earlier iteration is stale if the tree changed since. Record the
    exact command and the observed output line that proves the criterion

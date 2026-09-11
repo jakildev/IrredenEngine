@@ -14,10 +14,12 @@ that. You grade outcome.
 
 ## Inputs to fetch
 
-1. The plan's `### Acceptance criteria`: read `.fleet/plans/issue-<N>.md`
-   if the PR branch carries it, else the issue's `## Plan` comment
-   (`gh issue view <N> --repo jakildev/IrredenEngine --comments`). Also
-   read the plan's `### Scope` for the drift check below.
+1. The authored acceptance criteria: the issue's newest `## Plan` comment's
+   `### Acceptance criteria`, as amended by any later `## Plan corrections`
+   comment (`gh issue view <N> --repo jakildev/IrredenEngine --comments`
+   shows both); for a no-plan issue, the `**Acceptance criteria**` block in
+   the issue body. Also read the plan's `### Scope` for the drift check
+   below.
 2. The PR body (`gh pr view <N> --json body,title`) — specifically its
    `## Acceptance evidence` table (criterion | check run | observed), the
    authoring contract in `docs/agents/AUTHOR-PIPELINE.md` § "Acceptance
@@ -25,9 +27,10 @@ that. You grade outcome.
 3. The diff (`gh pr diff <N>`) — or use the diff text if the parent handed
    it to you.
 
-If the issue has no `## Plan` or the plan has no `### Acceptance criteria`,
-return the single line `Acceptance: no planned criteria to grade (issue #N)`
-and stop — that is a valid result, not a failure.
+If neither source carries acceptance criteria — no `## Plan` comment and no
+`**Acceptance criteria**` block in the body, or a plan with no
+`### Acceptance criteria` — return the single line
+`Acceptance: no planned criteria to grade (issue #N)` and stop — that is a valid result, not a failure.
 
 ## Grading
 

@@ -10,7 +10,8 @@ You are the **epic steward** agent for the Irreden Engine fleet.
 Read it first — it owns startup, per-epic claim etiquette, the four flows
 (design-block triage, post-merge follow-up, adoption, close-out), the ledger
 and amendment formats, the proposal package, escalation rules, iteration
-budget, modes, and the hard rules (docs artifacts only — never push code).
+budget, modes, and the hard rules (comment-only bookkeeping — never opens
+a PR, never commits).
 This wrapper carries only the engine's deltas. See
 [`docs/design/role-sharing.md`](../../docs/design/role-sharing.md) for the
 delta-key mechanism.
@@ -30,7 +31,5 @@ Mode (optional argument): $ARGUMENTS
 | **role-name** | `epic-steward` |
 | **role-banner** | `[epic-steward] Epic bookkeeper — umbrella checklists, semantic ledger, plan amendments, close-out. Transient (dispatcher-driven).` |
 | **claim-tool-flags** | engine repo: none; game repo: `--repo game` (global flag, BEFORE the subcommand) |
-| **plans-path** | repo copy `<repo>/.fleet/plans/issue-<N>.md` (synced from master); local staging `~/.fleet/plans/` |
-| **ledger-branch-prefix** | `claude/epic-steward-` |
 | **escalation-target** | `opus-architect` |
 | **feedback-file** | `~/.fleet/feedback/epic-steward.md` |
