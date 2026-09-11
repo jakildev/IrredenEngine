@@ -167,11 +167,12 @@ assert_contains "$(cat "$FLEET_STATE_DIR/handoff/feedback-game-7.md")" "salvage:
     "a clean worktree hands off with no patch"
 
 # --- The cleanup pass -----------------------------------------------------------
-record() {  # $1 = pane number  $2 = target ("" for a legacy record)
-    local extra=""
+record() {  # $1 = pane  $2 = target (empty for legacy)  $3 = optional pid  $4 = optional epoch
+    local extra="" pid_extra="" dispatched_epoch="${4:-$DISPATCHED}"
     [[ -n "$2" ]] && extra=$(printf ',"target":"%s","agent":"pool-3"' "$2")
-    printf '{"role":"worker","pane":"%%%s","class":"opus","dispatched_at":"x","dispatched_epoch":%s,"claim_marker":1%s}\n' \
-        "$1" "$DISPATCHED" "$extra" > "$FLEET_STATE_DIR/dispatch/pane-$1.json"
+    [[ -n "${3:-}" ]] && pid_extra=$(printf ',"wrapper_pid":%s' "$3")
+    printf '{"role":"worker","pane":"%%%s","class":"opus","dispatched_at":"x","dispatched_epoch":%s,"claim_marker":1%s%s}\n' \
+        "$1" "$dispatched_epoch" "$pid_extra" "$extra" > "$FLEET_STATE_DIR/dispatch/pane-$1.json"
 }
 complete() { : > "$GH_LOG"; "$DISPATCHER" --complete-dispatches 2>&1 >/dev/null | tr -d '\r' || true; }
 COUNTS_DIR="$FLEET_STATE_DIR/target-dispatch-counts"
@@ -227,5 +228,29 @@ record 1 ""
 out=$(complete)
 assert_eq "$(cat "$GH_LOG")" "" "no target -> no gh call"
 assert_absent "$out" "verdict=" "no verdict logged"
+
+echo "T12: a live recorded wrapper PID keeps a shell-reported pane occupied without pgrep"
+rm -f "$FLEET_STATE_DIR/empty-streak/worker__opus"
+record 1 "" "$$" "$(date +%s)"
+out=$(complete)
+assert_eq "$out" "" "live wrapper: cleanup emits no completion"
+[[ -f "$FLEET_STATE_DIR/dispatch/pane-1.json" ]] \
+    && ok "live wrapper: dispatch record retained" || bad "live wrapper: dispatch record consumed"
+[[ ! -f "$FLEET_STATE_DIR/empty-streak/worker__opus" ]] \
+    && ok "live wrapper: empty-exit streak untouched" || bad "live wrapper: empty-exit streak bumped"
+
+echo "T13: a stale record cannot pin a pane when its PID has been recycled"
+record 1 "" "$$"
+out=$(complete)
+assert_contains "$out" "dispatch for worker on %1 completed" "stale live PID: completion logged"
+[[ ! -f "$FLEET_STATE_DIR/dispatch/pane-1.json" ]] \
+    && ok "stale live PID: dispatch record consumed" || bad "stale live PID: dispatch record retained"
+
+echo "T14: a dead recorded wrapper PID still completes normally"
+record 1 "" "99999999"
+out=$(complete)
+assert_contains "$out" "dispatch for worker on %1 completed" "dead wrapper: completion logged"
+[[ ! -f "$FLEET_STATE_DIR/dispatch/pane-1.json" ]] \
+    && ok "dead wrapper: dispatch record consumed" || bad "dead wrapper: dispatch record retained"
 
 summarize "fleet-dispatcher completion-contract tests"
