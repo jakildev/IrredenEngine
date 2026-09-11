@@ -52,4 +52,10 @@ with `--update-baseline` (it only lowers counts). The baseline is the sweep
 backlog and reaches zero when the tree is clean.
 
 Judgment-side: `simplify` §7 and its Check 7 review every added comment for
-narration, motivation prose, and location references.
+narration, motivation prose, and location references. The two layers run over
+the **same population, class for class** — Check 7's globs carry every
+extension `comment_family()` selects plus the extensionless interpreter
+executables, and the `Check07Scope` suite in
+`scripts/fleet/tests/test_lint_comment_refs.py` fails when one side gains a
+class the other lacks. A class only one layer reaches would get the numeric
+gate without the narration gate, or the reverse.

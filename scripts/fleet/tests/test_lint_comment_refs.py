@@ -4,6 +4,7 @@ temp baseline; nothing reads the real repository."""
 import importlib.util
 import io
 import json
+import re
 import sys
 import tempfile
 import unittest
@@ -96,9 +97,18 @@ class Tokenizer(unittest.TestCase):
                          "bash and zsh quote an escaped program as `$'...'`")
         self.assertEqual(lines("python3 -c$'\n# see #1234\n'\n", "shell"), [2],
                          "the space before the program argument is optional")
+        self.assertEqual(lines('python3 -c $"\n# see #1234\n"\n', "shell"), [2],
+                         '`$"..."` is bash\'s other quoting prefix, and it '
+                         "opens the program argument just the same")
+        self.assertEqual(lines('sudo -u root python3 -c $"\n# see #1234\n"\n',
+                               "shell"), [2],
+                         "the prefix spelling survives an option-bearing "
+                         "command prefix")
         self.assertEqual(lines("python3 script.py $'#1234'\n", "shell"), [],
                          "only the `-c` argument is source; an interpreter's "
                          "other `$'...'` arguments stay values")
+        self.assertEqual(lines('python3 script.py $"#1234"\n', "shell"), [],
+                         'the same boundary holds for `$"..."`')
         self.assertEqual(lines("msg='release #1234'\n", "shell"), [])
         self.assertEqual(lines("grep -c '#1234' f\n", "shell"), [],
                          "`-c` on a non-interpreter is not a program string")
@@ -326,6 +336,62 @@ class CommandWord(unittest.TestCase):
         """Consuming `-u root` reaches the command word, it does not assume the
         next interpreter-shaped word anywhere on the line is one."""
         self.assertEqual(lines("sudo -u root echo python3 -c '# #1234'\n", "shell"), [])
+
+
+class Check07Scope(unittest.TestCase):
+    """The executed ratchet and `simplify` Check 7 are the two halves of one
+    rule, so they must cover the same population. Not hermetic by design: the
+    drift this pins is between the real checker and the real check doc."""
+
+    CHECK = (Path(__file__).resolve().parents[3]
+             / ".claude/skills/simplify/checks/check-07-reference-comments.md")
+    SKILL = (Path(__file__).resolve().parents[3]
+             / ".claude/skills/simplify/SKILL.md")
+
+    def setUp(self):
+        if not self.CHECK.is_file():
+            self.skipTest("check-07 doc absent")
+        self.doc = self.CHECK.read_text()
+        self.globs = re.findall(r"glob:\s*'([^']+)'", self.doc)
+        self.assertTrue(self.globs, "the doc names no Grep glob")
+
+    def test_every_family_extension_is_inside_the_check_glob(self):
+        listed = set()
+        for g in self.globs:
+            m = re.search(r"\{([^}]*)\}", g)
+            if m:
+                listed.update("." + e.strip() for e in m.group(1).split(","))
+        wanted = (lint.SLASH_COMMENT_EXTS | lint.PYTHON_EXTS
+                  | lint.SHELL_COMMENT_EXTS | lint.POWERSHELL_COMMENT_EXTS
+                  | lint.CMAKE_COMMENT_EXTS | lint.DASH_COMMENT_EXTS
+                  | {Path(n).suffix for n in lint.CMAKE_COMMENT_NAMES})
+        self.assertEqual(sorted(wanted - listed), [],
+                         "a class the ratchet counts that Check 7 never greps")
+
+    def test_the_glob_carries_a_marker_for_every_comment_syntax(self):
+        pattern = re.search(r"pattern:\s*'([^']+)'", self.doc).group(1)
+        for ext, marker in ((".lua", "--"), (".py", "#"), (".hpp", "//")):
+            self.assertIn(marker, pattern,
+                          f"{ext} is in the glob but its comment marker is not "
+                          "in the pattern, so those files are swept blind")
+
+    def test_extensionless_executables_have_a_glob_arm(self):
+        arms = [g for g in self.globs if "{" not in g]
+        uncovered = sorted(
+            p for p in lint.tracked_files()
+            if Path(p).suffix == "" and lint.comment_family(p)
+            and not any(p.startswith(a.rstrip("*")) for a in arms))
+        self.assertEqual(uncovered, [],
+                         f"extensionless interpreter files outside {arms}")
+
+    def test_the_skill_index_row_defers_to_the_checker(self):
+        if not self.SKILL.is_file():
+            self.skipTest("SKILL.md absent")
+        row = next(ln for ln in self.SKILL.read_text().splitlines()
+                   if "check-07-reference-comments.md" in ln)
+        self.assertIn("lint_comment_refs.py", row,
+                      "the §2b trigger row re-enumerates the population "
+                      "instead of deferring to the checker that defines it")
 
 
 if __name__ == "__main__":

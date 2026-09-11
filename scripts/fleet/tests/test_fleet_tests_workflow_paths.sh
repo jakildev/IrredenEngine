@@ -2,12 +2,13 @@
 # Tests for .github/workflows/fleet-tests.yml's path filters (#2810).
 #
 # The workflow path-filters on scripts/** — broadly the LOCATION of its
-# suites, not the SUBJECTS they test. Six suites test files that live
+# suites, not the SUBJECTS they test. Seven suites test files that live
 # outside that path (test_format_changed_line_scoping.sh covers
 # cmake/run_clang_format_changed.cmake; test_ir_build_dir_resolution.sh
 # covers engine/tools/lib/concurrency_helpers.sh; test_fleet_transition.sh
 # covers docs/agents/fleet-state-machine.json; test_lint_rules_commands.py
 # covers every doc under .claude/rules/ and docs/agents/;
+# test_lint_comment_refs.py covers .claude/skills/simplify/**;
 # test_workflow_paths_sync.sh covers the other path-filtered
 # .github/workflows/*.yml files; test_lint_python_registry.py covers
 # ruff.toml), so a PR touching only one of those subjects previously got
@@ -54,6 +55,10 @@ fi
 # fleet-labels-reference.md (test_fleet_labels_check.sh); the narrower
 # entries stay so the ratchet keeps naming those subjects even if the glob
 # is ever tightened.
+# `.claude/skills/simplify/**` is test_lint_comment_refs.py's Check07Scope
+# subject: that class reads the Check 7 doc and the simplify index row and
+# fails when either drops a source class the ratchet counts, so a PR that
+# narrows Check 7 alone must still trigger this workflow.
 #
 # The five .github/workflows/ entries are test_workflow_paths_sync.sh's
 # subjects (#2929, #3187). They are the only members whose population is derived
@@ -75,6 +80,7 @@ OUT_OF_TREE_SUBJECTS=(
     'docs/agents/fleet-state-machine.json'
     'docs/agents/fleet-labels-reference.md'
     '.claude/rules/**'
+    '.claude/skills/simplify/**'
     'docs/agents/**'
     '.github/workflows/format-check.yml'
     '.github/workflows/header-checks.yml'
