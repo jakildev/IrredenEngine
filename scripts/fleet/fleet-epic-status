@@ -201,13 +201,6 @@ def plan_comment_exists(slug, number):
     return False
 
 
-def find_repo_root():
-    script_dir = pathlib.Path(os.path.realpath(__file__)).parent
-    root = script_dir.parent.parent
-    if (root / ".git").exists() or (root / ".git").is_file():
-        return str(root)
-    return None
-
 
 def parse_checklist(body):
     items = []
