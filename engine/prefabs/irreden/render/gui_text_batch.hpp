@@ -260,14 +260,18 @@ inline void queueGuiText(
 // compute shader once, rasterizing every queued glyph onto the GUI canvas,
 // then clears `commands`. No-op (and clears) when the shared text resources
 // or the GUI canvas are absent — e.g. a creation that runs widget systems
-// without TEXT_TO_TRIXEL, which would not show free text either. Call from a
-// render system's endTick, after queuing that system's text in its ticks.
+// without TEXT_TO_TRIXEL, which would not show free text either. That no-op is
+// why the resource lookups are `getNamedResourceOrNull`: the asserting
+// `getNamedResource` cannot report an absent resource, only throw on it (see
+// #2627). Call from a render system's endTick, after queuing that system's
+// text in its ticks.
 inline void dispatchGuiText(std::vector<IRRender::GlyphDrawCommand> &commands) {
     if (commands.empty())
         return;
 
-    auto *program = IRRender::getNamedResource<IRRender::ShaderProgram>("TextToTrixelProgram");
-    auto *cmdBuf = IRRender::getNamedResource<IRRender::Buffer>("GlyphDrawCommandBuffer");
+    auto *program =
+        IRRender::getNamedResourceOrNull<IRRender::ShaderProgram>("TextToTrixelProgram");
+    auto *cmdBuf = IRRender::getNamedResourceOrNull<IRRender::Buffer>("GlyphDrawCommandBuffer");
     const IREntity::EntityId guiCanvas = IRRender::getCanvas("gui");
     if (program == nullptr || cmdBuf == nullptr || guiCanvas == IREntity::kNullEntity) {
         commands.clear();

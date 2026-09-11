@@ -158,18 +158,17 @@ inline void restoreVoxelCompactionSlots(
     if (voxelIndirectBuf == nullptr) {
         voxelIndirectBuf = IRRender::getNamedResource<IRRender::Buffer>("IndirectDispatchParams");
     }
-    if (voxelCompactedBuf != nullptr) {
-        voxelCompactedBuf->bindBase(
-            IRRender::BufferTarget::SHADER_STORAGE,
-            IRRender::kBufferIndex_PerAxisCellCompacted
-        );
-    }
-    if (voxelIndirectBuf != nullptr) {
-        voxelIndirectBuf->bindBase(
-            IRRender::BufferTarget::SHADER_STORAGE,
-            IRRender::kBufferIndex_PerAxisCellIndirect
-        );
-    }
+    // Unguarded: getNamedResource asserts on a miss rather than returning null
+    // (see #2627), and VOXEL_TO_TRIXEL_STAGE_1 — which creates both buffers —
+    // is a hard precondition of every per-axis consumer.
+    voxelCompactedBuf->bindBase(
+        IRRender::BufferTarget::SHADER_STORAGE,
+        IRRender::kBufferIndex_PerAxisCellCompacted
+    );
+    voxelIndirectBuf->bindBase(
+        IRRender::BufferTarget::SHADER_STORAGE,
+        IRRender::kBufferIndex_PerAxisCellIndirect
+    );
 }
 
 // RAII scope for the per-axis lighting-family dispatches (AO / sun-shadow /

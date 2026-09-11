@@ -75,8 +75,11 @@ inline constexpr int kDefaultToggleButton = IRInput::KeyMouseButtons::kKeyButton
 // Like `HelpOverlay::systems()`, this deliberately does not auto-detect what
 // the creation already registered: a duplicate `WIDGET_INPUT` would run the
 // widget state machine twice per frame (double-firing every click), and the
-// available probes cannot distinguish "absent" from "registered as id 0"
-// (#2540). An explicit precondition beats an unsound guess. A creation that
+// available probes only answer whether a system exists *now* — this list is
+// built while the creation is still assembling its pipelines, so "absent" and
+// "about to be spliced in" look identical, and "present" says nothing about
+// order. An explicit precondition beats a probe that cannot see the pipeline
+// being built around it. A creation that
 // already builds widgets registers `System<IRSystem::SETTINGS_MENU>::create()`
 // on its own instead of splicing this list.
 inline std::list<IRSystem::SystemId>
@@ -128,11 +131,14 @@ inline IRCommand::CommandId registerToggleCommand(int button = kDefaultToggleBut
 // `isOpen()` (from the component header) answers "did the toggle fire". These
 // answer "did the menu actually materialize", which a flag alone cannot prove.
 // Both resolve the running system through the `SystemName` registry (#2526)
-// and read a clean negative when it is not registered.
+// and read a clean negative when it is not registered — against
+// `IRSystem::kNullSystemId`, the miss sentinel #2540 moved off `kNullEntity`
+// because 0 is a live system id. See `HelpOverlay::systemOrNull()` for why the
+// wrong sentinel fails in both directions.
 
 inline const IRSystem::System<IRSystem::SETTINGS_MENU> *systemOrNull() {
     const IRSystem::SystemId id = IRSystem::findSystem(IRSystem::SETTINGS_MENU);
-    if (id == IREntity::kNullEntity) {
+    if (id == IRSystem::kNullSystemId) {
         return nullptr;
     }
     return IRSystem::getSystemParams<IRSystem::System<IRSystem::SETTINGS_MENU>>(id);

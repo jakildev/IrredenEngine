@@ -193,7 +193,9 @@ template <> struct System<UPDATE_VOXEL_POSITIONS_GPU> {
         }
         C_VoxelPool &pool = *touchedPool_;
         const int liveCount = pool.getLiveVoxelCount();
-        if (liveCount <= 0 || globalPosBuf_ == nullptr) {
+        // No globalPosBuf_ null check: getNamedResource asserts on a miss and
+        // never returns null (see #2627).
+        if (liveCount <= 0) {
             return;
         }
 

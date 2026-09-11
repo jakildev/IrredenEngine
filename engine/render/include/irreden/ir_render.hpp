@@ -48,14 +48,27 @@ template <typename T> void destroyResource(ResourceId resource) {
     getRenderingResourceManager().destroy<T>(resource);
 }
 
-/// Return a raw (non-owning) pointer to the resource. Null if @p resource is invalid.
+/// Return a raw (non-owning) pointer to the resource. Asserts if @p resource is not
+/// a live id of type @c T — the returned pointer is never null.
 template <typename T> T *getResource(ResourceId resource) {
     return getRenderingResourceManager().get<T>(resource);
 }
 
-/// Look up a previously-named resource. Returns null if @p resourceName is not registered.
+/// Look up a previously-named resource. **Asserts** if @p resourceName was never
+/// registered, and never returns null, so a missing name is a pipeline-configuration
+/// error rather than a graceful fallback. Under @c IR_RELEASE the assert compiles out
+/// and the miss is UB. Use @c getNamedResourceOrNull for a resource that is genuinely
+/// optional.
 template <typename T> T *getNamedResource(std::string resourceName) {
     return getRenderingResourceManager().getNamed<T>(resourceName);
+}
+
+/// Probe form of @c getNamedResource: returns null — in every build — when
+/// @p resourceName was never registered. For callers whose documented behaviour is to
+/// no-op when the resource is absent, e.g. a creation that batches GUI text without
+/// @c TEXT_TO_TRIXEL in its RENDER pipeline.
+template <typename T> T *getNamedResourceOrNull(std::string resourceName) {
+    return getRenderingResourceManager().getNamedOrNull<T>(resourceName);
 }
 /// @}
 

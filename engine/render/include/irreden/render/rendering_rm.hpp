@@ -82,9 +82,25 @@ class RenderingResourceManager {
         return it->second.get();
     }
 
+    // Asserts on an unregistered name; never returns null, so a null check on
+    // the result is dead code. Under IR_RELEASE the assert compiles out and the
+    // miss becomes an end-iterator dereference, which a null check would not
+    // catch either. Callers whose contract is "no-op when the resource is
+    // absent" want getNamedOrNull (see #2627).
     template <typename T> T *getNamed(const std::string &name) {
         auto it = m_namedResources.find(name);
         IR_ASSERT(it != m_namedResources.end(), "Failed to find named resource: {}", name);
+        return get<T>(it->second);
+    }
+
+    // Probe form of getNamed: null when `name` was never registered, in every
+    // build. For a genuinely optional resource — one a creation owns only if it
+    // registered the system that creates it.
+    template <typename T> T *getNamedOrNull(const std::string &name) {
+        auto it = m_namedResources.find(name);
+        if (it == m_namedResources.end()) {
+            return nullptr;
+        }
         return get<T>(it->second);
     }
 

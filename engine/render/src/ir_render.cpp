@@ -265,7 +265,12 @@ ivec2 mouseTrixelPositionWorld() {
 }
 
 IREntity::EntityId getEntityIdAtMouseTrixel() {
-    auto *buf = IRRender::getNamedResource<Buffer>("HoveredEntityIdBuffer");
+    // Only TRIXEL_TO_FRAMEBUFFER creates HoveredEntityIdBuffer, so a creation
+    // that composites via ENTITY_CANVAS_TO_FRAMEBUFFER has no hover readback at
+    // all and "nothing hovered" is the right answer. The probing lookup is what
+    // makes that answer reachable — the asserting one throws in debug and
+    // dereferences an end iterator in release (see #2627).
+    auto *buf = IRRender::getNamedResourceOrNull<Buffer>("HoveredEntityIdBuffer");
     if (!buf)
         return IREntity::kNullEntity;
 
