@@ -12,6 +12,7 @@ prove is not done until one exists.
 | Unit tests | engine behaviour under `test/` | `ctest --test-dir build -R <pattern>` after building `IrredenEngineTest` | none today |
 | Fleet tool tests | fleet scripts and workflows, hermetically | `bash scripts/fleet/tests/run_all.sh [--only <substring>]` | fleet-tests.yml on `scripts/**` |
 | Positive control | a new fleet suite would have failed before its fix | `fleet-positive-control <test-file> <pre-fix-ref>` | none (authoring-time) |
+| Fleet-test subjects | every out-of-tree file a fleet suite tests is registered in `OUT_OF_TREE_SUBJECTS` and in both `fleet-tests.yml` `paths:` blocks | `python3 scripts/fleet/fleet_test_subjects.py` | fleet-tests.yml |
 | Header conventions | header-global ban, anonymous namespaces, `*Detail` namespaces, Metal registries | `cmake -DPROJECT_ROOT=$PWD -P cmake/run_header_checks_standalone.cmake` | header-checks.yml |
 | Python lint | ruff rules over `scripts/` | `ruff check scripts/` | python-lint.yml |
 | Comment refs | no issue/PR numbers gained in code comments | `python3 scripts/lint_comment_refs.py` | comment-refs.yml on every push and PR |

@@ -92,13 +92,27 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   only that file never runs the suite that would have caught the break.
   (A subject *inside* `scripts/` needs no entry: the filter's first glob
   already covers it.)
-  **This is executed** — add the path to `OUT_OF_TREE_SUBJECTS` in
-  `tests/test_fleet_tests_workflow_paths.sh` in the same change, and the
-  ratchet asserts it appears in **both** `paths:` blocks (they are
-  hand-duplicated — GitHub Actions has no YAML anchors — so they drift
-  independently). The list is the ratchet's whole domain: a subject absent
-  from it is a subject nothing guards, however green the suite runs
-  (#2810). `OUT_OF_TREE_SUBJECTS` is `fleet-tests.yml`-scoped by design —
+  **This is executed, and so is its completeness** — add the path to
+  `OUT_OF_TREE_SUBJECTS` in `tests/test_fleet_tests_workflow_paths.sh` in
+  the same change, and the ratchet asserts it appears in **both** `paths:`
+  blocks (they are hand-duplicated — GitHub Actions has no YAML anchors —
+  so they drift independently). You no longer have to *remember* to add it:
+  `fleet_test_subjects.py` derives the live subject population — every
+  tracked path outside `scripts/fleet/` that a suite source names, plus the
+  derived both-blocks workflow set — and fails naming the path and the
+  suite that references it (#3117). Run it directly, or via
+  `tests/test_fleet_tests_workflow_paths.sh` T5:
+
+  ```
+  python3 scripts/fleet/fleet_test_subjects.py
+  ```
+
+  That check exists because the list is an *inclusion* list: it is the
+  older ratchet's whole domain, so a subject absent from it was a subject
+  nothing guarded, however green the suite ran — and the omission was
+  invisible to both the green run and the positive control, since both are
+  computed from the list (#2810, #2929, #2859). Don't hand-audit the list;
+  run the scan. `OUT_OF_TREE_SUBJECTS` is `fleet-tests.yml`-scoped by design —
   it is that one workflow's own subject-domain list, a different axis from
   whether a workflow's `push:` and `pull_request:` blocks *agree* on
   whatever they list. That second axis — the sync ratchet itself — is
@@ -114,11 +128,15 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   declares both blocks but is missing from `fleet-tests.yml`'s `paths:` is
   one this suite inspects and CI never runs it for. That is the pair the
   two ratchets have to agree on, and the derived side is the one a
-  hand-maintained list cannot follow, so `test_workflow_paths_sync.sh`'s T4
-  asserts the agreement directly off the glob: a newly-covered workflow
+  hand-maintained list cannot follow. Two checks cover it, on two different
+  axes: `test_workflow_paths_sync.sh`'s T4 asserts the derived population
+  against `fleet-tests.yml`'s `paths:` blocks (a newly-covered workflow
   fails a suite instead of silently costing itself its trigger —
   `python-lint.yml` (#2718) is the case that exercised it, and
-  `format-check.yml` (#3187) the second.
+  `format-check.yml` (#3187) the second), and
+  `fleet_test_subjects.py`'s F2 asserts the same population against
+  `OUT_OF_TREE_SUBJECTS`, which T4 never reads. T6 in that suite asserts
+  the two derivations agree, so the shared glob has one meaning.
 - **Bash tests source `tests/lib_assert.sh`** for the PASS/FAIL counters,
   `ok`/`bad`, `assert_eq`/`assert_contains`/`assert_absent`, and the
   `summarize` exit idiom — don't re-copy the helpers into a new test.

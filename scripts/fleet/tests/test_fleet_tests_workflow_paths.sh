@@ -25,12 +25,33 @@
 # (#2859). That is a filter-vs-constant check, not a list membership one,
 # so it lives in its own case rather than in OUT_OF_TREE_SUBJECTS.
 #
-# This is deliberately a hardcoded ratchet, not a parse of each suite's
-# variable assignments (same shape as header_global_baseline in
-# cmake/run_header_convention_checks.cmake): it asserts every known
-# out-of-tree subject is present in BOTH `paths:` blocks of the
-# workflow (push and pull_request — GitHub Actions has no YAML anchors,
-# so the two lists are hand-duplicated and can drift independently).
+# What T1-T3 below assert is that every REGISTERED out-of-tree subject is
+# present in BOTH `paths:` blocks of the workflow (push and pull_request —
+# GitHub Actions has no YAML anchors, so the two lists are hand-duplicated and
+# can drift independently).
+#
+# They do NOT assert that the registry is complete, and they structurally
+# cannot: both the green run and the T2 positive control are computed FROM
+# OUT_OF_TREE_SUBJECTS, so a subject nobody added is a subject neither looks
+# at. This list is an *inclusion* list with no scan behind it — the opposite
+# of header_global_baseline in cmake/run_header_convention_checks.cmake, which
+# is an *exclusion* list riding on a tree-wide scan and therefore catches an
+# unlisted item by default. The two are complementary, not the same shape, and
+# the difference is exactly why this list shipped incomplete three times
+# (#2810, #2929, #2859).
+#
+# T5 closes that: it executes scripts/fleet/fleet_test_subjects.py, which
+# derives the live subject population (path literals in every suite source,
+# plus the derived both-blocks workflow set) and fails on any member this list
+# does not cover (#3117).
+#
+# T5 is also the stricter of the two on the axis T1 does cover. T1 matches a
+# subject as a literal SUBSTRING of the block, so a longer entry that happens
+# to contain it reads as coverage — delete the 'CLAUDE.md' entry and the
+# 'creations/CLAUDE.md' one keeps T1 green. The checker's F3 parses the block
+# into list entries and accepts only an exact entry or a segment-bounded
+# recursive glob, so it reports that deletion. T1 stays as the retained
+# ratchet (and as T2's control surface); F3 is the authority.
 
 set -uo pipefail
 
@@ -46,36 +67,42 @@ if [[ ! -f "$WORKFLOW" ]]; then
     exit 3  # skip status — run_all.sh must not count this as a pass (#2786)
 fi
 
-# The out-of-tree subjects each suite actually needs triggered on. Extend
-# this list (and add the matching suite to scripts/fleet/tests/) whenever
-# a new suite tests a file outside scripts/ (a subject inside scripts/ is
-# already covered by the filter's scripts/** glob, #2859). An entry is
-# matched as a literal substring of the block, so a subject whose suite
-# covers a whole directory is listed as the glob the workflow actually
-# carries — the two `**` entries below are test_lint_rules_commands.py's
+# The out-of-tree subjects each suite actually needs triggered on. You should
+# no longer have to extend this by hand and remember to: fleet_test_subjects.py
+# (T5) derives the population and names any member this list misses, with the
+# referencing suite quoted. Add what it reports.
+#
+# An entry covers a subject exactly, or as a segment-bounded recursive glob —
+# so a subject whose suite covers a whole directory is listed as the glob the
+# workflow actually carries. The two `**` entries are test_lint_rules_commands.py's
 # doc globs (#2823), not single files. `docs/agents/**` subsumes both
 # fleet-state-machine.json (test_fleet_transition.sh) and
-# fleet-labels-reference.md (test_fleet_labels_check.sh); the narrower
-# entries stay so the ratchet keeps naming those subjects even if the glob
-# is ever tightened.
-# `.claude/skills/simplify/**` is test_lint_comment_refs.py's Check07Scope
-# subject: that class reads the Check 7 doc and the simplify index row and
-# fails when either drops a source class the ratchet counts, so a PR that
-# narrows Check 7 alone must still trigger this workflow.
+# fleet-labels-reference.md (test_fleet_labels_check.sh); the narrower entries
+# stay so the ratchet keeps naming those subjects even if the glob is ever
+# tightened. `.claude/skills/simplify/**` is test_lint_comment_refs.py's
+# Check07Scope subject: that class reads the Check 7 doc and the simplify index
+# row and fails when either drops a source class the ratchet counts, so a PR
+# that narrows Check 7 alone must still trigger this workflow.
 #
-# The .github/workflows/ entries are test_workflow_paths_sync.sh's subjects.
-# They are the only members whose population is derived rather than fixed —
-# that suite globs .github/workflows/*.yml and covers
-# whichever files declare both a push: and a pull_request: paths: block, so a
-# new such workflow becomes its subject with no edit here. This list cannot
-# track that on its own; T4 in test_workflow_paths_sync.sh asserts the two
-# agree, so the gap fails a suite instead of silently costing the new workflow
-# its trigger.
+# `cmake/run_clang_format_changed_standalone.cmake` and its sibling
+# `cmake/run_clang_format_changed.cmake` are two subjects, not one: T1 matches
+# an entry as a literal substring of the block and neither string contains the
+# other, so the shorter entry does not cover the longer file.
 #
-# `cmake/run_clang_format_changed_standalone.cmake` is listed separately from
-# its sibling `cmake/run_clang_format_changed.cmake` on purpose: entries are
-# matched as literal substrings of the block, and neither of those two strings
-# contains the other, so the shorter entry does not cover the longer file.
+# The .github/workflows/ entries are test_workflow_paths_sync.sh's subjects
+# (#2929). They are the only members whose population is *derived* rather than
+# fixed — that suite globs .github/workflows/*.yml and covers whichever files
+# declare both a push: and a pull_request: paths: block. A derived subject has
+# no path literal for the scan to find, so fleet_test_subjects.py re-derives
+# that population itself (same glob, same both-blocks predicate) and checks it
+# against this list; test_workflow_paths_sync.sh T6 asserts the two derivations
+# agree. T4 in that suite checks the derived set against the workflow's paths:
+# blocks and never reads this array, so it is not the registry cross-check.
+#
+# The long tail below is that sweep's output: every tracked file outside
+# scripts/fleet/ that a suite source names, comments and synthetic fixtures
+# included. That over-includes on purpose — the cost is an extra CI trigger,
+# and the alternative is the silent false-clean this ratchet exists to remove.
 OUT_OF_TREE_SUBJECTS=(
     'cmake/run_clang_format_changed.cmake'
     'cmake/run_clang_format_changed_standalone.cmake'
@@ -94,6 +121,48 @@ OUT_OF_TREE_SUBJECTS=(
     '.github/workflows/python-lint.yml'
     '.github/workflows/render-harness-tests.yml'
     'ruff.toml'
+    '.clang-format'
+    '.claude/commands/role-opus-architect.md'
+    '.claude/commands/role-opus-reviewer.md'
+    '.claude/commands/role-worker.md'
+    '.claude/settings.json'
+    '.claude/skills/commit-and-push/SKILL.md'
+    '.claude/skills/commit-and-push/procedures/stackable-on.md'
+    '.claude/skills/simplify/SKILL.md'
+    '.fleet/plans/issue-1394.md'
+    '.fleet/plans/issue-1596.md'
+    '.fleet/plans/issue-1824.md'
+    '.fleet/plans/issue-2197.md'
+    '.fleet/plans/issue-667.md'
+    '.github/workflows/auto-rereview.yml'
+    '.github/workflows/fleet-tests.yml'
+    '.gitignore'
+    'CLAUDE.md'
+    'CMakeLists.txt'
+    'CMakePresets.json'
+    'README.md'
+    'cmake/ir_quality_tools.cmake'
+    'cmake/run_header_checks_standalone.cmake'
+    'cmake/run_header_convention_checks.cmake'
+    'cmake/run_metal_kernel_registry_check.cmake'
+    'cmake/run_metal_scratch_consumer_check.cmake'
+    'cmake/run_save_inventory_population_check.cmake'
+    'creations/CLAUDE.md'
+    'creations/editors/voxel_editor/main.cpp'
+    'docs/design/claude-md-sharing.md'
+    'docs/design/detached-revoxelize-world-light.md'
+    'docs/design/skill-sharing.md'
+    'docs/design/voxel-occlusion-culling.md'
+    'engine/render/include/irreden/render/gl_wrap/GL.h'
+    'engine/render/include/irreden/render/metal/metal_runtime.hpp'
+    'engine/render/src/metal/metal_cocoa_bridge.mm'
+    'engine/render/src/metal/metal_pipeline.cpp'
+    'engine/render/src/opengl/opengl_shader.cpp'
+    'engine/tools/bin/ir-build'
+    'engine/tools/bin/ir-run'
+    'engine/video/src/metal/video_backend.cpp'
+    'engine/video/src/opengl/video_backend.cpp'
+    'engine/world/include/irreden/world/save_component_inventory.hpp'
 )
 
 # The registry ratchet's population root (lint_python_registry.py's
@@ -198,6 +267,33 @@ else
             "control fires: narrowed copy reports pull_request no longer covering $SCAN_ROOT"
         rm -f "$NARROWED"
     fi
+fi
+
+echo "T5: the registry is COMPLETE — every derived subject is covered (#3117)"
+# T1-T4 quantify over OUT_OF_TREE_SUBJECTS and over one named constant; none
+# of them can see a subject nobody registered. fleet_test_subjects.py derives
+# that population from the suite sources and the workflow glob, so this case
+# is the only one here whose failure mode is "the list is missing something".
+#
+# Executed, not re-implemented: the module is the single copy of the grammar,
+# and tests/test_fleet_test_subjects.py is its hermetic unit/control suite.
+SUBJECTS_CHECK="$SCRIPT_DIR/scripts/fleet/fleet_test_subjects.py"
+if [[ ! -f "$SUBJECTS_CHECK" ]]; then
+    bad "subject discovery checker not found at $SUBJECTS_CHECK (retire T5 with it)"
+else
+    subjects_out=$(python3 "$SUBJECTS_CHECK" "$SCRIPT_DIR" 2>&1)
+    subjects_rc=$?
+    case "$subjects_rc" in
+        0) ok "fleet_test_subjects.py: registry covers every derived subject"
+           # Print the coverage line so a green run carries its own proof of
+           # having scanned something (a zero-finding run over zero sources
+           # would otherwise be indistinguishable from a real pass).
+           printf '%s\n' "$subjects_out" | head -1 | sed 's/^/        /' ;;
+        1) bad "fleet_test_subjects.py reported unregistered subject(s)"
+           printf '%s\n' "$subjects_out" | sed 's/^/        /' ;;
+        *) bad "fleet_test_subjects.py aborted as a setup error (exit $subjects_rc)"
+           printf '%s\n' "$subjects_out" | sed 's/^/        /' ;;
+    esac
 fi
 
 summarize "fleet-tests.yml workflow path ratchet"

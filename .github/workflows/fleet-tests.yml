@@ -10,8 +10,11 @@ name: Fleet Tests
 # These suites need no compiler, no GL, and no CMake, so they have no reason to
 # ride along with a build job anyway.
 #
-# Path-filtered to the fleet tooling surface — engine, shader, and asset
-# PRs skip this entirely (same convention as perf-gate.yml).
+# Path-filtered, but NOT to the fleet tooling surface alone: the filter is the
+# union of where the suites LIVE and what they TEST, and several test files
+# under cmake/, engine/ and creations/ (see the sweep below), so engine PRs
+# touching one of those do run this. The suites need no compiler and no GL, so
+# the extra runs are cheap; an unfiltered subject is not.
 #
 # The first filter is scripts/** and not scripts/fleet/**: the suites live
 # under scripts/fleet/tests/, but test_lint_python_registry.py derives its
@@ -23,9 +26,14 @@ name: Fleet Tests
 # render-harness-tests.yml's scripts/*.py — the two workflows run disjoint
 # suites, and narrowing either back to buy the non-overlap reopens #2859.
 #
-# Ten suites reach outside scripts/ entirely for their subject under test —
+# Many suites reach outside scripts/ entirely for their subject under test —
 # their subjects are listed explicitly below so a PR touching only one of
-# them still runs this workflow (#2786, #2810, #2823, #2859, #2929, #3187):
+# them still runs this workflow (#2786, #2810, #2823, #2859, #2929, #3187).
+# The list is no longer hand-curated: scripts/fleet/fleet_test_subjects.py
+# derives it (every tracked path a suite source names, plus the derived
+# both-blocks workflow set) and fails when this filter or
+# OUT_OF_TREE_SUBJECTS misses a member. The long tail below is that sweep;
+# the suites whose subject is named here are:
 #   test_format_changed_line_scoping.sh -> cmake/run_clang_format_changed.cmake
 #   test_format_changed_standalone.sh   -> cmake/run_clang_format_changed_standalone.cmake
 #   test_ir_build_dir_resolution.sh     -> engine/tools/lib/concurrency_helpers.sh
@@ -50,11 +58,12 @@ name: Fleet Tests
 # narrower entry stays because the ratchet below asserts that subject by
 # name. test_workflow_paths_sync.sh is the only entry whose subject set is
 # *derived* (a .github/workflows/*.yml glob) rather than a fixed file, so it
-# can grow without anyone editing this list — T4 in
-# test_workflow_paths_sync.sh is what makes that growth fail loudly instead
-# of silently un-triggering — python-lint.yml (#2718) and format-check.yml
-# (#3187) are instances: each declares both blocks, so each is that suite's
-# subject and must appear below.
+# can grow without anyone editing this list. Two checks cover that growth:
+# T4 in test_workflow_paths_sync.sh asserts every derived workflow appears in
+# the two blocks below, and fleet_test_subjects.py asserts the same population
+# is registered in OUT_OF_TREE_SUBJECTS; T4 alone covers only the first.
+# python-lint.yml (#2718) and format-check.yml (#3187) are instances: each
+# declares both blocks, so each is that suite's subject and must appear below.
 # The two `paths:` blocks are duplicated because GitHub Actions has no YAML
 # anchors — keep them in sync (same note as header-checks.yml);
 # scripts/fleet/tests/test_fleet_tests_workflow_paths.sh ratchets that they do.
@@ -82,6 +91,47 @@ on:
       - 'docs/agents/fleet-state-machine.json'
       - 'docs/agents/fleet-labels-reference.md'
       - 'ruff.toml'
+      - '.clang-format'
+      - '.claude/commands/role-opus-architect.md'
+      - '.claude/commands/role-opus-reviewer.md'
+      - '.claude/commands/role-worker.md'
+      - '.claude/settings.json'
+      - '.claude/skills/commit-and-push/SKILL.md'
+      - '.claude/skills/commit-and-push/procedures/stackable-on.md'
+      - '.claude/skills/simplify/SKILL.md'
+      - '.fleet/plans/issue-1394.md'
+      - '.fleet/plans/issue-1596.md'
+      - '.fleet/plans/issue-1824.md'
+      - '.fleet/plans/issue-2197.md'
+      - '.fleet/plans/issue-667.md'
+      - '.github/workflows/auto-rereview.yml'
+      - '.gitignore'
+      - 'CLAUDE.md'
+      - 'CMakeLists.txt'
+      - 'CMakePresets.json'
+      - 'README.md'
+      - 'cmake/ir_quality_tools.cmake'
+      - 'cmake/run_header_checks_standalone.cmake'
+      - 'cmake/run_header_convention_checks.cmake'
+      - 'cmake/run_metal_kernel_registry_check.cmake'
+      - 'cmake/run_metal_scratch_consumer_check.cmake'
+      - 'cmake/run_save_inventory_population_check.cmake'
+      - 'creations/CLAUDE.md'
+      - 'creations/editors/voxel_editor/main.cpp'
+      - 'docs/design/claude-md-sharing.md'
+      - 'docs/design/detached-revoxelize-world-light.md'
+      - 'docs/design/skill-sharing.md'
+      - 'docs/design/voxel-occlusion-culling.md'
+      - 'engine/render/include/irreden/render/gl_wrap/GL.h'
+      - 'engine/render/include/irreden/render/metal/metal_runtime.hpp'
+      - 'engine/render/src/metal/metal_cocoa_bridge.mm'
+      - 'engine/render/src/metal/metal_pipeline.cpp'
+      - 'engine/render/src/opengl/opengl_shader.cpp'
+      - 'engine/tools/bin/ir-build'
+      - 'engine/tools/bin/ir-run'
+      - 'engine/video/src/metal/video_backend.cpp'
+      - 'engine/video/src/opengl/video_backend.cpp'
+      - 'engine/world/include/irreden/world/save_component_inventory.hpp'
   pull_request:
     paths:
       - 'scripts/**'
@@ -103,6 +153,47 @@ on:
       - 'docs/agents/fleet-state-machine.json'
       - 'docs/agents/fleet-labels-reference.md'
       - 'ruff.toml'
+      - '.clang-format'
+      - '.claude/commands/role-opus-architect.md'
+      - '.claude/commands/role-opus-reviewer.md'
+      - '.claude/commands/role-worker.md'
+      - '.claude/settings.json'
+      - '.claude/skills/commit-and-push/SKILL.md'
+      - '.claude/skills/commit-and-push/procedures/stackable-on.md'
+      - '.claude/skills/simplify/SKILL.md'
+      - '.fleet/plans/issue-1394.md'
+      - '.fleet/plans/issue-1596.md'
+      - '.fleet/plans/issue-1824.md'
+      - '.fleet/plans/issue-2197.md'
+      - '.fleet/plans/issue-667.md'
+      - '.github/workflows/auto-rereview.yml'
+      - '.gitignore'
+      - 'CLAUDE.md'
+      - 'CMakeLists.txt'
+      - 'CMakePresets.json'
+      - 'README.md'
+      - 'cmake/ir_quality_tools.cmake'
+      - 'cmake/run_header_checks_standalone.cmake'
+      - 'cmake/run_header_convention_checks.cmake'
+      - 'cmake/run_metal_kernel_registry_check.cmake'
+      - 'cmake/run_metal_scratch_consumer_check.cmake'
+      - 'cmake/run_save_inventory_population_check.cmake'
+      - 'creations/CLAUDE.md'
+      - 'creations/editors/voxel_editor/main.cpp'
+      - 'docs/design/claude-md-sharing.md'
+      - 'docs/design/detached-revoxelize-world-light.md'
+      - 'docs/design/skill-sharing.md'
+      - 'docs/design/voxel-occlusion-culling.md'
+      - 'engine/render/include/irreden/render/gl_wrap/GL.h'
+      - 'engine/render/include/irreden/render/metal/metal_runtime.hpp'
+      - 'engine/render/src/metal/metal_cocoa_bridge.mm'
+      - 'engine/render/src/metal/metal_pipeline.cpp'
+      - 'engine/render/src/opengl/opengl_shader.cpp'
+      - 'engine/tools/bin/ir-build'
+      - 'engine/tools/bin/ir-run'
+      - 'engine/video/src/metal/video_backend.cpp'
+      - 'engine/video/src/opengl/video_backend.cpp'
+      - 'engine/world/include/irreden/world/save_component_inventory.hpp'
   workflow_dispatch:
 
 permissions:
