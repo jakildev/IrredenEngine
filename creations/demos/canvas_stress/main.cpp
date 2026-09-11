@@ -208,10 +208,10 @@ struct CanvasStressSettings {
     bool depthProbeAssertSet_ = false;
     ivec2 depthProbeAssertPixel_{0, 0};
     int depthProbeAssertTier_ = -1;
-    // readConfig() runs AFTER parseArgs() (it needs IREngine::init), so a
-    // config `auto_rotate` would otherwise clobber an explicit
-    // --auto-rotate / --no-auto-rotate flag. Latch CLI intent so config only
-    // supplies the default when the flag is absent (CLI overrides config).
+    // readConfig() runs AFTER applyArgs() (it needs IREngine::init), so config
+    // values would otherwise clobber explicit CLI flags. Latch CLI intent so
+    // config only supplies defaults when the corresponding flag is absent.
+    bool initialZoomSetByCli_ = false;
     bool autoRotateSetByCli_ = false;
 };
 
@@ -991,7 +991,7 @@ void readConfig() {
     if (detachedCount.is<int>())
         g_settings.detachedCount_ = detachedCount.as<int>();
     sol::object zoom = table["initial_zoom"];
-    if (zoom.is<float>())
+    if (zoom.is<float>() && !g_settings.initialZoomSetByCli_)
         g_settings.initialZoom_ = zoom.as<float>();
     sol::object autoRotate = table["auto_rotate"];
     if (autoRotate.is<bool>() && !g_settings.autoRotateSetByCli_)
@@ -1111,6 +1111,7 @@ void applyArgs() {
     // default (1) untouched, so a flagless run stays byte-identical.
     g_settings.subdivisions_ = args.getInt("--subdivisions");
     g_settings.initialZoom_ = args.getFloat("--zoom");
+    g_settings.initialZoomSetByCli_ = args.wasProvided("--zoom");
     if (args.wasProvided("--auto-rotate")) {
         g_settings.autoRotate_ = true;
         g_settings.autoRotateSetByCli_ = true;
