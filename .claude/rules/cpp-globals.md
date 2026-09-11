@@ -113,7 +113,7 @@ for the full render-backend set. Scope parity is part of the contract, not an
 optimization; the two paths agreeing on rules while disagreeing on the file
 set is the #2727 drift in a different dimension.
 
-Two precision notes, both measured against the tree:
+Precision notes, all measured against the tree:
 
 - The `const` exemption is scoped to the **declaration head** (everything
   before `=` / `;` / `{`), not the whole line. A whole-line scan reads a
@@ -130,13 +130,17 @@ Two precision notes, both measured against the tree:
   the reject chain runs. Scanning only the head line as the executor
   originally did made the ban formatter-defeatable: `format`ting a violation
   could turn a `FLAGGED` result into a clean pass with no other change (#2916).
+- Line and block comments are stripped before matching. Commented-out
+  declarations are dead code rather than header-global violations; stripping
+  both `/* ... */` shapes preserves live code before and after a comment while
+  preventing false positives (#3297).
 
 Keep the executor and this file in sync — a detection spec nothing runs
 drifts silently (see #2727).
 
-Both notes are findings from the #2726 sweep, not hypotheticals: the pointer
-case hid that header's `g_activeShots` — a genuine violation — through an
-entire hand-grep pass, which is why the executor encodes the both-ends rule
+The first three notes are findings from the #2726 sweep, not hypotheticals: the
+pointer case hid that header's `g_activeShots` — a genuine violation — through
+an entire hand-grep pass, which is why the executor encodes the both-ends rule
 rather than leaving it to the reader.
 
 Run the check **tree-wide**, not only over a diff. Diff-scoping is what let
