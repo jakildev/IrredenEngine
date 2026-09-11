@@ -78,8 +78,15 @@ assert_eq() {
 # haystack size and match position together, not on either alone: a 51 KB
 # haystack whose first match is at byte 19 K is enough, and the same haystack
 # matching near its end is not (#3205).
+#
+# The writer still meets a closed pipe when grep stops early — that is now
+# harmless to the verdict, but bash announces it on stderr ("printf: write
+# error: Broken pipe") on the platforms whose printf builtin reports EPIPE
+# rather than dying of SIGPIPE. Discard the writer's stderr so a passing
+# assertion stays silent; printf writing a string to a pipe has no other
+# failure worth surfacing.
 _ir_haystack_has() {  # _ir_haystack_has <haystack> <needle>
-    grep -qF -- "$2" <(printf '%s' "$1")
+    grep -qF -- "$2" <(printf '%s' "$1" 2>/dev/null)
 }
 
 assert_contains() {
