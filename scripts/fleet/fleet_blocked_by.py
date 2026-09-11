@@ -79,12 +79,15 @@ _REF_NAME_TO_SLUG = {'irredenengine': 'jakildev/IrredenEngine',
 # See-also / parallel-sibling qualifiers (#1910): a `#N` introduced by one of
 # these inside a leading-`none` value is a cross-reference, not a blocker — the
 # legitimate "(none — runs in parallel with #N)" idiom. Matched per-ref against
-# the clause leading up to the ref so a sibling note can't smuggle a real
-# dependency past the gate (see _ref_is_see_also).
+# its clause so a sibling note can't smuggle a real dependency past the gate
+# (see _ref_is_see_also).
 _SEE_ALSO_RE = re.compile(
     r'\b(?:see[\s-]+also|related(?:\s+to)?|in\s+parallel(?:\s+with)?|'
     r'parallel(?:\s+(?:with|to))?|sibling(?:\s+of)?|alongside|'
-    r'concurrent(?:ly)?(?:\s+with)?|cf\.?)\b',
+    r'concurrent(?:ly)?(?:\s+with)?|cf\.?|'
+    r'independent(?:ly)?(?:\s+of)?|unrelated(?:\s+to)?|'
+    r'orthogonal(?:\s+to)?|separate(?:ly)?\s+from|distinct\s+from|'
+    r'no\s+dependency\s+on)\b',
     re.IGNORECASE,
 )
 # Blocker verbs (#1910): a `#N` introduced by one of these is a real dependency
@@ -95,8 +98,25 @@ _BLOCKER_VERB_RE = re.compile(
     r'waiting\s+(?:on|for)|gated\s+(?:on|by)|blocker)\b',
     re.IGNORECASE,
 )
+_NEGATOR_PATTERN = r"(?:\bnot|\bnever|\bno\s+longer|\bcannot|\w+n['’]t)"
+_NEGATED_BLOCKER_VERB_RE = re.compile(
+    _NEGATOR_PATTERN + r"\s+(?:\w+\s+){0,2}?" + _BLOCKER_VERB_RE.pattern,
+    re.IGNORECASE,
+)
+# A postfix qualifier must predicate the ref (`#5 is unrelated`); an arbitrary
+# later adjective (`#5 plus unrelated cleanup`) cannot license a bare ref.
+_POSTFIX_PREDICATE_RE = re.compile(
+    r"\s*(?:is|are|was|were|will\s+be|can\s+be|should\s+be|"
+    r"seems?|appears?|remains?|stays?|does|do|did)"
+    + r"\b(?:\W+\w+){0,4}?\W+(?:" + _SEE_ALSO_RE.pattern
+    + r"|" + _NEGATED_BLOCKER_VERB_RE.pattern + r")",
+    re.IGNORECASE,
+)
 # Clause boundaries used to isolate the text introducing a single `#N`.
-_CLAUSE_SPLIT_RE = re.compile(r'[;,—–(]')
+_CLAUSE_SPLIT_RE = re.compile(
+    r'(?<!\bcf)(?<!\be\.g)(?<!\bi\.e)\.(?=\s)|[;,—–(]|\n',
+    re.IGNORECASE,
+)
 # List separators between *declared* blockers (#2783). A `Blocked by:` value is
 # a list of refs — each optionally carrying its own parenthetical annotation
 # (`#100 (done), #101 (still open)`) — so the first ref of every segment is
@@ -120,16 +140,36 @@ def _leads_with_none_sentinel(value):
     return token in {"none", "n/a", "na", "tbd"}
 
 
-def _ref_is_see_also(value, ref_start):
-    """True when the `#N` starting at `ref_start` is introduced by a see-also /
-    parallel qualifier rather than a blocker verb. Scans only the clause leading
-    up to the ref (back to the previous `;,—–(` boundary): a blocker verb in
-    that clause disqualifies it, and a see-also keyword licenses it. A ref with
-    neither qualifier is conservatively treated as a blocker (returns False)."""
-    clause = _CLAUSE_SPLIT_RE.split(value[:ref_start])[-1]
-    if _BLOCKER_VERB_RE.search(clause):
+def _has_gating_blocker_verb(clause):
+    """True when `clause` contains a blocker verb without a nearby negator."""
+    negated_spans = [match.span()
+                     for match in _NEGATED_BLOCKER_VERB_RE.finditer(clause)]
+    return any(
+        not any(start <= match.start() < end
+                for start, end in negated_spans)
+        for match in _BLOCKER_VERB_RE.finditer(clause)
+    )
+
+
+def _ref_is_see_also(value, ref_start, ref_end):
+    """True when a ref's whole clause declares a sibling, not a blocker.
+
+    The clause extends to the nearest punctuation or sentence boundary on both
+    sides of the ref. Any non-negated blocker verb gates first. A preceding
+    see-also / independence qualifier, or a postfix predicate about the ref,
+    then licenses it; otherwise the conservative default treats it as a
+    blocker.
+    """
+    preceding = _CLAUSE_SPLIT_RE.split(value[:ref_start])[-1]
+    following = _CLAUSE_SPLIT_RE.split(value[ref_end:])[0]
+    if (_has_gating_blocker_verb(preceding)
+            or _has_gating_blocker_verb(following)):
         return False
-    return bool(_SEE_ALSO_RE.search(clause))
+    return bool(
+        _SEE_ALSO_RE.search(preceding)
+        or _NEGATED_BLOCKER_VERB_RE.search(preceding)
+        or _POSTFIX_PREDICATE_RE.match(following)
+    )
 
 
 def ref_is_decorative(value, ref_start):
@@ -152,9 +192,10 @@ def ref_is_decorative(value, ref_start):
     `#100 (done), #101 (still open)` both keep every blocker. Only a *second*
     ref inside one segment can be prose, and #1910's `_BLOCKER_VERB_RE` clause
     scan rescues that one when the prose restates a real dependency
-    (`#100 — also blocked by #999`). The bias toward declared is deliberate:
-    dropping a genuine blocker would unblock work whose base has not merged,
-    far worse than the overcount it corrects.
+    (`#100 — also blocked by #999`), while a negated blocker verb remains
+    decorative (`#100 — not blocked by #999`). The bias toward declared is
+    deliberate: dropping a genuine blocker would unblock work whose base has
+    not merged, far worse than the overcount it corrects.
 
     Lives here rather than in the scout so the eligibility rule can't drift
     from the gate it deliberately differs from — the #1749 reconciliation.
@@ -173,7 +214,7 @@ def ref_is_decorative(value, ref_start):
     if not _REF_RE.search(preceding):
         return False
     clause = _CLAUSE_SPLIT_RE.split(preceding)[-1]
-    return not _BLOCKER_VERB_RE.search(clause)
+    return not _has_gating_blocker_verb(clause)
 
 
 def is_no_blocker_value(value):
@@ -184,11 +225,13 @@ def is_no_blocker_value(value):
     blocks this". A value that names a `#N` or describes a real blocker in
     prose ("the auth redesign") is NOT a sentinel and must still gate.
 
-    Exception (#1910): the "(none — … in parallel with #N)" idiom names a
-    *sibling*, not a blocker. Such a `#N` is excused only when (a) the value
-    leads with a `none`/`n-a`/`tbd` sentinel AND (b) every `#N` is introduced by
-    a see-also / parallel qualifier (not a blocker verb). So "none, actually
-    blocked by #5" still gates — the anti-evasion guard is preserved.
+    Exception (#1910, #2960): the "(none — … in parallel with #N)" idiom
+    names a *sibling*, not a blocker. Such a `#N` is excused only when (a) the
+    value leads with a `none`/`n-a`/`tbd` sentinel AND (b) every ref's whole
+    clause carries a see-also / independence qualifier or a negated blocker
+    verb. Any non-negated blocker verb in that clause gates first, and a clause
+    with neither signal gates conservatively. Thus "none, actually blocked by
+    #5" still gates — the anti-evasion guard is preserved.
     """
     value = value or ""
     refs = list(re.finditer(r"#\d+", value))
@@ -197,7 +240,7 @@ def is_no_blocker_value(value):
         # the leading-`none` see-also idiom; any ref carried by a blocker verb
         # (or with no qualifier at all) still gates.
         if _leads_with_none_sentinel(value) and all(
-                _ref_is_see_also(value, m.start()) for m in refs):
+                _ref_is_see_also(value, m.start(), m.end()) for m in refs):
             return True
         return False
     return _leads_with_none_sentinel(value)

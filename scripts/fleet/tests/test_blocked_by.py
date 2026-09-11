@@ -62,6 +62,34 @@ class SeeAlsoParallelIdiom(unittest.TestCase):
         self.assertEqual(fbb.parse_blocked_by(body), "")
         self.assertEqual(fbb.blocker_refs(body, "jakildev/IrredenEngine"), [])
 
+    def test_live_independence_idioms_excused(self):
+        for value in (
+            "(none) — independent of PR #2953; that PR fixes the current instance",
+            "(none) — #2278 is expected to merge independently; this can start now",
+            "(none) — unrelated to #5",
+            "(none) — orthogonal to #5",
+            "(none) — separate from #5",
+            "(none) — separately from #5",
+            "(none) — distinct from #5",
+            "(none) — no dependency on #5",
+            "(none) — #5 is unrelated",
+        ):
+            self.assertTrue(fbb.is_no_blocker_value(value),
+                            f"{value!r} should be an independence reference")
+
+    def test_negated_blocker_verbs_excused(self):
+        for value in (
+            "(none) - does not depend on #2953",
+            "(none) - is not blocked by #2953",
+            "(none) - no longer blocked by #2953",
+            "(none) - this does not require #2953",
+            "(none) - cannot depend on #2953",
+            "(none) - doesn't depend on #2953",
+            "(none) - doesn’t depend on #2953",
+        ):
+            self.assertTrue(fbb.is_no_blocker_value(value),
+                            f"{value!r} should contain a negated blocker verb")
+
     # --- anti-evasion: a blocker verb (or no qualifier at all) still gates ---
     def test_evasion_blocker_verb_still_gates(self):
         for v in (
@@ -78,6 +106,58 @@ class SeeAlsoParallelIdiom(unittest.TestCase):
         self.assertEqual(fbb.parse_blocked_by(body), "none, actually blocked by #5")
         self.assertEqual(fbb.blocker_refs(body, "jakildev/IrredenEngine"),
                          [("jakildev/IrredenEngine", "5")])
+
+    def test_whole_clause_anti_evasion(self):
+        for value in (
+            "(none) - actually blocked by #5",
+            "(none) - depends on #5",
+            "(none) — blocked by #5; unrelated to the refactor",
+            "(none) — blocked by #5 unrelated to X",
+            "(none) — not blocked by #5 but blocked by #6",
+            "(none) — #5 blocks this",
+            "(none) — #5 is unrelated but blocks this",
+            "(none) — in parallel with #5 which needs a rebase",
+        ):
+            self.assertFalse(fbb.is_no_blocker_value(value),
+                             f"{value!r} must still gate")
+
+    def test_independence_language_does_not_license_an_unqualified_ref(self):
+        for value in (
+            "(none) — unrelated musings about docs. #5",
+            "(none) — #11. This is completely independent of the migration",
+            "(none) — this is orthogonal to the release process. #7",
+            "(none) — no dependency on the frontend work. #9",
+            "(none) — #5 and lots of other independent work",
+            "(none) — #5 plus unrelated cleanup",
+            "(none) — #5 orthogonal follow-ups may land later",
+            "(none) — unrelated notes about docs\n#5",
+            "(none) — this does not depend on the parser rewrite. #5",
+        ):
+            with self.subTest(value=value):
+                self.assertFalse(
+                    fbb.is_no_blocker_value(value),
+                    f"{value!r} must keep the unqualified ref gating",
+                )
+
+    def test_sentence_boundaries_preserve_qualified_precedents(self):
+        for value in (
+            "n/a — cf. #12",
+            "(none — runs in parallel with #2497)",
+        ):
+            with self.subTest(value=value):
+                self.assertTrue(fbb.is_no_blocker_value(value),
+                                f"{value!r} should keep its ref qualified")
+
+    def test_conservative_live_corpus_values_still_gate(self):
+        for value in (
+            "(none) — touches `ir_iso_common` + trixel shaders shared with #1883/#1884; "
+            "per #1881's one-at-a-time rule, sequence AFTER the active work lands",
+            "(none — but the mitigation half is delivered by PR #2497's setup check)",
+            "(none) locally — the engine dependencies above are cross-repo; "
+            "do not approve for pickup until engine #1354 / #1368 / #1369 have landed",
+        ):
+            self.assertFalse(fbb.is_no_blocker_value(value),
+                             f"{value!r} must keep the conservative verdict")
 
     # --- a #N WITHOUT a leading `none` sentinel is never excused ---
     def test_ref_without_leading_none_gates(self):
@@ -275,6 +355,9 @@ class DecorativeProseRefs(unittest.TestCase):
         self.assertEqual(self._nums("#100 — also blocked by #999"), ["100", "999"])
         self.assertEqual(self._nums("#100 (depends on #999 too)"), ["100", "999"])
 
+    def test_negated_prose_ref_is_decorative(self):
+        self.assertEqual(self._nums("#100 — not blocked by #999"), ["100"])
+
     def test_leading_prose_ref_is_declared(self):
         # No earlier ref in the segment ⇒ declared, whatever introduces it.
         self.assertEqual(self._nums("waiting on #500"), ["500"])
@@ -296,10 +379,11 @@ class DecorativeProseRefs(unittest.TestCase):
         )
 
     def test_sentinel_rows_unchanged(self):
-        # The `(none) — #N` corpus is deliberately conservative (#1910): a ref
-        # with neither qualifier still gates. #2783 must not move it.
+        # Postfix independence is licensed (#2960), so the conservative lock
+        # uses ambiguous caveat prose. #2783's parallel case stays excused.
         self.assertFalse(
-            fbb.is_no_blocker_value("(none) — #2278 is expected to merge independently"))
+            fbb.is_no_blocker_value(
+                "(none — but the mitigation half is delivered by PR #2497's setup check)"))
         self.assertTrue(
             fbb.is_no_blocker_value("(none — runs in parallel with #2497)"))
 
