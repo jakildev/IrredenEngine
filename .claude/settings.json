@@ -54,9 +54,10 @@
       "WebFetch(domain:raw.githubusercontent.com)",
       "WebFetch(domain:api.github.com)"
     ],
+    "ask": [
+      "Bash(gh pr merge:*)"
+    ],
     "deny": [
-      "Bash(gh pr merge:*)",
-
       "Bash(git push --force:*)",
       "Bash(git push -f:*)",
       "Bash(git push --force-with-lease origin master:*)",
