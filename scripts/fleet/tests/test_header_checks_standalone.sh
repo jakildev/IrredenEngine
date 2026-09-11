@@ -1191,6 +1191,12 @@ assert_contains "$noroot_out" "PROJECT_ROOT is required" \
 # censuses clean. Resolve bracket comments first and a `#[[` written inside a
 # line comment reads as an opener, swallowing the live include()s after it —
 # the guard turns red on correct wiring. See #3291.
+#
+# The command name is matched case-insensitively (CMake's own rule) and only at
+# a name boundary. Both halves are false-signal guards in opposite directions:
+# a case-sensitive match reports a shim spelling `INCLUDE(...)` — which CMake
+# executes — as unwired, and a boundary-less match lets `my_include(...)` — which
+# it does not — satisfy the census.
 checker_includes() {
     awk '
         { buf = buf $0 "\n" }
@@ -1222,11 +1228,24 @@ checker_includes() {
                 i = i + q
             }
             gsub(/\n/, " ", code)
-            while (match(code, /include[ \t]*\([^)]*\)/)) {
-                call = substr(code, RSTART, RLENGTH)
-                code = substr(code, RSTART + RLENGTH)
-                sub(/^include[ \t]*\([ \t]*/, "", call)
-                sub(/[ \t]*\)$/, "", call)
+            # CMake command names are case-insensitive, so the match runs over a
+            # lowercased copy; tolower() preserves length, so RSTART/RLENGTH
+            # index the original and the argument keeps its case (the basename
+            # comparison downstream is case-sensitive, and paths are).
+            # The leading boundary keeps a wrapper command whose name merely
+            # ends in "include" (my_include(...)) from reading as one — that
+            # direction is a false CLEAN, the census silently satisfied by a
+            # call the shim never routes through include().
+            lc = tolower(code)
+            while (match(lc, /(^|[^a-z0-9_])include[ \t]*\([^)]*\)/)) {
+                start = RSTART
+                len = RLENGTH
+                if (substr(lc, start, 7) != "include") { start++; len-- }
+                call = substr(code, start, len)
+                code = substr(code, start + len)
+                lc = substr(lc, start + len)
+                call = substr(call, index(call, "(") + 1)
+                sub(/\)$/, "", call)
                 gsub(/[ \t"]/, "", call)
                 if (call != "") print call
             }
@@ -1454,6 +1473,31 @@ include("${PROJECT_ROOT}/cmake/run_alpha_check.cmake")
 include("${PROJECT_ROOT}/cmake/run_beta_check.cmake")'
 assert_census_clean "$CENSUS_BRACKET_INLINE" \
     "a #[[ inside a line comment does not open a bracket comment"
+
+# --- command names are case-insensitive, as CMake's are ---------------------
+# cmake 4.3.1 executes `INCLUDE(...)` and `Include(...)` exactly as it does the
+# lowercase spelling, so a case-sensitive matcher reports a correctly-wired
+# checker as CI-inert — the false-POSITIVE direction, which turns the gate red
+# on a shim nobody broke.
+CENSUS_CASE="$TMPROOT/census-case"
+make_synthetic_census_fixture "$CENSUS_CASE" 'INCLUDE("${PROJECT_ROOT}/cmake/run_alpha_check.cmake")
+Include("${PROJECT_ROOT}/cmake/run_beta_check.cmake")'
+assert_census_clean "$CENSUS_CASE" \
+    "INCLUDE() and Include() satisfy the census, as CMake executes them"
+
+# --- but only at a command-name boundary ------------------------------------
+# The other direction, and the reason the case fix is anchored rather than a
+# bare tolower(): `my_include(...)` is a different command (CMake rejects it
+# outright unless something defines it), so a census it satisfies is clean
+# about wiring the shim never routes through include().
+CENSUS_NAMEBOUND="$TMPROOT/census-namebound"
+make_synthetic_census_fixture "$CENSUS_NAMEBOUND" 'include("${PROJECT_ROOT}/cmake/run_alpha_check.cmake")
+my_include("${PROJECT_ROOT}/cmake/run_beta_check.cmake")'
+namebound_missing=$(census_missing_includes "$CENSUS_NAMEBOUND")
+assert_contains "$namebound_missing" "run_beta_check.cmake" \
+    "a command whose name merely ends in include() does not satisfy the census"
+assert_absent "$namebound_missing" "run_alpha_check.cmake" \
+    "the real include() in the same shim still satisfies it"
 
 # --- prose mentions and lookalike filenames do not satisfy it ---------------
 # The real shim's header comment names all three of its checkers, so a
