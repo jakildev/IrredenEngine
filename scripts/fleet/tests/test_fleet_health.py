@@ -6,6 +6,7 @@ each preceded by a tier-0 run whose llm_remaining counted human-owned PRs —
 plus one Codex-attributed dispatch and a state.json with unstamped PRs.
 """
 
+import datetime as dt
 import io
 import json
 import os
@@ -13,7 +14,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import contextmanager, redirect_stdout
 from pathlib import Path
 
 SUBJECT = Path(__file__).resolve().parents[1] / "fleet-health"
@@ -30,6 +31,29 @@ exec(compile(SUBJECT.read_text(), str(SUBJECT), "exec"), fleet_health.__dict__) 
 
 def _line(ts, source, msg):
     return f"[{ts} {source}] {msg}"
+
+
+# The fixture's dispatcher boot. Every log line below sits on this day, so a
+# window measured from real wall-clock now drifts off the fixture rather than
+# tracking it (see #3132). Tests exercising a relative --since derive their
+# pinned clock from this instant instead of naming a date.
+FIXTURE_BOOT = "2026-09-09T04:40:51Z"
+
+
+def fixture_clock(hours):
+    """An ISO-8601 instant `hours` after the fixture's dispatcher boot."""
+    base = dt.datetime.fromisoformat(FIXTURE_BOOT.replace("Z", "+00:00"))
+    return (base + dt.timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+@contextmanager
+def pinned_clock(instant):
+    """Pin the report's notion of now for the duration of the block."""
+    os.environ["FLEET_HEALTH_NOW"] = instant
+    try:
+        yield
+    finally:
+        os.environ.pop("FLEET_HEALTH_NOW", None)
 
 
 DISPATCHER_LOG = "\n".join([
@@ -159,13 +183,16 @@ class Env(unittest.TestCase):
     def setUp(self):
         self._saved = {k: os.environ.pop(k, None) for k in
                        ("FLEET_STATE_DIR", "FLEET_SESSIONS_DIR", "FLEET_ALERTS_DIR",
-                        "FLEET_CONF", "FLEET_DIR")}
+                        "FLEET_CONF", "FLEET_DIR", "FLEET_HEALTH_NOW")}
         self.tmp = tempfile.TemporaryDirectory()
         self.root = build_fleet_dir(Path(self.tmp.name) / "fleet")
 
     def tearDown(self):
         self.tmp.cleanup()
         for k, v in self._saved.items():
+            # Pop first: a test that pins one of these must not leak it into
+            # the next test when the caller's environment had it unset.
+            os.environ.pop(k, None)
             if v is not None:
                 os.environ[k] = v
 
@@ -174,6 +201,11 @@ class Env(unittest.TestCase):
         with redirect_stdout(out):
             rc = fleet_health.main(["--fleet-dir", str(self.root), "--json", *args])
         return rc, json.loads(out.getvalue())
+
+    def run_report_at(self, instant, *args):
+        """run_report with the report's notion of now pinned to `instant`."""
+        with pinned_clock(instant):
+            return self.run_report(*args)
 
 
 class Dispatches(Env):
@@ -278,11 +310,28 @@ class DaemonsAndWindow(Env):
     def test_since_accepts_durations_and_iso(self):
         rc, rep = self.run_report("--since", "2026-09-09T05:00:00Z")
         self.assertEqual(set(rep["roles"]), {"sonnet-reviewer"})
-        # A duration is measured from real wall-clock now while the fixture is
-        # pinned to 2026-09-09, so the window must reach the fixture on any
-        # date the suite runs (#3132: "1d" rotted the day after it was written).
-        rc, rep = self.run_report("--since", "3650d")
+        # A duration is measured from now, so the arm only means anything with
+        # now pinned relative to the fixture: seven hours after the boot puts
+        # every logged dispatch inside a 1-day window on any calendar date
+        # (see #3132).
+        rc, rep = self.run_report_at(fixture_clock(7), "--since", "1d")
         self.assertIn("merger", rep["roles"])
+
+    def test_relative_window_drops_the_fixture_once_the_clock_moves_past_it(self):
+        # The standing positive control for the arm above: the same "1d" that
+        # reaches the fixture at boot+7h must stop reaching it at boot+48h.
+        rc, rep = self.run_report_at(fixture_clock(48), "--since", "1d")
+        self.assertNotIn("merger", rep["roles"])
+        # The emptiness above is also what a real clock produces, so assert the
+        # window boundary itself — boot+48h minus a day is a value only the
+        # injected clock can yield.
+        self.assertEqual(rep["window"]["since"], fixture_clock(24))
+
+    def test_bad_pinned_clock_is_a_usage_error(self):
+        out = io.StringIO()
+        with pinned_clock("yesterday"), redirect_stdout(out):
+            rc = fleet_health.main(["--fleet-dir", str(self.root), "--json"])
+        self.assertEqual(rc, 2)
 
     def test_bad_since_is_a_usage_error(self):
         out = io.StringIO()
