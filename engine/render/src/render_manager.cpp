@@ -635,19 +635,6 @@ vec2 RenderManager::screenToOutputWindowOffset() const {
     return vec2(m_viewport.x - m_outputResolution.x, m_viewport.y - m_outputResolution.y) / vec2(2);
 }
 
-void RenderManager::setGuiVisible(bool visible) {
-    m_guiVisible = visible;
-}
-
-void RenderManager::toggleGuiVisible() {
-    m_guiVisible = !m_guiVisible;
-    IRE_LOG_INFO("GUI overlay {}", m_guiVisible ? "enabled" : "disabled");
-}
-
-bool RenderManager::isGuiVisible() const {
-    return m_guiVisible;
-}
-
 void RenderManager::resizeGuiCanvas(ivec2 newSize) {
     if (IREntity::getComponent<C_SizeTriangles>(m_guiCanvas).size_ == newSize)
         return;

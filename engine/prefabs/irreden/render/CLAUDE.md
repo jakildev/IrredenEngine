@@ -362,8 +362,7 @@ as they register through a named path.
   named GPU resources.
 - **Visibility is a singleton component**, `C_HelpOverlayState`, flipped by
   `Command<TOGGLE_HELP_OVERLAY>` — not a `RenderManager` field
-  (`.claude/rules/cpp-globals.md`; `m_guiVisible` is a pre-existing deviation,
-  not a precedent). `setVisible` / `toggleVisible` / `isVisible` wrap it, from
+  (`.claude/rules/cpp-globals.md`). `setVisible` / `toggleVisible` / `isVisible` wrap it, from
   `help_overlay_state.hpp` — the accessors sit in their own header beside the
   POD-only `components/component_help_overlay.hpp`, the same split
   `widget_theme.hpp` uses. They can't live in `help_overlay.hpp` itself: it

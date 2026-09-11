@@ -25,7 +25,7 @@ namespace IRCommand {
 /// One row of the introspectable command registry: what a binding is called,
 /// what it does, and which key/modifier combination fires it. Populated only
 /// for named `PRESSED` bindings (see `createCommand`). Consumed by the help
-/// overlay (`System<HELP_OVERLAY>`) and `IRCommand::buildCommandListText()`.
+/// overlay (`System<HELP_OVERLAY>`).
 struct CommandRegistration {
     std::string name;
     /// Short human-readable clause describing the effect ("ZOOM THE CAMERA

@@ -8,8 +8,6 @@ namespace IRComponents {
 // mutable state lives on a singleton component rather than a header global
 // or a RenderManager field — see `.claude/rules/cpp-globals.md` and
 // `engine/prefabs/irreden/render/CLAUDE.md` §"Exposing system public API".
-// (`RenderManager::m_guiVisible`, which the legacy TOGGLE_GUI flag rides,
-// is a pre-existing deviation, not a precedent to copy.)
 //
 // `Command<TOGGLE_HELP_OVERLAY>` flips it — a plain value mutation, safe
 // from a command callback firing mid input-system tick. `System<HELP_OVERLAY>`

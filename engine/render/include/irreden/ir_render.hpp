@@ -383,9 +383,6 @@ void zoomMainBackgroundPatternOut();
 
 /// @{
 /// @name GUI state
-void setGuiVisible(bool visible);
-void toggleGuiVisible();
-bool isGuiVisible();
 /// Scale the GUI canvas. Changing this resizes the GUI canvas entity — do not change
 /// mid-frame without understanding the coordinate-mapping consequences.
 void setGuiScale(int scale);
