@@ -51,8 +51,9 @@ claims are swept by `fleet-claim cleanup --gh`. Review, feedback, conflict
 and planning claims use the same primitive with their own prefixes; the
 prefixes are disjoint namespaces, so a lane that force-pushes (feedback,
 conflict resolution) excludes a live `fleet:reviewing-*` held by another
-agent explicitly — the scout suppresses the item and `amending-claim` /
-`resolving-claim` refuse; the same agent passes through. Host keys are one
+agent explicitly — the scout suppresses the item, the claim-time gate is the
+fast path, and the POST response arbitrates the excluded-prefix union; the
+same agent passes through. Host keys are one
 canonical set — `derive_host()`, `uname -s` (`Linux` →
 `linux`, `Darwin` → `macos`, `MINGW*/MSYS*/CYGWIN*` → `windows`), the build
 presets, `fleet:authored-on-<host>`; `fleet-claim host` prints this

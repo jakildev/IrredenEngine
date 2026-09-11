@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Tests for fleet-claim's pre-acquire claim gates: check_host_capability
-# (issue-based, #1998) and check_no_foreign_review_claim (#2801, #3001).
+# Tests for fleet-claim's pre-acquire claim gates: check_host_capability and
+# the generalized cross-lane gate.
 #
 # The gate refuses a `fleet:needs-gl-host` claim from a host that can't run
 # the OpenGL backend. GL-capable hosts are {linux, windows}; macOS GL is 4.1
@@ -80,8 +80,9 @@ assert_exit() {
 
 TMPROOT=$(mktemp -d)
 export FLEET_CLAIMS_DIR="$TMPROOT/claims"
+export FLEET_HEARTBEATS_DIR="$TMPROOT/heartbeats"
 export FLEET_RESERVATIONS_DIR="$TMPROOT/reservations"
-mkdir -p "$FLEET_CLAIMS_DIR" "$FLEET_RESERVATIONS_DIR"
+mkdir -p "$FLEET_CLAIMS_DIR" "$FLEET_HEARTBEATS_DIR" "$FLEET_RESERVATIONS_DIR"
 
 # Stub `gh` so check_host_capability reads canned JSON instead of hitting
 # GitHub. Dispatches on the issue number passed via `gh issue view <N>`

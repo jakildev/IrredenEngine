@@ -55,6 +55,7 @@ set -euo pipefail
 export PYTHONUTF8="${PYTHONUTF8:-1}"
 
 CLAIMS_DIR="${FLEET_CLAIMS_DIR:-$HOME/.fleet/claims}"
+HEARTBEATS_DIR="${FLEET_HEARTBEATS_DIR:-$HOME/.fleet/heartbeats}"
 MOLECULES_DIR="${FLEET_MOLECULES_DIR:-$HOME/.fleet/molecules}"
 RESERVATIONS_DIR="${FLEET_RESERVATIONS_DIR:-$HOME/.fleet/reservations}"
 FLEET_ENGINE_ROOT="${FLEET_ENGINE_ROOT:-$HOME/src/IrredenEngine}"
@@ -458,7 +459,7 @@ _amending_heartbeat_fresh() {
     # Cross-host: the owner's heartbeat lives on its host, not ours — we
     # cannot vouch for it, so fall through to pure label-age TTL.
     [[ "$claim_host" == "$(derive_host)" ]] || return 1
-    local hb_file="$HOME/.fleet/heartbeats/$claim_agent"
+    local hb_file="$HEARTBEATS_DIR/$claim_agent"
     [[ -f "$hb_file" ]] || return 1
     local hb_mtime
     hb_mtime=$(python3 -c \
@@ -560,6 +561,38 @@ _claim_decision() {
     fi
 }
 
+# _claim_contenders <mine> <own-prefix> <label>...
+#   Select the labels that participate in one claim decision. Untabled prefixes
+#   retain the same-prefix behavior. Excluded-prefix labels participate only
+#   when another host/agent owns them; the same owner may legitimately move
+#   between lanes without contending with itself.
+_claim_contenders() {
+    local mine="$1" prefix="$2"
+    shift 2
+    local mine_suffix="${mine#${prefix}}"
+    local label
+    for label in "$@"; do
+        if [[ "$label" == "${prefix}"* ]]; then
+            printf '%s\n' "$label"
+            continue
+        fi
+        _is_foreign_excluded_claim "$prefix" "$mine_suffix" "$label" \
+            && printf '%s\n' "$label"
+    done
+    return 0
+}
+
+_is_foreign_excluded_claim() {
+    local prefix="$1" own_suffix="$2" label="$3" excluded
+    for excluded in ${FLEET_CLAIM_EXCLUDES[$prefix]:-}; do
+        if [[ "$label" == "${excluded}"* ]] \
+                && [[ "${label#${excluded}}" != "$own_suffix" ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
 # _acquire_jitter_sleep
 #   Brief jittered backoff between claim retries so simultaneous racers
 #   don't lock-step. No-op under FLEET_CLAIM_NO_SLEEP=1 (test determinism).
@@ -573,10 +606,10 @@ _acquire_jitter_sleep() {
 #   Atomic-add + sole-holder-wins claim primitive. PRs and issues share
 #   GitHub's /issues/N/labels endpoint, so this works for both.
 #
-#   Contract: at most one holder of <label-prefix>* on the target at a
-#   time. Returns 0 if we own the lock (sole holder after our POST), 1
-#   otherwise (we lost / yielded and self-removed our label). On API
-#   error, returns 1.
+#   Contract: at most one different-agent holder across <label-prefix>* and
+#   every prefix it excludes. Returns 0 if we own the lock after our POST, 1
+#   otherwise (we lost / yielded and self-removed our label). On API error,
+#   returns 1. Untabled prefixes retain their same-prefix-only mutex.
 #
 #   Algorithm (Option A from #1384): POST our label, re-read the <prefix>*
 #   set, and route through _claim_decision. `win` → hold; `retry` → drop
@@ -600,23 +633,26 @@ _acquire_label_on() {
             return 1
         fi
 
-        # Extract the full <prefix>* set from the POST response, one per line.
-        local matching
-        matching=$(echo "$labels_json" | python3 -c '
+        # Extract every label from the POST response. The pure contender filter
+        # adds symmetric excluded lanes to the same-prefix mutex.
+        local all_labels
+        all_labels=$(echo "$labels_json" | python3 -c '
 import json, sys
 try:
     labels = json.load(sys.stdin)
 except Exception:
     sys.exit(0)
-prefix = sys.argv[1]
-for name in sorted(
-        l["name"] for l in labels
-        if isinstance(l, dict) and l.get("name", "").startswith(prefix)):
+for name in sorted(l["name"] for l in labels
+                   if isinstance(l, dict) and l.get("name")):
     print(name)
-' "$prefix" 2>/dev/null || echo "")
+' 2>/dev/null || echo "")
 
+        local -a all_labels_arr
+        mapfile -t all_labels_arr <<< "$all_labels"
+        local matching
+        matching=$(_claim_contenders "$label" "$prefix" "${all_labels_arr[@]}")
         if [[ -z "$matching" ]]; then
-            echo "fleet-claim: WARN gh api response missing ${prefix}* labels on $repo#$target; aborting" >&2
+            echo "fleet-claim: WARN gh api response missing claim contenders for ${prefix} on $repo#$target; aborting" >&2
             gh_release_label "$repo" "$target" "$label" || true
             return 1
         fi
@@ -971,8 +1007,12 @@ check_host_capability() {
     local issue_num="$1"
     local context="${2:-pr}"
 
-    local info
-    info=$(fetch_issue_info "$issue_num") || true
+    local info=""
+    if [[ -n "${3+x}" ]]; then
+        info="$3"
+    else
+        info=$(fetch_issue_info "$issue_num") || true
+    fi
     [[ -z "$info" ]] && return 0
 
     local labels="" body_b64=""
@@ -1005,64 +1045,49 @@ check_host_capability() {
 
 # --- cross-lane claim gate ------------------------------------------------
 
-check_no_foreign_review_claim() {
-    # Refuse a force-pushing claim on a PR another agent is actively reviewing
-    # (`fleet:reviewing-<host>-<agent>`). Two callers, one per lane:
-    # cmd_amending_claim (the feedback lane, #2801) and cmd_resolving_claim
-    # (the semantic-conflict lane, #3001). fleet:reviewing-* is DISJOINT from
-    # both fleet:amending-* and fleet:resolving-*, so _acquire_label_on's
-    # lex-min tie-break — which filters to labels startswith(prefix) — cannot
-    # see a live review claim and grants the claim immediately. The worker
-    # then force-pushes (fleet-pr-amend-push) and the reviewer's verdict lands
-    # on a diff nobody read (the hazard class scripts/fleet/CLAUDE.md flags
-    # for amending-*/resolving-*).
-    #
-    # The load-bearing fix on each lane is the pickup-side suppression in
-    # fleet-state-scout (worker_feedback_labels() /
-    # _semantic_conflict_claimable); this is the backstop for a pane that
-    # already had the PR in context — notably role-worker step 0.5's
-    # reservation resume, which hand-scans raw state.json prs[] rather than
-    # the projection. Mirrors check_host_capability (#2524): runs BEFORE
-    # _cmd_pr_label_claim, mutates nothing on the refuse path. Placement is
-    # load-bearing — _acquire_label_on POSTs the label before it decides, so a
-    # guard inside it would strand a fleet:amending-* / fleet:resolving-*
-    # label on a PR the worker then abandons.
-    #
-    # Same-agent is a pass-through: an agent legitimately holding both (it
-    # reviewed, then picked the feedback or the conflict up itself) is not a
-    # cross-lane race.
-    #
-    # $3 names the caller's lane for the diagnostic only; it changes no
-    # decision.
-    local pr="$1" agent="${2:-unknown}" lane="${3:-amend}"
-
-    local info
-    info=$(fetch_issue_info "$pr") || true
-    [[ -z "$info" ]] && return 0
-
-    local labels=""
+_issue_info_field() {
+    local wanted="$1" info="$2" key value
     while IFS=$'\t' read -r key value; do
-        case "$key" in
-            labels) labels="$value" ;;
-        esac
+        if [[ "$key" == "$wanted" ]]; then
+            printf '%s\n' "$value"
+            return 0
+        fi
     done <<< "$info"
-
-    local host own_label
-    host=$(derive_host)
-    own_label="fleet:reviewing-${host}-${agent}"
-
-    local label
-    for label in $labels; do
-        case "$label" in
-            fleet:reviewing-*) ;;
-            *) continue ;;
-        esac
-        [[ "$label" == "$own_label" ]] && continue
-        echo "fleet-claim: refuse PR#${pr} — held by [${label}]; a reviewer is mid-review and ${lane} would force-push out from under it" >&2
-        return 1
-    done
-
     return 0
+}
+
+# check_no_foreign_lane_claim <target> <own-prefix> <agent> [labels]
+#   Fast no-mutation check before the atomic POST. The POST-response union is
+#   still the correctness path because this GET can race another lane's POST.
+check_no_foreign_lane_claim() {
+    local target="$1" prefix="$2" agent="${3:-unknown}" labels=""
+    if [[ -n "${4+x}" ]]; then
+        labels="$4"
+    else
+        local info
+        info=$(fetch_issue_info "$target") || true
+        labels=$(_issue_info_field labels "$info")
+    fi
+
+    local host suffix label
+    host=$(derive_host)
+    suffix="${host}-${agent}"
+    for label in $labels; do
+        if _is_foreign_excluded_claim "$prefix" "$suffix" "$label"; then
+            echo "fleet-claim: refuse PR#${target} — held by [${label}]; excluded claim lane is active" >&2
+            return 1
+        fi
+    done
+    return 0
+}
+
+# Compatibility spelling for the #2801 tests and diagnostics.
+check_no_foreign_review_claim() {
+    if [[ -n "${3+x}" ]]; then
+        check_no_foreign_lane_claim "$1" "fleet:amending-" "${2:-unknown}" "$3"
+    else
+        check_no_foreign_lane_claim "$1" "fleet:amending-" "${2:-unknown}"
+    fi
 }
 
 backend_symmetric_issue() {
@@ -1911,6 +1936,24 @@ cmd_release() {
 #   avoid 100% structural duplication. PRs and issues share GitHub's
 #   labels endpoint, so the target may be either; <target-word>
 #   (default "PR") only adjusts the messages.
+_stamp_label_claim_liveness() {
+    local prefix="$1" target="$2" agent="$3"
+    case "$prefix" in
+        fleet:amending-)
+            mkdir -p "$HEARTBEATS_DIR"
+            touch "$HEARTBEATS_DIR/$agent" 2>/dev/null || true
+            ;;
+        fleet:reviewing-|fleet:resolving-|fleet:planning-)
+            mkdir -p "$CLAIMS_DIR"
+            local tag="${prefix#fleet:}"; tag="${tag%-}"
+            printf '%s\n' "$target" > "$CLAIMS_DIR/_prlabel-${tag}-${agent}" 2>/dev/null || true
+            if [[ "$prefix" == "fleet:reviewing-" ]]; then
+                rm -f "$CLAIMS_DIR/_review-verdict-${agent}" 2>/dev/null || true
+            fi
+            ;;
+    esac
+}
+
 _cmd_pr_label_claim() {
     local prefix="$1" cmd_name="$2" pr="$3" agent="${4:-unknown}" target_word="${5:-PR}"
     if [[ ! "$pr" =~ ^[0-9]+$ ]]; then
@@ -1939,25 +1982,54 @@ _cmd_pr_label_claim() {
     # cleanup sweep distinguish a live claim from one orphaned by a dead/restarted
     # session (whose GitHub label outlived the fleet-down wipe of ~/.fleet/claims).
     # A file (not a dir) so it can't collide with the dir-based task-claim
-    # iteration. amending carries its own heartbeat liveness. planning is here
+    # iteration. Amending refreshes its worker heartbeat through the shared
+    # helper. Planning is here
     # because it is sole-holder over a fleet:needs-plan issue: without a marker an
     # orphaned label strands that issue for every planner on every host, and the
     # leak is indistinguishable from a live claim (#2711). stewarding stays out of
     # scope — it runs one pane per host, so the label itself is the cross-host
     # signal and there is no second local claimant to vouch against.
-    case "$prefix" in
-        fleet:reviewing-|fleet:resolving-|fleet:planning-)
-            mkdir -p "$CLAIMS_DIR"
-            local _tag="${prefix#fleet:}"; _tag="${_tag%-}"
-            printf '%s\n' "$pr" > "$CLAIMS_DIR/_prlabel-${_tag}-${agent}" 2>/dev/null || true
-            if [[ "$prefix" == "fleet:reviewing-" ]]; then
-                rm -f "$CLAIMS_DIR/_review-verdict-${agent}" 2>/dev/null || true
-            fi
-            ;;
-    esac
+    _stamp_label_claim_liveness "$prefix" "$pr" "$agent"
 
     echo "${cmd_name} acquired: $repo ${target_word}#$pr ($agent)"
     return 0
+}
+
+# _cross_lane_precheck <prefix> <cmd-name> <target> <agent>
+#   Return 3 when the caller already owns its exact label, 1 when a foreign
+#   excluded lane owns the target, and 0 when the caller may proceed to POST.
+#   The one live-label fetch serves both incumbent detection and the gate.
+_cross_lane_precheck() {
+    local prefix="$1" cmd_name="$2" target="$3" agent="${4:-unknown}"
+    [[ "$target" =~ ^[0-9]+$ ]] || return 0
+
+    local info labels host suffix own_label
+    info=$(fetch_issue_info "$target") || true
+    CROSS_LANE_INFO="$info"
+    labels=$(_issue_info_field labels "$info")
+    host=$(derive_host)
+    suffix="${host}-${agent}"
+    own_label="${prefix}${suffix}"
+
+    local label
+    for label in $labels; do
+        [[ "$label" == "$own_label" ]] || continue
+        local other
+        for other in $labels; do
+            if _is_foreign_excluded_claim "$prefix" "$suffix" "$other"; then
+                echo "fleet-claim: WARN ${cmd_name} already held as [${own_label}] beside foreign excluded claim [${other}]" >&2
+            fi
+        done
+        _stamp_label_claim_liveness "$prefix" "$target" "$agent"
+        echo "${cmd_name} acquired: $(repo_from_ns) PR#$target ($agent; already held)"
+        return 3
+    done
+
+    if [[ "$prefix" == "fleet:amending-" ]]; then
+        check_no_foreign_review_claim "$target" "$agent" "$labels"
+    else
+        check_no_foreign_lane_claim "$target" "$prefix" "$agent" "$labels"
+    fi
 }
 
 # _cmd_pr_label_release <prefix> <cmd-name> <pr-num> <agent> [target-word]
@@ -1989,7 +2061,13 @@ _cmd_pr_label_release() {
     gh_release_label "$repo" "$pr" "$label"
 }
 
-cmd_review_claim() { _cmd_pr_label_claim "fleet:reviewing-" "review-claim" "$@"; }
+cmd_review_claim() {
+    local rc=0
+    _cross_lane_precheck "fleet:reviewing-" "review-claim" "${1:-}" "${2:-unknown}" || rc=$?
+    [[ "$rc" -eq 3 ]] && return 0
+    [[ "$rc" -eq 0 ]] || return "$rc"
+    _cmd_pr_label_claim "fleet:reviewing-" "review-claim" "$@"
+}
 cmd_review_release() {
     local pr="$1" agent="$2" require_verdict=0
     shift 2
@@ -2025,21 +2103,19 @@ cmd_review_release() {
     return "$rc"
 }
 cmd_resolving_claim() {
-    # Cross-lane backstop (#3001) — the resolving-lane twin of
-    # cmd_amending_claim's #2801 gate below, and the reason this is no longer
-    # a bare delegation: role-worker step 1c rebases and force-pushes, so a
-    # live foreign fleet:reviewing-* has to bar the resolve exactly as it bars
-    # an amend. Same pre-acquire placement (mutates nothing on the refuse
-    # path) and same same-agent pass-through; see the helper for why the
-    # placement is load-bearing.
-    if [[ "${1:-}" =~ ^[0-9]+$ ]] \
-        && ! check_no_foreign_review_claim "$1" "${2:-unknown}" "a conflict resolution"; then
-        return 1
-    fi
+    local cross_lane_rc=0
+    _cross_lane_precheck "fleet:resolving-" "resolving-claim" "${1:-}" "${2:-unknown}" || cross_lane_rc=$?
+    [[ "$cross_lane_rc" -eq 3 ]] && return 0
+    [[ "$cross_lane_rc" -eq 0 ]] || return "$cross_lane_rc"
     _cmd_pr_label_claim   "fleet:resolving-" "resolving-claim"   "$@"
 }
 cmd_resolving_release() { _cmd_pr_label_release "fleet:resolving-" "resolving-release" "$@"; }
 cmd_amending_claim() {
+    local cross_lane_rc=0
+    _cross_lane_precheck "fleet:amending-" "amending-claim" "${1:-}" "${2:-unknown}" || cross_lane_rc=$?
+    [[ "$cross_lane_rc" -eq 3 ]] && return 0
+    [[ "$cross_lane_rc" -eq 0 ]] || return "$cross_lane_rc"
+
     # Host-capability backstop (#2524): refuse to amend-claim a PR whose
     # remaining work is GL-host-gated (fleet:needs-gl-host) from a non-GL
     # host — the pane can only burn the claim and release with zero commits.
@@ -2051,14 +2127,8 @@ cmd_amending_claim() {
     # a Metal half" says nothing about whether what's left is GL-only —
     # narrowing here on a task-axis discriminator would be a category error.
     # Pinned by a test asserting a PR carrying BOTH labels is still refused.
-    if [[ "${1:-}" =~ ^[0-9]+$ ]] && ! check_host_capability "$1"; then
-        return 1
-    fi
-    # Cross-lane backstop (#2801): a live fleet:reviewing-* held by another
-    # agent bars the amend. Sibling of the host gate above — same pre-acquire
-    # placement, same no-mutation-on-refuse contract.
     if [[ "${1:-}" =~ ^[0-9]+$ ]] \
-        && ! check_no_foreign_review_claim "$1" "${2:-unknown}" "an amend"; then
+            && ! check_host_capability "$1" pr "${CROSS_LANE_INFO:-}"; then
         return 1
     fi
     _cmd_pr_label_claim   "fleet:amending-" "amending-claim"   "$@"

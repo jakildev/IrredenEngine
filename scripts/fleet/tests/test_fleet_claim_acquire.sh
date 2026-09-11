@@ -223,8 +223,8 @@ gh() {
 
 export FLEET_TEST_HOST="mac"
 HBROOT=$(mktemp -d)
-export HOME="$HBROOT"
-mkdir -p "$HOME/.fleet/heartbeats"
+HEARTBEATS_DIR="$HBROOT/heartbeats"
+mkdir -p "$HEARTBEATS_DIR"
 trap 'rm -rf "$HBROOT"' EXIT
 
 # T9: dead persistent reviewing holder, past TTL → force-swept, I re-acquire.
@@ -245,7 +245,7 @@ echo "T10: cross-host dead amending holder (basename collision) → force-sweep 
 AP="fleet:amending-"
 AMINE="${AP}mac-worker-2"          # lex-smaller than windows-worker-1
 ADEAD="${AP}windows-worker-1"
-touch "$HOME/.fleet/heartbeats/worker-1"   # live LOCAL worker-1 (spoof bait)
+touch "$HEARTBEATS_DIR/worker-1"   # live LOCAL worker-1 (spoof bait)
 STUB_HOLDERS="$ADEAD"
 rc=0
 _acquire_label_on "owner/repo" 1 "$AMINE" "$AP" >/dev/null 2>&1 || rc=$?
@@ -256,7 +256,7 @@ assert_exit "$rc" 0 "cross-host amending holder force-swept despite local same-b
 echo "T11: live same-host amending holder (fresh heartbeat) → not swept, yield"
 ALIVE="${AP}mac-worker-3"
 AMINE2="${AP}mac-worker-1"          # lex-smaller than mac-worker-3
-touch "$HOME/.fleet/heartbeats/worker-3"   # owner of the held label is alive
+touch "$HEARTBEATS_DIR/worker-3"   # owner of the held label is alive
 STUB_HOLDERS="$ALIVE"
 rc=0
 _acquire_label_on "owner/repo" 1 "$AMINE2" "$AP" >/dev/null 2>&1 || rc=$?
