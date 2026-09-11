@@ -320,17 +320,19 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   (#2363, #2795). Copy whichever matches your call cadence; don't invent a
   third counter block by hand.
 - **Neither a skip nor a failed action may consume an edge-triggered lane's
-  edge.** The scout's two self-spawned lanes (`queue-manager` claim-cleanup,
-  `queue-manager-ingest`) compare their own projection hash inline instead of
-  routing through `update_role_trigger`, precisely because nothing re-arms
-  them — no watchdog, no periodic sweep. The seen-hash write therefore belongs
+  edge.** The scout's `queue-manager` reconcile and `queue-manager-ingest`
+  lanes compare their own projection hash inline instead of routing through
+  `update_role_trigger`, precisely because nothing re-arms them. The seen-hash
+  write therefore belongs
   after every early-`continue` guard **and after the action itself succeeded**,
   never before either: recording the hash and then skipping — or recording it
   and then failing to `Popen` — discards the change permanently, since the next
   tick compares equal and skips too. A degraded tick swallowed an
   agent-approved issue's ingest exactly this way, and the freshly-stamped
   seen-hash mtime — the strongest available "this lane is healthy" signal —
-  was the bug's own fingerprint (#2965). Fixing only the guard half left the
+  was the bug's own fingerprint (#2965). Periodic claim cleanup follows the
+  same rule for its last-run marker: only a successful spawn consumes the
+  deadline. Fixing only the guard half left the
   identical strand one line down, where both lanes swallowed a spawn failure
   with a bare `log` (#2972): the write must clear the *whole* fallible region,
   so "put it below the guards" is the special case, not the rule. Where a lane
