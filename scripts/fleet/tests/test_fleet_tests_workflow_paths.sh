@@ -2,14 +2,16 @@
 # Tests for .github/workflows/fleet-tests.yml's path filters (#2810).
 #
 # The workflow path-filters on scripts/** — broadly the LOCATION of its
-# suites, not the SUBJECTS they test. Ten suites test files that live
+# suites, not the SUBJECTS they test. Eleven suites test files that live
 # outside that path (test_format_changed_line_scoping.sh covers
 # cmake/run_clang_format_changed.cmake; test_format_changed_standalone.sh
 # covers its sibling standalone CMake file; test_ir_build_dir_resolution.sh
 # covers engine/tools/lib/concurrency_helpers.sh; test_fleet_transition.sh
 # covers docs/agents/fleet-state-machine.json; test_lint_rules_commands.py
 # covers every doc under .claude/rules/ and docs/agents/;
-# test_lint_comment_refs.py covers .claude/skills/simplify/**;
+# test_lint_rules_registry.py covers .claude/rules/cpp-*.md and
+# docs/agents/CLAUDE-BASELINE.md; test_lint_comment_refs.py covers
+# .claude/skills/simplify/**;
 # test_fleet_labels_check.sh covers the fleet state machine and label reference;
 # test_fleet_pr_body_lint.py covers the commit-and-push PR-body procedures;
 # test_workflow_paths_sync.sh covers the other path-filtered
@@ -53,9 +55,10 @@ fi
 # matched as a literal substring of the block, so a subject whose suite
 # covers a whole directory is listed as the glob the workflow actually
 # carries — the two `**` entries below are test_lint_rules_commands.py's
-# doc globs (#2823), not single files. `docs/agents/**` subsumes both
-# fleet-state-machine.json (test_fleet_transition.sh) and
-# fleet-labels-reference.md (test_fleet_labels_check.sh); the narrower
+# doc globs (#2823), not single files. `docs/agents/**` subsumes
+# fleet-state-machine.json (test_fleet_transition.sh),
+# fleet-labels-reference.md (test_fleet_labels_check.sh) and
+# CLAUDE-BASELINE.md (test_lint_rules_registry.py); the narrower
 # entries stay so the ratchet keeps naming those subjects even if the glob
 # is ever tightened.
 # `.claude/skills/simplify/**` is test_lint_comment_refs.py's Check07Scope
@@ -82,6 +85,7 @@ OUT_OF_TREE_SUBJECTS=(
     'engine/tools/lib/concurrency_helpers.sh'
     'docs/agents/fleet-state-machine.json'
     'docs/agents/fleet-labels-reference.md'
+    'docs/agents/CLAUDE-BASELINE.md'
     '.claude/rules/**'
     '.claude/skills/simplify/**'
     '.claude/skills/commit-and-push/procedures/pr-body.md'

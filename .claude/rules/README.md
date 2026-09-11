@@ -5,6 +5,10 @@ Each `cpp-*.md` here is a path-scoped rule: the `paths:` frontmatter is the
 opened), not a search root. Most rules also carry a **Detection** block — a
 pattern a reviewer or a starved worker runs tree-wide.
 
+This README is the one deliberately frontmatter-less file here — it is the
+directory index and the sweep-trap warning, loads in every session, and is
+not a rule; every `cpp-*.md` is path-scoped.
+
 ## Never root a tree sweep at `creations/` or `.claude/`
 
 `rg` rooted **at** a directory that owns an ignore-then-negate block in
@@ -19,9 +23,9 @@ $ git ls-files .claude | wc -l          #  76
 ```
 
 The harness `Grep` tool is the same walker and has the same exposure. Every
-rule whose `paths:` names `creations/**` is affected. Root a sweep at the
-repo top or at a child directory, never at `creations` / `.claude`
-themselves.
+rule whose `paths:` names `creations/**` is affected — `cpp-globals.md`
+included, now that it carries one. Root a sweep at the repo top or at a child
+directory, never at `creations` / `.claude` themselves.
 
 ### Use `fleet-rules-sweep`
 
@@ -66,3 +70,8 @@ issue numbers belong). Register it in the canonical-home map in
 [`docs/agents/CLAUDE-BASELINE.md`](../../docs/agents/CLAUDE-BASELINE.md).
 Fenced `fleet-*` commands in these files must resolve to a tracked script
 (`scripts/fleet/lint_rules_commands.py` gates it).
+
+Both obligations above are **executed**: `scripts/fleet/lint_rules_registry.py`
+(suite `scripts/fleet/tests/test_lint_rules_registry.py`, run by
+`fleet-tests.yml` on every PR touching this directory or `docs/agents/`) fails
+on any `cpp-*.md` with no `paths:` frontmatter or no canonical-home row.

@@ -23,9 +23,10 @@ name: Fleet Tests
 # render-harness-tests.yml's scripts/*.py — the two workflows run disjoint
 # suites, and narrowing either back to buy the non-overlap reopens #2859.
 #
-# Ten suites reach outside scripts/ entirely for their subject under test —
+# Eleven suites reach outside scripts/ entirely for their subject under test —
 # their subjects are listed explicitly below so a PR touching only one of
-# them still runs this workflow (#2786, #2810, #2823, #2859, #2929, #3187):
+# them still runs this workflow (#2786, #2810, #2823, #2859, #2929, #2935,
+# #3187):
 #   test_format_changed_line_scoping.sh -> cmake/run_clang_format_changed.cmake
 #   test_format_changed_standalone.sh   -> cmake/run_clang_format_changed_standalone.cmake
 #   test_ir_build_dir_resolution.sh     -> engine/tools/lib/concurrency_helpers.sh
@@ -33,6 +34,8 @@ name: Fleet Tests
 #   test_fleet_labels_check.sh          -> docs/agents/fleet-state-machine.json,
 #                                          docs/agents/fleet-labels-reference.md
 #   test_lint_rules_commands.py         -> .claude/rules/**, docs/agents/**
+#   test_lint_rules_registry.py         -> .claude/rules/cpp-*.md,
+#                                          docs/agents/CLAUDE-BASELINE.md
 #   test_lint_comment_refs.py           -> .claude/skills/simplify/**
 #   test_fleet_pr_body_lint.py          -> the commit-and-push PR-body and
 #                                          edit-or-create procedures
@@ -46,9 +49,10 @@ name: Fleet Tests
 # a PR that edits only a rules or protocol doc must still trigger this
 # workflow; without those paths the exact PR that landed a
 # doc-ahead-of-executor citation (ce2d2c57a) would not have run it (#2823).
-# `docs/agents/**` subsumes docs/agents/fleet-state-machine.json — the
-# narrower entry stays because the ratchet below asserts that subject by
-# name. test_workflow_paths_sync.sh is the only entry whose subject set is
+# `docs/agents/**` subsumes docs/agents/fleet-state-machine.json,
+# docs/agents/fleet-labels-reference.md and docs/agents/CLAUDE-BASELINE.md —
+# the narrower entries stay because the ratchet below asserts those subjects
+# by name. test_workflow_paths_sync.sh is the only entry whose subject set is
 # *derived* (a .github/workflows/*.yml glob) rather than a fixed file, so it
 # can grow without anyone editing this list — T4 in
 # test_workflow_paths_sync.sh is what makes that growth fail loudly instead
@@ -80,6 +84,7 @@ on:
       - 'engine/tools/lib/concurrency_helpers.sh'
       - 'docs/agents/fleet-state-machine.json'
       - 'docs/agents/fleet-labels-reference.md'
+      - 'docs/agents/CLAUDE-BASELINE.md'
       - 'ruff.toml'
   pull_request:
     paths:
@@ -100,6 +105,7 @@ on:
       - 'engine/tools/lib/concurrency_helpers.sh'
       - 'docs/agents/fleet-state-machine.json'
       - 'docs/agents/fleet-labels-reference.md'
+      - 'docs/agents/CLAUDE-BASELINE.md'
       - 'ruff.toml'
   workflow_dispatch:
 
