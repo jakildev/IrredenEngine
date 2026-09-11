@@ -28,8 +28,6 @@ script tests) — that is Lua's own assert, not `<cassert>`. Allowlist:
 standalone `tools/**` binaries that don't link the engine. Live deviations
 (don't re-flag):
 
-- `engine/asset/include/irreden/asset/chunk_header.hpp:69` — **migrating**
-  via #2674; the site disappears when that lands.
 - `engine/ir_args.cpp:16`
   (`#define IR_ASSERT(cond, msg) assert((cond) && (msg))`) — **permanent**,
   not migrating. It is a dependency-free macro so the standalone tools

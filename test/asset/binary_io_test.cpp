@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <cstring>
 #include <limits>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -188,6 +189,11 @@ TEST(BinaryIO, ChunkTagReadTruncated) {
 }
 
 // ---- Chunk header tests -------------------------------------------------
+
+TEST(ChunkHeader, RejectsWrongLengthTag) {
+    EXPECT_THROW(makeTag("BAD"), std::runtime_error);
+    EXPECT_THROW(makeTag("LONGER"), std::runtime_error);
+}
 
 TEST(ChunkHeader, RoundTripWithMultipleChunks) {
     const auto magic = makeTag("IRVS");
