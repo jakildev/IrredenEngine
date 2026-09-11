@@ -23,11 +23,13 @@ name: Fleet Tests
 # render-harness-tests.yml's scripts/*.py — the two workflows run disjoint
 # suites, and narrowing either back to buy the non-overlap reopens #2859.
 #
-# Ten suites reach outside scripts/ entirely for their subject under test —
+# Eleven suites reach outside scripts/ entirely for their subject under test —
 # their subjects are listed explicitly below so a PR touching only one of
-# them still runs this workflow (#2786, #2810, #2823, #2859, #2929, #3187):
+# them still runs this workflow (#2675, #2786, #2810, #2823, #2859, #2929,
+# #3187):
 #   test_format_changed_line_scoping.sh -> cmake/run_clang_format_changed.cmake
 #   test_format_changed_standalone.sh   -> cmake/run_clang_format_changed_standalone.cmake
+#   test_format_changed_diff_root.sh    -> cmake/ir_quality_tools.cmake
 #   test_ir_build_dir_resolution.sh     -> engine/tools/lib/concurrency_helpers.sh
 #   test_fleet_transition.sh            -> docs/agents/fleet-state-machine.json
 #   test_fleet_labels_check.sh          -> docs/agents/fleet-state-machine.json,
@@ -78,6 +80,7 @@ on:
       - '.github/workflows/render-harness-tests.yml'
       - 'cmake/run_clang_format_changed.cmake'
       - 'cmake/run_clang_format_changed_standalone.cmake'
+      - 'cmake/ir_quality_tools.cmake'
       - 'engine/tools/lib/concurrency_helpers.sh'
       - 'docs/agents/fleet-state-machine.json'
       - 'docs/agents/fleet-labels-reference.md'
@@ -99,6 +102,7 @@ on:
       - '.github/workflows/render-harness-tests.yml'
       - 'cmake/run_clang_format_changed.cmake'
       - 'cmake/run_clang_format_changed_standalone.cmake'
+      - 'cmake/ir_quality_tools.cmake'
       - 'engine/tools/lib/concurrency_helpers.sh'
       - 'docs/agents/fleet-state-machine.json'
       - 'docs/agents/fleet-labels-reference.md'
