@@ -6,44 +6,30 @@ paths:
   - "creations/**/*.{hpp,cpp,h,cc}"
 ---
 
-> **Sweeping for violations?** `paths:` is an injection scope, not a search
-> root. `rg`/`Grep` rooted at `creations/` reads a **false clean** (#2739) —
-> run detectors through `fleet-rules-sweep`. See [`README.md`](README.md).
-> The `creations/**` injection scope is deliberately wider than the audit
-> hook's globs; §"Audit hooks" says why.
+> Sweep with `fleet-rules-sweep`, never `rg`/`Grep` rooted at `creations/`
+> — see [`README.md`](README.md). The `creations/**` injection scope is
+> deliberately wider than the audit hook's globs; §"Audit hooks" says why.
 
 # Lua surface: enums and constants, never string-name lookups
 
 Rule:
 
-> **Never** check a Lua-side string name against a fixed set of values
-> in C++ binding code (`if (s == "GRID") ... else if (s == "DETACHED")`,
-> etc.). Expose the underlying C++ enum as a Lua table and accept the
-> integer value at the binding boundary.
+> **Never** check a Lua-side string name against a fixed set of values in
+> C++ binding code (`if (s == "GRID") ... else if (s == "DETACHED")`).
+> Expose the underlying C++ enum as a Lua table and accept the integer value
+> at the binding boundary.
 
-Why:
-
-- **Single source of truth.** Renaming or extending the enum on the C++
-  side only updates one place; Lua callers picked it up automatically.
-  String-name checks drift — a new enum value gets bound in C++ but the
-  Lua-side string list is forgotten, the schema silently rejects a
-  legal value, and the bug surfaces months later.
-- **Typo class moves up to load time.** `IRComponent.RotationMode.GRIB`
-  fails at Lua-eval with a nil-access error. `rotation_mode = "GRIB"`
-  fails at spawn time, deep inside an unrelated codepath, with a
-  diagnostic the author has to map back to the typo.
-- **Mirrors the existing pattern.** `IRSystem.SystemName.X` /
-  `IRTime.X` / `IRCommand.CommandName.X` / `IRModifier.Transform.X` /
-  `IRInput.{InputType,ButtonStatus,Key,Modifier}.X` all already work
-  this way. New enum-typed Lua surfaces should match.
+One source of truth (the enum), a typo fails at Lua load time instead of
+deep in a spawn path, and it matches the existing `IRSystem.SystemName.X` /
+`IRTime.X` / `IRCommand.CommandName.X` / `IRModifier.Transform.X` /
+`IRInput.{InputType,ButtonStatus,Key,Modifier}.X` tables.
 
 ## What to do instead
 
-1. Add a Lua table mirror in the relevant binding file
-   (`engine/script/src/lua_*.cpp` or `engine/script/include/irreden/
-   script/lua_*_bindings.hpp`). The canonical shape uses a one-line
-   macro so the Lua key is derived from the C++ enum identifier and
-   cannot drift:
+1. Mirror the enum as a Lua table in the binding file
+   (`engine/script/src/lua_*.cpp` or
+   `engine/script/include/irreden/script/lua_*_bindings.hpp`), deriving the
+   key from the C++ identifier so it cannot drift:
 
    ```cpp
    sol::table rotationMode = lua.create_table();
@@ -55,91 +41,44 @@ Why:
    lua["IRComponent"]["RotationMode"] = rotationMode;
    ```
 
-2. Read the value as `lua_Integer`, range-check it, cast to the enum:
-
-   ```cpp
-   sol::object obj = prefab["rotation_mode"];
-   if (obj.valid() && obj.get_type() != sol::type::lua_nil) {
-       if (obj.get_type() == sol::type::string) {
-           return makeError(/* ... */ "string names are not accepted");
-       }
-       if (!obj.is<lua_Integer>()) {
-           return makeError(/* ... */);
-       }
-       const lua_Integer raw = obj.as<lua_Integer>();
-       if (raw < static_cast<lua_Integer>(MyEnum::kFirst) ||
-           raw > static_cast<lua_Integer>(MyEnum::kLast)) {
-           return makeError(/* ... */);
-       }
-       value = static_cast<MyEnum>(raw);
-   }
-   ```
-
-   `kFirst`/`kLast` sentinels are the exception in this tree
-   (`CommandNames`, `SystemName` have none), so for most enums that check
-   is unwritable and "skip it" becomes the honest reading. The
-   sentinel-free form: **switch over the enumerators, reject on
-   fallthrough** — `toSuite` in `lua_command_bindings.hpp` is the in-tree
-   example, and `-Wswitch` then flags a newly added enumerator. Switch on
-   the `lua_Integer` *before* the cast when the enum is unscoped with no
-   fixed underlying type (`enum CommandNames {`): converting an
-   out-of-range value to it is unspecified.
-
-3. Diagnose the legacy string path explicitly. A caller who passes
-   `rotation_mode = 'GRID'` deserves a message that says "use
-   `IRComponent.RotationMode.GRID` instead", not "type mismatch" or
-   "unknown value".
-
-4. Update every Lua-side caller, test fixture, and prefab `.lua` file
-   to use the enum spelling. The cutover should land in the same PR
-   as the C++ change — leaving even one string-typed caller behind
-   defeats the rule.
+2. Read the value as `lua_Integer`, reject a string with a message that
+   names the table (`use IRComponent.RotationMode.GRID`), range-check, cast.
+   Most enums here have no `kFirst`/`kLast` sentinels, so range-check by
+   switching over the enumerators and rejecting on fallthrough (`toSuite` in
+   `lua_command_bindings.hpp`; `-Wswitch` then flags a new enumerator).
+   Switch on the `lua_Integer` *before* the cast when the enum is unscoped
+   with no fixed underlying type — converting an out-of-range value is
+   unspecified.
+3. Update every Lua caller, fixture, and prefab `.lua` in the same PR; one
+   string-typed caller left behind defeats the rule.
 
 ## Allowlist (NOT covered by this rule)
 
-- **Lua-defined component field names.** `arch.Comp:getField(i,
-  "fieldName")` looks up a field by string at runtime; this is part
-  of the Lua-defined ECS surface and is the documented hot-path
-  alternative (`getField → getLuaField + cached index`) for callers
-  that care about per-tick cost. See `engine/script/CLAUDE.md`
-  "Two-tier accessor contract".
-- **Modifier `fieldNameOrId`.** The modifier framework accepts
-  either a string or a `FieldBindingId`. Strings round-trip through
-  the registry — they're stable identifiers across the C++/Lua
-  boundary, not a closed enum set. The same allowance applies to
-  any registry-backed string id (component name → component id,
-  prefab name → path).
-- **User-facing string content.** Log messages, error diagnostics,
-  prefab `id` strings, prefab-file paths, and UI label text are strings
-  by design. The rule is only about *enumerated values that have a C++
-  enum equivalent*.
-- **CLI argument values.** `--subdivision-mode full` reaches C++ as a
-  string from `argv`, never from Lua, so this rule does not reach it —
-  even when the value maps onto a C++ enum. That surface has its own
-  rule: route it through `IRArgs`' `.enumValue` declaration rather than
-  a hand-rolled compare chain (see `engine/CLAUDE.md` §"CLI args go
+- **Lua-defined component field names** — `arch.Comp:getField(i, "name")`
+  is the Lua-defined ECS surface (`engine/script/CLAUDE.md` "Two-tier
+  accessor contract").
+- **Registry-backed string ids** — modifier `fieldNameOrId`, component name
+  → id, prefab name → path: stable identifiers, not a closed enum set.
+- **User-facing string content** — logs, diagnostics, prefab `id` strings,
+  file paths, UI labels.
+- **CLI argument values** — reach C++ from `argv`, never from Lua; they
+  route through `IRArgs`' `.enumValue` (`engine/CLAUDE.md` §"CLI args go
   through `IRArgs`").
-- **Binary / asset-format field tags.** A value read out of a `.vxs`
-  sidecar, `.irkv` store, or other on-disk format is part of that
-  format's schema. The format owns its spelling and its compatibility
-  contract; the Lua enum table is not in the loop.
-- **A single reserved-name or sentinel guard.** `if (name ==
-  "register")` rejecting one reserved key is a validation check, not a
-  value-set dispatch. The rule targets *chains* that enumerate a closed
-  set — one comparison against one literal has no enum to mirror.
+- **Binary / asset-format field tags** — `.vxs`, `.irkv`, …: the format
+  owns its spelling and compatibility contract.
+- **A single reserved-name or sentinel guard** — `if (name == "register")`
+  is a validation check, not a value-set dispatch.
 
 ## Audit hooks
 
-Open-coded `if (s == "FOO") ... else if (s == "BAR") ...` chains in
-`engine/script/**`, any `*_lua.hpp` / `lua_*_bindings.hpp`, or creation
-Lua-binding code are a smell. Replace them with the binding-table + enum-cast
-pattern above when you touch the surrounding code. (`engine/script/**`,
-not just its `src/`: one of the deviations below lives under
-`engine/script/include/`.)
-
-Run the hook through `fleet-rules-sweep`, never `rg creations` — this is the
-detector whose false clean surfaced #2739 (0 hits reported on a tree with 4
-matching files):
+Open-coded `if (s == "FOO") ... else if (s == "BAR")` chains on the binding
+surface are the smell; replace with the table + enum-cast pattern when
+touching the code. The pattern is a bare string-compare, so the globs do all
+the discrimination — scope them at the binding surface, not the tree
+(sweeping `creations` wholesale returns only allowlisted CLI-argv /
+asset-format / UI-label hits). A creation whose binding file is not named
+`lua_*` adds its own `--glob`; a creation's `main*.cpp` is out of scope
+(argv parses, owned by the `IRArgs` rule).
 
 ```
 fleet-rules-sweep --glob 'engine/script/**' --glob '**/*_lua.hpp' \
@@ -147,162 +86,45 @@ fleet-rules-sweep --glob 'engine/script/**' --glob '**/*_lua.hpp' \
   --pattern '== *"'
 ```
 
-**Scope the globs at the binding surface, not at the tree.** The pattern is a
-bare string-compare match — it cannot tell a Lua-sourced value from any other
-`std::string`, so the glob is doing all the discrimination. Sweeping
-`creations` wholesale instead returns several times the hits, and **every one
-of them lands in an allowlisted class above** — overwhelmingly CLI-argv
-parses, plus a handful of asset-format tags and one UI-label compare. None are
-reachable from Lua, and none are this rule's to fix (#2745).
+A run reporting only the sites in §"Live deviations" is a clean pass.
+Classify every other hit against the Allowlist before treating it as a
+violation.
 
-Don't pin an exact census here. The wholesale count tracks unrelated creation
-churn, so it re-stales without this file being touched: it moved **30 → 36 → 38
-across two base advances** while this rule sat unchanged — first an unrelated
-`shape_debug/main.cpp` growth, then an unrelated `perf_grid/main.cpp` one.
-Snapshot for scale only — 38 hits in 6 files as of `6e804773e`, of which 33 are
-CLI-argv, 4 asset-format tags, 1 UI label. The globs above are the surface this
-rule's prose actually names: 81 files, reporting **12 hits in 2 files**, every
-one of them classified below — and unlike the wholesale figure, those held
-steady across both base advances.
-
-The `creations/**/lua_*.{hpp,cpp}` glob is load-bearing. It covers the six real
-creation-side binding files — `lua_bindings.{hpp,cpp}` + `lua_component_pack.hpp`
-under `demos/default` and `demos/sprite_demo` — which are clean today. Drop it
-and the detector narrows until it structurally cannot see creation binding code:
-the same false-clean shape as #2739, spelled with a glob instead of a walker. A
-creation whose binding file is named something else adds its own `--glob`.
-
-`**/lua_*_bindings.hpp` is the **prefix** spelling the binding headers actually
-use (`engine/script/include/irreden/script/lua_*_bindings.hpp`, as §"What to do
-instead" names them). The suffix form `**/*_lua_bindings.hpp` matches nothing in
-the tree — `fleet-rules-sweep` reports `swept 0 file(s)` for it alone. The
-correction is coverage-neutral (those headers already sit inside
-`engine/script/**`, so the totals stay 81/12/2); it exists so a binding header
-added *outside* `engine/script/` is swept instead of silently skipped.
-
-**`paths:` stays wider than these globs — deliberately.** The frontmatter keeps
-`creations/**/*.{hpp,cpp,h,cc}` (the shape `cpp-ecs.md`, `cpp-ecs-smells.md`,
-and `cpp-math.md` share) rather than tracking
-`creations/**/lua_*.{hpp,cpp}`. Injection and detection answer different
-questions: the glob narrows because a bare `== "` pattern cannot tell a
-Lua-sourced value from any other string compare — a constraint an author
-*reading* the rule does not share. And the escape hatch above (a
-differently-named binding file adds its own `--glob`) only fires if the rule
-reached that author in the first place. Narrowing injection to `lua_*` would
-hide it from exactly the person who needs to widen the glob, sealing the
-detector's blind spot shut. `cpp-systems.md` can mirror its own detector scope
-because `system_<name>.hpp` is a mandated filename (`engine/prefabs/CLAUDE.md`
-§"File pattern"); the creation-side binding surface has no such spelling to
-lean on.
-
-**The invariant that argument implies: `paths:` must cover every file the hook
-sweeps.** Wherever detection reaches a file injection doesn't, the rule is
-enforced on an author it was never shown to — and the escape hatch above,
-which is the whole reason the wide creations scope is justified, cannot fire.
-**It holds today** — the swept set is a strict subset of the injected set
-(81 ⊆ 141), because every binding header currently lives under
-`engine/script/include/irreden/script/`, which `engine/script/**` already
-injects. The frontmatter's `**/*_lua.hpp` and `**/lua_*_bindings.hpp` are
-**forward-looking, not remedial**: those are the hook's own spellings, and they
-match a binding header *anywhere* in the tree, so the first one placed outside
-`engine/script/` would otherwise be swept without being injected. The entries
-close that hole before it opens; they change no counts today.
-
-**Mirror the hook's spelling, not a prefixed form of it.** These two entries
-were originally written `engine/**/…`, which closed the hole on one lane and
-left it open on every other — `test/` and `tools/` are populated top-level
-directories (two of the four search roots `irreden_collect_quality_files()`
-globs in `cmake/ir_quality_tools.cmake`), so a binding header landing in either
-was swept and never injected (#2905). A prefix added to a `**/` glob is a
-silent narrowing: it satisfies the invariant for the lane you were looking at
-and no other. When the hook says *anywhere*, `paths:` has to say *anywhere*
-too.
-
-Not widened to `engine/**/*.{hpp,cpp,h,cc}` (the sibling shape): that would
-inject a Lua-binding rule into every engine translation unit to reach a surface
-with a consistent, greppable spelling. The tree-wide entries above stay scoped
-by *filename*, which is what keeps them cheap. The creations side needs the
-blunt glob because creation binding files have no mandated name; the engine
-side does not.
-
-Check the invariant, don't assume it — the two glob sets are edited
-independently:
+**`paths:` must cover every file the hook sweeps** — a rule enforced on a
+file it was never injected into cannot reach the author who would widen the
+glob. The frontmatter therefore keeps `creations/**/*.{hpp,cpp,h,cc}`
+(creation binding files have no mandated name) and mirrors the hook's
+tree-wide `**/*_lua.hpp` / `**/lua_*_bindings.hpp` spellings verbatim (a
+prefix such as `engine/**/` would silently drop `test/` and `tools/`). Check
+it whenever either glob set changes:
 
 ```
-# swept by the hook
 fleet-rules-sweep --files-only --pattern '.' --glob 'engine/script/**' \
   --glob '**/*_lua.hpp' --glob '**/lua_*_bindings.hpp' \
   --glob 'creations/**/lua_*.{hpp,cpp}' | sort > /tmp/detected
-# injected by paths:
 fleet-rules-sweep --files-only --pattern '.' --glob 'engine/script/**' \
   --glob '**/*_lua.hpp' --glob '**/lua_*_bindings.hpp' \
   --glob 'creations/**/*.{hpp,cpp,h,cc}' | sort > /tmp/injected
-comm -23 /tmp/detected /tmp/injected      # must be empty (81 vs 141 today)
+comm -23 /tmp/detected /tmp/injected      # must be empty
 ```
-
-An empty `comm -23` is only evidence if it *can* be non-empty — today every
-binding header sits under `engine/script/`, so the check passes on a tree that
-exercises nothing. Drive it with probes outside the previously-covered lanes
-before trusting it:
-
-```
-printf '// probe\n' > test/lua_probe_bindings.hpp
-printf '// probe\n' > tools/lua_probe2_bindings.hpp
-# re-run both commands above, then:
-comm -23 /tmp/detected /tmp/injected      # still empty: 83 detected, 143 injected
-rm -f test/lua_probe_bindings.hpp tools/lua_probe2_bindings.hpp
-```
-
-Against the pre-#2905 `engine/**`-prefixed frontmatter the same probes come
-back in `comm -23` (detected 81 → 83, injected unmoved at 141), which is what
-makes this a control rather than a re-run.
-
-A creation's `main*.cpp` is deliberately **not** in scope, `main_lua.cpp`
-included — its string compares are CLI-argv parses (three in
-`lua_perf_grid/main_lua.cpp`), allowlisted above and owned by the `IRArgs` rule.
-Re-add it only together with a pattern that can tell argv from a Lua value.
-
-Classify every surviving hit against the Allowlist before treating it as a
-violation. A run that reports only the sites in §"Live deviations" is a clean
-pass.
 
 ## Live deviations
 
-The hook's 12 surviving hits, classified. Two are genuine deviations; one is a
-known-allowlisted shape kept here so a clean run is interpretable without
-re-deriving it.
+Cite by symbol, not line. Two genuine deviations, grandfathered — both tags
+are documented public schema (`engine/script/CLAUDE.md` §"Lua-defined
+components", §"Per-system mode override") read by the build-time codegen
+tool `cmake/lua_codegen/` as well as the runtime, so the swap is a
+schema-breaking design call for the human, not a mechanical fix. New code on
+this surface still follows the rule; don't migrate these in an unrelated PR.
 
-Cite these by **symbol**, not by line — `lua_script.cpp` grew ~70 lines in a
-single base advance under this PR, silently moving one of the ranges below off
-its target. Line numbers are an "as of" convenience; the symbol is the anchor.
-Anchor the "as of" to a **`master`** commit, never to one of the working
-branch's own shas: a rebase rewrites branch shas, orphaning the anchor and
-leaving a figure the reader cannot reproduce.
-
-- `engine/script/src/lua_script.cpp`, `parseExplicitTypeTag` (`:93-115` as of
-  `6e804773e`) — maps the Lua component schema's `type = "int"` / `"float"` /
-  `"vec3"` / `"quat"` … tags onto `LuaFieldType` (`lua_component_data.hpp`,
-  `enum class LuaFieldType`, 9 enumerators). **Genuine deviation, deferred.**
-  No `IRComponent.FieldType` table is exposed.
+- `engine/script/src/lua_script.cpp`, `parseExplicitTypeTag` — maps the
+  component schema's `type = "int"` / `"float"` / `"vec3"` / … tags onto
+  `LuaFieldType`. No `IRComponent.FieldType` table is exposed.
 - `engine/script/src/lua_script.cpp`, the `mode` dispatch in
-  `IRSystem.registerSystem` (`:950-961` as of `6e804773e`) —
-  `mode = "codegen"` / `"eval"` maps onto `EcsMode` (`ir_script_types.hpp`,
-  `enum class EcsMode`). **Genuine deviation, deferred.** No Lua table is
-  exposed.
-- `engine/script/include/irreden/script/lua_enum_def.hpp:67` — `enumName ==
-  "register"` reserved-name guard. **Not a violation** — a single sentinel
-  check per the Allowlist, documented in `engine/script/CLAUDE.md`
-  §"Lua-defined enums".
+  `IRSystem.registerSystem` — `"codegen"` / `"eval"` onto `EcsMode`. No Lua
+  table is exposed.
 
-**Why the two deviations are deferred rather than tracked as migrations.**
-Both tags are documented public schema (`engine/script/CLAUDE.md` §"Lua-defined
-components", §"Per-system mode override") and both are read by the *build-time*
-codegen tool (`cmake/lua_codegen/`) out of the same `.lua` files as the runtime.
-Swapping either for an integer table is a schema-breaking change across every
-creation `.lua` **and** the codegen tool — a design call with a compatibility
-story, not the mechanical binding-table fix §"What to do instead" describes. No
-tracking issue exists yet because filing design-direction work is the human's
-call, not a worker's; this register is the record until they make it.
-
-New code on this surface still follows the rule — these two are grandfathered,
-not a precedent. Don't migrate them in an unrelated PR.
+Not a violation (listed so a clean run is interpretable):
+`engine/script/include/irreden/script/lua_enum_def.hpp`, `enumName ==
+"register"` — a single reserved-name guard (`engine/script/CLAUDE.md`
+§"Lua-defined enums").

@@ -4,20 +4,24 @@ paths:
   - "creations/**/*.{hpp,cpp,h,cc}"
 ---
 
-> **Sweeping for violations?** `paths:` is an injection scope, not a search
-> root. `rg`/`Grep` rooted at `creations/` reads a **false clean** (#2739) —
-> run detectors through `fleet-rules-sweep`. See [`README.md`](README.md).
+> Sweep with `fleet-rules-sweep`, never `rg`/`Grep` rooted at `creations/`
+> — see [`README.md`](README.md).
 
 # Math primitives go through IRMath, never glm:: or std::
 
 Rule, with zero exceptions outside `engine/math/`:
 
-> **Never** call `glm::*`, `std::sin`, `std::cos`, `std::tan`, `std::sqrt`, `std::abs`, `std::min`, `std::max`, `std::clamp`, `std::floor`, `std::ceil`, `std::round`, `std::pow`, `std::atan2`, `std::asin`, or `std::acos` from C++ files outside `engine/math/`.
+> **Never** call `glm::*`, `std::sin`, `std::cos`, `std::tan`, `std::sqrt`,
+> `std::abs`, `std::min`, `std::max`, `std::clamp`, `std::floor`,
+> `std::ceil`, `std::round`, `std::pow`, `std::atan2`, `std::asin`, or
+> `std::acos` from C++ files outside `engine/math/`.
 
-The wrapper layer in [`engine/math/include/irreden/`](../../engine/math/include/irreden/) owns everything. Two reasons:
-
-1. **One place to swap implementations.** If we ever switch from glm to a faster custom path (or add a SIMD variant), it changes in `engine/math/` and every caller picks it up.
-2. **One place to encode CPU↔GPU consistency.** `IRMath::roundHalfUp` mirrors the GLSL/Metal `roundHalfUp` so half-integer positions classify the same on both sides. `glm::round` does not. Without the wrapper layer, this kind of consistency rule has to be re-asserted at every call site.
+The wrapper layer in `engine/math/include/irreden/` is the one place to swap
+implementations and the one place CPU↔GPU consistency is encoded
+(`IRMath::roundHalfUp` mirrors the shader `roundHalfUp`; `glm::round` does
+not). A `round` on a **position → cell** assignment is `IRMath::roundHalfUp`
+/ `roundVec3HalfUp`, never `round` — round-half-away-from-zero disagrees with
+the GPU at negative half-integers.
 
 ## What to use instead
 
@@ -36,56 +40,46 @@ The wrapper layer in [`engine/math/include/irreden/`](../../engine/math/include/
 | `std::pow(2.0f, std::round(std::log2(x)))` | `IRMath::snapToPowerOfTwo(x)` |
 | `std::fmod(x, p)` + `if (v < 0) v += p`, or `while` ±2π wrap loops | `IRMath::wrapToRange(x, p)` / `IRMath::wrapAngleTwoPi(a)` / `IRMath::wrapAnglePi(a)` |
 
+If the wrapper you need doesn't exist, add it to `engine/math/` first, then
+call it — never `glm::` "just for now". `IRMath::clamp` / `max` / `min` take
+one type parameter: spell mixed vector/scalar bounds as vectors
+(`clamp(v, vec3(0.0f), vec3(1.0f))`). The math library itself is the only
+place `glm::*` / `std::*` math names appear.
+
 ## Iso projection: never inline the equations
 
-Canonical equations and named helpers: `engine/math/CLAUDE.md §"Isometric projection — the equations"`. Always call the helpers; never inline.
+Helpers and equations: `engine/math/CLAUDE.md` §"Isometric projection — the equations".
 
 ## Binary I/O of math types
 
-Serialization helpers for `IRMath::vec*`, `IRMath::Color`, `IRMath::quat`, and other math types belong in `engine/math/` (or alongside `BinaryWriter` / `BinaryReader` in `engine/asset/`) — never inline in a format-specific `.cpp`. Each binary asset format (`.vxs`, `.rig`, future `.prefab.lua`) is a consumer; the helpers are shared infrastructure.
-
-The "every format author writes their own" failure mode produces near-duplicate helpers under different names — historically `writeVec3` / `encodeVec3` defined twice across `voxel_set_format.cpp` and `rig_format.cpp`, with different signatures and byte layouts. Centralizing the helpers keeps the byte layout consistent across formats and concentrates the round-trip tests in one place.
-
-If the helper you need doesn't exist yet:
-
-1. Add it to `engine/asset/include/irreden/asset/math_binary_io.hpp` under `namespace IRMath::BinaryIO` — the helpers live in `engine/asset/` rather than `engine/math/` because inline implementations that call `BinaryWriter` / `BinaryReader` methods need the full type definition, and `engine/math/` must not depend on `engine/asset/`.
-2. Or, if the type owns its own representation (`Color` knows how to pack-RGBA), put the serializer on the type as a static method (`Color::toPackedRGBA()` / `Color::fromPackedRGBA(uint32_t)`).
-3. Then call it from the format code. Standardize naming on `read` / `write` to match `BinaryReader::readU32` / `BinaryWriter::writeU32`; do not introduce `encode` / `decode` / `pack` / `unpack` aliases.
-
-## When the wrapper doesn't exist yet
-
-If you need a primitive `IRMath` doesn't expose, **add the wrapper to `engine/math/` first**, then call it. Don't reach for `glm::` "just for now" — that's the path that produced the backlog this rule exists to clean up.
-
-Known ergonomic gap: `IRMath::clamp` / `IRMath::max` / `IRMath::min` take **one** type parameter, so the mixed vector/scalar form `clamp(vec3, 0.0f, 1.0f)` that `glm::` accepts does not compile. Spell the bounds as vectors (`clamp(v, vec3(0.0f), vec3(1.0f))`) rather than reaching back for `glm::`.
-
-The math library may itself wrap `glm::*` / `std::*` internally — that is the **only** place those names should appear.
+Serializers for `IRMath::vec*`, `IRMath::Color`, `IRMath::quat`, … are shared
+infrastructure, never inline in a format-specific `.cpp`. Add a missing one
+to `engine/asset/include/irreden/asset/math_binary_io.hpp` under
+`namespace IRMath::BinaryIO` (the inline bodies need the full
+`BinaryWriter` / `BinaryReader` types, and `engine/math/` must not depend on
+`engine/asset/`), or as a static method on a type that owns its
+representation (`Color::toPackedRGBA()` / `Color::fromPackedRGBA(uint32_t)`).
+Name them `read` / `write` to match `BinaryReader::readU32`; no `encode` /
+`decode` / `pack` / `unpack` aliases.
 
 ## Allowlist (do NOT flag these)
 
-- Anything in `engine/math/**` itself.
-- The graphics-backend interop layer at `engine/render/include/irreden/render/backend/**` — when wiring an actual `glm` value into a `glDrawElements`-shaped API, raw glm types are the surface.
-- Shader source: `*.glsl`, `*.metal`. These have their own native math; the rule is about C++ files.
-- Standalone tools under `tools/**` that do not link the engine library (`jitter_probe`, `img_diff`): IRMath lives in `engine/math/` and is genuinely unavailable there, so `std::`/`<cmath>` math is correct. (Also outside this rule's `paths:` scope — don't raise the nit from prose alone.)
-- `engine/profile/**`. Profile is one of the three lowest modules (`common/`, `math/`, `profile/`) and does not link `IrredenEngineMath` — its only uses are index clamping (`values[std::min(n * 95 / 100, n - 1)]`), so adding a link edge from the logging module to math buys nothing. If `engine/profile` ever gains a math dependency for other reasons, drop this carve-out and migrate the sites.
+- `engine/math/**`.
+- The graphics-backend interop layer `engine/render/include/irreden/render/backend/**`.
+- Shader source (`*.glsl`, `*.metal`).
+- Standalone tools under `tools/**` that do not link the engine library
+  (also outside this rule's `paths:`).
+- `engine/profile/**` — does not link `IrredenEngineMath`; drop this
+  carve-out if it ever gains a math dependency.
 
 ## Detection
 
-Grep the rule's `paths:` scope minus the allowlist above, skipping `//`-comment lines:
-
-```
-pattern: '\bglm::\w+|\bstd::(sin|cos|tan|sqrt|abs|min|max|clamp|floor|ceil|round|pow|log2|atan2|asin|acos|cbrt|fmod)\b'
-glob:    'engine/**/*.{hpp,cpp,h,cc}', 'creations/**/*.{hpp,cpp,h,cc}'
-skip:    engine/math/**, engine/profile/**,
-         engine/render/include/irreden/render/backend/**, tools/**
-```
-
-Tree-wide, run it through `fleet-rules-sweep` — this rule's `paths:` names
-`creations/**`, and an `rg`/`Grep` rooted **at** `creations/` walks 2 of its
-273 files and reports a false clean (#2739). The skip-list goes in as negation
-globs and the `//`-comment skip goes in the pattern, so the exit code is the
-whole result: **1** = real clean pass, **0** = violations, **2** = the scope
-resolved to zero files — the guard that stops a mis-scoped sweep from
-masquerading as success.
+Tree-wide, through `fleet-rules-sweep` (exit **1** = clean pass, **0** =
+violations, **2** = scope resolved to zero files). `rg` cannot cover this
+scope at any root or glob: three tracked files under `creations/` sit in
+re-ignored directories (`creations/bazel_test/`,
+`creations/editors/font_maker/`) that ripgrep never walks, and `--no-ignore`
+would pull in the private `creations/game` clone.
 
 ```
 fleet-rules-sweep \
@@ -95,63 +89,10 @@ fleet-rules-sweep \
   --pattern '^(?!\s*(//|\*)).*(\bglm::\w+|\bstd::(sin|cos|tan|sqrt|abs|min|max|clamp|floor|ceil|round|pow|log2|atan2|asin|acos|cbrt|fmod)\b)'
 ```
 
-**There is no correct `rg` spelling for this scope** — the wrapper is not a
-convenience here. `rg` honours `.gitignore`; `git ls-files` does not apply it to
-*tracked* files. Three tracked files under `creations/` sit in re-ignored
-directories (`.gitignore:40` `creations/*` with no re-inclusion for
-`bazel_test`, and `.gitignore:45` re-ignoring `creations/editors/font_maker`),
-so ripgrep cannot see them at any search root or glob spelling:
-
-```
-creations/bazel_test/main.cpp
-creations/editors/font_maker/main.cpp
-creations/editors/font_maker/systems/system_font_maker.hpp
-```
-
-Measured on this scope: the repo-top glob form covers **769** files, the sweep
-**772**. That is a second false-clean class stacked on #2739's — the walker
-one is fixed by rooting the glob at the repo top, this one is not fixable in
-`rg` at all (short of `--no-ignore`, which then pulls in the gitignored private
-`creations/game` clone and violates cross-repo isolation).
-
-If you must hand-roll it anyway, glob from the repo top — never a path rooted
-at `creations/` — and treat any count below the expected coverage as a failed
-sweep, not a clean one:
-
-```
-rg -n -g 'engine/**/*.{hpp,cpp,h,cc}' -g 'creations/**/*.{hpp,cpp,h,cc}' '<pattern>' .
-git ls-files engine creations | grep -cE '\.(hpp|cpp|h|cc)$'   # 795 minus 23 skipped = 772
-```
-
-Compare against that extension-filtered count, not `wc -l` over every tracked
-file — `git ls-files engine creations | wc -l` is 1231, and measuring 772
-against *that* reads like a walker failure when it is the correct coverage.
-
-Unlike the `simplify` math check and review-pr, which read a **diff**, this
-form measures the standing population. Run it tree-wide — the diff-scoped
-checks are structurally blind to violations that were already in the tree
-when they landed, which is how the count below went unmeasured for months
-(#2735).
+The `simplify` math check and `review-pr` read a diff; this form measures
+the standing population.
 
 ## Live deviations
 
-**Zero.** Swept tree-wide 2026-07-31 (#2735): 73 sites across 18 files
-migrated (11 `glm::`, 62 `std::`), and this register is the whole answer —
-there is no external status file. The Detection sweep above exits **1**
-(`swept 772 file(s)`) — a clean pass that covered something, not a walker
-that scoped itself into the hole. The sweep is one command; re-run it rather
-than trusting this line.
-
-Two rules for whoever adds the next entry:
-
-- **Keep the register inline and dated.** If it delegates to an external
-  status file, that file's existence must be verified against the tree —
-  this section spent months pointing at a `.fleet/status/` path that was
-  never created, and the sibling registers failed the same way (#2726,
-  #2733).
-- **A `round` on a position is `roundHalfUp`, not `round`.** `glm::round` /
-  `IRMath::round` are round-half-away-from-zero and disagree with the GPU
-  mirror at negative half-integers, which is the CPU↔GPU divergence §2
-  exists to prevent. Use `IRMath::roundHalfUp` / `roundVec3HalfUp` for any
-  position→cell assignment (see #2735 for a latent instance that sat in the
-  render-verify reference demo).
+**Zero.** This register is the whole record — there is no external status
+file. The Detection sweep exits 1 over the full scope.
