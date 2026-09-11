@@ -1,33 +1,30 @@
 # Script-mode entry point for the changed-lines clang-format check (#3187).
 #
-# run_clang_format_changed.cmake hard-requires QUALITY_FILE_LIST — a
-# CONFIGURE-time artifact (${PROJECT_BINARY_DIR}/irreden_quality_files.cmake,
-# written by irreden_add_quality_targets), whose only non-test caller is that
-# same function. So the executor exists and is exercised
-# (scripts/fleet/tests/test_format_changed_line_scoping.sh), but it had no way
-# to run without pulling the whole FetchContent graph and a compiler. This
-# wrapper is what lets CI run it on its own:
-#
 #   cmake -DPROJECT_ROOT=<repo-root> -DCLANG_FORMAT_BIN=<clang-format> \
 #         [-DFORMAT_DIFF_BASE=<commit>] \
 #         -P cmake/run_clang_format_changed_standalone.cmake
 #
-# Same shape, and same reason, as cmake/run_header_checks_standalone.cmake
-# (#2794): irreden_collect_quality_files is a pure file(GLOB_RECURSE) and the
-# executor only reads git and rewrites text, so neither needs a configure.
+# run_clang_format_changed.cmake hard-requires QUALITY_FILE_LIST — a
+# CONFIGURE-time artifact (${PROJECT_BINARY_DIR}/irreden_quality_files.cmake,
+# written by irreden_add_quality_targets). Supplying that list without a
+# configure is this wrapper's whole job: it is what lets CI run the executor
+# without pulling the FetchContent graph and a compiler. Same shape, and same
+# reason, as cmake/run_header_checks_standalone.cmake —
+# irreden_collect_quality_files is a pure file(GLOB_RECURSE) and the executor
+# only reads git and rewrites text, so neither needs a configure.
 #
 # ONE DELIBERATE DIFFERENCE from that sibling: this call is BARE — no
 # INCLUDE_RENDER_BACKENDS. Copying the header shim verbatim is the natural
 # move and is wrong here. Per .claude/rules/cpp-globals.md §Detection/Scope
 # the wide list backs the header-convention CORRECTNESS gate, while the style
-# tools deliberately take the narrow one — "the style-tool list is the one
-# legitimate bare call". clang-format is a style tool: widening it here would
+# tools deliberately take the narrow one — that table lists this call as one of
+# the two legitimate bare calls. clang-format is a style tool: widening it would
 # start rewriting the generated GL wrapper
 # (engine/render/include/irreden/render/gl_wrap/) and the Metal backend, which
 # are excluded from formatting on purpose. The list is collected rather than
-# hand-rolled in the workflow for the opposite reason — a file list that
-# drifts from irreden_collect_quality_files is the #2727/#2889 failure class
-# in a third dimension.
+# hand-rolled in the workflow for the opposite reason — a hand-rolled list
+# drifts from irreden_collect_quality_files, and a gate whose file set
+# disagrees with the tools' is enforcing something nobody can reproduce.
 #
 # Fix mode is the only mode the executor has; the caller gates on
 # `git diff --exit-code` afterwards.
@@ -66,8 +63,8 @@ if(quality_files STREQUAL "")
     message(FATAL_ERROR "No files found under ${PROJECT_ROOT}.")
 endif()
 list(LENGTH quality_files _quality_count)
-# A green format run looks identical whether it scanned 839 files or zero, so
-# say how many were collected — a pasted CI log then carries its own proof of
+# A green format run looks identical whether it scanned the whole quality
+# list or nothing at all, so say how many files were collected — a pasted CI log then carries its own proof of
 # having looked at something (same reasoning as fleet-rules-sweep's coverage
 # line).
 message(STATUS

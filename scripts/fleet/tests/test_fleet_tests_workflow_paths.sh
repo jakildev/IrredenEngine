@@ -60,8 +60,7 @@ fi
 # new such workflow becomes its subject with no edit here. This list cannot
 # track that on its own; T4 in test_workflow_paths_sync.sh asserts the two
 # agree, so the gap fails a suite instead of silently costing the new workflow
-# its trigger — format-check.yml (#3187) is the fifth, and arrived exactly that
-# way.
+# its trigger — format-check.yml (#3187) is the fifth.
 #
 # `cmake/run_clang_format_changed_standalone.cmake` is listed separately from
 # its sibling `cmake/run_clang_format_changed.cmake` on purpose: entries are

@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
 # Positive control for cmake/run_clang_format_changed_standalone.cmake (#3187).
 #
-# The shim is what gives the changed-lines formatter a CI path: the executor
-# it wraps hard-requires QUALITY_FILE_LIST, a configure-time artifact, so
-# before this there was no way to run it without the whole FetchContent graph
-# and a compiler. .github/workflows/format-check.yml is its only caller.
+# The shim is what gives the changed-lines formatter a CI path: the executor it
+# wraps hard-requires QUALITY_FILE_LIST, a configure-time artifact, and the
+# shim is what supplies it without a configure.
+# .github/workflows/format-check.yml is its only caller.
 #
 # A green format gate looks identical whether it scanned the PR's diff, the
-# wrong diff, or nothing at all — the three failure modes below are each
-# invisible in a passing run, so each gets an arm:
+# wrong diff, or nothing at all, so each of those failure modes — invisible in
+# a passing run — gets an arm:
 #
 #   - the shim runs with no configure at all and collects a non-empty list
 #   - it collects the NARROW list (no INCLUDE_RENDER_BACKENDS), so the gate
 #     never rewrites the generated GL wrapper or the Metal backend, which are
 #     excluded from formatting on purpose (.claude/rules/cpp-globals.md
-#     §Detection/Scope — "the style-tool list is the one legitimate bare call")
+#     §Detection/Scope lists this call among the legitimate bare ones)
 #   - FORMAT_DIFF_BASE wins over the @{upstream} probe rather than losing to
 #     it, and moves BOTH the file set and the line ranges — parameterizing
 #     only the three-dot file-list range yields a gate that picks the right
