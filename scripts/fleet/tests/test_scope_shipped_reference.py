@@ -28,6 +28,10 @@ Covers the false-positive classes:
   trusted (non-plan) title but its diff is entirely `.fleet/` files; an
   all-`.fleet/` diff ships no code scope, so it falls through to the body
   closing-verb check.
+* #2091 ← #3020 (layer 9) — a render-scoped verification PR deliberately leaves
+  the issue open for a later platform phase, but changes only `docs/`; the title
+  ref therefore falls through to the body closing-verb check. The same applies
+  to a mixed `.fleet/` + `docs/` diff.
 
 The module is a real .py, but it is loaded via importlib (mirroring
 test_enrich_stackable_blocker_prs.py) so the test runs regardless of cwd.
@@ -388,6 +392,33 @@ class PrReferencesIssue(unittest.TestCase):
         # An empty diff list carries no signal — treat as no-info, keep title-trust.
         self.assertTrue(pr_references_issue(self._STEWARD_TITLE_2392, "", 2385, []))
 
+    # --- documentation diff — all non-shipping paths (#2091 <- #3020 — layer 9) ---
+
+    _VERIFY_TITLE_3020 = (
+        "render: GL Phase-0 verification of world-placed detached "
+        "re-voxelize cast (#2091)")
+
+    def test_documentation_diff_title_ref_rejected(self):
+        self.assertFalse(pr_references_issue(
+            self._VERIFY_TITLE_3020, "No partial close.", 2091,
+            ["docs/design/detached-revoxelize-world-light.md"]))
+
+    def test_nonshipping_union_diff_title_ref_rejected(self):
+        files = [".fleet/plans/issue-2298.md",
+                 "docs/design/voxel-occlusion-culling.md"]
+        self.assertFalse(pr_references_issue(
+            "docs/render: close out #2298 — trace-invariant record + plan "
+            "file (impl shipped in #2475)", "", 2475, files))
+
+    def test_documentation_diff_still_ships_via_body_closing_verb(self):
+        self.assertTrue(pr_references_issue(
+            self._VERIFY_TITLE_3020, "Closes #2091", 2091,
+            ["docs/design/detached-revoxelize-world-light.md"]))
+
+    def test_root_markdown_keeps_title_trust(self):
+        self.assertTrue(pr_references_issue(
+            "docs: update README for #2091", "", 2091, ["README.md"]))
+
 
 class SelectShippedPr(unittest.TestCase):
     def test_empty_candidates(self):
@@ -488,6 +519,26 @@ class SelectShippedPr(unittest.TestCase):
         impl = _pr(2500, "#2385: render: fog vision fix", "Closes #2385",
                    files=["engine/render/fog.cpp"])
         self.assertEqual(select_shipped_pr([impl], 2385)["number"], 2500)
+
+    def test_real_world_2091_documented_by_3020(self):
+        pr = _pr(
+            3020,
+            "render: GL Phase-0 verification of world-placed detached "
+            "re-voxelize cast (#2091)",
+            "No `Closes #2091` — deliberate. Phase 1 remains outstanding.",
+            files=["docs/design/detached-revoxelize-world-light.md"],
+        )
+        self.assertIsNone(select_shipped_pr([pr], 2091))
+        fleet_control = _pr(
+            3020, pr["title"], pr["body"],
+            files=[".fleet/plans/issue-2091.md"],
+        )
+        self.assertIsNone(select_shipped_pr([fleet_control], 2091))
+        impl_control = _pr(
+            3020, pr["title"], pr["body"],
+            files=["engine/render/fog.cpp"],
+        )
+        self.assertEqual(select_shipped_pr([impl_control], 2091)["number"], 3020)
 
 
 if __name__ == "__main__":
