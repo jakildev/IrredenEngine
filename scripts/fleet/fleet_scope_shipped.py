@@ -115,7 +115,7 @@ stripped first (layer 5), so a verb quoted in backticks does not count. A
 range endpoint, (layer 4) when the title is a plan/design-doc title, (layer 6)
 when the ref is marked deferred, (layer 7) when the ref is marked prep, or
 (layers 8-9) when the PR's diff contains only ``.fleet/`` and ``docs/`` paths:
-all five
+all six
 shapes name issues they enumerate, plan, defer, prepare, account for, or document
 without implementing.
 """
