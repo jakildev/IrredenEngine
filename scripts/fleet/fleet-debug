@@ -112,6 +112,7 @@ CANONICAL = [
 NO_TRIGGER = {"queue-manager", "queue-manager-ingest"}
 
 SUPPRESS_SUFFIX = ".empty-suppressed"
+STATE_MARKER_SUFFIXES = (SUPPRESS_SUFFIX, ".stalled-rearm")
 
 
 def _mtime(path):
@@ -135,7 +136,7 @@ def _discover_extra_roles():
             name = entry.name
             if name.startswith(".") or name.endswith(".tmp"):
                 continue
-            if name.endswith(SUPPRESS_SUFFIX):
+            if name.endswith(STATE_MARKER_SUFFIXES):
                 continue
             found.add(name)
     try:

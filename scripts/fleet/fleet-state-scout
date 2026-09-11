@@ -3483,9 +3483,8 @@ def update_role_trigger(role: str, projection) -> bool:
     # distinguish "suppressed" (hash advanced, trigger deliberately skipped)
     # from "dispatched then consumed" (trigger touched, dispatcher rm'd it),
     # so `fleet-debug triggers` reads this marker for its suppression column.
-    # Kept in SEEN_DIR beside the bare seen file; the ".empty-suppressed"
-    # suffix never collides with a role name, and nothing globs SEEN_DIR
-    # (roles are read by exact name).
+    # Kept in SEEN_DIR beside the bare seen file; state-marker suffixes are
+    # excluded from `fleet-debug triggers` role discovery.
     suppressed_marker = SEEN_DIR / f"{role}.empty-suppressed"
     if new_hash == old_text:
         return False

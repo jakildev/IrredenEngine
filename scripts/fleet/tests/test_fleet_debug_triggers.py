@@ -119,17 +119,19 @@ class FleetDebugTriggers(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertTrue(any(ln.startswith("future-role") for ln in r.stdout.splitlines()))
 
-    def test_marker_file_is_not_listed_as_a_role(self):
-        # `worker.empty-suppressed` must feed the worker's column, never appear
-        # as its own role line. The on-disk suffix carries the `empty-` prefix
-        # that the column label does not — a deliberate asymmetry, so this also
-        # pins that the file name is spelled `.empty-suppressed` while the
-        # column it feeds reads `suppressed=`.
+    def test_marker_files_are_not_listed_as_roles(self):
+        # State markers feed role behavior and diagnostics, never role discovery.
+        # The on-disk suppression suffix carries the `empty-` prefix that the
+        # column label does not — a deliberate asymmetry, so this also pins that
+        # the file name is spelled `.empty-suppressed` while the column it feeds
+        # reads `suppressed=`.
         self._write(self.seen / "worker.empty-suppressed", "abc\n")
+        self._write(self.seen / "worker.stalled-rearm", "def\n")
         r = self._run()
         self.assertEqual(r.returncode, 0, r.stderr)
         roles = [ln.split()[0] for ln in r.stdout.splitlines() if ln.strip()]
         self.assertNotIn("worker.empty-suppressed", roles)
+        self.assertNotIn("worker.stalled-rearm", roles)
         lines = {ln.split()[0]: ln for ln in r.stdout.splitlines() if ln.strip()}
         self._assert_suppressed(lines["worker"], "yes")
 
