@@ -92,20 +92,26 @@ still see them. Only genuinely vendored code
 `_deps/` / `third_party/`) is rejected in both scopes. **Every consumer of
 the executor must pass `INCLUDE_RENDER_BACKENDS`** — new *and* pre-existing:
 a gate handed the formatter's subset reports green over coverage it cannot
-reach (#2815). The collector has three call sites; the two that feed the
-header-convention executor must agree, and the third is deliberately narrow:
+reach (#2815). The collector has four call sites; the two that feed the
+header-convention executor must agree, and the other two are deliberately
+narrow:
 
 | Call site | Backs | Scope |
 |---|---|---|
 | `cmake/ir_quality_tools.cmake` (`irreden_add_quality_targets`, the `irreden_header_check_files` list) | the `header-checks` / `lint` targets | **wide** |
 | `cmake/run_header_checks_standalone.cmake` | the `header-checks` CI workflow | **wide** |
 | `cmake/ir_quality_tools.cmake` (`irreden_add_quality_targets`, the `irreden_quality_files` list) | `format` / `format-check` / `format-changed` / clang-tidy | narrow, on purpose |
+| `cmake/run_clang_format_changed_standalone.cmake` | the `format-check` CI workflow (#3187) | narrow, on purpose |
 
-All three are greppable in one pass — `rg -n 'irreden_collect_quality_files'
-cmake/` returns the function definition and those three call sites (plus a few
+All four are greppable in one pass — `rg -n 'irreden_collect_quality_files'
+cmake/` returns the function definition and those four call sites (plus a few
 comment mentions; the call sites are the lines with an open paren). A hit that
-feeds the header checks without `INCLUDE_RENDER_BACKENDS` is the bug; the
-style-tool list is the one legitimate bare call. Phrasing this as "a **new**
+feeds the header checks without `INCLUDE_RENDER_BACKENDS` is the bug; the two
+style-tool lists are the legitimate bare calls. The second of those is where
+copying the header shim verbatim goes wrong: that shim's own comment presents
+`INCLUDE_RENDER_BACKENDS` as load-bearing, and it is — *for a correctness
+gate*. clang-format is a style tool, so its CI path takes the narrow list for
+the same reason the row above it does. Phrasing this as "a **new**
 consumer" is what let #2889 sit: the shim was a *pre-existing* consumer, so
 #2818 widened the targets and left the only CI-gating path on 564 headers
 against the targets' 573 — the ban enforced locally and unenforced on merge

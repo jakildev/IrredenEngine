@@ -1,0 +1,155 @@
+name: Format Check
+
+# The repo's clang-format gate, scoped to the lines a PR actually changes.
+#
+# CHANGED-LINES, NOT TREE-WIDE. A tree-wide gate is red by construction here:
+# 162 of the 839 files on the narrow quality list carry pre-existing drift
+# (measured 2026-09-10 with the version pinned below). The repo's *enforced*
+# invariant is changed-lines formatting — the `format-changed` target, #2719:
+# "a touched file's pre-existing clang-format drift stays out of your diff" —
+# so whole-file cleanliness was never the maintained property, and gating on it
+# would demand exactly the whole-tree reformat #2719 was built to avoid.
+#
+# Linux, and standalone rather than a step in a build job: clang-format needs no
+# configure, no compiler and no GL, and
+# cmake/run_clang_format_changed_standalone.cmake is what keeps that true. Same
+# shape as header-checks.yml (#2794), python-lint.yml, fleet-tests.yml (#2712)
+# and render-harness-tests.yml (#2825) — each went standalone after a step
+# behind a shared Windows `Configure` turned out to be inert (#2718).
+#
+# THE VERSION PIN IS LOAD-BEARING, and 18 is the wrong number for this tree.
+# Measured over the 839-file narrow list on 2026-09-10:
+# clang-format 18.1.8 and 22.1.3 disagree on 114 files / 3453 lines — almost
+# entirely `AlignAfterOpenBracket: BlockIndent`, which clang-format 19+ applies
+# to call sites, function definitions and lambdas that 18 left alone. The tree
+# is already formatted the newer way: 677 of 839 files are clean under 22.1.3
+# against 591 under 18.1.8. A pin of 18 would therefore red PRs for writing the
+# style the repo already uses, so the pin tracks the tree rather than the
+# retired job's number.
+#
+# Installed from PyPI rather than apt so the pin is exact (patch level, like
+# python-lint.yml's ruff pin) rather than a distro's notion of a major version.
+# Verified 2026-09-10: the PyPI 22.1.3 wheel and a Homebrew LLVM 22.1.3 produce
+# byte-identical output over all 839 files (measured on macOS/arm64), so an
+# author on a host whose clang-format matches the pin reproduces the gate's
+# verdict exactly, and any author can reproduce it by installing the pinned
+# wheel. Bumping the pin is its own change — a clang-format release that
+# changes an opinion must not red an unrelated PR.
+#
+# Path-filtered to the surface clang-format actually rewrites (the
+# irreden_collect_quality_files search roots) plus the files that implement the
+# gate. The two `paths:` blocks are duplicated because GitHub Actions has no
+# YAML anchors — keep them in sync; scripts/fleet/tests/test_workflow_paths_sync.sh
+# ratchets that they do, and its T4 ratchets that fleet-tests.yml triggers on
+# this file.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'engine/**'
+      - 'creations/**'
+      - 'test/**'
+      - 'tools/**'
+      - 'cmake/ir_quality_tools.cmake'
+      - 'cmake/run_clang_format_changed.cmake'
+      - 'cmake/run_clang_format_changed_standalone.cmake'
+      - 'scripts/fleet/tests/test_format_changed_line_scoping.sh'
+      - 'scripts/fleet/tests/test_format_changed_standalone.sh'
+      - '.clang-format'
+      - '.github/workflows/format-check.yml'
+  pull_request:
+    paths:
+      - 'engine/**'
+      - 'creations/**'
+      - 'test/**'
+      - 'tools/**'
+      - 'cmake/ir_quality_tools.cmake'
+      - 'cmake/run_clang_format_changed.cmake'
+      - 'cmake/run_clang_format_changed_standalone.cmake'
+      - 'scripts/fleet/tests/test_format_changed_line_scoping.sh'
+      - 'scripts/fleet/tests/test_format_changed_standalone.sh'
+      - '.clang-format'
+      - '.github/workflows/format-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # Bump deliberately, never incidentally — see the header comment.
+  CLANG_FORMAT_VERSION: '22.1.3'
+
+jobs:
+  format-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # The gate is a diff against the PR's base commit; the default
+          # shallow fetch does not have it.
+          fetch-depth: 0
+
+      - name: Install pinned clang-format
+        run: |
+          python3 -m venv "$RUNNER_TEMP/cf"
+          "$RUNNER_TEMP/cf/bin/pip" install --quiet \
+              "clang-format==${CLANG_FORMAT_VERSION}"
+          echo "CLANG_FORMAT_BIN=$RUNNER_TEMP/cf/bin/clang-format" >> "$GITHUB_ENV"
+          "$RUNNER_TEMP/cf/bin/clang-format" --version
+
+      # A green format run looks identical whether it scanned the diff or
+      # nothing at all, so prove the line scoping still holds before trusting
+      # it — same reasoning as header-checks.yml's control step. These suites
+      # are hermetic (throwaway git repos under $TMPDIR) and never touch the
+      # checkout.
+      - name: Positive-control the checker
+        run: |
+          bash scripts/fleet/tests/test_format_changed_line_scoping.sh
+          bash scripts/fleet/tests/test_format_changed_standalone.sh
+
+      # Resolving the base is the one step that can silently gate nothing, so
+      # it fails loudly rather than falling through to "no diff".
+      #
+      # On a `pull_request` event actions/checkout checks out refs/pull/N/merge,
+      # not the PR head. That is fine and in fact exactly the range wanted:
+      # base.sha is an ancestor of the merge commit, so `<base.sha>...HEAD` and
+      # `git merge-base <base.sha> HEAD` both reduce to the PR's own changes.
+      - name: Resolve the diff base
+        run: |
+          case "${{ github.event_name }}" in
+            pull_request) base='${{ github.event.pull_request.base.sha }}' ;;
+            push)         base='${{ github.event.before }}' ;;
+            *)            base='' ;;   # workflow_dispatch: no event base
+          esac
+          # `before` is the all-zero sha on a branch's first push and can point
+          # at a discarded commit after a force-push; workflow_dispatch carries
+          # no base at all. Fall back to the previous commit in each case.
+          if ! git rev-parse --verify --quiet "${base}^{commit}" >/dev/null 2>&1; then
+            base="$(git rev-parse --verify --quiet 'HEAD~1^{commit}' || true)"
+          fi
+          if [ -z "$base" ]; then
+            echo "could not resolve a diff base for ${{ github.event_name }}" >&2
+            exit 1
+          fi
+          echo "resolved diff base: $base"
+          echo "FORMAT_DIFF_BASE=$base" >> "$GITHUB_ENV"
+
+      # Fix mode is the executor's only mode; `git diff --exit-code` below is
+      # the gate. Running it this way means a red run also prints the exact
+      # patch the author needs to apply.
+      - name: Format the changed lines
+        run: |
+          cmake -DPROJECT_ROOT="$GITHUB_WORKSPACE" \
+                -DCLANG_FORMAT_BIN="$CLANG_FORMAT_BIN" \
+                -DFORMAT_DIFF_BASE="$FORMAT_DIFF_BASE" \
+                -P cmake/run_clang_format_changed_standalone.cmake
+
+      - name: Fail if the changed lines were not formatted
+        run: |
+          if ! git diff --exit-code; then
+            echo "::error::clang-format ${CLANG_FORMAT_VERSION} rewrote lines this change touches." >&2
+            echo "Run \`fleet-build --target format-changed\` (or apply the diff above) and push." >&2
+            exit 1
+          fi

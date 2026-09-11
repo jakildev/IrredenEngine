@@ -105,10 +105,10 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   **not** `fleet-tests.yml`-scoped: `tests/test_workflow_paths_sync.sh`
   (#2929) derives the workflow population from a `.github/workflows/*.yml`
   glob and checks every workflow that declares both blocks
-  (`fleet-tests.yml`, `header-checks.yml`, `perf-gate.yml`,
-  `python-lint.yml`, and `render-harness-tests.yml` today). Its
-  *population* needs no registration step;
-  its *trigger* does. Those workflows live outside `scripts/fleet/**`, so
+  (`fleet-tests.yml`, `format-check.yml`, `header-checks.yml`,
+  `perf-gate.yml`, `python-lint.yml`, and `render-harness-tests.yml`
+  today). Its *population* needs no registration step; its *trigger*
+  does. Those workflows live outside `scripts/fleet/**`, so
   they are themselves out-of-tree subjects and carry entries in
   `OUT_OF_TREE_SUBJECTS` beside the fixed-file ones — a workflow that
   declares both blocks but is missing from `fleet-tests.yml`'s `paths:` is
@@ -117,7 +117,8 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   hand-maintained list cannot follow, so `test_workflow_paths_sync.sh`'s T4
   asserts the agreement directly off the glob: a newly-covered workflow
   fails a suite instead of silently costing itself its trigger —
-  `python-lint.yml` (#2718) is the case that exercised it.
+  `python-lint.yml` (#2718) is the case that exercised it, and
+  `format-check.yml` (#3187) the second.
 - **Bash tests source `tests/lib_assert.sh`** for the PASS/FAIL counters,
   `ok`/`bad`, `assert_eq`/`assert_contains`/`assert_absent`, and the
   `summarize` exit idiom — don't re-copy the helpers into a new test.

@@ -23,16 +23,18 @@ name: Fleet Tests
 # render-harness-tests.yml's scripts/*.py — the two workflows run disjoint
 # suites, and narrowing either back to buy the non-overlap reopens #2859.
 #
-# Six suites reach outside scripts/ entirely for their subject under test —
+# Seven suites reach outside scripts/ entirely for their subject under test —
 # their subjects are listed explicitly below so a PR touching only one of
-# them still runs this workflow (#2786, #2810, #2823, #2859, #2929):
+# them still runs this workflow (#2786, #2810, #2823, #2859, #2929, #3187):
 #   test_format_changed_line_scoping.sh -> cmake/run_clang_format_changed.cmake
+#   test_format_changed_standalone.sh   -> cmake/run_clang_format_changed_standalone.cmake
 #   test_ir_build_dir_resolution.sh     -> engine/tools/lib/concurrency_helpers.sh
 #   test_fleet_transition.sh            -> docs/agents/fleet-state-machine.json
 #   test_lint_rules_commands.py         -> .claude/rules/**, docs/agents/**
 #   test_workflow_paths_sync.sh         -> the other path-filtered workflows
-#                                          (header-checks, perf-gate,
-#                                          python-lint, render-harness-tests)
+#                                          (format-check, header-checks,
+#                                          perf-gate, python-lint,
+#                                          render-harness-tests)
 #   test_lint_python_registry.py        -> ruff.toml
 # test_lint_rules_commands.py's subjects are globs rather than single files
 # — it checks every rules/protocol doc's fenced Detection/command blocks, so
@@ -45,8 +47,9 @@ name: Fleet Tests
 # *derived* (a .github/workflows/*.yml glob) rather than a fixed file, so it
 # can grow without anyone editing this list — T4 in
 # test_workflow_paths_sync.sh is what makes that growth fail loudly instead
-# of silently un-triggering — python-lint.yml (#2718) is an instance: it
-# declares both blocks, so it is that suite's subject and must appear below.
+# of silently un-triggering — python-lint.yml (#2718) and format-check.yml
+# (#3187) are instances: each declares both blocks, so each is that suite's
+# subject and must appear below.
 # The two `paths:` blocks are duplicated because GitHub Actions has no YAML
 # anchors — keep them in sync (same note as header-checks.yml);
 # scripts/fleet/tests/test_fleet_tests_workflow_paths.sh ratchets that they do.
@@ -59,11 +62,13 @@ on:
       - '.claude/rules/**'
       - 'docs/agents/**'
       - '.github/workflows/fleet-tests.yml'
+      - '.github/workflows/format-check.yml'
       - '.github/workflows/header-checks.yml'
       - '.github/workflows/perf-gate.yml'
       - '.github/workflows/python-lint.yml'
       - '.github/workflows/render-harness-tests.yml'
       - 'cmake/run_clang_format_changed.cmake'
+      - 'cmake/run_clang_format_changed_standalone.cmake'
       - 'engine/tools/lib/concurrency_helpers.sh'
       - 'docs/agents/fleet-state-machine.json'
       - 'ruff.toml'
@@ -73,11 +78,13 @@ on:
       - '.claude/rules/**'
       - 'docs/agents/**'
       - '.github/workflows/fleet-tests.yml'
+      - '.github/workflows/format-check.yml'
       - '.github/workflows/header-checks.yml'
       - '.github/workflows/perf-gate.yml'
       - '.github/workflows/python-lint.yml'
       - '.github/workflows/render-harness-tests.yml'
       - 'cmake/run_clang_format_changed.cmake'
+      - 'cmake/run_clang_format_changed_standalone.cmake'
       - 'engine/tools/lib/concurrency_helpers.sh'
       - 'docs/agents/fleet-state-machine.json'
       - 'ruff.toml'
