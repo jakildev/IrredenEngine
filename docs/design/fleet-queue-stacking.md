@@ -84,10 +84,13 @@ Both transitions are **edge-triggered** off the scout's
   drops out of `human_approved[]`.
 - **Remove path** — once queued, a blocked task has left `human_approved[]`, so
   the removal can't be sourced there. It is sourced instead from
-  `tasks.open[]` (the `fleet:queued` surface): the scout's
-  `_ingest_unblock_candidates` yields any open task that carries `fleet:blocked`
-  but whose `resolve_blocked_by` has reduced `blocked_by` to `(none)` — i.e.
-  the last blocker just closed. That candidate enters the projection (the hash
+  `tasks.open[]` **and** `tasks.in_progress[]` (both `fleet:queued`-surface
+  sections; a task claimed — e.g. via `--stackable-on` — while still blocked
+  moves to `tasks.in_progress[]` and must still be reachable, #2534): the
+  scout's `_ingest_unblock_candidates` yields any task from either section
+  that carries `fleet:blocked` but whose `resolve_blocked_by` (which also
+  covers both sections) has reduced `blocked_by` to `(none)` — i.e. the last
+  blocker just closed. That candidate enters the projection (the hash
   flips), ingest re-fires, live-rechecks the blockers, and removes
   `fleet:blocked`. The next tick the candidate is gone (label cleared) and the
   hash settles — the same "one wasted no-op iteration" the add path has always
