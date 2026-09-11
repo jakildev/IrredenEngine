@@ -1,21 +1,17 @@
 #!/usr/bin/env bash
-# witness — fleet health monitor: polls agent heartbeats every 60 seconds
-# and alerts when an agent's heartbeat goes stale.
+# witness — fleet health monitor for fleet-dispatcher pid liveness.
 #
-# Each agent role writes a heartbeat to ~/.fleet/heartbeats/<agent-name>
-# every loop iteration. Witness detects hung agents (alive process but
-# stuck) by comparing the heartbeat file's mtime against a per-role
-# staleness threshold.
+# Per-agent heartbeat staleness monitoring is retired because on-demand,
+# loop-less architects may idle for arbitrary periods, making timestamp age
+# non-diagnostic of their health.
 #
-# On staleness: logs to ~/.fleet/logs/witness.log and writes
-# ~/.fleet/alerts/<agent>.stuck. Healthy agents have their alert files
-# cleared automatically.
+# A dead dispatcher is logged to ~/.fleet/logs/witness.log and writes
+# ~/.fleet/alerts/fleet-dispatcher.stuck. A live dispatcher clears its alert.
 #
 # Every condition that warns — currently a dead dispatcher —
 # holds until a human acts, so each warning escalates-then-quiets on its own
 # counter: loud for the first N consecutive passes, then silent while the
-# alert file keeps being refreshed every pass. A healthy pass for that subject
-# (a fresh heartbeat, a live dispatcher pid, a rostered heartbeat) clears its
+# alert file keeps being refreshed every pass. A live dispatcher clears its
 # counter, so a later recurrence escalates from scratch.
 #
 # Usage:
