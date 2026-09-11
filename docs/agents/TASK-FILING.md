@@ -1,14 +1,7 @@
 # TASK-FILING.md — filing issues into the fleet queue
 
-How fleet roles file new work as GitHub issues. Used by the architect
-(files work it identifies) and the workers (file follow-ups +
-escalations). All point here rather than restating the convention.
-
-The label state machine these issues flow through lives in
-[`FLEET.md § Issue/PR labeling discipline`](FLEET.md). This doc covers
-the filing mechanics only.
-
----
+How fleet roles file work as GitHub issues. Label semantics and the state
+machine: [`fleet-labels-reference.md`](fleet-labels-reference.md).
 
 ## Single issue
 
@@ -18,20 +11,16 @@ File with **no labels**:
 gh issue create --repo jakildev/IrredenEngine --title "<short title>" --body "<body>"
 ```
 
-(For game-side work: `--repo jakildev/irreden`.)
+(`--repo jakildev/irreden` for game-side work.)
 
-Do NOT pre-apply `fleet:task`, `fleet:queued`, `fleet:needs-plan`,
-`fleet:opus` / `fleet:sonnet`, or any other state label. State labels
-are owned by specific roles (reviewers, the human) and by the scout's
-triage flow. **Author-side filing adds zero state labels** and lets the
-human stamp `human:approved` when they want it picked up; the scout
-ingests it on its next pass and stamps the rest. The exception is the
-**agent-approved follow-up lane** below, whose labels
-(`fleet:agent-approved`, `fleet:no-plan`, `fleet:plan-review`-with-a-plan)
-are deliberately filer-owned — use it when the follow-up qualifies.
+State labels (`fleet:task`, `fleet:queued`, `fleet:needs-plan`,
+`fleet:opus` / `fleet:sonnet`, …) belong to reviewers, the human, and the
+scout's ingest: the human stamps `human:approved` and the scout adds the
+rest. The one filer-owned exception is the agent-approved follow-up lane
+below.
 
-The body should include these standalone lines (the scout's queue-ingest
-and `fleet-claim`'s blocker gate parse them):
+The body carries these standalone lines (the scout's ingest and
+`fleet-claim`'s blocker gate parse them):
 
 - **Area:** e.g. `engine/render`, `engine/math`, `docs`
 - **Model:** `opus` or `sonnet`
@@ -39,151 +28,92 @@ and `fleet-claim`'s blocker gate parse them):
 - **Acceptance criteria** — the definition of done: one line per criterion,
   each naming the validator that proves it ([`VALIDATION.md`](VALIDATION.md))
   and the reading it must show
-- **Context** — why this matters, what you observed
+- **Context** — what you observed and why it matters
 
-Optional, when the work serves a standing objective
-([`docs/design/objectives/`](../design/objectives/README.md)):
+Optional:
 
-- **Objective:** `<slug>` — the objective file's basename. No parser
-  reads it; the architect's objectives sweep and the human use it to
-  attribute shipped work to the objective's progress ledger.
+- **Objective:** `<slug>` — the objective file's basename under
+  [`docs/design/objectives/`](../design/objectives/README.md); read by the
+  objectives sweep and the human, not by a parser.
+- **Host:** `linux` | `windows` | `macos` — for work that runs on one OS
+  only (a `linux-debug` reference bless, a Windows DLL-staging check, a
+  Metal-only capture). The scout projects it as `needs_host` and the
+  dispatcher never elects the task on another host; `fleet-claim` does not
+  enforce it, so a hand-picked claim on the wrong host is refused only by
+  the pane's own read of the body. Finer than `fleet:needs-gl-host`, which
+  lets linux and windows stand in for each other.
 
-Optional, when the task can only be done on one operating system (a
-`linux-debug` reference bless, a Windows DLL-staging check, a Metal-only
-capture):
+### File with a plan
 
-- **Host:** `linux` | `windows` | `macos` — the scout projects it as
-  `needs_host` and the dispatcher never elects the task on another host.
-  Finer than the `fleet:needs-gl-host` label, which only says "a GL
-  host" and lets linux and windows stand in for each other. A body
-  sentence of the form "must run on a Linux host" is read the same way
-  as a backstop; the field is the recommended form. It is a
-  dispatch-side routing signal: unlike the GL label, `fleet-claim` does
-  not enforce it, so a hand-picked claim on the wrong host is refused by
-  nobody — the pane's own read of the body is the last line there.
-
-The issue sits in the backlog until the **human triages and adds
-`human:approved`**. Only then does the scout ingest it.
-
-### File with a plan (the architect default for substantial tasks)
-
-When you (the architect) **planned a task with the human** in a design
-conversation, or the task is substantial enough to need a plan, **post the
-structured `## Plan` comment at file time** — don't leave the plan in the issue
-body. The planning gate in `fleet-queue-ingest` keys on a `## Plan` *comment*
-(per #1932), not the body, so an issue whose plan lives only in the body gets
-bounced to `fleet:needs-plan` and a worker **re-plans work the human already
-shaped** (and may loop back to the human for plan review) — a wasted pass.
-Posting the `## Plan` comment makes the issue **queue directly**, skipping
-`fleet:needs-plan` entirely (the human was already in the planning loop, so no
-further sign-off is needed):
+When the task was planned with the human, or is substantial enough to need
+a plan, post the `## Plan` comment at file time. The planning gate in
+`fleet-queue-ingest` keys on a `## Plan` **comment** — a plan left in the
+body bounces the issue to `fleet:needs-plan` and a worker re-plans it. With
+the comment, the issue queues directly:
 
 ```
 gh issue create --repo jakildev/IrredenEngine --title "<short title>" --body "<body>"
 gh issue comment <N> --repo jakildev/IrredenEngine --body "## Plan
-<structured plan per PLANNING-PROTOCOL.md §2 — Scope / Approach / Affected files /
-Acceptance criteria / Gotchas>"
+<structured plan per PLANNING-PROTOCOL.md step 2>"
 ```
 
-The `## Plan` comment must follow the structure in
-[`PLANNING-PROTOCOL.md § The flow`](PLANNING-PROTOCOL.md) (its first heading
-starts with `## Plan` so the gate finds it). Today only the `file-epic` skill
-posts `## Plan` comments (for epic children); this generalizes the same
-mechanism to single tasks.
-
-**Plan-less filing is still valid** for mechanical or obvious tasks: file with
-no `## Plan` comment and the ingest bounces it to `fleet:needs-plan` for a
-worker to plan (the safety net). For a genuinely trivial change, the human can
-opt out at filing with `human:no-plan` / a `[no-plan]` tag and it queues with no
-plan at all. The choice: planned-with-the-human → post `## Plan` (queues
-directly); mechanical → leave it (a worker plans it and the plan reviewer vets the
-plan — see [`PLANNING-PROTOCOL.md § The flow`](PLANNING-PROTOCOL.md)); trivial →
-`human:no-plan`.
+The comment follows [`PLANNING-PROTOCOL.md § The flow`](PLANNING-PROTOCOL.md)
+step 2 (first heading starts with `## Plan`). Planned with the human → post
+`## Plan`; mechanical → no plan, ingest bounces it to `fleet:needs-plan` for
+a worker to plan and a reviewer to vet; trivial → the human's
+`human:no-plan` label or a `[no-plan]` tag.
 
 ### Agent-approved follow-up lane (no human triage)
 
-When a fleet role files a **follow-up for defect-shaped work it verified
-itself** — a crash it reproduced, a stale reference it confirmed, a parity
-gap it measured, dead code it traced — the issue can enter the queue
-**without waiting for `human:approved`**. The human's trust here is
-standing, not per-issue; their touchpoints move to PR merge time and the
-audit trail (`gh issue list --label fleet:agent-approved`).
-
-**Eligibility.** All of these must hold, or the issue files unlabeled for
-human triage as before:
+A fleet role filing a **follow-up for defect-shaped work it verified
+itself** may enter the queue without `human:approved`. All of these hold,
+or the issue files unlabeled:
 
 - **You verified the finding this session** — a repro you ran, output you
-  observed, a source read you performed. A hunch, a "probably", or a
-  feature idea is not eligible; those are the human's to shape.
-- **Fleet-infrastructure findings are held to a higher bar: a fired
-  incident, not a structural read.** When the fix surface is fleet
-  machinery — `scripts/fleet/`, the `docs/agents/` protocol and flow docs,
-  CI workflow glue, the `fleet-*` tools and their tests — a source read
-  alone does not qualify. The misbehavior must have **fired**: a live
-  incident you observed, or an execution you performed that demonstrates
-  the wrong behavior end-to-end. A defect established only by reading
-  source and reasoning about reachability files **unlabeled** for human
-  triage instead. Engine and creations code keep the ordinary bar above —
-  this carve exists because self-referential meta follow-ups (tooling
-  verifying tooling) were the majority of one week's lane inflow and are
-  precisely where "demonstrable by construction" is cheapest to claim and
-  least likely to matter.
-- **The work is defect-shaped**: fixing something that is wrong, stale,
-  missing, or drifting. New capabilities, public-API additions, and
-  design-direction changes are not.
-- **It is not one of the routed-elsewhere classes**: coding-improvement
-  observations (`fleet:coding-improvement`, human-cued by design),
-  architectural questions (`fleet:design-blocked` on the PR),
-  multi-issue stacks (`file-epic`, human-approved children), or work
-  whose fix surface is gated self-config (role docs, skills — the fleet
-  can't edit those anyway).
-- **You searched for an existing open issue first** and found none
-  covering the same defect (comment the new occurrence there instead of
-  filing a duplicate).
+  observed, a source read you performed. A hunch or a feature idea is not
+  eligible.
+- **Fleet-infrastructure findings need a fired incident, not a structural
+  read.** When the fix surface is `scripts/fleet/`, the `docs/agents/`
+  protocol docs, CI glue, or the `fleet-*` tools and tests, the misbehavior
+  must have fired — a live incident, or an execution you performed that
+  demonstrates it end-to-end. A defect established by reading source files
+  unlabeled.
+- **The work is defect-shaped** — wrong, stale, missing, drifting. New
+  capabilities, public-API additions, and design-direction changes are not.
+- **Not a routed-elsewhere class:** coding-improvement observations
+  (`fleet:coding-improvement`), architectural questions
+  (`fleet:design-blocked` on the PR), multi-issue stacks (`file-epic`),
+  gated self-config (role docs, skills).
+- **No existing open issue covers it** — comment the new occurrence there
+  instead.
 
-**Mechanics.** File with the standard body (Area / Model / Blocked by /
-Acceptance criteria / Context, with fix-forward-grade forensics: repro
+**Mechanics.** The standard body with fix-forward-grade forensics (repro
 command, observed output, suspected window, what was ruled out), plus
 `--label "fleet:agent-approved"`, plus exactly one of three plan shapes:
 
-1. **Bounded one-session fix** → also add `--label "fleet:no-plan"` (the
-   agent-applied twin of `human:no-plan`). Bar: single module, no design
-   choice to make, acceptance criteria runnable — a worker can
-   investigate and fix it in one session. Ingest queues it directly;
-   the worker opens a code-only PR. This is the expected default for
+1. **Bounded one-session fix** → also `--label "fleet:no-plan"` (the
+   agent-applied twin of `human:no-plan`): single module, no design choice,
+   runnable acceptance criteria. Ingest queues it directly; the default for
    most follow-ups.
 2. **You know the fix and it has structure** → post a `## Plan` comment
-   (per [`PLANNING-PROTOCOL.md § The flow`](PLANNING-PROTOCOL.md) step 2)
-   at file time AND add `--label "fleet:plan-review"`. You already have
-   the root cause in context — write it down instead of making a planner
-   re-derive it. The plan reviewer vets your plan like any other
-   (sound → clears the label, queues; unsound → bounces to
-   `fleet:needs-plan`).
-   This shape is three non-atomic steps and the planning gate keys on the
-   `## Plan` **comment**, so an ingest tick landing before you post it
-   stamps `fleet:needs-plan` on top of your `fleet:plan-review`. You don't
-   need to hand-strip it — ingest reconciles the pair on its next tick
-   (#2701).
-3. **You verified the defect but not the fix** → add neither. Ingest
-   bounces it to `fleet:needs-plan` and the autonomous planning lane
-   takes it from there.
+   (PLANNING-PROTOCOL.md step 2) at file time and add
+   `--label "fleet:plan-review"`; the plan reviewer vets it like any other.
+   An ingest tick landing before the comment stamps `fleet:needs-plan` on
+   top; ingest reconciles the pair on its next tick — no hand-stripping.
+3. **You verified the defect but not the fix** → add neither; ingest
+   bounces it to `fleet:needs-plan`.
 
-`fleet:agent-approved` is **never removed** — it is the permanent record
-that the issue entered the queue on agent judgment. The human's veto is
-ordinary label mechanics: close the issue, or park it (`human:owned`,
-`fleet:needs-human`).
-
-The fix-forward hierarchy is unchanged: same-PR and immediate-sibling-PR
-remain the preferred vehicles (FLEET.md §"Fix-forward"). This lane makes
-the *exception* case — "file an issue" — stop dying in the triage
-backlog; it does not make filing issues the default again.
+`fleet:agent-approved` is never removed — it is the audit trail. The
+human's veto is ordinary mechanics: close, or park (`human:owned`,
+`fleet:needs-human`). Same-PR and immediate-sibling-PR fix-forward remain
+preferred (FLEET.md §"Fix-forward"); this lane is for the residual "file an
+issue" case.
 
 ### Escalation issues (scope-grew)
 
-When a worker hits a non-architectural blocker (scope grew, structural
-build break, multi-module public-API surface), file the follow-up as a
-single issue with the same body shape, prefixed with the escalation
-context:
+A worker that hits a non-architectural blocker (scope grew, structural
+build break, multi-module public-API surface) files a single issue with the
+same body shape, prefixed with the escalation context:
 
 ```
 gh issue create --repo jakildev/IrredenEngine --title "<what needs attention>" \
@@ -196,75 +126,47 @@ gh issue create --repo jakildev/IrredenEngine --title "<what needs attention>" \
 Context: ..."
 ```
 
-Then comment on your PR linking the filed issue, release the claim,
-reset, and move on. When the escalation meets the agent-approved lane's
-eligibility bar (you verified the blocker yourself and the residual work
-is defect-shaped), file it through that lane so it re-queues without
-human triage; otherwise the human triages and stamps `human:approved`.
+Then comment on the PR linking the issue, release the claim, reset, move
+on. If the blocker meets the agent-approved bar, file through that lane.
 
-> A task that is merely **subtler than its class** (not bigger) does
-> NOT get a fresh issue — re-tag the same issue one class up
-> (`fleet:sonnet` → `fleet:opus` → `fleet:fable`) and release, per
-> `role-worker.md` step 8a.
-
-> Architectural blockers route differently — via the
-> `fleet:design-blocked` label on the open PR, not a fresh issue. See
-> the worker / architect role files for the design-escalation flow.
-
----
+A task that is merely **subtler than its class** (not bigger) is re-tagged
+one class up on the same issue (`fleet:sonnet` → `fleet:opus` →
+`fleet:fable`) and released — `role-worker.md` step 8a. Architectural
+blockers go through `fleet:design-blocked` on the open PR, not a fresh
+issue.
 
 ## Multi-issue stacks (epic decomposition)
 
-When work decomposes into a **stack of N issues that each depend on the
-prior** (the canonical smooth-yaw / SO(3) / rotation / streaming
-patterns), do NOT hand-file the children. Invoke the **`file-epic`**
-skill instead:
+A stack of N issues that each depend on the prior is filed with the
+**`file-epic`** skill, never by hand:
 
 ```
 /file-epic <path-to-approved-plan>
 ```
 
-**Why it matters.** The scout's `blocked_by` parser and `fleet-claim`'s
-`find-stackable-blockers` predicate both read a **standalone**
-`**Blocked by:** #N` line in the issue body. Prose forms buried in a
-header bullet ("Blocked on T1 + docs PR #1306") are NOT parsed — the
-child projects as Available, no `--stackable-on` claim fires, and the
-chain doesn't stack. Hand-filing reliably produces this drift.
-`file-epic` enforces the template (umbrella `fleet:epic` + one
-`fleet:task` child per phase + a per-ticket `## Plan` comment + a standalone
-`**Blocked by:** #<prior>` chain).
+It emits an umbrella `fleet:epic`, one `fleet:task` child per phase, a
+per-child `## Plan` comment, and a standalone `**Blocked by:** #<prior>`
+chain — the only form the scout's `blocked_by` parser and `fleet-claim`'s
+`find-stackable-blockers` read. Prose forms ("blocked on T1 + PR #N") are
+not parsed: the child projects as Available and the chain never stacks.
 
-**If you must hand-file a stack** (one-off, plan not yet written), each
-child MUST carry these as standalone lines, placed immediately under the
-header/epic bullet and before `## Scope`:
+If you must hand-file a stack, each child carries these standalone lines
+immediately under the header bullet, before `## Scope`:
 
 ```
 **Blocked by:** #<prior> (<one-line rationale>)
 **Model:** <opus|sonnet>
 ```
 
-Rules that make the stack actually stack:
+- **One `#N` per `**Blocked by:**` line.** A multi-blocker line
+  (`#1299, #1300`) does not stack-claim; the child projects as blocked
+  until an upstream merges and the satisfied ref is stripped.
+- **Prefer issue numbers as blockers.** `fleet-claim` treats a `#N` ref as
+  gate-blocked until closed (issues close when their PR merges). A PR
+  number resolves too, but use it only when the blocker has no backing
+  issue.
 
-- **One `#N` per `**Blocked by:**` line.** Multi-blocker forms
-  (`**Blocked by:** #1299, #1300`) do NOT stack-claim under the current
-  implementation — the scout only enriches single-blocker tasks with
-  `stackable_blocker_pr`. A multi-blocker child projects as "blocked"
-  and is skipped until at least one upstream merges and you strip the
-  satisfied ref. (Live multi-blocker resolution is planned but not
-  landed — track via the open scout/fleet-claim blocker-resolution
-  issue.)
-- **Prefer issue numbers as blockers; a PR number is resolvable but
-  reserved for the issue-less case.** `fleet-claim` treats a `#N` ref as
-  gate-blocked until CLOSED (issues close when their PR merges), so an
-  issue ref stays the clearer form and is what `file-epic` emits. A ref
-  naming a **PR** now resolves too — both stacking surfaces match a PR by
-  its own number, and the merged-state fallback collapses the ref once it
-  lands (#2523) — but use it only when the blocker genuinely has no
-  backing issue (an audit- or review-driven PR filed directly). Filing a
-  PR ref where an issue exists just hides the dependency from the reader.
-
-Once filed correctly, the cascade is automatic: T1 claims plain and
-opens `claude/<T1>-*`; the scout enriches T2 with `stackable_blocker_pr`
-pointing at T1's PR; the next worker claims T2 `--stackable-on <T1-PR>`
-and branches off T1's head; and so on. The merger re-targets each
-child's base onto master as upstreams merge.
+Filed correctly, the cascade is automatic: T1 claims plain; the scout
+enriches T2 with `stackable_blocker_pr`; the next worker claims T2
+`--stackable-on <T1-PR>` and branches off T1's head; the merger re-targets
+each child onto master as upstreams merge.

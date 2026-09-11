@@ -1,560 +1,311 @@
 # PLANNING-PROTOCOL.md — handling `fleet:needs-plan` issues
 
-The shared procedure for turning a `fleet:needs-plan` issue into a
-queue-ready task with a plan. Used by `role-worker.md` (which plans
-these autonomously as a scout-triggered step) and
-`role-opus-architect.md` (which plans them on request during a
-design conversation). Both point here rather than restating the flow.
+How a `fleet:needs-plan` issue becomes a queue-ready task. Used by
+`role-worker.md` (plans autonomously, on dispatch) and
+`role-opus-architect.md` (plans on request in a design conversation).
 
-**Which class plans depends on the issue.** By default planning is
-architect-tier design work and runs at **opus class or higher**
-(`FLEET_ROLE_MODEL` is the signal) — that is the flow described below. The
-exception is a **mechanical** task the human/architect has tagged
-`fleet:sonnet`: the sonnet lane authors a *lightweight* plan for it and
-self-queues, skipping both the opus/fable planning pass and the opus
-plan-review pass. See [§ Lightweight plan for mechanical (`fleet:sonnet`)
-tasks](#lightweight-plan-for-mechanical-fleetsonnet-tasks). Everything in
-"The flow" below is the default (opus+) path unless that section says
-otherwise.
+**Who plans.** Planning runs at opus class or higher (`FLEET_ROLE_MODEL`);
+that is "The flow" below. A **mechanical** task the human or architect has
+tagged `fleet:sonnet` takes the
+[lightweight path](#lightweight-plan-for-mechanical-fleetsonnet-tasks): the
+sonnet lane light-plans and self-queues, skipping the opus+ planning pass
+and the plan review.
 
-**The plan is a comment, not a file.** The canonical plan artifact is a
-structured `## Plan` **comment on the issue** — host-independent, so a
-worker on any host reads it directly, together with any later
-`## Plan corrections` comments. Nothing is committed or staged: no plan-doc
-PR, no plan file in the implementation PR, no local copy. A departure from
-an advisory approach sketch is recorded in the PR body, not in a file.
-
-This applies to **task plans** only. Engine-level *design docs*
-(`docs/design/<feature>.md`) that need review independent of any one
-task still go out as their own docs-first PR — see
-[`architect-protocol.md`](architect-protocol.md). Don't conflate the
-two: a task plan rides in its impl PR; a durable design doc is its own
-reviewed artifact.
+**The plan is a comment, not a file.** The canonical plan is a `## Plan`
+comment on the issue, read with any later `## Plan corrections` comments.
+Nothing is committed or staged — no plan-doc PR, no plan file in the
+implementation PR, no local copy. A departure from an advisory approach
+sketch is recorded in the PR body under `## Plan departures`. Engine-level
+*design docs* (`docs/design/<feature>.md`) that need review independent of a
+task are a separate docs-first PR — [`architect-protocol.md`](architect-protocol.md)
+§"Handling `fleet:design-blocked` PRs".
 
 ---
 
 ## The flow
 
-For each `fleet:needs-plan` issue:
-
-0. **The claim arrives with the dispatch — do not take it yourself.**
-   Planning dispatches are **assignment-based** (#2197): the dispatcher
-   pre-claims one specific needs-plan issue (`fleet-claim planning-claim`,
-   under the target pane's worktree basename) *before* launching the
-   iteration, and hands it over as `FLEET_PLAN_ISSUE=<repo>:<N>` in the
-   environment. (Every worker lane is dispatched this way now — the
-   planning assignment is the `plan` kind of `FLEET_DISPATCH_TARGET`, and
-   `FLEET_PLAN_ISSUE` is its #2197 spelling, kept so these steps read
-   unchanged; see `role-worker.md` § Your assignment.)
-   - **`FLEET_PLAN_ISSUE` set** — that issue is yours, already locked. It can
-     have gone stale between claim and read (the human closed it, the
-     architect planned it out-of-band), so first verify `fleet:needs-plan` is
-     still live on the issue; if it is gone, release
+0. **The claim arrives with the dispatch.** The dispatcher pre-claims one
+   needs-plan issue (`fleet-claim planning-claim`, under your worktree
+   basename) and hands it over as `FLEET_PLAN_ISSUE=<repo>:<N>` — the `plan`
+   kind of `FLEET_DISPATCH_TARGET` (`role-worker.md` § Your assignment).
+   - **Set** — the issue is yours and already locked. If `fleet:needs-plan`
+     is no longer on it (it went stale between claim and read), release
      (`fleet-claim planning-release <N> <your-agent-name>`, `--repo game`
-     for a `game:` assignment) and skip planning. Otherwise plan exactly that
-     issue (steps 1–3 below). Do **not** call `planning-claim` — the lock is
-     already held under your own worktree basename, so the step-3 release
-     Just Works.
-   - **`FLEET_PLAN_ISSUE` unset** — skip planning entirely and move on to
-     task pickup. Do not self-select a needs-plan issue from the cache; an
-     unassigned iteration has no claim and would only re-create the
-     contention this design retires.
+     for a `game:` assignment) and skip. Otherwise plan exactly that issue;
+     never call `planning-claim` yourself.
+   - **Unset** — do no planning this iteration; never self-select.
 
-   The `fleet:planning-<host>-<agent>` label lock itself is unchanged — the
-   dispatcher and the interactive architect still take it through
-   `fleet-claim planning-claim`, and the same lex-min mutex arbitrates
-   dispatcher-vs-architect collisions (plus the orphan sweep in
-   `fleet-claim cleanup --gh`: a same-host label whose liveness marker is
-   missing or points at another issue is a *confirmed* orphan and goes
-   after a 120s grace, while anything the sweep can't vouch for locally —
-   cross-host labels, and same-host labels with a matching marker — still
-   waits the 1-hour TTL; see
-   [`fleet-labels-reference.md § fleet:planning-*`](fleet-labels-reference.md)).
-   What #2197 retires is the *worker-side contention protocol*:
-   N panes racing per tick for the same oldest issue and arbitrating after
-   the fact (#1810's three duplicate plans; #1999's triple re-derive). A
-   planning dispatch now exists only after a successful sole-holder claim,
-   so two dispatches can never target the same issue by construction.
-   (Transition note: an old-protocol worker that still self-selects and calls
-   `planning-claim` under its own name re-claims its assignment idempotently
-   — same host+agent exits 0 — so the window between the scripts landing and
-   the gated role-doc edit is safe, just one redundant call.)
-   **Re-planning an already-planned task** that went stale is now
-   flip-and-move-on — see [§ Re-planning a stale queued plan](#re-planning-a-stale-queued-plan).
+   The `fleet:planning-<host>-<agent>` lock and its orphan sweep:
+   [`fleet-labels-reference.md § fleet:planning-*`](fleet-labels-reference.md).
 
-1. **Read the full issue thread** — title, body, and every comment.
-   The plan is often seeded in a comment, and the human may have left
-   scope refinements there too. Use the wrapper — it reads live, so the
-   `## Plan` comment that woke you is present:
-   `fleet-issue view <N>` (engine; for game issues add `--repo game`).
-   Do **not** use bare `gh issue view <N>` — it omits comments by
-   default and silently drops context.
+1. **Read the full issue thread** with `fleet-issue view <N>` (`--repo
+   game` for game issues) — bare `gh issue view` omits comments.
 
-2. **Assess scope and post the plan as a `## Plan` issue comment.** This
-   comment is the canonical plan — its first heading must **start with**
-   `## Plan` so the queue gate and the implementing worker can find it. The
-   gate matches the `## Plan` prefix, so the `## Plan: <issue title>` form in
-   the template below is accepted.
+2. **Post the plan as a `## Plan` issue comment.** Its first heading starts
+   with `## Plan` (`## Plan: <title>` is accepted); the queue gate and the
+   implementing worker key on that prefix.
 
-   **A plan is a contract, not a script.** Three sections carry the
-   contract — **Scope** (what done means), **Decisions** (what is locked),
-   and **Acceptance criteria** (runnable, positive-fire validation goals).
-   Everything else is context the implementer may depart from. Keep it to
-   about a page: the implementer chooses the path, the plan fixes the goal
-   and the checks that prove it. Cover:
-   - What files/modules are involved
-   - **Verified current state + confirmed repro.** For a defect ticket,
-     name the repro you actually ran **against the actual code path** —
-     not the path the issue body guesses at. A body ending in "likely
-     suspects / confirm during investigation" is a hypothesis, not a
-     plan; verify the premise before writing the approach (every #1370
-     carve-off design-blocked because nobody had). **Negative / gap /
-     absence claims** that motivate new infrastructure ("the engine does
-     **not** do X today", "Y is missing", "nothing frees Z") must be
-     **exhaustively source-verified across the full candidate set** before
-     the approach commits to building — a negative is true only if *every*
-     candidate was checked. An unverified gap over-builds, or worse bakes a
-     wrong-by-construction defect into the plan (#1814: "destroying an entity
-     doesn't free its ResourceIds" was false for ~8 of 9 components; the
-     prescribed hook would have double-freed them).
-   - **Mechanism premises are measured, not asserted (phase 0).** When any
-     phase's lever depends on a measurable mechanism claim — where a cost
-     lives (body-side vs dispatch-bound), which code path dominates, that a
-     stage/mode fires at all, that two values share one storage or shape — the
-     plan must either **(i)** cite an existing measurement with its source (a
-     per-system timer row, an `--auto-profile` table, a disarm probe per
+   A plan is a contract, not a script: **Scope** (what done means),
+   **Decisions** (what is locked), and **Acceptance criteria** (runnable,
+   positive-fire) carry the contract; everything else is context the
+   implementer may depart from. About a page, covering:
+
+   - **Verified current state and confirmed repro.** For a defect, the
+     repro you ran against the actual code path, not the path the issue
+     guesses at. A negative claim that motivates new infrastructure ("the
+     engine does not do X") is source-verified across the full candidate
+     set before the approach commits to building.
+   - **Mechanism premises are measured, not asserted.** When a phase's
+     lever rests on a measurable claim (where a cost lives, which path
+     dominates, that a stage fires, that two values share storage), cite an
+     existing measurement with its source (a per-system timer row, an
+     `--auto-profile` table, a disarm probe per
      [`docs/design/gpu-stage-timing-cost-model.md § 3`](../design/gpu-stage-timing-cost-model.md),
-     a DOMAIN-STATE log), or **(ii)** name a cheap probe as **phase 0 of the
-     Approach**: what the implementer runs, the expected reading that confirms
-     the premise, and the bail path if it is refuted (stop; comment the
-     measurement on the issue; design-block or flag for re-plan — never build
-     the dependent phases on a refuted premise). Phase 0 verifies the premise
-     of the advisory approach sketch. If refuted, record the measurement
-     and stop the dependent work. The implementer may choose another mechanism
-     when the locked Decisions, constraints, and Acceptance criteria still
-     hold; record the change in implementation notes. A change to those
-     contracts routes to design-block/re-plan. Recurrences: #2258 (assumed
-     body-side, measured dispatch-bound), #2256/#2271/#2273 (parallel efforts
-     on mutually-invalidated premises), #2278 (vacuous gate), #2321
-     (unverified singleton / same-shape premise).
-   - **Decisions locked; the path belongs to the implementer.** The plan
-     **locks every load-bearing design decision** — public names and
-     surfaces, formats, ownership boundaries, architectural splits, what
-     is deliberately out of scope — with rejected alternatives recorded
-     so the worker doesn't re-derive them. Leaving a live design fork to
-     the worker ("confirm during investigation/design", "option A or B,
-     decide while implementing") is forbidden: if a decision can't be
-     made yet, the issue isn't plannable — keep `fleet:needs-plan` on and
-     say what's missing, or reframe it as an explicit **investigation
-     spike** (the literal phrase in the title/body; see
+     a DOMAIN-STATE log) or name a cheap **phase 0** probe: what the
+     implementer runs, the reading that confirms the premise, and the bail
+     path (stop, comment the measurement, design-block or flag for re-plan).
+     Dependent phases never build on a refuted premise.
+   - **Decisions locked; the path belongs to the implementer.** Lock every
+     load-bearing decision — public names and surfaces, formats, ownership
+     boundaries, architectural splits, what is out of scope — with rejected
+     alternatives. A live fork handed downstream ("option A or B, decide
+     while implementing"; the imperative "check whether X should also apply
+     to Y") is forbidden — `fleet-plan-lint` rejects both. If a decision
+     cannot be made yet, the issue is not plannable: keep `fleet:needs-plan`
+     and say what is missing, or reframe it as an explicit **investigation
+     spike** (the literal phrase in the title or body;
      [`architect-protocol.md § Carve-offs`](architect-protocol.md)).
 
-     **Park it when no later planner could do better (#3034).** Leaving
-     `fleet:needs-plan` on is correct when the gap is *more planning
-     thought* — a fresh pass may well succeed. It is the wrong ending
-     when the blocker is one **no planner can resolve without a human
-     action**: the premise is refuted, the target code is not on master,
-     the parent is `fleet:design-blocked`, or the issue is superseded. The
-     issue then sits at the head of its class's lane and is re-assigned
-     every tick, and each dispatch re-derives the identical verdict —
-     game #94 burned 13 opus/fable iterations that way before this park
-     existed. In that case, **also add `fleet:needs-human`** in the same
-     pass (keep `fleet:needs-plan`, keep `human:approved`), comment
-     exactly what the human must do — close it, add a
-     `**Blocked by:** #N`, or revise the direction — and then
-     `planning-release` as usual. The scout's planning projection drops a
-     parked issue and `fleet-claim planning-claim` refuses it, so the lane
-     advances to the next candidate instead of re-spending on this one.
-     **Re-entry needs no special handling:** the human removes
-     `fleet:needs-human`, `fleet:needs-plan` is still there, and the issue
-     re-enters the planning projection to be planned against the new
-     state. Nothing queues unplanned in the meantime — `fleet:needs-plan`
-     is itself an ingest-skip label.
-     The same rule covers a fork phrased as an **instruction to the
-     implementer** rather than a self-describing punt — "check whether
-     the narrowed predicate should apply there as well or only to issue
-     claims; decide explicitly rather than by omission" reads as rigor,
-     not deferral, but hands the same undecided A-or-B choice downstream
-     (#2820/#2824 — `fleet-plan-lint`'s fork matchers enforce this).
+     **Park it when no later planner could do better.** Leaving
+     `fleet:needs-plan` on is right when the gap is more planning thought.
+     When the blocker needs a human action — refuted premise, target code
+     not on master, parent `fleet:design-blocked`, superseded issue — also
+     add `fleet:needs-human` (keep `fleet:needs-plan` and `human:approved`),
+     comment exactly what the human must do (close, add `**Blocked by:**
+     #N`, revise direction), and `planning-release`. The planning
+     projection drops a parked issue and `planning-claim` refuses it; the
+     human removing `fleet:needs-human` re-enters it.
 
-     What the plan does **not** do is choreograph the implementation.
-     File-by-file step lists, paste-ready code, and line-number anchors
-     do the implementer's thinking for it and go stale before the claim;
-     the current model generation does its best work from a clear goal,
-     locked decisions, hard constraints, and runnable acceptance
-     criteria — an **intent plan** — not from a script. An
-     `### Approach sketch` is welcome where the planner has one, and it
-     is **advisory**: the implementer may depart from it freely while
-     the Decisions and Acceptance criteria hold, recording the departure
-     in the PR body under `## Plan departures` (no re-plan needed). Investigation already done during planning is recorded as
-     *facts* — in Verified current state and Decisions — never re-cast
-     as steps.
-   - **Sibling + in-flight reconciliation.** Check the parent ticket's
-     other carve-offs and every open PR touching the same surface — a
-     plan that duplicates or contradicts an active PR or a sibling's
-     recorded conclusion (e.g. #1440 prescribed the approach #1420 had
-     already proved wrong) wastes a full worker round.
-   - Whether it should be **one task or broken into subtasks**
-   - Suggested model tag (`[fable]`, `[opus]`, or `[sonnet]`) for each
-     piece — same criteria as the plan's `**Model:**` line (FLEET.md
-     §"Model split")
-   - **Acceptance criteria** — the definition of done: each criterion names
-     the validator that proves it (`docs/agents/VALIDATION.md`) and the
-     reading it must show, and the named acceptance tests must be
-     **positive-fire**: at least one named check observably fires with the
-     feature ON (a count > 0, an asserted probe reading, a visible delta). A
-     gate that passes at default / on byte-identical output alone proves the
-     OFF path is a no-op, not that the premise holds — mirror of the
-     enabled-path rule (`engine/render/CLAUDE.md`, #1989/#2338; PR #2399
-     landed it render-side). The criterion must also **name the
-     fixture/scene it will fire on, and that fixture must already
-     exist** — if it doesn't, creating it is part of this plan, or it is
-     filed as a blocker before the criterion is written. A positive-fire
-     criterion with no fixture is no gate at all while reading as though
-     the premise were covered (#2603: #2350's "culled-chunk count > 0"
-     was unsatisfiable on every `perf_grid` scene mode, a debt inherited
-     from #1294 closing without filing its declared evaluation scene).
-   - Known gotchas or pitfalls
-   - **Cross-system audit (when planning a deletion or migration of a
-     shared resource** — component, SSBO, GPU buffer, system,
-     coordinate convention, etc.). List every consumer of the resource
-     being changed and a per-consumer migration plan. Audit by grep on
-     the type/symbol name AND on slot/binding numbers (some consumers
-     reference resources by index, not name). Without this section the
-     worker discovers gaps mid-task and escalates.
-
-   Use this structure:
+     No choreography: no file-by-file step lists, paste-ready code, or
+     line-number anchors. An `### Approach sketch` is welcome and advisory.
+     Investigation done during planning is recorded as facts (Verified
+     current state, Decisions), never re-cast as steps.
+   - **Sibling and in-flight reconciliation.** Check the parent ticket's
+     other carve-offs and every open PR on the same surface; a plan that
+     duplicates or contradicts one wastes a worker round.
+   - **One task or a stack**, with a model tag (`[fable]` / `[opus]` /
+     `[sonnet]`) per piece — FLEET.md §"Model split".
+   - **Acceptance criteria** — the definition of done. Each criterion names
+     the validator that proves it ([`VALIDATION.md`](VALIDATION.md)) and the
+     reading it must show, and at least one is **positive-fire**: it
+     observably fires with the feature ON (a count > 0, an asserted probe
+     reading, a visible delta) — a gate that passes on byte-identical output
+     proves only that the OFF path is a no-op. The criterion names the
+     fixture or scene it fires on, and that fixture exists, or creating it
+     is part of this plan, or it is filed as a blocker first.
+   - **Gotchas** — invariants the implementation must not violate.
+   - **Cross-system audit** when deleting or migrating a shared resource
+     (component, SSBO, GPU buffer, system, coordinate convention): every
+     consumer and its migration, found by grep on the symbol AND on
+     slot/binding numbers.
 
    ```markdown
    ## Plan: <issue title>
 
    - **Issue:** #N
-   - **Model:** fable | opus | sonnet — pick deliberately per
-     FLEET.md §"Model split": fable for novel algorithm/stage design and
-     complex long-horizon implementation, sonnet when the remaining work
-     is bounded and mechanical, opus for the middle
+   - **Model:** fable | opus | sonnet — per FLEET.md §"Model split"
    - **Date:** YYYY-MM-DD
 
    ### Scope
-   <the goal and why — what "done" means, in a sentence or two>
+   <what "done" means, in a sentence or two>
 
    ### Verified current state
-   <measured facts with their sources; the confirmed repro for a defect>
+   <measured facts with sources; the confirmed repro for a defect>
 
    ### Decisions
-   <the design calls this plan locks: names, public surfaces, formats,
-   ownership boundaries, what is deliberately out of scope — with
-   rejected alternatives and why. Everything NOT locked here is the
-   implementer's call.>
+   <the calls this plan locks, with rejected alternatives; everything not
+   locked here is the implementer's>
 
    ### Affected files
    - `path/to/file.hpp` — <what changes>  (best-known set, not a contract)
 
    ### Acceptance criteria
-   <runnable, positive-fire checks — the definition of done>
+   <runnable, positive-fire checks naming their validators>
 
    ### Gotchas
-   <invariants the implementation must not violate; pitfalls>
+   <invariants; pitfalls>
 
    ### Approach sketch (optional)
-   <a suggested path when the planner has one — advisory; the
-   implementer may depart from it while Decisions and Acceptance
-   criteria hold>
+   <advisory path>
    ```
 
-   **New-creation registration:** when the affected-files list includes a new
-   `creations/<demo>/` subdirectory, also list its `CMakeLists.txt` (new)
-   **and** the parent `creations/CMakeLists.txt` (the `add_subdirectory`
-   registration) — the target silently doesn't build without the parent entry.
+   A new `creations/<demo>/` directory lists both its `CMakeLists.txt` and
+   the parent `creations/CMakeLists.txt` `add_subdirectory` entry. Plans are
+   world-readable — engine terminology only
+   ([`CLAUDE-BASELINE.md` §"Cross-repo information isolation"](CLAUDE-BASELINE.md)).
+   A multi-issue stack, or more than one carve-off touching the same
+   surface, is a `file-epic` chain, never hand-filed flat siblings —
+   [`TASK-FILING.md § Multi-issue stacks`](TASK-FILING.md#multi-issue-stacks-epic-decomposition).
 
-   **Plans are engine-public.** The `## Plan` comment is world-readable on a
-   public repo, so it falls
-   under [`CLAUDE-BASELINE.md` §"Cross-repo information isolation"](CLAUDE-BASELINE.md):
-   use engine terminology only — no game feature names or game jargon (e.g. the
-   "jam" leak in #1815's plan). `commit-and-push`'s hard-token grep won't catch
-   ambiguous words, so this is an author-time check.
-
-   If the work breaks into a **multi-issue stack**, do not hand-file the
-   children — follow [`TASK-FILING.md § Multi-issue stacks`](TASK-FILING.md#multi-issue-stacks-epic-decomposition)
-   (the `file-epic` skill enforces the structured `**Blocked by:** #N`
-   chain the scout and `fleet-claim` parsers require). The same rule applies to
-   **carve-offs**: when more than one residual is split out of an over-scoped or
-   in-flight ticket and they touch the same surface, file them as a `file-epic`
-   **chain** (each child `Blocked by:` its predecessor), not N flat siblings.
-   Flat siblings go claimable simultaneously the moment the parent closes and
-   get worked in parallel on the same files — the #1370 trio produced three
-   conflicting, all design-blocked PRs exactly this way.
-
-3. **Hand the plan to review: swap `fleet:needs-plan` → `fleet:plan-review`,
-   then release your claim.** Do NOT touch `human:approved` — it's still on the
-   issue from when the human triaged it, and removing it would erase the human's
-   original signal. Use the issue's repo:
+3. **Hand the plan to review and release the claim**, leaving
+   `human:approved` in place:
    ```
    gh issue edit <N> --repo <owner/repo> \
      --remove-label "fleet:needs-plan" --add-label "fleet:plan-review"
    fleet-claim planning-release <N> <your-agent-name>
    ```
-   (`<owner/repo>` is `jakildev/IrredenEngine` for engine issues or
-   `jakildev/irreden` for game issues — the repo where the issue lives, not your
-   worktree's repo. Add `--repo game` to `fleet-claim` for game issues.) Release
-   the planning claim on **every** exit path — including the
-   "disagree with the direction" branch below — so the lock is never orphaned.
+   `<owner/repo>` is where the issue lives (`jakildev/IrredenEngine` or
+   `jakildev/irreden`; `--repo game` on `fleet-claim`). Release on every
+   exit path, including the disagree branch below.
 
-   **There is no human approach gate.** The `human:review-plan` hold
-   (#2011) was retired 2026-09: the plan reviewer's step-4 verdict is the
-   only pre-queue gate on a worker-planned issue, and a plan that meets
-   step 2 — decisions locked, positive-fire acceptance criteria — is the
-   human's validation contract. The human steers with `human:approved`
-   at triage, `human:revise-plan` on a posted plan (below),
+   There is no human approach gate: the step-4 verdict is the only
+   pre-queue gate on a worker-planned issue. The human steers with
+   `human:approved` at triage, `human:revise-plan` on a posted plan,
    `fleet:needs-human` when a planner needs a decision, and PR review.
 
+4. **Plan review.** While `fleet:plan-review` is on, `fleet-queue-ingest`
+   skips the issue. A plan reviewer (the architect, or the opus reviewer
+   loop) judges the `## Plan` comment against step 2 — verified current
+   state, every load-bearing decision locked, sibling/in-flight
+   reconciliation, a cross-system audit where required, no unmeasured
+   premise, positive-fire acceptance criteria — re-running the plan's cheap
+   measurements (a grep census, a symbol count, a config read) rather than
+   reading them for plausibility; `fleet-plan-lint <N>` is the structural
+   half.
+   - **Sound →** remove `fleet:plan-review`; the scout stamps `fleet:queued`.
+   - **Sound with corrections →** bounded fixes that change no locked
+     decision (a wrong path, a stale reference, a missing gotcha, a
+     corrected measurement): post a comment whose first line is
+     `## Plan corrections`, then remove `fleet:plan-review`. Corrections are
+     part of the plan; bounce only when a locked decision is wrong.
+   - **Not sound →** swap `fleet:plan-review` → `fleet:needs-plan` and
+     comment the gaps; the next planning pass revises the `## Plan` comment.
 
-4. **Plan review (the gate the redesign adds).** While `fleet:plan-review` is on
-   the issue it is **not** queue-ready — `fleet-queue-ingest` skips it. A plan
-   reviewer (the architect, or the opus reviewer loop) reads the `## Plan`
-   comment and judges it *as a plan* against the step-2 rigor — verified current
-   state, every load-bearing decision locked (no live fork handed downstream),
-   sibling/in-flight reconciliation, a cross-system audit where one is required,
-   no phase assuming an unmeasured mechanism (a cited measurement or phase-0
-   probe is required), and positive-fire acceptance tests. When the plan's
-   load-bearing measurements can be re-run cheaply (a grep census, a symbol
-   count, a config read), **execute them** rather than reading them for
-   plausibility — re-running a plan's own claimed measurements is the
-   highest-yield review move; a clean structural lint proves nothing about a
-   wrong regex or a miscounted census:
-   - **Sound →** remove `fleet:plan-review`. The issue is queue-ready; the
-     scout stamps `fleet:queued` on its next pass.
-   - **Sound with corrections →** the plan is sound except for specific,
-     bounded fixes that do **not** change a locked decision (a wrong path, a
-     stale line reference, a missing gotcha, a corrected measurement). Post a
-     comment whose first line is `## Plan corrections` listing each fix, then
-     remove `fleet:plan-review` exactly as for Sound. Corrections are **part
-     of the plan**: the implementer reads the newest `## Plan` comment plus
-     every later `## Plan corrections` comment and works from both. Use this gear instead of bouncing — a bounce to
-     `fleet:needs-plan` costs a full re-plan round for something one line
-     fixes, and that lane can sit near-zero-dispatch for days. Bounce only
-     when a locked decision itself is wrong.
-   - **Not sound →** swap `fleet:plan-review` → `fleet:needs-plan` and comment
-     the specific gaps. The next planning pass revises the `## Plan` comment.
+5. **Queue and implement.** With `human:approved`, a `## Plan` comment, and
+   neither gate label, the scout stamps `fleet:queued` plus the model label.
+   The worker reads the newest `## Plan` comment plus every later
+   `## Plan corrections` comment (`fleet-issue view <N>` shows both) and
+   opens **one** PR (`Closes #<N>`). A departure from the approach sketch
+   goes in the PR body under `## Plan departures`; a departure from a
+   Decision or an acceptance criterion is a re-plan.
 
-   This is a review of the *plan*, distinct from the code review the
-   implementation PR later gets.
+**Disagree with the issue's direction?** Comment your concerns, keep
+`fleet:needs-plan`, add `fleet:needs-human`, release the claim — the park
+makes "let the human decide" terminal instead of a re-dispatch loop.
 
-5. **Queue and implement.** Once the issue is `human:approved`, carries a
-   `## Plan` comment, and has neither `fleet:needs-plan` nor `fleet:plan-review`,
-   the scout stamps `fleet:queued` + the model label. The implementing worker:
-   - reads the plan from the newest `## Plan` comment **plus any later
-     `## Plan corrections` comments** (`fleet-issue view <N>` shows both —
-     corrections are authoritative amendments from plan review, step 4),
-   - implements and opens **one** PR (`Closes #<N>`) — one review, one
-     merge. Where the implementation departs from an `### Approach sketch`,
-     record the departure in the PR body under `## Plan departures`; a
-     departure that violates a **Decision** or an acceptance criterion is
-     not a departure, it's a re-plan.
-
-**If you disagree with the issue's direction** (at planning time), comment with
-your concerns, leave `fleet:needs-plan` on, **add `fleet:needs-human`**, release
-the planning claim, and let the human decide. The park is what makes "let the
-human decide" a terminal state rather than a loop: without it the issue is
-re-assigned on the next tick and the next planner reaches — and re-posts — the
-same disagreement. Same re-entry as step 2's park: the human removes
-`fleet:needs-human` once they have ruled, `fleet:needs-plan` is still on, and the
-issue is re-planned against the decision.
-
-**Mechanical backstop to the #3034 park.** The park above relies on the
-planner *reaching and recording* the unplannable verdict; an issue whose
-dispatches keep releasing without either a plan or a park is caught by the
-dispatcher's per-target dispatch cap (`FLEET_TARGET_DISPATCH_CAP`,
-[`FLEET.md` § "How a launch ends"](FLEET.md)), which applies the same park
-— adds `fleet:needs-human`, keeps `fleet:needs-plan`, comments — after the
-cap's worth of `plan` dispatches on a host. Re-entry is identical: the human
-removes `fleet:needs-human`.
+**Mechanical backstop.** An issue whose planning dispatches keep releasing
+without a plan or a park hits the dispatcher's per-target cap
+(`FLEET_TARGET_DISPATCH_CAP`, FLEET.md), which applies the same park.
 
 ### Human: requesting plan changes (`human:revise-plan`)
 
-When the human reviewing a posted plan (step 4, while it sits in
-`fleet:plan-review`) wants the **approach** reworked, they
-do **not** swap labels by hand. They **add one label, `human:revise-plan`**,
-plus a comment describing the change. On the next scout tick `fleet-queue-ingest`
-reconciles the issue for them:
-
-- adds `fleet:needs-plan` (so an opus+ planner re-plans, reading the new comment
-  per step 1),
-- strips the now-stale stage labels (`fleet:plan-review`, and any model /
-  `fleet:blocked` label),
-- consumes `human:revise-plan`,
-- **keeps** `human:approved` (the original triage).
-
-The re-planner then revises the `## Plan` comment and swaps back to
-`fleet:plan-review`; the plan reviewer vets the revision and the issue queues.
-Net: the human only ever *adds* a label — the fleet manages every other
-transition.
-(The scout pulls a `human:revise-plan` issue back into the ingest set even though
-its stage labels would otherwise exclude it; see `_ingest_skipped`.) This affords
-the **pre-queue** stages only; an already-queued plan that has gone stale uses
-the flip-and-move-on flow below.
+A human who wants a posted plan's **approach** reworked adds one label,
+`human:revise-plan`, plus a comment. On the next tick `fleet-queue-ingest`
+adds `fleet:needs-plan` (an opus+ planner re-plans, reading the comment),
+strips the stale stage labels (`fleet:plan-review`, any model /
+`fleet:blocked` label), consumes `human:revise-plan`, and keeps
+`human:approved`. The re-planner revises the `## Plan` comment and swaps
+back to `fleet:plan-review`. Pre-queue stages only; a queued plan that went
+stale uses the flow below.
 
 ---
 
 ## Re-planning a stale queued plan
 
-A `fleet:queued` task whose already-committed plan goes **stale post-approval**
-(its blocker shipped a *different* design during review, so the
-`## Plan` comment now cites a renamed/removed
-symbol or a superseded decision) needs a fresh plan. Historically the re-plan
-trigger lived outside the first-plan lock, so multiple panes could judge the
-same queued task stale and each deep-investigate the refresh (#1999: #1960
-re-derived by three panes). Under assignment-based planning (#2197) the
-contract is simpler:
+When a `fleet:queued` task's plan is stale (its blocker shipped a different
+design; the plan cites a renamed or removed symbol or a superseded decision),
+**flip and move on** — no lock, no inline re-derivation:
 
-**Flip and move on.** The moment you judge a queued task's committed plan
-stale, and *without* spending the iteration re-deriving it:
+```
+gh issue edit <N> --repo <owner/repo> \
+  --remove-label "fleet:queued" --add-label "fleet:needs-plan"
+gh issue comment <N> --repo <owner/repo> \
+  --body "Plan stale: <what shipped differently and where> — flagging for re-plan."
+```
 
-1. Flip the labels `fleet:queued → fleet:needs-plan` and say why:
-   ```
-   gh issue edit <N> --repo <owner/repo> \
-     --remove-label "fleet:queued" --add-label "fleet:needs-plan"
-   gh issue comment <N> --repo <owner/repo> \
-     --body "Plan stale: <what shipped differently and where> — flagging for re-plan."
-   ```
-2. **Move on to other work.** No lock, no inline re-derivation. The flip
-   re-enters the issue into `needs_plan[]`; the dispatcher routes the re-plan
-   like any first plan — its claim walk hits the `## Plan`-comment dedup
-   (exit 3), retries with `--replan` (which gates on the live
-   `fleet:needs-plan` you just set), and hands the assignment to a fresh
-   planning dispatch. Workers never invoke `--replan` themselves.
-
-The re-planner (the assigned dispatch) posts a **fresh** `## Plan` comment that
-notes it supersedes the prior plan (the prior comment stays as audit trail; the
-implementer reads the most-recent `## Plan` comment as authoritative), then
-proceeds as a normal plan: swap `fleet:needs-plan → fleet:plan-review` and
-`planning-release`.
-
-`--replan` survives as a **dispatcher/architect primitive** because plain
-`planning-claim` refuses an issue with an existing `## Plan` comment (the dedup
-early-out, exit 3) — a re-plan *expects* a prior plan, so the flag skips that
-early-out and instead gates on the live `fleet:needs-plan` label, keeping the
-lex-min lock armed for re-plans exactly like first plans.
+The dispatcher routes the re-plan like a first plan: its claim hits the
+`## Plan`-comment dedup (exit 3) and retries with `--replan`, which gates on
+the live `fleet:needs-plan` label. Workers never pass `--replan` themselves.
+The re-planner posts a **fresh** `## Plan` comment noting that it supersedes
+the prior one (the old comment stays as audit trail; the newest `## Plan` is
+authoritative), then proceeds from step 3.
 
 ---
 
 ## Skipping the plan for simple ad-hoc issues
 
-Not every issue needs a plan. A simple, self-contained change the human files ad
-hoc can skip planning entirely:
+`fleet-queue-ingest` refuses to stamp `fleet:queued` on an approved issue
+with no `## Plan` comment unless it is opted out, and otherwise bounces it to
+`fleet:needs-plan`. Opt-outs:
 
-- **`human:no-plan` label** — applied by the human at filing. The issue bypasses
-  the planning gate and the scout queues it directly; the worker opens a
-  PR straight away.
-- **`fleet:no-plan` label** — the agent-applied twin, applied by a fleet role
-  filing through the agent-approved follow-up lane
-  ([`TASK-FILING.md § Agent-approved follow-up lane`](TASK-FILING.md)) when the
-  fix is bounded enough to investigate-and-fix in one worker session. Honored
-  by ingest and the scout's planning-rotation skips exactly like
-  `human:no-plan`.
-- **`[no-plan]` title/body tag** — the literal token, honored by
-  `fleet-queue-ingest` the same way the `investigation spike` phrase is, for when
-  applying a label is more friction than typing a tag.
-
-The default is unchanged: an approved issue with neither a `## Plan`
-comment nor an opt-out is bounced to `fleet:needs-plan`. The human opt-out is
-the human's explicit "this is small enough to skip"; the agent opt-out carries
-the same judgment made by the filer under the follow-up lane's eligibility bar.
-
-This gate is mechanically enforced by `fleet-queue-ingest` (the #1456 planning
-gate, re-keyed by this redesign): it refuses to stamp `fleet:queued` on an
-approved issue unless a `## Plan` comment exists OR the issue is opted out
-(`human:no-plan` / `fleet:no-plan` / `[no-plan]` / `investigation spike`), and
-otherwise bounces it to `fleet:needs-plan`. Labeling an unplanned build task
-`human:approved` no longer queues it.
+- **`human:no-plan`** — the human's label at filing.
+- **`fleet:no-plan`** — the agent-applied twin, from the agent-approved
+  follow-up lane ([`TASK-FILING.md § Agent-approved follow-up lane`](TASK-FILING.md))
+  when the fix is bounded enough to investigate-and-fix in one session.
+- **`[no-plan]`** in the title or body, or the literal phrase
+  **investigation spike**.
 
 ---
 
 ## Lightweight plan for mechanical (`fleet:sonnet`) tasks
 
-Most planning is architect-tier design work and runs at opus class or higher.
-But a **mechanical** task — one whose plan "basically is the issue itself" (a
-localized rename, a well-scoped doc/test change, a mechanical refactor with no
-design choice to make) — does not need a fable/opus planning pass *or* an opus
-plan-review pass. For those, the **sonnet lane light-plans and self-queues**.
+A task whose plan "is the issue itself" (a localized rename, a well-scoped
+doc or test change, a mechanical refactor with no design choice) skips the
+opus+ planning and plan-review passes.
 
-**Eligibility is a human/architect signal, not a heuristic.** The issue must
-carry the `fleet:sonnet` label on top of `fleet:needs-plan`. Applying
-`fleet:sonnet` to a needs-plan issue is the human's (or architect's) judgment
-that the task is mechanical and bounded. Do **not** self-tag an issue `fleet:sonnet` to
-take this path; if it isn't already tagged, it plans on the default (opus+)
-flow. The dispatcher routes a `fleet:sonnet`-tagged needs-plan issue to the
-sonnet lane automatically (`fleet_task_class._plan_class`).
+**Eligibility is a human/architect signal.** The issue carries
+`fleet:sonnet` on top of `fleet:needs-plan`; never self-tag to take this
+path. The dispatcher routes it to the sonnet lane
+(`fleet_task_class._plan_class`).
 
-**[worker, sonnet class]** For the `fleet:sonnet`-tagged needs-plan issue the
-dispatch names:
+**[worker, sonnet class]**, for the issue the dispatch names:
 
-1. **The claim arrives with the dispatch** (`FLEET_PLAN_ISSUE=<repo>:<N>` —
-   step 0 of "The flow", same assignment mechanics as the opus path; the
-   dispatcher routes a `fleet:sonnet`-tagged issue to a sonnet dispatch). No
-   `planning-claim` call: verify `fleet:needs-plan` is still live, release and
-   skip if not; with `FLEET_PLAN_ISSUE` unset, do no planning at all.
-2. **Read the thread** (`fleet-issue view <N>`). A mechanical task needs the
-   issue read, not a deep code investigation — if you find yourself needing a
-   cross-system audit or a repro spike to write the plan, it is **not**
-   mechanical: fall through to the lint-fail branch below.
-3. **Post a lightweight `## Plan` comment.** Same `## Plan:` heading the gate
-   keys on, but thin — `**Model:** sonnet`, a one-line **Scope**, an
-   **Approach** that is essentially "implement as the issue describes" plus the
-   concrete file(s)/edit, an **Affected files** list, and **Acceptance
-   criteria**. Skip the cross-system audit and the deep premise/repro section
-   unless the mechanical change obviously needs one.
-4. **Run `fleet-plan-lint <N>`** (deterministic; `--repo game` for game issues):
-   - **exit 0** → the plan is structurally sound. **Remove `fleet:needs-plan`**
-     (do **not** add `fleet:plan-review`) and release the claim. The scout's
-     ingest queues it on the next tick — the `## Plan` comment is present,
-     `human:approved` persists, and no gate label remains. The impl PR still
-     gets a normal **code** review; only the **plan** review is skipped.
+1. **The claim arrives with the dispatch** (`FLEET_PLAN_ISSUE`, step 0
+   mechanics): verify `fleet:needs-plan` is still live, release and skip if
+   not; unset → no planning.
+2. **Read the thread** (`fleet-issue view <N>`). If writing the plan needs a
+   cross-system audit or a repro spike, the task is not mechanical — take
+   the lint-fail branch below.
+3. **Post a thin `## Plan` comment**: `**Model:** sonnet`, a one-line Scope,
+   an Approach that is essentially "implement as described" plus the
+   concrete edit, Affected files, and Acceptance criteria naming their
+   validators.
+4. **Run `fleet-plan-lint <N>`** (`--repo game` for game issues):
+   - **exit 0** → remove `fleet:needs-plan` (do **not** add
+     `fleet:plan-review`) and release; ingest queues it next tick. The impl
+     PR still gets a normal code review.
      ```
      gh issue edit <N> --repo <owner/repo> --remove-label "fleet:needs-plan"
      fleet-claim planning-release <N> <your-agent-name>
      ```
-   - **exit 1** → the task wasn't mechanical enough to light-plan (a deferred
-     approach, missing core sections). Swap `fleet:needs-plan →
-     fleet:plan-review` and release the claim, handing it to the opus
-     plan-review safety net (step 4 of "The flow"), which either blesses the
-     thin plan or bounces it back to `fleet:needs-plan` with gaps for a proper
-     opus re-plan.
+   - **exit 1** → swap `fleet:needs-plan` → `fleet:plan-review` and release;
+     the opus plan review (step 4) blesses the thin plan or bounces it.
      ```
      gh issue edit <N> --repo <owner/repo> \
        --remove-label "fleet:needs-plan" --add-label "fleet:plan-review"
      fleet-claim planning-release <N> <your-agent-name>
      ```
-     (`<owner/repo>` and the `--repo game` variant for `fleet-claim` follow the
-     same convention as step 3 above.)
 
-This path never touches the fable or opus class: a genuinely mechanical task is
-planned and implemented entirely on the sonnet lane. If a `fleet:sonnet` task
-turns out to need design judgment, the lint-fail branch (or the implementing
-worker's own escalation, `fleet:design-blocked`) routes it back to opus+ — the
-tag is a starting hypothesis, not a one-way door.
+A `fleet:sonnet` task that turns out to need design judgment routes back to
+opus+ through the lint-fail branch or the implementing worker's
+`fleet:design-blocked`.
 
 ---
 
 ## Role-specific notes
 
-**[worker, opus+ classes]** The dispatch names your issue:
-`FLEET_PLAN_ISSUE=<repo>:<N>`, pre-claimed by the dispatcher (step 0). You do
-not pick from the cached `needs_plan[]` arrays — an iteration without an
-assignment does no planning. Cross-repo: a `game:` assignment takes
-`--repo game` on `fleet-issue` / `gh issue edit` / `fleet-claim`. You post the
-`## Plan` comment and swap to `fleet:plan-review`. The
-implementation step (later, possibly a cheaper-class worker on another host)
-reads the comment.
+**[worker, opus+ classes]** The dispatch names your issue
+(`FLEET_PLAN_ISSUE=<repo>:<N>`); an iteration without an assignment does no
+planning. A `game:` assignment takes `--repo game` on `fleet-issue` /
+`fleet-claim` and `--repo jakildev/irreden` on `gh issue edit`. You post the
+`## Plan` comment and swap to `fleet:plan-review`; implementation may land
+on a cheaper class or another host.
 
-**[plan reviewer]** Scan open issues carrying `fleet:plan-review` and apply the
-step-4 verdict. The architect does this during a design conversation; the opus
-reviewer loop does it autonomously alongside its PR-review pass.
+**[plan reviewer]** Scan open issues carrying `fleet:plan-review` and apply
+the step-4 verdict. The architect does this in a design conversation; the
+opus reviewer loop does it autonomously alongside its PR pass.
 
-**[opus-architect]** You plan these when the human asks during a design
-conversation (the worker handles the autonomous queue). Same flow;
-you do not poll for them. If the plan needs an independently-reviewed
-design doc first, see [`docs/agents/architect-protocol.md § Handling
-fleet:design-blocked PRs`](architect-protocol.md)
-for the docs-first-PR + `**Blocked by:** #<docs-PR>` routing — that is
-the one case where a separate docs PR is still correct.
+**[opus-architect]** You plan on request during a design conversation, same
+flow, and never poll. If the plan needs an independently reviewed design doc
+first, see [`architect-protocol.md § Handling fleet:design-blocked PRs`](architect-protocol.md)
+for the docs-first PR + `**Blocked by:** #<docs-PR>` routing.
