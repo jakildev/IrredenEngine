@@ -148,10 +148,16 @@ assert_eq "$("$DISPATCHER" --resolve-class worker opus,sonnet)" \
 # (hermetic — scripts/fleet/CLAUDE.md): grant/held/planned sets come from env,
 # every invocation is logged for argv assertions.
 export FLEET_CLAIM_LOG="$TMPROOT/fleet-claim.log"
+# Second log, keyed <sub>\t<FLEET_DISPATCH_ID>: the pre-claim's dispatch
+# identity is passed in the ENVIRONMENT, not argv, so the argv log above cannot
+# see it. Separate file rather than a richer format in the first — the argv
+# assertions are anchored full-line (`^claim 10 pool-1$`).
+export FLEET_CLAIM_ENV_LOG="$TMPROOT/fleet-claim-env.log"
 STUB_BIN="$TMPROOT/bin"; mkdir -p "$STUB_BIN"
 cat > "$STUB_BIN/fleet-claim" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$FLEET_CLAIM_LOG"
+printf '%s\t%s\n' "$*" "${FLEET_DISPATCH_ID-<unset>}" >> "$FLEET_CLAIM_ENV_LOG"
 repo="engine"
 if [[ "${1:-}" == "--repo" ]]; then repo="$2"; shift 2; fi
 sub="${1:-}"; num="${2:-}"
@@ -186,7 +192,7 @@ chmod +x "$STUB_BIN/fleet-claim"
 export PATH="$STUB_BIN:$PATH"
 
 plan_assign() {
-    : > "$FLEET_CLAIM_LOG"
+    : > "$FLEET_CLAIM_LOG"; : > "$FLEET_CLAIM_ENV_LOG"
     "$DISPATCHER" --assign worker worker-9
 }
 
@@ -354,7 +360,7 @@ TWO_CLASS_SLICE='{"tasks_open":[
 tick() { # $1 = role, $2 = tick count, rest = env assignments
     local role="$1" n="$2"; shift 2
     rm -f "$FLEET_STATE_DIR/dispatch"/*.json
-    : > "$FLEET_CLAIM_LOG"; : > "$SEND_LOG"
+    : > "$FLEET_CLAIM_LOG"; : > "$FLEET_CLAIM_ENV_LOG"; : > "$SEND_LOG"
     mkdir -p "$FLEET_STATE_DIR/triggers"
     : > "$FLEET_STATE_DIR/triggers/$role"
     env "$@" "$DISPATCHER" --dispatch-role "$role" "$n" 2>&1 >/dev/null
@@ -439,7 +445,7 @@ write_slice worker '{"tasks_open":[
 rm -f "$FLEET_STATE_DIR/dispatch"/*.json
 printf '{"role":"worker","pane":"%%9","class":"opus","dispatched_at":"x","dispatched_epoch":1,"claim_marker":1,"target":"task:engine:10"}\n' \
     > "$FLEET_STATE_DIR/dispatch/pane-9.json"
-: > "$FLEET_CLAIM_LOG"; : > "$FLEET_STATE_DIR/triggers/worker"
+: > "$FLEET_CLAIM_LOG"; : > "$FLEET_CLAIM_ENV_LOG"; : > "$FLEET_STATE_DIR/triggers/worker"
 out=$("$DISPATCHER" --dispatch-role worker 1 2>&1 >/dev/null)
 assert_eq "$(count_dispatches "$out")" "0" "the only item is in flight -> nothing launched"
 [[ ! -s "$FLEET_CLAIM_LOG" ]] \
@@ -448,7 +454,7 @@ assert_eq "$(count_dispatches "$out")" "0" "the only item is in flight -> nothin
 rm -f "$FLEET_STATE_DIR/dispatch/pane-9.json"
 
 echo "T25: every lane kind claims through its own fleet-claim arm (--assign)"
-assign() { : > "$FLEET_CLAIM_LOG"; "$DISPATCHER" --assign "$1" pool-3; }
+assign() { : > "$FLEET_CLAIM_LOG"; : > "$FLEET_CLAIM_ENV_LOG"; "$DISPATCHER" --assign "$1" pool-3; }
 write_slice worker '{"tasks_open":[{"issue":"#7","model":"opus","owner":"free","blocked":false,"repo":"game"}],"feedback_prs":[],"needs_plan":[]}'
 assert_eq "$(assign worker)" "target=task:game:7" "game task -> task:game:7"
 grep -q -- '^--repo game claim 7 pool-3$' "$FLEET_CLAIM_LOG" \
@@ -464,6 +470,15 @@ assert_eq "$(assign worker)" "target=feedback:engine:50" "feedback PR -> feedbac
 grep -q '^amending-claim 50 pool-3$' "$FLEET_CLAIM_LOG" \
     && { PASS=$((PASS+1)); echo "  ok: feedback claims via amending-claim"; } \
     || { FAIL=$((FAIL+1)); echo "  FAIL: feedback claim argv: $(cat "$FLEET_CLAIM_LOG")"; }
+# The pre-claim runs BEFORE fleet-dispatch-wrap mints the iteration's real
+# FLEET_DISPATCH_ID, and fleet-claim stamps whatever it sees into the PR's
+# ownership record. Unset would write an EMPTY id — the value that routes the
+# claim onto the pane-heartbeat fallback the dispatch-keyed rule replaced, in
+# exactly the window where that pane is idle and its heartbeat stale. So the
+# sentinel must be on the environment of this call specifically.
+grep -q $'^amending-claim 50 pool-3\tpreclaim$' "$FLEET_CLAIM_ENV_LOG" \
+    && { PASS=$((PASS+1)); echo "  ok: feedback pre-claim carries the pre-claim dispatch sentinel"; } \
+    || { FAIL=$((FAIL+1)); echo "  FAIL: feedback pre-claim dispatch id: $(cat "$FLEET_CLAIM_ENV_LOG")"; }
 write_slice worker '{"tasks_open":[],"feedback_prs":[],"needs_plan":[],"semantic_conflict_prs":[{"number":2417,"repo":"engine","labels":["fleet:semantic-conflict"]}]}'
 assert_eq "$(assign worker)" "target=conflict:engine:2417" "conflicted PR -> conflict target"
 grep -q '^resolving-claim 2417 pool-3$' "$FLEET_CLAIM_LOG" \

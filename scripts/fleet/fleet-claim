@@ -499,6 +499,18 @@ _amending_pane_heartbeat_fresh() {
 #   must therefore NOT be a confirmed orphan the way a missing _prlabel-*
 #   marker is for reviewing/resolving.
 #
+#   One id is not a dispatch's: FLEET_PRECLAIM_DISPATCH_ID (fleet-common.sh),
+#   which fleet-dispatcher hands the claim it takes BEFORE launching the
+#   iteration that will own it. It reads as LIVE for
+#   FLEET_CLAIM_PRECLAIM_GRACE_SECS (default 300) from the snapshot's
+#   acquired_epoch, then falls through to the pane-heartbeat arm. Vouching for
+#   it is the point: during that window the pane heartbeat still belongs to the
+#   PREVIOUS iteration, and the dispatcher only launches into an idle pane, so
+#   deferring to it would let the sweep remove a fresh pre-claim carried on a
+#   past-TTL label and admit a second feedback worker. Both clocks in that
+#   comparison are local (the snapshot is written by this host), so it does not
+#   reintroduce the host-clock-vs-GitHub skew the id comparison exists to avoid.
+#
 #   On verdict 2 the caller can read $_AMENDING_OWNER_DISPATCH (the dead owner)
 #   and $_AMENDING_SUPERSEDED_BY (the dispatch that replaced it) for its log.
 _AMENDING_OWNER_DISPATCH=""
@@ -525,7 +537,7 @@ _amending_owner_live() {
     # Dispatch-scoped arm. Both records must be present and agree on the agent;
     # anything else falls through to the legacy arm below.
     if [[ "$pr" =~ ^[0-9]+$ ]]; then
-        local snap snap_info snap_agent="" snap_dispatch=""
+        local snap snap_info snap_agent="" snap_dispatch="" snap_epoch=0
         snap=$(_amend_snapshot_path "$pr")
         if [[ -f "$snap" ]]; then
             # tr -d '\r': native-Windows python3 CRLF-terminates print(), and
@@ -537,11 +549,30 @@ try:
         d = json.load(fh)
 except Exception:
     d = {}
-print("%s\t%s" % (d.get("agent") or "", d.get("dispatch_id") or ""))
+print("%s\t%s\t%s" % (
+    d.get("agent") or "", d.get("dispatch_id") or "", d.get("acquired_epoch") or 0))
 ' 2>/dev/null | tr -d '\r' || true)
-            IFS=$'\t' read -r snap_agent snap_dispatch <<< "$snap_info" || true
+            IFS=$'\t' read -r snap_agent snap_dispatch snap_epoch <<< "$snap_info" || true
         fi
-        if [[ "$snap_agent" == "$claim_agent" && -n "$snap_dispatch" ]]; then
+        # A dispatcher PRE-CLAIM, whose iteration has not launched yet and so
+        # has no minted id to record (#2973 follow-up). Vouch LIVE: the
+        # dispatcher took this claim moments ago and is launching into the
+        # pane, which is exactly the window in which the pane heartbeat is
+        # still the PREVIOUS iteration's and may be stale — deferring to it
+        # here lets `cleanup --gh` sweep a carried-over past-TTL label out from
+        # under the dispatcher and hand the PR to a second feedback worker.
+        # Bounded by its own grace so a pre-claim whose launch never happened
+        # (dispatcher killed between claim and send-keys) still ages out, via
+        # the legacy arm below and then the label TTL. Never verdict 2: the
+        # sentinel is not a superseded id, it is the absence of one, and the
+        # role's step-a re-acquire replaces it with the minted id.
+        if [[ "$snap_agent" == "$claim_agent" && "$snap_dispatch" == "$FLEET_PRECLAIM_DISPATCH_ID" ]]; then
+            local preclaim_grace="${FLEET_CLAIM_PRECLAIM_GRACE_SECS:-300}"
+            [[ "$snap_epoch" =~ ^[0-9]+$ ]] || snap_epoch=0
+            if (( snap_epoch > 0 && $(date +%s) - snap_epoch < preclaim_grace )); then
+                return 0
+            fi
+        elif [[ "$snap_agent" == "$claim_agent" && -n "$snap_dispatch" ]]; then
             local cur_file="${FLEET_STATE_DIR:-$HOME/.fleet/state}/dispatch-current/$claim_agent"
             if [[ -f "$cur_file" ]]; then
                 local cur_dispatch
@@ -2258,7 +2289,9 @@ cmd_amending_claim() {
     # swept-but-alive deferral; `agent` is what the sweep matches against the
     # label, `dispatch_id` is what it compares to the worktree's current
     # dispatch. An empty dispatch_id (architect pane, no fleet-dispatch-wrap)
-    # routes to the pane-heartbeat fallback, not to a confirmed orphan.
+    # routes to the pane-heartbeat fallback, not to a confirmed orphan; the
+    # dispatcher's pre-claim passes FLEET_PRECLAIM_DISPATCH_ID so its window
+    # is vouched for rather than falling onto that pane-keyed fallback.
     local _pr="${1:-}" _agent="${2:-unknown}"
     if [[ "$_pr" =~ ^[0-9]+$ ]]; then
         local _snap
@@ -5715,8 +5748,14 @@ commands:
                                     With no dispatch identity on
                                     record (architect pane, pre-#2973
                                     claim) the pane heartbeat alone
-                                    decides, as before. Cross-host
-                                    labels age out on pure TTL,
+                                    decides, as before. A dispatcher
+                                    PRE-CLAIM, taken before its
+                                    iteration is launched, is kept for
+                                    300s (FLEET_CLAIM_PRECLAIM_GRACE_
+                                    SECS) without consulting the
+                                    heartbeat, then falls back to it.
+                                    Cross-host labels age out on pure
+                                    TTL,
                                 (2) fleet:claim-* labels off open
                                     issues where the claim is
                                     abandoned — age > TTL (default

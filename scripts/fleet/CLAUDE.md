@@ -422,7 +422,18 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   orphan (the marker lives in `$CLAIMS_DIR`, which `fleet-down` wipes), but a
   missing amend-snapshot is not — that record is deliberately outside
   `$CLAIMS_DIR` so the ownership evidence survives a restart, and an
-  architect pane has no dispatch id at all.
+  architect pane has no dispatch id at all. Corollary for any lane that
+  gains such a record: a claim taken *on behalf of* an iteration that has
+  not started — `fleet-dispatcher`'s pre-claim — has no identity to stamp
+  yet, and the absent-identity default is the wrong one for it. The default
+  means "cannot vouch, use the pane rule", and the pre-claim window is
+  precisely where the pane rule is weakest: the dispatcher only launches
+  into an *idle* pane, so that heartbeat belongs to the previous iteration.
+  Give the pre-claim an explicit third value (`FLEET_PRECLAIM_DISPATCH_ID`)
+  that reads as live on its own short grace; note that merely carrying a
+  real id forward from the pre-claim would not help, because id *equality*
+  deliberately falls through to the pane rule so a hung owner still ages
+  out.
 - **Unattended daemons timeout-guard their network calls.** The host's
   connections to GitHub intermittently black-hole (silent TCP death), so a
   hung `git fetch` / `gh …` in a fleet daemon (dispatcher loop, `fleet-rebase`,
