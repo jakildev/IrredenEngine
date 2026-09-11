@@ -406,6 +406,60 @@ constexpr IRVideo::GuiInputEvent kProbeSaveEvents[] = {
 // ~2130 vs ~2290) — one press fires both. The runner greps the "Added blank
 // frame" log to confirm the overload so later sessions re-establish the camera
 // after any frame op.
+// Ctrl+S again, but Ctrl comes back up BEFORE S does. The press was
+// shadowed, so neither pan half may fire — and the release frame, which sees no
+// modifier at all, is the one the old frame-local rule could not reach.
+constexpr IRVideo::GuiInputEvent kProbeSaveCtrlFirstEvents[] = {
+    {0,
+     IRVideo::GuiInputEvent::Type::PRESS,
+     IRMath::ivec2(0),
+     IRMath::vec2(0.0f),
+     IRInput::kKeyButtonLeftControl},
+    {2,
+     IRVideo::GuiInputEvent::Type::PRESS,
+     IRMath::ivec2(0),
+     IRMath::vec2(0.0f),
+     IRInput::kKeyButtonS},
+    {3,
+     IRVideo::GuiInputEvent::Type::RELEASE,
+     IRMath::ivec2(0),
+     IRMath::vec2(0.0f),
+     IRInput::kKeyButtonLeftControl},
+    {4,
+     IRVideo::GuiInputEvent::Type::RELEASE,
+     IRMath::ivec2(0),
+     IRMath::vec2(0.0f),
+     IRInput::kKeyButtonS},
+};
+
+// The mirror case: a BARE S press starts the pan, then Ctrl arrives mid-hold.
+// The pan must actually run while S is down and must stop on release. A
+// `blockedModifiers` mask on the pair is unbalanced in exactly this direction —
+// live Ctrl rejects the release row and strands the start — so this shot is the
+// lock that keeps the S pair riding the suite unmasked.
+constexpr IRVideo::GuiInputEvent kProbePanThenCtrlEvents[] = {
+    {0,
+     IRVideo::GuiInputEvent::Type::PRESS,
+     IRMath::ivec2(0),
+     IRMath::vec2(0.0f),
+     IRInput::kKeyButtonS},
+    {2,
+     IRVideo::GuiInputEvent::Type::PRESS,
+     IRMath::ivec2(0),
+     IRMath::vec2(0.0f),
+     IRInput::kKeyButtonLeftControl},
+    {3,
+     IRVideo::GuiInputEvent::Type::RELEASE,
+     IRMath::ivec2(0),
+     IRMath::vec2(0.0f),
+     IRInput::kKeyButtonS},
+    {4,
+     IRVideo::GuiInputEvent::Type::RELEASE,
+     IRMath::ivec2(0),
+     IRMath::vec2(0.0f),
+     IRInput::kKeyButtonLeftControl},
+};
+
 constexpr IRVideo::GuiInputEvent kProbeADEvents[] = {
     {0,
      IRVideo::GuiInputEvent::Type::PRESS,
@@ -563,6 +617,12 @@ constexpr IRVideo::GuiTestShot kGuiTestShots[] = {
      kProbeEraseNumEvents},
     {{1.0f, IRMath::vec2(0.0f), 0.0f, "editor_probe_save"}, kProbeSaveEvents, 4},
     {{1.0f, IRMath::vec2(0.0f), 0.0f, "editor_probe_ad"}, kProbeADEvents, 2},
+    // Pair-balance probes. Last, because both pan the camera: the shots
+    // above read the scene through a camera these would otherwise have moved.
+    {{1.0f, IRMath::vec2(0.0f), 0.0f, "editor_probe_save_ctrl_first"},
+     kProbeSaveCtrlFirstEvents,
+     4},
+    {{1.0f, IRMath::vec2(0.0f), 0.0f, "editor_probe_pan_then_ctrl"}, kProbePanThenCtrlEvents, 4},
 };
 constexpr int kNumGuiTestShots = static_cast<int>(sizeof(kGuiTestShots) / sizeof(kGuiTestShots[0]));
 constexpr int kGuiAssertShotIndex = 4;
@@ -580,9 +640,12 @@ constexpr int kProbeMapShotStart = kHelpOverlayClosedShotIndex + 1;
 constexpr int kProbeEraseShotIndex = kProbeMapShotStart + kProbeMapCount;
 constexpr int kProbeSaveShotIndex = kProbeEraseShotIndex + 1;
 constexpr int kProbeADShotIndex = kProbeSaveShotIndex + 1;
+constexpr int kProbeSaveCtrlFirstShotIndex = kProbeADShotIndex + 1;
+constexpr int kProbePanThenCtrlShotIndex = kProbeSaveCtrlFirstShotIndex + 1;
 static_assert(
-    kProbeADShotIndex + 1 == kNumGuiTestShots,
-    "Phase 0 / Part 2b probe shots (#766) must be the final kGuiTestShots entries"
+    kProbePanThenCtrlShotIndex + 1 == kNumGuiTestShots,
+    "Phase 0 / Part 2b (#766) and pair-balance (#3273) probe shots must be the "
+    "final kGuiTestShots entries"
 );
 
 // GUI-test assertion tables (P3, #1796). Filled in initEntities once the widget
@@ -718,20 +781,46 @@ bool evaluateOverlayGlyphsBatched(const void *context, std::string &actual) {
 constexpr bool kOverlayExpectVisible = true;
 constexpr bool kOverlayExpectHidden = false;
 
-// Camera-velocity balance across the Ctrl+S probe. The S camera-pan pair
-// accumulates into `C_Velocity2DIso` with `-=` on press and `+=` on release,
-// so the two halves must fire together or the camera pans forever. The save
-// binding's `requiredModifiers` arms `CommandManager`'s modifier-specificity
-// shadowing, which reaches only the PRESSED half of that pair — the release
-// frame has no modifier-specific match to shadow against. The editor blocks
-// Ctrl on both halves to keep them symmetric; this assertion is what holds
-// them that way.
-bool evaluateCameraVelocityBalanced(const void *, std::string &actual) {
+// Camera-velocity balance across the three chord probes below. S is both "pan
+// the camera down" and the Ctrl+S save chord, so the pan pair's two halves must
+// fire together or the camera pans forever — `CommandManager` admits a bare
+// start/end pair once at the press for exactly that reason, and these
+// assertions are what hold it to the promise from the creation side.
+//
+// Peak pan speed seen during the pan-then-Ctrl probe's hold, latched by
+// `onGuiAssertFrame` on that shot's non-capture frames. The capture frame reads
+// the camera's velocity long after both halves have drained, so "the pan
+// stopped" is only meaningful next to proof that it ever started.
+float g_probePanPeakSpeed = 0.0f;
+
+// Shared body of the three balance predicates: the S pan pair accumulates into
+// `C_Velocity2DIso` with `-=` on press and `+=` on release, so a leftover half
+// reads as a stuck +/-20 here.
+bool cameraVelocityIsZero(std::string &actual) {
     const IRMath::vec2 velocity =
         IREntity::getComponent<IRComponents::C_Velocity2DIso>("camera").velocity_;
     actual = "camera velocity = (" + std::to_string(velocity.x) + ", " +
              std::to_string(velocity.y) + ")";
     return IRMath::abs(velocity.x) < 0.001f && IRMath::abs(velocity.y) < 0.001f;
+}
+
+bool evaluateCameraVelocityBalanced(const void *, std::string &actual) {
+    return cameraVelocityIsZero(actual);
+}
+
+// Ctrl released before S. Same expectation, different ordering: the
+// shadowed press must not leave a live release behind even though the release
+// frame itself sees no modifier.
+bool evaluateCtrlFirstReleaseBalanced(const void *, std::string &actual) {
+    return cameraVelocityIsZero(actual);
+}
+
+// Bare start, Ctrl mid-hold. Both halves of the claim are asserted: the
+// pan ran (peak > 0 while S was down) and then stopped (velocity 0 after).
+bool evaluatePanThenCtrlBalanced(const void *, std::string &actual) {
+    const bool stopped = cameraVelocityIsZero(actual);
+    actual = "peak pan speed = " + std::to_string(g_probePanPeakSpeed) + ", " + actual;
+    return g_probePanPeakSpeed > 0.001f && stopped;
 }
 
 // Per-frame driver for an authoring session (#766 Part 2c). Resolves this
@@ -782,6 +871,16 @@ void onGuiAssertFrame(int shotIndex, bool isCaptureFrame) {
         const IRMath::ivec3 cell = probeGroundCell(cellIndex);
         const IRMath::vec3 worldCenter = g_editableSceneOrigin + IRMath::vec3(cell);
         g_probeMapMoves[cellIndex].screenPx_ = IRRender::worldPos3DToMouseScreenPx(worldCenter);
+    }
+    // Sample the live pan speed while S is down, before the capture frame
+    // reads the settled velocity — `evaluatePanThenCtrlBalanced` asserts both.
+    if (shotIndex == kProbePanThenCtrlShotIndex && !isCaptureFrame) {
+        const IRMath::vec2 velocity =
+            IREntity::getComponent<IRComponents::C_Velocity2DIso>("camera").velocity_;
+        g_probePanPeakSpeed = IRMath::max(
+            g_probePanPeakSpeed,
+            IRMath::max(IRMath::abs(velocity.x), IRMath::abs(velocity.y))
+        );
     }
     const auto &assertions = g_shotAssertions[shotIndex];
     IRPrefab::GuiTest::onFrame(
@@ -2709,42 +2808,11 @@ void initSystems() {
 
 void initCommands() {
     // The full camera suite minus Escape→CLOSE_WINDOW, which would conflict
-    // with this editor's own drag-cancel handler, and minus the S pan pair,
-    // which this file re-registers with a Ctrl block.
-    IRPrefab::Camera::registerStandardKeyboardCommands(
-        {.omit_ = {
-             IRCommand::CLOSE_WINDOW,
-             IRCommand::MOVE_CAMERA_DOWN_START,
-             IRCommand::MOVE_CAMERA_DOWN_END
-         }}
-    );
-
-    // S is both "pan the camera down" and the Ctrl+S / Ctrl+Shift+S save chords.
-    // Once a save binding carries a real `requiredModifiers` (it must — the help
-    // overlay renders that field), CommandManager's modifier-specificity rule
-    // suppresses every bare-mask binding on S for that frame. It shadows only the
-    // PRESSED half, though: the release frame has no modifier-specific match to
-    // shadow against, so MOVE_CAMERA_DOWN_END still fires. That pair accumulates
-    // into C_Velocity2DIso (`-=` on press, `+=` on release), so a suppressed start
-    // with a live end would leave the camera panning up forever after every
-    // Ctrl+S, at a stuck velocity.y of +20. Blocking Ctrl on BOTH halves keeps
-    // them symmetric: with Ctrl held neither fires, without it both do.
-    // `omit_` matches on command, not on button, so the START and END rows have
-    // to be named separately (engine/command/CLAUDE.md §Gotchas).
-    IRCommand::createCommand<IRCommand::MOVE_CAMERA_DOWN_START>(
-        IRInput::InputTypes::KEY_MOUSE,
-        IRInput::ButtonStatuses::PRESSED,
-        IRInput::KeyMouseButtons::kKeyButtonS,
-        IRInput::kModifierNone,
-        IRInput::kModifierControl
-    );
-    IRCommand::createCommand<IRCommand::MOVE_CAMERA_DOWN_END>(
-        IRInput::InputTypes::KEY_MOUSE,
-        IRInput::ButtonStatuses::RELEASED,
-        IRInput::KeyMouseButtons::kKeyButtonS,
-        IRInput::kModifierNone,
-        IRInput::kModifierControl
-    );
+    // with this editor's own drag-cancel handler. The S pan pair rides the
+    // suite like every other axis: `CommandManager` decides a bare start/end
+    // pair's eligibility once, at the press, so the Ctrl+S save chord shadows
+    // both halves or neither, and no per-creation mask is needed.
+    IRPrefab::Camera::registerStandardKeyboardCommands({.omit_ = {IRCommand::CLOSE_WINDOW}});
 
     // F1 opens the registry-driven command help overlay. Every
     // named PRESSED binding registered below appears automatically.
@@ -4092,6 +4160,20 @@ void initEntities() {
             &IRVoxelEditor::evaluateCameraVelocityBalanced,
             nullptr,
             "ctrl_s_leaves_camera_balanced"
+        ),
+    };
+    IRVoxelEditor::g_shotAssertions[IRVoxelEditor::kProbeSaveCtrlFirstShotIndex] = {
+        IRPrefab::GuiTest::predicate(
+            &IRVoxelEditor::evaluateCtrlFirstReleaseBalanced,
+            nullptr,
+            "ctrl_released_first_leaves_camera_balanced"
+        ),
+    };
+    IRVoxelEditor::g_shotAssertions[IRVoxelEditor::kProbePanThenCtrlShotIndex] = {
+        IRPrefab::GuiTest::predicate(
+            &IRVoxelEditor::evaluatePanThenCtrlBalanced,
+            nullptr,
+            "bare_pan_then_ctrl_pans_then_stops"
         ),
     };
 }
