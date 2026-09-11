@@ -2628,8 +2628,10 @@ def project_queue_manager_ingest(state):
       rather than one child at a time.
     - **Remove path** — a queued task carrying `fleet:blocked` whose last
       blocker just closed (`_ingest_unblock_candidates`, sourced from
-      tasks.open since the issue has left human_approved). It enters the set,
-      ingest removes `fleet:blocked`, and it drops out (label gone).
+      tasks.open and tasks.in_progress (#2534) — a task claimed while still
+      blocked moves to tasks.in_progress and needs the same resolution).
+      It enters the set, ingest removes `fleet:blocked`, and it drops out
+      (label gone).
     - **Retract path** (#2740) — a queued issue on which a planning
       queue-block (`fleet:needs-plan` / `fleet:plan-review`) has landed
       *after* queuing (`_ingest_retract_candidates`, sourced from
