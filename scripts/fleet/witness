@@ -11,12 +11,7 @@
 # ~/.fleet/alerts/<agent>.stuck. Healthy agents have their alert files
 # cleared automatically.
 #
-# If NO rostered agent has ever written a heartbeat (roster misconfigured,
-# or every rostered role retired), witness does not report "all healthy" —
-# tracking zero agents is not health. It logs a ROSTER EMPTY warning and
-# writes ~/.fleet/alerts/witness-roster.stuck instead.
-#
-# Every one of those conditions — stale agent, dead dispatcher, empty roster —
+# Every condition that warns — currently a dead dispatcher —
 # holds until a human acts, so each warning escalates-then-quiets on its own
 # counter: loud for the first N consecutive passes, then silent while the
 # alert file keeps being refreshed every pass. A healthy pass for that subject
@@ -49,38 +44,9 @@ for arg in "$@"; do
     esac
 done
 
-# Per-role staleness thresholds in seconds. Only architects are
-# monitored — non-architect panes run under fleet-dispatcher (#273)
-# and may sit idle for arbitrarily long when no triggers fire. The
-# dispatcher's cleanup_stale_dispatches loop is the canonical
-# aliveness check for those panes; witness alerts on workers would
-# be false positives every quiet period.
-#
-# Architects use --resume sessions, may sit at "standing by" between
-# human prompts. The 2 h threshold is generous enough for typical
-# desk-time gaps without missing a genuine wedge.
-#
-# ROSTER names the same agents as the case arms below — kept in sync by
-# hand since bash has no clean way to introspect a case statement. Used
-# to detect the roster-empty condition (no rostered agent has ever
-# written a heartbeat) so that case reports as broken, not healthy.
-readonly ROSTER=(opus-architect game-architect)
-
-threshold_for_agent() {
-    case "$1" in
-        opus-architect|game-architect)  echo 7200 ;;  # 2 h
-        *)                              echo 0    ;;  # not monitored
-    esac
-}
-
-# Portable file mtime in Unix seconds (macOS + Linux).
-file_mtime() {
-    python3 -c "import os, sys; print(int(os.path.getmtime(sys.argv[1])))" "$1"
-}
-
 # --- escalate-then-quiet warnings ---------------------------------------------
 # run_one_pass runs unattended every 60 s and every condition it warns on — a
-# stale agent heartbeat, a dead dispatcher pid, an empty roster — stays true
+# dead dispatcher pid — stays true
 # until a human acts, so a plain per-pass warn re-emits identically forever:
 # spam that buries the outage instead of reporting it, and grows witness.log
 # without bound. Count consecutive passes per subject; emit the loud line up to
@@ -108,15 +74,6 @@ file_mtime() {
 #
 # Every counter write is best-effort: a read-only $HOME must not break the
 # health pass this guards.
-ROSTER_ALERT="$ALERT_DIR/witness-roster.stuck"
-
-# Consecutive matching passes before escalating. Passes run ~1/min, so 10 is
-# ~10 min — long enough to ride out the boot-time gap before a freshly launched
-# architect pane writes its first heartbeat, and an order of magnitude inside
-# the 2 h staleness threshold above. One N covers every site: roster-empty is
-# strictly worse than a stale heartbeat (nothing is being watched at all), so it
-# must not alert later than staleness would, and a stale agent has already burned
-# its 2 h threshold before the first warn, which dwarfs the escalation delay.
 _witness_escalate_n() {
     local n="${FLEET_WITNESS_ESCALATE_N:-10}"
     if [[ ! "$n" =~ ^[0-9]+$ ]] || (( n < 1 )); then
@@ -196,45 +153,27 @@ _witness_clear_artifacts() {
 }
 
 run_one_pass() {
-    local now_str now stale_count tracked
+    local now_str stale_count
     now_str=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-    now=$(date +%s)
     stale_count=0
-    tracked=0
 
     for hb_file in "$HEARTBEAT_DIR"/*; do
         # Heartbeat files persist for the fleet-state lifetime. An entry absent
         # before glob expansion identifies no agent to clear, and no in-tree
         # path removes one, so that state-reset case is outside this pass.
         [[ -f "$hb_file" ]] || continue
-        local agent threshold mtime age age_min thr_min msg
+        local agent
         agent=$(basename "$hb_file")
-        threshold=$(threshold_for_agent "$agent")
-        if [[ "$threshold" -eq 0 ]]; then
-            _witness_clear_artifacts "stale-$agent" "$ALERT_DIR/$agent.stuck"
-            continue
-        fi
-        tracked=$((tracked + 1))
-
-        mtime=$(file_mtime "$hb_file")
-        age=$((now - mtime))
-
-        if [[ "$age" -gt "$threshold" ]]; then
-            age_min=$((age / 60))
-            thr_min=$((threshold / 60))
-            stale_count=$((stale_count + 1))
-            msg="STALE: $agent (last hb ${age_min}m ago, threshold ${thr_min}m)"
-            # Per-agent tag: two agents stale at once keep independent streaks.
-            # The age is deliberately absent from the key — it grows every pass,
-            # and keying on it would restart the tally forever.
-            _witness_warn "stale-$agent" "stale-heartbeat|$agent" "STALE" \
-                "$now_str" "$msg" \
-                "Wrote $ALERT_DIR/$agent.stuck, refreshed every pass. Remedy: check the $agent pane — it is alive but not looping, or it died without clearing its heartbeat."
-            echo "$now_str $agent age=${age_min}m threshold=${thr_min}m" > "$ALERT_DIR/$agent.stuck"
-        else
-            _witness_clear_artifacts "stale-$agent" "$ALERT_DIR/$agent.stuck"
-        fi
+        _witness_clear_artifacts "stale-$agent" "$ALERT_DIR/$agent.stuck"
     done
+
+    # Interactive architects are on-demand and intentionally loop-less, so a
+    # heartbeat timestamp cannot describe their health. Clear artifacts from
+    # the retired monitor even when its legacy heartbeat file is gone.
+    for agent in opus-architect game-architect; do
+        _witness_clear_artifacts "stale-$agent" "$ALERT_DIR/$agent.stuck"
+    done
+    _witness_clear_artifacts "roster" "$ALERT_DIR/witness-roster.stuck"
 
     # fleet-dispatcher liveness check. The dispatcher is the canonical
     # aliveness signal for non-architect panes (#273 cutover); if it
@@ -266,25 +205,8 @@ run_one_pass() {
         _witness_clear_artifacts "stale-dispatcher" "$ALERT_DIR/fleet-dispatcher.stuck"
     fi
 
-    if [[ "$tracked" -eq 0 ]]; then
-        local msg="ROSTER EMPTY: no heartbeat file for any monitored agent (${ROSTER[*]}) — witness is not tracking anyone, this is not health"
-        # A changed roster is news again: it is the subject here, so a tally
-        # raised against a different set of agents is not inherited.
-        _witness_warn "roster" "roster-empty|${ROSTER[*]}" "ROSTER EMPTY" \
-            "$now_str" "$msg" \
-            "Wrote $ROSTER_ALERT, refreshed every pass. Remedy: give each rostered agent (${ROSTER[*]}) a fleet-heartbeat call at its role step 0, or correct the roster."
-        # No other site writes this alert, and it is the roster condition's
-        # only durable signal — so it is refreshed every pass, including past N.
-        mkdir -p "$(dirname "$ROSTER_ALERT")" 2>/dev/null || true
-        printf '%s roster=%s count=%s since=%s\n' \
-            "$now_str" "${ROSTER[*]}" "$_WITNESS_WARN_COUNT" "$_WITNESS_WARN_SINCE" \
-            > "$ROSTER_ALERT" 2>/dev/null || true
-    else
-        _witness_all_clear "roster"
-        rm -f "$ROSTER_ALERT" 2>/dev/null || true
-        if [[ "$stale_count" -eq 0 ]]; then
-            echo "[$now_str witness] all healthy ($tracked agent(s) tracked)"
-        fi
+    if [[ "$stale_count" -eq 0 ]]; then
+        echo "[$now_str witness] all healthy"
     fi
 }
 
