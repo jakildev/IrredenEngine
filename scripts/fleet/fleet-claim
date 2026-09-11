@@ -19,7 +19,7 @@
 #   fleet-claim claim <issue-number> <agent-name> [--stackable-on <pr-url>]
 #   fleet-claim claim-base <issue-number> [--strict]
 #   fleet-claim find-stackable-blockers <issue-number>
-#   fleet-claim release <issue-number>
+#   fleet-claim release <issue-number> [--wip-ok]
 #   fleet-claim check <issue-number>
 #   fleet-claim list [--with-age]
 #   fleet-claim cleanup [--repo <owner/repo>] [--gh] ...
@@ -1675,6 +1675,29 @@ print(issue_pr_state(prs, os.environ["ISSUE_NUM"], os.environ.get("REPO", "")))
 ' 2>/dev/null || echo none
 }
 
+# _issue_wip_pr_numbers_from <prs-json> <issue-num> <repo>
+#   Print matching open PR numbers that still carry fleet:wip. The shared
+#   matcher keeps release and claim liveness in agreement.
+_issue_wip_pr_numbers_from() {
+    echo "$1" | ISSUE_NUM="$2" REPO="$3" python3 -c '
+import json, os, sys
+sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
+from fleet_branch_match import pr_matches_issue
+try:
+    prs = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+for pr in prs:
+    labels = {
+        (label or {}).get("name", "")
+        for label in (pr.get("labels") or [])
+        if isinstance(label, dict)
+    }
+    if pr_matches_issue(pr, os.environ["ISSUE_NUM"], os.environ.get("REPO", "")) and "fleet:wip" in labels and pr.get("number"):
+        print(pr["number"])
+' 2>/dev/null
+}
+
 # _issue_has_unswept_claim <repo> <issue-num> <self-label> <scope> [stale-secs] [now]
 #   Does the issue still carry a `fleet:claim-*` label that the caller's pass
 #   is NOT going to remove? If so another agent's work is live and
@@ -1726,7 +1749,7 @@ _issue_has_unswept_claim() {
     return 1
 }
 
-# _release_inactive_issue_labels <issue-num>
+# _release_inactive_issue_labels <issue-num> [prs-json]
 #   Clear this host's `fleet:claim-<host>-*` and `fleet:in-progress` labels off
 #   the issue whenever the claim is NOT backed by live work, so the scout stops
 #   seeing it as in-progress and any worker can re-claim. Two such cases, both
@@ -1759,9 +1782,11 @@ _release_inactive_issue_labels() {
     host=$(derive_host)
     [[ -z "$repo" ]] && return 1
 
-    local prs_json
-    prs_json=$(gh pr list --repo "$repo" --state open \
-        --json number,headRefName,labels,body --limit 300 2>/dev/null || echo "[]")
+    local prs_json="${2:-}"
+    if [[ -z "$prs_json" ]]; then
+        prs_json=$(gh pr list --repo "$repo" --state open \
+            --json number,headRefName,labels,body --limit 300 2>/dev/null || echo "[]")
+    fi
 
     [[ "$(_issue_pr_state_from "$prs_json" "$issue_num" "$repo")" != "active" ]] || return 1
 
@@ -1782,10 +1807,29 @@ _release_inactive_issue_labels() {
 }
 
 cmd_release() {
+    local wip_ok=0
+    while [[ $# -gt 0 && "$1" == "--wip-ok" ]]; do
+        wip_ok=1
+        shift
+    done
+
     local issue_num
     if ! issue_num=$(require_issue_number "$1"); then
         return 2
     fi
+    shift
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --wip-ok)
+                wip_ok=1
+                shift
+                ;;
+            *)
+                echo "fleet-claim release: unknown flag '$1'" >&2
+                return 2
+                ;;
+        esac
+    done
     local slug
     slug=$(slugify "$issue_num")
 
@@ -1793,6 +1837,28 @@ cmd_release() {
     # check both — that's why this branches on (-d || -f .meta) rather
     # than (-d) alone.
     if [[ -d "$CLAIMS_DIR/$slug" || -f "$CLAIMS_DIR/${slug}.meta" ]]; then
+        local release_prs_json=""
+        if (( wip_ok == 0 )); then
+            local repo prs_json wip_pr_numbers
+            repo=$(repo_from_ns)
+            if [[ -n "$repo" ]] && command -v gh >/dev/null 2>&1; then
+                prs_json=$(gh pr list --repo "$repo" --state open \
+                    --json number,headRefName,labels,body --limit 300 2>/dev/null || echo "[]")
+                release_prs_json="$prs_json"
+                wip_pr_numbers=$(_issue_wip_pr_numbers_from "$prs_json" "$issue_num" "$repo" || true)
+                if [[ -n "$wip_pr_numbers" ]]; then
+                    local pr_num
+                    while IFS= read -r pr_num; do
+                        [[ -n "$pr_num" ]] || continue
+                        echo "fleet-claim release: REFUSING to release #${issue_num}: open PR #${pr_num} still has fleet:wip." >&2
+                        echo "Finalize it first: gh pr edit ${pr_num} --remove-label \"fleet:wip\"" >&2
+                    done <<< "$wip_pr_numbers"
+                    echo "Pass --wip-ok only when the PR is genuinely still mid-task." >&2
+                    return 1
+                fi
+            fi
+        fi
+
         local owner=""
         if [[ -f "$CLAIMS_DIR/$slug/owner" ]]; then
             owner=$(cat "$CLAIMS_DIR/$slug/owner")
@@ -1816,7 +1882,7 @@ cmd_release() {
         # both sides here. (cleanup --gh's open-issue sweep, which classifies
         # the same two cases identically, stays the TTL safety net for a claim
         # abandoned without any release at all.)
-        if _release_inactive_issue_labels "$issue_num"; then
+        if _release_inactive_issue_labels "$issue_num" "$release_prs_json"; then
             echo "released: #${issue_num} (slug: $slug, FS lock + worktree reservation + stale issue labels cleared)"
         else
             echo "released: #${issue_num} (slug: $slug, FS lock + worktree reservation cleared; issue labels retained)"
@@ -4907,10 +4973,11 @@ case "${1:-}" in
         ;;
     release)
         if [[ -z "${2:-}" ]]; then
-            echo "usage: fleet-claim release <issue-number>" >&2
+            echo "usage: fleet-claim release <issue-number> [--wip-ok]" >&2
             exit 2
         fi
-        cmd_release "$2"
+        shift
+        cmd_release "$@"
         ;;
     decline)
         if [[ -z "${2:-}" || -z "${3:-}" ]]; then

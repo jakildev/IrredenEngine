@@ -161,6 +161,14 @@ def body_closes_issue(body, issue):
     return re.search(pat, body, re.IGNORECASE) is not None
 
 
+def pr_matches_issue(pr, issue, repo):
+    """True when a PR branch or closing-keyword body belongs to an issue."""
+    return (
+        branch_matches_issue(pr.get("headRefName") or "", issue, repo)
+        or body_closes_issue(pr.get("body") or "", issue)
+    )
+
+
 def body_closed_issue_numbers(body):
     """All issue numbers a closing keyword references in `body`, as ints."""
     if not body:
@@ -203,11 +211,7 @@ def issue_pr_state(prs, issue, repo):
     """
     saw_parked = False
     for pr in (prs or []):
-        matched = (
-            branch_matches_issue(pr.get("headRefName") or "", issue, repo)
-            or body_closes_issue(pr.get("body") or "", issue)
-        )
-        if not matched:
+        if not pr_matches_issue(pr, issue, repo):
             continue
         names = {
             (lbl or {}).get("name", "")

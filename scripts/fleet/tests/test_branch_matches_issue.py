@@ -23,6 +23,7 @@ from fleet_branch_match import (
     issue_branch_prefixes,
     issue_from_branch,
     issue_pr_state,
+    pr_matches_issue,
 )
 
 
@@ -173,6 +174,12 @@ class IssuePrState(unittest.TestCase):
 
     def _pr(self, head, *labels):
         return {"headRefName": head, "labels": [{"name": n} for n in labels]}
+
+    def test_pr_matches_issue_by_branch_or_closing_keyword(self):
+        self.assertTrue(pr_matches_issue(self._pr("claude/1488-x"), 1488, "engine"))
+        self.assertTrue(pr_matches_issue(
+            {"headRefName": "claude/odd", "body": "Closes #1488"}, 1488, "engine"))
+        self.assertFalse(pr_matches_issue(self._pr("claude/9999-x"), 1488, "engine"))
 
     def test_active_when_matching_pr_not_parked(self):
         prs = [self._pr("claude/1488-x", "fleet:wip", "fleet:approved")]
