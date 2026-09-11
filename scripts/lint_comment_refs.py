@@ -286,6 +286,31 @@ def _shell_words(segment):
     return words
 
 
+def _last_separator_end(segment):
+    """The offset just past the segment's last command separator, counting only
+    separators the shell would act on. A separator is inert inside a quoted run
+    or behind a backslash, so `FOO="x; y" python3 -c …` is one simple command
+    whose command word is the interpreter; reading that `;` as a boundary puts
+    the command word out of reach. Quoting is honoured exactly as
+    `_shell_words` honours it, so the two agree on where a word begins."""
+    cut, i, n = 0, 0, len(segment)
+    while i < n:
+        ch = segment[i]
+        if ch == "\\" and i + 1 < n:
+            i += 2
+            continue
+        if ch in "\"'":
+            escape = "\\" if ch == '"' or segment[i - 1:i] == "$" else None
+            i = _skip_quoted(segment, i, ch, escape, multiline=True)
+            continue
+        m = COMMAND_SEPARATOR_RE.match(segment, i)
+        if m:
+            cut = i = m.end()
+            continue
+        i += 1
+    return cut
+
+
 def _command_family(text, i):
     """The family of the interpreter that is the command word of the simple
     command containing position `i`, else None: `python3 <<'PY'` and
@@ -295,15 +320,14 @@ def _command_family(text, i):
     assignments, shell keywords, and the common command-prefix forms —
     including, for a prefix that takes one, an option's separate operand,
     which is otherwise mistaken for the command word (`sudo -u root …`).
-    Words are split with quoting honoured, so a quoted assignment value does
-    not stand in for the command word (`FOO="x y" python3 -c …`)."""
+    Both the separator search and the word split honour quoting, so neither a
+    quoted assignment value nor a separator character inside one stands in for
+    the command word (`FOO="x; y" python3 -c …`)."""
     start = text.rfind("\n", 0, i) + 1
     while start > 1 and text[start - 2] == "\\":
         start = text.rfind("\n", 0, start - 1) + 1
     segment = text[start:i]
-    cut = 0
-    for m in COMMAND_SEPARATOR_RE.finditer(segment):
-        cut = m.end()
+    cut = _last_separator_end(segment)
     operand_options = frozenset()
     skip_operand = False
     for word in _shell_words(segment[cut:]):

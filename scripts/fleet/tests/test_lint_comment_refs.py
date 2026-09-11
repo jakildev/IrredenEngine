@@ -354,11 +354,39 @@ class CommandWord(unittest.TestCase):
         self.assertEqual(
             lines("FOO=\"a b\" \\\n    python3 <<'PY'\n# #1234\nPY\n", "shell"), [3])
 
+    def test_a_separator_inside_a_quoted_value_is_not_a_boundary(self):
+        """A separator character the shell never acts on — quoted, or escaped —
+        leaves one simple command whose command word is the interpreter. Read as
+        a boundary it cuts the segment mid-value, so the command word is never
+        reached and the source the interpreter runs goes unscanned."""
+        for line in ("FOO=\"x; y\" python3 -c '# #1234'\n",
+                     "FOO=\"x| y\" python3 -c '# #1234'\n",
+                     "FOO=\"x& y\" python3 -c '# #1234'\n",
+                     "FOO=\"x( y\" python3 -c '# #1234'\n",
+                     "FOO=\"x{ y\" python3 -c '# #1234'\n",
+                     "FOO=\"x$( y\" python3 -c '# #1234'\n",
+                     "FOO=\"x` y\" python3 -c '# #1234'\n",
+                     "FOO='x; y' python3 -c '# #1234'\n",
+                     "env FOO=\"x; y\" python3 -c '# #1234'\n",
+                     "FOO=a\\;b python3 -c '# #1234'\n",
+                     "sudo -u root FOO='x| y' bash <<'EOF'\n# #1234\nEOF\n"):
+            self.assertEqual(lines(line, "shell"), [1] if "EOF" not in line else [2], line)
+
+    def test_an_unquoted_separator_is_still_a_boundary(self):
+        """The control for the case above: honouring quoting may not cost the
+        separators the shell does act on. One of those still ends the preceding
+        simple command, so the command word is decided afresh after it — even
+        where an earlier quoted separator was passed over."""
+        self.assertEqual(lines("echo python3 -c 'a'; python3 -c '# #1234'\n", "shell"), [1])
+        self.assertEqual(lines("echo \"a; b\" | python3 -c '# #1234'\n", "shell"), [1])
+
     def test_quoting_does_not_promote_data_to_source(self):
         """Reaching past a quoted value must stop at the command word all the
         same: an argument that merely looks like an assignment is not one."""
         for line in ("FOO=\"x y\" echo python3 -c '# #1234'\n",
-                     "echo \"FOO=x y\" python3 -c '# #1234'\n"):
+                     "echo \"FOO=x y\" python3 -c '# #1234'\n",
+                     "FOO=\"x; y\" echo python3 -c '# #1234'\n",
+                     "echo \"FOO=x; y\" python3 -c '# #1234'\n"):
             self.assertEqual(lines(line, "shell"), [], line)
 
 
