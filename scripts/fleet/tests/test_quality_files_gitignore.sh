@@ -4,7 +4,7 @@
 # The function (cmake/ir_quality_tools.cmake) walks its search roots with
 # file(GLOB_RECURSE) — a filesystem walk, not a repository walk. (Four named
 # subtrees for the engine root; a whole-root sweep for the downstream
-# creation root format-changed collects from, #2675.) Before this
+# creation root format-changed collects from.) Before this
 # fix nothing dropped content the engine repo's own .gitignore excludes, so
 # a gitignored nested checkout under a search root (a private creation's own
 # repo, or an agent worktree inside one) was swept into QUALITY_FILES: the

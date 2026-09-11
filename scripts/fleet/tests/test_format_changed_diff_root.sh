@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for the format-changed diff root (#2675).
+# Tests for the format-changed diff root.
 #
 # The subject is cmake/ir_quality_tools.cmake — irreden_add_quality_targets
 # and the _irreden_resolve_format_root helper it calls. Like its sibling
@@ -17,7 +17,7 @@
 # origin/master; nothing to format." at exit 0: a clean answer to the wrong
 # question, which is indistinguishable from a genuinely clean tree. That
 # equivalence is what T2 pins, and why every zero-result line asserted here
-# carries an examined-file count. See #2675.
+# carries an examined-file count.
 #
 # These cases configure a throwaway `project(... NONE)` root that calls the
 # real irreden_add_quality_targets() and then BUILD the real format-changed
@@ -35,7 +35,7 @@ STYLE_FILE="$SCRIPT_DIR/.clang-format"
 for f in "$QUALITY_TOOLS" "$CHANGED_SCRIPT" "$STYLE_FILE"; do
     if [[ ! -f "$f" ]]; then
         echo "SKIP: subject under test not found at $f" >&2
-        exit 3  # skip status — run_all.sh must not count this as a pass (#2786)
+        exit 3  # skip status — run_all.sh must not count this as a pass
     fi
 done
 for tool in cmake clang-format git; do
@@ -121,8 +121,8 @@ run_target() {
 
 # The edit each case makes: replaces the MARKER comment with a misformatted
 # line. The edited line itself has to be misformatted for a reformat to be
-# observable at all — format-changed is scoped to CHANGED lines (#2719), so
-# editing an already-clean line correctly leaves the file's other drift alone
+# observable at all — format-changed is scoped to CHANGED lines, so editing
+# an already-clean line correctly leaves the file's other drift alone
 # and would make a "file is now clean" assertion vacuously red.
 # The repo style wraps the body, so the edited line becomes several — assert
 # on its head rather than the whole reformatted statement.
@@ -152,7 +152,7 @@ assert_contains "$CONF" "format-changed diff root: $CREATION" \
     "configure names the user project as the format-changed diff root"
 
 echo ""
-echo "T1: a dirty creation worktree is what format-changed diffs (the #2675 defect)"
+echo "T1: a dirty creation worktree is what format-changed diffs (the defect)"
 edit_marker "$CREATION/src/creation_src.cpp"
 OUT=$(run_target "$BUILD_WITH")
 # Pre-fix this printed "no diff vs origin/master in <engine>; nothing to

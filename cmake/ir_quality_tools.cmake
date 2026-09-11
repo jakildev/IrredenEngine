@@ -19,7 +19,7 @@ endif()
 # `repo_root` is the tree the candidates were globbed from, so the query runs
 # in the repository that actually owns them: a downstream creation root is its
 # own git repo, and asking the engine about paths outside the engine's
-# worktree answers about nothing (#2675).
+# worktree answers about nothing.
 #
 # Batches the whole candidate list through one `git check-ignore --stdin`
 # call rather than a per-file execute_process (cheap for the ~2k-entry list
@@ -82,7 +82,7 @@ endfunction()
 #
 # `ROOT <dir>` collects from a tree other than the engine source root — the
 # format-changed target passes the downstream creation worktree a build was
-# configured against (#2675). Only the engine root has the engine's named
+# configured against. Only the engine root has the engine's named
 # subtree layout, so any other root is swept whole and leans on the reject
 # chain plus the gitignore drop for its exclusions.
 function(irreden_collect_quality_files out_var)
@@ -182,7 +182,7 @@ endfunction()
 # passed as `-DIRREDEN_USER_PROJECTS=<creation-worktree>`. The project source
 # dir is then the engine while the tree being worked on is the creation's, and
 # a formatter keyed on the former diffs a repo nobody edited — a clean answer
-# about the wrong question, which reads exactly like a clean tree (see #2675).
+# about the wrong question, which reads exactly like a clean tree.
 #
 # The "has a CMakeLists.txt" test mirrors the root CMakeLists' own user-project
 # loop, so a project this returns is always one that was really added.
