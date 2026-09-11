@@ -1006,28 +1006,35 @@ check_host_capability() {
 # --- cross-lane claim gate ------------------------------------------------
 
 check_no_foreign_review_claim() {
-    # Refuse an amending-claim on a PR another agent is actively reviewing
-    # (`fleet:reviewing-<host>-<agent>`). fleet:amending-* and
-    # fleet:reviewing-* are DISJOINT label namespaces, so _acquire_label_on's
+    # Refuse a force-pushing claim on a PR another agent is actively reviewing
+    # (`fleet:reviewing-<host>-<agent>`). Two callers, one per lane:
+    # cmd_amending_claim (the feedback lane, #2801) and cmd_resolving_claim
+    # (the semantic-conflict lane, #3001). fleet:reviewing-* is DISJOINT from
+    # both fleet:amending-* and fleet:resolving-*, so _acquire_label_on's
     # lex-min tie-break — which filters to labels startswith(prefix) — cannot
-    # see a live review claim and grants the amend immediately. The worker
+    # see a live review claim and grants the claim immediately. The worker
     # then force-pushes (fleet-pr-amend-push) and the reviewer's verdict lands
-    # on a diff nobody read (#2801; same hazard class scripts/fleet/CLAUDE.md
-    # flags for amending-*/resolving-*).
+    # on a diff nobody read (the hazard class scripts/fleet/CLAUDE.md flags
+    # for amending-*/resolving-*).
     #
-    # The load-bearing fix is the pickup-side suppression in
-    # fleet-state-scout's worker_feedback_labels(); this is the backstop for a
-    # pane that already had the PR in context — notably role-worker step 0.5's
+    # The load-bearing fix on each lane is the pickup-side suppression in
+    # fleet-state-scout (worker_feedback_labels() /
+    # _semantic_conflict_claimable); this is the backstop for a pane that
+    # already had the PR in context — notably role-worker step 0.5's
     # reservation resume, which hand-scans raw state.json prs[] rather than
     # the projection. Mirrors check_host_capability (#2524): runs BEFORE
     # _cmd_pr_label_claim, mutates nothing on the refuse path. Placement is
     # load-bearing — _acquire_label_on POSTs the label before it decides, so a
-    # guard inside it would strand a fleet:amending-* label on a PR the worker
-    # then abandons.
+    # guard inside it would strand a fleet:amending-* / fleet:resolving-*
+    # label on a PR the worker then abandons.
     #
     # Same-agent is a pass-through: an agent legitimately holding both (it
-    # reviewed, then picked the feedback up itself) is not a cross-lane race.
-    local pr="$1" agent="${2:-unknown}"
+    # reviewed, then picked the feedback or the conflict up itself) is not a
+    # cross-lane race.
+    #
+    # $3 names the caller's lane for the diagnostic only; it changes no
+    # decision.
+    local pr="$1" agent="${2:-unknown}" lane="${3:-amend}"
 
     local info
     info=$(fetch_issue_info "$pr") || true
@@ -1051,7 +1058,7 @@ check_no_foreign_review_claim() {
             *) continue ;;
         esac
         [[ "$label" == "$own_label" ]] && continue
-        echo "fleet-claim: refuse PR#${pr} — held by [${label}]; a reviewer is mid-review and an amend would force-push out from under it" >&2
+        echo "fleet-claim: refuse PR#${pr} — held by [${label}]; a reviewer is mid-review and ${lane} would force-push out from under it" >&2
         return 1
     done
 
@@ -1946,7 +1953,20 @@ cmd_review_release() {
     rm -f "$CLAIMS_DIR/_review-verdict-${agent}" 2>/dev/null || true
     return "$rc"
 }
-cmd_resolving_claim()   { _cmd_pr_label_claim   "fleet:resolving-" "resolving-claim"   "$@"; }
+cmd_resolving_claim() {
+    # Cross-lane backstop (#3001) — the resolving-lane twin of
+    # cmd_amending_claim's #2801 gate below, and the reason this is no longer
+    # a bare delegation: role-worker step 1c rebases and force-pushes, so a
+    # live foreign fleet:reviewing-* has to bar the resolve exactly as it bars
+    # an amend. Same pre-acquire placement (mutates nothing on the refuse
+    # path) and same same-agent pass-through; see the helper for why the
+    # placement is load-bearing.
+    if [[ "${1:-}" =~ ^[0-9]+$ ]] \
+        && ! check_no_foreign_review_claim "$1" "${2:-unknown}" "a conflict resolution"; then
+        return 1
+    fi
+    _cmd_pr_label_claim   "fleet:resolving-" "resolving-claim"   "$@"
+}
 cmd_resolving_release() { _cmd_pr_label_release "fleet:resolving-" "resolving-release" "$@"; }
 cmd_amending_claim() {
     # Host-capability backstop (#2524): refuse to amend-claim a PR whose
@@ -1966,7 +1986,8 @@ cmd_amending_claim() {
     # Cross-lane backstop (#2801): a live fleet:reviewing-* held by another
     # agent bars the amend. Sibling of the host gate above — same pre-acquire
     # placement, same no-mutation-on-refuse contract.
-    if [[ "${1:-}" =~ ^[0-9]+$ ]] && ! check_no_foreign_review_claim "$1" "${2:-unknown}"; then
+    if [[ "${1:-}" =~ ^[0-9]+$ ]] \
+        && ! check_no_foreign_review_claim "$1" "${2:-unknown}" "an amend"; then
         return 1
     fi
     _cmd_pr_label_claim   "fleet:amending-" "amending-claim"   "$@"

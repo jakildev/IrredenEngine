@@ -318,6 +318,20 @@ Do the work, then exit cleanly:
     review-cleared yet; `awaiting-base` / `fork-*` are retired legacy
     labels kept in the exclusion as inert straggler protection.
 
+    **Also skip** any candidate carrying a `fleet:reviewing-*` label held
+    by another agent — a reviewer is mid-review on it right now. This lane
+    rebases and force-pushes (step h), and `--force-with-lease` protects
+    the *branch*, not the reviewer's *work*: their verdict would land on a
+    head nobody read. `fleet:reviewing-*` and `fleet:resolving-*` are
+    disjoint namespaces, so step b′'s lex-min tie-break cannot see the
+    review claim — this skip is the pickup-side half, and `fleet-claim
+    resolving-claim` refuses as a backstop (#3001, the #2801 hazard one
+    lane over). `fleet:semantic-conflict` sitting in the reviewer's own
+    skip set does not cover it: that bars *starting* a review, and the
+    reachable order is the other one (the merger stamps the conflict
+    mid-review). A `fleet:reviewing-<host>-<your-own-basename>` label is
+    yours — not a foreign claim — and does not bar the resolve.
+
     **Stack-aware filter.** If a candidate's `baseRefName != master`
     (stacked PR), look up the base PR in the cached `prs[]` by its
     `headRefName`. If the base PR also has `fleet:semantic-conflict`,

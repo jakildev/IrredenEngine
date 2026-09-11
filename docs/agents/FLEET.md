@@ -245,6 +245,13 @@ coordination mechanisms prevent duplicate work:
   and skips the PR immediately — no branch touched, no cleanup needed.
   Stale `fleet:resolving-*` labels are swept by `fleet-claim cleanup --gh`
   after the same 1800 s TTL as `fleet:reviewing-*` labels.
+- `fleet:resolving-*` is **disjoint** from `fleet:reviewing-*`, so the
+  lex-min tie-break above gives no mutual exclusion between the two lanes:
+  a live review claim has to be excluded explicitly, or the resolver's
+  force-push lands a head the reviewer never read. Both halves exist —
+  `_semantic_conflict_claimable` suppresses the projection/slice item and
+  `resolving-claim` refuses the claim (#3001, the same fix #2801 made for
+  `fleet:amending-*`). Same-agent is a pass-through on the claim side.
   See `role-worker.md` step 1c and `scripts/fleet/fleet-claim`
   `resolving-claim` / `resolving-release` subcommands.
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Tests for fleet-claim's pre-acquire claim gates: check_host_capability
-# (issue-based, #1998) and check_no_foreign_review_claim (#2801).
+# (issue-based, #1998) and check_no_foreign_review_claim (#2801, #3001).
 #
 # The gate refuses a `fleet:needs-gl-host` claim from a host that can't run
 # the OpenGL backend. GL-capable hosts are {linux, windows}; macOS GL is 4.1
@@ -23,12 +23,17 @@
 #     refuses the amend AND mutates no labels; same-host and cross-host
 #     foreign claims both refuse; the claiming agent's OWN reviewing label is
 #     a pass-through
+#   - resolving-claim (#3001): the same four properties on the
+#     semantic-conflict lane. fleet:reviewing-* is disjoint from
+#     fleet:resolving-* exactly as it is from fleet:amending-*, and step 1c
+#     force-pushes too, so the gate has to cover both callers
 #
-# The #2801 arm asserts the PR's label set is untouched, not just the exit
-# code: _acquire_label_on POSTs the fleet:amending-* label BEFORE it decides
-# the lex-min, so a guard placed inside it would leave that label stranded on
-# a PR the worker then abandons. The gate therefore has to run ahead of
-# _cmd_pr_label_claim, and "no POST happened" is the assertion that pins it.
+# The #2801/#3001 arms assert the PR's label set is untouched, not just the
+# exit code: _acquire_label_on POSTs the fleet:amending-* / fleet:resolving-*
+# label BEFORE it decides the lex-min, so a guard placed inside it would leave
+# that label stranded on a PR the worker then abandons. The gate therefore has
+# to run ahead of _cmd_pr_label_claim, and "no POST happened" is the assertion
+# that pins it.
 
 set -euo pipefail
 
@@ -90,6 +95,10 @@ mkdir -p "$FLEET_CLAIMS_DIR" "$FLEET_RESERVATIONS_DIR"
 #   3003 — PR under ANOTHER agent's same-host review claim (mac-pool-9)
 #   3004 — PR under the claiming agent's OWN review claim (mac-test-agent)
 #   3005 — PR under another agent's CROSS-host review claim (linux-pool-2)
+#   3102 — CONFLICTING PR, no review claim (resolving lane grant path)
+#   3103 — conflicted PR under ANOTHER agent's same-host review claim
+#   3104 — conflicted PR under the claiming agent's OWN review claim
+#   3105 — conflicted PR under another agent's CROSS-host review claim
 # Every label-mutating `gh api ... --method POST` is appended to $GH_POST_LOG
 # so a test can assert the refuse path mutated nothing.
 # The `api` arm emulates the cross-host fleet:claim-* lock acquire so a
@@ -137,6 +146,18 @@ case "$1 $2" in
                 ;;
             3005)
                 echo '{"state":"OPEN","labels":[{"name":"fleet:has-nits"},{"name":"fleet:reviewing-linux-pool-2"}],"body":""}'
+                ;;
+            3102)
+                echo '{"state":"OPEN","labels":[{"name":"fleet:semantic-conflict"}],"body":""}'
+                ;;
+            3103)
+                echo '{"state":"OPEN","labels":[{"name":"fleet:semantic-conflict"},{"name":"fleet:reviewing-mac-pool-9"}],"body":""}'
+                ;;
+            3104)
+                echo '{"state":"OPEN","labels":[{"name":"fleet:semantic-conflict"},{"name":"fleet:reviewing-mac-test-agent"}],"body":""}'
+                ;;
+            3105)
+                echo '{"state":"OPEN","labels":[{"name":"fleet:semantic-conflict"},{"name":"fleet:reviewing-linux-pool-2"}],"body":""}'
                 ;;
             2004)
                 echo '{"state":"OPEN","labels":[{"name":"fleet:needs-gl-host"},{"name":"fleet:backend-symmetric"},{"name":"fleet:opus"},{"name":"fleet:queued"}],"body":""}'
@@ -356,5 +377,64 @@ echo "T20: unknown host still refused despite backend-symmetric"
 actual=0; FLEET_TEST_HOST=freebsd FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" claim 2004 test-agent 2>/dev/null || actual=$?
 assert_exit "$actual" 1 "freebsd + gl-host + backend-symmetric → exit 1"
 release_quiet 2004
+
+# --- #3001: the same cross-lane gate on resolving-claim --------------------
+#
+# The #2801 fix landed on cmd_amending_claim only; cmd_resolving_claim stayed
+# a bare delegation to _cmd_pr_label_claim. fleet:reviewing-* is disjoint from
+# fleet:resolving- just as it is from fleet:amending-, so the lex-min tie-break
+# grants the resolve, role-worker step 1c rebases, and fleet-pr-amend-push
+# force-pushes out from under the in-flight review. These mirror T10-T15
+# one-for-one on the other lane — kept as a parallel block rather than a
+# shared helper so a future change to one lane cannot silently re-scope the
+# other's coverage.
+
+# --- T21: another agent's same-host review claim refuses the resolve --------
+echo "T21: resolving-claim refused under another agent's fleet:reviewing-*"
+: > "$GH_POST_LOG"
+actual=0; FLEET_TEST_HOST=mac FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" resolving-claim 3103 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 1 "mac + fleet:reviewing-mac-pool-9 → resolving-claim exit 1"
+
+# --- T22: ...and the refuse path mutated no labels -------------------------
+# Same load-bearing property as T11: a stranded fleet:resolving-* label on a
+# PR the worker then abandons blocks the lane until the orphan sweep runs.
+echo "T22: the refusal mutates no labels"
+assert_no_label_post "refused resolving-claim POSTed no label"
+
+# --- T23: the agent's OWN review claim is a pass-through -------------------
+# An agent that reviewed and then resolved the conflict itself is not a
+# cross-lane race — it holds both labels legitimately, and it is the only
+# claimant, so there is no unread head. This is the deliberate asymmetry with
+# the projection side, which is agent-blind (see
+# test_projection_is_agent_blind_by_design in test_worker_projection.py).
+echo "T23: own fleet:reviewing-<host>-<agent> does not block the resolve"
+: > "$GH_POST_LOG"
+actual=0; FLEET_TEST_HOST=mac FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" resolving-claim 3104 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 0 "mac + own fleet:reviewing-mac-test-agent → resolving-claim exit 0"
+
+# --- T24: a cross-host foreign review claim refuses too --------------------
+echo "T24: another host's fleet:reviewing-* also refuses the resolve"
+: > "$GH_POST_LOG"
+actual=0; FLEET_TEST_HOST=mac FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" resolving-claim 3105 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 1 "mac + fleet:reviewing-linux-pool-2 → resolving-claim exit 1"
+assert_no_label_post "cross-host resolve refusal POSTed no label"
+
+# --- T25: a conflicted PR with no review claim still resolves --------------
+# Guards against the gate over-refusing — the whole lane would deadlock.
+echo "T25: conflicted PR with no review claim still resolves"
+: > "$GH_POST_LOG"
+actual=0; FLEET_TEST_HOST=mac FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" resolving-claim 3102 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 0 "mac + no fleet:reviewing-* → resolving-claim exit 0"
+
+# --- T26: fidelity check for T22/T24's "no POST" assertion -----------------
+# assert_no_label_post is an emptiness test, so it passes for free if the
+# stub's GH_POST_LOG wiring breaks. T25 just granted a resolve, which MUST
+# have POSTed fleet:resolving-mac-test-agent.
+echo "T26: the POST log records a granted resolve (fidelity check)"
+if grep -q '^fleet:resolving-mac-test-agent$' "$GH_POST_LOG" 2>/dev/null; then
+    ok "granted resolving-claim POSTed fleet:resolving-mac-test-agent"
+else
+    bad "granted resolving-claim left no POST in the log — the GH_POST_LOG wiring is broken, so T22/T24 prove nothing"
+fi
 
 summarize "fleet-claim pre-acquire gates"
