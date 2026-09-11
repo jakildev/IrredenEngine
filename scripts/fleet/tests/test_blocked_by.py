@@ -121,6 +121,33 @@ class SeeAlsoParallelIdiom(unittest.TestCase):
             self.assertFalse(fbb.is_no_blocker_value(value),
                              f"{value!r} must still gate")
 
+    def test_independence_language_does_not_license_an_unqualified_ref(self):
+        for value in (
+            "(none) — unrelated musings about docs. #5",
+            "(none) — #11. This is completely independent of the migration",
+            "(none) — this is orthogonal to the release process. #7",
+            "(none) — no dependency on the frontend work. #9",
+            "(none) — #5 and lots of other independent work",
+            "(none) — #5 plus unrelated cleanup",
+            "(none) — #5 orthogonal follow-ups may land later",
+            "(none) — unrelated notes about docs\n#5",
+            "(none) — this does not depend on the parser rewrite. #5",
+        ):
+            with self.subTest(value=value):
+                self.assertFalse(
+                    fbb.is_no_blocker_value(value),
+                    f"{value!r} must keep the unqualified ref gating",
+                )
+
+    def test_sentence_boundaries_preserve_qualified_precedents(self):
+        for value in (
+            "n/a — cf. #12",
+            "(none — runs in parallel with #2497)",
+        ):
+            with self.subTest(value=value):
+                self.assertTrue(fbb.is_no_blocker_value(value),
+                                f"{value!r} should keep its ref qualified")
+
     def test_conservative_live_corpus_values_still_gate(self):
         for value in (
             "(none) — touches `ir_iso_common` + trixel shaders shared with #1883/#1884; "

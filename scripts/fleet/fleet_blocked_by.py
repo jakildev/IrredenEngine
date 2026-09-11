@@ -79,8 +79,8 @@ _REF_NAME_TO_SLUG = {'irredenengine': 'jakildev/IrredenEngine',
 # See-also / parallel-sibling qualifiers (#1910): a `#N` introduced by one of
 # these inside a leading-`none` value is a cross-reference, not a blocker — the
 # legitimate "(none — runs in parallel with #N)" idiom. Matched per-ref against
-# the clause leading up to the ref so a sibling note can't smuggle a real
-# dependency past the gate (see _ref_is_see_also).
+# its clause so a sibling note can't smuggle a real dependency past the gate
+# (see _ref_is_see_also).
 _SEE_ALSO_RE = re.compile(
     r'\b(?:see[\s-]+also|related(?:\s+to)?|in\s+parallel(?:\s+with)?|'
     r'parallel(?:\s+(?:with|to))?|sibling(?:\s+of)?|alongside|'
@@ -103,8 +103,20 @@ _NEGATED_BLOCKER_VERB_RE = re.compile(
     _NEGATOR_PATTERN + r"\s+(?:\w+\s+){0,2}?" + _BLOCKER_VERB_RE.pattern,
     re.IGNORECASE,
 )
+# A postfix qualifier must predicate the ref (`#5 is unrelated`); an arbitrary
+# later adjective (`#5 plus unrelated cleanup`) cannot license a bare ref.
+_POSTFIX_PREDICATE_RE = re.compile(
+    r"\s*(?:is|are|was|were|will\s+be|can\s+be|should\s+be|"
+    r"seems?|appears?|remains?|stays?|does|do|did)"
+    + r"\b(?:\W+\w+){0,4}?\W+(?:" + _SEE_ALSO_RE.pattern
+    + r"|" + _NEGATED_BLOCKER_VERB_RE.pattern + r")",
+    re.IGNORECASE,
+)
 # Clause boundaries used to isolate the text introducing a single `#N`.
-_CLAUSE_SPLIT_RE = re.compile(r'[;,—–(]')
+_CLAUSE_SPLIT_RE = re.compile(
+    r'(?<!\bcf)(?<!\be\.g)(?<!\bi\.e)\.(?=\s)|[;,—–(]|\n',
+    re.IGNORECASE,
+)
 # List separators between *declared* blockers (#2783). A `Blocked by:` value is
 # a list of refs — each optionally carrying its own parenthetical annotation
 # (`#100 (done), #101 (still open)`) — so the first ref of every segment is
@@ -142,10 +154,11 @@ def _has_gating_blocker_verb(clause):
 def _ref_is_see_also(value, ref_start, ref_end):
     """True when a ref's whole clause declares a sibling, not a blocker.
 
-    The clause extends to the nearest `;,—–(` boundary on both sides of the
-    ref. Any non-negated blocker verb gates first. A see-also / independence
-    qualifier or a negated blocker verb then licenses the ref; otherwise the
-    conservative default treats it as a blocker.
+    The clause extends to the nearest punctuation or sentence boundary on both
+    sides of the ref. Any non-negated blocker verb gates first. A preceding
+    see-also / independence qualifier, or a postfix predicate about the ref,
+    then licenses it; otherwise the conservative default treats it as a
+    blocker.
     """
     preceding = _CLAUSE_SPLIT_RE.split(value[:ref_start])[-1]
     following = _CLAUSE_SPLIT_RE.split(value[ref_end:])[0]
@@ -154,9 +167,8 @@ def _ref_is_see_also(value, ref_start, ref_end):
         return False
     return bool(
         _SEE_ALSO_RE.search(preceding)
-        or _SEE_ALSO_RE.search(following)
         or _NEGATED_BLOCKER_VERB_RE.search(preceding)
-        or _NEGATED_BLOCKER_VERB_RE.search(following)
+        or _POSTFIX_PREDICATE_RE.match(following)
     )
 
 
