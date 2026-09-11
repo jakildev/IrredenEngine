@@ -340,6 +340,27 @@ struct C_VoxelSetNew {
         }
     }
 
+    // Tell the pool that this set's slots changed a value its derived cull
+    // caches read (#2830). Called UNCONDITIONALLY by every alpha-touching
+    // mutator below — including while `visible_` is false. Visibility gates
+    // the pool's active-MASK write, but the chunk bounds are derived from
+    // voxel ALPHA, which a hidden edit changes all the same; skipping the
+    // notification leaves the bounds frozen at the pre-edit extent and the
+    // set latched outside the cull viewport once it is shown. For a visible
+    // set the pool's own active-mask route already notifies, so this is a
+    // coalesced no-op there — cheap enough to call on both paths, which is
+    // what keeps the rule "every alpha mutator calls this" auditable.
+    void markPoolCullBoundsDirty() {
+        if (numVoxels_ <= 0) {
+            return;
+        }
+        IRPrefab::VoxelPool::markCullBoundsDirty(
+            voxelStartIdx_,
+            static_cast<std::size_t>(numVoxels_),
+            canvasEntity_
+        );
+    }
+
     // Mirror one slot's record into the rotation-source snapshot, if it
     // exists (see `rotationSourceVoxels_` — keeps mutations made during a
     // GRID spin from being overwritten by the per-frame re-voxelize).
@@ -353,6 +374,7 @@ struct C_VoxelSetNew {
         const int idx = index3DtoIndex1D(index, size_);
         voxels_[idx].color_ = color;
         mirrorToRotationSource(idx);
+        IRPrefab::VoxelPool::markCullBoundsDirty(voxelStartIdx_ + idx, 1, canvasEntity_);
         if (visible_) {
             IRPrefab::VoxelPool::markVoxelActive(
                 voxelStartIdx_,
@@ -368,6 +390,7 @@ struct C_VoxelSetNew {
             voxels_[i].color_ = color;
             mirrorToRotationSource(i);
         }
+        markPoolCullBoundsDirty();
         if (!visible_) {
             return;
         }
@@ -418,6 +441,7 @@ struct C_VoxelSetNew {
             voxels_[i].deactivate();
             mirrorToRotationSource(i);
         }
+        markPoolCullBoundsDirty();
         IRPrefab::VoxelPool::markRangeInactive(voxelStartIdx_, numVoxels_, canvasEntity_);
         IRPrefab::Voxel::recomputeFaceOccupancy(voxels_, size_);
     }
@@ -427,6 +451,7 @@ struct C_VoxelSetNew {
             voxels_[i].activate();
             mirrorToRotationSource(i);
         }
+        markPoolCullBoundsDirty();
         if (visible_) {
             IRPrefab::VoxelPool::markRangeActive(voxelStartIdx_, numVoxels_, canvasEntity_);
         }
@@ -456,6 +481,7 @@ struct C_VoxelSetNew {
                 }
             }
         });
+        markPoolCullBoundsDirty();
         IRPrefab::Voxel::recomputeFaceOccupancy(voxels_, sz);
     }
 
@@ -513,6 +539,7 @@ struct C_VoxelSetNew {
                 );
             }
         }
+        markPoolCullBoundsDirty();
         IRPrefab::Voxel::recomputeFaceOccupancy(voxels_, size_);
     }
 
@@ -615,7 +642,13 @@ struct C_VoxelSetNew {
     // the face-occupancy recompute for you. This stays public as the
     // low-level pool primitive (and for the pre-existing raw-loop sites).
     void syncActiveMask() {
-        if (!visible_ || numVoxels_ <= 0) {
+        if (numVoxels_ <= 0) {
+            return;
+        }
+        // Ahead of the visibility gate: a hidden set's raw alpha edits still
+        // move the pool's derived cull bounds (#2830).
+        markPoolCullBoundsDirty();
+        if (!visible_) {
             return;
         }
         IRPrefab::VoxelPool::resyncRangeFromColors(
@@ -755,6 +788,7 @@ struct C_VoxelSetNew {
         }
         // Dense payload is a mix of active and inactive slots, so resync from
         // per-voxel alpha rather than the fast bulk path.
+        markPoolCullBoundsDirty();
         if (visible_) {
             IRPrefab::VoxelPool::resyncRangeFromColors(voxelStartIdx_, numVoxels_, canvasEntity_);
         }
@@ -770,6 +804,7 @@ struct C_VoxelSetNew {
         for (int i = 0; i < numVoxels_; ++i) {
             mirrorToRotationSource(i);
         }
+        markPoolCullBoundsDirty();
         if (visible_) {
             IRPrefab::VoxelPool::resyncRangeFromColors(voxelStartIdx_, numVoxels_, canvasEntity_);
         }

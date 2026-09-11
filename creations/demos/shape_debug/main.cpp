@@ -341,6 +341,11 @@ std::vector<std::array<char, 40>> g_pivotVerifyShotLabels;
 // (#2550). Flag-gated so the standing render-verify tables are untouched —
 // the overlay is default-hidden and this is the only run that opens it.
 bool g_guiTest = false;
+// --cull-evict-test: swap the capture table for the #2830 cull-invalidation
+// regression fixture. Same flag-gating rationale as --gui-test above: the
+// standing kShots table and every committed render-verify reference are
+// untouched, because this run replaces the scene as well as the shot list.
+bool g_cullEvictTest = false;
 // cursor-latch runs the same poses through the GUI-test cycler; its shots wrap
 // g_pivotVerifyShots (whose labels this table's label_ pointers still target,
 // so both vectors must outlive the game loop).
@@ -786,6 +791,11 @@ void registerCliArgs() {
         "Replace the capture table with the headless help-overlay GUI test (#2550); "
         "needs --auto-screenshot"
     );
+    args.flag(
+        "--cull-evict-test",
+        "Replace the scene + capture table with the #2830 cull-invalidation fixture: two "
+        "occupancy poses alternated in place at a fixed cardinal camera; needs --auto-screenshot"
+    );
 }
 
 // Read the parsed values back into the demo's globals. Runs AFTER
@@ -811,6 +821,7 @@ void readCliArgs() {
     g_pivotVerifyBlock = args.getEnum("--pivot-verify");
     g_pivotVerifySdf = args.getFlag("--pivot-verify-sdf");
     g_guiTest = args.getFlag("--gui-test");
+    g_cullEvictTest = args.getFlag("--cull-evict-test");
     g_cursorPivotIndicator = args.getFlag("--cursor-pivot-indicator");
 
     if (args.wasProvided("--zoom")) {
@@ -1471,6 +1482,294 @@ bool g_quitAssertionsEmitted = false;
 // both the latching and the capture-frame dispatch.
 IRPrefab::GuiTest::LatchState g_helpOverlayLatch;
 
+// ---------------------------------------------------------------------------
+// #2830 cull-invalidation render fixture (--cull-evict-test)
+// ---------------------------------------------------------------------------
+//
+// The defect this pins: `C_VoxelPool`'s cardinal chunk-bounds cache derives
+// from per-voxel ALPHA as well as position, but only allocate/deallocate and a
+// yawing frame ever evicted it. An in-place occupancy edit — a two-frame
+// animation swapping which cells of an already-allocated span are live, the
+// shipping instance measured on #766's bird — left the bounds frozen at the
+// previous pose. `buildChunkVisibilityMask` then stopped rasterizing the
+// chunks the new pose occupies, and the frame rendered a stable MIXTURE of the
+// two poses: not a lag, not a tear, a blend.
+//
+// The fixture reproduces exactly that shape and nothing else:
+//   * ONE voxel set, allocated once. No realloc between poses.
+//   * A fixed cardinal camera (yaw 0) — the branch the cache serves. A yawing
+//     frame self-invalidates, which would mask the bug.
+//   * No manual cache eviction anywhere: the pose swap goes through
+//     `C_VoxelSetNew::editVoxels`, the encapsulated raw-edit API a creation
+//     would really use.
+//   * Two poses in DISJOINT pool chunks, so a frozen bound is a visibly wrong
+//     bound rather than a conservatively-large correct one.
+//
+// Per shot it emits `GUI-ASSERT` lines over POOL-DERIVED state — the cached
+// chunk bounds and the visibility they produce — not over voxel alpha. That
+// distinction is the whole lesson of the #766 occurrence: its session asserted
+// occupancy on both poses and passed 28/28 while rendering the blend, because
+// the alpha was right and only the derived cull state was stale.
+//
+// POSITIVE CONTROL: this fixture compiles and runs unchanged against
+// 1750ef4ae (it calls no API this PR adds), and fails there. See the PR body.
+
+constexpr IRMath::ivec3 kCullEvictSize = IRMath::ivec3(16, 16, 8);        // 2048 slots = 8 chunks
+constexpr int kCullEvictLayerSlots = kCullEvictSize.x * kCullEvictSize.y; // 256 == one chunk
+// Both pose predicates read "one z-layer IS one pool chunk". That holds only
+// while the layer's slot count equals the pool's chunk granularity — pin it,
+// or a chunk-size change silently turns the fixture into a weaker test.
+static_assert(
+    kCullEvictLayerSlots == IRRender::kVoxelChunkSize,
+    "cull-evict fixture: one z-layer must be exactly one pool chunk"
+);
+constexpr int kCullEvictLiveLayers = 2;
+constexpr Color kCullEvictColor = Color{80, 220, 160, 255};
+
+// Pose 0 lights the bottom two z-layers, pose 1 the top two. `index3DtoIndex1D`
+// is x-fastest with z slowest, so one z-layer is exactly one 256-slot chunk and
+// the two poses never share one.
+int cullEvictFirstLiveLayer(int pose) {
+    return pose == 0 ? 0 : kCullEvictSize.z - kCullEvictLiveLayers;
+}
+
+struct CullEvictFixture {
+    IREntity::EntityId setEntity_ = IREntity::kNullEntity;
+    IREntity::EntityId canvasEntity_ = IREntity::kNullEntity;
+    int lastShot_ = -1;
+    int pose_ = -1;
+};
+CullEvictFixture g_cullEvict;
+
+// One shot's expected pose, read by both the pose driver and the predicates.
+struct CullEvictShotSpec {
+    int pose_;
+    const char *label_;
+};
+constexpr CullEvictShotSpec kCullEvictSpecs[] = {
+    {0, "cull_evict_pose_a"},
+    {1, "cull_evict_pose_b"},
+    // Back to pose A: a fixture that only ever grows its bounds would pass the
+    // first two shots on a conservative superset. This one must SHRINK again.
+    {0, "cull_evict_pose_a_again"},
+};
+constexpr int kNumCullEvictShots =
+    static_cast<int>(sizeof(kCullEvictSpecs) / sizeof(kCullEvictSpecs[0]));
+
+constexpr IRVideo::GuiTestShot kCullEvictShots[] = {
+    {IRVideo::AutoScreenshotShot{4.0f, vec2(0, 0), 0.0f, kCullEvictSpecs[0].label_}, nullptr, 0},
+    {IRVideo::AutoScreenshotShot{4.0f, vec2(0, 0), 0.0f, kCullEvictSpecs[1].label_}, nullptr, 0},
+    {IRVideo::AutoScreenshotShot{4.0f, vec2(0, 0), 0.0f, kCullEvictSpecs[2].label_}, nullptr, 0},
+};
+static_assert(
+    sizeof(kCullEvictShots) / sizeof(kCullEvictShots[0]) ==
+        static_cast<std::size_t>(kNumCullEvictShots),
+    "kCullEvictShots and kCullEvictSpecs must stay paired"
+);
+
+// Swap which cells of the ALREADY-ALLOCATED span are live. Routes through the
+// encapsulated raw-edit API — no allocation, no position write, and no cache
+// eviction of any kind.
+void applyCullEvictPose(int pose) {
+    if (g_cullEvict.setEntity_ == IREntity::kNullEntity) {
+        return;
+    }
+    C_VoxelSetNew &voxelSet = IREntity::getComponent<C_VoxelSetNew>(g_cullEvict.setEntity_);
+    const int firstLive = cullEvictFirstLiveLayer(pose);
+    voxelSet.editVoxels([firstLive](int index, C_Voxel &voxel, vec3) {
+        const int layer = index / kCullEvictLayerSlots;
+        if (layer >= firstLive && layer < firstLive + kCullEvictLiveLayers) {
+            voxel.color_ = kCullEvictColor;
+        } else {
+            voxel.deactivate();
+        }
+    });
+    g_cullEvict.pose_ = pose;
+}
+
+// The bounds a from-scratch recompute would produce for a chunk's CURRENT
+// occupancy. The predicates below compare the pool's cached entry against this,
+// so a stale bound fails on its values rather than on a coarse "did it move".
+ChunkBounds cullEvictOracle(const C_VoxelPool &pool, int chunk) {
+    ChunkBounds bounds;
+    const int begin = chunk * IRRender::kVoxelChunkSize;
+    const int end = IRMath::min(begin + IRRender::kVoxelChunkSize, pool.getLiveVoxelCount());
+    for (int i = begin; i < end; ++i) {
+        if (pool.getColors()[i].color_.alpha_ == 0) {
+            continue;
+        }
+        const vec3 pos = pool.getPositionGlobals()[i].pos_;
+        bounds.expand(IRMath::pos3DtoPos2DIso(pos));
+        bounds.minDepth_ =
+            IRMath::min(bounds.minDepth_, static_cast<float>(IRMath::pos3DtoDistance(pos)));
+    }
+    return bounds;
+}
+
+C_VoxelPool *cullEvictPool() {
+    if (g_cullEvict.canvasEntity_ == IREntity::kNullEntity) {
+        return nullptr;
+    }
+    auto poolOpt = IREntity::getComponentOptional<C_VoxelPool>(g_cullEvict.canvasEntity_);
+    return poolOpt.has_value() ? poolOpt.value() : nullptr;
+}
+
+// Predicate 1 — every chunk's CACHED bounds equal its current occupancy's
+// bounds. This is the assertion the defect fails: a frozen chunk keeps the
+// previous pose's extent while the oracle follows the alpha.
+bool cullEvictBoundsMatchOccupancy(const void *, std::string &actual) {
+    C_VoxelPool *pool = cullEvictPool();
+    if (pool == nullptr) {
+        actual = "no-pool";
+        return false;
+    }
+    const int chunkCount = pool->getChunkCount();
+    const std::vector<ChunkBounds> &cached = pool->getChunkBounds();
+    if (static_cast<int>(cached.size()) < chunkCount) {
+        actual = "bounds-not-built";
+        return false;
+    }
+    for (int c = 0; c < chunkCount; ++c) {
+        const ChunkBounds want = cullEvictOracle(*pool, c);
+        const ChunkBounds &got = cached[static_cast<std::size_t>(c)];
+        if (got.isoMin_ != want.isoMin_ || got.isoMax_ != want.isoMax_) {
+            actual = "chunk=" + std::to_string(c) + " cached=[" + std::to_string(got.isoMin_.x) +
+                     "," + std::to_string(got.isoMin_.y) + ".." + std::to_string(got.isoMax_.x) +
+                     "," + std::to_string(got.isoMax_.y) + "] want=[" +
+                     std::to_string(want.isoMin_.x) + "," + std::to_string(want.isoMin_.y) + ".." +
+                     std::to_string(want.isoMax_.x) + "," + std::to_string(want.isoMax_.y) + "]";
+            return false;
+        }
+    }
+    actual = "all " + std::to_string(chunkCount) + " chunks match occupancy";
+    return true;
+}
+
+// Predicate 2 — the chunks with a non-empty bound are EXACTLY the ones this
+// shot's pose lights. Pins the pose rather than merely "something changed", so
+// the fixture cannot pass by holding a conservative superset of both poses.
+bool cullEvictLiveChunksMatchPose(const void *context, std::string &actual) {
+    const int pose = *static_cast<const int *>(context);
+    C_VoxelPool *pool = cullEvictPool();
+    if (pool == nullptr) {
+        actual = "no-pool";
+        return false;
+    }
+    const int firstLive = cullEvictFirstLiveLayer(pose);
+    const std::vector<ChunkBounds> &cached = pool->getChunkBounds();
+    std::string live;
+    bool ok = true;
+    for (int c = 0; c < pool->getChunkCount(); ++c) {
+        if (static_cast<std::size_t>(c) >= cached.size()) {
+            ok = false;
+            break;
+        }
+        // An empty chunk keeps the inverted sentinel, so min > max.
+        const bool nonEmpty = cached[static_cast<std::size_t>(c)].isoMin_.x <=
+                              cached[static_cast<std::size_t>(c)].isoMax_.x;
+        const bool expected = c >= firstLive && c < firstLive + kCullEvictLiveLayers;
+        if (nonEmpty) {
+            live += (live.empty() ? "" : ",") + std::to_string(c);
+        }
+        ok = ok && (nonEmpty == expected);
+    }
+    actual = "pose=" + std::to_string(pose) + " liveChunks=[" + live +
+             "] wantFirst=" + std::to_string(firstLive);
+    return ok;
+}
+
+// Predicate 3 — the cull query the UPDATE movers ask, per chunk range. A
+// chunk holding no live voxels keeps the inverted sentinel and must answer
+// "not visible" for ANY viewport; a chunk holding the live pose must answer
+// "visible" for a viewport around one of its voxels. Under the defect the
+// chunks that held the PREVIOUS pose keep its bounds, so the dark half answers
+// visible and the movers keep servicing geometry that is no longer there.
+//
+// Deliberately NOT phrased as "a viewport around the dark pose must miss the
+// live chunks": the iso projection collapses x, y and z onto two axes, so a
+// 16x16 slab's iso AABB legitimately contains a distant layer's corner. That
+// framing failed here against correct bounds — a false alarm, not a finding.
+bool cullEvictRangeVisibility(const void *context, std::string &actual) {
+    const int pose = *static_cast<const int *>(context);
+    C_VoxelPool *pool = cullEvictPool();
+    if (pool == nullptr || g_cullEvict.setEntity_ == IREntity::kNullEntity) {
+        actual = "no-pool";
+        return false;
+    }
+    const C_VoxelSetNew &voxelSet = IREntity::getComponent<C_VoxelSetNew>(g_cullEvict.setEntity_);
+    const int liveLayer = cullEvictFirstLiveLayer(pose);
+    const int darkLayer = cullEvictFirstLiveLayer(pose == 0 ? 1 : 0);
+    const auto slotOf = [&](int layer) {
+        return voxelSet.voxelStartIdx_ + static_cast<std::size_t>(layer * kCullEvictLayerSlots);
+    };
+    const std::size_t liveSlot = slotOf(liveLayer);
+    const vec2 iso = IRMath::pos3DtoPos2DIso(pool->getPositionGlobals()[liveSlot].pos_);
+    const IsoBounds2D atLiveVoxel{iso - vec2(0.25f), iso + vec2(0.25f)};
+    const std::size_t halfSpan =
+        static_cast<std::size_t>(kCullEvictLiveLayers * kCullEvictLayerSlots);
+    const bool liveRange = pool->isRangeVisible(liveSlot, halfSpan, atLiveVoxel);
+    const bool darkRange = pool->isRangeVisible(slotOf(darkLayer), halfSpan, atLiveVoxel);
+    actual = "liveChunkRange=" + std::string(liveRange ? "visible" : "culled") +
+             " darkChunkRange=" + std::string(darkRange ? "visible" : "culled");
+    return liveRange && !darkRange;
+}
+
+IRPrefab::GuiTest::LatchState g_cullEvictLatch;
+
+const IRPrefab::GuiTest::Assertion kCullEvictAssertions[] = {
+    IRPrefab::GuiTest::predicate(&cullEvictBoundsMatchOccupancy, nullptr, "bounds_match_occupancy"),
+    IRPrefab::GuiTest::predicate(
+        &cullEvictLiveChunksMatchPose, &g_cullEvict.pose_, "live_chunks_match_pose"
+    ),
+    IRPrefab::GuiTest::predicate(
+        &cullEvictRangeVisibility, &g_cullEvict.pose_, "range_visible_at_live_pose_only"
+    ),
+};
+constexpr int kNumCullEvictAssertions =
+    static_cast<int>(sizeof(kCullEvictAssertions) / sizeof(kCullEvictAssertions[0]));
+
+void onCullEvictAssertFrame(int shotIndex, bool isCaptureFrame) {
+    // Apply the pose once, on the shot's first live frame; the harness's settle
+    // frames then let the render pipeline re-derive bounds before capture.
+    if (shotIndex != g_cullEvict.lastShot_) {
+        g_cullEvict.lastShot_ = shotIndex;
+        applyCullEvictPose(kCullEvictSpecs[shotIndex].pose_);
+    }
+    IRPrefab::GuiTest::onFrame(
+        g_cullEvictLatch,
+        shotIndex,
+        isCaptureFrame,
+        kCullEvictSpecs[shotIndex].label_,
+        kCullEvictAssertions,
+        kNumCullEvictAssertions
+    );
+}
+
+void initCullEvictScene() {
+    const EntityId canvas = IRRender::getActiveCanvasEntity();
+    g_cullEvict.canvasEntity_ = canvas;
+    const EntityId entity = IREntity::createEntity(
+        C_LocalTransform{vec3(0.0f, 0.0f, 0.0f)},
+        C_VoxelSetNew{kCullEvictSize, kCullEvictColor, IRComponents::EntityAnchor::CENTER, canvas}
+    );
+    g_cullEvict.setEntity_ = entity;
+    const C_VoxelSetNew &voxelSet = IREntity::getComponent<C_VoxelSetNew>(entity);
+    IR_LOG_INFO(
+        "--- #2830 cull-eviction fixture: {} voxels at pool slot {} ({} chunks) ---",
+        voxelSet.numVoxels_,
+        voxelSet.voxelStartIdx_,
+        voxelSet.numVoxels_ / IRRender::kVoxelChunkSize
+    );
+    // The span must start chunk-aligned, or "one z-layer == one chunk" — the
+    // premise both pose predicates read — quietly stops holding.
+    IR_ASSERT(
+        voxelSet.voxelStartIdx_ % IRRender::kVoxelChunkSize == 0,
+        "cull-evict fixture expects a chunk-aligned span, got startIdx={}",
+        voxelSet.voxelStartIdx_
+    );
+    applyCullEvictPose(0);
+}
+
 void onHelpOverlayAssertFrame(int shotIndex, bool isCaptureFrame) {
     // Every live frame from the first menu shot on: the panel centers itself and
     // a dropdown's item strip exists only while expanded, so the targets have to
@@ -1626,7 +1925,18 @@ void initSystems() {
         renderPipeline.push_back(autoProfileId);
     }
 
-    if (g_autoWarmupFrames > 0 && g_guiTest) {
+    if (g_autoWarmupFrames > 0 && g_cullEvictTest) {
+        IRVideo::GuiTestConfig cfg{};
+        cfg.warmupFrames_ = g_autoWarmupFrames;
+        // The pose swap lands on a shot's first live frame; the settle window
+        // has to be long enough for STAGE_1 to re-derive the bounds and
+        // rasterize from them before the capture frame.
+        cfg.settleFrames_ = 4;
+        cfg.shots_ = kCullEvictShots;
+        cfg.numShots_ = kNumCullEvictShots;
+        cfg.onAssertFrame_ = &onCullEvictAssertFrame;
+        renderPipeline.push_back(IRVideo::createGuiTestSystem(cfg));
+    } else if (g_autoWarmupFrames > 0 && g_guiTest) {
         IRVideo::GuiTestConfig cfg{};
         cfg.warmupFrames_ = g_autoWarmupFrames;
         cfg.settleFrames_ = 3;
@@ -2561,6 +2871,12 @@ void setupCanvasLighting() {
 }
 
 void initEntities() {
+    if (g_cullEvictTest) {
+        IR_LOG_INFO("--- #2830 cull-invalidation fixture scene ---");
+        initCullEvictScene();
+        setupCanvasLighting();
+        return;
+    }
     if (g_pivotVerifyBlock != "off") {
         IR_LOG_INFO("--- Pivot-verify probe scene ({}) ---", g_pivotVerifyBlock);
         initPivotVerifyScene();

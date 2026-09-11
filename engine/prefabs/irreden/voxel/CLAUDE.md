@@ -19,7 +19,9 @@ for single voxels and particles.
   see `components/component_voxel.hpp` and the per-pipeline shaders for
   the struct mirror.
 - `C_VoxelPool` — master allocator; allocates/deallocates contiguous spans,
-  tracks per-chunk bounds for visibility culling, and owns a per-slot
+  tracks per-chunk bounds for visibility culling (see "Cull-bounds
+  invalidation" below — **one** evictor, `markCullBoundsDirty(start, count)`),
+  and owns a per-slot
   active-mask (`m_activeMask`) that mirrors `m_voxelColors[i].color_.alpha_ != 0`.
   The mask is uploaded to slot `kBufferIndex_VoxelActiveMask` each frame
   and read by `c_voxel_visibility_compact.{glsl,metal}` in place of the
@@ -443,6 +445,86 @@ Optional tag on joint entities carrying the bone name string for editor
 `C_Skeleton.joints_[i]` remains the authoritative index; bone names are
 a UX convenience for editors and animation clips that address joints by
 string.
+
+## Cull-bounds invalidation (#2830)
+
+`C_VoxelPool` caches two derived cull structures, both recomputed on demand by
+`rebuildChunkBounds`:
+
+| Cache | Consumer |
+|---|---|
+| `m_chunkBounds` (per-chunk iso AABB + front-most `minDepth_`) | the **cardinal** branch — `buildChunkVisibilityMask` -> the chunk-visibility SSBO, and `C_VoxelPool::isRangeVisible` -> the UPDATE movers' cull gate |
+| `m_chunkWorldBounds` (per-chunk, yaw-independent world AABB) | the **continuous-yaw** branch (#1439) |
+
+Both derive from the same three inputs: the allocated prefix length, each
+voxel's `color_.alpha_`, and each voxel's global position. So there is **one**
+evictor, and it takes the range that changed:
+
+```cpp
+pool.markCullBoundsDirty(startIdx, count);   // half-open, in pool slots
+// entity-keyed facade, for a component that holds a canvas id rather than a pool:
+IRPrefab::VoxelPool::markCullBoundsDirty(startIdx, count, canvasEntity);
+```
+
+**Call it after any in-place rewrite of a position or an alpha in a span you
+already own** — a realloc is not needed and neither is a yaw frame. Invalidation
+is per 256-slot chunk (`IRRender::kVoxelChunkSize`), so a moving set re-derives
+its own chunks and not the pool; duplicate and overlapping ranges coalesce, and
+a zero count is a no-op. The two caches carry independent pending bits, because
+their consumers run on different frames and one must never eat the other's work.
+
+Most code never calls it directly — the routes that already carry it are
+`queuePositionRange` (before its saturation early-return, deliberately: the
+upload queue drops ranges and flushes after the mask rebuild), every
+active-mask mutator (`setActiveBit` / `clearActiveBit` / `setActiveMaskRange` /
+`clearActiveMaskRange` / `resyncActiveMaskFromColors`), `allocateVoxels` /
+`deallocateVoxels`, and every `C_VoxelSetNew` mutator that touches alpha.
+
+Two things worth knowing before you add a producer:
+
+- **`C_VoxelSetNew::visible_` does not gate it.** Visibility suppresses the
+  pool's active-MASK write; the bounds are derived from authored ALPHA, which a
+  hidden edit changes all the same. Every set-level mutator notifies
+  unconditionally — skipping it while hidden leaves the set latched outside the
+  cull viewport when it is next shown.
+- **`REBUILD_DETACHED_VOXELS` is exempt, by mechanism.** It writes
+  `pool.getColors()` (`system_rebuild_detached_voxels.hpp`), so a sweep for
+  colour writers finds it — but a detached pool seeds
+  `setStaticReVoxelizeBound` once, and `rebuildChunkBounds` returns on that
+  branch *before* the cached path. Its CPU global mirror is deliberately stale
+  (#1556) and its bound is rotation-independent. Adding invalidation there would
+  start evicting a cache that path never reads.
+
+Because `isRangeVisible` feeds the UPDATE movers, which run *before* the render
+pipeline re-derives the bounds, a range with pending invalidation is admitted
+conservatively rather than answered from bounds that already owe a recompute.
+That costs at most one extra tick of work for a set that just changed, and it is
+what un-latches the failure below: an edited set whose stale bounds read
+"off-screen" had its mover skipped, so nothing ever advanced it back into view.
+
+The failure this replaced: the two caches had two separate evictors, every
+producer called only the world one, and `markChunkBoundsDirty()` had zero
+callers tree-wide — so on a cardinal camera (the default, `residualYaw_ == 0`)
+an in-place position or alpha rewrite froze the iso bounds at the last
+alloc/dealloc. Both consumers then dropped live geometry. It is invisible to
+CPU-side occupancy assertions — voxel alpha stays correct; only the derived cull
+state is stale — so test it by reading the pool's own bounds / visibility, or
+with a render compare. `test/ecs/chunk_bounds_eviction_test.cpp` and
+`IRShapeDebug --auto-screenshot --cull-evict-test` are the guards.
+
+## Deprecated
+
+| Surface | Replacement | Marked |
+|---|---|---|
+| `C_VoxelPool::markChunkWorldBoundsDirty()` | `markCullBoundsDirty(start, count)` | #2830, 2026-09-11 |
+| `C_VoxelPool::markChunkBoundsDirty()` | `markCullBoundsDirty(start, count)` | #2830, 2026-09-11 |
+
+Both are no-argument forwarders that now notify the whole allocated prefix for
+**both** caches. They were the split this issue closed: each evicted one cache,
+every producer called only the first, and the second had no callers at all. An
+out-of-tree caller of either therefore gets the correct (stronger) eviction
+rather than the half-eviction the names promised — but it re-derives the whole
+pool, so migrate to the range form.
 
 ## Gotchas
 
