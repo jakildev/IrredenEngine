@@ -2796,7 +2796,7 @@ for pr in prs:
         print(1)
         sys.exit(0)
 print(0)
-' 2>/dev/null || echo 0)
+' 2>/dev/null | tr -d '\r' || echo 0)
 
             [[ "$has_wip_pr" -eq 1 ]] && continue
 
