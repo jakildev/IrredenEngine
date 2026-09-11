@@ -234,8 +234,9 @@ def _ref_is_nonship_marked(text, n):
 # Fleet-internal bookkeeping prefix (layer 8). A merged PR whose changed files
 # are ALL under ``.fleet/`` — an epic-steward ledger rollup, a plan adoption, a
 # projection edit — maintains fleet state; it never ships an issue's code scope.
-# Documentation paths join that non-shipping set under layer 9.
-_NON_SHIPPING_PREFIXES = ('.fleet/', 'docs/')
+_FLEET_BOOKKEEPING_PREFIX = '.fleet/'
+_DOCUMENTATION_PREFIX = 'docs/'
+_NON_SHIPPING_PREFIXES = (_FLEET_BOOKKEEPING_PREFIX, _DOCUMENTATION_PREFIX)
 
 
 def _is_non_shipping_diff(files):
