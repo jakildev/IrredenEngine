@@ -291,6 +291,19 @@ for prefab command bodies. PR 2 does not delete any existing command.
   informational only).
 - **Modifier keys only work for KEY_MOUSE.** Gamepad and MIDI commands
   ignore the `modifiers` field even if you pass one.
+- **A modifier chord on a start/end pair's key unbalances the pair.**
+  `executeUserKeyboardCommandsAll` resolves same-key ambiguity by
+  specificity: if any binding on a button matches this frame *with* a
+  non-empty `requiredModifiers`, every bare-mask binding on that button is
+  suppressed for the frame. The suppression is keyed on the button, and only
+  the frame the chord fires on — so binding, say, Ctrl+S on a key that also
+  carries `MOVE_CAMERA_DOWN_START` / `_END` kills the PRESSED half and leaves
+  the RELEASED half live. Those two accumulate into `C_Velocity2DIso`
+  (`-=` on press, `+=` on release), so the camera pans forever at the leftover
+  speed. Give **both** halves the matching `blockedModifiers` — re-registering
+  them via `omit_` plus two `createCommand<NAME>` calls, as
+  `creations/editors/voxel_editor` does for `S` — so the chord suppresses
+  neither or both. Specificity alone is only safe for one-shot bindings.
 - **Callbacks capture by value at bind time.** If the captured state
   changes later (e.g. a pointer is re-seated), the command still holds
   the old value.

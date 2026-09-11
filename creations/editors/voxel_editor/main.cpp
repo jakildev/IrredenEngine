@@ -530,6 +530,10 @@ constexpr IRVideo::GuiTestShot kGuiTestShots[] = {
     {{1.0f, IRMath::vec2(0.0f), 0.0f, "editor_probe_ad"}, kProbeADEvents, 2},
 };
 constexpr int kNumGuiTestShots = static_cast<int>(sizeof(kGuiTestShots) / sizeof(kGuiTestShots[0]));
+// The idle shot is a pure render framing with no scripted input, which makes it
+// the right carrier for assertions over registration-time state (the command
+// registry) that no gesture in the table can perturb.
+constexpr int kIdleShotIndex = 0;
 constexpr int kGuiAssertShotIndex = 4;
 constexpr int kPickVoxelShotIndex = 5;
 // Phase 0 / Part 2b probe shot indices (#766). Map shots occupy
@@ -563,6 +567,71 @@ bool evaluateEraseModeLabel(const void *, std::string &actual) {
     actual =
         "eraseMode=" + std::string(g_eraseMode ? "ON" : "OFF") + " label=\"" + labelText + "\"";
     return g_eraseMode && labelText == "ERASE BOX";
+}
+
+// The key column the help overlay is expected to render for each
+// modifier-bearing binding. The overlay composes that column as
+// `modifierString(requiredModifiers) + keyButtonToString(button)`, so a chord
+// whose mask is left at none advertises the bare key — Ctrl+Z and bare Z would
+// both read "Z", and the two save / two load bindings would read "S" and "O"
+// twice. Each binding's real mask is what makes its row correct; this is what
+// keeps it correct.
+//
+// Checked against `getCommandRegistrations()` rather than the overlay's own
+// `builtText()`, which builds lazily on first open: reading it would mean
+// toggling the overlay visible inside a capture shot and rewriting that shot's
+// reference image. The registry rows are what the overlay formats, so the two
+// carry the same answer for this property.
+struct ChordRow {
+    const char *chord_;
+    const char *name_;
+};
+constexpr ChordRow kExpectedChordRows[] = {
+    {"CTRL+Z", "UNDO"},
+    {"Z", "MIRROR Z"},
+    {"CTRL+S", "SAVE SCENE"},
+    {"SHIFT+CTRL+S", "SAVE RIG"},
+    {"CTRL+O", "LOAD SCENE"},
+    {"SHIFT+CTRL+O", "LOAD RIG"},
+};
+
+bool evaluateChordOverlayRows(const void *, std::string &actual) {
+    const auto &registrations = IRCommand::getCommandManager().getCommandRegistrations();
+    std::string wrong;
+    for (const ChordRow &expected : kExpectedChordRows) {
+        std::string rendered = "<absent>";
+        for (const auto &registration : registrations) {
+            if (registration.name != expected.name_)
+                continue;
+            rendered = IRCommand::modifierString(registration.requiredModifiers) +
+                       IRCommand::keyButtonToString(registration.button);
+            break;
+        }
+        if (rendered == expected.chord_)
+            continue;
+        if (!wrong.empty())
+            wrong += ", ";
+        wrong += std::string(expected.name_) + " renders \"" + rendered + "\" want \"" +
+                 expected.chord_ + "\"";
+    }
+    actual = wrong.empty() ? "all chord rows render as expected" : wrong;
+    return wrong.empty();
+}
+
+// Camera-velocity balance across the Ctrl+S probe. The S camera-pan pair
+// accumulates into `C_Velocity2DIso` with `-=` on press and `+=` on release,
+// so the two halves must fire together or the camera pans forever. The save
+// binding's `requiredModifiers` arms `CommandManager`'s modifier-specificity
+// shadowing, which reaches only the PRESSED half of that pair — the release
+// frame has no modifier-specific match to shadow against. The editor blocks
+// Ctrl on both halves to keep them symmetric; this assertion is what holds
+// them that way.
+bool evaluateCameraVelocityBalanced(const void *, std::string &actual) {
+    const IRMath::vec2 velocity =
+        IREntity::getComponent<IRComponents::C_Velocity2DIso>("camera").velocity_;
+    actual = "camera velocity = (" + std::to_string(velocity.x) + ", " +
+             std::to_string(velocity.y) + ")";
+    return IRMath::abs(velocity.x) < 0.001f && IRMath::abs(velocity.y) < 0.001f;
 }
 
 // Per-frame driver for an authoring session (#766 Part 2c). Resolves this
@@ -2540,8 +2609,42 @@ void initSystems() {
 
 void initCommands() {
     // The full camera suite minus Escape→CLOSE_WINDOW, which would conflict
-    // with the drag-cancel handler below — we handle Escape ourselves.
-    IRPrefab::Camera::registerStandardKeyboardCommands({.omit_ = {IRCommand::CLOSE_WINDOW}});
+    // with this editor's own drag-cancel handler, and minus the S pan pair,
+    // which this file re-registers with a Ctrl block.
+    IRPrefab::Camera::registerStandardKeyboardCommands(
+        {.omit_ = {
+             IRCommand::CLOSE_WINDOW,
+             IRCommand::MOVE_CAMERA_DOWN_START,
+             IRCommand::MOVE_CAMERA_DOWN_END
+         }}
+    );
+
+    // S is both "pan the camera down" and the Ctrl+S / Ctrl+Shift+S save chords.
+    // Once a save binding carries a real `requiredModifiers` (it must — the help
+    // overlay renders that field), CommandManager's modifier-specificity rule
+    // suppresses every bare-mask binding on S for that frame. It shadows only the
+    // PRESSED half, though: the release frame has no modifier-specific match to
+    // shadow against, so MOVE_CAMERA_DOWN_END still fires. That pair accumulates
+    // into C_Velocity2DIso (`-=` on press, `+=` on release), so a suppressed start
+    // with a live end would leave the camera panning up forever after every
+    // Ctrl+S, at a stuck velocity.y of +20. Blocking Ctrl on BOTH halves keeps
+    // them symmetric: with Ctrl held neither fires, without it both do.
+    // `omit_` matches on command, not on button, so the START and END rows have
+    // to be named separately (engine/command/CLAUDE.md §Gotchas).
+    IRCommand::createCommand<IRCommand::MOVE_CAMERA_DOWN_START>(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonS,
+        IRInput::kModifierNone,
+        IRInput::kModifierControl
+    );
+    IRCommand::createCommand<IRCommand::MOVE_CAMERA_DOWN_END>(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::RELEASED,
+        IRInput::KeyMouseButtons::kKeyButtonS,
+        IRInput::kModifierNone,
+        IRInput::kModifierControl
+    );
 
     // F1 opens the registry-driven command help overlay (#2550, #2620). Every
     // named PRESSED binding registered below appears automatically.
@@ -2636,38 +2739,34 @@ void initCommands() {
         "MIRROR Y",
         "TOGGLE Y-AXIS MIRROR SYMMETRY"
     );
-    // Ctrl+Z — undo. Bare Z — toggle Z-mirror. Both share the same key;
-    // modifier checks disambiguate inline since IRCommand bindings don't
-    // take modifier masks.
+    // Ctrl+Z — undo. Bare Z — toggle Z-mirror. Both share the same key, so the
+    // masks below are what disambiguate them: CommandManager fires the
+    // modifier-specific binding and suppresses the bare one on the same key.
+    // The masks are also what the help overlay renders, so a guard written
+    // inline instead would advertise both rows as plain "Z".
     IRCommand::createCommand(
         IRInput::InputTypes::KEY_MOUSE,
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonZ,
-        []() {
-            if (IRInput::checkKeyMouseModifiers(IRInput::kModifierControl, 0u)) {
-                IRVoxelEditor::undoOne();
-            }
-        },
-        IRInput::kModifierNone,
+        []() { IRVoxelEditor::undoOne(); },
+        IRInput::kModifierControl,
         IRInput::kModifierNone,
         "UNDO",
-        "UNDO LAST EDIT (CTRL+Z)"
+        "UNDO LAST EDIT"
     );
     IRCommand::createCommand(
         IRInput::InputTypes::KEY_MOUSE,
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonZ,
         [logSymmetry]() {
-            if (!IRInput::checkKeyMouseModifiers(IRInput::kModifierControl, 0u)) {
-                IRVoxelEditor::g_symmetry.enableZ_ = !IRVoxelEditor::g_symmetry.enableZ_;
-                if (IRVoxelEditor::g_symmetry.enableZ_)
-                    IRVoxelEditor::g_symmetry.offsetZ_ =
-                        IRVoxelEditor::mirrorCenterOffset(IRVoxelEditor::g_editableSceneSize.z);
-                logSymmetry();
-            }
+            IRVoxelEditor::g_symmetry.enableZ_ = !IRVoxelEditor::g_symmetry.enableZ_;
+            if (IRVoxelEditor::g_symmetry.enableZ_)
+                IRVoxelEditor::g_symmetry.offsetZ_ =
+                    IRVoxelEditor::mirrorCenterOffset(IRVoxelEditor::g_editableSceneSize.z);
+            logSymmetry();
         },
         IRInput::kModifierNone,
-        IRInput::kModifierNone,
+        IRInput::kModifierControl,
         "MIRROR Z",
         "TOGGLE Z-AXIS MIRROR SYMMETRY"
     );
@@ -3136,11 +3235,6 @@ void initCommands() {
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonS,
         []() {
-            if (!IRInput::checkKeyMouseModifiers(
-                    IRInput::kModifierControl,
-                    IRInput::kModifierShift
-                ))
-                return;
             auto &anim = IRVoxelEditor::g_anim;
             IRVoxelEditor::snapshotLiveToFrame(anim.activeFrame_);
             std::vector<std::vector<IRComponents::C_Voxel>> snapshots;
@@ -3165,8 +3259,8 @@ void initCommands() {
             else
                 IR_LOG_ERROR("Save failed: {}", res.errorMsg_);
         },
-        IRInput::kModifierNone,
-        IRInput::kModifierNone,
+        IRInput::kModifierControl,
+        IRInput::kModifierShift,
         "SAVE SCENE",
         "SAVE ALL FRAMES AND LAYERS"
     );
@@ -3177,11 +3271,6 @@ void initCommands() {
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonS,
         []() {
-            if (!IRInput::checkKeyMouseModifiers(
-                    IRInput::kModifierControl | IRInput::kModifierShift,
-                    0u
-                ))
-                return;
             if (IRVoxelEditor::g_jointTool.rigRoot_ == IREntity::kNullEntity) {
                 IR_LOG_WARN("No rig to save — author joints with J + B first.");
                 return;
@@ -3201,7 +3290,7 @@ void initCommands() {
             else
                 IR_LOG_ERROR("Rig save failed: {}", res.errorMsg_);
         },
-        IRInput::kModifierNone,
+        IRInput::kModifierControl | IRInput::kModifierShift,
         IRInput::kModifierNone,
         "SAVE RIG",
         "SAVE SKELETON TO .RIG FILE"
@@ -3213,11 +3302,6 @@ void initCommands() {
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonO,
         []() {
-            if (!IRInput::checkKeyMouseModifiers(
-                    IRInput::kModifierControl,
-                    IRInput::kModifierShift
-                ))
-                return;
             auto loaded = IRVoxelEditor::loadEditorScene(
                 std::string(IRVoxelEditor::kSceneSaveDir),
                 std::string(IRVoxelEditor::kSceneBaseName)
@@ -3268,8 +3352,8 @@ void initCommands() {
                 anim.frameCount()
             );
         },
-        IRInput::kModifierNone,
-        IRInput::kModifierNone,
+        IRInput::kModifierControl,
+        IRInput::kModifierShift,
         "LOAD SCENE",
         "LOAD SCENE, REPLACE ALL FRAMES"
     );
@@ -3282,12 +3366,6 @@ void initCommands() {
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonO,
         []() {
-            if (!IRInput::checkKeyMouseModifiers(
-                    IRInput::kModifierControl | IRInput::kModifierShift,
-                    0u
-                ))
-                return;
-
             auto loaded = IRVoxelEditor::loadRigScene(
                 std::string(IRVoxelEditor::kSceneSaveDir),
                 std::string(IRVoxelEditor::kSceneBaseName)
@@ -3379,7 +3457,7 @@ void initCommands() {
                 IRVoxelEditor::kSceneBaseName
             );
         },
-        IRInput::kModifierNone,
+        IRInput::kModifierControl | IRInput::kModifierShift,
         IRInput::kModifierNone,
         "LOAD RIG",
         "LOAD SKELETON FROM .RIG FILE"
@@ -3870,6 +3948,25 @@ void initEntities() {
             &IRVoxelEditor::evaluateEraseModeLabel,
             nullptr,
             "v_toggles_erase_mode"
+        ),
+    };
+    // The help overlay's rendered chord rows. Registry-only state, so it rides
+    // the input-free idle shot.
+    IRVoxelEditor::g_shotAssertions[IRVoxelEditor::kIdleShotIndex] = {
+        IRPrefab::GuiTest::predicate(
+            &IRVoxelEditor::evaluateChordOverlayRows,
+            nullptr,
+            "overlay_chord_rows"
+        ),
+    };
+    // The Ctrl+S probe must leave the camera's start/end velocity pair
+    // balanced. Asserted on the save probe's own capture frame, four frames
+    // after its last event, so both halves have drained.
+    IRVoxelEditor::g_shotAssertions[IRVoxelEditor::kProbeSaveShotIndex] = {
+        IRPrefab::GuiTest::predicate(
+            &IRVoxelEditor::evaluateCameraVelocityBalanced,
+            nullptr,
+            "ctrl_s_leaves_camera_balanced"
         ),
     };
 }
