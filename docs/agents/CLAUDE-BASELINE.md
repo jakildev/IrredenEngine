@@ -145,7 +145,7 @@ path, or the API keeps signalling "experimental" when it's the production code
   *"retired (T-323)"*. The test: if the code had always existed in its
   current form, would you still write this sentence? If no, it's history —
   it belongs in the commit message, the PR body, or a design doc under
-  `docs/design/` (or `.fleet/plans/T-*.md`), not the source; leave at most a
+  `docs/design/`, not the source; leave at most a
   one-token backref (`// see #1910`). This holds at paragraph scale — a
   30-line block tracing a bug's forensic history is the same smell as a
   one-line `// now uses the deferred variant`, and is most common in render
@@ -682,9 +682,8 @@ These apply to every fleet role. Each role file lists only the
 additional role-specific restrictions.
 
 - **Never `git push origin master`. Never `--force` push.** Never call
-  `gh pr merge`. The human merges. (The sole auto-merge in the fleet is
-  the deterministic tier-0 plan-file lane inside the `fleet-rebase`
-  script — see FLEET.md § "Who merges". No LLM role merges anything.)
+  `gh pr merge`. The human merges — there is no auto-merge lane anywhere
+  in the fleet (FLEET.md § "Who merges").
 - **Never run `cmake --preset`** — only `cmake --build` against the
   already-configured tree.
 - **Never touch the `.claude/worktrees/` layout.**

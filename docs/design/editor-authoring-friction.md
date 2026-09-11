@@ -3,7 +3,7 @@
 Cumulative friction log for the F-1.6 proof-of-usability gate: authoring five
 test entities (ant, bird, rock, mushroom, tree) **end-to-end through the
 `IRVoxelEditor` GUI interaction harness** (scripted clicks/drags/hotkeys against
-the live UI), per the plan in [`.fleet/plans/issue-766.md`](../../.fleet/plans/issue-766.md).
+the live UI), per the `## Plan` comment on #766.
 
 The point of the task is to prove the editor *works well* as an authoring tool —
 so this doc records what fought each scripted session, what a human would

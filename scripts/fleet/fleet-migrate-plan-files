@@ -1,0 +1,221 @@
+#!/usr/bin/env python3
+"""fleet-migrate-plan-files — copy live steward bookkeeping off the retired plan files.
+
+A plan lives on its issue: the ``## Plan`` comment, one ``## Steward ledger``
+comment on the umbrella (edited in place), and ``## Plan corrections`` comments
+amending a child. The committed ``.fleet/plans/issue-<N>.md`` files are being
+deleted; this one-off posts whatever bookkeeping in them is still live onto
+the issues first, so the deletion loses nothing a running epic depends on.
+
+Per plan file:
+
+* a ``## Steward ledger`` section, when the issue is OPEN and labelled
+  ``fleet:epic``, is posted verbatim as a comment — unless the umbrella
+  already carries a comment starting with ``## Steward ledger``;
+* an ``## Amendments`` section, when the issue is OPEN, is posted as a
+  comment whose first line is ``## Plan corrections`` followed by the
+  amendments text — unless a comment with that exact body already exists.
+
+A section runs from its ``## `` heading to the next ``## `` heading or the
+end of the file. Closed issues and files without either section are skipped,
+so a second run is a no-op once every comment is in place.
+
+Usage:
+  fleet-migrate-plan-files [--dry-run] [--repo OWNER/NAME] [--plans-dir DIR]
+
+``--dry-run`` prints what would be posted and posts nothing. Every GitHub
+round-trip goes through ``gh()``, the one seam the tests stub.
+"""
+
+import argparse
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+DEFAULT_REPO = "jakildev/IrredenEngine"
+LEDGER_HEADING = "## Steward ledger"
+AMENDMENTS_HEADING = "## Amendments"
+CORRECTIONS_HEADING = "## Plan corrections"
+EPIC_LABEL = "fleet:epic"
+PLAN_FILE_RE = re.compile(r"^issue-(\d+)\.md$")
+
+
+def gh(args, stdin=None):
+    """Run one gh command and return its stdout; raises on a non-zero exit."""
+    proc = subprocess.run(["gh", *args], input=stdin, capture_output=True,
+                          text=True, check=False)
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"gh {' '.join(args)} failed ({proc.returncode}): {proc.stderr.strip()}")
+    return proc.stdout
+
+
+def section(text, heading):
+    """The block from `heading` to the next `## ` heading or EOF, or None.
+
+    Sub-headings (`### `) belong to the section; only another top-level
+    `## ` heading ends it.
+    """
+    lines = text.splitlines(keepends=True)
+    for i, line in enumerate(lines):
+        if line.rstrip("\r\n") != heading:
+            continue
+        block = [line]
+        for rest in lines[i + 1:]:
+            if rest.startswith("## "):
+                break
+            block.append(rest)
+        return "".join(block)
+    return None
+
+
+def corrections_body(amendments_section):
+    """The `## Plan corrections` comment carrying an `## Amendments` section's text."""
+    body = amendments_section.split("\n", 1)[1] if "\n" in amendments_section else ""
+    return f"{CORRECTIONS_HEADING}\n{body.rstrip()}\n"
+
+
+def normalize(body):
+    """Comment bodies compare modulo line endings and surrounding whitespace."""
+    return body.replace("\r\n", "\n").strip()
+
+
+def parse_json_stream(text):
+    """Every JSON document in `text`, in order (`gh api --paginate` emits one per page)."""
+    decoder = json.JSONDecoder()
+    docs = []
+    idx = 0
+    while True:
+        while idx < len(text) and text[idx].isspace():
+            idx += 1
+        if idx >= len(text):
+            return docs
+        doc, idx = decoder.raw_decode(text, idx)
+        docs.append(doc)
+
+
+def open_issues(repo):
+    """{number: set-of-label-names} for every open issue in `repo`."""
+    out = gh(["issue", "list", "--repo", repo, "--state", "open", "--limit", "1000",
+              "--json", "number,labels"])
+    return {row["number"]: {label["name"] for label in row["labels"]}
+            for row in json.loads(out)}
+
+
+def issue_comment_bodies(repo, number):
+    out = gh(["api", "--paginate", f"repos/{repo}/issues/{number}/comments?per_page=100"])
+    return [comment["body"] for page in parse_json_stream(out) for comment in page]
+
+
+def post_comment(repo, number, body):
+    gh(["issue", "comment", str(number), "--repo", repo, "--body-file", "-"], stdin=body)
+
+
+def plan_files(plans_dir):
+    """(issue number, path) for every `issue-<N>.md` under `plans_dir`, by number."""
+    found = []
+    for path in Path(plans_dir).glob("issue-*.md"):
+        match = PLAN_FILE_RE.match(path.name)
+        if match:
+            found.append((int(match.group(1)), path))
+    return sorted(found)
+
+
+class Tally:
+    KINDS = ("ledgers", "corrections")
+    OUTCOMES = ("posted", "present", "closed", "not-epic")
+
+    def __init__(self):
+        self.counts = {kind: dict.fromkeys(self.OUTCOMES, 0) for kind in self.KINDS}
+        self.files = 0
+        self.without_section = 0
+
+    def record(self, kind, outcome):
+        self.counts[kind][outcome] += 1
+
+    def summary(self, dry_run):
+        tag = "fleet-migrate-plan-files" + (" [dry-run]" if dry_run else "")
+        lines = [f"{tag}: files scanned={self.files} without either section={self.without_section}"]
+        for kind in self.KINDS:
+            parts = " ".join(f"{outcome}={n}" for outcome, n in self.counts[kind].items()
+                             if outcome != "not-epic" or kind == "ledgers")
+            lines.append(f"{tag}: {kind}: {parts}")
+        return "\n".join(lines)
+
+
+def migrate(repo, plans_dir, dry_run, out=sys.stdout):
+    """Post every missing ledger / corrections comment; returns the Tally."""
+    verb = "would post" if dry_run else "posted"
+    issues = open_issues(repo)
+    tally = Tally()
+    for number, path in plan_files(plans_dir):
+        tally.files += 1
+        text = path.read_text(encoding="utf-8")
+        ledger = section(text, LEDGER_HEADING)
+        amendments = section(text, AMENDMENTS_HEADING)
+        if ledger is None and amendments is None:
+            tally.without_section += 1
+            continue
+        labels = issues.get(number)
+        if labels is None:
+            for kind, present in (("ledgers", ledger), ("corrections", amendments)):
+                if present is not None:
+                    tally.record(kind, "closed")
+            print(f"#{number} ({path.name}): issue not open — skip", file=out)
+            continue
+        existing = [normalize(body) for body in issue_comment_bodies(repo, number)]
+        if ledger is not None:
+            if EPIC_LABEL not in labels:
+                tally.record("ledgers", "not-epic")
+                print(f"#{number} ({path.name}): {LEDGER_HEADING} section but no "
+                      f"{EPIC_LABEL} label — skip", file=out)
+            elif any(body.startswith(LEDGER_HEADING) for body in existing):
+                tally.record("ledgers", "present")
+                print(f"#{number} ({path.name}): {LEDGER_HEADING} comment already present — skip",
+                      file=out)
+            else:
+                tally.record("ledgers", "posted")
+                print(f"#{number} ({path.name}): {verb} {LEDGER_HEADING} ({len(ledger)} chars)",
+                      file=out)
+                if not dry_run:
+                    post_comment(repo, number, ledger)
+        if amendments is not None:
+            body = corrections_body(amendments)
+            if normalize(body) in existing:
+                tally.record("corrections", "present")
+                print(f"#{number} ({path.name}): identical {CORRECTIONS_HEADING} comment "
+                      f"already present — skip", file=out)
+            else:
+                tally.record("corrections", "posted")
+                print(f"#{number} ({path.name}): {verb} {CORRECTIONS_HEADING} "
+                      f"({len(body)} chars)", file=out)
+                if not dry_run:
+                    post_comment(repo, number, body)
+    print(tally.summary(dry_run), file=out)
+    return tally
+
+
+def main(argv):
+    parser = argparse.ArgumentParser(
+        prog="fleet-migrate-plan-files",
+        description="Post each plan file's live steward ledger / amendments onto its issue.")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="print what would be posted; post nothing")
+    parser.add_argument("--repo", default=DEFAULT_REPO,
+                        help=f"GitHub repo (default {DEFAULT_REPO})")
+    parser.add_argument("--plans-dir",
+                        default=str(Path(__file__).resolve().parents[2] / ".fleet" / "plans"),
+                        help="directory holding issue-<N>.md plan files")
+    args = parser.parse_args(argv)
+    plans_dir = Path(args.plans_dir)
+    if not plans_dir.is_dir():
+        print(f"fleet-migrate-plan-files: no such directory: {plans_dir}", file=sys.stderr)
+        return 2
+    migrate(args.repo, plans_dir, args.dry_run)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

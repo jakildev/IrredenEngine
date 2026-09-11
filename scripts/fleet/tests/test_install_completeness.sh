@@ -39,6 +39,7 @@ ALLOWLIST=(
     "classify-auto-rereview.sh"   # invoked by path from .github/workflows/auto-rereview.yml
     "fleet-guard-worktree-edit"   # PreToolUse hook, invoked by absolute path from
                                    # .claude/settings.json and fleet-up
+    "fleet-migrate-plan-files"    # one-off migration, run by path from the repo
 )
 
 is_allowlisted() {

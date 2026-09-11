@@ -119,4 +119,4 @@ exercised (see below).
 - [`per-axis-trixel-canvas-rotation.md`](per-axis-trixel-canvas-rotation.md) —
   the smooth-rotation forward-scatter composite (a different path to the
   framebuffer).
-- `.fleet/plans/issue-2043.md` — the implementation plan + escalation history.
+- the `## Plan` comment on #2043 — the implementation plan + escalation history.
