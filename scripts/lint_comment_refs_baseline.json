@@ -446,7 +446,7 @@
  "scripts/fleet/tests/test_role_trigger_empty.py": 1,
  "scripts/fleet/tests/test_run_all.sh": 4,
  "scripts/fleet/tests/test_run_targets_path_scope.sh": 2,
- "scripts/fleet/tests/test_scope_shipped_reference.py": 55,
+ "scripts/fleet/tests/test_scope_shipped_reference.py": 56,
  "scripts/fleet/tests/test_scout_agent_approved_fetch.py": 2,
  "scripts/fleet/tests/test_scout_degraded_fetch.py": 3,
  "scripts/fleet/tests/test_scout_gl_host_backstop.py": 9,

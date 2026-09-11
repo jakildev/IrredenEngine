@@ -177,6 +177,24 @@ class Families(unittest.TestCase):
             self.assertIsNone(lint.comment_family(rel), rel)
 
 
+class ReferenceShape(unittest.TestCase):
+    """A reference is `#` plus three or more digits, ending on a word
+    boundary. The floor keeps ordinals out; the absent ceiling keeps the
+    ratchet true after the tracker passes 9,999."""
+
+    def test_references_longer_than_four_digits_count(self):
+        text = "// see #1234\n// see #12345\n// see #123456\n"
+        self.assertEqual(lines(text, "slash"), [1, 2, 3])
+
+    def test_short_numbers_are_ordinals_not_references(self):
+        text = "// Rule #5 applies\n// override #12 wins\n// invariant #1\n"
+        self.assertEqual(lines(text, "slash"), [])
+
+    def test_a_trailing_word_character_breaks_the_match_at_any_length(self):
+        text = "// #1234abc\n// #12345abc\n// issue-12345\n"
+        self.assertEqual(lines(text, "slash"), [])
+
+
 class Scanning(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -435,6 +453,17 @@ class Check07Scope(unittest.TestCase):
             and not any(p.startswith(a.rstrip("*")) for a in arms))
         self.assertEqual(uncovered, [],
                          f"extensionless interpreter files outside {arms}")
+
+    def test_both_halves_agree_on_what_a_reference_looks_like(self):
+        """Scope parity has a second dimension: the same file classes counted
+        against a different reference shape is the same hole in disguise."""
+        pattern = re.search(r"pattern:\s*'([^']+)'", self.doc).group(1)
+        doc_ref = re.compile(pattern[pattern.rindex("#"):].replace("[0-9]", r"\d"))
+        for probe in ("#123", "#1234", "#12345", "#1234567",
+                      "#1", "#12", "#1234abc", "#12345abc"):
+            self.assertEqual(bool(doc_ref.search(probe)),
+                             bool(lint.REF_RE.search(probe)),
+                             f"Check 7 and the ratchet disagree on {probe}")
 
     def test_the_skill_index_row_defers_to_the_checker(self):
         if not self.SKILL.is_file():

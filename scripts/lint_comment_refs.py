@@ -70,7 +70,10 @@ SKIP_PREFIXES = (
     "scripts/fleet/tests/test_lint_comment_refs.py",
 )
 INTERPRETER_RE = re.compile(r"^#!.*\b(python\d*|bash|sh|zsh)\b")
-REF_RE = re.compile(r"#\d{3,4}\b")
+# Three digits is a floor against ordinals, not a tracker range: `Rule #5`,
+# `invariant #1` and `acceptance criterion #3` are shapes the tree uses
+# freely. There is no ceiling — the tracker outgrows four digits.
+REF_RE = re.compile(r"#\d{3,}\b")
 RAW_STRING_RE = re.compile(r'(?:u8|u|U|L)?R"([^\s()\\]{0,16})\(')
 
 
