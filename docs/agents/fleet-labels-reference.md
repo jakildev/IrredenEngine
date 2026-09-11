@@ -237,9 +237,8 @@ Specifically, **never pass these via `--label` when filing**:
   approves but ends `Opus recheck required:`. This is the durable
   signal the scout's `project_opus_reviewer` wakes the opus-reviewer
   pane on — the review-body text alone is invisible to the trigger
-  projection, so before this label the opus pane only woke
-  coincidentally on another PR's `fleet:has-nits` / `fleet:needs-fix`
-  transition (PR #1473 sat un-rechecked for exactly this reason).
+  projection, and author-facing verdict labels do not wake the Opus lane
+  without this explicit label.
   Cleared by the **opus-reviewer** as part of its verdict label-swap,
   whatever the verdict (approve consumes the escalation; needs-fix /
   blocker also clear it and hand the PR back to the

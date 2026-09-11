@@ -1425,7 +1425,7 @@ def sonnet_reviewer_actionable(p):
     return bool(p.get("candidate_prs"))
 
 def opus_reviewer_actionable(p):
-    return bool(p.get("flagged_prs"))
+    return bool(p.get("flagged_prs")) or bool(p.get("plan_review"))
 
 # Host key + smoke-label map, INLINED from fleet_task_class.py
 # (_current_host / HOST_SMOKE_LABELS, the canonical copies) — keep in sync.

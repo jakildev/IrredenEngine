@@ -521,7 +521,7 @@ class ProjectWorkerSkipsGatedNeedsPlan(unittest.TestCase):
 
 
 class OpusReviewerStableAcrossIrrelevantLabels(unittest.TestCase):
-    """Opus-reviewer keys on fleet:has-nits / fleet:needs-fix (flag_labels).
+    """Opus-reviewer keys on fleet:needs-opus-recheck (flag_labels).
     Other labels are either gating (REVIEW_SKIP_LABELS, removed from the
     projection entirely) or irrelevant — neither should re-flip the hash
     while the PR's flag_labels subset is unchanged."""
@@ -530,19 +530,16 @@ class OpusReviewerStableAcrossIrrelevantLabels(unittest.TestCase):
         return stable_hash(project_opus_reviewer(_state(prs)))
 
     def test_changes_made_does_not_flip_hash(self):
-        # The worker pushes a fix, toggles fleet:changes-made on the
-        # still-flagged PR. The reviewer's verdict label hasn't changed,
-        # so the recheck shouldn't fire from this transition alone.
-        before = self._hash([_pr(101, labels=["fleet:needs-fix"])])
+        before = self._hash([_pr(101, labels=["fleet:needs-opus-recheck"])])
         after = self._hash([_pr(101, labels=[
-            "fleet:needs-fix", "fleet:changes-made",
+            "fleet:needs-opus-recheck", "fleet:changes-made",
         ])])
         self.assertEqual(before, after)
 
     def test_authored_on_macos_does_not_flip_hash(self):
-        before = self._hash([_pr(101, labels=["fleet:has-nits"])])
+        before = self._hash([_pr(101, labels=["fleet:needs-opus-recheck"])])
         after = self._hash([_pr(101, labels=[
-            "fleet:has-nits", "fleet:authored-on-macos",
+            "fleet:needs-opus-recheck", "fleet:authored-on-macos",
         ])])
         self.assertEqual(before, after)
 
@@ -552,17 +549,11 @@ class OpusReviewerActionableTransitionsFlipHash(unittest.TestCase):
     def _hash(self, prs):
         return stable_hash(project_opus_reviewer(_state(prs)))
 
-    def test_has_nits_to_needs_fix_flips_hash(self):
-        # Verdict escalation — reviewer should re-evaluate.
-        before = self._hash([_pr(101, labels=["fleet:has-nits"])])
-        after = self._hash([_pr(101, labels=["fleet:needs-fix"])])
-        self.assertNotEqual(before, after)
-
     def test_skip_label_added_flips_hash(self):
         # PR drops from the projection (REVIEW_SKIP_LABELS).
-        before = self._hash([_pr(101, labels=["fleet:needs-fix"])])
+        before = self._hash([_pr(101, labels=["fleet:needs-opus-recheck"])])
         after = self._hash([_pr(101, labels=[
-            "fleet:needs-fix", "fleet:merger-cooldown",
+            "fleet:needs-opus-recheck", "fleet:merger-cooldown",
         ])])
         self.assertNotEqual(before, after)
 
@@ -578,19 +569,9 @@ class AmendingClaimBarsReviewerPickup(unittest.TestCase):
     def _sonnet(self, prs):
         return project_sonnet_reviewer(_state(prs))
 
-    def _opus(self, prs):
-        return project_opus_reviewer(_state(prs))
-
     def test_amending_drops_pr_from_sonnet_reviewer(self):
         # needs-fix cleared, amend claim held -> not reviewable.
         held = self._sonnet([_pr(101, labels=["fleet:amending-mac-sonnet-fleet-1"])])
-        self.assertEqual(held, [])
-
-    def test_amending_plus_needs_fix_drops_pr_from_opus_reviewer(self):
-        # Brief window before the worker removes needs-fix: still skipped.
-        held = self._opus([_pr(101, labels=[
-            "fleet:needs-fix", "fleet:amending-mac-opus-worker-1",
-        ])])
         self.assertEqual(held, [])
 
     def test_release_then_changes_made_re_enters_sonnet_reviewer(self):
@@ -602,10 +583,6 @@ class AmendingClaimBarsReviewerPickup(unittest.TestCase):
         self.assertNotEqual(before, after)
         self.assertEqual(len(self._sonnet([
             _pr(101, labels=["fleet:changes-made"])])), 1)
-
-    def test_plain_needs_fix_unaffected(self):
-        # No amend claim -> opus-reviewer still sees the flagged PR.
-        self.assertEqual(len(self._opus([_pr(101, labels=["fleet:needs-fix"])])), 1)
 
 
 class ReviewClaimBarsWorkerFeedbackPickup(unittest.TestCase):
