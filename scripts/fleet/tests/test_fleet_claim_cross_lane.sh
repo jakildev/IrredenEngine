@@ -159,7 +159,7 @@ set_labels "$AMEND_LABEL"
 rc=0
 "$FLEET_CLAIM" review-claim 4101 poolB >/dev/null 2>&1 || rc=$?
 assert_exit "$rc" 1 "foreign amend refuses review claim"
-assert_eq "$(label_count)" "1" "refusal preserves the exact label set"
+assert_eq "$(cat "$CLAIM_STATE")" "$AMEND_LABEL" "refusal preserves the exact label set"
 assert_eq "$(wc -l < "$CLAIM_POST_LOG" | tr -d ' ')" "0" "refusal sends no POST"
 
 echo "T2 control: same suffix may hold both lane labels"
@@ -327,6 +327,13 @@ run_race() {
     [[ "$review_rc" -eq 0 ]] && successes=$((successes + 1))
     assert_eq "$successes" "1" "$order leaves exactly one successful claimant"
     assert_eq "$(label_count)" "1" "$order leaves exactly one lane label"
+    if [[ "$amend_rc" -eq 0 && "$review_rc" -ne 0 ]]; then
+        assert_eq "$(cat "$CLAIM_STATE")" "$AMEND_LABEL" "$order leaves the amend winner's label"
+    elif [[ "$review_rc" -eq 0 && "$amend_rc" -ne 0 ]]; then
+        assert_eq "$(cat "$CLAIM_STATE")" "$REVIEW_LABEL" "$order leaves the review winner's label"
+    else
+        bad "$order final label belongs to the sole successful claimant"
+    fi
     rm -rf "$CLAIM_RUN"
 }
 
