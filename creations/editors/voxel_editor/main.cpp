@@ -419,6 +419,37 @@ constexpr IRVideo::GuiInputEvent kProbeADEvents[] = {
      IRInput::kKeyButtonA},
 };
 
+// F1 toggles the help overlay (#2620). The overlay builds its text lazily on
+// the first open, so the open shot is the only place an assertion can read what
+// it actually rendered; a second press on the following shot closes it again so
+// the probe shots below run against a hidden overlay and an unpainted GUI
+// canvas.
+constexpr IRVideo::GuiInputEvent kHelpOverlayOpenEvents[] = {
+    {0,
+     IRVideo::GuiInputEvent::Type::PRESS,
+     IRMath::ivec2(0),
+     IRMath::vec2(0.0f),
+     IRInput::kKeyButtonF1},
+    {1,
+     IRVideo::GuiInputEvent::Type::RELEASE,
+     IRMath::ivec2(0),
+     IRMath::vec2(0.0f),
+     IRInput::kKeyButtonF1},
+};
+
+constexpr IRVideo::GuiInputEvent kHelpOverlayCloseEvents[] = {
+    {0,
+     IRVideo::GuiInputEvent::Type::PRESS,
+     IRMath::ivec2(0),
+     IRMath::vec2(0.0f),
+     IRInput::kKeyButtonF1},
+    {1,
+     IRVideo::GuiInputEvent::Type::RELEASE,
+     IRMath::ivec2(0),
+     IRMath::vec2(0.0f),
+     IRInput::kKeyButtonF1},
+};
+
 // Probe 2 (the gate) — world→screen mapping accuracy. Eight central seed
 // ground-plane cells (local z == size-1); each probe shot moves the cursor to
 // the pixel IRRender::worldPos3DToMouseScreenPx computes for the cell centre,
@@ -501,7 +532,7 @@ std::string fillModeLabelText();
 
 // GUI-test shot table covering stable render framings plus the scripted-click
 // shots. Superset of the previous kShots[] — render-verify labels still match.
-// kGuiAssertShotIndex / kPickVoxelShotIndex select the assertion-bearing shots.
+// The k*ShotIndex constants below select the assertion-bearing shots.
 constexpr IRVideo::GuiTestShot kGuiTestShots[] = {
     {{1.0f, IRMath::vec2(0.0f), 0.0f, "editor_idle"}, nullptr, 0},
     {{1.0f, IRMath::vec2(0.0f), 0.0f, "editor_palette_click"}, kPaletteClickEvents, 3},
@@ -509,6 +540,10 @@ constexpr IRVideo::GuiTestShot kGuiTestShots[] = {
     {{1.5f, IRMath::vec2(0.0f), 0.0f, "editor_zoom_in"}, nullptr, 0},
     {{1.0f, IRMath::vec2(0.0f), 0.0f, "editor_gui_assert"}, kGuiAssertEvents, 3},
     {{1.0f, IRMath::vec2(0.0f), 0.0f, "editor_pick_voxel"}, kPickVoxelEvents, 1},
+    // Help-overlay open/closed pair (#2620), ahead of the probe shots so the
+    // close half restores the hidden state they expect.
+    {{1.0f, IRMath::vec2(0.0f), 0.0f, "editor_help_overlay_open"}, kHelpOverlayOpenEvents, 2},
+    {{1.0f, IRMath::vec2(0.0f), 0.0f, "editor_help_overlay_closed"}, kHelpOverlayCloseEvents, 2},
     // Phase 0 probes (#766), appended after the stable shots so their indices
     // stay fixed. The eight mapping-accuracy shots come first (clean read-only
     // picks), then the Ctrl+S dispatch and A/D-overload shots (both mutate state).
@@ -530,17 +565,18 @@ constexpr IRVideo::GuiTestShot kGuiTestShots[] = {
     {{1.0f, IRMath::vec2(0.0f), 0.0f, "editor_probe_ad"}, kProbeADEvents, 2},
 };
 constexpr int kNumGuiTestShots = static_cast<int>(sizeof(kGuiTestShots) / sizeof(kGuiTestShots[0]));
-// The idle shot is a pure render framing with no scripted input, which makes it
-// the right carrier for assertions over registration-time state (the command
-// registry) that no gesture in the table can perturb.
-constexpr int kIdleShotIndex = 0;
 constexpr int kGuiAssertShotIndex = 4;
 constexpr int kPickVoxelShotIndex = 5;
+// The help-overlay pair. Its assertions read state only an OPEN overlay has
+// (the text it built, the glyph commands it batched), so they cannot ride the
+// input-free idle shot.
+constexpr int kHelpOverlayOpenShotIndex = kPickVoxelShotIndex + 1;
+constexpr int kHelpOverlayClosedShotIndex = kHelpOverlayOpenShotIndex + 1;
 // Phase 0 / Part 2b probe shot indices (#766). Map shots occupy
 // [start, start+count); the erase probe, then the dispatch and overload shots
-// follow. Derived from kPickVoxelShotIndex so they track any reordering of the
-// stable shots.
-constexpr int kProbeMapShotStart = kPickVoxelShotIndex + 1;
+// follow. Derived from the preceding shot index so they track any reordering of
+// the stable shots.
+constexpr int kProbeMapShotStart = kHelpOverlayClosedShotIndex + 1;
 constexpr int kProbeEraseShotIndex = kProbeMapShotStart + kProbeMapCount;
 constexpr int kProbeSaveShotIndex = kProbeEraseShotIndex + 1;
 constexpr int kProbeADShotIndex = kProbeSaveShotIndex + 1;
@@ -577,11 +613,11 @@ bool evaluateEraseModeLabel(const void *, std::string &actual) {
 // twice. Each binding's real mask is what makes its row correct; this is what
 // keeps it correct.
 //
-// Checked against `getCommandRegistrations()` rather than the overlay's own
-// `builtText()`, which builds lazily on first open: reading it would mean
-// toggling the overlay visible inside a capture shot and rewriting that shot's
-// reference image. The registry rows are what the overlay formats, so the two
-// carry the same answer for this property.
+// Read out of the overlay's own `builtText()` on the F1 shot, NOT rebuilt from
+// `getCommandRegistrations()`: a registry-side check only repeats the formatter
+// expression, so it passes whether or not this creation has an overlay at all,
+// whether it is open, and whether its text stage ever queued a glyph — none of
+// which is what "the bindings appear when opened" asks (see #2620).
 struct ChordRow {
     const char *chord_;
     const char *name_;
@@ -594,29 +630,93 @@ constexpr ChordRow kExpectedChordRows[] = {
     {"CTRL+O", "LOAD SCENE"},
     {"SHIFT+CTRL+O", "LOAD RIG"},
 };
+constexpr int kNumExpectedChordRows =
+    static_cast<int>(sizeof(kExpectedChordRows) / sizeof(kExpectedChordRows[0]));
+
+// Splits one overlay row into its key column and command name.
+// `System<HELP_OVERLAY>::buildText` lays a row out as
+// `<key><pad to a fixed width> <NAME>[ - <DESCRIPTION>]`, and a key column never
+// contains a space, so the first space ends it and the name runs to the " - "
+// separator. Parsed rather than re-derived from kHelpOverlayBindingColumnChars:
+// a widened gutter is a layout change, not a regression in what this asserts.
+// Returns false for the header and blank lines, which have no key column.
+bool splitOverlayRow(const std::string &line, std::string &key, std::string &name) {
+    const std::size_t keyEnd = line.find(' ');
+    if (keyEnd == 0 || keyEnd == std::string::npos)
+        return false;
+    const std::size_t nameStart = line.find_first_not_of(' ', keyEnd);
+    if (nameStart == std::string::npos)
+        return false;
+    const std::size_t descStart = line.find(" - ", nameStart);
+    key = line.substr(0, keyEnd);
+    name = line.substr(
+        nameStart,
+        descStart == std::string::npos ? std::string::npos : descStart - nameStart
+    );
+    return true;
+}
 
 bool evaluateChordOverlayRows(const void *, std::string &actual) {
-    const auto &registrations = IRCommand::getCommandManager().getCommandRegistrations();
-    std::string wrong;
-    for (const ChordRow &expected : kExpectedChordRows) {
-        std::string rendered = "<absent>";
-        for (const auto &registration : registrations) {
-            if (registration.name != expected.name_)
-                continue;
-            rendered = IRCommand::modifierString(registration.requiredModifiers) +
-                       IRCommand::keyButtonToString(registration.button);
-            break;
+    const std::string text = IRPrefab::HelpOverlay::builtText();
+    if (text.empty()) {
+        actual = "overlay text is empty — never opened, or HELP_OVERLAY is not registered";
+        return false;
+    }
+
+    std::string rendered[kNumExpectedChordRows];
+    for (std::string &row : rendered)
+        row = "<absent>";
+    for (std::size_t lineStart = 0; lineStart < text.size();) {
+        const std::size_t lineEnd = text.find('\n', lineStart);
+        const std::size_t lineLength =
+            lineEnd == std::string::npos ? text.size() - lineStart : lineEnd - lineStart;
+        const std::string line = text.substr(lineStart, lineLength);
+        lineStart += lineLength + 1;
+        std::string key;
+        std::string name;
+        if (!splitOverlayRow(line, key, name))
+            continue;
+        for (int i = 0; i < kNumExpectedChordRows; ++i) {
+            if (name == kExpectedChordRows[i].name_)
+                rendered[i] = key;
         }
-        if (rendered == expected.chord_)
+    }
+
+    std::string wrong;
+    for (int i = 0; i < kNumExpectedChordRows; ++i) {
+        if (rendered[i] == kExpectedChordRows[i].chord_)
             continue;
         if (!wrong.empty())
             wrong += ", ";
-        wrong += std::string(expected.name_) + " renders \"" + rendered + "\" want \"" +
-                 expected.chord_ + "\"";
+        wrong += std::string(kExpectedChordRows[i].name_) + " renders \"" + rendered[i] +
+                 "\" want \"" + kExpectedChordRows[i].chord_ + "\"";
     }
-    actual = wrong.empty() ? "all chord rows render as expected" : wrong;
+    actual = wrong.empty() ? "all six chord rows present in the opened overlay's text" : wrong;
     return wrong.empty();
 }
+
+// Visibility is the flag the F1 command flips; the glyph count is the evidence
+// the overlay acted on it. `dispatchGuiText` drains the command vector as it
+// uploads, so `lastGlyphCommandCount()` is the only after-the-fact proof the
+// overlay queued geometry rather than merely believing itself visible — and it
+// is exactly 0 on the closed shot, which is what shows the text is gone from the
+// canvas rather than still painted under a cleared flag.
+bool evaluateOverlayVisibility(const void *context, std::string &actual) {
+    const bool expected = *static_cast<const bool *>(context);
+    const bool visible = IRPrefab::HelpOverlay::isVisible();
+    actual = visible ? "visible" : "hidden";
+    return visible == expected;
+}
+
+bool evaluateOverlayGlyphsBatched(const void *context, std::string &actual) {
+    const bool expectGlyphs = *static_cast<const bool *>(context);
+    const int count = IRPrefab::HelpOverlay::lastGlyphCommandCount();
+    actual = "glyphCommands=" + std::to_string(count);
+    return expectGlyphs ? count > 0 : count == 0;
+}
+
+constexpr bool kOverlayExpectVisible = true;
+constexpr bool kOverlayExpectHidden = false;
 
 // Camera-velocity balance across the Ctrl+S probe. The S camera-pan pair
 // accumulates into `C_Velocity2DIso` with `-=` on press and `+=` on release,
@@ -3950,13 +4050,38 @@ void initEntities() {
             "v_toggles_erase_mode"
         ),
     };
-    // The help overlay's rendered chord rows. Registry-only state, so it rides
-    // the input-free idle shot.
-    IRVoxelEditor::g_shotAssertions[IRVoxelEditor::kIdleShotIndex] = {
+    // The help overlay, opened by F1 on its own shot (#2620): it is actually
+    // visible, it actually batched glyphs, and the text it built advertises every
+    // modifier-bearing binding with its real chord. The closed shot is the
+    // negative half — the toggle releases the overlay and the glyph count falls
+    // back to 0, which is also what leaves the probe shots below unperturbed.
+    IRVoxelEditor::g_shotAssertions[IRVoxelEditor::kHelpOverlayOpenShotIndex] = {
+        IRPrefab::GuiTest::predicate(
+            &IRVoxelEditor::evaluateOverlayVisibility,
+            &IRVoxelEditor::kOverlayExpectVisible,
+            "overlay_visible"
+        ),
+        IRPrefab::GuiTest::predicate(
+            &IRVoxelEditor::evaluateOverlayGlyphsBatched,
+            &IRVoxelEditor::kOverlayExpectVisible,
+            "overlay_glyphs_batched"
+        ),
         IRPrefab::GuiTest::predicate(
             &IRVoxelEditor::evaluateChordOverlayRows,
             nullptr,
             "overlay_chord_rows"
+        ),
+    };
+    IRVoxelEditor::g_shotAssertions[IRVoxelEditor::kHelpOverlayClosedShotIndex] = {
+        IRPrefab::GuiTest::predicate(
+            &IRVoxelEditor::evaluateOverlayVisibility,
+            &IRVoxelEditor::kOverlayExpectHidden,
+            "overlay_hidden"
+        ),
+        IRPrefab::GuiTest::predicate(
+            &IRVoxelEditor::evaluateOverlayGlyphsBatched,
+            &IRVoxelEditor::kOverlayExpectHidden,
+            "overlay_no_glyphs_batched"
         ),
     };
     // The Ctrl+S probe must leave the camera's start/end velocity pair
