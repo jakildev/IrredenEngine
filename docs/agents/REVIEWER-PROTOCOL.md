@@ -38,15 +38,20 @@ game-repo PRs.
 - **Exit 1** — another reviewer holds the claim. Skip this PR
   silently and move on to the next candidate.
 
-**Release the claim** immediately after the verdict label-swap
-below (or on no-verdict abort paths — broken stack, gated upstream-
-not-yet-approved, "Opus recheck required" for sonnet-reviewer):
+**Release the claim** immediately after the verdict label-swap. Normal
+reviewer completion uses the verdict precondition, which catches a pass that
+skipped its stamp before it can consume the review edge (#3102):
 
 ```
-fleet-claim review-release <N> <your-worktree-name>
+fleet-claim review-release <N> <your-worktree-name> --require-verdict
 ```
 
 (Add `--repo game` BEFORE the subcommand for game-repo PRs.)
+
+No-verdict exits — broken stack, gated upstream-not-yet-approved, and
+"Opus recheck required" for sonnet-reviewer — use the same command without
+`--require-verdict`. Cross-host smoke and plan-review also use that unchecked
+form because their successful terminal states are not PR verdict labels.
 
 The queue-tick's `cleanup --gh` pass sweeps stranded
 `fleet:reviewing-*` labels after 30 min, but forgetting blocks
@@ -176,7 +181,7 @@ re-review the parent.
 The verdict label is the primary signal the human uses to decide what
 to merge — a review without a label is invisible to the human's merge
 queue. After every `gh pr review --comment ...`, your VERY NEXT bash
-call MUST be the `fleet-transition` verdict edge below.
+call MUST be the `fleet-review-verdict` edge below.
 
 Always remove stale verdict labels before adding the new one. Each
 verdict also clears two derived-state labels, so a single verdict
@@ -218,6 +223,12 @@ write and retries once, so the `label-absent-after-verdict` guard
 `--repo <game-repo>` (the `gh` slug, e.g. `--repo jakildev/irreden`) — it
 threads through to both the claim-label read and `fleet-transition`.
 
+The wrapper also refuses with exit 5 unless a submitted review pins the
+PR's current `headRefOid`. If posting the body failed or GitHub has not made
+it visible after the wrapper's retry, fix that failure and post the body
+before retrying the verdict. Do not route an ordinary reviewer pass around
+this guard.
+
 ```
 # Verdict approve, no Nits section:
 fleet-review-verdict verdict-approve <N> --agent <your-worktree-name>
@@ -256,7 +267,7 @@ verdict label.) The opus-reviewer removes `fleet:needs-opus-recheck`
 as part of its own verdict label-swap, whatever verdict it reaches.
 
 The `review-pr` skill (invoked for engine single-task PRs by
-sonnet-reviewer) prescribes its own label-swap in step 5b — if you
+sonnet-reviewer) uses this same wrapper in step 5b — if you
 find a PR you reviewed without a label after the skill returns, run
 `fleet-review-verdict verdict-<verdict> <N> --agent <your-worktree-name>`
 yourself immediately. Don't assume the skill did it; verify with
@@ -475,7 +486,8 @@ role file.
   `fleet:blocker` label is invisible to the human's merge queue — the
   human filters PRs by label, not by review body. After every
   `gh pr review --comment ...`, your VERY NEXT bash call MUST be the
-  verdict label-swap (see § Verdict label-swap commands). Describing
+  verdict label-swap (see § Verdict label-swap commands). The following
+  `review-release` must pass `--require-verdict`. Describing
   the label change in the review body does NOT set it — only the `gh`
   command does. Verify with `gh pr view <N> --json labels`.
 - **Never re-apply a verdict label without posting a new review in the

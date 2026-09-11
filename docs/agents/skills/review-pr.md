@@ -299,7 +299,11 @@ is always the user's call.
 ### 5b. Set the verdict label (continued)
 
 **Immediately after** the `gh pr review` call — your very next bash call —
-run the verdict-label swap. A PR has exactly one verdict label
+apply the matching named edge with `fleet-review-verdict`. Fleet reviewers
+pass `--agent <worktree-basename>`; an interactive human omits it. The wrapper
+verifies the reviewing claim and a submitted review pinned to the current PR
+head before delegating the label swap to `fleet-transition`. A PR has exactly
+one verdict label
 (`fleet:approved` / `fleet:needs-fix` / `fleet:blocker`) at a time;
 `fleet:has-nits` is orthogonal and rides on top of `fleet:approved` — and
 it covers only the `### Nits` section's amend-worthy items. Wording-tier

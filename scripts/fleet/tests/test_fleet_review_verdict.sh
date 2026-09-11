@@ -1,17 +1,14 @@
 #!/usr/bin/env bash
 # Tests for scripts/fleet/fleet-review-verdict.
 #
-# fleet-review-verdict is a thin GUARD in front of fleet-transition: with
-# --agent it refuses to apply a verdict unless the agent holds the
-# fleet:reviewing-<host>-<agent> claim on the PR; without --agent it applies
-# directly (the interactive-human carve-out). On pass it delegates to
-# fleet-transition (the sole state-machine mechanism).
+# fleet-review-verdict guards both the reviewing claim (when --agent is used)
+# and the existence of a submitted review pinned to the PR's current head.
+# On pass it delegates to fleet-transition (the sole state-machine mechanism).
 #
 # These tests stub `gh`, `fleet-transition`, and `fleet-claim` on PATH so
 # the run is hermetic (no network, no real labels). The gh stub is
-# file-backed (one file per PR = its live label set); the fleet-transition
-# and fleet-claim stubs log their argv so delegation + arg-threading can be
-# asserted.
+# file-backed; the fleet-transition and fleet-claim stubs log their argv so
+# delegation + arg-threading can be asserted.
 #
 #   T1: --agent + claim present   → delegates to fleet-transition, exit 0
 #   T2: --agent + claim ABSENT    → guard fires, exit 4, NO delegation,
@@ -27,6 +24,12 @@
 #   T11: --agent= (empty equals-form) → exit 2, no delegation (guard-bypass
 #        regression: empty value must reject like the space-form, not skip
 #        the claim check via the interactive-human carve-out)
+#   T12: worktree-scope guard remains in front of the claim read
+#   T13: submitted review pins current head → delegates
+#   T14: stale submitted review + current-head PENDING review → exit 5
+#   T15: zero reviews → exit 5
+#   T16: --no-review-check restores the fenced label-fixup path
+#   T17: reviews read failure → exit 1
 
 set -euo pipefail
 
@@ -65,28 +68,66 @@ export FT_LOG="$TMPROOT/ft.log"      # fleet-transition invocations (argv per li
 export GH_LOG="$TMPROOT/gh.log"      # gh invocations
 export HOST_KEY="mac"                # what the fleet-claim stub reports
 export FT_RC=0                       # exit code the fleet-transition stub returns
-mkdir -p "$BIN" "$STORE"
+export FLEET_CLAIMS_DIR="$TMPROOT/claims"
+mkdir -p "$BIN" "$STORE" "$FLEET_CLAIMS_DIR"
 
-# gh stub — only needs to serve `gh pr view <N> [--repo X] --json labels
-# --jq '.labels[].name'` (the guard's live-label read). Missing store file =
-# PR not found = exit 1 (mirrors the real gh view on a bad number).
+# gh stub — validates the argument shapes the wrapper uses and serves labels,
+# headRefOid, and paginated reviews from separate per-PR store files.
 cat >"$BIN/gh" <<'GHEOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >>"$GH_LOG"
-kind="$1"; action="$2"; num="$3"; shift 3 || true
-file="$STORE/${kind}-${num}"
-case "$action" in
-    view)
-        [[ -f "$file" ]] || exit 1
-        grep -v '^$' "$file" || true
-        exit 0;;
-    *) exit 0;;
-esac
+if [[ "${1:-}" == "pr" && "${2:-}" == "view" ]]; then
+    num="${3:-}"; shift 3
+    json=""; jq_expr=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --repo) [[ -n "${2:-}" ]] || exit 2; shift 2 ;;
+            --json) json="${2:-}"; shift 2 ;;
+            --jq) jq_expr="${2:-}"; shift 2 ;;
+            *) exit 2 ;;
+        esac
+    done
+    case "$json:$jq_expr" in
+        'labels:.labels[].name') file="$STORE/labels-$num" ;;
+        'headRefOid:.headRefOid') file="$STORE/head-$num" ;;
+        *) exit 2 ;;
+    esac
+    [[ -f "$file" ]] || exit 1
+    grep -v '^$' "$file" || true
+    exit 0
+fi
+if [[ "${1:-}" == "api" ]]; then
+    path="${2:-}"; shift 2
+    paginate=0; jq_expr=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --paginate) paginate=1; shift ;;
+            --jq) jq_expr="${2:-}"; shift 2 ;;
+            *) exit 2 ;;
+        esac
+    done
+    [[ "$paginate" -eq 1 ]] || exit 2
+    [[ "$jq_expr" == '.[] | select(.state != "PENDING") | .commit_id' ]] || exit 2
+    [[ "$path" =~ /pulls/([0-9]+)/reviews$ ]] || exit 2
+    file="$STORE/reviews-${BASH_REMATCH[1]}"
+    [[ -f "$file" ]] || exit 1
+    while read -r commit_id state _submitted_at; do
+        [[ -n "$commit_id" && "$state" != "PENDING" ]] && printf '%s\n' "$commit_id"
+    done < "$file"
+    exit 0
+fi
+exit 2
 GHEOF
 chmod +x "$BIN/gh"
 
-# fleet-transition stub — record argv, return $FT_RC. The wrapper execs this,
-# so reaching it at all proves delegation happened.
+cat >"$BIN/sleep" <<'SLEEPEOF'
+#!/usr/bin/env bash
+exit 0
+SLEEPEOF
+chmod +x "$BIN/sleep"
+
+# fleet-transition stub — record argv, return $FT_RC. Reaching it proves the
+# wrapper delegated after both guards passed.
 cat >"$BIN/fleet-transition" <<'FTEOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >>"$FT_LOG"
@@ -112,12 +153,25 @@ export FLEET_ALLOW_MAIN_CLONE=1
 
 set_labels() {  # set_labels <N> <label...>
     local num="$1"; shift
-    : >"$STORE/pr-${num}"
-    local l; for l in "$@"; do echo "$l" >>"$STORE/pr-${num}"; done
+    : >"$STORE/labels-${num}"
+    local l; for l in "$@"; do echo "$l" >>"$STORE/labels-${num}"; done
 }
-get_labels() { sort "$STORE/pr-${1}" 2>/dev/null | tr '\n' ' ' | sed 's/ $//'; }
+set_review_data() {  # set_review_data <N> <head> [<commit> <state> <submitted-at>]...
+    local num="$1" head="$2"; shift 2
+    printf '%s\n' "$head" >"$STORE/head-${num}"
+    : >"$STORE/reviews-${num}"
+    while [[ $# -gt 0 ]]; do
+        printf '%s %s %s\n' "$1" "$2" "$3" >>"$STORE/reviews-${num}"
+        shift 3
+    done
+}
+get_labels() { sort "$STORE/labels-${1}" 2>/dev/null | tr '\n' ' ' | sed 's/ $//'; }
 ft_calls() { grep -c . "$FT_LOG" 2>/dev/null || true; }
-reset_logs() { : >"$FT_LOG"; : >"$GH_LOG"; }
+reset_logs() {
+    : >"$FT_LOG"
+    : >"$GH_LOG"
+    rm -f "$FLEET_CLAIMS_DIR/_review-verdict-worker-2"
+}
 
 run() {  # capture rc without tripping set -e
     set +e; "$WRAPPER" "$@" >"$TMPROOT/out" 2>&1; local rc=$?; set -e
@@ -128,6 +182,7 @@ run() {  # capture rc without tripping set -e
 echo "T1: --agent + reviewing claim present → delegates, exit 0"
 reset_logs
 set_labels 100 fleet:reviewing-mac-worker-2 fleet:wip
+set_review_data 100 head-100 head-100 COMMENTED 2026-01-02T00:00:00Z
 assert_eq "$(run verdict-needs-fix 100 --agent worker-2)" "0" "T1 exits 0"
 assert_eq "$(ft_calls)" "1" "T1 delegated to fleet-transition exactly once"
 grep -q "verdict-needs-fix 100" "$FT_LOG" && \
@@ -150,10 +205,11 @@ grep -q "does not hold" "$TMPROOT/out" && \
 echo "T3: --agent omitted → applies (human carve-out), no claim read"
 reset_logs
 set_labels 102 fleet:wip                                # no reviewing claim at all
+set_review_data 102 head-102 head-102 COMMENTED 2026-01-02T00:00:00Z
 assert_eq "$(run verdict-approve 102)" "0" "T3 exits 0 without --agent"
 assert_eq "$(ft_calls)" "1" "T3 delegated (carve-out)"
-assert_eq "$(grep -c 'pr view' "$GH_LOG" 2>/dev/null || true)" "0" \
-    "T3 did NOT read labels (guard skipped when --agent omitted)"
+assert_eq "$(grep -c -- '--json labels' "$GH_LOG" 2>/dev/null || true)" "0" \
+    "T3 did NOT read claim labels (claim guard skipped when --agent omitted)"
 
 # === T4: non-verdict transition name → exit 2, no delegation ==============
 echo "T4: non-verdict transition name → exit 2"
@@ -174,6 +230,7 @@ assert_eq "$(run verdict-approve 100 --agent)" "2" "T5 --agent without value exi
 echo "T6: --repo + --dry-run threaded through to fleet-transition"
 reset_logs
 set_labels 104 fleet:reviewing-mac-worker-2
+set_review_data 104 head-104 head-104 COMMENTED 2026-01-02T00:00:00Z
 assert_eq "$(run verdict-blocker 104 --agent worker-2 --repo jakildev/irreden --dry-run)" "0" \
     "T6 exits 0"
 grep -q -- "--repo jakildev/irreden" "$FT_LOG" && grep -q -- "--dry-run" "$FT_LOG" && \
@@ -183,13 +240,18 @@ grep -q -- "--repo jakildev/irreden" "$FT_LOG" && grep -q -- "--dry-run" "$FT_LO
 grep -q -- "pr view 104 --repo jakildev/irreden" "$GH_LOG" && \
     { PASS=$((PASS+1)); echo "  ok: T6 claim read used --repo"; } || \
     { FAIL=$((FAIL+1)); echo "  FAIL: T6 claim read used --repo"; }
+assert_eq "$(find "$FLEET_CLAIMS_DIR" -name '_review-verdict-*' -print | wc -l | tr -d ' ')" "0" \
+    "T6 dry-run records no release marker"
 
 # === T7: fleet-transition failure propagates (exec) ======================
 echo "T7: fleet-transition non-zero exit propagates"
 reset_logs
 set_labels 105 fleet:reviewing-mac-worker-2
+set_review_data 105 head-105 head-105 COMMENTED 2026-01-02T00:00:00Z
 FT_RC=1 assert_eq "$(FT_RC=1 run verdict-needs-fix 105 --agent worker-2)" "1" \
     "T7 propagates fleet-transition's exit code"
+assert_eq "$(find "$FLEET_CLAIMS_DIR" -name '_review-verdict-*' -print | wc -l | tr -d ' ')" "0" \
+    "T7 failed transition records no release marker"
 
 # === T8: PR not found under --agent → exit 1, no delegation ==============
 echo "T8: PR not found (gh view fails) under --agent → exit 1"
@@ -201,6 +263,7 @@ assert_eq "$(ft_calls)" "0" "T8 did not delegate when labels unreadable"
 echo "T9: --agent=<name> equals-form + reviewing claim present → delegates, exit 0"
 reset_logs
 set_labels 106 fleet:reviewing-mac-worker-2 fleet:wip
+set_review_data 106 head-106 head-106 COMMENTED 2026-01-02T00:00:00Z
 assert_eq "$(run verdict-needs-fix 106 --agent=worker-2)" "0" "T9 equals-form exits 0"
 assert_eq "$(ft_calls)" "1" "T9 delegated to fleet-transition exactly once"
 
@@ -238,8 +301,56 @@ assert_eq "$(grep -c 'pr view' "$GH_LOG" 2>/dev/null || true)" "0" \
     "T12 blocked before the claim read"
 reset_logs
 set_labels 110 fleet:wip
+set_review_data 110 head-110 head-110 COMMENTED 2026-01-02T00:00:00Z
 rc=$(cd "$TMPROOT" && FLEET_ALLOW_MAIN_CLONE= "$WRAPPER" verdict-approve 110 >/dev/null 2>&1; echo $?)
 assert_eq "$rc" "0" "T12 no-agent carve-out still delegates from a non-worktree cwd"
+
+# === T13: submitted review pins current head → delegate ===================
+echo "T13: submitted review pins current head → delegates"
+reset_logs
+set_labels 111 fleet:reviewing-mac-worker-2
+set_review_data 111 head-111 old-111 COMMENTED 2026-01-01T00:00:00Z \
+    head-111 APPROVED 2026-01-03T00:00:00Z
+assert_eq "$(run verdict-approve 111 --agent worker-2)" "0" "T13 exits 0"
+assert_eq "$(ft_calls)" "1" "T13 delegates after finding the head-pinning review"
+assert_eq "$(cat "$FLEET_CLAIMS_DIR/_review-verdict-worker-2")" "111" \
+    "T13 records the current-claim verdict for guarded release"
+
+# === T14: stale submitted + current-head PENDING → exit 5 =================
+echo "T14: stale submitted review and current-head PENDING review → exit 5"
+reset_logs
+set_labels 112 fleet:reviewing-mac-worker-2 fleet:wip
+set_review_data 112 head-112 old-112 COMMENTED 2026-01-01T00:00:00Z \
+    head-112 PENDING 2026-01-03T00:00:00Z
+assert_eq "$(run verdict-approve 112 --agent worker-2)" "5" "T14 review-body guard exits 5"
+assert_eq "$(ft_calls)" "0" "T14 does not delegate"
+assert_eq "$(get_labels 112)" "fleet:reviewing-mac-worker-2 fleet:wip" "T14 labels unchanged"
+assert_eq "$(grep -c '/pulls/112/reviews' "$GH_LOG")" "2" "T14 retries the reviews read once"
+
+# === T15: zero reviews → exit 5 ===========================================
+echo "T15: zero reviews → exit 5"
+reset_logs
+set_labels 113 fleet:wip
+set_review_data 113 head-113
+assert_eq "$(run verdict-needs-fix 113)" "5" "T15 empty review history exits 5"
+assert_eq "$(ft_calls)" "0" "T15 does not delegate"
+
+# === T16: explicit bypass restores the fenced fixup lane ==================
+echo "T16: --no-review-check bypasses only the review-body guard"
+reset_logs
+set_labels 114 fleet:wip
+assert_eq "$(run verdict-approve 114 --no-review-check)" "0" "T16 bypass delegates"
+assert_eq "$(ft_calls)" "1" "T16 delegates exactly once"
+assert_eq "$(grep -c -- '--json headRefOid' "$GH_LOG" 2>/dev/null || true)" "0" \
+    "T16 performs no review-body queries"
+
+# === T17: reviews read failure → exit 1 ===================================
+echo "T17: reviews read failure → exit 1"
+reset_logs
+set_labels 115 fleet:reviewing-mac-worker-2
+printf '%s\n' head-115 >"$STORE/head-115"              # reviews-115 absent
+assert_eq "$(run verdict-blocker 115 --agent worker-2)" "1" "T17 fails closed"
+assert_eq "$(ft_calls)" "0" "T17 does not delegate"
 
 echo ""
 echo "PASS: $PASS  FAIL: $FAIL"

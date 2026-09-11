@@ -152,4 +152,47 @@ actual=0
 "$FLEET_CLAIM" review-release 4242 opus-reviewer >/dev/null 2>&1 || actual=$?
 assert_exit "$actual" 0 "review-release 4242 opus-reviewer → exit 0"
 
+# ==========================================================================
+# Normal reviewer release is gated on a verdict; explicit no-verdict paths
+# retain the unchecked form used by stack/bail, smoke, and plan-review lanes.
+# ==========================================================================
+
+echo "== --require-verdict refuses a no-verdict release (#3102 backstop) =="
+
+"$FLEET_CLAIM" review-claim 4243 opus-reviewer >/dev/null 2>&1
+marker="$FLEET_CLAIMS_DIR/_prlabel-reviewing-opus-reviewer"
+verdict_marker="$FLEET_CLAIMS_DIR/_review-verdict-opus-reviewer"
+assert_eq "$(cat "$marker")" "4243" "review claim liveness marker exists before guarded release"
+if [[ ! -e "$verdict_marker" ]]; then
+    ok "review claim clears any prior verdict marker"
+else
+    bad "review claim clears any prior verdict marker"
+fi
+
+: > "$GH_LOG"
+actual=0
+err=$("$FLEET_CLAIM" review-release 4243 opus-reviewer --require-verdict 2>&1 1>/dev/null) || actual=$?
+assert_exit "$actual" 5 "guarded release without verdict exits 5"
+assert_contains "$err" "refusing to release" "guarded release explains the missing verdict"
+assert_eq "$(grep -c 'issue edit' "$GH_LOG" 2>/dev/null || true)" "0" "guarded release does not remove the reviewing label"
+assert_eq "$(cat "$marker")" "4243" "guarded release retains the liveness marker"
+
+: > "$GH_LOG"
+printf '%s\n' 4243 >"$verdict_marker"
+actual=0
+"$FLEET_CLAIM" review-release 4243 opus-reviewer --require-verdict >/dev/null 2>&1 || actual=$?
+assert_exit "$actual" 0 "guarded release with verdict exits 0"
+assert_contains "$(cat "$GH_LOG")" "--remove-label fleet:reviewing-mac-opus-reviewer" \
+    "guarded release removes the reviewing label after verdict verification"
+if [[ ! -e "$marker" ]]; then
+    ok "guarded release removes the liveness marker"
+else
+    bad "guarded release removes the liveness marker"
+fi
+if [[ ! -e "$verdict_marker" ]]; then
+    ok "guarded release removes the verdict marker"
+else
+    bad "guarded release removes the verdict marker"
+fi
+
 summarize

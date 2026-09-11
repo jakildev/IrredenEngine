@@ -278,17 +278,19 @@ iteration of polling, reviewing, and exiting cleanly:
       [REVIEWER-PROTOCOL.md § Posting the review body](../../docs/agents/REVIEWER-PROTOCOL.md#posting-the-review-body)
       for the `Write` → `.review-body.md` → `gh pr review --body-file`
       mechanics.
-   g. **Set the verdict label.** Use the split remove + add +
-      retry-and-verify pattern in
-      [REVIEWER-PROTOCOL.md § Verdict label-swap commands](../../docs/agents/REVIEWER-PROTOCOL.md#verdict-label-swap-commands)
-      (add `--repo <game-repo>` for game PRs). Your VERY NEXT bash
-      calls after `gh pr review` MUST be the removes (`|| true`),
-      the `--add-label`, and the verify re-query — in that order.
-      A review without a verdict label is invisible to the human's
-      merge queue.
+   g. **Set the verdict label.** Your VERY NEXT bash call after
+      `gh pr review` MUST be `fleet-review-verdict verdict-<verdict>
+      <N> --agent <your-worktree-name>` (add `--repo <game-repo>` for
+      game PRs), per
+      [REVIEWER-PROTOCOL.md § Verdict label-swap commands](../../docs/agents/REVIEWER-PROTOCOL.md#verdict-label-swap-commands).
+      It refuses a PR you did not claim (exit 4) and a current head whose
+      review body did not land (exit 5). On exit 5, post the missing review
+      body and retry; do not stamp around the guard or release the claim.
    h. **Release the review claim** immediately after the verdict
-      label-swap (and on no-verdict skip paths — broken stack, gated
-      upstream-not-yet-approved, etc.). See
+      label-swap with `fleet-claim review-release <N>
+      <your-worktree-name> --require-verdict`. No-verdict skip paths
+      (broken stack, gated upstream-not-yet-approved, etc.) omit
+      `--require-verdict`. See
       [REVIEWER-PROTOCOL.md § Acquiring / releasing the review claim](../../docs/agents/REVIEWER-PROTOCOL.md#acquiring--releasing-the-review-claim).
    i. **Cross-host smoke tagging (engine render PRs only).** See
       [FLEET-CROSS-HOST-SMOKE.md § Reviewer side: tagging](../../docs/agents/FLEET-CROSS-HOST-SMOKE.md#reviewer-side-tagging).

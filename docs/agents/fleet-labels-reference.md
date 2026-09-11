@@ -420,8 +420,11 @@ Specifically, **never pass these via `--label` when filing**:
 - `fleet:reviewing-<host>-<agent>` — owned by the **`fleet-claim`
   script** (atomic review-claim primitive). Applied at the start of
   reviewer or cross-host-smoke work; removed by
-  `fleet-claim review-release` immediately after the verdict label
-  is set, or on abort paths. Host disambiguation
+  `fleet-claim review-release --require-verdict` immediately after a normal
+  reviewer verdict, or by unchecked `review-release` on abort, smoke, and
+  plan-review paths. The guarded form requires the current claim's successful
+  `fleet-review-verdict` marker, not merely a possibly stale live verdict
+  label (#3102). Host disambiguation
   (mac / linux / windows) is required for correctness — both hosts
   can have an agent with the same pool basename (e.g. `pool-3`);
   without the host prefix the

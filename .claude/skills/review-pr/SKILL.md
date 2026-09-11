@@ -254,20 +254,24 @@ verdict footer if any of these surfaces are touched)
 
 ## Verdict-label swap commands (shared-flow step 5b)
 
-Run the matching command as your very next bash call after `gh pr review`:
+Run the matching command as your very next bash call after `gh pr review`.
+Fleet reviewers pass `--agent <your-worktree-name>` as shown so both the claim
+and current-head review checks run. A human invoking this skill interactively
+omits `--agent` because no fleet review claim exists; the current-head review
+check still runs.
 
 ```bash
 # approve, no nits in body:
-gh pr edit <N> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --remove-label "fleet:has-nits" --remove-label "fleet:awaiting-upstream-review" --add-label "fleet:approved"
+fleet-review-verdict verdict-approve <N> --agent <your-worktree-name>
 
 # approve WITH a non-empty Nits section:
-gh pr edit <N> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --remove-label "fleet:awaiting-upstream-review" --add-label "fleet:approved" --add-label "fleet:has-nits"
+fleet-review-verdict verdict-approve-nits <N> --agent <your-worktree-name>
 
 # needs-fix (nits roll into the fix work; no separate label):
-gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:blocker" --remove-label "fleet:has-nits" --remove-label "fleet:awaiting-upstream-review" --add-label "fleet:needs-fix"
+fleet-review-verdict verdict-needs-fix <N> --agent <your-worktree-name>
 
 # blocker:
-gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:needs-fix" --remove-label "fleet:has-nits" --remove-label "fleet:awaiting-upstream-review" --add-label "fleet:blocker"
+fleet-review-verdict verdict-blocker <N> --agent <your-worktree-name>
 ```
 
 `fleet:has-nits` rides on top of `fleet:approved` and tells the author
