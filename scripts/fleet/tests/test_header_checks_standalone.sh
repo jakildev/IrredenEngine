@@ -1175,79 +1175,199 @@ assert_contains "$noroot_out" "PROJECT_ROOT is required" \
 # control (#2876). The glob IS the domain, so a checker named outside it stays
 # invisible — that is the accepted tradeoff #2876 prescribes, not a defect.
 
-# checker_includes <cmake-file> — one line per include() argument, comments
-# stripped and the whole file joined first so a wrapped `include(\n  "...")`
-# still reads as one call. Stripping before matching is what makes a
-# commented-out include read as absent (the #2899 contract, here in the
-# wiring dimension); joining first is what keeps the guard from being
-# defeated by reformatting (the #2916 shape, here in the wiring dimension).
+# checker_includes <cmake-file> — one line per include() call, printing that
+# call's first argument (the file include() actually loads). The whole file is
+# joined first so a wrapped `include(\n  "...")` still reads as one call, which
+# is what keeps the guard from being defeated by reformatting (the #2916 shape,
+# here in the wiring dimension).
 #
-# BOTH CMake comment forms are stripped, in CMake's own lexical order: at each
-# `#`, a following `[=*[` opens a BRACKET comment running to the matching
-# `]=*]` across however many lines, and anything else is a line comment to the
-# newline. The order is load-bearing in both directions, and each has its own
-# control below. Resolve line comments first and the `#[[` opener disappears,
-# leaving a bracket-commented include reading as live — a CI-inert checker
-# censuses clean. Resolve bracket comments first and a `#[[` written inside a
-# line comment reads as an opener, swallowing the live include()s after it —
-# the guard turns red on correct wiring. See #3291.
+# This is a LEXER over CMake command invocations, not a regex over stripped
+# text, because the two questions it has to answer are one question: "where
+# does a comment start" and "where does a command start" are both answered by
+# knowing which argument you are inside. Strip-then-match cannot know that, so
+# it needs a new special case per comment-adjacent grammar rule and is never
+# done. Every clause below is a false-signal guard whose direction is named
+# (see #3291):
 #
-# The command name is matched case-insensitively (CMake's own rule) and only at
-# a name boundary. Both halves are false-signal guards in opposite directions:
-# a case-sensitive match reports a shim spelling `INCLUDE(...)` — which CMake
-# executes — as unwired, and a boundary-less match lets `my_include(...)` — which
-# it does not — satisfy the census.
+#   - COMMENTS, both CMake forms, in CMake lexical order. At a `#` outside any
+#     argument, a following `[=*[` opens a BRACKET comment through the matching
+#     `]=*]`, anything else is a line comment to the newline. Order is
+#     load-bearing both ways: line-comments-first makes a `#[[` opener vanish
+#     and a CI-inert include read as live (false CLEAN); brackets-first lets a
+#     `#[[` written inside a line comment swallow the live include()s after it
+#     (false RED). One control each, below.
+#   - QUOTED and BRACKET ARGUMENTS, where `#` is an ordinary character. cmake
+#     4.3.1 executes `include("…/run_alpha#tag_check.cmake")`, `include([[…#…]])`
+#     and an escaped `\#` in an unquoted argument; a lexer that opens a comment
+#     at those `#`s drops the rest of the line and reports a correctly-wired
+#     checker as CI-inert (false RED). Same state, opposite direction: an
+#     include() spelled INSIDE a quoted or bracket argument — `message(STATUS
+#     "… include(\"…/run_beta_check.cmake\")")` — is data, and cmake does NOT
+#     execute it, so counting it would silently satisfy the census with wiring
+#     that does not exist (false CLEAN). Tracking argument state is what answers
+#     both; neither direction is reachable from the other design.
+#   - COMMAND NAME, matched case-insensitively (CMake rule) and only as a whole
+#     identifier. A case-sensitive match reports a shim spelling `INCLUDE(...)`
+#     — which CMake executes — as unwired (false RED); a boundary-less match
+#     lets `my_include(...)` — which it does not — satisfy the census (false
+#     CLEAN).
+#
+# An unterminated bracket comment, quote, or argument list is a file CMake
+# rejects outright, so nothing after that point runs and the scan stops there.
+#
+# Still NOT interpreted, by design (see census_missing_includes): if()
+# conditionality, and a path assembled through a variable rather than spelled.
 checker_includes() {
     awk '
+        function is_id(ch) { return ch != "" && ch ~ /[A-Za-z0-9_]/ }
+        function is_ws(ch) { return ch == " " || ch == "\t" || ch == "\r" || ch == "\n" }
+
+        # bracket_open(p) — 1 when p starts a `[=*[` opener, setting BEQ to its
+        # run of "=" so the caller can build the matching closer. Any number of
+        # "=" is legal, and the count has to match, so the delimiter is carried
+        # rather than assumed.
+        function bracket_open(p,   r) {
+            if (substr(BUF, p, 1) != "[") return 0
+            r = p + 1
+            BEQ = ""
+            while (substr(BUF, r, 1) == "=") { BEQ = BEQ "="; r++ }
+            return substr(BUF, r, 1) == "["
+        }
+
+        # skip_comment(p) — p indexes a "#" known to be outside any argument.
+        # Returns the index past the comment, or 0 when unterminated.
+        function skip_comment(p,   r, q, closer) {
+            if (bracket_open(p + 1)) {
+                closer = "]" BEQ "]"
+                r = p + 1 + length(BEQ) + 2
+                q = index(substr(BUF, r), closer)
+                if (q == 0) return 0
+                return r + q - 1 + length(closer)
+            }
+            q = index(substr(BUF, p), "\n")
+            if (q == 0) return 0
+            return p + q
+        }
+
+        # read_quoted(p) — p indexes the opening quote. Sets VAL to the value
+        # with escapes resolved; returns the index past the closing quote, or 0.
+        # A backslash escapes the next character, so an escaped quote does not
+        # close the argument and an escaped newline is a line continuation.
+        function read_quoted(p,   ch, out) {
+            out = ""
+            p++
+            while (p <= NBUF) {
+                ch = substr(BUF, p, 1)
+                if (ch == "\\") {
+                    ch = substr(BUF, p + 1, 1)
+                    if (ch != "\n") out = out ch
+                    p += 2
+                    continue
+                }
+                if (ch == "\"") { VAL = out; return p + 1 }
+                out = out ch
+                p++
+            }
+            return 0
+        }
+
+        # read_unquoted(p) — an unquoted argument ends at whitespace, a paren, a
+        # quote, or an unescaped "#" (which starts a comment, exactly as CMake
+        # reads it). Escapes are resolved, so `\#` stays part of the value.
+        function read_unquoted(p,   ch, out) {
+            out = ""
+            while (p <= NBUF) {
+                ch = substr(BUF, p, 1)
+                if (ch == "\\") {
+                    ch = substr(BUF, p + 1, 1)
+                    if (ch != "\n") out = out ch
+                    p += 2
+                    continue
+                }
+                if (is_ws(ch)) break
+                if (ch == "(" || ch == ")" || ch == "\"" || ch == "#") break
+                out = out ch
+                p++
+            }
+            VAL = out
+            return p
+        }
+
+        # read_args(p, name) — p indexes just past a command open paren. Walks
+        # to the matching close, and for include() prints the FIRST argument:
+        # that is the file loaded, and the rest of the signature (OPTIONAL,
+        # RESULT_VARIABLE ...) is not a path. Nested parens are tracked because
+        # a command like if(NOT (A AND B)) carries them inside its own list.
+        # Returns the index past the close paren, or 0 when it never closes.
+        function read_args(p, name,   depth, ch, first, got, start, q, closer) {
+            depth = 1
+            got = 0
+            first = ""
+            while (p <= NBUF) {
+                ch = substr(BUF, p, 1)
+                if (ch == "#") { p = skip_comment(p); if (p == 0) return 0; continue }
+                if (is_ws(ch)) { p++; continue }
+                if (ch == "(") { depth++; p++; continue }
+                if (ch == ")") {
+                    depth--
+                    p++
+                    if (depth == 0) {
+                        if (name == "include" && got && first != "") print first
+                        return p
+                    }
+                    continue
+                }
+                VAL = ""
+                if (ch == "\"") {
+                    p = read_quoted(p)
+                    if (p == 0) return 0
+                } else if (bracket_open(p)) {
+                    closer = "]" BEQ "]"
+                    start = p + length(BEQ) + 2
+                    q = index(substr(BUF, start), closer)
+                    if (q == 0) return 0
+                    VAL = substr(BUF, start, q - 1)
+                    p = start + q - 1 + length(closer)
+                } else {
+                    p = read_unquoted(p)
+                }
+                if (!got) { first = VAL; got = 1 }
+            }
+            return 0
+        }
+
         { buf = buf $0 "\n" }
         END {
-            code = ""
+            BUF = buf
+            NBUF = length(BUF)
             i = 1
-            while (1) {
-                rest = substr(buf, i)
-                p = index(rest, "#")
-                if (p == 0) { code = code rest; break }
-                code = code substr(rest, 1, p - 1) " "
-                i = i + p - 1
-                k = i + 2
-                if (substr(buf, i + 1, 1) == "[") {
-                    eq = ""
-                    while (substr(buf, k, 1) == "=") { eq = eq "="; k++ }
-                    if (substr(buf, k, 1) == "[") {
-                        closer = "]" eq "]"
-                        q = index(substr(buf, k + 1), closer)
-                        # Unterminated: CMake errors out, so nothing after the
-                        # opener runs — drop the rest of the file.
-                        if (q == 0) break
-                        i = k + q + length(closer)
+            while (i <= NBUF) {
+                ch = substr(BUF, i, 1)
+                if (ch == "#") { i = skip_comment(i); if (i == 0) break; continue }
+                if (ch ~ /[A-Za-z_]/) {
+                    # A whole identifier, consumed from its first character, is
+                    # what makes the name boundary structural instead of a regex
+                    # anchor: my_include is read as one name and compared as one.
+                    j = i
+                    while (j <= NBUF && is_id(substr(BUF, j, 1))) j++
+                    nm = tolower(substr(BUF, i, j - i))
+                    k = j
+                    while (k <= NBUF) {
+                        ch = substr(BUF, k, 1)
+                        if (ch == "#") { k = skip_comment(k); if (k == 0) { k = 0; break }; continue }
+                        if (is_ws(ch)) { k++; continue }
+                        break
+                    }
+                    if (k == 0) break
+                    if (substr(BUF, k, 1) == "(") {
+                        i = read_args(k + 1, nm)
+                        if (i == 0) break
                         continue
                     }
+                    i = j
+                    continue
                 }
-                q = index(substr(buf, i), "\n")
-                if (q == 0) break
-                i = i + q
-            }
-            gsub(/\n/, " ", code)
-            # CMake command names are case-insensitive, so the match runs over a
-            # lowercased copy; tolower() preserves length, so RSTART/RLENGTH
-            # index the original and the argument keeps its case (the basename
-            # comparison downstream is case-sensitive, and paths are).
-            # The leading boundary keeps a wrapper command whose name merely
-            # ends in "include" (my_include(...)) from reading as one — that
-            # direction is a false CLEAN, the census silently satisfied by a
-            # call the shim never routes through include().
-            lc = tolower(code)
-            while (match(lc, /(^|[^a-z0-9_])include[ \t]*\([^)]*\)/)) {
-                start = RSTART
-                len = RLENGTH
-                if (substr(lc, start, 7) != "include") { start++; len-- }
-                call = substr(code, start, len)
-                code = substr(code, start + len)
-                lc = substr(lc, start + len)
-                call = substr(call, index(call, "(") + 1)
-                sub(/\)$/, "", call)
-                gsub(/[ \t"]/, "", call)
-                if (call != "") print call
+                i++
             }
         }
     ' "$1"
@@ -1498,6 +1618,158 @@ assert_contains "$namebound_missing" "run_beta_check.cmake" \
     "a command whose name merely ends in include() does not satisfy the census"
 assert_absent "$namebound_missing" "run_alpha_check.cmake" \
     "the real include() in the same shim still satisfies it"
+
+# --- a `#` inside a QUOTED argument is not a comment -------------------------
+# cmake 4.3.1 runs both includes in this fixture: inside a quoted argument `#`
+# is an ordinary character, so the checker filename carrying one is loaded. A
+# lexer that opens a line comment there drops the rest of the line, the
+# include() never closes, and the census calls a correctly-wired checker
+# CI-inert — the false-RED direction, the gate going red on a shim nobody broke.
+CENSUS_QUOTED_HASH="$TMPROOT/census-quoted-hash"
+make_synthetic_census_fixture "$CENSUS_QUOTED_HASH" 'include("${PROJECT_ROOT}/cmake/run_alpha#tag_check.cmake")
+include("${PROJECT_ROOT}/cmake/run_beta_check.cmake")'
+: > "$CENSUS_QUOTED_HASH/cmake/run_alpha#tag_check.cmake"
+rm -f "$CENSUS_QUOTED_HASH/cmake/run_alpha_check.cmake"
+assert_census_clean "$CENSUS_QUOTED_HASH" \
+    "a # inside a quoted include() argument does not read as a comment"
+
+# --- nor inside a BRACKET argument ------------------------------------------
+# The other argument form where `#` is literal; cmake runs this include too.
+# The path is spelled literally rather than through ${PROJECT_ROOT} because a
+# bracket argument suppresses variable expansion — `include([[${PROJECT_ROOT}/…]])`
+# looks for a file named with the braces intact and errors out. That is a real
+# CMake rule, not a census limit, and it fails LOUDLY (include() on a missing
+# file is a hard error), so the census is not the thing that has to catch it;
+# using the variable here would have made this arm assert a spelling no shim
+# can use. Basename matching is what makes the literal root harmless.
+CENSUS_BRACKET_ARG="$TMPROOT/census-bracket-arg"
+make_synthetic_census_fixture "$CENSUS_BRACKET_ARG" 'include([[/opt/checks/run_alpha#tag_check.cmake]])
+include("${PROJECT_ROOT}/cmake/run_beta_check.cmake")'
+: > "$CENSUS_BRACKET_ARG/cmake/run_alpha#tag_check.cmake"
+rm -f "$CENSUS_BRACKET_ARG/cmake/run_alpha_check.cmake"
+assert_census_clean "$CENSUS_BRACKET_ARG" \
+    "a # inside a [[ ]] bracket include() argument does not read as a comment"
+
+# --- nor an ESCAPED `#` in an unquoted argument ------------------------------
+# The third spelling CMake accepts, and the one with no delimiter to key on:
+# the backslash is the whole signal, so a lexer that resolves escapes only
+# inside quotes still truncates here.
+CENSUS_ESCAPED_HASH="$TMPROOT/census-escaped-hash"
+make_synthetic_census_fixture "$CENSUS_ESCAPED_HASH" 'include(${PROJECT_ROOT}/cmake/run_alpha\#tag_check.cmake)
+include("${PROJECT_ROOT}/cmake/run_beta_check.cmake")'
+: > "$CENSUS_ESCAPED_HASH/cmake/run_alpha#tag_check.cmake"
+rm -f "$CENSUS_ESCAPED_HASH/cmake/run_alpha_check.cmake"
+assert_census_clean "$CENSUS_ESCAPED_HASH" \
+    "an escaped \\# in an unquoted include() argument does not read as a comment"
+
+# --- a quoted `#[[` does not open a bracket comment either -------------------
+# Worse than losing a line: mis-read as an opener it runs to the next `]]` —
+# which may be nowhere — and swallows every include() after it. Pairs with the
+# line-comment version of the same control above; that one proves the ORDER of
+# the two comment forms, this one proves comments are not recognized inside an
+# argument at all.
+CENSUS_QUOTED_OPENER="$TMPROOT/census-quoted-opener"
+make_synthetic_census_fixture "$CENSUS_QUOTED_OPENER" 'message(STATUS "the docs mention #[[ inline")
+include("${PROJECT_ROOT}/cmake/run_alpha_check.cmake")
+include("${PROJECT_ROOT}/cmake/run_beta_check.cmake")'
+assert_census_clean "$CENSUS_QUOTED_OPENER" \
+    "a #[[ inside a quoted argument does not open a bracket comment"
+
+# --- a multi-line quoted argument keeps its `#` literal ----------------------
+# CMake quoted arguments span newlines, so the closing quote can be lines away
+# and "to the end of the line" is not a bound on the argument. Measured: cmake
+# runs both includes here.
+CENSUS_MULTILINE_QUOTE="$TMPROOT/census-multiline-quote"
+make_synthetic_census_fixture "$CENSUS_MULTILINE_QUOTE" 'message(STATUS "line one # not a comment
+line two")
+include("${PROJECT_ROOT}/cmake/run_alpha_check.cmake")
+include("${PROJECT_ROOT}/cmake/run_beta_check.cmake")'
+assert_census_clean "$CENSUS_MULTILINE_QUOTE" \
+    "a # inside a multi-line quoted argument does not read as a comment"
+
+# --- an escaped quote does not close its argument ---------------------------
+# The state that makes the two arms above discriminating: get the escape wrong
+# and the argument ends early, putting the rest of a message() back at top
+# level where its text is scanned for commands.
+CENSUS_ESCAPED_QUOTE="$TMPROOT/census-escaped-quote"
+make_synthetic_census_fixture "$CENSUS_ESCAPED_QUOTE" 'message(STATUS "an escaped \" quote # still inside")
+include("${PROJECT_ROOT}/cmake/run_alpha_check.cmake")
+include("${PROJECT_ROOT}/cmake/run_beta_check.cmake")'
+assert_census_clean "$CENSUS_ESCAPED_QUOTE" \
+    "an escaped quote does not close its argument"
+
+# --- an include() spelled inside a quoted argument is data, not wiring -------
+# The false-CLEAN direction of the same argument-state tracking, and the one
+# the guard exists to catch: cmake does NOT load beta here — the text is a
+# message() payload. A matcher that counts it reports the shim as fully wired
+# while that checker never runs in CI.
+# The inner call is spelled with an UNQUOTED path on purpose: with escaped
+# quotes around it, a matcher that counted the call would still emit a value
+# carrying a stray `"` and miss the basename — so the arm would pass without
+# the property it names ever being exercised. Measured: cmake prints this text
+# and does not load beta.
+CENSUS_QUOTED_CALL="$TMPROOT/census-quoted-call"
+make_synthetic_census_fixture "$CENSUS_QUOTED_CALL" 'include("${PROJECT_ROOT}/cmake/run_alpha_check.cmake")
+message(STATUS "sample: include(${PROJECT_ROOT}/cmake/run_beta_check.cmake)")'
+quoted_call_missing=$(census_missing_includes "$CENSUS_QUOTED_CALL")
+assert_contains "$quoted_call_missing" "run_beta_check.cmake" \
+    "an include() inside a quoted argument does not satisfy the census"
+assert_absent "$quoted_call_missing" "run_alpha_check.cmake" \
+    "the real include() beside it still satisfies the census"
+
+# --- nor one inside a bracket argument --------------------------------------
+# Same direction, the other argument form — and the one where no escaping hides
+# the call, so a lexer that skips quotes but not brackets still counts it.
+CENSUS_BRACKET_CALL="$TMPROOT/census-bracket-call"
+make_synthetic_census_fixture "$CENSUS_BRACKET_CALL" 'include("${PROJECT_ROOT}/cmake/run_alpha_check.cmake")
+message(STATUS [[sample: include("${PROJECT_ROOT}/cmake/run_beta_check.cmake")]])'
+bracket_call_missing=$(census_missing_includes "$CENSUS_BRACKET_CALL")
+assert_contains "$bracket_call_missing" "run_beta_check.cmake" \
+    "an include() inside a bracket argument does not satisfy the census"
+assert_absent "$bracket_call_missing" "run_alpha_check.cmake" \
+    "the real include() beside it still satisfies the census"
+
+# --- only the FIRST include() argument is the file --------------------------
+# include(<file> [OPTIONAL] [RESULT_VARIABLE <var>]) — the trailing keywords are
+# not paths, and a matcher that pools every argument would let a RESULT_VARIABLE
+# named after a checker clear it. Here alpha is genuinely loaded and beta only
+# names a variable; cmake loads alpha alone.
+CENSUS_FIRST_ARG="$TMPROOT/census-first-arg"
+make_synthetic_census_fixture "$CENSUS_FIRST_ARG" 'include("${PROJECT_ROOT}/cmake/run_alpha_check.cmake" OPTIONAL RESULT_VARIABLE run_beta_check.cmake)'
+first_arg_missing=$(census_missing_includes "$CENSUS_FIRST_ARG")
+assert_contains "$first_arg_missing" "run_beta_check.cmake" \
+    "a trailing include() keyword argument does not satisfy the census"
+assert_absent "$first_arg_missing" "run_alpha_check.cmake" \
+    "the first argument of that same include() still satisfies it"
+
+# --- a comment INSIDE an argument list is still a comment -------------------
+# The complement of the arms above: comments are recognized between arguments,
+# just not inside one. cmake accepts this and loads both checkers.
+CENSUS_ARGLIST_COMMENT="$TMPROOT/census-arglist-comment"
+make_synthetic_census_fixture "$CENSUS_ARGLIST_COMMENT" 'include( # which checker, and why
+    "${PROJECT_ROOT}/cmake/run_alpha_check.cmake")
+include("${PROJECT_ROOT}/cmake/run_beta_check.cmake")'
+assert_census_clean "$CENSUS_ARGLIST_COMMENT" \
+    "a comment between include() arguments is still stripped"
+
+# --- a nested paren does not end the argument list --------------------------
+# if(NOT (A AND B)) is ordinary CMake, and a depth-blind scan returns to top
+# level at the inner close paren — putting the REST of that same argument list
+# where top level reads it. The rest here is a quoted `#[[`, which at top level
+# opens a bracket comment that never closes, so the scan stops and BOTH live
+# includes below vanish. A plain nested paren is NOT enough to show this, so do
+# not simplify the fixture to one: the scan re-synchronizes at the next command
+# and the census comes out clean with or without depth tracking. cmake 4.3.1
+# runs both includes here. Both sit OUTSIDE the conditional on purpose: the property
+# is scan synchronization, not what the census does with a conditional include
+# (it does not evaluate one, and census_missing_includes says so).
+CENSUS_NESTED_PAREN="$TMPROOT/census-nested-paren"
+make_synthetic_census_fixture "$CENSUS_NESTED_PAREN" 'if(NOT (DEFINED SOME_VAR AND DEFINED SOME_OTHER) AND "doc mentions #[[ here")
+endif()
+include("${PROJECT_ROOT}/cmake/run_alpha_check.cmake")
+include("${PROJECT_ROOT}/cmake/run_beta_check.cmake")'
+assert_census_clean "$CENSUS_NESTED_PAREN" \
+    "a nested paren in an earlier command does not desynchronize the scan"
 
 # --- prose mentions and lookalike filenames do not satisfy it ---------------
 # The real shim's header comment names all three of its checkers, so a
