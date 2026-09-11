@@ -1,109 +1,73 @@
 # GPU profiling — per-pass timing + cull diagnostics
 
-The engine has two GPU diagnostics wired into the render pipeline. Both
-gated on `gpuStageTiming().enabled_`.
+Both diagnostics gate on `gpuStageTiming().enabled_`; shipping builds pay
+nothing. Keep it off except during a matrix run.
 
-## Per-pass GPU timing
+## Per-pass timing
 
-Every major render stage brackets its GPU work with a timer; the
-result lands in `GpuStageTiming` (one `float ...Ms_` per stage in
-`engine/prefabs/irreden/render/gpu_stage_timing.hpp`).
-
-Registered stages (canvasClear, voxelCompact, voxelStage1, voxelStage2,
-shapeCompact, shapePass0, shapePass1, textToTrixel,
-buildLightOcclusionGrid, computeVoxelAO, bakeSunShadowMap,
-computeSunShadow, computeLightVolume, lightingToTrixel, fogToTrixel,
-trixelToTrixel, trixelToFb, entityCanvasToFb, resolvePerAxisScreenDepth,
-fbToScreen) each carry a soft budget share (`GpuStageInfo::budgetShare_`).
-A pass exceeding its share is flagged via `overBudget` in the Lua surface.
-
-Lua surface:
+Each render stage brackets its GPU work with an async timestamp query
+(`GL_TIMESTAMP` / `MTLCounterSample`); results land in `GpuStageTiming` (one
+`float ...Ms_` per stage, `engine/prefabs/irreden/render/gpu_stage_timing.hpp`).
+Stages: canvasClear, voxelCompact, voxelStage1, voxelStage2, shapeCompact,
+shapePass0, shapePass1, textToTrixel, buildLightOcclusionGrid, computeVoxelAO,
+bakeSunShadowMap, computeSunShadow, computeLightVolume, lightingToTrixel,
+fogToTrixel, trixelToTrixel, trixelToFb, entityCanvasToFb,
+resolvePerAxisScreenDepth, fbToScreen — each with a soft budget share
+(`GpuStageInfo::budgetShare_`) surfaced as `overBudget`.
 
 ```lua
 ir.render.setGpuTimingEnabled(true)
--- ... let the scene render ...
 for _, row in ipairs(ir.render.getPassTimings()) do
     print(row.name, row.ms, row.budgetMs, row.overBudget)
 end
 ```
 
-C++ surface: `IRRender::gpuStageTiming().*Ms_` fields and the
-`IRRender::gpuStageRegistry()` table.
+C++: `IRRender::gpuStageTiming().*Ms_` and `IRRender::gpuStageRegistry()`.
+The shutdown `save_files/profile_report.txt` carries the same data under
+`--- GPU stage timing ---`; the matrix aggregates it across cells.
 
-The shutdown profile report (`save_files/profile_report.txt`) includes
-the same data under `--- GPU stage timing ---`. The matrix script
-aggregates this across cells.
-
-- **When quoting per-stage GPU timings in a PR / acceptance-evidence
-  body, cite the `profile_report.txt` average** (`--auto-profile N`, avg
-  over N frames — better, a multi-run mean + run-to-run spread via
-  `compare_perf_runs.py`), never a single-frame HUD /
-  `gpuStageTiming().*Ms_` / `lastFrameMs` read. Per-frame values are
-  noisy, especially on the per-axis path (#2255 nondeterminism): a
-  single frame can be ~2× the steady-state average (#2518's "5.60 →
-  ~6.8 ms | unchanged" self-contradiction was a single-frame read of a
-  stage whose 300-frame average held at 5.64 ms).
+Quote per-stage GPU timings in a PR or acceptance-evidence body from the
+`profile_report.txt` average (`--auto-profile N`; better, a multi-run mean with
+spread via `compare_perf_runs.py`), never a single-frame HUD /
+`gpuStageTiming().*Ms_` / `lastFrameMs` read — one frame can be ~2× the
+steady-state average, especially on the per-axis path.
 
 ## Voxel cull effectiveness
 
 `VOXEL_TO_TRIXEL_STAGE_1` reads the prior frame's
-`IndirectDispatchParams.visibleCount` via `Buffer::getSubData` before
-zeroing the buffer — sync-free because frame N+1 reads frame N's
-already-committed value. Added in PR #1019.
-
-Surfaces:
+`IndirectDispatchParams.visibleCount` via `Buffer::getSubData` before zeroing
+the buffer — sync-free because frame N+1 reads frame N's committed value.
 
 - `gpuStageTiming().visibleVoxelCount_` / `totalVoxelCount_` — last frame.
-- `voxelCullAccumulator()` — running sum / max / sample count across
-  the measurement window (reset on `enableFrameTiming(true)`).
-- Lua: `ir.render.getVoxelCullStats()` → `{visible, total, samples,
-  avgVisible, avgTotal, maxVisible, maxTotal}`.
-- Profile report: `--- Voxel cull stats ---` section with avg / max /
-  ratio.
+- `voxelCullAccumulator()` — running sum / max / samples over the window
+  (reset on `enableFrameTiming(true)`).
+- Lua `ir.render.getVoxelCullStats()` → `{visible, total, samples,
+  avgVisible, avgTotal, maxVisible, maxTotal}` (plus the feeder fields in
+  `docs/perf/README.md` §"Voxel cull stats").
+- Profile report `--- Voxel cull stats ---` (avg / max / ratio);
+  `compare_perf_runs.py` renders the `voxel cull effectiveness` table.
 
-The matrix script parses this and `compare_perf_runs.py` renders a
-`voxel cull effectiveness` table. Ratio shrinks roughly as `1/zoom²` if
-culling is working; a flat ratio across zooms is the signature of
-ineffective viewport culling (see [`common_bottlenecks.md`](common_bottlenecks.md)
-"Shadow-feeder sweep inflates cull bounds at high zoom").
+The ratio shrinks roughly as `1/zoom²` when culling works; a flat ratio across
+zooms is the signature of an ineffective viewport cull
+([`common_bottlenecks.md`](common_bottlenecks.md) "Shadow-feeder sweep
+inflates cull bounds at high zoom").
 
-## Backend caveat: sync vs async
+## When per-pass timing is not enough
 
-The current per-pass timer brackets are `glFinish()`-style (i.e. they
-stall the GPU at each boundary so the CPU clock sample is meaningful).
-Accurate but adds throughput cost — default is **off**, flip on only
-during a matrix run.
+- A single-frame anomaly hidden in the average → RenderDoc / Xcode GPU
+  capture by the human, pointed at the pass the comparator's GPU table names.
+- Unclear split inside a shader → a debug uniform incremented per work-group,
+  read back via SSBO.
+- Suspected dispatch grid → log `gl_NumWorkGroups.{x,y,z}` from the shader
+  once per frame.
 
-Async path (`GL_TIMESTAMP` query objects, `MTLCounterSampleBuffer` for
-Metal) is tracked in issue #1021. Once that lands, per-pass timing can
-be on by default without measurable cost.
+## Recurring GPU hotspots
 
-The cull-stats `getSubData` readback is also synchronous but only fires
-when `gpuStageTiming().enabled_` is true. Shipping builds pay zero
-cost.
-
-## When per-pass timing isn't enough
-
-- Single-frame anomaly hidden in the average → RenderDoc / Xcode GPU
-  capture. The agent can't drive a GUI; hand off to the human with the
-  specific pass name to focus on (use the `compare_perf_runs.py` GPU
-  table to identify it).
-- Shader-internal cost split unclear → temporarily add a debug uniform
-  incremented per work-group, read back via SSBO. Coarse but works.
-- Compute dispatch grid suspected wrong → log
-  `gl_NumWorkGroups.{x,y,z}` from inside the shader once per frame.
-
-## Common GPU hotspots
-
-See [`common_bottlenecks.md`](common_bottlenecks.md). Recurring patterns
-that show up in `getPassTimings()`:
-
-- Wrong dispatch grid → `voxelStage1` or `shapePass1` 5–20× their
-  budget. Fix: use `voxelDispatchGridForCount()`.
-- Workgroup-size mismatch with dispatch math → stage runs but produces
-  wrong output (often invisible until visual regression hits).
-- `subdivisions²` Z-dimension growing with zoom — by design, but
-  amplifies any per-invocation cost.
-- Per-frame SSBO upload that could be push-at-mutation — kills GPU
-  throughput at scale. Fix per `cpp-ecs.md` "No dirty flags on
-  components".
+- Wrong dispatch grid → `voxelStage1` / `shapePass1` 5–20× budget; use
+  `voxelDispatchGridForCount()`.
+- Workgroup size mismatched with the dispatch math → wrong output, often only
+  visible as a visual regression.
+- `subdivisions²` Z dimension growing with zoom — by design, but it amplifies
+  any per-invocation cost.
+- Per-frame SSBO upload that should be push-at-mutation
+  (`.claude/rules/cpp-ecs.md` §"No dirty flags on components").

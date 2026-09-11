@@ -1,18 +1,10 @@
 # Check 5 — missing final newline on non-clang-format text files
 
-Part of the [`simplify`](../SKILL.md) skill's §2b mechanical checks —
-run from the index there when the trigger matches. Section references
-(§6, §7, §9a, §10) resolve against `../SKILL.md`.
+Part of [`simplify`](../SKILL.md) §2b. **Trigger:** the diff touches
+`.cmake`, `.md`, `.lua`, `.txt`, or `CMakeLists.txt` files.
 
-**Trigger:** the diff touches `.cmake`, `.md`, `.lua`, `.txt`, or `CMakeLists.txt` files.
-
-`.editorconfig` sets `insert_final_newline = true` (globally, and again for
-`[*.{lua,cmake,txt,md}]` / `[CMakeLists.txt]`), but the agent file-edit tools
-don't honor it and clang-format only enforces it for the C++ files in its
-scope — so `.cmake`, `.md`, `.lua`, `.txt`, and `CMakeLists.txt` fall through
-to a human/reviewer eyeball (the #1861 nit on `cmake/ir_functions.cmake`). For
-each changed file of those types, flag a missing trailing newline — a non-empty
-last byte (i.e. not `\n`) is the violation:
+`.editorconfig` sets `insert_final_newline = true`, but the file-edit
+tools don't honor it and clang-format only covers C++.
 
 ```bash
 for f in $(git diff --name-only origin/master -- '*.cmake' '*.md' '*.lua' '*.txt'); do
@@ -20,12 +12,10 @@ for f in $(git diff --name-only origin/master -- '*.cmake' '*.md' '*.lua' '*.txt
 done
 ```
 
-Auto-fix: append a single `\n`. Scope to files changed on this branch (the
-§10 `format-changed` set), not the whole tree.
+Auto-fix: append one `\n`. Scope to files changed on this branch, not the
+tree.
 
-For each changed `.lua` file the same loop already collects, also flag
-**dead locals** — a `local x = ...` assigned once and never read again in
-the file (luacheck's `unused-local` class; game PR #323's dead
-`local playerId` cost a review round-trip). Auto-fix: delete the
-assignment when the initializer is side-effect-free; otherwise report.
-(#2574)
+For each changed `.lua` file in the same set, also flag **dead locals** —
+a `local x = ...` assigned once and never read (luacheck's
+`unused-local`). Auto-fix: delete the assignment when the initializer is
+side-effect-free; otherwise report.

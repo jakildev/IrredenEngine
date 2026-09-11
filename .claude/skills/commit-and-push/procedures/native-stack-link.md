@@ -1,19 +1,15 @@
-# Native stack link (commit-and-push procedure)
+# Native stack link
 
-After opening a PR whose base is a feature branch (any stack mode), register
-the parent→child relationship as a **native GitHub stack**. From then on
-GitHub owns base management: when the parent merges the child retargets and
-rebases server-side, cascade rebases are one `gh stack sync` (or the UI's
-"Rebase stack" button), and merges couple bottom-up — merging a child pulls
-its unmerged parents in, so a child can never land on a stale base. Design +
-evaluation evidence:
+After opening a PR whose base is a feature branch (any stack mode),
+register the parent→child relationship as a native GitHub stack. GitHub
+then owns base management: when the parent merges the child retargets and
+rebases server-side, cascade rebases are one `gh stack sync`, and merges
+couple bottom-up so a child never lands on a stale base. Design:
 [`docs/design/native-stacked-prs-migration.md`](../../../../docs/design/native-stacked-prs-migration.md).
 
-## The link step (idempotent)
-
-Run after the PR exists (fresh `gh pr create` or the idempotent
-`gh pr edit` reconcile), from inside the repo the PR belongs to — the
-`{owner}/{repo}` placeholders resolve from the working directory's remote:
+Run after the PR exists, from inside the repo the PR belongs to (the
+`{owner}/{repo}` placeholders resolve from the working directory's
+remote). Idempotent:
 
 ```bash
 base=<the PR's base branch>            # already resolved by the stack mode
@@ -32,27 +28,15 @@ else
 fi
 ```
 
-Skipping the link (parent PR missing, extension unavailable) is safe but
-second-best: the PR still works as an ordinary branch-based PR and the
-merger's legacy stacked handling services it. Prefer fixing the link over
-falling back — surface the skip in your report.
-
-## Notes
-
-- `gh stack link` accepts PR numbers or branch names and auto-corrects
-  mismatched bases; the child's base (the parent's branch) is already
-  correct here, so the link is pure registration.
-- Requires the `gh-stack` CLI extension (`gh extension install
-  github/gh-stack` — `scripts/fleet/install.sh` bootstraps it). Exit code 9
-  means Stacked PRs isn't enabled for this repo; surface to the human, don't
-  retry.
-- Do **not** write `Stacked on:` body lines or `Full chain:` lists — stack
-  membership is a server object and the PR header's stack badge shows the
-  chain. Body markers were the legacy mechanism and produced stale-marker
-  misrouting (#2231).
-- No stack label: membership is the stack object itself (`baseRefName !=
-  "master"` + the PR header's stack badge). The legacy `fleet:stacked` label
-  retired with the self-built machinery.
-- Never run the legacy re-stack dance (`gh pr edit --base master` after a
-  parent merge) on a linked PR — GitHub already did it, synchronously with
-  the merge.
+- Requires the `gh-stack` extension (`gh extension install
+  github/gh-stack`; `scripts/fleet/install.sh` bootstraps it). Exit code 9
+  means Stacked PRs is not enabled for the repo — surface to the human,
+  don't retry.
+- A skipped link (parent PR missing, extension unavailable) leaves an
+  ordinary branch-based PR the merger's legacy stacked handling services;
+  prefer fixing the link, and surface the skip in your report.
+- Never write `Stacked on:` / `Full chain:` body lines and never add a
+  stack label — membership is the server object (`baseRefName !=
+  "master"` + the PR header's stack badge).
+- Never run the legacy re-stack (`gh pr edit --base master` after a parent
+  merge) on a linked PR — GitHub already did it with the merge.

@@ -1,30 +1,20 @@
 # triage-coding-improvements — shared flow
 
-The canonical `triage-coding-improvements` flow: the **consumption side** of
-the coding-improvement channel. `assess-coding-improvement` files tickets one
-at a time as workers fix PR feedback; this skill drains that backlog in
-batches — sweep the open `fleet:coding-improvement` tickets, cluster them by
-target surface, triage each with the human (accept / reject / defer /
-escalate placement), apply the accepted rule changes, and bundle them into
-**one PR per run** instead of one micro-PR per ticket.
+The consumption side of the coding-improvement channel. Sweep the open
+`fleet:coding-improvement` tickets, cluster them by target surface, triage
+each with the human, apply the accepted rule changes, and ship them as
+**one PR per run**.
 
-It is **cue-only** — never auto-run. The tickets are deliberately left
-un-queued because most targets are gated self-config (role docs, skills,
-review checklists) that autonomous workers may not edit. This skill is how
-the human spends that judgment: the human cues the run, decides each verdict,
-and merges the resulting PR. Every change still ships through the normal
-review pipeline — the skill is the human's hands, not a bypass.
+**Cue-only — never auto-run.** The tickets stay un-queued because most
+targets are gated self-config (role docs, skills, review checklists); this
+skill is how the human spends that judgment. The PR still goes through the
+normal review pipeline.
 
-Every repo that runs a fleet keeps its
-`.claude/skills/triage-coding-improvements/SKILL.md` as a thin wrapper that
-points here and supplies only its **deltas**. The *flow* is single-sourced
-here so the wrappers can't drift on mechanics. See
-[`docs/design/skill-sharing.md`](../../design/skill-sharing.md).
-
-Wherever a step needs a repo-specific value it names a **delta key** in bold.
-The convention-surface keys are deliberately the **same keys**
-`assess-coding-improvement` uses — the two skills are the two ends of one
-channel and must agree on where rules live.
+Each repo's `.claude/skills/triage-coding-improvements/SKILL.md` is a thin
+wrapper that points here and answers the delta keys below
+([`docs/design/skill-sharing.md`](../../design/skill-sharing.md)). The
+convention-surface keys are the same keys `assess-coding-improvement`
+uses — the two ends of one channel must agree on where rules live.
 
 ---
 
@@ -44,29 +34,14 @@ channel and must agree on where rules live.
 
 ## When to run
 
-- On explicit human cue only: "triage coding improvements", "absorb the
-  coding-improvement backlog", "work through the coding-improvement tickets".
-  An architect-run interactive triage sweep counts as the cue
-  (`docs/agents/triage-protocol.md` §"Extended sweep") — the human who cued
-  the sweep is present for the verdict round.
-- Never proactively, never from an autonomous role loop. (A worker that
-  notices a large backlog may *mention* it to the human; it must not run
-  this.)
-
-Cue at **10–15 open tickets** — `fleet-decisions` flips its
-coding-improvement cue to OVERDUE at 12. The first drain ran at 54 and the
-overshoot had real costs: the batch consumed a full architect session, and
-filed rules sat unabsorbed while their mistakes kept recurring (one
-PR-body omission recurred four times with its one-line fix sitting in the
-backlog). Small batches also make the per-cluster verdict round genuinely
-answerable rather than a wholesale approve.
-
----
+On explicit human cue only ("triage coding improvements", "absorb the
+coding-improvement backlog", "work through the coding-improvement
+tickets"); an architect-run interactive triage sweep
+(`docs/agents/triage-protocol.md` §"Extended sweep") counts. Cue at 10–15
+open tickets — `fleet-decisions` flips the cue to OVERDUE at 12; larger
+batches turn the verdict round into a wholesale approve.
 
 ## Step 1 — Sweep
-
-Pull every open ticket with its full body, plus the recently-closed set for
-the closed-loop check in Step 2:
 
 ```
 gh issue list --repo <repo> --label fleet:coding-improvement --state open \
@@ -75,163 +50,91 @@ gh issue list --repo <repo> --label fleet:coding-improvement --state closed \
   --limit 50 --json number,title,body,stateReason
 ```
 
-(The `comments` field returns full comment objects — `body` included — not a
-count, so the `Recurred:` entries Step 2 needs are already in this output; no
-per-issue `gh issue view` pass is required.)
+`comments` returns full bodies, so `Recurred:` entries are already present
+— count them as occurrences. The **observations-ledger** issue
+(`assess-coding-improvement.md` Step 4) carries `human:owned`, not this
+label, so it is outside the sweep; ungraduated ledger entries on a
+cluster's target artifact may count as extra occurrence evidence.
 
-The **observations-ledger** issue (see `assess-coding-improvement.md` Step 4;
-engine: #2903) is outside this sweep by construction — it carries `human:owned`,
-not `fleet:coding-improvement`, and is a recurrence memory, not a ticket. Don't
-triage it, but when a cluster's target artifact also has ungraduated ledger
-entries, you may count those as additional occurrence evidence.
+Each ticket should carry a Class (A/B), a target artifact, a one-line
+proposed change, and an Occurrences list; reconstruct what a malformed one
+lacks and say so in the digest.
 
-Each open ticket should carry (per the `assess-coding-improvement` body
-shape): a **Class** (A: missing rule / B: exists but didn't fire), a **target
-artifact** path, a one-line **proposed change**, and an **Occurrences** list.
-A ticket missing these is still triaged — reconstruct what you can from its
-context and say so in the digest.
+## Step 2 — Cluster, cross-dedup, closed-loop
 
-`Recurred:` comments on a ticket are occurrence evidence — count them.
-
-## Step 2 — Cluster, cross-dedup, closed-loop check
-
-The filing-side dedup only checks at file time, so overlap accretes between
-tickets. Before triage:
-
-1. **Cluster by target surface** — group tickets whose target artifact is the
-   same file (or the same surface class: style baseline, module doc,
-   automated check, review checklist, scripts/tooling docs).
-2. **Cross-dedup** — two open tickets proposing the same rule for the same
-   artifact merge into one digest entry (the verdict will close both).
-3. **Closed-loop check** — for each open ticket, search the closed set for a
-   ticket targeting the same artifact/rule:
-   - Closed-as-**completed** match → the rule already landed and the mistake
-     **recurred anyway**. The surface didn't fire. Recommend
-     **escalate placement** (see Step 3), not re-adding the same text.
-     This includes tickets the filing side self-closed under
-     `assess-coding-improvement` Step 5 (rule verifiably landed via a
-     merged PR) — they are ordinary closed-as-completed evidence here.
-   - Closed-as-**not-planned** match → the human previously rejected this
-     rule and it came back. Surface that history in the digest — recurrence
-     of a rejected rule is evidence to reconsider, but the human decides.
+1. Cluster by target artifact (or surface class: style baseline, module
+   doc, automated check, review checklist, tooling docs).
+2. Merge open tickets proposing the same rule for the same artifact into
+   one digest entry.
+3. For each open ticket, search the closed set for the same artifact/rule:
+   closed-as-**completed** → the rule landed and recurred anyway; recommend
+   **escalate placement**, not the same text again. Closed-as-**not-planned**
+   → previously rejected; surface the history, the human decides.
 
 ## Step 3 — Triage with the human
 
-Present one compact digest: per cluster, each ticket's number, class, target
-artifact, the one-line proposed change, occurrence count, any closed-loop
-history, and **your recommended verdict**. Then gather verdicts in one round
-(a question per cluster when there are few; a free-form table response when
-there are many). Verdicts:
+One digest: per cluster, each ticket's number, class, target, proposed
+change, occurrence count, closed-loop history, and your recommended
+verdict. Gather verdicts in one round.
 
-- **ACCEPT** — apply the proposed change to the proposed artifact.
+- **ACCEPT** — apply as proposed.
 - **ESCALATE PLACEMENT** — accept the rule but move it up the enforcement
-  ladder: a Class-B "doc rule that didn't fire" with a mechanically
-  detectable pattern becomes a check on the **automated-check surface**
-  instead of more doc text; a rule buried in a rarely-read doc relocates to
-  the surface the author actually hits. This is the strongest lever and the
-  one a lazy triage skips — recommend it whenever the ticket's pattern is
-  grep-able or the closed-loop check fired.
-- **RESCOPE** — accept a tighter version (different artifact, shorter rule,
-  example folded into an existing bullet). State the rescoped one-liner in
-  the digest so the human approves the actual text destiny, not a vibe.
-- **REJECT** — close as not-planned, with a one-line reason comment. Typical
-  reasons: too niche to spend surface budget on, already covered adequately,
-  cost of the rule exceeds the mistake it prevents.
-- **DEFER** — leave open untouched (e.g. blocked on an in-flight refactor of
-  the target surface). Say why in the digest; a deferred ticket should name
-  what unblocks it.
+  ladder: a grep-able Class-B rule becomes a check on the
+  **automated-check surface**; a buried rule relocates to the surface the
+  author hits. Recommend whenever the pattern is grep-able or the
+  closed-loop check fired.
+- **RESCOPE** — a tighter version; state the rescoped one-liner so the
+  human approves the actual text.
+- **REJECT** — close as not-planned with a one-line reason (too niche,
+  already covered, cost exceeds the mistake).
+- **DEFER** — leave open; name what unblocks it.
 
-**Net-growth discipline** (apply when recommending): convention surfaces are
-read by every worker on every task — their budget is the scarcest resource
-this skill spends. Prefer tightening or exemplifying an **existing** bullet
-over adding a new one. A new rule is one bullet at the surface's existing
-altitude, not a paragraph. If a single surface would gain more than ~5 lines
-in one batch, look for a consolidation before applying. Multi-occurrence
-tickets earn their lines; single-occurrence Class-A tickets are the first
-candidates for REJECT or DEFER.
+Convention surfaces are read on every task; prefer tightening an existing
+bullet over adding one. A new rule is one bullet at the surface's existing
+altitude. If one surface would gain more than ~5 lines in a batch, look
+for a consolidation. Single-occurrence Class-A tickets are the first REJECT
+/ DEFER candidates.
 
-## Step 4 — Apply the accepted changes
+## Step 4 — Apply
 
-Work on a fresh feature branch (the **commit skill** handles branch
-mechanics; never on the default branch). For each ACCEPT / ESCALATE /
-RESCOPE:
-
-- **Doc/rule edits**: make the edit exactly as triaged. Match the target
-  surface's existing voice and altitude. Do not reword neighboring rules
-  while you're there — this PR's diff should map 1:1 to triaged verdicts.
-- **Automated-check changes** (the ESCALATE path): extend the check, then
-  **validate it fires** against the ticket's cited Occurrence (check out or
-  reconstruct the bad pattern from the cited `file:line`) and does not fire
-  on the corrected version. An enforcement change that was never seen to
-  fire is doc text with extra steps.
-- **Headless note**: if this run is somehow in a headless session, `.claude/`
-  paths need the repo's gated-edit tool (engine: `fleet-edit`) instead of
-  the `Edit` tool. In the normal human-cued interactive session, plain edits
-  are fine.
+On a fresh feature branch (the **commit skill** owns branch mechanics).
+Doc edits map 1:1 to the triaged verdicts — no rewording of neighbours.
+An automated-check change must be seen to fire on the ticket's cited
+occurrence (reconstruct the bad pattern from the cited `file:line`) and
+stay quiet on the corrected version; otherwise downgrade to a doc rule.
+In a headless session, `.claude/` paths need the repo's gated-edit tool
+(engine: `fleet-edit`).
 
 ## Step 5 — Route the outliers
 
-Some tickets imply real code or tooling work beyond the rule text (a "live
-deviation to migrate", a flag to canonize, a script to change). Do **not**
-stuff code changes into the convention-surface bundle. Instead:
-
-- Land the rule text in the bundle as triaged.
-- File the code work as a separate issue per the repo's **filing norms**
-  (typically: plain issue, no labels, the human approves it into the queue),
-  cross-referencing the coding-improvement ticket.
-- The bundle PR body lists these split-outs so the human sees the routing.
-
-A ticket whose rule landed and whose remaining work has its own issue is
-**done** — close it via the bundle PR, with the split-out issue carrying the
-remainder.
+Code or tooling work implied by a ticket does not go in the bundle. Land
+the rule text, file the code work as its own issue per the **filing
+norms** (cross-referencing the ticket), and list the split-outs in the PR
+body. A ticket whose rule landed and whose remainder has its own issue is
+done.
 
 ## Step 6 — Bundle and ship
 
-One PR per triage run, via the **commit skill**:
-
-- Branch/commit scope per the **scope vocabulary** (e.g.
-  `docs/fleet: absorb coding-improvement batch — <theme>`).
-- PR body: the triage digest (verdict per ticket, including REJECTs and
-  DEFERs so the run is auditable), `Closes #N` for every ticket fully
-  addressed by this PR, and the split-out issue links from Step 5.
-- Split a **second** PR only when an automated-check change wants isolated
-  review/verification — doc-text and check-logic changes have different
-  review costs. Otherwise resist per-surface PR splitting; the whole point
-  is one reviewable batch.
-- REJECTed tickets were already closed at triage time (Step 3) with their
-  reason comment — they are not `Closes` targets.
-
-The PR goes through the normal review pipeline. Gated self-config files in
-the diff are expected here — the reviewer checks the changes match the
-triage digest in the PR body.
+One PR per run via the **commit skill**: scope per the **scope
+vocabulary**; body = the triage digest (every verdict, REJECTs and DEFERs
+included), `Closes #N` per fully-addressed ticket, split-out links.
+REJECTed tickets were closed at triage time and are not `Closes` targets.
+Split a second PR only when an automated-check change wants isolated
+review. Gated self-config in the diff is expected; the reviewer checks the
+changes match the digest.
 
 ## Step 7 — Report
 
-One short block back to the human:
-
-- Tickets swept / clustered / merged-as-duplicates.
-- Verdict tally: accepted, escalated, rescoped, rejected, deferred.
-- Surfaces touched and net line growth per surface (the budget number).
-- Closed-loop findings: any rule that landed before and recurred (and what
-  was escalated because of it).
-- The PR link, split-out issue links, and what remains open (DEFERs).
+Tickets swept / clustered / merged; verdict tally; surfaces touched with
+net line growth each; closed-loop findings; PR link, split-out links,
+remaining DEFERs.
 
 ---
 
 ## Anti-patterns
 
-- **Accepting everything.** The channel's filing side is calibrated to
-  over-propose slightly (one occurrence is enough to file). Triage exists to
-  say no. A run that rejects nothing probably wasn't triage.
-- **Queueing gated self-config to workers.** If a verdict needs `.claude/`
-  or role-doc edits, this run makes them; don't convert the ticket into a
-  `fleet:queued` task an autonomous worker would be blocked on.
-- **One PR per ticket.** Eleven one-line doc PRs is overhead and
-  merge-conflict bait; the bundle is the design.
-- **Silent rewording.** Applying a different rule than the digest showed —
-  every deviation from the ticket's proposed text goes through RESCOPE.
-- **Enforcement changes never seen to fire.** Validate automated-check edits
-  against the cited occurrence (Step 4) or downgrade the verdict to a doc
-  rule.
-- **Letting the run mutate engine/creation code.** Code work routes out via
-  Step 5; this PR touches convention surfaces only.
+- Accepting everything — the filing side over-proposes by design; a run
+  that rejects nothing was not triage.
+- Converting a gated-self-config verdict into a `fleet:queued` task an
+  autonomous worker cannot edit.
+- Letting the run mutate engine/creation code (Step 5 routes it out).
