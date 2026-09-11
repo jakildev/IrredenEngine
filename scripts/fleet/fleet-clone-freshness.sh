@@ -321,11 +321,11 @@ advance_main_clone() {
 # ff-only advance of an on-master clone whose origin/master ref is current
 # (callers own the fetch). Diverged or up-to-date → no-op. Always returns 0.
 #
-# count_skips (non-empty) routes the diverged warn through the escalate-then-
-# quiet counter and clears it on a healthy pass; unset, the tail just warns and
-# keeps no state. Only advance_main_clone passes it: restore_main_clone_to_master
-# is a fleet-up one-shot, so counting there would double-count or spuriously
-# clear.
+# count_skips (non-empty) routes BOTH warns this tail can emit — diverged and
+# ff-refused — through the escalate-then-quiet counter, and clears it on a
+# healthy pass; unset, the tail just warns and keeps no state. Only
+# advance_main_clone passes it: restore_main_clone_to_master is a fleet-up
+# one-shot, so counting there would double-count or spuriously clear.
 _ff_advance_to_origin_master() {
     local root="$1" count_skips="${2:-}"
     if ! git -C "$root" merge-base --is-ancestor master origin/master 2>/dev/null; then
@@ -354,9 +354,21 @@ _ff_advance_to_origin_master() {
             _freshness_all_clear "$root"
         fi
     else
-        # Transient (concurrent git op) — deliberately neither counted nor
-        # cleared; the next tick resolves it either way.
-        echo "fleet-clone-freshness: ff-only advance of $root refused (overlapping local changes or concurrent git op) — leaving as-is." >&2
+        # A refusal is USUALLY a concurrent git op that the next tick resolves —
+        # but not always, and the exception is silent: a stale .git/index.lock
+        # (any git process killed mid-op, routine for fleet roles) refuses
+        # ff-only forever while `status --porcelain` still reads clean, so
+        # guard 2 passes and this branch is reached every tick. Count it —
+        # reaching N is exactly what discriminates the transient case (which
+        # never gets there) from a wedged clone whose every claim
+        # assert_clone_fresh is refusing. Never all-clear here: nothing
+        # advanced. See #2691.
+        local refused_msg="fleet-clone-freshness: ff-only advance of $root refused (overlapping local changes, or a concurrent git op / stale .git/index.lock) — leaving as-is."
+        if [[ -n "$count_skips" ]]; then
+            _freshness_warn "$root" "ff-refused|master" "$refused_msg"
+        else
+            echo "$refused_msg" >&2
+        fi
     fi
     return 0
 }

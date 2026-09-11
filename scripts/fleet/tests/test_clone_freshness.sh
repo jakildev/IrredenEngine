@@ -449,6 +449,79 @@ out=$(advance_main_clone "$CLONE3" 2>&1 || true)
 echo "$out" | grep -q "not master" && ok "warns (escalates) instead of healing" || fail "no park warning: $out"
 git_q "$CLONE3" checkout master
 
+# --- T25: a persistently refused ff-only advance escalates like any other skip -
+# A refusal is not self-limiting. A stale .git/index.lock (any git process
+# killed mid-op — routine for fleet roles) refuses `merge --ff-only` on EVERY
+# subsequent tick while `status --porcelain` still reads clean, so guards 1 and
+# 2 both pass and the tail is reached every time. The clone then stays behind
+# origin/master forever and assert_clone_fresh refuses every claim on the repo,
+# with nothing but one stderr line per minute to show for it — the 30-min
+# silent freeze #2363 exists to eliminate. Counting is right precisely BECAUSE
+# refusals are sometimes transient: reaching N is what discriminates the two.
+# See #2691.
+echo "T25: stale .git/index.lock -> ff-refused escalates, then the removal clears it"
+reset_skip_counter
+git_q "$CLONE3" checkout master
+reset_rate_limit
+advance_main_clone "$CLONE3" 2>/dev/null                   # sync origin/master first
+push_new_commit t25                                        # origin/master moves ahead by 1
+: > "$CLONE3/.git/index.lock"                              # killed-git-process leftover
+export FLEET_FRESHNESS_SKIP_ESCALATE_N=3
+reset_rate_limit; ff1=$(advance_main_clone "$CLONE3" 2>&1 || true)
+reset_rate_limit; ff2=$(advance_main_clone "$CLONE3" 2>&1 || true)
+reset_rate_limit; ff3=$(advance_main_clone "$CLONE3" 2>&1 || true)
+# Snapshot at the escalation tick: ticks past N refresh the alert (T22).
+ff_alert_at_n=$(cat "$ALERT3" 2>/dev/null || true)
+reset_rate_limit; ff4=$(advance_main_clone "$CLONE3" 2>&1 || true)
+# The premise: the wedge is invisible to every guard ahead of the tail.
+[[ -z "$(git -C "$CLONE3" status --porcelain 2>/dev/null)" ]] \
+    && ok "tree still reads clean (guard 2 cannot catch the wedge)" || fail "fixture dirtied the tree: $(git -C "$CLONE3" status --porcelain)"
+[[ "$(git -C "$CLONE3" rev-parse --abbrev-ref HEAD)" == "master" ]] \
+    && ok "still on master (guard 1 cannot catch it either)" || fail "left master: $(git -C "$CLONE3" rev-parse --abbrev-ref HEAD)"
+behind=$(clone_behind_count "$CLONE3")
+[[ "$behind" == "1" ]] && ok "clone stayed behind across all 4 ticks" || fail "behind=$behind, expected 1 (the refusal should never advance)"
+echo "$ff1" | grep -q "refused" && ! echo "$ff1" | grep -q "ESCALATION" && ok "tick 1 warns normally" || fail "tick 1 wrong: $ff1"
+echo "$ff2" | grep -q "refused" && ! echo "$ff2" | grep -q "ESCALATION" && ok "tick 2 warns normally" || fail "tick 2 wrong: $ff2"
+echo "$ff3" | grep -q "ESCALATION" && ok "tick 3 (== N) escalates" || fail "tick 3 did not escalate: $ff3"
+[[ -n "$ff_alert_at_n" ]] && ok "alert file written" || fail "no alert file at $ALERT3"
+echo "$ff_alert_at_n" | grep -q "reason=ff-refused" && ok "alert records reason=ff-refused" || fail "alert missing/wrong reason: $ff_alert_at_n"
+echo "$ff_alert_at_n" | grep -q "count=3" && ok "alert records count=3" || fail "alert missing count: $ff_alert_at_n"
+[[ -z "$ff4" ]] && ok "tick 4 (> N) is silent" || fail "tick 4 still warned: $ff4"
+# Pin that both artifacts are actually present here: a tail that never wrote
+# either file would satisfy the two clear-assertions below trivially.
+[[ -f "$COUNTER3" ]] && ok "counter present before the clear (clear-assertions are not vacuous)" || fail "no counter at $COUNTER3"
+[[ -f "$ALERT3" ]] && ok "alert present before the clear" || fail "no alert at $ALERT3"
+# Removing the lock is the healthy pass: it advances and clears both artifacts.
+rm -f "$CLONE3/.git/index.lock"
+reset_rate_limit
+out=$(advance_main_clone "$CLONE3" 2>&1 || true)
+behind=$(clone_behind_count "$CLONE3")
+[[ "$behind" == "0" ]] && ok "advances once the stale lock is gone" || fail "behind=$behind after removing the lock"
+[[ ! -f "$COUNTER3" ]] && ok "ff-refused counter cleared on the healthy pass" || fail "counter survived: $(cat "$COUNTER3" 2>/dev/null)"
+[[ ! -f "$ALERT3" ]] && ok "ff-refused alert cleared on the healthy pass" || fail "alert survived: $(cat "$ALERT3" 2>/dev/null)"
+unset FLEET_FRESHNESS_SKIP_ESCALATE_N
+
+# --- T26: the uncounted caller still keeps no state on a refusal --------------
+# The counting in T25 is opt-in via the tail's second arg, and only
+# advance_main_clone passes it. restore_main_clone_to_master is a fleet-up
+# one-shot with no loop behind it, so counting there would either double-count
+# against the dispatcher's own streak or spuriously clear it. Pin that the
+# refusal branch honours the same opt-in the diverged branch does: warn, write
+# nothing. See #2691.
+echo "T26: refused ff on the fleet-up one-shot warns without touching the counter"
+reset_skip_counter
+git_q "$CLONE3" checkout master
+push_new_commit t26                                        # origin/master moves ahead by 1
+: > "$CLONE3/.git/index.lock"                              # same wedge as T25
+out=$(restore_main_clone_to_master "$CLONE3" 2>&1 || true)
+echo "$out" | grep -q "refused" && ok "one-shot warns on the refusal" || fail "no refusal warning: $out"
+! echo "$out" | grep -q "ESCALATION" && ok "one-shot never escalates" || fail "one-shot escalated: $out"
+[[ ! -f "$COUNTER3" ]] && ok "one-shot wrote no skip counter" || fail "one-shot wrote a counter: $(cat "$COUNTER3" 2>/dev/null)"
+[[ ! -f "$ALERT3" ]] && ok "one-shot wrote no alert" || fail "one-shot wrote an alert: $(cat "$ALERT3" 2>/dev/null)"
+behind=$(clone_behind_count "$CLONE3")
+[[ "$behind" == "1" ]] && ok "one-shot did not advance past the refusal" || fail "behind=$behind, expected 1"
+rm -f "$CLONE3/.git/index.lock"
+
 echo ""
 echo "PASS: $PASS  FAIL: $FAIL"
 [[ $FAIL -eq 0 ]]
