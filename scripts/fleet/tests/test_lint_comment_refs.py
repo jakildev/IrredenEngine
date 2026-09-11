@@ -92,6 +92,13 @@ class Tokenizer(unittest.TestCase):
             lines("cat > s.bat <<'EOF'\n@echo off\nrem #1234\nEOF\n", "shell"), [])
         self.assertEqual(lines("python3 -c '\n# see #1234\n'\n", "shell"), [2])
         self.assertEqual(lines("python3 -c '\nx = \"#1234\"\n'\n", "shell"), [])
+        self.assertEqual(lines("python3 -c $'\n# see #1234\n'\n", "shell"), [2],
+                         "bash and zsh quote an escaped program as `$'...'`")
+        self.assertEqual(lines("python3 -c$'\n# see #1234\n'\n", "shell"), [2],
+                         "the space before the program argument is optional")
+        self.assertEqual(lines("python3 script.py $'#1234'\n", "shell"), [],
+                         "only the `-c` argument is source; an interpreter's "
+                         "other `$'...'` arguments stay values")
         self.assertEqual(lines("msg='release #1234'\n", "shell"), [])
         self.assertEqual(lines("grep -c '#1234' f\n", "shell"), [],
                          "`-c` on a non-interpreter is not a program string")

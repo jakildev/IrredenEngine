@@ -28,10 +28,11 @@ Comments are found by a tokenizer per comment syntax, never one shared across
 languages: what is *not* a comment is what differs between them. Each steps
 over that language's string literals, character literals, raw strings, and
 block comments, so a ticket-shaped value in a string is never a hit — and the
-shell and CMake tokenizers additionally step over here-documents, `-c` program
-strings, and bracket arguments, whose `#` opens nothing. A here-document that
-feeds an interpreter, or whose body opens with a shebang, is that language's
-source rather than data, so its comments are scanned as such.
+shell and CMake tokenizers additionally step over here-documents and bracket
+arguments, whose `#` opens nothing. What an interpreter reads as source is the
+exception: a here-document that feeds one or whose body opens with a shebang,
+and a `-c` program string in any of its quotings, are scanned as that
+language.
 
 Exit 0: no file exceeds its budget. Exit 1: at least one does, printed as
 `file:line: <comment>`; the summary names the baseline command to run after a
@@ -212,7 +213,9 @@ HEREDOC_RE = re.compile(
     r"""<<(-?)[ \t]*(?:'([^'\n]*)'|"([^"\n]*)"|\\?([A-Za-z_][A-Za-z0-9_]*))""")
 SHELL_WORD_BREAK = " \t\n;&|()<>"
 EMBEDDED_INTERPRETER_RE = re.compile(r"\b(python\d*|bash|sh|zsh)\b")
-DASH_C_RE = re.compile(r"(?:^|[\s;&|(])-c[ \t]*$")
+# The `$` is bash and zsh quoting — `$'...'` takes escapes, `$"..."` is
+# locale-translated — and neither ends the `-c` argument it opens.
+DASH_C_RE = re.compile(r"(?:^|[\s;&|(])-c[ \t]*\$?$")
 
 
 def _interpreter_family(name):
@@ -243,7 +246,8 @@ def _shebang_family(body):
 def _program_string_family(text, i):
     """The family of a quoted string that is an interpreter's `-c` program
     argument, else None. `python3 -c '...'` holds Python source, so its `#`
-    lines are comments; every other quoted string is a value."""
+    lines are comments; every other quoted string is a value. A `$` prefix
+    and an absent space are both spellings of the same argument."""
     start = text.rfind("\n", 0, i) + 1
     if not DASH_C_RE.search(text, start, i):
         return None
