@@ -266,16 +266,26 @@ Use `gh pr create`. Body template: **procedures** `pr-body.md`.
 > Before calling `gh pr create`, complete step 8a (Closes-crosscheck) if the
 > drafted body contains a `Closes #N` line.
 
+**Assemble the body into a file, not a shell variable.** Write the drafted
+body with the **Write** tool to the worktree-local `.pr-body.md` (gitignored,
+alongside the reviewer's `.review-body.md`), then pass it with `--body-file`.
+`--body "$var"` is the forbidden form: an unset or half-assembled variable
+opens the PR with an **empty** body and nothing reports the failure, and a
+`$(cat <<'EOF' …)` capture trips the shell-substitution gate on backticks
+(REVIEWER-PROTOCOL.md § "Posting the review body"). Do not route the assembly
+through `printf … > file` either — the Bash tool blocks `>` redirects
+regardless of destination (CLAUDE-BASELINE.md § "Bash tool rules"); the Write
+tool is the mechanism that honors both rules at once.
+
 **Substitute the sha-pin token.** If the **screenshot skill** ran earlier in
 this pass, its markdown snippet embeds the **sha-pin token** in place of a
 commit SHA (the screenshots were staged before a commit existed to pin to).
-Capture the drafted body into a variable, fold the skill's snippet in, and —
-immediately before calling `gh pr create` — replace every **sha-pin token**
-occurrence with the just-pushed commit, then pass that variable as the body
-(the example below is already wired this way). `HEAD` at this point is the
-commit created in step 6 and pushed in step 7, so the substituted SHA is the
-one whose tree actually contains the screenshots under the **screenshot
-skill**'s output path. The substitution is a no-op when the body has no
+Fold the skill's snippet into the drafted body and — as you Write
+`.pr-body.md` — replace every **sha-pin token** occurrence with the
+just-pushed commit, read once via `git rev-parse HEAD`. `HEAD` at this point
+is the commit created in step 6 and pushed in step 7, so the substituted SHA
+is the one whose tree actually contains the screenshots under the **screenshot
+skill**'s output path. There is nothing to substitute when the body carries no
 **sha-pin token** (no screenshots this pass), so the same wiring serves the
 common no-screenshot case.
 
@@ -285,8 +295,9 @@ claim-base` — the **default branch** for a normal claim or plain human PR
 idempotent edit-or-create and the post-open native-stack link live in the
 **procedures** `stackable-on.md` / `native-stack-link.md`. Common case:
 
-```bash
-pr_body="$(cat <<'EOF'
+Write `.pr-body.md` (Write tool):
+
+```markdown
 ## Summary
 - <bullet>
 
@@ -301,24 +312,30 @@ pr_body="$(cat <<'EOF'
 Closes #<issue-N>
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
-EOF
-)"
-# ## Acceptance evidence is conditional: required whenever the issue in
-# `Closes #N` states acceptance criteria ANYWHERE — a `## Plan` comment
-# OR the issue body (fleet:no-plan follow-ups carry them in the body).
-# Omit the section otherwise. Template + rules: procedures/pr-body.md.
-# If the screenshot skill ran this pass, fold its markdown snippet in here:
-#   pr_body="${pr_body}"$'\n\n'"<the screenshot skill's markdown snippet>"
-pr_body="${pr_body//<sha-pin token>/$(git rev-parse HEAD)}"   # no-op when the token is absent
-# --label fleet:author-<runtime> is step 8c's provenance stamp; a PR opened
-# without it cannot be routed for review while cross-provider review is on.
-gh pr create --base <default-branch> --title "<scope>: <title>" --body "$pr_body" \
-    --label fleet:author-<claude|codex>
 ```
+
+`## Acceptance evidence` is conditional: required whenever the issue in
+`Closes #N` states acceptance criteria ANYWHERE — a `## Plan` comment OR the
+issue body (fleet:no-plan follow-ups carry them in the body). Omit the section
+otherwise. Template + rules: **procedures** `pr-body.md`. If the screenshot
+skill ran this pass, append its markdown snippet to the body before you write
+the file, with the **sha-pin token** already substituted.
+
+Then open the PR against that file:
+
+```bash
+gh pr create --base <default-branch> --title "<scope>: <title>" \
+    --body-file .pr-body.md --label fleet:author-<claude|codex>
+```
+
+`--label fleet:author-<runtime>` is step 8c's provenance stamp; a PR opened
+without it cannot be routed for review while cross-provider review is on.
 
 **`Closes #N` line** (required when the task has an `Issue:` field) is what
 makes the tracker auto-close the originating issue on merge. Omit only when
-the `Issue:` field is `(none)` (cleanup PRs, fleet-tooling PRs). See
+the `Issue:` field is `(none)` (cleanup PRs, fleet-tooling PRs). Downgrade it
+to `Refs #N` when your own `## Acceptance evidence` table grades a criterion
+as not shipped — an honest partial must not auto-close its issue (#2981). See
 **procedures** `pr-body.md` for the full template and the stack-mode
 exceptions (cursor-stack non-leaf PRs deliberately drop it).
 
@@ -359,8 +376,11 @@ fetch the body and comments and look for acceptance criteria **anywhere**
 `**Acceptance criteria**` line in the issue body — the `fleet:no-plan`
 agent-approved lane puts them in the body by construction, #2521). If the
 issue states criteria and the drafted body has no `## Acceptance evidence`
-section, **stop and fill the table** before `gh pr create` — reviewers
-grade criteria from that table, and its absence has cost a review
+section — **or carries one with fewer rows than the issue has criteria** —
+**stop and fill the table** before `gh pr create`. Count the rows against the
+criteria list: a freehand table looks complete while omitting the criterion
+that had nothing to say, and the omitted rows skew toward the unmet ones
+(#2906; the mechanical row check is #3126). Its absence has cost a review
 round-trip four separate times.
 
 **Test-plan boxes are records, not to-dos (same moment):** `## Test plan`
@@ -401,6 +421,13 @@ A hit means a diagnostic block annotated "remove when #N closes" is about
 to ship to the default branch as dead code in the very PR that closes #N.
 Remove the block (new commit) before opening the PR; if it must outlive
 this PR, re-point the annotation at a live follow-up issue instead.
+
+**Open-PR overlap check (same trigger):** intersect this branch's changed
+files with open PRs' (`gh pr list --state open --json number,files`) and
+trial-merge each hit — `git merge-tree --write-tree <this> <other>` prints
+the true conflict set; a hunk-region eyeball misses cross-file overlap
+(#2892; the scripted check is #3124). A hit on `docs/agents/**` or
+`.claude/**` stops the open.
 
 ### 8b. Tag the host the PR was authored on
 

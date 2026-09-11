@@ -75,6 +75,16 @@ Why:
    }
    ```
 
+   `kFirst`/`kLast` sentinels are the exception in this tree
+   (`CommandNames`, `SystemName` have none), so for most enums that check
+   is unwritable and "skip it" becomes the honest reading. The
+   sentinel-free form: **switch over the enumerators, reject on
+   fallthrough** — `toSuite` in `lua_command_bindings.hpp` is the in-tree
+   example, and `-Wswitch` then flags a newly added enumerator. Switch on
+   the `lua_Integer` *before* the cast when the enum is unscoped with no
+   fixed underlying type (`enum CommandNames {`): converting an
+   out-of-range value to it is unspecified.
+
 3. Diagnose the legacy string path explicitly. A caller who passes
    `rotation_mode = 'GRID'` deserves a message that says "use
    `IRComponent.RotationMode.GRID` instead", not "type mismatch" or

@@ -260,7 +260,17 @@ Constraints:
   via `singletonEntity<T>`). Use the no-create variants
   `singletonEntityOrNull<T>` / `singletonOrNull<T>` instead, or check
   `entityExists` before reading; the same applies in any pre-destroy
-  hook that might run during a bulk reset.
+  hook that might run during a bulk reset. The ban is on
+  **reachability, not spelling** — a service free function that
+  resolves a singleton internally (`IRSim::setTimeScale` →
+  `singleton<C_SimClock>`) is the same call with the accessor hidden
+  (#2952).
+- A hook standing in for an existing teardown mirrors **all** of that
+  teardown's responsibilities, not just the id-clearing one — factor
+  the shared non-destructive tail so a partial mirror is
+  unrepresentable (`.claude/rules/cpp-ecs.md` §"System-owned
+  invariants"; #2946's hook dropped `destroyMenu`'s time-scale restore
+  and froze the sim).
 - The cost is O(hooks × destructions); each hook should be O(world)
   at worst. Don't register hooks that run an expensive search per
   destroy.

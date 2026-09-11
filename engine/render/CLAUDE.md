@@ -479,6 +479,13 @@ centroid gate needed a probe radius ≤ ~0.07 world units), re-ground the
 oracle rather than bending the mechanism to the metric — and verify the
 replacement oracle is itself *reachable* before it ships as the new gate.
 
+**A px gate threshold is in a host-dependent unit.** The verify family gates on
+*framebuffer* px = `outputScaleFactor` game px (2 on macOS HiDPI, 1 on
+Windows/Linux), so a bound calibrated on one host false-reds or gates 2x loose
+on the other (#2758 did both). State the unit, normalize to the run's own factor
+(`scripts/pivot-verify.py` `_output_scale_factor`), calibrate across the range,
+and never convert a published *measurement* between hosts (§"Units" below).
+
 **The disabled-direction complement: a "gated-off / byte-identical on path
 X" claim that leans on a shared shader predicate is empirical, not
 structural.** Multi-dispatch passes (per-axis resolve, world-placed resolve,
@@ -490,6 +497,13 @@ the cardinal recovery) and take the gated path spuriously (#2293).
 Positively verify which dispatches actually take the gated path, or drive
 the intent from a dedicated per-dispatch C++ value so the byte-identity
 holds by construction.
+
+**A red reference is not a control: diff the arms against each other.** When
+`render-verify` reds shots the change did not intend to touch, "they fail the
+same way on `origin/master`" is agreement between two lossy scores against a
+stale third artifact. Capture both arms on this host, `img_diff` them against
+**each other**, and report pairs compared beside the drift — plus one non-zero
+delta through the same path, since an expected zero is unfalsifiable (#2894).
 
 **Rebasing a shader-kernel or encoding PR past a carrier/encoding migration
 on master:** re-verify against master's *current* source — (a) every
@@ -635,10 +649,10 @@ Three checks, in order:
    then-master ~30 render commits behind it. Confirming the relation on one tree
    (a macOS pane re-running the arms here) is **outstanding**, not done.
 
-   Retiring this hazard properly — state the unit, normalize to
-   `outputScaleFactor`, calibrate across the range — is **#3009**; **#3008** is
-   the live symptom on the GL side, where three centroid-gated pivot-verify
-   blocks exceed the 1.5px default gate on a 1x host.
+   The general rule — state the unit, normalize to `outputScaleFactor`,
+   calibrate across the range — is in §"Verifying render changes" above;
+   **#3008** is the live symptom on the GL side, where three centroid-gated
+   pivot-verify blocks exceed the 1.5px default gate on a 1x host.
 
    Two consequences to know before you lean on this gate:
 
@@ -1429,9 +1443,14 @@ parity with voxel-pool primary shapes.
   The shape SDF helpers use a separate `kInvalidDepth = 0x7FFFFFFF` (INT32_MAX)
   constant to signal "ray missed" and skip writing — don't confuse the two.
   If a clear is skipped, stale depth causes flicker.
-- **Persistent mapped buffers.** `HoveredEntityIdBuffer` is
-  `PERSISTENT | COHERENT`. Reading it too early (before GPU write) returns
-  garbage from the previous frame.
+- **A GPU resource's initial contents are undefined; prime prior-frame
+  readbacks.** `HoveredEntityIdBuffer` (`PERSISTENT | COHERENT`) read before
+  the GPU write returns the previous frame's garbage — likewise the sync-free
+  "read frame N-1 before zeroing" pattern (`system_voxel_to_trixel.hpp` cull
+  stats), whose frame 0 reads whatever the fresh allocation held: 4294967295
+  on Windows/GL, not 0. Guard the first sample (`cullReadbackPrimed_`): one junk
+  value hides inside an average, turning #2475's ring gate green at 99.94%
+  against a true 82%.
 - **Dispatch limits.** `kMaxDispatchGroupsX = 1024` (≈1M voxels before
   hitting the second dispatch dimension). Very large voxel counts slow.
 - **Mode branches in hot compute kernels: compile-time-specialize, don't

@@ -165,7 +165,11 @@ there are no authored criteria to grade.
    exact command and the observed output line that proves the criterion
    *fired* — a count > 0, an asserted probe reading, a visible delta.
    "Nothing broke" is not evidence; that's what the build/run steps
-   already established.
+   already established. **A figure or claim you derived yourself carries
+   its method** — there is no output line to cite: publish the scoring
+   convention behind a computed number (which region or population, what
+   tolerance) and the executed sweep plus its coverage count behind a
+   claim of absence ("no demo sets this") — a bare value is unfalsifiable.
 3. **Paste the results into the PR body** as an
    `## Acceptance evidence` section (template:
    `commit-and-push` `procedures/pr-body.md`) — one row per criterion:
@@ -174,13 +178,19 @@ there are no authored criteria to grade.
    - *Unverifiable on this host* (needs the other backend, a GL host,
      a game build): record `unverifiable on <host>: <reason>` in the
      row — never silently drop it. The reviewer and the cross-host
-     smoke lane pick it up from there.
+     smoke lane pick it up from there. When the blocker is a fleet-tracked
+     host limitation, cite its issue in the row and re-check it is still
+     open at rebase — the fleet merges its own host fixes (#3079).
    - *Fails*: the task is not done. Fix it — or, if the criterion
      itself turned out to be wrong (plan premise falsified), escalate
      per `role-worker.md` step 8 instead of shipping around it.
    - *Satisfied by a different mechanism than planned*: record what
-     actually proves it and note the delta from the plan, so the
-     reviewer isn't grading against a stale approach.
+     actually proves it **and** the delta from the plan — both halves.
+     This shape is for the **approach** differing while the criterion
+     holds. A criterion whose own literal wording the diff violates
+     ("…without editing that file") is *Fails*: the reviewer grades **as
+     written**, so a row you call "met in substance" with an offer to
+     revert is a self-declared unmet row — take your own offer (#2802).
 
 If the `commit-and-push` simplify pass later applies a
 behavior-affecting fix, re-run the affected checks before the PR

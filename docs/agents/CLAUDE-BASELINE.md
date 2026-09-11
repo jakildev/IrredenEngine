@@ -605,7 +605,13 @@ where the invariant happens to hold, so a comment lives or dies on
 whether the next author happens to reason about the other mode.
 Enforce with a `static_assert` (or a startup assert) and verify it is
 load-bearing: restore the bad value and watch the build or assert
-fail. An assert that cannot fire is a comment with extra steps.
+fail. An assert that cannot fire is a comment with extra steps. The
+same proof is owed by a test asserting an **exclusion** ("deliberately
+NOT matched") and by the declarative matcher — regex, glob set,
+allowlist — that carries it: put the excluded token where the matcher
+actually scans, and show the test goes red when the exclusion is
+deleted from the *current* implementation — against a pre-fix ref it
+passes correctly, since the exclusion usually predates the fix (#2714).
 
 **A comment naming a specific runtime guard must be true on every
 path it covers.** "Trips the `x < n` range assert" is read as

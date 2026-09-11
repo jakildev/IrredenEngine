@@ -30,7 +30,12 @@ Omit the `Closes #<issue-N>` line when the task's `Issue:` field is `(none)`
 (e.g. cleanup PRs, fleet-tooling PRs filed without a tracking issue).
 
 The `Closes #N` line is what makes GitHub auto-close the originating issue on
-merge. Always include it when an Issue number exists.
+merge. Include it whenever an Issue number exists — with one carve-out: when
+your own `## Acceptance evidence` table grades a criterion as not shipped,
+write `Refs #N` instead, so the issue stays open for the residual rather than
+auto-closing over an unmet criterion (#2981). `Refs #N` is the fleet's
+non-closing marker and is already read as one by
+`scripts/fleet/fleet_scope_shipped.py`.
 
 `## Acceptance evidence` is required whenever the body carries a `Closes #N`
 line and issue N states acceptance criteria **anywhere** — a `## Plan`

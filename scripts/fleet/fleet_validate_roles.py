@@ -53,9 +53,7 @@ DELTA_KEY_ALIASES = {}
 # (flow_stem, missing_key) -> owning issue. A pair may leave this baseline,
 # never join it (cmake/run_header_convention_checks.cmake's
 # header_global_baseline is the precedent). Skill lane only.
-SKILL_WRAPPER_MISSING_KEY_BASELINE = {
-    ("commit-and-push", "sha-pin token"): 2912,
-}
+SKILL_WRAPPER_MISSING_KEY_BASELINE = {}
 
 # flow_stem -> owning issue, for flows with no conforming stem-paired
 # wrapper at all. --strict promotes this WARN to an error, so it needs the
