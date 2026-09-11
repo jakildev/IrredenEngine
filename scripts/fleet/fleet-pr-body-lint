@@ -1,0 +1,404 @@
+#!/usr/bin/env python3
+"""Validate acceptance-evidence row coverage before PR publication."""
+
+import argparse
+import json
+import re
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+REPO_SLUGS = {
+    "engine": "jakildev/IrredenEngine",
+    "game": "jakildev/irreden",
+}
+HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
+LIST_RE = re.compile(r"^(\s*)(?:\d+[.)]|[-+*](?:\s+\[[ xX]\])?)\s+(.+)$")
+
+
+class LintInputError(Exception):
+    """The issue thread or drafted body cannot be interpreted safely."""
+
+
+def clean_markdown(text):
+    """Remove regions that cannot carry authoritative headings or links."""
+    text = re.sub(r"<!--.*?-->", "", text, flags=re.DOTALL)
+    result = []
+    fence_char = None
+    fence_size = 0
+    for raw_line in text.replace("\r\n", "\n").replace("\r", "\n").splitlines():
+        stripped = raw_line.lstrip()
+        fence = re.match(r"(`{3,}|~{3,})", stripped)
+        if fence_char:
+            if fence and fence.group(1)[0] == fence_char and len(fence.group(1)) >= fence_size:
+                fence_char = None
+            result.append("")
+            continue
+        if fence:
+            fence_char = fence.group(1)[0]
+            fence_size = len(fence.group(1))
+            result.append("")
+            continue
+        result.append("" if stripped.startswith(">") else raw_line)
+    return "\n".join(result)
+
+
+def heading_name(text):
+    return re.sub(r"\s+#+\s*$", "", text).strip().lower()
+
+
+def first_heading(text):
+    for line in clean_markdown(text).splitlines():
+        if line.strip():
+            match = HEADING_RE.match(line.strip())
+            return heading_name(match.group(2)) if match else ""
+    return ""
+
+
+def is_plan(comment):
+    return re.fullmatch(r"plan(?:\s*:.*)?", first_heading(comment)) is not None
+
+
+def is_correction(comment):
+    return re.fullmatch(r"plan corrections(?:\s*(?::|—|-).*)?", first_heading(comment)) is not None
+
+
+def section_after_heading(text, wanted, exact_level=None):
+    lines = clean_markdown(text).splitlines()
+    for index, line in enumerate(lines):
+        match = HEADING_RE.match(line.strip())
+        if not match or heading_name(match.group(2)) != wanted:
+            continue
+        level = len(match.group(1))
+        if exact_level is not None and level != exact_level:
+            continue
+        end = len(lines)
+        for later in range(index + 1, len(lines)):
+            boundary = HEADING_RE.match(lines[later].strip())
+            if boundary and len(boundary.group(1)) <= level:
+                end = later
+                break
+        return lines[index + 1 : end]
+    return None
+
+
+def body_acceptance_section(text):
+    lines = clean_markdown(text).splitlines()
+    marker = re.compile(r"^\s*\*\*Acceptance criteria\*\*\s*:?(.*)$", re.I)
+    next_field = re.compile(r"^\s*\*\*[^*]+\*\*\s*:?")
+    for index, line in enumerate(lines):
+        match = marker.match(line)
+        if not match:
+            continue
+        section = [match.group(1).strip()] if match.group(1).strip() else []
+        for later in lines[index + 1 :]:
+            if HEADING_RE.match(later.strip()) or next_field.match(later):
+                break
+            section.append(later)
+        return section
+    return None
+
+
+def parse_criteria(lines, source):
+    content = [(index, line) for index, line in enumerate(lines) if line.strip()]
+    if not content:
+        raise LintInputError(f"{source}: declared acceptance criteria are empty")
+
+    items = []
+    non_list = []
+    for index, line in content:
+        match = LIST_RE.match(line)
+        if match:
+            items.append((index, len(match.group(1).replace("\t", "    ")), match.group(2).strip()))
+        else:
+            non_list.append((index, line.strip()))
+
+    if items:
+        first_item = items[0][0]
+        if any(index < first_item for index, _ in non_list):
+            raise LintInputError(f"{source}: mixed prose and list acceptance criteria")
+        for index, line in non_list:
+            if (
+                index > first_item
+                and index > 0
+                and not lines[index - 1].strip()
+                and not line[:1].isspace()
+            ):
+                raise LintInputError(f"{source}: mixed prose and list acceptance criteria")
+        indent = min(item[1] for item in items)
+        criteria = [item[2] for item in items if item[1] == indent]
+        if not criteria:
+            raise LintInputError(f"{source}: acceptance list has no top-level items")
+        return criteria
+
+    paragraphs = []
+    current = []
+    for line in lines:
+        if line.strip():
+            current.append(line.strip())
+        elif current:
+            paragraphs.append(" ".join(current))
+            current = []
+    if current:
+        paragraphs.append(" ".join(current))
+    if len(paragraphs) != 1:
+        raise LintInputError(f"{source}: unsupported acceptance-criteria structure")
+    return paragraphs
+
+
+def criteria_from_thread(issue):
+    body = issue["body"]
+    comments = issue["comments"]
+    selected = None
+    source = None
+    plan_index = -1
+    for index, comment in enumerate(comments):
+        comment_body = comment["body"]
+        if not is_plan(comment_body):
+            continue
+        plan_index = index
+        section = section_after_heading(comment_body, "acceptance criteria")
+        if section is None:
+            selected = None
+            source = None
+        else:
+            selected = parse_criteria(section, f"issue #{issue['number']} plan")
+            source = "plan"
+
+    if plan_index >= 0:
+        for comment in comments[plan_index + 1 :]:
+            comment_body = comment["body"]
+            if not is_correction(comment_body):
+                continue
+            section = section_after_heading(comment_body, "acceptance criteria")
+            if section is not None:
+                selected = parse_criteria(section, f"issue #{issue['number']} plan correction")
+                source = "plan correction"
+
+    if selected is not None:
+        return selected, source
+
+    section = body_acceptance_section(body)
+    if section is None:
+        return [], "none"
+    return parse_criteria(section, f"issue #{issue['number']} body"), "issue body"
+
+
+def split_table_row(line):
+    stripped = line.strip()
+    if "|" not in stripped:
+        return None
+    cells = []
+    current = []
+    escaped = False
+    for char in stripped:
+        if escaped:
+            current.append(char)
+            escaped = False
+        elif char == "\\":
+            current.append(char)
+            escaped = True
+        elif char == "|":
+            cells.append("".join(current).strip())
+            current = []
+        else:
+            current.append(char)
+    cells.append("".join(current).strip())
+    if stripped.startswith("|"):
+        cells = cells[1:]
+    if stripped.endswith("|"):
+        cells = cells[:-1]
+    return cells
+
+
+def is_separator(cells):
+    return bool(cells) and all(re.fullmatch(r":?-{3,}:?", cell.replace(" ", "")) for cell in cells)
+
+
+def issue_evidence_lines(body, issue_number, closing_numbers):
+    section = section_after_heading(body, "acceptance evidence", exact_level=2)
+    if section is None:
+        return []
+    if len(closing_numbers) == 1:
+        return section
+
+    wanted = f"issue #{issue_number}"
+    start = None
+    end = len(section)
+    for index, line in enumerate(section):
+        match = HEADING_RE.match(line.strip())
+        if not match or len(match.group(1)) != 3:
+            continue
+        name = heading_name(match.group(2))
+        if start is None and name == wanted:
+            start = index + 1
+            continue
+        if start is not None:
+            end = index
+            break
+    return [] if start is None else section[start:end]
+
+
+def evidence_rows(body, issue_number, closing_numbers):
+    rows = 0
+    saw_header = False
+    for line in issue_evidence_lines(body, issue_number, closing_numbers):
+        cells = split_table_row(line)
+        if not cells:
+            continue
+        if is_separator(cells):
+            continue
+        if cells[0].strip().lower() == "criterion":
+            saw_header = True
+            continue
+        if saw_header and cells[0].strip():
+            rows += 1
+    return rows
+
+
+def closing_issues(body):
+    lines = clean_markdown(body).splitlines()
+    found = []
+    pattern = re.compile(r"^\s*closes\s+#(\d+)\s*[.!]?\s*$", re.I)
+    for line in lines:
+        match = pattern.match(line)
+        if match and int(match.group(1)) not in found:
+            found.append(int(match.group(1)))
+    return found
+
+
+def validate_snapshot(data, issue_number):
+    if not isinstance(data, dict):
+        raise LintInputError("issue JSON root must be an object")
+    required = {"number", "title", "body", "comments", "comments_complete"}
+    missing = required - data.keys()
+    if missing:
+        raise LintInputError("issue JSON missing: " + ", ".join(sorted(missing)))
+    if data["number"] != issue_number:
+        raise LintInputError(
+            f"issue JSON number mismatch: wanted {issue_number}, got {data['number']}"
+        )
+    if data["comments_complete"] is not True:
+        raise LintInputError("issue JSON comments_complete must be true")
+    if not isinstance(data["title"], str) or not isinstance(data["body"], str):
+        raise LintInputError("issue JSON title/body must be strings")
+    if not isinstance(data["comments"], list):
+        raise LintInputError("issue JSON comments must be a list")
+    for comment in data["comments"]:
+        if not isinstance(comment, dict) or not isinstance(comment.get("body"), str):
+            raise LintInputError("each issue JSON comment needs a string body")
+    return data
+
+
+def fetch_issue(issue_number, repo):
+    gh = shutil.which("gh") or "gh"
+    try:
+        issue_result = subprocess.run(
+            [gh, "issue", "view", str(issue_number), "--repo", repo, "--json", "number,title,body"],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=20,
+        )
+        comments_result = subprocess.run(
+            [
+                gh,
+                "api",
+                "--paginate",
+                "--slurp",
+                f"repos/{repo}/issues/{issue_number}/comments?per_page=100",
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=20,
+        )
+        data = json.loads(issue_result.stdout)
+        pages = json.loads(comments_result.stdout)
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, json.JSONDecodeError) as exc:
+        raise LintInputError(f"GitHub issue fetch failed: {exc}") from exc
+    if not isinstance(pages, list) or any(not isinstance(page, list) for page in pages):
+        raise LintInputError("GitHub comments pagination returned an invalid shape")
+    data["comments"] = [comment for page in pages for comment in page]
+    data["comments_complete"] = True
+    return validate_snapshot(data, issue_number)
+
+
+def read_body(args):
+    if args.body_file:
+        try:
+            return Path(args.body_file).read_text(encoding="utf-8")
+        except OSError as exc:
+            raise LintInputError(f"cannot read PR body: {exc}") from exc
+    return sys.stdin.read()
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Require one acceptance-evidence row per issue criterion."
+    )
+    parser.add_argument("issue_number", type=int)
+    parser.add_argument("--repo", default="engine")
+    parser.add_argument("--body-file")
+    parser.add_argument("--issue-json")
+    parser.add_argument("--write-issue-json")
+    args = parser.parse_args()
+
+    if args.issue_json and args.write_issue_json:
+        parser.error("--issue-json and --write-issue-json are mutually exclusive")
+
+    if args.repo in REPO_SLUGS:
+        repo = REPO_SLUGS[args.repo]
+    elif re.fullmatch(r"[^/\s]+/[^/\s]+", args.repo):
+        repo = args.repo
+    else:
+        parser.error("--repo must be engine, game, or owner/repo")
+
+    try:
+        body = read_body(args)
+        closings = closing_issues(body)
+        if args.issue_number not in closings:
+            print(f"SKIP #{args.issue_number}: no standalone Closes line")
+            return 0
+        if args.issue_json:
+            try:
+                snapshot = json.loads(Path(args.issue_json).read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as exc:
+                raise LintInputError(f"cannot read issue JSON: {exc}") from exc
+            issue = validate_snapshot(snapshot, args.issue_number)
+        else:
+            issue = fetch_issue(args.issue_number, repo)
+            if args.write_issue_json:
+                try:
+                    Path(args.write_issue_json).write_text(
+                        json.dumps(issue, indent=2) + "\n", encoding="utf-8"
+                    )
+                except OSError as exc:
+                    raise LintInputError(f"cannot write issue JSON: {exc}") from exc
+        criteria, source = criteria_from_thread(issue)
+        if not criteria:
+            print(f"PASS #{args.issue_number}: no acceptance criteria")
+            return 0
+        present = evidence_rows(body, args.issue_number, closings)
+        required = len(criteria)
+        if present >= required:
+            print(
+                f"PASS #{args.issue_number}: source={source}, "
+                f"required={required}, present={present}"
+            )
+            return 0
+        print(
+            f"FAIL #{args.issue_number}: source={source}, required={required}, "
+            f"present={present}, shortfall={required - present}"
+        )
+        for index, criterion in enumerate(criteria, 1):
+            print(f"  {index}. {criterion}")
+        return 1
+    except LintInputError as exc:
+        print(f"ERROR #{args.issue_number}: {exc}", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

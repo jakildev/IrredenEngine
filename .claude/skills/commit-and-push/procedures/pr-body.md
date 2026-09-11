@@ -40,6 +40,11 @@ Closes #<issue-N>
   from observed output and ticked. An unticked `- [ ]` box means the PR
   is not ready to leave WIP: run it and tick it, or delete the item.
 
+Before creating a PR or updating an existing PR body, run the executable
+`fleet-pr-body-lint` gate from `commit-and-push` step 8a once for every
+distinct `Closes #N`. It checks enumeration only; grade meaning remains the
+reviewer's job.
+
 ## Fleet stack delta
 
 No body block — stack membership, chain navigation, and merge sequencing
