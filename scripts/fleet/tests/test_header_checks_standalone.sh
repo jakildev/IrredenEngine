@@ -73,10 +73,6 @@
 #   - a wrapped declaration whose head line carries a trailing comment with
 #     a paren in it                                 → exit 1 (the comment's
 #     `(` must not read as a function-declaration guard hit)
-#   - same-line and multi-line block-commented globals → ignored, while a
-#     live declaration beside each remains flagged
-#   - block-commented anonymous namespaces         → ignored, while a live
-#     anonymous namespace in the same fixture remains flagged
 
 set -uo pipefail
 
