@@ -11,6 +11,12 @@
 # contain backticks (bash evaluates them as command substitution inside
 # double-quoted args, stripping or erroring the content).
 #
+# Prints one confirmation line naming the file it recorded on success, and a
+# distinct line on the dropped path (mkdir/write failed), so a pane can
+# always tell "recorded" from "silently dropped" without checking the
+# filesystem by hand. Matches the neighbouring `fleet-claim
+# release-worktree`'s recorded-vs-no-op split. See #3115.
+#
 # Source of truth: scripts/fleet/fleet-iteration-summary in the engine repo.
 # Installed to ~/bin/fleet-iteration-summary by scripts/fleet/install.sh.
 
@@ -25,7 +31,12 @@ BASENAME="$1"
 SUMMARY="$2"
 
 SUMMARIES_DIR="${FLEET_SUMMARIES_DIR:-$HOME/.fleet/iteration-summaries}"
-mkdir -p "$SUMMARIES_DIR"
-
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H-%M-%SZ")
-printf '%s\n' "$SUMMARY" > "$SUMMARIES_DIR/${BASENAME}-${TIMESTAMP}.txt"
+DEST="$SUMMARIES_DIR/${BASENAME}-${TIMESTAMP}.txt"
+
+if mkdir -p "$SUMMARIES_DIR" && printf '%s\n' "$SUMMARY" > "$DEST"; then
+    echo "fleet-iteration-summary: recorded $DEST"
+else
+    echo "fleet-iteration-summary: dropped -- could not write $DEST" >&2
+    exit 1
+fi
