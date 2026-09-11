@@ -134,7 +134,7 @@ unset _fleet_claim_self
 # python3's ModuleNotFoundError propagating through a pipefail command substitution.
 # A missing module would otherwise fail OPEN in the --stackable-on guard below
 # (empty reason -> claim proceeds), so fail loud here instead.
-for _fleet_lib in fleet_branch_match.py fleet_stack_base.py fleet_blocked_by.py fleet-common.sh; do
+for _fleet_lib in fleet_branch_match.py fleet_stack_base.py fleet_blocked_by.py fleet_model_field.py fleet-common.sh; do
     if [[ ! -f "$FLEET_LIB_DIR/$_fleet_lib" ]]; then
         echo "fleet-claim: $_fleet_lib not found in FLEET_LIB_DIR=$FLEET_LIB_DIR" >&2
         echo "             Ensure fleet-claim's real script dir is scripts/fleet/ in the engine repo." >&2
@@ -851,18 +851,16 @@ check_model_tag() {
 
     if [[ -z "$task_model" && -n "$body_b64" ]]; then
         task_model=$(BODY_B64="$body_b64" python3 <<'PYEOF'
-import base64, os, re, sys
+import base64, os
+import sys
+
+sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
+from fleet_model_field import declared_class
+
 body = base64.b64decode(os.environ["BODY_B64"]).decode("utf-8", errors="replace")
-field_re = re.compile(r"^\s*-?\s*\*\*(?:Suggested\s+)?Model:\*\*\s*(.+?)\s*$", re.IGNORECASE)
-for line in body.splitlines():
-    m = field_re.match(line)
-    if m:
-        token = m.group(1).strip().lower()
-        m2 = re.match(r"^(fable|opus|sonnet)\b", token)
-        if m2:
-            print(m2.group(1))
-            sys.exit(0)
-        break
+model = declared_class(body)
+if model:
+    print(model)
 PYEOF
 )
     fi
@@ -4780,7 +4778,11 @@ cmd_reservation_role() {
             continue
         fi
         model=$(printf '%s' "$json" | python3 -c '
-import json, re, sys
+import json, os, sys
+
+sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
+from fleet_model_field import declared_class
+
 try:
     d = json.load(sys.stdin)
 except Exception:
@@ -4793,16 +4795,9 @@ if "fleet:opus" in labels:
 if "fleet:sonnet" in labels:
     print("sonnet"); sys.exit(0)
 body = d.get("body", "") or ""
-field_re = re.compile(r"^\s*-?\s*\*\*(?:Suggested\s+)?Model:\*\*\s*(.+?)\s*$", re.IGNORECASE)
-for line in body.splitlines():
-    m = field_re.match(line)
-    if m:
-        token = m.group(1).strip().lower()
-        m2 = re.match(r"^(fable|opus|sonnet)\b", token)
-        if m2:
-            print(m2.group(1))
-            sys.exit(0)
-        break
+model = declared_class(body)
+if model:
+    print(model)
 ')
         [[ -n "$model" ]] && break
     done

@@ -100,6 +100,29 @@ class ValidateChildNonHead(unittest.TestCase):
         self.assertEqual(len(model), 1)
         self.assertEqual(model[0]["severity"], _mod.ERROR)
 
+    def test_decorated_and_alias_model_forms_pass(self):
+        for model_line in (
+            "**Model:** `sonnet`",
+            "**Model:** [sonnet]",
+            "- **Model:** sonnet",
+            "**Suggested Model:** sonnet",
+        ):
+            with self.subTest(model_line=model_line):
+                body = (f"{model_line}\n**Part of epic:** #1307\n"
+                        "**Blocked by:** #1308\n")
+                self.assertEqual(validate_child(body, 1307, is_head=False), [])
+
+    def test_qualified_model_warns_and_uses_leading_token(self):
+        body = (
+            "**Model:** sonnet (escalate to opus if needed)\n"
+            "**Part of epic:** #1307\n"
+            "**Blocked by:** #1308\n"
+        )
+        findings = validate_child(body, 1307, is_head=False)
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0]["severity"], _mod.WARN)
+        self.assertIn("leading token `sonnet`", findings[0]["msg"])
+
     def test_missing_blocked_by_on_non_head_is_warning(self):
         body = "**Model:** opus\n**Part of epic:** #1307\n"
         findings = validate_child(body, 1307, is_head=False)

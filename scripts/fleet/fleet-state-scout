@@ -68,6 +68,7 @@ from fleet_branch_match import (
 # drift; it's mkdir'd in main() and the fetchers rely on that default cache_dir.
 from fleet_gh_poll import DEFAULT_CACHE_DIR as ETAG_DIR
 from fleet_gh_poll import conditional_get
+from fleet_model_field import MODEL_CLASSES, declared_class
 from fleet_stack_base import unsafe_base_reason
 
 
@@ -1030,7 +1031,7 @@ def fetch_task_queue(repo_slug):
         elif "fleet:sonnet" in labels:
             model = "sonnet"
         else:
-            model = _parse_issue_field(body, "Model") or None
+            model = declared_class(body)
 
         # Optional per-task effort override (low|medium|high|xhigh|max).
         # Not a claim-routing class — just a launch parameter the
@@ -1572,8 +1573,6 @@ _SMOKE_SKIP_LABELS = frozenset({
     "fleet:merger-cooldown", "human:needs-fix",
 })
 
-MODEL_TOKEN_RE = re.compile(r"\b(fable|opus|sonnet)\b")
-
 # Valid values for the optional per-task `**Effort:**` field.
 EFFORT_LEVELS = frozenset({"low", "medium", "high", "xhigh", "max"})
 
@@ -1597,7 +1596,8 @@ def _single_blocker_issue(blocked_by):
 
 
 def model_tags(task):
-    return set(MODEL_TOKEN_RE.findall((task.get("model") or "").lower()))
+    model = task.get("model")
+    return {model} if model in MODEL_CLASSES else set()
 
 
 def _area_prefixes(area_str):
