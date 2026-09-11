@@ -216,6 +216,40 @@ TEST_F(PrefabApi, SpawnRejectsNonTableReturn) {
     EXPECT_NE(r.error_.find("did not return a table"), std::string::npos) << r.error_;
 }
 
+// ---- Lua binding: position-argument validation ----------------------------
+
+// `Prefab.spawn` promises nil + an error string for a position that is neither
+// a vec3 userdata nor a table. `is<sol::table>()` answers TRUE for userdata, so
+// a table-first guard admits EVERY userdata: a `vec4` sails past it into
+// `vec3FromLua`, which reads x/y/z off the wrong vector through this fixture's
+// registered `__index` and spawns at (1,2,3) reporting no error at all. Assert
+// the message AND that the accepted shapes still spawn — a guard that rejects
+// vec3 too would satisfy the first half alone. See #2673.
+TEST_F(PrefabApi, LuaSpawnRejectsWrongVectorUserdataPosition) {
+    PrefabFiles f = writeFixtureSet("lua_bad_pos", "return { prefab_version = 1 }\n");
+    IRPrefab::Prefab::registerPrefab("p", f.prefab_path_);
+    auto &lua = m_lua.lua();
+
+    auto rejected = lua.safe_script(
+        R"(local e, err = Prefab.spawn("p", vec4.new(1, 2, 3, 4))
+           return tostring(e) .. "|" .. tostring(err))",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(rejected.valid()) << sol::error{rejected}.what();
+    const std::string outcome = rejected.get<std::string>();
+    EXPECT_EQ(outcome.rfind("nil|", 0), 0u) << outcome;
+    EXPECT_NE(outcome.find("position must be a vec3"), std::string::npos) << outcome;
+
+    for (const char *accepted :
+         {R"(local e, err = Prefab.spawn("p", vec3.new(7, 8, 9)); return tostring(err))",
+          R"(local e, err = Prefab.spawn("p", {x = 7, y = 8, z = 9}); return tostring(err))",
+          R"(local e, err = Prefab.spawn("p", {7, 8, 9}); return tostring(err))"}) {
+        auto result = lua.safe_script(accepted, sol::script_pass_on_error);
+        ASSERT_TRUE(result.valid()) << accepted << " raised: " << sol::error{result}.what();
+        EXPECT_EQ(result.get<std::string>(), "nil") << accepted;
+    }
+}
+
 // ---- happy path: minimum-viable spawn -------------------------------------
 
 TEST_F(PrefabApi, SpawnAttachesPosition) {

@@ -5,12 +5,29 @@
 
 namespace IRScript {
 
+// Every helper below matches its concrete usertype FIRST, then the EXACT Lua
+// table type, then falls through to its documented default. The order is the
+// contract, not a style choice: `sol::object::is<sol::table>()` is TRUE for
+// userdata as well — sol2 treats userdata as table-like — so a table-first
+// check admits every userdata regardless of the usertype test above it. A
+// wrong-typed vector (a `vec2` where a `vec3` is wanted) then reaches the table
+// branch, where it either raises a bare "attempt to index a userdata value"
+// from inside the helper (metatable-less userdata) or silently coerces through
+// the registered usertype's `__index` — both in place of the zero-default the
+// contract promises. `get_type() == sol::type::table` is the check that
+// discriminates (rule in engine/script/CLAUDE.md; see #2673).
+//
+// Component TABLES stay arity-blind by design: `{x = 1, y = 2}` passed where a
+// vec3 is wanted zero-fills `z`. Only the userdata path carries enough type
+// information to discriminate, so callers that need a bad-type ERROR rather
+// than a default still validate at the callsite before calling the helper.
+
 // sol::optional<float> per key — get_or<T> overload resolution is ambiguous with mixed
 // string/integer key types.
 inline IRMath::vec3 vec3FromLua(sol::object obj) {
     if (obj.is<IRMath::vec3>())
         return obj.as<IRMath::vec3>();
-    if (obj.is<sol::table>()) {
+    if (obj.get_type() == sol::type::table) {
         sol::table t = obj.as<sol::table>();
         auto pickFloat = [&t](const char *key, int idx) -> float {
             if (sol::optional<float> v = t[key])
@@ -30,7 +47,7 @@ inline IRMath::vec3 vec3FromLua(sol::object obj) {
 inline IRMath::vec2 vec2FromLua(sol::object obj) {
     if (obj.is<IRMath::vec2>())
         return obj.as<IRMath::vec2>();
-    if (obj.is<sol::table>()) {
+    if (obj.get_type() == sol::type::table) {
         sol::table t = obj.as<sol::table>();
         auto pickFloat = [&t](const char *key, int idx) -> float {
             if (sol::optional<float> v = t[key])
@@ -57,7 +74,7 @@ inline IRMath::vec2 vec2FromLua(sol::object obj) {
 inline IRMath::vec4 vec4FromLua(sol::object obj) {
     if (obj.is<IRMath::vec4>())
         return obj.as<IRMath::vec4>();
-    if (obj.is<sol::table>()) {
+    if (obj.get_type() == sol::type::table) {
         sol::table t = obj.as<sol::table>();
         auto pickFloat = [&t](const char *key, const char *altKey, int idx) -> float {
             if (sol::optional<float> v = t[key])
@@ -85,7 +102,7 @@ inline IRMath::vec4 vec4FromLua(sol::object obj) {
 inline IRMath::ivec3 ivec3FromLua(sol::object obj) {
     if (obj.is<IRMath::ivec3>())
         return obj.as<IRMath::ivec3>();
-    if (obj.is<sol::table>()) {
+    if (obj.get_type() == sol::type::table) {
         sol::table t = obj.as<sol::table>();
         auto pickInt = [&t](const char *key, int idx) -> int {
             if (sol::optional<int> v = t[key])
@@ -107,7 +124,7 @@ inline IRMath::ivec3 ivec3FromLua(sol::object obj) {
 inline IRMath::Color colorFromLua(sol::object obj) {
     if (obj.is<IRMath::Color>())
         return obj.as<IRMath::Color>();
-    if (obj.is<sol::table>()) {
+    if (obj.get_type() == sol::type::table) {
         sol::table t = obj.as<sol::table>();
         auto pickByte = [&t](const char *key, int idx) -> int {
             if (sol::optional<int> v = t[key])
@@ -135,7 +152,7 @@ inline IRMath::Color colorFromLua(sol::object obj) {
 inline IRMath::vec4 quatFromLua(sol::object obj) {
     if (obj.is<IRMath::vec4>())
         return obj.as<IRMath::vec4>();
-    if (obj.is<sol::table>()) {
+    if (obj.get_type() == sol::type::table) {
         sol::table t = obj.as<sol::table>();
         auto pickFloat = [&t](const char *key, int idx, float fallback) -> float {
             if (sol::optional<float> v = t[key])

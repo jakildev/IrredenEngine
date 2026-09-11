@@ -297,6 +297,15 @@ class IComponentDataLuaTyped : public IREntity::IComponentData {
         }
     }
 
+    // Every arm leaves the column UNCHANGED on a type mismatch. The vector arms
+    // must therefore match the usertype first and the EXACT Lua table type
+    // second: `is<sol::table>()` is true for userdata, so a table-first test
+    // admits every wrong-typed userdata and hands it to the helper, which
+    // zero-defaults it into the column. Silently zeroing a field is not "no
+    // write". See #2673.
+    //
+    // Known deviation: the `sol::table` arm below still shape-checks
+    // table-first, and so still admits userdata. Tracked in #3178.
     void writeFieldAt(int row, int fieldIdx, const sol::object &value) {
         std::visit(
             [&](auto &v) {
@@ -321,13 +330,13 @@ class IComponentDataLuaTyped : public IREntity::IComponentData {
                     if (value.is<sol::table>())
                         v[row] = value.as<sol::table>();
                 } else if constexpr (std::is_same_v<Elem, IRMath::vec3>) {
-                    if (value.is<sol::table>() || value.is<IRMath::vec3>())
+                    if (value.is<IRMath::vec3>() || value.get_type() == sol::type::table)
                         v[row] = vec3FromLua(value);
                 } else if constexpr (std::is_same_v<Elem, IRMath::ivec3>) {
-                    if (value.is<sol::table>() || value.is<IRMath::ivec3>())
+                    if (value.is<IRMath::ivec3>() || value.get_type() == sol::type::table)
                         v[row] = ivec3FromLua(value);
                 } else if constexpr (std::is_same_v<Elem, IRMath::vec4>) {
-                    if (value.is<sol::table>() || value.is<IRMath::vec4>())
+                    if (value.is<IRMath::vec4>() || value.get_type() == sol::type::table)
                         v[row] = quatFromLua(value);
                 }
             },

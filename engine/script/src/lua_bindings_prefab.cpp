@@ -28,7 +28,7 @@ void bindPrefabApi(LuaScript &script) {
         sol::state_view sv{script.lua().lua_state()};
         if (positionObj.valid() && positionObj.get_type() != sol::type::lua_nil &&
             positionObj.get_type() != sol::type::none && !positionObj.is<IRMath::vec3>() &&
-            !positionObj.is<sol::table>()) {
+            positionObj.get_type() != sol::type::table) {
             return {sol::make_object(sv, sol::lua_nil),
                     sol::make_object(
                         sv, std::string{"Prefab.spawn: position must be a vec3 or {x,y,z} table"}
