@@ -21,6 +21,11 @@ SCRIPT_DIR=$(cd "$(dirname "$0")/.." && pwd)
 source "$SCRIPT_DIR/tests/lib_assert.sh"
 FLEET_CLAIM="$SCRIPT_DIR/fleet-claim"
 
+# `fleet-claim decline` reads these values to describe the caller. This suite's
+# unknown-role fallback case cannot distinguish an intentionally unknown caller
+# from a fleet iteration that exported its own role, so keep the harness clean.
+unset FLEET_ROLE FLEET_ROLE_MODEL
+
 if [[ ! -x "$FLEET_CLAIM" ]]; then
     echo "test setup: fleet-claim not found at $FLEET_CLAIM" >&2
     exit 1
@@ -126,5 +131,14 @@ rc=0; "$FLEET_CLAIM" decline task >/dev/null 2>&1 || rc=$?
 assert_eq "$rc" "2" "decline with no number exits 2"
 rc=0; "$FLEET_CLAIM" decline >/dev/null 2>&1 || rc=$?
 assert_eq "$rc" "2" "bare decline exits 2"
+
+if [[ -z "${FLEET_TEST_SELFCHECK:-}" ]]; then
+    echo "T9: suite is hermetic against ambient fleet role variables"
+    if ! FLEET_TEST_SELFCHECK=1 FLEET_ROLE=worker FLEET_ROLE_MODEL=opus \
+        bash "$0" >"$TMPROOT/selfcheck.log" 2>&1; then
+        cat "$TMPROOT/selfcheck.log" >&2
+        exit 1
+    fi
+fi
 
 summarize "fleet-claim decline tests"
