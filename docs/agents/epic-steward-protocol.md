@@ -117,8 +117,8 @@ file, or proposal answer suggests:
 
 The umbrella issue body's `## Children` checklist (`- [ ] #N` /
 `- [x] #N`, one child per line) is the **source of truth** for epic
-membership. Plan files, summary comments, and `Part of epic:` back-refs
-are inputs to healing, never the authority.
+membership. Summary comments and `Part of epic:` back-refs are inputs to
+healing, never the authority.
 
 **Heal-on-first-claim.** Pre-protocol epics may have no checklist (or a
 stale one). On first `steward-claim` of an umbrella: build the union of
@@ -137,8 +137,8 @@ describe (tick, append, heal).
 ## Loop behavior
 
 Each invocation is one iteration in a fresh process. Durable state lives
-in GitHub (labels, umbrella bodies/comments) and repo-committed plan
-files — never in a session.
+entirely in GitHub — labels, umbrella bodies, and the `## Steward ledger`
+/ `## Plan corrections` comments. Never in a session, never in the repo.
 
 0. **Heartbeat.** See [`FLEET-RUNTIME.md § Heartbeat`](FLEET-RUNTIME.md#heartbeat--step-0)
    (the helper argument is your **worktree basename**, from

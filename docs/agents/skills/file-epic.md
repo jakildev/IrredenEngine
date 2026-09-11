@@ -398,8 +398,9 @@ child for them (adds `fleet:needs-plan`, strips stale stage labels, keeps
 ### 8. Report
 
 Reply with: the umbrella issue URL + epic-label confirmation; the child
-issue URLs; the umbrella plan-file path; the per-child `## Plan` comment links; the
-validate-stack result (must pass); and what the user still must do
+issue URLs; the umbrella's `## Plan` and `## Steward ledger` comment
+links; the per-child `## Plan` comment links; the validate-stack result
+(must pass); and what the user still must do
 (triage each child individually with `human:approved` — the queue-manager
 won't auto-approve).
 

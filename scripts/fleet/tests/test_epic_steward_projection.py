@@ -147,8 +147,8 @@ class NormalizeOp(unittest.TestCase):
         self.assertEqual(project_epic_steward(after), [])
 
     def test_legacy_epic_without_children_heading_emits_nothing(self):
-        # ~17 pre-protocol epics have neither checklist nor plan file; they
-        # must not hold the projection non-empty forever.
+        # ~17 pre-protocol epics carry no `## Children` heading; they must
+        # not hold the projection non-empty forever.
         self.assertEqual(
             project_epic_steward(_state(epics=[_epic(10)])), [])
 
