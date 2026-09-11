@@ -246,11 +246,11 @@ unset _env_worker _worker_cap _dep_opus _dep_sonnet \
       _env_opus_reviewer _env_queue_manager _env_merger _env_smoke_worker \
       _env_epic_steward
 # How a per-role cap binds. `elastic` (default): the cap is a reservation —
-# a role at cap still launches into free panes, minus one held back for
-# every OTHER role with a standing trigger and headroom under its own cap,
-# so a lone busy lane spreads across an idle pool while contended lanes
-# still get their share. `strict`: the cap is a ceiling. The fable cap and
-# the pool size are hard in both modes.
+# every launch holds back one free pane for each OTHER role with a standing
+# trigger and headroom under its own cap, and a role at its cap may take
+# what that leaves over, so a lone busy lane spreads across an idle pool
+# while contended lanes still get their share. `strict`: the cap is a
+# ceiling. The fable cap and the pool size are hard in both modes.
 CAP_MODE="${_env_cap_mode:-${FLEET_CAP_MODE:-elastic}}"
 if [[ "$CAP_MODE" != "elastic" && "$CAP_MODE" != "strict" ]]; then
     printf '[%s dispatcher] FLEET_CAP_MODE=%q is not elastic|strict; falling back to elastic\n' \
@@ -2266,11 +2266,13 @@ count_free_panes() {
     printf '%s\n' "$n"
 }
 
-# Panes a role at its cap must leave free this tick under the elastic cap:
-# one per OTHER dispatched role that has a standing trigger and is still
-# under its own cap (an uncapped role counts as under). A role with nothing
-# pending, or one that is itself at cap, reserves nothing — the caps only
-# spread panes out when several lanes want them at once.
+# Panes a role must leave free this tick under the elastic cap: one per
+# OTHER dispatched role that has a standing trigger and is still under its
+# own cap (an uncapped role counts as under). A role with nothing pending,
+# or one that is itself at cap, reserves nothing — the caps only spread
+# panes out when several lanes want them at once. Both admission paths in
+# dispatch_role consult this: an at-cap role may take only what is left
+# over, an under-cap one the same but never fewer than one pane.
 count_panes_reserved_for_other_roles() {
     local role="$1" other other_cap reserved=0
     for other in "${DISPATCHED_ROLES[@]}"; do
@@ -2339,13 +2341,13 @@ dispatch_role() {
 
     # Per-role concurrency cap on (in-flight + reserved). Under
     # CAP_MODE=strict it is a ceiling: defer while at cap. Under elastic it
-    # is a reservation: a role at cap still launches into free panes, minus
-    # one held back for every OTHER role with a standing trigger and headroom
-    # under its own cap (count_panes_reserved_for_other_roles) — a role with
-    # nothing pending reserves nothing. Either way the trigger stays in place
-    # so the next tick re-evaluates once an iteration finishes, a reservation
-    # releases, or a pane frees. Logged once per cap-held window to avoid
-    # spamming.
+    # is a reservation that binds EVERY launch, at cap or under it: this
+    # role may take free panes, minus one held back for every OTHER role
+    # with a standing trigger and headroom under its own cap
+    # (count_panes_reserved_for_other_roles) — a role with nothing pending
+    # reserves nothing. Either way the trigger stays in place so the next
+    # tick re-evaluates once an iteration finishes, a reservation releases,
+    # or a pane frees. Logged once per cap-held window to avoid spamming.
     local cap="${ROLE_CONCURRENCY[$role]:-0}"
     # Remaining cap headroom bounds this tick's fan-out. Pre-pool this was
     # implicit — a role could never out-dispatch its dedicated pane count —
@@ -2360,6 +2362,30 @@ dispatch_role() {
         active=$(count_active_for_role "$role")
         if (( active < cap )); then
             role_headroom=$(( cap - active ))
+            # The reservation binds an under-cap fan-out too. Roles are
+            # dispatched sequentially within a tick, so a pane one role held
+            # back is simply taken by the next role in DISPATCHED_ROLES
+            # order unless every launch honours the same rule: an at-cap
+            # worker leaving two panes for pending sonnet- and opus-reviewer
+            # triggers buys the opus reviewer nothing if the sonnet reviewer
+            # (cap 4) may then take both.
+            #
+            # Floor of one: this role is WITHIN its cap, so it is entitled to
+            # launch. Without the floor two under-cap roles each reserving a
+            # pane for the other would both defer while a pane sat idle. An
+            # at-cap role has no such entitlement (it is asking for a pane it
+            # has no budget for), which is why the branch below floors at
+            # zero instead. role_headroom==1 cannot be clamped below the
+            # floor, so the reservation walk — one count_active_for_role per
+            # pending role, each a tmux walk — is only paid above that.
+            if [[ "$CAP_MODE" == "elastic" ]] && (( role_headroom > 1 )); then
+                local free reserved allowance
+                free=$(count_free_panes "$idle_panes")
+                reserved=$(count_panes_reserved_for_other_roles "$role")
+                allowance=$(( free - reserved ))
+                (( allowance < 1 )) && allowance=1
+                (( role_headroom > allowance )) && role_headroom=$allowance
+            fi
         else
             local free reserved=0
             free=$(count_free_panes "$idle_panes")

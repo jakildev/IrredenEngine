@@ -137,14 +137,16 @@
 # too much credit budget.
 #
 # FLEET_CAP_MODE decides how a cap binds:
-#   elastic (default) — the cap is a reservation, not a ceiling. A role at
-#     its cap still launches into free panes, minus one held back for every
-#     OTHER role that has pending work (a standing trigger) and headroom
-#     under its own cap; a role with nothing pending reserves nothing. So a
+#   elastic (default) — the cap is a reservation, not a ceiling. Every
+#     launch leaves one free pane for each OTHER role that has pending work
+#     (a standing trigger) and headroom under its own cap; a role with
+#     nothing pending, or one already at its own cap, reserves nothing. So a
 #     lone busy lane spreads across an idle pool, and the caps only spread
-#     panes out when several lanes want them at once. Such launches log
+#     panes out when several lanes want them at once. A role AT its cap may
+#     take only what that reservation leaves over — those launches log
 #     `over-cap=<cap>` on their dispatch line (fleet-health tallies them per
-#     role).
+#     role). A role UNDER its cap is bound by the same reservation, but never
+#     below one pane: it is within budget, so it is always entitled to launch.
 #   strict — the cap is a hard ceiling; a role at cap defers its trigger.
 # FLEET_CONCURRENCY_MODEL_FABLE and the pool size are hard in both modes.
 # FLEET_CAP_MODE=elastic

@@ -15,6 +15,9 @@
 #   - the fable cap still holds in elastic mode (cap-blocked fable defers; a
 #     non-fable task is served over cap instead)
 #   - a lane under cap fills its cap first, then spreads over it next tick
+#   - the reservation binds an UNDER-cap lane too, across a sequential
+#     multi-role tick (worker at cap, sonnet reviewer cap 4, opus reviewer
+#     cap 1): every pending under-cap role still gets a pane
 
 set -euo pipefail
 unset FLEET_RUNTIMES FLEET_CROSS_PROVIDER_REVIEW FLEET_WORKER_RUNTIME FLEET_CAP_MODE
@@ -79,6 +82,9 @@ chmod +x "$STUB_BIN/fleet-claim"
 # e.g. "%2 %3") report `claude` in the foreground; the rest sit at an idle
 # shell. pgrep exits 1 so no idle pane reads as running a wrapper.
 export BUSY_PANES=""
+# Pool size the tmux stub reports. Three panes is enough for the
+# single-role cases; the sequential multi-role case (T12) widens it.
+export POOL_PANES=3
 export SEND_LOG="$TMPROOT/send-keys.log"
 cat > "$STUB_BIN/tmux" <<'TMUXEOF'
 #!/usr/bin/env bash
@@ -86,7 +92,7 @@ sub="$1"; shift
 case "$sub" in
     has-session) exit 0 ;;
     list-panes)
-        for i in 1 2 3; do
+        for (( i = 1; i <= ${POOL_PANES:-3}; i++ )); do
             cmd=zsh
             [[ " ${BUSY_PANES:-} " == *" %$i "* ]] && cmd=claude
             printf '%%%s|pool|%s\n' "$i" "$cmd"
@@ -131,8 +137,10 @@ inflight() { # $1 = role, $2 = class, $3 = target, $4 = pane number
 # Fresh state for a case: no triggers, no conf, and only an in-flight worker
 # on %3 — which is what holds the cap=1 worker lane AT its cap.
 reset() {
-    rm -f "$FLEET_STATE_DIR/dispatch"/*.json "$FLEET_STATE_DIR/triggers"/*
+    rm -f "$FLEET_STATE_DIR/dispatch"/*.json "$FLEET_STATE_DIR/triggers"/* \
+        "$FLEET_STATE_DIR/projections"/*.json
     : > "$FLEET_CONF"
+    POOL_PANES=3
     inflight worker opus task:engine:10 3
 }
 
@@ -143,6 +151,15 @@ tick() { # $1 = tick count, rest = env assignments
     : > "$SEND_LOG"
     : > "$FLEET_STATE_DIR/triggers/worker"
     env "$@" "$DISPATCHER" --dispatch-role worker "$n" 2>&1 >/dev/null
+}
+# One tick of <role>, with the triggers already on disk (the caller sets
+# them). Separate processes stand in for the live tick's sequential walk of
+# DISPATCHED_ROLES: every cross-role signal the admission rule reads — the
+# dispatch records each launch writes, the trigger files — is on disk in
+# FLEET_STATE_DIR, so the second role sees exactly what it would in-process.
+tick_role() { # $1 = role, rest = env assignments
+    local role="$1"; shift
+    env "$@" "$DISPATCHER" --dispatch-role "$role" 1 2>&1 >/dev/null
 }
 count_dispatches() { printf '%s\n' "$1" | grep -c 'dispatching '; }
 trigger_kept() { [[ -f "$FLEET_STATE_DIR/triggers/worker" ]]; }
@@ -265,5 +282,60 @@ assert_contains "$first" "dispatching worker -> %1 [class=opus effort=high targe
     "first tick fills the cap slot with no over-cap stamp"
 assert_contains "$second" "dispatching worker -> %2 [class=opus effort=high target=task:engine:12 over-cap=1] runtime=claude" \
     "second tick launches the next task over cap"
+
+echo "T12: sequential multi-role tick — every pending under-cap role keeps a pane"
+# The reservation is only worth what the NEXT role in the tick honours. Four
+# panes: %4 holds the in-flight worker (cap 1, so that lane is at cap), %1-%3
+# free. Worker, sonnet-reviewer (cap 4) and opus-reviewer (cap 1) all have a
+# standing trigger, and the dispatcher walks them in that DISPATCHED_ROLES
+# order. Each lane is given more claimable work than the panes it may take,
+# so what bounds a launch count here is the admission rule, not the slice.
+reset
+POOL_PANES=4
+rm -f "$FLEET_STATE_DIR/dispatch"/*.json
+inflight worker opus task:engine:10 4
+write_slice worker "$TWO_TASKS"
+write_slice sonnet-reviewer '{"candidate_prs":[
+  {"number":3001,"repo":"engine","labels":[]},
+  {"number":3002,"repo":"engine","labels":[]}]}'
+write_slice opus-reviewer '{"flagged_prs":[
+  {"number":3003,"repo":"engine","labels":[]}],"plan_review":[]}'
+: > "$FLEET_STATE_DIR/triggers/worker"
+: > "$FLEET_STATE_DIR/triggers/sonnet-reviewer"
+: > "$FLEET_STATE_DIR/triggers/opus-reviewer"
+
+out=$(tick_role worker BUSY_PANES='%4' POOL_PANES=4)
+assert_eq "$(count_dispatches "$out")" "1" \
+    "worker at cap takes one of three free panes (two reserved for the reviewers)"
+assert_contains "$out" "over-cap=1" "the worker launch is over cap"
+
+out=$(tick_role sonnet-reviewer BUSY_PANES='%4' POOL_PANES=4 FLEET_CONCURRENCY_SONNET_REVIEWER=4)
+assert_eq "$(count_dispatches "$out")" "1" \
+    "under-cap sonnet reviewer (cap 4, 2 free panes, 2 PRs) still leaves the opus reviewer a pane"
+assert_absent "$out" "over-cap=" "an under-cap launch is not stamped over-cap"
+
+out=$(tick_role opus-reviewer BUSY_PANES='%4' POOL_PANES=4)
+assert_eq "$(count_dispatches "$out")" "1" \
+    "the opus reviewer gets the pane the reservation held for it"
+
+echo "T13: the under-cap clamp never falls below one pane"
+# Two under-cap roles, one free pane, each reserving for the other: whoever
+# the tick reaches first must still launch. Without the entitlement floor
+# both defer and the pane sits idle forever.
+reset
+POOL_PANES=4
+rm -f "$FLEET_STATE_DIR/dispatch"/*.json
+inflight worker opus task:engine:10 2
+inflight worker opus task:engine:13 3
+write_slice sonnet-reviewer '{"candidate_prs":[
+  {"number":3001,"repo":"engine","labels":[]},
+  {"number":3002,"repo":"engine","labels":[]}]}'
+write_slice opus-reviewer '{"flagged_prs":[
+  {"number":3003,"repo":"engine","labels":[]}],"plan_review":[]}'
+: > "$FLEET_STATE_DIR/triggers/sonnet-reviewer"
+: > "$FLEET_STATE_DIR/triggers/opus-reviewer"
+out=$(tick_role sonnet-reviewer BUSY_PANES='%2 %3 %4' POOL_PANES=4 FLEET_CONCURRENCY_SONNET_REVIEWER=4)
+assert_eq "$(count_dispatches "$out")" "1" \
+    "one free pane, one other pending under-cap role -> the first role still launches"
 
 summarize "fleet-dispatcher elastic cap tests"
