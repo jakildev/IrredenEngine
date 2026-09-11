@@ -546,6 +546,64 @@ TEST_F(LuaComponentTest, VectorFieldWriteIgnoresWrongTypedUserdata) {
     EXPECT_EQ((*vec3Col)[row], IRMath::vec3(7.0f, 8.0f, 9.0f));
 }
 
+// The `sol::table` arm of `writeFieldAt` holds the same no-write-on-mismatch
+// line as the scalar and vector arms. It needs a registered usertype fixture
+// because only a userdata can reach the arm wrongly: a userdata satisfies
+// `is<sol::table>()`, so a table-first shape check would accept it and
+// overwrite the column with a reference that reads back as userdata. The
+// surviving `marker` field is what proves the column was left alone — the
+// write neither raises nor changes the column's variant alternative.
+TEST_F(LuaComponentTest, TableFieldWriteIgnoresUserdata) {
+    auto &lua = m_lua.lua();
+    lua.new_usertype<IRMath::vec3>(
+        "vec3",
+        sol::constructors<IRMath::vec3(float, float, float)>(),
+        "x",
+        &IRMath::vec3::x,
+        "y",
+        &IRMath::vec3::y,
+        "z",
+        &IRMath::vec3::z
+    );
+    ASSERT_TRUE(lua.safe_script(
+                       "C_TableWrite = IRComponent.register('TableWriteBody', {\n"
+                       "    payload = { type = 'table', default = {} },\n"
+                       "})"
+    )
+                    .valid());
+    const IREntity::ComponentId componentId =
+        m_entity_manager.getComponentTypeByName("TableWriteBody");
+    ASSERT_NE(componentId, IREntity::kNullComponent);
+
+    IREntity::EntityId e = IREntity::createEntity();
+    m_entity_manager.addComponentDynamic(e, componentId);
+    auto [data, row] = m_entity_manager.getComponentDataAndRow(e, componentId);
+    ASSERT_NE(data, nullptr);
+    auto *typed = static_cast<IRScript::IComponentDataLuaTyped *>(data);
+
+    const int payloadField = typed->findFieldIndex("payload");
+    ASSERT_GE(payloadField, 0);
+    const auto *tableCol = std::get_if<std::vector<sol::table>>(&typed->columnAt(payloadField));
+    ASSERT_NE(tableCol, nullptr);
+
+    // A real table writes through, so the guard discriminates rather than
+    // rejecting every value.
+    typed->writeFieldAt(
+        row,
+        payloadField,
+        sol::make_object(lua, lua.create_table_with("marker", 7))
+    );
+    sol::object stored = typed->readFieldAt(row, payloadField, lua);
+    ASSERT_EQ(stored.get_type(), sol::type::table);
+    EXPECT_EQ(stored.as<sol::table>().get<sol::optional<int>>("marker"), 7);
+
+    typed->writeFieldAt(row, payloadField, sol::make_object(lua, IRMath::vec3(1, 2, 3)));
+    sol::object afterUserdata = typed->readFieldAt(row, payloadField, lua);
+    EXPECT_EQ(afterUserdata.get_type(), sol::type::table) << "vec3 userdata write landed";
+    EXPECT_EQ(afterUserdata.as<sol::table>().get<sol::optional<int>>("marker"), 7)
+        << "stored table was replaced by the userdata write";
+}
+
 TEST_F(LuaComponentTest, Vec4FieldsAreNotModifierTargetable) {
     auto &lua = m_lua.lua();
     auto result = lua.safe_script(
