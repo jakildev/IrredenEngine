@@ -52,13 +52,79 @@ class Tokenizer(unittest.TestCase):
         self.assertEqual(lines('"""doc\n#1234 in a docstring\n"""\nx = 1\n', "python"), [])
         self.assertEqual(lines("#!/usr/bin/env python3\nx = 1\n", "python"), [])
 
-    def test_hash(self):
-        self.assertEqual(lines('local value = "-- #1234"\n', "hash"), [])
-        self.assertEqual(lines("echo '#1234' # #4321\n", "hash"), [1])
-        self.assertEqual(lines('x="a\\"#1234"\n', "hash"), [])
-        self.assertEqual(lines("echo 'a\\' # #1234\n", "hash"), [1],
+    def test_shell(self):
+        self.assertEqual(lines("# see #1234\n", "shell"), [1])
+        self.assertEqual(lines("echo hi  # #1234\n", "shell"), [1])
+        self.assertEqual(lines("echo '#1234' # #4321\n", "shell"), [1])
+        self.assertEqual(lines('x="a\\"#1234"\n', "shell"), [])
+        self.assertEqual(lines("echo 'a\\' # #1234\n", "shell"), [1],
                          "a shell single quote takes no escapes")
-        self.assertEqual(lines("set(X 1234) # #1234\n", "hash"), [1])
+        self.assertEqual(lines("x=$'a\\'b' # #1234\n", "shell"), [1],
+                         "`$'...'` is the one single-quoted form that does")
+        self.assertEqual(lines("url=https://h/pull#1234\n", "shell"), [],
+                         "a `#` mid-word opens no comment")
+        self.assertEqual(lines("echo \\#1234\n", "shell"), [])
+        self.assertEqual(lines("x='\n#1234\n'\necho\n", "shell"), [],
+                         "a shell quoted string spans lines")
+
+    def test_shell_here_documents_are_not_comments(self):
+        self.assertEqual(lines("cat <<'EOF'\n#1234\nEOF\n", "shell"), [])
+        self.assertEqual(lines("cat <<EOF\n#1234\nEOF\necho done\n", "shell"), [])
+        self.assertEqual(lines('cat <<"EOF"\n#1234\nEOF\n', "shell"), [])
+        self.assertEqual(lines("\tcat <<-EOF\n\t#1234\n\tEOF\n", "shell"), [])
+        self.assertEqual(lines("cmd <<A <<B\n#1111\nA\n#2222\nB\n", "shell"), [],
+                         "two documents open on one line, bodies in order")
+        self.assertEqual(lines('grep x <<< "$v" # #1234\n', "shell"), [1],
+                         "`<<<` is a here-string, not a here-document")
+        self.assertEqual(lines("n=$(( 1 << 3 ))\n# #1234\n3\n", "shell"), [2],
+                         "an arithmetic left shift opens no here-document, so "
+                         "it cannot swallow the lines after it")
+
+    def test_shell_embedded_source_is_still_scanned(self):
+        self.assertEqual(lines("python3 <<'PY'\n# see #1234\nPY\n", "shell"), [2])
+        self.assertEqual(lines("python3 <<'PY'\nx = \"#1234\"\nPY\n", "shell"), [])
+        self.assertEqual(lines("A=1 \\\n  python3 <<'PY'\n# #1234\nPY\n", "shell"), [3],
+                         "the command word may sit on a continued line")
+        self.assertEqual(
+            lines("cat > s <<'EOF'\n#!/usr/bin/env bash\n# see #1234\nEOF\n", "shell"),
+            [3], "a document whose body is a script declares itself by shebang")
+        self.assertEqual(
+            lines("cat > s.bat <<'EOF'\n@echo off\nrem #1234\nEOF\n", "shell"), [])
+        self.assertEqual(lines("python3 -c '\n# see #1234\n'\n", "shell"), [2])
+        self.assertEqual(lines("python3 -c '\nx = \"#1234\"\n'\n", "shell"), [])
+        self.assertEqual(lines("msg='release #1234'\n", "shell"), [])
+        self.assertEqual(lines("grep -c '#1234' f\n", "shell"), [],
+                         "`-c` on a non-interpreter is not a program string")
+
+    def test_cmake(self):
+        self.assertEqual(lines("set(X 1234) # #1234\n", "cmake"), [1])
+        self.assertEqual(lines("set(message [=[\n#1234\n]=])\n", "cmake"), [],
+                         "a bracket argument is a value, not a comment")
+        self.assertEqual(lines('set(X "\n#1234\n")\n', "cmake"), [],
+                         "a quoted argument spans lines")
+        self.assertEqual(lines("#[[\nsee #1234 here\n]]\nset(X 1)\n", "cmake"), [2],
+                         "a bracket comment is a comment for every line it spans")
+        self.assertEqual(lines('#[[ note ]] set(X "#1234")\n', "cmake"), [],
+                         "a bracket comment ends where its bracket does, so the "
+                         "code after it on the same line is still code")
+
+    def test_powershell(self):
+        self.assertEqual(lines("$x = 1 # #1234\n", "powershell"), [1])
+        self.assertEqual(lines("<#\nsee #1234 here\n#>\n$x = 1\n", "powershell"), [2],
+                         "a block comment is a comment for every line it spans")
+        self.assertEqual(lines('<# note #> $x = "#1234"\n', "powershell"), [],
+                         "a block comment ends where `#>` does, so the code "
+                         "after it on the same line is still code")
+        self.assertEqual(lines('$t = @"\nhe said "#1234" here\n"@\n$x = 1\n',
+                                "powershell"), [],
+                         "a here-string is a value, not a comment, and an "
+                         "unpaired quote inside it does not end it")
+        self.assertEqual(lines("$t = @'\nit's #1234 here\n'@\n$x = 1\n",
+                               "powershell"), [])
+
+    def test_starlark_reads_as_python(self):
+        self.assertEqual(lines('"""doc\n#1234\n"""\nx = 1\n', "python"), [])
+        self.assertEqual(lines("# #1234\nx = 1\n", "python"), [1])
 
     def test_dash(self):
         self.assertEqual(lines("local n = 1 -- #1234\n", "dash"), [1])
@@ -77,10 +143,10 @@ class Families(unittest.TestCase):
             "engine/render/src/metal/metal_cocoa_bridge.mm": "slash",
             "a.glsl": "slash", "a.metal": "slash",
             "a.py": "python",
-            "a.sh": "hash", "scripts/fleet/completions/fleet-run.bash": "hash",
-            "scripts/fleet/completions/irreden-fleet.zsh": "hash",
-            "a.ps1": "hash", "a.cmake": "hash", "x/CMakeLists.txt": "hash",
-            "a.bzl": "hash", "BUILD.bazel": "hash",
+            "a.sh": "shell", "scripts/fleet/completions/fleet-run.bash": "shell",
+            "scripts/fleet/completions/irreden-fleet.zsh": "shell",
+            "a.ps1": "powershell", "a.cmake": "cmake", "x/CMakeLists.txt": "cmake",
+            "a.bzl": "python", "BUILD.bazel": "python",
             "a.lua": "dash",
         }
         for rel, family in expected.items():
@@ -132,7 +198,7 @@ class Scanning(unittest.TestCase):
     def test_extensionless_interpreter_files_are_scanned(self):
         self.add("engine/tools/bin/ir-build", "#!/usr/bin/env bash\nset -e # #1234\n")
         self.add("scripts/fleet/fleet-up", "#!/usr/bin/env python3\nx = '#1234'\n")
-        self.assertEqual(lint.comment_family("engine/tools/bin/ir-build"), "hash")
+        self.assertEqual(lint.comment_family("engine/tools/bin/ir-build"), "shell")
         self.assertEqual(lint.comment_family("scripts/fleet/fleet-up"), "python")
         rc, out, _ = self.run_main()
         self.assertEqual(rc, 1)

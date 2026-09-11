@@ -22,9 +22,16 @@ visible in the diff.
 Population: git-tracked C, C++, Objective-C++, shader, Lua, Python, shell,
 PowerShell, Starlark, and CMake sources, plus every tracked extension-less
 file whose first line names an interpreter. Vendored and generated trees are
-skipped. Comments are found by a per-family tokenizer that steps over string
-literals, character literals, raw strings, and block comments, so a
-ticket-shaped value inside a string is never a hit.
+skipped.
+
+Comments are found by a tokenizer per comment syntax, never one shared across
+languages: what is *not* a comment is what differs between them. Each steps
+over that language's string literals, character literals, raw strings, and
+block comments, so a ticket-shaped value in a string is never a hit — and the
+shell and CMake tokenizers additionally step over here-documents, `-c` program
+strings, and bracket arguments, whose `#` opens nothing. A here-document that
+feeds an interpreter, or whose body opens with a shebang, is that language's
+source rather than data, so its comments are scanned as such.
 
 Exit 0: no file exceeds its budget. Exit 1: at least one does, printed as
 `file:line: <comment>`; the summary names the baseline command to run after a
@@ -42,10 +49,13 @@ BASELINE = Path(__file__).resolve().with_name("lint_comment_refs_baseline.json")
 
 SLASH_COMMENT_EXTS = {".hpp", ".cpp", ".h", ".hh", ".hxx", ".cc", ".cxx", ".c",
                       ".tpp", ".inl", ".mm", ".m", ".glsl", ".metal"}
-PYTHON_EXTS = {".py"}
-HASH_COMMENT_EXTS = {".sh", ".bash", ".zsh", ".ps1", ".cmake", ".bzl", ".bazel"}
+# Starlark is Python's syntax, down to the triple-quoted string.
+PYTHON_EXTS = {".py", ".bzl", ".bazel"}
+SHELL_COMMENT_EXTS = {".sh", ".bash", ".zsh"}
+POWERSHELL_COMMENT_EXTS = {".ps1"}
+CMAKE_COMMENT_EXTS = {".cmake"}
+CMAKE_COMMENT_NAMES = {"CMakeLists.txt"}
 DASH_COMMENT_EXTS = {".lua"}
-HASH_COMMENT_NAMES = {"CMakeLists.txt"}
 SKIP_PREFIXES = (
     "engine/render/third_party/",
     "engine/render/include/irreden/render/gl_wrap/",
@@ -67,8 +77,11 @@ def tracked_files():
 
 
 def comment_family(rel):
-    """`slash`, `python`, `hash`, or `dash` for a file the ratchet covers,
-    else None."""
+    """`slash`, `python`, `shell`, `cmake`, `powershell`, or `dash` for a file
+    the ratchet covers, else None. Each family is one comment syntax: families
+    do not share a tokenizer, because what is not a comment differs between
+    them (a shell here-document, a CMake bracket argument, a PowerShell
+    here-string all carry `#` that starts nothing)."""
     if rel.startswith(SKIP_PREFIXES):
         return None
     p = Path(rel)
@@ -76,8 +89,12 @@ def comment_family(rel):
         return "slash"
     if p.suffix in PYTHON_EXTS:
         return "python"
-    if p.suffix in HASH_COMMENT_EXTS or p.name in HASH_COMMENT_NAMES:
-        return "hash"
+    if p.suffix in SHELL_COMMENT_EXTS:
+        return "shell"
+    if p.suffix in POWERSHELL_COMMENT_EXTS:
+        return "powershell"
+    if p.suffix in CMAKE_COMMENT_EXTS or p.name in CMAKE_COMMENT_NAMES:
+        return "cmake"
     if p.suffix in DASH_COMMENT_EXTS:
         return "dash"
     if p.suffix == "" and not p.name.startswith("."):
@@ -86,32 +103,45 @@ def comment_family(rel):
                 first = f.readline()
         except OSError:
             return None
-        if INTERPRETER_RE.match(first):
-            return "python" if "python" in first else "hash"
+        return _shebang_family(first)
     return None
 
 
-def _skip_quoted(text, i, quote, escapes):
+def _skip_quoted(text, i, quote, escape="\\", multiline=False):
     """Index just past the string that opens at text[i] (a `quote` char).
-    An unterminated string ends at the newline."""
+    `escape` is the literal that quotes the next character, or None where the
+    syntax has none. A single-line string that is never closed ends at the
+    newline; a multi-line one runs to end of input."""
     i += 1
     n = len(text)
     while i < n:
         ch = text[i]
-        if ch == "\\" and escapes and i + 1 < n and text[i + 1] != "\n":
+        if escape and ch == escape and i + 1 < n and text[i + 1] != "\n":
             i += 2
             continue
         if ch == quote:
             return i + 1
-        if ch == "\n":
+        if ch == "\n" and not multiline:
             return i
         i += 1
     return n
 
 
 def _skip_to(text, i, terminator):
+    """Index just past `terminator`; end of input when it never appears. For
+    constructs that swallow the rest of the file when unclosed — a block
+    comment, a raw string."""
     end = text.find(terminator, i)
     return len(text) if end < 0 else end + len(terminator)
+
+
+def _find_close(text, i, terminator):
+    """Index just past `terminator`, or None when it never appears. For
+    constructs a missing terminator disqualifies rather than extends: an
+    unclosed here-document or bracket argument means the opener was never one,
+    and running to end of input would blank away real comments."""
+    end = text.find(terminator, i)
+    return None if end < 0 else end + len(terminator)
 
 
 def _mask_slash(text):
@@ -137,11 +167,11 @@ def _mask_slash(text):
             out.append(_blank(text[i:end]))
             i = end
         elif ch == '"':
-            end = _skip_quoted(text, i, '"', True)
+            end = _skip_quoted(text, i, '"')
             out.append(_blank(text[i:end]))
             i = end
         elif ch == "'":
-            end = _skip_quoted(text, i, "'", True)
+            end = _skip_quoted(text, i, "'")
             out.append(_blank(text[i:end]))
             i = end
         else:
@@ -150,9 +180,9 @@ def _mask_slash(text):
     return "".join(out)
 
 
-def _mask_hash(text, python):
-    """`#` to end of line. Python also has triple-quoted strings; shell-style
-    single quotes take no escapes."""
+def _mask_python(text):
+    """Python and Starlark: `#` to end of line; steps over quoted and
+    triple-quoted strings."""
     out, i, n = [], 0, len(text)
     while i < n:
         ch = text[i]
@@ -161,16 +191,12 @@ def _mask_hash(text, python):
             end = n if end < 0 else end
             out.append(text[i:end])
             i = end
-        elif python and text[i:i + 3] in ('"""', "'''"):
+        elif text[i:i + 3] in ('"""', "'''"):
             end = _skip_to(text, i + 3, text[i:i + 3])
             out.append(_blank(text[i:end]))
             i = end
-        elif ch == '"':
-            end = _skip_quoted(text, i, '"', True)
-            out.append(_blank(text[i:end]))
-            i = end
-        elif ch == "'":
-            end = _skip_quoted(text, i, "'", python)
+        elif ch in "\"'":
+            end = _skip_quoted(text, i, ch)
             out.append(_blank(text[i:end]))
             i = end
         else:
@@ -179,7 +205,200 @@ def _mask_hash(text, python):
     return "".join(out)
 
 
-_LUA_LONG_OPEN_RE = re.compile(r"\[(=*)\[")
+# `<<` or `<<-` then the delimiter word, bare or quoted. A bare delimiter must
+# open like an identifier so that an arithmetic left shift is not read as a
+# here-document.
+HEREDOC_RE = re.compile(
+    r"""<<(-?)[ \t]*(?:'([^'\n]*)'|"([^"\n]*)"|\\?([A-Za-z_][A-Za-z0-9_]*))""")
+SHELL_WORD_BREAK = " \t\n;&|()<>"
+EMBEDDED_INTERPRETER_RE = re.compile(r"\b(python\d*|bash|sh|zsh)\b")
+DASH_C_RE = re.compile(r"(?:^|[\s;&|(])-c[ \t]*$")
+
+
+def _interpreter_family(name):
+    return "python" if name.startswith("python") else "shell"
+
+
+def _command_family(text, i):
+    """The family of the interpreter named on the logical line ending at `i`,
+    or None when no word on it is one. `python3 <<'PY'` feeds Python source;
+    `cat <<'EOF'` feeds data."""
+    start = text.rfind("\n", 0, i) + 1
+    while start > 1 and text[start - 2] == "\\":
+        start = text.rfind("\n", 0, start - 1) + 1
+    found = None
+    for found in EMBEDDED_INTERPRETER_RE.finditer(text, start, i):
+        pass
+    return None if found is None else _interpreter_family(found.group(1))
+
+
+def _shebang_family(body):
+    """The family a here-document body declares for itself, as a script written
+    out to a file does. Same signal the population uses on an extension-less
+    file."""
+    m = INTERPRETER_RE.match(body.split("\n", 1)[0])
+    return _interpreter_family(m.group(1)) if m else None
+
+
+def _program_string_family(text, i):
+    """The family of a quoted string that is an interpreter's `-c` program
+    argument, else None. `python3 -c '...'` holds Python source, so its `#`
+    lines are comments; every other quoted string is a value."""
+    start = text.rfind("\n", 0, i) + 1
+    if not DASH_C_RE.search(text, start, i):
+        return None
+    return _command_family(text, i)
+
+
+def _mask_embedded(body, family):
+    """A here-document body is data to the shell, but when the document feeds
+    an interpreter the body is that language's source and its comments are
+    comments — the rule reaches them too."""
+    if family == "python":
+        return _mask_python(body)
+    if family == "shell":
+        return _mask_shell(body)
+    return _blank(body)
+
+
+def _heredoc_end(text, i, delim, strip_tabs):
+    """Index just past the here-document terminator line, scanning from the
+    start of a line at `i`; None when the body is never terminated."""
+    n = len(text)
+    while i <= n:
+        nl = text.find("\n", i)
+        line = text[i:] if nl < 0 else text[i:nl]
+        if (line.lstrip("\t") if strip_tabs else line) == delim:
+            return n if nl < 0 else nl + 1
+        if nl < 0:
+            return None
+        i = nl + 1
+    return None
+
+
+def _mask_shell(text):
+    """POSIX shell, bash, zsh: `#` starts a comment only at a word start, and
+    runs to end of line. Steps over backslash escapes, single- and
+    double-quoted strings (both of which span lines), and here-document
+    bodies, none of which are comments however many `#` they carry — except
+    that a document feeding an interpreter is scanned as that language."""
+    out, i, n = [], 0, len(text)
+    pending = []
+    while i < n:
+        ch = text[i]
+        if ch == "\n":
+            out.append("\n")
+            i += 1
+            while pending:
+                delim, strip_tabs, embedded = pending.pop(0)
+                end = _heredoc_end(text, i, delim, strip_tabs)
+                if end is None:
+                    break
+                body = text[i:end]
+                out.append(_mask_embedded(body, embedded or _shebang_family(body)))
+                i = end
+        elif ch == "\\" and i + 1 < n:
+            out.append(_blank(text[i:i + 2]))
+            i += 2
+        elif ch == "#" and (i == 0 or text[i - 1] in SHELL_WORD_BREAK):
+            end = text.find("\n", i)
+            end = n if end < 0 else end
+            out.append(text[i:end])
+            i = end
+        elif ch == "<" and HEREDOC_RE.match(text, i):
+            m = HEREDOC_RE.match(text, i)
+            pending.append((m.group(2) or m.group(3) or m.group(4),
+                            m.group(1) == "-", _command_family(text, i)))
+            out.append(_blank(m.group(0)))
+            i = m.end()
+        elif ch in "\"'":
+            # `$'...'` is the one single-quoted form that takes escapes.
+            escape = "\\" if ch == '"' or text[i - 1:i] == "$" else None
+            end = _skip_quoted(text, i, ch, escape, multiline=True)
+            program = _program_string_family(text, i)
+            if program and end - 1 > i:
+                out.append(" " + _mask_embedded(text[i + 1:end - 1], program) + " ")
+            else:
+                out.append(_blank(text[i:end]))
+            i = end
+        else:
+            out.append(" ")
+            i += 1
+    return "".join(out)
+
+
+BRACKET_OPEN_RE = re.compile(r"\[(=*)\[")
+
+
+def _mask_cmake(text):
+    """CMake: `#` to end of line and `#[=*[ ... ]=*]` bracket comments are
+    comments; `[=*[ ... ]=*]` bracket arguments and quoted arguments, both of
+    which span lines, are not."""
+    out, i, n = [], 0, len(text)
+    while i < n:
+        ch = text[i]
+        if ch == "#":
+            m = BRACKET_OPEN_RE.match(text, i + 1)
+            end = _find_close(text, m.end(), "]" + m.group(1) + "]") if m else None
+            if end is None:
+                end = text.find("\n", i)
+                end = n if end < 0 else end
+            out.append(text[i:end])
+            i = end
+        elif ch == "[" and BRACKET_OPEN_RE.match(text, i):
+            m = BRACKET_OPEN_RE.match(text, i)
+            end = _find_close(text, m.end(), "]" + m.group(1) + "]")
+            if end is None:
+                out.append(" ")
+                i += 1
+                continue
+            out.append(_blank(text[i:end]))
+            i = end
+        elif ch == '"':
+            end = _skip_quoted(text, i, '"', multiline=True)
+            out.append(_blank(text[i:end]))
+            i = end
+        else:
+            out.append(" " if ch != "\n" else "\n")
+            i += 1
+    return "".join(out)
+
+
+def _mask_powershell(text):
+    """PowerShell: `#` to end of line and `<# ... #>` blocks are comments;
+    here-strings (`@" ... "@`, `@' ... '@`) and quoted strings, all of which
+    span lines, are not."""
+    out, i, n = [], 0, len(text)
+    while i < n:
+        ch = text[i]
+        two = text[i:i + 2]
+        if two == "<#":
+            end = _skip_to(text, i + 2, "#>")
+            out.append(text[i:end])
+            i = end
+        elif ch == "#":
+            end = text.find("\n", i)
+            end = n if end < 0 else end
+            out.append(text[i:end])
+            i = end
+        elif two in ('@"', "@'"):
+            end = _find_close(text, i + 2, "\n" + two[1] + "@")
+            if end is None:
+                out.append(" ")
+                i += 1
+                continue
+            out.append(_blank(text[i:end]))
+            i = end
+        elif ch in "\"'":
+            # A backtick, not a backslash, is PowerShell's escape.
+            end = _skip_quoted(text, i, ch, "`" if ch == '"' else None,
+                               multiline=True)
+            out.append(_blank(text[i:end]))
+            i = end
+        else:
+            out.append(" " if ch != "\n" else "\n")
+            i += 1
+    return "".join(out)
 
 
 def _mask_dash(text):
@@ -189,7 +408,7 @@ def _mask_dash(text):
     while i < n:
         ch = text[i]
         if text[i:i + 2] == "--":
-            m = _LUA_LONG_OPEN_RE.match(text, i + 2)
+            m = BRACKET_OPEN_RE.match(text, i + 2)
             if m:
                 end = _skip_to(text, m.end(), "]" + m.group(1) + "]")
             else:
@@ -197,13 +416,13 @@ def _mask_dash(text):
                 end = n if end < 0 else end
             out.append(text[i:end])
             i = end
-        elif ch == "[" and _LUA_LONG_OPEN_RE.match(text, i):
-            m = _LUA_LONG_OPEN_RE.match(text, i)
+        elif ch == "[" and BRACKET_OPEN_RE.match(text, i):
+            m = BRACKET_OPEN_RE.match(text, i)
             end = _skip_to(text, m.end(), "]" + m.group(1) + "]")
             out.append(_blank(text[i:end]))
             i = end
         elif ch in ('"', "'"):
-            end = _skip_quoted(text, i, ch, True)
+            end = _skip_quoted(text, i, ch)
             out.append(_blank(text[i:end]))
             i = end
         else:
@@ -226,9 +445,13 @@ def comment_mask(text, family):
     if family == "slash":
         return _mask_slash(text)
     if family == "python":
-        return _mask_hash(text, python=True)
-    if family == "hash":
-        return _mask_hash(text, python=False)
+        return _mask_python(text)
+    if family == "shell":
+        return _mask_shell(text)
+    if family == "cmake":
+        return _mask_cmake(text)
+    if family == "powershell":
+        return _mask_powershell(text)
     if family == "dash":
         return _mask_dash(text)
     raise ValueError(family)

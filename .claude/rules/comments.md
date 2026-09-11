@@ -41,8 +41,10 @@ sentence still be true and still be needed? If not, cut it.
 ## Detection
 
 Executed: `python3 scripts/lint_comment_refs.py`, run by the `comment-refs`
-workflow on every push and PR. It tokenizes each file (string literals are
-not comments) and counts `#NNN` / `#NNNN` inside comments per file against
+workflow on every push and PR. It tokenizes each file in its own comment
+syntax — a string literal, a shell here-document, a CMake bracket argument
+and a PowerShell here-string are values, not comments — and counts
+`#NNN` / `#NNNN` inside comments per file against
 `scripts/lint_comment_refs_baseline.json`; a file may not gain references,
 and a pull request is checked against the base branch's baseline, so editing
 the baseline buys nothing. After removing references from a file, run it
