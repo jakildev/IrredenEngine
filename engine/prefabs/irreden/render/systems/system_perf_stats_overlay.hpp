@@ -146,7 +146,9 @@ template <> struct System<PERF_STATS_OVERLAY> {
     }
 
     static SystemId create() {
-        SystemId id = registerSystem<PERF_STATS_OVERLAY, C_PerfStatsOverlayTag>("PerfStatsOverlay");
+        SystemId id = registerSystem<PERF_STATS_OVERLAY, C_PerfStatsOverlayTag, MainThread>(
+            "PerfStatsOverlay"
+        );
         // textEntity_ is not C_Persistent, so IREntity::resetGameplay() destroys
         // it (destroyAllExceptPreserved destroys per-entity via destroyEntity,
         // which fires this hook). Null the cached id so the lazy-respawn guard

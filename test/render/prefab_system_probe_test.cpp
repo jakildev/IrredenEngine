@@ -30,14 +30,42 @@
 #include <irreden/entity/entity_manager.hpp>
 #include <irreden/render/help_overlay.hpp>
 #include <irreden/render/settings_menu.hpp>
+#include <irreden/render/systems/system_perf_stats_overlay.hpp>
 
 namespace {
+
+struct C_PrefabProbeSibling {};
 
 class PrefabSystemProbeTest : public testing::Test {
   protected:
     PrefabSystemProbeTest()
         : m_entity_manager{}
         , m_system_manager{} {}
+
+    void expectMainThreadRegistration(IRSystem::SystemId target, const char *targetName) {
+        const IRSystem::SystemAccess targetAccess = m_system_manager.getSystemAccess(target);
+        EXPECT_TRUE(targetAccess.mainThreadOnly_);
+        EXPECT_EQ(m_system_manager.getSystemName(target), targetName);
+
+        const IRSystem::SystemId sibling = IRSystem::createSystem<C_PrefabProbeSibling>(
+            "PrefabProbeSibling",
+            [](C_PrefabProbeSibling &) {}
+        );
+        const IRSystem::SystemAccess accesses[]{
+            targetAccess,
+            m_system_manager.getSystemAccess(sibling),
+        };
+        EXPECT_EQ(
+            IRSystem::findPipelineGroupConflict(accesses, 2).kind_,
+            IRSystem::GroupConflictKind::MAIN_THREAD_IN_GROUP
+        );
+
+        m_system_manager.registerPipelineGroups(IRTime::Events::RENDER, {{target}});
+        EXPECT_NO_THROW(m_system_manager.validateAllPipelineGroups());
+
+        m_system_manager.registerPipelineGroups(IRTime::Events::RENDER, {{target, sibling}});
+        EXPECT_THROW(m_system_manager.validateAllPipelineGroups(), std::runtime_error);
+    }
 
     IREntity::EntityManager m_entity_manager;
     IRSystem::SystemManager m_system_manager;
@@ -84,6 +112,16 @@ TEST_F(PrefabSystemProbeTest, SettingsMenuProbeResolvesTheSystemRegisteredAsIdZe
     const auto *system = IRPrefab::SettingsMenu::systemOrNull();
     EXPECT_NE(system, nullptr) << "a live system registered as id 0 must not read as absent";
     EXPECT_EQ(system, IRSystem::getSystemParams<IRSystem::System<IRSystem::SETTINGS_MENU>>(id));
+}
+
+TEST_F(PrefabSystemProbeTest, PerfStatsOverlayRegistrationRequiresMainThread) {
+    const IRSystem::SystemId id = IRSystem::createSystem<IRSystem::PERF_STATS_OVERLAY>();
+    expectMainThreadRegistration(id, "PerfStatsOverlay");
+}
+
+TEST_F(PrefabSystemProbeTest, SettingsMenuRegistrationRequiresMainThread) {
+    const IRSystem::SystemId id = IRSystem::createSystem<IRSystem::SETTINGS_MENU>();
+    expectMainThreadRegistration(id, "SettingsMenu");
 }
 
 } // namespace
