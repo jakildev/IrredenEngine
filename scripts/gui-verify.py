@@ -41,6 +41,11 @@ def main() -> None:
         help="Watchdog timeout in seconds passed to fleet-run (default: 120)",
     )
     parser.add_argument(
+        "--allow-no-assertions",
+        action="store_true",
+        help="Allow a successful run with no GUI-ASSERT lines",
+    )
+    parser.add_argument(
         "target_args",
         nargs="*",
         metavar="-- TARGET_ARG ...",
@@ -67,18 +72,21 @@ def main() -> None:
     # for generic smoke), which would mask a hung GUI test as a zero-assertion
     # success — report_gui_asserts surfaces the ALIVE-TIMEOUT marker as `hung`,
     # which this harness treats as a failure.
-    assertions, hung, failures = verify_common.report_gui_asserts(
+    assertions, hung, failures, missing_shots = verify_common.report_gui_asserts(
         output, "[gui-verify] ", timeout=args.timeout)
 
     if not assertions:
         msg = "[gui-verify] no GUI-ASSERT lines found in output"
-        if run_rc != 0 or hung:
+        if run_rc != 0 or hung or missing_shots:
             print(msg)
             raise SystemExit(1)
-        print(msg + " (run exited 0 — target may have no assertion tables)")
+        if not args.allow_no_assertions:
+            print(msg + " (use --allow-no-assertions for an assertion-free target)")
+            raise SystemExit(1)
+        print(msg + " (allowed by --allow-no-assertions)")
         return
 
-    if failures or run_rc != 0 or hung:
+    if failures or missing_shots or run_rc != 0 or hung:
         raise SystemExit(1)
 
 

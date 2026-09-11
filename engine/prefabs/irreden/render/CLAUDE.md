@@ -607,6 +607,9 @@ exposes `IRPrefab::GuiTest::` — capture-frame assertions
 (`hovers` / `clickFires` / `sliderValue` / `checkbox` / `picksVoxel` /
 `picksIsoColumn` / `predicate`) over the introspectable widget + picking
 state, each emitting one machine-readable `GUI-ASSERT …` log line.
+`evaluate` also emits one `GUI-ASSERT-COVERAGE …` marker after every shot,
+including intentionally empty assertion tables, so verification can distinguish
+an empty table from a shot that never reached evaluation.
 `predicate` (#766) takes a creation-supplied `bool(context, actual)` for
 state this layer can't reach — an editor mode flag, a voxel-set cell — so a
 creation extends the vocabulary without hand-rolling the log line.
