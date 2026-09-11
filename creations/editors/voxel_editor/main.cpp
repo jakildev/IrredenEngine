@@ -80,6 +80,9 @@
 // Camera prefab namespace (Z-yaw API)
 #include <irreden/render/camera.hpp>
 
+// Registry-driven command help overlay (#2550)
+#include <irreden/render/help_overlay.hpp>
+
 // Frame-based animation state (T-214, F-1.4)
 #include "animation.hpp"
 
@@ -2495,6 +2498,16 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_TEXT_INPUT>(),
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_COLOR_SWATCH>(),
             helpRenderSystem,
+        }
+    );
+    // Registry-driven command help overlay (#2550): draws every named PRESSED
+    // binding, including the ad-hoc lambdas above now that they pass
+    // name/description. Must land after TEXT_TO_TRIXEL (already registered
+    // above) and before the composite.
+    renderPipeline.splice(renderPipeline.end(), IRPrefab::HelpOverlay::systems());
+    renderPipeline.insert(
+        renderPipeline.end(),
+        {
             IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
             IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
             IRSystem::createSystem<IRSystem::SPRITE_TO_SCREEN>(),
@@ -2530,6 +2543,10 @@ void initCommands() {
     // with the drag-cancel handler below — we handle Escape ourselves.
     IRPrefab::Camera::registerStandardKeyboardCommands({.omit_ = {IRCommand::CLOSE_WINDOW}});
 
+    // F1 opens the registry-driven command help overlay (#2550, #2620). Every
+    // named PRESSED binding registered below appears automatically.
+    IRPrefab::HelpOverlay::registerToggleCommand();
+
     IRCommand::createCommand(
         IRInput::InputTypes::KEY_MOUSE,
         IRInput::ButtonStatuses::PRESSED,
@@ -2537,7 +2554,11 @@ void initCommands() {
         []() {
             auto q = static_cast<int>(IRMath::round(IRPrefab::Camera::getYaw() / IRMath::kHalfPi));
             IRPrefab::Camera::setYaw(static_cast<float>(q - 1) * IRMath::kHalfPi);
-        }
+        },
+        IRInput::kModifierNone,
+        IRInput::kModifierNone,
+        "YAW CCW",
+        "ROTATE CAMERA YAW 90 COUNTERCLOCKWISE"
     );
 
     IRCommand::createCommand(
@@ -2547,7 +2568,11 @@ void initCommands() {
         []() {
             auto q = static_cast<int>(IRMath::round(IRPrefab::Camera::getYaw() / IRMath::kHalfPi));
             IRPrefab::Camera::setYaw(static_cast<float>(q + 1) * IRMath::kHalfPi);
-        }
+        },
+        IRInput::kModifierNone,
+        IRInput::kModifierNone,
+        "YAW CW",
+        "ROTATE CAMERA YAW 90 CLOCKWISE"
     );
 
     IRCommand::createCommand(
@@ -2557,7 +2582,11 @@ void initCommands() {
         []() {
             IRRender::setCameraPosition2DIso(vec2(0.0f, 0.0f));
             IRPrefab::Camera::setYaw(0.0f);
-        }
+        },
+        IRInput::kModifierNone,
+        IRInput::kModifierNone,
+        "RESET CAMERA",
+        "RESET PAN AND YAW TO ORIGIN"
     );
 
     // X/Y/Z: toggle mirror-symmetry axis. When an axis turns ON, seat its mirror
@@ -2585,7 +2614,11 @@ void initCommands() {
                 IRVoxelEditor::g_symmetry.offsetX_ =
                     IRVoxelEditor::mirrorCenterOffset(IRVoxelEditor::g_editableSceneSize.x);
             logSymmetry();
-        }
+        },
+        IRInput::kModifierNone,
+        IRInput::kModifierNone,
+        "MIRROR X",
+        "TOGGLE X-AXIS MIRROR SYMMETRY"
     );
     IRCommand::createCommand(
         IRInput::InputTypes::KEY_MOUSE,
@@ -2597,7 +2630,11 @@ void initCommands() {
                 IRVoxelEditor::g_symmetry.offsetY_ =
                     IRVoxelEditor::mirrorCenterOffset(IRVoxelEditor::g_editableSceneSize.y);
             logSymmetry();
-        }
+        },
+        IRInput::kModifierNone,
+        IRInput::kModifierNone,
+        "MIRROR Y",
+        "TOGGLE Y-AXIS MIRROR SYMMETRY"
     );
     // Ctrl+Z — undo. Bare Z — toggle Z-mirror. Both share the same key;
     // modifier checks disambiguate inline since IRCommand bindings don't
@@ -2610,7 +2647,11 @@ void initCommands() {
             if (IRInput::checkKeyMouseModifiers(IRInput::kModifierControl, 0u)) {
                 IRVoxelEditor::undoOne();
             }
-        }
+        },
+        IRInput::kModifierNone,
+        IRInput::kModifierNone,
+        "UNDO",
+        "UNDO LAST EDIT (CTRL+Z)"
     );
     IRCommand::createCommand(
         IRInput::InputTypes::KEY_MOUSE,
@@ -2624,7 +2665,11 @@ void initCommands() {
                         IRVoxelEditor::mirrorCenterOffset(IRVoxelEditor::g_editableSceneSize.z);
                 logSymmetry();
             }
-        }
+        },
+        IRInput::kModifierNone,
+        IRInput::kModifierNone,
+        "MIRROR Z",
+        "TOGGLE Z-AXIS MIRROR SYMMETRY"
     );
 
     // V — toggle erase-fill mode (#766 Part 2b): the left-click place / box /
@@ -2637,7 +2682,11 @@ void initCommands() {
         []() {
             IRVoxelEditor::g_eraseMode = !IRVoxelEditor::g_eraseMode;
             IR_LOG_INFO("Erase-fill mode: {}", IRVoxelEditor::g_eraseMode ? "ON" : "OFF");
-        }
+        },
+        IRInput::kModifierNone,
+        IRInput::kModifierNone,
+        "ERASE MODE",
+        "TOGGLE ERASE-FILL MODE"
     );
 
     // Frame-based animation controls (T-214, F-1.4). Keys not taken by
@@ -2650,7 +2699,11 @@ void initCommands() {
         IRInput::InputTypes::KEY_MOUSE,
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonLeft,
-        []() { IRVoxelEditor::switchToFrame(IRVoxelEditor::g_anim.activeFrame_ - 1); }
+        []() { IRVoxelEditor::switchToFrame(IRVoxelEditor::g_anim.activeFrame_ - 1); },
+        IRInput::kModifierNone,
+        IRInput::kModifierNone,
+        "PREV FRAME",
+        "GO TO PREVIOUS ANIMATION FRAME"
     );
 
     // Right arrow — go to next frame.
@@ -2658,7 +2711,11 @@ void initCommands() {
         IRInput::InputTypes::KEY_MOUSE,
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonRight,
-        []() { IRVoxelEditor::switchToFrame(IRVoxelEditor::g_anim.activeFrame_ + 1); }
+        []() { IRVoxelEditor::switchToFrame(IRVoxelEditor::g_anim.activeFrame_ + 1); },
+        IRInput::kModifierNone,
+        IRInput::kModifierNone,
+        "NEXT FRAME",
+        "GO TO NEXT ANIMATION FRAME"
     );
 
     // P — toggle play / pause; reset the elapsed timer and forward
@@ -2679,7 +2736,11 @@ void initCommands() {
                 anim.frameCount(),
                 anim.fps_
             );
-        }
+        },
+        IRInput::kModifierNone,
+        IRInput::kModifierNone,
+        "PLAY/PAUSE",
+        "TOGGLE FRAME PLAYBACK"
     );
 
     // A — add a blank frame after the current frame and switch to it.
@@ -2715,7 +2776,11 @@ void initCommands() {
             );
             IRVoxelEditor::loadFrameToLive(anim.activeFrame_);
             IR_LOG_INFO("Added blank frame {} / {}", anim.activeFrame_ + 1, anim.frameCount());
-        }
+        },
+        IRInput::kModifierNone,
+        IRInput::kModifierNone,
+        "ADD FRAME",
+        "ADD BLANK FRAME AFTER CURRENT"
     );
 
     // D — duplicate the current frame. Snapshot the live voxels into
@@ -2750,7 +2815,11 @@ void initCommands() {
                 std::size_t{0}
             );
             IR_LOG_INFO("Duplicated frame {} / {}", anim.activeFrame_ + 1, anim.frameCount());
-        }
+        },
+        IRInput::kModifierNone,
+        IRInput::kModifierNone,
+        "DUPLICATE FRAME",
+        "DUPLICATE THE CURRENT FRAME"
     );
 
     // Backspace — delete the current frame (minimum 1 frame). The
@@ -2787,7 +2856,11 @@ void initCommands() {
             }
             IRVoxelEditor::loadFrameToLive(anim.activeFrame_);
             IR_LOG_INFO("Deleted frame (now {} / {})", anim.activeFrame_ + 1, anim.frameCount());
-        }
+        },
+        IRInput::kModifierNone,
+        IRInput::kModifierNone,
+        "DELETE FRAME",
+        "DELETE THE CURRENT FRAME"
     );
 
     // L — toggle loop mode between LOOP and PING-PONG.
@@ -2804,7 +2877,11 @@ void initCommands() {
                 "Loop mode: {}",
                 anim.loopMode_ == IRVoxelEditor::LoopMode::LOOP ? "LOOP" : "PING-PONG"
             );
-        }
+        },
+        IRInput::kModifierNone,
+        IRInput::kModifierNone,
+        "LOOP MODE",
+        "TOGGLE LOOP / PING-PONG PLAYBACK"
     );
 
     // Escape: cancel drag if active, otherwise close the window.
@@ -2825,7 +2902,11 @@ void initCommands() {
                 return;
             }
             IRWindow::closeWindow();
-        }
+        },
+        IRInput::kModifierNone,
+        IRInput::kModifierNone,
+        "CANCEL / QUIT",
+        "CANCEL DRAG OR CLOSE WINDOW"
     );
 
     // F — toggle loft mode on/off. Cancels any active fill drag and hides
@@ -2843,7 +2924,11 @@ void initCommands() {
                     .flags_ = IRMath::SDF::SHAPE_FLAG_NONE;
             }
             IR_LOG_INFO("Loft mode: {}", loft.active_ ? "ON" : "OFF");
-        }
+        },
+        IRInput::kModifierNone,
+        IRInput::kModifierNone,
+        "LOFT MODE",
+        "TOGGLE LOFT MASK MODE"
     );
 
     // Enter — stamp the current loft masks into the scene using the active
@@ -2859,7 +2944,11 @@ void initCommands() {
                 IRVoxelEditor::kPaletteColors[IRVoxelEditor::g_editor.activeSwatchIdx_];
             IRVoxelEditor::applyLoft(placeColor);
             IR_LOG_INFO("Loft stamped.");
-        }
+        },
+        IRInput::kModifierNone,
+        IRInput::kModifierNone,
+        "STAMP LOFT",
+        "STAMP LOFT MASKS INTO SCENE"
     );
 
     // C — clear both loft masks when in loft mode. No-op outside loft mode
@@ -2875,7 +2964,11 @@ void initCommands() {
             std::fill(loft.maskXZ_.begin(), loft.maskXZ_.end(), false);
             std::fill(loft.maskYZ_.begin(), loft.maskYZ_.end(), false);
             IR_LOG_INFO("Loft masks cleared.");
-        }
+        },
+        IRInput::kModifierNone,
+        IRInput::kModifierNone,
+        "CLEAR LOFT",
+        "CLEAR LOFT MASKS"
     );
 
     // K: add a new layer (auto-named from count, immediately becomes active).
@@ -2892,7 +2985,11 @@ void initCommands() {
                 IRVoxelEditor::g_layerManager.setActiveLayer(id);
             IR_LOG_INFO("Layers after add:");
             IRVoxelEditor::logLayerState();
-        }
+        },
+        IRInput::kModifierNone,
+        IRInput::kModifierNone,
+        "ADD LAYER",
+        "ADD A NEW LAYER"
     );
 
     // [: select previous layer in display order (wraps around)
@@ -2903,7 +3000,11 @@ void initCommands() {
         []() {
             IRVoxelEditor::g_layerManager.selectPrevLayer();
             IRVoxelEditor::logLayerState();
-        }
+        },
+        IRInput::kModifierNone,
+        IRInput::kModifierNone,
+        "PREV LAYER",
+        "SELECT PREVIOUS LAYER"
     );
 
     // ]: select next layer in display order (wraps around)
@@ -2914,7 +3015,11 @@ void initCommands() {
         []() {
             IRVoxelEditor::g_layerManager.selectNextLayer();
             IRVoxelEditor::logLayerState();
-        }
+        },
+        IRInput::kModifierNone,
+        IRInput::kModifierNone,
+        "NEXT LAYER",
+        "SELECT NEXT LAYER"
     );
 
     // J — toggle skeletal joint-authoring mode (#1604). While on, B adds a
@@ -2926,7 +3031,11 @@ void initCommands() {
         []() {
             IRVoxelEditor::g_jointTool.active_ = !IRVoxelEditor::g_jointTool.active_;
             IR_LOG_INFO("Joint authoring: {}", IRVoxelEditor::g_jointTool.active_ ? "ON" : "OFF");
-        }
+        },
+        IRInput::kModifierNone,
+        IRInput::kModifierNone,
+        "JOINT MODE",
+        "TOGGLE JOINT AUTHORING MODE"
     );
 
     // B — add a joint, chained to the active joint (or the rig root). No-op
@@ -2939,7 +3048,11 @@ void initCommands() {
             if (!IRVoxelEditor::g_jointTool.active_)
                 return;
             IRVoxelEditor::addJointAuthored();
-        }
+        },
+        IRInput::kModifierNone,
+        IRInput::kModifierNone,
+        "ADD JOINT",
+        "ADD JOINT TO ACTIVE CHAIN"
     );
 
     // R — start a new bone chain: the next B parents to the rig root rather
@@ -2952,7 +3065,11 @@ void initCommands() {
             if (!IRVoxelEditor::g_jointTool.active_)
                 return;
             IRVoxelEditor::resetJointChain();
-        }
+        },
+        IRInput::kModifierNone,
+        IRInput::kModifierNone,
+        "NEW CHAIN",
+        "START A NEW BONE CHAIN"
     );
 
     // N — toggle bone-paint mode (#1608). While on, left-click writes
@@ -2969,7 +3086,11 @@ void initCommands() {
                 IRVoxelEditor::g_bonePaint.active_ ? "ON" : "OFF",
                 IRVoxelEditor::g_bonePaint.activeBoneIdx_
             );
-        }
+        },
+        IRInput::kModifierNone,
+        IRInput::kModifierNone,
+        "BONE PAINT",
+        "TOGGLE BONE PAINT MODE"
     );
 
     // T — set current pose as bind (#1610): the posed joint chain becomes
@@ -2983,7 +3104,11 @@ void initCommands() {
             if (!IRVoxelEditor::g_jointTool.active_)
                 return;
             IRVoxelEditor::setCurrentPoseAsBind();
-        }
+        },
+        IRInput::kModifierNone,
+        IRInput::kModifierNone,
+        "SET BIND POSE",
+        "SET CURRENT POSE AS BIND"
     );
 
     // H: toggle active layer visibility. Iterates C_VoxelSetNew and updates
@@ -2997,7 +3122,11 @@ void initCommands() {
             bool nowVisible = IRVoxelEditor::g_layerManager.toggleLayerVisibility(layerId);
             IRVoxelEditor::applyLayerVisibility(layerId, nowVisible);
             IR_LOG_INFO("Layer {} visibility -> {}", layerId, nowVisible ? "shown" : "hidden");
-        }
+        },
+        IRInput::kModifierNone,
+        IRInput::kModifierNone,
+        "TOGGLE LAYER VIS",
+        "TOGGLE ACTIVE LAYER VISIBILITY"
     );
 
     // Ctrl+S — save scene (all frames + layer metadata) to disk.
@@ -3035,7 +3164,11 @@ void initCommands() {
                 );
             else
                 IR_LOG_ERROR("Save failed: {}", res.errorMsg_);
-        }
+        },
+        IRInput::kModifierNone,
+        IRInput::kModifierNone,
+        "SAVE SCENE",
+        "SAVE ALL FRAMES AND LAYERS"
     );
 
     // Ctrl+Shift+S — save skeleton to {kSceneSaveDir}/{kSceneBaseName}.rig.
@@ -3067,7 +3200,11 @@ void initCommands() {
                 );
             else
                 IR_LOG_ERROR("Rig save failed: {}", res.errorMsg_);
-        }
+        },
+        IRInput::kModifierNone,
+        IRInput::kModifierNone,
+        "SAVE RIG",
+        "SAVE SKELETON TO .RIG FILE"
     );
 
     // Ctrl+O — load scene from disk, replacing all frames and layer state.
@@ -3130,7 +3267,11 @@ void initCommands() {
                 IRVoxelEditor::kSceneBaseName,
                 anim.frameCount()
             );
-        }
+        },
+        IRInput::kModifierNone,
+        IRInput::kModifierNone,
+        "LOAD SCENE",
+        "LOAD SCENE, REPLACE ALL FRAMES"
     );
 
     // Ctrl+Shift+O — load skeleton from {kSceneSaveDir}/{kSceneBaseName}.rig.
@@ -3237,7 +3378,11 @@ void initCommands() {
                 IRVoxelEditor::kSceneSaveDir,
                 IRVoxelEditor::kSceneBaseName
             );
-        }
+        },
+        IRInput::kModifierNone,
+        IRInput::kModifierNone,
+        "LOAD RIG",
+        "LOAD SKELETON FROM .RIG FILE"
     );
 }
 
