@@ -59,8 +59,8 @@ paths_list() {
 
 # is_covered <file> — true when the workflow declares both push: and
 # pull_request: paths: lists (the sync check applies to it at all). A
-# workflow with no paths: filter at all (auto-rereview.yml, quality.yml)
-# or only one of the two blocks is out of scope, not a violation.
+# workflow with no paths: filter at all (auto-rereview.yml) or only one of
+# the two blocks is out of scope, not a violation.
 is_covered() {
     local file="$1"
     [[ -n "$(paths_list "$file" push)" && -n "$(paths_list "$file" pull_request)" ]]

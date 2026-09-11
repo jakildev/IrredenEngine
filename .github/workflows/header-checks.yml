@@ -9,9 +9,10 @@ name: Header Checks
 # list, and the `paths:` filters below in the same change.
 #
 # Standalone for the same reason fleet-tests.yml is: the only other caller of
-# these checks is the `lint` CMake target, which reaches CI solely through
-# quality.yml — disabled at the repo level, so a step added there is inert until
-# it is re-enabled (#2718). See #2794.
+# these checks is the `lint` CMake target, and `lint` has no CI path — its only
+# route was the umbrella quality.yml, which never ran green and is retired
+# (#2718). This workflow is therefore the sole CI path for these checks. See
+# #2794.
 #
 # Runs the checks through cmake/run_header_checks_standalone.cmake, which globs
 # the source tree directly — no configure, no FetchContent, no compiler, so this

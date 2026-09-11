@@ -65,9 +65,10 @@ cmake --build <build-dir> --target lint            # + clang-tidy
 ```
 
 …and, on every PR, via the script-mode entry point the `header-checks` CI
-workflow drives — the one path of the three that actually gates a merge
-(`lint` reaches CI only through `quality.yml`, disabled at the repo level,
-#2718):
+workflow drives — the one path of the three that actually gates a merge (the
+`lint` target's clang-tidy leg has **no** CI path at all: its only route was
+the umbrella `quality.yml`, which never once ran green and was retired in
+#2718; whether tidy can gate here is the open spike #3189):
 
 ```
 cmake -DPROJECT_ROOT=<repo-root> -P cmake/run_header_checks_standalone.cmake

@@ -21,9 +21,10 @@
 # The flag is load-bearing, not decoration. Without it this call inherits the
 # style tools' reject list and the scan silently loses the 9 first-party headers
 # under engine/render/**/{gl_wrap,metal}/. Since this entry point is the ONLY
-# one that runs in CI — `lint` reaches CI solely through quality.yml, disabled
-# at the repo level (#2718) — a narrow list here is a hole in the merge gate,
-# not a slower version of it (#2889).
+# one that runs in CI — the `lint` target's only route was the umbrella
+# quality.yml, retired in #2718, so clang-tidy has no CI path at all (whether it
+# can gate here is the open spike #3189) — a narrow list here is a hole in the
+# merge gate, not a slower version of it (#2889).
 
 cmake_minimum_required(VERSION 3.20)
 

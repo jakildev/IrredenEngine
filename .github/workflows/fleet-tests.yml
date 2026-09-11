@@ -4,10 +4,11 @@ name: Fleet Tests
 # CMake tests, so `ctest` never sees them — without this workflow nothing
 # executes them and a suite can go red silently (#2712).
 #
-# Standalone rather than a step in quality.yml: that workflow is disabled
-# at the repo level, so any step added there is inert (re-enabling it is a
-# separate call — see #2718). These suites need no compiler, no GL, and no
-# CMake, so they have no reason to ride along with a build job anyway.
+# Standalone rather than a step in the umbrella quality.yml: that workflow is
+# retired, its gates rehomed one per workflow (#2718) — and while it still
+# existed it was disabled at the repo level, so any step added there was inert.
+# These suites need no compiler, no GL, and no CMake, so they have no reason to
+# ride along with a build job anyway.
 #
 # Path-filtered to the fleet tooling surface — engine, shader, and asset
 # PRs skip this entirely (same convention as perf-gate.yml).
@@ -31,7 +32,7 @@ name: Fleet Tests
 #   test_lint_rules_commands.py         -> .claude/rules/**, docs/agents/**
 #   test_workflow_paths_sync.sh         -> the other path-filtered workflows
 #                                          (header-checks, perf-gate,
-#                                          render-harness-tests)
+#                                          python-lint, render-harness-tests)
 #   test_lint_python_registry.py        -> ruff.toml
 # test_lint_rules_commands.py's subjects are globs rather than single files
 # — it checks every rules/protocol doc's fenced Detection/command blocks, so
@@ -44,7 +45,8 @@ name: Fleet Tests
 # *derived* (a .github/workflows/*.yml glob) rather than a fixed file, so it
 # can grow without anyone editing this list — T4 in
 # test_workflow_paths_sync.sh is what makes that growth fail loudly instead
-# of silently un-triggering.
+# of silently un-triggering — python-lint.yml (#2718) is an instance: it
+# declares both blocks, so it is that suite's subject and must appear below.
 # The two `paths:` blocks are duplicated because GitHub Actions has no YAML
 # anchors — keep them in sync (same note as header-checks.yml);
 # scripts/fleet/tests/test_fleet_tests_workflow_paths.sh ratchets that they do.
@@ -59,6 +61,7 @@ on:
       - '.github/workflows/fleet-tests.yml'
       - '.github/workflows/header-checks.yml'
       - '.github/workflows/perf-gate.yml'
+      - '.github/workflows/python-lint.yml'
       - '.github/workflows/render-harness-tests.yml'
       - 'cmake/run_clang_format_changed.cmake'
       - 'engine/tools/lib/concurrency_helpers.sh'
@@ -72,6 +75,7 @@ on:
       - '.github/workflows/fleet-tests.yml'
       - '.github/workflows/header-checks.yml'
       - '.github/workflows/perf-gate.yml'
+      - '.github/workflows/python-lint.yml'
       - '.github/workflows/render-harness-tests.yml'
       - 'cmake/run_clang_format_changed.cmake'
       - 'engine/tools/lib/concurrency_helpers.sh'
