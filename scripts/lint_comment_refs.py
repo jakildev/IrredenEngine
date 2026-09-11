@@ -254,6 +254,38 @@ PREFIX_OPTION_OPERANDS = {
 }
 
 
+def _shell_words(segment):
+    """The segment's words, with quoted runs kept whole. A plain `split()`
+    breaks `FOO="x y"` at the space inside the value, which puts the command
+    word on the tail of an assignment instead of the command that follows it.
+    A backslash-newline is the line continuation the shell deletes."""
+    words, word, i, n = [], None, 0, len(segment)
+    while i < n:
+        ch = segment[i]
+        if ch in " \t\n":
+            if word is not None:
+                words.append(word)
+                word = None
+            i += 1
+        elif ch == "\\" and segment[i + 1:i + 2] == "\n":
+            i += 2
+        elif ch == "\\" and i + 1 < n:
+            word = (word or "") + segment[i:i + 2]
+            i += 2
+        elif ch in "\"'":
+            # `$'...'` is the one single-quoted form that takes escapes.
+            escape = "\\" if ch == '"' or segment[i - 1:i] == "$" else None
+            end = _skip_quoted(segment, i, ch, escape, multiline=True)
+            word = (word or "") + segment[i:end]
+            i = end
+        else:
+            word = (word or "") + ch
+            i += 1
+    if word is not None:
+        words.append(word)
+    return words
+
+
 def _command_family(text, i):
     """The family of the interpreter that is the command word of the simple
     command containing position `i`, else None: `python3 <<'PY'` and
@@ -262,7 +294,9 @@ def _command_family(text, i):
     segment after the last separator on the logical line, skipping
     assignments, shell keywords, and the common command-prefix forms —
     including, for a prefix that takes one, an option's separate operand,
-    which is otherwise mistaken for the command word (`sudo -u root …`)."""
+    which is otherwise mistaken for the command word (`sudo -u root …`).
+    Words are split with quoting honoured, so a quoted assignment value does
+    not stand in for the command word (`FOO="x y" python3 -c …`)."""
     start = text.rfind("\n", 0, i) + 1
     while start > 1 and text[start - 2] == "\\":
         start = text.rfind("\n", 0, start - 1) + 1
@@ -272,7 +306,7 @@ def _command_family(text, i):
         cut = m.end()
     operand_options = frozenset()
     skip_operand = False
-    for word in segment[cut:].split():
+    for word in _shell_words(segment[cut:]):
         if skip_operand:
             skip_operand = False
             continue
@@ -283,8 +317,8 @@ def _command_family(text, i):
         if word.startswith("-"):
             skip_operand = word in operand_options
             continue
-        if (word == "\\" or word in SHELL_KEYWORDS
-                or SHELL_ASSIGNMENT_RE.match(word) or SHELL_NUMBER_RE.match(word)):
+        if (word in SHELL_KEYWORDS or SHELL_ASSIGNMENT_RE.match(word)
+                or SHELL_NUMBER_RE.match(word)):
             continue
         return _interpreter_family(name) if EMBEDDED_INTERPRETER_RE.fullmatch(name) else None
     return None

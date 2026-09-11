@@ -337,6 +337,30 @@ class CommandWord(unittest.TestCase):
         next interpreter-shaped word anywhere on the line is one."""
         self.assertEqual(lines("sudo -u root echo python3 -c '# #1234'\n", "shell"), [])
 
+    def test_a_quoted_assignment_value_is_not_the_command_word(self):
+        """A space inside an assignment value splits the word unless quoting is
+        honoured, leaving the value's tail where the interpreter should be."""
+        for line in ("FOO=\"x y\" python3 -c '# #1234'\n",
+                     "FOO='x y' python3 -c '# #1234'\n",
+                     "env FOO=\"x y\" python3 -c '# #1234'\n",
+                     "FOO=\"a\\\" b\" python3 -c '# #1234'\n",
+                     "sudo -u root FOO='x y' bash <<'EOF'\n# #1234\nEOF\n"):
+            self.assertEqual(lines(line, "shell"), [1] if "EOF" not in line else [2], line)
+
+    def test_a_continued_line_reaches_the_command_word(self):
+        """Assignments continued onto the next line are an ordinary spelling of
+        an interpreter here-document; the continuation the shell deletes must
+        not read as a command word before the interpreter is reached."""
+        self.assertEqual(
+            lines("FOO=\"a b\" \\\n    python3 <<'PY'\n# #1234\nPY\n", "shell"), [3])
+
+    def test_quoting_does_not_promote_data_to_source(self):
+        """Reaching past a quoted value must stop at the command word all the
+        same: an argument that merely looks like an assignment is not one."""
+        for line in ("FOO=\"x y\" echo python3 -c '# #1234'\n",
+                     "echo \"FOO=x y\" python3 -c '# #1234'\n"):
+            self.assertEqual(lines(line, "shell"), [], line)
+
 
 class Check07Scope(unittest.TestCase):
     """The executed ratchet and `simplify` Check 7 are the two halves of one
