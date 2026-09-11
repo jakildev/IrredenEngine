@@ -24,10 +24,13 @@ Grep tool with:
 Run the pattern again with `glob: 'scripts/**'` — that arm reaches the
 extensionless executables.
 
-Flag only `+` lines. A bare durable backref (`// see #N`) is fine; task
-narration ("for #N", "fix for #N", "added in #N") is the smell. For
-motivation prose, read each added comment block of 3+ lines: an origin
-story or pre-change state, rather than a durable invariant, is cut.
+Flag only `+` lines. Any issue or PR number inside a comment is a defect —
+there is no sanctioned backref form (`.claude/rules/comments.md`). The
+executed ratchet `python3 scripts/lint_comment_refs.py` fails CI on a file
+that gained one; this pass fixes it before the push. For motivation prose,
+read each added comment block of 3+ lines: an origin story or pre-change
+state, rather than a durable invariant, is cut.
 
-Fix: delete the comment when task narration was all it carried; reduce it
-to `// see #N` when it also states a durable WHY. Same for a prose block.
+Fix: delete the comment when narration was all it carried; when it also
+states a durable contract or invariant, keep only that sentence. Same for a
+prose block.

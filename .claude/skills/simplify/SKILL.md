@@ -208,8 +208,10 @@ commented-out code; debug logging left from troubleshooting (downgrade to
 `IRE_LOG_WARN` / `IRE_LOG_ERROR` when it has rare-path value);
 tautological comments; change-narration comments (`// Refactored from X`,
 `// Now uses Y`) — at block scale too: a multi-line block tracing
-issue-by-issue history is the same smell, cut to the durable invariant and
-at most a `// see #N` backref, and a block repeated near-verbatim at 3+
+issue-by-issue history is the same smell, cut to the durable invariant
+with no backref — issue numbers never belong in comments
+(`.claude/rules/comments.md`; the `lint_comment_refs.py` ratchet fails CI
+on a file that gains one) — and a block repeated near-verbatim at 3+
 sites is hoisted to `docs/design/<topic>.md`; location-reference
 narration (`// set above`, `// see below`; Check 4); stale `TODO`/`FIXME`
 on work finished this session; "old code" markers. Task-reference

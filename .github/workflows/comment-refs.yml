@@ -1,0 +1,26 @@
+name: Comment Refs
+
+# Issue and PR numbers do not belong in code comments (.claude/rules/comments.md).
+# scripts/lint_comment_refs.py is a per-file ratchet against
+# scripts/lint_comment_refs_baseline.json: a file may lose references, never
+# gain them. Unfiltered on purpose — the population is every code file class
+# in the tree, so any push can regress it.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  comment-refs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Comment reference ratchet
+        run: python3 scripts/lint_comment_refs.py

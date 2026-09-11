@@ -128,35 +128,18 @@ path, or the API keeps signalling "experimental" when it's the production code
   (`IREntity::singleton<T>`); system wiring is `SystemManager`-owned.
   Full pattern catalog, rationale, and detection grep:
   [`.claude/rules/cpp-globals.md`](../../.claude/rules/cpp-globals.md).
-- **"Set above" is code narration, not a WHY.** Comments that point at
-  *where* code is — `// set above`, `// see below`, `// defined above`,
-  `// called from X` — narrate location instead of explaining intent.
-  The location is already visible in the code; any real rationale belongs
-  at the referenced site, not cross-referenced from here. Delete them; if
-  the comment carried a genuine WHY, move it to the site it points at.
-  (The `simplify` skill's Check 4 greps for these mechanically on new diffs.)
-- **Comments capture durable *why*, not change history.** A comment states
-  what is true of the code *as it stands* — invariants, contracts,
-  conventions, and gotchas a reader needs regardless of how the code got
-  here. It does not narrate the investigation or the diff. Keep *"this is
-  the ONE place the threshold lives, so every consumer derives the same
-  predicate and can't disagree"*; cut *"Before #1882 the gate used
-  `|residual| > deadband`… now Y"*, *"#1957 verified… was a misdiagnosis"*,
-  *"retired (T-323)"*. The test: if the code had always existed in its
-  current form, would you still write this sentence? If no, it's history —
-  it belongs in the commit message, the PR body, or a design doc under
-  `docs/design/`, not the source; leave at most a
-  one-token backref (`// see #1910`). This holds at paragraph scale — a
-  30-line block tracing a bug's forensic history is the same smell as a
-  one-line `// now uses the deferred variant`, and is most common in render
-  code.
+- **Comments explain the code, never its history.** A comment states a
+  contract, invariant, or gotcha the code cannot say for itself; never what
+  the code does, how it changed, where related code sits, or an issue or PR
+  number. The full rule, the keeper test, and the executed ratchet live in
+  [`.claude/rules/comments.md`](../../.claude/rules/comments.md).
 - **These style and comment rules apply to the Python under `scripts/`
   (fleet automation + render / perf / gui harnesses) too, not just C++.** PEP8
   spacing, import-order, unused imports, and bare-`assert`-as-guard are enforced
   mechanically by **ruff** (`ruff check scripts/`, gated in CI — see BUILD.md §
-  "Python (scripts)"). The one-line-comment / WHY-not-narration policy has no
-  mechanical ruff rule, so it stays **reviewer-enforced**: write comments that
-  explain intent, not code narration, in Python the same as in C++.
+  "Python (scripts)"); the comment rule's issue-reference ratchet covers Python
+  and shell as well. Intent-not-narration stays **reviewer-enforced** in every
+  language.
 
 ---
 
@@ -293,6 +276,7 @@ agent-facing doc, link to the canonical home rather than restating.
 | Math substitution rules (machine-checkable) | `.claude/rules/cpp-math.md` |
 | System-state smells (machine-checkable) | `.claude/rules/cpp-systems.md` |
 | Global-state patterns · header-global ban (machine-checkable) | `.claude/rules/cpp-globals.md` |
+| Comment policy — explain, never narrate; no issue/PR numbers (ratcheted) | `.claude/rules/comments.md` |
 | Running a rules detector tree-wide · the `creations/` sweep trap | `.claude/rules/README.md` |
 | Tick-function signatures · INPUT → UPDATE → RENDER ordering | `engine/system/CLAUDE.md` |
 | Component-method tier rules | `engine/prefabs/CLAUDE.md` |
