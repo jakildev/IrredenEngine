@@ -345,12 +345,12 @@ class PrReferencesIssue(unittest.TestCase):
 
     _STEWARD_TITLE_2392 = (
         "docs/fleet: epic-steward — #2317 rollup + #2385 adoption (#2314)")
-    _FLEET_FILES = [{"path": ".fleet/plans/issue-2314.md"},
-                    {"path": ".fleet/plans/issue-2385.md"}]
+    _FLEET_FILES = [{"path": ".fleet/status/epic-2314.md"},
+                    {"path": ".fleet/status/epic-2385.md"}]
 
     def test_bookkeeping_diff_title_ref_rejected(self):
         # #2385 <- #2392: a steward rollup PR names #2385 in a trusted (non-plan)
-        # title, but its diff is two .fleet/plans/ docs — it adopts the plan, it
+        # title, but its diff is two .fleet/ docs — it maintains fleet state, it
         # does not ship #2385's render fix. Its subject is "epic-steward" (neither
         # plan nor design), so layers 4/6/7 do not fire; the all-.fleet/ diff does.
         self.assertFalse(pr_references_issue(
@@ -363,7 +363,7 @@ class PrReferencesIssue(unittest.TestCase):
         # Defensive: a plain list of path strings (not {'path': ...} dicts) works.
         self.assertFalse(pr_references_issue(
             self._STEWARD_TITLE_2392, "", 2385,
-            [".fleet/plans/issue-2314.md", ".fleet/plans/issue-2385.md"]))
+            [".fleet/status/epic-2314.md", ".fleet/status/epic-2385.md"]))
 
     def test_bookkeeping_diff_still_ships_via_body_closing_verb(self):
         # A .fleet/-only PR whose deliverable genuinely IS the fleet change still
@@ -372,9 +372,9 @@ class PrReferencesIssue(unittest.TestCase):
             self._STEWARD_TITLE_2392, "Closes #2385", 2385, self._FLEET_FILES))
 
     def test_mixed_diff_keeps_title_trust(self):
-        # A real impl PR that commits its plan file (.fleet/plans/issue-N.md, per
-        # #1932) AND code is NOT all-.fleet/, so title-trust is retained.
-        files = [{"path": ".fleet/plans/issue-2385.md"},
+        # A PR that touches a .fleet/ note AND code is NOT all-.fleet/, so
+        # title-trust is retained.
+        files = [{"path": ".fleet/status/epic-2385.md"},
                  {"path": "engine/render/fog.cpp"}]
         self.assertTrue(pr_references_issue("#2385: render: fog fix", "", 2385, files))
 
@@ -482,7 +482,7 @@ class SelectShippedPr(unittest.TestCase):
         pr = _pr(2392,
                  "docs/fleet: epic-steward — #2317 rollup + #2385 adoption (#2314)",
                  "Rolls up #2317; adopts the #2385 plan into the ledger.",
-                 files=[".fleet/plans/issue-2314.md", ".fleet/plans/issue-2385.md"])
+                 files=[".fleet/status/epic-2314.md", ".fleet/status/epic-2385.md"])
         self.assertIsNone(select_shipped_pr([pr], 2385))
         # True-positive retained: a genuine impl PR delivering #2385 still stamps.
         impl = _pr(2500, "#2385: render: fog vision fix", "Closes #2385",

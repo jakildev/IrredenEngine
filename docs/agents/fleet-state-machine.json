@@ -180,7 +180,7 @@
       "name": "fleet:design-unblocked",
       "scope": "pr",
       "color": "c5def5",
-      "description": "Architect responded; worker resumes per the architect comment + updated plan file"
+      "description": "Architect responded; worker resumes per the architect comment + plan corrections"
     },
     {
       "name": "fleet:design-proposed",
@@ -300,7 +300,7 @@
       "name": "human:no-plan",
       "scope": "issue",
       "color": "5319e7",
-      "description": "Human opt-out at filing: skip planning, queue directly with no ## Plan comment / plan file. Also honored as a [no-plan] title/body tag; a fleet agent applies fleet:no-plan instead"
+      "description": "Human opt-out at filing: skip planning, queue directly with no ## Plan comment. Also honored as a [no-plan] title/body tag; a fleet agent applies fleet:no-plan instead"
     },
     {
       "name": "human:revise-plan",

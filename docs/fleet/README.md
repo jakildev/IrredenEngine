@@ -205,8 +205,8 @@ merger rebases                       ──►  resolves mechanical
         │
         ▼
 human merges via GitHub UI
-(pure .fleet/plans PRs auto-merge
- via tier-0 — FLEET.md § Who merges)
+(tier-0 auto-merge lane is dormant
+ — FLEET.md § Who merges)
         │
         ▼
 issue closes automatically (Closes #N in PR body)

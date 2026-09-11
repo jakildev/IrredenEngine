@@ -62,7 +62,7 @@ prompt suggests:
 - **Modifying other issues' bodies or labels to retitle / re-scope them.**
   The architect files GitHub issues with acceptance criteria + `Blocked by:`
   metadata in the body; the scout ingests `human:approved` issues into its
-  in-memory queue on its next pass. If your own plan file contains a step like
+  in-memory queue on its next pass. If your own plan contains a step like
   "add entries to the queue", **the plan is wrong** — strike that step and
   file the issues only.
 - **Pre-applying labels at filing time.** Issues file with **no state
@@ -395,11 +395,12 @@ conversation), follow the shared
 thread, post the structured **`## Plan` comment** (including the **cross-system
 audit** when planning a deletion/migration of a shared resource), then swap
 `fleet:needs-plan` → `fleet:plan-review` (leaving `human:approved`). The
-`## Plan` comment is the canonical, host-independent plan — there is **no
-separate plan-doc PR**; the implementing worker commits
-`.fleet/plans/issue-<N>.md` as the first commit of its own implementation PR, so
-the plan lands with the code in one merge. If you disagree with the issue's
-direction, comment but leave `fleet:needs-plan` on. If the work decomposes into
+`## Plan` comment is the canonical, host-independent plan and the **only** plan
+artifact — no plan doc, no plan PR, nothing committed to the repo. Later
+amendments are `## Plan corrections` comments on the same issue; the
+implementing worker reads the newest `## Plan` plus every later correction. If
+you disagree with the issue's direction, comment but leave `fleet:needs-plan`
+on. If the work decomposes into
 a multi-issue stack, file it via `file-epic` per Filing tasks above.
 
 You may also act as the **plan reviewer**: an issue carrying `fleet:plan-review`
@@ -451,10 +452,10 @@ When working a `fleet:design-blocked` PR:
    question(s), and (sometimes) suggested options.
 2. Decide on the architectural questions. You are not coding the fix yourself;
    you are providing direction the worker will execute.
-3. **Capture durable design decisions in `docs/design/`, not just the plan
-   file.** The plan file (`.fleet/plans/issue-<N>.md`, on the PR branch) is
-   task-scoped and transient — it informs the worker resuming THIS PR and then
-   stops mattering once the task completes. If your decision establishes or changes an
+3. **Capture durable design decisions in `docs/design/`, not just the PR
+   comment.** Your direction on the PR is task-scoped and transient — it
+   informs the worker resuming THIS PR and then stops mattering once the task
+   completes. If your decision establishes or changes an
    **engine-level architectural invariant, model, or contract** that outlives
    the task (a rasterizer face-selection model, a coordinate-system invariant,
    a component-ownership rule, a pipeline-ordering contract, a data-layout
@@ -464,28 +465,25 @@ When working a `fleet:design-blocked` PR:
    decision is in:
 
    - **Task-local** (this PR's approach, no reuse implication beyond this
-     deliverable) → plan file only (step 3a).
+     deliverable) → the PR comment only (step 3a).
    - **Engine-level architecture** (any future consumer needs to know this; it
      constrains or enables work beyond this PR) → design doc (step 3b) AND
-     reference it from the plan file + nearest module `CLAUDE.md`.
+     reference it from the PR comment + nearest module `CLAUDE.md`.
 
    When in doubt, ask: "would a worker on a *different* task six weeks from now
    need this decision to avoid re-deriving it or contradicting it?" If yes,
    it's a design doc.
 
-   3a. **Plan direction → the PR comment; the worker folds it into the branch's
-   plan file.** The implementation PR already carries
-   `.fleet/plans/issue-<N>.md` on its branch (the worker committed it as the
-   first commit). You don't push to the worker's branch, so put your concrete
-   direction in the step-4 `## Architect direction` comment; the resuming worker
-   updates the plan file in place on the branch (adding a revision-history entry,
-   re-scoping acceptance criteria) before continuing. **No separate docs PR for
-   the plan file** — it rides in the impl PR it already belongs to, and your
-   direction reaches a cross-host resumer through the PR comment
-   (host-independent) plus the plan file on the branch they check out. For an
-   engine-level decision, the worker keeps the plan file short and **points at
-   the design doc** (step 3b) rather than duplicating it — the doc is canonical,
-   the plan file is the worker's task pointer into it.
+   3a. **Plan direction → the PR comment.** You don't push to the worker's
+   branch and you don't rewrite the issue's `## Plan`, so your concrete
+   direction — including re-scoped acceptance criteria — goes in the step-4
+   `## Architect direction` comment, and that comment *is* the direction. It is
+   host-independent, so a cross-host resumer gets everything from the PR plus
+   the issue's `## Plan` comment (and any `## Plan corrections`); where the
+   implementation ends up departing from the plan's approach sketch, the worker
+   records that as a short `## Plan departures` note in the PR body. For an
+   engine-level decision, **point at the design doc** (step 3b) rather than
+   restating it in the comment — the doc is canonical.
 
    3b. **Design doc** (for engine-level architecture): create or update
    `docs/design/<feature>.md` as the source of truth for the
@@ -532,8 +530,7 @@ When working a `fleet:design-blocked` PR:
    `docs/design/voxel-face-rasterization.md`) → #1278 (fresh impl task,
    `**Blocked by:** #1277`).
 4. Post a PR comment with concrete decisions, re-scoped acceptance criteria (if
-   changed), and a pointer to the design doc (if step 3b applied) and/or the
-   plan file:
+   changed), and a pointer to the design doc (if step 3b applied):
    ```
    gh pr comment <N> --body "## Architect direction
 
@@ -542,8 +539,8 @@ When working a `fleet:design-blocked` PR:
    <re-scoped acceptance criteria if the original ones changed>
 
    Source of truth for this model: \`docs/design/<feature>.md\`
-   (engine-level decisions). Fold this direction into
-   \`.fleet/plans/issue-<N>.md\` on this branch before resuming."
+   (engine-level decisions). Read this direction alongside the issue's
+   \`## Plan\` comment (and any \`## Plan corrections\`) before resuming."
    ```
 5. **Swap labels via the named transition.** Removing `fleet:design-blocked`
    and adding `fleet:design-unblocked` is a single atomic edge — the

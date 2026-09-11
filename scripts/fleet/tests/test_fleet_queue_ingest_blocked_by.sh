@@ -96,14 +96,14 @@ case "$1" in
                     exit 0
                 fi
                 case "$3" in
-                    730) echo '{"body":"**Model:** opus\n**Blocked by:** (none)","labels":[{"name":"human:approved"}]}' ;;
-                    731) echo '{"body":"**Model:** sonnet\n**Blocked by:** #719","labels":[{"name":"human:approved"}]}' ;;
-                    732) echo '{"body":"**Model:** opus\n**Blocked by:** #718","labels":[{"name":"human:approved"}]}' ;;
+                    730) echo '{"body":"**Model:** opus\n**Blocked by:** (none)","labels":[{"name":"human:approved"}],"comments":[{"body":"## Plan: stub\n\nstep one"}]}' ;;
+                    731) echo '{"body":"**Model:** sonnet\n**Blocked by:** #719","labels":[{"name":"human:approved"}],"comments":[{"body":"## Plan: stub\n\nstep one"}]}' ;;
+                    732) echo '{"body":"**Model:** opus\n**Blocked by:** #718","labels":[{"name":"human:approved"}],"comments":[{"body":"## Plan: stub\n\nstep one"}]}' ;;
                     733) echo '{"body":"**Blocked by:** #717","labels":[{"name":"fleet:queued"},{"name":"fleet:opus"},{"name":"fleet:blocked"}]}' ;;
                     734) echo '{"body":"**Blocked by:** #719","labels":[{"name":"fleet:queued"},{"name":"fleet:opus"},{"name":"fleet:blocked"}]}' ;;
-                    735) echo '{"body":"**Model:** opus\n**Blocked by:** jakildev/irreden#777","labels":[{"name":"human:approved"}]}' ;;
-                    736) echo '{"body":"**Model:** opus\n**Blocked by:** jakildev/irreden#778","labels":[{"name":"human:approved"}]}' ;;
-                    737) echo '{"body":"**Model:** opus\nPart of epic #174 (Phase D). [opus] Blocked by: #719.","labels":[{"name":"human:approved"}]}' ;;
+                    735) echo '{"body":"**Model:** opus\n**Blocked by:** jakildev/irreden#777","labels":[{"name":"human:approved"}],"comments":[{"body":"## Plan: stub\n\nstep one"}]}' ;;
+                    736) echo '{"body":"**Model:** opus\n**Blocked by:** jakildev/irreden#778","labels":[{"name":"human:approved"}],"comments":[{"body":"## Plan: stub\n\nstep one"}]}' ;;
+                    737) echo '{"body":"**Model:** opus\nPart of epic #174 (Phase D). [opus] Blocked by: #719.","labels":[{"name":"human:approved"}],"comments":[{"body":"## Plan: stub\n\nstep one"}]}' ;;
                     *)   echo '{"body":"","labels":[]}' ;;
                 esac
                 exit 0 ;;

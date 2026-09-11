@@ -3,20 +3,13 @@
 The canonical `file-epic` flow: take an approved architect plan that covers
 a multi-ticket epic and file it as a fleet expects — an umbrella issue
 labelled with the repo's **epic label**, one child per phase labelled with
-the **task label**, each **child plan posted as a `## Plan` issue comment**
-(the canonical plan per the #1932 redesign — its implementer commits
-`.fleet/plans/issue-<N>.md` as the **first commit of the child's impl PR**,
-so there is **no separate per-child plan-doc PR**), and post-filing stack
-validation.
+the **task label**, each **child plan posted as a `## Plan` issue comment** (the canonical
+plan — nothing is committed), and post-filing stack validation.
 
-> **Umbrella plan + steward ledger stay a committed file.** The umbrella has
-> no impl PR to carry its plan, and the epic-steward maintains its `## Steward
-> ledger` in the committed `.fleet/plans/issue-<umbrella>.md` via its own
-> docs PRs (`epic-steward-protocol.md`). So this flow commits **only** the
-> umbrella plan (step 6.5), not the children's. Moving the umbrella plan into
-> a `## Plan` comment too (per #1932 PR4's full intent) is coupled to a
-> matching epic-steward-protocol change (the ledger's home) and is a tracked
-> follow-on — see step 6.5.
+> **The umbrella's plan and the steward ledger are comments too.** The
+> umbrella carries its own `## Plan` comment (step 6.5) and the epic-steward
+> keeps its `## Steward ledger` as a separate comment on the same issue,
+> edited in place (`epic-steward-protocol.md`). This flow writes no files.
 
 Every repo that runs a fleet keeps its
 `.claude/skills/file-epic/SKILL.md` as a thin wrapper that points here and
@@ -34,8 +27,6 @@ mechanism.
 | **epic label** | Marks the umbrella so the queue-manager skips it. | `fleet:epic` |
 | **task label** | Marks each child as a queue-ingestable task. | `fleet:task` |
 | **architect plans dir** | Where the approved architect draft lives. | `~/.claude/plans/<slug>.md` |
-| **plans dir** | Local staging for the plan, pre-commit (umbrella only). | `~/.fleet/plans/issue-<N>.md` |
-| **repo-side plan path** | Committed, authoritative plan workers read from master (umbrella only). | `<repo>/.fleet/plans/issue-<N>.md` |
 | **validate-stack command** | Asserts every child carries the structured fields. | `fleet-validate-stack` |
 | **title area vocabulary** | `<area>` tokens for child titles. | `engine`, `render`, `game`, module names |
 
@@ -50,8 +41,8 @@ mechanism.
   the user says "proceed" / "go" / "ship it".
 
 Do not invoke before the user has approved the plan. The user gates the
-move from "plan in **architect plans dir**" to "tickets in **plans dir** +
-the issue tracker".
+move from "plan in **architect plans dir**" to "tickets in the issue
+tracker".
 
 ---
 
@@ -84,23 +75,13 @@ If it already carries the **epic label** and has children filed (check
 `gh issue list --repo <repo> --search "Part of epic: #<N>"`), STOP and
 report — don't double-file.
 
-### 2. Save the umbrella plan
+### 2. Draft the steward ledger
+
+The ledger is posted in step 5.5 once the child numbers are known; draft it
+now from the schema in [`epic-steward-protocol.md`](../epic-steward-protocol.md):
 
 ```bash
-cp <architect-plans-dir>/<slug>.md <plans-dir>/issue-<N>.md
-```
-
-This stages the umbrella plan locally; step 6.5 commits it (and every
-per-ticket plan) into the repo at the **repo-side plan path**. The umbrella
-plan keeps the `issue-<N>` filename for the umbrella's lifetime.
-
-After saving, append the initial `## Steward ledger` section (schema from
-[`epic-steward-protocol.md`](../epic-steward-protocol.md)) to the staged plan.
-Child rows are not yet known — they are seeded in step 5.5 after filing:
-
-```bash
-cat >> <plans-dir>/issue-<N>.md << 'EOF'
-
+cat > .file-epic-ledger.md << 'EOF'
 ## Steward ledger
 
 reconciled-through: <YYYY-MM-DD>
@@ -152,7 +133,6 @@ rm -f .file-epic-body.md
 **Model:** <fable|opus|sonnet>
 **Effort:** <low|medium|high|xhigh|max>   <!-- optional; omit for the class default -->
 **Part of epic:** #<umbrella>
-**Plan file:** `<plans-dir>/issue-<umbrella>.md` (full epic plan)
 **Blocked by:** (none)
 
 ## Scope
@@ -200,21 +180,25 @@ Title convention: `<area>: <descriptive title> (<phase-slug>)` using one of the
 repo's **title area vocabulary** tokens. An optional `(<phase-slug>)` suffix
 (e.g. `(P1)`) preserves the architect's phase numbering for readability; the
 tracker's **issue number** is the canonical identifier every downstream
-reference (plan filename, `Blocked by:`, claim) uses. Capture the issue number
+reference (`Blocked by:`, claim) uses. Capture the issue number
 the tracker returns.
 
 ### 5.5. Seed the Children checklist and ledger rows (REQUIRED)
 
 After all children are filed and every issue number is known:
 
-**a. Insert child rows into the `### Children` table** in the `## Steward
-ledger` section of `<plans-dir>/issue-<N>.md` — one row per filed child,
-state `open`. Use the Write tool to update `<plans-dir>/issue-<N>.md`:
-locate the empty table separator row (the `|---|---|---|---|---|` line under
-`### Children`) and append one row per child below it.
+**a. Post the ledger comment.** Append one row per filed child, state
+`open`, below the `### Children` separator in the step-2 draft, then post
+it as the umbrella's `## Steward ledger` comment — exactly one; the steward
+edits this comment in place from now on:
 
 ```
 | #<child-N> | open | — | plan | <YYYY-MM-DD> |
+```
+
+```bash
+gh issue comment <umbrella> --repo <repo> --body-file .file-epic-ledger.md
+rm -f .file-epic-ledger.md
 ```
 
 **b. Write the `## Children` checklist** into the umbrella issue body in one
@@ -247,10 +231,9 @@ missing from the start.
 ### 6. Post each child's plan as a `## Plan` comment
 
 After each child is filed, post its plan as a **`## Plan` comment on the child
-issue** — the canonical plan per the #1932 redesign. The queue gate keys on this
-comment, and the child's implementer commits it to `.fleet/plans/issue-<N>.md`
-as the **first commit of the child's impl PR** (no separate plan-doc PR). Write
-the comment body to a temp file, then
+issue** — the canonical plan; the queue gate keys on this comment and the
+implementer reads it from the thread. Write the comment body to a temp file,
+then
 `gh issue comment <N> --repo <repo> --body-file <file>`. The comment body
 (`<N>` is the tracker-assigned number):
 
@@ -260,7 +243,7 @@ the comment body to a temp file, then
 - **Issue:** #<N>
 - **Model:** <fable|opus|sonnet>
 - **Date:** <YYYY-MM-DD>
-- **Epic:** #<umbrella> — see `<plans-dir>/issue-<umbrella>.md` for full context
+- **Epic:** #<umbrella> — its `## Plan` comment carries the full epic plan
 - **Blocked by:** (none)   <!-- or same-repo `#<prior>[, #<other>]`; same exact form as the issue body -->
 
 ### Scope
@@ -325,33 +308,12 @@ A child plan that just restates the umbrella's phase line is a stub
 wrong (#1456). The queue's plan gate checks only that a `## Plan` comment
 exists; the rigor is on the author.
 
-### 6.5. Commit the umbrella plan into the repo (REQUIRED — the steward reads it)
+### 6.5. Post the umbrella's own `## Plan` comment (REQUIRED — the steward reads it)
 
-Only the **umbrella** plan (with its `## Steward ledger`) is committed by this
-flow. The children's plans are `## Plan` comments now (step 6), and each child's
-plan file lands via the **first commit of its own impl PR** (#1932) — `file-epic`
-no longer opens a per-child plan-doc PR. But the umbrella has no impl PR, and the
-epic-steward maintains the ledger in the committed
-`.fleet/plans/issue-<umbrella>.md` via its iteration docs PRs
-(`epic-steward-protocol.md`), so the umbrella plan must live in the repo.
-
-```bash
-mkdir -p <repo-root>/.fleet/plans
-cp <plans-dir>/issue-<umbrella>.md <repo-root>/.fleet/plans/issue-<umbrella>.md
-# branch + commit + PR via the commit-and-push skill (docs-only, reviews fast).
-# Filename keeps the issue-<N>.md form — there is NO T-<NNN> rename.
-```
-
-The PR is docs-only. It does **not** gate child claimability — children carry
-their plan in the `## Plan` comment, which the queue gate (`fleet-queue-ingest`,
-#1932 PR2) reads directly — but land it promptly so the steward and any
-cross-host reader see the umbrella plan + ledger from master.
-
-> **Follow-on (#1932 PR4 full intent).** Moving the umbrella plan + ledger out
-> of a committed file and into the umbrella's `## Plan` comment requires a
-> matching `epic-steward-protocol.md` change (the steward would edit the comment
-> instead of writing the file via its docs PR). That coupling is out of this
-> flow's scope; until it lands, the umbrella plan stays a committed file.
+The umbrella plan is a `## Plan` comment on the umbrella issue, in the same
+form as the children's (step 6). Nothing is committed: the epic steward keeps
+its `## Steward ledger` as a separate comment on the same issue
+(`epic-steward-protocol.md`).
 
 ### 7. Post the umbrella summary comment
 
@@ -366,7 +328,7 @@ The summary is the single source of truth linking the umbrella to its
 children: a phase/ticket/title/model table for the closing path, an
 independent-follow-on table, an ASCII dependency chain, closing criteria,
 and any shape changes from the original phasing. Include one line pointing
-at the Steward ledger: `Steward ledger: <repo-side-plan-path>/issue-<N>.md §Steward ledger`.
+at the Steward ledger comment posted in step 5.5.
 
 ### 7.5. Validate filed bodies (STOP on failure)
 
@@ -470,19 +432,21 @@ won't auto-approve).
   cross-reference then isn't visible from the umbrella's own thread.
 - ❌ Filing an epic for changes that are really one ticket. If the scope
   fits in one PR, file one issue.
-- ❌ Inline-authoring the umbrella plan file. Always copy from the
-  **architect plans dir** — the architect plan is the canonical source.
+- ❌ Inline-authoring the umbrella `## Plan` comment. Always derive it from
+  the **architect plans dir** draft — the architect plan is the canonical
+  source.
 - ❌ Filing an epic without seeding the `## Children` checklist (step 5.5b)
   or the `## Steward ledger` (step 2 + step 5.5a) — the steward heals
   pre-protocol epics, but new filings must be born managed.
 
-## Plan file lifecycle
+## Plan lifecycle
 
 | Location | Purpose | Lifecycle |
 |---|---|---|
 | **architect plans dir** (`<slug>.md`) | Architect's draft, approved by user. | Session-local; archive after the epic ships. |
-| **child `## Plan` comment** (on each child issue) | Canonical child plan; the queue gate reads it (#1932). | Posted in step 6; committed to `.fleet/plans/issue-<N>.md` as the first commit of the child's impl PR. |
-| **umbrella plan** (`issue-<umbrella>.md`) | Umbrella plan + `## Steward ledger`; the steward reads/maintains it. | Staged in step 2; committed via the step-6.5 docs PR; maintained thereafter by the epic-steward's iteration docs PRs until close-out. |
+| **child `## Plan` comment** (on each child issue) | Canonical child plan; the queue gate reads it. | Posted in step 6; amended by `## Plan corrections` comments. |
+| **umbrella `## Plan` comment** | The umbrella's own plan. | Posted in step 6.5. |
+| **umbrella `## Steward ledger` comment** | The steward's bookkeeping. | Posted in step 5.5; edited in place by the epic-steward until close-out. |
 
 ## When the architect plan is rough
 

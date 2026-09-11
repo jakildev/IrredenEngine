@@ -289,20 +289,6 @@ durable, actionable observations belong here, not per-iteration status.
 
 ---
 
-## Plan-file Read pattern (workers only)
-
-When reading plan files from the repo's `.fleet/plans/` directory, use:
-
-```
-git -C <repo> show origin/master:.fleet/plans/<file>
-```
-
-Do NOT use `git checkout origin/master -- .fleet/plans/<file>` — that
-form stages the file in the index and breaks the later `git checkout -b
-<feature-branch>` when claiming a task.
-
----
-
 ## Usage-limit handling
 
 If you hit a usage-limit error: print the error and exit. The pane

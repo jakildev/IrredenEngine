@@ -18,7 +18,7 @@
 #                                       every file whose NET content changed is
 #                                       non-canon documentation (*.md outside
 #                                       docs/design/ and the game design tiers,
-#                                       .fleet/plans/**, docs/pr-screenshots/**)
+#                                       docs/pr-screenshots/**)
 #                                       — the workflow keeps fleet:approved for
 #                                       that class instead of burning a full
 #                                       re-review round on a wording delta
@@ -73,7 +73,7 @@ is_docs_path() {  # $1 = repo-relative path
     irreden/docs/*) return 1 ;;
   esac
   case "$1" in
-    .fleet/plans/*|docs/pr-screenshots/*) return 0 ;;
+    docs/pr-screenshots/*) return 0 ;;
     *.md) return 0 ;;
     *) return 1 ;;
   esac

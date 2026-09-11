@@ -15,7 +15,7 @@
 #   T6  net delta touches only a non-canon .md -> docs_only=true (keep approval)
 #   T7  net delta touches a canon design doc (docs/design/**) -> docs_only=false
 #   T8  net delta mixes a .md with a code file -> docs_only=false
-#   T9  net delta touches only .fleet/plans/** -> docs_only=true, and rebase
+#   T9  net delta touches only a .fleet/ markdown note -> docs_only=true, and rebase
 #       noise from an advanced master does not pollute the changed-file set
 #
 # Hermetic: no live GitHub, no origin remote, no ~/.fleet. The script's
@@ -193,24 +193,24 @@ AFTER=$(git -C "$R" rev-parse HEAD)
 expect "T8" "$(classify "$R" "$BEFORE" "$AFTER" "$BASE_SHA")" \
     "rebase_only=false"$'\n'"docs_only=false"
 
-# --- T9: plans-only force-push delta + rebase noise -> docs_only=true --------
-# A catch-up rebase (count-preserving force-push) plus an AMEND to the plan
+# --- T9: docs-only force-push delta + rebase noise -> docs_only=true ---------
+# A catch-up rebase (count-preserving force-push) plus an AMEND to the docs
 # commit: the docs-only decision compares NET diffs per file, so master
 # advancing a code file between the two anchors (rebase noise) must not count
 # as a net-changed code path. This exercises the BEFORE~N recovery arm of the
 # docs decision (T6/T8 exercise the fast-forward arm).
-echo "T9: plans-only amend atop a catch-up rebase -> docs_only=true"
+echo "T9: docs-only amend atop a catch-up rebase -> docs_only=true"
 R=$(new_repo t9)
 git -C "$R" checkout -q -b feature
-add_at "$R" ".fleet/plans/issue-42.md" "plan v1" plan
+add_at "$R" ".fleet/status/notes-42.md" "notes v1" notes
 BEFORE=$(git -C "$R" rev-parse HEAD)
 git -C "$R" checkout -q master
 add "$R" master_code.txt m1                          # master advances (code)
 BASE_SHA=$(git -C "$R" rev-parse master)
 git -C "$R" checkout -q feature
 git -C "$R" rebase -q master >/dev/null
-( cd "$R" && echo "plan v2 amended" > .fleet/plans/issue-42.md \
-    && git add .fleet/plans/issue-42.md && git commit -q --amend -m plan )
+( cd "$R" && echo "notes v2 amended" > .fleet/status/notes-42.md \
+    && git add .fleet/status/notes-42.md && git commit -q --amend -m notes )
 AFTER=$(git -C "$R" rev-parse HEAD)
 expect "T9" "$(classify "$R" "$BEFORE" "$AFTER" "$BASE_SHA")" \
     "rebase_only=false"$'\n'"docs_only=true"

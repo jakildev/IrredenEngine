@@ -355,11 +355,11 @@ for finding; re-passes are for confirming. The rules:
 - **A mechanical rebase is not a review candidate.** The auto-rereview
   workflow's patch-id classifier keeps `fleet:approved` across
   byte-identical rebases and retargets, and keeps it across docs-only
-  deltas (plans, screenshots, non-canon markdown). If one reaches you
+  deltas (screenshots, non-canon markdown). If one reaches you
   anyway — a stale label, a manual ping — restore the label state;
   don't write a rebase-confirmation review.
-- **Docs-light lane.** A PR whose entire diff is `.fleet/plans/**`,
-  `docs/pr-screenshots/**`, steward-ledger updates, or non-canon
+- **Docs-light lane.** A PR whose entire diff is
+  `docs/pr-screenshots/**` or non-canon
   markdown gets a single light Sonnet pass — scope sanity plus a
   spot-check, no independent re-verification of every citation, no
   Opus recheck. **Canon design docs are the exception** (engine

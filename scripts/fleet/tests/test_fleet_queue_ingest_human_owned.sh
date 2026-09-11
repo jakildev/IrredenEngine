@@ -54,7 +54,7 @@ case "$1" in
                 # #710 is human-owned (de-queued); #711 is a normal approved issue.
                 case "$3" in
                     710) echo '{"body":"**Model:** opus\n**Blocked by:** (none)","labels":[{"name":"human:approved"},{"name":"human:owned"}]}' ;;
-                    711) echo '{"body":"**Model:** opus\n**Blocked by:** (none)","labels":[{"name":"human:approved"}]}' ;;
+                    711) echo '{"body":"**Model:** opus\n**Blocked by:** (none)","labels":[{"name":"human:approved"}],"comments":[{"body":"## Plan: stub\n\nstep one"}]}' ;;
                     *)   echo '{"body":"","labels":[]}' ;;
                 esac
                 exit 0 ;;

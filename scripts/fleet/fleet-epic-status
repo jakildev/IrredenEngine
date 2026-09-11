@@ -17,7 +17,7 @@ Data sources:
   - Scout cache (~/.fleet/state/state.json) for PR metadata when fresh
     (< CACHE_MAX_AGE_S seconds old); live gh fallback otherwise
   - Live gh for issue state (always, since the cache doesn't carry issue state)
-  - Plan files at .fleet/plans/issue-<N>.md (repo-side path)
+  - Live gh for each issue's `## Plan` comment (the plan column)
 
 Child discovery uses the same is_epic_child() / discover_children() logic as
 fleet-validate-stack — single-sourced to prevent drift.
@@ -42,7 +42,7 @@ STATE_DIR = os.path.join(os.path.expanduser("~"), ".fleet", "state")
 STATE_JSON = os.path.join(STATE_DIR, "state.json")
 REPOS_CACHE = os.path.join(STATE_DIR, "repos.json")
 DEFAULT_SLUGS = {"engine": "jakildev/IrredenEngine", "game": "jakildev/irreden"}
-PLAN_PATH_TMPL = ".fleet/plans/issue-{n}.md"
+PLAN_COMMENT_RE = re.compile(r"^\s{0,3}#{2,}\s+Plan\b", re.MULTILINE)
 CACHE_MAX_AGE_S = 300
 
 STEWARD_PREFIX = "fleet:stewarding-"
@@ -189,11 +189,16 @@ def prs_for_child_live(slug, number):
     return result or []
 
 
-def plan_file_exists(repo_root, number):
-    if not repo_root:
-        return False
-    p = pathlib.Path(repo_root) / PLAN_PATH_TMPL.format(n=number)
-    return p.exists()
+def plan_comment_exists(slug, number):
+    data = _gh_json([
+        "gh", "issue", "view", str(number), "--repo", slug,
+        "--json", "comments",
+    ]) or {}
+    for c in data.get("comments", []) or []:
+        body = c.get("body", "") if isinstance(c, dict) else ""
+        if body and PLAN_COMMENT_RE.search(body):
+            return True
+    return False
 
 
 def find_repo_root():
@@ -239,7 +244,6 @@ def main():
         warn("unknown repo key: %s" % args.repo)
         return 2
 
-    repo_root = find_repo_root()
     state_data, cache_fresh = load_state_cache()
     repo_key = args.repo  # "engine" or "game"
 
@@ -250,7 +254,7 @@ def main():
 
     u_labels = label_names(umbrella_data.get("labels", []))
     u_steward = steward_holder(u_labels)
-    u_has_plan = plan_file_exists(repo_root, args.umbrella)
+    u_has_plan = plan_comment_exists(slug, args.umbrella)
 
     children_raw = discover_children(slug, args.umbrella, args.state)
 
@@ -283,7 +287,7 @@ def main():
             "blocked_by": blocked_by_nums(c.get("body", "")),
             "open_prs": pr_rows,
             "design_labels": design_labels(c_labels),
-            "has_plan": plan_file_exists(repo_root, c_num),
+            "has_plan": plan_comment_exists(slug, c_num),
         })
 
     children_detail.sort(key=lambda x: x["number"])

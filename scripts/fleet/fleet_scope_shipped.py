@@ -82,7 +82,7 @@ incidental match have to be rejected:
    PR — a ledger rollup, a plan adoption, a projection edit — is titled *about*
    the issues it accounts for ("docs/fleet: epic-steward — #2317 rollup + #2385
    adoption (#2314)"), but its diff is entirely ``.fleet/`` files (here two
-   ``.fleet/plans/`` docs). Its subject is neither ``plan`` nor ``design``, so
+   ``.fleet/`` docs). Its subject is neither ``plan`` nor ``design``, so
    the layer-4 guard does not fire, and the bare ``#2385`` in the title
    satisfies title-trust — ingest false-stamped ``fleet:scope-shipped`` on #2385
    (a render fix with no impl PR anywhere) one minute after the human cleared it
@@ -91,9 +91,7 @@ incidental match have to be rejected:
    maintains fleet state and never ships an issue's code scope, so its title ref
    is NOT trusted: like layers 4/6/7 it falls through to the body closing-verb
    check, where a ``.fleet/``-only PR whose deliverable genuinely IS the fleet
-   change still ships via a prose ``Closes #N``. Real impl PRs that commit a plan
-   file (``.fleet/plans/issue-N.md``, per #1932) also carry the code, so their
-   diff is never ``.fleet/``-only. The file list is optional — a caller that does
+   change still ships via a prose ``Closes #N``. The file list is optional — a caller that does
    not supply it keeps the pre-layer-8 title-trust behavior.
 
 So a body ``#N`` counts only when a closing-action verb sits directly before it
@@ -222,8 +220,6 @@ def _ref_is_nonship_marked(text, n):
 # Fleet-internal bookkeeping prefix (layer 8). A merged PR whose changed files
 # are ALL under ``.fleet/`` — an epic-steward ledger rollup, a plan adoption, a
 # projection edit — maintains fleet state; it never ships an issue's code scope.
-# Real impl PRs that commit a plan file (``.fleet/plans/issue-N.md``, per #1932)
-# also carry the code, so their diff is never ``.fleet/``-only.
 _FLEET_BOOKKEEPING_PREFIX = '.fleet/'
 
 

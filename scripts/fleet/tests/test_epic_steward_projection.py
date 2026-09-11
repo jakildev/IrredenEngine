@@ -10,7 +10,6 @@ self-trigger the role forever.
 """
 import importlib.machinery
 import importlib.util
-import tempfile
 import unittest
 from pathlib import Path
 
@@ -26,6 +25,7 @@ project_sonnet_reviewer = _mod.project_sonnet_reviewer
 project_opus_reviewer = _mod.project_opus_reviewer
 project_merger = _mod.project_merger
 enrich_stackable_blocker_prs = _mod.enrich_stackable_blocker_prs
+_epic_is_managed = _mod._epic_is_managed
 stable_hash = _mod.stable_hash
 
 
@@ -33,7 +33,7 @@ def _entry(num, *, checked=False, closed=False):
     return {"number": num, "checked": checked, "closed": closed}
 
 
-def _epic(num, *, checklist=None, labels=None, plan_exists=False,
+def _epic(num, *, checklist=None, labels=None, managed=False,
           updated_at="2026-06-10T00:00:00Z"):
     return {
         "number": num,
@@ -41,8 +41,7 @@ def _epic(num, *, checklist=None, labels=None, plan_exists=False,
         "labels": sorted(labels or ["fleet:epic"]),
         "updatedAt": updated_at,
         "checklist": checklist if checklist is not None else [],
-        "plan_path": f".fleet/plans/issue-{num}.md",
-        "plan_exists": plan_exists,
+        "managed": managed,
     }
 
 
@@ -136,18 +135,18 @@ class Quiescence(unittest.TestCase):
 class NormalizeOp(unittest.TestCase):
     def test_managed_checklist_less_epic_emits_normalize(self):
         items = project_epic_steward(
-            _state(epics=[_epic(10, plan_exists=True)]))
+            _state(epics=[_epic(10, managed=True)]))
         self.assertEqual(items, [{"kind": "normalize", "repo": "engine",
                                   "epic": 10}])
 
     def test_healing_the_checklist_consumes_normalize(self):
-        before = _state(epics=[_epic(10, plan_exists=True)])
-        after = _state(epics=[_epic(10, plan_exists=True,
+        before = _state(epics=[_epic(10, managed=True)])
+        after = _state(epics=[_epic(10, managed=True,
                                     checklist=[_entry(11)])])
         self.assertNotEqual(_hash(before), _hash(after))
         self.assertEqual(project_epic_steward(after), [])
 
-    def test_legacy_epic_without_plan_file_emits_nothing(self):
+    def test_legacy_epic_without_children_heading_emits_nothing(self):
         # ~17 pre-protocol epics have neither checklist nor plan file; they
         # must not hold the projection non-empty forever.
         self.assertEqual(
@@ -290,7 +289,7 @@ class CloseoutOp(unittest.TestCase):
 
     def test_empty_checklist_never_emits_closeout(self):
         self.assertEqual(project_epic_steward(
-            _state(epics=[_epic(10, plan_exists=True)])),
+            _state(epics=[_epic(10, managed=True)])),
             [{"kind": "normalize", "repo": "engine", "epic": 10}])
 
     def test_closed_but_unchecked_emits_rollup_and_closeout(self):
@@ -356,18 +355,11 @@ class ResolveEpicChildren(unittest.TestCase):
         self.assertEqual(self.fallback_calls,
                          [("jakildev/IrredenEngine", "11")])
 
-    def test_plan_existence_annotated_from_repo_checkout(self):
-        self._stub_fallback(False)
-        with tempfile.TemporaryDirectory() as repo:
-            plans = Path(repo) / ".fleet" / "plans"
-            plans.mkdir(parents=True)
-            (plans / "issue-10.md").write_text("# plan\n")
-            state = _state(epics=[_epic(10), _epic(20)], path=repo)
-            resolve_epic_children(state)
-            epics = state["repos"]["engine"]["epics"]
-            self.assertTrue(epics[0]["plan_exists"])
-            self.assertEqual(epics[0]["plan_path"], ".fleet/plans/issue-10.md")
-            self.assertFalse(epics[1]["plan_exists"])
+    def test_managed_is_the_children_heading(self):
+        self.assertTrue(_epic_is_managed("intro\n\n## Children\n"))
+        self.assertTrue(_epic_is_managed("## Children (adopted mid-epic)\n- [ ] #11\n"))
+        self.assertFalse(_epic_is_managed("intro\n\n## Scope\n"))
+        self.assertFalse(_epic_is_managed(""))
 
 
 class DesignProposedSkipSets(unittest.TestCase):

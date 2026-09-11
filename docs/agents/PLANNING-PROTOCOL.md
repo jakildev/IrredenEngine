@@ -17,13 +17,12 @@ tasks](#lightweight-plan-for-mechanical-fleetsonnet-tasks). Everything in
 "The flow" below is the default (opus+) path unless that section says
 otherwise.
 
-**The plan is a comment, not a PR.** The canonical plan artifact is a
+**The plan is a comment, not a file.** The canonical plan artifact is a
 structured `## Plan` **comment on the issue** — host-independent, so a
-worker on any host reads it directly. There is no separate "plan-doc"
-PR: the committed `.fleet/plans/issue-<N>.md` file is an *output* the
-implementer writes as the first commit of the **implementation PR**, so
-the plan and the code it produced land together in one merge. Nothing
-waits on a plan PR to merge before implementation can start.
+worker on any host reads it directly, together with any later
+`## Plan corrections` comments. Nothing is committed or staged: no plan-doc
+PR, no plan file in the implementation PR, no local copy. A departure from
+an advisory approach sketch is recorded in the PR body, not in a file.
 
 This applies to **task plans** only. Engine-level *design docs*
 (`docs/design/<feature>.md`) that need review independent of any one
@@ -187,8 +186,7 @@ For each `fleet:needs-plan` issue:
      `### Approach sketch` is welcome where the planner has one, and it
      is **advisory**: the implementer may depart from it freely while
      the Decisions and Acceptance criteria hold, recording the departure
-     in the committed plan file's implementation notes (no re-plan
-     needed). Investigation already done during planning is recorded as
+     in the PR body under `## Plan departures` (no re-plan needed). Investigation already done during planning is recorded as
      *facts* — in Verified current state and Decisions — never re-cast
      as steps.
    - **Sibling + in-flight reconciliation.** Check the parent ticket's
@@ -200,7 +198,9 @@ For each `fleet:needs-plan` issue:
    - Suggested model tag (`[fable]`, `[opus]`, or `[sonnet]`) for each
      piece — same criteria as the plan's `**Model:**` line (FLEET.md
      §"Model split")
-   - **Acceptance criteria** — and the named acceptance tests must be
+   - **Acceptance criteria** — the definition of done: each criterion names
+     the validator that proves it (`docs/agents/VALIDATION.md`) and the
+     reading it must show, and the named acceptance tests must be
      **positive-fire**: at least one named check observably fires with the
      feature ON (a count > 0, an asserted probe reading, a visible delta). A
      gate that passes at default / on byte-identical output alone proves the
@@ -223,8 +223,7 @@ For each `fleet:needs-plan` issue:
      reference resources by index, not name). Without this section the
      worker discovers gaps mid-task and escalates.
 
-   Use the structure the implementer will later commit to
-   `.fleet/plans/issue-<N>.md` (step 5):
+   Use this structure:
 
    ```markdown
    ## Plan: <issue title>
@@ -268,8 +267,8 @@ For each `fleet:needs-plan` issue:
    **and** the parent `creations/CMakeLists.txt` (the `add_subdirectory`
    registration) — the target silently doesn't build without the parent entry.
 
-   **Plans are engine-public.** The `## Plan` comment and the committed
-   `.fleet/plans/issue-<N>.md` are world-readable on a public repo, so they fall
+   **Plans are engine-public.** The `## Plan` comment is world-readable on a
+   public repo, so it falls
    under [`CLAUDE-BASELINE.md` §"Cross-repo information isolation"](CLAUDE-BASELINE.md):
    use engine terminology only — no game feature names or game jargon (e.g. the
    "jam" leak in #1815's plan). `commit-and-push`'s hard-token grep won't catch
@@ -309,9 +308,6 @@ For each `fleet:needs-plan` issue:
    at triage, `human:revise-plan` on a posted plan (below),
    `fleet:needs-human` when a planner needs a decision, and PR review.
 
-   You may optionally stage a local copy at `~/.fleet/plans/issue-<N>.md` for
-   your own reference, but it is not required and nothing reads it — the `## Plan`
-   comment is the source of truth.
 
 4. **Plan review (the gate the redesign adds).** While `fleet:plan-review` is on
    the issue it is **not** queue-ready — `fleet-queue-ingest` skips it. A plan
@@ -334,8 +330,7 @@ For each `fleet:needs-plan` issue:
      comment whose first line is `## Plan corrections` listing each fix, then
      remove `fleet:plan-review` exactly as for Sound. Corrections are **part
      of the plan**: the implementer reads the newest `## Plan` comment plus
-     every later `## Plan corrections` comment and folds both into the
-     committed plan file. Use this gear instead of bouncing — a bounce to
+     every later `## Plan corrections` comment and works from both. Use this gear instead of bouncing — a bounce to
      `fleet:needs-plan` costs a full re-plan round for something one line
      fixes, and that lane can sit near-zero-dispatch for days. Bounce only
      when a locked decision itself is wrong.
@@ -351,15 +346,11 @@ For each `fleet:needs-plan` issue:
    - reads the plan from the newest `## Plan` comment **plus any later
      `## Plan corrections` comments** (`fleet-issue view <N>` shows both —
      corrections are authoritative amendments from plan review, step 4),
-   - writes it, corrections folded in, to `.fleet/plans/issue-<N>.md` as the
-     **first commit** of the implementation branch (an at-rest repo record
-     that lands with the code),
-   - then implements and opens **one** PR (`Closes #<N>`) — one review, one
-     merge. No separate plan-doc PR exists at any point. Where the
-     implementation departs from an `### Approach sketch`, record the
-     departure in the plan file's implementation notes; a departure that
-     violates a **Decision** or an acceptance criterion is not a departure,
-     it's a re-plan.
+   - implements and opens **one** PR (`Closes #<N>`) — one review, one
+     merge. Where the implementation departs from an `### Approach sketch`,
+     record the departure in the PR body under `## Plan departures`; a
+     departure that violates a **Decision** or an acceptance criterion is
+     not a departure, it's a re-plan.
 
 **If you disagree with the issue's direction** (at planning time), comment with
 your concerns, leave `fleet:needs-plan` on, **add `fleet:needs-human`**, release
@@ -408,8 +399,8 @@ the flip-and-move-on flow below.
 ## Re-planning a stale queued plan
 
 A `fleet:queued` task whose already-committed plan goes **stale post-approval**
-(its blocker shipped a *different* design during review, so the committed
-`.fleet/plans/issue-<N>.md` / `## Plan` comment now cites a renamed/removed
+(its blocker shipped a *different* design during review, so the
+`## Plan` comment now cites a renamed/removed
 symbol or a superseded decision) needs a fresh plan. Historically the re-plan
 trigger lived outside the first-plan lock, so multiple panes could judge the
 same queued task stale and each deep-investigate the refresh (#1999: #1960
@@ -454,7 +445,7 @@ hoc can skip planning entirely:
 
 - **`human:no-plan` label** — applied by the human at filing. The issue bypasses
   the planning gate and the scout queues it directly; the worker opens a
-  code-only PR with no `.fleet/plans/` file.
+  PR straight away.
 - **`fleet:no-plan` label** — the agent-applied twin, applied by a fleet role
   filing through the agent-approved follow-up lane
   ([`TASK-FILING.md § Agent-approved follow-up lane`](TASK-FILING.md)) when the
@@ -554,7 +545,7 @@ assignment does no planning. Cross-repo: a `game:` assignment takes
 `--repo game` on `fleet-issue` / `gh issue edit` / `fleet-claim`. You post the
 `## Plan` comment and swap to `fleet:plan-review`. The
 implementation step (later, possibly a cheaper-class worker on another host)
-reads the comment and commits the plan file into its own PR.
+reads the comment.
 
 **[plan reviewer]** Scan open issues carrying `fleet:plan-review` and apply the
 step-4 verdict. The architect does this during a design conversation; the opus

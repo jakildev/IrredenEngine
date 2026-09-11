@@ -2,8 +2,8 @@
 name: file-epic
 description: >-
   Take an approved architect plan and file it as the fleet expects: umbrella
-  issue labeled fleet:epic, one child fleet:task per phase, per-ticket plan
-  files at ~/.fleet/plans/issue-<N>.md, and post-filing stack validation.
+  issue labeled fleet:epic, one child fleet:task per phase, a ## Plan comment
+  on the umbrella and on each child, and post-filing stack validation.
 ---
 
 # file-epic (Irreden Engine)
@@ -27,8 +27,6 @@ for why.
 | **epic label** | `fleet:epic` |
 | **task label** | `fleet:task` |
 | **architect plans dir** | `~/.claude/plans/<slug>.md` |
-| **plans dir** | `~/.fleet/plans/issue-<N>.md` |
-| **repo-side plan path** | `<repo>/.fleet/plans/issue-<N>.md` — umbrella plan committed via the step-6.5 docs PR; each child plan committed as the first commit of its own impl PR (#1932); no `T-<NNN>` rename |
 | **validate-stack command** | `fleet-validate-stack <umbrella>` (add `--repo game` for the game repo) |
 | **title area vocabulary** | `engine`, `render`, `engine/voxel`, `game`, etc. (the same scope vocabulary `commit-and-push` uses) |
 
@@ -43,10 +41,9 @@ for why.
   step-2 rigor — verified current state / confirmed repro, one picked
   approach, sibling + in-flight reconciliation — not a restated phase line
   (#1456). The engine's `fleet-queue-ingest` plan gate (#1932 PR2) keys on the
-  `## Plan` comment, so a child is queue-ready as soon as its comment is posted;
-  its plan file lands cross-host as the first commit of the child's impl PR. The
-  step-6.5 docs PR carries only the umbrella plan (+ steward ledger) — land it
-  promptly so the steward reads it from master.
+  `## Plan` comment, so a child is queue-ready as soon as its comment is posted.
+  The umbrella's plan is likewise its own `## Plan` comment — filing an epic
+  commits nothing and opens no PR.
 - Engine-repo vs game-repo: most epics target `jakildev/IrredenEngine`.
   The cross-repo info-isolation rule (see
   [`docs/agents/CLAUDE-BASELINE.md`](../../../docs/agents/CLAUDE-BASELINE.md)

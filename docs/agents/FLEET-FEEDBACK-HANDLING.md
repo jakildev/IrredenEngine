@@ -35,9 +35,9 @@ Address one PR per iteration, oldest within each tier:
    Address every nit unless it's purely subjective preference.
 4. `fleet:design-unblocked` — architect responded to a prior
    mid-task escalation (`fleet:design-blocked` → resolved). The
-   canonical plan at `.fleet/plans/T-<NNN>.md` has been updated;
-   address per the architect's PR comment +
-   updated plan, just like a normal feedback fix. **Opus+ classes
+   direction is in the architect's PR comment; address per that
+   comment plus the issue's `## Plan` (and any `## Plan
+   corrections`), just like a normal feedback fix. **Opus+ classes
    only**; sonnet-class iterations skip this tier (absorbing an
    architect's design reply is opus-tier work).
 
@@ -248,17 +248,16 @@ fix in Step i.)
   If it doesn't hold, say so in the summary comment and take the reviewer's
   alternative or propose one.
 - **For `fleet:design-unblocked`** (opus+ classes only): also re-read
-  the architect's plan file at `~/.fleet/plans/issue-<N>.md` (current
-  naming, keyed to the issue number; some older plans use `T-<NNN>.md`
-  — check both, prefer the `issue-` form). This is REQUIRED reading
-  before you resume — it is the architect's design for the task and
-  carries the decision + decomposition the latest comment summarizes.
-  Because a design-blocked task releases its owner (you may be resuming
-  someone else's escalation), the plan file + the PR are your only
-  handoff context — do not assume in-conversation memory of it. The
-  latest architect comment is the authoritative direction; the plan
-  file is the long-form version. If the two diverge, the comment wins
-  for this PR.
+  the backing issue's newest `## Plan` comment and every later
+  `## Plan corrections` comment (`fleet-issue view <N>`). This is
+  REQUIRED reading before you resume — it is the design for the task
+  and carries the decision + decomposition the latest comment
+  summarizes. Because a design-blocked task releases its owner (you may
+  be resuming someone else's escalation), the issue's plan + the PR are
+  your only handoff context — do not assume in-conversation memory of
+  it. The latest architect comment is the authoritative direction; the
+  issue's plan is the long-form version. If the two diverge, the
+  comment wins for this PR.
 
 - **Re-verify carried-over measurements before trusting or pushing them.**
   When resuming an orphaned / `fleet:design-unblocked` PR, treat any
