@@ -127,7 +127,7 @@ LuaFieldSchema buildFieldSchema(
     LuaFieldSchema s;
     s.name_ = fieldName;
 
-    if (raw.is<sol::table>()) {
+    if (raw.get_type() == sol::type::table) {
         sol::table t = raw.as<sol::table>();
         sol::optional<std::string> tag = t.get<sol::optional<std::string>>("type");
         sol::object dflt = t.get<sol::object>("default");
@@ -476,7 +476,7 @@ void LuaScript::bindLuaDrivenEcs() {
         const IREntity::ComponentId existingCpp = componentIdByLuaName(componentName);
         if (existingCpp != IREntity::kNullComponent) {
             sol::object existingHandle = m_lua["IRComponent"][componentName];
-            if (existingHandle.is<sol::table>()) {
+            if (existingHandle.get_type() == sol::type::table) {
                 return existingHandle;
             }
         }
@@ -846,7 +846,7 @@ IREntity::ComponentId resolveComponentEntry(
     const IREntity::EntityManager &em,
     std::string &errorMessage
 ) {
-    if (entry.is<sol::table>()) {
+    if (entry.get_type() == sol::type::table) {
         sol::table t = entry.as<sol::table>();
         sol::optional<lua_Integer> id = t.get<sol::optional<lua_Integer>>("componentId");
         if (id && *id != 0) {

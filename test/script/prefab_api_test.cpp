@@ -35,6 +35,20 @@ struct PrefabFiles {
     std::string prefab_path_;
 };
 
+// Structurally mirrors `IRComponents::BindPointRuntime` (uint32 boneId, vec3
+// offset, vec4 rotation) without being one — a decoy usertype whose member
+// NAMES and TYPES happen to match what the bind-point-override reader looks
+// up. Used to prove `kv.second.is<sol::table>()` (TRUE for userdata) admits
+// wrong-typed userdata into the override reader and lets it silently apply
+// bogus field values, as opposed to a userdata with no matching members
+// (which the reader's per-field `sol::optional` gets skip either way). See
+// #3178, and #2673's `vec4`-into-`vec3FromLua` test for the same shape.
+struct DecoyBindPointOverride {
+    std::uint32_t boneId_ = 42;
+    IRMath::vec3 offset_{5.0f, 6.0f, 7.0f};
+    IRMath::vec4 rotation_{0.0f, 0.0f, 0.0f, 1.0f};
+};
+
 // Build a 3-shape `.vxs` + 2-joint `.rig` + matching prefab Lua on disk,
 // pointing the prefab at the absolute paths. Returns the artifact set so
 // individual tests can address subsets.
@@ -212,6 +226,22 @@ TEST_F(PrefabApi, SpawnRejectsNonTableReturn) {
     PrefabFiles f = writeFixtureSet("non_table_return", "return 42\n");
     IRPrefab::Prefab::registerPrefab("p", f.prefab_path_);
     auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(0.0f));
+    EXPECT_EQ(r.entity_, IREntity::kNullEntity);
+    EXPECT_NE(r.error_.find("did not return a table"), std::string::npos) << r.error_;
+}
+
+// `root.is<sol::table>()` reads TRUE for userdata, so a table-first guard
+// admits a prefab file that returns a vec3/vec4 userdata instead of a real
+// table — the exact defect class #2673 fixed for the vector helpers. The
+// pre-fix path casts the userdata to `sol::table` unsafely and then indexes
+// `prefab_version` off it, which raises (no such member) rather than
+// producing the guard's controlled error — wrap in ASSERT_NO_THROW so that
+// failure mode surfaces as a test failure, not a crash. See #3178.
+TEST_F(PrefabApi, SpawnRejectsUserdataReturn) {
+    PrefabFiles f = writeFixtureSet("userdata_return", "return vec3.new(1, 2, 3)\n");
+    IRPrefab::Prefab::registerPrefab("p", f.prefab_path_);
+    IRPrefab::Prefab::SpawnResult r;
+    ASSERT_NO_THROW(r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(0.0f)));
     EXPECT_EQ(r.entity_, IREntity::kNullEntity);
     EXPECT_NE(r.error_.find("did not return a table"), std::string::npos) << r.error_;
 }
@@ -596,6 +626,58 @@ TEST_F(PrefabApi, BindPointOverridesApplied) {
     EXPECT_FLOAT_EQ(lua["g_off_z"].get<float>(), 11.0f);
 }
 
+// `kv.second.is<sol::table>()` reads TRUE for userdata, so a table-first
+// guard admits a `bind_point_overrides` entry that is a `DecoyBindPointOverride`
+// userdata instead of a real `{ offset = ..., rotation = ... }` table. Because
+// the decoy's member names AND types happen to match what the reader looks
+// up (`boneId`/`offset`/`rotation`), the pre-fix path casts it to `sol::table`
+// unsafely and successfully reads bogus values off it — silently applying an
+// override from a value that was never a table. See #3178, and #2673's
+// `vec4`-into-`vec3FromLua` test for the same "wrong type, same field names"
+// shape.
+TEST_F(PrefabApi, BindPointOverridesIgnoresUserdataEntry) {
+    m_lua.lua().new_usertype<DecoyBindPointOverride>(
+        "DecoyBindPointOverride",
+        sol::constructors<DecoyBindPointOverride()>(),
+        "boneId",
+        &DecoyBindPointOverride::boneId_,
+        "offset",
+        &DecoyBindPointOverride::offset_,
+        "rotation",
+        &DecoyBindPointOverride::rotation_
+    );
+
+    PrefabFiles f = writeBindPointFixtureSet(
+        "bind_override_userdata",
+        std::string{"return {\n"} +
+            "  prefab_version = 1,\n"
+            "  rig_ref = '" +
+            std::string{kTmpDir} +
+            "/prefab_test_bind_override_userdata.rig',\n"
+            "  bind_point_overrides = {\n"
+            "    tip = DecoyBindPointOverride.new(),\n"
+            "  },\n"
+            "  setup = function(entity)\n"
+            "    local off, _ = IREntity.bindPoint(entity, 'tip')\n"
+            "    g_off_x, g_off_y, g_off_z = off.x, off.y, off.z\n"
+            "  end,\n"
+            "}\n"
+    );
+    IRPrefab::Prefab::registerPrefab("p", f.prefab_path_);
+    IRPrefab::Prefab::SpawnResult r;
+    ASSERT_NO_THROW(r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(0.0f)));
+    ASSERT_NE(r.entity_, IREntity::kNullEntity) << r.error_;
+
+    auto &lua = m_lua.lua();
+    // The userdata entry is skipped entirely (guard's `continue`), so the
+    // bind point keeps its rig-authored offset (0,0,1): world offset =
+    // chain world (5,7,9) + rig offset (0,0,1) = (5,7,10). A pre-fix guard
+    // would instead apply the decoy's (5,6,7) offset, landing at (10,13,16).
+    EXPECT_FLOAT_EQ(lua["g_off_x"].get<float>(), 5.0f);
+    EXPECT_FLOAT_EQ(lua["g_off_y"].get<float>(), 7.0f);
+    EXPECT_FLOAT_EQ(lua["g_off_z"].get<float>(), 10.0f);
+}
+
 TEST_F(PrefabApi, BindPointMissingReturnsNil) {
     PrefabFiles f = writeBindPointFixtureSet(
         "bind_missing",
@@ -809,6 +891,30 @@ TEST_F(PrefabApi, ComponentsTableNonTableEntryErrors) {
     );
     IRPrefab::Prefab::registerPrefab("p", f.prefab_path_);
     auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(0.0f));
+    EXPECT_EQ(r.entity_, IREntity::kNullEntity);
+    EXPECT_NE(r.error_.find("must be a table"), std::string::npos) << r.error_;
+}
+
+// `kv.second.is<sol::table>()` reads TRUE for userdata, so a table-first
+// guard admits a `components['C_ZoomLevel']` override that is a vec3
+// userdata instead of a real field-overrides table. Unlike the plain-42
+// case (`ComponentsTableNonTableEntryErrors`, not userdata), the pre-fix
+// path casts the userdata to `sol::table` and hands it to the factory,
+// which indexes `zoom` off it and raises. ASSERT_NO_THROW turns that raise
+// into a test failure instead of a crash. See #3178.
+TEST_F(PrefabApi, ComponentsTableUserdataEntryErrors) {
+    IRScript::bindLuaType<IRComponents::C_ZoomLevel>(m_lua);
+
+    PrefabFiles f = writeFixtureSet(
+        "components_userdata",
+        "return {\n"
+        "  prefab_version = 1,\n"
+        "  components = { C_ZoomLevel = vec3.new(1, 2, 3) },\n"
+        "}\n"
+    );
+    IRPrefab::Prefab::registerPrefab("p", f.prefab_path_);
+    IRPrefab::Prefab::SpawnResult r;
+    ASSERT_NO_THROW(r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(0.0f)));
     EXPECT_EQ(r.entity_, IREntity::kNullEntity);
     EXPECT_NE(r.error_.find("must be a table"), std::string::npos) << r.error_;
 }

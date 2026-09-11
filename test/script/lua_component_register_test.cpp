@@ -3,6 +3,7 @@
 #include <irreden/common/modifier.hpp>
 #include <irreden/common/modifier_field_registry.hpp>
 #include <irreden/ir_entity.hpp>
+#include <irreden/render/components/component_zoom_level_lua.hpp>
 #include <irreden/script/lua_component_data.hpp>
 #include <irreden/script/lua_script.hpp>
 
@@ -145,6 +146,34 @@ TEST_F(LuaComponentTest, UnknownExplicitTypeTagFailsWithFieldName) {
     EXPECT_NE(msg.find("mat4"), std::string::npos);
 }
 
+// Short-form default is a vec3 USERDATA, not a table — `buildFieldSchema`
+// must route it through `inferTypeFromDefault` (the documented short-form
+// path for a registered vec3/ivec3/vec4 usertype), not mistake it for the
+// explicit `{ type = ..., default = ... }` table form. `raw.is<sol::table>()`
+// reads TRUE for userdata, so the pre-fix guard took the explicit-form
+// branch and tried to read a `type` field off the vec3 userdata instead.
+// See #3178.
+TEST_F(LuaComponentTest, Vec3ShortFormUserdataDefaultInfersVec3Type) {
+    auto &lua = m_lua.lua();
+    lua.new_usertype<IRMath::vec3>(
+        "vec3",
+        sol::constructors<IRMath::vec3(float, float, float)>(),
+        "x",
+        &IRMath::vec3::x,
+        "y",
+        &IRMath::vec3::y,
+        "z",
+        &IRMath::vec3::z
+    );
+    auto result = lua.safe_script(
+        "local C = IRComponent.register('VecShortForm', { pos = vec3.new(1, 2, 3) })\n"
+        "return C.fields.pos.type",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(result.valid()) << sol::error{result}.what();
+    EXPECT_EQ(result.get<std::string>(), "vec3");
+}
+
 // ---- Identity rule ---------------------------------------------------------
 
 TEST_F(LuaComponentTest, DuplicateRegistrationFails) {
@@ -156,6 +185,29 @@ TEST_F(LuaComponentTest, DuplicateRegistrationFails) {
     sol::error err = result;
     const std::string msg = err.what();
     EXPECT_NE(msg.find("Dup"), std::string::npos);
+}
+
+// `IRComponent.C_ZoomLevel` normally holds the table handle
+// `recordComponentLuaName` populated when the C++ type registered.
+// Simulate that slot being clobbered with a C_ZoomLevel USERDATA instance —
+// `existingHandle.is<sol::table>()` reads TRUE for userdata, so the pre-fix
+// guard handed the userdata straight back as `IRComponent.register`'s
+// return value instead of recognizing the slot as unusable and falling
+// back to a fresh (well-formed) registration. See #3178.
+TEST_F(LuaComponentTest, RegisterCoexistenceFallsBackWhenHandleSlotIsCorrupted) {
+    IRScript::bindLuaType<IRComponents::C_ZoomLevel>(m_lua);
+    auto &lua = m_lua.lua();
+
+    auto result = lua.safe_script(
+        "IRComponent.C_ZoomLevel = C_ZoomLevel.new(2.0)\n"
+        "local h = IRComponent.register('C_ZoomLevel', {})\n"
+        "return type(h), h.componentId ~= nil",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(result.valid()) << sol::error{result}.what();
+    auto [luaType, hasComponentId] = result.get<std::tuple<std::string, bool>>();
+    EXPECT_EQ(luaType, "table");
+    EXPECT_TRUE(hasComponentId);
 }
 
 // ---- Native storage --------------------------------------------------------
@@ -281,6 +333,49 @@ TEST_F(LuaComponentTest, NonScalarFieldsHaveInvalidBindingId) {
     auto [labelId, payloadId] = result.get<std::tuple<lua_Integer, lua_Integer>>();
     EXPECT_EQ(labelId, static_cast<lua_Integer>(IRComponents::kInvalidFieldId));
     EXPECT_EQ(payloadId, static_cast<lua_Integer>(IRComponents::kInvalidFieldId));
+}
+
+// A `table`-typed field's default is a vec3 USERDATA, not a real table — a
+// registration mistake. `columnAppendDefault`'s `sol::table` arm must
+// reject it (`is<sol::table>()` reads TRUE for userdata) and fall back to a
+// default-constructed (invalid/nil) `sol::table{}` — the same "no default"
+// outcome every other wrong-typed default already produces — rather than
+// storing a `sol::table` wrapper around the userdata reference. Read back
+// through `readFieldAt`, which pushes the stored value's REAL Lua-side
+// type: `sol::type::userdata` pre-fix (the wrapper doesn't change what's
+// actually on the Lua stack), `sol::type::none` on the fix. See #3178.
+TEST_F(LuaComponentTest, TableFieldDefaultIgnoresUserdataDefault) {
+    auto &lua = m_lua.lua();
+    lua.new_usertype<IRMath::vec3>(
+        "vec3",
+        sol::constructors<IRMath::vec3(float, float, float)>(),
+        "x",
+        &IRMath::vec3::x,
+        "y",
+        &IRMath::vec3::y,
+        "z",
+        &IRMath::vec3::z
+    );
+    ASSERT_TRUE(lua.safe_script(
+                       "C_TablePayload = IRComponent.register('TablePayload', {\n"
+                       "    payload = { type = 'table', default = vec3.new(1, 2, 3) },\n"
+                       "})"
+    )
+                    .valid());
+    const IREntity::ComponentId componentId =
+        m_entity_manager.getComponentTypeByName("TablePayload");
+    ASSERT_NE(componentId, IREntity::kNullComponent);
+
+    IREntity::EntityId e = IREntity::createEntity();
+    m_entity_manager.addComponentDynamic(e, componentId);
+
+    auto [data, row] = m_entity_manager.getComponentDataAndRow(e, componentId);
+    ASSERT_NE(data, nullptr);
+    auto *typed = static_cast<IRScript::IComponentDataLuaTyped *>(data);
+
+    sol::object payload = typed->readFieldAt(row, typed->findFieldIndex("payload"), lua);
+    EXPECT_NE(payload.get_type(), sol::type::userdata)
+        << "vec3 userdata default landed in the column";
 }
 
 // ---- #1368: packed vec3 / ivec3 field kinds (G1a) -------------------------

@@ -142,7 +142,8 @@ inline void columnAppendDefault(LuaFieldColumn &c, const sol::object &defaultVal
                 );
             } else if constexpr (std::is_same_v<Elem, sol::table>) {
                 v.push_back(
-                    defaultValue.is<sol::table>() ? defaultValue.as<sol::table>() : sol::table{}
+                    defaultValue.get_type() == sol::type::table ? defaultValue.as<sol::table>()
+                                                                : sol::table{}
                 );
             } else if constexpr (std::is_same_v<Elem, IRMath::vec3>) {
                 v.push_back(vec3FromLua(defaultValue));
@@ -303,9 +304,6 @@ class IComponentDataLuaTyped : public IREntity::IComponentData {
     // admits every wrong-typed userdata and hands it to the helper, which
     // zero-defaults it into the column. Silently zeroing a field is not "no
     // write". See #2673.
-    //
-    // Known deviation: the `sol::table` arm below still shape-checks
-    // table-first, and so still admits userdata. Tracked in #3178.
     void writeFieldAt(int row, int fieldIdx, const sol::object &value) {
         std::visit(
             [&](auto &v) {
@@ -327,7 +325,7 @@ class IComponentDataLuaTyped : public IREntity::IComponentData {
                     if (value.is<sol::function>())
                         v[row] = value.as<sol::function>();
                 } else if constexpr (std::is_same_v<Elem, sol::table>) {
-                    if (value.is<sol::table>())
+                    if (value.get_type() == sol::type::table)
                         v[row] = value.as<sol::table>();
                 } else if constexpr (std::is_same_v<Elem, IRMath::vec3>) {
                     if (value.is<IRMath::vec3>() || value.get_type() == sol::type::table)

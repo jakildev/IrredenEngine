@@ -194,7 +194,7 @@ template <> struct LuaValue<LuaType::TABLE> : ILuaValue {
     std::map<std::string, std::unique_ptr<ILuaValue>> value_;
 
     void parse(const sol::object &obj) override {
-        IR_ASSERT(obj.is<sol::table>(), "Expected table");
+        IR_ASSERT(obj.get_type() == sol::type::table, "Expected table");
         sol::table table = obj.as<sol::table>();
         for (auto &pair : value_) {
             const std::string &key = pair.first;
