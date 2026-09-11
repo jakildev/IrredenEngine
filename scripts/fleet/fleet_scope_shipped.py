@@ -91,10 +91,8 @@ incidental match have to be rejected:
    maintains fleet state and never ships an issue's code scope, so its title ref
    is NOT trusted: like layers 4/6/7 it falls through to the body closing-verb
    check, where a ``.fleet/``-only PR whose deliverable genuinely IS the fleet
-   change still ships via a prose ``Closes #N``. Real implementation PRs that
-   carry fleet state also change code, so their diff is never ``.fleet/``-only.
-   The file list is optional — a caller that does not supply it keeps the
-   pre-layer-8 title-trust behavior.
+   change still ships via a prose ``Closes #N``. The file list is optional — a caller that does
+   not supply it keeps the pre-layer-8 title-trust behavior.
 
 9. Documentation diff — an all-documentation PR (#2091 ← #3020). A PR can use
    an implementation scope in its title while only documenting verification or
@@ -233,10 +231,10 @@ def _ref_is_nonship_marked(text, n):
                 or re.search(leading, text, re.IGNORECASE))
 
 
-# Non-shipping path prefixes (layers 8-9). A merged PR whose changed files are
-# all fleet bookkeeping or documentation maintains state or records findings;
-# it does not ship an implementation artifact. Real implementation PRs may carry
-# these files too, but also change a path outside this set.
+# Fleet-internal bookkeeping prefix (layer 8). A merged PR whose changed files
+# are ALL under ``.fleet/`` — an epic-steward ledger rollup, a plan adoption, a
+# projection edit — maintains fleet state; it never ships an issue's code scope.
+# Documentation paths join that non-shipping set under layer 9.
 _NON_SHIPPING_PREFIXES = ('.fleet/', 'docs/')
 
 
