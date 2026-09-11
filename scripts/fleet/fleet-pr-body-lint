@@ -112,7 +112,7 @@ def parse_criteria(lines, source):
         if match:
             items.append((index, len(match.group(1).replace("\t", "    ")), match.group(2).strip()))
         else:
-            non_list.append((index, line.strip()))
+            non_list.append((index, line))
 
     if items:
         first_item = items[0][0]

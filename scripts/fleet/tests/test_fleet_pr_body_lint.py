@@ -2,6 +2,7 @@
 
 import json
 import os
+import shutil
 import stat
 import subprocess
 import sys
@@ -99,6 +100,7 @@ class FleetPrBodyLintTests(unittest.TestCase):
         forms = [
             "1. one\n   - nested\n   continuation\n2. two",
             "- one\n  continuation\n- two",
+            "- one\n\n  loose continuation\n- two",
             "- [x] one\n- [ ] two",
             "one criterion continued on one paragraph",
         ]
@@ -269,24 +271,157 @@ class FleetPrBodyLintTests(unittest.TestCase):
             self.assertEqual(result.returncode, 2)
             self.assertIn("GitHub issue fetch failed", result.stderr)
 
-    def test_publication_gate_blocks_short_and_parse_error_but_allows_complete(self):
+    def test_documented_gate_controls_both_publication_paths_and_corrections(self):
         flow = (ROOT.parents[1] / "docs/agents/skills/commit-and-push.md").read_text(
             encoding="utf-8"
         )
         procedure = (
             ROOT.parents[1] / ".claude/skills/commit-and-push/procedures/stackable-on.md"
         ).read_text(encoding="utf-8")
-        self.assertIn('fleet-pr-body-lint "$closes_n"', flow)
-        self.assertIn("--write-issue-json", flow)
-        self.assertLess(flow.index('fleet-pr-body-lint "$closes_n"'), flow.index("Tokenize both"))
-        self.assertIn("--body-file .pr-body.md", procedure)
-        self.assertIn('if [[ -n "$existing" ]]', procedure)
+        gate = flow.split("### 8a.", 1)[1].split("```bash\n", 1)[1].split("```", 1)[0]
+        gate = gate.replace('"<N from the drafted body>"', str(ISSUE)).replace(
+            "--repo <repo>", "--repo engine"
+        )
+        publish = procedure.split("## Open (or reconcile)", 1)[1].split("```bash\n", 1)[1]
+        publish = publish.split("```", 1)[0].replace("<claude|codex>", "codex")
 
-        marker = "PUBLISHED"
-        for body, expected in ((evidence_body(3), False), (evidence_body(6), True)):
-            result = self.run_lint(body)
-            published = marker if result.returncode == 0 else ""
-            self.assertEqual(bool(published), expected)
+        correction_cases = {
+            "non-acceptance": (
+                [{"body": PLAN}, {"body": "## Plan corrections\n\nPath only."}],
+                6,
+                True,
+            ),
+            "complete-replacement": (
+                [
+                    {"body": PLAN},
+                    {
+                        "body": (
+                            "## Plan corrections\n\n### Acceptance criteria\n"
+                            "1. a\n2. b\n3. c"
+                        )
+                    },
+                ],
+                3,
+                True,
+            ),
+            "replacement-shortfall": (
+                [
+                    {"body": PLAN},
+                    {
+                        "body": (
+                            "## Plan corrections\n\n### Acceptance criteria\n"
+                            "1. a\n2. b\n3. c\n4. d"
+                        )
+                    },
+                ],
+                3,
+                False,
+            ),
+            "empty-replacement": (
+                [{"body": PLAN}, {"body": "## Plan corrections\n\n### Acceptance criteria\n"}],
+                6,
+                False,
+            ),
+        }
+        for name, (comments, rows, should_publish) in correction_cases.items():
+            for existing in (False, True):
+                with self.subTest(case=name, path="edit" if existing else "create"):
+                    self.run_documented_publication(
+                        gate, publish, comments, rows, existing, should_publish
+                    )
+
+    def run_documented_publication(
+        self, gate, publish, comments, rows, existing, should_publish
+    ):
+        with tempfile.TemporaryDirectory() as temp:
+            temp_path = Path(temp)
+            bin_path = temp_path / "bin"
+            bin_path.mkdir()
+            (temp_path / ".pr-body.md").write_text(evidence_body(rows), encoding="utf-8")
+            (temp_path / "comments.json").write_text(json.dumps([comments]), encoding="utf-8")
+
+            lint_link = bin_path / "fleet-pr-body-lint"
+            lint_link.symlink_to(LINT)
+            gh = bin_path / "gh"
+            gh.write_text(
+                "#!/usr/bin/env python3\n"
+                "import json, os, pathlib, sys\n"
+                "args = sys.argv[1:]\n"
+                "if args[:2] == ['issue', 'view']:\n"
+                "    expected = ['issue', 'view', '2563', '--repo', "
+                "'jakildev/IrredenEngine', '--json', 'number,title,body']\n"
+                "    if args != expected: raise SystemExit(90)\n"
+                "    print(json.dumps({'number': 2563, 'title': 'Fixture issue', 'body': ''}))\n"
+                "elif args[:1] == ['api']:\n"
+                "    expected = ['api', '--paginate', '--slurp', "
+                "'repos/jakildev/IrredenEngine/issues/2563/comments?per_page=100']\n"
+                "    if args != expected: raise SystemExit(91)\n"
+                "    print(pathlib.Path(os.environ['COMMENTS']).read_text())\n"
+                "elif args[:2] == ['pr', 'list']:\n"
+                "    expected = ['pr', 'list', '--head', 'codex/example', '--state', "
+                "'open', '--json', 'url', '-q', '.[0].url']\n"
+                "    if args != expected:\n"
+                "        raise SystemExit(92)\n"
+                "    if os.environ['EXISTING'] == '1': print('https://example.test/pull/1')\n"
+                "elif args[:2] == ['pr', 'edit']:\n"
+                "    expected = ['pr', 'edit', 'https://example.test/pull/1', '--base', "
+                "'master', '--add-label', 'fleet:author-codex', '--body-file', '.pr-body.md']\n"
+                "    if args != expected: raise SystemExit(93)\n"
+                "    pathlib.Path(os.environ['MARKER']).write_text('edit')\n"
+                "elif args[:2] == ['pr', 'create']:\n"
+                "    expected = ['pr', 'create', '--base', 'master', '--label', "
+                "'fleet:wip', '--label', 'fleet:author-codex', '--title', "
+                "'<scope>: <title> (#<N>)', '--body-file', '.pr-body.md']\n"
+                "    if args != expected: raise SystemExit(94)\n"
+                "    pathlib.Path(os.environ['MARKER']).write_text('create')\n"
+                "else:\n"
+                "    raise SystemExit(95)\n",
+                encoding="utf-8",
+            )
+            jq = bin_path / "jq"
+            jq.write_text(
+                "#!/usr/bin/env python3\n"
+                "import json, sys\n"
+                "if sys.argv[1:] != ['-r', '.title', '.issue-2563.json']: raise SystemExit(96)\n"
+                "print(json.load(open(sys.argv[-1]))['title'])\n",
+                encoding="utf-8",
+            )
+            git = bin_path / "git"
+            git.write_text(
+                "#!/bin/sh\n"
+                "[ \"$*\" = 'branch --show-current' ] || exit 97\n"
+                "printf 'codex/example\\n'\n",
+                encoding="utf-8",
+            )
+            for executable in (gh, jq, git):
+                executable.chmod(executable.stat().st_mode | stat.S_IXUSR)
+
+            marker = temp_path / "published"
+            env = os.environ.copy()
+            env.update(
+                {
+                    "PATH": f"{bin_path}:{env['PATH']}",
+                    "COMMENTS": str(temp_path / "comments.json"),
+                    "EXISTING": "1" if existing else "0",
+                    "MARKER": str(marker),
+                }
+            )
+            script = "set -e\nbase=master\n" + gate + publish
+            result = subprocess.run(
+                [shutil.which("bash") or "bash", "-c", script],
+                cwd=temp_path,
+                capture_output=True,
+                text=True,
+                timeout=10,
+                env=env,
+                check=False,
+            )
+            self.assertEqual(marker.exists(), should_publish, result.stdout + result.stderr)
+            if should_publish:
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(marker.read_text(), "edit" if existing else "create")
+            else:
+                self.assertIn(result.returncode, (1, 2), result.stdout + result.stderr)
 
 
 if __name__ == "__main__":
