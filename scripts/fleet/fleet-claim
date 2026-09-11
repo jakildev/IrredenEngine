@@ -1813,6 +1813,11 @@ cmd_release() {
         shift
     done
 
+    if [[ $# -eq 0 ]]; then
+        echo "usage: fleet-claim release <issue-number> [--wip-ok]" >&2
+        return 2
+    fi
+
     local issue_num
     if ! issue_num=$(require_issue_number "$1"); then
         return 2
@@ -5275,7 +5280,8 @@ commands:
                                 lane's claim via FLEET_TARGET_RELEASE
                                 (fleet-common.sh). Agent defaults to the
                                 cwd basename.
-  release <issue-number>        release a claim (FS lock + worktree
+  release <issue-number> [--wip-ok]
+                                release a claim (FS lock + worktree
                                 reservation + --stackable-on .meta
                                 sidecar). Issue-side `fleet:claim-*`
                                 and `fleet:in-progress` labels are
@@ -5288,7 +5294,9 @@ commands:
                                 after the architect (or steward)
                                 unblocks (#1488). The abandoned-claim
                                 sweep in `cleanup --gh` is the TTL
-                                safety net.
+                                safety net. Refuses release while a
+                                matching open PR has `fleet:wip`; pass
+                                --wip-ok to override for unfinished work.
   check <issue-number>          check if free (exit 0=free, 1=taken).
   list                          list all active claims.
   host [uname-string]           print this host's canonical key

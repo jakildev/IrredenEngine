@@ -94,6 +94,20 @@ assert_eq "$leading_wip_rc" "0" "leading --wip-ok is accepted"
     && ok "leading --wip-ok releases the claim" \
     || bad "leading --wip-ok did not release the claim"
 
+set +e
+missing_issue_output=$("$FLEET_CLAIM" release --wip-ok 2>&1)
+missing_issue_rc=$?
+set -e
+assert_eq "$missing_issue_rc" "2" "leading --wip-ok still requires an issue number"
+assert_contains "$missing_issue_output" \
+    "usage: fleet-claim release <issue-number> [--wip-ok]" \
+    "missing issue number prints release usage"
+assert_absent "$missing_issue_output" "unbound variable" \
+    "missing issue number does not crash under nounset"
+help_output=$("$FLEET_CLAIM" --help)
+assert_contains "$help_output" "release <issue-number> [--wip-ok]" \
+    "help documents the WIP release override"
+
 echo "== no-PR carve-out =="
 printf '[]\n' > "$PRS_JSON"
 make_claim 701
