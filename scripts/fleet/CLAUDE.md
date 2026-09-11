@@ -56,6 +56,16 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   ratchet (`lint_state_mtime.py`) flags a new `.st_mtime` read that co-occurs
   with a `state.json` reference; opt a justified read out with an inline
   `# lint: state-mtime-ok <reason>` comment.
+- **A test arm measured from wall-clock now needs an injected clock, not a
+  wider window.** Fixture timestamps are fixed; anything the subject derives
+  from `now` is not, so the arm's meaning is a function of the date the suite
+  runs. Widening the window (`1d` → `3650d`) removes the red without restoring
+  the assertion — the arm then passes for every input and no longer discriminates.
+  Give the subject a `now` seam its tests can pin (`fleet-health`'s `now_utc()`
+  reads `FLEET_HEALTH_NOW`), derive the pinned instant from the fixture's own
+  timestamps, and pair the arm with the complementary one — a window that
+  *excludes* the fixture, asserting the reported boundary rather than the
+  resulting emptiness, which a real clock reproduces for free (#3132).
 - **A new executable ships with a `tests/test_<name>.{sh,py}`** in the same
   PR — the fleet-tooling form of the review checklist's "new feature with no
   new test"; the `simplify` pre-commit pass flags the omission. Run the whole

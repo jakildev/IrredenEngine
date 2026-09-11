@@ -28,7 +28,9 @@ Sources (all read-only; nothing here mutates fleet state):
   ~/.fleet/sessions/*.session.json, ~/.fleet/alerts/, ~/.fleet/fleet-up.conf
 
 The window defaults to the current dispatcher boot (the last `started (pid=`
-line in dispatcher.log); `--since 24h` / `7d` / `<ISO-8601>` widens it.
+line in dispatcher.log); `--since 24h` / `7d` / `<ISO-8601>` widens it. Tests
+pin the clock the relative forms are measured from with FLEET_HEALTH_NOW (an
+ISO-8601 instant); production leaves it unset.
 
 Exit status: 0 healthy, 1 at least one WARN, 2 usage error. `--json` emits the
 same facts machine-readably (a `warnings` list plus each section).
@@ -74,6 +76,22 @@ def parse_ts(text):
         return None
 
 
+def now_utc():
+    """Wall-clock now, pinnable to an ISO-8601 instant via FLEET_HEALTH_NOW.
+
+    Every window the report derives from "now" is otherwise a function of the
+    date it runs, which the suite's fixed-timestamp fixtures cannot survive
+    (see #3132). Production never sets the variable.
+    """
+    override = (os.environ.get("FLEET_HEALTH_NOW") or "").strip()
+    if not override:
+        return dt.datetime.now(dt.timezone.utc)
+    ts = parse_ts(override)
+    if ts is None:
+        raise ValueError(f"FLEET_HEALTH_NOW: expected ISO-8601, got {override!r}")
+    return ts if ts.tzinfo else ts.replace(tzinfo=dt.timezone.utc)
+
+
 def parse_since(text, log_lines):
     """`boot` (default), `<N>[mhd]`, or an ISO-8601 timestamp -> aware datetime."""
     if text in (None, "", "boot"):
@@ -81,10 +99,10 @@ def parse_since(text, log_lines):
         for ts, source, msg in log_lines:
             if source == "dispatcher" and RE_STARTED.match(msg):
                 started = ts
-        return started or (dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=24))
+        return started or (now_utc() - dt.timedelta(hours=24))
     m = re.fullmatch(r"(\d+)([mhd])", text)
     if m:
-        return dt.datetime.now(dt.timezone.utc) - dt.timedelta(
+        return now_utc() - dt.timedelta(
             seconds=int(m.group(1)) * WINDOW_UNITS[m.group(2)])
     ts = parse_ts(text)
     if ts is None:
@@ -217,7 +235,7 @@ def collect_dispatches(log_lines, since, sessions_dir, dispatch_dir):
             live = live_records.get(rec["pane"])
             rec["completed"] = None
             rec["outcome"] = "running" if live and live.get("role") == rec["role"] else "lost"
-            rec["seconds"] = (dt.datetime.now(dt.timezone.utc) - rec["started"]).total_seconds()
+            rec["seconds"] = (now_utc() - rec["started"]).total_seconds()
             if live and not rec["runtime"]:
                 rec["runtime"] = live.get("runtime", "")
             rows.append(rec)
