@@ -487,13 +487,21 @@ Two things worth knowing before you add a producer:
   hidden edit changes all the same. Every set-level mutator notifies
   unconditionally — skipping it while hidden leaves the set latched outside the
   cull viewport when it is next shown.
-- **`REBUILD_DETACHED_VOXELS` is exempt, by mechanism.** It writes
-  `pool.getColors()` (`system_rebuild_detached_voxels.hpp`), so a sweep for
-  colour writers finds it — but a detached pool seeds
-  `setStaticReVoxelizeBound` once, and `rebuildChunkBounds` returns on that
-  branch *before* the cached path. Its CPU global mirror is deliberately stale
-  (#1556) and its bound is rotation-independent. Adding invalidation there would
-  start evicting a cache that path never reads.
+- **`REBUILD_DETACHED_VOXELS` is exempt as a *producer* — the branch it feeds
+  is not exempt as a *consumer*.** It writes `pool.getColors()`
+  (`system_rebuild_detached_voxels.hpp`), so a sweep for colour writers finds it
+  — but a detached pool seeds `setStaticReVoxelizeBound` once, and
+  `rebuildChunkBounds` returns on that branch *before* the cached path. Its CPU
+  global mirror is deliberately stale (#1556) and its bound is
+  rotation-independent, so adding a notification there would evict a cache the
+  path never reads. The other half is not optional: `allocateVoxels` arms the
+  cardinal bit before the bound exists, and the active-mask writes re-arm it
+  every tick, so the static branch **consumes** the pending cardinal set on its
+  way out. Leaving it armed leaves every detached chunk permanently pending, and
+  `isRangeVisible`'s admit-on-pending rule then answers TRUE forever — the
+  UPDATE-side cull stops culling detached pools at all. A branch that answers a
+  cache's queries owns that cache's pending state even when it derives the
+  answer from somewhere else.
 
 Because `isRangeVisible` feeds the UPDATE movers, which run *before* the render
 pipeline re-derives the bounds, a range with pending invalidation is admitted

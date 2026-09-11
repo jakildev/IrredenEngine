@@ -357,6 +357,19 @@ struct C_VoxelPool {
                 cb.isoMin_ = iso.min_;
                 cb.isoMax_ = iso.max_;
             }
+            // The static bound OWNS the cardinal answer for every chunk here:
+            // this branch re-derives all of them on every call from a bound
+            // that reads neither position nor alpha, so nothing is left owing
+            // a cardinal recompute. Consuming the bits is load-bearing, not
+            // tidiness — allocation arms them (`allocateVoxels` →
+            // `markCullBoundsDirty`) and no other path on this branch clears
+            // them, so leaving them set makes `isRangeVisible`'s
+            // pending ⇒ admit-conservatively gate answer TRUE forever and the
+            // UPDATE-side cull stops culling this pool at all (#2830).
+            // Only the cardinal bit: `ensureChunkWorldBounds` is the sole
+            // consumer that can satisfy the world bit and this branch never
+            // runs it, so the world cache keeps owing its work.
+            dropPendingChunks(m_pendingCardinalChunks, kCullPendingCardinal);
             return;
         }
 

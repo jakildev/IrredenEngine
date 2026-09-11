@@ -5,11 +5,16 @@
 
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
+#include <irreden/ir_system.hpp>
+#include <irreden/ir_time.hpp>
 
+#include <irreden/common/components/entity_anchor.hpp>
+#include <irreden/render/components/component_canvas_local_rotation.hpp>
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
 #include <irreden/voxel/components/component_voxel.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
+#include <irreden/voxel/systems/system_rebuild_detached_voxels.hpp>
 #include <irreden/voxel/voxel_pool_api.hpp>
 
 // #2830 regression guard: `C_VoxelPool`'s two derived cull caches must
@@ -39,9 +44,11 @@
 
 namespace {
 
+using IRComponents::C_CanvasLocalRotation;
 using IRComponents::C_Voxel;
 using IRComponents::C_VoxelPool;
 using IRComponents::C_VoxelSetNew;
+using IRComponents::EntityAnchor;
 using IRMath::CardinalIndex;
 using IRMath::Color;
 using IRMath::IsoBounds2D;
@@ -610,6 +617,122 @@ TEST_F(ChunkBoundsEvictionTest, PendingInvalidationAdmitsUpdateWork) {
     EXPECT_TRUE(pool.isRangeVisible(0, kChunk, atMoved));
     EXPECT_FALSE(pool.isRangeVisible(0, kChunk, viewportAround(nearPose)))
         << "once rebuilt the query is the ordinary overlap answer again";
+}
+
+// ---------------------------------------------------------------------------
+// The detached re-voxelize pool — the third `rebuildChunkBounds` branch.
+// ---------------------------------------------------------------------------
+//
+// `m_staticReVoxelizeBound` switches `rebuildChunkBounds` onto a branch that
+// owns EVERY chunk's cardinal answer and returns early (#1556): it re-derives
+// all of them on every call from a rotation-independent bound that reads
+// neither position nor alpha. It therefore has to consume the cardinal pending
+// bits on the way out. `allocateVoxels` arms them, nothing else on that branch
+// clears them, and `isRangeVisible` admits any pending chunk conservatively —
+// so bits left standing make every detached range answer visible FOREVER and
+// the UPDATE-side cull stops culling this pool mode at all. That is a
+// regression the cardinal-path cases above cannot see, because they never take
+// this branch.
+//
+// POSITIVE CONTROL: delete the `dropPendingChunks(m_pendingCardinalChunks, …)`
+// line from the static branch and the off-viewport expectations below fail
+// (the range reads visible); the on-bound ones keep passing, so the failure
+// isolates the latch rather than a broken bound.
+
+// The branch in isolation: `setStaticReVoxelizeBound` alone reproduces the
+// latch, because `allocateVoxels` armed the bits before the bound existed.
+TEST_F(ChunkBoundsEvictionTest, StaticBoundPoolCullsAfterAllocationArmedThePendingBits) {
+    C_VoxelPool pool(ivec3(16, 16, 4));
+    pool.allocateVoxels(kChunk); // arms kCullPendingCardinal for chunk 0
+    for (int i = 0; i < kChunk; ++i) {
+        seedSlot(pool, static_cast<std::size_t>(i), vec3(0, 0, 0), true);
+    }
+    pool.resyncActiveMaskFromColors(0, static_cast<std::size_t>(kChunk));
+    pool.setStaticReVoxelizeBound(vec3(2, 2, 2));
+
+    pool.rebuildChunkBounds(CardinalIndex::k0, false, 0.0f);
+
+    EXPECT_FALSE(pool.isRangeVisible(0, kChunk, viewportAround(vec3(500, 500, 0))))
+        << "allocation's pending bits must not outlive the static bound's rebuild";
+    EXPECT_TRUE(pool.isRangeVisible(0, kChunk, viewportAround(vec3(0, 0, 0))));
+}
+
+// The bound seeded through the production path: REBUILD_DETACHED_VOXELS owns
+// the one-time `setStaticReVoxelizeBound` call, and its tick also rewrites the
+// pool's active mask — which re-arms the very bits this branch must consume.
+class DetachedCullBoundTest : public ::testing::Test {
+  protected:
+    // EntityManager before SystemManager, per RebuildDetachedVoxelsGuardTest:
+    // the system manager's registration reaches the entity manager.
+    IREntity::EntityManager m_entityManager;
+    IRSystem::SystemManager m_systemManager;
+
+    DetachedCullBoundTest()
+        : m_entityManager{}
+        , m_systemManager{} {
+        m_systemManager.registerPipeline(
+            IRTime::Events::UPDATE,
+            {IRSystem::createSystem<IRSystem::REBUILD_DETACHED_VOXELS>()}
+        );
+    }
+
+    // A DETACHED_REVOXELIZE canvas holding one origin-centered solid. The
+    // explicit `targetCanvas` argument routes the allocation through this
+    // canvas instead of the RenderManager's active one, so no render manager
+    // is needed.
+    IREntity::EntityId makeDetachedCanvas(ivec3 size = ivec3(4, 4, 4)) {
+        const IREntity::EntityId canvas =
+            IREntity::createEntity(C_VoxelPool{ivec3(16, 16, 16)}, C_CanvasLocalRotation{});
+        auto &rotation = IREntity::getComponent<C_CanvasLocalRotation>(canvas);
+        rotation.rotation_ = IRMath::vec4{0.0f, 0.0f, 0.0f, 1.0f}; // identity, not the sentinel
+        rotation.reVoxelize_ = true;
+        IREntity::createEntity(
+            C_VoxelSetNew{size, Color{200, 120, 60, 255}, EntityAnchor::CENTER, canvas}
+        );
+        m_systemManager.executePipeline(IRTime::Events::UPDATE); // seeds the bound
+        return canvas;
+    }
+};
+
+// An off-viewport detached range reads invisible once its static bound has
+// been rebuilt — the whole point of having a bound at all.
+TEST_F(DetachedCullBoundTest, OffViewportDetachedRangeIsCulledAfterStaticRebuild) {
+    const IREntity::EntityId canvas = makeDetachedCanvas();
+    C_VoxelPool &pool = IREntity::getComponent<C_VoxelPool>(canvas);
+    ASSERT_TRUE(pool.hasStaticReVoxelizeBound()) << "the tick must have reached the seed";
+    const std::size_t count = static_cast<std::size_t>(pool.getLiveVoxelCount());
+    ASSERT_GT(count, 0u);
+
+    pool.rebuildChunkBounds(CardinalIndex::k0, false, 0.0f);
+
+    // The bound is origin-centered, so a viewport far from the origin misses it.
+    EXPECT_FALSE(pool.isRangeVisible(0, count, viewportAround(vec3(400, -400, 0))))
+        << "a detached pool whose bound was just rebuilt must answer the ordinary "
+           "overlap question, not admit unconditionally";
+    // Not a vacuous pass: the same query over the bound still admits.
+    EXPECT_TRUE(pool.isRangeVisible(0, count, viewportAround(vec3(0, 0, 0))))
+        << "the conservative origin-centered bound must still cover the solid";
+}
+
+// The pending lifecycle's promised shape on this branch: an in-place edit
+// admits conservatively until the next rebuild, and the rebuild restores the
+// ordinary overlap answer rather than latching.
+TEST_F(DetachedCullBoundTest, DetachedEditAdmitsOnceThenReturnsToTheOverlapAnswer) {
+    const IREntity::EntityId canvas = makeDetachedCanvas();
+    C_VoxelPool &pool = IREntity::getComponent<C_VoxelPool>(canvas);
+    const std::size_t count = static_cast<std::size_t>(pool.getLiveVoxelCount());
+    const IsoBounds2D offViewport = viewportAround(vec3(400, -400, 0));
+
+    pool.rebuildChunkBounds(CardinalIndex::k0, false, 0.0f);
+    ASSERT_FALSE(pool.isRangeVisible(0, count, offViewport));
+
+    pool.markCullBoundsDirty(0, count);
+    EXPECT_TRUE(pool.isRangeVisible(0, count, offViewport))
+        << "a chunk that owes a recompute is admitted, on this branch too";
+
+    pool.rebuildChunkBounds(CardinalIndex::k0, false, 0.0f);
+    EXPECT_FALSE(pool.isRangeVisible(0, count, offViewport))
+        << "the static rebuild must consume what the edit armed";
 }
 
 } // namespace
