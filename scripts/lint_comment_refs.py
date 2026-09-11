@@ -222,17 +222,37 @@ def _interpreter_family(name):
     return "python" if name.startswith("python") else "shell"
 
 
+SHELL_COMMAND_PREFIXES = {"command", "builtin", "exec", "env", "nohup", "sudo",
+                          "nice", "time", "timeout", "xargs", "caffeinate"}
+SHELL_KEYWORDS = {"if", "then", "else", "elif", "fi", "do", "done", "while",
+                  "until", "!", "{", "}"}
+SHELL_ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+SHELL_NUMBER_RE = re.compile(r"^\d+[smhd]?$")
+COMMAND_SEPARATOR_RE = re.compile(r"[;|&]+|\$\(|[(){}`]")
+
+
 def _command_family(text, i):
-    """The family of the interpreter named on the logical line ending at `i`,
-    or None when no word on it is one. `python3 <<'PY'` feeds Python source;
-    `cat <<'EOF'` feeds data."""
+    """The family of the interpreter that is the command word of the simple
+    command containing position `i`, else None: `python3 <<'PY'` and
+    `sudo python3 -c '...'` feed Python source; `echo python3 -c '...'` and
+    `cat <<'EOF'` feed data. The command word is the first word of the
+    segment after the last separator on the logical line, skipping
+    assignments, shell keywords, and the common command-prefix forms."""
     start = text.rfind("\n", 0, i) + 1
     while start > 1 and text[start - 2] == "\\":
         start = text.rfind("\n", 0, start - 1) + 1
-    found = None
-    for found in EMBEDDED_INTERPRETER_RE.finditer(text, start, i):
-        pass
-    return None if found is None else _interpreter_family(found.group(1))
+    segment = text[start:i]
+    cut = 0
+    for m in COMMAND_SEPARATOR_RE.finditer(segment):
+        cut = m.end()
+    for word in segment[cut:].split():
+        name = word.rsplit("/", 1)[-1]
+        if (word == "\\" or word in SHELL_KEYWORDS or name in SHELL_COMMAND_PREFIXES
+                or word.startswith("-") or SHELL_ASSIGNMENT_RE.match(word)
+                or SHELL_NUMBER_RE.match(word)):
+            continue
+        return _interpreter_family(name) if EMBEDDED_INTERPRETER_RE.fullmatch(name) else None
+    return None
 
 
 def _shebang_family(body):

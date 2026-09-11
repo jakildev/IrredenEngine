@@ -280,5 +280,31 @@ class Scanning(unittest.TestCase):
         self.assertIn("0 reference line(s)", out)
 
 
+class CommandWord(unittest.TestCase):
+    """Only the command word decides whether a `-c` string or a here-document
+    is interpreter source; interpreter-shaped arguments to another command
+    are data."""
+
+    def test_interpreter_named_as_an_argument_is_data(self):
+        for line in ("echo python3 -c '# see #1234'\n",
+                     "printf '%s' python3 -c '# #1234'\n",
+                     "command echo python3 -c '# #1234'\n",
+                     "echo bash <<'EOF'\n# #1234\nEOF\n",
+                     "grep python3 -c '#1234' f\n"):
+            self.assertEqual(lines(line, "shell"), [], line)
+
+    def test_interpreter_as_the_command_word_is_source(self):
+        for line in ("python3 -c '# #1234'\n",
+                     "command python3 -c '# #1234'\n",
+                     "/usr/bin/env python3 -c '# #1234'\n",
+                     "FOO=1 python3 -u -c '# #1234'\n",
+                     "x=1; python3 -c '# #1234'\n",
+                     "echo hi | python3 -c '# #1234'\n",
+                     "timeout 30 python3 -c '# #1234'\n",
+                     "if true; then python3 -c '# #1234'; fi\n",
+                     "sudo bash <<'EOF'\n# #1234\nEOF\n"):
+            self.assertEqual(lines(line, "shell"), [1] if "EOF" not in line else [2], line)
+
+
 if __name__ == "__main__":
     unittest.main()
