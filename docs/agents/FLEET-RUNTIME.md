@@ -86,6 +86,17 @@ The basename is your `pwd` at startup — a pool worktree name (`pool-1` …
 / rebase / push loop. Staleness thresholds: worker 30 min; merger 20 min;
 reviewers the witness default.
 
+**The heartbeat is PANE-scoped, not iteration-scoped.** Every transient role's
+step 0 touches the same `~/.fleet/heartbeats/<worktree-basename>` file, so
+freshness says "some dispatch has recently run in this pane", never "*this*
+iteration is alive". It is therefore not a liveness signal for anything
+per-iteration: a `fleet:amending-*` claim keyed on it stayed alive for 86
+minutes after its owner died, renewed by unrelated reviewer and merger
+dispatches into the same pane (#2973). Per-iteration ownership is keyed on the
+dispatch id instead — `fleet-dispatch-wrap` exports `FLEET_DISPATCH_ID` and
+records the worktree's current dispatch at
+`~/.fleet/state/dispatch-current/<worktree>`; `fleet-claim` compares the two.
+
 ---
 
 ## Reservation check — step 0.5 (workers and authors only)

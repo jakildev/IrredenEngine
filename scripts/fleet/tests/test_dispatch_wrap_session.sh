@@ -45,8 +45,16 @@ WRAP="$SCRIPT_DIR/fleet-dispatch-wrap"
 # (Audited siblings: FLEET_ROLE_MODEL is always freshly exported by the wrap
 # itself regardless of argv, so it has no leak path; FLEET_ASSIGNED_WORKTREE
 # is not read by fleet-dispatch-wrap at all.)
-unset FLEET_PLAN_ISSUE FLEET_DISPATCH_TARGET FLEET_DISPATCH_KIND \
-  FLEET_DISPATCH_REPO FLEET_DISPATCH_NUMBER FLEET_DISPATCH_REASON
+unset FLEET_PLAN_ISSUE
+# Same class, same fix, one variable over: FLEET_DISPATCH_TARGET and its parts
+# are exported by EVERY assigned dispatch, and the wrap only ever sets them
+# from its own 7th argv — so T9/T10b's "absent arg exports nothing" cases read
+# the caller's leftovers instead. Any fleet iteration that runs this suite (a
+# worker build-verifying a scripts/fleet PR is the common one) otherwise sees 8
+# spurious reds. Scrubbed here, in the harness, for the same reason as above:
+# the wrap cannot tell "caller wants no target" from "caller's shell has one".
+unset FLEET_DISPATCH_TARGET FLEET_DISPATCH_KIND FLEET_DISPATCH_REPO \
+      FLEET_DISPATCH_NUMBER FLEET_DISPATCH_REASON
 
 # PASS/FAIL, ok/bad and `summarize` come from the shared helper: its
 # "passed: N  failed: M" line is what fleet-positive-control scores, and the
@@ -174,6 +182,55 @@ out=$(cd "$WT" && FLEET_DISPATCH_PRINT_LAUNCH=1 "$WRAP" pane-3 sonnet high worke
 [[ "$out" == resumed=0* ]] && ok "role mismatch: resumed=0" || bad "role mismatch resumed flag: $out"
 [[ "$out" == *"--resume"* ]] && bad "role mismatch: must not --resume the foreign session" || ok "role mismatch: no --resume"
 rm -f "$SIDECAR"
+
+echo "T3c: dispatch identity (#2973) — fresh mints + records, resume inherits"
+# fleet-claim needs a per-ITERATION id to tell a live fleet:amending-* claim
+# from one whose owning iteration died: the pane heartbeat cannot, since step 0
+# of five role docs touches it under the same worktree basename. The wrap mints
+# the id, records it at $FLEET_STATE_DIR/dispatch-current/<worktree>, and stores
+# it in the sidecar so a --resume (same iteration continuing) inherits it.
+DC="$FLEET_STATE_DIR/dispatch-current/worker-1"
+sidecar_dispatch_id() { python3 -c "import json,sys;print(json.load(open(sys.argv[1])).get('dispatch_id',''))" "$1" 2>/dev/null; }
+
+rm -f "$SIDECAR" "$DC"
+out=$(cd "$WT" && FLEET_DISPATCH_PRINT_LAUNCH=1 "$WRAP" pane-3 sonnet high worker "" live 2>/dev/null)
+[[ -s "$DC" ]] && ok "fresh: dispatch-current/<worktree> recorded" || bad "fresh: no dispatch-current record"
+_dc_first=$(cat "$DC" 2>/dev/null || true)
+assert_eq "$(sidecar_dispatch_id "$SIDECAR")" "$_dc_first" "fresh: sidecar stores the same id (what a resume inherits)"
+
+# The live #2973 geometry: a worker iteration dies mid-amend (its sidecar
+# survives the hard kill), then a REVIEWER dispatch lands in the same pane —
+# which is what renewed the pane heartbeat and kept the dead claim alive for 86
+# minutes on engine PR #2961. That dispatch is role-mismatched, so it launches
+# fresh, and it MUST supersede: the worker's iteration is provably over.
+out=$(cd "$WT" && FLEET_DISPATCH_PRINT_LAUNCH=1 "$WRAP" pane-3 sonnet high sonnet-reviewer "" review-only 2>/dev/null)
+[[ "$out" == resumed=0* ]] && ok "cross-role dispatch into the pane launches fresh" || bad "cross-role dispatch resumed: $out"
+_dc_second=$(cat "$DC" 2>/dev/null || true)
+if [[ -n "$_dc_second" && "$_dc_second" != "$_dc_first" ]]; then
+    ok "a fresh launch supersedes the recorded dispatch (the sweep's proof the owner ended)"
+else
+    bad "fresh launch did not supersede the record: '$_dc_first' -> '$_dc_second'"
+fi
+
+printf '{"session_id":"SID-DC","role":"worker","model":"sonnet","effort":"high","dispatch_id":"D-KEEP","created_epoch":1}\n' > "$SIDECAR"
+out=$(cd "$WT" && FLEET_DISPATCH_PRINT_LAUNCH=1 "$WRAP" pane-3 sonnet high worker "" live 2>/dev/null)
+[[ "$out" == *"--resume SID-DC"* ]] && ok "resume: setup resumed as expected" || bad "resume setup failed: $out"
+assert_eq "$(cat "$DC" 2>/dev/null || true)" "D-KEEP" "resume inherits the owning dispatch id (a hard kill must not cost the claim)"
+
+# A dry-run preserves the interrupted session, so it must not supersede its
+# ownership either — it launches no agent, so no new iteration owns the pane.
+printf '{"session_id":"SID-DR","role":"worker","model":"sonnet","effort":"high","dispatch_id":"D-DRY","created_epoch":1}\n' > "$SIDECAR"
+printf 'D-DRY\n' > "$DC"
+(cd "$WT" && "$WRAP" pane-3 sonnet high worker "" dry-run >/dev/null 2>&1) || true
+assert_eq "$(cat "$DC" 2>/dev/null || true)" "D-DRY" "dry-run launches nothing and leaves the recorded dispatch untouched"
+
+# Runtime independence (#3098): SESSION_ID is deliberately "" for codex
+# dispatches, so an id derived from it would be blank for every one of them —
+# routing every codex-owned amend claim back into the pane-keyed fallback.
+rm -f "$SIDECAR" "$DC"
+out=$(cd "$WT" && FLEET_DISPATCH_PRINT_LAUNCH=1 "$WRAP" pane-3 sonnet high worker "" live "" codex 2>/dev/null)
+[[ -s "$DC" ]] && ok "codex dispatch records a dispatch id too (not session-derived)" || bad "codex dispatch recorded no dispatch id"
+rm -f "$SIDECAR" "$DC"
 
 echo "T4: reviewer fresh dispatch resumable + writes sidecar"
 rm -f "$FLEET_SESSIONS_DIR/opus-reviewer.session.json"
@@ -329,6 +386,17 @@ if [[ -z "${FLEET_TEST_SELFCHECK:-}" ]]; then
         ok "suite exits 0 when launched with FLEET_PLAN_ISSUE ambiently set"
     else
         bad "suite fails under an ambient FLEET_PLAN_ISSUE (setup scrub regressed): $(tail -5 "$TMPROOT/selfcheck.log")"
+    fi
+    # Same lock for the dispatch-target family. A guard scoped to one variable
+    # of a set that leaks identically reads as complete while the rest are
+    # untouched, so the repro covers every variable the scrub names.
+    if FLEET_TEST_SELFCHECK=1 FLEET_DISPATCH_TARGET="task:engine:1" \
+            FLEET_DISPATCH_KIND=task FLEET_DISPATCH_REPO=engine \
+            FLEET_DISPATCH_NUMBER=1 FLEET_DISPATCH_REASON="task engine#1" \
+            bash "$0" >"$TMPROOT/selfcheck-target.log" 2>&1; then
+        ok "suite exits 0 when launched with an ambient FLEET_DISPATCH_TARGET"
+    else
+        bad "suite fails under an ambient FLEET_DISPATCH_TARGET (setup scrub regressed): $(tail -5 "$TMPROOT/selfcheck-target.log")"
     fi
 fi
 

@@ -170,6 +170,19 @@ sentinels. Reviewer projections skip `fleet:amending-*` PRs
 symmetric excluded-prefix table arbitrates the full POST response so a
 snapshot race leaves one holder. Same-agent lane transitions remain allowed.
 
+For `fleet:amending-*` that liveness marker is the **dispatch**, not the
+pane: `amending-claim` stamps the claiming iteration's `FLEET_DISPATCH_ID`
+into `~/.fleet/amend-snapshots/<pr>.json`, `fleet-dispatch-wrap` records
+each worktree's current dispatch at launch, and a same-host label whose
+owner is no longer that dispatch is the confirmed orphan the 120 s grace
+applies to. With no id on record — the architect pane never runs
+`fleet-dispatch-wrap` — the pane heartbeat still decides, so no claim is
+orphaned merely for lacking a record; a cross-host label stays on pure
+TTL, since neither record is observable from here. The heartbeat cannot
+carry this alone: it is pane-scoped, so any later dispatch of any role
+renews a dead claim indefinitely, leaving the PR at once un-reapable and
+un-claimable.
+
 ## Review verdicts (PRs)
 
 - `fleet:approved` / `fleet:has-nits` / `fleet:needs-fix` / `fleet:blocker`
