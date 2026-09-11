@@ -118,4 +118,33 @@ else
     bad "fleet-pr-claim-feedback still writes the amend-snapshot: $_snap_code"
 fi
 
+echo "=== T5: the dispatcher's PRE-CLAIM records the sentinel, the role's re-acquire replaces it ==="
+# fleet-dispatcher takes a feedback target's claim before fleet-dispatch-wrap
+# mints the iteration's id, so it passes FLEET_PRECLAIM_DISPATCH_ID instead of
+# leaving the variable unset. Unset would write the EMPTY id of T3 — correct
+# for an architect pane, wrong here: it routes the dispatcher's own fresh claim
+# onto the pane-heartbeat fallback at exactly the moment that pane is idle and
+# its heartbeat stale, so a label carried past TTL is swept out from under it
+# (test_fleet_claim_amending_sweep.sh phase 5). The window closes when the role
+# re-runs fleet-pr-claim-feedback at its step a and this same code path
+# overwrites the record with the minted id.
+rm -f "$SNAP"
+FLEET_DISPATCH_ID=preclaim "$FLEET_CLAIM" amending-claim 804 pool-2 >/dev/null 2>&1 || true
+assert_eq "$(snap_field "$SNAP" dispatch_id)" "preclaim" \
+    "pre-claim records the sentinel, not an empty id"
+FLEET_DISPATCH_ID=D9 "$FLEET_CLAIM" amending-claim 804 pool-2 >/dev/null 2>&1 || true
+assert_eq "$(snap_field "$SNAP" dispatch_id)" "D9" \
+    "the role's step-a re-acquire replaces the sentinel with its minted id"
+assert_eq "$(snap_field "$SNAP" agent)" "pool-2" "re-acquire keeps the owning agent"
+"$FLEET_CLAIM" amending-release 804 pool-2 >/dev/null 2>&1 || true
+
+echo "=== T6: the sentinel is the one fleet-common owns ==="
+# The dispatcher passes FLEET_PRECLAIM_DISPATCH_ID by name and fleet-claim
+# compares against it by name, so both read the same definition — but the value
+# is also spelled literally in this suite and in the sweep suite's fixture. Pin
+# it so a change to the constant cannot leave those fixtures asserting a value
+# nothing produces any more.
+_sentinel=$(source "$SCRIPT_DIR/fleet-common.sh" >/dev/null 2>&1; printf '%s' "${FLEET_PRECLAIM_DISPATCH_ID:-}")
+assert_eq "$_sentinel" "preclaim" "fleet-common.sh defines the pre-claim sentinel this suite pins"
+
 summarize

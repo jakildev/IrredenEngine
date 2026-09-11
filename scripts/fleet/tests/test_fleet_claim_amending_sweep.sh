@@ -165,10 +165,12 @@ SNAP_DIR="$HOME/.fleet/amend-snapshots"
 DISPATCH_DIR="$FLEET_STATE_DIR/dispatch-current"
 mkdir -p "$SNAP_DIR" "$DISPATCH_DIR"
 
-# <pr> <agent> <dispatch-id>  — the record fleet-claim writes on amending-claim.
+# <pr> <agent> <dispatch-id> [<acquired-epoch>]  — the record fleet-claim
+# writes on amending-claim. The epoch defaults to now; phase 5 overrides it to
+# age a pre-claim past its grace without sleeping.
 write_snap() {
     printf '{"pr":%s,"agent":"%s","acquired_epoch":%s,"dispatch_id":"%s"}\n' \
-        "$1" "$2" "$(date +%s)" "$3" > "$SNAP_DIR/$1.json"
+        "$1" "$2" "${4:-$(date +%s)}" "$3" > "$SNAP_DIR/$1.json"
 }
 
 # Every owner below is a live PANE: a fresh heartbeat under its basename is
@@ -257,6 +259,51 @@ if [[ -f "$SNAP_DIR/816.json" ]]; then
 else
     bad "legacy TTL reap deleted the amend-snapshot"
 fi
+
+# --- phase 5: the dispatcher's PRE-CLAIM window ----------------------------
+# fleet-dispatcher takes a `feedback` target's amending-claim BEFORE
+# fleet-dispatch-wrap mints the iteration's FLEET_DISPATCH_ID, so the claim it
+# writes carries the FLEET_PRECLAIM_DISPATCH_ID sentinel rather than a minted
+# id. The pane it is launching into is idle by construction, so the PANE
+# heartbeat there is the PREVIOUS iteration's and is typically stale — and when
+# the label is one carried over past TTL from that earlier iteration (a
+# re-dispatch of the same PR into the same pane re-acquires the existing label
+# without resetting its created_at), deferring to the heartbeat lets this sweep
+# delete the dispatcher's own fresh pre-claim and admit a second feedback
+# worker: the double-amend the pre-claim exists to prevent.
+#
+# pool-10/11/12 deliberately have NO heartbeat — that IS the reviewer's
+# scenario. Default stub age (2020) keeps every case far past the TTL, so a
+# label kept here was kept on the pre-claim verdict and nothing else.
+rm -f "$HOME/.fleet/heartbeats/pool-10" "$HOME/.fleet/heartbeats/pool-11" \
+      "$HOME/.fleet/heartbeats/pool-12"
+_now=$(date +%s)
+# 817 fresh pre-claim, stale pane             -> kept (the window under test)
+# 818 pre-claim aged past the 300s grace      -> swept (falls back to the
+#                                                pane rule, which is stale)
+# 819 fresh pre-claim, dispatch-current holds
+#     the PREVIOUS iteration's real id        -> kept: the sentinel is the
+#                                                ABSENCE of an id, never a
+#                                                superseded one
+write_snap 817 pool-10 preclaim "$_now"
+write_snap 818 pool-11 preclaim "$(( _now - 900 ))"
+write_snap 819 pool-12 preclaim "$_now"; printf 'D7\n' > "$DISPATCH_DIR/pool-12"
+: > "$REMOVED_FILE"
+cat > "$PRS_JSON" <<'JSON'
+[
+  {"number":817,"labels":[{"name":"fleet:wip"},{"name":"fleet:amending-mac-pool-10"}]},
+  {"number":818,"labels":[{"name":"fleet:wip"},{"name":"fleet:amending-mac-pool-11"}]},
+  {"number":819,"labels":[{"name":"fleet:wip"},{"name":"fleet:amending-mac-pool-12"}]}
+]
+JSON
+echo "=== phase 5: dispatcher pre-claim window (stale pane heartbeat, past TTL) ==="
+"$FLEET_CLAIM" cleanup --gh --repo jakildev/IrredenEngine 2>&1 | sed 's/^/    /'
+assert_removed_absent $'817\tfleet:amending-mac-pool-10' \
+    "a fresh pre-claim survives a stale pane heartbeat on a past-TTL label"
+assert_removed_contains $'818\tfleet:amending-mac-pool-11' \
+    "a pre-claim past its grace falls back to the pane rule and is swept"
+assert_removed_absent $'819\tfleet:amending-mac-pool-12' \
+    "the pre-claim sentinel is never read as a dispatch superseded by the pane's last id"
 
 echo
 echo "PASS: $PASS  FAIL: $FAIL"
