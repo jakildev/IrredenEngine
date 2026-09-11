@@ -210,6 +210,13 @@ declare -A FLEET_TARGET_LABEL=(
     [review]="fleet:reviewing-" [planreview]="fleet:reviewing-" [smoke]="fleet:reviewing-"
 )
 
+# Claim-label namespaces that arbitrate as one mutex. The table is symmetric:
+# a one-sided entry lets the unregistered lane co-win after both POSTs race.
+declare -A FLEET_CLAIM_EXCLUDES=(
+    [fleet:amending-]="fleet:reviewing-"
+    [fleet:reviewing-]="fleet:amending-"
+)
+
 # `task:engine:1969` -> `task-engine-1969`: the one per-target file key
 # (dispatch counts, abandonment, decline memory, salvage, handoff).
 fleet_target_key() { printf '%s\n' "${1//:/-}"; }

@@ -428,8 +428,9 @@ Specifically, **never pass these via `--label` when filing**:
   (mac / linux / windows) is required for correctness — both hosts
   can have an agent with the same pool basename (e.g. `pool-3`);
   without the host prefix the
-  sole-holder claim would collide. A claimant wins only as the sole
-  `fleet:reviewing-*` holder; in a simultaneous race the lex-min drops
+  sole-holder claim would collide. A claimant wins only as the sole holder
+  across `fleet:reviewing-*` and every lane that prefix excludes; in a
+  simultaneous race the lex-min drops
   and retries to re-acquire alone, and any later claimant that finds an
   existing holder yields (exit 1). Reviewer / smoke-pickup agents
   **skip any PR carrying any `fleet:reviewing-*` label** as a fast-path
@@ -445,8 +446,10 @@ Specifically, **never pass these via `--label` when filing**:
   the full TTL since a marker can only vouch for its own host.
   Don't add manually; don't add to issues.
 - `fleet:amending-<host>-<agent>` — owned by the **`fleet-claim`
-  script** (atomic feedback-claim primitive; same sole-holder claim as
-  `fleet:reviewing-`). The **single mutex for all feedback handling**:
+  script** (atomic feedback-claim primitive; the sole holder across its
+  own prefix and every lane it excludes, including `fleet:reviewing-*`). The
+  same-agent suffix is deliberately carved out so one agent may transition
+  between lanes. The **single mutex for all feedback handling**:
   the author worker acquires it via `fleet-claim amending-claim` as the
   **first** action of feedback pickup — before reading feedback,
   checking out, or touching any label — for *every* feedback path

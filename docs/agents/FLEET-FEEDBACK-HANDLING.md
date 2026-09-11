@@ -54,8 +54,8 @@ sonnet-class iterations DO pick up via the normal cycle.
 worker holds the atomic feedback claim and is handling that PR (see
 Step a). This is a fast-path filter only; the real mutex is the claim
 itself, so a PR that slips past this filter (claimed after your state
-snapshot) is still caught when your own `amending-claim` loses the
-lex-min in Step a.
+snapshot) is still caught by the live pre-acquire gate or POST-response
+cross-lane arbitration in Step a.
 
 **Skip** PRs carrying `fleet:needs-gl-host` unless this host is
 GL-capable (`{linux, windows}` — macOS GL is 4.1, below the shaders'
@@ -79,8 +79,8 @@ to invalidate the other's work. The amend path force-pushes, and
 the reviewer reads head X, you rewrite to Y, and their verdict lands on
 a diff nobody read (#2801; observed on PR #2850, where the amending
 claim was granted 26 s after the opus recheck started). As with
-`fleet:needs-gl-host`, the pickup-side skip is the load-bearing half and
-`fleet-claim amending-claim` refuses as a backstop. The label cannot
+`fleet:needs-gl-host`, the pickup-side skip is the fast path and
+`fleet-claim amending-claim` refuses at claim time. The label cannot
 strand a PR: the reviewer's `review-release` / verdict swap clears it,
 and `fleet-claim cleanup --gh`'s orphan sweep clears an abandoned one.
 
@@ -131,7 +131,8 @@ A **dispatched** `feedback` target (`FLEET_DISPATCH_TARGET=feedback:<repo>:<N>`,
 under your basename — the dispatcher took `amending-claim` before
 launching you, which is what closed the #1336 race at its source. Run
 the command anyway for the detached checkout: re-acquiring your own
-label is a no-op (you are the sole `fleet:amending-*` holder), and the
+label is a no-op even if a foreign excluded-lane label appeared later: the
+incumbent keeps the item without POSTing again, and the
 exit codes below keep their meaning.
 
 - **Exit 0** — you own this PR's feedback handling AND the PR is checked

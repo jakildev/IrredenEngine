@@ -38,7 +38,9 @@ granted sole-holder claim and no other pane is on this item
   next item, you do not.
 - **Re-taking your own label claim is a no-op.** A lane step that
   claims by label (`fleet-pr-claim-feedback`, `review-claim`)
-  re-acquires the label you already hold and wins. A `fleet-claim claim`
+  re-acquires the label you already hold and wins, even if another excluded
+  lane's label appeared after yours — the incumbent keeps the item without
+  POSTing again. A `fleet-claim claim`
   on the task you were assigned would **fail** (its FS lock is already
   yours), which is why the worker's kind table skips that step.
 - **Release as the lane's steps say**, under your basename — the claim

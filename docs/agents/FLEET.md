@@ -234,9 +234,11 @@ coordination mechanisms prevent duplicate work:
 
 **Review claiming:**
 - Review claims use `fleet:reviewing-<host>-<agent>` labels on PRs via
-  the same atomic lex-min tie-break as task claims. Two reviewers on
-  different hosts that try to claim the same PR simultaneously: one wins
-  the label race, the other self-removes and picks a different PR.
+  the same atomic lex-min tie-break as task claims. The claim also excludes a
+  foreign `fleet:amending-*` holder: a live pre-acquire gate is the fast path,
+  and arbitration over both prefixes in the POST response closes the snapshot
+  race. Two contenders that try simultaneously leave exactly one lane holder;
+  an incumbent re-acquire is a no-POST success.
 
 **Conflict-resolution claiming:**
 - Conflict resolution uses a parallel `fleet:resolving-<host>-<agent>`
