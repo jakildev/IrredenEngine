@@ -142,7 +142,7 @@ assert_eq "$track" \
     "architect exports sidecar path, role, and mode for the hook"
 
 # --- T5: dead session-id (no transcript) falls back to a fresh session ------
-# The core #3004 fix: a saved session-id whose transcript was pruned resolves
+# A saved session-id whose transcript was pruned still resolves
 # `-f "$SESSION_FILE"` but has nothing under ~/.claude/projects/ — babysit
 # must detect that BEFORE building --resume, not after crash-looping on it.
 echo "T5: dead session-id (missing transcript) falls back to fresh session"
@@ -166,8 +166,8 @@ assert_contains "$(cat "$H5/.fleet/logs/opus-architect.log" 2>/dev/null || echo 
 # --- T6: N consecutive immediate exit-1 resumes condemns the pointer too ----
 # Fallback signal for whatever the filesystem check misses: the transcript
 # exists (so T5's check passes every time) but every --resume launch still
-# exits 1 immediately — this is the exact #3004 worked-example shape (babysit
-# read the crash as ordinary and retried the same dead pointer forever).
+# exits 1 immediately — without the streak signal babysit reads each exit as
+# an ordinary crash and retries the same dead pointer forever.
 # Exercises the real relaunch loop, not just the inspection hook — the streak
 # is loop-local state that FLEET_BABYSIT_PRINT_LAUNCH's early-exit never
 # reaches.

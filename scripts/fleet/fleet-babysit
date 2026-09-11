@@ -120,7 +120,7 @@ esac
 
 # Timing. Overridable via env (mirrors FLEET_LONG_BACKOFF / FLEET_MIN_BACKOFF
 # below) so tests can shrink the crash-loop delays instead of waiting on the
-# real defaults; unset, behavior is unchanged.
+# real defaults; unset, the defaults below apply.
 CRASH_DELAY="${FLEET_CRASH_DELAY:-30}"      # seconds to wait after non-zero exit (crash)
 LIMIT_DELAY="${FLEET_LIMIT_DELAY:-900}"     # seconds to wait on suspected usage limit (exit 2)
 CLEAN_DELAY="${FLEET_CLEAN_DELAY:-60}"      # seconds to wait after clean exit (no LOOP_INTERVAL)
@@ -298,12 +298,11 @@ fi
 # Claude Code prunes conversation transcripts after ~30 days
 # (cleanupPeriodDays). A `.session-id` sidecar survives the prune untouched —
 # only the transcript it points at is gone — so `[[ -f $SESSION_FILE ]]`
-# alone can't tell a live pointer from a dead one. Before this, every
-# `--resume` against a dead pointer exited 1 immediately and babysit treated
-# it as an ordinary mid-task crash: 30s delay, retry the same dead pointer,
-# forever, up to MAX_ATTEMPTS (#3004 — game-architect on windows-x86_64,
-# session 3b18edeb, idle 2026-06-25..2026-08-21, crash-looped until a human
-# killed the pane).
+# alone can't tell a live pointer from a dead one. A `--resume` against a
+# dead pointer exits 1 immediately, which is exit-code-indistinguishable
+# from an ordinary mid-task crash — so an unvalidated pointer sends the
+# retry loop back to the same dead session every CRASH_DELAY until
+# MAX_ATTEMPTS (see #3004).
 #
 # Two independent signals catch it:
 #   1. Filesystem check (primary — cheap, no attempt burned): before
@@ -645,11 +644,11 @@ resume_mid_task() {
     # "step 0.5"; reviewers are read-only and just re-review) and carries on.
     # The crashed session's in-context scratch is lost, but the task is not.
     #
-    # Same dead-pointer check as launch_architect_first: a stale sidecar
-    # (transcript pruned, or condemned by the exit-1 streak below) gets
-    # deleted here too — this is exactly the path the #3004 crash loop hit
-    # (a mid-task "crash" is exit-code-indistinguishable from a resume
-    # hitting a pruned transcript).
+    # A mid-task "crash" is exit-code-indistinguishable from a --resume
+    # hitting a pruned transcript, so this path revalidates the sidecar
+    # before reusing it, exactly as launch_architect_first does. Condemning
+    # deletes the sidecar, which drops the branch below into the elif's
+    # fresh architect session.
     if [[ "$ARCHITECT_RESUME" -eq 1 && -f "$SESSION_FILE" ]]; then
         SESSION_ID=$(cat "$SESSION_FILE")
         if ! session_transcript_exists "$SESSION_ID"; then
