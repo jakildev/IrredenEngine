@@ -1181,13 +1181,50 @@ assert_contains "$noroot_out" "PROJECT_ROOT is required" \
 # commented-out include read as absent (the #2899 contract, here in the
 # wiring dimension); joining first is what keeps the guard from being
 # defeated by reformatting (the #2916 shape, here in the wiring dimension).
+#
+# BOTH CMake comment forms are stripped, in CMake's own lexical order: at each
+# `#`, a following `[=*[` opens a BRACKET comment running to the matching
+# `]=*]` across however many lines, and anything else is a line comment to the
+# newline. The order is load-bearing in both directions, and each has its own
+# control below. Resolve line comments first and the `#[[` opener disappears,
+# leaving a bracket-commented include reading as live — a CI-inert checker
+# censuses clean. Resolve bracket comments first and a `#[[` written inside a
+# line comment reads as an opener, swallowing the live include()s after it —
+# the guard turns red on correct wiring. See #3291.
 checker_includes() {
     awk '
-        { sub(/#.*/, ""); buf = buf " " $0 }
+        { buf = buf $0 "\n" }
         END {
-            while (match(buf, /include[ \t]*\([^)]*\)/)) {
-                call = substr(buf, RSTART, RLENGTH)
-                buf = substr(buf, RSTART + RLENGTH)
+            code = ""
+            i = 1
+            while (1) {
+                rest = substr(buf, i)
+                p = index(rest, "#")
+                if (p == 0) { code = code rest; break }
+                code = code substr(rest, 1, p - 1) " "
+                i = i + p - 1
+                k = i + 2
+                if (substr(buf, i + 1, 1) == "[") {
+                    eq = ""
+                    while (substr(buf, k, 1) == "=") { eq = eq "="; k++ }
+                    if (substr(buf, k, 1) == "[") {
+                        closer = "]" eq "]"
+                        q = index(substr(buf, k + 1), closer)
+                        # Unterminated: CMake errors out, so nothing after the
+                        # opener runs — drop the rest of the file.
+                        if (q == 0) break
+                        i = k + q + length(closer)
+                        continue
+                    }
+                }
+                q = index(substr(buf, i), "\n")
+                if (q == 0) break
+                i = i + q
+            }
+            gsub(/\n/, " ", code)
+            while (match(code, /include[ \t]*\([^)]*\)/)) {
+                call = substr(code, RSTART, RLENGTH)
+                code = substr(code, RSTART + RLENGTH)
                 sub(/^include[ \t]*\([ \t]*/, "", call)
                 sub(/[ \t]*\)$/, "", call)
                 gsub(/[ \t"]/, "", call)
@@ -1372,6 +1409,51 @@ assert_contains "$commented_missing" "run_beta_check.cmake" \
     "a commented-out include does not satisfy the census"
 assert_absent "$commented_missing" "run_alpha_check.cmake" \
     "the live include in the same shim still satisfies it"
+
+# --- a bracket-commented include reads as absent too ------------------------
+# CMake's other comment form. `#[[ ... ]]` comments out everything through the
+# matching close, across lines, so an include inside one never runs and must
+# not satisfy the census either. Measured against cmake 4.3.1: this fixture
+# runs alpha and not beta.
+CENSUS_BRACKET="$TMPROOT/census-bracket"
+make_synthetic_census_fixture "$CENSUS_BRACKET" 'include("${PROJECT_ROOT}/cmake/run_alpha_check.cmake")
+#[[
+include("${PROJECT_ROOT}/cmake/run_beta_check.cmake")
+]]'
+bracket_missing=$(census_missing_includes "$CENSUS_BRACKET")
+assert_contains "$bracket_missing" "run_beta_check.cmake" \
+    "an include inside a #[[ ]] bracket comment does not satisfy the census"
+assert_absent "$bracket_missing" "run_alpha_check.cmake" \
+    "the live include outside the bracket comment still satisfies it"
+
+# --- the =-delimited bracket form is stripped as well -----------------------
+# `#[==[ ... ]==]` is the same comment with a longer delimiter, and any number
+# of `=` is legal. A matcher taught only the bare `#[[` spelling leaves this
+# one's include reading as live — the same false pass one delimiter over.
+CENSUS_BRACKET_EQ="$TMPROOT/census-bracket-eq"
+make_synthetic_census_fixture "$CENSUS_BRACKET_EQ" '#[==[
+include("${PROJECT_ROOT}/cmake/run_beta_check.cmake")
+]==]
+include("${PROJECT_ROOT}/cmake/run_alpha_check.cmake")'
+bracket_eq_missing=$(census_missing_includes "$CENSUS_BRACKET_EQ")
+assert_contains "$bracket_eq_missing" "run_beta_check.cmake" \
+    "an include inside a #[==[ ]==] bracket comment does not satisfy the census"
+assert_absent "$bracket_eq_missing" "run_alpha_check.cmake" \
+    "the include after the bracket comment closes is still read"
+
+# --- a `#[[` inside a LINE comment is not a bracket opener ------------------
+# The opposite-direction control, and the one that discriminates between
+# stripping the two forms in CMake's order and stripping brackets first: a
+# matcher that scans for `#[[` before resolving line comments opens a bracket
+# here, runs it to the `]]` two lines down, and reports the correctly-wired
+# alpha as CI-inert. cmake 4.3.1 runs both includes in this fixture.
+CENSUS_BRACKET_INLINE="$TMPROOT/census-bracket-inline"
+make_synthetic_census_fixture "$CENSUS_BRACKET_INLINE" '# a note mentioning #[[ as prose
+include("${PROJECT_ROOT}/cmake/run_alpha_check.cmake")
+# ]] closes the note, not a comment block
+include("${PROJECT_ROOT}/cmake/run_beta_check.cmake")'
+assert_census_clean "$CENSUS_BRACKET_INLINE" \
+    "a #[[ inside a line comment does not open a bracket comment"
 
 # --- prose mentions and lookalike filenames do not satisfy it ---------------
 # The real shim's header comment names all three of its checkers, so a
