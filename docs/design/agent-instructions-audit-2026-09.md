@@ -53,7 +53,7 @@ offsetting benefit. Three vendor guides frame the target:
 | `CLAUDE.md` (all) | 36 | 586 KB | 10,834 | `engine/render` 100 KB, `engine/script` 99 KB, `engine/prefabs/irreden/render` 59 KB |
 | `AGENTS.md` | 1 | 1 KB | 22 | pointer file, fine |
 | `.fleet/plans/*.md` | 189 | 2.0 MB | | committed task plans |
-| Issue/PR numbers inside code comments | 593 | | 5,026 lines | `scripts/` 2,328, `engine/render` 1,169, `engine/prefabs` 700, `creations/` 411 |
+| Issue/PR numbers inside code comments | 559 | | 4,000 lines | `scripts/` 1,306, `engine/render` 1,169, `engine/prefabs` 700, `creations/` 411 |
 
 The dominant pattern across every surface is the same: the rule is stated,
 then the incident that produced it is narrated with its issue number, then a
@@ -86,7 +86,7 @@ Applies to every surface unless a row below narrows it.
 ## Target state by surface
 
 - **Code comments.** The comment rule lands with its ratchet (this audit's
-  first PR). The 5,026 recorded references are swept to zero by
+  first PR). The 4,000 recorded references are swept to zero by
   module-scoped tasks; each task lowers its module's baseline entries to
   zero and the ratchet keeps them there.
 - **Task plans.** The `## Plan` issue comment is the only plan artifact.

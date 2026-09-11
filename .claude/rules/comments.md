@@ -1,8 +1,9 @@
 ---
 paths:
-  - "**/*.{hpp,cpp,h,cc,tpp,glsl,metal,lua,py,sh,cmake}"
+  - "**/*.{hpp,cpp,h,hh,hxx,cc,cxx,c,tpp,inl,mm,m,glsl,metal,lua,py,sh,bash,zsh,ps1,cmake,bzl,bazel}"
   - "**/CMakeLists.txt"
   - "scripts/**"
+  - "engine/tools/bin/**"
 ---
 
 # Comments explain the code, never its history
@@ -40,10 +41,12 @@ sentence still be true and still be needed? If not, cut it.
 ## Detection
 
 Executed: `python3 scripts/lint_comment_refs.py`, run by the `comment-refs`
-workflow on every push and PR. It counts `#NNN` / `#NNNN` inside comments per
-file against `scripts/lint_comment_refs_baseline.json`; a file may not gain
-references. After removing references from a file, run it with
-`--update-baseline` (it only lowers counts). The baseline is the sweep
+workflow on every push and PR. It tokenizes each file (string literals are
+not comments) and counts `#NNN` / `#NNNN` inside comments per file against
+`scripts/lint_comment_refs_baseline.json`; a file may not gain references,
+and a pull request is checked against the base branch's baseline, so editing
+the baseline buys nothing. After removing references from a file, run it
+with `--update-baseline` (it only lowers counts). The baseline is the sweep
 backlog and reaches zero when the tree is clean.
 
 Judgment-side: `simplify` §7 and its Check 7 review every added comment for
