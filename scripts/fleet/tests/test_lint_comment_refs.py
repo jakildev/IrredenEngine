@@ -305,6 +305,28 @@ class CommandWord(unittest.TestCase):
                      "sudo bash <<'EOF'\n# #1234\nEOF\n"):
             self.assertEqual(lines(line, "shell"), [1] if "EOF" not in line else [2], line)
 
+    def test_prefix_option_operand_is_not_the_command_word(self):
+        """A prefix option's separate operand reads as a command word unless it
+        is consumed with its option, hiding the interpreter behind it."""
+        for line in ("sudo -u root python3 -c '# #1234'\n",
+                     "env -u FLEET_ROLE python3 -c '# #1234'\n",
+                     "timeout -s KILL 30 python3 -c '# #1234'\n",
+                     "xargs -E END python3 -c '# #1234'\n",
+                     "sudo -u root bash <<'EOF'\n# #1234\nEOF\n"):
+            self.assertEqual(lines(line, "shell"), [1] if "EOF" not in line else [2], line)
+
+    def test_an_option_without_an_operand_consumes_nothing(self):
+        """`-E` takes no operand and `--user=root` carries its own, so neither
+        may swallow the interpreter that follows it."""
+        for line in ("sudo -E python3 -c '# #1234'\n",
+                     "sudo --user=root python3 -c '# #1234'\n"):
+            self.assertEqual(lines(line, "shell"), [1], line)
+
+    def test_the_word_after_a_consumed_operand_still_decides(self):
+        """Consuming `-u root` reaches the command word, it does not assume the
+        next interpreter-shaped word anywhere on the line is one."""
+        self.assertEqual(lines("sudo -u root echo python3 -c '# #1234'\n", "shell"), [])
+
 
 if __name__ == "__main__":
     unittest.main()

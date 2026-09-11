@@ -32,7 +32,10 @@ shell and CMake tokenizers additionally step over here-documents and bracket
 arguments, whose `#` opens nothing. What an interpreter reads as source is the
 exception: a here-document that feeds one or whose body opens with a shebang,
 and a `-c` program string in any of its quotings, are scanned as that
-language.
+language. Whether an interpreter reads it is decided by the command word of
+the simple command — reached through assignments, keywords, and prefixes such
+as `env`, `sudo` and `timeout` together with their option operands — so
+`sudo -u root python3 -c '…'` is source while `echo python3 -c '…'` is data.
 
 Exit 0: no file exceeds its budget. Exit 1: at least one does, printed as
 `file:line: <comment>`; the summary names the baseline command to run after a
@@ -229,15 +232,37 @@ SHELL_KEYWORDS = {"if", "then", "else", "elif", "fi", "do", "done", "while",
 SHELL_ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 SHELL_NUMBER_RE = re.compile(r"^\d+[smhd]?$")
 COMMAND_SEPARATOR_RE = re.compile(r"[;|&]+|\$\(|[(){}`]")
+# Options of the supported prefixes that take a *separate* operand, so the
+# word after one is that option's value and not yet the command word. The
+# `--opt=value` spelling carries its own operand and needs no entry. A prefix
+# absent here has no operand-bearing option worth honouring; listing one too
+# few misses an invocation, listing one too many reads a command word as data.
+PREFIX_OPTION_OPERANDS = {
+    "env": {"-u", "--unset", "-C", "--chdir", "-S", "--split-string"},
+    "exec": {"-a"},
+    "nice": {"-n", "--adjustment"},
+    "sudo": {"-u", "--user", "-g", "--group", "-p", "--prompt", "-C",
+             "--close-from", "-D", "--chdir", "-R", "--chroot", "-h", "--host",
+             "-T", "--command-timeout", "-U", "--other-user", "-r", "--role",
+             "-t", "--type"},
+    "time": {"-f", "--format", "-o", "--output"},
+    "timeout": {"-s", "--signal", "-k", "--kill-after"},
+    "xargs": {"-I", "--replace", "-L", "--max-lines", "-n", "--max-args",
+              "-P", "--max-procs", "-s", "--max-chars", "-d", "--delimiter",
+              "-E", "--eof", "-a", "--arg-file"},
+    "caffeinate": {"-t", "-w"},
+}
 
 
 def _command_family(text, i):
     """The family of the interpreter that is the command word of the simple
     command containing position `i`, else None: `python3 <<'PY'` and
-    `sudo python3 -c '...'` feed Python source; `echo python3 -c '...'` and
-    `cat <<'EOF'` feed data. The command word is the first word of the
+    `sudo -u root python3 -c '...'` feed Python source; `echo python3 -c '...'`
+    and `cat <<'EOF'` feed data. The command word is the first word of the
     segment after the last separator on the logical line, skipping
-    assignments, shell keywords, and the common command-prefix forms."""
+    assignments, shell keywords, and the common command-prefix forms —
+    including, for a prefix that takes one, an option's separate operand,
+    which is otherwise mistaken for the command word (`sudo -u root …`)."""
     start = text.rfind("\n", 0, i) + 1
     while start > 1 and text[start - 2] == "\\":
         start = text.rfind("\n", 0, start - 1) + 1
@@ -245,11 +270,21 @@ def _command_family(text, i):
     cut = 0
     for m in COMMAND_SEPARATOR_RE.finditer(segment):
         cut = m.end()
+    operand_options = frozenset()
+    skip_operand = False
     for word in segment[cut:].split():
+        if skip_operand:
+            skip_operand = False
+            continue
         name = word.rsplit("/", 1)[-1]
-        if (word == "\\" or word in SHELL_KEYWORDS or name in SHELL_COMMAND_PREFIXES
-                or word.startswith("-") or SHELL_ASSIGNMENT_RE.match(word)
-                or SHELL_NUMBER_RE.match(word)):
+        if name in SHELL_COMMAND_PREFIXES:
+            operand_options = PREFIX_OPTION_OPERANDS.get(name, frozenset())
+            continue
+        if word.startswith("-"):
+            skip_operand = word in operand_options
+            continue
+        if (word == "\\" or word in SHELL_KEYWORDS
+                or SHELL_ASSIGNMENT_RE.match(word) or SHELL_NUMBER_RE.match(word)):
             continue
         return _interpreter_family(name) if EMBEDDED_INTERPRETER_RE.fullmatch(name) else None
     return None
