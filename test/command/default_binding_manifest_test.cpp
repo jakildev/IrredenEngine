@@ -23,8 +23,7 @@ using IRCommand::Suite;
 class DefaultBindingManifestTest : public testing::Test {
   protected:
     // "NAME: KEY" for every PRESSED registration, in registration order — the
-    // same projection `buildCommandListText()` renders into the debug help
-    // overlay, so an unchanged vector here IS unchanged overlay text.
+    // same projection the debug help overlay renders.
     std::vector<std::string> pressedRegistrations() const {
         std::vector<std::string> rows;
         for (const auto &reg : IRCommand::getCommandManager().getCommandRegistrations()) {
@@ -231,7 +230,7 @@ TEST_F(DefaultBindingManifestTest, CallerAuthoredManifestHonorsOmitAndRemap) {
     // A creation's own table, not one of the two engine suites, through the
     // same primitive with the same override semantics.
     static constexpr DefaultBinding kCreationBindings[] = {
-        {IRCommand::TOGGLE_GUI, IRInput::KEY_MOUSE, IRInput::PRESSED, IRInput::kKeyButtonG},
+        {IRCommand::GUI_ZOOM_IN, IRInput::KEY_MOUSE, IRInput::PRESSED, IRInput::kKeyButtonG},
         {IRCommand::GUI_ZOOM_IN, IRInput::KEY_MOUSE, IRInput::PRESSED, IRInput::kKeyButtonEqual},
         {IRCommand::GUI_ZOOM_OUT, IRInput::KEY_MOUSE, IRInput::PRESSED, IRInput::kKeyButtonMinus},
     };
@@ -243,13 +242,13 @@ TEST_F(DefaultBindingManifestTest, CallerAuthoredManifestHonorsOmitAndRemap) {
 
     EXPECT_EQ(
         pressedRegistrations(),
-        (std::vector<std::string>{"F1: TOGGLE GUI", "=: GUI ZOOM IN"})
+        (std::vector<std::string>{"F1: GUI ZOOM IN", "=: GUI ZOOM IN"})
     );
 }
 
 TEST_F(DefaultBindingManifestTest, RequiredModifiersSurviveRegistration) {
     static constexpr DefaultBinding kModifierBinding[] = {
-        {IRCommand::TOGGLE_GUI,
+        {IRCommand::GUI_ZOOM_IN,
          IRInput::KEY_MOUSE,
          IRInput::PRESSED,
          IRInput::kKeyButtonG,
@@ -257,7 +256,7 @@ TEST_F(DefaultBindingManifestTest, RequiredModifiersSurviveRegistration) {
     };
     IRCommand::registerBindings(kModifierBinding);
 
-    EXPECT_EQ(pressedRegistrations(), (std::vector<std::string>{"SHIFT+CTRL+G: TOGGLE GUI"}));
+    EXPECT_EQ(pressedRegistrations(), (std::vector<std::string>{"SHIFT+CTRL+G: GUI ZOOM IN"}));
 }
 
 TEST_F(DefaultBindingManifestTest, EmptyOverridesRegisterTheWholeManifest) {

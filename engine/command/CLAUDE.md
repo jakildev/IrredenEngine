@@ -177,7 +177,3 @@ of truth for prefab command bodies.
   without a `name` are invisible to the registry. An ad-hoc lambda that should
   be discoverable passes the trailing `name` / `description` args
   (`creations/demos/random_voxels/main.cpp` is the reference).
-- **`buildCommandListText()` is legacy.** It formats the same registry without
-  descriptions and stays per the engine API removal rule
-  (`docs/agents/CLAUDE-BASELINE.md`); new code reads
-  `getCommandRegistrations()` directly.
