@@ -177,25 +177,17 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   Same for **before/after** evidence: report **coverage** beside the drift
   count — an input rejected at the entry guard agrees on both revisions,
   vacuously (#2875: `drifted: 0` was 41 of 166 linted).
-  The one thing this control **cannot** grade is an **exclusion** assertion —
-  a test that something is deliberately *not* matched. MEANINGFUL is an
-  aggregate over the whole suite, and an exclusion usually predates the fix, so
-  it passes against the pre-fix ref too and the verdict came from the other
-  arms (#2944 measured `--include cmake` at MEANINGFUL 22/4 with all 4 failures
-  elsewhere and all 6 new exclusion assertions green; weakening the *current*
-  both-ends-`const` test to a bare `decl_core MATCHES "const"` moved it to 23/3,
-  all 3 in the new arm). The proof is mutation of the current implementation —
-  delete the exclusion there and watch that assertion go red — per
+  The one axis this control **cannot** grade is an **exclusion** assertion —
+  one checking something is deliberately *not* matched. The verdict is a
+  whole-suite aggregate, and an exclusion usually predates the fix, so it
+  passes against the pre-fix ref too and MEANINGFUL came from the other arms.
+  The load-bearing proof is mutation of the *current* implementation — delete
+  the exclusion there and watch that assertion go red — per
   [`docs/agents/CLAUDE-BASELINE.md`](../../docs/agents/CLAUDE-BASELINE.md)
-  §"Encode contracts in code, not in comments". Pair it with the cheaper
-  reachability evidence: put a known violation in the *same fixture file* as the
-  exempt declaration, or assert a coverage count that moves (`scanned 3 header
-  file(s)` — one more than the same fixture without the exempt header). The two
-  prove different things: reachability says the exempt symbol's absence from
-  the failure list is about the reject chain rather than about a skipped file;
-  only the mutation says the assertion is load-bearing.
-  `tests/test_header_checks_standalone.sh`'s `REALCONST` / `HALFCONST` arms
-  run both halves (#3127).
+  §"Encode contracts in code, not in comments". Same-fixture reachability (a
+  known violation beside the exempt declaration, or a coverage count that
+  moves) is cheaper but complementary: it proves the subject was reached, not
+  that the assertion bites (#3127).
 - **A new `tests/test_*.sh` file needs its executable bit committed**
   (`git update-index --chmod=+x` if `git add` didn't pick it up from your
   filesystem's mode). `run_all.sh` invokes suites through an explicit
