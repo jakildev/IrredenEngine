@@ -1,0 +1,29 @@
+name: No Plan Files
+
+# Plans live as `## Plan` issue comments. Nothing may be committed under
+# .fleet/plans/; a PR that re-creates the directory fails here.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  no-plan-files:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Refuse committed plan files
+        run: |
+          if git ls-files -- .fleet/plans | grep -q .; then
+            echo "Plan files are issue comments now; remove these from the PR:"
+            git ls-files -- .fleet/plans
+            exit 1
+          fi
+          echo "no plan files committed"
