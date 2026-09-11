@@ -4,7 +4,8 @@
 Answers, from the fleet's own logs and state, the questions a human asks after
 a stretch of autonomous running:
 
-  * Is every dispatch doing something? Per role: how many iterations launched,
+  * Is every dispatch doing something? Per role: how many iterations launched
+    (and how many of those the elastic cap let through past the role's cap),
     how many claimed / finished work, how many walked the queue and found
     nothing, and how long each kind ran.
   * Who keeps waking a role? Trigger arms per source (scout projection
@@ -64,7 +65,10 @@ RE_REBASE_DONE = re.compile(r"^done: (.*)$")
 RE_KV = re.compile(r"(\w+)=(\S+)")
 
 ROLE_CLASS_RE = re.compile(r"class=(\S+)")
-TARGET_RE = re.compile(r"target=(\S+?)(?:[,\]]|$)")
+TARGET_RE = re.compile(r"target=(\S+?)(?:[,\]\s]|$)")
+# Stamped on a launch the dispatcher's elastic cap let through past the
+# role's cap; the value is the cap it exceeded.
+OVER_CAP_RE = re.compile(r"over-cap=(\d+)")
 
 WINDOW_UNITS = {"m": 60, "h": 3600, "d": 86400}
 
@@ -213,6 +217,7 @@ def collect_dispatches(log_lines, since, sessions_dir, dispatch_dir):
                 "class": cm.group(1) if cm else "",
                 "target": tm.group(1) if tm else "",
                 "runtime": runtime or "",
+                "over_cap": bool(OVER_CAP_RE.search(bracket)),
             })
             continue
         m = RE_COMPLETE.match(msg)
@@ -266,13 +271,15 @@ def summarize_roles(rows):
     for r in rows:
         s = roles.setdefault(r["role"], {
             "dispatches": 0, "productive": 0, "no_op": 0, "unknown": 0,
-            "running": 0, "lost": 0, "targeted": 0,
+            "running": 0, "lost": 0, "targeted": 0, "over_cap": 0,
             "runtimes": {}, "seconds": [], "no_op_seconds": [],
         })
         s["dispatches"] += 1
         s["runtimes"][r["runtime"]] = s["runtimes"].get(r["runtime"], 0) + 1
         if r["target"]:
             s["targeted"] += 1
+        if r["over_cap"]:
+            s["over_cap"] += 1
         oc = r["outcome"]
         if oc == "yes":
             s["productive"] += 1
@@ -525,6 +532,8 @@ def render_text(report):
             line += f" running={s['running']}"
         if s["lost"]:
             line += f" lost={s['lost']}"
+        if s["over_cap"]:
+            line += f" over-cap={s['over_cap']}"
         line += f" targeted={s['targeted']}  runtime[{rt}]"
         if s["median_s"] is not None:
             line += f"  dur median={s['median_s']}s max={s['max_s']}s"

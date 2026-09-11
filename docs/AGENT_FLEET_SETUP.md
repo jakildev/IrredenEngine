@@ -489,7 +489,7 @@ The standard setup — a generic pane pool plus the pinned architects:
 | Worktree            | Repo   | Model  | Role                                                |
 |---------------------|--------|--------|-----------------------------------------------------|
 | `opus-architect`    | engine | Fable  | Core engine work, ECS/render/audio. Stand-by.       |
-| `pool-1` … `pool-9` | engine | per dispatch | Generic pane pool — any transient role (worker, reviewers, merger, smoke, epic-steward), routed by the dispatcher; per-role parallelism bounded by `FLEET_CONCURRENCY_<ROLE>` caps |
+| `pool-1` … `pool-9` | engine | per dispatch | Generic pane pool — any transient role (worker, reviewers, merger, smoke, epic-steward), routed by the dispatcher; each role's share reserved by its `FLEET_CONCURRENCY_<ROLE>` cap (elastic by default — a role at cap still takes free panes no other pending role needs; `FLEET_CAP_MODE=strict` makes caps hard ceilings) |
 | `game-architect`    | game   | Fable  | Game-side architect / stand-by, cross-repo aware    |
 
 The architect and pool worktrees live in

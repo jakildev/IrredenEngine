@@ -15,7 +15,10 @@ fleet workflow.
   architect panes auto-launch `claude`; pool panes sit at bash and
   `fleet-dispatcher` routes transient roles (worker, reviewers,
   merger, smoke-worker, epic-steward) into whichever pool pane is
-  idle, bounded by per-role `FLEET_CONCURRENCY_<ROLE>` caps. The
+  idle. Per-role `FLEET_CONCURRENCY_<ROLE>` caps reserve each role's
+  share of the pool: elastic by default (a role at cap still takes free
+  panes no other pending under-cap role needs), hard ceilings under
+  `FLEET_CAP_MODE=strict`; the fable cap is hard either way. The
   worker, reviewer, and smoke lanes are target-bound: the dispatcher
   pre-claims one item per launch and hands it in as
   `FLEET_DISPATCH_TARGET`, so a pane never launches with nothing to

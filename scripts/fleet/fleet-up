@@ -135,12 +135,18 @@ SCOUT_STARTUP_TIMEOUT_SECONDS=30
 # its slot is counted so a fresh dispatch to a free pane doesn't push
 # the role above its budget).
 #
+# A cap binds elastically by default (FLEET_CAP_MODE=elastic): a role at
+# cap still takes free panes, minus one held back for every other role
+# with pending work and headroom under its own cap. FLEET_CAP_MODE=strict
+# makes every cap a hard ceiling. The fable cap is hard in both modes.
+#
 # Override priority (highest first):
 #   1. Env var: FLEET_CONCURRENCY_<ROLE_UPPERCASE> (e.g. FLEET_CONCURRENCY_WORKER=4)
 #   2. ~/.fleet/fleet-up.conf (bash-sourceable; same variable names)
 #   3. Built-in default (defined in fleet-dispatcher)
 #
 # Sample conf (write to ~/.fleet/fleet-up.conf):
+#   FLEET_CAP_MODE=elastic              # elastic | strict
 #   FLEET_CONCURRENCY_WORKER=4          # unified worker lane (any model class)
 #   FLEET_CONCURRENCY_SONNET_REVIEWER=4
 #   FLEET_CONCURRENCY_OPUS_REVIEWER=1
@@ -1969,6 +1975,9 @@ scheduling (live mode): each transient-role iteration is a fresh \`claude\`
   idle pool pane when the scout triggers its role. Per-role concurrency:
   FLEET_CONCURRENCY_WORKER (default 4), _SONNET_REVIEWER (default 4),
   _OPUS_REVIEWER / _MERGER / _SMOKE_WORKER / _EPIC_STEWARD (default 1).
+  Caps are elastic by default (FLEET_CAP_MODE=elastic): a role at cap still
+  takes free panes no other pending under-cap role needs; strict makes them
+  hard ceilings. The fable cap is hard in both modes.
   opus-architect, game-architect — interactive, persistent session
                                    (--resume across crashes + fleet-down/up)
 

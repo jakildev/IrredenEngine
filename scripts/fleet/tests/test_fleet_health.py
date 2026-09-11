@@ -242,6 +242,32 @@ class Dispatches(Env):
         self.assertEqual(rep["roles"]["merger"]["max_s"], 157)
         self.assertEqual(rep["roles"]["merger"]["no_op_median_s"], 63)
 
+    def test_over_cap_launches_are_tallied_per_role(self):
+        # An elastic-cap launch carries `over-cap=<cap>` after its target in
+        # the same bracket; the target must still parse and the launch pair
+        # normally with its completion.
+        log = self.root / "logs" / "dispatcher.log"
+        log.write_text(log.read_text() + "\n".join([
+            _line("2026-09-09T05:05:00Z", "dispatcher",
+                  "dispatching worker -> %33 [class=opus effort=high "
+                  "target=task:engine:3110 over-cap=1] runtime=claude"),
+            _line("2026-09-09T05:06:00Z", "dispatcher",
+                  "dispatch for worker on %33 completed (pane returned to "
+                  "shell, outcome=yes, target=task:engine:3110, "
+                  "verdict=finished, runtime=claude)"),
+        ]) + "\n")
+        rc, rep = self.run_report()
+        worker = rep["roles"]["worker"]
+        self.assertEqual((worker["dispatches"], worker["over_cap"], worker["productive"]),
+                         (2, 1, 2))
+        over = [d for d in rep["dispatches"] if d["over_cap"]]
+        self.assertEqual([(d["pane"], d["class"], d["target"], d["seconds"]) for d in over],
+                         [("%33", "opus", "task:engine:3110", 60)])
+        self.assertEqual(rep["roles"]["merger"]["over_cap"], 0)
+        text = fleet_health.render_text(rep)
+        self.assertIn("over-cap=1", text)
+        self.assertNotIn("over-cap=0", text)
+
 
 class TriggersAndLadder(Env):
     def test_trigger_sources(self):
