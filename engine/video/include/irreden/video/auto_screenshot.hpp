@@ -106,6 +106,19 @@ struct AutoScreenshotConfig {
     void (*onCaptureFrame_)(int shotIndex) = nullptr;
 };
 
+/// Binds a fixed-size shot table to @c config, deducing @c numShots_ from the
+/// array so @c shots_ and @c numShots_ can never point at mismatched tables —
+/// see #2969. Use this in a configurator that selects among several
+/// candidate tables, sets a non-default @c settleFrames_ / @c
+/// onCaptureFrame_, or otherwise needs the full @c AutoScreenshotConfig
+/// surface — the common single-table case wants
+/// @c appendAutoScreenshotIfRequested instead.
+template <std::size_t N>
+void setAutoScreenshotShots(AutoScreenshotConfig &config, const AutoScreenshotShot (&shots)[N]) {
+    config.shots_ = shots;
+    config.numShots_ = static_cast<int>(N);
+}
+
 /// Owns the label storage + shot vector for a runtime-computed indexed shot
 /// sweep — a numbered walk over zoom/pan/yaw computed from a per-index
 /// callback (a boundary pan, a spin-yaw walk, a zoom×yaw×pan matrix). @c
@@ -154,6 +167,43 @@ bool isAutoCaptureActive();
 ///
 /// Requires @c IREngine::init() has run (so the system manager is live).
 IRSystem::SystemId createAutoScreenshotSystem(const AutoScreenshotConfig &config);
+
+/// Registers @c createAutoScreenshotSystem against a fixed-size shot table
+/// when @c warmupFrames is positive (the built-in `--auto-screenshot [frames]`
+/// arg was passed), appending the returned system to @c pipeline. A no-op —
+/// nothing is pushed — when @c warmupFrames <= 0.
+///
+/// This is the common wire-up: read the warmup count back via
+/// @c IREngine::args().autoScreenshotWarmupFrames() (this module cannot call
+/// that directly — it would pull @c ir_engine.hpp's @c World dependency
+/// backward into a module @c World itself links, see @c engine/CLAUDE.md
+/// "Module include discipline"), declare a file-scope shot table, and call
+/// this once before @c registerPipeline fires. @c N is deduced from the
+/// array, closing the @c shots_ / @c numShots_ mismatch seam that a hand
+/// written `sizeof(kFoo) / sizeof(kFoo[0])` doesn't catch (#2969).
+///
+/// A configurator that selects among several candidate tables, needs a
+/// non-default @c settleFrames_, or sets @c onCaptureFrame_ still builds its
+/// own @c AutoScreenshotConfig — pair @c setAutoScreenshotShots with a manual
+/// @c pipeline.push_back(createAutoScreenshotSystem(cfg)) there instead.
+///
+/// @c Pipeline is deduced rather than fixed to one container: demo RENDER
+/// pipelines are built as @c std::list<IRSystem::SystemId>
+/// (@c IRPrefab::Camera::standardControlSystems() returns one), so the
+/// helper only requires @c push_back, not a specific container type.
+template <typename Pipeline, std::size_t N>
+void appendAutoScreenshotIfRequested(
+    Pipeline &pipeline, int warmupFrames, const AutoScreenshotShot (&shots)[N], int settleFrames = 3
+) {
+    if (warmupFrames <= 0) {
+        return;
+    }
+    AutoScreenshotConfig cfg{};
+    cfg.warmupFrames_ = warmupFrames;
+    cfg.settleFrames_ = settleFrames;
+    setAutoScreenshotShots(cfg, shots);
+    pipeline.push_back(createAutoScreenshotSystem(cfg));
+}
 
 /// One scripted input event within a @c GuiTestShot.
 ///

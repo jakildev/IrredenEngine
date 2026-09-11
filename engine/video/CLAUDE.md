@@ -77,21 +77,53 @@ plus five lines of wire-up. Used by the `render-debug-loop` and
 - `createAutoScreenshotSystem` — RENDER-pipeline system that cycles
   through shots, triggers one screenshot per shot, and calls
   `IRWindow::closeWindow()` when done.
+- `appendAutoScreenshotIfRequested(pipeline, warmupFrames, shots,
+  settleFrames = 3)` — the registration convenience entry point (#2969).
+  Array-deducing template: pass the file-scope shot table directly and
+  `N` (hence `numShots_`) is deduced, so there is no
+  `sizeof(kFoo) / sizeof(kFoo[0])` to accidentally pair against a
+  differently-named table. No-ops (pushes nothing) when `warmupFrames <=
+  0`, so the caller's `if (warmupFrames > 0) { ... }` block collapses to
+  one call. This is the **default** for an ordinary single-table
+  registration.
+- `setAutoScreenshotShots(config, shots)` — the array-deducing table
+  binder without the pipeline/warmup wrapping, for a configurator that
+  needs the full `AutoScreenshotConfig` surface (selects among several
+  candidate tables, sets a non-default `settleFrames_`, or wires
+  `onCaptureFrame_`). Still closes the `shots_`/`numShots_` pairing seam
+  for each candidate table; the configurator keeps its own
+  `pipeline.push_back(createAutoScreenshotSystem(cfg))`.
 
-Wire-up order in `main.cpp`:
+Wire-up order in `main.cpp` (the common single-table case):
 
 1. Call `IREngine::init(argc, argv)` — the engine parser handles
    `--auto-screenshot [frames]` as a built-in. Read the warmup count
-   back via `IREngine::args().autoScreenshotWarmupFrames()`.
+   back via `IREngine::args().autoScreenshotWarmupFrames()`. This read
+   stays in `main.cpp` — `engine/video` cannot call `IREngine::args()`
+   itself without pulling `ir_engine.hpp`'s `World` dependency backward
+   into a module `World` already links (see `engine/CLAUDE.md` "Module
+   include discipline"), so the warmup count is always a caller-supplied
+   parameter, never read by the helper.
 2. Declare a `constexpr AutoScreenshotShot kShots[]` table at file scope
    (must outlive the game loop).
-3. When `IREngine::args().autoScreenshotWarmupFrames() > 0`, build an
-   `AutoScreenshotConfig` and call `createAutoScreenshotSystem(cfg)` —
-   append the returned `SystemId` to the **RENDER** pipeline list before
-   `registerPipeline` fires.
+3. Call `IRVideo::appendAutoScreenshotIfRequested(renderPipeline,
+   warmupFrames, kShots)` before `registerPipeline` fires.
 
-Reference callers: `creations/demos/shape_debug/main.cpp` and
-`creations/demos/metal_clear_test/main.cpp`.
+A configurator with multiple candidate tables, a non-default settle
+count, or an `onCaptureFrame_` hook keeps the explicit
+`AutoScreenshotConfig` + `createAutoScreenshotSystem` + `push_back` form,
+using `setAutoScreenshotShots(cfg, kCandidateTable)` per candidate instead
+of a hand-computed `sizeof`. Reference callers:
+`creations/demos/metal_clear_test/main.cpp` (single-table, via
+`appendAutoScreenshotIfRequested`) and `creations/demos/fog_demo/main.cpp`
+(multi-table selection, via `setAutoScreenshotShots`).
+
+A creation whose RENDER pipeline is already registered before the warmup
+check runs (the three Lua-driven demos that call `IREngine::runScript`
+first and append post-hoc via `IRSystem::appendToPipeline`) also uses
+`setAutoScreenshotShots` to bind the table, then calls
+`IRSystem::appendToPipeline` directly — `appendAutoScreenshotIfRequested`
+assumes a not-yet-registered pipeline vector, which these don't have.
 
 **Creations that compose the RENDER pipeline inside a Lua-bindings
 callback** (`IREngine::registerLuaBindings`) must read the warmup count

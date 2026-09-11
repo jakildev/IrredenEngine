@@ -1484,6 +1484,13 @@ void initSystems() {
             }
         }
 
+        // Stays on the explicit-config path: g_allShots is a runtime-sized
+        // vector assembled above (fixed tables plus opt-in appends), not a
+        // fixed-size array appendAutoScreenshotIfRequested / setAutoScreenshotShots
+        // could deduce N from, and settleFrames_ is itself runtime-variable
+        // (engine/video/CLAUDE.md "Auto-screenshot helper"). numShots_ is
+        // already derived from the vector's own size, so there is no
+        // shots_/numShots_ pairing seam here to close.
         IRVideo::AutoScreenshotConfig cfg{};
         cfg.warmupFrames_ = g_autoWarmupFrames;
         // Base suite: 60 settle frames between shots — entities advance ~24° at

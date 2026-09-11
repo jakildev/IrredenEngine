@@ -100,11 +100,16 @@ int main(int argc, char **argv) {
     IREngine::runScript("main.lua");
 
     if (autoWarmupFrames > 0) {
+        // The RENDER pipeline was already registered by the Lua-composed
+        // scripts above, so this appends post-hoc via appendToPipeline rather
+        // than pushing into a not-yet-registered pipeline vector — the
+        // one-table-vector shape appendAutoScreenshotIfRequested assumes
+        // doesn't apply here (engine/video/CLAUDE.md "Auto-screenshot
+        // helper").
         IRVideo::AutoScreenshotConfig cfg{};
         cfg.warmupFrames_ = autoWarmupFrames;
         cfg.settleFrames_ = 3;
-        cfg.shots_ = kShots;
-        cfg.numShots_ = sizeof(kShots) / sizeof(kShots[0]);
+        IRVideo::setAutoScreenshotShots(cfg, kShots);
         IRSystem::appendToPipeline(
             IRTime::Events::RENDER,
             IRVideo::createAutoScreenshotSystem(cfg)

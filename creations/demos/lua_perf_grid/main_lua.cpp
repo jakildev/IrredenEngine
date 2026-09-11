@@ -487,14 +487,7 @@ void registerLuaBindings() {
             renderPipeline.push_back(autoProfileId);
         }
 
-        if (g_autoWarmupFrames > 0) {
-            IRVideo::AutoScreenshotConfig cfg{};
-            cfg.warmupFrames_ = g_autoWarmupFrames;
-            cfg.settleFrames_ = 3;
-            cfg.shots_ = kShots;
-            cfg.numShots_ = sizeof(kShots) / sizeof(kShots[0]);
-            renderPipeline.push_back(IRVideo::createAutoScreenshotSystem(cfg));
-        }
+        IRVideo::appendAutoScreenshotIfRequested(renderPipeline, g_autoWarmupFrames, kShots);
 
         IRSystem::registerPipeline(IRTime::Events::RENDER, renderPipeline);
         IRPrefab::Camera::registerStandardKeyboardCommands();
