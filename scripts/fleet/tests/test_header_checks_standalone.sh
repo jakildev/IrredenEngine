@@ -76,6 +76,14 @@
 #   - a wrapped declaration whose head line carries a trailing comment with
 #     a paren in it                                 → exit 1 (the comment's
 #     `(` must not read as a function-declaration guard hit)
+#
+# Plus one section that asserts what the shim RUNS rather than what it finds
+# (#3118): every cmake/run_*check*.cmake other than the shim itself must be
+# directly include()d by it, since the shim is the only path CI executes. The
+# population comes from the glob, never from the shim's includes or
+# make_fixture's copy list (#2876), and header-checks.yml's paths: filters must
+# match a checker filename that does not exist yet, so a new checker triggers
+# the job that runs the census.
 
 set -uo pipefail
 
@@ -1149,5 +1157,321 @@ noroot_rc=$?
 assert_eq "1" "$noroot_rc" "missing PROJECT_ROOT exits 1"
 assert_contains "$noroot_out" "PROJECT_ROOT is required" \
     "missing PROJECT_ROOT explains itself"
+
+
+# ===========================================================================
+# Checker include-set census (#3118)
+# ===========================================================================
+#
+# Everything above drives the shim and asserts what it FINDS. This section
+# asserts what it RUNS. The shim is the only path CI executes — quality.yml,
+# the `lint` target's sole route, is retired (#2718) — so a checker wired only
+# into `irreden_add_quality_targets` (a `-P` invocation, no shim `include()`)
+# ships CI-inert while its rule doc still claims "enforced" (see #2794).
+#
+# The population is derived from a cmake/run_*check*.cmake glob, never from the
+# shim's own includes and never from make_fixture's copy list: a domain computed
+# from the thing under test is invisible to both a green run and its positive
+# control (#2876). The glob IS the domain, so a checker named outside it stays
+# invisible — that is the accepted tradeoff #2876 prescribes, not a defect.
+
+# checker_includes <cmake-file> — one line per include() argument, comments
+# stripped and the whole file joined first so a wrapped `include(\n  "...")`
+# still reads as one call. Stripping before matching is what makes a
+# commented-out include read as absent (the #2899 contract, here in the
+# wiring dimension); joining first is what keeps the guard from being
+# defeated by reformatting (the #2916 shape, here in the wiring dimension).
+checker_includes() {
+    awk '
+        { sub(/#.*/, ""); buf = buf " " $0 }
+        END {
+            while (match(buf, /include[ \t]*\([^)]*\)/)) {
+                call = substr(buf, RSTART, RLENGTH)
+                buf = substr(buf, RSTART + RLENGTH)
+                sub(/^include[ \t]*\([ \t]*/, "", call)
+                sub(/[ \t]*\)$/, "", call)
+                gsub(/[ \t"]/, "", call)
+                if (call != "") print call
+            }
+        }
+    ' "$1"
+}
+
+# census_population <root> — the basename of every checker the glob finds
+# under <root>/cmake, excluding the shim itself. The exclusion is a literal
+# one-liner on purpose: #3267 lands a second standalone shim, and the day a
+# checker belongs to THAT shim this guard would otherwise demand its include
+# in the wrong one. A one-line exclusion is trivial to extend; a derived one
+# is not.
+census_population() {
+    local root="$1" f base
+    for f in "$root"/cmake/run_*check*.cmake; do
+        [[ -f "$f" ]] || continue
+        base=$(basename "$f")
+        [[ "$base" == "run_header_checks_standalone.cmake" ]] && continue
+        echo "$base"
+    done
+}
+
+# census_is_vacuous <root> — true when the glob finds no checker besides the
+# shim. That shape makes the include-set assertion pass while checking
+# nothing, so it has to read as a failure rather than a clean run.
+census_is_vacuous() {
+    [[ -z "$(census_population "$1")" ]]
+}
+
+# census_missing_includes <root> — one line per checker in the population that
+# the shim does not directly include(). Empty output means the include set is
+# complete.
+#
+# An include-set guard, not a CMake interpreter: it does not evaluate whether
+# an include sits inside a false if() branch. Every shim include today is
+# unconditional and side-effecting (no define-then-call indirection), so
+# include() presence is a sound proxy for "this checker runs in CI"; the day
+# one becomes conditional, that proxy — not this matcher — is what changed.
+#
+# Matching is on the include argument's BASENAME, at the path boundary — never
+# on the ${PROJECT_ROOT} literal the shim happens to spell today. The sibling
+# call site in ir_quality_tools.cmake spells the same files
+# -P "${PROJECT_SOURCE_DIR}/cmake/<name>", and a shim refactor to
+# ${CMAKE_CURRENT_LIST_DIR} is legitimate; pinning the root literal would turn
+# this guard red on a correctly-wired checker — the mirror image of the
+# formatter-defeatable false negative #2916 records for the header executor.
+# The boundary anchor is also what keeps a longer lookalike name
+# (run_x_check_v2.cmake) from satisfying run_x_check.cmake.
+census_missing_includes() {
+    local root="$1"
+    # Separate statement on purpose: bash expands every word of a `local`
+    # command before any of its assignments take effect, so `local root="$1"
+    # shim="$root/..."` reads the CALLER's root, not this one.
+    local shim="$root/cmake/run_header_checks_standalone.cmake"
+    local -a included=()
+    local arg checker base found
+    if [[ ! -f "$shim" ]]; then
+        echo "MISSING-SHIM:$shim"
+        return 0
+    fi
+    while IFS= read -r arg; do
+        [[ -n "$arg" ]] && included+=("${arg##*/}")
+    done < <(checker_includes "$shim")
+    while IFS= read -r checker; do
+        [[ -n "$checker" ]] || continue
+        found=0
+        for base in ${included[@]+"${included[@]}"}; do
+            [[ "$base" == "$checker" ]] && { found=1; break; }
+        done
+        [[ "$found" -eq 0 ]] && echo "$checker"
+    done < <(census_population "$root")
+    return 0
+}
+
+# assert_census_clean <root> <msg> — the failure branch names the orphans,
+# since "which checker is CI-inert" is the whole answer this arm exists to give.
+assert_census_clean() {
+    local root="$1" msg="$2" missing
+    missing=$(census_missing_includes "$root")
+    if [[ -z "$missing" ]]; then
+        ok "$msg"
+    else
+        bad "$msg"
+        echo "        present in cmake/ but never include()d by the shim —"
+        echo "        these run only via the header-checks/lint targets, which have no CI path:"
+        printf '%s\n' "$missing" | sed 's/^/          | /'
+    fi
+}
+
+# make_census_fixture <root> — a hermetic copy of the REAL checker population
+# plus the real shim. Copied by glob, not by name list, so a checker added to
+# the tree is carried here without editing any fixture-copy list.
+make_census_fixture() {
+    local root="$1"
+    mkdir -p "$root/cmake"
+    cp "$SCRIPT_DIR"/cmake/run_*check*.cmake "$root/cmake/"
+}
+
+# make_synthetic_census_fixture <root> <shim-body> — two stand-in checkers and
+# a shim whose include set the arm dictates. The matcher-semantics arms use
+# this rather than mutating a copy of the real shim: the property under test is
+# how an include is SPELLED, and a synthetic shim states each spelling outright
+# instead of reaching it through a sed rewrite.
+make_synthetic_census_fixture() {
+    local root="$1" shim_body="$2"
+    mkdir -p "$root/cmake"
+    : > "$root/cmake/run_alpha_check.cmake"
+    : > "$root/cmake/run_beta_check.cmake"
+    printf '%s\n' "$shim_body" > "$root/cmake/run_header_checks_standalone.cmake"
+}
+
+# --- the source tree's own include set is complete --------------------------
+# The guard arm, and the only one that reads the live repo. Every mutation arm
+# below works on a temp copy — nothing in this suite writes into cmake/.
+census_count=0
+while IFS= read -r _census_entry; do
+    [[ -n "$_census_entry" ]] && census_count=$((census_count + 1))
+done < <(census_population "$SCRIPT_DIR")
+
+if census_is_vacuous "$SCRIPT_DIR"; then
+    bad "cmake/run_*check*.cmake finds no checker besides the shim — the glob broke, and the census below would pass vacuously"
+else
+    ok "census domain is non-empty: $census_count checker(s) besides the shim"
+fi
+assert_census_clean "$SCRIPT_DIR" \
+    "every cmake/run_*check*.cmake is include()d by run_header_checks_standalone.cmake"
+
+# --- a hermetic copy of that same population is clean too -------------------
+# Pins that the census reads its <root> argument rather than the repo root it
+# was first written against; every arm below depends on that.
+CENSUS_CLEAN="$TMPROOT/census-clean"
+make_census_fixture "$CENSUS_CLEAN"
+assert_census_clean "$CENSUS_CLEAN" "a temp copy of the real cmake/ censuses clean"
+
+# --- a checker born without a shim include is named -------------------------
+# The discriminating control. Deleting an existing include is the other
+# mutation, but ~39 of the scratch-behaviour arms above fire on it first — this
+# shape fires nothing else, so it is the one that proves THIS arm works.
+CENSUS_ORPHAN="$TMPROOT/census-orphan"
+make_census_fixture "$CENSUS_ORPHAN"
+cat > "$CENSUS_ORPHAN/cmake/run_fixture_orphan_check.cmake" <<'EOF'
+message(FATAL_ERROR "FIXTURE_ORPHAN_PROBE fired")
+EOF
+orphan_missing=$(census_missing_includes "$CENSUS_ORPHAN")
+assert_contains "$orphan_missing" "run_fixture_orphan_check.cmake" \
+    "a checker added to cmake/ with no shim include is named by the census"
+assert_absent "$orphan_missing" "run_metal_scratch_consumer_check.cmake" \
+    "correctly-wired checkers are not swept up with it"
+rm "$CENSUS_ORPHAN/cmake/run_fixture_orphan_check.cmake"
+assert_census_clean "$CENSUS_ORPHAN" "removing the injected checker restores a clean census"
+
+# --- a root with no shim at all is reported, not silently clean -------------
+CENSUS_NOSHIM="$TMPROOT/census-noshim"
+mkdir -p "$CENSUS_NOSHIM/cmake"
+cp "$SCRIPT_DIR/cmake/run_metal_kernel_registry_check.cmake" "$CENSUS_NOSHIM/cmake/"
+assert_contains "$(census_missing_includes "$CENSUS_NOSHIM")" "MISSING-SHIM" \
+    "a checker population with no shim beside it reads as unwired, not as clean"
+
+# --- an empty population reads as vacuous, not as clean ---------------------
+CENSUS_EMPTY="$TMPROOT/census-empty"
+mkdir -p "$CENSUS_EMPTY/cmake"
+cp "$CHECKER" "$CENSUS_EMPTY/cmake/"
+if census_is_vacuous "$CENSUS_EMPTY"; then
+    ok "a cmake/ holding only the shim is detected as an empty population"
+else
+    bad "a cmake/ holding only the shim was not detected as an empty population"
+fi
+assert_eq "" "$(census_missing_includes "$CENSUS_EMPTY")" \
+    "the include-set assertion alone would have called that tree clean"
+
+# --- a commented-out include reads as absent --------------------------------
+# Same contract as #2899 on the registry side: a disabled wiring line never
+# reaches the executed path, so it must not satisfy the guard.
+CENSUS_COMMENTED="$TMPROOT/census-commented"
+make_synthetic_census_fixture "$CENSUS_COMMENTED" 'include("${PROJECT_ROOT}/cmake/run_alpha_check.cmake")
+# include("${PROJECT_ROOT}/cmake/run_beta_check.cmake")'
+commented_missing=$(census_missing_includes "$CENSUS_COMMENTED")
+assert_contains "$commented_missing" "run_beta_check.cmake" \
+    "a commented-out include does not satisfy the census"
+assert_absent "$commented_missing" "run_alpha_check.cmake" \
+    "the live include in the same shim still satisfies it"
+
+# --- prose mentions and lookalike filenames do not satisfy it ---------------
+# The real shim's header comment names all three of its checkers, so a
+# substring search over the file is a guaranteed false pass.
+CENSUS_LOOKALIKE="$TMPROOT/census-lookalike"
+make_synthetic_census_fixture "$CENSUS_LOOKALIKE" '# Delegates to run_alpha_check.cmake and run_beta_check.cmake.
+include("${PROJECT_ROOT}/cmake/run_alpha_check.cmake")
+include("${PROJECT_ROOT}/cmake/run_beta_check_v2.cmake")'
+lookalike_missing=$(census_missing_includes "$CENSUS_LOOKALIKE")
+assert_contains "$lookalike_missing" "run_beta_check.cmake" \
+    "a prose mention plus a longer lookalike include does not satisfy the census"
+assert_absent "$lookalike_missing" "run_alpha_check.cmake" \
+    "the prose mention is not what cleared alpha — its real include is"
+
+# --- an alternate root spelling is still a direct include -------------------
+# Guards the mirror-image failure: a false POSITIVE that turns red on a
+# correctly-wired checker the day someone refactors the shim's path variable.
+CENSUS_ALTROOT="$TMPROOT/census-altroot"
+make_synthetic_census_fixture "$CENSUS_ALTROOT" 'include("${CMAKE_CURRENT_LIST_DIR}/run_alpha_check.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/run_beta_check.cmake")'
+assert_census_clean "$CENSUS_ALTROOT" \
+    "\${CMAKE_CURRENT_LIST_DIR} spelling still reads as a direct include"
+
+# --- an include wrapped across lines is still a direct include --------------
+# No cmake formatter is configured in-tree today, so this is insurance rather
+# than a live hazard — but it is the exact shape that made the header executor
+# formatter-defeatable (#2916), one artifact over.
+CENSUS_WRAPPED="$TMPROOT/census-wrapped"
+make_synthetic_census_fixture "$CENSUS_WRAPPED" 'include("${PROJECT_ROOT}/cmake/run_alpha_check.cmake")
+include(
+    "${PROJECT_ROOT}/cmake/run_beta_check.cmake")'
+assert_census_clean "$CENSUS_WRAPPED" \
+    "an include() wrapped across lines still reads as a direct include"
+
+# --- header-checks.yml keeps the census reachable ---------------------------
+# The census reads cmake/ and never .github/workflows/, so dropping the checker
+# glob from either paths: block would silently un-cover every new checker and
+# nothing would go red — the gap this ticket closes, relocated one artifact
+# over. This arm makes that a ratchet instead of a one-time merge-day check.
+HEADER_CHECKS_WORKFLOW="$SCRIPT_DIR/.github/workflows/header-checks.yml"
+SYNTHETIC_CHECKER_PATH="cmake/run_zz_synthetic_check.cmake"
+
+# workflow_paths_globs <file> <section> — the paths: entries under the named
+# on: sub-block, unquoted. Same awk shape as test_workflow_paths_sync.sh: stop
+# at the first line that is not a "      - " item, so a sibling top-level key
+# can never be misread as workflow content.
+workflow_paths_globs() {
+    awk -v section="$2" '
+        $0 ~ "^  " section ":" { in_section=1; next }
+        in_section && /^  [a-zA-Z_]+:/ { in_section=0 }
+        in_section && /^    paths:/ { in_paths=1; next }
+        in_section && in_paths && /^      - / {
+            line = $0
+            sub(/^      - /, "", line)
+            gsub(/"/, "", line)
+            gsub(/\047/, "", line)
+            print line
+            next
+        }
+        in_section && in_paths { in_paths=0 }
+    ' "$1"
+}
+
+# workflow_covers_new_checker <file> <section> — true when some paths: entry in
+# that block, read as a glob, matches a checker filename that does not exist
+# yet. A filter enumerating today's names matches nothing here; the glob does.
+workflow_covers_new_checker() {
+    local file="$1" section="$2" entry
+    while IFS= read -r entry; do
+        [[ -z "$entry" ]] && continue
+        # shellcheck disable=SC2053  # glob match is the point
+        [[ "$SYNTHETIC_CHECKER_PATH" == $entry ]] && return 0
+    done < <(workflow_paths_globs "$file" "$section")
+    return 1
+}
+
+if [[ ! -f "$HEADER_CHECKS_WORKFLOW" ]]; then
+    bad "header-checks.yml not found at $HEADER_CHECKS_WORKFLOW"
+else
+    for census_section in push pull_request; do
+        if workflow_covers_new_checker "$HEADER_CHECKS_WORKFLOW" "$census_section"; then
+            ok "header-checks.yml ${census_section}: paths: covers a checker filename that does not exist yet"
+        else
+            bad "header-checks.yml ${census_section}: paths: matches no new checker name — a checker added to cmake/ would not trigger the job that runs this census"
+        fi
+    done
+
+    # Negative control: strip the glob entries and the arm above must stop
+    # passing. Without this, a filter listing every current name by hand would
+    # look identical to the glob on the real file only by accident.
+    CENSUS_WORKFLOW_STRIPPED="$TMPROOT/census-workflow-stripped.yml"
+    awk '!/^      - .*cmake\/run_/ { print }' "$HEADER_CHECKS_WORKFLOW" \
+        > "$CENSUS_WORKFLOW_STRIPPED"
+    for census_section in push pull_request; do
+        if workflow_covers_new_checker "$CENSUS_WORKFLOW_STRIPPED" "$census_section"; then
+            bad "negative control: a header-checks.yml with no cmake/run_* filter still read as covered — the arm above cannot fail"
+        else
+            ok "negative control: stripping the cmake/run_* filter makes the ${census_section} arm fail"
+        fi
+    done
+fi
 
 summarize "run_header_checks_standalone tests"
