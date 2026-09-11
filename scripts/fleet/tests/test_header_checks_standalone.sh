@@ -73,6 +73,10 @@
 #   - a wrapped declaration whose head line carries a trailing comment with
 #     a paren in it                                 → exit 1 (the comment's
 #     `(` must not read as a function-declaration guard hit)
+#   - same-line and multi-line block-commented globals → ignored, while a
+#     live declaration beside each remains flagged
+#   - block-commented anonymous namespaces         → ignored, while a live
+#     anonymous namespace in the same fixture remains flagged
 
 set -uo pipefail
 
@@ -849,6 +853,75 @@ assert_contains "$dirty_out" "g_mutableGlobal" "failure names the declaration"
 
 # The clean fixture's constants must not be what tripped it.
 assert_absent "$dirty_out" "clean.hpp" "constexpr/const constants stay allowed"
+
+# --- block-commented globals are dead, while live controls still flag -------
+GLOBAL_COMMENTED_SAME_LINE="$TMPROOT/global-commented-same-line"
+make_fixture "$GLOBAL_COMMENTED_SAME_LINE"
+cat > "$GLOBAL_COMMENTED_SAME_LINE/engine/include/irreden/global_comment_same_line.hpp" <<'EOF'
+#pragma once
+namespace IRFixture {
+/* inline int g_sameLineCommented = 0; */ inline int g_sameLineLive = 0;
+}
+EOF
+global_same_line_out=$(run_checker "$GLOBAL_COMMENTED_SAME_LINE")
+global_same_line_rc=$?
+assert_eq "1" "$global_same_line_rc" \
+    "same-line block-comment fixture retains its live global control"
+assert_contains "$global_same_line_out" "g_sameLineLive" \
+    "same-line fixture flags the live declaration"
+assert_absent "$global_same_line_out" "g_sameLineCommented" \
+    "same-line block-commented global is ignored"
+
+GLOBAL_COMMENTED_MULTILINE="$TMPROOT/global-commented-multiline"
+make_fixture "$GLOBAL_COMMENTED_MULTILINE"
+cat > "$GLOBAL_COMMENTED_MULTILINE/engine/include/irreden/global_comment_multiline.hpp" <<'EOF'
+#pragma once
+namespace IRFixture {
+/*
+inline int g_multilineCommented = 0;
+*/ inline int g_multilineLive = 0;
+}
+EOF
+global_multiline_out=$(run_checker "$GLOBAL_COMMENTED_MULTILINE")
+global_multiline_rc=$?
+assert_eq "1" "$global_multiline_rc" \
+    "multi-line block-comment fixture retains its live global control"
+assert_contains "$global_multiline_out" "g_multilineLive" \
+    "multi-line fixture flags the live declaration"
+assert_absent "$global_multiline_out" "g_multilineCommented" \
+    "multi-line block-commented global is ignored"
+
+# --- block-commented anonymous namespaces are dead, while live still flags --
+ANONYMOUS_COMMENTED="$TMPROOT/anonymous-commented"
+make_fixture "$ANONYMOUS_COMMENTED"
+cat > "$ANONYMOUS_COMMENTED/engine/include/irreden/anonymous_live.hpp" <<'EOF'
+#pragma once
+namespace {
+constexpr int kLiveAnonymous = 1;
+}
+EOF
+cat > "$ANONYMOUS_COMMENTED/engine/include/irreden/anonymous_same_line.hpp" <<'EOF'
+#pragma once
+/* namespace { constexpr int kCommentedAnonymous = 1; } */
+EOF
+cat > "$ANONYMOUS_COMMENTED/engine/include/irreden/anonymous_multiline.hpp" <<'EOF'
+#pragma once
+/*
+namespace {
+constexpr int kCommentedAnonymous = 1;
+}
+*/
+EOF
+anonymous_commented_out=$(run_checker "$ANONYMOUS_COMMENTED")
+anonymous_commented_rc=$?
+assert_eq "1" "$anonymous_commented_rc" \
+    "anonymous-namespace comment fixture retains its live control"
+assert_contains "$anonymous_commented_out" "anonymous_live.hpp" \
+    "live anonymous namespace is still flagged"
+assert_absent "$anonymous_commented_out" "anonymous_same_line.hpp" \
+    "same-line block-commented anonymous namespace is ignored"
+assert_absent "$anonymous_commented_out" "anonymous_multiline.hpp" \
+    "multi-line block-commented anonymous namespace is ignored"
 
 # --- the same global under a render-backend path fails (#2889) --------------
 # The style tools reject engine/render/**/gl_wrap/ and

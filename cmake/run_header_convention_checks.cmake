@@ -122,7 +122,6 @@ foreach(file_path IN LISTS QUALITY_FILES)
     endif()
 
     math(EXPR file_count "${file_count} + 1")
-    file(READ "${normalized_file_path}" file_contents)
 
     set(is_anonymous_namespace_baselined FALSE)
     foreach(baselined IN LISTS anonymous_namespace_baseline)
@@ -131,16 +130,6 @@ foreach(file_path IN LISTS QUALITY_FILES)
             break()
         endif()
     endforeach()
-
-    string(REGEX MATCH "(^|[\r\n])[ \t]*namespace[ \t\r\n]*\\{" has_anonymous_namespace "${file_contents}")
-    if(has_anonymous_namespace AND NOT is_anonymous_namespace_baselined)
-        list(APPEND anonymous_namespace_failures "${normalized_file_path}")
-    endif()
-
-    string(REGEX MATCH "namespace[ \t\r\n]+[A-Za-z_][A-Za-z0-9_]*Detail[ \t\r\n]*\\{" has_feature_detail_namespace "${file_contents}")
-    if(has_feature_detail_namespace)
-        list(APPEND feature_detail_namespace_failures "${normalized_file_path}")
-    endif()
 
     # Header-global ban (.claude/rules/cpp-globals.md): no new mutable
     # namespace-scope `inline` / `extern` variable in a header. `constexpr` /
@@ -158,43 +147,41 @@ foreach(file_path IN LISTS QUALITY_FILES)
         set(is_baselined TRUE)
     endif()
 
-    if(NOT is_baselined)
-        # CMake's regex engine has no lookahead, so the rule's negative
-        # assertions are applied as per-line rejects in
-        # irreden_process_header_global_candidate() rather than inline.
-        #
-        # Read every line unfiltered (not REGEX-filtered) so a candidate whose
-        # terminator wraps onto a continuation line — exactly what the repo's
-        # own 100-col clang-format produces on a long `inline` declaration —
-        # can be joined back into one line before the reject chain runs.
-        # `file(STRINGS ... REGEX ...)` would have already discarded that
-        # continuation line, since it doesn't itself start with
-        # `inline`/`extern`.
-        #
-        # Single forward pass over the lines, not index-by-index `list(GET)`
-        # — that call is a linear scan of the list per invocation, so an
-        # index loop over an n-line file costs O(n^2) overall, dominated by
-        # whichever header in the tree has the most lines. `join_pending`/
-        # `join_buffer` below carry the in-progress join instead of
-        # re-deriving the next index.
-        file(STRINGS "${normalized_file_path}" all_lines)
+    # Strip comments in one forward pass shared by all three convention
+    # checks. Block-comment state crosses line boundaries; stripping through
+    # the first closing marker preserves live code later on the same line.
+    file(STRINGS "${normalized_file_path}" all_lines)
+    set(comment_stripped_file_contents "")
+    set(in_block_comment FALSE)
+    set(join_pending FALSE)
+    set(join_buffer "")
+    set(join_steps 0)
+    # Bounded lookahead so a candidate that never terminates (or a runaway
+    # match) can't scan the rest of the file; a real declaration wrap is one
+    # or two lines.
+    set(max_join_lookahead_lines 10)
 
-        set(join_pending FALSE)
-        set(join_buffer "")
-        set(join_steps 0)
-        # Bounded lookahead so a candidate that never terminates (or a
-        # runaway match) can't scan the rest of the file; a real declaration
-        # wrap is one or two lines.
-        set(max_join_lookahead_lines 10)
+    foreach(raw_line IN LISTS all_lines)
+        set(stripped_raw_line "${raw_line}")
+        if(in_block_comment)
+            if(stripped_raw_line MATCHES "\\*/")
+                string(REGEX REPLACE "^([^*]|\\*+[^*/])*\\*+/" "" stripped_raw_line
+                    "${stripped_raw_line}")
+                set(in_block_comment FALSE)
+            else()
+                set(stripped_raw_line "")
+            endif()
+        endif()
+        string(REGEX REPLACE "/\\*([^*]|\\*+[^*/])*\\*+/" "" stripped_raw_line
+            "${stripped_raw_line}")
+        string(REGEX REPLACE "//.*$" "" stripped_raw_line "${stripped_raw_line}")
+        if(stripped_raw_line MATCHES "/\\*")
+            string(REGEX REPLACE "/\\*.*$" "" stripped_raw_line "${stripped_raw_line}")
+            set(in_block_comment TRUE)
+        endif()
+        string(APPEND comment_stripped_file_contents "${stripped_raw_line}\n")
 
-        foreach(raw_line IN LISTS all_lines)
-            # Strip a trailing line comment before it can reach either the
-            # terminator test or the function-declaration guard inside the
-            # macro — a `(` inside explanatory comment text on a wrapped
-            # declaration's head line otherwise reads as a function
-            # signature and the declaration silently exempts itself.
-            string(REGEX REPLACE "//.*$" "" stripped_raw_line "${raw_line}")
-
+        if(NOT is_baselined)
             if(join_pending)
                 string(APPEND join_buffer " ${stripped_raw_line}")
                 math(EXPR join_steps "${join_steps} + 1")
@@ -225,10 +212,22 @@ foreach(file_path IN LISTS QUALITY_FILES)
                 set(join_buffer "${stripped_raw_line}")
                 set(join_steps 0)
             endif()
-        endforeach()
-        # A join still pending here ran out of lines (EOF) before finding a
-        # terminator or hitting the lookahead bound — same drop as the
-        # bounded-exhaustion case above, nothing left to flush.
+        endif()
+    endforeach()
+    # A join still pending here ran out of lines (EOF) before finding a
+    # terminator or hitting the lookahead bound — same drop as the
+    # bounded-exhaustion case above, nothing left to flush.
+
+    string(REGEX MATCH "(^|[\r\n])[ \t]*namespace[ \t\r\n]*\\{" has_anonymous_namespace
+        "${comment_stripped_file_contents}")
+    if(has_anonymous_namespace AND NOT is_anonymous_namespace_baselined)
+        list(APPEND anonymous_namespace_failures "${normalized_file_path}")
+    endif()
+
+    string(REGEX MATCH "namespace[ \t\r\n]+[A-Za-z_][A-Za-z0-9_]*Detail[ \t\r\n]*\\{"
+        has_feature_detail_namespace "${comment_stripped_file_contents}")
+    if(has_feature_detail_namespace)
+        list(APPEND feature_detail_namespace_failures "${normalized_file_path}")
     endif()
 endforeach()
 
