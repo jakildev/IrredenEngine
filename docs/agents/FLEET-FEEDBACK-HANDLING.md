@@ -73,7 +73,19 @@ arrives with the claim held; run the command anyway for the checkout
 
 The claim covers every feedback path and both dispositions, is held for
 the whole iteration, and is released once (Step e, or the end of ESCALATE
-/ DEFER). An abandoned claim is swept on the 30-min TTL.
+/ DEFER). An abandoned claim is swept by `fleet-claim cleanup --gh`: once a
+later dispatch of any role lands in that worktree the claim's recorded
+owning dispatch is superseded, which proves the owner ended, and the sweep
+reaps it after a 120 s grace; until such a dispatch lands the 30-min TTL
+governs. The pane heartbeat proves nothing here (`FLEET-RUNTIME.md`
+§ "Heartbeat — step 0").
+
+A **reservation resume** (step 0.5) runs under a new dispatch, so its
+predecessor's claim is a confirmed orphan and is reaped. Re-run
+`fleet-pr-claim-feedback <N> <worktree>` rather than assuming you inherit
+the label; the re-run is idempotent — re-POSTing the same label is still
+sole-holder, and it rewrites the record under the new dispatch id. A
+`--resume` continuation is the same dispatch and needs nothing.
 
 ## Reading the feedback
 
