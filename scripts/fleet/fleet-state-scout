@@ -543,6 +543,26 @@ _INGEST_SKIP_LABELS = frozenset({
 # ever ADDS one label — fleet-queue-ingest resets it to fleet:needs-plan.
 _INGEST_OVERRIDE_LABELS = frozenset({"human:revise-plan"})
 
+# Planning queue-blocks (#2740). These hold fleet-queue-ingest's *add* path via
+# _INGEST_SKIP_LABELS above — but that guard only prevents STAMPING
+# fleet:queued. A gate landing on an issue that is ALREADY queued was never
+# retracted, so the issue stayed in tasks.open / claimable and a worker could
+# implement against a plan a reviewer had bounced. _ingest_retract_candidates
+# below sources the remove-half of that round-trip.
+#
+# Two labels, not three: `human:review-plan` (the human approach-sign-off hold)
+# was retired by PR #3112 and is now deliberately INERT to ingest — see
+# tests/test_fleet_queue_ingest_review_plan_inert.sh. Adding it here would
+# re-arm a retired gate.
+_PLAN_GATE_LABELS = frozenset({"fleet:needs-plan", "fleet:plan-review"})
+
+# Parks that already hold an issue out of tasks.open unconditionally
+# (fetch_task_queue `continue`s on both). A parked issue is not pickable
+# whether or not it carries fleet:queued, so there is no defect to retract —
+# excluding them keeps `fleet:needs-human` / `fleet:gated` handling literally
+# unchanged and spends no API budget on a no-op edit.
+_RETRACT_PARK_LABELS = frozenset({"fleet:needs-human", "fleet:gated"})
+
 # Gate labels that take an issue out of fleet *planning/dispatch* rotation:
 # human:owned (de-queued), human:wip (human is on it), human:no-plan and its
 # agent-applied twin fleet:no-plan (queue directly, never plan), and
@@ -982,7 +1002,15 @@ def fetch_task_queue(repo_slug):
     # REST /issues returns PRs too — drop them (the GraphQL issue list did not).
     issues = [i for i in issues if not _is_pull_request(i)]
 
-    sections = {"open": [], "in_progress": [], "done": []}
+    # `plan_gated` is NOT a task section — it is a flat list of issue numbers
+    # feeding the ingest retract round-trip (#2740). It is captured inside this
+    # loop, above the `continue`s below, on purpose: fetch_task_queue drops
+    # fleet:plan-review rows BEFORE the task dict is ever built, so a candidate
+    # derived from the post-filter sections would cover only the
+    # fleet:needs-plan arm of the gate — the same reachability failure the
+    # defect itself is (the input-set builder filters the target before the
+    # detector runs).
+    sections = {"open": [], "in_progress": [], "done": [], "plan_gated": []}
 
     for issue in issues:
         raw_labels = issue.get("labels", [])
@@ -1025,6 +1053,18 @@ def fetch_task_queue(repo_slug):
                 _, _, agent = suffix.partition("-")
                 owner = agent or suffix
                 break
+
+        # Retract candidate (#2740): this issue carries fleet:queued (that is
+        # the query above) together with a live planning queue-block. Every
+        # issue reaching this point is a candidate regardless of which section
+        # it would land in — a gate landing on an issue that was already
+        # CLAIMED is the #2734 shape itself, and a claimed row routes to
+        # tasks.in_progress, not tasks.open. Owner is deliberately not
+        # filtered: retracting under a live claim disturbs neither the claim
+        # nor the release path (neither reads fleet:queued) and is what stops
+        # re-pickup after the claim is released.
+        if (labels & _PLAN_GATE_LABELS) and not (labels & _RETRACT_PARK_LABELS):
+            sections["plan_gated"].append(number)
 
         # fleet:needs-human marks tasks that require manual human action
         # before agents can work them. Skip so they don't appear in
@@ -1128,6 +1168,7 @@ def fetch_task_queue(repo_slug):
         sections[key].sort(
             key=lambda t: int((t.get("issue") or "#0").lstrip("#"))
         )
+    sections["plan_gated"].sort()
 
     return sections
 
@@ -2530,6 +2571,29 @@ def _ingest_unblock_candidates(repo_state):
     return out
 
 
+def _ingest_retract_candidates(repo_state):
+    """Queued issues carrying a live planning queue-block — the retract-half of
+    the fleet:queued round-trip (#2740).
+
+    Mirrors `_ingest_unblock_candidates` in shape: the candidate appears the
+    tick the gate lands (hash flips → ingest fires → `fleet:queued` removed),
+    then disappears the tick after — the issue no longer matches the
+    `fleet:queued` query `fetch_task_queue` runs, so it leaves `plan_gated`
+    (hash flips → ingest re-fires → no-op → quiescent).
+
+    Sourced from `tasks.plan_gated`, which `fetch_task_queue` fills from the
+    RAW issue list before its own section filters; see the comment there for
+    why deriving this from `tasks.open` cannot see the fleet:plan-review arm.
+    Returns a list of issue numbers (ints)."""
+    out = []
+    for num in repo_state.get("tasks", {}).get("plan_gated", []):
+        try:
+            out.append(int(num))
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
 def project_queue_manager_ingest(state):
     """Hash-input projection for the queue-manager-ingest auto-fire.
 
@@ -2548,6 +2612,13 @@ def project_queue_manager_ingest(state):
       blocker just closed (`_ingest_unblock_candidates`, sourced from
       tasks.open since the issue has left human_approved). It enters the set,
       ingest removes `fleet:blocked`, and it drops out (label gone).
+    - **Retract path** (#2740) — a queued issue on which a planning
+      queue-block (`fleet:needs-plan` / `fleet:plan-review`) has landed
+      *after* queuing (`_ingest_retract_candidates`, sourced from
+      tasks.plan_gated for the same reason). It enters the set, ingest removes
+      `fleet:queued`, and it drops out (the issue no longer matches the
+      fleet:queued query). Without this the gate holds ingest but not worker
+      pickup: the issue stays claimable behind a live gate.
 
     `human_approved` already excludes `fleet:queued` via fetch_human_approved;
     _INGEST_SKIP_LABELS mirrors the role-doc Step 5 filter so epics and
@@ -2561,6 +2632,8 @@ def project_queue_manager_ingest(state):
             items.append({"repo": repo, "issue": issue["number"]})
         for num in _ingest_unblock_candidates(repo_state):
             items.append({"repo": repo, "issue": num, "op": "unblock"})
+        for num in _ingest_retract_candidates(repo_state):
+            items.append({"repo": repo, "issue": num, "op": "retract"})
     return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))
 
 
@@ -2904,8 +2977,12 @@ def slice_queue_manager_ingest(state):
     - `unblock_issues` — queued tasks carrying `fleet:blocked` whose last
       blocker just closed (`_ingest_unblock_candidates`). fleet-queue-ingest
       drops `fleet:blocked` from each. Minimal `{number, repo}` records — the
-      ingest does its own live recheck before removing the label."""
-    out = {"pending_issues": [], "unblock_issues": []}
+      ingest does its own live recheck before removing the label.
+    - `retract_issues` — queued issues on which a planning queue-block landed
+      after queuing (`_ingest_retract_candidates`, #2740). fleet-queue-ingest
+      drops `fleet:queued` from each — never the gate label. Same minimal
+      records and same live-recheck contract as unblock_issues."""
+    out = {"pending_issues": [], "unblock_issues": [], "retract_issues": []}
     for repo_key, repo_state in state["repos"].items():
         for issue in repo_state.get("human_approved", []):
             if _ingest_skipped(issue.get("labels", [])):
@@ -2913,6 +2990,8 @@ def slice_queue_manager_ingest(state):
             out["pending_issues"].append(_slice_issue_with_repo(repo_key, issue))
         for num in _ingest_unblock_candidates(repo_state):
             out["unblock_issues"].append({"number": num, "repo": repo_key})
+        for num in _ingest_retract_candidates(repo_state):
+            out["retract_issues"].append({"number": num, "repo": repo_key})
     return out
 
 
@@ -3488,7 +3567,8 @@ def collect_state():
                     repos[repo_key][field] = prev_value
                 else:
                     repos[repo_key][field] = (
-                        {"open": [], "in_progress": [], "done": []}
+                        {"open": [], "in_progress": [], "done": [],
+                         "plan_gated": []}
                         if field == "tasks" else []
                     )
                 _degraded.append(f"{repo_key}.{field}")

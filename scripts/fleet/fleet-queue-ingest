@@ -32,6 +32,14 @@
 # `fleet:no-plan` / investigation spike). fleet:plan-review holds ingest until a
 # reviewer vets the posted plan.
 #
+# Retract (#2740): those two gates hold the ADD path only. When one lands on an
+# issue that ALREADY carries fleet:queued — the normal ordering for a
+# plan-shape-2 filing, and what a reviewer's plan bounce produces — nothing used
+# to remove the stamp, so the gate held ingest but NOT worker pickup and the
+# issue stayed claimable behind a live gate. The retract pass strips
+# fleet:queued (never the gate label) so the issue leaves the pickable set;
+# clearing the gate re-queues it through the normal add path.
+#
 # Approval sources: the pending set is scout-built from human:approved AND
 # fleet:agent-approved (the agent-filed follow-up lane, TASK-FILING.md §"Agent-
 # approved follow-up lane") — everything below treats the two identically.
@@ -72,9 +80,11 @@ fi
 trap 'rmdir "$LOCK_DIR" 2>/dev/null; true' EXIT INT TERM
 
 # Fast-path: scout's projection-diff fires on BOTH set-grow (new approved
-# issue, or a queued task whose last blocker just closed) AND set-shrink
-# (issue ingested / fleet:blocked removed, dropped out of the set). On a
-# post-action drop-out both work lists are empty.
+# issue, a queued task whose last blocker just closed, or a queued issue that
+# just picked up a planning queue-block) AND set-shrink (issue ingested /
+# fleet:blocked removed / fleet:queued retracted, dropped out of the set). On a
+# post-action drop-out all three work lists are empty.
+retract_count=0
 if [[ -f "$PROJECTION_FILE" ]]; then
     # The path goes in via argv, never embedded in the program text: on a
     # native-Windows host python3 is the mingw64 build, and MSYS converts
@@ -85,13 +95,15 @@ if [[ -f "$PROJECTION_FILE" ]]; then
 import json, sys
 try:
     data = json.load(open(sys.argv[1]))
-    print(len(data.get('pending_issues', [])), len(data.get('unblock_issues', [])))
+    print(len(data.get('pending_issues', [])), len(data.get('unblock_issues', [])),
+          len(data.get('retract_issues', [])))
 except Exception:
-    print(0, 0)
+    print(0, 0, 0)
 " "$PROJECTION_FILE")
-    read -r pending_count unblock_count <<< "$counts"
-    if [[ "${pending_count:-0}" == "0" && "${unblock_count:-0}" == "0" ]]; then
-        log "no pending or unblock issues — empty projection, exiting"
+    read -r pending_count unblock_count retract_count <<< "$counts"
+    if [[ "${pending_count:-0}" == "0" && "${unblock_count:-0}" == "0" \
+          && "${retract_count:-0}" == "0" ]]; then
+        log "no pending, unblock or retract issues — empty projection, exiting"
         exit 0
     fi
 fi
@@ -189,7 +201,12 @@ SCOPE_PY
         if [[ "${shipped_count:-0}" -gt 0 ]]; then
             log "scope-shipped: skipped $shipped_count issue(s) with merged PR coverage; $kept_count remaining"
         fi
-        if [[ "${kept_count:-0}" == "0" ]] && [[ "${shipped_count:-0}" -gt "0" ]]; then
+        # The early exit is scoped to the STAMPING pass. The unblock and
+        # retract passes below read their own projection lists and are
+        # unrelated to scope-shipped coverage, so exiting here while either
+        # has work would silently skip it (#2740).
+        if [[ "${kept_count:-0}" == "0" ]] && [[ "${shipped_count:-0}" -gt "0" ]] \
+            && [[ "${unblock_count:-0}" == "0" ]] && [[ "${retract_count:-0}" == "0" ]]; then
             log "scope-shipped: all pending issues have merged coverage — nothing to stamp"
             exit 0
         fi
@@ -225,7 +242,9 @@ try:
     data = json.load(open(proj_path))
     pending = data.get('pending_issues', [])
 except Exception:
-    print('0,0,0,0')
+    # Arity must match the summary print at the bottom of this block and the
+    # `IFS=,` read that consumes it — the three are positionally coupled.
+    print(','.join(['0'] * 11))
     sys.exit(0)
 
 # Body-field parsers mirror fleet-state-scout._parse_issue_field so we
@@ -614,13 +633,80 @@ for issue in data.get('unblock_issues', []):
         continue
     unblocked += 1
 
-print(f'{stamped},{skipped_already},{failed},{blocked_marked},{unblocked},{unblock_still},{plan_bounced},{revise_reconciled},{plan_race_reconciled}')
+# Retract pass (#2740): drop fleet:queued from issues on which a planning
+# queue-block landed AFTER queuing. The add-path skip guard above only prevents
+# STAMPING fleet:queued while a gate is present — nothing retracted an
+# already-stamped label, so the gate held ingest but not worker pickup and the
+# issue stayed claimable behind a live gate (observed on #2734). Sourced from
+# retract_issues, which the scout builds from the RAW fleet:queued issue list
+# (tasks.plan_gated) rather than tasks.open — that section drops
+# fleet:plan-review rows before a task row exists, so a tasks.open-derived
+# candidate would cover only one of the two gate arms.
+#
+# NEVER touch the gate labels: retract removes fleet:queued exclusively. The
+# post-retract state (human:approved + gate, no fleet:queued) is genuinely
+# parked — _INGEST_SKIP_LABELS holds it out of the add set until the gate
+# clears, at which point membership changes, the hash flips, and the normal add
+# path re-queues it.
+PLAN_GATE_LABELS = ('fleet:needs-plan', 'fleet:plan-review')
+retracted = 0
+retract_skipped = 0
+for issue in data.get('retract_issues', []):
+    n = issue.get('number', 0)
+    repo = REPO_SLUGS.get(issue.get('repo', 'engine'), 'jakildev/IrredenEngine')
+    if not n:
+        continue
+    r = subprocess.run(
+        ['gh', 'issue', 'view', str(n), '--repo', repo, '--json', 'labels'],
+        capture_output=True, text=True, timeout=15,
+    )
+    if r.returncode != 0:
+        failed += 1
+        print(f'WARN issue {repo}#{n}: fetch failed: {r.stderr.strip()}', file=sys.stderr)
+        continue
+    try:
+        view = json.loads(r.stdout)
+    except Exception:
+        failed += 1
+        continue
+    labels = {(l['name'] if isinstance(l, dict) else l) for l in view.get('labels', [])}
+    # Live re-check covers BOTH race directions: another host already retracted
+    # (fleet:queued gone), or the reviewer/human already cleared the gate — in
+    # which case the issue is correctly queued and must be left alone.
+    gates = [g for g in PLAN_GATE_LABELS if g in labels]
+    if 'fleet:queued' not in labels or not gates:
+        retract_skipped += 1
+        continue
+    er = subprocess.run(
+        ['gh', 'issue', 'edit', str(n), '--repo', repo,
+         '--remove-label', 'fleet:queued'],
+        capture_output=True, text=True, timeout=15,
+    )
+    if er.returncode != 0:
+        failed += 1
+        print(f'WARN issue {repo}#{n}: remove fleet:queued failed: {er.stderr.strip()}', file=sys.stderr)
+        continue
+    gate_list = ', '.join(f'`{g}`' for g in gates)
+    subprocess.run(
+        ['gh', 'issue', 'comment', str(n), '--repo', repo, '--body',
+         f'{gate_list} landed after this issue was queued. Removed '
+         '`fleet:queued` so it leaves the worker pickup set until the gate '
+         'clears — a planning queue-block held ingest but not pickup (#2740). '
+         'The gate label itself is untouched; clearing it re-queues the issue '
+         'automatically.\n\n— fleet-queue-ingest'],
+        capture_output=True, timeout=15,
+    )
+    retracted += 1
+    print(f'INFO issue {repo}#{n}: {", ".join(gates)} landed after queuing — '
+          f'removed fleet:queued (gate labels untouched)', file=sys.stderr)
+
+print(f'{stamped},{skipped_already},{failed},{blocked_marked},{unblocked},{unblock_still},{plan_bounced},{revise_reconciled},{plan_race_reconciled},{retracted},{retract_skipped}')
 STAMP_PY
 )
 
 if [[ -n "$stamping_out" ]]; then
-    IFS=',' read -r stamped_count skipped_count failed_count blocked_count unblocked_count unblock_still_count plan_bounced_count revise_reconciled_count plan_race_count <<< "$stamping_out"
-    log "stamped ${stamped_count:-0} issue(s) (${blocked_count:-0} marked fleet:blocked); skipped ${skipped_count:-0} already-labeled; bounced ${plan_bounced_count:-0} to fleet:needs-plan; re-plan requested ${revise_reconciled_count:-0} (human:revise-plan); raced needs-plan stripped ${plan_race_count:-0} (needs-plan + plan-review); unblocked ${unblocked_count:-0} (${unblock_still_count:-0} still blocked); ${failed_count:-0} failed"
+    IFS=',' read -r stamped_count skipped_count failed_count blocked_count unblocked_count unblock_still_count plan_bounced_count revise_reconciled_count plan_race_count retracted_count retract_skipped_count <<< "$stamping_out"
+    log "stamped ${stamped_count:-0} issue(s) (${blocked_count:-0} marked fleet:blocked); skipped ${skipped_count:-0} already-labeled; bounced ${plan_bounced_count:-0} to fleet:needs-plan; re-plan requested ${revise_reconciled_count:-0} (human:revise-plan); raced needs-plan stripped ${plan_race_count:-0} (needs-plan + plan-review); unblocked ${unblocked_count:-0} (${unblock_still_count:-0} still blocked); retracted ${retracted_count:-0} queued-behind-a-gate (${retract_skipped_count:-0} already reconciled); ${failed_count:-0} failed"
 fi
 
 log "ingestion iteration complete"

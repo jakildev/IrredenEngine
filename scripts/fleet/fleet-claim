@@ -882,6 +882,62 @@ PYEOF
     return 0
 }
 
+# --- planning-gate check --------------------------------------------------
+
+check_planning_gates() {
+    # Refuse a task claim on an issue carrying a live planning queue-block
+    # (`fleet:needs-plan` / `fleet:plan-review`). Those labels mean the plan is
+    # not settled: either no plan exists yet, or the most recent `## Plan`
+    # comment is one a reviewer has not vetted (or has bounced). Claiming
+    # behind one means implementing against a rejected or absent plan.
+    #
+    # Belt-and-braces for the scout/ingest retract round-trip (#2740). That
+    # round-trip is the load-bearing fix — it removes `fleet:queued` so the
+    # issue leaves the pickable set — but it takes a tick to converge, and a
+    # dispatch elected from the previous scout generation would otherwise be
+    # granted in that window. This gate closes it independent of cache
+    # freshness, exactly as check_model_tag / check_host_capability do for
+    # their own projections.
+    #
+    # Deliberately NOT keyed on `fleet:queued`: an issue carrying a gate is
+    # un-claimable whether or not the retract has already landed. Mirrors
+    # check_model_tag's soft-degrade contract — no-op when gh is unavailable or
+    # the issue can't be fetched.
+    #
+    # Scope is the TASK claim path only. `planning-claim` deliberately targets
+    # `fleet:needs-plan` issues (that is its whole job) and does not route
+    # through here.
+    #
+    # `human:review-plan` is NOT in the set: PR #3112 retired that gate and it
+    # is now inert to ingest, so honoring it here would re-arm it.
+    local issue_num="$1"
+    local context="${2:-claim}"
+
+    local info
+    info=$(fetch_issue_info "$issue_num") || true
+    [[ -z "$info" ]] && return 0
+
+    local labels=""
+    while IFS=$'\t' read -r key value; do
+        case "$key" in
+            labels) labels="$value" ;;
+        esac
+    done <<< "$info"
+
+    local gate=""
+    case " $labels " in
+        *" fleet:needs-plan "*)  gate="fleet:needs-plan" ;;
+        *" fleet:plan-review "*) gate="fleet:plan-review" ;;
+    esac
+
+    if [[ -n "$gate" ]]; then
+        echo "fleet-claim ${context}: refuse #${issue_num} — carries [${gate}]; the plan is not settled (a planning queue-block landing after fleet:queued is retracted by fleet-queue-ingest, #2740)" >&2
+        return 1
+    fi
+
+    return 0
+}
+
 # --- host-capability gate -------------------------------------------------
 
 check_host_capability() {
@@ -1190,6 +1246,13 @@ sys.stdout.write(unsafe_base_reason(labels, files) or "")
     # Model-tag gate: refuse when FLEET_ROLE_MODEL is set and doesn't
     # match the issue's model labels / body field.
     if ! check_model_tag "$issue_num"; then
+        return 1
+    fi
+
+    # Planning gate (#2740): refuse a task carrying fleet:needs-plan /
+    # fleet:plan-review. Placed here so it also covers --stackable-on, which
+    # shares this sequence.
+    if ! check_planning_gates "$issue_num" claim; then
         return 1
     fi
 
@@ -3947,6 +4010,16 @@ cmd_stack() {
             return 1
         fi
         earlier_in_stack="$earlier_in_stack $issue_num"
+
+        # Planning gate (#2740). `stack` does not route through cmd_claim, so
+        # it needs its own call. Stack claiming is all-or-nothing, so one
+        # gated member refuses the whole chain.
+        if ! check_planning_gates "$issue_num" stack; then
+            for prev in "${claimed[@]}"; do
+                cmd_release "$prev"
+            done
+            return 1
+        fi
 
         local reserved_worktree=""
         reserved_worktree=$(reservation_holder_for_task "$issue_num")
