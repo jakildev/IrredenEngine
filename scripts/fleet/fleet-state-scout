@@ -138,6 +138,19 @@ GH_TIMEOUT_SECONDS = 30
 CLAIM_CLEANUP_INTERVAL_SECONDS = 5 * 60
 CLAIM_CLEANUP_MARKER_NAME = "claim-cleanup.last-run"
 
+# A projection that stays unchanged after its consumer crashes has no edge left
+# to wake that role again. The seen file's mtime is the projection's last-change
+# time, so it supplies the liveness floor without another state file. The
+# override keeps tests deterministic; 0 disables the safety re-arm.
+ROLE_TRIGGER_REARM_DEFAULT_SECONDS = 1800
+try:
+    ROLE_TRIGGER_REARM_SECONDS = max(0, int(os.environ.get(
+        "FLEET_SCOUT_TRIGGER_REARM_SECONDS",
+        str(ROLE_TRIGGER_REARM_DEFAULT_SECONDS),
+    )))
+except ValueError:
+    ROLE_TRIGGER_REARM_SECONDS = ROLE_TRIGGER_REARM_DEFAULT_SECONDS
+
 # Cap concurrent gh calls and stagger their submission to avoid GitHub's
 # secondary rate limit on private repos. The first tick used to fire all
 # 8 fetches in parallel against a cold token, which on private-repo
@@ -2827,6 +2840,12 @@ PROJECTORS = {
 # whole-projection path byte-for-byte.
 PER_KIND_TRIGGER_ROLES = frozenset({"worker"})
 
+# The dispatcher already owns the worker lane's unchanged-slice safety re-arm,
+# including claimability checks and exponential standdown backoff. A scout-side
+# re-arm would bypass that backoff and permit an unbounded idle dispatch loop.
+# Other roles have no equivalent dispatcher-side liveness path. See #3093.
+DISPATCHER_REARM_ROLES = frozenset({"worker"})
+
 
 # ---------------------------------------------------------------------------
 # Per-role slices (full-record projections written to disk).
@@ -3364,7 +3383,8 @@ def seen_kind_hashes(text):
     return kinds if isinstance(kinds, dict) else {}
 
 
-def update_role_trigger_per_kind(role: str, projection) -> bool:
+def update_role_trigger_per_kind(role: str, new_kinds, payload,
+                                 seen_file, old_text) -> bool:
     """Fire iff some kind's item set gained an item absent from its old set.
 
     Pure removal from a still-non-empty lane suppresses; a modification
@@ -3372,15 +3392,7 @@ def update_role_trigger_per_kind(role: str, projection) -> bool:
     absent from the old set and it fires. The whole-projection-empty case is
     subsumed: no kind can hold a new item, so it suppresses as before.
     """
-    new_kinds = kind_hashes(projection)
-    payload = json.dumps({"fmt": 2, "kinds": new_kinds},
-                         sort_keys=True, separators=(",", ":"))
-    seen_file = SEEN_DIR / role
     suppressed_marker = SEEN_DIR / f"{role}.empty-suppressed"
-    try:
-        old_text = seen_file.read_text().strip()
-    except FileNotFoundError:
-        old_text = ""
     # Compare the SERIALIZED fmt-2 payload, never a whole-projection hash: an
     # unchanged projection must take the no-write early return, or the upgrade
     # tick's format change re-fires forever against a stable lane.
@@ -3388,6 +3400,7 @@ def update_role_trigger_per_kind(role: str, projection) -> bool:
         return False
     old_kinds = seen_kind_hashes(old_text)
     write_atomic(seen_file, payload + "\n")
+    (SEEN_DIR / f"{role}.stalled-rearm").unlink(missing_ok=True)
     added = {kind: len(set(hashes) - set(old_kinds.get(kind, ())))
              for kind, hashes in new_kinds.items()}
     added = {kind: n for kind, n in added.items() if n}
@@ -3406,11 +3419,61 @@ def update_role_trigger_per_kind(role: str, projection) -> bool:
     return True
 
 
+def rearm_stalled_role(role: str, projection, current_text,
+                       changed_at) -> bool:
+    """Re-arm an unchanged non-empty projection after its liveness floor."""
+    if (not projection or role in DISPATCHER_REARM_ROLES
+            or ROLE_TRIGGER_REARM_SECONDS <= 0 or changed_at is None):
+        return False
+
+    rearm_file = SEEN_DIR / f"{role}.stalled-rearm"
+    try:
+        # lint: state-mtime-ok this marker is the last safety-rearm clock (#2963)
+        changed_at = max(changed_at, rearm_file.stat().st_mtime)
+    except FileNotFoundError:
+        pass
+    if time.time() - changed_at < ROLE_TRIGGER_REARM_SECONDS:
+        return False
+
+    trigger_file = TRIGGERS_DIR / role
+    if trigger_file.exists():
+        return False
+    trigger_file.touch()
+    write_atomic(rearm_file, stable_hash(current_text) + "\n")
+    log(f"{role}: unchanged non-empty projection is stale — trigger re-armed")
+    return True
+
+
 def update_role_trigger(role: str, projection) -> bool:
-    if role in PER_KIND_TRIGGER_ROLES:
-        return update_role_trigger_per_kind(role, projection)
-    new_hash = stable_hash(projection)
+    # This check stays above the per-kind dispatch so every projection format
+    # shares one liveness contract. Worker is deliberately excluded above
+    # because its dispatcher-side re-arm owns the stronger backoff contract.
     seen_file = SEEN_DIR / role
+    try:
+        old_text = seen_file.read_text().strip()
+        # lint: state-mtime-ok seen-hash mtime is the trigger-change clock (#2963)
+        changed_at = seen_file.stat().st_mtime
+    except FileNotFoundError:
+        old_text = ""
+        changed_at = None
+
+    if role in PER_KIND_TRIGGER_ROLES:
+        new_kinds = kind_hashes(projection)
+        current_text = json.dumps(
+            {"fmt": 2, "kinds": new_kinds},
+            sort_keys=True, separators=(",", ":"),
+        )
+        if (current_text == old_text
+                and rearm_stalled_role(role, projection, current_text,
+                                       changed_at)):
+            return True
+        return update_role_trigger_per_kind(
+            role, new_kinds, current_text, seen_file, old_text,
+        )
+    new_hash = stable_hash(projection)
+    if (new_hash == old_text
+            and rearm_stalled_role(role, projection, new_hash, changed_at)):
+        return True
     # Marker invariant: present iff the most recent hash *write* for this role
     # was a suppression. On this path that means an empty projection; on the
     # per-kind path (PER_KIND_TRIGGER_ROLES) it widens to "no kind gained an
@@ -3424,13 +3487,10 @@ def update_role_trigger(role: str, projection) -> bool:
     # suffix never collides with a role name, and nothing globs SEEN_DIR
     # (roles are read by exact name).
     suppressed_marker = SEEN_DIR / f"{role}.empty-suppressed"
-    try:
-        old_hash = seen_file.read_text().strip()
-    except FileNotFoundError:
-        old_hash = ""
-    if new_hash == old_hash:
+    if new_hash == old_text:
         return False
     write_atomic(seen_file, new_hash + "\n")
+    (SEEN_DIR / f"{role}.stalled-rearm").unlink(missing_ok=True)
     # A hash change whose NEW projection is empty is a transition to
     # nothing-to-do — the item left the set because someone handled it (a
     # verdict label-swap, an amend claim, a merge). Waking the role to
