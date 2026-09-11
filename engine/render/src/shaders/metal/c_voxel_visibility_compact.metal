@@ -133,6 +133,7 @@ constant float kCullSafetyCells = 9.0f;
 // shader-side mirror of IRComponents::VoxelFlags::kFaceOccludedMask). A
 // flags byte matching the full mask marks a fully-interior voxel.
 constant uint kFaceOccludedMaskBits = 0xFCu;
+constant uint kFogWholeBodyExemptBit = 1u << 3u;
 
 // Strict-behind margin (one raw-depth unit of encoded slack) so FMA / round
 // noise on the boundary never culls a voxel only coplanar with the occluder,
@@ -320,11 +321,14 @@ kernel void c_voxel_visibility_compact(
                     }
                     isoPos = pos3DtoPos2DIso(voxelPos);
                 }
+                const bool fogWholeBodyExempt =
+                    (voxels[idx].reserved & kFogWholeBodyExemptBit) != 0u;
                 if (isoPos.x >= frameData.cullIsoMin.x - cullMargin &&
                     isoPos.x <= frameData.cullIsoMax.x + cullMargin &&
                     isoPos.y >= frameData.cullIsoMin.y - cullMargin &&
                     isoPos.y <= frameData.cullIsoMax.y + cullMargin &&
-                    (!fogColumnUnexplored(canvasFogOfWar, voxelPosRaw) ||
+                    (fogWholeBodyExempt ||
+                     !fogColumnUnexplored(canvasFogOfWar, voxelPosRaw) ||
                      fogColumnInVisionCircle(fogObservers, voxelPosRaw))) {
                     if (frameData.perAxisRoute == 0) {
                         // Fully-interior drop — mirrors the GLSL twin: all six

@@ -153,7 +153,7 @@ template <> struct System<REBUILD_GRID_VOXELS> {
         if (rotationMode.mode_ != RotationMode::GRID) {
             return;
         }
-        if (voxelSet.numVoxels_ <= 0) {
+        if (!voxelSet.visible_ || voxelSet.numVoxels_ <= 0) {
             return;
         }
 

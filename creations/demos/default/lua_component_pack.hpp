@@ -11,6 +11,7 @@
 #include <irreden/render/components/component_gui_position_lua.hpp>
 #include <irreden/render/components/component_text_style_lua.hpp>
 #include <irreden/render/components/component_entity_canvas_lua.hpp>
+#include <irreden/render/components/component_fog_revealed_lua.hpp>
 
 namespace IRDefaultCreation {
 inline void registerLuaComponentPack(IRScript::LuaScript &luaScript) {
@@ -26,7 +27,8 @@ inline void registerLuaComponentPack(IRScript::LuaScript &luaScript) {
         C_TextSegment,
         C_GuiPosition,
         C_TextStyle,
-        C_EntityCanvas>();
+        C_EntityCanvas,
+        C_FogRevealed>();
 }
 } // namespace IRDefaultCreation
 

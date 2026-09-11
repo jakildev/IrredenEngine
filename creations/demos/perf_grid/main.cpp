@@ -19,6 +19,7 @@
 #include <irreden/render/components/component_canvas_ao_texture.hpp>
 #include <irreden/render/components/component_canvas_fog_of_war.hpp>
 #include <irreden/render/components/component_canvas_light_volume.hpp>
+#include <irreden/render/components/component_fog_revealed.hpp>
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
 #include <irreden/render/components/component_light_source.hpp>
 #include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
@@ -41,6 +42,7 @@
 #include <irreden/render/systems/system_compute_sun_shadow.hpp>
 #include <irreden/render/systems/system_compute_voxel_ao.hpp>
 #include <irreden/render/systems/system_fog_to_trixel.hpp>
+#include <irreden/render/systems/system_fog_reveal_eval.hpp>
 #include <irreden/render/systems/system_lighting_to_trixel.hpp>
 #include <irreden/render/systems/system_perf_stats_overlay.hpp>
 #include <irreden/render/systems/system_render_velocity_2d_iso.hpp>
@@ -486,6 +488,7 @@ bool g_feederClassifyPadSet = false;
 // render-verify regression tier needs the frozen static twin instead. Off by
 // default -> flagless spawn path is untouched (byte-identical to master).
 bool g_waveFreeze = false;
+bool g_fogReveal = false;
 
 PerfGridMode parseMode(const std::string &value) {
     if (value == "voxel_set" || value == "voxel") {
@@ -682,6 +685,10 @@ void registerCliArgs() {
         "attaching C_PeriodicIdle; makes voxel_set/sdf wave content static and "
         "deterministic (#2332)"
     );
+    args.flag(
+        "--fog-reveal",
+        "Tag every voxel-set entity for entity-anchor fog evaluation against 8 outside circles"
+    );
     args.string(
         "--mode",
         "Scene mode: voxel_set | sdf | dense_set | hollow_set | gallery",
@@ -746,6 +753,7 @@ void readCliArgs() {
     g_debugOverlay = IRRender::debugOverlayModeFromString(args.getEnum("--debug-overlay").c_str());
     g_noPerVoxelOcclusion = args.getFlag("--no-per-voxel-occlusion");
     g_waveFreeze = args.getFlag("--wave-freeze");
+    g_fogReveal = args.getFlag("--fog-reveal");
     g_feederClassifyPadSet = args.wasProvided("--feeder-classify-pad");
     g_feederClassifyPad = args.getInt("--feeder-classify-pad");
 
@@ -1121,6 +1129,9 @@ void createGridEntities() {
                             cellSet.value()->voxels_[0].flags_ |= occluded;
                         }
                     }
+                    if (g_fogReveal) {
+                        IRPrefab::Fog::setEntityRevealGoverned(cellEntity);
+                    }
                 } else {
                     if (g_waveFreeze) {
                         IREntity::createEntity(
@@ -1171,6 +1182,19 @@ void configureLightingAndCanvas() {
     }
     IREntity::setComponent(mainCanvas, C_CanvasLightVolume{});
     IRPrefab::Fog::attachToCanvas(mainCanvas);
+    if (g_fogReveal) {
+        IRPrefab::Fog::clearVisionCircles();
+        for (int i = 0; i < IRComponents::kMaxFogVisionCircles; ++i) {
+            IRPrefab::Fog::addVisionCircle(
+                10000.0f + static_cast<float>(i) * 100.0f,
+                10000.0f,
+                32.0f,
+                1.0f,
+                0.0f,
+                0.5f
+            );
+        }
+    }
 
     IRRender::setSunDirection(vec3(0.35f, 0.85f, -0.4f));
     IREntity::createEntity(
@@ -1309,6 +1333,7 @@ void initSystems() {
          {IRSystem::createSystem<IRSystem::MODIFIER_DECAY>()},
          {IRSystem::createSystem<IRSystem::PERIODIC_IDLE_POSITION_OFFSET>()},
          {IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>()},
+         {IRSystem::createSystem<IRSystem::FOG_REVEAL_EVAL>()},
          {IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>()}}
     );
     IRSystem::registerPipeline(

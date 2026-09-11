@@ -270,4 +270,43 @@ TEST_F(VoxelSetEditApiTest, ResyncAfterRawEditsMatchesEncapsulatedPaths) {
     EXPECT_NE(survivor & VoxelFlags::kFaceOccludedPosY, 0u);
 }
 
+TEST_F(VoxelSetEditApiTest, HiddenSetMutatorsKeepActiveMaskClearUntilShown) {
+    const IREntity::EntityId canvas = IREntity::createEntity(C_VoxelPool{ivec3(8, 8, 8)});
+    const IREntity::EntityId object = IREntity::createEntity(
+        C_VoxelSetNew{ivec3(3, 3, 3), Color{120, 120, 200, 255}, false, canvas}
+    );
+
+    auto &set = IREntity::getComponent<C_VoxelSetNew>(object);
+    auto &pool = IREntity::getComponent<C_VoxelPool>(canvas);
+    set.visible_ = false;
+    pool.clearActiveMaskRange(set.voxelStartIdx_, static_cast<std::size_t>(set.numVoxels_));
+
+    const auto expectMaskClear = [&] {
+        for (int i = 0; i < set.numVoxels_; ++i) {
+            EXPECT_FALSE(maskBit(set, pool, i));
+        }
+    };
+
+    set.changeVoxelColor(ivec3(0, 0, 0), Color{255, 0, 0, 255});
+    expectMaskClear();
+    set.changeVoxelColorAll(Color{0, 255, 0, 255});
+    expectMaskClear();
+    set.activateAll();
+    expectMaskClear();
+    set.fillPlane(0, 0, Color{0, 0, 255, 255});
+    expectMaskClear();
+    set.reshape(IRMath::Shape3D::SPHERE);
+    expectMaskClear();
+    set.editVoxels([](int, C_Voxel &voxel, vec3) { voxel.activate(); });
+    expectMaskClear();
+    set.resyncAfterRawEdits();
+    expectMaskClear();
+
+    set.visible_ = true;
+    set.syncActiveMask();
+    for (int i = 0; i < set.numVoxels_; ++i) {
+        EXPECT_TRUE(maskBit(set, pool, i));
+    }
+}
+
 } // namespace

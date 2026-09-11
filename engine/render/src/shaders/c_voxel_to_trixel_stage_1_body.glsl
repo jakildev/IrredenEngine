@@ -618,6 +618,7 @@ void main() {
     faceId = sel.faceId;
     const int riserFlip = sel.riserFlip;
     const bool bothPolaritiesExposed = sel.bothPolaritiesExposed;
+    const bool fogWholeBodyExempt = (voxels[voxelIndex].reserved & (1u << 3u)) != 0u;
 
     // Per-voxel analytic fog clip (#2102 + #2126 P2 + #2127; per-axis split
     // #2128) — STAGE-1-ONLY (stage 2 never repeats it: with the distances
@@ -646,7 +647,7 @@ void main() {
     bool ownColumnHidden = isDetachedCanvas > 0.5
         ? fogColumnRevealZ(sel.worldColumn, voxelPosition.z) <= 0.0
         : fogColumnRevealNearestZ(sel.worldColumn, voxelPosition.z) <= 0.0;
-    if (sel.fogActive && perAxisRoute == 0 && ownColumnHidden) {
+    if (!fogWholeBodyExempt && sel.fogActive && perAxisRoute == 0 && ownColumnHidden) {
         return;
     }
 
@@ -700,7 +701,7 @@ void main() {
         // per-pixel reveal, which penalizes against the unrounded `pos3D.z`.
         // Same split as the single-canvas route above (sel.worldColumn is
         // rounded; its z argument is not).
-        if (visionCircleCount > 0 &&
+        if (!fogWholeBodyExempt && visionCircleCount > 0 &&
             fogColumnRevealZ(roundHalfUp(voxelPosition.xyz).xy, voxelPosition.z) <= 0.0) {
             return;
         }

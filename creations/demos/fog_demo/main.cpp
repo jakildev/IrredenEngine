@@ -84,6 +84,7 @@
 #include <irreden/render/systems/system_compute_sun_shadow.hpp>
 #include <irreden/render/systems/system_compute_voxel_ao.hpp>
 #include <irreden/render/systems/system_fog_to_trixel.hpp>
+#include <irreden/render/systems/system_fog_reveal_eval.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
 #include <irreden/render/systems/system_lighting_to_trixel.hpp>
 #include <irreden/render/systems/system_lod_update.hpp>
@@ -458,6 +459,20 @@ constexpr IRVideo::AutoScreenshotShot kEdgeZCostCeilingShots[] = {
      sizeof(kCropsEdgeZCostCeiling9) / sizeof(kCropsEdgeZCostCeiling9[0])},
 };
 
+bool g_entityReveal = false; // --entity-reveal
+constexpr IRVideo::RoiCrop kCropsEntityReveal[] = {
+    {650, 220, 420, 620, "untagged_column_clip"},
+    {1030, 220, 420, 620, "tagged_stage1_exemption"},
+};
+constexpr IRVideo::AutoScreenshotShot kEntityRevealShots[] = {
+    {7.0f,
+     vec2(0, 0),
+     0.0f,
+     "fog_entity_reveal",
+     kCropsEntityReveal,
+     sizeof(kCropsEntityReveal) / sizeof(kCropsEntityReveal[0])},
+};
+
 // --edge-yaw-sweep (#2128 P4): the edge-zoom cross-section under CONTINUOUS
 // camera yaw. Reuses the static --edge-zoom scene (same boundary voxel objects +
 // origin vision circle) but steps the camera Z-yaw in fine increments inside one
@@ -540,6 +555,10 @@ int main(int argc, char **argv) {
         "up-cost (#2557): matter within the band reveals fully, then cuts off "
         "within ~1 unit past it — a hard ceiling; skips the static grid reveal"
     );
+    IREngine::args().flag(
+        "--entity-reveal",
+        "Ground-anchor whole-body fog reveal: tagged rim pillar beside an untagged twin"
+    );
     IREngine::init(argc, argv);
     g_autoWarmupFrames = IREngine::args().autoScreenshotWarmupFrames();
     g_movingObserver = IREngine::args().getFlag("--moving-observer");
@@ -552,6 +571,19 @@ int main(int argc, char **argv) {
     g_edgeZCost = IREngine::args().getFlag("--edge-zcost");
     g_edgeZCostAsym = IREngine::args().getFlag("--edge-zcost-asym");
     g_edgeZCostCeiling = IREngine::args().getFlag("--edge-zcost-ceiling");
+    g_entityReveal = IREngine::args().getFlag("--entity-reveal");
+    if (g_entityReveal) {
+        g_movingObserver = false;
+        g_playerWalk = false;
+        g_edgeZoom = false;
+        g_edgeSdfBlocker = false;
+        g_detachedEdge = false;
+        g_edgeSmooth = false;
+        g_edgeYawSweep = false;
+        g_edgeZCost = false;
+        g_edgeZCostAsym = false;
+        g_edgeZCostCeiling = false;
+    }
     // --edge-yaw-sweep owns the same scene as --edge-zoom (boundary objects +
     // origin vision circle); it only swaps the static climbing-zoom shots for a
     // yaw sweep, so turn the edge scene on.
@@ -670,6 +702,7 @@ void initSystems() {
     std::list<IRSystem::SystemId> updatePipeline = {
         IRSystem::createSystem<IRSystem::LOD_UPDATE>(),
         IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
+        IRSystem::createSystem<IRSystem::FOG_REVEAL_EVAL>(),
         IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>(),
         IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS>(),
         IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS_IMPLICIT>(),
@@ -762,7 +795,10 @@ void initSystems() {
         // --edge-smooth zoom on the GRID cross-section clip edge (hard vs smooth
         // disc); --player-walk captures the walking reveal sequence; the
         // default captures the three static fog-boundary shots.
-        if (g_edgeZCostAsym) {
+        if (g_entityReveal) {
+            cfg.shots_ = kEntityRevealShots;
+            cfg.numShots_ = sizeof(kEntityRevealShots) / sizeof(kEntityRevealShots[0]);
+        } else if (g_edgeZCostAsym) {
             cfg.shots_ = kEdgeZCostAsymShots;
             cfg.numShots_ = sizeof(kEdgeZCostAsymShots) / sizeof(kEdgeZCostAsymShots[0]);
         } else if (g_edgeZCostCeiling) {
@@ -868,8 +904,8 @@ void initEntities() {
     // cross it (the two-black-bands artifact) instead of capping with the toned
     // cut colour.
     constexpr float kFloorZ = 5.0f;
-    if (!g_edgeZoom && !g_edgeSmooth && !g_edgeSdfBlocker && !g_detachedEdge && !g_edgeZCost &&
-        !g_edgeZCostAsym && !g_edgeZCostCeiling) {
+    if (!g_entityReveal && !g_edgeZoom && !g_edgeSmooth && !g_edgeSdfBlocker && !g_detachedEdge &&
+        !g_edgeZCost && !g_edgeZCostAsym && !g_edgeZCostCeiling) {
         createShape(
             vec3(0.0f, 0.0f, kFloorZ),
             IRRender::ShapeType::BOX,
@@ -884,8 +920,8 @@ void initEntities() {
     // its own content (the gliding disc + marker / the boundary-straddling voxel
     // objects) reads clearly without the tall shapes' iso-projected tops poking
     // through the disc.
-    if (!g_playerWalk && !g_edgeZoom && !g_edgeSmooth && !g_edgeSdfBlocker && !g_detachedEdge &&
-        !g_edgeZCost && !g_edgeZCostAsym && !g_edgeZCostCeiling) {
+    if (!g_entityReveal && !g_playerWalk && !g_edgeZoom && !g_edgeSmooth && !g_edgeSdfBlocker &&
+        !g_detachedEdge && !g_edgeZCost && !g_edgeZCostAsym && !g_edgeZCostCeiling) {
         // A few simple SDF primitives sitting on the floor inside the visible
         // circle, so the bright (visible) region has recognizable content.
         createShape(
@@ -962,9 +998,44 @@ void initEntities() {
     // face IS the band under test, so an angled sun's terminator across it would
     // masquerade as a cut defect. Fog x shadow composition stays covered by the
     // default grid scene's refs, which keep the angled sun.
-    if (g_edgeZoom || g_edgeSmooth || g_edgeSdfBlocker || g_detachedEdge || g_edgeZCost ||
-        g_edgeZCostAsym || g_edgeZCostCeiling) {
+    if (g_entityReveal || g_edgeZoom || g_edgeSmooth || g_edgeSdfBlocker || g_detachedEdge ||
+        g_edgeZCost || g_edgeZCostAsym || g_edgeZCostCeiling) {
         IRRender::setSunDirection(vec3(0.0f, 0.0f, -1.0f));
+    }
+
+    if (g_entityReveal) {
+        IRPrefab::Fog::setVisionCircle(0.0f, 0.0f, 10.0f, 1.5f, 4.5f, 0.35f);
+        createEdgeGroundSlab();
+
+        const IREntity::EntityId governed = IREntity::createEntity(
+            C_LocalTransform{vec3(-7.5f, 0.0f, 4.0f)},
+            C_VoxelSetNew{
+                IRMath::ivec3{4, 4, 24},
+                Color{80, 210, 245, 255},
+                IRComponents::EntityAnchor::GROUND
+            }
+        );
+        IRPrefab::Fog::setEntityRevealGoverned(governed);
+
+        IREntity::createEntity(
+            C_LocalTransform{vec3(7.5f, 0.0f, 4.0f)},
+            C_VoxelSetNew{
+                IRMath::ivec3{4, 4, 24},
+                Color{245, 155, 75, 255},
+                IRComponents::EntityAnchor::GROUND
+            }
+        );
+
+        const IREntity::EntityId hidden = IREntity::createEntity(
+            C_LocalTransform{vec3(-16.0f, 0.0f, 4.0f)},
+            C_VoxelSetNew{
+                IRMath::ivec3{4, 4, 12},
+                Color{235, 80, 170, 255},
+                IRComponents::EntityAnchor::GROUND
+            }
+        );
+        IRPrefab::Fog::setEntityRevealGoverned(hidden);
+        return;
     }
 
     // --player-walk: spawn the moving "player" marker — a bright vertical pillar

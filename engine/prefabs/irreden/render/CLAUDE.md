@@ -310,6 +310,24 @@ backing field to `RenderManager`. See `engine/render/CLAUDE.md`
 full principle, the rule of thumb, and the list of existing violations being
 cleaned up.
 
+## Entity-anchored fog reveal
+
+`C_FogRevealed` opts a grid-canvas voxel entity into one reveal verdict at its
+`C_WorldTransform.translation_` (the ground anchor for `EntityAnchor::GROUND`
+sets). `FOG_REVEAL_EVAL` snapshots the
+active canvas's analytic observers once per frame, writes the continuous
+`revealFactor_`, and applies the binary render transition through the pool
+active mask in `endTick`; place it after `PROPAGATE_TRANSFORM` and before
+`UPDATE_VOXEL_SET_CHILDREN`. `C_FogRevealSettings` owns show/hide hysteresis and
+stagger cadence. v1 is active-canvas-only; a fogged secondary canvas needs its
+own observer-to-entity association before it can use this system.
+
+The voxel reserved bit exempts governed bodies from the compact fog-column
+reject and stage-1 own-column z drop. Camera/Hi-Z culling still applies, so the
+compact keep set remains a superset of stage 1 after #2475's feeder-domain
+widening. `FOG_TO_TRIXEL` still has no entity-governance channel: its per-pixel
+height clip can cut a governed body at a hard ceiling. That v2 mask is #3156.
+
 ## Command help overlay (`help_overlay.hpp`, #2550)
 
 `IRPrefab::HelpOverlay::` is the adoption surface for the registry-driven

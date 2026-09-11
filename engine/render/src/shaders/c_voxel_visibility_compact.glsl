@@ -186,6 +186,7 @@ bool fogColumnUnexplored(ivec3 voxelPosRaw) {
 // shader-side mirror of IRComponents::VoxelFlags::kFaceOccludedMask). A
 // flags byte matching the full mask marks a fully-interior voxel.
 const uint kFaceOccludedMaskBits = 0xFCu;
+const uint kFogWholeBodyExemptBit = 1u << 3u;
 
 // Safety margin (cells): covers the per-pixel worldPerPixel AA that
 // c_fog_to_trixel adds at low zoom — this shader can't compute zoom —
@@ -380,11 +381,13 @@ void main() {
                     }
                     isoPos = pos3DtoPos2DIso(voxelPos);
                 }
+                bool fogWholeBodyExempt =
+                    (voxels[idx].reserved & kFogWholeBodyExemptBit) != 0u;
                 if (isoPos.x >= cullIsoMin.x - cullMargin &&
                     isoPos.x <= cullIsoMax.x + cullMargin &&
                     isoPos.y >= cullIsoMin.y - cullMargin &&
                     isoPos.y <= cullIsoMax.y + cullMargin &&
-                    (!fogColumnUnexplored(voxelPosRaw) ||
+                    (fogWholeBodyExempt || !fogColumnUnexplored(voxelPosRaw) ||
                      fogColumnInVisionCircle(voxelPosRaw))) {
                     if (perAxisSplitStride == 0) {
                         // Fully-interior drop: a voxel with all six face-occlusion

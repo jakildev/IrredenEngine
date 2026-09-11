@@ -26,6 +26,10 @@ struct C_VoxelSetNew {
     int numVoxels_;
     ivec3 size_;
 
+    // Transient render gate. Fog-governed entities flip this once per entity;
+    // the pool mask carries the corresponding per-voxel GPU visibility.
+    bool visible_ = true;
+
     // How this set's geometry attaches to the entity's translation (#2563).
     // The offset it implies is BAKED into `positions_` at construction, so the
     // rasterize / render / cull / occupancy / picking paths all consume it
@@ -349,13 +353,23 @@ struct C_VoxelSetNew {
         const int idx = index3DtoIndex1D(index, size_);
         voxels_[idx].color_ = color;
         mirrorToRotationSource(idx);
-        IRPrefab::VoxelPool::markVoxelActive(voxelStartIdx_, idx, color.alpha_ != 0, canvasEntity_);
+        if (visible_) {
+            IRPrefab::VoxelPool::markVoxelActive(
+                voxelStartIdx_,
+                idx,
+                color.alpha_ != 0,
+                canvasEntity_
+            );
+        }
     }
 
     void changeVoxelColorAll(Color color) {
         for (int i = 0; i < numVoxels_; i++) {
             voxels_[i].color_ = color;
             mirrorToRotationSource(i);
+        }
+        if (!visible_) {
+            return;
         }
         if (color.alpha_ != 0) {
             IRPrefab::VoxelPool::markRangeActive(voxelStartIdx_, numVoxels_, canvasEntity_);
@@ -413,7 +427,9 @@ struct C_VoxelSetNew {
             voxels_[i].activate();
             mirrorToRotationSource(i);
         }
-        IRPrefab::VoxelPool::markRangeActive(voxelStartIdx_, numVoxels_, canvasEntity_);
+        if (visible_) {
+            IRPrefab::VoxelPool::markRangeActive(voxelStartIdx_, numVoxels_, canvasEntity_);
+        }
         IRPrefab::Voxel::recomputeFaceOccupancy(voxels_, size_);
     }
 
@@ -434,7 +450,9 @@ struct C_VoxelSetNew {
                     voxels_[idx].color_ = color;
                     voxels_[idx].activate();
                     mirrorToRotationSource(idx);
-                    pool.setActiveBit(voxelStartIdx_ + idx);
+                    if (visible_) {
+                        pool.setActiveBit(voxelStartIdx_ + idx);
+                    }
                 }
             }
         });
@@ -462,7 +480,9 @@ struct C_VoxelSetNew {
                     }
                 }
             }
-            IRPrefab::VoxelPool::markRangeActive(voxelStartIdx_, numVoxels_, canvasEntity_);
+            if (visible_) {
+                IRPrefab::VoxelPool::markRangeActive(voxelStartIdx_, numVoxels_, canvasEntity_);
+            }
         }
         if (shape3D == Shape3D::SPHERE) {
             vec3 center = vec3(size_) / 2.0f;
@@ -485,7 +505,13 @@ struct C_VoxelSetNew {
             // Sphere splits the span into active interior + inactive
             // exterior — resync from per-voxel alpha rather than picking
             // bulk active/inactive.
-            IRPrefab::VoxelPool::resyncRangeFromColors(voxelStartIdx_, numVoxels_, canvasEntity_);
+            if (visible_) {
+                IRPrefab::VoxelPool::resyncRangeFromColors(
+                    voxelStartIdx_,
+                    numVoxels_,
+                    canvasEntity_
+                );
+            }
         }
         IRPrefab::Voxel::recomputeFaceOccupancy(voxels_, size_);
     }
@@ -571,7 +597,9 @@ struct C_VoxelSetNew {
     }
 
     // Re-derive the pool's per-slot active mask from this set's color
-    // alphas. Required after any caller mutates voxel alpha through the
+    // alphas while the set is visible. Hidden sets retain their authored
+    // colors while their mask stays clear until their visibility owner shows
+    // them. Required after any caller mutates voxel alpha through the
     // raw `voxels_` span (`voxels_[i].activate()`, `voxels_[i].deactivate()`,
     // or `voxels_[i].color_ = ...` with a different alpha) without going
     // through one of the mutator methods above. Bypassing the mutators is
@@ -587,7 +615,7 @@ struct C_VoxelSetNew {
     // the face-occupancy recompute for you. This stays public as the
     // low-level pool primitive (and for the pre-existing raw-loop sites).
     void syncActiveMask() {
-        if (numVoxels_ <= 0) {
+        if (!visible_ || numVoxels_ <= 0) {
             return;
         }
         IRPrefab::VoxelPool::resyncRangeFromColors(
@@ -727,7 +755,9 @@ struct C_VoxelSetNew {
         }
         // Dense payload is a mix of active and inactive slots, so resync from
         // per-voxel alpha rather than the fast bulk path.
-        IRPrefab::VoxelPool::resyncRangeFromColors(voxelStartIdx_, numVoxels_, canvasEntity_);
+        if (visible_) {
+            IRPrefab::VoxelPool::resyncRangeFromColors(voxelStartIdx_, numVoxels_, canvasEntity_);
+        }
         IRPrefab::Voxel::recomputeFaceOccupancy(voxels_, extent);
     }
 
@@ -740,7 +770,9 @@ struct C_VoxelSetNew {
         for (int i = 0; i < numVoxels_; ++i) {
             mirrorToRotationSource(i);
         }
-        IRPrefab::VoxelPool::resyncRangeFromColors(voxelStartIdx_, numVoxels_, canvasEntity_);
+        if (visible_) {
+            IRPrefab::VoxelPool::resyncRangeFromColors(voxelStartIdx_, numVoxels_, canvasEntity_);
+        }
         IRPrefab::Voxel::recomputeFaceOccupancy(voxels_, size_);
     }
 };
