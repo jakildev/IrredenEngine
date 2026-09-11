@@ -278,7 +278,10 @@ class DaemonsAndWindow(Env):
     def test_since_accepts_durations_and_iso(self):
         rc, rep = self.run_report("--since", "2026-09-09T05:00:00Z")
         self.assertEqual(set(rep["roles"]), {"sonnet-reviewer"})
-        rc, rep = self.run_report("--since", "1d")
+        # A duration is measured from real wall-clock now while the fixture is
+        # pinned to 2026-09-09, so the window must reach the fixture on any
+        # date the suite runs (#3132: "1d" rotted the day after it was written).
+        rc, rep = self.run_report("--since", "3650d")
         self.assertIn("merger", rep["roles"])
 
     def test_bad_since_is_a_usage_error(self):

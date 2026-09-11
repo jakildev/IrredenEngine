@@ -240,6 +240,22 @@ T8=$(run_rebase)
 assert_contains "$T8" "no head SHA in live fetch" "T8 head-SHA gate fires"
 assert_absent "$(cat "$GH_STUB_LOG")" "pr merge" "T8 gh pr merge never invoked"
 
+# === T9: fleet:author-* provenance label is inside the allowlist =============
+echo "T9: fleet:author-claude alongside fleet:approved -> still squash-merged"
+reset_stub
+STAMPED_SLICE_PR='{
+  "repo":"engine","number":400,
+  "headRefName":"claude/steward-rollup","baseRefName":"master",
+  "mergeable":"MERGEABLE",
+  "labels":["fleet:approved","fleet:authored-on-macos","fleet:author-claude"]
+}'
+write_slice "[$STAMPED_SLICE_PR]"
+stub_pr 400 open master true "fleet:approved,fleet:authored-on-macos,fleet:author-claude"
+stub_files 400 ".fleet/plans/issue-1394.md"
+T9=$(run_rebase)
+assert_contains "$T9" "engine#400: auto-merged" "T9 provenance stamp does not block the auto-merge"
+assert_contains "$(cat "$GH_STUB_LOG")" "pr merge 400" "T9 gh pr merge invoked"
+
 # --- Summary ------------------------------------------------------------------
 echo ""
 echo "fleet-rebase plan-automerge tests: $PASS passed, $FAIL failed"

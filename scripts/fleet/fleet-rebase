@@ -186,7 +186,10 @@ export FLEET_REBASE_SKIP_RE="$SKIP_LABEL_RE"
 # the human own everything else. Cap 3 per run: each merge flips the scout
 # hash and re-fires the merger, so a longer queue drains across wakes anyway.
 MERGE_PATH_RE='^\.fleet/plans/'
-MERGE_LABEL_ALLOW_RE='^fleet:(approved|merger-cooldown|authored-on-[a-z0-9-]+|verified-[a-z0-9-]+)$'
+# fleet:author-<runtime> is provenance (#3098's cross-provider review stamp),
+# not a merge-state qualifier — without it here every stamped PR read as
+# "label outside the allowlist" and the zero-token plan-PR merge never fired.
+MERGE_LABEL_ALLOW_RE='^fleet:(approved|merger-cooldown|authored-on-[a-z0-9-]+|author-[a-z0-9-]+|verified-[a-z0-9-]+)$'
 export FLEET_MERGE_ALLOW_RE="$MERGE_LABEL_ALLOW_RE"
 MERGE_CAP=3
 MERGED=0
