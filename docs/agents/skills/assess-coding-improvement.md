@@ -7,8 +7,7 @@ improvement to the fleet's conventions (style guide, coding rules, the
 file — or append to — a `fleet:coding-improvement` ticket so the mistake
 is caught at authoring time next time.
 
-Invoked at the end of a feedback AMEND
-([`FLEET-FEEDBACK-HANDLING.md`](../FLEET-FEEDBACK-HANDLING.md) Step i). A
+Invoked on explicit ask only; the feedback path does not run it. A
 reflection pass only: it never touches the PR's code, labels, or claim.
 The backlog it produces is drained by
 [`triage-coding-improvements.md`](triage-coding-improvements.md).
@@ -34,15 +33,14 @@ wrapper that points here and answers the delta keys below
 
 ## When to run
 
-- Automatically after any feedback AMEND that changed code
-  (`human:needs-fix` / `human:blocker`, `fleet:needs-fix`,
-  `fleet:has-nits`). Reviewer nits are the richest source.
-- On the ESCALATE path only if the deferred concern is itself a
-  convention.
-- On explicit ask ("should this be a fleet rule?", "assess coding
-  improvement", "file a coding-improvement") — same Step-4 body shape.
-
-Skip when the only feedback was subjective preference or a one-off.
+- Only on explicit ask ("should this be a fleet rule?", "assess coding
+  improvement", "file a coding-improvement"). The feedback AMEND path does
+  not invoke it.
+- File only when the improvement is a validator — a check, ratchet, lint,
+  or test the fleet can execute — and the defect fired (a wrong merge, a
+  wasted iteration, a reviewer catch on a real defect). A prose rule, a
+  reminder, or a style preference is not filed (FLEET.md §"Improvement
+  posture").
 
 ## Step 1 — Coverage
 

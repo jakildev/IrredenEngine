@@ -422,6 +422,26 @@ PRs with no state labels.
 
 ---
 
+## Improvement posture
+
+Instructions cost every task that loads them, so an improvement must earn
+its lines:
+
+- **Validator or nothing.** A snag that a check, ratchet, lint, or test
+  can catch becomes that check; its failure message carries the rule. A
+  snag nothing can execute is almost always something the model already
+  does, and is dropped.
+- **Prose only for facts the model cannot derive** — build commands,
+  invariants, platform gotchas — at one canonical home, within the file's
+  instruction-size budget (`scripts/lint_instruction_size.py`), replacing
+  text rather than adding to it.
+- **Reviews block on the big picture.** Needs-fix is for defects in what
+  the code does; wording and comments are nits that never block
+  (REVIEWER-PROTOCOL.md §"Nits vs needs-fix").
+- **Filing is rare.** A `fleet:coding-improvement` ticket needs a fired
+  incident and a validator shape; the batch triage runs a few times a
+  month, not per ticket.
+
 ## Fleet feedback channel
 
 Durable observations go to `~/.fleet/feedback/<role>.md` (`mkdir -p`

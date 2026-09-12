@@ -299,18 +299,14 @@ fleet-claim release-worktree <your-worktree-basename>
 
 Idempotent; safe on every path.
 
-### Step i — reflect: assess for a coding-improvement
+### Step i — exit
 
-On every AMEND path that changed code:
-
-```
-Skill: assess-coding-improvement
-```
-
-Read-only: it re-checks coverage of every comment and files or appends a
-`fleet:coding-improvement` ticket only for a generalizable rule. On
-ESCALATE, only if the deferred concern is itself a recurring convention.
-Then exit; do not call `start-next-task` from the feedback path.
+Exit; do not call `start-next-task` from the feedback path. There is no
+reflection step: a fix that revealed a class of defect files a
+`fleet:coding-improvement` ticket only when the improvement is a validator
+(a check, ratchet, or test the fleet can execute) and the defect fired —
+FLEET.md §"Improvement posture". A rule, a reminder, or a preference is
+not filed.
 
 ---
 

@@ -77,23 +77,20 @@ One digest: per cluster, each ticket's number, class, target, proposed
 change, occurrence count, closed-loop history, and your recommended
 verdict. Gather verdicts in one round.
 
-- **ACCEPT** — apply as proposed.
-- **ESCALATE PLACEMENT** — accept the rule but move it up the enforcement
-  ladder: a grep-able Class-B rule becomes a check on the
-  **automated-check surface**; a buried rule relocates to the surface the
-  author hits. Recommend whenever the pattern is grep-able or the
-  closed-loop check fired.
-- **RESCOPE** — a tighter version; state the rescoped one-liner so the
-  human approves the actual text.
-- **REJECT** — close as not-planned with a one-line reason (too niche,
-  already covered, cost exceeds the mistake).
+- **ACCEPT** — only when the change is a validator: a check, ratchet,
+  lint, or test the fleet executes (the automated-check surface or CI).
+  The check's failure message carries the rule; no prose is added.
+- **ACCEPT AS FACT** — a prose line only for something no validator can
+  express and the model cannot derive (a build command, an invariant, a
+  platform gotcha), at its canonical home, within that file's
+  instruction-size budget, replacing text rather than adding to it.
+- **REJECT** — everything else, closed with a one-line reason: the default
+  for process reminders, verification instructions, style preferences,
+  and anything the model does unprompted.
 - **DEFER** — leave open; name what unblocks it.
 
-Convention surfaces are read on every task; prefer tightening an existing
-bullet over adding one. A new rule is one bullet at the surface's existing
-altitude. If one surface would gain more than ~5 lines in a batch, look
-for a consolidation. Single-occurrence Class-A tickets are the first REJECT
-/ DEFER candidates.
+FLEET.md §"Improvement posture" is the bar. Single-occurrence tickets and
+anything without a fired incident are the first REJECT candidates.
 
 ## Step 4 — Apply
 

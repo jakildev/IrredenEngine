@@ -135,24 +135,26 @@ label after the skill returns, run the edge yourself.
 
 ## Nits vs needs-fix — the bright line
 
-- **Wording-tier nits are follow-up material.** Comment phrasing,
-  non-canon doc wording, naming preferences, optional asserts, refactor
-  opportunities go under `### Nits (follow-up)` with no `fleet:has-nits`;
-  the author folds them into the next PR on that surface or a
-  `fleet:nit-of-pr` issue. Same routing for a nit with no
-  agent-applicable disposition (gated self-config, or an open
-  `fleet:nit-of-pr` already tracks it): prose plus `verdict-approve`.
-- **`fleet:has-nits` means the nits are worth one amend push**:
-  borderline-substantive items (a misleading comment on tricky code, a
-  missing assert on a real invariant, a test named after the wrong
-  behavior), batched into a single push and re-verified delta-scoped.
-- **"Approve, but fix X before merge" is forbidden.** Anything the merge
-  depends on is `needs-fix`.
-- **Needs-fix** is substantive: correctness, invariants,
-  lifetime/ownership, synchronization, performance regressions, unsafe
-  API use, missing tests for non-trivial logic.
-- When in doubt: follow-up list over `fleet:has-nits`, `fleet:has-nits`
-  over `fleet:needs-fix`.
+A review blocks a merge only for a defect in what the code does. Lead with
+the big picture — does the change do what the issue asked, is the approach
+sound, what does it break — and put line-level findings after.
+
+- **Needs-fix** is one of: wrong behaviour or a broken contract or
+  invariant; a lifetime, ownership, or synchronization error; unsafe API
+  use or data loss; a performance regression on a hot path; non-trivial
+  logic with no test; an acceptance criterion the PR claims but does not
+  meet; a CI validator the PR turns red.
+- **Everything else is a nit and never blocks**: wording, comment and
+  docstring content or consistency, naming preferences, refactor
+  opportunities, optional asserts, doc drift outside the PR's contract,
+  anything a formatter or ratchet already polices. Nits go under
+  `### Nits (follow-up)` with `verdict-approve`; the author folds them into
+  the next PR on that surface or a `fleet:nit-of-pr` issue.
+- **`fleet:has-nits`** is reserved for a missing assert on a real invariant
+  or a test that pins the wrong behaviour: one amend push, re-verified
+  delta-scoped.
+- **"Approve, but fix X before merge" is forbidden.** If the merge depends
+  on it, it is needs-fix; if not, it is a nit.
 
 ---
 
@@ -171,6 +173,12 @@ First passes find; re-passes confirm.
   classifier keeps `fleet:approved` across byte-identical rebases,
   retargets, and docs-only deltas; if one reaches you, restore the label
   state without a rebase-confirmation review.
+- **Two needs-fix rounds are the budget.** A third review of the same PR
+  approves with nits when the remaining findings are nits. A substantive
+  defect that survives two rounds is posted once more with
+  `verdict-needs-fix` and the first body line `Third round`; the author
+  fixes it if bounded, otherwise escalates it as a follow-up issue
+  (FLEET-FEEDBACK-HANDLING.md §ESCALATE) instead of a fourth round.
 - **Docs-light lane.** A diff that is entirely `docs/pr-screenshots/**` or
   non-canon markdown gets one light Sonnet pass, no Opus recheck. Canon
   design docs (engine `docs/design/**`, the game's GDD and design-doc

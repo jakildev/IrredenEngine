@@ -1,14 +1,12 @@
 ---
 name: assess-coding-improvement
 description: >-
-  After PR review feedback is fixed, assesses whether the fix reveals a
-  generalizable improvement to the fleet's conventions (style guide,
-  coding rules, simplify checks, review criteria, worker direction) and
-  files or appends to a fleet:coding-improvement ticket. Auto-invoked as
-  the last step of a feedback AMEND (FLEET-FEEDBACK-HANDLING.md Step i);
-  also use when the user asks "should this be a fleet rule?", "assess
-  coding improvement", or "file a coding-improvement". A reflection pass
-  only — it never touches the PR's code, labels, or claim.
+  Assesses whether a fixed review finding reveals a validator-shaped fleet
+  improvement (a check, ratchet, lint, or test) and files or appends to a
+  fleet:coding-improvement ticket. Cue-only: use when the user asks
+  "should this be a fleet rule?", "assess coding improvement", or "file a
+  coding-improvement". A reflection pass only — it never touches the PR's
+  code, labels, or claim.
 ---
 
 # assess-coding-improvement (Irreden Engine)
