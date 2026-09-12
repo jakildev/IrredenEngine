@@ -161,9 +161,10 @@ and `save_component_inventory.hpp`'s `static_assert` walks
 
 **New-component contract.** Adding a new engine component requires adding
 a matching `IR_SAVE_OPT_IN`/`IR_SAVE_OPT_OUT` line (with its own include)
-and an `AllEngineComponents` tuple entry — both the compile-time gate and
-`test/world/save_trait_test.cpp`'s `InventoryIsComplete` count backstop
-depend on the tuple size matching the audited total. A templated
+and an `AllEngineComponents` tuple entry. The compile-time gate checks listed
+types, while `cmake/run_save_inventory_population_check.cmake` compares the
+table against declarations in engine headers so an entirely omitted type
+fails the merge-gating header checks. A templated
 component with more than one concrete instantiation (e.g.
 `C_SystemEvent<SystemEvent>`) gets ONE representative instantiation in
 the inventory, not one per specialization — see the inline comment beside
@@ -632,4 +633,3 @@ same `config = { ... }` table — there is one source of truth per file.
   through `IREngine::init`) picks its own destruction point. Treat the reset
   as defense in depth, not a licence to move device-resource frees into the
   dtor.
-

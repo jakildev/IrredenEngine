@@ -4,9 +4,12 @@
 // The audited per-component save-policy decision table. Every engine
 // component gets exactly one IR_SAVE_OPT_IN / IR_SAVE_OPT_OUT line below;
 // AllEngineComponents lists all of them so the static_assert at the bottom
-// fails the build if any decision is missing. Heavy include list — pull
-// this header only into world-snapshot TUs and the SaveTrait test, never
-// into a widely-included header (see save_trait.hpp).
+// fails the build if any listed type lacks a decision. The executed population
+// check in cmake/run_save_inventory_population_check.cmake compares both lists
+// against component declarations in engine headers, catching types omitted
+// from this table entirely. Heavy include list — pull this header only into
+// world-snapshot TUs and the SaveTrait test, never into a widely-included
+// header (see save_trait.hpp).
 
 #include <irreden/world/save_trait.hpp>
 
@@ -22,6 +25,7 @@
 #include <irreden/common/components/component_controllable_unit.hpp>
 #include <irreden/common/components/component_cycle.hpp>
 #include <irreden/common/components/component_local_transform.hpp>
+#include <irreden/common/components/component_locked.hpp>
 #include <irreden/common/components/component_modifiers.hpp>
 #include <irreden/common/components/component_name.hpp>
 #include <irreden/common/components/component_persistent.hpp>
@@ -375,6 +379,7 @@ IR_SAVE_OPT_IN(IRComponents::C_Player, 1)
 IR_SAVE_OPT_IN(IRComponents::C_ControllableUnit, 1)
 IR_SAVE_OPT_IN(IRComponents::C_Selected, 1)
 IR_SAVE_OPT_IN(IRComponents::C_Persistent, 1)
+IR_SAVE_OPT_IN(IRComponents::C_Locked, 1)
 IR_SAVE_OPT_IN(IRComponents::C_Name, 1)
 IR_SAVE_OPT_IN(IRComponents::C_Example, 1)
 IR_SAVE_OPT_IN(IRComponents::C_HelpText, 1)
@@ -562,6 +567,7 @@ using AllEngineComponents = std::tuple<
     IRComponents::C_ControllableUnit,
     IRComponents::C_Selected,
     IRComponents::C_Persistent,
+    IRComponents::C_Locked,
     IRComponents::C_Name,
     IRComponents::C_Example,
     IRComponents::C_HelpText,
@@ -569,8 +575,6 @@ using AllEngineComponents = std::tuple<
     IRSystem::C_EntityHoverDetectTag,
     IRSystem::C_PerfStatsOverlayTag,
     IRComponents::C_SystemEvent<IRSystem::TICK>>;
-
-inline constexpr std::size_t kExpectedEngineComponentCount = 172;
 
 static_assert(
     detail::allExplicit<AllEngineComponents>(),

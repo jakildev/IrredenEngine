@@ -16,6 +16,9 @@
 #   - a clean fixture tree                          → exit 0, and both Metal
 #     checks ran (1 kernel scanned, _body fragment excluded as an entry point
 #     but still read through the wrapper's include chain)
+#   - a component missing its save decision         → exit 1, names its header
+#   - a decided component missing from the tuple    → exit 1, names the type
+#   - a missing save-inventory anchor               → exit 1 (anchor guard)
 #   - an unregistered Metal compute kernel          → exit 1, names the kernel
 #   - a line- or block-commented registry entry     → exit 1, names the kernel
 #     (a commented-out entry never reaches the compiled binary, so it must
@@ -162,6 +165,7 @@ write_pipeline_cpp() {
 make_fixture() {
     local root="$1"
     mkdir -p "$root/cmake" "$root/engine/include/irreden" \
+             "$root/engine/world/include/irreden/world" \
              "$root/engine/render/src/shaders/metal" \
              "$root/engine/render/src/metal" \
              "$root/engine/render/include/irreden/render/metal"
@@ -169,6 +173,7 @@ make_fixture() {
        "$SCRIPT_DIR/cmake/run_header_convention_checks.cmake" \
        "$SCRIPT_DIR/cmake/run_metal_kernel_registry_check.cmake" \
        "$SCRIPT_DIR/cmake/run_metal_scratch_consumer_check.cmake" \
+       "$SCRIPT_DIR/cmake/run_save_inventory_population_check.cmake" \
        "$CHECKER" "$root/cmake/"
     cat > "$root/engine/include/irreden/clean.hpp" <<'EOF'
 #pragma once
@@ -176,6 +181,23 @@ namespace IRFixture {
 constexpr int kCleanConstant = 1;
 const char *const kCleanName = "clean";
 }
+EOF
+    cat > "$root/engine/include/irreden/components_fixture.hpp" <<'EOF'
+#pragma once
+namespace IRComponents {
+struct C_FixtureSaved {};
+struct C_FixtureSkipped {};
+// struct C_LineCommented {};
+/* struct C_BlockCommented {}; */
+}
+EOF
+    cat > "$root/engine/world/include/irreden/world/save_component_inventory.hpp" <<'EOF'
+#pragma once
+IR_SAVE_OPT_IN(IRComponents::C_FixtureSaved, 1)
+IR_SAVE_OPT_OUT(IRComponents::C_FixtureSkipped)
+using AllEngineComponents = std::tuple<
+    IRComponents::C_FixtureSaved,
+    IRComponents::C_FixtureSkipped>;
 EOF
     cat > "$root/engine/render/include/irreden/render/metal/metal_runtime.hpp" <<'EOF'
 #pragma once
@@ -231,6 +253,52 @@ assert_contains "$clean_out" "Metal scratch-consumer check scanned 1 compute ker
     "metal scratch-consumer check runs on the CI path"
 assert_contains "$clean_out" "(1 declare the image-atomic scratch at buffer slot 16)" \
     "scratch check resolves the wrapper -> _body include chain"
+assert_contains "$clean_out" "Save inventory population check scanned 2 component name(s)" \
+    "save inventory check scans live declarations and ignores comments"
+
+# --- an undeclared component needs an explicit save decision ----------------
+SAVE_MISSING_DECISION="$TMPROOT/save-missing-decision"
+make_fixture "$SAVE_MISSING_DECISION"
+echo 'struct C_FixtureOrphan {};' \
+    >> "$SAVE_MISSING_DECISION/engine/include/irreden/components_fixture.hpp"
+save_missing_decision_out=$(run_checker "$SAVE_MISSING_DECISION")
+save_missing_decision_rc=$?
+assert_eq "1" "$save_missing_decision_rc" \
+    "component missing its save decision makes the checker exit 1"
+assert_contains "$save_missing_decision_out" "C_FixtureOrphan" \
+    "missing-decision failure names the component"
+assert_contains "$save_missing_decision_out" "components_fixture.hpp" \
+    "missing-decision failure names the declaring header"
+assert_contains "$save_missing_decision_out" "missing decision" \
+    "missing-decision failure explains the inventory omission"
+
+# --- a decision without a tuple entry stays incomplete ----------------------
+SAVE_MISSING_TUPLE="$TMPROOT/save-missing-tuple"
+make_fixture "$SAVE_MISSING_TUPLE"
+echo 'struct C_FixtureOrphan {};' \
+    >> "$SAVE_MISSING_TUPLE/engine/include/irreden/components_fixture.hpp"
+echo 'IR_SAVE_OPT_IN(IRComponents::C_FixtureOrphan, 1)' \
+    >> "$SAVE_MISSING_TUPLE/engine/world/include/irreden/world/save_component_inventory.hpp"
+save_missing_tuple_out=$(run_checker "$SAVE_MISSING_TUPLE")
+save_missing_tuple_rc=$?
+assert_eq "1" "$save_missing_tuple_rc" \
+    "decided component missing its tuple entry makes the checker exit 1"
+assert_contains "$save_missing_tuple_out" "C_FixtureOrphan" \
+    "missing-tuple failure names the component"
+assert_contains "$save_missing_tuple_out" "missing tuple entry" \
+    "missing-tuple failure explains the incomplete inventory"
+assert_absent "$save_missing_tuple_out" "missing decision" \
+    "the decision-only fixture reaches the tuple-specific failure"
+
+# --- a missing inventory anchor fails closed --------------------------------
+SAVE_MISSING_ANCHOR="$TMPROOT/save-missing-anchor"
+make_fixture "$SAVE_MISSING_ANCHOR"
+rm "$SAVE_MISSING_ANCHOR/engine/world/include/irreden/world/save_component_inventory.hpp"
+save_missing_anchor_out=$(run_checker "$SAVE_MISSING_ANCHOR")
+save_missing_anchor_rc=$?
+assert_eq "1" "$save_missing_anchor_rc" "missing save inventory exits 1"
+assert_contains "$save_missing_anchor_out" "not found" \
+    "missing save inventory anchor explains itself"
 
 # --- an unregistered Metal kernel fails -------------------------------------
 METAL_DIRTY="$TMPROOT/metal-dirty"
@@ -949,12 +1017,12 @@ realconst_rc=$?
 assert_eq "0" "$realconst_rc" "both-ends-const pointer stays exempt"
 
 # A header the scan never reached exits 0 too, so the count is what makes the
-# exemption a measurement, not just an exit code: the clean fixture scans 2
-# (clean.hpp plus the render-backend metal_runtime.hpp, in scope since #2889
-# widened the collector to INCLUDE_RENDER_BACKENDS), so this fixture must
-# scan 3. Both numbers are measured against make_fixture — re-measure them if
-# it grows a header, rather than assuming the delta.
-assert_contains "$realconst_out" "scanned 3 header file(s)" \
+# exemption a measurement, not just an exit code: the clean fixture scans 4
+# (the two general headers, the inventory anchor, and the render-backend
+# metal_runtime.hpp), so this fixture must scan 5. Both numbers are measured
+# against make_fixture — re-measure them if it grows a header, rather than
+# assuming the delta.
+assert_contains "$realconst_out" "scanned 5 header file(s)" \
     "the exempt header entered the scan rather than skipping the candidate gate"
 
 # --- single-sided const on a pointer is still a banned global ---------------

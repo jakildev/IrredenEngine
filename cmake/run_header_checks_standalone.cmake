@@ -10,8 +10,9 @@
 #
 # Deliberately a thin shim. It delegates every actual rule to
 # run_header_convention_checks.cmake, run_metal_kernel_registry_check.cmake
-# (#2798) and run_metal_scratch_consumer_check.cmake (#2878), AND collects the
-# same file set the `header-checks` / `lint` targets collect —
+# (#2798), run_metal_scratch_consumer_check.cmake (#2878), and
+# run_save_inventory_population_check.cmake (#2834), AND collects the same
+# file set the `header-checks` / `lint` targets collect —
 # irreden_collect_quality_files with INCLUDE_RENDER_BACKENDS, the sibling call
 # site being irreden_add_quality_targets in cmake/ir_quality_tools.cmake — so
 # the CI path and the targets cannot drift into checking different things.
@@ -68,3 +69,4 @@ file(REMOVE "${quality_file_list}")
 
 include("${PROJECT_ROOT}/cmake/run_metal_kernel_registry_check.cmake")
 include("${PROJECT_ROOT}/cmake/run_metal_scratch_consumer_check.cmake")
+include("${PROJECT_ROOT}/cmake/run_save_inventory_population_check.cmake")

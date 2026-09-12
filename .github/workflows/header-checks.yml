@@ -5,7 +5,8 @@ name: Header Checks
 #     namespaces) — cmake/run_header_convention_checks.cmake (#2794)
 #   - Metal threadgroup registry membership — cmake/run_metal_kernel_registry_check.cmake (#2798)
 #   - Metal image-atomic scratch consumer list — cmake/run_metal_scratch_consumer_check.cmake (#2878)
-# Adding a fourth means extending run_header_checks_standalone.cmake, this
+#   - Save-inventory component population — cmake/run_save_inventory_population_check.cmake (#2834)
+# Adding another means extending run_header_checks_standalone.cmake, this
 # list, and the `paths:` filters below in the same change.
 #
 # Standalone for the same reason fleet-tests.yml is: the only other caller of
@@ -35,6 +36,7 @@ on:
       - 'cmake/run_header_convention_checks.cmake'
       - 'cmake/run_metal_kernel_registry_check.cmake'
       - 'cmake/run_metal_scratch_consumer_check.cmake'
+      - 'cmake/run_save_inventory_population_check.cmake'
       - 'cmake/run_header_checks_standalone.cmake'
       - 'scripts/fleet/tests/test_header_checks_standalone.sh'
       - '.github/workflows/header-checks.yml'
@@ -48,6 +50,7 @@ on:
       - 'cmake/run_header_convention_checks.cmake'
       - 'cmake/run_metal_kernel_registry_check.cmake'
       - 'cmake/run_metal_scratch_consumer_check.cmake'
+      - 'cmake/run_save_inventory_population_check.cmake'
       - 'cmake/run_header_checks_standalone.cmake'
       - 'scripts/fleet/tests/test_header_checks_standalone.sh'
       - '.github/workflows/header-checks.yml'
