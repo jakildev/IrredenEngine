@@ -311,6 +311,47 @@ class TestBodyClosesLink(unittest.TestCase):
                     "inflight_pr",
                     state["repos"]["engine"]["tasks"]["open"][0])
 
+    def test_a_falsely_closed_fence_leaves_the_task_claimable(self):
+        # Same consequence as the unclosed-fence arm above, reached the other
+        # way: a run CommonMark does NOT accept as a closing fence (mixed
+        # characters, or indented past three spaces) left the block open in
+        # GitHub while this parser ends it, so the code after a false closer
+        # reads as prose and tags a task nobody is implementing.
+        for label, closer in (("mixed backtick/tilde", "```~~~"),
+                              ("mixed tilde/backtick", "~~~```"),
+                              ("indented four spaces", "    ```"),
+                              ("indented with a tab", "\t```")):
+            with self.subTest(closer=label):
+                opener = "~~~" if closer.startswith("~") else "```"
+                tasks = [_task("#2578")]
+                prs = [_pr_body(2579, "claude/hand-named-branch",
+                                f"{opener}\nexample\n{closer}\nCloses #2578\n",
+                                labels=["fleet:wip"])]
+                self.assertEqual(prs[0]["closes_issues"], [])
+                state = _state(engine_tasks=tasks, engine_prs=prs)
+                enrich_inflight_pr_tasks(state)
+                self.assertNotIn(
+                    "inflight_pr",
+                    state["repos"]["engine"]["tasks"]["open"][0])
+
+    def test_a_legally_closed_fence_still_tags_a_link_after_it(self):
+        # Control against over-shooting the arm above: a real closing fence —
+        # including one legally indented up to three spaces — must still end
+        # its block, or tightening the closer silently drops live links and
+        # every assertion above passes anyway.
+        for closer in ("```", "   ```"):
+            with self.subTest(closer=repr(closer)):
+                tasks = [_task("#2578")]
+                prs = [_pr_body(2579, "claude/hand-named-branch",
+                                f"```\nCloses #9999\n{closer}\nCloses #2578\n",
+                                labels=["fleet:wip"])]
+                self.assertEqual(prs[0]["closes_issues"], [2578])
+                state = _state(engine_tasks=tasks, engine_prs=prs)
+                enrich_inflight_pr_tasks(state)
+                self.assertEqual(
+                    state["repos"]["engine"]["tasks"]["open"][0]
+                    ["inflight_pr"]["number"], 2579)
+
     def test_a_real_link_above_an_unclosed_fence_still_tags_inflight(self):
         # Control for the arm above: the fix must strip what FOLLOWS the
         # unclosed fence, not silence every body that contains one.

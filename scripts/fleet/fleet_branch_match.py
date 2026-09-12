@@ -177,13 +177,34 @@ _CLOSES_ANY_RE = re.compile(_CLOSES_KEYWORD + r"(\d+)\b", re.IGNORECASE)
 # link — the costly direction above, and the one a truncated or mid-edit body
 # produces most often. The closing-fence arm is ordered first so a well-formed
 # block ends where it ends; `.*\Z` fires only when no closing fence exists.
-# `fleet-plan-lint`'s `FENCE_RE` lacks this arm — a second live divergence on
-# top of the #2989 one #3311 tracks. The two fail in opposite directions off
-# the same hole (here an invented closing link; there a quoted code sample read
-# as prose), so a consolidation must carry the union, not either copy.
+# `fleet-plan-lint`'s `FENCE_RE` lacks this arm and both closing-fence
+# restrictions below, so the two copies diverge on three axes, not the single
+# one #3311 was opened for. They fail in opposite directions off the same
+# holes (here an invented closing link; there a quoted code sample read as
+# prose, a false lint hit), so the consolidation must carry the union of both
+# copies' fixes, never either copy wholesale. See #2989, #3311.
+#
+# A CLOSING fence is not "a fence-ish line". CommonMark accepts only a run of
+# the OPENER's own character, at least as long as the opener, indented at most
+# three spaces, followed by nothing but spaces/tabs — hence `(?P=c)*` for the
+# surplus (same character only) and ` {0,3}` for the indent, a tab being four
+# columns and so never opening the arm. Every laxity here fails in one
+# direction: the block ends early and the code after the false closer reads as
+# prose, inventing a link.
+#
+# The OPENER keeps the lax `^[ \t]*`, and the asymmetry is deliberate but
+# UNSETTLED — not a claim that laxity is safer here. A line indented four or
+# more spaces is an indented code block, so its fence characters are literal
+# and CommonMark never opens a block: `    ```\n    x\nCloses #40\n` links #40
+# on GitHub, where this matcher strips to end-of-body and returns nothing.
+# Tightening the opener to ` {0,3}` would fix that one shape while changing
+# what every indented sample in a body strips, and no measurement here covers
+# it — the live corpus carries no such body, so the oracle cannot adjudicate
+# it either. Left alone on purpose; settle it against `closingIssuesReferences`
+# (#3310) rather than by tidying the two ends into agreement.
 _CODE_FENCE_RE = re.compile(
-    r"(?ms)^[ \t]*(?P<f>`{3,}|~{3,})"
-    r"(?:.*?^[ \t]*(?P=f)[`~]*[ \t]*$|.*\Z)")
+    r"(?ms)^[ \t]*(?P<f>(?P<c>[`~])(?P=c){2,})"
+    r"(?:.*?^ {0,3}(?P=f)(?P=c)*[ \t]*$|.*\Z)")
 _CODE_SPAN_RE = re.compile(r"(?s)(`+)((?:(?!\n[ \t]*\n).)+?)\1")
 
 

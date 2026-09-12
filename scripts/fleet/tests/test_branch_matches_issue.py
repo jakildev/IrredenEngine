@@ -397,6 +397,40 @@ class ClosingKeywordInsideCode(unittest.TestCase):
         body = "```\nCloses #255\n```\n\nCloses #10\n"
         self.assertEqual(body_closed_issue_numbers(body), [10])
 
+    def test_a_mixed_character_run_does_not_close_a_fence(self):
+        # CommonMark closes a fence only with a run of the OPENER's character.
+        # A laxer `[`~]*` surplus let ```` ```~~~ ```` close a backtick opener,
+        # ending the block early and reading the code after it as prose — an
+        # invented link that suppresses a claimable task.
+        for body, num in (("```\nexample\n```~~~\nCloses #10\n", 10),
+                          ("~~~\nexample\n~~~```\nCloses #11\n", 11),
+                          ("```\nexample\n~~~\nCloses #12\n", 12)):
+            with self.subTest(body=body[:24]):
+                self.assertEqual(body_closed_issue_numbers(body), [])
+                self.assertFalse(body_closes_issue(body, num))
+
+    def test_an_over_indented_run_does_not_close_a_fence(self):
+        # Same class, same direction: a closing fence may be indented at most
+        # three spaces, and a tab is four columns. Accepting either keeps the
+        # block open in GitHub while this parser ends it and invents the link.
+        for body, num in (("```\nexample\n    ```\nCloses #13\n", 13),
+                          ("```\nexample\n\t```\nCloses #14\n", 14)):
+            with self.subTest(body=body[:24]):
+                self.assertEqual(body_closed_issue_numbers(body), [])
+                self.assertFalse(body_closes_issue(body, num))
+
+    def test_a_legally_indented_closer_still_ends_its_block(self):
+        # Control against over-shooting the two arms above: tightening the
+        # closer must not swallow well-formed blocks. Without this, a closer
+        # arm that rejected ALL indentation — or the EOF arm winning outright —
+        # passes every assertion above while dropping real links.
+        for body, want in (("```\nexample\n   ```\nCloses #23\n", [23]),
+                           ("```\nexample\n``` \t\nCloses #24\n", [24]),
+                           ("  ```\nexample\n  ```\nCloses #25\n", [25]),
+                           ("```\nexample\n`````\nCloses #22\n", [22])):
+            with self.subTest(body=body[:24]):
+                self.assertEqual(body_closed_issue_numbers(body), want)
+
     def test_an_unbalanced_backtick_cannot_blank_a_later_paragraph(self):
         # A span is bounded to one paragraph, so a stray backtick pairs with the
         # next stray one only within its own. Unbounded, these two would pair
@@ -410,6 +444,11 @@ class ClosingKeywordInsideCode(unittest.TestCase):
         # this is the no-drift assertion #2419 centralized them for.
         for body in (self.NEGATED, "Closes #2091", "```\nCloses #2091\n```",
                      "```\nCloses #2091\n", "~~~\nCloses #2091\n",
+                     "```\nx\n```~~~\nCloses #2091\n",
+                     "~~~\nx\n~~~```\nCloses #2091\n",
+                     "```\nx\n    ```\nCloses #2091\n",
+                     "```\nx\n\t```\nCloses #2091\n",
+                     "```\nx\n   ```\nCloses #2091\n",
                      "Not `Closes #2091` but Closes #2091 really"):
             with self.subTest(body=body[:40]):
                 nums = body_closed_issue_numbers(body)
