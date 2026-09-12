@@ -428,17 +428,18 @@ except Exception:
 
 # _amend_snapshot_path <pr>
 #   The local amend-snapshot sidecar for <pr>: the per-claim ownership record
-#   written by _write_amend_ownership and removed by cmd_amending_release. $HOME
-#   is expanded at CALL time, never at load time — test_fleet_claim_acquire.sh
-#   sources this script as a library and re-points HOME afterwards, so a
-#   top-level constant would bake in the real home directory there.
+#   written by _write_amend_ownership and removed by cmd_amending_release.
+#   Expanded at CALL time, never at load time — test_fleet_claim_acquire.sh
+#   sources this script as a library and sets FLEET_AMEND_SNAPSHOTS_DIR
+#   afterwards, so a top-level constant would write into the live ~/.fleet.
+#   R7's reader honours the same override.
 #
 #   Deliberately outside $CLAIMS_DIR: fleet-down's clear-all wipes that tree,
 #   and erasing the ownership evidence would turn every surviving amending
 #   label into an unvouchable claim (the swept-but-alive deferral reads the
 #   same file).
 _amend_snapshot_path() {
-    printf '%s\n' "$HOME/.fleet/amend-snapshots/${1}.json"
+    printf '%s\n' "${FLEET_AMEND_SNAPSHOTS_DIR:-$HOME/.fleet/amend-snapshots}/${1}.json"
 }
 
 # _write_amend_ownership <pr> <agent>
@@ -3755,13 +3756,13 @@ for repo in repos:
 # apply action so reconcile_escalate_drift's flag-only accrual skips it), so a
 # freshly-opened WIP PR still propagating its claim is never touched.
 #
-# Amend-snapshot guard (#1650): fleet-pr-claim-feedback writes a sidecar at
+# Amend-snapshot guard (#1650): amending-claim writes a sidecar at
 # ~/.fleet/amend-snapshots/<pr>.json when an amending claim is acquired; the
 # sidecar is written at claim-acquisition time and deleted when the claim is
 # cleanly released. If a sidecar exists and its mtime is within 2×TTL,
 # the PR was recently under active amendment work — skip R7 to avoid re-arming
 # fleet:design-unblocked under a TTL-swept-but-alive claim.
-_amend_snap_dir = os.path.expanduser("~/.fleet/amend-snapshots")
+_amend_snap_dir = os.environ.get("FLEET_AMEND_SNAPSHOTS_DIR") or os.path.expanduser("~/.fleet/amend-snapshots")
 
 for repo in repos:
     d = repo_data[repo]

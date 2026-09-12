@@ -13,6 +13,7 @@ trap 'rm -rf "$TMPROOT"' EXIT
 
 export FLEET_CLAIMS_DIR="$TMPROOT/claims"
 export FLEET_HEARTBEATS_DIR="$TMPROOT/heartbeats"
+export FLEET_AMEND_SNAPSHOTS_DIR="$TMPROOT/amend-snapshots"
 export FLEET_RESERVATIONS_DIR="$TMPROOT/reservations"
 export FLEET_TEST_HOST=mac
 export FLEET_CLAIM_NO_SLEEP=1

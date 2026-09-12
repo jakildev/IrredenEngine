@@ -271,12 +271,13 @@ assert_exit "$rc" 1 "live same-host amending owner kept → exit 1 (yield, no th
 # minus the two records, still yields.
 echo "T12: same-host amending holder with a superseded dispatch → force-sweep + win"
 export FLEET_STATE_DIR="$HBROOT/state"
-mkdir -p "$FLEET_STATE_DIR/dispatch-current" "$HOME/.fleet/amend-snapshots"
+FLEET_AMEND_SNAPSHOTS_DIR="$HBROOT/amend-snapshots"
+mkdir -p "$FLEET_STATE_DIR/dispatch-current" "$FLEET_AMEND_SNAPSHOTS_DIR"
 ADEAD2="${AP}mac-worker-5"
 AMINE3="${AP}mac-worker-4"          # lex-smaller than mac-worker-5
-touch "$HOME/.fleet/heartbeats/worker-5"   # pane alive, iteration dead
+touch "$HEARTBEATS_DIR/worker-5"   # pane alive, iteration dead
 printf '{"pr":1,"agent":"worker-5","acquired_epoch":1,"dispatch_id":"D1"}\n' \
-    > "$HOME/.fleet/amend-snapshots/1.json"
+    > "$FLEET_AMEND_SNAPSHOTS_DIR/1.json"
 printf 'D2\n' > "$FLEET_STATE_DIR/dispatch-current/worker-5"
 STUB_HOLDERS="$ADEAD2"
 rc=0
