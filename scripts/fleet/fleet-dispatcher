@@ -599,11 +599,15 @@ fi
 # FLEET_EPIC_STEWARD (conf or env; pre-pool these flags gated the
 # dedicated pane's creation instead). A disabled role's triggers sit
 # unread, same as when its pane didn't exist.
+#
+# Each tick serves the roles in this order, so when panes are scarce the
+# lanes that turn open PRs into merges (merger, reviewers) are dispatched
+# before the lane that opens new ones (worker).
 DISPATCHED_ROLES=(
-    "worker"
+    "merger"
     "sonnet-reviewer"
     "opus-reviewer"
-    "merger"
+    "worker"
 )
 if [[ "${FLEET_SMOKE_WORKER:-0}" == "1" ]]; then
     DISPATCHED_ROLES+=("smoke-worker")
@@ -3254,6 +3258,24 @@ case "${1:-}" in
         DISPATCH_MODE="$(read_dispatch_mode)"
         for (( _tick = 0; _tick < ${3:-1}; _tick++ )); do
             dispatch_role "$2"
+        done
+        exit 0
+        ;;
+    --dispatch-tick)
+        # Test/debug: run <count> (default 1) full ticks — every role in
+        # DISPATCHED_ROLES, in order, exactly as the daemon loop walks them —
+        # and exit. Same hermetic contract as --dispatch-role; this is the
+        # entry point for asserting on the cross-role service order.
+        # Usage: --dispatch-tick [count]
+        if [[ -n "${2:-}" ]] && ! [[ "$2" =~ ^[1-9][0-9]*$ ]]; then
+            echo "fleet-dispatcher --dispatch-tick: count must be a positive integer" >&2
+            exit 2
+        fi
+        DISPATCH_MODE="$(read_dispatch_mode)"
+        for (( _tick = 0; _tick < ${2:-1}; _tick++ )); do
+            for _role in "${DISPATCHED_ROLES[@]}"; do
+                dispatch_role "$_role"
+            done
         done
         exit 0
         ;;

@@ -338,4 +338,44 @@ out=$(tick_role sonnet-reviewer BUSY_PANES='%2 %3 %4' POOL_PANES=4 FLEET_CONCURR
 assert_eq "$(count_dispatches "$out")" "1" \
     "one free pane, one other pending under-cap role -> the first role still launches"
 
+echo "T14: the cross-role service order — one free pane, reviewer and worker both pending"
+# Both lanes are under cap and both have a standing trigger; one pane is free.
+# Whoever the tick reaches first takes it (T13), so the order of
+# DISPATCHED_ROLES is what decides between a review and new work.
+t14_setup() {
+    reset
+    POOL_PANES=4
+    rm -f "$FLEET_STATE_DIR/dispatch"/*.json
+    inflight worker opus task:engine:10 4
+    write_slice worker "$ONE_TASK"
+    write_slice sonnet-reviewer '{"candidate_prs":[
+      {"number":3001,"repo":"engine","labels":[]}]}'
+    : > "$FLEET_STATE_DIR/triggers/worker"
+    : > "$FLEET_STATE_DIR/triggers/sonnet-reviewer"
+}
+T14_ENV=(BUSY_PANES='%2 %3 %4' POOL_PANES=4 FLEET_CONCURRENCY_WORKER=4 FLEET_CONCURRENCY_SONNET_REVIEWER=2)
+
+# (a) walked worker-first by hand: the worker takes the pane, the reviewer
+# finds none.
+t14_setup
+out_w=$(tick_role worker "${T14_ENV[@]}")
+out_r=$(tick_role sonnet-reviewer "${T14_ENV[@]}")
+assert_contains "$out_w" "dispatching worker -> %1" \
+    "walked worker-first, the worker takes the only free pane"
+assert_eq "$(count_dispatches "$out_r")" "0" \
+    "walked worker-first, the reviewer is left without a pane"
+
+# (b) the real tick walks DISPATCHED_ROLES: the reviewer takes the pane and
+# the worker trigger waits for the next one.
+t14_setup
+out=$(env "${T14_ENV[@]}" "$DISPATCHER" --dispatch-tick 1 2>&1 >/dev/null)
+assert_eq "$(count_dispatches "$out")" "1" \
+    "the tick launches exactly one lane into the one free pane"
+assert_contains "$out" "dispatching sonnet-reviewer -> %1" \
+    "the shipped order hands the pane to the reviewer"
+assert_absent "$out" "dispatching worker" \
+    "the worker lane does not launch this tick"
+trigger_kept && ok "the worker trigger is kept for the next tick" \
+    || bad "the worker trigger was consumed without a launch"
+
 summarize "fleet-dispatcher elastic cap tests"
