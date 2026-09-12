@@ -285,5 +285,103 @@ class BodyClosesIssue(unittest.TestCase):
         self.assertEqual(body_closed_issue_numbers(None), [])
 
 
+class ClosingKeywordInsideCode(unittest.TestCase):
+    """A closing keyword inside markdown code is not a link, so is not a match.
+
+    Ground truth for every arm is GitHub's own `closingIssuesReferences` — the
+    field it auto-closes from — sampled from two real bodies that bracket the
+    rule: one whose only `Closes #N` sits in a code span while arguing AGAINST
+    closing (GitHub: closes nothing), and one carrying bare refs (GitHub:
+    closes both). The two must land on opposite sides. See #2672.
+    """
+
+    # A body arguing against the very reference it quotes.
+    NEGATED = ('The stamp is **measured false**. The matched PR #3020\'s entire '
+               'diff is one documentation\nfile, and its body reads *"No '
+               '`Closes #2091` \u2014 deliberate \u2026 Auto-closing on merge '
+               'would\nstrand it."*\n')
+
+    def test_quoted_negated_reference_is_not_a_close(self):
+        self.assertFalse(body_closes_issue(self.NEGATED, 2091))
+        self.assertEqual(body_closed_issue_numbers(self.NEGATED), [])
+
+    def test_bare_references_still_close(self):
+        body = "Reconcile R9.\n\nCloses #2939\nCloses #3205\n"
+        self.assertEqual(sorted(body_closed_issue_numbers(body)), [2939, 3205])
+        self.assertTrue(body_closes_issue(body, 3205))
+
+    def test_fenced_block_is_not_a_close(self):
+        body = "Example of what NOT to write:\n\n```\nCloses #255\n```\n"
+        self.assertFalse(body_closes_issue(body, 255))
+        self.assertEqual(body_closed_issue_numbers(body), [])
+
+    def test_tilde_fence_is_not_a_close(self):
+        body = "~~~\nCloses #255\n~~~\n"
+        self.assertEqual(body_closed_issue_numbers(body), [])
+
+    def test_backticks_inside_a_fence_do_not_leak(self):
+        # Fences are stripped before spans precisely so a fence's own backtick
+        # runs can't be read as span delimiters and re-expose what follows.
+        body = "```\nrun `x`\nCloses #255\n```\n\nCloses #10\n"
+        self.assertEqual(body_closed_issue_numbers(body), [10])
+
+    def test_live_ref_outside_a_fence_still_matches(self):
+        # The rule must not turn "body contains any code" into "body closes
+        # nothing" — the failure mode that would strand every fleet PR, since
+        # commit-and-push bodies routinely carry both.
+        body = "Closes #255\n\n```\nsome code\n```\n"
+        self.assertEqual(body_closed_issue_numbers(body), [255])
+        self.assertTrue(body_closes_issue(body, 255))
+
+    def test_span_and_live_ref_in_the_same_line(self):
+        body = "Not `Closes #10`, but really Closes #20."
+        self.assertEqual(body_closed_issue_numbers(body), [20])
+
+    def test_two_spans_do_not_merge_and_eat_the_prose_between(self):
+        # A greedy span regex pairs the FIRST and LAST backtick, blanking the
+        # live ref sitting between two unrelated spans.
+        body = "See `foo` — Closes #20 — and `bar`."
+        self.assertEqual(body_closed_issue_numbers(body), [20])
+
+    def test_double_backtick_span_is_stripped(self):
+        self.assertEqual(body_closed_issue_numbers("``Closes #255``"), [])
+
+    def test_stripping_cannot_splice_a_new_reference(self):
+        # Neither deletion nor whitespace is safe here: the keyword's separator
+        # is `\s+`, so blanking a span to " " still lets a keyword and a number
+        # that were never adjacent form a reference. The sentinel must break it.
+        self.assertEqual(body_closed_issue_numbers("Closes`x``y`#5"), [])
+        self.assertEqual(body_closed_issue_numbers("Closes `foo` #5"), [])
+
+    def test_a_fence_between_keyword_and_number_does_not_splice(self):
+        body = "Closes\n\n```\ncode\n```\n\n#5\n"
+        self.assertEqual(body_closed_issue_numbers(body), [])
+
+    def test_a_longer_fence_quoting_a_shorter_one_is_fully_stripped(self):
+        # CommonMark fences are 3-OR-MORE, closed by a run of the same char at
+        # least that long. A body quoting fence syntax must open longer than the
+        # sample; an exactly-3 matcher closes on the SAMPLE's fence and leaks
+        # the rest (#2989, inherited from fleet-plan-lint's grammar).
+        body = "````\nBad example:\n```\nCloses #255\n```\n````\n"
+        self.assertEqual(body_closed_issue_numbers(body), [])
+
+    def test_an_unbalanced_backtick_cannot_blank_a_later_paragraph(self):
+        # A span is bounded to one paragraph, so a stray backtick pairs with the
+        # next stray one only within its own. Unbounded, these two would pair
+        # across the blank lines and swallow the live reference between them —
+        # dropping a real close link, the costlier direction.
+        body = "A stray ` backtick.\n\nCloses #255\n\nAnd another ` here.\n"
+        self.assertEqual(body_closed_issue_numbers(body), [255])
+
+    def test_both_forms_agree_on_every_arm(self):
+        # The singular and all-refs forms share the keyword AND the stripping;
+        # this is the no-drift assertion #2419 centralized them for.
+        for body in (self.NEGATED, "Closes #2091", "```\nCloses #2091\n```",
+                     "Not `Closes #2091` but Closes #2091 really"):
+            with self.subTest(body=body[:40]):
+                nums = body_closed_issue_numbers(body)
+                self.assertEqual(body_closes_issue(body, 2091), 2091 in nums)
+
+
 if __name__ == "__main__":
     unittest.main()

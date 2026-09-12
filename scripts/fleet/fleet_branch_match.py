@@ -144,6 +144,59 @@ def branch_matches_issue(head_ref, issue, repo):
 _CLOSES_KEYWORD = r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#"
 _CLOSES_ANY_RE = re.compile(_CLOSES_KEYWORD + r"(\d+)\b", re.IGNORECASE)
 
+# GitHub does not honor a closing keyword inside markdown code — the reference
+# renders as code and never reaches the timeline — so neither may we. Both
+# forms below strip code before matching, via the same helper, for the same
+# no-drift reason the keyword itself is shared.
+#
+# Getting this wrong errs toward INVENTING implementation links, not missing
+# them: a quoted or argued-against mention reads as live. Both readers treat
+# such a link as "someone is already doing this issue" — the scout's
+# `inflight_pr` takes the task off the queue, and fleet-claim's
+# duplicate-open-PR guard refuses a claim on it — so a false link strands
+# claimable work for as long as the quoting PR stays open.
+#
+# The oracle for any change here is GitHub's own `closingIssuesReferences`,
+# the field it actually auto-closes from: re-measure this grammar against it
+# over the live open-PR set rather than reasoning about markdown. Reading that
+# field directly instead of parsing prose is the standing follow-up. See #2672,
+# #3310.
+# Both grammars are `fleet-plan-lint`'s (`FENCE_RE` / `INLINE_RE`), which
+# solves the identical problem — "this text NAMES the token as data, it does not
+# mean it" — and has already been corrected once. Re-derived copies of a matcher
+# do not inherit its fixes: a hand-rolled exactly-3 fence misses a fence that
+# must open longer than the sample it quotes (#2989), and a span with no
+# paragraph bound lets one unbalanced backtick pair with a distant one and blank
+# a real `Closes #N` in between. Keep these two in step with that tool; the
+# three copies in the tree should collapse into one shared helper (#3311).
+_CODE_FENCE_RE = re.compile(
+    r"(?ms)^[ \t]*(?P<f>`{3,}|~{3,}).*?^[ \t]*(?P=f)[`~]*[ \t]*$")
+_CODE_SPAN_RE = re.compile(r"(?s)(`+)((?:(?!\n[ \t]*\n).)+?)\1")
+
+
+# Code is replaced with a sentinel, not removed and not blanked to whitespace.
+# Removing it splices the surrounding text; blanking it to whitespace is just as
+# bad, because the keyword grammar's separator is `\s+` — `Closes `x` #5` would
+# collapse to `Closes   #5` and match a reference GitHub does not link. The
+# sentinel is non-whitespace and non-`#`, so it can only ever BREAK the pattern
+# across a stripped region, never complete one.
+_CODE_PLACEHOLDER = "\x00"
+
+
+def _strip_code(body):
+    """`body` with fenced blocks and inline code spans replaced by a sentinel.
+
+    Fences first, so a fence's own backtick runs are consumed as a fence rather
+    than read as span delimiters. On well-formed markdown the two orders agree
+    (searched exhaustively over short backtick/keyword/fence permutations); they
+    diverge only on unbalanced input such as a stray backtick opening just
+    before a fence, where fences-first strips LESS. That is the direction to
+    fail in — under-stripping keeps a reference the fleet would otherwise drop,
+    and dropping a real `Closes #N` is the costlier error here.
+    """
+    return _CODE_SPAN_RE.sub(_CODE_PLACEHOLDER,
+                             _CODE_FENCE_RE.sub(_CODE_PLACEHOLDER, body))
+
 
 def body_closes_issue(body, issue):
     """True when `body` declares it closes `issue` via a GitHub closing keyword.
@@ -152,20 +205,25 @@ def body_closes_issue(body, issue):
     counts as live work even when its branch name doesn't match. Matches
     `close/closes/closed`, `fix/fixes/fixed`, `resolve/resolves/resolved`
     followed by `#<N>`, case-insensitive and word-bounded so `#25` does not
-    match `#255`. A missing/empty body simply never fires (backward compatible
-    with any caller that hasn't started fetching `body`).
+    match `#255`. Occurrences inside markdown code (fenced blocks, inline
+    spans) are not links to GitHub and so are not matched here either — see
+    `_strip_code`. A missing/empty body simply never fires (backward
+    compatible with any caller that hasn't started fetching `body`).
     """
     if not body:
         return False
     pat = _CLOSES_KEYWORD + re.escape(_norm_issue(issue)) + r"\b"
-    return re.search(pat, body, re.IGNORECASE) is not None
+    return re.search(pat, _strip_code(body), re.IGNORECASE) is not None
 
 
 def body_closed_issue_numbers(body):
-    """All issue numbers a closing keyword references in `body`, as ints."""
+    """All issue numbers a closing keyword references in `body`, as ints.
+
+    Code-stripped on the same terms as `body_closes_issue` — see `_strip_code`.
+    """
     if not body:
         return []
-    return [int(m) for m in _CLOSES_ANY_RE.findall(body)]
+    return [int(m) for m in _CLOSES_ANY_RE.findall(_strip_code(body))]
 
 
 # A PR carrying any of these is *parked*: a worker hit a design wall and
