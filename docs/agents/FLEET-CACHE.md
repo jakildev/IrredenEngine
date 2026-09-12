@@ -149,36 +149,56 @@ image), and the tmux pane survive; daemon-lifetime counters (run window,
 dispatch counts, cap-defer state) reset, because they describe the old
 image.
 
-Three gates stand between a moved surface and the `exec`: a two-tick
-debounce (a torn read taken mid-`git checkout` never re-execs a
-half-written file), a syntax gate under the *running* interpreter, so a
-broken file cannot replace a working image with one that dies at parse
-(`bash -n` for the dispatcher; for the scout, the on-disk image's own
-`--print-surface` run in a fresh interpreter — an image that cannot import
-cannot report, and its answer is also the revision the reload is compared
-against, which is what lets a merged change that drops an imported module
-reload instead of wedging the old image on a path it can no longer read),
-and an oscillation cap.
+The hash is the trigger, not the decision. Three gates stand between a
+moved surface and the `exec`: a two-tick debounce (a torn read taken
+mid-`git checkout` never re-execs a half-written file), a probe of the
+**on-disk** image, and an oscillation cap. The probe runs that image's own
+`--print-surface` in a fresh interpreter and gates on the files *it*
+lists — the scout by importing its closure, the dispatcher by sourcing its
+files and running `"$BASH" -n` over each (every listed file must exist,
+`$FLEET_CONF` excepted). Membership belongs to the image doing the loading:
+a merged change that adds a `source` line or an import adds a file the
+running image never listed, and one that drops a module leaves a path the
+running image can no longer read, so a gate over the running image's own
+surface would exec into an image that dies on the first and wedge on the
+second. The probe's aggregate is also the revision the reload compares
+against.
 `FLEET_RELOAD_MAX` (default 3) is the number of attempts **permitted**
 per `FLEET_RELOAD_WINDOW_SECONDS` (default 900) — 3 allows three reloads
 and refuses the fourth, 1 allows one, `0` disables self-reload entirely —
 and a refused attempt still counts toward the window, so a surface that
 keeps moving holds the cap shut until the window drains. A cap refusal is
 reported once per distinct surface hash and re-arms when the surface
-moves again; a *syntax* refusal is reported once per distinct reason but
+moves again; a *probe* refusal is reported once per distinct reason but
 re-probed every `FLEET_RELOAD_REPROBE_TICKS` ticks (default 10), because
-the file to repair is often one the running daemon cannot see — a module
+the file to repair is often one the running daemon cannot see — a file
 the new image adds is outside the running image's surface, so fixing it
 moves nothing that daemon hashes.
 
 Only the load-time surface reloads. Sibling executables (`fleet-claim`,
 `fleet-labels`, `fleet-rebase`) and `fleet_task_class.py` are spawned
 fresh per call, so they already pick up merged fixes and are deliberately
-in neither surface. `exec` preserves the environment, so a change to the
-`$FLEET_CONF` **file** hot-reloads while an env-var-only override still
-needs a `fleet-up` restart. The scout does not fetch its own source — new
-code reaches its disk only via the dispatcher's `advance_main_clone` or a
-human pull, so a dispatcher-down fleet does not self-heal.
+in neither surface. The dispatcher's surface is the `DAEMON_SOURCE_SURFACE`
+array — one entry per `source` line, ratcheted by `test_daemon_reload.sh`
+— and every `fleet_*` import in the scout's closure is top level, ratcheted
+by `test_scout_reload_unit.py`, since a lazy import joins the closure only
+after boot. The scout does not fetch its own source — new code reaches its
+disk only via the dispatcher's `advance_main_clone` or a human pull, so a
+dispatcher-down fleet does not self-heal.
+
+A dispatcher reload re-reads `$FLEET_CONF` the way a restart does: the
+`exec` runs under the environment the daemon was **launched** with, not the
+one the old image accumulated, and a knob `fleet-up` exported from its own
+resolution yields to the conf unless `FLEET_ENV_OVERRIDES` — the list
+`fleet-up` hands only to the dispatcher's launch — names it as its caller's
+override. So an edited knob takes its new value, a deleted one
+returns to its default, and a genuine `FLEET_CONCURRENCY_*=… fleet-up`
+override survives; changing *that* override still needs a `fleet-up`
+restart. The fable-class probe runs only in `fleet-up`
+(`FLEET_MODEL_FABLE_PROBED`), so a reload re-reads a pin but never
+re-probes. Each boot logs its resolved caps and models on a `config:` line
+beside `started`; `fleet-dispatcher --print-config` prints the same line
+from disk.
 
 To check what a daemon is actually running, compare its revision against
 the on-disk source:

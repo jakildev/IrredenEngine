@@ -397,3 +397,26 @@ fleet_reload_gate() {
     printf '%s' "$kept" >"$state_file" 2>/dev/null || true
     (( count <= max ))
 }
+
+# fleet_env_override_names — space-separated names of the fleet knobs
+# (`FLEET_*`, plus the legacy `OPUS_MODEL` / `SONNET_MODEL`) exported in THIS
+# process's environment.
+#
+# fleet-up calls it before resolving anything and hands the answer to the
+# dispatcher's launch as FLEET_ENV_OVERRIDES. fleet-up exports every knob it
+# resolved — from the conf, its defaults, or its model probe — under the knob's
+# own name, so the dispatcher inherits a value it cannot tell apart from an
+# operator's `export`.
+# The list is that distinction: a knob it names is an override, and any other
+# inherited knob is a resolution the dispatcher redoes from the conf. Without
+# it a self-reload re-reads an edited conf and then lets the value that conf
+# held at launch shadow it.
+fleet_env_override_names() {
+    local name names=()
+    for name in $(compgen -e); do
+        case "$name" in
+            FLEET_*|OPUS_MODEL|SONNET_MODEL) names+=("$name") ;;
+        esac
+    done
+    printf '%s' "${names[*]-}"
+}
