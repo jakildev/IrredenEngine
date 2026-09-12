@@ -2212,6 +2212,81 @@ def enrich_inflight_pr_tasks(state):
             }
 
 
+def enrich_shadow_merged_pr_tasks(state):
+    # ADVISORY ONLY — nothing gates on this field, and nothing ever should.
+    #
+    # A PR that merges to master under a `Ref` reference instead of a closing
+    # keyword does not auto-close its issue, so the row stays fleet:queued and
+    # owner-free while part of its work is already on master. Unlike the open-PR
+    # case (enrich_inflight_pr_tasks above) no leg sees it: fetch_prs requests
+    # state=open, and the worker's merged leg requires a non-master base plus a
+    # closing keyword. Every pane that reaches that row pays the full discovery
+    # cost — claim, branch, read, find the work shipped. Tagging it lets the
+    # worker read the shadowing PR first and scope to the residual.
+    #
+    # The field is NOT read by fleet_task_class's _task_claimable /
+    # _terminally_unclaimable, and promoting it to a refusal would be a
+    # permanent regression rather than a stricter gate. A `Ref` reference is
+    # this repo's deliberate marker for PARTIAL work — the residual is real,
+    # queued work — and a merged master commit never clears the way an open PR
+    # does, so a refusal keyed on it is unclearable by anything the fleet can
+    # do. Advisory is the only safe direction while the input is permanent.
+    #
+    # The signal is the merged PR's HEAD BRANCH, via the shared
+    # branch_matches_issue, because that is what commit-and-push gates by
+    # construction (`fleet-claim branch-check`). A merge-commit `(#N)` grep is
+    # the intuitive alternative and a worse one: the commit-message template
+    # prescribes no issue reference at all, so the number in a squash subject is
+    # the PR's, not the issue's.
+    #
+    # Source is the already-cached recent_merged_prs[] (fetch_recent_merged_prs,
+    # limit=30/repo), so this costs no fetch, no ETag path and no
+    # PR_RECORD_SCHEMA bump. Coverage is therefore exactly that fresh-merge
+    # window — roughly a day on engine at today's throughput, which is the shape
+    # of the incident (a re-do minutes after the merge). Widening it is a
+    # state.json budget decision, not a free knob: a record measures ~205 B, so
+    # 30 -> 150 on both repos adds ~49 KB against ~30 KB of headroom to
+    # STATE_SIZE_WARN_BYTES.
+    #
+    # baseRefName is carried but NOT filtered on — a merged non-master-base PR
+    # whose head branch names the issue is equally worth reading first, and the
+    # reader needs to tell the two cases apart. Unlike its two siblings this
+    # enricher gates nothing, so it has no ordering constraint; it runs last
+    # only so its log line can skip rows enrich_inflight_pr_tasks already
+    # reported.
+    for repo_key, repo_state in state["repos"].items():
+        merged_prs = repo_state.get("recent_merged_prs", [])
+        for task in repo_state.get("tasks", {}).get("open", []):
+            issue_num = (task.get("issue") or "").lstrip("#")
+            if not issue_num:
+                continue
+            # Newest merge wins when several in the window name the issue: it is
+            # the most current statement of what has already shipped, and the
+            # list is sorted ascending by number (fetch_recent_merged_prs), so
+            # the last match is that one.
+            match = None
+            for pr in merged_prs:
+                if branch_matches_issue(
+                    pr.get("headRefName", ""), issue_num, repo_key
+                ):
+                    match = pr
+            if match is None:
+                continue
+            task["shadow_merged_pr"] = {
+                "number": match.get("number"),
+                "headRefName": match.get("headRefName", ""),
+                "baseRefName": match.get("baseRefName", ""),
+                "mergedAt": match.get("mergedAt", ""),
+                "title": match.get("title", ""),
+            }
+            if not task.get("inflight_pr"):
+                log(
+                    f"{repo_key} task {task.get('id')} is shadowed by merged PR "
+                    f"#{match.get('number')} ({match.get('headRefName', '')}, "
+                    f"merged {match.get('mergedAt', '')}) — advisory, still claimable"
+                )
+
+
 # Narrowed label sets stored in the per-role hash item. Storing the full
 # pr["labels"] list here re-flips the projection hash on every transient
 # label change (merger toggling fleet:merger-cooldown, reviewers swapping
@@ -3843,6 +3918,9 @@ def tick_once():
         # relative to the body-pop below.
         enrich_inflight_pr_tasks(state)
         enrich_stackable_blocker_prs(state)
+        # No ordering constraint of its own (it gates nothing); last so its log
+        # line can skip rows the inflight pass already reported.
+        enrich_shadow_merged_pr_tasks(state)
         # Drop PR bodies so they don't bloat state.json or the per-role slices
         # — mirrors resolve_human_approved_blockers popping issue bodies. Safe
         # because the Closes-#N stack-base signal was already derived into

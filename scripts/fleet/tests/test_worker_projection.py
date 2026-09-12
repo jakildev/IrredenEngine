@@ -190,6 +190,52 @@ class WorkerCoversEveryTaskClass(unittest.TestCase):
         self.assertEqual(opus, sonnet)
 
 
+class ShadowMergedPrDoesNotFlipHash(unittest.TestCase):
+    """`shadow_merged_pr` is an advisory annotation the scout stamps on a task
+    whose issue is named by a recently-merged PR's head branch. It rides
+    the slice so the worker reads it at step 3, but it must stay OUT of the
+    projection item — a merge lands in the 30-record window, ages out of it, and
+    would otherwise re-fire the worker lane twice for work nobody can act on,
+    the same churn enrich_inflight_pr_tasks' comment block guards against.
+    project_worker builds its item explicitly ({kind, repo, id, blocked_by}), so
+    this is a regression guard rather than a fix: it is expected to pass as
+    written."""
+
+    def _project(self, tasks):
+        return project_worker(_state([], tasks=tasks))
+
+    def _shadowed(self):
+        task = _task("#2298", model="opus")
+        task["shadow_merged_pr"] = {
+            "number": 2475,
+            "headRefName": "claude/2298-occlusion-cull-feeder-domain",
+            "baseRefName": "master",
+            "mergedAt": "2026-08-22T22:23:03Z",
+            "title": "engine/render: widen the occlusion cull feeder domain",
+        }
+        return task
+
+    def test_projection_item_is_byte_identical(self):
+        plain = self._project({"open": [_task("#2298", model="opus")]})
+        shadowed = self._project({"open": [self._shadowed()]})
+        self.assertEqual(json.dumps(plain, sort_keys=True),
+                         json.dumps(shadowed, sort_keys=True))
+
+    def test_shadow_merged_pr_does_not_flip_hash(self):
+        plain = stable_hash(self._project({"open": [_task("#2298", model="opus")]}))
+        shadowed = stable_hash(self._project({"open": [self._shadowed()]}))
+        self.assertEqual(plain, shadowed)
+
+    def test_shadowed_task_still_reaches_the_worker_slice(self):
+        # The complement: excluded from the hash input, but present in the
+        # payload the worker actually reads. A guard that dropped the field
+        # from both would pass the two arms above and deliver nothing.
+        sliced = slice_worker(_state([], tasks={"open": [self._shadowed()]}))
+        self.assertEqual(len(sliced["tasks_open"]), 1)
+        self.assertEqual(sliced["tasks_open"][0]["shadow_merged_pr"]["number"],
+                         2475)
+
+
 class WorkerSkipLabelsDropPR(unittest.TestCase):
     """human:wip / fleet:gated exclude a PR from the projection entirely."""
 
