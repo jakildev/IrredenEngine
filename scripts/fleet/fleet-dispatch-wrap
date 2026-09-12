@@ -327,18 +327,18 @@ if (( RESUMED )) && [[ "$FLEET_RUNTIME" == claude && -n "${FLEET_DISPATCH_TARGET
         FLEET_DISPATCH_NUMBER FLEET_DISPATCH_REASON FLEET_PLAN_ISSUE
 fi
 
-# --- Dispatch identity (#2973) -------------------------------------------
+# --- Dispatch identity ----------------------------------------------------
 #
 # A per-ITERATION id. fleet-claim needs one to tell a live `fleet:amending-*`
 # claim from one whose owning iteration died; the pane heartbeat cannot, because
 # `fleet-heartbeat <worktree-basename>` is step 0 of five role docs, so any
 # dispatch of any role into the pane refreshes it. Keying a per-iteration claim
 # on it left a dead one both un-reapable and un-claimable for as long as the
-# pane kept drawing dispatches (#2973).
+# pane kept drawing dispatches.
 #
 # Minted fresh per launch; a --resume INHERITS the sidecar's id, because a
 # resumed session is the same iteration continuing (a hard kill must not cost
-# it its claim). Deliberately NOT derived from SESSION_ID: #3098 sets that to
+# it its claim). Deliberately NOT derived from SESSION_ID, which is set to
 # the empty string for codex dispatches, so a session-derived id would be blank
 # for every one of them and route every codex-owned amend claim onto the
 # pane-heartbeat fallback — i.e. back to a pane-keyed signal.

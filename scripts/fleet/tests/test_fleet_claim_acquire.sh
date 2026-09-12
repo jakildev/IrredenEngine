@@ -263,9 +263,9 @@ _acquire_label_on "owner/repo" 1 "$AMINE2" "$AP" >/dev/null 2>&1 || rc=$?
 assert_exit "$rc" 1 "live same-host amending owner kept → exit 1 (yield, no theft)"
 
 # T12: same-host amending holder past TTL whose owning DISPATCH has been
-# superseded (#2973). Its pane heartbeat is fresh — every role's step 0 touches
+# superseded. Its pane heartbeat is fresh — every role's step 0 touches
 # that file under the same worktree basename, so a later reviewer/merger
-# dispatch into the pane renewed a dead claim forever. The ownership record
+# dispatch into the pane would renew a dead claim forever. The ownership record
 # names dispatch D1; the worktree is now on D2, which proves the owner ended.
 # Force-swept, claimant wins. T11 above is the control: identical geometry
 # minus the two records, still yields.

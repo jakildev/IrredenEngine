@@ -198,10 +198,10 @@ out=$(cd "$WT" && FLEET_DISPATCH_PRINT_LAUNCH=1 "$WRAP" pane-3 sonnet high worke
 _dc_first=$(cat "$DC" 2>/dev/null || true)
 assert_eq "$(sidecar_dispatch_id "$SIDECAR")" "$_dc_first" "fresh: sidecar stores the same id (what a resume inherits)"
 
-# The live #2973 geometry: a worker iteration dies mid-amend (its sidecar
+# The geometry this guards: a worker iteration dies mid-amend (its sidecar
 # survives the hard kill), then a REVIEWER dispatch lands in the same pane —
-# which is what renewed the pane heartbeat and kept the dead claim alive for 86
-# minutes on engine PR #2961. That dispatch is role-mismatched, so it launches
+# the shape that renews the pane heartbeat and would keep a dead claim alive.
+# That dispatch is role-mismatched, so it launches
 # fresh, and it MUST supersede: the worker's iteration is provably over.
 out=$(cd "$WT" && FLEET_DISPATCH_PRINT_LAUNCH=1 "$WRAP" pane-3 sonnet high sonnet-reviewer "" review-only 2>/dev/null)
 [[ "$out" == resumed=0* ]] && ok "cross-role dispatch into the pane launches fresh" || bad "cross-role dispatch resumed: $out"
@@ -224,7 +224,7 @@ printf 'D-DRY\n' > "$DC"
 (cd "$WT" && "$WRAP" pane-3 sonnet high worker "" dry-run >/dev/null 2>&1) || true
 assert_eq "$(cat "$DC" 2>/dev/null || true)" "D-DRY" "dry-run launches nothing and leaves the recorded dispatch untouched"
 
-# Runtime independence (#3098): SESSION_ID is deliberately "" for codex
+# Runtime independence: SESSION_ID is deliberately "" for codex
 # dispatches, so an id derived from it would be blank for every one of them —
 # routing every codex-owned amend claim back into the pane-keyed fallback.
 rm -f "$SIDECAR" "$DC"

@@ -218,7 +218,7 @@ declare -A FLEET_CLAIM_EXCLUDES=(
     [fleet:reviewing-]="fleet:amending- fleet:resolving-"
 )
 
-# The dispatch identity a PRE-CLAIM carries (#2973 follow-up). fleet-dispatcher
+# The dispatch identity a PRE-CLAIM carries. fleet-dispatcher
 # takes a target's claim BEFORE fleet-dispatch-wrap mints the iteration's real
 # FLEET_DISPATCH_ID, so the ownership record fleet-claim writes on the
 # `feedback` (amending) arm would otherwise be stamped with an EMPTY id — the

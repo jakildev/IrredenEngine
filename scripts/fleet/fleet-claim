@@ -435,7 +435,8 @@ except Exception:
 #
 #   Deliberately outside $CLAIMS_DIR: fleet-down's clear-all wipes that tree,
 #   and erasing the ownership evidence would turn every surviving amending
-#   label into an unvouchable claim (#1650's deferral reads the same file).
+#   label into an unvouchable claim (the swept-but-alive deferral reads the
+#   same file).
 _amend_snapshot_path() {
     printf '%s\n' "$HOME/.fleet/amend-snapshots/${1}.json"
 }
@@ -473,20 +474,20 @@ _amending_pane_heartbeat_fresh() {
 #   Exit codes are DATA here, not errors: under `set -e` call this as
 #   `rc=0; _amending_owner_live … || rc=$?` and branch on $rc.
 #
-#   Host qualification (#2099) comes first. Heartbeats and dispatch records
-#   are HOST-LOCAL: only the owning host writes its own
-#   ~/.fleet/heartbeats/<agent>. Keying freshness by bare basename let a
-#   same-basename local worker (mac-worker-1) spoof liveness for a dead
-#   cross-host claim (windows-worker-1) forever — the #2099 deadlock. So a
-#   cross-host label, a non-amending label (reviewing/resolving/claim carry no
-#   heartbeat semantics), and an unparsable one all return 1.
+#   Host qualification comes first. Heartbeats and dispatch records are
+#   HOST-LOCAL: only the owning host writes its own
+#   ~/.fleet/heartbeats/<agent>, so keying freshness by bare basename would let
+#   a same-basename local worker (mac-worker-1) vouch for a dead cross-host
+#   claim (windows-worker-1) forever. So a cross-host label, a non-amending
+#   label (reviewing/resolving/claim carry no heartbeat semantics), and an
+#   unparsable one all return 1.
 #
-#   Ownership is keyed on the DISPATCH, not the pane (#2973). The pane
-#   heartbeat cannot distinguish the two: `fleet-heartbeat <worktree-basename>`
+#   Ownership is keyed on the DISPATCH, not the pane. The pane heartbeat
+#   cannot distinguish the two: `fleet-heartbeat <worktree-basename>`
 #   is step 0 of five role docs, so a reviewer or merger dispatch landing in the
-#   same pane renewed a dead amend claim's liveness — un-reapable (the probe
-#   said "live") and un-claimable (every other pane skips an `fleet:amending-*`
-#   PR), with the reviewer held off too. Live on engine PR #2961 for 86 min.
+#   same pane renews a dead amend claim's liveness — leaving it un-reapable (the
+#   probe says "live") and un-claimable (every other pane skips an
+#   `fleet:amending-*` PR), with the reviewer held off too.
 #   So: the amend-snapshot carries the claiming dispatch's FLEET_DISPATCH_ID,
 #   fleet-dispatch-wrap records the worktree's current dispatch id at every
 #   launch, and a MISMATCH is proof the owner has ended — the dispatcher never
@@ -555,7 +556,7 @@ print("%s\t%s\t%s" % (
             IFS=$'\t' read -r snap_agent snap_dispatch snap_epoch <<< "$snap_info" || true
         fi
         # A dispatcher PRE-CLAIM, whose iteration has not launched yet and so
-        # has no minted id to record (#2973 follow-up). Vouch LIVE: the
+        # has no minted id to record. Vouch LIVE: the
         # dispatcher took this claim moments ago and is launching into the
         # pane, which is exactly the window in which the pane heartbeat is
         # still the PREVIOUS iteration's and may be stale — deferring to it
@@ -2114,7 +2115,7 @@ _cmd_pr_label_claim() {
     # iteration. Amending refreshes its worker heartbeat through the shared
     # helper and carries its own per-claim ownership record instead of a marker
     # (~/.fleet/amend-snapshots/<pr>.json, written in cmd_amending_claim
-    # and keyed by dispatch id — #2973). Planning is here
+    # and keyed by dispatch id). Planning is here
     # because it is sole-holder over a fleet:needs-plan issue: without a marker an
     # orphaned label strands that issue for every planner on every host, and the
     # leak is indistinguishable from a live claim (#2711). stewarding stays out of
@@ -2281,11 +2282,11 @@ cmd_amending_claim() {
     _cmd_pr_label_claim   "fleet:amending-" "amending-claim"   "$@" || _rc=$?
     (( _rc == 0 )) || return "$_rc"
 
-    # Ownership record for the sweep's liveness predicate (#2973), written HERE
+    # Ownership record for the sweep's liveness predicate, written HERE
     # rather than in fleet-pr-claim-feedback: fleet-claim is the enforced mutex,
     # so stamping it on the won-claim path covers every caller structurally, and
     # one owner per artifact means nothing can overwrite the id-bearing file
-    # with an id-less one. R7 reads this file's mtime for #1650's
+    # with an id-less one. R7 reads this file's mtime for the
     # swept-but-alive deferral; `agent` is what the sweep matches against the
     # label, `dispatch_id` is what it compares to the worktree's current
     # dispatch. An empty dispatch_id (architect pane, no fleet-dispatch-wrap)
@@ -2305,7 +2306,7 @@ cmd_amending_claim() {
 }
 cmd_amending_release() {
     # Drop the ownership record written by cmd_amending_claim, so R7's
-    # grace-period guard resets on clean release (#1650).
+    # grace-period guard resets on clean release.
     rm -f "$(_amend_snapshot_path "${1:-0}")" 2>/dev/null || true
     _cmd_pr_label_release "fleet:amending-" "amending-release" "$@"
 }
@@ -2714,7 +2715,7 @@ for pr in prs:
 
             local age=$(( now - added_epoch ))
 
-            # Dispatch-scoped amend liveness (#2973), resolved once per label:
+            # Dispatch-scoped amend liveness, resolved once per label:
             # 0 = live owner, 1 = cannot vouch (fall through to TTL), 2 = the
             # owning iteration is provably gone. Non-amending labels take no
             # verdict at all (1), so neither branch below fires for them.
@@ -2737,7 +2738,7 @@ for pr in prs:
             # grace only spares the microsecond race between label-add and the
             # marker write, and pre-fix claims during the one-time transition.
             # amending is vouched for by its own dispatch-ownership record
-            # (#2973) rather than a _prlabel-* marker, but a CONFIRMED-dead
+            # rather than a _prlabel-* marker, but a CONFIRMED-dead
             # verdict lands in the same orphan lane: the short grace instead
             # of the 30-min TTL. Cross-host labels can't be vouched for locally
             # and stay on the full TTL either way.
@@ -2770,8 +2771,8 @@ for pr in prs:
 
             # For amending claims: skip the sweep while the owner is LIVE —
             # TTL-sweeping an active amend causes duplicate dispatch by
-            # triggering the R7 heal (#1650). Liveness is host-qualified
-            # (#2099): heartbeats and dispatch records are host-local, so only a
+            # triggering the R7 heal. Liveness is host-qualified:
+            # heartbeats and dispatch records are host-local, so only a
             # SAME-HOST amending label can be vouched for here; a cross-host
             # stale label ages out on pure TTL — never honor a same-basename
             # local worker's heartbeat for it.
@@ -2792,7 +2793,7 @@ for pr in prs:
                     --remove-label "$label_name" >/dev/null 2>&1; then
                 echo "cleanup --gh: removed stale '$label_name' on $repo PR#$pr_num ($_sweep_note)"
                 total_removed=$((total_removed + 1))
-                # A confirmed-dead owner means #1650's swept-but-alive deferral
+                # A confirmed-dead owner means the swept-but-alive deferral
                 # has nothing to protect: drop the record so R7 can re-arm
                 # fleet:design-unblocked on the next tick instead of waiting out
                 # 2xTTL. On the legacy TTL path the snapshot STAYS — liveness is

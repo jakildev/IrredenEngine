@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Tests for the amend OWNERSHIP RECORD that fleet-claim writes on a won
-# `amending-claim` and removes on `amending-release` (#2973).
+# `amending-claim` and removes on `amending-release`.
 #
 # ~/.fleet/amend-snapshots/<pr>.json is what lets the cleanup sweep tell a live
-# amend from one whose owning ITERATION died. Before #2973 the only signal was
-# the pane heartbeat (~/.fleet/heartbeats/<worktree>), which step 0 of five role
+# amend from one whose owning ITERATION died. The pane heartbeat alone cannot:
+# that file (~/.fleet/heartbeats/<worktree>), which step 0 of five role
 # docs refreshes under the same basename — so any later dispatch of any role
 # into the pane renewed a dead claim indefinitely. The record therefore carries
 # the claiming dispatch's FLEET_DISPATCH_ID, and the sweep compares it against
