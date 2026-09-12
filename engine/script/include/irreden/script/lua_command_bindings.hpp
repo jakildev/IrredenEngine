@@ -74,7 +74,6 @@ inline void bindCommandNameEnum(LuaScript &script) {
     IR_BIND_CMD(SPAWN_PARTICLE_MOUSE_POSITION);
     IR_BIND_CMD(SET_TRIXEL_COLOR);
     IR_BIND_CMD(TOGGLE_PERIODIC_IDLE_PAUSE);
-    IR_BIND_CMD(TOGGLE_GUI);
     IR_BIND_CMD(GUI_ZOOM_IN);
     IR_BIND_CMD(GUI_ZOOM_OUT);
     IR_BIND_CMD(TOGGLE_CULLING_FREEZE);
@@ -487,9 +486,9 @@ inline void bindCommandFunctions(LuaScript &script) {
         );
     };
 
-    // The help overlay's rows, for Lua. Named PRESSED bindings only — the
-    // same filter `buildCommandListText()` renders — so this is the narrower
-    // view; `isButtonBound` above is the one that sees every binding.
+    // The help overlay's rows, for Lua. Named PRESSED bindings only, so this
+    // is the narrower view; `isButtonBound` above is the one that sees every
+    // binding.
     //
     // The mask field is spelled `requiredModifiers`, matching
     // `CommandRegistration`'s own member: it carries the *required* mask only,

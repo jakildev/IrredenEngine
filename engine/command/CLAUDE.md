@@ -312,10 +312,6 @@ for prefab command bodies. PR 2 does not delete any existing command.
   registered without a `name`, are invisible to the registry. An ad-hoc
   lambda binding that should be discoverable passes the trailing
   `name` / `description` args (`random_voxels/main.cpp` is the reference).
-- **`buildCommandListText()` is legacy.** It predates the overlay and
-  formats the same registry without descriptions. Kept working as #2551's
-  declared fallback and per the engine API removal rule; new code reads
-  `getCommandRegistrations()` directly.
 - **A manifest row needs its `bindPrefabCommand` case first.** Adding a
   command to `kCameraSuite` / `kCaptureSuite` (or any `DefaultBinding`
   table) without the matching case in `bindPrefabCommand` makes
