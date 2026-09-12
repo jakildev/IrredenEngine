@@ -261,10 +261,10 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   exclusion existed on the reviewer side only, so a worker could amend a PR
   mid-review; #3107: the reverse claim-time gate was absent, so a later review
   claim evicted the incumbent amend lane). Check this whenever a lane is added
-  or its label set widened. A pre-acquire GET is a TOCTOU on its own: a
-  cross-lane exclusion is a mutex only when arbitration runs on the POST
-  response over the lane union and the exclusion table is symmetric. Pin both
-  properties with tests.
+  or its label set widened. A pre-acquire GET is a TOCTOU on its own, and the
+  label POST response is not ownership evidence. New candidates require two
+  independent, complete GETs over the symmetric excluded-prefix union, with a nonzero settle interval in production. Pin
+  the union and both reads with tests; the bounded consistency limit lives in `docs/agents/FLEET.md`.
   The exclusion is **directional** — closing one side leaves the hazard
   live, and both lanes are woken by the same labels by design, so a
   one-sided guard reads as complete while the race is untouched. It is also
@@ -274,7 +274,7 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   criteria named one lane (#3001). When a guard lands, enumerate every
   claim-taking lane that force-pushes — today `cmd_amending_claim` and
   `cmd_resolving_claim`, both routed through the shared exclusion table and
-  POST-response arbitration — not just the one the incident came from. The
+  independent confirmation — not just the one the incident came from. The
   **merger** force-pushes too
   (`fleet-rebase`) and is outside this rule by design: it takes no
   `fleet-claim` lock at all, using `--force-with-lease` as its concurrency

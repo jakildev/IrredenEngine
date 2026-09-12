@@ -249,14 +249,11 @@ _ns_token() {
 
 # --- cross-machine GitHub-label lock --------------------------------------
 #
-# Cross-host atomicity for task claims is provided by a
-# `fleet:claim-<host>-<agent>` label on the linked issue. POST .../labels
-# is atomic; the response includes the resulting label set, which we
-# filter to the `fleet:claim-*` prefix. We win only as the SOLE holder of
-# the prefix; if others are present and ours is the lex-min we drop and
-# retry to re-acquire alone, otherwise we yield to the existing holder,
-# remove our label, and the caller exits 1. See _acquire_label_on for the
-# full algorithm and #1384 for the co-win hole this closes.
+# Cross-host coordination for task claims is provided by a
+# `fleet:claim-<host>-<agent>` label on the linked issue. A candidate is
+# admitted only after two independent, complete label reads observe it as
+# the sole contender. See _acquire_label_on for the bounded consistency
+# contract.
 #
 # The same _acquire_label_on primitive backs:
 #   - fleet:reviewing-<host>-<agent>  (reviewer + cross-host smoke claim)
@@ -493,21 +490,12 @@ _sweep_stale_prefix_holders() {
         *) return 1 ;;
     esac
     command -v gh >/dev/null 2>&1 || return 1
-    local labels_json
-    labels_json=$(gh api "repos/${repo}/issues/${target}/labels" 2>/dev/null) || return 1
-    local holders
-    holders=$(echo "$labels_json" | python3 -c '
-import json, sys
-try:
-    labels = json.load(sys.stdin)
-except Exception:
-    sys.exit(0)
-prefix = sys.argv[1]
-for name in sorted(
-        l["name"] for l in labels
-        if isinstance(l, dict) and l.get("name", "").startswith(prefix)):
-    print(name)
-' "$prefix" 2>/dev/null || echo "")
+    local all_labels holders="" candidate
+    all_labels=$(_fetch_live_labels "$repo" "$target" "$mine") || return 1
+    while IFS= read -r candidate; do
+        [[ "$candidate" == "${prefix}"* ]] || continue
+        holders+="${holders:+$'\n'}${candidate}"
+    done <<< "$all_labels"
     [[ -z "$holders" ]] && return 1
     local stale_secs="${FLEET_CLAIM_STALE_SECS:-1800}"
     local now
@@ -531,8 +519,8 @@ for name in sorted(
 
 # _claim_decision <mine> <matching-label>...
 #   PURE decision helper (no I/O) — the table-testable seam for the claim
-#   mutex. Given my just-POSTed label and the full set of <prefix>* labels
-#   present on the POST response (which includes mine), decide the outcome:
+#   mutex. Given my candidate label and one complete live contender snapshot
+#   that includes it, decide the outcome:
 #     win   — I am the SOLE holder of the prefix → own the lock.
 #     retry — other holders are present but I am the lex-min → drop my label
 #             and retry alone; in a simultaneous race the lex-larger
@@ -602,22 +590,88 @@ _acquire_jitter_sleep() {
     sleep "$(printf '0.%03d' "$ms")"
 }
 
+# _fetch_live_labels <repo> <pr-or-issue> <candidate-label>
+#   Print the complete current label-name set, one per line. The labels API is
+#   paginated; --slurp makes every fetched page part of one document so a
+#   failed or malformed later page cannot look like a complete prefix.
+_fetch_live_labels() {
+    local repo="$1" target="$2" candidate="$3" labels_json normalized
+    if ! labels_json=$(FLEET_CLAIM_CANDIDATE="$candidate" \
+            gh api "repos/${repo}/issues/${target}/labels?per_page=100" \
+            --paginate --slurp 2>/dev/null); then
+        echo "fleet-claim: fresh label GET failed on $repo#$target" >&2
+        return 1
+    fi
+    normalized="${labels_json//$'\r'/}"
+    if ! printf '%s' "$normalized" | python3 -c '
+import json, sys
+
+try:
+    pages = json.load(sys.stdin)
+    if not isinstance(pages, list) or any(not isinstance(page, list) for page in pages):
+        raise ValueError("expected a list of pages")
+    names = []
+    for page in pages:
+        for label in page:
+            if not isinstance(label, dict) or not isinstance(label.get("name"), str) or not label["name"]:
+                raise ValueError("invalid label object")
+            names.append(label["name"])
+except Exception:
+    sys.exit(1)
+
+for name in sorted(set(names)):
+    print(name)
+'; then
+        echo "fleet-claim: fresh label GET returned invalid JSON on $repo#$target" >&2
+        return 1
+    fi
+}
+
+# _read_claim_decision <repo> <target> <label> <prefix>
+#   Read live labels independently of the add response and apply the shared
+#   same-prefix/cross-lane contender policy. The candidate must itself be
+#   visible; otherwise the snapshot cannot admit it.
+_read_claim_decision() {
+    local repo="$1" target="$2" label="$3" prefix="$4" all_labels
+    all_labels=$(_fetch_live_labels "$repo" "$target" "$label") || return 2
+
+    local -a all_labels_arr=()
+    if [[ -n "$all_labels" ]]; then
+        mapfile -t all_labels_arr <<< "$all_labels"
+    fi
+    local present=0 candidate
+    for candidate in "${all_labels_arr[@]}"; do
+        [[ "$candidate" == "$label" ]] && present=1
+    done
+    if [[ "$present" -ne 1 ]]; then
+        echo "fleet-claim: fresh label GET did not contain '$label' on $repo#$target" >&2
+        return 3
+    fi
+
+    local matching
+    matching=$(_claim_contenders "$label" "$prefix" "${all_labels_arr[@]}")
+    local -a matching_arr=()
+    if [[ -n "$matching" ]]; then
+        mapfile -t matching_arr <<< "$matching"
+    fi
+    _claim_decision "$label" "${matching_arr[@]}"
+}
+
 # _acquire_label_on <repo> <pr-or-issue> <label> <label-prefix>
-#   Atomic-add + sole-holder-wins claim primitive. PRs and issues share
+#   Candidate-add + sole-holder-wins claim primitive. PRs and issues share
 #   GitHub's /issues/N/labels endpoint, so this works for both.
 #
-#   Contract: at most one different-agent holder across <label-prefix>* and
-#   every prefix it excludes. Returns 0 if we own the lock after our POST, 1
-#   otherwise (we lost / yielded and self-removed our label). On API error,
-#   returns 1. Untabled prefixes retain their same-prefix-only mutex.
+#   Contract: at most one different-agent admitted owner across <label-prefix>*
+#   and every prefix it excludes, assuming completed competing additions become
+#   visible to the confirmation reads. Returns 0 only after two complete GETs
+#   observe our exact label as the sole contender. A finite settle interval is
+#   not a linearizable distributed mutex under indefinitely stale reads.
 #
-#   Algorithm (Option A from #1384): POST our label, re-read the <prefix>*
-#   set, and route through _claim_decision. `win` → hold; `retry` → drop
-#   and re-POST (bounded by FLEET_CLAIM_ACQUIRE_RETRIES, default 3, with a
-#   jittered backoff) so a simultaneous race converges to one winner;
-#   `lose` → yield to the existing holder. This closes the co-win hole
-#   where a later, lex-smaller claimant beat an existing holder that had
-#   passed its own snapshot check and never re-validated.
+#   POST response contents never authorize work. Each attempt reads the live
+#   paginated set; a provisional win waits once and confirms with a second live
+#   read. Contention routes through _claim_decision. Before retrying or failing,
+#   the transient candidate must be removed; failed cleanup records an orphan
+#   and ends the attempt rather than issuing another POST.
 _acquire_label_on() {
     local repo="$1" target="$2" label="$3" prefix="$4"
     local retries="${FLEET_CLAIM_ACQUIRE_RETRIES:-3}"
@@ -625,43 +679,29 @@ _acquire_label_on() {
     local attempt
     while :; do
     for (( attempt = 1; attempt <= retries; attempt++ )); do
-        local labels_json
-        if ! labels_json=$(gh api "repos/${repo}/issues/${target}/labels" \
+        local post_output
+        if ! post_output=$(gh api "repos/${repo}/issues/${target}/labels" \
                 --method POST -f "labels[]=${label}" 2>&1); then
             echo "fleet-claim: gh api POST labels failed on $repo#$target:" >&2
-            echo "$labels_json" >&2
+            echo "$post_output" >&2
             return 1
         fi
 
-        # Extract every label from the POST response. The pure contender filter
-        # adds symmetric excluded lanes to the same-prefix mutex.
-        local all_labels
-        all_labels=$(echo "$labels_json" | python3 -c '
-import json, sys
-try:
-    labels = json.load(sys.stdin)
-except Exception:
-    sys.exit(0)
-for name in sorted(l["name"] for l in labels
-                   if isinstance(l, dict) and l.get("name")):
-    print(name)
-' 2>/dev/null || echo "")
-
-        local -a all_labels_arr
-        mapfile -t all_labels_arr <<< "$all_labels"
-        local matching
-        matching=$(_claim_contenders "$label" "$prefix" "${all_labels_arr[@]}")
-        if [[ -z "$matching" ]]; then
-            echo "fleet-claim: WARN gh api response missing claim contenders for ${prefix} on $repo#$target; aborting" >&2
+        local decision="" read_rc=0
+        decision=$(_read_claim_decision "$repo" "$target" "$label" "$prefix") || read_rc=$?
+        if [[ "$read_rc" -ne 0 ]]; then
             gh_release_label "$repo" "$target" "$label" || true
             return 1
         fi
-
-        local -a matching_arr
-        mapfile -t matching_arr <<< "$matching"
-
-        local decision
-        decision=$(_claim_decision "$label" "${matching_arr[@]}")
+        if [[ "$decision" == "win" ]]; then
+            _acquire_jitter_sleep
+            read_rc=0
+            decision=$(_read_claim_decision "$repo" "$target" "$label" "$prefix") || read_rc=$?
+            if [[ "$read_rc" -ne 0 ]]; then
+                gh_release_label "$repo" "$target" "$label" || true
+                return 1
+            fi
+        fi
         case "$decision" in
             win)
                 return 0
@@ -669,7 +709,9 @@ for name in sorted(l["name"] for l in labels
             retry)
                 # Drop and retry: in a simultaneous race the lex-larger
                 # contenders yield, so the next POST re-acquires alone.
-                gh_release_label "$repo" "$target" "$label" || true
+                if ! gh_release_label "$repo" "$target" "$label"; then
+                    return 1
+                fi
                 if (( attempt < retries )); then
                     _acquire_jitter_sleep
                 fi
@@ -1057,8 +1099,8 @@ _issue_info_field() {
 }
 
 # check_no_foreign_lane_claim <target> <own-prefix> <agent> [labels]
-#   Fast no-mutation check before the atomic POST. The POST-response union is
-#   still the correctness path because this GET can race another lane's POST.
+#   Fast no-mutation check before adding a candidate. Independent confirmation
+#   remains the ownership path because this check can race another lane's add.
 check_no_foreign_lane_claim() {
     local target="$1" prefix="$2" agent="${3:-unknown}" labels=""
     if [[ -n "${4+x}" ]]; then
@@ -5711,8 +5753,9 @@ Dependency gate:
 
 Cross-host lock (`fleet:claim-<host>-<agent>`):
   After acquiring the local FS lock, claim stamps the linked issue with
-  a `fleet:claim-<host>-<agent>` label. POST .../labels is atomic; the
-  response is filtered to `fleet:claim-*` and the lex-min wins. Losers
+  a `fleet:claim-<host>-<agent>` candidate label. The POST response is not
+  ownership evidence; two complete live reads must confirm the candidate as
+  sole holder. Visible contenders follow the lex-min retry policy. Losers
   self-remove their label and roll back the FS claim.
 
 Slug canonicalization:

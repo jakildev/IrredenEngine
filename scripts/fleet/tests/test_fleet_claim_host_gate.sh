@@ -201,7 +201,7 @@ case "$1 $2" in
             [[ -n "${GH_POST_LOG:-}" ]] && printf '%s\n' "$label" >> "$GH_POST_LOG"
             printf '[{"name":"%s"}]\n' "$label"
         else
-            echo '[]'
+            printf '[[{"name":"%s"}]]\n' "${FLEET_CLAIM_CANDIDATE:-}"
         fi
         exit 0
         ;;

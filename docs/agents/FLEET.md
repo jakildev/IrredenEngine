@@ -42,18 +42,18 @@ never merges anything.
 
 ### Claims
 
-`fleet-claim` takes a task in two steps: a per-host FS lock (`mkdir` under
-`~/.fleet/claims/<slug>/`) and the `fleet:claim-<host>-<agent>` sole-holder
-label ([`fleet-labels-reference.md § Claims`](fleet-labels-reference.md)).
-A failed `gh issue edit` rolls the claim back — no FS-only fallback. After
-the PR opens the scout derives ownership from its `headRefName`; abandoned
-claims are swept by `fleet-claim cleanup --gh`. Review, feedback, conflict
-and planning claims use the same primitive with their own prefixes; the
-prefixes are disjoint namespaces, so a lane that force-pushes (feedback,
-conflict resolution) excludes a live `fleet:reviewing-*` held by another
-agent explicitly — the scout suppresses the item, the claim-time gate is the
-fast path, and the POST response arbitrates the excluded-prefix union; the
-same agent passes through. Host keys are one
+`fleet-claim` takes a task with a per-host FS lock (`mkdir` under `~/.fleet/claims/<slug>/`) and the
+`fleet:claim-<host>-<agent>` sole-holder label ([label reference](fleet-labels-reference.md#claims-dynamic-script-owned)).
+A failed `gh issue edit` rolls the claim back — no FS-only fallback. After the PR opens the scout derives ownership from
+its `headRefName`; `fleet-claim cleanup --gh` sweeps abandoned claims. Review, feedback, conflict, and planning claims use
+the same primitive with disjoint prefix namespaces, so a lane that force-pushes (feedback,
+conflict resolution) excludes a live `fleet:reviewing-*` held by another agent
+explicitly — the scout suppresses the item and the claim-time gate is the fast path. A new candidate is admitted only
+after two independent, complete, paginated label GETs observe its exact label and no contender across the excluded-prefix
+union; the POST response is never ownership evidence. The lex-min retry policy still resolves visible contention, and the
+same agent passes through. This bounded settle policy assumes completed competing adds become visible to the confirmation
+reads; it is not a linearizable mutex under indefinitely stale or divergent reads. A recurrence in which both reads hide a
+completed competitor requires a new authoritative-arbitration design, not a longer sleep. Host keys are one
 canonical set — `derive_host()`, `uname -s` (`Linux` →
 `linux`, `Darwin` → `macos`, `MINGW*/MSYS*/CYGWIN*` → `windows`), the build
 presets, `fleet:authored-on-<host>`; `fleet-claim host` prints this

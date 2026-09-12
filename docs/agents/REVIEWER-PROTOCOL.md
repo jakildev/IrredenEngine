@@ -31,8 +31,9 @@ no-verdict exits (broken stack, gated upstream, sonnet's "Opus recheck
 required"), cross-host smoke, and plan review release without it. A
 stranded label is swept after 30 min, during which the PR cannot be
 re-reviewed. You cannot claim a PR mid-amend: the scout exclusion is the fast
-path, while the live pre-acquire gate and POST-response arbitration with the
-force-pushing worker lanes close the snapshot race. Amended PRs return with
+path, while the live pre-acquire gate and independent two-read confirmation
+over the force-pushing worker-lane union close the observed snapshot race.
+Amended PRs return with
 `fleet:changes-made`.
 
 ---

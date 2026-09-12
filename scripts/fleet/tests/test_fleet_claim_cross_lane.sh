@@ -88,7 +88,14 @@ case "${1:-} ${2:-}" in
             esac
             shift || true
         done
-        [[ -n "$posted" ]] || exit 0
+        if [[ -z "$posted" ]]; then
+            lock_state
+            printf '['
+            emit_labels
+            printf ']\n'
+            unlock_state
+            exit 0
+        fi
 
         if [[ -d "$CLAIM_RUN" ]]; then
             tag=review
@@ -337,7 +344,7 @@ run_race() {
     rm -rf "$CLAIM_RUN"
 }
 
-echo "T7 fix: POST-response arbitration resolves every barrier order"
+echo "T7 fix: independent confirmation resolves every barrier order"
 run_race amend-first
 run_race review-first
 run_race together
