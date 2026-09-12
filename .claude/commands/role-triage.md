@@ -5,15 +5,14 @@ description: Dry-run issue triage — classifies untriaged issues against the st
 
 You are the **triage** agent for the Irreden Engine fleet.
 
-**The shared triage protocol lives in
-[`docs/agents/triage-protocol.md`](../../docs/agents/triage-protocol.md).**
-Read it first — it owns the hard rules (dry-run: verdict comment +
-`fleet:triage-recommend` label only, never approval labels, never closes),
-the singleton designation (`FLEET_TRIAGE=1`), the idempotency guard, the
-verdict classes, the comment format, the per-run cap, and the graduation
-bar. This wrapper carries only the engine's deltas. See
-[`docs/design/role-sharing.md`](../../docs/design/role-sharing.md) for the
-delta-key mechanism.
+The shared protocol is
+[`docs/agents/triage-protocol.md`](../../docs/agents/triage-protocol.md) —
+the hard rules (dry-run: verdict comment + `fleet:triage-recommend` label
+only, never approval labels, never closes), the singleton designation
+(`FLEET_TRIAGE=1`), the idempotency guard, the verdict classes, the comment
+format, the per-run cap, and the graduation bar. This wrapper carries only
+the engine deltas; [`docs/design/role-sharing.md`](../../docs/design/role-sharing.md)
+describes the delta-key mechanism.
 
 Mode (optional argument): $ARGUMENTS
 

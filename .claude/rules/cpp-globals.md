@@ -5,11 +5,14 @@ Rule:
 > **Never** introduce a new mutable namespace-scope variable in a header
 > (`inline` or `extern`). Every process- or world-scoped mutable object lives
 > behind one of the sanctioned patterns below — each has an **owner**, a
-> **lifecycle**, and an **accessor**. A bare header global has none of the
-> three.
+> **lifecycle**, and an **accessor**.
 
 Allowed at namespace scope in headers: `constexpr` / `const` compile-time
-constants. Those are program constants, not state.
+constants. On a pointer declaration `const` must appear on **both** ends —
+`inline const T *const p` is a constant; `inline const T *p` (reseatable) and
+`inline T *const p` (frozen handle to mutable data) are state and banned. A
+`*` inside a template argument (`std::array<const char *, N>`) belongs to the
+type argument and does not make the object a pointer.
 
 ## Sanctioned patterns
 
@@ -19,166 +22,68 @@ constants. Those are program constants, not state.
 | Engine process context | `inline` variables in `engine/include/irreden/ir_engine.hpp` (`g_world`, `g_scriptsDir`, ...), set once in `IREngine::init()`, wrapped by accessors | `IREngine` entry points |
 | Process infrastructure (logger, profiler, CLI args, GL dispatch table, Metal runtime) | Meyers singleton (`static X x; return x;`) or intentionally-leaked `instance()` where shutdown-order robustness demands it (leak documented at the site) | lazy first-use → process lifetime |
 | World-scoped settings / game state (mutate-once config, per-world globals) | singleton component via `IREntity::singleton<T>()` | ECS-owned; preserved across `resetGameplay`, torn down with the world — see `engine/entity/CLAUDE.md` §"Singleton components" |
-| System wiring (find a registered system by name) | the `SystemManager` `SystemName -> SystemId` registry (`IRSystem::findSystem`, #2526) | dies with `World` |
+| System wiring (find a registered system by name) | the `SystemManager` `SystemName -> SystemId` registry (`IRSystem::findSystem`) | dies with `World` |
 | Per-thread identity | `thread_local` in a `.cpp` behind an accessor (`IRJob::workerId()`) | thread lifetime |
 | Module-internal state | anonymous-namespace variable in a `.cpp` | translation unit; never a header |
 
-Naming for the sanctioned forms: `g_` prefix at namespace/file scope, `t_`
-for `thread_local`. (This file is the canonical home for these two
-prefixes; the general naming table in `docs/agents/CLAUDE-BASELINE.md`
-covers members, components, and shaders.)
+Naming: `g_` prefix at namespace/file scope, `t_` for `thread_local`. This
+file is the canonical home for those two prefixes; the general naming table
+is `docs/agents/CLAUDE-BASELINE.md` §"Naming".
 
-## Why the ban
-
-- **No owner.** A header global is never cleared at `World` teardown, is
-  invisible to scene reset and save/load, and its mutation points are
-  unguarded and unfindable. Each one becomes its own mini-convention the
-  next reader has to reverse-engineer.
-- **Wire-once handles are delegated bookkeeping.** A header global plus a
-  "creation must call `setX(id)` once at init" contract makes every
-  consumer responsible for the subsystem's invariant — the exact failure
-  mode `.claude/rules/cpp-ecs.md` §"System-owned invariants: encapsulate,
-  don't delegate to callers" exists to prevent. The subsystem that owns
-  the state owns the wiring.
-- **The inline-variable trick is not an exemption.** "It's an `inline`
-  variable, not a function-local static" does not satisfy the system-state
-  rule (`.claude/rules/cpp-systems.md`) — it relocates the unowned state,
-  it doesn't give it an owner.
-
-The manager-global pattern itself is deliberate and stays: the globals are
-private implementation detail behind free-function module APIs, which is
-what keeps the storage mechanism swappable (a future multi-world would
-change `ir_<module>.cpp` internals, not call sites).
+The manager-global pattern is deliberate: the globals are private
+implementation detail behind free-function module APIs, so the storage
+mechanism can change inside `ir_<module>.cpp` without touching call sites. A
+header global plus a "creation must call `setX(id)` once at init" contract is
+the delegated bookkeeping `cpp-ecs.md` §"System-owned invariants" bans, and
+spelling it as an `inline` variable relocates the unowned state without
+giving it an owner.
 
 ## Detection
 
-Grep new diff hunks in headers for namespace-scope `inline` / `extern`
-declarations that are not `constexpr` / `const`:
-
-**This check is executed** — don't hand-grep it. It lives in
-`cmake/run_header_convention_checks.cmake` alongside the anonymous-namespace
-and `*Detail`-namespace checks, and runs via either target:
-
-```
-cmake --build <build-dir> --target header-checks   # pure CMake, no external tools
-cmake --build <build-dir> --target lint            # + clang-tidy
-```
-
-…and, on every PR, via the script-mode entry point the `header-checks` CI
-workflow drives — the one path of the three that actually gates a merge (the
-`lint` target's clang-tidy leg has **no** CI path at all: its only route was
-the umbrella `quality.yml`, which never once ran green and was retired in
-#2718; whether tidy can gate here is the open spike #3189):
+Executed, not hand-grepped: `cmake/run_header_convention_checks.cmake` runs
+this ban together with the anonymous-namespace and `*Detail`-namespace bans,
+tree-wide, over every first-party header — including the generated GL
+wrapper (`engine/render/include/irreden/render/gl_wrap/`) and the Metal
+backend, which the style tools skip. Every consumer that feeds the executor
+passes `irreden_collect_quality_files(... INCLUDE_RENDER_BACKENDS)`; the two
+style-tool lists — `format*` / clang-tidy, and the `format-check` CI shim
+`cmake/run_clang_format_changed_standalone.cmake` — are the legitimate narrow
+calls (clang-format is a style tool, not a correctness gate). Only vendored
+code (`engine/render/third_party/metal-cpp/`, `build/`, `_deps/`,
+`third_party/`) is excluded.
 
 ```
-cmake -DPROJECT_ROOT=<repo-root> -P cmake/run_header_checks_standalone.cmake
+cmake --build <build-dir> --target header-checks                              # pure CMake
+cmake --build <build-dir> --target lint                                       # + clang-tidy (no CI path)
+cmake -DPROJECT_ROOT=<repo-root> -P cmake/run_header_checks_standalone.cmake  # the CI gate
 ```
 
-It reports the offending file and declaration and fails the target. The
-matcher allows `constexpr` / `const` (including `inline static const`),
-`extern "C"` linkage blocks, and function declarations; allowlisted paths
-are the module entry points `engine/*/include/irreden/ir_*.hpp` and
-`engine/include/irreden/ir_engine.hpp`.
-
-**Scope.** The header checks run over a *wider* file list than the style
-tools: `irreden_collect_quality_files(... INCLUDE_RENDER_BACKENDS)`
-(`cmake/ir_quality_tools.cmake`). `format` / `format-check` /
-`format-changed` / clang-tidy skip the generated GL wrapper
-(`engine/render/include/irreden/render/gl_wrap/`) and the Metal backend
-(`engine/render/{include/irreden/render,src}/metal/`) for style reasons;
-those 9 headers are first-party, so the ban — a correctness gate — must
-still see them. Only genuinely vendored code
-(`engine/render/third_party/metal-cpp/`, and anything under `build/` /
-`_deps/` / `third_party/`) is rejected in both scopes. **Every consumer of
-the executor must pass `INCLUDE_RENDER_BACKENDS`** — new *and* pre-existing:
-a gate handed the formatter's subset reports green over coverage it cannot
-reach (#2815). The collector has four call sites; the two that feed the
-header-convention executor must agree, and the other two are deliberately
-narrow:
-
-| Call site | Backs | Scope |
-|---|---|---|
-| `cmake/ir_quality_tools.cmake` (`irreden_add_quality_targets`, the `irreden_header_check_files` list) | the `header-checks` / `lint` targets | **wide** |
-| `cmake/run_header_checks_standalone.cmake` | the `header-checks` CI workflow | **wide** |
-| `cmake/ir_quality_tools.cmake` (`irreden_add_quality_targets`, the `irreden_quality_files` list) | `format` / `format-check` / `format-changed` / clang-tidy | narrow, on purpose |
-| `cmake/run_clang_format_changed_standalone.cmake` | the `format-check` CI workflow (#3187) | narrow, on purpose |
-
-All four are greppable in one pass — `rg -n 'irreden_collect_quality_files'
-cmake/` returns the function definition and those four call sites (plus a few
-comment mentions; the call sites are the lines with an open paren). A hit that
-feeds the header checks without `INCLUDE_RENDER_BACKENDS` is the bug; the two
-style-tool lists are the legitimate bare calls. The second of those is where
-copying the header shim verbatim goes wrong: that shim's own comment presents
-`INCLUDE_RENDER_BACKENDS` as load-bearing, and it is — *for a correctness
-gate*. clang-format is a style tool, so its CI path takes the narrow list for
-the same reason the row above it does. Phrasing this as "a **new**
-consumer" is what let #2889 sit: the shim was a *pre-existing* consumer, so
-#2818 widened the targets and left the only CI-gating path on 564 headers
-against the targets' 573 — the ban enforced locally and unenforced on merge
-for the full render-backend set. Scope parity is part of the contract, not an
-optimization; the two paths agreeing on rules while disagreeing on the file
-set is the #2727 drift in a different dimension.
-
-Precision notes, all measured against the tree:
-
-- The `const` exemption is scoped to the **declaration head** (everything
-  before `=` / `;` / `{`), not the whole line. A whole-line scan reads a
-  trailing comment's "const" as a qualifier and passes real globals as clean.
-- On a pointer declaration, `const` must appear on **both** ends to qualify
-  as a constant. `inline const T *p` is a mutable, reseatable pointer and is
-  banned; `inline T *const p` is a frozen handle to still-mutable data and is
-  also banned. Only `inline const T *const p` is a program constant. A `*`
-  inside a template argument (`std::array<const char *, N>`) belongs to the
-  type argument, not the declarator, and does not make the object a pointer.
-- A candidate whose terminator (`;` / `=` / `{`) wraps onto a continuation
-  line — what the repo's own 100-col clang-format does to a long `inline`
-  declaration — is joined with the following lines (bounded lookahead) before
-  the reject chain runs. Scanning only the head line as the executor
-  originally did made the ban formatter-defeatable: `format`ting a violation
-  could turn a `FLAGGED` result into a clean pass with no other change (#2916).
-- Line and block comments are stripped before matching. Commented-out
-  declarations are dead code rather than header-global violations; stripping
-  both `/* ... */` shapes preserves live code before and after a comment while
-  preventing false positives (#3297).
-
-Keep the executor and this file in sync — a detection spec nothing runs
-drifts silently (see #2727).
-
-The first three notes are findings from the #2726 sweep, not hypotheticals: the
-pointer case hid that header's `g_activeShots` — a genuine violation — through
-an entire hand-grep pass, which is why the executor encodes the both-ends rule
-rather than leaving it to the reader.
-
-Run the check **tree-wide**, not only over a diff. Diff-scoping is what let
-the #2726 population accumulate unseen: all 16 of those declarations predated
-the rule, so no new-hunk check ever had cause to look at them. The
-`header-checks` target scans every header by construction — that is what makes
-it a standing check rather than a triage aid.
+Matcher contract: `constexpr` / `const` (including `inline static const`)
+are judged on the **declaration head** — everything before `=` / `;` / `{`,
+with a declaration whose terminator wraps onto a continuation line joined
+first — never on the whole line; line and block comments (both `/* ... */`
+shapes) are stripped before matching, so a commented-out declaration is dead
+code, not a violation; `extern "C"` blocks and function declarations pass;
+the module entry points `engine/*/include/irreden/ir_*.hpp` and
+`engine/include/irreden/ir_engine.hpp` are allowlisted. Keep the executor
+and this file in sync.
 
 ## Live deviations
 
 **None.**
 
-Add an entry here — **with its tracking issue** — whenever a sweep finds
-a violation that can't be migrated on the spot, and drop the entry when
-that issue closes. A register that names only already-fixed symbols is
-worse than an empty one: its "don't re-flag these" instruction then
-shields nothing while still reading as complete.
+Add an entry — with its tracking issue — when a sweep finds a violation that
+cannot be migrated on the spot; drop it when the issue closes. The list
+mirrors `header_global_baseline` in
+`cmake/run_header_convention_checks.cmake`; update both together. A
+baselined path is skipped by the scan entirely, and the baseline is a
+ratchet: a file may leave it, never join it. Don't migrate a deviation in an
+unrelated PR — the issue carries the plan.
 
-This list mirrors `header_global_baseline` in
-`cmake/run_header_convention_checks.cmake` — update both together. A
-baselined path is skipped by the scan **entirely**, so an entry left standing
-after its migration lands silently exempts that file from the check forever.
-The baseline is a ratchet: a file may leave it, never join it. Don't migrate a
-deviation in an unrelated PR — the issue carries the plan.
+The sibling anonymous-namespace ban (`cpp-ecs.md` §"Naming") has its own
+ratchet, `anonymous_namespace_baseline`, with one entry:
 
-The sibling **anonymous-namespace** ban (`.claude/rules/cpp-ecs.md`
-§"Naming", enforced by the same executor) carries its own ratchet,
-`anonymous_namespace_baseline`, with one entry:
-
-- `engine/render/include/irreden/render/gl_wrap/GLAPITrace.h` — generated
-  by `GetGLAPI.py`; its file-scope `namespace { GL4API apiHook; }` backs the
-  ~300 tracer bodies in the same header, which is included by exactly one TU
-  (`engine/render/src/gl_wrap/GLAPITrace.cpp`), so it is not a live ODR
-  hazard. Surfaced by #2815 when the checks stopped inheriting the
-  formatter's scope.
+- `engine/render/include/irreden/render/gl_wrap/GLAPITrace.h` — generated by
+  `GetGLAPI.py`; its file-scope `namespace { GL4API apiHook; }` is included
+  by exactly one TU (`engine/render/src/gl_wrap/GLAPITrace.cpp`), so it is
+  not a live ODR hazard.
