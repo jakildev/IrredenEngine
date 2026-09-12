@@ -144,6 +144,174 @@ def branch_matches_issue(head_ref, issue, repo):
 _CLOSES_KEYWORD = r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#"
 _CLOSES_ANY_RE = re.compile(_CLOSES_KEYWORD + r"(\d+)\b", re.IGNORECASE)
 
+# GitHub does not honor a closing keyword inside markdown code — the reference
+# renders as code and never reaches the timeline — so neither may we. Both
+# forms below strip code before matching, via the same helper, for the same
+# no-drift reason the keyword itself is shared.
+#
+# Getting this wrong errs toward INVENTING implementation links, not missing
+# them: a quoted or argued-against mention reads as live. Both readers treat
+# such a link as "someone is already doing this issue" — the scout's
+# `inflight_pr` takes the task off the queue, and fleet-claim's
+# duplicate-open-PR guard refuses a claim on it — so a false link strands
+# claimable work for as long as the quoting PR stays open.
+#
+# The oracle for any change here is GitHub's own `closingIssuesReferences`,
+# the field it actually auto-closes from: re-measure this grammar against it
+# over the live open-PR set rather than reasoning about markdown. Reading that
+# field directly instead of parsing prose is the standing follow-up.
+#
+# Both grammars are `fleet-plan-lint`'s (`FENCE_RE` / `INLINE_RE`), which
+# solves the identical problem — "this text NAMES the token as data, it does not
+# mean it" — and has already been corrected once. Re-derived copies of a matcher
+# do not inherit its fixes: a hand-rolled exactly-3 fence misses a fence that
+# must open longer than the sample it quotes, and a span with no
+# paragraph bound lets one unbalanced backtick pair with a distant one and blank
+# a real `Closes #N` in between. Keep these two in step with that tool; the
+# three copies in the tree should collapse into one shared helper.
+#
+# A fence has TWO terminators and the second is not optional decoration: an
+# opening fence CommonMark never sees closed still opens a block, running "until
+# the end of the containing block (or document)". So a closing-fence-only
+# matcher reads an unclosed block's `Closes #N` as live prose and invents the
+# link — the costly direction above, and the one a truncated or mid-edit body
+# produces most often. The closing-fence arm is ordered first so a well-formed
+# block ends where it ends; `.*\Z` fires only when no closing fence exists.
+# `fleet-plan-lint`'s `FENCE_RE` lacks this arm, both closing-fence
+# restrictions below, the opener's indent bound, and the indented-block form
+# entirely — five axes of divergence, not the single one the consolidation was
+# opened for. They fail in opposite directions off
+# the same holes (here an invented closing link; there a quoted code sample
+# read as prose, a false lint hit), so that consolidation must carry the union
+# of both copies' fixes, never either copy wholesale.
+#
+# A CLOSING fence is not "a fence-ish line". CommonMark accepts only a run of
+# the OPENER's own character, at least as long as the opener, indented at most
+# three spaces, followed by nothing but spaces/tabs — hence `(?P=c)*` for the
+# surplus (same character only) and ` {0,3}` for the indent, a tab being four
+# columns and so never opening the arm. Every laxity here fails in one
+# direction: the block ends early and the code after the false closer reads as
+# prose, inventing a link.
+#
+# The OPENER obeys the same three-space rule, because the fourth column is
+# where markdown's two block forms meet rather than a place to be lenient. A
+# line indented four columns (a tab being four) opens an INDENTED code block,
+# so its backticks are literal text and CommonMark opens no fenced block at
+# all. Read as a fence, such a line strips to end-of-body and DROPS the live
+# `Closes #40` that follows the indented sample; read as prose, it INVENTS the
+# link for a `Closes #40` sitting inside the indented block. Neither is
+# acceptable, so the opener stops at three columns and the indented form is
+# stripped on its own terms, below.
+_CODE_FENCE_RE = re.compile(
+    r"(?ms)^ {0,3}(?P<f>(?P<c>[`~])(?P=c){2,})"
+    r"(?:.*?^ {0,3}(?P=f)(?P=c)*[ \t]*$|.*\Z)")
+_CODE_SPAN_RE = re.compile(r"(?s)(`+)((?:(?!\n[ \t]*\n).)+?)\1")
+
+# An indented code block is a run of lines indented four columns — but ONLY
+# where four columns of indentation means code. Inside a list it is ordinary
+# continuation text and its reference is live: a merged engine PR body closes
+# an issue from a six-space continuation line under a `- [x]` bullet, and
+# GitHub's own `closingIssuesReferences` lists that issue, so a rule of "four
+# columns is code" would drop a link the oracle says is real. CommonMark's own
+# constraint says the same thing more generally — an indented block cannot
+# interrupt a paragraph, and inside a container its indentation is measured
+# from the container's content column, which a line-wise matcher cannot see.
+#
+# So the run is stripped only where the containing block is unambiguous: it
+# starts the body or follows a blank line, and the paragraph it follows is
+# top-level prose — no indentation, no list marker. Anything else stays prose,
+# which keeps the measured shape above live. The cost of that conservatism is
+# bounded by the same corpus: of the last 400 merged PR bodies, none carries an
+# indented block with a closing keyword in it at all.
+_LIST_MARKER_RE = re.compile(r"^(?:[-*+]|\d+[.)])(?:[ \t]|$)")
+_INDENTED_CODE_COLUMNS = 4
+
+
+# Code is replaced with a sentinel, not removed and not blanked to whitespace.
+# Removing it splices the surrounding text; blanking it to whitespace is just as
+# bad, because the keyword grammar's separator is `\s+` — `Closes `x` #5` would
+# collapse to `Closes   #5` and match a reference GitHub does not link. The
+# sentinel is non-whitespace and non-`#`, so it can only ever BREAK the pattern
+# across a stripped region, never complete one.
+_CODE_PLACEHOLDER = "\x00"
+
+
+def _indent_columns(line):
+    """Width of `line`'s leading whitespace in columns, a tab being four."""
+    cols = 0
+    for ch in line:
+        if ch == " ":
+            cols += 1
+        elif ch == "\t":
+            cols += _INDENTED_CODE_COLUMNS - (cols % _INDENTED_CODE_COLUMNS)
+        else:
+            break
+    return cols
+
+
+def _opens_indented_code(prior):
+    """True when an indented run following the `prior` lines can only be code.
+
+    The paragraph it follows decides it — every line of it, not just the last.
+    Top-level prose (or nothing at all, at the top of the body) leaves an
+    indented run nothing to belong to; a list marker or an already-indented
+    line anywhere in that paragraph means the run may be a list item's
+    continuation text, which is live prose to GitHub. A lazy continuation is
+    why the whole paragraph counts: `- item` followed by an unindented second
+    line still puts what comes next inside the list item.
+    """
+    seen_text = False
+    for line in reversed(prior):
+        if not line.strip():
+            if seen_text:
+                break
+            continue
+        seen_text = True
+        if _indent_columns(line) or _LIST_MARKER_RE.match(line):
+            return False
+    return True
+
+
+def _strip_indented_code(body):
+    """`body` with unambiguous indented code blocks replaced by the sentinel."""
+    lines = body.split("\n")
+    out = list(lines)
+    i = 0
+    while i < len(lines):
+        if not (lines[i].strip()
+                and _indent_columns(lines[i]) >= _INDENTED_CODE_COLUMNS
+                and (i == 0 or not lines[i - 1].strip())
+                and _opens_indented_code(lines[:i])):
+            i += 1
+            continue
+        while i < len(lines) and (
+                not lines[i].strip()
+                or _indent_columns(lines[i]) >= _INDENTED_CODE_COLUMNS):
+            if lines[i].strip():
+                out[i] = _CODE_PLACEHOLDER
+            i += 1
+    return "\n".join(out)
+
+
+def _strip_code(body):
+    """`body` with code blocks and inline code spans replaced by a sentinel.
+
+    Fences first, so a fence's own backtick runs are consumed as a fence rather
+    than read as span delimiters. On well-formed markdown the two orders agree
+    (searched exhaustively over short backtick/keyword/fence permutations); they
+    diverge only on unbalanced input such as a stray backtick opening just
+    before a fence, where fences-first strips LESS. That is the direction to
+    fail in — under-stripping keeps a reference the fleet would otherwise drop,
+    and dropping a real `Closes #N` is the costlier error here.
+
+    Indented blocks come second for the same precedence reason CommonMark
+    gives them: no indented block starts inside a fenced one, and by this point
+    a fenced block is a single sentinel line that can no longer look indented.
+    """
+    return _CODE_SPAN_RE.sub(
+        _CODE_PLACEHOLDER,
+        _strip_indented_code(_CODE_FENCE_RE.sub(_CODE_PLACEHOLDER, body)))
+
 
 def body_closes_issue(body, issue):
     """True when `body` declares it closes `issue` via a GitHub closing keyword.
@@ -152,13 +320,15 @@ def body_closes_issue(body, issue):
     counts as live work even when its branch name doesn't match. Matches
     `close/closes/closed`, `fix/fixes/fixed`, `resolve/resolves/resolved`
     followed by `#<N>`, case-insensitive and word-bounded so `#25` does not
-    match `#255`. A missing/empty body simply never fires (backward compatible
-    with any caller that hasn't started fetching `body`).
+    match `#255`. Occurrences inside markdown code (fenced blocks, inline
+    spans) are not links to GitHub and so are not matched here either — see
+    `_strip_code`. A missing/empty body simply never fires (backward
+    compatible with any caller that hasn't started fetching `body`).
     """
     if not body:
         return False
     pat = _CLOSES_KEYWORD + re.escape(_norm_issue(issue)) + r"\b"
-    return re.search(pat, body, re.IGNORECASE) is not None
+    return re.search(pat, _strip_code(body), re.IGNORECASE) is not None
 
 
 def pr_matches_issue(pr, issue, repo):
@@ -170,10 +340,13 @@ def pr_matches_issue(pr, issue, repo):
 
 
 def body_closed_issue_numbers(body):
-    """All issue numbers a closing keyword references in `body`, as ints."""
+    """All issue numbers a closing keyword references in `body`, as ints.
+
+    Code-stripped on the same terms as `body_closes_issue` — see `_strip_code`.
+    """
     if not body:
         return []
-    return [int(m) for m in _CLOSES_ANY_RE.findall(body)]
+    return [int(m) for m in _CLOSES_ANY_RE.findall(_strip_code(body))]
 
 
 # A PR carrying any of these is *parked*: a worker hit a design wall and

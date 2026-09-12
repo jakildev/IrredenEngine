@@ -319,7 +319,13 @@ def _is_pull_request(issue):
 # fetch_prs fall through to a live fetch exactly as a missing key did, so the
 # new shape is in effect on tick 1. Cost is ~12 B per open PR against the
 # state.json size budget (docs/agents/FLEET-CACHE.md §"Size invariant").
-PR_RECORD_SCHEMA = 2
+#
+# 2 -> 3: closes_issues narrowed — the shared grammar stopped honoring a
+# closing keyword inside markdown code, so an older record can carry a ref
+# GitHub never did. A changed value with no key change is the case a
+# key-presence test cannot catch, so the marker is the only thing that retires
+# the wider list on tick 1 rather than whenever the ETag next flips.
+PR_RECORD_SCHEMA = 3
 
 
 def _fetch_prs_graphql(repo):
@@ -2149,29 +2155,52 @@ def enrich_stackable_blocker_prs(state):
 
 def enrich_inflight_pr_tasks(state):
     # A queued task whose OWN issue (#N) already has an open implementation PR
-    # (branch `claude/<N>-…`) is not something a fresh worker can claim off the
-    # queue: the PR is either active work or parked awaiting a design answer,
-    # and the resume path in both cases is the feedback / design-unblocked tier,
-    # not a fresh queue claim. The scout already routes actively-claimed tasks
-    # (fleet:in-progress) into tasks.in_progress, but a *parked* design-blocked
-    # PR releases its issue-side claim during the escalation flow — so its task
-    # drops back into tasks.open looking owner-free and claimable, while a fresh
-    # worker would (correctly) refuse it on sight. That projection/behaviour
-    # mismatch let the dispatch resolver keep electing such a task head-of-queue
-    # and churn no-op opus dispatches, starving fable work behind it (#1726 —
-    # the #1640 / PR #1700 incident). Tag the task with `inflight_pr` so
-    # fleet_task_class._task_claimable skips it; the projection item carried in
-    # the role trigger hash is unchanged (id + blocked_by), so this adds no
-    # spurious trigger churn — only the resolver's claimable filter sees it.
+    # (see the two-arm union below) is not something a fresh worker can claim
+    # off the queue: the PR is either active work or parked awaiting a design
+    # answer, and the resume path in both cases is the feedback /
+    # design-unblocked tier, not a fresh queue claim. The scout already routes
+    # actively-claimed tasks (fleet:in-progress) into tasks.in_progress, but a
+    # *parked* design-blocked PR releases its issue-side claim during the
+    # escalation flow — so its task drops back into tasks.open looking
+    # owner-free and claimable, while a fresh worker would (correctly) refuse
+    # it on sight. That projection/behaviour mismatch let the dispatch resolver
+    # keep electing such a task head-of-queue and churn no-op opus dispatches,
+    # starving fable work behind it (#1726 — the #1640 / PR #1700 incident).
+    # Tag the task with `inflight_pr` so fleet_task_class._task_claimable skips
+    # it; the projection item carried in the role trigger hash is unchanged
+    # (id + blocked_by), so this adds no spurious trigger churn — only the
+    # resolver's claimable filter sees it.
+    #
+    # "Its own PR" is a union of two independent links, not the branch alone. A
+    # PR declares which issue it implements twice — by the `claude/<N>-…`
+    # branch convention AND by a `Closes #N` in its body — and either one alone
+    # is the whole link: commit-and-push's PR-open guard accepts a body-only
+    # declaration, and a hand-named branch never acquires one. Reading only the
+    # branch reaches the same churn described above through the other door: the
+    # task projects owner-free while its PR is open. The sibling enricher
+    # enrich_stackable_blocker_prs unions both arms; the two disagreeing on what
+    # "this PR is for that issue" means is the drift to watch for. Its third arm
+    # — `pr["number"] == issue_num_int` — is deliberately NOT mirrored: that one
+    # resolves a `Blocked by: #<PR>` ref with no backing issue, which has no
+    # analog for a task's own issue number.
     for repo_key, repo_state in state["repos"].items():
         prs = repo_state.get("prs", [])
         for task in repo_state.get("tasks", {}).get("open", []):
             issue_num = (task.get("issue") or "").lstrip("#")
             if not issue_num:
                 continue
+            # closes_issues holds ints (derived at fetch time, so it survives
+            # the body-pop and the 304 reuse of body-stripped records);
+            # issue_num is a digit string — compare as int, or "255" in [255]
+            # silently misses. Same cast discipline as the sibling enricher.
+            issue_num_int = int(issue_num)
+            # First match wins: unlike the stackable-blocker enricher this
+            # field never has to pick a base, so it need not disambiguate —
+            # any matching PR proves the issue is in flight.
             match = next(
                 (pr for pr in prs
-                 if branch_matches_issue(pr.get("headRefName", ""), issue_num, repo_key)),
+                 if branch_matches_issue(pr.get("headRefName", ""), issue_num, repo_key)
+                 or issue_num_int in (pr.get("closes_issues") or [])),
                 None,
             )
             if match is None:
