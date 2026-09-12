@@ -15,13 +15,8 @@ text is the stable identifier (`docs/design/claude-md-sharing.md`).
 
 **Never** call `getComponent` or `getComponentOptional` on individual entities
 inside a system's per-entity tick function; at scale it dominates the frame.
-In order of preference:
 
-1. Include the component in the `createSystem<...>` template params so the
-   system iterates the dense column.
-2. Cache the data in an existing component at creation time.
-3. Use `beginTick` / `endTick` for once-per-frame lookups.
-4. Use `relationTick` for per-parent-group lookups.
+Fix ladder, foreign-entity batching, deferred ops: [`.claude/rules/cpp-ecs.md`](../../.claude/rules/cpp-ecs.md) §"The ECS footgun".
 
 Tick signatures: `engine/system/CLAUDE.md`. Machine-checkable smells:
 [`.claude/rules/cpp-ecs-smells.md`](../../.claude/rules/cpp-ecs-smells.md).
@@ -154,7 +149,7 @@ pattern example or an actionable gotcha, clutter when they list what exists.
 
 | Topic | Canonical home |
 |---|---|
-| ECS footgun · Naming · Style · Bash rules · Cross-repo isolation · Engine API removal · Encode contracts in code · Deprecation markers · Hard rules for fleet roles · What belongs in agent-facing docs · Citing source in filed artifacts | this doc (`docs/agents/CLAUDE-BASELINE.md`) |
+| Naming · Style · Bash rules · Cross-repo isolation · Engine API removal · Encode contracts in code · Deprecation markers · Hard rules for fleet roles · What belongs in agent-facing docs · Citing source in filed artifacts | this doc (`docs/agents/CLAUDE-BASELINE.md`) |
 | What proves a change (validators, harnesses, ratchets, CI) | `docs/agents/VALIDATION.md` |
 | Build commands · presets · `fleet-build` · `fleet-run` | `docs/agents/BUILD.md` |
 | Fleet workflow · cursor cues · model split · cross-platform parity · stacking · fix-forward · resource coordination | `docs/agents/FLEET.md` |
@@ -167,7 +162,12 @@ pattern example or an actionable gotcha, clutter when they list what exists.
 | Reviewer protocols (stack gating · label-swap · claim · nits) | `docs/agents/REVIEWER-PROTOCOL.md` |
 | Architect · epic-steward · triage protocols | `docs/agents/<role>-protocol.md` |
 | Shared fleet state cache | `docs/agents/FLEET-CACHE.md` |
-| ECS smells · math substitution · system state · header globals (machine-checkable) | `.claude/rules/cpp-*.md` |
+| ECS footgun (getComponent in ticks) · foreign-entity lookups · deferred entity ops · no dirty flags · system-owned invariants · allocations / manager calls in ticks · ECS naming (rule text) | `.claude/rules/cpp-ecs.md` |
+| Lua-facing enums and constants (integer tables, never string-name lookups) · audit hooks | `.claude/rules/cpp-lua-enums.md` |
+| ECS smell diagnostics (machine-checkable) | `.claude/rules/cpp-ecs-smells.md` |
+| Math substitution rules (machine-checkable) | `.claude/rules/cpp-math.md` |
+| System-state smells (machine-checkable) | `.claude/rules/cpp-systems.md` |
+| Global-state patterns · header-global ban (machine-checkable) | `.claude/rules/cpp-globals.md` |
 | Comment policy — explain, never narrate; no issue/PR numbers (ratcheted) | `.claude/rules/comments.md` |
 | Running a rules detector tree-wide · the `creations/` sweep trap | `.claude/rules/README.md` |
 | Tick-function signatures · INPUT → UPDATE → RENDER ordering | `engine/system/CLAUDE.md` |

@@ -1,3 +1,18 @@
+---
+paths:
+  - "engine/**/*.{hpp,h,inl,cpp,cc,cxx,c}"
+  - "creations/**/*.{hpp,h,inl,cpp,cc,cxx,c}"
+  - "test/**/*.{hpp,h,inl,cpp,cc,cxx,c}"
+  - "tools/**/*.{hpp,h,inl,cpp,cc,cxx,c}"
+  - "cmake/run_header_convention_checks.cmake"
+  - "cmake/run_header_checks_standalone.cmake"
+  - "cmake/ir_quality_tools.cmake"
+---
+
+> **Sweeping for violations?** `paths:` is an injection scope, not a search
+> root. `rg`/`Grep` rooted at `creations/` reads a **false clean** (#2739) —
+> run detectors through `fleet-rules-sweep`. See [`README.md`](README.md).
+
 # Global state: sanctioned patterns and the header-global ban
 
 Rule:
@@ -51,6 +66,9 @@ style-tool lists — `format*` / clang-tidy, and the `format-check` CI shim
 calls (clang-format is a style tool, not a correctness gate). Only vendored
 code (`engine/render/third_party/metal-cpp/`, `build/`, `_deps/`,
 `third_party/`) is excluded.
+
+Injection scope (`paths:` above) is a superset of this executor's file set —
+keep it that way when the collector's roots change.
 
 ```
 cmake --build <build-dir> --target header-checks                              # pure CMake
