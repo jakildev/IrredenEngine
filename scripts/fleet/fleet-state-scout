@@ -200,8 +200,19 @@ RELOAD_WINDOW_SECONDS = int(os.environ.get("FLEET_RELOAD_WINDOW_SECONDS", "900")
 # closure costs well under a second; the ceiling is there so an import that
 # hangs cannot stall the tick loop it is called from.
 RELOAD_PROBE_TIMEOUT_SECONDS = 20
-_reload_pending_hash = ""   # hash seen on the previous tick (debounce)
-_reload_quiet_hash = ""     # hash already refused + reported (quiet marker)
+# Ticks between re-probes of an image already refused once. A refusal cannot
+# be treated as final: the file that has to be repaired is often one this
+# process cannot hash — a module the new image adds is outside _BOOT_SURFACE
+# by definition, so fixing it moves nothing here and a permanently quiet
+# refusal is the merged-but-inert daemon this whole mechanism exists to
+# prevent. The cost is one interpreter start per N ticks, and only while a
+# refusal stands.
+RELOAD_REPROBE_TICKS = int(os.environ.get("FLEET_RELOAD_REPROBE_TICKS", "10"))
+_reload_pending_hash = ""    # hash seen on the previous tick (debounce)
+_reload_quiet_hash = ""      # hash whose on-disk image is our own revision
+_reload_refused_hash = ""    # hash whose on-disk image would not load
+_reload_refused_reason = ""  # its reason, so a re-probe re-logs only on change
+_reload_refused_ticks = 0    # ticks since that image was last probed
 
 
 def _source_surface():
@@ -337,16 +348,22 @@ def check_source_reload() -> None:
     debounce (a torn read mid-`git checkout` must not re-exec a half-written
     file), the prospective-image probe (which both refuses an image that
     cannot boot and supplies the revision to compare against), and the
-    oscillation cap. A refusal is reported once per distinct surface hash and
-    then goes quiet, re-arming when the surface moves again.
+    oscillation cap.
 
     The content hash over `_BOOT_SURFACE` is the cheap trigger, not the
     decision: it fires on any byte change under the files this image bound,
     including one vanishing. Whether that constitutes something to load is
     the probe's answer, which is why a module the new image dropped reloads
     cleanly instead of wedging the old image on a path it can no longer read.
+    It is also why the refusal below is the one outcome not quieted on that
+    hash for good: an image identical to ours cannot become loadable-and-
+    different without one of these files moving, and the oscillation cap is
+    a decision about this surface either way, but an image that failed to
+    load can be repaired entirely outside them — so a refusal is re-probed
+    on a cadence and only its log is deduplicated.
     """
     global _reload_pending_hash, _reload_quiet_hash
+    global _reload_refused_hash, _reload_refused_reason, _reload_refused_ticks
 
     current = _surface_hash(_BOOT_SURFACE)
     if current == SOURCE_REV:
@@ -357,14 +374,24 @@ def check_source_reload() -> None:
         return
     if current == _reload_quiet_hash:
         return
+    if current == _reload_refused_hash:
+        _reload_refused_ticks += 1
+        if _reload_refused_ticks < RELOAD_REPROBE_TICKS:
+            return
+        _reload_refused_ticks = 0
 
     prospective, refusal = _prospective_rev()
     if prospective is None:
-        log(f"reload refused: the image on disk does not load ({refusal}); "
-            "staying on the loaded image (re-checks when the surface moves "
-            "again)")
-        _reload_quiet_hash = current
+        if refusal != _reload_refused_reason:
+            log(f"reload refused: the image on disk does not load "
+                f"({refusal}); staying on the loaded image (re-probes every "
+                f"{RELOAD_REPROBE_TICKS} ticks until it loads)")
+        _reload_refused_hash = current
+        _reload_refused_reason = refusal
+        _reload_refused_ticks = 0
         return
+    _reload_refused_hash = ""
+    _reload_refused_reason = ""
     if prospective == SOURCE_REV:
         # The bytes under this process moved, but a fresh boot would bind a
         # closure that hashes identically — there is nothing to load, and

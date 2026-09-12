@@ -163,9 +163,13 @@ and an oscillation cap.
 per `FLEET_RELOAD_WINDOW_SECONDS` (default 900) — 3 allows three reloads
 and refuses the fourth, 1 allows one, `0` disables self-reload entirely —
 and a refused attempt still counts toward the window, so a surface that
-keeps moving holds the cap shut until the window drains. A refusal is
+keeps moving holds the cap shut until the window drains. A cap refusal is
 reported once per distinct surface hash and re-arms when the surface
-moves again.
+moves again; a *syntax* refusal is reported once per distinct reason but
+re-probed every `FLEET_RELOAD_REPROBE_TICKS` ticks (default 10), because
+the file to repair is often one the running daemon cannot see — a module
+the new image adds is outside the running image's surface, so fixing it
+moves nothing that daemon hashes.
 
 Only the load-time surface reloads. Sibling executables (`fleet-claim`,
 `fleet-labels`, `fleet-rebase`) and `fleet_task_class.py` are spawned

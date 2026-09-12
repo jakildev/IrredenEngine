@@ -17,6 +17,7 @@ module table.
 Import the script via importlib because it has no .py extension.
 """
 import ast
+import contextlib
 import importlib.machinery
 import importlib.util
 import json
@@ -80,6 +81,23 @@ class TestSourceSurface(unittest.TestCase):
     def test_all_entries_exist(self):
         for path in _mod._source_surface():
             self.assertTrue(path.is_file(), f"{path} is in the surface but absent")
+
+
+@contextlib.contextmanager
+def _staged_closure():
+    """A writable copy of the boot closure, to stand in for the tree on disk.
+
+    Probing a changed image means running one, so the arms that exercise
+    `_prospective_rev` need a directory they can edit. Copying exactly the
+    boot surface is what makes the staged scout importable: python puts a
+    script's own directory first on `sys.path`, so its siblings resolve
+    there and nothing reaches back into the repo.
+    """
+    with tempfile.TemporaryDirectory() as d:
+        staged = Path(d)
+        for source in _mod._BOOT_SURFACE:
+            shutil.copy2(source, staged / Path(source).name)
+        yield staged
 
 
 def _late_import():
@@ -185,10 +203,7 @@ class TestProspectiveRev(unittest.TestCase):
         # old surface, that path reads MISSING and then fails every syntax
         # gate, refusing forever; asked of the new image, it answers with the
         # revision that image would run.
-        with tempfile.TemporaryDirectory() as d:
-            staged = Path(d)
-            for source in _mod._BOOT_SURFACE:
-                shutil.copy2(source, staged / Path(source).name)
+        with _staged_closure() as staged:
             scout = staged / _SCRIPT.name
             text = scout.read_text()
             dropped = "from fleet_stack_base import unsafe_base_reason"
@@ -200,6 +215,59 @@ class TestProspectiveRev(unittest.TestCase):
                 rev, reason = _mod._prospective_rev()
         self.assertIsNone(reason)
         self.assertNotEqual(rev, _mod.SOURCE_REV)
+
+
+class TestRefusalIsRetried(unittest.TestCase):
+    """A refused image must be re-probed, or a repair never lands.
+
+    The file that has to be repaired is routinely one the running process
+    cannot see: a module the new image ADDS is outside the boot surface by
+    definition, so fixing it moves no byte this daemon hashes. A refusal
+    quieted on the boot-surface hash therefore ends the daemon's ability to
+    load anything, which is the failure the whole mechanism exists to remove.
+    """
+
+    def setUp(self):
+        for name in ("_reload_pending_hash", "_reload_quiet_hash",
+                     "_reload_refused_hash", "_reload_refused_reason",
+                     "_reload_refused_ticks"):
+            self.addCleanup(setattr, _mod, name, getattr(_mod, name))
+
+    def test_repairing_a_newly_added_module_reloads_without_touching_the_surface(self):
+        execs = []
+        with _staged_closure() as staged, \
+                tempfile.TemporaryDirectory() as state, \
+                patch.object(_mod, "_SELF", staged / _SCRIPT.name), \
+                patch.object(_mod, "_BOOT_SURFACE",
+                             tuple(staged / Path(p).name
+                                   for p in _mod._BOOT_SURFACE)), \
+                patch.object(_mod, "STATE_DIR", Path(state)), \
+                patch.object(_mod, "RELOAD_REPROBE_TICKS", 2), \
+                patch.object(_mod.os, "execv", lambda *a: execs.append(a)):
+            scout = staged / _SCRIPT.name
+            with patch.object(_mod, "SOURCE_REV",
+                              _mod._surface_hash(_mod._BOOT_SURFACE)):
+                # The merged change adds a module AND the import of it. Only
+                # the second half is inside the boot surface.
+                added = staged / "fleet_added_probe.py"
+                added.write_text("def (\n")
+                scout.write_text("import fleet_added_probe\n"
+                                 + scout.read_text())
+
+                _mod.check_source_reload()   # debounce
+                _mod.check_source_reload()   # probe -> refusal
+                self.assertEqual(execs, [])
+                refused_at = _mod._surface_hash(_mod._BOOT_SURFACE)
+
+                # Repair the added module alone. Nothing in the boot surface
+                # moves, so a hash-keyed quiet marker would never re-arm.
+                added.write_text("VALUE = 1\n")
+                self.assertEqual(_mod._surface_hash(_mod._BOOT_SURFACE),
+                                 refused_at)
+
+                for _ in range(_mod.RELOAD_REPROBE_TICKS):
+                    _mod.check_source_reload()
+        self.assertEqual(len(execs), 1, "the repaired image was never loaded")
 
 
 class TestSurfaceHash(unittest.TestCase):
