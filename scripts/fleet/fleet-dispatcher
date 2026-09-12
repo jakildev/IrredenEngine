@@ -87,7 +87,7 @@ while [[ -L "$_fleet_dispatcher_self" ]]; do
 done
 FLEET_LIB_DIR="${FLEET_LIB_DIR:-$(cd "$(dirname "$_fleet_dispatcher_self")" && pwd)}"
 # Absolute, symlink-resolved path to THIS file — the self-reload `exec` target
-# and the first entry of the source surface (#2768). Deliberately not $0:
+# and the first entry of the source surface. Deliberately not $0:
 # under a ~/bin symlink launch $0 is the link, and re-exec'ing the link would
 # work but would hash a different path than the one advance_main_clone
 # updates. FLEET_LIB_DIR is env-overridable (tests point it at a sandbox);
@@ -137,7 +137,7 @@ else
     fleet_target_key() { printf '%s\n' "${1//:/-}"; }
     fleet_pane_worktrees() { :; }
     declare -A FLEET_TARGET_CLAIM=() FLEET_TARGET_RELEASE=() FLEET_TARGET_LABEL=()
-    # Self-reload (#2768) degrades to DISABLED, not to "surface never moves":
+    # Self-reload degrades to DISABLED, not to "surface never moves":
     # returning 1 makes check_source_reload bail, where an empty-string hash
     # would compare equal forever and silently pretend the check was running.
     fleet_surface_hash() { return 1; }
@@ -700,7 +700,7 @@ unset _env_effort_worker _env_effort_opus_worker _env_effort_sonnet_author \
       _env_effort_merger _env_effort_smoke_worker \
       _env_effort_epic_steward
 
-# --- Self-reload source surface (#2768) ------------------------------------
+# --- Self-reload source surface --------------------------------------------
 #
 # Every file whose contents this process bound ONCE and can only re-read by
 # re-exec'ing: the script itself (bash parses a function body at exec and never
@@ -2916,7 +2916,7 @@ acquire_dispatcher_lock() {
     fi
     local owner_pid
     owner_pid=$(cat "$LOCK_DIR/pid" 2>/dev/null || true)
-    # Self-reload adoption (#2768). `exec` keeps the pid and does NOT run the
+    # Self-reload adoption. `exec` keeps the pid and does NOT run the
     # EXIT trap, so after a reload the lock dir is still here and its recorded
     # owner is US. Without this arm the liveness probe below asks `kill -0 $$`
     # — which a running process always answers yes to — and the freshly
@@ -2939,7 +2939,7 @@ acquire_dispatcher_lock() {
     return 1
 }
 
-# --- Self-reload at the tick boundary (#2768) ------------------------------
+# --- Self-reload at the tick boundary --------------------------------------
 #
 # Called once per tick, immediately AFTER advance_main_clone (so the hash sees
 # the clone this tick just fast-forwarded) and never from inside a dispatch
@@ -3174,7 +3174,7 @@ PY
 }
 
 main() {
-    # Preserved for the self-reload exec (#2768) so a reloaded daemon keeps the
+    # Preserved for the self-reload exec so a reloaded daemon keeps the
     # arguments it was launched with. The daemon boot path passes none; the
     # `${x[@]+...}` guard is what makes expanding the empty array safe.
     DAEMON_ARGV=("$@")
@@ -3186,12 +3186,12 @@ main() {
     fi
 
     write_pid_file
-    # `rev=` is the source-surface aggregate this image is running (#2768) —
-    # the answer to "is the daemon executing the code that is on disk?", which
-    # before the self-reload landed could only be inferred from process start
-    # time vs merge time. It reappears on every reload, so consecutive
-    # `started` lines with the same pid and different revs ARE the reload
-    # audit trail. `rev=none` means self-reload is unavailable on this host.
+    # `rev=` is the source-surface aggregate this image is running — the
+    # answer to "is the daemon executing the code that is on disk?", which the
+    # process start time alone cannot give. It reappears on every reload, so
+    # consecutive `started` lines with the same pid and different revs ARE the
+    # reload audit trail. `rev=none` means self-reload is unavailable on this
+    # host.
     local started_rev="${DAEMON_SURFACE_HASH:0:12}"
     log "started (pid=$$, interval=${POLL_INTERVAL_SECONDS}s, rearm=${PERIODIC_REARM_INTERVAL_SECONDS}s, timeout_cmd=${TIMEOUT_CMD:-none}, rev=${started_rev:-none})"
     if [[ -z "$TIMEOUT_CMD" ]]; then
@@ -3233,7 +3233,7 @@ main() {
             advance_main_clone "$GAME"
         fi
 
-        # ...and then actually LOAD it (#2768). Ordering is load-bearing:
+        # ...and then actually LOAD it. Ordering is load-bearing:
         # this must run AFTER the clone advance above, so the surface hash
         # sees the tree that advance just fast-forwarded rather than lagging
         # it by a tick. It must also stay at the tick top and outside the
@@ -3752,7 +3752,7 @@ case "${1:-}" in
         ;;
     --print-surface)
         # Operator/test hook: the load-time source surface this daemon watches
-        # for self-reload (#2768), one `<path>\t<hash>` line per entry
+        # for self-reload, one `<path>\t<hash>` line per entry
         # followed by `aggregate\t<hash>`. Answers "which files does a reload
         # depend on" without reading the array out of the source, and pairs
         # with the `rev=` field in the daemon's `started` log line: if the two

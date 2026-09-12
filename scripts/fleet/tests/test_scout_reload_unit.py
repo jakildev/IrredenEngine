@@ -1,10 +1,9 @@
-"""Unit tests for fleet-state-scout's self-reload surface (#2768).
+"""Unit tests for fleet-state-scout's self-reload surface.
 
-The scout binds its modules at import, so a merged fix to the script or to
-anything it imports reached disk and never memory — #2915, #2934 and #2999 all
-landed inert that way, and #2994's own over-cap watchdog was disabled by the
-very staleness it existed to catch, because the watchdog sat in the same
-unloaded image as the bound it watched.
+The scout binds its modules at import, so absent a reload a merged fix to the
+script or to anything it imports reaches disk and never memory — including a
+watchdog, which sits in the same unloaded image as the bound it watches and so
+cannot fire on its own staleness.
 
 `_source_surface()` is derived from `sys.modules` at call time rather than
 from a hand-written list, so these tests are about that derivation: it must
@@ -120,9 +119,9 @@ class TestReloadGate(unittest.TestCase):
 
     def test_max_one_permits_one_attempt(self):
         # `max_attempts` is the count PERMITTED, so the documented floor still
-        # permits a reload. The `<` spelling this pins against made
-        # FLEET_RELOAD_MAX=1 refuse every reload, with no runtime signal
-        # distinguishing that from a quiet source surface (#3192).
+        # permits a reload. Under a `<` spelling FLEET_RELOAD_MAX=1 refuses
+        # every reload, with no runtime signal distinguishing that from a
+        # quiet source surface.
         with tempfile.TemporaryDirectory() as d:
             state = Path(d) / "history"
             results = [_mod._reload_gate(state, 1, 900) for _ in range(2)]

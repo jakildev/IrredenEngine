@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# test_daemon_reload.sh — persistent-daemon self-reload at the tick boundary (#2768).
+# test_daemon_reload.sh — persistent-daemon self-reload at the tick boundary.
 #
 # Both persistent fleet daemons bind their source ONCE — fleet-dispatcher is
 # bash (a function body is parsed at exec and never re-parsed while the loop
-# runs), fleet-state-scout is python (modules bound at import). Mechanism, the
-# merged-but-inert commit corpus, and the operator diagnostic:
-# docs/agents/FLEET-CACHE.md §"Daemon source staleness".
+# runs), fleet-state-scout is python (modules bound at import). Mechanism and
+# the operator diagnostic: docs/agents/FLEET-CACHE.md
+# §"Daemon source staleness".
 #
 # What the E2E arms actually prove, and why the assertions are shaped this way:
 #
@@ -118,9 +118,9 @@ done
 assert_eq "$gate_calls" "AAAS" "T5: max=3 permits three attempts then suppresses the fourth"
 
 # <max> is the count PERMITTED, so the smallest meaningful cap still permits
-# one reload. The `<` spelling this pins against made FLEET_RELOAD_MAX=1 refuse
-# every reload — an operator setting the documented floor got no reloads at all
-# (#3192), and no runtime signal distinguishes that from a quiet surface.
+# one reload. Under a `<` spelling FLEET_RELOAD_MAX=1 refuses every reload — an
+# operator setting the documented floor gets no reloads at all, and no runtime
+# signal distinguishes that from a quiet surface.
 GATE1="$TMPROOT/gate-history-max1"
 gate_calls=""
 for _ in 1 2; do
@@ -169,10 +169,9 @@ surface_entries=$(awk '
 assert_eq "$surface_entries" "$((source_lines + 1))" \
     "T8: DAEMON_SOURCE_SURFACE has one entry per \`source\` line plus the script"
 
-# A count-only ratchet passes on a surface of five wrong paths. Name one
-# instance the corpus proves must be there: fleet-clone-freshness.sh's own
-# fix (#2668) is one of the six commits that landed inert, and it is reached
-# only by `source`.
+# A count-only ratchet passes on a surface of five wrong paths. Name one entry
+# that must be there: fleet-clone-freshness.sh is reached only by `source`, so
+# a merged fix to it runs inert unless the surface covers it.
 if grep -qE '^\s*"\$FLEET_LIB_DIR/fleet-common\.sh"' "$DISPATCHER"; then
     ok "T9: surface names fleet-common.sh explicitly"
 else
@@ -204,12 +203,10 @@ else
     bad "T14: scout surface lists >=6 paths ($scout_paths)"
 fi
 
-# Positive direction: every file of a known merged-but-inert commit is inside
-# its own daemon's surface, so the same commit would now trigger a reload.
-#   fleet-dispatcher        -> #2705 class-fairness floor
-#   fleet-clone-freshness.sh-> #2668 clone-freshness escalation (sourced)
-#   fleet-state-scout       -> #2915 / #2934 / #2999 (scout body)
-#   fleet_stack_base.py     -> #2656's scout half (imported module)
+# Positive direction: each file a daemon binds at load time is inside its own
+# daemon's surface, so a merged change to it triggers a reload. The four shapes
+# a surface has to cover are the daemon script itself, a `source`d file, the
+# scout body, and a module the scout imports.
 for f in fleet-dispatcher fleet-clone-freshness.sh fleet-common.sh; do
     assert_contains "$disp_surface" "/$f" "T15: dispatcher surface covers $f"
 done
@@ -320,8 +317,8 @@ else
 fi
 boot_rev=$(started_revs "$DLOG" | head -1)
 
-# Edit a SOURCED file rather than the daemon script — the harder half, and
-# the one #2668 landed inert on.
+# Edit a SOURCED file rather than the daemon script — the harder half: the
+# running image re-reads it only through the surface hash.
 echo "# reload probe" >>"$STAGE/fleet-common.sh"
 
 if wait_for "$DLOG" "reloading: source surface advanced" 12; then
@@ -382,7 +379,7 @@ else
     echo "        log (tail):"; tail -15 "$SLOG" | sed 's/^/          | /'
 fi
 
-# The published-revision half (#2768): a consumer must be able to compare the
+# The published-revision half: a consumer must be able to compare the
 # cache against on-disk source without inspecting the process. Read the
 # aggregate from a FRESH --print-surface process and require the running
 # daemon's cache to agree — that equality IS the diagnostic, and it is exactly
@@ -438,4 +435,4 @@ fi
 
 kill -TERM "$SCOUT_PID" 2>/dev/null
 
-summarize "daemon self-reload (#2768)"
+summarize "daemon self-reload"

@@ -184,7 +184,7 @@ def log(msg: str) -> None:
     print(f"[{ts} state-scout] {msg}", flush=True)
 
 
-# --- Self-reload at the tick boundary (#2768) ------------------------------
+# --- Self-reload at the tick boundary --------------------------------------
 #
 # A persistent python daemon binds its modules once at import, so a merged fix
 # to this script or to anything it imports reaches disk and never memory. The
@@ -256,7 +256,7 @@ def _reload_gate(state_file: Path, max_attempts: int, window: int) -> bool:
     `max_attempts` is the number of attempts PERMITTED per window: 3 allows
     three reloads and refuses the fourth, 1 allows one, 0 disables reloading.
     The attempt is counted before the comparison, so the comparison must be
-    `<=` — a `<` leaves `max_attempts=1` permitting none (#3192). A refused
+    `<=` — a `<` leaves `max_attempts=1` permitting none. A refused
     attempt is still recorded, so the window drains from the last attempt
     either way. Mirrors fleet_reload_gate in fleet-common.sh; a clock or
     filesystem failure allows the reload rather than wedging the daemon on the
@@ -3514,7 +3514,7 @@ def emit_state(state) -> int:
     human-read caches (per-PR/issue details, role projections) keep indent=2.
     See #2752 and docs/agents/FLEET-CACHE.md §"Size invariant".
     """
-    # Source revision of the scout that produced this cache (#2768). Stamped
+    # Source revision of the scout that produced this cache. Stamped
     # here rather than in build_state so it covers the follower path too,
     # where the overlaid leader bundle would otherwise carry the LEADER's rev
     # — a consumer on this host wants to know what this host's scout is
@@ -4213,7 +4213,7 @@ def main():
     args = parser.parse_args()
 
     if args.print_surface:
-        # Operator/test hook (#2768), same output contract as
+        # Operator/test hook, same output contract as
         # `fleet-dispatcher --print-surface`: one `<path>\t<hash>` line per
         # surface entry, then `aggregate\t<hash>`. Compare the aggregate
         # against state.json's `scout_source_rev` to tell whether the RUNNING
@@ -4275,7 +4275,7 @@ def main():
             # Deliberately ABOVE the try, not inside tick_once(): a tick that
             # raises (gh outage, no network) must not be able to mask the
             # reload, or the daemon that most needs a merged fix is the one
-            # that never loads it (#2768). Does not return when it reloads.
+            # that never loads it. Does not return when it reloads.
             check_source_reload()
             try:
                 tick_once()

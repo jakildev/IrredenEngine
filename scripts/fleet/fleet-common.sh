@@ -306,7 +306,7 @@ fleet_install_maybe_refresh() {
     rmdir "$lock" 2>/dev/null || true
 }
 
-# --- Persistent-daemon source surface + reload gate (#2768) -----------------
+# --- Persistent-daemon source surface + reload gate ------------------------
 #
 # The two persistent fleet daemons (fleet-dispatcher, bash; fleet-state-scout,
 # python) bind their code once — bash parses a function body at exec, python
@@ -373,7 +373,7 @@ fleet_surface_hash() {
 # and refuses the fourth, 1 allows one, 0 disables reloading. The attempt is
 # counted before the comparison, so the comparison must be `<=` — a `<` spends
 # one of the operator's permitted reloads and leaves `<max> 1` with none, with
-# no runtime signal to distinguish that from a quiet source surface (#3192).
+# no runtime signal to distinguish that from a quiet source surface.
 #
 # A refused attempt is still recorded, so a source file that keeps moving holds
 # the cap shut while the operator is mid-edit; the window drains from the last
