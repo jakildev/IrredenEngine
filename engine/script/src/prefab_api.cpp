@@ -109,7 +109,7 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
         return makeError(idStr, path, std::string{"file evaluation threw: "} + e.what());
     }
 
-    if (!root.is<sol::table>()) {
+    if (root.get_type() != sol::type::table) {
         return makeError(idStr, path, "prefab file did not return a table");
     }
     sol::table prefab = root.as<sol::table>();
@@ -313,7 +313,7 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
                 if (!nameOpt) {
                     continue;
                 }
-                if (!kv.second.is<sol::table>()) {
+                if (kv.second.get_type() != sol::type::table) {
                     continue;
                 }
                 sol::table desc = kv.second.as<sol::table>();
@@ -400,7 +400,7 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
                 IREntity::destroyEntity(entity);
                 return makeError(idStr, path, "components keys must be component-name strings");
             }
-            if (!kv.second.is<sol::table>()) {
+            if (kv.second.get_type() != sol::type::table) {
                 for (auto child : spawnedChildren) {
                     IREntity::destroyEntity(child);
                 }

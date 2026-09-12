@@ -220,6 +220,34 @@ TEST_F(LuaSystemRegisterTest, UnboundComponentNameFailsAtRegisterTime) {
     EXPECT_NE(msg.find("lua_component_pack"), std::string::npos);
 }
 
+// `entry.is<sol::table>()` reads TRUE for userdata, so a table-first guard
+// in `resolveComponentEntry` admits a `components` list entry that is a
+// TestPos userdata instead of a string name or an `IRComponent.register`
+// handle table. The pre-fix path casts it to `sol::table` and indexes
+// `componentId` off it — not a TestPos member, so the resolver's own
+// "missing componentId" message fires instead of the generic
+// wrong-shape message a non-table, non-string entry should get. See #3178.
+TEST_F(LuaSystemRegisterTest, UserdataComponentEntryFailsWithGenericMessage) {
+    auto &lua = m_lua.lua();
+    auto result = lua.safe_script(
+        R"(
+        IRSystem.registerSystem({
+            name = 'BogusUserdataSys',
+            components = { TestPos.new(1, 2, 3) },
+            tick = function(arch) end,
+        })
+    )",
+        sol::script_pass_on_error
+    );
+    ASSERT_FALSE(result.valid());
+    sol::error err = result;
+    const std::string msg = err.what();
+    EXPECT_NE(
+        msg.find("must be a string name or an IRComponent.register handle"),
+        std::string::npos
+    ) << msg;
+}
+
 // ---- Acceptance criterion 4 -------------------------------------------------
 //
 // registerSystem returns a SystemId that Lua can hold; SystemManager
