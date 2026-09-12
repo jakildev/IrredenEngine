@@ -2113,8 +2113,7 @@ cmd_resolving_release() { _cmd_pr_label_release "fleet:resolving-" "resolving-re
 cmd_amending_claim() {
     local cross_lane_rc=0
     _cross_lane_precheck "fleet:amending-" "amending-claim" "${1:-}" "${2:-unknown}" || cross_lane_rc=$?
-    [[ "$cross_lane_rc" -eq 3 ]] && return 0
-    [[ "$cross_lane_rc" -eq 0 ]] || return "$cross_lane_rc"
+    [[ "$cross_lane_rc" -eq 0 || "$cross_lane_rc" -eq 3 ]] || return "$cross_lane_rc"
 
     # Host-capability backstop (#2524): refuse to amend-claim a PR whose
     # remaining work is GL-host-gated (fleet:needs-gl-host) from a non-GL
@@ -2131,6 +2130,7 @@ cmd_amending_claim() {
             && ! check_host_capability "$1" pr "${CROSS_LANE_INFO:-}"; then
         return 1
     fi
+    [[ "$cross_lane_rc" -eq 3 ]] && return 0
     _cmd_pr_label_claim   "fleet:amending-" "amending-claim"   "$@"
 }
 cmd_amending_release() {

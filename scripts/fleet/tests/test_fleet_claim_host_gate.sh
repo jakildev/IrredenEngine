@@ -96,6 +96,7 @@ mkdir -p "$FLEET_CLAIMS_DIR" "$FLEET_HEARTBEATS_DIR" "$FLEET_RESERVATIONS_DIR"
 #   3003 — PR under ANOTHER agent's same-host review claim (mac-pool-9)
 #   3004 — PR under the claiming agent's OWN review claim (mac-test-agent)
 #   3005 — PR under another agent's CROSS-host review claim (linux-pool-2)
+#   3006 — GL-gated PR under the claiming agent's incumbent amend claim
 #   3102 — CONFLICTING PR, no review claim (resolving lane grant path)
 #   3103 — conflicted PR under ANOTHER agent's same-host review claim
 #   3104 — conflicted PR under the claiming agent's OWN review claim
@@ -147,6 +148,9 @@ case "$1 $2" in
                 ;;
             3005)
                 echo '{"state":"OPEN","labels":[{"name":"fleet:has-nits"},{"name":"fleet:reviewing-linux-pool-2"}],"body":""}'
+                ;;
+            3006)
+                echo '{"state":"OPEN","labels":[{"name":"fleet:needs-gl-host"},{"name":"fleet:amending-mac-test-agent"}],"body":""}'
                 ;;
             3102)
                 echo '{"state":"OPEN","labels":[{"name":"fleet:semantic-conflict"}],"body":""}'
@@ -437,5 +441,12 @@ if grep -q '^fleet:resolving-mac-test-agent$' "$GH_POST_LOG" 2>/dev/null; then
 else
     bad "granted resolving-claim left no POST in the log — the GH_POST_LOG wiring is broken, so T22/T24 prove nothing"
 fi
+
+# --- T27: an incumbent amend claim still honors the host gate --------------
+echo "T27: incumbent amending-claim remains subject to fleet:needs-gl-host"
+: > "$GH_POST_LOG"
+actual=0; FLEET_TEST_HOST=mac FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" amending-claim 3006 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 1 "mac + incumbent amend + fleet:needs-gl-host → amending-claim exit 1"
+assert_no_label_post "host-refused incumbent amending-claim POSTed no label"
 
 summarize "fleet-claim pre-acquire gates"
