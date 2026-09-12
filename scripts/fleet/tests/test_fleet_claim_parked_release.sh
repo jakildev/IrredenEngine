@@ -170,7 +170,8 @@ mk_claim() {
 echo "=== Phase 1: release clears labels only for a PARKED matching PR (Fix A) ==="
 # =========================================================================
 # #700 parked (design-blocked PR) -> release clears claim + in-progress.
-# #701 active  (plain wip PR)      -> release keeps claim + in-progress.
+# #701 active  (plain wip PR)      -> release keeps claim + in-progress
+#     (--wip-ok: an active wip PR is otherwise refused by the release guard).
 cat > "$ISSUES_JSON" <<'JSON'
 [
   {"number":700,"state":"OPEN","labels":[{"name":"fleet:queued"},{"name":"fleet:claim-mac-opus-worker-1"},{"name":"fleet:in-progress"}]},
@@ -191,7 +192,7 @@ assert_dir_absent "$FLEET_CLAIMS_DIR/700" "release dropped FS claim #700"
 assert_removed_contains $'700\tfleet:claim-mac-opus-worker-1' "parked release cleared #700 claim label"
 assert_removed_contains $'700\tfleet:in-progress' "parked release cleared #700 fleet:in-progress"
 
-REL701=$("$FLEET_CLAIM" release 701 2>&1); echo "$REL701" | sed 's/^/    /'
+REL701=$("$FLEET_CLAIM" release 701 --wip-ok 2>&1); echo "$REL701" | sed 's/^/    /'
 assert_dir_absent "$FLEET_CLAIMS_DIR/701" "release dropped FS claim #701"
 assert_removed_absent $'701\tfleet:claim-mac-opus-worker-1' "active release KEPT #701 claim label"
 assert_removed_absent $'701\tfleet:in-progress' "active release KEPT #701 fleet:in-progress"

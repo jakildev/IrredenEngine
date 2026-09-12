@@ -1689,7 +1689,7 @@ _issue_wip_pr_numbers_from() {
     echo "$1" | ISSUE_NUM="$2" REPO="$3" python3 -c '
 import json, os, sys
 sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
-from fleet_branch_match import pr_matches_issue
+from fleet_branch_match import pr_matches_issue, PARKED_PR_LABELS
 try:
     prs = json.load(sys.stdin)
 except Exception:
@@ -1700,6 +1700,10 @@ for pr in prs:
         for label in (pr.get("labels") or [])
         if isinstance(label, dict)
     }
+    # A parked PR (design-blocked/-unblocked) is not live work: releasing
+    # its claim is the sanctioned path, wip or not.
+    if labels & set(PARKED_PR_LABELS):
+        continue
     if pr_matches_issue(pr, os.environ["ISSUE_NUM"], os.environ.get("REPO", "")) and "fleet:wip" in labels and pr.get("number"):
         print(pr["number"])
 ' 2>/dev/null
