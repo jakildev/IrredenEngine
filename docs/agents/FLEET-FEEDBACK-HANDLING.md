@@ -83,8 +83,9 @@ governs. The pane heartbeat proves nothing here (`FLEET-RUNTIME.md`
 A **reservation resume** (step 0.5) runs under a new dispatch, so its
 predecessor's claim is a confirmed orphan and is reaped. Re-run
 `fleet-pr-claim-feedback <N> <worktree>` rather than assuming you inherit
-the label; the re-run is idempotent — re-POSTing the same label is still
-sole-holder, and it rewrites the record under the new dispatch id. A
+the label; the re-run is idempotent — a label you already hold is confirmed
+without a re-POST, and either path rewrites the record under the new
+dispatch id. A
 `--resume` continuation is the same dispatch and needs nothing.
 
 ## Reading the feedback

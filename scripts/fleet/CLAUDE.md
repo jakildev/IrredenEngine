@@ -405,35 +405,13 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   asserts the row is in the candidate list **and** absent from every section
   (`tests/test_scout_task_queue_plan_gated.py`); asserting only the former
   passes with the capture moved back below a `continue`.
-- **A pane-keyed signal is not an iteration-keyed one.** The liveness of a
-  per-iteration claim must compare against a dispatch identity
-  (`FLEET_DISPATCH_ID`, `~/.fleet/state/dispatch-current/<worktree>`), never
-  against a file any later role refreshes. `~/.fleet/heartbeats/<worktree>` is
-  touched by step 0 of *five* role docs under the same basename, and
-  `FLEET_CLAIM_FLAG` is a pane-keyed did-work bit every acquire/release
-  re-stamps — so both answer "this pane ran something recently", not "this
-  iteration is alive". Keying `fleet:amending-*` on the heartbeat made a dead
-  claim **un-reapable** (the probe said live) *and* un-claimable (every other
-  pane skips an amending PR) for as long as the pane kept drawing dispatches —
-  86 minutes on engine PR #2961, cleared only by hand (#2973). The tell is a
-  probe that answers *yes* for a dead owner; contrast `fleet:resolving-*`, which
-  is missed because it has no probe at all. Note the opposite default applies to
-  the *absence* of such a record: a missing `_prlabel-*` marker is a confirmed
-  orphan (the marker lives in `$CLAIMS_DIR`, which `fleet-down` wipes), but a
-  missing amend-snapshot is not — that record is deliberately outside
-  `$CLAIMS_DIR` so the ownership evidence survives a restart, and an
-  architect pane has no dispatch id at all. Corollary for any lane that
-  gains such a record: a claim taken *on behalf of* an iteration that has
-  not started — `fleet-dispatcher`'s pre-claim — has no identity to stamp
-  yet, and the absent-identity default is the wrong one for it. The default
-  means "cannot vouch, use the pane rule", and the pre-claim window is
-  precisely where the pane rule is weakest: the dispatcher only launches
-  into an *idle* pane, so that heartbeat belongs to the previous iteration.
-  Give the pre-claim an explicit third value (`FLEET_PRECLAIM_DISPATCH_ID`)
-  that reads as live on its own short grace; note that merely carrying a
-  real id forward from the pre-claim would not help, because id *equality*
-  deliberately falls through to the pane rule so a hung owner still ages
-  out.
+- **A pane-keyed signal is not an iteration-keyed one.** Per-iteration claim
+  liveness compares a dispatch identity (`FLEET_DISPATCH_ID` vs
+  `~/.fleet/state/dispatch-current/<worktree>`), never a file a later role in
+  the same pane refreshes (`~/.fleet/heartbeats/<worktree>`,
+  `FLEET_CLAIM_FLAG`) — that probe answers *live* for a dead owner. A missing
+  identity means "cannot vouch", not "orphan"; a dispatcher pre-claim stamps
+  `FLEET_PRECLAIM_DISPATCH_ID`. Full rule: `_amending_owner_live` in `fleet-claim`.
 - **Unattended daemons timeout-guard their network calls.** The host's
   connections to GitHub intermittently black-hole (silent TCP death), so a
   hung `git fetch` / `gh …` in a fleet daemon (dispatcher loop, `fleet-rebase`,
