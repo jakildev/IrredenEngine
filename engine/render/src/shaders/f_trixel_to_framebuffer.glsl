@@ -44,13 +44,11 @@ layout (std140, binding = 3) uniform FrameDataIsoTriangles {
     vec4 scatterFbResolution;
     int depthColorMode;
     float depthColorExtent;
-    // No-priority perf fast-path (#2155): 0 = no per-trixel-priority voxel in this
-    // canvas, so the finalization path skips the triangleEntityIds decode read on
-    // non-hovered fragments; != 0 = read + decode as before. Repurposes the former
-    // _depthColorPad0 slot at offset 200 (4-byte scalar, layout-identical).
+    // Offset 200. 0 = no per-trixel-priority voxel in this canvas, so the tier
+    // read of triangleEntityIds is skipped; != 0 = read + decode the tier.
     int anyPerTrixelPriority;
-    // Two-tier composite depth partition (#1958): 0 = world content (clamped out
-    // of the reserved near band), != 0 = foreground priority (pinned into it).
+    // Composite depth tier for this draw: 0 = world content (clamped out of the
+    // reserved near band), != 0 = foreground priority (pinned into it).
     int depthPriorityMode;
 };
 
@@ -62,7 +60,6 @@ layout(std430, binding = 14) buffer HoveredEntityIdBuffer {
 out vec4 FragColor;
 
 float normalizeDistance(int dist) {
-    // return float(dist) / float(kMaxTriangleDistance);
     return float(dist - kMinTriangleDistance) / float(kMaxTriangleDistance - kMinTriangleDistance);
 }
 
@@ -73,11 +70,10 @@ void main() {
     // raw sample already lands on the correct trixel row, same as the Metal
     // twin (both vertex stages build identical V-flipped TexCoords, so the two
     // backends interpolate the same canvas position for the same screen pixel).
-    // The parity-row shift is applied ONLY to the hover coordinate
-    // (`originShifted` below), keeping picking in lockstep with CPU
-    // `mouseTrixelPositionWorld()` -> `pos2DIsoToTriangleIndex`. See
-    // trixelFramebufferSamplePosition in ir_iso_common.glsl; #442,
-    // docs/design/trixel-parity-shift-442-investigation.md.
+    // The parity-row shift (trixelFramebufferSamplePosition) is applied ONLY to
+    // the hover coordinate (`originShifted`), keeping picking in lockstep with
+    // CPU `mouseTrixelPositionWorld()` -> `pos2DIsoToTriangleIndex`. Before
+    // editing, read docs/design/trixel-parity-shift-442-investigation.md.
     vec2 originRaw = TexCoords * vec2(textureSize);
     int originModifier = trixelOriginModifier(z1, canvasOffset);
     vec2 originShifted = trixelFramebufferSamplePosition(originRaw, originModifier);
@@ -86,19 +82,16 @@ void main() {
     int rawDist = textureLod(triangleDistances, originRaw / textureSize, 0).r;
     // effectiveSubdivisionsForHover.y carries the per-canvas depth rescale
     // (effSub / cubeSub) for world-placed DETACHED canvases: their model-frame
-    // rawDist was written at the canvas's own (possibly #1570-D2-capped)
-    // subdivision, so it must be lifted into the shared framebuffer depth units
-    // (worldDepth × effSub × 8) before the world iso-depth offset is added — the
-    // #1624 world-placed depth fix. 0 (world/overlay canvases, zero-init) → 1.0,
-    // i.e. the byte-identical fast path.
+    // rawDist was written at the canvas's own (possibly capped) subdivision, so
+    // it must be lifted into the shared framebuffer depth units
+    // (worldDepth × effSub × 8) before the world iso-depth offset is added.
+    // 0 (world/overlay canvases, zero-init) → 1.0, i.e. no rescale.
     float depthScale = effectiveSubdivisionsForHover.y;
     if (depthScale <= 0.0) depthScale = 1.0;
     // roundHalfUp, not hardware round(): a fractional depthScale (effSub /
     // cubeSub) lands odd rawDist values on exact .5 ties, where GLSL round()
     // is implementation-defined and diverges from the Metal twin.
     int base = roundHalfUp(float(rawDist) * depthScale);
-    // Hover state, computed BEFORE the (now-conditional) entity-id read (#2155).
-    // It needs only `originShifted` + the hover uniforms — no texture fetch.
     // Match voxel-to-trixel write: texture coord = trixelOriginOffsetZ1 + canvasOffset + worldIndex
     // canvasOffset is already scaled by subdivisions in smooth mode (CPU side)
     // mouseHoveredTriangleIndex is base space; scale to subdivided space for comparison
@@ -110,25 +103,23 @@ void main() {
     ivec2 originIndex = ivec2(floor(originShifted));
     ivec2 hoveredIndex = ivec2(floor(hoveredPosition));
     bool isMouseHovered = all(equal(hoveredIndex, originIndex));
-    // Per-trixel priority tiers (#1960; generalizes #1958's two-tier partition).
-    // The tier read samples the SAME texel the color/depth came from (originRaw)
-    // and is needed only when some voxel in the canvas carries a per-trixel
-    // priority; on the default no-priority path the read is skipped (#2155 fast
-    // path): decodePriority of an unread id would be 0, so
-    // tier == depthPriorityMode and the output is byte-identical. The hover
-    // read below uses originShifted and is gated on isMouseHovered separately
-    // (twin of trixel_to_framebuffer.metal's sampleCoord / hoverCoord split).
-    // So a fragment that is BOTH prioritized and hovered fetches
-    // triangleEntityIds TWICE — once here at originRaw, once at originShifted
-    // below. The two reads want different texels, so the pair is not redundant:
-    // one shared fetch has to pick a single origin, and either choice
-    // reintroduces a parity-shifted read on the path that needs the other
-    // (#394, #442).
+    // Per-trixel priority tiers. The tier read samples the SAME texel the
+    // color/depth came from (originRaw) and is needed only when some voxel in
+    // the canvas carries a per-trixel priority; on the no-priority path the
+    // read is skipped: decodePriority of an unread id would be 0, so
+    // tier == depthPriorityMode and the output is identical. The hover read
+    // uses originShifted and is gated on isMouseHovered separately (twin of
+    // trixel_to_framebuffer.metal's sampleCoord / hoverCoord split). So a
+    // fragment that is BOTH prioritized and hovered fetches triangleEntityIds
+    // TWICE — once at originRaw, once at originShifted. The two reads want
+    // different texels, so the pair is not redundant: one shared fetch has to
+    // pick a single origin, and either choice reintroduces a parity-shifted
+    // read on the path that needs the other.
     int tier = depthPriorityMode;
     if (anyPerTrixelPriority != 0) {
         uvec2 sampleEntityId = textureLod(triangleEntityIds, originRaw / vec2(textureSize), 0).rg;
         // Resolve the tier: the higher of this draw's per-entity tier
-        // (depthPriorityMode, #1958's C_EntityCanvas::depthPriority_) and the
+        // (depthPriorityMode, C_EntityCanvas::depthPriority_) and the
         // per-voxel tier authored into the id carrier.
         tier = max(depthPriorityMode, int(decodePriority(sampleEntityId)));
     }
@@ -136,8 +127,7 @@ void main() {
     int enc;
     if (tier == 0) {
         // World content: clamp OUT of the reserved near band. A no-op for every
-        // in-budget fragment (base + distanceOffset >> foregroundCeil), so the
-        // cardinal fast path stays byte-identical to #1958 master; far world
+        // in-budget fragment (base + distanceOffset >> foregroundCeil); far world
         // content saturates against the boundary rather than letting a background
         // fragment beat a priority solid.
         enc = max(base + distanceOffset, foregroundCeil + 1);
@@ -158,10 +148,9 @@ void main() {
     if (isMouseHovered) {
         if (color.a >= 0.1 && depth <= hoveredDepth) {
             // Strip the per-trixel priority carrier so a prioritized fragment
-            // reports its true picked id (#1960 masking-trap discipline). The
-            // hover read uses the shifted coordinate (kept in lockstep with CPU
-            // mouseTrixelPositionWorld), distinct from the originRaw tier read
-            // above.
+            // reports its true picked id. The hover read uses the shifted
+            // coordinate (kept in lockstep with CPU mouseTrixelPositionWorld),
+            // distinct from the originRaw tier read.
             uvec2 entityId = decodeEntityId(
                 textureLod(triangleEntityIds, originShifted / vec2(textureSize), 0).rg);
             if (entityId != uvec2(0u)) {

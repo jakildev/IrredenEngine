@@ -11,11 +11,11 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform ivec2 voxelRenderOptions;
     uniform ivec2 voxelDispatchGrid;
     uniform int voxelCount;
-    // Per-axis store list-walk split (#1739): the per-region element capacity
-    // (the perAxisRoute_ slot, dead during the compact). 0 = single full list
-    // (byte-identical). Non-zero = split mode: append each visible voxel into the
-    // axis regions it has an exposed face on; the value is the stride between
-    // those three regions in compactedVoxelIndices.
+    // Per-axis store list-walk split, carried in the perAxisRoute_ slot (which the compact
+    // does not otherwise read). 0 = single full list. Non-zero = split mode: append each
+    // visible voxel into the axis regions it has an exposed face on; the value is the
+    // per-region element capacity, i.e. the stride between those three regions in
+    // compactedVoxelIndices.
     uniform int perAxisSplitStride;
     uniform ivec2 canvasSizePixels;
     uniform ivec2 cullIsoMin;
@@ -23,57 +23,40 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform float visualYaw;
     uniform float rasterYaw;
     uniform float residualYaw;
-    // Prefix through residualYaw is the shared binding-7 head. The fields below
-    // (matching FrameDataVoxelToCanvas / the stage-1 UBO offsets) are declared so
-    // the per-voxel occlusion cull (#1812) can read visibleIsoBounds (offset 176)
-    // and occlusionCullMipCount (offset 196), and the #2258 Step-B feeder
-    // classify (with isDetachedCanvas + residualYaw) can read the feeder lanes
-    // (offsets 200/204); the rest are layout placeholders this pass does
-    // not consume.
-    uniform float isDetachedCanvas;     // offset 76 (was _yawPadding)
+    // Prefix through residualYaw is the shared binding-7 head. The fields below match the
+    // FrameDataVoxelToCanvas / stage-1 UBO offsets. This pass reads faceDeform and
+    // occlusionCullMipCount (per-voxel occlusion cull) and visibleIsoBounds,
+    // isDetachedCanvas and feederSubCap (feeder classify); the rest are layout placeholders.
+    uniform float isDetachedCanvas;     // offset 76
     uniform vec4 faceDeform[3];         // offset 80
     uniform ivec4 visibleFaceIds;       // offset 128
     uniform vec4 voxelDepthAxis;        // offset 144
     uniform vec4 detachedWorldReceive;  // offset 160
-    // Un-widened (no shadow-feeder sweep) visible iso viewport (#1740).
-    // Consumer here: the #2258 Step-B classify routes a survivor OUTSIDE this
-    // box (an off-screen feeder, the exact stage-2 #1740 skip convention) to
-    // the feeder dispatch struct instead of the full-density visible list. The
-    // per-voxel occlusion cull no longer gates on this box as of #2298 — it now
-    // tests the full shadow-feeder-widened canvas via a Hi-Z canvas-COVERAGE
-    // guard (see voxelOccludedByHiZ); visibleIsoBounds must stay for the classify.
+    // Un-widened (no shadow-feeder sweep) visible iso viewport. The feeder classify routes a
+    // survivor OUTSIDE this box (an off-screen feeder, stage 2's skip convention) to the
+    // feeder dispatch struct instead of the full-density visible list. The per-voxel
+    // occlusion cull does not gate on this box; its domain is the whole Hi-Z canvas.
     uniform ivec4 visibleIsoBounds;     // offset 176
     uniform int resolveMode;            // offset 192
-    // Per-voxel Hi-Z occlusion-cull gate (#1812): 0 = off (byte-identical),
-    // non-zero = Hi-Z chain level count → run the per-voxel test.
+    // Per-voxel Hi-Z occlusion-cull gate: 0 = off, non-zero = Hi-Z chain level count → run
+    // the per-voxel test.
     uniform int occlusionCullMipCount;  // offset 196
-    // Offsets 200/204 — #2258 Step-B feeder partition (shifted one slot down
-    // by the #1812 gate). feederSubCap = the per-face-edge micro-grid cap for
-    // the feeder dispatch (struct 1's zTotal = feederSubCap²);
-    // feederPassTailBase is read by stage 1. The former feederPass flag at 208
-    // is a compile-time IR_FEEDER_PASS specialization now (architect a′), so
-    // it's a reserved pad — not declared here.
+    // Shadow-feeder dispatch partition. feederSubCap = the per-face-edge micro-grid cap for
+    // the feeder dispatch (struct 1's zTotal = feederSubCap²); feederPassTailBase is read by
+    // stage 1.
     uniform int feederSubCap;           // offset 200
     uniform int feederPassTailBase;     // offset 204
 };
 
-// Finest Hi-Z downsampled level (conceptual mip 1) over last frame's canvas
-// distances (#1798), R32I. Bound as a read-only IMAGE at unit 1 (not a sampler)
-// by VOXEL_TO_TRIXEL_STAGE_1 when this compact runs. The image bind is load-
-// bearing on Metal: bindComputeResources flushes the image-binding table AFTER
-// the sampler table at the same encoder texture index, and the image table is
-// sticky, so the leftover trixelDistances IMAGE bound at unit 1 by the prior
-// frame's stage-1/stage-2 shadowed a sampler bind of the Hi-Z here — the compact
-// then read freshly-cleared trixelDistances (the all-65535 distance sentinel)
-// instead of the Hi-Z, and the per-voxel test never fired (#1812 zero-capture).
-// Binding the Hi-Z as an image overwrites that stale slot so it wins the flush.
-// Read only when occlusionCullMipCount > 0; off unit 0 so it never aliases the
-// fog image there.
+// Finest Hi-Z downsampled level (conceptual mip 1) over last frame's canvas distances, R32I.
+// Bound as a read-only image at unit 1 by VOXEL_TO_TRIXEL_STAGE_1 when this compact runs.
+// Read only when occlusionCullMipCount > 0; off unit 0 so it never aliases the fog image
+// there.
 layout(r32i, binding = 1) readonly uniform iimage2D hiZLevel0;
 
 // Strict-behind margin (one raw-depth unit of encoded slack) so FMA / round
 // noise on the boundary never culls a voxel only coplanar with the occluder,
-// and so the encoded low bits (slot [1:0] + flip [2], #2207) never tip the
+// and so the encoded low bits (slot [1:0] + flip [2]) never tip the
 // comparison. Tracks kDepthEncodeShift, matching kOcclusionDepthMargin in
 // c_chunk_occlusion_cull.glsl (both = the encode scale).
 const int kOcclusionDepthMargin = kDepthEncodeShift;
@@ -82,12 +65,12 @@ layout(std430, binding = 5) readonly buffer PositionBuffer {
     vec4 positions[];
 };
 
-// Per-voxel material/flag/bone word. Read ONLY in per-axis split mode
-// (perAxisSplitStride != 0): the face-occlusion flags byte (bits [2..7] of
-// byte 5 = `materialFlagBone >> 8`) routes each visible voxel into the axis
-// regions it has an exposed face on. Layout must match C_Voxel and the `Voxel`
-// struct in c_voxel_to_trixel_stage_1.glsl (12 B). Binding 6 (VoxelColorBuffer)
-// is bound every frame, so this is safe to declare unconditionally.
+// Per-voxel material/flag/bone word. The face-occlusion flags byte (bits [2..7] of
+// byte 5 = `materialFlagBone >> 8`) drives the fully-interior drop and routes each
+// visible voxel into the axis regions it has an exposed face on in split mode.
+// Layout must match C_Voxel and the `Voxel` struct in c_voxel_to_trixel_stage_1_body.glsl
+// (12 B). Binding 6 (VoxelColorBuffer) is bound every frame, so this is safe to declare
+// unconditionally.
 struct Voxel {
     uint colorPacked;
     uint materialFlagBone;
@@ -99,10 +82,7 @@ layout(std430, binding = 6) readonly buffer ColorBuffer {
 
 // Per-slot active bitmask uploaded from `C_VoxelPool::m_activeMask`:
 // one uint32 per `kVoxelActiveMaskBits` (= 32) voxel slots; bit i mirrors
-// `m_voxelColors[i].color_.alpha_ != 0` at frame-upload time. The previous
-// path read `voxels[idx].colorPacked` purely to test alpha; this SSBO
-// replaces that read with a 1-bit lookup so inactive slots short-circuit
-// before touching the wider color SSBO. T-287 / #950.
+// `m_voxelColors[i].color_.alpha_ != 0` at frame-upload time.
 layout(std430, binding = 8) readonly buffer VoxelActiveMaskBuffer {
     uint activeMask[];
 };
@@ -115,11 +95,12 @@ layout(std430, binding = 25) writeonly buffer CompactedIndices {
     uint compactedVoxelIndices[];
 };
 
-// Indirect dispatch params, declared flat so one kernel writes either layout:
-//   single-canvas mode  -> the 32-byte IndirectDispatchParams buffer (struct 0)
-//   per-axis split mode  -> PerAxisIndirectDispatchParams: three structs spaced
-//                           kPerAxisIndirectStrideUints apart (256 B), so the CPU
-//                           can bindRange each at an SSBO-offset-aligned boundary.
+// Indirect dispatch params, declared flat so one kernel writes either layout. Structs sit
+// kPerAxisIndirectStrideUints apart (256 B) so the CPU can bindRange each at an
+// SSBO-offset-aligned boundary:
+//   single-canvas mode  -> IndirectDispatchParams: struct 0 = the visible list,
+//                          struct 1 = the shadow-feeder list
+//   per-axis split mode  -> PerAxisIndirectDispatchParams: one struct per axis
 // Per-struct slots: 0 = numGroupsX, 1 = numGroupsY, 2 = numGroupsZ,
 //                   3 = visibleCount (atomic append counter), 4 = completedGroups.
 // Slot 4 of struct 0 (params[4]) is the shared cross-group completion counter in
@@ -129,15 +110,11 @@ layout(std430, binding = 26) buffer IndirectDispatchParamsBuf {
     uint params[];
 };
 
-// Fog-of-war column cull (#2008). The world fog canvas binds its 256² fog
-// visibility texture here; every other canvas (detached, GUI, non-fog
-// creations) binds a 1×1 all-visible placeholder. A voxel whose RAW world
-// (x,y) column is unexplored is dropped from BOTH the single-list and the
-// per-axis appends, so it never rasterizes — there is no surviving pixel for
-// FOG_TO_TRIXEL to hard-black, which is what turned a tall object on an
-// unrevealed column into a black silhouette. The `imageSize().x <= 1`
-// short-circuit makes the placeholder path a true no-op, so non-fog canvases
-// stay byte-identical to master.
+// Fog-of-war column cull. The world fog canvas binds its 256² fog visibility texture here;
+// every other canvas (detached, GUI, non-fog creations) binds a 1×1 all-visible placeholder.
+// A voxel whose RAW world (x,y) column is unexplored is dropped from BOTH the single-list and
+// the per-axis appends, so it never rasterizes and FOG_TO_TRIXEL has no pixel of it to
+// hard-black. The `imageSize().x <= 1` short-circuit makes the placeholder path a true no-op.
 layout(rgba8, binding = 0) readonly uniform image2D canvasFogOfWar;
 
 // Mirrors C_CanvasFogOfWar + c_fog_to_trixel.glsl. The fog `.r` channel reads
@@ -147,14 +124,12 @@ layout(rgba8, binding = 0) readonly uniform image2D canvasFogOfWar;
 const int kFogOfWarHalfExtent = 128;
 const float kFogExploredThreshold = 0.25;
 
-// Live analytic fog vision circles (aliases binding 27 — uploaded by
-// VOXEL_TO_TRIXEL_STAGE_1 right before this compact). Std140-mirrors
-// FrameDataFogObservers (C_CanvasFogOfWar) and the FogObserverData UBO in
-// c_fog_to_trixel.glsl. The grid texture above carries only coarse
-// explored/voxelized memory; these discs carry the smooth "currently visible".
-// The compact keeps a column covered by any disc EVEN when its grid cell is
-// unexplored, so a voxel-floor scene driven purely by setVisionCircle keeps its
-// floor (the grid-only cull would otherwise drop every column and black it out).
+// Live analytic fog vision circles (aliases binding 27; uploaded by VOXEL_TO_TRIXEL_STAGE_1
+// before this compact). Std140-mirrors FrameDataFogObservers (C_CanvasFogOfWar) and the
+// FogObserverData UBO in c_fog_to_trixel.glsl. canvasFogOfWar carries only coarse
+// explored/voxelized memory; these discs carry the smooth "currently visible". The compact
+// keeps a column covered by any disc EVEN when its grid cell is unexplored, so a voxel-floor
+// scene driven purely by setVisionCircle keeps its floor.
 const int kMaxFogVisionCircles = 8; // mirror of component_canvas_fog_of_war.hpp kMaxFogVisionCircles — must stay in sync
 layout(std140, binding = 27) uniform FogObserverData {
     vec4 visionCircles[kMaxFogVisionCircles]; // (centerX, centerY, radius, edgeSoftness)
@@ -190,8 +165,8 @@ const uint kFogWholeBodyExemptBit = 1u << 3u;
 
 // Safety margin (cells): covers the per-pixel worldPerPixel AA that
 // c_fog_to_trixel adds at low zoom — this shader can't compute zoom —
-// PLUS the fog-hidden keep ring (kFogHiddenKeepCells in
-// c_voxel_to_trixel_stage_1.{glsl,metal}) that the image-space
+// PLUS stage 1's fog-hidden keep ring (kFogHiddenKeepCells in
+// ir_voxel_face_select.{glsl,metal}) that the image-space
 // cross-section cut renders from; this margin must stay a superset of
 // stage 1's keep (8 + ~0.5 aa) or ring voxels are culled before stage 1
 // can keep them.
@@ -227,49 +202,46 @@ void writeDispatchDims(uint base, uint microSliceCount) {
     uint gx = max(min(count, 1024u), 1u);
     params[base + 0u] = gx;
     params[base + 1u] = max((count + gx - 1u) / gx, 1u);
-    // #2258: the stage kernels raster `microSliceCount` micro-cells per voxel
-    // face. Packing kStageMicroSlicesPerGroup of them into each z-workgroup
+    // The stage kernels raster `microSliceCount` micro-cells per voxel face.
+    // Packing kStageMicroSlicesPerGroup of them into each z-workgroup
     // (local_size_z in the stage kernels) means the launched z-workgroup count
     // is the ceil-divided slice count; the stage re-derives its micro-slice as
     // gl_WorkGroupID.z * kStageMicroSlicesPerGroup + gl_LocalInvocationID.z and
-    // early-returns the tail past microSliceCount, so output is byte-identical.
-    // Step B's feeder struct passes feederSubCap² here instead of effSub².
+    // early-returns the tail past microSliceCount, so the padding emits nothing.
+    // The feeder struct passes feederSubCap² here instead of effSub².
     params[base + 2u] = (microSliceCount + uint(kStageMicroSlicesPerGroup) - 1u) /
         uint(kStageMicroSlicesPerGroup);
 }
 
-// Per-voxel Hi-Z occlusion refine (#1812), layered on top of the per-chunk
-// pre-pass (coarse -> fine hierarchical occlusion). Drops a voxel that is
-// locally-exposed + in-frustum but globally occluded by closer geometry —
-// capturing the per-voxel occludedExposedFraction the all-or-nothing 256-voxel
-// chunk test leaves on the table. Conservative + off by default:
+// Per-voxel Hi-Z occlusion refine, layered on top of the per-chunk pre-pass
+// (coarse -> fine hierarchical occlusion). Drops a voxel that is
+// locally-exposed + in-frustum but globally occluded by closer geometry, which
+// the all-or-nothing 256-voxel chunk test cannot. Conservative + off by default:
 //   * occlusionCullMipCount == 0 (the default; any non-cardinal / rotating /
-//     re-voxelize / no-Hi-Z frame) -> no test, byte-identical to master.
-//   * Domain = the full shadow-feeder-widened canvas (#2298). The Hi-Z
+//     re-voxelize / no-Hi-Z frame) -> no test.
+//   * Domain = the full shadow-feeder-widened canvas. The Hi-Z
 //     downsample-maxes the WHOLE distance canvas — visible viewport plus the
 //     shadow-feeder ring the feeders raster into — so a ring caster's occluder
 //     data is real and testable. The gate is a canvas-COVERAGE guard, not a
 //     viewport box: a voxel is tested iff its expanded footprint lies fully
 //     inside the Hi-Z texel extent (a footprint spilling off-canvas would clamp
-//     onto the border texel and is kept — see the guard below). SOUNDNESS: a
+//     onto the border texel and is kept). SOUNDNESS: a
 //     voxel conservatively occluded at every canvas texel it can raster to leaves
 //     no trace in trixelDistances, and BOTH the visible resolve and the
 //     sun-shadow bake consume trixelDistances (never voxels) — so dropping it is
 //     bit-identical for the shadow it would have cast too, against the frame the
 //     Hi-Z was built from; a stale-lag false cull costs a feeder its shadow for
-//     one frame, same class as #1812's one-frame hole. This supersedes the
-//     #1812 "never cull a shadow-feeder" mitigation (correct only while the test
-//     domain was assumed visible-only).
+//     one frame.
 //   * A footprint that still sees background keeps the voxel (empty texels carry
 //     the 65535 sentinel -> hiZMax stays large -> never occlude). A false
 //     positive is a visible hole; a false negative is only lost savings.
 // Encoding matches the Hi-Z exactly: encodeDepthWithFace(pos3DtoDistance(voxelPos), 0)
 // — the same cardinal iso depth dispatchChunkOcclusion writes as its
 // encodedNearest_ (cb.minDepth_ * kDepthEncodeShift, face slot 0). Route through
-// the shared encode helper, NOT an open-coded scale: #2207 changed the cardinal
-// layout from *4 to *kDepthEncodeShift (depth [31:3] | flip [2] | slot [1:0]),
-// and a hard-coded *4 here silently compares a half-scale depth against the
-// Hi-Z's *8 values so the test never fires (a vacuous no-op). flip = 0 on the
+// the shared encode helper, NOT an open-coded scale: the cardinal layout is
+// depth [31:3] | flip [2] | slot [1:0], and a hard-coded scale that disagrees
+// with kDepthEncodeShift compares a mis-scaled depth against the Hi-Z so the
+// test never fires (a vacuous no-op). flip = 0 on the
 // cardinal path this cull runs on (riser-flip is gated to rotated content), so
 // slot 0 / flip 0 is the correct encode; the margin absorbs the Hi-Z's low bits.
 bool voxelOccludedByHiZ(ivec3 voxelPos, ivec2 isoPos) {
@@ -283,14 +255,14 @@ bool voxelOccludedByHiZ(ivec3 voxelPos, ivec2 isoPos) {
     // pixel stage 1 can write for this voxel — NOT a fixed ±1 window. stage 1's
     // emitDeformedFace writes each face at `base + roundHalfUp(D_s * src)` for src
     // across the [0,2)x[0,3) invocation lattice (local_size 2x3), per visible-
-    // triplet slot s, with D_s = mat2(faceDeform[s].xy, faceDeform[s].zw). The
-    // fixed ±1 window missed the +iso extreme of that hull at silhouette / upper
+    // triplet slot s, with D_s = mat2(faceDeform[s].xy, faceDeform[s].zw). A
+    // fixed ±1 window misses the +iso extreme of that hull at silhouette / upper
     // edges (the near Z face is unexposed so it never writes at `base`, and the
     // exposed X/Y faces land past the window), false-culling a VISIBLE voxel whose
-    // own last-frame depth write fell outside the sampled window — the #1812
-    // static-scene hole. The window MUST stay a superset of emitDeformedFace's
+    // own last-frame depth write falls outside the sampled window.
+    // The window MUST stay a superset of emitDeformedFace's
     // write set (the self-referential Hi-Z then re-anchors every surviving voxel):
-    // KEEP IN SYNC with c_voxel_to_trixel_stage_1.{glsl,metal} emitDeformedFace.
+    // KEEP IN SYNC with c_voxel_to_trixel_stage_1_body.{glsl,metal} emitDeformedFace.
     // faceDeform is identity at residualYaw==0 (the only path the cull runs on), so
     // this reduces to a fixed ~3x4-texel box on the cardinal path; deriving it from
     // faceDeform keeps it correct by construction if the emit deform ever changes.
@@ -311,19 +283,16 @@ bool voxelOccludedByHiZ(ivec3 voxelPos, ivec2 isoPos) {
     ivec2 loTexel = (base + ivec2(floor(loF)) - ivec2(1)) >> 1;
     ivec2 hiTexel = (base + ivec2(ceil(hiF)) + ivec2(1)) >> 1;
     ivec2 sz = imageSize(hiZLevel0);
-    // Canvas-coverage guard (#2298): only cull a voxel whose full expanded
+    // Canvas-coverage guard: only cull a voxel whose full expanded
     // footprint lies inside the Hi-Z texel extent [0, sz). c_build_distance_hiz
     // ceil-sizes each level and writes every texel a real downsampled max
     // (background sentinel 65535 where empty), so every read in [0, sz-1] is
     // faithful. A footprint that spills PAST that extent has no data off-canvas;
-    // the former clamp folded such a tap onto the border texel — reading a near
-    // occluder in place of the empty-background sentinel, deflating hiZMax and
-    // risking a false cull of an edge voxel that actually sees background. Keep
-    // those voxels. Voxels fully inside the old visibleIsoBounds gate are a
-    // strict subset of this domain (the canvas >= the visible viewport), so their
-    // test — and the cull-off byte-identity — is unchanged; the widening only
-    // ADDS the shadow-feeder ring, this issue's target population. With the guard
-    // holding, the read is provably in-bounds, so the former per-tap clamp is dead.
+    // clamping such a tap onto the border texel would read a near occluder in
+    // place of the empty-background sentinel, deflating hiZMax and risking a
+    // false cull of an edge voxel that actually sees background, so those voxels
+    // are kept. With the guard holding, every read is in-bounds and the taps need
+    // no clamp.
     if (loTexel.x < 0 || loTexel.y < 0 || hiTexel.x >= sz.x || hiTexel.y >= sz.y) {
         return false;
     }
@@ -352,31 +321,29 @@ void main() {
                 ivec3 voxelPosRaw = roundHalfUp(positions[idx].xyz);
                 ivec2 isoPos;
                 int cullMargin = 0;
-                // Cardinal-rotated position, hoisted so the per-voxel occlusion
-                // test can reuse it. Only rotated in the residual==0 branch below
-                // (the only path where occlusionCullMipCount can be non-zero);
-                // stays raw on the rotating path, which never runs the test.
+                // Cardinal-rotated position, shared with the per-voxel occlusion
+                // test. Rotated only on the residual==0 path (the only path where
+                // occlusionCullMipCount can be non-zero); stays raw on the
+                // rotating path, which never runs the test.
                 ivec3 voxelPos = voxelPosRaw;
-                // Smooth camera Z-yaw (T3 / #1310): while the per-axis canvases
+                // Smooth camera Z-yaw: while the per-axis canvases
                 // are active (residual yaw != 0) the framebuffer scatter
                 // rasterizes each voxel at its CONTINUOUS yawed iso position, so
                 // the cull must project the same way — the cardinal-snapped iso
-                // disagrees by the residual and drops off-center voxels (the
-                // "missing objects during rotation" symptom). Widen by the
-                // deformed-face sqrt2 footprint (~2 iso px) so a voxel whose
+                // disagrees by the residual and drops off-center voxels. Widen by
+                // the deformed-face sqrt2 footprint (~2 iso px) so a voxel whose
                 // center is just off-screen but whose face reaches on-screen
-                // still rasterizes. residual == 0 keeps the byte-identical
-                // cardinal-snap path.
+                // still rasterizes.
                 if (residualYaw != 0.0) {
-                    // Cell-anchor projection (#2545) so the cull tests the
+                    // Cell-anchor projection so the cull tests the
                     // same screen position the scatter renders at.
                     isoPos = roundHalfUp(
                         pos3DtoPos2DIsoYawedCellAnchor(vec3(voxelPosRaw), visualYaw));
                     cullMargin = 2;
                 } else {
                     if (cardinalIndex != 0) {
-                        // Plain cardinal rotation — no lower-corner shift
-                        // (#2545); mirrors the stage-1/2 store cell.
+                        // Plain cardinal rotation (no lower-corner shift);
+                        // mirrors the stage-1/2 store cell.
                         voxelPos = rotateCardinalZ(voxelPos, cardinalIndex);
                     }
                     isoPos = pos3DtoPos2DIso(voxelPos);
@@ -397,28 +364,23 @@ void main() {
                         // skipping its append is output-identical and saves its
                         // sub²-slice stage-1 dispatch. Exception: an active fog
                         // vision circle can revive an occluded vertical face as
-                        // a cross-section cut wall (#2125), so the drop is gated
-                        // off while any circle is live. (No early return — the
-                        // cross-group completion barrier below must stay
-                        // uniformly reached.)
-                        // Per-voxel Hi-Z occlusion refine (#1812): drop a voxel
-                        // globally occluded by closer geometry. Off by default
-                        // (occlusionCullMipCount == 0 -> no-op), and skipped for a
-                        // fully-interior voxel that was already dropped above, so
-                        // it never re-adds one. No early return — the completion
-                        // barrier below must stay uniformly reached.
+                        // a cross-section cut wall, so the drop is gated
+                        // off while any circle is live. No early return here or
+                        // in the Hi-Z refine: every invocation must reach the
+                        // cross-group completion barrier.
                         uint flagsByte = (voxels[idx].materialFlagBone >> 8u) & 0xFFu;
                         if ((visionCircleCount != 0 ||
                              (flagsByte & kFaceOccludedMaskBits) != kFaceOccludedMaskBits) &&
                             !voxelOccludedByHiZ(voxelPos, isoPos)) {
-                            // #2258 Step B: split this survivor into the visible
+                            // Split this survivor into the visible
                             // list (struct 0, full effSub² density) or the
                             // off-screen shadow-feeder list (struct 1, strided
-                            // feederSubCap² density). The feeder test is the EXACT
-                            // stage-2 #1740 skip: a cardinal (residualYaw == 0)
+                            // feederSubCap² density). isShadowFeederIso
+                            // (ir_iso_common.glsl) is the one definition shared
+                            // with stage 2's skip: a cardinal (residualYaw == 0)
                             // world (isDetachedCanvas < 0.5) survivor whose iso is
                             // outside the un-widened visible viewport. `isoPos` is
-                            // already the cardinal-snapped iso in that branch
+                            // the cardinal-snapped iso in that branch
                             // (residualYaw != 0 short-circuits isFeeder to false),
                             // so a voxel this shader calls feeder is exactly one
                             // stage 2 skips — over-classifying VISIBLE is the only
@@ -426,8 +388,6 @@ void main() {
                             // Feeders are off-screen by construction, so their
                             // coarser trixel depth reaches only the sun-shadow
                             // bake, never a visible pixel.
-                            // One definition with stage 2's skip
-                            // (isShadowFeederIso, ir_iso_common.glsl).
                             bool isFeeder = isShadowFeederIso(
                                 isoPos, visibleIsoBounds, residualYaw, isDetachedCanvas
                             );
@@ -437,7 +397,7 @@ void main() {
                                 // compacted buffer so it never collides with the
                                 // visible forward append (nVisible + nFeeder ≤
                                 // survivors ≤ voxelCount). Struct 1's count slot is
-                                // dead in single-list mode (per-axis owns it in
+                                // the feeder's in single-list mode (per-axis owns it in
                                 // split mode; the two are mutually exclusive here).
                                 uint slot = atomicAdd(params[kPerAxisIndirectStrideUints + 3u], 1u);
                                 compactedVoxelIndices[uint(voxelCount) - 1u - slot] = idx;
@@ -447,12 +407,12 @@ void main() {
                             }
                         }
                     } else {
-                        // Per-axis split (#1739): append this voxel into each axis
+                        // Per-axis split: append this voxel into each axis
                         // region whose axis it has an exposed face on. The store
                         // shader re-checks the precise visible-face exposure per
                         // axis, so an over-inclusive entry here is harmless; a
                         // fully-interior voxel (every face occluded) lands in no
-                        // region, which is tighter than master's full-list walk.
+                        // region.
                         uint flagsByte = (voxels[idx].materialFlagBone >> 8u) & 0xFFu;
                         uint stride = uint(perAxisSplitStride);
                         for (int axis = 0; axis < 3; ++axis) {
@@ -483,7 +443,7 @@ void main() {
                 (voxelRenderOptions.x != 0) ? uint(subdivisions * subdivisions) : 1u;
             if (perAxisSplitStride == 0) {
                 writeDispatchDims(0u, visibleSlices);
-                // #2258 Step B: struct 1 = the feeder dispatch, strided to
+                // Struct 1 = the feeder dispatch, strided to
                 // feederSubCap² micro-cells per face (vs effSub² for visible).
                 // Empty when no survivor was classified feeder (shadows off / all
                 // on-screen) ⇒ its stage-1 dispatch early-returns every workgroup.
@@ -491,11 +451,12 @@ void main() {
                 uint feederSlices = (voxelRenderOptions.x != 0) ? uint(cap * cap) : 1u;
                 writeDispatchDims(kPerAxisIndirectStrideUints, feederSlices);
             } else {
-                // Unrolled (was a for over axis 0..2): NVIDIA's link-time
+                // Unrolled, not a loop over axis 0..2: NVIDIA's link-time
                 // optimizer dies with "C5025 lvalue in array access too
-                // complex" + a C9999 ICE when the loop-variant base mixes
-                // with the constant-base call sites above; constant bases
-                // at every call site keep the inlined stores foldable.
+                // complex" + a C9999 ICE when a loop-variant base mixes
+                // with the constant-base call sites in the single-list branch;
+                // constant bases at every call site keep the inlined stores
+                // foldable.
                 writeDispatchDims(0u, visibleSlices);
                 writeDispatchDims(kPerAxisIndirectStrideUints, visibleSlices);
                 writeDispatchDims(2u * kPerAxisIndirectStrideUints, visibleSlices);
