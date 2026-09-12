@@ -89,7 +89,7 @@ case "$1" in
         # events endpoint — label age. Default: added long ago, so the TTL is
         # always elapsed and the liveness predicate alone decides (phase 1).
         # STUB_AGE pins the age in seconds instead, which is what lets a case
-        # sit INSIDE the 30-min TTL but past the 120 s orphan grace (#2973).
+        # sit INSIDE the 30-min TTL but past the 120 s orphan grace.
         if printf '%s ' "$@" | grep -q 'events'; then
             if [[ -n "${STUB_AGE:-}" ]]; then
                 python3 -c "import time;print(time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(time.time()-${STUB_AGE})))"
@@ -141,14 +141,14 @@ assert_removed_contains $'803\tfleet:reviewing-windows-worker-1' \
     "cross-host reviewing label swept on pure TTL (no heartbeat semantics)"
 
 # ===========================================================================
-# #2973 — dispatch-keyed amend ownership.
+# Dispatch-keyed amend ownership.
 #
 # The phase-1 predicate above vouches for a same-host amending label on the
 # PANE heartbeat (~/.fleet/heartbeats/<agent>). Step 0 of FIVE role docs
 # touches that file with the same worktree basename, so any later dispatch of
 # any role into the pane renews the liveness of a claim whose owning ITERATION
-# died — indefinitely, and never past the age gate either (86 min live on
-# engine PR #2961). The claim becomes simultaneously un-reapable and
+# died — indefinitely, and never past the age gate either. Such a
+# claim becomes simultaneously un-reapable and
 # un-claimable, and the reviewer is held off by REVIEW_SKIP_PREFIXES too.
 #
 # Ownership is therefore keyed on the dispatch: fleet-dispatch-wrap mints a
@@ -180,7 +180,7 @@ for _a in pool-2 pool-3 pool-4 pool-5 pool-6 pool-7; do
 done
 # (pool-8 deliberately has NO heartbeat — the legacy stale path, phase 4.)
 
-# 810 owner dispatch D1, worktree now on D2  -> SWEPT (the #2973 miss)
+# 810 owner dispatch D1, worktree now on D2  -> SWEPT (the dispatch-keyed miss)
 # 811 owner dispatch D1, worktree still D1   -> kept (live owner)
 # 812 owner dispatch D1, no dispatch-current -> kept (fallback: fresh heartbeat)
 # 813 no snapshot at all                     -> kept (legacy fallback)
@@ -243,7 +243,7 @@ assert_removed_absent $'815\tfleet:amending-mac-pool-7' \
 # --- phase 4: the legacy TTL path is untouched -----------------------------
 # pool-8 has no heartbeat and an empty dispatch_id (a pre-upgrade or
 # architect-pane claim): swept on pure TTL as before, and its snapshot is LEFT
-# in place — #1650's "swept-but-alive" R7 deferral stands where liveness is
+# in place — the "swept-but-alive" R7 deferral stands where liveness is
 # unknown.
 write_snap 816 pool-8 ""
 : > "$REMOVED_FILE"
