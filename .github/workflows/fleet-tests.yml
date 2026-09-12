@@ -29,11 +29,11 @@ name: Fleet Tests
 # Many suites reach outside scripts/ entirely for their subject under test —
 # their subjects are listed explicitly below so a PR touching only one of
 # them still runs this workflow (#2786, #2810, #2823, #2859, #2929, #3187).
-# The list is no longer hand-curated: scripts/fleet/fleet_test_subjects.py
-# derives it (every tracked path a suite source names, plus the derived
-# both-blocks workflow set) and fails when this filter or
-# OUT_OF_TREE_SUBJECTS misses a member. The long tail below is that sweep;
-# the suites whose subject is named here are:
+# The list is not hand-curated: scripts/fleet/fleet_test_subjects.py derives
+# it (every tracked path a suite source names, plus the derived both-blocks
+# workflow set) and fails when this filter or OUT_OF_TREE_SUBJECTS misses a
+# member. The long tail below is that sweep; the suites whose subject is
+# named here are:
 #   test_format_changed_line_scoping.sh -> cmake/run_clang_format_changed.cmake
 #   test_format_changed_standalone.sh   -> cmake/run_clang_format_changed_standalone.cmake
 #   test_ir_build_dir_resolution.sh     -> engine/tools/lib/concurrency_helpers.sh

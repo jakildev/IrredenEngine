@@ -36,14 +36,12 @@
 # at. This list is an *inclusion* list with no scan behind it — the opposite
 # of header_global_baseline in cmake/run_header_convention_checks.cmake, which
 # is an *exclusion* list riding on a tree-wide scan and therefore catches an
-# unlisted item by default. The two are complementary, not the same shape, and
-# the difference is exactly why this list shipped incomplete three times
-# (#2810, #2929, #2859).
+# unlisted item by default. The two are complementary, not the same shape.
 #
-# T5 closes that: it executes scripts/fleet/fleet_test_subjects.py, which
-# derives the live subject population (path literals in every suite source,
-# plus the derived both-blocks workflow set) and fails on any member this list
-# does not cover (#3117).
+# T5 covers the complement: it executes scripts/fleet/fleet_test_subjects.py,
+# which derives the live subject population (path literals in every suite
+# source, plus the derived both-blocks workflow set) and fails on any member
+# this list does not cover.
 #
 # T5 is also the stricter of the two on the axis T1 does cover. T1 matches a
 # subject as a literal SUBSTRING of the block, so a longer entry that happens
@@ -67,9 +65,9 @@ if [[ ! -f "$WORKFLOW" ]]; then
     exit 3  # skip status — run_all.sh must not count this as a pass (#2786)
 fi
 
-# The out-of-tree subjects each suite actually needs triggered on. You should
-# no longer have to extend this by hand and remember to: fleet_test_subjects.py
-# (T5) derives the population and names any member this list misses, with the
+# The out-of-tree subjects each suite actually needs triggered on. Extending
+# this by hand is not something to remember: fleet_test_subjects.py (T5)
+# derives the population and names any member this list misses, with the
 # referencing suite quoted. Add what it reports.
 #
 # An entry covers a subject exactly, or as a segment-bounded recursive glob —
@@ -89,9 +87,9 @@ fi
 # an entry as a literal substring of the block and neither string contains the
 # other, so the shorter entry does not cover the longer file.
 #
-# The .github/workflows/ entries are test_workflow_paths_sync.sh's subjects
-# (#2929). They are the only members whose population is *derived* rather than
-# fixed — that suite globs .github/workflows/*.yml and covers whichever files
+# The .github/workflows/ entries are test_workflow_paths_sync.sh's subjects.
+# They are the only members whose population is *derived* rather than fixed —
+# that suite globs .github/workflows/*.yml and covers whichever files
 # declare both a push: and a pull_request: paths: block. A derived subject has
 # no path literal for the scan to find, so fleet_test_subjects.py re-derives
 # that population itself (same glob, same both-blocks predicate) and checks it
@@ -102,7 +100,7 @@ fi
 # The long tail below is that sweep's output: every tracked file outside
 # scripts/fleet/ that a suite source names, comments and synthetic fixtures
 # included. That over-includes on purpose — the cost is an extra CI trigger,
-# and the alternative is the silent false-clean this ratchet exists to remove.
+# and the alternative is a silent false clean.
 OUT_OF_TREE_SUBJECTS=(
     'cmake/run_clang_format_changed.cmake'
     'cmake/run_clang_format_changed_standalone.cmake'
@@ -269,7 +267,7 @@ else
     fi
 fi
 
-echo "T5: the registry is COMPLETE — every derived subject is covered (#3117)"
+echo "T5: the registry is COMPLETE — every derived subject is covered"
 # T1-T4 quantify over OUT_OF_TREE_SUBJECTS and over one named constant; none
 # of them can see a subject nobody registered. fleet_test_subjects.py derives
 # that population from the suite sources and the workflow glob, so this case

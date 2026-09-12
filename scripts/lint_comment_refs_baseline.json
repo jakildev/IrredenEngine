@@ -431,7 +431,7 @@
  "scripts/fleet/tests/test_fleet_review_verdict.sh": 2,
  "scripts/fleet/tests/test_fleet_rules_sweep.sh": 2,
  "scripts/fleet/tests/test_fleet_task_class.py": 16,
- "scripts/fleet/tests/test_fleet_tests_workflow_paths.sh": 9,
+ "scripts/fleet/tests/test_fleet_tests_workflow_paths.sh": 6,
  "scripts/fleet/tests/test_fleet_transition.sh": 6,
  "scripts/fleet/tests/test_fleet_validate_roles.py": 3,
  "scripts/fleet/tests/test_fleet_validate_stack.py": 8,
