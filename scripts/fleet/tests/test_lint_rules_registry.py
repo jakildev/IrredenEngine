@@ -8,7 +8,13 @@
   - no frontmatter at all                                        -> flagged
   - frontmatter with no `paths:` key                              -> flagged
   - `paths:` key with an empty list                                -> flagged
+  - empty `paths:`, list belongs to a later top-level key          -> flagged
+  - `paths:` whose value is a mapping, a scalar, or `[]`           -> flagged
   - `paths:` key with a non-empty list                             -> clean
+  - block sequence at the key's own indentation (valid YAML)       -> clean
+  - flow sequence (`paths: [item]`)                                -> clean
+  - a non-empty `paths:` followed by a sibling key                 -> clean
+  - a comment line between `paths:` and its items                  -> clean
   - CRLF line endings, same content                                -> clean
   - unregistered rule (file present, no map row)                   -> flagged
   - registered rule (map row present)                              -> clean
@@ -90,9 +96,60 @@ class FrontmatterPredicate(TmpTreeTest):
                           "---\npaths:\n---\n\n# Some rule\n")
         self.assertFalse(lint.has_paths_frontmatter(path))
 
+    def test_empty_paths_does_not_borrow_a_later_keys_list(self):
+        # `paths` is null; the list is `other`'s value. Delimiting the
+        # `paths:` block by indentation instead of by the next top-level key
+        # counts these items as its own and reports a false green.
+        for sibling_list in ("  - \"engine/**/*.hpp\"", "- \"engine/**/*.hpp\""):
+            with self.subTest(sibling_list=sibling_list):
+                path = self.write(
+                    ".claude/rules/cpp-example.md",
+                    f"---\npaths:\nother:\n{sibling_list}\n---\n\n# Some rule\n")
+                self.assertFalse(lint.has_paths_frontmatter(path))
+
+    def test_paths_key_with_a_nested_mapping_is_flagged(self):
+        path = self.write(".claude/rules/cpp-example.md",
+                          "---\npaths:\n  inner: 1\n---\n\n# Some rule\n")
+        self.assertFalse(lint.has_paths_frontmatter(path))
+
+    def test_paths_key_with_a_scalar_is_flagged(self):
+        path = self.write(".claude/rules/cpp-example.md",
+                          "---\npaths: \"engine/**/*.hpp\"\n---\n\n# Some rule\n")
+        self.assertFalse(lint.has_paths_frontmatter(path))
+
+    def test_empty_flow_sequence_is_flagged(self):
+        path = self.write(".claude/rules/cpp-example.md",
+                          "---\npaths: []\n---\n\n# Some rule\n")
+        self.assertFalse(lint.has_paths_frontmatter(path))
+
     def test_paths_key_with_items_is_clean(self):
         path = self.write(".claude/rules/cpp-example.md",
                           _SIBLING_FRONTMATTER + "\n# Some rule\n")
+        self.assertTrue(lint.has_paths_frontmatter(path))
+
+    def test_zero_indent_block_sequence_is_clean(self):
+        # A block sequence at its parent key's own indentation is valid YAML,
+        # so the `paths:` block is delimited by the next top-level key rather
+        # than by indentation.
+        path = self.write(".claude/rules/cpp-example.md",
+                          "---\npaths:\n- \"engine/**/*.hpp\"\n- \"a:b\"\n---\n")
+        self.assertTrue(lint.has_paths_frontmatter(path))
+
+    def test_flow_sequence_is_clean(self):
+        path = self.write(".claude/rules/cpp-example.md",
+                          "---\npaths: [\"engine/**/*.hpp\"]\n---\n\n# Some rule\n")
+        self.assertTrue(lint.has_paths_frontmatter(path))
+
+    def test_items_followed_by_a_sibling_key_are_clean(self):
+        path = self.write(
+            ".claude/rules/cpp-example.md",
+            "---\npaths:\n  - \"engine/**/*.hpp\"\nglob: \"*.hpp\"\n---\n")
+        self.assertTrue(lint.has_paths_frontmatter(path))
+
+    def test_comment_between_key_and_items_is_clean(self):
+        path = self.write(
+            ".claude/rules/cpp-example.md",
+            "---\npaths:\n  # the injection scope\n  - \"engine/**/*.hpp\"\n---\n")
         self.assertTrue(lint.has_paths_frontmatter(path))
 
     def test_crlf_file_with_paths_is_clean(self):

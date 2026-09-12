@@ -33,7 +33,10 @@ _SELF = Path(__file__).resolve()
 
 FRONTMATTER_FENCE_RE = re.compile(r"^---\s*$")
 PATHS_KEY_RE = re.compile(r"^paths:\s*$")
+PATHS_INLINE_RE = re.compile(r"^paths:\s*\[\s*[^\s\]]")
 PATHS_ITEM_RE = re.compile(r"^\s*-\s+\S")
+TOP_LEVEL_KEY_RE = re.compile(r"^\S[^:]*:")
+COMMENT_RE = re.compile(r"^\s*#")
 MAP_HEADING_RE = re.compile(r"^## Canonical-home map\s*$")
 NEXT_HEADING_RE = re.compile(r"^## ")
 FRONTMATTER_SCAN_LINES = 40
@@ -62,26 +65,48 @@ def collect_rule_files(repo_root):
 
 
 def has_paths_frontmatter(path):
-    """True iff the file opens with a `---` / `paths:` / `- ...` / `---`
-    frontmatter block within the first FRONTMATTER_SCAN_LINES lines."""
+    """True iff the file opens, within the first FRONTMATTER_SCAN_LINES lines,
+    with a fenced frontmatter block whose top-level `paths:` key owns a
+    non-empty list.
+
+    The `paths:` value ends at the next top-level key, never at a change of
+    indentation: YAML admits a block sequence at its parent key's own
+    indentation, so an indentation test would both reject that valid spelling
+    and — the direction that matters for a gate — count a list belonging to a
+    later sibling key as this key's value. Both block (`- item` lines) and
+    flow (`paths: [item]`) sequences satisfy the README's non-empty-list
+    contract.
+    """
     lines = path.read_text(encoding="utf-8").replace("\r\n", "\n").split("\n")
     head = lines[:FRONTMATTER_SCAN_LINES]
     if not head or not FRONTMATTER_FENCE_RE.match(head[0]):
         return False
-    saw_paths_key = False
-    saw_item = False
+    in_paths = False
+    items = 0
     for line in head[1:]:
         if FRONTMATTER_FENCE_RE.match(line):
-            return saw_paths_key and saw_item
-        if PATHS_KEY_RE.match(line):
-            saw_paths_key = True
+            return items > 0
+        if not line.strip() or COMMENT_RE.match(line):
             continue
-        if saw_paths_key and not saw_item:
-            saw_item = bool(PATHS_ITEM_RE.match(line))
-        elif saw_paths_key and saw_item and not PATHS_ITEM_RE.match(line) \
-                and line.strip() != "":
-            # a non-list, non-blank line after items closes the paths: block
-            # without a closing fence in view — not a match.
+        # Ordered before the top-level-key test: a zero-indent item whose
+        # value contains a colon is an item, not a key.
+        if PATHS_ITEM_RE.match(line):
+            if in_paths:
+                items += 1
+            continue
+        if PATHS_KEY_RE.match(line):
+            in_paths = True
+            continue
+        if PATHS_INLINE_RE.match(line):
+            items += 1
+            in_paths = False
+            continue
+        if TOP_LEVEL_KEY_RE.match(line):
+            in_paths = False
+            continue
+        if in_paths:
+            # An indented non-list line makes `paths:` a mapping or a folded
+            # scalar — a value, but not a list.
             return False
     return False
 
