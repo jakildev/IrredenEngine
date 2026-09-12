@@ -55,7 +55,7 @@ OTHER="fleet:planning-linux-worker"
 REMOVE_LOG="$TMPROOT/remove.log"; : > "$REMOVE_LOG"
 
 # Stateful gh stub. STUB_HOLDERS = planning labels already on the issue; the
-# POST echoes those + the just-posted label. STUB_PLAN_COMMENTS is the count
+# Live label reads echo those + the candidate. STUB_PLAN_COMMENTS is the count
 # `_issue_has_plan_comment`'s --jq returns (the dedup probe). STUB_LABELS is the
 # issue's label set, which the `--json labels` arm answers *by evaluating the
 # --jq program against* rather than by returning a canned boolean. The two
@@ -107,11 +107,13 @@ gh() {
             local posted="" a
             for a in "$@"; do case "$a" in labels\[\]=*) posted="${a#labels[]=}" ;; esac; done
             local out='[' first=1 h
-            for h in $STUB_HOLDERS $posted; do
+            for h in $STUB_HOLDERS ${posted:-${FLEET_CLAIM_CANDIDATE:-}}; do
                 [[ $first -eq 1 ]] || out+=','
                 out+="{\"name\":\"$h\"}"; first=0
             done
-            out+=']'; printf '%s\n' "$out"; return 0 ;;
+            out+=']'
+            if [[ -n "$posted" ]]; then printf '%s\n' "$out"; else printf '[%s]\n' "$out"; fi
+            return 0 ;;
         *) return 0 ;;
     esac
 }

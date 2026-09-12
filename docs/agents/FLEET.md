@@ -49,7 +49,15 @@ claims are swept by `fleet-claim cleanup --gh`. Review, feedback, conflict
 and planning claims use the same primitive under disjoint prefixes, so a
 force-pushing lane (feedback, conflict resolution) excludes another agent's
 live `fleet:reviewing-*` (its own passes): scout suppression, claim-time
-gate, POST-response arbitration over the excluded-prefix union. Host keys
+gate, then admission. A new candidate is admitted only after two
+independent, complete, paginated label GETs observe its exact label and no
+contender across the excluded-prefix union; the POST response is never
+ownership evidence. The lex-min retry policy still resolves visible
+contention. This bounded settle policy assumes completed competing adds
+become visible to the confirmation reads; it is not a linearizable mutex
+under indefinitely stale or divergent reads. A recurrence in which both
+reads hide a completed competitor requires a new authoritative-arbitration
+design, not a longer sleep. Host keys
 are one canonical set (`derive_host()`: `Linux` → `linux`, `Darwin` →
 `macos`, `MINGW*/MSYS*/CYGWIN*` → `windows`; `fleet-claim host` prints this
 one); WSL2 is `linux`, so a WSL2 and a native-Linux fleet on one account
