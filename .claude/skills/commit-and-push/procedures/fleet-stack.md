@@ -1,34 +1,36 @@
 # Fleet stack mode
 
-This is the **fleet stack** path. The cursor-flow stacking variant lives in [`cursor-stack.md`](cursor-stack.md); they have separate detection signals and are mutually exclusive in practice.
-
-If the current task is part of an `fleet-claim stack` chain (i.e. the caller's worktree name has a stack claim under `~/.fleet/claims/_stack_<agent>/`), this skill opens **one PR per task, chained by `--base`** instead of a single PR with multiple commits.
+When the worktree has a stack claim under `~/.fleet/claims/_stack_<agent>/`,
+open **one PR per task, chained by `--base`**. The cursor-flow variant is
+[`cursor-stack.md`](cursor-stack.md); the two are mutually exclusive.
 
 ## Detection
-
-Detect stack mode at the start of the flow:
 
 ```bash
 fleet-claim stack-pr-state <your-worktree-name>
 ```
 
-- Output `no stack claim for agent: <name>` → not stacked, proceed with the normal single-PR flow in [`SKILL.md`](../SKILL.md).
-- Output with `task`/`branch`/`pr` columns → stacked. The row whose PR column is `(pending)` and whose earlier rows (if any) are all filled is the current task. Note its **T-NNN `<task-id>`** (for the `fleet-claim` commands in step 8 — `fleet-claim` takes T-NNN identifiers, not issue numbers) and its **`<issue#>`** (the linked GitHub issue number, for the branch name in step 2).
+`no stack claim for agent: <name>` → normal single-PR flow. A
+`task`/`branch`/`pr` table → stacked: the current task is the row whose PR
+column is `(pending)` with every earlier row filled. Note its
+**`<task-id>`** (T-NNN — what `fleet-claim` takes) and its **`<issue#>`**
+(for the branch name).
 
-## Deltas vs. the single-PR flow
+## Deltas
 
-- **Step 2 branch name** is `claude/<issue#>-<short-topic>` (e.g. `claude/1234-occupancy-grid`). The issue-number prefix lets reviewers and `stack-base` resolve the chain.
-- **Step 8 PR base** is `fleet-claim stack-base <agent> <task-id>` instead of `master`. For the first task this still returns `master`; for subsequent tasks it returns the previous task's branch.
-- **After `gh pr create`** record the PR in the stack so the next task can chain off it, then link it into the native GitHub stack (skip the link for the first task — its base is `master`):
-  ```bash
-  fleet-claim stack-set-pr <agent> <task-id> <branch> <pr-url>
-  ```
-  Link step: [native-stack-link.md](native-stack-link.md), with `$base` from `stack-base` and the new PR number. GitHub then owns retarget-on-merge and cascade rebases for the chain; the PR header's stack badge is the chain navigation (no `Stacked on:` / `Full chain:` body lines — legacy markers went stale and misrouted review, #2231).
-- **No stack label.** Stack membership is the native stack object (`baseRefName != "master"` + the PR header's stack badge); the legacy `fleet:stacked` label retired with the self-built machinery.
-- **Title** starts with a scope prefix per the commit-message style guide; the issue number goes in the `Closes #N` line so reviewers can trace the chain.
+- Step 2 branch name: `claude/<issue#>-<short-topic>`.
+- Step 8 base: `fleet-claim stack-base <agent> <task-id>` — `master` for
+  the first task, the previous task's branch after.
+- After `gh pr create`: `fleet-claim stack-set-pr <agent> <task-id>
+  <branch> <pr-url>`, then [native-stack-link.md](native-stack-link.md)
+  with the `stack-base` value (skip the link for the first task). No
+  `Stacked on:` / `Full chain:` body lines and no stack label —
+  membership is the native stack object (`baseRefName != "master"` + the
+  PR header's stack badge).
+- Title carries a scope prefix; the issue number goes in the `Closes #N`
+  line.
 
-## After the PR opens
-
-Do NOT start the next task in the same branch. Invoke `start-next-task` the same way as single-PR work; when it comes back, the next stacked-PR iteration computes its own `--base` via `stack-base` and branches off that (not `origin/master`).
-
-When **the final task's PR is merged**, run `fleet-claim release-stack <agent>` to clean up both the per-task claims and the stack metadata.
+Afterwards invoke `start-next-task` as usual; the next iteration computes
+its own base via `stack-base`. When the final task's PR merges,
+`fleet-claim release-stack <agent>` cleans up the per-task claims and the
+stack metadata.

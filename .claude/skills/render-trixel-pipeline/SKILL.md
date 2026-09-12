@@ -1,56 +1,50 @@
 ---
 name: render-trixel-pipeline
 description: >-
-  Work with the Irreden Engine render pipeline: voxel-to-trixel stages, canvas
-  textures, trixel compositing, framebuffer output, shaders, camera, and
-  coordinate systems. Use when the user wants to modify rendering, add shader
-  stages, work with canvases, adjust camera/viewport, or understand the
-  isometric projection math.
+  Works with the Irreden Engine render pipeline — voxel-to-trixel stages,
+  canvas textures, trixel compositing, framebuffer output, shaders, camera,
+  and coordinate systems. Use when the user wants to modify rendering, add a
+  shader stage, work with canvases, adjust the camera or viewport, or
+  understand the isometric projection math.
 ---
 
 # Render / Trixel Pipeline
 
-Read `engine/render/CLAUDE.md` first — it has the authoritative pipeline
-diagram, gotchas (hardcoded bind points, distance-clear semantics, canvas
-destruction ordering), and the SDF-vs-voxel-pool parity rules. For isometric
-projection equations, see `engine/math/CLAUDE.md` §"Isometric projection — the
-equations".
+Read [`engine/render/CLAUDE.md`](../../../engine/render/CLAUDE.md) first — the
+pipeline diagram, gotchas (hardcoded bind points, distance-clear semantics,
+canvas destruction ordering), and the SDF-vs-voxel-pool parity rules. Isometric
+projection equations: [`engine/math/CLAUDE.md`](../../../engine/math/CLAUDE.md)
+§"Isometric projection — the equations".
 
 ## Two-stage depth split
 
 Stage 1 (`c_voxel_to_trixel_stage_1.glsl`) writes only depth via
-`imageAtomicMin`. Stage 2 (`c_voxel_to_trixel_stage_2.glsl`) reads that depth
-before writing color and entity IDs. Never reorder these two dispatches — the
-`imageAtomicMin` in Stage 1 is the only thing that resolves overdraw; if Stage
-2 runs first, every voxel writes unconditionally and the color pass is garbage.
+`imageAtomicMin`; stage 2 (`c_voxel_to_trixel_stage_2.glsl`) reads that depth
+before writing colour and entity IDs. The `imageAtomicMin` in stage 1 is what
+resolves overdraw — stage 2 first means every voxel writes unconditionally.
+Both dispatches run inside the single `VOXEL_TO_TRIXEL_STAGE_1` system: one
+per-canvas tick does compact → stage 1 → stage 2, which keeps each canvas
+atomic over the shared voxel SSBOs in multi-canvas scenes.
 
-Both dispatches run inside the **single** `VOXEL_TO_TRIXEL_STAGE_1` system —
-one per-canvas tick does compact → stage-1 → stage-2. They were once two
-separate systems, but the shared voxel SSBOs meant a separate stage-2 system
-clobbered multi-canvas scenes (it ran only after stage-1 had ticked every
-canvas); folding stage-2 into the stage-1 tick keeps each canvas atomic.
-
-A minimal creation needs exactly three systems in the RENDER pipeline:
-`VOXEL_TO_TRIXEL_STAGE_1`, `TRIXEL_TO_FRAMEBUFFER`, `FRAMEBUFFER_TO_SCREEN`.
-All other systems (lighting passes, SHAPES_TO_TRIXEL, TRIXEL_TO_TRIXEL, etc.)
-are optional overlays inserted between `VOXEL_TO_TRIXEL_STAGE_1` and
-`TRIXEL_TO_FRAMEBUFFER`.
+A minimal creation registers exactly `VOXEL_TO_TRIXEL_STAGE_1`,
+`TRIXEL_TO_FRAMEBUFFER`, `FRAMEBUFFER_TO_SCREEN` in RENDER; lighting passes,
+`SHAPES_TO_TRIXEL`, `TRIXEL_TO_TRIXEL`, and the rest are optional overlays
+inserted between the first two.
 
 ## Trixel compositing (CHILD_OF)
 
-`TRIXEL_TO_TRIXEL` uses `CHILD_OF` relations. For each child-canvas →
-parent-canvas pair the system calls:
+`TRIXEL_TO_TRIXEL` composites each child canvas into its `CHILD_OF` parent:
+`beginTick` binds the shader and sets the camera offset in frame data;
+`relationTick` binds the parent canvas textures to image slots 0 and 1; `tick`
+binds the child canvas to slots 2 and 3, uploads frame data, and dispatches.
+Canvases without `CHILD_OF` render independently into their own textures.
 
-1. `beginTick` — binds the shader, sets camera offset in frame data.
-2. `relationTick` — binds parent canvas textures to image slots 0 and 1.
-3. `tick` — binds child canvas textures to slots 2 and 3, uploads frame data, dispatches.
+## Adding a render stage
 
-Canvas entities without `CHILD_OF` do not participate in `TRIXEL_TO_TRIXEL` — they render independently into their own textures.
-
-## Adding a new render stage
-
-1. Write the GLSL shader in `engine/render/src/shaders/`.
-2. Add a `SystemName` enum entry in `ir_system_types.hpp`.
-3. Create a system header under `engine/prefabs/irreden/render/systems/`.
-4. In `create()`: create named GPU resources and set up the compute dispatch or draw call.
-5. Register in the creation's RENDER pipeline in dependency order relative to the stages above.
+1. Write the shader in `engine/render/src/shaders/` (and its `.metal`
+   counterpart — `backend-parity` skill).
+2. Add the `SystemName` enum entry in `ir_system_types.hpp`.
+3. Add the system header under `engine/prefabs/irreden/render/systems/`;
+   `create()` creates the named GPU resources and sets up the dispatch or draw.
+4. Register it in the creation's RENDER pipeline in dependency order relative
+   to the stages above.

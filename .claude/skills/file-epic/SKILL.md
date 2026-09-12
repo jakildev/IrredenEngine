@@ -1,23 +1,17 @@
 ---
 name: file-epic
 description: >-
-  Take an approved architect plan and file it as the fleet expects: umbrella
-  issue labeled fleet:epic, one child fleet:task per phase, a ## Plan comment
-  on the umbrella and on each child, and post-filing stack validation.
+  Files an approved architect plan as the fleet expects: an umbrella issue
+  labeled fleet:epic, one fleet:task child per phase, a ## Plan comment on
+  the umbrella and on each child, and post-filing stack validation. Use
+  when the user says "file the epic", "ship the epic", "open the tickets
+  for this plan", or "proceed" after approving a multi-ticket plan.
 ---
 
 # file-epic (Irreden Engine)
 
 **The flow lives in [`docs/agents/skills/file-epic.md`](../../../docs/agents/skills/file-epic.md).**
-Read it first, then apply the engine deltas below. This wrapper carries
-deltas only — see [`docs/design/skill-sharing.md`](../../../docs/design/skill-sharing.md)
-for why.
-
-> **Placement (per #1312):** this skill is repo-tracked as a project skill
-> in each repo's `.claude/skills/file-epic/`. It loads by cwd, exactly like
-> `commit-and-push` / `review-pr`. The shared *flow* is now single-sourced
-> in `docs/agents/skills/file-epic.md`; only the deltas below are per-repo,
-> so the engine and game wrappers can no longer drift on the flow itself.
+Read it first, then apply the deltas below.
 
 ## Deltas (Irreden Engine)
 
@@ -32,21 +26,9 @@ for why.
 
 ## Engine notes
 
-- The `fleet-validate-stack` helper (shipped #1317) is the **validate-stack
-  command**; it auto-discovers children and fails loudly on a malformed
-  body. It is the belt that the step-5 hand-filing convention is the
-  suspenders for.
-- Per-child `## Plan` comments (flow step 6) must meet
-  [`PLANNING-PROTOCOL.md`](../../../docs/agents/PLANNING-PROTOCOL.md)
-  step-2 rigor — verified current state / confirmed repro, one picked
-  approach, sibling + in-flight reconciliation — not a restated phase line
-  (#1456). The engine's `fleet-queue-ingest` plan gate (#1932 PR2) keys on the
-  `## Plan` comment, so a child is queue-ready as soon as its comment is posted.
-  The umbrella's plan is likewise its own `## Plan` comment — filing an epic
-  commits nothing and opens no PR.
-- Engine-repo vs game-repo: most epics target `jakildev/IrredenEngine`.
-  The cross-repo info-isolation rule (see
-  [`docs/agents/CLAUDE-BASELINE.md`](../../../docs/agents/CLAUDE-BASELINE.md)
-  §"Cross-repo information isolation") means engine child issues must not
-  reference the private game repo by name or feature; scrub a game-authored
-  plan before filing engine children.
+- The engine's `fleet-queue-ingest` plan gate keys on the child's `## Plan`
+  comment, so a child is queue-ready as soon as its comment is posted.
+- Engine child issues never reference the private game repo by name or
+  feature ([`CLAUDE-BASELINE.md`](../../../docs/agents/CLAUDE-BASELINE.md)
+  §"Cross-repo information isolation"); scrub a game-authored plan before
+  filing engine children.

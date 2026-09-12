@@ -1,7 +1,6 @@
 # PR body templates
 
-Canonical `--body` content for `commit-and-push` step 8. Fleet stack and cursor
-stack modes apply a delta to the canonical template.
+Canonical `--body-file` content for `commit-and-push` step 8.
 
 ## Canonical template (single-PR mode)
 
@@ -25,53 +24,31 @@ Closes #<issue-N>
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 ```
 
-Omit `## Notes for reviewer` when there is nothing non-obvious to call out.
-Omit the `Closes #<issue-N>` line when the task's `Issue:` field is `(none)`
-(e.g. cleanup PRs, fleet-tooling PRs filed without a tracking issue).
-
-The `Closes #N` line is what makes GitHub auto-close the originating issue on
-merge. Include it whenever an Issue number exists — with one carve-out: when
-your own `## Acceptance evidence` table grades a criterion as not shipped,
-write `Refs #N` instead, so the issue stays open for the residual rather than
-auto-closing over an unmet criterion (#2981). `Refs #N` is the fleet's
-non-closing marker and is already read as one by
-`scripts/fleet/fleet_scope_shipped.py`.
-
-`## Acceptance evidence` is required whenever the body carries a `Closes #N`
-line and issue N states acceptance criteria **anywhere** — a `## Plan`
-comment's `### Acceptance criteria` section OR the issue body itself (the
-`fleet:no-plan` agent-approved lane carries them in the body under a bold
-`**Acceptance criteria**` line, never a `## Plan` comment, #2521); omit it
-otherwise (`Issue: (none)`, issues stating no criteria). One row per
-criterion — authoring rules, the unverifiable-on-this-host convention, and
-the fails-means-not-done rule live in
-[`docs/agents/AUTHOR-PIPELINE.md`](../../../../docs/agents/AUTHOR-PIPELINE.md)
-§ "Acceptance evidence". The two sections answer different questions:
-`## Test plan` says how you verified the code doesn't break; `## Acceptance
-evidence` proves the ticket's named criteria actually fired. `## Test plan`
-is past tense — a record of verification already run, each item written
-from output you observed, box ticked. An unticked `- [ ]` box means the PR
-is not ready to leave WIP: either run the check and tick it from the
-observed output, or delete the item (#2658).
+- `## Notes for reviewer`: omit when there is nothing non-obvious.
+- `Closes #<issue-N>`: omit when the task's `Issue:` field is `(none)`.
+  Write `Refs #N` instead when your own `## Acceptance evidence` grades a
+  criterion as not shipped, so the issue stays open for the residual
+  (`scripts/fleet/fleet_scope_shipped.py` reads `Refs` as non-closing).
+- `## Acceptance evidence`: required whenever the body carries `Closes #N`
+  and issue N states acceptance criteria anywhere — a `## Plan` comment's
+  `### Acceptance criteria` or a bold `**Acceptance criteria**` line in
+  the body (the `fleet:no-plan` lane). One row per criterion; authoring
+  rules, the unverifiable-on-this-host convention, and fails-means-not-done
+  live in [`docs/agents/AUTHOR-PIPELINE.md`](../../../../docs/agents/AUTHOR-PIPELINE.md)
+  §"Acceptance evidence". Omit otherwise.
+- `## Test plan` records verification already run — each item written
+  from observed output and ticked. An unticked `- [ ]` box means the PR
+  is not ready to leave WIP: run it and tick it, or delete the item.
 
 ## Fleet stack delta
 
-No body block. Stack membership, chain navigation, and merge sequencing all
-live in the native GitHub stack (the [native-stack-link.md](native-stack-link.md)
-step registers it after PR open; the PR header's stack badge shows the
-chain). Never write `Stacked on:` or `Full chain:` lines — the legacy body
-markers went stale after retargets and misrouted review (#2231).
-
-Drop `## Notes for reviewer`. The `Closes #<issue-N>` line is already in the
-canonical template above — keep it as written (each fleet-stack task has its
-own issue).
+No body block — stack membership, chain navigation, and merge sequencing
+live in the native GitHub stack ([native-stack-link.md](native-stack-link.md)).
+Never write `Stacked on:` / `Full chain:` lines. Drop `## Notes for
+reviewer`; keep `Closes #<issue-N>` (each task has its own issue).
 
 ## Cursor stack delta
 
-No body block either — same native-stack rule as the fleet stack delta.
-
-**Drop the `Closes #<issue-N>` line** — cursor-stack slices usually share
-one issue, and the parent PR (which targets master directly via the
-canonical template) carries the `Closes` line. Avoid duplicating `Closes #N`
-on the child while the parent is still in review. Drop `## Notes for
-reviewer`.
+Same native-stack rule. Drop `## Notes for reviewer` and **drop the
+`Closes #<issue-N>` line** — cursor-stack slices usually share one issue,
+and the parent PR (targeting master) carries the `Closes` line.

@@ -1,134 +1,87 @@
 # CPU profiling — IR_PROFILE_* + easy_profiler
 
-The engine wraps easy_profiler under `engine/profile/`. The surface is
-three macros, three log routes, and one runtime gate. Compiles to
-no-ops in release builds.
+`engine/profile/` wraps easy_profiler: three macros, a histogram scope, and
+runtime gates. No-ops in release builds.
 
 ## Macros
 
 ```cpp
 void IRSGlowPulse::tickEntity(C_GlowPulse& glow, C_Color& color) {
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
-    // ... existing logic
 }
 
 void some_inner_block() {
     IR_PROFILE_BLOCK("expensive_step", IR_PROFILER_COLOR_RENDER);
-    // ... work
     IR_PROFILE_END_BLOCK;
 }
 ```
 
-- `IR_PROFILE_FUNCTION(color)` — name taken from `__FUNCTION__`.
-- `IR_PROFILE_BLOCK(name, color)` / `IR_PROFILE_END_BLOCK` — manual scope.
-- Always use the named `IR_PROFILER_COLOR_*` constants from
-  `engine/profile/include/irreden/ir_profile.hpp`. Raw ARGB hex literals
-  are an anti-pattern; the named colors group related blocks visually
-  in the easy_profiler timeline.
+`IR_PROFILE_FUNCTION(color)` names the scope from `__FUNCTION__`;
+`IR_PROFILE_BLOCK(name, color)` / `IR_PROFILE_END_BLOCK` is a manual scope.
+Colours are the named `IR_PROFILER_COLOR_*` constants in
+`engine/profile/include/irreden/ir_profile.hpp`, never raw ARGB literals.
 
-## Where to wrap
+Wrap the entry point of a new system tick, a new pipeline stage, audio / video
+callbacks, and inner sub-blocks worth isolating — not helpers called inside a
+per-entity loop, where the per-scope cost is paid N times.
 
-- The entry point of a new system tick function.
-- The entry point of a new pipeline stage.
-- Audio / video callbacks.
-- Inner sub-blocks worth isolating in the timeline (e.g. a per-frame
-  upload step inside a tick).
+## Sub-tick breakdown
 
-Don't wrap helpers called from a tick — easy_profiler's per-scope cost
-adds up if you put it inside the per-entity loop. Wrap the tick itself.
-
-## When the tick itself is the hotspot — sub-tick breakdown
-
-The matrix's "top CPU systems" table tells you *which* system is slow.
-It does not tell you *which line of the tick*. When a once-per-frame
-system tick (a render-pipeline stage, not a per-entity loop) is the
-hotspot, break it down with `IR_PROFILE_SCOPE` sub-blocks:
+The matrix's "top CPU systems" table names the slow system, not the slow line.
+For a once-per-frame tick (a render stage, not a per-entity loop) add
+`IR_PROFILE_SCOPE` sub-blocks named `<system>_<region>`:
 
 ```cpp
 void tick(...) {
     { IR_PROFILE_SCOPE("vs1_clear");  clearCanvasAndDistances(...); }
     { IR_PROFILE_SCOPE("vs1_pos");    /* position upload */ }
     { IR_PROFILE_SCOPE("vs1_color");  /* color upload */ }
-    // ...
 }
 ```
 
-This is **not** the "don't wrap helpers" anti-pattern above — that
-caveat is about per-*entity*-loop bodies, where the scope cost is paid
-N times. A render-stage tick runs **once per frame**, so a handful of
-sub-scopes cost a few µs total. Name them `<system>_<region>` so they
-group in the dump.
+`perf_grid`'s `--auto-profile` dump prints every `IR_PROFILE_SCOPE` that ran
+last frame sorted by total ms (`Auto-profile CPU-scope — <name>: <ms>` in each
+matrix `.log`), so new sub-scopes appear with no extra wiring. Leave the one or
+two that mattered as permanent regression sensors.
 
-Surfacing them: `perf_grid`'s `--auto-profile` dump prints **every**
-`IR_PROFILE_SCOPE` that ran last frame, sorted by total ms (the
-`Auto-profile CPU-scope — <name>: <ms>` lines in each matrix `.log`).
-So any sub-scope you add shows up in the matrix output with no extra
-wiring. Leave the scopes on the one or two regions that turned out to
-matter — they are cheap permanent regression sensors on the hot path.
+## Per-frame histogram
 
-This is how `common_bottlenecks.md` #12 was localized: the matrix
-flagged `SingleVoxelToCanvasFirst` as the hotspot, and `vs1_*`
-sub-scopes pinned it to the position-upload region (`vs1_pos`: 8 ms at
-zoom 1, 56 ms at zoom 8 — same scene).
+`IR_PROFILE_SCOPE(name)` also feeds `IRProfile::cpuFrameHistogram()` for the
+HUD (Lua `ir.render.getCpuPassTimings()`, `ir.render.getCpuPassTiming(name)`);
+off by default, two `now()` calls plus one hashmap lookup per scope exit when
+on.
 
-## Per-frame CPU histogram (the HUD-facing one)
+## Gates
 
-`IR_PROFILE_SCOPE(name)` is a different scope timer that feeds the
-per-frame HUD via `IRProfile::cpuFrameHistogram()`. Use it when you want
-the HUD to see the cost live, not when you're producing an offline
-trace. Lua surface: `ir.render.getCpuPassTimings()` and
-`ir.render.getCpuPassTiming(name)`.
+- `IRProfile::CPUProfiler::instance().setEnabled(bool)` — all `IR_PROFILE_*`
+  (easy_profiler path).
+- `IRProfile::cpuFrameHistogram().enabled_` — `IR_PROFILE_SCOPE` histogram.
+- `IREngine::enableFrameTiming(true)` — per-system timing; the matrix script
+  sets it via `--auto-profile N`, and the `World` dtor writes
+  `save_files/profile_report.txt` with per-system avg/min/max, which
+  `compare_perf_runs.py` parses ("Per-system timing").
 
-The cost is bounded — disabled-by-default, two `now()` calls + one
-hashmap lookup per scope exit when enabled.
+Matrix output detects a slowed system; the easy_profiler trace localises what
+inside it is slow.
 
-## Runtime gating
-
-- `IRProfile::CPUProfiler::instance().setEnabled(bool)` — gates all
-  `IR_PROFILE_*` (the easy_profiler path).
-- `IRProfile::cpuFrameHistogram().enabled_` — gates `IR_PROFILE_SCOPE`
-  (the histogram path).
-- `IREngine::enableFrameTiming(true)` — flips per-system timing on. The
-  matrix script calls this implicitly via `--auto-profile`.
-
-## How the matrix script captures CPU timing
-
-`scripts/perf/perf_grid_matrix.sh` runs the demo with `--auto-profile N`
-which calls `IREngine::enableFrameTiming(true)`. The `World` dtor then
-writes `save_files/profile_report.txt` containing per-system avg/min/max
-ms. `compare_perf_runs.py` parses the "Per-system timing" section and
-surfaces the top systems per cell.
-
-The matrix output is the right input for "did my change slow down a
-system". The easy_profiler trace is the right input for "what inside
-this system is slow". Use both — matrix to detect the regression, trace
-to localize.
-
-`IRCanvasStress` also accepts `--auto-profile` (no frame-count arg —
-pair it with `--auto-screenshot`, whose exit triggers the World-dtor
-report). Use it instead of the perf_grid matrix when the change touches
-the **rotating-set CPU paths** (`REBUILD_GRID_VOXELS` inverse resample,
-`REBUILD_DETACHED_VOXELS`) — perf_grid spawns no rotating sets, so those
-systems idle in its report. Reference point (#1720, full default scene,
-507 frames): RebuildGridVoxels avg 0.287 ms, RebuildDetachedVoxels
-avg 0.771 ms.
+`IRCanvasStress` also accepts `--auto-profile` (no frame-count argument — pair
+it with `--auto-screenshot`, whose exit triggers the report). Use it instead of
+the perf_grid matrix when the change touches the rotating-set CPU paths
+(`REBUILD_GRID_VOXELS` inverse resample, `REBUILD_DETACHED_VOXELS`); perf_grid
+spawns no rotating sets, so those systems idle in its report.
 
 ## Reading the trace
 
-`.prof` files are dumped on exit. The human runs `profiler_gui` to view
-them (the agent cannot drive a GUI). When asking the human:
+`.prof` files dump on exit; the human opens them in `profiler_gui`. Give them
+the frame number, the colour group to filter on, and ask for the top-N scopes
+by total time, not raw duration.
 
-- Point them at the specific frame number of interest.
-- Specify which color group (`IR_PROFILER_COLOR_RENDER` etc.) to filter on.
-- Ask for the top-N scopes by total time, not by raw duration.
+## Wrong tool when
 
-## When CPU profiling is the wrong tool
-
-- Frame time grew but `--- Per-system timing ---` shows nothing
-  unusual → GPU-bound, switch to [`gpu_profiling.md`](gpu_profiling.md).
-- One specific math helper looks suspicious → microbench (see issue
-  #1023; not yet built).
-- A render pipeline stage's avg is fine but its max spikes
-  occasionally → likely a per-frame GC or buffer realloc, not a CPU
-  hotspot. Look for allocation in tick paths
-  ([`common_bottlenecks.md`](common_bottlenecks.md)).
+- Frame time grew but "Per-system timing" is flat → GPU-bound:
+  [`gpu_profiling.md`](gpu_profiling.md).
+- One math helper is suspect → `scripts/perf/run_math_bench.sh` (Catch2
+  microbench, JSON report in `save_files/bench/`).
+- A stage's avg is fine but its max spikes → allocation or buffer realloc in a
+  tick path ([`common_bottlenecks.md`](common_bottlenecks.md)), not a CPU
+  hotspot.

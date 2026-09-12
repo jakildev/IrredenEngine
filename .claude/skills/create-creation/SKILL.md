@@ -1,38 +1,28 @@
 ---
 name: create-creation
 description: >-
-  Scaffold a new Irreden Engine creation (demo, editor, or game) with all
-  required files: CMakeLists.txt, C++ entry point, optional Lua wiring, and
-  pipeline registration. Use when the user wants to create a new project,
-  demo, editor, or game within the engine.
+  Scaffolds a new Irreden Engine creation (demo, editor, or game): the
+  CMakeLists.txt with engine linkage and asset staging, the C++ entry point
+  with pipeline and command registration, optional Lua wiring, and the
+  registration in `creations/CMakeLists.txt`. Use when the user wants to
+  create a new project, demo, editor, or game within the engine.
 ---
 
 # Create a New Creation
 
-## Overview
+A creation is an executable linking the engine, under `creations/<category>/`
+(`demos/`, `editors/`, `hana_class_projects/`, or the private `game/` path).
+Minimum file sets, visibility tiers, and the asset-staging rule:
+[`creations/CLAUDE.md`](../../../creations/CLAUDE.md); demo conventions:
+[`creations/demos/CLAUDE.md`](../../../creations/demos/CLAUDE.md) §"Adding a
+new demo". References: `creations/demos/shape_debug/CMakeLists.txt` (canonical
+CMake), `creations/demos/default/main.cpp` (C++-only),
+`creations/demos/default/main_lua.cpp` plus its binding files (Lua).
 
-A "creation" is an executable that links against the engine. Creations live under `creations/` grouped by category: `demos/`, `editors/`, `hana_class_projects/`, or the special `game/` path which auto-registers.
+## 1. CMakeLists.txt
 
-## Directory Layout
-
-```
-creations/<category>/<name>/
-├── CMakeLists.txt
-├── main.cpp            # C++-only entry point
-├── main_lua.cpp        # Lua-capable entry point (pick one)
-├── lua_bindings.hpp    # If using Lua
-├── lua_bindings.cpp    # If using Lua
-├── lua_component_pack.hpp  # If using Lua
-├── config.lua          # If using Lua
-├── main.lua            # If using Lua
-└── scripts/            # Sub-scripts loaded by main.lua
-```
-
-For a C++-only creation, only `CMakeLists.txt` and `main.cpp` are needed.
-
-## Step 1: CMakeLists.txt
-
-Use this template, replacing `YourCreation` / `YOUR_CREATION` with the actual name:
+Replace `YourCreation` / `YOUR_CREATION` with the real name — they are scaffold
+sentinels that `simplify` flags if they survive into source:
 
 ```cmake
 set(IR_YOUR_CREATION_RUNTIME_DIR ${CMAKE_CURRENT_BINARY_DIR})
@@ -40,40 +30,34 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${IR_YOUR_CREATION_RUNTIME_DIR})
 add_executable(IRYourCreation main.cpp)
 target_link_libraries(IRYourCreation PUBLIC IrredenEngine)
 
-add_custom_target(IRYourCreationAssets
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${PROJECT_SOURCE_DIR}/engine/render/data ${IR_YOUR_CREATION_RUNTIME_DIR}/data
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${PROJECT_SOURCE_DIR}/engine/data ${IR_YOUR_CREATION_RUNTIME_DIR}/data
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${PROJECT_SOURCE_DIR}/engine/render/src/shaders ${IR_YOUR_CREATION_RUNTIME_DIR}/shaders
-)
-
-add_dependencies(IRYourCreation IRYourCreationAssets)
+# Exe-relative data/ shaders/ scripts/ (+ Windows DLLs) and the
+# IRYourCreationPackage bundle target. Never hand-roll an *Assets target.
+irreden_bundle_assets(IRYourCreation SCRIPTS config.lua)
+irreden_package_target(IRYourCreation)
 
 add_custom_target(IRYourCreationRun
     COMMAND $<TARGET_FILE:IRYourCreation>
-    DEPENDS IRYourCreation
+    DEPENDS IRYourCreation IRYourCreationAssets
     WORKING_DIRECTORY ${IR_YOUR_CREATION_RUNTIME_DIR}
     USES_TERMINAL
 )
 ```
 
-For Lua creations, also add script-sync commands. See `creations/demos/default/CMakeLists.txt` for the full pattern with `copy_if_different` for `.lua` files and `scripts/` directories.
+A Lua creation lists every script in `SCRIPTS` (`main.lua config.lua ...`, as
+in `creations/demos/default/CMakeLists.txt`); Lua-defined components or
+systems add `irreden_lua_codegen(...)` (`lua-creation-setup` skill).
 
-## Step 2: Register the creation
+## 2. Register
 
-**Option A (engine-owned):** Add to `creations/CMakeLists.txt`:
+- Engine-owned: append
+  `add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/<category>/<name>)` to
+  `creations/CMakeLists.txt` — append, never reorder.
+- Private game: place it in `creations/game/`; the root `CMakeLists.txt`
+  auto-adds it when `creations/game/CMakeLists.txt` exists.
 
-```cmake
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/<category>/<name>)
-```
+## 3. Entry point
 
-**Option B (private game):** Place in `creations/game/`. The root `CMakeLists.txt` auto-adds it when `creations/game/CMakeLists.txt` exists.
-
-## Step 3: C++ Entry Point
-
-### Pure C++ (`main.cpp`)
+### `main.cpp`
 
 ```cpp
 #include <irreden/ir_engine.hpp>
@@ -102,7 +86,7 @@ void initSystems();
 void initCommands();
 
 int main(int argc, char **argv) {
-    IREngine::init("config.json");
+    IREngine::init(argc, argv);
     initSystems();
     initCommands();
     IREngine::gameLoop();
@@ -145,19 +129,19 @@ void initCommands() {
 }
 ```
 
-### Lua-capable (`main_lua.cpp`)
+### `main_lua.cpp`
 
-The key difference: call `registerLuaBindings()` **before** `IREngine::init(argv[0])`:
+`registerLuaBindings()` runs **before** `IREngine::init(argc, argv)`; the rest
+is identical:
 
 ```cpp
 #include <irreden/ir_engine.hpp>
 #include "lua_bindings.hpp"
-
 // ... same includes as above, plus Lua-bound components/systems ...
 
 int main(int argc, char **argv) {
     MyCreation::registerLuaBindings();
-    IREngine::init(argv[0]);
+    IREngine::init(argc, argv);
     initSystems();
     initCommands();
     IREngine::gameLoop();
@@ -165,14 +149,18 @@ int main(int argc, char **argv) {
 }
 ```
 
-For the Lua binding files, see the `lua-creation-setup` skill.
+Binding files: `lua-creation-setup` skill.
 
-## Pipeline Ordering
+## Pipeline order
 
-See [`engine/system/CLAUDE.md`](../../engine/system/CLAUDE.md) §Pipelines for the INPUT → UPDATE → RENDER order and common system orderings within each pipeline.
+INPUT → UPDATE → RENDER and the orderings within each pipeline:
+[`engine/system/CLAUDE.md`](../../../engine/system/CLAUDE.md) §Pipelines. The
+RENDER minimum is `VOXEL_TO_TRIXEL_STAGE_1`, `TRIXEL_TO_FRAMEBUFFER`,
+`FRAMEBUFFER_TO_SCREEN` (`render-trixel-pipeline` skill).
 
-## Reference Creations
+## Done when
 
-- **Minimal C++:** `creations/demos/default/main.cpp`
-- **Full Lua:** `creations/demos/default/` (complete Lua stack)
-- **C++ + Lua hybrid:** `creations/demos/default/main_lua.cpp`
+`fleet-build --target IRYourCreation` is green and
+`fleet-run --timeout 15 IRYourCreation` runs from the exe directory
+([`docs/agents/BUILD.md`](../../../docs/agents/BUILD.md) §"Running an
+executable").

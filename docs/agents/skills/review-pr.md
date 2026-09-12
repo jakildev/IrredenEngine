@@ -1,18 +1,12 @@
 # review-pr — shared flow
 
-The canonical `review-pr` flow: review an open PR and post a structured
-review covering ownership, project invariants, allocation hot paths, naming,
-tests, and project-specific smells, then set the verdict label.
+Review an open PR, post a structured review, and set the verdict label.
 
-Every repo that runs a fleet keeps its
-`.claude/skills/review-pr/SKILL.md` as a thin wrapper that points here and
-supplies only its **deltas** — most importantly its own **review
-checklist**, which is inherently repo-specific (the engine checks ECS/render
-invariants; a game checks its simulation model; an editor checks UX). The
-*flow* is single-sourced here so the wrappers can't drift on mechanics. See
-[`docs/design/skill-sharing.md`](../../design/skill-sharing.md).
-
-Wherever a step needs a repo-specific value it names a **delta key** in bold.
+Each repo's `.claude/skills/review-pr/SKILL.md` is a thin wrapper that
+points here and answers the delta keys below — most importantly its own
+**review checklist**, which is inherently repo-specific
+([`docs/design/skill-sharing.md`](../../design/skill-sharing.md)). A step
+that needs a repo-specific value names its **delta key** in bold.
 
 ---
 
@@ -24,56 +18,40 @@ Wherever a step needs a repo-specific value it names a **delta key** in bold.
 | **claim tool** | The fleet claim/release helper. | `fleet-claim` |
 | **default branch** | The repo's main branch (step-1c base check). | `master` |
 | **review checklist** | The repo's domain-specific review items (step 4). | the engine checklist in the wrapper |
-| **acceptance grader** | Optional subagent that grades the PR against the originating issue's planned acceptance criteria (step 4b). | the `review-acceptance` agent |
+| **acceptance grader** | Optional subagent that grades the PR against the originating issue's acceptance criteria (step 4b). | the `review-acceptance` agent |
 | **smoke procedure** | Cross-host/backend validation tagging, if any. | the wrapper's `procedures/cross-host-smoke.md` |
 | **re-review procedure** | The repo's re-review expansion. | the wrapper's `procedures/re-review.md` |
 | **stacked-review procedure** | Per-PR scoping for stacked PRs. | the wrapper's `procedures/stacked-pr-review.md` |
 | **fleet doc** | The repo's fleet reference (model split, reviewer loop). | [`docs/agents/FLEET.md`](../FLEET.md) |
 
-The fleet verdict-label set (`fleet:approved`, `fleet:needs-fix`,
-`fleet:blocker`, `fleet:has-nits`) and the bail-label set are shared fleet
-machinery and are used concretely below; a repo that renames them notes the
-mapping in its wrapper.
+The verdict labels (`fleet:approved`, `fleet:needs-fix`, `fleet:blocker`,
+`fleet:has-nits`) and the bail labels are shared fleet machinery; a repo
+that renames them notes the mapping in its wrapper.
 
 ---
 
 ## When to run
 
-Trigger from a persistent reviewer-loop session whose launch prompt told it
-to poll `gh pr list` and review anything new; in that mode the reviewer
-resolves the unreviewed set itself and invokes this once per PR. Or when the
-user explicitly asks ("review PR <N>", "review the last PR", etc.).
+From a persistent reviewer-loop session polling `gh pr list`, once per
+unreviewed PR; or on explicit ask ("review PR <N>", "review the last PR").
+Never from inside an unrelated working session.
 
-Do **not** invoke proactively inside an unrelated working session (e.g.
-mid-refactor on your own PR). The bar: either the user asked, or this
-session's whole job is to be a reviewer.
+## Model expectations
 
-## Model expectations (two-tier review)
-
-Runs on either Sonnet or Opus:
-
-- **Sonnet first pass** — cheap, catches the 80% (style, obvious bugs,
-  missing null checks, naming, untested branches). A Sonnet reviewer is
-  thorough on the checklist but explicitly flags anything subtle (lifetime,
-  concurrency, an invariant several layers deep, a GPU/CPU handoff) with
-  "I am not confident on this invariant, please Opus-review:".
-- **Opus second pass (or sole pass)** — for any PR touching core invariants,
-  anything performance-sensitive, any GPU/CPU sync, any concurrency, or any
-  PR the Sonnet pass escalated. Opus also confirms earlier Sonnet nits were
-  addressed.
-
-When running as Sonnet, mention in the verdict whether Opus escalation is
-needed. When running as Opus on a PR with a prior Sonnet review, read it
-first and focus on what Sonnet couldn't confirm. See the **fleet doc**
-"Model split".
+- **Sonnet first pass** catches style, obvious bugs, naming, untested
+  branches, and flags anything subtle (lifetime, concurrency, deep
+  invariants, GPU/CPU handoff) with "I am not confident on this invariant,
+  please Opus-review:". State in the verdict whether Opus escalation is
+  needed.
+- **Opus second or sole pass** for core invariants, performance, GPU/CPU
+  sync, concurrency, or any Sonnet escalation. Read the prior Sonnet review
+  first and focus on what it could not confirm. **fleet doc** "Model split".
 
 ## Preconditions
 
-1. `gh` authenticated (`gh auth status`).
-2. A PR number/URL or "latest" — resolve before starting.
-3. You are **not** the agent that wrote the code. If the author asks to
-   review their own work, warn them and offer to run it anyway with the
-   tunnel-vision caveat.
+`gh` authenticated; a PR number, URL, or "latest" resolved; you did not
+write the code (if the author asks anyway, warn about tunnel vision and
+proceed).
 
 ---
 
@@ -81,171 +59,115 @@ first and focus on what Sonnet couldn't confirm. See the **fleet doc**
 
 ### 1. Resolve the PR and pull its metadata
 
-Read author/human PR comments **before** walking the diff — they flag
-deliberate scope ("I deferred X") and pre-flag concerns ("watch out for Y on
-macOS"). Missing them produces reviews that re-raise addressed points.
+Read author and human comments before the diff — they mark deliberate
+scope and pre-flagged concerns.
 
 ```bash
 gh pr view <N> --json number,title,body,headRefName,baseRefName,author,files,additions,deletions,commits,mergeable,comments,reviews,labels
 gh api repos/<repo>/pulls/<N>/comments
 ```
 
-The first returns issue-level comments, review summaries, and the live label
-set (for the step-1b bail check). The second returns inline (line-attached)
-code-review comments that `gh pr view --json` omits. The diff is fetched
-**after** the bail check so bail-label PRs never pay the diff round-trip.
+The second call returns inline comments that `gh pr view --json` omits.
+"Latest": `gh pr list --state open --limit 5`, confirm if ambiguous.
 
-For "latest"/"most recent": `gh pr list --state open --limit 5`, pick the
-top, confirm with the user if ambiguous.
+### 1b. Bail check, then diff
 
-### 1b. Label bail check + diff fetch
-
-**Before** fetching the diff, check the step-1 `labels` for bail labels:
-`fleet:semantic-conflict`, `fleet:merger-cooldown`, `fleet:wip`, `human:wip`,
-any `fleet:amending-*`. If any is present, release the claim and skip the PR
-without fetching the diff or posting:
+If the labels include `fleet:semantic-conflict`, `fleet:merger-cooldown`,
+`fleet:wip`, `human:wip`, or any `fleet:amending-*`: release and skip
+without fetching the diff or posting.
 
 ```bash
 <claim-tool> review-release <N> <your-worktree-name>
 ```
 
-If none present, fetch the diff: `gh pr diff <N>`.
+Otherwise `gh pr diff <N>`.
 
-### 1c. Check whether the PR is stacked
+### 1c. Stacked?
 
-Some PRs are stacked: their `--base` is another open PR's branch, not the
-default branch. The review is still per-PR; you don't re-review the parent.
-
-Quick detection from step-1 metadata: `baseRefName != <default-branch>` →
-stacked on that branch (native GitHub stack; a legacy `Stacked on:` body
-line on an old PR is confirmation only, never the signal). If stacked,
-apply the **stacked-review procedure**, then return for step 1d. If
-standalone, continue to step 1d.
+`baseRefName != <default-branch>` means stacked on that branch (a legacy
+`Stacked on:` body line is confirmation only, never the signal). Apply the
+**stacked-review procedure**, then continue.
 
 ### 1d. Churn audit when `mergeable == CONFLICTING`
 
-A CONFLICTING PR has a stale branch that can silently carry reverted hunks.
-When `mergeable` is `CONFLICTING`, read the per-file `additions` and `deletions`
-from `gh pr view <N> --json files` and apply:
+From the per-file `additions`/`deletions`:
 
-1. **Oversized churn** — any file with ≥100 added+deleted lines the body
-   doesn't mention. Flag **Needs-fix** (escalate to **Blocker** if it
-   deletes functions/files that break the build): the PR may be silently
-   reverting work that landed after the branch was cut.
-2. **Out-of-scope file** — any file in the stat that's neither described in
-   the body nor a known mechanical side-effect of the claimed scope. Flag
-   **Needs-fix**: author must acknowledge it or rebase to drop the hunk.
+- A file with ≥100 added+deleted lines the body does not mention →
+  **Needs-fix** (Blocker if it deletes functions/files that break the
+  build): the branch may be silently reverting work that landed after it
+  was cut.
+- A file neither described in the body nor a mechanical side-effect of the
+  claimed scope → **Needs-fix**: acknowledge or rebase it away.
 
-If neither fires, note in the body: "CONFLICTING state checked — no
-out-of-scope files or oversized churn." If `mergeable` is anything else,
-skip this step.
+If neither fires, note "CONFLICTING state checked — no out-of-scope files
+or oversized churn."
 
-### 2. Check out the PR branch locally (read-only)
+### 2. Check out the branch (read-only)
 
-```bash
-gh pr checkout <N>
-```
-
-Confirm the command succeeded, then compare `git rev-parse HEAD` with the PR's
-`headRefOid` from `gh pr view <N> --json headRefOid`. A failed checkout leaves the
-previous source tree in place: do not test that tree and report its results as
-PR validation. Report the exact blocker through the assigned completion contract.
-
-You still have full read access to the rest of the repo for cross-reference.
-Do **not** commit or push from this worktree — you are a reader.
+`gh pr checkout <N>`, then compare `git rev-parse HEAD` with `headRefOid`
+from `gh pr view <N> --json headRefOid`. A failed checkout leaves the old
+tree in place — report the blocker through the completion contract rather
+than testing that tree. Never commit or push from a review.
 
 ### 3. Read the diff in context
 
-For each changed file: read the **full file**, not just the hunks (bugs hide
-in surrounding code); cross-reference any component/system/symbol name
-against existing conventions; if a shader changed, also read the CPU-side
-struct that feeds it (GPU layouts and CPU structs must stay in sync).
+Read each changed file in full, not just the hunks. Cross-reference new
+symbols against existing conventions; a changed shader means also reading
+the CPU-side struct that feeds it.
 
-Keep a running list ranked by severity. The boundary between **blocker** and
-**needs-fix** is "would the default branch survive this merge?":
+Rank findings. The blocker / needs-fix line is "does the default branch
+survive this merge?":
 
-- **Blocker** — the build breaks, the app crashes/hangs, or data on disk is
-  corrupted if this lands. Unmergeable as-is.
-- **Needs-fix** — compiles and runs, but introduces a correctness/perf
-  regression that must be repaired before merge. Survives, but worse.
+- **Blocker** — build breaks, crash/hang, or on-disk data corruption.
+- **Needs-fix** — compiles and runs, but a correctness or perf regression
+  that must be repaired before merge.
 - **Nit** — style, naming, minor simplification, docs. Truly optional.
-- **Praise** — a non-obvious good decision worth reinforcing.
+- **Praise** — a non-obvious good decision.
 
-Two cross-cutting rules for the findings themselves:
+Two rules for the findings themselves:
 
-- **Verify cited precedents/APIs before asserting them as the fix
-  pattern.** A finding of the shape "X does this via Y; align with it"
-  requires checking the tree first — grep for the named API, read the
-  cited precedent. A miscited precedent is worse than a vague nit: an
-  author who trusts it implements against a phantom API or propagates the
-  misattribution into comments. If unverified, phrase the nit as a
-  question, not an assertion. **The mirror holds for absence**: before
-  asserting something does *not* exist — no tracking issue, no such
-  label or flag, no in-tree precedent for a cited guideline — run the
-  command that enumerates that namespace (`gh issue list --search` in
-  **both** fleet repos; `gh label list`; a grep for the guideline's own
-  idiom) and say what you searched. An unsearched absence never softens
-  a finding a documented rule already covers.
-- **Cross-check "remove when #X" annotations against the PR's `Closes`
-  list.** Grep the diff for `remove when #`, `TODO`, `FIXME` markers
-  referencing an issue this PR's body closes — those blocks must be gone
-  before merge, or they ship to the default branch as dead code. (The
-  author side has the same check at PR-open time; this is the backstop.)
+- A finding of the shape "X does this via Y; align with it" requires
+  having read Y in the tree; otherwise phrase it as a question. Asserting
+  that something does *not* exist (no tracking issue, no label, no
+  precedent) requires having run the enumerating command (`gh issue list
+  --search` in both fleet repos, `gh label list`, a grep) and saying what
+  was searched.
+- Grep the diff for `remove when #`, `TODO`, `FIXME` markers referencing an
+  issue this PR's body closes — those blocks must be gone before merge.
 
-### 4. Apply the repo's review checklist
+### 4. Apply the review checklist
 
-Go through the **review checklist** (in the wrapper) explicitly. For every
-item, either confirm compliance or raise an issue. This is the repo-specific
-heart of the review — the engine's checklist covers ECS invariants,
-ownership/lifetime, the render pipeline, lighting, math/coordinates,
-serialization, naming/style, tests/build, and Opus-only deep items; a
-creation layered on the engine adds (or replaces with) its own domain rules.
-
-If the PR touches a subdirectory with its own `CLAUDE.md` (or `REVIEW.md`),
-read it **in addition to** the repo checklist and apply both — the repo
-checklist is the baseline, the subdirectory's rules are the delta.
+Walk the **review checklist** explicitly; confirm or raise each item. If
+the PR touches a subdirectory with its own `CLAUDE.md` or `REVIEW.md`,
+apply that too — the repo checklist is the baseline, the subdirectory's
+rules are the delta.
 
 ### 4b. Grade acceptance against the originating issue
 
-The checklist above grades code health; this step grades **outcome**. If
-the repo defines an **acceptance grader** delta and the PR body carries a
-`Closes #N` line, dispatch the grader (via the Agent tool) with the PR
-number and the closed issue number(s). It reads the issue's planned
-`### Acceptance criteria` plus the PR's `## Acceptance evidence` table and
-returns a fragment grading each criterion met / unmet / unverifiable.
+When the repo defines an **acceptance grader** and the body carries `Closes
+#N`, dispatch it (Agent tool) with the PR and issue numbers — concurrently
+with step 4; it needs step 1's metadata, not your findings. It grades each
+planned criterion met / unmet / unverifiable from the PR's `## Acceptance
+evidence`. Fold the fragment in as `### Acceptance (issue #N)` and mirror
+every unmet criterion into the top-level `### Needs-fix` (or `###
+Blockers`) list — blocking items never live only inside the fragment. Skip
+when there is no grader, no `Closes #N`, or no planned criteria.
 
-Fold the fragment into the review body as its own `### Acceptance
-(issue #N)` section and map the grades into the verdict per the wrapper's
-rules — an unmet criterion is at least needs-fix. Mirror every
-unmet-criterion finding into the top-level `### Needs-fix` (or
-`### Blockers`) list as well, as one line pointing back to the Acceptance
-table — blocking items never live only inside the fragment; the step-5
-bright line applies to them unchanged. The grader is deliberately a
-separate context from this session: it grades the ticket's outcome
-without being anchored by the code-health walk you just did.
+### 5. Post the review
 
-Skip when the delta is absent, the body has no `Closes #N`, or the grader
-reports the issue has no planned criteria — the code-health review stands
-on its own in those cases. Dispatch it concurrently with step 4's checklist
-walk when convenient; it needs the metadata from step 1, not your findings.
-
-### 5. Write the review and set the verdict label
-
-**These are one indivisible action.** Post the review comment and set the
-verdict label in immediate succession — no intervening bash calls. A review
-without a verdict label is invisible to the human's merge queue.
-
-Post via `gh pr review`. **Do NOT use `--body "$(cat <<'EOF'…)"` or any
-`$(...)` command substitution** — it trips the security gate on backticks.
-Instead: `rm -f .review-body.md` (so the Write tool doesn't refuse), Write
-the body to `.review-body.md` in the worktree root (gitignored; NOT `/tmp/`),
-then:
+Post and label as one indivisible action: the review comment, then the
+verdict label as the very next bash call. `rm -f .review-body.md`, Write
+the body to `.review-body.md` in the worktree root (gitignored; not
+`/tmp/`), then:
 
 ```bash
 gh pr review <N> --comment --body-file .review-body.md
 ```
 
-Body shape:
+Never `--body "$(cat <<'EOF'…)"` or any `$(...)` (the security gate trips
+on backticks). Never `--approve` / `--request-changes` — every fleet agent
+shares one account and the API rejects formal reviews on its own PRs;
+merging is the human's call.
 
 ```markdown
 ## Review — <title>
@@ -276,79 +198,54 @@ Body shape:
 🤖 Reviewed by Claude <model> (review-pr skill)
 ```
 
-Rules: cite **file:line** for every issue; suggest a concrete fix, not just
-"this is wrong"; drop empty sections (don't write "None").
+Cite `file:line` and a concrete fix for every issue; drop empty sections.
 
-**The bright line between Nits and needs-fix:** a Nit is *truly optional*.
-Anything you describe with "must resolve before merge", "pre-merge ask",
-"the comment and code must agree", or "needs to be reconciled" is **NOT a
-Nit** — it's needs-fix; move it and drop the verdict to `needs-fix`. The
-contradiction "approve, but please fix X before merge" is forbidden. Nits
-are still encouraged — author roles scan approved PRs and address every nit
-before landing, so put real nits in freely. This bright line applies to
-step 4b's acceptance grading unchanged: an unmet criterion is blocking by
-definition, so it lives in the top-level `### Needs-fix` (or `### Blockers`)
-list per step 4b's mirroring rule — never only inside `### Acceptance
-(issue #N)`.
+**The bright line:** a Nit is truly optional. Anything phrased "must
+resolve before merge", "the comment and code must agree", "needs to be
+reconciled" is needs-fix — move it and drop the verdict. "Approve, but fix
+X before merge" is forbidden. Real nits are welcome: author roles address
+every nit on approved PRs before landing. An unmet acceptance criterion is
+blocking by definition.
 
-**Do not use `gh pr review --approve` or `--request-changes`** — all fleet
-agents share one account and the API rejects formal review actions on your
-own PRs. The `--comment` review plus the verdict line is sufficient; merging
-is always the user's call.
+### 5b. Set the verdict label
 
-### 5b. Set the verdict label (continued)
+Immediately after `gh pr review`, apply the named edge with
+`fleet-review-verdict` (the wrapper lists the commands). Fleet reviewers
+pass `--agent <worktree-basename>`; an interactive human omits it. The tool
+verifies the reviewing claim and a review pinned to the current head, then
+delegates the swap to `fleet-transition`. A PR carries exactly one of
+`fleet:approved` / `fleet:needs-fix` / `fleet:blocker`; `fleet:has-nits`
+rides on top of `fleet:approved` and covers only `### Nits` (amend-worthy)
+— `### Nits (follow-up)` sets no label and rides the author's next PR
+(REVIEWER-PROTOCOL.md §"Nits vs needs-fix"). Stale verdict labels are
+removed and the stacked-PR gate `fleet:awaiting-upstream-review` is cleared
+in the same swap.
 
-**Immediately after** the `gh pr review` call — your very next bash call —
-apply the matching named edge with `fleet-review-verdict`. Fleet reviewers
-pass `--agent <worktree-basename>`; an interactive human omits it. The wrapper
-verifies the reviewing claim and a submitted review pinned to the current PR
-head before delegating the label swap to `fleet-transition`. A PR has exactly
-one verdict label
-(`fleet:approved` / `fleet:needs-fix` / `fleet:blocker`) at a time;
-`fleet:has-nits` is orthogonal and rides on top of `fleet:approved` — and
-it covers only the `### Nits` section's amend-worthy items. Wording-tier
-nits belong under `### Nits (follow-up)` and set **no** label: they ride
-the author's next PR (REVIEWER-PROTOCOL § Nits vs needs-fix). Always
-remove stale verdict labels before adding the new one, and clear the
-stacked-PR review gate (`fleet:awaiting-upstream-review`) in the same
-swap. The verdict label is the **primary signal** the human uses to
-decide what to merge.
+### 5c. Cross-host smoke
 
-### 5c. Tag for cross-host/backend smoke validation
+If the diff touches paths the **smoke procedure** covers, apply it after
+the verdict label (it subtracts the author's host).
 
-If the diff touches the paths the **smoke procedure** covers, apply it after
-the verdict label (it subtracts the author's host so only the other
-backend(s) get tagged). Otherwise skip to step 6.
+### 6. Report
 
-### 6. Report back
-
-Reply to the calling session with: PR number + title + verdict; count of
-blockers/needs-fix/nits; a link to the review comment; one sentence on what
-the author should do next.
+PR number, title, verdict; counts of blockers / needs-fix / nits; link to
+the review comment; one sentence on the author's next step.
 
 ---
 
-## Anti-patterns
-
-- Approving work that violates an invariant "because the test passes" — some
-  invariants don't fail at test time.
-- Pushing commits to the PR branch during a review iteration.
-
 ## Re-review
 
-When the user says "re-review PR <N>" or a reviewer-loop session sees
-`fleet:changes-made` on a previously-flagged PR, the flow differs — you
-verify previously-flagged items against the new commits BEFORE running the
-checklist, else you re-flag already-fixed items. See the **re-review
-procedure**. (First review of a PR → use the standard flow above.)
+"re-review PR <N>", or `fleet:changes-made` on a PR this loop previously
+flagged: verify the previously-flagged items against the new commits
+*before* running the checklist — the **re-review procedure**.
 
 ## Escalation footer
 
-Every review body ends with one escalation hint:
+Every review body ends with one line:
 
-- Sonnet first-pass, approve → `Escalation: none. Safe for merge.`
-- Sonnet first-pass, approve-with-Opus-recheck →
-  `Escalation: please Opus-recheck before merge (touches: <module(s)>).`
-- Sonnet first-pass, needs-fix/blocker →
-  `Escalation: author-agent to address, then re-request review.`
-- Opus review → no escalation line; the Opus verdict stands.
+- Sonnet, approve → `Escalation: none. Safe for merge.`
+- Sonnet, approve-with-Opus-recheck → `Escalation: please Opus-recheck
+  before merge (touches: <module(s)>).`
+- Sonnet, needs-fix/blocker → `Escalation: author-agent to address, then
+  re-request review.`
+- Opus → no escalation line; the Opus verdict stands.

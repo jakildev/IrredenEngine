@@ -1,21 +1,17 @@
 ---
 name: commit-and-push
 description: >-
-  Stage, commit, push a feature branch, and open a GitHub PR against master for
-  the Irreden Engine repo. Use whenever the user says "commit", "commit my
-  changes", "commit and push", "open a PR", "make a PR", "wrap up this chunk",
-  or otherwise indicates the current slice of work is ready for review. The
-  skill assumes the parallel-agent workflow where work happens on short-lived
-  feature branches, another agent reviews the PR, and the user merges via the
-  GitHub UI. NEVER commit directly to master.
+  Stages, commits, and pushes a feature branch, then opens a GitHub PR
+  against master for the Irreden Engine repo — never a direct commit to
+  master. Use whenever the user says "commit", "commit my changes",
+  "commit and push", "open a PR", "make a PR", "wrap up this chunk", or
+  otherwise says the current slice of work is ready for review.
 ---
 
 # commit-and-push (Irreden Engine)
 
 **The flow lives in [`docs/agents/skills/commit-and-push.md`](../../../docs/agents/skills/commit-and-push.md).**
-Read it first, then apply the engine deltas below. This wrapper carries
-deltas only — see [`docs/design/skill-sharing.md`](../../../docs/design/skill-sharing.md)
-for why. Do **not** invoke proactively — only when the user explicitly asks.
+Read it first, then apply the deltas below. Invoke only when asked.
 
 ## Deltas (Irreden Engine)
 
@@ -39,12 +35,7 @@ for why. Do **not** invoke proactively — only when the user explicitly asks.
 ## Engine procedures
 
 The shared flow's mode-detection and step-8 references resolve to these
-engine procedure files (unchanged — they carry the engine's `fleet-claim`,
-label, and host specifics). Where a procedure says "`SKILL.md` step N", read
-it as **step N of the shared flow** in
-[`docs/agents/skills/commit-and-push.md`](../../../docs/agents/skills/commit-and-push.md)
-(the step numbers are preserved); this wrapper is the entry point that points
-there.
+files; a procedure's "`SKILL.md` step N" means step N of the shared flow.
 
 - [`procedures/fleet-stack.md`](procedures/fleet-stack.md) — fleet-claim
   stack chain detection and `--base` chaining.
@@ -53,19 +44,13 @@ there.
 - [`procedures/stackable-on.md`](procedures/stackable-on.md) — single-task
   base resolution + `--stackable-on`.
 - [`procedures/native-stack-link.md`](procedures/native-stack-link.md) —
-  the post-open `gh stack link` step every stack mode runs (native GitHub
-  stacks own retarget-on-merge and cascade rebases).
-- [`procedures/pr-body.md`](procedures/pr-body.md) — PR body templates +
+  the post-open `gh stack link` step every stack mode runs.
+- [`procedures/pr-body.md`](procedures/pr-body.md) — PR body template +
   stack-mode deltas.
 - [`procedures/host-label.md`](procedures/host-label.md) — the
   `fleet:authored-on-<host>` stamp.
 - [`procedures/rebase-guard.md`](procedures/rebase-guard.md) — the
-  pre-rebase diff-snapshot guard against silently-dropped hunks.
+  pre-rebase diff-snapshot guard.
 
-## Engine notes
-
-- Step 3's screenshot prompt fires only when the diff matches a
-  **visual-file glob** and `docs/pr-screenshots/<branch>/` doesn't already
-  exist — that directory is the engine's screenshot output path.
-- Build/format helpers are `fleet-build` / `fleet-build --target
-  format-changed` (see [`docs/agents/BUILD.md`](../../../docs/agents/BUILD.md)).
+Build/format helpers: `fleet-build`, `fleet-build --target format-changed`
+([`docs/agents/BUILD.md`](../../../docs/agents/BUILD.md)).

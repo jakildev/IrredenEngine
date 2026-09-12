@@ -1,26 +1,28 @@
 ---
 name: ecs-prefab-creator
 description: >-
-  Create new ECS prefabs (components, systems, commands) for Irreden Engine
-  following established conventions. Use when the user wants to add a new
-  component, system, or command, or asks about ECS prefab structure and
-  patterns.
+  Creates new ECS prefabs — components, systems, and commands — under
+  `engine/prefabs/irreden/<domain>/` following the engine's file, naming, and
+  registration conventions. Use when the user wants to add a component,
+  system, or command, or asks about ECS prefab structure and patterns.
 ---
 
 # ECS Prefab Creator
 
-## Overview
+Prefabs are header-only files under `engine/prefabs/irreden/<domain>/`
+(`common/`, `update/`, `voxel/`, `render/`, `input/`, `audio/`, `video/`, ...),
+compiled only when a creation includes them. File paths and conventions:
+[`engine/prefabs/CLAUDE.md`](../../../engine/prefabs/CLAUDE.md) §"File
+pattern" and §"Conventions"; naming:
+[`docs/agents/CLAUDE-BASELINE.md`](../../../docs/agents/CLAUDE-BASELINE.md)
+§Naming.
 
-Prefabs are header-only files under `engine/prefabs/irreden/<domain>/`. They compile only when included by a creation. Domains include `common/`, `update/`, `voxel/`, `render/`, `input/`, `audio/`, `video/`.
+## Component
 
-## Creating a Component
-
-**File:** `engine/prefabs/irreden/<domain>/components/component_<name>.hpp`
-
-1. Use include guard `COMPONENT_<NAME>_H`.
-2. Namespace `IRComponents`, struct name `C_<PascalName>`.
-3. Follow naming conventions in [`docs/agents/CLAUDE-BASELINE.md`](../../../docs/agents/CLAUDE-BASELINE.md) §Naming (public trailing `_`, private `m_` prefix, struct name `C_<PascalName>`).
-4. Provide a default constructor and at least one parameterized constructor.
+`engine/prefabs/irreden/<domain>/components/component_<name>.hpp`, include
+guard `COMPONENT_<NAME>_H`, `namespace IRComponents`, struct `C_<PascalName>`,
+public members with trailing `_`, a default constructor plus at least one
+parameterised constructor:
 
 ```cpp
 #ifndef COMPONENT_MOVE_ORDER_H
@@ -47,23 +49,18 @@ struct C_MoveOrder {
 #endif /* COMPONENT_MOVE_ORDER_H */
 ```
 
-## Creating a System
+Method tiers a component may carry:
+[`.claude/rules/cpp-ecs.md`](../../rules/cpp-ecs.md) §"Component method
+tiers".
 
-**Two required steps:**
+## System
 
-### Step 1: Register the system name
-
-Add a `SCREAMING_SNAKE_CASE` entry to the `SystemName` enum in `engine/system/include/irreden/system/ir_system_types.hpp`, placed under the appropriate comment group (Input, Update, or Render).
-
-### Step 2: Write the system header
-
-**File:** `engine/prefabs/irreden/<domain>/systems/system_<name>.hpp`
-
-Specialize `IRSystem::System<SYSTEM_NAME>` with a static `create()` that calls `createSystem<Components...>()`.
-
-### Tick signatures
-
-**Per-component** (most common — iterates dense column storage):
+1. Add a `SCREAMING_SNAKE_CASE` entry to the `SystemName` enum in
+   `engine/system/include/irreden/system/ir_system_types.hpp` under the
+   matching comment group (Input, Update, Render).
+2. `engine/prefabs/irreden/<domain>/systems/system_<name>.hpp`: specialise
+   `IRSystem::System<SYSTEM_NAME>` with a static `create()` that calls
+   `createSystem<Components...>()`.
 
 ```cpp
 #ifndef SYSTEM_VELOCITY_DRAG_H
@@ -93,57 +90,27 @@ template <> struct System<VELOCITY_DRAG> {
 #endif /* SYSTEM_VELOCITY_DRAG_H */
 ```
 
-**Per-entity-id** (when you need to query other components by entity):
+The three tick signatures (per-component, per-entity-id, per-archetype batch)
+and the `beginTick` / `endTick` / `relationTick` / `start` / `stop` hooks:
+[`engine/system/CLAUDE.md`](../../../engine/system/CLAUDE.md) §"Three valid
+TICK function signatures" and §"Begin/End/Relation ticks". System-owned state
+lives on `System<N>` or in `SystemParams`, never a function-local static:
+[`.claude/rules/cpp-systems.md`](../../rules/cpp-systems.md). No
+`getComponent` / `getComponentOptional` and no structural entity changes inside
+a per-entity tick: [`.claude/rules/cpp-ecs-smells.md`](../../rules/cpp-ecs-smells.md)
+(checklist) and [`.claude/rules/cpp-ecs.md`](../../rules/cpp-ecs.md)
+(template-parameter widening, caching at creation, `relationTick`, batched
+foreign-entity lookups).
 
-```cpp
-createSystem<C_NavAgent, C_MoveOrder>(
-    "GridPathfind",
-    [](EntityId id, C_NavAgent &agent, C_MoveOrder &order) {
-        // id is available for relation lookups or named-entity access
-    }
-);
-```
+## Command
 
-**Per-archetype-node / batch** (bulk or SIMD-style processing):
-
-```cpp
-createSystem<C_NavAgent>(
-    "GridBake",
-    [](const Archetype &arch, std::vector<EntityId> &ids,
-       std::vector<C_NavAgent> &agents) {
-        // operate on contiguous vectors
-    }
-);
-```
-
-### System events
-
-Systems support multiple event hooks via optional lambdas after the tick function:
-
-| Event | Purpose |
-|-------|---------|
-| `beginTick` | Runs once before per-entity iteration each frame |
-| `endTick` | Runs once after all entities are processed |
-| `relationTick` | Fires once per unique parent entity (for `CHILD_OF` etc.) |
-| `start` / `stop` | Lifecycle hooks |
-
-### Anti-patterns
-
-- No `getComponent` / `getComponentOptional` in per-entity ticks, no structural changes (add/remove/create entity) mid-iteration — see [`.claude/rules/cpp-ecs-smells.md`](../../rules/cpp-ecs-smells.md) for the full checklist, and [`.claude/rules/cpp-ecs.md`](../../rules/cpp-ecs.md) for alternative patterns (template-param widening, caching at creation time, `relationTick` for per-parent-group lookups, batching foreign-entity lookups).
-
-## Creating a Command
-
-**Two required steps:**
-
-### Step 1: Register the command name
-
-Add a `SCREAMING_SNAKE_CASE` entry to the `CommandNames` enum in `engine/command/include/irreden/command/ir_command_types.hpp`.
-
-### Step 2: Write the command header
-
-**File:** `engine/prefabs/irreden/<domain>/commands/command_<name>.hpp`
-
-Specialize `IRCommand::Command<COMMAND_NAME>` with a static `create()` returning a callable:
+1. Add a `SCREAMING_SNAKE_CASE` entry to the `CommandNames` enum in
+   `engine/command/include/irreden/command/ir_command_types.hpp`.
+2. `engine/prefabs/irreden/<domain>/commands/command_<name>.hpp`: specialise
+   `IRCommand::Command<COMMAND_NAME>` with a static `create()` returning a
+   callable
+   ([`engine/command/CLAUDE.md`](../../../engine/command/CLAUDE.md) §"The
+   `Command<NAME>` pattern").
 
 ```cpp
 #ifndef COMMAND_MY_ACTION_H
@@ -162,44 +129,34 @@ template <> struct Command<MY_ACTION> {
 };
 
 } // namespace IRCommand
+
+#endif /* COMMAND_MY_ACTION_H */
 ```
 
-### Binding a command to input (in the creation's `initCommands`):
+Bind it in the creation's `initCommands()` (input types `KEY_MOUSE`,
+`MIDI_NOTE`, `MIDI_CC`; optional modifier last):
 
 ```cpp
 IRCommand::createCommand<IRCommand::MY_ACTION>(
     InputTypes::KEY_MOUSE,
     ButtonStatuses::PRESSED,
-    KeyMouseButtons::kKeyButtonF5
-);
-
-// With modifier:
-IRCommand::createCommand<IRCommand::MY_ACTION>(
-    InputTypes::KEY_MOUSE,
-    ButtonStatuses::PRESSED,
     KeyMouseButtons::kKeyButtonF5,
-    IRInput::kModifierControl
+    IRInput::kModifierControl   // optional
 );
 ```
 
-Command types: `KEY_MOUSE`, `MIDI_NOTE`, `MIDI_CC`.
+## Registration in a creation
 
-## Registration in a Creation
+`#include` the new headers; add `createSystem<IRSystem::MY_SYSTEM>()` to the
+right `registerPipeline()` call and `createCommand<IRCommand::MY_COMMAND>(...)`
+to `initCommands()`. Pipeline order (INPUT → UPDATE → RENDER) and ordering
+within a pipeline: [`engine/system/CLAUDE.md`](../../../engine/system/CLAUDE.md)
+§Pipelines.
 
-After creating prefabs, the creation must:
+## Done when
 
-1. `#include` the new system/command headers.
-2. Add `createSystem<IRSystem::MY_SYSTEM>()` in the appropriate `registerPipeline()` call.
-3. Add `createCommand<IRCommand::MY_COMMAND>(...)` in `initCommands()`.
-
-See [`engine/system/CLAUDE.md`](../../engine/system/CLAUDE.md) §Pipelines for the INPUT → UPDATE → RENDER order and system ordering within each pipeline.
-
-## Checklist
-
-- [ ] Component: `C_` prefix, `IRComponents` namespace (see CLAUDE-BASELINE §Naming for member conventions)
-- [ ] System: enum added to `ir_system_types.hpp` first
-- [ ] System: `System<NAME>` specialization with `create()`
-- [ ] Command: enum added to `ir_command_types.hpp` first
-- [ ] Command: `Command<NAME>` specialization with `create()`
-- [ ] Include guard matches filename convention
-- [ ] No `getComponent` calls inside per-entity tick lambdas
+- Component: `C_` prefix, `IRComponents` namespace, include guard matches the
+  filename.
+- System / command: enum entry added first; `System<NAME>` /
+  `Command<NAME>` specialisation with `create()`.
+- No `getComponent` inside a per-entity tick lambda.
