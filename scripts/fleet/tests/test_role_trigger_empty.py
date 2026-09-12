@@ -11,14 +11,17 @@ iteration "no actionable candidates". The invariants:
     trailing wake is swallowed);
   - empty -> non-empty change: fires normally (the recorded empty hash
     guarantees the flip back is seen as a change);
-  - unchanged projection: no hash write, no trigger (pre-existing).
+  - unchanged projection within the liveness floor: no hash write, no trigger;
+  - unchanged non-empty projection past the floor: trigger re-armed without a
+    hash write, paced by a separate `<role>.stalled-rearm` marker.
 
 An `<role>.empty-suppressed` marker in SEEN_DIR records whether the most
 recent hash write was such a suppression, so `fleet-debug triggers` (#2185)
 can report it — the on-disk state can't otherwise tell "suppressed" from
 "dispatched then consumed". The marker invariants are exercised below too.
 
-Three classes, because #2700 split the rule by role:
+Four classes, because #2700 split the rule by role and stale projections need
+an independent liveness control:
 
   - `UpdateRoleTriggerEmpty` — the whole-projection rule above, run under
     role "r". "r" is deliberately NOT in PER_KIND_TRIGGER_ROLES, so this
@@ -32,11 +35,15 @@ Three classes, because #2700 split the rule by role:
     projection (kind-less PR items mixed with {kind: "plan_review"} issue
     items) through a non-allowlisted role, pinning that kind-carrying items
     alone do NOT opt a role into the per-kind path.
+  - `UpdateRoleTriggerStalledRearm` — backdates the seen file without sleeping
+    and pins stale, fresh, empty, pending-trigger, and worker-owner behavior.
 """
 import importlib.machinery
 import importlib.util
 import json
+import os
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -137,6 +144,130 @@ class UpdateRoleTriggerEmpty(unittest.TestCase):
         _mod.update_role_trigger("r", [])
         self.assertFalse(_mod.update_role_trigger("r", []))  # unchanged empty
         self.assertTrue(self._suppressed_marker("r").exists())
+
+
+class UpdateRoleTriggerStalledRearm(unittest.TestCase):
+    """An unchanged non-empty projection eventually regains a wake edge."""
+
+    ROLE = "sonnet-reviewer"
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        base = Path(self._tmp.name)
+        self._orig_seen = _mod.SEEN_DIR
+        self._orig_triggers = _mod.TRIGGERS_DIR
+        self._had_floor = hasattr(_mod, "ROLE_TRIGGER_REARM_SECONDS")
+        self._orig_floor = getattr(_mod, "ROLE_TRIGGER_REARM_SECONDS", None)
+        _mod.SEEN_DIR = base / "seen-hashes"
+        _mod.TRIGGERS_DIR = base / "triggers"
+        _mod.ROLE_TRIGGER_REARM_SECONDS = 30
+        _mod.SEEN_DIR.mkdir(parents=True)
+        _mod.TRIGGERS_DIR.mkdir(parents=True)
+
+    def tearDown(self):
+        _mod.SEEN_DIR = self._orig_seen
+        _mod.TRIGGERS_DIR = self._orig_triggers
+        if self._had_floor:
+            _mod.ROLE_TRIGGER_REARM_SECONDS = self._orig_floor
+        else:
+            del _mod.ROLE_TRIGGER_REARM_SECONDS
+        self._tmp.cleanup()
+
+    def _projection(self):
+        return [{"repo": "engine", "pr": 1, "head": "topic"}]
+
+    def _seen(self):
+        return _mod.SEEN_DIR / self.ROLE
+
+    def _trigger(self):
+        return _mod.TRIGGERS_DIR / self.ROLE
+
+    def _rearm_marker(self):
+        return _mod.SEEN_DIR / f"{self.ROLE}.stalled-rearm"
+
+    def _backdate_seen(self):
+        stale = time.time() - _mod.ROLE_TRIGGER_REARM_SECONDS - 1
+        os.utime(self._seen(), (stale, stale))
+
+    def test_stale_unchanged_non_empty_projection_rearms(self):
+        projection = self._projection()
+        _mod.update_role_trigger(self.ROLE, projection)
+        self._trigger().unlink()
+        self._backdate_seen()
+        seen_text = self._seen().read_text()
+        seen_mtime = self._seen().stat().st_mtime_ns
+
+        self.assertTrue(_mod.update_role_trigger(self.ROLE, projection))
+        self.assertTrue(self._trigger().exists())
+        self.assertTrue(self._rearm_marker().exists())
+        self.assertEqual(self._seen().read_text(), seen_text)
+        self.assertEqual(self._seen().stat().st_mtime_ns, seen_mtime)
+
+        self._trigger().unlink()
+        self.assertFalse(_mod.update_role_trigger(self.ROLE, projection))
+        self.assertFalse(self._trigger().exists())
+
+        stale = time.time() - _mod.ROLE_TRIGGER_REARM_SECONDS - 1
+        os.utime(self._rearm_marker(), (stale, stale))
+        self.assertTrue(_mod.update_role_trigger(self.ROLE, projection))
+
+    def test_fresh_unchanged_non_empty_projection_stays_quiet(self):
+        projection = self._projection()
+        _mod.update_role_trigger(self.ROLE, projection)
+        self._trigger().unlink()
+
+        self.assertFalse(_mod.update_role_trigger(self.ROLE, projection))
+        self.assertFalse(self._trigger().exists())
+
+    def test_stale_unchanged_empty_projection_stays_quiet(self):
+        projection = self._projection()
+        _mod.update_role_trigger(self.ROLE, projection)
+        self._trigger().unlink()
+        _mod.update_role_trigger(self.ROLE, [])
+        marker = _mod.SEEN_DIR / f"{self.ROLE}.empty-suppressed"
+        marker_text = marker.read_text()
+        marker_mtime = marker.stat().st_mtime_ns
+        self._backdate_seen()
+
+        self.assertFalse(_mod.update_role_trigger(self.ROLE, []))
+        self.assertFalse(self._trigger().exists())
+        self.assertEqual(marker.read_text(), marker_text)
+        self.assertEqual(marker.stat().st_mtime_ns, marker_mtime)
+
+    def test_pending_trigger_is_not_re_touched(self):
+        projection = self._projection()
+        _mod.update_role_trigger(self.ROLE, projection)
+        self._backdate_seen()
+        trigger_mtime = self._trigger().stat().st_mtime_ns
+
+        self.assertFalse(_mod.update_role_trigger(self.ROLE, projection))
+        self.assertEqual(self._trigger().stat().st_mtime_ns, trigger_mtime)
+
+    def test_projection_change_clears_rearm_marker(self):
+        projection = self._projection()
+        _mod.update_role_trigger(self.ROLE, projection)
+        self._trigger().unlink()
+        self._backdate_seen()
+        _mod.update_role_trigger(self.ROLE, projection)
+        self.assertTrue(self._rearm_marker().exists())
+        self._trigger().unlink()
+
+        changed = [{"repo": "engine", "pr": 2, "head": "other"}]
+        self.assertTrue(_mod.update_role_trigger(self.ROLE, changed))
+        self.assertFalse(self._rearm_marker().exists())
+
+    def test_worker_keeps_dispatcher_owned_rearm(self):
+        self.assertIn("worker", _mod.PER_KIND_TRIGGER_ROLES)
+        self.assertIn("worker", getattr(_mod, "DISPATCHER_REARM_ROLES", ()))
+        projection = [_task(1)]
+        _mod.update_role_trigger("worker", projection)
+        (_mod.TRIGGERS_DIR / "worker").unlink()
+        seen = _mod.SEEN_DIR / "worker"
+        stale = time.time() - _mod.ROLE_TRIGGER_REARM_SECONDS - 1
+        os.utime(seen, (stale, stale))
+
+        self.assertFalse(_mod.update_role_trigger("worker", projection))
+        self.assertFalse((_mod.TRIGGERS_DIR / "worker").exists())
 
 
 def _task(n, blocked_by="(none)"):
