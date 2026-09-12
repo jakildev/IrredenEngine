@@ -1881,9 +1881,11 @@ To add a helper for a new math type, add an `inline` free function to
   `IRComponent[name]` if that table already exists. Call
   `script.bindLuaDrivenEcs()` before any `script.registerType<T>()` call
   that expects Lua code to reference the component by handle.
-- **Entity-creation helpers max 12 components.** The batch-create bindings
-  are hardcoded up to 12 template args; larger bundles need a native
-  helper or a restructure.
+- **Batch creation accepts any positive component count.**
+  `registerCreateEntityBatchFunction<Components...>` binds one positional Lua
+  factory per component; the Lua call must pass exactly that many factories.
+  See [`.claude/rules/cpp-ecs-smells.md`](../../.claude/rules/cpp-ecs-smells.md)
+  for the factory-count contract.
 - **`LuaScript` lifetime is absolute.** Destroying the `sol::state`
   invalidates every bound object, `sol::protected_function` callback, and
   coroutine. Don't hold Lua handles across `World` shutdown.
