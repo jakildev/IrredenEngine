@@ -191,15 +191,9 @@ class WorkerCoversEveryTaskClass(unittest.TestCase):
 
 
 class ShadowMergedPrDoesNotFlipHash(unittest.TestCase):
-    """`shadow_merged_pr` is an advisory annotation the scout stamps on a task
-    whose issue is named by a recently-merged PR's head branch. It rides
-    the slice so the worker reads it at step 3, but it must stay OUT of the
-    projection item — a merge lands in the 30-record window, ages out of it, and
-    would otherwise re-fire the worker lane twice for work nobody can act on,
-    the same churn enrich_inflight_pr_tasks' comment block guards against.
-    project_worker builds its item explicitly ({kind, repo, id, blocked_by}), so
-    this is a regression guard rather than a fix: it is expected to pass as
-    written."""
+    """`shadow_merged_pr` rides the worker slice but stays out of the
+    projection item: a merge entering and later leaving the recent-merged
+    window would otherwise re-fire the worker lane with nothing to act on."""
 
     def _project(self, tasks):
         return project_worker(_state([], tasks=tasks))
@@ -227,9 +221,8 @@ class ShadowMergedPrDoesNotFlipHash(unittest.TestCase):
         self.assertEqual(plain, shadowed)
 
     def test_shadowed_task_still_reaches_the_worker_slice(self):
-        # The complement: excluded from the hash input, but present in the
-        # payload the worker actually reads. A guard that dropped the field
-        # from both would pass the two arms above and deliver nothing.
+        # Complement of the two arms above: a change dropping the field from
+        # the slice too would pass them and deliver nothing.
         sliced = slice_worker(_state([], tasks={"open": [self._shadowed()]}))
         self.assertEqual(len(sliced["tasks_open"]), 1)
         self.assertEqual(sliced["tasks_open"][0]["shadow_merged_pr"]["number"],

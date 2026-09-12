@@ -1,17 +1,8 @@
 """Tests for enrich_shadow_merged_pr_tasks() in fleet-state-scout.
 
-A PR merged to master under a `Ref` reference instead of a closing keyword does
-not close its issue, so the row stays fleet:queued and owner-free while part of
-its work is already on master — and no in-flight leg can see it (fetch_prs is
-open-only; the worker's merged leg needs a non-master base plus a closing
-keyword). The enrichment tags the row with the shadowing merged PR so the
-worker reads it before branching.
-
-The field is ADVISORY, and the arms below pin both halves: it is stamped, and
-it does NOT make the task unclaimable. A `Ref` reference marks PARTIAL work, so
-the residual is real queued work, and unlike an open PR a merged master commit
-never clears — a refusal keyed on it would be unclearable by anything the fleet
-can do.
+The field is advisory, and the arms pin both halves: it is stamped on a task
+whose issue a recently merged PR's head branch names, and it never makes the
+task unclaimable.
 
 Hermetic: the state dict is built by hand, so no GitHub and no ~/.fleet. Import
 the function via importlib because the script has no .py extension.
@@ -33,11 +24,9 @@ _loader.exec_module(_mod)
 def _subject(name):
     """Bind a scout function without aborting the module when it is absent.
 
-    A missing subject has to make the ARMS red, not the import: an import-time
-    AttributeError prints no tally at all, and fleet-positive-control reports a
-    tally-less run as a setup failure rather than a verdict — so a suite that
-    binds its subject eagerly can never be controlled against a ref that
-    predates it.
+    A missing subject must fail the arms, not the import: an import-time
+    AttributeError prints no tally, which fleet-positive-control reports as a
+    setup failure rather than a verdict.
     """
     fn = getattr(_mod, name, None)
     if fn is not None:
@@ -91,9 +80,8 @@ def _merged(number, head_ref, merged_at="2026-08-22T22:23:03Z",
     }
 
 
-# The reference fixture, transcribed from the incident this enricher exists
-# for: a PR merged to master off a `claude/<issue>-…` branch under a `Ref`
-# reference, leaving the issue queued and owner-free.
+# A PR merged to master off a `claude/<issue>-…` branch without closing the
+# issue.
 _PR_2475 = _merged(2475, "claude/2298-occlusion-cull-feeder-domain",
                    merged_at="2026-08-22T22:23:03Z",
                    title="engine/render: occlusion cull feeder domain")
@@ -116,9 +104,7 @@ class ShadowMergedPrFires(unittest.TestCase):
                          "engine/render: occlusion cull feeder domain")
 
     def test_base_ref_is_carried_and_not_filtered_on(self):
-        # A merged non-master-base PR whose head names the issue is equally
-        # worth reading before branching, so base is carried, never filtered on;
-        # the reader needs it to tell a master merge from a stack landing.
+        # The reader needs base to tell a master merge from a stack landing.
         pr = _merged(2475, "claude/2298-occlusion-cull-feeder-domain",
                      base="claude/2200-base")
         state = _state(engine_tasks=[_task("#2298")], engine_merged=[pr])
@@ -129,9 +115,7 @@ class ShadowMergedPrFires(unittest.TestCase):
                          "claude/2200-base")
 
     def test_newest_match_in_the_window_wins(self):
-        # Several merged PRs in the window may name one issue (a multi-PR
-        # issue shipping in slices). The latest is the most current statement
-        # of what has already landed, so it is the one the worker must read.
+        # An issue shipping in slices: the latest merge is the one to read.
         older = _merged(2475, "claude/2298-occlusion-cull-feeder-domain",
                         merged_at="2026-08-22T22:23:03Z")
         newer = _merged(3041, "claude/2298-widen-cull-domain",
@@ -182,9 +166,7 @@ class ShadowMergedPrStaysSilent(unittest.TestCase):
     """The negative controls: the enricher stays silent."""
 
     def test_word_boundary_longer_number_does_not_match(self):
-        # A branch whose issue number merely CONTAINS the task's must not match.
-        # branch_matches_issue's trailing dash gives this, but it is the arm a
-        # hand-rolled number grep gets wrong, so it is pinned here.
+        # A branch whose issue number merely contains the task's must not match.
         pr = _merged(9001, "claude/12298-unrelated")
         state = _state(engine_tasks=[_task("#2298")], engine_merged=[pr])
         enrich_shadow_merged_pr_tasks(state)
@@ -192,9 +174,8 @@ class ShadowMergedPrStaysSilent(unittest.TestCase):
                          state["repos"]["engine"]["tasks"]["open"][0])
 
     def test_word_boundary_task_number_is_a_prefix_of_the_branch(self):
-        # The direction the trailing dash exists for: task 229 must not be
-        # shadowed by a `claude/2298-…` merge. Dropping the dash from
-        # issue_branch_prefixes leaves every other arm here green.
+        # The arm that pins issue_branch_prefixes' trailing dash: task 229 must
+        # not be shadowed by a `claude/2298-…` merge.
         pr = _merged(9002, "claude/2298-occlusion-cull-feeder-domain")
         state = _state(engine_tasks=[_task("#229")], engine_merged=[pr])
         enrich_shadow_merged_pr_tasks(state)
@@ -239,12 +220,8 @@ class ShadowMergedPrStaysSilent(unittest.TestCase):
 
 
 class ShadowMergedPrIsAdvisory(unittest.TestCase):
-    """The field must never gate claimability.
-
-    This is the arm that goes red if someone later "tightens" the predicate to
-    read it — which would be a permanent strand, not a stricter gate, since a
-    merged master commit never clears.
-    """
+    """The field must never gate claimability: a merged commit never clears, so
+    a refusal keyed on it would strand the task permanently."""
 
     def _shadowed_task(self):
         state = _state(engine_tasks=[_task("#2298")], engine_merged=[_PR_2475])

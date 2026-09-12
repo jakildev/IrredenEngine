@@ -98,8 +98,8 @@ with nothing in the fleet able to re-queue it. Use `inflight_pr`, which does
 gate, for the open-PR case.
 
 Coverage is the fresh-merge window only: the scout reads the already-cached
-`recent_merged_prs[]` (30 records per repo, ~21.5 h on engine at today's
-throughput), so an older shadowing merge leaves no tag. Absence of the field is
+`recent_merged_prs[]` (30 records per repo), so an older shadowing merge leaves
+no tag. Absence of the field is
 not evidence that nothing shipped.
 
 ## Repo slug discovery
