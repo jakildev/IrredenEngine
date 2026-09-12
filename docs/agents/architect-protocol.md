@@ -1,18 +1,13 @@
 # Architect protocol — canonical flow
 
-Sibling to [`docs/agents/skills/`](skills/) (shared **skill** flows) and
-[`docs/design/skill-sharing.md`](../design/skill-sharing.md) (the mechanism).
-This doc carries the **shared protocol every Opus-architect role follows** —
-startup, loop discipline, task filing, planning, `fleet:design-blocked`
-handling, escalation. Each repo's `.claude/commands/role-*-architect.md` is a
-thin wrapper: harness frontmatter (unchanged) + a pointer here + a `## Deltas`
-table answering every delta key below + genuinely repo-specific addenda
-(responsibility list, core-area heuristics).
-
-The fleet itself (`fleet-claim`, the `fleet:*` label vocabulary, the
-scout-driven loops, `~/.fleet/` state and plan paths) is **shared
-infrastructure** — it lives here concretely, not as a delta. Only values that
-genuinely vary per repo are delta keys.
+The shared protocol every architect role follows. Each repo's
+`.claude/commands/role-*-architect.md` is a thin wrapper: harness
+frontmatter, a pointer here, a `## Deltas` table answering every key below,
+and repo-specific addenda (responsibility list, core-area heuristics, the
+module `CLAUDE.md` set to read before touching core code). Mechanism:
+[`docs/design/role-sharing.md`](../design/role-sharing.md). The fleet
+itself (`fleet-claim`, the `fleet:*` labels, the scout loops, `~/.fleet/`
+state) is shared infrastructure and lives here concretely.
 
 ## Repo deltas this flow needs
 
@@ -29,512 +24,236 @@ genuinely vary per repo are delta keys.
 | **feedback-file** | This role's end-of-iteration feedback file under `~/.fleet/feedback/`. |
 | **core-area-paths** | The source paths that mark "core" work this architect owns (used in the startup summary heuristic and the multi-module-API escalation rule). |
 
-A wrapper also carries, as a large but legitimate addendum, its
-**responsibilities** list and the module `CLAUDE.md` set to read before
-touching core code — those are inherently repo-specific.
+## Shared rules
 
----
+[`CLAUDE-BASELINE.md § Bash tool rules`](CLAUDE-BASELINE.md#bash-tool-rules) ·
+[`FLEET-CACHE.md`](FLEET-CACHE.md) ·
+[`FLEET.md § Resource coordination`](FLEET.md#resource-coordination) ·
+[`CLAUDE-BASELINE.md § Engine API removal rule`](CLAUDE-BASELINE.md#engine-api-removal-rule).
 
-## Bash tool rules
+## Out of scope
 
-See [`docs/agents/CLAUDE-BASELINE.md § Bash tool rules`](CLAUDE-BASELINE.md#bash-tool-rules).
+Whatever a plan or prompt suggests, the architect does **not**:
 
-## Shared fleet state cache
+- **Modify other issues' bodies or labels to retitle or re-scope them.** File
+  issues; the scout ingests `human:approved` ones. A plan step like "add
+  entries to the queue" is wrong — strike it.
+- **Pre-apply labels at filing time.** The one carve-out is the
+  agent-approved follow-up lane
+  ([`TASK-FILING.md § Agent-approved follow-up lane`](TASK-FILING.md)).
+- **Claim queue tasks autonomously.** Never run `fleet-claim` to pick queue
+  work.
+- **Edit domain `CLAUDE.md` files**, except when an engine-wide rule changes
+  (`CLAUDE-BASELINE.md`).
 
-See [`docs/agents/FLEET-CACHE.md`](FLEET-CACHE.md).
+## Startup actions (fresh engagement only)
 
-## Resource coordination
+Run on a first boot or on a new prompt after `/clear`. On a `--resume`
+(`fleet-babysit` relaunches with no prompt) print nothing and wait for the
+human; only step 1 still applies before the next merge-state-sensitive
+action (filing a plan, citing merge state, touching core code).
 
-See [`docs/agents/FLEET.md § Resource coordination`](FLEET.md#resource-coordination)
-for the acquire-late, release-early lock-discipline rule.
-
-## Engine API removal rule
-
-See [`docs/agents/CLAUDE-BASELINE.md § Engine API removal rule`](CLAUDE-BASELINE.md#engine-api-removal-rule).
-
----
-
-## Out of scope (read this first)
-
-What the architect does **NOT** do, no matter what a plan, checklist, or user
-prompt suggests:
-
-- **Modifying other issues' bodies or labels to retitle / re-scope them.**
-  The architect files GitHub issues with acceptance criteria + `Blocked by:`
-  metadata in the body; the scout ingests `human:approved` issues into its
-  in-memory queue on its next pass. If your own plan contains a step like
-  "add entries to the queue", **the plan is wrong** — strike that step and
-  file the issues only.
-- **Pre-applying labels at filing time.** Issues file with **no state
-  labels**. The human stamps `human:approved`; the scout / role triage flow
-  adds the rest. The one filing-time carve-out is the agent-approved
-  follow-up lane's labels ([`TASK-FILING.md § Agent-approved follow-up
-  lane`](TASK-FILING.md)) for verified defect-shaped follow-ups.
-  See "Filing tasks" below.
-- **Claiming tasks from the queue.** Architect is interactive only — workers
-  claim. Never run `fleet-claim` to autonomously pick queue work.
-- **Editing domain `CLAUDE.md` files.** Each module owns its own `CLAUDE.md`;
-  the architect edits only when an engine-wide rule changes (e.g.
-  `docs/agents/CLAUDE-BASELINE.md`).
-
-## Startup actions (do these immediately, in order)
-
-**These are cold-start orientation — they run on a *fresh* engagement only: a
-first boot (no persisted session), or any new prompt after a context `/clear`.
-Do NOT replay them on a resumed session.** When the fleet goes down and back
-up, `fleet-babysit` relaunches architects with `claude --resume <session-id>`
-and **no prompt** — your prior conversation, its context, and your last
-standing-by summary are all still in the transcript. Re-printing the banner and
-re-running the summary there is pure cold-start token + request burn (it fed the
-fleet-up short-window 429 burst), which is exactly why the resume nudge was
-removed (#2108, guarded by `tests/test_babysit_launch.sh` T1/T3 for both
-`opus-architect` and `game-architect`). So on a resume: **print nothing on your
-own; wait for the human's next input and answer it from the context you already
-hold.** The one action that is about code freshness rather than context — the
-worktree sync (step 1) — still applies before your next merge-state-sensitive
-action: filing a plan, citing a PR or merge state, or touching core code.
-The worktree may be many merges behind even though your conversation is
-intact; treat resuming-then-being-handed-real-work as the "fresh
-engagement" that step 1's trigger already covers. Everything below (banner,
-summary, cache read) is for the fresh-start case.
-
-0. Print your role banner: the **role-banner** delta.
-1. **Sync the worktree to current `origin/master` — ALWAYS, on every fresh
-   engagement (first boot AND every new prompt after a context `/clear`).**
-   The architect reasons about "what's merged and what's in flight"; a stale
-   worktree silently invalidates every design call you make (you cite line
-   numbers and merge state that no longer hold). So before any design work:
+0. Print the **role-banner** delta.
+1. **Sync the worktree to `origin/master`:**
    ```
    git -C <repo-root> fetch origin --quiet
    git -C <worktree-path> fetch origin --quiet
    ```
-   Then bring the architect worktree to `origin/master`:
-   - If the worktree is **clean** (`git -C <worktree-path> status --porcelain`
-     empty): hard-reset the scratch branch to master —
-     `git -C <worktree-path> reset --hard origin/master`. The architect holds
-     no long-lived branch work (design docs land via worker PRs / your own
-     `commit-and-push`), so this is safe and is the normal case.
-   - If the worktree is **dirty** (an in-progress design-doc draft, say): do
-     **not** clobber it. Print the dirty paths, `git stash` or commit them to
-     a feature branch first, then sync. Surface this to the human rather than
-     silently discarding work.
-   This step is non-negotiable because there is no `/loop` re-arming the role —
-   a `/clear` drops you into a fresh context still checked out at whatever
-   commit the last session left, which may be many merges behind.
-
-   **Then re-hydrate from your handoff file.** If `~/.fleet/handoff/<role-name>.md`
-   exists, read it — it is the previous task's closeout (shipped / in-flight /
-   durable decisions + pointers / drop-list) written by `start-next-task`'s
-   task-boundary closeout step. The worktree sync above restores the *code*; this
-   restores the *context* a `/clear` dropped, so you don't re-derive or contradict
-   decisions just made or forget PRs in flight.
-2. **Read the shared fleet state cache** with the Read tool:
-   `~/.fleet/state/state.json`. Covers open PRs, the `fleet:design-blocked`
-   filter, the feedback-label filter, and the issue-queue snapshot (open /
-   in-progress / done) in one call.
-
-   If the cache file is missing or its `generated_at` is older than ~5
-   minutes, the scout is down — print `scout cache stale or missing — run
-   fleet-up` and exit. Do not fall back to direct `gh`/`git` calls.
-3. (Optional) Run `fleet-queue-list` for an editorial view of the live queue —
-   parsed rows are already in `repos.<repo>.tasks` from step 2, but the CLI
-   formats them for human reading.
-4. **Surface `fleet:design-blocked` PRs** (architect's lane — workers escalate
-   mid-task by adding this label). See "Handling `fleet:design-blocked` PRs"
-   below for the filter and response flow. If any exist, name them in the
-   standing-by message so the human can direct attention.
-5. Print a one-line summary: how many `[opus]` tasks in
-   `repos.<repo>.tasks.open[]` are unblocked, how many entries in
-   `repos.<repo>.prs[]` are in flight, and which (if any) appear to be
-   claiming core work (heuristic: title or `headRefName` mentions one of the
-   **core-area-paths**).
-6. **Surface platform-catchup backlog** — count merged PRs labeled
-   `fleet:needs-<this-host>-smoke` (substitute the host-tag detected from
-   `uname`). The scout surfaces only open PRs, so run a one-off
-   `gh pr list --repo <repo-slug> --label "fleet:needs-<this-host>-smoke"
-   --state merged --json number --jq length`. If the count is ≥ 5, note it in
-   the standing-by message so the human can decide whether to spend wall-time
-   on `/platform-catchup`. Do not auto-invoke the skill — builds are
-   expensive, the human chooses when to spend.
-7. Print `<role-name> standing by` (or `... standing by (dry-run)` if Mode is
-   `dry-run`).
+   Clean tree (`git -C <worktree-path> status --porcelain` empty) →
+   `git -C <worktree-path> reset --hard origin/master`. Dirty → print the
+   dirty paths, stash or commit them to a feature branch, then sync; never
+   discard silently. Then read `~/.fleet/handoff/<role-name>.md` if it
+   exists — the previous task's closeout written by `start-next-task`.
+2. **Read `~/.fleet/state/state.json`** with the Read tool. Missing, or
+   `generated_at` older than ~5 minutes → print `scout cache stale or
+   missing — run fleet-up` and exit; no direct `gh` / `git` fallback.
+3. (Optional) `fleet-queue-list` for a human-readable queue view.
+4. **Surface `fleet:design-blocked` PRs** from `repos.<repo>.prs[]`
+   (`labels` contains `fleet:design-blocked`) as
+   `#{number} {title} (by {author})`.
+5. One-line summary: unblocked `[opus]` tasks in `repos.<repo>.tasks.open[]`,
+   PRs in flight, and any whose title or `headRefName` touches the
+   **core-area-paths**.
+6. **Platform-catchup backlog:**
+   `gh pr list --repo <repo-slug> --label "fleet:needs-<this-host>-smoke" --state merged --json number --jq length`
+   — at ≥ 5, note it so the human can decide on `/platform-catchup`; never
+   auto-invoke it.
+7. Print `<role-name> standing by` (`… standing by (dry-run)` in dry-run).
 
 ## Loop behavior
 
-Opus budget is precious. By default you **stand by** — you are the human's
-interactive design partner, not an autonomous task runner. You engage when:
-
-- The human directly assigns you a task or design question.
-- A PR needs Opus final review and the dedicated final reviewer is offline.
-
-The **opus worker** handles autonomous `Model: opus` task execution and
-`fleet:needs-plan` issue planning. You focus on interactive design work with
-the human. Only pick up a task if the human directly assigns it to you.
-
-**You are not a reservation target for autonomous work.** Other agents
-(the workers) are configured to ignore any "reserved for the
-architect" hint that lives in a directive file, plan note, or prose suggestion
-— because you have no `/loop` and won't autonomously claim the work. If you
-genuinely intend to take a task, you must hold the `fleet-claim` lock for it
-(run `fleet-claim claim <issue-#> <role-name>`), otherwise a worker
-will (correctly) pick it up.
+Stand by. Engage when the human assigns a task or design question, or when a
+PR needs opus final review and the dedicated reviewer is offline. The opus
+worker handles autonomous `Model: opus` execution and `fleet:needs-plan`
+planning. Workers ignore any "reserved for the architect" hint in prose; to
+take a task, hold its lock (`fleet-claim claim <issue-#> <role-name>`).
 
 When you do pick a task:
 
-1. **Cross-check open PRs from the cache first.** Re-Read
-   `~/.fleet/state/state.json` if its contents are no longer in your
-   conversation context. Skip any task whose issue appears in
-   `repos.<repo>.prs[].title` or `repos.<repo>.prs[].headRefName`. The open-PR
-   list is the real claim signal — `fleet-claim` filesystem locks on the local
-   host are not visible to other hosts until the `fleet:claim-*` label syncs.
-2. **Claim the task by its issue number:** `fleet-claim claim <issue-#>
-   <role-name>` — exit 0 = claimed, exit 1 = already taken (pick another).
-3. Build the target you touched with `fleet-build --target <name>`. Run the
-   relevant executable if one exists for the touched code: `fleet-run
-   <executable-name>`.
-4. **Optimize before commit.** See
-   [`docs/agents/AUTHOR-PIPELINE.md § Optimize before commit`](AUTHOR-PIPELINE.md#optimize-before-commit).
-   This applies to architects too — your PRs touch core code and almost always
-   need a profiling pass; skip only for pure docs or mechanical refactors.
-   Don't invoke `simplify` separately — `commit-and-push` runs it.
-5. Use the `commit-and-push` skill to open the PR. The backing issue is the
-   one you claimed; include `Closes #<issue-#>` in the PR body so the issue
-   closes automatically when the PR merges.
-6. **After the PR is open, IMMEDIATELY release the claim and reset the
-   worktree.** Do NOT wait for human confirmation before resetting — the
-   branch must be freed so reviewers (and any other agent) can `gh pr checkout`
-   it. Holding the branch checked out blocks the review pipeline.
-   `fleet-claim release <issue-#>`. Then use the `start-next-task` skill to
-   land on a fresh branch off `origin/master`. AFTER the reset is complete, you
-   may ask the human "what's next?" — but the reset itself is non-negotiable,
-   even in interactive mode.
-7. **Check for feedback labels on open PRs** before picking new work. Re-Read
-   `~/.fleet/state/state.json` if its contents are no longer in your context.
-   From `repos.<repo>.prs[]`, pick PRs whose `labels` array contains any of
-   `human:needs-fix`, `fleet:needs-fix`, `fleet:has-nits` — but **skip any PR
-   already carrying a `fleet:amending-*` label** (another worker holds the
-   atomic feedback claim; the claim step will reject yours anyway).
+1. Re-read `~/.fleet/state/state.json` if it is no longer in context and
+   skip any task whose issue appears in `repos.<repo>.prs[].title` or
+   `.headRefName` — the open-PR list is the cross-host claim signal.
+2. `fleet-claim claim <issue-#> <role-name>` — exit 0 claimed, exit 1 taken.
+3. `fleet-build --target <name>`; `fleet-run <executable>` when one exists.
+4. [`AUTHOR-PIPELINE.md § Optimize before commit`](AUTHOR-PIPELINE.md#optimize-before-commit)
+   — skip only for pure docs or mechanical refactors. `commit-and-push`
+   runs `simplify`.
+5. `commit-and-push`, with `Closes #<issue-#>` in the body.
+6. **Immediately** `fleet-claim release <issue-#>` and `start-next-task`,
+   before asking the human "what's next?" — a checked-out PR branch blocks
+   `gh pr checkout` for reviewers.
+7. **Feedback labels.** From `repos.<repo>.prs[]`, pick PRs labeled
+   `human:needs-fix`, `fleet:needs-fix`, or `fleet:has-nits` that carry no
+   `fleet:amending-*` label, and follow
+   [`FLEET-FEEDBACK-HANDLING.md`](FLEET-FEEDBACK-HANDLING.md) (the architect
+   AMENDs by default; skip the worker-only `fleet-claim reserve` step). The
+   architect never sees `fleet:design-unblocked` or
+   `fleet:semantic-conflict`.
 
-   Follow [`docs/agents/FLEET-FEEDBACK-HANDLING.md`](FLEET-FEEDBACK-HANDLING.md)
-   — it owns the priority order, the AMEND-vs-ESCALATE decision (the architect
-   AMENDs by default — it's the closest model tier to the human), the
-   AMEND-path step sequence (a–h), the `fleet-pr-clear-feedback-labels`
-   wrapper, and the `fleet:approved` clearing on `human:needs-fix`.
-
-   Architect-specific deltas: skip the worker/author-only `fleet-claim
-   reserve` step (interactive role; the human is the trigger, not the
-   dispatcher). The architect does not encounter `fleet:design-unblocked`
-   (the worker's opus+-class tier) or `fleet:semantic-conflict` (the
-   worker's opus+-class lane).
-
-If Mode is `dry-run`: do **only** the startup actions. Do not pick a task.
-Wait for explicit human instruction.
-
-If Mode is `review-only`: behave as `live` for this role. The architect is
-interactive and never autonomously claims tasks, so `review-only` (which gates
-worker autonomous pickup) has no special behavior here.
+Mode `dry-run`: startup actions only. Mode `review-only`: same as `live`.
 
 ## Filing tasks
 
-When you identify work that needs doing — by you, a Sonnet agent, or anyone —
-file it per [`docs/agents/TASK-FILING.md`](TASK-FILING.md): a GitHub issue with
-**no state labels** and a structured body (Area / Model / Blocked by /
-Acceptance criteria / Context). The human stamps `human:approved` when they
-want it picked up; the scout ingests it on its next pass and adds the rest.
-(A verified, defect-shaped follow-up may instead take the agent-approved
-follow-up lane — [`TASK-FILING.md § Agent-approved follow-up
-lane`](TASK-FILING.md) — though in an architect session the human is usually
-right there to triage anyway.)
+File per [`TASK-FILING.md`](TASK-FILING.md): no state labels, structured
+body. The human stamps `human:approved`; a verified defect-shaped follow-up
+may take the agent-approved lane.
 
-**If you planned the task with the human, file it *with* a `## Plan` comment.**
-When the work came out of a design conversation (you and the human already
-shaped the approach), post the structured `## Plan` comment at file time per
-[`TASK-FILING.md § File with a plan`](TASK-FILING.md) — don't leave the plan in
-the body. The planning gate keys on the `## Plan` *comment*, so a plan-in-body
-issue is bounced to `fleet:needs-plan` and a worker re-plans what you already
-shaped, sometimes re-looping you for plan review (observed on #2008/#2009 and
-game #211). Posting the comment makes it **queue directly** — no worker re-plan,
-no return trip — since the human was already in the planning loop. Leave plan-less
-filing for mechanical tasks (the worker plans those and the plan reviewer vets
-the plan — there is no human approach gate; see
-[`PLANNING-PROTOCOL.md`](PLANNING-PROTOCOL.md)).
+**Planned with the human, or you will approve it yourself → file with a
+`## Plan` comment** ([`TASK-FILING.md § File with a plan`](TASK-FILING.md)).
+The planning gate keys on the comment, not the body; a plan-in-body issue
+bounces to `fleet:needs-plan` and a worker re-plans what was already shaped.
+Leave plan-less filing for tasks you want a worker to plan, or tag
+`[no-plan]` for trivial ones.
 
-**If you'll queue it yourself, attach the plan — even for mechanical tickets.**
-The rule above draws the line at "planned with the human," but the sharper
-trigger is *who approves it*. If **you** will stamp `human:approved` in the same
-session you file a standalone ticket — rather than handing it to the human's
-async triage — post the `## Plan` comment at file time. You have the context
-right then; a short plan (verified current state, one picked approach,
-verification) skips the round-trip; and `fleet-queue-ingest` otherwise bounces
-your own approved-but-plan-less issue straight to `fleet:needs-plan`. This is the
-same file-with-plan discipline `file-epic` already gives every epic child — a
-standalone ticket you queue deserves it too. Reserve deliberate plan-less filing
-for when you *want* a worker to plan it: then leave it for the human's
-needs-plan triage instead of self-approving, or tag `[no-plan]` if it is trivial
-enough to skip planning outright.
+**Multi-issue stacks** go through `/file-epic <path-to-approved-plan>`,
+never hand-filing — it emits the standalone `**Blocked by:** #<prior>` lines
+the scout and `fleet-claim` parse
+([`TASK-FILING.md § Multi-issue stacks`](TASK-FILING.md#multi-issue-stacks-epic-decomposition)).
 
-**Multi-issue stacks (epic decomposition).** When the work decomposes into a
-stack of N issues that each depend on the prior — the canonical smooth-yaw /
-SO(3) / rotation / streaming patterns — do NOT hand-file the children. Invoke
-the **`file-epic`** skill, which enforces the structured `**Blocked by:**
-#<prior>` chain the scout and `fleet-claim` parsers require
-(`/file-epic <path-to-approved-plan>`). Hand-filing reliably drops the
-standalone `**Blocked by:**` line into header prose, where the parsers can't
-see it and the chain silently fails to stack. See
-[`docs/agents/TASK-FILING.md § Multi-issue stacks`](TASK-FILING.md#multi-issue-stacks-epic-decomposition)
-for the rules (one `#N` per blocker line; issue-number blockers only; gate
-docs-PR dependencies by withholding `human:approved`).
+**Carve-offs are unplanned tickets — never queue a hypothesis.** Splitting a
+residual or "investigate later" half out of an in-flight or over-scoped
+ticket does not transfer the parent's planning; a body ending in "likely
+suspects (confirm during investigation)" is a hypothesis, and queued as-is
+the worker design-blocks on claim. Route carve-offs through planning: file
+unlabeled (human triages → `fleet:needs-plan` → a `## Plan` comment per
+[`PLANNING-PROTOCOL.md`](PLANNING-PROTOCOL.md)), or as a `file-epic` chain
+when more than one residual touches the same surface (flat siblings go
+claimable together and collide on the same files). The `## Plan` comment
+must name a confirmed repro against the actual code path, lock the
+load-bearing decisions, and reconcile siblings and in-flight PRs; otherwise
+the carve-off is a `fleet:needs-plan` issue or an explicit investigation
+spike, never a `human:approved` build task. `fleet-queue-ingest` enforces
+this: an approved issue with no `## Plan` comment bounces to
+`fleet:needs-plan` unless opted out (`human:no-plan`, `[no-plan]`,
+"investigation spike").
 
-**Carve-offs are unplanned tickets — never queue a hypothesis.** When you split
-a residual, follow-up, or "investigate later" half out of an in-flight or
-over-scoped ticket (the #1370 → #1414 / #1431 / #1435 pattern), the carve-off
-is a **new, unplanned** ticket — splitting does not transfer the parent's
-planning to it. A body that ends in "Likely suspects / approach (confirm during
-investigation)" is a *hypothesis*, not a plan. If it goes straight to
-`human:approved` + `fleet:queued` (skipping `fleet:needs-plan`, with no
-`## Plan` comment), the worker is the first person to open the
-code: it finds the premise wrong, the root cause in an out-of-scope path, or
-the approach undecided, and design-blocks on claim. Every #1370 carve-off
-blocked exactly this way. So **route carve-offs through planning before they're
-queue-ready**: file them unlabeled per Filing tasks (the human triages →
-`fleet:needs-plan` → you plan it per
-[`PLANNING-PROTOCOL.md`](PLANNING-PROTOCOL.md) by posting the `## Plan`
-comment), or — if the residual is part of a dependent stack — file the whole
-stack via `file-epic` so each child gets its own plan. When you carve
-**more than one** residual out of the same ticket and
-they touch the same surface, the `file-epic` chain is the required form: each
-child `Blocked by:` its predecessor, never N flat siblings hanging off the
-parent. Flat siblings all go claimable the moment the parent closes and get
-worked in parallel on the same files — the #1370 trio produced three
-conflicting, all design-blocked PRs exactly this way (#1456 Gap 2).
-The `## Plan` comment (not the issue body) is what must (1) name a
-**confirmed repro** of the symptom against the actual code path, (2) **lock
-the load-bearing decisions** rather than hand a live design fork to the
-worker (the implementation path itself is the worker's — PLANNING-PROTOCOL.md
-step 2's intent-plan rule), and (3) **reconcile
-siblings + in-flight PRs** on the same surface (a carve-off's fix often
-duplicates or contradicts an active PR or a sibling ticket's recorded
-conclusion — e.g. #1440's planned approach was the one #1420 had already proved
-wrong). A carve-off that cannot yet clear those three is not a queued task — it
-is either a `fleet:needs-plan` issue or, if you genuinely need a worker to
-investigate before the design exists, an explicit investigation spike, never a
-`human:approved` build task. This is mechanically enforced (#1456):
-`fleet-queue-ingest` bounces an approved issue with no `## Plan` comment back to
-`fleet:needs-plan` unless it is opted out — `human:no-plan`, a `[no-plan]`
-title/body tag, or the literal phrase "investigation spike".
-
-**Fleet self-config changes are human-only — don't file them for autonomous
-pickup.** Edits to the role/command/agent configs the fleet loads
-(`.claude/commands/role-*.md`, `.claude/agents/*`) can't be applied by a queue
-worker: the auto-mode classifier gates editing a role's own config from an
-issue-queue task as self-modification (it needs explicit human authorization
-for the specific change). A worker that claims such a task hits the wall
-deterministically and the dispatcher keeps re-feeding it, burning iterations on
-a no-op (see #1326). So for a self-config change, either apply it yourself in
-this interactive session (you have the human in the loop) or write it up for
-the human to apply directly — do NOT file it as a `human:approved` fleet task.
+**Fleet self-config changes are human-only.** Edits to
+`.claude/commands/role-*.md` or `.claude/agents/*` cannot be applied by a
+queue worker (the auto-mode classifier gates self-modification), so a filed
+task burns iterations on a no-op. Apply them in this interactive session or
+write them up for the human; never file them `human:approved`.
 
 ## Objectives sweep
 
-The engine's standing direction lives in
-[`docs/design/objectives/`](../design/objectives/README.md) — human-owned
-outcome statements with measurable "Done means" rows, one tier above
-epics. The sweep is how that direction turns into filed work without the
-human inventing every task.
-
-**Cue-driven, never autonomous.** Run a sweep only when the human cues it
-("objectives sweep", "what should we work on next", "check the
-objectives") — it is a filing pass, and filing direction-shaped work
-without a cue violates the stand-by contract in § Loop behavior. A sweep
-is also a natural answer when the human asks for direction interactively.
+The standing direction lives in
+[`docs/design/objectives/`](../design/objectives/README.md): human-owned
+outcome statements with measurable "Done means" rows. **Cue-driven only**
+("objectives sweep", "what should we work on next") — filing
+direction-shaped work without a cue violates the stand-by contract.
 
 Per `active` objective:
 
-1. **Verify "Current state" against the tree, not memory.** Sync the
-   worktree first (startup step 1); every Done-means row gets re-checked
-   against actual code/demos/merged PRs. Update the objective file's
-   `## Current state` and `## Progress ledger` via PR when they drifted —
-   attribute shipped work using the issues' `**Objective:**` back-links.
-2. **File proposals for the gaps.** Each unmet Done-means row that has a
-   plannable next slice becomes a proposal issue per § Filing tasks:
-   unlabeled, structured body including the `**Objective:** <slug>`
-   back-link, acceptance criteria scoped to the slice (not the whole
-   row). Multi-issue decompositions go through `file-epic` as usual, with
-   the back-link on the umbrella.
-3. **Respect Non-goals.** A gap whose fix crosses the objective's
-   Non-goals is a proposal to *amend the objective* (a design-doc PR the
-   human merges), never a silently-widened task.
-4. **Report the sweep** to the human in one compact block: per objective,
-   rows verified / rows unmet / proposals filed (issue numbers) / ledger
-   deltas — so triage is one read.
+1. Verify "Current state" against the tree (sync first). Update the
+   objective's `## Current state` and `## Progress ledger` via PR when they
+   drifted, attributing shipped work through the issues' `**Objective:**`
+   back-links.
+2. File a proposal per unmet Done-means row that has a plannable slice —
+   unlabeled, structured body with `**Objective:** <slug>`, acceptance
+   criteria scoped to the slice; decompositions via `file-epic` with the
+   back-link on the umbrella.
+3. A gap that crosses the objective's Non-goals is a proposal to amend the
+   objective (a design-doc PR the human merges), never a widened task.
+4. Report per objective: rows verified / unmet / proposals filed / ledger
+   deltas.
 
-**Approval stays human.** Sweep proposals wait for `human:approved` like
-any filed task; they never take the agent-approved follow-up lane (that
-lane is for verified defect-shaped follow-ups, not direction). If every
-row of an objective verifies, propose the `Status: achieved` flip as a
-design-doc PR — the human merging it is the sign-off.
+Sweep proposals wait for `human:approved` and never take the agent-approved
+lane. If every row verifies, propose `Status: achieved` as a design-doc PR.
 
 ## Triage sweep
 
-The sibling cue for the *inbound* direction: where the objectives sweep
-files new work, the triage sweep judges work already filed. On the human's
-cue ("triage sweep"), enumerate this repo's untriaged issues with
-`fleet-triage-sweep list --repo <slug>`, judge each one, stage the verdicts,
-and apply labels only after the human confirms — full flow in
-[`triage-protocol.md`](triage-protocol.md) § Architect-managed sweep. Also
-cue-driven, never autonomous.
+On the cue "triage sweep", run [`triage-protocol.md`](triage-protocol.md)
+§ Architect-managed sweep: `fleet-triage-sweep list --repo <slug>`, judge,
+stage, apply labels only after the human confirms. Cue-driven only.
 
 ## Planning issues
 
-The **opus worker** autonomously handles `fleet:needs-plan` issues as a
-transient, scout-triggered invocation. You do not need to poll for them.
+The opus worker plans `fleet:needs-plan` issues autonomously; you do not
+poll. When the human asks you to plan one, follow
+[`PLANNING-PROTOCOL.md`](PLANNING-PROTOCOL.md): read the full thread, post
+the `## Plan` comment (with the cross-system audit for a deletion or
+migration of a shared resource), swap `fleet:needs-plan` →
+`fleet:plan-review`, leave `human:approved`. Amendments are
+`## Plan corrections` comments. Disagreement: comment, keep
+`fleet:needs-plan`, add `fleet:needs-human`.
 
-If the human asks you to plan an issue directly (e.g. during a design
-conversation), follow the shared
-[`docs/agents/PLANNING-PROTOCOL.md`](PLANNING-PROTOCOL.md) — read the full
-thread, post the structured **`## Plan` comment** (including the **cross-system
-audit** when planning a deletion/migration of a shared resource), then swap
-`fleet:needs-plan` → `fleet:plan-review` (leaving `human:approved`). The
-`## Plan` comment is the canonical, host-independent plan and the **only** plan
-artifact — no plan doc, no plan PR, nothing committed to the repo. Later
-amendments are `## Plan corrections` comments on the same issue; the
-implementing worker reads the newest `## Plan` plus every later correction. If
-you disagree with the issue's direction, comment but leave `fleet:needs-plan`
-on. If the work decomposes into
-a multi-issue stack, file it via `file-epic` per Filing tasks above.
+You may also act as the **plan reviewer**: an issue carrying
+`fleet:plan-review` is waiting for its `## Plan` comment to be vetted as a
+plan (PLANNING-PROTOCOL.md step 4) — sound → remove `fleet:plan-review`; not
+sound → swap back to `fleet:needs-plan` with the gaps.
 
-You may also act as the **plan reviewer**: an issue carrying `fleet:plan-review`
-is waiting for someone to vet its `## Plan` comment *as a plan* (per
-PLANNING-PROTOCOL.md step-2 rigor). Sound → remove `fleet:plan-review` (the
-scout queues it); not sound → swap back to `fleet:needs-plan` with a comment
-naming the gaps.
-
-**Game-side scope.** The architect does not autonomously claim game tasks. The
-responsibility list is the primary repo's only. When the human explicitly asks
-you to plan or work a game-side issue, use `--repo <game-repo-slug>` instead of
-`<repo-slug>` for all `gh issue` / `gh pr` calls touching that repo.
+**Game-side scope.** The architect never autonomously claims game tasks;
+when the human explicitly assigns game-side work, use
+`--repo <game-repo-slug>` on every `gh issue` / `gh pr` call for that repo.
 
 ## Handling `fleet:design-blocked` PRs
 
-The architect role is interactive (no autonomous loop), but workers can
-escalate mid-task by labeling their open PR with `fleet:design-blocked` and
-posting a `## NEEDS-DESIGN` comment. Those PRs sit there until you respond —
-the human will direct your attention to them, but you should also list them on
-startup so you know what's queued for you.
+Workers escalate mid-task by labeling their PR `fleet:design-blocked` and
+posting a `## NEEDS-DESIGN` comment; those PRs wait for you (startup step 4
+lists them).
 
-**Steward-first for epic children.** When the blocked PR's backing issue
-belongs to an epic (`**Part of epic:** #U` in the issue body, or the
-umbrella's `## Children` checklist lists it), the **epic-steward** triages
-it first: questions derivable from the umbrella's plan / decision log get a
-steward unblock, and novel ones reach you as an aggregated
-`## STEWARD PROPOSAL` comment on the umbrella (which then carries
-`fleet:steward-proposal`). Engage with an epic child's design block directly
-only when (a) the umbrella carries a proposal package — answer each question
-inline on the umbrella thread and **remove `fleet:steward-proposal`** (its
-removal re-fires the steward's distribution; you don't flip the PR labels
-yourself), or (b) the human directs you to it. Before manually unblocking an
-epic-child PR, check the umbrella for a steward claim
-(`fleet:stewarding-*`) so you don't race the steward's distribution pass.
-Non-epic design blocks remain yours alone. See
-[`epic-steward-protocol.md`](epic-steward-protocol.md).
+**Steward-first for epic children.** When the backing issue belongs to an
+epic (`**Part of epic:** #U`, or the umbrella's `## Children` checklist),
+the epic-steward triages first: derivable questions get a steward unblock;
+novel ones reach you as a `## STEWARD PROPOSAL` on the umbrella (labeled
+`fleet:steward-proposal`). Answer each question inline on the umbrella and
+**remove `fleet:steward-proposal`** — that removal re-fires the steward's
+distribution; do not flip the PR labels yourself. Before manually
+unblocking an epic-child PR, check the umbrella for a `fleet:stewarding-*`
+claim. Non-epic blocks are yours alone
+([`epic-steward-protocol.md`](epic-steward-protocol.md)).
 
-On startup (step 4), surface `fleet:design-blocked` PRs from the cache: filter
-`repos.<repo>.prs[]` for entries whose `labels` array contains
-`fleet:design-blocked` and format `#{number} {title} (by {author})`. If any
-exist, surface them in the standing-by message so the human can direct
-attention.
+Working a blocked PR:
 
-When working a `fleet:design-blocked` PR:
+1. Read the PR body and the `## NEEDS-DESIGN` comment(s): the contradiction
+   with the plan, the questions, the worker's options.
+2. Decide the architectural questions. You provide direction; the worker
+   executes.
+3. **Capture durable decisions in `docs/design/`.** A task-local decision
+   (this PR's approach, no reuse beyond it) lives in the PR comment. An
+   engine-level invariant, model, or contract (a rasterizer face-selection
+   model, a coordinate invariant, a component-ownership rule, a
+   pipeline-ordering contract, a data layout) — anything a worker on a
+   different task would need six weeks from now — goes in
+   `docs/design/<feature>.md` (`docs/design/iso-depth-axis-invariant.md` is
+   the template: invariant, why it holds, consumers, migration status, what
+   to verify), cross-referenced from the nearest module `CLAUDE.md`; the PR
+   comment points at it rather than restating it.
 
-1. Read the PR body and the worker's `## NEEDS-DESIGN` comment(s) carefully —
-   the worker has done analysis you should leverage. The escalation comment
-   names the contradiction with the original plan, the specific architectural
-   question(s), and (sometimes) suggested options.
-2. Decide on the architectural questions. You are not coding the fix yourself;
-   you are providing direction the worker will execute.
-3. **Capture durable design decisions in `docs/design/`, not just the PR
-   comment.** Your direction on the PR is task-scoped and transient — it
-   informs the worker resuming THIS PR and then stops mattering once the task
-   completes. If your decision establishes or changes an
-   **engine-level architectural invariant, model, or contract** that outlives
-   the task (a rasterizer face-selection model, a coordinate-system invariant,
-   a component-ownership rule, a pipeline-ordering contract, a data-layout
-   decision), it belongs in a durable `docs/design/<feature>.md` that is the
-   **source of truth** — otherwise the decision evaporates when the PR merges
-   and a future worker re-derives or contradicts it. Decide which bucket the
-   decision is in:
-
-   - **Task-local** (this PR's approach, no reuse implication beyond this
-     deliverable) → the PR comment only (step 3a).
-   - **Engine-level architecture** (any future consumer needs to know this; it
-     constrains or enables work beyond this PR) → design doc (step 3b) AND
-     reference it from the PR comment + nearest module `CLAUDE.md`.
-
-   When in doubt, ask: "would a worker on a *different* task six weeks from now
-   need this decision to avoid re-deriving it or contradicting it?" If yes,
-   it's a design doc.
-
-   3a. **Plan direction → the PR comment.** You don't push to the worker's
-   branch and you don't rewrite the issue's `## Plan`, so your concrete
-   direction — including re-scoped acceptance criteria — goes in the step-4
-   `## Architect direction` comment, and that comment *is* the direction. It is
-   host-independent, so a cross-host resumer gets everything from the PR plus
-   the issue's `## Plan` comment (and any `## Plan corrections`); where the
-   implementation ends up departing from the plan's approach sketch, the worker
-   records that as a short `## Plan departures` note in the PR body. For an
-   engine-level decision, **point at the design doc** (step 3b) rather than
-   restating it in the comment — the doc is canonical.
-
-   3b. **Design doc** (for engine-level architecture): create or update
-   `docs/design/<feature>.md` as the source of truth for the
-   model/invariant/contract. Match the existing docs' conventions
-   (`docs/design/iso-depth-axis-invariant.md` is a good template: states the
-   invariant, why it holds, what consumes it, migration status, what to
-   verify). Cross-reference it from the nearest module `CLAUDE.md` so the next
-   person opening that subtree finds it. Land the doc in the **same PR as the
-   implementation** (the worker adds it), OR — when the redesign supersedes the
-   PR's existing approach and the model itself needs review independent of the
-   code — open a small **docs-only PR for the design doc first** and have the
-   implementation PR reference it. Prefer the docs-first PR for any redesign
-   that invalidates a worker's in-flight approach: it gives the model a
-   reviewable home before the worker rebuilds against it, and it survives even
-   if the original PR is abandoned.
-
-   **Docs-first ⇒ block the implementation on the docs-PR MERGE, not its
-   open.** The whole point of a separate docs PR is to review the model
-   independently. If you let implementation resume the moment the docs PR is
-   *opened*, the worker builds against an unreviewed model that review may
-   change, reading the spec from an unmerged branch (awkward and error-prone).
-   Block on merge so the worker reads a reviewed, stable spec from master via
-   the normal workflow. Docs PRs review fast (no build, no tests), so the
-   latency cost is small.
-
-   **Route the block through a fresh task, not the blocked PR.** When the
-   resolution needs a docs-first PR, do NOT keep the original PR
-   `fleet:design-blocked` waiting on the doc — that strands it on a manual
-   re-flip nobody owns (who swaps the label when the docs PR merges?). Instead:
-   - **Open the docs-first PR** for the model.
-   - **File a fresh implementation issue** carrying a structured `**Blocked
-     by:** #<docs-PR-number>` line in its body (the scout / fleet-claim gate on
-     that field — prose like "blocked on PR #X" is NOT parsed, it must be the
-     `**Blocked by:** #N` form). When the docs PR merges (→ closed), the block
-     clears automatically and the task becomes claimable. This reuses the
-     existing blocked-by-on-merge machinery and needs no manual label flip.
-   - **Unblock the original PR immediately** (step 5) with wind-down direction:
-     keep any independently-correct prep work (helpers, mechanical fixes), and
-     either close it or narrow it to land just that prep. The original PR is
-     superseded by the fresh task; it is not the thing waiting on the doc.
-
-   The canonical worked example of this whole flow is #1275 (blocked PR,
-   unblocked with wind-down) → #1277 (docs-first PR,
-   `docs/design/voxel-face-rasterization.md`) → #1278 (fresh impl task,
-   `**Blocked by:** #1277`).
-4. Post a PR comment with concrete decisions, re-scoped acceptance criteria (if
-   changed), and a pointer to the design doc (if step 3b applied):
+   The doc lands in the same PR as the implementation, **or** — when the
+   redesign supersedes the PR's approach and the model needs review
+   independent of code — as a **docs-first PR**. Docs-first blocks
+   implementation on the docs PR's **merge**, not its open, so the worker
+   builds against a reviewed spec on master. Route that block through a
+   fresh task, not the blocked PR: open the docs PR; file a fresh
+   implementation issue with a standalone `**Blocked by:** #<docs-PR>` line
+   (the block clears on merge with no manual flip); unblock the original PR
+   immediately (step 5) with wind-down direction — keep independently
+   correct prep, close or narrow to land it.
+4. Post the direction:
    ```
    gh pr comment <N> --body "## Architect direction
 
-   <decisions, concretely — not vaguely>
+   <decisions, concretely>
 
    <re-scoped acceptance criteria if the original ones changed>
 
@@ -542,75 +261,35 @@ When working a `fleet:design-blocked` PR:
    (engine-level decisions). Read this direction alongside the issue's
    \`## Plan\` comment (and any \`## Plan corrections\`) before resuming."
    ```
-5. **Swap labels via the named transition.** Removing `fleet:design-blocked`
-   and adding `fleet:design-unblocked` is a single atomic edge — the
-   `fleet:design-unblocked` label is the **resume signal** the worker's
-   feedback loop polls for (`DESIGN_RESUME_LABELS`). Doing it as two separate
-   `gh pr edit` flags is half-executable, and a half-executed swap (blocked
-   removed, unblocked never added) **strands the PR**: no resume signal, and
-   any fresh claim on the backing issue is refused because the open PR exists.
-   PR #1502 sat unpickable for ~a day exactly this way.
-
-   Prefer the named transition once available (it cannot be half-done):
+   This comment is the direction — you neither push to the worker's branch
+   nor rewrite the issue's `## Plan`; a departure from the plan's approach
+   sketch is the worker's `## Plan departures` note in the PR body.
+5. **Swap the design labels via the named transition:**
    ```
-   fleet-transition design-unblock <N>          # see #1510
+   fleet-transition design-unblock <N>
    ```
-   Until `fleet-transition design-unblock` is confirmed stable, do the swap as a **single** `gh pr edit`
-   invocation carrying both flags — never two separate edits:
-   ```
-   gh pr edit <N> --remove-label "fleet:design-blocked" --add-label "fleet:design-unblocked"
-   ```
-   Then verify the PR carries `fleet:design-unblocked` (and not
-   `fleet:design-blocked`) before moving on. The reconcile guard for the
-   stranded state is tracked in #1516.
+   `fleet:design-unblocked` is the resume signal the worker loop polls
+   (`DESIGN_RESUME_LABELS`); the single edge cannot be half-executed, which
+   two separate `gh pr edit` calls can — a PR with `design-blocked` removed
+   and `design-unblocked` never added is stranded and unclaimable.
 
-   **No class edit needed on the unblock (#2939).** The resume tier is
-   opus+-only, and a `fleet:sonnet` backing task in the design lane is
-   unreachable by every class — `fleet-claim reconcile` R9 re-tags such an
-   issue up to `fleet:opus` while the PR is parked, so the invariant holds
-   without you doing anything. A **fable**-tier backing task is different:
-   its unblock still needs `fleet:fable` on the PR in the *same* edit, since
-   the resolver checks `fleet:fable` before the design-unblocked pin and will
-   otherwise silently route the resume to opus.
+   No class edit is needed for a `fleet:sonnet` backing task: the resume
+   tier is opus+-only, and `fleet-claim reconcile` R9 re-tags such an issue
+   to `fleet:opus` while the PR is parked. A fable-tier backing task still
+   needs `fleet:fable` on the PR in the same edit — the resolver checks
+   `fleet:fable` before the design-unblocked pin and otherwise routes the
+   resume to opus.
 
-   **Host-gate the resume when the remaining work is GL-only (#2524).**
-   `fleet:design-unblocked` routes to every opus+ pane regardless of host.
-   If your unblock direction leaves only work a GL host can run (GL gate
-   runs, GL-only repro or verification), add `fleet:needs-gl-host` in the
-   **same** `gh pr edit` as the swap — otherwise Metal-only panes claim
-   the PR, find nothing runnable, and release, every dispatch cycle
-   (PR #2475 burned five opus iterations in 80 minutes this way). The
-   GL-capable pane that finishes the gated work removes the label with
-   its push.
+   When the remaining work runs only on a GL host (GL gate runs, GL-only
+   repro), add `fleet:needs-gl-host` in the same step; otherwise Metal-only
+   panes claim, find nothing runnable, and release every cycle. On an
+   **issue** (not a PR) whose fix must land in both a `.glsl` and its
+   `.metal` twin, pair `fleet:needs-gl-host` with `fleet:backend-symmetric`
+   so a macOS pane can author both halves.
+6. **Self-heal stale resume state on every unblock:**
 
-   **On an ISSUE, pair the gate with `fleet:backend-symmetric` when the fix
-   must land in both backends (#2820).** When you file or triage a shader
-   defect that has to be fixed in a `.glsl` *and* its `.metal` twin, add
-   `fleet:backend-symmetric` alongside `fleet:needs-gl-host`. A macOS pane
-   can author both halves, compile-verify both, and natively run and
-   visually verify the Metal one — so gating the whole task off that host
-   starves the lane for no gain, while the GL runtime residual still rides
-   the reviewer-stamped `fleet:needs-{linux,windows}-smoke` lane. Without
-   the pairing the claim gate refuses the whole task on Metal hosts.
-   The scout runs a precision-first body backstop (both a real `.glsl` and
-   a real `.metal` filename cited) for a label you forget, but the label is
-   the primary signal, as with `fleet:needs-gl-host` itself.
-   **Issue scope only** — do not add it to a PR: there `fleet:needs-gl-host`
-   describes the *remaining* work, so task symmetry says nothing about it,
-   and the PR path is deliberately not narrowed.
-6. **Self-heal stale resume-state (do this every unblock).** A worker that
-   escalated typically released its claim and reset/parked the branch
-   ("releasing the claim so any worker can resume"), but two pieces of stale
-   state routinely survive and silently keep the unblocked PR from being picked
-   up. The architect unblock is the one chokepoint where both are always
-   observable, so clear them here:
-
-   a. **Orphaned claim labels on the backing issue.** A parked (design-blocked)
-      PR is NOT active work, but its matching `fleet:wip` PR makes the TTL
-      cleanup sweep treat the issue's `fleet:claim-<host>-<agent>` +
-      `fleet:in-progress` labels as a live claim, so they never get swept — the
-      scout then sees the issue as in-progress and no worker can claim it.
-      Check and clear:
+   a. Orphaned claim labels on the backing issue — a parked PR's `fleet:wip`
+      keeps the TTL sweep from clearing them, so no worker can claim:
       ```
       gh issue view <issueN> --repo <repo-slug> --json labels \
         --jq '[.labels[].name] | map(select(startswith("fleet:claim-") or . == "fleet:in-progress"))'
@@ -618,63 +297,40 @@ When working a `fleet:design-blocked` PR:
       gh issue edit <issueN> --repo <repo-slug> \
         --remove-label "fleet:in-progress" --remove-label "fleet:claim-<host>-<agent>"
       ```
-      (Safe because design-blocked ⇒ parked-for-architect ⇒ the claim is by
-      definition not active. The released worker's FS claim is already gone;
-      only the GitHub labels linger.)
-
-   b. **Stacked-on-merged base.** If the PR's `baseRefName` is a branch that
-      has since merged, the merger never re-targeted it (the merger skips
-      `fleet:wip` PRs), so the worker's stacked-resume has no clean rebase
-      target. Re-target to `master` and drop the stacked label:
+   b. Stacked on a merged base — the merger skips `fleet:wip` PRs, so
+      re-target yourself when the base has merged (leave a still-open base
+      alone):
       ```
       gh pr view <N> --repo <repo-slug> --json baseRefName,labels
       # if base merged / is not master:
       gh pr edit <N> --repo <repo-slug> --base master --remove-label "fleet:stacked"
       ```
-      (For a genuinely-stacked PR whose base is still open, leave the base
-      alone — only re-target when the base has merged.)
+7. (Optional) `gh pr edit <N> --title "<new title>"` when the re-scope
+   changes the semantics.
 
-   The root-cause fixes for all of this (full claim release on escalation; the
-   cleanup sweep ignoring parked PRs; merged-base re-target running on
-   `fleet:wip` PRs; the atomic `design-unblock` transition; the reconcile guard
-   for a stranded swap) are tracked in #1488 / #1510 / #1516; this step is the
-   standing safety net until they land. Worked examples: PR #1483 / issue
-   #1475; PR #1502 / issue #1499 (the half-executed-swap strand).
-7. (Optional) If the re-scope changes the semantics significantly, update the
-   PR title:
-   ```
-   gh pr edit <N> --title "<new title>"
-   ```
-
-Do NOT take ownership of the worker's branch. Do NOT push fixes yourself. The
-worker resumes execution; you provide direction only. The `fleet:wip` label
-stays on throughout — `design-blocked` and `design-unblocked` are state
-qualifiers on top of WIP, not transfers of ownership.
+Do not take ownership of the worker's branch or push fixes. `fleet:wip`
+stays on throughout; the design labels are state qualifiers on top of it.
 
 ## Escalation rules (always)
 
 Stop and surface to the human when:
 
-- A task scope grows beyond one PR's worth of work.
+- A task's scope grows beyond one PR.
 - A design decision needs product or architectural input.
-- You are about to touch the public API surface (`ir_*.hpp` in the engine, or
-  the repo's equivalent) across multiple modules in one PR.
-- A build break looks structural rather than a missing include or
+- You are about to touch the public API surface (`ir_*.hpp`, or the repo's
+  equivalent) across multiple modules in one PR.
+- A build break looks structural rather than a missing include or a
   case-sensitive path.
-- You hit a usage-limit error — print the error, the stated reset time, and
-  wait. Do not retry blindly.
+- You hit a usage-limit error — print the error and the reset time, and
+  wait; do not retry blindly.
 
 ## End-of-iteration feedback
 
-See [`docs/agents/FLEET-RUNTIME.md § End-of-iteration feedback`](FLEET-RUNTIME.md#end-of-iteration-feedback).
-Your feedback file is the **feedback-file** delta.
+[`FLEET-RUNTIME.md § End-of-iteration feedback`](FLEET-RUNTIME.md#end-of-iteration-feedback);
+your file is the **feedback-file** delta.
 
 ## Hard rules
 
-See [`docs/agents/CLAUDE-BASELINE.md §"Hard rules for autonomous fleet roles"`](CLAUDE-BASELINE.md#hard-rules-for-autonomous-fleet-roles).
-
-- **After opening a PR, ALWAYS reset the worktree via `start-next-task` before
-  responding further to the human.** Holding the PR branch checked out blocks
-  reviewers from `gh pr checkout` and breaks the review pipeline. The reset
-  isn't optional — your work is on origin, the branch can be re-checked-out
-  anytime.
+[`CLAUDE-BASELINE.md §"Hard rules for autonomous fleet roles"`](CLAUDE-BASELINE.md#hard-rules-for-autonomous-fleet-roles),
+plus: **after opening a PR, reset the worktree via `start-next-task` before
+responding further to the human.**
