@@ -1213,9 +1213,8 @@ def _populate_tasks_done(repo_state):
 
     id only: project_queue_manager and slice_queue_manager, the two readers
     of tasks.done, resolve each record through task.get("id") and nothing
-    else — the status/summary/model/owner/area/blocked_by/title/issue fields
-    the record used to carry were constants or duplicates of id, unread by
-    either consumer or by any human-facing renderer.
+    else, and no renderer shows the done set — a wider record spends the
+    state.json size budget on fields nobody reads.
     """
     done = [{"id": f"#{issue.get('number', 0)}"}
             for issue in repo_state.get("closed_fleet_queued", [])]

@@ -563,67 +563,113 @@ class TestReuseGuardSchemaMarker(unittest.TestCase):
                         "the schema marker must cost well under 16 B per PR")
 
 
-# TestFiveSectionSizeBound: closed_fleet_queued and tasks.done are the two
-# state.json sections re-bound here — the other three the same review round
-# named (recent_merged_prs, epics, plan_review) were measured, not changed.
-# The fixture below models all six untouched top-level sections plus
-# tasks.open/in_progress/plan_gated as budget-reservation filler: a
-# `{"pad": "z"*N}` string sized to a target byte count, never a model of
-# their real field shape (that shape belongs to those sections' own tests).
+# TestFiveSectionSizeBound: one combined engine+game state at a worst-realistic
+# mix, emitted through the shipped emit_state. check_state_size gates the whole
+# file, so every section competes for the same STATE_SIZE_WARN_BYTES budget and
+# none may be omitted just because its shape is not under test here. Three tiers:
+#
+# - prs: the suite's _pr() records through the shipped _fetch_prs_graphql.
+# - closed_fleet_queued / tasks.done: REST items at the cap (100 per repo) and at
+#   the widest live title length and label count (211 chars / 7 labels engine,
+#   149 / 8 game), applied uniformly — a width a single outlier would understate.
+# - every other section: `{"n", "pad"}` records, opaque budget reservations
+#   sized to that section's live footprint. `pad` is not a field of any real
+#   record; those sections' shapes belong to their own suites.
+#
+# The pre- and post-trim arms share tiers 1 and 3 byte for byte, so the pair
+# attributes the threshold crossing to the closed_fleet_queued / tasks.done
+# record shapes alone.
 
-_DONE_COUNT = 100
+_CLOSED_CAP = 100
 _FIRST_CLOSED = 2000
-_FILLER_SECTIONS = (
-    "prs", "needs_plan", "human_approved", "recent_merged_prs", "epics",
-    "plan_review",
-)
-_FILLER_BYTES_PER_SECTION = 14200
+_REPO_MIX = {
+    "engine": {
+        "prs": 34, "closed_title": 211, "closed_labels": 7,
+        "filler": {
+            "needs_plan": (15, 210), "human_approved": (15, 240),
+            "plan_review": (5, 130), "epics": (18, 380),
+            "recent_merged_prs": (30, 170),
+            "tasks.open": (25, 400), "tasks.in_progress": (27, 370),
+        },
+    },
+    "game": {
+        "prs": 8, "closed_title": 149, "closed_labels": 8,
+        "filler": {
+            "needs_plan": (2, 190), "human_approved": (2, 200),
+            "plan_review": (1, 20), "epics": (5, 370),
+            "recent_merged_prs": (30, 190),
+            "tasks.open": (4, 420), "tasks.in_progress": (5, 320),
+        },
+    },
+}
+_POST_TRIM_HEADROOM_BYTES = 40 * 1024
 
 
-def _filler(target_bytes):
-    empty_cost = len(json.dumps([{"pad": ""}], separators=(",", ":")).encode("utf-8"))
-    return [{"pad": "z" * max(0, target_bytes - empty_cost)}]
+def _filler(count, pad):
+    return [{"n": i, "pad": "x" * pad} for i in range(count)]
 
 
-def _pre_trim_closed_rest_issue(n):
-    """A REST /issues item shaped for fetch_closed_fleet_queued's old
-    _rest_issue_summary-based return — title/labels/updatedAt included."""
+def _closed_rest_items(mix):
+    return [
+        {
+            "number": n,
+            "title": "x" * mix["closed_title"],
+            "labels": [{"name": f"fleet:label-{i}"}
+                       for i in range(mix["closed_labels"])],
+            "updated_at": "2026-09-12T00:00:00Z",
+        }
+        for n in range(_FIRST_CLOSED, _FIRST_CLOSED + _CLOSED_CAP)
+    ]
+
+
+def _pre_trim_done_record(summary):
+    """tasks.done as emitted before the trim, built from a pre-trim
+    closed_fleet_queued summary: the id triplicated, the title as `summary`,
+    and five constant fields."""
+    task_id = f"#{summary['number']}"
     return {
-        "number": n,
-        "title": f"fleet: some closed queued task, title padding {n}",
-        "labels": [{"name": "fleet:queued"}, {"name": "fleet:sonnet"},
-                   {"name": "fleet:claim-mac-pool-1"}],
-        "updated_at": "2026-01-01T00:00:00Z",
-    }
-
-
-def _pre_trim_done_record(n):
-    """tasks.done's shape before the trim: nine fields, most either constant
-    or duplicating `id`."""
-    task_id = f"#{n}"
-    return {
-        "status": "x", "title": task_id,
-        "summary": f"fleet: some closed queued task, title padding {n}",
+        "status": "x", "title": task_id, "summary": summary["title"],
         "id": task_id, "model": None, "owner": None, "area": None,
         "blocked_by": None, "issue": task_id,
     }
 
 
-def _repo_state(pre_trim):
-    repo = {name: _filler(_FILLER_BYTES_PER_SECTION) for name in _FILLER_SECTIONS}
-    repo["tasks"] = {"open": [], "in_progress": [], "plan_gated": []}
-    numbers = range(_FIRST_CLOSED, _FIRST_CLOSED + _DONE_COUNT)
+def _closed_list_stub(items):
+    """Stand in for _rest_list on the closed fleet:queued query only; any
+    other call is a fetcher this fixture does not model."""
+    def stub(repo_slug, path, params, per_page=100, max_pages=1):
+        if (path, params.get("labels"), params.get("state")) != (
+                "issues", "fleet:queued", "closed"):
+            raise AssertionError(f"unmodelled REST list: {path!r} {params!r}")
+        return items[:per_page]
+    return stub
+
+
+def _repo_state(repo_key, pre_trim):
+    mix = _REPO_MIX[repo_key]
+    repo = {"prs": _project([_pr(n) for n in range(_FIRST_PR, _FIRST_PR + mix["prs"])])}
+    tasks = {"plan_gated": []}
+    for section, (count, pad) in mix["filler"].items():
+        if section.startswith("tasks."):
+            tasks[section.split(".", 1)[1]] = _filler(count, pad)
+        else:
+            repo[section] = _filler(count, pad)
+    items = _closed_rest_items(mix)
     if pre_trim:
-        repo["closed_fleet_queued"] = [
-            _mod._rest_issue_summary(_pre_trim_closed_rest_issue(n)) for n in numbers
-        ]
-        repo["tasks"]["done"] = [_pre_trim_done_record(n) for n in numbers]
+        closed = [_mod._rest_issue_summary(i) for i in items]
+        repo["closed_fleet_queued"] = closed
+        tasks["done"] = [_pre_trim_done_record(s) for s in closed]
     else:
-        with patch.object(_mod, "_rest_list",
-                          return_value=[_pre_trim_closed_rest_issue(n) for n in numbers]):
+        with patch.object(_mod, "_rest_list", side_effect=_closed_list_stub(items)):
             repo["closed_fleet_queued"] = _mod.fetch_closed_fleet_queued(_REPO)
-        repo["tasks"]["done"] = _mod._populate_tasks_done(repo)
+        tasks["done"] = _mod._populate_tasks_done(repo)
+    repo["tasks"] = tasks
     return repo
+
+
+def _full_mix_state(pre_trim):
+    return {"generated_at": "2026-09-12T00:00:00Z",
+            "repos": {key: _repo_state(key, pre_trim) for key in _REPO_MIX}}
 
 
 def _emit_size(state):
@@ -637,11 +683,11 @@ def _emit_size(state):
 
 class TestFiveSectionSizeBound(unittest.TestCase):
     """Drives the SHIPPED fetch_closed_fleet_queued / _populate_tasks_done /
-    emit_state over one deterministic fixture, both trim states."""
+    emit_state over one deterministic full-mix fixture, both trim states."""
 
     def test_shipped_closed_fleet_queued_emits_number_only(self):
-        with patch.object(_mod, "_rest_list",
-                          return_value=[_pre_trim_closed_rest_issue(_FIRST_CLOSED)]):
+        items = _closed_rest_items(_REPO_MIX["engine"])[:1]
+        with patch.object(_mod, "_rest_list", side_effect=_closed_list_stub(items)):
             out = _mod.fetch_closed_fleet_queued(_REPO)
         self.assertEqual(out, [{"number": _FIRST_CLOSED}])
 
@@ -650,27 +696,41 @@ class TestFiveSectionSizeBound(unittest.TestCase):
         self.assertEqual(_mod._populate_tasks_done(repo_state),
                          [{"id": f"#{_FIRST_CLOSED}"}])
 
+    def test_closed_list_stub_fails_closed_on_another_query(self):
+        stub = _closed_list_stub([])
+        with self.assertRaises(AssertionError):
+            stub(_REPO, "issues", {"labels": "fleet:needs-plan", "state": "open"})
+
+    def test_fixture_populates_every_emitted_section(self):
+        # A section left empty spends none of the budget it competes for, so the
+        # full-mix claim holds only while every section carries records.
+        for trim_state in (True, False):
+            for key, repo in _full_mix_state(pre_trim=trim_state)["repos"].items():
+                for section in ("prs", "needs_plan", "plan_review", "human_approved",
+                                "closed_fleet_queued", "recent_merged_prs", "epics"):
+                    self.assertTrue(repo[section], f"{key}.{section} is empty")
+                for section in ("open", "in_progress", "done"):
+                    self.assertTrue(repo["tasks"][section], f"{key}.tasks.{section} is empty")
+                self.assertEqual(len(repo["closed_fleet_queued"]), _CLOSED_CAP)
+                self.assertEqual(len(repo["tasks"]["done"]), _CLOSED_CAP)
+
     def test_pre_trim_fixture_exceeds_the_warn_threshold(self):
-        # Positive control: without the trim, a realistic tree's fixture is
-        # already past STATE_SIZE_WARN_BYTES on these two sections alone.
-        state = {"generated_at": "2026-01-01T00:00:00Z",
-                 "repos": {"engine": _repo_state(pre_trim=True),
-                           "game": _repo_state(pre_trim=True)}}
-        size = _emit_size(state)
+        # Positive control: the same mix with the old closed_fleet_queued /
+        # tasks.done shapes must cross, or the acceptance arm proves nothing.
+        size = _emit_size(_full_mix_state(pre_trim=True))
         self.assertGreater(
             size, _mod.STATE_SIZE_WARN_BYTES,
-            f"fixture is {size} B pre-trim — it must exceed the warn threshold "
-            "or the acceptance arm below proves nothing")
+            f"fixture is {size} B pre-trim — it must exceed the "
+            f"{_mod.STATE_SIZE_WARN_BYTES} B warn threshold or the acceptance "
+            "arm below proves nothing")
 
     def test_post_trim_fixture_clears_headroom_under_the_warn_threshold(self):
-        state = {"generated_at": "2026-01-01T00:00:00Z",
-                 "repos": {"engine": _repo_state(pre_trim=False),
-                           "game": _repo_state(pre_trim=False)}}
-        size = _emit_size(state)
+        size = _emit_size(_full_mix_state(pre_trim=False))
         self.assertLess(
-            size, _mod.STATE_SIZE_WARN_BYTES - 40 * 1024,
-            f"fixture is {size} B post-trim — must clear 40 KiB of headroom "
-            "under the warn threshold, not just squeak under the read cap")
+            size, _mod.STATE_SIZE_WARN_BYTES - _POST_TRIM_HEADROOM_BYTES,
+            f"fixture is {size} B post-trim — it must clear "
+            f"{_POST_TRIM_HEADROOM_BYTES} B of headroom under the "
+            f"{_mod.STATE_SIZE_WARN_BYTES} B warn threshold")
 
 
 if __name__ == "__main__":
