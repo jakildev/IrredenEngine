@@ -12,8 +12,11 @@
 #     summarize "fleet-foo tests"
 #
 # assert_contains / assert_absent match the needle as a fixed string
-# (grep -F), one line at a time — a needle spanning a newline never
-# matches. Tests that need path-existence or exit-code assertions define
+# (grep -F), one line at a time: the needle has to fall within a single
+# haystack line. A needle that itself spans a newline is not matched as a
+# contiguous span — grep -F reads it as a newline-separated pattern LIST, so
+# it reports a match when any one of its lines matches. Pass single-line
+# needles. Tests that need path-existence or exit-code assertions define
 # those locally (see test_fleet_claim_safety_guards.sh).
 #
 # Sourcing this file also pulls in lib_preflight.sh (the mis-staged-control
@@ -59,9 +62,36 @@ assert_eq() {
     fi
 }
 
+# Does <haystack> contain <needle> on some single line? Backs both assert_*
+# below.
+#
+# The haystack is handed to grep as a process substitution rather than piped
+# in, and that is load-bearing. `grep -q` stops reading at its first match; with
+# the haystack on the left of a pipe that closes the pipe while printf still has
+# bytes to write, printf dies of SIGPIPE (141), and under `set -o pipefail` —
+# which every suite here sets — 141 becomes the whole pipeline's status. A
+# present needle then reads as a miss in assert_contains and, in the direction
+# that fails silently, as absent in assert_absent. Keeping the writer off the
+# pipeline means only grep's own status is ever observed.
+#
+# The window is "first match lands before the writer drains", so it opens on
+# haystack size and match position together, not on either alone: a 51 KB
+# haystack whose first match is at byte 19 K is enough, and the same haystack
+# matching near its end is not (#3205).
+#
+# The writer still meets a closed pipe when grep stops early — that is now
+# harmless to the verdict, but bash announces it on stderr ("printf: write
+# error: Broken pipe") on the platforms whose printf builtin reports EPIPE
+# rather than dying of SIGPIPE. Discard the writer's stderr so a passing
+# assertion stays silent; printf writing a string to a pipe has no other
+# failure worth surfacing.
+_ir_haystack_has() {  # _ir_haystack_has <haystack> <needle>
+    grep -qF -- "$2" <(printf '%s' "$1" 2>/dev/null)
+}
+
 assert_contains() {
     local haystack="$1" needle="$2" msg="$3"
-    if printf '%s' "$haystack" | grep -qF -- "$needle"; then
+    if _ir_haystack_has "$haystack" "$needle"; then
         ok "$msg"
     else
         bad "$msg"
@@ -72,7 +102,7 @@ assert_contains() {
 
 assert_absent() {
     local haystack="$1" needle="$2" msg="$3"
-    if printf '%s' "$haystack" | grep -qF -- "$needle"; then
+    if _ir_haystack_has "$haystack" "$needle"; then
         bad "$msg"
         echo "        did NOT expect: $needle"
         echo "        in:"; printf '%s\n' "$haystack" | sed 's/^/          | /'

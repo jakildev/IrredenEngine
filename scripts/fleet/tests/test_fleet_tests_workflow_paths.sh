@@ -49,9 +49,11 @@ fi
 # matched as a literal substring of the block, so a subject whose suite
 # covers a whole directory is listed as the glob the workflow actually
 # carries — the two `**` entries below are test_lint_rules_commands.py's
-# doc globs (#2823), not single files. `docs/agents/**` subsumes
-# fleet-state-machine.json; the narrower entry stays so the ratchet keeps
-# naming that subject even if the glob is ever tightened.
+# doc globs (#2823), not single files. `docs/agents/**` subsumes both
+# fleet-state-machine.json (test_fleet_transition.sh) and
+# fleet-labels-reference.md (test_fleet_labels_check.sh); the narrower
+# entries stay so the ratchet keeps naming those subjects even if the glob
+# is ever tightened.
 #
 # The four .github/workflows/ entries are test_workflow_paths_sync.sh's
 # subjects (#2929). They are the only members whose population is derived
@@ -65,6 +67,7 @@ OUT_OF_TREE_SUBJECTS=(
     'cmake/run_clang_format_changed.cmake'
     'engine/tools/lib/concurrency_helpers.sh'
     'docs/agents/fleet-state-machine.json'
+    'docs/agents/fleet-labels-reference.md'
     '.claude/rules/**'
     'docs/agents/**'
     '.github/workflows/header-checks.yml'

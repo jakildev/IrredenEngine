@@ -21,6 +21,8 @@
 #        clears awaiting-upstream-review, leaves other labels intact
 #   T11: CRLF-emitting jq stub (regression guard for #3029) → delta still
 #        computed correctly despite \r-terminated jq -r output
+#   T12: escalate-class-sonnet-opus (reconcile R9's named edge, #2939) →
+#        issue-scoped class re-tag applies once, then is a zero-edit no-op
 
 set -euo pipefail
 
@@ -242,6 +244,26 @@ assert_eq "$(get_labels pr 106)" "fleet:approved fleet:wip" \
     "T11 needs-fix removed, approved added — no stray \\r-suffixed label"
 assert_eq "$(edit_calls)" "1" "T11 exactly one edit call (delta computed correctly under CRLF)"
 rm -f "$BIN/jq"   # restore real jq on PATH for anything after this test
+
+# === T12: escalate-class-sonnet-opus (reconcile R9's edge, #2939) =========
+# The named-edge record for the class re-tag reconcile R9 applies directly.
+# ISSUE-scoped (the class label lives on the task, not the PR), so this also
+# exercises an issue-scope edge end to end. Asserting the zero-edit re-apply is
+# what pins idempotency: R9 fires every tick until the label flips, and the
+# human/architect form must be safe to run twice.
+echo "T12: escalate-class-sonnet-opus → sonnet→opus once, then a no-op"
+reset_log
+set_labels issue 107 fleet:sonnet fleet:queued fleet:agent-approved
+assert_eq "$(run escalate-class-sonnet-opus 107)" "0" "T12 exits 0"
+assert_eq "$(get_labels issue 107)" "fleet:agent-approved fleet:opus fleet:queued" \
+    "T12 fleet:sonnet→fleet:opus, queued + agent-approved untouched"
+assert_eq "$(edit_calls)" "1" "T12 exactly one edit call (single combined delta)"
+reset_log
+assert_eq "$(run escalate-class-sonnet-opus 107)" "0" "T12 re-apply exits 0"
+assert_eq "$(edit_calls)" "0" "T12 re-apply made ZERO edit calls (idempotent)"
+grep -q "already satisfied" "$TMPROOT/out" && \
+    { PASS=$((PASS+1)); echo "  ok: T12 re-apply reports already-satisfied"; } || \
+    { FAIL=$((FAIL+1)); echo "  FAIL: T12 re-apply reports already-satisfied"; }
 
 echo ""
 echo "PASS: $PASS  FAIL: $FAIL"

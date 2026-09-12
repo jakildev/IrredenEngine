@@ -9,7 +9,13 @@ When a label is added, removed, or its ownership changes: update this file,
 **and** `docs/agents/fleet-state-machine.json` (the machine-readable node set
 `fleet-transition` reads) in the same commit so all three stay in 1:1
 correspondence. `fleet-labels --check` diffs the catalog against the JSON node
-set and fails on drift — run it (or wire it into CI) to catch a forgotten edit.
+set and fails on drift. **This check is executed** — `scripts/fleet/tests/test_fleet_labels_check.sh`
+runs it over the real tree on every `fleet-tests.yml` run, so a forgotten edit
+fails CI rather than waiting for someone to run it by hand (it sat red on
+master for exactly that reason, #3205). Invoke it as
+`bash scripts/fleet/fleet-labels --check` when checking a branch: the script
+resolves both inputs from its own location, so calling it by name through the
+`~/bin` symlink reports on the main clone instead.
 
 ---
 
@@ -222,8 +228,12 @@ Specifically, **never pass these via `--label` when filing**:
   the dispatcher launches each worker iteration with its task's class
   and the fleet-claim gate exact-matches it. A reviewer may also add
   `fleet:fable` to a PR to route an approach-is-wrong feedback fix onto
-  the fable class. `fleet-queue-list` groups by these; see FLEET.md
-  "Model split".
+  the fable class. Two mechanisms move a task UP the ladder after ingest
+  stamps it, and neither ever moves it down: a worker's own step-8a re-tag
+  on its claimed task, and `fleet-claim reconcile` **R9**, which re-tags a
+  `fleet:sonnet` backing issue to `fleet:opus` while any of its PRs is
+  parked in the design lane (#2939). `fleet-queue-list` groups by these;
+  see FLEET.md "Model split".
 - `fleet:blocked` — owned by **`fleet-queue-ingest`**. Since #1527 the
   ingest queues *every* approved, non-skip task up front (full queue
   visibility) instead of one child at a time; a task whose
@@ -285,6 +295,33 @@ Specifically, **never pass these via `--label` when filing**:
   **smoking agent** on a successful smoke run (Windows: a native-Windows
   smoke worker, or `platform-catchup` as fallback). Permanent audit trail;
   not used by the merge gate. Don't add to issues.
+- `fleet:author-codex` / `fleet:author-claude` — **PR** provenance: which
+  provider most recently *implemented* on this PR. Applied by the authoring
+  role (included in `gh pr create --label ...` so it is present the moment the
+  PR appears) and re-stamped on each amend by `fleet_runtime.stamp()`, which
+  swaps the pair in one `gh pr edit` so the two can never both be set. That
+  function **refuses to run under a reviewer role** (`sonnet-reviewer`,
+  `opus-reviewer`, `smoke-worker`) — reviewing a PR must not rewrite its
+  provenance. Read by `choose_runtime()` when `FLEET_CROSS_PROVIDER_REVIEW=1`
+  to route the review to the *other* provider; an unstamped PR is a hard error
+  (`unstamped PR: record implementation provider before review`) rather than a
+  default, so provenance is never inferred from absence — stamp legacy authors
+  before enabling the policy. Two author labels at once is also a hard error.
+  Don't add to issues.
+- `fleet:runtime-codex` / `fleet:runtime-claude` — **issue/task and PR**
+  provider *pin*: dispatch this item to the named provider. Applied by a human
+  or a role that needs a specific provider; it is an instruction, not a record
+  (that is the `fleet:author-*` pair). `choose_runtime()` honours it ahead of
+  every other signal for non-review dispatch, and two pins at once is a hard
+  error. Without a pin the order is: **feedback and conflict** dispatches
+  follow the PR's existing `fleet:author-*` stamp (so an amend goes back to the
+  provider that wrote it), otherwise `FLEET_WORKER_RUNTIME` decides — a literal
+  provider name pins globally, and `balanced` hashes the dispatch target with
+  SHA-256 so the split is stable across hosts and restarts. Balanced spreads
+  *assignments*, and explicitly not subscription consumption. A host declaring
+  only `FLEET_RUNTIMES="claude"` **waits** for a Codex-bound item rather than
+  substituting a provider. See [`CODEX.md`](CODEX.md) §"Enabling mixed-provider
+  dispatch" for the environment flags that activate both families.
 - `fleet:needs-gl-host` — **issue/task and PR** label marking work that
   needs an OpenGL-4.5 host (`{linux, windows}`). macOS GL is 4.1, so
   a Metal-only pane genuinely cannot build/run/verify the GL backend.
@@ -577,6 +614,11 @@ Specifically, **never pass these via `--label` when filing**:
   `design-blocked` (re-escalation). The two labels are mutually
   exclusive: a PR never carries both, or it would be re-picked as
   unblocked while actually re-blocked.
+  **Backing-class invariant:** the resume tier these labels feed is
+  opus+-only, so a PR in the design lane must have an opus+ backing task;
+  reconcile R9 re-tags a `fleet:sonnet` backing issue one class up while
+  the PR is parked, which is what keeps a sonnet-backed resume from being
+  unreachable by every class (#2939).
   Coexist with `fleet:wip` — they're qualifiers, not transfers of
   ownership. Distinct from `fleet:needs-fix` because the worker
   isn't fixing a defect, they're following architectural direction
@@ -717,7 +759,10 @@ mismatch, R4 contradictory/orphaned labels) plus the persistence-gated
 R7 auto-heal (re-adds `fleet:design-unblocked` to a half-executed
 design-unblock — a stranded `fleet:wip` PR carrying neither design
 label on a `fleet:queued` issue — after `FLEET_RECONCILE_DRIFT_TICKS`
-ticks), and leaves ambiguous drift (R2/R6) flag-only. It runs at
+ticks) and the ungated R9 class-escalate (re-tags a `fleet:sonnet` backing
+issue to `fleet:opus` while any of its PRs carries a design-lane label, so
+the opus+-only resume tier has a class it can dispatch — #2939), and
+leaves ambiguous drift (R2/R6) flag-only. It runs at
 **boot** (`fleet-up`, before the dispatcher launches) and
 **periodically** — the scout backgrounds a
 single multi-repo `reconcile --apply` alongside `cleanup --gh` on every

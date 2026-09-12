@@ -564,6 +564,15 @@ When working a `fleet:design-blocked` PR:
    `fleet:design-blocked`) before moving on. The reconcile guard for the
    stranded state is tracked in #1516.
 
+   **No class edit needed on the unblock (#2939).** The resume tier is
+   opus+-only, and a `fleet:sonnet` backing task in the design lane is
+   unreachable by every class — `fleet-claim reconcile` R9 re-tags such an
+   issue up to `fleet:opus` while the PR is parked, so the invariant holds
+   without you doing anything. A **fable**-tier backing task is different:
+   its unblock still needs `fleet:fable` on the PR in the *same* edit, since
+   the resolver checks `fleet:fable` before the design-unblocked pin and will
+   otherwise silently route the resume to opus.
+
    **Host-gate the resume when the remaining work is GL-only (#2524).**
    `fleet:design-unblocked` routes to every opus+ pane regardless of host.
    If your unblock direction leaves only work a GL host can run (GL gate

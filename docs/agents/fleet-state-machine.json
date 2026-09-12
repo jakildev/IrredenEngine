@@ -66,13 +66,13 @@
       "name": "fleet:opus",
       "scope": "issue",
       "color": "1d76db",
-      "description": "Model-affinity tag set by fleet-queue-ingest; opus-class workers pick tasks with this label"
+      "description": "Model-affinity tag set by fleet-queue-ingest; a worker's step-8a re-tag or reconcile R9 (design-parked PR on a fleet:sonnet issue) moves a task up into it; opus-class workers pick tasks with this label"
     },
     {
       "name": "fleet:sonnet",
       "scope": "issue",
       "color": "1d76db",
-      "description": "Model-affinity tag set by fleet-queue-ingest; sonnet-class workers pick tasks with this label"
+      "description": "Model-affinity tag set by fleet-queue-ingest; a worker's step-8a re-tag or reconcile R9 (design-parked PR) moves a task one class up out of it; sonnet-class workers pick tasks with this label"
     },
     {
       "name": "fleet:blocked",
@@ -235,6 +235,30 @@
       "scope": "pr",
       "color": "ededed",
       "description": "PR was opened from a Windows host; covers the OpenGL tier — reviewer adds only Metal (macOS) smoke"
+    },
+    {
+      "name": "fleet:author-codex",
+      "scope": "pr",
+      "color": "0075ca",
+      "description": "Provenance: Codex was the most recent implementation provider on this PR. Stamped at `gh pr create` time and re-stamped on each amend; cross-provider review routing reads it (a PR last amended by Codex is reviewed by Claude). Never inferred from absence \u2014 an unstamped PR waits for explicit provenance"
+    },
+    {
+      "name": "fleet:author-claude",
+      "scope": "pr",
+      "color": "d4c5f9",
+      "description": "Provenance: Claude was the most recent implementation provider on this PR. Counterpart of fleet:author-codex; a PR last amended by Claude is reviewed by Codex when FLEET_CROSS_PROVIDER_REVIEW is on"
+    },
+    {
+      "name": "fleet:runtime-codex",
+      "scope": "issue+pr",
+      "color": "0075ca",
+      "description": "Provider pin: dispatch this issue/PR to Codex. Applied by a human or a role that needs a specific provider; without a pin, balanced selection hashes the assignment across the host's available providers (FLEET_WORKER_RUNTIME=balanced)"
+    },
+    {
+      "name": "fleet:runtime-claude",
+      "scope": "issue+pr",
+      "color": "d4c5f9",
+      "description": "Provider pin: dispatch this issue/PR to Claude. Counterpart of fleet:runtime-codex; a host declaring only FLEET_RUNTIMES=\"claude\" waits rather than substituting a provider"
     },
     {
       "name": "fleet:verified-linux",
@@ -512,6 +536,18 @@
         "fleet:verified-macos"
       ],
       "note": "macOS/Metal cross-host smoke passed. FLEET-CROSS-HOST-SMOKE.md."
+    },
+    {
+      "name": "escalate-class-sonnet-opus",
+      "scope": "issue",
+      "owner": "reconcile",
+      "remove": [
+        "fleet:sonnet"
+      ],
+      "add": [
+        "fleet:opus"
+      ],
+      "note": "Reconcile R9 (#2939): a design-parked PR (design-blocked / -unblocked / -proposed) on a fleet:sonnet backing issue is unreachable — the design-resume tier is opus+-only (FLEET-FEEDBACK-HANDLING.md tier 4) — so the backing task moves one class up, the same re-tag role-worker.md step 8a sanctions on a worker's own task. Reconcile applies this exact delta directly (a single gh issue edit, the R4/R7/R8 convention); this edge is the vocabulary record and the human/architect-invocable form. Never de-escalates."
     },
     {
       "name": "smoke-verify-windows",

@@ -23,12 +23,14 @@ name: Fleet Tests
 # render-harness-tests.yml's scripts/*.py — the two workflows run disjoint
 # suites, and narrowing either back to buy the non-overlap reopens #2859.
 #
-# Six suites reach outside scripts/ entirely for their subject under test —
+# Seven suites reach outside scripts/ entirely for their subject under test —
 # their subjects are listed explicitly below so a PR touching only one of
 # them still runs this workflow (#2786, #2810, #2823, #2859, #2929):
 #   test_format_changed_line_scoping.sh -> cmake/run_clang_format_changed.cmake
 #   test_ir_build_dir_resolution.sh     -> engine/tools/lib/concurrency_helpers.sh
 #   test_fleet_transition.sh            -> docs/agents/fleet-state-machine.json
+#   test_fleet_labels_check.sh          -> docs/agents/fleet-state-machine.json,
+#                                          docs/agents/fleet-labels-reference.md
 #   test_lint_rules_commands.py         -> .claude/rules/**, docs/agents/**
 #   test_workflow_paths_sync.sh         -> the other path-filtered workflows
 #                                          (header-checks, perf-gate,
@@ -66,6 +68,7 @@ on:
       - 'cmake/run_clang_format_changed.cmake'
       - 'engine/tools/lib/concurrency_helpers.sh'
       - 'docs/agents/fleet-state-machine.json'
+      - 'docs/agents/fleet-labels-reference.md'
       - 'ruff.toml'
   pull_request:
     paths:
@@ -80,6 +83,7 @@ on:
       - 'cmake/run_clang_format_changed.cmake'
       - 'engine/tools/lib/concurrency_helpers.sh'
       - 'docs/agents/fleet-state-machine.json'
+      - 'docs/agents/fleet-labels-reference.md'
       - 'ruff.toml'
   workflow_dispatch:
 
