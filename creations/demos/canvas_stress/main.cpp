@@ -121,6 +121,7 @@ struct CanvasStressSettings {
     bool frozenPose_ = false;
     float frozenPoseRad_ = 0.0f;
     bool noLighting_ = false;
+    bool noSunShadows_ = false;
     // #1619 step-0 isolation harness (architect-mandated). Spawns exactly ONE
     // rotated DETACHED_REVOXELIZE solid — the multi-color L-prism at its
     // off-cardinal initialRotation — and nothing else (no floor, no main grid,
@@ -230,6 +231,9 @@ enum SpawnGroup : std::uint32_t {
     kGroupInterpenetrate = 1u << 7,
     kGroupSmallZoom = 1u << 8,
     kGroupOrbitSwap = 1u << 9,
+    kGroupReceiveProbe = 1u << 10,
+    kGroupReceiveProbeRot = 1u << 11,
+    kGroupReceiveProbeSolo = 1u << 12,
 };
 
 // 0.5 degrees per frame → full revolution in ~720 frames (~12 s at 60 fps)
@@ -407,6 +411,11 @@ bool orbitSwapGroupRequested() {
     return (g_settings.onlyGroups_ & kGroupOrbitSwap) != 0u;
 }
 
+bool receiveProbeGroupRequested() {
+    return (g_settings.onlyGroups_ &
+            (kGroupReceiveProbe | kGroupReceiveProbeRot | kGroupReceiveProbeSolo)) != 0u;
+}
+
 std::uint32_t parseSpawnGroups(const char *arg) {
     struct GroupName {
         const char *name_;
@@ -423,6 +432,9 @@ std::uint32_t parseSpawnGroups(const char *arg) {
         {"interpenetrate", kGroupInterpenetrate},
         {"smallzoom", kGroupSmallZoom},
         {"orbitswap", kGroupOrbitSwap},
+        {"receiveprobe", kGroupReceiveProbe},
+        {"receiveproberot", kGroupReceiveProbeRot},
+        {"receiveprobesolo", kGroupReceiveProbeSolo},
     };
     std::uint32_t bits = 0u;
     const std::string list{arg};
@@ -968,6 +980,59 @@ void spawnPerEntityPrioritySwap() {
     spawnPerEntityPriorityUnit(1, vec3(6.0f, 6.0f, 6.0f), Color{235, 80, 80, 255}, 1, true);
 }
 
+// This sun direction separates the caster and receiver in screen space while
+// preserving a compact, off-centre shadow patch on the receiver's top face.
+constexpr vec3 kReceiveProbeSunDirection{-0.6f, 0.4f, -0.7f};
+constexpr vec3 kReceiveProbeWorld{0.0f, 0.0f, -12.0f};
+constexpr ivec2 kReceiveProbeCanvasSize{280, 280};
+constexpr ivec3 kReceiveProbePoolSize{44, 44, 44};
+constexpr ivec3 kReceiveProbeSize{24, 24, 24};
+// Saturated blue keeps the receiver separable by hue even at ambient-only
+// brightness.
+constexpr Color kReceiveProbeColor{70, 100, 235, 255};
+constexpr vec3 kReceiveProbeCasterWorld{-9.5f, 14.5f, -41.0f};
+// A smaller caster produces sparse sun-map writes instead of a solid patch.
+constexpr ivec3 kReceiveProbeCasterSize{6, 6, 6};
+constexpr Color kReceiveProbeCasterColor{235, 120, 90, 255};
+constexpr vec3 kReceiveProbeRotationAxis{0.3f, 0.7f, 1.0f};
+constexpr float kReceiveProbeRotationAngle = IRMath::kPi / 5.0f;
+constexpr float kReceiveProbeSweepZoom = 2.0f;
+constexpr IRVideo::RoiCrop kReceiveProbeCrops[]{
+    {280, 120, 720, 480, "probe"},
+    {440, 200, 400, 320, "probetight"},
+};
+
+void spawnReceiveProbe(bool rotatedReceiver, bool withCaster) {
+    const vec4 receiverRotation = rotatedReceiver
+                                      ? IRMath::quatAxisAngle(
+                                            IRMath::normalize(kReceiveProbeRotationAxis),
+                                            kReceiveProbeRotationAngle
+                                        )
+                                      : vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    C_EntityCanvas canvas = IRPrefab::EntityCanvas::createWithVoxelPool(
+        "receiveprobe_canvas",
+        kReceiveProbeCanvasSize,
+        kReceiveProbePoolSize
+    );
+    IREntity::createEntity(
+        C_LocalTransform{vec3(0.0f)},
+        C_VoxelSetNew{kReceiveProbeSize, kReceiveProbeColor, true, canvas.canvasEntity_}
+    );
+    IREntity::createEntity(
+        C_LocalTransform{kReceiveProbeWorld, receiverRotation},
+        C_RotationMode{RotationMode::DETACHED_REVOXELIZE},
+        canvas
+    );
+    if (!withCaster) {
+        return;
+    }
+    IREntity::createEntity(
+        C_LocalTransform{kReceiveProbeCasterWorld},
+        C_RotationMode{RotationMode::GRID},
+        C_VoxelSetNew{kReceiveProbeCasterSize, kReceiveProbeCasterColor, true}
+    );
+}
+
 Color gridColor(int x, int y, int gridSize) {
     const float denom = static_cast<float>(IRMath::max(gridSize - 1, 1));
     return Color{
@@ -1052,6 +1117,7 @@ void registerArgs() {
         g_settings.frozenPoseRad_
     );
     args.flag("--no-lighting", "Disable world lighting");
+    args.flag("--no-sun-shadows", "Keep lighting enabled but disable directional shadows");
     args.flag(
         "--screen-lock-detached",
         "Opt every detached canvas into the screen-locked overlay placement (pre-#1624 scene)"
@@ -1064,7 +1130,8 @@ void registerArgs() {
     args.string(
         "--only",
         "Spawn only the named entity groups (comma-separated: maingrid,gridspin,canary,revox,"
-        "orbit,floor,compare,interpenetrate,smallzoom,orbitswap)",
+        "orbit,floor,compare,interpenetrate,smallzoom,orbitswap,receiveprobe,"
+        "receiveproberot,receiveprobesolo)",
         ""
     );
     args.numbers(
@@ -1127,6 +1194,7 @@ void applyArgs() {
         g_settings.frozenPoseRad_ = args.getFloat("--frozen-pose");
     }
     g_settings.noLighting_ = args.getFlag("--no-lighting");
+    g_settings.noSunShadows_ = args.getFlag("--no-sun-shadows");
     if (args.getFlag("--screen-lock-detached") || args.getFlag("--screen-lock-revox")) {
         g_settings.screenLockDetached_ = true;
     }
@@ -1404,6 +1472,13 @@ void initSystems() {
             const int totalSweepShots = IRMath::max(g_settings.sweepYawCount_, 0) +
                                         IRMath::max(g_settings.sweepFramesCount_, 0);
             g_sweepShotLabels.reserve(totalSweepShots);
+            const float sweepZoom = receiveProbeGroupRequested() ? kReceiveProbeSweepZoom : 1.0f;
+            const IRVideo::RoiCrop *sweepCrops =
+                receiveProbeGroupRequested() ? kReceiveProbeCrops : nullptr;
+            const int sweepNumCrops =
+                receiveProbeGroupRequested()
+                    ? static_cast<int>(sizeof(kReceiveProbeCrops) / sizeof(kReceiveProbeCrops[0]))
+                    : 0;
             for (int i = 0; i < g_settings.sweepYawCount_; ++i) {
                 const float t =
                     g_settings.sweepYawCount_ > 1
@@ -1412,7 +1487,14 @@ void initSystems() {
                 const float yaw = g_settings.sweepYawFrom_ +
                                   t * (g_settings.sweepYawTo_ - g_settings.sweepYawFrom_);
                 g_sweepShotLabels.push_back("sweep_yaw_" + std::to_string(i));
-                g_allShots.push_back({1.0f, vec2(0.0f), yaw, g_sweepShotLabels.back().c_str()});
+                g_allShots.push_back(
+                    {sweepZoom,
+                     vec2(0.0f),
+                     yaw,
+                     g_sweepShotLabels.back().c_str(),
+                     sweepCrops,
+                     sweepNumCrops}
+                );
             }
             for (int i = 0; i < g_settings.sweepFramesCount_; ++i) {
                 g_sweepShotLabels.push_back("sweep_frame_" + std::to_string(i));
@@ -1522,7 +1604,7 @@ void initEntities() {
         IRRender::setSunDirection(kSunDirection);
         IRRender::setSunIntensity(kSunIntensity);
         IRRender::setSunAmbient(kSunAmbient);
-        IRRender::setSunShadowsEnabled(true);
+        IRRender::setSunShadowsEnabled(!g_settings.noSunShadows_);
         IRRender::setAOEnabled(true);
 
         // Shadow floor (SDF box) just below the center GRID spin cluster.
@@ -1542,6 +1624,16 @@ void initEntities() {
             );
             IREntity::setComponent(floor, C_LightBlocker{false, false, 0.0f});
         }
+    }
+
+    if (receiveProbeGroupRequested()) {
+        if (!g_settings.noLighting_) {
+            IRRender::setSunDirection(kReceiveProbeSunDirection);
+        }
+        spawnReceiveProbe(
+            (g_settings.onlyGroups_ & kGroupReceiveProbeRot) != 0u,
+            (g_settings.onlyGroups_ & kGroupReceiveProbeSolo) == 0u
+        );
     }
 
     // #1960 / #2023 per-trixel priority interpenetration demo — OPT-IN only

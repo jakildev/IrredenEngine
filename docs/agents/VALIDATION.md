@@ -19,7 +19,7 @@ prove is not done until one exists.
 | Render regression | a demo's shots match committed references | `render-verify` skill; `python3 scripts/render-verify.py --target <Demo>` | render-harness-tests.yml tests the harness itself |
 | GUI behaviour | GUI-ASSERT shots pass for a creation | `gui-verify` skill; `python3 scripts/gui-verify.py <Creation>` | none |
 | Cull regression | occlusion-cull statistics against committed baselines | `python3 scripts/cull-verify.py` | none |
-| Render metrics | shadow, silhouette, coverage, jitter, clip, depth-tier, feeder-margin, light, pivot readings | `python3 scripts/<metric>-verify.py` / `scripts/render-*-metric.py` | none |
+| Render metrics | shadow, silhouette, coverage, jitter, clip, depth-tier, feeder-margin, light, pivot, receive-yaw readings | `python3 scripts/<metric>-verify.py` / `scripts/render-*-metric.py` | none |
 | Perf gate | frame-time cells against the committed perf baseline | `bash scripts/perf/perf_grid_matrix.sh` then `scripts/perf/compare_perf_runs.py` | perf-gate.yml |
 | Plan lint | a `## Plan` comment is structurally sound | `fleet-plan-lint <issue> [--repo game]` | none (planner-time) |
 | Role/skill contract | every skill wrapper answers its shared flow's delta keys | `fleet-validate-roles` | fleet-tests.yml |
