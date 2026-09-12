@@ -2020,8 +2020,6 @@ _cross_lane_precheck() {
                 echo "fleet-claim: WARN ${cmd_name} already held as [${own_label}] beside foreign excluded claim [${other}]" >&2
             fi
         done
-        _stamp_label_claim_liveness "$prefix" "$target" "$agent"
-        echo "${cmd_name} acquired: $(repo_from_ns) PR#$target ($agent; already held)"
         return 3
     done
 
@@ -2030,6 +2028,14 @@ _cross_lane_precheck() {
     else
         check_no_foreign_lane_claim "$target" "$prefix" "$agent" "$labels"
     fi
+}
+
+# _confirm_incumbent_claim <prefix> <cmd-name> <target> <agent>
+#   Refresh an already-held claim only after the caller's remaining gates pass.
+_confirm_incumbent_claim() {
+    local prefix="$1" cmd_name="$2" target="$3" agent="${4:-unknown}"
+    _stamp_label_claim_liveness "$prefix" "$target" "$agent"
+    echo "${cmd_name} acquired: $(repo_from_ns) PR#$target ($agent; already held)"
 }
 
 # _cmd_pr_label_release <prefix> <cmd-name> <pr-num> <agent> [target-word]
@@ -2064,7 +2070,10 @@ _cmd_pr_label_release() {
 cmd_review_claim() {
     local rc=0
     _cross_lane_precheck "fleet:reviewing-" "review-claim" "${1:-}" "${2:-unknown}" || rc=$?
-    [[ "$rc" -eq 3 ]] && return 0
+    if [[ "$rc" -eq 3 ]]; then
+        _confirm_incumbent_claim "fleet:reviewing-" "review-claim" "${1:-}" "${2:-unknown}"
+        return 0
+    fi
     [[ "$rc" -eq 0 ]] || return "$rc"
     _cmd_pr_label_claim "fleet:reviewing-" "review-claim" "$@"
 }
@@ -2105,7 +2114,10 @@ cmd_review_release() {
 cmd_resolving_claim() {
     local cross_lane_rc=0
     _cross_lane_precheck "fleet:resolving-" "resolving-claim" "${1:-}" "${2:-unknown}" || cross_lane_rc=$?
-    [[ "$cross_lane_rc" -eq 3 ]] && return 0
+    if [[ "$cross_lane_rc" -eq 3 ]]; then
+        _confirm_incumbent_claim "fleet:resolving-" "resolving-claim" "${1:-}" "${2:-unknown}"
+        return 0
+    fi
     [[ "$cross_lane_rc" -eq 0 ]] || return "$cross_lane_rc"
     _cmd_pr_label_claim   "fleet:resolving-" "resolving-claim"   "$@"
 }
@@ -2130,7 +2142,10 @@ cmd_amending_claim() {
             && ! check_host_capability "$1" pr "${CROSS_LANE_INFO:-}"; then
         return 1
     fi
-    [[ "$cross_lane_rc" -eq 3 ]] && return 0
+    if [[ "$cross_lane_rc" -eq 3 ]]; then
+        _confirm_incumbent_claim "fleet:amending-" "amending-claim" "${1:-}" "${2:-unknown}"
+        return 0
+    fi
     _cmd_pr_label_claim   "fleet:amending-" "amending-claim"   "$@"
 }
 cmd_amending_release() {

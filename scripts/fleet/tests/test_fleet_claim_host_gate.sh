@@ -445,8 +445,9 @@ fi
 # --- T27: an incumbent amend claim still honors the host gate --------------
 echo "T27: incumbent amending-claim remains subject to fleet:needs-gl-host"
 : > "$GH_POST_LOG"
-actual=0; FLEET_TEST_HOST=mac FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" amending-claim 3006 test-agent 2>/dev/null || actual=$?
+actual=0; output=$(FLEET_TEST_HOST=mac FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" amending-claim 3006 test-agent 2>&1) || actual=$?
 assert_exit "$actual" 1 "mac + incumbent amend + fleet:needs-gl-host → amending-claim exit 1"
 assert_no_label_post "host-refused incumbent amending-claim POSTed no label"
+assert_absent "$output" "acquired" "host-refused incumbent amending-claim reports no acquisition"
 
 summarize "fleet-claim pre-acquire gates"
