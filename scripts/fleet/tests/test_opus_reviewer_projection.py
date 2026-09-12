@@ -240,5 +240,24 @@ class PlanReviewWakesPane(unittest.TestCase):
         self.assertEqual(kinds, ["plan_review", "pr"])
 
 
+class ConflictingPrsAreNotReviewable(unittest.TestCase):
+    def _state(self, mergeable, labels):
+        return {"repos": {"engine": {"prs": [{
+            "number": 42, "headRefName": "claude/42-x", "isDraft": False,
+            "mergeable": mergeable, "labels": labels}], "plan_review": []}}}
+
+    def test_sonnet_lane_skips_conflicting_recheck(self):
+        conflicting = self._state("CONFLICTING", ["fleet:changes-made"])
+        self.assertEqual(project_sonnet_reviewer(conflicting), [])
+        clean = self._state("MERGEABLE", ["fleet:changes-made"])
+        self.assertEqual([i["pr"] for i in project_sonnet_reviewer(clean)], [42])
+
+    def test_opus_lane_skips_conflicting_escalation(self):
+        conflicting = self._state("CONFLICTING", ["fleet:needs-opus-recheck"])
+        self.assertEqual(project_opus_reviewer(conflicting), [])
+        clean = self._state("MERGEABLE", ["fleet:needs-opus-recheck"])
+        self.assertEqual([i["pr"] for i in project_opus_reviewer(clean)], [42])
+
+
 if __name__ == "__main__":
     unittest.main()
