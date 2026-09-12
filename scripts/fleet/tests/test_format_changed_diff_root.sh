@@ -155,8 +155,9 @@ echo ""
 echo "T1: a dirty creation worktree is what format-changed diffs (the defect)"
 edit_marker "$CREATION/src/creation_src.cpp"
 OUT=$(run_target "$BUILD_WITH")
-# Pre-fix this printed "no diff vs origin/master in <engine>; nothing to
-# format." — the whole bug in one line.
+# An engine-rooted run answers "nothing to format" here while the creation's
+# edit stands, so the absence assert is what separates a run that looked at
+# the wrong tree from a genuinely clean one.
 assert_absent "$OUT" "nothing to format" \
     "does not report the creation's changes as nothing to format"
 assert_contains "$OUT" "formatted 1 file(s)" \

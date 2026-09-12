@@ -140,12 +140,12 @@ configured *against*, not the engine tree that owns the CMake project. On a
 downstream-creation build (`-DIRREDEN_USER_PROJECTS=<creation-worktree>` — see
 [§ Downstream-creation worktree builds](#downstream-creation-worktree-builds))
 that is the creation worktree, and the configure announces it:
-`-- format-changed diff root: <path> (user project)`. Before #2675 the target
-was keyed on the engine source dir unconditionally, so a creation-side PR's
-run diffed the *engine* repo — clean — and printed `no diff vs origin/master;
-nothing to format.` at exit 0 with the creation's changed C++ untouched. Both
-zero-result lines now carry their examined-file count, so "I looked and found
-nothing" is distinguishable from "I looked nowhere".
+`-- format-changed diff root: <path> (user project)`. A run rooted at a tree
+nobody edited comes back clean and exits 0, which reads exactly like a clean
+tree — so both zero-diff results name the root they swept and the count they
+examined: `no diff vs <base> in <root> (0 changed file(s) examined)` and
+`<N> changed file(s) examined, 0 on the quality list`. Read the root and the
+count, not the word "nothing".
 
 ### Python (scripts)
 
