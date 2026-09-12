@@ -184,6 +184,255 @@ def log(msg: str) -> None:
     print(f"[{ts} state-scout] {msg}", flush=True)
 
 
+# --- Self-reload at the tick boundary --------------------------------------
+#
+# A persistent python daemon binds its modules once at import, so a merged fix
+# to this script or to anything it imports reaches disk and never memory. The
+# fix is only ever loaded by re-exec'ing. Corpus of merged-but-inert commits,
+# the dispatcher's identical defect in bash, and the operator-facing
+# diagnostic: docs/agents/FLEET-CACHE.md §"Daemon source staleness".
+
+_SELF = Path(__file__).resolve()
+# Attempts PERMITTED per window (the next one is refused) — see _reload_gate.
+RELOAD_MAX = int(os.environ.get("FLEET_RELOAD_MAX", "3"))
+RELOAD_WINDOW_SECONDS = int(os.environ.get("FLEET_RELOAD_WINDOW_SECONDS", "900"))
+# Ceiling on the prospective-image probe. A fresh interpreter importing this
+# closure costs well under a second; the ceiling is there so an import that
+# hangs cannot stall the tick loop it is called from.
+RELOAD_PROBE_TIMEOUT_SECONDS = 20
+# Ticks between re-probes of an image already refused once. A refusal cannot
+# be treated as final: the file that has to be repaired is often one this
+# process cannot hash — a module the new image adds is outside _BOOT_SURFACE
+# by definition, so fixing it moves nothing here and a permanently quiet
+# refusal is the merged-but-inert daemon this whole mechanism exists to
+# prevent. The cost is one interpreter start per N ticks, and only while a
+# refusal stands.
+RELOAD_REPROBE_TICKS = int(os.environ.get("FLEET_RELOAD_REPROBE_TICKS", "10"))
+_reload_pending_hash = ""    # hash seen on the previous tick (debounce)
+_reload_quiet_hash = ""      # hash whose on-disk image is our own revision
+_reload_refused_hash = ""    # hash whose on-disk image would not load
+_reload_refused_reason = ""  # its reason, so a re-probe re-logs only on change
+_reload_refused_ticks = 0    # ticks since that image was last probed
+
+
+def _source_surface():
+    """Absolute paths of the source files this process bound at import time.
+
+    Derived from `sys.modules`: every loaded module whose `__file__` resolves
+    inside this script's own directory, plus the script itself.
+
+    Call this ONCE, at import — `_BOOT_SURFACE` freezes the result, and the
+    reload check reads that tuple, never a fresh call. `sys.modules` is
+    mutable for the life of the process, so a membership set re-derived each
+    tick describes neither the image running (which bound its closure at
+    import) nor the image on disk (which may bind a different one): a
+    function-local `import fleet_something` would enlarge it after boot, and
+    a module the on-disk image no longer imports would stay in it forever.
+    The on-disk side is answered by `_prospective_rev()` instead, which asks
+    a fresh process; the lazy-import side by every fleet_* import in this
+    closure being top level, which `test_scout_reload_unit.py` ratchets.
+
+    Sibling *executables* and `fleet_task_class.py` are excluded for free by
+    the same rule: the scout spawns them as subprocesses and never imports
+    them, so they are not in `sys.modules` and a reload on them would be
+    spurious — they already pick up merged fixes on their next invocation.
+    """
+    root = _SELF.parent
+    paths = {_SELF}
+    for module in list(sys.modules.values()):
+        filename = getattr(module, "__file__", None)
+        if not filename:
+            continue
+        try:
+            path = Path(filename).resolve()
+        except (OSError, ValueError):
+            continue
+        if path.parent != root:
+            continue
+        paths.add(path)
+    return sorted(paths)
+
+
+def _surface_hash(paths) -> str:
+    """Aggregate digest over `paths`, matching fleet-common.sh's algorithm.
+
+    Stream is `<basename>\\n<sha256-hex-or-MISSING>\\n` per entry, in the order
+    given; the aggregate is the sha256 of that stream. Basenames rather than
+    full paths keep the value stable across install locations, which is what
+    makes it publishable as `scout_source_rev` in state.json.
+    """
+    aggregate = hashlib.sha256()
+    for path in paths:
+        try:
+            digest = hashlib.sha256(Path(path).read_bytes()).hexdigest()
+        except OSError:
+            digest = "MISSING"
+        aggregate.update(f"{os.path.basename(str(path))}\n{digest}\n".encode())
+    return aggregate.hexdigest()
+
+
+def _reload_gate(state_file: Path, max_attempts: int, window: int) -> bool:
+    """Oscillation cap. Record this reload ATTEMPT, return True to allow it.
+
+    `max_attempts` is the number of attempts PERMITTED per window: 3 allows
+    three reloads and refuses the fourth, 1 allows one, 0 disables reloading.
+    The attempt is counted before the comparison, so the comparison must be
+    `<=` — a `<` leaves `max_attempts=1` permitting none. A refused
+    attempt is still recorded, so the window drains from the last attempt
+    either way. Mirrors fleet_reload_gate in fleet-common.sh; a clock or
+    filesystem failure allows the reload rather than wedging the daemon on the
+    old image.
+    """
+    now = int(time.time())
+    cutoff = now - window
+    kept = []
+    try:
+        for line in state_file.read_text().splitlines():
+            line = line.strip()
+            if line.isdigit() and int(line) > cutoff:
+                kept.append(int(line))
+    except (OSError, ValueError):
+        pass
+    kept.append(now)
+    try:
+        state_file.parent.mkdir(parents=True, exist_ok=True)
+        state_file.write_text("".join(f"{ts}\n" for ts in kept))
+    except OSError:
+        pass
+    return len(kept) <= max_attempts
+
+
+def _prospective_rev():
+    """The SOURCE_REV a fresh boot of the on-disk image would run with.
+
+    Obtained by asking that image: `--print-surface` is this same derivation
+    in a new interpreter, and its aggregate line IS that image's SOURCE_REV.
+    The question cannot be answered from inside this process — membership
+    belongs to whoever does the importing, and this process imported a
+    possibly older set.
+
+    Returns `(revision, None)`, or `(None, reason)` when the on-disk image
+    cannot answer: a syntax error, an import that raises, a torn file
+    mid-checkout, or a hang. That is the syntax gate too, and a stricter one
+    than compiling each file of the old surface — it refuses exactly the
+    images that would die at import, and only those. The reason carries the
+    failing image's own last line of output, which is the only place an
+    operator can read WHY their merged change is not being loaded.
+    """
+    try:
+        probe = subprocess.run(
+            [sys.executable, str(_SELF), "--print-surface"],
+            capture_output=True, text=True,
+            timeout=RELOAD_PROBE_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.SubprocessError) as e:
+        return None, str(e) or e.__class__.__name__
+    if probe.returncode != 0:
+        reported = (probe.stderr or probe.stdout).strip().splitlines()
+        return None, reported[-1] if reported else f"exit {probe.returncode}"
+    for line in probe.stdout.splitlines():
+        if line.startswith("aggregate\t"):
+            return line.split("\t", 1)[1].strip(), None
+    return None, "--print-surface printed no aggregate"
+
+
+def check_source_reload() -> None:
+    """Re-exec this daemon in place when the image on disk has advanced.
+
+    Called once per tick from main()'s loop, OUTSIDE the try/except around
+    tick_once() — a tick that fails (no network, gh outage) must still reach
+    this check, or the daemon most in need of a fix would be the one that
+    never loads it. On success this does not return.
+
+    Three gates stand between "the surface moved" and the exec: a two-tick
+    debounce (a torn read mid-`git checkout` must not re-exec a half-written
+    file), the prospective-image probe (which both refuses an image that
+    cannot boot and supplies the revision to compare against), and the
+    oscillation cap.
+
+    The content hash over `_BOOT_SURFACE` is the cheap trigger, not the
+    decision: it fires on any byte change under the files this image bound,
+    including one vanishing. Whether that constitutes something to load is
+    the probe's answer, which is why a module the new image dropped reloads
+    cleanly instead of wedging the old image on a path it can no longer read.
+    It is also why the refusal below is the one outcome not quieted on that
+    hash for good: an image identical to ours cannot become loadable-and-
+    different without one of these files moving, and the oscillation cap is
+    a decision about this surface either way, but an image that failed to
+    load can be repaired entirely outside them — so a refusal is re-probed
+    on a cadence and only its log is deduplicated.
+    """
+    global _reload_pending_hash, _reload_quiet_hash
+    global _reload_refused_hash, _reload_refused_reason, _reload_refused_ticks
+
+    current = _surface_hash(_BOOT_SURFACE)
+    if current == SOURCE_REV:
+        _reload_pending_hash = ""
+        return
+    if current != _reload_pending_hash:
+        _reload_pending_hash = current
+        return
+    if current == _reload_quiet_hash:
+        return
+    if current == _reload_refused_hash:
+        _reload_refused_ticks += 1
+        if _reload_refused_ticks < RELOAD_REPROBE_TICKS:
+            return
+        _reload_refused_ticks = 0
+
+    prospective, refusal = _prospective_rev()
+    if prospective is None:
+        if refusal != _reload_refused_reason:
+            log(f"reload refused: the image on disk does not load "
+                f"({refusal}); staying on the loaded image (re-probes every "
+                f"{RELOAD_REPROBE_TICKS} ticks until it loads)")
+        _reload_refused_hash = current
+        _reload_refused_reason = refusal
+        _reload_refused_ticks = 0
+        return
+    _reload_refused_hash = ""
+    _reload_refused_reason = ""
+    if prospective == SOURCE_REV:
+        # The bytes under this process moved, but a fresh boot would bind a
+        # closure that hashes identically — there is nothing to load, and
+        # exec'ing would land on this same revision and re-fire next tick.
+        _reload_quiet_hash = current
+        return
+
+    if not _reload_gate(STATE_DIR / "scout-reload-history",
+                        RELOAD_MAX, RELOAD_WINDOW_SECONDS):
+        log(f"reload refused: oscillation cap ({RELOAD_MAX} attempts / "
+            f"{RELOAD_WINDOW_SECONDS}s) reached; staying on the loaded image")
+        _reload_quiet_hash = current
+        return
+
+    # Release the leader socket explicitly. PEP 446 makes python-created FDs
+    # non-inheritable, so execv would close it anyway, but stopping the server
+    # first also joins its thread and gives the fresh image a clean rebind
+    # instead of a race against teardown.
+    if LEADER_SERVER is not None:
+        LEADER_SERVER.stop()
+    log(f"reloading: source surface advanced ({SOURCE_REV[:12]} -> "
+        f"{prospective[:12]}); daemon-lifetime counters reset")
+    # execv keeps the pid — so scout.pid stays correct, no `finally` runs
+    # (cleanup_pid_file must NOT fire), and the reload has exactly the
+    # semantics of the manual restart an operator performs today.
+    os.execv(sys.executable, [sys.executable, str(_SELF), *sys.argv[1:]])
+
+
+# The import closure of the image actually running, frozen. Every later
+# question about "did my own source move?" is asked of these paths, so the
+# answer stays a property of this process rather than of a module table that
+# keeps changing under it.
+_BOOT_SURFACE = tuple(_source_surface())
+# The surface aggregate of the image actually running. Captured at import, so
+# it describes THIS process no matter what later lands on disk; re-derived by
+# the fresh image after every reload. Published into state.json as
+# `scout_source_rev` and printed by --print-surface, which is what lets any
+# consumer answer "is the scout running the code that is on disk?".
+SOURCE_REV = _surface_hash(_BOOT_SURFACE)
+
+
 def run_capture(cmd, cwd=None):
     try:
         proc = subprocess.run(
@@ -3378,6 +3627,13 @@ def emit_state(state) -> int:
     human-read caches (per-PR/issue details, role projections) keep indent=2.
     See #2752 and docs/agents/FLEET-CACHE.md §"Size invariant".
     """
+    # Source revision of the scout that produced this cache. Stamped
+    # here rather than in build_state so it covers the follower path too,
+    # where the overlaid leader bundle would otherwise carry the LEADER's rev
+    # — a consumer on this host wants to know what this host's scout is
+    # running. Additive and tiny (one 64-char field); the compact-emit size
+    # invariant above is unaffected.
+    state["scout_source_rev"] = SOURCE_REV
     payload = json.dumps(state, separators=(",", ":"), sort_keys=True) + "\n"
     write_atomic(STATE_FILE, payload)
     size = len(payload.encode("utf-8"))
@@ -4065,7 +4321,25 @@ def main():
                         help="run one tick and exit (for testing)")
     parser.add_argument("--interval", type=int, default=POLL_SECONDS_DEFAULT,
                         help="poll interval in seconds (default 30)")
+    parser.add_argument("--print-surface", action="store_true",
+                        help="print the self-reload source surface and exit")
     args = parser.parse_args()
+
+    if args.print_surface:
+        # Operator/test hook, same output contract as
+        # `fleet-dispatcher --print-surface`: one `<path>\t<hash>` line per
+        # surface entry, then `aggregate\t<hash>`. Compare the aggregate
+        # against state.json's `scout_source_rev` to tell whether the RUNNING
+        # scout has loaded what is on disk — this arm runs in a fresh process,
+        # so its aggregate is by construction the revision a boot right now
+        # would report. A running daemon calls exactly this arm to decide
+        # whether the on-disk image differs from its own (_prospective_rev),
+        # which is why the aggregate must be SOURCE_REV itself and not a
+        # separately-derived value that could disagree with it.
+        for path in _BOOT_SURFACE:
+            print(f"{path}\t{_surface_hash([path])}")
+        print(f"aggregate\t{SOURCE_REV}")
+        return
 
     STATE_DIR.mkdir(parents=True, exist_ok=True)
     SEEN_DIR.mkdir(parents=True, exist_ok=True)
@@ -4114,6 +4388,11 @@ def main():
             if SHUTDOWN_FLAG.exists():
                 log("shutdown sentinel detected; exiting")
                 break
+            # Deliberately ABOVE the try, not inside tick_once(): a tick that
+            # raises (gh outage, no network) must not be able to mask the
+            # reload, or the daemon that most needs a merged fix is the one
+            # that never loads it. Does not return when it reloads.
+            check_source_reload()
             try:
                 tick_once()
             except Exception as e:

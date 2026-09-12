@@ -313,3 +313,118 @@ fleet_install_maybe_refresh() {
     fi
     rmdir "$lock" 2>/dev/null || true
 }
+
+# --- Persistent-daemon source surface + reload gate ------------------------
+#
+# The two persistent fleet daemons (fleet-dispatcher, bash; fleet-state-scout,
+# python) bind their code once — bash parses a function body at exec, python
+# binds modules at import — so a merged fix reaches their disk and never their
+# memory. These two helpers back the tick-boundary self-reload that closes
+# that gap; the daemons hash their own load-time source surface each tick and
+# `exec` themselves when it moves. See docs/agents/FLEET-CACHE.md
+# §"Daemon source staleness".
+
+# _fleet_digest_stdin — one content digest of stdin, hex, whatever is
+# installed. This is change detection, not crypto: cksum is a legitimate
+# last resort because the only property required is "different bytes ⇒
+# different string, same bytes ⇒ same string within one daemon lifetime".
+_fleet_digest_stdin() {
+    if command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 | awk '{print $1}'
+    elif command -v sha256sum >/dev/null 2>&1; then
+        sha256sum | awk '{print $1}'
+    elif command -v cksum >/dev/null 2>&1; then
+        cksum | awk '{print $1 "-" $2}'
+    else
+        return 1
+    fi
+}
+
+# fleet_surface_hash <file>... — aggregate digest over the listed files.
+#
+# The digested stream is path-interleaved — `<basename>\n<digest-or-MISSING>\n`
+# per entry, in the order given — so the hash moves when a file's CONTENT
+# changes, when an entry is ADDED or REMOVED from the surface, and when a file
+# APPEARS or DISAPPEARS on disk. That last case is why a missing file hashes to
+# a distinct `MISSING` token rather than being skipped: fleet-dispatcher's
+# surface includes $FLEET_CONF unconditionally, and an operator creating or
+# deleting that conf is exactly as much a source change as editing it.
+#
+# Basenames rather than full paths keep the aggregate stable across install
+# locations (repo checkout vs ~/bin symlink farm), which is what lets the
+# scout publish its aggregate into state.json as a comparable revision.
+#
+# Prints the aggregate hex to stdout. Returns 1 if no digest tool exists, so
+# a caller can degrade to "reload disabled" rather than to "surface never
+# changes" (an empty-string hash would compare equal forever).
+fleet_surface_hash() {
+    local f digest stream=""
+    for f in "$@"; do
+        if [[ -f "$f" ]]; then
+            digest="$(_fleet_digest_stdin <"$f")" || return 1
+        else
+            digest="MISSING"
+        fi
+        stream+="$(basename -- "$f")"$'\n'"$digest"$'\n'
+    done
+    printf '%s' "$stream" | _fleet_digest_stdin
+}
+
+# fleet_reload_gate <state-file> <max> <window-secs> — oscillation cap.
+#
+# Records this reload ATTEMPT in <state-file> (one epoch second per line,
+# entries outside the window pruned), then reports whether the attempt count
+# inside the window is still within <max>. Returns 0 to allow the reload, 1 to
+# suppress it.
+#
+# <max> is the number of attempts PERMITTED per window: 3 allows three reloads
+# and refuses the fourth, 1 allows one, 0 disables reloading. The attempt is
+# counted before the comparison, so the comparison must be `<=` — a `<` spends
+# one of the operator's permitted reloads and leaves `<max> 1` with none, with
+# no runtime signal to distinguish that from a quiet source surface.
+#
+# A refused attempt is still recorded, so a source file that keeps moving holds
+# the cap shut while the operator is mid-edit; the window drains from the last
+# attempt, refused or not.
+fleet_reload_gate() {
+    local state_file="$1" max="$2" window="$3"
+    local now cutoff count=0 kept="" ts
+    now=$(date +%s 2>/dev/null) || return 0   # no clock -> don't block the reload
+    cutoff=$((now - window))
+    if [[ -f "$state_file" ]]; then
+        while IFS= read -r ts; do
+            [[ "$ts" =~ ^[0-9]+$ ]] || continue
+            (( ts > cutoff )) || continue
+            kept+="$ts"$'\n'
+            count=$((count + 1))
+        done <"$state_file"
+    fi
+    kept+="$now"$'\n'
+    count=$((count + 1))
+    mkdir -p "$(dirname "$state_file")" 2>/dev/null || true
+    printf '%s' "$kept" >"$state_file" 2>/dev/null || true
+    (( count <= max ))
+}
+
+# fleet_env_override_names — space-separated names of the fleet knobs
+# (`FLEET_*`, plus the legacy `OPUS_MODEL` / `SONNET_MODEL`) exported in THIS
+# process's environment.
+#
+# fleet-up calls it before resolving anything and hands the answer to the
+# dispatcher's launch as FLEET_ENV_OVERRIDES. fleet-up exports every knob it
+# resolved — from the conf, its defaults, or its model probe — under the knob's
+# own name, so the dispatcher inherits a value it cannot tell apart from an
+# operator's `export`.
+# The list is that distinction: a knob it names is an override, and any other
+# inherited knob is a resolution the dispatcher redoes from the conf. Without
+# it a self-reload re-reads an edited conf and then lets the value that conf
+# held at launch shadow it.
+fleet_env_override_names() {
+    local name names=()
+    for name in $(compgen -e); do
+        case "$name" in
+            FLEET_*|OPUS_MODEL|SONNET_MODEL) names+=("$name") ;;
+        esac
+    done
+    printf '%s' "${names[*]-}"
+}

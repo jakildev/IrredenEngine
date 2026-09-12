@@ -54,6 +54,22 @@ fi
 
 set -euo pipefail
 
+# The environment this daemon was launched with, as `NAME=VALUE` words, taken
+# before the script exports anything. A self-reload execs under exactly this
+# (`env -i`), not under the environment the running image has accumulated: the
+# config block below exports conf-sourced values, and an inherited copy of
+# those is indistinguishable from an operator's override, so the reloaded
+# image would let the conf it replaced shadow the conf it just re-read. Every
+# image therefore boots from the same inputs, and a reload means what a
+# restart means.
+DAEMON_LAUNCH_ENV=()
+for _launch_name in $(compgen -e); do
+    if [[ -v "$_launch_name" ]]; then
+        DAEMON_LAUNCH_ENV+=("$_launch_name=${!_launch_name}")
+    fi
+done
+unset _launch_name
+
 # Force UTF-8 Mode so python helpers don't crash decoding UTF-8 gh/git output
 # under native-Windows python's cp1252 default. No-op on Linux/macOS. See fleet-up.
 export PYTHONUTF8="${PYTHONUTF8:-1}"
@@ -86,6 +102,13 @@ while [[ -L "$_fleet_dispatcher_self" ]]; do
     _fleet_dispatcher_self="$(readlink "$_fleet_dispatcher_self")"
 done
 FLEET_LIB_DIR="${FLEET_LIB_DIR:-$(cd "$(dirname "$_fleet_dispatcher_self")" && pwd)}"
+# Absolute, symlink-resolved path to THIS file — the self-reload `exec` target
+# and the first entry of the source surface. Deliberately not $0:
+# under a ~/bin symlink launch $0 is the link, and re-exec'ing the link would
+# work but would hash a different path than the one advance_main_clone
+# updates. FLEET_LIB_DIR is env-overridable (tests point it at a sandbox);
+# this is not, because it must name the running image.
+DAEMON_SELF="$(cd "$(dirname "$_fleet_dispatcher_self")" && pwd)/$(basename "$_fleet_dispatcher_self")"
 unset _fleet_dispatcher_self
 
 # Network-call timeout guard (#2362). Source this BEFORE fleet-clone-freshness.sh
@@ -130,6 +153,11 @@ else
     fleet_target_key() { printf '%s\n' "${1//:/-}"; }
     fleet_pane_worktrees() { :; }
     declare -A FLEET_TARGET_CLAIM=() FLEET_TARGET_RELEASE=() FLEET_TARGET_LABEL=()
+    # Self-reload degrades to DISABLED, not to "surface never moves":
+    # returning 1 makes check_source_reload bail, where an empty-string hash
+    # would compare equal forever and silently pretend the check was running.
+    fleet_surface_hash() { return 1; }
+    fleet_reload_gate() { return 1; }
 fi
 
 # --- Per-role concurrency cap config ---------------------------------------
@@ -146,6 +174,29 @@ fi
 # are the per-role parallelism budget. The pool size bounds the TOTAL
 # concurrent iterations across all roles.
 FLEET_CONF="${FLEET_CONF:-$HOME/.fleet/fleet-up.conf}"
+# Every knob fleet-up exports that this block resolves. fleet-up exports its
+# own resolution of each, and names only its caller's overrides in
+# FLEET_ENV_OVERRIDES (fleet_env_override_names), so an inherited knob that
+# list does not name is dropped here and resolved again from the conf. Without
+# that, the conf value fleet-up saw at launch outranks every later edit of the
+# conf for the life of the fleet. A standalone launch has no list, and every
+# inherited knob stays an override. test_dispatcher_reload_inputs.sh ratchets
+# this list against fleet-up's `export` lines.
+FLEET_UP_RESOLVED_KNOBS=(
+    FLEET_CONCURRENCY_WORKER FLEET_CONCURRENCY_OPUS_WORKER
+    FLEET_CONCURRENCY_SONNET_AUTHOR FLEET_CONCURRENCY_SONNET_REVIEWER
+    FLEET_CONCURRENCY_OPUS_REVIEWER FLEET_CONCURRENCY_MERGER
+    FLEET_EFFORT
+    FLEET_MODEL_FABLE FLEET_MODEL_OPUS FLEET_MODEL_SONNET
+    FLEET_MODEL_MERGER FLEET_MODEL_OPUS_REVIEWER FLEET_FABLE_FALLBACK
+    OPUS_MODEL SONNET_MODEL
+)
+if [[ -v FLEET_ENV_OVERRIDES ]]; then
+    for _key in "${FLEET_UP_RESOLVED_KNOBS[@]}"; do
+        [[ " $FLEET_ENV_OVERRIDES " == *" $_key "* ]] || unset "$_key"
+    done
+    unset _key
+fi
 # Capture env-set values before sourcing the conf, so a `FLEET_CONCURRENCY_X`
 # in the caller's environment still wins over a value set inside conf.
 _env_worker="${FLEET_CONCURRENCY_WORKER:-}"
@@ -184,6 +235,9 @@ _env_model_sonnet="${FLEET_MODEL_SONNET:-}"
 _env_model_merger="${FLEET_MODEL_MERGER:-}"
 _env_model_opus_reviewer="${FLEET_MODEL_OPUS_REVIEWER:-}"
 _env_model_epic_steward="${FLEET_MODEL_EPIC_STEWARD:-}"
+# `-`, not `:-`: an explicit empty FLEET_MODEL_FABLE_FALLBACK disables the
+# fallback chain, the same spelling fleet-up honors.
+_env_model_fable_fallback="${FLEET_MODEL_FABLE_FALLBACK-__unset__}"
 _env_fable_cap="${FLEET_CONCURRENCY_MODEL_FABLE:-}"
 _env_cap_mode="${FLEET_CAP_MODE:-}"
 # Preserve explicit environment overrides while exporting config to the adapters.
@@ -206,18 +260,24 @@ for _key in "${_runtime_keys[@]}"; do
     [[ -v "$_key" ]] && export "$_key"
 done
 unset _runtime_env _runtime_keys _key
-FLEET_MODEL_FABLE="${_env_model_fable:-${FLEET_MODEL_FABLE:-}}"
+# FLEET_MODEL_FABLE_PROBED is fleet-up's probe of an unpinned fable class. It
+# ranks below the conf, so a pin added to the conf takes effect on reload.
+FLEET_MODEL_FABLE="${_env_model_fable:-${FLEET_MODEL_FABLE:-${FLEET_MODEL_FABLE_PROBED:-}}}"
 FLEET_MODEL_OPUS="${_env_model_opus:-${FLEET_MODEL_OPUS:-}}"
 FLEET_MODEL_SONNET="${_env_model_sonnet:-${FLEET_MODEL_SONNET:-}}"
 FLEET_MODEL_MERGER="${_env_model_merger:-${FLEET_MODEL_MERGER:-}}"
 FLEET_MODEL_OPUS_REVIEWER="${_env_model_opus_reviewer:-${FLEET_MODEL_OPUS_REVIEWER:-}}"
 FLEET_MODEL_EPIC_STEWARD="${_env_model_epic_steward:-${FLEET_MODEL_EPIC_STEWARD:-}}"
+if [[ "$_env_model_fable_fallback" != "__unset__" ]]; then
+    FLEET_MODEL_FABLE_FALLBACK="$_env_model_fable_fallback"
+fi
 # Fleet-wide cap on concurrent fable-class iterations — the direct
 # budget throttle. Counted across all panes via dispatch records, not
 # per role. 0 disables fable dispatch entirely.
 FABLE_CONCURRENCY_CAP="${_env_fable_cap:-${FLEET_CONCURRENCY_MODEL_FABLE:-1}}"
 unset _env_model_fable _env_model_opus _env_model_sonnet \
-      _env_model_merger _env_model_opus_reviewer _env_model_epic_steward _env_fable_cap
+      _env_model_merger _env_model_opus_reviewer _env_model_epic_steward \
+      _env_model_fable_fallback _env_fable_cap
 # Unified worker cap (P2). FLEET_CONCURRENCY_WORKER wins (env > conf); when
 # it's unset, sum the deprecated per-lane caps if an operator set either
 # (so a pre-P2 conf with OPUS_WORKER=2 + SONNET_AUTHOR=2 keeps a cap of 4);
@@ -632,10 +692,10 @@ fi
 FABLE_MODEL="${FLEET_MODEL_FABLE:-${FLEET_FABLE_CANDIDATES_DEFAULT[0]:-fable[1m]}}"
 OPUS_MODEL="${FLEET_MODEL_OPUS:-${OPUS_MODEL:-${FLEET_OPUS_CLASS_DEFAULT:-opus[1m]}}}"
 SONNET_MODEL="${FLEET_MODEL_SONNET:-${SONNET_MODEL:-${FLEET_SONNET_CLASS_DEFAULT:-sonnet}}}"
-# Single-dash expansion is deliberate: fleet-up exports an EMPTY
-# FLEET_FABLE_FALLBACK to mean "fallback disabled" (fable resolved to the
-# opus floor), and `:-` would silently re-enable it. Don't "fix" to `:-`.
-FABLE_FALLBACK="${FLEET_FABLE_FALLBACK-$OPUS_MODEL}"
+# Single-dash expansion is deliberate: an EMPTY FLEET_FABLE_FALLBACK or
+# FLEET_MODEL_FABLE_FALLBACK means "fallback disabled", and `:-` would
+# silently re-enable it. Don't "fix" to `:-`.
+FABLE_FALLBACK="${FLEET_FABLE_FALLBACK-${FLEET_MODEL_FABLE_FALLBACK-$OPUS_MODEL}}"
 if [[ "$FABLE_FALLBACK" == "$FABLE_MODEL" ]]; then
     FABLE_FALLBACK=""
 fi
@@ -688,6 +748,60 @@ unset _env_effort_worker _env_effort_opus_worker _env_effort_sonnet_author \
       _env_effort_merger _env_effort_smoke_worker \
       _env_effort_epic_steward
 
+# --- Self-reload source surface --------------------------------------------
+#
+# Every file whose contents this process bound ONCE and can only re-read by
+# re-exec'ing: the script itself (bash parses a function body at exec and never
+# re-parses it while it runs) plus each `source`d file up top. Sibling
+# executables (fleet-claim, fleet-labels, fleet-rebase) and the python class
+# resolver (fleet_task_class.py) are deliberately ABSENT — those are spawned
+# fresh per call, so they already pick up merged fixes and a reload on them
+# would be spurious. test_daemon_reload.sh ratchets this both directions.
+#
+# INVARIANT: one entry per `source` line in this file, plus DAEMON_SELF.
+# (It sits below the conf/env-precedence block rather than beside the
+# `source` lines so that block stays contiguous; the ratchet, not proximity,
+# is what couples them.) Adding a
+# `source` without adding its path here reintroduces exactly the silent
+# merged-but-inert no-op this array exists to close; the parity assertion in
+# test_daemon_reload.sh counts `^\s*source ` lines against this array and fails
+# when they drift.
+#
+# $FLEET_CONF is listed UNCONDITIONALLY even when absent — fleet_surface_hash
+# digests a missing entry as a distinct MISSING token, so an operator creating
+# or deleting the conf registers as a source change rather than as no change.
+DAEMON_SOURCE_SURFACE=(
+    "$DAEMON_SELF"
+    "$FLEET_LIB_DIR/fleet-net.sh"
+    "$FLEET_LIB_DIR/fleet-clone-freshness.sh"
+    "$FLEET_LIB_DIR/fleet-common.sh"
+    "$FLEET_CONF"
+)
+# Aggregate captured AFTER sourcing completes, so it describes the image
+# actually running. Empty ⇒ self-reload is unavailable (no digest tool, or
+# fleet-common.sh was missing at boot); the tick check reports that once and
+# stands down rather than looping on a hash that can never move.
+DAEMON_SURFACE_HASH="$(fleet_surface_hash "${DAEMON_SOURCE_SURFACE[@]}" 2>/dev/null || true)"
+# Oscillation cap: at most <MAX> reloads per window (see fleet_reload_gate).
+RELOAD_MAX="${FLEET_RELOAD_MAX:-3}"
+RELOAD_WINDOW_SECONDS="${FLEET_RELOAD_WINDOW_SECONDS:-900}"
+# Ticks between re-probes of an on-disk image already refused once. A refusal
+# cannot be final: the file to repair is often one this image does not hash —
+# a `source` the new image adds is outside DAEMON_SOURCE_SURFACE by definition.
+RELOAD_REPROBE_TICKS="${FLEET_RELOAD_REPROBE_TICKS:-10}"
+# Ceiling on the prospective-image probe, so a top level that hangs cannot
+# stall the tick loop it is called from. Unenforced without a timeout binary.
+RELOAD_PROBE_TIMEOUT_SECONDS=20
+for _knob in RELOAD_MAX=3 RELOAD_WINDOW_SECONDS=900 RELOAD_REPROBE_TICKS=10; do
+    _knob_name="${_knob%%=*}"
+    if ! [[ "${!_knob_name}" =~ ^[0-9]+$ ]]; then
+        printf '[%s dispatcher] %s=%q is not a non-negative integer; falling back to %s\n' \
+            "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$_knob_name" "${!_knob_name}" "${_knob#*=}" >&2
+        printf -v "$_knob_name" '%s' "${_knob#*=}"
+    fi
+done
+unset _knob _knob_name
+
 # Tracks which panes have already had their cooldown logged this cycle so
 # the "in rate-limit cooldown" message fires once per pane per cooldown
 # window, not every 10-second tick. Keyed by pane_key (e.g. "pane-3").
@@ -705,6 +819,21 @@ log() {
     local ts
     ts=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
     printf '[%s dispatcher] %s\n' "$ts" "$*" >&2
+}
+
+# describe_config — the resolved caps and class models this image runs with,
+# on one line. Logged beside every `started` line, so a reload after a conf
+# edit shows in the log whether the edit took effect, and printed by
+# --print-config.
+describe_config() {
+    local role caps=""
+    for role in worker sonnet-reviewer opus-reviewer merger smoke-worker epic-steward queue-manager; do
+        caps+=" $role=${ROLE_CONCURRENCY[$role]}"
+    done
+    printf 'caps%s fable=%s mode=%s; models fable=%s opus=%s sonnet=%s fallback=%s merger=%s opus-reviewer=%s\n' \
+        "$caps" "$FABLE_CONCURRENCY_CAP" "$CAP_MODE" \
+        "${CLASS_MODEL[fable]}" "${CLASS_MODEL[opus]}" "${CLASS_MODEL[sonnet]}" \
+        "${FABLE_FALLBACK:-none}" "${ROLE_MODEL[merger]}" "${ROLE_MODEL[opus-reviewer]}"
 }
 
 # --- Shutdown handling -----------------------------------------------------
@@ -2866,6 +2995,17 @@ acquire_dispatcher_lock() {
     fi
     local owner_pid
     owner_pid=$(cat "$LOCK_DIR/pid" 2>/dev/null || true)
+    # Self-reload adoption. `exec` keeps the pid and does NOT run the
+    # EXIT trap, so after a reload the lock dir is still here and its recorded
+    # owner is US. Without this arm the liveness probe below asks `kill -0 $$`
+    # — which a running process always answers yes to — and the freshly
+    # exec'd image would log "another dispatcher is already running" and exit,
+    # i.e. the first live reload would kill the daemon. The image changed; the
+    # process did not, so the lock is ours to keep.
+    if [[ -n "$owner_pid" && "$owner_pid" == "$$" ]]; then
+        printf '%d\n' "$$" >"$LOCK_DIR/pid"
+        return 0
+    fi
     if [[ -n "$owner_pid" ]] && kill -0 "$owner_pid" 2>/dev/null; then
         return 1
     fi
@@ -2876,6 +3016,143 @@ acquire_dispatcher_lock() {
         return 0
     fi
     return 1
+}
+
+# --- Self-reload at the tick boundary --------------------------------------
+#
+# Called once per tick, immediately AFTER advance_main_clone (so the hash sees
+# the clone this tick just fast-forwarded) and never from inside a dispatch
+# path (so no in-flight dispatch is ever interrupted). On success this function
+# does not return — it `exec`s under DAEMON_LAUNCH_ENV, which keeps the pid,
+# the pid file, the lock dir (adopted above), and the tmux pane process, giving
+# a reload exactly the semantics of the manual restart an operator performs
+# today.
+#
+# The content hash over DAEMON_SOURCE_SURFACE is the cheap trigger, not the
+# decision. Three gates stand between "the surface moved" and the exec:
+#   debounce     — the same new hash on two consecutive ticks, so a torn read
+#                  taken mid-`git checkout` never re-execs a half-written file.
+#   probe        — the on-disk image's own --print-surface (see
+#                  prospective_surface_rev), which refuses an image that
+#                  cannot boot and supplies the revision the reload is
+#                  compared against.
+#   oscillation  — fleet_reload_gate, so a source file changing every tick
+#                  cannot turn the daemon into an exec loop.
+# An image identical to ours, or one the cap refused, is quieted on the
+# surface hash until it moves again: neither can change without one of these
+# files moving. A probe refusal is the exception. The file to repair may be
+# one the new image adds, which moves nothing this image hashes, so a refusal
+# is re-probed every RELOAD_REPROBE_TICKS ticks and only its log is quieted.
+_reload_pending_hash=""     # hash seen on the previous tick (debounce)
+_reload_quiet_hash=""       # hash with nothing to load, or refused by the cap
+_reload_refused_hash=""     # hash whose on-disk image would not boot
+_reload_refused_reason=""   # its reason, so a re-probe re-logs only on change
+_reload_refused_ticks=0     # ticks since that image was last probed
+
+# prospective_surface_rev — the DAEMON_SURFACE_HASH a boot of the on-disk image
+# would run with, asked of that image. Sets REPLY to it and returns 0, or sets
+# REPLY to the reason the image cannot boot and returns 1.
+#
+# The running image cannot answer this itself: membership belongs to the image
+# doing the sourcing, and a merged change that adds a `source` line adds a file
+# this image never listed, so gating on DAEMON_SOURCE_SURFACE would parse the
+# new dispatcher, never read the new file, and exec into an image that dies
+# sourcing it. So the probe runs the new image's --print-surface under the
+# launch environment the exec will use, and then gates on the entries IT
+# lists: each must exist (a `source` under `set -e` dies on a missing file;
+# $FLEET_CONF alone is optional) and parse.
+#
+# "$BASH", never a bare `bash`, for both: this daemon needs bash 4, and on
+# macOS a bare `bash` is /bin/bash 3.2, which rejects the dispatcher's own
+# source — every reload would be refused, silently, on exactly the hosts the
+# gate protects. --print-surface exits inside the argument `case`, so the
+# script's `bash -n` is what covers the main loop below it.
+prospective_surface_rev() {
+    local err_file="$STATE_DIR/dispatcher-reload-probe.err" out rc=0 last
+    local path hash aggregate=""
+    local -a timeout_argv=()
+    if [[ -n "$TIMEOUT_CMD" ]]; then
+        timeout_argv=("$TIMEOUT_CMD" "$RELOAD_PROBE_TIMEOUT_SECONDS")
+    fi
+    out="$(env -i ${DAEMON_LAUNCH_ENV[@]+"${DAEMON_LAUNCH_ENV[@]}"} \
+        ${timeout_argv[@]+"${timeout_argv[@]}"} \
+        "$BASH" "$DAEMON_SELF" --print-surface 2>"$err_file")" || rc=$?
+    if (( rc != 0 )); then
+        last="$(tail -n 1 "$err_file" 2>/dev/null || true)"
+        REPLY="--print-surface exited $rc${last:+: $last}"
+        return 1
+    fi
+    while IFS=$'\t' read -r path hash; do
+        [[ -n "$path" ]] || continue
+        if [[ "$path" == "aggregate" ]]; then
+            aggregate="$hash"
+        elif [[ "$hash" == "MISSING" ]]; then
+            if [[ "$path" != "$FLEET_CONF" ]]; then
+                REPLY="$path is missing"
+                return 1
+            fi
+        elif ! "$BASH" -n "$path" 2>/dev/null; then
+            REPLY="$path does not parse"
+            return 1
+        fi
+    done <<<"$out"
+    if [[ -z "$aggregate" ]]; then
+        REPLY="--print-surface printed no aggregate"
+        return 1
+    fi
+    REPLY="$aggregate"
+}
+
+check_source_reload() {
+    [[ -n "$DAEMON_SURFACE_HASH" ]] || return 0   # self-reload unavailable
+    local current prospective
+    current="$(fleet_surface_hash "${DAEMON_SOURCE_SURFACE[@]}" 2>/dev/null || true)"
+    if [[ -z "$current" || "$current" == "$DAEMON_SURFACE_HASH" ]]; then
+        _reload_pending_hash=""
+        return 0
+    fi
+    if [[ "$current" != "$_reload_pending_hash" ]]; then
+        _reload_pending_hash="$current"
+        return 0
+    fi
+    if [[ "$current" == "$_reload_quiet_hash" ]]; then
+        return 0
+    fi
+    if [[ "$current" == "$_reload_refused_hash" ]]; then
+        _reload_refused_ticks=$((_reload_refused_ticks + 1))
+        if (( _reload_refused_ticks < RELOAD_REPROBE_TICKS )); then
+            return 0
+        fi
+        _reload_refused_ticks=0
+    fi
+
+    if ! prospective_surface_rev; then
+        if [[ "$REPLY" != "$_reload_refused_reason" ]]; then
+            log "reload refused: the image on disk does not boot ($REPLY); staying on the loaded image (re-probes every $RELOAD_REPROBE_TICKS ticks until it does)"
+        fi
+        _reload_refused_hash="$current"
+        _reload_refused_reason="$REPLY"
+        _reload_refused_ticks=0
+        return 0
+    fi
+    prospective="$REPLY"
+    _reload_refused_hash=""
+    _reload_refused_reason=""
+    if [[ "$prospective" == "$DAEMON_SURFACE_HASH" ]]; then
+        _reload_quiet_hash="$current"
+        return 0
+    fi
+
+    if ! fleet_reload_gate "$STATE_DIR/dispatcher-reload-history" \
+            "$RELOAD_MAX" "$RELOAD_WINDOW_SECONDS"; then
+        log "reload refused: oscillation cap ($RELOAD_MAX attempts / ${RELOAD_WINDOW_SECONDS}s) reached; staying on the loaded image"
+        _reload_quiet_hash="$current"
+        return 0
+    fi
+
+    log "reloading: source surface advanced (${DAEMON_SURFACE_HASH:0:12} -> ${prospective:0:12}); daemon-lifetime counters reset"
+    exec env -i ${DAEMON_LAUNCH_ENV[@]+"${DAEMON_LAUNCH_ENV[@]}"} \
+        "$DAEMON_SELF" ${DAEMON_ARGV[@]+"${DAEMON_ARGV[@]}"}
 }
 
 release_dispatcher_lock() {
@@ -3050,6 +3327,10 @@ PY
 }
 
 main() {
+    # Preserved for the self-reload exec so a reloaded daemon keeps the
+    # arguments it was launched with. The daemon boot path passes none; the
+    # `${x[@]+...}` guard is what makes expanding the empty array safe.
+    DAEMON_ARGV=("$@")
     mkdir -p "$(dirname "$LOG_FILE")" "$STATE_DIR" "$TRIGGERS_DIR" "$DISPATCH_DIR" "$RATE_LIMIT_DIR" "$USAGE_DIR"
 
     if ! acquire_dispatcher_lock; then
@@ -3058,7 +3339,15 @@ main() {
     fi
 
     write_pid_file
-    log "started (pid=$$, interval=${POLL_INTERVAL_SECONDS}s, rearm=${PERIODIC_REARM_INTERVAL_SECONDS}s, timeout_cmd=${TIMEOUT_CMD:-none})"
+    # `rev=` is the source-surface aggregate this image is running — the
+    # answer to "is the daemon executing the code that is on disk?", which the
+    # process start time alone cannot give. It reappears on every reload, so
+    # consecutive `started` lines with the same pid and different revs ARE the
+    # reload audit trail. `rev=none` means self-reload is unavailable on this
+    # host.
+    local started_rev="${DAEMON_SURFACE_HASH:0:12}"
+    log "started (pid=$$, interval=${POLL_INTERVAL_SECONDS}s, rearm=${PERIODIC_REARM_INTERVAL_SECONDS}s, timeout_cmd=${TIMEOUT_CMD:-none}, rev=${started_rev:-none})"
+    log "config: $(describe_config)"
     if [[ -z "$TIMEOUT_CMD" ]]; then
         log "WARNING: timeout/gtimeout not found; send-keys is unguarded (install coreutils to fix)"
     fi
@@ -3097,6 +3386,14 @@ main() {
         if [[ -d "$GAME/.git" ]]; then
             advance_main_clone "$GAME"
         fi
+
+        # ...and then actually LOAD it. Ordering is load-bearing:
+        # this must run AFTER the clone advance above, so the surface hash
+        # sees the tree that advance just fast-forwarded rather than lagging
+        # it by a tick. It must also stay at the tick top and outside the
+        # dispatch pass — it `exec`s on success, so anything after it in this
+        # tick is skipped, and no in-flight dispatch may be interrupted.
+        check_source_reload
 
         rearm_due_merger
 
@@ -3204,6 +3501,12 @@ case "${1:-}" in
         # Print how the per-role caps bind (elastic | strict), resolved from
         # env > conf > default. Used by tests and for operator inspection.
         echo "$CAP_MODE"
+        exit 0
+        ;;
+    --print-config)
+        # Print the resolved config line the daemon logs at every boot. Used
+        # by tests and for operator inspection.
+        describe_config
         exit 0
         ;;
     --print-effort)
@@ -3605,6 +3908,28 @@ case "${1:-}" in
         else
             echo "alert: none"
         fi
+        exit 0
+        ;;
+    --print-surface)
+        # Operator/test hook: the load-time source surface this daemon watches
+        # for self-reload, one `<path>\t<hash>` line per entry
+        # followed by `aggregate\t<hash>`. Answers "which files does a reload
+        # depend on" without reading the array out of the source, and pairs
+        # with the `rev=` field in the daemon's `started` log line: if the two
+        # aggregates differ, the running daemon has not loaded what is on disk.
+        #
+        # The per-entry column is fleet_surface_hash over that one file — an
+        # aggregate of one, not a bare content digest. That is deliberate: the
+        # column then uses the same function, and therefore the same
+        # missing-file semantics, as the aggregate it decomposes.
+        for _ps_entry in "${DAEMON_SOURCE_SURFACE[@]}"; do
+            if [[ -f "$_ps_entry" ]]; then
+                printf '%s\t%s\n' "$_ps_entry" "$(fleet_surface_hash "$_ps_entry")"
+            else
+                printf '%s\tMISSING\n' "$_ps_entry"
+            fi
+        done
+        printf 'aggregate\t%s\n' "$(fleet_surface_hash "${DAEMON_SOURCE_SURFACE[@]}")"
         exit 0
         ;;
     "")
