@@ -428,8 +428,8 @@ except Exception:
 
 # _amend_snapshot_path <pr>
 #   The local amend-snapshot sidecar for <pr>: the per-claim ownership record
-#   written by cmd_amending_claim and removed by cmd_amending_release. $HOME is
-#   expanded at CALL time, never at load time — test_fleet_claim_acquire.sh
+#   written by _write_amend_ownership and removed by cmd_amending_release. $HOME
+#   is expanded at CALL time, never at load time — test_fleet_claim_acquire.sh
 #   sources this script as a library and re-points HOME afterwards, so a
 #   top-level constant would bake in the real home directory there.
 #
@@ -439,6 +439,30 @@ except Exception:
 #   same file).
 _amend_snapshot_path() {
     printf '%s\n' "$HOME/.fleet/amend-snapshots/${1}.json"
+}
+
+# _write_amend_ownership <pr> <agent>
+#   The ownership record for the sweep's liveness predicate. Called from
+#   _stamp_label_claim_liveness, which both a won POST and an already-held
+#   (incumbent, no-POST) re-acquire go through: the dispatcher's pre-claim
+#   label is still on the PR when the role re-acquires at its step a, so a
+#   write on the POST path alone would leave the pre-claim sentinel in place
+#   for the whole iteration. fleet-claim, not fleet-pr-claim-feedback, is the
+#   one writer — a second one would overwrite the id-bearing file with an
+#   id-less copy. R7 reads this file's mtime for the swept-but-alive deferral;
+#   `agent` is what the sweep matches against the label, `dispatch_id` is what
+#   it compares to the worktree's current dispatch. An empty dispatch_id
+#   (architect pane, no fleet-dispatch-wrap) routes to the pane-heartbeat
+#   fallback, not to a confirmed orphan; the dispatcher's pre-claim passes
+#   FLEET_PRECLAIM_DISPATCH_ID so its window is vouched for instead.
+_write_amend_ownership() {
+    local pr="$1" agent="$2" snap
+    [[ "$pr" =~ ^[0-9]+$ ]] || return 0
+    snap=$(_amend_snapshot_path "$pr")
+    mkdir -p "$(dirname "$snap")" 2>/dev/null || true
+    printf '{"pr":%s,"agent":"%s","acquired_epoch":%s,"dispatch_id":"%s"}\n' \
+        "$pr" "$agent" "$(date +%s)" "${FLEET_DISPATCH_ID:-}" \
+        > "$snap" 2>/dev/null || true
 }
 
 # _amending_pane_heartbeat_fresh <agent>
@@ -2072,6 +2096,7 @@ _stamp_label_claim_liveness() {
         fleet:amending-)
             mkdir -p "$HEARTBEATS_DIR"
             touch "$HEARTBEATS_DIR/$agent" 2>/dev/null || true
+            _write_amend_ownership "$target" "$agent"
             ;;
         fleet:reviewing-|fleet:resolving-|fleet:planning-)
             mkdir -p "$CLAIMS_DIR"
@@ -2114,8 +2139,8 @@ _cmd_pr_label_claim() {
     # A file (not a dir) so it can't collide with the dir-based task-claim
     # iteration. Amending refreshes its worker heartbeat through the shared
     # helper and carries its own per-claim ownership record instead of a marker
-    # (~/.fleet/amend-snapshots/<pr>.json, written in cmd_amending_claim
-    # and keyed by dispatch id). Planning is here
+    # (~/.fleet/amend-snapshots/<pr>.json, keyed by dispatch id — see
+    # _write_amend_ownership). Planning is here
     # because it is sole-holder over a fleet:needs-plan issue: without a marker an
     # orphaned label strands that issue for every planner on every host, and the
     # leak is indistinguishable from a live claim (#2711). stewarding stays out of
@@ -2278,34 +2303,10 @@ cmd_amending_claim() {
         _confirm_incumbent_claim "fleet:amending-" "amending-claim" "${1:-}" "${2:-unknown}"
         return 0
     fi
-    local _rc=0
-    _cmd_pr_label_claim   "fleet:amending-" "amending-claim"   "$@" || _rc=$?
-    (( _rc == 0 )) || return "$_rc"
-
-    # Ownership record for the sweep's liveness predicate, written HERE
-    # rather than in fleet-pr-claim-feedback: fleet-claim is the enforced mutex,
-    # so stamping it on the won-claim path covers every caller structurally, and
-    # one owner per artifact means nothing can overwrite the id-bearing file
-    # with an id-less one. R7 reads this file's mtime for the
-    # swept-but-alive deferral; `agent` is what the sweep matches against the
-    # label, `dispatch_id` is what it compares to the worktree's current
-    # dispatch. An empty dispatch_id (architect pane, no fleet-dispatch-wrap)
-    # routes to the pane-heartbeat fallback, not to a confirmed orphan; the
-    # dispatcher's pre-claim passes FLEET_PRECLAIM_DISPATCH_ID so its window
-    # is vouched for rather than falling onto that pane-keyed fallback.
-    local _pr="${1:-}" _agent="${2:-unknown}"
-    if [[ "$_pr" =~ ^[0-9]+$ ]]; then
-        local _snap
-        _snap=$(_amend_snapshot_path "$_pr")
-        mkdir -p "$(dirname "$_snap")" 2>/dev/null || true
-        printf '{"pr":%s,"agent":"%s","acquired_epoch":%s,"dispatch_id":"%s"}\n' \
-            "$_pr" "$_agent" "$(date +%s)" "${FLEET_DISPATCH_ID:-}" \
-            > "$_snap" 2>/dev/null || true
-    fi
-    return 0
+    _cmd_pr_label_claim   "fleet:amending-" "amending-claim"   "$@"
 }
 cmd_amending_release() {
-    # Drop the ownership record written by cmd_amending_claim, so R7's
+    # Drop the ownership record written by _write_amend_ownership, so R7's
     # grace-period guard resets on clean release.
     rm -f "$(_amend_snapshot_path "${1:-0}")" 2>/dev/null || true
     _cmd_pr_label_release "fleet:amending-" "amending-release" "$@"

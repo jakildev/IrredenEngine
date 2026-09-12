@@ -51,7 +51,7 @@ cat > "$STUB_DIR/gh" <<'GHSTUB'
 case "$1" in
     issue)
         case "$2" in
-            view) echo '{"state":"OPEN","labels":[],"body":""}'; exit 0 ;;
+            view) printf '{"state":"OPEN","labels":[%s],"body":""}\n' "${STUB_VIEW_LABELS:-}"; exit 0 ;;
             edit) exit 0 ;;
             *) exit 0 ;;
         esac ;;
@@ -136,6 +136,21 @@ FLEET_DISPATCH_ID=D9 "$FLEET_CLAIM" amending-claim 804 pool-2 >/dev/null 2>&1 ||
 assert_eq "$(snap_field "$SNAP" dispatch_id)" "D9" \
     "the role's step-a re-acquire replaces the sentinel with its minted id"
 assert_eq "$(snap_field "$SNAP" agent)" "pool-2" "re-acquire keeps the owning agent"
+"$FLEET_CLAIM" amending-release 804 pool-2 >/dev/null 2>&1 || true
+
+echo "=== T5b: the re-acquire still replaces the sentinel when the label is already held ==="
+# T5's stub reports an unlabelled PR, so its re-acquire POSTs afresh. In the
+# fleet the dispatcher's pre-claim label is still on the PR at step a, and an
+# already-held claim takes the no-POST incumbent path instead — which must
+# write the record too, or the sentinel outlives its grace and the claim falls
+# back onto the pane heartbeat for the rest of the iteration.
+rm -f "$SNAP"
+FLEET_DISPATCH_ID=preclaim "$FLEET_CLAIM" amending-claim 804 pool-2 >/dev/null 2>&1 || true
+_held_out=$(STUB_VIEW_LABELS='{"name":"fleet:amending-mac-pool-2"}' FLEET_DISPATCH_ID=D10 \
+    "$FLEET_CLAIM" amending-claim 804 pool-2 2>&1) || true
+assert_contains "$_held_out" "already held" "the re-acquire took the incumbent path"
+assert_eq "$(snap_field "$SNAP" dispatch_id)" "D10" \
+    "the incumbent re-acquire replaces the sentinel with its minted id"
 "$FLEET_CLAIM" amending-release 804 pool-2 >/dev/null 2>&1 || true
 
 echo "=== T6: the sentinel is the one fleet-common owns ==="
