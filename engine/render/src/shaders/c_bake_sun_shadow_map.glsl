@@ -9,7 +9,7 @@ layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
 #include "ir_iso_common.glsl"
 #include "ir_per_axis_lighting.glsl"
-// Shared caster/receiver sun-space projection + depth pack (#2083).
+// Shared caster/receiver sun-space projection + depth pack.
 #include "ir_sun_projection.glsl"
 
 const int kEmptyDistanceEncoded = 65535;
@@ -26,7 +26,7 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform int voxelCount;
     // Smooth-camera-Z-yaw per-axis route selector (mirrors
     // FrameDataVoxelToCanvas::perAxisRoute_). 0 = single canvas; nonzero = baking
-    // a per-axis voxel canvas into the shared sun map (#1311).
+    // a per-axis voxel canvas into the shared sun map.
     uniform int perAxisRoute;
     uniform ivec2 canvasSizePixels;
     uniform ivec2 cullIsoMin;
@@ -36,7 +36,7 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform float residualYaw;
     uniform float _yawPadding;            // isDetachedCanvas in the full UBO
     uniform vec4 _faceDeformPadding[3];   // faceDeform[3] in the full UBO
-    // Per-slot world FaceId (0..5); used only on the per-axis path (#1311).
+    // Per-slot world FaceId (0..5); used only on the per-axis path.
     uniform ivec4 visibleFaceIds;
 };
 
@@ -56,17 +56,17 @@ layout(std140, binding = 29) uniform FrameDataSun {
     uniform vec2 cascadeTexelSize_1;
     uniform float cascadeSplitDepth;
     uniform int cascadeCount;
-    // #2270 coverage-splat radius (sun texels), doubling as the kill switch —
-    // 0 ⇒ the exact single-write path (saturated hosts byte-identical). See
-    // FrameDataSun in ir_render_types.hpp and docs/design/sun-shadow-bake-coverage.md.
+    // Coverage-splat radius (sun texels), doubling as the kill switch —
+    // 0 ⇒ the exact single-write path. Mirrors FrameDataSun in ir_render_types.hpp;
+    // see docs/design/sun-shadow-bake-coverage.md.
     uniform float sunSplatMaxTexels;
-    uniform float sunMaxShadowThrow;  // #2320; unused here (receiver-only)
+    uniform float sunMaxShadowThrow;  // unused here (receiver-only)
 };
 
 layout(r32i, binding = 0) readonly uniform iimage2D trixelDistances;
 
 // atomicMin the packed sun depth into one texel of a cascade, if in bounds.
-// The bounds check is a buffer-bounds guard, not a culling decision (#2083): a
+// The bounds check is a buffer-bounds guard, not a culling decision: a
 // caster outside THIS cascade's UV range is unreadable here by any receiver the
 // sample side accepts — sunCascadeKernelInterior (ir_sun_projection.glsl) routes
 // receivers near the map edge to the covering cascade, whose wider AABB holds
@@ -80,28 +80,26 @@ void writeSunTexel(int cascadeOffset, ivec2 px, uint packedDepth) {
     atomicMin(sunDepthBuf[cascadeOffset + px.y * kSunShadowMapDim + px.x], packedDepth);
 }
 
-// #2270 coverage splat. Writes the caster's own texel (the exact single write,
-// byte-identical when radius == 0), then atomicMin's the SAME depth into a
-// (2·radius+1)² box around it, filling the sun texels a grazing / point-
-// scattered caster footprint leaves empty (the moth-eaten cast-shadow holes).
-// atomicMin is what preserves saturated-host byte-identity: where nearer real
-// geometry already covers a box texel, the farther splat is a no-op — so a host
-// whose bake is already dense sees no change, and the fill concentrates on the
-// genuinely-empty hole texels. The uniform box (rather than a per-pixel
-// oriented walk) is deliberate: the holes are 2D point-scatter, not a 1D
-// silhouette line, so a directional walk under-covers (measured — see
-// docs/design/sun-shadow-bake-coverage.md).
+// Coverage splat. Writes the caster's own texel (the exact single write when
+// radius == 0), then atomicMin's the SAME depth into a (2·radius+1)² box around
+// it, filling the sun texels a grazing / point-scattered caster footprint leaves
+// empty (the moth-eaten cast-shadow holes). atomicMin is what keeps a dense bake
+// unchanged: where nearer real geometry already covers a box texel, the farther
+// splat is a no-op — so a host whose bake is already dense sees no change, and
+// the fill concentrates on the genuinely-empty hole texels. The uniform box
+// (rather than a per-pixel oriented walk) is deliberate: the holes are 2D
+// point-scatter, not a 1D silhouette line, so a directional walk under-covers
+// (docs/design/sun-shadow-bake-coverage.md).
 void bakeCascadeBox(vec3 sp, vec2 origin, vec2 texelSz, int cascadeOffset, int radius) {
     ivec2 base = ivec2(floor((sp.xy - origin) / texelSz));
     for (int dy = -radius; dy <= radius; ++dy) {
         for (int dx = -radius; dx <= radius; ++dx) {
-            // Splat provenance (#2319): store the DISPLACEMENT VECTOR (dx, dy) of
-            // this box texel from the caster's own (0,0) texel, so the receiver
-            // can reconstruct the write's true origin (px - (dx,dy)) and reject a
+            // Splat provenance: store the DISPLACEMENT VECTOR (dx, dy) of this box
+            // texel from the caster's own (0,0) texel, so the receiver can
+            // reconstruct the write's true origin (px - (dx,dy)) and reject a
             // same-plane self-occluder while keeping a genuine cast at the base
-            // bias (ir_sun_shadow_sample same-plane test). Free — the box loop
-            // already carries (dx, dy). radius 0 ⇒ only (0,0) ⇒ a direct write ⇒
-            // byte-identical to the pre-splat single write.
+            // bias (ir_sun_shadow_sample same-plane test). radius 0 ⇒ only (0,0) ⇒
+            // a direct write.
             writeSunTexel(cascadeOffset, base + ivec2(dx, dy),
                           packSunDepth(sp.z, ivec2(dx, dy)));
         }
@@ -116,45 +114,42 @@ void main() {
     }
 
     int encoded = imageLoad(trixelDistances, pixel).x;
-    // Per-axis canvas uses INT_MAX as empty sentinel (#1458); single-canvas keeps 65535.
+    // Per-axis canvas uses INT_MAX as the empty sentinel; single-canvas uses 65535.
     if (encoded >= (perAxisRoute != 0 ? 0x7FFFFFFF : kEmptyDistanceEncoded)) {
         return;
     }
     // Shared decode helpers (ir_iso_common) own both encodings' bit layouts
-    // (#1458 per-axis / single-canvas, flip carrier #2207). The bake is
-    // position-only — the flip bit never changes a caster's plane position, so
-    // it is decoded past, not consumed.
+    // (per-axis / single-canvas, flip carrier). The bake is position-only — the
+    // flip bit never changes a caster's plane position, so it is decoded past,
+    // not consumed.
     int rawDepth = decodeDepthRoute(encoded, perAxisRoute);
 
-    // Smooth camera Z-yaw (#1311): the per-axis voxel canvases bake into the same
-    // shared sun depth map as the main canvas (SDF/text) so voxels and shapes
-    // shadow each other under rotation. A per-axis canvas stores the world frame
-    // face-locally; the single canvas stores the cardinal-snapped iso pixel.
+    // Smooth camera Z-yaw: per-axis voxel content bakes into the same shared sun
+    // depth map as the main canvas (SDF/text) so voxels and shapes shadow each
+    // other under rotation. A per-axis canvas stores the world frame face-locally;
+    // the single canvas stores the cardinal-snapped iso pixel.
     vec3 pos3D;
     if (perAxisRoute != 0) {
-        // LATTICE recovery, deliberately (#2816). This branch looks like an
-        // undischarged absolute-position consumer of the per-axis store, but
-        // per-axis content never arrives here: the C++ driver casts per-axis
-        // canvases through RESOLVE_PER_AXIS_SCREEN_DEPTH into a CARDINAL-layout
-        // resolve texture and bakes that with `perAxisRoute` at 0
-        // (system_bake_sun_shadow_map.hpp — the per-axis resolve dispatch reads
-        // the main canvas's resident frame, whose route STAGE_1 resets to 0
-        // before BAKE runs). That resolve bridge is where the sub-cell frac is
-        // applied. The branch survives as the direct-bake path #1435 replaced;
-        // if a future change ever routes a raw per-axis canvas into this bake,
-        // it must recover with perAxisCellToWorld3DSubCell.
+        // LATTICE recovery, deliberately. This branch looks like an undischarged
+        // absolute-position consumer of the per-axis store, but per-axis content
+        // never arrives here: the C++ driver casts per-axis canvases through
+        // RESOLVE_PER_AXIS_SCREEN_DEPTH into a CARDINAL-layout resolve texture and
+        // bakes that with `perAxisRoute` at 0 (system_bake_sun_shadow_map.hpp — the
+        // per-axis resolve dispatch reads the main canvas's resident frame, whose
+        // route STAGE_1 resets to 0 before BAKE runs). That resolve bridge is where
+        // the sub-cell frac is applied. A raw per-axis canvas routed into this bake
+        // must recover with perAxisCellToWorld3DSubCell.
         pos3D = perAxisCellToWorld3D(
             pixel, rawDepth, visibleFaceIds[decodeSlot(encoded)], size,
             frameCanvasOffset, voxelRenderOptions
         );
     } else if (residualYaw != 0.0) {
-        // Smooth-yaw cast (#1719). While rotating, the single canvas's
-        // remaining SDF/text content is stored at the FULL visualYaw with
-        // view-frame depth (#1345/#1370) — recover with the matching smooth
-        // inverse so those casters bake at their true world positions. The
-        // CARDINAL-layout resolve textures (per-axis #1435 + world-placed
-        // P4b-3) bake with residualYaw zeroed by the C++ driver, so they keep
-        // the cardinal recovery below.
+        // Smooth-yaw cast. While rotating, the single canvas's remaining SDF/text
+        // content is stored at the FULL visualYaw with view-frame depth — recover
+        // with the matching smooth inverse so those casters bake at their true
+        // world positions. The CARDINAL-layout resolve textures (per-axis +
+        // world-placed) bake with residualYaw zeroed by the C++ driver, so they
+        // take the cardinal recovery.
         pos3D = trixelCanvasPixelToWorld3DSmoothYaw(
             pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, visualYaw
         );
@@ -164,25 +159,25 @@ void main() {
         );
     }
 
-    // Shared caster/receiver projection (#2083) — the receiver lookup
+    // Shared caster/receiver projection — the receiver lookup
     // (ir_sun_shadow_sample.glsl worldSunShadowFactor) derives its sun UV +
     // depth from this same function, so cast and receive cannot drift.
     vec3 sunProj = sunSpaceProject(
         pos3D, sunBasisU.xyz, sunBasisV.xyz, sunDirection.xyz
     );
 
-    // #2270 coverage splat. The gate below is a DECODE-PATH predicate, not a
+    // Coverage splat. The gate is a DECODE-PATH predicate, not a
     // camera-cardinality one: the raw smooth-yaw single-canvas content
     // (residualYaw != 0) and the per-axis face-local store (perAxisRoute != 0)
     // skip it, so it engages for the cardinal main-canvas bake AND the two
-    // CARDINAL-layout resolve dispatches (per-axis #1435, world-placed P4b-3),
-    // which spoof residualYaw == 0 with perAxisRoute == 0 to reuse the cardinal
-    // recovery. The C++ driver disambiguates via sunSplatMaxTexels: it zeros the
-    // radius for the PER-AXIS resolve (patchSunSplatRadius) so invariant #1's
-    // per-axis / smooth-yaw byte-identity is structural, but keeps it for the
-    // WORLD-PLACED resolve (whose cast carries the same point-scatter defect the
-    // splat must fill — measured). The atomicMin box preserves saturated-host
-    // byte-identity (farther splats no-op where geometry is dense).
+    // CARDINAL-layout resolve dispatches (per-axis, world-placed), which spoof
+    // residualYaw == 0 with perAxisRoute == 0 to reuse the cardinal recovery. The
+    // C++ driver disambiguates via sunSplatMaxTexels: it zeros the radius for the
+    // PER-AXIS resolve (patchSunSplatRadius) so the per-axis / smooth-yaw bakes are
+    // single-write by construction, but keeps it for the WORLD-PLACED resolve
+    // (whose cast carries the same point-scatter holes the splat fills). The
+    // atomicMin box leaves a dense bake unchanged (farther splats no-op where
+    // geometry is dense).
     int radius = 0;
     if (perAxisRoute == 0 && residualYaw == 0.0 && sunSplatMaxTexels > 0.0) {
         radius = int(sunSplatMaxTexels);

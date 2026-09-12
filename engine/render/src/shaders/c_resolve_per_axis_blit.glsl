@@ -1,6 +1,6 @@
 #version 450 core
 
-// Smooth camera Z-yaw — per-axis sun-shadow resolve, blit pass (#1435).
+// Per-axis sun-shadow resolve, blit pass.
 //
 // Materializes the scatter pass's scratch SSBO (main-canvas-sized front-most
 // iso-depth) into the resolve R32I TEXTURE that BAKE_SUN_SHADOW_MAP reads

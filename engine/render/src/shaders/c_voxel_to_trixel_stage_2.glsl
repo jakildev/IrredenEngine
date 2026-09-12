@@ -7,14 +7,12 @@
  * Modified By: <your_name> <Month> <YYYY>
  */
 
-// Stage-2 DEFAULT dispatch (#2346, the stage-1 #2258 a′ idiom). A thin wrapper
-// that specializes the shared body at compile time: IR_STORE_WINNER_ELECTION 0
-// compiles the body with the cardinal winner guard textually absent, so this
-// is byte-for-byte master's stage-2 kernel — no runtime predication tax. The
-// winner-guarded twin is c_voxel_to_trixel_stage_2_winner.glsl (ELECTION 1).
+// Stage-2 DEFAULT dispatch. A thin wrapper that specializes the shared body at
+// compile time: IR_STORE_WINNER_ELECTION 0 compiles the body with the cardinal
+// winner guard textually absent, so it costs no runtime predication. The
+// winner-guarded variant is c_voxel_to_trixel_stage_2_winner.glsl (ELECTION 1).
 // Includes come BEFORE the body because the body declares no #includes of its
-// own (the resolver is recursive since #2514; the chain is kept as-is to avoid
-// churn). See the body file's header for the idiom.
+// own.
 #version 450 core
 #define IR_STORE_WINNER_ELECTION 0
 #include "ir_iso_common.glsl"

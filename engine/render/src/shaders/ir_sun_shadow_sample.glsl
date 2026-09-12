@@ -1,20 +1,15 @@
 // Shared sun-shadow sampling: the FrameDataSun UBO (binding 29), the baked
 // sun-aligned depth-map SSBO (binding 28), and the cascaded PCF lookup. Used by
 // BOTH c_compute_sun_shadow (the per-world-pixel screen-space pass) and
-// c_lighting_to_trixel (the opt-in detached re-voxelize world-receive path,
-// #1576 P4b-2 — re-runs the same lookup at a detached voxel's recovered world
-// pos). Kept in a dedicated include — NOT in ir_iso_common.glsl — so only the
-// sun-shadow consumers recompile and the SDF / voxel / scatter shaders keep
-// their cardinal-yaw byte-identity (same rationale as ir_per_axis_lighting.glsl).
+// c_lighting_to_trixel (the opt-in detached re-voxelize world-receive path, which
+// re-runs the same lookup at a detached voxel's recovered world pos). Deliberately
+// NOT in ir_iso_common.glsl, so only the sun-shadow consumers recompile and the
+// SDF / voxel / scatter shaders keep their cardinal-yaw byte-identity.
 //
-// GLSL's include resolver is recursive with a visited-set cycle guard
-// (opengl_shader.cpp `resolveShaderIncludes`), so this fragment self-includes
-// ir_sun_projection.glsl below rather than relying solely on the top-level
-// shader including it first — a wrapper's earlier include of
-// ir_sun_projection.glsl makes this a suppressed duplicate. It supplies the
-// map-dim constants, the shared sunSpaceProject basis, unpackSunDepth, and
-// sunCascadeKernelInterior, so the caster bake and this receiver lookup
-// share one source (#2083).
+// Self-includes ir_sun_projection.glsl — the map-dim constants, the shared
+// sunSpaceProject basis, unpackSunDepth, and sunCascadeKernelInterior — so the
+// caster bake and this receiver lookup share one source. A wrapper's earlier
+// include of ir_sun_projection.glsl makes this a suppressed duplicate.
 #include "ir_sun_projection.glsl"
 
 const float kShadowDarken = 0.45;
@@ -40,11 +35,11 @@ layout(std140, binding = 29) uniform FrameDataSun {
     uniform vec2 cascadeTexelSize_1;
     uniform float cascadeSplitDepth;
     uniform int cascadeCount;
-    uniform float sunSplatMaxTexels;  // #2270; unused here (sun-map bake only)
+    uniform float sunSplatMaxTexels;  // unused here (sun-map bake only)
     // Maximum shadow-throw window (sun-Z voxels). BAKE_SUN_SHADOW_MAP sets it
     // from kSunShadowMaxDistance — the SAME distance the feeder / bake AABB
     // sweep uses — so a baked caster is receivable at its full throw and the
-    // two cannot drift (#2320).
+    // two cannot drift.
     uniform float sunMaxShadowThrow;
 };
 
@@ -59,15 +54,16 @@ float sampleCascadeShadow(
     float slope = max(kShadowBiasSlopeMin, dot(normal, sunDir));
     float texelSize = max(texelSz.x, texelSz.y);
     // Base receiver near-rejection — the trustworthy tolerance for a DIRECT
-    // (caster's-own-texel) sun-map write. selfStepDepthRange (#2010, 0 except on
-    // a detected round-to-cell staircase riser) lifts it as before. Both tap
-    // regimes below use this same base; there is NO per-tap widening (a widened
-    // threshold was measured-refuted — see #2319 / sun-shadow-bake-coverage.md).
-    // The far shadow-throw window (maxShadowThrow) also uses this base `bias`.
+    // (caster's-own-texel) sun-map write. selfStepDepthRange (0 except on a
+    // detected round-to-cell staircase riser) lifts it. Both tap regimes below use
+    // this same base with NO per-tap widening: a global bias cannot separate a
+    // same-face self-occluder from a real cast occluder, so widening it erodes
+    // genuine cast shadows (docs/design/sun-shadow-bake-coverage.md). The far
+    // shadow-throw window (maxShadowThrow) also uses this base `bias`.
     float bias = texelSize * kShadowBiasTexelScale / slope + kShadowBiasQuantNoise;
     float nearReject = max(bias, selfStepDepthRange);
 
-    // Receiver-plane depth gradient in sun-UV (#2319), used only by the splat-tap
+    // Receiver-plane depth gradient in sun-UV, used only by the splat-tap
     // same-plane test below. Derivation: with (uHat, vHat, sunDir) orthonormal
     // and depth z = -dot(P, sunDir), a displacement dP within the receiver plane
     // (dot(dP, normal) = 0) gives dz/du = dot(uHat, normal)/dot(sunDir, normal)
@@ -75,8 +71,7 @@ float sampleCascadeShadow(
     // depth at sun-UV coordinate q is sunZ + dot(gradUV, q - sunUV). (Sign is +:
     // for a coplanar occluder at the write's origin this must reproduce that
     // occluder's own depth, so h below is ~0 and it stays lit. The base bias
-    // absorbs the sub-texel origin-quantization error — the same texel*|grad|
-    // term it absorbs today.)
+    // absorbs the sub-texel origin-quantization error, a texel*|grad| term.)
     vec2 gradUV = vec2(dot(normal, uHat), dot(normal, vHat)) / slope;
 
     vec2 sunPxF = (sunUV - origin) / texelSz;
@@ -93,28 +88,27 @@ float sampleCascadeShadow(
             float nearestZ = unpackSunDepth(stored);
             float weight = mix(1.0 - frac.x, frac.x, float(dx))
                          * mix(1.0 - frac.y, frac.y, float(dy));
-            // Far shadow-throw window — raw sun-Z gap to the stored occluder, the
-            // pre-#2319 form on BOTH tap regimes. maxShadowThrow == the feeder /
-            // bake sweep (kSunShadowMaxDistance) so a baked caster is receivable
-            // at its full throw (#2320).
+            // Far shadow-throw window — raw sun-Z gap to the stored occluder, on
+            // BOTH tap regimes. maxShadowThrow == the feeder / bake sweep
+            // (kSunShadowMaxDistance) so a baked caster is receivable at its full
+            // throw.
             float depthDiff = sunZ - nearestZ;
             if (depthDiff - bias >= maxShadowThrow) continue;
 
             if (sunWriteIsDirect(stored)) {
-                // DIRECT caster's-own-texel write — the trustworthy depth. Today's
-                // (pre-#2319) near-rejection verbatim, so a radius-0 bake (per-axis
-                // / smooth-yaw / saturated host) is byte-identical.
+                // DIRECT caster's-own-texel write — the trustworthy depth, plain
+                // near-rejection. A radius-0 bake (per-axis / smooth-yaw /
+                // saturated host) writes only direct texels, so it takes this
+                // branch alone.
                 if (depthDiff > nearReject) shadowAccum += weight;
             } else {
-                // #2270 coverage-SPLAT neighbour: the winning depth was written
-                // from a caster `offset` texels away. Reconstruct that origin and
-                // test whether the occluder lies in the RECEIVER's OWN plane. A
-                // same-face self-hit extrapolates to ~nearestZ (h ~ 0 -> lit, at
-                // ANY splat distance and face tilt — the round-1 self-shadow
-                // artifact is gone by construction). A genuine cast sits far above
-                // the plane (h ~ caster height >> bias -> shadow at the base
-                // tolerance, no widening — the round-1 85% floor erosion is
-                // impossible whatever the caster-floor gap).
+                // Coverage-SPLAT neighbour: the winning depth was written from a
+                // caster `offset` texels away. Reconstruct that origin and test
+                // whether the occluder lies in the RECEIVER's OWN plane. A same-face
+                // self-hit extrapolates to ~nearestZ (h ~ 0 -> lit, at ANY splat
+                // distance and face tilt). A genuine cast sits far above the plane
+                // (h ~ caster height >> bias -> shadow at the base tolerance, no
+                // widening, whatever the caster-floor gap).
                 ivec2 offset = unpackSunSplatOffset(stored);
                 ivec2 originTexel = px - offset;
                 vec2 originUV = origin + (vec2(originTexel) + 0.5) * texelSz;
@@ -130,17 +124,16 @@ float sampleCascadeShadow(
 // Per-surface sun-shadow brightness factor for a WORLD-space surface point +
 // world normal, selecting the cascade by iso depth and blending across the
 // split. `isoDepth` is the surface's world iso depth (x+y+z under the (1,1,1)
-// axis). Returns 1.0 (fully lit) … kShadowDarken (fully shadowed). This is the
-// per-pixel cascade body of c_compute_sun_shadow's main() lifted verbatim so
-// both that pass and the detached world-receive path (#1576) share one source.
-// `selfStepDepthRange` (#2010) is the near-rejection lift for a round-to-cell
-// staircase riser (0 = no lift = pre-#2010 behaviour); threaded to every
-// cascade sample so it applies regardless of which cascade the receiver lands in.
+// axis). Returns 1.0 (fully lit) … kShadowDarken (fully shadowed). Shared by
+// c_compute_sun_shadow and the detached world-receive path.
+// `selfStepDepthRange` is the near-rejection lift for a round-to-cell staircase
+// riser (0 = no lift); threaded to every cascade sample so it applies regardless
+// of which cascade the receiver lands in.
 float worldSunShadowFactor(vec3 pos3D, vec3 normal, float isoDepth, float selfStepDepthRange) {
     vec3 sunDir = sunDirection.xyz;
     vec3 uHat = sunBasisU.xyz;
     vec3 vHat = sunBasisV.xyz;
-    // Shared caster/receiver projection (#2083) — the bake derives every
+    // Shared caster/receiver projection — the bake derives every
     // caster's sun UV + depth from this same function, so cast and receive
     // cannot drift.
     vec3 sunProj = sunSpaceProject(
@@ -157,7 +150,7 @@ float worldSunShadowFactor(vec3 pos3D, vec3 normal, float isoDepth, float selfSt
         );
     } else {
         float distToSplit = isoDepth - cascadeSplitDepth;
-        // Covering-cascade fallback (#2083): the near cascade is valid for
+        // Covering-cascade fallback: the near cascade is valid for
         // this receiver only where its PCF kernel sits interior to the map —
         // its AABB was built from a depth-capped corner set, so a receiver
         // near the map edge (screen corners, the split blend band past the
@@ -167,7 +160,6 @@ float worldSunShadowFactor(vec3 pos3D, vec3 normal, float isoDepth, float selfSt
         // kernel instead of silently reading the missing region as "lit"
         // (partial face dropout). The gate is per-receiver-UV, uniform across
         // a voxel's faces, so a straddling voxel's faces select consistently.
-        // Interior receivers take exactly the pre-#2083 branches.
         bool nearInterior =
             sunCascadeKernelInterior(sunUV, cascadeOriginUV_0, cascadeTexelSize_0);
         if (nearInterior && distToSplit < -kCascadeBlendRange) {
@@ -196,9 +188,8 @@ float worldSunShadowFactor(vec3 pos3D, vec3 normal, float isoDepth, float selfSt
     return mix(1.0, kShadowDarken, shadowAccum);
 }
 
-// Default 3-arg form — full self-occlusion (no staircase carve). Used by the
-// detached world-receive path (c_lighting_to_trixel, #1576) and any caller that
-// has no per-receiver staircase signal; byte-identical to pre-#2010 master.
+// Default 3-arg form — full self-occlusion (no staircase carve), for callers with
+// no per-receiver staircase signal.
 float worldSunShadowFactor(vec3 pos3D, vec3 normal, float isoDepth) {
     return worldSunShadowFactor(pos3D, normal, isoDepth, 0.0);
 }

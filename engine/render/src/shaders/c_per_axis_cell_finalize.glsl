@@ -1,6 +1,6 @@
 #version 450 core
 
-// Per-axis compute-indirect dispatch-dim finalize (#2256). After
+// Per-axis compute-indirect dispatch-dim finalize. After
 // c_per_axis_cell_compact scans the FULL per-axis grid and atomic-appends each
 // axis's occupied cells (leaving the count in the region's instanceCount slot),
 // this cheap 3-thread pass reads that final count and writes the compute-indirect
@@ -8,7 +8,7 @@
 // over. It is split out of the compaction so that hot full-grid scan stays
 // barrier-free: computing the dims in the compaction kernel would need a
 // cross-workgroup completion barrier over millions of scan invocations, which
-// stalled every workgroup (the #2256 self-regression this fix removes).
+// stalls every workgroup.
 //
 // Dispatched as 3 workgroups of local_size 1 (one axis each); drawArgs is bound
 // via bindBase (the WHOLE indirect buffer), so this thread indexes its axis's
