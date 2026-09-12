@@ -13,7 +13,10 @@ struct C_GotoEasing3D {
     IRMath::vec3 endPos_;
     int durationFrames_;
     int currentFrame_;
-    GLMEasingFunction easingFunction_;
+    // Authored curve identity, resolved per tick by GOTO_3D via
+    // kEasingFunctions. Stored as the enum so the component stays
+    // trivially copyable and the curve survives a save/load round trip.
+    IREasingFunctions easingFunction_ = IREasingFunctions::kLinearInterpolation;
     bool done_ = false;
 
     C_GotoEasing3D(
@@ -26,7 +29,7 @@ struct C_GotoEasing3D {
         , endPos_{end}
         , durationFrames_{IRMath::secondsToFrames<IRConstants::kFPS>(durationSeconds)}
         , currentFrame_{0}
-        , easingFunction_{kEasingFunctions.at(easingFunction)} {}
+        , easingFunction_{easingFunction} {}
 
     C_GotoEasing3D()
         : C_GotoEasing3D{IRMath::vec3{0.0f}, IRMath::vec3{0.0f}, 0.0f} {}

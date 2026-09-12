@@ -19,6 +19,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 // Per-component SaveSerialize<C> coverage for the heap-owning components the
@@ -367,6 +368,57 @@ TEST(SaveSerializers, PeriodicIdleRoundTripsWithNoStages) {
     expectConsumesAllBytes(idle);
 }
 
+// C_GotoEasing3D and C_RotationTarget store their easing as the
+// IREasingFunctions enum, so both are trivially copyable and go through the
+// raw-image arm rather than an explicit SaveSerialize<C>. Both tests assert a
+// *non-default* enum: kLinearInterpolation is the constructor default, so a
+// reader that substituted it would still satisfy a weaker check.
+
+TEST(SaveSerializers, GotoEasing3DRoundTripsTheAuthoredCurve) {
+    C_GotoEasing3D gotoComp{
+        IRMath::vec3{1.0f, 2.0f, 3.0f},
+        IRMath::vec3{4.0f, 5.0f, 6.0f},
+        2.0f,
+        IRMath::kBounceEaseOut
+    };
+    gotoComp.currentFrame_ = 17;
+
+    const C_GotoEasing3D restored = roundTrip(gotoComp);
+    EXPECT_EQ(restored.easingFunction_, IRMath::kBounceEaseOut);
+    EXPECT_EQ(restored.startPos_, gotoComp.startPos_);
+    EXPECT_EQ(restored.endPos_, gotoComp.endPos_);
+    EXPECT_EQ(restored.durationFrames_, gotoComp.durationFrames_);
+    EXPECT_EQ(restored.currentFrame_, 17);
+    EXPECT_FALSE(restored.done_);
+
+    expectConsumesAllBytes(gotoComp);
+    expectReserializesIdentically(gotoComp);
+}
+
+TEST(SaveSerializers, RotationTargetRoundTripsTheAuthoredCurve) {
+    const C_RotationTarget target{
+        IRMath::vec3{0.0f, 1.0f, 0.0f},
+        0.0f,
+        IRMath::kHalfPi,
+        0.25f,
+        0.0f,
+        1.0f,
+        IRMath::kQuadraticEaseIn
+    };
+
+    const C_RotationTarget restored = roundTrip(target);
+    EXPECT_EQ(restored.easingFunction_, IRMath::kQuadraticEaseIn);
+    EXPECT_EQ(restored.axis_, target.axis_);
+    EXPECT_FLOAT_EQ(restored.minAngle_, 0.0f);
+    EXPECT_FLOAT_EQ(restored.maxAngle_, IRMath::kHalfPi);
+    EXPECT_FLOAT_EQ(restored.input_, 0.25f);
+    EXPECT_FLOAT_EQ(restored.inputMin_, 0.0f);
+    EXPECT_FLOAT_EQ(restored.inputMax_, 1.0f);
+
+    expectConsumesAllBytes(target);
+    expectReserializesIdentically(target);
+}
+
 // --- render/ ---------------------------------------------------------------
 
 TEST(SaveSerializers, TextSegmentRoundTrips) {
@@ -708,14 +760,37 @@ TEST_F(DefaultRegistryTest, ResolvesHeapOwningComponents) {
     }
 }
 
-// The two components #2242 flipped OPT_IN -> OPT_OUT: both store a resolved
-// std::function easing curve, so no honest serializer exists for them. Pinned
-// here so a future re-opt-in has to confront the callback problem rather than
-// silently shipping a lossy default.
+// The registry is what the Lua IRPersist surface resolves against, so a name
+// that never lands there is a component that silently does not persist.
+TEST_F(DefaultRegistryTest, ResolvesEnumStoredEasingComponents) {
+    const IRWorld::SaveRegistry registry = IRWorld::makeDefaultSaveRegistry();
+    for (const char *name : {"IRComponents::C_GotoEasing3D", "IRComponents::C_RotationTarget"}) {
+        EXPECT_NE(registry.findByName(name), nullptr) << name << " is not registered";
+    }
+}
+
+// C_LerpEntity holds an arbitrary std::function with no authored identity to
+// recover, so no honest serializer exists for it. Pinned here so a future
+// re-opt-in has to confront the callback problem rather than silently shipping
+// a lossy default. Its enum-storing siblings are covered by the opt-in case
+// below.
 TEST(SaveSerializers, CallbackBearingComponentsStayOptedOut) {
-    EXPECT_FALSE(IRWorld::shouldSave<C_GotoEasing3D>());
-    EXPECT_FALSE(IRWorld::shouldSave<C_RotationTarget>());
     EXPECT_FALSE(IRWorld::shouldSave<C_LerpEntity>());
+}
+
+TEST(SaveSerializers, EnumStoredEasingComponentsOptIn) {
+    EXPECT_TRUE(IRWorld::shouldSave<C_GotoEasing3D>());
+    EXPECT_TRUE(IRWorld::shouldSave<C_RotationTarget>());
+    EXPECT_EQ(IRWorld::saveVersion<C_GotoEasing3D>(), 1u);
+    EXPECT_EQ(IRWorld::saveVersion<C_RotationTarget>(), 1u);
+}
+
+// The raw-image arm is what makes the two components above serializable
+// without a specialization; an explicit SaveSerialize<C> on a trivially
+// copyable type is the silent ODR hazard engine/world/CLAUDE.md forbids.
+TEST(SaveSerializers, EnumStoredEasingComponentsAreTriviallyCopyable) {
+    EXPECT_TRUE(std::is_trivially_copyable_v<C_GotoEasing3D>);
+    EXPECT_TRUE(std::is_trivially_copyable_v<C_RotationTarget>);
 }
 
 } // namespace

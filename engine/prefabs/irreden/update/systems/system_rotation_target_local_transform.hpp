@@ -40,9 +40,8 @@ template <> struct System<ROTATION_TARGET_LOCAL_TRANSFORM> {
         const float t = range != 0.0f
             ? IRMath::clamp((target.input_ - target.inputMin_) / range, 0.0f, 1.0f)
             : 0.0f;
-        const float angle =
-            target.minAngle_ +
-            (target.maxAngle_ - target.minAngle_) * target.easingFunction_(t);
+        const float angle = target.minAngle_ + (target.maxAngle_ - target.minAngle_) *
+                                                   kEasingFunctions.at(target.easingFunction_)(t);
         localXform.rotation_ = IRMath::quatAxisAngle(target.axis_, angle);
     }
 
