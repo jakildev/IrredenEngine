@@ -170,6 +170,30 @@ sentinels. Reviewer projections skip `fleet:amending-*` PRs
 symmetric excluded-prefix table arbitrates the full POST response so a
 snapshot race leaves one holder. Same-agent lane transitions remain allowed.
 
+For `fleet:amending-*` that liveness marker is the **dispatch**, not the
+pane: `amending-claim` stamps the claiming iteration's `FLEET_DISPATCH_ID`
+into `~/.fleet/amend-snapshots/<pr>.json`, `fleet-dispatch-wrap` records
+each worktree's current dispatch at launch, and a same-host label whose
+owner is no longer that dispatch is the confirmed orphan the 120 s grace
+applies to. With no id on record — the architect pane never runs
+`fleet-dispatch-wrap` — the pane heartbeat still decides, so no claim is
+orphaned merely for lacking a record; a cross-host label stays on pure
+TTL, since neither record is observable from here. The heartbeat cannot
+carry this alone: it is pane-scoped, so any later dispatch of any role
+renews a dead claim indefinitely, leaving the PR at once un-reapable and
+un-claimable.
+
+The pre-claim `fleet-dispatcher` takes for a `feedback` target is acquired
+before the iteration that will own it has an id, so it records the
+`preclaim` sentinel instead. That reads as live for
+`FLEET_CLAIM_PRECLAIM_GRACE_SECS` (300 s) from the snapshot's
+`acquired_epoch` without consulting the heartbeat, and never as superseded;
+the role's step-a re-acquire overwrites it with the minted id and ends the
+window. Deferring to the heartbeat there would reap the dispatcher's own
+fresh claim off a carried-over past-TTL label and admit a second feedback
+worker, because the pane it launches into is idle and that heartbeat still
+belongs to the previous iteration.
+
 ## Review verdicts (PRs)
 
 - `fleet:approved` / `fleet:has-nits` / `fleet:needs-fix` / `fleet:blocker`

@@ -262,6 +262,28 @@ rc=0
 _acquire_label_on "owner/repo" 1 "$AMINE2" "$AP" >/dev/null 2>&1 || rc=$?
 assert_exit "$rc" 1 "live same-host amending owner kept → exit 1 (yield, no theft)"
 
+# T12: same-host amending holder past TTL whose owning DISPATCH has been
+# superseded. Its pane heartbeat is fresh — every role's step 0 touches
+# that file under the same worktree basename, so a later reviewer/merger
+# dispatch into the pane would renew a dead claim forever. The ownership record
+# names dispatch D1; the worktree is now on D2, which proves the owner ended.
+# Force-swept, claimant wins. T11 above is the control: identical geometry
+# minus the two records, still yields.
+echo "T12: same-host amending holder with a superseded dispatch → force-sweep + win"
+export FLEET_STATE_DIR="$HBROOT/state"
+FLEET_AMEND_SNAPSHOTS_DIR="$HBROOT/amend-snapshots"
+mkdir -p "$FLEET_STATE_DIR/dispatch-current" "$FLEET_AMEND_SNAPSHOTS_DIR"
+ADEAD2="${AP}mac-worker-5"
+AMINE3="${AP}mac-worker-4"          # lex-smaller than mac-worker-5
+touch "$HEARTBEATS_DIR/worker-5"   # pane alive, iteration dead
+printf '{"pr":1,"agent":"worker-5","acquired_epoch":1,"dispatch_id":"D1"}\n' \
+    > "$FLEET_AMEND_SNAPSHOTS_DIR/1.json"
+printf 'D2\n' > "$FLEET_STATE_DIR/dispatch-current/worker-5"
+STUB_HOLDERS="$ADEAD2"
+rc=0
+_acquire_label_on "owner/repo" 1 "$AMINE3" "$AP" >/dev/null 2>&1 || rc=$?
+assert_exit "$rc" 0 "superseded-dispatch amending holder force-swept despite a fresh pane heartbeat → exit 0"
+
 echo
 echo "fleet-claim acquire tests: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

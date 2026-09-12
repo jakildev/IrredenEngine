@@ -130,6 +130,10 @@ else
     fleet_target_key() { printf '%s\n' "${1//:/-}"; }
     fleet_pane_worktrees() { :; }
     declare -A FLEET_TARGET_CLAIM=() FLEET_TARGET_RELEASE=() FLEET_TARGET_LABEL=()
+    # Unreachable in practice (fleet_parse_target refuses above, so no lane
+    # reaches the pre-claim) — but this branch's contract is to define every
+    # symbol the rest of the script names, and set -u would abort on it.
+    FLEET_PRECLAIM_DISPATCH_ID=""
 fi
 
 # --- Per-role concurrency cap config ---------------------------------------
@@ -2062,6 +2066,21 @@ claim_target() {
             fi
             ;;
         *)
+            # FLEET_DISPATCH_ID: the iteration's real id is minted by
+            # fleet-dispatch-wrap, which has not run yet — we are the step that
+            # decides there will BE an iteration. On the `feedback` arm
+            # (amending-claim) fleet-claim stamps that id into the PR's
+            # ownership record, so leaving it unset writes an EMPTY id and
+            # drops the claim onto the pane-heartbeat fallback until the role
+            # re-acquires at its step a. A pane the dispatcher is launching
+            # into is idle by construction, so that heartbeat can easily be
+            # stale — and a label carried over past TTL from an earlier
+            # iteration in the same pane is then swept by `cleanup --gh` in
+            # that window, freeing the PR for a second feedback worker: the
+            # double-amend this pre-claim exists to prevent. Hand the claim the
+            # pre-claim sentinel instead (fleet-common.sh); see
+            # fleet-claim's _amending_owner_live for how it is read.
+            FLEET_DISPATCH_ID="$FLEET_PRECLAIM_DISPATCH_ID" \
             fleet-claim ${FLEET_NS[@]+"${FLEET_NS[@]}"} "${FLEET_TARGET_CLAIM[$FLEET_TARGET_KIND]}" \
                 "$FLEET_TARGET_NUM" "$agent" >/dev/null 2>&1 || rc=$?
             ;;

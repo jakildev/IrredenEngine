@@ -218,6 +218,19 @@ declare -A FLEET_CLAIM_EXCLUDES=(
     [fleet:reviewing-]="fleet:amending- fleet:resolving-"
 )
 
+# The dispatch identity a PRE-CLAIM carries. fleet-dispatcher
+# takes a target's claim BEFORE fleet-dispatch-wrap mints the iteration's real
+# FLEET_DISPATCH_ID, so the ownership record fleet-claim writes on the
+# `feedback` (amending) arm would otherwise be stamped with an EMPTY id — the
+# one value that routes the claim onto the pane-heartbeat fallback the
+# dispatch-keyed rule exists to replace. The dispatcher exports this sentinel
+# for the pre-claim call instead; `_amending_owner_live` reads it as "claimed,
+# iteration launching" and vouches LIVE until the pre-claim grace expires, and
+# never as a superseded (confirmed-dead) id. The role's own step-a re-acquire
+# overwrites it with the minted id, which is what ends the window in the normal
+# case. Deliberately not a uuid shape, so it can never collide with a minted id.
+FLEET_PRECLAIM_DISPATCH_ID="preclaim"
+
 # `task:engine:1969` -> `task-engine-1969`: the one per-target file key
 # (dispatch counts, abandonment, decline memory, salvage, handoff).
 fleet_target_key() { printf '%s\n' "${1//:/-}"; }
