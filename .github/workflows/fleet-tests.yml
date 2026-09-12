@@ -35,7 +35,7 @@ name: Fleet Tests
 #   test_lint_rules_commands.py         -> .claude/rules/**, docs/agents/**
 #   test_lint_comment_refs.py           -> .claude/skills/simplify/**
 #   test_workflow_paths_sync.sh         -> the other path-filtered workflows
-#                                          (format-check, header-checks,
+#                                          (engine-tests, format-check, header-checks,
 #                                          perf-gate, python-lint,
 #                                          render-harness-tests)
 #   test_lint_python_registry.py        -> ruff.toml
@@ -65,6 +65,7 @@ on:
       - '.claude/rules/**'
       - '.claude/skills/simplify/**'
       - 'docs/agents/**'
+      - '.github/workflows/engine-tests.yml'
       - '.github/workflows/fleet-tests.yml'
       - '.github/workflows/format-check.yml'
       - '.github/workflows/header-checks.yml'
@@ -83,6 +84,7 @@ on:
       - '.claude/rules/**'
       - '.claude/skills/simplify/**'
       - 'docs/agents/**'
+      - '.github/workflows/engine-tests.yml'
       - '.github/workflows/fleet-tests.yml'
       - '.github/workflows/format-check.yml'
       - '.github/workflows/header-checks.yml'
