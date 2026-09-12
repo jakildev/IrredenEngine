@@ -62,6 +62,7 @@ add_executable(IrredenEngineTest
   render/camera_mouse_rotate_reset_test.cpp
   render/camera_pan_pivot_test.cpp
   render/camera_yaw_test.cpp
+  render/default_pivot_latch_test.cpp
   render/detached_world_depth_test.cpp
   render/fog_cross_section_test.cpp
   render/fog_reveal_eval_test.cpp

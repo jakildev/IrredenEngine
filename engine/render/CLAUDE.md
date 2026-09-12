@@ -743,6 +743,13 @@ Three checks, in order:
    4c4554d5..HEAD` is empty. With that identity, #2547 is the only change to the
    default pivot focus between the 2026-07-28 baseline and master.
 
+   *(Re-running that `git log -L` today returns one commit — #2669 moved the
+   latched depth behind `DefaultPivotLatch::isoDepth()`. That is an accessor
+   swap inside the same expression, value-identical, and it changed only WHEN
+   the depth is re-derived, not what the focus is computed from. The isolation
+   argument above is unaffected; the emptiness claim is dated to the 2026-08
+   measurement.)*
+
    A line fit has to absorb that orbit's chord, which is what inflates the
    residual: pinning the same population drops x residual to 0.04px at z4 (20x)
    and 0.01px at z8 (138x). **The per-axis path did not regress** — pinned, it
