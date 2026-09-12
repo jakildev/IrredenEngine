@@ -177,9 +177,10 @@ _CLOSES_ANY_RE = re.compile(_CLOSES_KEYWORD + r"(\d+)\b", re.IGNORECASE)
 # link — the costly direction above, and the one a truncated or mid-edit body
 # produces most often. The closing-fence arm is ordered first so a well-formed
 # block ends where it ends; `.*\Z` fires only when no closing fence exists.
-# `fleet-plan-lint`'s `FENCE_RE` lacks this arm and both closing-fence
-# restrictions below, so the two copies diverge on three axes, not the single
-# one the consolidation was opened for. They fail in opposite directions off
+# `fleet-plan-lint`'s `FENCE_RE` lacks this arm, both closing-fence
+# restrictions below, the opener's indent bound, and the indented-block form
+# entirely — five axes of divergence, not the single one the consolidation was
+# opened for. They fail in opposite directions off
 # the same holes (here an invented closing link; there a quoted code sample
 # read as prose, a false lint hit), so that consolidation must carry the union
 # of both copies' fixes, never either copy wholesale.
@@ -192,20 +193,38 @@ _CLOSES_ANY_RE = re.compile(_CLOSES_KEYWORD + r"(\d+)\b", re.IGNORECASE)
 # direction: the block ends early and the code after the false closer reads as
 # prose, inventing a link.
 #
-# The OPENER keeps the lax `^[ \t]*`, and the asymmetry is deliberate but
-# UNSETTLED — not a claim that laxity is safer here. A line indented four or
-# more spaces is an indented code block, so its fence characters are literal
-# and CommonMark never opens a block: `    ```\n    x\nCloses #40\n` links #40
-# on GitHub, where this matcher strips to end-of-body and returns nothing.
-# Tightening the opener to ` {0,3}` would fix that one shape while changing
-# what every indented sample in a body strips, and no measurement here covers
-# it — the live corpus carries no such body, so the oracle cannot adjudicate
-# it either. Left alone on purpose; settle it against `closingIssuesReferences`
-# rather than by tidying the two ends into agreement.
+# The OPENER obeys the same three-space rule, because the fourth column is
+# where markdown's two block forms meet rather than a place to be lenient. A
+# line indented four columns (a tab being four) opens an INDENTED code block,
+# so its backticks are literal text and CommonMark opens no fenced block at
+# all. Read as a fence, such a line strips to end-of-body and DROPS the live
+# `Closes #40` that follows the indented sample; read as prose, it INVENTS the
+# link for a `Closes #40` sitting inside the indented block. Neither is
+# acceptable, so the opener stops at three columns and the indented form is
+# stripped on its own terms, below.
 _CODE_FENCE_RE = re.compile(
-    r"(?ms)^[ \t]*(?P<f>(?P<c>[`~])(?P=c){2,})"
+    r"(?ms)^ {0,3}(?P<f>(?P<c>[`~])(?P=c){2,})"
     r"(?:.*?^ {0,3}(?P=f)(?P=c)*[ \t]*$|.*\Z)")
 _CODE_SPAN_RE = re.compile(r"(?s)(`+)((?:(?!\n[ \t]*\n).)+?)\1")
+
+# An indented code block is a run of lines indented four columns — but ONLY
+# where four columns of indentation means code. Inside a list it is ordinary
+# continuation text and its reference is live: a merged engine PR body closes
+# an issue from a six-space continuation line under a `- [x]` bullet, and
+# GitHub's own `closingIssuesReferences` lists that issue, so a rule of "four
+# columns is code" would drop a link the oracle says is real. CommonMark's own
+# constraint says the same thing more generally — an indented block cannot
+# interrupt a paragraph, and inside a container its indentation is measured
+# from the container's content column, which a line-wise matcher cannot see.
+#
+# So the run is stripped only where the containing block is unambiguous: it
+# starts the body or follows a blank line, and the paragraph it follows is
+# top-level prose — no indentation, no list marker. Anything else stays prose,
+# which keeps the measured shape above live. The cost of that conservatism is
+# bounded by the same corpus: of the last 400 merged PR bodies, none carries an
+# indented block with a closing keyword in it at all.
+_LIST_MARKER_RE = re.compile(r"^(?:[-*+]|\d+[.)])(?:[ \t]|$)")
+_INDENTED_CODE_COLUMNS = 4
 
 
 # Code is replaced with a sentinel, not removed and not blanked to whitespace.
@@ -217,8 +236,65 @@ _CODE_SPAN_RE = re.compile(r"(?s)(`+)((?:(?!\n[ \t]*\n).)+?)\1")
 _CODE_PLACEHOLDER = "\x00"
 
 
+def _indent_columns(line):
+    """Width of `line`'s leading whitespace in columns, a tab being four."""
+    cols = 0
+    for ch in line:
+        if ch == " ":
+            cols += 1
+        elif ch == "\t":
+            cols += _INDENTED_CODE_COLUMNS - (cols % _INDENTED_CODE_COLUMNS)
+        else:
+            break
+    return cols
+
+
+def _opens_indented_code(prior):
+    """True when an indented run following the `prior` lines can only be code.
+
+    The paragraph it follows decides it — every line of it, not just the last.
+    Top-level prose (or nothing at all, at the top of the body) leaves an
+    indented run nothing to belong to; a list marker or an already-indented
+    line anywhere in that paragraph means the run may be a list item's
+    continuation text, which is live prose to GitHub. A lazy continuation is
+    why the whole paragraph counts: `- item` followed by an unindented second
+    line still puts what comes next inside the list item.
+    """
+    seen_text = False
+    for line in reversed(prior):
+        if not line.strip():
+            if seen_text:
+                break
+            continue
+        seen_text = True
+        if _indent_columns(line) or _LIST_MARKER_RE.match(line):
+            return False
+    return True
+
+
+def _strip_indented_code(body):
+    """`body` with unambiguous indented code blocks replaced by the sentinel."""
+    lines = body.split("\n")
+    out = list(lines)
+    i = 0
+    while i < len(lines):
+        if not (lines[i].strip()
+                and _indent_columns(lines[i]) >= _INDENTED_CODE_COLUMNS
+                and (i == 0 or not lines[i - 1].strip())
+                and _opens_indented_code(lines[:i])):
+            i += 1
+            continue
+        while i < len(lines) and (
+                not lines[i].strip()
+                or _indent_columns(lines[i]) >= _INDENTED_CODE_COLUMNS):
+            if lines[i].strip():
+                out[i] = _CODE_PLACEHOLDER
+            i += 1
+    return "\n".join(out)
+
+
 def _strip_code(body):
-    """`body` with fenced blocks and inline code spans replaced by a sentinel.
+    """`body` with code blocks and inline code spans replaced by a sentinel.
 
     Fences first, so a fence's own backtick runs are consumed as a fence rather
     than read as span delimiters. On well-formed markdown the two orders agree
@@ -227,9 +303,14 @@ def _strip_code(body):
     before a fence, where fences-first strips LESS. That is the direction to
     fail in — under-stripping keeps a reference the fleet would otherwise drop,
     and dropping a real `Closes #N` is the costlier error here.
+
+    Indented blocks come second for the same precedence reason CommonMark
+    gives them: no indented block starts inside a fenced one, and by this point
+    a fenced block is a single sentinel line that can no longer look indented.
     """
-    return _CODE_SPAN_RE.sub(_CODE_PLACEHOLDER,
-                             _CODE_FENCE_RE.sub(_CODE_PLACEHOLDER, body))
+    return _CODE_SPAN_RE.sub(
+        _CODE_PLACEHOLDER,
+        _strip_indented_code(_CODE_FENCE_RE.sub(_CODE_PLACEHOLDER, body)))
 
 
 def body_closes_issue(body, issue):

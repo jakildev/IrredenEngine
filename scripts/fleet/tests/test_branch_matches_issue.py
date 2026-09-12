@@ -431,6 +431,67 @@ class ClosingKeywordInsideCode(unittest.TestCase):
             with self.subTest(body=body[:24]):
                 self.assertEqual(body_closed_issue_numbers(body), want)
 
+    def test_an_over_indented_opener_is_not_a_fence(self):
+        # The opener obeys the same three-space rule as the closer, and for a
+        # sharper reason: four columns of indentation (a tab is four) opens an
+        # INDENTED code block, so the backticks are literal and no fenced block
+        # exists to run to end-of-body. Read as a fence, the matcher strips the
+        # rest of the body and drops the live reference below the sample.
+        for body, want in (("    ```\n    x\nCloses #40\n", [40]),
+                           ("\t```\n\tx\nCloses #41\n", [41]),
+                           ("      ~~~\n      x\nFixes #42\n", [42])):
+            with self.subTest(body=body[:24]):
+                self.assertEqual(body_closed_issue_numbers(body), want)
+
+    def test_a_legally_indented_opener_still_opens_a_fence(self):
+        # Control against over-shooting: up to three spaces is still a fence,
+        # so tightening the opener must not re-expose what a well-formed (or
+        # unclosed) indented block quotes.
+        for body in ("   ```\n   Closes #43\n   ```\n",
+                     "   ```\nCloses #44\n",
+                     "  ~~~\nCloses #45\n  ~~~\n"):
+            with self.subTest(body=body[:24]):
+                self.assertEqual(body_closed_issue_numbers(body), [])
+
+    def test_an_indented_code_block_is_not_a_close(self):
+        # The block form the opener no longer swallows still has to be code:
+        # a run indented four columns after a blank line renders inside
+        # <pre><code>, exactly like a fenced block, so GitHub links nothing in
+        # it. Without this the tightened opener would trade a dropped link for
+        # an invented one — the costlier direction.
+        for body in ("Example of what NOT to write:\n\n    Closes #46\n",
+                     "    Closes #47\n",
+                     "Text.\n\n\tFixes #48\n",
+                     "    ```\n    x\n    Closes #49\n"):
+            with self.subTest(body=body[:28]):
+                self.assertEqual(body_closed_issue_numbers(body), [])
+
+    def test_an_indented_continuation_line_still_closes(self):
+        # Four columns is only code OUTSIDE a list: under a bullet it is the
+        # item's own continuation text, and GitHub links it. This is measured,
+        # not deduced — the first body is the shape of a merged engine PR whose
+        # closingIssuesReferences lists the issue its six-space continuation
+        # line closes. Stripping on indentation alone drops that link.
+        for body, want in (
+                ("- [x] Citations resolved: refs above\n"
+                 "      MERGED (closes #50), and the rest\n", [50]),
+                ("- item\n\n    closes #51\n", [51]),
+                ("- item\nlazily continued\n\n    closes #52\n", [52]),
+                ("1. item\n\n    closes #53\n", [53]),
+                ("A wrapped paragraph line\n    closes #54\n", [54])):
+            with self.subTest(body=body[:28]):
+                self.assertEqual(body_closed_issue_numbers(body), want)
+
+    def test_indentation_short_of_a_code_block_still_closes(self):
+        # The threshold is the fourth column, and it is the same one the fence
+        # arms use. Three spaces is ordinary prose indentation — a matcher that
+        # strips at three drops the link while GitHub keeps it.
+        for body, want in (("Text:\n\n   closes #55\n", [55]),
+                           ("   closes #56\n", [56]),
+                           ("Text:\n\n  \tcloses #57\n", [])):
+            with self.subTest(body=body[:24]):
+                self.assertEqual(body_closed_issue_numbers(body), want)
+
     def test_an_unbalanced_backtick_cannot_blank_a_later_paragraph(self):
         # A span is bounded to one paragraph, so a stray backtick pairs with the
         # next stray one only within its own. Unbounded, these two would pair
@@ -449,6 +510,9 @@ class ClosingKeywordInsideCode(unittest.TestCase):
                      "```\nx\n    ```\nCloses #2091\n",
                      "```\nx\n\t```\nCloses #2091\n",
                      "```\nx\n   ```\nCloses #2091\n",
+                     "    ```\n    x\nCloses #2091\n",
+                     "Prose:\n\n    Closes #2091\n",
+                     "- item\n\n    Closes #2091\n",
                      "Not `Closes #2091` but Closes #2091 really"):
             with self.subTest(body=body[:40]):
                 nums = body_closed_issue_numbers(body)

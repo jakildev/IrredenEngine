@@ -366,6 +366,71 @@ class TestBodyClosesLink(unittest.TestCase):
             state["repos"]["engine"]["tasks"]["open"][0]["inflight_pr"]["number"],
             2579)
 
+    def test_an_over_indented_opener_still_tags_the_link_below_it(self):
+        # The opposite consequence to the arms above, on the same enricher: a
+        # fence indented four columns is literal text inside an indented code
+        # block, so the reference BELOW the sample is live prose and the task
+        # really is being implemented. Reading the indented line as a fence
+        # opener strips to end-of-body and leaves the task looking unclaimed
+        # while a PR is open on it — duplicate work, the other costly way to
+        # be wrong.
+        for label, opener in (("four spaces", "    ```"),
+                              ("a tab", "\t```"),
+                              ("six spaces, tilde", "      ~~~")):
+            with self.subTest(opener=label):
+                tasks = [_task("#2578")]
+                prs = [_pr_body(2579, "claude/hand-named-branch",
+                                f"{opener}\n    sample\nCloses #2578\n",
+                                labels=["fleet:wip"])]
+                self.assertEqual(prs[0]["closes_issues"], [2578])
+                state = _state(engine_tasks=tasks, engine_prs=prs)
+                enrich_inflight_pr_tasks(state)
+                self.assertEqual(
+                    state["repos"]["engine"]["tasks"]["open"][0]
+                    ["inflight_pr"]["number"], 2579)
+
+    def test_an_indented_code_block_leaves_the_task_claimable(self):
+        # Control against buying the arm above with an invented link: the run
+        # the opener no longer swallows is still code when it is an indented
+        # block of its own, and a quoted `Closes #N` inside one must not take
+        # a claimable task off the queue.
+        for label, body in (
+                ("after prose", "What NOT to write:\n\n    Closes #2578\n"),
+                ("at body start", "    Closes #2578\n"),
+                ("indented fence sample",
+                 "    ```\n    x\n    Closes #2578\n")):
+            with self.subTest(body=label):
+                tasks = [_task("#2578")]
+                prs = [_pr_body(2579, "claude/hand-named-branch", body,
+                                labels=["fleet:wip"])]
+                self.assertEqual(prs[0]["closes_issues"], [])
+                state = _state(engine_tasks=tasks, engine_prs=prs)
+                enrich_inflight_pr_tasks(state)
+                self.assertNotIn(
+                    "inflight_pr",
+                    state["repos"]["engine"]["tasks"]["open"][0])
+
+    def test_an_indented_continuation_line_still_tags_inflight(self):
+        # The second control, and the one with a live precedent: indentation
+        # under a bullet is the item's continuation text, which GitHub links.
+        # A rule of "four columns is code" would drop it and re-open a task
+        # that an open PR already owns.
+        for label, body in (
+                ("continuation line",
+                 "- [x] Citations resolved: refs above\n"
+                 "      MERGED (closes #2578), and the rest\n"),
+                ("blank line inside the item", "- item\n\n    closes #2578\n")):
+            with self.subTest(body=label):
+                tasks = [_task("#2578")]
+                prs = [_pr_body(2579, "claude/hand-named-branch", body,
+                                labels=["fleet:wip"])]
+                self.assertEqual(prs[0]["closes_issues"], [2578])
+                state = _state(engine_tasks=tasks, engine_prs=prs)
+                enrich_inflight_pr_tasks(state)
+                self.assertEqual(
+                    state["repos"]["engine"]["tasks"]["open"][0]
+                    ["inflight_pr"]["number"], 2579)
+
     def test_game_task_body_link_tags_inflight(self):
         # The body arm is repo-agnostic by construction; assert it reaches the
         # game repo too rather than only the engine branch of the loop.

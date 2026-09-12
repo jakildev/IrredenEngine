@@ -311,7 +311,7 @@ def _is_pull_request(issue):
 # closing keyword inside markdown code, so an older record can carry a ref
 # GitHub never did. A changed value with no key change is the case a
 # key-presence test cannot catch, so the marker is the only thing that retires
-# the wider list on tick 1 rather than whenever the ETag next flips. See #2672.
+# the wider list on tick 1 rather than whenever the ETag next flips.
 PR_RECORD_SCHEMA = 3
 
 
@@ -2169,7 +2169,7 @@ def enrich_inflight_pr_tasks(state):
     # "this PR is for that issue" means is the drift to watch for. Its third arm
     # — `pr["number"] == issue_num_int` — is deliberately NOT mirrored: that one
     # resolves a `Blocked by: #<PR>` ref with no backing issue, which has no
-    # analog for a task's own issue number. See #2672.
+    # analog for a task's own issue number.
     for repo_key, repo_state in state["repos"].items():
         prs = repo_state.get("prs", [])
         for task in repo_state.get("tasks", {}).get("open", []):
@@ -2177,7 +2177,7 @@ def enrich_inflight_pr_tasks(state):
             if not issue_num:
                 continue
             # closes_issues holds ints (derived at fetch time, so it survives
-            # the body-pop and the 304 reuse of body-stripped records, #2442);
+            # the body-pop and the 304 reuse of body-stripped records);
             # issue_num is a digit string — compare as int, or "255" in [255]
             # silently misses. Same cast discipline as the sibling enricher.
             issue_num_int = int(issue_num)
