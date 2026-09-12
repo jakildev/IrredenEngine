@@ -401,6 +401,59 @@ Because the bake path is now *in* the test domain, the shadows-**ON** A/B is
 the load-bearing identity gate here — the #1812-era gate ran shadows-off and
 structurally could not observe a bake regression.
 
+**Metal re-measurement** (#3042; macOS 26.5.2 / Apple M4 Max / Metal 4,
+`IRREDEN_GRAPHICS_BACKEND=METAL`, 2560×1440 framebuffer; master `1750ef4a`;
+same dense frozen harness — `--mode voxel_set --subdivision-mode none
+--wave-freeze --wave-amplitude 5 --occlusion-cull --no-overlay`, sun shadows
+ON, 300 frames / 299 retained samples per config):
+
+| zoom | visible pv-off → pv-on | feeder pv-off → pv-on (**ring capture**) |
+|---|---|---|
+| 4  | 255,275.0 → 29,589.3 (88.4%) | 4,108.0 → 1,136.0 (**72.3%**) |
+| 8  | 167,426.0 → 16,240.3 (90.3%) | 47,995.0 → 8,595.2 (**82.1%**) |
+| 16 | 67,567.0 → 8,028.8 (88.1%) | 83,922.0 → 12,135.9 (**85.5%**) |
+
+**The post-#2898 ring gate fires on Metal.** Ring capture is non-zero at every
+zoom, so the pre-#2898 "exactly 0 capture" reading is retired rather than
+inherited — #2898's resolve of the image-atomic scratch into `trixelDistances`
+was in fact the mechanism that zero was blamed on.
+
+Every cell above is bit-identical to the GL column. The cull counts are
+deterministic and backend-independent on this harness, so the two backends now
+agree *exactly* rather than merely closely — the pre-#2898 macOS run differed
+from GL by ~0.4% at zoom 8 (166,868 visible / 47,835 feeder). This is a
+count-level parity statement only; it says nothing about relative frame time on
+two different GPUs.
+
+**Shadows-ON identity gate (Metal).** Two `--auto-screenshot 10` arms differing
+only by `--no-per-voxel-occlusion` produced byte-identical PNGs for all four
+cardinal shots — `fit_grid`, `zoom1_origin`, `profiler_overlay`, `zoom4_pan` —
+and for the three residual-yaw shots as well. Both arms logged
+`ring_non_empty=1` on every shot (via `--feeder-classify-pad 0`, which arms the
+`logFeederClassify` witness without changing classification). `--no-overlay` is
+required on both arms: the perf-stats overlay bakes live timing text into the
+frame, which is run-variant and would defeat any byte compare.
+
+Two things keep that identity result from being free, and both were measured
+rather than assumed:
+
+- The per-voxel test is heavily active in **both** zoom regimes the cardinal
+  set covers — 262,144 → 31,524.9 visible at zoom 1 (88.0% culled) and
+  255,275.0 → 29,589.3 at zoom 4 (88.4%). Byte identity holds while ~88% of
+  the visible survivor set is being dropped, which is the whole claim.
+- `cull=0` in each `AutoScreenshot` log line is `CullAction::NONE` ("leave the
+  cull alone for this shot"), **not** a disabled cull — the run-level
+  `--occlusion-cull` stays in force through every capture. Reading it as
+  "cull off" would make the gate look vacuous when it is not.
+
+One caveat on the cardinal set's *width*: camera zoom is clamped to ≥ 1
+(`IRConstants::kTrixelCanvasZoomMin`, applied in `C_ZoomLevel`), so the run
+logs `requested=0.5, actual=1` and `fit_grid` and `profiler_overlay` (both
+table zoom 0.5) actually render at zoom 1 and come out md5-identical to
+`zoom1_origin`. The four cardinal shots are therefore two distinct images — the
+zoom-1 origin view and the zoom-4 pan. The gate is sound, but narrower than its
+shot count suggests.
+
 Two operational notes this change surfaced, both worth carrying forward:
 
 - **The cull readback needs priming.** The stats read the prior frame's counts
@@ -410,10 +463,11 @@ Two operational notes this change surfaced, both worth carrying forward:
   4,294,967,295 feeder count). One junk sample swamped a 300-sample average —
   the pv-off feeder mean came out 14.4 M instead of 47,995. `cullReadbackPrimed_`
   drops that sample.
-- **Metal numbers are not carried over.** #2475's gates ran on GL. The
-  pre-#2898 Metal baseline measured exactly **0** ring capture (the sentinel-ring
-  gap), and that framing is stale now that #2898 has merged — the Metal side
-  needs re-measuring on the resolved baseline before any Metal claim is made.
+- **Metal numbers are now carried (#3042).** #2475's gates ran on GL and the
+  pre-#2898 Metal baseline measured exactly **0** ring capture (the
+  sentinel-ring gap). Both readings are superseded by the re-measurement above:
+  on the post-#2898 baseline the ring gate fires on Metal at every zoom. The GL
+  table stays as #2475's historical record.
 
 ---
 
@@ -428,4 +482,4 @@ Two operational notes this change surfaced, both worth carrying forward:
 - Issue #1290 (this design), #1294 (gated implementation follow-up), #1050
   (clear cost), #1161 (UPDATE-dominated profile), #1278 / #1288 (in-flight
   rasterization rework), #1812 (per-voxel refine), #2298 (domain widening to
-  the shadow-feeder ring)
+  the shadow-feeder ring), #3042 (Metal re-measurement of the widened domain)
