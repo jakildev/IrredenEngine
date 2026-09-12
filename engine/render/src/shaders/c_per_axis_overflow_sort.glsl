@@ -1,13 +1,12 @@
 #version 450 core
 
-// Canonical-order the view-visibility overflow entry list (#2479).
+// Canonical-order the view-visibility overflow entry list.
 //
 // The mode-3 append (c_voxel_to_trixel_stage_1_body.glsl) assigns entry
 // indices with atomicAdd, and entry index IS draw order in the overflow
 // scatter branch (v_peraxis_scatter.glsl indexes by gl_InstanceID), so
-// equal-key entries resolve their depth contest by run-variant arrival
-// order — 10 distinct rotated-shot hashes across 10 runs on the amplitude-5
-// displaced scene. This pass in-place bitonic-sorts the appended 3-word
+// unsorted, equal-key entries resolve their depth contest by run-variant
+// arrival order. This pass in-place bitonic-sorts the appended 3-word
 // entries by full record value between the append and the indirect draw,
 // making draw order — and therefore every equal-key winner — a pure
 // function of the appended SET.
@@ -20,7 +19,7 @@
 // arrival order: two fully-equal records are indistinguishable in the output.
 //
 // Pass structure (overflowSortStep, driven by system_voxel_to_trixel.hpp;
-// the entry cap is a power of two by construction — see
+// the entry cap is a power of two by construction in
 // component_per_axis_trixel_canvases.hpp):
 //   0 — sentinel-fill every slot in [liveCount, cap) with 0xFFFFFFFF^3. The
 //       region above the live range holds stale prior-frame entries, NOT
@@ -34,15 +33,12 @@
 //       whose bit position falls in [pLo, pHi] (at most kBlockBits of them),
 //       run entirely in shared memory.
 //
-// The strided slab (#2479 revision v3, the architect's option-A fusion) is
-// what keeps the dispatch count off the encoder-round-trip cliff: Metal
-// creates one compute encoder per dispatch with a full resource-table flush
-// (~40 us), and memoryBarrier() is a no-op there because encoder boundaries
-// already serialize — so the unfused network's 67 dispatches at the repro
-// scene's 524,288-entry cap cost ~+2.9 ms/rotating frame in encoder overhead
-// alone, not GPU arithmetic. A slab of kBlock elements closed under a
-// contiguous RANGE of stride bit positions fuses up to kBlockBits strides per
-// dispatch, cutting the same network to 18 dispatches.
+// The strided slab keeps the dispatch count low, which matters on Metal:
+// every dispatch is its own compute encoder with a full resource-table flush,
+// and memoryBarrier() is a no-op there because encoder boundaries already
+// serialize, so each unfused stride would pay that fixed cost. A slab of
+// kBlock elements closed under a contiguous RANGE of stride bit positions
+// fuses up to kBlockBits strides per dispatch.
 //
 // Slab addressing: for stride bit positions [pLo, pHi] (n = pHi - pLo + 1),
 // the elements that compare against each other are exactly those differing
@@ -62,8 +58,8 @@
 // touches the ctrl block (draw args / counters) — it reorders entries,
 // nothing else.
 //
-// The whole pass is gated CPU-side on the pool's storeTiesPossible_ flag
-// (#2346), so an unflagged pool dispatches NONE of these modes.
+// The whole pass is gated CPU-side on the pool's storeTiesPossible_ flag, so
+// an unflagged pool dispatches NONE of these modes.
 
 layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 
@@ -139,13 +135,10 @@ uint liveEntryCount() {
 // at or above it is treated as a VIRTUAL sentinel — substituted in registers,
 // never read from and never written back to memory.
 //
-// This is what makes the pass affordable, and it is derived GPU-side precisely
-// because the CPU cannot read ctrl[1] without a sync stall. Sizing the network
-// to the CAP instead measured +31.8% frame time at the repro scene (8.70 ->
-// 11.47 ms p50) against a <8% gate: with 66,690 live entries under a 524,288
-// cap, 87% of every pass's memory traffic was shuffling sentinels. Cutting the
-// dispatch count 67 -> 18 barely moved that number, which is what showed the
-// cost is traffic, not the encoder round-trips the escalation attributed it to.
+// The pass's cost is dominated by memory traffic, so the network must not be
+// sized to the CAP: with the cap far above the live count, most of every pass
+// would shuffle sentinels. The span is derived GPU-side because the CPU cannot
+// read ctrl[1] without a sync stall.
 //
 // Correctness: the reals never leave [0, span) — a bitonic sort over the cap
 // with +inf above `span` is exactly a sort over [0, span), so the untouched
@@ -258,23 +251,22 @@ void main() {
     if (k > span) return;
     // Skip a workgroup whose LOWEST element already sits at or above the span
     // (expandIndex is monotonic in c, so the minimum is at c = cBase, active 0).
-    // Workgroup-uniform, so the barriers below stay in uniform control flow.
+    // Workgroup-uniform, so the barriers stay in uniform control flow.
     //
-    // This guard — not the per-element substitution in the loop below — is what
-    // replaces the whole-block early-out this pass must NOT have. Mode 1 may skip
-    // high blocks because it runs against the PRE-network state; by the time any
-    // mode-2 pass runs, the network's intermediate descending sub-sequences have
+    // This guard — not the per-element substitution loop — is the mode-2 skip,
+    // and it must key on `span`, never liveCount. Mode 1 may skip high blocks
+    // because it runs against the PRE-network state; by the time any mode-2
+    // pass runs, the network's intermediate descending sub-sequences have
     // migrated real records above liveCount, so an early-out keyed on liveCount
-    // drops them out of the sort (measured: 3 distinct rotated-shot hashes / 3
-    // runs). Keying on `span` is sound where keying on liveCount is not, because
-    // the reals provably never leave [0, span). span and kBlock are both powers
-    // of two with span >= kBlock, so a workgroup's element set is always wholly
-    // below or wholly at/above span — never straddling — which is exactly what
-    // makes this single workgroup-uniform check decide the whole workgroup.
+    // drops them out of the sort. Keying on `span` is sound because the reals
+    // provably never leave [0, span). span and kBlock are both powers of two
+    // with span >= kBlock, so a workgroup's element set is always wholly below
+    // or wholly at/above span — never straddling — which is exactly what makes
+    // this single workgroup-uniform check decide the whole workgroup.
     if (expandIndex(cBase, 0u, pLo, pHi) >= span) return;
 
-    // Per-element substitution below is defensive cover, not load-bearing: given
-    // the workgroup-uniform guard above, every element that reaches this loop
+    // This per-element substitution is defensive cover, not load-bearing: the
+    // workgroup-uniform span guard means every element that reaches this loop
     // already has i < span, so the `i >= span` branch is dead code.
     for (uint e = t; e < kBlock; e += kThreads) {
         const uint i =

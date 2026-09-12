@@ -1,30 +1,29 @@
 #version 450 core
 
-// View-visibility overflow-face lighting (#2334, epic #2331 phase C2).
+// View-visibility overflow-face lighting.
 //
-// C1 (#2333) appends the view-visible faces the cardinal-keyed per-axis store
-// drops — the set `viewVisible \ cardinalWinners` — into a bounded overflow
-// list and the framebuffer scatter draws them ALBEDO-only (unlit slivers beat
-// missing geometry). This compute pass, dispatched inside LIGHTING_TO_TRIXEL
+// The per-axis stage-1 append writes the view-visible faces the cardinal-keyed
+// per-axis store drops — the set `viewVisible \ cardinalWinners` — into a
+// bounded overflow list, and the framebuffer scatter draws each entry with its
+// stored colorPacked. This compute pass, dispatched inside LIGHTING_TO_TRIXEL
 // AFTER the per-axis CELL lighting (so the baked sun-shadow map at slot 28 and
 // the 128^3 light volume are already bound), relights each overflow entry at its
 // recovered WORLD position — sun-shadow cascade + light-volume + Lambert,
-// AO = 1.0 — and rewrites the entry's stored colorPacked in place. The unchanged
-// scatter then composites LIT slivers while rotating.
+// AO = 1.0 — and rewrites the entry's stored colorPacked in place, so the
+// scatter composites LIT slivers while rotating.
 //
-// Accepted drift vs a real per-axis cell: no screen-space AO (overflow faces own
-// no canvas cell; the epic's accepted-drift note covers it). The world sample
-// path mirrors c_lighting_to_trixel.glsl's per-axis + P4b-2 world-receive
+// Overflow faces own no canvas cell, so they get no screen-space AO. The world
+// sample path mirrors c_lighting_to_trixel.glsl's per-axis + world-receive
 // branches (same sun/volume/Lambert/HDR math + shared helpers), so a revealed
 // sliver shades consistently with the adjacent lit cells.
 //
-// Runs ONLY while rotating (per-axis canvases allocated). The cardinal fast path
-// never dispatches this kernel, so yaw-0 output is byte-identical.
+// Runs ONLY while rotating (per-axis canvases allocated); the cardinal path
+// never dispatches this kernel.
 
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
 #include "ir_iso_common.glsl"        // decode*, faceOutwardNormal6, unpack/packColor
-#include "ir_per_axis_lighting.glsl" // perAxisCellToWorld3D
+#include "ir_per_axis_lighting.glsl" // perAxisCellToWorld3DSubCell
 // ir_sun_projection.glsl must precede ir_sun_shadow_sample.glsl, which uses its
 // symbols without including it — same order as c_lighting_to_trixel.glsl.
 #include "ir_sun_projection.glsl"
@@ -83,7 +82,7 @@ layout(std140, binding = 23) uniform LightVolumeParams {
 
 layout(binding = 3) uniform sampler2D paletteLUT;
 layout(binding = 5) uniform sampler3D lightVolume;
-// Winning-light ID volume (#2318), image unit 7 — read (NEAREST) only on the
+// Winning-light ID volume, image unit 7 — read (NEAREST) only on the
 // has-SPOT path to attenuate a spot winner's volume contribution.
 layout(rgba8, binding = 7) readonly uniform image3D lightVolumeId;
 
@@ -91,7 +90,7 @@ layout(rgba8, binding = 7) readonly uniform image3D lightVolumeId;
 // Slot 28 is held by the sun-depth map this pass samples, so the scratch is
 // bound here at kBufferIndex_OverflowLightingScratch (a buffer slot dead during
 // LIGHTING_TO_TRIXEL). Whole-buffer bind; region offsets come from
-// overflowScratchLayout above (all in uints). Entry i: 3 uints at
+// overflowScratchLayout (all in uints). Entry i: 3 uints at
 // overflowScratchLayout.z + i*3 = {packedCardCell, colorPacked, encodedDist};
 // live entry count = scratch[overflowScratchLayout.y + 1] (ctrl instanceCount).
 layout(std430, binding = 8) buffer OverflowLightingScratch {
@@ -133,8 +132,7 @@ void main() {
     // (v_peraxis_scatter.glsl) and the same world recovery the per-axis CELL
     // lighting uses. The per-axis store is base-resolution, so rawDepth
     // (decodeDepthPerAxis) is world units. Sub-cell recovery, not
-    // lattice-only — the sun/volume samples must land on the drawn surface
-    // (see perAxisCellToWorld3DSubCell).
+    // lattice-only — the sun/volume samples must land on the drawn surface.
     const ivec2 cell = ivec2(int(packedCell & 0xFFFFu), int(packedCell >> 16u));
     const int slot = decodeSlot(rawDist);
     const int flip = decodeFlipPerAxis(rawDist);
@@ -146,7 +144,7 @@ void main() {
     );
 
     // World-space lighting — mirrors c_lighting_to_trixel's world sample.
-    // AO = 1.0 (accepted drift), sun-shadow via the shared cascade lookup at the
+    // AO = 1.0 (no canvas cell), sun-shadow via the shared cascade lookup at the
     // face's own world pos + normal (an overflow face owns no precomputed
     // canvasSunShadow texel), Lambert on the world normal. The sun-shadow darkens
     // only the directional term so a self-shadowed sliver keeps its ambient floor.

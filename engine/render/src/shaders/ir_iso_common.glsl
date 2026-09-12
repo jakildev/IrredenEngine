@@ -1,26 +1,20 @@
-// Shared isometric math utilities for all trixel pipeline compute shaders.
-// Included via #include "ir_iso_common.glsl" (resolved by the engine's
-// shader preprocessor at compile time).
-
 // Axis-only face indices (X / Y / Z axis, polarity-blind). The 3-face
 // raster helpers (`faceOffset_2x3`, `faceMicroPositionFixed`,
-// `faceDeformationMatrix`) operate on these — they're "the X-axis face"
-// without distinguishing X_NEG vs X_POS, which is fine for the deformation
-// matrix (axis-only) and for the diamond slot layout (slot is a workgroup
-// label, not a polarity).
+// `faceDeformationMatrix`) take these: the deformation matrix depends only on
+// the axis, and a diamond slot is a workgroup label, not a polarity.
 const int kXFace = 0;
 const int kYFace = 1;
 const int kZFace = 2;
 
 // Polarity-aware six-face IDs — see `docs/design/voxel-face-rasterization.md`
 // and the matching `IRMath::FaceId` enum in `engine/math/include/irreden/
-// ir_math.hpp`. Used for the per-slot visible-triplet handshake via
-// `FrameDataVoxelToCanvas::visibleFaceIds_` (#1278): the CPU resolves
-// which three WORLD faces are camera-visible this frame and uploads
-// their FaceId per visible-triplet slot; the shader uses the FaceId to
-// gate on the exposed-face bit and to pick the six-face outward normal
-// / micro-position. Bit positions intentionally line up with the
-// occlusion bits in `IRComponents::VoxelFlags::kFaceOccluded*`:
+// ir_math.hpp`. The per-slot visible-triplet handshake carries these via
+// `FrameDataVoxelToCanvas::visibleFaceIds_`: the CPU resolves which three
+// WORLD faces are camera-visible this frame and uploads their FaceId per
+// visible-triplet slot; the shader uses the FaceId to gate on the
+// exposed-face bit and to pick the six-face outward normal /
+// micro-position. Bit positions line up with the occlusion bits in
+// `IRComponents::VoxelFlags::kFaceOccluded*`:
 //   bit(faceId) = 2 + faceId
 const int kFaceXNeg = 0;
 const int kFaceXPos = 1;
@@ -65,7 +59,7 @@ vec4 unpackColor(uint packedColor) {
 }
 
 // Exact inverse of unpackColor: clamp to [0,1] and round-to-nearest so a
-// round-trip of a stored 8-bit channel is a fixed point (#2334 overflow-face
+// round-trip of a stored 8-bit channel is a fixed point (the overflow-face
 // relight rewrites an entry's colorPacked in place through this).
 uint packColor(vec4 c) {
     uvec4 q = uvec4(clamp(c, 0.0, 1.0) * 255.0 + 0.5);
@@ -74,7 +68,7 @@ uint packColor(vec4 c) {
 
 // PCG-flavored integer hash (low-collision, no FP precision loss). Cheap enough
 // for per-thread shader use; quality is sufficient for visual jitter on the
-// stateless particle path (T-163) and any other "I need a deterministic
+// stateless particle path and any other "I need a deterministic
 // pseudo-random scalar from (i, j, k)" producer.
 uint hash3(uint a, uint b, uint c) {
     uint h = a * 0x9E3779B1u;
@@ -137,10 +131,10 @@ const int kDepthEncodeShift = 8;
 // The *8 spacing keeps flip + slot below every depth boundary, so raw-int
 // atomicMin still orders by depth first (a flipped-but-farther cell can
 // never win the min) and the Hi-Z max stays a faithful max-depth pyramid.
-// `flip` (#2207) marks a silhouette-riser face emitted with the OPPOSITE
-// polarity of its slot's triplet face (faceId = visibleFaceIds[slot] ^ 1,
-// the #2162 flip): lighting/AO/shadow decode it to negate the slot-derived
-// outward normal instead of shading the riser with an inverted Lambert.
+// `flip` marks a silhouette-riser face emitted with the OPPOSITE polarity of
+// its slot's triplet face (faceId = visibleFaceIds[slot] ^ 1): lighting/AO/
+// shadow decode it to negate the slot-derived outward normal instead of
+// shading the riser with an inverted Lambert.
 int encodeDepthWithFace(int rawDepth, int face, int flip) {
     return rawDepth * kDepthEncodeShift + (flip << 2) + face;
 }
@@ -152,15 +146,14 @@ int encodeDepthWithFace(int rawDepth, int face) {
 }
 
 // Shared decode helpers — the ONLY places the two distance-encoding bit
-// layouts live (#2207). Single-canvas: [31:3] depth | [2] flip | [1:0] slot.
-// Per-axis (#1458, wFrac carrier for out-of-plane sub-cell position):
-// [31:15] depth | [14:11] wFrac4 | [10] flip | [9:6] uFrac4 | [5:2] vFrac4
-// | [1:0] slot. Depth decodes by arithmetic right shift (floor), so negative
-// depths recover exactly; slot/flip/fracs are pure low-bit masks. wFrac sits
-// directly below depth so atomicMin still orders by true plane depth (a
-// same-cell nearer plane wins) before flip/frac/slot. Route every consumer
-// through these — an open-coded shift is how a carrier migration silently
-// mis-decodes.
+// layouts live. Single-canvas: [31:3] depth | [2] flip | [1:0] slot.
+// Per-axis: [31:15] depth | [14:11] wFrac4 | [10] flip | [9:6] uFrac4 |
+// [5:2] vFrac4 | [1:0] slot. Depth decodes by arithmetic right shift (floor),
+// so negative depths recover exactly; slot/flip/fracs are pure low-bit masks.
+// wFrac sits directly below depth so atomicMin still orders by true plane
+// depth (a same-cell nearer plane wins) before flip/frac/slot. Route every
+// consumer through these — an open-coded shift silently mis-decodes when a
+// layout changes.
 int decodeSlot(int encoded) { return encoded & 3; }
 int decodeFlipSingle(int encoded) { return (encoded >> 2) & 1; }
 int decodeDepthSingle(int encoded) { return encoded >> 3; }
@@ -170,8 +163,7 @@ int decodeDepthPerAxis(int encoded) { return encoded >> 15; }
 // in-plane axes; w is the OUT-OF-PLANE fraction along the face axis — the
 // coordinate the integer cell lattice cannot carry. Dropping w reconstructs
 // every face of fractionally-positioned content on the integer lattice
-// plane, displacing it along its own normal by up to half a voxel (the
-// "cubes stop being cubes under yaw" class).
+// plane, displacing it along its own normal by up to half a voxel.
 int decodeUFrac4PerAxis(int encoded) { return (encoded >> 6) & 15; }
 int decodeVFrac4PerAxis(int encoded) { return (encoded >> 2) & 15; }
 int decodeWFrac4PerAxis(int encoded) { return (encoded >> 11) & 15; }
@@ -184,7 +176,7 @@ int decodeFlipRoute(int encoded, int perAxisRoute) {
     return perAxisRoute != 0 ? decodeFlipPerAxis(encoded) : decodeFlipSingle(encoded);
 }
 
-// Two-tier composite depth partition (#1958). The most-negative
+// Two-tier composite depth partition. The most-negative
 // kDepthForegroundBandWidth codes of [kMinTriangleDistance, kMaxTriangleDistance]
 // are reserved for foreground-priority detached solids: the framebuffer gather
 // (f_trixel_to_framebuffer) clamps WORLD content out of the band and pins
@@ -194,13 +186,13 @@ int decodeFlipRoute(int encoded, int perAxisRoute) {
 // IRRender::kDepthForegroundBandWidth (ir_render_types.hpp) and the .metal twin.
 const int kDepthForegroundBandWidth = 16384;
 
-// Per-trixel priority tiers (#1960). Subdivide the reserved foreground band into
+// Per-trixel priority tiers. Subdivide the reserved foreground band into
 // N-1 disjoint equal-width tiers; tier 0 = world (out of band). MORE-negative =
 // higher priority, so tier N-1 sits at the near (most-negative) band edge.
 // f_trixel_to_framebuffer selects `tier = max(perEntityTier, perTrixelTier)` per
 // fragment, then pins enc into depthForegroundTier{Lo,Hi}, centered on
-// depthForegroundTierCenter. Default tier 0 ⇒ byte-identical to #1958 master.
-// Mirror IRRender::kDepthForegroundTier* (ir_render_types.hpp) + the .metal twin.
+// depthForegroundTierCenter. Mirror IRRender::kDepthForegroundTier*
+// (ir_render_types.hpp) + the .metal twin.
 const int kDepthForegroundTierCount = 3;
 const int kDepthForegroundTierWidth = kDepthForegroundBandWidth / (kDepthForegroundTierCount - 1);
 int depthForegroundTierLo(int kMin, int tier) {
@@ -213,7 +205,7 @@ int depthForegroundTierCenter(int kMin, int tier) {
     return depthForegroundTierLo(kMin, tier) + kDepthForegroundTierWidth / 2;
 }
 
-// Per-trixel priority carrier (#1960). The per-trixel tier rides the top K=2 bits
+// Per-trixel priority carrier. The per-trixel tier rides the top K=2 bits
 // of the 64-bit entity id stored in the triangleEntityIds channel (uvec2: .x =
 // low word, .y = high word; the carrier is bits 30..31 of the high word). THE
 // chokepoint: every reader masks via decodeEntityId, the stage-2 writer packs via
@@ -221,15 +213,12 @@ int depthForegroundTierCenter(int kMin, int tier) {
 // unchanged. Mirror IRRender::kEntityIdPriority* (ir_render_types.hpp) + .metal.
 const uint kEntityIdPriorityShiftInHighWord = 30u;
 const uint kEntityIdPriorityMaskInHighWord = 0x3u << kEntityIdPriorityShiftInHighWord;
-// Fog cut-face carrier (#2124 lit-cross-section follow-up): the bit just below
-// the priority tier (bit 29 of the high word) flags a fog cross-section CUT face
-// so LIGHTING_TO_TRIXEL can force it fully lit — no self-shadow from the fog-
-// hidden neighbor voxels, no interior-crease AO — the "lit as a clean exposed
-// face" cross-section spec (supersedes the epic's option-1 full-AO/shadow
-// default). Rides the SAME masking chokepoint as the priority tier:
-// kEntityIdHighWordMask strips it, so every id READER (picking) ignores it.
-// Default (non-cut) ⇒ the stored id is unchanged, so non-fog scenes stay
-// byte-identical.
+// Fog cut-face carrier: the bit just below the priority tier (bit 29 of the
+// high word) flags a fog cross-section CUT face so LIGHTING_TO_TRIXEL forces it
+// fully lit — no self-shadow from the fog-hidden neighbor voxels, no
+// interior-crease AO. Rides the SAME masking chokepoint as the priority tier:
+// kEntityIdHighWordMask strips it, so every id READER (picking) ignores it. A
+// non-cut face leaves the stored id unchanged.
 const uint kEntityIdCutFaceMaskInHighWord = 0x1u << 29u;
 const uint kEntityIdHighWordMask =
     ~(kEntityIdPriorityMaskInHighWord | kEntityIdCutFaceMaskInHighWord);
@@ -256,7 +245,7 @@ uvec2 encodeEntityIdCutFace(uvec2 packedId, bool isCutFace) {
                      : packedId;
 }
 
-// Per-axis fractional encoding (#1458, flip carrier #2207, wFrac carrier):
+// Per-axis fractional encoding:
 // (depth << 15) | (wFrac4 << 11) | (flip << 10) | (uFrac4 << 6)
 // | (vFrac4 << 2) | slot. Frac fields in 0..15 where 8 = cell centre
 // (fracInCell = 0): u/v are the face's in-plane sub-cell offsets, w the
@@ -315,9 +304,9 @@ vec3 faceOutOfPlaneUnitAxis(int axis) {
 // and shading agree on which way is "out".
 //
 // At non-zero cardinal the camera-visible faces rotate; AO and lighting
-// should call `faceOutwardNormal6` with the per-slot `visibleFaceIds[slot]`
-// from the UBO instead of the slot itself. This 3-face overload is kept
-// for callers that genuinely want the axis-only X_NEG/Y_NEG/Z_NEG normals
+// must call `faceOutwardNormal6` with the per-slot `visibleFaceIds[slot]`
+// from the UBO instead of the slot itself. This 3-face overload is for
+// callers that genuinely want the axis-only X_NEG/Y_NEG/Z_NEG normals
 // (e.g. the SDF shape rasterizer at cardinal 0).
 vec3 faceOutwardNormal(int face) {
     if (face == kXFace) return vec3(-1.0, 0.0, 0.0);
@@ -359,8 +348,9 @@ ivec3 faceOutwardNormal6I(int faceId) {
 // Returns true when @p faceId is exposed (neighbor cell empty/absent)
 // according to the per-voxel flags byte. The encoding mirrors
 // `IRComponents::VoxelFlags::kFaceOccluded*`: bit `(2 + faceId)` is set
-// when the matching neighbor is active, so the face should NOT emit.
-// Per the design doc's exposed-face gate (`emit ⟺ visible ∧ exposed`).
+// when the matching neighbor is active, so the face should NOT emit. Per the
+// exposed-face gate in docs/design/voxel-face-rasterization.md
+// (`emit ⟺ visible ∧ exposed`).
 bool faceIsExposed(uint flagsByte, int faceId) {
     return ((flagsByte >> uint(2 + faceId)) & 1u) == 0u;
 }
@@ -393,8 +383,6 @@ ivec3 faceMicroPositionFixed(int face, ivec3 voxelPositionFixed, int u, int v, i
 // `voxelPositionFixed.<axis>` (the low-coordinate side, identical to
 // the 3-face `faceMicroPositionFixed` above). The other two axes sweep
 // `u, v ∈ [0, subdivisions)` exactly as the 3-face overload does.
-// Used by the subdivided emit path in `c_voxel_to_trixel_stage_{1,2}`
-// after the per-slot world `faceId = visibleFaceIds[slot]` lookup (#1278).
 ivec3 faceMicroPositionFixed6(
     int faceId,
     ivec3 voxelPositionFixed,
@@ -450,25 +438,24 @@ bool isInsideCanvas(ivec2 pixel, ivec2 canvasSize) {
            pixel.y >= 0 && pixel.y < canvasSize.y;
 }
 
-// Shadow-feeder classification (#1740): on the cardinal single-canvas world
-// route, a voxel whose cardinal iso position lies outside the UN-widened
-// visible viewport but inside the shadow-feeder-widened cull exists only to
-// cast sun shadows onto on-screen pixels through stage 1's distance bake — it
-// is never displayed, lit, or picked.
+// Shadow-feeder classification: on the cardinal single-canvas world route, a
+// voxel whose cardinal iso position lies outside the UN-widened visible
+// viewport but inside the shadow-feeder-widened cull exists only to cast sun
+// shadows onto on-screen pixels through stage 1's distance bake — it is never
+// displayed, lit, or picked.
 //
 // Two kernels ask this same question and must agree: c_voxel_visibility_compact
 // partitions survivors into the visible list vs the strided off-screen feeder
-// list (#2258 Step B), and c_voxel_to_trixel_stage_2 skips a feeder's colour +
-// entity-id taps. They re-derived the predicate independently; one definition
-// is what keeps the classification and the skip from drifting (a compact that
-// called a voxel VISIBLE while stage 2 skipped it would drop an on-screen
-// pixel's colour). Over-classifying VISIBLE is the only safe failure direction.
+// list, and c_voxel_to_trixel_stage_2 skips a feeder's colour + entity-id taps.
+// A voxel the compact calls VISIBLE while stage 2 skips it drops an on-screen
+// pixel's colour, so over-classifying VISIBLE is the only safe failure
+// direction.
 //
 // The route terms are part of the predicate, not a caller-side gate: the
 // widened cull only exists on the cardinal (residualYaw == 0) world
 // (isDetachedCanvas < 0.5) route, so both terms must hold before an
 // out-of-bounds iso means "feeder". When sun shadows are off,
-// visibleIsoBounds == cullIsoMin/Max and this never fires — byte-identical.
+// visibleIsoBounds == cullIsoMin/Max and this never fires.
 bool isShadowFeederIso(
     ivec2 isoPos,
     ivec4 visibleIsoBounds,
@@ -513,7 +500,7 @@ ivec2 roundHalfUp(vec2 v) {
 // DETACHED canvas `axis` is `R⁻¹·(1,1,1)` (uploaded in
 // FrameDataVoxelToTrixel.voxelDepthAxis); the world canvas keeps (1,1,1).
 // CPU twin: IRMath::isoDepthAlongAxis — roundHalfUp keeps the half-integer
-// rounding bit-identical across the CPU/GPU boundary (#1462).
+// rounding bit-identical across the CPU/GPU boundary.
 int isoDepthAlongAxis(ivec3 pos, vec3 axis) {
     return roundHalfUp(dot(vec3(pos), axis));
 }
@@ -532,14 +519,14 @@ int trixelOriginModifier(ivec2 trixelCanvasOffsetZ1, vec2 frameCanvasOffset) {
             int(canvasOffsetFloored.x) + int(canvasOffsetFloored.y)) & 1;
 }
 
-// --- Trixel-cell diagonal split: which of the two triangles does this cover? ---
-// The trixel->framebuffer gather (f_trixel_to_framebuffer) samples the canvas
-// at `origin = TexCoords * textureSize`. Each iso texel-cell holds two triangles
+// Trixel-cell diagonal split. The trixel->framebuffer gather
+// (f_trixel_to_framebuffer) samples the canvas at
+// `origin = TexCoords * textureSize`. Each iso texel-cell holds two triangles
 // split along a diagonal; this resolves which half a fragment covers by
 // conditionally decrementing `origin.y` one row (parity bit + a sub-pixel
 // `fract` test). It only ever adjusts `.y`, and is byte-identical to CPU
-// `pos2DIsoToTriangleIndex` (ir_math.cpp) — the picking/hover path reuses it so
-// GPU and CPU agree on which trixel the mouse is over.
+// `pos2DIsoToTriangleIndex` (ir_math.cpp), so GPU and CPU agree on which
+// trixel the mouse is over.
 //
 // This shift feeds the HOVER coordinate ONLY, on both backends. The
 // color/depth/tier reads sample the raw origin: both vertex twins build
@@ -547,9 +534,8 @@ int trixelOriginModifier(ivec2 trixelCanvasOffsetZ1, vec2 frameCanvasOffset) {
 // position for the same screen pixel, and the raw sample already lands on the
 // correct trixel row. Applying the shift to the color/depth reads produces a
 // 1px sawtooth on every iso-diagonal and vertical silhouette plus a garbage
-// top-canvas-row line (`origin.y - 1` underflow at row 0) — the #394 Metal
-// regression, and the same defect the GL gather carried until 2026-08. See
-// #442; docs/design/trixel-parity-shift-442-investigation.md.
+// top-canvas-row line (`origin.y - 1` underflow at row 0). Derivation:
+// docs/design/trixel-parity-shift-442-investigation.md.
 vec2 trixelFramebufferSamplePosition(vec2 origin, int originModifier) {
     vec2 originFlooredComp = floor(origin);
     vec2 fractComp = fract(origin);
@@ -576,15 +562,14 @@ ivec2 trixelFrameOffset(
     return trixelCanvasOffsetZ1 + ivec2(floor(frameCanvasOffset * float(scale)));
 }
 
-// NOTE (#1944): the per-axis camera-pan anchor is `trixelOriginOffsetZ1(size) +
+// The per-axis camera-pan anchor is `trixelOriginOffsetZ1(size) +
 // ivec2(floor(frameCanvasOffset))` — the WHOLE-iso camera offset, NOT the
-// density-scaled `trixelFrameOffset` above (per-axis canvases are
-// base-resolution since #1458, so the scaled anchor jittered under pan; see
-// system_trixel_to_framebuffer.hpp drawPerAxisScatter). It is INLINED at each
-// per-axis site rather than centralised here so this shared header does not gain
-// a symbol — adding to ir_iso_common perturbs the cardinal SDF/voxel shaders'
-// FP scheduling and drifts their byte-identical fast path (the same reason
-// perAxisCellToWorld3D lives in ir_per_axis_lighting, not here).
+// density-scaled `trixelFrameOffset`: per-axis canvases are base-resolution,
+// so the scaled anchor jitters under pan. It is INLINED at each per-axis site
+// rather than centralised here: adding a symbol to ir_iso_common perturbs the
+// cardinal SDF/voxel shaders' FP scheduling and drifts their byte-identical
+// fast path (the same reason perAxisCellToWorld3D lives in
+// ir_per_axis_lighting, not here).
 
 ivec2 trixelCanvasPixelToIsoRel(
     ivec2 pixel,
@@ -595,21 +580,20 @@ ivec2 trixelCanvasPixelToIsoRel(
     return pixel - trixelFrameOffset(trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions);
 }
 
-// Cardinal Z-yaw helpers (T-055).
+// Cardinal Z-yaw helpers.
 // FrameDataVoxelToTrixel.rasterYaw is guaranteed to be a multiple of pi/2 by
 // the camera-side split helper (engine/prefabs/irreden/render/camera.hpp); the
 // renderer uses one of four basis-vector permutations selected by an integer
 // index in [0, 3] so integer voxel positions still land on integer trixel
 // pixels post-rotation. residualYaw is absorbed by faceDeform[] in the trixel
-// emit (T-293); the screen-space composite pass was retired by T-323. These
-// helpers ignore it.
+// emit; these helpers ignore it.
 //
 // Sign convention: rotateCardinalZ is world->view = R_z(-rasterYaw) — same as
-// the continuous-yaw matrix in c_shapes_to_trixel.glsl (T-056). At
-// visualYaw=+pi/2 the camera turns +90 deg around +Z; from the view's POV the
-// world appears to spin -90 deg, so world (+X,0,0) lands at view (0,-Y,0) and
-// projects to iso (-1,+1). Voxels (this helper) and shapes (T-056) MUST share
-// this convention or they desync at non-zero yaw.
+// the continuous-yaw matrix in c_shapes_to_trixel.glsl. At visualYaw=+pi/2 the
+// camera turns +90 deg around +Z; from the view's POV the world appears to spin
+// -90 deg, so world (+X,0,0) lands at view (0,-Y,0) and projects to iso
+// (-1,+1). Voxels (this helper) and shapes MUST share this convention or they
+// desync at non-zero yaw.
 
 int rasterYawCardinalIndex(float rasterYaw) {
     // CPU snaps visualYaw to a multiple of pi/2 (Camera::computeYawSplit) so
@@ -624,8 +608,7 @@ int rasterYawCardinalIndex(float rasterYaw) {
 
 // (cos, sin) of the cardinal angle named by cardinalIndex — exact ±1/0, the
 // snapped Z-yaw the GRID rasterizer projects at. Mirrors
-// IRMath::cardinalYawCosSin; retires the open-coded cardinalCos/cardinalSin
-// tables that callers used to inline.
+// IRMath::cardinalYawCosSin.
 vec2 cardinalYawCosSin(int cardinalIndex) {
     if (cardinalIndex == 1) return vec2( 0.0,  1.0);
     if (cardinalIndex == 2) return vec2(-1.0,  0.0);
@@ -647,15 +630,14 @@ ivec3 rotateCardinalZ(ivec3 v, int cardinalIndex) {
 //   cardinal 1: (0,-1, 0)  (world x in [0,1] -> view y in [-1, 0])
 //   cardinal 2: (-1,-1, 0)
 //   cardinal 3: (-1, 0, 0)
-// RETIRED from the raster store/cull/resolve chain (#2545): adding this shift
-// rotated the voxel MASS rigidly about the world origin — i.e. about
-// `position + (0.5,0.5,0.5)` after the pivot cancel — orbiting any pinned
-// focus by the half cell at cardinals 1-3, while the SDF path and the CPU
-// picking math rotate about the exact position. The unified convention stores
+// The raster store, cull, and resolve chain do NOT apply this shift: they store
 // the plain rotated position (the cardinal-0 raster of the rotated scene; the
 // half cell projects to zero iso offset, so the mass footprint is unchanged).
-// The geometry fact above is kept for reference and any external consumer;
-// do NOT reintroduce it into the store or its inverses.
+// Adding the shift rotates the voxel MASS rigidly about
+// `position + (0.5,0.5,0.5)` after the pivot cancel, orbiting any pinned focus
+// by the half cell at cardinals 1-3, while the SDF path and the CPU picking
+// math rotate about the exact position. Do not introduce it into the store or
+// its inverses.
 ivec3 cardinalLowerCornerShift(int cardinalIndex) {
     if (cardinalIndex == 1) return ivec3(0, -1, 0);
     if (cardinalIndex == 2) return ivec3(-1, -1, 0);
@@ -666,14 +648,13 @@ ivec3 cardinalLowerCornerShift(int cardinalIndex) {
 // Image of a six-face FaceId's outward normal under rotateCardinalZ (world ->
 // view). Lets the subdivided cardinal raster compute face micro-positions
 // NATIVELY IN VIEW SPACE — faceMicroPositionFixed6(viewFace, viewCell, ...)
-// on the shifted rotated cell — instead of rotating world-frame face planes
-// after the fact. The distinction matters because rotateCardinalZ +
-// cardinalLowerCornerShift is a CELL-INDEX map (half-open interval c -> -c-1
-// under axis negation), while a face PLANE is a boundary (c -> -c): applying
-// the cell shift to a world-computed POS-face plane lands it one sub-unit past
-// the neighbor faces' coverage — the #2424 1-sub-unit background seam along
-// every shared edge of a rotated-in POS face at cardinals 1/2/3. Z faces are
-// fixed points (R_z never moves the z axis). Cardinal 3 is the inverse
+// on the rotated cell — instead of rotating world-frame face planes after the
+// fact. The distinction matters because a cell index is a half-open interval
+// while a face PLANE is a boundary, and the two map differently under axis
+// negation: a world-computed POS-face plane carried through the cell map lands
+// past the neighbor faces' coverage, opening a background seam along every
+// shared edge of a rotated-in POS face at cardinals 1/2/3. Z faces
+// are fixed points (R_z never moves the z axis). Cardinal 3 is the inverse
 // permutation of cardinal 1; cardinal 2 flips both in-plane polarities.
 int rotateFaceIdCardinalZ(int faceId, int cardinalIndex) {
     if (cardinalIndex == 0 || faceId >= kFaceZNeg) return faceId;
@@ -706,10 +687,6 @@ ivec3 rotateCardinalZInvI(ivec3 v, int cardinalIndex) {
     return v;
 }
 
-// Convenience wrapper for T-057 (picking inverse). T-058 (screen-space residual
-// pass) was retired by T-323 — residual yaw lives in faceDeform[] (T-293).
-// Not consumed by the current T-055 shaders; scaffolded here so consuming tasks
-// can reference it from ir_iso_common directly.
 vec3 isoPixelToWorld3D(int isoX, int isoY, float depth, int cardinalIndex) {
     return rotateCardinalZInv(isoPixelToPos3D(isoX, isoY, depth), cardinalIndex);
 }
@@ -730,9 +707,8 @@ vec3 trixelCanvasPixelToWorld3D(
         pos3D /= float(scale);
     }
     if (cardinalIndex != 0) {
-        // The rasterizer stores the plain rotated position (#2545 — the
-        // lower-corner shift was the half-cell anchor bug's cardinal form),
-        // so the inverse is the plain cardinal rotation back to world.
+        // The rasterizer stores the plain rotated position (no lower-corner
+        // shift), so the inverse is the plain cardinal rotation back to world.
         pos3D = rotateCardinalZInv(pos3D, cardinalIndex);
     }
     return pos3D;
@@ -761,13 +737,13 @@ vec3 rotateYawZInv(vec3 v, float yaw) {
     return vec3(c * v.x - s * v.y, s * v.x + c * v.y, v.z);
 }
 
-// Smooth-camera-yaw inverse (#1719) of the #1345 smooth-yaw SDF store: those
-// pixels are placed at roundHalfUp(pos3DtoPos2DIsoYawed(world, visualYaw))
-// with the VIEW-frame iso depth (#1370), so recover the view-frame point with
-// the cardinal-frame solver and rotate back by the full +visualYaw. No
+// Smooth-camera-yaw inverse of the smooth-yaw SDF store: those pixels are
+// placed at roundHalfUp(pos3DtoPos2DIsoYawed(world, visualYaw)) with the
+// VIEW-frame iso depth, so recover the view-frame point with the
+// cardinal-frame solver and rotate back by the full +visualYaw. No
 // lower-corner shift — the smooth store never applies one. Identical to
 // trixelCanvasPixelToWorld3D at visualYaw == 0 (cos=1/sin=0, cardinal 0 takes
-// the same shift-free path), keeping the cardinal fast path byte-identical.
+// the same shift-free path).
 vec3 trixelCanvasPixelToWorld3DSmoothYaw(
     ivec2 pixel,
     int rawDepth,
@@ -786,8 +762,8 @@ vec3 trixelCanvasPixelToWorld3DSmoothYaw(
     return rotateYawZInv(viewPos, visualYaw);
 }
 
-// Continuous-yaw + per-face deformation math (T-292; consumed by T-293).
-// Mirrors IRMath::pos3DtoPos2DIsoYawed / faceDeformationMatrix /
+// Continuous-yaw + per-face deformation math. Mirrors
+// IRMath::pos3DtoPos2DIsoYawed / faceDeformationMatrix /
 // deformedTrixelIsoPixel / sqtToMat4 / matrixApplyToVoxelGrid in
 // engine/math/include/irreden/ir_math.hpp; CPU and GPU MUST agree at all 4
 // cardinal yaws and across the [-pi/4, pi/4] residual range.
@@ -804,48 +780,30 @@ vec2 pos3DtoPos2DIsoYawed(vec3 worldPos, float visualYaw) {
     return vec2(-vx + vy, -vx - vy + 2.0 * worldPos.z);
 }
 
-// Rotation-anchor unification for VOXEL-RASTER cell positions (#2545). The
-// raster parameterizes the voxel authored at position p by its cell's
-// LOWER-CORNER lattice (mass spans [p, p+1]); the engine's rotation
-// convention (SDF path, CPU pivot math, picking inverses) rotates about the
-// authored position itself — the center of that mass. The raster therefore
-// renders every cell position displaced by -h (h = the half cell below) so
-// the rendered mass rotates about the authored lattice instead of orbiting
-// it. iso(0.5,0.5,0.5) == (0,0), so the correction is an exact no-op at yaw
-// 0 — every cardinal-0 output stays byte-identical. Two forms, split by
+// Rotation anchor for VOXEL-RASTER cell positions. The raster parameterizes
+// the voxel authored at position p by its cell's LOWER-CORNER lattice (mass
+// spans [p, p+1]); the engine's rotation convention (SDF path, CPU pivot math,
+// picking inverses) rotates about the authored position itself — the center
+// of that mass. The raster therefore renders every cell position displaced by
+// -h (h = kVoxelRasterCellAnchor, the half cell) so the rendered mass rotates
+// about the authored lattice instead of orbiting it. iso(0.5,0.5,0.5) ==
+// (0,0), so the correction is an exact no-op at yaw 0. Two forms, split by
 // consumer: pos3DtoPos2DIsoYawedCellAnchor for PLACEMENT,
 // yawedIsoDistanceCellAnchor for DEPTH. Exact world positions (SDF centers,
-// entity translations) keep the un-anchored pos3DtoPos2DIsoYawed /
+// entity translations) use the un-anchored pos3DtoPos2DIsoYawed /
 // yawedIsoDistance.
 //
 // The correction is CONTINUOUS in yaw — do not quantize it. A whole-cell or
 // whole-framebuffer-pixel quantization steps the whole layer at rounding
-// crossings during a yaw sweep (1.9-15px single-frame jumps, the exact
-// popping this convention exists to remove), while the continuous form's
-// only cost is sub-pixel coverage-phase noise on the now-pinned centroid,
-// equal in amplitude to the pre-existing coverage noise (measured; see
-// #2545).
+// crossings during a yaw sweep (1.9-15px single-frame jumps), while the
+// continuous form's only cost is sub-pixel coverage-phase noise on the pinned
+// centroid, equal in amplitude to the ordinary coverage noise.
 const vec3 kVoxelRasterCellAnchor = vec3(0.5);
 
 vec2 pos3DtoPos2DIsoYawedCellAnchor(vec3 rasterPos, float visualYaw) {
     return pos3DtoPos2DIsoYawed(rasterPos - kVoxelRasterCellAnchor, visualYaw);
 }
 
-// Exact (unquantized) composite depth key for a forward-scattered face: the
-// true yawed camera-space iso depth of the recovered face origin, kept in the
-// cardinal encodeDepthWithFace scale (xkDepthEncodeShift + slot) so it stays comparable with
-// the quantized integer keys other composite writers (the SDF smooth-yaw path)
-// emit. The quantization this replaces (roundHalfUp of the yawed sum) made
-// adjacent micro-cells along a foreshortened in-plane axis TIE on integer
-// depth whenever |cos-sin| or |sin+cos| < 1, and GL_LESS resolves an
-// equal-depth overlap by draw order — which runs AGAINST the depth gradient
-// on the sign-flip side of a bracket (e.g. yaw > 45 deg, cos-sin < 0), so the
-// farther quad won its dilation overlap band: the #1457 wrong-voxel-color
-// bands at voxel boundaries. A continuous key makes geometric ties
-// measure-zero, so the depth test orders every overlap correctly at every
-// residual. Shared by every forward-scatter composite writer — do not inline
-// per-shader copies.
-//
 // Continuous-yaw iso depth — the camera-forward distance of a world point under
 // a continuous Z-yaw camera: pos3DtoDistance(R_z(-visualYaw) * worldPos) =
 // x(cos-sin) + y(sin+cos) + z. Smaller = nearer (GL_LESS). THE shared composite
@@ -854,25 +812,36 @@ vec2 pos3DtoPos2DIsoYawedCellAnchor(vec3 rasterPos, float visualYaw) {
 // composite (CPU twin IRMath::pos3DtoDistanceYawed) all derive their final
 // occlusion depth from this one function, so SDF + voxels + detached stay
 // co-sorted at EVERY yaw — not just cardinals. At a cardinal pose it collapses
-// to the un-yawed x+y+z (pos3DtoDistance), so the cardinal fast path stays
-// byte-identical. CPU mirror: IRMath::pos3DtoDistanceYawed; Metal twin in
-// ir_iso_common.metal.
+// to the un-yawed x+y+z (pos3DtoDistance). CPU mirror:
+// IRMath::pos3DtoDistanceYawed; Metal twin in ir_iso_common.metal.
 float yawedIsoDistance(vec3 worldPos, float visualYaw) {
     float c = cos(visualYaw);
     float s = sin(visualYaw);
     return worldPos.x * (c - s) + worldPos.y * (s + c) + worldPos.z;
 }
 
-// Cell-anchor twin of yawedIsoDistance (#2545): composite depth of a
-// voxel-raster cell/face position, measured at its authored-lattice world
-// point (rasterPos - half cell) so voxel and SDF surfaces at the same world
-// location carry the SAME yawed depth and co-sort exactly at every residual.
-// Only the per-axis composite path calls this (cardinal gather depths come
-// from the integer store), so the cardinal fast path is untouched.
+// Cell-anchor twin of yawedIsoDistance: composite depth of a voxel-raster
+// cell/face position, measured at its authored-lattice world point
+// (rasterPos - half cell) so voxel and SDF surfaces at the same world location
+// carry the SAME yawed depth and co-sort exactly at every residual. Cardinal
+// gather depths come from the integer store, not from this.
 float yawedIsoDistanceCellAnchor(vec3 rasterPos, float visualYaw) {
     return yawedIsoDistance(rasterPos - kVoxelRasterCellAnchor, visualYaw);
 }
 
+// Exact (unquantized) composite depth key for a forward-scattered face: the
+// true yawed camera-space iso depth of the recovered face origin, in the
+// cardinal encodeDepthWithFace scale (× kDepthEncodeShift + slot) so it stays
+// comparable with the quantized integer keys other composite writers (the SDF
+// smooth-yaw path) emit. Do not round it: a rounded key (roundHalfUp of the
+// yawed sum) ties adjacent micro-cells along a foreshortened in-plane axis on
+// integer depth whenever |cos-sin| or |sin+cos| < 1, and GL_LESS resolves an
+// equal-depth overlap by draw order — which runs AGAINST the depth gradient on
+// the sign-flip side of a bracket (e.g. yaw > 45 deg, cos-sin < 0), so the
+// farther quad wins its dilation overlap band (wrong-voxel-color bands at
+// voxel boundaries). A continuous key makes geometric ties measure-zero.
+// Shared by every forward-scatter composite writer — do not inline per-shader
+// copies.
 float scatterCompositeDepthKey(vec3 origin, float visualYaw, int slot) {
     return yawedIsoDistance(origin, visualYaw) * float(kDepthEncodeShift) + float(slot);
 }
@@ -955,11 +924,11 @@ void faceInPlaneUnitAxes(int axis, out vec3 eu, out vec3 ev) {
 
 // In-plane iso-pixel unit steps (su, sv) for a face's two in-plane world axes —
 // the iso directions along which a re-voxelized cell's in-plane neighbour cells
-// sit on screen. The detached re-voxelize raster (#1557) dilates each surface
-// face's footprint by ±su / ±sv so the sub-cell gaps round-to-cell leaves
-// between adjacent rotated cells fill with the nearest (occlusion-winning,
-// correct-colour) surface face — conservative coverage à la the per-axis scatter
-// (#1494), adapted to the cardinal-0 compute emit. The two in-plane axes project
+// sit on screen. The detached re-voxelize raster dilates each surface face's
+// footprint by ±su / ±sv so the sub-cell gaps round-to-cell leaves between
+// adjacent rotated cells fill with the nearest (occlusion-winning,
+// correct-colour) surface face — conservative coverage à la the per-axis
+// scatter, adapted to the cardinal-0 compute emit. The two in-plane axes project
 // to (±1, ∓1) and (0, ±2) iso pixels; normalising to ~1px keeps the dilation one
 // pixel per side, so the silhouette grows by at most a pixel ALONG the surface
 // and never across a concave notch (that direction is the face normal, untouched).
@@ -971,16 +940,15 @@ void faceInPlaneIsoSteps(int faceId, out ivec2 su, out ivec2 sv) {
 }
 
 // Visit-bound margin (framebuffer pixels) the per-axis forward-scatter grows each
-// quad by along each screen edge normal. Originally the conservative-coverage
-// margin (#1494); as of the #1937 analytic-coverage rework it is ONLY a
-// rasterization visit-bound — f_peraxis_scatter decides coverage analytically
-// from the true [0,1]^2 footprint, so this just has to be wide enough (~1px)
-// that every fragment the true footprint could touch gets visited.
+// quad by along each screen edge normal. It is ONLY a rasterization
+// visit-bound — f_peraxis_scatter decides coverage analytically from the true
+// [0,1]^2 footprint, so this just has to be wide enough (~1px) that every
+// fragment the true footprint could touch gets visited.
 const float kScatterDilateMarginPx = 0.85;
 
-// Depth penalty (in the x4+slot composite-key scale) a scatter fragment in the
-// conservative-dilation MARGIN adds, so a margin only fills pixels no exact
-// footprint claims (#1457). Two cells of the same face plane carry identical
+// Depth penalty (in the × kDepthEncodeShift + slot composite-key scale) a
+// scatter fragment in the conservative-dilation MARGIN adds, so a margin only
+// fills pixels no exact footprint claims. Two cells of the same face plane carry identical
 // per-fragment planar depth, so without the bias their margin-vs-interior
 // overlap is an exact tie decided by draw order — wrong-voxel-color bands on
 // the sign-flip side of a bracket. 0.25 key units = 1/32 world unit: beats
@@ -988,21 +956,20 @@ const float kScatterDilateMarginPx = 0.85;
 // (>= 8*|cos-sin| key units), so genuine occlusion is never reordered.
 const float kScatterMarginDepthBiasKey = 0.25;
 
-// Deterministic sub-band tiebreak (#2255 determinism, #2411 priority order).
-// Wherever two scattered quads' final depths land within one float ULP of
-// each other, GL_LESS keeps the first-drawn fragment — and draw order is
-// instance order, which is the #1961 cell-compaction's atomic-append order:
-// run-variant. Two realized tie classes:
-//   * SAME-AXIS margin-yield crossover (#2255): a near face's margin ramp
-//     crosses its parallel neighbor's exact plane (same axis, one in-plane
-//     world step) and the crossover pixel ties bit-exactly.
-//   * CROSS-AXIS band ties (#2411): two non-parallel face-plane depth fields
-//     always cross; in the band-wide strip around the crossing the winner
-//     used to be the lower CELL code — semantically arbitrary across axis
-//     canvases, parity-structured, hence per-cell Lambert alternation on
-//     contiguous moving content (and the shared-edge checkerboard fringe).
-// Fix: quantize the final fragment depth to a coarse band and inject a
-// PRIORITY-MAJOR, CELL-MINOR 4-bit code into the sub-band bits:
+// Deterministic sub-band tiebreak. Wherever two scattered quads' final depths
+// land within one float ULP of each other, GL_LESS keeps the first-drawn
+// fragment — and draw order is instance order, which is the cell compaction's
+// atomic-append order: run-variant. Two tie classes occur:
+//   * SAME-AXIS margin-yield crossover: a near face's margin ramp crosses its
+//     parallel neighbor's exact plane (same axis, one in-plane world step) and
+//     the crossover pixel ties bit-exactly.
+//   * CROSS-AXIS band ties: two non-parallel face-plane depth fields always
+//     cross; resolving the band-wide strip around the crossing by CELL code is
+//     semantically arbitrary across axis canvases and parity-structured, which
+//     shows as per-cell Lambert alternation on contiguous moving content (and a
+//     shared-edge checkerboard fringe).
+// So the final fragment depth is quantized to a coarse band and a
+// PRIORITY-MAJOR, CELL-MINOR 4-bit code is injected into the sub-band bits:
 //   depth = floor(depth / band) * band + code * kScatterCellTieStep
 //   code  = (rank2 << 2) | cell2
 //   rank2 = flip ? 3 : slot        (2 bits — unflipped slots 0..2 in cardinal
@@ -1019,21 +986,19 @@ const float kScatterMarginDepthBiasKey = 0.25;
 //                                   which flips y&2; (+/-2,0) cannot occur)
 // What the code separates, by tie class:
 //   * flipped vs unflipped — rank 3 vs 0..2 always separates.
-//   * unflipped cross-axis (the #2411 class) — distinct slots by construction
-//     (slot IS the axis canvas), so the whole crossing strip resolves by slot
-//     rank, consistently, no parity alternation; mirrors the cardinal encode's
-//     (flip<<2)|slot low bits.
-//   * same-slot ties, incl. the #2255 same-axis margin-yield crossover — fall
-//     to cell2, whose in-plane-step proof above covers exactly this
-//     same-plane / parallel-plane case. Determinism contract preserved.
+//   * unflipped cross-axis — distinct slots by construction (slot IS the axis
+//     canvas), so the whole crossing strip resolves by slot rank, consistently,
+//     no parity alternation; mirrors the cardinal encode's (flip<<2)|slot low
+//     bits.
+//   * same-slot ties, incl. the same-axis margin-yield crossover — fall to
+//     cell2, whose in-plane-step proof above covers exactly this same-plane /
+//     parallel-plane case, so the winner is deterministic.
 //   * flipped vs flipped on DIFFERENT slots — NOT proven distinct. Both
 //     collapse to rank 3 and fall to cell2, but their ij index different axis
 //     canvases, so the in-plane-step enumeration does not cover the pair: the
 //     codes differ only if the ij happen to, and on collision the winner is
-//     draw order (the run-variant #2255 class). Master's 3-bit cell code had
-//     the same cross-axis hole; this narrows it to one rare class (co-rotated
-//     flipped risers) while giving the common unflipped cross-axis case a
-//     provable separation. Revisit if that class stops being rare (#2411).
+//     run-variant draw order. This is a rare class (co-rotated flipped
+//     risers); revisit the encoding if it stops being rare.
 // kScatterCellTieStep = 2^-23: >= 1 float32-depth ULP for depth < 1 AND 2
 // quanta of a 24-bit fixed depth buffer, so the code survives quantization on
 // both backends. Band = 16 steps = 2^-19 ~= 0.25 key units at the default
@@ -1052,7 +1017,7 @@ const float kScatterMarginDepthBiasKey = 0.25;
 //       zero slack. WIDENING the band RELAXES this half.
 // Together they bracket the band to [16, 16.0002], so 16 is the UNIQUE
 // admissible width — which is what forces rank2's collapse above. A pass that
-// adds tie levels (a 3-bit rank, #2428's fractional-edge work) pushes maxCode
+// adds tie levels (a 3-bit rank, fractional-edge tie levels) pushes maxCode
 // to 23, needing a 32-step band, which in turn needs depthRange <= subScale *
 // 2^16 = 65536 while it is 131070: the widening that fixes the code overflow
 // is exactly the one that breaks (a). Such a pass must move the depth range or
@@ -1068,88 +1033,85 @@ const float kScatterCellTieStep = 1.0 / 8388608.0;
 // (v_peraxis_scatter.glsl / metal/peraxis_scatter.metal: 2.0 * band).
 const float kScatterCellTieBand = 16.0 * kScatterCellTieStep;
 
-// Flat interior-edge margin yield (#2428) — mirror of
-// kScatterMarginInteriorBiasKey in metal/ir_iso_common.metal (Metal-lead); see
-// that file for the full derivation. In composite-key units: a
-// conservative-dilation margin
-// that penetrates an INTERIOR edge (over an adjacent visible face) can hold the
-// constant (flip << 2) | slot key-tiebreak advantage — up to 7 key units,
-// penetration-independent — over that face's exact fragments at arbitrarily small
-// penetration, where the #1883 penetration-scaled yield never repays it. That is
-// the fractional-offset shared-edge fringe.
+// Flat interior-edge margin yield, in composite-key units. Mirrors
+// kScatterMarginInteriorBiasKey in metal/ir_iso_common.metal. A
+// conservative-dilation margin that penetrates an INTERIOR edge (over an
+// adjacent visible face) can hold the constant (flip << 2) | slot key-tiebreak
+// advantage — up to 7 key units, penetration-independent — over that face's
+// exact fragments at arbitrarily small penetration, where the
+// penetration-scaled yield (kScatterMarginYieldGradScale) never repays it; that
+// shows as a shared-edge fringe on fractional-offset content.
 //
 // 8 is FORCED and sits ON its ceiling: strictly above the 7-key low-bits span it
 // must cover, and at-or-below one subdivided depth step (which is kDepthEncodeShift
 // key units at EVERY subdivision, since encScale / subScale == kDepthEncodeShift).
+// Sitting on the ceiling is sound: the only thing within one cell behind an
+// interior-edge margin is the adjacent visible face it is supposed to lose to.
 // Both bounds are asserted CPU-side in ir_render_types.hpp
 // (kScatterMarginInteriorBiasKey) — do not retune here.
 const float kScatterMarginInteriorBiasKey = 8.0;
 
-// Margin-yield gradient scale (#1883). The flat bias above only breaks SUB-PIXEL
-// same-plane ties. Once the per-axis margin grows large on a foreshortened face
-// (iter-1's 0.5*|n| reaches a cell-deep fraction), the margin EXTRAPOLATES the
-// face plane far enough that its depth beats a NEIGHBORING face's exact footprint
-// along a shared ridge — the #1883 doubled top<->side sliver: the over-grown
-// top-face margin won a ~cell-wide band on the side face below the ridge. The fix
-// is to make a margin yield in proportion to how far it reached: scale the yield
-// by the fragment's own extrapolation excursion (penetration past the exact
-// footprint x the per-axis screen-depth gradient). A sub-pixel gap-fill barely
-// yields (still wins background and cross-cube silhouette overlaps); a cell-deep
-// margin yields hard (loses the ridge to the neighbor's exact footprint). 3
-// covers the worst-case symmetric two-plane depth divergence near a cardinal with
-// headroom. Folded into the per-axis yield-grad varying by the scatter vertex
-// stage, so the fragment stage needs no copy of this constant.
+// Margin-yield gradient scale. The flat bias above only breaks SUB-PIXEL
+// same-plane ties. Where the margin reaches a cell-deep fraction on a
+// foreshortened face, it EXTRAPOLATES the face plane far enough that its depth
+// beats a NEIGHBORING face's exact footprint along a shared ridge (a doubled
+// top/side sliver: the top-face margin wins a ~cell-wide band on the side face
+// below the ridge). So a margin yields in proportion to how far it reached: the
+// yield scales by the fragment's own extrapolation excursion (penetration past
+// the exact footprint x the per-axis screen-depth gradient). A sub-pixel
+// gap-fill barely yields (still wins background and cross-cube silhouette
+// overlaps); a cell-deep margin yields hard (loses the ridge to the neighbor's
+// exact footprint). 3 covers the worst-case symmetric two-plane depth
+// divergence near a cardinal with headroom. Folded into the per-axis yield-grad
+// varying by the scatter vertex stage, so the fragment stage needs no copy of
+// this constant.
 //
-// SECOND requirement (#2428) — this constant is now load-bearing for a purpose
-// the #1883 rationale above does not mention, and the two pull in OPPOSITE
-// directions. The interior-edge yield slope is FLOORED at
-// kScatterMarginYieldGradScale * encScale, which must cover the worst-case
-// 2*sqrt(2)*encScale cross-face plane divergence: 3 >= 2.8284, only 6% of slack.
-// The #1883 goal above ("sub-pixel gap-fills still win") argues for a SMALLER
-// scale, so the plausible retune direction is precisely the one that drops the
-// floor under the divergence bound and revives the #2428 shared-edge fringe —
-// e.g. 2.0 would silently do it. Asserted CPU-side in ir_render_types.hpp
-// (kScatterMarginYieldGradScale, squared for exact integer comparison). If the
-// two purposes ever need different values, give the #2428 floor its own constant
-// rather than splitting the difference.
+// SECOND requirement, pulling in the OPPOSITE direction: the interior-edge
+// yield slope is FLOORED at kScatterMarginYieldGradScale * encScale, which must
+// cover the worst-case 2*sqrt(2)*encScale cross-face plane divergence:
+// 3 >= 2.8284, only 6% of slack. The first purpose ("sub-pixel gap-fills still
+// win") argues for a SMALLER scale, so the plausible retune direction is
+// precisely the one that drops the floor under the divergence bound and opens
+// the interior-edge shared-edge fringe — e.g. 2.0 would silently do it.
+// Asserted CPU-side in ir_render_types.hpp (kScatterMarginYieldGradScale,
+// squared for exact integer comparison). If the two purposes ever need
+// different values, give the interior-edge floor its own constant rather than
+// splitting the difference.
 const float kScatterMarginYieldGradScale = 3.0;
 
-// Miter limit for the conservative dilation below (#1538): caps how far a sharp
+// Miter limit for scatterConservativeDilation: caps how far a sharp
 // (acute) sliver corner is allowed to extend, in multiples of marginPx. Bounds
 // the over-fill so a foreshortened cell's tip can't shoot off into a blob while
 // still letting every corner move outward enough to close the inter-cell cracks.
 const float kScatterMiterLimit = 2.0;
 
-// Screen-space visit-bound dilation for the per-axis forward-scatter (#1494,
-// #1538, #1937). Each non-empty cell scatters one deformed face rhombus; at
-// off-snap residual poses the rhombus foreshortens toward a sub-pixel-thin sliver
-// that slips between fragment centers and drops out under pixel-center
-// rasterization. A linear iso-of-rotation map of the gap-free unit-cell tiling is
-// gap-free in CONTINUOUS space, but that guarantee does not survive
-// finite-resolution rasterization of a sub-pixel polygon, so each quad is grown
-// outward.
+// Screen-space visit-bound dilation for the per-axis forward-scatter. Each
+// non-empty cell scatters one deformed face rhombus; at off-snap residual poses
+// the rhombus foreshortens toward a sub-pixel-thin sliver that slips between
+// fragment centers and drops out under pixel-center rasterization. A linear
+// iso-of-rotation map of the gap-free unit-cell tiling is gap-free in
+// CONTINUOUS space, but that guarantee does not survive finite-resolution
+// rasterization of a sub-pixel polygon, so each quad is grown outward.
 //
 // `su`/`sv` are the face's two in-plane unit axes projected to framebuffer
 // pixels; the margin is a fixed pixel amount, so it is negligible at large
 // on-screen size (silhouette unchanged) and is screen-space (independent of
-// subdivision density / zoom) — unlike the rejected model-space ×2 quad span,
-// which scales with size and over-fills. `cornerSign` is sign(aPos)
+// subdivision density / zoom) — a model-space ×2 quad span would scale with
+// size and over-fill. `cornerSign` is sign(aPos)
 // (cornerSign.x -> e_u edge, .y -> e_v edge). Returns the clip-space (NDC)
 // offset to add to the corner.
 //
-// #1937 (Metal-lead): the margin is now a FIXED
-// `minMarginPx` per edge — the old continuous per-axis growth (0.5*|n|) that
-// DECIDED coverage is retired, so the dilation only guarantees the rasterizer
-// VISITS the fragments the true footprint could touch. scatterAnalyticEdgeCoverage
-// below decides coverage from vQuadParam, which removes the #1883
-// corner-spike-vs-dashing trade-off at the source. The #1538 miter geometry is
-// kept as the visit-bound shape.
+// The margin is a FIXED `minMarginPx` per edge: the dilation only guarantees
+// the rasterizer VISITS the fragments the true footprint could touch, and
+// scatterAnalyticEdgeCoverage decides coverage from vQuadParam. The miter
+// geometry is the visit-bound's shape — an un-grown acute tip is a fragment the
+// rasterizer never visits, which analytic coverage cannot fill.
 //
-// MITER, not additive sum (#1538). The naive `marginPx*(e1+e2)` of the two edge
+// MITER, not additive sum. The naive `marginPx*(e1+e2)` of the two edge
 // normals CANCELS at a sliver's acute corner — there e1,e2 turn antiparallel, so
 // the sum collapses to ~0 and the sharp tip is left un-grown. Those un-grown
 // tips line up along the foreshortened lattice and leak: lattice-aligned black
-// cracks + interior speckle on detached cubes (#1538). The miter
+// cracks + interior speckle on detached cubes. The miter
 // marginPx*(e1+e2)/(1+dot(e1,e2)) is the displacement that moves BOTH edges out
 // by marginPx (|δ| = marginPx/cos(halfAngle)); it equals the additive sum at a
 // square corner (no change there) but keeps the acute tip moving outward instead
@@ -1168,12 +1130,9 @@ vec2 scatterConservativeDilation(
     bool hasU = dot(nu, nu) > 1e-10;
     bool hasV = dot(nv, nv) > 1e-10;
     if (!hasU && !hasV) return vec2(0.0);
-    // Fixed visit-bound (#1937, Metal-lead): both edges grow by the same fixed
-    // minMarginPx. The continuous per-axis growth (0.5*length(nu)) that
-    // used to decide coverage — and forced the #1883 corner-spike-vs-
-    // silhouette-dashing mutual exclusion — is gone; f_peraxis_scatter now decides
-    // coverage analytically. marginU == marginV reduces the miter solve below to
-    // the #1538 equal-margin miter.
+    // Fixed visit-bound: both edges grow by the same minMarginPx, because
+    // f_peraxis_scatter decides coverage analytically. marginU == marginV
+    // reduces the miter solve to the equal-margin miter.
     const float marginU = minMarginPx;
     const float marginV = minMarginPx;
     vec2 e1 = hasU ? cornerSign.y * normalize(nu) : vec2(0.0); // e_u edge normal
@@ -1181,8 +1140,7 @@ vec2 scatterConservativeDilation(
     if (!hasU) return e2 * marginV * ndcPerPx;                 // only one edge -> plain push
     if (!hasV) return e1 * marginU * ndcPerPx;
     // Miter that moves edge-u out by marginU and edge-v by marginV: solve
-    // [e1;e2]·δ = (marginU,marginV). Reduces to the #1538 equal-margin miter when
-    // marginU==marginV.
+    // [e1;e2]·δ = (marginU,marginV).
     float det = e1.x * e2.y - e1.y * e2.x;
     // Exactly-antiparallel (180deg, degenerate flat corner): no stable solve —
     // push along the shared thin direction (perpendicular to the edges), clamped.
@@ -1193,17 +1151,16 @@ vec2 scatterConservativeDilation(
         e2.y * marginU - e1.y * marginV,
         e1.x * marginV - e2.x * marginU
     ) / det;
-    // Clamp the miter so an acute corner can't blow a sliver tip into a blob
-    // (the #1538 limit), relative to the larger contributing margin.
+    // Clamp the miter so an acute corner can't blow a sliver tip into a blob,
+    // relative to the larger contributing margin.
     float maxLen = kScatterMiterLimit * max(marginU, marginV);
     float dLen = length(delta);
     if (dLen > maxLen) delta *= maxLen / dLen;
     return delta * ndcPerPx;
 }
 
-// Analytic edge-aware coverage for the per-axis forward-scatter (#1937, the epic
-// #1933 root fix; Metal-lead). `q` is the fragment's
-// position in the face's true [0,1]^2 footprint (the scatter's vQuadParam, with
+// Analytic edge-aware coverage for the per-axis forward-scatter. `q` is the
+// fragment's position in the face's true [0,1]^2 footprint (the scatter's vQuadParam, with
 // the visit-bound dilation landing just outside the unit box); `fw = fwidth(q)`
 // converts a footprint-parameter distance to framebuffer pixels. `interior` flags
 // the 4 edges — .x = u-low (q.x==0), .y = u-high (q.x==1), .z = v-low (q.y==0),
@@ -1213,10 +1170,10 @@ vec2 scatterConservativeDilation(
 // Interior edges fill the whole visit-bound region solid (coverage 1), so
 // foreshortened same-plane cells bridge the sub-pixel scatter gaps between their
 // true footprints — the depth-yield bias in f_peraxis_scatter arbitrates the
-// resulting 1px overlap, exactly as the old conservative dilation did, so an exact
-// footprint owner still wins and only genuine gaps fill. Boundary edges get exact
-// sub-pixel box coverage clamp(0.5 + distPx, 0, 1): at a convex corner two
-// boundary edges intersect, so min() yields a crisp corner with no #1883 spike,
+// resulting 1px overlap, so an exact footprint owner still wins and only
+// genuine gaps fill. Boundary edges get exact sub-pixel box coverage
+// clamp(0.5 + distPx, 0, 1): at a convex corner two boundary edges intersect,
+// so min() yields a crisp corner with no spike,
 // and a foreshortened silhouette gets per-pixel partial coverage instead of
 // dropping out (no dashing). Returns min coverage across the 4 edges; the caller
 // hard-thresholds it at 0.5 (no alpha blend — the R32I/depth co-sort write is a
@@ -1265,10 +1222,9 @@ mat4 sqtToMat4(vec3 scaleVec, vec4 rotationQuat, vec3 translation) {
 }
 
 // Applies an SRT (or any affine) matrix to an integer voxel grid cell,
-// returning the destination integer cell with half-up rounding. Used by the
-// GRID-mode rotation path (T-294) to re-rasterize authored voxels into
-// world-grid cells under a parent or local transform. CPU mirror:
-// IRMath::matrixApplyToVoxelGrid.
+// returning the destination integer cell with half-up rounding (re-rasterizes
+// authored voxels into world-grid cells under a parent or local transform).
+// CPU mirror: IRMath::matrixApplyToVoxelGrid.
 ivec3 matrixApplyToVoxelGrid(mat4 transformMat, ivec3 cell) {
     vec4 worldPos = transformMat * vec4(vec3(cell), 1.0);
     return roundHalfUp(vec3(worldPos));
@@ -1277,7 +1233,7 @@ ivec3 matrixApplyToVoxelGrid(mat4 transformMat, ivec3 cell) {
 // Smooth analytic vision-circle reveal for one fog disc, shared by
 // FOG_TO_TRIXEL (per-pixel floor reveal) and VOXEL_TO_TRIXEL_STAGE_1 (per-voxel
 // object clip) so the floor edge and the voxel-object edge are the SAME
-// analytic curve (#2102) — one formula, no CPU/GPU or GL/Metal drift.
+// analytic curve.
 // `circle` = (centerX, centerY, radius, edgeSoftness) in world units; `aa` is
 // an extra antialias half-width (FOG_TO_TRIXEL passes its per-pixel
 // worldPerPixel for a zoom-stable rim; the voxel clip passes 0 for a binary

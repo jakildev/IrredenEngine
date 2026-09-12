@@ -1,23 +1,21 @@
 #version 450 core
 
-// World-placed detached re-voxelize sun-shadow resolve, scatter pass
-// (#1576 P4b-3, Q2 mechanism a′).
+// World-placed detached re-voxelize sun-shadow resolve, scatter pass.
 //
 // Re-projects ONE opt-in world-placed detached re-voxelize canvas (model-frame
 // R32I distance texture) into a SCREEN-SPACE front-most iso-depth scratch
 // buffer laid out exactly like the main canvas distance texture. Dispatched
 // once per opt-in caster; atomicMin across the dispatches resolves the
 // front-most surface per screen pixel. BAKE_SUN_SHADOW_MAP then bakes the
-// blitted resolve texture through its EXISTING cardinal recovery
-// (trixelCanvasPixelToWorld3D) — the faithful mirror of the per-axis
-// resolve-bake precedent (c_resolve_per_axis_screen_depth.glsl / #1435).
-// Invariant (docs/design/detached-revoxelize-world-light.md, Q2 REVISED):
-// the sun-shadow bake only ever reads main-canvas-layout depth sources; a
-// foreign model-frame canvas texture is never a bake input (the direct read
-// returns empty through Metal's image-atomic scratch indirection).
+// blitted resolve texture through its cardinal recovery
+// (trixelCanvasPixelToWorld3D).
+// Invariant (docs/design/detached-revoxelize-world-light.md): the sun-shadow
+// bake only ever reads main-canvas-layout depth sources; a foreign model-frame
+// canvas texture is never a bake input (the direct read returns empty through
+// Metal's image-atomic scratch indirection).
 //
 // The scratch target is an SSBO (not an image) because Metal has no portable
-// image-atomic syntax — same pattern as the per-axis resolve scatter.
+// image-atomic syntax.
 
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
@@ -33,7 +31,7 @@ const int kEmptyDistanceEncoded = 65535;
 // its size + the shared frameCanvasOffset/voxelRenderOptions alone.
 layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform vec2 frameCanvasOffset;
-    uniform ivec2 trixelCanvasOffsetZ1;   // MAIN canvas origin offset (unused; size-derived below)
+    uniform ivec2 trixelCanvasOffsetZ1;   // MAIN canvas origin (unused; bases size-derived)
     uniform ivec2 voxelRenderOptions;
     uniform ivec2 voxelDispatchGrid;
     uniform int voxelCount;
@@ -80,8 +78,8 @@ void main() {
     if (rawDist >= kEmptyDistanceEncoded) {
         return; // empty detached cell
     }
-    // Single-canvas encoding (flip carrier #2207): the flip is re-emitted into
-    // the re-projected encode below so polarity survives the resolve bridge.
+    // Single-canvas encoding: the flip is re-emitted into the re-projected
+    // encode so polarity survives the resolve bridge.
     const int rawDepth = decodeDepthSingle(rawDist);
     const int slot = decodeSlot(rawDist);
     const int flip = decodeFlipSingle(rawDist);
@@ -98,7 +96,7 @@ void main() {
     const vec3 modelPos = isoPixelToPos3D(isoRel.x, isoRel.y, float(rawDepth));
 
     // Lift to WORLD: the world cell origin is in world cells; the model
-    // recovery above is in subdivision units, so the offset scales by the
+    // recovery is in subdivision units, so the offset scales by the
     // effective subdivision factor.
     const int scale = effectiveTrixelSubdivisionScale(voxelRenderOptions);
     const ivec3 worldPos =
@@ -107,16 +105,14 @@ void main() {
     // Re-project into the MAIN-canvas cardinal distance layout, mirroring
     // c_voxel_to_trixel_stage_1's cardinal store exactly (same output side as
     // the per-axis resolve scatter): rotate the world position into the
-    // cardinal VIEW frame, add the lower-corner shift (scaled to subdivision
-    // units), key by un-yawed iso depth, place at the un-yawed iso pixel. The
-    // BAKE recovery (trixelCanvasPixelToWorld3D at this rasterYaw) is the
-    // exact inverse.
+    // cardinal VIEW frame, key by un-yawed iso depth, place at the un-yawed iso
+    // pixel. The BAKE recovery (trixelCanvasPixelToWorld3D at this rasterYaw)
+    // is the exact inverse.
     const int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
     ivec3 viewPos = worldPos;
     if (cardinalIndex != 0) {
-        // Plain cardinal rotation — no lower-corner shift (#2545); mirrors
-        // the stage-1 cardinal store, and the BAKE recovery
-        // (trixelCanvasPixelToWorld3D) dropped its undo symmetrically.
+        // Plain cardinal rotation with no lower-corner shift, mirroring the
+        // stage-1 cardinal store and the BAKE recovery (trixelCanvasPixelToWorld3D).
         viewPos = rotateCardinalZ(worldPos, cardinalIndex);
     }
 
@@ -124,13 +120,12 @@ void main() {
         trixelOriginOffsetZ1(canvasSizePixels), frameCanvasOffset, voxelRenderOptions
     );
 
-    // Emit the micro-cell's two-pixel diamond region (#1724), not just its
-    // origin pixel: roundHalfUp collapses a region's input pixels onto one
-    // recovered cell, so a single-pixel write left the resolve ~50% sparse —
-    // pinhole casters whose world-placed shadows dithered. The detached store
-    // is model-frame (slot = model face axis), so rotate the face into the
-    // view frame the same way the position was to pick the region
-    // (faceOffset_2x3 is polarity-blind: axis only).
+    // Emit the micro-cell's two-pixel diamond region, not just its origin
+    // pixel: roundHalfUp collapses a region's input pixels onto one recovered
+    // cell, so a single-pixel write would leave the resolve ~50% sparse. The
+    // detached store is model-frame (slot = model face axis), so rotate the
+    // face into the view frame the same way the position was to pick the
+    // region (faceOffset_2x3 is polarity-blind: axis only).
     const ivec3 viewNormal =
         rotateCardinalZ(faceOutwardNormal6I(slot << 1), cardinalIndex);
     const int viewAxis =

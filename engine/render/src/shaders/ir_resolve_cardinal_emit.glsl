@@ -4,42 +4,38 @@
 // scratch buffer laid out exactly like the main canvas distance texture. Their
 // decodes differ, but the emit that ends each — encode the micro-cell's depth
 // key, project it to its iso pixel, atomicMin it into the region's two-pixel
-// diamond — is the same math. One definition keeps a one-sided edit from
-// desyncing the two resolve routes' footprints against the BAKE recovery that
-// reads them (the ir_voxel_face_select.glsl idiom).
+// diamond — is this one function, so both resolve routes' footprints agree
+// with the BAKE recovery that reads them.
 //
 // This is an include-FRAGMENT, not a standalone shader: the kernel wrappers
 // include it AFTER ir_iso_common.glsl (prerequisite helpers: pos3DtoDistance,
 // pos3DtoPos2DIso, encodeDepthWithFace, faceOffset_2x3, isInsideCanvas) and
 // AFTER their own `resolveScratch` SSBO declaration, which this function
 // writes through. GLSL has no way to pass an SSBO as an argument, so the
-// scratch binding is a wrapper-supplied contract rather than a parameter —
-// the same reason the fog grid's image slot is a wrapper #define in
-// ir_voxel_face_select.glsl. The resolver is recursive with a visited-set
-// cycle guard (#2514), so this fragment self-includes ir_iso_common.glsl
-// below instead of relying solely on the wrapper chain — a wrapper's earlier
-// include of ir_iso_common.glsl makes this a suppressed duplicate.
+// scratch binding is a wrapper-supplied contract rather than a parameter.
+// The resolver is recursive with a visited-set cycle guard, so the
+// self-include of ir_iso_common.glsl is a suppressed duplicate after a
+// wrapper's earlier include of it.
 // Metal twin: metal/ir_resolve_cardinal_emit.metal — keep byte-identical math.
 #include "ir_iso_common.glsl"
 
-// Emit one micro-cell's two-pixel diamond region (#1724) into the resolve
-// scratch, in the MAIN-canvas cardinal distance layout.
+// Emit one micro-cell's two-pixel diamond region into the resolve scratch, in
+// the MAIN-canvas cardinal distance layout.
 //
 // `viewPos` is the micro-cell already rotated into the cardinal VIEW frame and
 // expressed in subdivision units; `slot`/`flip` are the stored key bits, which
-// ride the encode so polarity survives the resolve bridge (#2207). Emitting the
+// ride the encode so polarity survives the resolve bridge. Emitting the
 // two-pixel region rather than the single origin pixel is load-bearing:
 // roundHalfUp collapses a region's input pixels onto one recovered cell, so a
-// single-pixel write left the resolve texture ~50% sparse — pinhole casters
-// whose shadows dithered with interior gaps.
+// single-pixel write would leave the resolve texture ~50% sparse and casters
+// would shadow with interior gaps.
 //
 // `regionAxis` is the VIEW-frame face axis that picks the diamond region, and
 // is NOT always derivable from `slot`: the per-axis store is already in the
 // view frame (visibleFaceTripletCardinal orders the triplet so slot s lands on
 // view axis s), while the world-placed store is model-frame and must rotate
-// its face normal into the view frame first. Passing it in keeps both callers
-// on this one emit. faceOffset_2x3 is polarity-blind (axis only), so the flip
-// never reaches the region choice.
+// its face normal into the view frame first. faceOffset_2x3 is polarity-blind
+// (axis only), so the flip never reaches the region choice.
 void emitResolveCardinalDiamond(
     const ivec3 viewPos,
     const int regionAxis,

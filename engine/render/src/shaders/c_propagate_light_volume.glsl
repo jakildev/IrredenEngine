@@ -1,11 +1,11 @@
 #version 450 core
 
-// One iteration of the GPU light dilation. Reads the previous
-// frame's seed (or prior iteration's output) from `lightVolumeRead`
-// and writes the dilated result into `lightVolumeWrite`. The host
-// system runs this dispatch `kLightVolumePropagateIterations` times
-// per frame, swapping the read/write bindings between iterations
-// via the ping-pong pair on `C_CanvasLightVolume`.
+// One iteration of the GPU light dilation. Reads this frame's seed
+// (or the prior iteration's output) from `lightVolumeRead` and writes
+// the dilated result into `lightVolumeWrite`. The host system runs
+// this dispatch up to `kLightVolumePropagateIterations` times per
+// frame, swapping the read/write bindings between iterations via the
+// ping-pong pair on `C_CanvasLightVolume`.
 //
 // Per-cell rule (distance-tracked linear falloff):
 //   • rgb stores the emissive color of the closest reaching light.
@@ -17,8 +17,7 @@
 //   • Each cell picks the candidate (self or air-neighbor) with the
 //     highest residual alpha — i.e. whichever wavefront has the most
 //     strength left at this cell. Closest light dominates overlap
-//     regions; per-channel mixing of overlapping lights is deferred
-//     to a follow-up pass.
+//     regions; overlapping lights do not mix per channel.
 //   • Solid neighbors are skipped (light cannot propagate THROUGH
 //     occluders) but solid cells themselves can still receive light
 //     from adjacent air cells, so wall surfaces light up correctly.
@@ -26,18 +25,11 @@
 //     the light-blocker bitfield (rasterized from `C_ShapeDescriptor +
 //     C_LightBlocker(blocksLOS_=true)` entities by
 //     `system_build_light_occlusion_grid`) blocks point/spot light
-//     propagation just like a solid voxel, restoring the SDF-LOS
-//     behaviour the GPU port lost in #359.
+//     propagation just like a solid voxel.
 //
-// Memory pattern: 6 image reads + 6 occlusion bit reads per thread
-// at 128³ cells × 32 iterations — well below the 71 ms CPU BFS this
-// replaces. The voxel and SDF-blocker bitfields live in the same SSBO
-// (header + voxel bitfield + blocker bitfield), so the propagate shader
-// does one extra `uint` load per neighbor — no new buffer slot is
-// needed (Metal caps at 0–30 and every slot is already in use).
-// T-126 scoped this SSBO down to the light-volume LOS path; AO migrated
-// to screen-space sampling in T-091, and the `LightOcclusionGrid` name
-// reflects that the data now feeds only this shader.
+// The voxel and SDF-blocker bitfields live in the same SSBO (header +
+// voxel bitfield + blocker bitfield) because the buffer bind-point
+// budget (0–30, Metal's cap) has no free slot for a second one.
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 4) in;
 
@@ -54,15 +46,15 @@ const uint kLightOcclusionBitfieldUintCount =
 
 layout(rgba8, binding = 0) readonly uniform image3D lightVolumeRead;
 layout(rgba8, binding = 1) writeonly uniform image3D lightVolumeWrite;
-// Winning-light ID ping-pong (#2318): the ID of whichever candidate wins a
+// Winning-light ID ping-pong: the ID of whichever candidate wins a
 // cell's residual contest rides along with its color, so the consumer knows
 // which light lit the cell (for the SPOT cone factor). Swapped in lockstep
 // with the color pair.
 layout(rgba8, binding = 2) readonly uniform image3D lightVolumeIdRead;
 layout(rgba8, binding = 3) writeonly uniform image3D lightVolumeIdWrite;
 
-// Phase 1c (#360) / T-126: camera-anchored layout — header carries the
-// world origin, then two parallel bitfields. The voxel-existence
+// Camera-anchored layout — header carries the world origin, then two
+// parallel bitfields. The voxel-existence
 // bitfield (set by `system_build_light_occlusion_grid` from live voxels)
 // is followed by the SDF-blocker bitfield (set from `C_LightBlocker`
 // shape entities). Both are consumed only by this shader.
@@ -76,10 +68,10 @@ layout(std140, binding = 23) uniform LightVolumeParams {
     int halfExtent;
     int lightCount;
     float stepFalloff;
-    // Phase 1c (#360): world voxel the volume is centered on this frame.
+    // World voxel the volume is centered on this frame.
     // `worldCell = (cell - halfExtent) + lightVolumeWorldOrigin.xyz` maps
     // a local volume cell back to its world voxel for occupancy lookups.
-    // `.w` is the has-SPOT flag (#2318): a coherent (whole-dispatch) branch
+    // `.w` is the has-SPOT flag: a coherent (whole-dispatch) branch
     // that skips the winning-light-ID image ops entirely when no SPOT was
     // seeded, so no-spot scenes pay zero extra propagate bandwidth.
     ivec4 lightVolumeWorldOrigin;
@@ -131,16 +123,14 @@ void main() {
 
     vec4 best = imageLoad(lightVolumeRead, cell);
     // Winning-light ID travels with `best` — seeded from self, overwritten
-    // whenever a neighbor candidate wins the residual contest below (#2318).
+    // whenever a neighbor candidate wins the residual contest.
     // Skipped when no SPOT was seeded (the consumer never reads it), so
     // no-spot scenes do no extra id image traffic. `carryId` is uniform across
     // the dispatch, so the branch is coherent (near-free).
     const bool carryId = lightVolumeWorldOrigin.w != 0;
     vec4 bestId = carryId ? imageLoad(lightVolumeIdRead, cell) : vec4(0.0);
-    // Phase 1c (#360): map the local volume cell back to world coords
-    // through the camera-anchored origin so the per-neighbor light-
-    // occlusion lookup queries the right cell of the (independently
-    // anchored) light-occlusion grid.
+    // The light-occlusion grid is anchored independently of the volume,
+    // so neighbor lookups go through world coords.
     const ivec3 worldCell = (cell - ivec3(halfExtent)) + lightVolumeWorldOrigin.xyz;
 
     const ivec3 deltas[6] = ivec3[6](

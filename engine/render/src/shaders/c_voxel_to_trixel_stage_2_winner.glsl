@@ -7,17 +7,16 @@
  * Modified By: <your_name> <Month> <YYYY>
  */
 
-// Stage-2 CARDINAL WINNER-GUARDED dispatch (#2346). A thin wrapper that
-// specializes the shared body at compile time: IR_STORE_WINNER_ELECTION 1
-// threads the run-stable voxel pool index through emitDeformedFace and guards
-// every cardinal colour/entity-id tap with `perAxisWinnerIds[cell] ==
-// voxelIndex` (the winners elected by
-// c_voxel_to_trixel_stage_1_winner_resolve between the stages), so exactly one
-// of the faces tying a cell's settled distance key writes — the single-canvas
-// twin of #2255's writeColorTapPerAxis guard. Dispatched in place of the
-// default stage 2 ONLY when the ticking pool's storeTiesPossible_ flag is set;
-// lattice scenes keep the default kernel. Includes come BEFORE the body
-// (the body declares no #includes of its own); see the body file's header.
+// Stage-2 CARDINAL WINNER-GUARDED dispatch. A thin wrapper that specializes
+// the shared body at compile time: IR_STORE_WINNER_ELECTION 1 threads the
+// run-stable voxel pool index through emitDeformedFace and guards every
+// cardinal colour/entity-id tap with `perAxisWinnerIds[cell] == voxelIndex`
+// (the winners elected by c_voxel_to_trixel_stage_1_winner_resolve between the
+// stages), so exactly one of the faces tying a cell's settled distance key
+// writes — the single-canvas counterpart of writeColorTapPerAxis's guard.
+// Dispatched in place of the default stage 2 ONLY when the ticking pool's
+// storeTiesPossible_ flag is set; lattice scenes keep the default kernel.
+// Includes come BEFORE the body (the body declares no #includes of its own).
 #version 450 core
 #define IR_STORE_WINNER_ELECTION 1
 #include "ir_iso_common.glsl"

@@ -12,7 +12,7 @@
 //     for lights inside the camera-anchored window, distance-discounted
 //     for out-of-window lights seeded at the clamped window edge (the
 //     discount reproduces the exact in-window field of the distant light
-//     — see `gatherLightSources`). Each propagate step decrements alpha
+//     — computed by `gatherLightSources`). Each propagate step decrements alpha
 //     by `stepFalloff`; the consumer reads `rgb * alpha` so light fades
 //     linearly with Manhattan distance and stops cleanly at the light's
 //     residual budget.
@@ -20,8 +20,7 @@
 // `imageStore` is a plain write — if two lights share an origin texel
 // the later thread wins. The propagate pass picks the brightest
 // (highest residual alpha) candidate per cell, so the closest light
-// dominates overlap regions. Per-channel mixing of overlapping lights
-// is deferred to a follow-up pass.
+// dominates overlap regions; overlapping lights do not mix per channel.
 
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
@@ -33,17 +32,17 @@ layout(std140, binding = 23) uniform LightVolumeParams {
     int halfExtent;
     int lightCount;
     float stepFalloff;
-    // Phase 1c (#360): camera-anchored window. Subtract this world voxel
-    // before mapping the light's world origin into a local texel index.
-    // `.w` carries the has-SPOT flag (#2318), unused by the seed.
+    // Camera-anchored window origin. Subtract this world voxel before
+    // mapping the light's world origin into a local texel index.
+    // `.w` carries the has-SPOT flag.
     ivec4 lightVolumeWorldOrigin;
 };
 
 layout(rgba8, binding = 0) writeonly uniform image3D lightVolume;
-// Winning-light ID read texture (#2318): seed writes `lightIndex/255` into
-// `.r` (index+1 so 0 stays reserved for "no light"). The propagate pass
-// carries the winning ID inward; the consumer maps it back to a light for
-// the SPOT cone factor.
+// Winning-light ID read texture: seed writes `lightIndex/255` into `.r`
+// (index+1 so 0 stays reserved for "no light"). The propagate pass carries
+// the winning ID inward; the consumer maps it back to a light for the SPOT
+// cone factor.
 layout(rgba8, binding = 1) writeonly uniform image3D lightVolumeId;
 
 void main() {
@@ -73,8 +72,8 @@ void main() {
     // 0–255, so the 256th light (index 255 → id 256) cannot carry an ID —
     // it seeds as a plain omni sphere (id 0, no cone). A non-issue for the
     // "few dozen lights" workload; documented on C_CanvasLightVolume.
-    // Skipped when no SPOT was seeded (worldOriginVoxel.w == 0): the cleared
-    // id volume stays 0 and the consumer never reads it (byte-identical).
+    // Skipped when no SPOT was seeded (lightVolumeWorldOrigin.w == 0): the
+    // cleared id volume stays 0 and the consumer never reads it.
     if (lightVolumeWorldOrigin.w != 0) {
         const uint idPlusOne = lightIndex + 1u;
         const float idNorm = (idPlusOne <= 255u) ? float(idPlusOne) / 255.0 : 0.0;
