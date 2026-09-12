@@ -80,6 +80,28 @@ for cross-role data (a reviewer resolving an upstream PR by
 `…[truncated]…`; fetch the full body with `fleet-pr comments <N>`, not
 `fleet-pr view`.
 
+### `shadow_merged_pr` on a `tasks_open` row — read it, don't refuse it
+
+A task row carrying `shadow_merged_pr` means a **recently merged** PR's head
+branch names that issue, so part of the work may already be on master under a
+`Ref` reference (which merges without closing the issue, leaving the row queued
+and owner-free). **Read that PR before you branch** — `fleet-pr view <number>` —
+and scope your change to what it left. That is the whole affordance: it saves
+the branch-then-discover round trip, and nothing more.
+
+It does **not** block the claim. It is not read by `fleet_task_class`'s
+`_task_claimable` / `_terminally_unclaimable`, and must not become a refusal.
+A `Ref` reference is this repo's deliberate marker for *partial* work, so the
+residual is real queued work — and unlike an open PR, a merged master commit
+never clears, so a refusal keyed on it would strand that residual permanently,
+with nothing in the fleet able to re-queue it. Use `inflight_pr`, which does
+gate, for the open-PR case.
+
+Coverage is the fresh-merge window only: the scout reads the already-cached
+`recent_merged_prs[]` (30 records per repo), so an older shadowing merge leaves
+no tag. Absence of the field is
+not evidence that nothing shipped.
+
 ## Repo slug discovery
 
 `fleet-up` writes `repos.json` from each repo's `origin`. Roles needing

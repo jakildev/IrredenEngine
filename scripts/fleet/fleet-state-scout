@@ -2212,6 +2212,51 @@ def enrich_inflight_pr_tasks(state):
             }
 
 
+def enrich_shadow_merged_pr_tasks(state):
+    # ADVISORY ONLY: _task_claimable / _terminally_unclaimable must never read
+    # this field. A merged commit never clears the way an open PR does, so a
+    # refusal keyed on it would strand the issue's residual work permanently.
+    #
+    # The match is on the head branch, not a `(#N)` in the merge subject — that
+    # number is the PR's, not the issue's.
+    #
+    # Source is the cached recent_merged_prs[], so this costs no fetch; coverage
+    # is only that window, and widening it spends state.json size budget.
+    # baseRefName is carried, never filtered on.
+    #
+    # Must run after enrich_inflight_pr_tasks: the log line skips rows that
+    # pass already tagged. The field is stamped either way.
+    for repo_key, repo_state in state["repos"].items():
+        merged_prs = repo_state.get("recent_merged_prs", [])
+        for task in repo_state.get("tasks", {}).get("open", []):
+            issue_num = (task.get("issue") or "").lstrip("#")
+            if not issue_num:
+                continue
+            # Newest merge wins; recent_merged_prs is sorted ascending by
+            # number, so that is the last match.
+            match = None
+            for pr in merged_prs:
+                if branch_matches_issue(
+                    pr.get("headRefName", ""), issue_num, repo_key
+                ):
+                    match = pr
+            if match is None:
+                continue
+            task["shadow_merged_pr"] = {
+                "number": match.get("number"),
+                "headRefName": match.get("headRefName", ""),
+                "baseRefName": match.get("baseRefName", ""),
+                "mergedAt": match.get("mergedAt", ""),
+                "title": match.get("title", ""),
+            }
+            if not task.get("inflight_pr"):
+                log(
+                    f"{repo_key} task {task.get('id')} is shadowed by merged PR "
+                    f"#{match.get('number')} ({match.get('headRefName', '')}, "
+                    f"merged {match.get('mergedAt', '')}) — advisory, still claimable"
+                )
+
+
 # Narrowed label sets stored in the per-role hash item. Storing the full
 # pr["labels"] list here re-flips the projection hash on every transient
 # label change (merger toggling fleet:merger-cooldown, reviewers swapping
@@ -3843,6 +3888,9 @@ def tick_once():
         # relative to the body-pop below.
         enrich_inflight_pr_tasks(state)
         enrich_stackable_blocker_prs(state)
+        # After enrich_inflight_pr_tasks: its log line skips rows already tagged
+        # in-flight.
+        enrich_shadow_merged_pr_tasks(state)
         # Drop PR bodies so they don't bloat state.json or the per-role slices
         # — mirrors resolve_human_approved_blockers popping issue bodies. Safe
         # because the Closes-#N stack-base signal was already derived into
