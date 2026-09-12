@@ -135,7 +135,9 @@ template <> struct System<SETTINGS_MENU> {
         IRPrefab::Settings::ensureRegistrySingleton();
         IRPrefab::Widget::ensureThemeSingleton();
         const SystemId systemId =
-            registerSystem<SETTINGS_MENU, IRComponents::C_SettingsMenuState>("SettingsMenu");
+            registerSystem<SETTINGS_MENU, IRComponents::C_SettingsMenuState, MainThread>(
+                "SettingsMenu"
+            );
         auto *params = getSystemParams<System<SETTINGS_MENU>>(systemId);
         params->params_ = initialParams;
         // panel_ (and every other widget id below) is not C_Persistent, so

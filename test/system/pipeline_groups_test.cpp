@@ -186,10 +186,9 @@ TEST_F(PipelineGroupsValidatorTest, ConflictingWriteGroupRejected) {
 // above. They can't ride through `IRSystem::createSystem`'s Components
 // pack today — `InvocableWithComponents` probes the tick lambda with
 // `(MainThread&)` etc. and falls into the static_assert branch. The
-// SystemManager path validates the same conflict rules via
-// `findPipelineGroupConflict`, so the rule is covered; expressing it
-// end-to-end here would need a `setSystemAccess` test setter that the
-// production API otherwise has no use for.
+// production `System<N>` registration path can carry the tag; the overlay
+// cases in `test/render/prefab_system_probe_test.cpp` cover that path through
+// `SystemManager::validateAllPipelineGroups`.
 
 TEST_F(PipelineGroupsValidatorTest, DisjointWritesInGroupAccepted) {
     // Two systems writing distinct component columns can share a
