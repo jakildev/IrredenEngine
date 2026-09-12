@@ -135,6 +135,17 @@ parameter).
 Shader file paths are stored in `render/shader_names.hpp`. Update that
 header when you add or rename a shader.
 
+### GLSL reserved-word check
+
+Every `.glsl` file under the engine quality roots is scanned for GLSL
+reserved words used as declared identifiers by
+`cmake/run_glsl_reserved_word_check.cmake`. The check runs in the standalone
+header-checks lane and the `header-checks` / `lint` CMake targets. When a
+flagged shader has a sibling `metal/<stem>.metal`, rename the identifier in
+both files so the backend pair stays textually parallel. Metal sources are
+left to the real C++-based compiler, which rejects its reserved identifiers
+during the macOS build.
+
 **A fragment may self-include only a MACRO-FREE prerequisite.** Both
 resolvers are recursive with a visited-set cycle guard scoped to the whole
 resolution (`resolveShaderIncludes`, `loadAndPreprocessMetalSource`), so a

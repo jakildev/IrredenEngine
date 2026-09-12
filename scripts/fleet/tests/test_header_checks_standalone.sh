@@ -16,6 +16,10 @@
 #   - a clean fixture tree                          → exit 0, and both Metal
 #     checks ran (1 kernel scanned, _body fragment excluded as an entry point
 #     but still read through the wrapper's include chain)
+#   - GLSL reserved declarations and parameters     → exit 1, word + line named
+#   - a reserved declaration with a Metal twin      → exit 1, twin path named
+#   - GLSL comment/member/qualifier/superstring uses → exit 0
+#   - a tree with no GLSL source                    → exit 1 (scope guard)
 #   - a component missing its save decision         → exit 1, names its header
 #   - a decided component missing from the tuple    → exit 1, names the type
 #   - a missing save-inventory anchor               → exit 1 (anchor guard)
@@ -174,6 +178,7 @@ make_fixture() {
        "$SCRIPT_DIR/cmake/run_metal_kernel_registry_check.cmake" \
        "$SCRIPT_DIR/cmake/run_metal_scratch_consumer_check.cmake" \
        "$SCRIPT_DIR/cmake/run_save_inventory_population_check.cmake" \
+       "$SCRIPT_DIR/cmake/run_glsl_reserved_word_check.cmake" \
        "$CHECKER" "$root/cmake/"
     cat > "$root/engine/include/irreden/clean.hpp" <<'EOF'
 #pragma once
@@ -216,6 +221,11 @@ kernel void IR_FIXTURE_KERNEL_NAME(
     uint3 gid [[thread_position_in_grid]]
 ) {}
 EOF
+    cat > "$root/engine/render/src/shaders/c_fixture_kernel.glsl" <<'EOF'
+void main() {
+    uint activeBits = 0u;
+}
+EOF
     write_pipeline_cpp "$root" "c_fixture_kernel" "c_fixture_kernel"
 }
 
@@ -255,6 +265,8 @@ assert_contains "$clean_out" "(1 declare the image-atomic scratch at buffer slot
     "scratch check resolves the wrapper -> _body include chain"
 assert_contains "$clean_out" "Save inventory population check scanned 2 component name(s)" \
     "save inventory check scans live declarations and ignores comments"
+assert_contains "$clean_out" "GLSL reserved-word check scanned 1 shader file(s)" \
+    "GLSL reserved-word check runs and accepts a superstring near-miss"
 
 # --- an undeclared component needs an explicit save decision ----------------
 SAVE_MISSING_DECISION="$TMPROOT/save-missing-decision"
@@ -1142,6 +1154,79 @@ assert_eq "1" "$parencomment_rc" \
     "a paren inside a wrapped head line's trailing comment does not exempt the global"
 assert_contains "$parencomment_out" "g_parenCommentRegistry" \
     "failure names the paren-comment-wrapped declaration"
+
+# --- GLSL reserved declarations fail ---------------------------------------
+GLSL_DIRTY="$TMPROOT/glsl-dirty"
+make_fixture "$GLSL_DIRTY"
+cat > "$GLSL_DIRTY/engine/render/src/shaders/no_twin.glsl" <<'EOF'
+uint expandIndex(uint c, uint active, uint pLo) {
+    float half;
+    return c;
+}
+EOF
+glsl_dirty_out=$(run_checker "$GLSL_DIRTY")
+glsl_dirty_rc=$?
+assert_eq "1" "$glsl_dirty_rc" "reserved GLSL declarations exit 1"
+assert_contains "$glsl_dirty_out" "no_twin.glsl:1" \
+    "function-parameter failure names its line"
+assert_contains "$glsl_dirty_out" "reserved GLSL word 'active' used" \
+    "function-parameter failure names the reserved word"
+assert_contains "$glsl_dirty_out" "reserved GLSL word 'half' used as" \
+    "local-declaration failure names the reserved word"
+assert_absent "$glsl_dirty_out" ".metal" \
+    "a shader without a Metal twin emits no twin guidance"
+
+# --- a GLSL violation with a Metal twin names both files -------------------
+GLSL_TWIN="$TMPROOT/glsl-twin"
+make_fixture "$GLSL_TWIN"
+cat > "$GLSL_TWIN/engine/render/src/shaders/ir_twin_violation.glsl" <<'EOF'
+void main() {
+    float active;
+}
+EOF
+cat > "$GLSL_TWIN/engine/render/src/shaders/metal/ir_twin_violation.metal" <<'EOF'
+inline float twinViolation() { return 0.0; }
+EOF
+glsl_twin_out=$(run_checker "$GLSL_TWIN")
+glsl_twin_rc=$?
+assert_eq "1" "$glsl_twin_rc" "reserved GLSL declaration with a twin exits 1"
+assert_contains "$glsl_twin_out" "metal/ir_twin_violation.metal" \
+    "failure names the Metal twin that must be renamed"
+
+# --- comments, directives, members, qualifiers, and superstrings pass ------
+GLSL_EXEMPT="$TMPROOT/glsl-exempt"
+make_fixture "$GLSL_EXEMPT"
+cat > "$GLSL_EXEMPT/engine/render/src/shaders/c_fixture_kernel.glsl" <<'EOF'
+// float active;
+// 128³ samples — float active;
+/*
+float half;
+*/
+#define DECLARE(input) input
+void main() {
+    Example s;
+    s.active = 1.0;
+    uint activeBits = 0u;
+    uint input0 = 0u;
+}
+layout(packed) buffer Fixture { uint value; } fixture;
+EOF
+glsl_exempt_out=$(run_checker "$GLSL_EXEMPT")
+glsl_exempt_rc=$?
+assert_eq "0" "$glsl_exempt_rc" \
+    "comments, directives, member access, qualifiers, and superstrings stay exempt"
+assert_contains "$glsl_exempt_out" "GLSL reserved-word check scanned 1 shader file(s)" \
+    "exemption fixture entered the GLSL scan"
+
+# --- a tree with no GLSL cannot report a vacuous clean ----------------------
+GLSL_EMPTY="$TMPROOT/glsl-empty"
+make_fixture "$GLSL_EMPTY"
+rm "$GLSL_EMPTY/engine/render/src/shaders/c_fixture_kernel.glsl"
+glsl_empty_out=$(run_checker "$GLSL_EMPTY")
+glsl_empty_rc=$?
+assert_eq "1" "$glsl_empty_rc" "zero GLSL files exits 1"
+assert_contains "$glsl_empty_out" "collected 0 shader file(s)" \
+    "zero-population failure explains the broken scope"
 
 # --- usage guard ------------------------------------------------------------
 noroot_out=$(cmake -P "$CHECKER" 2>&1)
