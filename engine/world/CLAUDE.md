@@ -427,15 +427,15 @@ same change. Four consequences for authors:
   `addBreakpoint` writes the count and it bounds itself at `kMaxBreakpoints`,
   so the clamp can fire on a corrupt file but never on a live component).
 - **A component whose state cannot honestly round-trip opts OUT**, with a
-  comment saying why. The current class is callback-bearing state:
-  `C_LambdaModifiers`, `C_LerpEntity`, since #2242 `C_GotoEasing3D`
-  and `C_RotationTarget`, which keep a resolved `GLMEasingFunction`
-  (`std::function`) rather than the `IREasingFunctions` enum they were built
-  from, so the authored curve is unrecoverable at save time — and since #2582
-  `C_EntityEventHandlers`, whose `sol::protected_function` refs point into a
-  specific `lua_State` and are session-local by construction. Do **not** write a
-  serializer that substitutes a default on load; that is a silent behavior
-  change wearing a round-trip's clothes.
+  comment saying why: callables with no authored identity to recover
+  (`C_LambdaModifiers`, `C_LerpEntity`) and `C_EntityEventHandlers`, whose
+  `sol::protected_function` refs are bound to one `lua_State`. Do **not** write
+  a serializer that substitutes a default on load — a silent behavior change
+  wearing a round-trip's clothes. **Store the authored key, not the resolved
+  callable**: a component built from an enum keeps the enum and resolves it per
+  tick (`C_GotoEasing3D` / `C_RotationTarget` hold `IREasingFunctions`, looked
+  up in `kEasingFunctions`), so it stays trivially copyable and opts in through
+  the raw-image arm with no serializer.
 - **Any TU that builds a registry must include `save_component_inventory.hpp`.**
   `registerComponent<C>` is `if constexpr`-gated on `shouldSave<C>()`, and
   without the `IR_SAVE_OPT_IN` specializations in scope `SaveTrait<C>` resolves

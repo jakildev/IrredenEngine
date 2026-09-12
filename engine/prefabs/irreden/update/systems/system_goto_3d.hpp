@@ -21,7 +21,7 @@ template <> struct System<GOTO_3D> {
         localXform.translation_ = IRMath::mix(
             gotoComp.startPos_,
             gotoComp.endPos_,
-            gotoComp.easingFunction_(
+            kEasingFunctions.at(gotoComp.easingFunction_)(
                 static_cast<float>(gotoComp.currentFrame_) /
                 static_cast<float>(gotoComp.durationFrames_)
             )

@@ -44,7 +44,10 @@ struct C_RotationTarget {
     // Live control value, updated per frame by the creation.
     float input_ = 0.0f;
     // Response curve applied to the normalized input before the angle map.
-    GLMEasingFunction easingFunction_;
+    // Stored as the enum identity and resolved per tick by
+    // ROTATION_TARGET_LOCAL_TRANSFORM via kEasingFunctions, so the component
+    // stays trivially copyable and the curve survives a save/load round trip.
+    IREasingFunctions easingFunction_ = IREasingFunctions::kLinearInterpolation;
 
     C_RotationTarget(
         IRMath::vec3 axis,
@@ -61,7 +64,7 @@ struct C_RotationTarget {
         , inputMin_{inputMin}
         , inputMax_{inputMax}
         , input_{input}
-        , easingFunction_{kEasingFunctions.at(easingFunction)} {}
+        , easingFunction_{easingFunction} {}
 
     C_RotationTarget()
         : C_RotationTarget{IRMath::vec3(0.0f, 0.0f, 1.0f), 0.0f, 0.0f} {}

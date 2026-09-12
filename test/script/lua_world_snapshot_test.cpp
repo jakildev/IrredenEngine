@@ -3,6 +3,7 @@
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_system.hpp>
+#include <irreden/ir_time.hpp>
 #include <irreden/script/lua_script.hpp>
 
 #include <irreden/common/components/component_local_transform.hpp>
@@ -10,6 +11,10 @@
 #include <irreden/common/components/component_position_int_3d.hpp>
 #include <irreden/common/components/component_size_int_3d.hpp>
 #include <irreden/render/components/component_widget.hpp>
+#include <irreden/update/components/component_goto_easing_3d.hpp>
+#include <irreden/update/components/component_rotation_target.hpp>
+#include <irreden/update/systems/system_goto_3d.hpp>
+#include <irreden/update/systems/system_rotation_target_local_transform.hpp>
 #include <irreden/voxel/components/component_bind_points.hpp>
 #include <irreden/voxel/components/component_skeleton.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
@@ -33,9 +38,11 @@
 namespace {
 
 using IRComponents::C_BindPoints;
+using IRComponents::C_GotoEasing3D;
 using IRComponents::C_LocalTransform;
 using IRComponents::C_Name;
 using IRComponents::C_PositionInt3D;
+using IRComponents::C_RotationTarget;
 using IRComponents::C_SizeInt3D;
 using IRComponents::C_Skeleton;
 using IRComponents::C_Voxel;
@@ -292,6 +299,95 @@ TEST_F(LuaWorldSnapshotTest, RoundTripsHeapOwningComponents) {
     EXPECT_FLOAT_EQ(reloadedRig.bindPose_[1].translation_.y, -2.5f);
 }
 
+// C_GotoEasing3D and C_RotationTarget store the IREasingFunctions enum
+// instead of a resolved GLMEasingFunction, so the authored curve survives a
+// save/load. Both use non-default curves — kLinearInterpolation is the
+// constructor default, so a reader that substituted it would fail here.
+//
+// The save/load is only half the claim: a reload that restores the right pose
+// but stops easing would still pass a bytes-only comparison. The pipeline is
+// registered after the reload and ticked once, so the restored components have
+// to drive C_LocalTransform through their own curves.
+TEST_F(LuaWorldSnapshotTest, RoundTripsEasingComponentsAndKeepsTheCurveLive) {
+    const IRMath::vec3 start{1.0f, 2.0f, 3.0f};
+    const IRMath::vec3 end{11.0f, -8.0f, 5.0f};
+    const IRMath::vec3 axis{0.0f, 1.0f, 0.0f};
+    constexpr int kAdvancedFrame = 10;
+
+    C_GotoEasing3D gotoComp{start, end, 2.0f, IRMath::kBounceEaseOut};
+    gotoComp.currentFrame_ = kAdvancedFrame; // mid-flight, not freshly authored
+    const int durationFrames = gotoComp.durationFrames_;
+    ASSERT_GT(durationFrames, kAdvancedFrame + 1) << "test needs a tween still in flight";
+    const EntityId easing = m_entity_manager.createEntity(C_LocalTransform{}, gotoComp);
+
+    const EntityId rotating = m_entity_manager.createEntity(
+        C_LocalTransform{},
+        C_RotationTarget{axis, 0.0f, IRMath::kHalfPi, 0.25f, 0.0f, 1.0f, IRMath::kQuadraticEaseIn}
+    );
+
+    const std::string path = tempPath("easing");
+    ASSERT_TRUE(runOk("assert(IRPersist.saveWorld('" + path + "'))"));
+
+    m_entity_manager.destroyAllEntities();
+    ASSERT_EQ(m_entity_manager.getLiveEntityCount(), 0u);
+    ASSERT_TRUE(runOk("assert(IRPersist.loadWorld('" + path + "'))"));
+
+    ASSERT_TRUE(m_entity_manager.entityExists(easing));
+    const C_GotoEasing3D &reloadedGoto = m_entity_manager.getComponent<C_GotoEasing3D>(easing);
+    EXPECT_EQ(reloadedGoto.easingFunction_, IRMath::kBounceEaseOut)
+        << "the authored easing curve did not survive the round trip";
+    EXPECT_EQ(reloadedGoto.currentFrame_, kAdvancedFrame) << "mid-flight tween state was reset";
+    EXPECT_EQ(reloadedGoto.durationFrames_, durationFrames);
+    EXPECT_FALSE(reloadedGoto.done_);
+    EXPECT_FLOAT_EQ(reloadedGoto.startPos_.x, start.x);
+    EXPECT_FLOAT_EQ(reloadedGoto.endPos_.y, end.y);
+
+    ASSERT_TRUE(m_entity_manager.entityExists(rotating));
+    const C_RotationTarget &reloadedTarget =
+        m_entity_manager.getComponent<C_RotationTarget>(rotating);
+    EXPECT_EQ(reloadedTarget.easingFunction_, IRMath::kQuadraticEaseIn)
+        << "the authored response curve did not survive the round trip";
+    EXPECT_FLOAT_EQ(reloadedTarget.input_, 0.25f);
+    EXPECT_FLOAT_EQ(reloadedTarget.maxAngle_, IRMath::kHalfPi);
+
+    // Registered after the reload: clearing the world takes the system
+    // entities with it.
+    m_system_manager.registerPipeline(
+        IRTime::Events::UPDATE,
+        {IRSystem::createSystem<IRSystem::GOTO_3D>(),
+         IRSystem::createSystem<IRSystem::ROTATION_TARGET_LOCAL_TRANSFORM>()}
+    );
+    m_system_manager.executePipeline(IRTime::Events::UPDATE);
+
+    const int tickedFrame = kAdvancedFrame + 1;
+    EXPECT_EQ(m_entity_manager.getComponent<C_GotoEasing3D>(easing).currentFrame_, tickedFrame);
+    const IRMath::vec3 expectedTranslation = IRMath::mix(
+        start,
+        end,
+        IRMath::kEasingFunctions.at(IRMath::kBounceEaseOut)(
+            static_cast<float>(tickedFrame) / static_cast<float>(durationFrames)
+        )
+    );
+    const IRMath::vec3 translation =
+        m_entity_manager.getComponent<C_LocalTransform>(easing).translation_;
+    EXPECT_NEAR(translation.x, expectedTranslation.x, 1e-4f);
+    EXPECT_NEAR(translation.y, expectedTranslation.y, 1e-4f);
+    EXPECT_NEAR(translation.z, expectedTranslation.z, 1e-4f);
+
+    // quadraticEaseIn(0.25) = 0.0625, mapped onto [0, kHalfPi].
+    const IRMath::vec4 expectedRotation = IRMath::quatAxisAngle(axis, IRMath::kHalfPi * 0.0625f);
+    const IRMath::vec4 rotation =
+        m_entity_manager.getComponent<C_LocalTransform>(rotating).rotation_;
+    // q and -q are the same rotation, so compare by action on the basis vectors.
+    for (const auto &v : {IRMath::vec3(1, 0, 0), IRMath::vec3(0, 1, 0), IRMath::vec3(0, 0, 1)}) {
+        const IRMath::vec3 actual = IRMath::rotateVectorByQuat(v, rotation);
+        const IRMath::vec3 expected = IRMath::rotateVectorByQuat(v, expectedRotation);
+        EXPECT_NEAR(actual.x, expected.x, 1e-4f);
+        EXPECT_NEAR(actual.y, expected.y, 1e-4f);
+        EXPECT_NEAR(actual.z, expected.z, 1e-4f);
+    }
+}
+
 // W-8 determinism over the widened registry: a world carrying heap-owning
 // components must still double-save byte-identically. The map-ordering hazard
 // this guards against (C_BindPoints) is unit-tested directly; this is the
@@ -326,6 +422,25 @@ TEST_F(LuaWorldSnapshotTest, DoubleSaveIsByteIdenticalWithHeapOwningComponents) 
         }
     );
     m_entity_manager.createEntity(points);
+
+    // The enum-stored easing components carry tail padding in their raw byte
+    // image, so they belong in the determinism backstop too.
+    m_entity_manager.createEntity(
+        C_LocalTransform{},
+        C_GotoEasing3D{IRMath::vec3{0.0f}, IRMath::vec3{1.0f}, 1.0f, IRMath::kCubicEaseInOut}
+    );
+    m_entity_manager.createEntity(
+        C_LocalTransform{},
+        C_RotationTarget{
+            IRMath::vec3{0.0f, 0.0f, 1.0f},
+            0.0f,
+            IRMath::kHalfPi,
+            0.5f,
+            0.0f,
+            1.0f,
+            IRMath::kSineEaseOut
+        }
+    );
 
     const std::string first = tempPath("determinism_a");
     const std::string second = tempPath("determinism_b");
