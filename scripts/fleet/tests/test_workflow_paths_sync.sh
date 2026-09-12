@@ -201,7 +201,7 @@ if [[ -f "$FLEET_TESTS_WORKFLOW" ]] && (( ${#covered_workflows[@]} > 0 )); then
     fi
 fi
 
-echo "T6: the registry checker derives the same covered set this suite does (#3117)"
+echo "T6: the registry checker derives the same covered set this suite does"
 # This suite's derived population is also what fleet_test_subjects.py checks
 # OUT_OF_TREE_SUBJECTS against (F2) — a derived subject has no path literal
 # for its literal scan to find, so that check re-derives the population with

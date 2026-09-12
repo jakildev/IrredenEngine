@@ -1,19 +1,17 @@
 #!/usr/bin/env python3
-"""Ratchet: the fleet suites' out-of-tree subjects must be registered (#3117).
+"""Ratchet: the fleet suites' out-of-tree subjects must be registered.
 
 `OUT_OF_TREE_SUBJECTS` in `tests/test_fleet_tests_workflow_paths.sh` is a
 hand-maintained *inclusion* list, and both proofs that guard it quantify over
 the list itself: a green run says every listed member is present in
 `fleet-tests.yml`, and the positive control says deleting a listed member is
-noticed. Neither can see the *complement* — a subject nobody added. The list
-shipped incomplete three times for exactly that reason (#2810, #2929, #2859),
-and each time the omitted subject's only regression coverage silently stopped
-being triggered.
+noticed. Neither can see the *complement* — a subject nobody added, which is a
+subject whose only regression coverage CI never triggers. The scan here
+quantifies over the tree instead, so the complement is visible.
 
-The contrast that decides whether a list needs this module:
-`header_global_baseline` in `cmake/run_header_convention_checks.cmake` is an
-*exclusion* list riding on a tree-wide scan, so an unlisted item is caught by
-default. An inclusion list has no scan behind it. This module is that scan.
+`header_global_baseline` in `cmake/run_header_convention_checks.cmake` is the
+shape that needs no such scan: an *exclusion* list riding on a tree-wide scan
+catches an unlisted item by default. An inclusion list has no scan behind it.
 
 Four checks, deliberately separate (each can fail while the others pass):
 
@@ -43,17 +41,17 @@ one rule buys the three reference forms the tree actually uses —
 (`ir_quality_tools.cmake` alone) and a substring inside a longer filename
 (`ruff.toml` inside `myruff.toml`, `cmake/x.cmake` inside `cmake/x.cmake.in`).
 Longest-match is what keeps `scripts/fleet/CLAUDE.md` from being read as a
-reference to the repo-root `CLAUDE.md` — 29 of the 35 `CLAUDE.md` mentions
-across these suites carry that prefix, so a shortest-match scanner credits the
-root file with 31 referencing suites instead of the 4 that actually name it.
+reference to the repo-root `CLAUDE.md`: most `CLAUDE.md` mentions across these
+suites carry a directory prefix, so a shortest-match scanner credits the root
+file with nearly every suite that names any of them.
 
 The scan does not execute a suite or infer its runtime reads, so a path named
 only in a comment or built only as a synthetic fixture still counts. That is
-deliberate over-inclusion: the cost is an extra CI trigger, the alternative is
-the false-clean this module exists to remove. `OUT_OF_TREE_SUBJECTS`'s own
-declaration is excised from the scan input before matching — a registry is not
-evidence for discovering its own members — while every other reference in that
-same suite is kept.
+deliberate over-inclusion: the cost is an extra CI trigger, and the
+alternative is a false clean. `OUT_OF_TREE_SUBJECTS`'s own declaration is
+excised from the scan input before matching — a registry is not evidence for
+discovering its own members — while every other reference in that same suite
+is kept.
 
 Tracked metadata comes from `git ls-files -z` in the supplied root, or from an
 explicit `--manifest` file (or `$FLEET_TEST_SUBJECTS_MANIFEST`). The manifest
@@ -101,8 +99,8 @@ _QUOTED_ROW_RE = re.compile(r"'([^']*)'")
 _SCAN_ROOT_RE = re.compile(r'^_SCAN_ROOT\s*=\s*"([^"]*)"', re.M)
 
 # A bare catch-all is refused as coverage: accepting it would let the filter be
-# widened to everything to make these checks pass, which is the escape hatch
-# this check exists to close.
+# widened to everything to make these checks pass, satisfying them while
+# removing their meaning.
 _CATCH_ALL_ENTRIES = frozenset({"**", "*", "**/*"})
 
 
@@ -312,7 +310,8 @@ def covers_scan_root(entries, scan_root):
     """True when some entry is the recursive glob of `scan_root` or an ancestor.
 
     A descendant glob (`scripts/fleet/**` for a `scripts/` root) deliberately
-    does NOT count — that is exactly the too-narrow filter #2859 caught.
+    does NOT count: it leaves the rest of the root untriggered, which is the
+    same hole as omitting the subject.
     """
     root = scan_root.rstrip("/")
     for entry in entries:
@@ -401,7 +400,7 @@ def check(root, tracked):
 
 def build_parser():
     parser = argparse.ArgumentParser(
-        description="Assert the fleet suites' out-of-tree subjects are registered (#3117)."
+        description="Assert the fleet suites' out-of-tree subjects are registered."
     )
     parser.add_argument("root", nargs="?", default=None,
                         help="repo root to check (default: this checkout)")

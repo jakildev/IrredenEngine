@@ -1,9 +1,9 @@
-"""Unit + integration tests for fleet_test_subjects.py (#3117).
+"""Unit + integration tests for fleet_test_subjects.py.
 
-The module under test is the scan that `OUT_OF_TREE_SUBJECTS` never had: an
-inclusion list's complement is invisible to both a green run and a positive
-control computed from the list, so completeness has to come from a population
-derived independently of it.
+The module under test is the scan behind `OUT_OF_TREE_SUBJECTS`: an inclusion
+list's complement is invisible to both a green run and a positive control
+computed from the list, so completeness has to come from a population derived
+independently of it.
 
 What each group proves:
 
@@ -13,8 +13,8 @@ What each group proves:
                     reference scanner that LACKS the guard, so the case fails
                     if the guard is ever removed rather than passing vacuously.
   Coverage          the entry-covers-subject relation: exact, segment-bounded
-                    `**`, and the refusal of a bare catch-all (the escape the
-                    ticket rules out — widening the filter to everything).
+                    `**`, and the refusal of a bare catch-all, which would
+                    satisfy the ratchet by widening the filter to everything.
   WorkflowParsing   both-blocks predicate + `paths:` extraction, bounded to
                     the list rather than the whole `on:` sub-block.
   LiteralCompleteness  end-to-end over a synthetic indexed repo: double
@@ -29,7 +29,7 @@ What each group proves:
                     exit 2, never a pass — and the `--manifest` seam a
                     `git archive` stage (no .git) has to use.
   CommittedTree     the real checkout passes, and reports nonzero coverage
-                    plus the subjects #3117 named.
+                    plus the subjects the registry is known to carry.
 
 stdlib-only; every fixture lives under a TemporaryDirectory and the synthetic
 trees are real `git init` repos so `tracked_paths` is exercised rather than
@@ -590,7 +590,7 @@ class SetupFailures(_TreeCase):
 
 
 class CommittedTree(unittest.TestCase):
-    """Acceptance for #3117 against the real checkout."""
+    """End-to-end acceptance against the real checkout."""
 
     @classmethod
     def setUpClass(cls):
