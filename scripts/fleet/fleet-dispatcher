@@ -185,6 +185,7 @@ _env_model_merger="${FLEET_MODEL_MERGER:-}"
 _env_model_opus_reviewer="${FLEET_MODEL_OPUS_REVIEWER:-}"
 _env_model_epic_steward="${FLEET_MODEL_EPIC_STEWARD:-}"
 _env_fable_cap="${FLEET_CONCURRENCY_MODEL_FABLE:-}"
+_env_cap_mode="${FLEET_CAP_MODE:-}"
 # Preserve explicit environment overrides while exporting config to the adapters.
 declare -A _runtime_env=()
 _runtime_keys=(FLEET_RUNTIMES FLEET_CROSS_PROVIDER_REVIEW FLEET_WORKER_RUNTIME
@@ -244,6 +245,19 @@ unset _env_worker _worker_cap _dep_opus _dep_sonnet \
       _env_opus_worker _env_sonnet_author _env_sonnet_reviewer \
       _env_opus_reviewer _env_queue_manager _env_merger _env_smoke_worker \
       _env_epic_steward
+# How a per-role cap binds. `elastic` (default): the cap is a reservation —
+# every launch holds back one free pane for each OTHER role with a standing
+# trigger and headroom under its own cap, and a role at its cap may take
+# what that leaves over, so a lone busy lane spreads across an idle pool
+# while contended lanes still get their share. `strict`: the cap is a
+# ceiling. The fable cap and the pool size are hard in both modes.
+CAP_MODE="${_env_cap_mode:-${FLEET_CAP_MODE:-elastic}}"
+if [[ "$CAP_MODE" != "elastic" && "$CAP_MODE" != "strict" ]]; then
+    printf '[%s dispatcher] FLEET_CAP_MODE=%q is not elastic|strict; falling back to elastic\n' \
+        "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$CAP_MODE" >&2
+    CAP_MODE=elastic
+fi
+unset _env_cap_mode
 
 # Tracks per-role "deferred-by-cap" log throttling so the at-cap message
 # doesn't spam every 10s tick while the cap is held. Cleared whenever a
@@ -2240,6 +2254,38 @@ smoke_worker_should_fire() {
     [[ -n "$SMOKE_SERVABLE_PRS" ]]
 }
 
+# Free panes among <idle-panes> (one pane id per line): idle for the role
+# and not already holding a dispatch record — a pane whose shell shows
+# through between tool calls is still busy, and the fan-out skips it too.
+count_free_panes() {
+    local n=0 pane_id
+    while IFS= read -r pane_id; do
+        [[ -n "$pane_id" ]] || continue
+        [[ -f "$(dispatch_record "$pane_id")" ]] || n=$((n + 1))
+    done <<< "$1"
+    printf '%s\n' "$n"
+}
+
+# Panes a role must leave free this tick under the elastic cap: one per
+# OTHER dispatched role that has a standing trigger and is still under its
+# own cap (an uncapped role counts as under). A role with nothing pending,
+# or one that is itself at cap, reserves nothing — the caps only spread
+# panes out when several lanes want them at once. Both admission paths in
+# dispatch_role consult this: an at-cap role may take only what is left
+# over, an under-cap one the same but never fewer than one pane.
+count_panes_reserved_for_other_roles() {
+    local role="$1" other other_cap reserved=0
+    for other in "${DISPATCHED_ROLES[@]}"; do
+        [[ "$other" != "$role" && -f "$TRIGGERS_DIR/$other" ]] || continue
+        other_cap="${ROLE_CONCURRENCY[$other]:-0}"
+        if (( other_cap > 0 )) && (( $(count_active_for_role "$other") >= other_cap )); then
+            continue
+        fi
+        reserved=$((reserved + 1))
+    done
+    printf '%s\n' "$reserved"
+}
+
 dispatch_role() {
     local role="$1"
     local trigger_file="$TRIGGERS_DIR/$role"
@@ -2288,32 +2334,83 @@ dispatch_role() {
         fi
     fi
 
-    # Per-role concurrency cap. Defer if (in-flight + reserved) already at
-    # cap. Trigger stays in place so the next tick can re-evaluate once an
-    # iteration finishes or a reservation releases. Logged once per cap-held
-    # window to avoid spamming.
+    # Idle panes serving this role (its own tag or the generic "pool" tag).
+    # The fan-out below walks them; the elastic cap needs their count first.
+    local idle_panes
+    idle_panes=$(find_idle_panes_for_role "$role")
+
+    # Per-role concurrency cap on (in-flight + reserved). Under
+    # CAP_MODE=strict it is a ceiling: defer while at cap. Under elastic it
+    # is a reservation that binds EVERY launch, at cap or under it: this
+    # role may take free panes, minus one held back for every OTHER role
+    # with a standing trigger and headroom under its own cap
+    # (count_panes_reserved_for_other_roles) — a role with nothing pending
+    # reserves nothing. Either way the trigger stays in place so the next
+    # tick re-evaluates once an iteration finishes, a reservation releases,
+    # or a pane frees. Logged once per cap-held window to avoid spamming.
     local cap="${ROLE_CONCURRENCY[$role]:-0}"
     # Remaining cap headroom bounds this tick's fan-out. Pre-pool this was
     # implicit — a role could never out-dispatch its dedicated pane count —
     # but any pool pane can serve any role, so a single trigger meeting a
     # mostly-idle pool would otherwise blow straight past the cap.
     local role_headroom=-1   # -1 = uncapped
+    # The cap this tick's launches exceed (elastic only); stamped as
+    # `over-cap=<cap>` on the dispatch line so fleet-health can count them.
+    local over_cap=""
     if (( cap > 0 )); then
         local active
         active=$(count_active_for_role "$role")
-        if (( active >= cap )); then
-            if [[ -z "${CAP_DEFER_LOGGED[$role]+x}" ]]; then
-                log "$role at concurrency cap ($active >= $cap); deferring trigger"
-                CAP_DEFER_LOGGED["$role"]=1
+        if (( active < cap )); then
+            role_headroom=$(( cap - active ))
+            # The reservation binds an under-cap fan-out too. Roles are
+            # dispatched sequentially within a tick, so a pane one role held
+            # back is simply taken by the next role in DISPATCHED_ROLES
+            # order unless every launch honours the same rule: an at-cap
+            # worker leaving two panes for pending sonnet- and opus-reviewer
+            # triggers buys the opus reviewer nothing if the sonnet reviewer
+            # (cap 4) may then take both.
+            #
+            # Floor of one: this role is WITHIN its cap, so it is entitled to
+            # launch. Without the floor two under-cap roles each reserving a
+            # pane for the other would both defer while a pane sat idle. An
+            # at-cap role has no such entitlement (it is asking for a pane it
+            # has no budget for), which is why the branch below floors at
+            # zero instead. role_headroom==1 cannot be clamped below the
+            # floor, so the reservation walk — one count_active_for_role per
+            # pending role, each a tmux walk — is only paid above that.
+            if [[ "$CAP_MODE" == "elastic" ]] && (( role_headroom > 1 )); then
+                local free reserved allowance
+                free=$(count_free_panes "$idle_panes")
+                reserved=$(count_panes_reserved_for_other_roles "$role")
+                allowance=$(( free - reserved ))
+                (( allowance < 1 )) && allowance=1
+                (( role_headroom > allowance )) && role_headroom=$allowance
             fi
-            return
+        else
+            local free reserved=0
+            free=$(count_free_panes "$idle_panes")
+            role_headroom=0
+            if [[ "$CAP_MODE" == "elastic" ]] && (( free > 0 )); then
+                reserved=$(count_panes_reserved_for_other_roles "$role")
+                role_headroom=$(( free - reserved ))
+            fi
+            if (( role_headroom <= 0 )); then
+                if [[ -z "${CAP_DEFER_LOGGED[$role]+x}" ]]; then
+                    local held=""
+                    if (( reserved > 0 )); then
+                        held="; $free free pane(s) reserved for other pending roles"
+                    fi
+                    log "$role at concurrency cap ($active >= $cap)$held; deferring trigger"
+                    CAP_DEFER_LOGGED["$role"]=1
+                fi
+                return
+            fi
+            over_cap=$cap
         fi
         unset "CAP_DEFER_LOGGED[$role]"
-        role_headroom=$(( cap - active ))
     fi
 
-    # Fan out across the idle panes serving this role (its own tag or
-    # the generic "pool" tag), skipping any that already have an
+    # Fan out across the idle panes, skipping any that already have an
     # in-flight dispatch record. Any role gets concurrent iterations
     # this way, bounded by role_headroom above; the original design
     # single-flighted each role because the dispatch record was keyed
@@ -2326,8 +2423,6 @@ dispatch_role() {
     # item and a pane is never launched when nothing is claimable — the
     # fan-out stops at the first pane that cannot be assigned. The merger
     # and epic steward still coordinate iteration-side via fleet-claim.
-    local idle_panes
-    idle_panes=$(find_idle_panes_for_role "$role")
     if [[ -z "$idle_panes" ]]; then
         # No idle pane right now (every pane for this role is running
         # claude or otherwise busy). Leave the trigger in place —
@@ -2529,14 +2624,21 @@ dispatch_role() {
         fi
         local cmd
         cmd=$(build_dispatch_command "$role" "$pane_key" "$DISPATCH_MODEL" "$DISPATCH_EFFORT" "$target_arg")
-        # `runtime=` trails the bracket so the bracketed form stays exactly
-        # what existing log consumers match on.
+        # One bracket with `runtime=` trailing it: the bracketed form is what
+        # the log consumers (fleet-health) match on, so every annotation goes
+        # inside it, space-separated, target= before over-cap=.
         local launch_runtime="${ASSIGN_RUNTIME:-claude}"
+        local launch_note=""
         if [[ -n "$DISPATCH_CLASS" ]]; then
-            log "dispatching $role -> $pane_id [class=$DISPATCH_CLASS effort=$DISPATCH_EFFORT${target_arg:+ target=$target_arg}] runtime=$launch_runtime"
-        else
-            log "dispatching $role -> $pane_id${target_arg:+ [target=$target_arg]} runtime=$launch_runtime"
+            launch_note="class=$DISPATCH_CLASS effort=$DISPATCH_EFFORT"
         fi
+        if [[ -n "$target_arg" ]]; then
+            launch_note="${launch_note:+$launch_note }target=$target_arg"
+        fi
+        if [[ -n "$over_cap" ]]; then
+            launch_note="${launch_note:+$launch_note }over-cap=$over_cap"
+        fi
+        log "dispatching $role -> $pane_id${launch_note:+ [$launch_note]} runtime=$launch_runtime"
         # Reset the input line with C-u (kill-line) before sending the
         # dispatch command. Catches any partial input the human may have
         # typed into the idle pane (stray "Ca" from an in-flight tmux
@@ -3096,6 +3198,12 @@ case "${1:-}" in
             exit 2
         fi
         echo "${ROLE_CONCURRENCY[$2]:-0}"
+        exit 0
+        ;;
+    --print-cap-mode)
+        # Print how the per-role caps bind (elastic | strict), resolved from
+        # env > conf > default. Used by tests and for operator inspection.
+        echo "$CAP_MODE"
         exit 0
         ;;
     --print-effort)
