@@ -1872,10 +1872,8 @@ To add a helper for a new math type, add an `inline` free function to
   include gives a cryptic linker error, not a runtime failure.
 - **`registerType` name must match the C++ class name exactly.** The string
   passed to `registerType<C_Foo, ...>("C_Foo", ...)` becomes the Lua-visible
-  name AND the `IRComponent.C_Foo` handle key. Using a non-canonical name
-  (e.g. `"Foo"` for `C_Foo`) breaks the `IRComponent.C_Foo` spelling and
-  causes confusing nil-access errors. Convention: always pass the literal
-  class name as the binding string.
+  name AND the `IRComponent.C_Foo` handle key; a non-canonical name (`"Foo"`)
+  breaks the `IRComponent.C_Foo` spelling with confusing nil-access errors.
 - **`IRComponent.C_Name` requires `bindLuaDrivenEcs()` first.** The handle
   is populated in `recordComponentLuaName`, which only writes to
   `IRComponent[name]` if that table already exists. Call
@@ -1883,9 +1881,8 @@ To add a helper for a new math type, add an `inline` free function to
   that expects Lua code to reference the component by handle.
 - **Batch creation accepts any positive component count.**
   `registerCreateEntityBatchFunction<Components...>` binds one positional Lua
-  factory per component; the Lua call must pass exactly that many factories.
-  See [`.claude/rules/cpp-ecs-smells.md`](../../.claude/rules/cpp-ecs-smells.md)
-  for the factory-count contract.
+  factory per component; the Lua call must pass exactly that many factories
+  ([`.claude/rules/cpp-ecs-smells.md`](../../.claude/rules/cpp-ecs-smells.md)).
 - **`LuaScript` lifetime is absolute.** Destroying the `sol::state`
   invalidates every bound object, `sol::protected_function` callback, and
   coroutine. Don't hold Lua handles across `World` shutdown.

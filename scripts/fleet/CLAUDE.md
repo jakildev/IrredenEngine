@@ -20,18 +20,13 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   written network-free and silently starts reaching live GitHub, so its
   verdicts become a function of production state. Re-point those suites in the
   same PR — and prefer fixtures that are obviously synthetic, since the tell is
-  easy to miss when the fixture uses plausible real IDs (#2986 added a live
-  fallback to `resolve_needs_plan_blocked_by`; the pre-existing suite's "open
-  blocker" fixture was a real issue number that had since closed, so the suite
-  failed on live state rather than on the code under test).
+  easy to miss when the fixture uses plausible real IDs (#2986).
 - **A CLI stub models the tool's argument parsing, not just its endpoint.**
   A `gh` stub that matches a substring of `"$@"` and ignores flags accepts
   arguments the real binary rejects, so the suite certifies a call that has
-  never once succeeded in production. `label_added_epoch` passed jq's
-  `--arg` to `gh api` — rejected before the request, swallowed by
-  `2>/dev/null`, permanently returning "age unknown" and silently disabling
-  every claim-label TTL sweep — while every suite covering it stayed
-  green (#2781).
+  never once succeeded in production (#2781: a flag `gh api` rejected,
+  swallowed by `2>/dev/null`, silently disabled every claim-label TTL sweep
+  while every suite covering it stayed green).
   Validate flags against the real tool's accepted set (transcribe it from
   `--help`) and fail the way it fails; where the stub emulates `--jq`,
   evaluate the program against fixture JSON instead of pre-baking the
@@ -116,9 +111,8 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   two ratchets have to agree on, and the derived side is the one a
   hand-maintained list cannot follow, so `test_workflow_paths_sync.sh`'s T4
   asserts the agreement directly off the glob: a newly-covered workflow
-  fails a suite instead of silently costing itself its trigger —
-  `python-lint.yml` (#2718) is the case that exercised it, and
-  `format-check.yml` (#3187) the second.
+  fails a suite instead of silently costing itself its trigger (#2718,
+  #3187).
 - **Bash tests source `tests/lib_assert.sh`** for the PASS/FAIL counters,
   `ok`/`bad`, `assert_eq`/`assert_contains`/`assert_absent`, and the
   `summarize` exit idiom — don't re-copy the helpers into a new test.
@@ -138,8 +132,7 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   `fleet_*.py` modules beside them, so a partial stage aborts every invocation
   on its lib-dir preflight and the suite scores those as ordinary assertion
   failures — printing a **plausible but wrong tally** rather than an error
-  (#2713: a mis-stage read 2 passed / 21 failed where the truth was 14 / 9,
-  inflating the fix's apparent coverage). `fleet-positive-control <test-file>
+  (#2713). `fleet-positive-control <test-file>
   <ref>` stages the whole directory with `git archive`, reports MEANINGFUL vs
   VACUOUS, and emits the test-plan line with its arithmetic shown. It drives
   both suite types — `.sh` under bash, `.py` under python3, dispatched on the
@@ -167,14 +160,10 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   it in too, but only from that line down — put the preflight source **above
   the first line that builds a path to a `fleet-*` wrapper**, which is what
   `test_positive_control.sh`'s adoption ratchet checks. Don't scope a guard
-  like this to the file it happens to live in: the previous form fired only
-  for suites that sourced `lib_assert.sh` with `SCRIPT_DIR` already set —
-  49 of 91 hazard-bearing suites were uncovered, its documented
-  "call `require_fleet_lib_dir` explicitly" escape hatch collected zero takers
-  in two weeks, and a mis-staged lane-3 suite reported `PASS: 4  FAIL: 7`
-  against a truth of 11/11 (#2845). The ratchet is the durable half: adoption
-  is enforced tree-wide, not remembered, so a new suite that forgets the line
-  goes red instead of reporting a plausible-but-wrong tally.
+  like this to the file it happens to live in (a form that fired only for
+  suites sourcing `lib_assert.sh` with `SCRIPT_DIR` already set left 49 of
+  91 hazard-bearing suites uncovered, #2845); the ratchet is the durable
+  half — adoption is enforced tree-wide, not remembered.
   Same for **before/after** evidence: report **coverage** beside the drift
   count — an input rejected at the entry guard agrees on both revisions,
   vacuously (#2875: `drifted: 0` was 41 of 166 linted).
@@ -230,9 +219,8 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   [`docs/agents/FLEET-CACHE.md`](../../docs/agents/FLEET-CACHE.md) §"Size
   invariant". **A change to the per-PR record shape bumps `PR_RECORD_SCHEMA`**
   in the same commit, or `fetch_prs`'s 304 fast path keeps serving the pre-change
-  shape out of the on-disk `state.json` after the deploy — for an unbounded
-  number of ticks on a quiet repo. The trim above shipped that way and emitted
-  348 KB on tick 1 of every restart with the trim code live (#3037).
+  shape out of the on-disk `state.json` after the deploy, for an unbounded
+  number of ticks on a quiet repo (#3037).
 - **Concurrently-read state writers use `write_atomic`, never plain
   `write_text`.** A JSON/state/cache file that another process may read
   mid-write is persisted with the module's `write_atomic()` helper
@@ -268,10 +256,9 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   The exclusion is **directional** — closing one side leaves the hazard
   live, and both lanes are woken by the same labels by design, so a
   one-sided guard reads as complete while the race is untouched. It is also
-  **per-lane-pair**: #2801 closed `fleet:reviewing-*` against
-  `fleet:amending-*` and left the *same* hazard live against
-  `fleet:resolving-*` for three weeks, because the fix's own acceptance
-  criteria named one lane (#3001). When a guard lands, enumerate every
+  **per-lane-pair** (#2801 closed `fleet:reviewing-*` against
+  `fleet:amending-*` and left the same hazard live against
+  `fleet:resolving-*`, #3001): when a guard lands, enumerate every
   claim-taking lane that force-pushes — today `cmd_amending_claim` and
   `cmd_resolving_claim`, both routed through the shared exclusion table and
   POST-response arbitration — not just the one the incident came from. The
@@ -369,15 +356,10 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   after every early-`continue` guard **and after the action itself succeeded**,
   never before either: recording the hash and then skipping — or recording it
   and then failing to `Popen` — discards the change permanently, since the next
-  tick compares equal and skips too. A degraded tick swallowed an
-  agent-approved issue's ingest exactly this way, and the freshly-stamped
-  seen-hash mtime — the strongest available "this lane is healthy" signal —
-  was the bug's own fingerprint (#2965). Periodic claim cleanup follows the
-  same rule for its last-run marker: only a successful spawn consumes the
-  deadline. Fixing only the guard half left the
-  identical strand one line down, where both lanes swallowed a spawn failure
-  with a bare `log` (#2972): the write must clear the *whole* fallible region,
-  so "put it below the guards" is the special case, not the rule. Where a lane
+  tick compares equal and skips too (#2965). Periodic claim cleanup follows
+  the same rule for its last-run marker: only a successful spawn consumes
+  the deadline. The write must clear the *whole* fallible region (#2972), so
+  "put it below the guards" is the special case, not the rule. Where a lane
   fires **several** commands per firing, state the partial-failure rule
   explicitly rather than implying it — the `queue-manager` lane is all-or-none
   (any failed spawn leaves the hash unwritten and re-runs the whole set next

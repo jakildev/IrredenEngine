@@ -44,21 +44,18 @@ never merges anything.
 
 `fleet-claim` takes a task in two steps: a per-host FS lock (`mkdir` under
 `~/.fleet/claims/<slug>/`) and the `fleet:claim-<host>-<agent>` sole-holder
-label ([`fleet-labels-reference.md § Claims`](fleet-labels-reference.md)).
-A failed `gh issue edit` rolls the claim back — no FS-only fallback. After
+label ([`fleet-labels-reference.md § Claims`](fleet-labels-reference.md));
+a failed `gh issue edit` rolls the claim back — no FS-only fallback. After
 the PR opens the scout derives ownership from its `headRefName`; abandoned
 claims are swept by `fleet-claim cleanup --gh`. Review, feedback, conflict
-and planning claims use the same primitive with their own prefixes; the
-prefixes are disjoint namespaces, so a lane that force-pushes (feedback,
-conflict resolution) excludes a live `fleet:reviewing-*` held by another
-agent explicitly — the scout suppresses the item, the claim-time gate is the
-fast path, and the POST response arbitrates the excluded-prefix union; the
-same agent passes through. Host keys are one
-canonical set — `derive_host()`, `uname -s` (`Linux` →
-`linux`, `Darwin` → `macos`, `MINGW*/MSYS*/CYGWIN*` → `windows`), the build
-presets, `fleet:authored-on-<host>`; `fleet-claim host` prints this
-machine's. WSL2 is `linux`, so a WSL2 fleet and a native-Linux fleet on one
-account collide unless one forces `FLEET_TEST_HOST`.
+and planning claims use the same primitive under disjoint prefixes, so a
+force-pushing lane (feedback, conflict resolution) excludes another agent's
+live `fleet:reviewing-*` (its own passes): scout suppression, claim-time
+gate, POST-response arbitration over the excluded-prefix union. Host keys
+are one canonical set (`derive_host()`: `Linux` → `linux`, `Darwin` →
+`macos`, `MINGW*/MSYS*/CYGWIN*` → `windows`; `fleet-claim host` prints this
+one); WSL2 is `linux`, so a WSL2 and a native-Linux fleet on one account
+collide unless one forces `FLEET_TEST_HOST`.
 
 ### Who takes the claim
 
@@ -207,13 +204,12 @@ Windows (`windows-debug`, OpenGL; MSYS2 bash + tmux). Two verification
 tiers: OpenGL `{linux, windows}` (either satisfies the merge gate; the
 representative routes to `windows`, the ship platform) and Metal `{macos}`
 ([`FLEET-CROSS-HOST-SMOKE.md`](FLEET-CROSS-HOST-SMOKE.md)). After a render
-PR that touched one backend, run `backend-parity` on the lagging side's
-host; a port is complete only when it builds clean on the lagging preset
-and the target demo renders at functional parity; one logical feature per
-parity PR; parity touching `engine/math/`, dispatch-grid helpers, GPU
-buffer lifetime, or a shared CPU-side feeder struct is opus work
-(`.claude/skills/backend-parity/SKILL.md` has the flow and the GLSL↔MSL
-cheatsheet).
+PR that touched one backend, run `backend-parity` on the lagging host: a
+port is complete only when it builds clean on the lagging preset and the
+target demo renders at functional parity; one logical feature per parity
+PR; parity touching `engine/math/`, dispatch-grid helpers, GPU buffer
+lifetime, or a shared CPU-side feeder struct is opus work
+(`.claude/skills/backend-parity/SKILL.md`).
 
 ### Verifying render changes
 
@@ -273,38 +269,28 @@ start with your worktree root ([`CLAUDE-BASELINE.md`](CLAUDE-BASELINE.md)
 ### Editing `.claude/` paths in headless mode (`fleet-edit`)
 
 The auto-mode classifier blocks `Edit`/`Write` under `.claude/` in headless
-sessions regardless of permission entries. Use `fleet-edit` (exact-string
-replacement; `--replace-all` for non-unique text; needs
-`Bash(fleet-edit:*)` in `.claude/settings.json`):
-
-```bash
-cat > /tmp/fleet-edit-old.txt <<'OLD'
-text to find in the file
-OLD
-cat > /tmp/fleet-edit-new.txt <<'NEW'
-replacement text
-NEW
-fleet-edit .claude/skills/foo/SKILL.md /tmp/fleet-edit-old.txt /tmp/fleet-edit-new.txt
-```
+sessions regardless of permission entries. Use `fleet-edit <file>
+<old-text-file> <new-text-file>` — exact-string replacement, old and new
+text read from files (write them by heredoc); `--replace-all` for
+non-unique text; needs `Bash(fleet-edit:*)` in `.claude/settings.json`.
 
 ---
 
 ## Stacked PRs
 
-Stacks are GitHub-native: every mode ends with `commit-and-push`'s link
-step
+Stacks are GitHub-native: every mode ends with `commit-and-push`'s link step
 ([`native-stack-link.md`](../../.claude/skills/commit-and-push/procedures/native-stack-link.md)),
 after which GitHub retargets and rebases children server-side when a
 parent merges, cascades with `gh stack sync` (a conflicting replay pauses
 with exit 3 for `gh stack rebase --continue`), and merges couple
 bottom-up; the auto-rereview classifier keeps the verdict across the
 content-identical force-push
-([`native-stacked-prs-migration.md`](../design/native-stacked-prs-migration.md);
-legacy: `scripts/fleet/legacy/stacked-prs/README.md`). The merger rebases
-any feature-branch-based PR against its own base and labels an accidental
-fork (`baseRefName` `master` with commits inherited from another open PR)
-`fleet:needs-info`; a child whose base branch vanished is logged and
-skipped for a human, since GitHub retargets on merge, not close.
+([`native-stacked-prs-migration.md`](../design/native-stacked-prs-migration.md)).
+The merger rebases any feature-branch-based PR against its own base and
+labels an accidental fork (`baseRefName` `master` with commits inherited
+from another open PR) `fleet:needs-info`; a child whose base branch
+vanished is logged and skipped for a human, since GitHub retargets on
+merge, not close.
 
 ### Cross-author stacking (scheduler)
 
@@ -319,13 +305,8 @@ delta only. Both repos are stackable (`--repo game`).
 ### Molecule resume protocol
 
 `fleet-claim stack "<A> <B> …"` writes `~/.fleet/molecules/<worktree>.yml`.
-Authoring roles run, before normal pickup:
-
-```
-fleet-claim molecule resume <your-worktree-name>
-```
-
-Always exits 0. An issue number on stdout → that issue is yours
+Authoring roles run `fleet-claim molecule resume <worktree>` before normal
+pickup; it always exits 0. An issue number on stdout → that issue is yours
 (`fleet:in-progress`): skip pickup, `fleet-claim stack-pr-state
 <worktree>` shows its PR and branch, check the branch out and continue —
 resuming coherent partial work, discarding incoherent work (`git restore
@@ -376,8 +357,7 @@ parent = the blocker PR). With no live claim it prints `master` and warns
 
 `gh pr create --title "<issue title> (#<N>)" --body "Claiming issue. Work in progress.\n\nCloses #<N>" --label "fleet:wip"`
 
-`commit-and-push` resolves the base via `claim-base` and runs the link
-itself
+`commit-and-push` resolves the base via `claim-base` and runs the link itself
 ([`stackable-on.md`](../../.claude/skills/commit-and-push/procedures/stackable-on.md)).
 
 ---
@@ -391,17 +371,16 @@ implementation and thresholds: `scripts/fleet/fleet-dispatcher`
 
 - **Fleet-wide usage gate** — `fleet-claude-stream` latches every
   `rate_limit_event` into `~/.fleet/state/usage/<type>.json`; the
-  dispatcher defers all new dispatches while a fresh observation is at or
-  above threshold (`five_hour` 80 %, `seven_day` 95 %;
+  dispatcher defers new dispatches while a fresh observation is at or above
+  threshold (`five_hour` 80 %, `seven_day` 95 %;
   `FLEET_DISPATCHER_USAGE_GATE[_FIVE_HOUR|_SEVEN_DAY]`) and reopens at
-  `resetsAt` + `FLEET_DISPATCHER_RESET_GRACE_SECONDS` (600). Observations
-  older than `FLEET_DISPATCHER_USAGE_STALE_SECONDS` (3600) are dropped;
-  `fleet-up --reset-usage` wipes them after an account switch.
+  `resetsAt` + `FLEET_DISPATCHER_RESET_GRACE_SECONDS` (600); observations
+  older than `FLEET_DISPATCHER_USAGE_STALE_SECONDS` (3600) are dropped
+  (`fleet-up --reset-usage` wipes them after an account switch).
 - **GitHub API quota** — the scout samples `gh api /rate_limit` into
   `github-{core,graphql,search}.json`; core and graphql gate at 90 %
-  (`FLEET_DISPATCHER_USAGE_GATE_GITHUB_{CORE,GRAPHQL}`), search never
-  gates.
-- **Per-pane cooldown** — a pane exiting with code 2 is excluded for
+  (`FLEET_DISPATCHER_USAGE_GATE_GITHUB_{CORE,GRAPHQL}`), search never.
+- **Per-pane cooldown** — exit code 2 excludes the pane for
   `FLEET_DISPATCHER_LIMIT_DELAY` seconds (900).
 
 `fleet-gate-status [--json]` prints gate state, breaching observation,
@@ -427,20 +406,19 @@ PRs with no state labels.
 Instructions cost every task that loads them, so an improvement must earn
 its lines:
 
-- **Validator or nothing.** A snag that a check, ratchet, lint, or test
-  can catch becomes that check; its failure message carries the rule. A
-  snag nothing can execute is almost always something the model already
-  does, and is dropped.
+- **Validator or nothing.** A snag a check, ratchet, lint, or test can
+  catch becomes that check, its failure message carrying the rule; a snag
+  nothing can execute is almost always something the model already does,
+  and is dropped.
 - **Prose only for facts the model cannot derive** — build commands,
   invariants, platform gotchas — at one canonical home, within the file's
-  instruction-size budget (`scripts/lint_instruction_size.py`), replacing
-  text rather than adding to it.
+  budget (`scripts/lint_instruction_size.py`), replacing text, not adding.
 - **Reviews block on the big picture.** Needs-fix is for defects in what
   the code does; wording and comments are nits that never block
   (REVIEWER-PROTOCOL.md §"Nits vs needs-fix").
 - **Filing is rare.** A `fleet:coding-improvement` ticket needs a fired
-  incident and a validator shape; the batch triage runs a few times a
-  month, not per ticket.
+  incident and a validator shape; batch triage runs a few times a month,
+  not per ticket.
 
 ## Fleet feedback channel
 
@@ -449,10 +427,9 @@ first; append; file names in
 [`FLEET-RUNTIME.md § End-of-iteration feedback`](FLEET-RUNTIME.md)).
 One-way: the human reads `fleet-feedback` and responds by editing the
 fleet. The bar is "would a future `fleet-up` benefit from the human
-knowing this": a fleet bug or surprising state, a missing tool /
+knowing this" — a fleet bug or surprising state, a missing tool /
 permission / confusing instruction that cost time, a pattern across
-iterations, an improvement you would file at a lower threshold. Routine
-completion notes go to logs; most iterations write nothing.
+iterations. Routine completion notes go to logs; most iterations write nothing.
 
 ```
 ## YYYY-MM-DD HH:MM
@@ -478,8 +455,5 @@ untriaged issues; feedback files newer than
 counts. `fleet-digest-tick` refreshes `~/.fleet/digest/latest.md` and
 fires `fleet-notify` (desktop toast, log-first to `~/.fleet/notify.log`)
 only when decision-relevant content changed since this host's last tick;
-schedule it per host (read-only, host-local, no coordination):
-
-```
-*/30 * * * * $HOME/bin/fleet-digest-tick
-```
+schedule it per host by cron (`*/30 * * * * $HOME/bin/fleet-digest-tick`;
+read-only, host-local, no coordination).

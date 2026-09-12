@@ -69,12 +69,9 @@ It filters by `overrides.omit_`, substitutes buttons per
 own `DefaultBinding` table gets the same omit/remap machinery:
 
 ```cpp
-// Everything except Escape, for a creation that owns its own Escape handling.
-// Every in-tree creation spells this through the forwarding wrapper
-// IRPrefab::Camera::registerStandardKeyboardCommands — voxel_editor and
-// shape_debug (Escape opens the settings menu, #2551) pass these exact
-// overrides to it; outside that wrapper only the manifest tests call the
-// bare form below.
+// Everything except Escape, for a creation that owns its own Escape handling
+// (in-tree creations pass these overrides through the forwarding wrapper
+// IRPrefab::Camera::registerStandardKeyboardCommands).
 IRCommand::registerCameraCommands({.omit_ = {IRCommand::CLOSE_WINDOW}});
 
 // Pan on the arrow keys instead of WASD.
@@ -132,29 +129,24 @@ button, triggerStatus, requiredModifiers}` rows — the read-only
 and #2551's settings menu consumes.
 
 `getRegistrationGeneration()` is a counter bumped **only when the vector
-actually grows**. A consumer that caches text built from the registry
-compares it against its own snapshot to decide whether to rebuild. This is
-load-bearing: the pre-#2550 overlay built its text once (`if
-(commandList_.empty())`) and never invalidated, so any command registered
-after the first visible frame never appeared. Bumping on a *filtered*
-registration would be equally wrong — it would turn "zero cost while hidden"
-into a per-frame rebuild.
+actually grows**; a consumer that caches text built from the registry
+compares it against its own snapshot to decide whether to rebuild, so a
+command registered after the first visible frame still appears. Bumping on
+a *filtered* registration would turn "zero cost while hidden" into a
+per-frame rebuild.
 
 ### Querying what is bound (`isButtonBound`, #2570)
 
 `isButtonBound(inputType, triggerStatus, button)` answers "is this key already
-taken" for creation code that wants to guard an ad-hoc bind against the
-engine's own registrations, instead of mirroring the engine's key list in a
-hand-maintained "reserved keys" table that drifts. Exposed on `CommandManager`,
-through `ir_command.hpp` as a free function, and to Lua as
-`IRCommand.isButtonBound`.
+taken" for creation code guarding an ad-hoc bind against the engine's own
+registrations, instead of mirroring the engine's key list in a hand-maintained
+"reserved keys" table that drifts. Exposed on `CommandManager`, through
+`ir_command.hpp` as a free function, and to Lua as `IRCommand.isButtonBound`.
 
-**It scans `m_userCommands`, not the registration map** — and that choice is
-the whole design. The registry's two filters below make it structurally unable
-to back this query: an unnamed ad-hoc lambda and every non-`PRESSED` row (the
-camera suite's `MOVE_CAMERA_*_END` bindings) are never recorded there, so a
-registry-backed implementation reports "unbound" for keys that are very much
-bound. The regression locks in `test/common/command_registry_test.cpp` and
+**It scans `m_userCommands`, not the registration map.** The registry
+records only named `PRESSED` rows (Gotchas below), so it cannot see an
+unnamed ad-hoc lambda or the camera suite's `MOVE_CAMERA_*_END` bindings —
+keys that are very much bound. `test/common/command_registry_test.cpp` and
 `test/script/lua_command_test.cpp` pin exactly those rows.
 
 Three contract points, each deliberate:
@@ -174,43 +166,26 @@ Three contract points, each deliberate:
 Cost is an O(bindings) linear scan — an init/registration-time query, not a
 per-tick call.
 
-**The query is type-exact; the dispatcher is not.** `isButtonBound` matches on
-all three of `getType()`, status and button, but
-`executeUserKeyboardCommandsAll` — the only tick-path reader of
-`m_userCommands` — never consults `getType()`: it runs
-`IRInput::checkKeyMouseButton` over every row. So a row bound with a
-non-`KEY_MOUSE` input type would fire on the matching keyboard press while
-`isButtonBound(KEY_MOUSE, …)` calls it unbound. Latent, not live — every
-button binding in the tree registers `KEY_MOUSE` and there is no gamepad
-dispatch loop at all, so nothing misreports today. The same fact is why the
-MIDI carve-out above holds by *population* rather than by construction:
-`createCommand(MIDI_NOTE, …)` would land a button row like any other, it just
-never happens. The type check belongs to the query (it is what a `GAMEPAD`
-dispatch loop would need); the missing filter belongs to the dispatcher.
+**The query is type-exact; the dispatcher is not.** `isButtonBound` matches
+on `getType()`, status and button, but `executeUserKeyboardCommandsAll` —
+the only tick-path reader of `m_userCommands` — never consults `getType()`,
+so a row bound with a non-`KEY_MOUSE` input type would fire on the keyboard
+press while `isButtonBound(KEY_MOUSE, …)` calls it unbound. Latent, not
+live: every button binding in the tree registers `KEY_MOUSE` and there is
+no gamepad dispatch loop — which is also why the MIDI carve-out holds by
+*population* rather than by construction (`createCommand(MIDI_NOTE, …)`
+would land a button row; it just never happens). The type check belongs to
+the query; the missing filter belongs to the dispatcher.
 `CommandRegistryTest.IsButtonBoundIsTypeExact` locks the query half.
-
-Two filters keep the list readable, both intentional:
-
-- **Unnamed bindings are excluded.** `name` defaults to empty, so every
-  ad-hoc `createCommand(..., fn)` lambda stays out unless the call site
-  opts in by passing `name` / `description`.
-- **Only `PRESSED` appears.** The `HELD` / `RELEASED` /
-  `PRESSED_AND_RELEASED` halves (the WASD `MOVE_CAMERA_*_END` bindings)
-  stay hidden so a key isn't listed twice.
 
 ## The command catalog (`kCommandInfo`)
 
 `ir_command.hpp` carries one `CommandInfo{name_, displayName_, description_}`
 row per `CommandNames` value, **indexed by the enum value itself**.
 `commandNameToString()` and `commandDescription()` are O(1) lookups over it.
-
-This replaced a hand-listed switch whose `default: return "UNKNOWN"` arm
-silently rendered omitted values as "UNKNOWN" with no build or runtime signal
-(`SCREENSHOT_CANVAS` and `TOGGLE_CULLING_FREEZE` had both shipped that way).
-Two `static_assert`s close the gap: one ties `std::size(kCommandInfo)` to
-`kCommandNameCount`, the other (`commandInfoRowsAligned()`) proves row `i`
-describes enum value `i`. Adding an enum value without its row is now a
-**compile error**.
+Two `static_assert`s make an enum value without its row a **compile error**:
+one ties `std::size(kCommandInfo)` to `kCommandNameCount`, the other
+(`commandInfoRowsAligned()`) proves row `i` describes enum value `i`.
 
 Because the enum-templated `createCommand<NAME>(...)` forwards both strings
 from this table, every prefab command appears in the overlay fully described
@@ -229,10 +204,9 @@ creation- or game-specific references.
 createCommand, fire, fireByName, CommandName}` and the input enum tables
 (`IRInput.{InputType, ButtonStatus, Key, Modifier, GamepadButton,
 GamepadAxis}`) so a creation can declare commands and input bindings
-entirely from Lua. The design contract lives in
+entirely from Lua. Design contract:
 [`docs/design/lua-input-commands.md`](../../docs/design/lua-input-commands.md);
-`creations/demos/default/commands.lua` is the canonical migration
-example.
+`creations/demos/default/commands.lua` is the canonical example.
 
 The C++ entry points added for the Lua surface are also usable directly:
 
@@ -249,12 +223,10 @@ The C++ entry points added for the Lua surface are also usable directly:
   the Lua binding's `IRCommand.bindPrefab` forwards here.
 
 `Command<NAME>::create()` specializations remain the source of truth
-for prefab command bodies. PR 2 does not delete any existing command.
+for prefab command bodies.
 
 ## Gotchas
 
-- **`CommandNames` enum is required.** Same linker-error footgun as
-  `SystemName`. Add the enum value before implementing the command.
 - **Adding a prefab command touches five hand-listed sites.** In order:
   1. the `CommandNames` enum + `kCommandNameCount` in
      `command/ir_command_types.hpp`;
@@ -267,10 +239,9 @@ for prefab command bodies. PR 2 does not delete any existing command.
   5. the `IR_BIND_CMD(name)` line in `engine/script/include/irreden/
      script/lua_command_bindings.hpp`.
 
-  The omission classes used to be asymmetric and mostly silent. Sites 1–2
-  are now a **compile error** (the `kCommandInfo` static_asserts); a missing
-  site 4 logs an error at firing time; a missing site 5 resolves to nil in
-  Lua at binding time.
+  Sites 1–2 are a **compile error** (the `kCommandInfo` static_asserts); a
+  missing site 4 logs an error at firing time; a missing site 5 resolves to
+  nil in Lua at binding time.
 - **Lua command body errors are caught in-VM.** The
   `IRCommand.createCommand` wrapper traps `sol::protected_function`
   errors and logs via `IRE_LOG_ERROR`. The error does not propagate up
