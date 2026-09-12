@@ -292,6 +292,39 @@ class TestBodyClosesLink(unittest.TestCase):
         self.assertNotIn("inflight_pr",
                          state["repos"]["engine"]["tasks"]["open"][0])
 
+    def test_closes_inside_an_unclosed_fence_leaves_the_task_claimable(self):
+        # An opening fence with no closing fence is code through end-of-body in
+        # CommonMark, so GitHub links nothing after it. Read as prose, the
+        # quoted ref tags a task NOBODY is implementing — the scout drops it off
+        # the queue and fleet-claim's duplicate-open-PR guard refuses the claim,
+        # stranding it for as long as the quoting PR stays open.
+        for fence in ("```", "~~~"):
+            with self.subTest(fence=fence):
+                tasks = [_task("#2578")]
+                prs = [_pr_body(2579, "claude/hand-named-branch",
+                                f"Do not write:\n\n{fence}\nCloses #2578\n",
+                                labels=["fleet:wip"])]
+                self.assertEqual(prs[0]["closes_issues"], [])
+                state = _state(engine_tasks=tasks, engine_prs=prs)
+                enrich_inflight_pr_tasks(state)
+                self.assertNotIn(
+                    "inflight_pr",
+                    state["repos"]["engine"]["tasks"]["open"][0])
+
+    def test_a_real_link_above_an_unclosed_fence_still_tags_inflight(self):
+        # Control for the arm above: the fix must strip what FOLLOWS the
+        # unclosed fence, not silence every body that contains one.
+        tasks = [_task("#2578")]
+        prs = [_pr_body(2579, "claude/hand-named-branch",
+                        "Closes #2578\n\n```\nCloses #9999\n",
+                        labels=["fleet:wip"])]
+        self.assertEqual(prs[0]["closes_issues"], [2578])
+        state = _state(engine_tasks=tasks, engine_prs=prs)
+        enrich_inflight_pr_tasks(state)
+        self.assertEqual(
+            state["repos"]["engine"]["tasks"]["open"][0]["inflight_pr"]["number"],
+            2579)
+
     def test_game_task_body_link_tags_inflight(self):
         # The body arm is repo-agnostic by construction; assert it reaches the
         # game repo too rather than only the engine branch of the loop.

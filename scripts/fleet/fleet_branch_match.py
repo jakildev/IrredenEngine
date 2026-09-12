@@ -169,8 +169,21 @@ _CLOSES_ANY_RE = re.compile(_CLOSES_KEYWORD + r"(\d+)\b", re.IGNORECASE)
 # paragraph bound lets one unbalanced backtick pair with a distant one and blank
 # a real `Closes #N` in between. Keep these two in step with that tool; the
 # three copies in the tree should collapse into one shared helper (#3311).
+#
+# A fence has TWO terminators and the second is not optional decoration: an
+# opening fence CommonMark never sees closed still opens a block, running "until
+# the end of the containing block (or document)". So a closing-fence-only
+# matcher reads an unclosed block's `Closes #N` as live prose and invents the
+# link — the costly direction above, and the one a truncated or mid-edit body
+# produces most often. The closing-fence arm is ordered first so a well-formed
+# block ends where it ends; `.*\Z` fires only when no closing fence exists.
+# `fleet-plan-lint`'s `FENCE_RE` lacks this arm — a second live divergence on
+# top of the #2989 one #3311 tracks. The two fail in opposite directions off
+# the same hole (here an invented closing link; there a quoted code sample read
+# as prose), so a consolidation must carry the union, not either copy.
 _CODE_FENCE_RE = re.compile(
-    r"(?ms)^[ \t]*(?P<f>`{3,}|~{3,}).*?^[ \t]*(?P=f)[`~]*[ \t]*$")
+    r"(?ms)^[ \t]*(?P<f>`{3,}|~{3,})"
+    r"(?:.*?^[ \t]*(?P=f)[`~]*[ \t]*$|.*\Z)")
 _CODE_SPAN_RE = re.compile(r"(?s)(`+)((?:(?!\n[ \t]*\n).)+?)\1")
 
 

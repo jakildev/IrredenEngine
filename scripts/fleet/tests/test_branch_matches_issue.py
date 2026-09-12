@@ -365,6 +365,38 @@ class ClosingKeywordInsideCode(unittest.TestCase):
         body = "````\nBad example:\n```\nCloses #255\n```\n````\n"
         self.assertEqual(body_closed_issue_numbers(body), [])
 
+    def test_unclosed_backtick_fence_runs_to_end_of_body(self):
+        # CommonMark: an opening fence with no closing fence encloses every line
+        # "until the end of the containing block (or document)", so GitHub never
+        # links what follows it. A matcher that requires a closing fence reads
+        # the whole tail as prose and invents the link — the direction this
+        # grammar exists to avoid, and the one a truncated or mid-edit body
+        # produces most often.
+        body = "Example of what NOT to write:\n\n```\nCloses #255\n"
+        self.assertFalse(body_closes_issue(body, 255))
+        self.assertEqual(body_closed_issue_numbers(body), [])
+
+    def test_unclosed_tilde_fence_runs_to_end_of_body(self):
+        body = "~~~\nFixes #256\n"
+        self.assertFalse(body_closes_issue(body, 256))
+        self.assertEqual(body_closed_issue_numbers(body), [])
+
+    def test_an_unclosed_fence_only_swallows_what_follows_it(self):
+        # The EOF arm must not become "a body containing an unclosed fence
+        # closes nothing" — a real reference ABOVE the fence is still prose to
+        # GitHub, and dropping it strands a merged PR's issue open.
+        body = "Closes #99\n\n```\nCloses #255\n"
+        self.assertEqual(body_closed_issue_numbers(body), [99])
+        self.assertTrue(body_closes_issue(body, 99))
+        self.assertFalse(body_closes_issue(body, 255))
+
+    def test_a_closed_fence_still_ends_at_its_closing_fence(self):
+        # Control for the arm order: with the EOF alternative tried first, a
+        # well-formed block would swallow the live reference after it and every
+        # assertion above would still pass.
+        body = "```\nCloses #255\n```\n\nCloses #10\n"
+        self.assertEqual(body_closed_issue_numbers(body), [10])
+
     def test_an_unbalanced_backtick_cannot_blank_a_later_paragraph(self):
         # A span is bounded to one paragraph, so a stray backtick pairs with the
         # next stray one only within its own. Unbounded, these two would pair
@@ -377,6 +409,7 @@ class ClosingKeywordInsideCode(unittest.TestCase):
         # The singular and all-refs forms share the keyword AND the stripping;
         # this is the no-drift assertion #2419 centralized them for.
         for body in (self.NEGATED, "Closes #2091", "```\nCloses #2091\n```",
+                     "```\nCloses #2091\n", "~~~\nCloses #2091\n",
                      "Not `Closes #2091` but Closes #2091 really"):
             with self.subTest(body=body[:40]):
                 nums = body_closed_issue_numbers(body)
