@@ -129,26 +129,22 @@ void initSystems() {
         }
     );
 
-    if (g_autoWarmupFrames > 0) {
-        // `static`: createAutoScreenshotSystem copies this config into a
-        // process-lifetime CyclingState that keeps the `shots_` POINTER, so the
-        // table must outlive the game loop (auto_screenshot.hpp contract). A
-        // plain function-local `constexpr` array dies at scope exit, leaving
-        // `shots_` dangling → garbage `shot.label_` (null) → fmt crash on the
-        // first capture frame. Static storage duration matches the other demos.
-        static constexpr IRVideo::AutoScreenshotShot kShots[] = {
-            {1.0f, vec2(0, 0), 0.0f, "zoom1"},
-            {2.0f, vec2(0, 0), 0.0f, "zoom2"},
-            {4.0f, vec2(0, 0), 0.0f, "zoom4"},
-            {4.0f, vec2(0, 0), IRMath::kHalfPi, "zoom4_yaw90"},
-        };
-        IRVideo::AutoScreenshotConfig cfg{};
-        cfg.warmupFrames_ = g_autoWarmupFrames;
-        cfg.settleFrames_ = 3;
-        cfg.shots_ = kShots;
-        cfg.numShots_ = sizeof(kShots) / sizeof(kShots[0]);
-        renderPipeline.push_back(IRVideo::createAutoScreenshotSystem(cfg));
-    }
+    // `static`: appendAutoScreenshotIfRequested forwards this table into
+    // createAutoScreenshotSystem's process-lifetime CyclingState, which keeps
+    // the `shots_` POINTER, so the table must outlive the game loop
+    // (auto_screenshot.hpp contract). A plain function-local `constexpr`
+    // array dies at scope exit, leaving `shots_` dangling → garbage
+    // `shot.label_` (null) → fmt crash on the first capture frame. Static
+    // storage duration matches the other demos; appendAutoScreenshotIfRequested
+    // itself no-ops when `g_autoWarmupFrames <= 0`, so the table costs nothing
+    // to declare either way.
+    static constexpr IRVideo::AutoScreenshotShot kShots[] = {
+        {1.0f, vec2(0, 0), 0.0f, "zoom1"},
+        {2.0f, vec2(0, 0), 0.0f, "zoom2"},
+        {4.0f, vec2(0, 0), 0.0f, "zoom4"},
+        {4.0f, vec2(0, 0), IRMath::kHalfPi, "zoom4_yaw90"},
+    };
+    IRVideo::appendAutoScreenshotIfRequested(renderPipeline, g_autoWarmupFrames, kShots);
 
     IRSystem::registerPipeline(IRTime::Events::RENDER, renderPipeline);
 }

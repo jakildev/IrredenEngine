@@ -796,20 +796,15 @@ void initSystems() {
         // disc); --player-walk captures the walking reveal sequence; the
         // default captures the three static fog-boundary shots.
         if (g_entityReveal) {
-            cfg.shots_ = kEntityRevealShots;
-            cfg.numShots_ = sizeof(kEntityRevealShots) / sizeof(kEntityRevealShots[0]);
+            IRVideo::setAutoScreenshotShots(cfg, kEntityRevealShots);
         } else if (g_edgeZCostAsym) {
-            cfg.shots_ = kEdgeZCostAsymShots;
-            cfg.numShots_ = sizeof(kEdgeZCostAsymShots) / sizeof(kEdgeZCostAsymShots[0]);
+            IRVideo::setAutoScreenshotShots(cfg, kEdgeZCostAsymShots);
         } else if (g_edgeZCostCeiling) {
-            cfg.shots_ = kEdgeZCostCeilingShots;
-            cfg.numShots_ = sizeof(kEdgeZCostCeilingShots) / sizeof(kEdgeZCostCeilingShots[0]);
+            IRVideo::setAutoScreenshotShots(cfg, kEdgeZCostCeilingShots);
         } else if (g_edgeZCost) {
-            cfg.shots_ = kEdgeZCostShots;
-            cfg.numShots_ = sizeof(kEdgeZCostShots) / sizeof(kEdgeZCostShots[0]);
+            IRVideo::setAutoScreenshotShots(cfg, kEdgeZCostShots);
         } else if (g_detachedEdge) {
-            cfg.shots_ = kDetachedEdgeShots;
-            cfg.numShots_ = sizeof(kDetachedEdgeShots) / sizeof(kDetachedEdgeShots[0]);
+            IRVideo::setAutoScreenshotShots(cfg, kDetachedEdgeShots);
         } else if (g_edgeYawSweep) {
             // Fixed zoom + origin, step yaw across [0.05, 0.70] rad — one cardinal
             // quadrant (< π/4), constant visible-face triplet — so the cut-face
@@ -848,20 +843,15 @@ void initSystems() {
                 kEdgeSweepZoom
             );
         } else if (g_edgeSdfBlocker) {
-            cfg.shots_ = kEdgeSdfBlockerShots;
-            cfg.numShots_ = sizeof(kEdgeSdfBlockerShots) / sizeof(kEdgeSdfBlockerShots[0]);
+            IRVideo::setAutoScreenshotShots(cfg, kEdgeSdfBlockerShots);
         } else if (g_edgeZoom) {
-            cfg.shots_ = kEdgeShots;
-            cfg.numShots_ = sizeof(kEdgeShots) / sizeof(kEdgeShots[0]);
+            IRVideo::setAutoScreenshotShots(cfg, kEdgeShots);
         } else if (g_edgeSmooth) {
-            cfg.shots_ = kEdgeSmoothShots;
-            cfg.numShots_ = sizeof(kEdgeSmoothShots) / sizeof(kEdgeSmoothShots[0]);
+            IRVideo::setAutoScreenshotShots(cfg, kEdgeSmoothShots);
         } else if (g_playerWalk) {
-            cfg.shots_ = kWalkShots;
-            cfg.numShots_ = sizeof(kWalkShots) / sizeof(kWalkShots[0]);
+            IRVideo::setAutoScreenshotShots(cfg, kWalkShots);
         } else {
-            cfg.shots_ = kShots;
-            cfg.numShots_ = sizeof(kShots) / sizeof(kShots[0]);
+            IRVideo::setAutoScreenshotShots(cfg, kShots);
         }
         renderPipeline.push_back(IRVideo::createAutoScreenshotSystem(cfg));
     }

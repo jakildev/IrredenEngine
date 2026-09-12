@@ -1486,14 +1486,12 @@ void initSystems() {
             // Measure each pose's actual render path at the settled frame.
             cfg.onCaptureFrame_ = &logRampPose;
         } else if (g_settings.mode_ == PerfGridMode::Gallery) {
-            cfg.shots_ = kGalleryShots;
-            cfg.numShots_ = sizeof(kGalleryShots) / sizeof(kGalleryShots[0]);
+            IRVideo::setAutoScreenshotShots(cfg, kGalleryShots);
             // Same rationale as the yaw ramp: consecutive shots step yaw, so
             // give the iterative lighting time to converge before capture.
             cfg.settleFrames_ = 12;
         } else {
-            cfg.shots_ = kShots;
-            cfg.numShots_ = sizeof(kShots) / sizeof(kShots[0]);
+            IRVideo::setAutoScreenshotShots(cfg, kShots);
             // #3010: report the classify arm + its non-vacuity witness per shot,
             // but only for a run that asked for the diagnostic — a flagless run
             // keeps the empty hook it has always had.

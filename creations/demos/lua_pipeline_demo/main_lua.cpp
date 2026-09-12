@@ -101,11 +101,14 @@ int main(int argc, char **argv) {
         IRVideo::AutoScreenshotConfig cfg{};
         cfg.warmupFrames_ = autoWarmupFrames;
         cfg.settleFrames_ = 3;
-        cfg.shots_ = kShots;
-        cfg.numShots_ = sizeof(kShots) / sizeof(kShots[0]);
+        IRVideo::setAutoScreenshotShots(cfg, kShots);
         // Append (don't replace) so the Lua-composed RENDER pipeline — the
         // HUD draw + canvas composite — still runs; the screenshot captures
-        // the final composited frame.
+        // the final composited frame. That already-registered pipeline is
+        // also why this appends via appendToPipeline instead of
+        // appendAutoScreenshotIfRequested, which assumes an
+        // un-registered pipeline vector (engine/video/CLAUDE.md
+        // "Auto-screenshot helper").
         IRSystem::appendToPipeline(
             IRTime::Events::RENDER,
             IRVideo::createAutoScreenshotSystem(cfg)

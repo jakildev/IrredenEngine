@@ -32,14 +32,7 @@ int main(int argc, char **argv) {
         IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
     };
 
-    if (autoWarmupFrames > 0) {
-        IRVideo::AutoScreenshotConfig cfg{};
-        cfg.warmupFrames_ = autoWarmupFrames;
-        cfg.settleFrames_ = 3;
-        cfg.shots_ = kShots;
-        cfg.numShots_ = sizeof(kShots) / sizeof(kShots[0]);
-        renderPipeline.push_back(IRVideo::createAutoScreenshotSystem(cfg));
-    }
+    IRVideo::appendAutoScreenshotIfRequested(renderPipeline, autoWarmupFrames, kShots);
 
     IRSystem::registerPipeline(IRTime::Events::RENDER, renderPipeline);
 

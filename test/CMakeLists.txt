@@ -125,6 +125,7 @@ add_executable(IrredenEngineTest
   time/lua_sim_test.cpp
   job/ir_job_test.cpp
   utility/ir_utility_test.cpp
+  video/auto_screenshot_helpers_test.cpp
   world/chunk_coord_test.cpp
   world/chunk_membership_migration_test.cpp
   world/chunk_persistence_test.cpp
