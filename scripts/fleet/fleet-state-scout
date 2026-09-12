@@ -1750,11 +1750,18 @@ def _closed_issue_numbers(repo_state):
 
 
 def resolve_blocked_by(state, ref_cache=None):
-    """Resolve blocked_by fields for all open tasks.
+    """Resolve blocked_by fields for all open AND in-progress tasks.
 
     Uses already-fetched closed_fleet_queued and recent_merged_prs for
     in-memory resolution; falls back to live gh issue view for refs not
     covered by either. Mutates state in place.
+
+    Covers tasks.in_progress alongside tasks.open (#2534) — a task claimed
+    while still blocked moves to tasks.in_progress (fetch_task_queue's
+    owner-based split) but keeps its raw, unresolved `blocked_by` text
+    otherwise, so _ingest_unblock_candidates could never see it resolve to
+    `(none)` once the blocker closed and the stale fleet:blocked label on an
+    in-flight issue would never clear.
 
     `ref_cache` lets the caller share one `_resolve_ref_satisfied` cache
     across the resolvers that run in the same tick, so a ref appearing in
@@ -1773,7 +1780,8 @@ def resolve_blocked_by(state, ref_cache=None):
             for pr in repo_state.get("recent_merged_prs", [])
         ]
 
-        for task in repo_state.get("tasks", {}).get("open", []):
+        tasks = repo_state.get("tasks", {})
+        for task in tasks.get("open", []) + tasks.get("in_progress", []):
             raw = (task.get("blocked_by") or "").strip()
             if not raw or raw.lower().startswith("(none"):
                 continue
@@ -1831,8 +1839,9 @@ def resolve_human_approved_blockers(state):
     tells an operator at a glance which not-yet-queued approved issues will be
     stamped blocked on the next ingest. The fleet:blocked label round-trip
     (add on queue-while-blocked, remove when the last blocker closes) is driven
-    off the live `gh issue view` recheck in fleet-queue-ingest plus the
-    tasks.open-sourced _ingest_unblock_candidates, not off this flag.
+    off the live `gh issue view` recheck in fleet-queue-ingest plus
+    _ingest_unblock_candidates (sourced from tasks.open + tasks.in_progress),
+    not off this flag.
 
     Resolution is in-memory only (closed_fleet_queued + merged `claude/<N>-*`
     heads) — NO live gh here, so the per-tick projection stays fast. `body` is
@@ -2616,18 +2625,27 @@ def _ingest_unblock_candidates(repo_state):
     """Queued tasks carrying `fleet:blocked` whose blockers have all closed —
     the remove-half of the fleet:blocked round-trip (#1527).
 
-    resolve_blocked_by() has already reduced each open task's `blocked_by` to
-    only its still-open refs, so a task that carries the `fleet:blocked` label
-    but now resolves to `(none)` is newly unblocked and needs the label
-    stripped. These re-enter the ingest set from `tasks.open` — NOT
-    human_approved, which excludes `fleet:queued`, so a queued-blocked issue
-    has already left that surface — which makes the removal edge-triggered the
-    same way the add is: the candidate appears the tick its last blocker
-    closes (hash flips → ingest fires → label removed), then disappears the
-    tick after (hash flips → ingest re-fires → no-op → quiescent). Returns a
+    resolve_blocked_by() has already reduced each open-OR-in-progress task's
+    `blocked_by` to only its still-open refs, so a task that carries the
+    `fleet:blocked` label but now resolves to `(none)` is newly unblocked and
+    needs the label stripped. These re-enter the ingest set from
+    `tasks.open` and `tasks.in_progress` — NOT human_approved, which excludes
+    `fleet:queued`, so a queued-blocked issue has already left that surface —
+    which makes the removal edge-triggered the same way the add is: the
+    candidate appears the tick its last blocker closes (hash flips → ingest
+    fires → label removed), then disappears the tick after (hash flips →
+    ingest re-fires → no-op → quiescent).
+
+    tasks.in_progress is in scope because a task can be claimed
+    (`fleet:claim-*` / `--stackable-on`) while still blocked — claiming
+    doesn't gate on `Blocked by:` resolving to none, only on the label not
+    yet existing yet — and fetch_task_queue routes any claimed issue to
+    tasks.in_progress regardless of its blocked state (#2534). Without this,
+    a stale `fleet:blocked` on an in-flight issue never clears. Returns a
     list of issue numbers (ints)."""
     out = []
-    for task in repo_state.get("tasks", {}).get("open", []):
+    tasks = repo_state.get("tasks", {})
+    for task in tasks.get("open", []) + tasks.get("in_progress", []):
         if not task.get("blocked"):
             continue
         raw = (task.get("blocked_by") or "").strip().lower()
@@ -2679,8 +2697,10 @@ def project_queue_manager_ingest(state):
       rather than one child at a time.
     - **Remove path** — a queued task carrying `fleet:blocked` whose last
       blocker just closed (`_ingest_unblock_candidates`, sourced from
-      tasks.open since the issue has left human_approved). It enters the set,
-      ingest removes `fleet:blocked`, and it drops out (label gone).
+      tasks.open and tasks.in_progress (#2534) — a task claimed while still
+      blocked moves to tasks.in_progress and needs the same resolution).
+      It enters the set, ingest removes `fleet:blocked`, and it drops out
+      (label gone).
     - **Retract path** (#2740) — a queued issue on which a planning
       queue-block (`fleet:needs-plan` / `fleet:plan-review`) has landed
       *after* queuing (`_ingest_retract_candidates`, sourced from
