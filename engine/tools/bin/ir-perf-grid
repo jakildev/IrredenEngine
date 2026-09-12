@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ir-perf-grid — perf matrix runner with synthetic-load normalization.
 #
-# Sub-task 3 of #1074 (T-330). Wraps scripts/perf/perf_grid_matrix.sh in
+# Wraps scripts/perf/perf_grid_matrix.sh in
 # `ir-acquire benchmark` (cpu(budget-1) + gpu + perf), captures a `ref_ms`
 # reading from ir_ref_bench at the start of each matrix run, and writes
 # both into manifest.json so the comparator can normalize per-cell

@@ -1,0 +1,40 @@
+name: Comment Refs
+
+# Issue and PR numbers do not belong in code comments (.claude/rules/comments.md).
+# scripts/lint_comment_refs.py is a per-file ratchet against
+# scripts/lint_comment_refs_baseline.json: a file may lose references, never
+# gain them. Unfiltered on purpose — the population is every code file class
+# in the tree, so any push can regress it.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  comment-refs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # A pull request is measured against the base branch's baseline, so a
+      # baseline edit in the same PR cannot buy budget.
+      - name: Fetch the base branch's baseline
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE_REF"
+          if git show "origin/$BASE_REF:scripts/lint_comment_refs_baseline.json" > "$RUNNER_TEMP/base-baseline.json" 2>/dev/null; then
+            echo "BASELINE_ARGS=--baseline $RUNNER_TEMP/base-baseline.json" >> "$GITHUB_ENV"
+          else
+            echo "base branch has no baseline yet; checking against the committed one"
+          fi
+
+      - name: Comment reference ratchet
+        run: python3 scripts/lint_comment_refs.py $BASELINE_ARGS

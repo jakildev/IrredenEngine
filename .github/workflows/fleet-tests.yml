@@ -23,7 +23,7 @@ name: Fleet Tests
 # render-harness-tests.yml's scripts/*.py — the two workflows run disjoint
 # suites, and narrowing either back to buy the non-overlap reopens #2859.
 #
-# Seven suites reach outside scripts/ entirely for their subject under test —
+# Eight suites reach outside scripts/ entirely for their subject under test —
 # their subjects are listed explicitly below so a PR touching only one of
 # them still runs this workflow (#2786, #2810, #2823, #2859, #2929, #3187):
 #   test_format_changed_line_scoping.sh -> cmake/run_clang_format_changed.cmake
@@ -33,6 +33,7 @@ name: Fleet Tests
 #   test_fleet_labels_check.sh          -> docs/agents/fleet-state-machine.json,
 #                                          docs/agents/fleet-labels-reference.md
 #   test_lint_rules_commands.py         -> .claude/rules/**, docs/agents/**
+#   test_lint_comment_refs.py           -> .claude/skills/simplify/**
 #   test_workflow_paths_sync.sh         -> the other path-filtered workflows
 #                                          (format-check, header-checks,
 #                                          perf-gate, python-lint,
@@ -62,6 +63,7 @@ on:
     paths:
       - 'scripts/**'
       - '.claude/rules/**'
+      - '.claude/skills/simplify/**'
       - 'docs/agents/**'
       - '.github/workflows/fleet-tests.yml'
       - '.github/workflows/format-check.yml'
@@ -79,6 +81,7 @@ on:
     paths:
       - 'scripts/**'
       - '.claude/rules/**'
+      - '.claude/skills/simplify/**'
       - 'docs/agents/**'
       - '.github/workflows/fleet-tests.yml'
       - '.github/workflows/format-check.yml'

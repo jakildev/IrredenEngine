@@ -87,7 +87,7 @@ numbers are stable IDs cited elsewhere; retired numbers are never reused.
 | 4 | [location-reference comment narration](checks/check-04-location-narration-comments.md) | any C++ change in the diff | auto-fix |
 | 5 | [non-C++ text hygiene (final newline; Lua dead locals)](checks/check-05-non-cpp-text-hygiene.md) | the diff touches `.cmake`, `.md`, `.lua`, `.txt`, or `CMakeLists.txt` files | auto-fix |
 | 6 | [hand-rolled demo asset-copy blocks](checks/check-06-demo-asset-copy.md) | the diff touches `creations/demos/*/CMakeLists.txt` | report |
-| 7 | [task-reference comments / motivation prose](checks/check-07-reference-comments.md) | the diff adds comments in C++, shader, build (`.cmake`/`CMakeLists.txt`) or tooling (`.sh`/`.py`/extensionless `scripts/**`) files | auto-fix |
+| 7 | [task-reference comments / motivation prose](checks/check-07-reference-comments.md) | the diff adds comments in any class `scripts/lint_comment_refs.py` scans: C/C++/ObjC++ (incl. `.c`/`.hh`/`.cxx`/`.tpp`/`.inl`/`.mm`/`.m`), shader, `.lua`, build (`.cmake`/`CMakeLists.txt`/`.bzl`/`.bazel`) or tooling (`.py`/`.sh`/`.bash`/`.zsh`/`.ps1`/extensionless `scripts/**` + `engine/tools/bin/**`) files | auto-fix |
 | 8 | [unreplaced scaffold placeholder sentinels](checks/check-08-scaffold-sentinels.md) | the diff touches `creations/**` (especially a new creation) | auto-fix |
 | 9 | [template functions added with no instantiation](checks/check-09-uninstantiated-templates.md) | the diff adds a `template <...>` function or member | report |
 | 10 | [new fleet tool / workflow logic with no test](checks/check-10-fleet-tool-tests.md) | the diff adds an executable under `scripts/fleet/`, a function to an already-tested `scripts/**` module, or non-trivial logic in a workflow `run:` block | report |
@@ -208,8 +208,10 @@ commented-out code; debug logging left from troubleshooting (downgrade to
 `IRE_LOG_WARN` / `IRE_LOG_ERROR` when it has rare-path value);
 tautological comments; change-narration comments (`// Refactored from X`,
 `// Now uses Y`) — at block scale too: a multi-line block tracing
-issue-by-issue history is the same smell, cut to the durable invariant and
-at most a `// see #N` backref, and a block repeated near-verbatim at 3+
+issue-by-issue history is the same smell, cut to the durable invariant
+with no backref — issue numbers never belong in comments
+(`.claude/rules/comments.md`; the `lint_comment_refs.py` ratchet fails CI
+on a file that gains one) — and a block repeated near-verbatim at 3+
 sites is hoisted to `docs/design/<topic>.md`; location-reference
 narration (`// set above`, `// see below`; Check 4); stale `TODO`/`FIXME`
 on work finished this session; "old code" markers. Task-reference

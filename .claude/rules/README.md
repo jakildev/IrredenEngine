@@ -89,8 +89,9 @@ zero-hit sweep whose walk covered zero files is not evidence of anything.
 
 ## Adding a rule
 
-A new `cpp-<topic>.md` carries `paths:` frontmatter, the rule statement, the
-rationale, and — when the violation is greppable — a Detection block whose
+A new `<topic>.md` (C++-only rules take the `cpp-` prefix; a rule that spans
+languages, like `comments.md`, does not) carries `paths:` frontmatter, the rule
+statement, the rationale, and — when the violation is greppable — a Detection block whose
 pattern and glob are runnable through `fleet-rules-sweep` verbatim. Register it
 in the canonical-home map in
 [`docs/agents/CLAUDE-BASELINE.md`](../../docs/agents/CLAUDE-BASELINE.md).
