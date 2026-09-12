@@ -232,8 +232,14 @@ non-zero on any assert or store-invariant break.
 **before** the entity's components are torn down. The hook receives the
 dying `EntityId` while the entity (and every peer) is still fully
 queryable, so the callback can iterate other entities and strip
-references to the dying id — typical use is the modifier framework's
-auto-sweep of source-attributed modifiers off live target entities.
+references to the dying id. Most in-tree users null one cached id on a
+system's own params (hover detect, gizmo drag, camera pivot, perf overlay,
+settings panel). Two sweep *stored component* state instead: the modifier
+framework's auto-sweep of source-attributed modifiers off live target
+entities (`IRPrefab::Modifier::removeBySource`), and the voxel-pool canvas
+teardown, which re-stages every `C_VoxelSetNew` allocated out of a dying
+canvas's pool (`IRPrefab::VoxelPool::restageSetsOnCanvas`) — both strip a
+reference that would otherwise outlive the id.
 
 Returns a `PreDestroyHookId` token. Pass to `unregisterPreDestroyHook`
 to remove. Hooks fire in registration order.
@@ -429,9 +435,12 @@ next scene's entities. Lua: `IRWorld.resetGameplay()` + `IRSystem.clearPipeline`
 **Gotchas:**
 
 - **Dangling EntityIds.** A surviving singleton/persistent entity holding the
-  `EntityId` of a destroyed gameplay entity goes stale. The modifier
-  pre-destroy hook auto-sweeps *modifiers*; arbitrary id fields are not swept —
-  re-acquire ids after the next scene builds, or null them in a pre-destroy hook.
+  `EntityId` of a destroyed gameplay entity goes stale. Pre-destroy hooks sweep
+  only what someone registered a hook for — in *component* state that is
+  `C_Modifiers.source_` and `C_VoxelSetNew.canvasEntity_` (several systems also
+  null cached ids on their own params). Every other id field is on its own:
+  re-acquire after the next scene builds, or register a pre-destroy hook of
+  your own.
 - **Named entities are pruned.** `destroyEntity` does not remove `m_namedEntities`
   entries, so `resetGameplay` prunes every name pointing at a now-dead id
   (otherwise `getEntityByName` would assert on the corpse). Surviving entities

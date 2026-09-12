@@ -149,6 +149,7 @@
 #include <irreden/voxel/components/component_skeleton.hpp>
 #include <irreden/voxel/components/component_voxel.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
+#include <irreden/voxel/components/component_voxel_pool_teardown_hook.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/voxel/components/component_voxel_squash_stretch.hpp>
 #include <irreden/wip/components/component_alarm.hpp>
@@ -171,6 +172,10 @@ IR_SAVE_OPT_OUT(IRComponents::C_Sprite)
 
 // Class B — derived / rebuildable
 IR_SAVE_OPT_OUT(IRComponents::C_VoxelPool)
+// C_VoxelPoolTeardownHook: OPT-OUT — a PreDestroyHookId into THIS process's
+// EntityManager hook vector. A loaded world re-arms the hook from its own
+// canvas-pool attach sites (#2913), so a persisted id would name nothing.
+IR_SAVE_OPT_OUT(IRComponents::C_VoxelPoolTeardownHook)
 IR_SAVE_OPT_OUT(IRComponents::C_SpatialIndex)
 IR_SAVE_OPT_OUT(IRComponents::C_RenderCache)
 IR_SAVE_OPT_OUT(IRComponents::C_ActiveLodLevel)
@@ -415,6 +420,7 @@ using AllEngineComponents = std::tuple<
     IRComponents::C_SpriteSheet,
     IRComponents::C_Sprite,
     IRComponents::C_VoxelPool,
+    IRComponents::C_VoxelPoolTeardownHook,
     IRComponents::C_SpatialIndex,
     IRComponents::C_RenderCache,
     IRComponents::C_ActiveLodLevel,

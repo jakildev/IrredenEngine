@@ -28,6 +28,7 @@
 #include <irreden/render/entities/entity_voxel_pool_canvas.hpp>
 #include <irreden/common/components/component_size_triangles.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
+#include <irreden/voxel/voxel_pool_teardown.hpp>
 
 #include <string>
 
@@ -99,6 +100,9 @@ inline IRComponents::C_EntityCanvas createWithVoxelPool(
 inline void addVoxelPool(const IRComponents::C_EntityCanvas &entityCanvas, IRMath::ivec3 poolSize) {
     if (entityCanvas.canvasEntity_ == IREntity::kNullEntity)
         return;
+    // The second of the two sites that attach a `C_VoxelPool`; both arm the
+    // canvas-teardown sweep so a pool cannot exist un-swept (#2913).
+    IRPrefab::VoxelPool::ensureCanvasTeardownHook();
     IREntity::setComponent(entityCanvas.canvasEntity_, IRComponents::C_VoxelPool{poolSize});
     IREntity::setComponent(entityCanvas.canvasEntity_, IRComponents::C_CanvasLocalRotation{});
 }

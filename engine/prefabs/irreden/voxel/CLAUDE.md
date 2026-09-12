@@ -362,6 +362,46 @@ freshly-deserialized sets attach and render on the first post-load frame.
 Its no-op-once-seeded shape means the "is this set staged" gate is the
 set's own honest state (`pendingVoxels_` non-empty), never a dirty flag.
 
+### Canvas teardown re-stages, it does not strand (#2913)
+
+A `C_VoxelPool` lives on the **canvas** entity, and spans are pool-RELATIVE, so
+destroying a canvas invalidates three things on every dependent set at once:
+`canvasEntity_` (now names a destroyed entity), `voxelStartIdx_` and
+`numVoxels_` (now index a dead pool). `C_VoxelSetNew::restageFromPool()` is the
+inverse of `attachToCanvas`: it recovers the authored records and local origin
+into `pendingVoxels_` / `pendingBoundsMin_`, deallocates the span, and clears
+the canvas id — leaving the set in exactly the staged state
+`SEED_STAGED_VOXELS` re-homes from. Re-*staging* rather than re-*targeting* is
+forced: pool-relative indices are meaningless in another pool, so a bare
+`canvasEntity_` re-point would alias someone else's voxels.
+
+`IRPrefab::VoxelPool::restageSetsOnCanvas` (`voxel_pool_teardown.hpp`) sweeps
+those sets, wired into `EntityManager::destroyEntity` as a pre-destroy hook —
+the same shape as `IRPrefab::Modifier::removeBySource`. Three properties are
+load-bearing:
+
+- **The `hasPool(destroyed)` gate.** The hook fires for EVERY `destroyEntity`,
+  so without the early-out the linear sweep would be O(sets) per entity
+  destruction rather than per canvas destruction.
+- **Arming is by the act of creating a pool**, not by a creation remembering.
+  `ensureCanvasTeardownHook()` is called from the only two sites that attach a
+  `C_VoxelPool` — `Prefab<kVoxelPoolCanvas>::create` and
+  `EntityCanvas::addVoxelPool`. `grep -rn 'C_VoxelPool{' engine` names them; a
+  third site must arm too. Idempotence is the world-scoped
+  `C_VoxelPoolTeardownHook` singleton, not a file-scope flag — hooks die with
+  the `EntityManager`, so the next world must re-arm.
+- **`IREntity::destroyEntity` only MARKS.** The record teardown, and with it
+  the hook, runs in the `destroyMarkedEntities` drain (`world.cpp`, once per
+  frame). The pool is therefore still alive when the sweep deallocates into it,
+  which is the whole reason for a *pre*-destroy hook — but it also means a set
+  is not re-staged the instant a caller asks for the canvas's destruction.
+
+`localOriginMin()` / `authoredRecords()` name the pool-independent form the
+re-stage and the save path (`voxel_set_serialize.hpp`) both need, so the two
+cannot drift on what "the origin" or "the authored colors" mean — the latter
+matters mid-GRID-spin, when the span holds REBUILD_GRID_VOXELS' resampled
+arrangement and `rotationSourceVoxels_` holds the truth.
+
 `system_update_voxel_set_children` gates on `numVoxels_ > 0`, so a
 staged headless set sitting in a canvas-active world contributes
 nothing to the pool's per-frame writes — no risk of clobbering
@@ -472,7 +512,11 @@ string.
   pipeline or voxels lag a frame.
 - **`onDestroy()` must run.** Destroying a voxel set without the
   destructor (e.g. by bypassing the entity manager) leaks its span.
-  Stick to `IREntity::destroyEntity(id)`.
+  Stick to `IREntity::destroyEntity(id)` — which *marks*; the span comes back
+  at the `destroyMarkedEntities` drain, not at the call.
+- **Destroying a canvas re-stages its sets, and only at the drain.** See
+  "Canvas teardown re-stages, it does not strand" above. A test that destroys a
+  canvas and asserts immediately sees nothing — drain first.
 - **Shape descriptors vs voxel sets.** `C_ShapeDescriptor` is GPU-only
   (shaders evaluate the SDF directly) — it does *not* reserve voxels.
   `C_VoxelSetNew` pays memory but you can mutate individual cells.

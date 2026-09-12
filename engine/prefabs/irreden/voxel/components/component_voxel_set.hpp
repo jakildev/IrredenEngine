@@ -9,6 +9,7 @@
 #include <irreden/voxel/face_occupancy.hpp>
 #include <irreden/voxel/voxel_pool_api.hpp>
 
+#include <span>
 #include <vector>
 
 using namespace IRMath;
@@ -321,22 +322,9 @@ struct C_VoxelSetNew {
         // never touches the pool — so this guard skips exactly the cases
         // that have nothing to release.
         if (numVoxels_ > 0) {
-            // Release this set's per-trixel-priority contribution (#2155) before
-            // the span goes back to the pool, so a canvas whose only priority
-            // voxels lived in a destroyed set drops back to the fast path.
-            if (perTrixelPriorityVoxelCount_ > 0) {
-                IRPrefab::VoxelPool::adjustPerTrixelPriorityVoxelCount(
-                    -static_cast<int>(perTrixelPriorityVoxelCount_),
-                    canvasEntity_
-                );
-                perTrixelPriorityVoxelCount_ = 0;
-            }
-            IRPrefab::VoxelPool::deallocate(
-                voxelStartIdx_,
-                static_cast<size_t>(numVoxels_),
-                canvasEntity_
-            );
-            IRE_LOG_DEBUG("Deallocated {} voxels", numVoxels_);
+            const int released = numVoxels_;
+            releaseSpanToPool();
+            IRE_LOG_DEBUG("Deallocated {} voxels", released);
         }
     }
 
@@ -687,6 +675,93 @@ struct C_VoxelSetNew {
                                                : anchorOffset(anchor_, size_);
     }
 
+    // Local origin of voxel index (0,0,0), in the pool-independent form staged
+    // mode carries. A staged set keeps it verbatim in `pendingBoundsMin_`; a
+    // pool-resident set recovers it from its seeded local position — both
+    // seeding paths write `positions_[0] == origin` for a dense box, and
+    // REBUILD_GRID_VOXELS rewrites only pool *colors* during a spin, so
+    // `positions_[0]` stays the authored origin while rotating. Integer origins
+    // (every dense-authored / size-ctor set) recover exactly; a non-CORNER
+    // set's half-integer origin cannot survive an `ivec3`, which is why
+    // `stagedOrigin()` re-derives that case from `anchor_` instead of reading
+    // this back (#2563).
+    ivec3 localOriginMin() const {
+        if (!pendingVoxels_.empty() || numVoxels_ <= 0) {
+            return pendingBoundsMin_;
+        }
+        return IRMath::roundVec3HalfUp(positions_[0].pos_);
+    }
+
+    // The set's authored, pool-independent per-voxel records — dense-box-index
+    // ordered, `recordCount()` of them. Three sources in priority order: the
+    // staging vector when staged; `rotationSourceVoxels_` when a GRID spin has
+    // left the span in a re-voxelized arrangement (its non-emptiness IS that
+    // state — see the member's contract above), so the authored snapshot rather
+    // than the frame's resampled colors is what a save or a re-stage carries;
+    // otherwise the span. The span is the fallback when the two sizes diverge
+    // (a rare span-clamp) rather than risking a short read.
+    std::span<const C_Voxel> authoredRecords() const {
+        if (!pendingVoxels_.empty()) {
+            return std::span<const C_Voxel>{pendingVoxels_.data(), pendingVoxels_.size()};
+        }
+        const std::size_t count = numVoxels_ > 0 ? static_cast<std::size_t>(numVoxels_) : 0u;
+        if (rotationSourceVoxels_.size() == count) {
+            return std::span<const C_Voxel>{rotationSourceVoxels_.data(), count};
+        }
+        return std::span<const C_Voxel>{voxels_.data(), count};
+    }
+
+    // Inverse of `attachToCanvas`: return a pool-resident set to STAGED mode,
+    // releasing its span and forgetting the canvas. The canvas that owns a
+    // set's pool destroys that pool with itself, so `canvasEntity_`,
+    // `voxelStartIdx_` and `numVoxels_` all stop meaning anything at once
+    // (#2913). Re-staging rather than re-targeting is forced, not stylistic:
+    // span indices are pool-relative, so pointing them at a different pool
+    // would alias someone else's voxels.
+    //
+    // Owns the whole resync — records, origin, priority aggregate, span, canvas
+    // id — so there is no call shape that drops the span without also clearing
+    // the id (`.claude/rules/cpp-ecs.md` §"System-owned invariants: encapsulate,
+    // don't delegate to callers"). The set lands in exactly the state
+    // `attachToCanvas` seeds from, so a later `SEED_STAGED_VOXELS` tick re-homes
+    // it through the existing allocate path with no new primitive.
+    //
+    // Callers on the canvas-teardown path must run this BEFORE the canvas entity
+    // is destroyed — the deallocate below needs the pool to still exist.
+    // `IRPrefab::VoxelPool::restageSetsOnCanvas` (`voxel_pool_teardown.hpp`) is
+    // the pre-destroy hook that guarantees that ordering.
+    void restageFromPool() {
+        if (numVoxels_ <= 0) {
+            // Staged or empty — no span to release, but a saved `canvasEntity_`
+            // naming a dying canvas is still a dangling id. Drop it so
+            // `attachToCanvas` resolves against the active canvas rather than
+            // probing a destroyed entity.
+            canvasEntity_ = IREntity::kNullEntity;
+            return;
+        }
+        // Recover the pool-independent form BEFORE the span goes away.
+        // `numVoxels_ > 0` implies `pendingVoxels_` is empty (`attachToCanvas`
+        // moves the staging vector out before seeding, and both ctors' mismatch
+        // paths zero `numVoxels_`), so `authored` never aliases the destination.
+        const std::span<const C_Voxel> authored = authoredRecords();
+        pendingBoundsMin_ = localOriginMin();
+        pendingVoxels_.assign(authored.begin(), authored.end());
+
+        releaseSpanToPool();
+
+        voxelStartIdx_ = 0;
+        positions_ = {};
+        positionOffsets_ = {};
+        globalPositions_ = {};
+        voxels_ = {};
+        // With the span gone, "the span is in a re-voxelized arrangement" stops
+        // being a state this set can be in; the authored records it held moved
+        // into `pendingVoxels_` above.
+        rotationSourceVoxels_.clear();
+        rotationSourceVoxels_.shrink_to_fit();
+        canvasEntity_ = IREntity::kNullEntity;
+    }
+
     // int addVoxelSceneNode
 
   private:
@@ -759,6 +834,32 @@ struct C_VoxelSetNew {
             IRPrefab::VoxelPool::resyncRangeFromColors(voxelStartIdx_, numVoxels_, canvasEntity_);
         }
         IRPrefab::Voxel::recomputeFaceOccupancy(voxels_, extent);
+    }
+
+    // Everything the pool must be told when this set stops owning its span:
+    // drop the per-trixel-priority contribution (#2155) so a canvas whose only
+    // priority voxels lived here falls back to the fast path, then return the
+    // span (`deallocateVoxels` clears the pool's active mask for the range, so
+    // no separate markRangeInactive is needed). Leaves `numVoxels_` at 0, which
+    // is what keeps a later `onDestroy()` from double-releasing a re-staged set.
+    //
+    // Both release paths — `onDestroy()` and `restageFromPool()` — route through
+    // here, so a future pool-side obligation is added once rather than in one of
+    // the two. Caller guarantees `numVoxels_ > 0`.
+    void releaseSpanToPool() {
+        if (perTrixelPriorityVoxelCount_ > 0) {
+            IRPrefab::VoxelPool::adjustPerTrixelPriorityVoxelCount(
+                -static_cast<int>(perTrixelPriorityVoxelCount_),
+                canvasEntity_
+            );
+            perTrixelPriorityVoxelCount_ = 0;
+        }
+        IRPrefab::VoxelPool::deallocate(
+            voxelStartIdx_,
+            static_cast<std::size_t>(numVoxels_),
+            canvasEntity_
+        );
+        numVoxels_ = 0;
     }
 
     // Single home for the resync order the bulk mutators run inline after a
