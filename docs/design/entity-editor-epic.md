@@ -428,8 +428,7 @@ mode. `.vxs.json` sidecar is human-diffable.
 
 **Issue:** [`#605`](https://github.com/jakildev/IrredenEngine/issues/605).
 **Blocked by:** (none) — Phase 1 static authoring (`#604`) shipped.
-**Re-planned 2026-06.** Child tickets `#1602`–`#1612`; full plan in
-[`.fleet/plans/issue-605.md`](../../.fleet/plans/issue-605.md).
+**Re-planned 2026-06** into child tickets `#1602`–`#1612` (see #605).
 
 ### Scope
 

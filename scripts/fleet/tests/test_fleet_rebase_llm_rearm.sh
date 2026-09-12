@@ -11,10 +11,10 @@
 # candidate rule: CONFLICTING (or UNKNOWN older than 5 min), no skip label,
 # and any fleet:merger-cooldown older than the cooldown.
 #
-#   T1: approved + MERGEABLE + label outside the auto-merge allowlist →
-#       human_remaining, no re-arm, no trigger written.
-#   T2: approved + MERGEABLE plan candidate whose diff is not pure
-#       .fleet/plans → human_remaining, no re-arm.
+#   T1: approved + MERGEABLE + fleet:needs-human → human_remaining, no
+#       re-arm, no trigger written.
+#   T2: approved + MERGEABLE with only benign labels → human_remaining, no
+#       re-arm, and no gh call for it (nothing mechanical is left to do).
 #   T3: unapproved CONFLICTING, no skip labels → llm_remaining=1 and the
 #       trigger reads "llm".
 #   T4: CONFLICTING + fleet:merger-cooldown updated just now → cooling, no
@@ -27,8 +27,8 @@
 #   T9: the 2026-09-09 slice shape (synthetic numbers) — five human-owned approved PRs plus
 #       one semantic-conflict PR → llm_remaining=0, no re-arm.
 #
-# The gh stub serves canned REST responses (attempt_merge's live verify) and
-# records calls; everything runs --dry-run so no git worktree is needed.
+# The gh stub records calls and answers nothing; everything runs --dry-run so
+# no git worktree is needed, and no verdict here should cost a gh call.
 
 set -euo pipefail
 
@@ -51,32 +51,20 @@ TMPROOT=$(mktemp -d)
 export HOME="$TMPROOT"
 export FLEET_STATE_DIR="$TMPROOT/.fleet/state"
 export FLEET_REBASE_SCRATCH="$TMPROOT/.fleet/rebase-scratch"
-export GH_STUB_DIR="$TMPROOT/gh-stub"
-export GH_STUB_LOG="$TMPROOT/gh-stub/calls.log"
+export GH_STUB_LOG="$TMPROOT/gh-calls.log"
 TRIGGER="$FLEET_STATE_DIR/triggers/merger"
-mkdir -p "$FLEET_STATE_DIR/projections" "$TMPROOT/bin" "$GH_STUB_DIR"
+mkdir -p "$FLEET_STATE_DIR/projections" "$TMPROOT/bin"
 
 cat > "$TMPROOT/bin/gh" <<'GHEOF'
 #!/usr/bin/env bash
 echo "$*" >> "$GH_STUB_LOG"
-if [[ "${1:-}" == "api" ]]; then
-    n=$(printf '%s' "$2" | grep -oE 'pulls/[0-9]+' | grep -oE '[0-9]+')
-    if [[ "$2" == *"/files"* ]]; then
-        cat "$GH_STUB_DIR/files_$n.txt" 2>/dev/null || exit 1
-    else
-        cat "$GH_STUB_DIR/pr_$n.tsv" 2>/dev/null || exit 1
-    fi
-    exit 0
-fi
 exit 0
 GHEOF
 chmod +x "$TMPROOT/bin/gh"
 export PATH="$TMPROOT/bin:$PATH"
 
 write_slice() { printf '{"prs": %s}\n' "$1" > "$FLEET_STATE_DIR/projections/merger.json"; }
-stub_pr() { printf '%s\t%s\t%s\t%s\t%s\n' "$2" "$3" "$4" "sha$1" "$5" > "$GH_STUB_DIR/pr_$1.tsv"; }
-stub_files() { local n="$1"; shift; printf '%s\n' "$@" > "$GH_STUB_DIR/files_$n.txt"; }
-reset_stub() { rm -f "$GH_STUB_DIR"/pr_*.tsv "$GH_STUB_DIR"/files_*.txt "$GH_STUB_LOG" "$TRIGGER"; touch "$GH_STUB_LOG"; }
+reset_stub() { rm -f "$GH_STUB_LOG" "$TRIGGER"; touch "$GH_STUB_LOG"; }
 # Every run passes --rearm-trigger so the trigger file is the observable.
 run_rebase() { "$REBASE" --auto --dry-run --rearm-trigger 2>&1 || true; }
 iso_ago() { python3 -c 'import datetime,sys;print((datetime.datetime.now(datetime.timezone.utc)-datetime.timedelta(seconds=int(sys.argv[1]))).strftime("%Y-%m-%dT%H:%M:%SZ"))' "$1"; }
@@ -105,14 +93,12 @@ assert_absent "$T1" "re-armed merger trigger" "T1 no re-arm logged"
 assert_trigger_absent "T1 no trigger written"
 
 # === T2 ======================================================================
-echo "T2: approved + MERGEABLE plan candidate, non-plan diff -> human, no re-arm"
+echo "T2: approved + MERGEABLE, benign labels only -> human, no re-arm, no gh call"
 reset_stub
-stub_pr 902 open master true "fleet:approved"
-stub_files 902 "docs/agents/SOME-DOC.md"
 write_slice "[{\"repo\":\"game\",\"number\":902,\"headRefName\":\"claude/912-coding-improvement\",\"baseRefName\":\"master\",\"mergeable\":\"MERGEABLE\",\"updatedAt\":\"$(iso_ago 86400)\",\"labels\":[\"fleet:approved\"]}]"
 T2=$(run_rebase)
-assert_contains "$T2" "diff not pure .fleet/plans" "T2 diff gate fires"
 assert_contains "$T2" "llm_remaining=0 human_remaining=1" "T2 counted as human_remaining"
+assert_absent "$(cat "$GH_STUB_LOG")" "902" "T2 a PR on the human's click costs no gh call"
 assert_trigger_absent "T2 no trigger written"
 
 # === T3 ======================================================================
@@ -179,10 +165,6 @@ assert_trigger_absent "T8 no trigger written"
 # === T9 ======================================================================
 echo "T9: the 2026-09-09 slice shape (synthetic numbers) -> nothing re-arms"
 reset_stub
-for n in 902 904 905; do
-    stub_pr "$n" open master true "fleet:approved"
-    stub_files "$n" "docs/CLAUDE.md"
-done
 old=$(iso_ago 86400)
 write_slice "[
   {\"repo\":\"engine\",\"number\":3081,\"headRefName\":\"claude/2917-x\",\"baseRefName\":\"master\",\"mergeable\":\"CONFLICTING\",\"updatedAt\":\"$old\",\"labels\":[\"fleet:resolving-mac-pool-3\",\"fleet:semantic-conflict\"]},
@@ -194,7 +176,7 @@ write_slice "[
   {\"repo\":\"game\",\"number\":907,\"headRefName\":\"claude/915-x\",\"baseRefName\":\"master\",\"mergeable\":\"MERGEABLE\",\"updatedAt\":\"$old\",\"labels\":[\"fleet:design-proposed\",\"fleet:wip\"]}
 ]"
 T9=$(run_rebase)
-assert_contains "$T9" "llm_remaining=0 human_remaining=4 cooling=0 deferred=0" "T9 four human-owned PRs, zero LLM work"
+assert_contains "$T9" "llm_remaining=0 human_remaining=4 cooling=0" "T9 four human-owned PRs, zero LLM work"
 assert_absent "$T9" "re-armed merger trigger" "T9 no re-arm logged"
 assert_trigger_absent "T9 no trigger written"
 

@@ -11,9 +11,9 @@ a stretch of autonomous running:
   * Who keeps waking a role? Trigger arms per source (scout projection
     change, tier-0 fleet-rebase re-arm, periodic worker re-arm) against the
     dispatches they produced, plus every stand-down the dispatcher logged.
-  * Is the merger ladder wasting the LLM pass? Tier-0 runs, merges, and how
-    often tier-0 re-armed the LLM merger versus how many of those LLM
-    iterations then reported doing nothing.
+  * Is the merger ladder wasting the LLM pass? Tier-0 runs and how often
+    tier-0 re-armed the LLM merger versus how many of those LLM iterations
+    then reported doing nothing.
   * Are both providers being used? FLEET_RUNTIMES / cross-provider review /
     worker policy from the conf, whether `codex` is on PATH and out of
     cooldown, the per-runtime dispatch split, standing routing problems, and
@@ -333,7 +333,6 @@ def collect_rebase(log_lines, since):
     runs = 0
     totals = {}
     llm_rearms = 0
-    tier0_rearms = 0
     for ts, source, msg in log_lines:
         if source != "fleet-rebase" or ts < since:
             continue
@@ -345,10 +344,7 @@ def collect_rebase(log_lines, since):
                     totals[k] = totals.get(k, 0) + int(v)
         elif msg.startswith("re-armed merger trigger for the LLM pass"):
             llm_rearms += 1
-        elif msg.startswith("re-armed merger trigger for another tier-0"):
-            tier0_rearms += 1
-    return {"runs": runs, "totals": totals, "llm_rearms": llm_rearms,
-            "tier0_rearms": tier0_rearms}
+    return {"runs": runs, "totals": totals, "llm_rearms": llm_rearms}
 
 
 # --- Runtimes --------------------------------------------------------------------
@@ -555,8 +551,7 @@ def render_text(report):
     o.append("")
     o.append("## Merger ladder (tier-0 fleet-rebase)")
     tot = " ".join(f"{k}={v}" for k, v in sorted(r["totals"].items()))
-    o.append(f"  runs={r['runs']} llm-rearms={r['llm_rearms']} "
-             f"tier0-rearms={r['tier0_rearms']}  {tot}")
+    o.append(f"  runs={r['runs']} llm-rearms={r['llm_rearms']}  {tot}")
     u = report["runtimes"]
     o.append("")
     o.append("## Runtimes")

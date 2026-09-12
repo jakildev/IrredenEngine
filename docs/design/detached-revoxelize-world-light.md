@@ -247,7 +247,7 @@ Each phase is its own PR, stacks on the previous, and is independently verifiabl
    solids now cast onto the floor + world. **Natural visual verification target: the #1587
    shadow floor** — an opt-in detached solid dropping a shadow on it is the end-to-end proof;
    that visible shadow on both backends IS the definition of done (task pointer:
-   `.fleet/plans/issue-1596.md`, resume on PR #1626).
+   #1596, resume on PR #1626).
    *Landed as (PR #1626):* `BAKE_SUN_SHADOW_MAP` gathers opt-in casters in `beginTick` (off
    `C_EntityCanvas`, world cell origin from the propagated `C_CanvasLocalRotation`) and, in
    the main canvas's tick, scatters every caster's model-frame distances into ONE shared

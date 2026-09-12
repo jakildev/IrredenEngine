@@ -8,7 +8,7 @@ roll-up paragraph.
 
 ## Ownership
 
-These files follow the same bookkeeping pattern as `.fleet/plans/`:
+These files are bookkeeping, not feature code:
 
 - **Human or maintenance PR** updates the contents as underlying
   state changes (PRs merge, task status flips, architect-gated
