@@ -739,6 +739,11 @@ def fetch_closed_fleet_queued(repo, limit=100):
     # keeps the same newest-N window gh's --limit did — verified field- and
     # number-equivalent against the live snapshot. (REST has no gh-style --limit;
     # per_page is the cap, 100 matches the prior --limit 100.)
+    # number only: every consumer (_closed_issue_numbers and the resolve_*
+    # blocker chains built on it, _populate_tasks_done) reads just `number`.
+    # Trimmed here rather than in _rest_issue_summary, which
+    # fetch_issues_by_label's other callers (needs_plan, plan_review,
+    # human_approved) still need full labels/title/updatedAt from.
     raw = _rest_list(repo, "issues", {
         "labels": "fleet:queued", "state": "closed",
         "sort": "created", "direction": "desc",
@@ -746,7 +751,7 @@ def fetch_closed_fleet_queued(repo, limit=100):
     if raw is None:
         return None
     issues = [
-        _rest_issue_summary(i) for i in raw if not _is_pull_request(i)
+        {"number": i.get("number", 0)} for i in raw if not _is_pull_request(i)
     ]
     issues.sort(key=lambda issue: issue.get("number", 0))
     return issues
@@ -1204,24 +1209,17 @@ def fetch_task_queue(repo_slug):
 
 
 def _populate_tasks_done(repo_state):
-    """Convert closed_fleet_queued entries to tasks.done format."""
-    done = []
-    for issue in repo_state.get("closed_fleet_queued", []):
-        number = issue.get("number", 0)
-        title = issue.get("title", "")
-        task_id = f"#{number}"
-        done.append({
-            "status": "x",
-            "title": task_id,
-            "summary": title,
-            "id": task_id,
-            "model": None,
-            "owner": None,
-            "area": None,
-            "blocked_by": None,
-            "issue": task_id,
-        })
-    done.sort(key=lambda t: int((t.get("issue") or "#0").lstrip("#")))
+    """Convert closed_fleet_queued entries to tasks.done format.
+
+    id only: project_queue_manager and slice_queue_manager, the two readers
+    of tasks.done, resolve each record through task.get("id") and nothing
+    else — the status/summary/model/owner/area/blocked_by/title/issue fields
+    the record used to carry were constants or duplicates of id, unread by
+    either consumer or by any human-facing renderer.
+    """
+    done = [{"id": f"#{issue.get('number', 0)}"}
+            for issue in repo_state.get("closed_fleet_queued", [])]
+    done.sort(key=lambda t: int(t["id"].lstrip("#")))
     return done
 
 

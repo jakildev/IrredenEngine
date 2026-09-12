@@ -563,5 +563,115 @@ class TestReuseGuardSchemaMarker(unittest.TestCase):
                         "the schema marker must cost well under 16 B per PR")
 
 
+# TestFiveSectionSizeBound: closed_fleet_queued and tasks.done are the two
+# state.json sections re-bound here — the other three the same review round
+# named (recent_merged_prs, epics, plan_review) were measured, not changed.
+# The fixture below models all six untouched top-level sections plus
+# tasks.open/in_progress/plan_gated as budget-reservation filler: a
+# `{"pad": "z"*N}` string sized to a target byte count, never a model of
+# their real field shape (that shape belongs to those sections' own tests).
+
+_DONE_COUNT = 100
+_FIRST_CLOSED = 2000
+_FILLER_SECTIONS = (
+    "prs", "needs_plan", "human_approved", "recent_merged_prs", "epics",
+    "plan_review",
+)
+_FILLER_BYTES_PER_SECTION = 14200
+
+
+def _filler(target_bytes):
+    empty_cost = len(json.dumps([{"pad": ""}], separators=(",", ":")).encode("utf-8"))
+    return [{"pad": "z" * max(0, target_bytes - empty_cost)}]
+
+
+def _pre_trim_closed_rest_issue(n):
+    """A REST /issues item shaped for fetch_closed_fleet_queued's old
+    _rest_issue_summary-based return — title/labels/updatedAt included."""
+    return {
+        "number": n,
+        "title": f"fleet: some closed queued task, title padding {n}",
+        "labels": [{"name": "fleet:queued"}, {"name": "fleet:sonnet"},
+                   {"name": "fleet:claim-mac-pool-1"}],
+        "updated_at": "2026-01-01T00:00:00Z",
+    }
+
+
+def _pre_trim_done_record(n):
+    """tasks.done's shape before the trim: nine fields, most either constant
+    or duplicating `id`."""
+    task_id = f"#{n}"
+    return {
+        "status": "x", "title": task_id,
+        "summary": f"fleet: some closed queued task, title padding {n}",
+        "id": task_id, "model": None, "owner": None, "area": None,
+        "blocked_by": None, "issue": task_id,
+    }
+
+
+def _repo_state(pre_trim):
+    repo = {name: _filler(_FILLER_BYTES_PER_SECTION) for name in _FILLER_SECTIONS}
+    repo["tasks"] = {"open": [], "in_progress": [], "plan_gated": []}
+    numbers = range(_FIRST_CLOSED, _FIRST_CLOSED + _DONE_COUNT)
+    if pre_trim:
+        repo["closed_fleet_queued"] = [
+            _mod._rest_issue_summary(_pre_trim_closed_rest_issue(n)) for n in numbers
+        ]
+        repo["tasks"]["done"] = [_pre_trim_done_record(n) for n in numbers]
+    else:
+        with patch.object(_mod, "_rest_list",
+                          return_value=[_pre_trim_closed_rest_issue(n) for n in numbers]):
+            repo["closed_fleet_queued"] = _mod.fetch_closed_fleet_queued(_REPO)
+        repo["tasks"]["done"] = _mod._populate_tasks_done(repo)
+    return repo
+
+
+def _emit_size(state):
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "state.json"
+        with patch.object(_mod, "STATE_FILE", path), \
+                patch.dict("os.environ", {"FLEET_ALERTS_DIR": str(Path(tmp) / "alerts")}), \
+                patch.object(_mod, "log", side_effect=lambda m: None):
+            return _mod.emit_state(state)
+
+
+class TestFiveSectionSizeBound(unittest.TestCase):
+    """Drives the SHIPPED fetch_closed_fleet_queued / _populate_tasks_done /
+    emit_state over one deterministic fixture, both trim states."""
+
+    def test_shipped_closed_fleet_queued_emits_number_only(self):
+        with patch.object(_mod, "_rest_list",
+                          return_value=[_pre_trim_closed_rest_issue(_FIRST_CLOSED)]):
+            out = _mod.fetch_closed_fleet_queued(_REPO)
+        self.assertEqual(out, [{"number": _FIRST_CLOSED}])
+
+    def test_shipped_tasks_done_emits_id_only(self):
+        repo_state = {"closed_fleet_queued": [{"number": _FIRST_CLOSED}]}
+        self.assertEqual(_mod._populate_tasks_done(repo_state),
+                         [{"id": f"#{_FIRST_CLOSED}"}])
+
+    def test_pre_trim_fixture_exceeds_the_warn_threshold(self):
+        # Positive control: without the trim, a realistic tree's fixture is
+        # already past STATE_SIZE_WARN_BYTES on these two sections alone.
+        state = {"generated_at": "2026-01-01T00:00:00Z",
+                 "repos": {"engine": _repo_state(pre_trim=True),
+                           "game": _repo_state(pre_trim=True)}}
+        size = _emit_size(state)
+        self.assertGreater(
+            size, _mod.STATE_SIZE_WARN_BYTES,
+            f"fixture is {size} B pre-trim — it must exceed the warn threshold "
+            "or the acceptance arm below proves nothing")
+
+    def test_post_trim_fixture_clears_headroom_under_the_warn_threshold(self):
+        state = {"generated_at": "2026-01-01T00:00:00Z",
+                 "repos": {"engine": _repo_state(pre_trim=False),
+                           "game": _repo_state(pre_trim=False)}}
+        size = _emit_size(state)
+        self.assertLess(
+            size, _mod.STATE_SIZE_WARN_BYTES - 40 * 1024,
+            f"fixture is {size} B post-trim — must clear 40 KiB of headroom "
+            "under the warn threshold, not just squeak under the read cap")
+
+
 if __name__ == "__main__":
     unittest.main()
