@@ -200,11 +200,9 @@ words. An empty intersection is a non-blocking warning: pause for human
 acknowledgement in interactive mode; in autonomous mode log it prominently
 and verify the number independently before proceeding.
 
-- **Issue match.** `gh issue view <N> --repo <repo> --json
-  title,body,comments`. The tokenized title should share words with the PR
-  title, branch, or first commit line; an empty intersection is a warning
-  (ask in interactive mode; log and verify independently when autonomous).
-  Non-blocking — an umbrella issue is a legitimate mismatch.
+- **Issue match.** Reuse `$issue_title` from the snapshot above for the
+  token-intersection check. A mismatch remains non-blocking because an umbrella
+  issue may legitimately have a different title.
 - **Acceptance evidence.** If the issue states acceptance criteria anywhere
   (a `## Plan` comment's `### Acceptance criteria`, or a bold `**Acceptance
   criteria**` line in the body), the PR body needs a `## Acceptance
