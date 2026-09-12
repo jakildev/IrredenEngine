@@ -2444,19 +2444,30 @@ def project_worker(state):
     return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))
 
 
+def _reviewable(pr, labels):
+    """A conflicting PR's diff is not the diff that will merge, so neither
+    reviewer lane admits it; the merger or a conflict worker changes its state
+    and re-arms the lane. Shared by each lane's projection and slice — the
+    dispatcher elects targets from the slice."""
+    return not _review_skipped(labels) and pr.get("mergeable") != "CONFLICTING"
+
+
+def sonnet_review_admissible(pr, labels):
+    if not _reviewable(pr, labels) or pr.get("isDraft"):
+        return False
+    # Re-review triggers override the verdict check.
+    return not (labels & REVIEW_VERDICT_LABELS) or bool(labels & RECHECK_LABELS)
+
+
+def opus_review_admissible(pr, labels):
+    return _reviewable(pr, labels) and bool(labels & OPUS_REVIEWER_FLAG_LABELS)
+
+
 def project_sonnet_reviewer(state):
     items = []
     for repo, repo_state in state["repos"].items():
         for pr in repo_state.get("prs", []):
-            labels = set(pr["labels"])
-            if _review_skipped(labels):
-                continue
-            if pr.get("isDraft"):
-                continue
-            # Re-review triggers override the verdict check.
-            has_recheck = labels & RECHECK_LABELS
-            has_verdict = labels & REVIEW_VERDICT_LABELS
-            if has_verdict and not has_recheck:
+            if not sonnet_review_admissible(pr, set(pr["labels"])):
                 continue
             items.append({"repo": repo, "pr": pr["number"],
                           "head": pr["headRefName"]})
@@ -2468,9 +2479,7 @@ def project_opus_reviewer(state):
     for repo, repo_state in state["repos"].items():
         for pr in repo_state.get("prs", []):
             labels = set(pr["labels"])
-            if _review_skipped(labels):
-                continue
-            if not (labels & OPUS_REVIEWER_FLAG_LABELS):
+            if not opus_review_admissible(pr, labels):
                 continue
             items.append({"repo": repo, "pr": pr["number"],
                           "labels": sorted(labels & OPUS_REVIEWER_FLAG_LABELS)})
@@ -2988,16 +2997,8 @@ def slice_sonnet_reviewer(state):
     out = {"candidate_prs": []}
     for repo_key, repo_state in state["repos"].items():
         for pr in repo_state.get("prs", []):
-            labels = set(pr["labels"])
-            if _review_skipped(labels):
-                continue
-            if pr.get("isDraft"):
-                continue
-            has_recheck = labels & RECHECK_LABELS
-            has_verdict = labels & REVIEW_VERDICT_LABELS
-            if has_verdict and not has_recheck:
-                continue
-            out["candidate_prs"].append(_slice_pr_with_repo(repo_key, pr))
+            if sonnet_review_admissible(pr, set(pr["labels"])):
+                out["candidate_prs"].append(_slice_pr_with_repo(repo_key, pr))
     return out
 
 
@@ -3005,12 +3006,8 @@ def slice_opus_reviewer(state):
     out = {"flagged_prs": [], "plan_review": []}
     for repo_key, repo_state in state["repos"].items():
         for pr in repo_state.get("prs", []):
-            labels = set(pr["labels"])
-            if _review_skipped(labels):
-                continue
-            if not (labels & OPUS_REVIEWER_FLAG_LABELS):
-                continue
-            out["flagged_prs"].append(_slice_pr_with_repo(repo_key, pr))
+            if opus_review_admissible(pr, set(pr["labels"])):
+                out["flagged_prs"].append(_slice_pr_with_repo(repo_key, pr))
         # Plan-review issues the reviewer should vet (mirror project_opus_reviewer
         # so a woken reviewer reads the same set that triggered it). #1932.
         for issue in repo_state.get("plan_review", []):

@@ -104,9 +104,11 @@ or oversized churn."
 
 ### 2. Check out the branch (read-only)
 
-`gh pr checkout <N>`, then compare `git rev-parse HEAD` with `headRefOid`
-from `gh pr view <N> --json headRefOid`. A failed checkout leaves the old
-tree in place — report the blocker through the completion contract rather
+`git fetch origin <headRefName>` then `git checkout --detach FETCH_HEAD`,
+and compare `git rev-parse HEAD` with `headRefOid` from
+`gh pr view <N> --json headRefName,headRefOid`. Never `gh pr checkout`: it
+wants a local branch of the PR's name, and a stale one in the pool worktree
+makes it fail. A failed checkout leaves the old tree in place — report the blocker through the completion contract rather
 than testing that tree. Never commit or push from a review.
 
 ### 3. Read the diff in context
@@ -156,9 +158,10 @@ when there is no grader, no `Closes #N`, or no planned criteria.
 ### 5. Post the review
 
 Post and label as one indivisible action: the review comment, then the
-verdict label as the very next bash call. `rm -f .review-body.md`, Write
-the body to `.review-body.md` in the worktree root (gitignored; not
-`/tmp/`), then:
+verdict label as the very next bash call. Write the body to
+`.review-body.md` in the worktree root (gitignored; not `/tmp/`),
+overwriting any previous one — never `rm -f` it first; a Codex sandbox
+refuses `rm -f` — then:
 
 ```bash
 gh pr review <N> --comment --body-file .review-body.md

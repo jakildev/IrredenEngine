@@ -30,6 +30,7 @@ _loader.exec_module(_mod)
 project_opus_reviewer = _mod.project_opus_reviewer
 project_sonnet_reviewer = _mod.project_sonnet_reviewer
 slice_opus_reviewer = _mod.slice_opus_reviewer
+slice_sonnet_reviewer = _mod.slice_sonnet_reviewer
 stable_hash = _mod.stable_hash
 
 
@@ -238,6 +239,52 @@ class PlanReviewWakesPane(unittest.TestCase):
             plan_review=[_issue(50, labels=["fleet:plan-review"])]))
         kinds = sorted(it.get("kind", "pr") for it in items)
         self.assertEqual(kinds, ["plan_review", "pr"])
+
+
+class ConflictingPrsAreNotReviewable(unittest.TestCase):
+    """The dispatcher elects review targets from the slice and fleet-up's
+    bootstrap reads it as actionable, so each lane's slice must refuse a
+    CONFLICTING PR exactly as its projection does."""
+
+    def _state(self, mergeable, labels):
+        return {"repos": {"engine": {"prs": [{
+            "number": 42, "headRefName": "claude/42-x", "isDraft": False,
+            "mergeable": mergeable, "labels": labels}], "plan_review": []}}}
+
+    def _sonnet(self, state):
+        return ([i["pr"] for i in project_sonnet_reviewer(state)],
+                [p["number"] for p in slice_sonnet_reviewer(state)["candidate_prs"]])
+
+    def _opus(self, state):
+        return ([i["pr"] for i in project_opus_reviewer(state)],
+                [p["number"] for p in slice_opus_reviewer(state)["flagged_prs"]])
+
+    def test_sonnet_lane_skips_conflicting_recheck(self):
+        self.assertEqual(self._sonnet(self._state("CONFLICTING", ["fleet:changes-made"])),
+                         ([], []))
+        self.assertEqual(self._sonnet(self._state("MERGEABLE", ["fleet:changes-made"])),
+                         ([42], [42]))
+
+    def test_opus_lane_skips_conflicting_escalation(self):
+        self.assertEqual(self._opus(self._state("CONFLICTING", ["fleet:needs-opus-recheck"])),
+                         ([], []))
+        self.assertEqual(self._opus(self._state("MERGEABLE", ["fleet:needs-opus-recheck"])),
+                         ([42], [42]))
+
+    def test_projection_and_slice_admit_the_same_prs(self):
+        label_sets = [[], ["fleet:changes-made"], ["fleet:approved"],
+                      ["fleet:approved", "human:re-review"], ["fleet:needs-opus-recheck"],
+                      ["fleet:semantic-conflict"], ["fleet:amending-mac-pool-1"]]
+        for mergeable in ("MERGEABLE", "CONFLICTING", "UNKNOWN"):
+            for draft in (False, True):
+                for labels in label_sets:
+                    state = self._state(mergeable, labels)
+                    state["repos"]["engine"]["prs"][0]["isDraft"] = draft
+                    with self.subTest(mergeable=mergeable, draft=draft, labels=labels):
+                        sonnet_proj, sonnet_slice = self._sonnet(state)
+                        opus_proj, opus_slice = self._opus(state)
+                        self.assertEqual(sonnet_proj, sonnet_slice)
+                        self.assertEqual(opus_proj, opus_slice)
 
 
 if __name__ == "__main__":
