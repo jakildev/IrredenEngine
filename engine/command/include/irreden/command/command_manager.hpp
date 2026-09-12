@@ -37,6 +37,25 @@ struct CommandRegistration {
     KeyModifierMask requiredModifiers;
 };
 
+/// The two `IRInput` predicates keyboard dispatch reads live input through:
+/// `checkKeyMouseButton` and `checkKeyMouseModifiers`. `CommandManager` only
+/// ever touches input through this pair, so binding them to a deterministic
+/// snapshot runs the production selection algorithm with no window, no GLFW
+/// and no `InputManager` — the seam the headless dispatch fixture in
+/// `test/command/keyboard_dispatch_test.cpp` drives.
+///
+/// Plain function pointers, not `std::function`: the probe is threaded through
+/// a per-frame loop over every binding, and the production binding below is
+/// two direct addresses with nothing to own or allocate. This is command-
+/// internal — `ir_command.hpp` exports no counterpart, and a creation still
+/// calls `executeUserKeyboardCommandsAll()`.
+struct KeyMouseInputProbe {
+    bool (*checkButton_)(IRInput::KeyMouseButtons button, IRInput::ButtonStatuses status);
+    bool (*checkModifiers_)(
+        IRInput::KeyModifierMask requiredModifiers, IRInput::KeyModifierMask blockedModifiers
+    );
+};
+
 class CommandManager {
   public:
     CommandManager();
@@ -63,6 +82,7 @@ class CommandManager {
                 blockedModifiers
             }
         );
+        m_bareGroupsDirty = true;
         if (!name.empty() && triggerStatus == PRESSED) {
             m_commandRegistrations.push_back(
                 {std::move(name), std::move(description), button, triggerStatus, requiredModifiers}
@@ -159,7 +179,43 @@ class CommandManager {
 
     void executeDeviceMidiCCCommandsAll();
     void executeDeviceMidiNoteCommandsAll();
+    /// Per-frame keyboard/mouse dispatch: reads live input and fires every
+    /// binding whose trigger matches. Thin wrapper over the evaluator below,
+    /// bound to the real `IRInput` predicates.
     void executeUserKeyboardCommandsAll();
+
+    /// The dispatch algorithm itself, reading input through @p input instead of
+    /// calling `IRInput` directly. Command-internal: the only production caller
+    /// is `executeUserKeyboardCommandsAll()`; the only other one is the headless
+    /// fixture that drives it from a snapshot.
+    ///
+    /// Two selection rules run here, and the second exists because the first is
+    /// frame-local by construction:
+    ///
+    /// - **Modifier specificity.** If any binding on a button matches this frame
+    ///   with a non-empty `requiredModifiers`, every bare-mask binding on that
+    ///   button is skipped for the frame — a chord wins over the plain key.
+    /// - **Paired admission.** Bare-mask bindings that share a button
+    ///   *and* a `blockedModifiers` mask form a group; a group carrying both a
+    ///   `PRESSED` and a `RELEASED` row is a start/end *pair*. A pair's
+    ///   eligibility is decided once, on the frame its button is observed
+    ///   pressed, and held until the button is released — so a chord that
+    ///   shadows the press also shadows the matching release, and a modifier
+    ///   pressed mid-hold cannot cancel a release that has a live start behind
+    ///   it. Without it, specificity reaches only the press frame (nothing
+    ///   modifier-specific matches on the release frame), leaving an unpaired
+    ///   `_END` that accumulates into the camera's velocity forever.
+    ///
+    /// Unpaired bare bindings and every modifier-bearing one keep plain
+    /// frame-by-frame matching.
+    ///
+    /// Grouping walks the same rows, with the same predicate, that dispatch
+    /// does — in particular it consults `getType()` exactly as much as dispatch
+    /// does, which is not at all — `isButtonBound` documents that latent
+    /// divergence. One predicate for both passes is deliberate: a finer filter
+    /// here would let the group set and the dispatch set disagree, and a row
+    /// that fires on both edges but never latches is the defect again.
+    void executeUserKeyboardCommands(const KeyMouseInputProbe &input);
     void executeDeviceMidiCCCommands(
         int device, std::vector<CommandStruct<CommandTypes::COMMAND_MIDI_CC>> &commands
     );
@@ -174,6 +230,47 @@ class CommandManager {
     std::unordered_map<int, std::vector<CommandStruct<COMMAND_MIDI_CC>>> m_midiCCDeviceCommands;
     std::vector<CommandStruct<COMMAND_BUTTON>> m_userCommands;
     std::vector<CommandRegistration> m_commandRegistrations;
+
+    /// One bare-mask binding group: `(button, blockedModifiers)` packed into
+    /// `key_` (the identity rows pair on), plus which trigger edges have rows.
+    struct BareGroup {
+        std::uint32_t key_;
+        std::uint8_t edges_;
+    };
+    static constexpr int kNoBareGroup = -1;
+
+    /// The bare-mask groups every binding falls into, and the group index of
+    /// each row in `m_userCommands` (`kNoBareGroup` for a modifier-bearing row).
+    /// Derived purely from the binding list, which is append-only, so they are
+    /// rebuilt on the first dispatch after a registration rather than per frame
+    /// — that rebuild is the only O(bindings x groups) work in the path, and it
+    /// happens once per `createCommand` burst instead of 60 times a second.
+    std::vector<BareGroup> m_bareGroups;
+    std::vector<int> m_rowBareGroup;
+    bool m_bareGroupsDirty = true;
+
+    /// Per-frame scratch — the few buttons a chord matched this frame. A member
+    /// so dispatch stops allocating once it reaches its high-water mark
+    /// (`clear()` keeps the capacity), and a vector because a handful of entries
+    /// scanned linearly beats hashing here.
+    ///
+    /// Measured over a ~54-row binding population (the voxel editor's), ns per
+    /// `executeUserKeyboardCommands` call: **134** without paired admission at
+    /// all, **1075** for a draft that rebuilt an `unordered_map` +
+    /// `unordered_set` every frame, **~190** here. Caching the group table and
+    /// scanning short vectors are what buy back the difference.
+    std::vector<int> m_modifierSpecificButtons;
+
+    /// Start/end pairs whose press was admitted and whose release has not been
+    /// observed yet. Membership IS the admission: a pair fires neither edge
+    /// while absent, both while present. Entries are written on the press frame
+    /// and erased on the release frame, so this is empty whenever no paired key
+    /// is down — unlike the two scratch lists above it persists across frames,
+    /// because that persistence is the fix. See `executeUserKeyboardCommands`.
+    std::vector<std::uint32_t> m_admittedPairedGroups;
+
+    /// Rebuilds `m_bareGroups` / `m_rowBareGroup` from the binding list.
+    void rebuildBareGroups();
     std::uint32_t m_registrationGeneration = 0;
 };
 

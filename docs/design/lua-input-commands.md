@@ -161,10 +161,12 @@ a `std::function<void()>` that happens to wrap a
 `sol::protected_function`. The dispatch loop does not learn about Lua.
 
 This means zero changes to `executeUserKeyboardCommandsAll`
-([`command_manager.cpp:55-89`](../../engine/command/src/command_manager.cpp)).
-The modifier-specific-match logic (skip bare bindings when a
-modifier-qualified binding exists for the same button) applies to Lua
-and C++ commands identically.
+([`command_manager.cpp`](../../engine/command/src/command_manager.cpp) — the
+symbol, not a line range, since the dispatch body has grown since). Its
+selection rules — modifier specificity (skip bare bindings when a
+modifier-qualified binding exists for the same button) and the paired
+start/end admission layered on top of it (#3273) — apply to Lua and C++
+commands identically.
 
 ### Q3: Prefab command names go through one enum table, like `SystemName`
 

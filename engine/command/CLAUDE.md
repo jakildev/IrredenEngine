@@ -291,19 +291,39 @@ for prefab command bodies. PR 2 does not delete any existing command.
   informational only).
 - **Modifier keys only work for KEY_MOUSE.** Gamepad and MIDI commands
   ignore the `modifiers` field even if you pass one.
-- **A modifier chord on a start/end pair's key unbalances the pair.**
-  `executeUserKeyboardCommandsAll` resolves same-key ambiguity by
-  specificity: if any binding on a button matches this frame *with* a
-  non-empty `requiredModifiers`, every bare-mask binding on that button is
-  suppressed for the frame. The suppression is keyed on the button, and only
-  the frame the chord fires on — so binding, say, Ctrl+S on a key that also
-  carries `MOVE_CAMERA_DOWN_START` / `_END` kills the PRESSED half and leaves
-  the RELEASED half live. Those two accumulate into `C_Velocity2DIso`
-  (`-=` on press, `+=` on release), so the camera pans forever at the leftover
-  speed. Give **both** halves the matching `blockedModifiers` — re-registering
-  them via `omit_` plus two `createCommand<NAME>` calls, as
-  `creations/editors/voxel_editor` does for `S` — so the chord suppresses
-  neither or both. Specificity alone is only safe for one-shot bindings.
+- **A bare start/end pair is admitted once, at the press (#3273).** Dispatch
+  resolves same-key ambiguity by specificity: if any binding on a button matches
+  this frame with a non-empty `requiredModifiers`, every bare-mask binding on
+  that button is skipped. That rule alone is frame-local, and a pan axis is two
+  *distinct* commands on one key (`MOVE_CAMERA_DOWN_START` on PRESSED,
+  `_END` on RELEASED) — so a Ctrl+S chord shadowed only the PRESSED half, the
+  release frame had no modifier-specific row to lose to, and the surviving
+  `_END` left `C_Velocity2DIso` panning forever at `+kCameraMoveSpeed`.
+  `executeUserKeyboardCommands` now groups bare-mask rows by **button plus
+  `blockedModifiers`**; a group holding both a PRESSED and a RELEASED row is a
+  *pair*, and its eligibility is decided on the frame the button is observed
+  pressed and held until the release. So:
+  - A chord that shadows the press shadows the matching release too — neither
+    half fires, and **a creation needs no `omit_` + re-register workaround** to
+    keep a chorded key's pan axis balanced.
+  - A modifier pressed *mid-hold* cannot cancel a release that has a live start
+    behind it — including the `blockedModifiers` form, whose decision is frozen
+    at the press as well.
+  - The pairing key is structural. Command names, callback identity and overlay
+    registration are irrelevant; two rows on one key with **different** blocked
+    masks are two groups, not a pair, so that asymmetry is still the caller's.
+  - No press, no cleanup: a paired RELEASED row with no admitted press behind it
+    does nothing. Registering the second half mid-hold therefore starts its
+    first cycle at the next press, and `HELD` rows sharing the pair's group
+    follow the same admission.
+  - Unpaired bare rows and every modifier-bearing row keep plain frame-by-frame
+    matching, so a release-only chord still runs — it just can't consume an
+    admitted pair's cleanup. Specificity on its own remains safe for one-shot
+    bindings.
+
+  The regression lock is `test/command/keyboard_dispatch_test.cpp`, which drives
+  the production algorithm through `executeUserKeyboardCommands(KeyMouseInputProbe)`
+  from a deterministic snapshot — no GLFW, no display, no skip.
 - **Callbacks capture by value at bind time.** If the captured state
   changes later (e.g. a pointer is re-seated), the command still holds
   the old value.
