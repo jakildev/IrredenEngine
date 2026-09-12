@@ -15,7 +15,7 @@
 # distinct line on the dropped path (mkdir/write failed), so a pane can
 # always tell "recorded" from "silently dropped" without checking the
 # filesystem by hand. Matches the neighbouring `fleet-claim
-# release-worktree`'s recorded-vs-no-op split. See #3115.
+# release-worktree`'s recorded-vs-no-op split.
 #
 # Source of truth: scripts/fleet/fleet-iteration-summary in the engine repo.
 # Installed to ~/bin/fleet-iteration-summary by scripts/fleet/install.sh.
