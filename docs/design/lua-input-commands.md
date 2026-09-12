@@ -294,7 +294,7 @@ shut down `LuaScript`. The error is logged and the next command's
 trigger check still runs.
 
 The `SOL_EXCEPTIONS_ALWAYS_UNSAFE=1` flag set on `IrredenEngineScripting`
-([engine/script/CLAUDE.md "Build flag: SOL_EXCEPTIONS_ALWAYS_UNSAFE"](../../engine/script/CLAUDE.md))
+([script-lua-binding-surface.md "Runtime and exceptions"](script-lua-binding-surface.md#runtime-and-exceptions))
 ensures `e.what()` carries the actual Lua message rather than a
 generic `"C++ exception"`.
 
@@ -302,7 +302,8 @@ generic `"C++ exception"`.
 
 > This is the surface T-193 locked, not a running inventory — later work
 > has added to it (`IRCommand.{Suite, suiteDefaults, registerSuite}`).
-> `engine/script/CLAUDE.md` §"Commands and input" is the living reference.
+> `engine/script/include/irreden/script/lua_command_bindings.hpp` is the living
+> reference; `engine/script/CLAUDE.md` §"Commands and input" holds its contracts.
 
 ```lua
 -- Bind a prefab command (most common — replaces the C++ initCommands block):
