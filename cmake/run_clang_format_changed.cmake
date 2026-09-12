@@ -25,20 +25,52 @@ endif()
 # that the bare `format` target produces.
 
 # Pick a useful base for the committed-diff range:
+#   - FORMAT_DIFF_BASE if the caller supplied one (CI: the PR's base commit);
 #   - upstream tracking branch if one is set (the common case for an
 #     agent-owned worktree branched off origin/master);
 #   - fall back to origin/master.
-execute_process(
-    COMMAND git -C "${PROJECT_ROOT}" rev-parse --abbrev-ref "@{upstream}"
-    OUTPUT_VARIABLE _upstream
-    RESULT_VARIABLE _upstream_rc
-    ERROR_QUIET
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-if(_upstream_rc EQUAL 0 AND NOT _upstream STREQUAL "")
-    set(_diff_base "${_upstream}")
+#
+# The caller's base is tested FIRST, not as a further fallback after the
+# probe: a CI checkout still carries an upstream (actions/checkout sets one),
+# so probing first would silently ignore the base CI actually asked for and
+# gate the wrong line range. Only `_diff_base` is set here, and both consumers
+# read it — the three-dot file-list range below and the two-dot `git
+# merge-base` call that produces the --lines= ranges — so there is no way to
+# parameterize the file set and leave the line set on the derived base.
+if(DEFINED FORMAT_DIFF_BASE AND NOT FORMAT_DIFF_BASE STREQUAL "")
+    string(REPLACE "\"" "" FORMAT_DIFF_BASE "${FORMAT_DIFF_BASE}")
+    # An explicit base that does not resolve must be fatal. Left to the
+    # diff calls below it would be silent: `git diff <bogus>...HEAD` exits
+    # non-zero, _collect_git_diff maps that to an empty list, and the run
+    # reports "nothing to format" and exits 0 — a gate that passes because
+    # it looked at nothing, which is the failure mode this whole file's
+    # CI path exists to close.
+    execute_process(
+        COMMAND git -C "${PROJECT_ROOT}" rev-parse --verify --quiet
+                "${FORMAT_DIFF_BASE}^{commit}"
+        RESULT_VARIABLE _base_rc
+        OUTPUT_QUIET
+        ERROR_QUIET
+    )
+    if(NOT _base_rc EQUAL 0)
+        message(FATAL_ERROR
+            "FORMAT_DIFF_BASE does not resolve to a commit in ${PROJECT_ROOT}: "
+            "${FORMAT_DIFF_BASE}")
+    endif()
+    set(_diff_base "${FORMAT_DIFF_BASE}")
 else()
-    set(_diff_base "origin/master")
+    execute_process(
+        COMMAND git -C "${PROJECT_ROOT}" rev-parse --abbrev-ref "@{upstream}"
+        OUTPUT_VARIABLE _upstream
+        RESULT_VARIABLE _upstream_rc
+        ERROR_QUIET
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+    if(_upstream_rc EQUAL 0 AND NOT _upstream STREQUAL "")
+        set(_diff_base "${_upstream}")
+    else()
+        set(_diff_base "origin/master")
+    endif()
 endif()
 
 function(_collect_git_diff range out_var)

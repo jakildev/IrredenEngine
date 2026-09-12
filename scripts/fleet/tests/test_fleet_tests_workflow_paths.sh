@@ -55,21 +55,28 @@ fi
 # entries stay so the ratchet keeps naming those subjects even if the glob
 # is ever tightened.
 #
-# The four .github/workflows/ entries are test_workflow_paths_sync.sh's
-# subjects (#2929). They are the only members whose population is derived
+# The five .github/workflows/ entries are test_workflow_paths_sync.sh's
+# subjects (#2929, #3187). They are the only members whose population is derived
 # rather than fixed — that suite globs .github/workflows/*.yml and covers
 # whichever files declare both a push: and a pull_request: paths: block, so a
 # new such workflow becomes its subject with no edit here. This list cannot
 # track that on its own; T4 in test_workflow_paths_sync.sh asserts the two
 # agree, so the gap fails a suite instead of silently costing the new workflow
-# its trigger.
+# its trigger — format-check.yml (#3187) is the fifth.
+#
+# `cmake/run_clang_format_changed_standalone.cmake` is listed separately from
+# its sibling `cmake/run_clang_format_changed.cmake` on purpose: entries are
+# matched as literal substrings of the block, and neither of those two strings
+# contains the other, so the shorter entry does not cover the longer file.
 OUT_OF_TREE_SUBJECTS=(
     'cmake/run_clang_format_changed.cmake'
+    'cmake/run_clang_format_changed_standalone.cmake'
     'engine/tools/lib/concurrency_helpers.sh'
     'docs/agents/fleet-state-machine.json'
     'docs/agents/fleet-labels-reference.md'
     '.claude/rules/**'
     'docs/agents/**'
+    '.github/workflows/format-check.yml'
     '.github/workflows/header-checks.yml'
     '.github/workflows/perf-gate.yml'
     '.github/workflows/python-lint.yml'
