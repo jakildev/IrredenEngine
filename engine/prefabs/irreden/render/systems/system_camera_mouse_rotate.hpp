@@ -26,7 +26,7 @@ namespace IRSystem {
 // Middle drag without Ctrl falls through to CAMERA_MOUSE_PAN (unchanged).
 //
 // The cursor pivot latches the CLICKED SURFACE point at its true depth
-// (#2548, via IRPrefab::CursorPivot) and shows a marker there for the duration
+// (via IRPrefab::CursorPivot) and shows a marker there for the duration
 // of the drag. `latchByDefault_` swaps which chord gets the cursor latch, so a
 // demo can compare screen-center vs cursor-latched rotation live without a
 // restart; it is off by default, leaving the chords exactly as documented above.
@@ -106,7 +106,7 @@ template <> struct System<CAMERA_MOUSE_ROTATE> {
         // member out onto a worker via IRJob::parallelFor, `endTick` included,
         // regardless of the system's own Concurrency. The tag makes that a
         // boot-time FATAL in `validateAllPipelineGroups` instead of a
-        // heisenbug. Not `Spawns`: T-225 lifted MUTATOR_IN_PARALLEL_GROUP, so
+        // heisenbug. Not `Spawns`: lifted MUTATOR_IN_PARALLEL_GROUP, so
         // it would document the mutation without preventing it.
         SystemId id =
             registerSystem<CAMERA_MOUSE_ROTATE, C_Camera, MainThread>("CameraMouseRotate");
