@@ -24,13 +24,27 @@ const int kCascadeTexelCount = kSunShadowMapDim * kSunShadowMapDim;
 const float kSunDepthScale = 1024.0;
 const float kSunDepthOffset = 512.0;
 
-// Interior margin (texels) for sunCascadeKernelInterior. Sized so that when a
-// receiver's 2x2 PCF kernel is accepted, its caster — same sun ray, offset in
-// UV only by the receiver's kNormalBiasVoxels shift plus the caster's
-// half-cell rounding, both sub-texel to low-single-texel at practical texel
-// sizes — is guaranteed to have landed inside the map too (the bake's point
-// write cannot have been bounds-dropped for an accepted receiver).
-const int kSunCascadeInteriorMarginTexels = 2;
+// Receive-kernel tap extent in texels, relative to the receiver's base texel
+// (#2321 lever b). The kernel is the 2x2 bilinear footprint convolved with a
+// 3-texel box, so its support spans base-1 .. base+2 on each axis — a true 3x3
+// box of texels under a sub-texel-continuous weighting (sunPcfAxisWeight, in
+// the ir_sun_shadow_sample twins). Pre-#2321 this was the bare bilinear pair,
+// {0, 1}. sunCascadeKernelInterior below derives its bounds from these, so
+// widening the kernel again cannot silently outrun the in-bounds gate.
+const int kSunPcfTapMin = -1;
+const int kSunPcfTapMax = 2;
+
+// Caster slack (texels) required BEYOND the receive kernel's own footprint.
+// Sized so that when a receiver's kernel is accepted, its caster — same sun
+// ray, offset in UV only by the receiver's kNormalBiasVoxels shift plus the
+// caster's half-cell rounding, both sub-texel to low-single-texel at practical
+// texel sizes — is guaranteed to have landed inside the map too (the bake's
+// point write cannot have been bounds-dropped for an accepted receiver). Held
+// at 2 across #2321's widening, so that guarantee is byte-for-byte the old
+// one; the near cascade simply gives up the single texel per edge the wider
+// kernel now occupies (1 of 1024 — and the far cascade is the safe covering
+// fallback for exactly what it drops).
+const int kSunCascadeCasterMarginTexels = 2;
 
 // Sun-space projection of a WORLD point: .xy = UV along the (uHat, vHat)
 // orthonormal basis (perpendicular to the sun ray — every caster on a
@@ -104,8 +118,11 @@ ivec2 unpackSunSplatOffset(uint packedDepth) {
 // (#2083 root cause 2, the silent-clip face dropout).
 bool sunCascadeKernelInterior(vec2 sunUV, vec2 origin, vec2 texelSz) {
     ivec2 base = ivec2(floor((sunUV - origin) / texelSz));
-    return base.x >= kSunCascadeInteriorMarginTexels &&
-           base.y >= kSunCascadeInteriorMarginTexels &&
-           base.x + 1 < kSunShadowMapDim - kSunCascadeInteriorMarginTexels &&
-           base.y + 1 < kSunShadowMapDim - kSunCascadeInteriorMarginTexels;
+    // Required in-bounds span = the kernel's own tap extent plus the caster
+    // slack, on both edges. Expressed from the constants so the two cannot
+    // drift (#2321).
+    ivec2 lo = base + ivec2(kSunPcfTapMin - kSunCascadeCasterMarginTexels);
+    ivec2 hi = base + ivec2(kSunPcfTapMax + kSunCascadeCasterMarginTexels);
+    return lo.x >= 0 && lo.y >= 0 &&
+           hi.x < kSunShadowMapDim && hi.y < kSunShadowMapDim;
 }
