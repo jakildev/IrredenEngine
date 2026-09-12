@@ -139,6 +139,34 @@ mark_consumed() {
         "$head_ref" "$base_sha" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$sentinel"
 }
 
+print_rewrite_diagnostics() {
+    local comparison="$base_sha..HEAD"
+    local numstat
+    local insertions deletions path net_removed line_word
+
+    printf 'fleet-pr-amend-push: non-fast-forward comparison %s\n' "$comparison"
+    if ! git diff --stat "$comparison"; then
+        echo "fleet-pr-amend-push: REFUSING — could not read rewrite comparison $comparison; nothing was pushed." >&2
+        return 1
+    fi
+    if ! numstat=$(git diff --numstat "$comparison"); then
+        echo "fleet-pr-amend-push: REFUSING — could not measure rewrite removals for $comparison; nothing was pushed." >&2
+        return 1
+    fi
+
+    while IFS=$'\t' read -r insertions deletions path; do
+        [[ "$insertions" =~ ^[0-9]+$ && "$deletions" =~ ^[0-9]+$ ]] || continue
+        (( deletions > insertions )) || continue
+        net_removed=$((deletions - insertions))
+        line_word="lines"
+        if [[ "$net_removed" -eq 1 ]]; then
+            line_word="line"
+        fi
+        printf 'WARNING: net-removed content in %s (%d more deleted %s than added)\n' \
+            "$path" "$net_removed" "$line_word"
+    done <<< "$numstat"
+}
+
 if [[ "$consumed" -eq 1 && "$continue_mode" -eq 0 ]]; then
     echo "fleet-pr-amend-push: sentinel already consumed by a successful push to origin/$head_ref ($consumed_line)." >&2
     echo "  This is NOT a missing-setup error. Do NOT re-run fleet-pr-checkout-detached —" >&2
@@ -219,6 +247,7 @@ fi
 # moved since checkout, full stop. (Quoting HEAD:$head_ref defensively in case a
 # future fleet adopts head refs with shell-significant chars.)
 if [[ -n "$base_sha" ]]; then
+    print_rewrite_diagnostics || exit 1
     lease="--force-with-lease=$head_ref:$base_sha"
 else
     echo "fleet-pr-amend-push: sentinel has no base SHA (legacy checkout) — using a bare lease, which does NOT guard against an intervening fetch. Re-run fleet-pr-checkout-detached for full clobber protection." >&2
