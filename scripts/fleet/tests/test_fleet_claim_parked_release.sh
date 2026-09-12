@@ -80,6 +80,8 @@ export PRS_JSON="$TMPROOT/prs.json"
 REMOVED_FILE="$TMPROOT/removed.log"
 : > "$REMOVED_FILE"
 export REMOVED_FILE
+WIP_PRODUCER_BYTES="$TMPROOT/wip-producer.bin"
+export WIP_PRODUCER_BYTES
 
 # --- gh stub --------------------------------------------------------------
 STUB_DIR="$TMPROOT/bin"
@@ -345,7 +347,9 @@ echo "=== Phase 2d: reset-sweep-host-claims under a CRLF-emitting python3 produc
 REAL_PYTHON3="$(command -v python3)"; export REAL_PYTHON3
 cat > "$STUB_DIR/python3" <<'PYSTUB'
 #!/usr/bin/env bash
-if [[ "${1:-}" == "-c" && "${2:-}" == *'HOST_PREFIX'* ]]; then
+if [[ "${1:-}" == "-c" && "${2:-}" == *'branch_matches_issue'* ]]; then
+    "$REAL_PYTHON3" "$@" | sed 's/$/\r/' | tee -a "$WIP_PRODUCER_BYTES"
+elif [[ "${1:-}" == "-c" && "${2:-}" == *'HOST_PREFIX'* ]]; then
     "$REAL_PYTHON3" "$@" | sed 's/$/\r/'
 else
     exec "$REAL_PYTHON3" "$@"
@@ -355,24 +359,33 @@ chmod +x "$STUB_DIR/python3"
 cat > "$ISSUES_JSON" <<'JSON'
 [
   {"number":732,"state":"OPEN","labels":[{"name":"fleet:queued"},{"name":"fleet:claim-mac-opus-worker-1"},{"name":"fleet:in-progress"}]},
-  {"number":733,"state":"OPEN","labels":[{"name":"fleet:queued"},{"name":"fleet:claim-mac-opus-worker-1"},{"name":"fleet:in-progress"}]}
+  {"number":733,"state":"OPEN","labels":[{"name":"fleet:queued"},{"name":"fleet:claim-mac-opus-worker-1"},{"name":"fleet:in-progress"}]},
+  {"number":734,"state":"OPEN","labels":[{"name":"fleet:queued"},{"name":"fleet:claim-mac-opus-worker-1"},{"name":"fleet:in-progress"}]}
+]
+JSON
+cat > "$PRS_JSON" <<'JSON'
+[
+  {"headRefName":"claude/732-live-wip","body":""},
+  {"headRefName":"claude/733-live-wip","body":""}
 ]
 JSON
 SWEEP_OUT=$("$FLEET_CLAIM" reset-sweep-host-claims 2>&1); echo "$SWEEP_OUT" | sed 's/^/    /'
 rm -f "$STUB_DIR/python3"
+if python3 -c '
+import os, sys
+data = open(os.environ["WIP_PRODUCER_BYTES"], "rb").read()
+sys.exit(0 if data == b"1\r\n1\r\n0\r\n1\r\n1\r\n0\r\n" else 1)
+'; then
+    ok "WIP liveness producer delivered an exact CRLF byte sequence"
+else
+    bad "WIP liveness fixture did not deliver exact CRLF bytes: $(python3 -c 'import os; print(repr(open(os.environ["WIP_PRODUCER_BYTES"], "rb").read()))')"
+fi
 # REMOVED_FILE rides in the environment (exported above) rather than argv so
 # a native python3 gets a path it can open (the same reason the gh stub reads
 # ISSUES_JSON from the environment).
-if python3 -c '
-import os, sys
-data = open(os.environ["REMOVED_FILE"], "rb").read()
-sys.exit(0 if b"732\tfleet:claim-mac-opus-worker-1\n" in data and b"\r" not in data else 1)
-'; then
-    ok "host sweep removed #732 own-host claim by its exact CR-free name under a CRLF producer"
-else
-    bad "CRLF-tainted label name reached gh issue edit (removed log bytes: $(python3 -c 'import os; print(repr(open(os.environ["REMOVED_FILE"], "rb").read()))'))"
-fi
-assert_removed_contains $'733\tfleet:claim-mac-opus-worker-1' "host sweep still removed #733 own-host claim (second line)"
+assert_removed_absent $'732\tfleet:claim-mac-opus-worker-1' "host sweep kept #732 when its CRLF-terminated WIP producer reported live"
+assert_removed_absent $'733\tfleet:claim-mac-opus-worker-1' "host sweep kept #733 when its CRLF-terminated WIP producer reported live"
+assert_removed_contains $'734\tfleet:claim-mac-opus-worker-1' "host sweep still removed #734 own-host claim (third line)"
 
 echo
 echo "================================"
