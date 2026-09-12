@@ -65,9 +65,9 @@ class FleetPrBodyLintTests(unittest.TestCase):
 
     def test_historical_original_bodies_fail_and_amended_bodies_pass(self):
         # Offline snapshots of the decisive body shapes from:
-        # PR #2898, original 2026-08-05T01:20:07Z / amended 2026-08-07T07:02:17Z
+        # Fixture A: a body whose evidence rows were amended after the original.
         # https://github.com/jakildev/IrredenEngine/pull/2898
-        # PR #2897, original 2026-08-05T01:12:12Z / amended 2026-08-05T02:55:04Z
+        # Fixture B: a body amended within hours of the original.
         # https://github.com/jakildev/IrredenEngine/pull/2897
         for number in (2488, 2563):
             issue = snapshot(number=number)
@@ -88,7 +88,7 @@ class FleetPrBodyLintTests(unittest.TestCase):
             self.assertIn("required=6, present=6", result.stdout)
 
     def test_row_count_positive_fire_and_source_diagnostics(self):
-        # Derived #2897 fixture: retain historical evidence rows 1, 3, and 4.
+        # Derived from fixture B: retain historical evidence rows 1, 3, and 4.
         result = self.run_lint(evidence_body(rows=3))
         self.assertEqual(result.returncode, 1)
         self.assertIn("required=6, present=3, shortfall=3", result.stdout)
