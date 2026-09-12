@@ -60,14 +60,14 @@ fi
 # fails when either drops a source class the ratchet counts, so a PR that
 # narrows Check 7 alone must still trigger this workflow.
 #
-# The six .github/workflows/ entries are test_workflow_paths_sync.sh's
-# subjects (#2929, #3187, #3188). They are the only members whose population is derived
-# rather than fixed — that suite globs .github/workflows/*.yml and covers
+# The .github/workflows/ entries are test_workflow_paths_sync.sh's subjects.
+# They are the only members whose population is derived rather than fixed —
+# that suite globs .github/workflows/*.yml and covers
 # whichever files declare both a push: and a pull_request: paths: block, so a
 # new such workflow becomes its subject with no edit here. This list cannot
 # track that on its own; T4 in test_workflow_paths_sync.sh asserts the two
 # agree, so the gap fails a suite instead of silently costing the new workflow
-# its trigger — engine-tests.yml (#3188) is the sixth.
+# its trigger.
 #
 # `cmake/run_clang_format_changed_standalone.cmake` is listed separately from
 # its sibling `cmake/run_clang_format_changed.cmake` on purpose: entries are
