@@ -213,7 +213,10 @@ title picked up, and release the claim. The `[WIP]` marker is a worker
 convention with no minting site to key on — only the label is load-bearing
 for the fleet's own tooling — but a squash-merge writes the PR *title* into
 master's commit history, so a stale trailing marker ships into permanent
-history if left on the title (#2788):
+history if left on the title (#2788). **Unverifiable on this host is never a
+reason to leave `fleet:wip` on:** record the host limitation in the acceptance
+evidence row, then remove the label so the PR is reviewable and the cross-host
+smoke lane can pick it up:
 
 ```
 # engine task
