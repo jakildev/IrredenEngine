@@ -36,14 +36,15 @@ GL-capable (`{linux, windows}`); a `fleet:reviewing-*` label held by
 another agent (a review is mid-flight and your force-push would land its
 verdict on a diff nobody read); `fleet:needs-opus-recheck` (`fleet:has-nits`
 beside it is not a verdict — the pending opus pass owns the PR).
-`amending-claim` refuses the last three as a backstop, and the scout's
+`amending-claim` refuses the last three as a backstop; its POST-response
+arbitration with `review-claim` closes the snapshot race. The scout's
 `worker_feedback_labels()` enforces the reviewing / opus-recheck skips in
 both the worker trigger and `projections/worker.json`; `human:needs-fix` /
 `human:blocker` outrank both and keep dispatching. The reviewing skip also
 bars the conflict-resolution lane (`role-worker.md` step 1c), which
 force-pushes too: `_semantic_conflict_claimable` suppresses the item and
-`resolving-claim` refuses the claim; a pane that reviewed the PR itself
-passes both gates.
+`resolving-claim` refuses the claim and participates in the same arbitration;
+a pane that reviewed the PR itself passes both gates.
 
 ## Step a — claim the PR atomically (before anything else)
 

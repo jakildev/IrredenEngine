@@ -259,7 +259,12 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   semantic-conflict lane had to learn to exclude feedback-owing PRs;
   #2801: the same for `fleet:reviewing-*` vs `fleet:amending-*`, where the
   exclusion existed on the reviewer side only, so a worker could amend a PR
-  mid-review). Check this whenever a lane is added or its label set widened.
+  mid-review; #3107: the reverse claim-time gate was absent, so a later review
+  claim evicted the incumbent amend lane). Check this whenever a lane is added
+  or its label set widened. A pre-acquire GET is a TOCTOU on its own: a
+  cross-lane exclusion is a mutex only when arbitration runs on the POST
+  response over the lane union and the exclusion table is symmetric. Pin both
+  properties with tests.
   The exclusion is **directional** — closing one side leaves the hazard
   live, and both lanes are woken by the same labels by design, so a
   one-sided guard reads as complete while the race is untouched. It is also
@@ -268,8 +273,9 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   `fleet:resolving-*` for three weeks, because the fix's own acceptance
   criteria named one lane (#3001). When a guard lands, enumerate every
   claim-taking lane that force-pushes — today `cmd_amending_claim` and
-  `cmd_resolving_claim`, both calling `check_no_foreign_review_claim` — not
-  just the one the incident came from. The **merger** force-pushes too
+  `cmd_resolving_claim`, both routed through the shared exclusion table and
+  POST-response arbitration — not just the one the incident came from. The
+  **merger** force-pushes too
   (`fleet-rebase`) and is outside this rule by design: it takes no
   `fleet-claim` lock at all, using `--force-with-lease` as its concurrency
   control (`role-merger.md`; `NO_CLAIM_FABRIC_ROLES` in `fleet-dispatcher`).

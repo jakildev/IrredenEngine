@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Tests for fleet-claim's pre-acquire claim gates: check_host_capability
-# (issue-based, #1998) and check_no_foreign_review_claim (#2801, #3001).
+# Tests for fleet-claim's pre-acquire claim gates: check_host_capability and
+# the generalized cross-lane gate.
 #
 # The gate refuses a `fleet:needs-gl-host` claim from a host that can't run
 # the OpenGL backend. GL-capable hosts are {linux, windows}; macOS GL is 4.1
@@ -80,8 +80,9 @@ assert_exit() {
 
 TMPROOT=$(mktemp -d)
 export FLEET_CLAIMS_DIR="$TMPROOT/claims"
+export FLEET_HEARTBEATS_DIR="$TMPROOT/heartbeats"
 export FLEET_RESERVATIONS_DIR="$TMPROOT/reservations"
-mkdir -p "$FLEET_CLAIMS_DIR" "$FLEET_RESERVATIONS_DIR"
+mkdir -p "$FLEET_CLAIMS_DIR" "$FLEET_HEARTBEATS_DIR" "$FLEET_RESERVATIONS_DIR"
 
 # Stub `gh` so check_host_capability reads canned JSON instead of hitting
 # GitHub. Dispatches on the issue number passed via `gh issue view <N>`
@@ -95,6 +96,7 @@ mkdir -p "$FLEET_CLAIMS_DIR" "$FLEET_RESERVATIONS_DIR"
 #   3003 — PR under ANOTHER agent's same-host review claim (mac-pool-9)
 #   3004 — PR under the claiming agent's OWN review claim (mac-test-agent)
 #   3005 — PR under another agent's CROSS-host review claim (linux-pool-2)
+#   3006 — GL-gated PR under the claiming agent's incumbent amend claim
 #   3102 — CONFLICTING PR, no review claim (resolving lane grant path)
 #   3103 — conflicted PR under ANOTHER agent's same-host review claim
 #   3104 — conflicted PR under the claiming agent's OWN review claim
@@ -146,6 +148,9 @@ case "$1 $2" in
                 ;;
             3005)
                 echo '{"state":"OPEN","labels":[{"name":"fleet:has-nits"},{"name":"fleet:reviewing-linux-pool-2"}],"body":""}'
+                ;;
+            3006)
+                echo '{"state":"OPEN","labels":[{"name":"fleet:needs-gl-host"},{"name":"fleet:amending-mac-test-agent"}],"body":""}'
                 ;;
             3102)
                 echo '{"state":"OPEN","labels":[{"name":"fleet:semantic-conflict"}],"body":""}'
@@ -436,5 +441,13 @@ if grep -q '^fleet:resolving-mac-test-agent$' "$GH_POST_LOG" 2>/dev/null; then
 else
     bad "granted resolving-claim left no POST in the log — the GH_POST_LOG wiring is broken, so T22/T24 prove nothing"
 fi
+
+# --- T27: an incumbent amend claim still honors the host gate --------------
+echo "T27: incumbent amending-claim remains subject to fleet:needs-gl-host"
+: > "$GH_POST_LOG"
+actual=0; output=$(FLEET_TEST_HOST=mac FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" amending-claim 3006 test-agent 2>&1) || actual=$?
+assert_exit "$actual" 1 "mac + incumbent amend + fleet:needs-gl-host → amending-claim exit 1"
+assert_no_label_post "host-refused incumbent amending-claim POSTed no label"
+assert_absent "$output" "acquired" "host-refused incumbent amending-claim reports no acquisition"
 
 summarize "fleet-claim pre-acquire gates"

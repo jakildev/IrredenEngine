@@ -165,8 +165,10 @@ reviewing / amending / resolving, `FLEET_CLAIM_STALE_SECS_PLANNING` for
 planning; a same-host label with a missing or mismatched liveness marker
 after `FLEET_CLAIM_PRLABEL_ORPHAN_GRACE_SECS`, 120 s) and replays orphan
 sentinels. Reviewer projections skip `fleet:amending-*` PRs
-(`REVIEW_SKIP_PREFIXES`) and the worker feedback tier skips
-`fleet:reviewing-*` PRs; neither claim excludes the other on its own.
+(`REVIEW_SKIP_PREFIXES`) and the worker feedback/conflict tiers skip
+`fleet:reviewing-*` PRs. The live pre-acquire gate is the fast path; the
+symmetric excluded-prefix table arbitrates the full POST response so a
+snapshot race leaves one holder. Same-agent lane transitions remain allowed.
 
 ## Review verdicts (PRs)
 

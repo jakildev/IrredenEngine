@@ -30,8 +30,9 @@ fleet-claim review-release <N> <your-worktree-name> --require-verdict
 no-verdict exits (broken stack, gated upstream, sonnet's "Opus recheck
 required"), cross-host smoke, and plan review release without it. A
 stranded label is swept after 30 min, during which the PR cannot be
-re-reviewed. You are never handed a PR mid-amend: the scout excludes
-`fleet:amending-*` PRs (`REVIEW_SKIP_PREFIXES`); they return with
+re-reviewed. You cannot claim a PR mid-amend: the scout exclusion is the fast
+path, while the live pre-acquire gate and POST-response arbitration with the
+force-pushing worker lanes close the snapshot race. Amended PRs return with
 `fleet:changes-made`.
 
 ---
