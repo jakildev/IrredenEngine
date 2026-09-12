@@ -265,7 +265,7 @@ Protocol: [`FLEET-FEEDBACK-HANDLING.md`](FLEET-FEEDBACK-HANDLING.md).
   `fleet:resolving-*`, and no live `fleet:reviewing-*` (the lane
   force-pushes and the review namespace is disjoint, so it is excluded
   explicitly); stacked children defer to their base. Counts as one opus
-  item in the class election.
+  item in the class election, ranked ahead of feedback and task pickup.
 - `fleet:needs-gl-host` — issue and PR. **Human/architect** triage signal
   with a precision-first scout body backstop (an explicit Linux / Windows /
   OpenGL requirement or a `src/opengl/` file; never `.glsl` or

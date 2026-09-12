@@ -5,9 +5,12 @@ work it's serving (a claude process can't change model/effort after
 launch), so this resolution IS the per-task model routing. The invariants
 that matter:
 
-  - pickup priority mirrors the role docs: feedback PRs, then
-    semantic-conflict PRs, then unblocked open tasks (oldest first — slices
-    arrive sorted), then stackable `blocked` tasks, then needs_plan;
+  - dispatch priority puts conflicts first: semantic-conflict PRs, then
+    feedback PRs, then unblocked open tasks (oldest first — slices arrive
+    sorted), then stackable `blocked` tasks, then needs_plan. This is the
+    dispatch order, not the role doc's step numbering — a worker handed a
+    target works it and skips the scans, so role-worker.md running step 1c
+    after step 1 does not make feedback outrank conflicts here;
   - a semantic-conflict PR is one opus claimable item (role-worker step 1c is
     opus+-only; the scout pre-filters the slice's semantic_conflict_prs[]),
     so a conflicted PR generates opus dispatch pressure even when the task
@@ -539,8 +542,8 @@ class RequiredHostGate(HostSeamCase):
 class DispatchTargets(HostSeamCase):
     """`pick` / `pick_role`: the ordered `<kind>:<repo>:<N>[:<extra>]` lines
     the dispatcher walks, taking each item's lane claim until one is granted
-    (assign_for_pane). Order is the worker's pickup order — feedback,
-    conflict, task, stack, then the class's planning candidates — filtered
+    (assign_for_pane). Order is the dispatch priority — conflict,
+    feedback, task, stack, then the class's planning candidates — filtered
     to the elected class and host-gated exactly as `resolve` counts them,
     so what is elected is what gets assigned."""
 
@@ -775,8 +778,8 @@ class FeedbackPrHostGate(HostSeamCase):
 
 
 class SemanticConflictDispatchPressure(HostSeamCase):
-    """Semantic-conflict PRs are opus-class claimable work slotted between
-    feedback and task pickup (role-worker step 1c, opus+-classes-only). This
+    """Semantic-conflict PRs are opus-class claimable work dispatched ahead of
+    feedback and tasks (role-worker step 1c, opus+-classes-only). This
     tier is what gives the label dispatch pressure at all: before it, a
     conflicted PR was only resolved as a ride-along when opus queue work
     happened to be flowing, and starved when the opus lane was dry or
@@ -806,18 +809,27 @@ class SemanticConflictDispatchPressure(HostSeamCase):
         }, "sonnet", fable_blocked=False)
         self.assertEqual(out, "opus high 0 1 0")
 
-    def test_feedback_still_elected_before_conflict(self):
-        # Pickup priority mirrors the worker loop: feedback (step 1) before
-        # conflicts (step 1c). The conflict stays servable -> more=1 so the
-        # next tick serves the opus lane.
+    def test_conflict_elected_before_feedback(self):
+        # A conflicted PR holds up the merge flow, so it outranks feedback.
+        # The sonnet feedback stays servable -> more=1 so the next tick
+        # serves the sonnet lane.
         out = resolve({
             "feedback_prs": [{"number": 11, "labels": ["fleet:has-nits"]}],
             "semantic_conflict_prs": [self._sc(2417)],
         }, "sonnet", fable_blocked=False)
-        self.assertEqual(out, "sonnet high 1 1 0")
+        self.assertEqual(out, "opus high 1 1 0")
+
+    def test_conflict_precedes_feedback_in_pick_order(self):
+        os.environ["FLEET_TEST_HOST"] = "linux"
+        out = pick({
+            "feedback_prs": [{"number": 11, "repo": "engine",
+                              "labels": ["fleet:needs-fix"]}],
+            "semantic_conflict_prs": [self._sc(2417)],
+        }, "opus", False)
+        self.assertEqual(out, ["conflict:engine:2417", "feedback:engine:11"])
 
     def test_conflict_elected_before_open_tasks(self):
-        # Step 1c runs before task pickup (step 2), so the conflict outranks
+        # Conflicts dispatch ahead of task pickup, so the conflict outranks
         # a claimable sonnet task; the task holds more=1.
         out = resolve({
             "semantic_conflict_prs": [self._sc(2417)],
