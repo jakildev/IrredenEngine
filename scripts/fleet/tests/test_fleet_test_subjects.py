@@ -212,8 +212,8 @@ class Coverage(unittest.TestCase):
             self.assertFalse(fts.covers(entry, "ruff.toml"), entry)
 
     def test_a_longer_entry_containing_the_subject_is_not_coverage(self):
-        # The old ratchet matched a subject as a literal substring of the
-        # block, so 'creations/CLAUDE.md' read as coverage for 'CLAUDE.md'.
+        # Coverage is path-structural, not textual: a substring test would
+        # read 'creations/CLAUDE.md' as coverage for 'CLAUDE.md'.
         self.assertFalse(fts.covers("creations/CLAUDE.md", "CLAUDE.md"))
         self.assertEqual(fts.uncovered(["CLAUDE.md"], ["creations/CLAUDE.md"]), ["CLAUDE.md"])
 
