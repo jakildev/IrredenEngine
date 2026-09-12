@@ -260,7 +260,8 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   filter that its `slice_<role>` twin doesn't share leaves every consumer
   of the slice (class election, quiet check, `fleet-up`'s bootstrap
   trigger) reading the unfiltered set (#2801 again — `project_worker` and
-  `slice_worker` now share `worker_feedback_labels()`).
+  `slice_worker` now share `worker_feedback_labels()`). The source-derived
+  coverage ratchet is `tests/test_claim_namespace_matrix.py`.
 - **Path-containment checks normalize before the literal match.** A
   path-containment policy check (worktree guard, scope guard, allowlist)
   must normalize its input to canonical form *before* the literal match —
