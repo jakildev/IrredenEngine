@@ -19,6 +19,7 @@ add_executable(IrredenEngineTest
   common/command_registry_test.cpp
   common/ir_args_test.cpp
   common/ir_platform_test.cpp
+  ecs/chunk_bounds_eviction_test.cpp
   ecs/command_randomize_voxels_test.cpp
   ecs/entity_event_handlers_test.cpp
   ecs/entity_manager_test.cpp

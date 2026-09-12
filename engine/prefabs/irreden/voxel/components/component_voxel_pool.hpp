@@ -146,8 +146,7 @@ struct C_VoxelPool {
             if (m_freeSpanLookup[size].empty()) {
                 m_freeSpanLookup.erase(size);
             }
-            m_chunkBoundsDirty = true;
-            m_chunkWorldBoundsDirty = true;
+            markCullBoundsDirty(startIndex, size);
             return IRRender::VoxelPoolAllocation{
                 startIndex,
                 std::span<IRRender::VoxelGpuPosition>{m_voxelPositions.data() + startIndex, size},
@@ -163,8 +162,7 @@ struct C_VoxelPool {
         if (m_voxelPoolIndex + size <= m_voxelPoolSize) {
             size_t startIndex = static_cast<size_t>(m_voxelPoolIndex);
             m_voxelPoolIndex += size;
-            m_chunkBoundsDirty = true;
-            m_chunkWorldBoundsDirty = true;
+            markCullBoundsDirty(startIndex, size);
             IRE_LOG_DEBUG("Allocated voxels from {} to {}", startIndex, m_voxelPoolIndex - 1);
             return IRRender::VoxelPoolAllocation{
                 startIndex,
@@ -208,8 +206,7 @@ struct C_VoxelPool {
             IREntity::kNullEntity
         );
         m_entityIdsDirty = true;
-        m_chunkBoundsDirty = true;
-        m_chunkWorldBoundsDirty = true;
+        markCullBoundsDirty(startIndex, size);
 
         m_freeVoxelSpans.push_back({startIndex, size});
         updateFreeSpanLookup(startIndex, size);
@@ -360,18 +357,26 @@ struct C_VoxelPool {
                 cb.isoMin_ = iso.min_;
                 cb.isoMax_ = iso.max_;
             }
+            // The static bound OWNS the cardinal answer for every chunk here:
+            // this branch re-derives all of them on every call from a bound
+            // that reads neither position nor alpha, so nothing is left owing
+            // a cardinal recompute. Consuming the bits is load-bearing, not
+            // tidiness — allocation arms them (`allocateVoxels` →
+            // `markCullBoundsDirty`) and no other path on this branch clears
+            // them, so leaving them set makes `isRangeVisible`'s
+            // pending ⇒ admit-conservatively gate answer TRUE forever and the
+            // UPDATE-side cull stops culling this pool at all (#2830).
+            // Only the cardinal bit: `ensureChunkWorldBounds` is the sole
+            // consumer that can satisfy the world bit and this branch never
+            // runs it, so the world cache keeps owing its work.
+            dropPendingChunks(m_pendingCardinalChunks, kCullPendingCardinal);
             return;
         }
 
-        if (!useContinuousYaw && !m_chunkBoundsDirty && cardinalIndex == m_lastBoundsCardinalIndex)
-            return;
-
-        int chunkCount = getChunkCount();
-        m_chunkBounds.resize(chunkCount);
-        for (auto &cb : m_chunkBounds)
-            cb.reset();
+        const int chunkCount = getChunkCount();
 
         if (useContinuousYaw) {
+            m_chunkBounds.assign(static_cast<std::size_t>(chunkCount), ChunkBounds{});
             // Closed-form O(chunks) cull region (#1439): project each chunk's
             // cached static world-AABB under the live yaw instead of
             // re-projecting every voxel. The 8-corner projection is a
@@ -380,7 +385,7 @@ struct C_VoxelPool {
             // rather than dropping on-screen chunks. The world-AABB cache is
             // rebuilt (O(voxels)) only when voxel positions actually change
             // (alloc/dealloc, in-place rewrites signalled via
-            // `markChunkWorldBoundsDirty`), so a static world under a rotating
+            // `markCullBoundsDirty`), so a static world under a rotating
             // camera pays only O(chunks)/frame here.
             ensureChunkWorldBounds(chunkCount);
             for (int c = 0; c < chunkCount; ++c) {
@@ -406,42 +411,118 @@ struct C_VoxelPool {
             return;
         }
 
-        // Cardinal path: per-voxel iso expand, cached by cardinal index.
-        // Unchanged from master so the yaw==0 / cardinal render path stays
-        // byte-identical.
-        for (int i = 0; i < m_voxelPoolIndex; ++i) {
-            if (m_voxelColors[i].color_.alpha_ == 0)
-                continue;
-            int chunk = i / IRRender::kVoxelChunkSize;
-            vec3 pos = m_voxelPositionsGlobal[i].pos_;
-            if (cardinalIndex != CardinalIndex::k0) {
-                // Plain cardinal rotation — no lower-corner shift (#2545);
-                // mirrors the stage-1/2 store cell and the compact cull.
-                pos = IRMath::rotateCardinalZ(pos, cardinalIndex);
+        // Cardinal path: per-voxel iso expand, cached by cardinal index. The
+        // DERIVATION is unchanged from master (same projection, same
+        // roundless cardinal rotation, same minDepth_), so the yaw==0 render
+        // path is byte-identical; only WHEN a chunk is re-derived changed
+        // (#2830). A whole-cache rebuild still runs on the events that
+        // invalidate every chunk at once — a cardinal-index change, the
+        // continuous-yaw branch's self-invalidation, or a chunk-count change
+        // — while an in-place position/alpha rewrite re-derives only the
+        // chunks its range touched.
+        const bool cardinalChanged = cardinalIndex != m_lastBoundsCardinalIndex;
+        const bool fullRebuild = m_chunkBoundsDirty || cardinalChanged ||
+                                 static_cast<int>(m_chunkBounds.size()) != chunkCount;
+        if (!fullRebuild && m_pendingCardinalChunks.empty()) {
+            return;
+        }
+        m_chunkBounds.resize(static_cast<std::size_t>(chunkCount));
+        if (fullRebuild) {
+            for (int c = 0; c < chunkCount; ++c) {
+                rebuildCardinalChunkBounds(c, cardinalIndex);
             }
-            m_chunkBounds[chunk].expand(IRMath::pos3DtoPos2DIso(pos));
-            // Track the chunk's front-most raw iso depth in the same projection,
-            // for the occlusion pre-pass's Hi-Z compare (#1294 child 2/3).
-            m_chunkBounds[chunk].minDepth_ = IRMath::min(
-                m_chunkBounds[chunk].minDepth_,
-                static_cast<float>(IRMath::pos3DtoDistance(pos))
-            );
+            dropPendingChunks(m_pendingCardinalChunks, kCullPendingCardinal);
+        } else {
+            // Consume ONLY the cardinal bit: the world-AABB consumer runs on
+            // different frames and must still see this chunk as pending.
+            for (const std::size_t c : m_pendingCardinalChunks) {
+                m_chunkCullPending[c] &= static_cast<std::uint8_t>(~kCullPendingCardinal);
+                if (static_cast<int>(c) < chunkCount) {
+                    rebuildCardinalChunkBounds(static_cast<int>(c), cardinalIndex);
+                }
+            }
+            m_pendingCardinalChunks.clear();
         }
         m_lastBoundsCardinalIndex = cardinalIndex;
         m_chunkBoundsDirty = false;
     }
 
-    // Signals that voxel world positions changed in place (no realloc) — e.g.
-    // a parent move (`UPDATE_VOXEL_SET_CHILDREN`) or a GRID re-voxelize
-    // (`REBUILD_GRID_VOXELS`). Evicts the cached chunk world-AABBs so the next
-    // continuous-yaw cull rebuilds them and stays a conservative superset of
-    // the live voxels (otherwise a moved/rotated chunk could be dropped).
-    void markChunkWorldBoundsDirty() {
-        m_chunkWorldBoundsDirty = true;
+    // Notification that pool slots [start, start + count) had a value an
+    // on-demand cull cache derives from rewritten IN PLACE (no realloc) — a
+    // world position (a parent move in `UPDATE_VOXEL_SET_CHILDREN`, a GRID
+    // re-voxelize in `REBUILD_GRID_VOXELS`) or a voxel's alpha (any
+    // active-mask mutation, hence every set-level edit). Both derived caches
+    // read both inputs, so ONE evictor covers both: the split pair this
+    // replaced let the cardinal cache freeze while its world-AABB sibling was
+    // evicted on the same event (#2830, and see `.claude/rules/cpp-ecs.md`
+    // §"A change-gated recompute must trigger on every input its function
+    // reads").
+    //
+    // The range is a notification of COMPLETED writes, not a comparison
+    // against a previous pose — it carries no snapshot and is not a dirty
+    // flag in the sense the no-dirty-flags rule forbids. Invalidation is per
+    // 256-slot chunk (`IRRender::kVoxelChunkSize`), the same granularity the
+    // caches are keyed at, so a moving set re-derives its own chunks instead
+    // of the whole pool (the +1.331 ms/frame whole-pool rebuild that refuted
+    // the first approach). Zero @p count is a no-op; overlapping and
+    // duplicate notifications coalesce.
+    void markCullBoundsDirty(std::size_t start, std::size_t count) {
+        if (count == 0) {
+            return;
+        }
+        const std::size_t poolSize = static_cast<std::size_t>(m_voxelPoolSize);
+        // Overflow-safe bounds check: `start + count` can wrap on a bad call.
+        IR_ASSERT(
+            start <= poolSize && count <= poolSize - start,
+            "markCullBoundsDirty out of bounds: start={}, count={}, poolSize={}",
+            start,
+            count,
+            m_voxelPoolSize
+        );
+        const std::size_t firstChunk = start / IRRender::kVoxelChunkSize;
+        const std::size_t lastChunk = (start + count - 1) / IRRender::kVoxelChunkSize;
+        if (m_chunkCullPending.size() <= lastChunk) {
+            m_chunkCullPending.resize(lastChunk + 1, 0u);
+        }
+        for (std::size_t c = firstChunk; c <= lastChunk; ++c) {
+            markCullChunkPending(c);
+        }
     }
 
+    // DEPRECATED — use markCullBoundsDirty(start, count) instead.
+    // Kept as a whole-allocated-prefix forwarder so an out-of-tree caller
+    // gets the correct (stronger) eviction rather than the half-eviction the
+    // name promised. Every in-tree caller migrated in #2830.
+    [[deprecated("use markCullBoundsDirty(start, count) instead")]]
+    void markChunkWorldBoundsDirty() {
+        markAllocatedPrefixCullBoundsDirty();
+    }
+
+    // DEPRECATED — use markCullBoundsDirty(start, count) instead.
+    // Had zero callers tree-wide before #2830; it is no longer an independent
+    // evictor, so the two-cache split it created cannot be got wrong again.
+    [[deprecated("use markCullBoundsDirty(start, count) instead")]]
     void markChunkBoundsDirty() {
-        m_chunkBoundsDirty = true;
+        markAllocatedPrefixCullBoundsDirty();
+    }
+
+    // Per-chunk cull-rebuild work counters (#2830 AC3). A permanent seam
+    // rather than a temporary probe, so the cache-locality property is
+    // regress-guarded: `test/ecs/chunk_bounds_eviction_test.cpp` asserts that
+    // notifying one chunk visits one chunk. O(1) state, incremented once per
+    // chunk rebuilt (never per voxel), so there is no per-voxel telemetry on
+    // the hot path.
+    struct CullRebuildCounters {
+        std::size_t cardinalChunks_ = 0;
+        std::size_t cardinalSlots_ = 0;
+        std::size_t worldChunks_ = 0;
+        std::size_t worldSlots_ = 0;
+    };
+
+    [[nodiscard]] CullRebuildCounters consumeCullRebuildCounters() {
+        const CullRebuildCounters counters = m_cullRebuildCounters;
+        m_cullRebuildCounters = CullRebuildCounters{};
+        return counters;
     }
 
     // Seed the conservative origin-centered world-AABB used by the detached
@@ -490,6 +571,16 @@ struct C_VoxelPool {
             if (c >= m_chunkBounds.size()) {
                 return true;
             }
+            // Pending invalidation ⇒ admit conservatively (#2830). This gate
+            // feeds the UPDATE movers, which run BEFORE the render pipeline
+            // re-derives the bounds; answering from a chunk that already owes
+            // a recompute is what latched an edited set off-screen (its mover
+            // was skipped, so nothing ever moved it back into view). A frozen
+            // yes costs one set's re-upload; a frozen no drops its geometry.
+            if (c < m_chunkCullPending.size() &&
+                (m_chunkCullPending[c] & kCullPendingCardinal) != 0) {
+                return true;
+            }
             const ChunkBounds &cb = m_chunkBounds[c];
             if (viewport.overlapsAABB(cb.isoMin_, cb.isoMax_)) {
                 return true;
@@ -531,6 +622,7 @@ struct C_VoxelPool {
         m_activeMask[idx / kVoxelActiveMaskBits] |=
             (std::uint32_t{1} << (idx % kVoxelActiveMaskBits));
         m_activeMaskChangedThisFrame = true; // #2346 — see the member decl.
+        markCullBoundsDirty(idx, 1);         // #2830 — alpha is a bounds input.
     }
 
     void clearActiveBit(std::size_t idx) {
@@ -543,6 +635,7 @@ struct C_VoxelPool {
         m_activeMask[idx / kVoxelActiveMaskBits] &=
             ~(std::uint32_t{1} << (idx % kVoxelActiveMaskBits));
         m_activeMaskChangedThisFrame = true; // #2346 — see the member decl.
+        markCullBoundsDirty(idx, 1);         // #2830 — alpha is a bounds input.
     }
 
     // Bulk variants for span-shaped mutations on `C_VoxelSetNew`. The single-bit
@@ -570,6 +663,10 @@ struct C_VoxelPool {
             count,
             m_voxelPoolSize
         );
+        // Notify the whole span once up front rather than per voxel: the
+        // per-bit setters below then hit markCullChunkPending's already-pending
+        // early-out, so this loop keeps its current per-voxel cost (#2830).
+        markCullBoundsDirty(start, count);
         for (std::size_t i = 0; i < count; ++i) {
             const std::size_t idx = start + i;
             if (m_voxelColors[idx].color_.alpha_ != 0) {
@@ -604,6 +701,12 @@ struct C_VoxelPool {
         if (count == 0) {
             return;
         }
+        // #2830 — cull invalidation is independent of the GPU upload queue and
+        // must happen BEFORE the saturation early-return below. The flusher
+        // drops/coalesces queued ranges and runs AFTER the chunk-mask rebuild,
+        // so deferring invalidation to the flush would lose it exactly in the
+        // busy scenes that saturate.
+        markCullBoundsDirty(startIdx, count);
         if (m_pendingPositionRanges.size() >= kMaxPendingPositionRanges) {
             return;
         }
@@ -712,7 +815,11 @@ struct C_VoxelPool {
     }
 
   private:
-    int m_voxelPoolSize;
+    // Zero-initialized so the default ctor leaves a consistently-EMPTY pool.
+    // Left uninitialized it fed garbage to every bounds assert that reads it
+    // (`markCullBoundsDirty`), the same class of defect as m_voxelPoolSize3D
+    // below (#2043). The ivec3 ctor's init list overrides this.
+    int m_voxelPoolSize = 0;
     // 3D pool dimensions, kept alongside the scalar count. Read by the detached
     // re-voxelize footprint cap (subdivisionCap, #1570 D2). Must be initialized —
     // either via the ivec3 numVoxels ctor or the {0,0,0} default initializer.
@@ -749,6 +856,25 @@ struct C_VoxelPool {
     // per-voxel re-projection entirely.
     std::vector<ChunkWorldBounds> m_chunkWorldBounds;
     bool m_chunkWorldBoundsDirty = true;
+    // Per-chunk pending-invalidation bits for the two derived cull caches
+    // (#2830). One byte per 256-slot chunk, sized on demand and reused; bit 0
+    // says the cardinal iso bounds owe this chunk a recompute, bit 1 says the
+    // world-AABB cache does. The bits are SEPARATE because the two consumers
+    // run on different frames — the cardinal branch of `rebuildChunkBounds`
+    // against `ensureChunkWorldBounds` under continuous yaw — and each clears
+    // only its own, so consuming one can never discard the other's work.
+    static constexpr std::uint8_t kCullPendingCardinal = 1u;
+    static constexpr std::uint8_t kCullPendingWorld = 2u;
+    static constexpr std::uint8_t kCullPendingBoth = kCullPendingCardinal | kCullPendingWorld;
+    std::vector<std::uint8_t> m_chunkCullPending;
+    // Chunk indices whose corresponding bit is set, so a consumer walks its
+    // pending set instead of scanning the flag array. A chunk is appended only
+    // on the 0 -> 1 transition of its bit, so the lists carry no duplicates
+    // and overlapping notifications coalesce. Capacity is retained across
+    // frames (cleared, never shrunk) — the steady state allocates nothing.
+    std::vector<std::size_t> m_pendingCardinalChunks;
+    std::vector<std::size_t> m_pendingWorldChunks;
+    CullRebuildCounters m_cullRebuildCounters{};
     // Conservative origin-centered world-AABB for a detached re-voxelize pool
     // (#1556). Set once by setStaticReVoxelizeBound; when present, rebuildChunkBounds
     // ignores the (GPU-owned, CPU-stale) per-voxel globals and projects this
@@ -778,20 +904,123 @@ struct C_VoxelPool {
         m_freeSpanLookup[size].insert({startIndex, size});
     }
 
-    // Rebuilds the per-chunk static world-AABB cache from the live voxels'
-    // world positions (O(voxels)). Runs only when the cache is dirty or its
-    // chunk count is stale; the result is camera-independent, so the
-    // continuous-yaw cull reuses it across yaw frames (#1439).
-    void ensureChunkWorldBounds(int chunkCount) {
-        if (!m_chunkWorldBoundsDirty && static_cast<int>(m_chunkWorldBounds.size()) == chunkCount) {
+    // Mark one chunk pending for BOTH caches. Both read the same two inputs
+    // (position, alpha), so every notification arms both; the early-out makes
+    // a repeat notification for an already-pending chunk ~free, which is what
+    // keeps the per-voxel `setActiveBit` path's added cost negligible.
+    void markCullChunkPending(std::size_t chunk) {
+        std::uint8_t &flags = m_chunkCullPending[chunk];
+        if (flags == kCullPendingBoth) {
             return;
         }
-        m_chunkWorldBounds.assign(chunkCount, ChunkWorldBounds{});
-        for (int i = 0; i < m_voxelPoolIndex; ++i) {
+        if ((flags & kCullPendingCardinal) == 0) {
+            m_pendingCardinalChunks.push_back(chunk);
+            flags |= kCullPendingCardinal;
+        }
+        if ((flags & kCullPendingWorld) == 0) {
+            m_pendingWorldChunks.push_back(chunk);
+            flags |= kCullPendingWorld;
+        }
+    }
+
+    // Backing for the two deprecated no-argument evictors: notify the whole
+    // allocated prefix, which is the strongest eviction the old signature can
+    // express.
+    void markAllocatedPrefixCullBoundsDirty() {
+        markCullBoundsDirty(0, static_cast<std::size_t>(m_voxelPoolIndex));
+    }
+
+    // Clear one consumer's bit across its whole pending list, then empty it.
+    // Used after a whole-cache rebuild has covered every chunk.
+    void dropPendingChunks(std::vector<std::size_t> &pending, std::uint8_t bit) {
+        for (const std::size_t c : pending) {
+            m_chunkCullPending[c] &= static_cast<std::uint8_t>(~bit);
+        }
+        pending.clear();
+    }
+
+    // Half-open slot range backing @p chunk, clamped to the allocated prefix.
+    // A chunk past the prefix yields an empty range, so it re-derives to the
+    // inverted sentinel and reads as never-visible.
+    std::pair<int, int> chunkSlotRange(int chunk) const {
+        const int begin = chunk * IRRender::kVoxelChunkSize;
+        const int end = IRMath::min(begin + IRRender::kVoxelChunkSize, m_voxelPoolIndex);
+        return {begin, IRMath::max(begin, end)};
+    }
+
+    // Re-derive ONE chunk's cardinal iso bounds. Reduces into a stack-local
+    // `ChunkBounds` and stores once, rather than read-modify-writing the cache
+    // entry per voxel — measured at roughly half the whole-pool loop's cost,
+    // which is what makes a correct trigger set affordable (#2830). The
+    // projection, the cardinal rotation and the minDepth_ fold are verbatim
+    // from the pre-#2830 whole-pool loop, so the values are identical.
+    void rebuildCardinalChunkBounds(int chunk, CardinalIndex cardinalIndex) {
+        const auto [begin, end] = chunkSlotRange(chunk);
+        ++m_cullRebuildCounters.cardinalChunks_;
+        m_cullRebuildCounters.cardinalSlots_ += static_cast<std::size_t>(end - begin);
+        ChunkBounds bounds;
+        for (int i = begin; i < end; ++i) {
             if (m_voxelColors[i].color_.alpha_ == 0)
                 continue;
-            int chunk = i / IRRender::kVoxelChunkSize;
-            m_chunkWorldBounds[chunk].expand(m_voxelPositionsGlobal[i].pos_);
+            vec3 pos = m_voxelPositionsGlobal[i].pos_;
+            if (cardinalIndex != CardinalIndex::k0) {
+                // Plain cardinal rotation — no lower-corner shift (#2545);
+                // mirrors the stage-1/2 store cell and the compact cull.
+                pos = IRMath::rotateCardinalZ(pos, cardinalIndex);
+            }
+            bounds.expand(IRMath::pos3DtoPos2DIso(pos));
+            // Track the chunk's front-most raw iso depth in the same projection,
+            // for the occlusion pre-pass's Hi-Z compare (#1294 child 2/3).
+            bounds.minDepth_ =
+                IRMath::min(bounds.minDepth_, static_cast<float>(IRMath::pos3DtoDistance(pos)));
+        }
+        m_chunkBounds[static_cast<std::size_t>(chunk)] = bounds;
+    }
+
+    // Re-derive ONE chunk's static world-AABB. Same chunk-local reduction as
+    // the cardinal twin; the projection is unchanged from the pre-#2830
+    // whole-pool sweep.
+    void rebuildChunkWorldBounds(int chunk) {
+        const auto [begin, end] = chunkSlotRange(chunk);
+        ++m_cullRebuildCounters.worldChunks_;
+        m_cullRebuildCounters.worldSlots_ += static_cast<std::size_t>(end - begin);
+        ChunkWorldBounds bounds;
+        for (int i = begin; i < end; ++i) {
+            if (m_voxelColors[i].color_.alpha_ == 0)
+                continue;
+            bounds.expand(m_voxelPositionsGlobal[i].pos_);
+        }
+        m_chunkWorldBounds[static_cast<std::size_t>(chunk)] = bounds;
+    }
+
+    // Rebuilds the per-chunk static world-AABB cache from the live voxels'
+    // world positions. The result is camera-independent, so the continuous-yaw
+    // cull reuses it across yaw frames (#1439). Since #2830 the steady state is
+    // O(pending chunks), not O(pool): a whole-cache sweep runs only when the
+    // cache was never built or its chunk count changed, and an in-place
+    // position/alpha rewrite re-derives only the chunks its range touched.
+    void ensureChunkWorldBounds(int chunkCount) {
+        const bool fullRebuild =
+            m_chunkWorldBoundsDirty || static_cast<int>(m_chunkWorldBounds.size()) != chunkCount;
+        if (!fullRebuild && m_pendingWorldChunks.empty()) {
+            return;
+        }
+        m_chunkWorldBounds.resize(static_cast<std::size_t>(chunkCount));
+        if (fullRebuild) {
+            for (int c = 0; c < chunkCount; ++c) {
+                rebuildChunkWorldBounds(c);
+            }
+            dropPendingChunks(m_pendingWorldChunks, kCullPendingWorld);
+        } else {
+            // Consume ONLY the world bit — the cardinal consumer may not have
+            // run yet and must still see these chunks as pending.
+            for (const std::size_t c : m_pendingWorldChunks) {
+                m_chunkCullPending[c] &= static_cast<std::uint8_t>(~kCullPendingWorld);
+                if (static_cast<int>(c) < chunkCount) {
+                    rebuildChunkWorldBounds(static_cast<int>(c));
+                }
+            }
+            m_pendingWorldChunks.clear();
         }
         m_chunkWorldBoundsDirty = false;
     }
@@ -803,6 +1032,10 @@ struct C_VoxelPool {
         // #2346 — flag here too: the whole-word middle path below writes
         // `m_activeMask` directly, bypassing the per-bit setters that flag.
         m_activeMaskChangedThisFrame = true;
+        // #2830 — same reason: the whole-word middle path never reaches the
+        // per-bit setters, so the bounds notification has to happen here. One
+        // whole-range call also short-circuits the prefix/suffix bits' own.
+        markCullBoundsDirty(start, count);
         IR_ASSERT(
             start + count <= static_cast<std::size_t>(m_voxelPoolSize),
             "setMaskRange out of bounds: start={}, count={}, poolSize={}",
