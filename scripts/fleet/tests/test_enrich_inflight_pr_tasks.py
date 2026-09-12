@@ -57,7 +57,7 @@ def _task(id_):
 
 
 def _pr(number, head_ref, labels=None):
-    # No `closes_issues` key: the pre-#2672 record shape, which also stands in
+    # No `closes_issues` key: the pre-body-link record shape, which also stands in
     # for a record the 304 fast path reused from an older schema. The
     # enrichment must treat its absence as "no body link", not crash.
     return {"number": number, "headRefName": head_ref, "labels": labels or []}
@@ -241,7 +241,7 @@ class TestBodyClosesLink(unittest.TestCase):
         state = _state(engine_tasks=tasks, engine_prs=prs)
         enrich_inflight_pr_tasks(state)
         open_tasks = state["repos"]["engine"]["tasks"]["open"]
-        # #1640 links by branch AND body; #1641 by body alone.
+        # The first task links by branch AND body; the second by body alone.
         self.assertEqual(open_tasks[0]["inflight_pr"]["number"], 1700)
         self.assertEqual(open_tasks[1]["inflight_pr"]["number"], 1700)
 

@@ -361,7 +361,7 @@ class ClosingKeywordInsideCode(unittest.TestCase):
         # CommonMark fences are 3-OR-MORE, closed by a run of the same char at
         # least that long. A body quoting fence syntax must open longer than the
         # sample; an exactly-3 matcher closes on the SAMPLE's fence and leaks
-        # the rest (#2989, inherited from fleet-plan-lint's grammar).
+        # the rest (inherited from fleet-plan-lint's grammar).
         body = "````\nBad example:\n```\nCloses #255\n```\n````\n"
         self.assertEqual(body_closed_issue_numbers(body), [])
 
@@ -441,7 +441,7 @@ class ClosingKeywordInsideCode(unittest.TestCase):
 
     def test_both_forms_agree_on_every_arm(self):
         # The singular and all-refs forms share the keyword AND the stripping;
-        # this is the no-drift assertion #2419 centralized them for.
+        # this is the no-drift assertion that centralization exists for.
         for body in (self.NEGATED, "Closes #2091", "```\nCloses #2091\n```",
                      "```\nCloses #2091\n", "~~~\nCloses #2091\n",
                      "```\nx\n```~~~\nCloses #2091\n",

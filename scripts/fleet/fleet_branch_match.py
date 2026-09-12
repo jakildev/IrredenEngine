@@ -159,16 +159,16 @@ _CLOSES_ANY_RE = re.compile(_CLOSES_KEYWORD + r"(\d+)\b", re.IGNORECASE)
 # The oracle for any change here is GitHub's own `closingIssuesReferences`,
 # the field it actually auto-closes from: re-measure this grammar against it
 # over the live open-PR set rather than reasoning about markdown. Reading that
-# field directly instead of parsing prose is the standing follow-up. See #2672,
-# #3310.
+# field directly instead of parsing prose is the standing follow-up.
+#
 # Both grammars are `fleet-plan-lint`'s (`FENCE_RE` / `INLINE_RE`), which
 # solves the identical problem — "this text NAMES the token as data, it does not
 # mean it" — and has already been corrected once. Re-derived copies of a matcher
 # do not inherit its fixes: a hand-rolled exactly-3 fence misses a fence that
-# must open longer than the sample it quotes (#2989), and a span with no
+# must open longer than the sample it quotes, and a span with no
 # paragraph bound lets one unbalanced backtick pair with a distant one and blank
 # a real `Closes #N` in between. Keep these two in step with that tool; the
-# three copies in the tree should collapse into one shared helper (#3311).
+# three copies in the tree should collapse into one shared helper.
 #
 # A fence has TWO terminators and the second is not optional decoration: an
 # opening fence CommonMark never sees closed still opens a block, running "until
@@ -179,10 +179,10 @@ _CLOSES_ANY_RE = re.compile(_CLOSES_KEYWORD + r"(\d+)\b", re.IGNORECASE)
 # block ends where it ends; `.*\Z` fires only when no closing fence exists.
 # `fleet-plan-lint`'s `FENCE_RE` lacks this arm and both closing-fence
 # restrictions below, so the two copies diverge on three axes, not the single
-# one #3311 was opened for. They fail in opposite directions off the same
-# holes (here an invented closing link; there a quoted code sample read as
-# prose, a false lint hit), so the consolidation must carry the union of both
-# copies' fixes, never either copy wholesale. See #2989, #3311.
+# one the consolidation was opened for. They fail in opposite directions off
+# the same holes (here an invented closing link; there a quoted code sample
+# read as prose, a false lint hit), so that consolidation must carry the union
+# of both copies' fixes, never either copy wholesale.
 #
 # A CLOSING fence is not "a fence-ish line". CommonMark accepts only a run of
 # the OPENER's own character, at least as long as the opener, indented at most
@@ -201,7 +201,7 @@ _CLOSES_ANY_RE = re.compile(_CLOSES_KEYWORD + r"(\d+)\b", re.IGNORECASE)
 # what every indented sample in a body strips, and no measurement here covers
 # it — the live corpus carries no such body, so the oracle cannot adjudicate
 # it either. Left alone on purpose; settle it against `closingIssuesReferences`
-# (#3310) rather than by tidying the two ends into agreement.
+# rather than by tidying the two ends into agreement.
 _CODE_FENCE_RE = re.compile(
     r"(?ms)^[ \t]*(?P<f>(?P<c>[`~])(?P=c){2,})"
     r"(?:.*?^ {0,3}(?P=f)(?P=c)*[ \t]*$|.*\Z)")
