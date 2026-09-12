@@ -250,10 +250,22 @@ applies here too — see `docs/agents/CLAUDE-BASELINE.md` §Style.
   mid-review). Check this whenever a lane is added or its label set widened.
   The exclusion is **directional** — closing one side leaves the hazard
   live, and both lanes are woken by the same labels by design, so a
-  one-sided guard reads as complete while the race is untouched. A lane's
-  admission test must also be the **sole** one for that lane: an emit-site
-  filter that its `slice_<role>` twin doesn't share leaves every consumer
-  of the slice (class election, quiet check, `fleet-up`'s bootstrap
+  one-sided guard reads as complete while the race is untouched. It is also
+  **per-lane-pair**: #2801 closed `fleet:reviewing-*` against
+  `fleet:amending-*` and left the *same* hazard live against
+  `fleet:resolving-*` for three weeks, because the fix's own acceptance
+  criteria named one lane (#3001). When a guard lands, enumerate every
+  claim-taking lane that force-pushes — today `cmd_amending_claim` and
+  `cmd_resolving_claim`, both calling `check_no_foreign_review_claim` — not
+  just the one the incident came from. The **merger** force-pushes too
+  (`fleet-rebase`) and is outside this rule by design: it takes no
+  `fleet-claim` lock at all, using `--force-with-lease` as its concurrency
+  control (`role-merger.md`; `NO_CLAIM_FABRIC_ROLES` in `fleet-dispatcher`).
+  A guard added here does not reach it — a mid-review mechanical rebase is a
+  separate, accepted design point, not an oversight this rule covers. A
+  lane's admission test must also be the **sole** one for that lane: an
+  emit-site filter that its `slice_<role>` twin doesn't share leaves every
+  consumer of the slice (class election, quiet check, `fleet-up`'s bootstrap
   trigger) reading the unfiltered set (#2801 again — `project_worker` and
   `slice_worker` now share `worker_feedback_labels()`).
 - **Path-containment checks normalize before the literal match.** A

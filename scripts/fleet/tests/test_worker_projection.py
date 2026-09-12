@@ -343,6 +343,106 @@ class SemanticConflictDispatch(unittest.TestCase):
             self.assertEqual([p["number"] for p in feedback], [2417], label)
 
 
+class ReviewClaimBarsConflictResolutionPickup(unittest.TestCase):
+    """#3001 — the #2801 hazard, one lane over.
+
+    #2801 closed the fleet:reviewing-* -> fleet:amending-* direction
+    (ReviewClaimBarsWorkerFeedbackPickup below). The conflict-resolution lane
+    was left open: fleet:reviewing-* and fleet:resolving-* are DISJOINT claim
+    namespaces, so _semantic_conflict_claimable's own fleet:resolving- test
+    (and _acquire_label_on's lex-min tie-break, which filters to labels
+    startswith its own prefix) is structurally blind to a live review claim.
+    role-worker step 1c then rebases and force-pushes, and
+    --force-with-lease protects the branch, not the reviewer's work.
+
+    The reachable order is why fleet:semantic-conflict living in
+    REVIEW_SKIP_LABELS does not cover this: the review starts on a MERGEABLE,
+    unlabeled PR (nothing bars pickup), and only then does the merger's
+    mechanical rebase fail and stamp the conflict. REVIEW_SKIP_LABELS bars
+    STARTING a review; it says nothing about one already in flight.
+
+    Every case asserts BOTH emit sites — project_worker (the trigger) and
+    slice_worker's semantic_conflict_prs[] (the payload the class election
+    and FLEET-CACHE.md consumers read).
+    """
+
+    def _items(self, prs):
+        return [i for i in project_worker(_state(prs))
+                if i["kind"] == "semantic_conflict"]
+
+    def _slice(self, prs):
+        return slice_worker(_state(prs))["semantic_conflict_prs"]
+
+    def test_review_claim_suppresses_conflict_pressure_at_both_sites(self):
+        # The two-run delta IS the assertion: pre-fix, LIVE and
+        # minus-fleet:reviewing-* produced byte-identical output, i.e. the
+        # review claim contributed exactly zero suppression.
+        held = [_sc_pr(2417, labels=["fleet:semantic-conflict",
+                                     "fleet:reviewing-mac-pool-9"])]
+        free = [_sc_pr(2417)]
+
+        self.assertEqual(self._items(held), [],
+                         "review claim must suppress the projection item")
+        self.assertEqual(self._slice(held), [],
+                         "review claim must suppress the slice payload")
+        self.assertEqual(len(self._items(free)), 1)
+        self.assertEqual(len(self._slice(free)), 1)
+
+    def test_cross_host_review_claim_suppresses_too(self):
+        # The reviewer may be on another machine; the predicate keys on the
+        # prefix, not on whether this host could have minted the label.
+        held = [_sc_pr(2417, labels=["fleet:semantic-conflict",
+                                     "fleet:reviewing-linux-pool-2"])]
+        self.assertEqual(self._items(held), [])
+        self.assertEqual(self._slice(held), [])
+
+    def test_projection_is_agent_blind_by_design(self):
+        # Deliberate asymmetry with the claim-side gate, pinned so nobody
+        # "fixes" it: check_no_foreign_review_claim carves out the SAME agent
+        # (a pane that reviewed and then resolved itself is not a cross-lane
+        # race), but a projection item is a fleet-wide dispatch signal with no
+        # agent to compare against — the dispatcher picks the pane later. So
+        # the projection suppresses on any fleet:reviewing-*, and the
+        # legitimate same-agent case is served by the claim-side pass-through
+        # (a pane already holding the PR in context claims directly; it does
+        # not need dispatch pressure to be minted for it).
+        held = [_sc_pr(2417, labels=["fleet:semantic-conflict",
+                                     "fleet:reviewing-mac-pool-1"])]
+        self.assertEqual(self._items(held), [])
+        self.assertEqual(self._slice(held), [])
+
+    def test_clearing_the_review_claim_re_enters_the_pr_at_both_sites(self):
+        # Suppression that never lifts would strand a conflicted PR, so this
+        # is the load-bearing assertion — not the suppression itself.
+        # Production clears fleet:reviewing-* two ways: the reviewer's own
+        # review-release / verdict swap, and `fleet-claim cleanup --gh`'s
+        # orphan fast path for a dead reviewer (proved by
+        # tests/test_fleet_claim_prlabel_orphan_sweep.sh, fixture PR 902).
+        # Keep the two suites cited together; this one alone only shows the
+        # projection reacts to a label clearing, never that anything in
+        # production clears it.
+        held = _sc_pr(2417, labels=["fleet:semantic-conflict",
+                                    "fleet:reviewing-mac-pool-9"])
+        cleared = _sc_pr(2417)
+
+        self.assertEqual(self._items([held]), [])
+        self.assertEqual(len(self._items([cleared])), 1)
+        self.assertEqual(len(self._slice([cleared])), 1)
+        self.assertNotEqual(stable_hash(project_worker(_state([held]))),
+                            stable_hash(project_worker(_state([cleared]))))
+
+    def test_review_claim_does_not_suppress_a_clean_conflicted_sibling(self):
+        # Guards against over-suppression: the exclusion is per-PR, so a
+        # second conflicted PR with no review claim still carries pressure.
+        held = _sc_pr(2417, labels=["fleet:semantic-conflict",
+                                    "fleet:reviewing-mac-pool-9"],
+                      head="claude/held-feat")
+        clean = _sc_pr(2418, head="claude/clean-feat")
+        self.assertEqual([i["pr"] for i in self._items([held, clean])], [2418])
+        self.assertEqual([p["number"] for p in self._slice([held, clean])],
+                         [2418])
+
+
 class SliceWorkerSkipLabelsDropPR(unittest.TestCase):
     """slice_worker is the dispatch slice a woken worker reads (distinct from
     project_worker, the hash-input that decides *whether* to wake). It must
@@ -734,15 +834,39 @@ class ReviewClaimBarsWorkerFeedbackPickup(unittest.TestCase):
 
     # --- the wrong turn: the conflict lane must NOT open ------------------
 
-    def test_review_claim_does_not_open_the_semantic_conflict_lane(self):
+    def test_suppressed_feedback_tier_does_not_open_the_conflict_lane(self):
         # _semantic_conflict_claimable deliberately tests the RAW
         # _WORKER_RELEVANT_LABELS, not worker_feedback_labels(). Routing it
-        # through the helper "for consistency" would let a reviewer's live
-        # claim hand the PR to the conflict lane instead — and the resolver
+        # through the helper "for consistency" would let a suppression signal
+        # hand the PR to the conflict lane instead — and the resolver
         # force-pushes too, so that is the identical hazard one lane over.
+        #
+        # The suppressor here is fleet:needs-opus-recheck, NOT a
+        # fleet:reviewing-* label. #3001 gave the conflict lane its own
+        # reviewing-prefix exclusion, so a reviewing-labelled fixture now
+        # returns [] via that term whether or not the consolidation happened
+        # — i.e. it would pass under the wrong turn, proving nothing.
+        # needs-opus-recheck is the term worker_feedback_labels() still
+        # strips that the conflict lane does not test, so it is the one
+        # remaining input that discriminates the two implementations.
         prs = [_sc_pr(101, labels=[
             "fleet:semantic-conflict", "fleet:has-nits",
-            "fleet:reviewing-mac-pool-9",
+            "fleet:needs-opus-recheck",
+        ])]
+        self.assertEqual(
+            [i for i in project_worker(_state(prs))
+             if i["kind"] == "semantic_conflict"],
+            [],
+        )
+        self.assertEqual(slice_worker(_state(prs))["semantic_conflict_prs"], [])
+
+    def test_review_claim_also_bars_the_conflict_lane(self):
+        # The #3001 direction, asserted from this class too: the case the
+        # test above used to cover is now covered by a second, independent
+        # term. Both must hold — this one is the exclusion, the one above is
+        # the "don't consolidate" pin.
+        prs = [_sc_pr(101, labels=[
+            "fleet:semantic-conflict", "fleet:reviewing-mac-pool-9",
         ])]
         self.assertEqual(
             [i for i in project_worker(_state(prs))

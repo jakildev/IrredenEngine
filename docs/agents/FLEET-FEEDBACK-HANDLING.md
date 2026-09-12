@@ -89,6 +89,11 @@ claim was granted 26 s after the opus recheck started). As with
 `fleet-claim amending-claim` refuses as a backstop. The label cannot
 strand a PR: the reviewer's `review-release` / verdict swap clears it,
 and `fleet-claim cleanup --gh`'s orphan sweep clears an abandoned one.
+The same skip applies to the **conflict-resolution** lane (role-worker
+step 1c), which force-pushes too — `_semantic_conflict_claimable`
+suppresses and `fleet-claim resolving-claim` refuses (#3001). A pane that
+reviewed the PR itself and then picked the work up is the one exception:
+both claim-side gates pass the **same** agent through.
 
 **Skip** PRs carrying `fleet:needs-opus-recheck` — `fleet:has-nits`
 stamped alongside it is **not a verdict**. The sonnet reviewer sets no

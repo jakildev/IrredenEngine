@@ -422,8 +422,11 @@ Specifically, **never pass these via `--label` when filing**:
   sonnet no-op iterations (engine #2417). Claimable means: live
   `mergeable == CONFLICTING` (a stale label on a MERGEABLE PR — the
   #1654 race — generates no dispatch), none of step 1c's own exclusion
-  labels, no active `fleet:resolving-*` claim, and stacked children
-  defer to their conflicted base.
+  labels, no worker feedback / design-resume tier owing (that lane goes
+  first), no active `fleet:resolving-*` claim, **no live
+  `fleet:reviewing-*`** (#3001 — this lane force-pushes, so a claim in the
+  disjoint review namespace has to be excluded explicitly), and stacked
+  children defer to their conflicted base.
 - **Retired plan gate** — `human:review-plan` (#2011, the human approach
   sign-off on a high-stakes worker-planned issue) retired 2026-09: plans are
   lightweight intent plans whose locked decisions and positive-fire
