@@ -127,12 +127,12 @@ Every verdict edge also removes `fleet:needs-opus-recheck` and
 - `fleet:scope-shipped` — **ingest** pre-flight: a merged PR references
   #N, so the scope landed elsewhere. Set with a comment citing the PR;
   ingest skips it; the human closes after verifying coverage.
-- `fleet:coding-improvement` — **author worker** via
-  `assess-coding-improvement` at the end of a feedback AMEND, when the fix
-  reveals a generalizable rule. Classification tag only: no
-  `human:approved` / `fleet:queued`, so it waits for the human-cued
-  `triage-coding-improvements` batch. The skill dedups against open
-  tickets on the same artifact.
+- `fleet:coding-improvement` — **anyone**, only for a validator-shaped
+  improvement (a check, ratchet, lint, or test) with the incident that
+  fired; prose-rule proposals are not filed (FLEET.md §"Improvement
+  posture"). Classification tag only: no `human:approved` /
+  `fleet:queued`; the human-cued `triage-coding-improvements` batch
+  drains it, accepting a validator or closing.
 - `fleet:triage-recommend` — **triage role**
   ([`triage-protocol.md`](triage-protocol.md)), with a `## Triage` comment.
   Inert; routes the issue into `fleet-decisions`. The human acts and
