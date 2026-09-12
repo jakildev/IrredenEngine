@@ -179,6 +179,27 @@ the fleet-worker claim lane's marker only.
 Skip when the body has no `Closes #N`, or for the queue-manager role (its
 `Closes #` rows are task IDs).
 
+```bash
+closes_n="<N from the drafted body>"
+fleet-pr-body-lint "$closes_n" --repo <repo> --body-file .pr-body.md \
+    --write-issue-json ".issue-${closes_n}.json"
+issue_title=$(jq -r '.title' ".issue-${closes_n}.json")
+```
+
+Run this snapshot + lint block once per distinct closing issue. Exit 1 means
+the evidence section is absent or short; exit 2 means the issue thread or
+Markdown could not be read safely. Either status stops publication.
+`fleet-pr-body-lint` sets `comments_complete: true` only after pagination
+finishes; reuse its snapshot for the title-token check. In multi-issue bodies,
+group evidence rows under `### Issue #N`; one issue's rows cannot satisfy
+another's criteria.
+
+Tokenize the issue title and the PR title, branch, and first commit line
+(lowercase, strip punctuation + stop words), then intersect the remaining
+words. An empty intersection is a non-blocking warning: pause for human
+acknowledgement in interactive mode; in autonomous mode log it prominently
+and verify the number independently before proceeding.
+
 - **Issue match.** `gh issue view <N> --repo <repo> --json
   title,body,comments`. The tokenized title should share words with the PR
   title, branch, or first commit line; an empty intersection is a warning
@@ -210,27 +231,6 @@ Skip when the body has no `Closes #N`, or for the queue-manager role (its
   (`gh pr list --state open --json number,files`) and trial-merge each hit
   with `git merge-tree --write-tree <this> <other>`. A hit on
   `docs/agents/**` or `.claude/**` stops the open.
-
-```bash
-closes_n="<N from the drafted body>"
-fleet-pr-body-lint "$closes_n" --repo <repo> --body-file .pr-body.md \
-    --write-issue-json ".issue-${closes_n}.json"
-issue_title=$(jq -r '.title' ".issue-${closes_n}.json")
-```
-
-Run this snapshot + lint block once per distinct closing issue. Exit 1 means
-the evidence section is absent or short; exit 2 means the issue thread or
-Markdown could not be read safely. Either status stops publication.
-`fleet-pr-body-lint` sets `comments_complete: true` only after pagination
-finishes; reuse its snapshot for the title-token check. In multi-issue bodies,
-group evidence rows under `### Issue #N`; one issue's rows cannot satisfy
-another's criteria.
-
-Tokenize the issue title and the PR title, branch, and first commit line
-(lowercase, strip punctuation + stop words), then intersect the remaining
-words. An empty intersection is a non-blocking warning: pause for human
-acknowledgement in interactive mode; in autonomous mode log it prominently
-and verify the number independently before proceeding.
 
 #### 8b. Host label
 
