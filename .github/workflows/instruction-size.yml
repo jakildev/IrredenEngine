@@ -1,0 +1,32 @@
+name: Instruction Size
+
+# An agent-facing instruction file may not grow past its budget
+# (docs/agents/CLAUDE-BASELINE.md §"What belongs in agent-facing docs").
+# scripts/lint_instruction_size.py is a per-file ratchet against
+# scripts/lint_instruction_size_baseline.json: a file may shrink toward its
+# class cap, never grow past its budget. Unfiltered on purpose — the
+# population is every CLAUDE.md at any depth plus the .claude/ and
+# docs/agents/ trees, so any push can regress it.
+#
+# Measured against the branch's own baseline, not the base branch's: a
+# deliberate raise is a hand edit of the JSON in the same PR, and that diff
+# is what the reviewer weighs.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  instruction-size:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Instruction size ratchet
+        run: python3 scripts/lint_instruction_size.py
