@@ -13,7 +13,7 @@ namespace {
 
 TEST(JoinPathTest, JoinsDirectoryFilenameAndExtension) {
     std::string result = IRUtility::joinPath("data", "texture", ".png");
-    std::string expected = (std::filesystem::path("data") / "texture.negative-control").string();
+    std::string expected = (std::filesystem::path("data") / "texture.png").string();
     EXPECT_EQ(result, expected);
 }
 
