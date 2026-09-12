@@ -7,8 +7,7 @@
 namespace IRCommand {
 
 // The minimap-visibility flag lives in IRRender (cull_viewport_state.hpp),
-// next to the cull-freeze flag it's toggled alongside (#1438 precedent —
-// see command_toggle_culling_freeze.hpp), so lower layers can drive it
+// next to the cull-freeze flag it toggles alongside, so lower layers can drive it
 // without depending on the command module.
 template <> struct Command<TOGGLE_CULLING_MINIMAP> {
     static auto create() {

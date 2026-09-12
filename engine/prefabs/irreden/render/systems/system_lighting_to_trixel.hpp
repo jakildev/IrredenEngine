@@ -42,9 +42,8 @@ constexpr int kLightingToTrixelGroupSize = 16;
 // per-pixel world voxel is recovered from the distance texture and the
 // bound 3D light volume is sampled and additively combined with the AO
 // base.
-// `debugLightLevel_` is reserved for future shadow-preview use; it is
-// kept in the UBO for std140 layout stability but the shader currently
-// uses AO.r as the LUT X-axis input.
+// `debugLightLevel_` is unread and remains in the UBO for std140 layout
+// stability; the shader uses AO.r as the LUT X-axis input.
 // `debugOverlayMode_` mirrors `IRRender::DebugOverlayMode`. Non-zero
 // values short-circuit the artistic path and write false-color into
 // `trixelColors` instead — see ir_render_enums.hpp for the encoding.
@@ -74,14 +73,14 @@ struct FrameDataLightingToTrixel {
 // return in the tick.
 template <> struct System<LIGHTING_TO_TRIXEL> {
     ShaderProgram *program_ = nullptr;
-    // View-visibility overflow-face relight kernel (#2334): a bounded compute
-    // dispatch at the tail of the per-axis lighting that relights the C1 (#2333)
-    // overflow entries at their world pos and rewrites their stored colour in
+    // View-visibility overflow-face relight kernel: a bounded compute
+    // dispatch at the tail of per-axis lighting that relights overflow entries
+    // at their world position and rewrites their stored colour in
     // place, so the framebuffer scatter draws LIT slivers while rotating.
     ShaderProgram *overflowLightingProgram_ = nullptr;
     // IR_OVERFLOW_LIGHTING_DISABLE in the environment skips the relight dispatch
-    // (entries stay C1 albedo) — the A/B kill switch for the lit-vs-albedo
-    // screenshot pair and the GPU-delta measurement (#2334 acceptance).
+    // (entries stay albedo-only) — the A/B kill switch for the lit-vs-albedo
+    // screenshot pair and GPU-delta diagnostics.
     bool overflowLightingDisabled_ = false;
     static constexpr int kOverflowLightingGroupSize = 64; // matches local_size_x
     Buffer *frameDataBuf_ = nullptr;
@@ -91,19 +90,19 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
     // later in the pipeline so the buffer is always populated.
     Buffer *voxelFrameDataBuf_ = nullptr;
     Buffer *sunFrameDataBuf_ = nullptr;
-    // Phase 1c (#360): camera-anchored light-volume params UBO. Owned
+    // Camera-anchored light-volume params UBO. Owned
     // + uploaded by COMPUTE_LIGHT_VOLUME; the lighting pass needs to
     // know the volume's world origin to map a pixel's world voxel
     // back into the volume texel.
     Buffer *lightVolumeParamsBuf_ = nullptr;
-    // Light list SSBO (#2318): bound transiently at slot 4 during this pass so
+    // Light list SSBO: bound transiently at slot 4 during this pass so
     // the spot-cone factor can look up the winning light's axis / aperture /
     // apex. Owned + uploaded by COMPUTE_LIGHT_VOLUME (which binds it at slot 4
     // for its own seed pass); nothing downstream in the frame reads slot 4, so
     // no restore is needed. Only read on the has-SPOT path.
     Buffer *lightSourceBuf_ = nullptr;
     // Baked sun-aligned depth map (slot 28), created by BAKE_SUN_SHADOW_MAP.
-    // The opt-in detached world-receive path (#1576 P4b-2) re-runs the cascade
+    // The opt-in detached world-receive path re-runs the cascade
     // lookup against it at a world-placed voxel's pos. Resolved lazily (it exists
     // by the time the pipeline runs); the shader declares the SSBO unconditionally
     // (Metal kernel arg), so it must be bound every tick — the default path just
@@ -117,19 +116,19 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
     Texture2D *paletteLUT_ = nullptr;
     FrameDataLightingToTrixel frameData_{};
 
-    // Smooth camera Z-yaw (#1311): main canvas + per-axis voxel canvases,
+    // Smooth camera Z-yaw: main canvas + per-axis voxel canvases,
     // re-resolved every frame in beginTick. Null unless allocated (rotating).
     IREntity::EntityId perAxisCanvasEntity_ = IREntity::kNullEntity;
     C_PerAxisTrixelCanvases *perAxisCanvases_ = nullptr;
 
-    // Lazily-resolved voxel-compaction buffers (#1961/#2256), restored onto
+    // Lazily-resolved voxel-compaction buffers, restored onto
     // slots 25/26 after dispatchPerAxisLighting borrows them for its own
     // per-axis cell list. See IRPrefab::PerAxisCanvas::restoreVoxelCompactionSlots.
     Buffer *voxelCompactedBuf_ = nullptr;
     Buffer *voxelIndirectBuf_ = nullptr;
 
     // Per-pass voxel-frame author/restore + main-canvas placeholders for the
-    // relaxed multi-lit-canvas archetype (re-voxelize P4 / #1558). Resolved
+    // relaxed multi-lit-canvas archetype. Resolved
     // once per frame in beginTick; never held across frames.
     FrameDataVoxelToCanvas scratchVoxelFrame_{};
     const C_TriangleCanvasTextures *mainCanvasTextures_ = nullptr;
@@ -152,12 +151,12 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         if (!behavior.useCameraPositionIso_) {
             return;
         }
-        // CPU histogram bracket — this system is not observer-tagged (#2281).
+        // CPU histogram bracket — this system is not observer-tagged.
         IR_PROFILE_SCOPE("lightingToTrixel");
 
         // Author THIS canvas's voxel frame data so the Lambert + sky terms read
         // its own visible-triplet world normals and isDetachedCanvas flag, not
-        // whatever canvas STAGE_1 left resident (#1558). No-op for a pure-SDF
+        // whatever canvas STAGE_1 left resident. No-op for a pure-SDF
         // canvas with no voxel pool.
         authorIteratingCanvasVoxelFrame(
             scratchVoxelFrame_,
@@ -166,7 +165,7 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
             canvasTextures
         );
 
-        // Relaxed archetype (#1558): sun-shadow + light-volume are optional, so
+        // Relaxed archetype: sun-shadow + light-volume are optional, so
         // a detached re-voxelize canvas (which has neither) can still be lit.
         // Per-canvas component if present, else the main canvas's as an inert
         // placeholder — the shader's isDetachedCanvas branch forces shadow = 1.0
@@ -179,7 +178,7 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         const C_CanvasLightVolume *lightVolume =
             lightVolumeOpt.has_value() ? lightVolumeOpt.value() : mainCanvasLightVolume_;
 
-        // Sub-scope (#2281): the main-canvas lighting dispatch only. The braces
+        // Sub-scope: the main-canvas lighting dispatch only. The braces
         // bound the TIMER, not the GPU bindings — image/buffer binds are global
         // state and stay resident for the per-axis dispatches below.
         {
@@ -218,29 +217,29 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
             // one whose LIGHTING_TO_TRIXEL archetype is non-empty puts the
             // component on the main canvas). If you author one, note that slots
             // 5/7 then go unbound here and the chunk-occlusion cull's Hi-Z
-            // sampler loop (units 0-11, #2350) leaves a texture2d<int> mip in
+            // sampler loop (units 0-11) leaves a texture2d<int> mip in
             // slot 7 against this shader's texture3d<float> declaration. Benign
             // today — the slot is read only on the has-SPOT path, unreachable
             // without a light volume — and verified clean on Metal, but it is
             // the reason not to start reading slot 7 unconditionally.
             if (lightVolume != nullptr) {
                 lightVolume->getReadTexture()->bind(5);
-                // Winning-light ID volume (image unit 7, #2318). Bound every tick so
+                // Winning-light ID volume (image unit 7). Bound every tick so
                 // Metal's slot table is populated; only fetched on the has-SPOT
                 // path. Stays resident across the per-axis dispatches below —
                 // because nothing binds unit 7, as sampler OR image, between this
-                // dispatch and them (Metal evicts the sibling table per unit since
-                // #2350, so a sampler bind at 7 would drop this image) — which is
+                // dispatch and them (Metal evicts the sibling table per unit, so
+                // a sampler bind at 7 would drop this image) — which is
                 // how per-axis canvases get spot cones too.
                 lightVolume->getIdReadTexture()
                     ->bindAsImage(7, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
             }
             // Entity-id image (unit 6, R/O): the lighting shader reads it ONLY to
             // recover the fog cut-face flag (bit 29) and force those faces fully lit
-            // (#2124 lit-cross-section follow-up). Bound every tick so Metal's slot
+            // for lit cross-sections. Bound every tick so Metal's slot
             // table is populated; the per-axis dispatch below leaves it resident —
             // because nothing binds unit 6, as sampler OR image, in between (same
-            // #2350 cross-kind eviction rule as unit 7 above) — and its
+            // cross-kind eviction rule as unit 7 above) — and its
             // perAxisRoute != 0 skips the read.
             canvasTextures.getTextureEntityIds()
                 ->bindAsImage(6, TextureAccess::READ_ONLY, TextureFormat::RG32UI);
@@ -256,17 +255,17 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
             // gate (`worldOriginVoxel.w`) and light list. The spot-cone read here
             // therefore assumes at most one rendered C_CanvasLightVolume canvas
             // seeds a SPOT — guarded in COMPUTE_LIGHT_VOLUME::endTick via
-            // `detail::lightVolumeGlobalBufferSafe` (#2341). `.xyz` is the camera
+            // `detail::lightVolumeGlobalBufferSafe`. `.xyz` is the camera
             // anchor, identical for every canvas in a frame, so it was always safe.
-            // Multi-canvas + SPOT needs per-canvas storage (#2341 option b).
+            // Multi-canvas + SPOT needs per-canvas storage.
             lightVolumeParamsBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_LightVolumeParams);
-            // Light list (SSBO slot 4) for the spot-cone factor (#2318). SSBO and
+            // Light list (SSBO slot 4) for the spot-cone factor. SSBO and
             // image bindings are independent namespaces on both backends, so slot 4
             // here does not collide with the image-unit-4 sun-shadow texture. Stays
             // resident across the per-axis dispatches (they never rebind slot 4).
             lightSourceBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_LightSourceBuffer);
             // Sun-depth map (slot 28) for the opt-in detached world-receive path
-            // (#1576 P4b-2). Bound every tick — the shader declares the SSBO
+            // for detached world receive. Bound every tick — the shader declares the SSBO
             // unconditionally (Metal kernel arg); only a world-placed detached solid
             // reads it. Persists across the per-axis lighting dispatches below (they
             // only rebind the colour/dist/AO/sun-shadow images).
@@ -283,7 +282,7 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
             IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
         }
 
-        // Smooth camera Z-yaw (#1311): apply lighting to each per-axis voxel
+        // Smooth camera Z-yaw: apply lighting to each per-axis voxel
         // canvas (AO x sun-shadow x face Lambert + shared world light volume) so
         // the framebuffer scatter composites LIT colours while rotating. Only
         // the main canvas allocates per-axis canvases, and it always carries
@@ -305,9 +304,9 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         const C_CanvasSunShadow &mainShadow
     ) {
         // The LightingRouteScope flips the shared UBO onto the per-axis decode
-        // route at the #1431-capped store density and restores route / density /
+        // route at the capped store density and restores route / density /
         // compaction slots on exit; it spans the overflow relight below, which
-        // reads the same per-axis frame state. The GpuSubStageScope (#2281)
+        // reads the same per-axis frame state. The GpuSubStageScope
         // brackets only the 3 per-axis relight dispatches — the overflow
         // relight owns its own row.
         {
@@ -331,10 +330,10 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
                 // One barrier after the 3 independent per-axis dispatches (each
                 // axis writes its own colour image texture in place — disjoint
                 // outputs, so dispatch order doesn't matter) so they overlap on
-                // the GPU instead of serializing per axis (#1311).
+                // the GPU instead of serializing per axis.
                 IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
             }
-            // #2334: relight the overflow entries the C1 lane appended albedo-only,
+            // relight the entries appended albedo-only by the overflow lane,
             // at their recovered world pos, while the sun-depth map (slot 28) + light
             // volume are still bound from the cell pass above. Switches the compute
             // program, so restore the lighting program for any remaining per-canvas
@@ -348,7 +347,7 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         // VoxelActiveMaskBuffer binds once at creation and is sticky thereafter,
         // so without this restore the steal is permanent: when the per-axis
         // canvases release at the cardinal return, the freed scratch dangles in
-        // the slot (the #2412 segfault) and, once destruction scrubs the
+        // the slot (the segfault) and, once destruction scrubs the
         // binding, the compact reads an unbound active mask and culls every
         // voxel — the empty-scene-at-cardinal-after-rotation regression.
         if (voxelActiveMaskBuf_ == nullptr) {
@@ -359,7 +358,7 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         // critical one: LIGHTING_TO_TRIXEL is the last image-binding compute stage,
         // so without this the freed per-axis textures linger in the persistent
         // Metal image-binding table and dangle when release() frees them at the
-        // next cardinal frame — the #1311 mid-rotation crash. Same restore
+        // next cardinal frame — the mid-rotation crash. Same restore
         // discipline as the other per-axis lighting passes.
         mainTextures.getTextureColors()
             ->bindAsImage(0, TextureAccess::READ_WRITE, TextureFormat::RGBA8);
@@ -369,8 +368,8 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         mainShadow.getTexture()->bindAsImage(4, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
     }
 
-    // #2334 (epic #2331 C2): relight the view-visibility overflow entries the C1
-    // (#2333) lane appended albedo-only. A bounded compute dispatch over the
+    // Relight the view-visibility overflow entries that were appended
+    // albedo-only. A bounded compute dispatch over the
     // overflow list recovers each entry's world pos + face normal and rewrites
     // its stored colour with the same world sample the per-axis cells got
     // (sun cascade + light volume + Lambert, AO = 1.0); the unchanged framebuffer
@@ -384,14 +383,14 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
             axes.winnerIds_.second == nullptr) {
             return;
         }
-        // Sub-scope (#2281) — opened after the early-return so the row only
+        // Sub-scope — opened after the early-return so the row only
         // samples when the dispatch actually runs (a scope with no enclosed
         // encoder never resolves its pair).
         GpuSubStageScope overflowScope("lightingOverflow");
         overflowLightingProgram_->use();
         // The kernel indexes entries + the ctrl-block count via overflowScratchLayout
         // read from the voxel-frame UBO (slot 7). Only VOXEL_TO_TRIXEL_STAGE_1 sets
-        // that field, and this system re-authors the shared UBO per canvas (#1558),
+        // that field, and this system re-authors the shared UBO per canvas,
         // so it reads back zero here — republish it from the canvas's own scratch
         // offsets before the dispatch (matches the ivec4 order the store uploads).
         const ivec4 overflowLayout(
@@ -434,7 +433,7 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         // Modes above SHADOW (PER_AXIS_ID / PER_AXIS_ORIGIN / UNLIT) belong to
         // other passes — the lighting shader's overlay fallback would otherwise
         // misread them as SHADOW. UNLIT additionally disables the modulation
-        // itself so raw rasterized colors flow through (#1457 instrumentation).
+        // itself so raw rasterized colors flow through for instrumentation.
         const int overlayMode = static_cast<int>(IRRender::getDebugOverlay());
         frameData_.lightingEnabled_ =
             overlayMode == static_cast<int>(IRRender::DebugOverlayMode::UNLIT) ? 0 : 1;
@@ -448,9 +447,9 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         frameData_.skyColor_ = vec4(sc, 0.0f);
         frameDataBuf_->subData(0, sizeof(FrameDataLightingToTrixel), &frameData_);
 
-        // Resolve the main canvas + its per-axis voxel canvases (#1311), plus
+        // Resolve the main canvas + its per-axis voxel canvases, plus
         // its voxel-frame inputs and sun-shadow / light-volume placeholders for
-        // the relaxed multi-lit-canvas archetype (#1558). beginTick lookups are
+        // the relaxed multi-lit-canvas archetype. beginTick lookups are
         // once-per-frame, not the per-entity footgun.
         perAxisCanvasEntity_ = IRRender::getCanvas("main");
         perAxisCanvases_ = nullptr;
@@ -483,7 +482,7 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
     // Restore the main world canvas's voxel frame data so FOG_TO_TRIXEL /
     // TRIXEL_TO_FRAMEBUFFER (which run after lighting and read the shared voxel
     // UBO) see the world frame even when a detached re-voxelize canvas authored
-    // its own above (#1558). Byte-identical render output for single-lit-canvas
+    // its own above. Byte-identical render output for single-lit-canvas
     // scenes (cullIso, the only field buildVoxelFrameData omits, is unused
     // downstream).
     void endTick() {
@@ -501,7 +500,7 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
             "LightingToTrixelProgram",
             std::vector{ShaderStage{IRRender::kFileCompLightingToTrixel, ShaderType::COMPUTE}}
         );
-        // #2334: overflow-face relight kernel, dispatched at the tail of the
+        // overflow-face relight kernel, dispatched at the tail of the
         // per-axis lighting (see dispatchOverflowLighting).
         IRRender::createNamedResource<ShaderProgram>(
             "LightOverflowFacesProgram",
@@ -570,7 +569,7 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
                 );
         }
 
-        // Relaxed archetype (#1558): C_CanvasSunShadow / C_CanvasLightVolume are
+        // Relaxed archetype: C_CanvasSunShadow / C_CanvasLightVolume are
         // resolved per canvas via getComponentOptional in the tick (canvas-
         // iteration pattern), NOT required template params — so the detached
         // re-voxelize canvas (AO + directional sun + sky only, no sun-shadow /
@@ -594,10 +593,10 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         // pipeline; safe to look up at init time.
         p->lightVolumeParamsBuf_ = IRRender::getNamedResource<Buffer>("LightVolumeParamsBuffer");
         // LightSourceBuffer is also created by COMPUTE_LIGHT_VOLUME (registered
-        // ahead of LIGHTING_TO_TRIXEL); safe to resolve here (#2318).
+        // ahead of LIGHTING_TO_TRIXEL); safe to resolve here.
         p->lightSourceBuf_ = IRRender::getNamedResource<Buffer>("LightSourceBuffer");
         p->paletteLUT_ = IRRender::getNamedResource<Texture2D>("PaletteLUT_Nearest");
-        // NOT observer-tagged: the tick owns GpuSubStageScopes (#2281), which
+        // NOT observer-tagged: the tick owns GpuSubStageScopes, which
         // reuse the observer's timestamp attachment slot.
         return systemId;
     }

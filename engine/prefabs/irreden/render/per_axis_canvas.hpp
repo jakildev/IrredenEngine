@@ -2,7 +2,7 @@
 #define IR_PREFAB_PER_AXIS_CANVAS_H
 
 // Driver-side lifecycle for the main world canvas's per-axis trixel canvases
-// (smooth camera Z-yaw, #1308; docs/design/per-axis-trixel-canvas-rotation.md).
+// (smooth camera Z-yaw; docs/design/per-axis-trixel-canvas-rotation.md).
 // Cross-entity orchestration — look up the main canvas, read the camera yaw,
 // allocate/release the GPU textures — lives here in a prefab-scoped namespace
 // rather than on the component (engine/prefabs/CLAUDE.md Pattern B), so the
@@ -23,15 +23,13 @@ namespace IRPrefab::PerAxisCanvas {
 
 // Minimum on-screen trixel size (framebuffer px) bounding the skinny-axis
 // texture density (see IRMath::perAxisTrixelCanvasWorstCaseSize). ≈1 px is the
-// starting point from the design doc's open decisions; tune against seam-free
-// coverage vs texture size once Stage-1 routing (T2) and the framebuffer passes
-// (T3) land.
+// configured balance between seam-free coverage and texture size.
 inline constexpr float kMinOnScreenTrixelSizePx = 1.0f;
 
 namespace detail {
 // Allocate a canvas's three per-axis texture sets at the worst-case size for
 // its cardinal trixel canvas, plus the screen-space resolve-depth texture at
-// the cardinal size (#1453). Used by the camera-yaw (main canvas) allocation
+// the cardinal size. Used by the camera-yaw (main canvas) allocation
 // gate to size the per-axis textures. No-op if already allocated
 // (C_PerAxisTrixelCanvases::allocate guards it).
 inline void allocatePerAxisForCanvas(
@@ -65,7 +63,7 @@ inline void syncAllocationToCameraYaw() {
 
     const float residualYaw = IRPrefab::Camera::computeYawSplit(IRPrefab::Camera::getYaw()).second;
     // computeYawSplit deadbands the residual to exactly 0 at a settled cardinal
-    // (Camera::kResidualYawDeadband, #1882), so this `!= 0` allocation gate and
+    // (Camera::kResidualYawDeadband), so this `!= 0` allocation gate and
     // the render path-select gate in system_voxel_to_trixel share the identical
     // predicate — they can never disagree about whether the per-axis textures
     // should be live.
@@ -87,7 +85,7 @@ inline void syncAllocationToCameraYaw() {
 }
 
 // Capped per-axis lattice density (`subPerAxis`) for the smooth-camera-Z-yaw
-// store (#1431). The per-axis face-local lattice is `world × density`; the
+// store. The per-axis face-local lattice is `world × density`; the
 // bounded canvas (perAxisTrixelCanvasWorstCaseSize) does NOT scale with the
 // subdivision factor, so a large density drives on-screen cells off the canvas
 // and they are silently dropped (the black-hole clip). This caps the density
@@ -138,14 +136,14 @@ inline void setUboSubdivisionDensity(IRRender::Buffer *frameDataUbo, int density
 
 // Rebind SSBO slots 25/26 (kBufferIndex_PerAxisCellCompacted/Indirect) to
 // VOXEL_TO_TRIXEL_STAGE_1's single-canvas voxel-compaction buffers after a
-// per-axis compute dispatch has borrowed them for its own cell list (#1961,
-// #2256). Every per-axis consumer (AO, sun shadow, lighting, screen-depth
+// per-axis compute dispatch has borrowed them for its own cell list. Every
+// per-axis consumer (AO, sun shadow, lighting, screen-depth
 // resolve, the framebuffer scatter) binds these slots to its
 // C_PerAxisTrixelCanvases-owned buffers via bindRange; leaving them bound
 // past the dispatch means the next frame's STAGE_1 compact — which binds
 // its own buffers once at create() and trusts sticky global state
 // thereafter — silently re-reads the cell list as the voxel index list and
-// corrupts world voxels (the #1961 center-cube regression). Callers own
+// corrupts world voxels (the center-cube regression). Callers own
 // the lazy-resolved pointer pair as members (mirrors the member-on-System
 // caching pattern) and pass them by reference so the named-resource lookup
 // only runs once per system.
@@ -159,7 +157,7 @@ inline void restoreVoxelCompactionSlots(
         voxelIndirectBuf = IRRender::getNamedResource<IRRender::Buffer>("IndirectDispatchParams");
     }
     // Unguarded: getNamedResource asserts on a miss rather than returning null
-    // (see #2627), and VOXEL_TO_TRIXEL_STAGE_1 — which creates both buffers —
+    // and VOXEL_TO_TRIXEL_STAGE_1, which creates both buffers,
     // is a hard precondition of every per-axis consumer.
     voxelCompactedBuf->bindBase(
         IRRender::BufferTarget::SHADER_STORAGE,
@@ -175,7 +173,7 @@ inline void restoreVoxelCompactionSlots(
 // lighting): flips the shared voxel frame-data UBO onto the per-axis decode
 // route (perAxisRoute_ = 1 — a boolean route flag on the lighting path; the
 // shader recovers the axis per-pixel from faceId, distinct from stage-1's
-// 1/2/3 axis selector) at the #1431-capped lattice density the store wrote,
+// 1/2/3 axis selector) at the capped lattice density the store wrote,
 // and restores the single-canvas state on destruction: route 0, the uncapped
 // effSub density, and the voxel-compaction slots 25/26 (see
 // restoreVoxelCompactionSlots — the loop below borrows them). One definition
@@ -227,7 +225,7 @@ class LightingRouteScope {
 };
 
 // One indirect compute dispatch per axis over that axis's compacted OCCUPIED
-// cell list (#2256): calls @p bindAxis(axis) for the pass-specific image
+// cell list: calls @p bindAxis(axis) for the pass-specific image
 // bindings, binds the axis's region of the component-owned compacted-cell +
 // dispatch-args buffers onto slots 25/26 (borrowing them — the caller restores
 // via restoreVoxelCompactionSlots / LightingRouteScope), then issues the

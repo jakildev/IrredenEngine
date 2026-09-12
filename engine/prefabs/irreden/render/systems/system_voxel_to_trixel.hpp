@@ -72,7 +72,7 @@ inline const std::vector<std::uint32_t> &buildChunkVisibilityMask(
 
 // `buildVoxelFrameData` now lives in `<irreden/render/voxel_frame_data.hpp>`
 // (shared with COMPUTE_VOXEL_AO + LIGHTING_TO_TRIXEL, which re-author the
-// iterating canvas's frame data per dispatch for re-voxelize P4 / #1558).
+// iterating canvas's frame data per dispatch for re-voxelized canvases).
 
 inline void
 clearCanvasAndDistances(IREntity::EntityId canvasEntity, C_TriangleCanvasTextures &canvas) {
@@ -175,7 +175,7 @@ inline void flushPendingPositionRanges(C_VoxelPool &pool, Buffer *buf) {
 // per contiguous static run. GPU-transformed slots (index != kVoxelTransformStatic)
 // are skipped — UPDATE_VOXEL_POSITIONS_GPU already wrote their correct world
 // positions ahead of this stage. When all voxels are static this produces a
-// single upload equivalent to the old full-range subData.
+// single upload equivalent to a full-range subData.
 inline void flushStaticPositionRanges(C_VoxelPool &pool, Buffer *buf, int liveCount) {
     constexpr size_t kStride = sizeof(IRRender::VoxelGpuPosition);
     const auto &globals = pool.getPositionGlobals();
@@ -199,7 +199,7 @@ inline void flushStaticPositionRanges(C_VoxelPool &pool, Buffer *buf, int liveCo
     }
 }
 
-// Recompute the pool's cardinal-store tie-possibility signal (#2346) from the
+// Recompute the pool's cardinal-store tie-possibility signal from the
 // CPU position mirror. Called on frames whose CPU upload changed binding 5
 // (pending ranges flushed, or a canvas-switch re-seed) — one walk of the live
 // prefix, comparable to the upload's own walk; static scenes scan once at
@@ -268,7 +268,7 @@ inline void recomputeStoreTiesPossible(
 // binds [0, mipCount) to real levels and fills the surplus with the coarsest.
 constexpr int kChunkOcclusionMaxHiZLevels = 12;
 
-// Per-chunk Hi-Z occlusion query (#1294 child 2/3). Mirrors `ChunkQuery` in
+// Per-chunk Hi-Z occlusion query. Mirrors `ChunkQuery` in
 // c_chunk_occlusion_cull.{glsl,metal} (std430, 32 B). Record 0 of the upload is
 // a header: `pixelMin_` carries (chunkCount, mipCount).
 struct ChunkOcclusionQuery {
@@ -286,16 +286,16 @@ static_assert(
 template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     ShaderProgram *compactProgram_ = nullptr;
     ShaderProgram *stage1Program_ = nullptr;
-    // #2258 Step B (architect a′): the feeder-pass compile-time specialization
+    // Feeder-pass compile-time specialization
     // of stage 1 (IR_FEEDER_PASS 1) — a second compiled program dispatched for
     // the off-screen shadow feeders (struct 1), so the visible stage-1 program
     // carries none of the feeder branches (no runtime predication tax).
     ShaderProgram *stage1FeederProgram_ = nullptr;
-    // #2479: canonical-orders the view-visibility overflow entry list between
+    // canonical-orders the view-visibility overflow entry list between
     // the mode-3 append and the overflow indirect draw (rotating frames only).
     ShaderProgram *overflowSortProgram_ = nullptr;
     ShaderProgram *stage2Program_ = nullptr;
-    // #2346 cardinal winner election: the IR_STORE_WINNER_ELECTION 1
+    // cardinal winner election: the IR_STORE_WINNER_ELECTION 1
     // specializations of the shared stage-1/stage-2 bodies. Dispatched in the
     // single-canvas block ONLY when the ticking pool's storeTiesPossible_ flag
     // is set (displaced-voxel scenes); lattice pools keep exactly the default
@@ -307,19 +307,19 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // nothing), sized canvasW × canvasH × 4 B for the largest flagged canvas
     // seen, transiently bound at kBufferIndex_PerAxisResolveScratch around the
     // election + stage-2 dispatches. NOT axes.winnerIds_: that buffer is
-    // rotation-lifecycle (freed at cardinal yaw — the #2412 class) and sized
+    // tied to the rotation lifecycle, freed at cardinal yaw, and sized
     // to the per-axis canvas, not this one.
     std::pair<ResourceId, Buffer *> cardinalWinner_{0, nullptr};
     std::size_t cardinalWinnerBytes_ = 0;
     // The 4-byte placeholder created at init to keep binding 28 never-unbound;
-    // restored there after the election window so the next canvas's default
-    // dispatches see the same state as before (#2255 placeholder note below).
+    // restored after the election window so the next canvas's default
+    // dispatches retain the required binding state.
     Buffer *winnerPlaceholderBuf_ = nullptr;
     // Reused key scratch for recomputeStoreTiesPossible's duplicate-cell scan
     // (capacity persists across frames — no per-tick allocation after the
     // first high-water mark).
     std::vector<std::uint64_t> tieScanCellScratch_;
-    // Detached re-voxelize GPU scatter (#1556): fills binding 5 for a
+    // Detached re-voxelize GPU scatter: fills binding 5 for a
     // DETACHED_REVOXELIZE pool from its resident locals + the canvas quat, in
     // place of the CPU flushStaticPositionRanges.
     ShaderProgram *revoxelizeProgram_ = nullptr;
@@ -335,9 +335,9 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // Gates the cull-stat readback, which reads the PRIOR frame's counts out of
     // indirectBuf_. That read is only defined once this system has zeroed the
     // buffer at least once — a fresh allocation carries no prior value, and
-    // nothing guarantees it reads back as zero (see #2298).
+    // nothing guarantees it reads back as zero.
     bool cullReadbackPrimed_ = false;
-    // Chunk-occlusion HZB pre-pass (#1294 child 2/3, off by default). The query
+    // Chunk-occlusion HZB pre-pass, off by default. The query
     // buffer is bound transiently on kBufferIndex_CompactedVoxelIndices (25) for
     // the pre-pass and the compacted-index buffer restored afterward — the Metal
     // 0-30 buffer table has no free index. `chunkOcclusionScratch_` holds the
@@ -346,8 +346,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     Buffer *chunkOcclusionQueryBuf_ = nullptr;
     std::vector<ChunkOcclusionQuery> chunkOcclusionScratch_;
     int maxPoolChunks_ = 0;
-    // One-frame occlusion-cull disable on a discontinuous camera move (#1294
-    // child 3/3, design § 4). The chunk-occlusion pre-pass samples last frame's
+    // One-frame occlusion-cull disable on a discontinuous camera move. The
+    // chunk-occlusion pre-pass samples last frame's
     // Hi-Z; on a camera cut/teleport/first frame that lag source belongs to a
     // different view, so the projected chunk AABBs would test unrelated depths
     // and could cull on-screen geometry. When this frame's camera iso jumps more
@@ -357,7 +357,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     vec2 lastOcclusionCameraIso_ = vec2(0.0f);
     bool hasLastOcclusionCameraIso_ = false;
     bool occlusionLagSourceStale_ = false;
-    // Per-axis store list-walk split (#1739). While the main canvas's per-axis
+    // Per-axis store list-walk split. While the main canvas's per-axis
     // trixel canvases are active (smooth camera Z-yaw), the compact pass splits
     // its visible-voxel list into three axis-keyed regions — each voxel landing
     // in the regions whose axis it has an exposed face on — so each per-axis
@@ -377,14 +377,14 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // GL_SHADER_STORAGE_BUFFER_OFFSET_ALIGNMENT, <= 256 on real hardware). The
     // compact shader mirrors the indirect stride as kPerAxisIndirectStrideUints.
     static constexpr int kPerAxisSsboAlignBytes = 256;
-    // Per-axis empty-cell compaction (#1961 / #2256). Runs right after the
+    // Per-axis empty-cell compaction. Runs right after the
     // per-axis stores each frame; scans each axis distance canvas into the
     // component-owned compacted-cell buffers so the downstream per-axis compute
     // stages (AO / sun-shadow / lighting / resolve) and the framebuffer scatter
     // process only occupied cells. The buffers live on C_PerAxisTrixelCanvases
     // (same rotation-only lifecycle); this system only owns the shader program.
     ShaderProgram *cellCompactProgram_ = nullptr;
-    // #2256: cheap 3-thread pass that derives the per-axis compute-indirect
+    // cheap 3-thread pass that derives the per-axis compute-indirect
     // dispatch dims from each axis's occupied count (kept off the compaction's
     // full-grid scan so that scan stays barrier-free).
     ShaderProgram *cellFinalizeProgram_ = nullptr;
@@ -392,7 +392,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     FrameDataVoxelToCanvas frameData_{};
     // Resolved once per frame in beginTick; read by the per-entity tick.
     IRPrefab::SunShadow::ShadowFeederParams shadowFeederParams_{};
-    // #3010 gate instrument — a TEST-ONLY iso-texel pad on
+    // gate instrument — a TEST-ONLY iso-texel pad on
     // frameData_.visibleIsoBounds_ and nothing else. Widening it (positive)
     // promotes off-screen shadow feeders in the [visible+kGpuMargin,
     // visible+kGpuMargin+pad) band to visibles; shrinking it (negative)
@@ -412,23 +412,23 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // mode or effective subdivisions change.
     int previousRenderMode_ = -1;
     int previousEffectiveSubdivisions_ = -1;
-    // One-shot per-axis subdivision-cap warn throttle (#1431). Latches the last
+    // One-shot per-axis subdivision-cap warn throttle. Latches the last
     // (effSub, capped) pair logged so the "cap engaged, sub-voxel detail lost
     // while rotating" warning fires once per distinct cap transition rather than
     // every frame — mirrors the light-volume out-of-range one-shot warn.
     int previousCapWarnEffSub_ = -1;
     int previousCapWarnDensity_ = -1;
-    // One-shot overflow-lane cap warn latch (#2333): the last dropped-entry
+    // One-shot overflow-lane cap warn latch: the last dropped-entry
     // count already warned about, so the "overflow cap hit" line fires once
     // per distinct count rather than every rotating frame.
     std::uint32_t lastOverflowDropWarned_ = 0;
-    // #2334 measurement: IR_OVERFLOW_COUNT_LOG surfaces the per-frame overflow
+    // measurement: IR_OVERFLOW_COUNT_LOG surfaces the per-frame overflow
     // entry count (ctrl instanceCount) each time it changes — the per-pose counts
     // the far-quadrant sweep records. Off by default (no per-frame log spam); read
     // once at system construction. lastOverflowCountLogged_ de-dups identical poses.
     bool overflowCountLogEnabled_ = std::getenv("IR_OVERFLOW_COUNT_LOG") != nullptr;
     std::uint32_t lastOverflowCountLogged_ = 0xFFFFFFFFu;
-    // #2479 acceptance 7c: the canonical sort's dispatch count for the rotating
+    // The canonical sort's dispatch count for the rotating
     // frame, logged under the same env gate each time it changes. An unflagged
     // pool — and, per the (ii) predicate, a flagged pool whose overflow list
     // was empty last completed frame — must read 0. The "structurally zero
@@ -455,7 +455,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     IREntity::EntityId perAxisCanvasEntity_ = IREntity::kNullEntity;
     C_PerAxisTrixelCanvases *perAxisCanvases_ = nullptr;
 
-    // Fog-of-war column cull (#2008): a shared 1×1 all-visible texture bound at
+    // Fog-of-war column cull: a shared 1×1 all-visible texture bound at
     // image slot 0 of the compact dispatch for every canvas that has no
     // C_CanvasFogOfWar (detached, GUI, non-fog creations). The compact shader
     // short-circuits on imageSize().x <= 1, so the placeholder is a true no-op —
@@ -469,13 +469,13 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // buffer (not FOG_TO_TRIXEL's) so STAGE_1 carries no creation-order
     // dependency and reads the CURRENT frame's circles, not a frame-stale copy.
     Buffer *fogObserverBuf_ = nullptr;
-    // Reusable .r → RGBA8 expansion scratch for the relocated fog upload
-    // (#2008). System ticks are serial, so one shared buffer keeps the
+    // Reusable .r → RGBA8 expansion scratch for the relocated fog upload.
+    // System ticks are serial, so one shared buffer keeps the
     // per-dirty-frame upload allocation-free across however many fog canvases
     // exist; the value-init resize zeros the GBA bytes the loop never writes.
     std::vector<std::uint8_t> fogUploadScratch_;
     // The MAIN canvas's fog component, resolved + uploaded once per frame in
-    // beginTick (#2127). A detached re-voxelize canvas carries no C_CanvasFogOfWar
+    // beginTick. A detached re-voxelize canvas carries no C_CanvasFogOfWar
     // of its own, but a WORLD-PLACED one cross-sections against the world vision
     // boundary, so its STAGE_1/STAGE_2 dispatch binds THIS world fog grid +
     // observers (recovering each voxel's world column from detachedWorldReceive).
@@ -485,7 +485,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
 
     // Every DETACHED_REVOXELIZE canvas's resident locals buffer, resolved once
     // per frame in beginTick by IRPrefab::DetachedRevoxelize::syncResidentBuffers
-    // and consumed by the per-entity tick (#1556). Keyed by canvas entity +
+    // and consumed by the per-entity tick. Keyed by canvas entity +
     // linear-scanned in the tick because the iterated canvas isn't in the system's
     // template params, and a re-voxelize canvas's C_DetachedRevoxelizeBuffer can't
     // be added to the archetype filter without dropping every other voxel-pool
@@ -494,7 +494,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     std::vector<std::pair<IREntity::EntityId, C_DetachedRevoxelizeBuffer *>>
         detachedRevoxelizeBuffers_;
 
-    // Zero / all-ones scratch for the inverse-resample re-voxelize path (#1619),
+    // Zero / all-ones scratch for the inverse-resample re-voxelize path,
     // grown to a high-water mark and reused (cpp-ecs.md "no allocation in hot
     // ticks"). activeMaskClearScratch_ pre-clears the active-mask window the GPU
     // fill atomic-ORs onto; allVisibleChunkScratch_ marks every dest-slot chunk
@@ -512,9 +512,9 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
 
     // Fill the GPU buffers for a DETACHED_REVOXELIZE pool, replacing the CPU
     // flushStaticPositionRanges. Two modes (see RevoxelizeDetachedParams):
-    //   IDENTITY / source path (#1556) — one thread per live voxel rotates+rounds
+    // IDENTITY / source path — one thread per live voxel rotates+rounds
     //     its resident local into binding 5; the CPU still uploads color + active.
-    //   INVERSE resample (#1619, rotating) — one thread per DEST cell of the
+    // INVERSE resample (rotating) — one thread per DEST cell of the
     //     rotated-AABB cube inverse-looks-up the source grid and authors
     //     position + color + active for occupied dest slots (hole-free). The
     //     active-mask window is pre-cleared here so the fill's atomic-OR starts
@@ -531,7 +531,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     ) {
         RevoxelizeDetachedParams params{};
         params.canvasRotation_ = canvasRotation.rotation_;
-        // Half-cell anchor of the authored solid (#2349); the inverse resample
+        // Half-cell anchor of the authored solid; the inverse resample
         // maps between anchored points (cell + anchor), not raw lattice cells.
         params.anchor_ = vec4(buffer.anchor_, 0.0f);
         constexpr int kLocalSize = 64;
@@ -597,17 +597,17 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     }
 
     // Route the visible voxel faces into the three per-axis trixel canvases for
-    // smooth camera Z-yaw (T2 / #1309). Runs ONLY on the main world canvas and
+    // smooth camera Z-yaw. Runs only on the main world canvas and
     // ONLY while rotating (the per-axis textures are allocated). Reuses this
     // frame's compacted-voxel list + indirect dispatch params (the single-
     // canvas pass already populated them), re-binding each axis canvas's
     // textures and flipping `perAxisRoute_` so the shaders route + continuously
     // reposition that axis's face. The single canvas the framebuffer still
-    // reads is untouched, so the rendered frame stays byte-identical until T3
-    // (#1310) composites these canvases. Restores the UBO to the main-canvas
+    // reads is untouched; the framebuffer consumer composites these canvases.
+    // Restores the UBO to the main-canvas
     // frame data on exit so downstream stages (AO, lighting, fog) are
     // unaffected.
-    // #2333 overflow-lane ctrl-block bookkeeping. The block doubles as the
+    // overflow-lane ctrl-block bookkeeping. The block doubles as the
     // overflow scatter's indirect draw args: {indexCount, instanceCount,
     // firstIndex, baseVertex, baseInstance, droppedCount, pad, pad}. Mode 3
     // atomically appends instanceCount / droppedCount; everything else is
@@ -630,14 +630,14 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         );
     }
 
-    // Cap overflow must never be silent (#2333 acceptance): read LAST rotating
-    // frame's ctrl block — written by a dispatch that already retired, so the
+    // Cap overflow must never be silent: read the last rotating
+    // frame's ctrl block, written by a dispatch that already completed, so the
     // CPU read needs no fence (the same pattern as the cull-diagnostic
     // readback in tick(); Metal's present() waits each frame to completion, so
     // the read can never observe an in-flight append, and GL's getSubData
     // implicit-syncs any pending write) — and one-shot-warn when entries were
-    // dropped. Since #2479 (ii) the same read is load-bearing, not
-    // diagnostic-only: it stamps laggedOverflowCount_, the completed-frame
+    // dropped. The same read is load-bearing, not diagnostic-only: it stamps
+    // laggedOverflowCount_, the completed-frame
     // live count the canonical sort's enable predicate reads.
     void warnOverflowDropsIfAny(C_PerAxisTrixelCanvases &axes) {
         std::array<std::uint32_t, 8> ctrl{};
@@ -658,7 +658,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             );
             lastOverflowDropWarned_ = dropped;
         }
-        // #2334: per-pose overflow entry count for the far-quadrant cost sweep.
+        // per-pose overflow entry count for the far-quadrant cost sweep.
         // ctrl[1] is the indirect-draw instanceCount = live overflow entries.
         if (overflowCountLogEnabled_) {
             const std::uint32_t count = ctrl[1];
@@ -674,13 +674,13 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         }
     }
 
-    // @p sortOverflowEntries is the ticking pool's #2346 storeTiesPossible_
+    // @p sortOverflowEntries is the ticking pool's storeTiesPossible_
     // flag: displaced voxels sharing a rounded cell are what produce the
-    // equal-key overflow entries whose draw order the #2479 canonical sort
+    // equal-key overflow entries whose draw order the canonical sort
     // exists to pin. An unflagged pool cannot produce that tie class from the
-    // cardinal store, so it skips the sort entirely (acceptance 7c). The flag
-    // is necessary but not sufficient — the dispatch site additionally
-    // requires a nonempty overflow list (#2479 (ii)), so a flagged pool at a
+    // cardinal store, so it skips the sort entirely. The flag
+    // is necessary but not sufficient: the dispatch site additionally
+    // requires a nonempty overflow list, so a flagged pool at a
     // pose that appends nothing also pays zero sort dispatches.
     void dispatchPerAxisCanvases(
         C_PerAxisTrixelCanvases &axes,
@@ -689,14 +689,14 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     ) {
         IR_PROFILE_SCOPE("vs1_per_axis");
         // Fog cut-face / own-column-clip input for the per-axis rotation route
-        // (#2128): the real 256² fog grid on the main world canvas, else the 1×1
+        // the real 256² fog grid on the main world canvas, else the 1×1
         // all-visible placeholder so a rotating non-fog scene short-circuits the
         // shader test and stays byte-identical. The live vision circles were
         // uploaded into fogObserverBuf_ by the compact pass earlier in this same
         // per-canvas tick (the per-axis canvas is always the main canvas), so we
         // only bind it here — mirror of the single-canvas STAGE_1/2 binds.
         Texture2D *fogTex = (fog != nullptr) ? fog->getTexture() : fogCullPlaceholder_;
-        // Per-axis canvas uses the fractional-offset encoding (#1458); valid
+        // Per-axis canvas uses the fractional-offset encoding; valid
         // values exceed kTrixelDistanceMaxDistance, so INT_MAX is the sentinel.
         static constexpr std::int32_t kDistanceClear =
             static_cast<std::int32_t>(IRConstants::kPerAxisTrixelDistanceEmpty);
@@ -710,7 +710,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         const int uncappedSub = frameData_.voxelRenderOptions_.y;
 
         // Cap the per-axis lattice density so face-local cells stay inside the
-        // bounded per-axis canvas (#1431). The canvas isn't sized for the
+        // bounded per-axis canvas. The canvas isn't sized for the
         // ×subPerAxis lattice, so a large effSub (high voxel_render_subdivisions
         // or zoom) overflows it and on-screen faces are silently clipped to
         // background. The capped value rides in voxelRenderOptions_.y so the
@@ -734,10 +734,10 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         }
 
         const ivec2 perAxisOffsetZ1 = IRMath::trixelOriginOffsetZ1(axes.size_);
-        // #2255 / #2333: the unified resolve scratch — [winnerIds][viewMask]
+        // the unified resolve scratch — [winnerIds][viewMask]
         // [ctrl][overflow entries] — bound whole for every per-axis dispatch
         // (transient reuse of kBufferIndex_PerAxisResolveScratch — free during
-        // the per-axis window; the #1435 resolve + BAKE consumers re-bind it
+        // the per-axis window; the resolve + BAKE consumers re-bind it
         // themselves). winnerScratchBytes covers exactly region 0 (the winner
         // ids), so the per-axis fillBuffer reset below is unchanged.
         const std::size_t winnerScratchBytes = static_cast<std::size_t>(axes.size_.x) *
@@ -748,7 +748,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             kBufferIndex_PerAxisResolveScratch
         );
 
-        // #2333 view-visibility overflow lane bookkeeping. Read LAST rotating
+        // view-visibility overflow lane bookkeeping. Read LAST rotating
         // frame's drop counter for the one-shot cap warn (before the reset
         // clears it), reset the ctrl block (draw args + counters), and reset
         // the winner + view-mask regions to the 0xFFFFFFFF empty sentinel in
@@ -771,7 +771,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         frameData_.trixelCanvasOffsetZ1_ = perAxisOffsetZ1;
         frameData_.canvasSizePixels_ = axes.size_;
 
-        // Per-axis store list-walk split (#1739): each axis dispatches over
+        // Per-axis store list-walk split: each axis dispatches over
         // only its own ~1/3 region of the compacted list (every voxel in it
         // already has an exposed face on this axis), with the store shader's
         // (faceId>>1)!=axis reject pruning the other two of the workgroup's
@@ -806,9 +806,9 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             frameDataBuf_->subData(0, sizeof(FrameDataVoxelToCanvas), &frameData_);
         };
 
-        // Dispatch order per rotating frame (#2333; view mask folded into the
-        // store by #2487): store + view mask (mode 0) ×3 → barrier → overflow
-        // append (mode 3) ×3 → barrier → overflow canonical sort (#2479) →
+        // Dispatch order per rotating frame: store + view mask (mode 0) ×3 →
+        // barrier → overflow
+        // append (mode 3) ×3 → barrier → overflow canonical sort →
         // barrier → per axis {election (mode 1) → stage 2}.
         // The mask must be complete across ALL axes before any mode-3 test (view
         // visibility competes across axes) — the store phase now writes all three
@@ -816,9 +816,9 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // axis's settled distance store; the election stays last so its per-axis
         // winner-region refill never overlaps the mask/append reads.
         //
-        // Phase A — clears + cardinal stores + view mask (mode 0).
-        // Sub-scope (#2281): each phase group below owns its GPU row so the
-        // rotating burst is attributable per phase (the braces bound the
+        // Store pass — clears + cardinal stores + view mask (mode 0).
+        // Each dispatch group owns a GPU row so the rotating burst is
+        // attributable by operation (the braces bound the
         // timers, not the GPU bindings).
         {
             GpuSubStageScope storeScope("voxelPerAxisStore");
@@ -838,8 +838,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 const std::ptrdiff_t indirectOffsetBytes = bindAxisListRegions(axis);
 
                 // STAGE_1 reads the fog grid (slot 0) + observers (binding 27) for its
-                // per-voxel fog clip (#2102) + cut-face test (#2125). The per-axis
-                // rotation route now runs that clip/cut too (#2128), so bind the REAL
+                // per-voxel fog clip + cut-face test. The per-axis
+                // rotation route now runs that clip/cut too, so bind the REAL
                 // fog grid (or the placeholder on a non-fog canvas — short-circuits,
                 // byte-identical) + the live observer buffer here, not a no-op
                 // placeholder. Without the live grid a rotating boundary object would
@@ -855,8 +855,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             // All three distance stores settled — read below by the mode-3
             // cardinal-winner test, the elections, and stage 2's depth re-test.
             IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
-            // #2487: the store now also writes the view mask (folded from the
-            // former mode-2 sweep) into the binding-28 scratch — all three axes'
+            // The store also writes the view mask into the binding-28 scratch;
+            // all three axes'
             // masks are complete here, so barrier the storage writes before the
             // mode-3 compare reads them below.
             IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
@@ -864,10 +864,9 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
 
         {
             GpuSubStageScope overflowScope("voxelPerAxisOverflow");
-            // Phase C — overflow append (mode 3): faces that win (tie) their view
+            // Overflow append (mode 3): faces that win (tie) their view
             // cell but lost their cardinal store cell append scatter entries. The
-            // view mask it reads was written by the store phase above (#2487) and
-            // barriered before this scope.
+            // view mask it reads was written and barriered by the store pass.
             for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
                 uploadAxisFrameData(axis, 3);
                 const std::ptrdiff_t indirectOffsetBytes = bindAxisListRegions(axis);
@@ -883,7 +882,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                     indirectOffsetBytes
                 );
             }
-            // #2479: canonical-order the appended entries so the indirect
+            // canonical-order the appended entries so the indirect
             // draw's entry order — and therefore every equal-key depth-test
             // winner — is a pure function of the appended SET, not the
             // run-variant atomicAdd append sequence. Sentinel-fill
@@ -891,11 +890,10 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             // power-of-two cap. Dispatch counts derive from the cap CPU-side
             // (reading the live ctrl[1] per frame would sync-stall).
             //
-            // Gated on the pool's #2346 displaced-collision flag AND a
-            // nonempty overflow list (#2479 (ii)) — both terms CPU-side on
+            // Gated on the pool's displaced-collision flag AND a
+            // nonempty overflow list, with both terms CPU-side on
             // both backends so the sort SEMANTICS never fork by backend. An
-            // unflagged pool runs master's exact dispatch sequence: no fill,
-            // no network, structurally zero added dispatches (acceptance 7c)
+            // unflagged pool runs no fill or network and adds no dispatches
             // — and so does a flagged pool whose list was empty last
             // completed frame (the amp-0 IRPerfGrid voxel_set case). The
             // count term is the lagged ctrl[1] stamped by
@@ -991,11 +989,11 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
 
         {
             GpuSubStageScope finalizeScope("voxelPerAxisFinalize");
-            // Phase D — #2255 winner election (mode 1) + stage 2, per axis. The
+            // Winner election (mode 1) + stage 2, per axis. The
             // winner scratch (region 0) is serially reused across axes: refill to
             // the no-winner sentinel, elect this axis's winners, then let stage 2's
             // guard admit exactly one tied face per cell — byte-identical semantics
-            // to the pre-#2333 interleaved loop (the election ran after this axis's
+            // to the interleaved loop (the election ran after this axis's
             // store then too; the mask/append phases in between touch only the
             // other scratch regions).
             for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
@@ -1004,7 +1002,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 Texture2D *distances = tex.distances_.second;
                 Texture2D *entityIds = tex.entityIds_.second;
 
-                // #2255: reset the winner scratch to the no-winner sentinel
+                // reset the winner scratch to the no-winner sentinel
                 // (0xFFFFFFFF — a repeating byte, so both backends fill GPU-side)
                 // before this axis's winner-resolve dispatch below.
                 IRRender::device()->fillBuffer(axes.winnerIds_.second, winnerScratchBytes, 0xFFu);
@@ -1032,7 +1030,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 colors->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
                 distances->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::R32I);
                 entityIds->bindAsImage(2, TextureAccess::WRITE_ONLY, TextureFormat::RG32UI);
-                // STAGE_2 re-evaluates STAGE_1's cut-face predicate (#2125/#2128) so its
+                // STAGE_2 re-evaluates STAGE_1's cut-face predicate so its
                 // colour tap lands on the same faces. Slot 0 is the colour output here,
                 // so the fog grid binds on slot 3 (slots 1/2 = distance + entity-id).
                 // Same real-grid-or-placeholder choice as STAGE_1 above.
@@ -1061,7 +1059,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         frameDataBuf_->subData(0, sizeof(FrameDataVoxelToCanvas), &frameData_);
     }
 
-    // Per-axis empty-cell compaction (#1961 / #2256). Scan each per-axis distance
+    // Per-axis empty-cell compaction. Scan each per-axis distance
     // canvas and append its occupied cells into the component-owned compacted-cell
     // region, filling the indirect args the framebuffer scatter DRAWS from AND the
     // compute-indirect dispatch dims the per-axis AO / sun-shadow / lighting /
@@ -1075,7 +1073,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         if (cellCompacted == nullptr || cellIndirect == nullptr) {
             return;
         }
-        // Sub-scope (#2281) — after the early-return so the row only samples
+        // Sub-scope — after the early-return so the row only samples
         // when the dispatches actually run.
         GpuSubStageScope compactScope("perAxisCellCompact");
         const ivec2 axisSize = axes.size_;
@@ -1120,7 +1118,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // Make each axis's occupied count (instanceCount) visible to the finalize.
         IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
 
-        // #2256: derive the per-axis compute-indirect dispatch dims from the final
+        // derive the per-axis compute-indirect dispatch dims from the final
         // occupied counts (a cheap 3-thread pass — one axis per workgroup over the
         // whole indirect buffer). Split out of the compaction so its full-grid scan
         // stays barrier-free.
@@ -1142,10 +1140,10 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         indirectBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_IndirectDispatchParams);
     }
 
-    // Chunk-occlusion HZB pre-pass (#1294 child 2/3). Runs after the frustum
+    // Chunk-occlusion HZB pre-pass. Runs after the frustum
     // ChunkVisibility mask + frame-data are uploaded and BEFORE the compact pass,
     // so the compact reads the AND of frustum ∧ occlusion. Tests last frame's
-    // Hi-Z (#1798); only fully-on-screen NONE-mode cardinal chunks are eligible
+    // Hi-Z; only fully-on-screen NONE-mode cardinal chunks are eligible
     // (shadow-feeder-safe by construction — off-screen casters fall outside the
     // visible viewport and are never tested). Conservative: a footprint still
     // seeing background (65535) keeps the chunk. Caller gates the whole pass off
@@ -1227,7 +1225,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         compactedBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_CompactedVoxelIndices);
     }
 
-    // Relocated from FOG_TO_TRIXEL (#2008): push the CPU fog mirror to its GPU
+    // Relocated from FOG_TO_TRIXEL: push the CPU fog mirror to its GPU
     // texture once per dirty frame. STAGE_1 now owns the upload so the column
     // cull below — and the later FOG_TO_TRIXEL post-process — read the SAME,
     // current-frame fog (no one-frame lag, no startup-frame garbage). The
@@ -1257,11 +1255,11 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         fog.dirty_ = false;
     }
 
-    // Lazily (re)allocate the cardinal winner buffer to cover @p canvasSize
-    // (#2346). Grow-only: canvas sizes are static per scene, so this fires at
+    // Lazily (re)allocate the cardinal winner buffer to cover @p canvasSize.
+    // Grow-only: canvas sizes are static per scene, so this fires at
     // most a handful of times per run; lattice (unflagged) scenes never call
     // it and allocate nothing. Standard destroy-then-create keeps the Metal
-    // sticky binding tables scrubbed (the Buffer destructor untracks — #2412);
+    // sticky binding tables scrubbed because the Buffer destructor untracks them;
     // never hand-roll a raw MTLBuffer here.
     void ensureCardinalWinnerCapacity(ivec2 canvasSize) {
         const std::size_t bytes = static_cast<std::size_t>(canvasSize.x) *
@@ -1288,9 +1286,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         C_TriangleCanvasTextures &triangleCanvasTextures,
         const C_CanvasLocalRotation &canvasLocalRotation
     ) {
-        // CPU whole-tick timing (#2280): this system is no longer tagged for the
-        // per-system GpuStageTimingObserver (which used to supply both the CPU
-        // and GPU `voxelStage1` samples), so record the CPU side here to keep
+        // CPU whole-tick timing is recorded here because this system is not
+        // tagged for the per-system GpuStageTimingObserver. This preserves
         // the HUD's / auto-profile's `voxelStage1` CPU number. Note the
         // intentional asymmetry the sub-attribution introduces: CPU `voxelStage1`
         // stays the WHOLE per-canvas tick, while GPU `voxelStage1` now measures
@@ -1314,7 +1311,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             clearCanvasAndDistances(entity, triangleCanvasTextures);
         }
 
-        // Fog-of-war column cull (#2008): resolve this canvas's optional fog
+        // Fog-of-war column cull: resolve this canvas's optional fog
         // texture and flush any pending CPU edit to the GPU BEFORE the
         // early-return below, so a pure-SDF fog scene (no live voxels) still
         // uploads current fog for FOG_TO_TRIXEL's explored/unexplored masking.
@@ -1348,23 +1345,18 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             canvasLocalRotation
         );
 
-        // Re-voxelize zoom-clip cap (#1570 D2). A re-voxelize detached canvas
+        // Re-voxelize zoom-clip cap. A re-voxelize detached canvas
         // rasters its pool in model space into a fixed-size canvas, but effSub
         // folds in camera zoom, so a zoom-scaled lattice overflows the canvas and
         // on-screen faces clip to background. Clamp the density to what the canvas
-        // holds (the single-canvas analogue of the per-axis #1431 cap). Applied
+        // holds (the single-canvas analogue of the per-axis cap). Applied
         // here — before the UBO upload + compact dispatch below — so the compact
         // pass sizes the indirect Z count from the capped value too (no skip guard
         // needed). Gated on re-voxelize so the main world canvas and the
         // forward-scatter detached canvases stay byte-identical.
         //
-        // The pool size feeding subdivisionCap was uninitialized before #2043 —
-        // see C_VoxelPool::m_voxelPoolSize3D — which non-deterministically pinned
-        // this cap (the #2043 root cause); it is now correct, so a generously-sized
-        // canvas (footprint cap ≫ effSub) admits cubeSub > 1, which surfaces the
-        // #2043 detached-canvas oversize. The cubeSub→apparent-size decoupling that
-        // fixes that is a composite-side change (ENTITY_CANVAS_TO_FRAMEBUFFER divides
-        // cubeSub out of the quad scale + gather density — #2043 Option A, see
+        // A generously sized canvas can admit cubeSub > 1. The composite must
+        // divide cubeSub out of the quad scale and gather density; see
         // docs/design/detached-canvas-density-compensation.md); it is NOT a
         // raster-side zoom-track here (camera zoom is clamped to ≥ 1 by
         // kTrixelCanvasZoomMin, so a zoom-track at this site can never lower the
@@ -1380,15 +1372,15 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
 
         // Publish the sub this canvas actually rastered at so the detached
         // composite can rescale this canvas's model-frame depth into the shared
-        // framebuffer depth units (#1624 world-placed depth fix). For the main
+        // framebuffer depth units. For the main
         // world canvas this is the un-capped global effSub; for a capped
         // re-voxelize canvas it is the reduced value. Stamped for every voxel
         // canvas (the main canvas's value is simply never read by the detached
         // composite).
         triangleCanvasTextures.renderedSubdivisions_ = frameData_.voxelRenderOptions_.y;
 
-        // No-priority perf fast-path (#2155). Publish whether any voxel in this
-        // canvas's pool carries a non-zero per-trixel priority (#1960), maintained
+        // No-priority perf fast-path. Publish whether any voxel in this
+        // canvas's pool carries a non-zero per-trixel priority, maintained
         // push-at-mutation on the pool (O(1) read, no per-voxel scan). The
         // finalization gather (TRIXEL_TO_FRAMEBUFFER) and the detached composite
         // (ENTITY_CANVAS_TO_FRAMEBUFFER) forward it into the shader's UBO to gate
@@ -1397,12 +1389,12 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // changeVoxelPriority*, so a rotating priority solid still stamps 1.
         triangleCanvasTextures.anyPerTrixelPriority_ = voxelPool.hasPerTrixelPriority() ? 1 : 0;
 
-        // Detached re-voxelize fill mode (#1556 / #1619). The INVERSE path (#1619,
-        // rotating) dispatches over the dest-cell cube and the GPU authors
+        // Detached re-voxelize fill mode. The rotating INVERSE path dispatches
+        // over the destination-cell cube and the GPU authors
         // position + color + active for those slots, so the shared compact + frame
         // `voxelCount` walk D dest slots (not the source count) and the CPU
-        // color/active uploads below are skipped. At identity the source path runs
-        // and everything stays byte-identical to #1556.
+        // color/active uploads below are skipped. At identity, the source path
+        // runs and preserves the non-rotating output.
         C_DetachedRevoxelizeBuffer *revoxBuffer =
             canvasLocalRotation.reVoxelize_ ? lookupDetachedRevoxelizeBuffer(entity) : nullptr;
         const bool revoxInverse = revoxBuffer != nullptr && revoxBuffer->isAllocated() &&
@@ -1433,24 +1425,24 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         const IsoBounds2D chunkVp =
             IRPrefab::SunShadow::shadowFeederCullViewport(kCullChunkMargin, shadowFeederParams_);
         const CardinalIndex chunkCardinal = IRMath::rasterYawCardinalIndex(frameData_.rasterYaw_);
-        // Smooth camera Z-yaw (T3 / #1310): while rotating (residual yaw != 0,
+        // Smooth camera Z-yaw: while rotating (residual yaw != 0,
         // i.e. the per-axis canvases are active), project the chunk-visibility
         // gate with the same continuous yaw the per-axis scatter raster uses, so
         // off-center chunks aren't dropped by the cardinal snap. residual == 0
         // keeps the byte-identical cardinal path. residualYaw_ is deadbanded at
-        // its source (Camera::computeYawSplit / kResidualYawDeadband, #1882), so
+        // its source (Camera::computeYawSplit / kResidualYawDeadband), so
         // this `!= 0` path-select predicate matches the per-axis allocation gate
-        // exactly — a near-cardinal residual can't free the textures while still
-        // routing here (the old gap that read freed textures as coverage holes).
+        // exactly, preventing a near-cardinal residual from freeing textures
+        // while this path still reads them.
         const bool rotating = frameData_.residualYaw_ != 0.0f;
         if (revoxInverse || canvasLocalRotation.isDetached()) {
             // Model-space canvas domain: EVERY detached canvas (forward-scatter
             // and re-voxelize alike, at any rotation) rasters its pool in its
             // own model-space canvas (camera pan/yaw zeroed), so the
             // camera-space chunk viewport does not apply — panning the camera
-            // must not cull a detached solid out of its own canvas (#1555).
+            // must not cull a detached solid out of its own canvas.
             // Mark every chunk visible; a detached pool is at most a handful of
-            // chunks. The revoxInverse dest-cell domain (#1619) additionally
+            // chunks. The revoxInverse dest-cell domain additionally
             // needs this because rebuildChunkBounds keys chunks by SOURCE slot,
             // which no longer matches the dest-slot domain the compact walks.
             const int chunkWords = IRMath::divCeil(effectiveVoxelCount, IRRender::kVoxelChunkSize);
@@ -1479,7 +1471,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         const IsoBounds2D visibleVp = IRRender::getCullViewport().isoViewport(kGpuMargin);
         // Whether this canvas has an off-screen shadow-feeder ring this frame —
         // the condition for the Metal scratch resolve after the feeder dispatch
-        // below (#2488). Resolved here because both boxes are in scope only here.
+        // below. Resolved here because both boxes are in scope only here.
         bool shadowFeederRing = false;
         if (canvasLocalRotation.isDetached()) {
             // Model-space canvas domain (same rationale as the chunk mask
@@ -1487,9 +1479,9 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             // to a detached canvas — its content coordinates are model-local
             // and everything the canvas can hold is "visible" (writes past the
             // canvas edge already clip at isInsideCanvas). Cover the full
-            // canvas span so no pan/zoom camera state can cull the solid
-            // (#1555); the visible bounds match so stage 2's depth-only
-            // feeder skip (#1740) stays inert for detached content.
+            // canvas span so no pan/zoom camera state can cull the solid; the
+            // visible bounds match so stage 2's depth-only
+            // feeder skip stays inert for detached content.
             const ivec2 canvasSpan = triangleCanvasTextures.size_;
             frameData_.cullIsoMin_ = -canvasSpan;
             frameData_.cullIsoMax_ = canvasSpan;
@@ -1499,7 +1491,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 IRPrefab::SunShadow::shadowFeederCullViewport(kGpuMargin, shadowFeederParams_);
             frameData_.cullIsoMin_ = ivec2(IRMath::floor(gpuVp.min_));
             frameData_.cullIsoMax_ = ivec2(IRMath::ceil(gpuVp.max_));
-            // Depth-only shadow-feeder path (#1740): the SAME viewport at the same
+            // Depth-only shadow-feeder path: the SAME viewport at the same
             // margin BEFORE shadowFeederCullViewport widened it toward the sun. A
             // voxel inside gpuVp (it passed the compact cull) but outside this is an
             // off-screen shadow feeder — stage 2 skips its colour/entity-id taps.
@@ -1510,7 +1502,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 ivec4(ivec2(IRMath::floor(visibleVp.min_)), ivec2(IRMath::ceil(visibleVp.max_)));
             shadowFeederRing = IRPrefab::SunShadow::shadowFeederRingNonEmpty(gpuVp, visibleVp);
             frameShadowFeederRingNonEmpty_ |= shadowFeederRing;
-            // #3010 gate instrument: the test-only classify pad, applied AFTER
+            // gate instrument: the test-only classify pad, applied AFTER
             // the floor/ceil and to THIS box only. `gpuVp` (the cull box), the
             // Hi-Z window, and the `shadowFeederRingNonEmpty` guard above all
             // keep reading the unpadded values, which is what makes the pad
@@ -1527,16 +1519,16 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             }
         }
 
-        // Occlusion cull gate (#1294 chunk pre-pass + #1812 per-voxel refine, off
+        // Occlusion cull gate: chunk pre-pass plus per-voxel refine, off
         // by default). Enabled only on the states whose distance encoding +
         // shadow-feeder semantics are verified: enabled, NOT stale (no
-        // discontinuous camera move this frame — #1294 child 3/3, resolved in
+        // discontinuous camera move this frame, resolved in
         // beginTick), NONE render mode (encodeDepthWithFace = rawDepth*kDepthEncodeShift), cardinal
         // yaw (!rotating → per-axis canvases inactive, so no split-list
         // interaction), a non-re-voxelize pool (the frustum mask is the real
         // per-chunk mask, not the all-visible dest-cell scratch), a NON-detached
-        // canvas (detached content rasters in model space; the camera-space
-        // last-frame Hi-Z has no meaning for it — #1555/#2348), AND a built Hi-Z
+        // canvas (detached content rasters in model space, so the camera-space
+        // last-frame Hi-Z has no meaning for it), AND a built Hi-Z
         // chain. Any other state keeps every voxel (conservative). The chunk
         // pre-pass ANDs occluded chunks out of ChunkVisibility (24); the compact
         // then runs the per-voxel Hi-Z test on the survivors (occlusionCullMipCount_
@@ -1547,8 +1539,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             frameData_.voxelRenderOptions_.x == 0 && !rotating && revoxBuffer == nullptr &&
             !canvasLocalRotation.isDetached() && occlusionMipCount > 0;
         // The chunk pre-pass (dispatched below on occlusionCullActive) and the
-        // per-voxel Hi-Z refine are separately toggleable so the #1812 marginal
-        // acceptance gate can A/B the per-voxel test in isolation while the chunk
+        // per-voxel Hi-Z refine are separately toggleable so the marginal
+        // diagnostic can A/B the per-voxel test in isolation while the chunk
         // cull stays on: --no-per-voxel-occlusion zeroes the mip count (skips the
         // compact's per-voxel test) without touching dispatchChunkOcclusion. The
         // per-voxel toggle defaults on, so --occlusion-cull alone runs both.
@@ -1556,7 +1548,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             (occlusionCullActive && IRRender::getVoxelPerVoxelOcclusionEnabled())
                 ? occlusionMipCount
                 : 0;
-        // #2258 Step B: cap the shadow-feeder dispatch's strided micro-grid to
+        // Cap the shadow-feeder dispatch's strided micro-grid to
         // the sun-bake texel density so an off-screen caster's coarse trixel
         // depth still lands ≥1 sample per sun-map texel (no shadow holes).
         // feederPassTailBase_ is the effectiveVoxelCount the compact was
@@ -1564,7 +1556,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // Sun shadows off ⇒ sunDir_ is zero ⇒ cap == effSub AND the compact
         // classifies zero feeders, so the whole partition is inert
         // (byte-identical). The visible-vs-feeder selection is a compile-time
-        // IR_FEEDER_PASS shader specialization now (architect a′), so there is no
+        // IR_FEEDER_PASS shader specialization, so there is no
         // per-dispatch feederPass_ flag to seed here — the feeder dispatch just
         // binds stage1FeederProgram_ (below).
         frameData_.feederSubCap_ = IRPrefab::SunShadow::feederSubCap(
@@ -1590,7 +1582,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // would clobber the prepass output with translation-only data.
         {
             IR_PROFILE_SCOPE("vs1_pos");
-            // #2346: activation-only edits (activate/deactivate/carve/fillPlane/
+            // activation-only edits (activate/deactivate/carve/fillPlane/
             // reshape) change which voxels are live without queuing a position
             // range, so `positionsChanged` below misses them. Consume the pool's
             // active-mask-mutation signal here (every branch, so it never leaks to
@@ -1600,7 +1592,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             // this feature closes reappears for editor/carve/reveal workflows.
             const bool activeMaskChanged = voxelPool.consumeActiveMaskChanged();
             if (revoxBuffer != nullptr && revoxBuffer->isAllocated()) {
-                // Detached re-voxelize (#1556 / #1619): the GPU compute owns binding
+                // Detached re-voxelize: the GPU compute owns binding
                 // 5 (and, in the inverse path, color + active) for this pool — fill
                 // it from this frame's quat in place of flushStaticPositionRanges.
                 // Every frame, since the quat changes. Mark this canvas as the last
@@ -1616,7 +1608,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 flushStaticPositionRanges(voxelPool, voxelPosBuf_, liveVoxelCount);
                 voxelPool.clearPendingPositionRanges();
                 lastUploadedCanvas_ = entity;
-                // #2346: the re-seed is a position-content change for this
+                // the re-seed is a position-content change for this
                 // canvas — refresh the pool's cardinal tie-possibility signal.
                 // (The re-voxelize branch above is exempt by construction: its
                 // GPU fill authors integer DEST cells, which are unique — no
@@ -1626,7 +1618,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 const bool positionsChanged = !voxelPool.getPendingPositionRanges().empty();
                 flushPendingPositionRanges(voxelPool, voxelPosBuf_);
                 if (positionsChanged || activeMaskChanged) {
-                    // #2346: positions moved OR an activation-only edit changed
+                    // positions moved OR an activation-only edit changed
                     // which voxels are live this frame — refresh the tie signal.
                     // Off-lattice content early-exits the scan on its first
                     // fractional component, so animating scenes pay near-zero
@@ -1640,7 +1632,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             }
         }
         // Color + active uploads are source-indexed (slot == source voxel). The
-        // inverse-resample path (#1619) authors both on the GPU per DEST slot
+        // inverse-resample path authors both on the GPU per DEST slot
         // instead, so skip the CPU uploads there — they would clobber the GPU's
         // dest-cell color and the atomic-OR'd active bits with source-indexed data.
         if (!revoxInverse) {
@@ -1663,7 +1655,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         }
         syncEntityIds(voxelPool, liveVoxelCount, voxelEntityIdBuf_);
 
-        // Smooth camera Z-yaw (T3 / #1310): while the MAIN canvas's per-axis
+        // Smooth camera Z-yaw: while the main canvas's per-axis
         // canvases are active, SKIP the single-canvas voxel rasterization. The
         // per-axis dispatch below writes the voxels (smooth), and the framebuffer
         // scatter composites them; rasterizing the snapped voxels into the single
@@ -1691,11 +1683,11 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         //
         // The source depends on the path the prior frame's compact took. The
         // single-canvas (cardinal) compact appends survivors into indirectBuf_,
-        // but the per-axis split (#1739, active iff skipSingleCanvasVoxels)
+        // but the per-axis split (active iff skipSingleCanvasVoxels)
         // routes its count into perAxisIndirectBuf_'s three axis regions and
         // leaves indirectBuf_ zeroed. Reading indirectBuf_ unconditionally
         // reported a spurious 0/total for every rotating (per-axis) frame
-        // (#1856) — sum the three axis regions when the split path is active.
+        // — sum the three axis regions when the split path is active.
         // A voxel exposed on N axes is appended to N regions, so the per-axis
         // sum counts face-routings (≥ the unique visible-voxel count): the
         // "how much work the per-axis path does" cull-effectiveness signal the
@@ -1717,12 +1709,12 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 VoxelIndirectDispatchParams previous{};
                 indirectBuf_->getSubData(0, sizeof(VoxelIndirectDispatchParams), &previous);
                 visible = previous.visibleCount;
-                // Struct 1 (the #2258 Step-B shadow-feeder tail list) shares
+                // Struct 1 (the shadow-feeder tail list) shares
                 // indirectBuf_ at kPerAxisSsboAlignBytes and follows the same
                 // prior-frame-before-zeroing contract, so its count rides the
                 // same sync-free read. Single-canvas path only — the per-axis
-                // split never populates it. This is the #2298 target
-                // population; the acceptance gates diff it pv-on vs pv-off.
+                // split never populates it. This is the target
+                // population; diagnostics compare it with per-voxel culling on and off.
                 VoxelIndirectDispatchParams previousFeeder{};
                 indirectBuf_->getSubData(
                     static_cast<std::ptrdiff_t>(kPerAxisSsboAlignBytes),
@@ -1743,7 +1735,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
 
         const VoxelIndirectDispatchParams zeroed{};
         indirectBuf_->subData(0, sizeof(VoxelIndirectDispatchParams), &zeroed);
-        // #2258 Step B: struct 1 (the shadow-feeder dispatch) shares indirectBuf_
+        // Struct 1 (the shadow-feeder dispatch) shares indirectBuf_
         // at kPerAxisSsboAlignBytes; its count slot must start zeroed before the
         // compact tail-appends feeders into it. Single-canvas mode only — the
         // per-axis split routes through PerAxisIndirectDispatchParams and never
@@ -1757,7 +1749,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // prior-frame read is well-defined.
         cullReadbackPrimed_ = true;
 
-        // Per-axis store list-walk split (#1739). For exactly the main-canvas-
+        // Per-axis store list-walk split. For exactly the main-canvas-
         // rotating compact (whose voxels the per-axis dispatch consumes, and
         // whose single-canvas pass is skipped above) route the compact's writes
         // into the three axis-keyed regions instead of the single full list:
@@ -1784,7 +1776,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             frameDataBuf_->subData(0, sizeof(FrameDataVoxelToCanvas), &frameData_);
         }
 
-        // World fog source for the cut-section dispatch (#2125 / #2127). A canvas
+        // World fog source for the cut-section dispatch. A canvas
         // with its OWN fog (the main world canvas) cross-sections against it
         // directly; a WORLD-PLACED detached re-voxelize canvas has no fog of its
         // own, so it cross-sections against the MAIN canvas's world fog (resolved +
@@ -1799,7 +1791,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             (fog != nullptr) ? fog : (worldPlacedRevoxel ? worldFog_ : nullptr);
 
         compactProgram_->use();
-        // Fog cull input (#2008): the real 256² fog texture for the world fog
+        // Fog cull input: the real 256² fog texture for the world fog
         // canvas, else the shared 1×1 all-visible placeholder (compact shader
         // short-circuits on imageSize<=1 → no cull, byte-identical to master).
         // Bound right before the dispatch so an intervening chunk-occlusion
@@ -1821,15 +1813,15 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             fogObserverBuf_->subData(0, sizeof(FrameDataFogObservers), &cutSectionFog->observers_);
         }
         fogObserverBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FogObservers);
-        // Per-voxel occlusion cull Hi-Z input (#1812). Bind the finest Hi-Z level
+        // Per-voxel occlusion cull Hi-Z input. Bind the finest Hi-Z level
         // as a read-only IMAGE at a unit distinct from the fog image at 0. The
         // image bind (not a sampler bind) is required on Metal: bindComputeResources
         // flushes the sticky image-binding table AFTER the sampler table at the
         // same encoder texture index, so a sampler bind of the Hi-Z at unit 1 was
         // shadowed by the leftover trixelDistances IMAGE bound there by the prior
         // frame's stage-1/stage-2 — the compact then read the freshly-cleared
-        // distance sentinel (all 65535) instead of the Hi-Z and the per-voxel test
-        // never fired (#1812 zero-capture). Binding the Hi-Z as an image overwrites
+        // distance sentinel (all 65535) instead of the Hi-Z, preventing the
+        // per-voxel test from firing. Binding the Hi-Z as an image overwrites
         // that stale slot so it wins the flush. The compact reads it only when
         // frameData_.occlusionCullMipCount_ > 0; a canvas with no Hi-Z chain (≤1px)
         // binds the R32I distance texture as a never-read sentinel so the argument
@@ -1869,7 +1861,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
 
         if (!skipSingleCanvasVoxels) {
             stage1Program_->use();
-            // Per-voxel analytic fog clip (#2102) + cut faces (#2125/#2127):
+            // Per-voxel analytic fog clip + cut faces:
             // re-bind the fog grid (slot 0) + live vision circles (binding 27) for
             // STAGE_1. The compact bound these above and GL state persists across
             // the program switch, but Metal's per-encoder argument table needs them
@@ -1885,11 +1877,11 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             {
                 IRRender::GpuSubStageScope gpuScope("voxelStage1");
                 IRRender::device()->dispatchComputeIndirect(indirectBuf_, 0);
-                // #2258 Step B: second, shadow-feeder dispatch (struct 1) — the
+                // Second, shadow-feeder dispatch (struct 1) — the
                 // off-screen casters the compact tail-appended, rastered at the
                 // strided feederSubCap² micro-grid instead of the visible effSub².
                 // Bind the feeder-pass program (the IR_FEEDER_PASS 1 compile-time
-                // specialization of the shared stage-1 body; architect a′ — the
+                // specialization of the shared stage-1 body; the
                 // visible program carries none of the feeder branches, so no
                 // runtime predication tax) and bindRange binding 26 onto struct 1
                 // so the feeder kernel reads its count/numGroupsX — and
@@ -1926,13 +1918,13 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                     kBufferIndex_IndirectDispatchParams
                 );
                 IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
-                // #2488: on Metal both stage-1 dispatches atomic-min their depth
+                // on Metal both stage-1 dispatches atomic-min their depth
                 // into the texture's sibling scratch BUFFER, and the only pass
                 // that writes the distance TEXTURE — stage 2's winner tap — skips
-                // feeders (the #1740 depth-only skip). So ring texels stay at the
+                // feeders (the depth-only skip). So ring texels stay at the
                 // 65535 clear sentinel in the texture, and every texture-reading
                 // consumer (BAKE_SUN_SHADOW_MAP, COMPUTE_VOXEL_AO,
-                // COMPUTE_DISTANCE_HIZ, and through it the #2298 per-voxel
+                // COMPUTE_DISTANCE_HIZ, and through it the per-voxel
                 // occlusion cull) loses the feeder ring that GL's imageAtomicMin
                 // writes straight to the texture. Materialize the scratch here to
                 // restore that parity. No-op on GL (defaulted virtual).
@@ -1952,15 +1944,14 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 }
             }
 
-            // #2346 cardinal winner election — flagged (displaced-voxel) pools
+            // cardinal winner election — flagged (displaced-voxel) pools
             // only. Between the settled distance stores and stage 2, re-run
             // the identical cardinal geometry with every distance tap swapped
             // for an atomicMin of the face's run-stable voxel pool index, so
             // the winner-guarded stage 2 below admits exactly one of the
-            // equal-key faces per cell (the extension of #2255's per-axis
-            // election to the single-canvas store). Unflagged pools skip this
-            // entire block AND keep stage2Program_ — exactly master's programs
-            // and dispatch count, no added cost.
+            // equal-key faces per cell, extending the per-axis election to the
+            // single-canvas store. Unflagged pools skip this entire block, keep
+            // stage2Program_, and add no dispatch cost.
             const bool cardinalElection = voxelPool.storeTiesPossible_;
             if (cardinalElection) {
                 ensureCardinalWinnerCapacity(triangleCanvasTextures.size_);
@@ -2009,7 +2000,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             // stage-2 dispatch in here keeps each canvas's upload→compact→stage1
             // →stage2 sequence atomic before the next canvas overwrites the
             // buffers.
-            // #2346: a flagged pool runs the winner-guarded stage-2 variant in
+            // a flagged pool runs the winner-guarded stage-2 variant in
             // place of the default — same UBO, same dispatch, same taps, plus
             // the per-cell winner guard resolved by the election above.
             (cardinalElection ? stage2WinnerProgram_ : stage2Program_)->use();
@@ -2019,7 +2010,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 ->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::R32I);
             triangleCanvasTextures.getTextureEntityIds()
                 ->bindAsImage(2, TextureAccess::WRITE_ONLY, TextureFormat::RG32UI);
-            // Fog cut-face inputs (#2125/#2127): STAGE_2 re-evaluates STAGE_1's
+            // Fog cut-face inputs: STAGE_2 re-evaluates STAGE_1's
             // cut-face predicate so its colour tap lands on the same faces, so it
             // needs the fog grid + observers too. Slot 0 holds the colour output
             // here, so the fog grid binds on slot 3 (slots 1/2 = distance +
@@ -2037,9 +2028,9 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
             }
             if (cardinalElection) {
-                // Restore the never-unbound placeholder on 28 (see its #2255
-                // creation note) so the next canvas's default dispatches see
-                // the same binding state as before the election window; every
+                // Restore the never-unbound placeholder on 28 so the next
+                // canvas's default dispatches retain the required binding
+                // state; every
                 // real consumer of 28 (per-axis, sun bake, light grid) re-binds
                 // itself regardless.
                 winnerPlaceholderBuf_->bindBase(
@@ -2049,16 +2040,16 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             }
         }
 
-        // Smooth camera Z-yaw (T2 / #1309): once the single-canvas pass above
+        // Smooth camera Z-yaw: once the single-canvas pass above
         // has run (and left the compacted-voxel list + indirect params intact),
         // route the visible faces into the three per-axis canvases. Only the
-        // main world canvas owns them, and only while rotating — at a cardinal
-        // they are released (#1308 fast path) so this is skipped and the frame
-        // stays byte-identical to master.
+        // main world canvas owns them, and only while rotating. At a cardinal
+        // they are released, so this is skipped and the frame retains the
+        // single-canvas output.
         if (entity == perAxisCanvasEntity_ && perAxisCanvases_ != nullptr &&
             perAxisCanvases_->isAllocated()) {
             dispatchPerAxisCanvases(*perAxisCanvases_, fog, voxelPool.storeTiesPossible_);
-            // #2256: compact each per-axis canvas's occupied cells NOW (the axis
+            // Compact each per-axis canvas's occupied cells now (the axis
             // distance canvases were just fully written above), so the downstream
             // per-axis compute stages (AO / sun-shadow / lighting / resolve) and
             // the framebuffer scatter can dispatch/draw over only occupied cells.
@@ -2085,14 +2076,12 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         }
 
         // Allocate / release the main canvas's per-axis trixel canvases for
-        // smooth camera Z-yaw (#1308). Idempotent and once-per-frame; only
-        // transitions on rotation start/stop. No faces route here in T1, so this
-        // never alters the rendered output — it just stands up the storage that
-        // T2 (#1309) routing will write into.
+        // smooth camera Z-yaw. Idempotent and once-per-frame; only
+        // transitions on rotation start/stop; it only manages storage.
         IRPrefab::PerAxisCanvas::syncAllocationToCameraYaw();
 
         // Same lazy lifecycle for DETACHED_REVOXELIZE pools' resident GPU locals
-        // (#1556): allocate + seed each pool's rigid locals once, and report the
+        // allocate + seed each pool's rigid locals once, and report the
         // live {canvas, &buffer} set the per-entity tick dispatches against (in
         // place of the CPU position flush). No-op for a scene with no re-voxelize
         // canvas — the list comes back empty.
@@ -2100,7 +2089,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
 
         // Resolve the main canvas's per-axis trixel canvases once per frame for
         // the per-entity tick to consume without a getComponent on its own
-        // iterating canvas (#1309). Re-resolved every frame; never held across
+        // iterating canvas. Re-resolved every frame; never held across
         // frames. Null unless the main canvas has the component AND it is
         // currently allocated (camera rotating).
         perAxisCanvasEntity_ = IRRender::getCanvas("main");
@@ -2114,7 +2103,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         }
 
         // Resolve the MAIN canvas's fog once per frame for a world-placed detached
-        // re-voxelize canvas to cross-section against (#2127). Upload it current
+        // re-voxelize canvas to cross-section against. Upload it each frame
         // HERE so the world fog grid is fresh regardless of canvas tick order — a
         // detached canvas may tick before the main canvas, whose own
         // uploadFogIfDirty then no-ops (dirty already cleared). Null on a scene with
@@ -2129,8 +2118,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             }
         }
 
-        // Resolve the one-frame occlusion-cull disable (#1294 child 3/3, design
-        // § 4). The chunk-occlusion pre-pass tests last frame's Hi-Z, so on a
+        // Resolve the one-frame occlusion-cull disable. The chunk-occlusion
+        // pre-pass tests last frame's Hi-Z, so on a
         // discontinuous camera move (cut / teleport / first frame) that lag
         // source is from an unrelated view and the cull is disabled for one
         // frame. The threshold is half the visible viewport's smaller iso extent
@@ -2162,9 +2151,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             "SingleVoxelProgram1",
             std::vector{ShaderStage{IRRender::kFileCompVoxelToTrixelStage1, ShaderType::COMPUTE}}
         );
-        // #2258 Step B (architect a′): the feeder-pass compile-time
-        // specialization of stage 1, built from the same shared body via
-        // IR_FEEDER_PASS 1. Dispatched as the second stage-1 dispatch (struct 1)
+        // Feeder-pass compile-time specialization of stage 1, built from the
+        // shared body with IR_FEEDER_PASS 1. Dispatched as the second stage-1 dispatch (struct 1)
         // so the visible SingleVoxelProgram1 stays byte-for-byte master's kernel.
         IRRender::createNamedResource<ShaderProgram>(
             "SingleVoxelProgram1Feeder",
@@ -2176,7 +2164,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             "SingleVoxel2",
             std::vector{ShaderStage{IRRender::kFileCompVoxelToTrixelStage2, ShaderType::COMPUTE}}
         );
-        // #2346 cardinal winner election: the IR_STORE_WINNER_ELECTION 1
+        // cardinal winner election: the IR_STORE_WINNER_ELECTION 1
         // specializations of the shared stage-1/stage-2 bodies, dispatched only
         // for pools whose storeTiesPossible_ flag is set — the default
         // SingleVoxelProgram1 / SingleVoxel2 stay byte-for-byte master's
@@ -2194,12 +2182,12 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 ShaderStage{IRRender::kFileCompVoxelToTrixelStage2Winner, ShaderType::COMPUTE}
             }
         );
-        // Chunk-occlusion HZB pre-pass program (#1294 child 2/3).
+        // Chunk-occlusion HZB pre-pass program.
         IRRender::createNamedResource<ShaderProgram>(
             "ChunkOcclusionProgram",
             std::vector{ShaderStage{IRRender::kFileCompChunkOcclusionCull, ShaderType::COMPUTE}}
         );
-        // Per-axis empty-cell compaction pre-pass (#1961 / #2256) — run in this
+        // Per-axis empty-cell compaction pre-pass — run in this
         // system right after the per-axis stores, feeding the per-axis compute
         // stages + the framebuffer scatter (see compactPerAxisCells).
         IRRender::createNamedResource<ShaderProgram>(
@@ -2210,15 +2198,15 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             "PerAxisCellFinalizeProgram",
             std::vector{ShaderStage{IRRender::kFileCompPerAxisCellFinalize, ShaderType::COMPUTE}}
         );
-        // #2479: overflow-entry canonical sort — dispatched after the mode-3
+        // overflow-entry canonical sort — dispatched after the mode-3
         // append so the overflow draw's entry order is a pure function of the
         // appended set (see the kernel header for the pass structure).
         IRRender::createNamedResource<ShaderProgram>(
             "PerAxisOverflowSortProgram",
             std::vector{ShaderStage{IRRender::kFileCompPerAxisOverflowSort, ShaderType::COMPUTE}}
         );
-        // Detached re-voxelize GPU scatter compute + its per-frame params UBO
-        // (#1556). The resident locals SSBO is owned per-canvas by
+        // Detached re-voxelize GPU scatter compute and its per-frame params UBO.
+        // The resident locals SSBO is owned per-canvas by
         // C_DetachedRevoxelizeBuffer (allocated lazily), so only the program and
         // the single-instance params buffer live here.
         IRRender::createNamedResource<ShaderProgram>(
@@ -2241,7 +2229,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             BufferTarget::UNIFORM,
             kBufferIndex_FrameDataVoxelToCanvas
         );
-        // #2255: the stage-1/2 kernels declare the per-axis winner scratch at
+        // the stage-1/2 kernels declare the per-axis winner scratch at
         // kBufferIndex_PerAxisResolveScratch (28). The real scratch is
         // allocated lazily with the per-axis canvases; this placeholder
         // guarantees index 28 is never unbound for the single-canvas /
@@ -2309,7 +2297,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             kBufferIndex_CompactedVoxelIndices
         );
         // Two 256 B-aligned structs: struct 0 = the visible dispatch, struct 1
-        // (offset kPerAxisSsboAlignBytes) = the #2258 Step-B shadow-feeder
+        // (offset kPerAxisSsboAlignBytes) = the shadow-feeder
         // dispatch. The compact writes struct 1's count/dims and the CPU
         // bindRanges it onto binding 26 for the second stage-1 dispatch, so the
         // buffer must reach that slot (single-canvas mode only; the per-axis
@@ -2323,7 +2311,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             kBufferIndex_IndirectDispatchParams
         );
 
-        // Per-axis store list-walk split (#1739). One list buffer holding three
+        // Per-axis store list-walk split. One list buffer holding three
         // axis-keyed regions + one indirect-params buffer holding three dispatch
         // structs. Sized so each region's / struct's byte offset is a multiple of
         // kPerAxisSsboAlignBytes (the portable-safe SSBO bind-range alignment) —
@@ -2352,7 +2340,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             kBufferIndex_IndirectDispatchParams
         );
 
-        // Fog-of-war cull placeholder (#2008): a 1×1 all-visible texture bound at
+        // Fog-of-war cull placeholder: a 1×1 all-visible texture bound at
         // image slot 0 of the compact dispatch for any canvas without a real
         // C_CanvasFogOfWar. Seeded visible so it is harmless even if the shader's
         // imageSize<=1 short-circuit were ever removed; in practice the shader
@@ -2399,7 +2387,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 ->subData(0, sizeof(FrameDataFogObservers), &zeroObservers);
         }
 
-        // Chunk-occlusion query buffer (#1294 child 2/3): a 32-byte header record
+        // Chunk-occlusion query buffer: a 32-byte header record
         // + one record per pool-chunk. Created on slot 25 like the per-axis
         // buffers (bound there transiently by the pre-pass); the restore below
         // returns slot 25 to the full compacted-index buffer for steady state.
@@ -2468,10 +2456,10 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             BufferTarget::SHADER_STORAGE,
             kBufferIndex_IndirectDispatchParams
         );
-        // Intra-tick sub-stage timing (#2280): this system is deliberately NOT
+        // Intra-tick sub-stage timing: this system is deliberately NOT
         // tagged for the per-system GpuStageTimingObserver. A single per-tick
         // bracket bundles compact + clear + stage-1 + stage-2 into one opaque
-        // `voxelStage1` value (the ~140 ms #2258 could not attribute). Instead
+        // `voxelStage1` value that cannot attribute the individual costs. Instead
         // the per-canvas tick brackets each of its four dispatch groups with a
         // GpuSubStageScope, filling the `canvasClear` / `voxelCompact` /
         // `voxelStage1` / `voxelStage2` rows individually. Not tagging here
@@ -2485,7 +2473,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
 
 namespace IRPrefab::SunShadow {
 
-// #3010 gate instrument — the shadow-feeder CLASSIFY pad.
+// gate instrument — the shadow-feeder CLASSIFY pad.
 //
 // These live here rather than in `sun_shadow_constants.hpp` (which owns the
 // rest of `IRPrefab::SunShadow`) because that header is INCLUDED by this one:
@@ -2497,12 +2485,12 @@ namespace IRPrefab::SunShadow {
 // and `IRPrefab::JointTransform::system()` (system_update_joint_matrices.hpp).
 //
 // The pad is DIAGNOSTIC-ONLY: it exists so `scripts/feeder-margin-verify.py`
-// can positive-fire the #1740 depth-only-feeder skip, which is otherwise
+// can positive-fire the depth-only-feeder skip, which is otherwise
 // unobservable at the shipped margin. Default 0 ⇒ no render behaviour changes.
 namespace detail {
 
 // The VOXEL_TO_TRIXEL_STAGE_1 params instance, or nullptr when the system was
-// never created (#2526: registration self-wires the SystemName -> SystemId
+// never created (registration self-wires the SystemName -> SystemId
 // registry, so there is no setter to forget). Callers treat nullptr as
 // "nothing to configure / nothing to report".
 inline IRSystem::System<IRSystem::VOXEL_TO_TRIXEL_STAGE_1> *voxelToTrixelStage1() {

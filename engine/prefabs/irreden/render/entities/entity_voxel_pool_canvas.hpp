@@ -27,15 +27,15 @@ template <> struct Prefab<PrefabTypes::kVoxelPoolCanvas> {
             C_SizeTriangles{triangleCanvasSize},
             C_TriangleCanvasTextures{triangleCanvasSize},
             C_CanvasLocalRotation{},
-            // Per-axis trixel canvases for smooth camera Z-yaw (#1308). Inert
+            // Per-axis trixel canvases for smooth camera Z-yaw. Inert
             // until allocated lazily on the main world canvas by
             // syncAllocationToCameraYaw() while the camera sits at a non-cardinal
             // residual yaw. Default-constructed = (0,0) size + null handles, so a
             // static / cardinal canvas pays only the component slot, no GPU
             // memory. (Detached SO(3) uses the re-voxelize buffer below, not this.)
             C_PerAxisTrixelCanvases{},
-            // Resident GPU locals buffer for the detached re-voxelize scatter
-            // (#1556). Inert until allocated lazily by
+            // Resident GPU locals buffer for the detached re-voxelize scatter.
+            // Inert until allocated lazily by
             // syncResidentBuffers() for a DETACHED_REVOXELIZE canvas; a static /
             // non-re-voxelize canvas pays only the component slot, no GPU memory.
             C_DetachedRevoxelizeBuffer{},

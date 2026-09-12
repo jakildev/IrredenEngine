@@ -14,18 +14,14 @@
 // (consumed only by `c_propagate_light_volume`). The blocker bitfield
 // rasterizes SDFs of `C_ShapeDescriptor + C_LightBlocker(blocksLOS_=true)`
 // entities so they occlude point/spot light propagation, restoring the
-// pre-#359 SDF-LOS behavior the GPU port lost. AO does not read either
-// bitfield (it migrated to screen-space neighbour sampling in T-091).
+// SDF line-of-sight blocking. AO does not read either
+// bitfield because it uses screen-space neighbour sampling.
 //
 // The system selects the main rendering canvas via
 // `<C_VoxelPool, C_TrixelCanvasRenderBehavior>` and the
 // `useCameraPositionIso_` flag — same gate `COMPUTE_LIGHT_VOLUME` uses.
 // Bitfield storage lives in `SystemParams` (no per-canvas component opt-in).
 //
-// Phased-out producer: this system + the LightOcclusionGrid SSBO it
-// feeds are scheduled for full removal in T-09Y once light-volume LOS
-// moves off the world-space bitfield.
-
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_render.hpp>
@@ -58,7 +54,7 @@ namespace IRSystem {
 /// sized for — 256³ = 2 MB voxel bitfield + 2 MB blocker bitfield.
 constexpr int kMaxLightOcclusionGridSideVoxels = 256;
 
-/// SSBO layout (Phase 1c / #360): a 16-byte header carrying the camera-
+/// SSBO layout: a 16-byte header carrying the camera-
 /// anchored `worldOriginVoxel` followed by two parallel bitfields — the
 /// voxel-existence grid (consumed by `c_propagate_light_volume`)
 /// followed by the light-blocker grid (also consumed only by
@@ -119,7 +115,7 @@ gridSetBit(std::vector<std::uint32_t> &bitfield, int wx, int wy, int wz, const i
 
 /// Read-side mirror of `gridSetBit` — out-of-range reads `false`, the same
 /// answer `c_propagate_light_volume`'s bit lookups give for a coordinate
-/// outside the 256^3 window (#2330).
+/// outside the 256^3 window.
 inline bool
 gridGetBit(const std::vector<std::uint32_t> &bitfield, int wx, int wy, int wz, const ivec3 &origin) {
     if (!gridInBounds(wx, wy, wz, origin))
@@ -130,8 +126,8 @@ gridGetBit(const std::vector<std::uint32_t> &bitfield, int wx, int wy, int wz, c
 
 /// Read-only view over one frame's occlusion mirror, indexed with the
 /// producer's own origin (`System<BUILD_LIGHT_OCCLUSION_GRID>::origin_`) —
-/// never the light volume's, which agrees with it every frame today but is
-/// a distinct value (#2330 plan gotcha). `occluded()` ORs the voxel and
+/// never the light volume's, which currently agrees with it but remains a
+/// distinct value. `occluded` ORs the voxel and
 /// blocker bitfields, mirroring `c_propagate_light_volume`'s neighbor gate
 /// (`voxelOcclusionGetBit || lightBlockerGetBit`) exactly — this struct IS
 /// the parity invariant between the CPU seed-relocation search and the GPU
@@ -294,8 +290,8 @@ template <> struct System<BUILD_LIGHT_OCCLUSION_GRID> {
     /// pointer-only validity test is not enough.
     bool gridLiveThisFrame_ = false;
 
-    /// Read-side occupancy query for a LATER-pipeline-group consumer (#2330:
-    /// `COMPUTE_LIGHT_VOLUME`'s occlusion-aware boundary-seed relocation).
+    /// Read-side occupancy query for the later-pipeline-group consumer
+    /// `COMPUTE_LIGHT_VOLUME`.
     ///
     /// **`BUILD_LIGHT_OCCLUSION_GRID` must stay in its own pipeline group,
     /// ordered ahead of every consumer of this view.** Co-scheduling it with
@@ -333,10 +329,10 @@ template <> struct System<BUILD_LIGHT_OCCLUSION_GRID> {
         if (!behavior.useCameraPositionIso_)
             return;
 
-        // Phase 1c (#360): re-center on the iso camera each frame. The CPU
+        // Re-center on the iso camera each frame. The CPU
         // bitfield producer and the GPU consumer both translate world→local
         // against `origin_` / `worldOriginVoxel` so the populate path stays
-        // origin-agnostic. #2315 V1: freeze-aware — pins with the light
+        // origin-agnostic. The anchor pins with the light
         // volume's anchor while frozen (engine/render/CLAUDE.md invariant
         // 1: this system reads the pinned ANCHOR only, never the cull
         // viewport).

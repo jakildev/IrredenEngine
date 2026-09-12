@@ -262,8 +262,8 @@ inline void queueGuiText(
 // or the GUI canvas are absent — e.g. a creation that runs widget systems
 // without TEXT_TO_TRIXEL, which would not show free text either. That no-op is
 // why the resource lookups are `getNamedResourceOrNull`: the asserting
-// `getNamedResource` cannot report an absent resource, only throw on it (see
-// #2627). Call from a render system's endTick, after queuing that system's
+// `getNamedResource` cannot report an absent resource, only throw on it. Call
+// from a render system's endTick, after queuing that system's
 // text in its ticks.
 inline void dispatchGuiText(std::vector<IRRender::GlyphDrawCommand> &commands) {
     if (commands.empty())

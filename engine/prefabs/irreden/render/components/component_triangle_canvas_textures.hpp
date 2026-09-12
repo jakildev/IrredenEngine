@@ -16,7 +16,7 @@ namespace IRComponents {
 
 // Factories for the trixel-canvas texture triple (color / distance / entity-id).
 // Centralized here so C_TriangleCanvasTextures and C_PerAxisTrixelCanvases
-// (smooth camera Z-yaw, #1308) cannot drift on format / wrap / filter — a
+// used by smooth camera Z-yaw cannot drift on format / wrap / filter — a
 // silent mismatch between the two would corrupt the per-axis distance composite.
 namespace detail {
 
@@ -54,7 +54,7 @@ inline std::pair<ResourceId, Texture2D *> makeCanvasEntityIdTexture(ivec2 size) 
 }
 
 // Hi-Z (hierarchical max-depth) mip chain over the distance texture, for the
-// voxel-pool occlusion cull (#1294 / docs/design/voxel-occlusion-culling.md).
+// voxel-pool occlusion cull (docs/design/voxel-occlusion-culling.md).
 // Returns the DOWNSAMPLED levels 1..N only — conceptual level 0 IS the
 // canvas's own R32I distance texture, so the full-res copy is avoided. Each
 // returned level is ceil(prev / 2) in each axis (ceil-division so every source
@@ -88,19 +88,19 @@ struct C_TriangleCanvasTextures {
     std::pair<ResourceId, Texture2D *> textureTriangleColors_;
     std::pair<ResourceId, Texture2D *> textureTriangleDistances_;
     std::pair<ResourceId, Texture2D *> textureTriangleEntityIds_;
-    // Hi-Z max-depth mip chain over textureTriangleDistances_ (#1294 child 1/3).
+    // Hi-Z max-depth mip chain over textureTriangleDistances_.
     // Conceptual level 0 IS textureTriangleDistances_; these are the downsampled
     // levels 1..N (each ceil(prev / 2), R32I), holding the per-texel MAX
     // (farthest) encoded distance over the source footprint. Produced each frame
     // by COMPUTE_DISTANCE_HIZ and consumed NEXT frame by the chunk-occlusion
-    // pre-pass (child 2). Empty/background texels carry the 65535 sentinel — the
+    // pre-pass. Empty/background texels carry the 65535 sentinel — the
     // largest encoded value — so any footprint that still sees background keeps
     // the max at 65535 = "never occlude", the conservative direction.
     std::vector<std::pair<ResourceId, Texture2D *>> hiZMips_;
 
     // Subdivision factor this canvas actually rastered its voxel pool at this
     // frame, stamped by VOXEL_TO_TRIXEL_STAGE_1 after the per-canvas
-    // subdivision cap (#1570 D2). For a DETACHED canvas this can be BELOW the
+    // subdivision cap. For a DETACHED canvas this can be below the
     // global IRRender::getVoxelRenderEffectiveSubdivisions() because the cap
     // keeps the model-space lattice inside the fixed canvas. The detached
     // composite (ENTITY_CANVAS_TO_FRAMEBUFFER) reads it to rescale the canvas's
@@ -108,13 +108,13 @@ struct C_TriangleCanvasTextures {
     // the global effSub × 4 encode scale) so a world-placed detached solid
     // depth-sorts against the floor / GRID solids correctly under zoom. 0 =
     // the canvas did not raster a voxel pool this frame (pure SDF / text
-    // overlay) — the composite then keeps the pre-#1624 raw offset.
+    // overlay) — the composite then keeps the raw offset.
     int renderedSubdivisions_ = 0;
 
-    // No-priority perf fast-path signal (#2155). Stamped each frame by
+    // No-priority perf fast-path signal. Stamped each frame by
     // VOXEL_TO_TRIXEL_STAGE_1 from the canvas pool's per-trixel-priority
     // aggregate: 1 iff some voxel drawn into this canvas carries a non-zero
-    // per-trixel priority (#1960), else 0. Published into the finalization UBO
+    // per-trixel priority, else 0. Published into the finalization UBO
     // (FrameDataTrixelToFramebuffer::anyPerTrixelPriority_) by both the main
     // gather (TRIXEL_TO_FRAMEBUFFER) and the detached composite
     // (ENTITY_CANVAS_TO_FRAMEBUFFER), gating the shader's entity-id decode read.
@@ -245,7 +245,7 @@ struct C_TriangleCanvasTextures {
             PixelDataType::UINT32,
             &packed
         );
-        // Strip the per-trixel priority carrier (#1960) before reconstructing the
+        // Strip the per-trixel priority carrier before reconstructing the
         // 64-bit id — same chokepoint as getEntityIdAtMouseTrixel.
         return static_cast<IREntity::EntityId>(IRRender::decodeCarrierEntityId(packed));
     }

@@ -47,8 +47,8 @@ inline IRMath::vec3 resolveDirection() {
 
 // Per-frame resolved sun direction. Call from a system's beginTick (once per
 // frame), store the result in SystemParams, and read the cached value in the
-// per-entity tick. Identical to resolveDirection() today; reserved for future
-// caching by a RESOLVE_SUN_DIRECTION head-of-pipeline system.
+// per-entity tick. It currently delegates to resolveDirection(), keeping the
+// call site ready for a RESOLVE_SUN_DIRECTION head-of-pipeline cache.
 inline IRMath::vec3 getFrameSunDirection() {
     return resolveDirection();
 }
@@ -97,7 +97,7 @@ inline IRMath::IsoBounds2D shadowFeederCullViewport(
 }
 
 // True when the shadow-feeder sweep widens @p visible into a NON-EMPTY
-// off-screen ring — i.e. when off-screen casters exist that stage 2's #1740
+// off-screen ring — i.e. when off-screen casters exist that stage 2's
 // depth-only skip will strip the colour taps from.
 //
 // Quantized exactly as VOXEL_TO_TRIXEL_STAGE_1 uploads the two boxes
@@ -119,7 +119,7 @@ inline IRMath::IsoBounds2D shadowFeederCullViewport(
 // (VOXEL_TO_TRIXEL_STAGE_1's canvasClear → metal_render_impl.cpp), so resolving
 // a ring nothing fed copies each texel's own clear value back onto itself.
 // "Unconditionally" is load-bearing and literal: that mirror *ensures* the
-// scratch rather than looking it up (#2488), so it holds on a canvas's first
+// scratch rather than looking it up, so it holds on a canvas's first
 // tick too — when the clear precedes any bind that would have paired one. The
 // one caller reaches this only on the !skipSingleCanvasVoxels branch, which the
 // per-axis path already owns for the main canvas while the camera rotates — so
@@ -145,7 +145,7 @@ shadowFeederRingNonEmpty(const IRMath::IsoBounds2D &feeder, const IRMath::IsoBou
 // rasterYaw == 0. @p uHat / @p vHat / @p sunDir are the sun basis from
 // buildOrthonormalBasis; @p cardinalIndex is the rasterYaw cardinal snap.
 // Projects via IRMath::sunSpaceProject — the same projection the bake +
-// receiver shaders use (#2083) — so the AABB brackets exactly what they will
+// receiver shaders use — so the AABB brackets exactly what they will
 // project. Lives in the shared sun-shadow header so a sun-space feeder-density
 // consumer can reuse the bake's exact derivation rather than re-deriving it.
 inline IRMath::IsoBounds2D sunBakeFrustumUVBounds(
@@ -177,25 +177,25 @@ inline IRMath::IsoBounds2D sunBakeFrustumUVBounds(
     return IRMath::IsoBounds2D{uvMin, uvMax};
 }
 
-// Sun-bake density constants for the #2258 Step-B shadow-feeder dispatch cap.
+// Sun-bake density constants for the shadow-feeder dispatch cap.
 // These MUST match system_bake_sun_shadow_map.hpp (kSunShadowMapDim /
 // kSunShadowCascadeCount / kCascadeSplitRatio) and the bake's local iso-depth
 // clip range — the cap is only meaningful if it reproduces the bake's texel
 // density. Kept here (not in the bake header) so the feeder-density consumer
 // in VOXEL_TO_TRIXEL_STAGE_1 can reuse the exact derivation without pulling the
 // bake system header; a drift here shows as shadow holes in the render-debug
-// loop, which is the acceptance gate.
+// loop, which is the required bounded-work contract.
 constexpr int kFeederSunShadowMapDim = 1024;     // == kSunShadowMapDim
 constexpr int kFeederSunShadowCascadeCount = 2;  // == kSunShadowCascadeCount
 constexpr float kFeederCascadeSplitRatio = 0.4f; // == kCascadeSplitRatio
 constexpr float kFeederIsoDepthMin = -256.0f;    // == the bake's local kIsoDepthMin
 constexpr float kFeederIsoDepthMax = 256.0f;     // == the bake's local kIsoDepthMax
-// The ONE render-debug-loop-tunable knob (#2258 Step B): the per-face-edge
+// Render-debug-loop knob: the per-face-edge
 // feeder sample count as a multiple of the bake's texel density. Widen above
 // 1.0 only if validation shows shadow holes at an off-screen-caster boundary.
 constexpr float kFeederSubSafetyFactor = 1.0f;
 
-// Per-face-edge micro-grid cap for the #2258 Step-B shadow-feeder dispatch. An
+// Per-face-edge micro-grid cap for the shadow-feeder dispatch. An
 // off-screen shadow caster only feeds the sun-shadow bake, so its stage-1
 // trixel depth can raster a coarser strided micro-grid than the on-screen
 // effSub² — as long as it still lands ≥ 1 sample per sun-map texel it covers
@@ -204,7 +204,7 @@ constexpr float kFeederSubSafetyFactor = 1.0f;
 // FINEST cascade's texels-per-world-unit, clamped to [1, effSub]. Because the
 // bake frustum is dominated by the fixed ±256 iso-depth range + sweep (not the
 // zoom-dependent viewport), the cap is ~zoom-independent: at high zoom
-// effSub ≫ cap (the reduction Step B captures), at low zoom cap == effSub
+// effSub ≫ cap; at low zoom cap == effSub
 // (byte-identical). @p sunDir is the cached frame sun direction (zero when
 // shadows are off ⇒ no feeders are appended, so the returned effSub is moot but
 // safe). Call once per canvas in VOXEL_TO_TRIXEL_STAGE_1's per-canvas tick.

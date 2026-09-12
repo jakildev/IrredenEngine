@@ -10,7 +10,7 @@
 // triplet, the detached-canvas flag, the cardinal/residual yaw split,
 // face-deform matrices, canvas offsets, etc. STAGE_1 authors it per canvas
 // during its raster; the lighting passes re-author the iterating canvas's
-// frame data before their own dispatch (re-voxelize P4 / #1558) so a second
+// frame data before their own dispatch so a second
 // lit canvas (a detached re-voxelize solid) reads ITS frame instead of the
 // main canvas's stale state. Both call `buildVoxelFrameData` so there is one
 // source of truth for that layout.
@@ -50,7 +50,7 @@ inline void buildVoxelFrameData(
     // count > 0 at entry), and the lighting passes author frame data
     // for canvases whose pool is EMPTY (authorIteratingCanvasVoxelFrame /
     // restoreMainCanvasVoxelFrame have no liveVoxelCount gate — observed as a
-    // SIGFPE on a lit scene whose main canvas holds zero voxels, #1619 step-0
+    // SIGFPE on a lit scene whose main canvas holds zero voxels, step-0
     // harness). This clamp is the one deliberate empty-pool exception to that
     // contract; voxelCount_ below still carries the honest 0, which gates all
     // shader-side work.
@@ -62,13 +62,13 @@ inline void buildVoxelFrameData(
     frameData.voxelDispatchGrid_ = dispatchGrid;
     frameData.voxelCount_ = liveVoxelCount;
     frameData.canvasSizePixels_ = canvas.size_;
-    // Per-voxel occlusion depth axis (#1462). World canvas + the smooth-Z-yaw
+    // Per-voxel occlusion depth axis. World canvas + the smooth-Z-yaw
     // per-axis route keep the fixed (1,1,1) iso depth axis (byte-identical
     // x+y+z); the detached branch below overrides it with the entity-rotated
     // axis. frameData_ is a reused member, so this must be reset every frame so
     // a prior detached canvas's axis can't leak into a world frame.
     frameData.voxelDepthAxis_ = vec4(1.0f, 1.0f, 1.0f, 0.0f);
-    // World-receive opt-in (#1576 P4b-2). Default OFF (.w == 0) — only the
+    // World-receive opt-in. Default OFF (.w == 0) — only the
     // re-voxelize branch below sets it when the owner opts in. Reset every frame
     // (reused member) so a prior world-placed detached canvas can't leak its
     // offset into a world / non-opt-in frame and corrupt its lighting.
@@ -78,7 +78,7 @@ inline void buildVoxelFrameData(
     // world canvas keeps the all-zero `C_CanvasLocalRotation::kSentinelNoRotation`
     // sentinel). A detached canvas rasterizes its voxels in the entity's own
     // model space — camera yaw zeroed — and `faceDeform_` carries the full SO(3)
-    // per-face deformation for the entity's rotation (T-295).
+    // per-face deformation for the entity's rotation.
     const bool detachedCanvas = canvasRotation.isDetached();
     frameData.isDetachedCanvas_ = detachedCanvas ? 1.0f : 0.0f;
     if (detachedCanvas) {
@@ -87,41 +87,35 @@ inline void buildVoxelFrameData(
         // the canvas at the entity's camera-relative screen position — a
         // camera term here would apply the pan twice AND walk the content off
         // the canvas edge under any integer camera offset). The world canvas
-        // set above keeps the camera term. At camera (0,0) this zero is
-        // byte-identical, which is why the pan desync survived every
-        // camera-at-origin reference capture (#1555's cull face of the same
-        // model-vs-camera-space confusion is fixed at the cull sites in
-        // SYSTEM_VOXEL_TO_TRIXEL_STAGE_1).
+        // world canvas keeps the camera term. Cull sites in
+        // SYSTEM_VOXEL_TO_TRIXEL_STAGE_1 must likewise use model-space bounds
+        // so raster and cull coordinates agree.
         frameData.cameraTrixelOffset_ = vec2(0.0f);
     }
     if (detachedCanvas && canvasRotation.reVoxelize_) {
-        // Re-voxelize detached canvas (#1553): the entity's full rotation is
+        // Re-voxelize detached canvas: the entity's full rotation is
         // baked into the private pool's CELL positions by
         // SYSTEM_REBUILD_DETACHED_VOXELS, so this canvas rasterizes its pool with
         // CARDINAL/static frame data — no camera yaw, no per-face SO(3) skew
-        // (applying the rotation a second time as a deform would re-introduce the
-        // 2D warp #1551 traced). Mirrors the main world canvas at yaw 0;
+        // (applying the rotation a second time as a deform would re-introduce a
+        // 2D warp). Mirrors the main world canvas at yaw 0;
         // isDetachedCanvas_ stays 1.0 so the emit keeps the screen-locked
         // (no camera-pan-offset) path, and voxelDepthAxis_ keeps the (1,1,1)
-        // default set above.
+        // default (1,1,1) depth axis.
         frameData.visualYaw_ = 0.0f;
         frameData.rasterYaw_ = 0.0f;
         frameData.residualYaw_ = 0.0f;
         const auto cardinalIndex = IRMath::rasterYawCardinalIndex(0.0f);
         const auto visibleFaces = IRMath::visibleFaceTripletCardinal(cardinalIndex);
-        // Re-voxelize canvases mark `.w = 1` (#1557 Option B / #1570). The marker
+        // Re-voxelize canvases mark `.w = 1`. The marker
         // tells `c_voxel_to_trixel_stage_{1,2}` to dilate each emitted face ±1px
         // along its in-plane iso axes to close the round-to-cell sub-cell gaps.
-        // It NO LONGER bypasses the exposed-mask gate: the GPU scatter
+        // The GPU scatter
         // (c_revoxelize_detached MODE 1) now authors the ROTATED-frame
         // face-occlusion mask from dest-grid adjacency — the GPU twin of
-        // REBUILD_GRID_VOXELS' #1720 CPU mask — so stage 1/2 gate re-voxelize on
-        // `faceIsExposed` exactly like the GRID path. The old bypass (emit all
-        // three cardinal faces, depth-resolve the front) existed only because that
-        // mask used to be stale (P2 #1556 dropped P1's recompute without moving it
-        // to the GPU); its slot-tie checkerboard winner drove AO hatching on flat
-        // surfaces that GRID never had. Other canvases keep `.w = 0`
-        // (no dilation, real exposed-mask gate, byte-identical to master).
+        // REBUILD_GRID_VOXELS' CPU mask — so stage 1/2 gate re-voxelize on
+        // `faceIsExposed` exactly like the GRID path. Other canvases keep `.w = 0`
+        // (no dilation and the normal exposed-mask gate).
         frameData.visibleFaceIds_ = ivec4(
             static_cast<int>(visibleFaces[0]),
             static_cast<int>(visibleFaces[1]),
@@ -134,8 +128,8 @@ inline void buildVoxelFrameData(
         frameData.faceDeform_[0] = vec4(fd0[0], fd0[1]);
         frameData.faceDeform_[1] = vec4(fd1[0], fd1[1]);
         frameData.faceDeform_[2] = vec4(fd2[0], fd2[1]);
-        // World receive (#1576 P4b-2; the default since #1624 — the owner's
-        // C_EntityCanvas::screenLocked_ opts out, propagated onto
+        // World receive is enabled unless the owner's C_EntityCanvas::screenLocked_
+        // opts out; the value is propagated onto
         // canvasRotation). When world-placed, publish the world cell origin +
         // the enable flag so
         // COMPUTE_VOXEL_AO / LIGHTING_TO_TRIXEL recover each voxel's WORLD pos as
@@ -155,23 +149,17 @@ inline void buildVoxelFrameData(
         // Snap to the nearest of the 24 cube orientations; the residual is the
         // continuous leftover the per-face deform (single-canvas) and the
         // per-axis forward-scatter (off-snap) act on. A cube is invariant under
-        // the snap, so this keeps the per-face skew small enough to stay clean
-        // (T-295).
+        // the snap, so this keeps the per-face skew small enough to stay clean.
         const vec4 residual = IRMath::octahedralSnapResidual(canvasRotation.rotation_);
         // Face-selection + occlusion-depth FRAME for the single-canvas detached
         // emit: keep each voxel at its model iso position and only skew face
         // SHAPE by the residual (faceDeformationMatrixSO3 below), so the visible
-        // set is the FULL orientation's front faces. (The retired per-axis
-        // forward-scatter, #1560, instead repositioned every corner by the
-        // residual alone and keyed on visibleTriplet(residual); detached SO(3)
-        // now renders through the re-voxelize branch above, not this deform.)
+        // set is the full orientation's front faces. Detached SO(3) renders
+        // through the re-voxelize branch above, not this deform.
         const vec4 selectionRotation = canvasRotation.rotation_;
         // Per-entity SO(3) visible triplet: the three faces the camera actually
-        // sees, one per axis in X/Y/Z slot order. Previously hardcoded to
-        // {X_NEG, Y_NEG, Z_NEG} regardless of rotation, so the deform below ran
-        // on back-facing faces and entities glitched instead of rotating
-        // (#1386). At identity the resolver returns the same legacy triplet, so
-        // non-rotating entities stay byte-identical.
+        // sees, one per axis in X/Y/Z slot order. At identity, the resolver
+        // returns {X_NEG, Y_NEG, Z_NEG}.
         const std::array<IRMath::FaceId, 3> visibleFaces =
             IRMath::visibleTriplet(selectionRotation);
         frameData.visibleFaceIds_ = ivec4(
@@ -181,7 +169,7 @@ inline void buildVoxelFrameData(
             0
         );
         // Per-voxel occlusion depth projects onto the SAME frame's iso axis
-        // `R⁻¹·(1,1,1)` (#1462), so face visibility and occlusion order stay on
+        // `R⁻¹·(1,1,1)`, so face visibility and occlusion order stay on
         // one frame. Identity entity → (1,1,1) → byte-identical. Read only by
         // the single-canvas emit; the off-snap per-axis store keys depth on the
         // raw x+y+z origin-recovery metric, so this is inert there but kept on
@@ -200,13 +188,13 @@ inline void buildVoxelFrameData(
         return;
     }
 
-    // Main world canvas: rasterYaw picks the integer trixel basis permutation
-    // (T-055); residualYaw is folded into faceDeform_[] which the trixel emit
-    // shader applies to each sub-pixel offset in 2D iso space (T-293, replaces
-    // the T-058 / T-322 screen-space bilinear residual composite). At every
+    // Main world canvas: rasterYaw picks the integer trixel basis permutation;
+    // residualYaw is folded into faceDeform_[] which the trixel emit
+    // shader applies to each sub-pixel offset in 2D iso space (replaces
+    // the screen-space bilinear residual composite). At every
     // non-zero cardinal the WORLD face whose iso footprint lands in each
     // diamond slot rotates with the camera — `visibleFaceIds_` carries the
-    // current slot ↔ FaceId map (#1278).
+    // current slot ↔ FaceId map.
     frameData.visualYaw_ = IRPrefab::Camera::getYaw();
     const auto [rasterYaw, residualYaw] = IRPrefab::Camera::computeYawSplit(frameData.visualYaw_);
     frameData.rasterYaw_ = rasterYaw;
@@ -221,8 +209,7 @@ inline void buildVoxelFrameData(
     );
     // Per-slot deformation (axis-only; X_NEG and X_POS share the X-axis
     // matrix). At cardinal 0 the per-slot order {X_NEG, Y_NEG, Z_NEG}
-    // collapses to the legacy axis order {kXFace, kYFace, kZFace}, so the
-    // upload is bit-identical to pre-#1278 master.
+    // collapses to {kXFace, kYFace, kZFace}.
     const mat2 fd0 = IRMath::faceDeformationMatrix(visibleFaces[0], residualYaw);
     const mat2 fd1 = IRMath::faceDeformationMatrix(visibleFaces[1], residualYaw);
     const mat2 fd2 = IRMath::faceDeformationMatrix(visibleFaces[2], residualYaw);
@@ -235,7 +222,7 @@ inline void buildVoxelFrameData(
 // screen-space lighting dispatch (COMPUTE_VOXEL_AO / LIGHTING_TO_TRIXEL), so a
 // second lit canvas (a detached re-voxelize solid) is shaded with ITS frame
 // (visible triplet, detached flag, yaw split) instead of whatever canvas
-// VOXEL_TO_TRIXEL_STAGE_1 left resident (re-voxelize P4 / #1558). No-op for a
+// VOXEL_TO_TRIXEL_STAGE_1 left resident. No-op for a
 // canvas with no voxel pool: the UBO keeps its prior state, so a pure-SDF lit
 // canvas is unchanged. `getComponentOptional` on the iterating canvas is the
 // canvas-iteration pattern (few canvases; cf.
@@ -262,7 +249,7 @@ inline void authorIteratingCanvasVoxelFrame(
 
 // Resolve the main world canvas's voxel-frame inputs (textures + pool +
 // rotation) once per frame in a lighting pass's beginTick, for the endTick
-// restore below (#1558). beginTick lookups are once-per-frame, not the
+// restore below. beginTick lookups are once-per-frame, not the
 // per-entity footgun. Writes nullptr for any absent component (or all three
 // when `mainEntity` is null), which restoreMainCanvasVoxelFrame treats as a
 // no-op. Shared by COMPUTE_VOXEL_AO + LIGHTING_TO_TRIXEL so the resolution
@@ -293,7 +280,7 @@ inline void resolveMainCanvasVoxelFrameInputs(
 // Re-author the MAIN world canvas's voxel frame data into the shared UBO at a
 // lighting pass's endTick, so downstream stages (BAKE / COMPUTE_SUN_SHADOW /
 // FOG / TRIXEL_TO_FRAMEBUFFER) keep reading the world frame after a detached
-// canvas temporarily authored its own (#1558). The main canvas's inputs are
+// canvas temporarily authored its own. The main canvas's inputs are
 // resolved once per frame in the caller's beginTick (never held across frames);
 // pass null pointers to no-op (e.g. a scene with no voxel main canvas).
 inline void restoreMainCanvasVoxelFrame(

@@ -1,25 +1,23 @@
 #ifndef SYSTEM_UPDATE_VOXEL_POSITIONS_GPU_H
 #define SYSTEM_UPDATE_VOXEL_POSITIONS_GPU_H
 
-// PURPOSE: GPU voxel-position prepass (#1396) — the transform-indirection
+// GPU voxel-position prepass — the transform-indirection
 //   world-position authority for dynamic-transform voxels. Each voxel carries
 //   an `entityTransformIndex` in `C_VoxelPool` (bit-packed into the local-position
 //   SSBO `.w` lane, binding 17); the compute shader computes
 //   `world = EntityTransform[idx] * localPos` and writes the global
 //   position SSBO (binding 5) ahead of `VOXEL_TO_TRIXEL_STAGE_1`. The per-frame
 //   CPU→GPU upload is O(GPU-transformed voxel sets) — one SO(3)+translation
-//   matrix each — instead of O(rotating voxels), which is the whole reason for
-//   the GPU path over CPU re-upload (#1272 hordes).
+//   matrix each — instead of O(rotating voxels).
 //
-// BYTE-IDENTICAL: every voxel defaults to `kVoxelTransformStatic`, and the
+// Every voxel defaults to `kVoxelTransformStatic`, and the
 //   shader early-returns on that sentinel, so the prepass never touches a
 //   static voxel's binding-5 slot — the CPU-direct pending-range flush in
-//   `VOXEL_TO_TRIXEL_STAGE_1` still owns those slots, exactly as before. A scene
+//   `VOXEL_TO_TRIXEL_STAGE_1` still owns those slots. A scene
 //   with no GPU-transformed voxel sets does no dispatch at all (`endTick`
-//   returns early), so existing scenes are byte-identical by construction.
+//   returns early).
 //
-// SHARED SUBSTRATE: the indirection is generic — an entity transform today, a
-//   bone transform for skeletal voxels (#605) tomorrow. A consumer routes a
+// The indirection is generic across entity and skeletal transforms. A consumer routes a
 //   voxel set through this prepass (opt in via gpuTransformSlot_) instead of
 //   re-deriving positions on the CPU; shape_debug --gpu-voxel-smoke is the
 //   reference exerciser.
@@ -32,13 +30,10 @@
 //   - The CPU global mirror (`m_voxelPositionsGlobal`) for a dynamic set holds
 //     the un-rotated translation-only position (UPDATE_VOXEL_SET_CHILDREN still
 //     computes it as a re-seed fallback but does not queue it). Cull/picking of
-//     a dynamic set read that mirror, so they lag the GPU rotation until a
-//     follow-up folds the prepass output back into the cull frame.
+//     a dynamic set read that mirror, so they do not reflect GPU rotation.
 //
-// RESOLVED: the canvas-switch re-seed in VOXEL_TO_TRIXEL_STAGE_1 no longer
-//   clobbers this prepass's binding-5 output — it gates on static voxel runs
-//   (`flushStaticPositionRanges`, #1396 commit e04f29cd) and leaves
-//   GPU-transformed slots intact.
+// The canvas-switch re-seed in VOXEL_TO_TRIXEL_STAGE_1 gates on static voxel
+// runs and leaves GPU-transformed binding-5 slots intact.
 //
 // DEPENDENCIES: C_VoxelPool, C_VoxelSetNew, C_WorldTransform,
 //   IRRender::VoxelGpuPosition, GpuVoxelTransform, GPUUpdateParams
@@ -96,7 +91,7 @@ template <> struct System<UPDATE_VOXEL_POSITIONS_GPU> {
     // slots were last seeded into binding 17. A switch re-seeds the live range.
     IREntity::EntityId lastSeededCanvas_ = IREntity::kNullEntity;
 
-    // EntityTransformBuffer slot allocator (#1396). A consumer acquires a slot
+    // EntityTransformBuffer slot allocator. A consumer acquires a slot
     // (via `IRPrefab::VoxelTransform`) when it opts a voxel set into the prepass
     // and releases it when the set no longer needs a dynamic transform. A
     // monotonic high-water plus a recycle stack keeps slot ids dense and bounded
@@ -113,7 +108,7 @@ template <> struct System<UPDATE_VOXEL_POSITIONS_GPU> {
         }
         // Stop at kJointTransformSlotBase, not kMaxGpuVoxelTransforms: the
         // reserved high region [kJointTransformSlotBase, kMaxGpuVoxelTransforms)
-        // belongs to UPDATE_JOINT_MATRICES (#1603). Partitioning the shared
+        // belongs to UPDATE_JOINT_MATRICES. Partitioning the shared
         // binding-18 budget keeps this system's contiguous `[0, maxSlotUsed_]`
         // re-upload from ever clobbering a joint slot.
         if (nextFreeSlot_ < static_cast<std::uint32_t>(kJointTransformSlotBase)) {
@@ -194,7 +189,7 @@ template <> struct System<UPDATE_VOXEL_POSITIONS_GPU> {
         C_VoxelPool &pool = *touchedPool_;
         const int liveCount = pool.getLiveVoxelCount();
         // No globalPosBuf_ null check: getNamedResource asserts on a miss and
-        // never returns null (see #2627).
+        // never returns null.
         if (liveCount <= 0) {
             return;
         }
@@ -245,7 +240,7 @@ template <> struct System<UPDATE_VOXEL_POSITIONS_GPU> {
         // compact dispatch exactly so the shader's linear-index reconstruction
         // (workGroupIndex * 64 + localId.x) lines up with what we dispatch. The
         // count→grid fold is shared with VOXEL_TO_TRIXEL_STAGE_1 via the
-        // lightweight voxel_dispatch_grid.hpp helper (#1422) — no dependency on
+        // lightweight voxel_dispatch_grid.hpp helper — no dependency on
         // the heavy STAGE_1 system header.
         constexpr int kLocalSize = 64;
         const ivec2 grid = voxelDispatchGridForCount(IRMath::divCeil(liveCount, kLocalSize));
@@ -302,10 +297,10 @@ template <> struct System<UPDATE_VOXEL_POSITIONS_GPU> {
 
 namespace IRPrefab::VoxelTransform {
 
-// Handle to the UPDATE_VOXEL_POSITIONS_GPU transform-slot allocator (#1396). A
+// Handle to the UPDATE_VOXEL_POSITIONS_GPU transform-slot allocator. A
 // consumer reaches the system's free-list through this rather than threading the
 // SystemId through every call, so the slot API stays id-free. The id is resolved
-// from SystemManager's `SystemName` registry (#2526): creating the system is all
+// from SystemManager's `SystemName` registry: creating the system is all
 // the wiring there is, and `IRSystem::kNullSystemId` means "never created" —
 // callers treat that as "stay CPU-direct".
 inline IRSystem::System<IRSystem::UPDATE_VOXEL_POSITIONS_GPU> *allocator() {

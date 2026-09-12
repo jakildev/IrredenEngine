@@ -10,7 +10,7 @@ namespace IRRender {
 // Cull-freeze flag: pins the shared cull viewport (below) at its current pose
 // so the camera can free-fly while the cull stays put. Lives here — next to
 // the state it gates — rather than in the toggle-command header, so lower
-// layers that drive the cull (the engine/video auto-screenshot harness, #1438)
+// layers that drive the cull, including the engine/video screenshot harness,
 // can flip it without depending on the command module. The interactive
 // IRCommand::Command<TOGGLE_CULLING_FREEZE> and the programmatic setter below
 // both write this one flag.
@@ -29,7 +29,7 @@ inline void setCullingFrozen(bool frozen) {
     detail::cullingFreezeFlag() = frozen;
 }
 
-// Culling-minimap visibility flag (#2316, V2). Lives here — next to the
+// Culling-minimap visibility flag. Lives here, next to the
 // cull-freeze flag it's toggled alongside — rather than on
 // `System<DEBUG_CULLING_MINIMAP>` itself, so the interactive
 // `IRCommand::Command<TOGGLE_CULLING_MINIMAP>` (which has no `SystemId`
@@ -88,7 +88,7 @@ struct CullViewportState {
     }
 };
 
-// Pinned light/occlusion anchor storage (#2315, V1). `cameraAnchorVoxel()`
+// Pinned light/occlusion anchor storage. `cameraAnchorVoxel`
 // (camera_anchor.hpp) re-derives the world voxel the light volume and
 // occlusion grid center on every frame from the LIVE camera pan — it
 // deliberately never consulted the cull freeze. Freezing the cull viewport

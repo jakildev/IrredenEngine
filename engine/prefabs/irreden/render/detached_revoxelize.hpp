@@ -2,7 +2,7 @@
 #define IR_PREFAB_DETACHED_REVOXELIZE_H
 
 // Driver-side lifecycle for the detached re-voxelize GPU scatter's per-pool
-// resident locals buffers (#1556, epic #1553 P2). Cross-entity orchestration —
+// resident locals buffers. Cross-entity orchestration —
 // scan the canvas archetype, lazily allocate + seed each DETACHED_REVOXELIZE
 // pool's resident SSBO, report the live set — lives here in a prefab-scoped
 // namespace (engine/prefabs/CLAUDE.md Pattern B) so C_DetachedRevoxelizeBuffer
@@ -35,12 +35,12 @@ namespace detail {
 // state, CPU mirror is a one-shot seed" pattern (.claude/rules/cpp-ecs.md), NOT a
 // per-frame upload. Seeds three things:
 //   1. residentLocals_ — one vec4 per voxel (.xyz = composed) for the IDENTITY
-//      fast-path fill (slot == source voxel), unchanged from #1556.
+// fast-path fill (slot == source voxel).
 //   2. sourceGrid_ — the dense 3D occupancy+color grid the INVERSE resample
-//      (#1619) inverse-looks-up: three uints per source cell ({colorPacked,
+// inverse-looks-up: three uints per source cell ({colorPacked,
 //      materialFlagBone, reserved}), keyed by `roundHalfUp(composed) - gridMin`.
-//      The third lane carries C_Voxel::reserved_ (per-trixel priority tier,
-//      #1960 / #2023) so a ROTATING re-voxelize unit preserves it like a static
+//      The third lane carries C_Voxel::reserved_ (per-trixel priority tier),
+//      so a ROTATING re-voxelize unit preserves it like a static
 //      one — the GPU-side inverse fill authored color without it before, so a
 //      spinning detached solid lost its per-trixel depth priority.
 //   3. the rotation-independent dest-AABB cube bound (destSide_/destCenter_/
@@ -61,10 +61,10 @@ inline void seedResidentLocals(
 
     // Resident composed locals (identity fast-path) + per-voxel integer cell and
     // origin-centered bound scan for the inverse grid / dest cube. The per-axis
-    // half-cell anchor (#2349, GridRotation::halfCellAnchor: -0.5 on even-sized
+    // half-cell anchor (GridRotation::halfCellAnchor: -0.5 on even-sized
     // centered axes, 0 on odd) is uniform across the pool — integer authored
     // locals plus ONE shared center-around-origin offset — asserted per voxel so
-    // a future non-uniform authoring fails loudly instead of rendering shifted.
+    // non-uniform authoring fails loudly instead of rendering shifted.
     std::vector<IRMath::vec4> staging(static_cast<std::size_t>(n));
     std::vector<IRMath::ivec3> cells(static_cast<std::size_t>(n));
     constexpr int kBig = 1 << 30;
@@ -132,7 +132,7 @@ inline void seedResidentLocals(
             (static_cast<std::uint32_t>(v.layer_id_) << 24);
         // Third lane mirrors the full C_Voxel::reserved_ word (per-trixel
         // priority in bits[1:0]) so MODE 1's GPU-authored dest record carries it
-        // exactly like the static binding-6 upload does (#2023).
+        // exactly like the static binding-6 upload does.
         grid[static_cast<std::size_t>(li) * 3 + 2] = v.reserved_;
     }
     if (cellCount > 0) {
@@ -145,7 +145,7 @@ inline void seedResidentLocals(
     // preserves length, so the farthest authored corner (maxRadius) bounds every
     // rotated coordinate; the cube [-center, +center]³ holds them all. This is
     // rotation-independent — computed once, valid for every spin pose. The
-    // anchored map (#2349) does NOT grow the cube: an anchored axis's dest
+    // anchored map does NOT grow the cube: an anchored axis's dest
     // cells span the same 2·center+1 count shifted +1 cell, which the kernels
     // fold into the slot->cell decode per axis (see revoxDestDecodeShift in
     // c_revoxelize_detached.{glsl,metal}) instead of paying a symmetric grow
@@ -247,14 +247,14 @@ inline void syncResidentBuffers(
 
 // Cap the re-voxelize single-canvas subdivision density (`voxelRenderOptions.y`)
 // so the model-space lattice stays inside the entity's fixed trixel canvas
-// (#1570 D2 — the single-canvas analogue of the per-axis #1431 cap in
-// IRPrefab::PerAxisCanvas::subdivisionDensity). A re-voxelize canvas rasters its
+// — the single-canvas analogue of IRPrefab::PerAxisCanvas::subdivisionDensity.
+// A re-voxelize canvas rasters its
 // pool in model space (camera yaw + pan zeroed) and is sized once to the pool's
 // rotated-AABB iso footprint at base resolution — it does NOT scale with effSub.
 // effSub folds in camera zoom (`clamp(m_vrs × round(zoom), 1, 16)`), so at
 // zoom > 1 the iso footprint × effSub overflows the fixed canvas and
-// `isInsideCanvas` silently drops the on-screen cells (the bottom/edge clip in
-// #1570). Unlike the per-axis cap — whose on-screen extent is the camera
+// `isInsideCanvas` silently drops the on-screen cells at the bottom or edge.
+// Unlike the per-axis cap, whose on-screen extent is the camera
 // viewport / zoom — the detached model-space footprint is zoom-independent, so
 // the cap is a pure function of canvas size + pool 3D bounds.
 //

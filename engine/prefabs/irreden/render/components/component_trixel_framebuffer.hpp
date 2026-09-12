@@ -12,7 +12,6 @@ using namespace IRRender;
 
 namespace IRComponents {
 
-// TODO make a renderbuffer instead to test performance
 struct C_TrixelCanvasFramebuffer {
     std::pair<ResourceId, Framebuffer *> framebuffer_;
 
@@ -45,7 +44,7 @@ struct C_TrixelCanvasFramebuffer {
         framebuffer_.second->getTextureDepth().bind(bindingDepth);
     }
 
-    // The composite depth attachment, for CPU readback (the #1910 depth probe).
+    // The composite depth attachment, for CPU readback (the depth probe).
     const Texture2D &getTextureDepth() const {
         return framebuffer_.second->getTextureDepth();
     }

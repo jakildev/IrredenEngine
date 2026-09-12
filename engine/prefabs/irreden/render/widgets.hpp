@@ -124,7 +124,7 @@ inline IREntity::EntityId makeCheckbox(
 }
 
 // Read-the-interaction-result helpers. These DO `getComponent` —
-// allowed because they're called from a creation's per-frame logic,
+// allowed because they belong to creation per-frame logic,
 // not from inside a system tick.
 inline bool wasClicked(IREntity::EntityId widget) {
     return IREntity::getComponent<IRComponents::C_WidgetState>(widget).fireAction_;
@@ -146,7 +146,7 @@ inline bool checkboxState(IREntity::EntityId widget) {
     return IREntity::getComponent<IRComponents::C_WidgetCheckbox>(widget).checked_;
 }
 
-// Hovered-widget export (#1796). Create one C_GuiHoverState singleton per
+// Hovered-widget export. Create one C_GuiHoverState singleton per
 // world with makeGuiHoverState(); WIDGET_INPUT::endTick publishes the
 // z-ordered topmost hovered widget into it each frame. hoveredWidget()
 // reads it back — kNullEntity when nothing is hovered or no singleton
@@ -188,7 +188,7 @@ inline void setLabelText(IREntity::EntityId widget, std::string text) {
 }
 
 // ---------------------------------------------------------------------------
-// T-177 follow-up widgets: list, dropdown, radio, text input, scroll.
+// Compound widgets: list, dropdown, radio, text input, scroll.
 // ---------------------------------------------------------------------------
 
 inline IREntity::EntityId makeList(
@@ -294,9 +294,8 @@ inline IREntity::EntityId makeScroll(
     );
 }
 
-// Readers / mutators for the follow-up widgets. Same getComponent
-// allowance as the Phase 0 readers — called from a creation's
-// per-frame logic, not from a system tick.
+// Readers and mutators for compound widgets. This getComponent use belongs to
+// creation per-frame logic, not a system tick.
 inline int listSelectedIndex(IREntity::EntityId widget) {
     return IREntity::getComponent<IRComponents::C_WidgetList>(widget).selectedIndex_;
 }

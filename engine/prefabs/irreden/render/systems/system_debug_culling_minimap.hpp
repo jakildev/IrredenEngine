@@ -136,7 +136,7 @@ inline void drawFrozenIndicator(vec2 minimapOrigin, float minimapWidth, float mi
     IRDebug::drawLineScreen(lineStart, lineEnd, 1.0f, 0.3f, 0.3f, 0.9f);
 }
 
-// Light domain (#2316, V2). Color encodes V1's per-light gather outcome
+// Light-domain color encodes each light's gather outcome
 // (system_compute_light_volume.hpp): full seed, boundary-clamped (residual
 // alpha), or skipped entirely.
 inline vec4 lightGatherStateColor(IRSystem::LightGatherState state, float residual) {
@@ -185,7 +185,7 @@ inline void drawLightDots(
     }
 }
 
-// Caster domain (#2316, V2). Squares mark world-placed re-voxelize casters
+// Caster-domain squares mark world-placed re-voxelize casters
 // gathered by BAKE_SUN_SHADOW_MAP (system_bake_sun_shadow_map.hpp);
 // membership is tested against the same shadow-feeder AABB the bake itself
 // widens toward the sun (sun_shadow_constants.hpp), so a caster reading as a
@@ -226,7 +226,7 @@ template <> struct System<DEBUG_CULLING_MINIMAP> {
     float aspectRatio_ = 12.0f / 7.0f;
     float padding_ = 10.0f;
 
-    // Light + caster domain sources (#2316, V2) — settable via create(Params).
+    // Light and caster domain sources, settable via create(Params).
     // Optional: kNullSystemId means "not wired", so a demo with no lighting
     // pipeline (e.g. the default demo) just gets the shape domain, no
     // spurious empty-window rectangle.
@@ -350,7 +350,7 @@ template <> struct System<DEBUG_CULLING_MINIMAP> {
             detail::drawFrozenIndicator(layout.origin_, layout.width_, layout.height_);
         }
 
-        // Light domain (#2316, V2): gather-state-colored dots + the pinned
+        // Light domain: gather-state-colored dots and the pinned
         // light-volume window rectangle. Skipped when this instance wasn't
         // wired to a COMPUTE_LIGHT_VOLUME system.
         if (lightVolumeSystemId_ != IRSystem::kNullSystemId) {
@@ -383,7 +383,7 @@ template <> struct System<DEBUG_CULLING_MINIMAP> {
             );
         }
 
-        // Caster domain (#2316, V2): world-placed casters as squares +
+        // Caster domain: world-placed casters as squares and
         // the shadow-feeder AABB rectangle they're tested against. Skipped
         // when this instance wasn't wired to a BAKE_SUN_SHADOW_MAP system.
         if (bakeSunShadowSystemId_ != IRSystem::kNullSystemId) {

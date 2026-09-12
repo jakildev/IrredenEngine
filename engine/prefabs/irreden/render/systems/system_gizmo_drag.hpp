@@ -23,10 +23,10 @@ namespace IRSystem {
 //
 // Pipeline: INPUT, after GIZMO_HOVER. Mutates anchor
 // `C_LocalTransform::translation_` (translate) and
-// `C_LocalTransform::rotation_` (rotate, #1610 — FK pose editing reads
+// `C_LocalTransform::rotation_` (rotate; FK pose editing reads
 // this through PROPAGATE_TRANSFORM + the skeletal skinning substrate);
 // scale still only accumulates on the system params — render-side
-// application is a follow-up once a canonical scale component lands.
+// application has no canonical component yet, so scale remains a readout.
 //
 // Drag math (translate):
 //   - At press, capture (a) the anchor's local position, (b) the
@@ -39,10 +39,8 @@ namespace IRSystem {
 //   cursor as its iso depth changes.
 //
 // Drag math (rotate):
-//   - Use screen-space angle of cursor around the anchor's iso pixel.
-//     Phase 3 MVP: same screen-space angle for all three rings; later
-//     refinement can project the ring plane into screen and use a
-//     true axis-perpendicular angle.
+//   - Use the screen-space cursor angle around the anchor's iso pixel for all
+//     three rings.
 //   - Shift held → angle snaps to `kRotateSnapStep` (π/12 = 15°).
 //   - anchor.rotation_ = pressRotation ∘ quatAxisAngle(ringAxis, delta):
 //     post-multiplying rotates about the anchor's LOCAL axis — the rings
@@ -79,9 +77,8 @@ template <> struct System<GIZMO_DRAG> {
     // gizmo target changes, keeping stale values from a previous
     // gizmo's drag from appearing as the new gizmo's current state.
     // endTick() reads these on the press→release transition to log the
-    // final per-drag value. Wiring rotate / scale to an accumulating
-    // render-side component is a follow-up — the canonical channel is
-    // the quat on C_LocalTransform plus a future C_Scale.
+    // final per-drag value. Rotation is carried by C_LocalTransform; scale
+    // remains a diagnostic readout.
     IREntity::EntityId accumOwner_ = IREntity::kNullEntity;
     float accumRotateAngle_ = 0.0f;
     float accumScaleUniform_ = 1.0f;

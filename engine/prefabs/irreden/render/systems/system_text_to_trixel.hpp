@@ -33,8 +33,7 @@ namespace IRSystem {
 // which is why TEXT_TO_TRIXEL must run first. It also clears the GUI canvas
 // each beginTick, the other half of that ordering contract.
 //
-// The runtime command list is rendered by `System<HELP_OVERLAY>`, not here —
-// see #2550.
+// The runtime command list is rendered by `System<HELP_OVERLAY>`, not here.
 template <> struct System<TEXT_TO_TRIXEL> {
     ShaderProgram *textProgram_ = nullptr;
     Buffer *fontDataBuf_ = nullptr;
@@ -101,7 +100,6 @@ template <> struct System<TEXT_TO_TRIXEL> {
             ->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::R32I);
 
         IRRender::device()->dispatchCompute(count, 1, 1);
-        // TODO: Look over all barriers and try and make the minimum necessary to speed up rendering
         IRRender::device()->memoryBarrier(BarrierType::ALL);
     }
 

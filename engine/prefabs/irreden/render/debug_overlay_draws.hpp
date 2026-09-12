@@ -5,8 +5,8 @@
 // from the `System<DEBUG_OVERLAY>` flush that consumes it so non-render
 // translation units — notably the Lua binding in
 // `engine/script/include/irreden/script/lua_debug_overlay_bindings.hpp` — can
-// issue draws without pulling in the flush's GPU headers (`buffer.hpp` /
-// `shader.hpp` / `vao.hpp`). See #2375.
+// issue debug draws without pulling in the flush's GPU headers (`buffer.hpp` /
+// `shader.hpp` / `vao.hpp`).
 //
 // Every draw here is pure CPU buffering: it appends a record to one of the
 // five accessor-owned static-local vectors below and performs no render work. The
