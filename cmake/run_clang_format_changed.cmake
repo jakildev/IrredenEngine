@@ -8,14 +8,31 @@ if(NOT DEFINED QUALITY_FILE_LIST OR QUALITY_FILE_LIST STREQUAL "")
 endif()
 string(REPLACE "\"" "" QUALITY_FILE_LIST "${QUALITY_FILE_LIST}")
 
-if(NOT DEFINED PROJECT_ROOT OR PROJECT_ROOT STREQUAL "")
-    message(FATAL_ERROR "PROJECT_ROOT is required.")
+# The source tree whose changes this run formats, and the root every path
+# below is relative to. NOT necessarily the CMake project source dir: a
+# downstream-creation build configures the engine as the project and attaches
+# the creation through IRREDEN_USER_PROJECTS, so the tree being worked on is
+# the creation's. _irreden_resolve_format_root in ir_quality_tools.cmake owns
+# that choice; this script uses what it is handed.
+if(NOT DEFINED FORMAT_ROOT OR FORMAT_ROOT STREQUAL "")
+    message(FATAL_ERROR "FORMAT_ROOT is required.")
 endif()
-string(REPLACE "\"" "" PROJECT_ROOT "${PROJECT_ROOT}")
+string(REPLACE "\"" "" FORMAT_ROOT "${FORMAT_ROOT}")
 
 include("${QUALITY_FILE_LIST}")
-if(NOT DEFINED QUALITY_FILES OR QUALITY_FILES STREQUAL "")
-    message(FATAL_ERROR "QUALITY_FILES is empty. No files to process.")
+if(NOT DEFINED QUALITY_FILES)
+    message(FATAL_ERROR
+        "QUALITY_FILE_LIST did not define QUALITY_FILES: ${QUALITY_FILE_LIST}")
+endif()
+if(QUALITY_FILES STREQUAL "")
+    # An empty list is a misconfiguration for the engine root (and
+    # irreden_add_quality_targets bails before creating any target in that
+    # case), but a legitimate answer for a creation that carries no C++ at
+    # all. Say which root was swept so the zero is readable either way.
+    message(STATUS
+        "clang-format (changed): no formattable sources under ${FORMAT_ROOT}; "
+        "nothing to format.")
+    return()
 endif()
 
 # Build the set of files changed on the current branch — committed
@@ -44,9 +61,11 @@ if(DEFINED FORMAT_DIFF_BASE AND NOT FORMAT_DIFF_BASE STREQUAL "")
     # non-zero, _collect_git_diff maps that to an empty list, and the run
     # reports "nothing to format" and exits 0 — a gate that passes because
     # it looked at nothing, which is the failure mode this whole file's
-    # CI path exists to close.
+    # CI path exists to close. The base must resolve in the tree being
+    # formatted, which is FORMAT_ROOT's repository — a creation-rooted run
+    # resolves it in the creation clone, not in the engine's.
     execute_process(
-        COMMAND git -C "${PROJECT_ROOT}" rev-parse --verify --quiet
+        COMMAND git -C "${FORMAT_ROOT}" rev-parse --verify --quiet
                 "${FORMAT_DIFF_BASE}^{commit}"
         RESULT_VARIABLE _base_rc
         OUTPUT_QUIET
@@ -54,13 +73,13 @@ if(DEFINED FORMAT_DIFF_BASE AND NOT FORMAT_DIFF_BASE STREQUAL "")
     )
     if(NOT _base_rc EQUAL 0)
         message(FATAL_ERROR
-            "FORMAT_DIFF_BASE does not resolve to a commit in ${PROJECT_ROOT}: "
+            "FORMAT_DIFF_BASE does not resolve to a commit in ${FORMAT_ROOT}: "
             "${FORMAT_DIFF_BASE}")
     endif()
     set(_diff_base "${FORMAT_DIFF_BASE}")
 else()
     execute_process(
-        COMMAND git -C "${PROJECT_ROOT}" rev-parse --abbrev-ref "@{upstream}"
+        COMMAND git -C "${FORMAT_ROOT}" rev-parse --abbrev-ref "@{upstream}"
         OUTPUT_VARIABLE _upstream
         RESULT_VARIABLE _upstream_rc
         ERROR_QUIET
@@ -78,8 +97,14 @@ function(_collect_git_diff range out_var)
     # semicolons in it expand into separate git arguments. Current
     # call sites pass a single-string git range ("base...HEAD" or
     # "HEAD"), but multi-token ranges would also work.
+    #
+    # `--relative` reports paths relative to FORMAT_ROOT instead of the
+    # repository toplevel, so the reconstruction below holds even when the
+    # format root is a subdirectory of its repo. `ls-files --others` below is
+    # already cwd-relative and needs no equivalent. For a root that IS the
+    # toplevel — both real configurations — the flag is a no-op.
     execute_process(
-        COMMAND git -C "${PROJECT_ROOT}" diff --name-only ${range}
+        COMMAND git -C "${FORMAT_ROOT}" diff --name-only --relative ${range}
         OUTPUT_VARIABLE _out
         RESULT_VARIABLE _rc
         ERROR_QUIET
@@ -103,7 +128,7 @@ list(APPEND _changed_files ${_working})
 # Neither diff form reports brand-new untracked files, so without this a
 # never-`git add`-ed source file silently skips formatting ("no diff").
 execute_process(
-    COMMAND git -C "${PROJECT_ROOT}" ls-files --others --exclude-standard
+    COMMAND git -C "${FORMAT_ROOT}" ls-files --others --exclude-standard
     OUTPUT_VARIABLE _untracked_out
     RESULT_VARIABLE _untracked_rc
     ERROR_QUIET
@@ -116,9 +141,13 @@ if(_untracked_rc EQUAL 0 AND NOT _untracked_out STREQUAL "")
 endif()
 
 if(NOT _changed_files)
+    # The count is always zero here, and that is the point: "no diff vs
+    # origin/master" alone reads as "clean" whether the run looked at the right
+    # tree or at no tree at all. Stating the examined count in the same shape
+    # as the other zero-result line below keeps the two distinguishable.
     message(STATUS
-        "clang-format (changed): no diff vs ${_diff_base} in ${PROJECT_ROOT}; "
-        "nothing to format.")
+        "clang-format (changed): no diff vs ${_diff_base} in ${FORMAT_ROOT} "
+        "(0 changed file(s) examined); nothing to format.")
     return()
 endif()
 
@@ -130,7 +159,7 @@ list(REMOVE_DUPLICATES _changed_files)
 set(_targets "")
 foreach(_rel IN LISTS _changed_files)
     if(NOT _rel STREQUAL "")
-        set(_abs "${PROJECT_ROOT}/${_rel}")
+        set(_abs "${FORMAT_ROOT}/${_rel}")
         if(EXISTS "${_abs}")
             list(FIND QUALITY_FILES "${_abs}" _idx)
             if(NOT _idx EQUAL -1)
@@ -146,7 +175,7 @@ endforeach()
 set(_untracked_abs "")
 foreach(_rel IN LISTS _untracked)
     if(NOT _rel STREQUAL "")
-        list(APPEND _untracked_abs "${PROJECT_ROOT}/${_rel}")
+        list(APPEND _untracked_abs "${FORMAT_ROOT}/${_rel}")
     endif()
 endforeach()
 
@@ -166,7 +195,7 @@ endif()
 # pass, while still excluding commits the base gained after we branched —
 # the reason the file-list pass above uses three-dot `...HEAD`.
 execute_process(
-    COMMAND git -C "${PROJECT_ROOT}" merge-base "${_diff_base}" HEAD
+    COMMAND git -C "${FORMAT_ROOT}" merge-base "${_diff_base}" HEAD
     OUTPUT_VARIABLE _range_base
     RESULT_VARIABLE _range_base_rc
     ERROR_QUIET
@@ -188,7 +217,7 @@ function(_collect_line_ranges file out_var)
         return()
     endif()
     execute_process(
-        COMMAND git -C "${PROJECT_ROOT}" diff -U0 "${_range_base}" -- "${file}"
+        COMMAND git -C "${FORMAT_ROOT}" diff -U0 "${_range_base}" -- "${file}"
         OUTPUT_VARIABLE _diff_out
         RESULT_VARIABLE _diff_rc
         ERROR_QUIET

@@ -135,6 +135,18 @@ cmake --build build --target header-checks   # header-global / namespace bans
 stays out of your diff; brand-new files are formatted in full. Bare `format`
 is for intentional cleanup PRs only.
 
+**Which tree it diffs.** `format-changed` follows the tree the build was
+configured *against*, not the engine tree that owns the CMake project. On a
+downstream-creation build (`-DIRREDEN_USER_PROJECTS=<creation-worktree>` — see
+[§ Downstream-creation worktree builds](#downstream-creation-worktree-builds))
+that is the creation worktree, and the configure announces it:
+`-- format-changed diff root: <path> (user project)`. A run rooted at a tree
+nobody edited comes back clean and exits 0, which reads exactly like a clean
+tree — so both zero-diff results name the root they swept and the count they
+examined: `no diff vs <base> in <root> (0 changed file(s) examined)` and
+`<N> changed file(s) examined, 0 on the quality list`. Read the root and the
+count, not the word "nothing".
+
 ### Python (scripts)
 
 Everything under `scripts/` is linted by **ruff**
