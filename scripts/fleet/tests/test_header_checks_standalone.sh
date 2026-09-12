@@ -76,6 +76,14 @@
 #   - a wrapped declaration whose head line carries a trailing comment with
 #     a paren in it                                 → exit 1 (the comment's
 #     `(` must not read as a function-declaration guard hit)
+#
+# Plus one section that asserts what the shim RUNS rather than what it finds:
+# every cmake/run_*check*.cmake other than the shim itself must be
+# directly include()d by it, since the shim is the only path CI executes. The
+# population comes from the glob, never from the shim's includes or
+# make_fixture's copy list, and header-checks.yml's paths: filters must
+# match a checker filename that does not exist yet, so a new checker triggers
+# the job that runs the census.
 
 set -uo pipefail
 
@@ -1149,5 +1157,718 @@ noroot_rc=$?
 assert_eq "1" "$noroot_rc" "missing PROJECT_ROOT exits 1"
 assert_contains "$noroot_out" "PROJECT_ROOT is required" \
     "missing PROJECT_ROOT explains itself"
+
+
+# ===========================================================================
+# Checker include-set census
+# ===========================================================================
+#
+# Everything above drives the shim and asserts what it FINDS. This section
+# asserts what it RUNS. The shim is the only path CI executes — quality.yml,
+# the `lint` target's sole route, is retired — so a checker wired only
+# into `irreden_add_quality_targets` (a `-P` invocation, no shim `include()`)
+# ships CI-inert while its rule doc still claims "enforced".
+#
+# The population is derived from a cmake/run_*check*.cmake glob, never from the
+# shim's own includes and never from make_fixture's copy list: a domain computed
+# from the thing under test is invisible to both a green run and its positive
+# control. The glob IS the domain, so a checker named outside it stays
+# invisible — that is the accepted tradeoff, not a defect.
+
+# checker_includes <cmake-file> — one line per include() call, printing that
+# call's first argument (the file include() actually loads). The whole file is
+# joined first so a wrapped `include(\n  "...")` still reads as one call, which
+# is what keeps the guard from being defeated by reformatting: a matcher that
+# reads one line at a time misses a wrapped call, here in the wiring dimension.
+#
+# This is a LEXER over CMake command invocations, not a regex over stripped
+# text, because the two questions it has to answer are one question: "where
+# does a comment start" and "where does a command start" are both answered by
+# knowing which argument you are inside. Strip-then-match cannot know that, so
+# it needs a new special case per comment-adjacent grammar rule and is never
+# done. Every clause below is a false-signal guard whose direction is named:
+#
+#   - COMMENTS, both CMake forms, in CMake lexical order. At a `#` outside any
+#     argument, a following `[=*[` opens a BRACKET comment through the matching
+#     `]=*]`, anything else is a line comment to the newline. Order is
+#     load-bearing both ways: line-comments-first makes a `#[[` opener vanish
+#     and a CI-inert include read as live (false CLEAN); brackets-first lets a
+#     `#[[` written inside a line comment swallow the live include()s after it
+#     (false RED). One control each, below.
+#   - QUOTED and BRACKET ARGUMENTS, where `#` is an ordinary character. cmake
+#     4.3.1 executes `include("…/run_alpha#tag_check.cmake")`, `include([[…#…]])`
+#     and an escaped `\#` in an unquoted argument; a lexer that opens a comment
+#     at those `#`s drops the rest of the line and reports a correctly-wired
+#     checker as CI-inert (false RED). Same state, opposite direction: an
+#     include() spelled INSIDE a quoted or bracket argument — `message(STATUS
+#     "… include(\"…/run_beta_check.cmake\")")` — is data, and cmake does NOT
+#     execute it, so counting it would silently satisfy the census with wiring
+#     that does not exist (false CLEAN). Tracking argument state is what answers
+#     both; neither direction is reachable from the other design.
+#   - COMMAND NAME, matched case-insensitively (CMake rule) and only as a whole
+#     identifier. A case-sensitive match reports a shim spelling `INCLUDE(...)`
+#     — which CMake executes — as unwired (false RED); a boundary-less match
+#     lets `my_include(...)` — which it does not — satisfy the census (false
+#     CLEAN).
+#
+# An unterminated bracket comment, quote, or argument list is a file CMake
+# rejects outright, so nothing after that point runs and the scan stops there.
+#
+# Still NOT interpreted, by design (see census_missing_includes): if()
+# conditionality, and a path assembled through a variable rather than spelled.
+checker_includes() {
+    awk '
+        function is_id(ch) { return ch != "" && ch ~ /[A-Za-z0-9_]/ }
+        function is_ws(ch) { return ch == " " || ch == "\t" || ch == "\r" || ch == "\n" }
+
+        # bracket_open(p) — 1 when p starts a `[=*[` opener, setting BEQ to its
+        # run of "=" so the caller can build the matching closer. Any number of
+        # "=" is legal, and the count has to match, so the delimiter is carried
+        # rather than assumed.
+        function bracket_open(p,   r) {
+            if (substr(BUF, p, 1) != "[") return 0
+            r = p + 1
+            BEQ = ""
+            while (substr(BUF, r, 1) == "=") { BEQ = BEQ "="; r++ }
+            return substr(BUF, r, 1) == "["
+        }
+
+        # skip_comment(p) — p indexes a "#" known to be outside any argument.
+        # Returns the index past the comment, or 0 when unterminated.
+        function skip_comment(p,   r, q, closer) {
+            if (bracket_open(p + 1)) {
+                closer = "]" BEQ "]"
+                r = p + 1 + length(BEQ) + 2
+                q = index(substr(BUF, r), closer)
+                if (q == 0) return 0
+                return r + q - 1 + length(closer)
+            }
+            q = index(substr(BUF, p), "\n")
+            if (q == 0) return 0
+            return p + q
+        }
+
+        # read_quoted(p) — p indexes the opening quote. Sets VAL to the value
+        # with escapes resolved; returns the index past the closing quote, or 0.
+        # A backslash escapes the next character, so an escaped quote does not
+        # close the argument and an escaped newline is a line continuation.
+        function read_quoted(p,   ch, out) {
+            out = ""
+            p++
+            while (p <= NBUF) {
+                ch = substr(BUF, p, 1)
+                if (ch == "\\") {
+                    ch = substr(BUF, p + 1, 1)
+                    if (ch != "\n") out = out ch
+                    p += 2
+                    continue
+                }
+                if (ch == "\"") { VAL = out; return p + 1 }
+                out = out ch
+                p++
+            }
+            return 0
+        }
+
+        # read_unquoted(p) — an unquoted argument ends at whitespace, a paren, a
+        # quote, or an unescaped "#" (which starts a comment, exactly as CMake
+        # reads it). Escapes are resolved, so `\#` stays part of the value.
+        function read_unquoted(p,   ch, out) {
+            out = ""
+            while (p <= NBUF) {
+                ch = substr(BUF, p, 1)
+                if (ch == "\\") {
+                    ch = substr(BUF, p + 1, 1)
+                    if (ch != "\n") out = out ch
+                    p += 2
+                    continue
+                }
+                if (is_ws(ch)) break
+                if (ch == "(" || ch == ")" || ch == "\"" || ch == "#") break
+                out = out ch
+                p++
+            }
+            VAL = out
+            return p
+        }
+
+        # read_args(p, name) — p indexes just past a command open paren. Walks
+        # to the matching close, and for include() prints the FIRST argument:
+        # that is the file loaded, and the rest of the signature (OPTIONAL,
+        # RESULT_VARIABLE ...) is not a path. Nested parens are tracked because
+        # a command like if(NOT (A AND B)) carries them inside its own list.
+        # Returns the index past the close paren, or 0 when it never closes.
+        function read_args(p, name,   depth, ch, first, got, start, q, closer) {
+            depth = 1
+            got = 0
+            first = ""
+            while (p <= NBUF) {
+                ch = substr(BUF, p, 1)
+                if (ch == "#") { p = skip_comment(p); if (p == 0) return 0; continue }
+                if (is_ws(ch)) { p++; continue }
+                if (ch == "(") { depth++; p++; continue }
+                if (ch == ")") {
+                    depth--
+                    p++
+                    if (depth == 0) {
+                        if (name == "include" && got && first != "") print first
+                        return p
+                    }
+                    continue
+                }
+                VAL = ""
+                if (ch == "\"") {
+                    p = read_quoted(p)
+                    if (p == 0) return 0
+                } else if (bracket_open(p)) {
+                    closer = "]" BEQ "]"
+                    start = p + length(BEQ) + 2
+                    q = index(substr(BUF, start), closer)
+                    if (q == 0) return 0
+                    VAL = substr(BUF, start, q - 1)
+                    p = start + q - 1 + length(closer)
+                } else {
+                    p = read_unquoted(p)
+                }
+                if (!got) { first = VAL; got = 1 }
+            }
+            return 0
+        }
+
+        { buf = buf $0 "\n" }
+        END {
+            BUF = buf
+            NBUF = length(BUF)
+            i = 1
+            while (i <= NBUF) {
+                ch = substr(BUF, i, 1)
+                if (ch == "#") { i = skip_comment(i); if (i == 0) break; continue }
+                if (ch ~ /[A-Za-z_]/) {
+                    # A whole identifier, consumed from its first character, is
+                    # what makes the name boundary structural instead of a regex
+                    # anchor: my_include is read as one name and compared as one.
+                    j = i
+                    while (j <= NBUF && is_id(substr(BUF, j, 1))) j++
+                    nm = tolower(substr(BUF, i, j - i))
+                    k = j
+                    while (k <= NBUF) {
+                        ch = substr(BUF, k, 1)
+                        if (ch == "#") { k = skip_comment(k); if (k == 0) { k = 0; break }; continue }
+                        if (is_ws(ch)) { k++; continue }
+                        break
+                    }
+                    if (k == 0) break
+                    if (substr(BUF, k, 1) == "(") {
+                        i = read_args(k + 1, nm)
+                        if (i == 0) break
+                        continue
+                    }
+                    i = j
+                    continue
+                }
+                i++
+            }
+        }
+    ' "$1"
+}
+
+# census_population <root> — the basename of every checker the glob finds
+# under <root>/cmake, excluding the shim itself. The exclusion is a literal
+# one-liner on purpose: a second standalone shim is expected, and the day a
+# checker belongs to THAT shim this guard would otherwise demand its include
+# in the wrong one. A one-line exclusion is trivial to extend; a derived one
+# is not.
+census_population() {
+    local root="$1" f base
+    for f in "$root"/cmake/run_*check*.cmake; do
+        [[ -f "$f" ]] || continue
+        base=$(basename "$f")
+        [[ "$base" == "run_header_checks_standalone.cmake" ]] && continue
+        echo "$base"
+    done
+}
+
+# census_is_vacuous <root> — true when the glob finds no checker besides the
+# shim. That shape makes the include-set assertion pass while checking
+# nothing, so it has to read as a failure rather than a clean run.
+census_is_vacuous() {
+    [[ -z "$(census_population "$1")" ]]
+}
+
+# census_missing_includes <root> — one line per checker in the population that
+# the shim does not directly include(). Empty output means the include set is
+# complete.
+#
+# An include-set guard, not a CMake interpreter: it does not evaluate whether
+# an include sits inside a false if() branch. Every shim include today is
+# unconditional and side-effecting (no define-then-call indirection), so
+# include() presence is a sound proxy for "this checker runs in CI"; the day
+# one becomes conditional, that proxy — not this matcher — is what changed.
+#
+# Matching is on the include argument's BASENAME, at the path boundary — never
+# on the ${PROJECT_ROOT} literal the shim happens to spell today. The sibling
+# call site in ir_quality_tools.cmake spells the same files
+# -P "${PROJECT_SOURCE_DIR}/cmake/<name>", and a shim refactor to
+# ${CMAKE_CURRENT_LIST_DIR} is legitimate; pinning the root literal would turn
+# this guard red on a correctly-wired checker — the mirror image of the
+# formatter-defeatable false negative the header executor's own guard avoids.
+# The boundary anchor is also what keeps a longer lookalike name
+# (run_x_check_v2.cmake) from satisfying run_x_check.cmake.
+census_missing_includes() {
+    local root="$1"
+    # Separate statement on purpose: bash expands every word of a `local`
+    # command before any of its assignments take effect, so `local root="$1"
+    # shim="$root/..."` reads the CALLER's root, not this one.
+    local shim="$root/cmake/run_header_checks_standalone.cmake"
+    local -a included=()
+    local arg checker base found
+    if [[ ! -f "$shim" ]]; then
+        echo "MISSING-SHIM:$shim"
+        return 0
+    fi
+    while IFS= read -r arg; do
+        [[ -n "$arg" ]] && included+=("${arg##*/}")
+    done < <(checker_includes "$shim")
+    while IFS= read -r checker; do
+        [[ -n "$checker" ]] || continue
+        found=0
+        for base in ${included[@]+"${included[@]}"}; do
+            [[ "$base" == "$checker" ]] && { found=1; break; }
+        done
+        [[ "$found" -eq 0 ]] && echo "$checker"
+    done < <(census_population "$root")
+    return 0
+}
+
+# assert_census_clean <root> <msg> — the failure branch names the orphans,
+# since "which checker is CI-inert" is the whole answer this arm exists to give.
+assert_census_clean() {
+    local root="$1" msg="$2" missing
+    missing=$(census_missing_includes "$root")
+    if [[ -z "$missing" ]]; then
+        ok "$msg"
+    else
+        bad "$msg"
+        echo "        present in cmake/ but never include()d by the shim —"
+        echo "        these run only via the header-checks/lint targets, which have no CI path:"
+        printf '%s\n' "$missing" | sed 's/^/          | /'
+    fi
+}
+
+# make_census_fixture <root> — a hermetic copy of the REAL checker population
+# plus the real shim. Copied by glob, not by name list, so a checker added to
+# the tree is carried here without editing any fixture-copy list.
+make_census_fixture() {
+    local root="$1"
+    mkdir -p "$root/cmake"
+    cp "$SCRIPT_DIR"/cmake/run_*check*.cmake "$root/cmake/"
+}
+
+# make_synthetic_census_fixture <root> <shim-body> — two stand-in checkers and
+# a shim whose include set the arm dictates. The matcher-semantics arms use
+# this rather than mutating a copy of the real shim: the property under test is
+# how an include is SPELLED, and a synthetic shim states each spelling outright
+# instead of reaching it through a sed rewrite.
+make_synthetic_census_fixture() {
+    local root="$1" shim_body="$2"
+    mkdir -p "$root/cmake"
+    : > "$root/cmake/run_alpha_check.cmake"
+    : > "$root/cmake/run_beta_check.cmake"
+    printf '%s\n' "$shim_body" > "$root/cmake/run_header_checks_standalone.cmake"
+}
+
+# --- the source tree's own include set is complete --------------------------
+# The guard arm, and the only one that reads the live repo. Every mutation arm
+# below works on a temp copy — nothing in this suite writes into cmake/.
+census_count=0
+while IFS= read -r _census_entry; do
+    [[ -n "$_census_entry" ]] && census_count=$((census_count + 1))
+done < <(census_population "$SCRIPT_DIR")
+
+if census_is_vacuous "$SCRIPT_DIR"; then
+    bad "cmake/run_*check*.cmake finds no checker besides the shim — the glob broke, and the census below would pass vacuously"
+else
+    ok "census domain is non-empty: $census_count checker(s) besides the shim"
+fi
+assert_census_clean "$SCRIPT_DIR" \
+    "every cmake/run_*check*.cmake is include()d by run_header_checks_standalone.cmake"
+
+# --- a hermetic copy of that same population is clean too -------------------
+# Pins that the census reads its <root> argument rather than the repo root it
+# was first written against; every arm below depends on that.
+CENSUS_CLEAN="$TMPROOT/census-clean"
+make_census_fixture "$CENSUS_CLEAN"
+assert_census_clean "$CENSUS_CLEAN" "a temp copy of the real cmake/ censuses clean"
+
+# --- a checker born without a shim include is named -------------------------
+# The discriminating control. Deleting an existing include is the other
+# mutation, but ~39 of the scratch-behaviour arms above fire on it first — this
+# shape fires nothing else, so it is the one that proves THIS arm works.
+CENSUS_ORPHAN="$TMPROOT/census-orphan"
+make_census_fixture "$CENSUS_ORPHAN"
+cat > "$CENSUS_ORPHAN/cmake/run_fixture_orphan_check.cmake" <<'EOF'
+message(FATAL_ERROR "FIXTURE_ORPHAN_PROBE fired")
+EOF
+orphan_missing=$(census_missing_includes "$CENSUS_ORPHAN")
+assert_contains "$orphan_missing" "run_fixture_orphan_check.cmake" \
+    "a checker added to cmake/ with no shim include is named by the census"
+assert_absent "$orphan_missing" "run_metal_scratch_consumer_check.cmake" \
+    "correctly-wired checkers are not swept up with it"
+rm "$CENSUS_ORPHAN/cmake/run_fixture_orphan_check.cmake"
+assert_census_clean "$CENSUS_ORPHAN" "removing the injected checker restores a clean census"
+
+# --- a root with no shim at all is reported, not silently clean -------------
+CENSUS_NOSHIM="$TMPROOT/census-noshim"
+mkdir -p "$CENSUS_NOSHIM/cmake"
+cp "$SCRIPT_DIR/cmake/run_metal_kernel_registry_check.cmake" "$CENSUS_NOSHIM/cmake/"
+assert_contains "$(census_missing_includes "$CENSUS_NOSHIM")" "MISSING-SHIM" \
+    "a checker population with no shim beside it reads as unwired, not as clean"
+
+# --- an empty population reads as vacuous, not as clean ---------------------
+CENSUS_EMPTY="$TMPROOT/census-empty"
+mkdir -p "$CENSUS_EMPTY/cmake"
+cp "$CHECKER" "$CENSUS_EMPTY/cmake/"
+if census_is_vacuous "$CENSUS_EMPTY"; then
+    ok "a cmake/ holding only the shim is detected as an empty population"
+else
+    bad "a cmake/ holding only the shim was not detected as an empty population"
+fi
+assert_eq "" "$(census_missing_includes "$CENSUS_EMPTY")" \
+    "the include-set assertion alone would have called that tree clean"
+
+# --- a commented-out include reads as absent --------------------------------
+# Same contract the registry-side guard holds: a disabled wiring line never
+# reaches the executed path, so it must not satisfy the guard.
+CENSUS_COMMENTED="$TMPROOT/census-commented"
+make_synthetic_census_fixture "$CENSUS_COMMENTED" 'include("${PROJECT_ROOT}/cmake/run_alpha_check.cmake")
+# include("${PROJECT_ROOT}/cmake/run_beta_check.cmake")'
+commented_missing=$(census_missing_includes "$CENSUS_COMMENTED")
+assert_contains "$commented_missing" "run_beta_check.cmake" \
+    "a commented-out include does not satisfy the census"
+assert_absent "$commented_missing" "run_alpha_check.cmake" \
+    "the live include in the same shim still satisfies it"
+
+# --- a bracket-commented include reads as absent too ------------------------
+# CMake's other comment form. `#[[ ... ]]` comments out everything through the
+# matching close, across lines, so an include inside one never runs and must
+# not satisfy the census either. Measured against cmake 4.3.1: this fixture
+# runs alpha and not beta.
+CENSUS_BRACKET="$TMPROOT/census-bracket"
+make_synthetic_census_fixture "$CENSUS_BRACKET" 'include("${PROJECT_ROOT}/cmake/run_alpha_check.cmake")
+#[[
+include("${PROJECT_ROOT}/cmake/run_beta_check.cmake")
+]]'
+bracket_missing=$(census_missing_includes "$CENSUS_BRACKET")
+assert_contains "$bracket_missing" "run_beta_check.cmake" \
+    "an include inside a #[[ ]] bracket comment does not satisfy the census"
+assert_absent "$bracket_missing" "run_alpha_check.cmake" \
+    "the live include outside the bracket comment still satisfies it"
+
+# --- the =-delimited bracket form is stripped as well -----------------------
+# `#[==[ ... ]==]` is the same comment with a longer delimiter, and any number
+# of `=` is legal. A matcher taught only the bare `#[[` spelling leaves this
+# one's include reading as live — the same false pass one delimiter over.
+CENSUS_BRACKET_EQ="$TMPROOT/census-bracket-eq"
+make_synthetic_census_fixture "$CENSUS_BRACKET_EQ" '#[==[
+include("${PROJECT_ROOT}/cmake/run_beta_check.cmake")
+]==]
+include("${PROJECT_ROOT}/cmake/run_alpha_check.cmake")'
+bracket_eq_missing=$(census_missing_includes "$CENSUS_BRACKET_EQ")
+assert_contains "$bracket_eq_missing" "run_beta_check.cmake" \
+    "an include inside a #[==[ ]==] bracket comment does not satisfy the census"
+assert_absent "$bracket_eq_missing" "run_alpha_check.cmake" \
+    "the include after the bracket comment closes is still read"
+
+# --- a `#[[` inside a LINE comment is not a bracket opener ------------------
+# The opposite-direction control, and the one that discriminates between
+# stripping the two forms in CMake's order and stripping brackets first: a
+# matcher that scans for `#[[` before resolving line comments opens a bracket
+# here, runs it to the `]]` two lines down, and reports the correctly-wired
+# alpha as CI-inert. cmake 4.3.1 runs both includes in this fixture.
+CENSUS_BRACKET_INLINE="$TMPROOT/census-bracket-inline"
+make_synthetic_census_fixture "$CENSUS_BRACKET_INLINE" '# a note mentioning #[[ as prose
+include("${PROJECT_ROOT}/cmake/run_alpha_check.cmake")
+# ]] closes the note, not a comment block
+include("${PROJECT_ROOT}/cmake/run_beta_check.cmake")'
+assert_census_clean "$CENSUS_BRACKET_INLINE" \
+    "a #[[ inside a line comment does not open a bracket comment"
+
+# --- command names are case-insensitive, as CMake's are ---------------------
+# cmake 4.3.1 executes `INCLUDE(...)` and `Include(...)` exactly as it does the
+# lowercase spelling, so a case-sensitive matcher reports a correctly-wired
+# checker as CI-inert — the false-POSITIVE direction, which turns the gate red
+# on a shim nobody broke.
+CENSUS_CASE="$TMPROOT/census-case"
+make_synthetic_census_fixture "$CENSUS_CASE" 'INCLUDE("${PROJECT_ROOT}/cmake/run_alpha_check.cmake")
+Include("${PROJECT_ROOT}/cmake/run_beta_check.cmake")'
+assert_census_clean "$CENSUS_CASE" \
+    "INCLUDE() and Include() satisfy the census, as CMake executes them"
+
+# --- but only at a command-name boundary ------------------------------------
+# The other direction, and the reason the case fix is anchored rather than a
+# bare tolower(): `my_include(...)` is a different command (CMake rejects it
+# outright unless something defines it), so a census it satisfies is clean
+# about wiring the shim never routes through include().
+CENSUS_NAMEBOUND="$TMPROOT/census-namebound"
+make_synthetic_census_fixture "$CENSUS_NAMEBOUND" 'include("${PROJECT_ROOT}/cmake/run_alpha_check.cmake")
+my_include("${PROJECT_ROOT}/cmake/run_beta_check.cmake")'
+namebound_missing=$(census_missing_includes "$CENSUS_NAMEBOUND")
+assert_contains "$namebound_missing" "run_beta_check.cmake" \
+    "a command whose name merely ends in include() does not satisfy the census"
+assert_absent "$namebound_missing" "run_alpha_check.cmake" \
+    "the real include() in the same shim still satisfies it"
+
+# --- a `#` inside a QUOTED argument is not a comment -------------------------
+# cmake 4.3.1 runs both includes in this fixture: inside a quoted argument `#`
+# is an ordinary character, so the checker filename carrying one is loaded. A
+# lexer that opens a line comment there drops the rest of the line, the
+# include() never closes, and the census calls a correctly-wired checker
+# CI-inert — the false-RED direction, the gate going red on a shim nobody broke.
+CENSUS_QUOTED_HASH="$TMPROOT/census-quoted-hash"
+make_synthetic_census_fixture "$CENSUS_QUOTED_HASH" 'include("${PROJECT_ROOT}/cmake/run_alpha#tag_check.cmake")
+include("${PROJECT_ROOT}/cmake/run_beta_check.cmake")'
+: > "$CENSUS_QUOTED_HASH/cmake/run_alpha#tag_check.cmake"
+rm -f "$CENSUS_QUOTED_HASH/cmake/run_alpha_check.cmake"
+assert_census_clean "$CENSUS_QUOTED_HASH" \
+    "a # inside a quoted include() argument does not read as a comment"
+
+# --- nor inside a BRACKET argument ------------------------------------------
+# The other argument form where `#` is literal; cmake runs this include too.
+# The path is spelled literally rather than through ${PROJECT_ROOT} because a
+# bracket argument suppresses variable expansion — `include([[${PROJECT_ROOT}/…]])`
+# looks for a file named with the braces intact and errors out. That is a real
+# CMake rule, not a census limit, and it fails LOUDLY (include() on a missing
+# file is a hard error), so the census is not the thing that has to catch it;
+# using the variable here would have made this arm assert a spelling no shim
+# can use. Basename matching is what makes the literal root harmless.
+CENSUS_BRACKET_ARG="$TMPROOT/census-bracket-arg"
+make_synthetic_census_fixture "$CENSUS_BRACKET_ARG" 'include([[/opt/checks/run_alpha#tag_check.cmake]])
+include("${PROJECT_ROOT}/cmake/run_beta_check.cmake")'
+: > "$CENSUS_BRACKET_ARG/cmake/run_alpha#tag_check.cmake"
+rm -f "$CENSUS_BRACKET_ARG/cmake/run_alpha_check.cmake"
+assert_census_clean "$CENSUS_BRACKET_ARG" \
+    "a # inside a [[ ]] bracket include() argument does not read as a comment"
+
+# --- nor an ESCAPED `#` in an unquoted argument ------------------------------
+# The third spelling CMake accepts, and the one with no delimiter to key on:
+# the backslash is the whole signal, so a lexer that resolves escapes only
+# inside quotes still truncates here.
+CENSUS_ESCAPED_HASH="$TMPROOT/census-escaped-hash"
+make_synthetic_census_fixture "$CENSUS_ESCAPED_HASH" 'include(${PROJECT_ROOT}/cmake/run_alpha\#tag_check.cmake)
+include("${PROJECT_ROOT}/cmake/run_beta_check.cmake")'
+: > "$CENSUS_ESCAPED_HASH/cmake/run_alpha#tag_check.cmake"
+rm -f "$CENSUS_ESCAPED_HASH/cmake/run_alpha_check.cmake"
+assert_census_clean "$CENSUS_ESCAPED_HASH" \
+    "an escaped \\# in an unquoted include() argument does not read as a comment"
+
+# --- a quoted `#[[` does not open a bracket comment either -------------------
+# Worse than losing a line: mis-read as an opener it runs to the next `]]` —
+# which may be nowhere — and swallows every include() after it. Pairs with the
+# line-comment version of the same control above; that one proves the ORDER of
+# the two comment forms, this one proves comments are not recognized inside an
+# argument at all.
+CENSUS_QUOTED_OPENER="$TMPROOT/census-quoted-opener"
+make_synthetic_census_fixture "$CENSUS_QUOTED_OPENER" 'message(STATUS "the docs mention #[[ inline")
+include("${PROJECT_ROOT}/cmake/run_alpha_check.cmake")
+include("${PROJECT_ROOT}/cmake/run_beta_check.cmake")'
+assert_census_clean "$CENSUS_QUOTED_OPENER" \
+    "a #[[ inside a quoted argument does not open a bracket comment"
+
+# --- a multi-line quoted argument keeps its `#` literal ----------------------
+# CMake quoted arguments span newlines, so the closing quote can be lines away
+# and "to the end of the line" is not a bound on the argument. Measured: cmake
+# runs both includes here.
+CENSUS_MULTILINE_QUOTE="$TMPROOT/census-multiline-quote"
+make_synthetic_census_fixture "$CENSUS_MULTILINE_QUOTE" 'message(STATUS "line one # not a comment
+line two")
+include("${PROJECT_ROOT}/cmake/run_alpha_check.cmake")
+include("${PROJECT_ROOT}/cmake/run_beta_check.cmake")'
+assert_census_clean "$CENSUS_MULTILINE_QUOTE" \
+    "a # inside a multi-line quoted argument does not read as a comment"
+
+# --- an escaped quote does not close its argument ---------------------------
+# The state that makes the two arms above discriminating: get the escape wrong
+# and the argument ends early, putting the rest of a message() back at top
+# level where its text is scanned for commands.
+CENSUS_ESCAPED_QUOTE="$TMPROOT/census-escaped-quote"
+make_synthetic_census_fixture "$CENSUS_ESCAPED_QUOTE" 'message(STATUS "an escaped \" quote # still inside")
+include("${PROJECT_ROOT}/cmake/run_alpha_check.cmake")
+include("${PROJECT_ROOT}/cmake/run_beta_check.cmake")'
+assert_census_clean "$CENSUS_ESCAPED_QUOTE" \
+    "an escaped quote does not close its argument"
+
+# --- an include() spelled inside a quoted argument is data, not wiring -------
+# The false-CLEAN direction of the same argument-state tracking, and the one
+# the guard exists to catch: cmake does NOT load beta here — the text is a
+# message() payload. A matcher that counts it reports the shim as fully wired
+# while that checker never runs in CI.
+# The inner call is spelled with an UNQUOTED path on purpose: with escaped
+# quotes around it, a matcher that counted the call would still emit a value
+# carrying a stray `"` and miss the basename — so the arm would pass without
+# the property it names ever being exercised. Measured: cmake prints this text
+# and does not load beta.
+CENSUS_QUOTED_CALL="$TMPROOT/census-quoted-call"
+make_synthetic_census_fixture "$CENSUS_QUOTED_CALL" 'include("${PROJECT_ROOT}/cmake/run_alpha_check.cmake")
+message(STATUS "sample: include(${PROJECT_ROOT}/cmake/run_beta_check.cmake)")'
+quoted_call_missing=$(census_missing_includes "$CENSUS_QUOTED_CALL")
+assert_contains "$quoted_call_missing" "run_beta_check.cmake" \
+    "an include() inside a quoted argument does not satisfy the census"
+assert_absent "$quoted_call_missing" "run_alpha_check.cmake" \
+    "the real include() beside it still satisfies the census"
+
+# --- nor one inside a bracket argument --------------------------------------
+# Same direction, the other argument form — and the one where no escaping hides
+# the call, so a lexer that skips quotes but not brackets still counts it.
+CENSUS_BRACKET_CALL="$TMPROOT/census-bracket-call"
+make_synthetic_census_fixture "$CENSUS_BRACKET_CALL" 'include("${PROJECT_ROOT}/cmake/run_alpha_check.cmake")
+message(STATUS [[sample: include("${PROJECT_ROOT}/cmake/run_beta_check.cmake")]])'
+bracket_call_missing=$(census_missing_includes "$CENSUS_BRACKET_CALL")
+assert_contains "$bracket_call_missing" "run_beta_check.cmake" \
+    "an include() inside a bracket argument does not satisfy the census"
+assert_absent "$bracket_call_missing" "run_alpha_check.cmake" \
+    "the real include() beside it still satisfies the census"
+
+# --- only the FIRST include() argument is the file --------------------------
+# include(<file> [OPTIONAL] [RESULT_VARIABLE <var>]) — the trailing keywords are
+# not paths, and a matcher that pools every argument would let a RESULT_VARIABLE
+# named after a checker clear it. Here alpha is genuinely loaded and beta only
+# names a variable; cmake loads alpha alone.
+CENSUS_FIRST_ARG="$TMPROOT/census-first-arg"
+make_synthetic_census_fixture "$CENSUS_FIRST_ARG" 'include("${PROJECT_ROOT}/cmake/run_alpha_check.cmake" OPTIONAL RESULT_VARIABLE run_beta_check.cmake)'
+first_arg_missing=$(census_missing_includes "$CENSUS_FIRST_ARG")
+assert_contains "$first_arg_missing" "run_beta_check.cmake" \
+    "a trailing include() keyword argument does not satisfy the census"
+assert_absent "$first_arg_missing" "run_alpha_check.cmake" \
+    "the first argument of that same include() still satisfies it"
+
+# --- a comment INSIDE an argument list is still a comment -------------------
+# The complement of the arms above: comments are recognized between arguments,
+# just not inside one. cmake accepts this and loads both checkers.
+CENSUS_ARGLIST_COMMENT="$TMPROOT/census-arglist-comment"
+make_synthetic_census_fixture "$CENSUS_ARGLIST_COMMENT" 'include( # which checker, and why
+    "${PROJECT_ROOT}/cmake/run_alpha_check.cmake")
+include("${PROJECT_ROOT}/cmake/run_beta_check.cmake")'
+assert_census_clean "$CENSUS_ARGLIST_COMMENT" \
+    "a comment between include() arguments is still stripped"
+
+# --- a nested paren does not end the argument list --------------------------
+# if(NOT (A AND B)) is ordinary CMake, and a depth-blind scan returns to top
+# level at the inner close paren — putting the REST of that same argument list
+# where top level reads it. The rest here is a quoted `#[[`, which at top level
+# opens a bracket comment that never closes, so the scan stops and BOTH live
+# includes below vanish. A plain nested paren is NOT enough to show this, so do
+# not simplify the fixture to one: the scan re-synchronizes at the next command
+# and the census comes out clean with or without depth tracking. cmake 4.3.1
+# runs both includes here. Both sit OUTSIDE the conditional on purpose: the property
+# is scan synchronization, not what the census does with a conditional include
+# (it does not evaluate one, and census_missing_includes says so).
+CENSUS_NESTED_PAREN="$TMPROOT/census-nested-paren"
+make_synthetic_census_fixture "$CENSUS_NESTED_PAREN" 'if(NOT (DEFINED SOME_VAR AND DEFINED SOME_OTHER) AND "doc mentions #[[ here")
+endif()
+include("${PROJECT_ROOT}/cmake/run_alpha_check.cmake")
+include("${PROJECT_ROOT}/cmake/run_beta_check.cmake")'
+assert_census_clean "$CENSUS_NESTED_PAREN" \
+    "a nested paren in an earlier command does not desynchronize the scan"
+
+# --- prose mentions and lookalike filenames do not satisfy it ---------------
+# The real shim's header comment names all three of its checkers, so a
+# substring search over the file is a guaranteed false pass.
+CENSUS_LOOKALIKE="$TMPROOT/census-lookalike"
+make_synthetic_census_fixture "$CENSUS_LOOKALIKE" '# Delegates to run_alpha_check.cmake and run_beta_check.cmake.
+include("${PROJECT_ROOT}/cmake/run_alpha_check.cmake")
+include("${PROJECT_ROOT}/cmake/run_beta_check_v2.cmake")'
+lookalike_missing=$(census_missing_includes "$CENSUS_LOOKALIKE")
+assert_contains "$lookalike_missing" "run_beta_check.cmake" \
+    "a prose mention plus a longer lookalike include does not satisfy the census"
+assert_absent "$lookalike_missing" "run_alpha_check.cmake" \
+    "the prose mention is not what cleared alpha — its real include is"
+
+# --- an alternate root spelling is still a direct include -------------------
+# Guards the mirror-image failure: a false POSITIVE that turns red on a
+# correctly-wired checker the day someone refactors the shim's path variable.
+CENSUS_ALTROOT="$TMPROOT/census-altroot"
+make_synthetic_census_fixture "$CENSUS_ALTROOT" 'include("${CMAKE_CURRENT_LIST_DIR}/run_alpha_check.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/run_beta_check.cmake")'
+assert_census_clean "$CENSUS_ALTROOT" \
+    "\${CMAKE_CURRENT_LIST_DIR} spelling still reads as a direct include"
+
+# --- an include wrapped across lines is still a direct include --------------
+# No cmake formatter is configured in-tree today, so this is insurance rather
+# than a live hazard — but it is the exact shape that made the header executor
+# formatter-defeatable, one artifact over.
+CENSUS_WRAPPED="$TMPROOT/census-wrapped"
+make_synthetic_census_fixture "$CENSUS_WRAPPED" 'include("${PROJECT_ROOT}/cmake/run_alpha_check.cmake")
+include(
+    "${PROJECT_ROOT}/cmake/run_beta_check.cmake")'
+assert_census_clean "$CENSUS_WRAPPED" \
+    "an include() wrapped across lines still reads as a direct include"
+
+# --- header-checks.yml keeps the census reachable ---------------------------
+# The census reads cmake/ and never .github/workflows/, so dropping the checker
+# glob from either paths: block would silently un-cover every new checker and
+# nothing would go red — the gap this ticket closes, relocated one artifact
+# over. This arm makes that a ratchet instead of a one-time merge-day check.
+HEADER_CHECKS_WORKFLOW="$SCRIPT_DIR/.github/workflows/header-checks.yml"
+SYNTHETIC_CHECKER_PATH="cmake/run_zz_synthetic_check.cmake"
+
+# workflow_paths_globs <file> <section> — the paths: entries under the named
+# on: sub-block, unquoted. Same awk shape as test_workflow_paths_sync.sh: stop
+# at the first line that is not a "      - " item, so a sibling top-level key
+# can never be misread as workflow content.
+workflow_paths_globs() {
+    awk -v section="$2" '
+        $0 ~ "^  " section ":" { in_section=1; next }
+        in_section && /^  [a-zA-Z_]+:/ { in_section=0 }
+        in_section && /^    paths:/ { in_paths=1; next }
+        in_section && in_paths && /^      - / {
+            line = $0
+            sub(/^      - /, "", line)
+            gsub(/"/, "", line)
+            gsub(/\047/, "", line)
+            print line
+            next
+        }
+        in_section && in_paths { in_paths=0 }
+    ' "$1"
+}
+
+# workflow_covers_new_checker <file> <section> — true when some paths: entry in
+# that block, read as a glob, matches a checker filename that does not exist
+# yet. A filter enumerating today's names matches nothing here; the glob does.
+workflow_covers_new_checker() {
+    local file="$1" section="$2" entry
+    while IFS= read -r entry; do
+        [[ -z "$entry" ]] && continue
+        # shellcheck disable=SC2053  # glob match is the point
+        [[ "$SYNTHETIC_CHECKER_PATH" == $entry ]] && return 0
+    done < <(workflow_paths_globs "$file" "$section")
+    return 1
+}
+
+if [[ ! -f "$HEADER_CHECKS_WORKFLOW" ]]; then
+    bad "header-checks.yml not found at $HEADER_CHECKS_WORKFLOW"
+else
+    for census_section in push pull_request; do
+        if workflow_covers_new_checker "$HEADER_CHECKS_WORKFLOW" "$census_section"; then
+            ok "header-checks.yml ${census_section}: paths: covers a checker filename that does not exist yet"
+        else
+            bad "header-checks.yml ${census_section}: paths: matches no new checker name — a checker added to cmake/ would not trigger the job that runs this census"
+        fi
+    done
+
+    # Negative control: strip the glob entries and the arm above must stop
+    # passing. Without this, a filter listing every current name by hand would
+    # look identical to the glob on the real file only by accident.
+    CENSUS_WORKFLOW_STRIPPED="$TMPROOT/census-workflow-stripped.yml"
+    awk '!/^      - .*cmake\/run_/ { print }' "$HEADER_CHECKS_WORKFLOW" \
+        > "$CENSUS_WORKFLOW_STRIPPED"
+    for census_section in push pull_request; do
+        if workflow_covers_new_checker "$CENSUS_WORKFLOW_STRIPPED" "$census_section"; then
+            bad "negative control: a header-checks.yml with no cmake/run_* filter still read as covered — the arm above cannot fail"
+        else
+            ok "negative control: stripping the cmake/run_* filter makes the ${census_section} arm fail"
+        fi
+    done
+fi
 
 summarize "run_header_checks_standalone tests"
