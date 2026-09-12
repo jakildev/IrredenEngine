@@ -90,6 +90,23 @@ set +e
 leading_wip_rc=$?
 set -e
 assert_eq "$leading_wip_rc" "0" "leading --wip-ok is accepted"
+
+# A parked wip PR (design-blocked) is not live work: the release goes through
+# without --wip-ok, as the parked-release lifecycle requires.
+mkdir -p "$FLEET_CLAIMS_DIR/700"
+echo "opus-worker-1" > "$FLEET_CLAIMS_DIR/700/owner"
+echo "700" > "$FLEET_CLAIMS_DIR/700/title"
+date +%s > "$FLEET_CLAIMS_DIR/700/created"
+cat > "$PRS_JSON" <<'JSON'
+[
+  {"number":800,"headRefName":"claude/700-release-guard","labels":[{"name":"fleet:wip"},{"name":"fleet:design-blocked"}]}
+]
+JSON
+parked_rc=0
+parked_output=$("$FLEET_CLAIM" release 700 2>&1) || parked_rc=$?
+assert_eq "$parked_rc" "0" "parked wip PR does not block the release"
+assert_absent "$parked_output" "REFUSING" "no wip refusal for a parked PR"
+
 [[ ! -d "$FLEET_CLAIMS_DIR/700" ]] \
     && ok "leading --wip-ok releases the claim" \
     || bad "leading --wip-ok did not release the claim"
