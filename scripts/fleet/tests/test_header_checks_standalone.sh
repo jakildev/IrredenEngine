@@ -77,11 +77,11 @@
 #     a paren in it                                 → exit 1 (the comment's
 #     `(` must not read as a function-declaration guard hit)
 #
-# Plus one section that asserts what the shim RUNS rather than what it finds
-# (#3118): every cmake/run_*check*.cmake other than the shim itself must be
+# Plus one section that asserts what the shim RUNS rather than what it finds:
+# every cmake/run_*check*.cmake other than the shim itself must be
 # directly include()d by it, since the shim is the only path CI executes. The
 # population comes from the glob, never from the shim's includes or
-# make_fixture's copy list (#2876), and header-checks.yml's paths: filters must
+# make_fixture's copy list, and header-checks.yml's paths: filters must
 # match a checker filename that does not exist yet, so a new checker triggers
 # the job that runs the census.
 
@@ -1160,34 +1160,33 @@ assert_contains "$noroot_out" "PROJECT_ROOT is required" \
 
 
 # ===========================================================================
-# Checker include-set census (#3118)
+# Checker include-set census
 # ===========================================================================
 #
 # Everything above drives the shim and asserts what it FINDS. This section
 # asserts what it RUNS. The shim is the only path CI executes — quality.yml,
-# the `lint` target's sole route, is retired (#2718) — so a checker wired only
+# the `lint` target's sole route, is retired — so a checker wired only
 # into `irreden_add_quality_targets` (a `-P` invocation, no shim `include()`)
-# ships CI-inert while its rule doc still claims "enforced" (see #2794).
+# ships CI-inert while its rule doc still claims "enforced".
 #
 # The population is derived from a cmake/run_*check*.cmake glob, never from the
 # shim's own includes and never from make_fixture's copy list: a domain computed
 # from the thing under test is invisible to both a green run and its positive
-# control (#2876). The glob IS the domain, so a checker named outside it stays
-# invisible — that is the accepted tradeoff #2876 prescribes, not a defect.
+# control. The glob IS the domain, so a checker named outside it stays
+# invisible — that is the accepted tradeoff, not a defect.
 
 # checker_includes <cmake-file> — one line per include() call, printing that
 # call's first argument (the file include() actually loads). The whole file is
 # joined first so a wrapped `include(\n  "...")` still reads as one call, which
-# is what keeps the guard from being defeated by reformatting (the #2916 shape,
-# here in the wiring dimension).
+# is what keeps the guard from being defeated by reformatting: a matcher that
+# reads one line at a time misses a wrapped call, here in the wiring dimension.
 #
 # This is a LEXER over CMake command invocations, not a regex over stripped
 # text, because the two questions it has to answer are one question: "where
 # does a comment start" and "where does a command start" are both answered by
 # knowing which argument you are inside. Strip-then-match cannot know that, so
 # it needs a new special case per comment-adjacent grammar rule and is never
-# done. Every clause below is a false-signal guard whose direction is named
-# (see #3291):
+# done. Every clause below is a false-signal guard whose direction is named:
 #
 #   - COMMENTS, both CMake forms, in CMake lexical order. At a `#` outside any
 #     argument, a following `[=*[` opens a BRACKET comment through the matching
@@ -1375,7 +1374,7 @@ checker_includes() {
 
 # census_population <root> — the basename of every checker the glob finds
 # under <root>/cmake, excluding the shim itself. The exclusion is a literal
-# one-liner on purpose: #3267 lands a second standalone shim, and the day a
+# one-liner on purpose: a second standalone shim is expected, and the day a
 # checker belongs to THAT shim this guard would otherwise demand its include
 # in the wrong one. A one-line exclusion is trivial to extend; a derived one
 # is not.
@@ -1412,7 +1411,7 @@ census_is_vacuous() {
 # -P "${PROJECT_SOURCE_DIR}/cmake/<name>", and a shim refactor to
 # ${CMAKE_CURRENT_LIST_DIR} is legitimate; pinning the root literal would turn
 # this guard red on a correctly-wired checker — the mirror image of the
-# formatter-defeatable false negative #2916 records for the header executor.
+# formatter-defeatable false negative the header executor's own guard avoids.
 # The boundary anchor is also what keeps a longer lookalike name
 # (run_x_check_v2.cmake) from satisfying run_x_check.cmake.
 census_missing_includes() {
@@ -1538,7 +1537,7 @@ assert_eq "" "$(census_missing_includes "$CENSUS_EMPTY")" \
     "the include-set assertion alone would have called that tree clean"
 
 # --- a commented-out include reads as absent --------------------------------
-# Same contract as #2899 on the registry side: a disabled wiring line never
+# Same contract the registry-side guard holds: a disabled wiring line never
 # reaches the executed path, so it must not satisfy the guard.
 CENSUS_COMMENTED="$TMPROOT/census-commented"
 make_synthetic_census_fixture "$CENSUS_COMMENTED" 'include("${PROJECT_ROOT}/cmake/run_alpha_check.cmake")
@@ -1796,7 +1795,7 @@ assert_census_clean "$CENSUS_ALTROOT" \
 # --- an include wrapped across lines is still a direct include --------------
 # No cmake formatter is configured in-tree today, so this is insurance rather
 # than a live hazard — but it is the exact shape that made the header executor
-# formatter-defeatable (#2916), one artifact over.
+# formatter-defeatable, one artifact over.
 CENSUS_WRAPPED="$TMPROOT/census-wrapped"
 make_synthetic_census_fixture "$CENSUS_WRAPPED" 'include("${PROJECT_ROOT}/cmake/run_alpha_check.cmake")
 include(
