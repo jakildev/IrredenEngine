@@ -8,7 +8,7 @@ of running its own `gh` / `git` list queries.
 
 | Path | Producer | Reader | Purpose |
 |---|---|---|---|
-| `state.json` | scout | every role | open PRs (labels, reviews, mergeable), needs-plan / approved issues, open `fleet:queued` rows; compact JSON, under 256 KB (below) |
+| `state.json` | scout | every role | open PRs (labels, reviews, mergeable), needs-plan / approved issues, open `fleet:queued` rows; compact JSON, under 256 KB (below); per-section field sets and caps in "`state.json` sections" |
 | `projections/<role>.json` | scout | the named role | pre-filtered per-role slice, ~5 KB; prefer it over `state.json` |
 | `prs/<repo>/<N>.json` | scout | `fleet-pr view`; `fleet-pr comments` on `gh` failure | full PR detail; refreshed when the list's `updatedAt` advances |
 | `diffs/<repo>/<N>-<sha>.diff` | scout | `fleet-pr diff` | raw diff keyed by head SHA; old SHAs GC'd |
@@ -43,6 +43,25 @@ the on-disk shape until an unrelated list change flips the ETag. The
 scout warns at 7/8 of the cap and writes
 `${FLEET_ALERTS_DIR:-~/.fleet/alerts}/state-scout-state-size` while the
 condition holds; check it after adding a field.
+
+### `state.json` sections
+
+Under `repos.<engine|game>`, every section `emit_state` writes, with its
+field set and cap. Re-check this table against the size alert whenever a
+section grows a field — that is the omission this table exists to close.
+
+| Section | Fields | Cap |
+|---|---|---|
+| `prs` | `number, title, headRefName, headRefOid, baseRefName, author, labels, mergeable, isDraft, reviews[], updatedAt, closes_issues, schema` | open PRs, up to `OPEN_PR_FETCH_LIMIT` (200); `reviews[]` keeps a body only on the latest review per PR |
+| `needs_plan` | `number, title, labels, updatedAt, blocked` | `fleet:needs-plan` open issues, one REST page (100) |
+| `plan_review` | `number, title, labels, updatedAt` | `fleet:plan-review` open issues, one REST page (100) |
+| `human_approved` | `number, title, labels, updatedAt, epic, blocked` | `human:approved` + `fleet:agent-approved` open issues, deduped; up to 300 each (600 combined) |
+| `closed_fleet_queued` | `number` | closed `fleet:queued` issues, newest 100 |
+| `recent_merged_prs` | `number, title, headRefName, baseRefName, mergedAt` | newest 30 merged PRs |
+| `epics` | `number, title, labels, updatedAt, checklist, managed` | open `fleet:epic` issues, one REST page (100) |
+| `tasks.open` / `tasks.in_progress` | `status, title, summary, id, model, effort, labels, owner, area, blocked_by, blocked, needs_gl_host, needs_host, backend_symmetric, issue, updatedAt, epic` | open `fleet:queued` issues minus `fleet:needs-human`/`fleet:plan-review`/`fleet:gated`, up to 200 (2 REST pages) |
+| `tasks.done` | `id` | one record per `closed_fleet_queued` entry — same 100-item cap, not an independent population |
+| `tasks.plan_gated` | bare issue numbers, not issue-shaped records | same pre-filter population as `tasks.open`/`tasks.in_progress` |
 
 ## Per-item drill-ins
 
