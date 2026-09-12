@@ -37,7 +37,7 @@ name: Fleet Tests
 #   test_fleet_pr_body_lint.py          -> the commit-and-push PR-body and
 #                                          edit-or-create procedures
 #   test_workflow_paths_sync.sh         -> the other path-filtered workflows
-#                                          (format-check, header-checks,
+#                                          (engine-tests, format-check, header-checks,
 #                                          perf-gate, python-lint,
 #                                          render-harness-tests)
 #   test_lint_python_registry.py        -> ruff.toml
@@ -69,6 +69,7 @@ on:
       - '.claude/skills/commit-and-push/procedures/pr-body.md'
       - '.claude/skills/commit-and-push/procedures/stackable-on.md'
       - 'docs/agents/**'
+      - '.github/workflows/engine-tests.yml'
       - '.github/workflows/fleet-tests.yml'
       - '.github/workflows/format-check.yml'
       - '.github/workflows/header-checks.yml'
@@ -89,6 +90,7 @@ on:
       - '.claude/skills/commit-and-push/procedures/pr-body.md'
       - '.claude/skills/commit-and-push/procedures/stackable-on.md'
       - 'docs/agents/**'
+      - '.github/workflows/engine-tests.yml'
       - '.github/workflows/fleet-tests.yml'
       - '.github/workflows/format-check.yml'
       - '.github/workflows/header-checks.yml'
