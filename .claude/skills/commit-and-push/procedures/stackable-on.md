@@ -34,8 +34,10 @@ branch=$(git branch --show-current)
 author_label="fleet:author-<claude|codex>"   # substitute the actual runtime from step 8c
 
 existing=$(gh pr list --head "$branch" --state open --json url -q '.[0].url')
+# Publication must use the exact body file that passed fleet-pr-body-lint.
 if [[ -n "$existing" ]]; then
-    gh pr edit "$existing" --base "$base" --add-label "$author_label"
+    gh pr edit "$existing" --base "$base" --add-label "$author_label" \
+        --body-file .pr-body.md
 else
     gh pr create --base "$base" --label "fleet:wip" --label "$author_label" \
         --title "<scope>: <title> (#<N>)" --body-file .pr-body.md

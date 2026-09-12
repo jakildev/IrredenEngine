@@ -318,6 +318,11 @@ Parallel-agent fleet (tmux + Claude)
                                  phrasing / missing core sections — the cheap
                                  pre-pass before the Opus plan-review
                                  soundness judgment
+  fleet-pr-body-lint <issue-number> [--repo engine|game|owner/repo]
+                                 require one Acceptance evidence row per issue
+                                 criterion in a drafted PR body; reads stdin or
+                                 --body-file; can read or write a complete issue
+                                 snapshot with --issue-json/--write-issue-json
   fleet-validate-stack <umbrella> [--repo engine|game] [--children N…] [--strict]
                                  [--check-checklist]
                                  pre-approval check that an epic's child issues

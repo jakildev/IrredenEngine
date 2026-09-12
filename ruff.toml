@@ -41,6 +41,7 @@ extend-include = [
     "scripts/fleet/fleet-issue",
     "scripts/fleet/fleet-migrate-plan-files",
     "scripts/fleet/fleet-pr",
+    "scripts/fleet/fleet-pr-body-lint",
     "scripts/fleet/fleet-reconcile-amendments",
     "scripts/fleet/fleet-rules-sweep",
     "scripts/fleet/fleet-session-track",

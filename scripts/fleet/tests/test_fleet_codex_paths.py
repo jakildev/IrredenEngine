@@ -59,7 +59,8 @@ gh() {
     if [[ "$1 $2" == "pr list" ]]; then printf 'https://example.test/pull/1\\n'; return; fi
     [[ "$1 $2" == "pr edit" ]] || return 10
     shift 3
-    [[ "$*" == "--base master --add-label fleet:author-codex" ]] || return 11
+    expected="--base master --add-label fleet:author-codex --body-file .pr-body.md"
+    [[ "$*" == "$expected" ]] || return 11
     printf 'provenance reconciled\\n'
 }
 base=master
